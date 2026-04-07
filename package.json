@@ -1,0 +1,127 @@
+{
+  "name": "@treeseed/sdk",
+  "version": "0.0.1",
+  "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/treeseed-ai/sdk.git",
+    "directory": "."
+  },
+  "homepage": "https://treeseed.ai",
+  "bugs": {
+    "url": "https://github.com/treeseed-ai/sdk/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "README.md",
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "setup": "npm install",
+    "setup:ci": "npm ci",
+    "build:dist": "node ./scripts/run-ts.mjs ./scripts/build-dist.ts",
+    "prepare": "npm run build:dist",
+    "prepack": "npm run build:dist",
+    "test:unit": "vitest run --config ./vitest.config.ts",
+    "test:smoke": "node ./scripts/run-ts.mjs ./scripts/test-smoke.ts",
+    "release:setup": "npm run setup:ci",
+    "release:check-tag": "node ./scripts/run-ts.mjs ./scripts/assert-release-tag-version.ts",
+    "release:verify": "node ./scripts/run-ts.mjs ./scripts/release-verify.ts",
+    "release:publish": "node ./scripts/run-ts.mjs ./scripts/publish-package.ts"
+  },
+  "dependencies": {
+    "esbuild": "^0.25.10",
+    "typescript": "^5.9.3",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "vitest": "^4.1.2"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./sdk": {
+      "types": "./dist/sdk.d.ts",
+      "default": "./dist/sdk.js"
+    },
+    "./content-store": {
+      "types": "./dist/content-store.d.ts",
+      "default": "./dist/content-store.js"
+    },
+    "./d1-store": {
+      "types": "./dist/d1-store.d.ts",
+      "default": "./dist/d1-store.js"
+    },
+    "./frontmatter": {
+      "types": "./dist/frontmatter.d.ts",
+      "default": "./dist/frontmatter.js"
+    },
+    "./git-runtime": {
+      "types": "./dist/git-runtime.d.ts",
+      "default": "./dist/git-runtime.js"
+    },
+    "./models": {
+      "types": "./dist/model-registry.d.ts",
+      "default": "./dist/model-registry.js"
+    },
+    "./sdk-filters": {
+      "types": "./dist/sdk-filters.d.ts",
+      "default": "./dist/sdk-filters.js"
+    },
+    "./cli-tools": {
+      "types": "./dist/cli-tools.d.ts",
+      "default": "./dist/cli-tools.js"
+    },
+    "./types": {
+      "types": "./dist/sdk-types.d.ts",
+      "default": "./dist/sdk-types.js"
+    },
+    "./types/agents": {
+      "types": "./dist/types/agents.d.ts",
+      "default": "./dist/types/agents.js"
+    },
+    "./types/cloudflare": {
+      "types": "./dist/types/cloudflare.d.ts",
+      "default": "./dist/types/cloudflare.js"
+    },
+    "./wrangler-d1": {
+      "types": "./dist/wrangler-d1.d.ts",
+      "default": "./dist/wrangler-d1.js"
+    },
+    "./stores/cursor-store": {
+      "types": "./dist/stores/cursor-store.d.ts",
+      "default": "./dist/stores/cursor-store.js"
+    },
+    "./stores/helpers": {
+      "types": "./dist/stores/helpers.d.ts",
+      "default": "./dist/stores/helpers.js"
+    },
+    "./stores/lease-store": {
+      "types": "./dist/stores/lease-store.d.ts",
+      "default": "./dist/stores/lease-store.js"
+    },
+    "./stores/message-store": {
+      "types": "./dist/stores/message-store.d.ts",
+      "default": "./dist/stores/message-store.js"
+    },
+    "./stores/run-store": {
+      "types": "./dist/stores/run-store.d.ts",
+      "default": "./dist/stores/run-store.js"
+    },
+    "./stores/subscription-store": {
+      "types": "./dist/stores/subscription-store.d.ts",
+      "default": "./dist/stores/subscription-store.js"
+    }
+  }
+}
