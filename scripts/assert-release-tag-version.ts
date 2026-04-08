@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const expectedPrefix = 'treeseed-sdk-v';
+const semverTagPattern = /^\d+\.\d+\.\d+$/;
 const packageRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const packageJsonPath = resolve(packageRoot, 'package.json');
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
@@ -15,12 +15,14 @@ if (!tagName) {
 	process.exit(1);
 }
 
-if (!tagName.startsWith(expectedPrefix)) {
-	console.error(`Release tag "${tagName}" must start with "${expectedPrefix}".`);
+if (!semverTagPattern.test(tagName)) {
+	console.error(
+		`Release tag "${tagName}" must use the "{MAJOR}.{MINOR}.{PATCH}" format, for example "${packageVersion}".`,
+	);
 	process.exit(1);
 }
 
-const taggedVersion = tagName.slice(expectedPrefix.length);
+const taggedVersion = tagName;
 
 if (taggedVersion !== packageVersion) {
 	console.error(
