@@ -41,7 +41,7 @@
     "release:publish": "node ./scripts/run-ts.mjs ./scripts/publish-package.ts"
   },
   "dependencies": {
-    "esbuild": "^0.25.10",
+    "esbuild": "^0.28.0",
     "typescript": "^5.9.3",
     "yaml": "^2.8.1"
   },
