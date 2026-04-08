@@ -539,7 +539,9 @@ What each command does:
 
 ## Sample Fixture Site
 
-The canonical SDK sample fixture now lives at `../fixtures/fixture-sdk-sample-site/template`.
+The canonical SDK sample fixture lives at `../fixtures/fixture-sdk-sample-site/template` in the TreeSeed workspace.
+
+The SDK package also keeps a mirrored local fixture at `sdk/fixture` so the standalone SDK repository can run its own tests and CI without depending on the larger workspace layout.
 
 It serves three purposes at once:
 
@@ -560,4 +562,4 @@ const sdk = new AgentSdk({
 
 The fixture includes representative entries for pages, notes, questions, objectives, books, knowledge, people, and agents so local queries behave like a small real site instead of a synthetic stub.
 
-The SDK keeps a stable helper path for tests, but the workspace fixture under `fixtures/` is now the source of truth rather than `sdk/fixture`.
+In the full TreeSeed workspace, tests prefer the workspace fixture under `fixtures/`. In the standalone SDK repository, tests fall back to `sdk/fixture`.

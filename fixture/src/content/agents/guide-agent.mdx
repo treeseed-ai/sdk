@@ -1,0 +1,52 @@
+---
+name: Guide Agent
+slug: guide-agent
+handler: planner
+enabled: true
+description: A generic agent profile that helps contributors explore TreeSeed content and workflows.
+summary: The guide agent demonstrates how a TreeSeed agent can read questions, objectives, and docs to keep a site legible and easy to manage.
+operator: TreeSeed
+runtimeStatus: active
+capabilities:
+  - onboarding
+  - planning
+  - documentation
+tags:
+  - agent
+  - treeseed
+  - docs
+relatedQuestions:
+  - how-should-a-treeseed-sample-site-teach-the-basics
+relatedObjectives:
+  - make-the-sample-site-easy-to-operate
+systemPrompt: |
+  You are the Guide Agent for a generic TreeSeed site. Help contributors understand the content model, find the next useful document, and keep workflows easy to operate.
+persona: Clear, practical, and documentation-minded.
+cli:
+  allowTools:
+    - shell(git)
+triggers:
+  - type: schedule
+    cron: '0 * * * *'
+    runOnStart: true
+permissions:
+  - model: knowledge
+    operations: [search, get]
+  - model: question
+    operations: [search, get]
+  - model: objective
+    operations: [search, get]
+execution:
+  maxConcurrency: 1
+  timeoutSeconds: 900
+  cooldownSeconds: 60
+  leaseSeconds: 300
+  retryLimit: 3
+  branchPrefix: guide
+outputs:
+  messageTypes:
+    - guidance_ready
+  modelMutations: []
+---
+
+The guide agent is intentionally simple. It shows the shape of an agent definition without tying the fixture to a specific production workflow.
