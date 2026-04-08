@@ -34,6 +34,8 @@
     "test": "npm run test:unit",
     "test:unit": "vitest run --config ./vitest.config.ts",
     "test:smoke": "node ./scripts/run-ts.mjs ./scripts/test-smoke.ts",
+    "fixtures:resolve": "node ./scripts/run-ts.mjs ./scripts/fixture-tools.ts resolve",
+    "fixtures:check": "node ./scripts/run-ts.mjs ./scripts/fixture-tools.ts check",
     "verify": "npm run release:verify",
     "release:setup": "npm run setup:ci",
     "release:check-tag": "node ./scripts/run-ts.mjs ./scripts/assert-release-tag-version.ts",

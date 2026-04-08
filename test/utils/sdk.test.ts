@@ -12,7 +12,7 @@ describe('agent sdk', () => {
 		const response = await sdk.search({
 			model: 'knowledge',
 			limit: 3,
-			filters: [{ field: 'title', op: 'contains', value: 'Introduction' }],
+			filters: [{ field: 'title', op: 'contains', value: 'TreeSeed' }],
 		});
 
 		expect(response.ok).toBe(true);
@@ -28,7 +28,7 @@ describe('agent sdk', () => {
 		});
 		const response = await sdk.read({
 			model: 'knowledge',
-			slug: 'guides/getting-started/1-introduction',
+			slug: 'research/inquiry/questions-as-records',
 		});
 
 		expect(response.ok).toBe(true);
@@ -103,12 +103,12 @@ describe('agent sdk', () => {
 		const pageResponse = await sdk.search({
 			model: 'page',
 			limit: 1,
-			filters: [{ field: 'title', op: 'contains', value: 'TreeSeed' }],
+			filters: [{ field: 'title', op: 'contains', value: 'Vision' }],
 		});
 		const noteResponse = await sdk.search({
 			model: 'note',
 			limit: 1,
-			filters: [{ field: 'title', op: 'contains', value: 'TreeSeed' }],
+			filters: [{ field: 'title', op: 'contains', value: 'fixture' }],
 		});
 
 		expect(pageResponse.model).toBe('page');
@@ -126,7 +126,7 @@ describe('agent sdk', () => {
 		const response = await sdk.search({
 			model: 'agent',
 			limit: 1,
-			filters: [{ field: 'name', op: 'contains', value: 'Guide' }],
+			filters: [{ field: 'name', op: 'contains', value: 'Planner' }],
 		});
 
 		expect(response.model).toBe('agent');

@@ -354,8 +354,8 @@ You can see that usage in:
 
 - [`agent/src/agents/kernel/agent-kernel.ts`](/home/adrian/Projects/treeseed/agent/src/agents/kernel/agent-kernel.ts)
 - [`agent/src/agents/kernel/trigger-resolver.ts`](/home/adrian/Projects/treeseed/agent/src/agents/kernel/trigger-resolver.ts)
-- [`core/fixture/src/agents/planner.ts`](/home/adrian/Projects/treeseed/core/fixture/src/agents/planner.ts)
-- [`core/fixture/src/agents/notifier.ts`](/home/adrian/Projects/treeseed/core/fixture/src/agents/notifier.ts)
+- [`planner.ts`](/home/adrian/Projects/treeseed/core/.fixtures/treeseed-fixtures/sites/working-site/src/agents/planner.ts)
+- [`notifier.ts`](/home/adrian/Projects/treeseed/core/.fixtures/treeseed-fixtures/sites/working-site/src/agents/notifier.ts)
 
 Conceptually, `agent_cursor` is the answer to: "Where should this agent continue from next time?"
 
@@ -508,7 +508,7 @@ Content-backed operations need a repository root that contains `src/content`.
 3. `TREESEED_SDK_REPO_ROOT`
 4. auto-detection from the current working directory
 
-For package-local tests and fixture-driven development, the SDK also recognizes a package fixture root containing `fixture/src/content`.
+For fixture-driven development, the SDK also recognizes the shared submodule fixture at `.fixtures/treeseed-fixtures/sites/working-site`.
 
 Example with an explicit root:
 
@@ -521,6 +521,12 @@ const sdk = new AgentSdk({
 ```
 
 ## Local Development
+
+Initialize the shared fixtures submodule before running fixture-backed tests:
+
+```bash
+git submodule update --init --recursive
+```
 
 ```bash
 npm ci
@@ -539,9 +545,7 @@ What each command does:
 
 ## Sample Fixture Site
 
-The canonical SDK sample fixture lives at `../fixtures/fixture-sdk-sample-site/template` in the TreeSeed workspace.
-
-The SDK package also keeps a mirrored local fixture at `sdk/fixture` so the standalone SDK repository can run its own tests and CI without depending on the larger workspace layout.
+The canonical shared fixture lives in the pinned `treeseed-fixtures` submodule at `.fixtures/treeseed-fixtures/sites/working-site`.
 
 It serves three purposes at once:
 
@@ -556,10 +560,18 @@ import path from 'node:path';
 import { AgentSdk } from '@treeseed/sdk';
 
 const sdk = new AgentSdk({
-	repoRoot: path.resolve('../fixtures/fixture-sdk-sample-site/template'),
+	repoRoot: path.resolve('.fixtures/treeseed-fixtures/sites/working-site'),
 });
 ```
 
 The fixture includes representative entries for pages, notes, questions, objectives, books, knowledge, people, and agents so local queries behave like a small real site instead of a synthetic stub.
 
-In the full TreeSeed workspace, tests prefer the workspace fixture under `fixtures/`. In the standalone SDK repository, tests fall back to `sdk/fixture`.
+Shared fixture commands:
+
+```bash
+npm run fixtures:resolve
+npm run fixtures:check
+```
+
+- `fixtures:resolve`: prints the active shared fixture root
+- `fixtures:check`: verifies that the pinned shared fixture is initialized and usable

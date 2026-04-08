@@ -1,11 +1,6 @@
-import { existsSync } from 'node:fs';
-import path from 'node:path';
+import { requireSharedFixtureRoot } from '../scripts/fixture-tools.ts';
 
-const workspaceFixtureRoot = path.resolve(import.meta.dirname, '../../fixtures/fixture-sdk-sample-site/template');
-const localFixtureRoot = path.resolve(import.meta.dirname, '../fixture');
+process.env.TREESEED_FIXTURE_ID ??= 'treeseed-working-site';
 
-export const sdkFixtureRoot = existsSync(path.join(workspaceFixtureRoot, 'src', 'content'))
-	? workspaceFixtureRoot
-	: localFixtureRoot;
-
+export const sdkFixtureRoot = requireSharedFixtureRoot();
 process.env.TREESEED_SDK_REPO_ROOT = sdkFixtureRoot;

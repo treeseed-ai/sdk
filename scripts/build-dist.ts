@@ -63,6 +63,9 @@ function copyAsset(filePath, sourceRoot, outputRoot) {
 function transpileScript(filePath) {
 	const source = readFileSync(filePath, 'utf8');
 	const relativePath = relative(scriptsRoot, filePath);
+	if (relativePath === 'fixture-tools.ts') {
+		return;
+	}
 	const outputFile = resolve(distRoot, 'scripts', relativePath.replace(/\.(mjs|ts)$/u, '.js'));
 	const transformed = extname(filePath) === '.ts'
 		? ts.transpileModule(source, {
