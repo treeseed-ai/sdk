@@ -4,6 +4,9 @@ import path from 'node:path';
 function findContentRoot(start: string) {
 	let current = path.resolve(start);
 	for (;;) {
+		if (existsSync(path.join(current, 'fixture', 'src', 'content'))) {
+			return path.join(current, 'fixture');
+		}
 		if (existsSync(path.join(current, 'src', 'content'))) {
 			return current;
 		}
@@ -22,6 +25,10 @@ function findContentRoot(start: string) {
 export function resolveSdkRepoRoot(repoRoot?: string) {
 	if (repoRoot) {
 		return path.resolve(repoRoot);
+	}
+
+	if (process.env.TREESEED_SDK_CONTENT_ROOT) {
+		return path.resolve(process.env.TREESEED_SDK_CONTENT_ROOT);
 	}
 
 	if (process.env.TREESEED_SDK_REPO_ROOT) {

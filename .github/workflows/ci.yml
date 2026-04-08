@@ -22,4 +22,4 @@ jobs:
         run: npm ci
 
       - name: Verify package
-        run: npm run release:verify
+        run: npm run verify

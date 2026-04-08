@@ -32,7 +32,7 @@ jobs:
         run: npm run release:check-tag -- "${GITHUB_REF_NAME}"
 
       - name: Verify package
-        run: npm run release:verify
+        run: npm run verify
 
       - name: Publish package
         run: npm run release:publish

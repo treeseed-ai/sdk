@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryAgentDatabase } from '../../src/d1-store.ts';
 import { AgentSdk } from '../../src/sdk.ts';
+import { sdkFixtureRoot } from '../test-fixture.ts';
 
 describe('agent sdk', () => {
 	it('reads content-backed models through the public knowledge alias', async () => {
 		const sdk = new AgentSdk({
-			repoRoot: process.cwd(),
+			repoRoot: sdkFixtureRoot,
 			database: new MemoryAgentDatabase(),
 		});
 		const response = await sdk.search({
@@ -22,12 +23,12 @@ describe('agent sdk', () => {
 
 	it('supports read as a public alias for get', async () => {
 		const sdk = new AgentSdk({
-			repoRoot: process.cwd(),
+			repoRoot: sdkFixtureRoot,
 			database: new MemoryAgentDatabase(),
 		});
 		const response = await sdk.read({
 			model: 'knowledge',
-			slug: 'architecture/part-1/chapter-1/1-introduction',
+			slug: 'guides/getting-started/1-introduction',
 		});
 
 		expect(response.ok).toBe(true);
@@ -58,7 +59,7 @@ describe('agent sdk', () => {
 			],
 		});
 		const sdk = new AgentSdk({
-			repoRoot: process.cwd(),
+			repoRoot: sdkFixtureRoot,
 			database,
 		});
 
@@ -80,7 +81,7 @@ describe('agent sdk', () => {
 
 	it('resolves the expanded public model set', async () => {
 		const sdk = new AgentSdk({
-			repoRoot: process.cwd(),
+			repoRoot: sdkFixtureRoot,
 			database: new MemoryAgentDatabase(),
 		});
 
@@ -91,5 +92,45 @@ describe('agent sdk', () => {
 
 		expect(response.model).toBe('person');
 		expect(Array.isArray(response.payload)).toBe(true);
+	});
+
+	it('searches representative page and note content from the fixture site', async () => {
+		const sdk = new AgentSdk({
+			repoRoot: sdkFixtureRoot,
+			database: new MemoryAgentDatabase(),
+		});
+
+		const pageResponse = await sdk.search({
+			model: 'page',
+			limit: 1,
+			filters: [{ field: 'title', op: 'contains', value: 'TreeSeed' }],
+		});
+		const noteResponse = await sdk.search({
+			model: 'note',
+			limit: 1,
+			filters: [{ field: 'title', op: 'contains', value: 'TreeSeed' }],
+		});
+
+		expect(pageResponse.model).toBe('page');
+		expect(pageResponse.payload.length).toBeGreaterThan(0);
+		expect(noteResponse.model).toBe('note');
+		expect(noteResponse.payload.length).toBeGreaterThan(0);
+	});
+
+	it('finds at least one generic agent entry in the fixture site', async () => {
+		const sdk = new AgentSdk({
+			repoRoot: sdkFixtureRoot,
+			database: new MemoryAgentDatabase(),
+		});
+
+		const response = await sdk.search({
+			model: 'agent',
+			limit: 1,
+			filters: [{ field: 'name', op: 'contains', value: 'Guide' }],
+		});
+
+		expect(response.model).toBe('agent');
+		expect(response.payload.length).toBeGreaterThan(0);
+		expect(response.payload[0]).toHaveProperty('frontmatter');
 	});
 });

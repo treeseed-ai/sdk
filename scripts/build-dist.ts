@@ -123,7 +123,7 @@ for (const filePath of walkFiles(srcRoot)) {
 
 for (const filePath of walkFiles(scriptsRoot)) {
 	const extension = extname(filePath);
-	if (extension === '.ts' || extension === '.ts') {
+	if (extension === '.ts' || extension === '.mjs') {
 		transpileScript(filePath);
 	}
 }

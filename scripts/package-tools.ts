@@ -32,8 +32,13 @@ function resolvePackageBinary(packageName, binName = packageName) {
 	return resolve(dirname(packageJsonPath), relativePath);
 }
 
-export const astroBin = resolvePackageBinary('astro', 'astro');
-export const wranglerBin = resolvePackageBinary('wrangler', 'wrangler');
+export function resolveAstroBin() {
+	return resolvePackageBinary('astro', 'astro');
+}
+
+export function resolveWranglerBin() {
+	return resolvePackageBinary('wrangler', 'wrangler');
+}
 
 export function createProductionBuildEnv(extraEnv = {}) {
 	return {
@@ -51,7 +56,7 @@ export function packageScriptPath(scriptName) {
 		return resolve(packageScriptRoot, scriptName);
 	}
 
-	for (const extension of ['.js', '.ts', '.ts']) {
+	for (const extension of ['.js', '.ts', '.mjs']) {
 		const candidate = resolve(packageScriptRoot, `${scriptName}${extension}`);
 		if (existsSync(candidate)) {
 			return candidate;
