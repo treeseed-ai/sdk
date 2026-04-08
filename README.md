@@ -29,6 +29,454 @@ import { AgentSdk } from '@treeseed/sdk';
 const sdk = new AgentSdk();
 ```
 
+## Using The SDK In Applications
+
+`AgentSdk` is the main application entrypoint. It routes each request to either the content-backed store or the D1-backed store based on the model you ask for, and it always returns a JSON envelope with:
+
+- `ok`
+- `model`
+- `operation`
+- `payload`
+- optional `meta`
+
+For most application code, the working pattern is:
+
+1. create one SDK instance for your process, request handler, worker, or job
+2. call `get`, `read`, `search`, `follow`, `pick`, `create`, or `update`
+3. read the typed `payload` from the returned envelope
+
+### Initialize An SDK Instance
+
+Use the default constructor when you want in-memory D1 behavior and a content root resolved from your environment or working directory:
+
+```ts
+import { AgentSdk } from '@treeseed/sdk';
+
+const sdk = new AgentSdk({
+	repoRoot: '/absolute/path/to/your-site',
+});
+```
+
+Use `createLocal()` when you want a local Wrangler-backed D1 database:
+
+```ts
+import { AgentSdk } from '@treeseed/sdk';
+
+const sdk = AgentSdk.createLocal({
+	repoRoot: '/absolute/path/to/your-site',
+	databaseName: 'treeseed-local',
+	persistTo: '.wrangler/state/v3/d1',
+});
+```
+
+Use `MemoryAgentDatabase` explicitly in tests or scripts when you want a fully in-memory setup:
+
+```ts
+import { AgentSdk } from '@treeseed/sdk';
+import { MemoryAgentDatabase } from '@treeseed/sdk/d1-store';
+
+const sdk = new AgentSdk({
+	repoRoot: '/absolute/path/to/your-site',
+	database: new MemoryAgentDatabase(),
+});
+```
+
+### Read A Single Record
+
+Use `get()` when you want one record by `id`, `slug`, or `key`.
+
+```ts
+const response = await sdk.get({
+	model: 'knowledge',
+	slug: 'guides/getting-started/1-introduction',
+});
+
+if (response.payload) {
+	console.log(response.payload.title);
+	console.log(response.payload.body);
+}
+```
+
+Use `read()` when you want the same lookup behavior but want the returned envelope to say `operation: 'read'`.
+
+```ts
+const response = await sdk.read({
+	model: 'page',
+	slug: 'getting-started',
+});
+```
+
+### Search Across A Model
+
+Use `search()` to list and filter records from a model.
+
+```ts
+const response = await sdk.search({
+	model: 'knowledge',
+	filters: [
+		{ field: 'title', op: 'contains', value: 'TreeSeed' },
+		{ field: 'tags', op: 'contains', value: 'onboarding' },
+	],
+	sort: [{ field: 'updated', direction: 'desc' }],
+	limit: 10,
+});
+
+console.log(response.meta?.count);
+console.log(response.payload.map((item) => item.slug));
+```
+
+`search()` is the main method for application reads such as:
+
+- listing recent notes
+- finding objectives by status
+- finding people by role or affiliation
+- finding queued D1 messages by type or status
+
+### Follow Changes Since A Timestamp
+
+Use `follow()` when your application wants records changed since a known point in time.
+
+```ts
+const response = await sdk.follow({
+	model: 'knowledge',
+	since: '2026-04-07T00:00:00.000Z',
+	filters: [{ field: 'tags', op: 'contains', value: 'treeseed' }],
+});
+
+for (const item of response.payload.items) {
+	console.log(item.slug);
+}
+```
+
+The payload shape is:
+
+```ts
+{
+	items: [...],
+	since: '...'
+}
+```
+
+### Pick Work Items
+
+Use `pick()` when you want the SDK to choose one item from a model for a worker.
+
+For content-backed models, `pick()` tries to claim a content lease and returns both the selected item and a `leaseToken` when a claim succeeds.
+
+```ts
+const response = await sdk.pick({
+	model: 'objective',
+	workerId: 'planner-1',
+	leaseSeconds: 300,
+	filters: [{ field: 'status', op: 'eq', value: 'in progress' }],
+});
+
+if (response.payload.item) {
+	console.log(response.payload.item.slug);
+	console.log(response.payload.leaseToken);
+}
+```
+
+For `message`, `pick()` routes to queue claiming behavior in the D1 layer.
+
+### Create Content Or D1 Records
+
+Use `create()` for models that support creation.
+
+For content-backed models, pass frontmatter-like fields in `data`. The SDK writes the document and returns the created item plus git metadata.
+
+```ts
+const response = await sdk.create({
+	model: 'note',
+	actor: 'app-server',
+	data: {
+		slug: 'operating-a-small-treeseed',
+		title: 'Operating a Small TreeSeed',
+		status: 'live',
+		author: 'TreeSeed Team',
+		tags: ['operations', 'treeseed'],
+		body: 'Keep the content model simple and the workflows visible.',
+	},
+});
+
+console.log(response.payload.item.slug);
+console.log(response.payload.git);
+```
+
+For D1-backed models, `create()` delegates to the relevant store and returns the created entity.
+
+### Update Existing Records
+
+Use `update()` when you want to modify an existing content-backed or D1-backed record.
+
+```ts
+const response = await sdk.update({
+	model: 'objective',
+	slug: 'make-the-sample-site-easy-to-operate',
+	actor: 'app-server',
+	data: {
+		status: 'live',
+		body: 'The objective is now complete and documented.',
+	},
+});
+```
+
+For content-backed models, `update()` returns the updated item and git metadata. For D1-backed models, it returns the updated row or `null` when no matching record exists.
+
+### Work With Messages
+
+The SDK exposes dedicated queue helpers in addition to generic model access.
+
+Create a message:
+
+```ts
+const created = await sdk.createMessage({
+	type: 'guidance_ready',
+	actor: 'guide-agent',
+	payload: {
+		slug: 'guides/getting-started/1-introduction',
+	},
+	relatedModel: 'knowledge',
+	relatedId: 'guides/getting-started/1-introduction',
+	priority: 5,
+	maxAttempts: 3,
+});
+```
+
+Claim a message:
+
+```ts
+const claimed = await sdk.claimMessage({
+	workerId: 'worker-1',
+	messageTypes: ['guidance_ready'],
+	leaseSeconds: 300,
+});
+```
+
+Acknowledge a message:
+
+```ts
+await sdk.ackMessage({
+	id: 1,
+	status: 'completed',
+});
+```
+
+### Record Agent Runs, Cursors, And Leases
+
+Record a run:
+
+```ts
+await sdk.recordRun({
+	run: {
+		runId: 'run-123',
+		agentSlug: 'guide-agent',
+		status: 'completed',
+		triggerSource: 'message',
+		startedAt: '2026-04-07T00:00:00.000Z',
+		finishedAt: '2026-04-07T00:05:00.000Z',
+	},
+});
+```
+
+Read and update a cursor:
+
+```ts
+const cursor = await sdk.getCursor({
+	agentSlug: 'guide-agent',
+	cursorKey: 'knowledge-sync',
+});
+
+await sdk.upsertCursor({
+	agentSlug: 'guide-agent',
+	cursorKey: 'knowledge-sync',
+	cursorValue: '2026-04-07T00:00:00.000Z',
+});
+```
+
+Release one lease or all leases:
+
+```ts
+await sdk.releaseLease({
+	model: 'objective',
+	itemKey: 'make-the-sample-site-easy-to-operate',
+	leaseToken: 'lease-token',
+});
+
+await sdk.releaseAllLeases();
+```
+
+### How TreeSeed Uses Agent Runs, Cursors, And Leases
+
+These three concepts are the operational state layer for TreeSeed's agent runtime. They are not general content models like `page` or `knowledge`. Instead, they let TreeSeed coordinate ongoing agent work safely and make that work inspectable after the fact.
+
+#### Agent Runs
+
+An `agent_run` is the execution trace for one agent invocation.
+
+TreeSeed records a run when the agent kernel starts an agent, and records it again when the run finishes or fails. In practice, that means a run captures:
+
+- which agent ran
+- what triggered it
+- the current status such as `running`, `completed`, `failed`, or `waiting`
+- which message or item was selected
+- summary or error output
+- optional branch, commit, PR, and changed-path metadata
+- start and finish timestamps
+
+In the TreeSeed agent runtime, [`agent/src/agents/kernel/agent-kernel.ts`](/home/adrian/Projects/treeseed/agent/src/agents/kernel/agent-kernel.ts) calls `sdk.recordRun()` at the beginning of execution and again after the handler returns. That gives TreeSeed a durable per-run audit trail for:
+
+- debugging agent behavior
+- understanding why an agent did or did not run
+- inspecting outputs from planner, reviewer, notifier, and similar handlers
+- connecting downstream events back to the run that produced them
+
+Conceptually, `agent_run` is the answer to: "What happened during this agent invocation?"
+
+#### Agent Cursors
+
+An `agent_cursor` is a tiny per-agent checkpoint. It stores one named progress marker as:
+
+- `agentSlug`
+- `cursorKey`
+- `cursorValue`
+
+TreeSeed uses cursors to remember where an agent last left off, so the next cycle can resume from the correct point instead of starting over.
+
+In the runtime, cursors are used in a few concrete ways:
+
+- the agent kernel writes `last_run_at` after a successful run
+- follow triggers read a cursor like `follow:model-a,model-b` to know which timestamp to compare against
+- the sample planner agent writes `last_priority_run_at`
+- the sample notifier agent reads and updates `last_notified_at` so it only announces new activity
+
+You can see that usage in:
+
+- [`agent/src/agents/kernel/agent-kernel.ts`](/home/adrian/Projects/treeseed/agent/src/agents/kernel/agent-kernel.ts)
+- [`agent/src/agents/kernel/trigger-resolver.ts`](/home/adrian/Projects/treeseed/agent/src/agents/kernel/trigger-resolver.ts)
+- [`core/fixture/src/agents/planner.ts`](/home/adrian/Projects/treeseed/core/fixture/src/agents/planner.ts)
+- [`core/fixture/src/agents/notifier.ts`](/home/adrian/Projects/treeseed/core/fixture/src/agents/notifier.ts)
+
+Conceptually, `agent_cursor` is the answer to: "Where should this agent continue from next time?"
+
+#### Content Leases
+
+A `content_lease` is a short-lived claim on one content item. TreeSeed uses leases to avoid two workers picking and mutating the same item at the same time.
+
+When `pick()` runs against a content-backed model, the SDK does not just choose the "best" item. It also tries to claim a lease in the database. If another worker already holds a live lease for that item, the claim fails and the picker moves on.
+
+Each lease stores:
+
+- the model
+- the item key
+- who claimed it
+- when it was claimed
+- when the lease expires
+- a lease token
+
+This is how TreeSeed prevents duplicate work during autonomous or parallel agent execution, especially for content-backed tasks like selecting the next note, question, or objective to act on.
+
+In the SDK, the lease flow is wired through:
+
+- content selection in [`sdk/src/content-store.ts`](/home/adrian/Projects/treeseed/sdk/src/content-store.ts)
+- D1 lease persistence in [`sdk/src/stores/lease-store.ts`](/home/adrian/Projects/treeseed/sdk/src/stores/lease-store.ts)
+- runtime cleanup through `releaseLease()` and `releaseAllLeases()`
+
+The agent kernel exposes that cleanup path as `releaseLeases()` so TreeSeed operators can clear stale claims when needed.
+
+Conceptually, `content_lease` is the answer to: "Who currently owns this piece of work, and when does that claim expire?"
+
+#### How They Work Together
+
+In TreeSeed, these records solve different parts of the same runtime problem:
+
+- `agent_run` records what happened
+- `agent_cursor` records where to resume
+- `content_lease` records who currently owns a piece of work
+
+Together, they make the agent system:
+
+- inspectable, because each run leaves a trace
+- incremental, because agents can continue from saved cursors
+- concurrency-safe, because content picking is guarded by leases
+
+That combination is what lets TreeSeed move from one-off scripts toward a manageable long-running agent runtime.
+
+### Discover Agent Specs
+
+When your application stores agent definitions in content, use `listRawAgentSpecs()` or `listAgentSpecs()`.
+
+```ts
+const specs = await sdk.listAgentSpecs({ enabled: true });
+
+for (const spec of specs) {
+	console.log(spec.slug, spec.handler);
+}
+```
+
+Use `listRawAgentSpecs()` when you want the underlying content entries. Use `listAgentSpecs()` when you want normalized runtime specs.
+
+### Restrict Access With `ScopedAgentSdk`
+
+Use `scopeForAgent()` when you want application code to enforce an agent’s declared permissions before executing SDK operations.
+
+```ts
+const scoped = sdk.scopeForAgent({
+	slug: 'guide-agent',
+	permissions: [
+		{ model: 'knowledge', operations: ['get', 'read', 'search'] },
+		{ model: 'message', operations: ['create'] },
+	],
+});
+
+await scoped.search({
+	model: 'knowledge',
+	filters: [{ field: 'tags', op: 'contains', value: 'treeseed' }],
+});
+```
+
+`ScopedAgentSdk` automatically injects the agent slug as `actor` for `create()`, `update()`, and `createMessage()`, and throws when the requested operation is not allowed.
+
+### Model And Filter Notes
+
+The SDK resolves model aliases for you. For example, `docs` maps to `knowledge` and `people` maps to `person`.
+
+Common request fields:
+
+- `model`: the canonical model or an accepted alias
+- `filters`: array of `{ field, op, value }`
+- `sort`: array of `{ field, direction }`
+- `limit`: max number of returned items
+
+Common filter operators include:
+
+- `eq`
+- `in`
+- `contains`
+- `prefix`
+- `gt`
+- `gte`
+- `lt`
+- `lte`
+- `updated_since`
+- `related_to`
+
+### Envelope Pattern
+
+Every top-level SDK call returns a consistent envelope:
+
+```ts
+const response = await sdk.search({ model: 'person', limit: 1 });
+
+response.ok;        // true
+response.model;     // 'person'
+response.operation; // 'search'
+response.payload;   // typed result
+response.meta;      // optional metadata
+```
+
+That envelope shape makes it straightforward to use the SDK in API handlers, background jobs, CLIs, and agent runtimes without introducing a second application-specific response format.
+
 ## Public Surface
 
 The package root exports the main SDK class, model registry helpers, CLI option helpers, and shared SDK types.
@@ -74,8 +522,6 @@ const sdk = new AgentSdk({
 
 ## Local Development
 
-From the `sdk/` directory:
-
 ```bash
 npm ci
 npm run build
@@ -93,7 +539,9 @@ What each command does:
 
 ## Sample Fixture Site
 
-`sdk/fixture` is a generic TreeSeed sample site. It serves three purposes at once:
+The canonical SDK sample fixture now lives at `../fixtures/fixture-sdk-sample-site/template`.
+
+It serves three purposes at once:
 
 - a small documentation surface about working with TreeSeed
 - the default local test ground for content-backed SDK behavior
@@ -106,12 +554,10 @@ import path from 'node:path';
 import { AgentSdk } from '@treeseed/sdk';
 
 const sdk = new AgentSdk({
-	repoRoot: path.resolve('sdk/fixture'),
+	repoRoot: path.resolve('../fixtures/fixture-sdk-sample-site/template'),
 });
 ```
 
 The fixture includes representative entries for pages, notes, questions, objectives, books, knowledge, people, and agents so local queries behave like a small real site instead of a synthetic stub.
 
-## Repository Note
-
-This package currently lives under `sdk/` in the TreeSeed workspace, but the package contract and documentation target standalone npm consumption.
+The SDK keeps a stable helper path for tests, but the workspace fixture under `fixtures/` is now the source of truth rather than `sdk/fixture`.
