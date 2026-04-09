@@ -29,7 +29,6 @@
     "setup:ci": "npm ci",
     "build": "npm run build:dist",
     "build:dist": "node ./scripts/run-ts.mjs ./scripts/build-dist.ts",
-    "prepare": "npm run build:dist",
     "prepack": "npm run build:dist",
     "test": "npm run test:unit",
     "test:unit": "vitest run --config ./vitest.config.ts",
@@ -59,6 +58,14 @@
     "./sdk": {
       "types": "./dist/sdk.d.ts",
       "default": "./dist/sdk.js"
+    },
+    "./operations": {
+      "types": "./dist/operations.d.ts",
+      "default": "./dist/operations.js"
+    },
+    "./treeseed-cli": {
+      "types": "./dist/treeseed-cli.d.ts",
+      "default": "./dist/treeseed-cli.js"
     },
     "./content-store": {
       "types": "./dist/content-store.d.ts",

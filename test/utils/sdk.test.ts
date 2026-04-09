@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { resolve } from 'node:path';
 import { MemoryAgentDatabase } from '../../src/d1-store.ts';
 import { AgentSdk } from '../../src/sdk.ts';
 import { sdkFixtureRoot } from '../test-fixture.ts';
@@ -132,5 +133,37 @@ describe('agent sdk', () => {
 		expect(response.model).toBe('agent');
 		expect(response.payload.length).toBeGreaterThan(0);
 		expect(response.payload[0]).toHaveProperty('frontmatter');
+	});
+
+	it('supports site-registered content models like template', async () => {
+		const marketRoot = resolve(process.cwd(), '..', '..');
+		const sdk = new AgentSdk({
+			repoRoot: marketRoot,
+			database: new MemoryAgentDatabase(),
+			models: [
+				{
+					name: 'template',
+					aliases: ['templates'],
+					storage: 'content',
+					operations: ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'],
+					filterableFields: ['slug', 'title', 'status', 'category', 'tags', 'templateVersion', 'updated'],
+					sortableFields: ['title', 'updated', 'templateVersion'],
+					pickField: 'updated',
+					contentCollection: 'templates',
+					contentDir: resolve(marketRoot, 'src', 'content', 'templates'),
+				},
+			],
+		});
+
+		const response = await sdk.search({
+			model: 'template',
+			limit: 1,
+			filters: [{ field: 'title', op: 'contains', value: 'Basic' }],
+		});
+
+		expect(response.ok).toBe(true);
+		expect(response.model).toBe('template');
+		expect(response.payload.length).toBeGreaterThan(0);
+		expect(response.payload[0]?.slug).toBe('starter-basic');
 	});
 });

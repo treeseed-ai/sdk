@@ -1,42 +1,54 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const DEFAULT_FIXTURE_ID = 'treeseed-working-site';
+const runtimeFile = fileURLToPath(import.meta.url);
+const sdkPackageRoot = path.resolve(path.dirname(runtimeFile), '..');
+
+function fixtureRootCandidates(start: string) {
+	const candidates = [];
+	if (process.env.TREESEED_FIXTURES_ROOT) {
+		candidates.push(path.resolve(process.env.TREESEED_FIXTURES_ROOT));
+	}
+	candidates.push(path.join(sdkPackageRoot, '.fixtures', 'treeseed-fixtures'));
+	candidates.push(path.join(start, '.fixtures', 'treeseed-fixtures'));
+	return [...new Set(candidates)];
+}
 
 function resolveSharedFixtureRoot(start: string) {
-	const fixturesRoot = process.env.TREESEED_FIXTURES_ROOT
-		? path.resolve(process.env.TREESEED_FIXTURES_ROOT)
-		: path.join(start, '.fixtures', 'treeseed-fixtures');
 	const requestedFixtureId = process.env.TREESEED_FIXTURE_ID?.trim() || DEFAULT_FIXTURE_ID;
-	const directRoot = path.join(fixturesRoot, 'sites', 'working-site');
-	const directManifestPath = path.join(directRoot, 'fixture.manifest.json');
+	for (const fixturesRoot of fixtureRootCandidates(start)) {
+		const directRoot = path.join(fixturesRoot, 'sites', 'working-site');
+		const directManifestPath = path.join(directRoot, 'fixture.manifest.json');
 
-	if (existsSync(path.join(directRoot, 'src', 'content')) && existsSync(directManifestPath)) {
-		return directRoot;
-	}
+		if (existsSync(path.join(directRoot, 'src', 'content')) && existsSync(directManifestPath)) {
+			return directRoot;
+		}
 
-	const sitesRoot = path.join(fixturesRoot, 'sites');
-	if (!existsSync(sitesRoot)) {
-		return null;
-	}
-
-	for (const entry of readdirSync(sitesRoot, { withFileTypes: true }).filter((item) => item.isDirectory()).map((item) => item.name)) {
-		const fixtureRoot = path.join(sitesRoot, entry);
-		const manifestPath = path.join(fixtureRoot, 'fixture.manifest.json');
-		if (!existsSync(manifestPath)) {
+		const sitesRoot = path.join(fixturesRoot, 'sites');
+		if (!existsSync(sitesRoot)) {
 			continue;
 		}
 
-		try {
-			const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { id?: string; root?: string };
-			if (manifest.id === requestedFixtureId) {
-				const root = path.resolve(fixtureRoot, manifest.root ?? '.');
-				if (existsSync(path.join(root, 'src', 'content'))) {
-					return root;
-				}
+		for (const entry of readdirSync(sitesRoot, { withFileTypes: true }).filter((item) => item.isDirectory()).map((item) => item.name)) {
+			const fixtureRoot = path.join(sitesRoot, entry);
+			const manifestPath = path.join(fixtureRoot, 'fixture.manifest.json');
+			if (!existsSync(manifestPath)) {
+				continue;
 			}
-		} catch {
-			continue;
+
+			try {
+				const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { id?: string; root?: string };
+				if (manifest.id === requestedFixtureId) {
+					const root = path.resolve(fixtureRoot, manifest.root ?? '.');
+					if (existsSync(path.join(root, 'src', 'content'))) {
+						return root;
+					}
+				}
+			} catch {
+				continue;
+			}
 		}
 	}
 

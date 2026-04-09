@@ -18,7 +18,8 @@ export const SDK_OPERATIONS = ['get', 'read', 'search', 'follow', 'pick', 'creat
 export const SDK_STORAGE_BACKENDS = ['content', 'd1'] as const;
 export const SDK_PICK_STRATEGIES = ['latest', 'highest_priority', 'oldest'] as const;
 
-export type SdkModelName = (typeof SDK_MODEL_NAMES)[number];
+export type SdkBuiltinModelName = (typeof SDK_MODEL_NAMES)[number];
+export type SdkModelName = SdkBuiltinModelName | (string & {});
 export type SdkOperation = (typeof SDK_OPERATIONS)[number];
 export type SdkStorageBackend = (typeof SDK_STORAGE_BACKENDS)[number];
 export type SdkPickStrategy = (typeof SDK_PICK_STRATEGIES)[number];
@@ -306,6 +307,8 @@ export interface SdkModelDefinition {
 	contentDir?: string;
 }
 
+export type SdkModelRegistry = Record<string, SdkModelDefinition>;
+
 export interface SdkCreateMessageRequest {
 	type: string;
 	payload: Record<string, unknown>;
@@ -356,4 +359,57 @@ export interface SdkFollowResult<TItem> {
 export interface SdkPickResult<TItem> {
 	item: TItem | null;
 	leaseToken: string | null;
+}
+
+export type SdkTemplateCatalogStatus = 'draft' | 'live' | 'archived';
+export type SdkTemplateCategory = 'starter' | 'example' | 'fixture' | 'reference-app';
+
+export interface SdkTemplateCatalogPublisher {
+	id: string;
+	name: string;
+	url?: string;
+}
+
+export interface SdkTemplateCatalogSource {
+	kind: 'git';
+	repoUrl: string;
+	directory: string;
+	ref: string;
+	integrity?: string;
+}
+
+export interface SdkTemplateCatalogEntry {
+	id: string;
+	displayName: string;
+	description: string;
+	summary: string;
+	status: SdkTemplateCatalogStatus;
+	featured?: boolean;
+	category: SdkTemplateCategory;
+	audience?: string[];
+	tags?: string[];
+	publisher: SdkTemplateCatalogPublisher;
+	publisherVerified?: boolean;
+	templateVersion: string;
+	templateApiVersion: number;
+	minCliVersion: string;
+	minCoreVersion?: string;
+	fulfillment: {
+		source: SdkTemplateCatalogSource;
+		hooksPolicy: 'builtin_only' | 'trusted_only' | 'disabled';
+		supportsReconcile: boolean;
+	};
+	offer?: {
+		priceModel?: 'free' | 'paid' | 'contact';
+		license?: string;
+		support?: string;
+	};
+	relatedBooks?: string[];
+	relatedKnowledge?: string[];
+	relatedObjectives?: string[];
+}
+
+export interface SdkTemplateCatalogResponse {
+	items: SdkTemplateCatalogEntry[];
+	meta?: Record<string, unknown>;
 }

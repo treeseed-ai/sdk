@@ -9,6 +9,7 @@ import type {
 	SdkFollowRequest,
 	SdkGetRequest,
 	SdkModelDefinition,
+	SdkModelRegistry,
 	SdkMutationRequest,
 	SdkPickRequest,
 	SdkPickResult,
@@ -112,6 +113,7 @@ export class ContentStore {
 	constructor(
 		private readonly repoRoot: string,
 		private readonly database: AgentDatabase,
+		private readonly models: SdkModelRegistry,
 	) {
 		this.gitRuntime = new GitRuntime(
 			repoRoot,
@@ -120,7 +122,7 @@ export class ContentStore {
 	}
 
 	async list(model: string) {
-		const definition = resolveModelDefinition(model);
+		const definition = resolveModelDefinition(model, this.models);
 		if (definition.storage !== 'content' || !definition.contentDir) {
 			throw new Error(`Model "${model}" is not content-backed.`);
 		}
@@ -189,7 +191,7 @@ export class ContentStore {
 	}
 
 	async pick(request: SdkPickRequest): Promise<SdkPickResult<SdkContentEntry>> {
-		const definition = resolveModelDefinition(request.model);
+		const definition = resolveModelDefinition(request.model, this.models);
 		const sorted = await this.search({
 			model: request.model,
 			filters: request.filters,
@@ -220,7 +222,7 @@ export class ContentStore {
 	}
 
 	async create(request: SdkMutationRequest) {
-		const definition = resolveModelDefinition(request.model);
+		const definition = resolveModelDefinition(request.model, this.models);
 		ensureMutationAllowed(definition, 'create');
 		if (!definition.contentDir) {
 			throw new Error(`Model "${request.model}" is not content-backed.`);
@@ -255,7 +257,7 @@ export class ContentStore {
 	}
 
 	async update(request: SdkUpdateRequest) {
-		const definition = resolveModelDefinition(request.model);
+		const definition = resolveModelDefinition(request.model, this.models);
 		ensureMutationAllowed(definition, 'update');
 		const existing = await this.get(request);
 		if (!existing) {

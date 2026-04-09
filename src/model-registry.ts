@@ -1,6 +1,11 @@
 import path from 'node:path';
 import { resolveSdkRepoRoot } from './runtime.ts';
-import type { SdkModelDefinition, SdkModelName } from './sdk-types.ts';
+import type {
+	SdkBuiltinModelName,
+	SdkModelDefinition,
+	SdkModelName,
+	SdkModelRegistry,
+} from './sdk-types.ts';
 
 function contentRoot() {
 	return process.env.TREESEED_AGENT_CONTENT_ROOT
@@ -8,7 +13,7 @@ function contentRoot() {
 		: path.resolve(resolveSdkRepoRoot(), 'src', 'content');
 }
 
-export function buildModelRegistry(): Record<SdkModelName, SdkModelDefinition> {
+export function buildBuiltinModelRegistry(): Record<SdkBuiltinModelName, SdkModelDefinition> {
 	const root = contentRoot();
 
 	return {
@@ -148,11 +153,46 @@ export function buildModelRegistry(): Record<SdkModelName, SdkModelDefinition> {
 	};
 }
 
-export const MODEL_REGISTRY: Record<SdkModelName, SdkModelDefinition> = buildModelRegistry();
+function normalizeDefinition(definition: SdkModelDefinition): SdkModelDefinition {
+	return {
+		...definition,
+		name: definition.name.trim() as SdkModelName,
+		aliases: [...new Set((definition.aliases ?? []).map((alias) => alias.trim().toLowerCase()).filter(Boolean))],
+		filterableFields: [...new Set(definition.filterableFields ?? [])],
+		sortableFields: [...new Set(definition.sortableFields ?? [])],
+	};
+}
 
-export function resolveModelDefinition(model: string): SdkModelDefinition {
-	const registry = buildModelRegistry();
-	const directMatch = registry[model as SdkModelName];
+export function mergeModelRegistries(
+	baseRegistry: SdkModelRegistry,
+	definitions: SdkModelDefinition[] = [],
+): SdkModelRegistry {
+	const registry: SdkModelRegistry = { ...baseRegistry };
+
+	for (const rawDefinition of definitions) {
+		const definition = normalizeDefinition(rawDefinition);
+		if (!definition.name) {
+			throw new Error('SDK model definitions require a non-empty name.');
+		}
+
+		registry[definition.name] = definition;
+	}
+
+	return registry;
+}
+
+export function buildModelRegistry(definitions: SdkModelDefinition[] = []): SdkModelRegistry {
+	return mergeModelRegistries(buildBuiltinModelRegistry(), definitions);
+}
+
+export const BUILTIN_MODEL_REGISTRY: SdkModelRegistry = buildBuiltinModelRegistry();
+export const MODEL_REGISTRY: SdkModelRegistry = buildModelRegistry();
+
+export function resolveModelDefinition(
+	model: string,
+	registry: SdkModelRegistry = MODEL_REGISTRY,
+): SdkModelDefinition {
+	const directMatch = registry[model];
 	if (directMatch) {
 		return directMatch;
 	}

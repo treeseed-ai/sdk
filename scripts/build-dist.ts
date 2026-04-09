@@ -7,6 +7,8 @@ import { packageRoot } from './package-tools.ts';
 const srcRoot = resolve(packageRoot, 'src');
 const scriptsRoot = resolve(packageRoot, 'scripts');
 const distRoot = resolve(packageRoot, 'dist');
+const treeseedTemplateCatalogSourceRoot = resolve(srcRoot, 'treeseed', 'template-catalog');
+const treeseedServicesSourceRoot = resolve(srcRoot, 'treeseed', 'services');
 
 const COPY_EXTENSIONS = new Set(['.d.ts', '.json', '.md']);
 
@@ -57,6 +59,12 @@ function copyAsset(filePath, sourceRoot, outputRoot) {
 	if (outputFile.endsWith('.d.ts')) {
 		const contents = readFileSync(outputFile, 'utf8');
 		writeFileSync(outputFile, rewriteRuntimeSpecifiers(contents), 'utf8');
+	}
+}
+
+function copyAssetTree(sourceRoot, outputRoot) {
+	for (const filePath of walkFiles(sourceRoot)) {
+		copyAsset(filePath, sourceRoot, outputRoot);
 	}
 }
 
@@ -113,6 +121,9 @@ function emitDeclarations() {
 rmSync(distRoot, { recursive: true, force: true });
 
 for (const filePath of walkFiles(srcRoot)) {
+	if (filePath.startsWith(`${treeseedTemplateCatalogSourceRoot}/`)) {
+		continue;
+	}
 	const extension = extname(filePath);
 	if (extension === '.ts') {
 		await compileModule(filePath, srcRoot, distRoot);
@@ -122,6 +133,14 @@ for (const filePath of walkFiles(srcRoot)) {
 	if (COPY_EXTENSIONS.has(extension)) {
 		copyAsset(filePath, srcRoot, distRoot);
 	}
+}
+
+if (existsSync(treeseedTemplateCatalogSourceRoot)) {
+	copyAssetTree(treeseedTemplateCatalogSourceRoot, resolve(distRoot, 'treeseed', 'template-catalog'));
+}
+
+if (existsSync(treeseedServicesSourceRoot)) {
+	copyAssetTree(treeseedServicesSourceRoot, resolve(distRoot, 'treeseed', 'services'));
 }
 
 for (const filePath of walkFiles(scriptsRoot)) {

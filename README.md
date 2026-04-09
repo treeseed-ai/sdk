@@ -1,12 +1,13 @@
 # `@treeseed/sdk`
 
-`@treeseed/sdk` is the standalone TreeSeed SDK for content-backed and D1-backed object models.
+`@treeseed/sdk` is the standalone TreeSeed SDK for TreeSeed content/data access and TreeSeed operational command execution.
 
 It exposes the public model and storage surface used by TreeSeed agents and supporting tooling:
 
 - content-backed access for pages, notes, questions, objectives, people, agents, books, and knowledge
 - D1-backed access for subscriptions, messages, agent runs, cursors, and content leases
 - stable query and mutation APIs for `get`, `read`, `search`, `follow`, `pick`, `create`, and `update`
+- the full shared TreeSeed command contract and programmatic execution runtime behind the `treeseed` CLI
 
 ## Consumer Contract
 
@@ -27,6 +28,17 @@ Example:
 import { AgentSdk } from '@treeseed/sdk';
 
 const sdk = new AgentSdk();
+```
+
+Programmatic command execution:
+
+```ts
+import { runTreeseedCli } from '@treeseed/sdk';
+
+await runTreeseedCli(['status', '--json'], {
+	cwd: '/absolute/path/to/your-site',
+	write: (line) => console.log(line),
+});
 ```
 
 ## Using The SDK In Applications
@@ -54,6 +66,31 @@ import { AgentSdk } from '@treeseed/sdk';
 
 const sdk = new AgentSdk({
 	repoRoot: '/absolute/path/to/your-site',
+});
+```
+
+Use `models` when a site extends the built-in model surface. The SDK keeps the core operations and filters, but the active model registry can be extended per site or package.
+
+```ts
+import { AgentSdk } from '@treeseed/sdk';
+import { resolve } from 'node:path';
+
+const repoRoot = '/absolute/path/to/your-site';
+const sdk = new AgentSdk({
+	repoRoot,
+	models: [
+		{
+			name: 'template',
+			aliases: ['templates'],
+			storage: 'content',
+			operations: ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'],
+			filterableFields: ['slug', 'title', 'status', 'category', 'tags', 'templateVersion', 'updated'],
+			sortableFields: ['title', 'updated', 'templateVersion'],
+			pickField: 'updated',
+			contentCollection: 'templates',
+			contentDir: resolve(repoRoot, 'src', 'content', 'templates'),
+		},
+	],
 });
 ```
 

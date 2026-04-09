@@ -3,7 +3,7 @@ import { resolveSdkRepoRoot } from './runtime.ts';
 import { normalizeAgentCliOptions } from './cli-tools.ts';
 import { ContentStore } from './content-store.ts';
 import { CloudflareD1AgentDatabase, MemoryAgentDatabase, type AgentDatabase } from './d1-store.ts';
-import { resolveModelDefinition } from './model-registry.ts';
+import { buildModelRegistry, resolveModelDefinition } from './model-registry.ts';
 import type {
 	SdkAckMessageRequest,
 	SdkClaimMessageRequest,
@@ -19,12 +19,16 @@ import type {
 	SdkRecordRunRequest,
 	SdkSearchRequest,
 	SdkUpdateRequest,
+	SdkModelDefinition,
+	SdkModelRegistry,
 } from './sdk-types.ts';
 import { WranglerD1Database } from './wrangler-d1.ts';
 
 export interface AgentSdkOptions {
 	repoRoot?: string;
 	database?: AgentDatabase;
+	models?: SdkModelDefinition[];
+	modelRegistry?: SdkModelRegistry;
 }
 
 function normalizeAgentSpec(entry: Record<string, unknown> | null): AgentRuntimeSpec | null {
@@ -60,17 +64,21 @@ function operationAllowed(
 export class AgentSdk {
 	readonly database: AgentDatabase;
 	readonly content: ContentStore;
+	readonly models: SdkModelRegistry;
 
 	constructor(options: AgentSdkOptions = {}) {
 		const repoRoot = resolveSdkRepoRoot(options.repoRoot);
+		this.models = options.modelRegistry ?? buildModelRegistry(options.models);
 		this.database = options.database ?? new MemoryAgentDatabase();
-		this.content = new ContentStore(repoRoot, this.database);
+		this.content = new ContentStore(repoRoot, this.database, this.models);
 	}
 
 	static createLocal(options: {
 		repoRoot?: string;
 		databaseName?: string;
 		persistTo?: string;
+		models?: SdkModelDefinition[];
+		modelRegistry?: SdkModelRegistry;
 	}) {
 		const repoRoot = resolveSdkRepoRoot(options.repoRoot);
 		const d1 = new WranglerD1Database(
@@ -81,6 +89,8 @@ export class AgentSdk {
 		return new AgentSdk({
 			repoRoot,
 			database: new CloudflareD1AgentDatabase(d1),
+			models: options.models,
+			modelRegistry: options.modelRegistry,
 		});
 	}
 
@@ -92,7 +102,7 @@ export class AgentSdk {
 	): SdkJsonEnvelope<TPayload> {
 		return {
 			ok: true,
-			model: resolveModelDefinition(model).name,
+			model: resolveModelDefinition(model, this.models).name,
 			operation,
 			payload,
 			meta,
@@ -100,7 +110,7 @@ export class AgentSdk {
 	}
 
 	async get(request: SdkGetRequest) {
-		const definition = resolveModelDefinition(request.model);
+		const definition = resolveModelDefinition(request.model, this.models);
 		const payload =
 			definition.storage === 'content'
 				? await this.content.get({ ...request, model: definition.name })
@@ -116,7 +126,7 @@ export class AgentSdk {
 	}
 
 	async search(request: SdkSearchRequest) {
-		const definition = resolveModelDefinition(request.model);
+		const definition = resolveModelDefinition(request.model, this.models);
 		const payload =
 			definition.storage === 'content'
 				? await this.content.search({ ...request, model: definition.name })
@@ -127,7 +137,7 @@ export class AgentSdk {
 	}
 
 	async follow(request: SdkFollowRequest) {
-		const definition = resolveModelDefinition(request.model);
+		const definition = resolveModelDefinition(request.model, this.models);
 		const payload =
 			definition.storage === 'content'
 				? await this.content.follow({ ...request, model: definition.name })
@@ -138,7 +148,7 @@ export class AgentSdk {
 	}
 
 	async pick(request: SdkPickRequest) {
-		const definition = resolveModelDefinition(request.model);
+		const definition = resolveModelDefinition(request.model, this.models);
 		const payload =
 			definition.storage === 'content'
 				? await this.content.pick({ ...request, model: definition.name })
@@ -149,7 +159,7 @@ export class AgentSdk {
 	}
 
 	async create(request: SdkMutationRequest) {
-		const definition = resolveModelDefinition(request.model);
+		const definition = resolveModelDefinition(request.model, this.models);
 		const payload =
 			definition.storage === 'content'
 				? await this.content.create({ ...request, model: definition.name })
@@ -158,7 +168,7 @@ export class AgentSdk {
 	}
 
 	async update(request: SdkUpdateRequest) {
-		const definition = resolveModelDefinition(request.model);
+		const definition = resolveModelDefinition(request.model, this.models);
 		const payload =
 			definition.storage === 'content'
 				? await this.content.update({ ...request, model: definition.name })
@@ -241,7 +251,7 @@ export class ScopedAgentSdk {
 	) {}
 
 	private assertAllowed(model: string, operation: string) {
-		const normalized = resolveModelDefinition(model).name;
+		const normalized = resolveModelDefinition(model, this.base.models).name;
 		if (!operationAllowed(this.permissions, normalized, operation)) {
 			throw new Error(`Agent "${this.actor}" is not allowed to ${operation} ${normalized}.`);
 		}
