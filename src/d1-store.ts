@@ -2,7 +2,9 @@ import crypto from 'node:crypto';
 import type { ContentLeaseRecord } from './types/agents.ts';
 import type { D1DatabaseLike } from './types/cloudflare.ts';
 import { applyFilters, applySort } from './sdk-filters.ts';
+import { normalizeFilterFields, normalizeMutationData, normalizeRecordToCanonicalShape, normalizeSortFields } from './sdk-fields.ts';
 import { assertExpectedVersion } from './sdk-version.ts';
+import { resolveModelDefinition } from './model-registry.ts';
 import type {
 	SdkAckMessageRequest,
 	SdkClaimMessageRequest,
@@ -198,8 +200,12 @@ export class MemoryAgentDatabase implements AgentDatabase {
 	}
 
 	async search(request: SdkSearchRequest) {
-		const filtered = applyFilters(this.rowsForModel(request.model) as Record<string, unknown>[], request.filters);
-		const sorted = applySort(filtered as Record<string, unknown>[], request.sort);
+		const definition = resolveModelDefinition(request.model);
+		const rows = this.rowsForModel(request.model).map((row) =>
+			normalizeRecordToCanonicalShape(definition, row as Record<string, unknown>),
+		);
+		const filtered = applyFilters(rows as Record<string, unknown>[], normalizeFilterFields(definition, request.filters), definition);
+		const sorted = applySort(filtered as Record<string, unknown>[], normalizeSortFields(definition, request.sort), definition);
 		return sorted.slice(0, request.limit ?? sorted.length) as Record<string, unknown>[];
 	}
 
@@ -291,38 +297,40 @@ export class MemoryAgentDatabase implements AgentDatabase {
 	}
 
 	async create(request: SdkMutationRequest) {
+		const definition = resolveModelDefinition(request.model);
+		const data = normalizeMutationData(definition, request.data);
 		switch (request.model) {
 			case 'message':
 				return (await this.createMessage({
-					type: String(request.data.type ?? 'message.created'),
-					payload: (request.data.payload as Record<string, unknown> | undefined) ?? request.data,
-					relatedModel: typeof request.data.relatedModel === 'string' ? request.data.relatedModel : null,
-					relatedId: typeof request.data.relatedId === 'string' ? request.data.relatedId : null,
-					priority: Number(request.data.priority ?? 0),
-					maxAttempts: Number(request.data.maxAttempts ?? 3),
+					type: String(data.type ?? 'message.created'),
+					payload: (data.payload as Record<string, unknown> | undefined) ?? data,
+					relatedModel: typeof data.related_model === 'string' ? data.related_model : null,
+					relatedId: typeof data.related_id === 'string' ? data.related_id : null,
+					priority: Number(data.priority ?? 0),
+					maxAttempts: Number(data.maxAttempts ?? 3),
 					actor: request.actor,
 				})) as Record<string, unknown>;
 			case 'subscription': {
 				const record: SdkSubscriptionEntity = {
 					id: this.subscriptions.size + 1,
-					email: String(request.data.email ?? ''),
-					name: request.data.name ? String(request.data.name) : null,
-					status: String(request.data.status ?? 'active'),
-					source: String(request.data.source ?? 'sdk'),
-					consent_at: String(request.data.consent_at ?? nowIso()),
-					created_at: String(request.data.created_at ?? nowIso()),
-					updated_at: String(request.data.updated_at ?? nowIso()),
-					ip_hash: String(request.data.ip_hash ?? ''),
+					email: String(data.email ?? ''),
+					name: data.name ? String(data.name) : null,
+					status: String(data.status ?? 'active'),
+					source: String(data.source ?? 'sdk'),
+					consent_at: String(data.consent_at ?? nowIso()),
+					created_at: String(data.created_at ?? nowIso()),
+					updated_at: String(data.updated_at ?? nowIso()),
+					ip_hash: String(data.ip_hash ?? ''),
 				};
 				this.subscriptions.set(String(record.id), record);
 				return record;
 			}
 			case 'agent_run':
-				return this.recordRun({ run: request.data });
+				return this.recordRun({ run: data });
 			case 'agent_cursor': {
-				const agentSlug = String(request.data.agentSlug ?? '');
-				const cursorKey = String(request.data.cursorKey ?? '');
-				const cursorValue = String(request.data.cursorValue ?? '');
+				const agentSlug = String(data.agent_slug ?? '');
+				const cursorKey = String(data.cursor_key ?? '');
+				const cursorValue = String(data.cursor_value ?? '');
 				this.cursors.set(`${agentSlug}:${cursorKey}`, cursorValue);
 				return {
 					agentSlug,
@@ -333,16 +341,16 @@ export class MemoryAgentDatabase implements AgentDatabase {
 			}
 			case 'content_lease': {
 				const token = await this.tryClaimContentLease({
-					model: String(request.data.model ?? ''),
-					itemKey: String(request.data.itemKey ?? ''),
-					claimedBy: String(request.data.claimedBy ?? request.actor),
-					leaseSeconds: Number(request.data.leaseSeconds ?? 300),
+					model: String(data.model ?? ''),
+					itemKey: String(data.item_key ?? ''),
+					claimedBy: String(data.claimed_by ?? request.actor),
+					leaseSeconds: Number(data.leaseSeconds ?? 300),
 				});
-				const lease = this.contentLeases.get(`${request.data.model}:${request.data.itemKey}`);
+				const lease = this.contentLeases.get(`${data.model}:${data.item_key}`);
 				return {
-					model: String(request.data.model ?? ''),
-					itemKey: String(request.data.itemKey ?? ''),
-					claimedBy: String(request.data.claimedBy ?? request.actor),
+					model: String(data.model ?? ''),
+					itemKey: String(data.item_key ?? ''),
+					claimedBy: String(data.claimed_by ?? request.actor),
 					claimedAt: String(lease?.claimedAt ?? nowIso()),
 					leaseExpiresAt: String(lease?.leaseExpiresAt ?? nowIso()),
 					token: String(token ?? lease?.token ?? ''),
@@ -354,23 +362,25 @@ export class MemoryAgentDatabase implements AgentDatabase {
 	}
 
 	async update(request: SdkUpdateRequest) {
+		const definition = resolveModelDefinition(request.model);
+		const data = normalizeMutationData(definition, request.data);
 		switch (request.model) {
 			case 'message': {
-				const current = this.messages.get(Number(request.id ?? request.key ?? request.data.id ?? 0));
+				const current = this.messages.get(Number(request.id ?? request.key ?? data.id ?? 0));
 				if (!current) {
 					return null;
 				}
 				assertExpectedVersion(request.expectedVersion, current, `message ${current.id}`);
 				const next = {
 					...current,
-					...request.data,
+					...data,
 					updatedAt: nowIso(),
 				} as SdkMessageEntity;
 				this.messages.set(next.id, next);
 				return next;
 			}
 			case 'subscription': {
-				const key = String(request.id ?? request.key ?? request.data.email ?? '');
+				const key = String(request.id ?? request.key ?? data.email ?? '');
 				const current = (await this.get({ model: 'subscription', key })) as SdkSubscriptionEntity | null;
 				if (!current) {
 					return null;
@@ -378,7 +388,7 @@ export class MemoryAgentDatabase implements AgentDatabase {
 				assertExpectedVersion(request.expectedVersion, current, `subscription "${current.email}"`);
 				const next = {
 					...current,
-					...request.data,
+					...data,
 					updated_at: nowIso(),
 				};
 				this.subscriptions.set(String(next.id ?? next.email), next);
@@ -387,22 +397,22 @@ export class MemoryAgentDatabase implements AgentDatabase {
 			case 'agent_run':
 				assertExpectedVersion(
 					request.expectedVersion,
-					(await this.get({ model: 'agent_run', key: String(request.id ?? request.key ?? request.data.runId ?? '') })) as Record<string, unknown> | null,
-					`agent_run "${String(request.id ?? request.key ?? request.data.runId ?? '')}"`,
+					(await this.get({ model: 'agent_run', key: String(request.id ?? request.key ?? data.run_id ?? '') })) as Record<string, unknown> | null,
+					`agent_run "${String(request.id ?? request.key ?? data.run_id ?? '')}"`,
 				);
-				return this.recordRun({ run: { ...request.data, runId: request.id ?? request.key ?? request.data.runId } });
+				return this.recordRun({ run: { ...data, runId: request.id ?? request.key ?? data.run_id } });
 			case 'agent_cursor':
 				assertExpectedVersion(
 					request.expectedVersion,
 					(await this.get({
 						model: 'agent_cursor',
-						key: `${String(request.data.agentSlug ?? request.id ?? request.key ?? '')}:${String(request.data.cursorKey ?? request.slug ?? '')}`,
+						key: `${String(data.agent_slug ?? request.id ?? request.key ?? '')}:${String(data.cursor_key ?? request.slug ?? '')}`,
 					})) as Record<string, unknown> | null,
-					`agent_cursor "${String(request.data.agentSlug ?? request.id ?? request.key ?? '')}:${String(request.data.cursorKey ?? request.slug ?? '')}"`,
+					`agent_cursor "${String(data.agent_slug ?? request.id ?? request.key ?? '')}:${String(data.cursor_key ?? request.slug ?? '')}"`,
 				);
 				return this.create({
 					model: 'agent_cursor',
-					data: request.data,
+					data,
 					actor: request.actor,
 				});
 			case 'content_lease':
@@ -410,13 +420,13 @@ export class MemoryAgentDatabase implements AgentDatabase {
 					request.expectedVersion,
 					(await this.get({
 						model: 'content_lease',
-						key: `${String(request.data.model ?? request.id ?? '')}:${String(request.data.itemKey ?? request.slug ?? request.key ?? '')}`,
+						key: `${String(data.model ?? request.id ?? '')}:${String(data.item_key ?? request.slug ?? request.key ?? '')}`,
 					})) as Record<string, unknown> | null,
-					`content_lease "${String(request.data.model ?? request.id ?? '')}:${String(request.data.itemKey ?? request.slug ?? request.key ?? '')}"`,
+					`content_lease "${String(data.model ?? request.id ?? '')}:${String(data.item_key ?? request.slug ?? request.key ?? '')}"`,
 				);
 				return this.create({
 					model: 'content_lease',
-					data: request.data,
+					data,
 					actor: request.actor,
 				});
 			default:
@@ -571,20 +581,26 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 	}
 
 	async search(request: SdkSearchRequest) {
+		const definition = resolveModelDefinition(request.model);
+		const normalizedRequest = {
+			...request,
+			filters: normalizeFilterFields(definition, request.filters),
+			sort: normalizeSortFields(definition, request.sort),
+		};
 		if (request.model === 'subscription') {
-			return this.subscriptions.search(request) as Promise<Record<string, unknown>[]>;
+			return this.subscriptions.search(normalizedRequest) as Promise<Record<string, unknown>[]>;
 		}
 		if (request.model === 'message') {
-			return this.messages.search(request) as Promise<Record<string, unknown>[]>;
+			return this.messages.search(normalizedRequest) as Promise<Record<string, unknown>[]>;
 		}
 		if (request.model === 'agent_run') {
-			return this.runs.search(request) as Promise<Record<string, unknown>[]>;
+			return this.runs.search(normalizedRequest) as Promise<Record<string, unknown>[]>;
 		}
 		if (request.model === 'agent_cursor') {
-			return this.cursors.search(request) as Promise<Record<string, unknown>[]>;
+			return this.cursors.search(normalizedRequest) as Promise<Record<string, unknown>[]>;
 		}
 		if (request.model === 'content_lease') {
-			return this.leases.search(request) as Promise<Record<string, unknown>[]>;
+			return this.leases.search(normalizedRequest) as Promise<Record<string, unknown>[]>;
 		}
 		throw new Error(`Unsupported D1 search model "${request.model}".`);
 	}
@@ -647,32 +663,37 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 	}
 
 	async create(request: SdkMutationRequest) {
+		const definition = resolveModelDefinition(request.model);
+		const normalizedRequest = {
+			...request,
+			data: normalizeMutationData(definition, request.data),
+		};
 		if (request.model === 'message') {
 			return (await this.createMessage({
-				type: String(request.data.type ?? 'message.created'),
-				payload: (request.data.payload as Record<string, unknown> | undefined) ?? request.data,
-				relatedModel: typeof request.data.relatedModel === 'string' ? request.data.relatedModel : null,
-				relatedId: typeof request.data.relatedId === 'string' ? request.data.relatedId : null,
-				priority: Number(request.data.priority ?? 0),
-				maxAttempts: Number(request.data.maxAttempts ?? 3),
+				type: String(normalizedRequest.data.type ?? 'message.created'),
+				payload: (normalizedRequest.data.payload as Record<string, unknown> | undefined) ?? normalizedRequest.data,
+				relatedModel: typeof normalizedRequest.data.related_model === 'string' ? normalizedRequest.data.related_model : null,
+				relatedId: typeof normalizedRequest.data.related_id === 'string' ? normalizedRequest.data.related_id : null,
+				priority: Number(normalizedRequest.data.priority ?? 0),
+				maxAttempts: Number(normalizedRequest.data.maxAttempts ?? 3),
 				actor: request.actor,
 			})) as Record<string, unknown>;
 		}
 		if (request.model === 'subscription') {
-			return (await this.subscriptions.create(request)) as Record<string, unknown>;
+			return (await this.subscriptions.create(normalizedRequest)) as Record<string, unknown>;
 		}
 		if (request.model === 'agent_run') {
-			return (await this.runs.record({ run: request.data })) as Record<string, unknown>;
+			return (await this.runs.record({ run: normalizedRequest.data })) as Record<string, unknown>;
 		}
 		if (request.model === 'agent_cursor') {
 			return (await this.cursors.update({
-				...request,
+				...normalizedRequest,
 				model: 'agent_cursor',
 			})) as Record<string, unknown>;
 		}
 		if (request.model === 'content_lease') {
 			return (await this.leases.update({
-				...request,
+				...normalizedRequest,
 				model: 'content_lease',
 			})) as Record<string, unknown>;
 		}
@@ -680,20 +701,25 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 	}
 
 	async update(request: SdkUpdateRequest) {
+		const definition = resolveModelDefinition(request.model);
+		const normalizedRequest = {
+			...request,
+			data: normalizeMutationData(definition, request.data),
+		};
 		if (request.model === 'message') {
-			return this.messages.update(request) as Promise<Record<string, unknown> | null>;
+			return this.messages.update(normalizedRequest) as Promise<Record<string, unknown> | null>;
 		}
 		if (request.model === 'subscription') {
-			return this.subscriptions.update(request) as Promise<Record<string, unknown> | null>;
+			return this.subscriptions.update(normalizedRequest) as Promise<Record<string, unknown> | null>;
 		}
 		if (request.model === 'agent_run') {
-			return this.runs.update(request) as Promise<Record<string, unknown> | null>;
+			return this.runs.update(normalizedRequest) as Promise<Record<string, unknown> | null>;
 		}
 		if (request.model === 'agent_cursor') {
-			return this.cursors.update(request) as Promise<Record<string, unknown> | null>;
+			return this.cursors.update(normalizedRequest) as Promise<Record<string, unknown> | null>;
 		}
 		if (request.model === 'content_lease') {
-			return this.leases.update(request) as Promise<Record<string, unknown> | null>;
+			return this.leases.update(normalizedRequest) as Promise<Record<string, unknown> | null>;
 		}
 		throw new Error(`Unsupported D1 update model "${request.model}".`);
 	}

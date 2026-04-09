@@ -101,6 +101,10 @@
       "types": "./dist/sdk-types.d.ts",
       "default": "./dist/sdk-types.js"
     },
+    "./field-aliases": {
+      "types": "./dist/field-aliases.d.ts",
+      "default": "./dist/field-aliases.js"
+    },
     "./types/agents": {
       "types": "./dist/types/agents.d.ts",
       "default": "./dist/types/agents.js"

@@ -1,3 +1,5 @@
+import type { TreeseedFieldAliasBinding } from './field-aliases.ts';
+
 export const SDK_MODEL_NAMES = [
 	'page',
 	'note',
@@ -23,6 +25,7 @@ export type SdkModelName = SdkBuiltinModelName | (string & {});
 export type SdkOperation = (typeof SDK_OPERATIONS)[number];
 export type SdkStorageBackend = (typeof SDK_STORAGE_BACKENDS)[number];
 export type SdkPickStrategy = (typeof SDK_PICK_STRATEGIES)[number];
+export type SdkComparableAs = 'string' | 'number' | 'date' | 'boolean' | 'string_array';
 
 export type SdkFilterOperator =
 	| 'eq'
@@ -295,11 +298,25 @@ export interface SdkUpdateRequest extends SdkMutationRequest {
 	expectedVersion?: string;
 }
 
+export interface SdkModelFieldBinding extends TreeseedFieldAliasBinding {
+	aliases?: string[];
+	contentKeys?: string[];
+	dbColumns?: string[];
+	payloadPaths?: string[];
+	writeContentKey?: string;
+	writeDbColumn?: string;
+	filterable?: boolean;
+	sortable?: boolean;
+	comparableAs?: SdkComparableAs;
+	normalize?: (value: unknown) => unknown;
+}
+
 export interface SdkModelDefinition {
 	name: SdkModelName;
 	aliases: string[];
 	storage: SdkStorageBackend;
 	operations: SdkOperation[];
+	fields: Record<string, SdkModelFieldBinding>;
 	filterableFields: string[];
 	sortableFields: string[];
 	pickField: string;

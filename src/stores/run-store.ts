@@ -138,7 +138,7 @@ export class RunStore extends SqliteStoreBase {
 	}
 
 	async update(request: SdkUpdateRequest) {
-		const runId = String(request.data.runId ?? request.id ?? request.key ?? '');
+		const runId = String(request.data.run_id ?? request.data.runId ?? request.id ?? request.key ?? '');
 		assertExpectedVersion(
 			request.expectedVersion,
 			runId ? await this.getByKey(runId) : null,

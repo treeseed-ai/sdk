@@ -283,18 +283,25 @@ function messageEnvelopeColumn(field: string) {
 		case 'type':
 			return 'message_type';
 		case 'relatedModel':
+		case 'related_model':
 			return 'related_model';
 		case 'relatedId':
+		case 'related_id':
 			return 'related_id';
 		case 'maxAttempts':
+		case 'max_attempts':
 			return 'max_attempts';
 		case 'availableAt':
+		case 'available_at':
 			return 'available_at';
 		case 'claimedBy':
+		case 'claimed_by':
 			return 'claimed_by';
 		case 'claimedAt':
+		case 'claimed_at':
 			return 'claimed_at';
 		case 'leaseExpiresAt':
+		case 'lease_expires_at':
 			return 'lease_expires_at';
 		default:
 			return field.replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`);

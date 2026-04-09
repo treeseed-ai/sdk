@@ -93,8 +93,8 @@ export class SubscriptionStore extends SqliteStoreBase {
 				name: data.name !== undefined && data.name !== null ? String(data.name) : null,
 				status: typeof data.status === 'string' ? data.status : 'active',
 				source: typeof data.source === 'string' ? data.source : 'sdk',
-				consentAt: typeof data.consent_at === 'string' ? data.consent_at : new Date().toISOString(),
-				ipHash: typeof data.ip_hash === 'string' ? data.ip_hash : '',
+				consentAt: typeof (data.consent_at ?? data.consentAt) === 'string' ? String(data.consent_at ?? data.consentAt) : new Date().toISOString(),
+				ipHash: typeof (data.ip_hash ?? data.ipHash) === 'string' ? String(data.ip_hash ?? data.ipHash) : '',
 			});
 			const now = new Date().toISOString();
 			await this.execute(
@@ -103,7 +103,7 @@ export class SubscriptionStore extends SqliteStoreBase {
 			return this.getByKey(envelope.payload.email);
 		}
 		await this.execute(
-			`INSERT INTO subscriptions (email, name, status, source, consent_at, created_at, updated_at, ip_hash) VALUES (${toSqlValue(data.email)}, ${toSqlValue(data.name ?? null)}, ${toSqlValue(data.status ?? 'active')}, ${toSqlValue(data.source ?? 'sdk')}, ${toSqlValue(data.consent_at ?? new Date().toISOString())}, ${toSqlValue(data.created_at ?? new Date().toISOString())}, ${toSqlValue(data.updated_at ?? new Date().toISOString())}, ${toSqlValue(data.ip_hash ?? '')})`,
+			`INSERT INTO subscriptions (email, name, status, source, consent_at, created_at, updated_at, ip_hash) VALUES (${toSqlValue(data.email)}, ${toSqlValue(data.name ?? null)}, ${toSqlValue(data.status ?? 'active')}, ${toSqlValue(data.source ?? 'sdk')}, ${toSqlValue(data.consent_at ?? data.consentAt ?? new Date().toISOString())}, ${toSqlValue(data.created_at ?? data.createdAt ?? new Date().toISOString())}, ${toSqlValue(data.updated_at ?? data.updatedAt ?? new Date().toISOString())}, ${toSqlValue(data.ip_hash ?? data.ipHash ?? '')})`,
 		);
 		return this.getByKey(String(data.email));
 	}
@@ -126,8 +126,8 @@ export class SubscriptionStore extends SqliteStoreBase {
 				name: next.name ?? null,
 				status: String(next.status ?? 'active'),
 				source: typeof next.source === 'string' ? next.source : 'sdk',
-				consentAt: typeof next.consent_at === 'string' ? next.consent_at : null,
-				ipHash: typeof next.ip_hash === 'string' ? next.ip_hash : '',
+				consentAt: typeof (next.consent_at ?? (next as Record<string, unknown>).consentAt) === 'string' ? String(next.consent_at ?? (next as Record<string, unknown>).consentAt) : null,
+				ipHash: typeof (next.ip_hash ?? (next as Record<string, unknown>).ipHash) === 'string' ? String(next.ip_hash ?? (next as Record<string, unknown>).ipHash) : '',
 				meta: { legacyId: existing.id },
 			});
 			await this.execute(

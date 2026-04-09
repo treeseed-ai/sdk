@@ -1,4 +1,5 @@
-import type { SdkContentEntry, SdkFilterCondition, SdkSortSpec } from './sdk-types.ts';
+import { readCanonicalFieldValue } from './sdk-fields.ts';
+import type { SdkContentEntry, SdkFilterCondition, SdkModelDefinition, SdkSortSpec } from './sdk-types.ts';
 
 function toArray(value: unknown) {
 	if (Array.isArray(value)) {
@@ -17,26 +18,21 @@ function compareScalar(left: unknown, right: unknown) {
 		return left - right;
 	}
 
+	if (left instanceof Date || right instanceof Date) {
+		return new Date(String(left ?? 0)).valueOf() - new Date(String(right ?? 0)).valueOf();
+	}
+
 	return String(left ?? '').localeCompare(String(right ?? ''));
-}
-
-function getFieldValue(entry: SdkContentEntry | Record<string, unknown>, field: string) {
-	if (field in entry) {
-		return (entry as Record<string, unknown>)[field];
-	}
-
-	if ('frontmatter' in entry && entry.frontmatter && typeof entry.frontmatter === 'object') {
-		return (entry.frontmatter as Record<string, unknown>)[field];
-	}
-
-	return undefined;
 }
 
 export function matchesFilter(
 	entry: SdkContentEntry | Record<string, unknown>,
 	filter: SdkFilterCondition,
+	definition?: SdkModelDefinition,
 ) {
-	const fieldValue = getFieldValue(entry, filter.field);
+	const fieldValue = definition
+		? readCanonicalFieldValue(definition, entry as Record<string, unknown>, filter.field)
+		: (entry as Record<string, unknown>)[filter.field];
 
 	switch (filter.op) {
 		case 'eq':
@@ -74,13 +70,15 @@ export function matchesFilter(
 export function applyFilters<T extends SdkContentEntry | Record<string, unknown>>(
 	items: T[],
 	filters: SdkFilterCondition[] = [],
+	definition?: SdkModelDefinition,
 ) {
-	return items.filter((item) => filters.every((filter) => matchesFilter(item, filter)));
+	return items.filter((item) => filters.every((filter) => matchesFilter(item, filter, definition)));
 }
 
 export function applySort<T extends SdkContentEntry | Record<string, unknown>>(
 	items: T[],
 	sort: SdkSortSpec[] = [],
+	definition?: SdkModelDefinition,
 ) {
 	if (sort.length === 0) {
 		return items;
@@ -89,7 +87,13 @@ export function applySort<T extends SdkContentEntry | Record<string, unknown>>(
 	return [...items].sort((left, right) => {
 		for (const spec of sort) {
 			const direction = spec.direction === 'asc' ? 1 : -1;
-			const comparison = compareScalar(getFieldValue(left, spec.field), getFieldValue(right, spec.field));
+			const leftValue = definition
+				? readCanonicalFieldValue(definition, left as Record<string, unknown>, spec.field)
+				: (left as Record<string, unknown>)[spec.field];
+			const rightValue = definition
+				? readCanonicalFieldValue(definition, right as Record<string, unknown>, spec.field)
+				: (right as Record<string, unknown>)[spec.field];
+			const comparison = compareScalar(leftValue, rightValue);
 			if (comparison !== 0) {
 				return comparison * direction;
 			}

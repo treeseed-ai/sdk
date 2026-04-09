@@ -148,8 +148,8 @@ export class LeaseStore extends SqliteStoreBase {
 
 	async update(request: SdkUpdateRequest) {
 		const model = String(request.data.model ?? request.id ?? '');
-		const itemKey = String(request.data.itemKey ?? request.slug ?? request.key ?? '');
-		const claimedBy = String(request.data.claimedBy ?? request.actor);
+		const itemKey = String(request.data.item_key ?? request.data.itemKey ?? request.slug ?? request.key ?? '');
+		const claimedBy = String(request.data.claimed_by ?? request.data.claimedBy ?? request.actor);
 		const leaseSeconds = Number(request.data.leaseSeconds ?? 300);
 		assertExpectedVersion(
 			request.expectedVersion,

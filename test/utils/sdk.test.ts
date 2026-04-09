@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MemoryAgentDatabase } from '../../src/d1-store.ts';
@@ -29,6 +29,17 @@ slug: newer
 updated: 2026-04-08T00:00:00.000Z
 ---
 Newer body
+`,
+		'utf8',
+	);
+	writeFileSync(
+		resolve(pagesRoot, 'aliased.mdx'),
+		`---
+title: Aliased
+slug: aliased
+updatedAt: 2026-04-09T00:00:00.000Z
+---
+Aliased body
 `,
 		'utf8',
 	);
@@ -177,9 +188,18 @@ describe('agent sdk', () => {
 					aliases: ['templates'],
 					storage: 'content',
 					operations: ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'],
-					filterableFields: ['slug', 'title', 'status', 'category', 'tags', 'templateVersion', 'updated'],
-					sortableFields: ['title', 'updated', 'templateVersion'],
-					pickField: 'updated',
+					fields: {
+						slug: { key: 'slug', filterable: true, contentKeys: ['slug'], writeContentKey: 'slug' },
+						title: { key: 'title', filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' },
+						status: { key: 'status', filterable: true, contentKeys: ['status'], writeContentKey: 'status' },
+						category: { key: 'category', filterable: true, contentKeys: ['category'], writeContentKey: 'category' },
+						tags: { key: 'tags', filterable: true, contentKeys: ['tags'], writeContentKey: 'tags' },
+						template_version: { key: 'template_version', aliases: ['templateVersion'], filterable: true, sortable: true, contentKeys: ['template_version', 'templateVersion'], writeContentKey: 'template_version' },
+						updated_at: { key: 'updated_at', aliases: ['updated', 'updatedAt'], filterable: true, sortable: true, contentKeys: ['updated_at', 'updated', 'updatedAt'], writeContentKey: 'updated_at' },
+					},
+					filterableFields: ['slug', 'title', 'status', 'category', 'tags', 'template_version', 'updated_at'],
+					sortableFields: ['title', 'updated_at', 'template_version'],
+					pickField: 'updated_at',
 					contentCollection: 'templates',
 					contentDir: resolve(marketRoot, 'src', 'content', 'templates'),
 				},
@@ -258,8 +278,57 @@ describe('agent sdk', () => {
 			strategy: 'oldest',
 		});
 
-		expect(latest.payload.item?.slug).toBe('newer');
+		expect(latest.payload.item?.slug).toBe('aliased');
 		expect(oldest.payload.item?.slug).toBe('older');
+	});
+
+	it('resolves legacy content field aliases during search', async () => {
+		const repoRoot = createTempContentSite();
+		const sdk = new AgentSdk({
+			repoRoot,
+			database: new MemoryAgentDatabase(),
+		});
+
+		const byCanonical = await sdk.search({
+			model: 'page',
+			filters: [{ field: 'updated_at', op: 'gte', value: '2026-04-09T00:00:00.000Z' }],
+		});
+		const byAlias = await sdk.search({
+			model: 'page',
+			filters: [{ field: 'updatedAt', op: 'gte', value: '2026-04-09T00:00:00.000Z' }],
+		});
+
+		expect(byCanonical.payload.map((item) => item.slug)).toContain('aliased');
+		expect(byAlias.payload.map((item) => item.slug)).toContain('aliased');
+	});
+
+	it('canonicalizes legacy content aliases on write', async () => {
+		const repoRoot = createTempContentSite();
+		const previousDisableGit = process.env.TREESEED_AGENT_DISABLE_GIT;
+		process.env.TREESEED_AGENT_DISABLE_GIT = 'true';
+		try {
+			const sdk = new AgentSdk({
+				repoRoot,
+				database: new MemoryAgentDatabase(),
+			});
+			const updated = await sdk.update({
+				model: 'page',
+				slug: 'aliased',
+				actor: 'tester',
+				expectedVersion: '2026-04-09T00:00:00.000Z',
+				data: { updatedAt: '2026-04-10T00:00:00.000Z' },
+			});
+
+			const written = readFileSync(resolve(updated.payload.git.worktreePath, 'src', 'content', 'pages', 'aliased.mdx'), 'utf8');
+			expect(written).toContain('updated_at: 2026-04-10T00:00:00.000Z');
+			expect(written).not.toContain('updatedAt:');
+		} finally {
+			if (previousDisableGit === undefined) {
+				delete process.env.TREESEED_AGENT_DISABLE_GIT;
+			} else {
+				process.env.TREESEED_AGENT_DISABLE_GIT = previousDisableGit;
+			}
+		}
 	});
 
 	it('enforces expectedVersion for D1-backed updates', async () => {

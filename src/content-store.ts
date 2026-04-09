@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { parseFrontmatterDocument, serializeFrontmatterDocument } from './frontmatter.ts';
 import { resolveModelDefinition } from './model-registry.ts';
 import { applyFilters, applySort } from './sdk-filters.ts';
+import { canonicalizeFrontmatter, normalizeFilterFields, normalizeMutationData, normalizeRecordToCanonicalShape, normalizeSortFields, readCanonicalFieldValue } from './sdk-fields.ts';
 import { assertExpectedVersion } from './sdk-version.ts';
 import type {
 	SdkContentEntry,
@@ -90,21 +91,26 @@ async function readContentEntry(
 	const fileStats = await stat(filePath);
 	const slug = inferSlug(filePath, contentDir);
 
+	const titleField = definition.fields.title ? readCanonicalFieldValue(definition, { frontmatter: parsed.frontmatter }, 'title') : undefined;
+	const createdField = definition.fields.created_at ? readCanonicalFieldValue(definition, { frontmatter: parsed.frontmatter }, 'created_at') : undefined;
+	const updatedField = definition.fields.updated_at ? readCanonicalFieldValue(definition, { frontmatter: parsed.frontmatter }, 'updated_at') : undefined;
+	const nameField = definition.fields.name ? readCanonicalFieldValue(definition, { frontmatter: parsed.frontmatter }, 'name') : undefined;
+
 	return {
 		id: slug,
 		slug,
 		model: definition.name,
-		title: typeof parsed.frontmatter.title === 'string' ? parsed.frontmatter.title : undefined,
+		title: typeof titleField === 'string' ? String(titleField) : typeof nameField === 'string' ? String(nameField) : undefined,
 		path: filePath,
 		body: parsed.body,
 		frontmatter: parsed.frontmatter,
 		createdAt:
-			typeof parsed.frontmatter.date === 'string'
-				? String(parsed.frontmatter.date)
+			typeof createdField === 'string'
+				? String(createdField)
 				: fileStats.birthtime.toISOString(),
 		updatedAt:
-			typeof parsed.frontmatter.updated === 'string'
-				? String(parsed.frontmatter.updated)
+			typeof updatedField === 'string'
+				? String(updatedField)
 				: fileStats.mtime.toISOString(),
 	};
 }
@@ -185,9 +191,10 @@ export class ContentStore {
 	}
 
 	async search(request: SdkSearchRequest) {
+		const definition = resolveModelDefinition(request.model, this.models);
 		const items = await this.list(request.model);
-		const filtered = applyFilters(items, request.filters);
-		const sorted = applySort(filtered, request.sort);
+		const filtered = applyFilters(items, normalizeFilterFields(definition, request.filters), definition);
+		const sorted = applySort(filtered, normalizeSortFields(definition, request.sort), definition);
 		return sorted.slice(0, request.limit ?? sorted.length);
 	}
 
@@ -255,11 +262,12 @@ export class ContentStore {
 		const contentDirInWorktree = path.join(worktreePath, path.relative(this.repoRoot, definition.contentDir));
 		const relativePath = path.relative(this.repoRoot, path.join(definition.contentDir, `${slug}${extension}`));
 		const filePath = path.join(worktreePath, relativePath);
-		const frontmatter = {
-			...sanitizeFrontmatterInput(request.data),
+		const mutationData = normalizeMutationData(definition, sanitizeFrontmatterInput(request.data));
+		const frontmatter = canonicalizeFrontmatter(definition, {}, {
+			...mutationData,
 			slug,
-			updated: new Date().toISOString(),
-		};
+			updated_at: mutationData.updated_at ?? new Date().toISOString(),
+		});
 
 		await mkdir(path.dirname(filePath), { recursive: true });
 		await writeFile(filePath, serializeFrontmatterDocument(frontmatter, body), 'utf8');
@@ -288,11 +296,15 @@ export class ContentStore {
 		const worktreePath = await this.gitRuntime.ensureWorktree(branchName);
 		const relativePath = path.relative(this.repoRoot, existing.path);
 		const targetPath = path.join(worktreePath, relativePath);
-		const nextFrontmatter = {
-			...existing.frontmatter,
-			...sanitizeFrontmatterInput(request.data),
-			updated: new Date().toISOString(),
-		};
+		const mutationData = normalizeMutationData(definition, sanitizeFrontmatterInput(request.data));
+		const nextFrontmatter = canonicalizeFrontmatter(
+			definition,
+			normalizeRecordToCanonicalShape(definition, existing.frontmatter),
+			{
+				...mutationData,
+				updated_at: mutationData.updated_at ?? new Date().toISOString(),
+			},
+		);
 		const nextBody = typeof request.data.body === 'string' ? request.data.body : existing.body;
 		await mkdir(path.dirname(targetPath), { recursive: true });
 		await writeFile(targetPath, serializeFrontmatterDocument(nextFrontmatter, nextBody), 'utf8');

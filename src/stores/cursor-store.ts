@@ -127,9 +127,9 @@ export class CursorStore extends SqliteStoreBase {
 	}
 
 	async update(request: SdkUpdateRequest) {
-		const agentSlug = String(request.data.agentSlug ?? request.id ?? request.key ?? '');
-		const cursorKey = String(request.data.cursorKey ?? request.slug ?? '');
-		const cursorValue = String(request.data.cursorValue ?? '');
+		const agentSlug = String(request.data.agent_slug ?? request.data.agentSlug ?? request.id ?? request.key ?? '');
+		const cursorKey = String(request.data.cursor_key ?? request.data.cursorKey ?? request.slug ?? '');
+		const cursorValue = String(request.data.cursor_value ?? request.data.cursorValue ?? '');
 		assertExpectedVersion(
 			request.expectedVersion,
 			await this.getByKey(`${agentSlug}:${cursorKey}`),

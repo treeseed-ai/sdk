@@ -10,6 +10,21 @@ export {
 } from './model-registry.ts';
 export { normalizeAgentCliOptions, buildCopilotAllowToolArgs } from './cli-tools.ts';
 export { resolveSdkRecordVersion } from './sdk-version.ts';
+export {
+	normalizeAliasedRecord,
+	preprocessAliasedRecord,
+	resolveAliasedField,
+} from './field-aliases.ts';
+export {
+	canonicalizeFrontmatter,
+	normalizeFilterFields,
+	normalizeMutationData,
+	normalizeRecordToCanonicalShape,
+	normalizeSortFields,
+	readCanonicalFieldValue,
+	resolveModelField,
+	validateModelFieldAliases,
+} from './sdk-fields.ts';
 export { RemoteTemplateCatalogClient, parseTemplateCatalogResponse } from './template-catalog.ts';
 export {
 	TRESEED_OPERATION_SPECS,
@@ -43,6 +58,7 @@ export type {
 	SdkJsonEnvelope,
 	SdkLeaseEntity,
 	SdkMessageEntity,
+	SdkModelFieldBinding,
 	SdkModelDefinition,
 	SdkModelRegistry,
 	SdkModelName,
@@ -59,6 +75,10 @@ export type {
 	SdkTemplateCatalogSource,
 	SdkUpdateRequest,
 } from './sdk-types.ts';
+export type {
+	TreeseedFieldAliasBinding,
+	TreeseedFieldAliasRegistry,
+} from './field-aliases.ts';
 export type {
 	TreeseedAdapterResolver,
 	TreeseedCommandContext,
