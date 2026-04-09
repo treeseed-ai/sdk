@@ -52,6 +52,13 @@ export function parseWranglerWhoAmI(output, status) {
 	};
 }
 
+export function parseRailwayWhoAmI(output, status) {
+	return {
+		authenticated: status === 0 && !/error|failed|not logged in|unauthorized/i.test(output),
+		detail: output.trim(),
+	};
+}
+
 export function parseCopilotSessionStatus(output, status) {
 	const normalized = output.trim();
 	return {
@@ -110,6 +117,7 @@ export function collectCliPreflight({ cwd = process.cwd(), requireAuth = false }
 		npm: locateBinary('npm'),
 		gh: locateBinary('gh'),
 		wrangler: locateBinary('wrangler'),
+		railway: locateBinary('railway'),
 		copilot: locateBinary('copilot'),
 	};
 
@@ -138,6 +146,13 @@ export function collectCliPreflight({ cwd = process.cwd(), requireAuth = false }
 		checks.auth.wrangler = { authenticated: false, detail: 'Wrangler CLI is not installed.' };
 	}
 
+	if (binaries.railway) {
+		const result = runCapture('railway', ['whoami'], { cwd, timeoutMs: 60000 });
+		checks.auth.railway = parseRailwayWhoAmI(`${result.stdout}\n${result.stderr}`.trim(), result.status);
+	} else {
+		checks.auth.railway = { authenticated: false, detail: 'Railway CLI is not installed.' };
+	}
+
 	if (binaries.copilot) {
 		const probe = copilotSessionProbe();
 		checks.auth.copilot = parseCopilotSessionStatus(probe.output, probe.status);
@@ -153,6 +168,7 @@ export function collectCliPreflight({ cwd = process.cwd(), requireAuth = false }
 	if (requireAuth) {
 		if (!checks.auth.gh?.authenticated) failingAuth.push('gh');
 		if (!checks.auth.wrangler?.authenticated) failingAuth.push('wrangler');
+		if (!checks.auth.railway?.authenticated) failingAuth.push('railway');
 	}
 
 	return {
@@ -181,6 +197,8 @@ export function formatCliPreflightReport(report) {
 	lines.push(`  ${report.checks.auth.gh?.detail ?? ''}`.trimEnd());
 	lines.push(`- wrangler: ${report.checks.auth.wrangler?.authenticated ? 'authenticated' : 'not authenticated'}`);
 	lines.push(`  ${report.checks.auth.wrangler?.detail ?? ''}`.trimEnd());
+	lines.push(`- railway: ${report.checks.auth.railway?.authenticated ? 'authenticated' : 'not authenticated'}`);
+	lines.push(`  ${report.checks.auth.railway?.detail ?? ''}`.trimEnd());
 	lines.push(`- copilot: ${report.checks.auth.copilot?.configured ? 'configured' : 'not configured'}`);
 	lines.push(`  ${report.checks.auth.copilot?.detail ?? ''}`.trimEnd());
 

@@ -24,6 +24,12 @@ export const handleDoctor: TreeseedCommandHandler = (invocation, context) => {
 	if (!state.files.devVars) optional.push('Generate `.dev.vars` by running `treeseed config --environment local`.');
 	if (!state.auth.gh) optional.push('Authenticate `gh` if you want GitHub-backed save or release automation.');
 	if (!state.auth.wrangler) optional.push('Authenticate `wrangler` before staging, preview, or production deployment work.');
+	if (!state.auth.railway && (state.managedServices.api.enabled || state.managedServices.agents.enabled)) {
+		optional.push('Authenticate `railway` before deploying the managed API or agents services.');
+	}
+	if (!state.auth.remoteApi && state.managedServices.api.enabled) {
+		optional.push('Run `treeseed auth:login` so the CLI can use the configured remote API.');
+	}
 	if (!state.auth.copilot) optional.push('Configure Copilot CLI only if you rely on local Copilot-assisted workflows.');
 
 	return guidedResult({

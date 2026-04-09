@@ -227,6 +227,31 @@ function defaultStateFromConfig(deployConfig, target) {
 		lastManifestFingerprint: null,
 		lastDeploymentTimestamp: null,
 		lastDeployedCommit: null,
+		services: Object.fromEntries(
+			(['api', 'agents']).map((serviceKey) => {
+				const serviceConfig = deployConfig.services?.[serviceKey];
+				const scope = scopeFromTarget(target);
+				const baseUrl = serviceConfig?.environments?.[scope]?.baseUrl ?? serviceConfig?.publicBaseUrl ?? null;
+				return [
+					serviceKey,
+					{
+						enabled: serviceConfig?.enabled !== false && Boolean(serviceConfig),
+						provider: serviceConfig?.provider ?? (serviceConfig ? 'railway' : 'none'),
+						projectId: serviceConfig?.railway?.projectId ?? null,
+						projectName: serviceConfig?.railway?.projectName ?? null,
+						serviceId: serviceConfig?.railway?.serviceId ?? null,
+						serviceName: serviceConfig?.railway?.serviceName ?? null,
+						rootDir: serviceConfig?.railway?.rootDir ?? serviceConfig?.rootDir ?? null,
+						environment: serviceConfig?.environments?.[scope]?.railwayEnvironment ?? scope,
+						publicBaseUrl: baseUrl,
+						initialized: false,
+						lastDeploymentTimestamp: null,
+						lastDeployedUrl: baseUrl,
+						lastDeploymentCommand: null,
+					},
+				];
+			}),
+		),
 		runtimeCompatibility: {
 			envelopeSchemaGeneration: TRESEED_ENVELOPE_SCHEMA_GENERATION,
 			migrationWaveId: TRESEED_MIGRATION_WAVE_ID,
@@ -278,6 +303,36 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 		readiness: {
 			...defaults.readiness,
 			...(persisted.readiness ?? {}),
+		},
+		services: {
+			api: {
+				...defaults.services.api,
+				...(persisted.services?.api ?? {}),
+				enabled: defaults.services.api.enabled,
+				provider: defaults.services.api.provider,
+				projectId: defaults.services.api.projectId ?? persisted.services?.api?.projectId ?? null,
+				projectName: defaults.services.api.projectName ?? persisted.services?.api?.projectName ?? null,
+				serviceId: defaults.services.api.serviceId ?? persisted.services?.api?.serviceId ?? null,
+				serviceName: defaults.services.api.serviceName ?? persisted.services?.api?.serviceName ?? null,
+				rootDir: defaults.services.api.rootDir ?? persisted.services?.api?.rootDir ?? null,
+				environment: defaults.services.api.environment ?? persisted.services?.api?.environment ?? null,
+				publicBaseUrl: defaults.services.api.publicBaseUrl ?? persisted.services?.api?.publicBaseUrl ?? null,
+				lastDeployedUrl: persisted.services?.api?.lastDeployedUrl ?? defaults.services.api.publicBaseUrl ?? null,
+			},
+			agents: {
+				...defaults.services.agents,
+				...(persisted.services?.agents ?? {}),
+				enabled: defaults.services.agents.enabled,
+				provider: defaults.services.agents.provider,
+				projectId: defaults.services.agents.projectId ?? persisted.services?.agents?.projectId ?? null,
+				projectName: defaults.services.agents.projectName ?? persisted.services?.agents?.projectName ?? null,
+				serviceId: defaults.services.agents.serviceId ?? persisted.services?.agents?.serviceId ?? null,
+				serviceName: defaults.services.agents.serviceName ?? persisted.services?.agents?.serviceName ?? null,
+				rootDir: defaults.services.agents.rootDir ?? persisted.services?.agents?.rootDir ?? null,
+				environment: defaults.services.agents.environment ?? persisted.services?.agents?.environment ?? null,
+				publicBaseUrl: defaults.services.agents.publicBaseUrl ?? persisted.services?.agents?.publicBaseUrl ?? null,
+				lastDeployedUrl: persisted.services?.agents?.lastDeployedUrl ?? defaults.services.agents.publicBaseUrl ?? null,
+			},
 		},
 	};
 
@@ -919,6 +974,23 @@ export function markDeploymentInitialized(tenantRoot, options = {}) {
 	return state;
 }
 
+export function markManagedServicesInitialized(tenantRoot, options = {}) {
+	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');
+	const deployConfig = loadTenantDeployConfig(tenantRoot);
+	const state = loadDeployState(tenantRoot, deployConfig, { target });
+	const timestamp = new Date().toISOString();
+	for (const serviceKey of ['api', 'agents']) {
+		if (!state.services?.[serviceKey]?.enabled) {
+			continue;
+		}
+		state.services[serviceKey].initialized = true;
+		state.services[serviceKey].lastDeploymentTimestamp = state.services[serviceKey].lastDeploymentTimestamp ?? timestamp;
+		state.services[serviceKey].lastDeployedUrl = state.services[serviceKey].lastDeployedUrl ?? state.services[serviceKey].publicBaseUrl ?? null;
+	}
+	writeDeployState(tenantRoot, state, { target });
+	return state;
+}
+
 export function assertDeploymentInitialized(tenantRoot, options = {}) {
 	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
@@ -959,6 +1031,15 @@ export function finalizeDeploymentState(tenantRoot, options = {}) {
 	state.deploymentHistory = [...history, nextHistoryEntry].slice(-20);
 	state.readiness.initialized = true;
 	state.readiness.lastValidatedAt = state.lastDeploymentTimestamp;
+	for (const result of options.serviceResults ?? []) {
+		if (!result?.service || !state.services?.[result.service]) {
+			continue;
+		}
+		state.services[result.service].initialized = true;
+		state.services[result.service].lastDeploymentTimestamp = state.lastDeploymentTimestamp;
+		state.services[result.service].lastDeployedUrl = result.publicBaseUrl ?? state.services[result.service].publicBaseUrl ?? state.services[result.service].lastDeployedUrl ?? null;
+		state.services[result.service].lastDeploymentCommand = result.command ?? null;
+	}
 	writeDeployState(tenantRoot, state, { target });
 	return state;
 }

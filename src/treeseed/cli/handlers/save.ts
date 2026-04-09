@@ -12,6 +12,7 @@ import { PRODUCTION_BRANCH, STAGING_BRANCH, remoteBranchExists } from '../../scr
 import { run, workspaceRoot } from '../../scripts/workspace-tools.ts';
 import { runWorkspaceSavePreflight } from '../../scripts/save-deploy-preflight-lib.ts';
 import { guidedResult } from './utils.js';
+import { loadCliDeployConfig } from '../../scripts/package-tools.ts';
 
 export const handleSave: TreeseedCommandHandler = (invocation, context) => {
 	const commandName = invocation.commandName || 'save';
@@ -19,6 +20,7 @@ export const handleSave: TreeseedCommandHandler = (invocation, context) => {
 	const message = invocation.positionals.join(' ').trim();
 	const root = workspaceRoot();
 	const gitRoot = repoRoot(root);
+	const deployConfig = loadCliDeployConfig(root);
 	const branch = currentBranch(gitRoot);
 	const scope = branch === STAGING_BRANCH ? 'staging' : branch === PRODUCTION_BRANCH ? 'prod' : 'local';
 	applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope });
@@ -78,6 +80,7 @@ export const handleSave: TreeseedCommandHandler = (invocation, context) => {
 				{ label: 'Branch', value: branch },
 				{ label: 'Environment scope', value: scope },
 				{ label: 'Hotfix', value: optionsHotfix ? 'yes' : 'no' },
+				{ label: 'Managed services', value: ['api', 'agents'].filter((serviceKey) => deployConfig.services?.[serviceKey]?.enabled !== false && deployConfig.services?.[serviceKey]).join(', ') || '(none)' },
 			],
 			nextSteps: [
 				branch === STAGING_BRANCH ? 'treeseed deploy --environment staging' : branch === PRODUCTION_BRANCH ? 'Monitor CI or run `treeseed deploy --environment prod` only if you intentionally need a manual production publish.' : 'treeseed close',

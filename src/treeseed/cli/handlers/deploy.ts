@@ -9,6 +9,11 @@ import {
 	finalizeDeploymentState,
 	runRemoteD1Migrations,
 } from '../../scripts/deploy-lib.ts';
+import {
+	configuredRailwayServices,
+	deployRailwayService,
+	validateRailwayDeployPrerequisites,
+} from '../../scripts/railway-deploy-lib.ts';
 import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from '../../scripts/git-workflow-lib.ts';
 import { packageScriptPath, resolveWranglerBin } from '../../scripts/package-tools.ts';
 import { runTenantDeployPreflight } from '../../scripts/save-deploy-preflight-lib.ts';
@@ -41,12 +46,13 @@ export const handleDeploy: TreeseedCommandHandler = (invocation, context) => {
 
 	applyTreeseedEnvironmentToProcess({ tenantRoot, scope });
 
-	const allowedSteps = new Set(['migrate', 'build', 'publish']);
+	const allowedSteps = new Set(['migrate', 'build', 'publish', 'api', 'agents']);
 	if (only && !allowedSteps.has(only)) {
 		throw new Error(`Unsupported deploy step "${only}". Expected one of ${[...allowedSteps].join(', ')}.`);
 	}
 
 	const shouldRun = (step: string) => !only || only === step;
+	const serviceResults: Array<Record<string, unknown>> = [];
 
 	if (scope === 'local') {
 		runTenantDeployPreflight({ cwd: tenantRoot, scope: 'local' });
@@ -77,6 +83,10 @@ export const handleDeploy: TreeseedCommandHandler = (invocation, context) => {
 	assertDeploymentInitialized(tenantRoot, { target });
 	runTenantDeployPreflight({ cwd: tenantRoot, scope });
 	const { wranglerPath } = ensureGeneratedWranglerConfig(tenantRoot, { target });
+	const managedRailwayServices = configuredRailwayServices(tenantRoot, scope).filter((service) => shouldRun(service.key));
+	if (managedRailwayServices.length > 0 && !dryRun) {
+		validateRailwayDeployPrerequisites(tenantRoot, scope);
+	}
 
 	if (shouldRun('migrate')) {
 		const result = runRemoteD1Migrations(tenantRoot, { dryRun, target });
@@ -112,10 +122,19 @@ export const handleDeploy: TreeseedCommandHandler = (invocation, context) => {
 			if ((publishResult.status ?? 1) !== 0) {
 				return { exitCode: publishResult.status ?? 1 };
 			}
-			const finalizedState = finalizeDeploymentState(tenantRoot, { target });
-			deployUrl = finalizedState.lastDeployedUrl ?? null;
 			executedSteps.push('publish');
 		}
+	}
+
+	for (const service of managedRailwayServices) {
+		const result = deployRailwayService(tenantRoot, service, { dryRun });
+		executedSteps.push(service.key);
+		serviceResults.push(result);
+	}
+
+	if (!dryRun && (shouldRun('publish') || serviceResults.length > 0)) {
+		const finalizedState = finalizeDeploymentState(tenantRoot, { target, serviceResults });
+		deployUrl = finalizedState.lastDeployedUrl ?? null;
 	}
 
 	if (scope === 'staging') {
@@ -135,6 +154,7 @@ export const handleDeploy: TreeseedCommandHandler = (invocation, context) => {
 			{ label: 'Executed steps', value: executedSteps.join(', ') || '(none)' },
 			{ label: 'Migrated database', value: migratedDatabase ?? '(none)' },
 			{ label: 'Preview URL', value: deployUrl ?? (dryRun ? '(dry run)' : '(not reported)') },
+			{ label: 'Managed services', value: serviceResults.map((entry) => `${entry.service}:${entry.status}`).join(', ') || '(none)' },
 		],
 		nextSteps,
 		report: {
@@ -147,6 +167,7 @@ export const handleDeploy: TreeseedCommandHandler = (invocation, context) => {
 			executedSteps,
 			migratedDatabase,
 			deployUrl,
+			serviceResults,
 		},
 	});
 };

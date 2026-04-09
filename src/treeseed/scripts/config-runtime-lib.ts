@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import type { ApiPrincipal, RemoteTreeseedConfig, RemoteTreeseedHost } from '../../remote.ts';
 import {
 	getTreeseedEnvironmentSuggestedValues,
 	resolveTreeseedEnvironmentRegistry,
@@ -14,6 +15,7 @@ import { loadTreeseedManifest } from '@treeseed/core/tenant-config';
 import {
 	createPersistentDeployTarget,
 	ensureGeneratedWranglerConfig,
+	markManagedServicesInitialized,
 	markDeploymentInitialized,
 	provisionCloudflareResources,
 	syncCloudflareSecrets,
@@ -23,10 +25,84 @@ import { loadCliDeployConfig, withProcessCwd } from './package-tools.ts';
 
 const MACHINE_CONFIG_RELATIVE_PATH = '.treeseed/config/machine.yaml';
 const MACHINE_KEY_RELATIVE_PATH = '.treeseed/config/machine.key';
+const REMOTE_AUTH_RELATIVE_PATH = '.treeseed/config/remote-auth.json';
 const TEMPLATE_CATALOG_CACHE_RELATIVE_PATH = 'treeseed/cache/template-catalog.json';
 const TENANT_ENVIRONMENT_OVERLAY_PATH = 'src/env.yaml';
+export const DEFAULT_TREESEED_API_BASE_URL = 'https://api.treeseed.ai';
 export const DEFAULT_TEMPLATE_CATALOG_URL = 'https://api.treeseed.ai/search/templates';
 export const TREESEED_TEMPLATE_CATALOG_URL_ENV = 'TREESEED_TEMPLATE_CATALOG_URL';
+export const TREESEED_API_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
+
+function createDefaultRemoteHost() {
+	return {
+		id: 'official',
+		label: 'TreeSeed Official API',
+		baseUrl: DEFAULT_TREESEED_API_BASE_URL,
+		official: true,
+	};
+}
+
+function createDefaultRemoteSettings() {
+	return {
+		activeHostId: 'official',
+		executionMode: 'prefer-local',
+		hosts: [createDefaultRemoteHost()],
+	};
+}
+
+function normalizeRemoteSettings(value) {
+	const record = value && typeof value === 'object' ? value : {};
+	const hosts = Array.isArray(record.hosts)
+		? record.hosts
+			.filter((entry) => entry && typeof entry === 'object')
+			.map((entry) => ({
+				id: typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : 'official',
+				label: typeof entry.label === 'string' && entry.label.trim() ? entry.label.trim() : undefined,
+				baseUrl: typeof entry.baseUrl === 'string' && entry.baseUrl.trim() ? entry.baseUrl.trim().replace(/\/$/u, '') : DEFAULT_TREESEED_API_BASE_URL,
+				official: entry.official === true,
+			}))
+		: [createDefaultRemoteHost()];
+
+	return {
+		activeHostId:
+			typeof record.activeHostId === 'string' && record.activeHostId.trim()
+				? record.activeHostId.trim()
+				: hosts[0]?.id ?? 'official',
+		executionMode:
+			record.executionMode === 'prefer-remote' || record.executionMode === 'remote-only'
+				? record.executionMode
+				: 'prefer-local',
+		hosts,
+	};
+}
+
+function createDefaultServiceSettings() {
+	return {
+		railway: {
+			projectId: '',
+			projectName: '',
+			apiServiceId: '',
+			apiServiceName: '',
+			agentsServiceId: '',
+			agentsServiceName: '',
+		},
+	};
+}
+
+function normalizeServiceSettings(value) {
+	const record = value && typeof value === 'object' ? value : {};
+	const railway = record.railway && typeof record.railway === 'object' ? record.railway : {};
+	return {
+		railway: {
+			projectId: typeof railway.projectId === 'string' ? railway.projectId : '',
+			projectName: typeof railway.projectName === 'string' ? railway.projectName : '',
+			apiServiceId: typeof railway.apiServiceId === 'string' ? railway.apiServiceId : '',
+			apiServiceName: typeof railway.apiServiceName === 'string' ? railway.apiServiceName : '',
+			agentsServiceId: typeof railway.agentsServiceId === 'string' ? railway.agentsServiceId : '',
+			agentsServiceName: typeof railway.agentsServiceName === 'string' ? railway.agentsServiceName : '',
+		},
+	};
+}
 
 function ensureParent(filePath) {
 	mkdirSync(dirname(filePath), { recursive: true });
@@ -75,6 +151,42 @@ function writeDeploySummary(write, summary) {
 	write(`  KV SESSION: ${summary.sessionKv.id}`);
 }
 
+function syncManagedServiceSettingsFromDeployConfig(tenantRoot) {
+	const config = loadTreeseedMachineConfig(tenantRoot);
+	const deployConfig = loadTenantDeployConfig(tenantRoot);
+	const railway = config.settings.services.railway;
+	railway.projectId = deployConfig.services?.api?.railway?.projectId
+		?? deployConfig.services?.agents?.railway?.projectId
+		?? railway.projectId;
+	railway.projectName = deployConfig.services?.api?.railway?.projectName
+		?? deployConfig.services?.agents?.railway?.projectName
+		?? railway.projectName;
+	railway.apiServiceId = deployConfig.services?.api?.railway?.serviceId ?? railway.apiServiceId;
+	railway.apiServiceName = deployConfig.services?.api?.railway?.serviceName ?? railway.apiServiceName;
+	railway.agentsServiceId = deployConfig.services?.agents?.railway?.serviceId ?? railway.agentsServiceId;
+	railway.agentsServiceName = deployConfig.services?.agents?.railway?.serviceName ?? railway.agentsServiceName;
+
+	const remote = normalizeRemoteSettings(config.settings.remote);
+	const defaultHostBaseUrl = deployConfig.services?.api?.environments?.prod?.baseUrl
+		?? deployConfig.services?.api?.publicBaseUrl
+		?? remote.hosts[0]?.baseUrl
+		?? DEFAULT_TREESEED_API_BASE_URL;
+	const officialHost = remote.hosts.find((entry) => entry.id === 'official');
+	if (officialHost) {
+		officialHost.baseUrl = defaultHostBaseUrl.replace(/\/$/u, '');
+	} else {
+		remote.hosts.unshift({
+			id: 'official',
+			label: 'TreeSeed Official API',
+			baseUrl: defaultHostBaseUrl.replace(/\/$/u, ''),
+			official: true,
+		});
+	}
+	config.settings.remote = remote;
+	writeTreeseedMachineConfig(tenantRoot, config);
+	return config;
+}
+
 function loadTenantDeployConfig(tenantRoot) {
 	return loadCliDeployConfig(tenantRoot);
 }
@@ -113,6 +225,12 @@ export function getTreeseedMachineConfigPaths(tenantRoot) {
 	};
 }
 
+export function getTreeseedRemoteAuthPaths(tenantRoot) {
+	return {
+		authPath: resolve(tenantRoot, REMOTE_AUTH_RELATIVE_PATH),
+	};
+}
+
 export function createDefaultTreeseedMachineConfig({ tenantRoot, deployConfig, tenantConfig }) {
 	return {
 		version: 1,
@@ -132,6 +250,8 @@ export function createDefaultTreeseedMachineConfig({ tenantRoot, deployConfig, t
 			templates: {
 				catalogEndpoint: DEFAULT_TEMPLATE_CATALOG_URL,
 			},
+			remote: createDefaultRemoteSettings(),
+			services: createDefaultServiceSettings(),
 		},
 		environments: Object.fromEntries(
 			TREESEED_ENVIRONMENT_SCOPES.map((scope) => [
@@ -155,6 +275,13 @@ function loadMachineKey(tenantRoot) {
 	ensureParent(keyPath);
 	writeFileSync(keyPath, `${key.toString('base64')}\n`, { mode: 0o600 });
 	return key;
+}
+
+function createDefaultRemoteAuthState() {
+	return {
+		version: 1,
+		sessions: {},
+	};
 }
 
 function encryptValue(value, key) {
@@ -188,6 +315,95 @@ function decryptValue(payload, key) {
 	return decrypted.toString('utf8');
 }
 
+function loadRemoteAuthPayload(tenantRoot) {
+	const { authPath } = getTreeseedRemoteAuthPaths(tenantRoot);
+	if (!existsSync(authPath)) {
+		return createDefaultRemoteAuthState();
+	}
+
+	try {
+		const raw = JSON.parse(readFileSync(authPath, 'utf8'));
+		return raw && typeof raw === 'object' ? raw : createDefaultRemoteAuthState();
+	} catch {
+		return createDefaultRemoteAuthState();
+	}
+}
+
+function writeRemoteAuthPayload(tenantRoot, payload) {
+	const { authPath } = getTreeseedRemoteAuthPaths(tenantRoot);
+	ensureParent(authPath);
+	writeFileSync(authPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
+export function loadTreeseedRemoteAuthState(tenantRoot) {
+	const key = loadMachineKey(tenantRoot);
+	const payload = loadRemoteAuthPayload(tenantRoot);
+	const sessions = Object.fromEntries(
+		Object.entries(payload.sessions ?? {}).map(([hostId, entry]) => [
+			hostId,
+			{
+				accessToken: decryptValue(entry.accessToken, key),
+				refreshToken: decryptValue(entry.refreshToken, key),
+				expiresAt: typeof entry.expiresAt === 'string' ? entry.expiresAt : '',
+				principal: entry.principal ?? null,
+			},
+		]),
+	);
+	return {
+		version: 1,
+		sessions,
+	};
+}
+
+export function writeTreeseedRemoteAuthState(tenantRoot, state) {
+	const key = loadMachineKey(tenantRoot);
+	const sessions = Object.fromEntries(
+		Object.entries(state.sessions ?? {}).map(([hostId, entry]) => [
+			hostId,
+			{
+				accessToken: entry.accessToken ? encryptValue(entry.accessToken, key) : null,
+				refreshToken: entry.refreshToken ? encryptValue(entry.refreshToken, key) : null,
+				expiresAt: entry.expiresAt ?? '',
+				principal: entry.principal ?? null,
+			},
+		]),
+	);
+	writeRemoteAuthPayload(tenantRoot, {
+		version: 1,
+		sessions,
+	});
+}
+
+export function setTreeseedRemoteSession(tenantRoot, { hostId, accessToken, refreshToken, expiresAt, principal }) {
+	const state = loadTreeseedRemoteAuthState(tenantRoot);
+	state.sessions[hostId] = {
+		accessToken,
+		refreshToken,
+		expiresAt,
+		principal: principal ?? null,
+	};
+	writeTreeseedRemoteAuthState(tenantRoot, state);
+	return state.sessions[hostId];
+}
+
+export function clearTreeseedRemoteSession(tenantRoot, hostId) {
+	const state = loadTreeseedRemoteAuthState(tenantRoot);
+	if (hostId) {
+		delete state.sessions[hostId];
+	} else {
+		state.sessions = {};
+	}
+	writeTreeseedRemoteAuthState(tenantRoot, state);
+	return state;
+}
+
+export function resolveTreeseedRemoteSession(tenantRoot, hostId) {
+	const sessionState = loadTreeseedRemoteAuthState(tenantRoot);
+	const { configPath } = getTreeseedMachineConfigPaths(tenantRoot);
+	const selectedHostId = hostId ?? (existsSync(configPath) ? loadTreeseedMachineConfig(tenantRoot).settings?.remote?.activeHostId : 'official') ?? 'official';
+	return sessionState.sessions?.[selectedHostId] ?? null;
+}
+
 export function loadTreeseedMachineConfig(tenantRoot) {
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
 	const tenantConfig = loadOptionalTenantManifest(tenantRoot);
@@ -218,6 +434,14 @@ export function loadTreeseedMachineConfig(tenantRoot) {
 				...(defaults.settings.templates ?? {}),
 				...(parsed.settings?.templates ?? {}),
 			},
+			remote: normalizeRemoteSettings({
+				...(defaults.settings.remote ?? {}),
+				...(parsed.settings?.remote ?? {}),
+			}),
+			services: normalizeServiceSettings({
+				...(defaults.settings.services ?? {}),
+				...(parsed.settings?.services ?? {}),
+			}),
 		},
 		environments: Object.fromEntries(
 			TREESEED_ENVIRONMENT_SCOPES.map((scope) => [
@@ -241,6 +465,59 @@ export function writeTreeseedMachineConfig(tenantRoot, config) {
 	const { configPath } = getTreeseedMachineConfigPaths(tenantRoot);
 	ensureParent(configPath);
 	writeFileSync(configPath, stringifyYaml(config), 'utf8');
+}
+
+export function resolveTreeseedRemoteConfig(startRoot = process.cwd(), env = process.env): RemoteTreeseedConfig {
+	const machineConfigPath = findNearestTreeseedMachineConfig(startRoot);
+	const tenantRoot = machineConfigPath ? resolve(dirname(dirname(machineConfigPath)), '..') : startRoot;
+	const deployConfig = existsSync(resolve(tenantRoot, 'treeseed.site.yaml')) ? loadTenantDeployConfig(tenantRoot) : null;
+	const machineConfig = machineConfigPath ? loadTreeseedMachineConfig(tenantRoot) : createDefaultTreeseedMachineConfig({
+		tenantRoot: startRoot,
+		deployConfig: {
+			name: 'TreeSeed',
+			slug: 'treeseed',
+			siteUrl: DEFAULT_TREESEED_API_BASE_URL,
+			contactEmail: 'hello@treeseed.ai',
+		},
+		tenantConfig: undefined,
+	});
+	const settings = normalizeRemoteSettings(machineConfig.settings?.remote);
+	const deployBaseUrl = deployConfig?.services?.api?.environments?.prod?.baseUrl
+		?? deployConfig?.services?.api?.publicBaseUrl
+		?? null;
+	if (deployBaseUrl) {
+		const officialHost = settings.hosts.find((entry) => entry.id === 'official');
+		if (officialHost) {
+			officialHost.baseUrl = deployBaseUrl.replace(/\/$/u, '');
+		}
+	}
+	const envBaseUrl = env[TREESEED_API_BASE_URL_ENV];
+	const hosts = envBaseUrl && envBaseUrl.trim().length > 0
+		? [
+			{
+				id: 'env',
+				label: 'Environment override',
+				baseUrl: envBaseUrl.trim().replace(/\/$/u, ''),
+			},
+			...settings.hosts.filter((entry) => entry.id !== 'env'),
+		]
+		: settings.hosts;
+	const activeHostId = envBaseUrl && envBaseUrl.trim().length > 0 ? 'env' : settings.activeHostId;
+	const auth = resolveTreeseedRemoteSession(tenantRoot, activeHostId);
+
+	return {
+		hosts,
+		activeHostId,
+		executionMode: settings.executionMode,
+		auth: auth
+			? {
+				accessToken: auth.accessToken,
+				refreshToken: auth.refreshToken,
+				expiresAt: auth.expiresAt,
+				principal: auth.principal ?? null,
+			}
+			: undefined,
+	};
 }
 
 export function resolveTreeseedTemplateCatalogEndpoint(startRoot = process.cwd(), env = process.env) {
@@ -521,6 +798,32 @@ export function syncTreeseedCloudflareEnvironment({ tenantRoot, scope = 'prod', 
 	};
 }
 
+export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dryRun = false } = {}) {
+	const config = syncManagedServiceSettingsFromDeployConfig(tenantRoot);
+	const deployConfig = loadTenantDeployConfig(tenantRoot);
+	const services = ['api', 'agents']
+		.map((serviceKey) => {
+			const service = deployConfig.services?.[serviceKey];
+			if (!service || service.enabled === false || (service.provider ?? 'railway') !== 'railway') {
+				return null;
+			}
+			const environment = service.environments?.[scope];
+			return {
+				service: serviceKey,
+				projectName: service.railway?.projectName ?? config.settings.services.railway.projectName,
+				serviceName: service.railway?.serviceName ?? config.settings.services.railway[serviceKey === 'api' ? 'apiServiceName' : 'agentsServiceName'],
+				baseUrl: environment?.baseUrl ?? service.publicBaseUrl ?? '(unset)',
+				dryRun,
+			};
+		})
+		.filter(Boolean);
+
+	return {
+		scope,
+		services,
+	};
+}
+
 export function initializeTreeseedPersistentEnvironment({ tenantRoot, scope = 'prod', dryRun = false } = {}) {
 	const normalizedScope = scope === 'prod' ? 'prod' : scope;
 	const target = createPersistentDeployTarget(normalizedScope);
@@ -639,6 +942,7 @@ export async function runTreeseedConfigWizard({
 	}
 
 	writeTreeseedLocalEnvironmentFiles(tenantRoot);
+	syncManagedServiceSettingsFromDeployConfig(tenantRoot);
 
 	for (const scope of scopes) {
 		if (scope === 'local') {
@@ -654,6 +958,7 @@ export async function runTreeseedConfigWizard({
 			secrets: initialized.secrets.length,
 			target: initialized.summary.target,
 		});
+		markManagedServicesInitialized(tenantRoot, { scope });
 	}
 
 	if (sync === 'github' || sync === 'all') {
@@ -661,6 +966,9 @@ export async function runTreeseedConfigWizard({
 	}
 	if (sync === 'cloudflare' || sync === 'all') {
 		summary.synced.cloudflare = syncTreeseedCloudflareEnvironment({ tenantRoot, scope: scopes.at(-1) ?? 'prod' });
+	}
+	if (sync === 'railway' || sync === 'all') {
+		summary.synced.railway = syncTreeseedRailwayEnvironment({ tenantRoot, scope: scopes.at(-1) ?? 'prod' });
 	}
 
 	return summary;

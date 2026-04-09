@@ -26,6 +26,9 @@ import { handleContinue } from './handlers/continue.js';
 import { handleRollback } from './handlers/rollback.js';
 import { handleTemplate } from './handlers/template.js';
 import { handleSync } from './handlers/sync.js';
+import { handleAuthLogin } from './handlers/auth-login.js';
+import { handleAuthLogout } from './handlers/auth-logout.js';
+import { handleAuthWhoAmI } from './handlers/auth-whoami.js';
 
 export const COMMAND_HANDLERS = {
 	init: handleInit,
@@ -50,6 +53,9 @@ export const COMMAND_HANDLERS = {
 	rollback: handleRollback,
 	template: handleTemplate,
 	sync: handleSync,
+	'auth:login': handleAuthLogin,
+	'auth:logout': handleAuthLogout,
+	'auth:whoami': handleAuthWhoAmI,
 } as const;
 
 export const TRESEED_COMMAND_SPECS: TreeseedCommandSpec[] = TRESEED_OPERATION_SPECS;

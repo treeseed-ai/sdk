@@ -79,6 +79,10 @@
       "types": "./dist/content-store.d.ts",
       "default": "./dist/content-store.js"
     },
+    "./template-catalog": {
+      "types": "./dist/template-catalog.d.ts",
+      "default": "./dist/template-catalog.js"
+    },
     "./d1-store": {
       "types": "./dist/d1-store.d.ts",
       "default": "./dist/d1-store.js"
@@ -115,11 +119,23 @@
       "types": "./dist/field-aliases.d.ts",
       "default": "./dist/field-aliases.js"
     },
+    "./remote": {
+      "types": "./dist/remote.d.ts",
+      "default": "./dist/remote.js"
+    },
     "./types/agents": {
       "types": "./dist/types/agents.d.ts",
       "default": "./dist/types/agents.js"
     },
+    "./types/agents.js": {
+      "types": "./dist/types/agents.d.ts",
+      "default": "./dist/types/agents.js"
+    },
     "./types/cloudflare": {
+      "types": "./dist/types/cloudflare.d.ts",
+      "default": "./dist/types/cloudflare.js"
+    },
+    "./types/cloudflare.js": {
       "types": "./dist/types/cloudflare.d.ts",
       "default": "./dist/types/cloudflare.js"
     },

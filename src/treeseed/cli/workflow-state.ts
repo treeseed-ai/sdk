@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { getTreeseedMachineConfigPaths } from '../scripts/config-runtime-lib.ts';
+import { getTreeseedMachineConfigPaths, resolveTreeseedRemoteSession } from '../scripts/config-runtime-lib.ts';
 import {
 	createBranchPreviewDeployTarget,
 	createPersistentDeployTarget,
@@ -43,8 +43,17 @@ export type TreeseedWorkflowState = {
 	auth: {
 		gh: boolean;
 		wrangler: boolean;
+		railway: boolean;
 		copilot: boolean;
+		remoteApi: boolean;
 	};
+	managedServices: Record<string, {
+		enabled: boolean;
+		initialized: boolean;
+		lastDeploymentTimestamp: string | null;
+		lastDeployedUrl: string | null;
+		provider: string | null;
+	}>;
 	files: {
 		treeseedConfig: boolean;
 		machineConfig: boolean;
@@ -121,7 +130,13 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 		auth: {
 			gh: preflight.checks.auth.gh?.authenticated === true,
 			wrangler: preflight.checks.auth.wrangler?.authenticated === true,
+			railway: preflight.checks.auth.railway?.authenticated === true,
 			copilot: preflight.checks.auth.copilot?.configured === true,
+			remoteApi: Boolean(resolveTreeseedRemoteSession(cwd)),
+		},
+		managedServices: {
+			api: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
+			agents: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
 		},
 		files: {
 			treeseedConfig: tenantRoot,
@@ -157,6 +172,17 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 						timestamp: typeof latestHistory?.timestamp === 'string' ? latestHistory.timestamp : (deployState.lastDeploymentTimestamp ?? null),
 						url: typeof latestHistory?.url === 'string' ? latestHistory.url : (deployState.lastDeployedUrl ?? null),
 					});
+				}
+				for (const serviceKey of ['api', 'agents']) {
+					const service = deployState.services?.[serviceKey];
+					if (!service) continue;
+					state.managedServices[serviceKey] = {
+						enabled: service.enabled === true,
+						initialized: service.initialized === true,
+						lastDeploymentTimestamp: service.lastDeploymentTimestamp ?? null,
+						lastDeployedUrl: service.lastDeployedUrl ?? service.publicBaseUrl ?? null,
+						provider: service.provider ?? null,
+					};
 				}
 			}
 
@@ -209,6 +235,9 @@ export function recommendTreeseedNextSteps(state: TreeseedWorkflowState): Treese
 		} else {
 			recommendations.push({ command: 'treeseed publish --environment staging', reason: 'Publish the current staging branch to the initialized staging environment.' });
 			recommendations.push({ command: 'treeseed promote --patch', reason: 'Promote staging into main when the integration branch is ready for production.' });
+			if (state.managedServices.api.enabled || state.managedServices.agents.enabled) {
+				recommendations.push({ command: 'treeseed auth:login', reason: 'Keep the local CLI authenticated to the remote API used by managed services.' });
+			}
 		}
 		return recommendations.slice(0, 3);
 	}

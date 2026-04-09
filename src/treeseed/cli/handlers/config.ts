@@ -63,6 +63,7 @@ export const handleConfig: TreeseedCommandHandler = async (invocation, context) 
 				{ label: 'Initialized environments', value: result.initialized.map((entry: { scope: string }) => entry.scope).join(', ') || '(none)' },
 				{ label: 'GitHub sync', value: result.synced.github ? `${result.synced.github.secrets.length} secrets, ${result.synced.github.variables.length} variables` : 'not run' },
 				{ label: 'Cloudflare sync', value: result.synced.cloudflare ? `${result.synced.cloudflare.secrets.length} secrets, ${result.synced.cloudflare.varsManagedByWranglerConfig.length} vars` : 'not run' },
+				{ label: 'Railway sync', value: result.synced.railway ? `${result.synced.railway.services.length} services` : 'not run' },
 			],
 			nextSteps: [
 				...(scopes.includes('local') ? ['treeseed dev'] : []),

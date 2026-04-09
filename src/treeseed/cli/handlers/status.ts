@@ -21,6 +21,10 @@ export const handleStatus: TreeseedCommandHandler = (_invocation, context) => {
 			{ label: 'Preview URL', value: state.preview.url ?? '(none)' },
 			{ label: 'GitHub auth', value: state.auth.gh ? 'ready' : 'not ready' },
 			{ label: 'Wrangler auth', value: state.auth.wrangler ? 'ready' : 'not ready' },
+			{ label: 'Railway auth', value: state.auth.railway ? 'ready' : 'not ready' },
+			{ label: 'Remote API auth', value: state.auth.remoteApi ? 'ready' : 'not ready' },
+			{ label: 'API service', value: state.managedServices.api.enabled ? `${state.managedServices.api.initialized ? 'initialized' : 'not initialized'}${state.managedServices.api.lastDeployedUrl ? ` (${state.managedServices.api.lastDeployedUrl})` : ''}` : 'disabled' },
+			{ label: 'Agents service', value: state.managedServices.agents.enabled ? `${state.managedServices.agents.initialized ? 'initialized' : 'not initialized'}${state.managedServices.agents.lastDeployedUrl ? ` (${state.managedServices.agents.lastDeployedUrl})` : ''}` : 'disabled' },
 		],
 		nextSteps: state.recommendations.map((item) => `${item.command}  # ${item.reason}`),
 		report: {
