@@ -6,6 +6,7 @@ import { loadCliDeployConfig } from './package-tools.ts';
 function normalizeScope(scope) {
 	return scope === 'prod' ? 'prod' : scope === 'staging' ? 'staging' : 'local';
 }
+const RAILWAY_SERVICE_KEYS = ['api', 'agents', 'manager', 'worker', 'workdayStart', 'workdayReport'];
 
 function runRailway(args, { cwd, capture = false, allowFailure = false } = {}) {
 	const result = spawnSync('railway', args, {
@@ -26,14 +27,15 @@ export function configuredRailwayServices(tenantRoot, scope) {
 	const deployConfig = loadCliDeployConfig(tenantRoot);
 	const normalizedScope = normalizeScope(scope);
 
-	return (['api', 'agents'] as const)
+	return RAILWAY_SERVICE_KEYS
 		.map((serviceKey) => {
 			const service = deployConfig.services?.[serviceKey];
 			if (!service || service.enabled === false || (service.provider ?? 'railway') !== 'railway') {
 				return null;
 			}
 
-			const serviceRoot = resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? `packages/${serviceKey === 'api' ? 'api' : 'agent'}`);
+			const defaultRootDir = serviceKey === 'api' ? 'packages/api' : 'packages/agent';
+			const serviceRoot = resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? defaultRootDir);
 			const railwayEnvironment = service.environments?.[normalizedScope]?.railwayEnvironment ?? normalizedScope;
 			const publicBaseUrl = service.environments?.[normalizedScope]?.baseUrl ?? service.publicBaseUrl ?? null;
 			return {

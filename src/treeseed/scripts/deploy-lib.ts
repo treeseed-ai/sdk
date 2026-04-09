@@ -11,6 +11,7 @@ const DEFAULT_COMPATIBILITY_FLAGS = ['nodejs_compat'];
 const GENERATED_ROOT = '.treeseed/generated';
 const STATE_ROOT = '.treeseed/state';
 const PERSISTENT_SCOPES = new Set(['local', 'staging', 'prod']);
+const MANAGED_SERVICE_KEYS = ['api', 'agents', 'gateway', 'manager', 'worker', 'workdayStart', 'workdayReport'];
 const TRESEED_ENVELOPE_SCHEMA_GENERATION = 'runtime-envelopes-v1';
 const TRESEED_MIGRATION_WAVE_ID = '0005_runtime_envelopes';
 const TRESEED_SUPPORTED_PAYLOAD_RANGE = { min: 1, max: 1 };
@@ -216,6 +217,13 @@ function defaultStateFromConfig(deployConfig, target) {
 				previewDatabaseId: `dryrun-${suffix}-site-data-preview`,
 			},
 		},
+		queues: {
+			agentWork: {
+				name: deployConfig.cloudflare.queueName ?? 'agent-work',
+				dlqName: deployConfig.cloudflare.dlqName ?? 'agent-work-dlq',
+				binding: deployConfig.cloudflare.queueBinding ?? 'AGENT_WORK_QUEUE',
+			},
+		},
 		generatedSecrets: {},
 		readiness: {
 			initialized: false,
@@ -228,7 +236,7 @@ function defaultStateFromConfig(deployConfig, target) {
 		lastDeploymentTimestamp: null,
 		lastDeployedCommit: null,
 		services: Object.fromEntries(
-			(['api', 'agents']).map((serviceKey) => {
+			MANAGED_SERVICE_KEYS.map((serviceKey) => {
 				const serviceConfig = deployConfig.services?.[serviceKey];
 				const scope = scopeFromTarget(target);
 				const baseUrl = serviceConfig?.environments?.[scope]?.baseUrl ?? serviceConfig?.publicBaseUrl ?? null;
@@ -241,6 +249,7 @@ function defaultStateFromConfig(deployConfig, target) {
 						projectName: serviceConfig?.railway?.projectName ?? null,
 						serviceId: serviceConfig?.railway?.serviceId ?? null,
 						serviceName: serviceConfig?.railway?.serviceName ?? null,
+						workerName: serviceConfig?.cloudflare?.workerName ?? null,
 						rootDir: serviceConfig?.railway?.rootDir ?? serviceConfig?.rootDir ?? null,
 						environment: serviceConfig?.environments?.[scope]?.railwayEnvironment ?? scope,
 						publicBaseUrl: baseUrl,
@@ -296,6 +305,17 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 				databaseName: defaults.d1Databases.SITE_DATA_DB.databaseName,
 			},
 		},
+		queues: {
+			...(defaults.queues ?? {}),
+			...(persisted.queues ?? {}),
+			agentWork: {
+				...(defaults.queues?.agentWork ?? {}),
+				...(persisted.queues?.agentWork ?? {}),
+				name: defaults.queues?.agentWork?.name ?? persisted.queues?.agentWork?.name ?? 'agent-work',
+				dlqName: defaults.queues?.agentWork?.dlqName ?? persisted.queues?.agentWork?.dlqName ?? 'agent-work-dlq',
+				binding: defaults.queues?.agentWork?.binding ?? persisted.queues?.agentWork?.binding ?? 'AGENT_WORK_QUEUE',
+			},
+		},
 		generatedSecrets: {
 			...(defaults.generatedSecrets ?? {}),
 			...(persisted.generatedSecrets ?? {}),
@@ -304,36 +324,30 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 			...defaults.readiness,
 			...(persisted.readiness ?? {}),
 		},
-		services: {
-			api: {
-				...defaults.services.api,
-				...(persisted.services?.api ?? {}),
-				enabled: defaults.services.api.enabled,
-				provider: defaults.services.api.provider,
-				projectId: defaults.services.api.projectId ?? persisted.services?.api?.projectId ?? null,
-				projectName: defaults.services.api.projectName ?? persisted.services?.api?.projectName ?? null,
-				serviceId: defaults.services.api.serviceId ?? persisted.services?.api?.serviceId ?? null,
-				serviceName: defaults.services.api.serviceName ?? persisted.services?.api?.serviceName ?? null,
-				rootDir: defaults.services.api.rootDir ?? persisted.services?.api?.rootDir ?? null,
-				environment: defaults.services.api.environment ?? persisted.services?.api?.environment ?? null,
-				publicBaseUrl: defaults.services.api.publicBaseUrl ?? persisted.services?.api?.publicBaseUrl ?? null,
-				lastDeployedUrl: persisted.services?.api?.lastDeployedUrl ?? defaults.services.api.publicBaseUrl ?? null,
-			},
-			agents: {
-				...defaults.services.agents,
-				...(persisted.services?.agents ?? {}),
-				enabled: defaults.services.agents.enabled,
-				provider: defaults.services.agents.provider,
-				projectId: defaults.services.agents.projectId ?? persisted.services?.agents?.projectId ?? null,
-				projectName: defaults.services.agents.projectName ?? persisted.services?.agents?.projectName ?? null,
-				serviceId: defaults.services.agents.serviceId ?? persisted.services?.agents?.serviceId ?? null,
-				serviceName: defaults.services.agents.serviceName ?? persisted.services?.agents?.serviceName ?? null,
-				rootDir: defaults.services.agents.rootDir ?? persisted.services?.agents?.rootDir ?? null,
-				environment: defaults.services.agents.environment ?? persisted.services?.agents?.environment ?? null,
-				publicBaseUrl: defaults.services.agents.publicBaseUrl ?? persisted.services?.agents?.publicBaseUrl ?? null,
-				lastDeployedUrl: persisted.services?.agents?.lastDeployedUrl ?? defaults.services.agents.publicBaseUrl ?? null,
-			},
-		},
+		services: Object.fromEntries(
+			MANAGED_SERVICE_KEYS.map((serviceKey) => {
+				const defaultService = defaults.services?.[serviceKey] ?? {};
+				const persistedService = persisted.services?.[serviceKey] ?? {};
+				return [
+					serviceKey,
+					{
+						...defaultService,
+						...persistedService,
+						enabled: defaultService.enabled,
+						provider: defaultService.provider,
+						projectId: defaultService.projectId ?? persistedService.projectId ?? null,
+						projectName: defaultService.projectName ?? persistedService.projectName ?? null,
+						serviceId: defaultService.serviceId ?? persistedService.serviceId ?? null,
+						serviceName: defaultService.serviceName ?? persistedService.serviceName ?? null,
+						workerName: defaultService.workerName ?? persistedService.workerName ?? null,
+						rootDir: defaultService.rootDir ?? persistedService.rootDir ?? null,
+						environment: defaultService.environment ?? persistedService.environment ?? null,
+						publicBaseUrl: defaultService.publicBaseUrl ?? persistedService.publicBaseUrl ?? null,
+						lastDeployedUrl: persistedService.lastDeployedUrl ?? defaultService.publicBaseUrl ?? null,
+					},
+				];
+			}),
+		),
 	};
 
 	if (target.kind === 'branch' && !merged.lastDeployedUrl) {
@@ -979,7 +993,7 @@ export function markManagedServicesInitialized(tenantRoot, options = {}) {
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
 	const state = loadDeployState(tenantRoot, deployConfig, { target });
 	const timestamp = new Date().toISOString();
-	for (const serviceKey of ['api', 'agents']) {
+	for (const serviceKey of MANAGED_SERVICE_KEYS) {
 		if (!state.services?.[serviceKey]?.enabled) {
 			continue;
 		}

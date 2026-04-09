@@ -107,6 +107,11 @@ export interface RemoteSdkOperationRequest {
 
 export type RemoteSdkOperationResponse<T = unknown> = T;
 
+export interface RemoteGatewayRequest {
+	method?: 'GET' | 'POST';
+	body?: unknown;
+}
+
 export interface RemoteCliCommandRequest {
 	argv?: string[];
 	cwd?: string;
@@ -235,6 +240,100 @@ export class RemoteTreeseedSdkClient {
 			method: 'POST',
 			body: request,
 			requireAuth: true,
+		});
+	}
+}
+
+function normalizeExternalBaseUrl(baseUrl: string) {
+	return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+}
+
+export class TreeseedGatewayClient {
+	private readonly baseUrl: string;
+	private readonly token: string;
+	private readonly fetchImpl: typeof fetch;
+
+	constructor(config: import('./sdk-types.ts').SdkGatewayClientConfig) {
+		this.baseUrl = normalizeExternalBaseUrl(config.baseUrl);
+		this.token = config.bearerToken;
+		this.fetchImpl = config.fetchImpl ?? fetch;
+	}
+
+	async requestJson<T>(path: string, options: RemoteGatewayRequest = {}) {
+		const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+			method: options.method ?? 'POST',
+			headers: {
+				accept: 'application/json',
+				authorization: `Bearer ${this.token}`,
+				...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
+			},
+			body: options.body === undefined ? undefined : JSON.stringify(options.body),
+		});
+		const payload = await response.json().catch(() => ({})) as T & { error?: string };
+		if (!response.ok) {
+			throw new Error(typeof payload.error === 'string' ? payload.error : `Gateway request failed with ${response.status}.`);
+		}
+		return payload;
+	}
+}
+
+export class CloudflareQueuePullClient {
+	private readonly baseUrl: string;
+	private readonly token: string;
+	private readonly fetchImpl: typeof fetch;
+
+	constructor(config: import('./sdk-types.ts').SdkQueuePullClientConfig) {
+		const apiBaseUrl = config.apiBaseUrl ?? 'https://api.cloudflare.com/client/v4/accounts';
+		this.baseUrl = `${normalizeExternalBaseUrl(apiBaseUrl)}/${config.accountId}/queues/${config.queueId}`;
+		this.token = config.token;
+		this.fetchImpl = config.fetchImpl ?? fetch;
+	}
+
+	private async request(path: string, body: unknown) {
+		const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+			method: 'POST',
+			headers: {
+				accept: 'application/json',
+				authorization: `Bearer ${this.token}`,
+				'content-type': 'application/json',
+			},
+			body: JSON.stringify(body),
+		});
+		const payload = await response.json().catch(() => ({})) as {
+			success?: boolean;
+			errors?: Array<{ message?: string }>;
+			result?: unknown;
+		};
+		if (!response.ok || payload.success === false) {
+			throw new Error(payload.errors?.[0]?.message ?? `Queue request failed with ${response.status}.`);
+		}
+		return payload.result;
+	}
+
+	async pull(request: import('./sdk-types.ts').SdkQueuePullRequest = {}) {
+		const result = await this.request('/messages/pull', {
+			batch_size: request.batchSize ?? 1,
+			visibility_timeout_ms: request.visibilityTimeoutMs ?? 120000,
+		}) as { messages?: Array<{ lease_id: string; attempts: number; body: string }> };
+		const messages = (result.messages ?? []).map((entry) => ({
+			leaseId: entry.lease_id,
+			attempts: Number(entry.attempts ?? 0),
+			rawBody: String(entry.body ?? '{}'),
+			body: JSON.parse(String(entry.body ?? '{}')) as import('./sdk-types.ts').SdkQueueMessageEnvelope,
+		}));
+		return { messages };
+	}
+
+	ack(acks: string[]) {
+		return this.request('/messages/ack', { acks });
+	}
+
+	retry(retries: Array<{ leaseId: string; delaySeconds?: number }>) {
+		return this.request('/messages/ack', {
+			retries: retries.map((entry) => ({
+				lease_id: entry.leaseId,
+				delay_secs: entry.delaySeconds ?? 0,
+			})),
 		});
 	}
 }

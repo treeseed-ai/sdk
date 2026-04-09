@@ -8,8 +8,39 @@ It exposes the public model and storage surface used by TreeSeed agents and supp
 
 - content-backed access for pages, notes, questions, objectives, people, agents, books, and knowledge
 - D1-backed access for subscriptions, messages, agent runs, cursors, and content leases
+- D1-backed operational control-plane models for work days, tasks, task events, task outputs, graph runs, and reports
 - stable query and mutation APIs for `get`, `read`, `search`, `follow`, `pick`, `create`, and `update`
+- typed HTTP clients for the Treeseed gateway and Cloudflare Queue pull consumers
 - the full shared TreeSeed command contract and programmatic execution runtime behind the `treeseed` CLI
+
+## Control Plane Additions
+
+The SDK is now the shared contract for the unified agent-hosting system.
+
+Important additions:
+
+- `work_day`
+- `task`
+- `task_event`
+- `task_output`
+- `graph_run`
+- `report`
+
+Important process-facing helpers:
+
+- `startWorkDay()`
+- `closeWorkDay()`
+- `createTask()`
+- `claimTask()`
+- `recordTaskProgress()`
+- `completeTask()`
+- `failTask()`
+- `appendTaskEvent()`
+- `searchTasks()`
+- `createReport()`
+- `getManagerContext()`
+- `TreeseedGatewayClient`
+- `CloudflareQueuePullClient`
 
 ## Consumer Contract
 
@@ -43,6 +74,41 @@ await runTreeseedCli(['status', '--json'], {
 });
 ```
 
+Gateway client example:
+
+```ts
+import { TreeseedGatewayClient } from '@treeseed/sdk';
+
+const gateway = new TreeseedGatewayClient({
+	baseUrl: 'https://treeseed-agent-gateway.example.workers.dev',
+	bearerToken: process.env.TREESEED_GATEWAY_BEARER_TOKEN!,
+});
+
+await gateway.requestJson('/workdays/start', {
+	body: {
+		projectId: 'treeseed-market',
+		capacityBudget: 100,
+	},
+});
+```
+
+Cloudflare Queue pull consumer example:
+
+```ts
+import { CloudflareQueuePullClient } from '@treeseed/sdk';
+
+const queue = new CloudflareQueuePullClient({
+	accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+	queueId: process.env.TREESEED_QUEUE_ID!,
+	token: process.env.TREESEED_QUEUE_PULL_TOKEN!,
+});
+
+const batch = await queue.pull({
+	batchSize: 1,
+	visibilityTimeoutMs: 120000,
+});
+```
+
 ## Using The SDK In Applications
 
 `AgentSdk` is the main application entrypoint. It routes each request to either the content-backed store or the D1-backed store based on the model you ask for, and it always returns a JSON envelope with:
@@ -58,6 +124,12 @@ For most application code, the working pattern is:
 1. create one SDK instance for your process, request handler, worker, or job
 2. call `get`, `read`, `search`, `follow`, `pick`, `create`, or `update`
 3. read the typed `payload` from the returned envelope
+
+For manager/worker code, the common pattern is:
+
+1. use `AgentSdk.createLocal()` for local graph and content access
+2. use `TreeseedGatewayClient` for durable remote operational writes
+3. use `CloudflareQueuePullClient` for worker-side queue pull, ack, and retry
 
 ### Initialize An SDK Instance
 
@@ -249,6 +321,67 @@ console.log(response.payload.git);
 ```
 
 For D1-backed models, `create()` delegates to the relevant store and returns the created entity.
+
+### Work-Day And Task Lifecycle
+
+Use the dedicated methods for orchestration instead of the generic mutation surface when you are writing manager or worker code.
+
+Start a work day:
+
+```ts
+const workDay = await sdk.startWorkDay({
+	projectId: 'treeseed-market',
+	capacityBudget: 100,
+	actor: 'manager',
+});
+```
+
+Create and claim a task:
+
+```ts
+const task = await sdk.createTask({
+	workDayId: String(workDay.payload?.id),
+	agentId: 'market-curator',
+	type: 'agent_root',
+	idempotencyKey: `${workDay.payload?.id}:market-curator`,
+	payload: { trigger: 'startup' },
+	actor: 'manager',
+});
+
+await sdk.claimTask({
+	id: String(task.payload?.id),
+	workerId: 'worker-1',
+	leaseSeconds: 120,
+	actor: 'worker-1',
+});
+```
+
+Complete a task:
+
+```ts
+await sdk.completeTask({
+	id: String(task.payload?.id),
+	output: { ok: true },
+	summary: { status: 'completed' },
+	actor: 'worker-1',
+});
+```
+
+## Development Workflow
+
+For SDK package work:
+
+```bash
+npm install
+npm run build
+npm test
+```
+
+When changing the control plane:
+
+- update the typed models first
+- update the D1 store and any HTTP clients second
+- keep orchestration semantics in the dedicated task/workday APIs, not hidden in ad hoc generic `update()` calls
 
 ### Update Existing Records
 

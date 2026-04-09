@@ -143,6 +143,10 @@
       "types": "./dist/wrangler-d1.d.ts",
       "default": "./dist/wrangler-d1.js"
     },
+    "./wrangler-d1.js": {
+      "types": "./dist/wrangler-d1.d.ts",
+      "default": "./dist/wrangler-d1.js"
+    },
     "./stores/cursor-store": {
       "types": "./dist/stores/cursor-store.d.ts",
       "default": "./dist/stores/cursor-store.js"

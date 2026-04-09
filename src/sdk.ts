@@ -8,13 +8,20 @@ import { buildScopedModelRegistry, resolveModelDefinition } from './model-regist
 import type {
 	SdkAckMessageRequest,
 	SdkClaimMessageRequest,
+	SdkClaimTaskRequest,
+	SdkCloseWorkDayRequest,
+	SdkCompleteTaskRequest,
+	SdkCreateReportRequest,
 	SdkCreateMessageRequest,
+	SdkCreateTaskRequest,
 	SdkCursorRequest,
+	SdkFailTaskRequest,
 	SdkFollowRequest,
 	SdkGetRequest,
 	SdkGetCursorRequest,
 	SdkJsonEnvelope,
 	SdkLeaseReleaseRequest,
+	SdkManagerContextPayload,
 	SdkMutationRequest,
 	SdkGraphQueryOptions,
 	SdkGraphRefreshRequest,
@@ -22,6 +29,9 @@ import type {
 	SdkPickRequest,
 	SdkRecordRunRequest,
 	SdkSearchRequest,
+	SdkStartWorkDayRequest,
+	SdkTaskProgressRequest,
+	SdkTaskSearchRequest,
 	SdkUpdateRequest,
 	SdkModelDefinition,
 	SdkModelRegistry,
@@ -222,6 +232,66 @@ export class AgentSdk {
 	async releaseAllLeases() {
 		const count = await this.database.releaseAllLeases();
 		return this.envelope('content_lease', 'update', { count });
+	}
+
+	async startWorkDay(request: SdkStartWorkDayRequest) {
+		const payload = await this.database.startWorkDay(request);
+		return this.envelope('work_day', 'create', payload);
+	}
+
+	async closeWorkDay(request: SdkCloseWorkDayRequest) {
+		const payload = await this.database.closeWorkDay(request);
+		return this.envelope('work_day', 'update', payload);
+	}
+
+	async createTask(request: SdkCreateTaskRequest) {
+		const payload = await this.database.createTask(request);
+		return this.envelope('task', 'create', payload);
+	}
+
+	async claimTask(request: SdkClaimTaskRequest) {
+		const payload = await this.database.claimTask(request);
+		return this.envelope('task', 'update', payload);
+	}
+
+	async recordTaskProgress(request: SdkTaskProgressRequest) {
+		const payload = await this.database.recordTaskProgress(request);
+		return this.envelope('task', 'update', payload);
+	}
+
+	async completeTask(request: SdkCompleteTaskRequest) {
+		const payload = await this.database.completeTask(request);
+		return this.envelope('task', 'update', payload);
+	}
+
+	async failTask(request: SdkFailTaskRequest) {
+		const payload = await this.database.failTask(request);
+		return this.envelope('task', 'update', payload);
+	}
+
+	async appendTaskEvent(request: {
+		taskId: string;
+		kind: string;
+		data?: Record<string, unknown>;
+		actor: string;
+	}) {
+		const payload = await this.database.appendTaskEvent(request);
+		return this.envelope('task_event', 'create', payload);
+	}
+
+	async searchTasks(request: SdkTaskSearchRequest) {
+		const payload = await this.database.searchTasks(request);
+		return this.envelope('task', 'search', payload, { count: payload.length });
+	}
+
+	async createReport(request: SdkCreateReportRequest) {
+		const payload = await this.database.createReport(request);
+		return this.envelope('report', 'create', payload);
+	}
+
+	async getManagerContext(taskId: string) {
+		const payload = await this.database.getManagerContext(taskId);
+		return this.envelope<SdkManagerContextPayload>('task', 'get', payload);
 	}
 
 	async listAgentSpecs(options?: { enabled?: boolean }) {

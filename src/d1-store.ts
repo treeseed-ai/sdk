@@ -6,30 +6,46 @@ import { normalizeFilterFields, normalizeMutationData, normalizeRecordToCanonica
 import { assertExpectedVersion } from './sdk-version.ts';
 import { resolveModelDefinition } from './model-registry.ts';
 import type {
+	SdkAppendTaskEventRequest,
 	SdkAckMessageRequest,
 	SdkClaimMessageRequest,
+	SdkClaimTaskRequest,
+	SdkCloseWorkDayRequest,
+	SdkCompleteTaskRequest,
+	SdkCreateReportRequest,
 	SdkCreateMessageRequest,
+	SdkCreateTaskRequest,
 	SdkCursorEntity,
 	SdkCursorRequest,
+	SdkFailTaskRequest,
 	SdkFilterCondition,
 	SdkFollowRequest,
+	SdkGraphRunEntity,
 	SdkGetRequest,
 	SdkGetCursorRequest,
 	SdkLeaseEntity,
 	SdkLeaseReleaseRequest,
+	SdkManagerContextPayload,
 	SdkMessageEntity,
 	SdkMutationRequest,
 	SdkPickRequest,
 	SdkPickResult,
 	SdkRecordRunRequest,
+	SdkReportEntity,
 	SdkRunEntity,
 	SdkSearchRequest,
+	SdkStartWorkDayRequest,
 	SdkSubscriptionEntity,
+	SdkTaskEntity,
+	SdkTaskSearchRequest,
+	SdkTaskProgressRequest,
 	SdkUpdateRequest,
+	SdkWorkDayEntity,
 } from './sdk-types.ts';
 import { CursorStore } from './stores/cursor-store.ts';
 import { LeaseStore, type LeaseClaimInput } from './stores/lease-store.ts';
 import { MessageStore } from './stores/message-store.ts';
+import { OperationalStore } from './stores/operational-store.ts';
 import { RunStore } from './stores/run-store.ts';
 import { SubscriptionStore } from './stores/subscription-store.ts';
 
@@ -40,7 +56,11 @@ type D1Record =
 	| SdkMessageEntity
 	| SdkRunEntity
 	| SdkCursorEntity
-	| SdkLeaseEntity;
+	| SdkLeaseEntity
+	| SdkWorkDayEntity
+	| SdkTaskEntity
+	| SdkGraphRunEntity
+	| SdkReportEntity;
 
 export interface AgentDatabase {
 	get(request: SdkGetRequest): Promise<Record<string, unknown> | null>;
@@ -58,6 +78,17 @@ export interface AgentDatabase {
 	releaseLease(request: SdkLeaseReleaseRequest): Promise<void>;
 	tryClaimContentLease(input: TryClaimContentLeaseInput): Promise<string | null>;
 	releaseAllLeases(): Promise<number>;
+	startWorkDay(request: SdkStartWorkDayRequest): Promise<SdkWorkDayEntity | null>;
+	closeWorkDay(request: SdkCloseWorkDayRequest): Promise<SdkWorkDayEntity | null>;
+	createTask(request: SdkCreateTaskRequest): Promise<SdkTaskEntity | null>;
+	claimTask(request: SdkClaimTaskRequest): Promise<SdkTaskEntity | null>;
+	recordTaskProgress(request: SdkTaskProgressRequest): Promise<SdkTaskEntity | null>;
+	completeTask(request: SdkCompleteTaskRequest): Promise<SdkTaskEntity | null>;
+	failTask(request: SdkFailTaskRequest): Promise<SdkTaskEntity | null>;
+	appendTaskEvent(request: SdkAppendTaskEventRequest): Promise<Record<string, unknown> | null>;
+	searchTasks(request: SdkTaskSearchRequest): Promise<SdkTaskEntity[]>;
+	createReport(request: SdkCreateReportRequest): Promise<SdkReportEntity | null>;
+	getManagerContext(taskId: string): Promise<SdkManagerContextPayload>;
 }
 
 function nowIso() {
@@ -101,6 +132,12 @@ export class MemoryAgentDatabase implements AgentDatabase {
 	private readonly runs = new Map<string, SdkRunEntity>();
 	private readonly contentLeases = new Map<string, ContentLeaseRecord>();
 	private readonly cursors = new Map<string, string>();
+	private readonly workDays = new Map<string, SdkWorkDayEntity>();
+	private readonly tasks = new Map<string, SdkTaskEntity>();
+	private readonly taskEvents = new Map<string, Record<string, unknown>[]>();
+	private readonly taskOutputs = new Map<string, Record<string, unknown>[]>();
+	private readonly graphRuns = new Map<string, SdkGraphRunEntity>();
+	private readonly reports = new Map<string, SdkReportEntity>();
 	private messageId = 0;
 
 	constructor(seed?: {
@@ -159,6 +196,18 @@ export class MemoryAgentDatabase implements AgentDatabase {
 				token: lease.token,
 			}));
 		}
+		if (model === 'work_day') {
+			return [...this.workDays.values()];
+		}
+		if (model === 'task') {
+			return [...this.tasks.values()];
+		}
+		if (model === 'graph_run') {
+			return [...this.graphRuns.values()];
+		}
+		if (model === 'report') {
+			return [...this.reports.values()];
+		}
 		throw new Error(`Unsupported D1 model "${model}".`);
 	}
 
@@ -191,6 +240,18 @@ export class MemoryAgentDatabase implements AgentDatabase {
 					token: lease.token,
 				}
 				: null;
+		}
+		if (request.model === 'work_day') {
+			return this.workDays.get(key) ?? null;
+		}
+		if (request.model === 'task') {
+			return this.tasks.get(key) ?? null;
+		}
+		if (request.model === 'graph_run') {
+			return this.graphRuns.get(key) ?? null;
+		}
+		if (request.model === 'report') {
+			return this.reports.get(key) ?? null;
 		}
 		return (
 			this.rowsForModel(request.model).find((row) =>
@@ -356,6 +417,42 @@ export class MemoryAgentDatabase implements AgentDatabase {
 					token: String(token ?? lease?.token ?? ''),
 				};
 			}
+			case 'work_day':
+				return this.startWorkDay({
+					id: typeof data.id === 'string' ? data.id : undefined,
+					projectId: String(data.projectId ?? data.project_id ?? ''),
+					capacityBudget: Number(data.capacityBudget ?? data.capacity_budget ?? 0),
+					graphVersion: typeof (data.graphVersion ?? data.graph_version) === 'string' ? String(data.graphVersion ?? data.graph_version) : null,
+					summary: (data.summary as Record<string, unknown> | null | undefined) ?? null,
+					actor: request.actor,
+				});
+			case 'task':
+				return this.createTask({
+					id: typeof data.id === 'string' ? data.id : undefined,
+					workDayId: String(data.workDayId ?? data.work_day_id ?? ''),
+					agentId: String(data.agentId ?? data.agent_id ?? ''),
+					type: String(data.type ?? ''),
+					state: typeof data.state === 'string' ? data.state : 'pending',
+					priority: Number(data.priority ?? 0),
+					idempotencyKey: String(data.idempotencyKey ?? data.idempotency_key ?? ''),
+					payload: ((data.payload as Record<string, unknown> | undefined) ?? data) as Record<string, unknown>,
+					payloadHash: typeof (data.payloadHash ?? data.payload_hash) === 'string' ? String(data.payloadHash ?? data.payload_hash) : null,
+					maxAttempts: Number(data.maxAttempts ?? data.max_attempts ?? 3),
+					availableAt: typeof (data.availableAt ?? data.available_at) === 'string' ? String(data.availableAt ?? data.available_at) : undefined,
+					graphVersion: typeof (data.graphVersion ?? data.graph_version) === 'string' ? String(data.graphVersion ?? data.graph_version) : null,
+					parentTaskId: typeof (data.parentTaskId ?? data.parent_task_id) === 'string' ? String(data.parentTaskId ?? data.parent_task_id) : null,
+					actor: request.actor,
+				});
+			case 'report':
+				return this.createReport({
+					id: typeof data.id === 'string' ? data.id : undefined,
+					workDayId: String(data.workDayId ?? data.work_day_id ?? ''),
+					kind: String(data.kind ?? 'workday_summary'),
+					body: ((data.body as Record<string, unknown> | undefined) ?? data) as Record<string, unknown>,
+					renderedRef: typeof (data.renderedRef ?? data.rendered_ref) === 'string' ? String(data.renderedRef ?? data.rendered_ref) : null,
+					sentAt: typeof (data.sentAt ?? data.sent_at) === 'string' ? String(data.sentAt ?? data.sent_at) : null,
+					actor: request.actor,
+				});
 			default:
 				throw new Error(`Unsupported D1 create model "${request.model}".`);
 		}
@@ -429,6 +526,43 @@ export class MemoryAgentDatabase implements AgentDatabase {
 					data,
 					actor: request.actor,
 				});
+			case 'work_day':
+				return this.closeWorkDay({
+					id: String(request.id ?? request.key ?? data.id ?? ''),
+					state: (data.state as 'completed' | 'cancelled' | 'failed' | undefined) ?? 'completed',
+					summary: (data.summary as Record<string, unknown> | null | undefined) ?? null,
+					actor: request.actor,
+				});
+			case 'task': {
+				const taskId = String(request.id ?? request.key ?? data.id ?? '');
+				if (data.state === 'completed') {
+					return this.completeTask({
+						id: taskId,
+						output: (data.output as Record<string, unknown> | undefined) ?? null,
+						outputRef: typeof data.outputRef === 'string' ? data.outputRef : null,
+						summary: (data.summary as Record<string, unknown> | undefined) ?? null,
+						actor: request.actor,
+					});
+				}
+				if (data.state === 'failed') {
+					return this.failTask({
+						id: taskId,
+						errorCode: typeof data.errorCode === 'string' ? data.errorCode : null,
+						errorMessage: String(data.errorMessage ?? 'Task failed'),
+						retryable: Boolean(data.retryable),
+						nextVisibleAt: typeof data.nextVisibleAt === 'string' ? data.nextVisibleAt : null,
+						actor: request.actor,
+					});
+				}
+				return this.recordTaskProgress({
+					id: taskId,
+					workerId: typeof data.workerId === 'string' ? data.workerId : null,
+					state: typeof data.state === 'string' ? data.state : undefined,
+					appendEvent: data.appendEvent as { kind: string; data?: Record<string, unknown> } | null | undefined,
+					patch: (data.patch as Record<string, unknown> | undefined) ?? undefined,
+					actor: request.actor,
+				});
+			}
 			default:
 				throw new Error(`Unsupported D1 update model "${request.model}".`);
 		}
@@ -544,6 +678,213 @@ export class MemoryAgentDatabase implements AgentDatabase {
 	inspectLeases() {
 		return [...this.contentLeases.values()];
 	}
+
+	async startWorkDay(request: SdkStartWorkDayRequest) {
+		const timestamp = nowIso();
+		const record: SdkWorkDayEntity = {
+			id: request.id ?? crypto.randomUUID(),
+			projectId: request.projectId,
+			state: 'active',
+			capacityBudget: Number(request.capacityBudget ?? 0),
+			capacityUsed: 0,
+			graphVersion: request.graphVersion ?? null,
+			summaryJson: request.summary ? JSON.stringify(request.summary) : null,
+			startedAt: timestamp,
+			endedAt: null,
+			createdAt: timestamp,
+			updatedAt: timestamp,
+		};
+		this.workDays.set(record.id, record);
+		return record;
+	}
+
+	async closeWorkDay(request: SdkCloseWorkDayRequest) {
+		const existing = this.workDays.get(request.id);
+		if (!existing) return null;
+		const next: SdkWorkDayEntity = {
+			...existing,
+			state: request.state ?? 'completed',
+			summaryJson: request.summary ? JSON.stringify(request.summary) : existing.summaryJson,
+			endedAt: nowIso(),
+			updatedAt: nowIso(),
+		};
+		this.workDays.set(next.id, next);
+		return next;
+	}
+
+	async createTask(request: SdkCreateTaskRequest) {
+		const timestamp = nowIso();
+		const record: SdkTaskEntity = {
+			id: request.id ?? crypto.randomUUID(),
+			workDayId: request.workDayId,
+			agentId: request.agentId,
+			type: request.type,
+			state: request.state ?? 'pending',
+			priority: Number(request.priority ?? 0),
+			idempotencyKey: request.idempotencyKey,
+			payloadJson: JSON.stringify(request.payload),
+			payloadHash: request.payloadHash ?? null,
+			attemptCount: 0,
+			maxAttempts: Number(request.maxAttempts ?? 3),
+			claimedBy: null,
+			leaseExpiresAt: null,
+			availableAt: request.availableAt ?? timestamp,
+			lastErrorCode: null,
+			lastErrorMessage: null,
+			graphVersion: request.graphVersion ?? null,
+			parentTaskId: request.parentTaskId ?? null,
+			createdAt: timestamp,
+			startedAt: null,
+			completedAt: null,
+			updatedAt: timestamp,
+		};
+		this.tasks.set(record.id, record);
+		return record;
+	}
+
+	async claimTask(request: SdkClaimTaskRequest) {
+		const existing = this.tasks.get(request.id);
+		if (!existing) return null;
+		const next: SdkTaskEntity = {
+			...existing,
+			state: 'claimed',
+			claimedBy: request.workerId,
+			leaseExpiresAt: new Date(Date.now() + request.leaseSeconds * 1000).toISOString(),
+			attemptCount: existing.attemptCount + 1,
+			startedAt: existing.startedAt ?? nowIso(),
+			updatedAt: nowIso(),
+		};
+		this.tasks.set(next.id, next);
+		return next;
+	}
+
+	async recordTaskProgress(request: SdkTaskProgressRequest) {
+		const existing = this.tasks.get(request.id);
+		if (!existing) return null;
+		const nextPayload = {
+			...(JSON.parse(existing.payloadJson) as Record<string, unknown>),
+			...(request.patch ?? {}),
+		};
+		const next: SdkTaskEntity = {
+			...existing,
+			state: request.state ?? existing.state,
+			claimedBy: request.workerId ?? existing.claimedBy,
+			payloadJson: JSON.stringify(nextPayload),
+			updatedAt: nowIso(),
+		};
+		this.tasks.set(next.id, next);
+		if (request.appendEvent?.kind) {
+			await this.appendTaskEvent({
+				taskId: request.id,
+				kind: request.appendEvent.kind,
+				data: request.appendEvent.data,
+				actor: request.actor,
+			});
+		}
+		return next;
+	}
+
+	async completeTask(request: SdkCompleteTaskRequest) {
+		const existing = this.tasks.get(request.id);
+		if (!existing) return null;
+		const next: SdkTaskEntity = {
+			...existing,
+			state: 'completed',
+			completedAt: nowIso(),
+			leaseExpiresAt: null,
+			updatedAt: nowIso(),
+		};
+		this.tasks.set(next.id, next);
+		if (request.output) {
+			const outputs = this.taskOutputs.get(request.id) ?? [];
+			outputs.push({
+				id: crypto.randomUUID(),
+				taskId: request.id,
+				outputJson: JSON.stringify(request.output),
+				outputRef: request.outputRef ?? null,
+				createdAt: nowIso(),
+			});
+			this.taskOutputs.set(request.id, outputs);
+		}
+		if (request.summary) {
+			await this.appendTaskEvent({
+				taskId: request.id,
+				kind: 'completed',
+				data: request.summary,
+				actor: request.actor,
+			});
+		}
+		return next;
+	}
+
+	async failTask(request: SdkFailTaskRequest) {
+		const existing = this.tasks.get(request.id);
+		if (!existing) return null;
+		const next: SdkTaskEntity = {
+			...existing,
+			state: request.retryable ? 'pending' : 'failed',
+			availableAt: request.nextVisibleAt ?? existing.availableAt,
+			lastErrorCode: request.errorCode ?? null,
+			lastErrorMessage: request.errorMessage,
+			leaseExpiresAt: null,
+			updatedAt: nowIso(),
+		};
+		this.tasks.set(next.id, next);
+		return next;
+	}
+
+	async appendTaskEvent(request: SdkAppendTaskEventRequest) {
+		const events = this.taskEvents.get(request.taskId) ?? [];
+		const next = {
+			id: crypto.randomUUID(),
+			taskId: request.taskId,
+			seq: events.length + 1,
+			kind: request.kind,
+			dataJson: JSON.stringify({ ...(request.data ?? {}), actor: request.actor }),
+			createdAt: nowIso(),
+		};
+		events.push(next);
+		this.taskEvents.set(request.taskId, events);
+		return next;
+	}
+
+	async searchTasks(request: SdkTaskSearchRequest) {
+		return [...this.tasks.values()]
+			.filter((task) => !request.workDayId || task.workDayId === request.workDayId)
+			.filter((task) => !request.agentId || task.agentId === request.agentId)
+			.filter((task) => {
+				if (!request.state) return true;
+				const states = Array.isArray(request.state) ? request.state : [request.state];
+				return states.includes(task.state);
+			})
+			.sort((left, right) => right.priority - left.priority || left.availableAt.localeCompare(right.availableAt))
+			.slice(0, request.limit ?? 50);
+	}
+
+	async createReport(request: SdkCreateReportRequest) {
+		const record: SdkReportEntity = {
+			id: request.id ?? crypto.randomUUID(),
+			workDayId: request.workDayId,
+			kind: request.kind,
+			bodyJson: JSON.stringify(request.body),
+			renderedRef: request.renderedRef ?? null,
+			sentAt: request.sentAt ?? null,
+			createdAt: nowIso(),
+		};
+		this.reports.set(record.id, record);
+		return record;
+	}
+
+	async getManagerContext(taskId: string) {
+		const task = this.tasks.get(taskId) ?? null;
+		const workDay = task ? (this.workDays.get(task.workDayId) ?? null) : null;
+		return {
+			task,
+			workDay,
+			agent: null,
+			graph: workDay?.graphVersion ? { graphVersion: workDay.graphVersion } : null,
+		};
+	}
 }
 
 export class CloudflareD1AgentDatabase implements AgentDatabase {
@@ -552,6 +893,7 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 	private readonly runs: RunStore;
 	private readonly cursors: CursorStore;
 	private readonly leases: LeaseStore;
+	private readonly operational: OperationalStore;
 
 	constructor(readonly db: D1DatabaseLike) {
 		this.subscriptions = new SubscriptionStore(db);
@@ -559,6 +901,7 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 		this.runs = new RunStore(db);
 		this.cursors = new CursorStore(db);
 		this.leases = new LeaseStore(db);
+		this.operational = new OperationalStore(db);
 	}
 
 	async get(request: SdkGetRequest) {
@@ -576,6 +919,15 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 		}
 		if (request.model === 'content_lease') {
 			return this.leases.getByKey(String(request.id ?? request.key ?? request.slug ?? '')) as Promise<Record<string, unknown> | null>;
+		}
+		if (request.model === 'work_day') {
+			return this.operational.getWorkDay(String(request.id ?? request.key ?? request.slug ?? '')) as Promise<Record<string, unknown> | null>;
+		}
+		if (request.model === 'task') {
+			return this.operational.getTask(String(request.id ?? request.key ?? request.slug ?? '')) as Promise<Record<string, unknown> | null>;
+		}
+		if (request.model === 'report') {
+			return this.operational.getReport(String(request.id ?? request.key ?? request.slug ?? '')) as Promise<Record<string, unknown> | null>;
 		}
 		throw new Error(`Unsupported D1 get model "${request.model}".`);
 	}
@@ -601,6 +953,20 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 		}
 		if (request.model === 'content_lease') {
 			return this.leases.search(normalizedRequest) as Promise<Record<string, unknown>[]>;
+		}
+		if (request.model === 'work_day') {
+			return this.operational.searchWorkDays(request.limit) as Promise<Record<string, unknown>[]>;
+		}
+		if (request.model === 'task') {
+			return this.operational.searchTasks({
+				workDayId: request.filters?.find((entry) => entry.field === 'workDayId' || entry.field === 'work_day_id')?.value as string | undefined,
+				agentId: request.filters?.find((entry) => entry.field === 'agentId' || entry.field === 'agent_id')?.value as string | undefined,
+				state: request.filters?.find((entry) => entry.field === 'state')?.value as string | string[] | undefined,
+				limit: request.limit,
+			}) as Promise<Record<string, unknown>[]>;
+		}
+		if (request.model === 'report') {
+			return [] as Record<string, unknown>[];
 		}
 		throw new Error(`Unsupported D1 search model "${request.model}".`);
 	}
@@ -648,6 +1014,13 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 				item: (items[0] ?? null) as Record<string, unknown> | null,
 				leaseToken: items[0]?.token ?? null,
 			};
+		}
+		if (request.model === 'task') {
+			const items = await this.operational.searchTasks({
+				state: 'pending',
+				limit: 1,
+			});
+			return { item: (items[0] ?? null) as Record<string, unknown> | null, leaseToken: null };
 		}
 		return {
 			item: (
@@ -697,6 +1070,45 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 				model: 'content_lease',
 			})) as Record<string, unknown>;
 		}
+		if (request.model === 'work_day') {
+			return (await this.startWorkDay({
+				id: typeof normalizedRequest.data.id === 'string' ? normalizedRequest.data.id : undefined,
+				projectId: String(normalizedRequest.data.projectId ?? normalizedRequest.data.project_id ?? ''),
+				capacityBudget: Number(normalizedRequest.data.capacityBudget ?? normalizedRequest.data.capacity_budget ?? 0),
+				graphVersion: typeof (normalizedRequest.data.graphVersion ?? normalizedRequest.data.graph_version) === 'string' ? String(normalizedRequest.data.graphVersion ?? normalizedRequest.data.graph_version) : null,
+				summary: normalizedRequest.data.summary as Record<string, unknown> | null | undefined,
+				actor: request.actor,
+			})) as Record<string, unknown>;
+		}
+		if (request.model === 'task') {
+			return (await this.createTask({
+				id: typeof normalizedRequest.data.id === 'string' ? normalizedRequest.data.id : undefined,
+				workDayId: String(normalizedRequest.data.workDayId ?? normalizedRequest.data.work_day_id ?? ''),
+				agentId: String(normalizedRequest.data.agentId ?? normalizedRequest.data.agent_id ?? ''),
+				type: String(normalizedRequest.data.type ?? ''),
+				state: typeof normalizedRequest.data.state === 'string' ? normalizedRequest.data.state : 'pending',
+				priority: Number(normalizedRequest.data.priority ?? 0),
+				idempotencyKey: String(normalizedRequest.data.idempotencyKey ?? normalizedRequest.data.idempotency_key ?? ''),
+				payload: ((normalizedRequest.data.payload as Record<string, unknown> | undefined) ?? normalizedRequest.data) as Record<string, unknown>,
+				payloadHash: typeof (normalizedRequest.data.payloadHash ?? normalizedRequest.data.payload_hash) === 'string' ? String(normalizedRequest.data.payloadHash ?? normalizedRequest.data.payload_hash) : null,
+				maxAttempts: Number(normalizedRequest.data.maxAttempts ?? normalizedRequest.data.max_attempts ?? 3),
+				availableAt: typeof (normalizedRequest.data.availableAt ?? normalizedRequest.data.available_at) === 'string' ? String(normalizedRequest.data.availableAt ?? normalizedRequest.data.available_at) : undefined,
+				graphVersion: typeof (normalizedRequest.data.graphVersion ?? normalizedRequest.data.graph_version) === 'string' ? String(normalizedRequest.data.graphVersion ?? normalizedRequest.data.graph_version) : null,
+				parentTaskId: typeof (normalizedRequest.data.parentTaskId ?? normalizedRequest.data.parent_task_id) === 'string' ? String(normalizedRequest.data.parentTaskId ?? normalizedRequest.data.parent_task_id) : null,
+				actor: request.actor,
+			})) as Record<string, unknown>;
+		}
+		if (request.model === 'report') {
+			return (await this.createReport({
+				id: typeof normalizedRequest.data.id === 'string' ? normalizedRequest.data.id : undefined,
+				workDayId: String(normalizedRequest.data.workDayId ?? normalizedRequest.data.work_day_id ?? ''),
+				kind: String(normalizedRequest.data.kind ?? 'workday_summary'),
+				body: ((normalizedRequest.data.body as Record<string, unknown> | undefined) ?? normalizedRequest.data) as Record<string, unknown>,
+				renderedRef: typeof (normalizedRequest.data.renderedRef ?? normalizedRequest.data.rendered_ref) === 'string' ? String(normalizedRequest.data.renderedRef ?? normalizedRequest.data.rendered_ref) : null,
+				sentAt: typeof (normalizedRequest.data.sentAt ?? normalizedRequest.data.sent_at) === 'string' ? String(normalizedRequest.data.sentAt ?? normalizedRequest.data.sent_at) : null,
+				actor: request.actor,
+			})) as Record<string, unknown>;
+		}
 		throw new Error(`Unsupported D1 create model "${request.model}".`);
 	}
 
@@ -720,6 +1132,44 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 		}
 		if (request.model === 'content_lease') {
 			return this.leases.update(normalizedRequest) as Promise<Record<string, unknown> | null>;
+		}
+		if (request.model === 'work_day') {
+			return this.closeWorkDay({
+				id: String(request.id ?? request.key ?? normalizedRequest.data.id ?? ''),
+				state: (normalizedRequest.data.state as 'completed' | 'cancelled' | 'failed' | undefined) ?? 'completed',
+				summary: normalizedRequest.data.summary as Record<string, unknown> | null | undefined,
+				actor: request.actor,
+			}) as Promise<Record<string, unknown> | null>;
+		}
+		if (request.model === 'task') {
+			const taskId = String(request.id ?? request.key ?? normalizedRequest.data.id ?? '');
+			if (normalizedRequest.data.state === 'completed') {
+				return this.completeTask({
+					id: taskId,
+					output: normalizedRequest.data.output as Record<string, unknown> | null | undefined,
+					outputRef: typeof normalizedRequest.data.outputRef === 'string' ? normalizedRequest.data.outputRef : null,
+					summary: normalizedRequest.data.summary as Record<string, unknown> | null | undefined,
+					actor: request.actor,
+				}) as Promise<Record<string, unknown> | null>;
+			}
+			if (normalizedRequest.data.state === 'failed') {
+				return this.failTask({
+					id: taskId,
+					errorCode: typeof normalizedRequest.data.errorCode === 'string' ? normalizedRequest.data.errorCode : null,
+					errorMessage: String(normalizedRequest.data.errorMessage ?? 'Task failed'),
+					retryable: Boolean(normalizedRequest.data.retryable),
+					nextVisibleAt: typeof normalizedRequest.data.nextVisibleAt === 'string' ? normalizedRequest.data.nextVisibleAt : null,
+					actor: request.actor,
+				}) as Promise<Record<string, unknown> | null>;
+			}
+			return this.recordTaskProgress({
+				id: taskId,
+				workerId: typeof normalizedRequest.data.workerId === 'string' ? normalizedRequest.data.workerId : null,
+				state: typeof normalizedRequest.data.state === 'string' ? normalizedRequest.data.state : undefined,
+				appendEvent: normalizedRequest.data.appendEvent as { kind: string; data?: Record<string, unknown> } | null | undefined,
+				patch: normalizedRequest.data.patch as Record<string, unknown> | undefined,
+				actor: request.actor,
+			}) as Promise<Record<string, unknown> | null>;
 		}
 		throw new Error(`Unsupported D1 update model "${request.model}".`);
 	}
@@ -758,5 +1208,56 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 
 	releaseAllLeases() {
 		return this.leases.releaseAll();
+	}
+
+	startWorkDay(request: SdkStartWorkDayRequest) {
+		return this.operational.startWorkDay(request);
+	}
+
+	closeWorkDay(request: SdkCloseWorkDayRequest) {
+		return this.operational.closeWorkDay(request);
+	}
+
+	createTask(request: SdkCreateTaskRequest) {
+		return this.operational.createTask(request);
+	}
+
+	claimTask(request: SdkClaimTaskRequest) {
+		return this.operational.claimTask(request);
+	}
+
+	recordTaskProgress(request: SdkTaskProgressRequest) {
+		return this.operational.recordTaskProgress(request);
+	}
+
+	completeTask(request: SdkCompleteTaskRequest) {
+		return this.operational.completeTask(request);
+	}
+
+	failTask(request: SdkFailTaskRequest) {
+		return this.operational.failTask(request);
+	}
+
+	appendTaskEvent(request: SdkAppendTaskEventRequest) {
+		return this.operational.appendTaskEvent(request);
+	}
+
+	searchTasks(request: SdkTaskSearchRequest) {
+		return this.operational.searchTasks(request);
+	}
+
+	createReport(request: SdkCreateReportRequest) {
+		return this.operational.createReport(request);
+	}
+
+	async getManagerContext(taskId: string) {
+		const task = await this.operational.getTask(taskId);
+		const workDay = task ? await this.operational.getWorkDay(task.workDayId) : null;
+		return {
+			task,
+			workDay,
+			agent: null,
+			graph: workDay?.graphVersion ? { graphVersion: workDay.graphVersion } : null,
+		};
 	}
 }

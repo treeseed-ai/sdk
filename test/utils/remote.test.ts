@@ -25,7 +25,29 @@ siteUrl: https://example.com
 contactEmail: test@example.com
 cloudflare:
   accountId: account-123
+  gatewayWorkerName: treeseed-agent-gateway
+  queueName: agent-work
+  dlqName: agent-work-dlq
 services:
+  gateway:
+    enabled: true
+    provider: cloudflare
+    cloudflare:
+      workerName: treeseed-agent-gateway
+  manager:
+    enabled: true
+    provider: railway
+    railway:
+      projectName: treeseed-core
+      serviceName: treeseed-manager
+      rootDir: packages/agent
+  worker:
+    enabled: true
+    provider: railway
+    railway:
+      projectName: treeseed-core
+      serviceName: treeseed-worker
+      rootDir: packages/agent
   api:
     enabled: true
     provider: railway
@@ -128,9 +150,14 @@ describe('remote Treeseed support', () => {
 		const deployConfig = loadCliDeployConfig(tenantRoot);
 		const state = loadDeployState(tenantRoot, deployConfig, { scope: 'staging' });
 
+		expect(deployConfig.cloudflare.queueName).toBe('agent-work');
 		expect(state.services.api.enabled).toBe(true);
 		expect(state.services.api.serviceName).toBe('treeseed-api');
 		expect(state.services.api.publicBaseUrl).toBe('https://staging-api.example.com');
 		expect(state.services.agents.publicBaseUrl).toBe('https://staging-agents.example.com');
+		expect(state.services.gateway.workerName).toBe('treeseed-agent-gateway');
+		expect(state.services.manager.serviceName).toBe('treeseed-manager');
+		expect(state.services.worker.serviceName).toBe('treeseed-worker');
+		expect(state.queues.agentWork.name).toBe('agent-work');
 	});
 });

@@ -30,6 +30,7 @@ const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 	},
 	site: 'default',
 };
+const TRESEED_MANAGED_SERVICE_KEYS = ['api', 'agents', 'gateway', 'manager', 'worker', 'workdayStart', 'workdayReport'];
 
 function parseServiceEnvironmentConfig(value) {
 	const record = optionalRecord(value, 'service environment') ?? {};
@@ -46,12 +47,16 @@ function parseManagedServiceConfig(value, label) {
 		return undefined;
 	}
 	const railway = optionalRecord(record.railway, `${label}.railway`) ?? {};
+	const cloudflare = optionalRecord(record.cloudflare, `${label}.cloudflare`) ?? {};
 	const environments = optionalRecord(record.environments, `${label}.environments`) ?? {};
 	return {
 		enabled: record.enabled === undefined ? undefined : optionalBoolean(record.enabled, `${label}.enabled`),
 		provider: optionalString(record.provider),
 		rootDir: optionalString(record.rootDir),
 		publicBaseUrl: optionalString(record.publicBaseUrl),
+		cloudflare: {
+			workerName: optionalString(cloudflare.workerName),
+		},
 		railway: {
 			projectId: optionalString(railway.projectId),
 			projectName: optionalString(railway.projectName),
@@ -74,10 +79,12 @@ function parseManagedServicesConfig(value) {
 	if (!record) {
 		return undefined;
 	}
-	return {
-		api: parseManagedServiceConfig(record.api, 'services.api'),
-		agents: parseManagedServiceConfig(record.agents, 'services.agents'),
-	};
+	return Object.fromEntries(
+		TRESEED_MANAGED_SERVICE_KEYS.map((serviceKey) => [
+			serviceKey,
+			parseManagedServiceConfig(record[serviceKey], `services.${serviceKey}`),
+		]),
+	);
 }
 
 export const packageRoot = resolve(treeseedRuntimeRoot, '..', '..');
@@ -256,6 +263,11 @@ function parseFallbackDeployConfig(configPath) {
 				?? optionalString(process.env.CLOUDFLARE_ACCOUNT_ID)
 				?? 'replace-with-cloudflare-account-id',
 			workerName: optionalString(cloudflare.workerName),
+			gatewayWorkerName: optionalString(cloudflare.gatewayWorkerName),
+			queueName: optionalString(cloudflare.queueName),
+			dlqName: optionalString(cloudflare.dlqName),
+			d1Binding: optionalString(cloudflare.d1Binding),
+			queueBinding: optionalString(cloudflare.queueBinding),
 		},
 		plugins: parsePluginReferences(record.plugins),
 		providers: {

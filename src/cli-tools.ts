@@ -1,8 +1,13 @@
-import {
-	AGENT_CLI_ALLOW_TOOLS,
-	type AgentCliAllowTool,
-	type AgentCliOptions,
+import type {
+	AgentCliAllowTool,
+	AgentCliOptions,
 } from './types/agents.ts';
+
+const AGENT_CLI_ALLOW_TOOLS = [
+	'shell(git)',
+	'shell(npm)',
+	'web',
+] as const;
 
 const ALLOWED_TOOL_SET = new Set<string>(AGENT_CLI_ALLOW_TOOLS);
 

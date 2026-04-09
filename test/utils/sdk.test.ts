@@ -452,4 +452,63 @@ describe('agent sdk', () => {
 		expect(latest.payload.item?.id).toBe(3);
 		expect(oldest.payload.item?.id).toBe(1);
 	});
+
+	it('supports work-day and task lifecycle operations', async () => {
+		const sdk = new AgentSdk({
+			repoRoot: sdkFixtureRoot,
+			database: new MemoryAgentDatabase(),
+		});
+
+		const workDay = await sdk.startWorkDay({
+			projectId: 'treeseed-market',
+			capacityBudget: 50,
+			actor: 'test',
+		});
+		expect(workDay.payload?.projectId).toBe('treeseed-market');
+
+		const task = await sdk.createTask({
+			workDayId: String(workDay.payload?.id),
+			agentId: 'market-curator',
+			type: 'agent_root',
+			idempotencyKey: `${workDay.payload?.id}:market-curator`,
+			payload: { hello: 'world' },
+			actor: 'test',
+		});
+		expect(task.payload?.agentId).toBe('market-curator');
+
+		const claimed = await sdk.claimTask({
+			id: String(task.payload?.id),
+			workerId: 'worker-1',
+			leaseSeconds: 60,
+			actor: 'test',
+		});
+		expect(claimed.payload?.state).toBe('claimed');
+
+		await sdk.recordTaskProgress({
+			id: String(task.payload?.id),
+			state: 'running',
+			appendEvent: { kind: 'worker_started', data: { workerId: 'worker-1' } },
+			actor: 'test',
+		});
+
+		const completed = await sdk.completeTask({
+			id: String(task.payload?.id),
+			output: { ok: true },
+			summary: { status: 'done' },
+			actor: 'test',
+		});
+		expect(completed.payload?.state).toBe('completed');
+
+		const report = await sdk.createReport({
+			workDayId: String(workDay.payload?.id),
+			kind: 'workday_summary',
+			body: { totalTasks: 1 },
+			actor: 'test',
+		});
+		expect(report.payload?.kind).toBe('workday_summary');
+
+		const context = await sdk.getManagerContext(String(task.payload?.id));
+		expect(context.payload.task?.id).toBe(task.payload?.id);
+		expect(context.payload.workDay?.id).toBe(workDay.payload?.id);
+	});
 });
