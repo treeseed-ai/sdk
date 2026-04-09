@@ -18,7 +18,7 @@ export const handleSave: TreeseedCommandHandler = (invocation, context) => {
 	const commandName = invocation.commandName || 'save';
 	const optionsHotfix = invocation.args.hotfix === true;
 	const message = invocation.positionals.join(' ').trim();
-	const root = workspaceRoot();
+	const root = workspaceRoot(context.cwd);
 	const gitRoot = repoRoot(root);
 	const deployConfig = loadCliDeployConfig(root);
 	const branch = currentBranch(gitRoot);

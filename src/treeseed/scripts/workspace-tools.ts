@@ -47,8 +47,41 @@ function expandWorkspacePattern(root, pattern) {
 	return results;
 }
 
-export function workspaceRoot() {
-	return process.cwd();
+export function workspaceRoot(startCwd = process.cwd()) {
+	return findNearestTreeseedWorkspaceRoot(startCwd) ?? resolve(startCwd);
+}
+
+export function findNearestTreeseedRoot(startCwd = process.cwd()) {
+	let current = resolve(startCwd);
+
+	while (true) {
+		if (existsSync(resolve(current, 'treeseed.site.yaml'))) {
+			return current;
+		}
+
+		const parent = resolve(current, '..');
+		if (parent === current) {
+			return null;
+		}
+		current = parent;
+	}
+}
+
+export function isWorkspaceRoot(root = process.cwd()) {
+	try {
+		return workspacePatterns(root).length > 0;
+	} catch {
+		return false;
+	}
+}
+
+export function findNearestTreeseedWorkspaceRoot(startCwd = process.cwd()) {
+	const tenantRoot = findNearestTreeseedRoot(startCwd);
+	if (!tenantRoot) {
+		return null;
+	}
+
+	return isWorkspaceRoot(tenantRoot) ? tenantRoot : null;
 }
 
 export function readJson(filePath) {
@@ -67,10 +100,6 @@ export function workspacePatterns(root = workspaceRoot()) {
 			? packageJson.workspaces.packages
 			: [];
 	return workspaces.filter((value) => typeof value === 'string' && value.trim().length > 0);
-}
-
-export function isWorkspaceRoot(root = workspaceRoot()) {
-	return workspacePatterns(root).length > 0;
 }
 
 export function workspacePackages(root = workspaceRoot()) {

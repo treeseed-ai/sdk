@@ -80,14 +80,9 @@ export function validateRailwayServiceConfiguration(tenantRoot, scope) {
 
 export function validateRailwayDeployPrerequisites(tenantRoot, scope) {
 	const services = validateRailwayServiceConfiguration(tenantRoot, scope);
-	const result = runRailway(['whoami'], {
-		cwd: tenantRoot,
-		capture: true,
-		allowFailure: true,
-	});
-	const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-	if (result.status !== 0 || /not logged in|unauthorized|error|failed/i.test(output)) {
-		throw new Error('Authenticate Railway first with `railway login`.');
+	const token = process.env.RAILWAY_API_TOKEN;
+	if (typeof token !== 'string' || token.trim().length === 0) {
+		throw new Error('Configure RAILWAY_API_TOKEN before deploying Railway-managed services.');
 	}
 	return services;
 }

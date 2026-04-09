@@ -41,7 +41,7 @@ export function validateSaveAutomationPrerequisites({ cwd }) {
 
 	const preflight = collectCliPreflight({ cwd, requireAuth: true });
 	if (!preflight.ok) {
-		const error = new Error('Treeseed save prerequisites failed: GitHub/Wrangler auth is not ready.');
+		const error = new Error('Treeseed save prerequisites failed: required GitHub, Cloudflare, or Railway tokens are missing.');
 		error.kind = 'auth_failed';
 		error.details = preflight;
 		throw error;

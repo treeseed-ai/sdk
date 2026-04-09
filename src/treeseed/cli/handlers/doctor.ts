@@ -10,10 +10,11 @@ export const handleDoctor: TreeseedCommandHandler = (invocation, context) => {
 		: [];
 	const state = resolveTreeseedWorkflowState(context.cwd);
 	const preflight = collectCliPreflight({ cwd: context.cwd, requireAuth: false });
+	const railwayManagedServicesEnabled = Object.values(state.managedServices).some((service) => service.enabled);
 	const mustFixNow: string[] = [];
 	const optional: string[] = [];
 
-	if (!state.workspaceRoot) mustFixNow.push('Run Treeseed from the workspace root so package commands and workflow state resolve correctly.');
+	if (!state.workspaceRoot) mustFixNow.push('Run Treeseed inside a Treeseed workspace so package commands and workflow state can resolve correctly.');
 	if (!state.repoRoot) mustFixNow.push('Initialize or clone the git repository before using save, close, deploy, or release flows.');
 	if (!state.deployConfigPresent) mustFixNow.push('Create or restore treeseed.site.yaml so the tenant contract can be loaded.');
 	if (preflight.missingCommands.includes('git')) mustFixNow.push('Install Git.');
@@ -22,15 +23,15 @@ export const handleDoctor: TreeseedCommandHandler = (invocation, context) => {
 
 	if (!state.files.envLocal) optional.push('Create `.env.local` or run `treeseed config --environment local` to generate it.');
 	if (!state.files.devVars) optional.push('Generate `.dev.vars` by running `treeseed config --environment local`.');
-	if (!state.auth.gh) optional.push('Authenticate `gh` if you want GitHub-backed save or release automation.');
-	if (!state.auth.wrangler) optional.push('Authenticate `wrangler` before staging, preview, or production deployment work.');
-	if (!state.auth.railway && (state.managedServices.api.enabled || state.managedServices.agents.enabled)) {
-		optional.push('Authenticate `railway` before deploying the managed API or agents services.');
+	if (!state.auth.gh) optional.push('Configure `GH_TOKEN` for GitHub CLI automation and Copilot-backed workflows.');
+	if (!state.auth.wrangler) optional.push('Configure `CLOUDFLARE_API_TOKEN` before staging, preview, or production deployment work.');
+	if (!state.auth.railway && railwayManagedServicesEnabled) {
+		optional.push('Configure `RAILWAY_API_TOKEN` before deploying the managed Railway services.');
 	}
 	if (!state.auth.remoteApi && state.managedServices.api.enabled) {
 		optional.push('Run `treeseed auth:login` so the CLI can use the configured remote API.');
 	}
-	if (!state.auth.copilot) optional.push('Configure Copilot CLI only if you rely on local Copilot-assisted workflows.');
+	if (!state.auth.copilot) optional.push('Configure `GH_TOKEN` if you rely on local Copilot-assisted workflows.');
 
 	return guidedResult({
 		command: 'doctor',

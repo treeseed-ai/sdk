@@ -108,7 +108,7 @@ export function renderTreeseedHelp(commandName?: string | null) {
 			]),
 			'',
 			'Notes',
-			'  - Workspace-only commands must be run from a Treeseed workspace root.',
+			'  - Workspace-only commands must be run inside a Treeseed workspace; the CLI will resolve the project root from ancestor directories when possible.',
 			'  - Use `treeseed setup`, `treeseed work`, `treeseed ship`, `treeseed publish`, `treeseed promote`, and `treeseed teardown` for the simplified workflow.',
 			'  - `config`, `deploy`, `start`, `save`, `release`, `close`, and `destroy` remain available as compatibility commands.',
 			'  - Use `--json` on guidance and main workflow commands when an AI agent or script needs machine-readable output.',

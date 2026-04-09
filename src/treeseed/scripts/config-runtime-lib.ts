@@ -621,6 +621,7 @@ export function collectTreeseedConfigSeedValues(tenantRoot, scope) {
 	return {
 		...readEnvFileIfPresent(resolve(tenantRoot, '.env.local')),
 		...readEnvFileIfPresent(resolve(tenantRoot, '.dev.vars')),
+		...Object.fromEntries(Object.entries(process.env).map(([key, value]) => [key, value ?? undefined])),
 		...resolveTreeseedMachineEnvironmentValues(tenantRoot, scope),
 	};
 }
@@ -727,6 +728,22 @@ function runGh(args, { cwd, dryRun = false, input } = {}) {
 	return result;
 }
 
+function runRailway(args, { cwd, dryRun = false, input } = {}) {
+	if (dryRun) {
+		return { status: 0, stdout: '', stderr: '' };
+	}
+	const result = spawnSync('railway', args, {
+		cwd,
+		stdio: input !== undefined ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
+		encoding: 'utf8',
+		input,
+	});
+	if (result.status !== 0) {
+		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `railway ${args.join(' ')} failed`);
+	}
+	return result;
+}
+
 function listGitHubNames(command, repository, tenantRoot) {
 	const result = runGh([command, 'list', '--repo', repository, '--json', 'name'], { cwd: tenantRoot });
 	return new Set((JSON.parse(result.stdout || '[]')).map((entry) => entry?.name).filter(Boolean));
@@ -801,22 +818,48 @@ export function syncTreeseedCloudflareEnvironment({ tenantRoot, scope = 'prod', 
 export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dryRun = false } = {}) {
 	const config = syncManagedServiceSettingsFromDeployConfig(tenantRoot);
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
-	const services = ['api', 'agents']
+	const values = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
+	const registry = collectTreeseedEnvironmentContext(tenantRoot);
+	const railwaySecretNames = registry.entries
+		.filter((entry) => entry.scopes.includes(scope) && entry.targets.includes('railway-secret'))
+		.map((entry) => entry.id)
+		.filter((key) => typeof values[key] === 'string' && values[key].length > 0);
+	const services = ['api', 'agents', 'manager', 'worker', 'workdayStart', 'workdayReport']
 		.map((serviceKey) => {
 			const service = deployConfig.services?.[serviceKey];
 			if (!service || service.enabled === false || (service.provider ?? 'railway') !== 'railway') {
 				return null;
 			}
 			const environment = service.environments?.[scope];
+			const fallbackServiceName =
+				serviceKey === 'api'
+					? config.settings.services.railway.apiServiceName
+					: serviceKey === 'agents'
+						? config.settings.services.railway.agentsServiceName
+						: '';
+			const defaultRootDir = serviceKey === 'api' ? 'packages/api' : 'packages/agent';
 			return {
 				service: serviceKey,
 				projectName: service.railway?.projectName ?? config.settings.services.railway.projectName,
-				serviceName: service.railway?.serviceName ?? config.settings.services.railway[serviceKey === 'api' ? 'apiServiceName' : 'agentsServiceName'],
+				serviceName: service.railway?.serviceName ?? fallbackServiceName,
+				serviceId: service.railway?.serviceId ?? '',
+				rootDir: resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? defaultRootDir),
 				baseUrl: environment?.baseUrl ?? service.publicBaseUrl ?? '(unset)',
+				environmentName: environment?.railwayEnvironment ?? scope,
+				secrets: railwaySecretNames,
 				dryRun,
 			};
 		})
 		.filter(Boolean);
+
+	for (const service of services) {
+		for (const key of service.secrets) {
+			runRailway(
+				['variable', 'set', '--service', service.serviceName || service.serviceId, '--environment', service.environmentName, '--stdin', '--skip-deploys', key],
+				{ cwd: service.rootDir, dryRun, input: values[key] },
+			);
+		}
+	}
 
 	return {
 		scope,
@@ -852,7 +895,7 @@ export async function runTreeseedConfigWizard({
 }) {
 	ensureTreeseedGitignoreEntries(tenantRoot);
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
-	const groups = ['local-development', 'forms', 'smtp', 'cloudflare'];
+	const groups = ['auth', 'local-development', 'forms', 'smtp', 'cloudflare'];
 	const summary = {
 		scopes,
 		updated: [],
@@ -872,8 +915,9 @@ export async function runTreeseedConfigWizard({
 		write(`\nTreeseed configuration for ${scope}`);
 		write(`Tenant: ${registry.context.deployConfig.name} (${registry.context.deployConfig.slug})`);
 		if (authStatus) {
-			write(`GitHub auth: ${authStatus.gh?.authenticated ? 'ready' : 'not ready'}`);
-			write(`Wrangler auth: ${authStatus.wrangler?.authenticated ? 'ready' : 'not ready'}`);
+			write(`GitHub token: ${authStatus.gh?.authenticated ? 'ready' : 'missing'}`);
+			write(`Cloudflare token: ${authStatus.wrangler?.authenticated ? 'ready' : 'missing'}`);
+			write(`Railway token: ${authStatus.railway?.authenticated ? 'ready' : 'missing'}`);
 		}
 
 		for (const group of groups) {

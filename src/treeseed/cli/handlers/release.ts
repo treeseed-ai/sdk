@@ -19,7 +19,7 @@ function bumpRootPackageJson(root: string, level: string) {
 export const handleRelease: TreeseedCommandHandler = (invocation, context) => {
 	const commandName = invocation.commandName || 'release';
 	const level = ['major', 'minor', 'patch'].find((candidate) => invocation.args[candidate] === true);
-	const root = workspaceRoot();
+	const root = workspaceRoot(context.cwd);
 	const gitRoot = repoRoot(root);
 
 	prepareReleaseBranches(root);

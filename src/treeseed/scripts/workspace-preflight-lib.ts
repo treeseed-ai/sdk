@@ -1,6 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { createTempDir } from './workspace-tools.ts';
 
@@ -38,77 +37,50 @@ export function createWranglerCommandEnv(overrides = {}) {
 	};
 }
 
-export function parseGitHubAuthStatus(output, status) {
-	return {
-		authenticated: status === 0 && /Logged in|Active account:/i.test(output),
-		detail: output.trim(),
-	};
-}
-
-export function parseWranglerWhoAmI(output, status) {
-	return {
-		authenticated: status === 0 && !/error|failed/i.test(output),
-		detail: output.trim(),
-	};
-}
-
-export function parseRailwayWhoAmI(output, status) {
-	return {
-		authenticated: status === 0 && !/error|failed|not logged in|unauthorized/i.test(output),
-		detail: output.trim(),
-	};
-}
-
-export function parseCopilotSessionStatus(output, status) {
-	const normalized = output.trim();
-	return {
-		configured: status === 0 || /copilot_github_token|github_token|gh_token/i.test(normalized),
-		detail: normalized,
-	};
-}
-
-function copilotSessionProbe() {
-	const configDir = process.env.COPILOT_CONFIG_DIR
-		? resolve(process.env.COPILOT_CONFIG_DIR)
-		: resolve(process.env.HOME ?? tmpdir(), '.copilot');
-	const authPath = resolve(configDir, 'auth.json');
-	const envConfigured = ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'].some((key) => {
+function envTokenStatus(keys, label) {
+	const foundKey = keys.find((key) => {
 		const value = process.env[key];
-		return typeof value === 'string' && value.length > 0;
-	});
+		return typeof value === 'string' && value.trim().length > 0;
+	}) ?? null;
 
-	if (envConfigured) {
-		return {
-			status: 0,
-			output: 'Copilot token environment variable detected.',
-		};
-	}
+	return {
+		ready: Boolean(foundKey),
+		detail: foundKey
+			? `${label} token detected from ${foundKey}.`
+			: `${label} token is not configured. Set ${keys.join(' or ')}.`,
+		source: foundKey ? 'env' : 'missing',
+	};
+}
 
-	if (!existsSync(authPath)) {
-		return {
-			status: 1,
-			output: `No Copilot token environment variable detected and ${authPath} was not found.`,
-		};
-	}
+export function parseGitHubAuthStatus() {
+	return {
+		authenticated: envTokenStatus(['GH_TOKEN'], 'GitHub').ready,
+		detail: envTokenStatus(['GH_TOKEN'], 'GitHub').detail,
+	};
+}
 
-	try {
-		const contents = readFileSync(authPath, 'utf8');
-		if (contents.trim().length === 0) {
-			return {
-				status: 1,
-				output: `${authPath} is empty.`,
-			};
-		}
-		return {
-			status: 0,
-			output: `Copilot auth configuration detected at ${authPath}.`,
-		};
-	} catch (error) {
-		return {
-			status: 1,
-			output: error instanceof Error ? error.message : String(error),
-		};
-	}
+export function parseWranglerWhoAmI() {
+	return {
+		authenticated: envTokenStatus(['CLOUDFLARE_API_TOKEN'], 'Cloudflare').ready,
+		detail: envTokenStatus(['CLOUDFLARE_API_TOKEN'], 'Cloudflare').detail,
+	};
+}
+
+export function parseRailwayWhoAmI() {
+	return {
+		authenticated: envTokenStatus(['RAILWAY_API_TOKEN'], 'Railway').ready,
+		detail: envTokenStatus(['RAILWAY_API_TOKEN'], 'Railway').detail,
+	};
+}
+
+export function parseCopilotSessionStatus() {
+	const status = envTokenStatus(['GH_TOKEN'], 'GitHub');
+	return {
+		configured: status.ready,
+		detail: status.ready
+			? 'GitHub token detected from GH_TOKEN for Copilot-backed workflows.'
+			: 'GitHub token is not configured. Set GH_TOKEN for Copilot-backed workflows.',
+	};
 }
 
 export function collectCliPreflight({ cwd = process.cwd(), requireAuth = false } = {}) {
@@ -132,30 +104,25 @@ export function collectCliPreflight({ cwd = process.cwd(), requireAuth = false }
 	};
 
 	if (binaries.gh) {
-		const result = runCapture('gh', ['auth', 'status'], { cwd });
-		checks.auth.gh = parseGitHubAuthStatus(`${result.stdout}\n${result.stderr}`.trim(), result.status);
+		checks.auth.gh = parseGitHubAuthStatus();
 	} else {
 		checks.auth.gh = { authenticated: false, detail: 'GitHub CLI is not installed.' };
 	}
 
 	if (binaries.wrangler) {
-		const env = createWranglerCommandEnv();
-		const result = runCapture('wrangler', ['whoami'], { cwd, env, timeoutMs: 60000 });
-		checks.auth.wrangler = parseWranglerWhoAmI(`${result.stdout}\n${result.stderr}`.trim(), result.status);
+		checks.auth.wrangler = parseWranglerWhoAmI();
 	} else {
 		checks.auth.wrangler = { authenticated: false, detail: 'Wrangler CLI is not installed.' };
 	}
 
 	if (binaries.railway) {
-		const result = runCapture('railway', ['whoami'], { cwd, timeoutMs: 60000 });
-		checks.auth.railway = parseRailwayWhoAmI(`${result.stdout}\n${result.stderr}`.trim(), result.status);
+		checks.auth.railway = parseRailwayWhoAmI();
 	} else {
 		checks.auth.railway = { authenticated: false, detail: 'Railway CLI is not installed.' };
 	}
 
 	if (binaries.copilot) {
-		const probe = copilotSessionProbe();
-		checks.auth.copilot = parseCopilotSessionStatus(probe.output, probe.status);
+		checks.auth.copilot = parseCopilotSessionStatus();
 	} else {
 		checks.auth.copilot = { configured: false, detail: 'Copilot CLI is not installed.' };
 	}

@@ -137,6 +137,10 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 		managedServices: {
 			api: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
 			agents: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
+			manager: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
+			worker: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
+			workdayStart: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
+			workdayReport: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
 		},
 		files: {
 			treeseedConfig: tenantRoot,
@@ -173,10 +177,10 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 						url: typeof latestHistory?.url === 'string' ? latestHistory.url : (deployState.lastDeployedUrl ?? null),
 					});
 				}
-				for (const serviceKey of ['api', 'agents']) {
-					const service = deployState.services?.[serviceKey];
-					if (!service) continue;
-					state.managedServices[serviceKey] = {
+					for (const serviceKey of ['api', 'agents', 'manager', 'worker', 'workdayStart', 'workdayReport']) {
+						const service = deployState.services?.[serviceKey];
+						if (!service) continue;
+						state.managedServices[serviceKey] = {
 						enabled: service.enabled === true,
 						initialized: service.initialized === true,
 						lastDeploymentTimestamp: service.lastDeploymentTimestamp ?? null,
@@ -206,7 +210,7 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 export function recommendTreeseedNextSteps(state: TreeseedWorkflowState): TreeseedWorkflowRecommendation[] {
 	const recommendations: TreeseedWorkflowRecommendation[] = [];
 	if (!state.workspaceRoot) {
-		return [{ command: 'cd docs && treeseed doctor', reason: 'Switch to the Treeseed workspace root before using the guided workflow.' }];
+		return [{ command: 'treeseed doctor', reason: 'Run this command from inside a Treeseed workspace so the CLI can resolve the project root.' }];
 	}
 	if (!state.deployConfigPresent) {
 		return [{ command: 'treeseed init <directory>', reason: 'Create a new Treeseed tenant before configuring or releasing anything.' }];
