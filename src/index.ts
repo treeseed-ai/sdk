@@ -1,4 +1,5 @@
 export { AgentSdk, ScopedAgentSdk } from './sdk.ts';
+export { ContentGraphRuntime } from './graph.ts';
 export {
 	BUILTIN_MODEL_REGISTRY,
 	MODEL_REGISTRY,
@@ -54,6 +55,18 @@ export type {
 	SdkCursorEntity,
 	SdkFilterCondition,
 	SdkFollowRequest,
+	SdkGraphEdge,
+	SdkGraphEdgeType,
+	SdkGraphModelConfig,
+	SdkGraphNode,
+	SdkGraphNodeType,
+	SdkGraphPathExplanation,
+	SdkGraphQueryOptions,
+	SdkGraphRefreshPayload,
+	SdkGraphRefreshRequest,
+	SdkGraphSearchOptions,
+	SdkGraphSearchResult,
+	SdkGraphTraversalResult,
 	SdkGetRequest,
 	SdkJsonEnvelope,
 	SdkLeaseEntity,

@@ -3,6 +3,7 @@ import { resolveSdkRepoRoot } from './runtime.ts';
 import { validateModelFieldAliases } from './sdk-fields.ts';
 import type {
 	SdkBuiltinModelName,
+	SdkGraphModelConfig,
 	SdkModelFieldBinding,
 	SdkModelDefinition,
 	SdkModelName,
@@ -30,6 +31,10 @@ function deriveFieldLists(fields: Record<string, SdkModelFieldBinding>) {
 	};
 }
 
+function graph(config: SdkGraphModelConfig): SdkGraphModelConfig {
+	return config;
+}
+
 export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinModelName, SdkModelDefinition> {
 	const root = contentRoot(repoRoot);
 
@@ -39,6 +44,11 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			aliases: ['pages'],
 			storage: 'content',
 			operations: ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'],
+			graph: graph({
+				entityType: 'Page',
+				titleField: 'title',
+				enableSections: true,
+			}),
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
 				slug: field('slug', { filterable: true, contentKeys: ['slug'], writeContentKey: 'slug' }),
@@ -64,6 +74,12 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			aliases: ['notes'],
 			storage: 'content',
 			operations: ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'],
+			graph: graph({
+				entityType: 'Note',
+				titleField: 'title',
+				tagField: 'tags',
+				enableSections: true,
+			}),
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
 				status: field('status', { filterable: true, contentKeys: ['status'], writeContentKey: 'status' }),
@@ -83,6 +99,17 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			aliases: ['questions'],
 			storage: 'content',
 			operations: ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'],
+			graph: graph({
+				entityType: 'Question',
+				titleField: 'title',
+				tagField: 'tags',
+				enableSections: true,
+				referenceFields: [
+					{ field: 'related_objectives', edgeType: 'REFERENCES', targetModels: ['objective'], multiple: true },
+					{ field: 'related_books', edgeType: 'REFERENCES', targetModels: ['book'], multiple: true },
+					{ field: 'primary_contributor', edgeType: 'REFERENCES', targetModels: ['person', 'agent'] },
+				],
+			}),
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
 				status: field('status', { filterable: true, contentKeys: ['status'], writeContentKey: 'status' }),
@@ -104,6 +131,12 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			aliases: ['books'],
 			storage: 'content',
 			operations: ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'],
+			graph: graph({
+				entityType: 'Book',
+				titleField: 'title',
+				tagField: 'tags',
+				enableSections: true,
+			}),
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
 				slug: field('slug', { filterable: true, contentKeys: ['slug'], writeContentKey: 'slug' }),
@@ -123,6 +156,12 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			aliases: ['knowledge-base', 'docs'],
 			storage: 'content',
 			operations: ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'],
+			graph: graph({
+				entityType: 'Knowledge',
+				titleField: 'title',
+				tagField: 'tags',
+				enableSections: true,
+			}),
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
 				tags: field('tags', { filterable: true, comparableAs: 'string_array', contentKeys: ['tags'], writeContentKey: 'tags' }),
@@ -140,6 +179,17 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			aliases: ['objectives'],
 			storage: 'content',
 			operations: ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'],
+			graph: graph({
+				entityType: 'Objective',
+				titleField: 'title',
+				tagField: 'tags',
+				enableSections: true,
+				referenceFields: [
+					{ field: 'related_questions', edgeType: 'REFERENCES', targetModels: ['question'], multiple: true },
+					{ field: 'related_books', edgeType: 'REFERENCES', targetModels: ['book'], multiple: true },
+					{ field: 'primary_contributor', edgeType: 'REFERENCES', targetModels: ['person', 'agent'] },
+				],
+			}),
 			fields: {
 				title: field('title', { filterable: true, sortable: true, contentKeys: ['title'], writeContentKey: 'title' }),
 				status: field('status', { filterable: true, contentKeys: ['status'], writeContentKey: 'status' }),
@@ -161,6 +211,16 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			aliases: ['people', 'persons'],
 			storage: 'content',
 			operations: ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'],
+			graph: graph({
+				entityType: 'Person',
+				titleField: 'name',
+				tagField: 'tags',
+				enableSections: true,
+				referenceFields: [
+					{ field: 'related_questions', edgeType: 'REFERENCES', targetModels: ['question'], multiple: true },
+					{ field: 'related_objectives', edgeType: 'REFERENCES', targetModels: ['objective'], multiple: true },
+				],
+			}),
 			fields: {
 				name: field('name', { filterable: true, sortable: true, contentKeys: ['name'], writeContentKey: 'name' }),
 				role: field('role', { filterable: true, contentKeys: ['role'], writeContentKey: 'role' }),
@@ -215,6 +275,16 @@ export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinM
 			aliases: ['agents'],
 			storage: 'content',
 			operations: ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'],
+			graph: graph({
+				entityType: 'Agent',
+				titleField: 'name',
+				tagField: 'tags',
+				enableSections: true,
+				referenceFields: [
+					{ field: 'related_questions', edgeType: 'REFERENCES', targetModels: ['question'], multiple: true },
+					{ field: 'related_objectives', edgeType: 'REFERENCES', targetModels: ['objective'], multiple: true },
+				],
+			}),
 			fields: {
 				name: field('name', { sortable: true, contentKeys: ['name'], writeContentKey: 'name' }),
 				slug: field('slug', { filterable: true, sortable: true, contentKeys: ['slug'], writeContentKey: 'slug' }),

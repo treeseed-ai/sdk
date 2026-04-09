@@ -3,6 +3,7 @@ import { resolveSdkRepoRoot } from './runtime.ts';
 import { normalizeAgentCliOptions } from './cli-tools.ts';
 import { ContentStore } from './content-store.ts';
 import { CloudflareD1AgentDatabase, MemoryAgentDatabase, type AgentDatabase } from './d1-store.ts';
+import { ContentGraphRuntime } from './graph.ts';
 import { buildScopedModelRegistry, resolveModelDefinition } from './model-registry.ts';
 import type {
 	SdkAckMessageRequest,
@@ -15,6 +16,9 @@ import type {
 	SdkJsonEnvelope,
 	SdkLeaseReleaseRequest,
 	SdkMutationRequest,
+	SdkGraphQueryOptions,
+	SdkGraphRefreshRequest,
+	SdkGraphSearchOptions,
 	SdkPickRequest,
 	SdkRecordRunRequest,
 	SdkSearchRequest,
@@ -65,12 +69,14 @@ export class AgentSdk {
 	readonly database: AgentDatabase;
 	readonly content: ContentStore;
 	readonly models: SdkModelRegistry;
+	private readonly graph: ContentGraphRuntime;
 
 	constructor(options: AgentSdkOptions = {}) {
 		const repoRoot = resolveSdkRepoRoot(options.repoRoot);
 		this.models = options.modelRegistry ?? buildScopedModelRegistry(repoRoot, options.models);
 		this.database = options.database ?? new MemoryAgentDatabase();
 		this.content = new ContentStore(repoRoot, this.database, this.models);
+		this.graph = new ContentGraphRuntime(repoRoot, this.models);
 	}
 
 	static createLocal(options: {
@@ -241,6 +247,54 @@ export class AgentSdk {
 	scopeForAgent(agent: Pick<AgentRuntimeSpec, 'slug' | 'permissions'>) {
 		return new ScopedAgentSdk(this, agent.slug, agent.permissions);
 	}
+
+	refreshGraph(request?: SdkGraphRefreshRequest) {
+		return this.graph.refresh(request);
+	}
+
+	searchFiles(query: string, options?: SdkGraphSearchOptions) {
+		return this.graph.searchFiles(query, options);
+	}
+
+	searchSections(query: string, options?: SdkGraphSearchOptions) {
+		return this.graph.searchSections(query, options);
+	}
+
+	searchEntities(query: string, options?: SdkGraphSearchOptions) {
+		return this.graph.searchEntities(query, options);
+	}
+
+	getGraphNode(id: string) {
+		return this.graph.getNode(id);
+	}
+
+	getNeighbors(id: string, options?: SdkGraphQueryOptions) {
+		return this.graph.getNeighbors(id, options);
+	}
+
+	followReferences(id: string, options?: SdkGraphQueryOptions) {
+		return this.graph.followReferences(id, options);
+	}
+
+	getBacklinks(id: string, options?: SdkGraphQueryOptions) {
+		return this.graph.getBacklinks(id, options);
+	}
+
+	getRelated(id: string, options?: SdkGraphQueryOptions) {
+		return this.graph.getRelated(id, options);
+	}
+
+	getSubgraph(seedIds: string[], options?: SdkGraphQueryOptions) {
+		return this.graph.getSubgraph(seedIds, options);
+	}
+
+	resolveReference(reference: string, options?: { fromNodeId?: string; fromPath?: string; models?: string[] }) {
+		return this.graph.resolveReference(reference, options);
+	}
+
+	explainReferenceChain(fromId: string, toId: string) {
+		return this.graph.explainReferenceChain(fromId, toId);
+	}
 }
 
 export class ScopedAgentSdk {
@@ -255,6 +309,25 @@ export class ScopedAgentSdk {
 		if (!operationAllowed(this.permissions, normalized, operation)) {
 			throw new Error(`Agent "${this.actor}" is not allowed to ${operation} ${normalized}.`);
 		}
+	}
+
+	private allowedModelsFor(operation: string) {
+		return this.permissions
+			.filter((permission) => permission.operations.map(normalizeOperation).includes(normalizeOperation(operation) as AgentPermissionConfig['operations'][number]))
+			.map((permission) => resolveModelDefinition(permission.model, this.base.models).name);
+	}
+
+	private async assertGraphNodeAllowed(id: string, operation: 'search' | 'follow' | 'get') {
+		const node = await this.base.getGraphNode(id);
+		if (!node?.sourceModel) {
+			return node;
+		}
+		const allowedOps = operation === 'get' ? ['search', 'follow'] as const : [operation];
+		const permitted = allowedOps.some((op) => this.allowedModelsFor(op).includes(node.sourceModel!));
+		if (!permitted) {
+			throw new Error(`Agent "${this.actor}" is not allowed to ${operation} graph node ${id}.`);
+		}
+		return node;
 	}
 
 	get(request: SdkGetRequest) {
@@ -334,5 +407,69 @@ export class ScopedAgentSdk {
 
 	releaseAllLeases() {
 		return this.base.releaseAllLeases();
+	}
+
+	refreshGraph(request?: SdkGraphRefreshRequest) {
+		return this.base.refreshGraph(request);
+	}
+
+	searchFiles(query: string, options?: SdkGraphSearchOptions) {
+		const allowedModels = this.allowedModelsFor('search');
+		return this.base.searchFiles(query, { ...options, models: options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels });
+	}
+
+	searchSections(query: string, options?: SdkGraphSearchOptions) {
+		const allowedModels = this.allowedModelsFor('search');
+		return this.base.searchSections(query, { ...options, models: options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels });
+	}
+
+	searchEntities(query: string, options?: SdkGraphSearchOptions) {
+		const allowedModels = this.allowedModelsFor('search');
+		return this.base.searchEntities(query, { ...options, models: options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels });
+	}
+
+	async getGraphNode(id: string) {
+		return this.assertGraphNodeAllowed(id, 'get');
+	}
+
+	async getNeighbors(id: string, options?: SdkGraphQueryOptions) {
+		await this.assertGraphNodeAllowed(id, 'follow');
+		const allowedModels = this.allowedModelsFor('follow');
+		return this.base.getNeighbors(id, { ...options, models: options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels });
+	}
+
+	async followReferences(id: string, options?: SdkGraphQueryOptions) {
+		await this.assertGraphNodeAllowed(id, 'follow');
+		const allowedModels = this.allowedModelsFor('follow');
+		return this.base.followReferences(id, { ...options, models: options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels });
+	}
+
+	async getBacklinks(id: string, options?: SdkGraphQueryOptions) {
+		await this.assertGraphNodeAllowed(id, 'follow');
+		const allowedModels = this.allowedModelsFor('follow');
+		return this.base.getBacklinks(id, { ...options, models: options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels });
+	}
+
+	async getRelated(id: string, options?: SdkGraphQueryOptions) {
+		await this.assertGraphNodeAllowed(id, 'follow');
+		const allowedModels = this.allowedModelsFor('follow');
+		return this.base.getRelated(id, { ...options, models: options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels });
+	}
+
+	getSubgraph(seedIds: string[], options?: SdkGraphQueryOptions) {
+		const allowedModels = this.allowedModelsFor('follow');
+		return this.base.getSubgraph(seedIds, { ...options, models: options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels });
+	}
+
+	resolveReference(reference: string, options?: { fromNodeId?: string; fromPath?: string; models?: string[] }) {
+		const allowedModels = this.allowedModelsFor('follow');
+		return this.base.resolveReference(reference, { ...options, models: options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels });
+	}
+
+	explainReferenceChain(fromId: string, toId: string) {
+		return Promise.all([
+			this.assertGraphNodeAllowed(fromId, 'follow'),
+			this.assertGraphNodeAllowed(toId, 'follow'),
+		]).then(() => this.base.explainReferenceChain(fromId, toId));
 	}
 }

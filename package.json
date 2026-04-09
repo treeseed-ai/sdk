@@ -45,7 +45,13 @@
     "@treeseed/agent": "^0.1.2",
     "@treeseed/core": "^0.1.2",
     "esbuild": "^0.28.0",
+    "github-slugger": "^2.0.0",
+    "mdast-util-to-string": "^4.0.0",
+    "minisearch": "^7.2.0",
+    "remark-mdx": "^3.1.1",
+    "remark-parse": "^11.0.0",
     "typescript": "^5.9.3",
+    "unified": "^11.0.5",
     "yaml": "^2.8.1"
   },
   "devDependencies": {
@@ -88,6 +94,10 @@
     "./models": {
       "types": "./dist/model-registry.d.ts",
       "default": "./dist/model-registry.js"
+    },
+    "./graph": {
+      "types": "./dist/graph.d.ts",
+      "default": "./dist/graph.js"
     },
     "./sdk-filters": {
       "types": "./dist/sdk-filters.d.ts",

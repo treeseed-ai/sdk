@@ -322,9 +322,144 @@ export interface SdkModelDefinition {
 	pickField: string;
 	contentCollection?: string;
 	contentDir?: string;
+	graph?: SdkGraphModelConfig;
 }
 
 export type SdkModelRegistry = Record<string, SdkModelDefinition>;
+
+export type SdkGraphNodeType =
+	| 'File'
+	| 'Section'
+	| 'Agent'
+	| 'Objective'
+	| 'Question'
+	| 'Note'
+	| 'Knowledge'
+	| 'Book'
+	| 'Page'
+	| 'Person'
+	| 'Tag'
+	| 'Series'
+	| 'Reference'
+	| 'Entity';
+
+export type SdkGraphEdgeType =
+	| 'HAS_SECTION'
+	| 'BELONGS_TO_FILE'
+	| 'PARENT_SECTION'
+	| 'CHILD_SECTION'
+	| 'NEXT_SECTION'
+	| 'PREV_SECTION'
+	| 'LINKS_TO'
+	| 'REFERENCES'
+	| 'MENTIONS'
+	| 'HAS_TAG'
+	| 'IN_SERIES'
+	| 'SAME_DIRECTORY'
+	| 'SAME_COLLECTION'
+	| 'DEFINES'
+	| 'DEFINED_BY';
+
+export interface SdkGraphReferenceFieldConfig {
+	field: string;
+	edgeType?: Extract<SdkGraphEdgeType, 'REFERENCES' | 'HAS_TAG' | 'IN_SERIES'>;
+	targetModels?: string[];
+	multiple?: boolean;
+}
+
+export interface SdkGraphModelConfig {
+	entityType?: SdkGraphNodeType;
+	referenceFields?: SdkGraphReferenceFieldConfig[];
+	tagField?: string;
+	seriesField?: string;
+	titleField?: string;
+	enableSections?: boolean;
+}
+
+export interface SdkGraphRefreshRequest {
+	paths?: string[];
+}
+
+export interface SdkGraphQueryOptions {
+	limit?: number;
+	models?: string[];
+	nodeTypes?: SdkGraphNodeType[];
+	edgeTypes?: SdkGraphEdgeType[];
+	direction?: 'outgoing' | 'incoming' | 'both';
+	depth?: number;
+}
+
+export interface SdkGraphSearchOptions extends SdkGraphQueryOptions {
+	prefix?: boolean;
+	fuzzy?: number | boolean;
+}
+
+export interface SdkResolveReferenceOptions {
+	fromNodeId?: string;
+	fromPath?: string;
+	models?: string[];
+}
+
+export interface SdkGraphNode {
+	id: string;
+	nodeType: SdkGraphNodeType;
+	sourceModel?: string;
+	entityType?: string;
+	ownerFileId?: string;
+	path?: string;
+	slug?: string;
+	title?: string;
+	heading?: string | null;
+	headingPath?: string | null;
+	level?: number | null;
+	text?: string;
+	tags?: string[];
+	series?: string | null;
+	fileId?: string;
+	entityId?: string;
+	data?: Record<string, unknown>;
+}
+
+export interface SdkGraphEdge {
+	id: string;
+	type: SdkGraphEdgeType;
+	sourceId: string;
+	targetId: string;
+	ownerFileId?: string;
+	data?: Record<string, unknown>;
+}
+
+export interface SdkGraphSearchResult {
+	node: SdkGraphNode;
+	score: number;
+	reason: string;
+	highlights?: string[];
+	context?: Record<string, unknown>;
+}
+
+export interface SdkGraphTraversalResult {
+	seedId: string;
+	nodes: SdkGraphNode[];
+	edges: SdkGraphEdge[];
+}
+
+export interface SdkGraphPathExplanation {
+	fromId: string;
+	toId: string;
+	nodes: SdkGraphNode[];
+	edges: SdkGraphEdge[];
+}
+
+export interface SdkGraphRefreshPayload {
+	ready: boolean;
+	snapshotRoot: string;
+	changed: {
+		added: string[];
+		modified: string[];
+		removed: string[];
+	};
+	metrics: Record<string, unknown>;
+}
 
 export interface SdkCreateMessageRequest {
 	type: string;
