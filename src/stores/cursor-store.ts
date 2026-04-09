@@ -5,6 +5,7 @@ import type {
 	SdkSearchRequest,
 	SdkUpdateRequest,
 } from '../sdk-types.ts';
+import { assertExpectedVersion } from '../sdk-version.ts';
 import { SqliteStoreBase, nowIso, toSqlValue } from './helpers.ts';
 import { createCursorEnvelope, cursorEntityFromEnvelope, TRESEED_ENVELOPE_SCHEMA_VERSION } from './envelopes.ts';
 
@@ -129,6 +130,11 @@ export class CursorStore extends SqliteStoreBase {
 		const agentSlug = String(request.data.agentSlug ?? request.id ?? request.key ?? '');
 		const cursorKey = String(request.data.cursorKey ?? request.slug ?? '');
 		const cursorValue = String(request.data.cursorValue ?? '');
+		assertExpectedVersion(
+			request.expectedVersion,
+			await this.getByKey(`${agentSlug}:${cursorKey}`),
+			`agent_cursor "${agentSlug}:${cursorKey}"`,
+		);
 		await this.upsert({
 			agentSlug,
 			cursorKey,

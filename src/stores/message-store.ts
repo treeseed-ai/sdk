@@ -6,6 +6,7 @@ import type {
 	SdkSearchRequest,
 	SdkUpdateRequest,
 } from '../sdk-types.ts';
+import { assertExpectedVersion } from '../sdk-version.ts';
 import { SqliteStoreBase, nowIso, toSqlValue, type DatabaseRow } from './helpers.ts';
 import { createMessageEnvelope, messageEntityFromEnvelope, TRESEED_ENVELOPE_SCHEMA_VERSION } from './envelopes.ts';
 
@@ -54,6 +55,18 @@ function buildOrderSql(sort: SdkSearchRequest['sort'] = []) {
 		: '';
 }
 
+function claimOrderSql(strategy?: 'latest' | 'highest_priority' | 'oldest') {
+	switch (strategy) {
+		case 'oldest':
+			return 'ORDER BY available_at ASC, priority DESC';
+		case 'latest':
+			return 'ORDER BY available_at DESC, priority DESC';
+		case 'highest_priority':
+		default:
+			return 'ORDER BY priority DESC, available_at ASC';
+	}
+}
+
 export class MessageStore extends SqliteStoreBase {
 	private async usesEnvelopeTable() {
 		return this.tableExists('message_queue');
@@ -89,13 +102,13 @@ export class MessageStore extends SqliteStoreBase {
 		return rows.map(messageFromRow);
 	}
 
-	async claim(request: SdkClaimMessageRequest) {
+	async claim(request: SdkClaimMessageRequest, strategy: 'latest' | 'highest_priority' | 'oldest' = 'highest_priority') {
 		if (await this.usesEnvelopeTable()) {
 			const typeClause = request.messageTypes?.length
 				? ` AND message_type IN (${request.messageTypes.map(toSqlValue).join(', ')})`
 				: '';
 			const row = await this.selectFirst(
-				`SELECT * FROM message_queue WHERE status IN ('pending', 'failed') AND available_at <= ${toSqlValue(nowIso())}${typeClause} ORDER BY priority DESC, available_at ASC LIMIT 1`,
+				`SELECT * FROM message_queue WHERE status IN ('pending', 'failed') AND available_at <= ${toSqlValue(nowIso())}${typeClause} ${claimOrderSql(strategy)} LIMIT 1`,
 			);
 			if (!row) {
 				return null;
@@ -111,7 +124,7 @@ export class MessageStore extends SqliteStoreBase {
 			? ` AND type IN (${request.messageTypes.map(toSqlValue).join(', ')})`
 			: '';
 		const row = await this.selectFirst(
-			`SELECT * FROM messages WHERE status IN ('pending', 'failed') AND available_at <= ${toSqlValue(nowIso())}${typeClause} ORDER BY priority DESC, available_at ASC LIMIT 1`,
+			`SELECT * FROM messages WHERE status IN ('pending', 'failed') AND available_at <= ${toSqlValue(nowIso())}${typeClause} ${claimOrderSql(strategy)} LIMIT 1`,
 		);
 		if (!row) {
 			return null;
@@ -164,6 +177,11 @@ export class MessageStore extends SqliteStoreBase {
 		if (!id) {
 			throw new Error('Message update requires an id.');
 		}
+		const existing = await this.getById(id);
+		if (!existing) {
+			return null;
+		}
+		assertExpectedVersion(request.expectedVersion, existing, `message ${id}`);
 		if (await this.usesEnvelopeTable()) {
 			const fields: string[] = [];
 			for (const [key, value] of Object.entries(request.data)) {

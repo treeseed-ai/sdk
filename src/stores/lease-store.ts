@@ -5,6 +5,7 @@ import type {
 	SdkSearchRequest,
 	SdkUpdateRequest,
 } from '../sdk-types.ts';
+import { assertExpectedVersion } from '../sdk-version.ts';
 import { SqliteStoreBase, nowIso, toSqlValue } from './helpers.ts';
 import { createLeaseEnvelope, leaseEntityFromEnvelope, TRESEED_ENVELOPE_SCHEMA_VERSION } from './envelopes.ts';
 
@@ -150,6 +151,11 @@ export class LeaseStore extends SqliteStoreBase {
 		const itemKey = String(request.data.itemKey ?? request.slug ?? request.key ?? '');
 		const claimedBy = String(request.data.claimedBy ?? request.actor);
 		const leaseSeconds = Number(request.data.leaseSeconds ?? 300);
+		assertExpectedVersion(
+			request.expectedVersion,
+			await this.getByKey(`${model}:${itemKey}`),
+			`content_lease "${model}:${itemKey}"`,
+		);
 		return this.create({ model, itemKey, claimedBy, leaseSeconds });
 	}
 

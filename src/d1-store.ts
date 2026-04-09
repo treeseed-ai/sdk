@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { ContentLeaseRecord } from './types/agents.ts';
 import type { D1DatabaseLike } from './types/cloudflare.ts';
 import { applyFilters, applySort } from './sdk-filters.ts';
+import { assertExpectedVersion } from './sdk-version.ts';
 import type {
 	SdkAckMessageRequest,
 	SdkClaimMessageRequest,
@@ -63,6 +64,17 @@ function nowIso() {
 
 function nextLeaseToken() {
 	return crypto.randomUUID();
+}
+
+function pickSortForRequest(request: SdkPickRequest, defaultField: string) {
+	switch (request.strategy) {
+		case 'oldest':
+			return [{ field: defaultField, direction: 'asc' as const }];
+		case 'highest_priority':
+		case 'latest':
+		default:
+			return [{ field: defaultField, direction: 'desc' as const }];
+	}
 }
 
 function filterSinceField(model: string) {
@@ -211,16 +223,46 @@ export class MemoryAgentDatabase implements AgentDatabase {
 
 	async pick(request: SdkPickRequest): Promise<SdkPickResult<Record<string, unknown>>> {
 		if (request.model === 'message') {
-			const item = await this.claimMessage({
-				workerId: request.workerId,
-				messageTypes: request.filters
-					?.filter((filter) => filter.field === 'type' && filter.op === 'in')
-					.flatMap((filter) => (Array.isArray(filter.value) ? filter.value.map(String) : [])),
-				leaseSeconds: request.leaseSeconds,
-			});
+			const candidates = [...this.messages.values()]
+				.filter((message) =>
+					(message.status === 'pending' || message.status === 'failed')
+					&& new Date(message.availableAt).valueOf() <= Date.now()
+					&& (!request.filters
+						?.filter((filter) => filter.field === 'type' && filter.op === 'in')
+						.flatMap((filter) => (Array.isArray(filter.value) ? filter.value.map(String) : []))
+						.length
+						|| request.filters
+							.filter((filter) => filter.field === 'type' && filter.op === 'in')
+							.flatMap((filter) => (Array.isArray(filter.value) ? filter.value.map(String) : []))
+							.includes(message.type)),
+				)
+				.sort((left, right) => {
+					if (request.strategy === 'oldest') {
+						return left.availableAt.localeCompare(right.availableAt) || right.priority - left.priority;
+					}
+					if (request.strategy === 'latest') {
+						return right.availableAt.localeCompare(left.availableAt) || right.priority - left.priority;
+					}
+					return right.priority - left.priority || left.availableAt.localeCompare(right.availableAt);
+				});
+			const pending = candidates[0];
+			if (!pending) {
+				return { item: null, leaseToken: null };
+			}
+			const claimedAt = nowIso();
+			const next: SdkMessageEntity = {
+				...pending,
+				status: 'claimed',
+				claimedBy: request.workerId,
+				claimedAt,
+				leaseExpiresAt: new Date(Date.now() + request.leaseSeconds * 1000).toISOString(),
+				attempts: pending.attempts + 1,
+				updatedAt: claimedAt,
+			};
+			this.messages.set(next.id, next);
 			return {
-				item: item as Record<string, unknown> | null,
-				leaseToken: item ? nextLeaseToken() : null,
+				item: next as Record<string, unknown>,
+				leaseToken: nextLeaseToken(),
 			};
 		}
 
@@ -240,7 +282,7 @@ export class MemoryAgentDatabase implements AgentDatabase {
 		const items = await this.search({
 			model: request.model,
 			filters: request.filters,
-			sort: [{ field: filterSinceField(request.model), direction: 'desc' }],
+			sort: pickSortForRequest(request, filterSinceField(request.model)),
 		});
 		return {
 			item: items[0] ?? null,
@@ -318,6 +360,7 @@ export class MemoryAgentDatabase implements AgentDatabase {
 				if (!current) {
 					return null;
 				}
+				assertExpectedVersion(request.expectedVersion, current, `message ${current.id}`);
 				const next = {
 					...current,
 					...request.data,
@@ -332,6 +375,7 @@ export class MemoryAgentDatabase implements AgentDatabase {
 				if (!current) {
 					return null;
 				}
+				assertExpectedVersion(request.expectedVersion, current, `subscription "${current.email}"`);
 				const next = {
 					...current,
 					...request.data,
@@ -341,14 +385,35 @@ export class MemoryAgentDatabase implements AgentDatabase {
 				return next;
 			}
 			case 'agent_run':
+				assertExpectedVersion(
+					request.expectedVersion,
+					(await this.get({ model: 'agent_run', key: String(request.id ?? request.key ?? request.data.runId ?? '') })) as Record<string, unknown> | null,
+					`agent_run "${String(request.id ?? request.key ?? request.data.runId ?? '')}"`,
+				);
 				return this.recordRun({ run: { ...request.data, runId: request.id ?? request.key ?? request.data.runId } });
 			case 'agent_cursor':
+				assertExpectedVersion(
+					request.expectedVersion,
+					(await this.get({
+						model: 'agent_cursor',
+						key: `${String(request.data.agentSlug ?? request.id ?? request.key ?? '')}:${String(request.data.cursorKey ?? request.slug ?? '')}`,
+					})) as Record<string, unknown> | null,
+					`agent_cursor "${String(request.data.agentSlug ?? request.id ?? request.key ?? '')}:${String(request.data.cursorKey ?? request.slug ?? '')}"`,
+				);
 				return this.create({
 					model: 'agent_cursor',
 					data: request.data,
 					actor: request.actor,
 				});
 			case 'content_lease':
+				assertExpectedVersion(
+					request.expectedVersion,
+					(await this.get({
+						model: 'content_lease',
+						key: `${String(request.data.model ?? request.id ?? '')}:${String(request.data.itemKey ?? request.slug ?? request.key ?? '')}`,
+					})) as Record<string, unknown> | null,
+					`content_lease "${String(request.data.model ?? request.id ?? '')}:${String(request.data.itemKey ?? request.slug ?? request.key ?? '')}"`,
+				);
 				return this.create({
 					model: 'content_lease',
 					data: request.data,
@@ -550,7 +615,7 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 					?.filter((filter) => filter.field === 'type' && filter.op === 'in')
 					.flatMap((filter) => (Array.isArray(filter.value) ? filter.value.map(String) : [])),
 				leaseSeconds: request.leaseSeconds,
-			});
+			}, request.strategy);
 			return {
 				item: claimed as Record<string, unknown> | null,
 				leaseToken: claimed ? nextLeaseToken() : null,
@@ -560,7 +625,7 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 			const items = await this.leases.search({
 				model: 'content_lease',
 				filters: request.filters,
-				sort: [{ field: 'lease_expires_at', direction: 'desc' }],
+				sort: pickSortForRequest(request, 'lease_expires_at'),
 				limit: 1,
 			});
 			return {
@@ -569,7 +634,14 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 			};
 		}
 		return {
-			item: null,
+			item: (
+				await this.search({
+					model: request.model,
+					filters: request.filters,
+					sort: pickSortForRequest(request, filterSinceField(request.model)),
+					limit: 1,
+				})
+			)[0] ?? null,
 			leaseToken: null,
 		};
 	}

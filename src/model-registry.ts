@@ -7,14 +7,14 @@ import type {
 	SdkModelRegistry,
 } from './sdk-types.ts';
 
-function contentRoot() {
+function contentRoot(repoRoot?: string) {
 	return process.env.TREESEED_AGENT_CONTENT_ROOT
 		? path.resolve(process.env.TREESEED_AGENT_CONTENT_ROOT)
-		: path.resolve(resolveSdkRepoRoot(), 'src', 'content');
+		: path.resolve(resolveSdkRepoRoot(repoRoot), 'src', 'content');
 }
 
-export function buildBuiltinModelRegistry(): Record<SdkBuiltinModelName, SdkModelDefinition> {
-	const root = contentRoot();
+export function buildBuiltinModelRegistry(repoRoot?: string): Record<SdkBuiltinModelName, SdkModelDefinition> {
+	const root = contentRoot(repoRoot);
 
 	return {
 		page: {
@@ -183,6 +183,13 @@ export function mergeModelRegistries(
 
 export function buildModelRegistry(definitions: SdkModelDefinition[] = []): SdkModelRegistry {
 	return mergeModelRegistries(buildBuiltinModelRegistry(), definitions);
+}
+
+export function buildScopedModelRegistry(
+	repoRoot: string | undefined,
+	definitions: SdkModelDefinition[] = [],
+) {
+	return mergeModelRegistries(buildBuiltinModelRegistry(repoRoot), definitions);
 }
 
 export const BUILTIN_MODEL_REGISTRY: SdkModelRegistry = buildBuiltinModelRegistry();

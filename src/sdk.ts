@@ -3,7 +3,7 @@ import { resolveSdkRepoRoot } from './runtime.ts';
 import { normalizeAgentCliOptions } from './cli-tools.ts';
 import { ContentStore } from './content-store.ts';
 import { CloudflareD1AgentDatabase, MemoryAgentDatabase, type AgentDatabase } from './d1-store.ts';
-import { buildModelRegistry, resolveModelDefinition } from './model-registry.ts';
+import { buildScopedModelRegistry, resolveModelDefinition } from './model-registry.ts';
 import type {
 	SdkAckMessageRequest,
 	SdkClaimMessageRequest,
@@ -68,7 +68,7 @@ export class AgentSdk {
 
 	constructor(options: AgentSdkOptions = {}) {
 		const repoRoot = resolveSdkRepoRoot(options.repoRoot);
-		this.models = options.modelRegistry ?? buildModelRegistry(options.models);
+		this.models = options.modelRegistry ?? buildScopedModelRegistry(repoRoot, options.models);
 		this.database = options.database ?? new MemoryAgentDatabase();
 		this.content = new ContentStore(repoRoot, this.database, this.models);
 	}

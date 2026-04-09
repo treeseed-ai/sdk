@@ -4,10 +4,12 @@ export {
 	MODEL_REGISTRY,
 	buildBuiltinModelRegistry,
 	buildModelRegistry,
+	buildScopedModelRegistry,
 	mergeModelRegistries,
 	resolveModelDefinition,
 } from './model-registry.ts';
 export { normalizeAgentCliOptions, buildCopilotAllowToolArgs } from './cli-tools.ts';
+export { resolveSdkRecordVersion } from './sdk-version.ts';
 export { RemoteTemplateCatalogClient, parseTemplateCatalogResponse } from './template-catalog.ts';
 export {
 	TRESEED_OPERATION_SPECS,

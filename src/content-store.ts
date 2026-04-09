@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { parseFrontmatterDocument, serializeFrontmatterDocument } from './frontmatter.ts';
 import { resolveModelDefinition } from './model-registry.ts';
 import { applyFilters, applySort } from './sdk-filters.ts';
+import { assertExpectedVersion } from './sdk-version.ts';
 import type {
 	SdkContentEntry,
 	SdkFollowRequest,
@@ -18,6 +19,24 @@ import type {
 } from './sdk-types.ts';
 import type { AgentDatabase } from './d1-store.ts';
 import { GitRuntime } from './git-runtime.ts';
+
+function pickSortForStrategy(definition: SdkModelDefinition, request: SdkPickRequest) {
+	switch (request.strategy) {
+		case 'oldest':
+			return [{ field: definition.pickField, direction: 'asc' as const }];
+		case 'highest_priority':
+			if (definition.sortableFields.includes('priority') || definition.filterableFields.includes('priority')) {
+				return [
+					{ field: 'priority', direction: 'desc' as const },
+					{ field: definition.pickField, direction: 'desc' as const },
+				];
+			}
+			return [{ field: definition.pickField, direction: 'desc' as const }];
+		case 'latest':
+		default:
+			return [{ field: definition.pickField, direction: 'desc' as const }];
+	}
+}
 
 async function walkMarkdownFiles(root: string): Promise<string[]> {
 	try {
@@ -195,7 +214,7 @@ export class ContentStore {
 		const sorted = await this.search({
 			model: request.model,
 			filters: request.filters,
-			sort: [{ field: definition.pickField, direction: 'desc' }],
+			sort: pickSortForStrategy(definition, request),
 			limit: 25,
 		});
 
@@ -263,6 +282,7 @@ export class ContentStore {
 		if (!existing) {
 			throw new Error(`No ${request.model} entry found for update.`);
 		}
+		assertExpectedVersion(request.expectedVersion, existing, `${definition.name} "${existing.slug}"`);
 
 		const branchName = `${String(request.data.branchPrefix ?? 'agent')}/${definition.name}-${existing.slug}`;
 		const worktreePath = await this.gitRuntime.ensureWorktree(branchName);

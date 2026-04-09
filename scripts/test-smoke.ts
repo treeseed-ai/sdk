@@ -46,7 +46,22 @@ function resolveNodeModulesRoot() {
 function mirrorDependencies(tempRoot: string) {
 	const sharedNodeModules = resolveNodeModulesRoot();
 	for (const entry of readdirSync(sharedNodeModules, { withFileTypes: true })) {
-		if (entry.name === '.bin' || entry.name === '@treeseed') {
+		if (entry.name === '.bin') {
+			continue;
+		}
+
+		if (entry.name === '@treeseed') {
+			const sourceScopeRoot = resolve(sharedNodeModules, entry.name);
+			const targetScopeRoot = resolve(tempRoot, 'node_modules', entry.name);
+			mkdirSync(targetScopeRoot, { recursive: true });
+			for (const scopedEntry of readdirSync(sourceScopeRoot, { withFileTypes: true })) {
+				if (scopedEntry.name === 'sdk') {
+					continue;
+				}
+
+				const targetPath = resolve(targetScopeRoot, scopedEntry.name);
+				symlinkSync(resolve(sourceScopeRoot, scopedEntry.name), targetPath, scopedEntry.isDirectory() ? 'dir' : 'file');
+			}
 			continue;
 		}
 

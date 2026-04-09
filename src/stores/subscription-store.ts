@@ -4,6 +4,7 @@ import type {
 	SdkSubscriptionEntity,
 	SdkUpdateRequest,
 } from '../sdk-types.ts';
+import { assertExpectedVersion } from '../sdk-version.ts';
 import { SqliteStoreBase, toSqlValue } from './helpers.ts';
 import { createSubscriptionEnvelope, subscriptionEntityFromEnvelope, TRESEED_ENVELOPE_SCHEMA_VERSION } from './envelopes.ts';
 
@@ -113,6 +114,7 @@ export class SubscriptionStore extends SqliteStoreBase {
 		if (!existing) {
 			throw new Error(`No subscription found for "${key}".`);
 		}
+		assertExpectedVersion(request.expectedVersion, existing, `subscription "${existing.email}"`);
 		const next = {
 			...existing,
 			...request.data,

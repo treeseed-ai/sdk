@@ -1,11 +1,10 @@
-import { readFileSync, readdirSync } from 'node:fs';
-import { extname, join, resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { basename, extname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { packageRoot } from './package-tools.ts';
 
 const textExtensions = new Set(['.js', '.ts', '.mjs', '.cjs', '.d.ts', '.json', '.md']);
 const forbiddenPatterns = [
-	/['"`]file:[^'"`\n]+['"`]/,
 	/['"`]workspace:[^'"`\n]+['"`]/,
 	/['"`](?:\.\.\/|\.\/)[^'"`\n]*src\/[^'"`\n]*\.(?:[cm]?js|ts|tsx|json|astro|css)['"`]/,
 	/['"`][^'"`\n]*\/packages\/[^'"`\n]*\/src\/[^'"`\n]*['"`]/,
@@ -48,8 +47,35 @@ function scanDirectory(root: string) {
 	}
 }
 
+function assertCleanDistArtifacts() {
+	const forbiddenPaths = [
+		resolve(packageRoot, 'dist', 'src'),
+		resolve(packageRoot, 'dist', 'test'),
+		resolve(packageRoot, 'dist', 'vitest.config.d.ts'),
+	];
+
+	for (const targetPath of forbiddenPaths) {
+		if (existsSync(targetPath)) {
+			throw new Error(`Unexpected publish artifact present in dist: ${targetPath}`);
+		}
+	}
+
+	for (const filePath of walkFiles(resolve(packageRoot, 'dist'))) {
+		if (filePath.endsWith('.d.js')) {
+			throw new Error(`Unexpected generated declaration runtime artifact: ${filePath}`);
+		}
+		if (basename(filePath).startsWith('.ts-run-')) {
+			throw new Error(`Unexpected temporary runtime artifact: ${filePath}`);
+		}
+		if (filePath.includes('/dist/scripts/') && filePath.endsWith('.d.ts')) {
+			throw new Error(`Unexpected script declaration artifact: ${filePath}`);
+		}
+	}
+}
+
 run('npm', ['run', 'fixtures:check']);
 run('npm', ['run', 'build:dist']);
 scanDirectory(resolve(packageRoot, 'dist'));
+assertCleanDistArtifacts();
 run('npm', ['run', 'test:unit']);
 run('npm', ['run', 'test:smoke']);

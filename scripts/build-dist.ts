@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, extname, join, relative, resolve } from 'node:path';
+import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { build } from 'esbuild';
 import ts from 'typescript';
 import { packageRoot } from './package-tools.ts';
@@ -10,7 +10,7 @@ const distRoot = resolve(packageRoot, 'dist');
 const treeseedTemplateCatalogSourceRoot = resolve(srcRoot, 'treeseed', 'template-catalog');
 const treeseedServicesSourceRoot = resolve(srcRoot, 'treeseed', 'services');
 
-const COPY_EXTENSIONS = new Set(['.d.ts', '.json', '.md']);
+const COPY_EXTENSIONS = new Set(['.json', '.md']);
 
 function walkFiles(root) {
 	const files = [];
@@ -31,6 +31,10 @@ function ensureDir(filePath) {
 
 function rewriteRuntimeSpecifiers(contents) {
 	return contents.replace(/(['"`])(\.[^'"`\n]+)\.(mjs|ts)\1/g, '$1$2.js$1');
+}
+
+function isTypeScriptSource(filePath) {
+	return filePath.endsWith('.ts') && !filePath.endsWith('.d.ts');
 }
 
 async function compileModule(filePath, sourceRoot, outputRoot) {
@@ -69,6 +73,9 @@ function copyAssetTree(sourceRoot, outputRoot) {
 }
 
 function transpileScript(filePath) {
+	if (basename(filePath).startsWith('.ts-run-')) {
+		return;
+	}
 	const source = readFileSync(filePath, 'utf8');
 	const relativePath = relative(scriptsRoot, filePath);
 	if (relativePath === 'fixture-tools.ts') {
@@ -89,20 +96,21 @@ function transpileScript(filePath) {
 }
 
 function emitDeclarations() {
-	const configPath = ts.findConfigFile(packageRoot, ts.sys.fileExists, 'tsconfig.json');
-	if (!configPath) {
-		throw new Error('Unable to locate tsconfig.json for declaration build.');
-	}
-
-	const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
-	const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, packageRoot);
+	const rootNames = walkFiles(srcRoot).filter(isTypeScriptSource);
 	const program = ts.createProgram({
-		rootNames: parsed.fileNames,
+		rootNames,
 		options: {
-			...parsed.options,
+			allowImportingTsExtensions: true,
+			module: ts.ModuleKind.ESNext,
+			moduleResolution: ts.ModuleResolutionKind.Bundler,
+			target: ts.ScriptTarget.ES2022,
+			strict: true,
+			skipLibCheck: true,
+			types: ['node'],
 			declaration: true,
 			emitDeclarationOnly: true,
 			declarationDir: distRoot,
+			rootDir: srcRoot,
 			noEmit: false,
 		},
 	});
@@ -125,7 +133,7 @@ for (const filePath of walkFiles(srcRoot)) {
 		continue;
 	}
 	const extension = extname(filePath);
-	if (extension === '.ts') {
+	if (isTypeScriptSource(filePath)) {
 		await compileModule(filePath, srcRoot, distRoot);
 		continue;
 	}

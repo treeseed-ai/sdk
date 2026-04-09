@@ -2,6 +2,8 @@
 
 `@treeseed/sdk` is the standalone TreeSeed SDK for TreeSeed content/data access and TreeSeed operational command execution.
 
+It is the authoritative programmatic interface for Treeseed. The published `@treeseed/cli` package is a thin binary wrapper over this SDK-owned command/runtime surface.
+
 It exposes the public model and storage surface used by TreeSeed agents and supporting tooling:
 
 - content-backed access for pages, notes, questions, objectives, people, agents, books, and knowledge
@@ -216,6 +218,12 @@ if (response.payload.item) {
 
 For `message`, `pick()` routes to queue claiming behavior in the D1 layer.
 
+Use `strategy` to control the selection order:
+
+- `latest` selects the most recent candidate
+- `oldest` selects the oldest candidate
+- `highest_priority` selects the highest-priority candidate when the model exposes `priority`, otherwise it falls back to the model default
+
 ### Create Content Or D1 Records
 
 Use `create()` for models that support creation.
@@ -259,6 +267,10 @@ const response = await sdk.update({
 ```
 
 For content-backed models, `update()` returns the updated item and git metadata. For D1-backed models, it returns the updated row or `null` when no matching record exists.
+
+Pass `expectedVersion` when you want optimistic update safety. The SDK compares the supplied value against the record’s current version marker before applying the update and throws on mismatch.
+
+Use `resolveSdkRecordVersion(record)` when you need a stable version token from a returned content or D1 entity.
 
 ### Work With Messages
 

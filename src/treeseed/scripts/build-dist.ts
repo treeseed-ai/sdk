@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
-import { dirname, extname, join, relative, resolve } from 'node:path';
+import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { build } from 'esbuild';
 import ts from 'typescript';
 import { packageRoot } from './package-tools.ts';
@@ -9,7 +9,7 @@ const scriptsRoot = resolve(packageRoot, 'scripts');
 const distRoot = resolve(packageRoot, 'dist');
 const templateCatalogSourceRoot = resolve(srcRoot, 'template-catalog');
 
-const COPY_EXTENSIONS = new Set(['.d.ts', '.json', '.md']);
+const COPY_EXTENSIONS = new Set(['.json', '.md']);
 
 function walkFiles(root) {
 	const files = [];
@@ -46,6 +46,10 @@ function rewriteRuntimeSpecifiers(contents, outputFile = null) {
 	return rewritten;
 }
 
+function isTypeScriptSource(filePath) {
+	return filePath.endsWith('.ts') && !filePath.endsWith('.d.ts');
+}
+
 async function compileModule(filePath, sourceRoot, outputRoot) {
 	const relativePath = relative(sourceRoot, filePath);
 	const outputFile = resolve(outputRoot, relativePath.replace(/\.(mjs|ts)$/u, '.js'));
@@ -78,6 +82,9 @@ function copyAssetTree(sourceRoot, outputRoot) {
 }
 
 function transpileScript(filePath) {
+	if (basename(filePath).startsWith('.ts-run-')) {
+		return;
+	}
 	const source = readFileSync(filePath, 'utf8');
 	const relativePath = relative(scriptsRoot, filePath);
 	const outputFile = resolve(distRoot, 'scripts', relativePath.replace(/\.(mjs|ts)$/u, '.js'));
@@ -92,13 +99,22 @@ function transpileScript(filePath) {
 }
 
 function emitDeclarations() {
-	const configPath = ts.findConfigFile(packageRoot, ts.sys.fileExists, 'tsconfig.json');
-	if (!configPath) throw new Error('Unable to locate tsconfig.json for declaration build.');
-	const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
-	const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, packageRoot);
+	const rootNames = walkFiles(srcRoot).filter(isTypeScriptSource);
 	const program = ts.createProgram({
-		rootNames: parsed.fileNames,
-		options: { ...parsed.options, declaration: true, emitDeclarationOnly: true, declarationDir: distRoot, noEmit: false },
+		rootNames,
+		options: {
+			allowImportingTsExtensions: true,
+			target: ts.ScriptTarget.ES2022,
+			module: ts.ModuleKind.ESNext,
+			moduleResolution: ts.ModuleResolutionKind.Bundler,
+			strict: true,
+			types: ['node'],
+			declaration: true,
+			emitDeclarationOnly: true,
+			declarationDir: distRoot,
+			rootDir: srcRoot,
+			noEmit: false,
+		},
 	});
 	const result = program.emit();
 	if (result.emitSkipped) {
@@ -113,7 +129,7 @@ for (const filePath of walkFiles(srcRoot)) {
 		continue;
 	}
 	const extension = extname(filePath);
-	if (extension === '.ts') await compileModule(filePath, srcRoot, distRoot);
+	if (isTypeScriptSource(filePath)) await compileModule(filePath, srcRoot, distRoot);
 	else if (COPY_EXTENSIONS.has(extension)) copyAsset(filePath, srcRoot, distRoot);
 }
 
@@ -123,7 +139,7 @@ if (existsSync(templateCatalogSourceRoot)) {
 
 for (const filePath of walkFiles(scriptsRoot)) {
 	const extension = extname(filePath);
-	if (extension === '.ts' || extension === '.ts') transpileScript(filePath);
+	if (extension === '.ts' || extension === '.mjs') transpileScript(filePath);
 }
 
 emitDeclarations();
