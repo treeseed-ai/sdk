@@ -617,11 +617,11 @@ export function collectTreeseedEnvironmentContext(tenantRoot) {
 	});
 }
 
-export function collectTreeseedConfigSeedValues(tenantRoot, scope) {
+export function collectTreeseedConfigSeedValues(tenantRoot, scope, env = process.env) {
 	return {
 		...readEnvFileIfPresent(resolve(tenantRoot, '.env.local')),
 		...readEnvFileIfPresent(resolve(tenantRoot, '.dev.vars')),
-		...Object.fromEntries(Object.entries(process.env).map(([key, value]) => [key, value ?? undefined])),
+		...Object.fromEntries(Object.entries(env).map(([key, value]) => [key, value ?? undefined])),
 		...resolveTreeseedMachineEnvironmentValues(tenantRoot, scope),
 	};
 }
@@ -892,6 +892,7 @@ export async function runTreeseedConfigWizard({
 	prompt,
 	authStatus,
 	write = console.log,
+	env = process.env,
 }) {
 	ensureTreeseedGitignoreEntries(tenantRoot);
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
@@ -904,7 +905,7 @@ export async function runTreeseedConfigWizard({
 	};
 
 	for (const scope of scopes) {
-		const existingValues = collectTreeseedConfigSeedValues(tenantRoot, scope);
+		const existingValues = collectTreeseedConfigSeedValues(tenantRoot, scope, env);
 		const suggested = getTreeseedEnvironmentSuggestedValues({
 			scope,
 			deployConfig: registry.context.deployConfig,
@@ -980,7 +981,7 @@ export async function runTreeseedConfigWizard({
 		if (!validation.ok) {
 			const details = [...validation.missing, ...validation.invalid]
 				.map((problem) => `- ${problem.message}`)
-				join('\n');
+				.join('\n');
 			throw new Error(`Treeseed config validation failed for ${scope}:\n${details}`);
 		}
 	}

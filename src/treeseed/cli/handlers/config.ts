@@ -37,6 +37,7 @@ export const handleConfig: TreeseedCommandHandler = async (invocation, context) 
 			scopes,
 			sync,
 			authStatus: preflight.checks.auth,
+			env: context.env,
 			write: context.outputFormat === 'json' ? () => {} : ((line: string) => context.write(line, 'stdout')),
 			prompt: async (message: string) => {
 				if (!process.stdin.isTTY || !process.stdout.isTTY) {

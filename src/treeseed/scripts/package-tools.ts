@@ -31,6 +31,7 @@ const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 	site: 'default',
 };
 const TRESEED_MANAGED_SERVICE_KEYS = ['api', 'agents', 'gateway', 'manager', 'worker', 'workdayStart', 'workdayReport'];
+const TRESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli', 'agent', 'api'];
 
 function parseServiceEnvironmentConfig(value) {
 	const record = optionalRecord(value, 'service environment') ?? {};
@@ -104,7 +105,45 @@ function resolvePackageBinary(packageName, binName = packageName) {
 	return resolve(dirname(packageJsonPath), relativePath);
 }
 
+export function treeseedWorkspacePackageCheckoutState(root = resolve(packageRoot, '..')) {
+	const packages = TRESEED_WORKSPACE_PACKAGE_DIRS.map((dirName) => {
+		const dir = resolve(root, dirName);
+		return {
+			dirName,
+			dir,
+			present: existsSync(resolve(dir, 'package.json')),
+		};
+	});
+	const present = packages.filter((entry) => entry.present);
+	return {
+		mode: present.length === 0
+			? 'registry'
+			: present.length === packages.length
+				? 'workspace'
+				: 'partial',
+		packages,
+		missing: packages.filter((entry) => !entry.present),
+	};
+}
+
+function assertUsableTreeseedPackageCheckout(fallbackDirName?: string) {
+	if (!fallbackDirName) {
+		return;
+	}
+	const state = treeseedWorkspacePackageCheckoutState();
+	const rootHasTreeseedSubmodules = existsSync(resolve(packageRoot, '..', '..', '.gitmodules'));
+	if (state.mode !== 'partial' || !rootHasTreeseedSubmodules) {
+		return;
+	}
+	const missing = state.missing.map((entry) => `packages/${entry.dirName}`).join(', ');
+	throw new Error(
+		`Partial Treeseed package checkout detected. Missing package manifests: ${missing}. `
+		+ 'Run `git submodule update --init --recursive` to use workspace mode, or remove the partial checkout to use registry mode.',
+	);
+}
+
 function resolveTreeseedPackageRoot(packageName, exportPath?: string, fallbackDirName?: string) {
+	assertUsableTreeseedPackageCheckout(fallbackDirName);
 	if (fallbackDirName) {
 		const localRoot = resolve(packageRoot, '..', fallbackDirName);
 		if (existsSync(resolve(localRoot, 'package.json'))) {

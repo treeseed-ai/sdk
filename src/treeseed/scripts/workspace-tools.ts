@@ -3,6 +3,8 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 
+const TREESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli', 'agent', 'api'];
+
 function escapeRegex(source) {
 	return source.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
 }
@@ -69,10 +71,14 @@ export function findNearestTreeseedRoot(startCwd = process.cwd()) {
 
 export function isWorkspaceRoot(root = process.cwd()) {
 	try {
-		return workspacePatterns(root).length > 0;
+		return workspacePatterns(root).length > 0 || hasCompleteTreeseedPackageCheckout(root);
 	} catch {
 		return false;
 	}
+}
+
+export function hasCompleteTreeseedPackageCheckout(root = process.cwd()) {
+	return TREESEED_WORKSPACE_PACKAGE_DIRS.every((dirName) => existsSync(resolve(root, 'packages', dirName, 'package.json')));
 }
 
 export function findNearestTreeseedWorkspaceRoot(startCwd = process.cwd()) {
@@ -99,7 +105,11 @@ export function workspacePatterns(root = workspaceRoot()) {
 		: Array.isArray(packageJson.workspaces?.packages)
 			? packageJson.workspaces.packages
 			: [];
-	return workspaces.filter((value) => typeof value === 'string' && value.trim().length > 0);
+	const patterns = workspaces.filter((value) => typeof value === 'string' && value.trim().length > 0);
+	if (patterns.length > 0) {
+		return patterns;
+	}
+	return hasCompleteTreeseedPackageCheckout(root) ? ['packages/*'] : [];
 }
 
 export function workspacePackages(root = workspaceRoot()) {
