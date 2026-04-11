@@ -145,10 +145,10 @@ const scoped = sdk.scopeForAgent({
 
 ## Reference Docs
 
-- [SDK Interface Reference](/home/adrian/Projects/treeseed/market/docs/sdk-interface-reference.md)
-- [Graph API Guide](/home/adrian/Projects/treeseed/market/docs/sdk-graph-api-guide.md)
-- [ctx Query Language](/home/adrian/Projects/treeseed/market/docs/ctx-query-language.md)
-- [How ctx Works](/home/adrian/Projects/treeseed/market/docs/ctx-query-engine.md)
+- [SDK Interface Reference](/home/adrian/Projects/treeseed/market/src/content/knowledge/sdk/interface-reference.mdx)
+- [Graph API Guide](/home/adrian/Projects/treeseed/market/src/content/knowledge/sdk/graph-api-guide.mdx)
+- [ctx Query Language](/home/adrian/Projects/treeseed/market/src/content/knowledge/sdk/ctx-query-language.mdx)
+- [How ctx Works](/home/adrian/Projects/treeseed/market/src/content/knowledge/sdk/ctx-query-engine.mdx)
 
 ## Other Public Capabilities
 
