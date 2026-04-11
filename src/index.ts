@@ -50,6 +50,7 @@ export { getTreeseedVerifyDriverStatus, runTreeseedVerifyDriver } from './verifi
 export * from './platform/contracts.ts';
 export * from './platform/tenant-config.ts';
 export * from './platform/deploy-config.ts';
+export * from './platform/deploy-runtime.ts';
 export * from './platform/environment.ts';
 export * from './platform/plugins.ts';
 export type {

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,7 @@ import type { TreeseedPluginEnvironmentContext } from './plugin.ts';
 import type { SdkGraphRankingProvider } from '../../sdk-types.ts';
 
 const require = createRequire(import.meta.url);
+const runtimeDir = path.dirname(fileURLToPath(import.meta.url));
 
 type LoadedPluginEntry = {
 	package: string;
@@ -30,9 +32,24 @@ function isPathLikePluginReference(packageName: string) {
 	return packageName.startsWith('.') || packageName.startsWith('/') || packageName.startsWith('file:');
 }
 
+function resolveLocalDefaultPluginPath() {
+	const candidates = [
+		path.resolve(runtimeDir, '../../../../core/dist/plugin-default.js'),
+	];
+
+	for (const candidate of candidates) {
+		if (existsSync(candidate)) {
+			return candidate;
+		}
+	}
+
+	return null;
+}
+
 function loadPluginModule(packageName: string, tenantRoot: string) {
 	if (packageName === TREESEED_DEFAULT_PLUGIN_PACKAGE) {
-		const resolvedPath = require.resolve(packageName);
+		const localDefaultPluginPath = resolveLocalDefaultPluginPath();
+		const resolvedPath = localDefaultPluginPath ?? require.resolve(packageName);
 		return {
 			moduleExports: require(resolvedPath),
 			baseDir: path.dirname(resolvedPath),

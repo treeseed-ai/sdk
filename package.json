@@ -102,6 +102,10 @@
       "types": "./dist/platform/deploy-config.d.ts",
       "default": "./dist/platform/deploy-config.js"
     },
+    "./platform/deploy-runtime": {
+      "types": "./dist/platform/deploy-runtime.d.ts",
+      "default": "./dist/platform/deploy-runtime.js"
+    },
     "./platform/environment": {
       "types": "./dist/platform/environment.d.ts",
       "default": "./dist/platform/environment.js"
@@ -217,6 +221,18 @@
     "./stores/subscription-store": {
       "types": "./dist/stores/subscription-store.d.ts",
       "default": "./dist/stores/subscription-store.js"
+    },
+    "./utils/agents/runtime-types": {
+      "types": "./dist/utils/agents/runtime-types.d.ts",
+      "default": "./dist/utils/agents/runtime-types.js"
+    },
+    "./utils/agents/contracts/messages": {
+      "types": "./dist/utils/agents/contracts/messages.d.ts",
+      "default": "./dist/utils/agents/contracts/messages.js"
+    },
+    "./utils/agents/contracts/run": {
+      "types": "./dist/utils/agents/contracts/run.d.ts",
+      "default": "./dist/utils/agents/contracts/run.js"
     }
   }
 }
