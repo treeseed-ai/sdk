@@ -46,10 +46,16 @@ function resolveLocalDefaultPluginPath() {
 	return null;
 }
 
+function resolveInstalledPluginPath(packageName: string, tenantRoot: string) {
+	return require.resolve(packageName, {
+		paths: [tenantRoot, process.cwd()],
+	});
+}
+
 function loadPluginModule(packageName: string, tenantRoot: string) {
 	if (packageName === TREESEED_DEFAULT_PLUGIN_PACKAGE) {
 		const localDefaultPluginPath = resolveLocalDefaultPluginPath();
-		const resolvedPath = localDefaultPluginPath ?? require.resolve(packageName);
+		const resolvedPath = localDefaultPluginPath ?? resolveInstalledPluginPath(packageName, tenantRoot);
 		return {
 			moduleExports: require(resolvedPath),
 			baseDir: path.dirname(resolvedPath),
@@ -66,7 +72,7 @@ function loadPluginModule(packageName: string, tenantRoot: string) {
 		};
 	}
 
-	const resolvedPath = require.resolve(packageName);
+	const resolvedPath = resolveInstalledPluginPath(packageName, tenantRoot);
 	return {
 		moduleExports: require(resolvedPath),
 		baseDir: path.dirname(resolvedPath),
