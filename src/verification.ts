@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type TreeseedVerifyDriver = 'auto' | 'act' | 'direct';
@@ -115,6 +115,15 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 	return run('npm', ['run', 'verify:direct'], status.packageRoot);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
+const invokedBasename = basename(invokedPath);
+const modulePath = fileURLToPath(import.meta.url);
+const moduleBasename = basename(modulePath);
+const invokedAsVerificationEntrypoint =
+	invokedPath === modulePath ||
+	/^verification\.(?:ts|js|mjs|cjs)$/.test(invokedBasename) ||
+	invokedBasename === moduleBasename;
+
+if (invokedAsVerificationEntrypoint) {
 	process.exit(runTreeseedVerifyDriver());
 }
