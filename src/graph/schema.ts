@@ -12,6 +12,23 @@ import type {
 
 export const GRAPH_SNAPSHOT_VERSION = 1;
 
+export const AUTHORED_GRAPH_EDGE_TYPES = [
+	'REFERENCES',
+	'HAS_TAG',
+	'IN_SERIES',
+	'RELATES_TO',
+	'DEPENDS_ON',
+	'IMPLEMENTS',
+	'EXTENDS',
+	'SUPERSEDES',
+	'BELONGS_TO',
+	'ABOUT',
+	'USED_BY',
+	'GENERATED_FROM',
+] as const satisfies SdkGraphEdgeType[];
+
+export type AuthoredGraphEdgeType = (typeof AUTHORED_GRAPH_EDGE_TYPES)[number];
+
 export type GraphFileCatalogEntry = {
 	path: string;
 	relativePath: string;
@@ -65,8 +82,16 @@ export type ParsedGraphDocument = {
 	body: string;
 	normalizedBody: string;
 	frontmatter: Record<string, unknown>;
+	explicitId: string | null;
 	tags: string[];
 	series: string | null;
+	status: string | null;
+	canonical: boolean;
+	canonicalRef: string | null;
+	version: string | null;
+	domain: string | null;
+	audience: string[];
+	updatedAt: string | null;
 	sections: ParsedGraphSection[];
 	headings: ParsedGraphHeading[];
 	links: ParsedGraphLink[];
@@ -75,8 +100,17 @@ export type ParsedGraphDocument = {
 		field: string;
 		value: string;
 		targetModels?: string[];
-		edgeType: Extract<SdkGraphEdgeType, 'REFERENCES' | 'HAS_TAG' | 'IN_SERIES'>;
+		edgeType: AuthoredGraphEdgeType;
 	}>;
+};
+
+export type GraphValidation = {
+	missingIds: string[];
+	duplicateIds: string[];
+	brokenReferences: Array<{ ownerFileId: string; value: string; edgeType: SdkGraphEdgeType }>;
+	invalidEdgeTypes: Array<{ ownerFileId: string; field: string; edgeType: string }>;
+	invalidCanonicalRefs: Array<{ ownerFileId: string; value: string }>;
+	invalidSupersedesRefs: Array<{ ownerFileId: string; value: string }>;
 };
 
 export type GraphMetrics = {
@@ -85,6 +119,14 @@ export type GraphMetrics = {
 	totalEntities: number;
 	totalEdges: number;
 	unresolvedReferences: number;
+	validation: {
+		missingIds: number;
+		duplicateIds: number;
+		brokenReferences: number;
+		invalidEdgeTypes: number;
+		invalidCanonicalRefs: number;
+		invalidSupersedesRefs: number;
+	};
 	queryCounts: Record<string, number>;
 	topTraversedEdgeTypes: Record<string, number>;
 	lastRefreshAt: string | null;
@@ -104,6 +146,7 @@ export type GraphSnapshot = {
 	edges: SdkGraphEdge[];
 	catalog: GraphFileCatalogEntry[];
 	metrics: GraphMetrics;
+	validation: GraphValidation;
 	delta: GraphDelta;
 };
 
@@ -201,8 +244,27 @@ export function emptyGraphMetrics(): GraphMetrics {
 		totalEntities: 0,
 		totalEdges: 0,
 		unresolvedReferences: 0,
+		validation: {
+			missingIds: 0,
+			duplicateIds: 0,
+			brokenReferences: 0,
+			invalidEdgeTypes: 0,
+			invalidCanonicalRefs: 0,
+			invalidSupersedesRefs: 0,
+		},
 		queryCounts: {},
 		topTraversedEdgeTypes: {},
 		lastRefreshAt: null,
+	};
+}
+
+export function emptyGraphValidation(): GraphValidation {
+	return {
+		missingIds: [],
+		duplicateIds: [],
+		brokenReferences: [],
+		invalidEdgeTypes: [],
+		invalidCanonicalRefs: [],
+		invalidSupersedesRefs: [],
 	};
 }

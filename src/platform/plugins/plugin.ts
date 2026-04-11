@@ -1,5 +1,6 @@
 import type { TreeseedDeployConfig, TreeseedTenantConfig } from '../contracts.ts';
 import type { TreeseedEnvironmentRegistryOverlay } from '../environment.ts';
+import type { SdkGraphRankingProvider } from '../../sdk-types.ts';
 
 export type TreeseedSiteLayerDefinition = {
 	root: string;
@@ -39,6 +40,10 @@ export type TreeseedPluginEnvironmentContext = {
 	pluginConfig: Record<string, unknown>;
 };
 
+export type TreeseedGraphRankingProviderContribution =
+	| SdkGraphRankingProvider
+	| ((context: TreeseedPluginEnvironmentContext) => SdkGraphRankingProvider | undefined);
+
 export interface TreeseedPlugin {
 	id?: string;
 	provides?: Record<string, any> & {
@@ -54,6 +59,7 @@ export interface TreeseedPlugin {
 	environmentRegistry?:
 		| TreeseedEnvironmentRegistryOverlay
 		| ((context: TreeseedPluginEnvironmentContext) => TreeseedEnvironmentRegistryOverlay | undefined);
+	graphRankingProviders?: Record<string, TreeseedGraphRankingProviderContribution>;
 	[key: string]: unknown;
 }
 

@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import type { TreeseedDeployConfig } from '../contracts.ts';
 import { loadTreeseedDeployConfig } from '../deploy/config.ts';
 import { TREESEED_DEFAULT_PLUGIN_PACKAGE } from './constants.ts';
+import type { TreeseedPluginEnvironmentContext } from './plugin.ts';
+import type { SdkGraphRankingProvider } from '../../sdk-types.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -145,4 +147,28 @@ export function loadTreeseedPluginRuntime(config: TreeseedDeployConfig = loadTre
 		plugins,
 		provided,
 	};
+}
+
+export function resolveTreeseedGraphRankingProvider(
+	plugins: LoadedPluginEntry[],
+	context: Omit<TreeseedPluginEnvironmentContext, 'pluginConfig'>,
+): SdkGraphRankingProvider | null {
+	for (const entry of plugins) {
+		const contributions = entry.plugin.graphRankingProviders;
+		if (!contributions || typeof contributions !== 'object') {
+			continue;
+		}
+		for (const contribution of Object.values(contributions)) {
+			if (!contribution) {
+				continue;
+			}
+			const provider = typeof contribution === 'function'
+				? contribution({ ...context, pluginConfig: entry.config ?? {} })
+				: contribution;
+			if (provider) {
+				return provider;
+			}
+		}
+	}
+	return null;
 }

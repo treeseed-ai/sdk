@@ -4,6 +4,7 @@ import { normalizeAgentCliOptions } from './cli-tools.ts';
 import { ContentStore } from './content-store.ts';
 import { CloudflareD1AgentDatabase, MemoryAgentDatabase, type AgentDatabase } from './d1-store.ts';
 import { ContentGraphRuntime } from './graph.ts';
+import { loadTreeseedPlugins, type LoadedTreeseedPluginEntry } from './platform/plugins.ts';
 import { buildScopedModelRegistry, resolveModelDefinition } from './model-registry.ts';
 import type {
 	SdkAckMessageRequest,
@@ -24,8 +25,11 @@ import type {
 	SdkManagerContextPayload,
 	SdkMutationRequest,
 	SdkGraphQueryOptions,
+	SdkGraphQueryRequest,
 	SdkGraphRefreshRequest,
 	SdkGraphSearchOptions,
+	SdkContextPackRequest,
+	SdkGraphDslParseResult,
 	SdkPickRequest,
 	SdkRecordRunRequest,
 	SdkSearchRequest,
@@ -35,6 +39,7 @@ import type {
 	SdkUpdateRequest,
 	SdkModelDefinition,
 	SdkModelRegistry,
+	SdkGraphRankingProvider,
 } from './sdk-types.ts';
 import { WranglerD1Database } from './wrangler-d1.ts';
 
@@ -43,6 +48,8 @@ export interface AgentSdkOptions {
 	database?: AgentDatabase;
 	models?: SdkModelDefinition[];
 	modelRegistry?: SdkModelRegistry;
+	graphRankingProvider?: SdkGraphRankingProvider;
+	plugins?: LoadedTreeseedPluginEntry[];
 }
 
 function normalizeAgentSpec(entry: Record<string, unknown> | null): AgentRuntimeSpec | null {
@@ -86,7 +93,18 @@ export class AgentSdk {
 		this.models = options.modelRegistry ?? buildScopedModelRegistry(repoRoot, options.models);
 		this.database = options.database ?? new MemoryAgentDatabase();
 		this.content = new ContentStore(repoRoot, this.database, this.models);
-		this.graph = new ContentGraphRuntime(repoRoot, this.models);
+		let plugins = options.plugins;
+		if (!plugins) {
+			try {
+				plugins = loadTreeseedPlugins();
+			} catch {
+				plugins = [];
+			}
+		}
+		this.graph = new ContentGraphRuntime(repoRoot, this.models, {
+			rankingProvider: options.graphRankingProvider,
+			plugins,
+		});
 	}
 
 	static createLocal(options: {
@@ -318,55 +336,88 @@ export class AgentSdk {
 		return new ScopedAgentSdk(this, agent.slug, agent.permissions);
 	}
 
+	/** Advanced graph maintenance helper. Most application code should use parseGraphDsl() -> queryGraph() -> buildContextPack(). */
 	refreshGraph(request?: SdkGraphRefreshRequest) {
 		return this.graph.refresh(request);
 	}
 
+	/** Advanced lexical graph primitive for file nodes. Prefer queryGraph() or buildContextPack() for AI-context retrieval. */
 	searchFiles(query: string, options?: SdkGraphSearchOptions) {
 		return this.graph.searchFiles(query, options);
 	}
 
+	/** Advanced lexical graph primitive for section nodes. Prefer queryGraph() or buildContextPack() for AI-context retrieval. */
 	searchSections(query: string, options?: SdkGraphSearchOptions) {
 		return this.graph.searchSections(query, options);
 	}
 
+	/** Advanced lexical graph primitive for entity nodes. Prefer queryGraph() or buildContextPack() for AI-context retrieval. */
 	searchEntities(query: string, options?: SdkGraphSearchOptions) {
 		return this.graph.searchEntities(query, options);
 	}
 
+	/** Advanced graph primitive that returns one raw graph node by id. */
 	getGraphNode(id: string) {
 		return this.graph.getNode(id);
 	}
 
+	/** Advanced graph primitive for direct neighborhood inspection. Prefer queryGraph() for ranked retrieval. */
 	getNeighbors(id: string, options?: SdkGraphQueryOptions) {
 		return this.graph.getNeighbors(id, options);
 	}
 
+	/** Advanced traversal primitive for direct reference walking. Prefer queryGraph() when you need ranking and ctx-aware behavior. */
 	followReferences(id: string, options?: SdkGraphQueryOptions) {
 		return this.graph.followReferences(id, options);
 	}
 
+	/** Advanced graph primitive for incoming-link inspection. */
 	getBacklinks(id: string, options?: SdkGraphQueryOptions) {
 		return this.graph.getBacklinks(id, options);
 	}
 
+	/** Advanced graph primitive for local relatedness. Prefer queryGraph() for the primary ranked graph workflow. */
 	getRelated(id: string, options?: SdkGraphQueryOptions) {
 		return this.graph.getRelated(id, options);
 	}
 
+	/** Advanced traversal primitive for raw subgraph extraction. Prefer buildContextPack() when you need prompt-ready output. */
 	getSubgraph(seedIds: string[], options?: SdkGraphQueryOptions) {
 		return this.graph.getSubgraph(seedIds, options);
 	}
 
+	/** Primary graph workflow helper. Resolves roots before ranking and traversal. */
+	resolveSeeds(request: SdkGraphQueryRequest) {
+		return this.graph.resolveSeeds(request);
+	}
+
+	/** Primary graph workflow entrypoint for ranked graph retrieval. */
+	queryGraph(request: SdkGraphQueryRequest) {
+		return this.graph.queryGraph(request);
+	}
+
+	/** Primary graph workflow entrypoint for prompt-ready AI context assembly. */
+	buildContextPack(request: SdkContextPackRequest) {
+		return this.graph.buildContextPack(request);
+	}
+
+	/** Primary graph workflow helper. Parses the public ctx DSL into a typed graph request. */
+	parseGraphDsl(source: string): Promise<SdkGraphDslParseResult> {
+		return this.graph.parseGraphDsl(source);
+	}
+
+	/** Primary graph workflow helper for resolving ids, paths, and anchors into graph nodes. */
 	resolveReference(reference: string, options?: { fromNodeId?: string; fromPath?: string; models?: string[] }) {
 		return this.graph.resolveReference(reference, options);
 	}
 
+	/** Primary graph workflow helper for explaining why two nodes are connected. */
 	explainReferenceChain(fromId: string, toId: string) {
 		return this.graph.explainReferenceChain(fromId, toId);
 	}
 }
 
+/** Operational SDK wrapper that enforces agent permissions on top of AgentSdk. */
 export class ScopedAgentSdk {
 	constructor(
 		private readonly base: AgentSdk,
@@ -483,16 +534,19 @@ export class ScopedAgentSdk {
 		return this.base.refreshGraph(request);
 	}
 
+	/** Advanced lexical graph primitive for file nodes. Scoped to models the agent may search. */
 	searchFiles(query: string, options?: SdkGraphSearchOptions) {
 		const allowedModels = this.allowedModelsFor('search');
 		return this.base.searchFiles(query, { ...options, models: options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels });
 	}
 
+	/** Advanced lexical graph primitive for section nodes. Scoped to models the agent may search. */
 	searchSections(query: string, options?: SdkGraphSearchOptions) {
 		const allowedModels = this.allowedModelsFor('search');
 		return this.base.searchSections(query, { ...options, models: options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels });
 	}
 
+	/** Advanced lexical graph primitive for entity nodes. Scoped to models the agent may search. */
 	searchEntities(query: string, options?: SdkGraphSearchOptions) {
 		const allowedModels = this.allowedModelsFor('search');
 		return this.base.searchEntities(query, { ...options, models: options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels });
@@ -529,6 +583,37 @@ export class ScopedAgentSdk {
 	getSubgraph(seedIds: string[], options?: SdkGraphQueryOptions) {
 		const allowedModels = this.allowedModelsFor('follow');
 		return this.base.getSubgraph(seedIds, { ...options, models: options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels });
+	}
+
+	/** Primary graph workflow helper, scoped to followable models. */
+	resolveSeeds(request: SdkGraphQueryRequest) {
+		const allowedModels = this.allowedModelsFor('follow');
+		return this.base.resolveSeeds({
+			...request,
+			options: { ...request.options, models: request.options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels },
+		});
+	}
+
+	/** Primary graph workflow entrypoint for ranked graph retrieval, scoped to followable models. */
+	queryGraph(request: SdkGraphQueryRequest) {
+		const allowedModels = this.allowedModelsFor('follow');
+		return this.base.queryGraph({
+			...request,
+			options: { ...request.options, models: request.options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels },
+		});
+	}
+
+	/** Primary graph workflow entrypoint for prompt-ready context assembly, scoped to followable models. */
+	buildContextPack(request: SdkContextPackRequest) {
+		const allowedModels = this.allowedModelsFor('follow');
+		return this.base.buildContextPack({
+			...request,
+			options: { ...request.options, models: request.options?.models?.filter((model) => allowedModels.includes(model)) ?? allowedModels },
+		});
+	}
+
+	parseGraphDsl(source: string) {
+		return this.base.parseGraphDsl(source);
 	}
 
 	resolveReference(reference: string, options?: { fromNodeId?: string; fromPath?: string; models?: string[] }) {

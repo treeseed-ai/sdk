@@ -5,5 +5,5 @@ export {
 } from './plugins/constants.ts';
 export { defineTreeseedPlugin } from './plugins/plugin.ts';
 export type * from './plugins/plugin.ts';
-export { loadTreeseedPluginRuntime, loadTreeseedPlugins } from './plugins/runtime.ts';
+export { loadTreeseedPluginRuntime, loadTreeseedPlugins, resolveTreeseedGraphRankingProvider } from './plugins/runtime.ts';
 export type { LoadedTreeseedPluginEntry } from './plugins/runtime.ts';

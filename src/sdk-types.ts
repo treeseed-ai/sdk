@@ -321,6 +321,9 @@ export interface SdkGraphRunEntity {
 	workDayId: string;
 	corpusHash: string;
 	graphVersion: string;
+	queryJson?: string | null;
+	seedIdsJson?: string | null;
+	selectedNodeIdsJson?: string | null;
 	statsJson: string | null;
 	snapshotRef: string | null;
 	createdAt: string;
@@ -452,11 +455,20 @@ export type SdkGraphEdgeType =
 	| 'SAME_DIRECTORY'
 	| 'SAME_COLLECTION'
 	| 'DEFINES'
-	| 'DEFINED_BY';
+	| 'DEFINED_BY'
+	| 'RELATES_TO'
+	| 'DEPENDS_ON'
+	| 'IMPLEMENTS'
+	| 'EXTENDS'
+	| 'SUPERSEDES'
+	| 'BELONGS_TO'
+	| 'ABOUT'
+	| 'USED_BY'
+	| 'GENERATED_FROM';
 
 export interface SdkGraphReferenceFieldConfig {
 	field: string;
-	edgeType?: Extract<SdkGraphEdgeType, 'REFERENCES' | 'HAS_TAG' | 'IN_SERIES'>;
+	edgeType?: Exclude<SdkGraphEdgeType, 'HAS_SECTION' | 'BELONGS_TO_FILE' | 'PARENT_SECTION' | 'CHILD_SECTION' | 'NEXT_SECTION' | 'PREV_SECTION' | 'LINKS_TO' | 'MENTIONS' | 'SAME_DIRECTORY' | 'SAME_COLLECTION' | 'DEFINES' | 'DEFINED_BY'>;
 	targetModels?: string[];
 	multiple?: boolean;
 }
@@ -481,6 +493,10 @@ export interface SdkGraphQueryOptions {
 	edgeTypes?: SdkGraphEdgeType[];
 	direction?: 'outgoing' | 'incoming' | 'both';
 	depth?: number;
+	scoreThreshold?: number;
+	maxNodes?: number;
+	cycleDetection?: boolean;
+	edgeWeights?: Partial<Record<SdkGraphEdgeType, number>>;
 }
 
 export interface SdkGraphSearchOptions extends SdkGraphQueryOptions {
@@ -511,6 +527,13 @@ export interface SdkGraphNode {
 	series?: string | null;
 	fileId?: string;
 	entityId?: string;
+	status?: string | null;
+	canonical?: boolean;
+	canonicalId?: string | null;
+	version?: string | null;
+	domain?: string | null;
+	audience?: string[];
+	updatedAt?: string | null;
 	data?: Record<string, unknown>;
 }
 
@@ -531,10 +554,164 @@ export interface SdkGraphSearchResult {
 	context?: Record<string, unknown>;
 }
 
+export interface SdkGraphRankingDiagnostics {
+	providerId: string;
+	lexicalScore: number;
+	graphScore: number;
+	priorScore: number;
+	canonicalityScore: number;
+	freshnessScore: number;
+	stageScore: number;
+	finalScore: number;
+}
+
 export interface SdkGraphTraversalResult {
 	seedId: string;
 	nodes: SdkGraphNode[];
 	edges: SdkGraphEdge[];
+}
+
+export interface SdkGraphSeed {
+	id: string;
+	kind: 'id' | 'path' | 'query' | 'tag' | 'type';
+	value: string;
+	scope?: 'files' | 'sections' | 'entities';
+}
+
+export type SdkGraphQueryStage = 'plan' | 'implement' | 'research' | 'debug' | 'review';
+export type SdkGraphQueryView = 'list' | 'brief' | 'full' | 'map';
+export type SdkGraphDslRelation =
+	| 'related'
+	| 'depends_on'
+	| 'implements'
+	| 'references'
+	| 'parent'
+	| 'child'
+	| 'supersedes';
+
+export interface SdkGraphWhereFilter {
+	field: 'type' | 'status' | 'audience' | 'tag' | 'domain';
+	op: 'eq' | 'in';
+	value: string | string[];
+}
+
+export interface SdkGraphSeedResolution {
+	seeds: SdkGraphSeed[];
+	matches: SdkGraphSearchResult[];
+	resolvedNodeIds: string[];
+}
+
+export interface SdkGraphQueryRequest {
+	seedIds?: string[];
+	seeds?: SdkGraphSeed[];
+	query?: string;
+	scope?: 'files' | 'sections' | 'entities';
+	stage?: SdkGraphQueryStage;
+	scopePaths?: string[];
+	where?: SdkGraphWhereFilter[];
+	relations?: SdkGraphDslRelation[];
+	view?: SdkGraphQueryView;
+	options?: SdkGraphQueryOptions;
+}
+
+export interface SdkGraphQueryNodeResult {
+	node: SdkGraphNode;
+	score: number;
+	depth: number;
+	reasons: string[];
+	diagnostics?: SdkGraphRankingDiagnostics;
+}
+
+export interface SdkGraphQueryResult {
+	seedIds: string[];
+	nodes: SdkGraphQueryNodeResult[];
+	edges: SdkGraphEdge[];
+	providerId?: string;
+	diagnostics?: Record<string, unknown>;
+}
+
+export interface SdkContextPackNode {
+	node: SdkGraphNode;
+	score: number;
+	depth: number;
+	text: string;
+	tokenEstimate: number;
+	reasons: string[];
+	provenance: {
+		seedIds: string[];
+		viaEdgeTypes: SdkGraphEdgeType[];
+	};
+}
+
+export interface SdkGraphRankingBuildInput {
+	nodes: SdkGraphNode[];
+	edges: SdkGraphEdge[];
+}
+
+export interface SdkGraphRankingSearchRequest {
+	query: string;
+	scope: 'files' | 'sections' | 'entities' | 'all';
+	options?: SdkGraphSearchOptions;
+	request?: SdkGraphQueryRequest;
+}
+
+export interface SdkGraphRankingNodeResult {
+	nodeId: string;
+	score: number;
+	depth: number;
+	reasons: string[];
+	seedIds: string[];
+	viaEdgeTypes: SdkGraphEdgeType[];
+	diagnostics?: SdkGraphRankingDiagnostics;
+}
+
+export interface SdkGraphRankingQueryRequest {
+	request: SdkGraphQueryRequest;
+	seedIds: string[];
+	seedMatches?: SdkGraphSearchResult[];
+	allowedNodeIds?: string[];
+	allowedEdgeTypes?: SdkGraphEdgeType[];
+}
+
+export interface SdkGraphRankingQueryResult {
+	providerId: string;
+	nodes: SdkGraphRankingNodeResult[];
+	edgeIds: string[];
+	diagnostics?: Record<string, unknown>;
+}
+
+export interface SdkGraphRankingIndex {
+	search(request: SdkGraphRankingSearchRequest): SdkGraphSearchResult[];
+	rankQuery(request: SdkGraphRankingQueryRequest): SdkGraphRankingQueryResult;
+	serialize?(): Record<string, unknown>;
+}
+
+export interface SdkGraphRankingProvider {
+	id: string;
+	capabilities?: string[];
+	buildIndex(input: SdkGraphRankingBuildInput): SdkGraphRankingIndex;
+}
+
+export interface SdkContextPack {
+	seedIds: string[];
+	totalTokenEstimate: number;
+	includedNodeIds: string[];
+	nodes: SdkContextPackNode[];
+	edges: SdkGraphEdge[];
+}
+
+export interface SdkContextPackRequest extends SdkGraphQueryRequest {
+	budget?: {
+		maxNodes?: number;
+		maxTokens?: number;
+		includeMode?: 'files' | 'sections' | 'mixed';
+	};
+}
+
+export interface SdkGraphDslParseResult {
+	ok: boolean;
+	query: SdkContextPackRequest | null;
+	errors: string[];
 }
 
 export interface SdkGraphPathExplanation {

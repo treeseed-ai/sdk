@@ -443,6 +443,22 @@ export class MemoryAgentDatabase implements AgentDatabase {
 					parentTaskId: typeof (data.parentTaskId ?? data.parent_task_id) === 'string' ? String(data.parentTaskId ?? data.parent_task_id) : null,
 					actor: request.actor,
 				});
+			case 'graph_run': {
+				const record: SdkGraphRunEntity = {
+					id: String(data.id ?? crypto.randomUUID()),
+					workDayId: String(data.workDayId ?? data.work_day_id ?? ''),
+					corpusHash: String(data.corpusHash ?? data.corpus_hash ?? ''),
+					graphVersion: String(data.graphVersion ?? data.graph_version ?? ''),
+					queryJson: typeof (data.queryJson ?? data.query_json) === 'string' ? String(data.queryJson ?? data.query_json) : null,
+					seedIdsJson: typeof (data.seedIdsJson ?? data.seed_ids_json) === 'string' ? String(data.seedIdsJson ?? data.seed_ids_json) : null,
+					selectedNodeIdsJson: typeof (data.selectedNodeIdsJson ?? data.selected_node_ids_json) === 'string' ? String(data.selectedNodeIdsJson ?? data.selected_node_ids_json) : null,
+					statsJson: typeof (data.statsJson ?? data.stats_json) === 'string' ? String(data.statsJson ?? data.stats_json) : null,
+					snapshotRef: typeof (data.snapshotRef ?? data.snapshot_ref) === 'string' ? String(data.snapshotRef ?? data.snapshot_ref) : null,
+					createdAt: String(data.createdAt ?? data.created_at ?? nowIso()),
+				};
+				this.graphRuns.set(record.id, record);
+				return record;
+			}
 			case 'report':
 				return this.createReport({
 					id: typeof data.id === 'string' ? data.id : undefined,
@@ -1096,6 +1112,20 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 				graphVersion: typeof (normalizedRequest.data.graphVersion ?? normalizedRequest.data.graph_version) === 'string' ? String(normalizedRequest.data.graphVersion ?? normalizedRequest.data.graph_version) : null,
 				parentTaskId: typeof (normalizedRequest.data.parentTaskId ?? normalizedRequest.data.parent_task_id) === 'string' ? String(normalizedRequest.data.parentTaskId ?? normalizedRequest.data.parent_task_id) : null,
 				actor: request.actor,
+			})) as Record<string, unknown>;
+		}
+		if (request.model === 'graph_run') {
+			return (await this.operational.createGraphRun({
+				id: String(normalizedRequest.data.id ?? crypto.randomUUID()),
+				workDayId: String(normalizedRequest.data.workDayId ?? normalizedRequest.data.work_day_id ?? ''),
+				corpusHash: String(normalizedRequest.data.corpusHash ?? normalizedRequest.data.corpus_hash ?? ''),
+				graphVersion: String(normalizedRequest.data.graphVersion ?? normalizedRequest.data.graph_version ?? ''),
+				queryJson: typeof (normalizedRequest.data.queryJson ?? normalizedRequest.data.query_json) === 'string' ? String(normalizedRequest.data.queryJson ?? normalizedRequest.data.query_json) : null,
+				seedIdsJson: typeof (normalizedRequest.data.seedIdsJson ?? normalizedRequest.data.seed_ids_json) === 'string' ? String(normalizedRequest.data.seedIdsJson ?? normalizedRequest.data.seed_ids_json) : null,
+				selectedNodeIdsJson: typeof (normalizedRequest.data.selectedNodeIdsJson ?? normalizedRequest.data.selected_node_ids_json) === 'string' ? String(normalizedRequest.data.selectedNodeIdsJson ?? normalizedRequest.data.selected_node_ids_json) : null,
+				statsJson: typeof (normalizedRequest.data.statsJson ?? normalizedRequest.data.stats_json) === 'string' ? String(normalizedRequest.data.statsJson ?? normalizedRequest.data.stats_json) : null,
+				snapshotRef: typeof (normalizedRequest.data.snapshotRef ?? normalizedRequest.data.snapshot_ref) === 'string' ? String(normalizedRequest.data.snapshotRef ?? normalizedRequest.data.snapshot_ref) : null,
+				createdAt: typeof (normalizedRequest.data.createdAt ?? normalizedRequest.data.created_at) === 'string' ? String(normalizedRequest.data.createdAt ?? normalizedRequest.data.created_at) : undefined,
 			})) as Record<string, unknown>;
 		}
 		if (request.model === 'report') {

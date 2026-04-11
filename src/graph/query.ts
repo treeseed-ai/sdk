@@ -1,42 +1,38 @@
 import path from 'node:path';
-import MiniSearch, { type SearchResult } from 'minisearch';
 import type {
+	SdkContextPack,
+	SdkContextPackRequest,
+	SdkGraphDslRelation,
 	SdkGraphEdge,
+	SdkGraphEdgeType,
 	SdkGraphNode,
-	SdkGraphPathExplanation,
 	SdkGraphQueryOptions,
+	SdkGraphQueryRequest,
+	SdkGraphQueryResult,
+	SdkGraphQueryView,
+	SdkGraphPathExplanation,
+	SdkGraphRankingProvider,
 	SdkGraphSearchOptions,
 	SdkGraphSearchResult,
+	SdkGraphSeed,
+	SdkGraphSeedResolution,
 	SdkGraphTraversalResult,
+	SdkGraphWhereFilter,
 } from '../sdk-types.ts';
 import type { GraphBuildState } from './build.ts';
+import { parseGraphDsl } from './dsl.ts';
+import { DEFAULT_GRAPH_RANKING_PROVIDER } from './ranking.ts';
 import { normalizeText } from './schema.ts';
 
-type IndexDocument = {
-	id: string;
-	title: string;
-	text: string;
-	sourceModel: string;
-	nodeType: string;
-	path: string;
-	tags: string;
-	headingPath: string;
-	fileId: string;
+const RELATION_TO_EDGE_TYPE: Record<SdkGraphDslRelation, SdkGraphEdgeType> = {
+	related: 'RELATES_TO',
+	depends_on: 'DEPENDS_ON',
+	implements: 'IMPLEMENTS',
+	references: 'REFERENCES',
+	parent: 'PARENT_SECTION',
+	child: 'CHILD_SECTION',
+	supersedes: 'SUPERSEDES',
 };
-
-function createIndex(documents: IndexDocument[]) {
-	const index = new MiniSearch<IndexDocument>({
-		fields: ['title', 'headingPath', 'tags', 'text', 'path', 'sourceModel'],
-		storeFields: ['id', 'title', 'sourceModel', 'nodeType', 'path', 'headingPath', 'fileId'],
-		searchOptions: {
-			boost: { title: 6, headingPath: 4, tags: 3, path: 2, text: 1 },
-			prefix: true,
-			fuzzy: 0.2,
-		},
-	});
-	index.addAll(documents);
-	return index;
-}
 
 function matchesNodeOptions(node: SdkGraphNode | undefined, options?: SdkGraphQueryOptions) {
 	if (!node) {
@@ -55,23 +51,99 @@ function dedupeResults(results: SdkGraphSearchResult[]) {
 	return [...new Map(results.map((result) => [result.node.id, result])).values()];
 }
 
+function tokenEstimate(text: string) {
+	return Math.max(1, Math.ceil(text.trim().length / 4));
+}
+
+function normalizeScopePath(value: string) {
+	return value.replace(/\\/gu, '/').replace(/\/+/gu, '/').replace(/\/$/u, '') || '/';
+}
+
+function stripExt(value: string) {
+	return value.replace(/\.(md|mdx)$/iu, '');
+}
+
+function nodeContentPath(node: SdkGraphNode) {
+	const relativePath = typeof node.data?.relativePath === 'string'
+		? node.data.relativePath.replace(/\.(md|mdx)$/iu, '')
+		: typeof node.slug === 'string'
+			? node.slug.replace(/#.*$/u, '')
+			: '';
+	const modelPrefix = node.sourceModel ? `/${node.sourceModel}` : '';
+	if (!relativePath && modelPrefix) {
+		return modelPrefix;
+	}
+	return normalizeScopePath(`${modelPrefix}/${relativePath}`);
+}
+
+function nodeMatchesScope(node: SdkGraphNode, scopePaths?: string[]) {
+	if (!scopePaths?.length) {
+		return true;
+	}
+	const contentPath = nodeContentPath(node);
+	return scopePaths.some((scopePath) => contentPath === normalizeScopePath(scopePath) || contentPath.startsWith(`${normalizeScopePath(scopePath)}/`));
+}
+
+function nodeMetadataType(node: SdkGraphNode) {
+	const frontmatter = node.data?.frontmatter as Record<string, unknown> | undefined;
+	const frontmatterType = typeof frontmatter?.type === 'string' ? frontmatter.type : null;
+	return normalizeText(frontmatterType ?? node.entityType ?? node.sourceModel ?? node.nodeType);
+}
+
+function nodeMatchesWhere(node: SdkGraphNode, filters?: SdkGraphWhereFilter[]) {
+	if (!filters?.length) {
+		return true;
+	}
+	return filters.every((filter) => {
+		const values =
+			filter.field === 'type'
+				? [nodeMetadataType(node)]
+				: filter.field === 'status'
+					? [normalizeText(node.status ?? '')]
+					: filter.field === 'audience'
+						? (node.audience ?? []).map(normalizeText)
+						: filter.field === 'tag'
+							? (node.tags ?? []).map(normalizeText)
+							: filter.field === 'domain'
+								? [normalizeText(node.domain ?? '')]
+								: [];
+		const expected = Array.isArray(filter.value) ? filter.value.map(normalizeText) : [normalizeText(filter.value)];
+		return filter.op === 'eq'
+			? expected.some((entry) => values.includes(entry))
+			: expected.every((entry) => values.includes(entry));
+	});
+}
+
+function excerptForView(node: SdkGraphNode, view: SdkGraphQueryView) {
+	const text = node.text ?? '';
+	switch (view) {
+		case 'list':
+			return '';
+		case 'map':
+			return `${node.title ?? node.id}`;
+		case 'brief':
+			return text.slice(0, 480).trim();
+		case 'full':
+		default:
+			return text;
+	}
+}
+
 export class GraphQueryEngine {
 	private readonly nodesById = new Map<string, SdkGraphNode>();
 	private readonly edgesById = new Map<string, SdkGraphEdge>();
 	private readonly outgoing = new Map<string, SdkGraphEdge[]>();
 	private readonly incoming = new Map<string, SdkGraphEdge[]>();
 	private readonly fileSections = new Map<string, SdkGraphNode[]>();
-	private readonly fileIndexDocs: IndexDocument[];
-	private readonly sectionIndexDocs: IndexDocument[];
-	private readonly entityIndexDocs: IndexDocument[];
-	private readonly fileIndex: MiniSearch<IndexDocument>;
-	private readonly sectionIndex: MiniSearch<IndexDocument>;
-	private readonly entityIndex: MiniSearch<IndexDocument>;
+	private readonly rankingProvider: SdkGraphRankingProvider;
+	private readonly rankingIndex;
 
 	constructor(
 		private readonly state: GraphBuildState,
 		private readonly onQuery?: (name: string, detail?: string) => void,
+		rankingProvider: SdkGraphRankingProvider = DEFAULT_GRAPH_RANKING_PROVIDER,
 	) {
+		this.rankingProvider = rankingProvider;
 		for (const node of state.nodes) {
 			this.nodesById.set(node.id, node);
 			if (node.nodeType === 'Section' && node.fileId) {
@@ -89,117 +161,44 @@ export class GraphQueryEngine {
 			incoming.push(edge);
 			this.incoming.set(edge.targetId, incoming);
 		}
-
 		for (const sections of this.fileSections.values()) {
-			sections.sort((left, right) => (Number(left.data?.startOffset ?? 0) - Number(right.data?.startOffset ?? 0)));
+			sections.sort((left, right) => Number(left.data?.startOffset ?? 0) - Number(right.data?.startOffset ?? 0));
 		}
-
-		this.fileIndexDocs = state.nodes
-			.filter((node) => node.nodeType === 'File')
-			.map((node) => ({
-				id: node.id,
-				title: node.title ?? node.slug ?? node.id,
-				text: node.text ?? '',
-				sourceModel: node.sourceModel ?? '',
-				nodeType: node.nodeType,
-				path: node.path ?? '',
-				tags: (node.tags ?? []).join(' '),
-				headingPath: (this.fileSections.get(node.id) ?? []).map((section) => section.headingPath ?? '').join(' '),
-				fileId: node.id,
-			}));
-		this.sectionIndexDocs = state.nodes
-			.filter((node) => node.nodeType === 'Section')
-			.map((node) => ({
-				id: node.id,
-				title: node.title ?? node.id,
-				text: node.text ?? '',
-				sourceModel: node.sourceModel ?? '',
-				nodeType: node.nodeType,
-				path: node.path ?? '',
-				tags: (node.tags ?? []).join(' '),
-				headingPath: node.headingPath ?? '',
-				fileId: node.fileId ?? '',
-			}));
-		this.entityIndexDocs = state.nodes
-			.filter((node) => !['File', 'Section', 'Tag', 'Series', 'Reference'].includes(node.nodeType))
-			.map((node) => ({
-				id: node.id,
-				title: node.title ?? node.slug ?? node.id,
-				text: node.text ?? '',
-				sourceModel: node.sourceModel ?? '',
-				nodeType: node.nodeType,
-				path: node.path ?? '',
-				tags: (node.tags ?? []).join(' '),
-				headingPath: '',
-				fileId: node.fileId ?? '',
-			}));
-
-		this.fileIndex = createIndex(this.fileIndexDocs);
-		this.sectionIndex = createIndex(this.sectionIndexDocs);
-		this.entityIndex = createIndex(this.entityIndexDocs);
-	}
-
-	private indexSearch(index: MiniSearch<IndexDocument>, query: string, options?: SdkGraphSearchOptions) {
-		if (!query.trim()) {
-			return index
-				.search(MiniSearch.wildcard, { prefix: options?.prefix ?? true, fuzzy: options?.fuzzy ?? 0.2 })
-				.slice(0, options?.limit ?? 20);
-		}
-		return index.search(query, {
-			prefix: options?.prefix ?? true,
-			fuzzy: options?.fuzzy ?? 0.2,
+		this.rankingIndex = this.rankingProvider.buildIndex({
+			nodes: state.nodes,
+			edges: state.edges,
 		});
 	}
 
-	private mapSearchResult(result: SearchResult, reason: string): SdkGraphSearchResult | null {
-		const node = this.nodesById.get(String(result.id));
-		if (!node) {
-			return null;
-		}
-		return {
-			node,
-			score: result.score,
-			reason,
-			highlights: Object.keys(result.match ?? {}),
-			context: node.nodeType === 'File'
-				? { topSections: (this.fileSections.get(node.id) ?? []).slice(0, 3).map((section) => section.id) }
-				: node.nodeType === 'Section'
-					? { fileId: node.fileId ?? null }
-					: { fileId: node.fileId ?? null },
-		};
-	}
-
-	private filterSearchResults(results: Array<SdkGraphSearchResult | null>, options?: SdkGraphSearchOptions) {
+	private filterSearchResults(results: SdkGraphSearchResult[], options?: SdkGraphSearchOptions) {
 		return dedupeResults(
 			results
-				.filter((result): result is SdkGraphSearchResult => Boolean(result))
 				.filter((result) => matchesNodeOptions(result.node, options))
 				.slice(0, options?.limit ?? 20),
 		);
 	}
 
+	private eligibleNodeIds(request: SdkGraphQueryRequest) {
+		return statefulIds(this.nodesById.values(), (node) =>
+			matchesNodeOptions(node, request.options)
+			&& nodeMatchesScope(node, request.scopePaths)
+			&& nodeMatchesWhere(node, request.where),
+		);
+	}
+
 	searchFiles(query: string, options?: SdkGraphSearchOptions) {
 		this.onQuery?.('searchFiles', query);
-		return this.filterSearchResults(
-			this.indexSearch(this.fileIndex, query, options).map((result) => this.mapSearchResult(result, 'file-search')),
-			options,
-		);
+		return this.filterSearchResults(this.rankingIndex.search({ query, scope: 'files', options }), options);
 	}
 
 	searchSections(query: string, options?: SdkGraphSearchOptions) {
 		this.onQuery?.('searchSections', query);
-		return this.filterSearchResults(
-			this.indexSearch(this.sectionIndex, query, options).map((result) => this.mapSearchResult(result, 'section-search')),
-			options,
-		);
+		return this.filterSearchResults(this.rankingIndex.search({ query, scope: 'sections', options }), options);
 	}
 
 	searchEntities(query: string, options?: SdkGraphSearchOptions) {
 		this.onQuery?.('searchEntities', query);
-		return this.filterSearchResults(
-			this.indexSearch(this.entityIndex, query, options).map((result) => this.mapSearchResult(result, 'entity-search')),
-			options,
-		);
+		return this.filterSearchResults(this.rankingIndex.search({ query, scope: 'entities', options }), options);
 	}
 
 	getNode(id: string) {
@@ -278,37 +277,17 @@ export class GraphQueryEngine {
 
 	getRelated(id: string, options?: SdkGraphQueryOptions) {
 		this.onQuery?.('getRelated', id);
-		const seed = this.nodesById.get(id);
-		if (!seed) {
-			return [];
-		}
-		const scores = new Map<string, number>();
-		for (const edge of [...(this.outgoing.get(id) ?? []), ...(this.incoming.get(id) ?? [])]) {
-			const otherId = edge.sourceId === id ? edge.targetId : edge.sourceId;
-			scores.set(otherId, (scores.get(otherId) ?? 0) + 10);
-		}
-		for (const node of this.nodesById.values()) {
-			if (node.id === id || !matchesNodeOptions(node, options)) continue;
-			if (seed.sourceModel && node.sourceModel === seed.sourceModel) {
-				scores.set(node.id, (scores.get(node.id) ?? 0) + 2);
-			}
-			if (seed.path && node.path && path.dirname(seed.path) === path.dirname(node.path)) {
-				scores.set(node.id, (scores.get(node.id) ?? 0) + 2);
-			}
-			const sharedTags = (seed.tags ?? []).filter((tag) => (node.tags ?? []).includes(tag));
-			if (sharedTags.length > 0) {
-				scores.set(node.id, (scores.get(node.id) ?? 0) + sharedTags.length * 3);
-			}
-			const lexical = normalizeText(`${seed.title ?? ''} ${seed.text ?? ''}`);
-			if (lexical && node.title && lexical.includes(normalizeText(node.title))) {
-				scores.set(node.id, (scores.get(node.id) ?? 0) + 1);
-			}
-		}
-		return [...scores.entries()]
-			.map(([nodeId, score]) => ({ node: this.nodesById.get(nodeId)!, score, reason: 'related' }))
-			.filter((entry) => matchesNodeOptions(entry.node, options))
-			.sort((left, right) => right.score - left.score || (left.node.title ?? '').localeCompare(right.node.title ?? ''))
-			.slice(0, options?.limit ?? 20);
+		const result = this.queryGraph({
+			seedIds: [id],
+			options: {
+				...options,
+				depth: options?.depth ?? 1,
+				limit: options?.limit ?? 20,
+				maxNodes: options?.maxNodes ?? options?.limit ?? 20,
+			},
+			relations: ['related', 'references', 'depends_on'],
+		});
+		return result.nodes.filter((entry) => entry.node.id !== id);
 	}
 
 	getSubgraph(seedIds: string[], options?: SdkGraphQueryOptions): SdkGraphTraversalResult {
@@ -325,6 +304,169 @@ export class GraphQueryEngine {
 			nodes: [...aggregatedNodes.values()],
 			edges: [...aggregatedEdges.values()],
 		};
+	}
+
+	resolveSeeds(request: SdkGraphQueryRequest): SdkGraphSeedResolution {
+		this.onQuery?.('resolveSeeds', request.query ?? request.seedIds?.join(',') ?? '');
+		const explicitSeeds = request.seeds ?? [];
+		const idSeeds = (request.seedIds ?? []).map((id, index) => ({ id: `seed-id:${index}`, kind: 'id', value: id } as SdkGraphSeed));
+		const querySeeds = request.query ? [{ id: 'seed-query:0', kind: 'query', value: request.query, scope: request.scope }] : [];
+		const seeds = [...explicitSeeds, ...idSeeds, ...querySeeds];
+		const matches: SdkGraphSearchResult[] = [];
+		const resolvedNodeIds = new Set<string>();
+
+		for (const seed of seeds) {
+			if (seed.kind === 'id') {
+				const node = this.getNode(seed.value);
+				if (node && nodeMatchesScope(node, request.scopePaths) && nodeMatchesWhere(node, request.where)) {
+					matches.push({ node, score: 100, reason: 'seed-id' });
+					resolvedNodeIds.add(node.id);
+				}
+				continue;
+			}
+			if (seed.kind === 'path') {
+				const node = this.resolveReference(seed.value)
+					?? [...this.nodesById.values()].find((entry) => nodeContentPath(entry) === normalizeScopePath(seed.value))
+					?? null;
+				if (node && nodeMatchesScope(node, request.scopePaths) && nodeMatchesWhere(node, request.where)) {
+					matches.push({ node, score: 90, reason: 'seed-path' });
+					resolvedNodeIds.add(node.id);
+				}
+				continue;
+			}
+			if (seed.kind === 'tag') {
+				for (const node of this.nodesById.values()) {
+					if ((node.tags ?? []).map(normalizeText).includes(normalizeText(seed.value))
+						&& nodeMatchesScope(node, request.scopePaths)
+						&& nodeMatchesWhere(node, request.where)) {
+						matches.push({ node, score: 85, reason: 'seed-tag' });
+						resolvedNodeIds.add(node.id);
+					}
+				}
+				continue;
+			}
+			if (seed.kind === 'type') {
+				for (const node of this.nodesById.values()) {
+					if (nodeMetadataType(node) === normalizeText(seed.value)
+						&& nodeMatchesScope(node, request.scopePaths)
+						&& nodeMatchesWhere(node, request.where)) {
+						matches.push({ node, score: 85, reason: 'seed-type' });
+						resolvedNodeIds.add(node.id);
+					}
+				}
+				continue;
+			}
+			const scoped =
+				seed.scope === 'files'
+					? this.searchFiles(seed.value, request.options)
+					: seed.scope === 'entities'
+						? this.searchEntities(seed.value, request.options)
+						: seed.scope === 'sections'
+							? this.searchSections(seed.value, request.options)
+							: this.filterSearchResults(this.rankingIndex.search({ query: seed.value, scope: 'all', options: request.options, request }), request.options);
+			for (const match of scoped
+				.filter((entry) => nodeMatchesScope(entry.node, request.scopePaths) && nodeMatchesWhere(entry.node, request.where))
+				.slice(0, request.options?.limit ?? 10)) {
+				matches.push({ ...match, reason: `${match.reason}:seed-query` });
+				resolvedNodeIds.add(match.node.id);
+			}
+		}
+
+		return { seeds, matches: dedupeResults(matches), resolvedNodeIds: [...resolvedNodeIds] };
+	}
+
+	queryGraph(request: SdkGraphQueryRequest): SdkGraphQueryResult {
+		this.onQuery?.('queryGraph', request.query ?? request.seedIds?.join(',') ?? '');
+		const resolved = this.resolveSeeds(request);
+		const allowedEdgeTypes = request.relations?.length ? request.relations.map((relation) => RELATION_TO_EDGE_TYPE[relation]) : request.options?.edgeTypes;
+		const eligibleNodeIds = this.eligibleNodeIds(request);
+		for (const seedId of resolved.resolvedNodeIds) {
+			eligibleNodeIds.add(seedId);
+		}
+		const ranked = this.rankingIndex.rankQuery({
+			request,
+			seedIds: resolved.resolvedNodeIds.filter((id) => eligibleNodeIds.has(id)),
+			seedMatches: resolved.matches.filter((match) => eligibleNodeIds.has(match.node.id)),
+			allowedNodeIds: [...eligibleNodeIds],
+			allowedEdgeTypes,
+		});
+		const nodes = ranked.nodes
+			.map((entry) => ({
+				node: this.nodesById.get(entry.nodeId)!,
+				score: entry.score,
+				depth: entry.depth,
+				reasons: entry.reasons,
+				diagnostics: entry.diagnostics,
+			}))
+			.filter((entry) => Boolean(entry.node) && nodeMatchesScope(entry.node, request.scopePaths) && nodeMatchesWhere(entry.node, request.where));
+		const includedNodeIds = new Set(nodes.map((entry) => entry.node.id));
+		const edges = ranked.edgeIds
+			.map((id) => this.edgesById.get(id))
+			.filter((edge): edge is SdkGraphEdge => Boolean(edge))
+			.filter((edge) => includedNodeIds.has(edge.sourceId) || includedNodeIds.has(edge.targetId));
+		return {
+			seedIds: resolved.resolvedNodeIds,
+			nodes,
+			edges,
+			providerId: ranked.providerId,
+			diagnostics: ranked.diagnostics,
+		};
+	}
+
+	buildContextPack(request: SdkContextPackRequest): SdkContextPack {
+		this.onQuery?.('buildContextPack', request.query ?? request.seedIds?.join(',') ?? '');
+		const graphResult = this.queryGraph(request);
+		const maxTokens = request.budget?.maxTokens ?? 1800;
+		const includeMode =
+			request.budget?.includeMode
+			?? (request.view === 'list' || request.view === 'map'
+				? 'mixed'
+				: request.view === 'full'
+					? 'mixed'
+					: 'mixed');
+		const view = request.view ?? 'brief';
+		const includedNodeIds = new Set<string>();
+		const nodes: SdkContextPack['nodes'] = [];
+		let totalTokenEstimate = 0;
+
+		for (const entry of graphResult.nodes) {
+			if (includeMode === 'files' && entry.node.nodeType !== 'File') continue;
+			if (includeMode === 'sections' && entry.node.nodeType !== 'Section') continue;
+			if (includeMode === 'mixed' && !['File', 'Section'].includes(entry.node.nodeType)) continue;
+			if (includeMode === 'mixed' && entry.node.nodeType === 'File' && entry.node.fileId && includedNodeIds.has(entry.node.fileId)) continue;
+			const text = excerptForView(entry.node, view);
+			if (!text.trim() && !['list', 'map'].includes(view)) continue;
+			const estimate = tokenEstimate(text);
+			if (totalTokenEstimate + estimate > maxTokens && nodes.length > 0) continue;
+			totalTokenEstimate += estimate;
+			includedNodeIds.add(entry.node.id);
+			nodes.push({
+				node: entry.node,
+				score: entry.score,
+				depth: entry.depth,
+				text,
+				tokenEstimate: estimate,
+				reasons: entry.reasons,
+				provenance: {
+					seedIds: graphResult.seedIds,
+					viaEdgeTypes: graphResult.edges
+						.filter((edge) => edge.sourceId === entry.node.id || edge.targetId === entry.node.id)
+						.map((edge) => edge.type),
+				},
+			});
+		}
+
+		return {
+			seedIds: graphResult.seedIds,
+			totalTokenEstimate,
+			includedNodeIds: [...includedNodeIds],
+			nodes,
+			edges: graphResult.edges,
+		};
+	}
+
+	parseDsl(source: string) {
+		return parseGraphDsl(source);
 	}
 
 	explainReferenceChain(fromId: string, toId: string): SdkGraphPathExplanation | null {
@@ -397,13 +539,18 @@ export class GraphQueryEngine {
 
 	serializeIndexes() {
 		return {
-			files: { docs: this.fileIndexDocs, index: this.fileIndex.toJSON() },
-			sections: { docs: this.sectionIndexDocs, index: this.sectionIndex.toJSON() },
-			entities: { docs: this.entityIndexDocs, index: this.entityIndex.toJSON() },
+			providerId: this.rankingProvider.id,
+			ranking: this.rankingIndex.serialize?.() ?? null,
 		};
 	}
 }
 
-function stripExt(value: string) {
-	return value.replace(/\.(md|mdx)$/iu, '');
+function statefulIds(nodes: Iterable<SdkGraphNode>, predicate: (node: SdkGraphNode) => boolean) {
+	const ids = new Set<string>();
+	for (const node of nodes) {
+		if (predicate(node)) {
+			ids.add(node.id);
+		}
+	}
+	return ids;
 }

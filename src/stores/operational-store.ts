@@ -158,6 +158,24 @@ function graphRunFromRow(row: DatabaseRow): SdkGraphRunEntity {
 		workDayId: String(row.work_day_id ?? row.workDayId ?? ''),
 		corpusHash: String(row.corpus_hash ?? row.corpusHash ?? ''),
 		graphVersion: String(row.graph_version ?? row.graphVersion ?? ''),
+		queryJson:
+			row.query_json !== undefined && row.query_json !== null
+				? String(row.query_json)
+				: row.queryJson !== undefined && row.queryJson !== null
+					? String(row.queryJson)
+					: null,
+		seedIdsJson:
+			row.seed_ids_json !== undefined && row.seed_ids_json !== null
+				? String(row.seed_ids_json)
+				: row.seedIdsJson !== undefined && row.seedIdsJson !== null
+					? String(row.seedIdsJson)
+					: null,
+		selectedNodeIdsJson:
+			row.selected_node_ids_json !== undefined && row.selected_node_ids_json !== null
+				? String(row.selected_node_ids_json)
+				: row.selectedNodeIdsJson !== undefined && row.selectedNodeIdsJson !== null
+					? String(row.selectedNodeIdsJson)
+					: null,
 		statsJson:
 			row.stats_json !== undefined && row.stats_json !== null
 				? String(row.stats_json)
@@ -371,7 +389,7 @@ export class OperationalStore extends SqliteStoreBase {
 	async createGraphRun(input: Omit<SdkGraphRunEntity, 'createdAt'> & { createdAt?: string }) {
 		const timestamp = input.createdAt ?? nowIso();
 		await this.execute(
-			`INSERT OR REPLACE INTO graph_runs (id, work_day_id, corpus_hash, graph_version, stats_json, snapshot_ref, created_at) VALUES (${toSqlValue(input.id)}, ${toSqlValue(input.workDayId)}, ${toSqlValue(input.corpusHash)}, ${toSqlValue(input.graphVersion)}, ${toSqlValue(input.statsJson ?? null)}, ${toSqlValue(input.snapshotRef ?? null)}, ${toSqlValue(timestamp)})`,
+			`INSERT OR REPLACE INTO graph_runs (id, work_day_id, corpus_hash, graph_version, query_json, seed_ids_json, selected_node_ids_json, stats_json, snapshot_ref, created_at) VALUES (${toSqlValue(input.id)}, ${toSqlValue(input.workDayId)}, ${toSqlValue(input.corpusHash)}, ${toSqlValue(input.graphVersion)}, ${toSqlValue(input.queryJson ?? null)}, ${toSqlValue(input.seedIdsJson ?? null)}, ${toSqlValue(input.selectedNodeIdsJson ?? null)}, ${toSqlValue(input.statsJson ?? null)}, ${toSqlValue(input.snapshotRef ?? null)}, ${toSqlValue(timestamp)})`,
 		);
 		const row = await this.selectFirst(`SELECT * FROM graph_runs WHERE id = ${toSqlValue(input.id)} LIMIT 1`);
 		return row ? graphRunFromRow(row) : null;

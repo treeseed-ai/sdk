@@ -10,19 +10,23 @@ import { resolveModelDefinition } from '../model-registry.ts';
 import { readCanonicalFieldValue } from '../sdk-fields.ts';
 import type { SdkGraphEdge, SdkGraphNode, SdkModelDefinition, SdkModelRegistry } from '../sdk-types.ts';
 import {
+	AUTHORED_GRAPH_EDGE_TYPES,
 	computeEdgeId,
 	computeModelSignature,
 	createEntityNodeId,
 	createFileNodeId,
 	emptyGraphMetrics,
+	emptyGraphValidation,
 	ensureArray,
 	graphSnapshotRoot,
 	normalizeText,
 	resolveGraphModelConfig,
+	type AuthoredGraphEdgeType,
 	type GraphDelta,
 	type GraphFileCatalogEntry,
 	type GraphMetrics,
 	type GraphSnapshot,
+	type GraphValidation,
 	type ParsedGraphDocument,
 	type ParsedGraphHeading,
 	type ParsedGraphLink,
@@ -50,6 +54,7 @@ export type GraphBuildState = {
 	edges: SdkGraphEdge[];
 	catalog: GraphFileCatalogEntry[];
 	metrics: GraphMetrics;
+	validation: GraphValidation;
 	delta: GraphDelta;
 	snapshotRoot: string;
 };
@@ -246,6 +251,19 @@ function normalizeReferenceValue(value: string) {
 	return value.trim().replace(/^\.\/+/u, '').replace(/\\/gu, '/');
 }
 
+const GRAPH_FRONTMATTER_RELATION_FIELDS: Array<{ field: string; edgeType: AuthoredGraphEdgeType; multiple?: boolean }> = [
+	{ field: 'related', edgeType: 'RELATES_TO', multiple: true },
+	{ field: 'references', edgeType: 'REFERENCES', multiple: true },
+	{ field: 'dependsOn', edgeType: 'DEPENDS_ON', multiple: true },
+	{ field: 'implements', edgeType: 'IMPLEMENTS', multiple: true },
+	{ field: 'extends', edgeType: 'EXTENDS', multiple: true },
+	{ field: 'supersedes', edgeType: 'SUPERSEDES', multiple: true },
+	{ field: 'belongsTo', edgeType: 'BELONGS_TO', multiple: true },
+	{ field: 'about', edgeType: 'ABOUT', multiple: true },
+	{ field: 'usedBy', edgeType: 'USED_BY', multiple: true },
+	{ field: 'generatedFrom', edgeType: 'GENERATED_FROM', multiple: true },
+];
+
 function parseGraphDocument(definition: SdkModelDefinition, filePath: string, source: string): ParsedGraphDocument {
 	const parsed = parseFrontmatterDocument(source);
 	const graphConfig = resolveGraphModelConfig(definition);
@@ -257,10 +275,21 @@ function parseGraphDocument(definition: SdkModelDefinition, filePath: string, so
 	const tags = graphConfig.tagField ? ensureArray(readGraphField(definition, parsed.frontmatter, graphConfig.tagField)) : [];
 	const seriesValue = graphConfig.seriesField ? readGraphField(definition, parsed.frontmatter, graphConfig.seriesField) : undefined;
 	const series = typeof seriesValue === 'string' && seriesValue.trim() ? seriesValue.trim() : null;
+	const explicitId = typeof parsed.frontmatter.id === 'string' && parsed.frontmatter.id.trim() ? parsed.frontmatter.id.trim() : null;
+	const status = typeof parsed.frontmatter.status === 'string' && parsed.frontmatter.status.trim() ? parsed.frontmatter.status.trim() : null;
+	const canonical = parsed.frontmatter.canonical === true;
+	const canonicalRef = typeof parsed.frontmatter.canonical === 'string' && parsed.frontmatter.canonical.trim()
+		? normalizeReferenceValue(parsed.frontmatter.canonical.trim())
+		: null;
+	const version = typeof parsed.frontmatter.version === 'string' && parsed.frontmatter.version.trim() ? parsed.frontmatter.version.trim() : null;
+	const domain = typeof parsed.frontmatter.domain === 'string' && parsed.frontmatter.domain.trim() ? parsed.frontmatter.domain.trim() : null;
+	const audience = ensureArray(parsed.frontmatter.audience);
+	const updatedAtValue = readGraphField(definition, parsed.frontmatter, 'updated_at') ?? parsed.frontmatter.updatedAt ?? parsed.frontmatter.updated_at;
+	const updatedAt = typeof updatedAtValue === 'string' && updatedAtValue.trim() ? updatedAtValue.trim() : null;
 	const body = parsed.body;
 	const { headings, links, mdxImports } = extractMarkdownArtifacts(body);
 	const sections = graphConfig.enableSections ? buildSections(fileId, body, headings, links) : [];
-	const explicitReferences = graphConfig.referenceFields.flatMap((referenceField) => {
+	const configuredReferences = graphConfig.referenceFields.flatMap((referenceField) => {
 		const rawValue = readGraphField(definition, parsed.frontmatter, referenceField.field);
 		return ensureArray(rawValue).map((value) => ({
 			field: referenceField.field,
@@ -269,6 +298,17 @@ function parseGraphDocument(definition: SdkModelDefinition, filePath: string, so
 			edgeType: referenceField.edgeType ?? 'REFERENCES',
 		}));
 	});
+	const inferredRelationshipReferences = GRAPH_FRONTMATTER_RELATION_FIELDS.flatMap((entry) =>
+		ensureArray(parsed.frontmatter[entry.field]).map((value) => ({
+			field: entry.field,
+			value: normalizeReferenceValue(value),
+			edgeType: entry.edgeType,
+		})),
+	);
+	const canonicalReference = canonicalRef
+		? [{ field: 'canonical', value: canonicalRef, edgeType: 'REFERENCES' as const }]
+		: [];
+	const explicitReferences = [...configuredReferences, ...inferredRelationshipReferences, ...canonicalReference];
 
 	return {
 		fileId,
@@ -283,8 +323,16 @@ function parseGraphDocument(definition: SdkModelDefinition, filePath: string, so
 		body,
 		normalizedBody: normalizeText(body),
 		frontmatter: parsed.frontmatter,
+		explicitId,
 		tags,
 		series,
+		status,
+		canonical,
+		canonicalRef,
+		version,
+		domain,
+		audience,
+		updatedAt,
 		sections,
 		headings,
 		links,
@@ -436,6 +484,18 @@ function buildGraphFromDocuments(
 	const referenceNodes = new Map<string, SdkGraphNode>();
 	const fileTargets = new Map<string, Set<string>>();
 	const maps = buildReferenceMaps(documents, models);
+	const validation: GraphValidation = emptyGraphValidation();
+	const seenExplicitIds = new Set<string>();
+
+	for (const document of documents) {
+		if (!document.explicitId) {
+			validation.missingIds.push(document.fileId);
+		} else if (seenExplicitIds.has(document.explicitId)) {
+			validation.duplicateIds.push(document.explicitId);
+		} else {
+			seenExplicitIds.add(document.explicitId);
+		}
+	}
 
 	const addNode = (node: SdkGraphNode) => {
 		nodes.set(node.id, node);
@@ -473,8 +533,15 @@ function buildGraphFromDocuments(
 			title: document.title,
 			tags: document.tags,
 			series: document.series,
+			status: document.status,
+			canonical: document.canonical,
+			canonicalId: document.canonicalRef,
+			version: document.version,
+			domain: document.domain,
+			audience: document.audience,
+			updatedAt: document.updatedAt,
 			text: document.body,
-			data: { relativePath: document.relativePath },
+			data: { relativePath: document.relativePath, explicitId: document.explicitId, frontmatter: document.frontmatter },
 		});
 		addNode({
 			id: document.entityId,
@@ -488,6 +555,13 @@ function buildGraphFromDocuments(
 			tags: document.tags,
 			series: document.series,
 			fileId: document.fileId,
+			status: document.status,
+			canonical: document.canonical,
+			canonicalId: document.canonicalRef,
+			version: document.version,
+			domain: document.domain,
+			audience: document.audience,
+			updatedAt: document.updatedAt,
 			text: document.body,
 			data: { frontmatter: document.frontmatter },
 		});
@@ -521,8 +595,22 @@ function buildGraphFromDocuments(
 				headingPath: section.headingPath,
 				level: section.level,
 				tags: document.tags,
+				status: document.status,
+				canonical: document.canonical,
+				canonicalId: document.canonicalRef,
+				version: document.version,
+				domain: document.domain,
+				audience: document.audience,
+				updatedAt: document.updatedAt,
 				text: section.rawText,
-				data: { ordinal: section.ordinal, startOffset: section.startOffset, endOffset: section.endOffset },
+				data: {
+					ordinal: section.ordinal,
+					startOffset: section.startOffset,
+					endOffset: section.endOffset,
+					textLength: section.rawText.length,
+					linkDensity: section.outboundLinks.length,
+					ownerTitle: document.title,
+				},
 			});
 			addEdge({
 				id: computeEdgeId(document.fileId, 'HAS_SECTION', section.id, `${document.fileId}:${section.id}`),
@@ -624,11 +712,24 @@ function buildGraphFromDocuments(
 		}
 
 		for (const reference of document.explicitReferences) {
+			if (!AUTHORED_GRAPH_EDGE_TYPES.includes(reference.edgeType)) {
+				validation.invalidEdgeTypes.push({ ownerFileId: document.fileId, field: reference.field, edgeType: reference.edgeType });
+				continue;
+			}
 			const resolved = maps.resolveReferenceString(reference.value, document);
 			const targetId =
 				resolved.kind === 'unresolved'
 					? unresolvedNodeFor(document.fileId, reference.value).id
 					: resolved.targetId;
+			if (resolved.kind === 'unresolved') {
+				validation.brokenReferences.push({ ownerFileId: document.fileId, value: reference.value, edgeType: reference.edgeType });
+			}
+			if (reference.field === 'canonical' && (resolved.kind === 'unresolved' || resolved.targetId === document.entityId || resolved.targetId === document.fileId)) {
+				validation.invalidCanonicalRefs.push({ ownerFileId: document.fileId, value: reference.value });
+			}
+			if (reference.edgeType === 'SUPERSEDES' && resolved.kind === 'unresolved') {
+				validation.invalidSupersedesRefs.push({ ownerFileId: document.fileId, value: reference.value });
+			}
 			for (const sourceId of [document.entityId, document.fileId]) {
 				addEdge({
 					id: computeEdgeId(sourceId, reference.edgeType, targetId, `${reference.field}:${reference.value}:${sourceId}`),
@@ -766,6 +867,14 @@ function buildGraphFromDocuments(
 		totalEntities: documents.length,
 		totalEdges: edges.size,
 		unresolvedReferences: [...nodes.values()].filter((node) => node.nodeType === 'Reference').length,
+		validation: {
+			missingIds: validation.missingIds.length,
+			duplicateIds: validation.duplicateIds.length,
+			brokenReferences: validation.brokenReferences.length,
+			invalidEdgeTypes: validation.invalidEdgeTypes.length,
+			invalidCanonicalRefs: validation.invalidCanonicalRefs.length,
+			invalidSupersedesRefs: validation.invalidSupersedesRefs.length,
+		},
 		lastRefreshAt: new Date().toISOString(),
 	};
 
@@ -773,6 +882,7 @@ function buildGraphFromDocuments(
 		nodes: [...nodes.values()],
 		edges: [...edges.values()],
 		metrics,
+		validation,
 		delta: delta ?? { added: [], modified: [], removed: [] },
 	};
 }
@@ -787,7 +897,7 @@ async function readSnapshotFile<T>(filePath: string): Promise<T | null> {
 
 export async function loadGraphSnapshot(repoRoot: string, models: SdkModelRegistry): Promise<GraphBuildState | null> {
 	const snapshotRoot = graphSnapshotRoot(repoRoot);
-	const graph = await readSnapshotFile<Pick<GraphSnapshot, 'version' | 'modelSignature' | 'documents' | 'nodes' | 'edges'>>(
+	const graph = await readSnapshotFile<Pick<GraphSnapshot, 'version' | 'modelSignature' | 'documents' | 'nodes' | 'edges' | 'validation'>>(
 		path.join(snapshotRoot, 'graph.json'),
 	);
 	const catalog = await readSnapshotFile<Pick<GraphSnapshot, 'catalog'>>(path.join(snapshotRoot, 'catalog.json'));
@@ -806,6 +916,7 @@ export async function loadGraphSnapshot(repoRoot: string, models: SdkModelRegist
 		edges: graph.edges,
 		catalog: catalog.catalog,
 		metrics: metrics ?? emptyGraphMetrics(),
+		validation: graph.validation ?? emptyGraphValidation(),
 		delta: delta ?? { added: [], modified: [], removed: [] },
 		snapshotRoot,
 	};
@@ -813,12 +924,13 @@ export async function loadGraphSnapshot(repoRoot: string, models: SdkModelRegist
 
 export async function saveGraphSnapshot(state: GraphBuildState) {
 	await mkdir(state.snapshotRoot, { recursive: true });
-	const graphPayload: Pick<GraphSnapshot, 'version' | 'modelSignature' | 'documents' | 'nodes' | 'edges'> = {
+	const graphPayload: Pick<GraphSnapshot, 'version' | 'modelSignature' | 'documents' | 'nodes' | 'edges' | 'validation'> = {
 		version: GRAPH_SNAPSHOT_VERSION,
 		modelSignature: state.modelSignature,
 		documents: state.documents,
 		nodes: state.nodes,
 		edges: state.edges,
+		validation: state.validation,
 	};
 	await Promise.all([
 		writeFile(path.join(state.snapshotRoot, 'graph.json'), `${JSON.stringify(graphPayload, null, 2)}\n`, 'utf8'),
@@ -935,6 +1047,7 @@ export async function refreshGraphBuildState(
 		edges: built.edges,
 		catalog: [...nextCatalog.values()].sort((left, right) => left.fileId.localeCompare(right.fileId)),
 		metrics: built.metrics,
+		validation: built.validation,
 		delta: changed,
 		snapshotRoot,
 	};
