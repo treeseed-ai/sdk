@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
-import { deriveCloudflareWorkerName } from '@treeseed/core/deploy/config';
+import { deriveCloudflareWorkerName } from '../../platform/deploy/config.ts';
 import { loadCliDeployConfig, resolveWranglerBin } from './runtime-tools.ts';
 
 const DEFAULT_COMPATIBILITY_DATE = '2026-04-05';

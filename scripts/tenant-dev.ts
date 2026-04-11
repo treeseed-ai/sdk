@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { corePackageRoot, packageScriptPath, spawnNodeBinary, resolveWranglerBin } from '../src/operations/services/runtime-tools.ts';
 import { applyTreeseedEnvironmentToProcess, assertTreeseedCommandEnvironment } from '../src/operations/services/config-runtime.ts';
 import { ensureGeneratedWranglerConfig } from '../src/operations/services/deploy.ts';
-import { loadTreeseedDeployConfig } from '@treeseed/core/deploy/config';
+import { loadTreeseedDeployConfig } from '../src/platform/deploy/config.ts';
 import {
 	createTenantWatchEntries,
 	isEditablePackageWorkspace,

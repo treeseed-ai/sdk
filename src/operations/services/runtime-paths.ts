@@ -12,6 +12,14 @@ function resolveProjectRoot(localPath: string, workspacePath: string) {
 	return existsSync(localPath) ? localPath : workspacePath;
 }
 
+function readPackageVersion(packageDir: string, fallback = '0.0.0') {
+	const packageJsonPath = resolve(packageDir, 'package.json');
+	if (!existsSync(packageJsonPath)) {
+		return fallback;
+	}
+	return JSON.parse(readFileSync(packageJsonPath, 'utf8')).version ?? fallback;
+}
+
 export const templatesRoot = resolveProjectRoot(resolve(cliPackageRoot, 'templates'), resolve(workspaceRoot, 'templates'));
 export const examplesRoot = resolveProjectRoot(resolve(cliPackageRoot, 'examples'), resolve(workspaceRoot, 'examples'));
 export const fixturesRoot = resolveProjectRoot(resolve(cliPackageRoot, '.fixtures', 'treeseed-fixtures'), resolve(workspaceRoot, 'fixtures'));
@@ -25,5 +33,5 @@ export const fixtureMigrationsRoot = resolve(fixtureRoot, 'migrations');
 export const fixtureSrcRoot = resolve(fixtureRoot, 'src');
 export const templateCatalogRoot = resolve(cliRuntimeRoot, 'template-catalog');
 export const localTemplateArtifactsRoot = resolve(templateCatalogRoot, 'templates');
-export const cliPackageVersion = JSON.parse(readFileSync(resolve(cliPackageRoot, 'package.json'), 'utf8')).version;
-export const corePackageVersion = JSON.parse(readFileSync(resolve(corePackageRoot, 'package.json'), 'utf8')).version;
+export const cliPackageVersion = readPackageVersion(cliPackageRoot);
+export const corePackageVersion = readPackageVersion(corePackageRoot);

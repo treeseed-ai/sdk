@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { resolveTreeseedEnvironmentRegistry } from '@treeseed/core/environment';
+import { resolveTreeseedEnvironmentRegistry } from '../../platform/environment.ts';
 import { corePackageRoot, loadCliDeployConfig } from './runtime-tools.ts';
 
 function envOrNull(key) {

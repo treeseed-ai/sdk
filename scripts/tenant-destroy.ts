@@ -11,7 +11,7 @@ import {
 	printDestroySummary,
 	validateDestroyPrerequisites,
 } from '../src/operations/services/deploy.ts';
-import { deriveCloudflareWorkerName, loadTreeseedDeployConfig } from '@treeseed/core/deploy/config';
+import { deriveCloudflareWorkerName, loadTreeseedDeployConfig } from '../src/platform/deploy/config.ts';
 
 const tenantRoot = process.cwd();
 

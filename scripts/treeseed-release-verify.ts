@@ -52,23 +52,18 @@ function scanDirectory(root: string) {
 }
 
 function resolveNodeModulesRoot() {
-	let lastCandidate: string | null = null;
 	let current = packageRoot;
 	while (true) {
 		const candidate = resolve(current, 'node_modules');
 		try {
 			readdirSync(candidate);
-			lastCandidate = candidate;
+			return candidate;
 		} catch {
 		}
 
 		const parent = resolve(current, '..');
 		if (parent === current) break;
 		current = parent;
-	}
-
-	if (lastCandidate) {
-		return lastCandidate;
 	}
 
 	throw new Error(`Unable to locate node_modules for ${packageRoot}.`);

@@ -6,6 +6,7 @@ import {
 	assertTreeseedCommandEnvironment,
 	checkTreeseedProviderConnections,
 	createDefaultTreeseedMachineConfig,
+	ensureTreeseedActVerificationTooling,
 	ensureTreeseedGitignoreEntries,
 	formatTreeseedConfigEnvironmentReport,
 	formatTreeseedProviderConnectionReport,
@@ -461,6 +462,12 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 			const printEnvOnly = input.printEnvOnly === true;
 			const rotateMachineKeyFlag = input.rotateMachineKey === true;
 			const repairs = input.repair === false ? [] : (resolveTreeseedWorkflowState(tenantRoot).deployConfigPresent ? applyTreeseedSafeRepairs(tenantRoot) : []);
+			const toolHealth = ensureTreeseedActVerificationTooling({
+				tenantRoot,
+				installIfMissing: true,
+				env: helpers.context.env,
+				write: (line: string) => maybePrint(helpers.write, line),
+			});
 
 			ensureTreeseedGitignoreEntries(tenantRoot);
 			const preflight = collectCliPreflight({ cwd: tenantRoot, requireAuth: false });
@@ -493,6 +500,7 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 						reports,
 						repairs,
 						preflight,
+						toolHealth,
 					},
 					nextSteps: createNextSteps([
 						{ operation: 'config', reason: 'Initialize the selected environment after reviewing the generated values.', input: { environment: scopes } },
@@ -512,6 +520,7 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 						keyPath: result.keyPath,
 						repairs,
 						preflight,
+						toolHealth,
 					},
 					nextSteps: createNextSteps([
 						{ operation: 'config', reason: 'Inspect the regenerated local environment after the machine key rotation.', input: { environment: ['local'], printEnvOnly: true } },
@@ -552,6 +561,7 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 					keyPath,
 					repairs,
 					preflight,
+					toolHealth,
 					result: wizardResult,
 					state,
 				},

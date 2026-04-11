@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { buildTenantBookRuntime } from '@treeseed/core/utils/books-data';
-import { loadTreeseedManifest } from '@treeseed/core/tenant-config';
+import { buildTenantBookRuntime } from '../src/platform/utils/books-data.ts';
+import { loadTreeseedManifest } from '../src/platform/tenant/config.ts';
 
 const PROJECT_TENANT = loadTreeseedManifest();
 const { BOOKS, TREESEED_LIBRARY_DOWNLOAD } = buildTenantBookRuntime(PROJECT_TENANT, {

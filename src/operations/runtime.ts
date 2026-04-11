@@ -1,4 +1,4 @@
-import { loadTreeseedDeployConfig, loadTreeseedPluginRuntime } from '@treeseed/core';
+import { loadTreeseedDeployConfig } from '../platform/deploy/config.ts';
 import { createDefaultTreeseedOperationsProvider } from './providers/default.ts';
 import { withProcessCwd } from '../operations/services/runtime-tools.ts';
 import {
@@ -44,8 +44,7 @@ export class TreeseedOperationsSdk {
 	resolveProvider(cwd = process.cwd()) {
 		return withProcessCwd(cwd, () => {
 			const deployConfig = loadTreeseedDeployConfig();
-			const pluginRuntime = loadTreeseedPluginRuntime(deployConfig);
-			const selectedProviderId = pluginRuntime.config.providers.operations ?? 'default';
+			const selectedProviderId = deployConfig.providers.operations ?? 'default';
 			return resolveBuiltinProvider(selectedProviderId);
 		});
 	}

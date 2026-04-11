@@ -61,15 +61,15 @@ function verifyManifest(pkg: (typeof publishablePackages)[number]) {
 	}
 }
 
-function runReleaseVerify(pkg: (typeof publishablePackages)[number]) {
+function runPackageVerify(pkg: (typeof publishablePackages)[number]) {
 	const extraArgs = fullSmoke ? ['--', '--full-smoke'] : [];
-	const result = spawnSync('npm', ['run', 'release:verify', ...extraArgs], {
+	const result = spawnSync('npm', ['run', 'verify', ...extraArgs], {
 		cwd: pkg.dir,
 		stdio: 'inherit',
 		env: process.env,
 	});
 	if (result.status !== 0) {
-		throw new Error(`${pkg.name} release:verify failed`);
+		throw new Error(`${pkg.name} verify failed`);
 	}
 }
 
@@ -86,8 +86,8 @@ try {
 		await withTiming(`${pkg.name} manifest verification`, async () => {
 			verifyManifest(pkg);
 		});
-		await withTiming(`${pkg.name} release:verify`, async () => {
-			runReleaseVerify(pkg);
+		await withTiming(`${pkg.name} verify`, async () => {
+			runPackageVerify(pkg);
 		});
 	}
 

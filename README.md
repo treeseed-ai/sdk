@@ -44,7 +44,7 @@ Important process-facing helpers:
 
 ## Consumer Contract
 
-- Node `>=20`
+- Node `>=22`
 - ESM package
 - install from npm as a normal package dependency
 - import from the package root or documented subpath exports
@@ -73,6 +73,24 @@ const workflow = new TreeseedWorkflowSdk({
 });
 
 const status = workflow.status();
+```
+
+Published verify executable:
+
+```bash
+treeseed-sdk-verify
+```
+
+Packages that depend on `@treeseed/sdk` should use the published SDK verify entrypoint rather than carrying a local verify-driver wrapper. The executable delegates to the same SDK verification framework exposed by `@treeseed/sdk/verification`.
+
+For `package.json` scripts, use the exported script entrypoint:
+
+```json
+{
+  "scripts": {
+    "verify": "node --input-type=module -e \"await import('@treeseed/sdk/scripts/verify-driver')\""
+  }
+}
 ```
 
 Gateway client example:

@@ -10,8 +10,8 @@ import {
 	resolveTreeseedEnvironmentRegistry,
 	TREESEED_ENVIRONMENT_SCOPES,
 	validateTreeseedEnvironmentValues,
-} from '@treeseed/core/environment';
-import { loadTreeseedManifest } from '@treeseed/core/tenant-config';
+} from '../../platform/environment.ts';
+import { loadTreeseedManifest } from '../../platform/tenant/config.ts';
 import {
 	createPersistentDeployTarget,
 	ensureGeneratedWranglerConfig,
@@ -936,6 +936,104 @@ function commandAvailable(command) {
 		encoding: 'utf8',
 	});
 	return result.status === 0;
+}
+
+function checkCommand(command, args, { cwd, env } = {}) {
+	const result = spawnSync(command, args, {
+		cwd,
+		stdio: 'pipe',
+		encoding: 'utf8',
+		env: { ...process.env, ...(env ?? {}) },
+	});
+	return {
+		ok: result.status === 0,
+		status: result.status ?? 1,
+		stdout: result.stdout?.trim() ?? '',
+		stderr: result.stderr?.trim() ?? '',
+		detail: `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim(),
+	};
+}
+
+function toolStatus(name, available, detail, extra = {}) {
+	return {
+		name,
+		available,
+		detail,
+		...extra,
+	};
+}
+
+export function ensureTreeseedActVerificationTooling({ tenantRoot = process.cwd(), installIfMissing = true, env = process.env, write } = {}) {
+	const githubCli = !commandAvailable('gh')
+		? toolStatus('githubCli', false, 'GitHub CLI `gh` is not installed.')
+		: (() => {
+			const check = checkCommand('gh', ['--version'], { cwd: tenantRoot, env });
+			return toolStatus('githubCli', check.ok, check.ok ? check.stdout.split('\n')[0] ?? 'GitHub CLI detected.' : (check.detail || 'GitHub CLI check failed.'));
+		})();
+
+	let ghActExtension = toolStatus('ghActExtension', false, 'GitHub CLI extension `gh-act` is not installed.', {
+		attemptedInstall: false,
+		installedDuringConfig: false,
+	});
+
+	if (githubCli.available) {
+		const check = checkCommand('gh', ['act', '--version'], { cwd: tenantRoot, env });
+		if (check.ok) {
+			ghActExtension = toolStatus('ghActExtension', true, check.stdout.split('\n')[0] ?? 'gh-act is installed.', {
+				attemptedInstall: false,
+				installedDuringConfig: false,
+			});
+		} else if (installIfMissing) {
+			write?.('Installing GitHub CLI extension `gh-act`...');
+			const install = checkCommand('gh', ['extension', 'install', 'https://github.com/nektos/gh-act'], { cwd: tenantRoot, env });
+			const postInstall = checkCommand('gh', ['act', '--version'], { cwd: tenantRoot, env });
+			ghActExtension = toolStatus(
+				'ghActExtension',
+				postInstall.ok,
+				postInstall.ok
+					? postInstall.stdout.split('\n')[0] ?? 'gh-act is installed.'
+					: install.detail || postInstall.detail || 'Unable to install the gh-act extension.',
+				{
+					attemptedInstall: true,
+					installedDuringConfig: postInstall.ok,
+					installStatus: install.status,
+				},
+			);
+		} else {
+			ghActExtension = toolStatus('ghActExtension', false, check.detail || 'GitHub CLI extension `gh-act` is not installed.', {
+				attemptedInstall: false,
+				installedDuringConfig: false,
+			});
+		}
+	}
+
+	const dockerCheck = checkCommand('docker', ['info'], { cwd: tenantRoot, env });
+	const dockerDaemon = toolStatus(
+		'dockerDaemon',
+		dockerCheck.ok,
+		dockerCheck.ok
+			? dockerCheck.stdout.split('\n')[0] ?? 'Docker daemon is available.'
+			: dockerCheck.detail || 'Docker daemon is unavailable.',
+	);
+
+	const remediation = [];
+	if (!githubCli.available) {
+		remediation.push('Install GitHub CLI from https://cli.github.com/ and rerun `treeseed config`.');
+	}
+	if (githubCli.available && !ghActExtension.available) {
+		remediation.push('Run `gh extension install https://github.com/nektos/gh-act` and rerun `treeseed config`.');
+	}
+	if (!dockerDaemon.available) {
+		remediation.push('Start Docker Desktop or another local Docker daemon, then rerun `treeseed config`.');
+	}
+
+	return {
+		githubCli,
+		ghActExtension,
+		dockerDaemon,
+		actVerificationReady: githubCli.available && ghActExtension.available && dockerDaemon.available,
+		remediation,
+	};
 }
 
 function formatCheckOutput(result) {

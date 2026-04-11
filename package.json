@@ -14,15 +14,19 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "types": "./dist/index.d.ts",
   "files": [
     "README.md",
-    "dist"
+    "dist",
+    "scripts/verify-driver.mjs"
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "bin": {
+    "treeseed-sdk-verify": "./scripts/verify-driver.mjs"
   },
   "scripts": {
     "setup": "npm install",
@@ -35,15 +39,15 @@
     "test:smoke": "node ./scripts/run-ts.mjs ./scripts/test-smoke.ts",
     "fixtures:resolve": "node ./scripts/run-ts.mjs ./scripts/fixture-tools.ts resolve",
     "fixtures:check": "node ./scripts/run-ts.mjs ./scripts/fixture-tools.ts check",
-    "verify": "npm run release:verify",
+    "lint": "npm run fixtures:check && npm run build:dist",
+    "verify:direct": "npm run release:verify",
+    "verify": "node ./scripts/verify-driver.mjs",
     "release:setup": "npm run setup:ci",
     "release:check-tag": "node ./scripts/run-ts.mjs ./scripts/assert-release-tag-version.ts",
     "release:verify": "node ./scripts/run-ts.mjs ./scripts/release-verify.ts",
     "release:publish": "node ./scripts/run-ts.mjs ./scripts/publish-package.ts"
   },
   "dependencies": {
-    "@treeseed/agent": "^0.1.2",
-    "@treeseed/core": "^0.1.2",
     "esbuild": "^0.28.0",
     "github-slugger": "^2.0.0",
     "ink": "^7.0.0",
@@ -77,9 +81,46 @@
       "types": "./dist/workflow.d.ts",
       "default": "./dist/workflow.js"
     },
+    "./verification": {
+      "types": "./dist/verification.d.ts",
+      "default": "./dist/verification.js"
+    },
+    "./scripts/verify-driver": "./scripts/verify-driver.mjs",
     "./workflow-support": {
       "types": "./dist/workflow-support.d.ts",
       "default": "./dist/workflow-support.js"
+    },
+    "./platform/contracts": {
+      "types": "./dist/platform/contracts.d.ts",
+      "default": "./dist/platform/contracts.js"
+    },
+    "./platform/tenant-config": {
+      "types": "./dist/platform/tenant-config.d.ts",
+      "default": "./dist/platform/tenant-config.js"
+    },
+    "./platform/deploy-config": {
+      "types": "./dist/platform/deploy-config.d.ts",
+      "default": "./dist/platform/deploy-config.js"
+    },
+    "./platform/environment": {
+      "types": "./dist/platform/environment.d.ts",
+      "default": "./dist/platform/environment.js"
+    },
+    "./platform/plugins": {
+      "types": "./dist/platform/plugins.d.ts",
+      "default": "./dist/platform/plugins.js"
+    },
+    "./platform/plugin": {
+      "types": "./dist/platform/plugin.d.ts",
+      "default": "./dist/platform/plugin.js"
+    },
+    "./platform/books-data": {
+      "types": "./dist/platform/books-data.d.ts",
+      "default": "./dist/platform/books-data.js"
+    },
+    "./platform/site-config-schema": {
+      "types": "./dist/platform/site-config-schema.d.ts",
+      "default": "./dist/platform/site-config-schema.js"
     },
     "./content-store": {
       "types": "./dist/content-store.d.ts",

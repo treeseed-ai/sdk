@@ -1,9 +1,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { build } from 'esbuild';
-import { loadTreeseedDeployConfig } from '@treeseed/core/deploy/config';
-import { loadTreeseedManifest } from '@treeseed/core/tenant-config';
-import { parseSiteConfig } from '@treeseed/core/utils/site-config-schema';
+import { loadTreeseedDeployConfig } from '../src/platform/deploy/config.ts';
+import { loadTreeseedManifest } from '../src/platform/tenant/config.ts';
+import { parseSiteConfig } from '../src/platform/utils/site-config-schema.js';
 import { corePackageRoot } from '../src/operations/services/runtime-tools.ts';
 
 const tenantRoot = process.cwd();

@@ -10,7 +10,7 @@ const distRoot = resolve(packageRoot, 'dist');
 const treeseedTemplateCatalogSourceRoot = resolve(srcRoot, 'treeseed', 'template-catalog');
 const treeseedServicesSourceRoot = resolve(srcRoot, 'treeseed', 'services');
 
-const COPY_EXTENSIONS = new Set(['.json', '.md']);
+const COPY_EXTENSIONS = new Set(['.json', '.md', '.js', '.d.ts', '.yaml', '.yml']);
 
 function walkFiles(root) {
 	const files = [];
@@ -33,8 +33,18 @@ function rewriteRuntimeSpecifiers(contents) {
 	return contents.replace(/(['"`])(\.[^'"`\n]+)\.(mjs|ts)\1/g, '$1$2.js$1');
 }
 
+function rewriteScriptRuntimeSpecifiers(contents) {
+	return rewriteRuntimeSpecifiers(contents)
+		.replace(/(['"`])\.\.\/src\//g, '$1../')
+		.replace(/(['"`])\.\/src\//g, '$1./');
+}
+
 function isTypeScriptSource(filePath) {
 	return filePath.endsWith('.ts') && !filePath.endsWith('.d.ts');
+}
+
+function isDeclarationAsset(filePath) {
+	return filePath.endsWith('.d.ts');
 }
 
 async function compileModule(filePath, sourceRoot, outputRoot) {
@@ -60,7 +70,7 @@ function copyAsset(filePath, sourceRoot, outputRoot) {
 	ensureDir(outputFile);
 	copyFileSync(filePath, outputFile);
 
-	if (outputFile.endsWith('.d.ts')) {
+	if (outputFile.endsWith('.d.ts') || outputFile.endsWith('.js')) {
 		const contents = readFileSync(outputFile, 'utf8');
 		writeFileSync(outputFile, rewriteRuntimeSpecifiers(contents), 'utf8');
 	}
@@ -92,7 +102,7 @@ function transpileScript(filePath) {
 		: source;
 
 	ensureDir(outputFile);
-	writeFileSync(outputFile, rewriteRuntimeSpecifiers(transformed), 'utf8');
+	writeFileSync(outputFile, rewriteScriptRuntimeSpecifiers(transformed), 'utf8');
 }
 
 function emitDeclarations() {
@@ -133,6 +143,10 @@ for (const filePath of walkFiles(srcRoot)) {
 		continue;
 	}
 	const extension = extname(filePath);
+	if (isDeclarationAsset(filePath)) {
+		copyAsset(filePath, srcRoot, distRoot);
+		continue;
+	}
 	if (isTypeScriptSource(filePath)) {
 		await compileModule(filePath, srcRoot, distRoot);
 		continue;
@@ -159,6 +173,12 @@ for (const filePath of walkFiles(scriptsRoot)) {
 }
 
 emitDeclarations();
+
+for (const filePath of walkFiles(distRoot)) {
+	if (filePath.endsWith('.d.js')) {
+		rmSync(filePath, { force: true });
+	}
+}
 
 if (existsSync(resolve(packageRoot, 'README.md'))) {
 	copyFileSync(resolve(packageRoot, 'README.md'), resolve(distRoot, '..', 'README.md'));

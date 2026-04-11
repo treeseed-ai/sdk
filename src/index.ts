@@ -44,6 +44,12 @@ export {
 } from './operations-registry.ts';
 export { TreeseedOperationsSdk } from './operations/runtime.ts';
 export { TreeseedWorkflowSdk } from './workflow.ts';
+export { getTreeseedVerifyDriverStatus, runTreeseedVerifyDriver } from './verification.ts';
+export * from './platform/contracts.ts';
+export * from './platform/tenant-config.ts';
+export * from './platform/deploy-config.ts';
+export * from './platform/environment.ts';
+export * from './platform/plugins.ts';
 export type {
 	SdkContentEntry,
 	SdkCursorEntity,

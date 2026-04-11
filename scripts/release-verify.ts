@@ -1,7 +1,10 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { packageRoot } from './package-tools.ts';
+
+const npmCacheDir = resolve(tmpdir(), 'treeseed-npm-cache');
 
 const textExtensions = new Set(['.js', '.ts', '.mjs', '.cjs', '.d.ts', '.json', '.md']);
 const forbiddenPatterns = [
@@ -14,7 +17,11 @@ function run(command: string, args: string[]) {
 	const result = spawnSync(command, args, {
 		cwd: packageRoot,
 		stdio: 'inherit',
-		env: process.env,
+		env: {
+			...process.env,
+			npm_config_cache: npmCacheDir,
+			NPM_CONFIG_CACHE: npmCacheDir,
+		},
 	});
 
 	if (result.status !== 0) {
@@ -73,8 +80,7 @@ function assertCleanDistArtifacts() {
 	}
 }
 
-run('npm', ['run', 'fixtures:check']);
-run('npm', ['run', 'build:dist']);
+run('npm', ['run', 'lint']);
 scanDirectory(resolve(packageRoot, 'dist'));
 assertCleanDistArtifacts();
 run('npm', ['run', 'test:unit']);

@@ -9,7 +9,9 @@ import { sdkFixtureRoot } from '../test-fixture.ts';
 function createTempContentSite() {
 	const root = mkdtempSync(join(tmpdir(), 'treeseed-sdk-site-'));
 	const pagesRoot = resolve(root, 'src', 'content', 'pages');
+	const templatesRoot = resolve(root, 'src', 'content', 'templates');
 	mkdirSync(pagesRoot, { recursive: true });
+	mkdirSync(templatesRoot, { recursive: true });
 	writeFileSync(
 		resolve(pagesRoot, 'older.mdx'),
 		`---
@@ -40,6 +42,22 @@ slug: aliased
 updatedAt: 2026-04-09T00:00:00.000Z
 ---
 Aliased body
+`,
+		'utf8',
+	);
+	writeFileSync(
+		resolve(templatesRoot, 'starter-basic.mdx'),
+		`---
+title: Starter Basic
+slug: starter-basic
+status: active
+category: starter
+tags:
+  - basics
+templateVersion: 1.0.0
+updatedAt: 2026-04-10T00:00:00.000Z
+---
+Starter basic template body
 `,
 		'utf8',
 	);
@@ -178,9 +196,9 @@ describe('agent sdk', () => {
 	});
 
 	it('supports site-registered content models like template', async () => {
-		const marketRoot = resolve(process.cwd(), '..', '..');
+		const repoRoot = createTempContentSite();
 		const sdk = new AgentSdk({
-			repoRoot: marketRoot,
+			repoRoot,
 			database: new MemoryAgentDatabase(),
 			models: [
 				{
@@ -201,7 +219,7 @@ describe('agent sdk', () => {
 					sortableFields: ['title', 'updated_at', 'template_version'],
 					pickField: 'updated_at',
 					contentCollection: 'templates',
-					contentDir: resolve(marketRoot, 'src', 'content', 'templates'),
+					contentDir: resolve(repoRoot, 'src', 'content', 'templates'),
 				},
 			],
 		});

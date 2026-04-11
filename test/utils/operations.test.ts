@@ -1,10 +1,37 @@
-import { resolve } from 'node:path';
+import { cpSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import {
 	findTreeseedOperation,
 	TRESEED_OPERATION_SPECS,
 	TreeseedWorkflowSdk,
 } from '../../src/operations.ts';
+import { sdkFixtureRoot } from '../test-fixture.ts';
+
+function runGit(cwd: string, args: string[]) {
+	const result = spawnSync('git', args, {
+		cwd,
+		stdio: 'pipe',
+		encoding: 'utf8',
+	});
+	if (result.status !== 0) {
+		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `git ${args.join(' ')} failed`);
+	}
+}
+
+function createTempWorkflowSite() {
+	const root = mkdtempSync(join(tmpdir(), 'treeseed-sdk-workflow-'));
+	cpSync(sdkFixtureRoot, root, { recursive: true });
+	runGit(root, ['init', '-b', 'staging']);
+	runGit(root, ['config', 'user.name', 'Treeseed Test']);
+	runGit(root, ['config', 'user.email', 'test@treeseed.local']);
+	runGit(root, ['add', '.']);
+	runGit(root, ['commit', '-m', 'fixture']);
+	runGit(root, ['checkout', '-b', 'feature/demo-task']);
+	return root;
+}
 
 describe('treeseed operations registry', () => {
 	it('keeps workflow operations discoverable by name', () => {
@@ -20,7 +47,7 @@ describe('treeseed operations registry', () => {
 
 describe('treeseed workflow sdk', () => {
 	it('returns structured workflow status', async () => {
-		const workflow = new TreeseedWorkflowSdk({ cwd: process.cwd() });
+		const workflow = new TreeseedWorkflowSdk({ cwd: sdkFixtureRoot });
 		const result = await workflow.status();
 		expect(result.ok).toBe(true);
 		expect(result.operation).toBe('status');
@@ -28,10 +55,12 @@ describe('treeseed workflow sdk', () => {
 	});
 
 	it('returns structured task metadata', async () => {
-		const workflow = new TreeseedWorkflowSdk({ cwd: resolve(process.cwd(), '..', '..') });
+		const workflowRoot = createTempWorkflowSite();
+		const workflow = new TreeseedWorkflowSdk({ cwd: workflowRoot });
 		const result = await workflow.tasks();
 		expect(result.ok).toBe(true);
 		expect(result.operation).toBe('tasks');
 		expect(Array.isArray(result.payload.tasks)).toBe(true);
+		expect(result.payload.tasks.some((task) => task.name === 'feature/demo-task')).toBe(true);
 	});
 });
