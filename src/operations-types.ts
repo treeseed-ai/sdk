@@ -1,4 +1,4 @@
-export type TreeseedCommandGroup =
+export type TreeseedOperationGroup =
 	| 'Workflow'
 	| 'Local Development'
 	| 'Validation'
@@ -6,26 +6,14 @@ export type TreeseedCommandGroup =
 	| 'Utilities'
 	| 'Passthrough';
 
-export type TreeseedExecutionMode = 'handler' | 'adapter';
-export type TreeseedArgumentKind = 'positional' | 'message_tail';
-export type TreeseedOptionKind = 'boolean' | 'string' | 'enum';
-
 export type TreeseedOperationId =
-	| 'workspace.setup'
-	| 'workspace.prepare'
 	| 'workspace.status'
-	| 'workspace.next'
-	| 'workspace.continue'
 	| 'workspace.doctor'
-	| 'branch.work'
-	| 'branch.start'
-	| 'branch.ship'
+	| 'branch.tasks'
+	| 'branch.switch'
 	| 'branch.save'
 	| 'branch.close'
-	| 'branch.teardown'
-	| 'deploy.publish'
-	| 'deploy.deploy'
-	| 'deploy.promote'
+	| 'branch.stage'
 	| 'deploy.release'
 	| 'deploy.rollback'
 	| 'deploy.destroy'
@@ -66,40 +54,43 @@ export type TreeseedOperationId =
 	| 'tools.starlightPatch'
 	| 'agents.run';
 
-export type TreeseedCommandArgumentSpec = {
+export type TreeseedOperationProviderId = 'default';
+
+export type TreeseedOperationMetadata = {
+	id: TreeseedOperationId;
 	name: string;
+	aliases: string[];
+	group: TreeseedOperationGroup;
+	summary: string;
 	description: string;
-	required?: boolean;
-	kind?: TreeseedArgumentKind;
+	provider: TreeseedOperationProviderId;
+	related?: string[];
 };
 
-export type TreeseedCommandOptionSpec = {
-	name: string;
-	flags: string;
-	description: string;
-	kind: TreeseedOptionKind;
-	repeatable?: boolean;
-	values?: string[];
+export type TreeseedOperationRequest = {
+	operationName: string;
+	input?: Record<string, unknown>;
 };
 
-export type TreeseedCommandExample = string;
-
-export type TreeseedParsedInvocation = {
-	commandName: string;
-	args: Record<string, string | string[] | boolean | undefined>;
-	positionals: string[];
-	rawArgs: string[];
-};
-
-export type TreeseedCommandResult = {
+export type TreeseedOperationResult<TPayload = Record<string, unknown>> = {
+	operation: TreeseedOperationId;
+	ok: boolean;
+	payload?: TPayload | null;
+	meta?: Record<string, unknown>;
+	nextSteps?: Array<{
+		operation: string;
+		reason?: string;
+		input?: Record<string, unknown>;
+	}>;
 	exitCode?: number;
 	stdout?: string[];
 	stderr?: string[];
-	report?: Record<string, unknown> | null;
 };
 
-export type TreeseedWriter = (output: string, stream?: 'stdout' | 'stderr') => void;
-export type TreeseedSpawner = (
+export type TreeseedOperationWriter = (output: string, stream?: 'stdout' | 'stderr') => void;
+export type TreeseedOperationPrompt = (message: string) => Promise<string> | string;
+export type TreeseedOperationConfirm = (message: string, expected: string) => Promise<boolean> | boolean;
+export type TreeseedOperationSpawn = (
 	command: string,
 	args: string[],
 	options: {
@@ -109,84 +100,58 @@ export type TreeseedSpawner = (
 	},
 ) => { status?: number | null };
 
-export type TreeseedPromptHandler = (message: string) => Promise<string> | string;
-export type TreeseedConfirmHandler = (message: string, expected: string) => Promise<boolean> | boolean;
-
-export type TreeseedCommandContext = {
+export type TreeseedOperationContext = {
 	cwd: string;
 	env: NodeJS.ProcessEnv;
-	write: TreeseedWriter;
-	spawn: TreeseedSpawner;
+	write?: TreeseedOperationWriter;
+	spawn?: TreeseedOperationSpawn;
 	outputFormat?: 'human' | 'json';
-	prompt?: TreeseedPromptHandler;
-	confirm?: TreeseedConfirmHandler;
+	prompt?: TreeseedOperationPrompt;
+	confirm?: TreeseedOperationConfirm;
+	transport?: 'sdk' | 'cli' | 'api';
 };
 
-export type TreeseedCommandHandler = (
-	invocation: TreeseedParsedInvocation,
-	context: TreeseedCommandContext,
-) => Promise<TreeseedCommandResult> | TreeseedCommandResult;
+export type TreeseedOperationFailureCode =
+	| 'validation_failed'
+	| 'merge_conflict'
+	| 'missing_runtime_auth'
+	| 'deployment_timeout'
+	| 'confirmation_required'
+	| 'unsupported_transport'
+	| 'unsupported_state'
+	| 'provider_resolution_failed';
 
-export type TreeseedAdapterSpec = {
-	script: string;
-	workspaceScript?: string;
-	directScript?: string;
-	extraArgs?: string[];
-	rewriteArgs?: (args: string[]) => string[];
-	passthroughArgs?: boolean;
-	requireWorkspaceRoot?: boolean;
-};
+export class TreeseedOperationError extends Error {
+	code: TreeseedOperationFailureCode;
+	operation: string;
+	details?: Record<string, unknown>;
+	exitCode?: number;
 
-export type TreeseedOperationSpec = {
-	id: TreeseedOperationId;
-	name: string;
-	aliases: string[];
-	group: TreeseedCommandGroup;
-	summary: string;
-	description: string;
-	usage?: string;
-	arguments?: TreeseedCommandArgumentSpec[];
-	options?: TreeseedCommandOptionSpec[];
-	examples?: TreeseedCommandExample[];
-	notes?: string[];
-	related?: string[];
-	executionMode: TreeseedExecutionMode;
-	handlerName?: string;
-	adapter?: TreeseedAdapterSpec;
-};
-
-export type TreeseedOperationRequest = {
-	commandName: string;
-	argv?: string[];
-};
-
-export type TreeseedOperationResult = TreeseedCommandResult & {
-	operation: TreeseedOperationId;
-	ok: boolean;
-	payload?: Record<string, unknown> | null;
-	meta?: Record<string, unknown>;
-	nextSteps?: string[];
-};
-
-export type TreeseedOperationExecutor = (
-	spec: TreeseedOperationSpec,
-	argv: string[],
-	context: TreeseedCommandContext,
-) => Promise<number> | number;
-
-export type TreeseedHandlerResolver = (handlerName: string) => TreeseedCommandHandler | null;
-
-export type TreeseedAdapterResolverResult =
-	| {
-		scriptPath: string;
-		extraArgs: string[];
-		rewriteArgs?: (args: string[]) => string[];
+	constructor(
+		operation: string,
+		code: TreeseedOperationFailureCode,
+		message: string,
+		options: { details?: Record<string, unknown>; exitCode?: number } = {},
+	) {
+		super(message);
+		this.name = 'TreeseedOperationError';
+		this.operation = operation;
+		this.code = code;
+		this.details = options.details;
+		this.exitCode = options.exitCode;
 	}
-	| {
-		error: string;
-	};
+}
 
-export type TreeseedAdapterResolver = (
-	spec: TreeseedOperationSpec,
-	cwd: string,
-) => TreeseedAdapterResolverResult;
+export interface TreeseedOperationImplementation<
+	TInput extends Record<string, unknown> = Record<string, unknown>,
+	TPayload = Record<string, unknown>,
+> {
+	readonly metadata: TreeseedOperationMetadata;
+	execute(input: TInput, context: TreeseedOperationContext): Promise<TreeseedOperationResult<TPayload>>;
+}
+
+export interface TreeseedOperationProvider {
+	readonly id: TreeseedOperationProviderId | string;
+	listOperations(): TreeseedOperationImplementation[];
+	findOperation(name: string | null | undefined): TreeseedOperationImplementation | null;
+}

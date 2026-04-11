@@ -1,8 +1,8 @@
 # `@treeseed/sdk`
 
-`@treeseed/sdk` is the standalone TreeSeed SDK for TreeSeed content/data access and TreeSeed operational command execution.
+`@treeseed/sdk` is the standalone TreeSeed SDK for TreeSeed content/data access and TreeSeed workflow/runtime operations.
 
-It is the authoritative programmatic interface for Treeseed. The published `@treeseed/cli` package is a thin binary wrapper over this SDK-owned command/runtime surface.
+It is the authoritative programmatic interface for Treeseed. The published `@treeseed/cli` package is the terminal adapter that turns these SDK capabilities into command-line flows.
 
 It exposes the public model and storage surface used by TreeSeed agents and supporting tooling:
 
@@ -11,7 +11,7 @@ It exposes the public model and storage surface used by TreeSeed agents and supp
 - D1-backed operational control-plane models for work days, tasks, task events, task outputs, graph runs, and reports
 - stable query and mutation APIs for `get`, `read`, `search`, `follow`, `pick`, `create`, and `update`
 - typed HTTP clients for the Treeseed gateway and Cloudflare Queue pull consumers
-- the full shared TreeSeed command contract and programmatic execution runtime behind the `treeseed` CLI
+- typed workflow primitives for Treeseed development, staging, release, and environment operations
 
 ## Control Plane Additions
 
@@ -63,15 +63,16 @@ import { AgentSdk } from '@treeseed/sdk';
 const sdk = new AgentSdk();
 ```
 
-Programmatic command execution:
+Programmatic workflow access:
 
 ```ts
-import { runTreeseedCli } from '@treeseed/sdk';
+import { TreeseedWorkflowSdk } from '@treeseed/sdk';
 
-await runTreeseedCli(['status', '--json'], {
+const workflow = new TreeseedWorkflowSdk({
 	cwd: '/absolute/path/to/your-site',
-	write: (line) => console.log(line),
 });
+
+const status = workflow.status();
 ```
 
 Gateway client example:

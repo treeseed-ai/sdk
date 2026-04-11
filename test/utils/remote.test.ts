@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	RemoteTreeseedAuthClient,
 	RemoteTreeseedClient,
@@ -11,9 +11,9 @@ import {
 import {
 	resolveTreeseedRemoteConfig,
 	setTreeseedRemoteSession,
-} from '../../src/treeseed/scripts/config-runtime-lib.ts';
-import { loadDeployState } from '../../src/treeseed/scripts/deploy-lib.ts';
-import { loadCliDeployConfig } from '../../src/treeseed/scripts/package-tools.ts';
+} from '../../src/operations/services/config-runtime.ts';
+import { loadDeployState } from '../../src/operations/services/deploy.ts';
+import { loadCliDeployConfig } from '../../src/operations/services/runtime-tools.ts';
 
 function createTenantFixture() {
 	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-remote-test-'));
@@ -92,6 +92,14 @@ providers:
 }
 
 describe('remote Treeseed support', () => {
+	beforeEach(() => {
+		vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'treeseed-remote-home-')));
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
 	it('sends the remote contract header and bearer auth', async () => {
 		const calls: Array<{ url: string; headers: Record<string, string> }> = [];
 		const client = new RemoteTreeseedClient({

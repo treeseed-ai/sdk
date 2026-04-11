@@ -3,18 +3,18 @@ export {
 	findTreeseedOperation,
 	listTreeseedOperationNames,
 } from './operations-registry.ts';
-export {
-	parseTreeseedInvocation,
-	validateTreeseedInvocation,
-} from './operations-parser.ts';
-export {
-	renderTreeseedHelp,
-	renderUsage,
-	suggestTreeseedCommands,
-} from './operations-help.ts';
-export {
-	TreeseedOperationsSdk,
-	createTreeseedCommandContext,
-	writeTreeseedResult,
-} from './operations-runtime.ts';
-export type * from './operations-types.ts';
+export { TreeseedOperationsSdk } from './operations/runtime.ts';
+export type {
+	TreeseedOperationContext,
+	TreeseedOperationImplementation,
+	TreeseedOperationId,
+	TreeseedOperationMetadata,
+	TreeseedOperationProvider,
+	TreeseedOperationProviderId,
+	TreeseedOperationRequest,
+	TreeseedOperationResult,
+	TreeseedOperationGroup,
+} from './operations-types.ts';
+export { TreeseedOperationError } from './operations-types.ts';
+export { TreeseedWorkflowSdk } from './workflow.ts';
+export type * from './workflow.ts';

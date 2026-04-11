@@ -112,19 +112,23 @@ export interface RemoteGatewayRequest {
 	body?: unknown;
 }
 
-export interface RemoteCliCommandRequest {
-	argv?: string[];
+export interface RemoteWorkflowOperationRequest {
+	input?: Record<string, unknown>;
 	cwd?: string;
 	env?: Record<string, string>;
 }
 
-export interface RemoteCliCommandResponse {
+export interface RemoteWorkflowNextStep {
+	operation: string;
+	reason?: string;
+	input?: Record<string, unknown>;
+}
+
+export interface RemoteWorkflowOperationResponse {
 	ok: boolean;
-	command: string;
-	exitCode: number;
-	stdout: string[];
-	stderr: string[];
-	report?: Record<string, unknown> | null;
+	operation: string;
+	payload?: Record<string, unknown> | null;
+	nextSteps?: RemoteWorkflowNextStep[];
 }
 
 function normalizeBaseUrl(baseUrl: string) {
@@ -341,8 +345,8 @@ export class CloudflareQueuePullClient {
 export class RemoteTreeseedOperationsClient {
 	constructor(private readonly client: RemoteTreeseedClient) {}
 
-	execute(command: string, request: RemoteCliCommandRequest) {
-		return this.client.requestJson<RemoteCliCommandResponse>(`/cli/${encodeURIComponent(command)}`, {
+	execute(operation: string, request: RemoteWorkflowOperationRequest) {
+		return this.client.requestJson<RemoteWorkflowOperationResponse>(`/operations/${encodeURIComponent(operation)}`, {
 			method: 'POST',
 			body: request,
 			requireAuth: true,

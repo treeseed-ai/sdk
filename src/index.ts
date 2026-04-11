@@ -42,24 +42,8 @@ export {
 	findTreeseedOperation,
 	listTreeseedOperationNames,
 } from './operations-registry.ts';
-export {
-	parseTreeseedInvocation,
-	validateTreeseedInvocation,
-} from './operations-parser.ts';
-export {
-	renderTreeseedHelp,
-	renderUsage,
-	suggestTreeseedCommands,
-} from './operations-help.ts';
-export {
-	TreeseedOperationsSdk,
-	createTreeseedCommandContext,
-	writeTreeseedResult,
-} from './operations-runtime.ts';
-export {
-	runTreeseedCli,
-	executeTreeseedCommand,
-} from './treeseed/cli/main.ts';
+export { TreeseedOperationsSdk } from './operations/runtime.ts';
+export { TreeseedWorkflowSdk } from './workflow.ts';
 export type {
 	SdkContentEntry,
 	SdkCursorEntity,
@@ -111,22 +95,17 @@ export type {
 	TreeseedFieldAliasRegistry,
 } from './field-aliases.ts';
 export type {
-	TreeseedAdapterResolver,
-	TreeseedCommandContext,
-	TreeseedCommandGroup,
-	TreeseedCommandHandler,
-	TreeseedCommandResult,
-	TreeseedCommandSpec,
-	TreeseedHandlerResolver,
-	TreeseedOperationExecutor,
+	TreeseedOperationContext,
+	TreeseedOperationGroup,
+	TreeseedOperationImplementation,
 	TreeseedOperationId,
+	TreeseedOperationMetadata,
+	TreeseedOperationProvider,
+	TreeseedOperationProviderId,
 	TreeseedOperationRequest,
 	TreeseedOperationResult,
-	TreeseedOperationSpec,
-	TreeseedParsedInvocation,
-	TreeseedPromptHandler,
-	TreeseedConfirmHandler,
 } from './operations-types.ts';
+export type * from './workflow.ts';
 export type { AgentDatabase } from './d1-store.ts';
 export type { D1DatabaseLike, D1PreparedStatementLike } from './types/cloudflare.ts';
 export type * from './remote.ts';
