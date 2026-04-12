@@ -102,6 +102,19 @@ ctx <target>
 
 The old `key=value` graph DSL is no longer supported.
 
+## Shared Fixture Support
+
+SDK also owns the shared fixture support model used across the Treeseed workspace.
+
+That support layer is responsible for:
+
+- resolving the canonical shared fixture in `.fixtures/treeseed-fixtures`
+- preparing fixture-local package visibility for package-scoped verification
+- linking real workspace or installed packages into the fixture runtime when available
+- providing the canonical `contracts-only` Agent shim used by packages such as `core` during isolated verification
+
+The shared fixture is an integrated Treeseed project, but package verification remains package-scoped. SDK owns the tooling that lets other packages validate their own slice of that project without mutating the fixture itself.
+
 ## Advanced Graph Methods
 
 The SDK also exposes lower-level graph primitives such as:
@@ -165,4 +178,10 @@ For package work:
 npm install
 npm run build
 npm test
+```
+
+For fixture-specific work:
+
+```bash
+npm run fixtures:check
 ```

@@ -87,6 +87,10 @@
       "types": "./dist/verification.d.ts",
       "default": "./dist/verification.js"
     },
+    "./fixture-support": {
+      "types": "./dist/fixture-support.d.ts",
+      "default": "./dist/fixture-support.js"
+    },
     "./scripts/verify-driver": "./scripts/verify-driver.mjs",
     "./workflow-support": {
       "types": "./dist/workflow-support.d.ts",

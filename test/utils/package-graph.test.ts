@@ -44,6 +44,16 @@ describe('sdk package graph', () => {
 		expect(packageJson.dependencies?.['@treeseed/agent']).toBeUndefined();
 	});
 
+	it('keeps core package.json independent from the agent package', () => {
+		const corePackageJsonPath = resolve(workspaceRoot, '..', 'core', 'package.json');
+		if (!existsSync(corePackageJsonPath)) {
+			return;
+		}
+		const packageJson = JSON.parse(readFileSync(corePackageJsonPath, 'utf8'));
+		expect(packageJson.dependencies?.['@treeseed/agent']).toBeUndefined();
+		expect(packageJson.devDependencies?.['@treeseed/agent']).toBeUndefined();
+	});
+
 	it('does not import core or agent runtime modules from sdk source', () => {
 		const sourceRoot = resolve(workspaceRoot, 'src');
 		const forbidden = [
@@ -122,6 +132,19 @@ describe('sdk package graph', () => {
 			for (const needle of forbidden) {
 				expect(contents.includes(needle), `${filePath} contains deprecated sdk path ${needle}`).toBe(false);
 			}
+		}
+	});
+
+	it('keeps the canonical agent contracts shim in sdk fixture support', () => {
+		const sdkFixtureSupportPath = resolve(workspaceRoot, 'src', 'fixture-support.ts');
+		expect(existsSync(sdkFixtureSupportPath)).toBe(true);
+		const sdkFixtureSupport = readFileSync(sdkFixtureSupportPath, 'utf8');
+		expect(sdkFixtureSupport.includes("contractsShim?: 'agent'")).toBe(true);
+
+		const coreRunFixturePath = resolve(workspaceRoot, '..', 'core', 'scripts', 'run-fixture-astro-command.ts');
+		if (existsSync(coreRunFixturePath)) {
+			const coreRunFixture = readFileSync(coreRunFixturePath, 'utf8');
+			expect(coreRunFixture.includes('contractsShim')).toBe(false);
 		}
 	});
 
