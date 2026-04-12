@@ -21,6 +21,9 @@ const removedVerifyDriverPaths = [
 ];
 
 function walkSourceFiles(root: string): string[] {
+	if (!existsSync(root)) {
+		return [];
+	}
 	return readdirSync(root).flatMap((entry: string) => {
 		const fullPath = resolve(root, entry);
 		const stats = statSync(fullPath);
