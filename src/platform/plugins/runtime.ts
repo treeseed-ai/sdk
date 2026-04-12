@@ -35,7 +35,29 @@ function isPathLikePluginReference(packageName: string) {
 function resolveLocalDefaultPluginPath() {
 	const candidates = [
 		path.resolve(runtimeDir, '../../../../core/dist/plugin-default.js'),
+		path.resolve(runtimeDir, '../../../../dist/plugin-default.js'),
 	];
+
+	let current = runtimeDir;
+	while (true) {
+		const packageJsonPath = path.resolve(current, 'package.json');
+		if (existsSync(packageJsonPath)) {
+			try {
+				const packageJson = require(packageJsonPath);
+				if (packageJson?.name === '@treeseed/core') {
+					candidates.push(path.resolve(current, 'dist/plugin-default.js'));
+					break;
+				}
+			} catch {
+			}
+		}
+
+		const parent = path.resolve(current, '..');
+		if (parent === current) {
+			break;
+		}
+		current = parent;
+	}
 
 	for (const candidate of candidates) {
 		if (existsSync(candidate)) {

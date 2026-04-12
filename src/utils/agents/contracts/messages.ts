@@ -149,7 +149,10 @@ export function parseAgentMessagePayload<TType extends AgentMessageType>(
 	type: TType,
 	payloadJson: string,
 ): AgentMessagePayload<TType> {
-	const parsed = JSON.parse(payloadJson) as Record<string, unknown>;
+	const decoded = JSON.parse(payloadJson) as Record<string, unknown> | string;
+	const parsed = typeof decoded === 'string'
+		? JSON.parse(decoded) as Record<string, unknown>
+		: decoded;
 
 	switch (type) {
 		case 'question_priority_updated':

@@ -734,7 +734,7 @@ export interface SdkGraphRefreshPayload {
 
 export interface SdkCreateMessageRequest {
 	type: string;
-	payload: Record<string, unknown>;
+	payload: Record<string, unknown> | string;
 	relatedModel?: string | null;
 	relatedId?: string | null;
 	priority?: number;
