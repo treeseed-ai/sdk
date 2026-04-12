@@ -64,6 +64,12 @@
       "token": "__CORE_VERSION__",
       "deriveFrom": "coreVersion",
       "required": true
+    },
+    {
+      "name": "SDK version",
+      "token": "__SDK_VERSION__",
+      "deriveFrom": "sdkVersion",
+      "required": true
     }
   ],
   "managedSurface": {

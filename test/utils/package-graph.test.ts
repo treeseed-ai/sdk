@@ -20,6 +20,20 @@ const removedVerifyDriverPaths = [
 	resolve(workspaceRoot, '..', 'api', 'scripts', 'verify-driver.mjs'),
 ];
 
+function walkSourceFiles(root: string): string[] {
+	return readdirSync(root).flatMap((entry: string) => {
+		const fullPath = resolve(root, entry);
+		const stats = statSync(fullPath);
+		if (stats.isDirectory()) {
+			if (entry === 'node_modules' || entry === 'dist' || entry === '.git') {
+				return [];
+			}
+			return walkSourceFiles(fullPath);
+		}
+		return [fullPath];
+	});
+}
+
 describe('sdk package graph', () => {
 	it('does not depend on core or agent packages', () => {
 		const packageJson = JSON.parse(readFileSync(sdkPackageJsonPath, 'utf8'));
@@ -34,17 +48,11 @@ describe('sdk package graph', () => {
 			'from "@treeseed/core',
 			"from '@treeseed/agent",
 			'from "@treeseed/agent',
+			"from '@treeseed/sdk'",
+			'from "@treeseed/sdk"',
 		];
 
-		const walk = (root: string): string[] => {
-			return readdirSync(root).flatMap((entry: string) => {
-				const fullPath = resolve(root, entry);
-				const stats = statSync(fullPath);
-				return stats.isDirectory() ? walk(fullPath) : [fullPath];
-			});
-		};
-
-		const sourceFiles = walk(sourceRoot)
+		const sourceFiles = walkSourceFiles(sourceRoot)
 			.filter((filePath) => /\.(ts|js|mjs)$/u.test(filePath))
 			.filter((filePath) => !filePath.includes('/treeseed/template-catalog/templates/'));
 
@@ -52,6 +60,64 @@ describe('sdk package graph', () => {
 			const contents = readFileSync(filePath, 'utf8');
 			for (const needle of forbidden) {
 				expect(contents.includes(needle), `${filePath} contains forbidden import ${needle}`).toBe(false);
+			}
+		}
+	});
+
+	it('enforces package boundaries across sdk, core, and agent source', () => {
+		const packageChecks = [
+			{
+				root: resolve(workspaceRoot, 'src'),
+				forbidden: ["from '@treeseed/core", 'from "@treeseed/core', "from '@treeseed/agent", 'from "@treeseed/agent'],
+			},
+			{
+				root: resolve(workspaceRoot, '..', 'core', 'src'),
+				forbidden: ["from '@treeseed/agent", 'from "@treeseed/agent', "from '@treeseed/sdk'", 'from "@treeseed/sdk"'],
+			},
+			{
+				root: resolve(workspaceRoot, '..', 'agent', 'src'),
+				forbidden: ["from '@treeseed/core", 'from "@treeseed/core'],
+			},
+		];
+
+		for (const check of packageChecks) {
+			const files = walkSourceFiles(check.root)
+				.filter((filePath) => /\.(ts|js|mjs)$/u.test(filePath))
+				.filter((filePath) => !filePath.includes('/.ts-run-'))
+				.filter((filePath) => !filePath.includes('/treeseed/template-catalog/templates/'));
+			for (const filePath of files) {
+				const contents = readFileSync(filePath, 'utf8');
+				for (const needle of check.forbidden) {
+					expect(contents.includes(needle), `${filePath} contains forbidden import ${needle}`).toBe(false);
+				}
+			}
+		}
+	});
+
+	it('does not use deprecated sdk alias paths anywhere in the workspace packages', () => {
+		const packagesRoot = resolve(workspaceRoot, '..');
+		const forbidden = [
+			'@treeseed/sdk/platform/tenant/config',
+			'@treeseed/sdk/platform/deploy/config',
+			'@treeseed/sdk/platform/plugins/plugin',
+			'@treeseed/sdk/types/agents.js',
+			'@treeseed/sdk/types/cloudflare.js',
+			'@treeseed/sdk/wrangler-d1.js',
+			'@treeseed/sdk/utils/agents/runtime-types',
+			'@treeseed/sdk/utils/agents/contracts/messages',
+			'@treeseed/sdk/utils/agents/contracts/run',
+		];
+
+		const files = walkSourceFiles(packagesRoot)
+			.filter((filePath) => /\.(ts|tsx|js|mjs|cjs|json|md)$/u.test(filePath))
+			.filter((filePath) => !filePath.includes('/.ts-run-'))
+			.filter((filePath) => !filePath.includes('/package-lock.json'))
+			.filter((filePath) => !filePath.endsWith('/sdk/test/utils/package-graph.test.ts'));
+
+		for (const filePath of files) {
+			const contents = readFileSync(filePath, 'utf8');
+			for (const needle of forbidden) {
+				expect(contents.includes(needle), `${filePath} contains deprecated sdk path ${needle}`).toBe(false);
 			}
 		}
 	});

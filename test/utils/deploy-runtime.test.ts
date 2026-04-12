@@ -70,7 +70,7 @@ contactEmail: hello@example.com
 cloudflare:
   accountId: account-123
 plugins:
-  - package: '@treeseed/core/plugin-default'
+  - package: '@treeseed/sdk/plugin-default'
 providers:
   forms: mailer
   operations: default
@@ -118,7 +118,7 @@ contactEmail: hello@example.com
 cloudflare:
   accountId: account-123
 plugins:
-  - package: '@treeseed/core/plugin-default'
+  - package: '@treeseed/sdk/plugin-default'
 providers:
   forms: store_only
   agents:
@@ -146,7 +146,7 @@ contactEmail: changed@example.com
 cloudflare:
   accountId: account-456
 plugins:
-  - package: '@treeseed/core/plugin-default'
+  - package: '@treeseed/sdk/plugin-default'
 providers:
   forms: mailer
   agents:

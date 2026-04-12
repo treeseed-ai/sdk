@@ -4,9 +4,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import type { TreeseedDeployConfig, TreeseedTenantConfig } from './contracts.ts';
-import { loadTreeseedDeployConfig } from './deploy/config.ts';
-import { loadTreeseedPlugins, type LoadedTreeseedPluginEntry } from './plugins/runtime.ts';
-import { loadTreeseedManifest } from './tenant/config.ts';
+import { loadTreeseedDeployConfig } from './deploy-config.ts';
+import { loadTreeseedPlugins, type LoadedTreeseedPluginEntry } from './plugins.ts';
+import { loadTreeseedManifest } from './tenant-config.ts';
 
 export const TREESEED_ENVIRONMENT_SCOPES = ['local', 'staging', 'prod'] as const;
 export const TREESEED_ENVIRONMENT_REQUIREMENTS = ['required', 'conditional', 'optional'] as const;

@@ -6,7 +6,7 @@ cloudflare:
   accountId: replace-with-cloudflare-account-id
   workerName: __SITE_SLUG__
 plugins:
-  - package: '@treeseed/core/plugin-default'
+  - package: '@treeseed/sdk/plugin-default'
 providers:
   forms: store_only
   agents:

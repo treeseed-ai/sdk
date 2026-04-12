@@ -1,4 +1,4 @@
-import { loadTreeseedDeployConfig } from '../platform/deploy/config.ts';
+import { loadTreeseedDeployConfig } from '../platform/deploy-config.ts';
 import { createDefaultTreeseedOperationsProvider } from './providers/default.ts';
 import { withProcessCwd } from '../operations/services/runtime-tools.ts';
 import {

@@ -11,7 +11,7 @@ const packageRootFromSource = resolve(scriptRoot, '..', '..', '..');
 const treeseedRuntimeRoot = resolve(packageRootFromSource, 'src', 'treeseed');
 const TREESEED_DEFAULT_PLUGIN_REFERENCES = [
 	{
-		package: '@treeseed/core/plugin-default',
+		package: '@treeseed/sdk/plugin-default',
 		enabled: true,
 	},
 ];

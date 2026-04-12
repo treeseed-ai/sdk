@@ -120,6 +120,10 @@
       "types": "./dist/platform/plugin.d.ts",
       "default": "./dist/platform/plugin.js"
     },
+    "./plugin-default": {
+      "types": "./dist/plugin-default.d.ts",
+      "default": "./dist/plugin-default.js"
+    },
     "./platform/books-data": {
       "types": "./dist/platform/books-data.d.ts",
       "default": "./dist/platform/books-data.js"
@@ -180,23 +184,11 @@
       "types": "./dist/types/agents.d.ts",
       "default": "./dist/types/agents.js"
     },
-    "./types/agents.js": {
-      "types": "./dist/types/agents.d.ts",
-      "default": "./dist/types/agents.js"
-    },
     "./types/cloudflare": {
       "types": "./dist/types/cloudflare.d.ts",
       "default": "./dist/types/cloudflare.js"
     },
-    "./types/cloudflare.js": {
-      "types": "./dist/types/cloudflare.d.ts",
-      "default": "./dist/types/cloudflare.js"
-    },
     "./wrangler-d1": {
-      "types": "./dist/wrangler-d1.d.ts",
-      "default": "./dist/wrangler-d1.js"
-    },
-    "./wrangler-d1.js": {
       "types": "./dist/wrangler-d1.d.ts",
       "default": "./dist/wrangler-d1.js"
     },
@@ -223,18 +215,6 @@
     "./stores/subscription-store": {
       "types": "./dist/stores/subscription-store.d.ts",
       "default": "./dist/stores/subscription-store.js"
-    },
-    "./utils/agents/runtime-types": {
-      "types": "./dist/utils/agents/runtime-types.d.ts",
-      "default": "./dist/utils/agents/runtime-types.js"
-    },
-    "./utils/agents/contracts/messages": {
-      "types": "./dist/utils/agents/contracts/messages.d.ts",
-      "default": "./dist/utils/agents/contracts/messages.js"
-    },
-    "./utils/agents/contracts/run": {
-      "types": "./dist/utils/agents/contracts/run.d.ts",
-      "default": "./dist/utils/agents/contracts/run.js"
     }
   }
 }

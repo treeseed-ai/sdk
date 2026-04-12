@@ -47,12 +47,6 @@ export {
 export { TreeseedOperationsSdk } from './operations/runtime.ts';
 export { TreeseedWorkflowSdk } from './workflow.ts';
 export { getTreeseedVerifyDriverStatus, runTreeseedVerifyDriver } from './verification.ts';
-export * from './platform/contracts.ts';
-export * from './platform/tenant-config.ts';
-export * from './platform/deploy-config.ts';
-export * from './platform/deploy-runtime.ts';
-export * from './platform/environment.ts';
-export * from './platform/plugins.ts';
 export type {
 	SdkContentEntry,
 	SdkCursorEntity,
@@ -122,17 +116,7 @@ export type {
 	TreeseedFieldAliasBinding,
 	TreeseedFieldAliasRegistry,
 } from './field-aliases.ts';
-export type {
-	TreeseedOperationContext,
-	TreeseedOperationGroup,
-	TreeseedOperationImplementation,
-	TreeseedOperationId,
-	TreeseedOperationMetadata,
-	TreeseedOperationProvider,
-	TreeseedOperationProviderId,
-	TreeseedOperationRequest,
-	TreeseedOperationResult,
-} from './operations-types.ts';
+export type * from './operations-types.ts';
 export type * from './workflow.ts';
 export type { AgentDatabase } from './d1-store.ts';
 export type { D1DatabaseLike, D1PreparedStatementLike } from './types/cloudflare.ts';

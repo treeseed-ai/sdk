@@ -41,7 +41,7 @@ Consumer contract:
 ## Quickstart
 
 ```ts
-import { AgentSdk } from '@treeseed/sdk';
+import { AgentSdk } from '@treeseed/sdk/sdk';
 
 const sdk = new AgentSdk({
   repoRoot: '/absolute/path/to/your-site',
@@ -51,7 +51,7 @@ const sdk = new AgentSdk({
 Use `AgentSdk.createLocal()` when you want a local Wrangler-backed D1 database:
 
 ```ts
-import { AgentSdk } from '@treeseed/sdk';
+import { AgentSdk } from '@treeseed/sdk/sdk';
 
 const sdk = AgentSdk.createLocal({
   repoRoot: '/absolute/path/to/your-site',
@@ -71,7 +71,7 @@ The preferred graph API for new integrations is:
 Example:
 
 ```ts
-import { AgentSdk } from '@treeseed/sdk';
+import { AgentSdk } from '@treeseed/sdk/sdk';
 
 const sdk = new AgentSdk();
 const parsed = await sdk.parseGraphDsl(

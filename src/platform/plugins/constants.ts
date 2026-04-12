@@ -1,4 +1,4 @@
-export const TREESEED_DEFAULT_PLUGIN_PACKAGE = '@treeseed/core/plugin-default';
+export const TREESEED_DEFAULT_PLUGIN_PACKAGE = '@treeseed/sdk/plugin-default';
 
 export const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 	forms: 'store_only',

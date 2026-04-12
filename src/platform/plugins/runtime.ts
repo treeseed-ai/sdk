@@ -3,9 +3,9 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { TreeseedDeployConfig } from '../contracts.ts';
-import { loadTreeseedDeployConfig } from '../deploy/config.ts';
+import { loadTreeseedDeployConfig } from '../deploy-config.ts';
 import { TREESEED_DEFAULT_PLUGIN_PACKAGE } from './constants.ts';
-import type { TreeseedPluginEnvironmentContext } from './plugin.ts';
+import type { TreeseedPluginEnvironmentContext } from '../plugin.ts';
 import type { SdkGraphRankingProvider } from '../../sdk-types.ts';
 
 const require = createRequire(import.meta.url);
@@ -34,19 +34,19 @@ function isPathLikePluginReference(packageName: string) {
 
 function resolveLocalDefaultPluginPath() {
 	const candidates = [
-		path.resolve(runtimeDir, '../../../../core/dist/plugin-default.js'),
-		path.resolve(runtimeDir, '../../../../dist/plugin-default.js'),
+		path.resolve(runtimeDir, '../../../dist/plugin-default.js'),
+		path.resolve(runtimeDir, '../../../../sdk/dist/plugin-default.js'),
 	];
 
 	let current = runtimeDir;
 	while (true) {
+		candidates.push(path.resolve(current, '..', 'sdk', 'dist', 'plugin-default.js'));
 		const packageJsonPath = path.resolve(current, 'package.json');
 		if (existsSync(packageJsonPath)) {
 			try {
 				const packageJson = require(packageJsonPath);
-				if (packageJson?.name === '@treeseed/core') {
+				if (packageJson?.name === '@treeseed/sdk') {
 					candidates.push(path.resolve(current, 'dist/plugin-default.js'));
-					break;
 				}
 			} catch {
 			}

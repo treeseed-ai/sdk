@@ -1,0 +1,35 @@
+import { createDefaultGraphRankingProvider } from './graph/ranking.ts';
+import { defineTreeseedPlugin } from './platform/plugin.ts';
+
+export default defineTreeseedPlugin({
+	id: 'treeseed-sdk-default',
+	provides: {
+		forms: ['store_only', 'notify_admin', 'full_email'],
+		operations: ['default'],
+		agents: {
+			execution: ['stub', 'manual', 'copilot'],
+			mutation: ['local_branch'],
+			repository: ['stub', 'git'],
+			verification: ['stub', 'local'],
+			notification: ['stub'],
+			research: ['stub'],
+			handlers: [
+				'planner',
+				'architect',
+				'engineer',
+				'notifier',
+				'researcher',
+				'reviewer',
+				'releaser',
+			],
+		},
+		deploy: ['cloudflare'],
+		content: {
+			docs: ['default'],
+		},
+		site: ['default'],
+	},
+	graphRankingProviders: {
+		default: createDefaultGraphRankingProvider(),
+	},
+});

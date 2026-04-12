@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { corePackageRoot, packageRoot, runtimeRoot } from './runtime-tools.ts';
+import { corePackageRoot, packageRoot, runtimeRoot, sdkPackageRoot } from './runtime-tools.ts';
 
 const pathsRuntimeRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 export const cliPackageRoot = packageRoot;
@@ -35,3 +35,4 @@ export const templateCatalogRoot = resolve(cliRuntimeRoot, 'template-catalog');
 export const localTemplateArtifactsRoot = resolve(templateCatalogRoot, 'templates');
 export const cliPackageVersion = readPackageVersion(cliPackageRoot);
 export const corePackageVersion = readPackageVersion(corePackageRoot);
+export const sdkPackageVersion = readPackageVersion(sdkPackageRoot);

@@ -15,7 +15,7 @@ export {
 	isTreeseedTurnstileEnabled,
 	resetTreeseedDeployConfigForTests,
 } from './deploy-runtime.ts';
-export { defineTreeseedPlugin } from './plugins/plugin.ts';
-export type * from './plugins/plugin.ts';
+export { defineTreeseedPlugin } from './plugin.ts';
+export type * from './plugin.ts';
 export { loadTreeseedPluginRuntime, loadTreeseedPlugins, resolveTreeseedGraphRankingProvider } from './plugins/runtime.ts';
 export type { LoadedTreeseedPluginEntry } from './plugins/runtime.ts';

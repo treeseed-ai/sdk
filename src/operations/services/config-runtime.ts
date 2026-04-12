@@ -11,7 +11,7 @@ import {
 	TREESEED_ENVIRONMENT_SCOPES,
 	validateTreeseedEnvironmentValues,
 } from '../../platform/environment.ts';
-import { loadTreeseedManifest } from '../../platform/tenant/config.ts';
+import { loadTreeseedManifest } from '../../platform/tenant-config.ts';
 import {
 	createPersistentDeployTarget,
 	ensureGeneratedWranglerConfig,

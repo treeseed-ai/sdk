@@ -1,5 +1,5 @@
 import type { TreeseedDeployConfig } from './contracts.ts';
-import { loadTreeseedDeployConfig } from './deploy/config.ts';
+import { loadTreeseedDeployConfig } from './deploy-config.ts';
 import { TREESEED_DEFAULT_PLUGIN_REFERENCES, TREESEED_DEFAULT_PROVIDER_SELECTIONS } from './plugins/constants.ts';
 
 declare const __TREESEED_DEPLOY_CONFIG__: TreeseedDeployConfig | undefined;

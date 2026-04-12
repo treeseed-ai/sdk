@@ -1,10 +1,10 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, relative, resolve } from 'node:path';
 import {
-	RemoteTemplateCatalogClient,
 	type SdkTemplateCatalogEntry,
 	type SdkTemplateCatalogResponse,
-} from '@treeseed/sdk';
+} from '../../sdk-types.ts';
+import { RemoteTemplateCatalogClient } from '../../template-catalog.ts';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
 	resolveTreeseedTemplateCatalogCachePath,
@@ -14,6 +14,7 @@ import {
 	cliPackageVersion,
 	corePackageVersion,
 	localTemplateArtifactsRoot,
+	sdkPackageVersion,
 } from './runtime-paths.ts';
 
 export const TEMPLATE_CATEGORIES = ['starter', 'example', 'fixture', 'reference-app'] as const;
@@ -299,6 +300,8 @@ function resolveVariableValue(variable: TemplateVariableDefinition, input: Start
 			return `^${cliPackageVersion}`;
 		case 'coreVersion':
 			return `^${corePackageVersion}`;
+		case 'sdkVersion':
+			return `^${sdkPackageVersion}`;
 		default:
 			return variable.default ?? '';
 	}
