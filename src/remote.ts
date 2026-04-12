@@ -7,6 +7,8 @@ export interface ApiPrincipal {
 	id: string;
 	displayName?: string;
 	scopes: ApiScope[];
+	roles: string[];
+	permissions: string[];
 	metadata?: Record<string, unknown>;
 }
 

@@ -112,7 +112,7 @@ describe('remote Treeseed support', () => {
 					url: String(input),
 					headers: Object.fromEntries(new Headers(init?.headers).entries()),
 				});
-				return new Response(JSON.stringify({ ok: true, payload: { id: 'user-1', scopes: ['sdk'] } }), {
+				return new Response(JSON.stringify({ ok: true, payload: { id: 'user-1', scopes: ['sdk'], roles: ['member'], permissions: ['sdk:execute:global'] } }), {
 					status: 200,
 					headers: {
 						'content-type': 'application/json',
@@ -141,6 +141,8 @@ describe('remote Treeseed support', () => {
 			principal: {
 				id: 'user-1',
 				scopes: ['sdk'],
+				roles: ['member'],
+				permissions: ['sdk:execute:global'],
 			},
 		});
 
