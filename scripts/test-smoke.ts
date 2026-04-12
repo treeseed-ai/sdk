@@ -145,6 +145,8 @@ try {
 		type: 'module',
 		scripts: {
 			'verify:direct': 'node --input-type=module -e "console.log(\'treeseed-sdk-smoke-verify\')"',
+			'verify:local': 'node --input-type=module -e "process.env.TREESEED_VERIFY_DRIVER=\'direct\'; console.log(\'treeseed-sdk-smoke-verify-local\')"',
+			'verify:action': 'node --input-type=module -e "process.env.TREESEED_VERIFY_DRIVER=\'act\'; console.log(\'treeseed-sdk-smoke-verify-action\')"',
 		},
 	}, null, 2)}\n`, 'utf8');
 	run(process.execPath, ['--input-type=module', '-e', 'await import("@treeseed/sdk/verification");'], installRoot);
