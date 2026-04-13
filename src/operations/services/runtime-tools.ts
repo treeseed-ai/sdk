@@ -7,7 +7,30 @@ import { parse as parseYaml } from 'yaml';
 
 const require = createRequire(import.meta.url);
 const scriptRoot = dirname(fileURLToPath(import.meta.url));
-const packageRootFromSource = resolve(scriptRoot, '..', '..', '..');
+function resolveSdkPackageRoot(startDir: string) {
+	let currentDir = startDir;
+	while (true) {
+		const packageJsonPath = resolve(currentDir, 'package.json');
+		if (existsSync(packageJsonPath)) {
+			try {
+				const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+				if (packageJson?.name === '@treeseed/sdk') {
+					return currentDir;
+				}
+			} catch {
+				// Ignore unreadable package manifests while walking upward.
+			}
+		}
+
+		const parentDir = dirname(currentDir);
+		if (parentDir === currentDir) {
+			return resolve(startDir, '..', '..', '..');
+		}
+		currentDir = parentDir;
+	}
+}
+
+const packageRootFromSource = resolveSdkPackageRoot(scriptRoot);
 const treeseedRuntimeRoot = resolve(packageRootFromSource, 'src', 'treeseed');
 const TREESEED_DEFAULT_PLUGIN_REFERENCES = [
 	{
@@ -92,6 +115,7 @@ function parseManagedServicesConfig(value) {
 
 export const packageRoot = packageRootFromSource;
 export const packageScriptRoot = resolve(packageRoot, 'scripts');
+export const packageDistScriptRoot = resolve(packageRoot, 'dist', 'scripts');
 export const runtimeRoot = treeseedRuntimeRoot;
 
 function resolvePackageBinary(packageName, binName = packageName) {
@@ -209,11 +233,28 @@ export function createProductionBuildEnv(extraEnv = {}) {
 
 export function packageScriptPath(scriptName) {
 	if (extname(scriptName)) {
-		return resolve(packageScriptRoot, scriptName);
+		const directScriptPath = resolve(packageScriptRoot, scriptName);
+		if (existsSync(directScriptPath)) {
+			return directScriptPath;
+		}
+
+		const distScriptPath = resolve(packageDistScriptRoot, scriptName.replace(/\.(ts|mjs)$/u, '.js'));
+		if (existsSync(distScriptPath)) {
+			return distScriptPath;
+		}
+
+		return directScriptPath;
 	}
 
 	for (const extension of ['.js', '.ts', '.mjs']) {
 		const candidate = resolve(packageScriptRoot, `${scriptName}${extension}`);
+		if (existsSync(candidate)) {
+			return candidate;
+		}
+	}
+
+	for (const extension of ['.js', '.mjs']) {
+		const candidate = resolve(packageDistScriptRoot, `${scriptName}${extension}`);
 		if (existsSync(candidate)) {
 			return candidate;
 		}
