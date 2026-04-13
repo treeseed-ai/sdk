@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, extname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { agentPackageRoot, corePackageRoot, packageRoot, sdkPackageRoot } from '../src/operations/services/runtime-tools.ts';
+import { corePackageRoot, packageRoot, sdkPackageRoot } from '../src/operations/services/runtime-tools.ts';
 const textExtensions = new Set(['.js', '.ts', '.mjs', '.cjs', '.d.ts', '.json', '.md']);
 const forbiddenPatterns = [
 	/['"`]workspace:[^'"`\n]+['"`]/,
@@ -121,10 +121,10 @@ function hasWorkspacePackageSource(root: string) {
 run('npm', ['run', 'build']);
 scanDirectory(resolve(packageRoot, 'dist'));
 run('npm', ['test']);
-if (hasWorkspacePackageSource(sdkPackageRoot) && hasWorkspacePackageSource(corePackageRoot) && hasWorkspacePackageSource(agentPackageRoot)) {
+if (hasWorkspacePackageSource(sdkPackageRoot) && hasWorkspacePackageSource(corePackageRoot)) {
 	run('npm', ['run', 'test:scaffold']);
 } else {
-	console.log('Skipping scaffold verification because local sdk/core/agent package sources are not available.');
+	console.log('Skipping scaffold verification because local sdk/core package sources are not available.');
 }
 
 const stageRoot = mkdtempSync(join(tmpdir(), 'treeseed-cli-release-'));

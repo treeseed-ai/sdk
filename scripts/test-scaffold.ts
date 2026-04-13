@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { agentPackageRoot, corePackageRoot, packageRoot, packageScriptPath, sdkPackageRoot } from '../src/operations/services/runtime-tools.ts';
+import { corePackageRoot, packageRoot, packageScriptPath, sdkPackageRoot } from '../src/operations/services/runtime-tools.ts';
 import { listTemplateProducts, validateTemplateProduct } from '../src/operations/services/template-registry.ts';
 
 const npmCacheDir = process.env.TREESEED_SCAFFOLD_NPM_CACHE_DIR
@@ -13,7 +13,6 @@ const npmCacheDir = process.env.TREESEED_SCAFFOLD_NPM_CACHE_DIR
 const packageJson = JSON.parse(readFileSync(resolve(corePackageRoot, 'package.json'), 'utf8'));
 const sdkPackageJson = JSON.parse(readFileSync(resolve(sdkPackageRoot, 'package.json'), 'utf8'));
 const cliPackageJson = JSON.parse(readFileSync(resolve(packageRoot, 'package.json'), 'utf8'));
-const agentPackageJson = JSON.parse(readFileSync(resolve(agentPackageRoot, 'package.json'), 'utf8'));
 const workspaceTarballs = (() => {
 	try {
 		return JSON.parse(process.env.TREESEED_WORKSPACE_TARBALLS ?? '{}');
@@ -36,12 +35,7 @@ const externalCliTarball = process.env.TREESEED_SCAFFOLD_CLI_TARBALL
 	: typeof workspaceTarballs['@treeseed/cli'] === 'string'
 		? resolve(workspaceTarballs['@treeseed/cli'])
 	: null;
-const externalAgentTarball = process.env.TREESEED_SCAFFOLD_AGENT_TARBALL
-	? resolve(process.env.TREESEED_SCAFFOLD_AGENT_TARBALL)
-	: typeof workspaceTarballs['@treeseed/agent'] === 'string'
-		? resolve(workspaceTarballs['@treeseed/agent'])
-	: null;
-const reusesExternalTarballs = Boolean(externalCoreTarball || externalSdkTarball || externalCliTarball || externalAgentTarball);
+const reusesExternalTarballs = Boolean(externalCoreTarball || externalSdkTarball || externalCliTarball);
 const scaffoldChecks = new Set(
 	(process.env.TREESEED_SCAFFOLD_CHECKS ?? 'build,deploy')
 		.split(',')
@@ -198,7 +192,7 @@ function linkTreeseedBins(siteRoot) {
 	mkdirSync(binRoot, { recursive: true });
 	for (const [name, relativeTarget] of [
 		['treeseed', '../@treeseed/cli/dist/cli/main.js'],
-		['treeseed-agents', '../@treeseed/agent/dist/scripts/treeseed-agents.js'],
+		['treeseed-agents', '../@treeseed/core/dist/agents/cli.js'],
 	]) {
 		symlinkSync(relativeTarget, resolve(binRoot, name));
 	}
@@ -234,12 +228,11 @@ async function scaffoldSite(siteRoot) {
 	runStep(process.execPath, [packageScriptPath('scaffold-site'), siteRoot, '--template', 'starter-basic', '--name', 'Smoke Site', '--site-url', 'https://smoke.example.com', '--contact-email', 'hello@example.com']);
 }
 
-function installScaffold(siteRoot, { coreTarballPath, sdkTarballPath, cliTarballPath, agentTarballPath }) {
-	if (coreTarballPath && sdkTarballPath && cliTarballPath && agentTarballPath) {
+function installScaffold(siteRoot, { coreTarballPath, sdkTarballPath, cliTarballPath }) {
+	if (coreTarballPath && sdkTarballPath && cliTarballPath) {
 		linkWorkspacePackage(siteRoot, sdkPackageJson.name, sdkPackageRoot);
 		linkWorkspacePackage(siteRoot, packageJson.name, corePackageRoot);
 		linkWorkspacePackage(siteRoot, cliPackageJson.name, packageRoot);
-		linkWorkspacePackage(siteRoot, agentPackageJson.name, agentPackageRoot);
 		mirrorSharedNodeModules(siteRoot);
 		linkTreeseedBins(siteRoot);
 		return;
@@ -274,7 +267,6 @@ const siteRoot = createTempSiteRoot();
 let tarballPath = externalCoreTarball;
 let sdkTarballPath = externalSdkTarball;
 let cliTarballPath = externalCliTarball;
-let agentTarballPath = externalAgentTarball;
 
 try {
 	if (!reusesExternalTarballs && resetScaffoldCache) {
@@ -293,12 +285,6 @@ try {
 	} else {
 		logStep(`reusing provided @treeseed/core tarball: ${tarballPath}`);
 	}
-	if (!agentTarballPath) {
-		logStep('building and packing @treeseed/agent');
-		agentTarballPath = createTarball(agentPackageRoot, agentPackageJson);
-	} else {
-		logStep(`reusing provided @treeseed/agent tarball: ${agentTarballPath}`);
-	}
 	if (!cliTarballPath) {
 		logStep('building and packing @treeseed/cli');
 		cliTarballPath = createTarball(packageRoot, cliPackageJson);
@@ -316,7 +302,6 @@ try {
 			coreTarballPath: tarballPath,
 			sdkTarballPath,
 			cliTarballPath,
-			agentTarballPath,
 		});
 	});
 	logStep('running scaffold smoke checks');

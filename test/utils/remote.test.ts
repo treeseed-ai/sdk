@@ -40,14 +40,14 @@ services:
     railway:
       projectName: treeseed-core
       serviceName: treeseed-manager
-      rootDir: packages/agent
+      rootDir: .
   worker:
     enabled: true
     provider: railway
     railway:
       projectName: treeseed-core
       serviceName: treeseed-worker
-      rootDir: packages/agent
+      rootDir: .
   api:
     enabled: true
     provider: railway
@@ -68,7 +68,7 @@ services:
     railway:
       projectName: treeseed-core
       serviceName: treeseed-agents
-      rootDir: packages/agent
+      rootDir: .
     environments:
       staging:
         baseUrl: https://staging-agents.example.com

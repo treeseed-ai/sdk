@@ -55,7 +55,7 @@ const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 	site: 'default',
 };
 const TRESEED_MANAGED_SERVICE_KEYS = ['api', 'agents', 'gateway', 'manager', 'worker', 'workdayStart', 'workdayReport'];
-const TRESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli', 'agent'];
+const TRESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli'];
 const CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER = 'replace-with-cloudflare-account-id';
 
 function parseServiceEnvironmentConfig(value) {
@@ -200,7 +200,6 @@ export function resolveWranglerBin() {
 }
 export const corePackageRoot = resolveTreeseedPackageRoot('@treeseed/core', '@treeseed/core/config', 'core');
 export const sdkPackageRoot = resolveTreeseedPackageRoot('@treeseed/sdk', '@treeseed/sdk', 'sdk');
-export const agentPackageRoot = resolveTreeseedPackageRoot('@treeseed/agent', '@treeseed/agent', 'agent');
 
 export function loadPackageJson(root = process.cwd()) {
 	const packageJsonPath = resolve(root, 'package.json');

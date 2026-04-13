@@ -82,7 +82,7 @@ describe('verify driver', () => {
 	});
 
 	it('prefers verify:direct in auto mode for local sibling treeseed dependencies', async () => {
-		const fixture = await createWorkspaceFixture('@treeseed/agent', {
+		const fixture = await createWorkspaceFixture('@treeseed/core', {
 			'@treeseed/sdk': '^0.3.1',
 		});
 		await createPackage(fixture.root, '@treeseed/sdk');
@@ -108,7 +108,7 @@ describe('verify driver', () => {
 	});
 
 	it('still honors explicit act mode even when local sibling treeseed dependencies exist', async () => {
-		const fixture = await createWorkspaceFixture('@treeseed/agent', {
+		const fixture = await createWorkspaceFixture('@treeseed/core', {
 			'@treeseed/sdk': '^0.3.1',
 		});
 		await createPackage(fixture.root, '@treeseed/sdk');
@@ -139,7 +139,7 @@ describe('verify driver', () => {
 	});
 
 	it('still honors direct mode and github actions direct execution', async () => {
-		const fixture = await createWorkspaceFixture('@treeseed/agent', {
+		const fixture = await createWorkspaceFixture('@treeseed/core', {
 			'@treeseed/sdk': '^0.3.1',
 		});
 		await createPackage(fixture.root, '@treeseed/sdk');

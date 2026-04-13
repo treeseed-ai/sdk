@@ -8,13 +8,11 @@ const sdkPackageJsonPath = resolve(workspaceRoot, 'package.json');
 const verifyConsumerPackageJsonPaths = [
 	resolve(workspaceRoot, '..', '..', 'package.json'),
 	resolve(workspaceRoot, '..', 'core', 'package.json'),
-	resolve(workspaceRoot, '..', 'agent', 'package.json'),
 	resolve(workspaceRoot, '..', 'cli', 'package.json'),
 ];
 const removedVerifyDriverPaths = [
 	resolve(workspaceRoot, '..', '..', 'scripts', 'verify-driver.mjs'),
 	resolve(workspaceRoot, '..', 'core', 'scripts', 'verify-driver.mjs'),
-	resolve(workspaceRoot, '..', 'agent', 'scripts', 'verify-driver.mjs'),
 	resolve(workspaceRoot, '..', 'cli', 'scripts', 'verify-driver.mjs'),
 ];
 
@@ -36,13 +34,12 @@ function walkSourceFiles(root: string): string[] {
 }
 
 describe('sdk package graph', () => {
-	it('does not depend on core or agent packages', () => {
+	it('does not depend on core packages', () => {
 		const packageJson = JSON.parse(readFileSync(sdkPackageJsonPath, 'utf8'));
 		expect(packageJson.dependencies?.['@treeseed/core']).toBeUndefined();
-		expect(packageJson.dependencies?.['@treeseed/agent']).toBeUndefined();
 	});
 
-	it('keeps core package.json independent from the agent package', () => {
+	it('keeps core package.json independent from removed agent package', () => {
 		const corePackageJsonPath = resolve(workspaceRoot, '..', 'core', 'package.json');
 		if (!existsSync(corePackageJsonPath)) {
 			return;
@@ -52,13 +49,11 @@ describe('sdk package graph', () => {
 		expect(packageJson.devDependencies?.['@treeseed/agent']).toBeUndefined();
 	});
 
-	it('does not import core or agent runtime modules from sdk source', () => {
+	it('does not import core runtime modules from sdk source', () => {
 		const sourceRoot = resolve(workspaceRoot, 'src');
 		const forbidden = [
 			"from '@treeseed/core",
 			'from "@treeseed/core',
-			"from '@treeseed/agent",
-			'from "@treeseed/agent',
 			"from '@treeseed/sdk'",
 			'from "@treeseed/sdk"',
 		];
@@ -75,19 +70,15 @@ describe('sdk package graph', () => {
 		}
 	});
 
-	it('enforces package boundaries across sdk, core, and agent source', () => {
+	it('enforces package boundaries across sdk and core source', () => {
 		const packageChecks = [
 			{
 				root: resolve(workspaceRoot, 'src'),
-				forbidden: ["from '@treeseed/core", 'from "@treeseed/core', "from '@treeseed/agent", 'from "@treeseed/agent'],
+				forbidden: ["from '@treeseed/core", 'from "@treeseed/core'],
 			},
 			{
 				root: resolve(workspaceRoot, '..', 'core', 'src'),
 				forbidden: ["from '@treeseed/agent", 'from "@treeseed/agent'],
-			},
-			{
-				root: resolve(workspaceRoot, '..', 'agent', 'src'),
-				forbidden: ["from '@treeseed/core", 'from "@treeseed/core'],
 			},
 		];
 
@@ -133,11 +124,11 @@ describe('sdk package graph', () => {
 		}
 	});
 
-	it('keeps the canonical agent contracts shim in sdk fixture support', () => {
+	it('keeps the canonical core agent contracts shim in sdk fixture support', () => {
 		const sdkFixtureSupportPath = resolve(workspaceRoot, 'src', 'fixture-support.ts');
 		expect(existsSync(sdkFixtureSupportPath)).toBe(true);
 		const sdkFixtureSupport = readFileSync(sdkFixtureSupportPath, 'utf8');
-		expect(sdkFixtureSupport.includes("contractsShim?: 'agent'")).toBe(true);
+		expect(sdkFixtureSupport.includes("contractsShim?: 'core-agent'")).toBe(true);
 
 		const coreRunFixturePath = resolve(workspaceRoot, '..', 'core', 'scripts', 'run-fixture-astro-command.ts');
 		if (existsSync(coreRunFixturePath)) {

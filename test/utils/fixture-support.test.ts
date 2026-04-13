@@ -78,7 +78,7 @@ describe('fixture support', () => {
 		expect(resolve(dirname(linkedPath), readlinkSync(linkedPath))).toBe(siblingSdkRoot);
 	});
 
-	it('creates the canonical agent contracts shim for package-only verification', () => {
+	it('creates the canonical core agent contracts shim for package-only verification', () => {
 		const packageRoot = makeTempDir('treeseed-sdk-fixture-core-');
 		const fixtureRoot = join(packageRoot, '.fixtures', 'treeseed-fixtures', 'sites', 'working-site');
 		createFixtureSite(fixtureRoot);
@@ -88,16 +88,16 @@ describe('fixture support', () => {
 			packageRoot,
 			declarations: [
 				{
-					packageName: '@treeseed/agent',
+					packageName: '@treeseed/core',
 					modes: ['contracts-only'],
-					contractsShim: 'agent',
+					contractsShim: 'core-agent',
 				},
 			],
 		});
 
-		expect(existsSync(join(fixtureRoot, 'node_modules', '@treeseed', 'agent', 'runtime-types.d.ts'))).toBe(true);
-		expect(existsSync(join(fixtureRoot, 'node_modules', '@treeseed', 'agent', 'contracts', 'messages.d.ts'))).toBe(true);
-		expect(existsSync(join(fixtureRoot, 'node_modules', '@treeseed', 'agent', 'contracts', 'run.d.ts'))).toBe(true);
+		expect(existsSync(join(fixtureRoot, 'node_modules', '@treeseed', 'core', 'runtime-types.d.ts'))).toBe(true);
+		expect(existsSync(join(fixtureRoot, 'node_modules', '@treeseed', 'core', 'contracts', 'messages.d.ts'))).toBe(true);
+		expect(existsSync(join(fixtureRoot, 'node_modules', '@treeseed', 'core', 'contracts', 'run.d.ts'))).toBe(true);
 	});
 
 	it('links installed packages when no workspace sibling is available', () => {
