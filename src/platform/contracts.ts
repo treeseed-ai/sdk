@@ -103,6 +103,41 @@ export interface TreeseedPluginReference {
 	config?: Record<string, unknown>;
 }
 
+export type TreeseedPlatformSurfaceName = 'web' | 'api' | 'gateway' | (string & {});
+
+export type TreeseedPlatformResourceKind =
+	| 'pages'
+	| 'styles'
+	| 'components'
+	| 'routes'
+	| 'middleware'
+	| 'handlers'
+	| 'config';
+
+export interface TreeseedPlatformLayerDefinition {
+	root: string;
+	kinds?: TreeseedPlatformResourceKind[];
+}
+
+export interface TreeseedTenantSurfaceOverride {
+	layers?: TreeseedPlatformLayerDefinition[];
+}
+
+export interface TreeseedTenantOverrides {
+	pagesRoot?: string;
+	stylesRoot?: string;
+	componentsRoot?: string;
+	surfaces?: Partial<Record<TreeseedPlatformSurfaceName, TreeseedTenantSurfaceOverride>>;
+}
+
+export interface TreeseedPlatformSurfaceConfig {
+	enabled?: boolean;
+	provider?: string;
+	rootDir?: string;
+	publicBaseUrl?: string;
+	localBaseUrl?: string;
+}
+
 export interface TreeseedManagedServiceEnvironmentConfig {
 	baseUrl?: string;
 	domain?: string;
@@ -131,6 +166,14 @@ export interface TreeseedManagedServiceConfig {
 export interface TreeseedManagedServicesConfig {
 	api?: TreeseedManagedServiceConfig;
 	agents?: TreeseedManagedServiceConfig;
+	[key: string]: TreeseedManagedServiceConfig | undefined;
+}
+
+export interface TreeseedPlatformSurfacesConfig {
+	web?: TreeseedPlatformSurfaceConfig;
+	api?: TreeseedPlatformSurfaceConfig;
+	gateway?: TreeseedPlatformSurfaceConfig;
+	[key: string]: TreeseedPlatformSurfaceConfig | undefined;
 }
 
 export interface TreeseedProviderSelections {
@@ -162,6 +205,7 @@ export interface TreeseedDeployConfig {
 	};
 	plugins: TreeseedPluginReference[];
 	providers: TreeseedProviderSelections;
+	surfaces?: TreeseedPlatformSurfacesConfig;
 	services?: TreeseedManagedServicesConfig;
 	smtp?: {
 		enabled?: boolean;
@@ -176,9 +220,5 @@ export interface TreeseedTenantConfig {
 	siteConfigPath: string;
 	content: TreeseedContentMap;
 	features: TreeseedFeatureModules;
-	overrides?: {
-		pagesRoot?: string;
-		stylesRoot?: string;
-		componentsRoot?: string;
-	};
+	overrides?: TreeseedTenantOverrides;
 }

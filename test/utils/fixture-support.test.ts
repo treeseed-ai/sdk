@@ -106,12 +106,15 @@ describe('fixture support', () => {
 		createFixtureSite(fixtureRoot);
 
 		const installedRoot = makeTempDir('treeseed-installed-package-');
-		writeJson(join(installedRoot, 'package.json'), { name: '@treeseed/fixture-installed' });
+		const packageName = `@treeseed/fixture-installed-${installedRoot.slice(-6).toLowerCase()}`;
+		const packageDirName = packageName.replace('@treeseed/', '');
+		writeJson(join(installedRoot, 'package.json'), { name: packageName });
 		writeFileSync(join(installedRoot, 'index.js'), 'export const fixtureInstalled = true;\n', 'utf8');
 
 		const sdkNodeModulesRoot = resolve(new URL('../../node_modules', import.meta.url).pathname);
-		const installedLinkPath = join(sdkNodeModulesRoot, '@treeseed', 'fixture-installed');
+		const installedLinkPath = join(sdkNodeModulesRoot, '@treeseed', packageDirName);
 		mkdirSync(dirname(installedLinkPath), { recursive: true });
+		rmSync(installedLinkPath, { recursive: true, force: true });
 		symlinkSync(installedRoot, installedLinkPath, 'dir');
 		createdPaths.push(installedLinkPath);
 
@@ -120,12 +123,12 @@ describe('fixture support', () => {
 			packageRoot,
 			declarations: [
 				{
-					packageName: '@treeseed/fixture-installed',
+					packageName,
 					modes: ['installed-link'],
 				},
 			],
 		});
 
-		expect(existsSync(join(fixtureRoot, 'node_modules', '@treeseed', 'fixture-installed', 'package.json'))).toBe(true);
+		expect(existsSync(join(fixtureRoot, 'node_modules', '@treeseed', packageDirName, 'package.json'))).toBe(true);
 	});
 });

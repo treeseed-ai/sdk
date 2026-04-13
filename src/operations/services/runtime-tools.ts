@@ -32,7 +32,7 @@ const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 	site: 'default',
 };
 const TRESEED_MANAGED_SERVICE_KEYS = ['api', 'agents', 'gateway', 'manager', 'worker', 'workdayStart', 'workdayReport'];
-const TRESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli', 'agent', 'api'];
+const TRESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli', 'agent'];
 const CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER = 'replace-with-cloudflare-account-id';
 
 function parseServiceEnvironmentConfig(value) {

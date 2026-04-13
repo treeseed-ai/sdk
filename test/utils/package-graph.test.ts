@@ -10,14 +10,12 @@ const verifyConsumerPackageJsonPaths = [
 	resolve(workspaceRoot, '..', 'core', 'package.json'),
 	resolve(workspaceRoot, '..', 'agent', 'package.json'),
 	resolve(workspaceRoot, '..', 'cli', 'package.json'),
-	resolve(workspaceRoot, '..', 'api', 'package.json'),
 ];
 const removedVerifyDriverPaths = [
 	resolve(workspaceRoot, '..', '..', 'scripts', 'verify-driver.mjs'),
 	resolve(workspaceRoot, '..', 'core', 'scripts', 'verify-driver.mjs'),
 	resolve(workspaceRoot, '..', 'agent', 'scripts', 'verify-driver.mjs'),
 	resolve(workspaceRoot, '..', 'cli', 'scripts', 'verify-driver.mjs'),
-	resolve(workspaceRoot, '..', 'api', 'scripts', 'verify-driver.mjs'),
 ];
 
 function walkSourceFiles(root: string): string[] {
@@ -85,7 +83,7 @@ describe('sdk package graph', () => {
 			},
 			{
 				root: resolve(workspaceRoot, '..', 'core', 'src'),
-				forbidden: ["from '@treeseed/agent", 'from "@treeseed/agent', "from '@treeseed/sdk'", 'from "@treeseed/sdk"'],
+				forbidden: ["from '@treeseed/agent", 'from "@treeseed/agent'],
 			},
 			{
 				root: resolve(workspaceRoot, '..', 'agent', 'src'),

@@ -54,7 +54,7 @@ services:
     railway:
       projectName: treeseed-core
       serviceName: treeseed-api
-      rootDir: packages/api
+      rootDir: .
     environments:
       staging:
         baseUrl: https://staging-api.example.com

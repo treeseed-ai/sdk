@@ -1246,7 +1246,7 @@ export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dry
 					: serviceKey === 'agents'
 						? config.settings.services.railway.agentsServiceName
 						: '';
-			const defaultRootDir = serviceKey === 'api' ? 'packages/api' : 'packages/agent';
+			const defaultRootDir = serviceKey === 'api' ? '.' : 'packages/agent';
 			return {
 				service: serviceKey,
 				projectName: service.railway?.projectName ?? config.settings.services.railway.projectName,

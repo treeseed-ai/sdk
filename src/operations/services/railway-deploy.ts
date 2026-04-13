@@ -34,7 +34,7 @@ export function configuredRailwayServices(tenantRoot, scope) {
 				return null;
 			}
 
-			const defaultRootDir = serviceKey === 'api' ? 'packages/api' : 'packages/agent';
+			const defaultRootDir = serviceKey === 'api' ? '.' : 'packages/agent';
 			const serviceRoot = resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? defaultRootDir);
 			const railwayEnvironment = service.environments?.[normalizedScope]?.railwayEnvironment ?? normalizedScope;
 			const publicBaseUrl = service.environments?.[normalizedScope]?.baseUrl ?? service.publicBaseUrl ?? null;

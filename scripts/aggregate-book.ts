@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { buildTenantBookRuntime } from '../src/platform/utils/books-data.ts';
+import { buildTenantBookRuntime } from '../src/platform/books-data.ts';
 import { loadTreeseedManifest } from '../src/platform/tenant-config.ts';
 
 const PROJECT_TENANT = loadTreeseedManifest();

@@ -141,6 +141,28 @@ export function loadTreeseedManifest(manifestPath = './src/manifest.yaml'): Tree
 			parsed.overrides as Record<string, unknown>,
 		) as TreeseedTenantConfig['overrides']
 		: undefined;
+	const normalizedSurfaceOverrides = Object.fromEntries(
+		Object.entries(overrides?.surfaces ?? {}).map(([surface, definition]) => [
+			surface,
+			{
+				layers: (definition?.layers ?? []).map((layer) => ({
+					root: resolve(tenantRoot, layer.root),
+					kinds: layer.kinds,
+				})),
+			},
+		]),
+	);
+	const legacyWebLayers = [
+		overrides?.pagesRoot
+			? { root: resolve(tenantRoot, overrides.pagesRoot), kinds: ['pages'] as const }
+			: null,
+		overrides?.stylesRoot
+			? { root: resolve(tenantRoot, overrides.stylesRoot), kinds: ['styles'] as const }
+			: null,
+		overrides?.componentsRoot
+			? { root: resolve(tenantRoot, overrides.componentsRoot), kinds: ['components'] as const }
+			: null,
+	].filter(Boolean);
 	const tenantConfig = defineTreeseedTenant({
 		...parsed,
 		siteConfigPath: resolve(tenantRoot, parsed.siteConfigPath),
@@ -155,6 +177,15 @@ export function loadTreeseedManifest(manifestPath = './src/manifest.yaml'): Tree
 					pagesRoot: overrides.pagesRoot ? resolve(tenantRoot, overrides.pagesRoot) : undefined,
 					stylesRoot: overrides.stylesRoot ? resolve(tenantRoot, overrides.stylesRoot) : undefined,
 					componentsRoot: overrides.componentsRoot ? resolve(tenantRoot, overrides.componentsRoot) : undefined,
+					surfaces: {
+						...normalizedSurfaceOverrides,
+						web: {
+							layers: [
+								...(normalizedSurfaceOverrides.web?.layers ?? []),
+								...legacyWebLayers,
+							],
+						},
+					},
 			  } satisfies NonNullable<TreeseedTenantConfig['overrides']>
 			: undefined,
 	}) as TreeseedTenantConfig;

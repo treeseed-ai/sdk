@@ -7,6 +7,7 @@ import type {
 	TreeseedDeployConfig,
 	TreeseedManagedServiceConfig,
 	TreeseedManagedServicesConfig,
+	TreeseedPlatformSurfacesConfig,
 	TreeseedPluginReference,
 	TreeseedProviderSelections,
 } from './contracts.ts';
@@ -187,10 +188,44 @@ function parseManagedServicesConfig(value: unknown): TreeseedManagedServicesConf
 	if (!record) {
 		return undefined;
 	}
+	return Object.fromEntries(
+		Object.entries(record).map(([serviceKey, serviceValue]) => [
+			serviceKey,
+			parseManagedServiceConfig(serviceValue, `services.${serviceKey}`),
+		]),
+	);
+}
+
+function parsePlatformSurfaceConfig(
+	value: unknown,
+	label: string,
+) {
+	const record = optionalRecord(value, label);
+	if (!record) {
+		return undefined;
+	}
+
 	return {
-		api: parseManagedServiceConfig(record.api, 'services.api'),
-		agents: parseManagedServiceConfig(record.agents, 'services.agents'),
+		enabled: record.enabled === undefined ? undefined : optionalBoolean(record.enabled, `${label}.enabled`),
+		provider: optionalString(record.provider),
+		rootDir: optionalString(record.rootDir),
+		publicBaseUrl: optionalString(record.publicBaseUrl),
+		localBaseUrl: optionalString(record.localBaseUrl),
 	};
+}
+
+function parsePlatformSurfacesConfig(value: unknown): TreeseedPlatformSurfacesConfig | undefined {
+	const record = optionalRecord(value, 'surfaces');
+	if (!record) {
+		return undefined;
+	}
+
+	return Object.fromEntries(
+		Object.entries(record).map(([surfaceKey, surfaceValue]) => [
+			surfaceKey,
+			parsePlatformSurfaceConfig(surfaceValue, `surfaces.${surfaceKey}`),
+		]),
+	);
 }
 
 function parseDeployConfig(raw: string): TreeseedDeployConfig {
@@ -220,6 +255,7 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 		},
 		plugins: parsePluginReferences(parsed.plugins),
 		providers: parseProviderSelections(parsed.providers),
+		surfaces: parsePlatformSurfacesConfig(parsed.surfaces),
 		services: parseManagedServicesConfig(parsed.services),
 		smtp: {
 			enabled: optionalBoolean(smtp.enabled, 'smtp.enabled'),
