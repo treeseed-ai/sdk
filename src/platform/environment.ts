@@ -18,6 +18,7 @@ export const TREESEED_ENVIRONMENT_TARGETS = [
 	'cloudflare-secret',
 	'cloudflare-var',
 	'railway-secret',
+	'railway-var',
 	'config-file',
 ] as const;
 export const TREESEED_ENVIRONMENT_PURPOSES = ['dev', 'save', 'deploy', 'destroy', 'config'] as const;

@@ -120,4 +120,5 @@ export type * from './operations-types.ts';
 export type * from './workflow.ts';
 export type { AgentDatabase } from './d1-store.ts';
 export type { D1DatabaseLike, D1PreparedStatementLike } from './types/cloudflare.ts';
+export { CloudflareHttpD1Database } from './d1-http.ts';
 export type * from './remote.ts';
