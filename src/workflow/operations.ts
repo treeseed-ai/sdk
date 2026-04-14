@@ -73,6 +73,10 @@ import {
 } from '../operations/services/workspace-save.ts';
 import { run, workspaceRoot } from '../operations/services/workspace-tools.ts';
 import { resolveTreeseedWorkflowState } from '../workflow-state.ts';
+import {
+	classifyTreeseedBranchRole,
+	resolveTreeseedWorkflowPaths,
+} from './policy.ts';
 import type {
 	TreeseedCloseInput,
 	TreeseedConfigInput,
@@ -90,6 +94,7 @@ import type {
 } from '../workflow.ts';
 
 type WorkflowWrite = NonNullable<TreeseedWorkflowContext['write']>;
+type WorkflowStatePayload = ReturnType<typeof resolveTreeseedWorkflowState>;
 
 export type TreeseedWorkflowErrorCode =
 	| 'validation_failed'
@@ -177,18 +182,6 @@ function withContextEnv<T>(env: NodeJS.ProcessEnv | undefined, action: () => T):
 	}
 }
 
-function runChild(command: string, args: string[], context: TreeseedWorkflowContext, cwd: string, label: string) {
-	const result = spawnSync(command, args, {
-		cwd,
-		env: { ...process.env, ...(context.env ?? {}) },
-		stdio: 'inherit',
-	});
-	if (result.status !== 0) {
-		workflowError('dev', 'unsupported_state', `${label} failed.`, { exitCode: result.status ?? 1 });
-	}
-	return result;
-}
-
 function runNodeScript(scriptName: string, context: TreeseedWorkflowContext, cwd: string, label: string) {
 	const result = spawnSync(process.execPath, [packageScriptPath(scriptName)], {
 		cwd,
@@ -221,6 +214,62 @@ function normalizeConfigScopes(input: TreeseedConfigInput) {
 	}
 
 	return ['local', 'staging', 'prod'].filter((scope) => requested.includes(scope as never)) as Array<'local' | 'staging' | 'prod'>;
+}
+
+function resolveWorkflowStateSnapshot(cwd: string) {
+	return resolveTreeseedWorkflowState(cwd);
+}
+
+function resolveProjectRootOrThrow(operation: TreeseedWorkflowOperationId, cwd: string) {
+	const resolved = resolveTreeseedWorkflowPaths(cwd);
+	if (!resolved.tenantRoot) {
+		workflowError(operation, 'validation_failed', `Treeseed ${operation} requires a Treeseed project. Run the command from inside a tenant or initialize one first.`);
+	}
+	return resolved.cwd;
+}
+
+function resolveRepoState(repoDir: string) {
+	const branchName = currentBranch(repoDir) || null;
+	return {
+		repoDir,
+		branchName,
+		branchRole: classifyTreeseedBranchRole(branchName, repoDir),
+		dirtyWorktree: gitStatusPorcelain(repoDir).length > 0,
+	};
+}
+
+function buildWorkflowResult<TPayload>(
+	operation: TreeseedWorkflowOperationId,
+	cwd: string,
+	payload: TPayload,
+	nextSteps?: TreeseedWorkflowNextStep[],
+): TreeseedWorkflowResult<TPayload & { finalState: WorkflowStatePayload }> {
+	return {
+		ok: true,
+		operation,
+		payload: {
+			...payload,
+			finalState: resolveWorkflowStateSnapshot(cwd),
+		},
+		nextSteps,
+	};
+}
+
+function ensureLocalReadinessOrThrow(operation: TreeseedWorkflowOperationId, tenantRoot: string) {
+	const state = resolveWorkflowStateSnapshot(tenantRoot);
+	if (!state.readiness.local.ready) {
+		workflowError(
+			operation,
+			'validation_failed',
+			[
+				`Treeseed ${operation} requires the local environment to be configured.`,
+				...state.readiness.local.blockers,
+				'Run `treeseed config --environment local` first.',
+			].join('\n'),
+			{ details: { readiness: state.readiness.local } },
+		);
+	}
+	return state;
 }
 
 type TreeseedRepairAction = {
@@ -443,6 +492,64 @@ function resolveDestroyConfirmation(
 	return false;
 }
 
+function syncCurrentBranchToOrigin(operation: TreeseedWorkflowOperationId, repoDir: string, branch: string) {
+	try {
+		if (remoteBranchExists(repoDir, branch)) {
+			run('git', ['pull', '--rebase', 'origin', branch], { cwd: repoDir });
+			run('git', ['push', 'origin', branch], { cwd: repoDir });
+			return {
+				remoteBranchExisted: true,
+				pulledRebase: true,
+				pushed: true,
+				createdRemoteBranch: false,
+				conflicts: false,
+			};
+		}
+
+		run('git', ['push', '-u', 'origin', branch], { cwd: repoDir });
+		return {
+			remoteBranchExisted: false,
+			pulledRebase: false,
+			pushed: true,
+			createdRemoteBranch: true,
+			conflicts: false,
+		};
+	} catch {
+		const report = collectMergeConflictReport(repoDir);
+		throw new TreeseedWorkflowError(operation, 'merge_conflict', formatMergeConflictReport(report, repoDir, branch), {
+			details: { branch, report },
+			exitCode: 12,
+		});
+	}
+}
+
+async function maybeAutoSaveCurrentTaskBranch(
+	helpers: WorkflowOperationHelpers,
+	operation: 'stage' | 'close',
+	input: { message: string; autoSave?: boolean; verify?: boolean; preview?: boolean },
+) {
+	const tenantRoot = resolveProjectRootOrThrow(operation, helpers.cwd());
+	const repoDir = gitWorkflowRoot(tenantRoot);
+	const before = resolveRepoState(repoDir);
+	if (!before.dirtyWorktree) {
+		return { performed: false, save: null };
+	}
+	if (input.autoSave === false) {
+		workflowError(operation, 'validation_failed', `Treeseed ${operation} requires a clean worktree or autoSave enabled.`);
+	}
+
+	const saveResult = await workflowSave(helpers, {
+		message: operation === 'close' ? `close: ${input.message}` : input.message,
+		verify: input.verify === true,
+		refreshPreview: false,
+		preview: input.preview,
+	});
+	return {
+		performed: true,
+		save: saveResult.payload,
+	};
+}
+
 export async function workflowStatus(helpers: WorkflowOperationHelpers) {
 	return withContextEnv(helpers.context.env, () => createStatusResult(helpers.cwd()));
 }
@@ -454,7 +561,7 @@ export async function workflowTasks(helpers: WorkflowOperationHelpers) {
 export async function workflowConfig(helpers: WorkflowOperationHelpers, input: TreeseedConfigInput = {}) {
 	try {
 		return await withContextEnv(helpers.context.env, async () => {
-			const tenantRoot = helpers.cwd();
+			const tenantRoot = resolveProjectRootOrThrow('config', helpers.cwd());
 			const scopes = normalizeConfigScopes(input);
 			const sync = input.syncProviders ?? input.sync ?? 'all';
 			const printEnv = input.printEnv === true;
@@ -550,10 +657,10 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 			applyTreeseedEnvironmentToProcess({ tenantRoot, scope: 'local', override: true });
 			const { configPath, keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
 			const state = resolveTreeseedWorkflowState(tenantRoot);
-			return {
-				ok: true,
-				operation: 'config',
-				payload: {
+			return buildWorkflowResult(
+				'config',
+				tenantRoot,
+				{
 					mode: 'configure',
 					scopes,
 					sync,
@@ -564,13 +671,14 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 					toolHealth,
 					result: wizardResult,
 					state,
+					readiness: state.readiness,
 				},
-				nextSteps: createNextSteps([
+				createNextSteps([
 					...(scopes.includes('local') ? [{ operation: 'dev', reason: 'Start the local Treeseed runtime on the initialized local environment.' }] : []),
 					...(scopes.includes('staging') ? [{ operation: 'status', reason: 'Confirm staging readiness after initializing shared services.' }] : []),
 					{ operation: 'switch', reason: 'Create or resume a task branch once the runtime foundation is ready.', input: { branch: 'feature/my-change', preview: true } },
 				]),
-			} satisfies TreeseedWorkflowResult<Record<string, unknown>>;
+			);
 		});
 	} catch (error) {
 		toError('config', error);
@@ -580,7 +688,7 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: TreeseedSwitchInput) {
 	try {
 		return withContextEnv(helpers.context.env, () => {
-			const tenantRoot = helpers.cwd();
+			const tenantRoot = resolveProjectRootOrThrow('switch', helpers.cwd());
 			const branchName = String(input.branch ?? input.branchName ?? '').trim();
 			if (!branchName) {
 				workflowError('switch', 'validation_failed', 'Treeseed switch requires a branch name.');
@@ -615,10 +723,10 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 			}
 
 			const state = resolveTreeseedWorkflowState(tenantRoot);
-			return {
-				ok: true,
-				operation: 'switch',
-				payload: {
+			return buildWorkflowResult(
+				'switch',
+				tenantRoot,
+				{
 					branchName,
 					created,
 					resumed,
@@ -629,15 +737,18 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 						lastDeploymentTimestamp: state.preview.lastDeploymentTimestamp,
 					},
 					previewResult,
-					state,
+					preconditions: {
+						cleanWorktreeRequired: true,
+						baseBranch: STAGING_BRANCH,
+					},
 				},
-				nextSteps: createNextSteps([
+				createNextSteps([
 					state.preview.enabled
-						? { operation: 'save', reason: 'Persist and verify the current task branch, then refresh its preview deployment.', input: { message: 'describe your change' } }
+						? { operation: 'save', reason: 'Persist and verify the current task branch, then refresh its preview deployment.', input: { message: 'describe your change', preview: true } }
 						: { operation: 'dev', reason: 'Start the local development environment for this task branch.' },
 					{ operation: 'stage', reason: 'Merge the task into staging once the task branch is verified.', input: { message: 'describe the resolution' } },
 				]),
-			};
+			);
 		});
 	} catch (error) {
 		toError('switch', error);
@@ -650,7 +761,8 @@ export async function workflowDev(helpers: WorkflowOperationHelpers, input: Tree
 			if (helpers.context.transport === 'api') {
 				workflowError('dev', 'unsupported_transport', 'Treeseed dev is not supported over the HTTP workflow API.');
 			}
-			const tenantRoot = helpers.cwd();
+			const tenantRoot = resolveProjectRootOrThrow('dev', helpers.cwd());
+			const readiness = ensureLocalReadinessOrThrow('dev', tenantRoot);
 			applyTreeseedEnvironmentToProcess({ tenantRoot, scope: 'local', override: true });
 			assertTreeseedCommandEnvironment({ tenantRoot, scope: 'local', purpose: 'dev' });
 			const args = [packageScriptPath('tenant-dev')];
@@ -668,19 +780,21 @@ export async function workflowDev(helpers: WorkflowOperationHelpers, input: Tree
 					stdio: input.stdio ?? 'inherit',
 					detached: process.platform !== 'win32',
 				});
-				return {
-					ok: true,
-					operation: 'dev',
-					payload: {
-						watch: input.watch === true,
-						background: true,
-						command: process.execPath,
-						args,
-						cwd: tenantRoot,
-						pid: child.pid ?? null,
-						exitCode: null,
+				return buildWorkflowResult('dev', tenantRoot, {
+					watch: input.watch === true,
+					background: true,
+					command: process.execPath,
+					args,
+					cwd: tenantRoot,
+					pid: child.pid ?? null,
+					exitCode: null,
+					runtime: {
+						mode: process.env.TREESEED_LOCAL_DEV_MODE ?? 'cloudflare',
+						apiBaseUrl: process.env.TREESEED_API_BASE_URL ?? 'http://127.0.0.1:3000',
+						webUrl: 'http://127.0.0.1:8787',
 					},
-				} satisfies TreeseedWorkflowResult<Record<string, unknown>>;
+					readiness: readiness.readiness.local,
+				});
 			}
 
 			const result = spawnSync(process.execPath, args, {
@@ -688,19 +802,21 @@ export async function workflowDev(helpers: WorkflowOperationHelpers, input: Tree
 				env,
 				stdio: input.stdio ?? 'inherit',
 			});
-			return {
-				ok: (result.status ?? 1) === 0,
-				operation: 'dev',
-				payload: {
-					watch: input.watch === true,
-					background: false,
-					command: process.execPath,
-					args,
-					cwd: tenantRoot,
-					pid: null,
-					exitCode: result.status ?? 1,
+			return buildWorkflowResult('dev', tenantRoot, {
+				watch: input.watch === true,
+				background: false,
+				command: process.execPath,
+				args,
+				cwd: tenantRoot,
+				pid: null,
+				exitCode: result.status ?? 1,
+				runtime: {
+					mode: process.env.TREESEED_LOCAL_DEV_MODE ?? 'cloudflare',
+					apiBaseUrl: process.env.TREESEED_API_BASE_URL ?? 'http://127.0.0.1:3000',
+					webUrl: 'http://127.0.0.1:8787',
 				},
-			} satisfies TreeseedWorkflowResult<Record<string, unknown>>;
+				readiness: readiness.readiness.local,
+			});
 		});
 	} catch (error) {
 		toError('dev', error);
@@ -710,7 +826,7 @@ export async function workflowDev(helpers: WorkflowOperationHelpers, input: Tree
 export async function workflowSave(helpers: WorkflowOperationHelpers, input: TreeseedSaveInput) {
 	try {
 		return withContextEnv(helpers.context.env, () => {
-			const tenantRoot = helpers.cwd();
+			const tenantRoot = resolveProjectRootOrThrow('save', helpers.cwd());
 			const message = ensureMessage('save', input.message, 'a commit message');
 			const optionsHotfix = input.hotfix === true;
 			const root = workspaceRoot(tenantRoot);
@@ -738,53 +854,57 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				runWorkspaceSavePreflight({ cwd: root });
 			}
 
-			if (!hasMeaningfulChanges(gitRoot)) {
-				workflowError('save', 'validation_failed', 'Treeseed save found no meaningful repository changes to commit.');
+			const hadMeaningfulChanges = hasMeaningfulChanges(gitRoot);
+			let head = run('git', ['rev-parse', 'HEAD'], { cwd: gitRoot, capture: true }).trim();
+			let commitCreated = false;
+
+			if (hadMeaningfulChanges) {
+				run('git', ['add', '-A'], { cwd: gitRoot });
+				run('git', ['commit', '-m', message], { cwd: gitRoot });
+				head = run('git', ['rev-parse', 'HEAD'], { cwd: gitRoot, capture: true }).trim();
+				commitCreated = true;
 			}
 
-			run('git', ['add', '-A'], { cwd: gitRoot });
-			run('git', ['commit', '-m', message], { cwd: gitRoot });
-			const head = run('git', ['rev-parse', 'HEAD'], { cwd: gitRoot, capture: true }).trim();
+			const branchSync = syncCurrentBranchToOrigin('save', gitRoot, branch);
 
-			try {
-				if (remoteBranchExists(gitRoot, branch)) {
-					run('git', ['pull', '--rebase', 'origin', branch], { cwd: gitRoot });
-					run('git', ['push', 'origin', branch], { cwd: gitRoot });
-				} else {
-					run('git', ['push', '-u', 'origin', branch], { cwd: gitRoot });
+			let previewAction: Record<string, unknown> = { status: 'skipped' };
+			if (beforeState.branchRole === 'feature' && branch) {
+				if (input.preview === true) {
+					previewAction = {
+						status: beforeState.preview.enabled ? 'refreshed' : 'created',
+						details: deployBranchPreview(root, branch, helpers.context, { initialize: !beforeState.preview.enabled }),
+					};
+				} else if (input.refreshPreview !== false && beforeState.preview.enabled) {
+					previewAction = {
+						status: 'refreshed',
+						details: deployBranchPreview(root, branch, helpers.context, { initialize: false }),
+					};
 				}
-			} catch {
-				const report = collectMergeConflictReport(gitRoot);
-				throw new TreeseedWorkflowError('save', 'merge_conflict', formatMergeConflictReport(report, gitRoot, branch), {
-					details: { branch, report },
-					exitCode: 12,
-				});
 			}
 
-			let previewRefresh: Record<string, unknown> | null = null;
-			if (input.refreshPreview !== false && beforeState.branchRole === 'feature' && beforeState.preview.enabled && branch) {
-				previewRefresh = deployBranchPreview(root, branch, helpers.context, { initialize: false });
-			}
-
-			return {
-				ok: true,
-				operation: 'save',
-				payload: {
+			return buildWorkflowResult(
+				'save',
+				root,
+				{
 					branch,
 					scope,
 					hotfix: optionsHotfix,
 					message,
 					commitSha: head,
-					previewRefresh,
+					commitCreated,
+					noChanges: !hadMeaningfulChanges,
+					branchSync,
+					previewAction,
+					mergeConflict: null,
 				},
-				nextSteps: createNextSteps([
+				createNextSteps([
 					branch === STAGING_BRANCH
 						? { operation: 'release', reason: 'Promote the validated staging branch into production.', input: { bump: 'patch' } }
 						: branch === PRODUCTION_BRANCH
 							? { operation: 'status', reason: 'Inspect production state after the explicit hotfix save.' }
 							: { operation: 'stage', reason: 'Merge the verified task branch into staging.', input: { message: 'describe the resolution' } },
 				]),
-			};
+			);
 		});
 	} catch (error) {
 		toError('save', error);
@@ -793,9 +913,13 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 
 export async function workflowClose(helpers: WorkflowOperationHelpers, input: TreeseedCloseInput) {
 	try {
-		return withContextEnv(helpers.context.env, () => {
-			const tenantRoot = helpers.cwd();
+		return withContextEnv(helpers.context.env, async () => {
+			const tenantRoot = resolveProjectRootOrThrow('close', helpers.cwd());
 			const message = ensureMessage('close', input.message, 'a close reason');
+			const autoSave = await maybeAutoSaveCurrentTaskBranch(helpers, 'close', {
+				message,
+				autoSave: input.autoSave,
+			});
 			const featureBranch = assertFeatureBranch(tenantRoot);
 			const repoDir = gitWorkflowRoot(tenantRoot);
 			assertCleanWorktree(tenantRoot);
@@ -810,21 +934,24 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 				deleteLocalBranch(repoDir, featureBranch);
 			}
 
-			return {
-				ok: true,
-				operation: 'close',
-				payload: {
+			return buildWorkflowResult(
+				'close',
+				tenantRoot,
+				{
 					branchName: featureBranch,
 					message,
+					autoSaved: autoSave.performed,
+					autoSaveResult: autoSave.save,
 					deprecatedTag,
 					previewCleanup,
 					remoteDeleted,
 					localDeleted: input.deleteBranch !== false,
+					finalBranch: currentBranch(repoDir) || STAGING_BRANCH,
 				},
-				nextSteps: createNextSteps([
+				createNextSteps([
 					{ operation: 'tasks', reason: 'Inspect the remaining task branches after closing this one.' },
 				]),
-			};
+			);
 		});
 	} catch (error) {
 		toError('close', error);
@@ -833,12 +960,25 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 
 export async function workflowStage(helpers: WorkflowOperationHelpers, input: TreeseedStageInput) {
 	try {
-		return withContextEnv(helpers.context.env, () => {
-			const tenantRoot = helpers.cwd();
+		return withContextEnv(helpers.context.env, async () => {
+			const tenantRoot = resolveProjectRootOrThrow('stage', helpers.cwd());
 			const message = ensureMessage('stage', input.message, 'a resolution message');
+			const autoSave = await maybeAutoSaveCurrentTaskBranch(helpers, 'stage', {
+				message,
+				autoSave: input.autoSave,
+			});
 			const featureBranch = assertFeatureBranch(tenantRoot);
 			runWorkspaceSavePreflight({ cwd: tenantRoot });
-			const repoDir = mergeCurrentBranchIntoStaging(tenantRoot, featureBranch);
+			let repoDir: string;
+			try {
+				repoDir = mergeCurrentBranchIntoStaging(tenantRoot, featureBranch);
+			} catch (error) {
+				const report = collectMergeConflictReport(gitWorkflowRoot(tenantRoot));
+				throw new TreeseedWorkflowError('stage', 'merge_conflict', formatMergeConflictReport(report, gitWorkflowRoot(tenantRoot), STAGING_BRANCH), {
+					details: { branch: featureBranch, report, originalError: error instanceof Error ? error.message : String(error) },
+					exitCode: 12,
+				});
+			}
 			const stagingWait = input.waitForStaging === false
 				? { status: 'skipped', reason: 'disabled' }
 				: waitForStagingAutomation(repoDir);
@@ -851,24 +991,27 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				deleteLocalBranch(repoDir, featureBranch);
 			}
 
-			return {
-				ok: true,
-				operation: 'stage',
-				payload: {
+			return buildWorkflowResult(
+				'stage',
+				tenantRoot,
+				{
 					branchName: featureBranch,
 					mergeTarget: STAGING_BRANCH,
 					message,
+					autoSaved: autoSave.performed,
+					autoSaveResult: autoSave.save,
 					deprecatedTag,
 					stagingWait,
 					previewCleanup,
 					remoteDeleted,
 					localDeleted: input.deleteBranch !== false,
+					finalBranch: currentBranch(repoDir) || STAGING_BRANCH,
 				},
-				nextSteps: createNextSteps([
+				createNextSteps([
 					{ operation: 'release', reason: 'Promote the updated staging branch into production when ready.', input: { bump: 'patch' } },
 					{ operation: 'status', reason: 'Inspect staging readiness after the task branch merge.' },
 				]),
-			};
+			);
 		});
 	} catch (error) {
 		toError('stage', error);
@@ -879,7 +1022,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 	try {
 		return withContextEnv(helpers.context.env, () => {
 			const level = input.bump ?? 'patch';
-			const root = workspaceRoot(helpers.cwd());
+			const root = resolveProjectRootOrThrow('release', helpers.cwd());
 			const gitRoot = repoRoot(root);
 			prepareReleaseBranches(root);
 			applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
@@ -893,24 +1036,33 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 			run('git', ['commit', '-m', `release: ${level} bump`], { cwd: gitRoot });
 			pushBranch(gitRoot, STAGING_BRANCH);
 			mergeStagingIntoMain(root);
+			const releasedCommit = run('git', ['rev-parse', PRODUCTION_BRANCH], { cwd: gitRoot, capture: true }).trim();
 			run('git', ['tag', '-a', rootVersion, '-m', `release: ${rootVersion}`], { cwd: gitRoot });
 			run('git', ['push', 'origin', rootVersion], { cwd: gitRoot });
+			syncBranchWithOrigin(gitRoot, STAGING_BRANCH);
 
-			return {
-				ok: true,
-				operation: 'release',
-				payload: {
+			return buildWorkflowResult(
+				'release',
+				root,
+				{
 					level,
 					rootVersion,
 					releaseTag: rootVersion,
+					releasedCommit,
 					stagingBranch: STAGING_BRANCH,
 					productionBranch: PRODUCTION_BRANCH,
 					touchedPackages: [...plan.touched],
+					finalBranch: currentBranch(gitRoot) || STAGING_BRANCH,
+					pushStatus: {
+						stagingPushed: true,
+						productionPushed: true,
+						tagPushed: true,
+					},
 				},
-				nextSteps: createNextSteps([
+				createNextSteps([
 					{ operation: 'status', reason: 'Inspect release readiness and production state after the promotion.' },
 				]),
-			};
+			);
 		});
 	} catch (error) {
 		toError('release', error);

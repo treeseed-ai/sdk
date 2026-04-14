@@ -9,11 +9,16 @@ import {
 import { PRODUCTION_BRANCH, STAGING_BRANCH } from './operations/services/git-workflow.ts';
 import { loadCliDeployConfig } from './operations/services/runtime-tools.ts';
 import { collectCliPreflight } from './operations/services/workspace-preflight.ts';
-import { currentBranch, gitStatusPorcelain, repoRoot } from './operations/services/workspace-save.ts';
+import { gitStatusPorcelain } from './operations/services/workspace-save.ts';
 import { isWorkspaceRoot } from './operations/services/workspace-tools.ts';
 import type { TreeseedWorkflowNextStep } from './workflow.ts';
+import {
+	type TreeseedWorkflowBranchRole,
+	resolveTreeseedWorkflowPaths,
+	workflowEnvironmentForBranchRole,
+} from './workflow/policy.ts';
 
-export type TreeseedBranchRole = 'feature' | 'staging' | 'main' | 'detached' | 'none';
+export type TreeseedBranchRole = TreeseedWorkflowBranchRole;
 
 export type TreeseedWorkflowRecommendation = TreeseedWorkflowNextStep;
 
@@ -60,6 +65,11 @@ export type TreeseedWorkflowState = {
 		devVars: boolean;
 	};
 	releaseReady: boolean;
+	readiness: {
+		local: { ready: boolean; blockers: string[]; warnings: string[] };
+		staging: { ready: boolean; blockers: string[]; warnings: string[] };
+		prod: { ready: boolean; blockers: string[]; warnings: string[] };
+	};
 	rollbackCandidates: Array<{
 		scope: 'staging' | 'prod';
 		commit: string | null;
@@ -69,28 +79,6 @@ export type TreeseedWorkflowState = {
 	recommendations: TreeseedWorkflowRecommendation[];
 };
 
-function safeResolveRepoRoot(cwd: string) {
-	try {
-		return repoRoot(cwd);
-	} catch {
-		return null;
-	}
-}
-
-function branchRoleFor(branchName: string | null): TreeseedBranchRole {
-	if (!branchName) return 'none';
-	if (branchName === STAGING_BRANCH) return 'staging';
-	if (branchName === PRODUCTION_BRANCH) return 'main';
-	return 'feature';
-}
-
-function environmentForBranchRole(branchRole: TreeseedBranchRole): TreeseedWorkflowState['environment'] {
-	if (branchRole === 'staging') return 'staging';
-	if (branchRole === 'main') return 'prod';
-	if (branchRole === 'feature') return 'local';
-	return 'none';
-}
-
 function emptyPersistentEnvironments(): TreeseedWorkflowState['persistentEnvironments'] {
 	return {
 		local: { initialized: false, lastValidatedAt: null, lastDeploymentTimestamp: null, lastDeployedUrl: null },
@@ -99,25 +87,57 @@ function emptyPersistentEnvironments(): TreeseedWorkflowState['persistentEnviron
 	};
 }
 
+function readinessForEnvironment(state: TreeseedWorkflowState, scope: 'local' | 'staging' | 'prod') {
+	const blockers: string[] = [];
+	const warnings: string[] = [];
+
+	if (!state.deployConfigPresent) {
+		blockers.push('Missing treeseed.site.yaml.');
+	}
+	if (!state.files.machineConfig) {
+		blockers.push('Missing Treeseed machine config.');
+	}
+	if (scope === 'local') {
+		if (!state.files.envLocal) {
+			blockers.push('Missing .env.local.');
+		}
+		if (!state.files.devVars) {
+			warnings.push('Missing .dev.vars.');
+		}
+	} else {
+		if (!state.persistentEnvironments[scope].initialized) {
+			blockers.push(`Environment ${scope} is not initialized.`);
+		}
+	}
+
+	return {
+		ready: blockers.length === 0,
+		blockers,
+		warnings,
+	};
+}
+
 export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState {
-	const workspaceRoot = isWorkspaceRoot(cwd);
-	const treeseedConfigPath = resolve(cwd, 'treeseed.site.yaml');
+	const resolved = resolveTreeseedWorkflowPaths(cwd);
+	const effectiveCwd = resolved.cwd;
+	const workspaceRoot = isWorkspaceRoot(effectiveCwd);
+	const treeseedConfigPath = resolve(effectiveCwd, 'treeseed.site.yaml');
 	const tenantRoot = existsSync(treeseedConfigPath);
-	const root = safeResolveRepoRoot(cwd);
-	const branchName = root ? currentBranch(root) || null : null;
-	const branchRole = branchRoleFor(branchName);
+	const root = resolved.repoRoot;
+	const branchName = resolved.branchName;
+	const branchRole = resolved.branchRole;
 	const dirtyWorktree = root ? gitStatusPorcelain(root).length > 0 : false;
-	const preflight = collectCliPreflight({ cwd, requireAuth: false });
-	const { configPath, keyPath } = getTreeseedMachineConfigPaths(cwd);
+	const preflight = collectCliPreflight({ cwd: effectiveCwd, requireAuth: false });
+	const { configPath, keyPath } = getTreeseedMachineConfigPaths(effectiveCwd);
 	const state: TreeseedWorkflowState = {
-		cwd,
+		cwd: effectiveCwd,
 		workspaceRoot,
 		tenantRoot,
 		deployConfigPresent: tenantRoot,
 		repoRoot: root,
 		branchName,
 		branchRole,
-		environment: environmentForBranchRole(branchRole),
+		environment: workflowEnvironmentForBranchRole(branchRole),
 		dirtyWorktree,
 		preview: {
 			enabled: false,
@@ -148,15 +168,20 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 			devVars: existsSync(resolve(cwd, '.dev.vars')),
 		},
 		releaseReady: branchRole === 'staging' && !dirtyWorktree,
+		readiness: {
+			local: { ready: false, blockers: [], warnings: [] },
+			staging: { ready: false, blockers: [], warnings: [] },
+			prod: { ready: false, blockers: [], warnings: [] },
+		},
 		rollbackCandidates: [],
 		recommendations: [],
 	};
 
 	if (tenantRoot) {
 		try {
-			const deployConfig = loadCliDeployConfig(cwd);
+			const deployConfig = loadCliDeployConfig(effectiveCwd);
 			for (const scope of ['local', 'staging', 'prod'] as const) {
-				const deployState = loadDeployState(cwd, deployConfig, { target: createPersistentDeployTarget(scope) });
+				const deployState = loadDeployState(effectiveCwd, deployConfig, { target: createPersistentDeployTarget(scope) });
 				state.persistentEnvironments[scope] = {
 					initialized: deployState.readiness?.initialized === true || scope === 'local',
 					lastValidatedAt: deployState.readiness?.lastValidatedAt ?? deployState.readiness?.initializedAt ?? null,
@@ -189,7 +214,7 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 			}
 
 			if (branchRole === 'feature' && branchName) {
-				const previewState = loadDeployState(cwd, deployConfig, { target: createBranchPreviewDeployTarget(branchName) });
+				const previewState = loadDeployState(effectiveCwd, deployConfig, { target: createBranchPreviewDeployTarget(branchName) });
 				state.preview = {
 					enabled: previewState.previewEnabled === true || previewState.readiness?.initialized === true,
 					url: previewState.lastDeployedUrl ?? null,
@@ -201,6 +226,9 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 		}
 	}
 
+	state.readiness.local = readinessForEnvironment(state, 'local');
+	state.readiness.staging = readinessForEnvironment(state, 'staging');
+	state.readiness.prod = readinessForEnvironment(state, 'prod');
 	state.recommendations = recommendTreeseedNextSteps(state);
 	return state;
 }
@@ -219,13 +247,10 @@ export function recommendTreeseedNextSteps(state: TreeseedWorkflowState): Treese
 		return recommendations;
 	}
 	if (state.branchRole === 'feature') {
-		if (state.dirtyWorktree) {
-			recommendations.push({ operation: 'save', reason: 'Persist, verify, and push the current task branch before staging or closing it.', input: { message: 'describe your change' } });
-		} else {
-			recommendations.push({ operation: 'stage', reason: 'Merge this task branch into staging and clean up branch artifacts.', input: { message: 'describe the resolution' } });
-		}
+		recommendations.push({ operation: 'stage', reason: 'Merge this task branch into staging and clean up branch artifacts.', input: { message: 'describe the resolution' } });
+		recommendations.push({ operation: 'save', reason: 'Persist, verify, and push the current task branch before or independently of staging it.', input: { message: 'describe your change' } });
 		if (state.preview.enabled && state.branchName) {
-			recommendations.push({ operation: 'save', reason: 'Save refreshes the branch preview deployment when one is enabled.', input: { message: 'describe your change' } });
+			recommendations.push({ operation: 'save', reason: 'Save refreshes the branch preview deployment when one is enabled.', input: { message: 'describe your change', preview: true } });
 		} else {
 			recommendations.push({ operation: 'dev', reason: 'Use the local environment for iterative work on this feature branch.' });
 		}

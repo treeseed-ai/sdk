@@ -973,6 +973,7 @@ export interface SdkTemplateCatalogEntry {
 	minCliVersion: string;
 	minCoreVersion?: string;
 	fulfillment: {
+		mode?: 'packaged' | 'git';
 		source: SdkTemplateCatalogSource;
 		hooksPolicy: 'builtin_only' | 'trusted_only' | 'disabled';
 		supportsReconcile: boolean;

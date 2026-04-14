@@ -83,6 +83,7 @@ function normalizeTemplateCatalogEntry(value: unknown): SdkTemplateCatalogEntry 
 		minCliVersion: expectString(record.minCliVersion, 'minCliVersion'),
 		minCoreVersion: optionalString(record.minCoreVersion),
 		fulfillment: {
+			mode: optionalString(fulfillment.mode) as SdkTemplateCatalogEntry['fulfillment']['mode'],
 			source: {
 				kind: 'git',
 				repoUrl: expectString(source.repoUrl, 'fulfillment.source.repoUrl'),

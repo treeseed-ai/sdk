@@ -1,5 +1,6 @@
 import { resolveTreeseedWorkflowState } from './workflow-state.ts';
 import { listTaskBranches } from './operations/services/git-workflow.ts';
+import { resolveTreeseedWorkflowPaths } from './workflow/policy.ts';
 import {
 	TreeseedWorkflowError,
 	type TreeseedWorkflowErrorCode,
@@ -64,6 +65,7 @@ export type TreeseedSaveInput = {
 	hotfix?: boolean;
 	verify?: boolean;
 	refreshPreview?: boolean;
+	preview?: boolean;
 	rebase?: boolean;
 };
 
@@ -71,6 +73,7 @@ export type TreeseedCloseInput = {
 	message: string;
 	deletePreview?: boolean;
 	deleteBranch?: boolean;
+	autoSave?: boolean;
 };
 
 export type TreeseedStageInput = {
@@ -78,6 +81,7 @@ export type TreeseedStageInput = {
 	waitForStaging?: boolean;
 	deletePreview?: boolean;
 	deleteBranch?: boolean;
+	autoSave?: boolean;
 };
 
 export type TreeseedSwitchInput = {
@@ -141,7 +145,7 @@ export class TreeseedWorkflowSdk {
 		};
 		return {
 			context,
-			cwd: () => context.cwd ?? process.cwd(),
+			cwd: () => resolveTreeseedWorkflowPaths(context.cwd ?? process.cwd()).cwd,
 			write: context.write ?? defaultWrite,
 			runStatus: async () => this.status(),
 			runTasks: async () => this.tasks(),

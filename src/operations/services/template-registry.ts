@@ -1,4 +1,5 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { basename, dirname, relative, resolve } from 'node:path';
 import {
 	type SdkTemplateCatalogEntry,
@@ -59,6 +60,7 @@ export interface TemplateProductDefinition extends SdkTemplateCatalogEntry {
 	artifactRoot: string;
 	artifactManifestPath: string;
 	templateRoot: string;
+	fulfillmentMode: 'packaged' | 'git';
 }
 
 export interface ResolvedTemplateDefinition {
@@ -149,10 +151,10 @@ function validateTemplateProductShape(product: TemplateProductDefinition) {
 	if (product.status !== 'draft' && product.status !== 'live' && product.status !== 'archived') {
 		throw new Error(`Template product ${product.id} uses unsupported status "${product.status}".`);
 	}
-	if (!existsSync(product.artifactManifestPath)) {
+	if (product.fulfillmentMode === 'packaged' && !existsSync(product.artifactManifestPath)) {
 		throw new Error(`Template product ${product.id} points to a missing artifact manifest: ${product.artifactManifestPath}`);
 	}
-	if (!existsSync(product.templateRoot)) {
+	if (product.fulfillmentMode === 'packaged' && !existsSync(product.templateRoot)) {
 		throw new Error(`Template product ${product.id} points to a missing template payload: ${product.templateRoot}`);
 	}
 }
@@ -201,7 +203,58 @@ function normalizeTemplateProduct(remoteProduct: SdkTemplateCatalogEntry): Templ
 		artifactRoot,
 		artifactManifestPath: resolve(artifactRoot, 'template.config.json'),
 		templateRoot: resolve(artifactRoot, 'template'),
+		fulfillmentMode: remoteProduct.fulfillment.mode ?? 'packaged',
 	};
+}
+
+function sanitizeCacheSegment(value: string) {
+	return value.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'source';
+}
+
+function resolveTemplateSourceCacheRoot(product: TemplateProductDefinition, options: TemplateCatalogOptions) {
+	const cachePath = resolveTreeseedTemplateCatalogCachePath(options.cwd ?? process.cwd());
+	return resolve(dirname(cachePath), 'templates', sanitizeCacheSegment(product.id), sanitizeCacheSegment(product.fulfillment.source.ref));
+}
+
+function runGit(commandArgs: string[], cwd?: string) {
+	const result = spawnSync('git', commandArgs, {
+		cwd,
+		stdio: 'pipe',
+		encoding: 'utf8',
+	});
+	if (result.status !== 0) {
+		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `git ${commandArgs.join(' ')} failed`);
+	}
+}
+
+function materializeGitTemplateSource(product: TemplateProductDefinition, options: TemplateCatalogOptions) {
+	const cacheRoot = resolveTemplateSourceCacheRoot(product, options);
+	const repoRoot = resolve(cacheRoot, 'repo');
+	const source = product.fulfillment.source;
+	if (!existsSync(resolve(repoRoot, '.git'))) {
+		rmSync(cacheRoot, { recursive: true, force: true });
+		mkdirSync(cacheRoot, { recursive: true });
+		runGit(['clone', '--no-checkout', source.repoUrl, repoRoot]);
+	}
+	runGit(['fetch', '--all', '--tags'], repoRoot);
+	runGit(['checkout', '--force', source.ref], repoRoot);
+	const artifactRoot = resolve(repoRoot, source.directory);
+	return {
+		artifactRoot,
+		manifestPath: resolve(artifactRoot, 'template.config.json'),
+		templateRoot: resolve(artifactRoot, 'template'),
+	};
+}
+
+function resolveTemplateDefinitionPaths(product: TemplateProductDefinition, options: TemplateCatalogOptions) {
+	if (existsSync(product.artifactManifestPath) && existsSync(product.templateRoot)) {
+		return {
+			artifactRoot: product.artifactRoot,
+			manifestPath: product.artifactManifestPath,
+			templateRoot: product.templateRoot,
+		};
+	}
+	return materializeGitTemplateSource(product, options);
 }
 
 function readTemplateCatalogCache(cachePath: string) {
@@ -390,11 +443,12 @@ export async function resolveTemplateDefinition(id: string, options: TemplateCat
 		throw new Error(`Unable to resolve template "${id}" in category "${category}".`);
 	}
 	validateTemplateProductShape(product);
-	const manifest = loadJsonFile<TemplateManifest>(product.artifactManifestPath);
+	const resolvedPaths = resolveTemplateDefinitionPaths(product, options);
+	const manifest = loadJsonFile<TemplateManifest>(resolvedPaths.manifestPath);
 	const definition = {
 		product,
-		manifestPath: product.artifactManifestPath,
-		templateRoot: product.templateRoot,
+		manifestPath: resolvedPaths.manifestPath,
+		templateRoot: resolvedPaths.templateRoot,
 		manifest,
 	};
 	validateTemplateManifest(definition);
@@ -521,6 +575,7 @@ export function serializeTemplateRegistryEntry(product: Pick<TemplateProductDefi
 		templateApiVersion: product.templateApiVersion,
 		minCliVersion: product.minCliVersion,
 		minCoreVersion: product.minCoreVersion,
+		fulfillmentMode: product.fulfillment.mode ?? 'packaged',
 		source: product.fulfillment.source,
 	};
 }
