@@ -23,12 +23,14 @@ export const TREESEED_ENVIRONMENT_TARGETS = [
 ] as const;
 export const TREESEED_ENVIRONMENT_PURPOSES = ['dev', 'save', 'deploy', 'destroy', 'config'] as const;
 export const TREESEED_ENVIRONMENT_SENSITIVITY = ['secret', 'plain', 'derived'] as const;
+export const TREESEED_ENVIRONMENT_STORAGE = ['scoped', 'shared'] as const;
 
 export type TreeseedEnvironmentScope = (typeof TREESEED_ENVIRONMENT_SCOPES)[number];
 export type TreeseedEnvironmentRequirement = (typeof TREESEED_ENVIRONMENT_REQUIREMENTS)[number];
 export type TreeseedEnvironmentTarget = (typeof TREESEED_ENVIRONMENT_TARGETS)[number];
 export type TreeseedEnvironmentPurpose = (typeof TREESEED_ENVIRONMENT_PURPOSES)[number];
 export type TreeseedEnvironmentSensitivity = (typeof TREESEED_ENVIRONMENT_SENSITIVITY)[number];
+export type TreeseedEnvironmentStorage = (typeof TREESEED_ENVIRONMENT_STORAGE)[number];
 
 export type TreeseedEnvironmentValidation =
 	| { kind: 'string' | 'nonempty' | 'boolean' | 'number' | 'url' | 'email' }
@@ -36,7 +38,7 @@ export type TreeseedEnvironmentValidation =
 
 export type TreeseedEnvironmentValueResolver =
 	| string
-	| ((context: TreeseedEnvironmentContext, scope: TreeseedEnvironmentScope) => string);
+	| ((context: TreeseedEnvironmentContext, scope: TreeseedEnvironmentScope, values?: Record<string, string | undefined>) => string | undefined);
 
 export type TreeseedMachineSecretPayload = {
 	algorithm: 'aes-256-gcm';
@@ -60,6 +62,10 @@ export type TreeseedMachineConfig = {
 			github: boolean;
 			cloudflare: boolean;
 		};
+	};
+	shared: {
+		values: Record<string, string>;
+		secrets: Record<string, TreeseedMachineSecretPayload>;
 	};
 	environments: Record<
 		TreeseedEnvironmentScope,
@@ -88,6 +94,7 @@ export type TreeseedEnvironmentEntry = {
 	scopes: TreeseedEnvironmentScope[];
 	requirement: TreeseedEnvironmentRequirement;
 	purposes: TreeseedEnvironmentPurpose[];
+	storage?: TreeseedEnvironmentStorage;
 	validation?: TreeseedEnvironmentValidation;
 	sourcePriority?: string[];
 	defaultValue?: TreeseedEnvironmentValueResolver;
@@ -171,9 +178,97 @@ function generatedSecret(bytes = 24) {
 	return randomBytes(bytes).toString('hex');
 }
 
+function normalizeUrl(value: string) {
+	return value.trim().replace(/\/$/u, '');
+}
+
+function primaryHostFromUrl(value: string | undefined) {
+	if (!value || value.trim().length === 0) {
+		return undefined;
+	}
+
+	try {
+		return new URL(value).host;
+	} catch {
+		return undefined;
+	}
+}
+
+function parseDomainList(value: string | undefined) {
+	return String(value ?? '')
+		.split(',')
+		.map((entry) => entry.trim())
+		.filter(Boolean);
+}
+
+function deriveApiDomainFromProjectDomain(domain: string | undefined) {
+	if (!domain) {
+		return undefined;
+	}
+	if (domain.startsWith('api.')) {
+		return domain;
+	}
+
+	const segments = domain.split('.').filter(Boolean);
+	if (segments.length <= 2) {
+		return `api.${domain}`;
+	}
+	return `api.${segments.slice(1).join('.')}`;
+}
+
+function resolveConfiguredApiBaseUrl(
+	context: TreeseedEnvironmentContext,
+	scope: TreeseedEnvironmentScope,
+	values: Record<string, string | undefined> = {},
+) {
+	const localBaseUrl = context.deployConfig.services?.api?.environments?.local?.baseUrl
+		?? context.deployConfig.surfaces?.api?.localBaseUrl
+		?? 'http://127.0.0.1:3000';
+	if (scope === 'local') {
+		return normalizeUrl(localBaseUrl);
+	}
+
+	const scopedBaseUrl = context.deployConfig.services?.api?.environments?.[scope]?.baseUrl
+		?? context.deployConfig.services?.api?.publicBaseUrl
+		?? context.deployConfig.surfaces?.api?.publicBaseUrl;
+	if (scopedBaseUrl) {
+		return normalizeUrl(scopedBaseUrl);
+	}
+
+	const projectDomains = [
+		...parseDomainList(values.TREESEED_PROJECT_DOMAINS),
+		primaryHostFromUrl(context.deployConfig.siteUrl),
+	].filter(Boolean) as string[];
+
+	for (const domain of projectDomains) {
+		const apiDomain = deriveApiDomainFromProjectDomain(domain);
+		if (apiDomain) {
+			return `https://${apiDomain}`;
+		}
+	}
+
+	return undefined;
+}
+
+function resolveWebServiceId(
+	_values: Record<string, string | undefined> = {},
+) {
+	return 'web';
+}
+
+function resolveApiWebServiceId(
+	values: Record<string, string | undefined> = {},
+) {
+	return values.TREESEED_WEB_SERVICE_ID?.trim() || 'web';
+}
+
 const VALUE_RESOLVERS: NamedResolverMap = {
 	generatedSecret: () => generatedSecret(),
 	localFormsBypassDefault: () => 'true',
+	projectDomainsDefault: (context) => primaryHostFromUrl(context.deployConfig.siteUrl),
+	apiBaseUrlDefault: (context, scope, values) => resolveConfiguredApiBaseUrl(context, scope, values),
+	webServiceIdDefault: (_context, _scope, values) => resolveWebServiceId(values),
+	apiWebServiceIdDefault: (_context, _scope, values) => resolveApiWebServiceId(values),
 };
 
 const PREDICATES: NamedPredicateMap = {
@@ -280,6 +375,7 @@ function materializeEntry(id: string, entry: TreeseedEnvironmentEntryYaml): Tree
 	return {
 		...entry,
 		id,
+		storage: entry.storage ?? 'scoped',
 		defaultValue: resolveNamedValueResolver(entry.defaultValueRef),
 		localDefaultValue: resolveNamedValueResolver(entry.localDefaultValueRef),
 		isRelevant: resolveNamedPredicate(entry.relevanceRef),
@@ -434,12 +530,13 @@ function materializeDefaultValue(
 	entry: TreeseedEnvironmentEntry,
 	context: TreeseedEnvironmentContext,
 	scope: TreeseedEnvironmentScope,
+	values: Record<string, string | undefined> = {},
 ) {
 	const source = scope === 'local' && entry.localDefaultValue !== undefined ? entry.localDefaultValue : entry.defaultValue;
 	if (source === undefined) {
 		return undefined;
 	}
-	return typeof source === 'function' ? source(context, scope) : source;
+	return typeof source === 'function' ? source(context, scope, values) : source;
 }
 
 export function getTreeseedEnvironmentSuggestedValues(options: {
@@ -448,14 +545,32 @@ export function getTreeseedEnvironmentSuggestedValues(options: {
 	deployConfig?: TreeseedDeployConfig;
 	tenantConfig?: TreeseedTenantConfig;
 	plugins?: LoadedTreeseedPluginEntry[];
+	values?: Record<string, string | undefined>;
 }) {
 	const registry = resolveTreeseedEnvironmentRegistry(options);
-	return Object.fromEntries(
-		registry.entries
-			.filter((entry) => isTreeseedEnvironmentEntryRelevant(entry, registry.context, options.scope, options.purpose))
-			.map((entry) => [entry.id, materializeDefaultValue(entry, registry.context, options.scope)])
-			.filter(([, value]) => value !== undefined),
-	) as Record<string, string>;
+	const suggestedValues: Record<string, string> = {};
+	const seedValues = { ...(options.values ?? {}) };
+
+	for (const entry of registry.entries.filter((candidate) =>
+		isTreeseedEnvironmentEntryRelevant(candidate, registry.context, options.scope, options.purpose),
+	)) {
+		const value = materializeDefaultValue(entry, registry.context, options.scope, { ...suggestedValues, ...seedValues });
+		if (value === undefined) {
+			continue;
+		}
+		suggestedValues[entry.id] = value;
+	}
+
+	return suggestedValues;
+}
+
+export function isTreeseedEnvironmentEntryRequired(
+	entry: TreeseedEnvironmentEntry,
+	context: TreeseedEnvironmentContext,
+	scope: TreeseedEnvironmentScope,
+	purpose?: TreeseedEnvironmentPurpose,
+) {
+	return isEntryRequired(entry, context, scope, purpose);
 }
 
 function valuePresent(value: unknown) {

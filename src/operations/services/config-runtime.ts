@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -7,6 +7,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { ApiPrincipal, RemoteTreeseedConfig, RemoteTreeseedHost } from '../../remote.ts';
 import {
 	getTreeseedEnvironmentSuggestedValues,
+	isTreeseedEnvironmentEntryRequired,
 	resolveTreeseedEnvironmentRegistry,
 	TREESEED_ENVIRONMENT_SCOPES,
 	validateTreeseedEnvironmentValues,
@@ -15,6 +16,7 @@ import { loadTreeseedManifest } from '../../platform/tenant-config.ts';
 import {
 	createPersistentDeployTarget,
 	ensureGeneratedWranglerConfig,
+	loadDeployState,
 	markManagedServicesInitialized,
 	markDeploymentInitialized,
 	provisionCloudflareResources,
@@ -236,6 +238,51 @@ export function getTreeseedRemoteAuthPaths(tenantRoot) {
 	};
 }
 
+export type TreeseedConfigScope = (typeof TREESEED_ENVIRONMENT_SCOPES)[number];
+
+export type TreeseedConfigEntrySnapshot = {
+	id: string;
+	label: string;
+	group: string;
+	description: string;
+	howToGet: string;
+	sensitivity: 'secret' | 'plain' | 'derived';
+	targets: string[];
+	purposes: string[];
+	storage: 'shared' | 'scoped';
+	scope: TreeseedConfigScope;
+	sharedScopes: TreeseedConfigScope[];
+	required: boolean;
+	currentValue: string;
+	suggestedValue: string;
+	effectiveValue: string;
+};
+
+export type TreeseedCollectedConfigContext = {
+	tenantRoot: string;
+	scopes: TreeseedConfigScope[];
+	project: {
+		name: string;
+		slug: string;
+		siteUrl: string;
+	};
+	configPath: string;
+	keyPath: string;
+	entriesByScope: Record<TreeseedConfigScope, TreeseedConfigEntrySnapshot[]>;
+	valuesByScope: Record<TreeseedConfigScope, Record<string, string>>;
+	suggestedValuesByScope: Record<TreeseedConfigScope, Record<string, string>>;
+	authStatusByScope: Record<TreeseedConfigScope, ReturnType<typeof createConfigAuthStatus>>;
+	validationByScope: Record<TreeseedConfigScope, ReturnType<typeof validateTreeseedEnvironmentValues>>;
+	registry: ReturnType<typeof collectTreeseedEnvironmentContext>;
+};
+
+export type TreeseedConfigValueUpdate = {
+	scope: TreeseedConfigScope;
+	entryId: string;
+	value: string;
+	reused?: boolean;
+};
+
 export function createDefaultTreeseedMachineConfig({ tenantRoot, deployConfig, tenantConfig }) {
 	return {
 		version: 1,
@@ -257,6 +304,10 @@ export function createDefaultTreeseedMachineConfig({ tenantRoot, deployConfig, t
 			},
 			remote: createDefaultRemoteSettings(),
 			services: createDefaultServiceSettings(),
+		},
+		shared: {
+			values: {},
+			secrets: {},
 		},
 		environments: Object.fromEntries(
 			TREESEED_ENVIRONMENT_SCOPES.map((scope) => [
@@ -337,7 +388,12 @@ function decryptValue(payload, key) {
 }
 
 function decryptMachineConfigSecrets(config, key) {
-	const secrets = {};
+	const secrets = {
+		shared: {},
+	};
+	for (const [entryId, payload] of Object.entries(config.shared?.secrets ?? {})) {
+		secrets.shared[entryId] = decryptValue(payload, key);
+	}
 	for (const scope of TREESEED_ENVIRONMENT_SCOPES) {
 		secrets[scope] = {};
 		for (const [entryId, payload] of Object.entries(config.environments?.[scope]?.secrets ?? {})) {
@@ -348,6 +404,9 @@ function decryptMachineConfigSecrets(config, key) {
 }
 
 function applyMachineConfigSecrets(config, secrets, key) {
+	for (const [entryId, value] of Object.entries(secrets.shared ?? {})) {
+		config.shared.secrets[entryId] = encryptValue(value, key);
+	}
 	for (const scope of TREESEED_ENVIRONMENT_SCOPES) {
 		const scoped = config.environments?.[scope];
 		if (!scoped) {
@@ -585,6 +644,16 @@ export function loadTreeseedMachineConfig(tenantRoot) {
 				...(parsed.settings?.services ?? {}),
 			}),
 		},
+		shared: {
+			values: {
+				...(defaults.shared?.values ?? {}),
+				...(parsed.shared?.values ?? {}),
+			},
+			secrets: {
+				...(defaults.shared?.secrets ?? {}),
+				...(parsed.shared?.secrets ?? {}),
+			},
+		},
 		environments: Object.fromEntries(
 			TREESEED_ENVIRONMENT_SCOPES.map((scope) => [
 				scope,
@@ -711,15 +780,127 @@ export function ensureTreeseedGitignoreEntries(tenantRoot) {
 	return gitignorePath;
 }
 
+export type TreeseedRepairAction = {
+	id: string;
+	detail: string;
+};
+
+function dedupeRepairActions(actions: TreeseedRepairAction[]) {
+	const seen = new Set<string>();
+	return actions.filter((action) => {
+		if (seen.has(action.id)) {
+			return false;
+		}
+		seen.add(action.id);
+		return true;
+	});
+}
+
+export function applyTreeseedSafeRepairs(tenantRoot: string): TreeseedRepairAction[] {
+	const actions: TreeseedRepairAction[] = [];
+	ensureTreeseedGitignoreEntries(tenantRoot);
+	actions.push({ id: 'gitignore', detail: 'Ensured Treeseed gitignore entries are present.' });
+
+	const envLocalPath = resolve(tenantRoot, '.env.local');
+	const envLocalExamplePath = resolve(tenantRoot, '.env.local.example');
+	if (!existsSync(envLocalPath) && existsSync(envLocalExamplePath)) {
+		copyFileSync(envLocalExamplePath, envLocalPath);
+		actions.push({ id: 'env-local', detail: 'Created .env.local from .env.local.example.' });
+	}
+
+	const deployConfig = loadTenantDeployConfig(tenantRoot);
+	const { configPath } = getTreeseedMachineConfigPaths(tenantRoot);
+	if (!existsSync(configPath)) {
+		const machineConfig = createDefaultTreeseedMachineConfig({
+			tenantRoot,
+			deployConfig,
+			tenantConfig: undefined,
+		});
+		writeTreeseedMachineConfig(tenantRoot, machineConfig);
+		actions.push({ id: 'machine-config', detail: 'Created the default Treeseed machine config.' });
+	}
+
+	resolveTreeseedMachineEnvironmentValues(tenantRoot, 'local');
+	actions.push({ id: 'machine-key', detail: 'Ensured the Treeseed machine key exists.' });
+
+	const machineConfig = loadTreeseedMachineConfig(tenantRoot);
+	writeTreeseedMachineConfig(tenantRoot, machineConfig);
+	writeTreeseedLocalEnvironmentFiles(tenantRoot);
+	actions.push({ id: 'local-env', detail: 'Regenerated .env.local and .dev.vars from the current machine config.' });
+
+	for (const scope of TREESEED_ENVIRONMENT_SCOPES) {
+		const target = createPersistentDeployTarget(scope);
+		const state = loadDeployState(tenantRoot, deployConfig, { target });
+		if (state.readiness?.initialized || scope === 'local') {
+			ensureGeneratedWranglerConfig(tenantRoot, { target });
+			actions.push({ id: `wrangler-${scope}`, detail: `Regenerated the ${scope} generated Wrangler config.` });
+		}
+	}
+
+	return dedupeRepairActions(actions);
+}
+
+function decryptMachineEnvironmentBucket(tenantRoot, config, key, bucket) {
+	const values = {
+		...(bucket?.values ?? {}),
+	};
+
+	for (const [entryId, payload] of Object.entries(bucket?.secrets ?? {})) {
+		values[entryId] = decryptValueWithMachineKey(tenantRoot, payload, key);
+	}
+
+	return values;
+}
+
+function resolveEntryValueFromBuckets(entry, entryId, scope, bucketValuesByScope) {
+	if (!entry) {
+		return bucketValuesByScope[scope]?.[entryId] ?? bucketValuesByScope.shared?.[entryId] ?? '';
+	}
+	if (entry?.storage === 'shared') {
+		const sharedValue = bucketValuesByScope.shared?.[entryId];
+		if (typeof sharedValue === 'string' && sharedValue.length > 0) {
+			return sharedValue;
+		}
+
+		const searchScopes = [scope, ...TREESEED_ENVIRONMENT_SCOPES.filter((candidate) => candidate !== scope)];
+		for (const candidateScope of searchScopes) {
+			const candidateValue = bucketValuesByScope[candidateScope]?.[entryId];
+			if (typeof candidateValue === 'string' && candidateValue.length > 0) {
+				return candidateValue;
+			}
+		}
+		return '';
+	}
+
+	return bucketValuesByScope[scope]?.[entryId] ?? '';
+}
+
 export function resolveTreeseedMachineEnvironmentValues(tenantRoot, scope) {
 	const key = loadMachineKey(tenantRoot);
 	const config = loadTreeseedMachineConfig(tenantRoot);
-	const values = {
-		...(config.environments?.[scope]?.values ?? {}),
+	const registry = collectTreeseedEnvironmentContext(tenantRoot);
+	const bucketValuesByScope = {
+		shared: decryptMachineEnvironmentBucket(tenantRoot, config, key, config.shared),
+		...Object.fromEntries(
+			TREESEED_ENVIRONMENT_SCOPES.map((candidateScope) => [
+				candidateScope,
+				decryptMachineEnvironmentBucket(tenantRoot, config, key, config.environments?.[candidateScope]),
+			]),
+		),
 	};
+	const entryById = new Map(registry.entries.map((entry) => [entry.id, entry]));
+	const values = {};
+	const knownKeys = new Set([
+		...Object.keys(bucketValuesByScope.shared ?? {}),
+		...Object.keys(bucketValuesByScope[scope] ?? {}),
+		...registry.entries.map((entry) => entry.id),
+	]);
 
-	for (const [entryId, payload] of Object.entries(config.environments?.[scope]?.secrets ?? {})) {
-		values[entryId] = decryptValueWithMachineKey(tenantRoot, payload, key);
+	for (const entryId of knownKeys) {
+		const resolved = resolveEntryValueFromBuckets(entryById.get(entryId), entryId, scope, bucketValuesByScope);
+		if (typeof resolved === 'string' && resolved.length > 0) {
+			values[entryId] = resolved;
+		}
 	}
 
 	return values;
@@ -728,21 +909,28 @@ export function resolveTreeseedMachineEnvironmentValues(tenantRoot, scope) {
 export function setTreeseedMachineEnvironmentValue(tenantRoot, scope, entry, value) {
 	const key = loadMachineKey(tenantRoot);
 	const config = loadTreeseedMachineConfig(tenantRoot);
-	const scoped = config.environments[scope];
+	const target = entry.storage === 'shared' ? config.shared : config.environments[scope];
+
+	if (entry.storage === 'shared') {
+		for (const candidateScope of TREESEED_ENVIRONMENT_SCOPES) {
+			delete config.environments[candidateScope].values[entry.id];
+			delete config.environments[candidateScope].secrets[entry.id];
+		}
+	}
 
 	if (entry.sensitivity === 'secret') {
-		delete scoped.values[entry.id];
+		delete target.values[entry.id];
 		if (value) {
-			scoped.secrets[entry.id] = encryptValue(value, key);
+			target.secrets[entry.id] = encryptValue(value, key);
 		} else {
-			delete scoped.secrets[entry.id];
+			delete target.secrets[entry.id];
 		}
 	} else {
-		delete scoped.secrets[entry.id];
+		delete target.secrets[entry.id];
 		if (value) {
-			scoped.values[entry.id] = value;
+			target.values[entry.id] = value;
 		} else {
-			delete scoped.values[entry.id];
+			delete target.values[entry.id];
 		}
 	}
 
@@ -799,7 +987,7 @@ export function formatTreeseedConfigEnvironmentReport({ tenantRoot, scope, env =
 			: 'Secret values are masked. Re-run with --show-secrets to print full values.',
 	];
 
-	for (const entry of registry.entries.filter((candidate) => candidate.scopes.includes(scope))) {
+	for (const entry of listRelevantTreeseedConfigEntries(registry, scope)) {
 		const value = values[entry.id];
 		const displayValue = typeof value === 'string' && value.length > 0
 			? (entry.sensitivity === 'secret' && !revealSecrets ? maskValue(value) : value)
@@ -877,13 +1065,14 @@ export function writeTreeseedLocalEnvironmentFiles(tenantRoot) {
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
 	const scope = 'local';
 	const values = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
+	const orderedEntries = listRelevantTreeseedConfigEntries(registry, scope);
 
-	const envEntries = registry.entries.filter(
+	const envEntries = orderedEntries.filter(
 		(entry) =>
 			entry.scopes.includes(scope)
 			&& entry.targets.includes('local-file'),
 	);
-	const devVarsEntries = registry.entries.filter(
+	const devVarsEntries = orderedEntries.filter(
 		(entry) =>
 			entry.scopes.includes(scope)
 			&& entry.targets.includes('wrangler-dev-vars'),
@@ -1302,20 +1491,6 @@ function formatConfigSectionTitle(label) {
 	return colorize(`\n== ${label}`, '1;36');
 }
 
-function formatConfigFieldPrompt(entry, currentValue) {
-	const current = entry.sensitivity === 'secret' ? maskValue(currentValue) : currentValue ?? '(unset)';
-	return [
-		colorize(`\n-- ${entry.label}`, '1;37'),
-		colorize(`   ${entry.id}`, '36'),
-		`   ${entry.description}`,
-		`   How to get it: ${entry.howToGet}`,
-		`   Used for: ${entry.purposes.join(', ')}`,
-		`   Targets: ${entry.targets.join(', ')}`,
-		`   Current: ${current}`,
-		colorize('   Enter value, press Enter to keep current/default, or "-" to clear', '90'),
-	].join('\n');
-}
-
 function hasConfigValue(values, key) {
 	return typeof values[key] === 'string' && values[key].trim().length > 0;
 }
@@ -1338,181 +1513,196 @@ function createConfigAuthStatus(values) {
 	};
 }
 
-async function renderInkConfigFrame({ scope, tenantName, tenantSlug, group, entry, currentValue, authStatus }) {
-	if (!process.stdout.isTTY) {
-		return false;
-	}
+const CONFIG_GROUP_ORDER = ['auth', 'cloudflare', 'local-development', 'forms', 'smtp'];
 
-	try {
-		const [{ render, Box, Text }, React] = await Promise.all([
-			import('ink'),
-			import('react'),
-		]);
-		const h = React.createElement;
-		const status = (ready) => ready ? 'ready' : 'missing';
-		const current = entry.sensitivity === 'secret' ? maskValue(currentValue) : currentValue ?? '(unset)';
-		const permissionDetails = {
-			GH_TOKEN: {
-				title: 'Required GitHub permissions',
-				items: [
-					'Scoped to TreeSeed repository',
-					'Contents: read/write',
-					'Environments: read/write',
-					'Secrets and variables: read/write',
-					'Actions and workflows: read/write',
-					'Pull requests: read/write',
-					'Issues: read/write',
-				],
-			},
-			CLOUDFLARE_API_TOKEN: {
-				title: 'Required Cloudflare permissions',
-				items: [
-					'Scoped to domain and account',
-					'Account Cloudflare Pages: edit',
-					'Account Workers Scripts: edit',
-					'Account Workers KV Storage: edit',
-					'Account D1: edit',
-					'Account Queues: edit',
-					'Zone DNS: edit',
-				],
-			},
-		}[entry.id];
-
-		const frame = h(
-			Box,
-			{ flexDirection: 'column', borderStyle: 'round', borderColor: 'cyan', paddingX: 1, marginY: 1 },
-			h(Text, { color: 'cyan', bold: true }, `Treeseed Config - ${scope}`),
-			h(Text, null, `${tenantName} (${tenantSlug})`),
-			authStatus ? h(
-				Text,
-				null,
-				`GitHub ${status(authStatus.gh?.authenticated)} - Cloudflare ${status(authStatus.wrangler?.authenticated)} - Railway ${status(authStatus.railway?.authenticated)}`,
-			) : null,
-			h(Text, { color: 'yellow' }, `[${group}] ${entry.label}`),
-			h(Text, { color: 'gray' }, entry.id),
-			h(Text, null, entry.description),
-			h(Text, null, `How: ${entry.howToGet}`),
-			permissionDetails ? h(
-				Box,
-				{ flexDirection: 'column', marginTop: 1 },
-				h(Text, { color: 'green', bold: true }, permissionDetails.title),
-				...permissionDetails.items.map((permission) => h(Text, { key: permission }, `- ${permission}`)),
-			) : null,
-			h(Text, null, `Used for: ${entry.purposes.join(', ')}`),
-			h(Text, null, `Targets: ${entry.targets.join(', ')}`),
-			h(Text, { color: currentValue ? 'green' : 'red' }, `Current: ${current}`),
-		);
-		const instance = render(frame, { exitOnCtrlC: false });
-		await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
-		instance.unmount();
-		return true;
-	} catch {
-		return false;
-	}
+function configGroupRank(group) {
+	const index = CONFIG_GROUP_ORDER.indexOf(group);
+	return index === -1 ? CONFIG_GROUP_ORDER.length : index;
 }
 
-export async function runTreeseedConfigWizard({
+export function listRelevantTreeseedConfigEntries(registry, scope: TreeseedConfigScope) {
+	return registry.entries
+		.filter((entry) =>
+			entry.scopes.includes(scope)
+			&& (!entry.isRelevant || entry.isRelevant(registry.context, scope, 'config')),
+		)
+		.sort((left, right) => {
+			const leftRequired = isTreeseedEnvironmentEntryRequired(left, registry.context, scope, 'config');
+			const rightRequired = isTreeseedEnvironmentEntryRequired(right, registry.context, scope, 'config');
+			if (leftRequired !== rightRequired) {
+				return leftRequired ? -1 : 1;
+			}
+			if (left.purposes.length !== right.purposes.length) {
+				return right.purposes.length - left.purposes.length;
+			}
+			if (configGroupRank(left.group) !== configGroupRank(right.group)) {
+				return configGroupRank(left.group) - configGroupRank(right.group);
+			}
+			return left.label.localeCompare(right.label);
+		});
+}
+
+function buildConfigEntrySnapshot(scope: TreeseedConfigScope, entry, currentValue: string, suggestedValue: string) {
+	return {
+		id: entry.id,
+		label: entry.label,
+		group: entry.group,
+		description: entry.description,
+		howToGet: entry.howToGet,
+		sensitivity: entry.sensitivity,
+		targets: [...entry.targets],
+		purposes: [...entry.purposes],
+		storage: entry.storage ?? 'scoped',
+		scope,
+		sharedScopes: entry.storage === 'shared' ? [...entry.scopes] : [scope],
+		required: false,
+		currentValue,
+		suggestedValue,
+		effectiveValue: currentValue || suggestedValue || '',
+	} satisfies TreeseedConfigEntrySnapshot;
+}
+
+export function collectTreeseedConfigContext({
 	tenantRoot,
-	scopes = ['local', 'staging', 'prod'],
-	sync = 'all',
-	prompt,
-	authStatus,
-	write = console.log,
+	scopes = [...TREESEED_ENVIRONMENT_SCOPES],
 	env = process.env,
-	useInk = false,
-	printEnv = false,
-	revealSecrets = false,
-	checkConnections = true,
-}) {
+}: {
+	tenantRoot: string;
+	scopes?: TreeseedConfigScope[];
+	env?: NodeJS.ProcessEnv;
+}): TreeseedCollectedConfigContext {
 	ensureTreeseedGitignoreEntries(tenantRoot);
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
-	const groups = ['auth', 'local-development', 'forms', 'smtp', 'cloudflare'];
-	const summary = {
-		scopes,
-		updated: [],
-		synced: {},
-		initialized: [],
-		connectionChecks: [],
-	};
-
-	for (const scope of scopes) {
-		const existingValues = collectTreeseedConfigSeedValues(tenantRoot, scope, env);
-		const configAuthStatus = createConfigAuthStatus(existingValues);
-		const suggested = getTreeseedEnvironmentSuggestedValues({
+	const { configPath, keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
+	const valuesByScope = Object.fromEntries(
+		scopes.map((scope) => [scope, collectTreeseedConfigSeedValues(tenantRoot, scope, env)]),
+	) as TreeseedCollectedConfigContext['valuesByScope'];
+	const suggestedValuesByScope = Object.fromEntries(
+		scopes.map((scope) => [scope, getTreeseedEnvironmentSuggestedValues({
 			scope,
+			purpose: 'config',
 			deployConfig: registry.context.deployConfig,
 			tenantConfig: registry.context.tenantConfig,
 			plugins: registry.context.plugins,
+			values: valuesByScope[scope],
+		})]),
+	) as TreeseedCollectedConfigContext['suggestedValuesByScope'];
+	const authStatusByScope = Object.fromEntries(
+		scopes.map((scope) => [scope, createConfigAuthStatus(valuesByScope[scope])]),
+	) as TreeseedCollectedConfigContext['authStatusByScope'];
+	const validationByScope = Object.fromEntries(
+		scopes.map((scope) => [scope, validateTreeseedEnvironmentValues({
+			values: {
+				...suggestedValuesByScope[scope],
+				...valuesByScope[scope],
+			},
+			scope,
+			purpose: 'config',
+			deployConfig: registry.context.deployConfig,
+			tenantConfig: registry.context.tenantConfig,
+			plugins: registry.context.plugins,
+		})]),
+	) as TreeseedCollectedConfigContext['validationByScope'];
+	const entriesByScope = Object.fromEntries(
+		scopes.map((scope) => [scope, listRelevantTreeseedConfigEntries(registry, scope).map((entry) => ({
+			...buildConfigEntrySnapshot(
+				scope,
+				entry,
+				valuesByScope[scope][entry.id] ?? '',
+				suggestedValuesByScope[scope][entry.id] ?? '',
+			),
+			required: isTreeseedEnvironmentEntryRequired(entry, registry.context, scope, 'config'),
+		}))]),
+	) as TreeseedCollectedConfigContext['entriesByScope'];
+
+	return {
+		tenantRoot,
+		scopes,
+		project: {
+			name: registry.context.deployConfig.name,
+			slug: registry.context.deployConfig.slug,
+			siteUrl: registry.context.deployConfig.siteUrl,
+		},
+		configPath,
+		keyPath,
+		entriesByScope,
+		valuesByScope,
+		suggestedValuesByScope,
+		authStatusByScope,
+		validationByScope,
+		registry,
+	};
+}
+
+export function applyTreeseedConfigValues({
+	tenantRoot,
+	updates,
+	writeLocalFiles = true,
+	applyLocalEnvironment = true,
+}: {
+	tenantRoot: string;
+	updates: TreeseedConfigValueUpdate[];
+	writeLocalFiles?: boolean;
+	applyLocalEnvironment?: boolean;
+}) {
+	const registry = collectTreeseedEnvironmentContext(tenantRoot);
+	const entryById = new Map(registry.entries.map((entry) => [entry.id, entry]));
+	const applied: Array<{ scope: TreeseedConfigScope | 'shared'; id: string; reused: boolean; cleared: boolean }> = [];
+
+	for (const update of updates) {
+		const entry = entryById.get(update.entryId);
+		if (!entry) {
+			throw new Error(`Unknown Treeseed config entry "${update.entryId}".`);
+		}
+		if (!entry.scopes.includes(update.scope)) {
+			throw new Error(`Treeseed config entry "${update.entryId}" does not apply to ${update.scope}.`);
+		}
+
+		setTreeseedMachineEnvironmentValue(tenantRoot, update.scope, entry, update.value);
+		applied.push({
+			scope: entry.storage === 'shared' ? 'shared' : update.scope,
+			id: entry.id,
+			reused: update.reused === true,
+			cleared: update.value.length === 0,
 		});
+	}
 
-		write(formatConfigSectionTitle(`Treeseed configuration for ${scope}`));
-		write(`Tenant: ${registry.context.deployConfig.name} (${registry.context.deployConfig.slug})`);
-		if (authStatus) {
-			write(`GitHub token: ${configAuthStatus.gh.authenticated ? colorize('ready', '32') : colorize('missing', '31')}`);
-			write(`Cloudflare token: ${configAuthStatus.wrangler.authenticated ? colorize('ready', '32') : colorize('missing', '31')}`);
-			write(`Railway token: ${configAuthStatus.railway.authenticated ? colorize('ready', '32') : colorize('missing', '31')}`);
-		}
+	const envFiles = writeLocalFiles ? writeTreeseedLocalEnvironmentFiles(tenantRoot) : null;
+	if (applyLocalEnvironment) {
+		applyTreeseedEnvironmentToProcess({ tenantRoot, scope: 'local', override: true });
+	}
 
-		for (const group of groups) {
-			const groupEntries = registry.entries.filter(
-				(entry) =>
-					entry.group === group
-					&& entry.scopes.includes(scope)
-					&& (!entry.isRelevant || entry.isRelevant(registry.context, scope, 'config')),
-			);
-			if (groupEntries.length === 0) {
-				continue;
-			}
+	return {
+		updated: applied,
+		envFiles,
+	};
+}
 
-			write(formatConfigSectionTitle(group));
-			for (const entry of groupEntries) {
-				const currentValue = existingValues[entry.id];
-				const suggestedValue = suggested[entry.id];
-				const displayValue = currentValue ?? suggestedValue ?? '';
-				const entryAuthStatus = createConfigAuthStatus(existingValues);
-				const renderedInk = useInk && await renderInkConfigFrame({
-					scope,
-					tenantName: registry.context.deployConfig.name,
-					tenantSlug: registry.context.deployConfig.slug,
-					group,
-					entry,
-					currentValue,
-					authStatus: entryAuthStatus,
-				});
-				if (!renderedInk) {
-					write(formatConfigFieldPrompt(entry, currentValue));
-				}
+export function finalizeTreeseedConfig({
+	tenantRoot,
+	scopes = [...TREESEED_ENVIRONMENT_SCOPES],
+	sync = 'all',
+	env = process.env,
+	checkConnections = true,
+	initializePersistent = true,
+}: {
+	tenantRoot: string;
+	scopes?: TreeseedConfigScope[];
+	sync?: 'none' | 'github' | 'cloudflare' | 'railway' | 'all';
+	env?: NodeJS.ProcessEnv;
+	checkConnections?: boolean;
+	initializePersistent?: boolean;
+}) {
+	const registry = collectTreeseedEnvironmentContext(tenantRoot);
+	const summary = {
+		scopes,
+		synced: {} as Record<string, unknown>,
+		initialized: [] as Array<{ scope: TreeseedConfigScope; secrets: number; target: string }>,
+		connectionChecks: [] as ReturnType<typeof checkTreeseedProviderConnections>[],
+		validationByScope: {} as Record<TreeseedConfigScope, ReturnType<typeof validateTreeseedEnvironmentValues>>,
+	};
 
-				const answer = (await prompt(
-					`${entry.id}${displayValue ? ` [${entry.sensitivity === 'secret' ? 'keep current' : displayValue}]` : ''}: `,
-				)).trim();
-
-				if (answer === '' && displayValue) {
-					setTreeseedMachineEnvironmentValue(tenantRoot, scope, entry, displayValue);
-					existingValues[entry.id] = displayValue;
-					summary.updated.push({ scope, id: entry.id, reused: true });
-					continue;
-				}
-
-				if (answer === '' && !displayValue) {
-					setTreeseedMachineEnvironmentValue(tenantRoot, scope, entry, '');
-					existingValues[entry.id] = '';
-					continue;
-				}
-
-				if (answer === '-') {
-					setTreeseedMachineEnvironmentValue(tenantRoot, scope, entry, '');
-					existingValues[entry.id] = '';
-					summary.updated.push({ scope, id: entry.id, cleared: true });
-					continue;
-				}
-
-				setTreeseedMachineEnvironmentValue(tenantRoot, scope, entry, answer);
-				existingValues[entry.id] = answer;
-				summary.updated.push({ scope, id: entry.id, reused: false });
-			}
-		}
-
+	for (const scope of scopes) {
 		const validation = validateTreeseedEnvironmentValues({
 			values: resolveTreeseedMachineEnvironmentValues(tenantRoot, scope),
 			scope,
@@ -1521,43 +1711,34 @@ export async function runTreeseedConfigWizard({
 			tenantConfig: registry.context.tenantConfig,
 			plugins: registry.context.plugins,
 		});
+		summary.validationByScope[scope] = validation;
 		if (!validation.ok) {
-			const details = [...validation.missing, ...validation.invalid]
-				.map((problem) => `- ${problem.message}`)
-				.join('\n');
+			const details = [...validation.missing, ...validation.invalid].map((problem) => `- ${problem.message}`).join('\n');
 			throw new Error(`Treeseed config validation failed for ${scope}:\n${details}`);
 		}
 
-		if (printEnv) {
-			write(formatTreeseedConfigEnvironmentReport({ tenantRoot, scope, env, revealSecrets }));
-		}
-
 		if (checkConnections) {
-			const connectionReport = checkTreeseedProviderConnections({ tenantRoot, scope, env });
-			summary.connectionChecks.push(connectionReport);
-			writeProviderConnectionReport(write, connectionReport);
+			summary.connectionChecks.push(checkTreeseedProviderConnections({ tenantRoot, scope, env }));
 		}
 	}
 
 	writeTreeseedLocalEnvironmentFiles(tenantRoot);
 	syncManagedServiceSettingsFromDeployConfig(tenantRoot);
 
-	for (const scope of scopes) {
-		if (scope === 'local') {
-			continue;
+	if (initializePersistent) {
+		for (const scope of scopes) {
+			if (scope === 'local') {
+				continue;
+			}
+			applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override: true });
+			const initialized = initializeTreeseedPersistentEnvironment({ tenantRoot, scope });
+			summary.initialized.push({
+				scope,
+				secrets: initialized.secrets.length,
+				target: initialized.summary.target,
+			});
+			markManagedServicesInitialized(tenantRoot, { scope });
 		}
-
-		applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override: true });
-		const initialized = initializeTreeseedPersistentEnvironment({ tenantRoot, scope });
-		if (write) {
-			writeDeploySummary(write, initialized.summary);
-		}
-		summary.initialized.push({
-			scope,
-			secrets: initialized.secrets.length,
-			target: initialized.summary.target,
-		});
-		markManagedServicesInitialized(tenantRoot, { scope });
 	}
 
 	if (sync === 'github' || sync === 'all') {
@@ -1571,4 +1752,36 @@ export async function runTreeseedConfigWizard({
 	}
 
 	return summary;
+}
+
+export function collectTreeseedPrintEnvReport({
+	tenantRoot,
+	scope,
+	env = process.env,
+	revealSecrets = false,
+}: {
+	tenantRoot: string;
+	scope: TreeseedConfigScope;
+	env?: NodeJS.ProcessEnv;
+	revealSecrets?: boolean;
+}) {
+	const registry = collectTreeseedEnvironmentContext(tenantRoot);
+	const { values, sources } = collectTreeseedConfigSeedValueSources(tenantRoot, scope, env);
+	return {
+		scope,
+		revealSecrets,
+		entries: listRelevantTreeseedConfigEntries(registry, scope).map((entry) => {
+			const rawValue = values[entry.id] ?? '';
+			return {
+				id: entry.id,
+				label: entry.label,
+				sensitivity: entry.sensitivity,
+				value: rawValue,
+				displayValue: rawValue
+					? (entry.sensitivity === 'secret' && !revealSecrets ? maskValue(rawValue) : rawValue)
+					: '(unset)',
+				source: sources[entry.id] ?? 'unset',
+			};
+		}),
+	};
 }

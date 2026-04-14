@@ -1,15 +1,13 @@
 #!/usr/bin/env node
 
-import readline from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
-import { collectCliPreflight } from '../src/operations/services/workspace-preflight.ts';
 import {
-	applyTreeseedEnvironmentToProcess,
+	applyTreeseedConfigValues,
+	applyTreeseedSafeRepairs,
+	collectTreeseedConfigContext,
 	ensureTreeseedGitignoreEntries,
+	finalizeTreeseedConfig,
 	getTreeseedMachineConfigPaths,
 	rotateTreeseedMachineKey,
-	runTreeseedConfigWizard,
-	writeTreeseedLocalEnvironmentFiles,
 } from '../src/operations/services/config-runtime.ts';
 
 const tenantRoot = process.cwd();
@@ -59,44 +57,40 @@ const scopes = options.scopes.length === 0 || options.scopes.includes('all')
 	: ['local', 'staging', 'prod'].filter((scope) => options.scopes.includes(scope));
 
 ensureTreeseedGitignoreEntries(tenantRoot);
-const preflight = collectCliPreflight({ cwd: tenantRoot, requireAuth: false });
-const rl = readline.createInterface({ input, output });
 
 try {
-	console.log('Treeseed configuration wizard');
-	console.log('This command writes a local machine config, generates .env.local and .dev.vars, and can sync GitHub or Cloudflare settings.');
-	console.log('Enter a value to set it, press Enter to keep the current/default value, or enter "-" to clear a value.\n');
-
 	if (options.rotateMachineKey) {
 		const result = rotateTreeseedMachineKey(tenantRoot);
 		console.log('Treeseed machine key rotated.');
 		console.log(`Machine key: ${result.keyPath}`);
 	} else {
-		const result = await runTreeseedConfigWizard({
+		applyTreeseedSafeRepairs(tenantRoot);
+		const context = collectTreeseedConfigContext({
+			tenantRoot,
+			scopes,
+			env: process.env,
+		});
+		const updates = scopes.flatMap((scope) =>
+			context.entriesByScope[scope].map((entry) => ({
+				scope,
+				entryId: entry.id,
+				value: entry.effectiveValue,
+				reused: entry.currentValue.length > 0 || entry.suggestedValue.length > 0,
+			})),
+		);
+		const applyResult = applyTreeseedConfigValues({ tenantRoot, updates });
+		const result = finalizeTreeseedConfig({
 			tenantRoot,
 			scopes,
 			sync: options.sync,
-			authStatus: preflight.checks.auth,
-			prompt: async (message) => {
-				if (!process.stdin.isTTY || !process.stdout.isTTY) {
-					return '';
-				}
-				try {
-					return await rl.question(message);
-				} catch {
-					return '';
-				}
-			},
+			env: process.env,
 		});
-
-		writeTreeseedLocalEnvironmentFiles(tenantRoot);
-		applyTreeseedEnvironmentToProcess({ tenantRoot, scope: 'local', override: true });
 		const { configPath, keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
 
-		console.log('\nTreeseed config completed.');
+		console.log('Treeseed config completed.');
 		console.log(`Machine config: ${configPath}`);
 		console.log(`Machine key: ${keyPath}`);
-		console.log(`Updated values: ${result.updated.length}`);
+		console.log(`Updated values: ${applyResult.updated.length}`);
 		console.log(`Initialized environments: ${result.initialized.length}`);
 		if (result.synced.github) {
 			console.log(
@@ -109,6 +103,4 @@ try {
 			);
 		}
 	}
-} finally {
-	rl.close();
 }

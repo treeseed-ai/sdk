@@ -3,21 +3,24 @@ import { resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import {
 	applyTreeseedEnvironmentToProcess,
+	applyTreeseedConfigValues,
+	applyTreeseedSafeRepairs,
 	assertTreeseedCommandEnvironment,
 	checkTreeseedProviderConnections,
+	collectTreeseedConfigContext,
+	collectTreeseedPrintEnvReport,
 	createDefaultTreeseedMachineConfig,
 	ensureTreeseedActVerificationTooling,
 	ensureTreeseedGitignoreEntries,
-	formatTreeseedConfigEnvironmentReport,
-	formatTreeseedProviderConnectionReport,
+	finalizeTreeseedConfig,
 	getTreeseedMachineConfigPaths,
 	loadTreeseedMachineConfig,
 	resolveTreeseedMachineEnvironmentValues,
 	rotateTreeseedMachineKey,
-	runTreeseedConfigWizard,
 	writeTreeseedLocalEnvironmentFiles,
 	writeTreeseedMachineConfig,
 } from '../operations/services/config-runtime.ts';
+import { exportTreeseedCodebase } from '../operations/services/export-runtime.ts';
 import {
 	assertDeploymentInitialized,
 	cleanupDestroyedState,
@@ -81,6 +84,7 @@ import type {
 	TreeseedCloseInput,
 	TreeseedConfigInput,
 	TreeseedDestroyInput,
+	TreeseedExportInput,
 	TreeseedReleaseInput,
 	TreeseedSaveInput,
 	TreeseedStageInput,
@@ -270,64 +274,6 @@ function ensureLocalReadinessOrThrow(operation: TreeseedWorkflowOperationId, ten
 		);
 	}
 	return state;
-}
-
-type TreeseedRepairAction = {
-	id: string;
-	detail: string;
-};
-
-function dedupeRepairActions(actions: TreeseedRepairAction[]) {
-	const seen = new Set<string>();
-	return actions.filter((action) => {
-		if (seen.has(action.id)) return false;
-		seen.add(action.id);
-		return true;
-	});
-}
-
-function applyTreeseedSafeRepairs(tenantRoot: string): TreeseedRepairAction[] {
-	const actions: TreeseedRepairAction[] = [];
-	ensureTreeseedGitignoreEntries(tenantRoot);
-	actions.push({ id: 'gitignore', detail: 'Ensured Treeseed gitignore entries are present.' });
-
-	const envLocalPath = resolve(tenantRoot, '.env.local');
-	const envLocalExamplePath = resolve(tenantRoot, '.env.local.example');
-	if (!existsSync(envLocalPath) && existsSync(envLocalExamplePath)) {
-		copyFileSync(envLocalExamplePath, envLocalPath);
-		actions.push({ id: 'env-local', detail: 'Created .env.local from .env.local.example.' });
-	}
-
-	const deployConfig = loadCliDeployConfig(tenantRoot);
-	const { configPath } = getTreeseedMachineConfigPaths(tenantRoot);
-	if (!existsSync(configPath)) {
-		const machineConfig = createDefaultTreeseedMachineConfig({
-			tenantRoot,
-			deployConfig,
-			tenantConfig: undefined,
-		});
-		writeTreeseedMachineConfig(tenantRoot, machineConfig);
-		actions.push({ id: 'machine-config', detail: 'Created the default Treeseed machine config.' });
-	}
-
-	resolveTreeseedMachineEnvironmentValues(tenantRoot, 'local');
-	actions.push({ id: 'machine-key', detail: 'Ensured the Treeseed machine key exists.' });
-
-	const machineConfig = loadTreeseedMachineConfig(tenantRoot);
-	writeTreeseedMachineConfig(tenantRoot, machineConfig);
-	writeTreeseedLocalEnvironmentFiles(tenantRoot);
-	actions.push({ id: 'local-env', detail: 'Regenerated .env.local and .dev.vars from the current machine config.' });
-
-	for (const scope of ['local', 'staging', 'prod'] as const) {
-		const target = createPersistentDeployTarget(scope);
-		const state = loadDeployState(tenantRoot, deployConfig, { target });
-		if (state.readiness?.initialized || scope === 'local') {
-			ensureGeneratedWranglerConfig(tenantRoot, { target });
-			actions.push({ id: `wrangler-${scope}`, detail: `Regenerated the ${scope} generated Wrangler config.` });
-		}
-	}
-
-	return dedupeRepairActions(actions);
 }
 
 function bumpRootPackageJson(root: string, level: string) {
@@ -578,24 +524,23 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 
 			ensureTreeseedGitignoreEntries(tenantRoot);
 			const preflight = collectCliPreflight({ cwd: tenantRoot, requireAuth: false });
+			const contextSnapshot = collectTreeseedConfigContext({
+				tenantRoot,
+				scopes,
+				env: helpers.context.env,
+			});
 
 			if (printEnvOnly) {
 				const reports = scopes.map((scope) => ({
 					scope,
-					environmentReport: formatTreeseedConfigEnvironmentReport({
+					environment: collectTreeseedPrintEnvReport({
 						tenantRoot,
 						scope,
 						env: helpers.context.env,
 						revealSecrets,
 					}),
-					providerReport: formatTreeseedProviderConnectionReport(
-						checkTreeseedProviderConnections({ tenantRoot, scope, env: helpers.context.env }),
-					),
+					provider: checkTreeseedProviderConnections({ tenantRoot, scope, env: helpers.context.env }),
 				}));
-				for (const report of reports) {
-					maybePrint(helpers.write, report.environmentReport);
-					maybePrint(helpers.write, report.providerReport);
-				}
 				return {
 					ok: true,
 					operation: 'config',
@@ -635,26 +580,45 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 				} satisfies TreeseedWorkflowResult<Record<string, unknown>>;
 			}
 
-			const wizardResult = await runTreeseedConfigWizard({
+			const explicitUpdates = Array.isArray((input as Record<string, unknown>).updates)
+				? (input as Record<string, { scope: string; entryId: string; value: string; reused?: boolean }[]>).updates
+					.map((update) => ({
+						scope: update.scope as (typeof scopes)[number],
+						entryId: String(update.entryId ?? ''),
+						value: typeof update.value === 'string' ? update.value : '',
+						reused: update.reused === true,
+					}))
+				: null;
+			const autoUpdates = scopes.flatMap((scope) =>
+				contextSnapshot.entriesByScope[scope].map((entry) => ({
+					scope,
+					entryId: entry.id,
+					value: entry.effectiveValue,
+					reused: entry.currentValue.length > 0 || entry.suggestedValue.length > 0,
+				})),
+			);
+			const applyResult = applyTreeseedConfigValues({
+				tenantRoot,
+				updates: explicitUpdates ?? autoUpdates,
+			});
+			const finalizeResult = finalizeTreeseedConfig({
 				tenantRoot,
 				scopes,
 				sync,
-				authStatus: preflight.checks.auth,
 				env: helpers.context.env,
-				useInk: input.nonInteractive === true ? false : (process.stdin.isTTY && process.stdout.isTTY),
-				printEnv,
-				revealSecrets,
-				write: (line: string) => maybePrint(helpers.write, line),
-				prompt: async (message: string) => {
-					if (input.nonInteractive === true) {
-						return '';
-					}
-					return String(await (helpers.context.prompt?.(message) ?? ''));
-				},
 			});
-
-			writeTreeseedLocalEnvironmentFiles(tenantRoot);
-			applyTreeseedEnvironmentToProcess({ tenantRoot, scope: 'local', override: true });
+			const reports = printEnv
+				? scopes.map((scope) => ({
+					scope,
+					environment: collectTreeseedPrintEnvReport({
+						tenantRoot,
+						scope,
+						env: helpers.context.env,
+						revealSecrets,
+					}),
+					provider: finalizeResult.connectionChecks.find((report) => report.scope === scope) ?? checkTreeseedProviderConnections({ tenantRoot, scope, env: helpers.context.env }),
+				}))
+				: [];
 			const { configPath, keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
 			const state = resolveTreeseedWorkflowState(tenantRoot);
 			return buildWorkflowResult(
@@ -669,7 +633,12 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 					repairs,
 					preflight,
 					toolHealth,
-					result: wizardResult,
+					context: contextSnapshot,
+					result: {
+						...applyResult,
+						...finalizeResult,
+					},
+					reports,
 					state,
 					readiness: state.readiness,
 				},
@@ -683,6 +652,14 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 	} catch (error) {
 		toError('config', error);
 	}
+}
+
+export async function workflowExport(helpers: WorkflowOperationHelpers, input: TreeseedExportInput = {}) {
+	return await withContextEnv(helpers.context.env, async () => {
+		const directory = resolve(helpers.context.cwd ?? helpers.cwd(), input.directory ?? '.');
+		const exported = await exportTreeseedCodebase({ directory });
+		return buildWorkflowResult('export', exported.tenantRoot, exported);
+	});
 }
 
 export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: TreeseedSwitchInput) {

@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -58,6 +58,7 @@
     "react": "^19.2.5",
     "remark-mdx": "^3.1.1",
     "remark-parse": "^11.0.0",
+    "repomix": "^1.13.1",
     "typescript": "^5.9.3",
     "unified": "^11.0.5",
     "yaml": "^2.8.1"
@@ -131,6 +132,10 @@
     "./platform/books-data": {
       "types": "./dist/platform/books-data.d.ts",
       "default": "./dist/platform/books-data.js"
+    },
+    "./platform/book-export": {
+      "types": "./dist/platform/book-export.d.ts",
+      "default": "./dist/platform/book-export.js"
     },
     "./platform/site-config-schema": {
       "types": "./dist/platform/site-config-schema.d.ts",

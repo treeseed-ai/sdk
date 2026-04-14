@@ -5,6 +5,7 @@ import type { TreeseedFieldAliasRegistry } from '../field-aliases.ts';
 import { normalizeAliasedRecord } from '../field-aliases.ts';
 import type {
 	TreeseedDeployConfig,
+	TreeseedExportConfig,
 	TreeseedManagedServiceConfig,
 	TreeseedManagedServicesConfig,
 	TreeseedPlatformSurfacesConfig,
@@ -60,6 +61,20 @@ function optionalBoolean(value: unknown, label: string) {
 	}
 
 	return value;
+}
+
+function optionalStringArray(value: unknown, label: string) {
+	if (value === undefined) {
+		return undefined;
+	}
+
+	if (!Array.isArray(value)) {
+		throw new Error(`Invalid deploy config: expected ${label} to be an array of strings when provided.`);
+	}
+
+	return value
+		.map((entry, index) => expectString(entry, `${label}[${index}]`))
+		.filter(Boolean);
 }
 
 function optionalRecord(value: unknown, label: string) {
@@ -228,6 +243,18 @@ function parsePlatformSurfacesConfig(value: unknown): TreeseedPlatformSurfacesCo
 	);
 }
 
+function parseExportConfig(value: unknown): TreeseedExportConfig | undefined {
+	const record = optionalRecord(value, 'export');
+	if (!record) {
+		return undefined;
+	}
+
+	return {
+		ignore: optionalStringArray(record.ignore, 'export.ignore'),
+		bundledPaths: optionalStringArray(record.bundledPaths, 'export.bundledPaths'),
+	};
+}
+
 function parseDeployConfig(raw: string): TreeseedDeployConfig {
 	const parsed = normalizeAliasedRecord(
 		deployConfigFieldAliases,
@@ -263,11 +290,16 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 		turnstile: {
 			enabled: true,
 		},
+		export: parseExportConfig(parsed.export),
 	};
 }
 
 export function resolveTreeseedDeployConfigPath(configPath = 'treeseed.site.yaml') {
 	const tenantRoot = resolveTreeseedTenantRoot();
+	return resolveTreeseedDeployConfigPathFromRoot(tenantRoot, configPath);
+}
+
+export function resolveTreeseedDeployConfigPathFromRoot(tenantRoot: string, configPath = 'treeseed.site.yaml') {
 	const candidate = resolve(tenantRoot, configPath);
 	if (!existsSync(candidate)) {
 		throw new Error(`Unable to resolve Treeseed deploy config at "${candidate}".`);
@@ -281,6 +313,10 @@ export function deriveCloudflareWorkerName(config: TreeseedDeployConfig) {
 
 export function loadTreeseedDeployConfig(configPath = 'treeseed.site.yaml'): TreeseedDeployConfig {
 	const resolvedConfigPath = resolveTreeseedDeployConfigPath(configPath);
+	return loadTreeseedDeployConfigFromPath(resolvedConfigPath);
+}
+
+export function loadTreeseedDeployConfigFromPath(resolvedConfigPath: string): TreeseedDeployConfig {
 	const tenantRoot = dirname(resolvedConfigPath);
 	const parsed = parseDeployConfig(readFileSync(resolvedConfigPath, 'utf8'));
 

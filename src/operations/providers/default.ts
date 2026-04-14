@@ -508,6 +508,7 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 			new WorkflowOperation('close'),
 			new WorkflowOperation('stage'),
 			new WorkflowOperation('config'),
+			new WorkflowOperation('export'),
 			new WorkflowOperation('release'),
 			new WorkflowOperation('destroy'),
 			new WorkflowOperation('dev'),

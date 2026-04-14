@@ -49,6 +49,7 @@ export type TreeseedOperationId =
 	| 'data.d1MigrateLocal'
 	| 'content.cleanupMarkdown'
 	| 'content.cleanupMarkdownCheck'
+	| 'project.export'
 	| 'tools.astro'
 	| 'tools.syncDevvars'
 	| 'tools.starlightPatch'

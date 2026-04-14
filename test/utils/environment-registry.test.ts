@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveTreeseedEnvironmentRegistry } from '../../src/platform/environment.ts';
+import { getTreeseedEnvironmentSuggestedValues, resolveTreeseedEnvironmentRegistry } from '../../src/platform/environment.ts';
 
 const tempRoots = new Set<string>();
 
@@ -93,5 +93,168 @@ describe('environment registry overlays', () => {
 
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_API_BASE_URL')).toBeUndefined();
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET')).toBeTruthy();
+	});
+
+	it('supports shared project-domain defaults that seed scoped api urls', async () => {
+		const tenantRoot = await createTenantFixture(`entries:
+  TREESEED_PROJECT_DOMAINS:
+    label: Project custom domains
+    group: auth
+    description: Shared project domains.
+    howToGet: Set custom domains.
+    sensitivity: plain
+    targets:
+      - local-file
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: shared
+    requirement: optional
+    purposes:
+      - config
+    validation:
+      kind: nonempty
+    defaultValueRef: projectDomainsDefault
+  TREESEED_API_BASE_URL:
+    label: Treeseed API base URL
+    group: auth
+    description: API base URL.
+    howToGet: Set API URL.
+    sensitivity: plain
+    targets:
+      - local-file
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: scoped
+    requirement: required
+    purposes:
+      - dev
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+    defaultValueRef: apiBaseUrlDefault
+`);
+		tempRoots.add(tenantRoot);
+
+		const deployConfig = {
+			name: 'Test Site',
+			slug: 'test-site',
+			siteUrl: 'https://market.example.com',
+			contactEmail: 'hello@example.com',
+			cloudflare: { accountId: 'account-123' },
+			services: {
+				api: {
+					provider: 'railway',
+					enabled: true,
+					environments: {
+						local: { baseUrl: 'http://127.0.0.1:3000' },
+					},
+				},
+			},
+			__tenantRoot: tenantRoot,
+		} as any;
+
+		const registry = resolveTreeseedEnvironmentRegistry({
+			deployConfig,
+			plugins: [],
+		});
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_PROJECT_DOMAINS')?.storage).toBe('shared');
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_API_BASE_URL')?.storage).toBe('scoped');
+
+		expect(getTreeseedEnvironmentSuggestedValues({
+			scope: 'local',
+			purpose: 'config',
+			deployConfig,
+			plugins: [],
+			values: {},
+		}).TREESEED_API_BASE_URL).toBe('http://127.0.0.1:3000');
+
+		expect(getTreeseedEnvironmentSuggestedValues({
+			scope: 'prod',
+			purpose: 'config',
+			deployConfig,
+			plugins: [],
+			values: {
+				TREESEED_PROJECT_DOMAINS: 'market.example.com',
+			},
+		}).TREESEED_API_BASE_URL).toBe('https://api.example.com');
+	});
+
+	it('supports safe service-id defaults for the web and api trust boundary', async () => {
+		const tenantRoot = await createTenantFixture(`entries:
+  TREESEED_WEB_SERVICE_ID:
+    label: Web service ID
+    group: auth
+    description: Shared web service ID.
+    howToGet: Use web.
+    sensitivity: plain
+    targets:
+      - local-file
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: shared
+    requirement: required
+    purposes:
+      - config
+    validation:
+      kind: nonempty
+    defaultValueRef: webServiceIdDefault
+  TREESEED_API_WEB_SERVICE_ID:
+    label: API trusted web service ID
+    group: auth
+    description: API-side trusted web service ID.
+    howToGet: Match the web service ID.
+    sensitivity: plain
+    targets:
+      - local-file
+    scopes:
+      - local
+      - staging
+      - prod
+    requirement: required
+    purposes:
+      - config
+    validation:
+      kind: nonempty
+    defaultValueRef: apiWebServiceIdDefault
+`);
+		tempRoots.add(tenantRoot);
+
+		const deployConfig = {
+			name: 'Test Site',
+			slug: 'test-site',
+			siteUrl: 'https://market.example.com',
+			contactEmail: 'hello@example.com',
+			cloudflare: { accountId: 'account-123' },
+			services: { api: { provider: 'railway', enabled: true } },
+			__tenantRoot: tenantRoot,
+		} as any;
+
+		const suggested = getTreeseedEnvironmentSuggestedValues({
+			scope: 'prod',
+			purpose: 'config',
+			deployConfig,
+			plugins: [],
+			values: {},
+		});
+		expect(suggested.TREESEED_WEB_SERVICE_ID).toBe('web');
+		expect(suggested.TREESEED_API_WEB_SERVICE_ID).toBe('web');
+
+		const linkedSuggested = getTreeseedEnvironmentSuggestedValues({
+			scope: 'prod',
+			purpose: 'config',
+			deployConfig,
+			plugins: [],
+			values: {
+				TREESEED_WEB_SERVICE_ID: 'edge-web',
+			},
+		});
+		expect(linkedSuggested.TREESEED_API_WEB_SERVICE_ID).toBe('edge-web');
 	});
 });

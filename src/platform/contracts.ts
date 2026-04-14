@@ -194,6 +194,11 @@ export interface TreeseedProviderSelections {
 	site?: string;
 }
 
+export interface TreeseedExportConfig {
+	ignore?: string[];
+	bundledPaths?: string[];
+}
+
 export interface TreeseedDeployConfig {
 	name: string;
 	slug: string;
@@ -213,6 +218,7 @@ export interface TreeseedDeployConfig {
 	turnstile?: {
 		enabled?: boolean;
 	};
+	export?: TreeseedExportConfig;
 }
 
 export interface TreeseedTenantConfig {

@@ -8,6 +8,7 @@ import {
 	workflowConfig,
 	workflowDestroy,
 	workflowDev,
+	workflowExport,
 	workflowRelease,
 	workflowSave,
 	workflowStage,
@@ -26,7 +27,8 @@ export type TreeseedWorkflowOperationId =
 	| 'close'
 	| 'stage'
 	| 'release'
-	| 'destroy';
+	| 'destroy'
+	| 'export';
 
 export type TreeseedWorkflowNextStep = {
 	operation: string;
@@ -99,12 +101,17 @@ export type TreeseedConfigInput = {
 	environment?: TreeseedConfigScope[] | TreeseedConfigScope;
 	syncProviders?: 'none' | 'github' | 'cloudflare' | 'railway' | 'all';
 	sync?: 'none' | 'github' | 'cloudflare' | 'railway' | 'all';
+	updates?: Array<{ scope: Exclude<TreeseedConfigScope, 'all'>; entryId: string; value: string; reused?: boolean }>;
 	repair?: boolean;
 	printEnv?: boolean;
 	printEnvOnly?: boolean;
 	showSecrets?: boolean;
 	rotateMachineKey?: boolean;
 	nonInteractive?: boolean;
+};
+
+export type TreeseedExportInput = {
+	directory?: string;
 };
 
 export type TreeseedReleaseInput = { bump: 'major' | 'minor' | 'patch' };
@@ -174,6 +181,8 @@ export class TreeseedWorkflowSdk {
 				return this.release(input as TreeseedReleaseInput);
 			case 'destroy':
 				return this.destroy(input as TreeseedDestroyInput);
+			case 'export':
+				return this.export(input as TreeseedExportInput);
 			default:
 				throw new Error(`Unsupported workflow operation "${operation}".`);
 		}
@@ -217,5 +226,9 @@ export class TreeseedWorkflowSdk {
 
 	async destroy(input: TreeseedDestroyInput): Promise<TreeseedWorkflowResult> {
 		return workflowDestroy(this.helpers(), input);
+	}
+
+	async export(input: TreeseedExportInput = {}): Promise<TreeseedWorkflowResult> {
+		return workflowExport(this.helpers(), input);
 	}
 }
