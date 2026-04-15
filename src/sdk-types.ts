@@ -25,6 +25,14 @@ export const SDK_MODEL_NAMES = [
 export const SDK_OPERATIONS = ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'] as const;
 export const SDK_STORAGE_BACKENDS = ['content', 'd1'] as const;
 export const SDK_PICK_STRATEGIES = ['latest', 'highest_priority', 'oldest'] as const;
+export const SDK_DISPATCH_EXECUTION_CLASSES = ['local_only', 'remote_inline', 'remote_job'] as const;
+export const SDK_DISPATCH_TARGETS = ['local', 'project_api', 'project_runner', 'market_catalog'] as const;
+export const SDK_DISPATCH_POLICIES = ['auto', 'prefer_local', 'prefer_remote', 'remote_only'] as const;
+export const SDK_DISPATCH_NAMESPACES = ['sdk', 'workflow'] as const;
+export const PROJECT_CONNECTION_MODES = ['hosted', 'self_hosted', 'hybrid'] as const;
+export const PROJECT_RUNNER_REGISTRATION_STATES = ['pending', 'registered', 'offline'] as const;
+export const PROJECT_EXECUTION_OWNERS = ['project_api', 'project_runner', 'market'] as const;
+export const REMOTE_JOB_STATUSES = ['pending', 'claimed', 'running', 'completed', 'failed', 'cancelled'] as const;
 
 export type SdkBuiltinModelName = (typeof SDK_MODEL_NAMES)[number];
 export type SdkModelName = SdkBuiltinModelName | (string & {});
@@ -32,6 +40,139 @@ export type SdkOperation = (typeof SDK_OPERATIONS)[number];
 export type SdkStorageBackend = (typeof SDK_STORAGE_BACKENDS)[number];
 export type SdkPickStrategy = (typeof SDK_PICK_STRATEGIES)[number];
 export type SdkComparableAs = 'string' | 'number' | 'date' | 'boolean' | 'string_array';
+export type SdkDispatchExecutionClass = (typeof SDK_DISPATCH_EXECUTION_CLASSES)[number];
+export type SdkDispatchTarget = (typeof SDK_DISPATCH_TARGETS)[number];
+export type SdkDispatchPolicy = (typeof SDK_DISPATCH_POLICIES)[number];
+export type SdkDispatchNamespace = (typeof SDK_DISPATCH_NAMESPACES)[number];
+export type ProjectConnectionMode = (typeof PROJECT_CONNECTION_MODES)[number];
+export type ProjectRunnerRegistrationState = (typeof PROJECT_RUNNER_REGISTRATION_STATES)[number];
+export type ProjectExecutionOwner = (typeof PROJECT_EXECUTION_OWNERS)[number];
+export type RemoteJobStatus = (typeof REMOTE_JOB_STATUSES)[number];
+export type RemoteJobRequestedByType = 'user' | 'team_api_key' | 'service' | 'runner' | 'system';
+
+export interface SdkDispatchCapability {
+	namespace: SdkDispatchNamespace;
+	operation: string;
+	executionClass: SdkDispatchExecutionClass;
+	allowedTargets: SdkDispatchTarget[];
+	defaultTarget: SdkDispatchTarget;
+	defaultDispatchMode: SdkDispatchPolicy;
+	summary?: string;
+}
+
+export interface ProjectConnection {
+	id: string;
+	projectId: string;
+	mode: ProjectConnectionMode;
+	projectApiBaseUrl: string | null;
+	runnerRegistrationState: ProjectRunnerRegistrationState;
+	executionOwner: ProjectExecutionOwner;
+	runnerRegisteredAt: string | null;
+	runnerLastSeenAt: string | null;
+	createdAt: string;
+	updatedAt: string;
+	metadata?: Record<string, unknown>;
+}
+
+export interface ProjectCapabilityGrant {
+	id: string;
+	projectId: string;
+	namespace: SdkDispatchNamespace;
+	operation: string;
+	executionClass: SdkDispatchExecutionClass;
+	allowedTargets: SdkDispatchTarget[];
+	defaultDispatchMode: SdkDispatchPolicy;
+	enabled: boolean;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface RemoteJobError {
+	code?: string | null;
+	message: string;
+}
+
+export interface RemoteJob {
+	id: string;
+	projectId: string;
+	namespace: SdkDispatchNamespace;
+	operation: string;
+	status: RemoteJobStatus;
+	preferredMode: SdkDispatchPolicy;
+	selectedTarget: SdkDispatchTarget;
+	input: Record<string, unknown>;
+	output?: unknown;
+	error?: RemoteJobError | null;
+	requestedByType: RemoteJobRequestedByType;
+	requestedById: string | null;
+	assignedRunnerId: string | null;
+	idempotencyKey: string | null;
+	capability?: SdkDispatchCapability | null;
+	pollUrl?: string | null;
+	streamUrl?: string | null;
+	createdAt: string;
+	updatedAt: string;
+	startedAt: string | null;
+	finishedAt: string | null;
+	cancelledAt: string | null;
+}
+
+export interface RemoteJobEvent {
+	id: string;
+	jobId: string;
+	seq: number;
+	kind: string;
+	data?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface SdkDispatchRequest {
+	namespace?: SdkDispatchNamespace;
+	operation: string;
+	input?: Record<string, unknown>;
+	preferredMode?: SdkDispatchPolicy;
+	idempotencyKey?: string;
+}
+
+export interface SdkDispatchInlineResult {
+	ok: true;
+	mode: 'inline';
+	namespace: SdkDispatchNamespace;
+	operation: string;
+	target: SdkDispatchTarget;
+	capability: SdkDispatchCapability;
+	payload: unknown;
+}
+
+export interface SdkDispatchJobResult {
+	ok: true;
+	mode: 'job';
+	namespace: SdkDispatchNamespace;
+	operation: string;
+	target: SdkDispatchTarget;
+	capability: SdkDispatchCapability;
+	job: RemoteJob;
+}
+
+export type SdkDispatchResult = SdkDispatchInlineResult | SdkDispatchJobResult;
+
+export type SdkDispatchCredentialSource =
+	| {
+			type: 'bearer';
+			token: string;
+	  }
+	| {
+			type: 'resolver';
+			resolveToken: () => Promise<string | null> | string | null;
+	  };
+
+export interface SdkDispatchConfig {
+	projectId: string;
+	marketBaseUrl: string;
+	policy?: SdkDispatchPolicy;
+	credentialSource?: SdkDispatchCredentialSource;
+	fetchImpl?: typeof fetch;
+}
 
 export type SdkFilterOperator =
 	| 'eq'
@@ -886,13 +1027,15 @@ export interface SdkManagerContextPayload {
 	graph: Record<string, unknown> | null;
 }
 
-export interface SdkGatewayClientConfig {
-	baseUrl: string;
-	bearerToken: string;
+export interface SdkQueuePullClientConfig {
+	accountId: string;
+	queueId: string;
+	token: string;
+	apiBaseUrl?: string;
 	fetchImpl?: typeof fetch;
 }
 
-export interface SdkQueuePullClientConfig {
+export interface SdkQueuePushClientConfig {
 	accountId: string;
 	queueId: string;
 	token: string;
@@ -927,6 +1070,11 @@ export interface SdkPulledQueueMessage {
 
 export interface SdkQueuePullResult {
 	messages: SdkPulledQueueMessage[];
+}
+
+export interface SdkQueuePushRequest {
+	message: SdkQueueMessageEnvelope;
+	delaySeconds?: number;
 }
 
 export interface SdkFollowResult<TItem> {

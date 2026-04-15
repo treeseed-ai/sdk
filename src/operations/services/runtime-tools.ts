@@ -54,7 +54,7 @@ const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 	},
 	site: 'default',
 };
-const TRESEED_MANAGED_SERVICE_KEYS = ['api', 'agents', 'gateway', 'manager', 'worker', 'workdayStart', 'workdayReport'];
+const TRESEED_MANAGED_SERVICE_KEYS = ['api', 'agents', 'manager', 'worker', 'runner', 'workdayStart', 'workdayReport'];
 const TRESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli'];
 const CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER = 'replace-with-cloudflare-account-id';
 
@@ -349,7 +349,6 @@ function parseFallbackDeployConfig(configPath) {
 				?? optionalCloudflareAccountId(process.env.CLOUDFLARE_ACCOUNT_ID)
 				?? CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER,
 			workerName: optionalString(cloudflare.workerName),
-			gatewayWorkerName: optionalString(cloudflare.gatewayWorkerName),
 			queueName: optionalString(cloudflare.queueName),
 			dlqName: optionalString(cloudflare.dlqName),
 			d1Binding: optionalString(cloudflare.d1Binding),

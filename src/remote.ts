@@ -1,3 +1,10 @@
+import type {
+	RemoteJob,
+	RemoteJobEvent,
+	SdkDispatchRequest,
+	SdkDispatchResult,
+} from './sdk-types.ts';
+
 export const TREESEED_REMOTE_CONTRACT_VERSION = 1;
 export const TREESEED_REMOTE_CONTRACT_HEADER = 'x-treeseed-remote-contract-version';
 
@@ -133,6 +140,30 @@ export interface RemoteWorkflowOperationResponse {
 	nextSteps?: RemoteWorkflowNextStep[];
 }
 
+export interface RemoteJobPullRequest {
+	limit?: number;
+	runnerId?: string;
+}
+
+export interface RemoteJobPullResponse {
+	ok: true;
+	payload: RemoteJob[];
+}
+
+export interface RemoteJobProgressRequest {
+	summary?: string;
+	data?: Record<string, unknown>;
+}
+
+export interface RemoteJobCompletionRequest {
+	output?: unknown;
+}
+
+export interface RemoteJobFailureRequest {
+	code?: string;
+	message: string;
+}
+
 function normalizeBaseUrl(baseUrl: string) {
 	return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
 }
@@ -254,35 +285,6 @@ function normalizeExternalBaseUrl(baseUrl: string) {
 	return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
 }
 
-export class TreeseedGatewayClient {
-	private readonly baseUrl: string;
-	private readonly token: string;
-	private readonly fetchImpl: typeof fetch;
-
-	constructor(config: import('./sdk-types.ts').SdkGatewayClientConfig) {
-		this.baseUrl = normalizeExternalBaseUrl(config.baseUrl);
-		this.token = config.bearerToken;
-		this.fetchImpl = config.fetchImpl ?? fetch;
-	}
-
-	async requestJson<T>(path: string, options: RemoteGatewayRequest = {}) {
-		const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-			method: options.method ?? 'POST',
-			headers: {
-				accept: 'application/json',
-				authorization: `Bearer ${this.token}`,
-				...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
-			},
-			body: options.body === undefined ? undefined : JSON.stringify(options.body),
-		});
-		const payload = await response.json().catch(() => ({})) as T & { error?: string };
-		if (!response.ok) {
-			throw new Error(typeof payload.error === 'string' ? payload.error : `Gateway request failed with ${response.status}.`);
-		}
-		return payload;
-	}
-}
-
 export class CloudflareQueuePullClient {
 	private readonly baseUrl: string;
 	private readonly token: string;
@@ -344,11 +346,118 @@ export class CloudflareQueuePullClient {
 	}
 }
 
+export class CloudflareQueuePushClient {
+	private readonly baseUrl: string;
+	private readonly token: string;
+	private readonly fetchImpl: typeof fetch;
+
+	constructor(config: import('./sdk-types.ts').SdkQueuePushClientConfig) {
+		const apiBaseUrl = config.apiBaseUrl ?? 'https://api.cloudflare.com/client/v4/accounts';
+		this.baseUrl = `${normalizeExternalBaseUrl(apiBaseUrl)}/${config.accountId}/queues/${config.queueId}`;
+		this.token = config.token;
+		this.fetchImpl = config.fetchImpl ?? fetch;
+	}
+
+	async enqueue(request: import('./sdk-types.ts').SdkQueuePushRequest) {
+		const response = await this.fetchImpl(`${this.baseUrl}/messages`, {
+			method: 'POST',
+			headers: {
+				accept: 'application/json',
+				authorization: `Bearer ${this.token}`,
+				'content-type': 'application/json',
+			},
+			body: JSON.stringify({
+				body: request.message,
+				content_type: 'json',
+				delay_seconds: request.delaySeconds ?? 0,
+			}),
+		});
+		const payload = await response.json().catch(() => ({})) as {
+			success?: boolean;
+			errors?: Array<{ message?: string }>;
+		};
+		if (!response.ok || payload.success === false) {
+			throw new Error(payload.errors?.[0]?.message ?? `Queue request failed with ${response.status}.`);
+		}
+	}
+}
+
 export class RemoteTreeseedOperationsClient {
 	constructor(private readonly client: RemoteTreeseedClient) {}
 
 	execute(operation: string, request: RemoteWorkflowOperationRequest) {
 		return this.client.requestJson<RemoteWorkflowOperationResponse>(`/operations/${encodeURIComponent(operation)}`, {
+			method: 'POST',
+			body: request,
+			requireAuth: true,
+		});
+	}
+}
+
+export class RemoteTreeseedDispatchClient {
+	constructor(private readonly client: RemoteTreeseedClient) {}
+
+	dispatch(projectId: string, request: SdkDispatchRequest) {
+		return this.client.requestJson<SdkDispatchResult>(`/v1/projects/${encodeURIComponent(projectId)}/dispatch`, {
+			method: 'POST',
+			body: request,
+			requireAuth: true,
+		});
+	}
+}
+
+export class RemoteTreeseedJobsClient {
+	constructor(private readonly client: RemoteTreeseedClient) {}
+
+	get(jobId: string) {
+		return this.client.requestJson<{ ok: true; payload: RemoteJob }>(`/v1/jobs/${encodeURIComponent(jobId)}`, {
+			requireAuth: true,
+		});
+	}
+
+	cancel(jobId: string) {
+		return this.client.requestJson<{ ok: true; payload: RemoteJob }>(`/v1/jobs/${encodeURIComponent(jobId)}/cancel`, {
+			method: 'POST',
+			requireAuth: true,
+		});
+	}
+
+	events(jobId: string) {
+		return this.client.requestJson<{ ok: true; payload: RemoteJobEvent[] }>(`/v1/jobs/${encodeURIComponent(jobId)}/events`, {
+			requireAuth: true,
+		});
+	}
+}
+
+export class RemoteTreeseedRunnerClient {
+	constructor(private readonly client: RemoteTreeseedClient) {}
+
+	pull(projectId: string, request: RemoteJobPullRequest = {}) {
+		return this.client.requestJson<RemoteJobPullResponse>(`/v1/projects/${encodeURIComponent(projectId)}/runner/jobs/pull`, {
+			method: 'POST',
+			body: request,
+			requireAuth: true,
+		});
+	}
+
+	progress(jobId: string, request: RemoteJobProgressRequest = {}) {
+		return this.client.requestJson<{ ok: true; payload: RemoteJob }>(`/v1/jobs/${encodeURIComponent(jobId)}/progress`, {
+			method: 'POST',
+			body: request,
+			requireAuth: true,
+		});
+	}
+
+	complete(jobId: string, request: RemoteJobCompletionRequest = {}) {
+		return this.client.requestJson<{ ok: true; payload: RemoteJob }>(`/v1/jobs/${encodeURIComponent(jobId)}/complete`, {
+			method: 'POST',
+			body: request,
+			requireAuth: true,
+		});
+	}
+
+	fail(jobId: string, request: RemoteJobFailureRequest) {
+		return this.client.requestJson<{ ok: true; payload: RemoteJob }>(`/v1/jobs/${encodeURIComponent(jobId)}/fail`, {
 			method: 'POST',
 			body: request,
 			requireAuth: true,

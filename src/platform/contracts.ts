@@ -103,7 +103,7 @@ export interface TreeseedPluginReference {
 	config?: Record<string, unknown>;
 }
 
-export type TreeseedPlatformSurfaceName = 'web' | 'api' | 'gateway' | (string & {});
+export type TreeseedPlatformSurfaceName = 'web' | 'api' | (string & {});
 
 export type TreeseedPlatformResourceKind =
 	| 'pages'
@@ -172,7 +172,6 @@ export interface TreeseedManagedServicesConfig {
 export interface TreeseedPlatformSurfacesConfig {
 	web?: TreeseedPlatformSurfaceConfig;
 	api?: TreeseedPlatformSurfaceConfig;
-	gateway?: TreeseedPlatformSurfaceConfig;
 	[key: string]: TreeseedPlatformSurfaceConfig | undefined;
 }
 

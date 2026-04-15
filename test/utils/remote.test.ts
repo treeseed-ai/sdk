@@ -8,12 +8,16 @@ import {
 	TREESEED_REMOTE_CONTRACT_HEADER,
 	TREESEED_REMOTE_CONTRACT_VERSION,
 } from '../../src/remote.ts';
+import { AgentSdk } from '../../src/sdk.ts';
+import { findDispatchCapability } from '../../src/dispatch.ts';
 import {
 	resolveTreeseedRemoteConfig,
 	setTreeseedRemoteSession,
 } from '../../src/operations/services/config-runtime.ts';
 import { loadDeployState } from '../../src/operations/services/deploy.ts';
 import { loadCliDeployConfig } from '../../src/operations/services/runtime-tools.ts';
+import { MemoryAgentDatabase } from '../../src/d1-store.ts';
+import { sdkFixtureRoot } from '../test-fixture.ts';
 
 function createTenantFixture() {
 	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-remote-test-'));
@@ -25,22 +29,9 @@ siteUrl: https://example.com
 contactEmail: test@example.com
 cloudflare:
   accountId: account-123
-  gatewayWorkerName: treeseed-agent-gateway
   queueName: agent-work
   dlqName: agent-work-dlq
 services:
-  gateway:
-    enabled: true
-    provider: cloudflare
-    cloudflare:
-      workerName: treeseed-agent-gateway
-  manager:
-    enabled: true
-    provider: railway
-    railway:
-      projectName: treeseed-core
-      serviceName: treeseed-manager
-      rootDir: .
   worker:
     enabled: true
     provider: railway
@@ -165,9 +156,152 @@ describe('remote Treeseed support', () => {
 		expect(state.services.api.serviceName).toBe('treeseed-api');
 		expect(state.services.api.publicBaseUrl).toBe('https://staging-api.example.com');
 		expect(state.services.agents.publicBaseUrl).toBe('https://staging-agents.example.com');
-		expect(state.services.gateway.workerName).toBe('treeseed-agent-gateway');
-		expect(state.services.manager.serviceName).toBe('treeseed-manager');
 		expect(state.services.worker.serviceName).toBe('treeseed-worker');
 		expect(state.queues.agentWork.name).toBe('agent-work');
+	});
+
+	it('keeps dispatch local-first when no remote config is supplied', async () => {
+		const sdk = new AgentSdk({
+			repoRoot: sdkFixtureRoot,
+			database: new MemoryAgentDatabase(),
+		});
+
+		const result = await sdk.dispatch({
+			operation: 'read',
+			input: {
+				model: 'knowledge',
+				slug: 'research/inquiry/questions-as-records',
+			},
+		});
+
+		expect(result.mode).toBe('inline');
+		expect(result.target).toBe('local');
+		expect((result.payload as { payload?: { slug?: string } }).payload?.slug).toBe('research/inquiry/questions-as-records');
+	});
+
+	it('resolves remote inline dispatch through the market v1 contract', async () => {
+		const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+			expect(String(input)).toBe('https://market.example.com/v1/projects/project-1/dispatch');
+			const headers = Object.fromEntries(new Headers(init?.headers).entries());
+			expect(headers.authorization).toBe('Bearer dispatch-token');
+			expect(JSON.parse(String(init?.body))).toMatchObject({
+				namespace: 'sdk',
+				operation: 'read',
+				preferredMode: 'prefer_remote',
+			});
+			return new Response(JSON.stringify({
+				ok: true,
+				mode: 'inline',
+				namespace: 'sdk',
+				operation: 'read',
+				target: 'project_api',
+				capability: findDispatchCapability('sdk', 'read'),
+				payload: {
+					ok: true,
+					model: 'knowledge',
+					operation: 'read',
+					payload: { slug: 'remote-knowledge' },
+				},
+			}), {
+				status: 200,
+				headers: {
+					'content-type': 'application/json',
+					[TREESEED_REMOTE_CONTRACT_HEADER]: String(TREESEED_REMOTE_CONTRACT_VERSION),
+				},
+			});
+		});
+		const sdk = new AgentSdk({
+			repoRoot: sdkFixtureRoot,
+			database: new MemoryAgentDatabase(),
+			dispatch: {
+				projectId: 'project-1',
+				marketBaseUrl: 'https://market.example.com',
+				policy: 'prefer_remote',
+				credentialSource: {
+					type: 'bearer',
+					token: 'dispatch-token',
+				},
+				fetchImpl: fetchMock,
+			},
+		});
+
+		const result = await sdk.dispatch({
+			operation: 'read',
+			input: {
+				model: 'knowledge',
+				slug: 'research/inquiry/questions-as-records',
+			},
+		});
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(result).toMatchObject({
+			ok: true,
+			mode: 'inline',
+			target: 'project_api',
+		});
+	});
+
+	it('returns queued remote jobs for long-running dispatch operations', async () => {
+		const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+			ok: true,
+			mode: 'job',
+			namespace: 'sdk',
+			operation: 'refreshGraph',
+			target: 'project_runner',
+			capability: findDispatchCapability('sdk', 'refreshGraph'),
+			job: {
+				id: 'job-1',
+				projectId: 'project-1',
+				namespace: 'sdk',
+				operation: 'refreshGraph',
+				status: 'pending',
+				preferredMode: 'prefer_remote',
+				selectedTarget: 'project_runner',
+				input: {},
+				output: null,
+				error: null,
+				requestedByType: 'user',
+				requestedById: 'user-1',
+				assignedRunnerId: null,
+				idempotencyKey: null,
+				capability: findDispatchCapability('sdk', 'refreshGraph'),
+				createdAt: '2026-04-15T00:00:00.000Z',
+				updatedAt: '2026-04-15T00:00:00.000Z',
+				startedAt: null,
+				finishedAt: null,
+				cancelledAt: null,
+			},
+		}), {
+			status: 200,
+			headers: {
+				'content-type': 'application/json',
+				[TREESEED_REMOTE_CONTRACT_HEADER]: String(TREESEED_REMOTE_CONTRACT_VERSION),
+			},
+		}));
+		const sdk = new AgentSdk({
+			repoRoot: sdkFixtureRoot,
+			database: new MemoryAgentDatabase(),
+			dispatch: {
+				projectId: 'project-1',
+				marketBaseUrl: 'https://market.example.com',
+				policy: 'prefer_remote',
+				fetchImpl: fetchMock,
+			},
+		});
+
+		const result = await sdk.dispatch({
+			operation: 'refreshGraph',
+			input: {},
+		});
+
+		expect(result).toMatchObject({
+			ok: true,
+			mode: 'job',
+			target: 'project_runner',
+			job: {
+				id: 'job-1',
+				status: 'pending',
+			},
+		});
 	});
 });

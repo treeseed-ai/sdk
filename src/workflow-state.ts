@@ -157,6 +157,7 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 			agents: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
 			manager: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
 			worker: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
+			runner: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
 			workdayStart: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
 			workdayReport: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
 		},
@@ -200,7 +201,7 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 						url: typeof latestHistory?.url === 'string' ? latestHistory.url : (deployState.lastDeployedUrl ?? null),
 					});
 				}
-					for (const serviceKey of ['api', 'agents', 'manager', 'worker', 'workdayStart', 'workdayReport']) {
+					for (const serviceKey of ['api', 'agents', 'manager', 'worker', 'runner', 'workdayStart', 'workdayReport']) {
 						const service = deployState.services?.[serviceKey];
 						if (!service) continue;
 						state.managedServices[serviceKey] = {

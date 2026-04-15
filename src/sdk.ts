@@ -6,6 +6,10 @@ import { CloudflareD1AgentDatabase, MemoryAgentDatabase, type AgentDatabase } fr
 import { ContentGraphRuntime } from './graph.ts';
 import { loadTreeseedPlugins, type LoadedTreeseedPluginEntry } from './platform/plugins.ts';
 import { buildScopedModelRegistry, resolveModelDefinition } from './model-registry.ts';
+import { findDispatchCapability } from './dispatch.ts';
+import { RemoteTreeseedClient, RemoteTreeseedDispatchClient } from './remote.ts';
+import { executeSdkOperation } from './sdk-dispatch.ts';
+import { TreeseedOperationsSdk } from './operations/runtime.ts';
 import type {
 	SdkAckMessageRequest,
 	SdkClaimMessageRequest,
@@ -40,6 +44,10 @@ import type {
 	SdkModelDefinition,
 	SdkModelRegistry,
 	SdkGraphRankingProvider,
+	SdkDispatchConfig,
+	SdkDispatchRequest,
+	SdkDispatchResult,
+	SdkDispatchCredentialSource,
 } from './sdk-types.ts';
 import { WranglerD1Database } from './wrangler-d1.ts';
 
@@ -50,6 +58,7 @@ export interface AgentSdkOptions {
 	modelRegistry?: SdkModelRegistry;
 	graphRankingProvider?: SdkGraphRankingProvider;
 	plugins?: LoadedTreeseedPluginEntry[];
+	dispatch?: SdkDispatchConfig;
 }
 
 function normalizeAgentSpec(entry: Record<string, unknown> | null): AgentRuntimeSpec | null {
@@ -83,13 +92,16 @@ function operationAllowed(
 }
 
 export class AgentSdk {
+	readonly repoRoot: string;
 	readonly database: AgentDatabase;
 	readonly content: ContentStore;
 	readonly models: SdkModelRegistry;
 	private readonly graph: ContentGraphRuntime;
+	private readonly dispatchConfig?: SdkDispatchConfig;
 
 	constructor(options: AgentSdkOptions = {}) {
 		const repoRoot = resolveSdkRepoRoot(options.repoRoot);
+		this.repoRoot = repoRoot;
 		this.models = options.modelRegistry ?? buildScopedModelRegistry(repoRoot, options.models);
 		this.database = options.database ?? new MemoryAgentDatabase();
 		this.content = new ContentStore(repoRoot, this.database, this.models);
@@ -105,6 +117,7 @@ export class AgentSdk {
 			rankingProvider: options.graphRankingProvider,
 			plugins,
 		});
+		this.dispatchConfig = options.dispatch;
 	}
 
 	static createLocal(options: {
@@ -125,6 +138,77 @@ export class AgentSdk {
 			database: new CloudflareD1AgentDatabase(d1),
 			models: options.models,
 			modelRegistry: options.modelRegistry,
+		});
+	}
+
+	private async resolveDispatchToken(source: SdkDispatchCredentialSource | undefined) {
+		if (!source) {
+			return null;
+		}
+		if (source.type === 'bearer') {
+			return source.token;
+		}
+		return await source.resolveToken();
+	}
+
+	private async executeDispatchLocally(request: SdkDispatchRequest) {
+		const namespace = request.namespace ?? 'sdk';
+		if (namespace === 'workflow') {
+			const operations = new TreeseedOperationsSdk();
+			return operations.execute({
+				operationName: request.operation,
+				input: request.input ?? {},
+			}, {
+				cwd: this.repoRoot,
+				env: process.env,
+				transport: 'sdk',
+			});
+		}
+		return executeSdkOperation(this, request.operation, request.input ?? {});
+	}
+
+	async dispatch(request: SdkDispatchRequest): Promise<SdkDispatchResult> {
+		const namespace = request.namespace ?? 'sdk';
+		const capability = findDispatchCapability(namespace, request.operation);
+		if (!capability) {
+			throw new Error(`Unknown dispatch operation "${namespace}:${request.operation}".`);
+		}
+
+		const preferredMode = request.preferredMode ?? this.dispatchConfig?.policy ?? capability.defaultDispatchMode;
+		const dispatchConfig = this.dispatchConfig;
+		if (!dispatchConfig && preferredMode === 'remote_only') {
+			throw new Error(`Dispatch for "${namespace}:${request.operation}" requires a remote market configuration.`);
+		}
+		const shouldStayLocal =
+			capability.executionClass === 'local_only'
+			|| !dispatchConfig
+			|| preferredMode === 'prefer_local';
+
+		if (shouldStayLocal) {
+			return {
+				ok: true,
+				mode: 'inline',
+				namespace,
+				operation: request.operation,
+				target: 'local',
+				capability,
+				payload: await this.executeDispatchLocally({ ...request, namespace }),
+			};
+		}
+
+		const token = await this.resolveDispatchToken(dispatchConfig.credentialSource);
+		const client = new RemoteTreeseedDispatchClient(new RemoteTreeseedClient({
+			hosts: [{ id: 'market', baseUrl: dispatchConfig.marketBaseUrl }],
+			activeHostId: 'market',
+			auth: token ? { accessToken: token } : undefined,
+		}, {
+			fetchImpl: dispatchConfig.fetchImpl,
+		}));
+
+		return client.dispatch(dispatchConfig.projectId, {
+			...request,
+			namespace,
+			preferredMode,
 		});
 	}
 

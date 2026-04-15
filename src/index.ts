@@ -12,6 +12,16 @@ export {
 	resolveModelDefinition,
 } from './model-registry.ts';
 export { normalizeAgentCliOptions, buildCopilotAllowToolArgs } from './cli-tools.ts';
+export {
+	findDispatchCapability,
+	listSdkDispatchCapabilities,
+	listWorkflowDispatchCapabilities,
+} from './dispatch.ts';
+export {
+	executeSdkOperation,
+	findSdkOperation,
+	listSdkOperationNames,
+} from './sdk-dispatch.ts';
 export { resolveSdkRecordVersion } from './sdk-version.ts';
 export {
 	normalizeAliasedRecord,
@@ -33,11 +43,14 @@ export {
 	TREESEED_REMOTE_CONTRACT_HEADER,
 	TREESEED_REMOTE_CONTRACT_VERSION,
 	CloudflareQueuePullClient,
+	CloudflareQueuePushClient,
 	RemoteTreeseedClient,
 	RemoteTreeseedAuthClient,
+	RemoteTreeseedDispatchClient,
+	RemoteTreeseedJobsClient,
+	RemoteTreeseedRunnerClient,
 	RemoteTreeseedSdkClient,
 	RemoteTreeseedOperationsClient,
-	TreeseedGatewayClient,
 } from './remote.ts';
 export {
 	TRESEED_OPERATION_SPECS,
@@ -49,6 +62,15 @@ export { TreeseedWorkflowSdk } from './workflow.ts';
 export { getTreeseedVerifyDriverStatus, runTreeseedVerifyDriver } from './verification.ts';
 export type {
 	SdkContentEntry,
+	SdkDispatchCapability,
+	SdkDispatchConfig,
+	SdkDispatchCredentialSource,
+	SdkDispatchExecutionClass,
+	SdkDispatchNamespace,
+	SdkDispatchPolicy,
+	SdkDispatchRequest,
+	SdkDispatchResult,
+	SdkDispatchTarget,
 	SdkCursorEntity,
 	SdkFilterCondition,
 	SdkFollowRequest,
@@ -111,6 +133,14 @@ export type {
 	SdkTemplateCatalogResponse,
 	SdkTemplateCatalogSource,
 	SdkUpdateRequest,
+	ProjectCapabilityGrant,
+	ProjectConnection,
+	ProjectConnectionMode,
+	ProjectExecutionOwner,
+	ProjectRunnerRegistrationState,
+	RemoteJob,
+	RemoteJobEvent,
+	RemoteJobStatus,
 } from './sdk-types.ts';
 export type {
 	TreeseedFieldAliasBinding,
