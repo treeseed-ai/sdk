@@ -89,6 +89,17 @@ function tenantRootCandidates() {
 }
 
 function resolveTenantPath(manifestPath: string) {
+	if (existsSync(manifestPath) && resolve(manifestPath) === manifestPath) {
+		return resolve(manifestPath);
+	}
+
+	if (explicitTenantRoot) {
+		const explicitCandidate = resolve(explicitTenantRoot, manifestPath);
+		if (existsSync(explicitCandidate)) {
+			return explicitCandidate;
+		}
+	}
+
 	if (existsSync(manifestPath)) {
 		return resolve(manifestPath);
 	}
