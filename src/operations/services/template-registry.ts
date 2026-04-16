@@ -197,9 +197,12 @@ function validateTemplatePlaceholders(definition: ResolvedTemplateDefinition) {
 
 function normalizeTemplateProduct(remoteProduct: SdkTemplateCatalogEntry): TemplateProductDefinition {
 	const artifactRoot = resolve(localTemplateArtifactsRoot, remoteProduct.id);
+	const source = remoteProduct.fulfillment.source;
 	return {
 		...remoteProduct,
-		contentPath: `${remoteProduct.fulfillment.source.repoUrl}#${remoteProduct.id}`,
+		contentPath: source.kind === 'git'
+			? `${source.repoUrl}#${remoteProduct.id}`
+			: `r2://${source.bucket ?? 'bucket'}/${source.objectKey}#${remoteProduct.id}`,
 		artifactRoot,
 		artifactManifestPath: resolve(artifactRoot, 'template.config.json'),
 		templateRoot: resolve(artifactRoot, 'template'),
@@ -213,7 +216,10 @@ function sanitizeCacheSegment(value: string) {
 
 function resolveTemplateSourceCacheRoot(product: TemplateProductDefinition, options: TemplateCatalogOptions) {
 	const cachePath = resolveTreeseedTemplateCatalogCachePath(options.cwd ?? process.cwd());
-	return resolve(dirname(cachePath), 'templates', sanitizeCacheSegment(product.id), sanitizeCacheSegment(product.fulfillment.source.ref));
+	const sourceVersion = product.fulfillment.source.kind === 'git'
+		? product.fulfillment.source.ref
+		: product.fulfillment.source.version;
+	return resolve(dirname(cachePath), 'templates', sanitizeCacheSegment(product.id), sanitizeCacheSegment(sourceVersion));
 }
 
 function runGit(commandArgs: string[], cwd?: string) {
@@ -246,6 +252,21 @@ function materializeGitTemplateSource(product: TemplateProductDefinition, option
 	};
 }
 
+function materializeR2TemplateSource(product: TemplateProductDefinition) {
+	if (existsSync(product.artifactManifestPath) && existsSync(product.templateRoot)) {
+		return {
+			artifactRoot: product.artifactRoot,
+			manifestPath: product.artifactManifestPath,
+			templateRoot: product.templateRoot,
+		};
+	}
+
+	throw new Error(
+		`Template ${product.id} uses an R2 fulfillment source (${product.fulfillment.source.objectKey}) `
+		+ 'but no packaged artifact is present in the local cache yet.',
+	);
+}
+
 function resolveTemplateDefinitionPaths(product: TemplateProductDefinition, options: TemplateCatalogOptions) {
 	if (existsSync(product.artifactManifestPath) && existsSync(product.templateRoot)) {
 		return {
@@ -254,7 +275,9 @@ function resolveTemplateDefinitionPaths(product: TemplateProductDefinition, opti
 			templateRoot: product.templateRoot,
 		};
 	}
-	return materializeGitTemplateSource(product, options);
+	return product.fulfillment.source.kind === 'git'
+		? materializeGitTemplateSource(product, options)
+		: materializeR2TemplateSource(product);
 }
 
 function readTemplateCatalogCache(cachePath: string) {

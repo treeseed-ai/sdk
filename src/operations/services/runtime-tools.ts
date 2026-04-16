@@ -49,9 +49,11 @@ const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 		research: 'stub',
 	},
 	deploy: 'cloudflare',
-	content: {
-		docs: 'default',
-	},
+		content: {
+			runtime: 'team_scoped_r2_overlay',
+			publish: 'team_scoped_r2_overlay',
+			docs: 'default',
+		},
 	site: 'default',
 };
 const TRESEED_MANAGED_SERVICE_KEYS = ['api', 'agents', 'manager', 'worker', 'runner', 'workdayStart', 'workdayReport'];
@@ -91,6 +93,9 @@ function parseManagedServiceConfig(value, label) {
 			rootDir: optionalString(railway.rootDir),
 			buildCommand: optionalString(railway.buildCommand),
 			startCommand: optionalString(railway.startCommand),
+			schedule: Array.isArray(railway.schedule)
+				? railway.schedule.map((entry) => optionalString(entry)).filter(Boolean)
+				: optionalString(railway.schedule),
 		},
 		environments: {
 			local: parseServiceEnvironmentConfig(environments.local),
@@ -302,6 +307,27 @@ function optionalBoolean(value, label) {
 	return value;
 }
 
+function optionalPositiveNumber(value, label) {
+	if (value === undefined) {
+		return undefined;
+	}
+	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+		throw new Error(`Invalid deploy config: expected ${label} to be a positive number when provided.`);
+	}
+	return value;
+}
+
+function optionalEnum(value, label, allowed) {
+	const normalized = optionalString(value);
+	if (!normalized) {
+		return undefined;
+	}
+	if (!allowed.includes(normalized)) {
+		throw new Error(`Invalid deploy config: expected ${label} to be one of ${allowed.join(', ')}.`);
+	}
+	return normalized;
+}
+
 function optionalRecord(value, label) {
 	if (value === undefined || value === null) {
 		return undefined;
@@ -333,6 +359,9 @@ function parseFallbackDeployConfig(configPath) {
 	const parsed = (parseYaml(readFileSync(configPath, 'utf8')) ?? {});
 	const record = optionalRecord(parsed, 'root') ?? {};
 	const cloudflare = optionalRecord(record.cloudflare, 'cloudflare') ?? {};
+	const cloudflarePages = optionalRecord(cloudflare.pages, 'cloudflare.pages') ?? {};
+	const cloudflareR2 = optionalRecord(cloudflare.r2, 'cloudflare.r2') ?? {};
+	const hosting = optionalRecord(record.hosting, 'hosting') ?? {};
 	const smtp = optionalRecord(record.smtp, 'smtp') ?? {};
 	const turnstile = optionalRecord(record.turnstile, 'turnstile') ?? {};
 	const agentProviders = optionalRecord(optionalRecord(record.providers, 'providers')?.agents, 'providers.agents') ?? {};
@@ -343,6 +372,19 @@ function parseFallbackDeployConfig(configPath) {
 		slug: expectString(record.slug, 'slug'),
 		siteUrl: expectString(record.siteUrl, 'siteUrl'),
 		contactEmail: expectString(record.contactEmail, 'contactEmail'),
+		hosting: Object.keys(hosting).length === 0
+			? undefined
+			: {
+				kind: optionalEnum(hosting.kind, 'hosting.kind', [
+					'market_control_plane',
+					'hosted_project',
+					'self_hosted_project',
+				]) ?? 'self_hosted_project',
+				registration: optionalEnum(hosting.registration, 'hosting.registration', ['optional', 'none']) ?? 'none',
+				marketBaseUrl: optionalString(hosting.marketBaseUrl),
+				teamId: optionalString(hosting.teamId),
+				projectId: optionalString(hosting.projectId),
+			},
 		cloudflare: {
 			accountId:
 				optionalCloudflareAccountId(cloudflare.accountId)
@@ -353,6 +395,25 @@ function parseFallbackDeployConfig(configPath) {
 			dlqName: optionalString(cloudflare.dlqName),
 			d1Binding: optionalString(cloudflare.d1Binding),
 			queueBinding: optionalString(cloudflare.queueBinding),
+			pages: cloudflare.pages === undefined
+				? undefined
+				: {
+					projectName: optionalString(cloudflarePages.projectName) ?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME),
+					previewProjectName: optionalString(cloudflarePages.previewProjectName) ?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME),
+					productionBranch: optionalString(cloudflarePages.productionBranch) ?? 'main',
+					stagingBranch: optionalString(cloudflarePages.stagingBranch) ?? 'staging',
+					buildOutputDir: optionalString(cloudflarePages.buildOutputDir),
+				},
+			r2: cloudflare.r2 === undefined
+				? undefined
+				: {
+					binding: optionalString(cloudflareR2.binding) ?? optionalString(process.env.TREESEED_CONTENT_BUCKET_BINDING),
+					bucketName: optionalString(cloudflareR2.bucketName) ?? optionalString(process.env.TREESEED_CONTENT_BUCKET_NAME),
+					publicBaseUrl: optionalString(cloudflareR2.publicBaseUrl) ?? optionalString(process.env.TREESEED_CONTENT_PUBLIC_BASE_URL),
+					manifestKeyTemplate: optionalString(cloudflareR2.manifestKeyTemplate ?? cloudflareR2.manifestKey) ?? 'teams/{teamId}/published/common.json',
+					previewRootTemplate: optionalString(cloudflareR2.previewRootTemplate ?? cloudflareR2.previewRoot) ?? 'teams/{teamId}/previews',
+					previewTtlHours: optionalPositiveNumber(cloudflareR2.previewTtlHours, 'cloudflare.r2.previewTtlHours') ?? 168,
+				},
 		},
 		plugins: parsePluginReferences(record.plugins),
 		providers: {
@@ -367,7 +428,23 @@ function parseFallbackDeployConfig(configPath) {
 			},
 			deploy: expectString(record.providers?.deploy ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.deploy, 'providers.deploy'),
 			content: {
-				docs: expectString(contentProviders.docs ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.docs, 'providers.content.docs'),
+				runtime: expectString(
+					contentProviders.runtime ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime,
+					'providers.content.runtime',
+				),
+				publish: expectString(
+					contentProviders.publish
+						?? contentProviders.runtime
+						?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.publish,
+					'providers.content.publish',
+				),
+				docs: expectString(
+					contentProviders.docs
+						?? contentProviders.runtime
+						?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.docs
+						?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime,
+					'providers.content.docs',
+				),
 			},
 			site: expectString(record.providers?.site ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.site, 'providers.site'),
 		},

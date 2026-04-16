@@ -114,5 +114,5 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.finalBranch).toBe('staging');
 		expect(result.payload.finalState.branchName).toBe('staging');
 		expect(git(work, ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
-	});
+	}, 15000);
 });

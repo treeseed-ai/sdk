@@ -23,9 +23,38 @@ const deployConfigFieldAliases: TreeseedFieldAliasRegistry = {
 	contactEmail: { key: 'contactEmail', aliases: ['contact_email'] },
 };
 
+const hostingFieldAliases: TreeseedFieldAliasRegistry = {
+	kind: { key: 'kind', aliases: ['kind'] },
+	registration: { key: 'registration', aliases: ['registration'] },
+	marketBaseUrl: { key: 'marketBaseUrl', aliases: ['market_base_url'] },
+	teamId: { key: 'teamId', aliases: ['team_id'] },
+	projectId: { key: 'projectId', aliases: ['project_id'] },
+};
+
 const cloudflareFieldAliases: TreeseedFieldAliasRegistry = {
 	accountId: { key: 'accountId', aliases: ['account_id'] },
 	workerName: { key: 'workerName', aliases: ['worker_name'] },
+	queueName: { key: 'queueName', aliases: ['queue_name'] },
+	dlqName: { key: 'dlqName', aliases: ['dlq_name'] },
+	d1Binding: { key: 'd1Binding', aliases: ['d1_binding'] },
+	queueBinding: { key: 'queueBinding', aliases: ['queue_binding'] },
+};
+
+const cloudflarePagesFieldAliases: TreeseedFieldAliasRegistry = {
+	projectName: { key: 'projectName', aliases: ['project_name'] },
+	previewProjectName: { key: 'previewProjectName', aliases: ['preview_project_name'] },
+	productionBranch: { key: 'productionBranch', aliases: ['production_branch'] },
+	stagingBranch: { key: 'stagingBranch', aliases: ['staging_branch'] },
+	buildOutputDir: { key: 'buildOutputDir', aliases: ['build_output_dir'] },
+};
+
+const cloudflareR2FieldAliases: TreeseedFieldAliasRegistry = {
+	binding: { key: 'binding', aliases: ['binding'] },
+	bucketName: { key: 'bucketName', aliases: ['bucket_name'] },
+	publicBaseUrl: { key: 'publicBaseUrl', aliases: ['public_base_url'] },
+	manifestKeyTemplate: { key: 'manifestKeyTemplate', aliases: ['manifest_key_template', 'manifest_key'] },
+	previewRootTemplate: { key: 'previewRootTemplate', aliases: ['preview_root_template', 'preview_root'] },
+	previewTtlHours: { key: 'previewTtlHours', aliases: ['preview_ttl_hours'] },
 };
 
 const CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER = 'replace-with-cloudflare-account-id';
@@ -49,6 +78,35 @@ function optionalString(value: unknown) {
 function optionalCloudflareAccountId(value: unknown) {
 	const accountId = optionalString(value);
 	return accountId === CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER ? undefined : accountId;
+}
+
+function optionalPositiveNumber(value: unknown, label: string) {
+	if (value === undefined) {
+		return undefined;
+	}
+
+	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+		throw new Error(`Invalid deploy config: expected ${label} to be a positive number when provided.`);
+	}
+
+	return value;
+}
+
+function optionalEnum<TValue extends string>(value: unknown, label: string, allowed: readonly TValue[]) {
+	if (value === undefined) {
+		return undefined;
+	}
+
+	const normalized = optionalString(value);
+	if (!normalized) {
+		return undefined;
+	}
+
+	if (!allowed.includes(normalized as TValue)) {
+		throw new Error(`Invalid deploy config: expected ${label} to be one of ${allowed.join(', ')}.`);
+	}
+
+	return normalized as TValue;
 }
 
 function optionalBoolean(value: unknown, label: string) {
@@ -108,6 +166,28 @@ function parsePluginReferences(value: unknown): TreeseedPluginReference[] {
 	});
 }
 
+function parseHostingConfig(value: unknown) {
+	const record = normalizeAliasedRecord(
+		hostingFieldAliases,
+		(optionalRecord(value, 'hosting') ?? {}) as Record<string, unknown>,
+	);
+	if (!value || Object.keys(record).length === 0) {
+		return undefined;
+	}
+
+	return {
+		kind: optionalEnum(record.kind, 'hosting.kind', [
+			'market_control_plane',
+			'hosted_project',
+			'self_hosted_project',
+		] as const) ?? 'self_hosted_project',
+		registration: optionalEnum(record.registration, 'hosting.registration', ['optional', 'none'] as const) ?? 'none',
+		marketBaseUrl: optionalString(record.marketBaseUrl),
+		teamId: optionalString(record.teamId),
+		projectId: optionalString(record.projectId),
+	};
+}
+
 function parseProviderSelections(value: unknown): TreeseedProviderSelections {
 	const record = optionalRecord(value, 'providers');
 	if (!record) {
@@ -148,8 +228,21 @@ function parseProviderSelections(value: unknown): TreeseedProviderSelections {
 		},
 		deploy: expectString(record.deploy ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.deploy, 'providers.deploy'),
 		content: {
+			runtime: expectString(
+				contentProviders.runtime ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime,
+				'providers.content.runtime',
+			),
+			publish: expectString(
+				contentProviders.publish
+					?? contentProviders.runtime
+					?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.publish,
+				'providers.content.publish',
+			),
 			docs: expectString(
-				contentProviders.docs ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.docs,
+				contentProviders.docs
+					?? contentProviders.runtime
+					?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.docs
+					?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime,
 				'providers.content.docs',
 			),
 		},
@@ -189,6 +282,9 @@ function parseManagedServiceConfig(value: unknown, label: string): TreeseedManag
 			rootDir: optionalString(railway.rootDir),
 			buildCommand: optionalString(railway.buildCommand),
 			startCommand: optionalString(railway.startCommand),
+			schedule: Array.isArray(railway.schedule)
+				? railway.schedule.map((entry) => optionalString(entry)).filter(Boolean)
+				: optionalString(railway.schedule),
 		},
 		environments: {
 			local: parseServiceEnvironmentConfig(environments.local, `${label}.environments.local`),
@@ -264,6 +360,14 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 		cloudflareFieldAliases,
 		(optionalRecord(parsed.cloudflare, 'cloudflare') ?? {}) as Record<string, unknown>,
 	);
+	const cloudflarePages = normalizeAliasedRecord(
+		cloudflarePagesFieldAliases,
+		(optionalRecord(cloudflare.pages, 'cloudflare.pages') ?? {}) as Record<string, unknown>,
+	);
+	const cloudflareR2 = normalizeAliasedRecord(
+		cloudflareR2FieldAliases,
+		(optionalRecord(cloudflare.r2, 'cloudflare.r2') ?? {}) as Record<string, unknown>,
+	);
 	const smtp = optionalRecord(parsed.smtp, 'smtp') ?? {};
 	const turnstile = optionalRecord(parsed.turnstile, 'turnstile') ?? {};
 	optionalBoolean(turnstile.enabled, 'turnstile.enabled');
@@ -273,12 +377,36 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 		slug: expectString(parsed.slug, 'slug'),
 		siteUrl: expectString(parsed.siteUrl, 'siteUrl'),
 		contactEmail: expectString(parsed.contactEmail, 'contactEmail'),
+		hosting: parseHostingConfig(parsed.hosting),
 		cloudflare: {
 			accountId:
 				optionalCloudflareAccountId(cloudflare.accountId)
 				?? optionalCloudflareAccountId(process.env.CLOUDFLARE_ACCOUNT_ID)
 				?? CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER,
 			workerName: optionalString(cloudflare.workerName),
+			queueName: optionalString(cloudflare.queueName),
+			dlqName: optionalString(cloudflare.dlqName),
+			d1Binding: optionalString(cloudflare.d1Binding),
+			queueBinding: optionalString(cloudflare.queueBinding),
+			pages: cloudflare.pages === undefined
+				? undefined
+				: {
+					projectName: optionalString(cloudflarePages.projectName) ?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME),
+					previewProjectName: optionalString(cloudflarePages.previewProjectName) ?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME),
+					productionBranch: optionalString(cloudflarePages.productionBranch) ?? 'main',
+					stagingBranch: optionalString(cloudflarePages.stagingBranch) ?? 'staging',
+					buildOutputDir: optionalString(cloudflarePages.buildOutputDir),
+				},
+			r2: cloudflare.r2 === undefined
+				? undefined
+				: {
+					binding: optionalString(cloudflareR2.binding) ?? optionalString(process.env.TREESEED_CONTENT_BUCKET_BINDING),
+					bucketName: optionalString(cloudflareR2.bucketName) ?? optionalString(process.env.TREESEED_CONTENT_BUCKET_NAME),
+					publicBaseUrl: optionalString(cloudflareR2.publicBaseUrl) ?? optionalString(process.env.TREESEED_CONTENT_PUBLIC_BASE_URL),
+					manifestKeyTemplate: optionalString(cloudflareR2.manifestKeyTemplate) ?? 'teams/{teamId}/published/common.json',
+					previewRootTemplate: optionalString(cloudflareR2.previewRootTemplate) ?? 'teams/{teamId}/previews',
+					previewTtlHours: optionalPositiveNumber(cloudflareR2.previewTtlHours, 'cloudflare.r2.previewTtlHours') ?? 168,
+				},
 		},
 		plugins: parsePluginReferences(parsed.plugins),
 		providers: parseProviderSelections(parsed.providers),

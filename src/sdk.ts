@@ -18,6 +18,7 @@ import type {
 	SdkCompleteTaskRequest,
 	SdkCreateReportRequest,
 	SdkCreateMessageRequest,
+	SdkCreatePrioritySnapshotRequest,
 	SdkCreateTaskRequest,
 	SdkCursorRequest,
 	SdkFailTaskRequest,
@@ -35,11 +36,15 @@ import type {
 	SdkContextPackRequest,
 	SdkGraphDslParseResult,
 	SdkPickRequest,
+	SdkPriorityOverrideRequest,
 	SdkRecordRunRequest,
+	SdkRecordScaleDecisionRequest,
+	SdkRecordTaskCreditsRequest,
 	SdkSearchRequest,
 	SdkStartWorkDayRequest,
 	SdkTaskProgressRequest,
 	SdkTaskSearchRequest,
+	SdkUpsertWorkPolicyRequest,
 	SdkUpdateRequest,
 	SdkModelDefinition,
 	SdkModelRegistry,
@@ -48,6 +53,10 @@ import type {
 	SdkDispatchRequest,
 	SdkDispatchResult,
 	SdkDispatchCredentialSource,
+	PrioritySnapshot,
+	ScaleDecision,
+	TaskCreditLedgerEntry,
+	WorkdayPolicy,
 } from './sdk-types.ts';
 import { WranglerD1Database } from './wrangler-d1.ts';
 
@@ -394,6 +403,56 @@ export class AgentSdk {
 	async getManagerContext(taskId: string) {
 		const payload = await this.database.getManagerContext(taskId);
 		return this.envelope<SdkManagerContextPayload>('task', 'get', payload);
+	}
+
+	async getWorkPolicy(projectId: string, environment: string = 'local') {
+		const payload = await this.database.getWorkPolicy(projectId, environment);
+		return this.envelope<WorkdayPolicy>('work_day', 'get', payload);
+	}
+
+	async upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest) {
+		const payload = await this.database.upsertWorkPolicy(request);
+		return this.envelope<WorkdayPolicy>('work_day', 'update', payload);
+	}
+
+	async listPriorityOverrides(projectId: string) {
+		const payload = await this.database.listPriorityOverrides(projectId);
+		return this.envelope('task', 'search', payload, { count: payload.length });
+	}
+
+	async upsertPriorityOverride(request: SdkPriorityOverrideRequest) {
+		const payload = await this.database.upsertPriorityOverride(request);
+		return this.envelope('task', 'update', payload);
+	}
+
+	async createPrioritySnapshot(request: SdkCreatePrioritySnapshotRequest) {
+		const payload = await this.database.createPrioritySnapshot(request);
+		return this.envelope<PrioritySnapshot>('report', 'create', payload);
+	}
+
+	async getLatestPrioritySnapshot(projectId: string, workDayId?: string | null) {
+		const payload = await this.database.getLatestPrioritySnapshot(projectId, workDayId);
+		return this.envelope<PrioritySnapshot>('report', 'get', payload);
+	}
+
+	async recordTaskCredits(request: SdkRecordTaskCreditsRequest) {
+		const payload = await this.database.recordTaskCredits(request);
+		return this.envelope<TaskCreditLedgerEntry>('report', 'create', payload);
+	}
+
+	async listTaskCredits(workDayId: string) {
+		const payload = await this.database.listTaskCredits(workDayId);
+		return this.envelope<TaskCreditLedgerEntry[]>('report', 'search', payload, { count: payload.length });
+	}
+
+	async recordScaleDecision(request: SdkRecordScaleDecisionRequest) {
+		const payload = await this.database.recordScaleDecision(request);
+		return this.envelope<ScaleDecision>('report', 'create', payload);
+	}
+
+	async getLatestScaleDecision(projectId: string, environment: string, poolName: string) {
+		const payload = await this.database.getLatestScaleDecision(projectId, environment, poolName);
+		return this.envelope<ScaleDecision>('report', 'get', payload);
 	}
 
 	async listAgentSpecs(options?: { enabled?: boolean }) {

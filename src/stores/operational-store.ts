@@ -1,5 +1,8 @@
 import crypto from 'node:crypto';
 import type {
+	AgentPoolAutoscalePolicy,
+	PrioritySnapshot,
+	SdkCreatePrioritySnapshotRequest,
 	SdkAppendTaskEventRequest,
 	SdkClaimTaskRequest,
 	SdkCloseWorkDayRequest,
@@ -8,14 +11,23 @@ import type {
 	SdkCreateTaskRequest,
 	SdkFailTaskRequest,
 	SdkGraphRunEntity,
+	SdkPriorityOverrideRequest,
 	SdkReportEntity,
+	SdkRecordScaleDecisionRequest,
+	SdkRecordTaskCreditsRequest,
 	SdkStartWorkDayRequest,
 	SdkTaskEntity,
 	SdkTaskEventEntity,
 	SdkTaskOutputEntity,
 	SdkTaskProgressRequest,
 	SdkTaskSearchRequest,
+	SdkUpsertWorkPolicyRequest,
 	SdkWorkDayEntity,
+	ScaleDecision,
+	TaskCreditLedgerEntry,
+	TaskCreditWeight,
+	WorkdayPolicy,
+	WorkdaySchedule,
 } from '../sdk-types.ts';
 import { SqliteStoreBase, nowIso, toSqlValue, type DatabaseRow } from './helpers.ts';
 
@@ -211,6 +223,93 @@ function reportFromRow(row: DatabaseRow): SdkReportEntity {
 					? String(row.sentAt)
 					: null,
 		createdAt: String(row.created_at ?? row.createdAt ?? nowIso()),
+	};
+}
+
+function parseJsonValue<T>(value: unknown, fallback: T): T {
+	if (typeof value !== 'string' || !value.trim()) {
+		return fallback;
+	}
+	try {
+		return JSON.parse(value) as T;
+	} catch {
+		return fallback;
+	}
+}
+
+function normalizeAutoscale(value: Record<string, unknown> | undefined, fallback?: AgentPoolAutoscalePolicy): AgentPoolAutoscalePolicy {
+	return {
+		minWorkers: Number(value?.minWorkers ?? fallback?.minWorkers ?? 0),
+		maxWorkers: Number(value?.maxWorkers ?? fallback?.maxWorkers ?? 1),
+		targetQueueDepth: Number(value?.targetQueueDepth ?? fallback?.targetQueueDepth ?? 1),
+		cooldownSeconds: Number(value?.cooldownSeconds ?? fallback?.cooldownSeconds ?? 60),
+	};
+}
+
+function workPolicyFromRow(row: DatabaseRow): WorkdayPolicy {
+	return {
+		projectId: String(row.project_id ?? ''),
+		environment: String(row.environment ?? 'local') as WorkdayPolicy['environment'],
+		schedule: parseJsonValue<WorkdaySchedule>(row.schedule_json, {
+			timezone: 'UTC',
+			windows: [],
+		}),
+		dailyTaskCreditBudget: Number(row.daily_task_credit_budget ?? 0),
+		maxQueuedTasks: Number(row.max_queued_tasks ?? 0),
+		maxQueuedCredits: Number(row.max_queued_credits ?? 0),
+		autoscale: normalizeAutoscale(parseJsonValue(row.autoscale_json, {})),
+		creditWeights: parseJsonValue<TaskCreditWeight[]>(row.credit_weights_json, []),
+		metadata: parseJsonValue<Record<string, unknown>>(row.metadata_json, {}),
+	};
+}
+
+function prioritySnapshotFromRow(row: DatabaseRow): PrioritySnapshot {
+	const payload = parseJsonValue<Record<string, unknown>>(row.snapshot_json, {});
+	return {
+		id: String(row.id ?? ''),
+		projectId: String(row.project_id ?? ''),
+		workDayId:
+			row.work_day_id !== undefined && row.work_day_id !== null
+				? String(row.work_day_id)
+				: null,
+		generatedAt: String(row.generated_at ?? row.created_at ?? nowIso()),
+		items: Array.isArray(payload.items) ? payload.items as PrioritySnapshot['items'] : [],
+		metadata: parseJsonValue<Record<string, unknown>>(row.metadata_json, {}),
+	};
+}
+
+function taskCreditLedgerEntryFromRow(row: DatabaseRow): TaskCreditLedgerEntry {
+	return {
+		id: String(row.id ?? ''),
+		projectId: String(row.project_id ?? ''),
+		workDayId: String(row.work_day_id ?? ''),
+		taskId:
+			row.task_id !== undefined && row.task_id !== null
+				? String(row.task_id)
+				: null,
+		phase: String(row.phase ?? 'seed') as TaskCreditLedgerEntry['phase'],
+		credits: Number(row.credits ?? 0),
+		metadata: parseJsonValue<Record<string, unknown>>(row.metadata_json, {}),
+		createdAt: String(row.created_at ?? nowIso()),
+	};
+}
+
+function scaleDecisionFromRow(row: DatabaseRow): ScaleDecision {
+	return {
+		id: String(row.id ?? ''),
+		projectId: String(row.project_id ?? ''),
+		environment: String(row.environment ?? 'local') as ScaleDecision['environment'],
+		poolName: String(row.pool_name ?? ''),
+		workDayId:
+			row.work_day_id !== undefined && row.work_day_id !== null
+				? String(row.work_day_id)
+				: null,
+		desiredWorkers: Number(row.desired_workers ?? 0),
+		observedQueueDepth: Number(row.observed_queue_depth ?? 0),
+		observedActiveLeases: Number(row.observed_active_leases ?? 0),
+		reason: String(row.reason ?? 'reconcile'),
+		metadata: parseJsonValue<Record<string, unknown>>(row.metadata_json, {}),
+		createdAt: String(row.created_at ?? nowIso()),
 	};
 }
 
@@ -415,5 +514,178 @@ export class OperationalStore extends SqliteStoreBase {
 	async getReport(id: string) {
 		const row = await this.selectFirst(`SELECT * FROM reports WHERE id = ${toSqlValue(id)} LIMIT 1`);
 		return row ? reportFromRow(row) : null;
+	}
+
+	async getWorkPolicy(projectId: string, environment: string = 'local') {
+		if (!(await this.tableExists('work_policies'))) {
+			return null;
+		}
+		const row = await this.selectFirst(
+			`SELECT * FROM work_policies WHERE project_id = ${toSqlValue(projectId)} AND environment = ${toSqlValue(environment)} LIMIT 1`,
+		);
+		return row ? workPolicyFromRow(row) : null;
+	}
+
+	async upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest) {
+		const timestamp = nowIso();
+		await this.execute(
+			`INSERT OR REPLACE INTO work_policies (
+				project_id, environment, schedule_json, daily_task_credit_budget, max_queued_tasks, max_queued_credits, autoscale_json, credit_weights_json, metadata_json, created_at, updated_at
+			) VALUES (
+				${toSqlValue(request.projectId)},
+				${toSqlValue(request.environment)},
+				${toSqlValue(json(request.schedule))},
+				${Number(request.dailyTaskCreditBudget ?? 0)},
+				${Number(request.maxQueuedTasks ?? 0)},
+				${Number(request.maxQueuedCredits ?? 0)},
+				${toSqlValue(json(request.autoscale))},
+				${toSqlValue(json(request.creditWeights ?? []))},
+				${toSqlValue(json(request.metadata ?? {}))},
+				COALESCE((SELECT created_at FROM work_policies WHERE project_id = ${toSqlValue(request.projectId)} AND environment = ${toSqlValue(request.environment)}), ${toSqlValue(timestamp)}),
+				${toSqlValue(timestamp)}
+			)`,
+		);
+		return this.getWorkPolicy(request.projectId, request.environment);
+	}
+
+	async listPriorityOverrides(projectId: string) {
+		if (!(await this.tableExists('priority_overrides'))) {
+			return [];
+		}
+		return this.selectAll(
+			`SELECT * FROM priority_overrides WHERE project_id = ${toSqlValue(projectId)} ORDER BY priority DESC, updated_at DESC`,
+		);
+	}
+
+	async upsertPriorityOverride(request: SdkPriorityOverrideRequest) {
+		const id = request.id ?? crypto.randomUUID();
+		const timestamp = nowIso();
+		await this.execute(
+			`INSERT OR REPLACE INTO priority_overrides (
+				id, project_id, model, subject_id, priority, estimated_credits, metadata_json, created_at, updated_at
+			) VALUES (
+				${toSqlValue(id)},
+				${toSqlValue(request.projectId)},
+				${toSqlValue(request.model)},
+				${toSqlValue(request.subjectId)},
+				${Number(request.priority ?? 0)},
+				${toSqlValue(request.estimatedCredits ?? null)},
+				${toSqlValue(json(request.metadata ?? {}))},
+				COALESCE((SELECT created_at FROM priority_overrides WHERE id = ${toSqlValue(id)}), ${toSqlValue(timestamp)}),
+				${toSqlValue(timestamp)}
+			)`,
+		);
+		const row = await this.selectFirst(`SELECT * FROM priority_overrides WHERE id = ${toSqlValue(id)} LIMIT 1`);
+		return row ? {
+			id: String(row.id ?? ''),
+			projectId: String(row.project_id ?? ''),
+			model: String(row.model ?? ''),
+			subjectId: String(row.subject_id ?? ''),
+			priority: Number(row.priority ?? 0),
+			estimatedCredits: row.estimated_credits === null || row.estimated_credits === undefined ? null : Number(row.estimated_credits),
+			metadata: parseJsonValue<Record<string, unknown>>(row.metadata_json, {}),
+			createdAt: String(row.created_at ?? timestamp),
+			updatedAt: String(row.updated_at ?? timestamp),
+		} : null;
+	}
+
+	async createPrioritySnapshot(request: SdkCreatePrioritySnapshotRequest) {
+		const id = request.id ?? crypto.randomUUID();
+		const timestamp = nowIso();
+		await this.execute(
+			`INSERT OR REPLACE INTO priority_snapshots (
+				id, project_id, work_day_id, snapshot_json, metadata_json, generated_at, created_at, updated_at
+			) VALUES (
+				${toSqlValue(id)},
+				${toSqlValue(request.projectId)},
+				${toSqlValue(request.workDayId ?? null)},
+				${toSqlValue(json({ items: request.items }))},
+				${toSqlValue(json(request.metadata ?? {}))},
+				${toSqlValue(timestamp)},
+				COALESCE((SELECT created_at FROM priority_snapshots WHERE id = ${toSqlValue(id)}), ${toSqlValue(timestamp)}),
+				${toSqlValue(timestamp)}
+			)`,
+		);
+		const row = await this.selectFirst(`SELECT * FROM priority_snapshots WHERE id = ${toSqlValue(id)} LIMIT 1`);
+		return row ? prioritySnapshotFromRow(row) : null;
+	}
+
+	async getLatestPrioritySnapshot(projectId: string, workDayId?: string | null) {
+		if (!(await this.tableExists('priority_snapshots'))) {
+			return null;
+		}
+		const row = await this.selectFirst(
+			`SELECT * FROM priority_snapshots WHERE project_id = ${toSqlValue(projectId)}${workDayId ? ` AND work_day_id = ${toSqlValue(workDayId)}` : ''} ORDER BY generated_at DESC LIMIT 1`,
+		);
+		return row ? prioritySnapshotFromRow(row) : null;
+	}
+
+	async recordTaskCredits(request: SdkRecordTaskCreditsRequest) {
+		const id = request.id ?? crypto.randomUUID();
+		const timestamp = nowIso();
+		await this.execute(
+			`INSERT INTO task_credit_ledger (
+				id, project_id, work_day_id, task_id, phase, credits, metadata_json, created_at
+			) VALUES (
+				${toSqlValue(id)},
+				${toSqlValue(request.projectId)},
+				${toSqlValue(request.workDayId)},
+				${toSqlValue(request.taskId ?? null)},
+				${toSqlValue(request.phase)},
+				${Number(request.credits ?? 0)},
+				${toSqlValue(json(request.metadata ?? {}))},
+				${toSqlValue(timestamp)}
+			)`,
+		);
+		const delta = request.phase === 'refund' ? -Math.abs(Number(request.credits ?? 0)) : Math.abs(Number(request.credits ?? 0));
+		await this.execute(
+			`UPDATE work_days SET capacity_used = MAX(0, capacity_used + ${delta}), updated_at = ${toSqlValue(timestamp)} WHERE id = ${toSqlValue(request.workDayId)}`,
+		);
+		const row = await this.selectFirst(`SELECT * FROM task_credit_ledger WHERE id = ${toSqlValue(id)} LIMIT 1`);
+		return row ? taskCreditLedgerEntryFromRow(row) : null;
+	}
+
+	async listTaskCredits(workDayId: string) {
+		if (!(await this.tableExists('task_credit_ledger'))) {
+			return [];
+		}
+		const rows = await this.selectAll(
+			`SELECT * FROM task_credit_ledger WHERE work_day_id = ${toSqlValue(workDayId)} ORDER BY created_at ASC`,
+		);
+		return rows.map(taskCreditLedgerEntryFromRow);
+	}
+
+	async recordScaleDecision(request: SdkRecordScaleDecisionRequest) {
+		const id = request.id ?? crypto.randomUUID();
+		const timestamp = nowIso();
+		await this.execute(
+			`INSERT INTO scale_decisions (
+				id, project_id, environment, pool_name, work_day_id, desired_workers, observed_queue_depth, observed_active_leases, reason, metadata_json, created_at
+			) VALUES (
+				${toSqlValue(id)},
+				${toSqlValue(request.projectId)},
+				${toSqlValue(request.environment)},
+				${toSqlValue(request.poolName)},
+				${toSqlValue(request.workDayId ?? null)},
+				${Number(request.desiredWorkers ?? 0)},
+				${Number(request.observedQueueDepth ?? 0)},
+				${Number(request.observedActiveLeases ?? 0)},
+				${toSqlValue(request.reason)},
+				${toSqlValue(json(request.metadata ?? {}))},
+				${toSqlValue(timestamp)}
+			)`,
+		);
+		const row = await this.selectFirst(`SELECT * FROM scale_decisions WHERE id = ${toSqlValue(id)} LIMIT 1`);
+		return row ? scaleDecisionFromRow(row) : null;
+	}
+
+	async getLatestScaleDecision(projectId: string, environment: string, poolName: string) {
+		if (!(await this.tableExists('scale_decisions'))) {
+			return null;
+		}
+		const row = await this.selectFirst(
+			`SELECT * FROM scale_decisions WHERE project_id = ${toSqlValue(projectId)} AND environment = ${toSqlValue(environment)} AND pool_name = ${toSqlValue(poolName)} ORDER BY created_at DESC LIMIT 1`,
+		);
+		return row ? scaleDecisionFromRow(row) : null;
 	}
 }

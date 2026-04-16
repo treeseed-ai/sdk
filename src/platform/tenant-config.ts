@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import type { TreeseedFieldAliasRegistry } from '../field-aliases.ts';
 import { normalizeAliasedRecord } from '../field-aliases.ts';
-import type { TreeseedTenantConfig } from './contracts.ts';
+import type { TreeseedContentCollection, TreeseedFeatureName, TreeseedTenantConfig } from './contracts.ts';
 
 function resolvePackageRoot() {
 	const moduleUrl = typeof import.meta?.url === 'string' ? import.meta.url : null;
@@ -217,4 +217,25 @@ export function tenantFeatureEnabled(
 	featureName: string,
 ) {
 	return tenantConfig.features?.[featureName] !== false;
+}
+
+const MODEL_FEATURE_MAP: Partial<Record<TreeseedContentCollection, TreeseedFeatureName>> = {
+	docs: 'docs',
+	books: 'books',
+	notes: 'notes',
+	questions: 'questions',
+	objectives: 'objectives',
+	agents: 'agents',
+};
+
+export function tenantModelRendered(
+	tenantConfig: Pick<TreeseedTenantConfig, 'features' | 'site'>,
+	modelName: TreeseedContentCollection,
+) {
+	const featureName = MODEL_FEATURE_MAP[modelName];
+	if (featureName && !tenantFeatureEnabled(tenantConfig, featureName)) {
+		return false;
+	}
+
+	return tenantConfig.site?.models?.[modelName]?.rendered !== false;
 }

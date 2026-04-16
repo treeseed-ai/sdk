@@ -174,6 +174,34 @@ function railwayManagedEnabled(context: TreeseedEnvironmentContext) {
 	);
 }
 
+function resolveHostingKind(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.hosting?.kind ?? 'self_hosted_project';
+}
+
+function resolveHostingRegistration(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.hosting?.registration ?? 'none';
+}
+
+function marketControlPlaneEnabled(context: TreeseedEnvironmentContext) {
+	return resolveHostingKind(context) === 'market_control_plane';
+}
+
+function hostedProjectEnabled(context: TreeseedEnvironmentContext) {
+	return resolveHostingKind(context) === 'hosted_project';
+}
+
+function selfHostedProjectEnabled(context: TreeseedEnvironmentContext) {
+	return resolveHostingKind(context) === 'self_hosted_project';
+}
+
+function projectRegistrationEnabled(context: TreeseedEnvironmentContext) {
+	if (hostedProjectEnabled(context)) {
+		return true;
+	}
+
+	return selfHostedProjectEnabled(context) && resolveHostingRegistration(context) === 'optional';
+}
+
 function generatedSecret(bytes = 24) {
 	return randomBytes(bytes).toString('hex');
 }
@@ -262,6 +290,40 @@ function resolveApiWebServiceId(
 	return values.TREESEED_WEB_SERVICE_ID?.trim() || 'web';
 }
 
+function resolvePagesProjectName(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.cloudflare.pages?.projectName?.trim()
+		|| context.deployConfig.slug;
+}
+
+function resolvePagesPreviewProjectName(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.cloudflare.pages?.previewProjectName?.trim()
+		|| `${context.deployConfig.cloudflare.pages?.projectName?.trim() || context.deployConfig.slug}-staging`;
+}
+
+function resolveContentBucketName(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.cloudflare.r2?.bucketName?.trim()
+		|| `${context.deployConfig.slug}-content`;
+}
+
+function resolveContentBucketBinding(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.cloudflare.r2?.binding?.trim() || 'TREESEED_CONTENT_BUCKET';
+}
+
+function resolveMarketBaseUrl(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.hosting?.marketBaseUrl?.trim()
+		|| context.deployConfig.services?.api?.environments?.prod?.baseUrl?.trim()
+		|| context.deployConfig.services?.api?.publicBaseUrl?.trim()
+		|| 'https://api.treeseed.ai';
+}
+
+function resolveHostedTeamId(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.hosting?.teamId?.trim() || context.deployConfig.slug;
+}
+
+function resolveHostedProjectId(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.hosting?.projectId?.trim() || context.deployConfig.slug;
+}
+
 const VALUE_RESOLVERS: NamedResolverMap = {
 	generatedSecret: () => generatedSecret(),
 	localFormsBypassDefault: () => 'true',
@@ -269,6 +331,15 @@ const VALUE_RESOLVERS: NamedResolverMap = {
 	apiBaseUrlDefault: (context, scope, values) => resolveConfiguredApiBaseUrl(context, scope, values),
 	webServiceIdDefault: (_context, _scope, values) => resolveWebServiceId(values),
 	apiWebServiceIdDefault: (_context, _scope, values) => resolveApiWebServiceId(values),
+	pagesProjectNameDefault: (context) => resolvePagesProjectName(context),
+	pagesPreviewProjectNameDefault: (context) => resolvePagesPreviewProjectName(context),
+	contentBucketNameDefault: (context) => resolveContentBucketName(context),
+	contentBucketBindingDefault: (context) => resolveContentBucketBinding(context),
+	hostingKindDefault: (context) => resolveHostingKind(context),
+	hostingRegistrationDefault: (context) => resolveHostingRegistration(context),
+	marketBaseUrlDefault: (context) => resolveMarketBaseUrl(context),
+	hostingTeamIdDefault: (context) => resolveHostedTeamId(context),
+	hostingProjectIdDefault: (context) => resolveHostedProjectId(context),
 };
 
 const PREDICATES: NamedPredicateMap = {
@@ -277,6 +348,10 @@ const PREDICATES: NamedPredicateMap = {
 	smtpEnabled: (context) => smtpEnabled(context),
 	smtpNonLocal: (context, scope) => smtpEnabled(context) && scope !== 'local',
 	railwayManagedEnabled: (context) => railwayManagedEnabled(context),
+	marketControlPlaneEnabled: (context) => marketControlPlaneEnabled(context),
+	hostedProjectEnabled: (context) => hostedProjectEnabled(context),
+	selfHostedProjectEnabled: (context) => selfHostedProjectEnabled(context),
+	projectRegistrationEnabled: (context) => projectRegistrationEnabled(context),
 };
 
 function deepMerge(left: unknown, right: unknown): unknown {

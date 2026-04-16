@@ -25,6 +25,8 @@ export default defineTreeseedPlugin({
 		},
 		deploy: ['cloudflare'],
 		content: {
+			runtime: ['filesystem', 'team_scoped_r2_overlay'],
+			publish: ['filesystem', 'team_scoped_r2_overlay'],
 			docs: ['default'],
 		},
 		site: ['default'],

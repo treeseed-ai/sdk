@@ -1,5 +1,42 @@
 export { AgentSdk, ScopedAgentSdk } from './sdk.ts';
 export { ContentGraphRuntime } from './graph.ts';
+export { projectConnectionModeFromHosting } from './sdk-types.ts';
+export { createControlPlaneReporter } from './control-plane.ts';
+export { ControlPlaneClient } from './control-plane-client.ts';
+export {
+	PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION,
+	EDITORIAL_PREVIEW_COOKIE,
+	TeamScopedR2OverlayContentRuntimeProvider,
+	TeamScopedR2OverlayContentPublishProvider,
+	createTeamScopedR2OverlayContentRuntimeProvider,
+	createTeamScopedR2OverlayContentPublishProvider,
+	isTeamScopedR2ContentEnabled,
+	parsePublishedCollectionIndex,
+	parsePublishedContentManifest,
+	parsePublishedOverlayManifest,
+	readPublishedContentManifest,
+	readPublishedOverlayManifest,
+	resolveCloudflareR2Bucket,
+	resolvePublishedContentBucketBinding,
+	resolvePublishedContentManifestKey,
+	resolvePublishedContentPreviewRoot,
+	resolvePublishedContentPreviewTtlHours,
+	resolveTeamScopedContentLocator,
+	signEditorialPreviewToken,
+	verifyEditorialPreviewToken,
+} from './platform/published-content.ts';
+export {
+	createFilesystemContentSource,
+	createPublishedContentPipeline,
+} from './platform/published-content-pipeline.ts';
+export {
+	loadTreeseedManifest,
+	loadTreeseedTenantManifest,
+	resolveTreeseedTenantRoot,
+	getTenantContentRoot,
+	tenantFeatureEnabled,
+	tenantModelRendered,
+} from './platform/tenant-config.ts';
 export { parseGraphDsl } from './graph/dsl.ts';
 export { createDefaultGraphRankingProvider, DEFAULT_GRAPH_RANKING_PROVIDER } from './graph/ranking.ts';
 export {
@@ -136,12 +173,66 @@ export type {
 	ProjectCapabilityGrant,
 	ProjectConnection,
 	ProjectConnectionMode,
+	ProjectDeployment,
+	ProjectDeploymentKind,
+	ProjectDeploymentStatus,
+	ProjectEnvironment,
 	ProjectExecutionOwner,
+	ProjectHosting,
+	ProjectInfrastructureResource,
+	ProjectInfrastructureResourceKind,
+	ProjectInfrastructureResourceProvider,
 	ProjectRunnerRegistrationState,
 	RemoteJob,
 	RemoteJobEvent,
 	RemoteJobStatus,
-} from './sdk-types.ts';
+		AgentPool,
+		AgentPoolAutoscalePolicy,
+		AgentPoolRegistration,
+		AgentPoolScaleDecision,
+		AgentPoolStatus,
+		CatalogArtifactVersion,
+		CatalogItem,
+		CatalogItemFilters,
+		CatalogItemOfferMode,
+		ProjectEnvironmentName,
+		ProjectWorkdaySummary,
+		TreeseedHostingKind,
+		TreeseedHostingRegistration,
+		PriorityOverride,
+		WorkdayWindow,
+		WorkdaySchedule,
+		TaskCreditWeight,
+	TaskCreditBudget,
+	WorkdayPolicy,
+	PrioritySnapshotItem,
+	PrioritySnapshot,
+	TaskCreditLedgerEntry,
+		ScaleDecision,
+		TeamStorageLocator,
+		UpsertAgentPoolRequest,
+		UpsertCatalogArtifactVersionRequest,
+		UpsertCatalogItemRequest,
+		UpsertProjectEnvironmentRequest,
+		UpsertProjectHostingRequest,
+		UpsertProjectInfrastructureResourceRequest,
+		UpsertTeamStorageLocatorRequest,
+		CreateProjectDeploymentRequest,
+		RecordAgentPoolRegistrationRequest,
+		WorkerPoolScaleResult,
+		WorkerPoolScaler,
+	} from './sdk-types.ts';
+export type {
+	ControlPlaneAgentPoolHeartbeat,
+	ControlPlaneDeploymentReport,
+	ControlPlaneEnvironmentReport,
+	ControlPlaneReporter,
+	ControlPlaneReporterKind,
+	ControlPlaneResourceReport,
+	ControlPlaneScaleDecisionReport,
+	ControlPlaneWorkdaySummaryReport,
+} from './control-plane.ts';
+export type { ControlPlaneClientOptions } from './control-plane-client.ts';
 export type {
 	TreeseedFieldAliasBinding,
 	TreeseedFieldAliasRegistry,
@@ -150,5 +241,40 @@ export type * from './operations-types.ts';
 export type * from './workflow.ts';
 export type { AgentDatabase } from './d1-store.ts';
 export type { D1DatabaseLike, D1PreparedStatementLike } from './types/cloudflare.ts';
+export type {
+	ContentPublishProvider,
+	ContentRuntimeProvider,
+	CatalogIndexEntry,
+	EditorialPreviewTokenPayload,
+	HostedContentMode,
+	PublishContentObjectInput,
+	PublishOverlayInput,
+	PublishContentRevisionInput,
+	PublishContentRevisionResult,
+	PublishOverlayResult,
+	PromoteOverlayInput,
+	PublishedArtifactVersion,
+	PublishedCollectionIndex,
+	PublishedContentEntry,
+	PublishedContentManifest,
+	PublishedContentObjectPointer,
+	PublishedRuntimePointers,
+	PublishedOverlayManifest,
+	PublishedContentVisibility,
+	TeamScopedContentLocator,
+} from './platform/published-content.ts';
+export type {
+	ArtifactBuilder,
+	ArtifactBuilderResult,
+	CollectionIndexBuilder,
+	ContentSource,
+	ContentSourceEntry,
+	EntryRenderer,
+	PublishedContentPipeline,
+	PublishedContentPipelineContext,
+	RuntimeBundleBuilder,
+	RuntimeBundleBuilderResult,
+	RenderedContentEntry,
+} from './platform/published-content-pipeline.ts';
 export { CloudflareHttpD1Database } from './d1-http.ts';
 export type * from './remote.ts';

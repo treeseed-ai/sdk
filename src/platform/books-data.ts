@@ -5,13 +5,13 @@ import type { TreeseedBookDefinition, TreeseedTenantConfig } from './contracts.t
 import { getTenantContentRoot } from './tenant-config.ts';
 import { RUNTIME_PROJECT_ROOT, RUNTIME_TENANT } from './tenant/runtime-config.ts';
 
-interface DocsLibraryDownload {
+export interface DocsLibraryDownload {
 	downloadFileName: string;
 	downloadHref: string;
 	downloadTitle: string;
 }
 
-interface TenantBookRuntime {
+export interface TreeseedBookRuntime {
 	BOOKS: TreeseedBookDefinition[];
 	BOOKS_LINK: {
 		label: string;
@@ -21,6 +21,30 @@ interface TenantBookRuntime {
 		home: string;
 	};
 	TREESEED_LIBRARY_DOWNLOAD: DocsLibraryDownload;
+}
+
+function fallbackTenantBookRuntime(options: {
+	docsHomePath?: string;
+	docsLibraryDownload?: DocsLibraryDownload;
+} = {}): TreeseedBookRuntime {
+	const docsHomePath = options.docsHomePath ?? '/knowledge/';
+	const docsLibraryDownload = options.docsLibraryDownload ?? {
+		downloadFileName: 'treeseed-knowledge.md',
+		downloadHref: '/books/treeseed-knowledge.md',
+		downloadTitle: 'TreeSeed Knowledge Library',
+	};
+
+	return {
+		BOOKS: [],
+		BOOKS_LINK: {
+			label: 'Books',
+			link: docsHomePath,
+		},
+		TREESEED_LINKS: {
+			home: docsHomePath,
+		},
+		TREESEED_LIBRARY_DOWNLOAD: docsLibraryDownload,
+	};
 }
 
 function sortPaths(paths: string[]) {
@@ -75,7 +99,7 @@ export function buildTenantBookRuntime(
 		docsHomePath?: string;
 		docsLibraryDownload?: DocsLibraryDownload;
 	} = {},
-): TenantBookRuntime {
+): TreeseedBookRuntime {
 	const projectRoot = options.projectRoot ?? process.cwd();
 	const booksContentRoot = path.resolve(projectRoot, getTenantContentRoot(tenantConfig, 'books'));
 	const books = collectMarkdownFiles(booksContentRoot)
@@ -104,13 +128,21 @@ export function buildTenantBookRuntime(
 	};
 }
 
-const runtime = buildTenantBookRuntime(RUNTIME_TENANT, {
-	projectRoot: RUNTIME_PROJECT_ROOT,
-	docsLibraryDownload: {
+const runtime = (() => {
+	const docsLibraryDownload = {
 		downloadFileName: 'treeseed-knowledge.md',
 		downloadHref: '/books/treeseed-knowledge.md',
 		downloadTitle: 'TreeSeed Knowledge Library',
-	},
-});
+	};
+
+	try {
+		return buildTenantBookRuntime(RUNTIME_TENANT, {
+			projectRoot: RUNTIME_PROJECT_ROOT,
+			docsLibraryDownload,
+		});
+	} catch {
+		return fallbackTenantBookRuntime({ docsLibraryDownload });
+	}
+})();
 
 export const { BOOKS, BOOKS_LINK, TREESEED_LINKS, TREESEED_LIBRARY_DOWNLOAD } = runtime;

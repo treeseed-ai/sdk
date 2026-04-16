@@ -14,7 +14,11 @@ import {
 	resolveTreeseedRemoteConfig,
 	setTreeseedRemoteSession,
 } from '../../src/operations/services/config-runtime.ts';
-import { loadDeployState } from '../../src/operations/services/deploy.ts';
+import {
+	buildWranglerConfigContents,
+	createBranchPreviewDeployTarget,
+	loadDeployState,
+} from '../../src/operations/services/deploy.ts';
 import { loadCliDeployConfig } from '../../src/operations/services/runtime-tools.ts';
 import { MemoryAgentDatabase } from '../../src/d1-store.ts';
 import { sdkFixtureRoot } from '../test-fixture.ts';
@@ -31,6 +35,17 @@ cloudflare:
   accountId: account-123
   queueName: agent-work
   dlqName: agent-work-dlq
+  pages:
+    projectName: treeseed-test-site
+    previewProjectName: treeseed-test-site-preview
+    productionBranch: main
+    stagingBranch: staging
+  r2:
+    binding: TREESEED_CONTENT_BUCKET
+    bucketName: treeseed-content
+    manifestKeyTemplate: teams/{teamId}/published/common.json
+    previewRootTemplate: teams/{teamId}/previews
+    previewTtlHours: 168
 services:
   worker:
     enabled: true
@@ -76,6 +91,8 @@ providers:
     research: stub
   deploy: cloudflare
   content:
+    runtime: team_scoped_r2_overlay
+    publish: team_scoped_r2_overlay
     docs: default
   site: default
 `, 'utf8');
@@ -152,12 +169,40 @@ describe('remote Treeseed support', () => {
 		const state = loadDeployState(tenantRoot, deployConfig, { scope: 'staging' });
 
 		expect(deployConfig.cloudflare.queueName).toBe('agent-work');
+		expect(deployConfig.cloudflare.pages?.projectName).toBe('treeseed-test-site');
+		expect(deployConfig.cloudflare.r2?.manifestKeyTemplate).toBe('teams/{teamId}/published/common.json');
 		expect(state.services.api.enabled).toBe(true);
 		expect(state.services.api.serviceName).toBe('treeseed-api');
 		expect(state.services.api.publicBaseUrl).toBe('https://staging-api.example.com');
 		expect(state.services.agents.publicBaseUrl).toBe('https://staging-agents.example.com');
 		expect(state.services.worker.serviceName).toBe('treeseed-worker');
 		expect(state.queues.agentWork.name).toBe('agent-work');
+		expect(state.content.manifestKey).toBe('teams/test/published/common.json');
+		expect(state.content.previewRootTemplate).toBe('teams/{teamId}/previews');
+	});
+
+	it('points preview, staging, and prod deployments at the team production manifest', () => {
+		const tenantRoot = createTenantFixture();
+		const deployConfig = loadCliDeployConfig(tenantRoot);
+		const prodState = loadDeployState(tenantRoot, deployConfig, { scope: 'prod' });
+		const stagingState = loadDeployState(tenantRoot, deployConfig, { scope: 'staging' });
+		const previewTarget = createBranchPreviewDeployTarget('feature/r2-runtime');
+		const previewState = loadDeployState(tenantRoot, deployConfig, { target: previewTarget });
+
+		expect(prodState.content.manifestKey).toBe('teams/test/published/common.json');
+		expect(stagingState.content.manifestKey).toBe('teams/test/published/common.json');
+		expect(previewState.content.manifestKey).toBe('teams/test/published/common.json');
+
+		expect(prodState.d1Databases.SITE_DATA_DB.databaseName).toBe('test-site-data');
+		expect(stagingState.d1Databases.SITE_DATA_DB.databaseName).toBe('test-staging-site-data');
+		expect(previewState.d1Databases.SITE_DATA_DB.databaseName).toBe('test-feature-r2-runtime-site-data');
+
+		const previewWrangler = buildWranglerConfigContents(tenantRoot, deployConfig, previewState, { target: previewTarget });
+		expect(previewWrangler).toContain('TREESEED_CONTENT_MANIFEST_KEY = "teams/test/published/common.json"');
+		expect(previewWrangler).toContain('TREESEED_CONTENT_MANIFEST_KEY_TEMPLATE = "teams/{teamId}/published/common.json"');
+		expect(previewWrangler).toContain('TREESEED_CONTENT_PREVIEW_ROOT_TEMPLATE = "teams/{teamId}/previews"');
+		expect(previewWrangler).toContain('[[r2_buckets]]');
+		expect(previewWrangler).toContain('binding = "TREESEED_CONTENT_BUCKET"');
 	});
 
 	it('keeps dispatch local-first when no remote config is supplied', async () => {

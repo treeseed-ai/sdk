@@ -111,20 +111,61 @@ export function requiredGitHubSecrets(tenantRoot) {
 	return requiredGitHubEnvironment(tenantRoot).secrets;
 }
 
-export function renderDeployWorkflow({ workingDirectory }) {
+function renderTenantWorkflowActionCommand() {
+	return [
+		'EXTRA_ARGS=()',
+		'if [[ -n "${TREESEED_WORKFLOW_PROJECT:-}" ]]; then EXTRA_ARGS+=(--project-id "${TREESEED_WORKFLOW_PROJECT}"); fi',
+		'if [[ -n "${TREESEED_WORKFLOW_PREVIEW_ID:-}" ]]; then EXTRA_ARGS+=(--preview-id "${TREESEED_WORKFLOW_PREVIEW_ID}"); fi',
+		'if test -f ./packages/sdk/scripts/tenant-workflow-action.ts; then',
+		'  node ./packages/sdk/scripts/run-ts.mjs ./packages/sdk/scripts/tenant-workflow-action.ts --action "${TREESEED_WORKFLOW_ACTION}" --environment "${TREESEED_WORKFLOW_ENVIRONMENT}" "${EXTRA_ARGS[@]}"',
+		'elif test -f ./node_modules/@treeseed/sdk/dist/scripts/tenant-workflow-action.js; then',
+		'  node ./node_modules/@treeseed/sdk/dist/scripts/tenant-workflow-action.js --action "${TREESEED_WORKFLOW_ACTION}" --environment "${TREESEED_WORKFLOW_ENVIRONMENT}" "${EXTRA_ARGS[@]}"',
+		'else',
+		'  echo "Unable to resolve @treeseed/sdk tenant workflow entrypoint."',
+		'  exit 1',
+		'fi',
+	].join('\n');
+}
+
+function renderWorkflowTemplate(templateName, { workingDirectory }) {
 	const normalizedWorkingDirectory = workingDirectory && workingDirectory !== '.' ? workingDirectory : '.';
 	const workingDirectoryLine = normalizedWorkingDirectory === '.'
 		? ''
 		: `    defaults:\n      run:\n        working-directory: ${normalizedWorkingDirectory}\n`;
-	const templatePath = resolve(corePackageRoot, 'templates', 'github', 'deploy.workflow.yml');
+	const templatePath = resolve(corePackageRoot, 'templates', 'github', templateName);
 	const template = readFileSync(templatePath, 'utf8');
+	const tenantWorkflowActionCommand = renderTenantWorkflowActionCommand()
+		.split('\n')
+		.map((line) => `          ${line}`)
+		.join('\n');
 
 	return template
-		.replace('__WORKING_DIRECTORY_BLOCK__', workingDirectoryLine)
-		.replace(
-			'__CACHE_DEPENDENCY_PATH__',
+		.split('__WORKING_DIRECTORY_BLOCK__').join(workingDirectoryLine)
+		.replace('__TENANT_WORKFLOW_ACTION_COMMAND_BLOCK__', tenantWorkflowActionCommand)
+		.split('__CACHE_DEPENDENCY_PATH__').join(
 			normalizedWorkingDirectory === '.' ? 'package-lock.json' : `${normalizedWorkingDirectory}/package-lock.json`,
 		);
+}
+
+export function renderDeployWorkflow({ workingDirectory }) {
+	return renderWorkflowTemplate('deploy.workflow.yml', { workingDirectory });
+}
+
+export function renderHostedProjectWorkflow({ workingDirectory }) {
+	return renderWorkflowTemplate('hosted-project.workflow.yml', { workingDirectory });
+}
+
+function ensureWorkflowFile(tenantRoot, fileName, expected) {
+	const workflowPath = resolve(tenantRoot, '.github', 'workflows', fileName);
+	const current = existsSync(workflowPath) ? readFileSync(workflowPath, 'utf8') : null;
+
+	if (current === expected) {
+		return { workflowPath, changed: false };
+	}
+
+	mkdirSync(dirname(workflowPath), { recursive: true });
+	writeFileSync(workflowPath, expected, 'utf8');
+	return { workflowPath, changed: true };
 }
 
 export function ensureDeployWorkflow(tenantRoot) {
@@ -138,18 +179,41 @@ export function ensureDeployWorkflow(tenantRoot) {
 	}
 
 	const repositoryRoot = resolveGitRepositoryRoot(tenantRoot);
-	const workflowPath = resolve(tenantRoot, '.github', 'workflows', 'deploy.yml');
 	const workingDirectory = relative(repositoryRoot, tenantRoot).replaceAll('\\', '/') || '.';
 	const expected = renderDeployWorkflow({ workingDirectory });
-	const current = existsSync(workflowPath) ? readFileSync(workflowPath, 'utf8') : null;
+	return {
+		...ensureWorkflowFile(tenantRoot, 'deploy.yml', expected),
+		workingDirectory,
+	};
+}
 
-	if (current === expected) {
-		return { workflowPath, changed: false, workingDirectory };
+export function ensureHostedProjectWorkflow(tenantRoot) {
+	if (isGitHubAutomationStubbed()) {
+		return {
+			workflowPath: resolve(tenantRoot, '.github', 'workflows', 'hosted-project.yml'),
+			changed: false,
+			workingDirectory: '.',
+			mode: 'stub',
+		};
 	}
 
-	mkdirSync(dirname(workflowPath), { recursive: true });
-	writeFileSync(workflowPath, expected, 'utf8');
-	return { workflowPath, changed: true, workingDirectory };
+	const repositoryRoot = resolveGitRepositoryRoot(tenantRoot);
+	const workingDirectory = relative(repositoryRoot, tenantRoot).replaceAll('\\', '/') || '.';
+	const expected = renderHostedProjectWorkflow({ workingDirectory });
+	return {
+		...ensureWorkflowFile(tenantRoot, 'hosted-project.yml', expected),
+		workingDirectory,
+	};
+}
+
+export function ensureStandardizedGitHubWorkflows(tenantRoot) {
+	const deployConfig = loadCliDeployConfig(tenantRoot);
+	const deploy = ensureDeployWorkflow(tenantRoot);
+	const workflows = [deploy];
+	if ((deployConfig.hosting?.kind ?? 'self_hosted_project') === 'market_control_plane') {
+		workflows.push(ensureHostedProjectWorkflow(tenantRoot));
+	}
+	return workflows;
 }
 
 export function listGitHubSecretNames(repository, tenantRoot) {
@@ -279,11 +343,12 @@ export function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scope = 'p
 }
 
 export function ensureGitHubDeployAutomation(tenantRoot, { dryRun = false } = {}) {
-	const workflow = ensureDeployWorkflow(tenantRoot);
+	const workflows = ensureStandardizedGitHubWorkflows(tenantRoot);
 	const environment = ensureGitHubEnvironment(tenantRoot, { dryRun });
 	return {
 		mode: getGitHubAutomationMode(),
-		workflow,
+		workflow: workflows[0],
+		workflows,
 		secrets: environment.secrets,
 		variables: environment.variables,
 		environment,

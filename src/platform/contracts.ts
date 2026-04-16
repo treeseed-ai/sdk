@@ -15,7 +15,10 @@ export type TreeseedContentCollection =
 	| 'people'
 	| 'agents'
 	| 'books'
-	| 'docs';
+	| 'docs'
+	| 'templates'
+	| 'knowledge_packs'
+	| 'workdays';
 
 export interface TreeseedFeatureModules {
 	docs?: boolean;
@@ -37,6 +40,22 @@ export interface TreeseedContentMap {
 	agents: string;
 	books: string;
 	docs: string;
+	templates?: string;
+	knowledge_packs?: string;
+	workdays?: string;
+	[key: string]: string | undefined;
+}
+
+export interface TreeseedTenantSiteModelConfig {
+	/**
+	 * Controls whether this content model should be rendered by the site runtime.
+	 * Content remains managed in Git and available through SDK/content pipelines.
+	 */
+	rendered?: boolean;
+}
+
+export interface TreeseedTenantSiteConfig {
+	models?: Partial<Record<TreeseedContentCollection, TreeseedTenantSiteModelConfig>>;
 }
 
 export interface TreeseedBookDefinition {
@@ -138,10 +157,42 @@ export interface TreeseedPlatformSurfaceConfig {
 	localBaseUrl?: string;
 }
 
+export interface TreeseedCloudflareR2Config {
+	binding?: string;
+	bucketName?: string;
+	publicBaseUrl?: string;
+	manifestKeyTemplate?: string;
+	previewRootTemplate?: string;
+	previewTtlHours?: number;
+}
+
+export interface TreeseedCloudflarePagesConfig {
+	projectName?: string;
+	previewProjectName?: string;
+	productionBranch?: string;
+	stagingBranch?: string;
+	buildOutputDir?: string;
+}
+
+export type TreeseedHostingKind = 'market_control_plane' | 'hosted_project' | 'self_hosted_project';
+export type TreeseedHostingRegistration = 'optional' | 'none';
+
+export interface TreeseedHostingConfig {
+	kind: TreeseedHostingKind;
+	registration?: TreeseedHostingRegistration;
+	marketBaseUrl?: string;
+	teamId?: string;
+	projectId?: string;
+}
+
 export interface TreeseedManagedServiceEnvironmentConfig {
 	baseUrl?: string;
 	domain?: string;
 	railwayEnvironment?: string;
+}
+
+export interface TreeseedManagedServiceCloudflareConfig {
+	workerName?: string;
 }
 
 export interface TreeseedManagedServiceRailwayConfig {
@@ -152,6 +203,7 @@ export interface TreeseedManagedServiceRailwayConfig {
 	rootDir?: string;
 	buildCommand?: string;
 	startCommand?: string;
+	schedule?: string | string[];
 }
 
 export interface TreeseedManagedServiceConfig {
@@ -159,6 +211,7 @@ export interface TreeseedManagedServiceConfig {
 	provider?: string;
 	rootDir?: string;
 	publicBaseUrl?: string;
+	cloudflare?: TreeseedManagedServiceCloudflareConfig;
 	railway?: TreeseedManagedServiceRailwayConfig;
 	environments?: Partial<Record<'local' | 'staging' | 'prod', TreeseedManagedServiceEnvironmentConfig>>;
 }
@@ -188,7 +241,9 @@ export interface TreeseedProviderSelections {
 	};
 	deploy: string;
 	content?: {
-		docs: string;
+		runtime: string;
+		publish: string;
+		docs?: string;
 	};
 	site?: string;
 }
@@ -203,9 +258,16 @@ export interface TreeseedDeployConfig {
 	slug: string;
 	siteUrl: string;
 	contactEmail: string;
+	hosting?: TreeseedHostingConfig;
 	cloudflare: {
 		accountId: string;
 		workerName?: string;
+		queueName?: string;
+		dlqName?: string;
+		d1Binding?: string;
+		queueBinding?: string;
+		pages?: TreeseedCloudflarePagesConfig;
+		r2?: TreeseedCloudflareR2Config;
 	};
 	plugins: TreeseedPluginReference[];
 	providers: TreeseedProviderSelections;
@@ -225,5 +287,6 @@ export interface TreeseedTenantConfig {
 	siteConfigPath: string;
 	content: TreeseedContentMap;
 	features: TreeseedFeatureModules;
+	site?: TreeseedTenantSiteConfig;
 	overrides?: TreeseedTenantOverrides;
 }

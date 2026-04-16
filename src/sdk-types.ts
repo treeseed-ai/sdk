@@ -29,10 +29,28 @@ export const SDK_DISPATCH_EXECUTION_CLASSES = ['local_only', 'remote_inline', 'r
 export const SDK_DISPATCH_TARGETS = ['local', 'project_api', 'project_runner', 'market_catalog'] as const;
 export const SDK_DISPATCH_POLICIES = ['auto', 'prefer_local', 'prefer_remote', 'remote_only'] as const;
 export const SDK_DISPATCH_NAMESPACES = ['sdk', 'workflow'] as const;
+export const TREESEED_HOSTING_KINDS = ['market_control_plane', 'hosted_project', 'self_hosted_project'] as const;
+export const TREESEED_HOSTING_REGISTRATIONS = ['optional', 'none'] as const;
 export const PROJECT_CONNECTION_MODES = ['hosted', 'self_hosted', 'hybrid'] as const;
 export const PROJECT_RUNNER_REGISTRATION_STATES = ['pending', 'registered', 'offline'] as const;
 export const PROJECT_EXECUTION_OWNERS = ['project_api', 'project_runner', 'market'] as const;
 export const REMOTE_JOB_STATUSES = ['pending', 'claimed', 'running', 'completed', 'failed', 'cancelled'] as const;
+export const PROJECT_ENVIRONMENT_NAMES = ['local', 'staging', 'prod'] as const;
+export const PROJECT_DEPLOYMENT_KINDS = ['provision', 'code', 'content', 'mixed'] as const;
+export const PROJECT_DEPLOYMENT_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'cancelled'] as const;
+export const PROJECT_INFRA_RESOURCE_PROVIDERS = ['cloudflare', 'railway', 'github', 'market'] as const;
+export const PROJECT_INFRA_RESOURCE_KINDS = [
+	'pages',
+	'worker',
+	'r2',
+	'd1',
+	'queue',
+	'dlq',
+	'railway_project',
+	'railway_service',
+	'railway_schedule',
+] as const;
+export const AGENT_POOL_STATUSES = ['pending', 'active', 'degraded', 'offline'] as const;
 
 export type SdkBuiltinModelName = (typeof SDK_MODEL_NAMES)[number];
 export type SdkModelName = SdkBuiltinModelName | (string & {});
@@ -44,11 +62,32 @@ export type SdkDispatchExecutionClass = (typeof SDK_DISPATCH_EXECUTION_CLASSES)[
 export type SdkDispatchTarget = (typeof SDK_DISPATCH_TARGETS)[number];
 export type SdkDispatchPolicy = (typeof SDK_DISPATCH_POLICIES)[number];
 export type SdkDispatchNamespace = (typeof SDK_DISPATCH_NAMESPACES)[number];
+export type TreeseedHostingKind = (typeof TREESEED_HOSTING_KINDS)[number];
+export type TreeseedHostingRegistration = (typeof TREESEED_HOSTING_REGISTRATIONS)[number];
 export type ProjectConnectionMode = (typeof PROJECT_CONNECTION_MODES)[number];
 export type ProjectRunnerRegistrationState = (typeof PROJECT_RUNNER_REGISTRATION_STATES)[number];
 export type ProjectExecutionOwner = (typeof PROJECT_EXECUTION_OWNERS)[number];
 export type RemoteJobStatus = (typeof REMOTE_JOB_STATUSES)[number];
+export type ProjectEnvironmentName = (typeof PROJECT_ENVIRONMENT_NAMES)[number];
+export type ProjectDeploymentKind = (typeof PROJECT_DEPLOYMENT_KINDS)[number];
+export type ProjectDeploymentStatus = (typeof PROJECT_DEPLOYMENT_STATUSES)[number];
+export type ProjectInfrastructureResourceProvider = (typeof PROJECT_INFRA_RESOURCE_PROVIDERS)[number];
+export type ProjectInfrastructureResourceKind = (typeof PROJECT_INFRA_RESOURCE_KINDS)[number];
+export type AgentPoolStatus = (typeof AGENT_POOL_STATUSES)[number];
 export type RemoteJobRequestedByType = 'user' | 'team_api_key' | 'service' | 'runner' | 'system';
+
+export function projectConnectionModeFromHosting(
+	kind: TreeseedHostingKind,
+	registration: TreeseedHostingRegistration = 'none',
+): ProjectConnectionMode {
+	if (kind === 'hosted_project') {
+		return 'hosted';
+	}
+	if (kind === 'self_hosted_project') {
+		return registration === 'optional' ? 'hybrid' : 'self_hosted';
+	}
+	return 'hosted';
+}
 
 export interface SdkDispatchCapability {
 	namespace: SdkDispatchNamespace;
@@ -72,6 +111,297 @@ export interface ProjectConnection {
 	createdAt: string;
 	updatedAt: string;
 	metadata?: Record<string, unknown>;
+}
+
+export type CatalogItemOfferMode =
+	| 'free'
+	| 'paid'
+	| 'contact'
+	| 'one_time_current_version'
+	| 'subscription_updates'
+	| 'private';
+
+export interface TeamStorageLocator {
+	id: string;
+	teamId: string;
+	bucketName: string;
+	manifestKeyTemplate: string;
+	previewRootTemplate: string;
+	publicBaseUrl: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CatalogItem {
+	id: string;
+	teamId: string;
+	kind: string;
+	slug: string;
+	title: string;
+	summary: string | null;
+	visibility: 'public' | 'authenticated' | 'team' | 'private';
+	listingEnabled: boolean;
+	offerMode: CatalogItemOfferMode;
+	manifestKey: string | null;
+	artifactKey: string | null;
+	searchText: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CatalogArtifactVersion {
+	id: string;
+	itemId: string;
+	teamId: string;
+	kind: string;
+	version: string;
+	contentKey: string;
+	manifestKey: string | null;
+	metadata?: Record<string, unknown>;
+	publishedAt: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ProjectHosting {
+	id: string;
+	projectId: string;
+	kind: TreeseedHostingKind;
+	registration: TreeseedHostingRegistration;
+	marketBaseUrl: string | null;
+	sourceRepoOwner: string | null;
+	sourceRepoName: string | null;
+	sourceRepoUrl: string | null;
+	sourceRepoWorkflowPath: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ProjectEnvironment {
+	id: string;
+	projectId: string;
+	environment: ProjectEnvironmentName;
+	deploymentProfile: TreeseedHostingKind;
+	baseUrl: string | null;
+	cloudflareAccountId: string | null;
+	pagesProjectName: string | null;
+	workerName: string | null;
+	r2BucketName: string | null;
+	d1DatabaseName: string | null;
+	queueName: string | null;
+	railwayProjectName: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ProjectInfrastructureResource {
+	id: string;
+	projectId: string;
+	environment: ProjectEnvironmentName;
+	provider: ProjectInfrastructureResourceProvider;
+	resourceKind: ProjectInfrastructureResourceKind;
+	logicalName: string;
+	locator: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ProjectDeployment {
+	id: string;
+	projectId: string;
+	environment: ProjectEnvironmentName;
+	deploymentKind: ProjectDeploymentKind;
+	status: ProjectDeploymentStatus;
+	sourceRef: string | null;
+	releaseTag: string | null;
+	commitSha: string | null;
+	triggeredByType: string | null;
+	triggeredById: string | null;
+	metadata?: Record<string, unknown>;
+	startedAt: string | null;
+	finishedAt: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface AgentPoolAutoscalePolicy {
+	minWorkers: number;
+	maxWorkers: number;
+	targetQueueDepth: number;
+	cooldownSeconds: number;
+}
+
+export interface AgentPool {
+	id: string;
+	projectId: string;
+	teamId: string;
+	environment: ProjectEnvironmentName;
+	name: string;
+	registrationIdentity: string | null;
+	serviceBaseUrl: string | null;
+	status: AgentPoolStatus;
+	autoscale: AgentPoolAutoscalePolicy;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface AgentPoolRegistration {
+	id: string;
+	poolId: string;
+	projectId: string;
+	runnerId: string | null;
+	managerId: string | null;
+	serviceName: string | null;
+	heartbeatAt: string;
+	desiredWorkers: number | null;
+	observedQueueDepth: number | null;
+	observedActiveLeases: number | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface AgentPoolScaleDecision {
+	id: string;
+	poolId: string;
+	projectId: string;
+	environment: ProjectEnvironmentName;
+	desiredWorkers: number;
+	observedQueueDepth: number;
+	observedActiveLeases: number;
+	workDayId: string | null;
+	reason: string;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface WorkdayWindow {
+	days: number[];
+	startTime: string;
+	endTime: string;
+}
+
+export interface WorkdaySchedule {
+	timezone: string;
+	windows: WorkdayWindow[];
+}
+
+export interface TaskCreditWeight {
+	id?: string;
+	taskType?: string | null;
+	agentId?: string | null;
+	handler?: string | null;
+	credits: number;
+}
+
+export interface TaskCreditBudget {
+	dailyLimit: number;
+	used: number;
+	remaining: number;
+	maxQueuedTasks: number;
+	maxQueuedCredits: number;
+}
+
+export interface WorkdayPolicy {
+	projectId: string;
+	environment: ProjectEnvironmentName | 'local';
+	schedule: WorkdaySchedule;
+	dailyTaskCreditBudget: number;
+	maxQueuedTasks: number;
+	maxQueuedCredits: number;
+	autoscale: AgentPoolAutoscalePolicy;
+	creditWeights: TaskCreditWeight[];
+	metadata?: Record<string, unknown>;
+}
+
+export interface PrioritySnapshotItem {
+	model: string;
+	id: string;
+	slug?: string | null;
+	title?: string | null;
+	priority: number;
+	estimatedCredits: number;
+	reasons: string[];
+	metadata?: Record<string, unknown>;
+}
+
+export interface PrioritySnapshot {
+	id: string;
+	projectId: string;
+	workDayId: string | null;
+	generatedAt: string;
+	items: PrioritySnapshotItem[];
+	metadata?: Record<string, unknown>;
+}
+
+export interface PriorityOverride {
+	id: string;
+	projectId: string;
+	model: string;
+	subjectId: string;
+	priority: number;
+	estimatedCredits: number | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface TaskCreditLedgerEntry {
+	id: string;
+	projectId: string;
+	workDayId: string;
+	taskId: string | null;
+	phase: 'seed' | 'settle' | 'refund';
+	credits: number;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface ProjectWorkdaySummary {
+	id: string;
+	projectId: string;
+	environment: ProjectEnvironmentName | 'local';
+	workDayId: string;
+	kind: string;
+	state: string | null;
+	startedAt: string | null;
+	endedAt: string | null;
+	summary: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ScaleDecision {
+	id: string;
+	projectId: string;
+	environment: ProjectEnvironmentName | 'local';
+	poolName: string;
+	workDayId: string | null;
+	desiredWorkers: number;
+	observedQueueDepth: number;
+	observedActiveLeases: number;
+	reason: string;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface WorkerPoolScaleResult {
+	applied: boolean;
+	provider: string;
+	desiredWorkers: number;
+	metadata?: Record<string, unknown>;
+}
+
+export interface WorkerPoolScaler {
+	scale(decision: ScaleDecision): Promise<WorkerPoolScaleResult>;
 }
 
 export interface ProjectCapabilityGrant {
@@ -924,6 +1254,174 @@ export interface SdkStartWorkDayRequest {
 	actor: string;
 }
 
+export interface SdkUpsertWorkPolicyRequest {
+	projectId: string;
+	environment: ProjectEnvironmentName | 'local';
+	schedule: WorkdaySchedule;
+	dailyTaskCreditBudget: number;
+	maxQueuedTasks: number;
+	maxQueuedCredits: number;
+	autoscale: AgentPoolAutoscalePolicy;
+	creditWeights?: TaskCreditWeight[];
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface UpsertProjectHostingRequest {
+	kind: TreeseedHostingKind;
+	registration?: TreeseedHostingRegistration;
+	marketBaseUrl?: string | null;
+	sourceRepoOwner?: string | null;
+	sourceRepoName?: string | null;
+	sourceRepoUrl?: string | null;
+	sourceRepoWorkflowPath?: string | null;
+	projectApiBaseUrl?: string | null;
+	executionOwner?: ProjectExecutionOwner | null;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface UpsertProjectEnvironmentRequest {
+	deploymentProfile?: TreeseedHostingKind;
+	baseUrl?: string | null;
+	cloudflareAccountId?: string | null;
+	pagesProjectName?: string | null;
+	workerName?: string | null;
+	r2BucketName?: string | null;
+	d1DatabaseName?: string | null;
+	queueName?: string | null;
+	railwayProjectName?: string | null;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface UpsertProjectInfrastructureResourceRequest {
+	id?: string;
+	environment: ProjectEnvironmentName;
+	provider: ProjectInfrastructureResourceProvider;
+	resourceKind: ProjectInfrastructureResourceKind;
+	logicalName: string;
+	locator?: string | null;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface CreateProjectDeploymentRequest {
+	id?: string;
+	environment: ProjectEnvironmentName;
+	deploymentKind: ProjectDeploymentKind;
+	status?: ProjectDeploymentStatus;
+	sourceRef?: string | null;
+	releaseTag?: string | null;
+	commitSha?: string | null;
+	triggeredByType?: string | null;
+	triggeredById?: string | null;
+	metadata?: Record<string, unknown> | null;
+	startedAt?: string | null;
+	finishedAt?: string | null;
+}
+
+export interface UpsertAgentPoolRequest {
+	id?: string;
+	teamId: string;
+	environment: ProjectEnvironmentName;
+	name: string;
+	registrationIdentity?: string | null;
+	serviceBaseUrl?: string | null;
+	status?: AgentPoolStatus;
+	autoscale?: Partial<AgentPoolAutoscalePolicy> | null;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface RecordAgentPoolRegistrationRequest {
+	poolId: string;
+	id?: string;
+	runnerId?: string | null;
+	managerId?: string | null;
+	serviceName?: string | null;
+	heartbeatAt?: string | null;
+	desiredWorkers?: number | null;
+	observedQueueDepth?: number | null;
+	observedActiveLeases?: number | null;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface CatalogItemFilters {
+	kind?: string;
+	teamId?: string;
+	slug?: string;
+}
+
+export interface UpsertCatalogItemRequest {
+	id?: string;
+	kind: string;
+	slug: string;
+	title: string;
+	summary?: string | null;
+	visibility?: CatalogItem['visibility'];
+	listingEnabled?: boolean;
+	offerMode?: CatalogItemOfferMode;
+	manifestKey?: string | null;
+	artifactKey?: string | null;
+	searchText?: string | null;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface UpsertCatalogArtifactVersionRequest {
+	id?: string;
+	kind: string;
+	version: string;
+	contentKey: string;
+	manifestKey?: string | null;
+	metadata?: Record<string, unknown> | null;
+	publishedAt?: string | null;
+}
+
+export interface UpsertTeamStorageLocatorRequest {
+	bucketName: string;
+	manifestKeyTemplate: string;
+	previewRootTemplate: string;
+	publicBaseUrl?: string | null;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface SdkPriorityOverrideRequest {
+	id?: string;
+	projectId: string;
+	model: string;
+	subjectId: string;
+	priority: number;
+	estimatedCredits?: number | null;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface SdkCreatePrioritySnapshotRequest {
+	id?: string;
+	projectId: string;
+	workDayId?: string | null;
+	items: PrioritySnapshotItem[];
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface SdkRecordTaskCreditsRequest {
+	id?: string;
+	projectId: string;
+	workDayId: string;
+	taskId?: string | null;
+	phase: 'seed' | 'settle' | 'refund';
+	credits: number;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface SdkRecordScaleDecisionRequest {
+	id?: string;
+	projectId: string;
+	environment: ProjectEnvironmentName | 'local';
+	poolName: string;
+	workDayId?: string | null;
+	desiredWorkers: number;
+	observedQueueDepth: number;
+	observedActiveLeases: number;
+	reason: string;
+	metadata?: Record<string, unknown> | null;
+}
+
 export interface SdkCloseWorkDayRequest {
 	id: string;
 	state?: 'completed' | 'cancelled' | 'failed';
@@ -1096,13 +1594,24 @@ export interface SdkTemplateCatalogPublisher {
 	url?: string;
 }
 
-export interface SdkTemplateCatalogSource {
+export interface SdkTemplateCatalogGitSource {
 	kind: 'git';
 	repoUrl: string;
 	directory: string;
 	ref: string;
 	integrity?: string;
 }
+
+export interface SdkTemplateCatalogR2Source {
+	kind: 'r2';
+	bucket?: string;
+	objectKey: string;
+	version: string;
+	publicUrl?: string;
+	integrity?: string;
+}
+
+export type SdkTemplateCatalogSource = SdkTemplateCatalogGitSource | SdkTemplateCatalogR2Source;
 
 export interface SdkTemplateCatalogEntry {
 	id: string;
@@ -1121,13 +1630,13 @@ export interface SdkTemplateCatalogEntry {
 	minCliVersion: string;
 	minCoreVersion?: string;
 	fulfillment: {
-		mode?: 'packaged' | 'git';
+		mode?: 'packaged' | 'git' | 'r2';
 		source: SdkTemplateCatalogSource;
 		hooksPolicy: 'builtin_only' | 'trusted_only' | 'disabled';
 		supportsReconcile: boolean;
 	};
 	offer?: {
-		priceModel?: 'free' | 'paid' | 'contact';
+		priceModel?: 'free' | 'paid' | 'contact' | 'one_time_current_version' | 'subscription_updates' | 'private';
 		license?: string;
 		support?: string;
 	};

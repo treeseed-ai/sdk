@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
 	getTreeseedAgentProviderSelections,
+	getTreeseedContentPublishProvider,
+	getTreeseedContentRuntimeProvider,
 	getTreeseedDeployConfig,
 	getTreeseedDeployProvider,
 	getTreeseedDocsProvider,
@@ -53,6 +55,8 @@ describe('deploy runtime accessors', () => {
 				research: 'stub',
 			});
 			expect(getTreeseedDeployProvider()).toBe('cloudflare');
+			expect(getTreeseedContentRuntimeProvider()).toBe('team_scoped_r2_overlay');
+			expect(getTreeseedContentPublishProvider()).toBe('team_scoped_r2_overlay');
 			expect(getTreeseedDocsProvider()).toBe('default');
 			expect(getTreeseedSiteProvider()).toBe('default');
 			expect(isTreeseedSmtpEnabled()).toBe(false);
@@ -83,6 +87,8 @@ providers:
     research: stub
   deploy: railway
   content:
+    runtime: team_scoped_r2_overlay
+    publish: team_scoped_r2_overlay
     docs: custom-docs
   site: alternate-site
 smtp:
@@ -101,6 +107,8 @@ turnstile:
 				verification: 'local',
 			});
 			expect(getTreeseedDeployProvider()).toBe('railway');
+			expect(getTreeseedContentRuntimeProvider()).toBe('team_scoped_r2_overlay');
+			expect(getTreeseedContentPublishProvider()).toBe('team_scoped_r2_overlay');
 			expect(getTreeseedDocsProvider()).toBe('custom-docs');
 			expect(getTreeseedSiteProvider()).toBe('alternate-site');
 			expect(isTreeseedSmtpEnabled()).toBe(true);
@@ -130,6 +138,8 @@ providers:
     research: stub
   deploy: cloudflare
   content:
+    runtime: team_scoped_r2_overlay
+    publish: team_scoped_r2_overlay
     docs: default
   site: default
 `);
@@ -158,6 +168,8 @@ providers:
     research: stub
   deploy: railway
   content:
+    runtime: team_scoped_r2_overlay
+    publish: team_scoped_r2_overlay
     docs: default
   site: default
 `,

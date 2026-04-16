@@ -166,6 +166,108 @@ function parseTheme(value, path) {
 	};
 }
 
+function parseAccessRoles(value, path) {
+	const record = optionalRecord(value, path);
+	if (!record) {
+		return {};
+	}
+
+	return Object.fromEntries(
+		Object.entries(record).map(([roleId, rawRole]) => {
+			const parsedRole = expectRecord(rawRole, `${path}.${roleId}`);
+			return [
+				roleId,
+				{
+					grants: stringArray(parsedRole.grants, `${path}.${roleId}.grants`),
+				},
+			];
+		}),
+	);
+}
+
+function parseAccessPolicies(value, path) {
+	const record = optionalRecord(value, path);
+	if (!record) {
+		return {};
+	}
+
+	return Object.fromEntries(
+		Object.entries(record).map(([policyId, rawPolicy]) => {
+			const parsedPolicy = expectRecord(rawPolicy, `${path}.${policyId}`);
+			return [
+				policyId,
+				{
+					audience: optionalString(parsedPolicy.audience, `${path}.${policyId}.audience`),
+					entitlement: optionalString(parsedPolicy.entitlement, `${path}.${policyId}.entitlement`),
+					offer: optionalString(parsedPolicy.offer, `${path}.${policyId}.offer`),
+					visibility: optionalString(parsedPolicy.visibility, `${path}.${policyId}.visibility`),
+				},
+			];
+		}),
+	);
+}
+
+function parseAccessDefaults(value, path) {
+	const record = optionalRecord(value, path);
+	if (!record) {
+		return { models: {} };
+	}
+
+	const models = optionalRecord(record.models, `${path}.models`) ?? {};
+	return {
+		models: Object.fromEntries(
+			Object.entries(models).map(([modelId, rawSurfaces]) => {
+				const parsedSurfaces = expectRecord(rawSurfaces, `${path}.models.${modelId}`);
+				return [
+					modelId,
+					Object.fromEntries(
+						Object.entries(parsedSurfaces).map(([surfaceId, rawPolicy]) => [
+							surfaceId,
+							expectString(rawPolicy, `${path}.models.${modelId}.${surfaceId}`),
+						]),
+					),
+				];
+			}),
+		),
+	};
+}
+
+function parseAccessBootstrap(value, path) {
+	const record = optionalRecord(value, path);
+	if (!record) {
+		return {};
+	}
+
+	const owners = optionalRecord(record.owners, `${path}.owners`);
+	return {
+		owners: owners
+			? {
+				emails: stringArray(owners.emails, `${path}.owners.emails`),
+				roles: stringArray(owners.roles, `${path}.owners.roles`),
+			}
+			: undefined,
+	};
+}
+
+function parseAccess(value, path) {
+	const record = optionalRecord(value, path);
+	if (!record) {
+		return {
+			roles: {},
+			policies: {},
+			defaults: { models: {} },
+			bootstrap: {},
+		};
+	}
+
+	return {
+		roles: parseAccessRoles(record.roles, `${path}.roles`),
+		policies: parseAccessPolicies(record.policies, `${path}.policies`),
+		defaults: parseAccessDefaults(record.defaults, `${path}.defaults`),
+		bootstrap: parseAccessBootstrap(record.bootstrap, `${path}.bootstrap`),
+	};
+}
+
 /** @type {TreeseedFieldAliasRegistry} */
 const siteFieldAliases = {
 	siteUrl: { key: 'siteUrl', aliases: ['site_url'] },
@@ -228,6 +330,7 @@ export function parseSiteConfig(source) {
 		emailNotificationFieldAliases,
 		expectRecord(site.emailNotifications, 'site.emailNotifications'),
 	);
+	const access = parseAccess(parsed.access, 'access');
 
 	return {
 		site: {
@@ -317,5 +420,6 @@ export function parseSiteConfig(source) {
 				},
 			},
 		},
+		access,
 	};
 }

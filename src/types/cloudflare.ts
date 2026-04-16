@@ -25,11 +25,42 @@ export interface CloudflareRuntimeAssets {
 	fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
 
+export interface R2ObjectBodyLike {
+	text(): Promise<string>;
+	arrayBuffer(): Promise<ArrayBuffer>;
+	json<T = unknown>(): Promise<T>;
+}
+
+export interface R2ObjectLike extends R2ObjectBodyLike {
+	httpEtag?: string;
+	etag?: string;
+	size?: number;
+	uploaded?: Date;
+	writeHttpMetadata?(headers: Headers): void;
+}
+
+export interface R2PutOptionsLike {
+	httpMetadata?: Record<string, unknown>;
+	customMetadata?: Record<string, string>;
+}
+
+export interface R2BucketLike {
+	get(key: string): Promise<R2ObjectLike | null>;
+	head?(key: string): Promise<R2ObjectLike | null>;
+	put(
+		key: string,
+		value: string | ArrayBuffer | ArrayBufferView | ReadableStream,
+		options?: R2PutOptionsLike,
+	): Promise<unknown>;
+	delete?(key: string | string[]): Promise<void>;
+}
+
 export interface CloudflareRuntime {
 	env: {
 		FORM_GUARD_KV: KvNamespaceLike;
 		SITE_DATA_DB: D1DatabaseLike;
 		SESSION: KvNamespaceLike;
 		ASSETS?: CloudflareRuntimeAssets;
+		[key: string]: unknown;
 	};
 }

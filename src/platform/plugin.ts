@@ -76,6 +76,10 @@ export type TreeseedPluginEnvironmentContext = {
 	pluginConfig: Record<string, unknown>;
 };
 
+export type TreeseedContentProviderContext = TreeseedPluginEnvironmentContext & {
+	tenantConfig: TreeseedTenantConfig;
+};
+
 export type TreeseedGraphRankingProviderContribution =
 	| SdkGraphRankingProvider
 	| ((context: TreeseedPluginEnvironmentContext) => SdkGraphRankingProvider | undefined);
@@ -90,6 +94,11 @@ export interface TreeseedPlugin {
 		string,
 		TreeseedSiteExtensionContribution | ((context: TreeseedPluginSiteContext) => TreeseedSiteExtensionContribution)
 	>;
+	contentProviders?: {
+		runtime?: Record<string, unknown>;
+		publish?: Record<string, unknown>;
+		docs?: Record<string, unknown>;
+	};
 	siteHooks?: TreeseedSiteExtensionContribution | ((context: TreeseedPluginSiteContext) => TreeseedSiteExtensionContribution);
 	siteLayers?: TreeseedSiteLayerDefinition[] | ((context: TreeseedPluginSiteContext) => TreeseedSiteLayerDefinition[] | undefined);
 	platformProviders?: Record<

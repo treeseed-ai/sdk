@@ -2,9 +2,27 @@ name: __SITE_NAME__
 slug: __SITE_SLUG__
 siteUrl: __SITE_URL__
 contactEmail: __CONTACT_EMAIL__
+hosting:
+  kind: hosted_project
+  registration: optional
+  marketBaseUrl: https://api.treeseed.ai
+  teamId: __SITE_SLUG__
+  projectId: __SITE_SLUG__
 cloudflare:
   accountId: replace-with-cloudflare-account-id
   workerName: __SITE_SLUG__
+  pages:
+    projectName: __SITE_SLUG__
+    previewProjectName: __SITE_SLUG__-staging
+    productionBranch: main
+    stagingBranch: staging
+    buildOutputDir: dist
+  r2:
+    binding: TREESEED_CONTENT_BUCKET
+    bucketName: __SITE_SLUG__-content
+    manifestKeyTemplate: teams/{teamId}/published/common.json
+    previewRootTemplate: teams/{teamId}/previews
+    previewTtlHours: 168
 plugins:
   - package: '@treeseed/sdk/plugin-default'
 providers:
@@ -18,6 +36,8 @@ providers:
     research: stub
   deploy: cloudflare
   content:
+    runtime: team_scoped_r2_overlay
+    publish: team_scoped_r2_overlay
     docs: default
   site: default
 smtp:

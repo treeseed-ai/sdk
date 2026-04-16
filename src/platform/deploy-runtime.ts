@@ -66,8 +66,19 @@ export function getTreeseedDeployProvider() {
 	return getTreeseedDeployConfig().providers?.deploy ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.deploy;
 }
 
+export function getTreeseedContentRuntimeProvider() {
+	return getTreeseedDeployConfig().providers?.content?.runtime ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime;
+}
+
+export function getTreeseedContentPublishProvider() {
+	return getTreeseedDeployConfig().providers?.content?.publish ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.publish;
+}
+
 export function getTreeseedDocsProvider() {
-	return getTreeseedDeployConfig().providers?.content?.docs ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.docs;
+	return getTreeseedDeployConfig().providers?.content?.docs
+		?? getTreeseedDeployConfig().providers?.content?.runtime
+		?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.docs
+		?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime;
 }
 
 export function getTreeseedSiteProvider() {

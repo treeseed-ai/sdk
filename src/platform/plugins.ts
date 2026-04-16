@@ -5,6 +5,8 @@ export {
 } from './plugins/constants.ts';
 export {
 	getTreeseedAgentProviderSelections,
+	getTreeseedContentPublishProvider,
+	getTreeseedContentRuntimeProvider,
 	getTreeseedDeployConfig,
 	getTreeseedDeployProvider,
 	getTreeseedDocsProvider,

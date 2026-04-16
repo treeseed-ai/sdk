@@ -64,7 +64,11 @@ ${pluginsYaml}
       handlers: ['planner']
     },
     deploy: ['cloudflare'],
-    content: { docs: ['default'] },
+    content: {
+      runtime: ['team_scoped_r2_overlay'],
+      publish: ['team_scoped_r2_overlay'],
+      docs: ['default']
+    },
     site: ['default']
   }
 };`,

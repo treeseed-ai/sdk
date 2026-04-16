@@ -21,8 +21,10 @@ import {
 	markDeploymentInitialized,
 	provisionCloudflareResources,
 	syncCloudflareSecrets,
+	verifyProvisionedCloudflareResources,
 } from './deploy.ts';
 import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
+import { validateRailwayDeployPrerequisites } from './railway-deploy.ts';
 import { loadCliDeployConfig, resolveWranglerBin, withProcessCwd } from './runtime-tools.ts';
 
 const MACHINE_CONFIG_RELATIVE_PATH = '.treeseed/config/machine.yaml';
@@ -1422,6 +1424,10 @@ export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dry
 		.filter((entry) => entry.scopes.includes(scope) && entry.targets.includes('railway-secret'))
 		.map((entry) => entry.id)
 		.filter((key) => typeof values[key] === 'string' && values[key].length > 0);
+	const railwayVariableNames = registry.entries
+		.filter((entry) => entry.scopes.includes(scope) && entry.targets.includes('railway-var'))
+		.map((entry) => entry.id)
+		.filter((key) => typeof values[key] === 'string' && values[key].length > 0);
 	const services = ['api', 'agents', 'manager', 'worker', 'runner', 'workdayStart', 'workdayReport']
 		.map((serviceKey) => {
 			const service = deployConfig.services?.[serviceKey];
@@ -1445,6 +1451,7 @@ export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dry
 				baseUrl: environment?.baseUrl ?? service.publicBaseUrl ?? '(unset)',
 				environmentName: environment?.railwayEnvironment ?? scope,
 				secrets: railwaySecretNames,
+				variables: railwayVariableNames,
 				dryRun,
 			};
 		})
@@ -1452,6 +1459,12 @@ export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dry
 
 	for (const service of services) {
 		for (const key of service.secrets) {
+			runRailway(
+				['variable', 'set', '--service', service.serviceName || service.serviceId, '--environment', service.environmentName, '--stdin', '--skip-deploys', key],
+				{ cwd: service.rootDir, dryRun, input: values[key] },
+			);
+		}
+		for (const key of service.variables) {
 			runRailway(
 				['variable', 'set', '--service', service.serviceName || service.serviceId, '--environment', service.environmentName, '--stdin', '--skip-deploys', key],
 				{ cwd: service.rootDir, dryRun, input: values[key] },
@@ -1480,6 +1493,42 @@ export function initializeTreeseedPersistentEnvironment({ tenantRoot, scope = 'p
 		target,
 		summary,
 		secrets: syncedSecrets,
+	};
+}
+
+function summarizePersistentReadiness(tenantRoot, scope, validation, connectionChecks) {
+	if (scope === 'local') {
+		return {
+			configured: validation.ok,
+			provisioned: true,
+			deployable: validation.ok,
+			checks: {
+				validation: validation.ok,
+				connections: connectionChecks.every((check) => check.ready || check.skipped),
+			},
+		};
+	}
+
+	const cloudflare = verifyProvisionedCloudflareResources(tenantRoot, { scope });
+	let railwayReady = true;
+	try {
+		validateRailwayDeployPrerequisites(tenantRoot, scope);
+	} catch {
+		railwayReady = false;
+	}
+	const configured = validation.ok;
+	const provisioned = cloudflare.ok && railwayReady;
+	const deployable = configured && provisioned && connectionChecks.every((check) => check.ready || check.skipped);
+	return {
+		configured,
+		provisioned,
+		deployable,
+		checks: {
+			validation: validation.ok,
+			connections: connectionChecks.every((check) => check.ready || check.skipped),
+			cloudflare: cloudflare.checks,
+			railway: railwayReady,
+		},
 	};
 }
 
@@ -1700,6 +1749,12 @@ export function finalizeTreeseedConfig({
 		initialized: [] as Array<{ scope: TreeseedConfigScope; secrets: number; target: string }>,
 		connectionChecks: [] as ReturnType<typeof checkTreeseedProviderConnections>[],
 		validationByScope: {} as Record<TreeseedConfigScope, ReturnType<typeof validateTreeseedEnvironmentValues>>,
+		readinessByScope: {} as Record<TreeseedConfigScope, {
+			configured: boolean;
+			provisioned: boolean;
+			deployable: boolean;
+			checks: Record<string, unknown>;
+		}>,
 	};
 
 	for (const scope of scopes) {
@@ -1749,6 +1804,20 @@ export function finalizeTreeseedConfig({
 	}
 	if (sync === 'railway' || sync === 'all') {
 		summary.synced.railway = syncTreeseedRailwayEnvironment({ tenantRoot, scope: scopes.at(-1) ?? 'prod' });
+	}
+
+	for (const scope of scopes) {
+		summary.readinessByScope[scope] = summarizePersistentReadiness(
+			tenantRoot,
+			scope,
+			summary.validationByScope[scope],
+			summary.connectionChecks.find((report) => report.scope === scope)?.checks ?? [],
+		);
+		if (scope !== 'local' && summary.readinessByScope[scope].deployable !== true) {
+			throw new Error(
+				`Treeseed config readiness failed for ${scope}: configuration is not deployable.`,
+			);
+		}
 	}
 
 	return summary;

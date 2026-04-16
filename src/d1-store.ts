@@ -14,6 +14,7 @@ import type {
 	SdkCompleteTaskRequest,
 	SdkCreateReportRequest,
 	SdkCreateMessageRequest,
+	SdkCreatePrioritySnapshotRequest,
 	SdkCreateTaskRequest,
 	SdkCursorEntity,
 	SdkCursorRequest,
@@ -30,7 +31,10 @@ import type {
 	SdkMutationRequest,
 	SdkPickRequest,
 	SdkPickResult,
+	SdkPriorityOverrideRequest,
 	SdkRecordRunRequest,
+	SdkRecordScaleDecisionRequest,
+	SdkRecordTaskCreditsRequest,
 	SdkReportEntity,
 	SdkRunEntity,
 	SdkSearchRequest,
@@ -38,9 +42,14 @@ import type {
 	SdkSubscriptionEntity,
 	SdkTaskEntity,
 	SdkTaskSearchRequest,
+	SdkUpsertWorkPolicyRequest,
 	SdkTaskProgressRequest,
 	SdkUpdateRequest,
 	SdkWorkDayEntity,
+	ScaleDecision,
+	TaskCreditLedgerEntry,
+	WorkdayPolicy,
+	PrioritySnapshot,
 } from './sdk-types.ts';
 import { CursorStore } from './stores/cursor-store.ts';
 import { LeaseStore, type LeaseClaimInput } from './stores/lease-store.ts';
@@ -89,6 +98,16 @@ export interface AgentDatabase {
 	searchTasks(request: SdkTaskSearchRequest): Promise<SdkTaskEntity[]>;
 	createReport(request: SdkCreateReportRequest): Promise<SdkReportEntity | null>;
 	getManagerContext(taskId: string): Promise<SdkManagerContextPayload>;
+	getWorkPolicy(projectId: string, environment?: string): Promise<WorkdayPolicy | null>;
+	upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest): Promise<WorkdayPolicy | null>;
+	listPriorityOverrides(projectId: string): Promise<Record<string, unknown>[]>;
+	upsertPriorityOverride(request: SdkPriorityOverrideRequest): Promise<Record<string, unknown> | null>;
+	createPrioritySnapshot(request: SdkCreatePrioritySnapshotRequest): Promise<PrioritySnapshot | null>;
+	getLatestPrioritySnapshot(projectId: string, workDayId?: string | null): Promise<PrioritySnapshot | null>;
+	recordTaskCredits(request: SdkRecordTaskCreditsRequest): Promise<TaskCreditLedgerEntry | null>;
+	listTaskCredits(workDayId: string): Promise<TaskCreditLedgerEntry[]>;
+	recordScaleDecision(request: SdkRecordScaleDecisionRequest): Promise<ScaleDecision | null>;
+	getLatestScaleDecision(projectId: string, environment: string, poolName: string): Promise<ScaleDecision | null>;
 }
 
 function nowIso() {
@@ -138,6 +157,11 @@ export class MemoryAgentDatabase implements AgentDatabase {
 	private readonly taskOutputs = new Map<string, Record<string, unknown>[]>();
 	private readonly graphRuns = new Map<string, SdkGraphRunEntity>();
 	private readonly reports = new Map<string, SdkReportEntity>();
+	private readonly workPolicies = new Map<string, WorkdayPolicy>();
+	private readonly priorityOverrides = new Map<string, Record<string, unknown>>();
+	private readonly prioritySnapshots = new Map<string, PrioritySnapshot>();
+	private readonly taskCreditLedger = new Map<string, TaskCreditLedgerEntry>();
+	private readonly scaleDecisions = new Map<string, ScaleDecision>();
 	private messageId = 0;
 
 	constructor(seed?: {
@@ -901,6 +925,120 @@ export class MemoryAgentDatabase implements AgentDatabase {
 			graph: workDay?.graphVersion ? { graphVersion: workDay.graphVersion } : null,
 		};
 	}
+
+	async getWorkPolicy(projectId: string, environment: string = 'local') {
+		return this.workPolicies.get(`${projectId}:${environment}`) ?? null;
+	}
+
+	async upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest) {
+		const policy: WorkdayPolicy = {
+			projectId: request.projectId,
+			environment: request.environment,
+			schedule: request.schedule,
+			dailyTaskCreditBudget: request.dailyTaskCreditBudget,
+			maxQueuedTasks: request.maxQueuedTasks,
+			maxQueuedCredits: request.maxQueuedCredits,
+			autoscale: request.autoscale,
+			creditWeights: request.creditWeights ?? [],
+			metadata: request.metadata ?? {},
+		};
+		this.workPolicies.set(`${request.projectId}:${request.environment}`, policy);
+		return policy;
+	}
+
+	async listPriorityOverrides(projectId: string) {
+		return [...this.priorityOverrides.values()].filter((entry) => entry.projectId === projectId);
+	}
+
+	async upsertPriorityOverride(request: SdkPriorityOverrideRequest) {
+		const record = {
+			id: request.id ?? crypto.randomUUID(),
+			projectId: request.projectId,
+			model: request.model,
+			subjectId: request.subjectId,
+			priority: request.priority,
+			estimatedCredits: request.estimatedCredits ?? null,
+			metadata: request.metadata ?? {},
+			createdAt: nowIso(),
+			updatedAt: nowIso(),
+		};
+		this.priorityOverrides.set(record.id, record);
+		return record;
+	}
+
+	async createPrioritySnapshot(request: SdkCreatePrioritySnapshotRequest) {
+		const snapshot: PrioritySnapshot = {
+			id: request.id ?? crypto.randomUUID(),
+			projectId: request.projectId,
+			workDayId: request.workDayId ?? null,
+			generatedAt: nowIso(),
+			items: request.items,
+			metadata: request.metadata ?? {},
+		};
+		this.prioritySnapshots.set(snapshot.id, snapshot);
+		return snapshot;
+	}
+
+	async getLatestPrioritySnapshot(projectId: string, workDayId?: string | null) {
+		return [...this.prioritySnapshots.values()]
+			.filter((entry) => entry.projectId === projectId)
+			.filter((entry) => !workDayId || entry.workDayId === workDayId)
+			.sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))[0] ?? null;
+	}
+
+	async recordTaskCredits(request: SdkRecordTaskCreditsRequest) {
+		const entry: TaskCreditLedgerEntry = {
+			id: request.id ?? crypto.randomUUID(),
+			projectId: request.projectId,
+			workDayId: request.workDayId,
+			taskId: request.taskId ?? null,
+			phase: request.phase,
+			credits: request.credits,
+			metadata: request.metadata ?? {},
+			createdAt: nowIso(),
+		};
+		this.taskCreditLedger.set(entry.id, entry);
+		const workDay = this.workDays.get(request.workDayId);
+		if (workDay) {
+			const delta = request.phase === 'refund' ? -Math.abs(request.credits) : Math.abs(request.credits);
+			this.workDays.set(workDay.id, {
+				...workDay,
+				capacityUsed: Math.max(0, workDay.capacityUsed + delta),
+				updatedAt: nowIso(),
+			});
+		}
+		return entry;
+	}
+
+	async listTaskCredits(workDayId: string) {
+		return [...this.taskCreditLedger.values()]
+			.filter((entry) => entry.workDayId === workDayId)
+			.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+	}
+
+	async recordScaleDecision(request: SdkRecordScaleDecisionRequest) {
+		const decision: ScaleDecision = {
+			id: request.id ?? crypto.randomUUID(),
+			projectId: request.projectId,
+			environment: request.environment,
+			poolName: request.poolName,
+			workDayId: request.workDayId ?? null,
+			desiredWorkers: request.desiredWorkers,
+			observedQueueDepth: request.observedQueueDepth,
+			observedActiveLeases: request.observedActiveLeases,
+			reason: request.reason,
+			metadata: request.metadata ?? {},
+			createdAt: nowIso(),
+		};
+		this.scaleDecisions.set(decision.id, decision);
+		return decision;
+	}
+
+	async getLatestScaleDecision(projectId: string, environment: string, poolName: string) {
+		return [...this.scaleDecisions.values()]
+			.filter((entry) => entry.projectId === projectId && entry.environment === environment && entry.poolName === poolName)
+			.sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
+	}
 }
 
 export class CloudflareD1AgentDatabase implements AgentDatabase {
@@ -1289,5 +1427,45 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 			agent: null,
 			graph: workDay?.graphVersion ? { graphVersion: workDay.graphVersion } : null,
 		};
+	}
+
+	getWorkPolicy(projectId: string, environment: string = 'local') {
+		return this.operational.getWorkPolicy(projectId, environment);
+	}
+
+	upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest) {
+		return this.operational.upsertWorkPolicy(request);
+	}
+
+	listPriorityOverrides(projectId: string) {
+		return this.operational.listPriorityOverrides(projectId);
+	}
+
+	upsertPriorityOverride(request: SdkPriorityOverrideRequest) {
+		return this.operational.upsertPriorityOverride(request);
+	}
+
+	createPrioritySnapshot(request: SdkCreatePrioritySnapshotRequest) {
+		return this.operational.createPrioritySnapshot(request);
+	}
+
+	getLatestPrioritySnapshot(projectId: string, workDayId?: string | null) {
+		return this.operational.getLatestPrioritySnapshot(projectId, workDayId);
+	}
+
+	recordTaskCredits(request: SdkRecordTaskCreditsRequest) {
+		return this.operational.recordTaskCredits(request);
+	}
+
+	listTaskCredits(workDayId: string) {
+		return this.operational.listTaskCredits(workDayId);
+	}
+
+	recordScaleDecision(request: SdkRecordScaleDecisionRequest) {
+		return this.operational.recordScaleDecision(request);
+	}
+
+	getLatestScaleDecision(projectId: string, environment: string, poolName: string) {
+		return this.operational.getLatestScaleDecision(projectId, environment, poolName);
 	}
 }

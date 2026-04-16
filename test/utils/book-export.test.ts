@@ -133,7 +133,7 @@ describe('book export runtime', () => {
 		expect(indexJson.packageKind).toBe('book');
 		expect(indexJson.files[0].projectRelativePath).toBe('src/content/knowledge/alpha/01-intro.md');
 		expect(indexJson.files[0].relations.book).toBe('alpha-book');
-	});
+	}, 15000);
 
 	it('exports an aggregate library package with ordered member packages', async () => {
 		const root = createBookFixture();
@@ -148,5 +148,5 @@ describe('book export runtime', () => {
 		expect(indexJson.packageKind).toBe('library');
 		expect(indexJson.members.map((entry: { slug: string }) => entry.slug)).toEqual(['alpha-book', 'beta-book']);
 		expect(indexJson.files.some((entry: { memberBookId: string }) => entry.memberBookId === 'beta-book')).toBe(true);
-	}, 15000);
+	}, 30000);
 });

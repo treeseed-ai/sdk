@@ -167,18 +167,58 @@ function relativeFromGeneratedRoot(targetPath, generatedRoot) {
 }
 
 function buildPublicVars(deployConfig) {
+	const contentRuntimeProvider = deployConfig.providers?.content?.runtime ?? 'team_scoped_r2_overlay';
+	const contentPublishProvider = deployConfig.providers?.content?.publish ?? contentRuntimeProvider;
+	const contentDefaultTeamId = deployConfig.hosting?.teamId ?? deployConfig.slug;
+	const contentManifestKeyTemplate = deployConfig.cloudflare.r2?.manifestKeyTemplate ?? 'teams/{teamId}/published/common.json';
+	const contentPreviewRootTemplate = deployConfig.cloudflare.r2?.previewRootTemplate ?? 'teams/{teamId}/previews';
+	const contentManifestKey = contentManifestKeyTemplate.replaceAll('{teamId}', contentDefaultTeamId);
+	const hostedProject = (deployConfig.hosting?.kind ?? 'self_hosted_project') === 'hosted_project';
+	const workerRailway = deployConfig.services?.worker?.railway ?? {};
 	return {
+		TREESEED_HOSTING_KIND: deployConfig.hosting?.kind ?? 'self_hosted_project',
+		TREESEED_HOSTING_REGISTRATION: deployConfig.hosting?.registration ?? 'none',
+		TREESEED_MARKET_API_BASE_URL: deployConfig.hosting?.marketBaseUrl ?? '',
+		TREESEED_HOSTING_TEAM_ID: deployConfig.hosting?.teamId ?? contentDefaultTeamId,
+		TREESEED_PROJECT_ID: deployConfig.hosting?.projectId ?? deployConfig.slug,
 		TREESEED_AGENT_EXECUTION_PROVIDER: deployConfig.providers?.agents?.execution ?? 'stub',
 		TREESEED_AGENT_REPOSITORY_PROVIDER: deployConfig.providers?.agents?.repository ?? 'stub',
 		TREESEED_AGENT_VERIFICATION_PROVIDER: deployConfig.providers?.agents?.verification ?? 'stub',
+		TREESEED_CONTENT_RUNTIME_PROVIDER: contentRuntimeProvider,
+		TREESEED_CONTENT_PUBLISH_PROVIDER: contentPublishProvider,
+		TREESEED_CONTENT_DEFAULT_TEAM_ID: contentDefaultTeamId,
+		TREESEED_CONTENT_MANIFEST_KEY: contentManifestKey,
+		TREESEED_CONTENT_MANIFEST_KEY_TEMPLATE: contentManifestKeyTemplate,
+		TREESEED_CONTENT_PREVIEW_ROOT_TEMPLATE: contentPreviewRootTemplate,
+		TREESEED_EDITORIAL_PREVIEW_ROOT: contentPreviewRootTemplate.replaceAll('{teamId}', contentDefaultTeamId),
+		TREESEED_EDITORIAL_PREVIEW_TTL_HOURS: String(deployConfig.cloudflare.r2?.previewTtlHours ?? 168),
+		TREESEED_CONTENT_BUCKET_NAME: deployConfig.cloudflare.r2?.bucketName ?? '',
+		TREESEED_CONTENT_PUBLIC_BASE_URL: deployConfig.cloudflare.r2?.publicBaseUrl ?? '',
+		TREESEED_WORKER_POOL_SCALER: envOrNull('TREESEED_WORKER_POOL_SCALER') ?? (hostedProject ? 'railway' : ''),
+		TREESEED_WORKDAY_TIMEZONE: envOrNull('TREESEED_WORKDAY_TIMEZONE') ?? '',
+		TREESEED_WORKDAY_WINDOWS_JSON: envOrNull('TREESEED_WORKDAY_WINDOWS_JSON') ?? '',
+		TREESEED_WORKDAY_TASK_CREDIT_BUDGET: envOrNull('TREESEED_WORKDAY_TASK_CREDIT_BUDGET') ?? '',
+		TREESEED_MANAGER_MAX_QUEUED_TASKS: envOrNull('TREESEED_MANAGER_MAX_QUEUED_TASKS') ?? '',
+		TREESEED_MANAGER_MAX_QUEUED_CREDITS: envOrNull('TREESEED_MANAGER_MAX_QUEUED_CREDITS') ?? '',
+		TREESEED_MANAGER_PRIORITY_MODELS: envOrNull('TREESEED_MANAGER_PRIORITY_MODELS') ?? '',
+		TREESEED_TASK_CREDIT_WEIGHTS_JSON: envOrNull('TREESEED_TASK_CREDIT_WEIGHTS_JSON') ?? '',
+		TREESEED_AGENT_POOL_MIN_WORKERS: envOrNull('TREESEED_AGENT_POOL_MIN_WORKERS') ?? '',
+		TREESEED_AGENT_POOL_MAX_WORKERS: envOrNull('TREESEED_AGENT_POOL_MAX_WORKERS') ?? '',
+		TREESEED_AGENT_POOL_TARGET_QUEUE_DEPTH: envOrNull('TREESEED_AGENT_POOL_TARGET_QUEUE_DEPTH') ?? '',
+		TREESEED_AGENT_POOL_COOLDOWN_SECONDS: envOrNull('TREESEED_AGENT_POOL_COOLDOWN_SECONDS') ?? '',
+		TREESEED_RAILWAY_PROJECT_ID: envOrNull('TREESEED_RAILWAY_PROJECT_ID') ?? workerRailway.projectId ?? '',
+		TREESEED_RAILWAY_ENVIRONMENT_ID: envOrNull('TREESEED_RAILWAY_ENVIRONMENT_ID') ?? '',
+		TREESEED_RAILWAY_WORKER_SERVICE_ID: envOrNull('TREESEED_RAILWAY_WORKER_SERVICE_ID') ?? workerRailway.serviceId ?? '',
 		TREESEED_PUBLIC_TURNSTILE_SITE_KEY: envOrNull('TREESEED_PUBLIC_TURNSTILE_SITE_KEY') ?? '',
 	};
 }
 
 function buildSecretMap(deployConfig, state) {
 	const generatedSecret = state.generatedSecrets?.TREESEED_FORM_TOKEN_SECRET ?? randomBytes(24).toString('hex');
+	const previewSecret = state.generatedSecrets?.TREESEED_EDITORIAL_PREVIEW_SECRET ?? randomBytes(24).toString('hex');
 	return {
 		TREESEED_FORM_TOKEN_SECRET: envOrNull('TREESEED_FORM_TOKEN_SECRET') ?? generatedSecret,
+		TREESEED_EDITORIAL_PREVIEW_SECRET: envOrNull('TREESEED_EDITORIAL_PREVIEW_SECRET') ?? previewSecret,
 		TREESEED_TURNSTILE_SECRET_KEY: envOrNull('TREESEED_TURNSTILE_SECRET_KEY'),
 		TREESEED_SMTP_HOST: deployConfig.smtp?.enabled ? envOrNull('TREESEED_SMTP_HOST') : null,
 		TREESEED_SMTP_PORT: deployConfig.smtp?.enabled ? envOrNull('TREESEED_SMTP_PORT') : null,
@@ -192,6 +232,10 @@ function buildSecretMap(deployConfig, state) {
 function defaultStateFromConfig(deployConfig, target) {
 	const workerName = targetWorkerName(deployConfig, target);
 	const suffix = target.kind === 'persistent' ? target.scope : sanitizeSegment(target.branchName);
+	const contentManifestKeyTemplate = deployConfig.cloudflare.r2?.manifestKeyTemplate ?? 'teams/{teamId}/published/common.json';
+	const contentPreviewRootTemplate = deployConfig.cloudflare.r2?.previewRootTemplate ?? 'teams/{teamId}/previews';
+	const contentDefaultTeamId = deployConfig.hosting?.teamId ?? deployConfig.slug;
+	const contentManifestKey = contentManifestKeyTemplate.replaceAll('{teamId}', contentDefaultTeamId);
 
 	return {
 		version: 2,
@@ -222,14 +266,52 @@ function defaultStateFromConfig(deployConfig, target) {
 				name: deployConfig.cloudflare.queueName ?? 'agent-work',
 				dlqName: deployConfig.cloudflare.dlqName ?? 'agent-work-dlq',
 				binding: deployConfig.cloudflare.queueBinding ?? 'AGENT_WORK_QUEUE',
+				queueId: null,
+				dlqId: null,
 			},
+		},
+		pages: {
+			projectName: target.kind === 'persistent'
+				? (target.scope === 'prod'
+					? deployConfig.cloudflare.pages?.projectName ?? deployConfig.slug
+					: deployConfig.cloudflare.pages?.previewProjectName ?? `${deployConfig.cloudflare.pages?.projectName ?? deployConfig.slug}-staging`)
+				: deployConfig.cloudflare.pages?.previewProjectName ?? `${deployConfig.cloudflare.pages?.projectName ?? deployConfig.slug}-preview`,
+			productionBranch: deployConfig.cloudflare.pages?.productionBranch ?? 'main',
+			stagingBranch: deployConfig.cloudflare.pages?.stagingBranch ?? 'staging',
+			buildOutputDir: deployConfig.cloudflare.pages?.buildOutputDir ?? 'dist',
+			url: null,
+		},
+		content: {
+			runtimeProvider: deployConfig.providers?.content?.runtime ?? 'team_scoped_r2_overlay',
+			publishProvider: deployConfig.providers?.content?.publish ?? deployConfig.providers?.content?.runtime ?? 'team_scoped_r2_overlay',
+			defaultTeamId: contentDefaultTeamId,
+			r2Binding: deployConfig.cloudflare.r2?.binding ?? null,
+			bucketName: deployConfig.cloudflare.r2?.bucketName ?? null,
+			publicBaseUrl: deployConfig.cloudflare.r2?.publicBaseUrl ?? null,
+			manifestKeyTemplate: contentManifestKeyTemplate,
+			previewRootTemplate: contentPreviewRootTemplate,
+			previewTtlHours: deployConfig.cloudflare.r2?.previewTtlHours ?? 168,
+			manifestKey: contentManifestKey,
+			lastPublishedManifestRevision: null,
+			lastPublishedManifestSha256: null,
+		},
+		hosting: {
+			kind: deployConfig.hosting?.kind ?? 'self_hosted_project',
+			registration: deployConfig.hosting?.registration ?? 'none',
+			marketBaseUrl: deployConfig.hosting?.marketBaseUrl ?? null,
+			teamId: deployConfig.hosting?.teamId ?? contentDefaultTeamId,
+			projectId: deployConfig.hosting?.projectId ?? deployConfig.slug,
 		},
 		generatedSecrets: {},
 		readiness: {
+			configured: false,
+			provisioned: false,
+			deployable: false,
 			initialized: false,
 			initializedAt: null,
 			lastValidatedAt: null,
 			lastConfigFingerprint: null,
+			lastValidationSummary: null,
 		},
 		lastDeployedUrl: target.kind === 'branch' ? targetWorkersDevUrl(workerName) : null,
 		lastManifestFingerprint: null,
@@ -252,15 +334,18 @@ function defaultStateFromConfig(deployConfig, target) {
 						workerName: serviceConfig?.cloudflare?.workerName ?? null,
 						rootDir: serviceConfig?.railway?.rootDir ?? serviceConfig?.rootDir ?? null,
 						environment: serviceConfig?.environments?.[scope]?.railwayEnvironment ?? scope,
+						schedule: serviceConfig?.railway?.schedule ?? null,
 						publicBaseUrl: baseUrl,
 						initialized: false,
 						lastDeploymentTimestamp: null,
 						lastDeployedUrl: baseUrl,
 						lastDeploymentCommand: null,
+						lastScheduleSyncAt: null,
 					},
 				];
 			}),
 		),
+		railwaySchedules: {},
 		runtimeCompatibility: {
 			envelopeSchemaGeneration: TRESEED_ENVELOPE_SCHEMA_GENERATION,
 			migrationWaveId: TRESEED_MIGRATION_WAVE_ID,
@@ -314,11 +399,47 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 				name: defaults.queues?.agentWork?.name ?? persisted.queues?.agentWork?.name ?? 'agent-work',
 				dlqName: defaults.queues?.agentWork?.dlqName ?? persisted.queues?.agentWork?.dlqName ?? 'agent-work-dlq',
 				binding: defaults.queues?.agentWork?.binding ?? persisted.queues?.agentWork?.binding ?? 'AGENT_WORK_QUEUE',
+				queueId: persisted.queues?.agentWork?.queueId ?? defaults.queues?.agentWork?.queueId ?? null,
+				dlqId: persisted.queues?.agentWork?.dlqId ?? defaults.queues?.agentWork?.dlqId ?? null,
 			},
 		},
 		generatedSecrets: {
 			...(defaults.generatedSecrets ?? {}),
 			...(persisted.generatedSecrets ?? {}),
+		},
+		content: {
+			...(defaults.content ?? {}),
+			...(persisted.content ?? {}),
+			runtimeProvider: defaults.content?.runtimeProvider ?? persisted.content?.runtimeProvider ?? 'team_scoped_r2_overlay',
+			publishProvider: defaults.content?.publishProvider ?? persisted.content?.publishProvider ?? 'team_scoped_r2_overlay',
+			defaultTeamId: defaults.content?.defaultTeamId ?? persisted.content?.defaultTeamId ?? deployConfig.slug,
+			r2Binding: defaults.content?.r2Binding ?? persisted.content?.r2Binding ?? null,
+			bucketName: defaults.content?.bucketName ?? persisted.content?.bucketName ?? null,
+			publicBaseUrl: defaults.content?.publicBaseUrl ?? persisted.content?.publicBaseUrl ?? null,
+			manifestKeyTemplate: defaults.content?.manifestKeyTemplate ?? persisted.content?.manifestKeyTemplate ?? 'teams/{teamId}/published/common.json',
+			previewRootTemplate: defaults.content?.previewRootTemplate ?? persisted.content?.previewRootTemplate ?? 'teams/{teamId}/previews',
+			previewTtlHours: defaults.content?.previewTtlHours ?? persisted.content?.previewTtlHours ?? 168,
+			manifestKey: defaults.content?.manifestKey ?? persisted.content?.manifestKey ?? `teams/${deployConfig.slug}/published/common.json`,
+			lastPublishedManifestRevision: persisted.content?.lastPublishedManifestRevision ?? defaults.content?.lastPublishedManifestRevision ?? null,
+			lastPublishedManifestSha256: persisted.content?.lastPublishedManifestSha256 ?? defaults.content?.lastPublishedManifestSha256 ?? null,
+		},
+		hosting: {
+			...(defaults.hosting ?? {}),
+			...(persisted.hosting ?? {}),
+			kind: defaults.hosting?.kind ?? persisted.hosting?.kind ?? 'self_hosted_project',
+			registration: defaults.hosting?.registration ?? persisted.hosting?.registration ?? 'none',
+			marketBaseUrl: defaults.hosting?.marketBaseUrl ?? persisted.hosting?.marketBaseUrl ?? null,
+			teamId: defaults.hosting?.teamId ?? persisted.hosting?.teamId ?? deployConfig.slug,
+			projectId: defaults.hosting?.projectId ?? persisted.hosting?.projectId ?? deployConfig.slug,
+		},
+		pages: {
+			...(defaults.pages ?? {}),
+			...(persisted.pages ?? {}),
+			projectName: defaults.pages?.projectName ?? persisted.pages?.projectName ?? null,
+			productionBranch: defaults.pages?.productionBranch ?? persisted.pages?.productionBranch ?? 'main',
+			stagingBranch: defaults.pages?.stagingBranch ?? persisted.pages?.stagingBranch ?? 'staging',
+			buildOutputDir: defaults.pages?.buildOutputDir ?? persisted.pages?.buildOutputDir ?? 'dist',
+			url: persisted.pages?.url ?? defaults.pages?.url ?? null,
 		},
 		readiness: {
 			...defaults.readiness,
@@ -342,12 +463,17 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 						workerName: defaultService.workerName ?? persistedService.workerName ?? null,
 						rootDir: defaultService.rootDir ?? persistedService.rootDir ?? null,
 						environment: defaultService.environment ?? persistedService.environment ?? null,
+						schedule: defaultService.schedule ?? persistedService.schedule ?? null,
 						publicBaseUrl: defaultService.publicBaseUrl ?? persistedService.publicBaseUrl ?? null,
 						lastDeployedUrl: persistedService.lastDeployedUrl ?? defaultService.publicBaseUrl ?? null,
+						lastScheduleSyncAt: persistedService.lastScheduleSyncAt ?? defaultService.lastScheduleSyncAt ?? null,
 					},
 				];
 			}),
 		),
+		railwaySchedules: {
+			...(persisted.railwaySchedules ?? {}),
+		},
 	};
 
 	if (target.kind === 'branch' && !merged.lastDeployedUrl) {
@@ -378,6 +504,9 @@ export function buildWranglerConfigContents(tenantRoot, deployConfig, state, opt
 	const assetsDirectory = relativeFromGeneratedRoot(resolve(tenantRoot, 'dist'), generatedRoot);
 	const migrationsDir = relativeFromGeneratedRoot(resolve(tenantRoot, 'migrations'), generatedRoot);
 	const vars = buildPublicVars(deployConfig);
+	const r2Config = deployConfig.cloudflare.r2;
+	const r2Binding = r2Config?.binding ?? 'TREESEED_CONTENT_BUCKET';
+	const r2BucketName = r2Config?.bucketName ?? `${deployConfig.slug}-content`;
 
 	return [
 		`name = ${renderTomlString(workerName)}`,
@@ -410,6 +539,14 @@ export function buildWranglerConfigContents(tenantRoot, deployConfig, state, opt
 		`preview_database_id = ${renderTomlString(state.d1Databases.SITE_DATA_DB.previewDatabaseId ?? state.d1Databases.SITE_DATA_DB.databaseId)}`,
 		`migrations_dir = ${renderTomlString(migrationsDir)}`,
 		'',
+		...(r2Config
+			? [
+				'[[r2_buckets]]',
+				`binding = ${renderTomlString(r2Binding)}`,
+				`bucket_name = ${renderTomlString(r2BucketName)}`,
+				'',
+			]
+			: []),
 	].join('\n');
 }
 
@@ -429,6 +566,7 @@ export function ensureGeneratedWranglerConfig(tenantRoot, options = {}) {
 	}
 	const secretMap = buildSecretMap(deployConfig, state);
 	state.generatedSecrets.TREESEED_FORM_TOKEN_SECRET = secretMap.TREESEED_FORM_TOKEN_SECRET;
+	state.generatedSecrets.TREESEED_EDITORIAL_PREVIEW_SECRET = secretMap.TREESEED_EDITORIAL_PREVIEW_SECRET;
 	writeDeployState(tenantRoot, state, { target });
 	return { wranglerPath, deployConfig, state, manifestFingerprint, target };
 }
@@ -486,6 +624,36 @@ function listD1Databases(tenantRoot, env) {
 	return parseWranglerJsonOutput(result, 'D1 list');
 }
 
+function listQueues(tenantRoot, env) {
+	const result = runWrangler(['queues', 'list', '--json'], {
+		cwd: tenantRoot,
+		capture: true,
+		env,
+		allowFailure: true,
+	});
+	return result.status === 0 ? parseWranglerJsonOutput(result, 'Queues list') : [];
+}
+
+function listR2Buckets(tenantRoot, env) {
+	const result = runWrangler(['r2', 'bucket', 'list', '--json'], {
+		cwd: tenantRoot,
+		capture: true,
+		env,
+		allowFailure: true,
+	});
+	return result.status === 0 ? parseWranglerJsonOutput(result, 'R2 bucket list') : [];
+}
+
+function listPagesProjects(tenantRoot, env) {
+	const result = runWrangler(['pages', 'project', 'list', '--json'], {
+		cwd: tenantRoot,
+		capture: true,
+		env,
+		allowFailure: true,
+	});
+	return result.status === 0 ? parseWranglerJsonOutput(result, 'Pages project list') : [];
+}
+
 function isPlaceholderResourceId(value) {
 	if (!value || typeof value !== 'string') {
 		return true;
@@ -505,10 +673,33 @@ function buildProvisioningSummary(deployConfig, state, target) {
 		workerName: state.workerName ?? targetWorkerName(deployConfig, target),
 		siteUrl: target.kind === 'branch' ? targetWorkersDevUrl(state.workerName) : deployConfig.siteUrl,
 		accountId: deployConfig.cloudflare.accountId,
+		pages: state.pages ?? null,
 		formGuardKv: state.kvNamespaces.FORM_GUARD_KV,
 		sessionKv: state.kvNamespaces.SESSION,
 		siteDataDb: state.d1Databases.SITE_DATA_DB,
+		queue: state.queues?.agentWork ?? null,
+		content: state.content ?? null,
 	};
+}
+
+function queueName(entry) {
+	return entry?.queue_name ?? entry?.queueName ?? entry?.name ?? null;
+}
+
+function queueId(entry) {
+	return entry?.queue_id ?? entry?.queueId ?? entry?.id ?? entry?.uuid ?? null;
+}
+
+function hasProvisionedCloudflareResources(state) {
+	return Boolean(
+		state?.pages?.projectName
+		&& state?.pages?.url
+		&& state?.d1Databases?.SITE_DATA_DB?.databaseId
+		&& state?.kvNamespaces?.FORM_GUARD_KV?.id
+		&& state?.kvNamespaces?.SESSION?.id
+		&& state?.queues?.agentWork?.name
+		&& state?.content?.bucketName,
+	);
 }
 
 function buildDestroySummary(deployConfig, state, target) {
@@ -526,6 +717,19 @@ function missingTurnstileRequirements() {
 	}
 	if (!envOrNull('TREESEED_TURNSTILE_SECRET_KEY')) {
 		issues.push('Set TREESEED_TURNSTILE_SECRET_KEY before deploying.');
+	}
+	return issues;
+}
+
+function missingContentRuntimeRequirements(deployConfig) {
+	const issues = [];
+	if (deployConfig.providers?.content?.runtime === 'team_scoped_r2_overlay') {
+		if (!deployConfig.cloudflare.r2?.bucketName) {
+			issues.push('Set cloudflare.r2.bucketName before deploying team-scoped hosted content.');
+		}
+		if (!envOrNull('TREESEED_EDITORIAL_PREVIEW_SECRET')) {
+			issues.push('Set TREESEED_EDITORIAL_PREVIEW_SECRET before deploying team-scoped hosted content.');
+		}
 	}
 	return issues;
 }
@@ -555,6 +759,13 @@ export function collectMissingDeployInputs(tenantRoot) {
 			key: 'TREESEED_TURNSTILE_SECRET_KEY',
 			label: 'Turnstile secret key',
 			message: 'Turnstile secret key is missing for deploy.',
+		});
+	}
+	if (deployConfig.providers?.content?.runtime === 'team_scoped_r2_overlay' && !envOrNull('TREESEED_EDITORIAL_PREVIEW_SECRET')) {
+		missing.push({
+			key: 'TREESEED_EDITORIAL_PREVIEW_SECRET',
+			label: 'Editorial preview signing secret',
+			message: 'Editorial preview signing secret is missing for deploy.',
 		});
 	}
 
@@ -606,6 +817,7 @@ export function validateDeployPrerequisites(tenantRoot, { requireRemote = true }
 
 	if (requireRemote) {
 		issues.push(...missingTurnstileRequirements());
+		issues.push(...missingContentRuntimeRequirements(deployConfig));
 
 		const result = runWrangler(['whoami'], {
 			cwd: tenantRoot,
@@ -850,6 +1062,9 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 	const dryRun = options.dryRun ?? false;
 	const kvNamespaces = dryRun ? [] : listKvNamespaces(tenantRoot, env);
 	const d1Databases = dryRun ? [] : listD1Databases(tenantRoot, env);
+	const queues = dryRun ? [] : listQueues(tenantRoot, env);
+	const buckets = dryRun ? [] : listR2Buckets(tenantRoot, env);
+	const pagesProjects = dryRun ? [] : listPagesProjects(tenantRoot, env);
 
 	const ensureKv = (binding) => {
 		const current = state.kvNamespaces[binding];
@@ -914,13 +1129,109 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 		current.previewDatabaseId = created.previewDatabaseUuid ?? created.uuid;
 	};
 
+	const ensureQueue = () => {
+		const current = state.queues?.agentWork;
+		if (!current?.name) {
+			return;
+		}
+		const exists = queues.find((entry) => queueName(entry) === current.name);
+		if (exists) {
+			current.queueId = queueId(exists);
+			const currentDlq = current.dlqName ? queues.find((entry) => queueName(entry) === current.dlqName) : null;
+			current.dlqId = queueId(currentDlq);
+			return;
+		}
+		if (dryRun) {
+			current.queueId = `dryrun-${current.name}`;
+			current.dlqId = current.dlqName ? `dryrun-${current.dlqName}` : null;
+			return;
+		}
+		runWrangler(['queues', 'create', current.name], {
+			cwd: tenantRoot,
+			capture: true,
+			env,
+		});
+		if (current.dlqName && !queues.find((entry) => queueName(entry) === current.dlqName)) {
+			runWrangler(['queues', 'create', current.dlqName], {
+				cwd: tenantRoot,
+				capture: true,
+				env,
+			});
+		}
+		const refreshed = listQueues(tenantRoot, env);
+		const created = refreshed.find((entry) => queueName(entry) === current.name);
+		current.queueId = queueId(created);
+		const createdDlq = current.dlqName ? refreshed.find((entry) => queueName(entry) === current.dlqName) : null;
+		current.dlqId = queueId(createdDlq);
+	};
+
+	const ensureR2Bucket = () => {
+		const bucketName = state.content?.bucketName;
+		if (!bucketName) {
+			return;
+		}
+		const exists = buckets.find((entry) => entry?.name === bucketName);
+		if (exists) {
+			return;
+		}
+		if (dryRun) {
+			return;
+		}
+		runWrangler(['r2', 'bucket', 'create', bucketName], {
+			cwd: tenantRoot,
+			capture: true,
+			env,
+		});
+	};
+
+	const ensurePagesProject = () => {
+		const current = state.pages;
+		if (!current?.projectName) {
+			return;
+		}
+		const exists = pagesProjects.find((entry) => entry?.name === current.projectName);
+		if (exists) {
+			current.url = exists.subdomain ? `https://${exists.subdomain}` : current.url ?? `https://${current.projectName}.pages.dev`;
+			return;
+		}
+		if (dryRun) {
+			current.url = `https://${current.projectName}.pages.dev`;
+			return;
+		}
+		runWrangler([
+			'pages',
+			'project',
+			'create',
+			current.projectName,
+			'--production-branch',
+			target.kind === 'persistent' && target.scope === 'prod'
+				? (current.productionBranch ?? 'main')
+				: (current.stagingBranch ?? 'staging'),
+		], {
+			cwd: tenantRoot,
+			capture: true,
+			env,
+		});
+		current.url = `https://${current.projectName}.pages.dev`;
+	};
+
 	ensureKv('FORM_GUARD_KV');
 	ensureKv('SESSION');
 	ensureD1();
+	ensureQueue();
+	ensureR2Bucket();
+	ensurePagesProject();
 
+	state.readiness.configured = true;
+	state.readiness.provisioned = hasProvisionedCloudflareResources(state);
+	state.readiness.deployable = state.readiness.provisioned === true;
 	state.readiness.initialized = true;
 	state.readiness.initializedAt = new Date().toISOString();
 	state.readiness.lastValidatedAt = state.readiness.initializedAt;
+	state.readiness.lastValidationSummary = {
+		cloudflare: state.readiness.provisioned === true ? 'ready' : 'incomplete',
+		railway: 'configured',
+	};
 	writeDeployState(tenantRoot, state, { target });
 	return buildProvisioningSummary(deployConfig, state, target);
 }
@@ -962,9 +1273,61 @@ export function syncCloudflareSecrets(tenantRoot, options = {}) {
 	state.generatedSecrets = {
 		...(state.generatedSecrets ?? {}),
 		TREESEED_FORM_TOKEN_SECRET: secrets.TREESEED_FORM_TOKEN_SECRET ?? state.generatedSecrets?.TREESEED_FORM_TOKEN_SECRET,
+		TREESEED_EDITORIAL_PREVIEW_SECRET: secrets.TREESEED_EDITORIAL_PREVIEW_SECRET ?? state.generatedSecrets?.TREESEED_EDITORIAL_PREVIEW_SECRET,
 	};
 	writeDeployState(tenantRoot, state, { target });
 	return synced;
+}
+
+export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
+	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');
+	const deployConfig = loadTenantDeployConfig(tenantRoot);
+	const state = loadDeployState(tenantRoot, deployConfig, { target });
+	const env = {
+		CLOUDFLARE_ACCOUNT_ID: deployConfig.cloudflare.accountId,
+	};
+	const dryRun = options.dryRun ?? false;
+	const kvNamespaces = dryRun ? [] : listKvNamespaces(tenantRoot, env);
+	const d1Databases = dryRun ? [] : listD1Databases(tenantRoot, env);
+	const queues = dryRun ? [] : listQueues(tenantRoot, env);
+	const buckets = dryRun ? [] : listR2Buckets(tenantRoot, env);
+	const pagesProjects = dryRun ? [] : listPagesProjects(tenantRoot, env);
+
+	const checks = {
+		pages: Boolean(state.pages?.projectName && pagesProjects.find((entry) => entry?.name === state.pages.projectName)),
+		formGuardKv: Boolean(state.kvNamespaces?.FORM_GUARD_KV?.name && kvNamespaces.find((entry) => entry?.title === state.kvNamespaces.FORM_GUARD_KV.name)),
+		sessionKv: Boolean(state.kvNamespaces?.SESSION?.name && kvNamespaces.find((entry) => entry?.title === state.kvNamespaces.SESSION.name)),
+		d1: Boolean(state.d1Databases?.SITE_DATA_DB?.databaseName && d1Databases.find((entry) => entry?.name === state.d1Databases.SITE_DATA_DB.databaseName)),
+		queue: Boolean(state.queues?.agentWork?.name && queues.find((entry) => queueName(entry) === state.queues.agentWork.name)),
+		dlq: !state.queues?.agentWork?.dlqName || Boolean(queues.find((entry) => queueName(entry) === state.queues.agentWork.dlqName)),
+		r2: Boolean(state.content?.bucketName && buckets.find((entry) => entry?.name === state.content.bucketName)),
+	};
+
+	const ok = dryRun ? true : Object.values(checks).every(Boolean);
+	state.readiness.configured = true;
+	state.readiness.provisioned = ok;
+	state.readiness.deployable = ok;
+	state.readiness.lastValidatedAt = new Date().toISOString();
+	state.readiness.lastValidationSummary = checks;
+
+	const liveQueue = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.name);
+	if (state.queues?.agentWork) {
+		state.queues.agentWork.queueId = queueId(liveQueue) ?? state.queues.agentWork.queueId ?? null;
+		const liveDlq = queues.find((entry) => queueName(entry) === state.queues.agentWork.dlqName);
+		state.queues.agentWork.dlqId = queueId(liveDlq) ?? state.queues.agentWork.dlqId ?? null;
+	}
+	const livePages = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
+	if (state.pages && livePages?.subdomain) {
+		state.pages.url = `https://${livePages.subdomain}`;
+	}
+
+	writeDeployState(tenantRoot, state, { target });
+	return {
+		ok,
+		target: deployTargetLabel(target),
+		checks,
+		state,
+	};
 }
 
 export function runRemoteD1Migrations(tenantRoot, options = {}) {
@@ -991,6 +1354,9 @@ export function markDeploymentInitialized(tenantRoot, options = {}) {
 	const state = loadDeployState(tenantRoot, deployConfig, { target });
 	const timestamp = new Date().toISOString();
 	state.readiness.initialized = true;
+	state.readiness.configured = true;
+	state.readiness.provisioned = hasProvisionedCloudflareResources(state);
+	state.readiness.deployable = state.readiness.provisioned === true;
 	state.readiness.initializedAt = state.readiness.initializedAt ?? timestamp;
 	state.readiness.lastValidatedAt = timestamp;
 	state.readiness.lastConfigFingerprint = state.lastManifestFingerprint ?? state.readiness.lastConfigFingerprint;
@@ -1054,6 +1420,9 @@ export function finalizeDeploymentState(tenantRoot, options = {}) {
 	const history = Array.isArray(state.deploymentHistory) ? state.deploymentHistory : [];
 	state.deploymentHistory = [...history, nextHistoryEntry].slice(-20);
 	state.readiness.initialized = true;
+	state.readiness.configured = true;
+	state.readiness.provisioned = hasProvisionedCloudflareResources(state);
+	state.readiness.deployable = state.readiness.provisioned === true;
 	state.readiness.lastValidatedAt = state.lastDeploymentTimestamp;
 	for (const result of options.serviceResults ?? []) {
 		if (!result?.service || !state.services?.[result.service]) {

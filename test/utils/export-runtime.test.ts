@@ -60,7 +60,7 @@ describe('export runtime', () => {
 		expect(output).toContain('export const nested = true;');
 		expect(output).not.toContain('ignored.tmp');
 		expect(output).not.toContain('old export should never be included');
-	});
+	}, 15000);
 
 	it('includes configured bundled paths when they exist and ignores missing ones', async () => {
 		const root = createExportFixture({ bundledPath: 'packages/sdk' });

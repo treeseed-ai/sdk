@@ -13,6 +13,8 @@ export const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 	},
 	deploy: 'cloudflare',
 	content: {
+		runtime: 'team_scoped_r2_overlay',
+		publish: 'team_scoped_r2_overlay',
 		docs: 'default',
 	},
 	site: 'default',

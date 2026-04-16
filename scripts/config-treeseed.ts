@@ -92,6 +92,12 @@ try {
 		console.log(`Machine key: ${keyPath}`);
 		console.log(`Updated values: ${applyResult.updated.length}`);
 		console.log(`Initialized environments: ${result.initialized.length}`);
+		for (const scope of scopes) {
+			const readiness = result.readinessByScope?.[scope];
+			if (!readiness) continue;
+			const status = readiness.deployable ? 'deployable' : readiness.provisioned ? 'provisioned' : readiness.configured ? 'configured' : 'pending';
+			console.log(`Readiness (${scope}): ${status}`);
+		}
 		if (result.synced.github) {
 			console.log(
 				`GitHub sync: ${result.synced.github.secrets.length} secrets, ${result.synced.github.variables.length} variables (${result.synced.github.repository})`,

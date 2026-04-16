@@ -84,13 +84,22 @@ function normalizeTemplateCatalogEntry(value: unknown): SdkTemplateCatalogEntry 
 		minCoreVersion: optionalString(record.minCoreVersion),
 		fulfillment: {
 			mode: optionalString(fulfillment.mode) as SdkTemplateCatalogEntry['fulfillment']['mode'],
-			source: {
-				kind: 'git',
-				repoUrl: expectString(source.repoUrl, 'fulfillment.source.repoUrl'),
-				directory: expectString(source.directory, 'fulfillment.source.directory'),
-				ref: expectString(source.ref, 'fulfillment.source.ref'),
-				integrity: optionalString(source.integrity),
-			},
+			source: optionalString(source.kind) === 'r2'
+				? {
+					kind: 'r2',
+					bucket: optionalString(source.bucket),
+					objectKey: expectString(source.objectKey, 'fulfillment.source.objectKey'),
+					version: expectString(source.version, 'fulfillment.source.version'),
+					publicUrl: optionalString(source.publicUrl),
+					integrity: optionalString(source.integrity),
+				}
+				: {
+					kind: 'git',
+					repoUrl: expectString(source.repoUrl, 'fulfillment.source.repoUrl'),
+					directory: expectString(source.directory, 'fulfillment.source.directory'),
+					ref: expectString(source.ref, 'fulfillment.source.ref'),
+					integrity: optionalString(source.integrity),
+				},
 			hooksPolicy: expectString(fulfillment.hooksPolicy ?? 'builtin_only', 'fulfillment.hooksPolicy') as SdkTemplateCatalogEntry['fulfillment']['hooksPolicy'],
 			supportsReconcile: typeof fulfillment.supportsReconcile === 'boolean' ? fulfillment.supportsReconcile : true,
 		},
