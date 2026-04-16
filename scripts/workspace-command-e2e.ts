@@ -623,7 +623,6 @@ async function runLocalSuite() {
 		try {
 			return runCommand('save-no-changes', process.execPath, [packageScriptPath('treeseed'), 'save', 'test: no-op save'], {
 				cwd: clonedWorkspace.workingRoot,
-				allowedExitCodes: [1],
 				env: cacheEnv(),
 			});
 		} finally {
@@ -722,7 +721,6 @@ async function runStagingSuite() {
 			return runCommand('staging-save-no-op', 'npm', ['run', 'save', '--', 'test: staging no-op save'], {
 				cwd: staging.workingRoot,
 				env: cacheEnv(createWranglerCommandEnv()),
-				allowedExitCodes: [1],
 				timeoutMs: 180000,
 			});
 		});
