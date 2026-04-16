@@ -20,7 +20,8 @@
   "files": [
     "README.md",
     "dist",
-    "scripts/verify-driver.mjs"
+    "scripts/verify-driver.mjs",
+    "templates"
   ],
   "publishConfig": {
     "access": "public"

@@ -1,0 +1,77 @@
+name: Treeseed Hosted Project Orchestration
+
+on:
+  workflow_dispatch:
+    inputs:
+      tenant_repository:
+        description: GitHub owner/name for the hosted project repository
+        required: true
+        type: string
+      tenant_ref:
+        description: Branch or tag to dispatch in the tenant repository
+        required: true
+        type: string
+      workflow_file:
+        description: Workflow file to dispatch in the tenant repository
+        required: false
+        default: deploy.yml
+        type: string
+      project_id:
+        description: Treeseed project id recorded in the market control plane
+        required: false
+        type: string
+      environment:
+        description: Target environment
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - prod
+      action_kind:
+        description: Requested orchestration action
+        required: true
+        default: deploy_code
+        type: choice
+        options:
+          - provision
+          - deploy_code
+          - publish_content
+          - monitor
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Dispatch tenant workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TENANT_REPOSITORY: ${{ inputs.tenant_repository }}
+          TENANT_REF: ${{ inputs.tenant_ref }}
+          WORKFLOW_FILE: ${{ inputs.workflow_file }}
+          PROJECT_ID: ${{ inputs.project_id }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          ACTION_KIND: ${{ inputs.action_kind }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh api \
+            --method POST \
+            "/repos/${TENANT_REPOSITORY}/actions/workflows/${WORKFLOW_FILE}/dispatches" \
+            -f "ref=${TENANT_REF}" \
+            -f "inputs[project_id]=${PROJECT_ID}" \
+            -f "inputs[environment]=${ENVIRONMENT}" \
+            -f "inputs[action_kind]=${ACTION_KIND}"
+
+      - name: Emit orchestration summary
+        run: |
+          echo "Dispatched ${inputs.workflow_file} in ${inputs.tenant_repository}@${inputs.tenant_ref}"
+          echo "Action: ${inputs.action_kind}"
+          echo "Environment: ${inputs.environment}"

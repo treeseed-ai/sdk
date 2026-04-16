@@ -1,0 +1,442 @@
+name: Treeseed Deploy
+
+on:
+  push:
+    branches:
+      - staging
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - prod
+      action_kind:
+        description: Workflow action to perform
+        required: true
+        default: deploy_code
+        type: choice
+        options:
+          - provision
+          - deploy_code
+          - publish_content
+          - monitor
+      project_id:
+        description: Treeseed project id for control-plane reporting
+        required: false
+        type: string
+      preview_id:
+        description: Optional preview overlay id for editorial publishes
+        required: false
+        type: string
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      scope: ${{ steps.classify.outputs.scope }}
+      code_changed: ${{ steps.classify.outputs.code_changed }}
+      content_changed: ${{ steps.classify.outputs.content_changed }}
+      release_tag: ${{ steps.classify.outputs.release_tag }}
+      workflow_action: ${{ steps.classify.outputs.workflow_action }}
+      preview_id: ${{ steps.classify.outputs.preview_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify changes
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            scope="${{ inputs.environment }}"
+            workflow_action="${{ inputs.action_kind }}"
+            release_tag="false"
+            code_changed=$([[ "${workflow_action}" == "deploy_code" ]] && echo "true" || echo "false")
+            content_changed=$([[ "${workflow_action}" == "publish_content" ]] && echo "true" || echo "false")
+            preview_id="${{ inputs.preview_id }}"
+          else
+            ref_name="${GITHUB_REF_NAME}"
+            ref_type="${GITHUB_REF_TYPE}"
+            before_sha="${{ github.event.before }}"
+            head_sha="${GITHUB_SHA}"
+            workflow_action="auto"
+            preview_id="staging-${GITHUB_SHA}"
+
+            if [[ "${ref_type}" == "tag" ]]; then
+              scope="prod"
+              release_tag="true"
+              compare_ref="$(git rev-list --parents -n 1 "${head_sha}" | awk '{print $2}')"
+            elif [[ "${ref_name}" == "main" ]]; then
+              scope="prod"
+              release_tag="false"
+              compare_ref="${before_sha}"
+            else
+              scope="staging"
+              release_tag="false"
+              compare_ref="${before_sha}"
+            fi
+
+            if [[ -z "${compare_ref}" || "${compare_ref}" == "0000000000000000000000000000000000000000" ]]; then
+              compare_ref="$(git rev-list --max-count=1 "${head_sha}^" 2>/dev/null || true)"
+            fi
+
+            code_changed="false"
+            content_changed="false"
+
+            if [[ -n "${compare_ref}" ]]; then
+              while IFS= read -r path; do
+                [[ -z "${path}" ]] && continue
+                case "${path}" in
+                  src/content/*|content/*|books/*|docs/*|public/books/*|migrations/*)
+                    content_changed="true"
+                    ;;
+                  *)
+                    code_changed="true"
+                    ;;
+                esac
+              done < <(git diff --name-only "${compare_ref}" "${head_sha}")
+            else
+              code_changed="true"
+            fi
+          fi
+
+          {
+            echo "scope=${scope}"
+            echo "code_changed=${code_changed}"
+            echo "content_changed=${content_changed}"
+            echo "release_tag=${release_tag}"
+            echo "workflow_action=${workflow_action}"
+            echo "preview_id=${preview_id}"
+          } >> "${GITHUB_OUTPUT}"
+
+  verify:
+    runs-on: ubuntu-latest
+    needs: classify
+    if: |
+      needs.classify.outputs.workflow_action == 'deploy_code' ||
+      needs.classify.outputs.workflow_action == 'publish_content' ||
+      needs.classify.outputs.code_changed == 'true' ||
+      needs.classify.outputs.content_changed == 'true' ||
+      needs.classify.outputs.release_tag == 'true'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: __CACHE_DEPENDENCY_PATH__
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify:local 2>&1 | tee verify.log
+          if test -f ./packages/sdk/scripts/check-build-warnings.mjs; then
+            node ./packages/sdk/scripts/check-build-warnings.mjs verify.log
+          elif test -f ./node_modules/@treeseed/sdk/dist/scripts/check-build-warnings.js; then
+            node ./node_modules/@treeseed/sdk/dist/scripts/check-build-warnings.js verify.log
+          else
+            echo "Unable to resolve @treeseed/sdk warning scanner entrypoint."
+            exit 1
+          fi
+__WORKING_DIRECTORY_BLOCK__
+
+  provision:
+    runs-on: ubuntu-latest
+    needs:
+      - classify
+      - verify
+    if: |
+      needs.classify.outputs.workflow_action == 'provision' ||
+      needs.classify.outputs.workflow_action == 'deploy_code' ||
+      needs.classify.outputs.workflow_action == 'publish_content' ||
+      needs.classify.outputs.workflow_action == 'monitor' ||
+      needs.classify.outputs.code_changed == 'true' ||
+      needs.classify.outputs.content_changed == 'true' ||
+      needs.classify.outputs.release_tag == 'true'
+    permissions:
+      contents: read
+      deployments: write
+    environment: ${{ needs.classify.outputs.scope == 'prod' && 'production' || 'staging' }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME }}
+      TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME: ${{ vars.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME }}
+      TREESEED_CONTENT_BUCKET_NAME: ${{ vars.TREESEED_CONTENT_BUCKET_NAME }}
+      TREESEED_CONTENT_BUCKET_BINDING: ${{ vars.TREESEED_CONTENT_BUCKET_BINDING }}
+      TREESEED_FORM_TOKEN_SECRET: ${{ secrets.TREESEED_FORM_TOKEN_SECRET }}
+      TREESEED_EDITORIAL_PREVIEW_SECRET: ${{ secrets.TREESEED_EDITORIAL_PREVIEW_SECRET }}
+      TREESEED_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.TREESEED_PUBLIC_TURNSTILE_SITE_KEY }}
+      TREESEED_TURNSTILE_SECRET_KEY: ${{ secrets.TREESEED_TURNSTILE_SECRET_KEY }}
+      TREESEED_SMTP_HOST: ${{ secrets.TREESEED_SMTP_HOST }}
+      TREESEED_SMTP_PORT: ${{ secrets.TREESEED_SMTP_PORT }}
+      TREESEED_SMTP_USERNAME: ${{ secrets.TREESEED_SMTP_USERNAME }}
+      TREESEED_SMTP_PASSWORD: ${{ secrets.TREESEED_SMTP_PASSWORD }}
+      TREESEED_SMTP_FROM: ${{ secrets.TREESEED_SMTP_FROM }}
+      TREESEED_SMTP_REPLY_TO: ${{ secrets.TREESEED_SMTP_REPLY_TO }}
+      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      TREESEED_MARKET_API_BASE_URL: ${{ vars.TREESEED_MARKET_API_BASE_URL }}
+      TREESEED_PROJECT_ID: ${{ inputs.project_id || vars.TREESEED_PROJECT_ID }}
+      TREESEED_PROJECT_RUNNER_TOKEN: ${{ secrets.TREESEED_PROJECT_RUNNER_TOKEN }}
+      TREESEED_WORKER_POOL_SCALER: ${{ vars.TREESEED_WORKER_POOL_SCALER }}
+      TREESEED_AGENT_POOL_MIN_WORKERS: ${{ vars.TREESEED_AGENT_POOL_MIN_WORKERS }}
+      TREESEED_AGENT_POOL_MAX_WORKERS: ${{ vars.TREESEED_AGENT_POOL_MAX_WORKERS }}
+      TREESEED_AGENT_POOL_TARGET_QUEUE_DEPTH: ${{ vars.TREESEED_AGENT_POOL_TARGET_QUEUE_DEPTH }}
+      TREESEED_AGENT_POOL_COOLDOWN_SECONDS: ${{ vars.TREESEED_AGENT_POOL_COOLDOWN_SECONDS }}
+      TREESEED_WORKDAY_TIMEZONE: ${{ vars.TREESEED_WORKDAY_TIMEZONE }}
+      TREESEED_WORKDAY_WINDOWS_JSON: ${{ vars.TREESEED_WORKDAY_WINDOWS_JSON }}
+      TREESEED_WORKDAY_TASK_CREDIT_BUDGET: ${{ vars.TREESEED_WORKDAY_TASK_CREDIT_BUDGET }}
+      TREESEED_MANAGER_MAX_QUEUED_TASKS: ${{ vars.TREESEED_MANAGER_MAX_QUEUED_TASKS }}
+      TREESEED_MANAGER_MAX_QUEUED_CREDITS: ${{ vars.TREESEED_MANAGER_MAX_QUEUED_CREDITS }}
+      TREESEED_MANAGER_PRIORITY_MODELS: ${{ vars.TREESEED_MANAGER_PRIORITY_MODELS }}
+      TREESEED_TASK_CREDIT_WEIGHTS_JSON: ${{ vars.TREESEED_TASK_CREDIT_WEIGHTS_JSON }}
+      TREESEED_RAILWAY_PROJECT_ID: ${{ vars.TREESEED_RAILWAY_PROJECT_ID }}
+      TREESEED_RAILWAY_ENVIRONMENT_ID: ${{ vars.TREESEED_RAILWAY_ENVIRONMENT_ID }}
+      TREESEED_RAILWAY_WORKER_SERVICE_ID: ${{ vars.TREESEED_RAILWAY_WORKER_SERVICE_ID }}
+      TREESEED_WORKFLOW_ACTION: provision
+      TREESEED_WORKFLOW_ENVIRONMENT: ${{ needs.classify.outputs.scope }}
+      TREESEED_WORKFLOW_PROJECT: ${{ inputs.project_id || vars.TREESEED_PROJECT_ID }}
+      TREESEED_WORKFLOW_PREVIEW_ID: ${{ inputs.preview_id || needs.classify.outputs.preview_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: __CACHE_DEPENDENCY_PATH__
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Provision Treeseed platform
+        shell: bash
+        run: |
+__TENANT_WORKFLOW_ACTION_COMMAND_BLOCK__
+__WORKING_DIRECTORY_BLOCK__
+
+  deploy-code:
+    runs-on: ubuntu-latest
+    needs:
+      - classify
+      - verify
+      - provision
+    permissions:
+      contents: read
+      deployments: write
+    if: |
+      needs.classify.outputs.workflow_action == 'deploy_code' ||
+      needs.classify.outputs.code_changed == 'true' ||
+      needs.classify.outputs.release_tag == 'true'
+    environment: ${{ needs.classify.outputs.scope == 'prod' && 'production' || 'staging' }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME }}
+      TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME: ${{ vars.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME }}
+      TREESEED_CONTENT_BUCKET_NAME: ${{ vars.TREESEED_CONTENT_BUCKET_NAME }}
+      TREESEED_CONTENT_BUCKET_BINDING: ${{ vars.TREESEED_CONTENT_BUCKET_BINDING }}
+      TREESEED_FORM_TOKEN_SECRET: ${{ secrets.TREESEED_FORM_TOKEN_SECRET }}
+      TREESEED_EDITORIAL_PREVIEW_SECRET: ${{ secrets.TREESEED_EDITORIAL_PREVIEW_SECRET }}
+      TREESEED_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.TREESEED_PUBLIC_TURNSTILE_SITE_KEY }}
+      TREESEED_TURNSTILE_SECRET_KEY: ${{ secrets.TREESEED_TURNSTILE_SECRET_KEY }}
+      TREESEED_SMTP_HOST: ${{ secrets.TREESEED_SMTP_HOST }}
+      TREESEED_SMTP_PORT: ${{ secrets.TREESEED_SMTP_PORT }}
+      TREESEED_SMTP_USERNAME: ${{ secrets.TREESEED_SMTP_USERNAME }}
+      TREESEED_SMTP_PASSWORD: ${{ secrets.TREESEED_SMTP_PASSWORD }}
+      TREESEED_SMTP_FROM: ${{ secrets.TREESEED_SMTP_FROM }}
+      TREESEED_SMTP_REPLY_TO: ${{ secrets.TREESEED_SMTP_REPLY_TO }}
+      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      TREESEED_MARKET_API_BASE_URL: ${{ vars.TREESEED_MARKET_API_BASE_URL }}
+      TREESEED_PROJECT_ID: ${{ inputs.project_id || vars.TREESEED_PROJECT_ID }}
+      TREESEED_PROJECT_RUNNER_TOKEN: ${{ secrets.TREESEED_PROJECT_RUNNER_TOKEN }}
+      TREESEED_WORKER_POOL_SCALER: ${{ vars.TREESEED_WORKER_POOL_SCALER }}
+      TREESEED_AGENT_POOL_MIN_WORKERS: ${{ vars.TREESEED_AGENT_POOL_MIN_WORKERS }}
+      TREESEED_AGENT_POOL_MAX_WORKERS: ${{ vars.TREESEED_AGENT_POOL_MAX_WORKERS }}
+      TREESEED_AGENT_POOL_TARGET_QUEUE_DEPTH: ${{ vars.TREESEED_AGENT_POOL_TARGET_QUEUE_DEPTH }}
+      TREESEED_AGENT_POOL_COOLDOWN_SECONDS: ${{ vars.TREESEED_AGENT_POOL_COOLDOWN_SECONDS }}
+      TREESEED_WORKDAY_TIMEZONE: ${{ vars.TREESEED_WORKDAY_TIMEZONE }}
+      TREESEED_WORKDAY_WINDOWS_JSON: ${{ vars.TREESEED_WORKDAY_WINDOWS_JSON }}
+      TREESEED_WORKDAY_TASK_CREDIT_BUDGET: ${{ vars.TREESEED_WORKDAY_TASK_CREDIT_BUDGET }}
+      TREESEED_MANAGER_MAX_QUEUED_TASKS: ${{ vars.TREESEED_MANAGER_MAX_QUEUED_TASKS }}
+      TREESEED_MANAGER_MAX_QUEUED_CREDITS: ${{ vars.TREESEED_MANAGER_MAX_QUEUED_CREDITS }}
+      TREESEED_MANAGER_PRIORITY_MODELS: ${{ vars.TREESEED_MANAGER_PRIORITY_MODELS }}
+      TREESEED_TASK_CREDIT_WEIGHTS_JSON: ${{ vars.TREESEED_TASK_CREDIT_WEIGHTS_JSON }}
+      TREESEED_RAILWAY_PROJECT_ID: ${{ vars.TREESEED_RAILWAY_PROJECT_ID }}
+      TREESEED_RAILWAY_ENVIRONMENT_ID: ${{ vars.TREESEED_RAILWAY_ENVIRONMENT_ID }}
+      TREESEED_RAILWAY_WORKER_SERVICE_ID: ${{ vars.TREESEED_RAILWAY_WORKER_SERVICE_ID }}
+      TREESEED_WORKFLOW_ACTION: deploy_code
+      TREESEED_WORKFLOW_ENVIRONMENT: ${{ needs.classify.outputs.scope }}
+      TREESEED_WORKFLOW_PROJECT: ${{ inputs.project_id || vars.TREESEED_PROJECT_ID }}
+      TREESEED_WORKFLOW_PREVIEW_ID: ${{ inputs.preview_id || needs.classify.outputs.preview_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: __CACHE_DEPENDENCY_PATH__
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy Treeseed platform
+        shell: bash
+        run: |
+__TENANT_WORKFLOW_ACTION_COMMAND_BLOCK__
+__WORKING_DIRECTORY_BLOCK__
+
+  publish-content:
+    runs-on: ubuntu-latest
+    needs:
+      - classify
+      - verify
+      - provision
+      - deploy-code
+    permissions:
+      contents: read
+      deployments: write
+    if: |
+      (needs.classify.outputs.workflow_action == 'publish_content' ||
+      needs.classify.outputs.content_changed == 'true') &&
+      (needs['deploy-code'].result == 'success' || needs['deploy-code'].result == 'skipped')
+    environment: ${{ needs.classify.outputs.scope == 'prod' && 'production' || 'staging' }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME }}
+      TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME: ${{ vars.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME }}
+      TREESEED_CONTENT_BUCKET_NAME: ${{ vars.TREESEED_CONTENT_BUCKET_NAME }}
+      TREESEED_CONTENT_BUCKET_BINDING: ${{ vars.TREESEED_CONTENT_BUCKET_BINDING }}
+      TREESEED_FORM_TOKEN_SECRET: ${{ secrets.TREESEED_FORM_TOKEN_SECRET }}
+      TREESEED_EDITORIAL_PREVIEW_SECRET: ${{ secrets.TREESEED_EDITORIAL_PREVIEW_SECRET }}
+      TREESEED_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.TREESEED_PUBLIC_TURNSTILE_SITE_KEY }}
+      TREESEED_TURNSTILE_SECRET_KEY: ${{ secrets.TREESEED_TURNSTILE_SECRET_KEY }}
+      TREESEED_SMTP_HOST: ${{ secrets.TREESEED_SMTP_HOST }}
+      TREESEED_SMTP_PORT: ${{ secrets.TREESEED_SMTP_PORT }}
+      TREESEED_SMTP_USERNAME: ${{ secrets.TREESEED_SMTP_USERNAME }}
+      TREESEED_SMTP_PASSWORD: ${{ secrets.TREESEED_SMTP_PASSWORD }}
+      TREESEED_SMTP_FROM: ${{ secrets.TREESEED_SMTP_FROM }}
+      TREESEED_SMTP_REPLY_TO: ${{ secrets.TREESEED_SMTP_REPLY_TO }}
+      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      TREESEED_MARKET_API_BASE_URL: ${{ vars.TREESEED_MARKET_API_BASE_URL }}
+      TREESEED_PROJECT_ID: ${{ inputs.project_id || vars.TREESEED_PROJECT_ID }}
+      TREESEED_PROJECT_RUNNER_TOKEN: ${{ secrets.TREESEED_PROJECT_RUNNER_TOKEN }}
+      TREESEED_WORKER_POOL_SCALER: ${{ vars.TREESEED_WORKER_POOL_SCALER }}
+      TREESEED_AGENT_POOL_MIN_WORKERS: ${{ vars.TREESEED_AGENT_POOL_MIN_WORKERS }}
+      TREESEED_AGENT_POOL_MAX_WORKERS: ${{ vars.TREESEED_AGENT_POOL_MAX_WORKERS }}
+      TREESEED_AGENT_POOL_TARGET_QUEUE_DEPTH: ${{ vars.TREESEED_AGENT_POOL_TARGET_QUEUE_DEPTH }}
+      TREESEED_AGENT_POOL_COOLDOWN_SECONDS: ${{ vars.TREESEED_AGENT_POOL_COOLDOWN_SECONDS }}
+      TREESEED_WORKDAY_TIMEZONE: ${{ vars.TREESEED_WORKDAY_TIMEZONE }}
+      TREESEED_WORKDAY_WINDOWS_JSON: ${{ vars.TREESEED_WORKDAY_WINDOWS_JSON }}
+      TREESEED_WORKDAY_TASK_CREDIT_BUDGET: ${{ vars.TREESEED_WORKDAY_TASK_CREDIT_BUDGET }}
+      TREESEED_MANAGER_MAX_QUEUED_TASKS: ${{ vars.TREESEED_MANAGER_MAX_QUEUED_TASKS }}
+      TREESEED_MANAGER_MAX_QUEUED_CREDITS: ${{ vars.TREESEED_MANAGER_MAX_QUEUED_CREDITS }}
+      TREESEED_MANAGER_PRIORITY_MODELS: ${{ vars.TREESEED_MANAGER_PRIORITY_MODELS }}
+      TREESEED_TASK_CREDIT_WEIGHTS_JSON: ${{ vars.TREESEED_TASK_CREDIT_WEIGHTS_JSON }}
+      TREESEED_RAILWAY_PROJECT_ID: ${{ vars.TREESEED_RAILWAY_PROJECT_ID }}
+      TREESEED_RAILWAY_ENVIRONMENT_ID: ${{ vars.TREESEED_RAILWAY_ENVIRONMENT_ID }}
+      TREESEED_RAILWAY_WORKER_SERVICE_ID: ${{ vars.TREESEED_RAILWAY_WORKER_SERVICE_ID }}
+      TREESEED_WORKFLOW_ACTION: publish_content
+      TREESEED_WORKFLOW_ENVIRONMENT: ${{ needs.classify.outputs.scope }}
+      TREESEED_WORKFLOW_PROJECT: ${{ inputs.project_id || vars.TREESEED_PROJECT_ID }}
+      TREESEED_WORKFLOW_PREVIEW_ID: ${{ inputs.preview_id || needs.classify.outputs.preview_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: __CACHE_DEPENDENCY_PATH__
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Publish Treeseed content
+        shell: bash
+        run: |
+__TENANT_WORKFLOW_ACTION_COMMAND_BLOCK__
+__WORKING_DIRECTORY_BLOCK__
+
+  monitor:
+    runs-on: ubuntu-latest
+    needs:
+      - classify
+      - provision
+      - deploy-code
+      - publish-content
+    if: |
+      (needs.classify.outputs.workflow_action == 'monitor' ||
+      needs.classify.outputs.code_changed == 'true' ||
+      needs.classify.outputs.content_changed == 'true' ||
+      needs.classify.outputs.release_tag == 'true') &&
+      (needs['deploy-code'].result == 'success' || needs['deploy-code'].result == 'skipped') &&
+      (needs['publish-content'].result == 'success' || needs['publish-content'].result == 'skipped')
+    permissions:
+      contents: read
+      deployments: write
+    environment: ${{ needs.classify.outputs.scope == 'prod' && 'production' || 'staging' }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TREESEED_CONTENT_BUCKET_NAME: ${{ vars.TREESEED_CONTENT_BUCKET_NAME }}
+      TREESEED_CONTENT_BUCKET_BINDING: ${{ vars.TREESEED_CONTENT_BUCKET_BINDING }}
+      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      TREESEED_MARKET_API_BASE_URL: ${{ vars.TREESEED_MARKET_API_BASE_URL }}
+      TREESEED_PROJECT_ID: ${{ inputs.project_id || vars.TREESEED_PROJECT_ID }}
+      TREESEED_PROJECT_RUNNER_TOKEN: ${{ secrets.TREESEED_PROJECT_RUNNER_TOKEN }}
+      TREESEED_WORKER_POOL_SCALER: ${{ vars.TREESEED_WORKER_POOL_SCALER }}
+      TREESEED_RAILWAY_PROJECT_ID: ${{ vars.TREESEED_RAILWAY_PROJECT_ID }}
+      TREESEED_RAILWAY_ENVIRONMENT_ID: ${{ vars.TREESEED_RAILWAY_ENVIRONMENT_ID }}
+      TREESEED_RAILWAY_WORKER_SERVICE_ID: ${{ vars.TREESEED_RAILWAY_WORKER_SERVICE_ID }}
+      TREESEED_WORKFLOW_ACTION: monitor
+      TREESEED_WORKFLOW_ENVIRONMENT: ${{ needs.classify.outputs.scope }}
+      TREESEED_WORKFLOW_PROJECT: ${{ inputs.project_id || vars.TREESEED_PROJECT_ID }}
+      TREESEED_WORKFLOW_PREVIEW_ID: ${{ inputs.preview_id || needs.classify.outputs.preview_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: __CACHE_DEPENDENCY_PATH__
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Report Treeseed deployment state
+        shell: bash
+        run: |
+__TENANT_WORKFLOW_ACTION_COMMAND_BLOCK__
+__WORKING_DIRECTORY_BLOCK__

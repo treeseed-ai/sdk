@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { resolveTreeseedEnvironmentRegistry } from '../../platform/environment.ts';
-import { corePackageRoot, loadCliDeployConfig } from './runtime-tools.ts';
+import { packageRoot, loadCliDeployConfig } from './runtime-tools.ts';
 
 function envOrNull(key) {
 	const value = process.env[key];
@@ -132,7 +132,7 @@ function renderWorkflowTemplate(templateName, { workingDirectory }) {
 	const workingDirectoryLine = normalizedWorkingDirectory === '.'
 		? ''
 		: `    defaults:\n      run:\n        working-directory: ${normalizedWorkingDirectory}\n`;
-	const templatePath = resolve(corePackageRoot, 'templates', 'github', templateName);
+	const templatePath = resolve(packageRoot, 'templates', 'github', templateName);
 	const template = readFileSync(templatePath, 'utf8');
 	const tenantWorkflowActionCommand = renderTenantWorkflowActionCommand()
 		.split('\n')
