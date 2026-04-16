@@ -6,11 +6,11 @@ import {
 	createPersistentDeployTarget,
 	loadDeployState,
 } from './operations/services/deploy.ts';
-import { PRODUCTION_BRANCH, STAGING_BRANCH } from './operations/services/git-workflow.ts';
 import { loadCliDeployConfig } from './operations/services/runtime-tools.ts';
 import { collectCliPreflight } from './operations/services/workspace-preflight.ts';
-import { gitStatusPorcelain } from './operations/services/workspace-save.ts';
-import { isWorkspaceRoot } from './operations/services/workspace-tools.ts';
+import { currentBranch, gitStatusPorcelain } from './operations/services/workspace-save.ts';
+import { hasCompleteTreeseedPackageCheckout, isWorkspaceRoot, run, workspacePackages } from './operations/services/workspace-tools.ts';
+import { inspectWorkflowLock, listInterruptedWorkflowRuns } from './workflow/runs.ts';
 import type { TreeseedWorkflowNextStep } from './workflow.ts';
 import {
 	type TreeseedWorkflowBranchRole,
@@ -32,6 +32,40 @@ export type TreeseedWorkflowState = {
 	branchRole: TreeseedBranchRole;
 	environment: 'local' | 'staging' | 'prod' | 'none';
 	dirtyWorktree: boolean;
+	workflowControl: {
+		lock: {
+			active: boolean;
+			stale: boolean;
+			runId: string | null;
+			command: string | null;
+			updatedAt: string | null;
+			staleReason: string | null;
+		};
+		interruptedRuns: Array<{
+			runId: string;
+			command: string;
+			updatedAt: string;
+			nextStep: string | null;
+		}>;
+		blockers: string[];
+	};
+	packageSync: {
+		mode: 'root-only' | 'recursive-workspace';
+		completeCheckout: boolean;
+		expectedBranch: string | null;
+		aligned: boolean;
+		dirty: boolean;
+		repos: Array<{
+			name: string;
+			path: string;
+			branchName: string | null;
+			dirty: boolean;
+			aligned: boolean;
+			localBranch: boolean;
+			remoteBranch: boolean;
+		}>;
+		blockers: string[];
+	};
 	preview: {
 		enabled: boolean;
 		url: string | null;
@@ -117,6 +151,15 @@ function readinessForEnvironment(state: TreeseedWorkflowState, scope: 'local' | 
 	};
 }
 
+function knownRemoteTrackingBranchExists(repoDir: string, branchName: string) {
+	try {
+		run('git', ['show-ref', '--verify', '--quiet', `refs/remotes/origin/${branchName}`], { cwd: repoDir, capture: true });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState {
 	const resolved = resolveTreeseedWorkflowPaths(cwd);
 	const effectiveCwd = resolved.cwd;
@@ -127,8 +170,71 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 	const branchName = resolved.branchName;
 	const branchRole = resolved.branchRole;
 	const dirtyWorktree = root ? gitStatusPorcelain(root).length > 0 : false;
+	const completePackageCheckout = hasCompleteTreeseedPackageCheckout(effectiveCwd);
+	const packageSyncRepos = completePackageCheckout
+		? workspacePackages(effectiveCwd)
+			.filter((pkg) => pkg.name?.startsWith('@treeseed/'))
+			.map((pkg) => {
+				const repoBranch = currentBranch(pkg.dir) || null;
+				const dirty = gitStatusPorcelain(pkg.dir).length > 0;
+				const expectedBranch = branchName;
+				let localBranch = false;
+				if (expectedBranch) {
+					if (repoBranch === expectedBranch) {
+						localBranch = true;
+					} else {
+						try {
+							run('git', ['show-ref', '--verify', '--quiet', `refs/heads/${expectedBranch}`], { cwd: pkg.dir, capture: true });
+							localBranch = true;
+						} catch {
+							localBranch = false;
+						}
+					}
+				}
+				const remoteBranch = Boolean(expectedBranch) ? knownRemoteTrackingBranchExists(pkg.dir, expectedBranch) : false;
+				return {
+					name: pkg.name,
+					path: pkg.relativeDir,
+					branchName: repoBranch,
+					dirty,
+					aligned: expectedBranch ? repoBranch === expectedBranch : true,
+					localBranch,
+					remoteBranch,
+				};
+			})
+		: [];
+	const packageSyncBlockers: string[] = [];
+	for (const repo of packageSyncRepos) {
+		if (repo.dirty) {
+			packageSyncBlockers.push(`${repo.name} has uncommitted changes.`);
+		}
+		if (branchName && !repo.localBranch && !repo.remoteBranch) {
+			packageSyncBlockers.push(`${repo.name} is missing branch ${branchName}.`);
+			continue;
+		}
+		if (branchName && !repo.aligned) {
+			packageSyncBlockers.push(`${repo.name} is on ${repo.branchName ?? '(detached)'} instead of ${branchName}.`);
+		}
+	}
 	const preflight = collectCliPreflight({ cwd: effectiveCwd, requireAuth: false });
 	const { configPath, keyPath } = getTreeseedMachineConfigPaths(effectiveCwd);
+	const workflowLock = inspectWorkflowLock(effectiveCwd);
+	const interruptedRuns = listInterruptedWorkflowRuns(effectiveCwd).map((journal) => ({
+		runId: journal.runId,
+		command: journal.command,
+		updatedAt: journal.updatedAt,
+		nextStep: journal.steps.find((step) => step.status === 'pending')?.description ?? null,
+	}));
+	const workflowBlockers: string[] = [];
+	if (workflowLock.active && workflowLock.lock) {
+		workflowBlockers.push(`Workflow lock active for ${workflowLock.lock.command} (${workflowLock.lock.runId}).`);
+	}
+	if (workflowLock.stale && workflowLock.lock) {
+		workflowBlockers.push(`Workflow lock is stale: ${workflowLock.staleReason}.`);
+	}
+	if (interruptedRuns.length > 0) {
+		workflowBlockers.push(`Interrupted workflow runs detected: ${interruptedRuns.map((run) => run.runId).join(', ')}.`);
+	}
 	const state: TreeseedWorkflowState = {
 		cwd: effectiveCwd,
 		workspaceRoot,
@@ -139,6 +245,27 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 		branchRole,
 		environment: workflowEnvironmentForBranchRole(branchRole),
 		dirtyWorktree,
+		workflowControl: {
+			lock: {
+				active: workflowLock.active,
+				stale: workflowLock.stale,
+				runId: workflowLock.lock?.runId ?? null,
+				command: workflowLock.lock?.command ?? null,
+				updatedAt: workflowLock.lock?.updatedAt ?? null,
+				staleReason: workflowLock.staleReason,
+			},
+			interruptedRuns,
+			blockers: workflowBlockers,
+		},
+		packageSync: {
+			mode: completePackageCheckout ? 'recursive-workspace' : 'root-only',
+			completeCheckout: completePackageCheckout,
+			expectedBranch: branchName,
+			aligned: packageSyncRepos.every((repo) => repo.aligned),
+			dirty: packageSyncRepos.some((repo) => repo.dirty),
+			repos: packageSyncRepos,
+			blockers: packageSyncBlockers,
+		},
 		preview: {
 			enabled: false,
 			url: null,
@@ -247,7 +374,27 @@ export function recommendTreeseedNextSteps(state: TreeseedWorkflowState): Treese
 		recommendations.push({ operation: 'config', reason: 'Bootstrap the local machine config and local environment files.' });
 		return recommendations;
 	}
+	if (state.workflowControl.interruptedRuns.length > 0) {
+		recommendations.push({
+			operation: 'resume',
+			reason: 'Resume the most recent interrupted workflow run before making new branch changes.',
+			input: { runId: state.workflowControl.interruptedRuns[0].runId },
+		});
+		recommendations.push({ operation: 'recover', reason: 'Inspect active workflow locks and interrupted runs.' });
+		return recommendations.slice(0, 3);
+	}
+	if (state.workflowControl.lock.active && state.workflowControl.lock.runId) {
+		recommendations.push({ operation: 'recover', reason: 'Inspect the active workflow lock before starting another mutating command.' });
+		return recommendations.slice(0, 3);
+	}
 	if (state.branchRole === 'feature') {
+		if (state.packageSync.mode === 'recursive-workspace' && state.packageSync.blockers.length > 0 && state.branchName) {
+			recommendations.push({
+				operation: 'switch',
+				reason: 'Realign the checked-out package repos to the current task branch before continuing.',
+				input: { branch: state.branchName },
+			});
+		}
 		recommendations.push({ operation: 'stage', reason: 'Merge this task branch into staging and clean up branch artifacts.', input: { message: 'describe the resolution' } });
 		recommendations.push({ operation: 'save', reason: 'Persist, verify, and push the current task branch before or independently of staging it.', input: { message: 'describe your change' } });
 		if (state.preview.enabled && state.branchName) {
@@ -259,6 +406,13 @@ export function recommendTreeseedNextSteps(state: TreeseedWorkflowState): Treese
 		return recommendations.slice(0, 3);
 	}
 	if (state.branchRole === 'staging') {
+		if (state.packageSync.mode === 'recursive-workspace' && state.packageSync.blockers.length > 0 && state.branchName) {
+			recommendations.push({
+				operation: 'switch',
+				reason: 'Realign the checked-out package repos to staging before releasing.',
+				input: { branch: state.branchName },
+			});
+		}
 		if (!state.persistentEnvironments.staging.initialized) {
 			recommendations.push({ operation: 'config', reason: 'Initialize the staging environment before releasing.', input: { environment: ['staging'] } });
 		} else {

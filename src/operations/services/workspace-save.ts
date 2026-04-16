@@ -129,18 +129,25 @@ export function applyWorkspaceVersionChanges(plan) {
 	return plan;
 }
 
-export function planWorkspaceReleaseBump(level = 'patch', root = workspaceRoot()) {
+export function planWorkspaceReleaseBump(level = 'patch', root = workspaceRoot(), options = {}) {
 	const packages = workspacePackages(root).map((pkg) => ({
 		...pkg,
 		packageJsonPath: resolve(pkg.dir, 'package.json'),
 		packageJson: readPackageJson(resolve(pkg.dir, 'package.json')),
 	}));
 	const publishable = new Set(publishableWorkspacePackages(root).map((pkg) => pkg.name));
+	const selected = options.selectedPackageNames
+		? new Set(
+			[...options.selectedPackageNames]
+				.map((name) => String(name))
+				.filter((name) => publishable.has(name)),
+		)
+		: new Set(publishable);
 	const touched = new Set();
 	const versions = new Map();
 
 	for (const pkg of packages) {
-		if (!publishable.has(pkg.name)) {
+		if (!publishable.has(pkg.name) || !selected.has(pkg.name)) {
 			continue;
 		}
 		const nextVersion = incrementVersion(pkg.packageJson.version, level);
@@ -150,6 +157,9 @@ export function planWorkspaceReleaseBump(level = 'patch', root = workspaceRoot()
 	}
 
 	for (const pkg of packages) {
+		if (!selected.has(pkg.name)) {
+			continue;
+		}
 		for (const field of internalDependencyFields(pkg.packageJson)) {
 			for (const depName of Object.keys(pkg.packageJson[field] ?? {})) {
 				if (!versions.has(depName)) {
@@ -166,7 +176,57 @@ export function planWorkspaceReleaseBump(level = 'patch', root = workspaceRoot()
 		touched,
 		versions,
 		level,
+		selected,
 	};
+}
+
+export function collectWorkspaceVersionConsistencyIssues(root = workspaceRoot()) {
+	const packages = workspacePackages(root).map((pkg) => ({
+		...pkg,
+		packageJson: readPackageJson(resolve(pkg.dir, 'package.json')),
+	}));
+	const versions = new Map(packages.map((pkg) => [pkg.name, pkg.packageJson.version]));
+	const issues = [];
+
+	for (const pkg of packages) {
+		for (const field of internalDependencyFields(pkg.packageJson)) {
+			for (const [depName, currentSpec] of Object.entries(pkg.packageJson[field] ?? {})) {
+				if (!versions.has(depName)) {
+					continue;
+				}
+				const expectedSpec = `^${versions.get(depName)}`;
+				if (currentSpec !== expectedSpec) {
+					issues.push({
+						packageName: pkg.name,
+						dependencyName: depName,
+						field,
+						currentSpec,
+						expectedSpec,
+					});
+				}
+			}
+		}
+	}
+
+	return issues;
+}
+
+export function assertWorkspaceVersionConsistency(root = workspaceRoot()) {
+	const issues = collectWorkspaceVersionConsistencyIssues(root);
+	if (issues.length === 0) {
+		return;
+	}
+
+	const rendered = issues
+		.map((issue) => `${issue.packageName} ${issue.field}.${issue.dependencyName}=${issue.currentSpec} expected ${issue.expectedSpec}`)
+		.join('\n');
+	throw new Error(
+		[
+			'Treeseed save found inconsistent checked-out package dependency versions.',
+			'Resolve the package manifest drift before saving.',
+			rendered,
+		].join('\n'),
+	);
 }
 
 export function repoRoot(cwd = workspaceRoot()) {

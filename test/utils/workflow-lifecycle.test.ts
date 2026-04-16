@@ -1,13 +1,25 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TreeseedWorkflowSdk } from '../../src/workflow.ts';
+import { TreeseedWorkflowError } from '../../src/workflow/operations.ts';
+import { acquireWorkflowLock, releaseWorkflowLock } from '../../src/workflow/runs.ts';
 
-function git(cwd: string, args: string[]) {
+vi.mock('../../src/operations/services/save-deploy-preflight.ts', async () => {
+	const actual = await vi.importActual<typeof import('../../src/operations/services/save-deploy-preflight.ts')>('../../src/operations/services/save-deploy-preflight.ts');
+	return {
+		...actual,
+		runWorkspaceSavePreflight: vi.fn(),
+		runTenantDeployPreflight: vi.fn(),
+	};
+});
+
+function git(cwd: string, args: string[], env: NodeJS.ProcessEnv = {}) {
 	const result = spawnSync('git', args, {
 		cwd,
+		env: { ...process.env, ...env },
 		stdio: 'pipe',
 		encoding: 'utf8',
 	});
@@ -15,6 +27,10 @@ function git(cwd: string, args: string[]) {
 		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `git ${args.join(' ')} failed`);
 	}
 	return result.stdout.trim();
+}
+
+function gitAllowFile(cwd: string, args: string[]) {
+	return git(cwd, ['-c', 'protocol.file.allow=always', ...args]);
 }
 
 function writeTenantFiles(root: string) {
@@ -39,16 +55,68 @@ providers:
 	writeFileSync(resolve(root, 'README.md'), '# Demo\n', 'utf8');
 }
 
-function createWorkflowRepo() {
+function writePackageFiles(root: string, dirName: string, dependencies: Record<string, string> = {}) {
+	writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+		name: `@treeseed/${dirName}`,
+		version: dirName === 'cli' ? '0.4.11' : '0.4.12',
+		type: 'module',
+		scripts: {
+			'verify:local': 'node -e "process.exit(0)"',
+			'release:publish': 'node -e "process.exit(0)"',
+		},
+		dependencies,
+	}, null, 2), 'utf8');
+	writeFileSync(resolve(root, 'README.md'), `# ${dirName}\n`, 'utf8');
+	writeFileSync(resolve(root, 'index.js'), `export const name = '${dirName}';\n`, 'utf8');
+}
+
+function createPackageRepo(root: string, dirName: string, dependencies: Record<string, string> = {}) {
+	const origin = resolve(root, `${dirName}.git`);
+	const work = resolve(root, `${dirName}-work`);
+	mkdirSync(work, { recursive: true });
+	git(root, ['init', '--bare', origin]);
+	git(work, ['init', '-b', 'staging']);
+	git(work, ['config', 'user.name', 'Treeseed Test']);
+	git(work, ['config', 'user.email', 'treeseed@example.com']);
+	writePackageFiles(work, dirName, dependencies);
+	git(work, ['add', '-A']);
+	git(work, ['commit', '-m', `init: ${dirName}`]);
+	git(work, ['remote', 'add', 'origin', origin]);
+	git(work, ['push', '-u', 'origin', 'staging']);
+	git(work, ['checkout', '-b', 'main']);
+	git(work, ['push', '-u', 'origin', 'main']);
+	git(work, ['checkout', 'staging']);
+	git(origin, ['symbolic-ref', 'HEAD', 'refs/heads/staging']);
+	return { origin, work };
+}
+
+function createWorkflowRepo(options: { withWorkspacePackages?: boolean } = {}) {
 	const root = mkdtempSync(join(tmpdir(), 'treeseed-workflow-lifecycle-'));
 	const origin = resolve(root, 'origin.git');
 	const work = resolve(root, 'work');
+	const packages = options.withWorkspacePackages
+		? {
+			sdk: createPackageRepo(root, 'sdk'),
+			core: createPackageRepo(root, 'core', { '@treeseed/sdk': '^0.4.12' }),
+			cli: createPackageRepo(root, 'cli', { '@treeseed/sdk': '^0.4.12' }),
+		}
+		: null;
 	mkdirSync(work, { recursive: true });
 	git(root, ['init', '--bare', origin]);
 	git(work, ['init', '-b', 'staging']);
 	git(work, ['config', 'user.name', 'Treeseed Test']);
 	git(work, ['config', 'user.email', 'treeseed@example.com']);
 	writeTenantFiles(work);
+	if (packages) {
+		gitAllowFile(work, ['submodule', 'add', packages.sdk.origin, 'packages/sdk']);
+		gitAllowFile(work, ['submodule', 'add', packages.core.origin, 'packages/core']);
+		gitAllowFile(work, ['submodule', 'add', packages.cli.origin, 'packages/cli']);
+		for (const dirName of ['sdk', 'core', 'cli']) {
+			const packageRoot = resolve(work, 'packages', dirName);
+			git(packageRoot, ['config', 'user.name', 'Treeseed Test']);
+			git(packageRoot, ['config', 'user.email', 'treeseed@example.com']);
+		}
+	}
 	git(work, ['add', '-A']);
 	git(work, ['commit', '-m', 'init']);
 	git(work, ['remote', 'add', 'origin', origin]);
@@ -60,12 +128,14 @@ function createWorkflowRepo() {
 	git(work, ['add', '-A']);
 	git(work, ['commit', '-m', 'feat: demo']);
 	git(work, ['push', '-u', 'origin', 'feature/demo-task']);
-	return { work };
+	return { work, packages };
 }
 
 describe('treeseed workflow lifecycle', () => {
 	beforeEach(() => {
 		vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'treeseed-workflow-home-')));
+		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
+		vi.stubEnv('TREESEED_STAGE_WAIT_MODE', 'skip');
 	});
 
 	afterEach(() => {
@@ -115,4 +185,257 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.finalState.branchName).toBe('staging');
 		expect(git(work, ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
 	}, 15000);
+
+	it('recursively saves dirty checked-out workspace packages before saving the market repo', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-updated";\n', 'utf8');
+		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-updated";\n', 'utf8');
+		writeFileSync(resolve(work, 'feature.txt'), 'demo\nupdated\n', 'utf8');
+		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+
+		const result = await workflow.save({
+			message: 'feat: recursive save',
+			verify: false,
+			refreshPreview: false,
+		});
+
+		expect(result.ok).toBe(true);
+		expect(result.payload.mode).toBe('recursive-workspace');
+		expect(result.payload.repos.map((repo) => repo.name)).toEqual([
+			'@treeseed/sdk',
+			'@treeseed/core',
+			'@treeseed/cli',
+		]);
+		expect(result.payload.repos[0].committed).toBe(true);
+		expect(result.payload.repos[0].pushed).toBe(true);
+		expect(result.payload.repos[1].committed).toBe(true);
+		expect(result.payload.repos[2].skippedReason).toBe('clean');
+		expect(result.payload.rootRepo.committed).toBe(true);
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('feature/demo-task');
+		expect(git(resolve(work, 'packages', 'core'), ['branch', '--show-current'])).toBe('feature/demo-task');
+		expect(git(work, ['ls-tree', 'HEAD', 'packages/sdk'])).toContain(result.payload.repos[0].commitSha);
+		expect(git(work, ['ls-tree', 'HEAD', 'packages/core'])).toContain(result.payload.repos[1].commitSha);
+		expect(JSON.parse(readFileSync(resolve(work, 'packages', 'core', 'package.json'), 'utf8')).dependencies['@treeseed/sdk']).toBe('^0.4.12');
+		expect(JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version).toBe('0.4.12');
+	}, 20000);
+
+	it('switch mirrors task branches into checked-out package repos without pushing package branches', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+
+		const result = await workflow.switchTask({
+			branch: 'feature/parallel-task',
+		});
+
+		expect(result.payload.mode).toBe('recursive-workspace');
+		expect(git(work, ['branch', '--show-current'])).toBe('feature/parallel-task');
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('feature/parallel-task');
+		expect(git(resolve(work, 'packages', 'core'), ['branch', '--show-current'])).toBe('feature/parallel-task');
+		expect(git(work, ['ls-remote', '--heads', 'origin', 'feature/parallel-task'])).toContain('feature/parallel-task');
+		expect(git(resolve(work, 'packages', 'sdk'), ['ls-remote', '--heads', 'origin', 'feature/parallel-task'])).toBe('');
+		expect(git(resolve(work, 'packages', 'core'), ['ls-remote', '--heads', 'origin', 'feature/parallel-task'])).toBe('');
+	}, 20000);
+
+	it('returns switch plans without mutating the market or package repos', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+
+		const result = await workflow.switchTask({
+			branch: 'feature/plan-only',
+			plan: true,
+		});
+
+		expect(result.executionMode).toBe('plan');
+		expect(result.payload.mode).toBe('recursive-workspace');
+		expect(git(work, ['branch', '--show-current'])).toBe('feature/demo-task');
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
+		expect(git(work, ['ls-remote', '--heads', 'origin', 'feature/plan-only'])).toBe('');
+		expect(git(resolve(work, 'packages', 'sdk'), ['ls-remote', '--heads', 'origin', 'feature/plan-only'])).toBe('');
+	}, 20000);
+
+	it('fails switch when a checked-out package repo is dirty', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-dirty";\n', 'utf8');
+		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+
+		await expect(workflow.switchTask({ branch: 'feature/blocked-task' })).rejects.toThrow(
+			'clean git worktree',
+		);
+	}, 20000);
+
+	it('reports partial recursive save state when a later package repo cannot be pushed', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-updated";\n', 'utf8');
+		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-updated";\n', 'utf8');
+		git(resolve(work, 'packages', 'core'), ['remote', 'remove', 'origin']);
+		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+
+		try {
+			await workflow.save({
+				message: 'feat: recursive save',
+				verify: false,
+				refreshPreview: false,
+			});
+		} catch (error) {
+			expect(error).toBeInstanceOf(TreeseedWorkflowError);
+			const workflowError = error as TreeseedWorkflowError;
+			const details = (
+				(workflowError.details?.partialFailure as {
+					repos: Array<{ name: string; pushed: boolean }>;
+					failingRepo: string;
+				} | undefined)
+				?? (workflowError.details?.details as {
+					partialFailure?: {
+						repos: Array<{ name: string; pushed: boolean }>;
+						failingRepo: string;
+					};
+				} | undefined)?.partialFailure
+			) as {
+				repos: Array<{ name: string; pushed: boolean }>;
+				failingRepo: string;
+			};
+			expect(details.failingRepo).toBe('@treeseed/core');
+			expect(details.repos.find((repo) => repo.name === '@treeseed/sdk')?.pushed).toBe(true);
+			expect(details.repos.find((repo) => repo.name === '@treeseed/core')?.pushed).toBe(false);
+		}
+	}, 20000);
+
+	it('lists interrupted workflow runs and resumes them after the workspace is repaired', async () => {
+		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-updated";\n', 'utf8');
+		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-updated";\n', 'utf8');
+		git(resolve(work, 'packages', 'core'), ['remote', 'remove', 'origin']);
+		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+
+		await expect(workflow.save({
+			message: 'feat: recursive save',
+			verify: false,
+			refreshPreview: false,
+		})).rejects.toBeInstanceOf(TreeseedWorkflowError);
+
+		const recoverResult = await workflow.recover();
+		const runId = recoverResult.payload.interruptedRuns[0]?.runId;
+		expect(recoverResult.payload.interruptedRuns.length).toBe(1);
+		expect(runId).toMatch(/^save-/);
+
+		git(resolve(work, 'packages', 'core'), ['remote', 'add', 'origin', packages!.core.origin]);
+
+		const resumeResult = await workflow.resume({ runId });
+		expect(resumeResult.runId).toBe(runId);
+		expect(resumeResult.payload.repos.find((repo: { name: string }) => repo.name === '@treeseed/sdk')?.commitSha).toBeTruthy();
+		expect(resumeResult.payload.repos.find((repo: { name: string }) => repo.name === '@treeseed/core')?.pushed).toBe(true);
+		expect(resumeResult.payload.rootRepo.pushed).toBe(true);
+
+		const finalRecover = await workflow.recover();
+		expect(finalRecover.payload.interruptedRuns.length).toBe(0);
+	}, 20000);
+
+	it('surfaces active workflow locks through recover and blocks concurrent mutating commands', async () => {
+		const { work } = createWorkflowRepo();
+		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const lock = acquireWorkflowLock(work, 'save', 'save-lock-test');
+		expect(lock.acquired).toBe(true);
+
+		try {
+			const recoverResult = await workflow.recover();
+			expect(recoverResult.payload.lock.active).toBe(true);
+			expect(recoverResult.payload.lock.lock?.runId).toBe('save-lock-test');
+			await expect(workflow.switchTask({ branch: 'feature/blocked-lock' })).rejects.toMatchObject({
+				code: 'workflow_locked',
+			});
+		} finally {
+			releaseWorkflowLock(work, 'save-lock-test');
+		}
+	}, 20000);
+
+	it('stages package feature branches first and points market staging at package staging heads', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		await workflow.switchTask({ branch: 'feature/demo-task' });
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-staged";\n', 'utf8');
+		writeFileSync(resolve(work, 'feature.txt'), 'demo\nstage\n', 'utf8');
+		await workflow.save({
+			message: 'feat: prepare stage',
+			verify: false,
+			refreshPreview: false,
+		});
+
+		const result = await workflow.stage({
+			message: 'stage: finish demo task',
+			waitForStaging: false,
+		});
+
+		expect(result.payload.mode).toBe('recursive-workspace');
+		expect(result.payload.mergeStrategy).toBe('squash');
+		expect(git(work, ['branch', '--show-current'])).toBe('staging');
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
+		expect(git(work, ['log', '-1', '--format=%s'])).toBe('stage: finish demo task');
+		expect(git(resolve(work, 'packages', 'sdk'), ['log', '-1', '--format=%s'])).toBe('stage: finish demo task');
+		expect(git(work, ['ls-tree', 'HEAD', 'packages/sdk'])).toContain(git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'HEAD']));
+		expect(git(work, ['branch', '--list', 'feature/demo-task'])).toBe('');
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--list', 'feature/demo-task'])).toBe('');
+	}, 20000);
+
+	it('closes matching package task branches and preserves deprecated tags', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		await workflow.switchTask({ branch: 'feature/demo-task' });
+
+		const result = await workflow.close({
+			message: 'obsolete workstream',
+		});
+
+		expect(result.payload.mode).toBe('recursive-workspace');
+		expect(git(work, ['branch', '--show-current'])).toBe('staging');
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
+		expect(git(work, ['branch', '--list', 'feature/demo-task'])).toBe('');
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--list', 'feature/demo-task'])).toBe('');
+		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
+	}, 20000);
+
+	it('releases only changed packages plus dependents and syncs market main to package main heads', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		await workflow.switchTask({ branch: 'feature/demo-task' });
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-release";\n', 'utf8');
+		writeFileSync(resolve(work, 'feature.txt'), 'demo\nrelease\n', 'utf8');
+		await workflow.save({
+			message: 'feat: release sdk change',
+			verify: false,
+			refreshPreview: false,
+		});
+		await workflow.stage({
+			message: 'stage: release sdk change',
+			waitForStaging: false,
+		});
+
+		const result = await workflow.release({ bump: 'patch' });
+
+		expect(result.payload.mode).toBe('recursive-workspace');
+		expect(result.payload.packageSelection.changed).toContain('@treeseed/sdk');
+		expect(result.payload.packageSelection.dependents).toEqual(expect.arrayContaining(['@treeseed/core', '@treeseed/cli']));
+		expect(result.payload.touchedPackages).toEqual(expect.arrayContaining(['@treeseed/sdk', '@treeseed/core', '@treeseed/cli']));
+		expect(JSON.parse(git(resolve(work, 'packages', 'sdk'), ['show', 'main:package.json'])).version).toBe('0.4.13');
+		expect(JSON.parse(git(resolve(work, 'packages', 'core'), ['show', 'main:package.json'])).version).toBe('0.4.13');
+		expect(JSON.parse(git(resolve(work, 'packages', 'cli'), ['show', 'main:package.json'])).version).toBe('0.4.12');
+		expect(git(work, ['ls-tree', 'main', 'packages/sdk'])).toContain(git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'main']));
+		expect(result.payload.publishWait.every((entry) => entry.status === 'skipped')).toBe(true);
+		expect(git(work, ['branch', '--show-current'])).toBe('staging');
+	}, 30000);
+
+	it('surfaces package branch drift and dirty package blockers in status', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		await workflow.switchTask({ branch: 'feature/demo-task' });
+		git(resolve(work, 'packages', 'core'), ['checkout', 'staging']);
+		writeFileSync(resolve(work, 'packages', 'cli', 'index.js'), 'export const name = "cli-dirty";\n', 'utf8');
+
+		const result = await workflow.status();
+
+		expect(result.payload.packageSync.mode).toBe('recursive-workspace');
+		expect(result.payload.packageSync.aligned).toBe(false);
+		expect(result.payload.packageSync.dirty).toBe(true);
+		expect(result.payload.packageSync.blockers.join('\n')).toContain('@treeseed/core is on staging instead of feature/demo-task.');
+		expect(result.payload.packageSync.blockers.join('\n')).toContain('@treeseed/cli has uncommitted changes.');
+	});
 });

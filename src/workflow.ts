@@ -9,7 +9,9 @@ import {
 	workflowDestroy,
 	workflowDev,
 	workflowExport,
+	workflowRecover,
 	workflowRelease,
+	workflowResume,
 	workflowSave,
 	workflowStage,
 	workflowStatus,
@@ -27,6 +29,8 @@ export type TreeseedWorkflowOperationId =
 	| 'close'
 	| 'stage'
 	| 'release'
+	| 'resume'
+	| 'recover'
 	| 'destroy'
 	| 'export';
 
@@ -36,6 +40,29 @@ export type TreeseedWorkflowNextStep = {
 	input?: Record<string, unknown>;
 };
 
+export type TreeseedWorkflowFact = {
+	label: string;
+	value: string | number | boolean | null;
+};
+
+export type TreeseedWorkflowErrorDetail = {
+	code: string;
+	message: string;
+	details?: Record<string, unknown> | null;
+};
+
+export type TreeseedWorkflowRecovery = {
+	resumable: boolean;
+	runId?: string | null;
+	command?: string | null;
+	message?: string | null;
+	recoverCommand?: string | null;
+	resumeCommand?: string | null;
+	lock?: Record<string, unknown> | null;
+};
+
+export type TreeseedWorkflowExecutionMode = 'execute' | 'plan';
+
 export type TreeseedWorkflowContext = {
 	cwd?: string;
 	env?: NodeJS.ProcessEnv;
@@ -43,13 +70,26 @@ export type TreeseedWorkflowContext = {
 	prompt?: (message: string) => Promise<string> | string;
 	confirm?: (message: string, expected: string) => Promise<boolean> | boolean;
 	transport?: 'sdk' | 'cli' | 'api';
+	workflow?: {
+		resumeRunId?: string;
+	};
 };
 
 export type TreeseedWorkflowResult<TPayload = Record<string, unknown>> = {
+	schemaVersion: 1;
+	kind: 'treeseed.workflow.result';
+	command: TreeseedWorkflowOperationId;
+	executionMode: TreeseedWorkflowExecutionMode;
+	runId: string | null;
 	ok: boolean;
 	operation: TreeseedWorkflowOperationId;
+	summary?: string;
+	facts?: TreeseedWorkflowFact[];
 	payload: TPayload;
+	result: TPayload;
 	nextSteps?: TreeseedWorkflowNextStep[];
+	recovery?: TreeseedWorkflowRecovery | null;
+	errors?: TreeseedWorkflowErrorDetail[];
 };
 
 export type TreeseedTaskBranchMetadata = ReturnType<typeof listTaskBranches>[number] & {
@@ -60,6 +100,16 @@ export type TreeseedTaskBranchMetadata = ReturnType<typeof listTaskBranches>[num
 		url: string | null;
 		lastDeploymentTimestamp: string | null;
 	};
+	packages?: Array<{
+		name: string;
+		path: string;
+		local: boolean;
+		remote: boolean;
+		current: boolean;
+		head: string | null;
+		pointer: string | null;
+		aligned: boolean;
+	}>;
 };
 
 export type TreeseedSaveInput = {
@@ -69,6 +119,8 @@ export type TreeseedSaveInput = {
 	refreshPreview?: boolean;
 	preview?: boolean;
 	rebase?: boolean;
+	plan?: boolean;
+	dryRun?: boolean;
 };
 
 export type TreeseedCloseInput = {
@@ -76,6 +128,8 @@ export type TreeseedCloseInput = {
 	deletePreview?: boolean;
 	deleteBranch?: boolean;
 	autoSave?: boolean;
+	plan?: boolean;
+	dryRun?: boolean;
 };
 
 export type TreeseedStageInput = {
@@ -84,6 +138,8 @@ export type TreeseedStageInput = {
 	deletePreview?: boolean;
 	deleteBranch?: boolean;
 	autoSave?: boolean;
+	plan?: boolean;
+	dryRun?: boolean;
 };
 
 export type TreeseedSwitchInput = {
@@ -92,6 +148,8 @@ export type TreeseedSwitchInput = {
 	preview?: boolean;
 	createIfMissing?: boolean;
 	baseBranch?: string;
+	plan?: boolean;
+	dryRun?: boolean;
 };
 
 export type TreeseedConfigScope = 'all' | 'local' | 'staging' | 'prod';
@@ -114,13 +172,26 @@ export type TreeseedExportInput = {
 	directory?: string;
 };
 
-export type TreeseedReleaseInput = { bump: 'major' | 'minor' | 'patch' };
+export type TreeseedReleaseInput = {
+	bump: 'major' | 'minor' | 'patch';
+	plan?: boolean;
+	dryRun?: boolean;
+};
+
+export type TreeseedResumeInput = {
+	runId: string;
+};
+
+export type TreeseedRecoverInput = {
+	runId?: string;
+};
 
 export type TreeseedDestroyInput = {
 	target?: 'local' | 'staging' | 'prod';
 	environment?: 'local' | 'staging' | 'prod';
 	confirm?: boolean | string;
 	dryRun?: boolean;
+	plan?: boolean;
 	destroyRemote?: boolean;
 	destroyLocal?: boolean;
 	force?: boolean;
@@ -179,6 +250,10 @@ export class TreeseedWorkflowSdk {
 				return this.stage(input as TreeseedStageInput);
 			case 'release':
 				return this.release(input as TreeseedReleaseInput);
+			case 'resume':
+				return this.resume(input as TreeseedResumeInput);
+			case 'recover':
+				return this.recover(input as TreeseedRecoverInput);
 			case 'destroy':
 				return this.destroy(input as TreeseedDestroyInput);
 			case 'export':
@@ -222,6 +297,14 @@ export class TreeseedWorkflowSdk {
 
 	async release(input: TreeseedReleaseInput): Promise<TreeseedWorkflowResult> {
 		return workflowRelease(this.helpers(), input);
+	}
+
+	async resume(input: TreeseedResumeInput): Promise<TreeseedWorkflowResult> {
+		return workflowResume(this.helpers(), input);
+	}
+
+	async recover(input: TreeseedRecoverInput = {}): Promise<TreeseedWorkflowResult> {
+		return workflowRecover(this.helpers(), input);
 	}
 
 	async destroy(input: TreeseedDestroyInput): Promise<TreeseedWorkflowResult> {

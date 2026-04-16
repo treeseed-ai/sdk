@@ -68,6 +68,15 @@ function runGh(args, { cwd, allowFailure = false, capture = true, input } = {}) 
 	return result;
 }
 
+function sleepSeconds(seconds) {
+	if (!Number.isFinite(seconds) || seconds <= 0) {
+		return;
+	}
+	spawnSync('sleep', [String(seconds)], {
+		stdio: 'ignore',
+	});
+}
+
 export function resolveGitHubRepositorySlug(tenantRoot) {
 	const remoteResult = runGit(['remote', 'get-url', 'origin'], { cwd: tenantRoot });
 	const remoteUrl = remoteResult.stdout?.trim() ?? '';
@@ -353,4 +362,85 @@ export function ensureGitHubDeployAutomation(tenantRoot, { dryRun = false } = {}
 		variables: environment.variables,
 		environment,
 	};
+}
+
+export function waitForGitHubWorkflowCompletion(
+	tenantRoot,
+	{
+		repository,
+		workflow = 'publish.yml',
+		headSha,
+		branch,
+		timeoutSeconds = 600,
+		pollSeconds = 5,
+	} = {},
+) {
+	if (isGitHubAutomationStubbed()) {
+		return {
+			status: 'skipped',
+			reason: 'stubbed',
+			repository: repository ?? maybeResolveGitHubRepositorySlug(tenantRoot),
+			workflow,
+			headSha: headSha ?? null,
+			branch: branch ?? null,
+		};
+	}
+
+	const repo = repository ?? resolveGitHubRepositorySlug(tenantRoot);
+	const startedAt = Date.now();
+
+	while ((Date.now() - startedAt) < timeoutSeconds * 1000) {
+		const result = runGh([
+			'run',
+			'list',
+			'--repo',
+			repo,
+			'--workflow',
+			workflow,
+			'--limit',
+			'20',
+			'--json',
+			'databaseId,headSha,headBranch,status,conclusion,event,displayTitle,url',
+		], { cwd: tenantRoot });
+		const runs = JSON.parse(result.stdout || '[]');
+		const match = runs.find((run) => {
+			if (headSha && run?.headSha !== headSha) {
+				return false;
+			}
+			if (branch && run?.headBranch !== branch) {
+				return false;
+			}
+			return true;
+		});
+
+		if (match?.databaseId) {
+			runGh(['run', 'watch', String(match.databaseId), '--repo', repo, '--exit-status'], {
+				cwd: tenantRoot,
+				capture: false,
+			});
+			const finalResult = runGh([
+				'run',
+				'view',
+				String(match.databaseId),
+				'--repo',
+				repo,
+				'--json',
+				'status,conclusion,url,workflowName,headSha',
+			], { cwd: tenantRoot });
+			const finalRun = JSON.parse(finalResult.stdout || '{}');
+			return {
+				status: 'completed',
+				repository: repo,
+				workflow,
+				runId: match.databaseId,
+				headSha: finalRun.headSha ?? match.headSha ?? null,
+				conclusion: finalRun.conclusion ?? match.conclusion ?? null,
+				url: finalRun.url ?? match.url ?? null,
+			};
+		}
+
+		sleepSeconds(pollSeconds);
+	}
+
+	throw new Error(`Timed out waiting for GitHub workflow ${workflow} in ${repo}.`);
 }

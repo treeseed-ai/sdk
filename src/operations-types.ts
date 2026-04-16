@@ -17,6 +17,8 @@ export type TreeseedOperationId =
 	| 'deploy.release'
 	| 'deploy.rollback'
 	| 'deploy.destroy'
+	| 'workspace.resume'
+	| 'workspace.recover'
 	| 'template.list'
 	| 'template.show'
 	| 'template.validate'
@@ -120,6 +122,9 @@ export type TreeseedOperationFailureCode =
 	| 'confirmation_required'
 	| 'unsupported_transport'
 	| 'unsupported_state'
+	| 'workflow_locked'
+	| 'resume_unavailable'
+	| 'workflow_contract_missing'
 	| 'provider_resolution_failed';
 
 export class TreeseedOperationError extends Error {

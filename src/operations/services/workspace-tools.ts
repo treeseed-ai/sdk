@@ -3,7 +3,23 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 
-const TREESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli', 'agent', 'api'];
+export const TREESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli'];
+
+function packageSortWeight(pkg) {
+	const relativeDir = String(pkg.relativeDir ?? '');
+	const dirName = relativeDir.split('/').pop() ?? '';
+	const index = TREESEED_WORKSPACE_PACKAGE_DIRS.indexOf(dirName);
+	return index >= 0 ? index : Number.MAX_SAFE_INTEGER;
+}
+
+function compareWorkspacePackages(left, right) {
+	const leftWeight = packageSortWeight(left);
+	const rightWeight = packageSortWeight(right);
+	if (leftWeight !== rightWeight) {
+		return leftWeight - rightWeight;
+	}
+	return left.name.localeCompare(right.name);
+}
 
 function escapeRegex(source) {
 	return source.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
@@ -131,7 +147,7 @@ export function workspacePackages(root = workspaceRoot()) {
 		}
 	}
 
-	return [...discovered.values()].sort((left, right) => left.name.localeCompare(right.name));
+	return [...discovered.values()].sort(compareWorkspacePackages);
 }
 
 function internalDependenciesFor(pkg, packageNames) {
@@ -161,7 +177,7 @@ export function sortWorkspacePackages(packages) {
 
 	const ready = [...packages]
 		.filter((pkg) => (indegree.get(pkg.name) ?? 0) === 0)
-		.sort((left, right) => left.name.localeCompare(right.name));
+		.sort(compareWorkspacePackages);
 	const ordered = [];
 
 	while (ready.length > 0) {
@@ -177,14 +193,14 @@ export function sortWorkspacePackages(packages) {
 				const dependent = packageMap.get(dependentName);
 				if (dependent) {
 					ready.push(dependent);
-					ready.sort((left, right) => left.name.localeCompare(right.name));
+					ready.sort(compareWorkspacePackages);
 				}
 			}
 		}
 	}
 
 	if (ordered.length !== packages.length) {
-		return [...packages].sort((left, right) => left.name.localeCompare(right.name));
+		return [...packages].sort(compareWorkspacePackages);
 	}
 
 	return ordered;

@@ -9,6 +9,19 @@ function runGit(args, { cwd, capture = false } = {}) {
 	return run('git', args, { cwd, capture });
 }
 
+function repoHasStagedChanges(repoDir) {
+	try {
+		runGit(['diff', '--cached', '--quiet'], { cwd: repoDir });
+		return false;
+	} catch {
+		return true;
+	}
+}
+
+export function headCommit(repoDir, ref = 'HEAD') {
+	return runGit(['rev-parse', ref], { cwd: repoDir, capture: true }).trim();
+}
+
 export function gitWorkflowRoot(cwd = workspaceRoot()) {
 	return repoRoot(cwd);
 }
@@ -19,6 +32,13 @@ export function assertCleanWorktree(cwd = workspaceRoot()) {
 		throw new Error('Treeseed requires a clean git worktree before changing branches.');
 	}
 	return root;
+}
+
+export function assertCleanWorktrees(repoDirs) {
+	for (const repoDir of repoDirs) {
+		assertCleanWorktree(repoDir);
+	}
+	return repoDirs;
 }
 
 export function branchExists(repoDir, branchName) {
@@ -60,6 +80,73 @@ export function checkoutBranch(repoDir, branchName) {
 	runGit(['checkout', branchName], { cwd: repoDir });
 }
 
+export function checkoutTaskBranchFromStaging(
+	cwd,
+	branchName,
+	{ createIfMissing = true, pushIfCreated = false } = {},
+) {
+	const repoDir = assertCleanWorktree(cwd);
+	fetchOrigin(repoDir);
+	syncBranchWithOrigin(repoDir, STAGING_BRANCH);
+
+	if (currentBranch(repoDir) === branchName) {
+		return {
+			repoDir,
+			branchName,
+			baseBranch: STAGING_BRANCH,
+			created: false,
+			resumed: true,
+			remoteBranch: remoteBranchExists(repoDir, branchName),
+		};
+	}
+
+	if (branchExists(repoDir, branchName)) {
+		checkoutBranch(repoDir, branchName);
+		if (remoteBranchExists(repoDir, branchName)) {
+			runGit(['pull', '--rebase', 'origin', branchName], { cwd: repoDir });
+		}
+		return {
+			repoDir,
+			branchName,
+			baseBranch: STAGING_BRANCH,
+			created: false,
+			resumed: true,
+			remoteBranch: remoteBranchExists(repoDir, branchName),
+		};
+	}
+
+	if (remoteBranchExists(repoDir, branchName)) {
+		runGit(['checkout', '-b', branchName, `origin/${branchName}`], { cwd: repoDir });
+		runGit(['pull', '--rebase', 'origin', branchName], { cwd: repoDir });
+		return {
+			repoDir,
+			branchName,
+			baseBranch: STAGING_BRANCH,
+			created: false,
+			resumed: true,
+			remoteBranch: true,
+		};
+	}
+
+	if (!createIfMissing) {
+		throw new Error(`Branch "${branchName}" does not exist locally or on origin.`);
+	}
+
+	checkoutBranch(repoDir, STAGING_BRANCH);
+	runGit(['checkout', '-b', branchName], { cwd: repoDir });
+	if (pushIfCreated) {
+		pushBranch(repoDir, branchName, { setUpstream: true });
+	}
+	return {
+		repoDir,
+		branchName,
+		baseBranch: STAGING_BRANCH,
+		created: true,
+		resumed: false,
+		remoteBranch: pushIfCreated,
+	};
+}
+
 export function syncBranchWithOrigin(repoDir, branchName) {
 	fetchOrigin(repoDir);
 	if (!branchExists(repoDir, branchName) && remoteBranchExists(repoDir, branchName)) {
@@ -74,21 +161,14 @@ export function syncBranchWithOrigin(repoDir, branchName) {
 }
 
 export function createFeatureBranchFromStaging(cwd, branchName) {
-	const repoDir = assertCleanWorktree(cwd);
-	fetchOrigin(repoDir);
-
-	if (branchExists(repoDir, branchName) || remoteBranchExists(repoDir, branchName)) {
+	const result = checkoutTaskBranchFromStaging(cwd, branchName, {
+		createIfMissing: true,
+		pushIfCreated: false,
+	});
+	if (!result.created) {
 		throw new Error(`Branch "${branchName}" already exists locally or on origin.`);
 	}
-
-	syncBranchWithOrigin(repoDir, STAGING_BRANCH);
-	runGit(['checkout', '-b', branchName], { cwd: repoDir });
-
-	return {
-		repoDir,
-		baseBranch: STAGING_BRANCH,
-		branchName,
-	};
+	return result;
 }
 
 export function pushBranch(repoDir, branchName, { setUpstream = false } = {}) {
@@ -112,12 +192,29 @@ export function deleteRemoteBranch(repoDir, branchName) {
 }
 
 export function mergeCurrentBranchIntoStaging(cwd, featureBranch) {
+	return squashMergeBranchIntoStaging(cwd, featureBranch, `stage: ${featureBranch}`);
+}
+
+export function squashMergeBranchIntoStaging(cwd, featureBranch, message, { pushTarget = true } = {}) {
 	const repoDir = assertCleanWorktree(cwd);
 	fetchOrigin(repoDir);
 	syncBranchWithOrigin(repoDir, STAGING_BRANCH);
-	runGit(['merge', '--no-ff', featureBranch, '-m', `merge: ${featureBranch} -> ${STAGING_BRANCH}`], { cwd: repoDir });
-	pushBranch(repoDir, STAGING_BRANCH);
-	return repoDir;
+	runGit(['merge', '--squash', featureBranch], { cwd: repoDir });
+	let committed = false;
+	if (repoHasStagedChanges(repoDir)) {
+		runGit(['commit', '-m', message], { cwd: repoDir });
+		committed = true;
+	}
+	if (pushTarget) {
+		pushBranch(repoDir, STAGING_BRANCH);
+	}
+	return {
+		repoDir,
+		targetBranch: STAGING_BRANCH,
+		committed,
+		commitSha: headCommit(repoDir),
+		pushed: pushTarget,
+	};
 }
 
 export function currentManagedBranch(cwd = workspaceRoot()) {
@@ -228,13 +325,32 @@ export function prepareReleaseBranches(cwd = workspaceRoot()) {
 }
 
 export function mergeStagingIntoMain(cwd = workspaceRoot()) {
+	return mergeBranchIntoTarget(cwd, {
+		sourceBranch: STAGING_BRANCH,
+		targetBranch: PRODUCTION_BRANCH,
+		message: `release: ${STAGING_BRANCH} -> ${PRODUCTION_BRANCH}`,
+		pushTarget: true,
+	});
+}
+
+export function mergeBranchIntoTarget(
+	cwd = workspaceRoot(),
+	{ sourceBranch, targetBranch, message, pushTarget = true } = {},
+) {
 	const repoDir = prepareReleaseBranches(cwd);
-	checkoutBranch(repoDir, PRODUCTION_BRANCH);
-	if (remoteBranchExists(repoDir, PRODUCTION_BRANCH)) {
-		runGit(['pull', '--rebase', 'origin', PRODUCTION_BRANCH], { cwd: repoDir });
+	checkoutBranch(repoDir, targetBranch);
+	if (remoteBranchExists(repoDir, targetBranch)) {
+		runGit(['pull', '--rebase', 'origin', targetBranch], { cwd: repoDir });
 	}
-	runGit(['merge', '--no-ff', STAGING_BRANCH, '-m', `release: ${STAGING_BRANCH} -> ${PRODUCTION_BRANCH}`], { cwd: repoDir });
+	runGit(['merge', '--no-ff', sourceBranch, '-m', message], { cwd: repoDir });
 	pushBranch(repoDir, STAGING_BRANCH);
-	pushBranch(repoDir, PRODUCTION_BRANCH);
-	return repoDir;
+	if (pushTarget) {
+		pushBranch(repoDir, targetBranch);
+	}
+	return {
+		repoDir,
+		targetBranch,
+		commitSha: headCommit(repoDir),
+		pushed: pushTarget,
+	};
 }
