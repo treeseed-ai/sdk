@@ -1,8 +1,8 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { ApiPrincipal, RemoteTreeseedConfig, RemoteTreeseedHost } from '../../remote.ts';
 import {
@@ -10,6 +10,7 @@ import {
 	isTreeseedEnvironmentEntryRequired,
 	resolveTreeseedEnvironmentRegistry,
 	TREESEED_ENVIRONMENT_SCOPES,
+	type TreeseedEnvironmentValidation,
 	validateTreeseedEnvironmentValues,
 } from '../../platform/environment.ts';
 import { loadTreeseedManifest } from '../../platform/tenant-config.ts';
@@ -17,7 +18,6 @@ import {
 	createPersistentDeployTarget,
 	ensureGeneratedWranglerConfig,
 	loadDeployState,
-	markManagedServicesInitialized,
 	markDeploymentInitialized,
 	provisionCloudflareResources,
 	syncCloudflareSecrets,
@@ -25,19 +25,41 @@ import {
 } from './deploy.ts';
 import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
 import { validateRailwayDeployPrerequisites } from './railway-deploy.ts';
-import { loadCliDeployConfig, resolveWranglerBin, withProcessCwd } from './runtime-tools.ts';
+import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin, withProcessCwd } from './runtime-tools.ts';
+import {
+	assertTreeseedKeyAgentResponse,
+	getTreeseedKeyAgentPaths,
+	readWrappedMachineKeyFile,
+	replaceWrappedMachineKey,
+	rotateWrappedMachineKeyPassphrase,
+	TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS,
+	TREESEED_MACHINE_KEY_PASSPHRASE_ENV,
+	TreeseedKeyAgentError,
+	unwrapMachineKey,
+	type TreeseedKeyAgentStatus,
+} from './key-agent.ts';
+
+export { TREESEED_MACHINE_KEY_PASSPHRASE_ENV, TreeseedKeyAgentError } from './key-agent.ts';
 
 const MACHINE_CONFIG_RELATIVE_PATH = '.treeseed/config/machine.yaml';
+const LEGACY_ENVIRONMENT_ALIASES = {
+	RAILWAY_API_KEY: 'RAILWAY_API_TOKEN',
+} as const;
 const MACHINE_KEY_HOME_RELATIVE_PATH = '.treeseed/config/machine.key';
 const LEGACY_MACHINE_KEY_RELATIVE_PATH = '.treeseed/config/machine.key';
 const REMOTE_AUTH_RELATIVE_PATH = '.treeseed/config/remote-auth.json';
 const TEMPLATE_CATALOG_CACHE_RELATIVE_PATH = 'treeseed/cache/template-catalog.json';
 const TENANT_ENVIRONMENT_OVERLAY_PATH = 'src/env.yaml';
 const CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER = 'replace-with-cloudflare-account-id';
+const TREESEED_KEY_AGENT_AUTOPROMPT_ENV = 'TREESEED_KEY_AGENT_AUTOPROMPT';
 export const DEFAULT_TREESEED_API_BASE_URL = 'https://api.treeseed.ai';
 export const DEFAULT_TEMPLATE_CATALOG_URL = 'https://api.treeseed.ai/search/templates';
 export const TREESEED_TEMPLATE_CATALOG_URL_ENV = 'TREESEED_TEMPLATE_CATALOG_URL';
 export const TREESEED_API_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
+const CLI_CHECK_TIMEOUT_MS = 5000;
+const DEPRECATED_LOCAL_ENV_FILES = ['.env.local', '.dev.vars'] as const;
+const warnedDeprecatedLocalEnvRoots = new Set<string>();
+const inlineTreeseedSecretSessions = new Map<string, { machineKey: Buffer | null; lastTouchedAt: number; idleTimeoutMs: number }>();
 
 function createDefaultRemoteHost() {
 	return {
@@ -89,8 +111,6 @@ function createDefaultServiceSettings() {
 			projectName: '',
 			apiServiceId: '',
 			apiServiceName: '',
-			agentsServiceId: '',
-			agentsServiceName: '',
 		},
 	};
 }
@@ -104,8 +124,6 @@ function normalizeServiceSettings(value) {
 			projectName: typeof railway.projectName === 'string' ? railway.projectName : '',
 			apiServiceId: typeof railway.apiServiceId === 'string' ? railway.apiServiceId : '',
 			apiServiceName: typeof railway.apiServiceName === 'string' ? railway.apiServiceName : '',
-			agentsServiceId: typeof railway.agentsServiceId === 'string' ? railway.agentsServiceId : '',
-			agentsServiceName: typeof railway.agentsServiceName === 'string' ? railway.agentsServiceName : '',
 		},
 	};
 }
@@ -114,26 +132,23 @@ function ensureParent(filePath) {
 	mkdirSync(dirname(filePath), { recursive: true });
 }
 
-function parseEnvFile(contents) {
-	return contents
-		.split(/\r?\n/)
-		.map((line) => line.trim())
-		.filter((line) => line && !line.startsWith('#'))
-		.reduce((acc, line) => {
-			const separatorIndex = line.indexOf('=');
-			if (separatorIndex === -1) {
-				return acc;
-			}
-			acc[line.slice(0, separatorIndex).trim()] = line.slice(separatorIndex + 1);
-			return acc;
-		}, {});
+export function listDeprecatedTreeseedLocalEnvFiles(tenantRoot) {
+	return DEPRECATED_LOCAL_ENV_FILES
+		.map((fileName) => resolve(tenantRoot, fileName))
+		.filter((filePath) => existsSync(filePath));
 }
 
-function readEnvFileIfPresent(filePath) {
-	if (!existsSync(filePath)) {
-		return {};
+export function warnDeprecatedTreeseedLocalEnvFiles(tenantRoot, write = (line: string) => console.warn(line)) {
+	const existing = listDeprecatedTreeseedLocalEnvFiles(tenantRoot);
+	if (existing.length === 0 || warnedDeprecatedLocalEnvRoots.has(tenantRoot)) {
+		return existing;
 	}
-	return parseEnvFile(readFileSync(filePath, 'utf8'));
+
+	warnedDeprecatedLocalEnvRoots.add(tenantRoot);
+	write(
+		`Treeseed ignores deprecated local env files: ${existing.map((filePath) => filePath.replace(`${tenantRoot}/`, '')).join(', ')}. Delete them and rely on .treeseed/config/machine.yaml plus Treeseed-launched commands.`,
+	);
+	return existing;
 }
 
 function maskValue(value) {
@@ -162,18 +177,15 @@ function syncManagedServiceSettingsFromDeployConfig(tenantRoot) {
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
 	const railway = config.settings.services.railway;
 	railway.projectId = deployConfig.services?.api?.railway?.projectId
-		?? deployConfig.services?.agents?.railway?.projectId
 		?? railway.projectId;
 	railway.projectName = deployConfig.services?.api?.railway?.projectName
-		?? deployConfig.services?.agents?.railway?.projectName
 		?? railway.projectName;
 	railway.apiServiceId = deployConfig.services?.api?.railway?.serviceId ?? railway.apiServiceId;
 	railway.apiServiceName = deployConfig.services?.api?.railway?.serviceName ?? railway.apiServiceName;
-	railway.agentsServiceId = deployConfig.services?.agents?.railway?.serviceId ?? railway.agentsServiceId;
-	railway.agentsServiceName = deployConfig.services?.agents?.railway?.serviceName ?? railway.agentsServiceName;
 
 	const remote = normalizeRemoteSettings(config.settings.remote);
-	const defaultHostBaseUrl = deployConfig.services?.api?.environments?.prod?.baseUrl
+	const defaultHostBaseUrl = process.env[TREESEED_API_BASE_URL_ENV]
+		?? deployConfig.services?.api?.environments?.prod?.baseUrl
 		?? deployConfig.services?.api?.publicBaseUrl
 		?? remote.hosts[0]?.baseUrl
 		?? DEFAULT_TREESEED_API_BASE_URL;
@@ -234,6 +246,483 @@ export function getTreeseedMachineConfigPaths(tenantRoot) {
 	};
 }
 
+function keyAgentScriptPath() {
+	return packageScriptPath('key-agent.ts');
+}
+
+function keyAgentRunTsPath() {
+	return packageScriptPath('run-ts.mjs');
+}
+
+function keyAgentScriptCwd() {
+	return dirname(dirname(keyAgentRunTsPath()));
+}
+
+function sleepMs(milliseconds) {
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function shellQuote(value: string) {
+	return `'${value.replace(/'/gu, `'\\''`)}'`;
+}
+
+function keyAgentAutoPromptEnabled() {
+	const value = String(process.env[TREESEED_KEY_AGENT_AUTOPROMPT_ENV] ?? '').trim().toLowerCase();
+	if (value === '0' || value === 'false' || value === 'off') {
+		return false;
+	}
+	return process.stdin.isTTY && process.stdout.isTTY;
+}
+
+function useInlineKeyAgentTransport() {
+	return process.env.VITEST === 'true' || process.env.TREESEED_KEY_AGENT_TRANSPORT === 'inline';
+}
+
+export function withTreeseedKeyAgentAutopromptDisabled<T>(action: () => T): T {
+	const previous = process.env[TREESEED_KEY_AGENT_AUTOPROMPT_ENV];
+	process.env[TREESEED_KEY_AGENT_AUTOPROMPT_ENV] = '0';
+	try {
+		return action();
+	} finally {
+		if (previous === undefined) {
+			delete process.env[TREESEED_KEY_AGENT_AUTOPROMPT_ENV];
+		} else {
+			process.env[TREESEED_KEY_AGENT_AUTOPROMPT_ENV] = previous;
+		}
+	}
+}
+
+function startTreeseedKeyAgentDaemon(tenantRoot) {
+	const { keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
+	const { socketPath } = getTreeseedKeyAgentPaths();
+	const command = [
+		shellQuote(process.execPath),
+		shellQuote(keyAgentRunTsPath()),
+		shellQuote(keyAgentScriptPath()),
+		'serve',
+		'--key-path',
+		shellQuote(keyPath),
+		'--socket-path',
+		shellQuote(socketPath),
+		'--idle-timeout-ms',
+		shellQuote(String(TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS)),
+		'>/dev/null',
+		'2>/dev/null',
+		'&',
+	].join(' ');
+	const child = spawn('bash', ['-lc', command], {
+		cwd: keyAgentScriptCwd(),
+		stdio: 'ignore',
+	});
+	child.unref();
+}
+
+function runTreeseedKeyAgentCommand(args, options = {}) {
+	const result = spawnSync(process.execPath, [
+		keyAgentRunTsPath(),
+		keyAgentScriptPath(),
+		...args,
+	], {
+		cwd: keyAgentScriptCwd(),
+		encoding: 'utf8',
+		env: {
+			...process.env,
+			...(options.env ?? {}),
+		},
+		stdio: options.input !== undefined ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
+		input: options.input,
+	});
+	if (result.status !== 0 && (!result.stdout || result.stdout.trim().length === 0)) {
+		return {
+			ok: false,
+			code: 'daemon_unavailable',
+			message: result.stderr?.trim() || 'Treeseed key-agent command failed.',
+		};
+	}
+	try {
+		return JSON.parse(result.stdout.trim() || '{}');
+	} catch {
+		throw new TreeseedKeyAgentError(
+			'daemon_unavailable',
+			result.stderr?.trim() || 'Treeseed key-agent command returned an invalid response.',
+		);
+	}
+}
+
+function requestTreeseedKeyAgent(tenantRoot, payload, { ensureRunning = false, env } = {}) {
+	const invoke = () => runTreeseedKeyAgentCommand([
+		'request',
+		JSON.stringify(payload),
+	], { env });
+	let response = invoke();
+	if (response.code !== 'daemon_unavailable' || !ensureRunning) {
+		return response;
+	}
+	startTreeseedKeyAgentDaemon(tenantRoot);
+	for (let attempt = 0; attempt < 20; attempt += 1) {
+		response = invoke();
+		if (response.code !== 'daemon_unavailable') {
+			return response;
+		}
+		sleepMs(25);
+	}
+	return response;
+}
+
+export function inspectTreeseedKeyAgentStatus(tenantRoot): TreeseedKeyAgentStatus {
+	const { keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
+	const { socketPath } = getTreeseedKeyAgentPaths();
+	const wrapped = readWrappedMachineKeyFile(keyPath);
+	if (useInlineKeyAgentTransport()) {
+		const session = inlineTreeseedSecretSessions.get(keyPath) ?? { machineKey: null, lastTouchedAt: 0, idleTimeoutMs: TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS };
+		const idleRemainingMs = session.machineKey
+			? Math.max(0, session.idleTimeoutMs - (Date.now() - session.lastTouchedAt))
+			: 0;
+		if (idleRemainingMs === 0) {
+			session.machineKey = null;
+		}
+		inlineTreeseedSecretSessions.set(keyPath, session);
+		return {
+			running: true,
+			unlocked: Boolean(session.machineKey) && idleRemainingMs > 0,
+			wrappedKeyPresent: wrapped.exists && Boolean(wrapped.wrapped),
+			migrationRequired: wrapped.migrationRequired,
+			keyPath,
+			socketPath,
+			idleTimeoutMs: session.idleTimeoutMs,
+			idleRemainingMs,
+		};
+	}
+	const response = requestTreeseedKeyAgent(tenantRoot, {
+		command: 'status',
+		keyPath,
+		socketPath,
+		idleTimeoutMs: TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS,
+	});
+	if (response.ok && response.status) {
+		return response.status;
+	}
+	return {
+		running: false,
+		unlocked: false,
+		wrappedKeyPresent: wrapped.exists && Boolean(wrapped.wrapped),
+		migrationRequired: wrapped.migrationRequired,
+		keyPath,
+		socketPath,
+		idleTimeoutMs: TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS,
+		idleRemainingMs: 0,
+	};
+}
+
+export function unlockTreeseedSecretSessionInteractive(tenantRoot) {
+	if (useInlineKeyAgentTransport()) {
+		throw new TreeseedKeyAgentError('interactive_required', 'Inline test transport does not support interactive unlock.');
+	}
+	const { keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
+	const { socketPath } = getTreeseedKeyAgentPaths();
+	startTreeseedKeyAgentDaemon(tenantRoot);
+	let response = { ok: false, code: 'daemon_unavailable', message: 'Treeseed key agent is unavailable.' };
+	for (let attempt = 0; attempt < 20; attempt += 1) {
+		response = runTreeseedKeyAgentCommand([
+			'unlock-interactive',
+			'--key-path',
+			keyPath,
+			'--socket-path',
+			socketPath,
+			'--idle-timeout-ms',
+			String(TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS),
+			'--allow-migration',
+			'--create-if-missing',
+		]);
+		if (response.code !== 'daemon_unavailable') {
+			break;
+		}
+		sleepMs(25);
+	}
+	assertTreeseedKeyAgentResponse(response, 'Unable to unlock the Treeseed secret session.');
+	return response.status;
+}
+
+export function unlockTreeseedSecretSessionFromEnv(tenantRoot, options = {}) {
+	const { keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
+	const { socketPath } = getTreeseedKeyAgentPaths();
+	if (useInlineKeyAgentTransport()) {
+		const passphrase = String(process.env[TREESEED_MACHINE_KEY_PASSPHRASE_ENV] ?? '').trim();
+		if (!passphrase) {
+			throw new TreeseedKeyAgentError(
+				'interactive_required',
+				`Set ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV} before unlocking the Treeseed secret session.`,
+			);
+		}
+		const wrapped = readWrappedMachineKeyFile(keyPath);
+		const machineKey = wrapped.wrapped
+			? unwrapMachineKey(wrapped.wrapped, passphrase)
+			: wrapped.plaintextLegacy
+				? (() => {
+					if (options.allowMigration === false) {
+						throw new TreeseedKeyAgentError('wrapped_key_migration_required', 'Wrap the legacy machine key before unlocking it.');
+					}
+					replaceWrappedMachineKey(keyPath, wrapped.plaintextLegacy, passphrase);
+					return wrapped.plaintextLegacy;
+				})()
+				: (() => {
+					if (options.createIfMissing === false) {
+						throw new TreeseedKeyAgentError('wrapped_key_missing', 'No wrapped Treeseed machine key exists yet.');
+					}
+					const createdKey = randomBytes(32);
+					replaceWrappedMachineKey(keyPath, createdKey, passphrase);
+					return createdKey;
+				})();
+		inlineTreeseedSecretSessions.set(keyPath, {
+			machineKey,
+			lastTouchedAt: Date.now(),
+			idleTimeoutMs: TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS,
+		});
+		return inspectTreeseedKeyAgentStatus(tenantRoot);
+	}
+	startTreeseedKeyAgentDaemon(tenantRoot);
+	let response = { ok: false, code: 'daemon_unavailable', message: 'Treeseed key agent is unavailable.' };
+	for (let attempt = 0; attempt < 20; attempt += 1) {
+		response = runTreeseedKeyAgentCommand([
+			'unlock-from-env',
+			'--key-path',
+			keyPath,
+			'--socket-path',
+			socketPath,
+			'--idle-timeout-ms',
+			String(TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS),
+			...(options.allowMigration === false ? [] : ['--allow-migration']),
+			...(options.createIfMissing === false ? [] : ['--create-if-missing']),
+		]);
+		if (response.code !== 'daemon_unavailable') {
+			break;
+		}
+		sleepMs(25);
+	}
+	assertTreeseedKeyAgentResponse(
+		response,
+		`Unable to unlock the Treeseed secret session from ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV}.`,
+	);
+	return response.status;
+}
+
+export function unlockTreeseedSecretSessionWithPassphrase(tenantRoot, passphrase, options = {}) {
+	const normalizedPassphrase = String(passphrase ?? '').trim();
+	if (!normalizedPassphrase) {
+		throw new TreeseedKeyAgentError(
+			'interactive_required',
+			`Set ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV} before unlocking the Treeseed secret session.`,
+		);
+	}
+	const previousPassphrase = process.env[TREESEED_MACHINE_KEY_PASSPHRASE_ENV];
+	process.env[TREESEED_MACHINE_KEY_PASSPHRASE_ENV] = normalizedPassphrase;
+	try {
+		if (useInlineKeyAgentTransport()) {
+			return unlockTreeseedSecretSessionFromEnv(tenantRoot, options);
+		}
+		const { keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
+		const { socketPath } = getTreeseedKeyAgentPaths();
+		startTreeseedKeyAgentDaemon(tenantRoot);
+		let response = { ok: false, code: 'daemon_unavailable', message: 'Treeseed key agent is unavailable.' };
+		for (let attempt = 0; attempt < 20; attempt += 1) {
+			response = runTreeseedKeyAgentCommand([
+				'unlock-from-env',
+				'--key-path',
+				keyPath,
+				'--socket-path',
+				socketPath,
+				'--idle-timeout-ms',
+				String(TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS),
+				...(options.allowMigration === false ? [] : ['--allow-migration']),
+				...(options.createIfMissing === false ? [] : ['--create-if-missing']),
+			], {
+				env: {
+					[TREESEED_MACHINE_KEY_PASSPHRASE_ENV]: normalizedPassphrase,
+				},
+			});
+			if (response.code !== 'daemon_unavailable') {
+				break;
+			}
+			sleepMs(25);
+		}
+		assertTreeseedKeyAgentResponse(
+			response,
+			`Unable to unlock the Treeseed secret session from ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV}.`,
+		);
+		return response.status;
+	} finally {
+		if (previousPassphrase === undefined) {
+			delete process.env[TREESEED_MACHINE_KEY_PASSPHRASE_ENV];
+		} else {
+			process.env[TREESEED_MACHINE_KEY_PASSPHRASE_ENV] = previousPassphrase;
+		}
+	}
+}
+
+export async function ensureTreeseedSecretSessionForConfig({
+	tenantRoot,
+	interactive = false,
+	env = process.env,
+	createIfMissing = true,
+	allowMigration = true,
+	promptForPassphrase,
+	promptForNewPassphrase,
+}: {
+	tenantRoot: string;
+	interactive?: boolean;
+	env?: NodeJS.ProcessEnv;
+	createIfMissing?: boolean;
+	allowMigration?: boolean;
+	promptForPassphrase?: () => Promise<string> | string;
+	promptForNewPassphrase?: () => Promise<string> | string;
+}): Promise<TreeseedConfigSecretSessionBootstrap> {
+	const status = inspectTreeseedKeyAgentStatus(tenantRoot);
+	if (status.unlocked) {
+		return {
+			status,
+			createdWrappedKey: false,
+			migratedWrappedKey: false,
+			unlockSource: 'existing-session',
+		};
+	}
+
+	const wrappedBefore = readWrappedMachineKeyFile(status.keyPath);
+	const envPassphrase = String(env[TREESEED_MACHINE_KEY_PASSPHRASE_ENV] ?? '').trim();
+	let unlockSource: 'interactive' | 'env' | 'existing-session' = 'existing-session';
+	let nextStatus: TreeseedKeyAgentStatus;
+
+	if (envPassphrase) {
+		nextStatus = unlockTreeseedSecretSessionWithPassphrase(tenantRoot, envPassphrase, {
+			createIfMissing,
+			allowMigration,
+		});
+		unlockSource = 'env';
+	} else if (interactive && status.migrationRequired) {
+		if (!promptForNewPassphrase) {
+			throw new TreeseedKeyAgentError('interactive_required', 'A passphrase prompt is required to migrate the Treeseed machine key.');
+		}
+		nextStatus = unlockTreeseedSecretSessionWithPassphrase(tenantRoot, await promptForNewPassphrase(), {
+			createIfMissing: false,
+			allowMigration: true,
+		});
+		unlockSource = 'interactive';
+	} else if (interactive && !status.wrappedKeyPresent) {
+		if (!promptForNewPassphrase) {
+			throw new TreeseedKeyAgentError('interactive_required', 'A passphrase prompt is required to create the Treeseed machine key.');
+		}
+		nextStatus = unlockTreeseedSecretSessionWithPassphrase(tenantRoot, await promptForNewPassphrase(), {
+			createIfMissing: true,
+			allowMigration: false,
+		});
+		unlockSource = 'interactive';
+	} else if (interactive) {
+		if (!promptForPassphrase) {
+			throw new TreeseedKeyAgentError('interactive_required', 'A passphrase prompt is required to unlock the Treeseed machine key.');
+		}
+		nextStatus = unlockTreeseedSecretSessionWithPassphrase(tenantRoot, await promptForPassphrase(), {
+			createIfMissing: false,
+			allowMigration: false,
+		});
+		unlockSource = 'interactive';
+	} else if (status.migrationRequired) {
+		throw new TreeseedKeyAgentError(
+			'wrapped_key_migration_required',
+			`Set ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV} before running treeseed config non-interactively so Treeseed can wrap the legacy machine key.`,
+			{ keyPath: status.keyPath },
+		);
+	} else if (!status.wrappedKeyPresent) {
+		throw new TreeseedKeyAgentError(
+			'wrapped_key_missing',
+			`Set ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV} before running treeseed config non-interactively so Treeseed can create the wrapped machine key.`,
+			{ keyPath: status.keyPath },
+		);
+	} else {
+		throw new TreeseedKeyAgentError(
+			'locked',
+			`Set ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV} before running treeseed config non-interactively so Treeseed can unlock the wrapped machine key.`,
+			{ keyPath: status.keyPath },
+		);
+	}
+
+	const wrappedAfter = readWrappedMachineKeyFile(status.keyPath);
+	return {
+		status: nextStatus,
+		createdWrappedKey: !wrappedBefore.wrapped && Boolean(wrappedAfter.wrapped) && !wrappedBefore.migrationRequired,
+		migratedWrappedKey: wrappedBefore.migrationRequired && Boolean(wrappedAfter.wrapped),
+		unlockSource,
+	};
+}
+
+export function lockTreeseedSecretSession(tenantRoot) {
+	const { keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
+	if (useInlineKeyAgentTransport()) {
+		inlineTreeseedSecretSessions.set(keyPath, {
+			machineKey: null,
+			lastTouchedAt: 0,
+			idleTimeoutMs: TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS,
+		});
+		return inspectTreeseedKeyAgentStatus(tenantRoot);
+	}
+	const status = inspectTreeseedKeyAgentStatus(tenantRoot);
+	if (!status.running) {
+		return status;
+	}
+	const response = requestTreeseedKeyAgent(tenantRoot, {
+		command: 'lock',
+		keyPath: status.keyPath,
+		socketPath: status.socketPath,
+		idleTimeoutMs: status.idleTimeoutMs,
+	});
+	assertTreeseedKeyAgentResponse(response, 'Unable to lock the Treeseed secret session.');
+	return response.status;
+}
+
+function resolveUnlockedMachineKey(tenantRoot) {
+	const status = inspectTreeseedKeyAgentStatus(tenantRoot);
+	if (!status.unlocked) {
+		const envPassphrase = String(process.env[TREESEED_MACHINE_KEY_PASSPHRASE_ENV] ?? '').trim();
+		if (envPassphrase) {
+			unlockTreeseedSecretSessionFromEnv(tenantRoot);
+		} else if (keyAgentAutoPromptEnabled()) {
+			unlockTreeseedSecretSessionInteractive(tenantRoot);
+		} else if (status.migrationRequired) {
+			throw new TreeseedKeyAgentError(
+				'wrapped_key_migration_required',
+				'The Treeseed machine key is still stored in the legacy plaintext format. Run `treeseed secrets:migrate-key` or unlock it from an interactive session first.',
+				{ keyPath: status.keyPath },
+			);
+		} else if (!status.wrappedKeyPresent) {
+			throw new TreeseedKeyAgentError(
+				'wrapped_key_missing',
+				`No wrapped Treeseed machine key exists yet. Run \`treeseed config\` or \`treeseed secrets:unlock\` from an interactive shell, or set ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV} for the startup unlock path.`,
+				{ keyPath: status.keyPath },
+			);
+		} else {
+			throw new TreeseedKeyAgentError(
+				'locked',
+				`Treeseed secrets are locked. Run \`treeseed secrets:unlock\`, unlock from an interactive session, or set ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV} for the startup unlock path before using secret-backed commands.`,
+				{ keyPath: status.keyPath },
+			);
+		}
+	}
+	if (useInlineKeyAgentTransport()) {
+		const session = inlineTreeseedSecretSessions.get(status.keyPath);
+		if (!session?.machineKey) {
+			throw new TreeseedKeyAgentError('locked', 'Treeseed secrets are locked.');
+		}
+		session.lastTouchedAt = Date.now();
+		return session.machineKey;
+	}
+	const response = requestTreeseedKeyAgent(tenantRoot, {
+		command: 'get-machine-key',
+		keyPath: status.keyPath,
+		socketPath: status.socketPath,
+		idleTimeoutMs: status.idleTimeoutMs,
+	});
+	assertTreeseedKeyAgentResponse(response, 'Unable to resolve the Treeseed machine key from the local key agent.');
+	return Buffer.from(String(response.machineKey ?? ''), 'base64');
+}
+
 export function getTreeseedRemoteAuthPaths(tenantRoot) {
 	return {
 		authPath: getTreeseedMachineConfigPaths(tenantRoot).authPath,
@@ -246,12 +735,16 @@ export type TreeseedConfigEntrySnapshot = {
 	id: string;
 	label: string;
 	group: string;
+	cluster: string;
+	startupProfile: 'core' | 'optional' | 'advanced';
+	requirement: 'required' | 'conditional' | 'optional';
 	description: string;
 	howToGet: string;
 	sensitivity: 'secret' | 'plain' | 'derived';
 	targets: string[];
 	purposes: string[];
 	storage: 'shared' | 'scoped';
+	validation?: TreeseedEnvironmentValidation;
 	scope: TreeseedConfigScope;
 	sharedScopes: TreeseedConfigScope[];
 	required: boolean;
@@ -273,9 +766,17 @@ export type TreeseedCollectedConfigContext = {
 	entriesByScope: Record<TreeseedConfigScope, TreeseedConfigEntrySnapshot[]>;
 	valuesByScope: Record<TreeseedConfigScope, Record<string, string>>;
 	suggestedValuesByScope: Record<TreeseedConfigScope, Record<string, string>>;
-	authStatusByScope: Record<TreeseedConfigScope, ReturnType<typeof createConfigAuthStatus>>;
+	configReadinessByScope: Record<TreeseedConfigScope, ReturnType<typeof createConfigReadiness>>;
 	validationByScope: Record<TreeseedConfigScope, ReturnType<typeof validateTreeseedEnvironmentValues>>;
+	sharedStorageMigrations: TreeseedSharedStorageMigrationNotice[];
 	registry: ReturnType<typeof collectTreeseedEnvironmentContext>;
+};
+
+export type TreeseedConfigSecretSessionBootstrap = {
+	status: TreeseedKeyAgentStatus;
+	createdWrappedKey: boolean;
+	migratedWrappedKey: boolean;
+	unlockSource: 'interactive' | 'env' | 'existing-session';
 };
 
 export type TreeseedConfigValueUpdate = {
@@ -283,6 +784,14 @@ export type TreeseedConfigValueUpdate = {
 	entryId: string;
 	value: string;
 	reused?: boolean;
+};
+
+export type TreeseedSharedStorageMigrationNotice = {
+	entryId: string;
+	label: string;
+	promotedFrom: TreeseedConfigScope;
+	consolidatedScopes: TreeseedConfigScope[];
+	hadConflicts: boolean;
 };
 
 export function createDefaultTreeseedMachineConfig({ tenantRoot, deployConfig, tenantConfig }) {
@@ -323,32 +832,16 @@ export function createDefaultTreeseedMachineConfig({ tenantRoot, deployConfig, t
 	};
 }
 
-function readMachineKey(keyPath) {
-	if (existsSync(keyPath)) {
-		return Buffer.from(readFileSync(keyPath, 'utf8').trim(), 'base64');
-	}
-	return null;
-}
-
-function writeMachineKey(keyPath, key) {
-	ensureParent(keyPath);
-	writeFileSync(keyPath, `${key.toString('base64')}\n`, { mode: 0o600 });
-}
-
-function ensureHomeMachineKey(tenantRoot) {
-	const { keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
-	const existing = readMachineKey(keyPath);
-	if (existing) {
-		return existing;
-	}
-	const key = randomBytes(32);
-	writeMachineKey(keyPath, key);
-	return key;
-}
-
 function loadLegacyMachineKey(tenantRoot) {
 	const { legacyKeyPath } = getTreeseedMachineConfigPaths(tenantRoot);
-	return readMachineKey(legacyKeyPath);
+	if (!existsSync(legacyKeyPath)) {
+		return null;
+	}
+	try {
+		return Buffer.from(readFileSync(legacyKeyPath, 'utf8').trim(), 'base64');
+	} catch {
+		return null;
+	}
 }
 
 function createDefaultRemoteAuthState() {
@@ -493,25 +986,8 @@ function reencryptTreeseedEncryptedState(tenantRoot, oldKey, newKey) {
 	}
 }
 
-function ensureTreeseedMachineKeyMigrated(tenantRoot) {
-	const homeKey = ensureHomeMachineKey(tenantRoot);
-	const legacyKey = loadLegacyMachineKey(tenantRoot);
-	if (!legacyKey) {
-		return homeKey;
-	}
-
-	try {
-		reencryptTreeseedEncryptedState(tenantRoot, legacyKey, homeKey);
-		removeLegacyMachineKeyIfSafe(tenantRoot);
-	} catch {
-		// Keep the legacy key for reads if the project state was already encrypted with the home key.
-	}
-
-	return homeKey;
-}
-
 function loadMachineKey(tenantRoot) {
-	return ensureTreeseedMachineKeyMigrated(tenantRoot);
+	return resolveUnlockedMachineKey(tenantRoot);
 }
 
 function decryptValueWithMachineKey(tenantRoot, payload, key) {
@@ -535,12 +1011,76 @@ export function rotateTreeseedMachineKey(tenantRoot) {
 	const newKey = randomBytes(32);
 
 	reencryptTreeseedEncryptedState(tenantRoot, oldKey, newKey);
-	writeMachineKey(keyPath, newKey);
+	const status = inspectTreeseedKeyAgentStatus(tenantRoot);
+	if (!status.unlocked) {
+		throw new TreeseedKeyAgentError('locked', 'Treeseed secrets must be unlocked before rotating the machine key.', { keyPath });
+	}
+	const wrapped = readWrappedMachineKeyFile(keyPath);
+	if (!wrapped.wrapped) {
+		throw new TreeseedKeyAgentError(
+			wrapped.migrationRequired ? 'wrapped_key_migration_required' : 'wrapped_key_missing',
+			wrapped.migrationRequired
+				? 'Wrap the Treeseed machine key before rotating it.'
+				: 'Create and unlock the Treeseed machine key before rotating it.',
+			{ keyPath },
+		);
+	}
+	const passphrase = String(process.env[TREESEED_MACHINE_KEY_PASSPHRASE_ENV] ?? '').trim();
+	if (!passphrase) {
+		throw new TreeseedKeyAgentError(
+			'interactive_required',
+			`Set ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV} when rotating the machine key non-interactively, or use \`treeseed secrets:rotate-machine-key\` from an interactive shell.`,
+			{ keyPath },
+		);
+	}
+	replaceWrappedMachineKey(keyPath, newKey, passphrase);
+	unlockTreeseedSecretSessionFromEnv(tenantRoot, { allowMigration: false, createIfMissing: false });
 	removeLegacyMachineKeyIfSafe(tenantRoot);
 
 	return {
 		keyPath,
 		rotated: true,
+	};
+}
+
+export function rotateTreeseedMachineKeyPassphrase(tenantRoot, passphrase) {
+	const { keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
+	const machineKey = loadMachineKey(tenantRoot);
+	rotateWrappedMachineKeyPassphrase(keyPath, machineKey, passphrase);
+	return {
+		keyPath,
+		rotated: true,
+	};
+}
+
+export function migrateTreeseedMachineKeyToWrapped(tenantRoot, passphrase) {
+	const { keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
+	const wrapped = readWrappedMachineKeyFile(keyPath);
+	if (wrapped.wrapped) {
+		return {
+			keyPath,
+			migrated: false,
+			alreadyWrapped: true,
+		};
+	}
+	if (wrapped.plaintextLegacy) {
+		replaceWrappedMachineKey(keyPath, wrapped.plaintextLegacy, passphrase);
+	} else {
+		const legacyKey = loadLegacyMachineKey(tenantRoot);
+		if (!legacyKey) {
+			throw new TreeseedKeyAgentError(
+				'wrapped_key_missing',
+				'No existing machine key was found to migrate.',
+				{ keyPath },
+			);
+		}
+		replaceWrappedMachineKey(keyPath, legacyKey, passphrase);
+		removeLegacyMachineKeyIfSafe(tenantRoot);
+	}
+	return {
+		keyPath,
+		migrated: true,
+		alreadyWrapped: false,
 	};
 }
 
@@ -680,6 +1220,31 @@ export function writeTreeseedMachineConfig(tenantRoot, config) {
 	writeFileSync(configPath, stringifyYaml(config), 'utf8');
 }
 
+export function updateTreeseedDeployConfigFeatureToggles(
+	tenantRoot: string,
+	toggles: Partial<Record<'turnstile' | 'smtp', boolean>>,
+) {
+	const configPath = resolve(tenantRoot, 'treeseed.site.yaml');
+	const current = parseYaml(readFileSync(configPath, 'utf8')) as Record<string, any> ?? {};
+	const next = { ...current };
+
+	if ('smtp' in toggles) {
+		next.smtp = {
+			...(current.smtp ?? {}),
+			enabled: toggles.smtp === true,
+		};
+	}
+
+	if ('turnstile' in toggles) {
+		next.turnstile = {
+			...(current.turnstile ?? {}),
+			enabled: toggles.turnstile === true,
+		};
+	}
+
+	writeFileSync(configPath, stringifyYaml(next), 'utf8');
+}
+
 export function resolveTreeseedRemoteConfig(startRoot = process.cwd(), env = process.env): RemoteTreeseedConfig {
 	const machineConfigPath = findNearestTreeseedMachineConfig(startRoot);
 	const tenantRoot = machineConfigPath ? resolve(dirname(dirname(machineConfigPath)), '..') : startRoot;
@@ -695,7 +1260,8 @@ export function resolveTreeseedRemoteConfig(startRoot = process.cwd(), env = pro
 		tenantConfig: undefined,
 	});
 	const settings = normalizeRemoteSettings(machineConfig.settings?.remote);
-	const deployBaseUrl = deployConfig?.services?.api?.environments?.prod?.baseUrl
+	const deployBaseUrl = env[TREESEED_API_BASE_URL_ENV]
+		?? deployConfig?.services?.api?.environments?.prod?.baseUrl
 		?? deployConfig?.services?.api?.publicBaseUrl
 		?? null;
 	if (deployBaseUrl) {
@@ -763,7 +1329,7 @@ export function resolveTreeseedTemplateCatalogCachePath(startRoot = process.cwd(
 
 export function ensureTreeseedGitignoreEntries(tenantRoot) {
 	const gitignorePath = resolve(tenantRoot, '.gitignore');
-	const requiredEntries = ['.env.local', '.dev.vars', '.treeseed/'];
+	const requiredEntries = ['.treeseed/'];
 	const current = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
 	const lines = current.split(/\r?\n/);
 	let changed = false;
@@ -802,12 +1368,9 @@ export function applyTreeseedSafeRepairs(tenantRoot: string): TreeseedRepairActi
 	const actions: TreeseedRepairAction[] = [];
 	ensureTreeseedGitignoreEntries(tenantRoot);
 	actions.push({ id: 'gitignore', detail: 'Ensured Treeseed gitignore entries are present.' });
-
-	const envLocalPath = resolve(tenantRoot, '.env.local');
-	const envLocalExamplePath = resolve(tenantRoot, '.env.local.example');
-	if (!existsSync(envLocalPath) && existsSync(envLocalExamplePath)) {
-		copyFileSync(envLocalExamplePath, envLocalPath);
-		actions.push({ id: 'env-local', detail: 'Created .env.local from .env.local.example.' });
+	const deprecatedFiles = warnDeprecatedTreeseedLocalEnvFiles(tenantRoot);
+	if (deprecatedFiles.length > 0) {
+		actions.push({ id: 'deprecated-local-env', detail: 'Detected deprecated .env.local/.dev.vars files that Treeseed now ignores.' });
 	}
 
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
@@ -822,13 +1385,15 @@ export function applyTreeseedSafeRepairs(tenantRoot: string): TreeseedRepairActi
 		actions.push({ id: 'machine-config', detail: 'Created the default Treeseed machine config.' });
 	}
 
-	resolveTreeseedMachineEnvironmentValues(tenantRoot, 'local');
-	actions.push({ id: 'machine-key', detail: 'Ensured the Treeseed machine key exists.' });
+	const keyStatus = inspectTreeseedKeyAgentStatus(tenantRoot);
+	if (!keyStatus.wrappedKeyPresent && !keyStatus.migrationRequired) {
+		actions.push({ id: 'machine-key', detail: 'Treeseed will create a wrapped machine key the first time the secret session is unlocked.' });
+	} else if (keyStatus.migrationRequired) {
+		actions.push({ id: 'machine-key-migration', detail: 'Detected a legacy plaintext machine key that must be wrapped on the next unlock.' });
+	}
 
 	const machineConfig = loadTreeseedMachineConfig(tenantRoot);
 	writeTreeseedMachineConfig(tenantRoot, machineConfig);
-	writeTreeseedLocalEnvironmentFiles(tenantRoot);
-	actions.push({ id: 'local-env', detail: 'Regenerated .env.local and .dev.vars from the current machine config.' });
 
 	for (const scope of TREESEED_ENVIRONMENT_SCOPES) {
 		const target = createPersistentDeployTarget(scope);
@@ -852,6 +1417,88 @@ function decryptMachineEnvironmentBucket(tenantRoot, config, key, bucket) {
 	}
 
 	return values;
+}
+
+function readMachineBucketEntryValue(tenantRoot, key, bucket, entry) {
+	if (entry.sensitivity === 'secret') {
+		const payload = bucket?.secrets?.[entry.id];
+		return typeof payload === 'string' && payload.length > 0
+			? decryptValueWithMachineKey(tenantRoot, payload, key)
+			: '';
+	}
+	return typeof bucket?.values?.[entry.id] === 'string' ? bucket.values[entry.id] : '';
+}
+
+function writeMachineBucketEntryValue(target, entry, value, key) {
+	if (entry.sensitivity === 'secret') {
+		delete target.values[entry.id];
+		if (value) {
+			target.secrets[entry.id] = encryptValue(value, key);
+		} else {
+			delete target.secrets[entry.id];
+		}
+		return;
+	}
+
+	delete target.secrets[entry.id];
+	if (value) {
+		target.values[entry.id] = value;
+	} else {
+		delete target.values[entry.id];
+	}
+}
+
+function migrateLegacyScopedSharedEntries(tenantRoot, config, registryEntries, key) {
+	const notices: TreeseedSharedStorageMigrationNotice[] = [];
+	let changed = false;
+
+	for (const entry of registryEntries) {
+		if (entry.storage !== 'shared') {
+			continue;
+		}
+
+		const sharedValue = readMachineBucketEntryValue(tenantRoot, key, config.shared, entry);
+		if (sharedValue.length > 0) {
+			continue;
+		}
+
+		const scopedValues = TREESEED_ENVIRONMENT_SCOPES
+			.map((scope) => ({
+				scope,
+				value: readMachineBucketEntryValue(tenantRoot, key, config.environments?.[scope], entry),
+			}))
+			.filter((candidate) => candidate.value.length > 0);
+		if (scopedValues.length === 0) {
+			continue;
+		}
+
+		const promotedFrom = (scopedValues.find((candidate) => candidate.scope === 'staging')
+			?? scopedValues.find((candidate) => candidate.scope === 'prod')
+			?? scopedValues[0]).scope;
+		const promotedValue = scopedValues.find((candidate) => candidate.scope === promotedFrom)?.value ?? '';
+		const hadConflicts = new Set(scopedValues.map((candidate) => candidate.value)).size > 1;
+
+		writeMachineBucketEntryValue(config.shared, entry, promotedValue, key);
+		for (const candidateScope of TREESEED_ENVIRONMENT_SCOPES) {
+			delete config.environments[candidateScope].values[entry.id];
+			delete config.environments[candidateScope].secrets[entry.id];
+		}
+
+		notices.push({
+			entryId: entry.id,
+			label: entry.label,
+			promotedFrom,
+			consolidatedScopes: scopedValues.map((candidate) => candidate.scope),
+			hadConflicts,
+		});
+		changed = true;
+	}
+
+	if (changed) {
+		writeTreeseedMachineConfig(tenantRoot, config);
+	}
+
+	return notices;
 }
 
 function resolveEntryValueFromBuckets(entry, entryId, scope, bucketValuesByScope) {
@@ -950,15 +1597,29 @@ export function collectTreeseedEnvironmentContext(tenantRoot) {
 }
 
 export function collectTreeseedConfigSeedValues(tenantRoot, scope, env = process.env) {
+	warnDeprecatedTreeseedLocalEnvFiles(tenantRoot);
+	let machineValues = {};
+	try {
+		machineValues = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
+	} catch (error) {
+		if (!(error instanceof TreeseedKeyAgentError)) {
+			throw error;
+		}
+	}
+	const normalizedEnv = { ...env };
+	for (const [legacyKey, canonicalKey] of Object.entries(LEGACY_ENVIRONMENT_ALIASES)) {
+		if ((!normalizedEnv[canonicalKey] || String(normalizedEnv[canonicalKey]).length === 0) && normalizedEnv[legacyKey]) {
+			normalizedEnv[canonicalKey] = normalizedEnv[legacyKey];
+		}
+	}
 	return {
-		...readEnvFileIfPresent(resolve(tenantRoot, '.env.local')),
-		...readEnvFileIfPresent(resolve(tenantRoot, '.dev.vars')),
-		...Object.fromEntries(Object.entries(env).map(([key, value]) => [key, value ?? undefined])),
-		...resolveTreeseedMachineEnvironmentValues(tenantRoot, scope),
+		...machineValues,
+		...Object.fromEntries(Object.entries(normalizedEnv).map(([key, value]) => [key, value ?? undefined])),
 	};
 }
 
 function collectTreeseedConfigSeedValueSources(tenantRoot, scope, env = process.env) {
+	warnDeprecatedTreeseedLocalEnvFiles(tenantRoot);
 	const values = {};
 	const sources = {};
 	const merge = (source, entries) => {
@@ -971,12 +1632,35 @@ function collectTreeseedConfigSeedValueSources(tenantRoot, scope, env = process.
 		}
 	};
 
-	merge('.env.local', readEnvFileIfPresent(resolve(tenantRoot, '.env.local')));
-	merge('.dev.vars', readEnvFileIfPresent(resolve(tenantRoot, '.dev.vars')));
+	try {
+		merge('machine-config', resolveTreeseedMachineEnvironmentValues(tenantRoot, scope));
+	} catch (error) {
+		if (!(error instanceof TreeseedKeyAgentError)) {
+			throw error;
+		}
+	}
 	merge('process.env', Object.fromEntries(Object.entries(env).map(([key, value]) => [key, value ?? undefined])));
-	merge('machine-config', resolveTreeseedMachineEnvironmentValues(tenantRoot, scope));
 
 	return { values, sources };
+}
+
+export function resolveTreeseedLaunchEnvironment({
+	tenantRoot,
+	scope,
+	baseEnv = process.env,
+	overrides = {},
+}: {
+	tenantRoot: string;
+	scope: TreeseedConfigScope;
+	baseEnv?: NodeJS.ProcessEnv;
+	overrides?: NodeJS.ProcessEnv;
+}) {
+	warnDeprecatedTreeseedLocalEnvFiles(tenantRoot);
+	return {
+		...baseEnv,
+		...resolveTreeseedMachineEnvironmentValues(tenantRoot, scope),
+		...overrides,
+	};
 }
 
 export function formatTreeseedConfigEnvironmentReport({ tenantRoot, scope, env = process.env, revealSecrets = false }) {
@@ -1001,7 +1685,14 @@ export function formatTreeseedConfigEnvironmentReport({ tenantRoot, scope, env =
 }
 
 export function applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override = false }) {
-	const resolvedValues = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
+	let resolvedValues = {};
+	try {
+		resolvedValues = resolveTreeseedLaunchEnvironment({ tenantRoot, scope, baseEnv: {} });
+	} catch (error) {
+		if (!(error instanceof TreeseedKeyAgentError)) {
+			throw error;
+		}
+	}
 	for (const [key, value] of Object.entries(resolvedValues)) {
 		const currentValue = process.env[key] ?? '';
 		const shouldReplacePlaceholder = key === 'CLOUDFLARE_ACCOUNT_ID' && currentValue === CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER;
@@ -1014,11 +1705,7 @@ export function applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override 
 
 export function validateTreeseedCommandEnvironment({ tenantRoot, scope, purpose }) {
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
-	const machineValues = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
-	const values = {
-		...machineValues,
-		...Object.fromEntries(Object.entries(process.env).map(([key, value]) => [key, value ?? undefined])),
-	};
+	const values = resolveTreeseedLaunchEnvironment({ tenantRoot, scope });
 	const validation = validateTreeseedEnvironmentValues({
 		values,
 		scope,
@@ -1053,40 +1740,6 @@ export function assertTreeseedCommandEnvironment({ tenantRoot, scope, purpose })
 	error.kind = report.validation.missing.length > 0 ? 'missing_config' : 'invalid_config';
 	error.details = report.validation;
 	throw error;
-}
-
-function renderEnvEntries(entries, values) {
-	return entries
-		.map((entry) => [entry.id, values[entry.id]])
-		.filter(([, value]) => typeof value === 'string' && value.length > 0)
-		.map(([key, value]) => `${key}=${value}`)
-		.join('\n');
-}
-
-export function writeTreeseedLocalEnvironmentFiles(tenantRoot) {
-	const registry = collectTreeseedEnvironmentContext(tenantRoot);
-	const scope = 'local';
-	const values = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
-	const orderedEntries = listRelevantTreeseedConfigEntries(registry, scope);
-
-	const envEntries = orderedEntries.filter(
-		(entry) =>
-			entry.scopes.includes(scope)
-			&& entry.targets.includes('local-file'),
-	);
-	const devVarsEntries = orderedEntries.filter(
-		(entry) =>
-			entry.scopes.includes(scope)
-			&& entry.targets.includes('wrangler-dev-vars'),
-	);
-
-	writeFileSync(resolve(tenantRoot, '.env.local'), `${renderEnvEntries(envEntries, values)}\n`, 'utf8');
-	writeFileSync(resolve(tenantRoot, '.dev.vars'), `${renderEnvEntries(devVarsEntries, values)}\n`, 'utf8');
-
-	return {
-		envLocalPath: resolve(tenantRoot, '.env.local'),
-		devVarsPath: resolve(tenantRoot, '.dev.vars'),
-	};
 }
 
 function runGh(args, { cwd, dryRun = false, input } = {}) {
@@ -1135,13 +1788,18 @@ function checkCommand(command, args, { cwd, env } = {}) {
 		stdio: 'pipe',
 		encoding: 'utf8',
 		env: { ...process.env, ...(env ?? {}) },
+		timeout: CLI_CHECK_TIMEOUT_MS,
 	});
+	const timedOut = result.error && 'code' in result.error && result.error.code === 'ETIMEDOUT';
+	const detail = timedOut
+		? `Command timed out after ${CLI_CHECK_TIMEOUT_MS}ms: ${command} ${args.join(' ')}`
+		: `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim();
 	return {
 		ok: result.status === 0,
 		status: result.status ?? 1,
 		stdout: result.stdout?.trim() ?? '',
 		stderr: result.stderr?.trim() ?? '',
-		detail: `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim(),
+		detail,
 	};
 }
 
@@ -1166,6 +1824,22 @@ export function ensureTreeseedActVerificationTooling({ tenantRoot = process.cwd(
 		attemptedInstall: false,
 		installedDuringConfig: false,
 	});
+	const wranglerCheck = checkCommand(process.execPath, [resolveWranglerBin(), '--version'], { cwd: tenantRoot, env });
+	const wranglerCli = toolStatus(
+		'wranglerCli',
+		wranglerCheck.ok,
+		wranglerCheck.ok
+			? wranglerCheck.stdout.split('\n')[0] ?? 'Wrangler CLI detected.'
+			: wranglerCheck.detail || 'Wrangler CLI is unavailable.',
+	);
+	const railwayCheck = checkCommand('railway', ['--version'], { cwd: tenantRoot, env });
+	const railwayCli = toolStatus(
+		'railwayCli',
+		railwayCheck.ok,
+		railwayCheck.ok
+			? railwayCheck.stdout.split('\n')[0] ?? 'Railway CLI detected.'
+			: railwayCheck.detail || 'Railway CLI is unavailable.',
+	);
 
 	if (githubCli.available) {
 		const check = checkCommand('gh', ['act', '--version'], { cwd: tenantRoot, env });
@@ -1217,11 +1891,19 @@ export function ensureTreeseedActVerificationTooling({ tenantRoot = process.cwd(
 	if (!dockerDaemon.available) {
 		remediation.push('Start Docker Desktop or another local Docker daemon, then rerun `treeseed config`.');
 	}
+	if (!wranglerCli.available) {
+		remediation.push('Install Wrangler or ensure the packaged Wrangler dependency is runnable, then rerun `treeseed config`.');
+	}
+	if (!railwayCli.available) {
+		remediation.push('Install Railway CLI if you plan to manage Railway services from this machine.');
+	}
 
 	return {
 		githubCli,
 		ghActExtension,
 		dockerDaemon,
+		wranglerCli,
+		railwayCli,
 		actVerificationReady: githubCli.available && ghActExtension.available && dockerDaemon.available,
 		remediation,
 	};
@@ -1256,6 +1938,7 @@ function checkGitHubConnection({ tenantRoot, env }) {
 		stdio: 'pipe',
 		encoding: 'utf8',
 		env: { ...process.env, ...env },
+		timeout: CLI_CHECK_TIMEOUT_MS,
 	});
 	if (result.status !== 0) {
 		return providerConnectionResult('github', false, formatCheckOutput(result) || 'GitHub API check failed.');
@@ -1280,6 +1963,7 @@ function checkCloudflareConnection({ tenantRoot, env }) {
 			stdio: 'pipe',
 			encoding: 'utf8',
 			env: { ...process.env, ...env },
+			timeout: CLI_CHECK_TIMEOUT_MS,
 		});
 		if (result.status !== 0) {
 			return providerConnectionResult('cloudflare', false, formatCheckOutput(result) || 'Cloudflare Wrangler check failed.');
@@ -1302,6 +1986,7 @@ function checkRailwayConnection({ tenantRoot, env }) {
 		stdio: 'pipe',
 		encoding: 'utf8',
 		env: { ...process.env, ...env },
+		timeout: CLI_CHECK_TIMEOUT_MS,
 	});
 	if (result.status !== 0) {
 		return providerConnectionResult('railway', false, formatCheckOutput(result) || 'Railway CLI check failed.');
@@ -1327,6 +2012,9 @@ export function checkTreeseedProviderConnections({ tenantRoot, scope = 'prod', e
 		scope,
 		ok: checks.every((check) => check.ready || check.skipped),
 		checks,
+		issues: checks
+			.filter((check) => !check.ready && !check.skipped)
+			.map((check) => check.detail),
 	};
 }
 
@@ -1428,20 +2116,17 @@ export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dry
 		.filter((entry) => entry.scopes.includes(scope) && entry.targets.includes('railway-var'))
 		.map((entry) => entry.id)
 		.filter((key) => typeof values[key] === 'string' && values[key].length > 0);
-	const services = ['api', 'agents', 'manager', 'worker', 'runner', 'workdayStart', 'workdayReport']
+	const services = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport']
 		.map((serviceKey) => {
 			const service = deployConfig.services?.[serviceKey];
 			if (!service || service.enabled === false || (service.provider ?? 'railway') !== 'railway') {
 				return null;
 			}
 			const environment = service.environments?.[scope];
-			const fallbackServiceName =
-				serviceKey === 'api'
+				const fallbackServiceName = serviceKey === 'api'
 					? config.settings.services.railway.apiServiceName
-					: serviceKey === 'agents'
-						? config.settings.services.railway.agentsServiceName
-						: '';
-			const defaultRootDir = ['api', 'manager', 'worker', 'runner', 'workdayStart', 'workdayReport'].includes(serviceKey) ? '.' : 'packages/core';
+					: '';
+			const defaultRootDir = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport'].includes(serviceKey) ? '.' : 'packages/core';
 			return {
 				service: serviceKey,
 				projectName: service.railway?.projectName ?? config.settings.services.railway.projectName,
@@ -1497,39 +2182,107 @@ export function initializeTreeseedPersistentEnvironment({ tenantRoot, scope = 'p
 }
 
 function summarizePersistentReadiness(tenantRoot, scope, validation, connectionChecks) {
+	const validationProblems = [...validation.missing, ...validation.invalid];
+	const validationBlockers = validationProblems.map((problem) => problem.message);
+	const connectionReady = connectionChecks.every((check) => check.ready || check.skipped);
+	const connectionIssues = connectionChecks
+		.filter((check) => !check.ready && !check.skipped)
+		.map((check) => `${check.provider}: ${check.detail}`);
+	const connectionWarnings = connectionChecks
+		.filter((check) => check.skipped)
+		.map((check) => `${check.provider}: ${check.detail}`);
+
 	if (scope === 'local') {
 		return {
 			configured: validation.ok,
 			provisioned: true,
-			deployable: validation.ok,
+			deployable: validation.ok && connectionReady,
+			phase: validation.ok ? 'code_ready' : 'config_incomplete',
+			blockers: [
+				...validationBlockers,
+				...connectionIssues,
+			],
+			warnings: connectionWarnings,
 			checks: {
 				validation: validation.ok,
-				connections: connectionChecks.every((check) => check.ready || check.skipped),
+				connections: connectionReady,
+			},
+		};
+	}
+
+	if (!validation.ok) {
+		return {
+			configured: false,
+			provisioned: false,
+			deployable: false,
+			phase: 'config_incomplete',
+			blockers: [
+				...validationBlockers,
+				...connectionIssues,
+			],
+			warnings: connectionWarnings,
+			checks: {
+				validation: false,
+				connections: connectionReady,
+				cloudflare: null,
+				railway: false,
 			},
 		};
 	}
 
 	const cloudflare = verifyProvisionedCloudflareResources(tenantRoot, { scope });
 	let railwayReady = true;
+	let railwayIssue = null;
 	try {
 		validateRailwayDeployPrerequisites(tenantRoot, scope);
-	} catch {
+	} catch (error) {
 		railwayReady = false;
+		railwayIssue = error instanceof Error ? error.message : String(error);
 	}
 	const configured = validation.ok;
 	const provisioned = cloudflare.ok && railwayReady;
-	const deployable = configured && provisioned && connectionChecks.every((check) => check.ready || check.skipped);
+	const deployable = configured && provisioned && connectionReady;
+	const blockers = [
+		...connectionIssues,
+		...(railwayIssue ? [railwayIssue] : []),
+	];
+	if (!cloudflare.ok) {
+		blockers.push('Cloudflare foundational resources have not been fully provisioned yet.');
+	}
 	return {
 		configured,
 		provisioned,
 		deployable,
+		phase: provisioned ? 'provisioned' : 'config_complete',
+		blockers,
+		warnings: connectionWarnings,
 		checks: {
 			validation: validation.ok,
-			connections: connectionChecks.every((check) => check.ready || check.skipped),
+			connections: connectionReady,
 			cloudflare: cloudflare.checks,
 			railway: railwayReady,
 		},
 	};
+}
+
+function formatTreeseedConfigValidationFailure(
+	validations: Record<TreeseedConfigScope, ReturnType<typeof validateTreeseedEnvironmentValues>>,
+	scopes: TreeseedConfigScope[],
+) {
+	const lines = ['Treeseed config validation failed.'];
+	for (const scope of scopes) {
+		const validation = validations[scope];
+		if (!validation || validation.ok) {
+			continue;
+		}
+		lines.push('');
+		lines.push(`${scope}:`);
+		for (const problem of [...validation.missing, ...validation.invalid]) {
+			const targets = problem.entry.targets.length > 0 ? ` Targets: ${problem.entry.targets.join(', ')}.` : '';
+			lines.push(`- ${problem.id}: ${problem.message}${targets}`);
+		}
+	}
+	return lines.join('\n');
 }
 
 function colorize(value, code) {
@@ -1544,27 +2297,36 @@ function hasConfigValue(values, key) {
 	return typeof values[key] === 'string' && values[key].trim().length > 0;
 }
 
-function createConfigAuthStatus(values) {
-	const ghReady = hasConfigValue(values, 'GH_TOKEN');
+function createConfigReadiness(values, validation) {
+	const invalidIds = new Set([
+		...(validation?.invalid ?? []).map((problem) => problem.id),
+	]);
+	const validConfigValue = (key: string) => hasConfigValue(values, key) && !invalidIds.has(key);
+	const cloudflareReady = validConfigValue('CLOUDFLARE_API_TOKEN');
+	const railwayReady = validConfigValue('RAILWAY_API_TOKEN');
+	const localDevelopmentIssues = [
+		...(validation?.missing ?? []),
+		...(validation?.invalid ?? []),
+	].filter((problem) => problem.entry.group === 'local-development');
 	return {
-		gh: {
-			authenticated: ghReady,
+		github: {
+			configured: validConfigValue('GH_TOKEN'),
 		},
-		wrangler: {
-			authenticated: hasConfigValue(values, 'CLOUDFLARE_API_TOKEN'),
+		cloudflare: {
+			configured: cloudflareReady,
 		},
 		railway: {
-			authenticated: hasConfigValue(values, 'RAILWAY_API_TOKEN'),
+			configured: railwayReady,
 		},
-		copilot: {
-			configured: ghReady,
+		localDevelopment: {
+			configured: localDevelopmentIssues.length === 0,
 		},
 	};
 }
 
-const CONFIG_GROUP_ORDER = ['auth', 'cloudflare', 'local-development', 'forms', 'smtp'];
+const CONFIG_GROUP_ORDER = ['auth', 'github', 'cloudflare', 'railway', 'local-development', 'forms', 'smtp'];
 
-function configGroupRank(group) {
+export function configGroupRank(group) {
 	const index = CONFIG_GROUP_ORDER.indexOf(group);
 	return index === -1 ? CONFIG_GROUP_ORDER.length : index;
 }
@@ -1573,7 +2335,11 @@ export function listRelevantTreeseedConfigEntries(registry, scope: TreeseedConfi
 	return registry.entries
 		.filter((entry) =>
 			entry.scopes.includes(scope)
-			&& (!entry.isRelevant || entry.isRelevant(registry.context, scope, 'config')),
+			&& (
+				!entry.isRelevant
+				|| entry.isRelevant(registry.context, scope, 'config')
+				|| Boolean(entry.onboardingFeature)
+			),
 		)
 		.sort((left, right) => {
 			const leftRequired = isTreeseedEnvironmentEntryRequired(left, registry.context, scope, 'config');
@@ -1592,22 +2358,61 @@ export function listRelevantTreeseedConfigEntries(registry, scope: TreeseedConfi
 }
 
 function buildConfigEntrySnapshot(scope: TreeseedConfigScope, entry, currentValue: string, suggestedValue: string) {
+	const currentValueValid = (() => {
+		if (!currentValue || !entry.validation) {
+			return currentValue.length > 0;
+		}
+		switch (entry.validation.kind) {
+			case 'string':
+			case 'nonempty':
+				return currentValue.trim().length > 0
+					&& (
+						typeof entry.validation.minLength !== 'number'
+						|| currentValue.trim().length >= entry.validation.minLength
+					);
+			case 'boolean':
+				return /^(true|false|1|0)$/i.test(currentValue);
+			case 'number':
+				return Number.isFinite(Number(currentValue));
+			case 'url':
+				try {
+					new URL(currentValue);
+					return true;
+				} catch {
+					return false;
+				}
+			case 'email':
+				return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(currentValue);
+			case 'enum':
+				return entry.validation.values.includes(currentValue);
+			default:
+				return true;
+		}
+	})();
+	const allowSuggestedDefault = !(entry.sensitivity === 'secret' && entry.requirement !== 'optional');
+	const effectiveValue = currentValueValid
+		? (currentValue || (allowSuggestedDefault ? suggestedValue : '') || '')
+		: ((allowSuggestedDefault ? suggestedValue : '') || currentValue || '');
 	return {
 		id: entry.id,
 		label: entry.label,
 		group: entry.group,
+		cluster: entry.cluster ?? `${entry.group}:${entry.id}`,
+		startupProfile: entry.startupProfile ?? 'advanced',
+		requirement: entry.requirement,
 		description: entry.description,
 		howToGet: entry.howToGet,
 		sensitivity: entry.sensitivity,
 		targets: [...entry.targets],
 		purposes: [...entry.purposes],
 		storage: entry.storage ?? 'scoped',
+		validation: entry.validation,
 		scope,
 		sharedScopes: entry.storage === 'shared' ? [...entry.scopes] : [scope],
 		required: false,
 		currentValue,
 		suggestedValue,
-		effectiveValue: currentValue || suggestedValue || '',
+		effectiveValue,
 	} satisfies TreeseedConfigEntrySnapshot;
 }
 
@@ -1636,9 +2441,6 @@ export function collectTreeseedConfigContext({
 			values: valuesByScope[scope],
 		})]),
 	) as TreeseedCollectedConfigContext['suggestedValuesByScope'];
-	const authStatusByScope = Object.fromEntries(
-		scopes.map((scope) => [scope, createConfigAuthStatus(valuesByScope[scope])]),
-	) as TreeseedCollectedConfigContext['authStatusByScope'];
 	const validationByScope = Object.fromEntries(
 		scopes.map((scope) => [scope, validateTreeseedEnvironmentValues({
 			values: {
@@ -1652,6 +2454,9 @@ export function collectTreeseedConfigContext({
 			plugins: registry.context.plugins,
 		})]),
 	) as TreeseedCollectedConfigContext['validationByScope'];
+	const configReadinessByScope = Object.fromEntries(
+		scopes.map((scope) => [scope, createConfigReadiness(valuesByScope[scope], validationByScope[scope])]),
+	) as TreeseedCollectedConfigContext['configReadinessByScope'];
 	const entriesByScope = Object.fromEntries(
 		scopes.map((scope) => [scope, listRelevantTreeseedConfigEntries(registry, scope).map((entry) => ({
 			...buildConfigEntrySnapshot(
@@ -1677,8 +2482,9 @@ export function collectTreeseedConfigContext({
 		entriesByScope,
 		valuesByScope,
 		suggestedValuesByScope,
-		authStatusByScope,
+		configReadinessByScope,
 		validationByScope,
+		sharedStorageMigrations: [],
 		registry,
 	};
 }
@@ -1686,15 +2492,16 @@ export function collectTreeseedConfigContext({
 export function applyTreeseedConfigValues({
 	tenantRoot,
 	updates,
-	writeLocalFiles = true,
 	applyLocalEnvironment = true,
 }: {
 	tenantRoot: string;
 	updates: TreeseedConfigValueUpdate[];
-	writeLocalFiles?: boolean;
 	applyLocalEnvironment?: boolean;
 }) {
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
+	const key = loadMachineKey(tenantRoot);
+	const machineConfig = loadTreeseedMachineConfig(tenantRoot);
+	const sharedStorageMigrations = migrateLegacyScopedSharedEntries(tenantRoot, machineConfig, registry.entries, key);
 	const entryById = new Map(registry.entries.map((entry) => [entry.id, entry]));
 	const applied: Array<{ scope: TreeseedConfigScope | 'shared'; id: string; reused: boolean; cleared: boolean }> = [];
 
@@ -1716,14 +2523,13 @@ export function applyTreeseedConfigValues({
 		});
 	}
 
-	const envFiles = writeLocalFiles ? writeTreeseedLocalEnvironmentFiles(tenantRoot) : null;
 	if (applyLocalEnvironment) {
 		applyTreeseedEnvironmentToProcess({ tenantRoot, scope: 'local', override: true });
 	}
 
 	return {
 		updated: applied,
-		envFiles,
+		sharedStorageMigrations,
 	};
 }
 
@@ -1734,6 +2540,7 @@ export function finalizeTreeseedConfig({
 	env = process.env,
 	checkConnections = true,
 	initializePersistent = true,
+	onProgress,
 }: {
 	tenantRoot: string;
 	scopes?: TreeseedConfigScope[];
@@ -1741,6 +2548,7 @@ export function finalizeTreeseedConfig({
 	env?: NodeJS.ProcessEnv;
 	checkConnections?: boolean;
 	initializePersistent?: boolean;
+	onProgress?: (message: string) => void;
 }) {
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
 	const summary = {
@@ -1750,12 +2558,22 @@ export function finalizeTreeseedConfig({
 		connectionChecks: [] as ReturnType<typeof checkTreeseedProviderConnections>[],
 		validationByScope: {} as Record<TreeseedConfigScope, ReturnType<typeof validateTreeseedEnvironmentValues>>,
 		readinessByScope: {} as Record<TreeseedConfigScope, {
+			phase: string;
 			configured: boolean;
 			provisioned: boolean;
 			deployable: boolean;
+			blockers: string[];
+			warnings: string[];
 			checks: Record<string, unknown>;
 		}>,
 	};
+	const progress = (message: string) => {
+		if (typeof onProgress === 'function') {
+			onProgress(message);
+		}
+	};
+
+	progress(`Validating configuration for ${scopes.join(', ')}...`);
 
 	for (const scope of scopes) {
 		const validation = validateTreeseedEnvironmentValues({
@@ -1767,17 +2585,28 @@ export function finalizeTreeseedConfig({
 			plugins: registry.context.plugins,
 		});
 		summary.validationByScope[scope] = validation;
-		if (!validation.ok) {
-			const details = [...validation.missing, ...validation.invalid].map((problem) => `- ${problem.message}`).join('\n');
-			throw new Error(`Treeseed config validation failed for ${scope}:\n${details}`);
-		}
 
 		if (checkConnections) {
+			progress(`Checking provider connectivity for ${scope}...`);
 			summary.connectionChecks.push(checkTreeseedProviderConnections({ tenantRoot, scope, env }));
 		}
 	}
 
-	writeTreeseedLocalEnvironmentFiles(tenantRoot);
+	for (const scope of scopes) {
+		summary.readinessByScope[scope] = summarizePersistentReadiness(
+			tenantRoot,
+			scope,
+			summary.validationByScope[scope],
+			summary.connectionChecks.find((report) => report.scope === scope)?.checks ?? [],
+		);
+	}
+
+	const invalidScopes = scopes.filter((scope) => summary.validationByScope[scope]?.ok !== true);
+	if (invalidScopes.length > 0) {
+		throw new Error(formatTreeseedConfigValidationFailure(summary.validationByScope, scopes));
+	}
+
+	progress('Syncing managed service settings from treeseed.site.yaml...');
 	syncManagedServiceSettingsFromDeployConfig(tenantRoot);
 
 	if (initializePersistent) {
@@ -1785,6 +2614,7 @@ export function finalizeTreeseedConfig({
 			if (scope === 'local') {
 				continue;
 			}
+			progress(`Initializing persistent ${scope} environment resources...`);
 			applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override: true });
 			const initialized = initializeTreeseedPersistentEnvironment({ tenantRoot, scope });
 			summary.initialized.push({
@@ -1792,17 +2622,19 @@ export function finalizeTreeseedConfig({
 				secrets: initialized.secrets.length,
 				target: initialized.summary.target,
 			});
-			markManagedServicesInitialized(tenantRoot, { scope });
 		}
 	}
 
 	if (sync === 'github' || sync === 'all') {
+		progress(`Syncing GitHub environment for ${scopes.at(-1) ?? 'prod'}...`);
 		summary.synced.github = syncTreeseedGitHubEnvironment({ tenantRoot, scope: scopes.at(-1) ?? 'prod' });
 	}
 	if (sync === 'cloudflare' || sync === 'all') {
+		progress(`Syncing Cloudflare environment for ${scopes.at(-1) ?? 'prod'}...`);
 		summary.synced.cloudflare = syncTreeseedCloudflareEnvironment({ tenantRoot, scope: scopes.at(-1) ?? 'prod' });
 	}
 	if (sync === 'railway' || sync === 'all') {
+		progress(`Syncing Railway environment for ${scopes.at(-1) ?? 'prod'}...`);
 		summary.synced.railway = syncTreeseedRailwayEnvironment({ tenantRoot, scope: scopes.at(-1) ?? 'prod' });
 	}
 
@@ -1813,11 +2645,6 @@ export function finalizeTreeseedConfig({
 			summary.validationByScope[scope],
 			summary.connectionChecks.find((report) => report.scope === scope)?.checks ?? [],
 		);
-		if (scope !== 'local' && summary.readinessByScope[scope].deployable !== true) {
-			throw new Error(
-				`Treeseed config readiness failed for ${scope}: configuration is not deployable.`,
-			);
-		}
 	}
 
 	return summary;

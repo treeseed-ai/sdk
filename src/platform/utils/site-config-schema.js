@@ -312,6 +312,8 @@ export function parseSiteConfig(source) {
 	const noteModel = expectRecord(models.notes ?? {}, 'models.notes');
 	const questionModel = expectRecord(models.questions ?? {}, 'models.questions');
 	const objectiveModel = expectRecord(models.objectives ?? {}, 'models.objectives');
+	const proposalModel = expectRecord(models.proposals ?? {}, 'models.proposals');
+	const decisionModel = expectRecord(models.decisions ?? {}, 'models.decisions');
 	const peopleModel = expectRecord(models.people ?? {}, 'models.people');
 	const agentModel = expectRecord(models.agents ?? {}, 'models.agents');
 	const bookModel = expectRecord(models.books ?? {}, 'models.books');
@@ -320,6 +322,8 @@ export function parseSiteConfig(source) {
 	const noteDefaults = expectRecord(noteModel.defaults ?? {}, 'models.notes.defaults');
 	const questionDefaults = expectRecord(questionModel.defaults ?? {}, 'models.questions.defaults');
 	const objectiveDefaults = expectRecord(objectiveModel.defaults ?? {}, 'models.objectives.defaults');
+	const proposalDefaults = expectRecord(proposalModel.defaults ?? {}, 'models.proposals.defaults');
+	const decisionDefaults = expectRecord(decisionModel.defaults ?? {}, 'models.decisions.defaults');
 	const peopleDefaults = expectRecord(peopleModel.defaults ?? {}, 'models.people.defaults');
 	const agentDefaults = normalizeAliasedRecord(agentDefaultsFieldAliases, expectRecord(agentModel.defaults ?? {}, 'models.agents.defaults'));
 	const bookDefaults = expectRecord(bookModel.defaults ?? {}, 'models.books.defaults');
@@ -392,6 +396,20 @@ export function parseSiteConfig(source) {
 					draft: optionalBoolean(objectiveDefaults.draft, 'models.objectives.defaults.draft'),
 					tags: stringArray(objectiveDefaults.tags, 'models.objectives.defaults.tags'),
 					status: optionalString(objectiveDefaults.status, 'models.objectives.defaults.status'),
+				},
+			},
+			proposals: {
+				defaults: {
+					draft: optionalBoolean(proposalDefaults.draft, 'models.proposals.defaults.draft'),
+					tags: stringArray(proposalDefaults.tags, 'models.proposals.defaults.tags'),
+					status: optionalString(proposalDefaults.status, 'models.proposals.defaults.status'),
+				},
+			},
+			decisions: {
+				defaults: {
+					draft: optionalBoolean(decisionDefaults.draft, 'models.decisions.defaults.draft'),
+					tags: stringArray(decisionDefaults.tags, 'models.decisions.defaults.tags'),
+					status: optionalString(decisionDefaults.status, 'models.decisions.defaults.status'),
 				},
 			},
 			people: {

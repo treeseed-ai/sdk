@@ -4,6 +4,8 @@ export const SDK_MODEL_NAMES = [
 	'page',
 	'note',
 	'question',
+	'proposal',
+	'decision',
 	'book',
 	'knowledge',
 	'objective',
@@ -902,6 +904,8 @@ export type SdkGraphNodeType =
 	| 'Objective'
 	| 'Question'
 	| 'Note'
+	| 'Proposal'
+	| 'Decision'
 	| 'Knowledge'
 	| 'Book'
 	| 'Page'

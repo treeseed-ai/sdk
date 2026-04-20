@@ -8,6 +8,7 @@ import type {
 	CreateProjectDeploymentRequest,
 	PriorityOverride,
 	PrioritySnapshot,
+	ProjectConnection,
 	ProjectDeployment,
 	ProjectEnvironment,
 	ProjectEnvironmentName,
@@ -28,6 +29,22 @@ import type {
 	SdkPriorityOverrideRequest,
 	SdkUpsertWorkPolicyRequest,
 } from './sdk-types.ts';
+import type {
+	AgentMessageRecord,
+	AgentStatusRecord,
+	DirectBoardItemSummary,
+	InboxItem,
+	LaunchProjectRequest,
+	LaunchProjectResult,
+	ProjectOverviewSummary,
+	ReleaseDetail,
+	ReleaseSummary,
+	SharePackageStatus,
+	TeamHomeSummary,
+	TeamMemberSummary,
+	WorkstreamDetail,
+	WorkstreamSummary,
+} from './knowledge-coop.ts';
 
 type JsonEnvelope<TPayload> = {
 	ok: boolean;
@@ -136,6 +153,21 @@ export class ControlPlaneClient {
 
 	getProjectHosting(projectId: string) {
 		return this.requestJson<ProjectHosting | null>('GET', `/v1/projects/${encodeURIComponent(projectId)}/hosting`);
+	}
+
+	upsertProjectConnection(projectId: string, input: {
+		mode: string;
+		projectApiBaseUrl?: string | null;
+		executionOwner?: string | null;
+		metadata?: Record<string, unknown>;
+		rotateRunnerToken?: boolean;
+	}) {
+		return this.requestJson<{
+			connection: ProjectConnection | null;
+			runnerToken: string | null;
+		}>('POST', `/v1/projects/${encodeURIComponent(projectId)}/connection`, {
+			body: input as Record<string, unknown>,
+		});
 	}
 
 	upsertProjectHosting(projectId: string, input: UpsertProjectHostingRequest) {
@@ -309,5 +341,101 @@ export class ControlPlaneClient {
 			`/v1/projects/${encodeURIComponent(projectId)}/runner/workdays`,
 			{ body: input as Record<string, unknown> },
 		);
+	}
+
+	getTeamHomeSummary(teamId: string) {
+		return this.requestJson<TeamHomeSummary>('GET', `/v1/teams/${encodeURIComponent(teamId)}/home`);
+	}
+
+	listTeamInboxItems(teamId: string) {
+		return this.requestJson<InboxItem[]>('GET', `/v1/teams/${encodeURIComponent(teamId)}/inbox`);
+	}
+
+	listTeamMembers(teamId: string) {
+		return this.requestJson<TeamMemberSummary[]>('GET', `/v1/teams/${encodeURIComponent(teamId)}/members`);
+	}
+
+	listTeamProducts(teamId: string) {
+		return this.requestJson<CatalogItem[]>('GET', `/v1/teams/${encodeURIComponent(teamId)}/products`);
+	}
+
+	launchProject(teamId: string, input: LaunchProjectRequest) {
+		return this.requestJson<LaunchProjectResult>('POST', `/v1/teams/${encodeURIComponent(teamId)}/projects/launch`, {
+			body: input as Record<string, unknown>,
+		});
+	}
+
+	getProjectSummary(projectId: string) {
+		return this.requestJson<ProjectOverviewSummary>('GET', `/v1/projects/${encodeURIComponent(projectId)}/summary`);
+	}
+
+	getProjectDirectSummary(projectId: string) {
+		return this.requestJson<{
+			projectId: string;
+			objectiveCount: number;
+			questionCount: number;
+			noteCount: number;
+			proposalCount: number;
+			decisionCount: number;
+			savedViews: string[];
+			items: DirectBoardItemSummary[];
+		}>('GET', `/v1/projects/${encodeURIComponent(projectId)}/direct`);
+	}
+
+	listProjectWorkstreams(projectId: string) {
+		return this.requestJson<{
+			projectId: string;
+			items: WorkstreamSummary[];
+			columns: string[];
+		}>('GET', `/v1/projects/${encodeURIComponent(projectId)}/workstreams`);
+	}
+
+	getProjectWorkstream(projectId: string, workstreamId: string) {
+		return this.requestJson<WorkstreamDetail>('GET', `/v1/projects/${encodeURIComponent(projectId)}/workstreams/${encodeURIComponent(workstreamId)}`);
+	}
+
+	listProjectReleases(projectId: string) {
+		return this.requestJson<{
+			projectId: string;
+			history: ReleaseSummary[];
+			currentProd: ReleaseSummary | null;
+			stagingCandidates: ReleaseSummary[];
+		}>('GET', `/v1/projects/${encodeURIComponent(projectId)}/releases`);
+	}
+
+	getProjectRelease(projectId: string, releaseId: string) {
+		return this.requestJson<ReleaseDetail>('GET', `/v1/projects/${encodeURIComponent(projectId)}/releases/${encodeURIComponent(releaseId)}`);
+	}
+
+	getProjectAgents(projectId: string) {
+		return this.requestJson<{
+			projectId: string;
+			agents: AgentStatusRecord[];
+		}>('GET', `/v1/projects/${encodeURIComponent(projectId)}/agents`);
+	}
+
+	listProjectAgentMessages(projectId: string) {
+		return this.requestJson<AgentMessageRecord[]>('GET', `/v1/projects/${encodeURIComponent(projectId)}/agents/messages`);
+	}
+
+	getProjectShare(projectId: string) {
+		return this.requestJson<{
+			projectId: string;
+			packages: SharePackageStatus[];
+			listing: CatalogItem | null;
+			canPublish: boolean;
+		}>('GET', `/v1/projects/${encodeURIComponent(projectId)}/share`);
+	}
+
+	approveJob(jobId: string, note?: string | null) {
+		return this.requestJson<{ id: string; status: string }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/approve`, {
+			body: note ? { note } : {},
+		});
+	}
+
+	rejectJob(jobId: string, reason: string) {
+		return this.requestJson<{ id: string; status: string }>('POST', `/v1/jobs/${encodeURIComponent(jobId)}/reject`, {
+			body: { reason },
+		});
 	}
 }

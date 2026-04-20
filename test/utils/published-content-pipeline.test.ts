@@ -19,8 +19,11 @@ function createFixture() {
 		siteConfigPath: './src/config.yaml',
 		content: {
 			pages: resolve(root, 'src/content/pages'),
+			notes: resolve(root, 'src/content/notes'),
 			questions: resolve(root, 'src/content/questions'),
 			objectives: resolve(root, 'src/content/objectives'),
+			proposals: resolve(root, 'src/content/proposals'),
+			decisions: resolve(root, 'src/content/decisions'),
 			agents: resolve(root, 'src/content/agents'),
 			templates: resolve(root, 'src/content/templates'),
 			knowledge_packs: resolve(root, 'src/content/knowledge_packs'),
@@ -30,6 +33,8 @@ function createFixture() {
 		features: {
 			docs: true,
 			books: true,
+			proposals: true,
+			decisions: true,
 		},
 		site: {
 			models: {

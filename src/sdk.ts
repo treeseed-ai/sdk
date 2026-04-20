@@ -11,6 +11,14 @@ import { RemoteTreeseedClient, RemoteTreeseedDispatchClient } from './remote.ts'
 import { executeSdkOperation } from './sdk-dispatch.ts';
 import { TreeseedOperationsSdk } from './operations/runtime.ts';
 import type {
+	ReleaseDetail,
+	ReleaseSummary,
+	SharePackageStatus,
+	WorkstreamDetail,
+	WorkstreamEvent,
+	WorkstreamSummary,
+} from './knowledge-coop.ts';
+import type {
 	SdkAckMessageRequest,
 	SdkClaimMessageRequest,
 	SdkClaimTaskRequest,
@@ -453,6 +461,56 @@ export class AgentSdk {
 	async getLatestScaleDecision(projectId: string, environment: string, poolName: string) {
 		const payload = await this.database.getLatestScaleDecision(projectId, environment, poolName);
 		return this.envelope<ScaleDecision>('report', 'get', payload);
+	}
+
+	async listWorkstreams(projectId: string) {
+		const payload = await this.database.listWorkstreams(projectId);
+		return this.envelope<WorkstreamSummary[]>('task', 'search', payload, { count: payload.length });
+	}
+
+	async getWorkstream(workstreamId: string) {
+		const payload = await this.database.getWorkstream(workstreamId);
+		return this.envelope<WorkstreamDetail>('task', 'get', payload);
+	}
+
+	async upsertWorkstream(input: Partial<WorkstreamSummary> & Pick<WorkstreamSummary, 'projectId' | 'title'>) {
+		const payload = await this.database.upsertWorkstream(input);
+		return this.envelope<WorkstreamSummary>('task', 'update', payload);
+	}
+
+	async appendWorkstreamEvent(input: Pick<WorkstreamEvent, 'projectId' | 'workstreamId' | 'kind'> & Partial<WorkstreamEvent>) {
+		const payload = await this.database.appendWorkstreamEvent(input);
+		return this.envelope<WorkstreamEvent>('task_event', 'create', payload);
+	}
+
+	async listReleases(projectId: string) {
+		const payload = await this.database.listReleases(projectId);
+		return this.envelope<ReleaseSummary[]>('report', 'search', payload, { count: payload.length });
+	}
+
+	async getRelease(releaseId: string) {
+		const payload = await this.database.getRelease(releaseId);
+		return this.envelope<ReleaseDetail>('report', 'get', payload);
+	}
+
+	async upsertRelease(input: Partial<ReleaseSummary> & Pick<ReleaseSummary, 'projectId' | 'version'> & { items?: ReleaseDetail['items'] }) {
+		const payload = await this.database.upsertRelease(input);
+		return this.envelope<ReleaseDetail>('report', 'update', payload);
+	}
+
+	async listSharePackages(projectId: string) {
+		const payload = await this.database.listSharePackages(projectId);
+		return this.envelope<SharePackageStatus[]>('report', 'search', payload, { count: payload.length });
+	}
+
+	async getSharePackage(packageId: string) {
+		const payload = await this.database.getSharePackage(packageId);
+		return this.envelope<SharePackageStatus>('report', 'get', payload);
+	}
+
+	async upsertSharePackage(input: Partial<SharePackageStatus> & Pick<SharePackageStatus, 'projectId' | 'kind' | 'title'>) {
+		const payload = await this.database.upsertSharePackage(input);
+		return this.envelope<SharePackageStatus>('report', 'update', payload);
 	}
 
 	async listAgentSpecs(options?: { enabled?: boolean }) {

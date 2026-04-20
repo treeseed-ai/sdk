@@ -34,6 +34,18 @@ describe('control-plane reporter', () => {
 		expect(reporter.enabled).toBe(false);
 	});
 
+	it('treats explicit runtime.none as a noop reporter even when legacy hosting is present', () => {
+		const reporter = createControlPlaneReporter({
+			deployConfig: {
+				hosting: { kind: 'hosted_project', registration: 'optional' },
+				runtime: { mode: 'none', registration: 'none' },
+			},
+		});
+
+		expect(reporter.kind).toBe('noop');
+		expect(reporter.enabled).toBe(false);
+	});
+
 	it('posts normalized deployment payloads through the http adapter', async () => {
 		const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), {
 			status: 200,

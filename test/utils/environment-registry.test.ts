@@ -2,7 +2,12 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
-import { getTreeseedEnvironmentSuggestedValues, resolveTreeseedEnvironmentRegistry } from '../../src/platform/environment.ts';
+import {
+	getTreeseedEnvironmentSuggestedValues,
+	isTreeseedEnvironmentEntryRequired,
+	isTreeseedEnvironmentEntryRelevant,
+	resolveTreeseedEnvironmentRegistry,
+} from '../../src/platform/environment.ts';
 
 const tempRoots = new Set<string>();
 
@@ -38,7 +43,7 @@ describe('environment registry overlays', () => {
     howToGet: Set the API origin.
     sensitivity: plain
     targets:
-      - local-file
+      - local-runtime
       - railway-var
     scopes:
       - local
@@ -104,7 +109,7 @@ describe('environment registry overlays', () => {
     howToGet: Set custom domains.
     sensitivity: plain
     targets:
-      - local-file
+      - local-runtime
     scopes:
       - local
       - staging
@@ -123,7 +128,7 @@ describe('environment registry overlays', () => {
     howToGet: Set API URL.
     sensitivity: plain
     targets:
-      - local-file
+      - local-runtime
     scopes:
       - local
       - staging
@@ -193,7 +198,7 @@ describe('environment registry overlays', () => {
     howToGet: Use web.
     sensitivity: plain
     targets:
-      - local-file
+      - local-runtime
     scopes:
       - local
       - staging
@@ -212,7 +217,7 @@ describe('environment registry overlays', () => {
     howToGet: Match the web service ID.
     sensitivity: plain
     targets:
-      - local-file
+      - local-runtime
     scopes:
       - local
       - staging
@@ -256,5 +261,102 @@ describe('environment registry overlays', () => {
 			},
 		});
 		expect(linkedSuggested.TREESEED_API_WEB_SERVICE_ID).toBe('edge-web');
+	});
+
+	it('uses local smtp defaults without making local smtp required', async () => {
+		const tenantRoot = await createTenantFixture('entries: {}\n');
+		tempRoots.add(tenantRoot);
+
+		const deployConfig = {
+			name: 'Test Site',
+			slug: 'test-site',
+			siteUrl: 'https://example.com',
+			contactEmail: 'hello@example.com',
+			cloudflare: { accountId: 'account-123' },
+			services: { api: { provider: 'railway', enabled: true } },
+			smtp: { enabled: true },
+			turnstile: { enabled: true },
+			__tenantRoot: tenantRoot,
+		} as any;
+
+		const registry = resolveTreeseedEnvironmentRegistry({
+			deployConfig,
+			plugins: [],
+		});
+		const smtpHost = registry.entries.find((entry) => entry.id === 'TREESEED_SMTP_HOST');
+		const smtpPort = registry.entries.find((entry) => entry.id === 'TREESEED_SMTP_PORT');
+		const smtpFrom = registry.entries.find((entry) => entry.id === 'TREESEED_SMTP_FROM');
+		const smtpReplyTo = registry.entries.find((entry) => entry.id === 'TREESEED_SMTP_REPLY_TO');
+
+		expect(smtpHost).toBeTruthy();
+		expect(smtpPort).toBeTruthy();
+		expect(smtpFrom).toBeTruthy();
+		expect(smtpReplyTo).toBeTruthy();
+		expect(smtpHost?.storage).toBe('shared');
+		expect(smtpPort?.storage).toBe('shared');
+		expect(smtpFrom?.storage).toBe('shared');
+		expect(smtpReplyTo?.storage).toBe('shared');
+		expect(isTreeseedEnvironmentEntryRequired(smtpHost!, registry.context, 'local', 'config')).toBe(false);
+		expect(isTreeseedEnvironmentEntryRequired(smtpHost!, registry.context, 'staging', 'config')).toBe(true);
+		expect(isTreeseedEnvironmentEntryRequired(smtpPort!, registry.context, 'local', 'config')).toBe(false);
+		expect(isTreeseedEnvironmentEntryRequired(smtpFrom!, registry.context, 'local', 'config')).toBe(false);
+		expect(isTreeseedEnvironmentEntryRequired(smtpReplyTo!, registry.context, 'local', 'config')).toBe(false);
+
+		const suggested = getTreeseedEnvironmentSuggestedValues({
+			scope: 'local',
+			purpose: 'config',
+			deployConfig,
+			plugins: [],
+			values: {},
+		});
+		expect(suggested.TREESEED_SMTP_HOST).toBe('127.0.0.1');
+		expect(suggested.TREESEED_SMTP_PORT).toBe('1025');
+		expect(suggested.TREESEED_SMTP_FROM).toBe('hello@example.com');
+		expect(suggested.TREESEED_SMTP_REPLY_TO).toBe('hello@example.com');
+	});
+
+	it('gates hosted smtp and turnstile entries on deploy config enablement', async () => {
+		const tenantRoot = await createTenantFixture('entries: {}\n');
+		tempRoots.add(tenantRoot);
+
+		const deployConfig = {
+			name: 'Test Site',
+			slug: 'test-site',
+			siteUrl: 'https://example.com',
+			contactEmail: 'hello@example.com',
+			cloudflare: { accountId: 'account-123' },
+			services: { api: { provider: 'railway', enabled: true } },
+			smtp: { enabled: false },
+			turnstile: { enabled: false },
+			__tenantRoot: tenantRoot,
+		} as any;
+
+		const disabledRegistry = resolveTreeseedEnvironmentRegistry({
+			deployConfig,
+			plugins: [],
+		});
+		const smtpHost = disabledRegistry.entries.find((entry) => entry.id === 'TREESEED_SMTP_HOST');
+		const turnstileSecret = disabledRegistry.entries.find((entry) => entry.id === 'TREESEED_TURNSTILE_SECRET_KEY');
+		expect(isTreeseedEnvironmentEntryRelevant(smtpHost!, disabledRegistry.context, 'staging', 'config')).toBe(false);
+		expect(isTreeseedEnvironmentEntryRelevant(turnstileSecret!, disabledRegistry.context, 'prod', 'config')).toBe(false);
+
+		const enabledRegistry = resolveTreeseedEnvironmentRegistry({
+			deployConfig: {
+				...deployConfig,
+				smtp: { enabled: true },
+				turnstile: { enabled: true },
+			},
+			plugins: [],
+		});
+		const enabledSmtpHost = enabledRegistry.entries.find((entry) => entry.id === 'TREESEED_SMTP_HOST');
+		const enabledTurnstileSecret = enabledRegistry.entries.find((entry) => entry.id === 'TREESEED_TURNSTILE_SECRET_KEY');
+		const formTokenSecret = enabledRegistry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET');
+		expect(isTreeseedEnvironmentEntryRelevant(enabledSmtpHost!, enabledRegistry.context, 'staging', 'config')).toBe(true);
+		expect(isTreeseedEnvironmentEntryRelevant(enabledTurnstileSecret!, enabledRegistry.context, 'prod', 'config')).toBe(true);
+		expect(enabledSmtpHost?.storage).toBe('shared');
+		expect(enabledTurnstileSecret?.storage).toBe('shared');
+		expect(formTokenSecret?.storage).toBe('shared');
+		expect(isTreeseedEnvironmentEntryRequired(enabledTurnstileSecret!, enabledRegistry.context, 'local', 'config')).toBe(false);
+		expect(isTreeseedEnvironmentEntryRequired(enabledTurnstileSecret!, enabledRegistry.context, 'staging', 'config')).toBe(true);
 	});
 });

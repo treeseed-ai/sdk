@@ -193,6 +193,10 @@ export function builtinEntityTypeFor(model: string): SdkGraphNodeType {
 			return 'Question';
 		case 'note':
 			return 'Note';
+		case 'proposal':
+			return 'Proposal';
+		case 'decision':
+			return 'Decision';
 		case 'knowledge':
 			return 'Knowledge';
 		case 'book':

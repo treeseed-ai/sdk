@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
+import { TREESEED_DEFAULT_PROVIDER_SELECTIONS } from '../../src/platform/plugins/constants.ts';
 import {
 	getTreeseedAgentProviderSelections,
 	getTreeseedContentPublishProvider,
@@ -29,14 +30,20 @@ async function createTenantFixture(configBody: string) {
 	await mkdir(join(tenantRoot, 'src'), { recursive: true });
 	await writeFile(
 		join(tenantRoot, 'src/manifest.yaml'),
-		'id: test-site\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n  notes: ./src/content/notes\n  questions: ./src/content/questions\n  objectives: ./src/content/objectives\n  people: ./src/content/people\n  agents: ./src/content/agents\n  books: ./src/content/books\n  docs: ./src/content/knowledge\nfeatures:\n  docs: true\n  books: true\n  notes: true\n  questions: true\n  objectives: true\n  agents: true\n  forms: true\n',
+		'id: test-site\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n  notes: ./src/content/notes\n  questions: ./src/content/questions\n  objectives: ./src/content/objectives\n  proposals: ./src/content/proposals\n  decisions: ./src/content/decisions\n  people: ./src/content/people\n  agents: ./src/content/agents\n  books: ./src/content/books\n  docs: ./src/content/knowledge\nfeatures:\n  docs: true\n  books: true\n  notes: true\n  questions: true\n  objectives: true\n  proposals: true\n  decisions: true\n  agents: true\n  forms: true\n',
 	);
 	await writeFile(join(tenantRoot, 'treeseed.site.yaml'), configBody);
 	return tenantRoot;
 }
 
 async function createEmptyWorkspace() {
-	return mkdtemp(join(tmpdir(), 'treeseed-sdk-no-config-'));
+	const tenantRoot = await mkdtemp(join(tmpdir(), 'treeseed-sdk-no-config-'));
+	await mkdir(join(tenantRoot, 'src'), { recursive: true });
+	await writeFile(
+		join(tenantRoot, 'src/manifest.yaml'),
+		'id: test-site\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n  notes: ./src/content/notes\n  questions: ./src/content/questions\n  objectives: ./src/content/objectives\n  proposals: ./src/content/proposals\n  decisions: ./src/content/decisions\n  people: ./src/content/people\n  agents: ./src/content/agents\n  books: ./src/content/books\n  docs: ./src/content/knowledge\nfeatures:\n  docs: true\n  books: true\n  notes: true\n  questions: true\n  objectives: true\n  proposals: true\n  decisions: true\n  agents: true\n  forms: true\n',
+	);
+	return tenantRoot;
 }
 
 describe('deploy runtime accessors', () => {
@@ -46,21 +53,14 @@ describe('deploy runtime accessors', () => {
 			process.chdir(workspaceRoot);
 			expect(getTreeseedFormsProvider()).toBe('store_only');
 			expect(getTreeseedOperationsProvider()).toBe('default');
-			expect(getTreeseedAgentProviderSelections()).toMatchObject({
-				execution: 'stub',
-				mutation: 'local_branch',
-				repository: 'stub',
-				verification: 'stub',
-				notification: 'stub',
-				research: 'stub',
-			});
-			expect(getTreeseedDeployProvider()).toBe('cloudflare');
-			expect(getTreeseedContentRuntimeProvider()).toBe('team_scoped_r2_overlay');
-			expect(getTreeseedContentPublishProvider()).toBe('team_scoped_r2_overlay');
-			expect(getTreeseedDocsProvider()).toBe('default');
-			expect(getTreeseedSiteProvider()).toBe('default');
+			expect(getTreeseedAgentProviderSelections()).toMatchObject(TREESEED_DEFAULT_PROVIDER_SELECTIONS.agents);
+			expect(getTreeseedDeployProvider()).toBe(TREESEED_DEFAULT_PROVIDER_SELECTIONS.deploy);
+			expect(getTreeseedContentRuntimeProvider()).toBe(TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime);
+			expect(getTreeseedContentPublishProvider()).toBe(TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.publish);
+			expect(getTreeseedDocsProvider()).toBe(TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.docs);
+			expect(getTreeseedSiteProvider()).toBe(TREESEED_DEFAULT_PROVIDER_SELECTIONS.site);
 			expect(isTreeseedSmtpEnabled()).toBe(false);
-			expect(isTreeseedTurnstileEnabled()).toBe(true);
+			expect(isTreeseedTurnstileEnabled()).toBe(false);
 		} finally {
 			await rm(workspaceRoot, { recursive: true, force: true });
 		}
@@ -112,7 +112,7 @@ turnstile:
 			expect(getTreeseedDocsProvider()).toBe('custom-docs');
 			expect(getTreeseedSiteProvider()).toBe('alternate-site');
 			expect(isTreeseedSmtpEnabled()).toBe(true);
-			expect(isTreeseedTurnstileEnabled()).toBe(true);
+			expect(isTreeseedTurnstileEnabled()).toBe(false);
 		} finally {
 			await rm(tenantRoot, { recursive: true, force: true });
 		}

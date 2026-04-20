@@ -108,7 +108,7 @@ export interface ControlPlaneReporterOptions {
 export interface ResolveControlPlaneReporterOptions extends ControlPlaneReporterOptions {
 	hostingKind?: TreeseedHostingKind | null;
 	registration?: TreeseedHostingRegistration | null;
-	deployConfig?: Pick<TreeseedDeployConfig, 'hosting'> | null;
+	deployConfig?: Pick<TreeseedDeployConfig, 'hosting' | 'runtime'> | null;
 }
 
 function normalizeUrl(value: string | null | undefined) {
@@ -126,9 +126,18 @@ function resolveReporterKind(options: ResolveControlPlaneReporterOptions): Contr
 		?? ((process.env.TREESEED_HOSTING_KIND?.trim() || null) as TreeseedHostingKind | null)
 		?? 'self_hosted_project';
 	const registration = options.registration
+		?? (options.deployConfig?.runtime?.registration === 'required' ? 'optional' : options.deployConfig?.runtime?.registration)
 		?? options.deployConfig?.hosting?.registration
 		?? ((process.env.TREESEED_HOSTING_REGISTRATION?.trim() || null) as TreeseedHostingRegistration | null)
 		?? 'none';
+	const runtimeMode = options.deployConfig?.runtime?.mode ?? null;
+
+	if (runtimeMode === 'none') {
+		return 'noop';
+	}
+	if (runtimeMode === 'byo_attached' || runtimeMode === 'treeseed_managed') {
+		return registration === 'none' ? 'noop' : 'market_http';
+	}
 
 	if (hostingKind === 'hosted_project') {
 		return 'market_http';
@@ -137,7 +146,7 @@ function resolveReporterKind(options: ResolveControlPlaneReporterOptions): Contr
 		return 'market_http';
 	}
 	if (hostingKind === 'market_control_plane') {
-		return normalizeUrl(options.baseUrl ?? options.deployConfig?.hosting?.marketBaseUrl) ? 'self_http' : 'noop';
+		return normalizeUrl(options.baseUrl ?? process.env.TREESEED_MARKET_API_BASE_URL ?? options.deployConfig?.hosting?.marketBaseUrl) ? 'self_http' : 'noop';
 	}
 	return 'noop';
 }
@@ -237,14 +246,14 @@ export function createControlPlaneReporter(options: ResolveControlPlaneReporterO
 
 	const projectId = String(
 		options.projectId
-		?? options.deployConfig?.hosting?.projectId
 		?? process.env.TREESEED_PROJECT_ID
+		?? options.deployConfig?.hosting?.projectId
 		?? '',
 	).trim() || null;
 	const baseUrl = normalizeUrl(
 		options.baseUrl
-		?? options.deployConfig?.hosting?.marketBaseUrl
 		?? process.env.TREESEED_MARKET_API_BASE_URL
+		?? options.deployConfig?.hosting?.marketBaseUrl
 		?? null,
 	);
 	const runnerToken = String(options.runnerToken ?? process.env.TREESEED_PROJECT_RUNNER_TOKEN ?? '').trim() || null;

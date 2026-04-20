@@ -7,8 +7,8 @@ const DEFAULT_RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
 function normalizeScope(scope) {
 	return scope === 'prod' ? 'prod' : scope === 'staging' ? 'staging' : 'local';
 }
-const RAILWAY_SERVICE_KEYS = ['api', 'agents', 'manager', 'worker', 'runner', 'workdayStart', 'workdayReport'];
-const HOSTED_PROJECT_SERVICE_KEYS = ['api', 'manager', 'worker', 'agents'];
+const RAILWAY_SERVICE_KEYS = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport'];
+const HOSTED_PROJECT_SERVICE_KEYS = ['api', 'manager', 'worker'];
 
 function normalizeScheduleExpressions(value) {
 	if (typeof value === 'string' && value.trim()) {
@@ -213,7 +213,11 @@ function runRailway(args, { cwd, capture = false, allowFailure = false } = {}) {
 export function configuredRailwayServices(tenantRoot, scope) {
 	const deployConfig = loadCliDeployConfig(tenantRoot);
 	const normalizedScope = normalizeScope(scope);
-	const hostingKind = deployConfig.hosting?.kind ?? 'self_hosted_project';
+	const managedRuntime = deployConfig.runtime?.mode === 'treeseed_managed';
+	const hostingKind = deployConfig.hosting?.kind ?? (managedRuntime ? 'hosted_project' : 'self_hosted_project');
+	if (!managedRuntime) {
+		return [];
+	}
 	const serviceKeys = hostingKind === 'hosted_project'
 		? HOSTED_PROJECT_SERVICE_KEYS
 		: RAILWAY_SERVICE_KEYS;
@@ -225,7 +229,7 @@ export function configuredRailwayServices(tenantRoot, scope) {
 				return null;
 			}
 
-			const defaultRootDir = ['api', 'manager', 'worker', 'runner', 'workdayStart', 'workdayReport'].includes(serviceKey) ? '.' : 'packages/core';
+			const defaultRootDir = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport'].includes(serviceKey) ? '.' : 'packages/core';
 			const serviceRoot = resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? defaultRootDir);
 			const railwayEnvironment = service.environments?.[normalizedScope]?.railwayEnvironment ?? normalizedScope;
 			const publicBaseUrl = service.environments?.[normalizedScope]?.baseUrl ?? service.publicBaseUrl ?? null;
@@ -270,10 +274,12 @@ export function configuredRailwayScheduledJobs(tenantRoot, scope) {
 
 export function resolveRailwayDeploymentProfile(tenantRoot) {
 	const deployConfig = loadCliDeployConfig(tenantRoot);
-	const hostingKind = deployConfig.hosting?.kind ?? 'self_hosted_project';
+	const hostingKind = deployConfig.hosting?.kind ?? (deployConfig.runtime?.mode === 'treeseed_managed' ? 'hosted_project' : 'self_hosted_project');
 	return {
 		hostingKind,
-		managedTopology: hostingKind === 'hosted_project' ? [...HOSTED_PROJECT_SERVICE_KEYS] : [...RAILWAY_SERVICE_KEYS],
+		managedTopology: deployConfig.runtime?.mode === 'treeseed_managed'
+			? (hostingKind === 'hosted_project' ? [...HOSTED_PROJECT_SERVICE_KEYS] : [...RAILWAY_SERVICE_KEYS])
+			: [],
 	};
 }
 
@@ -303,12 +309,6 @@ export function validateRailwayServiceConfiguration(tenantRoot, scope) {
 		}
 		if (service.schedule?.length && !service.startCommand) {
 			issues.push(`${service.key}: scheduled Railway services require railway.startCommand in treeseed.site.yaml.`);
-		}
-		if (service.schedule?.length && !service.serviceId) {
-			issues.push(`${service.key}: scheduled Railway services require railway.serviceId for Railway API reconciliation.`);
-		}
-		if (service.schedule?.length && !envValue('TREESEED_RAILWAY_ENVIRONMENT_ID')) {
-			issues.push(`${service.key}: scheduled Railway services require TREESEED_RAILWAY_ENVIRONMENT_ID to be configured.`);
 		}
 	}
 
@@ -343,6 +343,16 @@ export async function ensureRailwayScheduledJobs(
 	const results = [];
 
 	for (const schedule of schedules) {
+		if (!schedule.serviceId || !schedule.environmentId) {
+			results.push({
+				...schedule,
+				id: null,
+				status: 'skipped_missing_identifiers',
+				enabled: schedule.enabled !== false,
+				command: schedule.command,
+			});
+			continue;
+		}
 		const variables = {
 			projectId: schedule.projectId,
 			serviceId: schedule.serviceId,
@@ -464,6 +474,15 @@ export async function verifyRailwayScheduledJobs(
 	const checks = [];
 
 	for (const schedule of configured) {
+		if (!schedule.serviceId || !schedule.environmentId) {
+			checks.push({
+				...schedule,
+				id: null,
+				ok: false,
+				status: 'skipped_missing_identifiers',
+			});
+			continue;
+		}
 		const listed = await railwayGraphqlRequest({
 			query: queries.listQuery,
 			variables: {
@@ -492,6 +511,7 @@ export async function verifyRailwayScheduledJobs(
 				&& (existing.command ?? null) === (schedule.command ?? null)
 				&& existing.enabled !== false
 			),
+			status: existing ? 'checked' : 'missing',
 		});
 	}
 

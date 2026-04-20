@@ -41,12 +41,12 @@ const TREESEED_DEFAULT_PLUGIN_REFERENCES = [
 const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 	forms: 'store_only',
 	agents: {
-		execution: 'stub',
+		execution: 'copilot',
 		mutation: 'local_branch',
-		repository: 'stub',
-		verification: 'stub',
-		notification: 'stub',
-		research: 'stub',
+		repository: 'git',
+		verification: 'local',
+		notification: 'sdk_message',
+		research: 'project_graph',
 	},
 	deploy: 'cloudflare',
 		content: {
@@ -56,9 +56,62 @@ const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 		},
 	site: 'default',
 };
-const TRESEED_MANAGED_SERVICE_KEYS = ['api', 'agents', 'manager', 'worker', 'runner', 'workdayStart', 'workdayReport'];
+const TRESEED_MANAGED_SERVICE_KEYS = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport'];
 const TRESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli'];
 const CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER = 'replace-with-cloudflare-account-id';
+
+function normalizePlanesFromLegacyHosting(hosting) {
+	if (!hosting || Object.keys(hosting).length === 0) {
+		return {
+			hub: { mode: 'treeseed_hosted' },
+			runtime: { mode: 'none', registration: 'none' },
+		};
+	}
+
+	if (hosting.kind === 'market_control_plane' || hosting.kind === 'hosted_project') {
+		return {
+			hub: { mode: 'treeseed_hosted' },
+			runtime: {
+				mode: 'treeseed_managed',
+				registration: hosting.kind === 'market_control_plane' ? 'none' : (hosting.registration ?? 'none'),
+				marketBaseUrl: hosting.marketBaseUrl,
+				teamId: hosting.teamId,
+				projectId: hosting.projectId,
+			},
+		};
+	}
+
+	return {
+		hub: { mode: 'customer_hosted' },
+		runtime: {
+			mode: 'byo_attached',
+			registration: hosting.registration ?? 'none',
+			marketBaseUrl: hosting.marketBaseUrl,
+			teamId: hosting.teamId,
+			projectId: hosting.projectId,
+		},
+	};
+}
+
+function normalizeLegacyHostingFromPlanes(hub, runtime) {
+	if (runtime.mode === 'treeseed_managed' && hub.mode === 'treeseed_hosted') {
+		return {
+			kind: 'hosted_project',
+			registration: runtime.registration === 'required' ? 'optional' : (runtime.registration ?? 'none'),
+			marketBaseUrl: runtime.marketBaseUrl,
+			teamId: runtime.teamId,
+			projectId: runtime.projectId,
+		};
+	}
+
+	return {
+		kind: 'self_hosted_project',
+		registration: runtime.registration === 'required' ? 'optional' : (runtime.registration ?? 'none'),
+		marketBaseUrl: runtime.marketBaseUrl,
+		teamId: runtime.teamId,
+		projectId: runtime.projectId,
+	};
+}
 
 function parseServiceEnvironmentConfig(value) {
 	const record = optionalRecord(value, 'service environment') ?? {};
@@ -115,6 +168,92 @@ function parseManagedServicesConfig(value) {
 			serviceKey,
 			parseManagedServiceConfig(record[serviceKey], `services.${serviceKey}`),
 		]),
+	);
+}
+
+function parseWebSurfaceCacheConfig(value, label) {
+	const record = optionalRecord(value, label) ?? {};
+	if (Object.keys(record).length === 0) {
+		return undefined;
+	}
+
+	return {
+		sourcePages: parseWebCachePolicyRecord(record.sourcePages ?? record.source_pages, `${label}.sourcePages`, {
+			paths: ['/', '/contact', '/404'],
+		}),
+		contentPages: parseWebCachePolicyRecord(record.contentPages ?? record.content_pages, `${label}.contentPages`),
+		r2PublishedObjects: parseWebCachePolicyRecord(
+			record.r2PublishedObjects ?? record.r2_published_objects,
+			`${label}.r2PublishedObjects`,
+		),
+	};
+}
+
+function parseWebCachePolicyRecord(value, label, options = {}) {
+	const record = optionalRecord(value, label) ?? {};
+	if (Object.keys(record).length === 0) {
+		return options.paths ? { paths: [...options.paths] } : undefined;
+	}
+
+	const parsed = {
+		browserTtlSeconds: optionalNonNegativeNumber(
+			record.browserTtlSeconds ?? record.browser_ttl_seconds,
+			`${label}.browserTtlSeconds`,
+		),
+		edgeTtlSeconds: optionalNonNegativeNumber(
+			record.edgeTtlSeconds ?? record.edge_ttl_seconds,
+			`${label}.edgeTtlSeconds`,
+		),
+		staleWhileRevalidateSeconds: optionalNonNegativeNumber(
+			record.staleWhileRevalidateSeconds ?? record.stale_while_revalidate_seconds,
+			`${label}.staleWhileRevalidateSeconds`,
+		),
+		staleIfErrorSeconds: optionalNonNegativeNumber(
+			record.staleIfErrorSeconds ?? record.stale_if_error_seconds,
+			`${label}.staleIfErrorSeconds`,
+		),
+	};
+
+	if (options.paths) {
+		parsed.paths = [...new Set((Array.isArray(record.paths) ? record.paths.map((entry) => optionalString(entry)).filter(Boolean) : options.paths))];
+	}
+
+	return parsed;
+}
+
+function parseSurfaceConfig(value, label) {
+	const record = optionalRecord(value, label);
+	if (!record) {
+		return undefined;
+	}
+
+	return {
+		enabled: record.enabled === undefined ? undefined : optionalBoolean(record.enabled, `${label}.enabled`),
+		provider: optionalString(record.provider),
+		rootDir: optionalString(record.rootDir),
+		publicBaseUrl: optionalString(record.publicBaseUrl),
+		localBaseUrl: optionalString(record.localBaseUrl),
+		cache: parseWebSurfaceCacheConfig(record.cache, `${label}.cache`),
+	};
+}
+
+function parsePlatformSurfacesConfig(value) {
+	const record = optionalRecord(value, 'surfaces');
+	if (!record) {
+		return undefined;
+	}
+
+	return Object.fromEntries(
+		Object.entries(record).map(([surfaceKey, surfaceValue]) => [
+			surfaceKey,
+			parseSurfaceConfig(surfaceValue, `surfaces.${surfaceKey}`),
+		]),
+	);
+}
+
+function inferManagedRuntimeFromServices(services) {
+	return Object.values(services ?? {}).some((service) =>
+		service && service.enabled !== false && (service.provider ?? 'railway') === 'railway',
 	);
 }
 
@@ -317,6 +456,16 @@ function optionalPositiveNumber(value, label) {
 	return value;
 }
 
+function optionalNonNegativeNumber(value, label) {
+	if (value === undefined) {
+		return undefined;
+	}
+	if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+		throw new Error(`Invalid deploy config: expected ${label} to be a non-negative number when provided.`);
+	}
+	return value;
+}
+
 function optionalEnum(value, label, allowed) {
 	const normalized = optionalString(value);
 	if (!normalized) {
@@ -362,6 +511,41 @@ function parseFallbackDeployConfig(configPath) {
 	const cloudflarePages = optionalRecord(cloudflare.pages, 'cloudflare.pages') ?? {};
 	const cloudflareR2 = optionalRecord(cloudflare.r2, 'cloudflare.r2') ?? {};
 	const hosting = optionalRecord(record.hosting, 'hosting') ?? {};
+	const parsedHosting = Object.keys(hosting).length === 0
+			? undefined
+			: {
+				kind: optionalEnum(hosting.kind, 'hosting.kind', [
+					'market_control_plane',
+					'hosted_project',
+					'self_hosted_project',
+				]) ?? 'self_hosted_project',
+				registration: optionalEnum(hosting.registration, 'hosting.registration', ['optional', 'none']) ?? 'none',
+				marketBaseUrl: optionalString(process.env.TREESEED_MARKET_API_BASE_URL),
+				teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID),
+				projectId: optionalString(process.env.TREESEED_PROJECT_ID),
+			};
+	const services = parseManagedServicesConfig(record.services);
+	const normalizedPlanes = normalizePlanesFromLegacyHosting(parsedHosting);
+	const inferredPlanes = !parsedHosting && record.hub === undefined && record.runtime === undefined && inferManagedRuntimeFromServices(services)
+		? {
+			hub: { mode: 'customer_hosted' },
+			runtime: { mode: 'treeseed_managed', registration: 'none' },
+		}
+		: normalizedPlanes;
+	const hubRecord = optionalRecord(record.hub, 'hub') ?? {};
+	const runtimeRecord = optionalRecord(record.runtime, 'runtime') ?? {};
+	const hub = {
+		mode: optionalEnum(hubRecord.mode, 'hub.mode', ['treeseed_hosted', 'customer_hosted']) ?? inferredPlanes.hub.mode,
+	};
+	const runtime = {
+		mode: optionalEnum(runtimeRecord.mode, 'runtime.mode', ['none', 'byo_attached', 'treeseed_managed']) ?? inferredPlanes.runtime.mode,
+		registration: optionalEnum(runtimeRecord.registration, 'runtime.registration', ['optional', 'required', 'none'])
+			?? inferredPlanes.runtime.registration
+			?? 'none',
+		marketBaseUrl: optionalString(process.env.TREESEED_MARKET_API_BASE_URL) ?? inferredPlanes.runtime.marketBaseUrl,
+		teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID) ?? inferredPlanes.runtime.teamId,
+		projectId: optionalString(process.env.TREESEED_PROJECT_ID) ?? inferredPlanes.runtime.projectId,
+	};
 	const smtp = optionalRecord(record.smtp, 'smtp') ?? {};
 	const turnstile = optionalRecord(record.turnstile, 'turnstile') ?? {};
 	const agentProviders = optionalRecord(optionalRecord(record.providers, 'providers')?.agents, 'providers.agents') ?? {};
@@ -372,24 +556,16 @@ function parseFallbackDeployConfig(configPath) {
 		slug: expectString(record.slug, 'slug'),
 		siteUrl: expectString(record.siteUrl, 'siteUrl'),
 		contactEmail: expectString(record.contactEmail, 'contactEmail'),
-		hosting: Object.keys(hosting).length === 0
-			? undefined
-			: {
-				kind: optionalEnum(hosting.kind, 'hosting.kind', [
-					'market_control_plane',
-					'hosted_project',
-					'self_hosted_project',
-				]) ?? 'self_hosted_project',
-				registration: optionalEnum(hosting.registration, 'hosting.registration', ['optional', 'none']) ?? 'none',
-				marketBaseUrl: optionalString(hosting.marketBaseUrl),
-				teamId: optionalString(hosting.teamId),
-				projectId: optionalString(hosting.projectId),
-			},
+		hosting: parsedHosting && record.hub === undefined && record.runtime === undefined
+			? parsedHosting
+			: normalizeLegacyHostingFromPlanes(hub, runtime),
+		hub,
+		runtime,
 		cloudflare: {
 			accountId:
-				optionalCloudflareAccountId(cloudflare.accountId)
-				?? optionalCloudflareAccountId(process.env.CLOUDFLARE_ACCOUNT_ID)
+				optionalCloudflareAccountId(process.env.CLOUDFLARE_ACCOUNT_ID)
 				?? CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER,
+			zoneId: optionalString(cloudflare.zoneId ?? cloudflare.zone_id),
 			workerName: optionalString(cloudflare.workerName),
 			queueName: optionalString(cloudflare.queueName),
 			dlqName: optionalString(cloudflare.dlqName),
@@ -398,8 +574,8 @@ function parseFallbackDeployConfig(configPath) {
 			pages: cloudflare.pages === undefined
 				? undefined
 				: {
-					projectName: optionalString(cloudflarePages.projectName) ?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME),
-					previewProjectName: optionalString(cloudflarePages.previewProjectName) ?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME),
+					projectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME) ?? optionalString(cloudflarePages.projectName),
+					previewProjectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME) ?? optionalString(cloudflarePages.previewProjectName),
 					productionBranch: optionalString(cloudflarePages.productionBranch) ?? 'main',
 					stagingBranch: optionalString(cloudflarePages.stagingBranch) ?? 'staging',
 					buildOutputDir: optionalString(cloudflarePages.buildOutputDir),
@@ -407,9 +583,9 @@ function parseFallbackDeployConfig(configPath) {
 			r2: cloudflare.r2 === undefined
 				? undefined
 				: {
-					binding: optionalString(cloudflareR2.binding) ?? optionalString(process.env.TREESEED_CONTENT_BUCKET_BINDING),
-					bucketName: optionalString(cloudflareR2.bucketName) ?? optionalString(process.env.TREESEED_CONTENT_BUCKET_NAME),
-					publicBaseUrl: optionalString(cloudflareR2.publicBaseUrl) ?? optionalString(process.env.TREESEED_CONTENT_PUBLIC_BASE_URL),
+					binding: optionalString(process.env.TREESEED_CONTENT_BUCKET_BINDING),
+					bucketName: optionalString(process.env.TREESEED_CONTENT_BUCKET_NAME),
+					publicBaseUrl: optionalString(process.env.TREESEED_CONTENT_PUBLIC_BASE_URL),
 					manifestKeyTemplate: optionalString(cloudflareR2.manifestKeyTemplate ?? cloudflareR2.manifestKey) ?? 'teams/{teamId}/published/common.json',
 					previewRootTemplate: optionalString(cloudflareR2.previewRootTemplate ?? cloudflareR2.previewRoot) ?? 'teams/{teamId}/previews',
 					previewTtlHours: optionalPositiveNumber(cloudflareR2.previewTtlHours, 'cloudflare.r2.previewTtlHours') ?? 168,
@@ -445,15 +621,21 @@ function parseFallbackDeployConfig(configPath) {
 						?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime,
 					'providers.content.docs',
 				),
+				serving: optionalEnum(
+					contentProviders.serving,
+					'providers.content.serving',
+					['local_collections', 'published_runtime'],
+				) ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.serving,
 			},
 			site: expectString(record.providers?.site ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.site, 'providers.site'),
 		},
-		services: parseManagedServicesConfig(record.services),
+		surfaces: parsePlatformSurfacesConfig(record.surfaces),
+		services,
 		smtp: {
 			enabled: optionalBoolean(smtp.enabled, 'smtp.enabled'),
 		},
 		turnstile: {
-			enabled: optionalBoolean(turnstile.enabled, 'turnstile.enabled') ?? true,
+			enabled: optionalBoolean(turnstile.enabled, 'turnstile.enabled') ?? false,
 		},
 	};
 

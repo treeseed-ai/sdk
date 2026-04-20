@@ -98,7 +98,7 @@ jobs:
               while IFS= read -r path; do
                 [[ -z "${path}" ]] && continue
                 case "${path}" in
-                  src/content/*|content/*|books/*|docs/*|public/books/*|migrations/*)
+                  src/content/*|content/*|books/*|docs/*|migrations/*)
                     content_changed="true"
                     ;;
                   *)
@@ -287,6 +287,7 @@ __WORKING_DIRECTORY_BLOCK__
       TREESEED_RAILWAY_PROJECT_ID: ${{ vars.TREESEED_RAILWAY_PROJECT_ID }}
       TREESEED_RAILWAY_ENVIRONMENT_ID: ${{ vars.TREESEED_RAILWAY_ENVIRONMENT_ID }}
       TREESEED_RAILWAY_WORKER_SERVICE_ID: ${{ vars.TREESEED_RAILWAY_WORKER_SERVICE_ID }}
+      TREESEED_CONTENT_SERVING_MODE: published_runtime
       TREESEED_WORKFLOW_ACTION: deploy_code
       TREESEED_WORKFLOW_ENVIRONMENT: ${{ needs.classify.outputs.scope }}
       TREESEED_WORKFLOW_PROJECT: ${{ inputs.project_id || vars.TREESEED_PROJECT_ID }}
@@ -294,6 +295,15 @@ __WORKING_DIRECTORY_BLOCK__
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: false
+          sparse-checkout: |
+            /*
+            !/src/content/
+            !/src/content/**
+            !/public/books/
+            !/public/books/**
+          sparse-checkout-cone-mode: false
 
       - name: Setup Node
         uses: actions/setup-node@v4

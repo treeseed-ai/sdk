@@ -5,12 +5,14 @@ contactEmail: __CONTACT_EMAIL__
 hosting:
   kind: hosted_project
   registration: optional
-  marketBaseUrl: https://api.treeseed.ai
+  marketBaseUrl: https://knowledge.coop
   teamId: __SITE_SLUG__
   projectId: __SITE_SLUG__
 cloudflare:
   accountId: replace-with-cloudflare-account-id
   workerName: __SITE_SLUG__
+  queueName: __SITE_SLUG__-agent-work
+  dlqName: __SITE_SLUG__-agent-work-dlq
   pages:
     projectName: __SITE_SLUG__
     previewProjectName: __SITE_SLUG__-staging
@@ -23,17 +25,77 @@ cloudflare:
     manifestKeyTemplate: teams/{teamId}/published/common.json
     previewRootTemplate: teams/{teamId}/previews
     previewTtlHours: 168
+surfaces:
+  web:
+    enabled: true
+    provider: cloudflare
+    rootDir: .
+    publicBaseUrl: https://__SITE_SLUG__.pages.dev
+    localBaseUrl: http://127.0.0.1:4321
+  api:
+    enabled: true
+    provider: railway
+    rootDir: .
+    localBaseUrl: http://127.0.0.1:3000
+services:
+  api:
+    enabled: true
+    provider: railway
+    rootDir: .
+    publicBaseUrl: https://__SITE_SLUG__-api.up.railway.app
+    railway:
+      serviceName: __SITE_SLUG__-api
+      buildCommand: npm run build
+      startCommand: node ./src/api/server.js
+    environments:
+      local:
+        baseUrl: http://127.0.0.1:3000
+  manager:
+    enabled: true
+    provider: railway
+    railway:
+      serviceName: __SITE_SLUG__-manager
+      rootDir: .
+      buildCommand: npm run build
+      startCommand: node ./node_modules/@treeseed/core/dist/services/manager.js
+      schedule: '*/5 * * * *'
+  worker:
+    enabled: true
+    provider: railway
+    railway:
+      serviceName: __SITE_SLUG__-worker
+      rootDir: .
+      buildCommand: npm run build
+      startCommand: node ./node_modules/@treeseed/core/dist/services/worker.js
+  workdayStart:
+    enabled: true
+    provider: railway
+    railway:
+      serviceName: __SITE_SLUG__-workday-start
+      rootDir: .
+      buildCommand: npm run build
+      startCommand: node ./node_modules/@treeseed/core/dist/services/workday-start.js
+      schedule: '0 9 * * 1-5'
+  workdayReport:
+    enabled: true
+    provider: railway
+    railway:
+      serviceName: __SITE_SLUG__-workday-report
+      rootDir: .
+      buildCommand: npm run build
+      startCommand: node ./node_modules/@treeseed/core/dist/services/workday-report.js
+      schedule: '5 17 * * 1-5'
 plugins:
-  - package: '@treeseed/sdk/plugin-default'
+  - package: '@treeseed/core/plugin-default'
 providers:
   forms: store_only
   agents:
-    execution: stub
+    execution: copilot
     mutation: local_branch
-    repository: stub
-    verification: stub
-    notification: stub
-    research: stub
+    repository: git
+    verification: local
+    notification: sdk_message
+    research: project_graph
   deploy: cloudflare
   content:
     runtime: team_scoped_r2_overlay

@@ -80,7 +80,6 @@ function runTenantBuildCycle({ includePackageBuild = false, includeSdkBuild = fa
 	const buildScripts = [
 		['patch-starlight-content-path', []],
 		['aggregate-book', []],
-		['sync-dev-vars', envOverrides],
 		['tenant-d1-migrate-local', []],
 	];
 

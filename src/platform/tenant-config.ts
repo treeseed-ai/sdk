@@ -30,6 +30,8 @@ const manifestContentFieldAliases: TreeseedFieldAliasRegistry = {
 	notes: { key: 'notes', aliases: ['notes_root'] },
 	questions: { key: 'questions', aliases: ['questions_root'] },
 	objectives: { key: 'objectives', aliases: ['objectives_root'] },
+	proposals: { key: 'proposals', aliases: ['proposals_root'] },
+	decisions: { key: 'decisions', aliases: ['decisions_root'] },
 	people: { key: 'people', aliases: ['people_root'] },
 	agents: { key: 'agents', aliases: ['agents_root'] },
 	books: { key: 'books', aliases: ['books_root'] },
@@ -236,6 +238,8 @@ const MODEL_FEATURE_MAP: Partial<Record<TreeseedContentCollection, TreeseedFeatu
 	notes: 'notes',
 	questions: 'questions',
 	objectives: 'objectives',
+	proposals: 'proposals',
+	decisions: 'decisions',
 	agents: 'agents',
 };
 

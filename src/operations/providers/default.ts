@@ -16,8 +16,17 @@ import type {
 } from '../../operations-types.ts';
 import {
 	clearTreeseedRemoteSession,
+	inspectTreeseedKeyAgentStatus,
+	lockTreeseedSecretSession,
+	migrateTreeseedMachineKeyToWrapped,
+	resolveTreeseedLaunchEnvironment,
 	resolveTreeseedRemoteConfig,
+	rotateTreeseedMachineKey,
+	rotateTreeseedMachineKeyPassphrase,
 	setTreeseedRemoteSession,
+	TREESEED_MACHINE_KEY_PASSPHRASE_ENV,
+	TreeseedKeyAgentError,
+	unlockTreeseedSecretSessionFromEnv,
 } from '../../operations/services/config-runtime.ts';
 import {
 	createPersistentDeployTarget,
@@ -48,6 +57,7 @@ import {
 	syncTemplateProject,
 	validateTemplateProduct,
 } from '../../operations/services/template-registry.ts';
+import { validateKnowledgeCoopManagedLaunchPrerequisites } from '../../operations/services/knowledge-coop-launch.ts';
 import {
 	collectCliPreflight,
 	formatCliPreflightReport,
@@ -91,6 +101,13 @@ function contextEnv(context: TreeseedOperationContext) {
 	return { ...process.env, ...(context.env ?? {}) };
 }
 
+function operationEnv(context: TreeseedOperationContext) {
+	const tenantConfigPath = resolve(context.cwd, 'treeseed.site.yaml');
+	return existsSync(tenantConfigPath)
+		? resolveTreeseedLaunchEnvironment({ tenantRoot: context.cwd, scope: 'local', baseEnv: contextEnv(context) })
+		: contextEnv(context);
+}
+
 function runNodeScript(
 	metadata: TreeseedOperationMetadata,
 	scriptName: string,
@@ -100,7 +117,7 @@ function runNodeScript(
 	if (context.spawn) {
 		const result = context.spawn(process.execPath, [packageScriptPath(scriptName), ...args], {
 			cwd: context.cwd,
-			env: contextEnv(context),
+			env: operationEnv(context),
 			stdio: 'inherit',
 		});
 		return operationResult(metadata, {
@@ -113,7 +130,7 @@ function runNodeScript(
 	}
 	const result = spawnSync(process.execPath, [packageScriptPath(scriptName), ...args], {
 		cwd: context.cwd,
-		env: contextEnv(context),
+		env: operationEnv(context),
 		encoding: 'utf8',
 		stdio: 'pipe',
 	});
@@ -229,16 +246,37 @@ class PreflightOperation extends BaseOperation<{ requireAuth?: boolean }> {
 		super(name);
 	}
 
-	async execute(input: { requireAuth?: boolean }, context: TreeseedOperationContext) {
+	async execute(input: { requireAuth?: boolean; launch?: boolean; managedLaunch?: boolean }, context: TreeseedOperationContext) {
 		const report = collectCliPreflight({
 			cwd: context.cwd,
 			requireAuth: input.requireAuth ?? this.requireAuth,
 		});
+		const launch = input.launch === true || input.managedLaunch === true
+			? validateKnowledgeCoopManagedLaunchPrerequisites(context.cwd)
+			: null;
 		const stdout = [formatCliPreflightReport(report)];
+		if (launch) {
+			stdout.push(
+				'',
+				'Knowledge Coop managed launch preflight',
+				`- ok: ${launch.ok ? 'yes' : 'no'}`,
+				`- commands: git=${launch.commands.git ? 'ok' : 'missing'}, gh=${launch.commands.gh ? 'ok' : 'missing'}, wrangler=${launch.commands.wrangler ? 'ok' : 'missing'}, railway=${launch.commands.railway ? 'ok' : 'missing'}`,
+			);
+			if (launch.missingConfig.length > 0) {
+				stdout.push(...launch.missingConfig.map((item) => `- missing config: ${item}`));
+			}
+			if (launch.providerChecks.issues.length > 0) {
+				stdout.push(...launch.providerChecks.issues.map((item) => `- provider issue: ${item}`));
+			}
+		}
 		for (const line of stdout) context.write?.(line, 'stdout');
-		return operationResult(this.metadata, report, {
-			ok: report.ok,
-			exitCode: report.ok ? 0 : 1,
+		const ok = report.ok && (!launch || launch.ok);
+		return operationResult(this.metadata, {
+			...report,
+			launch,
+		}, {
+			ok,
+			exitCode: ok ? 0 : 1,
 			stdout,
 			stderr: [],
 		});
@@ -394,6 +432,93 @@ class AuthWhoAmIOperation extends BaseOperation {
 	}
 }
 
+class SecretsStatusOperation extends BaseOperation {
+	async execute(_input: Record<string, unknown>, context: TreeseedOperationContext) {
+		return operationResult(this.metadata, {
+			status: inspectTreeseedKeyAgentStatus(context.cwd),
+		});
+	}
+}
+
+class SecretsUnlockOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+		try {
+			const status = unlockTreeseedSecretSessionFromEnv(context.cwd, {
+				allowMigration: input.allowMigration !== false,
+				createIfMissing: input.createIfMissing !== false,
+			});
+			return operationResult(this.metadata, { status });
+		} catch (error) {
+			if (error instanceof TreeseedKeyAgentError) {
+				return failureResult(this.metadata, error.message, { meta: { code: error.code, details: error.details ?? null } });
+			}
+			throw error;
+		}
+	}
+}
+
+class SecretsLockOperation extends BaseOperation {
+	async execute(_input: Record<string, unknown>, context: TreeseedOperationContext) {
+		try {
+			return operationResult(this.metadata, {
+				status: lockTreeseedSecretSession(context.cwd),
+			});
+		} catch (error) {
+			if (error instanceof TreeseedKeyAgentError) {
+				return failureResult(this.metadata, error.message, { meta: { code: error.code, details: error.details ?? null } });
+			}
+			throw error;
+		}
+	}
+}
+
+class SecretsMigrateKeyOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+		const passphrase = String(input.passphrase ?? context.env?.[TREESEED_MACHINE_KEY_PASSPHRASE_ENV] ?? '').trim();
+		if (!passphrase) {
+			return failureResult(this.metadata, `Set ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV} or pass { passphrase } when migrating the machine key.`);
+		}
+		try {
+			return operationResult(this.metadata, migrateTreeseedMachineKeyToWrapped(context.cwd, passphrase));
+		} catch (error) {
+			if (error instanceof TreeseedKeyAgentError) {
+				return failureResult(this.metadata, error.message, { meta: { code: error.code, details: error.details ?? null } });
+			}
+			throw error;
+		}
+	}
+}
+
+class SecretsRotatePassphraseOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+		const passphrase = String(input.passphrase ?? context.env?.[TREESEED_MACHINE_KEY_PASSPHRASE_ENV] ?? '').trim();
+		if (!passphrase) {
+			return failureResult(this.metadata, `Set ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV} or pass { passphrase } when rotating the wrapped-key passphrase.`);
+		}
+		try {
+			return operationResult(this.metadata, rotateTreeseedMachineKeyPassphrase(context.cwd, passphrase));
+		} catch (error) {
+			if (error instanceof TreeseedKeyAgentError) {
+				return failureResult(this.metadata, error.message, { meta: { code: error.code, details: error.details ?? null } });
+			}
+			throw error;
+		}
+	}
+}
+
+class SecretsRotateMachineKeyOperation extends BaseOperation {
+	async execute(_input: Record<string, unknown>, context: TreeseedOperationContext) {
+		try {
+			return operationResult(this.metadata, rotateTreeseedMachineKey(context.cwd));
+		} catch (error) {
+			if (error instanceof TreeseedKeyAgentError) {
+				return failureResult(this.metadata, error.message, { meta: { code: error.code, details: error.details ?? null } });
+			}
+			throw error;
+		}
+	}
+}
+
 class RollbackOperation extends BaseOperation {
 	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
 		const scope = typeof input.environment === 'string' ? input.environment : null;
@@ -522,6 +647,12 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 			new AuthLoginOperation('auth:login'),
 			new AuthLogoutOperation('auth:logout'),
 			new AuthWhoAmIOperation('auth:whoami'),
+			new SecretsStatusOperation('secrets:status'),
+			new SecretsUnlockOperation('secrets:unlock'),
+			new SecretsLockOperation('secrets:lock'),
+			new SecretsMigrateKeyOperation('secrets:migrate-key'),
+			new SecretsRotatePassphraseOperation('secrets:rotate-passphrase'),
+			new SecretsRotateMachineKeyOperation('secrets:rotate-machine-key'),
 			new RollbackOperation('rollback'),
 			new ScriptOperation('build', 'tenant-build'),
 			new ScriptOperation('check', 'tenant-check'),
@@ -539,7 +670,6 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 			new ScriptOperation('test:release:full', 'workspace-release-verify', ['--full-smoke']),
 			new ScriptOperation('release:publish:changed', 'workspace-publish-changed-packages'),
 			new ScriptOperation('astro', 'tenant-astro-command'),
-			new ScriptOperation('sync:devvars', 'sync-dev-vars'),
 			new MailpitUpOperation('mailpit:up'),
 			new MailpitDownOperation('mailpit:down'),
 			new MailpitLogsOperation('mailpit:logs'),

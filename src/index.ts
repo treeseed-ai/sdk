@@ -4,6 +4,25 @@ export { projectConnectionModeFromHosting } from './sdk-types.ts';
 export { createControlPlaneReporter } from './control-plane.ts';
 export { ControlPlaneClient } from './control-plane-client.ts';
 export {
+	executeKnowledgeCoopManagedLaunch,
+	validateKnowledgeCoopManagedLaunchPrerequisites,
+} from './operations/services/knowledge-coop-launch.ts';
+export {
+	buildKnowledgeCoopKnowledgePackPackage,
+	buildKnowledgeCoopTemplatePackage,
+	importKnowledgeCoopKnowledgePack,
+} from './operations/services/knowledge-coop-packaging.ts';
+export {
+	KNOWLEDGE_COOP_AGENT_MESSAGE_KINDS,
+	KNOWLEDGE_COOP_JOB_STATUSES,
+	KNOWLEDGE_COOP_RELEASE_STATES,
+	KNOWLEDGE_COOP_SHARE_PACKAGE_STATES,
+	KNOWLEDGE_COOP_TEAM_CAPABILITIES,
+	KNOWLEDGE_COOP_WORKSTREAM_STATES,
+	normalizeKnowledgeCoopJobStatus,
+	normalizeRemoteJobStatus,
+} from './knowledge-coop.ts';
+export {
 	PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION,
 	EDITORIAL_PREVIEW_COOKIE,
 	TeamScopedR2OverlayContentRuntimeProvider,
@@ -98,6 +117,33 @@ export { TreeseedOperationsSdk } from './operations/runtime.ts';
 export { TreeseedWorkflowSdk } from './workflow.ts';
 export { getTreeseedVerifyDriverStatus, runTreeseedVerifyDriver } from './verification.ts';
 export type {
+	KnowledgeCoopLaunchPreflightReport,
+	KnowledgeCoopLaunchFailurePhase,
+	KnowledgeCoopManagedLaunchInput,
+	KnowledgeCoopManagedLaunchResult,
+	AgentMessageKind,
+	AgentMessageRecord,
+	AgentStatusRecord,
+	DirectBoardItemSummary,
+	InboxItem,
+	KnowledgeCoopJobStatus,
+	LaunchProjectRequest,
+	LaunchProjectResult,
+	LinkedProjectRecordRef,
+	ProjectConnectionStatus,
+	ProjectOverviewSummary,
+	ReleaseDetail,
+	ReleaseState,
+	ReleaseSummary,
+	SharePackageState,
+	SharePackageStatus,
+	TeamCapability,
+	TeamHomeSummary,
+	TeamMemberSummary,
+	WorkstreamDetail,
+	WorkstreamEvent,
+	WorkstreamState,
+	WorkstreamSummary,
 	SdkContentEntry,
 	SdkDispatchCapability,
 	SdkDispatchConfig,
@@ -220,8 +266,9 @@ export type {
 		CreateProjectDeploymentRequest,
 		RecordAgentPoolRegistrationRequest,
 		WorkerPoolScaleResult,
-		WorkerPoolScaler,
+	WorkerPoolScaler,
 	} from './sdk-types.ts';
+export type * from './knowledge-coop.ts';
 export type {
 	ControlPlaneAgentPoolHeartbeat,
 	ControlPlaneDeploymentReport,

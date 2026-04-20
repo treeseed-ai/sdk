@@ -78,6 +78,7 @@
       "astro.config.ts",
       "tsconfig.json",
       "treeseed.site.yaml",
+      "src/api/server.js",
       "src/content.config.ts",
       "src/config.yaml",
       "src/manifest.yaml",

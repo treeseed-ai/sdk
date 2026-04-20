@@ -11,10 +11,11 @@ import {
 	deployTargetLabel,
 	ensureGeneratedWranglerConfig,
 	finalizeDeploymentState,
+	loadDeployState,
 	runRemoteD1Migrations,
 } from '../src/operations/services/deploy.ts';
 import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from '../src/operations/services/git-workflow.ts';
-import { packageScriptPath, resolveWranglerBin } from '../src/operations/services/runtime-tools.ts';
+import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin } from '../src/operations/services/runtime-tools.ts';
 import { runTenantDeployPreflight } from '../src/operations/services/save-deploy-preflight.ts';
 
 const tenantRoot = process.cwd();
@@ -132,6 +133,31 @@ function runWranglerDeploy(configPath) {
 	}
 }
 
+function runWranglerPagesDeploy(projectName, branchName, outputDir = 'dist') {
+	const args = [
+		resolveWranglerBin(),
+		'pages',
+		'deploy',
+		outputDir,
+		'--project-name',
+		projectName,
+	];
+
+	if (branchName) {
+		args.push('--branch', branchName);
+	}
+
+	const result = spawnSync(process.execPath, args, {
+		stdio: 'inherit',
+		cwd: tenantRoot,
+		env: { ...process.env },
+	});
+
+	if (result.status !== 0) {
+		process.exit(result.status ?? 1);
+	}
+}
+
 async function main() {
 	const options = parseArgs(args);
 	const { target, scope } = resolveTarget(options);
@@ -169,6 +195,16 @@ async function main() {
 	}
 
 	const { wranglerPath } = ensureGeneratedWranglerConfig(tenantRoot, { target });
+	const deployConfig = loadCliDeployConfig(tenantRoot);
+	const deployState = loadDeployState(tenantRoot, deployConfig, { target });
+	const pagesProjectName = target.kind === 'persistent' ? deployState.pages?.projectName ?? null : null;
+	const pagesBranchName = target.kind === 'persistent'
+		? (
+			target.scope === 'prod'
+				? deployState.pages?.productionBranch ?? 'main'
+				: deployState.pages?.stagingBranch ?? 'staging'
+		)
+		: null;
 
 	if (shouldRun('migrate')) {
 		const result = runRemoteD1Migrations(tenantRoot, { dryRun: options.dryRun, target });
@@ -185,9 +221,17 @@ async function main() {
 
 	if (shouldRun('publish')) {
 		if (options.dryRun) {
-			console.log(`Dry run: would deploy ${deployTargetLabel(target)} with generated Wrangler config at ${resolve(wranglerPath)}.`);
+			if (pagesProjectName) {
+				console.log(`Dry run: would deploy ${deployTargetLabel(target)} to Pages project ${pagesProjectName} from ${resolve(tenantRoot, 'dist')}.`);
+			} else {
+				console.log(`Dry run: would deploy ${deployTargetLabel(target)} with generated Wrangler config at ${resolve(wranglerPath)}.`);
+			}
 		} else {
-			runWranglerDeploy(wranglerPath);
+			if (pagesProjectName) {
+				runWranglerPagesDeploy(pagesProjectName, pagesBranchName, resolve(tenantRoot, 'dist'));
+			} else {
+				runWranglerDeploy(wranglerPath);
+			}
 			finalizeDeploymentState(tenantRoot, { target });
 		}
 	}

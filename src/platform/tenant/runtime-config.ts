@@ -24,6 +24,8 @@ function fallbackTenantConfig(projectRoot: string): TreeseedTenantConfig {
 			notes: resolve(projectRoot, 'src/content/notes'),
 			questions: resolve(projectRoot, 'src/content/questions'),
 			objectives: resolve(projectRoot, 'src/content/objectives'),
+			proposals: resolve(projectRoot, 'src/content/proposals'),
+			decisions: resolve(projectRoot, 'src/content/decisions'),
 				people: resolve(projectRoot, 'src/content/people'),
 				agents: resolve(projectRoot, 'src/content/agents'),
 				books: resolve(projectRoot, 'src/content/books'),
@@ -35,6 +37,11 @@ function fallbackTenantConfig(projectRoot: string): TreeseedTenantConfig {
 		features: {
 			docs: true,
 			books: true,
+			notes: true,
+			questions: true,
+			objectives: true,
+			proposals: true,
+			decisions: true,
 		},
 	};
 }

@@ -22,7 +22,7 @@ function defaultDeployConfig(): TreeseedDeployConfig {
 			enabled: false,
 		},
 		turnstile: {
-			enabled: true,
+			enabled: false,
 		},
 	};
 }
@@ -74,6 +74,15 @@ export function getTreeseedContentPublishProvider() {
 	return getTreeseedDeployConfig().providers?.content?.publish ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.publish;
 }
 
+export function getTreeseedContentServingMode() {
+	const override = process.env.TREESEED_CONTENT_SERVING_MODE?.trim();
+	if (override === 'local_collections' || override === 'published_runtime') {
+		return override;
+	}
+
+	return getTreeseedDeployConfig().providers?.content?.serving ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.serving;
+}
+
 export function getTreeseedDocsProvider() {
 	return getTreeseedDeployConfig().providers?.content?.docs
 		?? getTreeseedDeployConfig().providers?.content?.runtime
@@ -90,5 +99,5 @@ export function isTreeseedSmtpEnabled() {
 }
 
 export function isTreeseedTurnstileEnabled() {
-	return getTreeseedDeployConfig().turnstile?.enabled ?? true;
+	return getTreeseedDeployConfig().turnstile?.enabled ?? false;
 }

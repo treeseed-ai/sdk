@@ -4,9 +4,39 @@ import { spawnSync } from 'node:child_process';
 import { resolveTreeseedEnvironmentRegistry } from '../../platform/environment.ts';
 import { packageRoot, loadCliDeployConfig } from './runtime-tools.ts';
 
+export interface GitHubRepositoryProvisionInput {
+	owner: string;
+	name: string;
+	description?: string | null;
+	visibility?: 'private' | 'public' | 'internal';
+	homepageUrl?: string | null;
+	topics?: string[];
+}
+
+export interface GitHubProvisionedRepository {
+	slug: string;
+	owner: string;
+	name: string;
+	url: string;
+	sshUrl: string;
+	httpsUrl: string;
+	visibility: 'private' | 'public' | 'internal';
+	defaultBranch: string;
+}
+
 function envOrNull(key) {
 	const value = process.env[key];
 	return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function slugifySegment(value, fallback = 'project') {
+	return String(value ?? '')
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9-]+/g, '-')
+		.replace(/^-+|-+$/g, '')
+		.replace(/-{2,}/g, '-')
+		.slice(0, 96) || fallback;
 }
 
 export function getGitHubAutomationMode() {
@@ -77,6 +107,30 @@ function sleepSeconds(seconds) {
 	});
 }
 
+function resolveGitHubRemoteUrls(owner, name) {
+	const normalizedOwner = slugifySegment(owner, 'owner');
+	const normalizedName = slugifySegment(name, 'repo');
+	return {
+		slug: `${normalizedOwner}/${normalizedName}`,
+		owner: normalizedOwner,
+		name: normalizedName,
+		sshUrl: `git@github.com:${normalizedOwner}/${normalizedName}.git`,
+		httpsUrl: `https://github.com/${normalizedOwner}/${normalizedName}.git`,
+		url: `https://github.com/${normalizedOwner}/${normalizedName}`,
+	};
+}
+
+function ensureGitIdentity(cwd) {
+	const currentName = runGit(['config', '--get', 'user.name'], { cwd, allowFailure: true }).stdout?.trim() ?? '';
+	const currentEmail = runGit(['config', '--get', 'user.email'], { cwd, allowFailure: true }).stdout?.trim() ?? '';
+	if (!currentName) {
+		runGit(['config', 'user.name', envOrNull('TREESEED_GITHUB_COMMITTER_NAME') ?? 'Treeseed Launch'], { cwd });
+	}
+	if (!currentEmail) {
+		runGit(['config', 'user.email', envOrNull('TREESEED_GITHUB_COMMITTER_EMAIL') ?? 'launch@knowledge.coop'], { cwd });
+	}
+}
+
 export function resolveGitHubRepositorySlug(tenantRoot) {
 	const remoteResult = runGit(['remote', 'get-url', 'origin'], { cwd: tenantRoot });
 	const remoteUrl = remoteResult.stdout?.trim() ?? '';
@@ -93,6 +147,126 @@ export function maybeResolveGitHubRepositorySlug(tenantRoot) {
 	} catch {
 		return null;
 	}
+}
+
+export function resolveDefaultGitHubOwner() {
+	const explicit = envOrNull('TREESEED_KNOWLEDGE_COOP_GITHUB_OWNER');
+	if (explicit) {
+		return explicit;
+	}
+	try {
+		const repository = maybeResolveGitHubRepositorySlug(process.cwd());
+		if (repository?.includes('/')) {
+			return repository.split('/')[0];
+		}
+	} catch {
+		// Ignore local remote resolution failures.
+	}
+	return 'treeseed-ai';
+}
+
+export function createGitHubRepository(input) {
+	const visibility = input.visibility ?? 'private';
+	const remotes = resolveGitHubRemoteUrls(input.owner, input.name);
+	if (isGitHubAutomationStubbed()) {
+		return {
+			...remotes,
+			visibility,
+			defaultBranch: 'main',
+			mode: 'stub',
+		};
+	}
+
+	const existing = runGh(['repo', 'view', remotes.slug, '--json', 'name,owner,url,isPrivate,defaultBranchRef,visibility'], {
+		allowFailure: true,
+	});
+	if (existing.status !== 0) {
+		const args = ['repo', 'create', remotes.slug, '--disable-wiki', '--confirm'];
+		if (visibility === 'public') {
+			args.push('--public');
+		} else if (visibility === 'internal') {
+			args.push('--internal');
+		} else {
+			args.push('--private');
+		}
+		if (input.description) {
+			args.push('--description', input.description);
+		}
+		if (input.homepageUrl) {
+			args.push('--homepage', input.homepageUrl);
+		}
+		runGh(args, { capture: false });
+	}
+	if (Array.isArray(input.topics) && input.topics.length > 0) {
+		runGh(
+			['repo', 'edit', remotes.slug, ...input.topics.flatMap((topic) => ['--add-topic', slugifySegment(topic, 'treeseed')])],
+			{ capture: false },
+		);
+	}
+	const viewed = runGh(['repo', 'view', remotes.slug, '--json', 'name,owner,url,isPrivate,defaultBranchRef,visibility'], {});
+	const payload = JSON.parse(viewed.stdout || '{}');
+	return {
+		...remotes,
+		owner: String(payload.owner?.login ?? remotes.owner),
+		name: String(payload.name ?? remotes.name),
+		url: String(payload.url ?? remotes.url),
+		visibility: String(payload.visibility ?? (payload.isPrivate === true ? 'private' : visibility)),
+		defaultBranch: String(payload.defaultBranchRef?.name ?? 'main'),
+	};
+}
+
+export function initializeGitHubRepositoryWorkingTree(
+	cwd,
+	repository,
+	{
+		defaultBranch = 'main',
+		createStaging = true,
+		commitMessage = 'Initialize Knowledge Coop hub',
+		remoteName = 'origin',
+		push = true,
+	} = {},
+) {
+	if (isGitHubAutomationStubbed()) {
+		return {
+			repository,
+			remoteName,
+			defaultBranch,
+			stagingBranch: createStaging ? 'staging' : null,
+			pushed: false,
+			mode: 'stub',
+		};
+	}
+
+	runGit(['init', '-b', defaultBranch], { cwd, allowFailure: true });
+	ensureGitIdentity(cwd);
+	const currentRemote = runGit(['remote', 'get-url', remoteName], { cwd, allowFailure: true }).stdout?.trim() ?? '';
+	if (!currentRemote) {
+		runGit(['remote', 'add', remoteName, repository.sshUrl], { cwd });
+	} else if (currentRemote !== repository.sshUrl && currentRemote !== repository.httpsUrl) {
+		runGit(['remote', 'set-url', remoteName, repository.sshUrl], { cwd });
+	}
+	runGit(['add', '-A'], { cwd });
+	const hasChanges = runGit(['status', '--porcelain'], { cwd }).stdout?.trim().length > 0;
+	if (hasChanges) {
+		runGit(['commit', '-m', commitMessage], { cwd });
+	}
+	if (push) {
+		runGit(['push', '-u', remoteName, defaultBranch], { cwd, capture: false });
+	}
+	if (createStaging) {
+		runGit(['checkout', '-B', 'staging'], { cwd });
+		if (push) {
+			runGit(['push', '-u', remoteName, 'staging'], { cwd, capture: false });
+		}
+		runGit(['checkout', defaultBranch], { cwd });
+	}
+	return {
+		repository,
+		remoteName,
+		defaultBranch,
+		stagingBranch: createStaging ? 'staging' : null,
+		pushed: push,
+	};
 }
 
 export function resolveGitRepositoryRoot(tenantRoot) {

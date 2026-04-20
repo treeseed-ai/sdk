@@ -112,6 +112,21 @@ export type TreeseedTaskBranchMetadata = ReturnType<typeof listTaskBranches>[num
 	}>;
 };
 
+export type TreeseedWorkflowWorkstreamSummary = {
+	id: string;
+	title: string;
+	linkedDirectRefs: Array<{ model: 'objective' | 'question' | 'note'; id: string }>;
+	branch: string;
+	local: boolean;
+	remote: boolean;
+	current: boolean;
+	previewUrl: string | null;
+	lastSaveAt: string | null;
+	verificationResult: 'ready' | 'needs_attention' | 'unknown';
+	stagingCandidate: boolean;
+	archived: boolean;
+};
+
 export type TreeseedSaveInput = {
 	message: string;
 	hotfix?: boolean;
@@ -165,6 +180,16 @@ export type TreeseedConfigInput = {
 	printEnvOnly?: boolean;
 	showSecrets?: boolean;
 	rotateMachineKey?: boolean;
+	connectMarket?: boolean;
+	marketBaseUrl?: string;
+	marketTeamId?: string;
+	marketTeamSlug?: string;
+	marketProjectId?: string;
+	marketProjectSlug?: string;
+	marketProjectApiBaseUrl?: string;
+	marketAccessToken?: string;
+	rotateRunnerToken?: boolean;
+	installMissingTooling?: boolean;
 	nonInteractive?: boolean;
 };
 
@@ -267,7 +292,7 @@ export class TreeseedWorkflowSdk {
 		return workflowStatus(this.helpers());
 	}
 
-	async tasks(): Promise<TreeseedWorkflowResult<{ tasks: TreeseedTaskBranchMetadata[] }>> {
+	async tasks(): Promise<TreeseedWorkflowResult<{ tasks: TreeseedTaskBranchMetadata[]; workstreams: TreeseedWorkflowWorkstreamSummary[] }>> {
 		return workflowTasks(this.helpers());
 	}
 

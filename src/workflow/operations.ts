@@ -10,16 +10,21 @@ import {
 	collectTreeseedConfigContext,
 	collectTreeseedPrintEnvReport,
 	createDefaultTreeseedMachineConfig,
+	ensureTreeseedSecretSessionForConfig,
 	ensureTreeseedActVerificationTooling,
 	ensureTreeseedGitignoreEntries,
 	finalizeTreeseedConfig,
 	getTreeseedMachineConfigPaths,
+	inspectTreeseedKeyAgentStatus,
 	loadTreeseedMachineConfig,
+	resolveTreeseedLaunchEnvironment,
 	resolveTreeseedMachineEnvironmentValues,
+	resolveTreeseedRemoteSession,
 	rotateTreeseedMachineKey,
-	writeTreeseedLocalEnvironmentFiles,
+	setTreeseedRemoteSession,
 	writeTreeseedMachineConfig,
 } from '../operations/services/config-runtime.ts';
+import { ControlPlaneClient } from '../control-plane-client.ts';
 import { exportTreeseedCodebase } from '../operations/services/export-runtime.ts';
 import {
 	assertDeploymentInitialized,
@@ -440,7 +445,20 @@ function createStatusResult(cwd: string): TreeseedWorkflowResult<ReturnType<type
 	});
 }
 
-function createTasksResult(cwd: string): TreeseedWorkflowResult<{ tasks: TreeseedTaskBranchMetadata[] }> {
+function createTasksResult(cwd: string): TreeseedWorkflowResult<{ tasks: TreeseedTaskBranchMetadata[]; workstreams: Array<{
+	id: string;
+	title: string;
+	linkedDirectRefs: Array<{ model: 'objective' | 'question' | 'note'; id: string }>;
+	branch: string;
+	local: boolean;
+	remote: boolean;
+	current: boolean;
+	previewUrl: string | null;
+	lastSaveAt: string | null;
+	verificationResult: 'ready' | 'needs_attention' | 'unknown';
+	stagingCandidate: boolean;
+	archived: boolean;
+}> }> {
 	const tenantRoot = cwd;
 	const repoDir = gitWorkflowRoot(tenantRoot);
 	const deployConfig = loadCliDeployConfig(tenantRoot);
@@ -476,7 +494,211 @@ function createTasksResult(cwd: string): TreeseedWorkflowResult<{ tasks: Treesee
 			packages,
 		};
 	});
-	return buildWorkflowResult('tasks', cwd, { tasks }, { includeFinalState: false });
+	const workstreams = tasks.map((task) => ({
+		id: task.name,
+		title: task.name.replace(/^task\//u, '').replace(/[-_]+/gu, ' '),
+		linkedDirectRefs: [],
+		branch: task.name,
+		local: task.local,
+		remote: task.remote,
+		current: task.current,
+		previewUrl: task.preview.url,
+		lastSaveAt: task.lastCommitDate ?? null,
+		verificationResult: task.dirtyCurrent ? 'needs_attention' : task.head ? 'ready' : 'unknown',
+		stagingCandidate: task.name === STAGING_BRANCH,
+		archived: false,
+	}));
+	return buildWorkflowResult('tasks', cwd, { tasks, workstreams }, { includeFinalState: false });
+}
+
+function normalizeOptionalString(value: unknown) {
+	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+async function connectTreeseedMarketProject(
+	helpers: WorkflowOperationHelpers,
+	tenantRoot: string,
+	input: TreeseedConfigInput,
+	context: {
+		scopes: ReturnType<typeof normalizeConfigScopes>;
+		sync: TreeseedConfigInput['sync'];
+		repairs: unknown[];
+		preflight: ReturnType<typeof collectCliPreflight>;
+		toolHealth: ReturnType<typeof ensureTreeseedActVerificationTooling>;
+	},
+) {
+	const machineConfig = loadTreeseedMachineConfig(tenantRoot) as Record<string, any>;
+	const marketSettings = machineConfig.settings?.market && typeof machineConfig.settings.market === 'object'
+		? machineConfig.settings.market as Record<string, unknown>
+		: {};
+	const remoteSettings = machineConfig.settings?.remote && typeof machineConfig.settings.remote === 'object'
+		? machineConfig.settings.remote as Record<string, any>
+		: { activeHostId: 'official', executionMode: 'prefer-local', hosts: [] };
+
+	const baseUrl = normalizeOptionalString(input.marketBaseUrl)
+		?? normalizeOptionalString(marketSettings.baseUrl)
+		?? normalizeOptionalString(remoteSettings.hosts?.find?.((entry: Record<string, unknown>) => entry?.official === true)?.baseUrl)
+		?? normalizeOptionalString(remoteSettings.hosts?.find?.((entry: Record<string, unknown>) => entry?.id === remoteSettings.activeHostId)?.baseUrl);
+	if (!baseUrl) {
+		workflowError(
+			'config',
+			'validation_failed',
+			'Treeseed config --connect-market requires a market base URL. Pass --market-base-url or configure an authenticated remote host first.',
+		);
+	}
+
+	const hostId = normalizeOptionalString(marketSettings.hostId) ?? 'knowledge-coop';
+	const activeRemoteSession = resolveTreeseedRemoteSession(tenantRoot, hostId)
+		?? resolveTreeseedRemoteSession(tenantRoot, remoteSettings.activeHostId)
+		?? resolveTreeseedRemoteSession(tenantRoot, 'official');
+	const accessToken = normalizeOptionalString(input.marketAccessToken) ?? normalizeOptionalString(activeRemoteSession?.accessToken);
+	if (!accessToken) {
+		workflowError(
+			'config',
+			'validation_failed',
+			'Treeseed config --connect-market requires a market access token. Authenticate to the Knowledge Coop control-plane first or pass --market-access-token.',
+		);
+	}
+
+	const projectId = normalizeOptionalString(input.marketProjectId) ?? normalizeOptionalString(marketSettings.projectId);
+	if (!projectId) {
+		workflowError(
+			'config',
+			'validation_failed',
+			'Treeseed config --connect-market requires --market-project-id or an existing settings.market.projectId value.',
+		);
+	}
+
+	const teamId = normalizeOptionalString(input.marketTeamId) ?? normalizeOptionalString(marketSettings.teamId);
+	const projectSlug = normalizeOptionalString(input.marketProjectSlug)
+		?? normalizeOptionalString(marketSettings.projectSlug)
+		?? normalizeOptionalString(machineConfig.project?.slug)
+		?? projectId;
+	const teamSlug = normalizeOptionalString(input.marketTeamSlug) ?? normalizeOptionalString(marketSettings.teamSlug);
+	const projectApiBaseUrl = normalizeOptionalString(input.marketProjectApiBaseUrl) ?? normalizeOptionalString(marketSettings.projectApiBaseUrl);
+
+	const client = new ControlPlaneClient({
+		baseUrl,
+		accessToken,
+	});
+
+	const connectionResult = await client.upsertProjectConnection(projectId, {
+		mode: 'hybrid',
+		projectApiBaseUrl,
+		executionOwner: 'project_runner',
+		metadata: {
+			pairingSource: 'treeseed_config_connect_market',
+			tenantRoot,
+			tenantSlug: normalizeOptionalString(machineConfig.project?.slug),
+			repoSlug: normalizeOptionalString(machineConfig.project?.slug),
+			teamId,
+			teamSlug,
+			projectSlug,
+			connectedAt: new Date().toISOString(),
+		},
+		rotateRunnerToken: input.rotateRunnerToken === true,
+	});
+
+	const hosts = Array.isArray(remoteSettings.hosts) ? [...remoteSettings.hosts] : [];
+	const updatedHost = {
+		id: hostId,
+		label: 'Knowledge Coop',
+		baseUrl,
+		official: false,
+	};
+	const existingHostIndex = hosts.findIndex((entry) =>
+		String(entry?.id ?? '') === hostId || String(entry?.baseUrl ?? '').replace(/\/+$/u, '') === baseUrl.replace(/\/+$/u, ''),
+	);
+	if (existingHostIndex >= 0) {
+		hosts.splice(existingHostIndex, 1, {
+			...hosts[existingHostIndex],
+			...updatedHost,
+		});
+	} else {
+		hosts.unshift(updatedHost);
+	}
+
+	if (normalizeOptionalString(input.marketAccessToken)) {
+		setTreeseedRemoteSession(tenantRoot, {
+			hostId,
+			accessToken,
+			refreshToken: activeRemoteSession?.refreshToken ?? '',
+			expiresAt: activeRemoteSession?.expiresAt ?? '',
+			principal: activeRemoteSession?.principal ?? null,
+		});
+	}
+
+	const runnerHostId = `market-runner:${projectId}`;
+	if (connectionResult.runnerToken) {
+		setTreeseedRemoteSession(tenantRoot, {
+			hostId: runnerHostId,
+			accessToken: connectionResult.runnerToken,
+			refreshToken: '',
+			expiresAt: '',
+			principal: {
+				id: `runner:${projectId}`,
+				displayName: 'Knowledge Coop Project Runner',
+				scopes: [],
+				roles: ['project_runner'],
+				permissions: [],
+				metadata: { projectId },
+			},
+		});
+	}
+
+	machineConfig.settings.remote = {
+		...remoteSettings,
+		activeHostId: hostId,
+		hosts,
+	};
+	machineConfig.settings.market = {
+		baseUrl,
+		hostId,
+		teamId,
+		teamSlug,
+		projectId,
+		projectSlug,
+		projectApiBaseUrl: connectionResult.connection?.projectApiBaseUrl ?? projectApiBaseUrl ?? null,
+		connectionMode: connectionResult.connection?.mode ?? 'hybrid',
+		executionOwner: connectionResult.connection?.executionOwner ?? 'project_runner',
+		runnerHostId,
+		runnerReady: Boolean(connectionResult.runnerToken || resolveTreeseedRemoteSession(tenantRoot, runnerHostId)?.accessToken),
+		runnerRegisteredAt: connectionResult.connection?.runnerRegisteredAt ?? null,
+		runnerLastSeenAt: connectionResult.connection?.runnerLastSeenAt ?? null,
+		launchPhase: null,
+		lastSuccessfulPhase: null,
+		githubRepository: null,
+		workflowBootstrapReady: false,
+		approvalBlockers: [],
+		connectedAt: new Date().toISOString(),
+	};
+	writeTreeseedMachineConfig(tenantRoot, machineConfig);
+
+	const { configPath, keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
+	return buildWorkflowResult(
+		'config',
+		tenantRoot,
+		{
+			mode: 'connect-market',
+			scopes: context.scopes,
+			sync: context.sync,
+			configPath,
+			keyPath,
+			repairs: context.repairs,
+			preflight: context.preflight,
+			toolHealth: context.toolHealth,
+			market: machineConfig.settings.market,
+			connection: connectionResult.connection,
+			runnerTokenIssued: Boolean(connectionResult.runnerToken),
+		},
+		{
+			summary: 'Knowledge Coop project pairing completed.',
+			nextSteps: createNextSteps([
+				{ operation: 'status', reason: 'Confirm the new market connection, runner health, and current workstream posture.' },
+				{ operation: 'tasks', reason: 'Inspect the branch-backed workstreams that will now sync into the Knowledge Coop UI.' },
+			]),
+		},
+	);
 }
 
 function maybePrint(write: WorkflowWrite, line: string, stream: 'stdout' | 'stderr' = 'stdout') {
@@ -1104,13 +1326,29 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 			const revealSecrets = input.showSecrets === true;
 			const printEnvOnly = input.printEnvOnly === true;
 			const rotateMachineKeyFlag = input.rotateMachineKey === true;
+			const connectMarketFlag = input.connectMarket === true;
+			const nonInteractive = input.nonInteractive === true;
 			const repairs = input.repair === false ? [] : (resolveTreeseedWorkflowState(tenantRoot).deployConfigPresent ? applyTreeseedSafeRepairs(tenantRoot) : []);
 			const toolHealth = ensureTreeseedActVerificationTooling({
 				tenantRoot,
-				installIfMissing: true,
+				installIfMissing: input.installMissingTooling === true,
 				env: helpers.context.env,
 				write: (line: string) => maybePrint(helpers.write, line),
 			});
+			const secretSession = (printEnvOnly && !revealSecrets)
+				? {
+					status: inspectTreeseedKeyAgentStatus(tenantRoot),
+					createdWrappedKey: false,
+					migratedWrappedKey: false,
+					unlockSource: 'existing-session' as const,
+				}
+				: await ensureTreeseedSecretSessionForConfig({
+					tenantRoot,
+					interactive: false,
+					env: helpers.context.env,
+					createIfMissing: true,
+					allowMigration: true,
+				});
 
 			ensureTreeseedGitignoreEntries(tenantRoot);
 			const preflight = collectCliPreflight({ cwd: tenantRoot, requireAuth: false });
@@ -1143,6 +1381,8 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 						repairs,
 						preflight,
 						toolHealth,
+						context: contextSnapshot,
+						secretSession,
 					},
 					{
 						nextSteps: createNextSteps([
@@ -1165,6 +1405,8 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 						repairs,
 						preflight,
 						toolHealth,
+						context: contextSnapshot,
+						secretSession,
 					},
 					{
 						nextSteps: createNextSteps([
@@ -1172,6 +1414,16 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 						]),
 					},
 				);
+			}
+
+			if (connectMarketFlag) {
+				return connectTreeseedMarketProject(helpers, tenantRoot, input, {
+					scopes,
+					sync,
+					repairs,
+					preflight,
+					toolHealth,
+				});
 			}
 
 			const explicitUpdates = Array.isArray((input as Record<string, unknown>).updates)
@@ -1183,6 +1435,13 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 						reused: update.reused === true,
 					}))
 				: null;
+			if (!explicitUpdates && !nonInteractive) {
+				workflowError(
+					'config',
+					'validation_failed',
+					'Treeseed config requires interactive input or explicit updates. Re-run in a TTY, or use --non-interactive/--json from the CLI when you want resolved values applied automatically.',
+				);
+			}
 			const autoUpdates = scopes.flatMap((scope) =>
 				contextSnapshot.entriesByScope[scope].map((entry) => ({
 					scope,
@@ -1191,6 +1450,7 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 					reused: entry.currentValue.length > 0 || entry.suggestedValue.length > 0,
 				})),
 			);
+			maybePrint(helpers.write, 'Saving resolved configuration values to machine config...');
 			const applyResult = applyTreeseedConfigValues({
 				tenantRoot,
 				updates: explicitUpdates ?? autoUpdates,
@@ -1199,6 +1459,12 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 				tenantRoot,
 				scopes,
 				sync,
+				env: helpers.context.env,
+				onProgress: (line) => maybePrint(helpers.write, line),
+			});
+			const refreshedContext = collectTreeseedConfigContext({
+				tenantRoot,
+				scopes,
 				env: helpers.context.env,
 			});
 			const reports = printEnv
@@ -1227,7 +1493,8 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 					repairs,
 					preflight,
 					toolHealth,
-					context: contextSnapshot,
+					secretSession,
+					context: refreshedContext,
 					result: {
 						...applyResult,
 						...finalizeResult,
@@ -1439,7 +1706,11 @@ export async function workflowDev(helpers: WorkflowOperationHelpers, input: Tree
 			if (input.port !== undefined) {
 				args.push('--port', String(input.port));
 			}
-			const env = { ...process.env, ...(helpers.context.env ?? {}) };
+			const env = resolveTreeseedLaunchEnvironment({
+				tenantRoot,
+				scope: 'local',
+				baseEnv: { ...process.env, ...(helpers.context.env ?? {}) },
+			});
 			if (input.background) {
 				const child = spawn(process.execPath, args, {
 					cwd: tenantRoot,

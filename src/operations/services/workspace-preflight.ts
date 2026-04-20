@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
+import { collectTreeseedConfigSeedValues } from './config-runtime.ts';
 import { createTempDir } from './workspace-tools.ts';
 
 function runCapture(command, args, options = {}) {
@@ -37,53 +38,54 @@ export function createWranglerCommandEnv(overrides = {}) {
 	};
 }
 
-function envTokenStatus(keys, label) {
+function envTokenStatus(keys, label, values = process.env) {
 	const foundKey = keys.find((key) => {
-		const value = process.env[key];
+		const value = values[key];
 		return typeof value === 'string' && value.trim().length > 0;
 	}) ?? null;
 
 	return {
 		ready: Boolean(foundKey),
 		detail: foundKey
-			? `${label} token detected from ${foundKey}.`
+			? `${label} token detected from configured Treeseed environment (${foundKey}).`
 			: `${label} token is not configured. Set ${keys.join(' or ')}.`,
-		source: foundKey ? 'env' : 'missing',
+		source: foundKey ? 'config' : 'missing',
 	};
 }
 
-export function parseGitHubAuthStatus() {
+export function parseGitHubAuthStatus(values = process.env) {
 	return {
-		authenticated: envTokenStatus(['GH_TOKEN'], 'GitHub').ready,
-		detail: envTokenStatus(['GH_TOKEN'], 'GitHub').detail,
+		authenticated: envTokenStatus(['GH_TOKEN'], 'GitHub', values).ready,
+		detail: envTokenStatus(['GH_TOKEN'], 'GitHub', values).detail,
 	};
 }
 
-export function parseWranglerWhoAmI() {
+export function parseWranglerWhoAmI(values = process.env) {
 	return {
-		authenticated: envTokenStatus(['CLOUDFLARE_API_TOKEN'], 'Cloudflare').ready,
-		detail: envTokenStatus(['CLOUDFLARE_API_TOKEN'], 'Cloudflare').detail,
+		authenticated: envTokenStatus(['CLOUDFLARE_API_TOKEN'], 'Cloudflare', values).ready,
+		detail: envTokenStatus(['CLOUDFLARE_API_TOKEN'], 'Cloudflare', values).detail,
 	};
 }
 
-export function parseRailwayWhoAmI() {
+export function parseRailwayWhoAmI(values = process.env) {
 	return {
-		authenticated: envTokenStatus(['RAILWAY_API_TOKEN'], 'Railway').ready,
-		detail: envTokenStatus(['RAILWAY_API_TOKEN'], 'Railway').detail,
+		authenticated: envTokenStatus(['RAILWAY_API_TOKEN', 'RAILWAY_TOKEN'], 'Railway', values).ready,
+		detail: envTokenStatus(['RAILWAY_API_TOKEN', 'RAILWAY_TOKEN'], 'Railway', values).detail,
 	};
 }
 
-export function parseCopilotSessionStatus() {
-	const status = envTokenStatus(['GH_TOKEN'], 'GitHub');
+export function parseCopilotSessionStatus(values = process.env) {
+	const status = envTokenStatus(['GH_TOKEN'], 'GitHub', values);
 	return {
 		configured: status.ready,
 		detail: status.ready
-			? 'GitHub token detected from GH_TOKEN for Copilot-backed workflows.'
+			? 'GitHub token detected from configured Treeseed environment for Copilot-backed workflows.'
 			: 'GitHub token is not configured. Set GH_TOKEN for Copilot-backed workflows.',
 	};
 }
 
 export function collectCliPreflight({ cwd = process.cwd(), requireAuth = false } = {}) {
+	const configuredValues = collectTreeseedConfigSeedValues(cwd, 'local');
 	const binaries = {
 		git: locateBinary('git'),
 		npm: locateBinary('npm'),
@@ -104,25 +106,25 @@ export function collectCliPreflight({ cwd = process.cwd(), requireAuth = false }
 	};
 
 	if (binaries.gh) {
-		checks.auth.gh = parseGitHubAuthStatus();
+		checks.auth.gh = parseGitHubAuthStatus(configuredValues);
 	} else {
 		checks.auth.gh = { authenticated: false, detail: 'GitHub CLI is not installed.' };
 	}
 
 	if (binaries.wrangler) {
-		checks.auth.wrangler = parseWranglerWhoAmI();
+		checks.auth.wrangler = parseWranglerWhoAmI(configuredValues);
 	} else {
 		checks.auth.wrangler = { authenticated: false, detail: 'Wrangler CLI is not installed.' };
 	}
 
 	if (binaries.railway) {
-		checks.auth.railway = parseRailwayWhoAmI();
+		checks.auth.railway = parseRailwayWhoAmI(configuredValues);
 	} else {
 		checks.auth.railway = { authenticated: false, detail: 'Railway CLI is not installed.' };
 	}
 
 	if (binaries.copilot) {
-		checks.auth.copilot = parseCopilotSessionStatus();
+		checks.auth.copilot = parseCopilotSessionStatus(configuredValues);
 	} else {
 		checks.auth.copilot = { configured: false, detail: 'Copilot CLI is not installed.' };
 	}

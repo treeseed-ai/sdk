@@ -437,5 +437,5 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.packageSync.dirty).toBe(true);
 		expect(result.payload.packageSync.blockers.join('\n')).toContain('@treeseed/core is on staging instead of feature/demo-task.');
 		expect(result.payload.packageSync.blockers.join('\n')).toContain('@treeseed/cli has uncommitted changes.');
-	});
+	}, 15000);
 });

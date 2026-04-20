@@ -42,15 +42,6 @@ export function spawnProcess(command, args, options = {}) {
 	});
 }
 
-export function syncDevVars(overrides = {}) {
-	const overrideEntries = Object.entries(overrides);
-	runNodeScript(
-		'./scripts/sync-dev-vars.ts',
-		overrideEntries.map(([key, value]) => `${key}=${value}`),
-		{ cwd: fixtureRoot },
-	);
-}
-
 export function runLocalD1Migration(persistTo) {
 	applyLocalD1Migrations({
 		cwd: fixtureRoot,
@@ -70,10 +61,6 @@ export function prepareCloudflareLocalRuntime({ envOverrides = {}, persistTo, ou
 	runNodeScript('./scripts/patch-starlight-content-path.ts');
 	runNodeScript('./scripts/aggregate-book.ts');
 	runNodeScript('./scripts/ensure-mailpit.ts');
-	syncDevVars({
-		TREESEED_LOCAL_DEV_MODE: 'cloudflare',
-		...mergedEnvOverrides,
-	});
 	runLocalD1Migration(persistTo);
 	const astroArgs = ['astro', 'build', '--root', fixtureRoot];
 	if (outDir) {

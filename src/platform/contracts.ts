@@ -4,6 +4,8 @@ export type TreeseedFeatureName =
 	| 'notes'
 	| 'questions'
 	| 'objectives'
+	| 'proposals'
+	| 'decisions'
 	| 'agents'
 	| 'forms';
 
@@ -12,6 +14,8 @@ export type TreeseedContentCollection =
 	| 'notes'
 	| 'questions'
 	| 'objectives'
+	| 'proposals'
+	| 'decisions'
 	| 'people'
 	| 'agents'
 	| 'books'
@@ -26,6 +30,8 @@ export interface TreeseedFeatureModules {
 	notes?: boolean;
 	questions?: boolean;
 	objectives?: boolean;
+	proposals?: boolean;
+	decisions?: boolean;
 	agents?: boolean;
 	forms?: boolean;
 	[key: string]: boolean | undefined;
@@ -36,6 +42,8 @@ export interface TreeseedContentMap {
 	notes: string;
 	questions: string;
 	objectives: string;
+	proposals: string;
+	decisions: string;
 	people: string;
 	agents: string;
 	books: string;
@@ -155,7 +163,27 @@ export interface TreeseedPlatformSurfaceConfig {
 	rootDir?: string;
 	publicBaseUrl?: string;
 	localBaseUrl?: string;
+	cache?: TreeseedWebSurfaceCacheConfig;
 }
+
+export interface TreeseedWebCachePolicyConfig {
+	browserTtlSeconds?: number;
+	edgeTtlSeconds?: number;
+	staleWhileRevalidateSeconds?: number;
+	staleIfErrorSeconds?: number;
+}
+
+export interface TreeseedWebSourcePageCacheConfig extends TreeseedWebCachePolicyConfig {
+	paths?: string[];
+}
+
+export interface TreeseedWebSurfaceCacheConfig {
+	sourcePages?: TreeseedWebSourcePageCacheConfig;
+	contentPages?: TreeseedWebCachePolicyConfig;
+	r2PublishedObjects?: TreeseedWebCachePolicyConfig;
+}
+
+export type TreeseedContentServingMode = 'local_collections' | 'published_runtime';
 
 export interface TreeseedCloudflareR2Config {
 	binding?: string;
@@ -176,10 +204,25 @@ export interface TreeseedCloudflarePagesConfig {
 
 export type TreeseedHostingKind = 'market_control_plane' | 'hosted_project' | 'self_hosted_project';
 export type TreeseedHostingRegistration = 'optional' | 'none';
+export type TreeseedHubMode = 'treeseed_hosted' | 'customer_hosted';
+export type TreeseedRuntimeMode = 'none' | 'byo_attached' | 'treeseed_managed';
+export type TreeseedRuntimeRegistration = 'optional' | 'required' | 'none';
 
 export interface TreeseedHostingConfig {
 	kind: TreeseedHostingKind;
 	registration?: TreeseedHostingRegistration;
+	marketBaseUrl?: string;
+	teamId?: string;
+	projectId?: string;
+}
+
+export interface TreeseedHubConfig {
+	mode: TreeseedHubMode;
+}
+
+export interface TreeseedRuntimeConfig {
+	mode: TreeseedRuntimeMode;
+	registration?: TreeseedRuntimeRegistration;
 	marketBaseUrl?: string;
 	teamId?: string;
 	projectId?: string;
@@ -218,7 +261,6 @@ export interface TreeseedManagedServiceConfig {
 
 export interface TreeseedManagedServicesConfig {
 	api?: TreeseedManagedServiceConfig;
-	agents?: TreeseedManagedServiceConfig;
 	[key: string]: TreeseedManagedServiceConfig | undefined;
 }
 
@@ -244,6 +286,7 @@ export interface TreeseedProviderSelections {
 		runtime: string;
 		publish: string;
 		docs?: string;
+		serving?: TreeseedContentServingMode;
 	};
 	site?: string;
 }
@@ -259,8 +302,11 @@ export interface TreeseedDeployConfig {
 	siteUrl: string;
 	contactEmail: string;
 	hosting?: TreeseedHostingConfig;
+	hub: TreeseedHubConfig;
+	runtime: TreeseedRuntimeConfig;
 	cloudflare: {
 		accountId: string;
+		zoneId?: string;
 		workerName?: string;
 		queueName?: string;
 		dlqName?: string;

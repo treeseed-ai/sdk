@@ -11,8 +11,8 @@ import { loadTreeseedManifest } from './tenant-config.ts';
 export const TREESEED_ENVIRONMENT_SCOPES = ['local', 'staging', 'prod'] as const;
 export const TREESEED_ENVIRONMENT_REQUIREMENTS = ['required', 'conditional', 'optional'] as const;
 export const TREESEED_ENVIRONMENT_TARGETS = [
-	'local-file',
-	'wrangler-dev-vars',
+	'local-runtime',
+	'local-cloudflare',
 	'github-secret',
 	'github-variable',
 	'cloudflare-secret',
@@ -24,6 +24,7 @@ export const TREESEED_ENVIRONMENT_TARGETS = [
 export const TREESEED_ENVIRONMENT_PURPOSES = ['dev', 'save', 'deploy', 'destroy', 'config'] as const;
 export const TREESEED_ENVIRONMENT_SENSITIVITY = ['secret', 'plain', 'derived'] as const;
 export const TREESEED_ENVIRONMENT_STORAGE = ['scoped', 'shared'] as const;
+export const TREESEED_CONFIG_STARTUP_PROFILES = ['core', 'optional', 'advanced'] as const;
 
 export type TreeseedEnvironmentScope = (typeof TREESEED_ENVIRONMENT_SCOPES)[number];
 export type TreeseedEnvironmentRequirement = (typeof TREESEED_ENVIRONMENT_REQUIREMENTS)[number];
@@ -31,9 +32,11 @@ export type TreeseedEnvironmentTarget = (typeof TREESEED_ENVIRONMENT_TARGETS)[nu
 export type TreeseedEnvironmentPurpose = (typeof TREESEED_ENVIRONMENT_PURPOSES)[number];
 export type TreeseedEnvironmentSensitivity = (typeof TREESEED_ENVIRONMENT_SENSITIVITY)[number];
 export type TreeseedEnvironmentStorage = (typeof TREESEED_ENVIRONMENT_STORAGE)[number];
+export type TreeseedConfigStartupProfile = (typeof TREESEED_CONFIG_STARTUP_PROFILES)[number];
 
 export type TreeseedEnvironmentValidation =
-	| { kind: 'string' | 'nonempty' | 'boolean' | 'number' | 'url' | 'email' }
+	| { kind: 'string' | 'nonempty' | 'url' | 'email'; minLength?: number }
+	| { kind: 'boolean' | 'number' }
 	| { kind: 'enum'; values: string[] };
 
 export type TreeseedEnvironmentValueResolver =
@@ -87,6 +90,9 @@ export type TreeseedEnvironmentEntry = {
 	id: string;
 	label: string;
 	group: string;
+	cluster?: string;
+	onboardingFeature?: string;
+	startupProfile?: TreeseedConfigStartupProfile;
 	description: string;
 	howToGet: string;
 	sensitivity: TreeseedEnvironmentSensitivity;
@@ -107,6 +113,9 @@ export type TreeseedEnvironmentEntryYaml = Omit<
 	TreeseedEnvironmentEntry,
 	'id' | 'defaultValue' | 'localDefaultValue' | 'isRelevant' | 'requiredWhen'
 > & {
+	cluster?: string;
+	onboardingFeature?: string;
+	startupProfile?: TreeseedConfigStartupProfile;
 	defaultValueRef?: string;
 	localDefaultValueRef?: string;
 	relevanceRef?: string;
@@ -149,7 +158,15 @@ type NamedPredicateMap = Record<
 >;
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
-const CORE_ENVIRONMENT_PATH = resolve(moduleDir, 'env.yaml');
+function resolveCoreEnvironmentPath() {
+	const candidates = [
+		resolve(moduleDir, 'env.yaml'),
+		resolve(moduleDir, '../src/platform/env.yaml'),
+		resolve(moduleDir, '../dist/platform/env.yaml'),
+	];
+	return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+}
+const CORE_ENVIRONMENT_PATH = resolveCoreEnvironmentPath();
 const TENANT_ENVIRONMENT_OVERLAY_PATH = 'src/env.yaml';
 
 function loadOptionalTenantConfig() {
@@ -161,7 +178,7 @@ function loadOptionalTenantConfig() {
 }
 
 function turnstileEnabled(context: TreeseedEnvironmentContext) {
-	return context.deployConfig.turnstile?.enabled !== false;
+	return context.deployConfig.turnstile?.enabled === true;
 }
 
 function smtpEnabled(context: TreeseedEnvironmentContext) {
@@ -169,9 +186,27 @@ function smtpEnabled(context: TreeseedEnvironmentContext) {
 }
 
 function railwayManagedEnabled(context: TreeseedEnvironmentContext) {
+	if (context.deployConfig.runtime?.mode === 'treeseed_managed') {
+		return true;
+	}
+	if (context.deployConfig.runtime?.mode && context.deployConfig.runtime.mode !== 'treeseed_managed') {
+		return false;
+	}
 	return Object.values(context.deployConfig.services ?? {}).some((service) =>
 		service && service.enabled !== false && (service.provider ?? 'railway') === 'railway',
 	);
+}
+
+function resolveHubMode(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.hub?.mode ?? 'treeseed_hosted';
+}
+
+function resolveRuntimeMode(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.runtime?.mode ?? 'none';
+}
+
+function resolveRuntimeRegistration(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.runtime?.registration ?? 'none';
 }
 
 function resolveHostingKind(context: TreeseedEnvironmentContext) {
@@ -195,15 +230,31 @@ function selfHostedProjectEnabled(context: TreeseedEnvironmentContext) {
 }
 
 function projectRegistrationEnabled(context: TreeseedEnvironmentContext) {
-	if (hostedProjectEnabled(context)) {
-		return true;
-	}
-
-	return selfHostedProjectEnabled(context) && resolveHostingRegistration(context) === 'optional';
+	return resolveRuntimeRegistration(context) === 'optional' || resolveRuntimeRegistration(context) === 'required';
 }
 
 function generatedSecret(bytes = 24) {
 	return randomBytes(bytes).toString('hex');
+}
+
+function localTimezoneDefault() {
+	return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+}
+
+function localMailpitHostDefault() {
+	return '127.0.0.1';
+}
+
+function localMailpitPortDefault() {
+	return '1025';
+}
+
+function contactEmailDefault(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.contactEmail?.trim() || 'contact@example.com';
+}
+
+function workdayWindowsDefault() {
+	return JSON.stringify([{ days: [1, 2, 3, 4, 5], startTime: '09:00', endTime: '17:00' }]);
 }
 
 function normalizeUrl(value: string) {
@@ -291,42 +342,50 @@ function resolveApiWebServiceId(
 }
 
 function resolvePagesProjectName(context: TreeseedEnvironmentContext) {
-	return context.deployConfig.cloudflare.pages?.projectName?.trim()
-		|| context.deployConfig.slug;
+	return context.deployConfig.slug;
 }
 
-function resolvePagesPreviewProjectName(context: TreeseedEnvironmentContext) {
-	return context.deployConfig.cloudflare.pages?.previewProjectName?.trim()
-		|| `${context.deployConfig.cloudflare.pages?.projectName?.trim() || context.deployConfig.slug}-staging`;
+function resolvePagesPreviewProjectName(
+	context: TreeseedEnvironmentContext,
+	_scope: TreeseedEnvironmentScope,
+	values: Record<string, string | undefined> = {},
+) {
+	return values.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME?.trim()
+		|| `${context.deployConfig.slug}-staging`;
 }
 
 function resolveContentBucketName(context: TreeseedEnvironmentContext) {
-	return context.deployConfig.cloudflare.r2?.bucketName?.trim()
-		|| `${context.deployConfig.slug}-content`;
+	return `${context.deployConfig.slug}-content`;
 }
 
 function resolveContentBucketBinding(context: TreeseedEnvironmentContext) {
 	return context.deployConfig.cloudflare.r2?.binding?.trim() || 'TREESEED_CONTENT_BUCKET';
 }
 
-function resolveMarketBaseUrl(context: TreeseedEnvironmentContext) {
-	return context.deployConfig.hosting?.marketBaseUrl?.trim()
+function resolveMarketBaseUrl(
+	context: TreeseedEnvironmentContext,
+	_scope: TreeseedEnvironmentScope,
+	values: Record<string, string | undefined> = {},
+) {
+	return values.TREESEED_API_BASE_URL?.trim()
 		|| context.deployConfig.services?.api?.environments?.prod?.baseUrl?.trim()
-		|| context.deployConfig.services?.api?.publicBaseUrl?.trim()
 		|| 'https://api.treeseed.ai';
 }
 
 function resolveHostedTeamId(context: TreeseedEnvironmentContext) {
-	return context.deployConfig.hosting?.teamId?.trim() || context.deployConfig.slug;
+	return context.deployConfig.slug;
 }
 
 function resolveHostedProjectId(context: TreeseedEnvironmentContext) {
-	return context.deployConfig.hosting?.projectId?.trim() || context.deployConfig.slug;
+	return context.deployConfig.slug;
 }
 
 const VALUE_RESOLVERS: NamedResolverMap = {
 	generatedSecret: () => generatedSecret(),
 	localFormsBypassDefault: () => 'true',
+	localMailpitHostDefault: () => localMailpitHostDefault(),
+	localMailpitPortDefault: () => localMailpitPortDefault(),
+	contactEmailDefault: (context) => contactEmailDefault(context),
 	projectDomainsDefault: (context) => primaryHostFromUrl(context.deployConfig.siteUrl),
 	apiBaseUrlDefault: (context, scope, values) => resolveConfiguredApiBaseUrl(context, scope, values),
 	webServiceIdDefault: (_context, _scope, values) => resolveWebServiceId(values),
@@ -337,9 +396,24 @@ const VALUE_RESOLVERS: NamedResolverMap = {
 	contentBucketBindingDefault: (context) => resolveContentBucketBinding(context),
 	hostingKindDefault: (context) => resolveHostingKind(context),
 	hostingRegistrationDefault: (context) => resolveHostingRegistration(context),
+	hubModeDefault: (context) => resolveHubMode(context),
+	runtimeModeDefault: (context) => resolveRuntimeMode(context),
+	runtimeRegistrationDefault: (context) => resolveRuntimeRegistration(context),
 	marketBaseUrlDefault: (context) => resolveMarketBaseUrl(context),
 	hostingTeamIdDefault: (context) => resolveHostedTeamId(context),
 	hostingProjectIdDefault: (context) => resolveHostedProjectId(context),
+	agentPoolMinWorkersDefault: () => '0',
+	agentPoolMaxWorkersDefault: () => '2',
+	agentPoolTargetQueueDepthDefault: () => '1',
+	agentPoolCooldownSecondsDefault: () => '60',
+	workdayTimezoneDefault: () => localTimezoneDefault(),
+	workdayWindowsDefault: () => workdayWindowsDefault(),
+	workdayTaskCreditBudgetDefault: () => '20',
+	managerMaxQueuedTasksDefault: () => '5',
+	managerMaxQueuedCreditsDefault: () => '20',
+	managerPriorityModelsDefault: () => 'objective,question,note,page,book,knowledge',
+	taskCreditWeightsDefault: () => '[]',
+	workerPoolScalerDefault: (context) => railwayManagedEnabled(context) ? 'railway' : 'noop',
 };
 
 const PREDICATES: NamedPredicateMap = {
@@ -348,6 +422,11 @@ const PREDICATES: NamedPredicateMap = {
 	smtpEnabled: (context) => smtpEnabled(context),
 	smtpNonLocal: (context, scope) => smtpEnabled(context) && scope !== 'local',
 	railwayManagedEnabled: (context) => railwayManagedEnabled(context),
+	hubTreeseedHosted: (context) => resolveHubMode(context) === 'treeseed_hosted',
+	hubCustomerHosted: (context) => resolveHubMode(context) === 'customer_hosted',
+	runtimeNone: (context) => resolveRuntimeMode(context) === 'none',
+	runtimeByoAttached: (context) => resolveRuntimeMode(context) === 'byo_attached',
+	runtimeTreeseedManaged: (context) => resolveRuntimeMode(context) === 'treeseed_managed',
 	marketControlPlaneEnabled: (context) => marketControlPlaneEnabled(context),
 	hostedProjectEnabled: (context) => hostedProjectEnabled(context),
 	selfHostedProjectEnabled: (context) => selfHostedProjectEnabled(context),
@@ -450,6 +529,16 @@ function materializeEntry(id: string, entry: TreeseedEnvironmentEntryYaml): Tree
 	return {
 		...entry,
 		id,
+		cluster: entry.cluster ?? `${entry.group}:${id}`,
+		onboardingFeature: entry.onboardingFeature,
+		startupProfile: entry.startupProfile
+			?? (entry.onboardingFeature ? 'optional' : (
+				entry.group === 'auth'
+				|| entry.id === 'TREESEED_FORM_TOKEN_SECRET'
+				|| entry.group === 'local-development'
+					? 'core'
+					: 'advanced'
+			)),
 		storage: entry.storage ?? 'scoped',
 		defaultValue: resolveNamedValueResolver(entry.defaultValueRef),
 		localDefaultValue: resolveNamedValueResolver(entry.localDefaultValueRef),
@@ -468,6 +557,9 @@ function mergeEntryYaml(
 	if (
 		typeof merged.label !== 'string'
 		|| typeof merged.group !== 'string'
+		|| (merged.cluster !== undefined && typeof merged.cluster !== 'string')
+		|| (merged.onboardingFeature !== undefined && typeof merged.onboardingFeature !== 'string')
+		|| (merged.startupProfile !== undefined && !TREESEED_CONFIG_STARTUP_PROFILES.includes(merged.startupProfile))
 		|| typeof merged.description !== 'string'
 		|| typeof merged.howToGet !== 'string'
 		|| !Array.isArray(merged.targets)
@@ -659,8 +751,18 @@ function validateValue(entry: TreeseedEnvironmentEntry, value: string) {
 
 	switch (entry.validation.kind) {
 		case 'string':
-		case 'nonempty':
-			return valuePresent(value) ? null : `${entry.id} must be a non-empty string.`;
+		case 'nonempty': {
+			if (!valuePresent(value)) {
+				return `${entry.id} must be a non-empty string.`;
+			}
+			if (
+				typeof entry.validation.minLength === 'number'
+				&& value.trim().length < entry.validation.minLength
+			) {
+				return `${entry.id} must be at least ${entry.validation.minLength} characters.`;
+			}
+			return null;
+		}
 		case 'boolean':
 			return /^(true|false|1|0)$/i.test(value) ? null : `${entry.id} must be true or false.`;
 		case 'number':

@@ -24,6 +24,7 @@ import {
 	ensureGeneratedWranglerConfig,
 	finalizeDeploymentState,
 	loadDeployState,
+	purgePublishedContentCaches,
 	provisionCloudflareResources,
 	runRemoteD1Migrations,
 	syncCloudflareSecrets,
@@ -235,15 +236,88 @@ function uploadObject(
 	], wranglerEnv);
 }
 
+function deleteObject(
+	tenantRoot: string,
+	wranglerPath: string,
+	wranglerEnv: Record<string, string | undefined>,
+	bucketName: string,
+	objectKey: string,
+) {
+	runWrangler(tenantRoot, [
+		'r2',
+		'object',
+		'delete',
+		`${bucketName}/${objectKey}`,
+		'--config',
+		wranglerPath,
+		'--remote',
+	], wranglerEnv, { allowFailure: true });
+}
+
 function objectFileName(pointer: PublishedContentObjectPointer) {
 	const ext = extname(pointer.objectKey) || '.json';
 	return `${pointer.sha256}${ext}`;
 }
 
-async function fetchJson(url: string, init: RequestInit = {}) {
-	const response = await fetch(url, init);
-	const body = await response.json().catch(() => null);
-	return { response, body };
+function canonicalSitePathForEntry(entry: { model: string; slug: string; id?: string }) {
+	return entry.model === 'pages'
+		? `/${entry.slug || entry.id || ''}`.replace(/\/+$/u, '') || '/'
+		: `/${entry.model}/${entry.slug || entry.id || ''}`.replace(/\/+$/u, '');
+}
+
+function contentIndexPathForModel(model: string) {
+	return model === 'pages' ? null : `/${model}`;
+}
+
+function sourceLikeFreshnessPaths() {
+	return ['/', '/feed.xml', '/sitemap-index.xml'];
+}
+
+function entrySignature(entry: Record<string, unknown>) {
+	const { publishedAt, ...rest } = entry;
+	return stableHash(JSON.stringify(rest));
+}
+
+function artifactSignature(artifact: Record<string, unknown>) {
+	const { publishedAt, ...rest } = artifact;
+	return stableHash(JSON.stringify(rest));
+}
+
+function canonicalEntryPath(entry: { model: string; slug: string; id?: string }) {
+	return `${entry.model}/${entry.slug || entry.id || ''}`.replace(/^\/+|\/+$/gu, '');
+}
+
+function changedEntries(previousManifest: PublishedContentManifest | null, nextEntries: Array<Record<string, unknown>>) {
+	const previous = new Map((previousManifest?.entries ?? []).map((entry) => [canonicalEntryPath(entry), entrySignature(entry)]));
+	return nextEntries.filter((entry) => previous.get(canonicalEntryPath(entry as { model: string; slug: string; id?: string })) !== entrySignature(entry));
+}
+
+function changedArtifacts(previousManifest: PublishedContentManifest | null, nextArtifacts: Array<Record<string, unknown>>) {
+	const previous = new Map((previousManifest?.artifacts ?? []).map((artifact) => [`${artifact.kind}:${artifact.itemId}`, artifactSignature(artifact)]));
+	return nextArtifacts.filter((artifact) => previous.get(`${artifact.kind}:${artifact.itemId}`) !== artifactSignature(artifact));
+}
+
+function absoluteUrl(baseUrl: string | null | undefined, path: string) {
+	if (!baseUrl) {
+		return null;
+	}
+	try {
+		return new URL(path.startsWith('/') ? path : `/${path}`, baseUrl).toString();
+	} catch {
+		return null;
+	}
+}
+
+function stableEntryAliasKey(teamId: string, entry: { model: string; slug: string; id?: string; content: { objectKey: string } }) {
+	const ext = extname(entry.content.objectKey) || '.md';
+	return `teams/${teamId}/published/entries/${entry.model}/${entry.slug || entry.id}${ext}`;
+}
+
+function stableArtifactAliasKey(teamId: string, artifact: { kind: string; itemId: string; content: { objectKey: string }; metadata?: Record<string, unknown> }) {
+	const fileName = typeof artifact.metadata?.fileName === 'string' && artifact.metadata.fileName
+		? artifact.metadata.fileName
+		: `${artifact.itemId}${extname(artifact.content.objectKey) || '.bin'}`;
+	return `teams/${teamId}/published/artifacts/${artifact.kind}/${artifact.itemId}/${fileName}`;
 }
 
 async function probeHttp(url: string) {
@@ -266,50 +340,8 @@ async function probeHttp(url: string) {
 	}
 }
 
-async function probeRunnerHealth(siteConfig, environment: ProjectPlatformScope) {
-	const baseUrl = String(process.env.TREESEED_MARKET_API_BASE_URL ?? siteConfig.hosting?.marketBaseUrl ?? '').trim();
-	const projectId = String(process.env.TREESEED_PROJECT_ID ?? siteConfig.hosting?.projectId ?? '').trim();
-	const runnerToken = String(process.env.TREESEED_PROJECT_RUNNER_TOKEN ?? '').trim();
-	if (!baseUrl || !projectId || !runnerToken || environment === 'local') {
-		return { ok: true, skipped: true, reason: 'runner_health_unconfigured' };
-	}
-	try {
-		let lastResult = null;
-		for (let attempt = 0; attempt < 10; attempt += 1) {
-			const { response, body } = await fetchJson(
-				`${baseUrl.replace(/\/+$/u, '')}/v1/projects/${encodeURIComponent(projectId)}/runner/health?environment=${encodeURIComponent(environment)}`,
-				{
-					headers: {
-						accept: 'application/json',
-						authorization: `Bearer ${runnerToken}`,
-					},
-				},
-			);
-			const pools = Array.isArray(body?.payload?.pools) ? body.payload.pools : [];
-			const heartbeatPresent = pools.some((entry) => entry?.latestRegistration);
-			lastResult = {
-				ok: response.ok && body?.ok === true && heartbeatPresent,
-				status: response.status,
-				payload: body?.payload ?? null,
-				heartbeatPresent,
-				attempt: attempt + 1,
-			};
-			if (lastResult.ok) {
-				return lastResult;
-			}
-			await new Promise((resolve) => setTimeout(resolve, 3000));
-		}
-		return lastResult ?? { ok: false, reason: 'runner_health_unavailable' };
-	} catch (error) {
-		return {
-			ok: false,
-			error: error instanceof Error ? error.message : String(error),
-		};
-	}
-}
-
 function queueClientConfig(siteConfig, state) {
-	const accountId = siteConfig.cloudflare.accountId;
+	const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim();
 	const queueId = state.queues?.agentWork?.queueId;
 	const token = process.env.TREESEED_QUEUE_PUSH_TOKEN?.trim()
 		|| process.env.TREESEED_QUEUE_PULL_TOKEN?.trim()
@@ -393,11 +425,12 @@ function probeR2(
 	target,
 ) {
 	const bucketName = state.content?.bucketName;
+	const cloudflareAccountId = String(process.env.CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim();
 	if (!bucketName) {
 		return { ok: false, skipped: true, reason: 'r2_unconfigured' };
 	}
 	const { wranglerPath } = ensureGeneratedWranglerConfig(tenantRoot, { target });
-	const wranglerEnv = { CLOUDFLARE_ACCOUNT_ID: siteConfig.cloudflare.accountId };
+	const wranglerEnv = { CLOUDFLARE_ACCOUNT_ID: cloudflareAccountId };
 	const tempRoot = mkdtempSync(join(tmpdir(), 'treeseed-r2-health-'));
 	const objectKey = r2HealthKey(state);
 	try {
@@ -448,7 +481,7 @@ async function publishContent(
 ) {
 	const siteConfig = loadCliDeployConfig(options.tenantRoot);
 	const tenantConfig = loadTreeseedManifest(resolve(options.tenantRoot, 'src', 'manifest.yaml'));
-	const teamId = siteConfig.hosting?.teamId ?? siteConfig.slug;
+	const teamId = String(process.env.TREESEED_HOSTING_TEAM_ID ?? siteConfig.hosting?.teamId ?? siteConfig.slug).trim() || siteConfig.slug;
 	const timestamp = new Date().toISOString();
 	const commitSha = currentCommit(options.tenantRoot);
 	const branchName = currentRef(options.tenantRoot);
@@ -457,10 +490,10 @@ async function publishContent(
 	const locator = resolveTeamScopedContentLocator(siteConfig, teamId);
 	const target = createPersistentDeployTarget(options.scope === 'local' ? 'staging' : options.scope);
 	const { wranglerPath } = ensureGeneratedWranglerConfig(options.tenantRoot, { target });
-	const wranglerEnv = { CLOUDFLARE_ACCOUNT_ID: siteConfig.cloudflare.accountId };
-	const bucketName = siteConfig.cloudflare.r2?.bucketName;
+	const wranglerEnv = { CLOUDFLARE_ACCOUNT_ID: String(process.env.CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim() };
+	const bucketName = String(process.env.TREESEED_CONTENT_BUCKET_NAME ?? siteConfig.cloudflare.r2?.bucketName ?? '').trim();
 	if (!bucketName) {
-		throw new Error('Treeseed content publish requires cloudflare.r2.bucketName in treeseed.site.yaml.');
+		throw new Error('Treeseed content publish requires TREESEED_CONTENT_BUCKET_NAME to be configured.');
 	}
 
 	const previousManifest = readR2JsonObject(
@@ -485,6 +518,88 @@ async function publishContent(
 	const built = options.scope === 'staging'
 		? await pipeline.buildEditorialOverlay({ previousManifest, previewId })
 		: await pipeline.buildProductionRevision({ previousManifest });
+	const changedEntrySet = 'manifest' in built ? changedEntries(previousManifest, built.manifest.entries) : [];
+	const changedArtifactSet = 'manifest' in built ? changedArtifacts(previousManifest, built.manifest.artifacts ?? []) : [];
+	const tombstones = 'manifest' in built ? (built.manifest.tombstones ?? []) : [];
+	const objectByKey = new Map(built.objects.map((object) => [object.pointer.objectKey, object]));
+	const publicObjectBaseUrl = process.env.TREESEED_CONTENT_PUBLIC_BASE_URL ?? siteConfig.cloudflare.r2?.publicBaseUrl ?? null;
+	const stableObjectUploads: Array<{ pointer: PublishedContentObjectPointer; body: Buffer }> = [];
+	const deletedObjectKeys: string[] = [];
+	const contentPurgeUrls = new Set<string>();
+
+	if ('manifest' in built && publicObjectBaseUrl) {
+		for (const entry of built.manifest.entries) {
+			entry.content.publicUrl = absoluteUrl(publicObjectBaseUrl, stableEntryAliasKey(teamId, entry)) ?? undefined;
+		}
+		for (const artifact of built.manifest.artifacts ?? []) {
+			artifact.content.publicUrl = artifact.content.publicUrl
+				?? absoluteUrl(publicObjectBaseUrl, stableArtifactAliasKey(teamId, artifact))
+				?? undefined;
+		}
+		for (const entry of changedEntrySet) {
+			const current = entry as PublishedContentManifest['entries'][number];
+			const sourceObject = objectByKey.get(current.content.objectKey);
+			const publicUrl = current.content.publicUrl ?? absoluteUrl(publicObjectBaseUrl, stableEntryAliasKey(teamId, current));
+			if (sourceObject) {
+				stableObjectUploads.push({
+					pointer: {
+						objectKey: stableEntryAliasKey(teamId, current),
+						sha256: sourceObject.pointer.sha256,
+						size: sourceObject.pointer.size,
+						contentType: sourceObject.pointer.contentType,
+						publicUrl: publicUrl ?? undefined,
+					},
+					body: toBuffer(sourceObject.body),
+				});
+			}
+			if (publicUrl) {
+				contentPurgeUrls.add(publicUrl);
+			}
+			contentPurgeUrls.add(absoluteUrl(siteConfig.siteUrl, canonicalSitePathForEntry(current)) ?? '');
+			const indexPath = contentIndexPathForModel(current.model);
+			if (indexPath) {
+				contentPurgeUrls.add(absoluteUrl(siteConfig.siteUrl, indexPath) ?? '');
+			}
+		}
+		for (const artifact of changedArtifactSet) {
+			const current = artifact as NonNullable<PublishedContentManifest['artifacts']>[number];
+			const sourceObject = objectByKey.get(current.content.objectKey);
+			const publicUrl = current.content.publicUrl ?? absoluteUrl(publicObjectBaseUrl, stableArtifactAliasKey(teamId, current));
+			if (sourceObject && publicUrl) {
+				stableObjectUploads.push({
+					pointer: {
+						objectKey: stableArtifactAliasKey(teamId, current),
+						sha256: sourceObject.pointer.sha256,
+						size: sourceObject.pointer.size,
+						contentType: sourceObject.pointer.contentType,
+						publicUrl,
+					},
+					body: toBuffer(sourceObject.body),
+				});
+			}
+			if (publicUrl) {
+				contentPurgeUrls.add(publicUrl);
+			}
+		}
+		for (const tombstone of tombstones) {
+			const [model, ...slugParts] = String(tombstone.path ?? '').split('/');
+			if (!model || slugParts.length === 0) {
+				continue;
+			}
+			const slug = slugParts.join('/');
+			const aliasKey = stableEntryAliasKey(teamId, { model, slug, content: { objectKey: `${slug}.md` } });
+			deletedObjectKeys.push(aliasKey);
+			contentPurgeUrls.add(absoluteUrl(publicObjectBaseUrl, aliasKey) ?? '');
+			contentPurgeUrls.add(absoluteUrl(siteConfig.siteUrl, canonicalSitePathForEntry({ model, slug })) ?? '');
+			const indexPath = contentIndexPathForModel(model);
+			if (indexPath) {
+				contentPurgeUrls.add(absoluteUrl(siteConfig.siteUrl, indexPath) ?? '');
+			}
+		}
+		for (const freshnessPath of sourceLikeFreshnessPaths()) {
+			contentPurgeUrls.add(absoluteUrl(siteConfig.siteUrl, freshnessPath) ?? '');
+		}
+	}
 
 	const tempRoot = mkdtempSync(join(tmpdir(), 'treeseed-content-publish-'));
 	try {
@@ -492,6 +607,13 @@ async function publishContent(
 			for (const object of built.objects) {
 				const filePath = writeTempFile(tempRoot, objectFileName(object.pointer), toBuffer(object.body));
 				uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, object.pointer, filePath);
+			}
+			for (const alias of stableObjectUploads) {
+				const filePath = writeTempFile(tempRoot, objectFileName(alias.pointer), alias.body);
+				uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, alias.pointer, filePath);
+			}
+			for (const objectKey of deletedObjectKeys) {
+				deleteObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, objectKey);
 			}
 
 			if ('overlay' in built) {
@@ -524,6 +646,13 @@ async function publishContent(
 					size: statSync(manifestFile).size,
 					contentType: 'application/json',
 				}, manifestFile);
+				if (contentPurgeUrls.size > 0) {
+					try {
+						purgePublishedContentCaches(options.tenantRoot, [...contentPurgeUrls].filter(Boolean), { target });
+					} catch {
+						// The purge helper persists its own error state.
+					}
+				}
 			}
 		}
 
@@ -561,6 +690,7 @@ async function publishContent(
 				entries: ('overlay' in built ? built.overlay.entries : built.manifest.entries).length,
 				artifacts: ('overlay' in built ? built.overlay.artifacts : built.manifest.artifacts)?.length ?? 0,
 				catalog: built.catalog.length,
+				cachePurgeCount: contentPurgeUrls.size,
 			},
 			finishedAt: new Date().toISOString(),
 		});
@@ -603,7 +733,7 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 		environment: options.scope,
 		deploymentProfile: siteConfig.hosting?.kind ?? 'self_hosted_project',
 		baseUrl: state.lastDeployedUrl,
-		cloudflareAccountId: siteConfig.cloudflare.accountId,
+		cloudflareAccountId: String(process.env.CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim() || null,
 		pagesProjectName: state.pages?.projectName ?? null,
 		workerName: state.workerName,
 		r2BucketName: state.content?.bucketName ?? null,
@@ -793,6 +923,7 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 	const state = loadDeployState(options.tenantRoot, siteConfig, { target });
 	const apiBaseUrl = siteConfig.services?.api?.environments?.[options.scope]?.baseUrl
 		?? siteConfig.services?.api?.publicBaseUrl
+		?? process.env.TREESEED_API_BASE_URL
 		?? state.services?.api?.lastDeployedUrl
 		?? null;
 	const checks = {
@@ -803,7 +934,6 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		agentHealth: apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/agent/healthz`) : { ok: false, skipped: true, reason: 'api_url_unconfigured' },
 		r2: options.dryRun ? { ok: true, skipped: true, reason: 'dry_run' } : probeR2(options.tenantRoot, siteConfig, state, target),
 		queue: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : probeQueue(siteConfig, state),
-		runner: probeRunnerHealth(siteConfig, options.scope),
 		scaleProbe: probeScaleConfiguration(siteConfig, state),
 		readiness: state.readiness,
 	};
@@ -811,7 +941,6 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		...checks,
 		r2: await checks.r2,
 		queue: await checks.queue,
-		runner: await checks.runner,
 	};
 	const ok = [
 		resolvedChecks.pages,
@@ -821,7 +950,6 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		resolvedChecks.agentHealth,
 		resolvedChecks.r2,
 		resolvedChecks.queue,
-		resolvedChecks.runner,
 		resolvedChecks.scaleProbe,
 	].every((check) => check?.ok === true || check?.skipped === true);
 	if (!ok) {
@@ -857,7 +985,7 @@ export async function syncControlPlaneState(options: ProjectPlatformActionOption
 		environment: options.scope,
 		deploymentProfile: siteConfig.hosting?.kind ?? 'self_hosted_project',
 		baseUrl: state.lastDeployedUrl,
-		cloudflareAccountId: siteConfig.cloudflare.accountId,
+		cloudflareAccountId: String(process.env.CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim() || null,
 		pagesProjectName: state.pages?.projectName ?? null,
 		workerName: state.workerName,
 		r2BucketName: state.content?.bucketName ?? null,

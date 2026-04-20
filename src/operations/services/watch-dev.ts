@@ -63,7 +63,6 @@ function shouldIgnoreWatchPath(filePath, rootPath) {
 		normalized.startsWith('dist/') ||
 		normalized === 'coverage' ||
 		normalized.startsWith('coverage/') ||
-		normalized === '.dev.vars' ||
 		normalized === 'books' ||
 		normalized.startsWith('books/') ||
 		normalized === '__treeseed' ||
@@ -185,8 +184,6 @@ export function createTenantWatchEntries(tenantRoot) {
 		{ kind: 'tenant', root: resolve(tenantRoot, 'public') },
 		{ kind: 'tenant', root: resolve(tenantRoot, 'astro.config.ts') },
 		{ kind: 'tenant', root: resolve(tenantRoot, 'treeseed.site.yaml') },
-		{ kind: 'tenant', root: resolve(tenantRoot, '.env.local') },
-		{ kind: 'tenant', root: resolve(tenantRoot, '.env.local.example') },
 	];
 
 	if (isEditablePackageWorkspace()) {

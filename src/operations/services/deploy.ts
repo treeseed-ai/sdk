@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
-import { deriveCloudflareWorkerName } from '../../platform/deploy-config.ts';
+import { deriveCloudflareWorkerName, resolveTreeseedWebCachePolicy } from '../../platform/deploy-config.ts';
 import { loadCliDeployConfig, resolveWranglerBin } from './runtime-tools.ts';
 
 const DEFAULT_COMPATIBILITY_DATE = '2026-04-05';
@@ -11,7 +11,7 @@ const DEFAULT_COMPATIBILITY_FLAGS = ['nodejs_compat'];
 const GENERATED_ROOT = '.treeseed/generated';
 const STATE_ROOT = '.treeseed/state';
 const PERSISTENT_SCOPES = new Set(['local', 'staging', 'prod']);
-const MANAGED_SERVICE_KEYS = ['api', 'agents', 'manager', 'worker', 'runner', 'workdayStart', 'workdayReport'];
+const MANAGED_SERVICE_KEYS = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport'];
 const TRESEED_ENVELOPE_SCHEMA_GENERATION = 'runtime-envelopes-v1';
 const TRESEED_MIGRATION_WAVE_ID = '0005_runtime_envelopes';
 const TRESEED_SUPPORTED_PAYLOAD_RANGE = { min: 1, max: 1 };
@@ -158,6 +158,19 @@ function targetWorkerName(deployConfig, target) {
 	return `${baseName}-${sanitizeSegment(target.branchName)}`;
 }
 
+function targetScopedResourceName(baseName, target) {
+	if (!baseName) {
+		return baseName;
+	}
+	if (target.kind === 'persistent') {
+		if (target.scope === 'prod') {
+			return baseName;
+		}
+		return `${baseName}-${target.scope}`;
+	}
+	return `${baseName}-${sanitizeSegment(target.branchName)}`;
+}
+
 function targetWorkersDevUrl(workerName) {
 	return `https://${workerName}.workers.dev`;
 }
@@ -169,32 +182,40 @@ function relativeFromGeneratedRoot(targetPath, generatedRoot) {
 function buildPublicVars(deployConfig) {
 	const contentRuntimeProvider = deployConfig.providers?.content?.runtime ?? 'team_scoped_r2_overlay';
 	const contentPublishProvider = deployConfig.providers?.content?.publish ?? contentRuntimeProvider;
-	const contentDefaultTeamId = deployConfig.hosting?.teamId ?? deployConfig.slug;
+	const contentServingMode = envOrNull('TREESEED_CONTENT_SERVING_MODE')
+		?? deployConfig.providers?.content?.serving
+		?? 'local_collections';
+	const contentDefaultTeamId = resolveConfiguredHostedTeamId(deployConfig);
 	const contentManifestKeyTemplate = deployConfig.cloudflare.r2?.manifestKeyTemplate ?? 'teams/{teamId}/published/common.json';
 	const contentPreviewRootTemplate = deployConfig.cloudflare.r2?.previewRootTemplate ?? 'teams/{teamId}/previews';
 	const contentManifestKey = contentManifestKeyTemplate.replaceAll('{teamId}', contentDefaultTeamId);
-	const hostedProject = (deployConfig.hosting?.kind ?? 'self_hosted_project') === 'hosted_project';
+	const managedRuntime = deployConfig.runtime?.mode === 'treeseed_managed';
 	const workerRailway = deployConfig.services?.worker?.railway ?? {};
+	const webCachePolicy = resolveTreeseedWebCachePolicy(deployConfig);
 	return {
 		TREESEED_HOSTING_KIND: deployConfig.hosting?.kind ?? 'self_hosted_project',
 		TREESEED_HOSTING_REGISTRATION: deployConfig.hosting?.registration ?? 'none',
-		TREESEED_MARKET_API_BASE_URL: deployConfig.hosting?.marketBaseUrl ?? '',
-		TREESEED_HOSTING_TEAM_ID: deployConfig.hosting?.teamId ?? contentDefaultTeamId,
-		TREESEED_PROJECT_ID: deployConfig.hosting?.projectId ?? deployConfig.slug,
+		TREESEED_HUB_MODE: deployConfig.hub?.mode ?? 'treeseed_hosted',
+		TREESEED_RUNTIME_MODE: deployConfig.runtime?.mode ?? 'none',
+		TREESEED_RUNTIME_REGISTRATION: deployConfig.runtime?.registration ?? 'none',
+		TREESEED_MARKET_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig),
+		TREESEED_HOSTING_TEAM_ID: contentDefaultTeamId,
+		TREESEED_PROJECT_ID: resolveConfiguredProjectId(deployConfig),
 		TREESEED_AGENT_EXECUTION_PROVIDER: deployConfig.providers?.agents?.execution ?? 'stub',
 		TREESEED_AGENT_REPOSITORY_PROVIDER: deployConfig.providers?.agents?.repository ?? 'stub',
 		TREESEED_AGENT_VERIFICATION_PROVIDER: deployConfig.providers?.agents?.verification ?? 'stub',
 		TREESEED_CONTENT_RUNTIME_PROVIDER: contentRuntimeProvider,
 		TREESEED_CONTENT_PUBLISH_PROVIDER: contentPublishProvider,
+		TREESEED_CONTENT_SERVING_MODE: contentServingMode,
 		TREESEED_CONTENT_DEFAULT_TEAM_ID: contentDefaultTeamId,
 		TREESEED_CONTENT_MANIFEST_KEY: contentManifestKey,
 		TREESEED_CONTENT_MANIFEST_KEY_TEMPLATE: contentManifestKeyTemplate,
 		TREESEED_CONTENT_PREVIEW_ROOT_TEMPLATE: contentPreviewRootTemplate,
 		TREESEED_EDITORIAL_PREVIEW_ROOT: contentPreviewRootTemplate.replaceAll('{teamId}', contentDefaultTeamId),
 		TREESEED_EDITORIAL_PREVIEW_TTL_HOURS: String(deployConfig.cloudflare.r2?.previewTtlHours ?? 168),
-		TREESEED_CONTENT_BUCKET_NAME: deployConfig.cloudflare.r2?.bucketName ?? '',
-		TREESEED_CONTENT_PUBLIC_BASE_URL: deployConfig.cloudflare.r2?.publicBaseUrl ?? '',
-		TREESEED_WORKER_POOL_SCALER: envOrNull('TREESEED_WORKER_POOL_SCALER') ?? (hostedProject ? 'railway' : ''),
+		TREESEED_CONTENT_BUCKET_NAME: resolveConfiguredContentBucketName(deployConfig),
+		TREESEED_CONTENT_PUBLIC_BASE_URL: resolveConfiguredContentPublicBaseUrl(deployConfig),
+		TREESEED_WORKER_POOL_SCALER: envOrNull('TREESEED_WORKER_POOL_SCALER') ?? (managedRuntime ? 'railway' : ''),
 		TREESEED_WORKDAY_TIMEZONE: envOrNull('TREESEED_WORKDAY_TIMEZONE') ?? '',
 		TREESEED_WORKDAY_WINDOWS_JSON: envOrNull('TREESEED_WORKDAY_WINDOWS_JSON') ?? '',
 		TREESEED_WORKDAY_TASK_CREDIT_BUDGET: envOrNull('TREESEED_WORKDAY_TASK_CREDIT_BUDGET') ?? '',
@@ -210,6 +231,18 @@ function buildPublicVars(deployConfig) {
 		TREESEED_RAILWAY_ENVIRONMENT_ID: envOrNull('TREESEED_RAILWAY_ENVIRONMENT_ID') ?? '',
 		TREESEED_RAILWAY_WORKER_SERVICE_ID: envOrNull('TREESEED_RAILWAY_WORKER_SERVICE_ID') ?? workerRailway.serviceId ?? '',
 		TREESEED_PUBLIC_TURNSTILE_SITE_KEY: envOrNull('TREESEED_PUBLIC_TURNSTILE_SITE_KEY') ?? '',
+		TREESEED_WEB_CACHE_SOURCE_BROWSER_TTL_SECONDS: String(webCachePolicy.sourcePages.browserTtlSeconds),
+		TREESEED_WEB_CACHE_SOURCE_EDGE_TTL_SECONDS: String(webCachePolicy.sourcePages.edgeTtlSeconds),
+		TREESEED_WEB_CACHE_SOURCE_STALE_WHILE_REVALIDATE_SECONDS: String(webCachePolicy.sourcePages.staleWhileRevalidateSeconds),
+		TREESEED_WEB_CACHE_SOURCE_STALE_IF_ERROR_SECONDS: String(webCachePolicy.sourcePages.staleIfErrorSeconds),
+		TREESEED_WEB_CACHE_CONTENT_BROWSER_TTL_SECONDS: String(webCachePolicy.contentPages.browserTtlSeconds),
+		TREESEED_WEB_CACHE_CONTENT_EDGE_TTL_SECONDS: String(webCachePolicy.contentPages.edgeTtlSeconds),
+		TREESEED_WEB_CACHE_CONTENT_STALE_WHILE_REVALIDATE_SECONDS: String(webCachePolicy.contentPages.staleWhileRevalidateSeconds),
+		TREESEED_WEB_CACHE_CONTENT_STALE_IF_ERROR_SECONDS: String(webCachePolicy.contentPages.staleIfErrorSeconds),
+		TREESEED_WEB_CACHE_R2_BROWSER_TTL_SECONDS: String(webCachePolicy.r2PublishedObjects.browserTtlSeconds),
+		TREESEED_WEB_CACHE_R2_EDGE_TTL_SECONDS: String(webCachePolicy.r2PublishedObjects.edgeTtlSeconds),
+		TREESEED_WEB_CACHE_R2_STALE_WHILE_REVALIDATE_SECONDS: String(webCachePolicy.r2PublishedObjects.staleWhileRevalidateSeconds),
+		TREESEED_WEB_CACHE_R2_STALE_IF_ERROR_SECONDS: String(webCachePolicy.r2PublishedObjects.staleIfErrorSeconds),
 	};
 }
 
@@ -234,7 +267,7 @@ function defaultStateFromConfig(deployConfig, target) {
 	const suffix = target.kind === 'persistent' ? target.scope : sanitizeSegment(target.branchName);
 	const contentManifestKeyTemplate = deployConfig.cloudflare.r2?.manifestKeyTemplate ?? 'teams/{teamId}/published/common.json';
 	const contentPreviewRootTemplate = deployConfig.cloudflare.r2?.previewRootTemplate ?? 'teams/{teamId}/previews';
-	const contentDefaultTeamId = deployConfig.hosting?.teamId ?? deployConfig.slug;
+	const contentDefaultTeamId = resolveConfiguredHostedTeamId(deployConfig);
 	const contentManifestKey = contentManifestKeyTemplate.replaceAll('{teamId}', contentDefaultTeamId);
 
 	return {
@@ -263,8 +296,8 @@ function defaultStateFromConfig(deployConfig, target) {
 		},
 		queues: {
 			agentWork: {
-				name: deployConfig.cloudflare.queueName ?? 'agent-work',
-				dlqName: deployConfig.cloudflare.dlqName ?? 'agent-work-dlq',
+				name: targetScopedResourceName(deployConfig.cloudflare.queueName ?? 'agent-work', target),
+				dlqName: targetScopedResourceName(deployConfig.cloudflare.dlqName ?? 'agent-work-dlq', target),
 				binding: deployConfig.cloudflare.queueBinding ?? 'AGENT_WORK_QUEUE',
 				queueId: null,
 				dlqId: null,
@@ -273,9 +306,9 @@ function defaultStateFromConfig(deployConfig, target) {
 		pages: {
 			projectName: target.kind === 'persistent'
 				? (target.scope === 'prod'
-					? deployConfig.cloudflare.pages?.projectName ?? deployConfig.slug
-					: deployConfig.cloudflare.pages?.previewProjectName ?? `${deployConfig.cloudflare.pages?.projectName ?? deployConfig.slug}-staging`)
-				: deployConfig.cloudflare.pages?.previewProjectName ?? `${deployConfig.cloudflare.pages?.projectName ?? deployConfig.slug}-preview`,
+					? resolveConfiguredPagesProjectName(deployConfig)
+					: resolveConfiguredPagesPreviewProjectName(deployConfig))
+				: `${resolveConfiguredPagesProjectName(deployConfig)}-preview`,
 			productionBranch: deployConfig.cloudflare.pages?.productionBranch ?? 'main',
 			stagingBranch: deployConfig.cloudflare.pages?.stagingBranch ?? 'staging',
 			buildOutputDir: deployConfig.cloudflare.pages?.buildOutputDir ?? 'dist',
@@ -285,9 +318,9 @@ function defaultStateFromConfig(deployConfig, target) {
 			runtimeProvider: deployConfig.providers?.content?.runtime ?? 'team_scoped_r2_overlay',
 			publishProvider: deployConfig.providers?.content?.publish ?? deployConfig.providers?.content?.runtime ?? 'team_scoped_r2_overlay',
 			defaultTeamId: contentDefaultTeamId,
-			r2Binding: deployConfig.cloudflare.r2?.binding ?? null,
-			bucketName: deployConfig.cloudflare.r2?.bucketName ?? null,
-			publicBaseUrl: deployConfig.cloudflare.r2?.publicBaseUrl ?? null,
+			r2Binding: resolveConfiguredContentBucketBinding(deployConfig),
+			bucketName: resolveConfiguredContentBucketName(deployConfig),
+			publicBaseUrl: resolveConfiguredContentPublicBaseUrl(deployConfig) || null,
 			manifestKeyTemplate: contentManifestKeyTemplate,
 			previewRootTemplate: contentPreviewRootTemplate,
 			previewTtlHours: deployConfig.cloudflare.r2?.previewTtlHours ?? 168,
@@ -298,12 +331,45 @@ function defaultStateFromConfig(deployConfig, target) {
 		hosting: {
 			kind: deployConfig.hosting?.kind ?? 'self_hosted_project',
 			registration: deployConfig.hosting?.registration ?? 'none',
-			marketBaseUrl: deployConfig.hosting?.marketBaseUrl ?? null,
-			teamId: deployConfig.hosting?.teamId ?? contentDefaultTeamId,
-			projectId: deployConfig.hosting?.projectId ?? deployConfig.slug,
+			marketBaseUrl: resolveConfiguredMarketBaseUrl(deployConfig) || null,
+			teamId: contentDefaultTeamId,
+			projectId: resolveConfiguredProjectId(deployConfig),
+		},
+		hub: {
+			mode: deployConfig.hub?.mode ?? 'treeseed_hosted',
+		},
+		runtime: {
+			mode: deployConfig.runtime?.mode ?? 'none',
+			registration: deployConfig.runtime?.registration ?? 'none',
+			marketBaseUrl: resolveConfiguredMarketBaseUrl(deployConfig) || null,
+			teamId: contentDefaultTeamId,
+			projectId: resolveConfiguredProjectId(deployConfig),
+		},
+		webCache: {
+			webHost: null,
+			contentHost: null,
+			webZoneId: null,
+			contentZoneId: null,
+			webRulesetId: null,
+			contentRulesetId: null,
+			rulesManaged: false,
+			lastSyncedAt: null,
+			lastVerifiedAt: null,
+			lastError: null,
+			deployPurge: {
+				lastPurgedAt: null,
+				purgeCount: 0,
+				lastError: null,
+			},
+			contentPurge: {
+				lastPurgedAt: null,
+				purgeCount: 0,
+				lastError: null,
+			},
 		},
 		generatedSecrets: {},
 		readiness: {
+			phase: 'pending',
 			configured: false,
 			provisioned: false,
 			deployable: false,
@@ -311,6 +377,8 @@ function defaultStateFromConfig(deployConfig, target) {
 			initializedAt: null,
 			lastValidatedAt: null,
 			lastConfigFingerprint: null,
+			blockers: [],
+			warnings: [],
 			lastValidationSummary: null,
 		},
 		lastDeployedUrl: target.kind === 'branch' ? targetWorkersDevUrl(workerName) : null,
@@ -432,6 +500,48 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 			teamId: defaults.hosting?.teamId ?? persisted.hosting?.teamId ?? deployConfig.slug,
 			projectId: defaults.hosting?.projectId ?? persisted.hosting?.projectId ?? deployConfig.slug,
 		},
+		hub: {
+			...(defaults.hub ?? {}),
+			...(persisted.hub ?? {}),
+			mode: defaults.hub?.mode ?? persisted.hub?.mode ?? 'treeseed_hosted',
+		},
+		runtime: {
+			...(defaults.runtime ?? {}),
+			...(persisted.runtime ?? {}),
+			mode: defaults.runtime?.mode ?? persisted.runtime?.mode ?? 'none',
+			registration: defaults.runtime?.registration ?? persisted.runtime?.registration ?? 'none',
+			marketBaseUrl: defaults.runtime?.marketBaseUrl ?? persisted.runtime?.marketBaseUrl ?? null,
+			teamId: defaults.runtime?.teamId ?? persisted.runtime?.teamId ?? deployConfig.slug,
+			projectId: defaults.runtime?.projectId ?? persisted.runtime?.projectId ?? deployConfig.slug,
+		},
+		webCache: {
+			...(defaults.webCache ?? {}),
+			...(persisted.webCache ?? {}),
+			webHost: persisted.webCache?.webHost ?? persisted.webCache?.publicHost ?? defaults.webCache?.webHost ?? null,
+			contentHost: persisted.webCache?.contentHost ?? defaults.webCache?.contentHost ?? null,
+			webZoneId: persisted.webCache?.webZoneId ?? persisted.webCache?.zoneId ?? defaults.webCache?.webZoneId ?? null,
+			contentZoneId: persisted.webCache?.contentZoneId ?? defaults.webCache?.contentZoneId ?? null,
+			webRulesetId: persisted.webCache?.webRulesetId ?? persisted.webCache?.rulesetId ?? defaults.webCache?.webRulesetId ?? null,
+			contentRulesetId: persisted.webCache?.contentRulesetId ?? defaults.webCache?.contentRulesetId ?? null,
+			rulesManaged: persisted.webCache?.rulesManaged ?? defaults.webCache?.rulesManaged ?? false,
+			lastSyncedAt: persisted.webCache?.lastSyncedAt ?? defaults.webCache?.lastSyncedAt ?? null,
+			lastVerifiedAt: persisted.webCache?.lastVerifiedAt ?? defaults.webCache?.lastVerifiedAt ?? null,
+			lastError: persisted.webCache?.lastError ?? defaults.webCache?.lastError ?? null,
+			deployPurge: {
+				...(defaults.webCache?.deployPurge ?? {}),
+				...(persisted.webCache?.deployPurge ?? {}),
+				lastPurgedAt: persisted.webCache?.deployPurge?.lastPurgedAt ?? defaults.webCache?.deployPurge?.lastPurgedAt ?? null,
+				purgeCount: persisted.webCache?.deployPurge?.purgeCount ?? defaults.webCache?.deployPurge?.purgeCount ?? 0,
+				lastError: persisted.webCache?.deployPurge?.lastError ?? defaults.webCache?.deployPurge?.lastError ?? null,
+			},
+			contentPurge: {
+				...(defaults.webCache?.contentPurge ?? {}),
+				...(persisted.webCache?.contentPurge ?? {}),
+				lastPurgedAt: persisted.webCache?.contentPurge?.lastPurgedAt ?? defaults.webCache?.contentPurge?.lastPurgedAt ?? null,
+				purgeCount: persisted.webCache?.contentPurge?.purgeCount ?? defaults.webCache?.contentPurge?.purgeCount ?? 0,
+				lastError: persisted.webCache?.contentPurge?.lastError ?? defaults.webCache?.contentPurge?.lastError ?? null,
+			},
+		},
 		pages: {
 			...(defaults.pages ?? {}),
 			...(persisted.pages ?? {}),
@@ -449,12 +559,14 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 			MANAGED_SERVICE_KEYS.map((serviceKey) => {
 				const defaultService = defaults.services?.[serviceKey] ?? {};
 				const persistedService = persisted.services?.[serviceKey] ?? {};
+				const effectiveDeploymentTimestamp = persistedService.lastDeploymentTimestamp ?? defaultService.lastDeploymentTimestamp ?? null;
 				return [
 					serviceKey,
 					{
 						...defaultService,
 						...persistedService,
 						enabled: defaultService.enabled,
+						initialized: persistedService.initialized === true && Boolean(effectiveDeploymentTimestamp),
 						provider: defaultService.provider,
 						projectId: defaultService.projectId ?? persistedService.projectId ?? null,
 						projectName: defaultService.projectName ?? persistedService.projectName ?? null,
@@ -465,6 +577,7 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 						environment: defaultService.environment ?? persistedService.environment ?? null,
 						schedule: defaultService.schedule ?? persistedService.schedule ?? null,
 						publicBaseUrl: defaultService.publicBaseUrl ?? persistedService.publicBaseUrl ?? null,
+						lastDeploymentTimestamp: effectiveDeploymentTimestamp,
 						lastDeployedUrl: persistedService.lastDeployedUrl ?? defaultService.publicBaseUrl ?? null,
 						lastScheduleSyncAt: persistedService.lastScheduleSyncAt ?? defaultService.lastScheduleSyncAt ?? null,
 					},
@@ -505,8 +618,8 @@ export function buildWranglerConfigContents(tenantRoot, deployConfig, state, opt
 	const migrationsDir = relativeFromGeneratedRoot(resolve(tenantRoot, 'migrations'), generatedRoot);
 	const vars = buildPublicVars(deployConfig);
 	const r2Config = deployConfig.cloudflare.r2;
-	const r2Binding = r2Config?.binding ?? 'TREESEED_CONTENT_BUCKET';
-	const r2BucketName = r2Config?.bucketName ?? `${deployConfig.slug}-content`;
+	const r2Binding = resolveConfiguredContentBucketBinding(deployConfig);
+	const r2BucketName = resolveConfiguredContentBucketName(deployConfig);
 
 	return [
 		`name = ${renderTomlString(workerName)}`,
@@ -606,6 +719,11 @@ function parseWranglerJsonOutput(result, label) {
 	return JSON.parse(source);
 }
 
+function isWranglerAlreadyExistsError(error, matchers: RegExp[]) {
+	const message = error instanceof Error ? error.message : String(error);
+	return matchers.some((matcher) => matcher.test(message));
+}
+
 function listKvNamespaces(tenantRoot, env) {
 	const result = runWrangler(['kv', 'namespace', 'list'], {
 		cwd: tenantRoot,
@@ -668,18 +786,357 @@ function isPlaceholderResourceId(value) {
 }
 
 function buildProvisioningSummary(deployConfig, state, target) {
+	const webCachePolicy = resolveTreeseedWebCachePolicy(deployConfig);
 	return {
 		target: deployTargetLabel(target),
 		workerName: state.workerName ?? targetWorkerName(deployConfig, target),
 		siteUrl: target.kind === 'branch' ? targetWorkersDevUrl(state.workerName) : deployConfig.siteUrl,
-		accountId: deployConfig.cloudflare.accountId,
+		accountId: resolveConfiguredCloudflareAccountId(deployConfig),
 		pages: state.pages ?? null,
 		formGuardKv: state.kvNamespaces.FORM_GUARD_KV,
 		sessionKv: state.kvNamespaces.SESSION,
 		siteDataDb: state.d1Databases.SITE_DATA_DB,
 		queue: state.queues?.agentWork ?? null,
 		content: state.content ?? null,
+		webCache: {
+			webHost: state.webCache?.webHost ?? null,
+			contentHost: state.webCache?.contentHost ?? null,
+			rulesManaged: state.webCache?.rulesManaged === true,
+			lastSyncedAt: state.webCache?.lastSyncedAt ?? null,
+			lastError: state.webCache?.lastError ?? null,
+			policy: webCachePolicy,
+			deployPurge: state.webCache?.deployPurge ?? null,
+			contentPurge: state.webCache?.contentPurge ?? null,
+		},
 	};
+}
+
+function safeUrl(value) {
+	try {
+		return new URL(value);
+	} catch {
+		return null;
+	}
+}
+
+function normalizePathPrefix(pathname) {
+	const normalized = String(pathname ?? '').replace(/\/+$/u, '');
+	if (!normalized || normalized === '/') {
+		return '';
+	}
+	return normalized.startsWith('/') ? normalized : `/${normalized}`;
+}
+
+function resolvePublicWebCacheTarget(deployConfig) {
+	const parsed = safeUrl(deployConfig.surfaces?.web?.publicBaseUrl ?? deployConfig.siteUrl);
+	if (!parsed) {
+		return null;
+	}
+	return {
+		host: parsed.hostname,
+		pathPrefix: normalizePathPrefix(parsed.pathname),
+	};
+}
+
+function resolvePublicContentCacheTarget(deployConfig) {
+	const parsed = safeUrl(resolveConfiguredContentPublicBaseUrl(deployConfig));
+	if (!parsed) {
+		return null;
+	}
+	return {
+		host: parsed.hostname,
+		pathPrefix: normalizePathPrefix(parsed.pathname),
+	};
+}
+
+function shouldManageCloudflareWebCacheRules(deployConfig, target) {
+	if (target.kind !== 'persistent' || target.scope !== 'prod') {
+		return false;
+	}
+	if ((deployConfig.surfaces?.web?.provider ?? deployConfig.providers?.deploy) !== 'cloudflare') {
+		return false;
+	}
+	const webTarget = resolvePublicWebCacheTarget(deployConfig);
+	return Boolean(webTarget?.host && !webTarget.host.endsWith('.workers.dev') && !webTarget.host.endsWith('.pages.dev'));
+}
+
+function cloudflareApiRequest(path, { method = 'GET', body, env, allowFailure = false } = {}) {
+	const response = spawnSync(
+		process.execPath,
+		[
+			'--input-type=module',
+			'-e',
+			`import { readFileSync } from 'node:fs';
+const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
+const response = await fetch(input.url, {
+  method: input.method,
+  headers: {
+    authorization: 'Bearer ' + input.token,
+    'content-type': 'application/json',
+  },
+  body: input.body ? JSON.stringify(input.body) : undefined,
+});
+const payload = await response.json().catch(async () => ({ success: false, errors: [{ message: await response.text() }] }));
+process.stdout.write(JSON.stringify({ ok: response.ok, payload }));`,
+		],
+		{
+			stdio: ['pipe', 'pipe', 'pipe'],
+			encoding: 'utf8',
+			env: { ...process.env, ...(env ?? {}) },
+			input: JSON.stringify({
+				url: `https://api.cloudflare.com/client/v4${path}`,
+				method,
+				body,
+				token: env?.CLOUDFLARE_API_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN ?? '',
+			}),
+		},
+	);
+
+	if (response.status !== 0 && !allowFailure) {
+		throw new Error(response.stderr?.trim() || `Cloudflare API request failed: ${method} ${path}`);
+	}
+
+	const parsed = JSON.parse(response.stdout?.trim() || '{"ok":false,"payload":{"success":false,"errors":[{"message":"empty response"}]}}');
+	if (!parsed.ok && !allowFailure) {
+		const details = Array.isArray(parsed.payload?.errors)
+			? parsed.payload.errors.map((entry) => entry?.message ?? JSON.stringify(entry)).join('; ')
+			: 'unknown error';
+		throw new Error(details || `Cloudflare API request failed: ${method} ${path}`);
+	}
+	return parsed.payload;
+}
+
+function resolveCloudflareZoneIdForHost(deployConfig, host, env) {
+	if (deployConfig.cloudflare.zoneId) {
+		return deployConfig.cloudflare.zoneId;
+	}
+
+	const result = cloudflareApiRequest(`/zones?name=${encodeURIComponent(host)}`, { env, allowFailure: true });
+	const exact = Array.isArray(result?.result) ? result.result.find((zone) => zone?.name === host) : null;
+	if (exact?.id) {
+		return exact.id;
+	}
+
+	const fallback = cloudflareApiRequest('/zones', { env, allowFailure: true });
+	const zones = Array.isArray(fallback?.result) ? fallback.result : [];
+	const matched = zones
+		.filter((zone) => typeof zone?.name === 'string' && (host === zone.name || host.endsWith(`.${zone.name}`)))
+		.sort((left, right) => String(right.name).length - String(left.name).length)[0];
+	return matched?.id ?? null;
+}
+
+function listCloudflareZoneRulesets(zoneId, env) {
+	const result = cloudflareApiRequest(`/zones/${zoneId}/rulesets`, { env, allowFailure: true });
+	return Array.isArray(result?.result) ? result.result : [];
+}
+
+function buildTreeseedManagedCloudflareCacheRules(deployConfig, cacheTarget, kind) {
+	if (!cacheTarget?.host) {
+		return [];
+	}
+	const policy = resolveTreeseedWebCachePolicy(deployConfig);
+	const cachePolicy = kind === 'web' ? policy.contentPages : policy.r2PublishedObjects;
+	const hostExpression = `(http.host eq "${cacheTarget.host}")`;
+	const pathExpression = cacheTarget.pathPrefix
+		? `(starts_with(http.request.uri.path, "${cacheTarget.pathPrefix}/") or (http.request.uri.path eq "${cacheTarget.pathPrefix}"))`
+		: 'true';
+
+	if (kind === 'content') {
+		return [
+			{
+				description: 'treeseed-managed: cache public r2 objects',
+				expression: `((${hostExpression}) and (${pathExpression}) and (http.request.method in {"GET" "HEAD"}))`,
+				action: 'set_cache_settings',
+				action_parameters: {
+					cache: true,
+					edge_ttl: {
+						mode: 'override_origin',
+						default: cachePolicy.edgeTtlSeconds,
+					},
+					browser_ttl: {
+						mode: 'override_origin',
+						default: cachePolicy.browserTtlSeconds,
+					},
+				},
+				enabled: true,
+			},
+		];
+	}
+
+	const sourcePaths = policy.sourcePages.paths.map((path) => path === '/' ? '/' : path.replace(/\/+$/u, ''));
+	const sourcePathExpression = sourcePaths.length > 0
+		? `(${sourcePaths.map((path) => `(http.request.uri.path eq "${path}")`).join(' or ')})`
+		: 'false';
+	const notSourcePathExpression = sourcePaths.length > 0
+		? `not ${sourcePathExpression}`
+		: 'true';
+
+	return [
+		{
+			description: 'treeseed-managed: bypass preview and dynamic routes',
+			expression: `((${hostExpression}) and ((starts_with(http.request.uri.path, "/api/")) or (http.request.uri.path eq "/api") or (starts_with(http.request.uri.path, "/auth")) or (starts_with(http.request.uri.path, "/admin")) or (starts_with(http.request.uri.path, "/app")) or (starts_with(http.request.uri.path, "/internal")) or (http.request.uri.query contains "preview=") or (http.cookie contains "treeseed-content-preview=")))`,
+			action: 'set_cache_settings',
+			action_parameters: {
+				cache: false,
+			},
+			enabled: true,
+		},
+		{
+			description: 'treeseed-managed: cache source html routes',
+			expression: `((${hostExpression}) and (${pathExpression}) and (${sourcePathExpression}) and (http.request.method in {"GET" "HEAD"}))`,
+			action: 'set_cache_settings',
+			action_parameters: {
+				cache: true,
+				edge_ttl: {
+					mode: 'override_origin',
+					default: policy.sourcePages.edgeTtlSeconds,
+				},
+				browser_ttl: {
+					mode: 'override_origin',
+					default: policy.sourcePages.browserTtlSeconds,
+				},
+			},
+			enabled: true,
+		},
+		{
+			description: 'treeseed-managed: cache content html routes',
+			expression: `((${hostExpression}) and (${pathExpression}) and (${notSourcePathExpression}) and (http.request.method in {"GET" "HEAD"}) and (http.request.uri.path.extension eq "") and not (starts_with(http.request.uri.path, "/api/")) and not (http.request.uri.path eq "/api") and not (starts_with(http.request.uri.path, "/auth")) and not (starts_with(http.request.uri.path, "/admin")) and not (starts_with(http.request.uri.path, "/app")) and not (starts_with(http.request.uri.path, "/internal")) and not (http.request.uri.query contains "preview=") and not (http.cookie contains "treeseed-content-preview="))`,
+			action: 'set_cache_settings',
+			action_parameters: {
+				cache: true,
+				edge_ttl: {
+					mode: 'override_origin',
+					default: cachePolicy.edgeTtlSeconds,
+				},
+				browser_ttl: {
+					mode: 'override_origin',
+					default: cachePolicy.browserTtlSeconds,
+				},
+			},
+			enabled: true,
+		},
+	];
+}
+
+function reconcileCloudflareCacheRulesForTarget(role, deployConfig, state, cacheTarget, env, { dryRun = false } = {}) {
+	const roleKey = role === 'web' ? 'Web' : 'Content';
+	if (!cacheTarget?.host) {
+		return { managed: false, skipped: true, reason: 'missing_host' };
+	}
+
+	const zoneId = resolveCloudflareZoneIdForHost(deployConfig, cacheTarget.host, env);
+	if (!zoneId) {
+		return { managed: false, skipped: true, reason: 'zone_unresolved' };
+	}
+
+	const desiredRules = buildTreeseedManagedCloudflareCacheRules(deployConfig, cacheTarget, role);
+	state.webCache[role === 'web' ? 'webHost' : 'contentHost'] = cacheTarget.host;
+	state.webCache[role === 'web' ? 'webZoneId' : 'contentZoneId'] = zoneId;
+	if (dryRun) {
+		return { managed: true, dryRun: true, zoneId, host: cacheTarget.host, rules: desiredRules };
+	}
+
+	const rulesets = listCloudflareZoneRulesets(zoneId, env);
+	const existing = rulesets.find((ruleset) => ruleset?.phase === 'http_request_cache_settings') ?? null;
+	const prefix = `treeseed-managed:${roleKey.toLowerCase()}:`;
+	const unmanagedRules = Array.isArray(existing?.rules)
+		? existing.rules.filter((rule) => typeof rule?.description !== 'string' || !rule.description.startsWith(prefix))
+		: [];
+	const rules = [
+		...unmanagedRules,
+		...desiredRules.map((rule) => ({ ...rule, description: `${prefix} ${rule.description}` })),
+	];
+	const payload = existing
+		? cloudflareApiRequest(`/zones/${zoneId}/rulesets/${existing.id}`, {
+			method: 'PUT',
+			body: { rules },
+			env,
+		})
+		: cloudflareApiRequest(`/zones/${zoneId}/rulesets`, {
+			method: 'POST',
+			body: {
+				name: `Treeseed Managed ${roleKey} Cache Rules`,
+				kind: 'zone',
+				phase: 'http_request_cache_settings',
+				rules,
+			},
+			env,
+		});
+	const rulesetId = payload?.result?.id ?? existing?.id ?? null;
+	state.webCache[role === 'web' ? 'webRulesetId' : 'contentRulesetId'] = rulesetId;
+	return { managed: true, zoneId, host: cacheTarget.host, rulesetId };
+}
+
+function reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, target, { dryRun = false } = {}) {
+	if (!shouldManageCloudflareWebCacheRules(deployConfig, target)) {
+		const webTarget = resolvePublicWebCacheTarget(deployConfig);
+		const contentTarget = resolvePublicContentCacheTarget(deployConfig);
+		state.webCache.webHost = webTarget?.host ?? null;
+		state.webCache.contentHost = contentTarget?.host ?? null;
+		state.webCache.rulesManaged = false;
+		state.webCache.lastError = null;
+		return { managed: false, skipped: true, reason: 'unsupported_target_or_host' };
+	}
+
+	const env = {
+		CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN ?? '',
+	};
+	if (!env.CLOUDFLARE_API_TOKEN) {
+		state.webCache.webHost = resolvePublicWebCacheTarget(deployConfig)?.host ?? null;
+		state.webCache.contentHost = resolvePublicContentCacheTarget(deployConfig)?.host ?? null;
+		state.webCache.rulesManaged = false;
+		state.webCache.lastError = 'CLOUDFLARE_API_TOKEN is required to manage Cloudflare Cache Rules.';
+		return { managed: false, skipped: true, reason: 'missing_api_token' };
+	}
+
+	const webTarget = resolvePublicWebCacheTarget(deployConfig);
+	const contentTarget = resolvePublicContentCacheTarget(deployConfig);
+	const results = [];
+	if (webTarget?.host) {
+		results.push(reconcileCloudflareCacheRulesForTarget('web', deployConfig, state, webTarget, env, { dryRun }));
+	}
+	if (contentTarget?.host) {
+		results.push(reconcileCloudflareCacheRulesForTarget('content', deployConfig, state, contentTarget, env, { dryRun }));
+	}
+	state.webCache.rulesManaged = true;
+	state.webCache.lastSyncedAt = new Date().toISOString();
+	state.webCache.lastError = null;
+	return { managed: true, results };
+}
+
+function purgeCloudflareCacheByUrls(urls, deployConfig, { env } = {}) {
+	const uniqueUrls = [...new Set((urls ?? []).filter(Boolean))];
+	if (uniqueUrls.length === 0) {
+		return [];
+	}
+
+	const grouped = new Map();
+	for (const urlValue of uniqueUrls) {
+		const parsed = safeUrl(urlValue);
+		if (!parsed) {
+			continue;
+		}
+		const zoneId = resolveCloudflareZoneIdForHost(deployConfig, parsed.hostname, env);
+		if (!zoneId) {
+			continue;
+		}
+		const current = grouped.get(zoneId) ?? [];
+		current.push(parsed.toString());
+		grouped.set(zoneId, current);
+	}
+
+	return [...grouped.entries()].map(([zoneId, files]) => {
+		const payload = cloudflareApiRequest(`/zones/${zoneId}/purge_cache`, {
+			method: 'POST',
+			body: { files: [...new Set(files)] },
+			env,
+		});
+		return {
+			zoneId,
+			count: [...new Set(files)].length,
+			success: payload?.success === true,
+		};
+	});
 }
 
 function queueName(entry) {
@@ -702,12 +1159,141 @@ function hasProvisionedCloudflareResources(state) {
 	);
 }
 
+function absoluteUrlForPath(baseUrl, path) {
+	const parsed = safeUrl(baseUrl);
+	if (!parsed) {
+		return null;
+	}
+	const normalizedPath = String(path ?? '').startsWith('/') ? String(path) : `/${String(path ?? '')}`;
+	return new URL(normalizedPath, parsed).toString();
+}
+
+function resolveSourcePagePurgeUrls(deployConfig) {
+	const webBaseUrl = deployConfig.surfaces?.web?.publicBaseUrl ?? deployConfig.siteUrl;
+	const paths = resolveTreeseedWebCachePolicy(deployConfig).sourcePages.paths;
+	return paths.map((path) => absoluteUrlForPath(webBaseUrl, path)).filter(Boolean);
+}
+
+function recordCachePurgeResult(targetState, results, error = null) {
+	if (error) {
+		targetState.lastError = error instanceof Error ? error.message : String(error);
+		return;
+	}
+	targetState.lastPurgedAt = new Date().toISOString();
+	targetState.purgeCount = Array.isArray(results) ? results.reduce((sum, result) => sum + (result?.count ?? 0), 0) : 0;
+	targetState.lastError = null;
+}
+
+export function purgeSourcePageCaches(tenantRoot, options = {}) {
+	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');
+	const deployConfig = loadTenantDeployConfig(tenantRoot);
+	const state = loadDeployState(tenantRoot, deployConfig, { target });
+	const urls = resolveSourcePagePurgeUrls(deployConfig);
+	if ((options.dryRun ?? false) || urls.length === 0 || !process.env.CLOUDFLARE_API_TOKEN) {
+		recordCachePurgeResult(state.webCache.deployPurge, urls.map((url) => ({ count: url ? 1 : 0 })));
+		writeDeployState(tenantRoot, state, { target });
+		return { skipped: options.dryRun ?? false, urls, results: [] };
+	}
+
+	try {
+		const results = purgeCloudflareCacheByUrls(urls, deployConfig, {
+			env: { CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN },
+		});
+		recordCachePurgeResult(state.webCache.deployPurge, results);
+		writeDeployState(tenantRoot, state, { target });
+		return { urls, results };
+	} catch (error) {
+		recordCachePurgeResult(state.webCache.deployPurge, [], error);
+		writeDeployState(tenantRoot, state, { target });
+		throw error;
+	}
+}
+
+export function purgePublishedContentCaches(tenantRoot, urls, options = {}) {
+	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');
+	const deployConfig = loadTenantDeployConfig(tenantRoot);
+	const state = loadDeployState(tenantRoot, deployConfig, { target });
+	if ((options.dryRun ?? false) || !urls?.length || !process.env.CLOUDFLARE_API_TOKEN) {
+		recordCachePurgeResult(state.webCache.contentPurge, (urls ?? []).map((url) => ({ count: url ? 1 : 0 })));
+		writeDeployState(tenantRoot, state, { target });
+		return { skipped: options.dryRun ?? false, urls: urls ?? [], results: [] };
+	}
+
+	try {
+		const results = purgeCloudflareCacheByUrls(urls, deployConfig, {
+			env: { CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN },
+		});
+		recordCachePurgeResult(state.webCache.contentPurge, results);
+		writeDeployState(tenantRoot, state, { target });
+		return { urls, results };
+	} catch (error) {
+		recordCachePurgeResult(state.webCache.contentPurge, [], error);
+		writeDeployState(tenantRoot, state, { target });
+		throw error;
+	}
+}
+
 function buildDestroySummary(deployConfig, state, target) {
 	return buildProvisioningSummary(deployConfig, state, target);
 }
 
 function isPlaceholderAccountId(value) {
 	return !value || value === 'replace-with-cloudflare-account-id';
+}
+
+function resolveConfiguredCloudflareAccountId(deployConfig) {
+	return envOrNull('CLOUDFLARE_ACCOUNT_ID') ?? deployConfig.cloudflare.accountId;
+}
+
+function resolveConfiguredMarketBaseUrl(deployConfig) {
+	return envOrNull('TREESEED_MARKET_API_BASE_URL')
+		?? deployConfig.runtime?.marketBaseUrl
+		?? deployConfig.hosting?.marketBaseUrl
+		?? '';
+}
+
+function resolveConfiguredHostedTeamId(deployConfig) {
+	return envOrNull('TREESEED_HOSTING_TEAM_ID')
+		?? deployConfig.runtime?.teamId
+		?? deployConfig.hosting?.teamId
+		?? deployConfig.slug;
+}
+
+function resolveConfiguredProjectId(deployConfig) {
+	return envOrNull('TREESEED_PROJECT_ID')
+		?? deployConfig.runtime?.projectId
+		?? deployConfig.hosting?.projectId
+		?? deployConfig.slug;
+}
+
+function resolveConfiguredPagesProjectName(deployConfig) {
+	return envOrNull('TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME')
+		?? deployConfig.cloudflare.pages?.projectName
+		?? deployConfig.slug;
+}
+
+function resolveConfiguredPagesPreviewProjectName(deployConfig) {
+	return envOrNull('TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME')
+		?? deployConfig.cloudflare.pages?.previewProjectName
+		?? `${resolveConfiguredPagesProjectName(deployConfig)}-staging`;
+}
+
+function resolveConfiguredContentBucketBinding(deployConfig) {
+	return envOrNull('TREESEED_CONTENT_BUCKET_BINDING')
+		?? deployConfig.cloudflare.r2?.binding
+		?? 'TREESEED_CONTENT_BUCKET';
+}
+
+function resolveConfiguredContentBucketName(deployConfig) {
+	return envOrNull('TREESEED_CONTENT_BUCKET_NAME')
+		?? deployConfig.cloudflare.r2?.bucketName
+		?? `${deployConfig.slug}-content`;
+}
+
+function resolveConfiguredContentPublicBaseUrl(deployConfig) {
+	return envOrNull('TREESEED_CONTENT_PUBLIC_BASE_URL')
+		?? deployConfig.cloudflare.r2?.publicBaseUrl
+		?? '';
 }
 
 function missingTurnstileRequirements() {
@@ -724,8 +1310,8 @@ function missingTurnstileRequirements() {
 function missingContentRuntimeRequirements(deployConfig) {
 	const issues = [];
 	if (deployConfig.providers?.content?.runtime === 'team_scoped_r2_overlay') {
-		if (!deployConfig.cloudflare.r2?.bucketName) {
-			issues.push('Set cloudflare.r2.bucketName before deploying team-scoped hosted content.');
+		if (!resolveConfiguredContentBucketName(deployConfig)) {
+			issues.push('Set TREESEED_CONTENT_BUCKET_NAME before deploying team-scoped hosted content.');
 		}
 		if (!envOrNull('TREESEED_EDITORIAL_PREVIEW_SECRET')) {
 			issues.push('Set TREESEED_EDITORIAL_PREVIEW_SECRET before deploying team-scoped hosted content.');
@@ -742,7 +1328,7 @@ export function collectMissingDeployInputs(tenantRoot) {
 		missing.push({
 			key: 'CLOUDFLARE_ACCOUNT_ID',
 			label: 'Cloudflare account ID',
-			message: `Cloudflare account ID is missing. Add it to ${relative(tenantRoot, deployConfig.__configPath ?? resolve(tenantRoot, 'treeseed.site.yaml'))} or provide it now.`,
+			message: 'Cloudflare account ID is missing. Set CLOUDFLARE_ACCOUNT_ID with treeseed config or provide it now.',
 		});
 	}
 
@@ -811,7 +1397,7 @@ export function validateDeployPrerequisites(tenantRoot, { requireRemote = true }
 
 	if (isPlaceholderAccountId(deployConfig.cloudflare.accountId)) {
 		issues.push(
-			`Set cloudflare.accountId in ${relative(tenantRoot, deployConfig.__configPath ?? resolve(tenantRoot, 'treeseed.site.yaml'))} or export CLOUDFLARE_ACCOUNT_ID.`,
+			'Set CLOUDFLARE_ACCOUNT_ID with treeseed config or export it before deploying.',
 		);
 	}
 
@@ -843,7 +1429,7 @@ export function validateDestroyPrerequisites(tenantRoot, { requireRemote = true 
 
 	if (requireRemote && isPlaceholderAccountId(deployConfig.cloudflare.accountId)) {
 		issues.push(
-			`Set cloudflare.accountId in ${relative(tenantRoot, deployConfig.__configPath ?? resolve(tenantRoot, 'treeseed.site.yaml'))} or export CLOUDFLARE_ACCOUNT_ID.`,
+			'Set CLOUDFLARE_ACCOUNT_ID with treeseed config or export it before destroying infrastructure.',
 		);
 	}
 
@@ -981,7 +1567,7 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 	state.workerName = targetWorkerName(deployConfig, target);
 
 	const env = {
-		CLOUDFLARE_ACCOUNT_ID: deployConfig.cloudflare.accountId,
+		CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig),
 	};
 
 	const dryRun = options.dryRun ?? false;
@@ -1057,7 +1643,7 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 	state.workerName = targetWorkerName(deployConfig, target);
 
 	const env = {
-		CLOUDFLARE_ACCOUNT_ID: deployConfig.cloudflare.accountId,
+		CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig),
 	};
 	const dryRun = options.dryRun ?? false;
 	const kvNamespaces = dryRun ? [] : listKvNamespaces(tenantRoot, env);
@@ -1134,10 +1720,11 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 		if (!current?.name) {
 			return;
 		}
-		const exists = queues.find((entry) => queueName(entry) === current.name);
+		let refreshedQueues = queues;
+		const exists = refreshedQueues.find((entry) => queueName(entry) === current.name);
 		if (exists) {
 			current.queueId = queueId(exists);
-			const currentDlq = current.dlqName ? queues.find((entry) => queueName(entry) === current.dlqName) : null;
+			const currentDlq = current.dlqName ? refreshedQueues.find((entry) => queueName(entry) === current.dlqName) : null;
 			current.dlqId = queueId(currentDlq);
 			return;
 		}
@@ -1146,22 +1733,41 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 			current.dlqId = current.dlqName ? `dryrun-${current.dlqName}` : null;
 			return;
 		}
-		runWrangler(['queues', 'create', current.name], {
-			cwd: tenantRoot,
-			capture: true,
-			env,
-		});
-		if (current.dlqName && !queues.find((entry) => queueName(entry) === current.dlqName)) {
-			runWrangler(['queues', 'create', current.dlqName], {
+		try {
+			runWrangler(['queues', 'create', current.name], {
 				cwd: tenantRoot,
 				capture: true,
 				env,
 			});
+		} catch (error) {
+			if (!isWranglerAlreadyExistsError(error, [/Queue name .* is already taken/i, /\[code:\s*11009\]/i])) {
+				throw error;
+			}
 		}
-		const refreshed = listQueues(tenantRoot, env);
-		const created = refreshed.find((entry) => queueName(entry) === current.name);
+		refreshedQueues = listQueues(tenantRoot, env);
+		if (current.dlqName && !refreshedQueues.find((entry) => queueName(entry) === current.dlqName)) {
+			try {
+				runWrangler(['queues', 'create', current.dlqName], {
+					cwd: tenantRoot,
+					capture: true,
+					env,
+				});
+			} catch (error) {
+				if (!isWranglerAlreadyExistsError(error, [/Queue name .* is already taken/i, /\[code:\s*11009\]/i])) {
+					throw error;
+				}
+			}
+		}
+		refreshedQueues = listQueues(tenantRoot, env);
+		const created = refreshedQueues.find((entry) => queueName(entry) === current.name);
+		if (!created) {
+			throw new Error(`Unable to resolve Cloudflare queue ${current.name} after reconciliation.`);
+		}
 		current.queueId = queueId(created);
-		const createdDlq = current.dlqName ? refreshed.find((entry) => queueName(entry) === current.dlqName) : null;
+		const createdDlq = current.dlqName ? refreshedQueues.find((entry) => queueName(entry) === current.dlqName) : null;
+		if (current.dlqName && !createdDlq) {
+			throw new Error(`Unable to resolve Cloudflare dead-letter queue ${current.dlqName} after reconciliation.`);
+		}
 		current.dlqId = queueId(createdDlq);
 	};
 
@@ -1170,18 +1776,29 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 		if (!bucketName) {
 			return;
 		}
-		const exists = buckets.find((entry) => entry?.name === bucketName);
+		let refreshedBuckets = buckets;
+		const exists = refreshedBuckets.find((entry) => entry?.name === bucketName);
 		if (exists) {
 			return;
 		}
 		if (dryRun) {
 			return;
 		}
-		runWrangler(['r2', 'bucket', 'create', bucketName], {
-			cwd: tenantRoot,
-			capture: true,
-			env,
-		});
+		try {
+			runWrangler(['r2', 'bucket', 'create', bucketName], {
+				cwd: tenantRoot,
+				capture: true,
+				env,
+			});
+		} catch (error) {
+			if (!isWranglerAlreadyExistsError(error, [/bucket you tried to create already exists, and you own it/i, /\[code:\s*10004\]/i])) {
+				throw error;
+			}
+		}
+		refreshedBuckets = listR2Buckets(tenantRoot, env);
+		if (!refreshedBuckets.find((entry) => entry?.name === bucketName)) {
+			throw new Error(`Unable to resolve Cloudflare R2 bucket ${bucketName} after reconciliation.`);
+		}
 	};
 
 	const ensurePagesProject = () => {
@@ -1221,13 +1838,17 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 	ensureQueue();
 	ensureR2Bucket();
 	ensurePagesProject();
+	reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, target, { dryRun });
 
 	state.readiness.configured = true;
 	state.readiness.provisioned = hasProvisionedCloudflareResources(state);
 	state.readiness.deployable = state.readiness.provisioned === true;
+	state.readiness.phase = state.readiness.provisioned === true ? 'provisioned' : 'config_complete';
 	state.readiness.initialized = true;
 	state.readiness.initializedAt = new Date().toISOString();
 	state.readiness.lastValidatedAt = state.readiness.initializedAt;
+	state.readiness.blockers = [];
+	state.readiness.warnings = [];
 	state.readiness.lastValidationSummary = {
 		cloudflare: state.readiness.provisioned === true ? 'ready' : 'incomplete',
 		railway: 'configured',
@@ -1241,7 +1862,7 @@ export function syncCloudflareSecrets(tenantRoot, options = {}) {
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
 	const state = loadDeployState(tenantRoot, deployConfig, { target });
 	const env = {
-		CLOUDFLARE_ACCOUNT_ID: deployConfig.cloudflare.accountId,
+		CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig),
 	};
 	const secrets = buildSecretMap(deployConfig, state);
 	const synced = [];
@@ -1257,7 +1878,11 @@ export function syncCloudflareSecrets(tenantRoot, options = {}) {
 			continue;
 		}
 
-		const result = spawnSync(process.execPath, [resolveWranglerBin(), 'secret', 'put', key, '--config', resolveGeneratedWranglerPath(tenantRoot, { target })], {
+		const command = state.pages?.projectName && target.kind === 'persistent'
+			? [resolveWranglerBin(), 'pages', 'secret', 'put', key, '--project-name', state.pages.projectName]
+			: [resolveWranglerBin(), 'secret', 'put', key, '--config', resolveGeneratedWranglerPath(tenantRoot, { target })];
+
+		const result = spawnSync(process.execPath, command, {
 			cwd: tenantRoot,
 			input: `${value}\n`,
 			stdio: ['pipe', 'inherit', 'inherit'],
@@ -1284,7 +1909,7 @@ export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
 	const state = loadDeployState(tenantRoot, deployConfig, { target });
 	const env = {
-		CLOUDFLARE_ACCOUNT_ID: deployConfig.cloudflare.accountId,
+		CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig),
 	};
 	const dryRun = options.dryRun ?? false;
 	const kvNamespaces = dryRun ? [] : listKvNamespaces(tenantRoot, env);
@@ -1301,13 +1926,17 @@ export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
 		queue: Boolean(state.queues?.agentWork?.name && queues.find((entry) => queueName(entry) === state.queues.agentWork.name)),
 		dlq: !state.queues?.agentWork?.dlqName || Boolean(queues.find((entry) => queueName(entry) === state.queues.agentWork.dlqName)),
 		r2: Boolean(state.content?.bucketName && buckets.find((entry) => entry?.name === state.content.bucketName)),
+		webCache: !shouldManageCloudflareWebCacheRules(deployConfig, target) || state.webCache?.rulesManaged === true,
 	};
 
 	const ok = dryRun ? true : Object.values(checks).every(Boolean);
 	state.readiness.configured = true;
 	state.readiness.provisioned = ok;
 	state.readiness.deployable = ok;
+	state.readiness.phase = ok ? 'provisioned' : 'config_complete';
 	state.readiness.lastValidatedAt = new Date().toISOString();
+	state.readiness.blockers = [];
+	state.readiness.warnings = [];
 	state.readiness.lastValidationSummary = checks;
 
 	const liveQueue = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.name);
@@ -1320,6 +1949,15 @@ export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
 	if (state.pages && livePages?.subdomain) {
 		state.pages.url = `https://${livePages.subdomain}`;
 	}
+	if (!dryRun) {
+		try {
+			reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, target, { dryRun: false });
+		} catch (error) {
+			state.webCache.rulesManaged = false;
+			state.webCache.lastError = error instanceof Error ? error.message : String(error);
+		}
+	}
+	state.webCache.lastVerifiedAt = new Date().toISOString();
 
 	writeDeployState(tenantRoot, state, { target });
 	return {
@@ -1341,7 +1979,7 @@ export function runRemoteD1Migrations(tenantRoot, options = {}) {
 		['d1', 'migrations', 'apply', state.d1Databases.SITE_DATA_DB.databaseName, '--remote', '--config', wranglerPath],
 		{
 			cwd: tenantRoot,
-			env: { CLOUDFLARE_ACCOUNT_ID: deployConfig.cloudflare.accountId },
+			env: { CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig) },
 		},
 	);
 
@@ -1357,9 +1995,12 @@ export function markDeploymentInitialized(tenantRoot, options = {}) {
 	state.readiness.configured = true;
 	state.readiness.provisioned = hasProvisionedCloudflareResources(state);
 	state.readiness.deployable = state.readiness.provisioned === true;
+	state.readiness.phase = state.readiness.provisioned === true ? 'provisioned' : 'config_complete';
 	state.readiness.initializedAt = state.readiness.initializedAt ?? timestamp;
 	state.readiness.lastValidatedAt = timestamp;
 	state.readiness.lastConfigFingerprint = state.lastManifestFingerprint ?? state.readiness.lastConfigFingerprint;
+	state.readiness.blockers = [];
+	state.readiness.warnings = [];
 	writeDeployState(tenantRoot, state, { target });
 	return state;
 }
@@ -1423,7 +2064,10 @@ export function finalizeDeploymentState(tenantRoot, options = {}) {
 	state.readiness.configured = true;
 	state.readiness.provisioned = hasProvisionedCloudflareResources(state);
 	state.readiness.deployable = state.readiness.provisioned === true;
+	state.readiness.phase = state.readiness.provisioned === true ? 'provisioned' : 'config_complete';
 	state.readiness.lastValidatedAt = state.lastDeploymentTimestamp;
+	state.readiness.blockers = [];
+	state.readiness.warnings = [];
 	for (const result of options.serviceResults ?? []) {
 		if (!result?.service || !state.services?.[result.service]) {
 			continue;
@@ -1434,6 +2078,14 @@ export function finalizeDeploymentState(tenantRoot, options = {}) {
 		state.services[result.service].lastDeploymentCommand = result.command ?? null;
 	}
 	writeDeployState(tenantRoot, state, { target });
+	if (target.kind === 'persistent') {
+		try {
+			purgeSourcePageCaches(tenantRoot, { target });
+		} catch {
+			// The purge helper persists its own error state.
+		}
+		return loadDeployState(tenantRoot, deployConfig, { target });
+	}
 	return state;
 }
 

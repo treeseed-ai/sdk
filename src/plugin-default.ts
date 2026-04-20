@@ -11,8 +11,8 @@ export default defineTreeseedPlugin({
 			mutation: ['local_branch'],
 			repository: ['stub', 'git'],
 			verification: ['stub', 'local'],
-			notification: ['stub'],
-			research: ['stub'],
+			notification: ['stub', 'sdk_message'],
+			research: ['stub', 'project_graph'],
 			handlers: [
 				'planner',
 				'architect',

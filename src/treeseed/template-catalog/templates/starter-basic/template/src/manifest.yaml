@@ -3,17 +3,24 @@ siteConfigPath: ./src/config.yaml
 content:
   docs: ./src/content/knowledge
   pages: ./src/content/pages
-  notes: ./src/content/empty
-  questions: ./src/content/empty
-  objectives: ./src/content/empty
-  people: ./src/content/empty
-  agents: ./src/content/empty
-  books: ./src/content/empty
+  notes: ./src/content/notes
+  questions: ./src/content/questions
+  objectives: ./src/content/objectives
+  proposals: ./src/content/proposals
+  decisions: ./src/content/decisions
+  people: ./src/content/people
+  agents: ./src/content/agents
+  books: ./src/content/books
+  templates: ./src/content/templates
+  knowledge_packs: ./src/content/knowledge-packs
+  workdays: ./src/content/workdays
 features:
   docs: true
   books: false
-  notes: false
-  questions: false
-  objectives: false
-  agents: false
+  notes: true
+  questions: true
+  objectives: true
+  proposals: true
+  decisions: true
+  agents: true
   forms: false

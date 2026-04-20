@@ -6,11 +6,15 @@ import { normalizeAliasedRecord } from '../field-aliases.ts';
 import type {
 	TreeseedDeployConfig,
 	TreeseedExportConfig,
+	TreeseedHubConfig,
 	TreeseedManagedServiceConfig,
 	TreeseedManagedServicesConfig,
 	TreeseedPlatformSurfacesConfig,
 	TreeseedPluginReference,
 	TreeseedProviderSelections,
+	TreeseedRuntimeConfig,
+	TreeseedWebCachePolicyConfig,
+	TreeseedWebSourcePageCacheConfig,
 } from './contracts.ts';
 import { resolveTreeseedTenantRoot } from './tenant-config.ts';
 import {
@@ -31,8 +35,21 @@ const hostingFieldAliases: TreeseedFieldAliasRegistry = {
 	projectId: { key: 'projectId', aliases: ['project_id'] },
 };
 
+const hubFieldAliases: TreeseedFieldAliasRegistry = {
+	mode: { key: 'mode', aliases: ['mode'] },
+};
+
+const runtimeFieldAliases: TreeseedFieldAliasRegistry = {
+	mode: { key: 'mode', aliases: ['mode'] },
+	registration: { key: 'registration', aliases: ['registration'] },
+	marketBaseUrl: { key: 'marketBaseUrl', aliases: ['market_base_url'] },
+	teamId: { key: 'teamId', aliases: ['team_id'] },
+	projectId: { key: 'projectId', aliases: ['project_id'] },
+};
+
 const cloudflareFieldAliases: TreeseedFieldAliasRegistry = {
 	accountId: { key: 'accountId', aliases: ['account_id'] },
+	zoneId: { key: 'zoneId', aliases: ['zone_id'] },
 	workerName: { key: 'workerName', aliases: ['worker_name'] },
 	queueName: { key: 'queueName', aliases: ['queue_name'] },
 	dlqName: { key: 'dlqName', aliases: ['dlq_name'] },
@@ -57,7 +74,28 @@ const cloudflareR2FieldAliases: TreeseedFieldAliasRegistry = {
 	previewTtlHours: { key: 'previewTtlHours', aliases: ['preview_ttl_hours'] },
 };
 
+const webSurfaceCacheFieldAliases: TreeseedFieldAliasRegistry = {
+	sourcePages: { key: 'sourcePages', aliases: ['source_pages'] },
+	contentPages: { key: 'contentPages', aliases: ['content_pages'] },
+	r2PublishedObjects: { key: 'r2PublishedObjects', aliases: ['r2_published_objects'] },
+};
+
+const webCachePolicyFieldAliases: TreeseedFieldAliasRegistry = {
+	browserTtlSeconds: { key: 'browserTtlSeconds', aliases: ['browser_ttl_seconds'] },
+	edgeTtlSeconds: { key: 'edgeTtlSeconds', aliases: ['edge_ttl_seconds'] },
+	staleWhileRevalidateSeconds: { key: 'staleWhileRevalidateSeconds', aliases: ['stale_while_revalidate_seconds'] },
+	staleIfErrorSeconds: { key: 'staleIfErrorSeconds', aliases: ['stale_if_error_seconds'] },
+	paths: { key: 'paths', aliases: ['paths'] },
+};
+
 const CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER = 'replace-with-cloudflare-account-id';
+const TREESEED_DEFAULT_SOURCE_PAGE_PURGE_PATHS = ['/', '/contact', '/404'];
+const TREESEED_DEFAULT_LONG_LIVED_CACHE_POLICY: Required<TreeseedWebCachePolicyConfig> = {
+	browserTtlSeconds: 0,
+	edgeTtlSeconds: 31536000,
+	staleWhileRevalidateSeconds: 86400,
+	staleIfErrorSeconds: 86400,
+};
 
 function expectString(value: unknown, label: string) {
 	if (typeof value !== 'string' || !value.trim()) {
@@ -87,6 +125,18 @@ function optionalPositiveNumber(value: unknown, label: string) {
 
 	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
 		throw new Error(`Invalid deploy config: expected ${label} to be a positive number when provided.`);
+	}
+
+	return value;
+}
+
+function optionalNonNegativeNumber(value: unknown, label: string) {
+	if (value === undefined) {
+		return undefined;
+	}
+
+	if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+		throw new Error(`Invalid deploy config: expected ${label} to be a non-negative number when provided.`);
 	}
 
 	return value;
@@ -182,9 +232,98 @@ function parseHostingConfig(value: unknown) {
 			'self_hosted_project',
 		] as const) ?? 'self_hosted_project',
 		registration: optionalEnum(record.registration, 'hosting.registration', ['optional', 'none'] as const) ?? 'none',
-		marketBaseUrl: optionalString(record.marketBaseUrl),
-		teamId: optionalString(record.teamId),
-		projectId: optionalString(record.projectId),
+		marketBaseUrl: optionalString(process.env.TREESEED_MARKET_API_BASE_URL) ?? optionalString(record.marketBaseUrl),
+		teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID) ?? optionalString(record.teamId),
+		projectId: optionalString(process.env.TREESEED_PROJECT_ID) ?? optionalString(record.projectId),
+	};
+}
+
+function normalizePlanesFromLegacyHosting(
+	hosting: ReturnType<typeof parseHostingConfig> | undefined,
+): { hub: TreeseedHubConfig; runtime: TreeseedRuntimeConfig } {
+	if (!hosting) {
+		return {
+			hub: { mode: 'treeseed_hosted' },
+			runtime: { mode: 'none', registration: 'none' },
+		};
+	}
+
+	if (hosting.kind === 'market_control_plane' || hosting.kind === 'hosted_project') {
+		return {
+			hub: { mode: 'treeseed_hosted' },
+			runtime: {
+				mode: 'treeseed_managed',
+				registration: hosting.kind === 'market_control_plane' ? 'none' : (hosting.registration ?? 'none'),
+				marketBaseUrl: hosting.marketBaseUrl,
+				teamId: hosting.teamId,
+				projectId: hosting.projectId,
+			},
+		};
+	}
+
+	return {
+		hub: { mode: 'customer_hosted' },
+		runtime: {
+			mode: 'byo_attached',
+			registration: hosting.registration ?? 'none',
+			marketBaseUrl: hosting.marketBaseUrl,
+			teamId: hosting.teamId,
+			projectId: hosting.projectId,
+		},
+	};
+}
+
+function normalizeLegacyHostingFromPlanes(hub: TreeseedHubConfig, runtime: TreeseedRuntimeConfig) {
+	if (runtime.mode === 'treeseed_managed' && hub.mode === 'treeseed_hosted') {
+		return {
+			kind: 'hosted_project' as const,
+			registration: runtime.registration === 'required' ? 'optional' : (runtime.registration ?? 'none'),
+			marketBaseUrl: runtime.marketBaseUrl,
+			teamId: runtime.teamId,
+			projectId: runtime.projectId,
+		};
+	}
+
+	return {
+		kind: 'self_hosted_project' as const,
+		registration: runtime.registration === 'required' ? 'optional' : (runtime.registration ?? 'none'),
+		marketBaseUrl: runtime.marketBaseUrl,
+		teamId: runtime.teamId,
+		projectId: runtime.projectId,
+	};
+}
+
+function parseHubConfig(value: unknown, fallback: TreeseedHubConfig): TreeseedHubConfig {
+	const record = normalizeAliasedRecord(
+		hubFieldAliases,
+		(optionalRecord(value, 'hub') ?? {}) as Record<string, unknown>,
+	);
+	if (!value || Object.keys(record).length === 0) {
+		return fallback;
+	}
+
+	return {
+		mode: optionalEnum(record.mode, 'hub.mode', ['treeseed_hosted', 'customer_hosted'] as const) ?? fallback.mode,
+	};
+}
+
+function parseRuntimeConfig(value: unknown, fallback: TreeseedRuntimeConfig): TreeseedRuntimeConfig {
+	const record = normalizeAliasedRecord(
+		runtimeFieldAliases,
+		(optionalRecord(value, 'runtime') ?? {}) as Record<string, unknown>,
+	);
+	if (!value || Object.keys(record).length === 0) {
+		return fallback;
+	}
+
+	return {
+		mode: optionalEnum(record.mode, 'runtime.mode', ['none', 'byo_attached', 'treeseed_managed'] as const) ?? fallback.mode,
+		registration: optionalEnum(record.registration, 'runtime.registration', ['optional', 'required', 'none'] as const)
+			?? fallback.registration
+			?? 'none',
+		marketBaseUrl: optionalString(process.env.TREESEED_MARKET_API_BASE_URL) ?? fallback.marketBaseUrl,
+		teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID) ?? fallback.teamId,
+		projectId: optionalString(process.env.TREESEED_PROJECT_ID) ?? fallback.projectId,
 	};
 }
 
@@ -245,6 +384,11 @@ function parseProviderSelections(value: unknown): TreeseedProviderSelections {
 					?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime,
 				'providers.content.docs',
 			),
+			serving: optionalEnum(
+				contentProviders.serving,
+				'providers.content.serving',
+				['local_collections', 'published_runtime'] as const,
+			) ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.serving,
 		},
 		site: expectString(record.site ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.site, 'providers.site'),
 	};
@@ -307,6 +451,12 @@ function parseManagedServicesConfig(value: unknown): TreeseedManagedServicesConf
 	);
 }
 
+function inferManagedRuntimeFromServices(services: TreeseedManagedServicesConfig | undefined) {
+	return Object.values(services ?? {}).some((service) =>
+		service && service.enabled !== false && (service.provider ?? 'railway') === 'railway',
+	);
+}
+
 function parsePlatformSurfaceConfig(
 	value: unknown,
 	label: string,
@@ -322,7 +472,56 @@ function parsePlatformSurfaceConfig(
 		rootDir: optionalString(record.rootDir),
 		publicBaseUrl: optionalString(record.publicBaseUrl),
 		localBaseUrl: optionalString(record.localBaseUrl),
+		cache: parseWebSurfaceCacheConfig(record.cache, `${label}.cache`),
 	};
+}
+
+function parseWebSurfaceCacheConfig(value: unknown, label: string) {
+	const record = normalizeAliasedRecord(
+		webSurfaceCacheFieldAliases,
+		(optionalRecord(value, label) ?? {}) as Record<string, unknown>,
+	);
+	if (!value || Object.keys(record).length === 0) {
+		return undefined;
+	}
+
+	return {
+		sourcePages: parseWebCachePolicyRecord(record.sourcePages, `${label}.sourcePages`, {
+			paths: TREESEED_DEFAULT_SOURCE_PAGE_PURGE_PATHS,
+		}),
+		contentPages: parseWebCachePolicyRecord(record.contentPages, `${label}.contentPages`),
+		r2PublishedObjects: parseWebCachePolicyRecord(record.r2PublishedObjects, `${label}.r2PublishedObjects`),
+	};
+}
+
+function parseWebCachePolicyRecord(
+	value: unknown,
+	label: string,
+	options: { paths?: string[] } = {},
+) {
+	const record = normalizeAliasedRecord(
+		webCachePolicyFieldAliases,
+		(optionalRecord(value, label) ?? {}) as Record<string, unknown>,
+	);
+	if (!value || Object.keys(record).length === 0) {
+		return options.paths ? { paths: [...options.paths] } : undefined;
+	}
+
+	const parsed = {
+		browserTtlSeconds: optionalNonNegativeNumber(record.browserTtlSeconds, `${label}.browserTtlSeconds`),
+		edgeTtlSeconds: optionalNonNegativeNumber(record.edgeTtlSeconds, `${label}.edgeTtlSeconds`),
+		staleWhileRevalidateSeconds: optionalNonNegativeNumber(
+			record.staleWhileRevalidateSeconds,
+			`${label}.staleWhileRevalidateSeconds`,
+		),
+		staleIfErrorSeconds: optionalNonNegativeNumber(record.staleIfErrorSeconds, `${label}.staleIfErrorSeconds`),
+	} as TreeseedWebCachePolicyConfig & { paths?: string[] };
+
+	if (options.paths) {
+		parsed.paths = [...new Set(optionalStringArray(record.paths, `${label}.paths`) ?? options.paths)];
+	}
+
+	return parsed;
 }
 
 function parsePlatformSurfacesConfig(value: unknown): TreeseedPlatformSurfacesConfig | undefined {
@@ -368,21 +567,38 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 		cloudflareR2FieldAliases,
 		(optionalRecord(cloudflare.r2, 'cloudflare.r2') ?? {}) as Record<string, unknown>,
 	);
+	const hosting = parseHostingConfig(parsed.hosting);
+	const services = parseManagedServicesConfig(parsed.services);
+	const normalizedPlanes = normalizePlanesFromLegacyHosting(hosting);
+	const inferredPlanes = !hosting && !parsed.hub && !parsed.runtime && inferManagedRuntimeFromServices(services)
+		? {
+			hub: { mode: 'customer_hosted' as const },
+			runtime: { mode: 'treeseed_managed' as const, registration: 'none' as const },
+		}
+		: normalizedPlanes;
+	const hub = parseHubConfig(parsed.hub, inferredPlanes.hub);
+	const runtime = parseRuntimeConfig(parsed.runtime, inferredPlanes.runtime);
 	const smtp = optionalRecord(parsed.smtp, 'smtp') ?? {};
 	const turnstile = optionalRecord(parsed.turnstile, 'turnstile') ?? {};
 	optionalBoolean(turnstile.enabled, 'turnstile.enabled');
+	const normalizedHosting = normalizeLegacyHostingFromPlanes(hub, runtime);
+	const compatibilityHosting = hosting && !parsed.hub && !parsed.runtime
+		? hosting
+		: normalizedHosting;
 
 	return {
 		name: expectString(parsed.name, 'name'),
 		slug: expectString(parsed.slug, 'slug'),
 		siteUrl: expectString(parsed.siteUrl, 'siteUrl'),
 		contactEmail: expectString(parsed.contactEmail, 'contactEmail'),
-		hosting: parseHostingConfig(parsed.hosting),
+		hosting: compatibilityHosting,
+		hub,
+		runtime,
 		cloudflare: {
 			accountId:
-				optionalCloudflareAccountId(cloudflare.accountId)
-				?? optionalCloudflareAccountId(process.env.CLOUDFLARE_ACCOUNT_ID)
+				optionalCloudflareAccountId(process.env.CLOUDFLARE_ACCOUNT_ID)
 				?? CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER,
+			zoneId: optionalString(cloudflare.zoneId),
 			workerName: optionalString(cloudflare.workerName),
 			queueName: optionalString(cloudflare.queueName),
 			dlqName: optionalString(cloudflare.dlqName),
@@ -391,8 +607,8 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 			pages: cloudflare.pages === undefined
 				? undefined
 				: {
-					projectName: optionalString(cloudflarePages.projectName) ?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME),
-					previewProjectName: optionalString(cloudflarePages.previewProjectName) ?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME),
+					projectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME) ?? optionalString(cloudflarePages.projectName),
+					previewProjectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME) ?? optionalString(cloudflarePages.previewProjectName),
 					productionBranch: optionalString(cloudflarePages.productionBranch) ?? 'main',
 					stagingBranch: optionalString(cloudflarePages.stagingBranch) ?? 'staging',
 					buildOutputDir: optionalString(cloudflarePages.buildOutputDir),
@@ -400,9 +616,9 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 			r2: cloudflare.r2 === undefined
 				? undefined
 				: {
-					binding: optionalString(cloudflareR2.binding) ?? optionalString(process.env.TREESEED_CONTENT_BUCKET_BINDING),
-					bucketName: optionalString(cloudflareR2.bucketName) ?? optionalString(process.env.TREESEED_CONTENT_BUCKET_NAME),
-					publicBaseUrl: optionalString(cloudflareR2.publicBaseUrl) ?? optionalString(process.env.TREESEED_CONTENT_PUBLIC_BASE_URL),
+					binding: optionalString(process.env.TREESEED_CONTENT_BUCKET_BINDING),
+					bucketName: optionalString(process.env.TREESEED_CONTENT_BUCKET_NAME),
+					publicBaseUrl: optionalString(process.env.TREESEED_CONTENT_PUBLIC_BASE_URL),
 					manifestKeyTemplate: optionalString(cloudflareR2.manifestKeyTemplate) ?? 'teams/{teamId}/published/common.json',
 					previewRootTemplate: optionalString(cloudflareR2.previewRootTemplate) ?? 'teams/{teamId}/previews',
 					previewTtlHours: optionalPositiveNumber(cloudflareR2.previewTtlHours, 'cloudflare.r2.previewTtlHours') ?? 168,
@@ -411,12 +627,12 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 		plugins: parsePluginReferences(parsed.plugins),
 		providers: parseProviderSelections(parsed.providers),
 		surfaces: parsePlatformSurfacesConfig(parsed.surfaces),
-		services: parseManagedServicesConfig(parsed.services),
+		services,
 		smtp: {
 			enabled: optionalBoolean(smtp.enabled, 'smtp.enabled'),
 		},
 		turnstile: {
-			enabled: true,
+			enabled: optionalBoolean(turnstile.enabled, 'turnstile.enabled') ?? false,
 		},
 		export: parseExportConfig(parsed.export),
 	};
@@ -437,6 +653,29 @@ export function resolveTreeseedDeployConfigPathFromRoot(tenantRoot: string, conf
 
 export function deriveCloudflareWorkerName(config: TreeseedDeployConfig) {
 	return config.cloudflare.workerName?.trim() || config.slug;
+}
+
+function resolveLongLivedCachePolicy(configured: TreeseedWebCachePolicyConfig | undefined): Required<TreeseedWebCachePolicyConfig> {
+	return {
+		browserTtlSeconds: configured?.browserTtlSeconds ?? TREESEED_DEFAULT_LONG_LIVED_CACHE_POLICY.browserTtlSeconds,
+		edgeTtlSeconds: configured?.edgeTtlSeconds ?? TREESEED_DEFAULT_LONG_LIVED_CACHE_POLICY.edgeTtlSeconds,
+		staleWhileRevalidateSeconds:
+			configured?.staleWhileRevalidateSeconds ?? TREESEED_DEFAULT_LONG_LIVED_CACHE_POLICY.staleWhileRevalidateSeconds,
+		staleIfErrorSeconds: configured?.staleIfErrorSeconds ?? TREESEED_DEFAULT_LONG_LIVED_CACHE_POLICY.staleIfErrorSeconds,
+	};
+}
+
+export function resolveTreeseedWebCachePolicy(config: TreeseedDeployConfig) {
+	const cache = config.surfaces?.web?.cache ?? {};
+	const sourcePages = cache.sourcePages as TreeseedWebSourcePageCacheConfig | undefined;
+	return {
+		sourcePages: {
+			...resolveLongLivedCachePolicy(sourcePages),
+			paths: [...new Set(sourcePages?.paths ?? TREESEED_DEFAULT_SOURCE_PAGE_PURGE_PATHS)],
+		},
+		contentPages: resolveLongLivedCachePolicy(cache.contentPages),
+		r2PublishedObjects: resolveLongLivedCachePolicy(cache.r2PublishedObjects),
+	};
 }
 
 export function loadTreeseedDeployConfig(configPath = 'treeseed.site.yaml'): TreeseedDeployConfig {

@@ -13,6 +13,8 @@ import { findDispatchCapability } from '../../src/dispatch.ts';
 import {
 	resolveTreeseedRemoteConfig,
 	setTreeseedRemoteSession,
+	TREESEED_MACHINE_KEY_PASSPHRASE_ENV,
+	unlockTreeseedSecretSessionFromEnv,
 } from '../../src/operations/services/config-runtime.ts';
 import {
 	buildWranglerConfigContents,
@@ -26,7 +28,7 @@ import { sdkFixtureRoot } from '../test-fixture.ts';
 function createTenantFixture() {
 	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-remote-test-'));
 	mkdirSync(resolve(tenantRoot, 'src'), { recursive: true });
-	writeFileSync(resolve(tenantRoot, 'src', 'manifest.yaml'), 'id: test\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n  notes: ./src/content/notes\n  questions: ./src/content/questions\n  objectives: ./src/content/objectives\n  people: ./src/content/people\n  agents: ./src/content/agents\n  books: ./src/content/books\n  docs: ./src/content/knowledge\nfeatures:\n  docs: true\n');
+	writeFileSync(resolve(tenantRoot, 'src', 'manifest.yaml'), 'id: test\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n  notes: ./src/content/notes\n  questions: ./src/content/questions\n  objectives: ./src/content/objectives\n  proposals: ./src/content/proposals\n  decisions: ./src/content/decisions\n  people: ./src/content/people\n  agents: ./src/content/agents\n  books: ./src/content/books\n  docs: ./src/content/knowledge\nfeatures:\n  docs: true\n  proposals: true\n  decisions: true\n');
 	writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test
 slug: test
 siteUrl: https://example.com
@@ -68,18 +70,6 @@ services:
       prod:
         baseUrl: https://api.example.com
         railwayEnvironment: production
-  agents:
-    enabled: true
-    provider: railway
-    railway:
-      projectName: treeseed-core
-      serviceName: treeseed-agents
-      rootDir: .
-    environments:
-      staging:
-        baseUrl: https://staging-agents.example.com
-      prod:
-        baseUrl: https://agents.example.com
 providers:
   forms: store_only
   agents:
@@ -141,6 +131,8 @@ describe('remote Treeseed support', () => {
 
 	it('persists encrypted remote auth state and resolves configured hosts', () => {
 		const tenantRoot = createTenantFixture();
+		vi.stubEnv(TREESEED_MACHINE_KEY_PASSPHRASE_ENV, 'test-passphrase');
+		unlockTreeseedSecretSessionFromEnv(tenantRoot);
 		setTreeseedRemoteSession(tenantRoot, {
 			hostId: 'official',
 			accessToken: 'access-token',
@@ -163,7 +155,7 @@ describe('remote Treeseed support', () => {
 		expect(readFileSync(authPath, 'utf8')).not.toContain('access-token');
 	});
 
-	it('tracks managed API and agent service state in deploy state', () => {
+	it('tracks managed API and worker service state in deploy state', () => {
 		const tenantRoot = createTenantFixture();
 		const deployConfig = loadCliDeployConfig(tenantRoot);
 		const state = loadDeployState(tenantRoot, deployConfig, { scope: 'staging' });
@@ -174,9 +166,9 @@ describe('remote Treeseed support', () => {
 		expect(state.services.api.enabled).toBe(true);
 		expect(state.services.api.serviceName).toBe('treeseed-api');
 		expect(state.services.api.publicBaseUrl).toBe('https://staging-api.example.com');
-		expect(state.services.agents.publicBaseUrl).toBe('https://staging-agents.example.com');
 		expect(state.services.worker.serviceName).toBe('treeseed-worker');
-		expect(state.queues.agentWork.name).toBe('agent-work');
+		expect(state.queues.agentWork.name).toBe('agent-work-staging');
+		expect(state.queues.agentWork.dlqName).toBe('agent-work-dlq-staging');
 		expect(state.content.manifestKey).toBe('teams/test/published/common.json');
 		expect(state.content.previewRootTemplate).toBe('teams/{teamId}/previews');
 	});
@@ -196,6 +188,12 @@ describe('remote Treeseed support', () => {
 		expect(prodState.d1Databases.SITE_DATA_DB.databaseName).toBe('test-site-data');
 		expect(stagingState.d1Databases.SITE_DATA_DB.databaseName).toBe('test-staging-site-data');
 		expect(previewState.d1Databases.SITE_DATA_DB.databaseName).toBe('test-feature-r2-runtime-site-data');
+		expect(prodState.queues.agentWork.name).toBe('agent-work');
+		expect(prodState.queues.agentWork.dlqName).toBe('agent-work-dlq');
+		expect(stagingState.queues.agentWork.name).toBe('agent-work-staging');
+		expect(stagingState.queues.agentWork.dlqName).toBe('agent-work-dlq-staging');
+		expect(previewState.queues.agentWork.name).toBe('agent-work-feature-r2-runtime');
+		expect(previewState.queues.agentWork.dlqName).toBe('agent-work-dlq-feature-r2-runtime');
 
 		const previewWrangler = buildWranglerConfigContents(tenantRoot, deployConfig, previewState, { target: previewTarget });
 		expect(previewWrangler).toContain('TREESEED_CONTENT_MANIFEST_KEY = "teams/test/published/common.json"');

@@ -9,6 +9,10 @@ site:
       items:
         - label: Handbook
           href: /knowledge/handbook/
+        - label: Proposals
+          href: /proposals/
+        - label: Decisions
+          href: /decisions/
     - label: Build
       items:
         - label: Welcome
@@ -37,4 +41,25 @@ models:
       audience: []
   docs:
     defaults:
+      tags: []
+  notes:
+    defaults:
+      author: __SITE_NAME__
+      draft: false
+      tags: []
+  questions:
+    defaults:
+      draft: false
+      tags: []
+  objectives:
+    defaults:
+      draft: false
+      tags: []
+  proposals:
+    defaults:
+      draft: false
+      tags: []
+  decisions:
+    defaults:
+      draft: false
       tags: []
