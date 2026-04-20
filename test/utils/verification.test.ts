@@ -126,13 +126,12 @@ describe('verify driver', () => {
 					return 0;
 				},
 			})).toBe(0);
-			expect(calls).toEqual([
-				{
-					command: 'gh',
-					args: ['act', 'workflow_dispatch', '-W', '.github/workflows/verify.yml', '-j', 'verify'],
-					cwd: fixture.currentPackageRoot,
-				},
-			]);
+			expect(calls).toHaveLength(1);
+			expect(calls[0]).toMatchObject({
+				command: 'gh',
+				args: ['act', 'workflow_dispatch', '-W', expect.stringMatching(/treeseed-verify-act-.*\/verify\.yml$/), '-j', 'verify'],
+				cwd: fixture.root,
+			});
 		} finally {
 			await rm(fixture.root, { recursive: true, force: true });
 		}
