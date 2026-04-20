@@ -1,6 +1,7 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import * as childProcess from 'node:child_process';
-import { basename, resolve } from 'node:path';
+import { basename, relative, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 export type TreeseedVerifyDriver = 'auto' | 'act' | 'direct';
@@ -42,6 +43,7 @@ type PackageManifest = {
 	dependencies?: Record<string, string>;
 	devDependencies?: Record<string, string>;
 	peerDependencies?: Record<string, string>;
+	scripts?: Record<string, string>;
 };
 
 type LocalWorkspaceContext = {
@@ -88,6 +90,95 @@ function readPackageManifest(packageJsonPath: string): PackageManifest | null {
 	} catch {
 		return null;
 	}
+}
+
+function createWorkspaceActWorkflow(options: {
+	workspaceRoot: string;
+	packageRoot: string;
+	eventName: string;
+	localTreeseedSiblingDependencies: string[];
+}) {
+	const relativePackageRoot = relative(options.workspaceRoot, options.packageRoot).replace(/\\/g, '/');
+	const siblingPreparationCommands = options.localTreeseedSiblingDependencies
+		.map((packageName) => {
+			const packageDir = `packages/${packageName.split('/')[1]}`;
+			const manifest = readPackageManifest(resolve(options.workspaceRoot, packageDir, 'package.json'));
+			if (!manifest) {
+				return null;
+			}
+
+			const commands = [
+				`if test -f ${packageDir}/package-lock.json; then`,
+				`  npm --prefix ${packageDir} ci`,
+				'else',
+				`  npm --prefix ${packageDir} install --no-audit --no-fund`,
+				'fi',
+			];
+			if (manifest.scripts?.['build:dist']) {
+				commands.push(`npm --prefix ${packageDir} run build:dist`);
+			}
+			return commands.join('\n');
+		})
+		.filter((command): command is string => Boolean(command))
+		.join('\n');
+	const workflowRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-verify-act-'));
+	const workflowPath = resolve(workflowRoot, 'verify.yml');
+	writeFileSync(
+		workflowPath,
+		`name: Treeseed Local Verify
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${relativePackageRoot}
+    env:
+      CI: "true"
+      TREESEED_GITHUB_AUTOMATION_MODE: stub
+      TREESEED_STAGE_WAIT_MODE: skip
+      TREESEED_AGENT_DISABLE_GIT: "true"
+      TREESEED_FIXTURE_ID: treeseed-working-site
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.12.0
+
+      - name: Assert node:sqlite availability
+        run: node -e "import('node:sqlite').then(() => console.log('node:sqlite available')).catch((error) => { console.error(error); process.exit(1); })"
+
+${siblingPreparationCommands ? `      - name: Prepare sibling packages
+        working-directory: .
+        run: |
+${siblingPreparationCommands.split('\n').map((line) => `          ${line}`).join('\n')}
+
+` : ''}      - name: Install dependencies
+        run: |
+          if test -f package-lock.json; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Verify package
+        run: npm run verify:direct
+`,
+		'utf8',
+	);
+
+	return {
+		cwd: options.workspaceRoot,
+		args: ['act', options.eventName, '-W', workflowPath, '-j', 'verify'],
+	};
 }
 
 function findWorkspaceRoot(packageRoot: string) {
@@ -227,6 +318,15 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 			const detail = checkCommand('docker', ['info'], status.packageRoot).detail;
 			write(detail || 'Treeseed verify requires a running Docker daemon when TREESEED_VERIFY_DRIVER=act.', 'stderr');
 			return 1;
+		}
+		if (status.workspaceRoot && status.localTreeseedSiblingDependencies.length > 0) {
+			const workspaceAct = createWorkspaceActWorkflow({
+				workspaceRoot: status.workspaceRoot,
+				packageRoot: status.packageRoot,
+				eventName: status.eventName,
+				localTreeseedSiblingDependencies: status.localTreeseedSiblingDependencies,
+			});
+			return runCommand('gh', workspaceAct.args, workspaceAct.cwd);
 		}
 		return runCommand('gh', ['act', status.eventName, '-W', '.github/workflows/verify.yml', '-j', 'verify'], status.packageRoot);
 	}

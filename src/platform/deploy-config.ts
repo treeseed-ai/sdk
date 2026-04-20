@@ -616,9 +616,9 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 			r2: cloudflare.r2 === undefined
 				? undefined
 				: {
-					binding: optionalString(process.env.TREESEED_CONTENT_BUCKET_BINDING),
-					bucketName: optionalString(process.env.TREESEED_CONTENT_BUCKET_NAME),
-					publicBaseUrl: optionalString(process.env.TREESEED_CONTENT_PUBLIC_BASE_URL),
+					binding: optionalString(process.env.TREESEED_CONTENT_BUCKET_BINDING) ?? optionalString(cloudflareR2.binding),
+					bucketName: optionalString(process.env.TREESEED_CONTENT_BUCKET_NAME) ?? optionalString(cloudflareR2.bucketName),
+					publicBaseUrl: optionalString(process.env.TREESEED_CONTENT_PUBLIC_BASE_URL) ?? optionalString(cloudflareR2.publicBaseUrl),
 					manifestKeyTemplate: optionalString(cloudflareR2.manifestKeyTemplate) ?? 'teams/{teamId}/published/common.json',
 					previewRootTemplate: optionalString(cloudflareR2.previewRootTemplate) ?? 'teams/{teamId}/previews',
 					previewTtlHours: optionalPositiveNumber(cloudflareR2.previewTtlHours, 'cloudflare.r2.previewTtlHours') ?? 168,
