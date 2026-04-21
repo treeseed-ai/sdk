@@ -10,7 +10,7 @@ const verifyConsumerPackageJsonPaths = [
 	resolve(workspaceRoot, '..', 'core', 'package.json'),
 	resolve(workspaceRoot, '..', 'cli', 'package.json'),
 ];
-const removedVerifyDriverPaths = [
+const verifyDriverPaths = [
 	resolve(workspaceRoot, '..', '..', 'scripts', 'verify-driver.mjs'),
 	resolve(workspaceRoot, '..', 'core', 'scripts', 'verify-driver.mjs'),
 	resolve(workspaceRoot, '..', 'cli', 'scripts', 'verify-driver.mjs'),
@@ -152,19 +152,27 @@ describe('sdk package graph', () => {
 			).toBe('node --input-type=module -e "await import(\'@treeseed/sdk/scripts/verify-driver\')"');
 		}
 
-		for (const packageJsonPath of packageRepoJsonPaths) {
+		for (const [index, packageJsonPath] of packageRepoJsonPaths.entries()) {
 			if (!existsSync(packageJsonPath)) continue;
 			const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+			const verifyDriverPath = verifyDriverPaths[index + 1];
+			const verifyScript = packageJson.scripts?.verify;
+
+			if (verifyScript === 'node --input-type=module -e "await import(\'./scripts/verify-driver.mjs\')"') {
+				expect(
+					existsSync(verifyDriverPath),
+					`${verifyDriverPath} should exist when ${packageJsonPath} uses a package-local verify wrapper`,
+				).toBe(true);
+				continue;
+			}
+
 			expect(
-				packageJson.scripts?.verify,
-				`${packageJsonPath} should use a package-local verify script entrypoint`,
-			).toBe('node --input-type=module -e "await import(\'./scripts/verify-driver.mjs\')"');
+				verifyScript,
+				`${packageJsonPath} should use either the package-local verify wrapper or the published sdk verify script entrypoint`,
+			).toBe('node --input-type=module -e "await import(\'@treeseed/sdk/scripts/verify-driver\')"');
 		}
 
-		const [workspaceVerifyDriverPath, ...packageVerifyDriverPaths] = removedVerifyDriverPaths;
+		const [workspaceVerifyDriverPath] = verifyDriverPaths;
 		expect(existsSync(workspaceVerifyDriverPath), `${workspaceVerifyDriverPath} should not exist in the workspace root`).toBe(false);
-		for (const filePath of packageVerifyDriverPaths) {
-			expect(existsSync(filePath), `${filePath} should now exist as a package-local verify wrapper`).toBe(true);
-		}
 	});
 });
