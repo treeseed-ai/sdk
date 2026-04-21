@@ -1824,14 +1824,26 @@ export function ensureTreeseedActVerificationTooling({ tenantRoot = process.cwd(
 		attemptedInstall: false,
 		installedDuringConfig: false,
 	});
-	const wranglerCheck = checkCommand(process.execPath, [resolveWranglerBin(), '--version'], { cwd: tenantRoot, env });
-	const wranglerCli = toolStatus(
-		'wranglerCli',
-		wranglerCheck.ok,
-		wranglerCheck.ok
-			? wranglerCheck.stdout.split('\n')[0] ?? 'Wrangler CLI detected.'
-			: wranglerCheck.detail || 'Wrangler CLI is unavailable.',
-	);
+	const wranglerCli = (() => {
+		try {
+			const wranglerCheck = checkCommand(process.execPath, [resolveWranglerBin(), '--version'], { cwd: tenantRoot, env });
+			return toolStatus(
+				'wranglerCli',
+				wranglerCheck.ok,
+				wranglerCheck.ok
+					? wranglerCheck.stdout.split('\n')[0] ?? 'Wrangler CLI detected.'
+					: wranglerCheck.detail || 'Wrangler CLI is unavailable.',
+			);
+		} catch (error) {
+			return toolStatus(
+				'wranglerCli',
+				false,
+				error instanceof Error && error.message
+					? error.message
+					: 'Wrangler CLI is unavailable.',
+			);
+		}
+	})();
 	const railwayCheck = checkCommand('railway', ['--version'], { cwd: tenantRoot, env });
 	const railwayCli = toolStatus(
 		'railwayCli',
