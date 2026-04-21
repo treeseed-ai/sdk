@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -42,8 +42,8 @@
     "fixtures:check": "node ./scripts/run-ts.mjs ./scripts/fixture-tools.ts check",
     "lint": "npm run fixtures:check && npm run build:dist",
     "verify:direct": "npm run release:verify",
-    "verify:local": "node --input-type=module -e \"process.env.TREESEED_VERIFY_DRIVER='direct'; await import('@treeseed/sdk/scripts/verify-driver')\"",
-    "verify:action": "node --input-type=module -e \"process.env.TREESEED_VERIFY_DRIVER='act'; await import('@treeseed/sdk/scripts/verify-driver')\"",
+    "verify:local": "node --input-type=module -e \"process.env.TREESEED_VERIFY_DRIVER='direct'; await import('./scripts/verify-driver.mjs')\"",
+    "verify:action": "node --input-type=module -e \"process.env.TREESEED_VERIFY_DRIVER='act'; await import('./scripts/verify-driver.mjs')\"",
     "verify": "node ./scripts/verify-driver.mjs",
     "release:setup": "npm run setup:ci",
     "release:check-tag": "node ./scripts/run-ts.mjs ./scripts/assert-release-tag-version.ts",

@@ -142,18 +142,29 @@ describe('sdk package graph', () => {
 		expect(packageJson.bin?.['treeseed-sdk-verify']).toBe('./scripts/verify-driver.mjs');
 	});
 
-	it('keeps verify consumers on the published sdk executable without local wrappers', () => {
-		for (const packageJsonPath of verifyConsumerPackageJsonPaths) {
+	it('keeps verify consumers on package-local entrypoints without workspace-linked verify dependencies', () => {
+		const [workspacePackageJsonPath, ...packageRepoJsonPaths] = verifyConsumerPackageJsonPaths;
+		if (existsSync(workspacePackageJsonPath)) {
+			const workspacePackageJson = JSON.parse(readFileSync(workspacePackageJsonPath, 'utf8'));
+			expect(
+				workspacePackageJson.scripts?.verify,
+				`${workspacePackageJsonPath} should keep using the published sdk verify script entrypoint`,
+			).toBe('node --input-type=module -e "await import(\'@treeseed/sdk/scripts/verify-driver\')"');
+		}
+
+		for (const packageJsonPath of packageRepoJsonPaths) {
 			if (!existsSync(packageJsonPath)) continue;
 			const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
 			expect(
 				packageJson.scripts?.verify,
-				`${packageJsonPath} should use the published sdk verify script entrypoint`,
-			).toBe('node --input-type=module -e "await import(\'@treeseed/sdk/scripts/verify-driver\')"');
+				`${packageJsonPath} should use a package-local verify script entrypoint`,
+			).toBe('node --input-type=module -e "await import(\'./scripts/verify-driver.mjs\')"');
 		}
 
-		for (const filePath of removedVerifyDriverPaths) {
-			expect(existsSync(filePath), `${filePath} should not exist`).toBe(false);
+		const [workspaceVerifyDriverPath, ...packageVerifyDriverPaths] = removedVerifyDriverPaths;
+		expect(existsSync(workspaceVerifyDriverPath), `${workspaceVerifyDriverPath} should not exist in the workspace root`).toBe(false);
+		for (const filePath of packageVerifyDriverPaths) {
+			expect(existsSync(filePath), `${filePath} should now exist as a package-local verify wrapper`).toBe(true);
 		}
 	});
 });
