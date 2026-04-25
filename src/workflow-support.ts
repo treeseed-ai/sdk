@@ -15,6 +15,8 @@ export {
 	loadTreeseedMachineConfig,
 	listRelevantTreeseedConfigEntries,
 	finalizeTreeseedConfig,
+	inspectTreeseedKeyAgentTransportDiagnostic,
+	inspectTreeseedPassphraseEnvDiagnostic,
 	listDeprecatedTreeseedLocalEnvFiles,
 	inspectTreeseedKeyAgentStatus,
 	lockTreeseedSecretSession,
@@ -89,6 +91,22 @@ export {
 	validateRailwayDeployPrerequisites,
 } from './operations/services/railway-deploy.ts';
 export {
+	ensureRailwayEnvironment,
+	ensureRailwayProject,
+	ensureRailwayService,
+	getRailwayAuthProfile,
+	listRailwayEnvironments,
+	listRailwayProjects,
+	listRailwayServices,
+	listRailwayVariables,
+	railwayGraphqlRequest,
+	resolveRailwayApiToken,
+	resolveRailwayApiUrl,
+	resolveRailwayWorkspace,
+	resolveRailwayWorkspaceContext,
+	upsertRailwayVariables,
+} from './operations/services/railway-api.ts';
+export {
 	runTenantDeployPreflight,
 	runWorkspaceSavePreflight,
 } from './operations/services/save-deploy-preflight.ts';
@@ -112,3 +130,12 @@ export {
 	run,
 	workspaceRoot,
 } from './operations/services/workspace-tools.ts';
+export {
+	collectTreeseedReconcileStatus,
+	createTreeseedReconcileRegistry,
+	deriveTreeseedDesiredUnits,
+	destroyTreeseedTargetUnits,
+	observeTreeseedUnits,
+	planTreeseedReconciliation,
+	reconcileTreeseedTarget,
+} from './reconcile/index.ts';

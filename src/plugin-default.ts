@@ -24,6 +24,7 @@ export default defineTreeseedPlugin({
 			],
 		},
 		deploy: ['cloudflare'],
+		dns: ['cloudflare-dns'],
 		content: {
 			runtime: ['filesystem', 'team_scoped_r2_overlay'],
 			publish: ['filesystem', 'team_scoped_r2_overlay'],

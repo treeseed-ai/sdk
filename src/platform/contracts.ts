@@ -163,6 +163,7 @@ export interface TreeseedPlatformSurfaceConfig {
 	rootDir?: string;
 	publicBaseUrl?: string;
 	localBaseUrl?: string;
+	environments?: Partial<Record<'local' | 'staging' | 'prod', TreeseedManagedServiceEnvironmentConfig>>;
 	cache?: TreeseedWebSurfaceCacheConfig;
 }
 
@@ -246,6 +247,11 @@ export interface TreeseedManagedServiceRailwayConfig {
 	rootDir?: string;
 	buildCommand?: string;
 	startCommand?: string;
+	healthcheckPath?: string;
+	healthcheckTimeoutSeconds?: number;
+	healthcheckIntervalSeconds?: number;
+	restartPolicy?: string;
+	runtimeMode?: string;
 	schedule?: string | string[];
 }
 
@@ -282,6 +288,7 @@ export interface TreeseedProviderSelections {
 		research: string;
 	};
 	deploy: string;
+	dns?: string;
 	content?: {
 		runtime: string;
 		publish: string;

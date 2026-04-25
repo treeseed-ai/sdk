@@ -121,15 +121,31 @@ function runNodeScript(scriptPath, scriptArgs = [], env = {}) {
 	}
 }
 
-function runWranglerDeploy(configPath) {
-	const result = spawnSync(process.execPath, [resolveWranglerBin(), 'deploy', '--config', configPath], {
-		stdio: 'inherit',
-		cwd: tenantRoot,
-		env: { ...process.env },
-	});
+function isTransientWranglerFailure(result) {
+	const output = [result.stderr, result.stdout]
+		.filter((value) => typeof value === 'string' && value.trim().length > 0)
+		.join('\n');
+	return /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|connectivity issue|internal error/i.test(output);
+}
 
-	if (result.status !== 0) {
-		process.exit(result.status ?? 1);
+function sleepSync(milliseconds) {
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function runWranglerDeploy(configPath) {
+	for (let attempt = 1; attempt <= 3; attempt += 1) {
+		const result = spawnSync(process.execPath, [resolveWranglerBin(), 'deploy', '--config', configPath], {
+			stdio: 'inherit',
+			cwd: tenantRoot,
+			env: { ...process.env },
+		});
+		if (result.status === 0) {
+			return;
+		}
+		if (attempt === 3 || !isTransientWranglerFailure(result)) {
+			process.exit(result.status ?? 1);
+		}
+		sleepSync(2000 * attempt);
 	}
 }
 
@@ -147,14 +163,19 @@ function runWranglerPagesDeploy(projectName, branchName, outputDir = 'dist') {
 		args.push('--branch', branchName);
 	}
 
-	const result = spawnSync(process.execPath, args, {
-		stdio: 'inherit',
-		cwd: tenantRoot,
-		env: { ...process.env },
-	});
-
-	if (result.status !== 0) {
-		process.exit(result.status ?? 1);
+	for (let attempt = 1; attempt <= 3; attempt += 1) {
+		const result = spawnSync(process.execPath, args, {
+			stdio: 'inherit',
+			cwd: tenantRoot,
+			env: { ...process.env },
+		});
+		if (result.status === 0) {
+			return;
+		}
+		if (attempt === 3 || !isTransientWranglerFailure(result)) {
+			process.exit(result.status ?? 1);
+		}
+		sleepSync(2000 * attempt);
 	}
 }
 

@@ -6,3 +6,4 @@ coverage/
 scripts/.ts-run-*.mjs
 src/.ts-run-*.mjs
 npm-debug.log*
+tmp/

@@ -69,8 +69,8 @@ export function parseWranglerWhoAmI(values = process.env) {
 
 export function parseRailwayWhoAmI(values = process.env) {
 	return {
-		authenticated: envTokenStatus(['RAILWAY_API_TOKEN', 'RAILWAY_TOKEN'], 'Railway', values).ready,
-		detail: envTokenStatus(['RAILWAY_API_TOKEN', 'RAILWAY_TOKEN'], 'Railway', values).detail,
+		authenticated: envTokenStatus(['RAILWAY_API_TOKEN'], 'Railway', values).ready,
+		detail: envTokenStatus(['RAILWAY_API_TOKEN'], 'Railway', values).detail,
 	};
 }
 

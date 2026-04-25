@@ -33,18 +33,19 @@ function createTenantFixture() {
 slug: test
 siteUrl: https://example.com
 contactEmail: test@example.com
+hosting:
+  kind: hosted_project
+  teamId: acme
+  projectId: docs
 cloudflare:
   accountId: account-123
   queueName: agent-work
   dlqName: agent-work-dlq
   pages:
-    projectName: treeseed-test-site
-    previewProjectName: treeseed-test-site-preview
     productionBranch: main
     stagingBranch: staging
   r2:
     binding: TREESEED_CONTENT_BUCKET
-    bucketName: treeseed-content
     manifestKeyTemplate: teams/{teamId}/published/common.json
     previewRootTemplate: teams/{teamId}/previews
     previewTtlHours: 168
@@ -53,15 +54,15 @@ services:
     enabled: true
     provider: railway
     railway:
-      projectName: treeseed-core
-      serviceName: treeseed-worker
+      projectName: acme-docs
+      serviceName: acme-docs-worker
       rootDir: .
   api:
     enabled: true
     provider: railway
     railway:
-      projectName: treeseed-core
-      serviceName: treeseed-api
+      projectName: acme-docs
+      serviceName: acme-docs-api
       rootDir: .
     environments:
       staging:
@@ -161,15 +162,15 @@ describe('remote Treeseed support', () => {
 		const state = loadDeployState(tenantRoot, deployConfig, { scope: 'staging' });
 
 		expect(deployConfig.cloudflare.queueName).toBe('agent-work');
-		expect(deployConfig.cloudflare.pages?.projectName).toBe('treeseed-test-site');
+		expect(state.identity.deploymentKey).toBe('acme-docs');
 		expect(deployConfig.cloudflare.r2?.manifestKeyTemplate).toBe('teams/{teamId}/published/common.json');
 		expect(state.services.api.enabled).toBe(true);
-		expect(state.services.api.serviceName).toBe('treeseed-api');
+		expect(state.services.api.serviceName).toBe('acme-docs-api');
 		expect(state.services.api.publicBaseUrl).toBe('https://staging-api.example.com');
-		expect(state.services.worker.serviceName).toBe('treeseed-worker');
-		expect(state.queues.agentWork.name).toBe('agent-work-staging');
-		expect(state.queues.agentWork.dlqName).toBe('agent-work-dlq-staging');
-		expect(state.content.manifestKey).toBe('teams/test/published/common.json');
+		expect(state.services.worker.serviceName).toBe('acme-docs-worker');
+		expect(state.queues.agentWork.name).toBe('acme-docs-agent-work-staging');
+		expect(state.queues.agentWork.dlqName).toBe('acme-docs-agent-work-dlq-staging');
+		expect(state.content.manifestKey).toBe('teams/acme/published/common.json');
 		expect(state.content.previewRootTemplate).toBe('teams/{teamId}/previews');
 	});
 
@@ -181,22 +182,25 @@ describe('remote Treeseed support', () => {
 		const previewTarget = createBranchPreviewDeployTarget('feature/r2-runtime');
 		const previewState = loadDeployState(tenantRoot, deployConfig, { target: previewTarget });
 
-		expect(prodState.content.manifestKey).toBe('teams/test/published/common.json');
-		expect(stagingState.content.manifestKey).toBe('teams/test/published/common.json');
-		expect(previewState.content.manifestKey).toBe('teams/test/published/common.json');
+		expect(prodState.content.manifestKey).toBe('teams/acme/published/common.json');
+		expect(stagingState.content.manifestKey).toBe('teams/acme/published/common.json');
+		expect(previewState.content.manifestKey).toBe('teams/acme/published/common.json');
 
-		expect(prodState.d1Databases.SITE_DATA_DB.databaseName).toBe('test-site-data');
-		expect(stagingState.d1Databases.SITE_DATA_DB.databaseName).toBe('test-staging-site-data');
-		expect(previewState.d1Databases.SITE_DATA_DB.databaseName).toBe('test-feature-r2-runtime-site-data');
-		expect(prodState.queues.agentWork.name).toBe('agent-work');
-		expect(prodState.queues.agentWork.dlqName).toBe('agent-work-dlq');
-		expect(stagingState.queues.agentWork.name).toBe('agent-work-staging');
-		expect(stagingState.queues.agentWork.dlqName).toBe('agent-work-dlq-staging');
-		expect(previewState.queues.agentWork.name).toBe('agent-work-feature-r2-runtime');
-		expect(previewState.queues.agentWork.dlqName).toBe('agent-work-dlq-feature-r2-runtime');
+		expect(prodState.pages.projectName).toBe('acme-docs');
+		expect(stagingState.pages.projectName).toBe('acme-docs');
+		expect(previewState.pages.projectName).toBe('acme-docs');
+		expect(prodState.d1Databases.SITE_DATA_DB.databaseName).toBe('acme-docs-site-data-prod');
+		expect(stagingState.d1Databases.SITE_DATA_DB.databaseName).toBe('acme-docs-site-data-staging');
+		expect(previewState.d1Databases.SITE_DATA_DB.databaseName).toBe('acme-docs-site-data-feature-r2-runtime');
+		expect(prodState.queues.agentWork.name).toBe('acme-docs-agent-work-prod');
+		expect(prodState.queues.agentWork.dlqName).toBe('acme-docs-agent-work-dlq-prod');
+		expect(stagingState.queues.agentWork.name).toBe('acme-docs-agent-work-staging');
+		expect(stagingState.queues.agentWork.dlqName).toBe('acme-docs-agent-work-dlq-staging');
+		expect(previewState.queues.agentWork.name).toBe('acme-docs-agent-work-feature-r2-runtime');
+		expect(previewState.queues.agentWork.dlqName).toBe('acme-docs-agent-work-dlq-feature-r2-runtime');
 
 		const previewWrangler = buildWranglerConfigContents(tenantRoot, deployConfig, previewState, { target: previewTarget });
-		expect(previewWrangler).toContain('TREESEED_CONTENT_MANIFEST_KEY = "teams/test/published/common.json"');
+		expect(previewWrangler).toContain('TREESEED_CONTENT_MANIFEST_KEY = "teams/acme/published/common.json"');
 		expect(previewWrangler).toContain('TREESEED_CONTENT_MANIFEST_KEY_TEMPLATE = "teams/{teamId}/published/common.json"');
 		expect(previewWrangler).toContain('TREESEED_CONTENT_PREVIEW_ROOT_TEMPLATE = "teams/{teamId}/previews"');
 		expect(previewWrangler).toContain('[[r2_buckets]]');

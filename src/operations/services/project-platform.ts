@@ -16,8 +16,9 @@ import {
 	type PublishedContentObjectPointer,
 } from '../../platform/published-content.ts';
 import { createPublishedContentPipeline } from '../../platform/published-content-pipeline.ts';
+import { collectTreeseedReconcileStatus, reconcileTreeseedTarget } from '../../reconcile/index.ts';
 import { loadTreeseedManifest } from '../../platform/tenant-config.ts';
-import { applyTreeseedEnvironmentToProcess, syncTreeseedRailwayEnvironment } from './config-runtime.ts';
+import { applyTreeseedEnvironmentToProcess } from './config-runtime.ts';
 import {
 	createPersistentDeployTarget,
 	deployTargetLabel,
@@ -25,10 +26,8 @@ import {
 	finalizeDeploymentState,
 	loadDeployState,
 	purgePublishedContentCaches,
-	provisionCloudflareResources,
+	resolveConfiguredSurfaceBaseUrl,
 	runRemoteD1Migrations,
-	syncCloudflareSecrets,
-	verifyProvisionedCloudflareResources,
 	writeDeployState,
 } from './deploy.ts';
 import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from './git-workflow.ts';
@@ -53,6 +52,7 @@ export interface ProjectPlatformActionOptions {
 	previewId?: string | null;
 	dryRun?: boolean;
 	reporter?: ControlPlaneReporter;
+	skipProvision?: boolean;
 }
 
 function stableHash(value: Buffer | string) {
@@ -358,6 +358,62 @@ function queueClientConfig(siteConfig, state) {
 	};
 }
 
+function findFirstMatchingString(value, matcher, seen = new Set()) {
+	if (typeof value === 'string') {
+		return matcher(value) ? value : null;
+	}
+	if (!value || typeof value !== 'object') {
+		return null;
+	}
+	if (seen.has(value)) {
+		return null;
+	}
+	seen.add(value);
+	if (Array.isArray(value)) {
+		for (const entry of value) {
+			const match = findFirstMatchingString(entry, matcher, seen);
+			if (match) {
+				return match;
+			}
+		}
+		return null;
+	}
+	for (const entry of Object.values(value)) {
+		const match = findFirstMatchingString(entry, matcher, seen);
+		if (match) {
+			return match;
+		}
+	}
+	return null;
+}
+
+function resolveImmediatePagesProbeUrl(siteConfig, state, target) {
+	if (target.kind === 'persistent' && target.scope === 'staging' && state.pages?.projectName) {
+		return `https://${state.pages?.stagingBranch ?? 'staging'}.${state.pages.projectName}.pages.dev`;
+	}
+	return state.pages?.url ?? resolveConfiguredSurfaceBaseUrl(siteConfig, target, 'web') ?? siteConfig.siteUrl;
+}
+
+function resolveImmediateApiProbeUrl(siteConfig, state, target) {
+	const configuredUrl = resolveConfiguredSurfaceBaseUrl(siteConfig, target, 'api')
+		?? siteConfig.services?.api?.environments?.[target.kind === 'persistent' ? target.scope : 'prod']?.baseUrl
+		?? siteConfig.services?.api?.publicBaseUrl
+		?? process.env.TREESEED_API_BASE_URL
+		?? state.services?.api?.lastDeployedUrl
+		?? null;
+	if (configuredUrl) {
+		return configuredUrl;
+	}
+	const railwayHost = findFirstMatchingString(
+		state,
+		(value) => /^[a-z0-9-]+\.up\.railway\.app$/iu.test(String(value).trim()),
+	);
+	if (railwayHost) {
+		return `https://${railwayHost}`;
+	}
+	return null;
+}
+
 async function probeQueue(siteConfig, state) {
 	const config = queueClientConfig(siteConfig, state);
 	if (!config) {
@@ -380,10 +436,25 @@ async function probeQueue(siteConfig, state) {
 			budgetHint: 0,
 		},
 	});
-	const pulled = await pullClient.pull({
-		batchSize: 1,
-		visibilityTimeoutMs: 10000,
-	});
+	let pulled;
+	try {
+		pulled = await pullClient.pull({
+			batchSize: 1,
+			visibilityTimeoutMs: 10000,
+		});
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : String(error);
+		if (/http_pull mode is enabled/iu.test(detail)) {
+			return {
+				ok: true,
+				skipped: true,
+				reason: 'queue_push_only',
+				messageId,
+				detail,
+			};
+		}
+		throw error;
+	}
 	const message = pulled.messages.find((entry) => entry.body?.messageId === messageId) ?? pulled.messages[0] ?? null;
 	if (!message) {
 		return { ok: false, reason: 'queue_pull_empty' };
@@ -464,14 +535,24 @@ function probeR2(
 function probeScaleConfiguration(siteConfig, state) {
 	const worker = state.services?.worker ?? {};
 	const scalerKind = String(process.env.TREESEED_WORKER_POOL_SCALER ?? '').trim();
+	if (scalerKind !== 'railway' && siteConfig.services?.worker?.provider !== 'railway') {
+		return {
+			ok: true,
+			skipped: true,
+			reason: 'scaler_unconfigured',
+			mocked: true,
+			serviceId: worker.serviceId ?? null,
+		};
+	}
+
+	const serviceIdentifier = worker.serviceId || process.env.TREESEED_RAILWAY_WORKER_SERVICE_ID || worker.serviceName;
+	const environmentIdentifier = process.env.TREESEED_RAILWAY_ENVIRONMENT_ID || worker.environment;
+	const projectIdentifier = process.env.TREESEED_RAILWAY_PROJECT_ID || worker.projectId || worker.projectName;
 	return {
-		ok: Boolean(
-			(scalerKind === 'railway' || siteConfig.services?.worker?.provider === 'railway')
-			&& (worker.serviceId || process.env.TREESEED_RAILWAY_WORKER_SERVICE_ID)
-			&& (process.env.TREESEED_RAILWAY_ENVIRONMENT_ID || process.env.TREESEED_RAILWAY_PROJECT_ID || worker.projectId),
-		),
+		ok: Boolean(serviceIdentifier && (environmentIdentifier || projectIdentifier)),
 		mocked: true,
 		serviceId: worker.serviceId ?? null,
+		serviceName: worker.serviceName ?? null,
 	};
 }
 
@@ -713,20 +794,27 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	const target = createPersistentDeployTarget(options.scope === 'local' ? 'staging' : options.scope);
 	const siteConfig = loadCliDeployConfig(options.tenantRoot);
-	const summary = provisionCloudflareResources(options.tenantRoot, { dryRun: options.dryRun, target });
-	const verification = verifyProvisionedCloudflareResources(options.tenantRoot, { dryRun: options.dryRun, target });
+	const summary = await reconcileTreeseedTarget({
+		tenantRoot: options.tenantRoot,
+		target,
+		env: process.env,
+	});
+	const verification = await collectTreeseedReconcileStatus({
+		tenantRoot: options.tenantRoot,
+		target,
+		env: process.env,
+	});
 	ensureGeneratedWranglerConfig(options.tenantRoot, { target });
-	const syncedSecrets = syncCloudflareSecrets(options.tenantRoot, { dryRun: options.dryRun, target });
-	const syncedRailway = options.scope === 'local' ? [] : syncTreeseedRailwayEnvironment({ tenantRoot: options.tenantRoot, scope: options.scope, dryRun: options.dryRun });
 	const railwayValidation = options.scope === 'local'
 		? validateRailwayServiceConfiguration(options.tenantRoot, options.scope)
 		: validateRailwayDeployPrerequisites(options.tenantRoot, options.scope);
-	const railwaySchedules = options.scope === 'local'
-		? []
-		: await ensureRailwayScheduledJobs(options.tenantRoot, options.scope, { dryRun: options.dryRun });
-	const railwayScheduleVerification = options.scope === 'local' || options.dryRun
-		? { ok: true, checks: railwaySchedules }
-		: await verifyRailwayScheduledJobs(options.tenantRoot, options.scope);
+	const railwaySchedules = [];
+	const railwayScheduleVerification = {
+		ok: true,
+		checks: [],
+		skipped: true,
+		reason: 'deploy_only',
+	};
 	const state = loadDeployState(options.tenantRoot, siteConfig, { target });
 
 	await reporter.reportEnvironment({
@@ -835,8 +923,11 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 			target: deployTargetLabel(target),
 			summary,
 			verification,
-			syncedSecrets,
-			syncedRailway,
+			reconcileActions: summary.results.map((result) => ({
+				unitId: result.unit.unitId,
+				action: result.action,
+				provider: result.unit.provider,
+			})),
 			railwayServices: railwayValidation.services.map((service) => service.key),
 			railwaySchedules,
 			railwayScheduleVerification,
@@ -872,18 +963,35 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		metadata: { scope: options.scope },
 	});
 
-	await provisionProjectPlatform({ ...options, reporter });
+	if (!options.skipProvision) {
+		await provisionProjectPlatform({ ...options, reporter });
+	}
 	runNodeScript(options.tenantRoot, 'tenant-deploy', ['--environment', options.scope, ...(options.dryRun ? ['--dry-run'] : [])]);
 
 	const serviceResults = [];
 	if (options.scope !== 'local') {
 		const validation = validateRailwayDeployPrerequisites(options.tenantRoot, options.scope);
 		for (const service of validation.services) {
-			serviceResults.push(deployRailwayService(options.tenantRoot, service, { dryRun: options.dryRun }));
+			serviceResults.push(await deployRailwayService(options.tenantRoot, service, { dryRun: options.dryRun }));
 		}
+		const railwaySchedules = options.scope === 'prod'
+			? await ensureRailwayScheduledJobs(options.tenantRoot, options.scope, { dryRun: options.dryRun })
+			: [];
+		const railwayScheduleVerification = options.scope === 'prod' && !options.dryRun
+			? await verifyRailwayScheduledJobs(options.tenantRoot, options.scope)
+			: { ok: true, checks: railwaySchedules, skipped: options.scope !== 'prod' ? true : options.dryRun, reason: options.scope !== 'prod' ? 'prod_only' : 'dry_run' };
 		finalizeDeploymentState(options.tenantRoot, {
 			target: createPersistentDeployTarget(options.scope),
 			serviceResults,
+		});
+		serviceResults.push({
+			service: 'railway-schedules',
+			status: railwayScheduleVerification.ok ? 'verified' : 'failed',
+			command: 'railway schedules reconcile',
+			cwd: options.tenantRoot,
+			publicBaseUrl: null,
+			schedules: railwaySchedules,
+			scheduleVerification: railwayScheduleVerification,
 		});
 	}
 	const monitor = await monitorProjectPlatform({ ...options, reporter });
@@ -921,17 +1029,14 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 	const target = createPersistentDeployTarget(options.scope === 'local' ? 'staging' : options.scope);
 	const siteConfig = loadCliDeployConfig(options.tenantRoot);
 	const state = loadDeployState(options.tenantRoot, siteConfig, { target });
-	const apiBaseUrl = siteConfig.services?.api?.environments?.[options.scope]?.baseUrl
-		?? siteConfig.services?.api?.publicBaseUrl
-		?? process.env.TREESEED_API_BASE_URL
-		?? state.services?.api?.lastDeployedUrl
-		?? null;
+	const webProbeUrl = resolveImmediatePagesProbeUrl(siteConfig, state, target);
+	const apiBaseUrl = resolveImmediateApiProbeUrl(siteConfig, state, target);
 	const checks = {
-		pages: await probeHttp(state.pages?.url ?? siteConfig.siteUrl),
+		pages: await probeHttp(webProbeUrl),
 		apiHealth: apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz`) : { ok: false, skipped: true, reason: 'api_url_unconfigured' },
 		apiReady: apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/readyz`) : { ok: false, skipped: true, reason: 'api_url_unconfigured' },
 		d1Health: apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz/deep`) : { ok: false, skipped: true, reason: 'api_url_unconfigured' },
-		agentHealth: apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/agent/healthz`) : { ok: false, skipped: true, reason: 'api_url_unconfigured' },
+		agentHealth: apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/internal/core/agent/healthz`) : { ok: false, skipped: true, reason: 'api_url_unconfigured' },
 		r2: options.dryRun ? { ok: true, skipped: true, reason: 'dry_run' } : probeR2(options.tenantRoot, siteConfig, state, target),
 		queue: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : probeQueue(siteConfig, state),
 		scaleProbe: probeScaleConfiguration(siteConfig, state),
@@ -953,7 +1058,10 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		resolvedChecks.scaleProbe,
 	].every((check) => check?.ok === true || check?.skipped === true);
 	if (!ok) {
-		throw new Error(`Treeseed monitor failed for ${options.scope}.`);
+		const failedChecks = Object.entries(resolvedChecks)
+			.filter(([, check]) => check && typeof check === 'object' && check.ok !== true && check.skipped !== true)
+			.map(([name, check]) => `${name}: ${JSON.stringify(check)}`);
+		throw new Error(`Treeseed monitor failed for ${options.scope}.\n${failedChecks.join('\n')}`);
 	}
 	await reportDeployment(reporter, {
 		environment: options.scope,

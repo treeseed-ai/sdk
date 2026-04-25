@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
-import { deriveCloudflareWorkerName, resolveTreeseedWebCachePolicy } from '../../platform/deploy-config.ts';
+import { resolveTreeseedWebCachePolicy } from '../../platform/deploy-config.ts';
+import { normalizeRailwayEnvironmentName } from './railway-api.ts';
 import { loadCliDeployConfig, resolveWranglerBin } from './runtime-tools.ts';
 
 const DEFAULT_COMPATIBILITY_DATE = '2026-04-05';
@@ -15,6 +16,10 @@ const MANAGED_SERVICE_KEYS = ['api', 'manager', 'worker', 'workdayStart', 'workd
 const TRESEED_ENVELOPE_SCHEMA_GENERATION = 'runtime-envelopes-v1';
 const TRESEED_MIGRATION_WAVE_ID = '0005_runtime_envelopes';
 const TRESEED_SUPPORTED_PAYLOAD_RANGE = { min: 1, max: 1 };
+
+function sleepSync(milliseconds) {
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
 
 function ensureParent(filePath) {
 	mkdirSync(dirname(filePath), { recursive: true });
@@ -62,6 +67,133 @@ function sanitizeSegment(value) {
 		.replace(/^-+|-+$/g, '')
 		.replace(/-{2,}/g, '-')
 		.slice(0, 36) || 'default';
+}
+
+function requireConfiguredIdentityValue(value, label) {
+	const normalized = typeof value === 'string' && value.trim() ? value.trim() : '';
+	if (!normalized) {
+		throw new Error(`Configure ${label} before reconciling multi-tenant resources.`);
+	}
+	return normalized;
+}
+
+export function resolveTreeseedResourceIdentity(deployConfig, target) {
+	const teamId = requireConfiguredIdentityValue(
+		envOrNull('TREESEED_HOSTING_TEAM_ID')
+			?? deployConfig.runtime?.teamId
+			?? deployConfig.hosting?.teamId,
+		'hosting.teamId or runtime.teamId in treeseed.site.yaml',
+	);
+	const projectId = requireConfiguredIdentityValue(
+		envOrNull('TREESEED_PROJECT_ID')
+			?? deployConfig.runtime?.projectId
+			?? deployConfig.hosting?.projectId,
+		'hosting.projectId or runtime.projectId in treeseed.site.yaml',
+	);
+	const teamSegment = sanitizeSegment(teamId);
+	const projectSegment = sanitizeSegment(projectId);
+	const deploymentKey = `${teamSegment}-${projectSegment}`;
+	const environment = target.kind === 'persistent' ? target.scope : target.branchName;
+	const environmentSegment = target.kind === 'persistent' ? target.scope : sanitizeSegment(target.branchName);
+	return {
+		teamId,
+		projectId,
+		slug: deployConfig.slug,
+		environment,
+		deploymentKey,
+		environmentKey: `${deploymentKey}-${environmentSegment}`,
+	};
+}
+
+function primaryHost(value) {
+	return safeUrl(value)?.hostname ?? null;
+}
+
+function domainZoneFromConfiguredWebDomain(domain) {
+	if (typeof domain !== 'string' || !domain.trim()) {
+		return null;
+	}
+	return domain.trim().replace(/^api\./u, '');
+}
+
+function resolveSurfaceDomainZone(deployConfig) {
+	return domainZoneFromConfiguredWebDomain(
+		deployConfig.surfaces?.web?.environments?.prod?.domain
+		?? primaryHost(deployConfig.surfaces?.web?.publicBaseUrl ?? deployConfig.siteUrl),
+	);
+}
+
+function deriveStagingDomainHash(identity, surface) {
+	return stableHash(`${identity.teamId}:${identity.projectId}:${identity.slug}:${surface}:staging`).slice(0, 8);
+}
+
+export function deriveTreeseedStagingSurfaceDomain(deployConfig, identity, surface) {
+	const zone = resolveSurfaceDomainZone(deployConfig);
+	if (!zone) {
+		return null;
+	}
+	const hash = deriveStagingDomainHash(identity, surface);
+	return surface === 'web'
+		? `${identity.deploymentKey}-staging-${hash}.${zone}`
+		: `api-${identity.deploymentKey}-staging-${hash}.${zone}`;
+}
+
+function deriveApiDomainFromWebDomain(domain) {
+	if (!domain) {
+		return null;
+	}
+	return domain.startsWith('api.') ? domain : `api.${domain}`;
+}
+
+export function resolveConfiguredSurfaceDomain(deployConfig, target, surface) {
+	if (target.kind !== 'persistent') {
+		return null;
+	}
+	const scope = target.scope;
+	const configured = deployConfig.surfaces?.[surface]?.environments?.[scope]?.domain?.trim();
+	if (configured) {
+		return configured;
+	}
+	if (scope === 'staging') {
+		return deriveTreeseedStagingSurfaceDomain(
+			deployConfig,
+			resolveTreeseedResourceIdentity(deployConfig, target),
+			surface,
+		);
+	}
+	if (scope !== 'prod') {
+		return null;
+	}
+	if (surface === 'web') {
+		return primaryHost(deployConfig.surfaces?.web?.publicBaseUrl ?? deployConfig.siteUrl);
+	}
+	return deriveApiDomainFromWebDomain(resolveConfiguredSurfaceDomain(deployConfig, target, 'web'));
+}
+
+export function resolveConfiguredSurfaceBaseUrl(deployConfig, target, surface) {
+	const configuredDomain = resolveConfiguredSurfaceDomain(deployConfig, target, surface);
+	if (configuredDomain) {
+		return `https://${configuredDomain}`;
+	}
+	if (surface === 'web') {
+		return deployConfig.surfaces?.web?.publicBaseUrl ?? deployConfig.siteUrl ?? null;
+	}
+	if (surface === 'api') {
+		const scope = scopeFromTarget(target);
+		return deployConfig.services?.api?.environments?.[scope]?.baseUrl
+			?? deployConfig.services?.api?.publicBaseUrl
+			?? null;
+	}
+	return null;
+}
+
+function sharedDeploymentName(identity, role = '') {
+	return role ? `${identity.deploymentKey}-${sanitizeSegment(role)}` : identity.deploymentKey;
+}
+
+function environmentScopedIdentityName(identity, role, target) {
+	const environmentSegment = target.kind === 'persistent' ? target.scope : sanitizeSegment(target.branchName);
+	return `${identity.deploymentKey}-${sanitizeSegment(role)}-${environmentSegment}`;
 }
 
 export function normalizePersistentScope(scope = 'prod') {
@@ -147,28 +279,15 @@ export function deployTargetLabel(scopeOrTarget = 'prod') {
 }
 
 function targetWorkerName(deployConfig, target) {
-	const baseName = deriveCloudflareWorkerName(deployConfig);
+	const identity = resolveTreeseedResourceIdentity(deployConfig, target);
+	const configuredBaseName = deployConfig.cloudflare.workerName?.trim();
+	const baseName = configuredBaseName && configuredBaseName === deployConfig.slug
+		? identity.deploymentKey
+		: (configuredBaseName || `${identity.deploymentKey}-edge`);
 	if (target.kind === 'persistent') {
-		if (target.scope === 'prod') {
-			return baseName;
-		}
-		return `${baseName}-${target.scope}`;
+		return `${sanitizeSegment(baseName)}-${target.scope}`;
 	}
-
-	return `${baseName}-${sanitizeSegment(target.branchName)}`;
-}
-
-function targetScopedResourceName(baseName, target) {
-	if (!baseName) {
-		return baseName;
-	}
-	if (target.kind === 'persistent') {
-		if (target.scope === 'prod') {
-			return baseName;
-		}
-		return `${baseName}-${target.scope}`;
-	}
-	return `${baseName}-${sanitizeSegment(target.branchName)}`;
+	return `${sanitizeSegment(baseName)}-${sanitizeSegment(target.branchName)}`;
 }
 
 function targetWorkersDevUrl(workerName) {
@@ -179,13 +298,14 @@ function relativeFromGeneratedRoot(targetPath, generatedRoot) {
 	return relative(generatedRoot, targetPath).replaceAll('\\', '/');
 }
 
-function buildPublicVars(deployConfig) {
+export function buildPublicVars(deployConfig) {
+	const identity = resolveTreeseedResourceIdentity(deployConfig, createPersistentDeployTarget('prod'));
 	const contentRuntimeProvider = deployConfig.providers?.content?.runtime ?? 'team_scoped_r2_overlay';
 	const contentPublishProvider = deployConfig.providers?.content?.publish ?? contentRuntimeProvider;
 	const contentServingMode = envOrNull('TREESEED_CONTENT_SERVING_MODE')
 		?? deployConfig.providers?.content?.serving
 		?? 'local_collections';
-	const contentDefaultTeamId = resolveConfiguredHostedTeamId(deployConfig);
+	const contentDefaultTeamId = identity.teamId;
 	const contentManifestKeyTemplate = deployConfig.cloudflare.r2?.manifestKeyTemplate ?? 'teams/{teamId}/published/common.json';
 	const contentPreviewRootTemplate = deployConfig.cloudflare.r2?.previewRootTemplate ?? 'teams/{teamId}/previews';
 	const contentManifestKey = contentManifestKeyTemplate.replaceAll('{teamId}', contentDefaultTeamId);
@@ -200,7 +320,7 @@ function buildPublicVars(deployConfig) {
 		TREESEED_RUNTIME_REGISTRATION: deployConfig.runtime?.registration ?? 'none',
 		TREESEED_MARKET_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig),
 		TREESEED_HOSTING_TEAM_ID: contentDefaultTeamId,
-		TREESEED_PROJECT_ID: resolveConfiguredProjectId(deployConfig),
+		TREESEED_PROJECT_ID: identity.projectId,
 		TREESEED_AGENT_EXECUTION_PROVIDER: deployConfig.providers?.agents?.execution ?? 'stub',
 		TREESEED_AGENT_REPOSITORY_PROVIDER: deployConfig.providers?.agents?.repository ?? 'stub',
 		TREESEED_AGENT_VERIFICATION_PROVIDER: deployConfig.providers?.agents?.verification ?? 'stub',
@@ -246,73 +366,69 @@ function buildPublicVars(deployConfig) {
 	};
 }
 
-function buildSecretMap(deployConfig, state) {
+export function buildSecretMap(deployConfig, state) {
 	const generatedSecret = state.generatedSecrets?.TREESEED_FORM_TOKEN_SECRET ?? randomBytes(24).toString('hex');
 	const previewSecret = state.generatedSecrets?.TREESEED_EDITORIAL_PREVIEW_SECRET ?? randomBytes(24).toString('hex');
 	return {
 		TREESEED_FORM_TOKEN_SECRET: envOrNull('TREESEED_FORM_TOKEN_SECRET') ?? generatedSecret,
 		TREESEED_EDITORIAL_PREVIEW_SECRET: envOrNull('TREESEED_EDITORIAL_PREVIEW_SECRET') ?? previewSecret,
 		TREESEED_TURNSTILE_SECRET_KEY: envOrNull('TREESEED_TURNSTILE_SECRET_KEY'),
-		TREESEED_SMTP_HOST: deployConfig.smtp?.enabled ? envOrNull('TREESEED_SMTP_HOST') : null,
-		TREESEED_SMTP_PORT: deployConfig.smtp?.enabled ? envOrNull('TREESEED_SMTP_PORT') : null,
-		TREESEED_SMTP_USERNAME: deployConfig.smtp?.enabled ? envOrNull('TREESEED_SMTP_USERNAME') : null,
 		TREESEED_SMTP_PASSWORD: deployConfig.smtp?.enabled ? envOrNull('TREESEED_SMTP_PASSWORD') : null,
-		TREESEED_SMTP_FROM: deployConfig.smtp?.enabled ? envOrNull('TREESEED_SMTP_FROM') : null,
-		TREESEED_SMTP_REPLY_TO: deployConfig.smtp?.enabled ? envOrNull('TREESEED_SMTP_REPLY_TO') : null,
 	};
 }
 
 function defaultStateFromConfig(deployConfig, target) {
+	const identity = resolveTreeseedResourceIdentity(deployConfig, target);
 	const workerName = targetWorkerName(deployConfig, target);
 	const suffix = target.kind === 'persistent' ? target.scope : sanitizeSegment(target.branchName);
 	const contentManifestKeyTemplate = deployConfig.cloudflare.r2?.manifestKeyTemplate ?? 'teams/{teamId}/published/common.json';
 	const contentPreviewRootTemplate = deployConfig.cloudflare.r2?.previewRootTemplate ?? 'teams/{teamId}/previews';
-	const contentDefaultTeamId = resolveConfiguredHostedTeamId(deployConfig);
+	const contentDefaultTeamId = identity.teamId;
 	const contentManifestKey = contentManifestKeyTemplate.replaceAll('{teamId}', contentDefaultTeamId);
 
 	return {
 		version: 2,
 		target,
+		identity,
 		previewEnabled: target.kind === 'branch',
 		workerName,
 		kvNamespaces: {
 			FORM_GUARD_KV: {
-				name: `${workerName}-form-guard`,
+				name: environmentScopedIdentityName(identity, 'form-guard', target),
+				binding: 'FORM_GUARD_KV',
 				id: `dryrun-${suffix}-form-guard`,
 				previewId: `dryrun-${suffix}-form-guard-preview`,
 			},
 			SESSION: {
-				name: `${workerName}-session`,
+				name: environmentScopedIdentityName(identity, 'session', target),
+				binding: 'SESSION',
 				id: `dryrun-${suffix}-session`,
 				previewId: `dryrun-${suffix}-session-preview`,
 			},
 		},
 		d1Databases: {
 			SITE_DATA_DB: {
-				databaseName: `${workerName}-site-data`,
+				databaseName: environmentScopedIdentityName(identity, 'site-data', target),
+				binding: 'SITE_DATA_DB',
 				databaseId: `dryrun-${suffix}-site-data`,
 				previewDatabaseId: `dryrun-${suffix}-site-data-preview`,
 			},
 		},
 		queues: {
 			agentWork: {
-				name: targetScopedResourceName(deployConfig.cloudflare.queueName ?? 'agent-work', target),
-				dlqName: targetScopedResourceName(deployConfig.cloudflare.dlqName ?? 'agent-work-dlq', target),
+				name: environmentScopedIdentityName(identity, deployConfig.cloudflare.queueName ?? 'agent-work', target),
+				dlqName: environmentScopedIdentityName(identity, deployConfig.cloudflare.dlqName ?? 'agent-work-dlq', target),
 				binding: deployConfig.cloudflare.queueBinding ?? 'AGENT_WORK_QUEUE',
 				queueId: null,
 				dlqId: null,
 			},
 		},
 		pages: {
-			projectName: target.kind === 'persistent'
-				? (target.scope === 'prod'
-					? resolveConfiguredPagesProjectName(deployConfig)
-					: resolveConfiguredPagesPreviewProjectName(deployConfig))
-				: `${resolveConfiguredPagesProjectName(deployConfig)}-preview`,
+			projectName: resolveConfiguredPagesProjectName(deployConfig),
 			productionBranch: deployConfig.cloudflare.pages?.productionBranch ?? 'main',
 			stagingBranch: deployConfig.cloudflare.pages?.stagingBranch ?? 'staging',
 			buildOutputDir: deployConfig.cloudflare.pages?.buildOutputDir ?? 'dist',
-			url: null,
+			url: resolveConfiguredSurfaceBaseUrl(deployConfig, target, 'web'),
 		},
 		content: {
 			runtimeProvider: deployConfig.providers?.content?.runtime ?? 'team_scoped_r2_overlay',
@@ -332,8 +448,8 @@ function defaultStateFromConfig(deployConfig, target) {
 			kind: deployConfig.hosting?.kind ?? 'self_hosted_project',
 			registration: deployConfig.hosting?.registration ?? 'none',
 			marketBaseUrl: resolveConfiguredMarketBaseUrl(deployConfig) || null,
-			teamId: contentDefaultTeamId,
-			projectId: resolveConfiguredProjectId(deployConfig),
+			teamId: identity.teamId,
+			projectId: identity.projectId,
 		},
 		hub: {
 			mode: deployConfig.hub?.mode ?? 'treeseed_hosted',
@@ -342,8 +458,8 @@ function defaultStateFromConfig(deployConfig, target) {
 			mode: deployConfig.runtime?.mode ?? 'none',
 			registration: deployConfig.runtime?.registration ?? 'none',
 			marketBaseUrl: resolveConfiguredMarketBaseUrl(deployConfig) || null,
-			teamId: contentDefaultTeamId,
-			projectId: resolveConfiguredProjectId(deployConfig),
+			teamId: identity.teamId,
+			projectId: identity.projectId,
 		},
 		webCache: {
 			webHost: null,
@@ -381,7 +497,7 @@ function defaultStateFromConfig(deployConfig, target) {
 			warnings: [],
 			lastValidationSummary: null,
 		},
-		lastDeployedUrl: target.kind === 'branch' ? targetWorkersDevUrl(workerName) : null,
+		lastDeployedUrl: target.kind === 'branch' ? targetWorkersDevUrl(workerName) : resolveConfiguredSurfaceBaseUrl(deployConfig, target, 'web'),
 		lastManifestFingerprint: null,
 		lastDeploymentTimestamp: null,
 		lastDeployedCommit: null,
@@ -389,19 +505,24 @@ function defaultStateFromConfig(deployConfig, target) {
 			MANAGED_SERVICE_KEYS.map((serviceKey) => {
 				const serviceConfig = deployConfig.services?.[serviceKey];
 				const scope = scopeFromTarget(target);
-				const baseUrl = serviceConfig?.environments?.[scope]?.baseUrl ?? serviceConfig?.publicBaseUrl ?? null;
+				const baseUrl = serviceKey === 'api'
+					? (resolveConfiguredSurfaceBaseUrl(deployConfig, target, 'api')
+						?? serviceConfig?.environments?.[scope]?.baseUrl
+						?? serviceConfig?.publicBaseUrl
+						?? null)
+					: (serviceConfig?.environments?.[scope]?.baseUrl ?? serviceConfig?.publicBaseUrl ?? null);
 				return [
 					serviceKey,
 					{
 						enabled: serviceConfig?.enabled !== false && Boolean(serviceConfig),
 						provider: serviceConfig?.provider ?? (serviceConfig ? 'railway' : 'none'),
 						projectId: serviceConfig?.railway?.projectId ?? null,
-						projectName: serviceConfig?.railway?.projectName ?? null,
+						projectName: serviceConfig?.railway?.projectName ?? sharedDeploymentName(identity),
 						serviceId: serviceConfig?.railway?.serviceId ?? null,
-						serviceName: serviceConfig?.railway?.serviceName ?? null,
+						serviceName: serviceConfig?.railway?.serviceName ?? sharedDeploymentName(identity, serviceKey),
 						workerName: serviceConfig?.cloudflare?.workerName ?? null,
 						rootDir: serviceConfig?.railway?.rootDir ?? serviceConfig?.rootDir ?? null,
-						environment: serviceConfig?.environments?.[scope]?.railwayEnvironment ?? scope,
+						environment: normalizeRailwayEnvironmentName(serviceConfig?.environments?.[scope]?.railwayEnvironment ?? scope),
 						schedule: serviceConfig?.railway?.schedule ?? null,
 						publicBaseUrl: baseUrl,
 						initialized: false,
@@ -433,6 +554,16 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 		...defaults,
 		...persisted,
 		target,
+		identity: {
+			...(defaults.identity ?? {}),
+			...(persisted.identity ?? {}),
+			teamId: defaults.identity?.teamId,
+			projectId: defaults.identity?.projectId,
+			slug: defaults.identity?.slug,
+			environment: defaults.identity?.environment,
+			deploymentKey: defaults.identity?.deploymentKey,
+			environmentKey: defaults.identity?.environmentKey,
+		},
 		previewEnabled: persisted.previewEnabled ?? defaults.previewEnabled,
 		workerName: defaults.workerName,
 		kvNamespaces: {
@@ -442,11 +573,13 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 				...defaults.kvNamespaces.FORM_GUARD_KV,
 				...(persisted.kvNamespaces?.FORM_GUARD_KV ?? {}),
 				name: defaults.kvNamespaces.FORM_GUARD_KV.name,
+				binding: defaults.kvNamespaces.FORM_GUARD_KV.binding,
 			},
 			SESSION: {
 				...defaults.kvNamespaces.SESSION,
 				...(persisted.kvNamespaces?.SESSION ?? {}),
 				name: defaults.kvNamespaces.SESSION.name,
+				binding: defaults.kvNamespaces.SESSION.binding,
 			},
 		},
 		d1Databases: {
@@ -456,6 +589,7 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 				...defaults.d1Databases.SITE_DATA_DB,
 				...persistedSiteDataDb,
 				databaseName: defaults.d1Databases.SITE_DATA_DB.databaseName,
+				binding: defaults.d1Databases.SITE_DATA_DB.binding,
 			},
 		},
 		queues: {
@@ -480,14 +614,14 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 			...(persisted.content ?? {}),
 			runtimeProvider: defaults.content?.runtimeProvider ?? persisted.content?.runtimeProvider ?? 'team_scoped_r2_overlay',
 			publishProvider: defaults.content?.publishProvider ?? persisted.content?.publishProvider ?? 'team_scoped_r2_overlay',
-			defaultTeamId: defaults.content?.defaultTeamId ?? persisted.content?.defaultTeamId ?? deployConfig.slug,
+			defaultTeamId: defaults.content?.defaultTeamId ?? persisted.content?.defaultTeamId ?? defaults.identity?.teamId,
 			r2Binding: defaults.content?.r2Binding ?? persisted.content?.r2Binding ?? null,
 			bucketName: defaults.content?.bucketName ?? persisted.content?.bucketName ?? null,
 			publicBaseUrl: defaults.content?.publicBaseUrl ?? persisted.content?.publicBaseUrl ?? null,
 			manifestKeyTemplate: defaults.content?.manifestKeyTemplate ?? persisted.content?.manifestKeyTemplate ?? 'teams/{teamId}/published/common.json',
 			previewRootTemplate: defaults.content?.previewRootTemplate ?? persisted.content?.previewRootTemplate ?? 'teams/{teamId}/previews',
 			previewTtlHours: defaults.content?.previewTtlHours ?? persisted.content?.previewTtlHours ?? 168,
-			manifestKey: defaults.content?.manifestKey ?? persisted.content?.manifestKey ?? `teams/${deployConfig.slug}/published/common.json`,
+			manifestKey: defaults.content?.manifestKey ?? persisted.content?.manifestKey ?? `teams/${defaults.identity?.teamId}/published/common.json`,
 			lastPublishedManifestRevision: persisted.content?.lastPublishedManifestRevision ?? defaults.content?.lastPublishedManifestRevision ?? null,
 			lastPublishedManifestSha256: persisted.content?.lastPublishedManifestSha256 ?? defaults.content?.lastPublishedManifestSha256 ?? null,
 		},
@@ -497,8 +631,8 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 			kind: defaults.hosting?.kind ?? persisted.hosting?.kind ?? 'self_hosted_project',
 			registration: defaults.hosting?.registration ?? persisted.hosting?.registration ?? 'none',
 			marketBaseUrl: defaults.hosting?.marketBaseUrl ?? persisted.hosting?.marketBaseUrl ?? null,
-			teamId: defaults.hosting?.teamId ?? persisted.hosting?.teamId ?? deployConfig.slug,
-			projectId: defaults.hosting?.projectId ?? persisted.hosting?.projectId ?? deployConfig.slug,
+			teamId: defaults.hosting?.teamId ?? persisted.hosting?.teamId ?? defaults.identity?.teamId,
+			projectId: defaults.hosting?.projectId ?? persisted.hosting?.projectId ?? defaults.identity?.projectId,
 		},
 		hub: {
 			...(defaults.hub ?? {}),
@@ -511,8 +645,8 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 			mode: defaults.runtime?.mode ?? persisted.runtime?.mode ?? 'none',
 			registration: defaults.runtime?.registration ?? persisted.runtime?.registration ?? 'none',
 			marketBaseUrl: defaults.runtime?.marketBaseUrl ?? persisted.runtime?.marketBaseUrl ?? null,
-			teamId: defaults.runtime?.teamId ?? persisted.runtime?.teamId ?? deployConfig.slug,
-			projectId: defaults.runtime?.projectId ?? persisted.runtime?.projectId ?? deployConfig.slug,
+			teamId: defaults.runtime?.teamId ?? persisted.runtime?.teamId ?? defaults.identity?.teamId,
+			projectId: defaults.runtime?.projectId ?? persisted.runtime?.projectId ?? defaults.identity?.projectId,
 		},
 		webCache: {
 			...(defaults.webCache ?? {}),
@@ -549,7 +683,7 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 			productionBranch: defaults.pages?.productionBranch ?? persisted.pages?.productionBranch ?? 'main',
 			stagingBranch: defaults.pages?.stagingBranch ?? persisted.pages?.stagingBranch ?? 'staging',
 			buildOutputDir: defaults.pages?.buildOutputDir ?? persisted.pages?.buildOutputDir ?? 'dist',
-			url: persisted.pages?.url ?? defaults.pages?.url ?? null,
+			url: defaults.pages?.url ?? persisted.pages?.url ?? null,
 		},
 		readiness: {
 			...defaults.readiness,
@@ -578,7 +712,7 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 						schedule: defaultService.schedule ?? persistedService.schedule ?? null,
 						publicBaseUrl: defaultService.publicBaseUrl ?? persistedService.publicBaseUrl ?? null,
 						lastDeploymentTimestamp: effectiveDeploymentTimestamp,
-						lastDeployedUrl: persistedService.lastDeployedUrl ?? defaultService.publicBaseUrl ?? null,
+						lastDeployedUrl: defaultService.publicBaseUrl ?? persistedService.lastDeployedUrl ?? null,
 						lastScheduleSyncAt: persistedService.lastScheduleSyncAt ?? defaultService.lastScheduleSyncAt ?? null,
 					},
 				];
@@ -588,6 +722,10 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 			...(persisted.railwaySchedules ?? {}),
 		},
 	};
+
+	if (target.kind === 'persistent') {
+		merged.lastDeployedUrl = resolveConfiguredSurfaceBaseUrl(deployConfig, target, 'web') ?? merged.lastDeployedUrl ?? null;
+	}
 
 	if (target.kind === 'branch' && !merged.lastDeployedUrl) {
 		merged.lastDeployedUrl = targetWorkersDevUrl(merged.workerName);
@@ -684,7 +822,7 @@ export function ensureGeneratedWranglerConfig(tenantRoot, options = {}) {
 	return { wranglerPath, deployConfig, state, manifestFingerprint, target };
 }
 
-function runWrangler(args, { cwd, allowFailure = false, json = false, capture = false, env = {}, input } = {}) {
+export function runWrangler(args, { cwd, allowFailure = false, json = false, capture = false, env = {}, input } = {}) {
 	const result = spawnSync(process.execPath, [resolveWranglerBin(), ...args], {
 		stdio: json || capture || input !== undefined ? ['pipe', 'pipe', 'pipe'] : 'inherit',
 		cwd,
@@ -719,57 +857,99 @@ function parseWranglerJsonOutput(result, label) {
 	return JSON.parse(source);
 }
 
-function isWranglerAlreadyExistsError(error, matchers: RegExp[]) {
+export function isWranglerAlreadyExistsError(error, matchers: RegExp[]) {
 	const message = error instanceof Error ? error.message : String(error);
 	return matchers.some((matcher) => matcher.test(message));
 }
 
-function listKvNamespaces(tenantRoot, env) {
-	const result = runWrangler(['kv', 'namespace', 'list'], {
-		cwd: tenantRoot,
-		capture: true,
-		env,
-	});
-	return parseWranglerJsonOutput(result, 'KV namespace list');
-}
-
-function listD1Databases(tenantRoot, env) {
-	const result = runWrangler(['d1', 'list', '--json'], {
-		cwd: tenantRoot,
-		capture: true,
-		env,
-	});
-	return parseWranglerJsonOutput(result, 'D1 list');
-}
-
-function listQueues(tenantRoot, env) {
-	const result = runWrangler(['queues', 'list', '--json'], {
-		cwd: tenantRoot,
-		capture: true,
+export function listKvNamespaces(tenantRoot, env) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!accountId) {
+		return [];
+	}
+	const payload = cloudflareApiRequest(`/accounts/${encodeURIComponent(accountId)}/storage/kv/namespaces?per_page=1000&order=title&direction=asc`, {
 		env,
 		allowFailure: true,
 	});
-	return result.status === 0 ? parseWranglerJsonOutput(result, 'Queues list') : [];
+	return Array.isArray(payload?.result) ? payload.result : [];
 }
 
-function listR2Buckets(tenantRoot, env) {
-	const result = runWrangler(['r2', 'bucket', 'list', '--json'], {
-		cwd: tenantRoot,
-		capture: true,
+export function listD1Databases(tenantRoot, env) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!accountId) {
+		return [];
+	}
+	const payload = cloudflareApiRequest(`/accounts/${encodeURIComponent(accountId)}/d1/database`, {
 		env,
 		allowFailure: true,
 	});
-	return result.status === 0 ? parseWranglerJsonOutput(result, 'R2 bucket list') : [];
+	return Array.isArray(payload?.result) ? payload.result : [];
 }
 
-function listPagesProjects(tenantRoot, env) {
-	const result = runWrangler(['pages', 'project', 'list', '--json'], {
-		cwd: tenantRoot,
-		capture: true,
+export function listQueues(tenantRoot, env) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!accountId) {
+		return [];
+	}
+	const payload = cloudflareApiRequest(`/accounts/${encodeURIComponent(accountId)}/queues`, {
 		env,
 		allowFailure: true,
 	});
-	return result.status === 0 ? parseWranglerJsonOutput(result, 'Pages project list') : [];
+	return Array.isArray(payload?.result) ? payload.result : [];
+}
+
+export function listR2Buckets(tenantRoot, env) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!accountId) {
+		return [];
+	}
+	const payload = cloudflareApiRequest(`/accounts/${encodeURIComponent(accountId)}/r2/buckets`, {
+		env,
+		allowFailure: true,
+	});
+	return Array.isArray(payload?.result?.buckets) ? payload.result.buckets : [];
+}
+
+export function listPagesProjects(tenantRoot, env) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!accountId) {
+		return [];
+	}
+	const payload = cloudflareApiRequest(`/accounts/${encodeURIComponent(accountId)}/pages/projects`, {
+		env,
+		allowFailure: true,
+	});
+	return Array.isArray(payload?.result) ? payload.result : [];
+}
+
+function ensurePagesProjectCompatibility(accountId, projectName, env, currentProject = null) {
+	if (!accountId || !projectName) {
+		return;
+	}
+
+	const projectPath = `/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}`;
+	const latestProject = cloudflareApiRequest(projectPath, { env, allowFailure: true })?.result ?? currentProject;
+	const currentConfigs = latestProject?.deployment_configs ?? {};
+	const mergeCompatibility = (config = {}) => ({
+		...config,
+		compatibility_date: config.compatibility_date ?? DEFAULT_COMPATIBILITY_DATE,
+		compatibility_flags: [...new Set([...(config.compatibility_flags ?? []), ...DEFAULT_COMPATIBILITY_FLAGS])],
+	});
+
+	cloudflareApiRequest(
+		projectPath,
+		{
+			method: 'PATCH',
+			env,
+			body: {
+				deployment_configs: {
+					...currentConfigs,
+					preview: mergeCompatibility(currentConfigs.preview),
+					production: mergeCompatibility(currentConfigs.production),
+				},
+			},
+		},
+	);
 }
 
 function isPlaceholderResourceId(value) {
@@ -785,10 +965,14 @@ function isPlaceholderResourceId(value) {
 	);
 }
 
-function buildProvisioningSummary(deployConfig, state, target) {
+export function buildProvisioningSummary(deployConfig, state, target) {
 	const webCachePolicy = resolveTreeseedWebCachePolicy(deployConfig);
+	const identity = state.identity ?? resolveTreeseedResourceIdentity(deployConfig, target);
+	const configuredWebDomain = resolveConfiguredSurfaceDomain(deployConfig, target, 'web');
+	const configuredApiDomain = resolveConfiguredSurfaceDomain(deployConfig, target, 'api');
 	return {
 		target: deployTargetLabel(target),
+		identity,
 		workerName: state.workerName ?? targetWorkerName(deployConfig, target),
 		siteUrl: target.kind === 'branch' ? targetWorkersDevUrl(state.workerName) : deployConfig.siteUrl,
 		accountId: resolveConfiguredCloudflareAccountId(deployConfig),
@@ -798,6 +982,23 @@ function buildProvisioningSummary(deployConfig, state, target) {
 		siteDataDb: state.d1Databases.SITE_DATA_DB,
 		queue: state.queues?.agentWork ?? null,
 		content: state.content ?? null,
+		resources: {
+			pagesProject: state.pages?.projectName ?? null,
+			contentBucket: state.content?.bucketName ?? null,
+			queue: state.queues?.agentWork?.name ?? null,
+			dlq: state.queues?.agentWork?.dlqName ?? null,
+			database: state.d1Databases?.SITE_DATA_DB?.databaseName ?? null,
+			formGuardKv: state.kvNamespaces?.FORM_GUARD_KV?.name ?? null,
+			sessionKv: state.kvNamespaces?.SESSION?.name ?? null,
+			railwayProject: state.services?.worker?.projectName ?? state.services?.api?.projectName ?? null,
+			webDomain: configuredWebDomain,
+			apiDomain: configuredApiDomain,
+			railwayServices: Object.fromEntries(
+				Object.entries(state.services ?? {})
+					.filter(([, service]) => service?.enabled === true)
+					.map(([serviceKey, service]) => [serviceKey, service?.serviceName ?? null]),
+			),
+		},
 		webCache: {
 			webHost: state.webCache?.webHost ?? null,
 			contentHost: state.webCache?.contentHost ?? null,
@@ -860,13 +1061,8 @@ function shouldManageCloudflareWebCacheRules(deployConfig, target) {
 	return Boolean(webTarget?.host && !webTarget.host.endsWith('.workers.dev') && !webTarget.host.endsWith('.pages.dev'));
 }
 
-function cloudflareApiRequest(path, { method = 'GET', body, env, allowFailure = false } = {}) {
-	const response = spawnSync(
-		process.execPath,
-		[
-			'--input-type=module',
-			'-e',
-			`import { readFileSync } from 'node:fs';
+export function cloudflareApiRequest(path, { method = 'GET', body, env, allowFailure = false } = {}) {
+	const requestScript = `import { readFileSync } from 'node:fs';
 const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
 const response = await fetch(input.url, {
   method: input.method,
@@ -876,37 +1072,71 @@ const response = await fetch(input.url, {
   },
   body: input.body ? JSON.stringify(input.body) : undefined,
 });
-const payload = await response.json().catch(async () => ({ success: false, errors: [{ message: await response.text() }] }));
-process.stdout.write(JSON.stringify({ ok: response.ok, payload }));`,
-		],
-		{
-			stdio: ['pipe', 'pipe', 'pipe'],
-			encoding: 'utf8',
-			env: { ...process.env, ...(env ?? {}) },
-			input: JSON.stringify({
-				url: `https://api.cloudflare.com/client/v4${path}`,
-				method,
-				body,
-				token: env?.CLOUDFLARE_API_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN ?? '',
-			}),
-		},
-	);
+const rawBody = await response.text();
+let payload;
+try {
+  payload = rawBody ? JSON.parse(rawBody) : {};
+} catch {
+  payload = { success: false, errors: [{ message: rawBody || 'empty response' }] };
+}
+process.stdout.write(JSON.stringify({ ok: response.ok, payload }));`;
+	const requestInput = JSON.stringify({
+		url: `https://api.cloudflare.com/client/v4${path}`,
+		method,
+		body,
+		token: env?.CLOUDFLARE_API_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN ?? '',
+	});
+	const isTransient = (text) => /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted/iu.test(text || '');
+	let attempt = 0;
+	for (;;) {
+		const response = spawnSync(
+			process.execPath,
+			[
+				'--input-type=module',
+				'-e',
+				requestScript,
+			],
+			{
+				stdio: ['pipe', 'pipe', 'pipe'],
+				encoding: 'utf8',
+				env: { ...process.env, ...(env ?? {}) },
+				input: requestInput,
+				timeout: 15000,
+			},
+		);
+		if (response.error?.code === 'ETIMEDOUT') {
+			if (attempt < 2) {
+				attempt += 1;
+				continue;
+			}
+			if (!allowFailure) {
+				throw new Error(`Cloudflare API request timed out: ${method} ${path}`);
+			}
+			return null;
+		}
+		const stderr = response.stderr?.trim() || '';
+		if (response.status !== 0) {
+			if (attempt < 2 && isTransient(stderr)) {
+				attempt += 1;
+				continue;
+			}
+			if (!allowFailure) {
+				throw new Error(stderr || `Cloudflare API request failed: ${method} ${path}`);
+			}
+		}
 
-	if (response.status !== 0 && !allowFailure) {
-		throw new Error(response.stderr?.trim() || `Cloudflare API request failed: ${method} ${path}`);
+		const parsed = JSON.parse(response.stdout?.trim() || '{"ok":false,"payload":{"success":false,"errors":[{"message":"empty response"}]}}');
+		if (!parsed.ok && !allowFailure) {
+			const details = Array.isArray(parsed.payload?.errors)
+				? parsed.payload.errors.map((entry) => entry?.message ?? JSON.stringify(entry)).join('; ')
+				: 'unknown error';
+			throw new Error(details || `Cloudflare API request failed: ${method} ${path}`);
+		}
+		return parsed.payload;
 	}
-
-	const parsed = JSON.parse(response.stdout?.trim() || '{"ok":false,"payload":{"success":false,"errors":[{"message":"empty response"}]}}');
-	if (!parsed.ok && !allowFailure) {
-		const details = Array.isArray(parsed.payload?.errors)
-			? parsed.payload.errors.map((entry) => entry?.message ?? JSON.stringify(entry)).join('; ')
-			: 'unknown error';
-		throw new Error(details || `Cloudflare API request failed: ${method} ${path}`);
-	}
-	return parsed.payload;
 }
 
-function resolveCloudflareZoneIdForHost(deployConfig, host, env) {
+export function resolveCloudflareZoneIdForHost(deployConfig, host, env) {
 	if (deployConfig.cloudflare.zoneId) {
 		return deployConfig.cloudflare.zoneId;
 	}
@@ -1067,7 +1297,7 @@ function reconcileCloudflareCacheRulesForTarget(role, deployConfig, state, cache
 	return { managed: true, zoneId, host: cacheTarget.host, rulesetId };
 }
 
-function reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, target, { dryRun = false } = {}) {
+export function reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, target, { dryRun = false, env: providedEnv } = {}) {
 	if (!shouldManageCloudflareWebCacheRules(deployConfig, target)) {
 		const webTarget = resolvePublicWebCacheTarget(deployConfig);
 		const contentTarget = resolvePublicContentCacheTarget(deployConfig);
@@ -1079,7 +1309,7 @@ function reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, targe
 	}
 
 	const env = {
-		CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN ?? '',
+		CLOUDFLARE_API_TOKEN: providedEnv?.CLOUDFLARE_API_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN ?? '',
 	};
 	if (!env.CLOUDFLARE_API_TOKEN) {
 		state.webCache.webHost = resolvePublicWebCacheTarget(deployConfig)?.host ?? null;
@@ -1091,17 +1321,27 @@ function reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, targe
 
 	const webTarget = resolvePublicWebCacheTarget(deployConfig);
 	const contentTarget = resolvePublicContentCacheTarget(deployConfig);
-	const results = [];
-	if (webTarget?.host) {
-		results.push(reconcileCloudflareCacheRulesForTarget('web', deployConfig, state, webTarget, env, { dryRun }));
+	try {
+		const results = [];
+		if (webTarget?.host) {
+			results.push(reconcileCloudflareCacheRulesForTarget('web', deployConfig, state, webTarget, env, { dryRun }));
+		}
+		if (contentTarget?.host) {
+			results.push(reconcileCloudflareCacheRulesForTarget('content', deployConfig, state, contentTarget, env, { dryRun }));
+		}
+		state.webCache.rulesManaged = true;
+		state.webCache.lastSyncedAt = new Date().toISOString();
+		state.webCache.lastError = null;
+		return { managed: true, results };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error ?? '');
+		if (/Authentication error|permission/i.test(message)) {
+			state.webCache.rulesManaged = false;
+			state.webCache.lastError = message;
+			return { managed: false, skipped: true, reason: 'auth_error', error: message };
+		}
+		throw error;
 	}
-	if (contentTarget?.host) {
-		results.push(reconcileCloudflareCacheRulesForTarget('content', deployConfig, state, contentTarget, env, { dryRun }));
-	}
-	state.webCache.rulesManaged = true;
-	state.webCache.lastSyncedAt = new Date().toISOString();
-	state.webCache.lastError = null;
-	return { managed: true, results };
 }
 
 function purgeCloudflareCacheByUrls(urls, deployConfig, { env } = {}) {
@@ -1139,15 +1379,15 @@ function purgeCloudflareCacheByUrls(urls, deployConfig, { env } = {}) {
 	});
 }
 
-function queueName(entry) {
+export function queueName(entry) {
 	return entry?.queue_name ?? entry?.queueName ?? entry?.name ?? null;
 }
 
-function queueId(entry) {
+export function queueId(entry) {
 	return entry?.queue_id ?? entry?.queueId ?? entry?.id ?? entry?.uuid ?? null;
 }
 
-function hasProvisionedCloudflareResources(state) {
+export function hasProvisionedCloudflareResources(state) {
 	return Boolean(
 		state?.pages?.projectName
 		&& state?.pages?.url
@@ -1241,7 +1481,7 @@ function isPlaceholderAccountId(value) {
 	return !value || value === 'replace-with-cloudflare-account-id';
 }
 
-function resolveConfiguredCloudflareAccountId(deployConfig) {
+export function resolveConfiguredCloudflareAccountId(deployConfig) {
 	return envOrNull('CLOUDFLARE_ACCOUNT_ID') ?? deployConfig.cloudflare.accountId;
 }
 
@@ -1252,30 +1492,8 @@ function resolveConfiguredMarketBaseUrl(deployConfig) {
 		?? '';
 }
 
-function resolveConfiguredHostedTeamId(deployConfig) {
-	return envOrNull('TREESEED_HOSTING_TEAM_ID')
-		?? deployConfig.runtime?.teamId
-		?? deployConfig.hosting?.teamId
-		?? deployConfig.slug;
-}
-
-function resolveConfiguredProjectId(deployConfig) {
-	return envOrNull('TREESEED_PROJECT_ID')
-		?? deployConfig.runtime?.projectId
-		?? deployConfig.hosting?.projectId
-		?? deployConfig.slug;
-}
-
 function resolveConfiguredPagesProjectName(deployConfig) {
-	return envOrNull('TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME')
-		?? deployConfig.cloudflare.pages?.projectName
-		?? deployConfig.slug;
-}
-
-function resolveConfiguredPagesPreviewProjectName(deployConfig) {
-	return envOrNull('TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME')
-		?? deployConfig.cloudflare.pages?.previewProjectName
-		?? `${resolveConfiguredPagesProjectName(deployConfig)}-staging`;
+	return sharedDeploymentName(resolveTreeseedResourceIdentity(deployConfig, createPersistentDeployTarget('prod')));
 }
 
 function resolveConfiguredContentBucketBinding(deployConfig) {
@@ -1285,9 +1503,7 @@ function resolveConfiguredContentBucketBinding(deployConfig) {
 }
 
 function resolveConfiguredContentBucketName(deployConfig) {
-	return envOrNull('TREESEED_CONTENT_BUCKET_NAME')
-		?? deployConfig.cloudflare.r2?.bucketName
-		?? `${deployConfig.slug}-content`;
+	return sharedDeploymentName(resolveTreeseedResourceIdentity(deployConfig, createPersistentDeployTarget('prod')), 'content');
 }
 
 function resolveConfiguredContentPublicBaseUrl(deployConfig) {
@@ -1809,6 +2025,7 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 		const exists = pagesProjects.find((entry) => entry?.name === current.projectName);
 		if (exists) {
 			current.url = exists.subdomain ? `https://${exists.subdomain}` : current.url ?? `https://${current.projectName}.pages.dev`;
+			ensurePagesProjectCompatibility(env.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '', current.projectName, env, exists);
 			return;
 		}
 		if (dryRun) {
@@ -1829,6 +2046,7 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 			capture: true,
 			env,
 		});
+		ensurePagesProjectCompatibility(env.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '', current.projectName, env);
 		current.url = `https://${current.projectName}.pages.dev`;
 	};
 
@@ -1946,8 +2164,15 @@ export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
 		state.queues.agentWork.dlqId = queueId(liveDlq) ?? state.queues.agentWork.dlqId ?? null;
 	}
 	const livePages = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
-	if (state.pages && livePages?.subdomain) {
-		state.pages.url = `https://${livePages.subdomain}`;
+	if (state.pages) {
+		const configuredWebUrl = resolveConfiguredSurfaceBaseUrl(deployConfig, target, 'web');
+		if (configuredWebUrl) {
+			state.pages.url = configuredWebUrl;
+		} else if (livePages?.subdomain) {
+			state.pages.url = target.kind === 'persistent' && target.scope === 'staging'
+				? `https://${state.pages.stagingBranch ?? 'staging'}.${livePages.subdomain}`
+				: `https://${livePages.subdomain}`;
+		}
 	}
 	if (!dryRun) {
 		try {
@@ -1975,15 +2200,28 @@ export function runRemoteD1Migrations(tenantRoot, options = {}) {
 		return { databaseName: state.d1Databases.SITE_DATA_DB.databaseName, dryRun: true };
 	}
 
-	runWrangler(
-		['d1', 'migrations', 'apply', state.d1Databases.SITE_DATA_DB.databaseName, '--remote', '--config', wranglerPath],
-		{
+	const args = ['d1', 'migrations', 'apply', state.d1Databases.SITE_DATA_DB.databaseName, '--remote', '--config', wranglerPath];
+	const env = { CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig) };
+	const isTransient = (output) => /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted|internal error/i.test(output || '');
+	let lastOutput = '';
+	for (let attempt = 1; attempt <= 3; attempt += 1) {
+		const result = runWrangler(args, {
 			cwd: tenantRoot,
-			env: { CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig) },
-		},
-	);
+			env,
+			capture: true,
+			allowFailure: true,
+		});
+		if (result.status === 0) {
+			return { databaseName: state.d1Databases.SITE_DATA_DB.databaseName, dryRun: false };
+		}
+		lastOutput = [result.stderr?.trim(), result.stdout?.trim()].filter(Boolean).join('\n');
+		if (!isTransient(lastOutput) || attempt === 3) {
+			throw new Error(lastOutput || `Wrangler command failed: ${args.join(' ')}`);
+		}
+		sleepSync(2000 * attempt);
+	}
 
-	return { databaseName: state.d1Databases.SITE_DATA_DB.databaseName, dryRun: false };
+	throw new Error(lastOutput || `Wrangler command failed: ${args.join(' ')}`);
 }
 
 export function markDeploymentInitialized(tenantRoot, options = {}) {
@@ -2040,7 +2278,9 @@ export function finalizeDeploymentState(tenantRoot, options = {}) {
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
 	const state = loadDeployState(tenantRoot, deployConfig, { target });
 	state.lastManifestFingerprint = stableHash(JSON.stringify({ deployConfig, targetKey: targetKey(target) }));
-	state.lastDeployedUrl = target.kind === 'branch' ? targetWorkersDevUrl(state.workerName) : deployConfig.siteUrl;
+	state.lastDeployedUrl = target.kind === 'branch'
+		? targetWorkersDevUrl(state.workerName)
+		: resolveConfiguredSurfaceBaseUrl(deployConfig, target, 'web');
 	state.lastDeploymentTimestamp = new Date().toISOString();
 	state.lastDeployedCommit = envOrNull('GITHUB_SHA') ?? envOrNull('TREESEED_DEPLOY_COMMIT') ?? null;
 	state.runtimeCompatibility = {

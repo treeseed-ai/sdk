@@ -199,6 +199,7 @@ describe('config runtime shared environment values', () => {
 
 	it('bootstraps an interactive wrapped key for config before saving secrets', async () => {
 		const tenantRoot = createTenantFixture();
+		delete process.env[TREESEED_MACHINE_KEY_PASSPHRASE_ENV];
 		writeTreeseedMachineConfig(tenantRoot, createDefaultTreeseedMachineConfig({
 			tenantRoot,
 			deployConfig: {

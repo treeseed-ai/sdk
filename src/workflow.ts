@@ -174,6 +174,8 @@ export type TreeseedConfigInput = {
 	environment?: TreeseedConfigScope[] | TreeseedConfigScope;
 	syncProviders?: 'none' | 'github' | 'cloudflare' | 'railway' | 'all';
 	sync?: 'none' | 'github' | 'cloudflare' | 'railway' | 'all';
+	bootstrap?: boolean;
+	preflight?: boolean;
 	updates?: Array<{ scope: Exclude<TreeseedConfigScope, 'all'>; entryId: string; value: string; reused?: boolean }>;
 	repair?: boolean;
 	printEnv?: boolean;

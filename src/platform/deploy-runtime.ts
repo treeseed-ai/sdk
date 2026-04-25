@@ -1,5 +1,4 @@
 import type { TreeseedDeployConfig } from './contracts.ts';
-import { loadTreeseedDeployConfig } from './deploy-config.ts';
 import { TREESEED_DEFAULT_PLUGIN_REFERENCES, TREESEED_DEFAULT_PROVIDER_SELECTIONS } from './plugins/constants.ts';
 
 declare const __TREESEED_DEPLOY_CONFIG__: TreeseedDeployConfig | undefined;
@@ -37,13 +36,8 @@ export function getTreeseedDeployConfig() {
 		return cachedDeployConfig;
 	}
 
-	try {
-		cachedDeployConfig = loadTreeseedDeployConfig();
-		return cachedDeployConfig;
-	} catch {
-		cachedDeployConfig = defaultDeployConfig();
-		return cachedDeployConfig;
-	}
+	cachedDeployConfig = defaultDeployConfig();
+	return cachedDeployConfig;
 }
 
 export function resetTreeseedDeployConfigForTests() {
@@ -66,6 +60,10 @@ export function getTreeseedDeployProvider() {
 	return getTreeseedDeployConfig().providers?.deploy ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.deploy;
 }
 
+export function getTreeseedDnsProvider() {
+	return getTreeseedDeployConfig().providers?.dns ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.dns;
+}
+
 export function getTreeseedContentRuntimeProvider() {
 	return getTreeseedDeployConfig().providers?.content?.runtime ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime;
 }
@@ -75,7 +73,9 @@ export function getTreeseedContentPublishProvider() {
 }
 
 export function getTreeseedContentServingMode() {
-	const override = process.env.TREESEED_CONTENT_SERVING_MODE?.trim();
+	const override = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
+		?.env?.TREESEED_CONTENT_SERVING_MODE
+		?.trim();
 	if (override === 'local_collections' || override === 'published_runtime') {
 		return override;
 	}

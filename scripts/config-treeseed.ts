@@ -16,6 +16,7 @@ function parseArgs(argv) {
 	const parsed = {
 		scopes: [],
 		sync: 'all',
+		bootstrap: false,
 		rotateMachineKey: false,
 	};
 
@@ -39,6 +40,10 @@ function parseArgs(argv) {
 		}
 		if (current.startsWith('--sync=')) {
 			parsed.sync = current.split('=', 2)[1] ?? 'all';
+			continue;
+		}
+		if (current === '--bootstrap') {
+			parsed.bootstrap = true;
 			continue;
 		}
 		if (current === '--rotate-machine-key') {
@@ -65,21 +70,25 @@ try {
 		console.log(`Machine key: ${result.keyPath}`);
 	} else {
 		applyTreeseedSafeRepairs(tenantRoot);
-		const context = collectTreeseedConfigContext({
-			tenantRoot,
-			scopes,
-			env: process.env,
-		});
-		const updates = scopes.flatMap((scope) =>
-			context.entriesByScope[scope].map((entry) => ({
-				scope,
-				entryId: entry.id,
-				value: entry.effectiveValue,
-				reused: entry.currentValue.length > 0 || entry.suggestedValue.length > 0,
-			})),
-		);
-		const applyResult = applyTreeseedConfigValues({ tenantRoot, updates });
-		const result = finalizeTreeseedConfig({
+		const applyResult = options.bootstrap
+			? { updated: [], sharedStorageMigrations: [] }
+			: (() => {
+				const context = collectTreeseedConfigContext({
+					tenantRoot,
+					scopes,
+					env: process.env,
+				});
+				const updates = scopes.flatMap((scope) =>
+					context.entriesByScope[scope].map((entry) => ({
+						scope,
+						entryId: entry.id,
+						value: entry.effectiveValue,
+						reused: entry.currentValue.length > 0 || entry.suggestedValue.length > 0,
+					})),
+				);
+				return applyTreeseedConfigValues({ tenantRoot, updates });
+			})();
+		const result = await finalizeTreeseedConfig({
 			tenantRoot,
 			scopes,
 			sync: options.sync,
@@ -87,11 +96,11 @@ try {
 		});
 		const { configPath, keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
 
-		console.log('Treeseed config completed.');
+		console.log(options.bootstrap ? 'Treeseed bootstrap completed.' : 'Treeseed config completed.');
 		console.log(`Machine config: ${configPath}`);
 		console.log(`Machine key: ${keyPath}`);
 		console.log(`Updated values: ${applyResult.updated.length}`);
-		console.log(`Initialized environments: ${result.initialized.length}`);
+		console.log(`Reconciled environments: ${result.reconciled.length}`);
 		for (const scope of scopes) {
 			const readiness = result.readinessByScope?.[scope];
 			if (!readiness) continue;
@@ -103,10 +112,8 @@ try {
 				`GitHub sync: ${result.synced.github.secrets.length} secrets, ${result.synced.github.variables.length} variables (${result.synced.github.repository})`,
 			);
 		}
-		if (result.synced.cloudflare) {
-			console.log(
-				`Cloudflare sync: ${result.synced.cloudflare.secrets.length} secrets, ${result.synced.cloudflare.varsManagedByWranglerConfig.length} vars via Wrangler config`,
-			);
-		}
 	}
+} catch (error) {
+	console.error(error instanceof Error ? error.message : String(error));
+	process.exitCode = 1;
 }

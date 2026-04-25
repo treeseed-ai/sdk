@@ -15,20 +15,40 @@ import {
 } from '../../platform/environment.ts';
 import { loadTreeseedManifest } from '../../platform/tenant-config.ts';
 import {
+	buildProvisioningSummary,
 	createPersistentDeployTarget,
 	ensureGeneratedWranglerConfig,
 	loadDeployState,
-	markDeploymentInitialized,
 	provisionCloudflareResources,
 	syncCloudflareSecrets,
 	verifyProvisionedCloudflareResources,
 } from './deploy.ts';
+import { collectTreeseedReconcileStatus, reconcileTreeseedTarget } from '../../reconcile/index.ts';
 import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
-import { validateRailwayDeployPrerequisites } from './railway-deploy.ts';
+import {
+	buildRailwayCommandEnv,
+	configuredRailwayServices,
+	validateRailwayDeployPrerequisites,
+} from './railway-deploy.ts';
+import {
+	normalizeRailwayEnvironmentName,
+	resolveRailwayWorkspace,
+} from './railway-api.ts';
+import {
+	createGitHubApiClient,
+	ensureGitHubBranchFromBase,
+	listGitHubRepositorySecretNames,
+	listGitHubRepositoryVariableNames,
+	upsertGitHubRepositorySecret,
+	upsertGitHubRepositoryVariable,
+	upsertGitHubRepositoryVariableWithGhCli,
+} from './github-api.ts';
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin, withProcessCwd } from './runtime-tools.ts';
+import { PRODUCTION_BRANCH, STAGING_BRANCH } from './git-workflow.ts';
 import {
 	assertTreeseedKeyAgentResponse,
 	getTreeseedKeyAgentPaths,
+	inspectTreeseedKeyAgentDiagnostics,
 	readWrappedMachineKeyFile,
 	replaceWrappedMachineKey,
 	rotateWrappedMachineKeyPassphrase,
@@ -60,6 +80,34 @@ const CLI_CHECK_TIMEOUT_MS = 5000;
 const DEPRECATED_LOCAL_ENV_FILES = ['.env.local', '.dev.vars'] as const;
 const warnedDeprecatedLocalEnvRoots = new Set<string>();
 const inlineTreeseedSecretSessions = new Map<string, { machineKey: Buffer | null; lastTouchedAt: number; idleTimeoutMs: number }>();
+const railwayConnectionCheckCache = new Map<string, Promise<ReturnType<typeof providerConnectionResult>>>();
+
+function filterEnvironmentValuesByRegistry(values, registry) {
+	const registeredKeys = new Set(registry.entries.map((entry) => entry.id));
+	return Object.fromEntries(
+		Object.entries(values).filter(([key]) => registeredKeys.has(key)),
+	);
+}
+
+export function inspectTreeseedPassphraseEnvDiagnostic(env: NodeJS.ProcessEnv = process.env) {
+	const configured = typeof env[TREESEED_MACHINE_KEY_PASSPHRASE_ENV] === 'string'
+		&& env[TREESEED_MACHINE_KEY_PASSPHRASE_ENV]!.trim().length > 0;
+	return {
+		envVar: TREESEED_MACHINE_KEY_PASSPHRASE_ENV,
+		configured,
+		recommendedLaunch: `Export ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV} in a shell and launch \`code .\` from that shell before starting the Codex session.`,
+	};
+}
+
+export async function inspectTreeseedKeyAgentTransportDiagnostic() {
+	const { socketPath, pidPath } = getTreeseedKeyAgentPaths();
+	const diagnostics = await inspectTreeseedKeyAgentDiagnostics(socketPath);
+	return {
+		socketPath,
+		pidPath,
+		...diagnostics,
+	};
+}
 
 function createDefaultRemoteHost() {
 	return {
@@ -483,27 +531,32 @@ export function unlockTreeseedSecretSessionFromEnv(tenantRoot, options = {}) {
 	startTreeseedKeyAgentDaemon(tenantRoot);
 	let response = { ok: false, code: 'daemon_unavailable', message: 'Treeseed key agent is unavailable.' };
 	for (let attempt = 0; attempt < 20; attempt += 1) {
-		response = runTreeseedKeyAgentCommand([
-			'unlock-from-env',
-			'--key-path',
-			keyPath,
-			'--socket-path',
-			socketPath,
-			'--idle-timeout-ms',
-			String(TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS),
-			...(options.allowMigration === false ? [] : ['--allow-migration']),
-			...(options.createIfMissing === false ? [] : ['--create-if-missing']),
-		]);
-		if (response.code !== 'daemon_unavailable') {
-			break;
+		try {
+			const parsed = runTreeseedKeyAgentCommand([
+				'unlock-from-env',
+				'--key-path',
+				keyPath,
+				'--socket-path',
+				socketPath,
+				'--idle-timeout-ms',
+				String(TREESEED_KEY_AGENT_IDLE_TIMEOUT_MS),
+				...(options.allowMigration === false ? [] : ['--allow-migration']),
+				...(options.createIfMissing === false ? [] : ['--create-if-missing']),
+			]);
+			assertTreeseedKeyAgentResponse(parsed, `Unable to unlock the Treeseed secret session from ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV}.`);
+			return parsed.status;
+		} catch (error) {
+			if (attempt === 19) {
+				throw error;
+			}
+			sleepMs(25);
 		}
-		sleepMs(25);
 	}
 	assertTreeseedKeyAgentResponse(
-		response,
+		response as never,
 		`Unable to unlock the Treeseed secret session from ${TREESEED_MACHINE_KEY_PASSPHRASE_ENV}.`,
 	);
-	return response.status;
+	return (response as never).status;
 }
 
 export function unlockTreeseedSecretSessionWithPassphrase(tenantRoot, passphrase, options = {}) {
@@ -1539,11 +1592,7 @@ export function resolveTreeseedMachineEnvironmentValues(tenantRoot, scope) {
 	};
 	const entryById = new Map(registry.entries.map((entry) => [entry.id, entry]));
 	const values = {};
-	const knownKeys = new Set([
-		...Object.keys(bucketValuesByScope.shared ?? {}),
-		...Object.keys(bucketValuesByScope[scope] ?? {}),
-		...registry.entries.map((entry) => entry.id),
-	]);
+	const knownKeys = new Set(registry.entries.map((entry) => entry.id));
 
 	for (const entryId of knownKeys) {
 		const resolved = resolveEntryValueFromBuckets(entryById.get(entryId), entryId, scope, bucketValuesByScope);
@@ -1598,6 +1647,7 @@ export function collectTreeseedEnvironmentContext(tenantRoot) {
 
 export function collectTreeseedConfigSeedValues(tenantRoot, scope, env = process.env) {
 	warnDeprecatedTreeseedLocalEnvFiles(tenantRoot);
+	const registry = collectTreeseedEnvironmentContext(tenantRoot);
 	let machineValues = {};
 	try {
 		machineValues = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
@@ -1612,18 +1662,23 @@ export function collectTreeseedConfigSeedValues(tenantRoot, scope, env = process
 			normalizedEnv[canonicalKey] = normalizedEnv[legacyKey];
 		}
 	}
-	return {
+	return filterEnvironmentValuesByRegistry({
 		...machineValues,
 		...Object.fromEntries(Object.entries(normalizedEnv).map(([key, value]) => [key, value ?? undefined])),
-	};
+	}, registry);
 }
 
 function collectTreeseedConfigSeedValueSources(tenantRoot, scope, env = process.env) {
 	warnDeprecatedTreeseedLocalEnvFiles(tenantRoot);
+	const registry = collectTreeseedEnvironmentContext(tenantRoot);
+	const registeredKeys = new Set(registry.entries.map((entry) => entry.id));
 	const values = {};
 	const sources = {};
 	const merge = (source, entries) => {
 		for (const [key, value] of Object.entries(entries)) {
+			if (!registeredKeys.has(key)) {
+				continue;
+			}
 			if (typeof value !== 'string' || value.length === 0) {
 				continue;
 			}
@@ -1742,7 +1797,7 @@ export function assertTreeseedCommandEnvironment({ tenantRoot, scope, purpose })
 	throw error;
 }
 
-function runGh(args, { cwd, dryRun = false, input } = {}) {
+function runGh(args, { cwd, dryRun = false, input, env } = {}) {
 	if (dryRun) {
 		return { status: 0, stdout: '', stderr: '' };
 	}
@@ -1751,7 +1806,17 @@ function runGh(args, { cwd, dryRun = false, input } = {}) {
 		stdio: input !== undefined ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
 		encoding: 'utf8',
 		input,
+		timeout: 15000,
+		env: {
+			...process.env,
+			...(env ?? {}),
+			GH_PROMPT_DISABLED: '1',
+			GH_NO_UPDATE_NOTIFIER: '1',
+		},
 	});
+	if (result.error?.code === 'ETIMEDOUT') {
+		throw new Error(`gh ${args.join(' ')} timed out`);
+	}
 	if (result.status !== 0) {
 		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `gh ${args.join(' ')} failed`);
 	}
@@ -1934,6 +1999,10 @@ function providerConnectionResult(provider, ready, detail, extra = {}) {
 	};
 }
 
+function isTransientProviderConnectionError(detail) {
+	return /fetch failed|failed to fetch|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted|api check failed|rate.?limit|too many requests|429/iu.test(detail || '');
+}
+
 function checkGitHubConnection({ tenantRoot, env }) {
 	if (!env.GH_TOKEN) {
 		return providerConnectionResult('github', false, 'GH_TOKEN is not configured.', { skipped: true });
@@ -1945,81 +2014,135 @@ function checkGitHubConnection({ tenantRoot, env }) {
 	const args = repository
 		? ['repo', 'view', repository, '--json', 'nameWithOwner', '--jq', '.nameWithOwner']
 		: ['api', 'user', '--jq', '.login'];
-	const result = spawnSync('gh', args, {
-		cwd: tenantRoot,
-		stdio: 'pipe',
-		encoding: 'utf8',
-		env: { ...process.env, ...env },
-		timeout: CLI_CHECK_TIMEOUT_MS,
-	});
-	if (result.status !== 0) {
-		return providerConnectionResult('github', false, formatCheckOutput(result) || 'GitHub API check failed.');
-	}
-	const resolved = result.stdout.trim();
-	return providerConnectionResult(
-		'github',
-		true,
-		repository
-			? `GitHub token can access ${resolved || repository}.`
-			: resolved ? `Authenticated as ${resolved}.` : 'GitHub API check succeeded.',
-	);
-}
-
-function checkCloudflareConnection({ tenantRoot, env }) {
-	if (!env.CLOUDFLARE_API_TOKEN) {
-		return providerConnectionResult('cloudflare', false, 'CLOUDFLARE_API_TOKEN is not configured.', { skipped: true });
-	}
-	try {
-		const result = spawnSync(process.execPath, [resolveWranglerBin(), 'whoami'], {
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		const result = spawnSync('gh', args, {
 			cwd: tenantRoot,
 			stdio: 'pipe',
 			encoding: 'utf8',
 			env: { ...process.env, ...env },
 			timeout: CLI_CHECK_TIMEOUT_MS,
 		});
-		if (result.status !== 0) {
-			return providerConnectionResult('cloudflare', false, formatCheckOutput(result) || 'Cloudflare Wrangler check failed.');
+		if (result.status === 0) {
+			const resolved = result.stdout.trim();
+			return providerConnectionResult(
+				'github',
+				true,
+				repository
+					? `GitHub token can access ${resolved || repository}.`
+					: resolved ? `Authenticated as ${resolved}.` : 'GitHub API check succeeded.',
+			);
 		}
-		return providerConnectionResult('cloudflare', true, 'Wrangler authenticated with CLOUDFLARE_API_TOKEN.');
-	} catch (error) {
-		return providerConnectionResult('cloudflare', false, error instanceof Error ? error.message : 'Cloudflare Wrangler check failed.');
+		const detail = formatCheckOutput(result) || 'GitHub API check failed.';
+		if (attempt >= 2 || !isTransientProviderConnectionError(detail)) {
+			return providerConnectionResult('github', false, detail);
+		}
 	}
+	return providerConnectionResult('github', false, 'GitHub API check failed.');
 }
 
-function checkRailwayConnection({ tenantRoot, env }) {
-	if (!env.RAILWAY_API_TOKEN && !env.RAILWAY_TOKEN) {
-		return providerConnectionResult('railway', false, 'RAILWAY_API_TOKEN or RAILWAY_TOKEN is not configured.', { skipped: true });
+function checkCloudflareConnection({ tenantRoot, env }) {
+	if (!env.CLOUDFLARE_API_TOKEN) {
+		return providerConnectionResult('cloudflare', false, 'CLOUDFLARE_API_TOKEN is not configured.', { skipped: true });
 	}
-	if (!commandAvailable('railway')) {
-		return providerConnectionResult('railway', false, 'Railway CLI `railway` is not installed.');
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		try {
+			const result = spawnSync(process.execPath, [resolveWranglerBin(), 'whoami'], {
+				cwd: tenantRoot,
+				stdio: 'pipe',
+				encoding: 'utf8',
+				env: { ...process.env, ...env },
+				timeout: CLI_CHECK_TIMEOUT_MS,
+			});
+			if (result.status === 0) {
+				return providerConnectionResult('cloudflare', true, 'Wrangler authenticated with CLOUDFLARE_API_TOKEN.');
+			}
+			const detail = formatCheckOutput(result) || 'Cloudflare Wrangler check failed.';
+			if (attempt >= 2 || !isTransientProviderConnectionError(detail)) {
+				return providerConnectionResult('cloudflare', false, detail);
+			}
+		} catch (error) {
+			const detail = error instanceof Error ? error.message : 'Cloudflare Wrangler check failed.';
+			if (attempt >= 2 || !isTransientProviderConnectionError(detail)) {
+				return providerConnectionResult('cloudflare', false, detail);
+			}
+		}
 	}
-	const result = spawnSync('railway', ['whoami'], {
-		cwd: tenantRoot,
-		stdio: 'pipe',
-		encoding: 'utf8',
-		env: { ...process.env, ...env },
-		timeout: CLI_CHECK_TIMEOUT_MS,
+	return providerConnectionResult(
+		'cloudflare',
+		false,
+		'Cloudflare connectivity preflight hit transient fetch failures; bootstrap will continue and rely on live reconcile verification.',
+		{ skipped: true, warning: true, transient: true },
+	);
+}
+
+async function checkRailwayConnection({ tenantRoot, env }) {
+	if (!env.RAILWAY_API_TOKEN) {
+		return providerConnectionResult('railway', false, 'RAILWAY_API_TOKEN is not configured.', { skipped: true });
+	}
+	const workspaceName = env.TREESEED_RAILWAY_WORKSPACE || resolveRailwayWorkspace(env);
+	const cacheKey = JSON.stringify({
+		tenantRoot,
+		token: env.RAILWAY_API_TOKEN,
+		workspaceName,
 	});
-	if (result.status !== 0) {
-		return providerConnectionResult('railway', false, formatCheckOutput(result) || 'Railway CLI check failed.');
+	const cached = railwayConnectionCheckCache.get(cacheKey);
+	if (cached) {
+		return await cached;
 	}
-	return providerConnectionResult('railway', true, result.stdout.trim() || 'Railway CLI check succeeded.');
+	const checkPromise = (async () => {
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			try {
+				const whoami = checkCommand('railway', ['whoami'], { cwd: tenantRoot, env });
+				if (!whoami.ok) {
+					if (/rate.?limit|too many requests|429/iu.test(whoami.detail || '')) {
+						return providerConnectionResult(
+							'railway',
+							false,
+							'Railway connectivity preflight was rate-limited; bootstrap will continue and rely on API-backed reconcile verification.',
+							{ skipped: true, warning: true, rateLimited: true },
+						);
+					}
+					throw new Error(whoami.detail || 'Railway CLI authentication check failed.');
+				}
+				const identity = whoami.stdout
+					.replace(/^logged in as\s+/iu, '')
+					.replace(/\s*👋\s*$/u, '')
+					.trim() || 'an account';
+				return providerConnectionResult('railway', true, `Railway authenticated as ${identity} in workspace ${workspaceName}. Project and service existence will be reconciled during bootstrap.`);
+			} catch (error) {
+				const detail = error instanceof Error ? error.message : 'Railway API check failed.';
+				if (attempt >= 2 || !isTransientProviderConnectionError(detail)) {
+					return providerConnectionResult('railway', false, detail);
+				}
+			}
+		}
+		return providerConnectionResult('railway', false, 'Railway API check failed.');
+	})();
+	railwayConnectionCheckCache.set(cacheKey, checkPromise);
+	try {
+		return await checkPromise;
+	} catch (error) {
+		railwayConnectionCheckCache.delete(cacheKey);
+		throw error;
+	}
 }
 
-export function checkTreeseedProviderConnections({ tenantRoot, scope = 'prod', env = process.env } = {}) {
+export async function checkTreeseedProviderConnections({ tenantRoot, scope = 'prod', env = process.env } = {}) {
 	const values = collectTreeseedConfigSeedValues(tenantRoot, scope, env);
-	const commandEnv = {
+	const rawCommandEnv = {
 		GH_TOKEN: values.GH_TOKEN,
 		CLOUDFLARE_API_TOKEN: values.CLOUDFLARE_API_TOKEN,
 		CLOUDFLARE_ACCOUNT_ID: values.CLOUDFLARE_ACCOUNT_ID,
 		RAILWAY_API_TOKEN: values.RAILWAY_API_TOKEN,
-		RAILWAY_TOKEN: values.RAILWAY_TOKEN,
+		TREESEED_RAILWAY_WORKSPACE: values.TREESEED_RAILWAY_WORKSPACE || resolveRailwayWorkspace(values),
 	};
+	const commandEnv = buildRailwayCommandEnv(rawCommandEnv);
 	const checks = [
 		checkGitHubConnection({ tenantRoot, env: commandEnv }),
 		checkCloudflareConnection({ tenantRoot, env: commandEnv }),
-		checkRailwayConnection({ tenantRoot, env: commandEnv }),
 	];
+	const railwayCheck = await checkRailwayConnection({ tenantRoot, env: commandEnv });
+	checks.push(railwayCheck);
 	return {
 		scope,
 		ok: checks.every((check) => check.ready || check.skipped),
@@ -2040,16 +2163,24 @@ export function formatTreeseedProviderConnectionReport(report) {
 	return lines.join('\n');
 }
 
+function formatTreeseedProviderConnectionFailures(
+	reports: Array<ReturnType<typeof checkTreeseedProviderConnections>>,
+) {
+	const failing = reports.filter((report) => report.checks.some((check) => !check.ready && !check.skipped));
+	if (failing.length === 0) {
+		return '';
+	}
+	return [
+		'Treeseed provider connection checks failed.',
+		...failing.map((report) => formatTreeseedProviderConnectionReport(report)),
+	].join('\n');
+}
+
 function writeProviderConnectionReport(write, report) {
 	write(formatTreeseedProviderConnectionReport(report));
 }
 
-function listGitHubNames(command, repository, tenantRoot) {
-	const result = runGh([command, 'list', '--repo', repository, '--json', 'name'], { cwd: tenantRoot });
-	return new Set((JSON.parse(result.stdout || '[]')).map((entry) => entry?.name).filter(Boolean));
-}
-
-export function syncTreeseedGitHubEnvironment({ tenantRoot, scope = 'prod', dryRun = false } = {}) {
+export async function syncTreeseedGitHubEnvironment({ tenantRoot, scope = 'prod', dryRun = false } = {}) {
 	const repository = maybeResolveGitHubRepositorySlug(tenantRoot);
 	if (!repository) {
 		throw new Error('Unable to determine the GitHub repository from the origin remote.');
@@ -2058,8 +2189,16 @@ export function syncTreeseedGitHubEnvironment({ tenantRoot, scope = 'prod', dryR
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
 	const values = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
 	const relevant = registry.entries.filter((entry) => entry.scopes.includes(scope));
-	const secretNames = listGitHubNames('secret', repository, tenantRoot);
-	const variableNames = listGitHubNames('variable', repository, tenantRoot);
+	const ghToken = values.GH_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
+	const ghEnv = ghToken
+		? {
+			GH_TOKEN: ghToken,
+			GITHUB_TOKEN: ghToken,
+		}
+		: {};
+	const githubClient = createGitHubApiClient({ env: ghEnv });
+	const secretNames = await listGitHubRepositorySecretNames(repository, { client: githubClient });
+	const variableNames = await listGitHubRepositoryVariableNames(repository, { client: githubClient });
 	const synced = {
 		secrets: [],
 		variables: [],
@@ -2072,12 +2211,24 @@ export function syncTreeseedGitHubEnvironment({ tenantRoot, scope = 'prod', dryR
 		}
 
 		if (entry.targets.includes('github-secret')) {
-			runGh(['secret', 'set', entry.id, '--repo', repository, '--body', value], { cwd: tenantRoot, dryRun });
+			if (!dryRun) {
+				await upsertGitHubRepositorySecret(repository, entry.id, value, { client: githubClient });
+			}
 			synced.secrets.push({ name: entry.id, existed: secretNames.has(entry.id) });
 		}
 
 		if (entry.targets.includes('github-variable')) {
-			runGh(['variable', 'set', entry.id, '--repo', repository, '--body', value], { cwd: tenantRoot, dryRun });
+			if (!dryRun) {
+				try {
+					upsertGitHubRepositoryVariableWithGhCli(repository, entry.id, value, { env: ghEnv });
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error ?? '');
+					if (!/not found|ENOENT|timed out|timeout|aborted|gh api exited/iu.test(message)) {
+						throw error;
+					}
+					await upsertGitHubRepositoryVariable(repository, entry.id, value, { client: githubClient });
+				}
+			}
 			synced.variables.push({ name: entry.id, existed: variableNames.has(entry.id) });
 		}
 	}
@@ -2146,7 +2297,7 @@ export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dry
 				serviceId: service.railway?.serviceId ?? '',
 				rootDir: resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? defaultRootDir),
 				baseUrl: environment?.baseUrl ?? service.publicBaseUrl ?? '(unset)',
-				environmentName: environment?.railwayEnvironment ?? scope,
+				environmentName: normalizeRailwayEnvironmentName(environment?.railwayEnvironment ?? scope),
 				secrets: railwaySecretNames,
 				variables: railwayVariableNames,
 				dryRun,
@@ -2175,25 +2326,33 @@ export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dry
 	};
 }
 
-export function initializeTreeseedPersistentEnvironment({ tenantRoot, scope = 'prod', dryRun = false } = {}) {
+export async function initializeTreeseedPersistentEnvironment({ tenantRoot, scope = 'prod', dryRun = false } = {}) {
 	const normalizedScope = scope === 'prod' ? 'prod' : scope;
 	const target = createPersistentDeployTarget(normalizedScope);
-	const summary = provisionCloudflareResources(tenantRoot, { dryRun, target });
-	ensureGeneratedWranglerConfig(tenantRoot, { target });
-	const syncedSecrets = syncCloudflareSecrets(tenantRoot, { dryRun, target });
-	if (!dryRun) {
-		markDeploymentInitialized(tenantRoot, { target });
-	}
+	const summary = await reconcileTreeseedTarget({
+		tenantRoot,
+		target,
+		env: process.env,
+	});
 
 	return {
 		scope: normalizedScope,
 		target,
 		summary,
-		secrets: syncedSecrets,
+		secrets: summary.results
+			.filter((result) => result.unit.provider === 'cloudflare')
+			.flatMap((result) => Object.keys(result.resourceLocators ?? {})),
 	};
 }
 
-function summarizePersistentReadiness(tenantRoot, scope, validation, connectionChecks) {
+async function summarizePersistentReadiness(
+	tenantRoot,
+	scope,
+	validation,
+	connectionChecks,
+	env = process.env,
+	{ includeReconcileStatus = true }: { includeReconcileStatus?: boolean } = {},
+) {
 	const validationProblems = [...validation.missing, ...validation.invalid];
 	const validationBlockers = validationProblems.map((problem) => problem.message);
 	const connectionReady = connectionChecks.every((check) => check.ready || check.skipped);
@@ -2242,37 +2401,118 @@ function summarizePersistentReadiness(tenantRoot, scope, validation, connectionC
 		};
 	}
 
-	const cloudflare = verifyProvisionedCloudflareResources(tenantRoot, { scope });
-	let railwayReady = true;
-	let railwayIssue = null;
-	try {
-		validateRailwayDeployPrerequisites(tenantRoot, scope);
-	} catch (error) {
-		railwayReady = false;
-		railwayIssue = error instanceof Error ? error.message : String(error);
-	}
 	const configured = validation.ok;
-	const provisioned = cloudflare.ok && railwayReady;
-	const deployable = configured && provisioned && connectionReady;
-	const blockers = [
-		...connectionIssues,
-		...(railwayIssue ? [railwayIssue] : []),
-	];
-	if (!cloudflare.ok) {
-		blockers.push('Cloudflare foundational resources have not been fully provisioned yet.');
+	if (!includeReconcileStatus) {
+		return {
+			configured,
+			provisioned: false,
+			deployable: false,
+			phase: 'config_complete',
+			blockers: [...connectionIssues],
+			warnings: connectionWarnings,
+			checks: {
+				validation: validation.ok,
+				connections: connectionReady,
+				reconcile: 'deferred',
+			},
+		};
 	}
+
+	const reconcile = await collectTreeseedReconcileStatus({
+		tenantRoot,
+		target: createPersistentDeployTarget(scope),
+		env,
+	});
+	const provisioned = reconcile.ready;
+	const deployable = configured && provisioned && connectionReady;
+	const blockers = [...connectionIssues, ...reconcile.blockers];
 	return {
 		configured,
 		provisioned,
 		deployable,
 		phase: provisioned ? 'provisioned' : 'config_complete',
 		blockers,
-		warnings: connectionWarnings,
+		warnings: [...connectionWarnings, ...reconcile.warnings],
 		checks: {
 			validation: validation.ok,
 			connections: connectionReady,
-			cloudflare: cloudflare.checks,
-			railway: railwayReady,
+			reconcile: reconcile.units,
+		},
+	};
+}
+
+function summarizeReconciledPersistentReadiness(
+	scope,
+	validation,
+	connectionChecks,
+	reconciled,
+) {
+	const validationProblems = [...validation.missing, ...validation.invalid];
+	const validationBlockers = validationProblems.map((problem) => problem.message);
+	const connectionReady = connectionChecks.every((check) => check.ready || check.skipped);
+	const connectionIssues = connectionChecks
+		.filter((check) => !check.ready && !check.skipped)
+		.map((check) => `${check.provider}: ${check.detail}`);
+	const connectionWarnings = connectionChecks
+		.filter((check) => check.skipped)
+		.map((check) => `${check.provider}: ${check.detail}`);
+	if (scope === 'local') {
+		return {
+			configured: validation.ok,
+			provisioned: true,
+			deployable: validation.ok && connectionReady,
+			phase: validation.ok ? 'code_ready' : 'config_incomplete',
+			blockers: [
+				...validationBlockers,
+				...connectionIssues,
+			],
+			warnings: connectionWarnings,
+			checks: {
+				validation: validation.ok,
+				connections: connectionReady,
+			},
+		};
+	}
+	if (!validation.ok) {
+		return {
+			configured: false,
+			provisioned: false,
+			deployable: false,
+			phase: 'config_incomplete',
+			blockers: [
+				...validationBlockers,
+				...connectionIssues,
+			],
+			warnings: connectionWarnings,
+			checks: {
+				validation: false,
+				connections: connectionReady,
+				reconcile: [],
+			},
+		};
+	}
+	const actions = reconciled?.actions ?? [];
+	const blockers = actions
+		.filter((action) => action.verified !== true)
+		.flatMap((action) => [
+			...action.missing.map((entry) => `${action.provider}:${action.unitType}: ${entry}`),
+			...action.drifted.map((entry) => `${action.provider}:${action.unitType}: ${entry}`),
+		]);
+	const provisioned = blockers.length === 0 && actions.length > 0;
+	return {
+		configured: true,
+		provisioned,
+		deployable: provisioned && connectionReady,
+		phase: provisioned ? 'provisioned' : 'config_complete',
+		blockers: [
+			...connectionIssues,
+			...blockers,
+		],
+		warnings: connectionWarnings,
+		checks: {
+			validation: true,
+			connections: connectionReady,
+			reconcile: actions,
 		},
 	};
 }
@@ -2545,7 +2785,7 @@ export function applyTreeseedConfigValues({
 	};
 }
 
-export function finalizeTreeseedConfig({
+export async function finalizeTreeseedConfig({
 	tenantRoot,
 	scopes = [...TREESEED_ENVIRONMENT_SCOPES],
 	sync = 'all',
@@ -2566,7 +2806,9 @@ export function finalizeTreeseedConfig({
 	const summary = {
 		scopes,
 		synced: {} as Record<string, unknown>,
-		initialized: [] as Array<{ scope: TreeseedConfigScope; secrets: number; target: string }>,
+		reconciled: [] as Array<{ scope: TreeseedConfigScope; target: string; units: number; actions: Array<{ unitId: string; unitType: string; provider: string; action: string; verified: boolean; missing: string[]; drifted: string[] }> }>,
+		deployed: [] as Array<{ scope: TreeseedConfigScope; branchBootstrap?: Record<string, unknown> | null; result: Record<string, unknown> }>,
+		resourceInventoryByScope: {} as Record<TreeseedConfigScope, Record<string, unknown>>,
 		connectionChecks: [] as ReturnType<typeof checkTreeseedProviderConnections>[],
 		validationByScope: {} as Record<TreeseedConfigScope, ReturnType<typeof validateTreeseedEnvironmentValues>>,
 		readinessByScope: {} as Record<TreeseedConfigScope, {
@@ -2586,10 +2828,25 @@ export function finalizeTreeseedConfig({
 	};
 
 	progress(`Validating configuration for ${scopes.join(', ')}...`);
+	const scopeSeedValues = Object.fromEntries(
+		scopes.map((scope) => [scope, collectTreeseedConfigSeedValues(tenantRoot, scope, env)]),
+	) as Record<TreeseedConfigScope, Record<string, string>>;
 
 	for (const scope of scopes) {
+		const seedValues = scopeSeedValues[scope];
+		const suggestedValues = getTreeseedEnvironmentSuggestedValues({
+			scope,
+			purpose: 'config',
+			deployConfig: registry.context.deployConfig,
+			tenantConfig: registry.context.tenantConfig,
+			plugins: registry.context.plugins,
+			values: seedValues,
+		});
 		const validation = validateTreeseedEnvironmentValues({
-			values: resolveTreeseedMachineEnvironmentValues(tenantRoot, scope),
+			values: {
+				...suggestedValues,
+				...seedValues,
+			},
 			scope,
 			purpose: 'config',
 			deployConfig: registry.context.deployConfig,
@@ -2600,22 +2857,38 @@ export function finalizeTreeseedConfig({
 
 		if (checkConnections) {
 			progress(`Checking provider connectivity for ${scope}...`);
-			summary.connectionChecks.push(checkTreeseedProviderConnections({ tenantRoot, scope, env }));
+			summary.connectionChecks.push(await checkTreeseedProviderConnections({ tenantRoot, scope, env: seedValues }));
 		}
 	}
 
 	for (const scope of scopes) {
-		summary.readinessByScope[scope] = summarizePersistentReadiness(
+		if (scope !== 'local') {
+			const target = createPersistentDeployTarget(scope);
+			const deployState = loadDeployState(tenantRoot, registry.context.deployConfig, { target });
+			const inventory = buildProvisioningSummary(registry.context.deployConfig, deployState, target);
+			const railwayWorkspace = resolveRailwayWorkspace(scopeSeedValues[scope]);
+			summary.resourceInventoryByScope[scope] = inventory;
+			progress(
+				`Resolved ${scope} resources: deployment=${inventory.identity?.deploymentKey}, pages=${inventory.resources?.pagesProject}, web-domain=${inventory.resources?.webDomain ?? '(none)'}, api-domain=${inventory.resources?.apiDomain ?? '(none)'}, r2=${inventory.resources?.contentBucket}, queue=${inventory.resources?.queue}, d1=${inventory.resources?.database}, railway=${inventory.resources?.railwayProject}, workspace=${railwayWorkspace}.`,
+			);
+		}
+		summary.readinessByScope[scope] = await summarizePersistentReadiness(
 			tenantRoot,
 			scope,
 			summary.validationByScope[scope],
 			summary.connectionChecks.find((report) => report.scope === scope)?.checks ?? [],
+			scopeSeedValues[scope],
+			{ includeReconcileStatus: !initializePersistent },
 		);
 	}
 
 	const invalidScopes = scopes.filter((scope) => summary.validationByScope[scope]?.ok !== true);
 	if (invalidScopes.length > 0) {
 		throw new Error(formatTreeseedConfigValidationFailure(summary.validationByScope, scopes));
+	}
+	const failingConnectionReports = summary.connectionChecks.filter((report) => report.ok !== true);
+	if (failingConnectionReports.length > 0) {
+		throw new Error(formatTreeseedProviderConnectionFailures(failingConnectionReports));
 	}
 
 	progress('Syncing managed service settings from treeseed.site.yaml...');
@@ -2626,37 +2899,116 @@ export function finalizeTreeseedConfig({
 			if (scope === 'local') {
 				continue;
 			}
-			progress(`Initializing persistent ${scope} environment resources...`);
-			applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override: true });
-			const initialized = initializeTreeseedPersistentEnvironment({ tenantRoot, scope });
-			summary.initialized.push({
-				scope,
-				secrets: initialized.secrets.length,
-				target: initialized.summary.target,
+			progress(`Deriving desired units for ${scope}...`);
+			const initialized = await reconcileTreeseedTarget({
+				tenantRoot,
+				target: createPersistentDeployTarget(scope),
+				env: scopeSeedValues[scope],
+				write: progress,
 			});
+			summary.reconciled.push({
+				scope,
+				target: scope,
+				units: initialized.units.length,
+				actions: initialized.results.map((result) => ({
+					unitId: result.unit.unitId,
+					unitType: result.unit.unitType,
+					provider: result.unit.provider,
+					action: result.action,
+					verified: result.verification?.verified === true,
+					missing: result.verification?.missing ?? [],
+					drifted: result.verification?.drifted ?? [],
+				})),
+			});
+			if (scope === 'staging') {
+				progress(`Ensuring ${STAGING_BRANCH} exists on origin from ${PRODUCTION_BRANCH}...`);
+				const repository = maybeResolveGitHubRepositorySlug(tenantRoot);
+				if (!repository) {
+					throw new Error('Unable to determine the GitHub repository from the origin remote for staging branch bootstrap.');
+				}
+				const branchBootstrap = await ensureGitHubBranchFromBase(repository, STAGING_BRANCH, {
+					baseBranch: PRODUCTION_BRANCH,
+					client: createGitHubApiClient({
+						env: scopeSeedValues[scope],
+					}),
+				});
+				summary.deployed.push({
+					scope,
+					branchBootstrap,
+					result: {},
+				});
+			}
+			progress(`Deploying ${scope}...`);
+			applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override: true });
+			process.env.TREESEED_RAILWAY_WORKSPACE = process.env.TREESEED_RAILWAY_WORKSPACE
+				|| scopeSeedValues[scope].TREESEED_RAILWAY_WORKSPACE
+				|| resolveRailwayWorkspace(scopeSeedValues[scope]);
+			const { deployProjectPlatform } = await import('./project-platform.ts');
+			const deployResult = await deployProjectPlatform({
+				tenantRoot,
+				scope,
+				skipProvision: true,
+			});
+			const deployEntry = summary.deployed.find((entry) => entry.scope === scope);
+			if (deployEntry) {
+				deployEntry.result = deployResult as Record<string, unknown>;
+			} else {
+				summary.deployed.push({
+					scope,
+					branchBootstrap: null,
+					result: deployResult as Record<string, unknown>,
+				});
+			}
+			progress(`Re-verifying ${scope} after deployment...`);
+			const finalized = await reconcileTreeseedTarget({
+				tenantRoot,
+				target: createPersistentDeployTarget(scope),
+				env: scopeSeedValues[scope],
+				write: progress,
+			});
+			const index = summary.reconciled.findIndex((entry) => entry.scope === scope);
+			const nextSummary = {
+				scope,
+				target: scope,
+				units: finalized.units.length,
+				actions: finalized.results.map((result) => ({
+					unitId: result.unit.unitId,
+					unitType: result.unit.unitType,
+					provider: result.unit.provider,
+					action: result.action,
+					verified: result.verification?.verified === true,
+					missing: result.verification?.missing ?? [],
+					drifted: result.verification?.drifted ?? [],
+				})),
+			};
+			if (index >= 0) {
+				summary.reconciled[index] = nextSummary;
+			} else {
+				summary.reconciled.push(nextSummary);
+			}
 		}
 	}
 
 	if (sync === 'github' || sync === 'all') {
 		progress(`Syncing GitHub environment for ${scopes.at(-1) ?? 'prod'}...`);
-		summary.synced.github = syncTreeseedGitHubEnvironment({ tenantRoot, scope: scopes.at(-1) ?? 'prod' });
+		summary.synced.github = await syncTreeseedGitHubEnvironment({ tenantRoot, scope: scopes.at(-1) ?? 'prod' });
 	}
-	if (sync === 'cloudflare' || sync === 'all') {
-		progress(`Syncing Cloudflare environment for ${scopes.at(-1) ?? 'prod'}...`);
-		summary.synced.cloudflare = syncTreeseedCloudflareEnvironment({ tenantRoot, scope: scopes.at(-1) ?? 'prod' });
-	}
-	if (sync === 'railway' || sync === 'all') {
-		progress(`Syncing Railway environment for ${scopes.at(-1) ?? 'prod'}...`);
-		summary.synced.railway = syncTreeseedRailwayEnvironment({ tenantRoot, scope: scopes.at(-1) ?? 'prod' });
-	}
-
 	for (const scope of scopes) {
-		summary.readinessByScope[scope] = summarizePersistentReadiness(
-			tenantRoot,
-			scope,
-			summary.validationByScope[scope],
-			summary.connectionChecks.find((report) => report.scope === scope)?.checks ?? [],
-		);
+		const reconciled = summary.reconciled.find((entry) => entry.scope === scope) ?? null;
+		summary.readinessByScope[scope] = initializePersistent && reconciled
+			? summarizeReconciledPersistentReadiness(
+				scope,
+				summary.validationByScope[scope],
+				summary.connectionChecks.find((report) => report.scope === scope)?.checks ?? [],
+				reconciled,
+			)
+			: await summarizePersistentReadiness(
+				tenantRoot,
+				scope,
+				summary.validationByScope[scope],
+				summary.connectionChecks.find((report) => report.scope === scope)?.checks ?? [],
+				env,
+			);
 	}
 
 	return summary;

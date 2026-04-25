@@ -47,6 +47,10 @@ function writeTenantFiles(root: string) {
 slug: demo
 siteUrl: https://demo.example.com
 contactEmail: demo@example.com
+hosting:
+  kind: hosted_project
+  teamId: demo-team
+  projectId: demo-project
 cloudflare:
   accountId: replace-with-cloudflare-account-id
 providers:

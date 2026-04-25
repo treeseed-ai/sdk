@@ -12,6 +12,7 @@ export const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 		research: 'project_graph',
 	},
 	deploy: 'cloudflare',
+	dns: 'cloudflare-dns',
 	content: {
 		runtime: 'team_scoped_r2_overlay',
 		publish: 'team_scoped_r2_overlay',

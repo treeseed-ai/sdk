@@ -8,6 +8,22 @@ export {
 	validateKnowledgeCoopManagedLaunchPrerequisites,
 } from './operations/services/knowledge-coop-launch.ts';
 export {
+	ensureRailwayEnvironment,
+	ensureRailwayProject,
+	ensureRailwayService,
+	getRailwayAuthProfile,
+	listRailwayEnvironments,
+	listRailwayProjects,
+	listRailwayServices,
+	listRailwayVariables,
+	railwayGraphqlRequest,
+	resolveRailwayApiToken,
+	resolveRailwayApiUrl,
+	resolveRailwayWorkspace,
+	resolveRailwayWorkspaceContext,
+	upsertRailwayVariables,
+} from './operations/services/railway-api.ts';
+export {
 	buildKnowledgeCoopKnowledgePackPackage,
 	buildKnowledgeCoopTemplatePackage,
 	importKnowledgeCoopKnowledgePack,
@@ -115,6 +131,15 @@ export {
 } from './operations-registry.ts';
 export { TreeseedOperationsSdk } from './operations/runtime.ts';
 export { TreeseedWorkflowSdk } from './workflow.ts';
+export {
+	collectTreeseedReconcileStatus,
+	createTreeseedReconcileRegistry,
+	deriveTreeseedDesiredUnits,
+	destroyTreeseedTargetUnits,
+	observeTreeseedUnits,
+	planTreeseedReconciliation,
+	reconcileTreeseedTarget,
+} from './reconcile/index.ts';
 export { getTreeseedVerifyDriverStatus, runTreeseedVerifyDriver } from './verification.ts';
 export type {
 	KnowledgeCoopLaunchPreflightReport,

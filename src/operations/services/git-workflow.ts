@@ -176,6 +176,47 @@ export function pushBranch(repoDir, branchName, { setUpstream = false } = {}) {
 	runGit(args, { cwd: repoDir });
 }
 
+export function ensureRemoteBranchFromBase(
+	repoDir,
+	branchName,
+	{ baseBranch = PRODUCTION_BRANCH } = {},
+) {
+	fetchOrigin(repoDir);
+	if (remoteBranchExists(repoDir, branchName)) {
+		return {
+			branchName,
+			baseBranch,
+			createdLocal: branchExists(repoDir, branchName) ? false : (() => {
+				runGit(['branch', branchName, `origin/${branchName}`], { cwd: repoDir });
+				return true;
+			})(),
+			pushed: false,
+			existed: true,
+		};
+	}
+
+	const baseRef = remoteBranchExists(repoDir, baseBranch)
+		? `origin/${baseBranch}`
+		: branchExists(repoDir, baseBranch)
+			? baseBranch
+			: '';
+	if (!baseRef) {
+		throw new Error(`Base branch "${baseBranch}" does not exist locally or on origin.`);
+	}
+	const createdLocal = !branchExists(repoDir, branchName);
+	if (createdLocal) {
+		runGit(['branch', branchName, baseRef], { cwd: repoDir });
+	}
+	pushBranch(repoDir, branchName, { setUpstream: true });
+	return {
+		branchName,
+		baseBranch,
+		createdLocal,
+		pushed: true,
+		existed: false,
+	};
+}
+
 export function deleteLocalBranch(repoDir, branchName) {
 	if (!branchExists(repoDir, branchName)) {
 		return;

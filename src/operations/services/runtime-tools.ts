@@ -49,11 +49,12 @@ const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 		research: 'project_graph',
 	},
 	deploy: 'cloudflare',
-		content: {
-			runtime: 'team_scoped_r2_overlay',
-			publish: 'team_scoped_r2_overlay',
-			docs: 'default',
-		},
+	dns: 'cloudflare-dns',
+	content: {
+		runtime: 'team_scoped_r2_overlay',
+		publish: 'team_scoped_r2_overlay',
+		docs: 'default',
+	},
 	site: 'default',
 };
 const TRESEED_MANAGED_SERVICE_KEYS = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport'];
@@ -233,6 +234,17 @@ function parseSurfaceConfig(value, label) {
 		rootDir: optionalString(record.rootDir),
 		publicBaseUrl: optionalString(record.publicBaseUrl),
 		localBaseUrl: optionalString(record.localBaseUrl),
+		environments: (() => {
+			const environments = optionalRecord(record.environments, `${label}.environments`);
+			if (!environments) {
+				return undefined;
+			}
+			return {
+				local: parseServiceEnvironmentConfig(environments.local),
+				staging: parseServiceEnvironmentConfig(environments.staging),
+				prod: parseServiceEnvironmentConfig(environments.prod),
+			};
+		})(),
 		cache: parseWebSurfaceCacheConfig(record.cache, `${label}.cache`),
 	};
 }
@@ -520,9 +532,9 @@ function parseFallbackDeployConfig(configPath) {
 					'self_hosted_project',
 				]) ?? 'self_hosted_project',
 				registration: optionalEnum(hosting.registration, 'hosting.registration', ['optional', 'none']) ?? 'none',
-				marketBaseUrl: optionalString(process.env.TREESEED_MARKET_API_BASE_URL),
-				teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID),
-				projectId: optionalString(process.env.TREESEED_PROJECT_ID),
+				marketBaseUrl: optionalString(process.env.TREESEED_MARKET_API_BASE_URL) ?? optionalString(hosting.marketBaseUrl),
+				teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID) ?? optionalString(hosting.teamId),
+				projectId: optionalString(process.env.TREESEED_PROJECT_ID) ?? optionalString(hosting.projectId),
 			};
 	const services = parseManagedServicesConfig(record.services);
 	const normalizedPlanes = normalizePlanesFromLegacyHosting(parsedHosting);
@@ -542,9 +554,9 @@ function parseFallbackDeployConfig(configPath) {
 		registration: optionalEnum(runtimeRecord.registration, 'runtime.registration', ['optional', 'required', 'none'])
 			?? inferredPlanes.runtime.registration
 			?? 'none',
-		marketBaseUrl: optionalString(process.env.TREESEED_MARKET_API_BASE_URL) ?? inferredPlanes.runtime.marketBaseUrl,
-		teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID) ?? inferredPlanes.runtime.teamId,
-		projectId: optionalString(process.env.TREESEED_PROJECT_ID) ?? inferredPlanes.runtime.projectId,
+		marketBaseUrl: optionalString(process.env.TREESEED_MARKET_API_BASE_URL) ?? optionalString(runtimeRecord.marketBaseUrl) ?? inferredPlanes.runtime.marketBaseUrl,
+		teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID) ?? optionalString(runtimeRecord.teamId) ?? inferredPlanes.runtime.teamId,
+		projectId: optionalString(process.env.TREESEED_PROJECT_ID) ?? optionalString(runtimeRecord.projectId) ?? inferredPlanes.runtime.projectId,
 	};
 	const smtp = optionalRecord(record.smtp, 'smtp') ?? {};
 	const turnstile = optionalRecord(record.turnstile, 'turnstile') ?? {};
@@ -603,6 +615,7 @@ function parseFallbackDeployConfig(configPath) {
 				research: expectString(agentProviders.research ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.agents.research, 'providers.agents.research'),
 			},
 			deploy: expectString(record.providers?.deploy ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.deploy, 'providers.deploy'),
+			dns: expectString(record.providers?.dns ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.dns, 'providers.dns'),
 			content: {
 				runtime: expectString(
 					contentProviders.runtime ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime,

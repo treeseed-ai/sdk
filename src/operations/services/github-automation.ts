@@ -3,6 +3,15 @@ import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { resolveTreeseedEnvironmentRegistry } from '../../platform/environment.ts';
 import { packageRoot, loadCliDeployConfig } from './runtime-tools.ts';
+import {
+	createGitHubApiClient,
+	ensureGitHubRepository,
+	listGitHubRepositorySecretNames,
+	listGitHubRepositoryVariableNames,
+	upsertGitHubRepositorySecret,
+	upsertGitHubRepositoryVariable,
+	waitForGitHubWorkflowRunCompletion,
+} from './github-api.ts';
 
 export interface GitHubRepositoryProvisionInput {
 	owner: string;
@@ -79,25 +88,6 @@ function runGit(args, { cwd, allowFailure = false, capture = true } = {}) {
 	return result;
 }
 
-function runGh(args, { cwd, allowFailure = false, capture = true, input } = {}) {
-	const result = spawnSync('gh', args, {
-		cwd,
-		stdio: capture || input !== undefined ? ['pipe', 'pipe', 'pipe'] : 'inherit',
-		encoding: 'utf8',
-		input,
-	});
-
-	if (result.error && result.error.code === 'ENOENT') {
-		throw new Error('GitHub CLI `gh` is required for Treeseed GitHub automation.');
-	}
-
-	if (result.status !== 0 && !allowFailure) {
-		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `gh ${args.join(' ')} failed`);
-	}
-
-	return result;
-}
-
 function sleepSeconds(seconds) {
 	if (!Number.isFinite(seconds) || seconds <= 0) {
 		return;
@@ -165,7 +155,7 @@ export function resolveDefaultGitHubOwner() {
 	return 'treeseed-ai';
 }
 
-export function createGitHubRepository(input) {
+export async function createGitHubRepository(input) {
 	const visibility = input.visibility ?? 'private';
 	const remotes = resolveGitHubRemoteUrls(input.owner, input.name);
 	if (isGitHubAutomationStubbed()) {
@@ -177,42 +167,16 @@ export function createGitHubRepository(input) {
 		};
 	}
 
-	const existing = runGh(['repo', 'view', remotes.slug, '--json', 'name,owner,url,isPrivate,defaultBranchRef,visibility'], {
-		allowFailure: true,
+	return await ensureGitHubRepository({
+		owner: remotes.owner,
+		name: remotes.name,
+		description: input.description ?? null,
+		homepageUrl: input.homepageUrl ?? null,
+		visibility,
+		topics: Array.isArray(input.topics) ? input.topics.map((topic) => slugifySegment(topic, 'treeseed')) : [],
+	}, {
+		client: createGitHubApiClient(),
 	});
-	if (existing.status !== 0) {
-		const args = ['repo', 'create', remotes.slug, '--disable-wiki', '--confirm'];
-		if (visibility === 'public') {
-			args.push('--public');
-		} else if (visibility === 'internal') {
-			args.push('--internal');
-		} else {
-			args.push('--private');
-		}
-		if (input.description) {
-			args.push('--description', input.description);
-		}
-		if (input.homepageUrl) {
-			args.push('--homepage', input.homepageUrl);
-		}
-		runGh(args, { capture: false });
-	}
-	if (Array.isArray(input.topics) && input.topics.length > 0) {
-		runGh(
-			['repo', 'edit', remotes.slug, ...input.topics.flatMap((topic) => ['--add-topic', slugifySegment(topic, 'treeseed')])],
-			{ capture: false },
-		);
-	}
-	const viewed = runGh(['repo', 'view', remotes.slug, '--json', 'name,owner,url,isPrivate,defaultBranchRef,visibility'], {});
-	const payload = JSON.parse(viewed.stdout || '{}');
-	return {
-		...remotes,
-		owner: String(payload.owner?.login ?? remotes.owner),
-		name: String(payload.name ?? remotes.name),
-		url: String(payload.url ?? remotes.url),
-		visibility: String(payload.visibility ?? (payload.isPrivate === true ? 'private' : visibility)),
-		defaultBranch: String(payload.defaultBranchRef?.name ?? 'main'),
-	};
 }
 
 export function initializeGitHubRepositoryWorkingTree(
@@ -399,26 +363,14 @@ export function ensureStandardizedGitHubWorkflows(tenantRoot) {
 	return workflows;
 }
 
-export function listGitHubSecretNames(repository, tenantRoot) {
-	const result = runGh(['secret', 'list', '--repo', repository, '--json', 'name'], {
-		cwd: tenantRoot,
-	});
-	return new Set(
-		(JSON.parse(result.stdout || '[]'))
-			.map((entry) => entry?.name)
-			.filter((value) => typeof value === 'string' && value.length > 0),
-	);
+export async function listGitHubSecretNames(repository, tenantRoot) {
+	void tenantRoot;
+	return await listGitHubRepositorySecretNames(repository, { client: createGitHubApiClient() });
 }
 
-export function listGitHubVariableNames(repository, tenantRoot) {
-	const result = runGh(['variable', 'list', '--repo', repository, '--json', 'name'], {
-		cwd: tenantRoot,
-	});
-	return new Set(
-		(JSON.parse(result.stdout || '[]'))
-			.map((entry) => entry?.name)
-			.filter((value) => typeof value === 'string' && value.length > 0),
-	);
+export async function listGitHubVariableNames(repository, tenantRoot) {
+	void tenantRoot;
+	return await listGitHubRepositoryVariableNames(repository, { client: createGitHubApiClient() });
 }
 
 export function formatMissingSecretsReport(repository, missingSecrets, reason = 'missing_local_env') {
@@ -436,11 +388,11 @@ export function formatMissingSecretsReport(repository, missingSecrets, reason = 
 	return lines.join('\n');
 }
 
-export function ensureGitHubSecrets(tenantRoot, { dryRun = false } = {}) {
-	return ensureGitHubEnvironment(tenantRoot, { dryRun }).secrets;
+export async function ensureGitHubSecrets(tenantRoot, { dryRun = false } = {}) {
+	return (await ensureGitHubEnvironment(tenantRoot, { dryRun })).secrets;
 }
 
-export function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scope = 'prod', purpose = 'save' } = {}) {
+export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scope = 'prod', purpose = 'save' } = {}) {
 	if (isGitHubAutomationStubbed()) {
 		return {
 			repository: maybeResolveGitHubRepositorySlug(tenantRoot),
@@ -472,8 +424,9 @@ export function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scope = 'p
 	const required = requiredGitHubEnvironment(tenantRoot, { scope, purpose });
 	const requiredSecrets = required.secrets;
 	const requiredVariables = required.variables;
-	const existingSecrets = listGitHubSecretNames(repository, tenantRoot);
-	const existingVariables = listGitHubVariableNames(repository, tenantRoot);
+	const client = createGitHubApiClient();
+	const existingSecrets = await listGitHubRepositorySecretNames(repository, { client });
+	const existingVariables = await listGitHubRepositoryVariableNames(repository, { client });
 	const missingRemote = requiredSecrets.filter((name) => !existingSecrets.has(name));
 	const missingRemoteVariables = requiredVariables.filter((name) => !existingVariables.has(name));
 
@@ -494,9 +447,7 @@ export function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scope = 'p
 			createdSecrets.push(name);
 			continue;
 		}
-		runGh(['secret', 'set', name, '--repo', repository, '--body', envOrNull(name) ?? ''], {
-			cwd: tenantRoot,
-		});
+		await upsertGitHubRepositorySecret(repository, name, envOrNull(name) ?? '', { client });
 		createdSecrets.push(name);
 	}
 
@@ -506,9 +457,7 @@ export function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scope = 'p
 			createdVariables.push(name);
 			continue;
 		}
-		runGh(['variable', 'set', name, '--repo', repository, '--body', envOrNull(name) ?? ''], {
-			cwd: tenantRoot,
-		});
+		await upsertGitHubRepositoryVariable(repository, name, envOrNull(name) ?? '', { client });
 		createdVariables.push(name);
 	}
 
@@ -525,9 +474,9 @@ export function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scope = 'p
 	};
 }
 
-export function ensureGitHubDeployAutomation(tenantRoot, { dryRun = false } = {}) {
+export async function ensureGitHubDeployAutomation(tenantRoot, { dryRun = false } = {}) {
 	const workflows = ensureStandardizedGitHubWorkflows(tenantRoot);
-	const environment = ensureGitHubEnvironment(tenantRoot, { dryRun });
+	const environment = await ensureGitHubEnvironment(tenantRoot, { dryRun });
 	return {
 		mode: getGitHubAutomationMode(),
 		workflow: workflows[0],
@@ -538,7 +487,7 @@ export function ensureGitHubDeployAutomation(tenantRoot, { dryRun = false } = {}
 	};
 }
 
-export function waitForGitHubWorkflowCompletion(
+export async function waitForGitHubWorkflowCompletion(
 	tenantRoot,
 	{
 		repository,
@@ -561,60 +510,12 @@ export function waitForGitHubWorkflowCompletion(
 	}
 
 	const repo = repository ?? resolveGitHubRepositorySlug(tenantRoot);
-	const startedAt = Date.now();
-
-	while ((Date.now() - startedAt) < timeoutSeconds * 1000) {
-		const result = runGh([
-			'run',
-			'list',
-			'--repo',
-			repo,
-			'--workflow',
-			workflow,
-			'--limit',
-			'20',
-			'--json',
-			'databaseId,headSha,headBranch,status,conclusion,event,displayTitle,url',
-		], { cwd: tenantRoot });
-		const runs = JSON.parse(result.stdout || '[]');
-		const match = runs.find((run) => {
-			if (headSha && run?.headSha !== headSha) {
-				return false;
-			}
-			if (branch && run?.headBranch !== branch) {
-				return false;
-			}
-			return true;
-		});
-
-		if (match?.databaseId) {
-			runGh(['run', 'watch', String(match.databaseId), '--repo', repo, '--exit-status'], {
-				cwd: tenantRoot,
-				capture: false,
-			});
-			const finalResult = runGh([
-				'run',
-				'view',
-				String(match.databaseId),
-				'--repo',
-				repo,
-				'--json',
-				'status,conclusion,url,workflowName,headSha',
-			], { cwd: tenantRoot });
-			const finalRun = JSON.parse(finalResult.stdout || '{}');
-			return {
-				status: 'completed',
-				repository: repo,
-				workflow,
-				runId: match.databaseId,
-				headSha: finalRun.headSha ?? match.headSha ?? null,
-				conclusion: finalRun.conclusion ?? match.conclusion ?? null,
-				url: finalRun.url ?? match.url ?? null,
-			};
-		}
-
-		sleepSeconds(pollSeconds);
-	}
-
-	throw new Error(`Timed out waiting for GitHub workflow ${workflow} in ${repo}.`);
+	return await waitForGitHubWorkflowRunCompletion(repo, {
+		client: createGitHubApiClient(),
+		workflow,
+		headSha,
+		branch,
+		timeoutSeconds,
+		pollSeconds,
+	});
 }

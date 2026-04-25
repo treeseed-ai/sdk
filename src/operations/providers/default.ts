@@ -252,7 +252,7 @@ class PreflightOperation extends BaseOperation<{ requireAuth?: boolean }> {
 			requireAuth: input.requireAuth ?? this.requireAuth,
 		});
 		const launch = input.launch === true || input.managedLaunch === true
-			? validateKnowledgeCoopManagedLaunchPrerequisites(context.cwd)
+			? await validateKnowledgeCoopManagedLaunchPrerequisites(context.cwd)
 			: null;
 		const stdout = [formatCliPreflightReport(report)];
 		if (launch) {

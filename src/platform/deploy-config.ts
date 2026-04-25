@@ -366,6 +366,7 @@ function parseProviderSelections(value: unknown): TreeseedProviderSelections {
 			),
 		},
 		deploy: expectString(record.deploy ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.deploy, 'providers.deploy'),
+		dns: expectString(record.dns ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.dns, 'providers.dns'),
 		content: {
 			runtime: expectString(
 				contentProviders.runtime ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime,
@@ -426,6 +427,17 @@ function parseManagedServiceConfig(value: unknown, label: string): TreeseedManag
 			rootDir: optionalString(railway.rootDir),
 			buildCommand: optionalString(railway.buildCommand),
 			startCommand: optionalString(railway.startCommand),
+			healthcheckPath: optionalString(railway.healthcheckPath),
+			healthcheckTimeoutSeconds: optionalPositiveNumber(
+				railway.healthcheckTimeoutSeconds,
+				`${label}.railway.healthcheckTimeoutSeconds`,
+			),
+			healthcheckIntervalSeconds: optionalPositiveNumber(
+				railway.healthcheckIntervalSeconds,
+				`${label}.railway.healthcheckIntervalSeconds`,
+			),
+			restartPolicy: optionalString(railway.restartPolicy),
+			runtimeMode: optionalString(railway.runtimeMode),
 			schedule: Array.isArray(railway.schedule)
 				? railway.schedule.map((entry) => optionalString(entry)).filter(Boolean)
 				: optionalString(railway.schedule),
@@ -472,6 +484,17 @@ function parsePlatformSurfaceConfig(
 		rootDir: optionalString(record.rootDir),
 		publicBaseUrl: optionalString(record.publicBaseUrl),
 		localBaseUrl: optionalString(record.localBaseUrl),
+		environments: (() => {
+			const environments = optionalRecord(record.environments, `${label}.environments`);
+			if (!environments) {
+				return undefined;
+			}
+			return {
+				local: parseServiceEnvironmentConfig(environments.local, `${label}.environments.local`),
+				staging: parseServiceEnvironmentConfig(environments.staging, `${label}.environments.staging`),
+				prod: parseServiceEnvironmentConfig(environments.prod, `${label}.environments.prod`),
+			};
+		})(),
 		cache: parseWebSurfaceCacheConfig(record.cache, `${label}.cache`),
 	};
 }

@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -54,8 +54,10 @@
     "esbuild": "^0.28.0",
     "github-slugger": "^2.0.0",
     "ink": "^7.0.0",
+    "libsodium-wrappers": "^0.7.15",
     "mdast-util-to-string": "^4.0.0",
     "minisearch": "^7.2.0",
+    "octokit": "^5.0.3",
     "react": "^19.2.5",
     "remark-mdx": "^3.1.1",
     "remark-parse": "^11.0.0",
@@ -97,6 +99,10 @@
     "./workflow-support": {
       "types": "./dist/workflow-support.d.ts",
       "default": "./dist/workflow-support.js"
+    },
+    "./reconcile": {
+      "types": "./dist/reconcile/index.d.ts",
+      "default": "./dist/reconcile/index.js"
     },
     "./platform/contracts": {
       "types": "./dist/platform/contracts.d.ts",

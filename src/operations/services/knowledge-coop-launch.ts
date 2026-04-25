@@ -3,8 +3,9 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { collectTreeseedReconcileStatus, reconcileTreeseedTarget } from '../../reconcile/index.ts';
 import { checkTreeseedProviderConnections, collectTreeseedConfigSeedValues } from './config-runtime.ts';
-import { provisionCloudflareResources, runRemoteD1Migrations, syncCloudflareSecrets, verifyProvisionedCloudflareResources, markDeploymentInitialized, finalizeDeploymentState } from './deploy.ts';
+import { createPersistentDeployTarget, runRemoteD1Migrations, finalizeDeploymentState } from './deploy.ts';
 import {
 	createGitHubRepository,
 	ensureGitHubDeployAutomation,
@@ -75,7 +76,7 @@ export interface KnowledgeCoopManagedLaunchResult {
 	};
 	railway: {
 		services: ReturnType<typeof configuredRailwayServices>;
-		deployments: ReturnType<typeof deployRailwayService>[];
+		deployments: Awaited<ReturnType<typeof deployRailwayService>>[];
 		schedules: Awaited<ReturnType<typeof ensureRailwayScheduledJobs>>;
 		verification: Awaited<ReturnType<typeof verifyRailwayScheduledJobs>>;
 	};
@@ -697,7 +698,7 @@ function scaffoldKnowledgeCoopSource(projectRoot: string, input: KnowledgeCoopMa
 	});
 }
 
-export function validateKnowledgeCoopManagedLaunchPrerequisites(tenantRoot = process.cwd()): KnowledgeCoopLaunchPreflightReport {
+export async function validateKnowledgeCoopManagedLaunchPrerequisites(tenantRoot = process.cwd()): Promise<KnowledgeCoopLaunchPreflightReport> {
 	const values = collectTreeseedConfigSeedValues(tenantRoot, 'prod', process.env);
 	const requiredConfig = [
 		['TREESEED_BETTER_AUTH_SECRET'],
@@ -716,7 +717,7 @@ export function validateKnowledgeCoopManagedLaunchPrerequisites(tenantRoot = pro
 			return typeof value === 'string' && value.trim().length > 0;
 		}))
 		.map((group) => group.join(' or '));
-	const providerChecks = checkTreeseedProviderConnections({ tenantRoot, scope: 'prod', env: process.env });
+	const providerChecks = await checkTreeseedProviderConnections({ tenantRoot, scope: 'prod', env: process.env });
 	const commands = {
 		git: commandAvailable('git'),
 		gh: commandAvailable('gh'),
@@ -734,7 +735,7 @@ export function validateKnowledgeCoopManagedLaunchPrerequisites(tenantRoot = pro
 
 export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopManagedLaunchInput): Promise<KnowledgeCoopManagedLaunchResult> {
 	const phases: KnowledgeCoopLaunchPhaseRecord[] = [];
-	const preflight = validateKnowledgeCoopManagedLaunchPrerequisites(process.cwd());
+	const preflight = await validateKnowledgeCoopManagedLaunchPrerequisites(process.cwd());
 	if (!preflight.ok) {
 		throw new KnowledgeCoopLaunchError(
 			'runtime_connection_failed',
@@ -749,7 +750,7 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 
 	try {
 		appendPhase(phases, 'repo_provision', 'running', 'Creating GitHub repository.');
-		const repository = createGitHubRepository({
+		const repository = await createGitHubRepository({
 			owner: repoOwner,
 			name: repoName,
 			description: input.summary ?? `Knowledge Coop hub for ${input.projectName}`,
@@ -773,29 +774,42 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 			commitMessage: `Initialize ${input.projectName}`,
 		});
 		pushDefaultWorkstreamBranch(workingRoot);
-		const workflows = ensureGitHubDeployAutomation(workingRoot);
+		const workflows = await ensureGitHubDeployAutomation(workingRoot);
 		appendPhase(phases, 'workflow_bootstrap', 'completed', 'Configured GitHub workflows, secrets, and variables.');
 
 		appendPhase(phases, 'hosting_registration', 'running', 'Provisioning Cloudflare resources and deploy state.');
-		const staging = provisionCloudflareResources(workingRoot, { scope: 'staging' });
-		const prod = provisionCloudflareResources(workingRoot, { scope: 'prod' });
-		syncCloudflareSecrets(workingRoot, { scope: 'prod' });
+		const staging = await reconcileTreeseedTarget({
+			tenantRoot: workingRoot,
+			target: createPersistentDeployTarget('staging'),
+			env: process.env,
+		});
+		const prod = await reconcileTreeseedTarget({
+			tenantRoot: workingRoot,
+			target: createPersistentDeployTarget('prod'),
+			env: process.env,
+		});
 		runRemoteD1Migrations(workingRoot, { scope: 'prod' });
-		markDeploymentInitialized(workingRoot, { scope: 'staging' });
-		const verification = verifyProvisionedCloudflareResources(workingRoot, { scope: 'prod' });
+		const verification = await collectTreeseedReconcileStatus({
+			tenantRoot: workingRoot,
+			target: createPersistentDeployTarget('prod'),
+			env: process.env,
+		});
 		appendPhase(phases, 'hosting_registration', 'completed', 'Provisioned Cloudflare resources.');
 
 		const launchConfig = loadCliDeployConfig(workingRoot);
 		const managedRuntime = launchConfig.runtime?.mode === 'treeseed_managed';
 		let services: ReturnType<typeof configuredRailwayServices> = [];
-		let deployments: ReturnType<typeof deployRailwayService>[] = [];
+		let deployments: Awaited<ReturnType<typeof deployRailwayService>>[] = [];
 		let schedules: Awaited<ReturnType<typeof ensureRailwayScheduledJobs>> = [];
 		let railwayVerification: Awaited<ReturnType<typeof verifyRailwayScheduledJobs>> = [];
 		if (managedRuntime) {
 			appendPhase(phases, 'runtime_connection', 'running', 'Deploying Railway services and registering runtime connectivity.');
 			validateRailwayDeployPrerequisites(workingRoot, 'prod');
 			services = configuredRailwayServices(workingRoot, 'prod');
-			deployments = services.map((service) => deployRailwayService(workingRoot, service));
+			deployments = [];
+			for (const service of services) {
+				deployments.push(await deployRailwayService(workingRoot, service));
+			}
 			schedules = await ensureRailwayScheduledJobs(workingRoot, 'prod');
 			railwayVerification = await verifyRailwayScheduledJobs(workingRoot, 'prod');
 			finalizeDeploymentState(workingRoot, { scope: 'prod', serviceResults: deployments });

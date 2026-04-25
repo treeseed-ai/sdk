@@ -1,4 +1,3 @@
-import { createHash, createHmac } from 'node:crypto';
 import type { TreeseedDeployConfig } from './contracts.ts';
 import type { CloudflareRuntime, R2BucketLike } from '../types/cloudflare.ts';
 
@@ -227,8 +226,37 @@ function optionalBoolean(value: unknown) {
 	return typeof value === 'boolean' ? value : undefined;
 }
 
+function getNodeCrypto():
+	| {
+		createHash?: (algorithm: string) => { update: (value: string) => { digest: (encoding: 'hex') => string } };
+		createHmac?: (algorithm: string, secret: string) => { update: (value: string) => { digest: (encoding: 'base64url') => string } };
+	}
+	| null {
+	return (globalThis as { process?: { getBuiltinModule?: (name: string) => unknown } }).process
+		?.getBuiltinModule?.('crypto') as ReturnType<typeof getNodeCrypto> ?? null;
+}
+
 function stableHash(value: string) {
-	return createHash('sha256').update(value).digest('hex');
+	const crypto = getNodeCrypto();
+	if (crypto?.createHash) {
+		return crypto.createHash('sha256').update(value).digest('hex');
+	}
+
+	let hash = 0x811c9dc5;
+	for (let index = 0; index < value.length; index += 1) {
+		hash ^= value.charCodeAt(index);
+		hash = Math.imul(hash, 0x01000193);
+	}
+	return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function hmacSha256Base64Url(value: string, secret: string) {
+	const crypto = getNodeCrypto();
+	if (!crypto?.createHmac) {
+		throw new Error('Editorial preview token signing requires a crypto runtime.');
+	}
+
+	return crypto.createHmac('sha256', secret).update(value).digest('base64url');
 }
 
 function base64UrlEncode(value: string) {
@@ -476,7 +504,7 @@ export function signEditorialPreviewToken(payload: EditorialPreviewTokenPayload,
 		expiresAt: expectString(payload.expiresAt, 'previewToken.expiresAt'),
 	};
 	const encodedPayload = base64UrlEncode(JSON.stringify(normalized));
-	const signature = createHmac('sha256', secret).update(encodedPayload).digest('base64url');
+	const signature = hmacSha256Base64Url(encodedPayload, secret);
 	return `${encodedPayload}.${signature}`;
 }
 
@@ -485,7 +513,12 @@ export function verifyEditorialPreviewToken(token: string, secret: string): Edit
 	if (!encodedPayload || !signature) {
 		return null;
 	}
-	const expected = createHmac('sha256', secret).update(encodedPayload).digest('base64url');
+	let expected: string;
+	try {
+		expected = hmacSha256Base64Url(encodedPayload, secret);
+	} catch {
+		return null;
+	}
 	if (expected !== signature) {
 		return null;
 	}

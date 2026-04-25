@@ -7,6 +7,7 @@ import type {
 } from './contracts.ts';
 import type { TreeseedEnvironmentRegistryOverlay } from './environment.ts';
 import type { SdkGraphRankingProvider } from '../sdk-types.ts';
+import type { TreeseedReconcileAdapter } from '../reconcile/contracts.ts';
 
 export type TreeseedSiteLayerDefinition = TreeseedPlatformLayerDefinition & {
 	kinds?: Array<'pages' | 'styles' | 'components'>;
@@ -88,6 +89,10 @@ export interface TreeseedPlugin {
 	id?: string;
 	provides?: Record<string, any> & {
 		operations?: string[];
+		dns?: string[];
+		reconcile?: {
+			providers?: string[];
+		};
 	};
 	operationProviders?: Record<string, unknown>;
 	siteProviders?: Record<
@@ -114,6 +119,9 @@ export interface TreeseedPlugin {
 	environmentRegistry?:
 		| TreeseedEnvironmentRegistryOverlay
 		| ((context: TreeseedPluginEnvironmentContext) => TreeseedEnvironmentRegistryOverlay | undefined);
+	reconcileAdapters?:
+		| Record<string, TreeseedReconcileAdapter | ((context: TreeseedPluginEnvironmentContext) => TreeseedReconcileAdapter | undefined)>
+		| ((context: TreeseedPluginEnvironmentContext) => Record<string, TreeseedReconcileAdapter | ((context: TreeseedPluginEnvironmentContext) => TreeseedReconcileAdapter | undefined)> | undefined);
 	graphRankingProviders?: Record<string, TreeseedGraphRankingProviderContribution>;
 	[key: string]: unknown;
 }

@@ -137,12 +137,16 @@ function collectProvidedIds(plugins: LoadedPluginEntry[]) {
 			handlers: new Set<string>(),
 		},
 		deploy: new Set<string>(),
+		dns: new Set<string>(),
 		content: {
 			runtime: new Set<string>(),
 			publish: new Set<string>(),
 			docs: new Set<string>(),
 		},
 		site: new Set<string>(),
+		reconcile: {
+			providers: new Set<string>(),
+		},
 	};
 
 	for (const { plugin } of plugins) {
@@ -156,10 +160,12 @@ function collectProvidedIds(plugins: LoadedPluginEntry[]) {
 		for (const id of plugin.provides?.agents?.research ?? []) provided.agents.research.add(id);
 		for (const id of plugin.provides?.agents?.handlers ?? []) provided.agents.handlers.add(id);
 		for (const id of plugin.provides?.deploy ?? []) provided.deploy.add(id);
+		for (const id of plugin.provides?.dns ?? []) provided.dns.add(id);
 		for (const id of plugin.provides?.content?.runtime ?? []) provided.content.runtime.add(id);
 		for (const id of plugin.provides?.content?.publish ?? []) provided.content.publish.add(id);
 		for (const id of plugin.provides?.content?.docs ?? []) provided.content.docs.add(id);
 		for (const id of plugin.provides?.site ?? []) provided.site.add(id);
+		for (const id of plugin.provides?.reconcile?.providers ?? []) provided.reconcile.providers.add(id);
 	}
 
 	return provided;
@@ -188,6 +194,7 @@ export function loadTreeseedPluginRuntime(config: TreeseedDeployConfig = loadTre
 	assertSelectedProvider(provided.agents.notification, 'agents.notification', providers.agents.notification);
 	assertSelectedProvider(provided.agents.research, 'agents.research', providers.agents.research);
 	assertSelectedProvider(provided.deploy, 'deploy', providers.deploy);
+	assertSelectedProvider(provided.dns, 'dns', providers.dns ?? TREESEED_DEFAULT_PROVIDER_SELECTIONS.dns);
 	assertSelectedProvider(provided.content.runtime, 'content.runtime', providers.content?.runtime);
 	assertSelectedProvider(provided.content.publish, 'content.publish', providers.content?.publish);
 	if (providers.content?.docs) {

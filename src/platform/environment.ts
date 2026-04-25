@@ -380,6 +380,10 @@ function resolveHostedProjectId(context: TreeseedEnvironmentContext) {
 	return context.deployConfig.slug;
 }
 
+function resolveRailwayWorkspaceDefault() {
+	return 'knowledge-coop';
+}
+
 const VALUE_RESOLVERS: NamedResolverMap = {
 	generatedSecret: () => generatedSecret(),
 	localFormsBypassDefault: () => 'true',
@@ -402,6 +406,7 @@ const VALUE_RESOLVERS: NamedResolverMap = {
 	marketBaseUrlDefault: (context) => resolveMarketBaseUrl(context),
 	hostingTeamIdDefault: (context) => resolveHostedTeamId(context),
 	hostingProjectIdDefault: (context) => resolveHostedProjectId(context),
+	railwayWorkspaceDefault: () => resolveRailwayWorkspaceDefault(),
 	agentPoolMinWorkersDefault: () => '0',
 	agentPoolMaxWorkersDefault: () => '2',
 	agentPoolTargetQueueDepthDefault: () => '1',

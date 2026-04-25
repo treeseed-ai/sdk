@@ -13,6 +13,7 @@ import {
 	ensureTreeseedSecretSessionForConfig,
 	ensureTreeseedActVerificationTooling,
 	ensureTreeseedGitignoreEntries,
+	inspectTreeseedPassphraseEnvDiagnostic,
 	finalizeTreeseedConfig,
 	getTreeseedMachineConfigPaths,
 	inspectTreeseedKeyAgentStatus,
@@ -28,6 +29,7 @@ import { ControlPlaneClient } from '../control-plane-client.ts';
 import { exportTreeseedCodebase } from '../operations/services/export-runtime.ts';
 import {
 	assertDeploymentInitialized,
+	buildProvisioningSummary,
 	cleanupDestroyedState,
 	createBranchPreviewDeployTarget,
 	createPersistentDeployTarget,
@@ -35,9 +37,7 @@ import {
 	ensureGeneratedWranglerConfig,
 	finalizeDeploymentState,
 	loadDeployState,
-	provisionCloudflareResources,
 	runRemoteD1Migrations,
-	syncCloudflareSecrets,
 	validateDeployPrerequisites,
 	validateDestroyPrerequisites,
 } from '../operations/services/deploy.ts';
@@ -93,6 +93,7 @@ import {
 	workspaceRoot,
 } from '../operations/services/workspace-tools.ts';
 import { resolveTreeseedWorkflowState } from '../workflow-state.ts';
+import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, planTreeseedReconciliation, reconcileTreeseedTarget } from '../reconcile/index.ts';
 import {
 	acquireWorkflowLock,
 	createWorkflowRunJournal,
@@ -997,7 +998,7 @@ function previewStateFor(tenantRoot: string, branchName: string) {
 	});
 }
 
-function deployBranchPreview(
+async function deployBranchPreview(
 	tenantRoot: string,
 	branchName: string,
 	context: TreeseedWorkflowContext,
@@ -1010,8 +1011,12 @@ function deployBranchPreview(
 
 	if (initialize && !existingState.readiness?.initialized) {
 		validateDeployPrerequisites(tenantRoot, { requireRemote: true });
-		provisionCloudflareResources(tenantRoot, { target });
-		syncCloudflareSecrets(tenantRoot, { target });
+		await reconcileTreeseedTarget({
+			tenantRoot,
+			target,
+			env: { ...process.env, ...(context.env ?? {}) },
+			write: (line) => context.write?.(line),
+		});
 		runRemoteD1Migrations(tenantRoot, { target });
 	} else {
 		assertDeploymentInitialized(tenantRoot, { target });
@@ -1327,6 +1332,8 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 			const printEnvOnly = input.printEnvOnly === true;
 			const rotateMachineKeyFlag = input.rotateMachineKey === true;
 			const connectMarketFlag = input.connectMarket === true;
+			const bootstrapOnly = input.bootstrap === true;
+			const bootstrapPreflight = bootstrapOnly && input.preflight === true;
 			const nonInteractive = input.nonInteractive === true;
 			const repairs = input.repair === false ? [] : (resolveTreeseedWorkflowState(tenantRoot).deployConfigPresent ? applyTreeseedSafeRepairs(tenantRoot) : []);
 			const toolHealth = ensureTreeseedActVerificationTooling({
@@ -1335,7 +1342,8 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 				env: helpers.context.env,
 				write: (line: string) => maybePrint(helpers.write, line),
 			});
-			const secretSession = (printEnvOnly && !revealSecrets)
+			const passphraseEnv = inspectTreeseedPassphraseEnvDiagnostic(helpers.context.env ?? process.env);
+			const secretSession = (printEnvOnly && !revealSecrets) || bootstrapPreflight
 				? {
 					status: inspectTreeseedKeyAgentStatus(tenantRoot),
 					createdWrappedKey: false,
@@ -1357,9 +1365,22 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 				scopes,
 				env: helpers.context.env,
 			});
+			if (bootstrapPreflight && !secretSession.status.unlocked && !passphraseEnv.configured) {
+				workflowError(
+					'config',
+					'validation_failed',
+					`${passphraseEnv.envVar} is not visible to this Codex process. ${passphraseEnv.recommendedLaunch}`,
+					{
+						details: {
+							passphraseEnv,
+							secretSession: secretSession.status,
+						},
+					},
+				);
+			}
 
 			if (printEnvOnly) {
-				const reports = scopes.map((scope) => ({
+				const reports = await Promise.all(scopes.map(async (scope) => ({
 					scope,
 					environment: collectTreeseedPrintEnvReport({
 						tenantRoot,
@@ -1367,8 +1388,8 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 						env: helpers.context.env,
 						revealSecrets,
 					}),
-					provider: checkTreeseedProviderConnections({ tenantRoot, scope, env: helpers.context.env }),
-				}));
+					provider: await checkTreeseedProviderConnections({ tenantRoot, scope, env: helpers.context.env }),
+				})));
 				return buildWorkflowResult(
 					'config',
 					tenantRoot,
@@ -1426,6 +1447,86 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 				});
 			}
 
+			if (bootstrapPreflight) {
+				maybePrint(helpers.write, 'Preparing bootstrap preflight...');
+				const { configPath, keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
+				const plansByScope = await Promise.all(scopes
+					.filter((scope) => scope !== 'local')
+					.map(async (scope) => {
+						maybePrint(helpers.write, `Deriving desired units for ${scope}...`);
+						const target = createPersistentDeployTarget(scope);
+						const derived = deriveTreeseedDesiredUnits({ tenantRoot, target });
+						const registry = createTreeseedReconcileRegistry(derived.deployConfig);
+						const capabilityMatrix = derived.units.map((unit) => {
+							const adapter = registry.get(unit.unitType, unit.provider);
+							return {
+								unitId: unit.unitId,
+								unitType: unit.unitType,
+								provider: unit.provider,
+								logicalName: unit.logicalName,
+								requiredPostconditions: adapter.requiredPostconditions?.({
+									context: {
+										tenantRoot,
+										target,
+										deployConfig: derived.deployConfig,
+										launchEnv: helpers.context.env ?? process.env,
+										session: new Map(),
+										write: (line: string) => maybePrint(helpers.write, line),
+									},
+									unit,
+									persistedState: null,
+								}) ?? [],
+								verificationSupported: typeof adapter.verify === 'function',
+							};
+						});
+						const planned = await planTreeseedReconciliation({
+							tenantRoot,
+							target,
+							env: helpers.context.env,
+							write: (line: string) => maybePrint(helpers.write, line),
+						});
+						return {
+							scope,
+							resourceInventory: buildProvisioningSummary(derived.deployConfig, loadDeployState(tenantRoot, derived.deployConfig, { target }), target),
+							capabilityMatrix: await Promise.all(capabilityMatrix.map(async (entry) => ({
+								...entry,
+								requiredPostconditions: await Promise.resolve(entry.requiredPostconditions),
+							}))),
+							plans: planned.plans.map((plan) => ({
+								unitId: plan.unit.unitId,
+								unitType: plan.unit.unitType,
+								provider: plan.unit.provider,
+								action: plan.diff.action,
+								reasons: plan.diff.reasons,
+							})),
+						};
+					}));
+				return buildWorkflowResult(
+					'config',
+					tenantRoot,
+					{
+						mode: 'bootstrap-preflight',
+						scopes,
+						sync,
+						configPath,
+						keyPath,
+						repairs,
+						preflight,
+						toolHealth,
+						passphraseEnv,
+						secretSession,
+						context: contextSnapshot,
+						resourceInventoryByScope: Object.fromEntries(plansByScope.map((entry) => [entry.scope, entry.resourceInventory])),
+						verificationPreflight: plansByScope,
+					},
+					{
+						nextSteps: createNextSteps([
+							{ operation: 'config', reason: 'Run bootstrap once the verification preflight is clean.', input: { environment: scopes, bootstrap: true } },
+						]),
+					},
+				);
+			}
+
 			const explicitUpdates = Array.isArray((input as Record<string, unknown>).updates)
 				? (input as Record<string, { scope: string; entryId: string; value: string; reused?: boolean }[]>).updates
 					.map((update) => ({
@@ -1435,7 +1536,7 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 						reused: update.reused === true,
 					}))
 				: null;
-			if (!explicitUpdates && !nonInteractive) {
+			if (!bootstrapOnly && !explicitUpdates && !nonInteractive) {
 				workflowError(
 					'config',
 					'validation_failed',
@@ -1450,16 +1551,24 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 					reused: entry.currentValue.length > 0 || entry.suggestedValue.length > 0,
 				})),
 			);
-			maybePrint(helpers.write, 'Saving resolved configuration values to machine config...');
-			const applyResult = applyTreeseedConfigValues({
-				tenantRoot,
-				updates: explicitUpdates ?? autoUpdates,
-			});
-			const finalizeResult = finalizeTreeseedConfig({
+			const applyResult = bootstrapOnly
+				? { updated: [], sharedStorageMigrations: [] }
+				: (() => {
+					maybePrint(helpers.write, 'Saving resolved configuration values to machine config...');
+					return applyTreeseedConfigValues({
+						tenantRoot,
+						updates: explicitUpdates ?? autoUpdates,
+					});
+				})();
+			if (bootstrapOnly) {
+				maybePrint(helpers.write, 'Bootstrapping platform reconciliation from existing configuration...');
+			}
+			const finalizeResult = await finalizeTreeseedConfig({
 				tenantRoot,
 				scopes,
 				sync,
 				env: helpers.context.env,
+				checkConnections: bootstrapOnly || sync !== 'none' || scopes.some((scope) => scope !== 'local'),
 				onProgress: (line) => maybePrint(helpers.write, line),
 			});
 			const refreshedContext = collectTreeseedConfigContext({
@@ -1468,7 +1577,7 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 				env: helpers.context.env,
 			});
 			const reports = printEnv
-				? scopes.map((scope) => ({
+				? await Promise.all(scopes.map(async (scope) => ({
 					scope,
 					environment: collectTreeseedPrintEnvReport({
 						tenantRoot,
@@ -1476,8 +1585,8 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 						env: helpers.context.env,
 						revealSecrets,
 					}),
-					provider: finalizeResult.connectionChecks.find((report) => report.scope === scope) ?? checkTreeseedProviderConnections({ tenantRoot, scope, env: helpers.context.env }),
-				}))
+					provider: finalizeResult.connectionChecks.find((report) => report.scope === scope) ?? await checkTreeseedProviderConnections({ tenantRoot, scope, env: helpers.context.env }),
+				})))
 				: [];
 			const { configPath, keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
 			const state = resolveTreeseedWorkflowState(tenantRoot);
@@ -1485,7 +1594,7 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 				'config',
 				tenantRoot,
 				{
-					mode: 'configure',
+					mode: bootstrapOnly ? 'bootstrap' : 'configure',
 					scopes,
 					sync,
 					configPath,
@@ -1493,6 +1602,7 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 					repairs,
 					preflight,
 					toolHealth,
+					passphraseEnv,
 					secretSession,
 					context: refreshedContext,
 					result: {
@@ -2645,7 +2755,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						}
 						continue;
 					}
-					const releasedPackage = await executeJournalStep(root, workflowRun.runId, `release-${report.name}`, () => {
+					const releasedPackage = await executeJournalStep(root, workflowRun.runId, `release-${report.name}`, async () => {
 						checkoutBranch(pkg.dir, STAGING_BRANCH);
 						if (hasMeaningfulChanges(pkg.dir)) {
 							run('git', ['add', '-A'], { cwd: pkg.dir });
@@ -2661,7 +2771,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						const tagName = String(versionPlan.versions.get(pkg.name));
 						run('git', ['tag', '-a', tagName, '-m', `release: ${tagName}`], { cwd: pkg.dir });
 						run('git', ['push', 'origin', tagName], { cwd: pkg.dir });
-						const publish = waitForGitHubWorkflowCompletion(pkg.dir, {
+						const publish = await waitForGitHubWorkflowCompletion(pkg.dir, {
 							workflow: 'publish.yml',
 							headSha: mergeResult.commitSha,
 							branch: PRODUCTION_BRANCH,
