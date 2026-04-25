@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const cloudflareApiRequestMock = vi.fn();
 const runWranglerMock = vi.fn();
+const resolveTreeseedMachineEnvironmentValuesMock = vi.fn();
+const upsertRailwayVariablesMock = vi.fn();
+const railwayEnvMock = vi.fn();
 
 let kvCreated = false;
 let d1Created = false;
@@ -67,14 +70,11 @@ vi.mock('../../src/operations/services/config-runtime.ts', () => ({
 		entries: [
 			{ id: 'TREESEED_PUBLIC_TURNSTILE_SITE_KEY', scopes: ['staging'], targets: ['cloudflare-var'] },
 			{ id: 'TREESEED_TURNSTILE_SECRET_KEY', scopes: ['staging'], targets: ['cloudflare-secret'] },
+			{ id: 'TREESEED_RAILWAY_WORKSPACE', scopes: ['staging'], targets: ['railway-var'] },
+			{ id: 'GH_TOKEN', scopes: ['staging'], targets: ['railway-secret'] },
 		],
 	}),
-	resolveTreeseedMachineEnvironmentValues: () => ({
-		CLOUDFLARE_ACCOUNT_ID: 'account-123',
-		CLOUDFLARE_API_TOKEN: 'cf-token',
-		TREESEED_PUBLIC_TURNSTILE_SITE_KEY: 'site-key',
-		TREESEED_TURNSTILE_SECRET_KEY: 'secret-key',
-	}),
+	resolveTreeseedMachineEnvironmentValues: resolveTreeseedMachineEnvironmentValuesMock,
 }));
 
 vi.mock('../../src/operations/services/deploy.ts', async () => {
@@ -121,12 +121,88 @@ vi.mock('../../src/operations/services/deploy.ts', async () => {
 	};
 });
 
+vi.mock('../../src/operations/services/railway-deploy.ts', () => ({
+	configuredRailwayServices: vi.fn((tenantRoot: string, scope: string) => scope === 'staging'
+		? [{
+			key: 'api',
+			provider: 'railway',
+			rootDir: tenantRoot,
+			projectId: null,
+			projectName: 'acme-docs',
+			serviceId: null,
+			serviceName: 'api',
+			railwayEnvironment: 'staging',
+			buildCommand: null,
+			startCommand: 'npm start',
+			healthcheckPath: null,
+			healthcheckTimeoutSeconds: null,
+			healthcheckIntervalSeconds: null,
+			restartPolicy: null,
+			runtimeMode: null,
+		}]
+		: []),
+	ensureRailwayProjectContext: vi.fn(),
+	runRailway: vi.fn(),
+	validateRailwayDeployPrerequisites: vi.fn(),
+}));
+
+vi.mock('../../src/operations/services/railway-api.ts', () => ({
+	ensureRailwayEnvironment: vi.fn(async () => ({ environment: { id: 'env-1', name: 'staging' } })),
+	ensureRailwayProject: vi.fn(async () => ({
+		project: {
+			id: 'project-1',
+			name: 'acme-docs',
+			environments: [{ id: 'env-1', name: 'staging' }],
+			services: [{ id: 'service-1', name: 'api' }],
+		},
+	})),
+	ensureRailwayService: vi.fn(async () => ({ service: { id: 'service-1', name: 'api' } })),
+	ensureRailwayServiceInstanceConfiguration: vi.fn(async ({ env }: { env: Record<string, string> }) => {
+		railwayEnvMock(env);
+		return {
+			instance: {
+				id: 'instance-1',
+				startCommand: 'npm start',
+				rootDirectory: '.',
+				runtimeConfigSupported: true,
+			},
+		};
+	}),
+	getRailwayProject: vi.fn(async () => null),
+	getRailwayServiceInstance: vi.fn(async () => null),
+	listRailwayCustomDomains: vi.fn(async () => []),
+	listRailwayProjects: vi.fn(async ({ env }: { env: Record<string, string> }) => {
+		railwayEnvMock(env);
+		return [{
+			id: 'project-1',
+			name: 'acme-docs',
+			environments: [{ id: 'env-1', name: 'staging' }],
+			services: [{ id: 'service-1', name: 'api' }],
+		}];
+	}),
+	listRailwayVariables: vi.fn(async () => ({})),
+	resolveRailwayWorkspaceContext: vi.fn(async ({ env }: { env: Record<string, string> }) => {
+		railwayEnvMock(env);
+		return { id: 'workspace-1', name: env.TREESEED_RAILWAY_WORKSPACE ?? 'workspace' };
+	}),
+	upsertRailwayVariables: vi.fn(async (input: { env: Record<string, string> }) => {
+		railwayEnvMock(input.env);
+		upsertRailwayVariablesMock(input);
+	}),
+}));
+
 describe('cloudflare reconcile adapters', () => {
 	beforeEach(() => {
 		kvCreated = false;
 		d1Created = false;
 		cloudflareApiRequestMock.mockReset();
 		runWranglerMock.mockReset();
+		upsertRailwayVariablesMock.mockReset();
+		railwayEnvMock.mockReset();
+		resolveTreeseedMachineEnvironmentValuesMock.mockReset();
+		resolveTreeseedMachineEnvironmentValuesMock.mockImplementation(() => {
+			throw new Error('machine key should not be read for hosted reconcile');
+		});
 		cloudflareApiRequestMock.mockImplementation((path: string, options?: { method?: string; body?: Record<string, unknown> }) => {
 			if (options?.method === 'POST' && path.includes('/d1/database')) {
 				d1Created = true;
@@ -187,6 +263,12 @@ describe('cloudflare reconcile adapters', () => {
 			launchEnv: {},
 			session: new Map(),
 		};
+		context.launchEnv = {
+			CLOUDFLARE_ACCOUNT_ID: 'account-123',
+			CLOUDFLARE_API_TOKEN: 'cf-token',
+			TREESEED_PUBLIC_TURNSTILE_SITE_KEY: 'site-key',
+			TREESEED_TURNSTILE_SECRET_KEY: 'secret-key',
+		};
 
 		const observed = adapter!.observe({ unit, context } as never);
 		const diff = adapter!.plan({ unit, context, observed } as never);
@@ -216,5 +298,68 @@ describe('cloudflare reconcile adapters', () => {
 				},
 			},
 		});
+		expect(resolveTreeseedMachineEnvironmentValuesMock).not.toHaveBeenCalled();
+	});
+
+	it('syncs Railway hosted env values from launch env without reading the machine key', async () => {
+		const { createRailwayReconcileAdapters } = await import('../../src/reconcile/builtin-adapters.ts');
+		const adapter = createRailwayReconcileAdapters().find((entry) => entry.unitTypes.includes('railway-service:api'));
+		expect(adapter).toBeTruthy();
+
+		const unit = {
+			unitId: 'railway-service:api:acme-docs',
+			unitType: 'railway-service:api',
+			provider: 'railway',
+			target: { kind: 'persistent', scope: 'staging' },
+			logicalName: 'api',
+			dependencies: [],
+			spec: {},
+			secrets: {},
+			metadata: { serviceKey: 'api' },
+			identity: deployState.identity,
+		};
+		const context = {
+			tenantRoot: '/tmp/tenant',
+			target: { kind: 'persistent', scope: 'staging' },
+			deployConfig: {
+				name: 'Test',
+				slug: 'test',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				hosting: { kind: 'hosted_project', teamId: 'acme', projectId: 'docs' },
+				runtime: { mode: 'treeseed_managed', registration: 'none', teamId: 'acme', projectId: 'docs' },
+				services: { api: { provider: 'railway', enabled: true } },
+				cloudflare: { accountId: 'account-123' },
+			},
+			launchEnv: {
+				RAILWAY_API_KEY: 'railway-token-from-alias',
+				TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
+				GH_TOKEN: 'github-token',
+				CLOUDFLARE_API_TOKEN: 'cf-token',
+				CLOUDFLARE_ACCOUNT_ID: 'account-123',
+			},
+			session: new Map(),
+		};
+
+		const observed = await adapter!.observe({ unit, context } as never);
+		const diff = adapter!.plan({ unit, context, observed } as never);
+		await adapter!.reconcile({ unit, context, observed, diff } as never);
+
+		expect(resolveTreeseedMachineEnvironmentValuesMock).not.toHaveBeenCalled();
+		expect(railwayEnvMock).toHaveBeenCalledWith(expect.objectContaining({
+			RAILWAY_API_TOKEN: 'railway-token-from-alias',
+			TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
+		}));
+		expect(upsertRailwayVariablesMock).toHaveBeenCalledWith(expect.objectContaining({
+			projectId: 'project-1',
+			environmentId: 'env-1',
+			serviceId: 'service-1',
+			variables: expect.objectContaining({
+				TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
+				GH_TOKEN: 'github-token',
+				CLOUDFLARE_API_TOKEN: 'cf-token',
+				CLOUDFLARE_ACCOUNT_ID: 'account-123',
+			}),
+		}));
 	});
 });

@@ -182,15 +182,44 @@ function providerCache<T>(input: TreeseedReconcileAdapterInput, key: string, loa
 	return value;
 }
 
+function normalizeEnvironmentValues(env: NodeJS.ProcessEnv | Record<string, unknown> | undefined) {
+	return Object.fromEntries(
+		Object.entries(env ?? {})
+			.filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+			.map(([key, value]) => [key, value]),
+	);
+}
+
+function resolveReconcileEnvironmentValues(
+	input: TreeseedReconcileAdapterInput,
+	scope: 'local' | 'staging' | 'prod',
+) {
+	if (scope === 'local') {
+		return resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+	}
+
+	const values = {
+		...normalizeEnvironmentValues(process.env),
+		...normalizeEnvironmentValues(input.context.launchEnv),
+	};
+	const launchRailwayAlias = input.context.launchEnv.RAILWAY_API_KEY;
+	if (!input.context.launchEnv.RAILWAY_API_TOKEN && typeof launchRailwayAlias === 'string' && launchRailwayAlias.length > 0) {
+		values.RAILWAY_API_TOKEN = launchRailwayAlias;
+	} else if (!values.RAILWAY_API_TOKEN && values.RAILWAY_API_KEY) {
+		values.RAILWAY_API_TOKEN = values.RAILWAY_API_KEY;
+	}
+	return values;
+}
+
 function buildCloudflareEnv(input: TreeseedReconcileAdapterInput) {
 	const scope = scopeFromTarget(toDeployTarget(input.context.target));
-	const machineValues = resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+	const values = resolveReconcileEnvironmentValues(input, scope);
 	return {
-		CLOUDFLARE_ACCOUNT_ID: machineValues.CLOUDFLARE_ACCOUNT_ID
+		CLOUDFLARE_ACCOUNT_ID: values.CLOUDFLARE_ACCOUNT_ID
 			?? input.context.launchEnv.CLOUDFLARE_ACCOUNT_ID
 			?? process.env.CLOUDFLARE_ACCOUNT_ID
 			?? resolveConfiguredCloudflareAccountId(input.context.deployConfig),
-		CLOUDFLARE_API_TOKEN: machineValues.CLOUDFLARE_API_TOKEN
+		CLOUDFLARE_API_TOKEN: values.CLOUDFLARE_API_TOKEN
 			?? input.context.launchEnv.CLOUDFLARE_API_TOKEN
 			?? process.env.CLOUDFLARE_API_TOKEN
 			?? '',
@@ -207,19 +236,21 @@ function hasLiveResourceId(value: unknown) {
 }
 
 function buildRailwayEnv(input: TreeseedReconcileAdapterInput, scope: 'local' | 'staging' | 'prod') {
-	const machineValues = resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+	const values = resolveReconcileEnvironmentValues(input, scope);
 	const token = [
-		machineValues.RAILWAY_API_TOKEN,
+		values.RAILWAY_API_TOKEN,
 		input.context.launchEnv.RAILWAY_API_TOKEN,
+		input.context.launchEnv.RAILWAY_API_KEY,
 		process.env.RAILWAY_API_TOKEN,
+		process.env.RAILWAY_API_KEY,
 	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
 	return {
 		RAILWAY_API_TOKEN: token,
-		TREESEED_RAILWAY_API_URL: machineValues.TREESEED_RAILWAY_API_URL
+		TREESEED_RAILWAY_API_URL: values.TREESEED_RAILWAY_API_URL
 			?? input.context.launchEnv.TREESEED_RAILWAY_API_URL
 			?? process.env.TREESEED_RAILWAY_API_URL
 			?? '',
-		TREESEED_RAILWAY_WORKSPACE: machineValues.TREESEED_RAILWAY_WORKSPACE
+		TREESEED_RAILWAY_WORKSPACE: values.TREESEED_RAILWAY_WORKSPACE
 			?? input.context.launchEnv.TREESEED_RAILWAY_WORKSPACE
 			?? process.env.TREESEED_RAILWAY_WORKSPACE
 			?? '',
@@ -558,7 +589,7 @@ async function ensureRailwayCustomDomain(input: TreeseedReconcileAdapterInput, s
 function collectCloudflareEnvironmentSync(input: TreeseedReconcileAdapterInput) {
 	const target = toDeployTarget(input.context.target);
 	const scope = scopeFromTarget(target);
-	const values = resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+	const values = resolveReconcileEnvironmentValues(input, scope);
 	const registry = collectTreeseedEnvironmentContext(input.context.tenantRoot);
 	const state = loadDeployState(input.context.tenantRoot, input.context.deployConfig, { target });
 	const generatedSecrets = buildSecretMap(input.context.deployConfig, state);
@@ -1683,7 +1714,7 @@ async function observeRailwayUnit(input: TreeseedReconcileAdapterInput, { refres
 
 function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput) {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
-	const values = resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+	const values = resolveReconcileEnvironmentValues(input, scope);
 	const registry = collectTreeseedEnvironmentContext(input.context.tenantRoot);
 	const state = loadDeployState(input.context.tenantRoot, input.context.deployConfig, { target: toDeployTarget(input.context.target) });
 	const secrets = Object.fromEntries(
