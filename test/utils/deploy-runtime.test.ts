@@ -1,8 +1,9 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TREESEED_DEFAULT_PROVIDER_SELECTIONS } from '../../src/platform/plugins/constants.ts';
+import { loadCliDeployConfig } from '../../src/operations/services/runtime-tools.ts';
 import {
 	getTreeseedAgentProviderSelections,
 	getTreeseedContentPublishProvider,
@@ -23,6 +24,7 @@ const originalCwd = process.cwd();
 afterEach(() => {
 	process.chdir(originalCwd);
 	resetTreeseedDeployConfigForTests();
+	vi.unstubAllGlobals();
 });
 
 async function createTenantFixture(configBody: string) {
@@ -44,6 +46,10 @@ async function createEmptyWorkspace() {
 		'id: test-site\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n  notes: ./src/content/notes\n  questions: ./src/content/questions\n  objectives: ./src/content/objectives\n  proposals: ./src/content/proposals\n  decisions: ./src/content/decisions\n  people: ./src/content/people\n  agents: ./src/content/agents\n  books: ./src/content/books\n  docs: ./src/content/knowledge\nfeatures:\n  docs: true\n  books: true\n  notes: true\n  questions: true\n  objectives: true\n  proposals: true\n  decisions: true\n  agents: true\n  forms: true\n',
 	);
 	return tenantRoot;
+}
+
+function stubEmbeddedDeployConfig(tenantRoot: string) {
+	vi.stubGlobal('__TREESEED_DEPLOY_CONFIG__', loadCliDeployConfig(tenantRoot));
 }
 
 describe('deploy runtime accessors', () => {
@@ -99,6 +105,7 @@ turnstile:
 
 		try {
 			process.chdir(tenantRoot);
+			stubEmbeddedDeployConfig(tenantRoot);
 			expect(getTreeseedFormsProvider()).toBe('mailer');
 			expect(getTreeseedOperationsProvider()).toBe('default');
 			expect(getTreeseedAgentProviderSelections()).toMatchObject({
@@ -146,6 +153,7 @@ providers:
 
 		try {
 			process.chdir(tenantRoot);
+			stubEmbeddedDeployConfig(tenantRoot);
 			const first = getTreeseedDeployConfig();
 			await writeFile(
 				join(tenantRoot, 'treeseed.site.yaml'),
@@ -179,6 +187,7 @@ providers:
 			expect(cached.slug).toBe('example-site');
 
 			resetTreeseedDeployConfigForTests();
+			stubEmbeddedDeployConfig(tenantRoot);
 
 			const reloaded = getTreeseedDeployConfig();
 			expect(reloaded.slug).toBe('changed-site');

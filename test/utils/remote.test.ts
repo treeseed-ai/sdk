@@ -20,6 +20,7 @@ import {
 	buildWranglerConfigContents,
 	createBranchPreviewDeployTarget,
 	loadDeployState,
+	resolveConfiguredSurfaceBaseUrl,
 } from '../../src/operations/services/deploy.ts';
 import { loadCliDeployConfig } from '../../src/operations/services/runtime-tools.ts';
 import { MemoryAgentDatabase } from '../../src/d1-store.ts';
@@ -166,7 +167,7 @@ describe('remote Treeseed support', () => {
 		expect(deployConfig.cloudflare.r2?.manifestKeyTemplate).toBe('teams/{teamId}/published/common.json');
 		expect(state.services.api.enabled).toBe(true);
 		expect(state.services.api.serviceName).toBe('acme-docs-api');
-		expect(state.services.api.publicBaseUrl).toBe('https://staging-api.example.com');
+		expect(state.services.api.publicBaseUrl).toBe(resolveConfiguredSurfaceBaseUrl(deployConfig, { kind: 'persistent', scope: 'staging' }, 'api'));
 		expect(state.services.worker.serviceName).toBe('acme-docs-worker');
 		expect(state.queues.agentWork.name).toBe('acme-docs-agent-work-staging');
 		expect(state.queues.agentWork.dlqName).toBe('acme-docs-agent-work-dlq-staging');

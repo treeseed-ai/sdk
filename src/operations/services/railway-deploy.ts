@@ -715,9 +715,15 @@ export async function ensureRailwayScheduledJobs(
 	scope,
 	{ dryRun = false, fetchImpl = fetch, apiToken, apiUrl, env = process.env } = {},
 ) {
+	const { schedules } = validateRailwayServiceConfiguration(tenantRoot, scope);
+	if (schedules.length === 0) {
+		return [];
+	}
 	const effectiveApiToken = apiToken || resolveRailwayAuthToken(env);
 	const effectiveApiUrl = apiUrl || resolveRailwayApiUrl(env);
-	const { schedules } = validateRailwayDeployPrerequisites(tenantRoot, scope, { env });
+	if (typeof effectiveApiToken !== 'string' || effectiveApiToken.trim().length === 0) {
+		throw new Error('Configure RAILWAY_API_TOKEN before deploying Railway-managed services.');
+	}
 	const queries = defaultRailwayScheduleQueries();
 	const results = [];
 
