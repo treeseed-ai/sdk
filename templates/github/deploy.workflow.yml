@@ -265,6 +265,16 @@ __WORKING_DIRECTORY_BLOCK__
         shell: bash
         run: |
 __TENANT_WORKFLOW_ACTION_COMMAND_BLOCK__
+
+      - name: Upload Treeseed deployment state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: treeseed-deploy-state-${{ needs.classify.outputs.scope }}
+          path: .treeseed/state
+          if-no-files-found: error
+          retention-days: 1
+          include-hidden-files: true
 __WORKING_DIRECTORY_BLOCK__
 
   deploy-code:
@@ -371,6 +381,12 @@ __WORKING_DIRECTORY_BLOCK__
       - name: Install dependencies
         run: npm ci
 
+      - name: Download Treeseed deployment state
+        uses: actions/download-artifact@v4
+        with:
+          name: treeseed-deploy-state-${{ needs.classify.outputs.scope }}
+          path: .treeseed/state
+
       - name: Deploy Treeseed platform
         shell: bash
         run: |
@@ -473,6 +489,12 @@ __WORKING_DIRECTORY_BLOCK__
       - name: Install dependencies
         run: npm ci
 
+      - name: Download Treeseed deployment state
+        uses: actions/download-artifact@v4
+        with:
+          name: treeseed-deploy-state-${{ needs.classify.outputs.scope }}
+          path: .treeseed/state
+
       - name: Publish Treeseed content
         shell: bash
         run: |
@@ -554,6 +576,12 @@ __WORKING_DIRECTORY_BLOCK__
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Download Treeseed deployment state
+        uses: actions/download-artifact@v4
+        with:
+          name: treeseed-deploy-state-${{ needs.classify.outputs.scope }}
+          path: .treeseed/state
 
       - name: Report Treeseed deployment state
         shell: bash

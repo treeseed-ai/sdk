@@ -32,6 +32,11 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(source).toContain("needs.provision.result == 'success'");
 		expect(source).toContain('TREESEED_WORKFLOW_SKIP_PROVISION: "1"');
 		expect(source).toContain('EXTRA_ARGS+=(--skip-provision)');
+		expect(source).toContain('uses: actions/upload-artifact@v4');
+		expect(source).toContain('uses: actions/download-artifact@v4');
+		expect(source).toContain('name: treeseed-deploy-state-${{ needs.classify.outputs.scope }}');
+		expect(source).toContain('path: .treeseed/state');
+		expect(source).toContain('include-hidden-files: true');
 		expect(source).toContain('TREESEED_CONTENT_SERVING_MODE: published_runtime');
 		expect(source).toContain('submodules: false');
 		expect(source).toContain('sparse-checkout: |');

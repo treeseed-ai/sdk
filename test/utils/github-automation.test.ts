@@ -69,6 +69,11 @@ describe('github automation workflow generation', () => {
 		expect(rendered).toContain("needs.provision.result == 'success'");
 		expect(rendered).toContain('TREESEED_WORKFLOW_SKIP_PROVISION: "1"');
 		expect(rendered).toContain('if [[ "${TREESEED_WORKFLOW_SKIP_PROVISION:-}" == "1" ]]; then EXTRA_ARGS+=(--skip-provision); fi');
+		expect(rendered).toContain('uses: actions/upload-artifact@v4');
+		expect(rendered).toContain('uses: actions/download-artifact@v4');
+		expect(rendered).toContain('name: treeseed-deploy-state-${{ needs.classify.outputs.scope }}');
+		expect(rendered).toContain('path: .treeseed/state');
+		expect(rendered).toContain('include-hidden-files: true');
 		expect(rendered).toContain('TREESEED_CONTENT_BUCKET_NAME');
 		expect(rendered).toContain('TREESEED_WORKFLOW_PREVIEW_ID');
 		expect(rendered).toContain('check-build-warnings');
