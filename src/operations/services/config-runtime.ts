@@ -2245,10 +2245,14 @@ export async function syncTreeseedGitHubEnvironment({
 		: {};
 	const githubClient = createGitHubApiClient({ env: ghEnv });
 	const environment = scope === 'prod' ? 'production' : scope;
+	const deploymentBranch = scope === 'prod' ? PRODUCTION_BRANCH : scope === 'staging' ? STAGING_BRANCH : null;
 	const progress = (message: string, stream: 'stdout' | 'stderr' = 'stdout') => onProgress?.(message, stream);
 	if (!dryRun) {
 		progress(`[${scope}][github][environment] Ensuring GitHub environment ${environment} exists...`);
-		await ensureGitHubActionsEnvironment(repository, environment, { client: githubClient });
+		await ensureGitHubActionsEnvironment(repository, environment, {
+			client: githubClient,
+			branchName: deploymentBranch,
+		});
 	}
 	progress(`[${scope}][github][sync] Loading existing GitHub secrets and variables...`);
 	const [secretNames, variableNames] = dryRun
@@ -2269,11 +2273,9 @@ export async function syncTreeseedGitHubEnvironment({
 			continue;
 		}
 
-		if (entry.targets.includes('github-secret')) {
+		if (entry.sensitivity === 'secret') {
 			items.push({ kind: 'secret', name: entry.id, value, existed: secretNames.has(entry.id) });
-		}
-
-		if (entry.targets.includes('github-variable')) {
+		} else {
 			items.push({ kind: 'variable', name: entry.id, value, existed: variableNames.has(entry.id) });
 		}
 	}
@@ -2671,7 +2673,8 @@ export function configGroupRank(group) {
 export function listRelevantTreeseedConfigEntries(registry, scope: TreeseedConfigScope) {
 	return registry.entries
 		.filter((entry) =>
-			entry.scopes.includes(scope)
+			entry.visibility !== 'system'
+			&& entry.scopes.includes(scope)
 			&& (
 				!entry.isRelevant
 				|| entry.isRelevant(registry.context, scope, 'config')

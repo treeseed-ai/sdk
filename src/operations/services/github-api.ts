@@ -307,7 +307,13 @@ export async function listGitHubRepositoryVariableNames(
 export async function ensureGitHubActionsEnvironment(
 	repository: string | { owner: string; name: string },
 	environmentName: string,
-	{ client = createGitHubApiClient() }: { client?: GitHubApiClient } = {},
+	{
+		client = createGitHubApiClient(),
+		branchName,
+	}: {
+		client?: GitHubApiClient;
+		branchName?: string | null;
+	} = {},
 ) {
 	const { owner, name: repo } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	try {
@@ -315,10 +321,90 @@ export async function ensureGitHubActionsEnvironment(
 			owner,
 			repo,
 			environment_name: environmentName,
+			...(branchName
+				? {
+					deployment_branch_policy: {
+						protected_branches: false,
+						custom_branch_policies: true,
+					},
+				}
+				: {}),
 		}));
+		if (branchName) {
+			await ensureGitHubEnvironmentBranchPolicy(client, {
+				owner,
+				repo,
+				environmentName,
+				branchName,
+			});
+		}
 		return { repository: `${owner}/${repo}`, environment: environmentName };
 	} catch (error) {
 		throw normalizeGitHubApiError(error, `Unable to ensure GitHub environment ${environmentName} for ${owner}/${repo}`);
+	}
+}
+
+async function ensureGitHubEnvironmentBranchPolicy(
+	client: GitHubApiClient,
+	{
+		owner,
+		repo,
+		environmentName,
+		branchName,
+	}: {
+		owner: string;
+		repo: string;
+		environmentName: string;
+		branchName: string;
+	},
+) {
+	type BranchPolicy = { id?: number | null; name?: string | null; type?: string | null };
+	const response = await withGitHubApiRetries(() => client.request(
+		'GET /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies',
+		{
+			owner,
+			repo,
+			environment_name: environmentName,
+			per_page: 100,
+		},
+	));
+	const policies = Array.isArray((response as { data?: { branch_policies?: BranchPolicy[] } }).data?.branch_policies)
+		? (response as { data: { branch_policies: BranchPolicy[] } }).data.branch_policies
+		: [];
+	const desired = policies.find((policy) => policy.name === branchName && (policy.type ?? 'branch') === 'branch');
+	for (const policy of policies) {
+		if (!policy.id || (policy.name === branchName && (policy.type ?? 'branch') === 'branch')) {
+			continue;
+		}
+		await withGitHubApiRetries(() => client.request(
+			'DELETE /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies/{branch_policy_id}',
+			{
+				owner,
+				repo,
+				environment_name: environmentName,
+				branch_policy_id: policy.id!,
+			},
+		));
+	}
+	if (desired) {
+		return;
+	}
+	try {
+		await withGitHubApiRetries(() => client.request(
+			'POST /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies',
+			{
+				owner,
+				repo,
+				environment_name: environmentName,
+				name: branchName,
+				type: 'branch',
+			},
+		));
+	} catch (error) {
+		if (error && typeof error === 'object' && (error as { status?: unknown }).status === 303) {
+			return;
+		}
+		throw error;
 	}
 }
 

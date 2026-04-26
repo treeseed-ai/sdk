@@ -26,6 +26,7 @@ export const TREESEED_ENVIRONMENT_PURPOSES = ['dev', 'save', 'deploy', 'destroy'
 export const TREESEED_ENVIRONMENT_SENSITIVITY = ['secret', 'plain', 'derived'] as const;
 export const TREESEED_ENVIRONMENT_STORAGE = ['scoped', 'shared'] as const;
 export const TREESEED_CONFIG_STARTUP_PROFILES = ['core', 'optional', 'advanced'] as const;
+export const TREESEED_ENVIRONMENT_VISIBILITY = ['user', 'system'] as const;
 
 export type TreeseedEnvironmentScope = (typeof TREESEED_ENVIRONMENT_SCOPES)[number];
 export type TreeseedEnvironmentRequirement = (typeof TREESEED_ENVIRONMENT_REQUIREMENTS)[number];
@@ -34,6 +35,7 @@ export type TreeseedEnvironmentPurpose = (typeof TREESEED_ENVIRONMENT_PURPOSES)[
 export type TreeseedEnvironmentSensitivity = (typeof TREESEED_ENVIRONMENT_SENSITIVITY)[number];
 export type TreeseedEnvironmentStorage = (typeof TREESEED_ENVIRONMENT_STORAGE)[number];
 export type TreeseedConfigStartupProfile = (typeof TREESEED_CONFIG_STARTUP_PROFILES)[number];
+export type TreeseedEnvironmentVisibility = (typeof TREESEED_ENVIRONMENT_VISIBILITY)[number];
 
 export type TreeseedEnvironmentValidation =
 	| { kind: 'string' | 'nonempty' | 'url' | 'email'; minLength?: number }
@@ -94,6 +96,7 @@ export type TreeseedEnvironmentEntry = {
 	cluster?: string;
 	onboardingFeature?: string;
 	startupProfile?: TreeseedConfigStartupProfile;
+	visibility?: TreeseedEnvironmentVisibility;
 	description: string;
 	howToGet: string;
 	sensitivity: TreeseedEnvironmentSensitivity;
@@ -117,6 +120,7 @@ export type TreeseedEnvironmentEntryYaml = Omit<
 	cluster?: string;
 	onboardingFeature?: string;
 	startupProfile?: TreeseedConfigStartupProfile;
+	visibility?: TreeseedEnvironmentVisibility;
 	defaultValueRef?: string;
 	localDefaultValueRef?: string;
 	relevanceRef?: string;
@@ -598,6 +602,7 @@ function materializeEntry(id: string, entry: TreeseedEnvironmentEntryYaml): Tree
 		id,
 		cluster: entry.cluster ?? `${entry.group}:${id}`,
 		onboardingFeature: entry.onboardingFeature,
+		visibility: entry.visibility ?? 'user',
 		startupProfile: entry.startupProfile
 			?? (entry.onboardingFeature ? 'optional' : (
 				entry.group === 'auth'

@@ -294,6 +294,49 @@ describe('config runtime shared environment values', () => {
 		expect(context.configReadinessByScope.staging.railway.configured).toBe(false);
 	});
 
+	it('hides system-managed Railway topology IDs from the config editor', () => {
+		const tenantRoot = createTenantFixture();
+		const config = createDefaultTreeseedMachineConfig({
+			tenantRoot,
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://market.example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				services: { api: { provider: 'railway', enabled: true } },
+			} as any,
+			tenantConfig: { id: 'test-site' } as any,
+		});
+		writeTreeseedMachineConfig(tenantRoot, config);
+		unlockSecrets(tenantRoot);
+		for (const id of [
+			'TREESEED_RAILWAY_PROJECT_ID',
+			'TREESEED_RAILWAY_ENVIRONMENT_ID',
+			'TREESEED_RAILWAY_WORKER_SERVICE_ID',
+		]) {
+			setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
+				id,
+				sensitivity: 'plain',
+				storage: 'scoped',
+			} as any, `${id.toLowerCase()}-value`);
+		}
+
+		const context = collectTreeseedConfigContext({
+			tenantRoot,
+			scopes: ['staging'],
+			env: {},
+		});
+		const visibleIds = context.entriesByScope.staging.map((entry) => entry.id);
+
+		expect(visibleIds).not.toContain('TREESEED_RAILWAY_PROJECT_ID');
+		expect(visibleIds).not.toContain('TREESEED_RAILWAY_ENVIRONMENT_ID');
+		expect(visibleIds).not.toContain('TREESEED_RAILWAY_WORKER_SERVICE_ID');
+		expect(context.valuesByScope.staging.TREESEED_RAILWAY_PROJECT_ID).toBe('treeseed_railway_project_id-value');
+		expect(context.valuesByScope.staging.TREESEED_RAILWAY_ENVIRONMENT_ID).toBe('treeseed_railway_environment_id-value');
+		expect(context.valuesByScope.staging.TREESEED_RAILWAY_WORKER_SERVICE_ID).toBe('treeseed_railway_worker_service_id-value');
+	});
+
 	it('does not treat one-character Railway token values as configured', () => {
 		const tenantRoot = createTenantFixture();
 		const config = createDefaultTreeseedMachineConfig({

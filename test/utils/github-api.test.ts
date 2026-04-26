@@ -58,6 +58,58 @@ describe('github environment api helpers', () => {
 		});
 	});
 
+	it('locks GitHub Actions environments to the configured deployment branch', async () => {
+		const client = createMockClient();
+		client.request
+			.mockResolvedValueOnce({ data: {} })
+			.mockResolvedValueOnce({
+				data: {
+					branch_policies: [
+						{ id: 1, name: 'main', type: 'branch' },
+					],
+				},
+			})
+			.mockResolvedValueOnce({ data: {} })
+			.mockResolvedValueOnce({ data: { id: 2, name: 'staging', type: 'branch' } });
+
+		await expect(ensureGitHubActionsEnvironment('owner/repo', 'staging', {
+			client,
+			branchName: 'staging',
+		})).resolves.toEqual({
+			repository: 'owner/repo',
+			environment: 'staging',
+		});
+
+		expect(client.request).toHaveBeenNthCalledWith(1, 'PUT /repos/{owner}/{repo}/environments/{environment_name}', {
+			owner: 'owner',
+			repo: 'repo',
+			environment_name: 'staging',
+			deployment_branch_policy: {
+				protected_branches: false,
+				custom_branch_policies: true,
+			},
+		});
+		expect(client.request).toHaveBeenNthCalledWith(2, 'GET /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies', {
+			owner: 'owner',
+			repo: 'repo',
+			environment_name: 'staging',
+			per_page: 100,
+		});
+		expect(client.request).toHaveBeenNthCalledWith(3, 'DELETE /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies/{branch_policy_id}', {
+			owner: 'owner',
+			repo: 'repo',
+			environment_name: 'staging',
+			branch_policy_id: 1,
+		});
+		expect(client.request).toHaveBeenNthCalledWith(4, 'POST /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies', {
+			owner: 'owner',
+			repo: 'repo',
+			environment_name: 'staging',
+			name: 'staging',
+			type: 'branch',
+		});
+	});
+
 	it('lists environment secret and variable names', async () => {
 		const client = createMockClient();
 		client.paginate

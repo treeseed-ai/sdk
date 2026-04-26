@@ -114,11 +114,18 @@ function writeDefaultMachineConfig(tenantRoot: string) {
 	}));
 }
 
-function setConfigValue(tenantRoot: string, scope: 'local' | 'staging' | 'prod', id: string, value: string, sensitivity: 'plain' | 'secret' = 'plain') {
+function setConfigValue(
+	tenantRoot: string,
+	scope: 'local' | 'staging' | 'prod',
+	id: string,
+	value: string,
+	sensitivity: 'plain' | 'secret' = 'plain',
+	storage?: 'shared' | 'scoped',
+) {
 	setTreeseedMachineEnvironmentValue(tenantRoot, scope, {
 		id,
 		sensitivity,
-		storage: id === 'TREESEED_PROJECT_RUNNER_TOKEN' ? 'scoped' : 'shared',
+		storage: storage ?? (id === 'TREESEED_PROJECT_RUNNER_TOKEN' ? 'scoped' : 'shared'),
 	} as any, value);
 }
 
@@ -171,6 +178,7 @@ describe('config GitHub environment sync', () => {
 		writeDefaultMachineConfig(tenantRoot);
 		unlockSecrets(tenantRoot);
 		seedHostedValues(tenantRoot);
+		setConfigValue(tenantRoot, 'staging', 'TREESEED_RAILWAY_PROJECT_ID', 'railway-project-id', 'plain', 'scoped');
 
 		const result = await syncTreeseedGitHubEnvironment({ tenantRoot, scope: 'staging' });
 
@@ -179,7 +187,9 @@ describe('config GitHub environment sync', () => {
 			scope: 'staging',
 			environment: 'staging',
 		});
-		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'staging', expect.any(Object));
+		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'staging', expect.objectContaining({
+			branchName: 'staging',
+		}));
 		expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
 			'owner/repo',
 			'staging',
@@ -192,6 +202,27 @@ describe('config GitHub environment sync', () => {
 			'staging',
 			'CLOUDFLARE_ACCOUNT_ID',
 			'account-123',
+			expect.any(Object),
+		);
+		expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
+			'owner/repo',
+			'staging',
+			'TREESEED_RAILWAY_WORKSPACE',
+			'acme-workspace',
+			expect.any(Object),
+		);
+		expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
+			'owner/repo',
+			'staging',
+			'TREESEED_RAILWAY_PROJECT_ID',
+			'railway-project-id',
+			expect.any(Object),
+		);
+		expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
+			'owner/repo',
+			'staging',
+			'GH_TOKEN',
+			'github-token-value',
 			expect.any(Object),
 		);
 	});
@@ -232,8 +263,12 @@ describe('config GitHub environment sync', () => {
 				expect.objectContaining({ scope: 'prod', environment: 'production' }),
 			],
 		});
-		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'staging', expect.any(Object));
-		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'production', expect.any(Object));
+		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'staging', expect.objectContaining({
+			branchName: 'staging',
+		}));
+		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'production', expect.objectContaining({
+			branchName: 'main',
+		}));
 		expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
 			'owner/repo',
 			'production',
@@ -288,6 +323,8 @@ describe('config GitHub environment sync', () => {
 		expect(result.bootstrapSystemsByScope.staging.runnable).toEqual(['github']);
 		expect(result.readinessByScope.staging.checks.reconcile).toBe('deferred');
 		expect(result.validationByScope.staging.ok).toBe(true);
-		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'staging', expect.any(Object));
+		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'staging', expect.objectContaining({
+			branchName: 'staging',
+		}));
 	});
 });

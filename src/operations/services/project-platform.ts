@@ -16,7 +16,7 @@ import {
 	type PublishedContentObjectPointer,
 } from '../../platform/published-content.ts';
 import { createPublishedContentPipeline } from '../../platform/published-content-pipeline.ts';
-import { collectTreeseedReconcileStatus, reconcileTreeseedTarget } from '../../reconcile/index.ts';
+import { collectTreeseedReconcileStatus, reconcileTreeseedTarget, resolveTreeseedBootstrapSelection } from '../../reconcile/index.ts';
 import { loadTreeseedManifest } from '../../platform/tenant-config.ts';
 import { applyTreeseedEnvironmentToProcess } from './config-runtime.ts';
 import {
@@ -63,6 +63,8 @@ export interface ProjectPlatformActionOptions {
 	write?: TreeseedBootstrapWriter;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 }
+
+const PROJECT_PLATFORM_BOOTSTRAP_SYSTEMS: TreeseedRunnableBootstrapSystem[] = ['data', 'web', 'api', 'agents'];
 
 function stableHash(value: Buffer | string) {
 	return createHash('sha256').update(value).digest('hex');
@@ -124,6 +126,34 @@ function runNodeScript(tenantRoot: string, scriptName: string, scriptArgs: strin
 	if (result.status !== 0) {
 		throw new Error(`${scriptName} failed.`);
 	}
+}
+
+function resolveProjectPlatformBootstrapSystems(
+	options: ProjectPlatformActionOptions,
+	siteConfig = loadCliDeployConfig(options.tenantRoot),
+) {
+	if (options.bootstrapSystems && options.bootstrapSystems.length > 0) {
+		return [...options.bootstrapSystems];
+	}
+	const selection = resolveTreeseedBootstrapSelection({
+		deployConfig: siteConfig,
+		env: { ...process.env, ...(options.env ?? {}) },
+		systems: PROJECT_PLATFORM_BOOTSTRAP_SYSTEMS,
+		skipUnavailable: true,
+	});
+	for (const skipped of selection.skipped) {
+		writeTreeseedBootstrapLine(
+			options.write,
+			{
+				scope: options.scope,
+				system: skipped.system,
+				task: 'availability',
+				stage: 'skip',
+			},
+			skipped.reason,
+		);
+	}
+	return selection.runnable.filter((system) => system !== 'github');
 }
 
 function runWrangler(
@@ -1002,20 +1032,28 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	const target = createPersistentDeployTarget(options.scope === 'local' ? 'staging' : options.scope);
 	const siteConfig = loadCliDeployConfig(options.tenantRoot);
+	const bootstrapSystems = resolveProjectPlatformBootstrapSystems(options, siteConfig);
+	const selectedSystems = new Set(bootstrapSystems);
+	const env = { ...process.env, ...(options.env ?? {}) };
 	const summary = await reconcileTreeseedTarget({
 		tenantRoot: options.tenantRoot,
 		target,
-		env: process.env,
+		env,
+		systems: bootstrapSystems,
 	});
 	const verification = await collectTreeseedReconcileStatus({
 		tenantRoot: options.tenantRoot,
 		target,
-		env: process.env,
+		env,
+		systems: bootstrapSystems,
 	});
 	ensureGeneratedWranglerConfig(options.tenantRoot, { target });
-	const railwayValidation = options.scope === 'local'
-		? validateRailwayServiceConfiguration(options.tenantRoot, options.scope)
-		: validateRailwayDeployPrerequisites(options.tenantRoot, options.scope);
+	const shouldValidateRailway = selectedSystems.has('api') || selectedSystems.has('agents');
+	const railwayValidation = shouldValidateRailway
+		? options.scope === 'local'
+			? validateRailwayServiceConfiguration(options.tenantRoot, options.scope)
+			: validateRailwayDeployPrerequisites(options.tenantRoot, options.scope, { env })
+		: { services: [] };
 	const railwaySchedules = [];
 	const railwayScheduleVerification = {
 		ok: true,
@@ -1161,7 +1199,8 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	const commitSha = currentCommit(options.tenantRoot);
 	const branchName = currentRef(options.tenantRoot);
-	const selectedSystems = new Set(options.bootstrapSystems ?? ['data', 'web', 'api', 'agents']);
+	const bootstrapSystems = resolveProjectPlatformBootstrapSystems(options);
+	const selectedSystems = new Set(bootstrapSystems);
 	const execution = options.bootstrapExecution ?? 'parallel';
 	const write = options.write;
 	const env = { ...process.env, ...(options.env ?? {}) };
@@ -1176,7 +1215,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 	});
 
 	if (!options.skipProvision) {
-		await provisionProjectPlatform({ ...options, reporter });
+		await provisionProjectPlatform({ ...options, reporter, bootstrapSystems });
 	}
 
 	const nodes: Array<TreeseedBootstrapDagNode> = [];
