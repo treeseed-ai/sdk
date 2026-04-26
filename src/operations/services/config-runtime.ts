@@ -1730,9 +1730,26 @@ export function resolveTreeseedLaunchEnvironment({
 			throw error;
 		}
 	}
-	const scopedValues = scope === 'local'
+	const registry = collectTreeseedEnvironmentContext(tenantRoot);
+	const seedValues = scope === 'local'
 		? { ...baseEnv, ...machineValues }
 		: { ...machineValues, ...baseEnv };
+	const suggestedValues = getTreeseedEnvironmentSuggestedValues({
+		scope,
+		purpose: 'deploy',
+		deployConfig: registry.context.deployConfig,
+		tenantConfig: registry.context.tenantConfig,
+		plugins: registry.context.plugins,
+		values: seedValues,
+	});
+	const nonSecretSuggestedValues = Object.fromEntries(
+		registry.entries
+			.filter((entry) => entry.sensitivity !== 'secret' && typeof suggestedValues[entry.id] === 'string' && suggestedValues[entry.id].length > 0)
+			.map((entry) => [entry.id, suggestedValues[entry.id]]),
+	);
+	const scopedValues = scope === 'local'
+		? { ...nonSecretSuggestedValues, ...baseEnv, ...machineValues }
+		: { ...nonSecretSuggestedValues, ...machineValues, ...baseEnv };
 	return {
 		...scopedValues,
 		...overrides,

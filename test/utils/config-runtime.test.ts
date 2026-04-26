@@ -210,6 +210,37 @@ describe('config runtime shared environment values', () => {
 		});
 	});
 
+	it('uses non-secret deploy defaults in hosted launch env without generating secrets', () => {
+		const tenantRoot = createTenantFixture();
+		writeTreeseedMachineConfig(tenantRoot, createDefaultTreeseedMachineConfig({
+			tenantRoot,
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://market.example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				services: { api: { provider: 'railway', enabled: true } },
+			} as any,
+			tenantConfig: { id: 'test-site' } as any,
+		}));
+
+		const env = resolveTreeseedLaunchEnvironment({
+			tenantRoot,
+			scope: 'staging',
+			baseEnv: {
+				CLOUDFLARE_API_TOKEN: 'cf-token',
+				CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				RAILWAY_API_TOKEN: 'railway-token',
+			} as any,
+		});
+
+		expect(env.TREESEED_HOSTING_KIND).toBe('self_hosted_project');
+		expect(env.TREESEED_HOSTING_REGISTRATION).toBe('none');
+		expect(env.TREESEED_CONTENT_BUCKET_BINDING).toBe('TREESEED_CONTENT_BUCKET');
+		expect(env.TREESEED_EDITORIAL_PREVIEW_SECRET).toBeUndefined();
+	});
+
 	it('does not overwrite hosted process env values when applying config', () => {
 		const tenantRoot = createTenantFixture();
 		const config = createDefaultTreeseedMachineConfig({

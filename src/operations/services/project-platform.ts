@@ -18,7 +18,7 @@ import {
 import { createPublishedContentPipeline } from '../../platform/published-content-pipeline.ts';
 import { collectTreeseedReconcileStatus, reconcileTreeseedTarget, resolveTreeseedBootstrapSelection } from '../../reconcile/index.ts';
 import { loadTreeseedManifest } from '../../platform/tenant-config.ts';
-import { applyTreeseedEnvironmentToProcess } from './config-runtime.ts';
+import { applyTreeseedEnvironmentToProcess, assertTreeseedCommandEnvironment } from './config-runtime.ts';
 import {
 	assertDeploymentInitialized,
 	createPersistentDeployTarget,
@@ -154,6 +154,20 @@ function resolveProjectPlatformBootstrapSystems(
 		);
 	}
 	return selection.runnable.filter((system) => system !== 'github');
+}
+
+function runTenantPublishContentPreflight(options: ProjectPlatformActionOptions) {
+	const target = createPersistentDeployTarget(options.scope === 'local' ? 'staging' : options.scope);
+	applyTreeseedEnvironmentToProcess({ tenantRoot: options.tenantRoot, scope: options.scope, override: true });
+	if (options.scope !== 'local') {
+		assertTreeseedCommandEnvironment({
+			tenantRoot: options.tenantRoot,
+			scope: options.scope,
+			purpose: 'deploy',
+		});
+		assertDeploymentInitialized(options.tenantRoot, { target });
+	}
+	return target;
 }
 
 function runWrangler(
@@ -798,6 +812,7 @@ async function publishContent(
 	options: ProjectPlatformActionOptions,
 	reporter: ControlPlaneReporter,
 ) {
+	const target = runTenantPublishContentPreflight(options);
 	const siteConfig = loadCliDeployConfig(options.tenantRoot);
 	const tenantConfig = loadTreeseedManifest(resolve(options.tenantRoot, 'src', 'manifest.yaml'));
 	const teamId = String(process.env.TREESEED_HOSTING_TEAM_ID ?? siteConfig.hosting?.teamId ?? siteConfig.slug).trim() || siteConfig.slug;
@@ -807,7 +822,6 @@ async function publishContent(
 	const previewId = options.previewId
 		?? `staging-${sanitizeSegment(branchName, 'preview')}-${sanitizeSegment(commitSha?.slice(0, 12), 'latest')}`;
 	const locator = resolveTeamScopedContentLocator(siteConfig, teamId);
-	const target = createPersistentDeployTarget(options.scope === 'local' ? 'staging' : options.scope);
 	const { wranglerPath } = ensureGeneratedWranglerConfig(options.tenantRoot, { target });
 	const wranglerEnv = { CLOUDFLARE_ACCOUNT_ID: String(process.env.CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim() };
 	const bucketName = String(process.env.TREESEED_CONTENT_BUCKET_NAME ?? siteConfig.cloudflare.r2?.bucketName ?? '').trim();
@@ -1352,7 +1366,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 			scheduleVerification: railwayScheduleVerification,
 		});
 	}
-	const monitor = await monitorProjectPlatform({ ...options, reporter });
+	const monitor = await monitorProjectPlatform({ ...options, reporter, bootstrapSystems });
 
 	await reportDeployment(reporter, {
 		environment: options.scope,
@@ -1388,15 +1402,24 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	const target = createPersistentDeployTarget(options.scope === 'local' ? 'staging' : options.scope);
 	const siteConfig = loadCliDeployConfig(options.tenantRoot);
+	const selectedSystems = new Set(resolveProjectPlatformBootstrapSystems(options, siteConfig));
+	const apiSelected = selectedSystems.has('api');
+	const agentsSelected = selectedSystems.has('agents');
 	const state = loadDeployState(options.tenantRoot, siteConfig, { target });
 	const webProbeUrl = resolveImmediatePagesProbeUrl(siteConfig, state, target);
 	const apiBaseUrl = resolveImmediateApiProbeUrl(siteConfig, state, target);
+	const skippedApiCheck = apiSelected
+		? { ok: false, skipped: true, reason: 'api_url_unconfigured' }
+		: { ok: true, skipped: true, reason: 'api_not_selected' };
+	const skippedAgentCheck = agentsSelected
+		? { ok: false, skipped: true, reason: 'api_url_unconfigured' }
+		: { ok: true, skipped: true, reason: 'agents_not_selected' };
 	const checks = {
 		pages: await probeHttp(webProbeUrl),
-		apiHealth: apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz`) : { ok: false, skipped: true, reason: 'api_url_unconfigured' },
-		apiReady: apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/readyz`) : { ok: false, skipped: true, reason: 'api_url_unconfigured' },
-		d1Health: apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz/deep`) : { ok: false, skipped: true, reason: 'api_url_unconfigured' },
-		agentHealth: apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/internal/core/agent/healthz`) : { ok: false, skipped: true, reason: 'api_url_unconfigured' },
+		apiHealth: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz`) : skippedApiCheck,
+		apiReady: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/readyz`) : skippedApiCheck,
+		d1Health: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz/deep`) : skippedApiCheck,
+		agentHealth: agentsSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/internal/core/agent/healthz`) : skippedAgentCheck,
 		r2: options.dryRun ? { ok: true, skipped: true, reason: 'dry_run' } : probeR2(options.tenantRoot, siteConfig, state, target),
 		queue: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : probeQueue(siteConfig, state),
 		scaleProbe: probeScaleConfiguration(siteConfig, state),

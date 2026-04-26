@@ -58,9 +58,17 @@ describe('github automation workflow generation', () => {
 		expect(rendered).toContain('Treeseed Deploy');
 		expect(rendered).toContain('working-directory: apps/site');
 		expect(rendered).toContain('./packages/sdk/scripts/tenant-workflow-action.ts');
+		expect(rendered).toContain('TREESEED_BOOTSTRAP_MODE: auto');
 		expect(rendered).toContain('code_changed');
 		expect(rendered).toContain('action_kind');
+		expect(rendered).toContain('migrations/*)');
+		expect(rendered).toContain('code_changed="true"');
+		expect(rendered).not.toContain('docs/*|migrations/*');
 		expect(rendered).toContain("needs['deploy-code'].result");
+		expect(rendered).toContain('always() &&');
+		expect(rendered).toContain("needs.provision.result == 'success'");
+		expect(rendered).toContain('TREESEED_WORKFLOW_SKIP_PROVISION: "1"');
+		expect(rendered).toContain('if [[ "${TREESEED_WORKFLOW_SKIP_PROVISION:-}" == "1" ]]; then EXTRA_ARGS+=(--skip-provision); fi');
 		expect(rendered).toContain('TREESEED_CONTENT_BUCKET_NAME');
 		expect(rendered).toContain('TREESEED_WORKFLOW_PREVIEW_ID');
 		expect(rendered).toContain('check-build-warnings');
@@ -72,6 +80,22 @@ describe('github automation workflow generation', () => {
 		expect(rendered).toContain('TREESEED_SMTP_FROM: ${{ vars.TREESEED_SMTP_FROM }}');
 		expect(rendered).toContain('TREESEED_SMTP_REPLY_TO: ${{ vars.TREESEED_SMTP_REPLY_TO }}');
 		expect(rendered).toContain('RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}');
+		for (const line of [
+			'TREESEED_RAILWAY_WORKSPACE: ${{ vars.TREESEED_RAILWAY_WORKSPACE }}',
+			'TREESEED_HOSTING_KIND: ${{ vars.TREESEED_HOSTING_KIND }}',
+			'TREESEED_HOSTING_REGISTRATION: ${{ vars.TREESEED_HOSTING_REGISTRATION }}',
+			'TREESEED_API_BASE_URL: ${{ vars.TREESEED_API_BASE_URL }}',
+			'TREESEED_BETTER_AUTH_SECRET: ${{ secrets.TREESEED_BETTER_AUTH_SECRET }}',
+			'TREESEED_WEB_SERVICE_ID: ${{ vars.TREESEED_WEB_SERVICE_ID }}',
+			'TREESEED_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_WEB_SERVICE_SECRET }}',
+			'TREESEED_WEB_ASSERTION_SECRET: ${{ secrets.TREESEED_WEB_ASSERTION_SECRET }}',
+			'TREESEED_WEB_CSRF_SECRET: ${{ secrets.TREESEED_WEB_CSRF_SECRET }}',
+			'TREESEED_API_WEB_SERVICE_ID: ${{ vars.TREESEED_API_WEB_SERVICE_ID }}',
+			'TREESEED_API_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_API_WEB_SERVICE_SECRET }}',
+			'TREESEED_API_WEB_ASSERTION_SECRET: ${{ secrets.TREESEED_API_WEB_ASSERTION_SECRET }}',
+		]) {
+			expect(rendered).toContain(line);
+		}
 		expect(rendered).not.toContain('TREESEED_SMTP_HOST: ${{ secrets.TREESEED_SMTP_HOST }}');
 	});
 

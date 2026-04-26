@@ -401,6 +401,7 @@ export function requiredGitHubSecrets(tenantRoot) {
 function renderTenantWorkflowActionCommand() {
 	return [
 		'EXTRA_ARGS=()',
+		'if [[ "${TREESEED_WORKFLOW_SKIP_PROVISION:-}" == "1" ]]; then EXTRA_ARGS+=(--skip-provision); fi',
 		'if [[ -n "${TREESEED_WORKFLOW_PROJECT:-}" ]]; then EXTRA_ARGS+=(--project-id "${TREESEED_WORKFLOW_PROJECT}"); fi',
 		'if [[ -n "${TREESEED_WORKFLOW_PREVIEW_ID:-}" ]]; then EXTRA_ARGS+=(--preview-id "${TREESEED_WORKFLOW_PREVIEW_ID}"); fi',
 		'if test -f ./packages/sdk/scripts/tenant-workflow-action.ts; then',

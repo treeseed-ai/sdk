@@ -25,6 +25,13 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 
 		expect(source).toContain('TREESEED_BOOTSTRAP_MODE: auto');
 		expect((source.match(/submodules: recursive/g) ?? []).length).toBeGreaterThanOrEqual(4);
+		expect(source).toContain('migrations/*)');
+		expect(source).toContain('code_changed="true"');
+		expect(source).not.toContain('docs/*|migrations/*');
+		expect(source).toContain('always() &&');
+		expect(source).toContain("needs.provision.result == 'success'");
+		expect(source).toContain('TREESEED_WORKFLOW_SKIP_PROVISION: "1"');
+		expect(source).toContain('EXTRA_ARGS+=(--skip-provision)');
 		expect(source).toContain('TREESEED_CONTENT_SERVING_MODE: published_runtime');
 		expect(source).toContain('submodules: false');
 		expect(source).toContain('sparse-checkout: |');

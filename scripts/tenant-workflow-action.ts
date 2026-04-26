@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url';
 import {
 	resolveScope,
 	runProjectPlatformAction,
@@ -15,6 +16,7 @@ function parseArgs(argv: string[]) {
 		projectId: null as string | null,
 		previewId: null as string | null,
 		dryRun: false,
+		skipProvision: false,
 	};
 
 	const rest = [...argv];
@@ -57,6 +59,10 @@ function parseArgs(argv: string[]) {
 			parsed.dryRun = true;
 			continue;
 		}
+		if (current === '--skip-provision') {
+			parsed.skipProvision = true;
+			continue;
+		}
 		throw new Error(`Unknown workflow action argument: ${current}`);
 	}
 
@@ -72,6 +78,7 @@ async function main() {
 		projectId: options.projectId ?? process.env.TREESEED_PROJECT_ID ?? null,
 		previewId: options.previewId,
 		dryRun: options.dryRun,
+		skipProvision: options.skipProvision,
 	});
 
 	if (result !== undefined) {
@@ -79,4 +86,8 @@ async function main() {
 	}
 }
 
-await main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+	await main();
+}
+
+export { parseArgs };
