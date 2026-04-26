@@ -266,6 +266,11 @@ __WORKING_DIRECTORY_BLOCK__
         run: |
 __TENANT_WORKFLOW_ACTION_COMMAND_BLOCK__
 
+      - name: Ensure Treeseed deployment state
+        shell: bash
+        run: |
+          node --input-type=module -e "import { dirname } from 'node:path'; import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'; const scope = process.env.TREESEED_WORKFLOW_ENVIRONMENT || 'staging'; const filePath = '.treeseed/state/' + scope + '/deploy.json'; const now = new Date().toISOString(); let state = {}; if (existsSync(filePath)) { state = JSON.parse(readFileSync(filePath, 'utf8')); } state.target = state.target || { kind: 'persistent', scope }; state.readiness = { ...(state.readiness || {}), initialized: true, configured: true, phase: state.readiness?.phase || 'config_complete', initializedAt: state.readiness?.initializedAt || now, lastValidatedAt: now, blockers: state.readiness?.blockers || [], warnings: state.readiness?.warnings || [] }; mkdirSync(dirname(filePath), { recursive: true }); writeFileSync(filePath, JSON.stringify(state, null, 2) + '\n');"
+
       - name: Upload Treeseed deployment state
         if: always()
         uses: actions/upload-artifact@v4

@@ -26,6 +26,7 @@ import {
 	ensureGeneratedWranglerConfig,
 	finalizeDeploymentState,
 	loadDeployState,
+	markDeploymentInitialized,
 	purgePublishedContentCaches,
 	resolveConfiguredCloudflareAccountId,
 	resolveConfiguredSurfaceBaseUrl,
@@ -1171,6 +1172,7 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 		});
 	}
 	writeDeployState(options.tenantRoot, state, { target });
+	markDeploymentInitialized(options.tenantRoot, { target });
 
 	await reportDeployment(reporter, {
 		environment: options.scope,
