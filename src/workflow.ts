@@ -168,10 +168,15 @@ export type TreeseedSwitchInput = {
 };
 
 export type TreeseedConfigScope = 'all' | 'local' | 'staging' | 'prod';
+export type TreeseedBootstrapSystem = 'all' | 'github' | 'data' | 'web' | 'api' | 'agents';
+export type TreeseedBootstrapExecution = 'parallel' | 'sequential';
 
 export type TreeseedConfigInput = {
 	target?: TreeseedConfigScope[] | TreeseedConfigScope;
 	environment?: TreeseedConfigScope[] | TreeseedConfigScope;
+	systems?: TreeseedBootstrapSystem[] | TreeseedBootstrapSystem;
+	skipUnavailable?: boolean;
+	bootstrapExecution?: TreeseedBootstrapExecution;
 	syncProviders?: 'none' | 'github' | 'cloudflare' | 'railway' | 'all';
 	sync?: 'none' | 'github' | 'cloudflare' | 'railway' | 'all';
 	bootstrap?: boolean;

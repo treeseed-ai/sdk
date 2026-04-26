@@ -3,6 +3,7 @@ import { relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { loadCliDeployConfig } from './runtime-tools.ts';
 import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from './deploy.ts';
+import { runPrefixedCommand, sleep, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from './bootstrap-runner.ts';
 import {
 	ensureRailwayEnvironment,
 	ensureRailwayProject,
@@ -1065,7 +1066,21 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 	});
 }
 
-export async function deployRailwayService(tenantRoot, service, { dryRun = false } = {}) {
+export async function deployRailwayService(
+	tenantRoot,
+	service,
+	{
+		dryRun = false,
+		write,
+		prefix,
+		env = process.env,
+	}: {
+		dryRun?: boolean;
+		write?: TreeseedBootstrapWriter;
+		prefix?: TreeseedBootstrapTaskPrefix;
+		env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	} = {},
+) {
 	const plan = planRailwayServiceDeploy(service);
 	if (dryRun) {
 		return {
@@ -1077,11 +1092,19 @@ export async function deployRailwayService(tenantRoot, service, { dryRun = false
 		};
 	}
 
+	const taskPrefix = prefix ?? {
+		scope: normalizeScope(service.scope ?? service.railwayEnvironment ?? 'railway'),
+		system: service.key === 'api' ? 'api' : 'agents',
+		task: `${service.key}-railway-deploy`,
+		stage: 'deploy',
+	};
+	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
 	if (service.buildCommand) {
-		const buildResult = spawnSync('bash', ['-lc', service.buildCommand], {
+		const buildResult = await runPrefixedCommand('bash', ['-lc', service.buildCommand], {
 			cwd: service.rootDir,
-			stdio: 'inherit',
-			env: { ...process.env },
+			env: commandEnv,
+			write,
+			prefix: { ...taskPrefix, stage: 'build' },
 		});
 		if (buildResult.status !== 0) {
 			throw new Error(`Railway ${service.key} build command failed.`);
@@ -1090,17 +1113,12 @@ export async function deployRailwayService(tenantRoot, service, { dryRun = false
 
 	let lastFailure = null;
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
-		const result = runRailway(plan.args, {
+		const result = await runPrefixedCommand(plan.command, plan.args, {
 			cwd: service.rootDir,
-			capture: true,
-			allowFailure: true,
+			env: commandEnv,
+			write,
+			prefix: taskPrefix,
 		});
-		if (result.stdout) {
-			process.stdout.write(result.stdout);
-		}
-		if (result.stderr) {
-			process.stderr.write(result.stderr);
-		}
 		if (result.status === 0) {
 			lastFailure = null;
 			break;
@@ -1110,16 +1128,15 @@ export async function deployRailwayService(tenantRoot, service, { dryRun = false
 			throw new Error(result.stderr?.trim() || result.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
 		}
 		const backoffMs = 5000 * attempt;
-		console.warn(
-			`Railway deploy for ${service.serviceName ?? service.serviceId ?? service.key} hit a transient failure; retrying in ${Math.round(backoffMs / 1000)}s...`,
-		);
-		sleepSync(backoffMs);
+		const warning = `Railway deploy for ${service.serviceName ?? service.serviceId ?? service.key} hit a transient failure; retrying in ${Math.round(backoffMs / 1000)}s...`;
+		write ? write(`[${taskPrefix.scope}][${taskPrefix.system}][${taskPrefix.task}][retry] ${warning}`, 'stderr') : console.warn(warning);
+		await sleep(backoffMs);
 	}
 	if (lastFailure) {
 		throw new Error(lastFailure.stderr?.trim() || lastFailure.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
 	}
 	const runtimeConfiguration = await syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, service, {
-		env: buildRailwayCommandEnv(process.env),
+		env: commandEnv,
 	});
 	return {
 		service: service.key,

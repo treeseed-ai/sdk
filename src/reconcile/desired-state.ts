@@ -56,7 +56,7 @@ export function deriveTreeseedDesiredUnits({
 			binding: legacyState.queues.agentWork.binding,
 		},
 		secrets: {},
-		metadata: {},
+		metadata: { bootstrapSystem: 'data' },
 	});
 	const databaseId = add({
 		unitId: createTreeseedReconcileUnitId('database', legacyState.d1Databases.SITE_DATA_DB.databaseName),
@@ -71,7 +71,7 @@ export function deriveTreeseedDesiredUnits({
 			binding: 'SITE_DATA_DB',
 		},
 		secrets: {},
-		metadata: {},
+		metadata: { bootstrapSystem: 'data' },
 	});
 	const formGuardKvId = add({
 		unitId: createTreeseedReconcileUnitId('kv-form-guard', legacyState.kvNamespaces.FORM_GUARD_KV.name),
@@ -83,7 +83,7 @@ export function deriveTreeseedDesiredUnits({
 		dependencies: [],
 		spec: { binding: 'FORM_GUARD_KV', name: legacyState.kvNamespaces.FORM_GUARD_KV.name },
 		secrets: {},
-		metadata: {},
+		metadata: { bootstrapSystem: 'web' },
 	});
 	const sessionKvId = add({
 		unitId: createTreeseedReconcileUnitId('kv-session', legacyState.kvNamespaces.SESSION.name),
@@ -95,7 +95,7 @@ export function deriveTreeseedDesiredUnits({
 		dependencies: [],
 		spec: { binding: 'SESSION', name: legacyState.kvNamespaces.SESSION.name },
 		secrets: {},
-		metadata: {},
+		metadata: { bootstrapSystem: 'web' },
 	});
 	const contentStoreId = add({
 		unitId: createTreeseedReconcileUnitId('content-store', legacyState.content.bucketName ?? deployConfig.slug),
@@ -113,7 +113,7 @@ export function deriveTreeseedDesiredUnits({
 			previewRootTemplate: legacyState.content.previewRootTemplate,
 		},
 		secrets: {},
-		metadata: { shared: true },
+		metadata: { shared: true, bootstrapSystem: 'data' },
 	});
 	const pagesProjectId = add({
 		unitId: createTreeseedReconcileUnitId('pages-project', legacyState.pages.projectName),
@@ -130,7 +130,7 @@ export function deriveTreeseedDesiredUnits({
 			buildOutputDir: legacyState.pages.buildOutputDir,
 		},
 		secrets: {},
-		metadata: {},
+		metadata: { bootstrapSystem: 'web' },
 	});
 	const edgeWorkerId = add({
 		unitId: createTreeseedReconcileUnitId('edge-worker', legacyState.workerName),
@@ -144,7 +144,7 @@ export function deriveTreeseedDesiredUnits({
 			workerName: legacyState.workerName,
 		},
 		secrets: {},
-		metadata: {},
+		metadata: { bootstrapSystem: 'web' },
 	});
 	if (deployConfig.surfaces?.web?.enabled !== false) {
 		const scope = target.kind === 'persistent' ? target.scope : 'staging';
@@ -165,7 +165,7 @@ export function deriveTreeseedDesiredUnits({
 					projectName: legacyState.pages.projectName,
 				},
 				secrets: {},
-				metadata: { surface: 'web' },
+				metadata: { surface: 'web', bootstrapSystem: 'web' },
 			})
 			: null;
 		const webDnsUnitId = webDomain
@@ -189,7 +189,7 @@ export function deriveTreeseedDesiredUnits({
 					targetKind: 'pages-project',
 				},
 				secrets: {},
-				metadata: { surface: 'web' },
+				metadata: { surface: 'web', bootstrapSystem: 'web' },
 			})
 			: null;
 		add({
@@ -211,7 +211,7 @@ export function deriveTreeseedDesiredUnits({
 				localBaseUrl: deployConfig.surfaces?.web?.localBaseUrl ?? null,
 			},
 			secrets: {},
-			metadata: {},
+			metadata: { bootstrapSystem: 'web' },
 		});
 	}
 
@@ -224,6 +224,7 @@ export function deriveTreeseedDesiredUnits({
 			continue;
 		}
 		const concreteType = railwayConcreteUnitTypeForServiceKey(serviceKey);
+		const serviceBootstrapSystem = serviceKey === 'api' ? 'api' : 'agents';
 		const concreteId = add({
 			unitId: createTreeseedReconcileUnitId(concreteType, serviceState?.serviceName ?? configuredService.serviceName ?? serviceKey),
 			unitType: concreteType,
@@ -255,6 +256,7 @@ export function deriveTreeseedDesiredUnits({
 				scheduleManaged: Array.isArray(configuredService.schedule) && configuredService.schedule.length > 0,
 				scheduleBootstrap: false,
 				scheduleDeployScopes: ['prod'],
+				bootstrapSystem: serviceBootstrapSystem,
 			},
 		});
 		const apiDomain = serviceKey === 'api' && target.kind === 'persistent'
@@ -276,7 +278,7 @@ export function deriveTreeseedDesiredUnits({
 					environment: normalizeRailwayEnvironmentName(serviceState?.environment ?? configuredService.railwayEnvironment),
 				},
 				secrets: {},
-				metadata: { surface: 'api', serviceKey },
+				metadata: { surface: 'api', serviceKey, bootstrapSystem: 'api' },
 			})
 			: null;
 		const apiDnsUnitId = apiDomain
@@ -295,7 +297,7 @@ export function deriveTreeseedDesiredUnits({
 					serviceKey,
 				},
 				secrets: {},
-				metadata: { surface: 'api', serviceKey },
+				metadata: { surface: 'api', serviceKey, bootstrapSystem: 'api' },
 			})
 			: null;
 		const runtimeUnitType = (() => {
@@ -325,7 +327,7 @@ export function deriveTreeseedDesiredUnits({
 				publicBaseUrl: serviceState?.publicBaseUrl ?? null,
 			},
 			secrets: {},
-			metadata: {},
+			metadata: { bootstrapSystem: serviceBootstrapSystem },
 		});
 	}
 

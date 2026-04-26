@@ -240,29 +240,34 @@ describe('config runtime shared environment values', () => {
 		});
 		writeTreeseedMachineConfig(tenantRoot, config);
 		unlockSecrets(tenantRoot);
-		setTreeseedMachineEnvironmentValue(tenantRoot, 'local', {
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
 			id: 'GH_TOKEN',
 			sensitivity: 'secret',
 			storage: 'shared',
 		} as any, 'gh_test_value');
-		setTreeseedMachineEnvironmentValue(tenantRoot, 'local', {
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
 			id: 'CLOUDFLARE_API_TOKEN',
 			sensitivity: 'secret',
 			storage: 'shared',
 		} as any, 'cf_test_value');
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
+			id: 'CLOUDFLARE_ACCOUNT_ID',
+			sensitivity: 'plain',
+			storage: 'shared',
+		} as any, 'account-123');
 
 		const context = collectTreeseedConfigContext({
 			tenantRoot,
-			scopes: ['local'],
+			scopes: ['staging'],
 			env: {},
 		});
 
-		expect(context.configReadinessByScope.local.github.configured).toBe(true);
-		expect(context.configReadinessByScope.local.cloudflare.configured).toBe(true);
-		expect(context.configReadinessByScope.local.railway.configured).toBe(false);
+		expect(context.configReadinessByScope.staging.github.configured).toBe(true);
+		expect(context.configReadinessByScope.staging.cloudflare.configured).toBe(true);
+		expect(context.configReadinessByScope.staging.railway.configured).toBe(false);
 	});
 
-	it('treats RAILWAY_API_KEY as an alias for the primary Railway API token', () => {
+	it('ignores legacy Railway API token aliases', () => {
 		const tenantRoot = createTenantFixture();
 		const config = createDefaultTreeseedMachineConfig({
 			tenantRoot,
@@ -281,12 +286,12 @@ describe('config runtime shared environment values', () => {
 
 		const context = collectTreeseedConfigContext({
 			tenantRoot,
-			scopes: ['local'],
+			scopes: ['staging'],
 			env: { RAILWAY_API_KEY: 'legacy-railway-key' } as any,
 		});
 
-		expect(context.valuesByScope.local.RAILWAY_API_TOKEN).toBe('legacy-railway-key');
-		expect(context.configReadinessByScope.local.railway.configured).toBe(true);
+		expect(context.valuesByScope.staging.RAILWAY_API_TOKEN).toBeUndefined();
+		expect(context.configReadinessByScope.staging.railway.configured).toBe(false);
 	});
 
 	it('does not treat one-character Railway token values as configured', () => {
@@ -305,7 +310,7 @@ describe('config runtime shared environment values', () => {
 		});
 		writeTreeseedMachineConfig(tenantRoot, config);
 		unlockSecrets(tenantRoot);
-		setTreeseedMachineEnvironmentValue(tenantRoot, 'local', {
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
 			id: 'RAILWAY_API_TOKEN',
 			sensitivity: 'secret',
 			storage: 'shared',
@@ -313,17 +318,17 @@ describe('config runtime shared environment values', () => {
 
 		const context = collectTreeseedConfigContext({
 			tenantRoot,
-			scopes: ['local'],
+			scopes: ['staging'],
 			env: {},
 		});
 
-		expect(context.valuesByScope.local.RAILWAY_API_TOKEN).toBe('0');
-		expect(context.validationByScope.local.invalid).toEqual(
+		expect(context.valuesByScope.staging.RAILWAY_API_TOKEN).toBe('0');
+		expect(context.validationByScope.staging.invalid).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ id: 'RAILWAY_API_TOKEN' }),
 			]),
 		);
-		expect(context.configReadinessByScope.local.railway.configured).toBe(false);
+		expect(context.configReadinessByScope.staging.railway.configured).toBe(false);
 	});
 
 	it('promotes newly shared hosted config from staging into shared storage and reports conflicts', () => {

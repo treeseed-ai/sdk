@@ -378,8 +378,6 @@ export function isWorkspaceRoot(root = process.cwd()) {
 export function createProductionBuildEnv(extraEnv = {}) {
 	return {
 		TREESEED_LOCAL_DEV_MODE: 'cloudflare',
-		TREESEED_PUBLIC_FORMS_LOCAL_BYPASS_TURNSTILE: '',
-		TREESEED_FORMS_LOCAL_BYPASS_TURNSTILE: '',
 		TREESEED_FORMS_LOCAL_BYPASS_CLOUDFLARE_GUARDS: '',
 		TREESEED_PUBLIC_DEV_WATCH_RELOAD: '',
 		...extraEnv,

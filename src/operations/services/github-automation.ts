@@ -6,6 +6,8 @@ import { packageRoot, loadCliDeployConfig } from './runtime-tools.ts';
 import {
 	createGitHubApiClient,
 	ensureGitHubRepository,
+	maybeGetGitHubRepository,
+	parseGitHubRepositorySlug,
 	listGitHubRepositorySecretNames,
 	listGitHubRepositoryVariableNames,
 	upsertGitHubRepositorySecret,
@@ -31,6 +33,13 @@ export interface GitHubProvisionedRepository {
 	httpsUrl: string;
 	visibility: 'private' | 'public' | 'internal';
 	defaultBranch: string;
+}
+
+export interface TreeseedGitHubRepositoryTarget {
+	owner: string;
+	name: string;
+	visibility: 'private' | 'public' | 'internal';
+	source: 'config' | 'origin' | 'default';
 }
 
 function envOrNull(key) {
@@ -140,7 +149,7 @@ export function maybeResolveGitHubRepositorySlug(tenantRoot) {
 }
 
 export function resolveDefaultGitHubOwner() {
-	const explicit = envOrNull('TREESEED_KNOWLEDGE_COOP_GITHUB_OWNER');
+	const explicit = envOrNull('TREESEED_GITHUB_OWNER');
 	if (explicit) {
 		return explicit;
 	}
@@ -153,6 +162,137 @@ export function resolveDefaultGitHubOwner() {
 		// Ignore local remote resolution failures.
 	}
 	return 'treeseed-ai';
+}
+
+function normalizeGitHubVisibility(value: unknown): TreeseedGitHubRepositoryTarget['visibility'] {
+	const normalized = String(value ?? '').trim().toLowerCase();
+	return normalized === 'public' || normalized === 'internal' || normalized === 'private'
+		? normalized
+		: 'private';
+}
+
+function configuredValue(values: Record<string, string | undefined> | undefined, key: string) {
+	const value = values?.[key] ?? process.env[key];
+	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : '';
+}
+
+export function resolveGitHubRepositoryTarget(
+	tenantRoot: string,
+	{
+		values = {},
+		defaultName,
+	}: {
+		values?: Record<string, string | undefined>;
+		defaultName?: string;
+	} = {},
+): TreeseedGitHubRepositoryTarget {
+	const origin = maybeResolveGitHubRepositorySlug(tenantRoot);
+	const parsedOrigin = origin ? parseGitHubRepositorySlug(origin) : null;
+	const owner = configuredValue(values, 'TREESEED_GITHUB_OWNER') || parsedOrigin?.owner || '';
+	const name = configuredValue(values, 'TREESEED_GITHUB_REPOSITORY_NAME') || parsedOrigin?.name || defaultName || 'project';
+	if (!owner) {
+		throw new Error('Configure TREESEED_GITHUB_OWNER before GitHub repository bootstrap.');
+	}
+	return {
+		owner: slugifySegment(owner, 'owner'),
+		name: slugifySegment(name, 'project'),
+		visibility: normalizeGitHubVisibility(configuredValue(values, 'TREESEED_GITHUB_REPOSITORY_VISIBILITY')),
+		source: configuredValue(values, 'TREESEED_GITHUB_OWNER') || configuredValue(values, 'TREESEED_GITHUB_REPOSITORY_NAME')
+			? 'config'
+			: parsedOrigin
+				? 'origin'
+				: 'default',
+	};
+}
+
+function ensureGitRepositoryInitialized(cwd: string, defaultBranch: string) {
+	const insideWorkTree = runGit(['rev-parse', '--is-inside-work-tree'], { cwd, allowFailure: true }).stdout?.trim() === 'true';
+	if (!insideWorkTree) {
+		runGit(['init', '-b', defaultBranch], { cwd });
+	}
+	ensureGitIdentity(cwd);
+}
+
+function ensureOriginRemote(cwd: string, repository: { sshUrl: string; httpsUrl: string }, remoteName = 'origin') {
+	const currentRemote = runGit(['remote', 'get-url', remoteName], { cwd, allowFailure: true }).stdout?.trim() ?? '';
+	if (!currentRemote) {
+		runGit(['remote', 'add', remoteName, repository.sshUrl], { cwd });
+		return { changed: true, previous: null, next: repository.sshUrl };
+	}
+	if (currentRemote !== repository.sshUrl && currentRemote !== repository.httpsUrl) {
+		runGit(['remote', 'set-url', remoteName, repository.sshUrl], { cwd });
+		return { changed: true, previous: currentRemote, next: repository.sshUrl };
+	}
+	return { changed: false, previous: currentRemote, next: currentRemote };
+}
+
+function pushAllGitHubRefs(cwd: string, remoteName = 'origin') {
+	runGit(['push', '-u', remoteName, '--all'], { cwd, capture: false });
+	runGit(['push', remoteName, '--tags'], { cwd, capture: false });
+}
+
+export async function ensureGitHubBootstrapRepository(
+	tenantRoot: string,
+	{
+		values = {},
+		defaultName,
+		onProgress,
+	}: {
+		values?: Record<string, string | undefined>;
+		defaultName?: string;
+		onProgress?: (message: string) => void;
+	} = {},
+) {
+	const target = resolveGitHubRepositoryTarget(tenantRoot, { values, defaultName });
+	const remotes = resolveGitHubRemoteUrls(target.owner, target.name);
+	const slug = remotes.slug;
+	onProgress?.(`[local][github][repo] Preparing ${slug} from ${target.source}...`);
+	if (isGitHubAutomationStubbed()) {
+		onProgress?.(`[local][github][repo] Stubbed GitHub automation; repository ${slug} not changed.`);
+		return {
+			repository: slug,
+			target,
+			created: false,
+			remote: { changed: false, previous: null, next: remotes.sshUrl },
+			pushed: false,
+			mode: 'stub',
+		};
+	}
+
+	const client = createGitHubApiClient({
+		env: {
+			GH_TOKEN: configuredValue(values, 'GH_TOKEN') || configuredValue(values, 'GITHUB_TOKEN'),
+			GITHUB_TOKEN: configuredValue(values, 'GH_TOKEN') || configuredValue(values, 'GITHUB_TOKEN'),
+		},
+	});
+	const existing = await maybeGetGitHubRepository({ owner: target.owner, name: target.name }, { client });
+	const repository = existing ?? await ensureGitHubRepository({
+		owner: target.owner,
+		name: target.name,
+		visibility: target.visibility,
+	}, { client });
+	const created = !existing;
+	onProgress?.(`[local][github][repo] ${created ? 'Created' : 'Verified'} ${repository.slug}.`);
+
+	ensureGitRepositoryInitialized(tenantRoot, repository.defaultBranch || 'main');
+	const remote = ensureOriginRemote(tenantRoot, repository);
+	if (remote.changed) {
+		onProgress?.(`[local][github][repo] Updated origin remote to ${repository.slug}.`);
+	}
+	if (created) {
+		onProgress?.(`[local][github][repo] Pushing all local branches and tags to ${repository.slug}...`);
+		pushAllGitHubRefs(tenantRoot);
+		onProgress?.(`[local][github][repo] Pushed all local branches and tags to ${repository.slug}.`);
+	}
+
+	return {
+		repository: repository.slug,
+		target,
+		created,
+		remote,
+		pushed: created,
+		mode: 'real',
+	};
 }
 
 export async function createGitHubRepository(input) {

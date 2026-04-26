@@ -20,12 +20,14 @@ import { collectTreeseedReconcileStatus, reconcileTreeseedTarget } from '../../r
 import { loadTreeseedManifest } from '../../platform/tenant-config.ts';
 import { applyTreeseedEnvironmentToProcess } from './config-runtime.ts';
 import {
+	assertDeploymentInitialized,
 	createPersistentDeployTarget,
 	deployTargetLabel,
 	ensureGeneratedWranglerConfig,
 	finalizeDeploymentState,
 	loadDeployState,
 	purgePublishedContentCaches,
+	resolveConfiguredCloudflareAccountId,
 	resolveConfiguredSurfaceBaseUrl,
 	runRemoteD1Migrations,
 	writeDeployState,
@@ -41,6 +43,9 @@ import {
 } from './railway-deploy.ts';
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin } from './runtime-tools.ts';
 import { CloudflareQueuePullClient, CloudflareQueuePushClient } from '../../remote.ts';
+import type { TreeseedRunnableBootstrapSystem } from '../../reconcile/index.ts';
+import { runPrefixedCommand, runTreeseedBootstrapDag, sleep, writeTreeseedBootstrapLine, type TreeseedBootstrapDagNode, type TreeseedBootstrapExecution, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from './bootstrap-runner.ts';
+import { runTenantDeployPreflight } from './save-deploy-preflight.ts';
 
 export type ProjectPlatformScope = 'local' | 'staging' | 'prod';
 export type ProjectPlatformAction = 'provision' | 'deploy_code' | 'publish_content' | 'monitor';
@@ -53,6 +58,10 @@ export interface ProjectPlatformActionOptions {
 	dryRun?: boolean;
 	reporter?: ControlPlaneReporter;
 	skipProvision?: boolean;
+	bootstrapSystems?: TreeseedRunnableBootstrapSystem[];
+	bootstrapExecution?: TreeseedBootstrapExecution;
+	write?: TreeseedBootstrapWriter;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 }
 
 function stableHash(value: Buffer | string) {
@@ -133,6 +142,205 @@ function runWrangler(
 		throw new Error(`wrangler ${args.join(' ')} failed`);
 	}
 	return result;
+}
+
+function isTransientWranglerOutput(output: string) {
+	return /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|connectivity issue|internal error|aborted/i.test(output);
+}
+
+async function runPrefixedWranglerWithRetry(
+	tenantRoot: string,
+	args: string[],
+	{
+		env = {},
+		write,
+		prefix,
+	}: {
+		env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+		write?: TreeseedBootstrapWriter;
+		prefix: TreeseedBootstrapTaskPrefix;
+	},
+) {
+	let lastOutput = '';
+	for (let attempt = 1; attempt <= 3; attempt += 1) {
+		const result = await runPrefixedCommand(process.execPath, [resolveWranglerBin(), ...args], {
+			cwd: tenantRoot,
+			env,
+			write,
+			prefix,
+		});
+		if (result.status === 0) {
+			return result;
+		}
+		lastOutput = [result.stderr?.trim(), result.stdout?.trim()].filter(Boolean).join('\n');
+		if (attempt === 3 || !isTransientWranglerOutput(lastOutput)) {
+			throw new Error(lastOutput || `wrangler ${args.join(' ')} failed`);
+		}
+		writeTreeseedBootstrapLine(
+			write,
+			{ ...prefix, stage: 'retry' },
+			`Wrangler command hit a transient failure; retrying in ${2 * attempt}s...`,
+			'stderr',
+		);
+		await sleep(2000 * attempt);
+	}
+	throw new Error(lastOutput || `wrangler ${args.join(' ')} failed`);
+}
+
+export type TenantCloudflareDeployContext = {
+	tenantRoot: string;
+	scope: ProjectPlatformScope;
+	target: any;
+	dryRun?: boolean;
+	wranglerPath: string;
+	databaseName: string;
+	pagesProjectName: string | null;
+	pagesBranchName: string | null;
+	env: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	write?: TreeseedBootstrapWriter;
+};
+
+export function prepareTenantCloudflareDeploy({
+	tenantRoot,
+	scope,
+	target: explicitTarget,
+	dryRun,
+	write,
+	env = process.env,
+}: {
+	tenantRoot: string;
+	scope: ProjectPlatformScope;
+	target?: any;
+	dryRun?: boolean;
+	write?: TreeseedBootstrapWriter;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+}): TenantCloudflareDeployContext {
+	const target = explicitTarget ?? createPersistentDeployTarget(scope === 'local' ? 'staging' : scope);
+	if (scope !== 'local') {
+		assertDeploymentInitialized(tenantRoot, { target });
+		runTenantDeployPreflight({ cwd: tenantRoot, scope });
+	}
+	const { wranglerPath, deployConfig, state } = ensureGeneratedWranglerConfig(tenantRoot, { target });
+	const deployState = loadDeployState(tenantRoot, deployConfig, { target });
+	const pagesProjectName = target.kind === 'persistent' ? deployState.pages?.projectName ?? null : null;
+	const pagesBranchName = target.kind === 'persistent'
+		? (
+			target.scope === 'prod'
+				? deployState.pages?.productionBranch ?? 'main'
+				: deployState.pages?.stagingBranch ?? 'staging'
+		)
+		: null;
+	return {
+		tenantRoot,
+		scope,
+		target,
+		dryRun,
+		wranglerPath,
+		databaseName: state.d1Databases.SITE_DATA_DB.databaseName,
+		pagesProjectName,
+		pagesBranchName,
+		env: {
+			...process.env,
+			...env,
+			CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig),
+		},
+		write,
+	};
+}
+
+export async function runTenantDataMigration(context: TenantCloudflareDeployContext) {
+	if (context.dryRun) {
+		writeTreeseedBootstrapLine(context.write, {
+			scope: context.scope,
+			system: 'data',
+			task: 'd1-migrate',
+			stage: 'deploy',
+		}, `Dry run: would apply remote migrations for ${context.databaseName}.`);
+		return { databaseName: context.databaseName, dryRun: true };
+	}
+	await runPrefixedWranglerWithRetry(context.tenantRoot, [
+		'd1',
+		'migrations',
+		'apply',
+		context.databaseName,
+		'--remote',
+		'--config',
+		context.wranglerPath,
+	], {
+		env: context.env,
+		write: context.write,
+		prefix: {
+			scope: context.scope,
+			system: 'data',
+			task: 'd1-migrate',
+			stage: 'deploy',
+		},
+	});
+	return { databaseName: context.databaseName, dryRun: false };
+}
+
+export async function runTenantWebBuild(context: Pick<TenantCloudflareDeployContext, 'tenantRoot' | 'scope' | 'dryRun' | 'env' | 'write'>) {
+	const prefix = {
+		scope: context.scope,
+		system: 'web',
+		task: 'build',
+		stage: 'deploy',
+	};
+	if (context.dryRun) {
+		writeTreeseedBootstrapLine(context.write, prefix, 'Dry run: skipped tenant build.');
+		return { dryRun: true };
+	}
+	const result = await runPrefixedCommand(process.execPath, [packageScriptPath('tenant-build')], {
+		cwd: context.tenantRoot,
+		env: context.env,
+		write: context.write,
+		prefix,
+	});
+	if (result.status !== 0) {
+		throw new Error('tenant-build failed.');
+	}
+	return { dryRun: false };
+}
+
+export async function runTenantWebPublish(context: TenantCloudflareDeployContext) {
+	const prefix = {
+		scope: context.scope,
+		system: 'web',
+		task: 'publish',
+		stage: 'deploy',
+	};
+	if (context.dryRun) {
+		if (context.pagesProjectName) {
+			writeTreeseedBootstrapLine(context.write, prefix, `Dry run: would deploy ${deployTargetLabel(context.target)} to Pages project ${context.pagesProjectName} from ${resolve(context.tenantRoot, 'dist')}.`);
+		} else {
+			writeTreeseedBootstrapLine(context.write, prefix, `Dry run: would deploy ${deployTargetLabel(context.target)} with generated Wrangler config at ${resolve(context.wranglerPath)}.`);
+		}
+		return { dryRun: true };
+	}
+	if (context.pagesProjectName) {
+		const args = [
+			'pages',
+			'deploy',
+			resolve(context.tenantRoot, 'dist'),
+			'--project-name',
+			context.pagesProjectName,
+		];
+		if (context.pagesBranchName) {
+			args.push('--branch', context.pagesBranchName);
+		}
+		await runPrefixedWranglerWithRetry(context.tenantRoot, args, {
+			env: context.env,
+			write: context.write,
+			prefix,
+		});
+	} else {
+		await runPrefixedWranglerWithRetry(context.tenantRoot, ['deploy', '--config', context.wranglerPath], {
+			env: context.env,
+			write: context.write,
+			prefix,
+		});
+	}
+	return { dryRun: false };
 }
 
 function inferContentType(filePath: string) {
@@ -953,6 +1161,10 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	const commitSha = currentCommit(options.tenantRoot);
 	const branchName = currentRef(options.tenantRoot);
+	const selectedSystems = new Set(options.bootstrapSystems ?? ['data', 'web', 'api', 'agents']);
+	const execution = options.bootstrapExecution ?? 'parallel';
+	const write = options.write;
+	const env = { ...process.env, ...(options.env ?? {}) };
 	await reportDeployment(reporter, {
 		environment: options.scope,
 		deploymentKind: 'code',
@@ -966,24 +1178,131 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 	if (!options.skipProvision) {
 		await provisionProjectPlatform({ ...options, reporter });
 	}
-	runNodeScript(options.tenantRoot, 'tenant-deploy', ['--environment', options.scope, ...(options.dryRun ? ['--dry-run'] : [])]);
 
-	const serviceResults = [];
-	if (options.scope !== 'local') {
-		const validation = validateRailwayDeployPrerequisites(options.tenantRoot, options.scope);
-		for (const service of validation.services) {
-			serviceResults.push(await deployRailwayService(options.tenantRoot, service, { dryRun: options.dryRun }));
+	const nodes: Array<TreeseedBootstrapDagNode> = [];
+	let cloudflareContext: TenantCloudflareDeployContext | null = null;
+	if (options.scope === 'local' && selectedSystems.has('web')) {
+		nodes.push({
+			id: 'web:build',
+			run: () => runTenantWebBuild({
+				tenantRoot: options.tenantRoot,
+				scope: 'local',
+				dryRun: options.dryRun,
+				env,
+				write,
+			}),
+		});
+	} else if (selectedSystems.has('data') || selectedSystems.has('web')) {
+		cloudflareContext = prepareTenantCloudflareDeploy({
+			tenantRoot: options.tenantRoot,
+			scope: options.scope,
+			dryRun: options.dryRun,
+			write,
+			env,
+		});
+	}
+	if (cloudflareContext && selectedSystems.has('data')) {
+		const context = cloudflareContext;
+		nodes.push({
+			id: 'data:d1-migrate',
+			run: () => runTenantDataMigration(context),
+		});
+	}
+	if (cloudflareContext && selectedSystems.has('web')) {
+		const context = cloudflareContext;
+		nodes.push({
+			id: 'web:build',
+			run: () => runTenantWebBuild(context),
+		});
+		nodes.push({
+			id: 'web:publish',
+			dependencies: ['web:build', ...(selectedSystems.has('data') ? ['data:d1-migrate'] : [])],
+			run: () => runTenantWebPublish(context),
+		});
+	}
+
+	const serviceResultsByKey = new Map<string, Awaited<ReturnType<typeof deployRailwayService>>>();
+	let selectedRailwayServiceKeys: string[] = [];
+	if (options.scope !== 'local' && (selectedSystems.has('api') || selectedSystems.has('agents'))) {
+		const validation = validateRailwayDeployPrerequisites(options.tenantRoot, options.scope, { env });
+		const selectedServices = validation.services.filter((service) =>
+			service.key === 'api' ? selectedSystems.has('api') : selectedSystems.has('agents'),
+		);
+		for (const service of selectedServices) {
+			const system = service.key === 'api' ? 'api' : 'agents';
+			const nodeId = `${system}:${service.key}-railway-deploy`;
+			selectedRailwayServiceKeys.push(service.key);
+			nodes.push({
+				id: nodeId,
+				dependencies: selectedSystems.has('data') ? ['data:d1-migrate'] : [],
+				run: async () => {
+					const result = await deployRailwayService(options.tenantRoot, service, {
+						dryRun: options.dryRun,
+						write,
+						env,
+						prefix: {
+							scope: options.scope,
+							system,
+							task: `${service.key}-railway-deploy`,
+							stage: 'deploy',
+						},
+					});
+					serviceResultsByKey.set(service.key, result);
+					return result;
+				},
+			});
 		}
-		const railwaySchedules = options.scope === 'prod'
-			? await ensureRailwayScheduledJobs(options.tenantRoot, options.scope, { dryRun: options.dryRun })
-			: [];
-		const railwayScheduleVerification = options.scope === 'prod' && !options.dryRun
-			? await verifyRailwayScheduledJobs(options.tenantRoot, options.scope)
-			: { ok: true, checks: railwaySchedules, skipped: options.scope !== 'prod' ? true : options.dryRun, reason: options.scope !== 'prod' ? 'prod_only' : 'dry_run' };
+	}
+
+	let railwaySchedules: any[] = [];
+	let railwayScheduleVerification: any = { ok: true, checks: [], skipped: true, reason: !selectedSystems.has('agents') ? 'agents_not_selected' : options.scope !== 'prod' ? 'prod_only' : 'dry_run' };
+	if (options.scope === 'prod' && selectedSystems.has('agents')) {
+		const agentDeployNodeIds = nodes
+			.filter((node) => node.id.startsWith('agents:') && node.id.endsWith('-railway-deploy'))
+			.map((node) => node.id);
+		nodes.push({
+			id: 'agents:schedules',
+			dependencies: agentDeployNodeIds,
+			run: async () => {
+				writeTreeseedBootstrapLine(write, {
+					scope: options.scope,
+					system: 'agents',
+					task: 'schedules',
+					stage: 'deploy',
+				}, 'Reconciling Railway schedules...');
+				railwaySchedules = await ensureRailwayScheduledJobs(options.tenantRoot, options.scope, { dryRun: options.dryRun, env });
+				railwayScheduleVerification = !options.dryRun
+					? await verifyRailwayScheduledJobs(options.tenantRoot, options.scope)
+					: { ok: true, checks: railwaySchedules, skipped: true, reason: 'dry_run' };
+				return {
+					service: 'railway-schedules',
+					status: railwayScheduleVerification.ok ? 'verified' : 'failed',
+					command: 'railway schedules reconcile',
+					cwd: options.tenantRoot,
+					publicBaseUrl: null,
+					schedules: railwaySchedules,
+					scheduleVerification: railwayScheduleVerification,
+				};
+			},
+		});
+	}
+
+	await runTreeseedBootstrapDag({ nodes, execution });
+
+	const serviceResults = selectedRailwayServiceKeys
+		.map((serviceKey) => serviceResultsByKey.get(serviceKey))
+		.filter(Boolean);
+	if (options.scope !== 'local' && !options.dryRun && (selectedSystems.has('web') || serviceResults.length > 0)) {
 		finalizeDeploymentState(options.tenantRoot, {
 			target: createPersistentDeployTarget(options.scope),
 			serviceResults,
 		});
+	}
+	if (options.scope !== 'prod' || !selectedSystems.has('agents')) {
+		railwaySchedules = [];
+		railwayScheduleVerification = { ok: true, checks: railwaySchedules, skipped: true, reason: !selectedSystems.has('agents') ? 'agents_not_selected' : options.scope !== 'prod' ? 'prod_only' : 'dry_run' };
+	}
+	if (selectedSystems.has('agents')) {
 		serviceResults.push({
 			service: 'railway-schedules',
 			status: railwayScheduleVerification.ok ? 'verified' : 'failed',
@@ -1005,7 +1324,9 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		triggeredByType: 'project_runner',
 		metadata: {
 			scope: options.scope,
-			railway: options.scope === 'local' ? [] : configuredRailwayServices(options.tenantRoot, options.scope).map((service) => service.key),
+			railway: options.scope === 'local' ? [] : configuredRailwayServices(options.tenantRoot, options.scope)
+				.map((service) => service.key)
+				.filter((serviceKey) => serviceKey === 'api' ? selectedSystems.has('api') : selectedSystems.has('agents')),
 			monitor,
 		},
 		finishedAt: new Date().toISOString(),

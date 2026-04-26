@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -98,6 +99,143 @@ describe('environment registry overlays', () => {
 
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_API_BASE_URL')).toBeUndefined();
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET')).toBeTruthy();
+	});
+
+	it('keeps Cloudflare account ID as required hosted shared environment config', async () => {
+		const tenantRoot = await createTenantFixture('entries: {}\n');
+		tempRoots.add(tenantRoot);
+
+		const deployConfig = {
+			name: 'Test Site',
+			slug: 'test-site',
+			siteUrl: 'https://example.com',
+			contactEmail: 'hello@example.com',
+			cloudflare: { accountId: 'account-123' },
+			services: { api: { provider: 'railway', enabled: true } },
+			__tenantRoot: tenantRoot,
+		} as any;
+		const registry = resolveTreeseedEnvironmentRegistry({
+			deployConfig,
+			plugins: [],
+		});
+		const entry = registry.entries.find((candidate) => candidate.id === 'CLOUDFLARE_ACCOUNT_ID');
+
+		expect(entry).toMatchObject({
+			requirement: 'required',
+			storage: 'shared',
+			startupProfile: 'core',
+		});
+		expect(entry?.scopes).toEqual(['staging', 'prod']);
+		expect(isTreeseedEnvironmentEntryRelevant(entry!, registry.context, 'local', 'config')).toBe(false);
+		expect(isTreeseedEnvironmentEntryRequired(entry!, registry.context, 'prod', 'config')).toBe(true);
+		expect(getTreeseedEnvironmentSuggestedValues({
+			scope: 'local',
+			purpose: 'config',
+			deployConfig,
+			plugins: [],
+			values: {},
+		}).CLOUDFLARE_ACCOUNT_ID).toBeUndefined();
+		expect(getTreeseedEnvironmentSuggestedValues({
+			scope: 'prod',
+			purpose: 'config',
+			deployConfig: {
+				...deployConfig,
+				cloudflare: { accountId: 'replace-with-cloudflare-account-id' },
+			},
+			plugins: [],
+			values: {
+				CLOUDFLARE_ACCOUNT_ID: 'account-from-machine-config',
+			},
+		}).CLOUDFLARE_ACCOUNT_ID).toBeUndefined();
+	});
+
+	it('does not surface hosted provider and infrastructure variables in local config', async () => {
+		const tenantRoot = await createTenantFixture('entries: {}\n');
+		tempRoots.add(tenantRoot);
+
+		const registry = resolveTreeseedEnvironmentRegistry({
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				services: { api: { provider: 'railway', enabled: true } },
+				__tenantRoot: tenantRoot,
+			} as any,
+			plugins: [],
+		});
+
+		expect(registry.entries.find((entry) => entry.id === 'CLOUDFLARE_API_TOKEN')?.scopes).toEqual(['staging', 'prod']);
+		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN')?.scopes).toEqual(['staging', 'prod']);
+		expect(registry.entries.find((entry) => entry.id === 'CLOUDFLARE_ACCOUNT_ID')?.scopes).toEqual(['staging', 'prod']);
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_RAILWAY_WORKSPACE')?.scopes).toEqual(['staging', 'prod']);
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_HOSTING_KIND')?.scopes).toEqual(['staging', 'prod']);
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_PROJECT_RUNNER_TOKEN')?.scopes).toEqual(['staging', 'prod']);
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_RAILWAY_PROJECT_ID')?.scopes).toEqual(['staging', 'prod']);
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_WORKER_POOL_SCALER')?.scopes).toEqual(['staging', 'prod']);
+		expect(registry.entries.find((entry) => entry.id === 'GH_TOKEN')?.scopes).toEqual(['local', 'staging', 'prod']);
+	});
+
+	it('suggests local GitHub repository metadata from origin when present', async () => {
+		const tenantRoot = await createTenantFixture('entries: {}\n');
+		tempRoots.add(tenantRoot);
+		spawnSync('git', ['init', '-b', 'main'], { cwd: tenantRoot, stdio: 'ignore' });
+		spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:knowledge-coop/market.git'], { cwd: tenantRoot, stdio: 'ignore' });
+		const deployConfig = {
+			name: 'Test Site',
+			slug: 'test-site',
+			siteUrl: 'https://example.com',
+			contactEmail: 'hello@example.com',
+			cloudflare: { accountId: 'account-123' },
+			__tenantRoot: tenantRoot,
+		} as any;
+
+		const suggested = getTreeseedEnvironmentSuggestedValues({
+			scope: 'local',
+			purpose: 'config',
+			deployConfig,
+			plugins: [],
+			values: {},
+		});
+
+		expect(suggested.TREESEED_GITHUB_OWNER).toBe('knowledge-coop');
+		expect(suggested.TREESEED_GITHUB_REPOSITORY_NAME).toBe('market');
+		expect(suggested.TREESEED_GITHUB_REPOSITORY_VISIBILITY).toBe('private');
+	});
+
+	it('requires clean local GitHub metadata and does not advertise legacy env names', async () => {
+		const tenantRoot = await createTenantFixture('entries: {}\n');
+		tempRoots.add(tenantRoot);
+		const deployConfig = {
+			name: 'Test Site',
+			slug: 'test-site',
+			siteUrl: 'https://example.com',
+			contactEmail: 'hello@example.com',
+			cloudflare: { accountId: 'account-123' },
+			__tenantRoot: tenantRoot,
+		} as any;
+		const registry = resolveTreeseedEnvironmentRegistry({ deployConfig, plugins: [] });
+		const owner = registry.entries.find((entry) => entry.id === 'TREESEED_GITHUB_OWNER');
+		const repositoryName = registry.entries.find((entry) => entry.id === 'TREESEED_GITHUB_REPOSITORY_NAME');
+
+		expect(owner?.scopes).toEqual(['local']);
+		expect(repositoryName?.scopes).toEqual(['local']);
+		expect(isTreeseedEnvironmentEntryRequired(owner!, registry.context, 'local', 'config')).toBe(true);
+		expect(isTreeseedEnvironmentEntryRequired(repositoryName!, registry.context, 'local', 'config')).toBe(true);
+		expect(getTreeseedEnvironmentSuggestedValues({
+			scope: 'local',
+			purpose: 'config',
+			deployConfig,
+			plugins: [],
+			values: {},
+		})).toMatchObject({
+			TREESEED_GITHUB_REPOSITORY_NAME: 'test-site',
+			TREESEED_GITHUB_REPOSITORY_VISIBILITY: 'private',
+		});
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_KNOWLEDGE_COOP_GITHUB_OWNER')).toBeUndefined();
+		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_KEY')).toBeUndefined();
+		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN')?.howToGet).not.toMatch(/legacy alias|RAILWAY_API_KEY/u);
 	});
 
 	it('supports shared project-domain defaults that seed scoped api urls', async () => {
@@ -356,7 +494,107 @@ describe('environment registry overlays', () => {
 		expect(enabledSmtpHost?.storage).toBe('shared');
 		expect(enabledTurnstileSecret?.storage).toBe('shared');
 		expect(formTokenSecret?.storage).toBe('shared');
-		expect(isTreeseedEnvironmentEntryRequired(enabledTurnstileSecret!, enabledRegistry.context, 'local', 'config')).toBe(false);
+		expect(enabledTurnstileSecret?.scopes).toEqual(['staging', 'prod']);
+		expect(isTreeseedEnvironmentEntryRelevant(enabledTurnstileSecret!, enabledRegistry.context, 'local', 'config')).toBe(false);
 		expect(isTreeseedEnvironmentEntryRequired(enabledTurnstileSecret!, enabledRegistry.context, 'staging', 'config')).toBe(true);
+		expect(enabledRegistry.entries.find((entry) => entry.id === 'TREESEED_PUBLIC_FORMS_LOCAL_BYPASS_TURNSTILE')).toBeUndefined();
+	});
+
+	it('gates local web, api, and forms entries on enabled surfaces', async () => {
+		const tenantRoot = await createTenantFixture(`entries:
+  TREESEED_WEB_ONLY:
+    label: Web only
+    group: auth
+    description: Web surface entry.
+    howToGet: Enable the web surface.
+    sensitivity: plain
+    targets:
+      - local-runtime
+    scopes:
+      - local
+      - staging
+      - prod
+    requirement: optional
+    purposes:
+      - config
+    validation:
+      kind: nonempty
+    relevanceRef: webSurfaceEnabled
+  TREESEED_API_ONLY:
+    label: API only
+    group: auth
+    description: API surface entry.
+    howToGet: Enable the API surface and service.
+    sensitivity: plain
+    targets:
+      - local-runtime
+    scopes:
+      - local
+      - staging
+      - prod
+    requirement: optional
+    purposes:
+      - config
+    validation:
+      kind: nonempty
+    relevanceRef: apiSurfaceEnabled
+`);
+		tempRoots.add(tenantRoot);
+
+		const deployConfig = {
+			name: 'Test Site',
+			slug: 'test-site',
+			siteUrl: 'https://example.com',
+			contactEmail: 'hello@example.com',
+			cloudflare: { accountId: 'account-123' },
+			providers: { forms: 'store_only' },
+			surfaces: { web: { enabled: false }, api: { enabled: false } },
+			services: { api: { provider: 'railway', enabled: false } },
+			__tenantRoot: tenantRoot,
+		} as any;
+
+		const disabledRegistry = resolveTreeseedEnvironmentRegistry({ deployConfig, plugins: [] });
+		const webEntry = disabledRegistry.entries.find((entry) => entry.id === 'TREESEED_WEB_ONLY');
+		const apiEntry = disabledRegistry.entries.find((entry) => entry.id === 'TREESEED_API_ONLY');
+		const formTokenSecret = disabledRegistry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET');
+		expect(isTreeseedEnvironmentEntryRelevant(webEntry!, disabledRegistry.context, 'local', 'config')).toBe(false);
+		expect(isTreeseedEnvironmentEntryRelevant(apiEntry!, disabledRegistry.context, 'local', 'config')).toBe(false);
+		expect(isTreeseedEnvironmentEntryRelevant(formTokenSecret!, disabledRegistry.context, 'local', 'config')).toBe(false);
+
+		const enabledRegistry = resolveTreeseedEnvironmentRegistry({
+			deployConfig: {
+				...deployConfig,
+				surfaces: { web: { enabled: true }, api: { enabled: true } },
+				services: { api: { provider: 'railway', enabled: true } },
+			},
+			plugins: [],
+		});
+		const enabledWebEntry = enabledRegistry.entries.find((entry) => entry.id === 'TREESEED_WEB_ONLY');
+		const enabledApiEntry = enabledRegistry.entries.find((entry) => entry.id === 'TREESEED_API_ONLY');
+		const enabledFormTokenSecret = enabledRegistry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET');
+		expect(isTreeseedEnvironmentEntryRelevant(enabledWebEntry!, enabledRegistry.context, 'local', 'config')).toBe(true);
+		expect(isTreeseedEnvironmentEntryRelevant(enabledApiEntry!, enabledRegistry.context, 'local', 'config')).toBe(true);
+		expect(isTreeseedEnvironmentEntryRelevant(enabledFormTokenSecret!, enabledRegistry.context, 'local', 'config')).toBe(true);
+	});
+
+	it('targets Railway API token to GitHub environment secrets for deploy workflows', async () => {
+		const tenantRoot = await createTenantFixture('entries: {}\n');
+		tempRoots.add(tenantRoot);
+
+		const registry = resolveTreeseedEnvironmentRegistry({
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				services: { api: { provider: 'railway', enabled: true } },
+				__tenantRoot: tenantRoot,
+			} as any,
+			plugins: [],
+		});
+
+		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN')?.targets)
+			.toEqual(expect.arrayContaining(['github-secret', 'railway-secret']));
 	});
 });

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits } from '../../src/reconcile/index.ts';
+import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, filterTreeseedDesiredUnitsByBootstrapSystems, resolveTreeseedBootstrapSelection } from '../../src/reconcile/index.ts';
 
 function createTenantFixture(withPlugin = false) {
 	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-reconcile-test-'));
@@ -174,5 +174,116 @@ services:
 		expect(apiDnsUnit?.spec).toMatchObject({
 			domain: 'api-acme-docs-staging-15eec347.example.com',
 		});
+	});
+
+	it('selects web with data dependencies and filters out Railway runtime units', () => {
+		const tenantRoot = createTenantFixture();
+		const { deployConfig, units } = deriveTreeseedDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+		const selection = resolveTreeseedBootstrapSelection({
+			deployConfig,
+			env: {
+				GH_TOKEN: 'github-token',
+				CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+			},
+			systems: ['web'],
+		});
+		const selected = filterTreeseedDesiredUnitsByBootstrapSystems(units, selection.runnable);
+		const unitTypes = selected.map((unit) => unit.unitType);
+
+		expect(selection.runnable).toEqual(['data', 'web']);
+		expect(unitTypes).toEqual(expect.arrayContaining(['queue', 'database', 'content-store', 'pages-project', 'web-ui']));
+		expect(unitTypes).not.toContain('railway-service:api');
+		expect(unitTypes).not.toContain('api-runtime');
+	});
+
+	it('skips optional Railway runtime systems for all when RAILWAY_API_TOKEN is missing', () => {
+		const tenantRoot = createTenantFixture();
+		const { deployConfig } = deriveTreeseedDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+		const selection = resolveTreeseedBootstrapSelection({
+			deployConfig,
+			env: {
+				GH_TOKEN: 'github-token',
+				CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+			},
+			systems: 'all',
+		});
+
+		expect(selection.runnable).toEqual(['github', 'data', 'web']);
+		expect(selection.skipped.map((entry) => entry.system)).toEqual(['api', 'agents']);
+		expect(selection.skipped.find((entry) => entry.system === 'api')?.missing).toEqual(['RAILWAY_API_TOKEN']);
+	});
+
+	it('keeps explicitly selected API strict unless skipUnavailable is requested', () => {
+		const tenantRoot = createTenantFixture();
+		const { deployConfig } = deriveTreeseedDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+		const strict = resolveTreeseedBootstrapSelection({
+			deployConfig,
+			env: {
+				CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+			},
+			systems: 'api',
+		});
+		const lenient = resolveTreeseedBootstrapSelection({
+			deployConfig,
+			env: {
+				CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+			},
+			systems: 'api',
+			skipUnavailable: true,
+		});
+
+		expect(strict.runnable).toEqual(['data']);
+		expect(strict.unavailable.map((entry) => entry.system)).toEqual(['api']);
+		expect(strict.skipped).toEqual([]);
+		expect(lenient.runnable).toEqual(['data']);
+		expect(lenient.skipped.map((entry) => entry.system)).toEqual(['api']);
+	});
+
+	it('honors runtime config disabled systems before availability checks', () => {
+		const deployConfig = {
+			name: 'Test Site',
+			slug: 'test-site',
+			siteUrl: 'https://example.com',
+			contactEmail: 'hello@example.com',
+			hub: { mode: 'customer_hosted' },
+			runtime: { mode: 'none', registration: 'none' },
+			cloudflare: { accountId: 'account-123' },
+			plugins: [],
+			providers: {
+				forms: 'store_only',
+				operations: 'default',
+				agents: {
+					execution: 'copilot',
+					mutation: 'local_branch',
+					repository: 'git',
+					verification: 'local',
+					notification: 'sdk_message',
+					research: 'project_graph',
+				},
+				deploy: 'cloudflare',
+			},
+			services: { api: { enabled: true, provider: 'railway' } },
+		} as any;
+		const selection = resolveTreeseedBootstrapSelection({
+			deployConfig,
+			env: {
+				GH_TOKEN: 'github-token',
+				CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+				RAILWAY_API_TOKEN: 'railway-token',
+			},
+			systems: 'all',
+		});
+
+		expect(selection.configDisabled.map((entry) => entry.system)).toEqual(['api', 'agents']);
+		expect(selection.runnable).toEqual(['github', 'data', 'web']);
 	});
 });

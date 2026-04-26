@@ -202,12 +202,6 @@ function resolveReconcileEnvironmentValues(
 		...normalizeEnvironmentValues(process.env),
 		...normalizeEnvironmentValues(input.context.launchEnv),
 	};
-	const launchRailwayAlias = input.context.launchEnv.RAILWAY_API_KEY;
-	if (!input.context.launchEnv.RAILWAY_API_TOKEN && typeof launchRailwayAlias === 'string' && launchRailwayAlias.length > 0) {
-		values.RAILWAY_API_TOKEN = launchRailwayAlias;
-	} else if (!values.RAILWAY_API_TOKEN && values.RAILWAY_API_KEY) {
-		values.RAILWAY_API_TOKEN = values.RAILWAY_API_KEY;
-	}
 	return values;
 }
 
@@ -240,9 +234,7 @@ function buildRailwayEnv(input: TreeseedReconcileAdapterInput, scope: 'local' | 
 	const token = [
 		values.RAILWAY_API_TOKEN,
 		input.context.launchEnv.RAILWAY_API_TOKEN,
-		input.context.launchEnv.RAILWAY_API_KEY,
 		process.env.RAILWAY_API_TOKEN,
-		process.env.RAILWAY_API_KEY,
 	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
 	return {
 		RAILWAY_API_TOKEN: token,

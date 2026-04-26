@@ -16,6 +16,9 @@ function parseArgs(argv) {
 	const parsed = {
 		scopes: [],
 		sync: 'all',
+		systems: [],
+		skipUnavailable: undefined,
+		bootstrapExecution: 'parallel',
 		bootstrap: false,
 		rotateMachineKey: false,
 	};
@@ -44,6 +47,30 @@ function parseArgs(argv) {
 		}
 		if (current === '--bootstrap') {
 			parsed.bootstrap = true;
+			continue;
+		}
+		if (current === '--system') {
+			parsed.systems.push(rest.shift() ?? '');
+			continue;
+		}
+		if (current.startsWith('--system=')) {
+			parsed.systems.push(current.split('=', 2)[1] ?? '');
+			continue;
+		}
+		if (current === '--systems') {
+			parsed.systems.push(...String(rest.shift() ?? '').split(','));
+			continue;
+		}
+		if (current.startsWith('--systems=')) {
+			parsed.systems.push(...String(current.split('=', 2)[1] ?? '').split(','));
+			continue;
+		}
+		if (current === '--skip-unavailable') {
+			parsed.skipUnavailable = true;
+			continue;
+		}
+		if (current === '--bootstrap-sequential') {
+			parsed.bootstrapExecution = 'sequential';
 			continue;
 		}
 		if (current === '--rotate-machine-key') {
@@ -92,6 +119,9 @@ try {
 			tenantRoot,
 			scopes,
 			sync: options.sync,
+			systems: options.systems.length > 0 ? options.systems : undefined,
+			skipUnavailable: options.skipUnavailable,
+			bootstrapExecution: options.bootstrapExecution,
 			env: process.env,
 		});
 		const { configPath, keyPath } = getTreeseedMachineConfigPaths(tenantRoot);

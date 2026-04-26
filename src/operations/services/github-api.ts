@@ -68,11 +68,28 @@ export function parseGitHubRepositorySlug(value: string) {
 	};
 }
 
-function createGitHubSignal(timeoutMs = DEFAULT_GITHUB_API_TIMEOUT_MS) {
+function createGitHubRequestSignal(timeoutMs = DEFAULT_GITHUB_API_TIMEOUT_MS, upstreamSignal?: AbortSignal | null) {
 	if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-		return AbortSignal.timeout(timeoutMs);
+		const timeoutSignal = AbortSignal.timeout(timeoutMs);
+		if (upstreamSignal) {
+			const abortSignalAny = (AbortSignal as typeof AbortSignal & {
+				any?: (signals: AbortSignal[]) => AbortSignal;
+			}).any;
+			return typeof abortSignalAny === 'function'
+				? abortSignalAny([upstreamSignal, timeoutSignal])
+				: timeoutSignal;
+		}
+		return timeoutSignal;
 	}
-	return undefined;
+	return upstreamSignal ?? undefined;
+}
+
+function createGitHubTimeoutFetch(timeoutMs = DEFAULT_GITHUB_API_TIMEOUT_MS): typeof fetch {
+	const baseFetch = globalThis.fetch.bind(globalThis);
+	return ((input, init) => {
+		const signal = createGitHubRequestSignal(timeoutMs, init?.signal ?? null);
+		return baseFetch(input, signal ? { ...init, signal } : init);
+	}) as typeof fetch;
 }
 
 function normalizeGitHubApiError(error: unknown, context: string) {
@@ -153,7 +170,7 @@ export function createGitHubApiClient({
 	return new Octokit({
 		auth: token,
 		request: {
-			signal: createGitHubSignal(timeoutMs),
+			fetch: createGitHubTimeoutFetch(timeoutMs),
 		},
 	});
 }
@@ -287,6 +304,70 @@ export async function listGitHubRepositoryVariableNames(
 	}
 }
 
+export async function ensureGitHubActionsEnvironment(
+	repository: string | { owner: string; name: string },
+	environmentName: string,
+	{ client = createGitHubApiClient() }: { client?: GitHubApiClient } = {},
+) {
+	const { owner, name: repo } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
+	try {
+		await withGitHubApiRetries(() => client.request('PUT /repos/{owner}/{repo}/environments/{environment_name}', {
+			owner,
+			repo,
+			environment_name: environmentName,
+		}));
+		return { repository: `${owner}/${repo}`, environment: environmentName };
+	} catch (error) {
+		throw normalizeGitHubApiError(error, `Unable to ensure GitHub environment ${environmentName} for ${owner}/${repo}`);
+	}
+}
+
+async function paginateGitHubEnvironmentNames(
+	client: GitHubApiClient,
+	route: string,
+	params: Record<string, unknown>,
+) {
+	const paginate = client.paginate as unknown as (route: string, params: Record<string, unknown>) => Promise<Array<{ name?: string | null }>>;
+	return await paginateNames(() => paginate(route, {
+		...params,
+		per_page: 100,
+	}));
+}
+
+export async function listGitHubEnvironmentSecretNames(
+	repository: string | { owner: string; name: string },
+	environmentName: string,
+	{ client = createGitHubApiClient() }: { client?: GitHubApiClient } = {},
+) {
+	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
+	try {
+		return await paginateGitHubEnvironmentNames(
+			client,
+			'GET /repos/{owner}/{repo}/environments/{environment_name}/secrets',
+			{ owner, repo: name, environment_name: environmentName },
+		);
+	} catch (error) {
+		throw normalizeGitHubApiError(error, `Unable to list GitHub environment secrets for ${owner}/${name}:${environmentName}`);
+	}
+}
+
+export async function listGitHubEnvironmentVariableNames(
+	repository: string | { owner: string; name: string },
+	environmentName: string,
+	{ client = createGitHubApiClient() }: { client?: GitHubApiClient } = {},
+) {
+	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
+	try {
+		return await paginateGitHubEnvironmentNames(
+			client,
+			'GET /repos/{owner}/{repo}/environments/{environment_name}/variables',
+			{ owner, repo: name, environment_name: environmentName },
+		);
+	} catch (error) {
+		throw normalizeGitHubApiError(error, `Unable to list GitHub environment variables for ${owner}/${name}:${environmentName}`);
+	}
+}
+
 async function encryptGitHubSecret(secret: string, key: string) {
 	await sodium.ready;
 	const messageBytes = Buffer.from(secret);
@@ -316,6 +397,34 @@ export async function upsertGitHubRepositorySecret(
 		}));
 	} catch (error) {
 		throw normalizeGitHubApiError(error, `Unable to upsert GitHub secret ${name} for ${owner}/${repo}`);
+	}
+}
+
+export async function upsertGitHubEnvironmentSecret(
+	repository: string | { owner: string; name: string },
+	environmentName: string,
+	name: string,
+	value: string,
+	{ client = createGitHubApiClient() }: { client?: GitHubApiClient } = {},
+) {
+	const { owner, name: repo } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
+	try {
+		const key = await client.request('GET /repos/{owner}/{repo}/environments/{environment_name}/secrets/public-key', {
+			owner,
+			repo,
+			environment_name: environmentName,
+		});
+		const encryptedValue = await encryptGitHubSecret(value, String((key.data as Record<string, unknown>).key ?? ''));
+		await withGitHubApiRetries(() => client.request('PUT /repos/{owner}/{repo}/environments/{environment_name}/secrets/{secret_name}', {
+			owner,
+			repo,
+			environment_name: environmentName,
+			secret_name: name,
+			encrypted_value: encryptedValue,
+			key_id: String((key.data as Record<string, unknown>).key_id ?? ''),
+		}));
+	} catch (error) {
+		throw normalizeGitHubApiError(error, `Unable to upsert GitHub environment secret ${name} for ${owner}/${repo}:${environmentName}`);
 	}
 }
 
@@ -369,6 +478,47 @@ export async function upsertGitHubRepositoryVariable(
 		});
 	} catch (error) {
 		throw normalizeGitHubApiError(error, `Unable to upsert GitHub variable ${name} for ${owner}/${repo}`);
+	}
+}
+
+export async function upsertGitHubEnvironmentVariable(
+	repository: string | { owner: string; name: string },
+	environmentName: string,
+	name: string,
+	value: string,
+	{ client = createGitHubApiClient() }: { client?: GitHubApiClient } = {},
+) {
+	const { owner, name: repo } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
+	try {
+		await withGitHubApiRetries(async () => {
+			try {
+				await client.request('POST /repos/{owner}/{repo}/environments/{environment_name}/variables', {
+					owner,
+					repo,
+					environment_name: environmentName,
+					name,
+					value,
+				});
+				return;
+			} catch (error) {
+				const status = typeof (error as { status?: unknown })?.status === 'number'
+					? Number((error as { status: number }).status)
+					: null;
+				const message = error instanceof Error ? error.message : String(error ?? '');
+				if (status !== 409 && status !== 422 && !/already exists/iu.test(message)) {
+					throw error;
+				}
+			}
+			await client.request('PATCH /repos/{owner}/{repo}/environments/{environment_name}/variables/{name}', {
+				owner,
+				repo,
+				environment_name: environmentName,
+				name,
+				value,
+			});
+		});
+	} catch (error) {
+		throw normalizeGitHubApiError(error, `Unable to upsert GitHub environment variable ${name} for ${owner}/${repo}:${environmentName}`);
 	}
 }
 

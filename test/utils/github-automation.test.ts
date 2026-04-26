@@ -1,4 +1,5 @@
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -6,6 +7,7 @@ import {
 	ensureStandardizedGitHubWorkflows,
 	renderDeployWorkflow,
 	renderHostedProjectWorkflow,
+	resolveGitHubRepositoryTarget,
 } from '../../src/operations/services/github-automation.ts';
 
 function createTenantRoot(hostingBlock: string) {
@@ -62,6 +64,15 @@ describe('github automation workflow generation', () => {
 		expect(rendered).toContain('TREESEED_CONTENT_BUCKET_NAME');
 		expect(rendered).toContain('TREESEED_WORKFLOW_PREVIEW_ID');
 		expect(rendered).toContain('check-build-warnings');
+		expect(rendered).toContain("environment: ${{ needs.classify.outputs.scope == 'prod' && 'production' || 'staging' }}");
+		expect(rendered).toContain('TREESEED_SMTP_HOST: ${{ vars.TREESEED_SMTP_HOST }}');
+		expect(rendered).toContain('TREESEED_SMTP_PORT: ${{ vars.TREESEED_SMTP_PORT }}');
+		expect(rendered).toContain('TREESEED_SMTP_USERNAME: ${{ vars.TREESEED_SMTP_USERNAME }}');
+		expect(rendered).toContain('TREESEED_SMTP_PASSWORD: ${{ secrets.TREESEED_SMTP_PASSWORD }}');
+		expect(rendered).toContain('TREESEED_SMTP_FROM: ${{ vars.TREESEED_SMTP_FROM }}');
+		expect(rendered).toContain('TREESEED_SMTP_REPLY_TO: ${{ vars.TREESEED_SMTP_REPLY_TO }}');
+		expect(rendered).toContain('RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}');
+		expect(rendered).not.toContain('TREESEED_SMTP_HOST: ${{ secrets.TREESEED_SMTP_HOST }}');
 	});
 
 	it('renders the hosted project orchestration workflow template', () => {
@@ -90,5 +101,25 @@ describe('github automation workflow generation', () => {
 		expect(readFileSync(resolve(marketRoot, '.github', 'workflows', 'deploy.yml'), 'utf8')).toContain('Treeseed Deploy');
 		expect(readFileSync(resolve(marketRoot, '.github', 'workflows', 'hosted-project.yml'), 'utf8')).toContain('Treeseed Hosted Project Orchestration');
 		expect(readFileSync(resolve(hostedRoot, '.github', 'workflows', 'deploy.yml'), 'utf8')).toContain('./packages/sdk/scripts/tenant-workflow-action.ts');
+	});
+
+	it('uses configured GitHub repository metadata over a mismatched origin', () => {
+		const root = createTenantRoot(`hosting:
+  kind: self_hosted_project`);
+		spawnSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+		spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:old-owner/old-repo.git'], { cwd: root, stdio: 'ignore' });
+
+		expect(resolveGitHubRepositoryTarget(root, {
+			values: {
+				TREESEED_GITHUB_OWNER: 'knowledge-coop',
+				TREESEED_GITHUB_REPOSITORY_NAME: 'market',
+				TREESEED_GITHUB_REPOSITORY_VISIBILITY: 'public',
+			},
+		})).toMatchObject({
+			owner: 'knowledge-coop',
+			name: 'market',
+			visibility: 'public',
+			source: 'config',
+		});
 	});
 });

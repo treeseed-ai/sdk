@@ -7,9 +7,11 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { ApiPrincipal, RemoteTreeseedConfig, RemoteTreeseedHost } from '../../remote.ts';
 import {
 	getTreeseedEnvironmentSuggestedValues,
+	isTreeseedEnvironmentEntryRelevant,
 	isTreeseedEnvironmentEntryRequired,
 	resolveTreeseedEnvironmentRegistry,
 	TREESEED_ENVIRONMENT_SCOPES,
+	type TreeseedEnvironmentPurpose,
 	type TreeseedEnvironmentValidation,
 	validateTreeseedEnvironmentValues,
 } from '../../platform/environment.ts';
@@ -23,8 +25,17 @@ import {
 	syncCloudflareSecrets,
 	verifyProvisionedCloudflareResources,
 } from './deploy.ts';
-import { collectTreeseedReconcileStatus, reconcileTreeseedTarget } from '../../reconcile/index.ts';
-import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
+import {
+	collectTreeseedReconcileStatus,
+	reconcileTreeseedTarget,
+	resolveTreeseedBootstrapSelection,
+	type TreeseedBootstrapSystem,
+	type TreeseedRunnableBootstrapSystem,
+} from '../../reconcile/index.ts';
+import {
+	ensureGitHubBootstrapRepository,
+	maybeResolveGitHubRepositorySlug,
+} from './github-automation.ts';
 import {
 	buildRailwayCommandEnv,
 	configuredRailwayServices,
@@ -36,12 +47,12 @@ import {
 } from './railway-api.ts';
 import {
 	createGitHubApiClient,
+	ensureGitHubActionsEnvironment,
 	ensureGitHubBranchFromBase,
-	listGitHubRepositorySecretNames,
-	listGitHubRepositoryVariableNames,
-	upsertGitHubRepositorySecret,
-	upsertGitHubRepositoryVariable,
-	upsertGitHubRepositoryVariableWithGhCli,
+	listGitHubEnvironmentSecretNames,
+	listGitHubEnvironmentVariableNames,
+	upsertGitHubEnvironmentSecret,
+	upsertGitHubEnvironmentVariable,
 } from './github-api.ts';
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin, withProcessCwd } from './runtime-tools.ts';
 import { PRODUCTION_BRANCH, STAGING_BRANCH } from './git-workflow.ts';
@@ -62,9 +73,6 @@ import {
 export { TREESEED_MACHINE_KEY_PASSPHRASE_ENV, TreeseedKeyAgentError } from './key-agent.ts';
 
 const MACHINE_CONFIG_RELATIVE_PATH = '.treeseed/config/machine.yaml';
-const LEGACY_ENVIRONMENT_ALIASES = {
-	RAILWAY_API_KEY: 'RAILWAY_API_TOKEN',
-} as const;
 const MACHINE_KEY_HOME_RELATIVE_PATH = '.treeseed/config/machine.key';
 const LEGACY_MACHINE_KEY_RELATIVE_PATH = '.treeseed/config/machine.key';
 const REMOTE_AUTH_RELATIVE_PATH = '.treeseed/config/remote-auth.json';
@@ -82,8 +90,15 @@ const warnedDeprecatedLocalEnvRoots = new Set<string>();
 const inlineTreeseedSecretSessions = new Map<string, { machineKey: Buffer | null; lastTouchedAt: number; idleTimeoutMs: number }>();
 const railwayConnectionCheckCache = new Map<string, Promise<ReturnType<typeof providerConnectionResult>>>();
 
-function filterEnvironmentValuesByRegistry(values, registry) {
-	const registeredKeys = new Set(registry.entries.map((entry) => entry.id));
+function filterEnvironmentValuesByRegistry(
+	values,
+	registry,
+	scope: TreeseedConfigScope,
+	purpose: TreeseedEnvironmentPurpose = 'config',
+) {
+	const registeredKeys = new Set(registry.entries
+		.filter((entry) => isTreeseedEnvironmentEntryRelevant(entry, registry.context, scope, purpose))
+		.map((entry) => entry.id));
 	return Object.fromEntries(
 		Object.entries(values).filter(([key]) => registeredKeys.has(key)),
 	);
@@ -1656,22 +1671,18 @@ export function collectTreeseedConfigSeedValues(tenantRoot, scope, env = process
 			throw error;
 		}
 	}
-	const normalizedEnv = { ...env };
-	for (const [legacyKey, canonicalKey] of Object.entries(LEGACY_ENVIRONMENT_ALIASES)) {
-		if ((!normalizedEnv[canonicalKey] || String(normalizedEnv[canonicalKey]).length === 0) && normalizedEnv[legacyKey]) {
-			normalizedEnv[canonicalKey] = normalizedEnv[legacyKey];
-		}
-	}
 	return filterEnvironmentValuesByRegistry({
 		...machineValues,
-		...Object.fromEntries(Object.entries(normalizedEnv).map(([key, value]) => [key, value ?? undefined])),
-	}, registry);
+		...Object.fromEntries(Object.entries(env).map(([key, value]) => [key, value ?? undefined])),
+	}, registry, scope);
 }
 
 function collectTreeseedConfigSeedValueSources(tenantRoot, scope, env = process.env) {
 	warnDeprecatedTreeseedLocalEnvFiles(tenantRoot);
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
-	const registeredKeys = new Set(registry.entries.map((entry) => entry.id));
+	const registeredKeys = new Set(registry.entries
+		.filter((entry) => isTreeseedEnvironmentEntryRelevant(entry, registry.context, scope, 'config'))
+		.map((entry) => entry.id));
 	const values = {};
 	const sources = {};
 	const merge = (source, entries) => {
@@ -2180,8 +2191,44 @@ function writeProviderConnectionReport(write, report) {
 	write(formatTreeseedProviderConnectionReport(report));
 }
 
-export async function syncTreeseedGitHubEnvironment({ tenantRoot, scope = 'prod', dryRun = false } = {}) {
-	const repository = maybeResolveGitHubRepositorySlug(tenantRoot);
+async function runBounded<T>(
+	items: T[],
+	limit: number,
+	worker: (item: T, index: number) => Promise<void>,
+) {
+	const concurrency = Math.max(1, Math.min(limit, items.length || 1));
+	let nextIndex = 0;
+	const workers = Array.from({ length: concurrency }, async () => {
+		for (;;) {
+			const index = nextIndex;
+			nextIndex += 1;
+			if (index >= items.length) {
+				return;
+			}
+			await worker(items[index]!, index);
+		}
+	});
+	await Promise.all(workers);
+}
+
+export async function syncTreeseedGitHubEnvironment({
+	tenantRoot,
+	scope = 'prod',
+	dryRun = false,
+	repository: repositoryInput,
+	execution = 'parallel',
+	concurrency = 4,
+	onProgress,
+}: {
+	tenantRoot: string;
+	scope?: TreeseedConfigScope;
+	dryRun?: boolean;
+	repository?: string | null;
+	execution?: 'parallel' | 'sequential';
+	concurrency?: number;
+	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
+}) {
+	const repository = repositoryInput ?? maybeResolveGitHubRepositorySlug(tenantRoot);
 	if (!repository) {
 		throw new Error('Unable to determine the GitHub repository from the origin remote.');
 	}
@@ -2197,12 +2244,24 @@ export async function syncTreeseedGitHubEnvironment({ tenantRoot, scope = 'prod'
 		}
 		: {};
 	const githubClient = createGitHubApiClient({ env: ghEnv });
-	const secretNames = await listGitHubRepositorySecretNames(repository, { client: githubClient });
-	const variableNames = await listGitHubRepositoryVariableNames(repository, { client: githubClient });
+	const environment = scope === 'prod' ? 'production' : scope;
+	const progress = (message: string, stream: 'stdout' | 'stderr' = 'stdout') => onProgress?.(message, stream);
+	if (!dryRun) {
+		progress(`[${scope}][github][environment] Ensuring GitHub environment ${environment} exists...`);
+		await ensureGitHubActionsEnvironment(repository, environment, { client: githubClient });
+	}
+	progress(`[${scope}][github][sync] Loading existing GitHub secrets and variables...`);
+	const [secretNames, variableNames] = dryRun
+		? [new Set<string>(), new Set<string>()]
+		: await Promise.all([
+			listGitHubEnvironmentSecretNames(repository, environment, { client: githubClient }),
+			listGitHubEnvironmentVariableNames(repository, environment, { client: githubClient }),
+		]);
 	const synced = {
-		secrets: [],
-		variables: [],
+		secrets: [] as Array<{ name: string; existed: boolean }>,
+		variables: [] as Array<{ name: string; existed: boolean }>,
 	};
+	const items: Array<{ kind: 'secret' | 'variable'; name: string; value: string; existed: boolean }> = [];
 
 	for (const entry of relevant) {
 		const value = values[entry.id];
@@ -2211,31 +2270,40 @@ export async function syncTreeseedGitHubEnvironment({ tenantRoot, scope = 'prod'
 		}
 
 		if (entry.targets.includes('github-secret')) {
-			if (!dryRun) {
-				await upsertGitHubRepositorySecret(repository, entry.id, value, { client: githubClient });
-			}
-			synced.secrets.push({ name: entry.id, existed: secretNames.has(entry.id) });
+			items.push({ kind: 'secret', name: entry.id, value, existed: secretNames.has(entry.id) });
 		}
 
 		if (entry.targets.includes('github-variable')) {
-			if (!dryRun) {
-				try {
-					upsertGitHubRepositoryVariableWithGhCli(repository, entry.id, value, { env: ghEnv });
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error ?? '');
-					if (!/not found|ENOENT|timed out|timeout|aborted|gh api exited/iu.test(message)) {
-						throw error;
-					}
-					await upsertGitHubRepositoryVariable(repository, entry.id, value, { client: githubClient });
-				}
-			}
-			synced.variables.push({ name: entry.id, existed: variableNames.has(entry.id) });
+			items.push({ kind: 'variable', name: entry.id, value, existed: variableNames.has(entry.id) });
 		}
 	}
+	let completed = 0;
+	const total = items.length;
+	progress(`[${scope}][github][sync] Syncing GitHub environment ${environment}: 0/${total} items...`);
+	const limit = execution === 'sequential' ? 1 : concurrency;
+	await runBounded(items, limit, async (item) => {
+		if (!dryRun) {
+			if (item.kind === 'secret') {
+				await upsertGitHubEnvironmentSecret(repository, environment, item.name, item.value, { client: githubClient });
+			} else {
+				await upsertGitHubEnvironmentVariable(repository, environment, item.name, item.value, { client: githubClient });
+			}
+		}
+		completed += 1;
+		const action = item.existed ? 'updated' : 'created';
+		progress(`[${scope}][github][${item.kind}] ${action} ${item.name} (${completed}/${total})`);
+		if (item.kind === 'secret') {
+			synced.secrets.push({ name: item.name, existed: item.existed });
+		} else {
+			synced.variables.push({ name: item.name, existed: item.existed });
+		}
+	});
+	progress(`[${scope}][github][sync] Complete: ${synced.secrets.length} secrets, ${synced.variables.length} variables, ${total} total.`);
 
 	return {
 		repository,
 		scope,
+		environment,
 		...synced,
 	};
 }
@@ -2351,7 +2419,10 @@ async function summarizePersistentReadiness(
 	validation,
 	connectionChecks,
 	env = process.env,
-	{ includeReconcileStatus = true }: { includeReconcileStatus?: boolean } = {},
+	{ includeReconcileStatus = true, systems }: {
+		includeReconcileStatus?: boolean;
+		systems?: TreeseedRunnableBootstrapSystem[];
+	} = {},
 ) {
 	const validationProblems = [...validation.missing, ...validation.invalid];
 	const validationBlockers = validationProblems.map((problem) => problem.message);
@@ -2422,6 +2493,7 @@ async function summarizePersistentReadiness(
 		tenantRoot,
 		target: createPersistentDeployTarget(scope),
 		env,
+		systems,
 	});
 	const provisioned = reconcile.ready;
 	const deployable = configured && provisioned && connectionReady;
@@ -2554,21 +2626,34 @@ function createConfigReadiness(values, validation) {
 		...(validation?.invalid ?? []).map((problem) => problem.id),
 	]);
 	const validConfigValue = (key: string) => hasConfigValue(values, key) && !invalidIds.has(key);
-	const cloudflareReady = validConfigValue('CLOUDFLARE_API_TOKEN');
-	const railwayReady = validConfigValue('RAILWAY_API_TOKEN');
-	const localDevelopmentIssues = [
+	const configProblems = [
 		...(validation?.missing ?? []),
 		...(validation?.invalid ?? []),
+	];
+	const providerIssues = (provider: 'github' | 'cloudflare' | 'railway') =>
+		configProblems.filter((problem) => {
+			if (provider === 'github') {
+				return problem.id === 'GH_TOKEN' || problem.id === 'GITHUB_TOKEN' || problem.entry.group === 'github';
+			}
+			if (provider === 'cloudflare') {
+				return problem.id.startsWith('CLOUDFLARE_')
+					|| problem.id.includes('TURNSTILE')
+					|| problem.entry.group === 'cloudflare';
+			}
+			return problem.id.startsWith('RAILWAY_') || problem.entry.group === 'railway';
+		});
+	const localDevelopmentIssues = [
+		...configProblems,
 	].filter((problem) => problem.entry.group === 'local-development');
 	return {
 		github: {
 			configured: validConfigValue('GH_TOKEN'),
 		},
 		cloudflare: {
-			configured: cloudflareReady,
+			configured: providerIssues('cloudflare').length === 0,
 		},
 		railway: {
-			configured: railwayReady,
+			configured: providerIssues('railway').length === 0,
 		},
 		localDevelopment: {
 			configured: localDevelopmentIssues.length === 0,
@@ -2785,6 +2870,39 @@ export function applyTreeseedConfigValues({
 	};
 }
 
+function configProblemBootstrapSystems(problem) {
+	switch (problem?.id) {
+		case 'GH_TOKEN':
+		case 'GITHUB_TOKEN':
+			return ['github'];
+		case 'CLOUDFLARE_API_TOKEN':
+		case 'CLOUDFLARE_ACCOUNT_ID':
+		case 'CLOUDFLARE_ZONE_ID':
+			return ['data', 'web'];
+		case 'RAILWAY_API_TOKEN':
+		case 'TREESEED_RAILWAY_WORKSPACE':
+			return ['api', 'agents'];
+		default:
+			return null;
+	}
+}
+
+function filterValidationForBootstrapSystems(validation, runnableSystems: TreeseedRunnableBootstrapSystem[]) {
+	const runnable = new Set(runnableSystems);
+	const keepProblem = (problem) => {
+		const systems = configProblemBootstrapSystems(problem);
+		return !systems || systems.some((system) => runnable.has(system));
+	};
+	const missing = validation.missing.filter(keepProblem);
+	const invalid = validation.invalid.filter(keepProblem);
+	return {
+		...validation,
+		ok: missing.length === 0 && invalid.length === 0,
+		missing,
+		invalid,
+	};
+}
+
 export async function finalizeTreeseedConfig({
 	tenantRoot,
 	scopes = [...TREESEED_ENVIRONMENT_SCOPES],
@@ -2792,6 +2910,9 @@ export async function finalizeTreeseedConfig({
 	env = process.env,
 	checkConnections = true,
 	initializePersistent = true,
+	systems,
+	skipUnavailable,
+	bootstrapExecution = 'parallel',
 	onProgress,
 }: {
 	tenantRoot: string;
@@ -2800,7 +2921,10 @@ export async function finalizeTreeseedConfig({
 	env?: NodeJS.ProcessEnv;
 	checkConnections?: boolean;
 	initializePersistent?: boolean;
-	onProgress?: (message: string) => void;
+	systems?: TreeseedBootstrapSystem[] | TreeseedBootstrapSystem;
+	skipUnavailable?: boolean;
+	bootstrapExecution?: 'parallel' | 'sequential';
+	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
 }) {
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
 	const summary = {
@@ -2811,6 +2935,8 @@ export async function finalizeTreeseedConfig({
 		resourceInventoryByScope: {} as Record<TreeseedConfigScope, Record<string, unknown>>,
 		connectionChecks: [] as ReturnType<typeof checkTreeseedProviderConnections>[],
 		validationByScope: {} as Record<TreeseedConfigScope, ReturnType<typeof validateTreeseedEnvironmentValues>>,
+		bootstrapSystemsByScope: {} as Record<TreeseedConfigScope, ReturnType<typeof resolveTreeseedBootstrapSelection>>,
+		githubRepository: null as Record<string, unknown> | null,
 		readinessByScope: {} as Record<TreeseedConfigScope, {
 			phase: string;
 			configured: boolean;
@@ -2820,10 +2946,11 @@ export async function finalizeTreeseedConfig({
 			warnings: string[];
 			checks: Record<string, unknown>;
 		}>,
+		bootstrapExecution,
 	};
-	const progress = (message: string) => {
+	const progress = (message: string, stream: 'stdout' | 'stderr' = 'stdout') => {
 		if (typeof onProgress === 'function') {
-			onProgress(message);
+			onProgress(message, stream);
 		}
 	};
 
@@ -2831,6 +2958,25 @@ export async function finalizeTreeseedConfig({
 	const scopeSeedValues = Object.fromEntries(
 		scopes.map((scope) => [scope, collectTreeseedConfigSeedValues(tenantRoot, scope, env)]),
 	) as Record<TreeseedConfigScope, Record<string, string>>;
+
+	for (const scope of scopes) {
+		const selection = resolveTreeseedBootstrapSelection({
+			deployConfig: registry.context.deployConfig,
+			env: scopeSeedValues[scope],
+			systems: scope === 'local' ? ['github'] : systems,
+			skipUnavailable: scope === 'local' ? true : skipUnavailable,
+		});
+		summary.bootstrapSystemsByScope[scope] = selection;
+		const strictUnavailable = selection.unavailable.filter((status) =>
+			!selection.skipped.some((skipped) => skipped.system === status.system && skipped.reason === status.reason),
+		);
+		if (initializePersistent && strictUnavailable.length > 0) {
+			throw new Error(`Treeseed bootstrap cannot run the selected systems for ${scope}:\n- ${strictUnavailable.map((status) => `${status.system}: ${status.reason}`).join('\n- ')}`);
+		}
+		for (const skipped of selection.skipped) {
+			progress(`[${scope}][${skipped.system}][skip] ${skipped.reason}`);
+		}
+	}
 
 	for (const scope of scopes) {
 		const seedValues = scopeSeedValues[scope];
@@ -2853,7 +2999,9 @@ export async function finalizeTreeseedConfig({
 			tenantConfig: registry.context.tenantConfig,
 			plugins: registry.context.plugins,
 		});
-		summary.validationByScope[scope] = validation;
+		summary.validationByScope[scope] = initializePersistent
+			? filterValidationForBootstrapSystems(validation, summary.bootstrapSystemsByScope[scope].runnable)
+			: validation;
 
 		if (checkConnections) {
 			progress(`Checking provider connectivity for ${scope}...`);
@@ -2878,7 +3026,11 @@ export async function finalizeTreeseedConfig({
 			summary.validationByScope[scope],
 			summary.connectionChecks.find((report) => report.scope === scope)?.checks ?? [],
 			scopeSeedValues[scope],
-			{ includeReconcileStatus: !initializePersistent },
+			{
+				includeReconcileStatus: initializePersistent
+					&& summary.bootstrapSystemsByScope[scope].runnable.some((system) => system !== 'github'),
+				systems: summary.bootstrapSystemsByScope[scope].runnable.filter((system) => system !== 'github'),
+			},
 		);
 	}
 
@@ -2894,39 +3046,67 @@ export async function finalizeTreeseedConfig({
 	progress('Syncing managed service settings from treeseed.site.yaml...');
 	syncManagedServiceSettingsFromDeployConfig(tenantRoot);
 
+	const githubSelected = scopes.some((scope) => scope !== 'local' && summary.bootstrapSystemsByScope[scope].runnable.includes('github'));
+	let githubRepository = maybeResolveGitHubRepositorySlug(tenantRoot);
+	if (githubSelected && initializePersistent) {
+		const localSeedValues = collectTreeseedConfigSeedValues(tenantRoot, 'local', env);
+		const localSuggestedValues = getTreeseedEnvironmentSuggestedValues({
+			scope: 'local',
+			purpose: 'config',
+			deployConfig: registry.context.deployConfig,
+			tenantConfig: registry.context.tenantConfig,
+			plugins: registry.context.plugins,
+			values: localSeedValues,
+		});
+		const repositoryBootstrap = await ensureGitHubBootstrapRepository(tenantRoot, {
+			values: {
+				...localSuggestedValues,
+				...localSeedValues,
+			},
+			defaultName: registry.context.deployConfig.slug,
+			onProgress: (line) => progress(line),
+		});
+		summary.githubRepository = repositoryBootstrap as Record<string, unknown>;
+		githubRepository = repositoryBootstrap.repository;
+	}
+
 	if (initializePersistent) {
 		for (const scope of scopes) {
 			if (scope === 'local') {
 				continue;
 			}
-			progress(`Deriving desired units for ${scope}...`);
-			const initialized = await reconcileTreeseedTarget({
-				tenantRoot,
-				target: createPersistentDeployTarget(scope),
-				env: scopeSeedValues[scope],
-				write: progress,
-			});
-			summary.reconciled.push({
-				scope,
-				target: scope,
-				units: initialized.units.length,
-				actions: initialized.results.map((result) => ({
-					unitId: result.unit.unitId,
-					unitType: result.unit.unitType,
-					provider: result.unit.provider,
-					action: result.action,
-					verified: result.verification?.verified === true,
-					missing: result.verification?.missing ?? [],
-					drifted: result.verification?.drifted ?? [],
-				})),
-			});
-			if (scope === 'staging') {
-				progress(`Ensuring ${STAGING_BRANCH} exists on origin from ${PRODUCTION_BRANCH}...`);
-				const repository = maybeResolveGitHubRepositorySlug(tenantRoot);
-				if (!repository) {
+			const selection = summary.bootstrapSystemsByScope[scope];
+			const reconcileSystems = selection.runnable.filter((system) => system !== 'github');
+			if (reconcileSystems.length > 0) {
+				progress(`[${scope}][bootstrap][plan] Deriving desired units for ${reconcileSystems.join(', ')}...`);
+				const initialized = await reconcileTreeseedTarget({
+					tenantRoot,
+					target: createPersistentDeployTarget(scope),
+					env: scopeSeedValues[scope],
+					systems: reconcileSystems,
+					write: (line) => progress(`[${scope}][reconcile] ${line}`),
+				});
+				summary.reconciled.push({
+					scope,
+					target: scope,
+					units: initialized.units.length,
+					actions: initialized.results.map((result) => ({
+						unitId: result.unit.unitId,
+						unitType: result.unit.unitType,
+						provider: result.unit.provider,
+						action: result.action,
+						verified: result.verification?.verified === true,
+						missing: result.verification?.missing ?? [],
+						drifted: result.verification?.drifted ?? [],
+					})),
+				});
+			}
+			if (scope === 'staging' && selection.runnable.includes('github')) {
+				progress(`[${scope}][github][branch] Ensuring ${STAGING_BRANCH} exists on origin from ${PRODUCTION_BRANCH}...`);
+				if (!githubRepository) {
 					throw new Error('Unable to determine the GitHub repository from the origin remote for staging branch bootstrap.');
 				}
-				const branchBootstrap = await ensureGitHubBranchFromBase(repository, STAGING_BRANCH, {
+				const branchBootstrap = await ensureGitHubBranchFromBase(githubRepository, STAGING_BRANCH, {
 					baseBranch: PRODUCTION_BRANCH,
 					client: createGitHubApiClient({
 						env: scopeSeedValues[scope],
@@ -2938,60 +3118,91 @@ export async function finalizeTreeseedConfig({
 					result: {},
 				});
 			}
-			progress(`Deploying ${scope}...`);
-			applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override: true });
-			process.env.TREESEED_RAILWAY_WORKSPACE = process.env.TREESEED_RAILWAY_WORKSPACE
-				|| scopeSeedValues[scope].TREESEED_RAILWAY_WORKSPACE
-				|| resolveRailwayWorkspace(scopeSeedValues[scope]);
-			const { deployProjectPlatform } = await import('./project-platform.ts');
-			const deployResult = await deployProjectPlatform({
-				tenantRoot,
-				scope,
-				skipProvision: true,
-			});
-			const deployEntry = summary.deployed.find((entry) => entry.scope === scope);
-			if (deployEntry) {
-				deployEntry.result = deployResult as Record<string, unknown>;
-			} else {
-				summary.deployed.push({
+			const deploySystems = selection.runnable.filter((system) => system === 'data' || system === 'web' || system === 'api' || system === 'agents');
+			if (deploySystems.length > 0) {
+				progress(`[${scope}][bootstrap][deploy] Deploying ${deploySystems.join(', ')}...`);
+				applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override: true });
+				process.env.TREESEED_RAILWAY_WORKSPACE = process.env.TREESEED_RAILWAY_WORKSPACE
+					|| scopeSeedValues[scope].TREESEED_RAILWAY_WORKSPACE
+					|| resolveRailwayWorkspace(scopeSeedValues[scope]);
+				const { deployProjectPlatform } = await import('./project-platform.ts');
+				const deployResult = await deployProjectPlatform({
+					tenantRoot,
 					scope,
-					branchBootstrap: null,
-					result: deployResult as Record<string, unknown>,
+					skipProvision: true,
+					bootstrapSystems: deploySystems,
+					bootstrapExecution,
+					env: scopeSeedValues[scope],
+					write: (line, stream) => progress(line, stream),
 				});
-			}
-			progress(`Re-verifying ${scope} after deployment...`);
-			const finalized = await reconcileTreeseedTarget({
-				tenantRoot,
-				target: createPersistentDeployTarget(scope),
-				env: scopeSeedValues[scope],
-				write: progress,
-			});
-			const index = summary.reconciled.findIndex((entry) => entry.scope === scope);
-			const nextSummary = {
-				scope,
-				target: scope,
-				units: finalized.units.length,
-				actions: finalized.results.map((result) => ({
-					unitId: result.unit.unitId,
-					unitType: result.unit.unitType,
-					provider: result.unit.provider,
-					action: result.action,
-					verified: result.verification?.verified === true,
-					missing: result.verification?.missing ?? [],
-					drifted: result.verification?.drifted ?? [],
-				})),
-			};
-			if (index >= 0) {
-				summary.reconciled[index] = nextSummary;
-			} else {
-				summary.reconciled.push(nextSummary);
+				const deployEntry = summary.deployed.find((entry) => entry.scope === scope);
+				if (deployEntry) {
+					deployEntry.result = deployResult as Record<string, unknown>;
+				} else {
+					summary.deployed.push({
+						scope,
+						branchBootstrap: null,
+						result: deployResult as Record<string, unknown>,
+					});
+				}
+				progress(`[${scope}][bootstrap][verify] Re-verifying after deployment...`);
+				const finalized = await reconcileTreeseedTarget({
+					tenantRoot,
+					target: createPersistentDeployTarget(scope),
+					env: scopeSeedValues[scope],
+					systems: reconcileSystems,
+					write: (line) => progress(`[${scope}][verify] ${line}`),
+				});
+				const index = summary.reconciled.findIndex((entry) => entry.scope === scope);
+				const nextSummary = {
+					scope,
+					target: scope,
+					units: finalized.units.length,
+					actions: finalized.results.map((result) => ({
+						unitId: result.unit.unitId,
+						unitType: result.unit.unitType,
+						provider: result.unit.provider,
+						action: result.action,
+						verified: result.verification?.verified === true,
+						missing: result.verification?.missing ?? [],
+						drifted: result.verification?.drifted ?? [],
+					})),
+				};
+				if (index >= 0) {
+					summary.reconciled[index] = nextSummary;
+				} else {
+					summary.reconciled.push(nextSummary);
+				}
 			}
 		}
 	}
 
 	if (sync === 'github' || sync === 'all') {
-		progress(`Syncing GitHub environment for ${scopes.at(-1) ?? 'prod'}...`);
-		summary.synced.github = await syncTreeseedGitHubEnvironment({ tenantRoot, scope: scopes.at(-1) ?? 'prod' });
+		const githubScopes = scopes.filter((scope) => scope !== 'local' && summary.bootstrapSystemsByScope[scope].runnable.includes('github'));
+		const syncScope = async (scope: TreeseedConfigScope) => {
+			progress(`[${scope}][github][sync] Syncing GitHub environment...`);
+			return await syncTreeseedGitHubEnvironment({
+				tenantRoot,
+				scope,
+				repository: githubRepository,
+				execution: bootstrapExecution,
+				onProgress: progress,
+			});
+		};
+		const githubResults: Array<Awaited<ReturnType<typeof syncTreeseedGitHubEnvironment>>> = [];
+		if (bootstrapExecution === 'sequential') {
+			for (const scope of githubScopes) {
+				githubResults.push(await syncScope(scope));
+			}
+		} else {
+			githubResults.push(...await Promise.all(githubScopes.map((scope) => syncScope(scope))));
+		}
+		summary.synced.github = {
+			scopes: githubResults,
+			repository: githubResults[0]?.repository ?? githubRepository ?? maybeResolveGitHubRepositorySlug(tenantRoot),
+			secrets: githubResults.flatMap((entry) => entry.secrets),
+			variables: githubResults.flatMap((entry) => entry.variables),
+		};
 	}
 	for (const scope of scopes) {
 		const reconciled = summary.reconciled.find((entry) => entry.scope === scope) ?? null;
@@ -3007,7 +3218,12 @@ export async function finalizeTreeseedConfig({
 				scope,
 				summary.validationByScope[scope],
 				summary.connectionChecks.find((report) => report.scope === scope)?.checks ?? [],
-				env,
+				scopeSeedValues[scope],
+				{
+					includeReconcileStatus: initializePersistent
+						&& summary.bootstrapSystemsByScope[scope].runnable.some((system) => system !== 'github'),
+					systems: summary.bootstrapSystemsByScope[scope].runnable.filter((system) => system !== 'github'),
+				},
 			);
 	}
 

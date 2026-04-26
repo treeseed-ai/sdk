@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -183,6 +184,26 @@ function turnstileEnabled(context: TreeseedEnvironmentContext) {
 
 function smtpEnabled(context: TreeseedEnvironmentContext) {
 	return context.deployConfig.smtp?.enabled === true;
+}
+
+function platformSurfaceEnabled(context: TreeseedEnvironmentContext, surface: string) {
+	return context.deployConfig.surfaces?.[surface]?.enabled !== false;
+}
+
+function managedServiceEnabled(context: TreeseedEnvironmentContext, service: string) {
+	return context.deployConfig.services?.[service]?.enabled !== false;
+}
+
+function webSurfaceEnabled(context: TreeseedEnvironmentContext) {
+	return platformSurfaceEnabled(context, 'web');
+}
+
+function apiSurfaceEnabled(context: TreeseedEnvironmentContext) {
+	return platformSurfaceEnabled(context, 'api') && managedServiceEnabled(context, 'api');
+}
+
+function formsEnabled(context: TreeseedEnvironmentContext) {
+	return webSurfaceEnabled(context) && (context.deployConfig.providers?.forms ?? 'store_only') !== 'none';
 }
 
 function railwayManagedEnabled(context: TreeseedEnvironmentContext) {
@@ -384,6 +405,41 @@ function resolveRailwayWorkspaceDefault() {
 	return 'knowledge-coop';
 }
 
+function parseGitHubRepositorySlugFromRemote(remoteUrl: string | undefined) {
+	const normalized = String(remoteUrl ?? '').trim();
+	const sshMatch = normalized.match(/^git@github\.com:([^/]+)\/(.+?)(?:\.git)?$/u);
+	if (sshMatch) {
+		return { owner: sshMatch[1], name: sshMatch[2] };
+	}
+
+	const httpsMatch = normalized.match(/^https:\/\/github\.com\/([^/]+)\/(.+?)(?:\.git)?$/u);
+	if (httpsMatch) {
+		return { owner: httpsMatch[1], name: httpsMatch[2] };
+	}
+
+	return null;
+}
+
+function resolveGitHubOriginRepository(context: TreeseedEnvironmentContext) {
+	const result = spawnSync('git', ['remote', 'get-url', 'origin'], {
+		cwd: context.tenantRoot,
+		stdio: 'pipe',
+		encoding: 'utf8',
+	});
+	if (result.status !== 0) {
+		return null;
+	}
+	return parseGitHubRepositorySlugFromRemote(result.stdout);
+}
+
+function resolveGitHubOwnerDefault(context: TreeseedEnvironmentContext) {
+	return resolveGitHubOriginRepository(context)?.owner;
+}
+
+function resolveGitHubRepositoryNameDefault(context: TreeseedEnvironmentContext) {
+	return resolveGitHubOriginRepository(context)?.name || context.deployConfig.slug;
+}
+
 const VALUE_RESOLVERS: NamedResolverMap = {
 	generatedSecret: () => generatedSecret(),
 	localFormsBypassDefault: () => 'true',
@@ -407,6 +463,9 @@ const VALUE_RESOLVERS: NamedResolverMap = {
 	hostingTeamIdDefault: (context) => resolveHostedTeamId(context),
 	hostingProjectIdDefault: (context) => resolveHostedProjectId(context),
 	railwayWorkspaceDefault: () => resolveRailwayWorkspaceDefault(),
+	githubOwnerDefault: (context) => resolveGitHubOwnerDefault(context),
+	githubRepositoryNameDefault: (context) => resolveGitHubRepositoryNameDefault(context),
+	githubRepositoryVisibilityDefault: () => 'private',
 	agentPoolMinWorkersDefault: () => '0',
 	agentPoolMaxWorkersDefault: () => '2',
 	agentPoolTargetQueueDepthDefault: () => '1',
@@ -426,6 +485,9 @@ const PREDICATES: NamedPredicateMap = {
 	turnstileNonLocal: (context, scope) => turnstileEnabled(context) && scope !== 'local',
 	smtpEnabled: (context) => smtpEnabled(context),
 	smtpNonLocal: (context, scope) => smtpEnabled(context) && scope !== 'local',
+	webSurfaceEnabled: (context) => webSurfaceEnabled(context),
+	apiSurfaceEnabled: (context) => apiSurfaceEnabled(context),
+	formsEnabled: (context) => formsEnabled(context),
 	railwayManagedEnabled: (context) => railwayManagedEnabled(context),
 	hubTreeseedHosted: (context) => resolveHubMode(context) === 'treeseed_hosted',
 	hubCustomerHosted: (context) => resolveHubMode(context) === 'customer_hosted',

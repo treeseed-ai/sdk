@@ -332,7 +332,7 @@ describe('cloudflare reconcile adapters', () => {
 				cloudflare: { accountId: 'account-123' },
 			},
 			launchEnv: {
-				RAILWAY_API_KEY: 'railway-token-from-alias',
+				RAILWAY_API_TOKEN: 'railway-token',
 				TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
 				GH_TOKEN: 'github-token',
 				CLOUDFLARE_API_TOKEN: 'cf-token',
@@ -347,7 +347,7 @@ describe('cloudflare reconcile adapters', () => {
 
 		expect(resolveTreeseedMachineEnvironmentValuesMock).not.toHaveBeenCalled();
 		expect(railwayEnvMock).toHaveBeenCalledWith(expect.objectContaining({
-			RAILWAY_API_TOKEN: 'railway-token-from-alias',
+			RAILWAY_API_TOKEN: 'railway-token',
 			TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
 		}));
 		expect(upsertRailwayVariablesMock).toHaveBeenCalledWith(expect.objectContaining({

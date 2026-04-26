@@ -13,6 +13,7 @@ import type {
 import { deriveTreeseedDesiredUnits } from './desired-state.ts';
 import { ensureTreeseedPersistedUnitState, desiredUnitSpecHash, loadTreeseedReconcileState, updateTreeseedPersistedUnitState, writeTreeseedReconcileState } from './state.ts';
 import { reverseTopologicallySortedUnits, topologicallySortDesiredUnits } from './units.ts';
+import { filterTreeseedDesiredUnitsByBootstrapSystems, type TreeseedRunnableBootstrapSystem } from './bootstrap-systems.ts';
 
 function nowIso() {
 	return new Date().toISOString();
@@ -63,6 +64,40 @@ function createRunContext(
 		write,
 		session: new Map<string, unknown>(),
 	};
+}
+
+function dependencyLevels(units: ReturnType<typeof topologicallySortDesiredUnits>) {
+	const remaining = new Map(units.map((unit) => [unit.unitId, unit]));
+	const completed = new Set<string>();
+	const levels: typeof units[] = [];
+
+	while (remaining.size > 0) {
+		const ready = [...remaining.values()].filter((unit) =>
+			unit.dependencies.every((dependencyId) => completed.has(dependencyId) || !remaining.has(dependencyId)),
+		);
+		if (ready.length === 0) {
+			topologicallySortDesiredUnits(units);
+			throw new Error('Treeseed reconcile dependency graph could not be scheduled.');
+		}
+		for (const unit of ready) {
+			remaining.delete(unit.unitId);
+			completed.add(unit.unitId);
+		}
+		levels.push(ready);
+	}
+
+	return levels;
+}
+
+async function runByDependencyLevel<T>(
+	units: ReturnType<typeof topologicallySortDesiredUnits>,
+	action: (unit: ReturnType<typeof topologicallySortDesiredUnits>[number]) => Promise<T>,
+) {
+	const results: T[] = [];
+	for (const level of dependencyLevels(units)) {
+		results.push(...await Promise.all(level.map((unit) => action(unit))));
+	}
+	return results;
 }
 
 function persistResult(
@@ -140,19 +175,23 @@ export async function observeTreeseedUnits({
 	tenantRoot,
 	target,
 	env = process.env,
+	systems,
 	write,
 }: {
 	tenantRoot: string;
 	target: TreeseedReconcileTarget;
 	env?: NodeJS.ProcessEnv;
+	systems?: TreeseedRunnableBootstrapSystem[];
 	write?: (line: string) => void;
 }) {
-	const { units, deployConfig } = deriveTreeseedDesiredUnits({ tenantRoot, target });
+	const derived = deriveTreeseedDesiredUnits({ tenantRoot, target });
+	const units = filterTreeseedDesiredUnitsByBootstrapSystems(derived.units, systems);
+	const deployConfig = derived.deployConfig;
 	const registry = createTreeseedReconcileRegistry(deployConfig);
 	const reconcileState = loadTreeseedReconcileState(tenantRoot, target);
 	const context = createRunContext(tenantRoot, target, env, write);
 	const observations = new Map<string, TreeseedObservedUnitState>();
-	for (const unit of topologicallySortDesiredUnits(units)) {
+	await runByDependencyLevel(topologicallySortDesiredUnits(units), async (unit) => {
 		write?.(`Observing ${unit.provider}:${unit.unitType}...`);
 		const adapter = registry.get(unit.unitType, unit.provider);
 		const persisted = ensureTreeseedPersistedUnitState(reconcileState, unit);
@@ -167,7 +206,7 @@ export async function observeTreeseedUnits({
 			wrapAdapterFailure('observe', unit.provider, unit.unitType, unit.unitId, error);
 		}
 		observations.set(unit.unitId, observed as TreeseedObservedUnitState);
-	}
+	});
 	return {
 		units,
 		observations,
@@ -180,18 +219,20 @@ export async function planTreeseedReconciliation({
 	tenantRoot,
 	target,
 	env = process.env,
+	systems,
 	write,
 }: {
 	tenantRoot: string;
 	target: TreeseedReconcileTarget;
 	env?: NodeJS.ProcessEnv;
+	systems?: TreeseedRunnableBootstrapSystem[];
 	write?: (line: string) => void;
 }) {
-	const observed = await observeTreeseedUnits({ tenantRoot, target, env, write });
+	const observed = await observeTreeseedUnits({ tenantRoot, target, env, systems, write });
 	const registry = createTreeseedReconcileRegistry(observed.deployConfig);
 	const context = createRunContext(tenantRoot, target, env, write);
 	const plans: TreeseedReconcilePlan[] = [];
-	for (const unit of topologicallySortDesiredUnits(observed.units)) {
+	await runByDependencyLevel(topologicallySortDesiredUnits(observed.units), async (unit) => {
 		const adapter = registry.get(unit.unitType, unit.provider);
 		const persisted = ensureTreeseedPersistedUnitState(observed.state, unit);
 		const observation = observed.observations.get(unit.unitId)!;
@@ -212,7 +253,7 @@ export async function planTreeseedReconciliation({
 			diff: diff as any,
 			persisted,
 		});
-	}
+	});
 	return {
 		...observed,
 		plans,
@@ -223,20 +264,32 @@ export async function reconcileTreeseedTarget({
 	tenantRoot,
 	target,
 	env = process.env,
+	systems,
 	write,
 }: {
 	tenantRoot: string;
 	target: TreeseedReconcileTarget;
 	env?: NodeJS.ProcessEnv;
+	systems?: TreeseedRunnableBootstrapSystem[];
 	write?: (line: string) => void;
 }) {
-	const planned = await planTreeseedReconciliation({ tenantRoot, target, env, write });
+	const planned = await planTreeseedReconciliation({ tenantRoot, target, env, systems, write });
 	const registry = createTreeseedReconcileRegistry(planned.deployConfig);
 	const context = createRunContext(tenantRoot, target, env, write);
 	const results: TreeseedReconcileResult[] = [];
 	const verificationMap = new Map<string, TreeseedUnitVerificationResult>();
 	context.session.set('treeseed:verification-results', verificationMap);
-	for (const plan of planned.plans) {
+	const planByUnitId = new Map(planned.plans.map((plan) => [plan.unit.unitId, plan]));
+	let persistChain = Promise.resolve();
+	const persistVerifiedResult = async (persisted: TreeseedUnitPersistedState, verifiedResult: TreeseedReconcileResult) => {
+		persistChain = persistChain.then(() => {
+			persistResult(planned.state, persisted, verifiedResult);
+			writeTreeseedReconcileState(tenantRoot, planned.state);
+		});
+		await persistChain;
+	};
+	await runByDependencyLevel(topologicallySortDesiredUnits(planned.units), async (unit) => {
+		const plan = planByUnitId.get(unit.unitId)!;
 		write?.(`Reconciling ${plan.unit.provider}:${plan.unit.unitType}...`);
 		const adapter = registry.get(plan.unit.unitType, plan.unit.provider);
 		const persisted = ensureTreeseedPersistedUnitState(planned.state, plan.unit);
@@ -291,13 +344,12 @@ export async function reconcileTreeseedTarget({
 		};
 		verificationMap.set(plan.unit.unitId, verification as TreeseedUnitVerificationResult);
 		if (!(verification as TreeseedUnitVerificationResult).verified) {
-			persistResult(planned.state, persisted, verifiedResult);
-			writeTreeseedReconcileState(tenantRoot, planned.state);
+			await persistVerifiedResult(persisted, verifiedResult);
 			throw new Error(`Treeseed reconcile verification failed for ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.unitId}): ${formatVerificationFailure(verification as TreeseedUnitVerificationResult)}`);
 		}
-		persistResult(planned.state, persisted, verifiedResult);
+		await persistVerifiedResult(persisted, verifiedResult);
 		results.push(verifiedResult);
-	}
+	});
 	writeTreeseedReconcileState(tenantRoot, planned.state);
 	return {
 		target,
@@ -361,12 +413,14 @@ export async function collectTreeseedReconcileStatus({
 	tenantRoot,
 	target,
 	env = process.env,
+	systems,
 }: {
 	tenantRoot: string;
 	target: TreeseedReconcileTarget;
 	env?: NodeJS.ProcessEnv;
+	systems?: TreeseedRunnableBootstrapSystem[];
 }) {
-	const observed = await observeTreeseedUnits({ tenantRoot, target, env });
+	const observed = await observeTreeseedUnits({ tenantRoot, target, env, systems });
 	const registry = createTreeseedReconcileRegistry(observed.deployConfig);
 	const context = createRunContext(tenantRoot, target, env);
 	const plans = await Promise.all(observed.units.map(async (unit) => {

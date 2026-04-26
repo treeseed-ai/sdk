@@ -93,7 +93,7 @@ import {
 	workspaceRoot,
 } from '../operations/services/workspace-tools.ts';
 import { resolveTreeseedWorkflowState } from '../workflow-state.ts';
-import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, planTreeseedReconciliation, reconcileTreeseedTarget } from '../reconcile/index.ts';
+import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, filterTreeseedDesiredUnitsByBootstrapSystems, planTreeseedReconciliation, resolveTreeseedBootstrapSelection, reconcileTreeseedTarget } from '../reconcile/index.ts';
 import {
 	acquireWorkflowLock,
 	createWorkflowRunJournal,
@@ -1335,6 +1335,9 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 			const bootstrapOnly = input.bootstrap === true;
 			const bootstrapPreflight = bootstrapOnly && input.preflight === true;
 			const nonInteractive = input.nonInteractive === true;
+			const bootstrapSystemsInput = input.systems;
+			const skipUnavailable = input.skipUnavailable;
+			const bootstrapExecution = input.bootstrapExecution ?? 'parallel';
 			const repairs = input.repair === false ? [] : (resolveTreeseedWorkflowState(tenantRoot).deployConfigPresent ? applyTreeseedSafeRepairs(tenantRoot) : []);
 			const toolHealth = ensureTreeseedActVerificationTooling({
 				tenantRoot,
@@ -1456,8 +1459,18 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 						maybePrint(helpers.write, `Deriving desired units for ${scope}...`);
 						const target = createPersistentDeployTarget(scope);
 						const derived = deriveTreeseedDesiredUnits({ tenantRoot, target });
+						const selection = resolveTreeseedBootstrapSelection({
+							deployConfig: derived.deployConfig,
+							env: contextSnapshot.valuesByScope[scope] ?? helpers.context.env ?? process.env,
+							systems: bootstrapSystemsInput,
+							skipUnavailable,
+						});
+						const selectedUnits = filterTreeseedDesiredUnitsByBootstrapSystems(
+							derived.units,
+							selection.runnable.filter((system) => system !== 'github'),
+						);
 						const registry = createTreeseedReconcileRegistry(derived.deployConfig);
-						const capabilityMatrix = derived.units.map((unit) => {
+						const capabilityMatrix = selectedUnits.map((unit) => {
 							const adapter = registry.get(unit.unitType, unit.provider);
 							return {
 								unitId: unit.unitId,
@@ -1483,10 +1496,12 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 							tenantRoot,
 							target,
 							env: helpers.context.env,
+							systems: selection.runnable.filter((system) => system !== 'github'),
 							write: (line: string) => maybePrint(helpers.write, line),
 						});
 						return {
 							scope,
+							bootstrapSystems: selection,
 							resourceInventory: buildProvisioningSummary(derived.deployConfig, loadDeployState(tenantRoot, derived.deployConfig, { target }), target),
 							capabilityMatrix: await Promise.all(capabilityMatrix.map(async (entry) => ({
 								...entry,
@@ -1518,6 +1533,7 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 						context: contextSnapshot,
 						resourceInventoryByScope: Object.fromEntries(plansByScope.map((entry) => [entry.scope, entry.resourceInventory])),
 						verificationPreflight: plansByScope,
+						bootstrapSystemsByScope: Object.fromEntries(plansByScope.map((entry) => [entry.scope, entry.bootstrapSystems])),
 					},
 					{
 						nextSteps: createNextSteps([
@@ -1569,7 +1585,10 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 				sync,
 				env: helpers.context.env,
 				checkConnections: bootstrapOnly || sync !== 'none' || scopes.some((scope) => scope !== 'local'),
-				onProgress: (line) => maybePrint(helpers.write, line),
+				systems: bootstrapSystemsInput,
+				skipUnavailable,
+				bootstrapExecution,
+				onProgress: (line, stream) => maybePrint(helpers.write, line, stream),
 			});
 			const refreshedContext = collectTreeseedConfigContext({
 				tenantRoot,

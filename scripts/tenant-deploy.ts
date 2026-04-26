@@ -14,6 +14,12 @@ import {
 	loadDeployState,
 	runRemoteD1Migrations,
 } from '../src/operations/services/deploy.ts';
+import {
+	prepareTenantCloudflareDeploy,
+	runTenantDataMigration,
+	runTenantWebBuild,
+	runTenantWebPublish,
+} from '../src/operations/services/project-platform.ts';
 import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from '../src/operations/services/git-workflow.ts';
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin } from '../src/operations/services/runtime-tools.ts';
 import { runTenantDeployPreflight } from '../src/operations/services/save-deploy-preflight.ts';
@@ -196,15 +202,21 @@ async function main() {
 
 	if (scope === 'local') {
 		runTenantDeployPreflight({ cwd: tenantRoot, scope: 'local' });
-		runNodeScript(packageScriptPath('tenant-build'));
+		await runTenantWebBuild({ tenantRoot, scope: 'local', dryRun: options.dryRun, env: process.env });
 		writeDeployReport({ ok: true, kind: 'success', scope, dryRun: options.dryRun, target: deployTargetLabel(target) });
 		console.log('Treeseed local deploy completed as a build-only publish target.');
 		return;
 	}
 
+	let context;
 	try {
-		assertDeploymentInitialized(tenantRoot, { target });
-		runTenantDeployPreflight({ cwd: tenantRoot, scope });
+		context = prepareTenantCloudflareDeploy({
+			tenantRoot,
+			scope,
+			target,
+			dryRun: options.dryRun,
+			env: process.env,
+		});
 	} catch (error) {
 		writeDeployReport({
 			ok: false,
@@ -215,44 +227,18 @@ async function main() {
 		throw error;
 	}
 
-	const { wranglerPath } = ensureGeneratedWranglerConfig(tenantRoot, { target });
-	const deployConfig = loadCliDeployConfig(tenantRoot);
-	const deployState = loadDeployState(tenantRoot, deployConfig, { target });
-	const pagesProjectName = target.kind === 'persistent' ? deployState.pages?.projectName ?? null : null;
-	const pagesBranchName = target.kind === 'persistent'
-		? (
-			target.scope === 'prod'
-				? deployState.pages?.productionBranch ?? 'main'
-				: deployState.pages?.stagingBranch ?? 'staging'
-		)
-		: null;
-
 	if (shouldRun('migrate')) {
-		const result = runRemoteD1Migrations(tenantRoot, { dryRun: options.dryRun, target });
+		const result = await runTenantDataMigration(context);
 		console.log(`${options.dryRun ? 'Planned' : 'Applied'} remote migrations for ${result.databaseName}.`);
 	}
 
 	if (shouldRun('build')) {
-		if (options.dryRun) {
-			console.log('Dry run: skipped tenant build.');
-		} else {
-			runNodeScript(packageScriptPath('tenant-build'));
-		}
+		await runTenantWebBuild(context);
 	}
 
 	if (shouldRun('publish')) {
-		if (options.dryRun) {
-			if (pagesProjectName) {
-				console.log(`Dry run: would deploy ${deployTargetLabel(target)} to Pages project ${pagesProjectName} from ${resolve(tenantRoot, 'dist')}.`);
-			} else {
-				console.log(`Dry run: would deploy ${deployTargetLabel(target)} with generated Wrangler config at ${resolve(wranglerPath)}.`);
-			}
-		} else {
-			if (pagesProjectName) {
-				runWranglerPagesDeploy(pagesProjectName, pagesBranchName, resolve(tenantRoot, 'dist'));
-			} else {
-				runWranglerDeploy(wranglerPath);
-			}
+		await runTenantWebPublish(context);
+		if (!options.dryRun) {
 			finalizeDeploymentState(tenantRoot, { target });
 		}
 	}
