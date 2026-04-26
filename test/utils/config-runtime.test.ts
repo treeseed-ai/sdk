@@ -9,6 +9,7 @@ import {
 	getTreeseedMachineConfigPaths,
 	inspectTreeseedKeyAgentStatus,
 	loadTreeseedMachineConfig,
+	applyTreeseedEnvironmentToProcess,
 	resolveTreeseedLaunchEnvironment,
 	resolveTreeseedMachineEnvironmentValues,
 	applyTreeseedConfigValues,
@@ -144,6 +145,97 @@ describe('config runtime shared environment values', () => {
 		expect(warnings[0]).toContain('.env.local');
 		expect(existsSync(resolve(tenantRoot, '.dev.vars'))).toBe(false);
 		console.warn = originalWarn;
+	});
+
+	it('keeps hosted process environment values ahead of machine config values', () => {
+		const tenantRoot = createTenantFixture();
+		const config = createDefaultTreeseedMachineConfig({
+			tenantRoot,
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://market.example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				services: { api: { provider: 'railway', enabled: true } },
+			} as any,
+			tenantConfig: { id: 'test-site' } as any,
+		});
+		writeTreeseedMachineConfig(tenantRoot, config);
+		unlockSecrets(tenantRoot);
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
+			id: 'SHARED_VALUE',
+			sensitivity: 'plain',
+			storage: 'shared',
+		} as any, 'from-machine');
+
+		expect(
+			resolveTreeseedLaunchEnvironment({
+				tenantRoot,
+				scope: 'staging',
+				baseEnv: { SHARED_VALUE: 'from-env' } as any,
+			}).SHARED_VALUE,
+		).toBe('from-env');
+	});
+
+	it('builds launch env from process values when no wrapped machine key exists', () => {
+		const tenantRoot = createTenantFixture();
+		writeTreeseedMachineConfig(tenantRoot, createDefaultTreeseedMachineConfig({
+			tenantRoot,
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://market.example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				services: { api: { provider: 'railway', enabled: true } },
+			} as any,
+			tenantConfig: { id: 'test-site' } as any,
+		}));
+
+		expect(
+			resolveTreeseedLaunchEnvironment({
+				tenantRoot,
+				scope: 'staging',
+				baseEnv: {
+					CLOUDFLARE_API_TOKEN: 'cf-token',
+					CLOUDFLARE_ACCOUNT_ID: 'account-123',
+					RAILWAY_API_TOKEN: 'railway-token',
+				} as any,
+			}),
+		).toMatchObject({
+			CLOUDFLARE_API_TOKEN: 'cf-token',
+			CLOUDFLARE_ACCOUNT_ID: 'account-123',
+			RAILWAY_API_TOKEN: 'railway-token',
+		});
+	});
+
+	it('does not overwrite hosted process env values when applying config', () => {
+		const tenantRoot = createTenantFixture();
+		const config = createDefaultTreeseedMachineConfig({
+			tenantRoot,
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://market.example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				services: { api: { provider: 'railway', enabled: true } },
+			} as any,
+			tenantConfig: { id: 'test-site' } as any,
+		});
+		writeTreeseedMachineConfig(tenantRoot, config);
+		unlockSecrets(tenantRoot);
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
+			id: 'SHARED_VALUE',
+			sensitivity: 'plain',
+			storage: 'shared',
+		} as any, 'from-machine');
+		vi.stubEnv('SHARED_VALUE', 'from-env');
+
+		applyTreeseedEnvironmentToProcess({ tenantRoot, scope: 'staging', override: true });
+
+		expect(process.env.SHARED_VALUE).toBe('from-env');
 	});
 
 	it('creates a wrapped machine key and unlocks the in-memory secret session', () => {

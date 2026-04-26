@@ -1722,9 +1722,19 @@ export function resolveTreeseedLaunchEnvironment({
 	overrides?: NodeJS.ProcessEnv;
 }) {
 	warnDeprecatedTreeseedLocalEnvFiles(tenantRoot);
+	let machineValues = {};
+	try {
+		machineValues = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
+	} catch (error) {
+		if (!(error instanceof TreeseedKeyAgentError)) {
+			throw error;
+		}
+	}
+	const scopedValues = scope === 'local'
+		? { ...baseEnv, ...machineValues }
+		: { ...machineValues, ...baseEnv };
 	return {
-		...baseEnv,
-		...resolveTreeseedMachineEnvironmentValues(tenantRoot, scope),
+		...scopedValues,
 		...overrides,
 	};
 }
@@ -1753,7 +1763,7 @@ export function formatTreeseedConfigEnvironmentReport({ tenantRoot, scope, env =
 export function applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override = false }) {
 	let resolvedValues = {};
 	try {
-		resolvedValues = resolveTreeseedLaunchEnvironment({ tenantRoot, scope, baseEnv: {} });
+		resolvedValues = resolveTreeseedLaunchEnvironment({ tenantRoot, scope });
 	} catch (error) {
 		if (!(error instanceof TreeseedKeyAgentError)) {
 			throw error;
