@@ -126,9 +126,9 @@ describe('repository save orchestrator helpers', () => {
 			onProgress: (line) => progress.push(line),
 		});
 
-		expect(progress).toContain('[save][@treeseed/demo][start] Starting project-save on staging.');
-		expect(progress.some((line) => line.startsWith('[save][@treeseed/demo][commit] $ git commit'))).toBe(true);
-		expect(progress.some((line) => line.startsWith('[save][@treeseed/demo][push] $ git push'))).toBe(true);
+		expect(progress).toContain('[@treeseed/demo][start] Starting project-save on staging.');
+		expect(progress.some((line) => line.startsWith('[@treeseed/demo][commit] $ git commit'))).toBe(true);
+		expect(progress.some((line) => line.startsWith('[@treeseed/demo][push] $ git push'))).toBe(true);
 	});
 
 	it('finalizes a clean package with an interrupted dev version and missing tag', async () => {

@@ -227,10 +227,14 @@ function writeJson(filePath: string, value: Record<string, unknown>) {
 	writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+function progressPrefix(node: Pick<RepositorySaveNode, 'name'>, phase: string) {
+	return `[${node.name}][${phase}]`;
+}
+
 function emitProgress(options: Pick<RepositorySaveOptions, 'onProgress'>, node: Pick<RepositorySaveNode, 'name'>, phase: string, message: string, stream: 'stdout' | 'stderr' = 'stdout') {
 	const lines = String(message ?? '').split(/\r?\n/u).map((line) => line.trimEnd()).filter(Boolean);
 	for (const line of lines) {
-		options.onProgress?.(`[save][${node.name}][${phase}] ${line}`, stream);
+		options.onProgress?.(`${progressPrefix(node, phase)} ${line}`, stream);
 	}
 }
 
@@ -239,7 +243,7 @@ function prefixedOutput(node: Pick<RepositorySaveNode, 'name'>, phase: string, o
 		.split(/\r?\n/u)
 		.map((line) => line.trimEnd())
 		.filter(Boolean)
-		.map((line) => `[save][${node.name}][${phase}] ${line}`)
+		.map((line) => `${progressPrefix(node, phase)} ${line}`)
 		.join('\n');
 }
 
@@ -269,7 +273,7 @@ function runCapturedCommand(
 			+ (
 				prefixedOutput(node, phase, stderr)
 				|| prefixedOutput(node, phase, stdout)
-				|| `[save][${node.name}][${phase}] ${command} ${args.join(' ')} failed`
+				|| `${progressPrefix(node, phase)} ${command} ${args.join(' ')} failed`
 			);
 		throw new RepositorySaveError(message, {
 			details: {
@@ -301,7 +305,7 @@ function runQuietCommand(
 	if (result.status !== 0) {
 		throw new RepositorySaveError(
 			[
-				`[save][${node.name}][${phase}] ${command} ${args.join(' ')} failed`,
+				`${progressPrefix(node, phase)} ${command} ${args.join(' ')} failed`,
 				stderr || stdout,
 			].filter(Boolean).join('\n'),
 			{
@@ -351,7 +355,7 @@ async function runStreamingCommand(
 				if (settled) return;
 				settled = true;
 				child.kill('SIGTERM');
-				reject(new Error(`[save][${node.name}][${phase}] ${command} ${args.join(' ')} timed out after ${commandOptions.timeoutMs}ms`));
+				reject(new Error(`${progressPrefix(node, phase)} ${command} ${args.join(' ')} timed out after ${commandOptions.timeoutMs}ms`));
 			}, commandOptions.timeoutMs)
 			: null;
 		child.stdout?.on('data', (chunk: Buffer) => {
@@ -383,7 +387,7 @@ async function runStreamingCommand(
 			reject(new RepositorySaveError(
 				prefixedOutput(node, phase, stderr)
 				|| prefixedOutput(node, phase, stdout)
-				|| `[save][${node.name}][${phase}] ${command} ${args.join(' ')} failed with exit code ${code ?? 'unknown'}`,
+				|| `${progressPrefix(node, phase)} ${command} ${args.join(' ')} failed with exit code ${code ?? 'unknown'}`,
 				{
 					details: {
 						failingRepo: node.name,

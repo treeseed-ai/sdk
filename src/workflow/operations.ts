@@ -2086,7 +2086,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					: helpers.context,
 			);
 			if (autoResumeRun) {
-				helpers.write(`[save][workflow][resume] Resuming interrupted save ${autoResumeRun.runId} on ${branch}.`);
+				helpers.write(`[workflow][resume] Resuming interrupted save ${autoResumeRun.runId} on ${branch}.`);
 			}
 
 			try {
