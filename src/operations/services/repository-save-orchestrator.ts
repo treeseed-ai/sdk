@@ -4,6 +4,12 @@ import { basename, resolve, relative } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { getGitHubAutomationMode } from './github-automation.ts';
 import {
+	ensureSshPushUrlForOrigin,
+	remoteWriteUrl,
+	sshPushUrlForRemote,
+	type GitRemoteWriteMode,
+} from './git-remote-policy.ts';
+import {
 	generateRepositoryCommitMessage,
 	type CommitMessageContext,
 	type CommitMessageProvider,
@@ -183,6 +189,7 @@ export type RepositorySaveOptions = {
 	devVersionStrategy?: SaveDevVersionStrategy;
 	devDependencyReferenceMode?: DevDependencyReferenceMode;
 	gitDependencyProtocol?: GitDependencyProtocol;
+	gitRemoteWriteMode?: GitRemoteWriteMode;
 	verifyMode?: SaveVerifyMode;
 	commitMessageMode?: SaveCommitMessageMode;
 	commitMessageProvider?: RepositoryCommitMessageProvider;
@@ -435,6 +442,14 @@ function originRemoteUrlSafe(repoDir: string) {
 		return originRemoteUrl(repoDir);
 	} catch {
 		return null;
+	}
+}
+
+function ensureWritableRemote(node: RepositorySaveNode, options: RepositorySaveOptions) {
+	if (!node.remoteUrl || (options.gitRemoteWriteMode ?? 'ssh-pushurl') === 'off') return;
+	const result = ensureSshPushUrlForOrigin(node.path, node.remoteUrl, options.gitRemoteWriteMode ?? 'ssh-pushurl');
+	if (result.changed && result.pushUrl) {
+		emitProgress(options, node, 'remote', `Configured origin push URL ${result.pushUrl}; keeping ${node.remoteUrl} for reads.`);
 	}
 }
 
@@ -810,16 +825,17 @@ function hasNpmLockfile(repoDir: string) {
 
 async function runGitDependencySmoke(node: RepositorySaveNode, options: RepositorySaveOptions, reference: PackageDependencyReference) {
 	if (reference.mode !== 'dev-git-tag' || shouldSkipGitDependencySmoke()) return;
+	const installSpec = reference.installSpec ?? reference.spec;
 	const tempRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-git-dep-smoke-'));
 	try {
-		emitProgress(options, node, 'smoke', `Installing ${reference.spec} in a temporary project.`);
+		emitProgress(options, node, 'smoke', `Installing ${installSpec} in a temporary project.`);
 		writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
 			name: 'treeseed-git-dependency-smoke',
 			version: '0.0.0',
 			private: true,
 			type: 'module',
 			dependencies: {
-				[reference.packageName]: reference.spec,
+				[reference.packageName]: installSpec,
 			},
 		}, null, 2), 'utf8');
 		try {
@@ -827,7 +843,7 @@ async function runGitDependencySmoke(node: RepositorySaveNode, options: Reposito
 		} catch (error) {
 			throw new RepositorySaveError([
 				`Git dependency smoke install failed for ${reference.packageName}.`,
-				`Spec: ${reference.spec}`,
+				`Spec: ${installSpec}`,
 				error instanceof Error ? error.message : String(error),
 			].join('\n'));
 		}
@@ -939,6 +955,7 @@ function pullRebaseFromOrigin(node: RepositorySaveNode, options: RepositorySaveO
 }
 
 function pushCurrentBranch(node: RepositorySaveNode, options: RepositorySaveOptions, branch: string) {
+	ensureWritableRemote(node, options);
 	if (remoteBranchExistsSafe(node.path, branch)) {
 		runCapturedCommand(node, options, 'push', 'git', ['push', 'origin', branch]);
 		return { createdRemoteBranch: false, pushed: true };
@@ -1037,9 +1054,11 @@ function createPackageTagMessage(node: RepositorySaveNode, tagName: string, bran
 function ensureRemoteAccessBeforeVerification(node: RepositorySaveNode, options: RepositorySaveOptions, state: SaveState) {
 	if (shouldSkipRemoteAccessPreflight()) return;
 	if (state.remoteAccessChecked.has(node.path)) return;
-	emitProgress(options, node, 'preflight', 'Checking origin remote access before verification.');
+	ensureWritableRemote(node, options);
+	const writeUrl = remoteWriteUrl(node.path) ?? 'origin';
+	emitProgress(options, node, 'preflight', `Checking write remote access before verification (${writeUrl}).`);
 	try {
-		runQuietCommand(node, 'preflight', 'git', ['ls-remote', '--heads', 'origin'], { timeoutMs: 30_000 });
+		runQuietCommand(node, 'preflight', 'git', ['ls-remote', '--heads', writeUrl], { timeoutMs: 30_000 });
 		state.remoteAccessChecked.add(node.path);
 	} catch (error) {
 		const detail = error instanceof Error ? error.message : String(error);
@@ -1071,6 +1090,7 @@ function localTreeseedTagWasCreatedByThisRun(node: RepositorySaveNode, tagName: 
 
 function ensurePackageTagPushed(node: RepositorySaveNode, options: RepositorySaveOptions, tagName: string, branch: string, workflowRunId?: string | null) {
 	let message: string | null = null;
+	ensureWritableRemote(node, options);
 	const head = headCommit(node.path);
 	let state = tagState(node.path, tagName);
 	assertTagStateMatchesHead(node, tagName, state, head);
@@ -1238,6 +1258,12 @@ function repoPlanCommands(
 	const commands = [
 		checkoutCommandFor(node.path, branch),
 	];
+	const sshPushUrl = (options.gitRemoteWriteMode ?? 'ssh-pushurl') === 'off'
+		? null
+		: sshPushUrlForRemote(node.remoteUrl);
+	if (sshPushUrl) {
+		commands.push(`git remote set-url --push origin ${sshPushUrl} # keep ${node.remoteUrl} for reads`);
+	}
 	if (dependencyUpdates.length > 0) {
 		commands.push(`update package.json internal dependencies: ${dependencyUpdates.join(', ')}`);
 	}
@@ -1270,7 +1296,7 @@ function repoPlanCommands(
 		if (plannedVersion) {
 			commands.push(`git tag -a ${plannedVersion} -m <${plannedVersion.includes('-dev.') ? 'dev metadata' : 'release'}>`);
 			commands.push(`git push origin ${plannedVersion}`);
-			if (plannedDependencySpec?.startsWith('git+')) {
+			if (plannedDependencySpec && node.branchMode === 'package-dev-save') {
 				commands.push(`smoke install ${plannedDependencySpec}`);
 			}
 		}
@@ -1411,13 +1437,14 @@ async function saveOneRepository(
 	node.branch = currentBranch(node.path) || branch;
 	report.branch = node.branch;
 	refreshRepositoryNodePackageMetadata(node);
+	ensureWritableRemote(node, options);
 
 	const dependencyUpdates = updateDependencyReferences(node, state.finalizedReferences);
 	const dependencyChanged = dependencyUpdates.length > 0;
 	const gitDependencyRefreshSpecs = dependencyUpdates
 		.map((update) => state.finalizedReferences.get(update.packageName))
 		.filter((reference): reference is PackageDependencyReference => Boolean(reference) && reference.mode === 'dev-git-tag')
-		.map((reference) => `${reference.packageName}@${reference.spec}`);
+		.map((reference) => `${reference.packageName}@${reference.installSpec ?? reference.spec}`);
 	const submodulesChanged = refreshSubmodulePointers(node, state.finalizedCommits);
 	const packageNeedsVersion = node.kind === 'package' && (hasMeaningfulChanges(node.path) || dependencyChanged || submodulesChanged);
 	let plannedVersion: string | null = null;

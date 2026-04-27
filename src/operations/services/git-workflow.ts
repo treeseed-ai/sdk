@@ -1,5 +1,6 @@
 import { run, workspaceRoot } from './workspace-tools.ts';
 import { currentBranch, gitStatusPorcelain, repoRoot } from './workspace-save.ts';
+import { ensureSshPushUrlForOrigin } from './git-remote-policy.ts';
 
 export const STAGING_BRANCH = 'staging';
 export const PRODUCTION_BRANCH = 'main';
@@ -7,6 +8,15 @@ const RESERVED_BRANCHES = new Set([STAGING_BRANCH, PRODUCTION_BRANCH]);
 
 function runGit(args, { cwd, capture = false } = {}) {
 	return run('git', args, { cwd, capture });
+}
+
+function ensureWritableOrigin(repoDir) {
+	try {
+		const remoteUrl = runGit(['remote', 'get-url', 'origin'], { cwd: repoDir, capture: true }).trim();
+		ensureSshPushUrlForOrigin(repoDir, remoteUrl);
+	} catch {
+		// Repositories without an origin will fail at the existing push call site.
+	}
 }
 
 function repoHasStagedChanges(repoDir) {
@@ -172,6 +182,7 @@ export function createFeatureBranchFromStaging(cwd, branchName) {
 }
 
 export function pushBranch(repoDir, branchName, { setUpstream = false } = {}) {
+	ensureWritableOrigin(repoDir);
 	const args = setUpstream ? ['push', '-u', 'origin', branchName] : ['push', 'origin', branchName];
 	runGit(args, { cwd: repoDir });
 }
@@ -228,6 +239,7 @@ export function deleteRemoteBranch(repoDir, branchName) {
 	if (!remoteBranchExists(repoDir, branchName)) {
 		return false;
 	}
+	ensureWritableOrigin(repoDir);
 	runGit(['push', 'origin', '--delete', branchName], { cwd: repoDir });
 	return true;
 }
@@ -333,6 +345,7 @@ export function createDeprecatedTaskTag(repoDir, branchName, message) {
 	const shortSha = head.slice(0, 12);
 	const tagName = `deprecated/${taskTagSlug(branchName)}/${shortSha}`;
 	runGit(['tag', '-a', tagName, head, '-m', message], { cwd: repoDir });
+	ensureWritableOrigin(repoDir);
 	runGit(['push', 'origin', tagName], { cwd: repoDir, capture: true });
 	return { tagName, head };
 }

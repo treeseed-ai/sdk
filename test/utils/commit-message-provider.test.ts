@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
 	DEFAULT_COMMIT_AI_MODEL,
+	formatCommitMessage,
 	generateFallbackCommitMessage,
 	generateRepositoryCommitMessage,
 } from '../../src/operations/services/commit-message-provider.ts';
@@ -119,6 +120,46 @@ describe('commit message provider', () => {
 						'',
 						'- Explains why save output needs live progress.',
 						'- Keeps existing command behavior intact.',
+					].join('\n'),
+				},
+			}),
+		} as Response));
+
+		const result = await generateRepositoryCommitMessage(baseContext, {
+			mode: 'cloudflare',
+			env: {
+				CLOUDFLARE_API_TOKEN: 'token',
+				CLOUDFLARE_ACCOUNT_ID: 'account',
+			},
+			fetchImpl,
+		});
+
+		expect(result.provider).toBe('fallback');
+		expect(result.fallbackUsed).toBe(true);
+		expect(result.error).toContain('appears truncated');
+	});
+
+	it('repairs subjects that become incomplete after truncation', () => {
+		const message = formatCommitMessage('chore', 'deps', 'update internal packages and lockfile references', [
+			'Keeps dependency references aligned with package lockfiles.',
+		]);
+		const subject = message.split('\n')[0];
+
+		expect(subject.length).toBeLessThanOrEqual(50);
+		expect(subject).not.toMatch(/\b(and|for|update)$/u);
+	});
+
+	it('falls back when Cloudflare returns an incomplete verb-only subject', async () => {
+		const fetchImpl = vi.fn(async () => ({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				result: {
+					response: [
+						'chore(deps): bump version and update',
+						'',
+						'- Explains why package metadata changes are needed.',
+						'- Keeps lockfiles synchronized with dependency changes.',
 					].join('\n'),
 				},
 			}),

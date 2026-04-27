@@ -11,6 +11,8 @@ export type PackageDependencyReference = {
 	packageName: string;
 	version: string;
 	spec: string;
+	manifestSpec: string;
+	installSpec: string;
 	tagName: string | null;
 	remoteUrl: string | null;
 	mode: 'stable-semver' | 'dev-git-tag' | 'dev-registry-prerelease';
@@ -90,6 +92,20 @@ export function normalizeGitRemoteForDependency(remoteUrl: string, protocol: Git
 	return remote;
 }
 
+export function normalizeGitRemoteForManifest(remoteUrl: string, protocol: GitDependencyProtocol = 'preserve-origin') {
+	const dependencyRemote = normalizeGitRemoteForDependency(remoteUrl, protocol);
+	if (!dependencyRemote) return null;
+	const githubSshMatch = dependencyRemote.match(/^git\+ssh:\/\/git@github\.com\/(.+?)(?:\.git)?$/u);
+	if (githubSshMatch) {
+		return `github:${githubSshMatch[1]}`;
+	}
+	const githubHttpsMatch = dependencyRemote.match(/^git\+https:\/\/github\.com\/(.+?)(?:\.git)?$/u);
+	if (githubHttpsMatch) {
+		return `github:${githubHttpsMatch[1]}`;
+	}
+	return dependencyRemote;
+}
+
 export function createPackageDependencyReference(input: {
 	packageName: string;
 	version: string;
@@ -103,6 +119,8 @@ export function createPackageDependencyReference(input: {
 			packageName: input.packageName,
 			version: input.version,
 			spec: input.version,
+			manifestSpec: input.version,
+			installSpec: input.version,
 			tagName: input.version,
 			remoteUrl: input.remoteUrl ?? null,
 			mode: 'stable-semver',
@@ -113,19 +131,25 @@ export function createPackageDependencyReference(input: {
 			packageName: input.packageName,
 			version: input.version,
 			spec: input.version,
+			manifestSpec: input.version,
+			installSpec: input.version,
 			tagName: input.version,
 			remoteUrl: input.remoteUrl ?? null,
 			mode: 'dev-registry-prerelease',
 		};
 	}
-	const remote = normalizeGitRemoteForDependency(input.remoteUrl ?? '', input.gitDependencyProtocol ?? 'preserve-origin');
-	if (!remote) {
+	const installRemote = normalizeGitRemoteForDependency(input.remoteUrl ?? '', input.gitDependencyProtocol ?? 'preserve-origin');
+	const manifestRemote = normalizeGitRemoteForManifest(input.remoteUrl ?? '', input.gitDependencyProtocol ?? 'preserve-origin');
+	if (!installRemote || !manifestRemote) {
 		throw new Error(`Unable to create Git-tag dependency for ${input.packageName}; origin remote is missing.`);
 	}
+	const manifestSpec = `${manifestRemote}#${input.version}`;
 	return {
 		packageName: input.packageName,
 		version: input.version,
-		spec: `${remote}#${input.version}`,
+		spec: manifestSpec,
+		manifestSpec,
+		installSpec: manifestSpec,
 		tagName: input.version,
 		remoteUrl: input.remoteUrl ?? null,
 		mode: 'dev-git-tag',
@@ -143,13 +167,14 @@ export function updateInternalDependencySpecs(
 		for (const [depName, reference] of references.entries()) {
 			if (!(depName in values)) continue;
 			const current = String(values[depName]);
-			if (current === reference.spec) continue;
-			values[depName] = reference.spec;
+			const nextSpec = reference.manifestSpec ?? reference.spec;
+			if (current === nextSpec) continue;
+			values[depName] = nextSpec;
 			changed.push({
 				packageName: depName,
 				field,
 				from: current,
-				to: reference.spec,
+				to: nextSpec,
 				tagName: devTagFromDependencySpec(current) ?? (isPrereleaseVersion(current) ? current : null),
 			});
 		}
@@ -168,6 +193,8 @@ export function rewriteInternalDependenciesToStableVersions(root = workspaceRoot
 				packageName,
 				version,
 				spec: version,
+				manifestSpec: version,
+				installSpec: version,
 				tagName: version,
 				remoteUrl: null,
 				mode: 'stable-semver' as const,

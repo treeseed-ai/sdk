@@ -1987,6 +1987,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
 					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-tag',
 					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
+					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
 					verifyMode: (effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'action-first')) as SaveVerifyMode,
 					commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
 				});
@@ -2050,6 +2051,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					devVersionStrategy: effectiveInput.devVersionStrategy ?? 'prerelease',
 					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-tag',
 					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
+					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
 					verifyMode: effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'action-first'),
 					commitMessageMode: effectiveInput.commitMessageMode ?? 'auto',
 				},
@@ -2098,6 +2100,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
 						devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-tag',
 						gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
+						gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
 						verifyMode: (effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'action-first')) as SaveVerifyMode,
 						commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
 						workflowRunId: workflowRun.runId,
@@ -2703,6 +2706,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					bump: level,
 					devTagCleanup: input.devTagCleanup ?? 'safe-after-release',
 					gitDependencyProtocol: input.gitDependencyProtocol ?? 'preserve-origin',
+					gitRemoteWriteMode: input.gitRemoteWriteMode ?? 'ssh-pushurl',
 				},
 				[
 					...packageReports.filter((report) => selectedPackageNames.has(report.name)).map((report) => ({

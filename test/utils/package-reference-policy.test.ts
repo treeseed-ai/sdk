@@ -8,6 +8,7 @@ import {
 	createPackageDependencyReference,
 	devTagFromDependencySpec,
 	normalizeGitRemoteForDependency,
+	normalizeGitRemoteForManifest,
 	rewriteInternalDependenciesToStableVersions,
 } from '../../src/operations/services/package-reference-policy.ts';
 
@@ -17,6 +18,8 @@ describe('package reference policy', () => {
 		expect(normalizeGitRemoteForDependency('https://github.com/treeseed-ai/sdk.git')).toBe('git+https://github.com/treeseed-ai/sdk.git');
 		expect(normalizeGitRemoteForDependency('git@github.com:treeseed-ai/sdk.git')).toBe('git+ssh://git@github.com/treeseed-ai/sdk.git');
 		expect(normalizeGitRemoteForDependency('git@github.com:treeseed-ai/sdk.git', 'https')).toBe('git+https://github.com/treeseed-ai/sdk.git');
+		expect(normalizeGitRemoteForManifest('https://github.com/treeseed-ai/sdk.git')).toBe('github:treeseed-ai/sdk');
+		expect(normalizeGitRemoteForManifest('git@github.com:treeseed-ai/sdk.git')).toBe('github:treeseed-ai/sdk');
 
 		const reference = createPackageDependencyReference({
 			packageName: '@treeseed/sdk',
@@ -27,6 +30,20 @@ describe('package reference policy', () => {
 
 		expect(reference.spec).toBe('git+file:///tmp/sdk.git#0.6.8-dev.feature-demo.20260426T153000Z');
 		expect(devTagFromDependencySpec(reference.spec)).toBe('0.6.8-dev.feature-demo.20260426T153000Z');
+	});
+
+	it('uses GitHub shorthand in manifests and smoke specs', () => {
+		const reference = createPackageDependencyReference({
+			packageName: '@treeseed/sdk',
+			version: '0.6.8-dev.staging.20260427T190628Z',
+			branchMode: 'package-dev-save',
+			remoteUrl: 'git@github.com:treeseed-ai/sdk.git',
+		});
+
+		expect(reference.spec).toBe('github:treeseed-ai/sdk#0.6.8-dev.staging.20260427T190628Z');
+		expect(reference.manifestSpec).toBe('github:treeseed-ai/sdk#0.6.8-dev.staging.20260427T190628Z');
+		expect(reference.installSpec).toBe('github:treeseed-ai/sdk#0.6.8-dev.staging.20260427T190628Z');
+		expect(devTagFromDependencySpec(reference.manifestSpec)).toBe('0.6.8-dev.staging.20260427T190628Z');
 	});
 
 	it('rewrites internal Git/dev refs to stable semver and validates the result', () => {

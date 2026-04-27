@@ -37,18 +37,28 @@ const allowedTypes = new Set(['feat', 'fix', 'refactor', 'test', 'docs', 'build'
 const danglingSubjectEndings = new Set([
 	'a',
 	'an',
+	'add',
 	'and',
 	'as',
 	'at',
+	'allow',
 	'by',
+	'bump',
+	'change',
 	'for',
 	'from',
+	'implement',
 	'in',
 	'into',
 	'of',
 	'on',
 	'or',
+	'remove',
+	'set',
+	'support',
+	'sync',
 	'to',
+	'update',
 	'with',
 ]);
 const defaultTimeoutMs = 30_000;
@@ -152,9 +162,29 @@ function summaryFromHint(message: string | undefined) {
 		.replace(/^(implemented|implements)\b/iu, 'implement');
 }
 
+function lastSummaryWord(summary: string) {
+	return normalizeWhitespace(summary)
+		.split(/\s+/u)
+		.at(-1)
+		?.toLowerCase()
+		.replace(/[^a-z0-9-]/gu, '') ?? '';
+}
+
+function repairSummaryEnding(summary: string, fallback = 'record changes') {
+	const words = normalizeWhitespace(summary).replace(/[.。]+$/u, '').split(/\s+/u).filter(Boolean);
+	while (words.length > 2 && danglingSubjectEndings.has(lastSummaryWord(words.join(' ')))) {
+		words.pop();
+	}
+	const repaired = words.join(' ').trim();
+	if (!repaired || danglingSubjectEndings.has(lastSummaryWord(repaired))) {
+		return fallback;
+	}
+	return repaired;
+}
+
 function fallbackSummary(context: CommitMessageContext, type: string, scope: string) {
 	const hint = summaryFromHint(context.userMessage);
-	if (hint) return hint;
+	if (hint) return repairSummaryEnding(hint);
 	if (context.branchMode === 'package-release-main') return 'prepare stable release';
 	if (scope === 'cli') return 'allow save without message';
 	if (scope === 'release' || scope === 'ci') return 'guard dev tags from publish';
@@ -167,11 +197,12 @@ function fallbackSummary(context: CommitMessageContext, type: string, scope: str
 
 function truncateSubject(type: string, scope: string, summary: string) {
 	const prefix = `${type}(${scope}): `;
-	const cleanSummary = normalizeWhitespace(summary).replace(/[.。]+$/u, '');
+	const cleanSummary = repairSummaryEnding(summary);
 	const maxSummaryLength = Math.max(10, 50 - prefix.length);
 	if (cleanSummary.length <= maxSummaryLength) return `${prefix}${cleanSummary}`;
 	const sliced = cleanSummary.slice(0, maxSummaryLength).replace(/\s+\S*$/u, '').trim();
-	return `${prefix}${sliced || cleanSummary.slice(0, maxSummaryLength).trim()}`;
+	const repaired = repairSummaryEnding(sliced || cleanSummary.slice(0, maxSummaryLength).trim());
+	return `${prefix}${repaired}`;
 }
 
 function wrapText(value: string, width = 72) {
@@ -238,8 +269,7 @@ function assertCommitTemplate(message: string) {
 		throw new Error('AI commit message did not use the required subject template.');
 	}
 	const summary = subject.replace(/^[a-z]+\([^)]+\):\s*/u, '').trim();
-	const lastWord = summary.split(/\s+/u).at(-1)?.toLowerCase().replace(/[^a-z0-9-]/gu, '') ?? '';
-	if (danglingSubjectEndings.has(lastWord)) {
+	if (danglingSubjectEndings.has(lastSummaryWord(summary))) {
 		throw new Error('AI commit message subject appears truncated.');
 	}
 	const bullets = rest.map((line) => line.trim()).filter((line) => line.startsWith('- '));

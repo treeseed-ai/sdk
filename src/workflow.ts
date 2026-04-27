@@ -138,6 +138,7 @@ export type TreeseedSaveInput = {
 	devVersionStrategy?: 'prerelease';
 	devDependencyReferenceMode?: 'git-tag' | 'registry-prerelease';
 	gitDependencyProtocol?: 'preserve-origin' | 'https' | 'ssh';
+	gitRemoteWriteMode?: 'ssh-pushurl' | 'off';
 	verifyMode?: 'action-first' | 'local-only' | 'skip';
 	commitMessageMode?: 'auto' | 'cloudflare' | 'generated' | 'fallback';
 	plan?: boolean;
@@ -214,6 +215,7 @@ export type TreeseedReleaseInput = {
 	bump: 'major' | 'minor' | 'patch';
 	devTagCleanup?: 'safe-after-release' | 'off';
 	gitDependencyProtocol?: 'preserve-origin' | 'https' | 'ssh';
+	gitRemoteWriteMode?: 'ssh-pushurl' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
 };
