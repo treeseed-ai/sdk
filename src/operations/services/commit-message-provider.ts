@@ -34,6 +34,23 @@ type CommitMessageOptions = {
 };
 
 const allowedTypes = new Set(['feat', 'fix', 'refactor', 'test', 'docs', 'build', 'ci', 'chore']);
+const danglingSubjectEndings = new Set([
+	'a',
+	'an',
+	'and',
+	'as',
+	'at',
+	'by',
+	'for',
+	'from',
+	'in',
+	'into',
+	'of',
+	'on',
+	'or',
+	'to',
+	'with',
+]);
 const defaultTimeoutMs = 30_000;
 const defaultMaxDiffChars = 12_000;
 
@@ -219,6 +236,11 @@ function assertCommitTemplate(message: string) {
 	const [subject = '', ...rest] = normalized.split(/\r?\n/u);
 	if (!/^(feat|fix|refactor|test|docs|build|ci|chore)\([a-z0-9-]+\): .+/u.test(subject.trim())) {
 		throw new Error('AI commit message did not use the required subject template.');
+	}
+	const summary = subject.replace(/^[a-z]+\([^)]+\):\s*/u, '').trim();
+	const lastWord = summary.split(/\s+/u).at(-1)?.toLowerCase().replace(/[^a-z0-9-]/gu, '') ?? '';
+	if (danglingSubjectEndings.has(lastWord)) {
+		throw new Error('AI commit message subject appears truncated.');
 	}
 	const bullets = rest.map((line) => line.trim()).filter((line) => line.startsWith('- '));
 	if (bullets.length === 0) {

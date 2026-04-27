@@ -107,4 +107,34 @@ describe('commit message provider', () => {
 		expect(result.fallbackUsed).toBe(true);
 		expect(result.error).toContain('required subject template');
 	});
+
+	it('falls back when Cloudflare returns a truncated subject', async () => {
+		const fetchImpl = vi.fn(async () => ({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				result: {
+					response: [
+						'feat(workflow): add progress reporting and',
+						'',
+						'- Explains why save output needs live progress.',
+						'- Keeps existing command behavior intact.',
+					].join('\n'),
+				},
+			}),
+		} as Response));
+
+		const result = await generateRepositoryCommitMessage(baseContext, {
+			mode: 'cloudflare',
+			env: {
+				CLOUDFLARE_API_TOKEN: 'token',
+				CLOUDFLARE_ACCOUNT_ID: 'account',
+			},
+			fetchImpl,
+		});
+
+		expect(result.provider).toBe('fallback');
+		expect(result.fallbackUsed).toBe(true);
+		expect(result.error).toContain('appears truncated');
+	});
 });

@@ -197,6 +197,7 @@ type SaveState = {
 	finalizedReferences: Map<string, PackageDependencyReference>;
 	finalizedCommits: Map<string, string>;
 	reports: Map<string, RepositorySaveReport>;
+	remoteAccessChecked: Set<string>;
 };
 
 class RepositorySaveError extends Error {
@@ -270,6 +271,40 @@ function runCapturedCommand(
 				command: `${command} ${args.join(' ')}`,
 			},
 		});
+	}
+	return stdout;
+}
+
+function runQuietCommand(
+	node: Pick<RepositorySaveNode, 'name' | 'path'>,
+	phase: string,
+	command: string,
+	args: string[],
+	commandOptions: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
+) {
+	const result = spawnSync(command, args, {
+		cwd: commandOptions.cwd ?? node.path,
+		env: { ...process.env, ...(commandOptions.env ?? {}) },
+		stdio: 'pipe',
+		encoding: 'utf8',
+		timeout: commandOptions.timeoutMs,
+	});
+	const stdout = result.stdout?.trim() ?? '';
+	const stderr = result.stderr?.trim() ?? '';
+	if (result.status !== 0) {
+		throw new RepositorySaveError(
+			[
+				`[save][${node.name}][${phase}] ${command} ${args.join(' ')} failed`,
+				stderr || stdout,
+			].filter(Boolean).join('\n'),
+			{
+				details: {
+					failingRepo: node.name,
+					phase,
+					command: `${command} ${args.join(' ')}`,
+				},
+			},
+		);
 	}
 	return stdout;
 }
@@ -931,6 +966,14 @@ function remoteTagCommit(repoDir: string, tagName: string) {
 	}
 }
 
+function localTagMessage(repoDir: string, tagName: string) {
+	try {
+		return run('git', ['tag', '-l', tagName, '--format=%(contents)'], { cwd: repoDir, capture: true }).trim();
+	} catch {
+		return null;
+	}
+}
+
 function tagState(repoDir: string, tagName: string) {
 	const localCommit = localTagCommit(repoDir, tagName);
 	const remoteCommit = remoteTagCommit(repoDir, tagName);
@@ -978,6 +1021,41 @@ function createPackageTagMessage(node: RepositorySaveNode, tagName: string, bran
 			workflowRunId,
 		})
 		: `release: ${tagName}`;
+}
+
+function ensureRemoteAccessBeforeVerification(node: RepositorySaveNode, options: RepositorySaveOptions, state: SaveState) {
+	if (shouldSkipRemoteAccessPreflight()) return;
+	if (state.remoteAccessChecked.has(node.path)) return;
+	emitProgress(options, node, 'preflight', 'Checking origin remote access before verification.');
+	try {
+		runQuietCommand(node, 'preflight', 'git', ['ls-remote', '--heads', 'origin'], { timeoutMs: 30_000 });
+		state.remoteAccessChecked.add(node.path);
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : String(error);
+		throw new RepositorySaveError([
+			`Cannot access origin remote for ${node.name}; save would fail after verification when pushing branch or tags.`,
+			'Fix Git authentication, then rerun `npx trsd save` to resume.',
+			detail,
+		].join('\n'), {
+			exitCode: 13,
+			details: {
+				failingRepo: node.name,
+				phase: 'preflight',
+				originalError: detail,
+			},
+		});
+	}
+}
+
+function shouldSkipRemoteAccessPreflight() {
+	return getGitHubAutomationMode() === 'stub' || process.env.TREESEED_SAVE_REMOTE_PREFLIGHT === 'skip';
+}
+
+function localTreeseedTagWasCreatedByThisRun(node: RepositorySaveNode, tagName: string, workflowRunId?: string | null) {
+	const message = localTagMessage(node.path, tagName);
+	if (!message?.includes('treeseed-dev-tag: true')) return false;
+	if (!workflowRunId) return true;
+	return message.includes(`workflowRunId: ${workflowRunId}`);
 }
 
 function ensurePackageTagPushed(node: RepositorySaveNode, options: RepositorySaveOptions, tagName: string, branch: string, workflowRunId?: string | null) {
@@ -1093,8 +1171,21 @@ async function finalizeCleanPackageVersion(
 
 	emitProgress(options, node, 'finalize', `Finalizing interrupted package version ${version}.`);
 	const rebase = pullRebaseFromOrigin(node, options, branch);
-	report.verification = await runRepoVerification(node, options, options.verifyMode ?? 'action-first');
-	report.verified = report.verification.status === 'passed';
+	if (currentTagState.localCommit === head && localTreeseedTagWasCreatedByThisRun(node, version, options.workflowRunId)) {
+		emitProgress(options, node, 'verify', `Reusing verification from interrupted tag ${version}.`);
+		report.verification = {
+			mode: options.verifyMode ?? 'action-first',
+			status: 'skipped',
+			primary: null,
+			fallbackUsed: false,
+			error: 'verified-before-interruption',
+		};
+		report.verified = true;
+	} else {
+		ensureRemoteAccessBeforeVerification(node, options, state);
+		report.verification = await runRepoVerification(node, options, options.verifyMode ?? 'action-first');
+		report.verified = report.verification.status === 'passed';
+	}
 	const tagMessage = ensurePackageTagPushed(node, options, version, branch, options.workflowRunId);
 	report.devTagMetadata = tagMessage?.includes('treeseed-dev-tag: true') ? tagMessage : null;
 	const reference = finalizePackageReference(node, version, options);
@@ -1379,6 +1470,9 @@ async function saveOneRepository(
 
 	const rebase = pullRebaseFromOrigin(node, options, branch);
 	const verifyMode = options.verifyMode ?? 'action-first';
+	if (node.kind === 'package') {
+		ensureRemoteAccessBeforeVerification(node, options, state);
+	}
 	report.verification = await runRepoVerification(node, options, verifyMode);
 	report.verified = report.verification.status === 'passed';
 
@@ -1423,6 +1517,7 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 		finalizedReferences: new Map(),
 		finalizedCommits: new Map(),
 		reports: new Map(nodes.map((node) => [node.id, createReport(node)])),
+		remoteAccessChecked: new Set(),
 	};
 
 	for (const wave of waves) {
