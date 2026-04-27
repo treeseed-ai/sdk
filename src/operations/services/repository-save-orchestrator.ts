@@ -913,7 +913,7 @@ function pullRebaseFromOrigin(node: RepositorySaveNode, options: RepositorySaveO
 		};
 	}
 	try {
-		runCapturedCommand(node, options, 'rebase', 'git', ['pull', '--rebase', 'origin', branch]);
+		runCapturedCommand(node, options, 'rebase', 'git', ['pull', '--rebase', '--recurse-submodules=no', 'origin', branch]);
 		return {
 			remoteBranchExisted: true,
 			pulledRebase: true,
@@ -1240,7 +1240,11 @@ function repoPlanCommands(
 	commands.push('git add -A');
 	commands.push('generate commit message # Cloudflare AI when configured, fallback otherwise');
 	commands.push('git commit -m <generated-message>');
-	commands.push(remoteExists ? `git pull --rebase origin ${branch}` : `skip pull --rebase # origin/${branch} does not exist yet`);
+	commands.push(
+		remoteExists
+			? `git pull --rebase --recurse-submodules=no origin ${branch}`
+			: `skip pull --rebase # origin/${branch} does not exist yet`,
+	);
 	if (node.kind === 'package') {
 		const verifyMode = options.verifyMode ?? 'action-first';
 		if (verifyMode === 'skip') {

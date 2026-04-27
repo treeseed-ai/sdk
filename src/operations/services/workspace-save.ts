@@ -292,7 +292,7 @@ export function collectMergeConflictReport(repoDir) {
 
 export function formatMergeConflictReport(report, repoDir, targetBranch = 'main') {
 	const lines = [
-		`Treeseed save failed due to merge conflicts during \`git pull --rebase origin ${targetBranch}\`.`,
+		`Treeseed save failed due to merge conflicts during \`git pull --rebase --recurse-submodules=no origin ${targetBranch}\`.`,
 		`Repository root: ${repoDir}`,
 		`Branch: ${report.branch}`,
 		`Rebase in progress: ${report.rebaseInProgress ? 'yes' : 'no'}`,
