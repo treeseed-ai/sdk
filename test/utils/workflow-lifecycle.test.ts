@@ -362,6 +362,39 @@ describe('treeseed workflow lifecycle', () => {
 		expect(finalRecover.payload.interruptedRuns.length).toBe(0);
 	}, 20000);
 
+	it('auto-resumes the newest failed same-branch save with the original input', async () => {
+		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-auto-resume";\n', 'utf8');
+		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-auto-resume";\n', 'utf8');
+		git(resolve(work, 'packages', 'core'), ['remote', 'remove', 'origin']);
+		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+
+		await expect(workflow.save({
+			message: 'feat: original save',
+			verify: false,
+			refreshPreview: false,
+		})).rejects.toBeInstanceOf(TreeseedWorkflowError);
+
+		const recoverResult = await workflow.recover();
+		const runId = recoverResult.payload.interruptedRuns[0]?.runId;
+		expect(runId).toMatch(/^save-/);
+
+		git(resolve(work, 'packages', 'core'), ['remote', 'add', 'origin', packages!.core.origin]);
+
+		const autoResumeResult = await workflow.save({
+			message: 'feat: new hint should not win',
+			verify: false,
+			refreshPreview: false,
+		});
+		expect(autoResumeResult.runId).toBe(runId);
+		expect(autoResumeResult.payload.resumed).toBe(true);
+		expect(autoResumeResult.payload.resumedRunId).toBe(runId);
+		expect(autoResumeResult.payload.autoResumed).toBe(true);
+		expect(autoResumeResult.payload.message).toBe('feat: original save');
+		expect(autoResumeResult.payload.repos.find((repo: { name: string }) => repo.name === '@treeseed/core')?.pushed).toBe(true);
+		expect(autoResumeResult.payload.rootRepo.pushed).toBe(true);
+	}, 20000);
+
 	it('surfaces active workflow locks through recover and blocks concurrent mutating commands', async () => {
 		const { work } = createWorkflowRepo();
 		const workflow = new TreeseedWorkflowSdk({ cwd: work });

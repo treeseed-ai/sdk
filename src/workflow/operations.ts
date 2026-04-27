@@ -768,6 +768,14 @@ function nextPendingJournalStep(journal: TreeseedWorkflowRunJournal) {
 	return journal.steps.find((step) => step.status === 'pending') ?? null;
 }
 
+function findAutoResumableSaveRun(root: string, branch: string | null) {
+	if (!branch) return null;
+	return listInterruptedWorkflowRuns(root).find((journal) =>
+		journal.command === 'save'
+		&& journal.resumable
+		&& journal.session.branchName === branch) ?? null;
+}
+
 async function executeJournalStep<T extends Record<string, unknown> | null>(
 	root: string,
 	runId: string,
@@ -1928,8 +1936,6 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 	try {
 		return await withContextEnv(helpers.context.env, async () => {
 			const tenantRoot = resolveProjectRootOrThrow('save', helpers.cwd());
-			const message = String(input.message ?? '').trim();
-			const optionsHotfix = input.hotfix === true;
 			const root = workspaceRoot(tenantRoot);
 			const session = resolveTreeseedWorkflowSession(root);
 			const gitRoot = session.gitRoot;
@@ -1939,6 +1945,18 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 			const recursiveWorkspace = session.mode === 'recursive-workspace';
 			const mode = session.mode;
 			const executionMode = normalizeExecutionMode(input);
+			const explicitResumeRunId = helpers.context.workflow?.resumeRunId ?? null;
+			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId
+				? findAutoResumableSaveRun(root, branch)
+				: null;
+			const planAutoResumeRun = executionMode === 'plan'
+				? findAutoResumableSaveRun(root, branch)
+				: null;
+			const effectiveInput = autoResumeRun
+				? (autoResumeRun.input as unknown as TreeseedSaveInput)
+				: input;
+			const message = String(effectiveInput.message ?? '').trim();
+			const optionsHotfix = effectiveInput.hotfix === true;
 
 			applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope, override: true });
 
@@ -1965,12 +1983,12 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					gitRoot,
 					branch,
 					message,
-					bump: (input.bump ?? 'patch') as ReleaseBumpLevel,
-					devVersionStrategy: (input.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
-					devDependencyReferenceMode: input.devDependencyReferenceMode ?? 'git-tag',
-					gitDependencyProtocol: input.gitDependencyProtocol ?? 'preserve-origin',
-					verifyMode: (input.verifyMode ?? (input.verify === false ? 'skip' : 'action-first')) as SaveVerifyMode,
-					commitMessageMode: (input.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
+					bump: (effectiveInput.bump ?? 'patch') as ReleaseBumpLevel,
+					devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
+					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-tag',
+					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
+					verifyMode: (effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'action-first')) as SaveVerifyMode,
+					commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
 				});
 				return buildWorkflowResult(
 					'save',
@@ -1984,12 +2002,19 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						repos: repositoryPlan.repos,
 						rootRepo: repositoryPlan.rootRepo,
 						blockers,
+						autoResumeCandidate: planAutoResumeRun
+							? {
+								runId: planAutoResumeRun.runId,
+								branch: planAutoResumeRun.session.branchName,
+								failure: planAutoResumeRun.failure,
+							}
+							: null,
 						repositoryPlan,
 						waves: repositoryPlan.waves,
 						plannedVersions: repositoryPlan.plannedVersions,
 						plannedSteps: [
 							...repositoryPlan.plannedSteps,
-							...((beforeState.branchRole === 'feature' && (input.preview === true || beforeState.preview.enabled))
+							...((beforeState.branchRole === 'feature' && (effectiveInput.preview === true || beforeState.preview.enabled))
 								? [{ id: 'preview', description: `Refresh preview deployment for ${branch}` }]
 								: []),
 						],
@@ -1997,7 +2022,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					{
 						executionMode,
 						nextSteps: createNextSteps([
-							{ operation: 'save', reason: 'Run without --plan to persist the workspace checkpoint.', input: { message, hotfix: optionsHotfix, preview: input.preview === true } },
+							{ operation: 'save', reason: planAutoResumeRun ? `Run without --plan to resume ${planAutoResumeRun.runId}.` : 'Run without --plan to persist the workspace checkpoint.', input: { message, hotfix: optionsHotfix, preview: effectiveInput.preview === true } },
 						]),
 					},
 				);
@@ -2018,15 +2043,15 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				{
 					message,
 					hotfix: optionsHotfix,
-					preview: input.preview === true,
-					refreshPreview: input.refreshPreview !== false,
-					verify: input.verify !== false,
-					bump: input.bump ?? 'patch',
-					devVersionStrategy: input.devVersionStrategy ?? 'prerelease',
-					devDependencyReferenceMode: input.devDependencyReferenceMode ?? 'git-tag',
-					gitDependencyProtocol: input.gitDependencyProtocol ?? 'preserve-origin',
-					verifyMode: input.verifyMode ?? (input.verify === false ? 'skip' : 'action-first'),
-					commitMessageMode: input.commitMessageMode ?? 'auto',
+					preview: effectiveInput.preview === true,
+					refreshPreview: effectiveInput.refreshPreview !== false,
+					verify: effectiveInput.verify !== false,
+					bump: effectiveInput.bump ?? 'patch',
+					devVersionStrategy: effectiveInput.devVersionStrategy ?? 'prerelease',
+					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-tag',
+					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
+					verifyMode: effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'action-first'),
+					commitMessageMode: effectiveInput.commitMessageMode ?? 'auto',
 				},
 				[
 					{
@@ -2037,7 +2062,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						branch,
 						resumable: true,
 					},
-					...((beforeState.branchRole === 'feature' && (input.preview === true || (input.refreshPreview !== false && beforeState.preview.enabled)))
+					...((beforeState.branchRole === 'feature' && (effectiveInput.preview === true || (effectiveInput.refreshPreview !== false && beforeState.preview.enabled)))
 						? [{
 							id: 'preview',
 							description: `Refresh preview ${branch}`,
@@ -2048,8 +2073,19 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						}]
 						: []),
 				],
-				helpers.context,
+				autoResumeRun
+					? {
+						...helpers.context,
+						workflow: {
+							...(helpers.context.workflow ?? {}),
+							resumeRunId: autoResumeRun.runId,
+						},
+					}
+					: helpers.context,
 			);
+			if (autoResumeRun) {
+				helpers.write(`[save][workflow][resume] Resuming interrupted save ${autoResumeRun.runId} on ${branch}.`);
+			}
 
 			try {
 				const saveResult = await executeJournalStep(root, workflowRun.runId, 'save-repositories', () =>
@@ -2058,13 +2094,14 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						gitRoot,
 						branch,
 						message,
-						bump: (input.bump ?? 'patch') as ReleaseBumpLevel,
-						devVersionStrategy: (input.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
-						devDependencyReferenceMode: input.devDependencyReferenceMode ?? 'git-tag',
-						gitDependencyProtocol: input.gitDependencyProtocol ?? 'preserve-origin',
-						verifyMode: (input.verifyMode ?? (input.verify === false ? 'skip' : 'action-first')) as SaveVerifyMode,
-						commitMessageMode: (input.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
+						bump: (effectiveInput.bump ?? 'patch') as ReleaseBumpLevel,
+						devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
+						devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-tag',
+						gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
+						verifyMode: (effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'action-first')) as SaveVerifyMode,
+						commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
 						workflowRunId: workflowRun.runId,
+						onProgress: (line, stream) => helpers.write(line, stream),
 					}));
 				const savedPackageReports = saveResult?.repos ?? packageReports;
 				const savedRootRepo = saveResult?.rootRepo ?? rootRepo;
@@ -2077,13 +2114,13 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 
 				let previewAction: Record<string, unknown> = { status: 'skipped' };
 				if (beforeState.branchRole === 'feature' && branch) {
-					if (input.preview === true) {
+					if (effectiveInput.preview === true) {
 						previewAction = {
 							status: beforeState.preview.enabled ? 'refreshed' : 'created',
 							details: await executeJournalStep(root, workflowRun.runId, 'preview', () =>
 								deployBranchPreview(root, branch, helpers.context, { initialize: !beforeState.preview.enabled })),
 						};
-					} else if (input.refreshPreview !== false && beforeState.preview.enabled) {
+					} else if (effectiveInput.refreshPreview !== false && beforeState.preview.enabled) {
 						previewAction = {
 							status: 'refreshed',
 							details: await executeJournalStep(root, workflowRun.runId, 'preview', () =>
@@ -2098,6 +2135,9 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					scope,
 					hotfix: optionsHotfix,
 					message,
+					resumed: workflowRun.resumed,
+					resumedRunId: workflowRun.resumed ? workflowRun.runId : null,
+					autoResumed: autoResumeRun != null,
 					commitSha: head,
 					commitCreated,
 					noChanges: !commitCreated,
@@ -2131,6 +2171,11 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				const savedPartialFailure = saveError.details?.partialFailure as {
 					message: string;
 					failingRepo: string;
+					phase?: string | null;
+					currentVersion?: string | null;
+					expectedTag?: string | null;
+					tagState?: Record<string, unknown> | null;
+					nextCommand?: string | null;
 					repos: WorkflowRepoReport[];
 					rootRepo: WorkflowRepoReport | null;
 					error: string;

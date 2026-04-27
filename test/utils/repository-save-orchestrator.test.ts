@@ -2,11 +2,12 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
 	discoverRepositorySaveNodes,
 	nextDevVersion,
 	repositorySaveWaves,
+	runRepositorySaveOrchestrator,
 	type RepositorySaveNode,
 } from '../../src/operations/services/repository-save-orchestrator.ts';
 
@@ -94,5 +95,97 @@ describe('repository save orchestrator helpers', () => {
 		const [repo] = discoverRepositorySaveNodes(root, root, 'staging');
 		expect(repo.kind).toBe('project');
 		expect(repo.branchMode).toBe('project-save');
+	});
+
+	it('streams save progress with repository and phase prefixes', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-progress-'));
+		const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-progress-origin-'));
+		git(origin, ['init', '--bare']);
+		git(root, ['init', '-b', 'staging']);
+		git(root, ['config', 'user.email', 'test@example.com']);
+		git(root, ['config', 'user.name', 'Test User']);
+		git(root, ['remote', 'add', 'origin', origin]);
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: '@treeseed/demo',
+			version: '1.0.0',
+			private: true,
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(root, 'README.md'), 'initial\n', 'utf8');
+		git(root, ['add', '-A']);
+		git(root, ['commit', '-m', 'chore: initial']);
+		git(root, ['push', '-u', 'origin', 'staging']);
+
+		writeFileSync(resolve(root, 'README.md'), 'initial\nupdated\n', 'utf8');
+		const progress: string[] = [];
+		await runRepositorySaveOrchestrator({
+			root,
+			gitRoot: root,
+			branch: 'staging',
+			commitMessageMode: 'fallback',
+			verifyMode: 'skip',
+			onProgress: (line) => progress.push(line),
+		});
+
+		expect(progress).toContain('[save][@treeseed/demo][start] Starting project-save on staging.');
+		expect(progress.some((line) => line.startsWith('[save][@treeseed/demo][commit] $ git commit'))).toBe(true);
+		expect(progress.some((line) => line.startsWith('[save][@treeseed/demo][push] $ git push'))).toBe(true);
+	});
+
+	it('finalizes a clean package with an interrupted dev version and missing tag', async () => {
+		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
+		try {
+			const root = mkdtempSync(join(tmpdir(), 'treeseed-save-partial-'));
+			const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-partial-origin-'));
+			git(origin, ['init', '--bare']);
+			git(root, ['init', '-b', 'staging']);
+			git(root, ['config', 'user.email', 'test@example.com']);
+			git(root, ['config', 'user.name', 'Test User']);
+			git(root, ['remote', 'add', 'origin', origin]);
+			writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+				name: '@treeseed/demo',
+				version: '1.0.0',
+				type: 'module',
+				publishConfig: { access: 'public' },
+				scripts: {
+					'verify:action': 'node -e "process.exit(0)"',
+					'verify:local': 'node -e "process.exit(0)"',
+					'release:publish': 'node -e "process.exit(0)"',
+				},
+			}, null, 2), 'utf8');
+			git(root, ['add', '-A']);
+			git(root, ['commit', '-m', 'chore: initial']);
+			git(root, ['push', '-u', 'origin', 'staging']);
+
+			const version = '1.0.1-dev.staging.20260427T010203Z';
+			writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+				name: '@treeseed/demo',
+				version,
+				type: 'module',
+				publishConfig: { access: 'public' },
+				scripts: {
+					'verify:action': 'node -e "process.exit(0)"',
+					'verify:local': 'node -e "process.exit(0)"',
+					'release:publish': 'node -e "process.exit(0)"',
+				},
+			}, null, 2), 'utf8');
+			git(root, ['add', '-A']);
+			git(root, ['commit', '-m', 'feat: partial save']);
+
+			const result = await runRepositorySaveOrchestrator({
+				root,
+				gitRoot: root,
+				branch: 'staging',
+				commitMessageMode: 'fallback',
+				verifyMode: 'skip',
+			});
+
+			expect(result.rootRepo.version).toBe(version);
+			expect(result.rootRepo.tagName).toBe(version);
+			expect(result.rootRepo.pushed).toBe(true);
+			expect(git(root, ['rev-list', '-n', '1', version])).toBe(git(root, ['rev-parse', 'HEAD']));
+			expect(git(root, ['ls-remote', '--tags', 'origin', `refs/tags/${version}`])).toContain(version);
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 });
