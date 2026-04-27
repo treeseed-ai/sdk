@@ -141,6 +141,7 @@ export type TreeseedSaveInput = {
 	gitRemoteWriteMode?: 'ssh-pushurl' | 'off';
 	verifyMode?: 'action-first' | 'local-only' | 'skip';
 	commitMessageMode?: 'auto' | 'cloudflare' | 'generated' | 'fallback';
+	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -150,6 +151,7 @@ export type TreeseedCloseInput = {
 	deletePreview?: boolean;
 	deleteBranch?: boolean;
 	autoSave?: boolean;
+	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -160,6 +162,7 @@ export type TreeseedStageInput = {
 	deletePreview?: boolean;
 	deleteBranch?: boolean;
 	autoSave?: boolean;
+	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -170,6 +173,7 @@ export type TreeseedSwitchInput = {
 	preview?: boolean;
 	createIfMissing?: boolean;
 	baseBranch?: string;
+	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -216,6 +220,7 @@ export type TreeseedReleaseInput = {
 	devTagCleanup?: 'safe-after-release' | 'off';
 	gitDependencyProtocol?: 'preserve-origin' | 'https' | 'ssh';
 	gitRemoteWriteMode?: 'ssh-pushurl' | 'off';
+	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -245,6 +250,7 @@ export type TreeseedWorkflowDevInput = {
 	port?: number | string;
 	background?: boolean;
 	stdio?: 'inherit' | 'pipe';
+	workspaceLinks?: 'auto' | 'off';
 };
 
 function defaultWrite(output: string, stream: 'stdout' | 'stderr' = 'stdout') {

@@ -20,6 +20,7 @@ import { loadCliDeployConfig } from './operations/services/runtime-tools.ts';
 import { collectCliPreflight } from './operations/services/workspace-preflight.ts';
 import { currentBranch, gitStatusPorcelain } from './operations/services/workspace-save.ts';
 import { hasCompleteTreeseedPackageCheckout, isWorkspaceRoot, run, workspacePackages } from './operations/services/workspace-tools.ts';
+import { inspectWorkspaceDependencyMode } from './operations/services/workspace-dependency-mode.ts';
 import { inspectWorkflowLock, listInterruptedWorkflowRuns } from './workflow/runs.ts';
 import type { TreeseedWorkflowNextStep } from './workflow.ts';
 import {
@@ -62,6 +63,8 @@ export type TreeseedWorkflowState = {
 	packageSync: {
 		mode: 'root-only' | 'recursive-workspace';
 		completeCheckout: boolean;
+		dependencyMode: string;
+		workspaceLinks: ReturnType<typeof inspectWorkspaceDependencyMode>;
 		expectedBranch: string | null;
 		aligned: boolean;
 		dirty: boolean;
@@ -251,6 +254,7 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 	const branchRole = resolved.branchRole;
 	const dirtyWorktree = root ? gitStatusPorcelain(root).length > 0 : false;
 	const completePackageCheckout = hasCompleteTreeseedPackageCheckout(effectiveCwd);
+	const workspaceDependencyMode = inspectWorkspaceDependencyMode(effectiveCwd);
 	const packageSyncRepos = completePackageCheckout
 		? workspacePackages(effectiveCwd)
 			.filter((pkg) => pkg.name?.startsWith('@treeseed/'))
@@ -351,6 +355,8 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 		packageSync: {
 			mode: completePackageCheckout ? 'recursive-workspace' : 'root-only',
 			completeCheckout: completePackageCheckout,
+			dependencyMode: workspaceDependencyMode.mode,
+			workspaceLinks: workspaceDependencyMode,
 			expectedBranch: branchName,
 			aligned: packageSyncRepos.every((repo) => repo.aligned),
 			dirty: packageSyncRepos.some((repo) => repo.dirty),

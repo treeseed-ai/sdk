@@ -124,6 +124,16 @@ export {
 	repoRoot,
 } from './operations/services/workspace-save.ts';
 export {
+	assertNoWorkspaceLinksInDeploymentLockfiles,
+	collectDeploymentLockfileWorkspaceIssues,
+	discoverWorkspaceLinks,
+	ensureLocalWorkspaceLinks,
+	inspectWorkspaceDependencyMode,
+	unlinkLocalWorkspaceLinks,
+	type DependencyResolutionMode,
+	type WorkspaceLinksMode,
+} from './operations/services/workspace-dependency-mode.ts';
+export {
 	findNearestTreeseedRoot,
 	findNearestTreeseedWorkspaceRoot,
 	isWorkspaceRoot,

@@ -48,6 +48,7 @@ import {
 	sortWorkspacePackages,
 	workspacePackages,
 } from './workspace-tools.ts';
+import { assertNoWorkspaceLinksInDeploymentLockfiles } from './workspace-dependency-mode.ts';
 
 export type RepoKind = 'package' | 'project';
 export type RepoBranchMode = 'package-release-main' | 'package-dev-save' | 'project-save';
@@ -867,8 +868,8 @@ async function runNpmInstallWithRetry(
 	}
 	let lastError: string | null = null;
 	const args = gitDependencyRefreshSpecs.length > 0
-		? ['install', ...gitDependencyRefreshSpecs, '--force']
-		: ['install'];
+		? ['install', ...gitDependencyRefreshSpecs, '--force', '--workspaces=false']
+		: ['install', '--workspaces=false'];
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
 		emitProgress(options, node, 'install', `npm ${args.join(' ')} attempt ${attempt}/5.`);
 		try {
@@ -1276,9 +1277,9 @@ function repoPlanCommands(
 	}
 	if (node.kind === 'package' && plannedVersion) {
 		commands.push(`update package.json version to ${plannedVersion}`);
-		commands.push('npm install # explicitly refresh changed git-tag dependencies with --force; retry up to 5 times with 60s delay');
+		commands.push('npm install --workspaces=false # explicitly refresh changed git-tag dependencies with --force; retry up to 5 times with 60s delay');
 	} else if (node.kind === 'project' && dependencyUpdates.length > 0 && hasNpmLockfile(node.path)) {
-		commands.push('npm install # refresh project lockfile after internal dependency updates');
+		commands.push('npm install --workspaces=false # refresh project lockfile after internal dependency updates');
 	}
 	commands.push('git add -A');
 	commands.push('generate commit message # Cloudflare AI when configured, fallback otherwise');
@@ -1474,10 +1475,12 @@ async function saveOneRepository(
 		const reference = finalizePackageReference(node, plannedVersion, options);
 		report.dependencySpec = reference.spec;
 		report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
+		assertNoWorkspaceLinksInDeploymentLockfiles(options.root);
 	} else if (node.kind === 'package') {
 		report.version = String(node.packageJson?.version ?? report.version ?? '');
 	} else if (node.kind === 'project' && dependencyChanged && hasNpmLockfile(node.path)) {
 		report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
+		assertNoWorkspaceLinksInDeploymentLockfiles(options.root);
 	}
 
 	const dirty = hasMeaningfulChanges(node.path);
