@@ -772,12 +772,12 @@ function gitDiffSummary(repoDir: string) {
 }
 
 function updateDependencyReferences(node: RepositorySaveNode, finalizedReferences: Map<string, PackageDependencyReference>) {
-	if (!node.packageJson || !node.packageJsonPath) return false;
+	if (!node.packageJson || !node.packageJsonPath) return [];
 	const changed = updateInternalDependencySpecs(node.packageJson, finalizedReferences);
 	if (changed.length > 0) {
 		writeJson(node.packageJsonPath, node.packageJson);
 	}
-	return changed.length > 0;
+	return changed;
 }
 
 function planPackageVersion(node: RepositorySaveNode, options: RepositorySaveOptions) {
@@ -832,16 +832,21 @@ async function runGitDependencySmoke(node: RepositorySaveNode, options: Reposito
 	}
 }
 
-async function runNpmInstallWithRetry(node: RepositorySaveNode, options: RepositorySaveOptions): Promise<RepositoryInstallResult> {
+async function runNpmInstallWithRetry(
+	node: RepositorySaveNode,
+	options: RepositorySaveOptions,
+	forceGitDependencyRefresh = false,
+): Promise<RepositoryInstallResult> {
 	if (shouldSkipNetworkInstall()) {
 		emitProgress(options, node, 'install', 'Skipped npm install because network install mode is disabled.');
 		return { status: 'skipped', attempts: 0, reason: 'stubbed' };
 	}
 	let lastError: string | null = null;
+	const args = forceGitDependencyRefresh ? ['install', '--force'] : ['install'];
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
-		emitProgress(options, node, 'install', `npm install attempt ${attempt}/5.`);
+		emitProgress(options, node, 'install', `npm ${args.join(' ')} attempt ${attempt}/5.`);
 		try {
-			await runStreamingCommand(node, options, 'install', 'npm', ['install']);
+			await runStreamingCommand(node, options, 'install', 'npm', args);
 			return { status: 'completed', attempts: attempt, reason: null };
 		} catch (error) {
 			lastError = error instanceof Error ? error.message : String(error);
@@ -1235,7 +1240,7 @@ function repoPlanCommands(
 	}
 	if (node.kind === 'package' && plannedVersion) {
 		commands.push(`update package.json version to ${plannedVersion}`);
-		commands.push('npm install # retry up to 5 times with 60s delay');
+		commands.push('npm install # use --force for changed git-tag dependencies; retry up to 5 times with 60s delay');
 	}
 	commands.push('git add -A');
 	commands.push('generate commit message # Cloudflare AI when configured, fallback otherwise');
@@ -1399,7 +1404,9 @@ async function saveOneRepository(
 	report.branch = node.branch;
 	refreshRepositoryNodePackageMetadata(node);
 
-	const dependencyChanged = updateDependencyReferences(node, state.finalizedReferences);
+	const dependencyUpdates = updateDependencyReferences(node, state.finalizedReferences);
+	const dependencyChanged = dependencyUpdates.length > 0;
+	const forceGitDependencyRefresh = dependencyUpdates.some((update) => state.finalizedReferences.get(update.packageName)?.mode === 'dev-git-tag');
 	const submodulesChanged = refreshSubmodulePointers(node, state.finalizedCommits);
 	const packageNeedsVersion = node.kind === 'package' && (hasMeaningfulChanges(node.path) || dependencyChanged || submodulesChanged);
 	let plannedVersion: string | null = null;
@@ -1424,7 +1431,7 @@ async function saveOneRepository(
 		}
 		const reference = finalizePackageReference(node, plannedVersion, options);
 		report.dependencySpec = reference.spec;
-		report.install = await runNpmInstallWithRetry(node, options);
+		report.install = await runNpmInstallWithRetry(node, options, forceGitDependencyRefresh);
 	} else if (node.kind === 'package') {
 		report.version = String(node.packageJson?.version ?? report.version ?? '');
 	}
