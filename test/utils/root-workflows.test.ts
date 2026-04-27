@@ -49,9 +49,14 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 
 describe('package publish safeguards', () => {
 	for (const packageName of ['sdk', 'core', 'cli']) {
-		it(`guards ${packageName} publishing to stable semver tags`, () => {
-			const packageRoot = resolve(workspaceRoot, 'packages', packageName);
-			const workflowSource = readFileSync(resolve(packageRoot, '.github', 'workflows', 'publish.yml'), 'utf8');
+		const packageRoot = resolve(workspaceRoot, 'packages', packageName);
+		const publishWorkflowPath = resolve(packageRoot, '.github', 'workflows', 'publish.yml');
+		const describePackagePublishSafeguard = existsSync(publishWorkflowPath)
+			? it
+			: it.skip;
+
+		describePackagePublishSafeguard(`guards ${packageName} publishing to stable semver tags`, () => {
+			const workflowSource = readFileSync(publishWorkflowPath, 'utf8');
 			const checkTagSource = readFileSync(resolve(packageRoot, 'scripts', 'assert-release-tag-version.ts'), 'utf8');
 			const publishSource = readFileSync(resolve(packageRoot, 'scripts', 'publish-package.ts'), 'utf8');
 

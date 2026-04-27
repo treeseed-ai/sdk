@@ -136,11 +136,18 @@ function createWorkflowRepo(options: { withWorkspacePackages?: boolean } = {}) {
 	return { work, packages };
 }
 
+function workflowFor(cwd: string) {
+	return new TreeseedWorkflowSdk({ cwd, write: () => {} });
+}
+
 describe('treeseed workflow lifecycle', () => {
 	beforeEach(() => {
 		vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'treeseed-workflow-home-')));
 		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
 		vi.stubEnv('TREESEED_STAGE_WAIT_MODE', 'skip');
+		vi.stubEnv('TREESEED_COMMIT_MESSAGE_PROVIDER', 'fallback');
+		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
+		vi.stubEnv('TREESEED_GIT_DEPENDENCY_SMOKE', 'skip');
 	});
 
 	afterEach(() => {
@@ -150,7 +157,7 @@ describe('treeseed workflow lifecycle', () => {
 	it('resolves status from nested directories against the tenant root', async () => {
 		const { work } = createWorkflowRepo();
 		const nested = resolve(work, 'src', 'content');
-		const workflow = new TreeseedWorkflowSdk({ cwd: nested });
+		const workflow = workflowFor(nested);
 
 		const result = await workflow.status();
 
@@ -161,7 +168,7 @@ describe('treeseed workflow lifecycle', () => {
 
 	it('treats save with no new changes as a successful sync checkpoint', async () => {
 		const { work } = createWorkflowRepo();
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 
 		const result = await workflow.save({
 			message: 'chore: checkpoint',
@@ -178,7 +185,7 @@ describe('treeseed workflow lifecycle', () => {
 	it('auto-saves dirty task branches during close and returns to staging', async () => {
 		const { work } = createWorkflowRepo();
 		writeFileSync(resolve(work, 'feature.txt'), 'demo\nupdated\n', 'utf8');
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 
 		const result = await workflow.close({
 			message: 'superseded by another task',
@@ -196,7 +203,7 @@ describe('treeseed workflow lifecycle', () => {
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-updated";\n', 'utf8');
 		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-updated";\n', 'utf8');
 		writeFileSync(resolve(work, 'feature.txt'), 'demo\nupdated\n', 'utf8');
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 
 		const result = await workflow.save({
 			message: 'feat: recursive save',
@@ -235,7 +242,7 @@ describe('treeseed workflow lifecycle', () => {
 			git(resolve(work, 'packages', dirName), ['checkout', 'main']);
 		}
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-staging";\n', 'utf8');
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 
 		const result = await workflow.save({
 			verify: false,
@@ -253,7 +260,7 @@ describe('treeseed workflow lifecycle', () => {
 
 	it('switch mirrors task branches into checked-out package repos without pushing package branches', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 
 		const result = await workflow.switchTask({
 			branch: 'feature/parallel-task',
@@ -270,7 +277,7 @@ describe('treeseed workflow lifecycle', () => {
 
 	it('returns switch plans without mutating the market or package repos', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 
 		const result = await workflow.switchTask({
 			branch: 'feature/plan-only',
@@ -288,7 +295,7 @@ describe('treeseed workflow lifecycle', () => {
 	it('fails switch when a checked-out package repo is dirty', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-dirty";\n', 'utf8');
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 
 		await expect(workflow.switchTask({ branch: 'feature/blocked-task' })).rejects.toThrow(
 			'clean git worktree',
@@ -300,7 +307,7 @@ describe('treeseed workflow lifecycle', () => {
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-updated";\n', 'utf8');
 		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-updated";\n', 'utf8');
 		git(resolve(work, 'packages', 'core'), ['remote', 'remove', 'origin']);
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 
 		try {
 			await workflow.save({
@@ -337,7 +344,7 @@ describe('treeseed workflow lifecycle', () => {
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-updated";\n', 'utf8');
 		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-updated";\n', 'utf8');
 		git(resolve(work, 'packages', 'core'), ['remote', 'remove', 'origin']);
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 
 		await expect(workflow.save({
 			message: 'feat: recursive save',
@@ -367,7 +374,7 @@ describe('treeseed workflow lifecycle', () => {
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-auto-resume";\n', 'utf8');
 		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-auto-resume";\n', 'utf8');
 		git(resolve(work, 'packages', 'core'), ['remote', 'remove', 'origin']);
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 
 		await expect(workflow.save({
 			message: 'feat: original save',
@@ -397,7 +404,7 @@ describe('treeseed workflow lifecycle', () => {
 
 	it('surfaces active workflow locks through recover and blocks concurrent mutating commands', async () => {
 		const { work } = createWorkflowRepo();
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 		const lock = acquireWorkflowLock(work, 'save', 'save-lock-test');
 		expect(lock.acquired).toBe(true);
 
@@ -415,7 +422,7 @@ describe('treeseed workflow lifecycle', () => {
 
 	it('stages package feature branches first and points market staging at package staging heads', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 		await workflow.switchTask({ branch: 'feature/demo-task' });
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-staged";\n', 'utf8');
 		writeFileSync(resolve(work, 'feature.txt'), 'demo\nstage\n', 'utf8');
@@ -444,7 +451,7 @@ describe('treeseed workflow lifecycle', () => {
 
 	it('closes matching package task branches and preserves deprecated tags', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 		await workflow.switchTask({ branch: 'feature/demo-task' });
 
 		const result = await workflow.close({
@@ -461,7 +468,7 @@ describe('treeseed workflow lifecycle', () => {
 
 	it('releases only changed packages plus dependents and syncs market main to package main heads', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 		await workflow.switchTask({ branch: 'feature/demo-task' });
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-release";\n', 'utf8');
 		writeFileSync(resolve(work, 'feature.txt'), 'demo\nrelease\n', 'utf8');
@@ -496,7 +503,7 @@ describe('treeseed workflow lifecycle', () => {
 
 	it('surfaces package branch drift and dirty package blockers in status', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
-		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+		const workflow = workflowFor(work);
 		await workflow.switchTask({ branch: 'feature/demo-task' });
 		git(resolve(work, 'packages', 'core'), ['checkout', 'staging']);
 		writeFileSync(resolve(work, 'packages', 'cli', 'index.js'), 'export const name = "cli-dirty";\n', 'utf8');

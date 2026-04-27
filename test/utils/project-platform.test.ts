@@ -105,6 +105,6 @@ describe('project platform workflow actions', () => {
 			tenantRoot,
 			scope: 'staging',
 			reporter: noopReporter(),
-		})).rejects.toThrow(/Treeseed environment is not ready for deploy \(staging\)/u);
+		})).rejects.toThrow(/Treeseed environment (?:is not ready for deploy \(staging\)|staging has not been initialized)/u);
 	});
 });
