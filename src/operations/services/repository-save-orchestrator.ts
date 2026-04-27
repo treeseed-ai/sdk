@@ -804,6 +804,10 @@ function shouldSkipGitDependencySmoke() {
 	return shouldSkipNetworkInstall() || process.env.TREESEED_GIT_DEPENDENCY_SMOKE === 'skip';
 }
 
+function hasNpmLockfile(repoDir: string) {
+	return existsSync(resolve(repoDir, 'package-lock.json')) || existsSync(resolve(repoDir, 'npm-shrinkwrap.json'));
+}
+
 async function runGitDependencySmoke(node: RepositorySaveNode, options: RepositorySaveOptions, reference: PackageDependencyReference) {
 	if (reference.mode !== 'dev-git-tag' || shouldSkipGitDependencySmoke()) return;
 	const tempRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-git-dep-smoke-'));
@@ -1243,6 +1247,8 @@ function repoPlanCommands(
 	if (node.kind === 'package' && plannedVersion) {
 		commands.push(`update package.json version to ${plannedVersion}`);
 		commands.push('npm install # explicitly refresh changed git-tag dependencies with --force; retry up to 5 times with 60s delay');
+	} else if (node.kind === 'project' && dependencyUpdates.length > 0 && hasNpmLockfile(node.path)) {
+		commands.push('npm install # refresh project lockfile after internal dependency updates');
 	}
 	commands.push('git add -A');
 	commands.push('generate commit message # Cloudflare AI when configured, fallback otherwise');
@@ -1439,6 +1445,8 @@ async function saveOneRepository(
 		report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
 	} else if (node.kind === 'package') {
 		report.version = String(node.packageJson?.version ?? report.version ?? '');
+	} else if (node.kind === 'project' && dependencyChanged && hasNpmLockfile(node.path)) {
+		report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
 	}
 
 	const dirty = hasMeaningfulChanges(node.path);
