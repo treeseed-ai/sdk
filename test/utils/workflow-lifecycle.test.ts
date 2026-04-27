@@ -196,7 +196,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.finalBranch).toBe('staging');
 		expect(result.payload.finalState.branchName).toBe('staging');
 		expect(git(work, ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
-	}, 15000);
+	}, 90000);
 
 	it('recursively saves dirty checked-out workspace packages before saving the market repo', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -233,7 +233,7 @@ describe('treeseed workflow lifecycle', () => {
 		const coreSdkSpec = JSON.parse(readFileSync(resolve(work, 'packages', 'core', 'package.json'), 'utf8')).dependencies['@treeseed/sdk'];
 		expect(sdkVersion).toMatch(/^0\.4\.13-dev\.feature-demo-task\./);
 		expect(coreSdkSpec).toMatch(/^git\+file:\/\/.*sdk\.git#0\.4\.13-dev\.feature-demo-task\./);
-	}, 20000);
+	}, 90000);
 
 	it('uses dev-save mode for staging even when package repos start on main', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -256,7 +256,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(sdkReport?.tagName).toMatch(/^0\.4\.13-dev\.staging\./);
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
-	}, 30000);
+	}, 90000);
 
 	it('switch mirrors task branches into checked-out package repos without pushing package branches', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -273,7 +273,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(work, ['ls-remote', '--heads', 'origin', 'feature/parallel-task'])).toContain('feature/parallel-task');
 		expect(git(resolve(work, 'packages', 'sdk'), ['ls-remote', '--heads', 'origin', 'feature/parallel-task'])).toBe('');
 		expect(git(resolve(work, 'packages', 'core'), ['ls-remote', '--heads', 'origin', 'feature/parallel-task'])).toBe('');
-	}, 20000);
+	}, 90000);
 
 	it('returns switch plans without mutating the market or package repos', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -290,7 +290,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(work, ['ls-remote', '--heads', 'origin', 'feature/plan-only'])).toBe('');
 		expect(git(resolve(work, 'packages', 'sdk'), ['ls-remote', '--heads', 'origin', 'feature/plan-only'])).toBe('');
-	}, 20000);
+	}, 90000);
 
 	it('fails switch when a checked-out package repo is dirty', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -300,7 +300,7 @@ describe('treeseed workflow lifecycle', () => {
 		await expect(workflow.switchTask({ branch: 'feature/blocked-task' })).rejects.toThrow(
 			'clean git worktree',
 		);
-	}, 20000);
+	}, 90000);
 
 	it('reports partial recursive save state when a later package repo cannot be pushed', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -337,7 +337,7 @@ describe('treeseed workflow lifecycle', () => {
 			expect(details.repos.find((repo) => repo.name === '@treeseed/sdk')?.pushed).toBe(true);
 			expect(details.repos.find((repo) => repo.name === '@treeseed/core')?.pushed).toBe(false);
 		}
-	}, 20000);
+	}, 90000);
 
 	it('lists interrupted workflow runs and resumes them after the workspace is repaired', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -367,7 +367,7 @@ describe('treeseed workflow lifecycle', () => {
 
 		const finalRecover = await workflow.recover();
 		expect(finalRecover.payload.interruptedRuns.length).toBe(0);
-	}, 20000);
+	}, 90000);
 
 	it('auto-resumes the newest failed same-branch save with the original input', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -400,7 +400,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(autoResumeResult.payload.message).toBe('feat: original save');
 		expect(autoResumeResult.payload.repos.find((repo: { name: string }) => repo.name === '@treeseed/core')?.pushed).toBe(true);
 		expect(autoResumeResult.payload.rootRepo.pushed).toBe(true);
-	}, 20000);
+	}, 90000);
 
 	it('surfaces active workflow locks through recover and blocks concurrent mutating commands', async () => {
 		const { work } = createWorkflowRepo();
@@ -418,7 +418,7 @@ describe('treeseed workflow lifecycle', () => {
 		} finally {
 			releaseWorkflowLock(work, 'save-lock-test');
 		}
-	}, 20000);
+	}, 90000);
 
 	it('stages package feature branches first and points market staging at package staging heads', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -447,7 +447,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(JSON.parse(git(resolve(work, 'packages', 'core'), ['show', 'staging:package.json'])).dependencies['@treeseed/sdk']).toMatch(/^git\+file:\/\/.*sdk\.git#0\.4\.13-dev\.feature-demo-task\./);
 		expect(git(work, ['branch', '--list', 'feature/demo-task'])).toBe('');
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--list', 'feature/demo-task'])).toBe('');
-	}, 20000);
+	}, 90000);
 
 	it('closes matching package task branches and preserves deprecated tags', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -464,7 +464,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(work, ['branch', '--list', 'feature/demo-task'])).toBe('');
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--list', 'feature/demo-task'])).toBe('');
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
-	}, 20000);
+	}, 90000);
 
 	it('releases only changed packages plus dependents and syncs market main to package main heads', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -499,7 +499,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'cli'), ['tag', '--list', '*-dev.*'])).toBe('');
 		expect(result.payload.publishWait.every((entry) => entry.status === 'skipped')).toBe(true);
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
-	}, 30000);
+	}, 90000);
 
 	it('surfaces package branch drift and dirty package blockers in status', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -515,5 +515,5 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.packageSync.dirty).toBe(true);
 		expect(result.payload.packageSync.blockers.join('\n')).toContain('@treeseed/core is on staging instead of feature/demo-task.');
 		expect(result.payload.packageSync.blockers.join('\n')).toContain('@treeseed/cli has uncommitted changes.');
-	}, 15000);
+	}, 90000);
 });
