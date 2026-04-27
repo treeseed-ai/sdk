@@ -65,6 +65,7 @@ function writePackageFiles(root: string, dirName: string, dependencies: Record<s
 		version: dirName === 'cli' ? '0.4.11' : '0.4.12',
 		type: 'module',
 		scripts: {
+			'verify:action': 'node -e "process.exit(0)"',
 			'verify:local': 'node -e "process.exit(0)"',
 			'release:publish': 'node -e "process.exit(0)"',
 		},
@@ -213,15 +214,42 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.repos[0].committed).toBe(true);
 		expect(result.payload.repos[0].pushed).toBe(true);
 		expect(result.payload.repos[1].committed).toBe(true);
-		expect(result.payload.repos[2].skippedReason).toBe('clean');
+		expect(result.payload.repos[2].committed).toBe(true);
+		expect(result.payload.repos[0].tagName).toMatch(/^0\.4\.13-dev\.feature-demo-task\./);
+		expect(result.payload.repos[2].tagName).toMatch(/^0\.4\.12-dev\.feature-demo-task\./);
 		expect(result.payload.rootRepo.committed).toBe(true);
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('feature/demo-task');
 		expect(git(resolve(work, 'packages', 'core'), ['branch', '--show-current'])).toBe('feature/demo-task');
 		expect(git(work, ['ls-tree', 'HEAD', 'packages/sdk'])).toContain(result.payload.repos[0].commitSha);
 		expect(git(work, ['ls-tree', 'HEAD', 'packages/core'])).toContain(result.payload.repos[1].commitSha);
-		expect(JSON.parse(readFileSync(resolve(work, 'packages', 'core', 'package.json'), 'utf8')).dependencies['@treeseed/sdk']).toBe('^0.4.12');
-		expect(JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version).toBe('0.4.12');
+		const sdkVersion = JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version;
+		const coreSdkSpec = JSON.parse(readFileSync(resolve(work, 'packages', 'core', 'package.json'), 'utf8')).dependencies['@treeseed/sdk'];
+		expect(sdkVersion).toMatch(/^0\.4\.13-dev\.feature-demo-task\./);
+		expect(coreSdkSpec).toMatch(/^git\+file:\/\/.*sdk\.git#0\.4\.13-dev\.feature-demo-task\./);
 	}, 20000);
+
+	it('uses dev-save mode for staging even when package repos start on main', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		git(work, ['checkout', 'staging']);
+		for (const dirName of ['sdk', 'core', 'cli']) {
+			git(resolve(work, 'packages', dirName), ['checkout', 'main']);
+		}
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-staging";\n', 'utf8');
+		const workflow = new TreeseedWorkflowSdk({ cwd: work });
+
+		const result = await workflow.save({
+			verify: false,
+			refreshPreview: false,
+		});
+
+		expect(result.ok).toBe(true);
+		const sdkReport = result.payload.repos.find((repo) => repo.name === '@treeseed/sdk');
+		expect(sdkReport?.branch).toBe('staging');
+		expect(sdkReport?.branchMode).toBe('package-dev-save');
+		expect(sdkReport?.tagName).toMatch(/^0\.4\.13-dev\.staging\./);
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
+		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
+	}, 30000);
 
 	it('switch mirrors task branches into checked-out package repos without pushing package branches', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -376,6 +404,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(work, ['log', '-1', '--format=%s'])).toBe('stage: finish demo task');
 		expect(git(resolve(work, 'packages', 'sdk'), ['log', '-1', '--format=%s'])).toBe('stage: finish demo task');
 		expect(git(work, ['ls-tree', 'HEAD', 'packages/sdk'])).toContain(git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'HEAD']));
+		expect(JSON.parse(git(resolve(work, 'packages', 'core'), ['show', 'staging:package.json'])).dependencies['@treeseed/sdk']).toMatch(/^git\+file:\/\/.*sdk\.git#0\.4\.13-dev\.feature-demo-task\./);
 		expect(git(work, ['branch', '--list', 'feature/demo-task'])).toBe('');
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--list', 'feature/demo-task'])).toBe('');
 	}, 20000);
@@ -417,12 +446,17 @@ describe('treeseed workflow lifecycle', () => {
 
 		expect(result.payload.mode).toBe('recursive-workspace');
 		expect(result.payload.packageSelection.changed).toContain('@treeseed/sdk');
-		expect(result.payload.packageSelection.dependents).toEqual(expect.arrayContaining(['@treeseed/core', '@treeseed/cli']));
+		expect(result.payload.packageSelection.changed).toEqual(expect.arrayContaining(['@treeseed/core', '@treeseed/cli']));
 		expect(result.payload.touchedPackages).toEqual(expect.arrayContaining(['@treeseed/sdk', '@treeseed/core', '@treeseed/cli']));
 		expect(JSON.parse(git(resolve(work, 'packages', 'sdk'), ['show', 'main:package.json'])).version).toBe('0.4.13');
 		expect(JSON.parse(git(resolve(work, 'packages', 'core'), ['show', 'main:package.json'])).version).toBe('0.4.13');
 		expect(JSON.parse(git(resolve(work, 'packages', 'cli'), ['show', 'main:package.json'])).version).toBe('0.4.12');
+		expect(JSON.parse(git(resolve(work, 'packages', 'core'), ['show', 'main:package.json'])).dependencies['@treeseed/sdk']).toBe('0.4.13');
+		expect(JSON.parse(git(resolve(work, 'packages', 'cli'), ['show', 'main:package.json'])).dependencies['@treeseed/sdk']).toBe('0.4.13');
 		expect(git(work, ['ls-tree', 'main', 'packages/sdk'])).toContain(git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'main']));
+		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '*-dev.*'])).toBe('');
+		expect(git(resolve(work, 'packages', 'core'), ['tag', '--list', '*-dev.*'])).toBe('');
+		expect(git(resolve(work, 'packages', 'cli'), ['tag', '--list', '*-dev.*'])).toBe('');
 		expect(result.payload.publishWait.every((entry) => entry.status === 'skipped')).toBe(true);
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
 	}, 30000);

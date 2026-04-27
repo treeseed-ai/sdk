@@ -46,3 +46,20 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(source).toContain('!/public/books/**');
 	});
 });
+
+describe('package publish safeguards', () => {
+	for (const packageName of ['sdk', 'core', 'cli']) {
+		it(`guards ${packageName} publishing to stable semver tags`, () => {
+			const packageRoot = resolve(workspaceRoot, 'packages', packageName);
+			const workflowSource = readFileSync(resolve(packageRoot, '.github', 'workflows', 'publish.yml'), 'utf8');
+			const checkTagSource = readFileSync(resolve(packageRoot, 'scripts', 'assert-release-tag-version.ts'), 'utf8');
+			const publishSource = readFileSync(resolve(packageRoot, 'scripts', 'publish-package.ts'), 'utf8');
+
+			expect(workflowSource).toContain("startsWith(github.ref, 'refs/tags/')");
+			expect(workflowSource).toContain("!contains(github.ref_name, '-')");
+			expect(checkTagSource).toContain('^\\d+\\.\\d+\\.\\d+$');
+			expect(publishSource).toContain('Refusing to publish');
+			expect(publishSource).toContain('^\\d+\\.\\d+\\.\\d+$');
+		});
+	}
+});

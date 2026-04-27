@@ -128,12 +128,18 @@ export type TreeseedWorkflowWorkstreamSummary = {
 };
 
 export type TreeseedSaveInput = {
-	message: string;
+	message?: string;
 	hotfix?: boolean;
 	verify?: boolean;
 	refreshPreview?: boolean;
 	preview?: boolean;
 	rebase?: boolean;
+	bump?: 'major' | 'minor' | 'patch';
+	devVersionStrategy?: 'prerelease';
+	devDependencyReferenceMode?: 'git-tag' | 'registry-prerelease';
+	gitDependencyProtocol?: 'preserve-origin' | 'https' | 'ssh';
+	verifyMode?: 'action-first' | 'local-only' | 'skip';
+	commitMessageMode?: 'auto' | 'cloudflare' | 'generated' | 'fallback';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -206,6 +212,8 @@ export type TreeseedExportInput = {
 
 export type TreeseedReleaseInput = {
 	bump: 'major' | 'minor' | 'patch';
+	devTagCleanup?: 'safe-after-release' | 'off';
+	gitDependencyProtocol?: 'preserve-origin' | 'https' | 'ssh';
 	plan?: boolean;
 	dryRun?: boolean;
 };

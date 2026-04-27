@@ -1,0 +1,1192 @@
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, resolve, relative } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { getGitHubAutomationMode } from './github-automation.ts';
+import {
+	generateRepositoryCommitMessage,
+	type CommitMessageContext,
+	type CommitMessageProvider,
+	type CommitMessageProviderMode,
+} from './commit-message-provider.ts';
+import {
+	createDevTagMessage,
+	createPackageDependencyReference,
+	type DevDependencyReferenceMode,
+	type GitDependencyProtocol,
+	type PackageDependencyReference,
+	updateInternalDependencySpecs,
+} from './package-reference-policy.ts';
+import {
+	PRODUCTION_BRANCH,
+	branchExists,
+	checkoutBranch,
+	headCommit,
+	pushBranch,
+	remoteBranchExists,
+	STAGING_BRANCH,
+} from './git-workflow.ts';
+import {
+	collectMergeConflictReport,
+	currentBranch,
+	formatMergeConflictReport,
+	gitStatusPorcelain,
+	hasMeaningfulChanges,
+	incrementVersion,
+	originRemoteUrl,
+	repoRoot,
+} from './workspace-save.ts';
+import {
+	hasCompleteTreeseedPackageCheckout,
+	run,
+	sortWorkspacePackages,
+	workspacePackages,
+} from './workspace-tools.ts';
+
+export type RepoKind = 'package' | 'project';
+export type RepoBranchMode = 'package-release-main' | 'package-dev-save' | 'project-save';
+export type SaveVerifyMode = 'action-first' | 'local-only' | 'skip';
+export type SaveCommitMessageMode = CommitMessageProviderMode;
+export type SaveDevVersionStrategy = 'prerelease';
+export type ReleaseBumpLevel = 'major' | 'minor' | 'patch';
+
+export type RepositorySaveNode = {
+	id: string;
+	name: string;
+	path: string;
+	relativePath: string;
+	kind: RepoKind;
+	branch: string | null;
+	branchMode: RepoBranchMode;
+	packageJsonPath: string | null;
+	packageJson: Record<string, unknown> | null;
+	scripts: Record<string, string>;
+	remoteUrl: string | null;
+	dependencies: string[];
+	dependents: string[];
+	submoduleDependencies: string[];
+	plannedVersion: string | null;
+	plannedTag: string | null;
+	plannedDependencySpec: string | null;
+};
+
+export type RepositorySaveReport = {
+	name: string;
+	path: string;
+	branch: string | null;
+	dirty: boolean;
+	created: boolean;
+	resumed: boolean;
+	merged: boolean;
+	verified: boolean;
+	committed: boolean;
+	pushed: boolean;
+	deletedLocal: boolean;
+	deletedRemote: boolean;
+	tagName: string | null;
+	commitSha: string | null;
+	skippedReason: string | null;
+	publishWait: Record<string, unknown> | null;
+	version: string | null;
+	dependencySpec: string | null;
+	devTagMetadata: string | null;
+	replacedDevTags: string[];
+	branchMode: RepoBranchMode;
+	verification: RepositoryVerificationResult | null;
+	install: RepositoryInstallResult | null;
+	commitMessage: string | null;
+	commitMessageProvider: 'cloudflare-workers-ai' | 'fallback' | null;
+	commitMessageFallbackUsed: boolean;
+	commitMessageError: string | null;
+};
+
+export type RepositoryVerificationResult = {
+	mode: SaveVerifyMode;
+	status: 'passed' | 'failed' | 'skipped';
+	primary: 'verify:action' | 'verify:local' | null;
+	fallbackUsed: boolean;
+	error: string | null;
+};
+
+export type RepositoryInstallResult = {
+	status: 'completed' | 'skipped';
+	attempts: number;
+	reason: string | null;
+};
+
+export type RepositoryCommitMessageContext = CommitMessageContext;
+export type RepositoryCommitMessageProvider = CommitMessageProvider;
+
+export type RepositorySaveResult = {
+	mode: 'root-only' | 'recursive-workspace';
+	branch: string;
+	scope: 'local' | 'staging' | 'prod';
+	repos: RepositorySaveReport[];
+	rootRepo: RepositorySaveReport;
+	waves: string[][];
+	plannedVersions: Record<string, string>;
+};
+
+export type RepositorySavePlanRepo = {
+	id: string;
+	name: string;
+	path: string;
+	relativePath: string;
+	kind: RepoKind;
+	currentBranch: string | null;
+	targetBranch: string;
+	branchMode: RepoBranchMode;
+	dirty: boolean;
+	dependencies: string[];
+	dependents: string[];
+	submoduleDependencies: string[];
+	currentVersion: string | null;
+	plannedVersion: string | null;
+	plannedTag: string | null;
+	plannedDependencySpec: string | null;
+	remoteUrl: string | null;
+	commands: string[];
+	notes: string[];
+};
+
+export type RepositorySavePlanWave = {
+	index: number;
+	parallel: boolean;
+	repos: string[];
+	commands: Array<{
+		repo: string;
+		commands: string[];
+	}>;
+};
+
+export type RepositorySavePlan = {
+	mode: 'root-only' | 'recursive-workspace';
+	branch: string;
+	scope: 'local' | 'staging' | 'prod';
+	devDependencyReferenceMode: DevDependencyReferenceMode;
+	gitDependencyProtocol: GitDependencyProtocol;
+	verifyMode: SaveVerifyMode;
+	commitMessageMode: SaveCommitMessageMode;
+	repos: RepositorySavePlanRepo[];
+	rootRepo: RepositorySavePlanRepo;
+	waves: RepositorySavePlanWave[];
+	plannedVersions: Record<string, string>;
+	plannedSteps: Array<{ id: string; description: string }>;
+};
+
+export type RepositorySaveOptions = {
+	root: string;
+	gitRoot: string;
+	branch: string;
+	message?: string;
+	bump?: ReleaseBumpLevel;
+	devVersionStrategy?: SaveDevVersionStrategy;
+	devDependencyReferenceMode?: DevDependencyReferenceMode;
+	gitDependencyProtocol?: GitDependencyProtocol;
+	verifyMode?: SaveVerifyMode;
+	commitMessageMode?: SaveCommitMessageMode;
+	commitMessageProvider?: RepositoryCommitMessageProvider;
+	workflowRunId?: string | null;
+	includeRoot?: boolean;
+	stablePackageRelease?: boolean;
+};
+
+type SaveState = {
+	finalizedVersions: Map<string, string>;
+	finalizedReferences: Map<string, PackageDependencyReference>;
+	finalizedCommits: Map<string, string>;
+	reports: Map<string, RepositorySaveReport>;
+};
+
+class RepositorySaveError extends Error {
+	exitCode?: number;
+	details?: Record<string, unknown>;
+
+	constructor(message: string, options: { exitCode?: number; details?: Record<string, unknown> } = {}) {
+		super(message);
+		this.name = 'RepositorySaveError';
+		this.exitCode = options.exitCode;
+		this.details = options.details;
+	}
+}
+
+function readJson(filePath: string) {
+	return JSON.parse(readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+}
+
+function writeJson(filePath: string, value: Record<string, unknown>) {
+	writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function packageScripts(packageJson: Record<string, unknown> | null) {
+	const scripts = packageJson?.scripts;
+	return scripts && typeof scripts === 'object' && !Array.isArray(scripts)
+		? Object.fromEntries(Object.entries(scripts).map(([key, value]) => [key, String(value)]))
+		: {};
+}
+
+function classifyRepoKind(packageJson: Record<string, unknown> | null): RepoKind {
+	if (typeof packageJson?.name !== 'string' || typeof packageJson?.version !== 'string') {
+		return 'project';
+	}
+	if (packageJson.private === true) {
+		return 'project';
+	}
+	const scripts = packageScripts(packageJson);
+	const publishConfig = packageJson.publishConfig;
+	return typeof scripts['release:publish'] === 'string'
+		|| (publishConfig !== null && typeof publishConfig === 'object' && !Array.isArray(publishConfig))
+		? 'package'
+		: 'project';
+}
+
+function dependencyFields(packageJson: Record<string, unknown> | null) {
+	if (!packageJson) return [];
+	return ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']
+		.filter((field) => packageJson[field] && typeof packageJson[field] === 'object' && !Array.isArray(packageJson[field]));
+}
+
+function repoIdForPath(root: string, repoDir: string) {
+	return relative(root, repoDir).replaceAll('\\', '/') || '.';
+}
+
+function isGitRepo(repoDir: string) {
+	try {
+		run('git', ['rev-parse', '--is-inside-work-tree'], { cwd: repoDir, capture: true });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function originRemoteUrlSafe(repoDir: string) {
+	try {
+		return originRemoteUrl(repoDir);
+	} catch {
+		return null;
+	}
+}
+
+function repoDisplayName(repoDir: string, packageJson: Record<string, unknown> | null) {
+	return typeof packageJson?.name === 'string' && packageJson.name.length > 0
+		? packageJson.name
+		: basename(repoDir);
+}
+
+function parseGitmodules(root: string) {
+	const gitmodulesPath = resolve(root, '.gitmodules');
+	if (!existsSync(gitmodulesPath)) {
+		return [] as string[];
+	}
+	const source = readFileSync(gitmodulesPath, 'utf8');
+	const paths: string[] = [];
+	for (const match of source.matchAll(/^\s*path\s*=\s*(.+?)\s*$/gmu)) {
+		paths.push(match[1].replaceAll('\\', '/'));
+	}
+	return paths;
+}
+
+function slugBranch(branch: string) {
+	return branch
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '')
+		.slice(0, 40) || 'dev';
+}
+
+function timestampLabel(date = new Date()) {
+	return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/u, 'Z');
+}
+
+export function nextDevVersion(version: string, branch: string, date = new Date()) {
+	return `${incrementVersion(version, 'patch')}-dev.${slugBranch(branch)}.${timestampLabel(date)}`;
+}
+
+function createReport(node: RepositorySaveNode): RepositorySaveReport {
+	return {
+		name: node.name,
+		path: node.path,
+		branch: node.branch,
+		dirty: hasMeaningfulChanges(node.path),
+		created: false,
+		resumed: false,
+		merged: false,
+		verified: false,
+		committed: false,
+		pushed: false,
+		deletedLocal: false,
+		deletedRemote: false,
+		tagName: null,
+		commitSha: node.branch ? headCommit(node.path) : null,
+		skippedReason: null,
+		publishWait: null,
+		version: typeof node.packageJson?.version === 'string' ? node.packageJson.version : null,
+		dependencySpec: node.plannedDependencySpec,
+		devTagMetadata: null,
+		replacedDevTags: [],
+		branchMode: node.branchMode,
+		verification: null,
+		install: null,
+		commitMessage: null,
+		commitMessageProvider: null,
+		commitMessageFallbackUsed: false,
+		commitMessageError: null,
+	};
+}
+
+export function discoverRepositorySaveNodes(
+	root: string,
+	gitRoot = repoRoot(root),
+	branch = currentBranch(gitRoot),
+	options: { stablePackageRelease?: boolean } = {},
+): RepositorySaveNode[] {
+	const repoDirs = new Map<string, string>();
+	repoDirs.set('.', gitRoot);
+
+	if (hasCompleteTreeseedPackageCheckout(root)) {
+		for (const pkg of workspacePackages(root)) {
+			if (isGitRepo(pkg.dir)) {
+				repoDirs.set(pkg.relativeDir, pkg.dir);
+			}
+		}
+	}
+
+	for (const submodulePath of parseGitmodules(root)) {
+		const dir = resolve(root, submodulePath);
+		if (existsSync(dir) && isGitRepo(dir)) {
+			repoDirs.set(submodulePath, dir);
+		}
+	}
+
+	const nodes = [...repoDirs.entries()].map(([relativePath, repoDir]) => {
+		const packageJsonPath = resolve(repoDir, 'package.json');
+		const packageJson = existsSync(packageJsonPath) ? readJson(packageJsonPath) : null;
+		const kind = classifyRepoKind(packageJson);
+		const repoBranch = relativePath === '.'
+			? (currentBranch(repoDir) || branch || null)
+			: (branch || currentBranch(repoDir) || null);
+		const branchMode: RepoBranchMode = kind === 'project'
+			? 'project-save'
+			: options.stablePackageRelease === true && repoBranch === PRODUCTION_BRANCH
+				? 'package-release-main'
+				: 'package-dev-save';
+		return {
+			id: relativePath,
+			name: repoDisplayName(repoDir, packageJson),
+			path: repoDir,
+			relativePath,
+			kind,
+			branch: repoBranch,
+			branchMode,
+			packageJsonPath: packageJson ? packageJsonPath : null,
+			packageJson,
+			scripts: packageScripts(packageJson),
+			remoteUrl: originRemoteUrlSafe(repoDir),
+			dependencies: [],
+			dependents: [],
+			submoduleDependencies: [],
+			plannedVersion: null,
+			plannedTag: null,
+			plannedDependencySpec: null,
+		} satisfies RepositorySaveNode;
+	});
+
+	return deriveRepositoryGraph(root, nodes);
+}
+
+function deriveRepositoryGraph(root: string, nodes: RepositorySaveNode[]) {
+	const byPackageName = new Map(nodes
+		.filter((node) => node.kind === 'package')
+		.map((node) => [String(node.packageJson?.name), node]));
+	const byId = new Map(nodes.map((node) => [node.id, node]));
+	const dependencies = new Map(nodes.map((node) => [node.id, new Set<string>()]));
+	const dependents = new Map(nodes.map((node) => [node.id, new Set<string>()]));
+
+	for (const node of nodes) {
+		for (const field of dependencyFields(node.packageJson)) {
+			const values = node.packageJson?.[field] as Record<string, unknown>;
+			for (const depName of Object.keys(values)) {
+				const dependency = byPackageName.get(depName);
+				if (!dependency || dependency.id === node.id) continue;
+				dependencies.get(node.id)?.add(dependency.id);
+				dependents.get(dependency.id)?.add(node.id);
+			}
+		}
+
+		for (const submodulePath of parseGitmodules(node.path)) {
+			const absolute = resolve(node.path, submodulePath);
+			const relativeToRoot = repoIdForPath(root, absolute);
+			const dependency = byId.get(relativeToRoot);
+			if (!dependency || dependency.id === node.id) continue;
+			dependencies.get(node.id)?.add(dependency.id);
+			dependents.get(dependency.id)?.add(node.id);
+		}
+	}
+
+	return nodes.map((node) => ({
+		...node,
+		dependencies: [...(dependencies.get(node.id) ?? [])].sort(),
+		dependents: [...(dependents.get(node.id) ?? [])].sort(),
+		submoduleDependencies: [...(dependencies.get(node.id) ?? [])]
+			.filter((id) => node.id === '.' || id.startsWith(`${node.id}/`))
+			.sort(),
+	}));
+}
+
+export function repositorySaveWaves(nodes: RepositorySaveNode[]) {
+	const nodeIds = new Set(nodes.map((node) => node.id));
+	const dependencies = new Map(nodes.map((node) => [node.id, new Set(node.dependencies.filter((id) => nodeIds.has(id)))]));
+	const dependents = new Map(nodes.map((node) => [node.id, new Set(node.dependents.filter((id) => nodeIds.has(id)))]));
+	const ready = [...nodes]
+		.filter((node) => (dependencies.get(node.id)?.size ?? 0) === 0)
+		.sort(compareNodes);
+	const waves: RepositorySaveNode[][] = [];
+	const processed = new Set<string>();
+
+	while (ready.length > 0) {
+		const wave = ready.splice(0).filter((node) => !processed.has(node.id));
+		if (wave.length === 0) continue;
+		waves.push(wave);
+		for (const node of wave) {
+			processed.add(node.id);
+			for (const dependentId of dependents.get(node.id) ?? []) {
+				const remaining = dependencies.get(dependentId);
+				remaining?.delete(node.id);
+				if (remaining && remaining.size === 0 && !processed.has(dependentId)) {
+					const dependent = nodes.find((candidate) => candidate.id === dependentId);
+					if (dependent) ready.push(dependent);
+				}
+			}
+		}
+		ready.sort(compareNodes);
+	}
+
+	if (processed.size !== nodes.length) {
+		const unresolved = nodes
+			.filter((node) => !processed.has(node.id))
+			.map((node) => `${node.name} depends on ${(dependencies.get(node.id) ? [...dependencies.get(node.id)!] : []).join(', ')}`);
+		throw new RepositorySaveError(`Repository dependency cycle detected:\n${unresolved.join('\n')}`, {
+			details: { unresolved },
+		});
+	}
+
+	return waves;
+}
+
+function compareNodes(left: RepositorySaveNode, right: RepositorySaveNode) {
+	if (left.id === '.') return 1;
+	if (right.id === '.') return -1;
+	const sorted = sortWorkspacePackages([
+		{ name: left.name, relativeDir: left.relativePath, dir: left.path, packageJson: left.packageJson ?? {} },
+		{ name: right.name, relativeDir: right.relativePath, dir: right.path, packageJson: right.packageJson ?? {} },
+	]);
+	return sorted[0]?.name === left.name ? -1 : 1;
+}
+
+function runLimited<T>(items: T[], limit: number, action: (item: T) => Promise<void>) {
+	let index = 0;
+	const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+		while (index < items.length) {
+			const current = items[index++];
+			await action(current);
+		}
+	});
+	return Promise.all(workers);
+}
+
+function remoteBranchExistsSafe(repoDir: string, branch: string) {
+	try {
+		run('git', ['rev-parse', '--verify', `refs/remotes/origin/${branch}`], { cwd: repoDir, capture: true });
+		return true;
+	} catch {
+		// Fall through to live remote discovery below.
+	}
+	try {
+		return remoteBranchExists(repoDir, branch);
+	} catch {
+		return false;
+	}
+}
+
+function checkoutCommandFor(repoDir: string, branch: string) {
+	if (currentBranch(repoDir) === branch) return `git checkout ${branch} # already current`;
+	if (branchExists(repoDir, branch)) return `git checkout ${branch}`;
+	if (remoteBranchExistsSafe(repoDir, branch)) return `git checkout -b ${branch} origin/${branch}`;
+	return `git checkout -b ${branch}`;
+}
+
+function checkoutOrCreateBranch(repoDir: string, branch: string) {
+	if (currentBranch(repoDir) === branch) return;
+	if (branchExists(repoDir, branch)) {
+		checkoutBranch(repoDir, branch);
+		return;
+	}
+	if (remoteBranchExistsSafe(repoDir, branch)) {
+		run('git', ['checkout', '-b', branch, `origin/${branch}`], { cwd: repoDir });
+		return;
+	}
+	run('git', ['checkout', '-b', branch], { cwd: repoDir });
+}
+
+async function commitMessageFor(
+	node: RepositorySaveNode,
+	options: RepositorySaveOptions,
+	context: Pick<RepositoryCommitMessageContext, 'changedFiles' | 'diff' | 'plannedVersion' | 'plannedTag'>,
+) {
+	return generateRepositoryCommitMessage({
+		repoName: node.name,
+		repoPath: node.path,
+		branch: node.branch || options.branch,
+		kind: node.kind,
+		branchMode: node.branchMode,
+		userMessage: options.message?.trim() || undefined,
+		...context,
+	}, {
+		mode: options.commitMessageMode ?? 'auto',
+		provider: options.commitMessageProvider,
+	});
+}
+
+function gitDiffSummary(repoDir: string) {
+	const changedFiles = run('git', ['status', '--porcelain'], { cwd: repoDir, capture: true });
+	const diff = run('git', ['diff', '--cached'], { cwd: repoDir, capture: true });
+	return { changedFiles, diff };
+}
+
+function updateDependencyReferences(node: RepositorySaveNode, finalizedReferences: Map<string, PackageDependencyReference>) {
+	if (!node.packageJson || !node.packageJsonPath) return false;
+	const changed = updateInternalDependencySpecs(node.packageJson, finalizedReferences);
+	if (changed.length > 0) {
+		writeJson(node.packageJsonPath, node.packageJson);
+	}
+	return changed.length > 0;
+}
+
+function planPackageVersion(node: RepositorySaveNode, options: RepositorySaveOptions) {
+	if (!node.packageJson || !node.packageJsonPath) return null;
+	const current = String(node.packageJson.version ?? '0.0.0');
+	return node.branchMode === 'package-release-main'
+		? incrementVersion(current, options.bump ?? 'patch')
+		: nextDevVersion(current, options.branch);
+}
+
+function applyPackageVersion(node: RepositorySaveNode, version: string) {
+	if (!node.packageJson || !node.packageJsonPath) return false;
+	if (node.packageJson.version === version) return false;
+	node.packageJson.version = version;
+	writeJson(node.packageJsonPath, node.packageJson);
+	return true;
+}
+
+function shouldSkipNetworkInstall() {
+	return getGitHubAutomationMode() === 'stub' || process.env.TREESEED_SAVE_NPM_INSTALL_MODE === 'skip';
+}
+
+function shouldSkipGitDependencySmoke() {
+	return shouldSkipNetworkInstall() || process.env.TREESEED_GIT_DEPENDENCY_SMOKE === 'skip';
+}
+
+function runGitDependencySmoke(reference: PackageDependencyReference) {
+	if (reference.mode !== 'dev-git-tag' || shouldSkipGitDependencySmoke()) return;
+	const tempRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-git-dep-smoke-'));
+	try {
+		writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
+			name: 'treeseed-git-dependency-smoke',
+			version: '0.0.0',
+			private: true,
+			type: 'module',
+			dependencies: {
+				[reference.packageName]: reference.spec,
+			},
+		}, null, 2), 'utf8');
+		const result = spawnSync('npm', ['install'], {
+			cwd: tempRoot,
+			env: process.env,
+			stdio: 'pipe',
+			encoding: 'utf8',
+		});
+		if (result.status !== 0) {
+			throw new RepositorySaveError([
+				`Git dependency smoke install failed for ${reference.packageName}.`,
+				`Spec: ${reference.spec}`,
+				result.stderr?.trim() || result.stdout?.trim() || 'npm install failed',
+			].join('\n'));
+		}
+	} finally {
+		rmSync(tempRoot, { recursive: true, force: true });
+	}
+}
+
+function runNpmInstallWithRetry(repoDir: string): RepositoryInstallResult {
+	if (shouldSkipNetworkInstall()) {
+		return { status: 'skipped', attempts: 0, reason: 'stubbed' };
+	}
+	let lastError: string | null = null;
+	for (let attempt = 1; attempt <= 5; attempt += 1) {
+		const result = spawnSync('npm', ['install'], {
+			cwd: repoDir,
+			env: process.env,
+			stdio: 'pipe',
+			encoding: 'utf8',
+		});
+		if (result.status === 0) {
+			return { status: 'completed', attempts: attempt, reason: null };
+		}
+		lastError = result.stderr?.trim() || result.stdout?.trim() || 'npm install failed';
+		if (attempt < 5) {
+			spawnSync('sleep', ['60'], { stdio: 'ignore' });
+		}
+	}
+	throw new RepositorySaveError(`npm install failed after 5 attempts.\n${lastError ?? ''}`);
+}
+
+function hasScript(node: RepositorySaveNode, scriptName: string) {
+	return typeof node.scripts[scriptName] === 'string' && node.scripts[scriptName].length > 0;
+}
+
+function runScript(repoDir: string, scriptName: string) {
+	const result = spawnSync('npm', ['run', scriptName], {
+		cwd: repoDir,
+		env: process.env,
+		stdio: 'pipe',
+		encoding: 'utf8',
+	});
+	if (result.status !== 0) {
+		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `npm run ${scriptName} failed`);
+	}
+}
+
+function runRepoVerification(node: RepositorySaveNode, verifyMode: SaveVerifyMode): RepositoryVerificationResult {
+	if (verifyMode === 'skip' || getGitHubAutomationMode() === 'stub') {
+		return { mode: verifyMode, status: 'skipped', primary: null, fallbackUsed: false, error: getGitHubAutomationMode() === 'stub' ? 'stubbed' : null };
+	}
+	if (node.kind !== 'package') {
+		return { mode: verifyMode, status: 'skipped', primary: null, fallbackUsed: false, error: null };
+	}
+	if (verifyMode === 'local-only') {
+		if (!hasScript(node, 'verify:local')) {
+			throw new RepositorySaveError(`Package ${node.name} is missing required verify:local script.`);
+		}
+		runScript(node.path, 'verify:local');
+		return { mode: verifyMode, status: 'passed', primary: 'verify:local', fallbackUsed: false, error: null };
+	}
+	if (!hasScript(node, 'verify:action') && !hasScript(node, 'verify:local')) {
+		throw new RepositorySaveError(`Package ${node.name} is missing required verify:action or verify:local script.`);
+	}
+	if (hasScript(node, 'verify:action')) {
+		try {
+			runScript(node.path, 'verify:action');
+			return { mode: verifyMode, status: 'passed', primary: 'verify:action', fallbackUsed: false, error: null };
+		} catch (error) {
+			if (!hasScript(node, 'verify:local')) {
+				throw error;
+			}
+			runScript(node.path, 'verify:local');
+			return {
+				mode: verifyMode,
+				status: 'passed',
+				primary: 'verify:action',
+				fallbackUsed: true,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+	}
+	runScript(node.path, 'verify:local');
+	return { mode: verifyMode, status: 'passed', primary: 'verify:local', fallbackUsed: true, error: null };
+}
+
+function pullRebaseFromOrigin(repoDir: string, branch: string) {
+	if (!remoteBranchExistsSafe(repoDir, branch)) {
+		return {
+			remoteBranchExisted: false,
+			pulledRebase: false,
+		};
+	}
+	try {
+		run('git', ['pull', '--rebase', 'origin', branch], { cwd: repoDir });
+		return {
+			remoteBranchExisted: true,
+			pulledRebase: true,
+		};
+	} catch (error) {
+		const report = collectMergeConflictReport(repoDir);
+		throw new RepositorySaveError(formatMergeConflictReport(report, repoDir, branch), {
+			exitCode: 12,
+			details: { branch, report, originalError: error instanceof Error ? error.message : String(error) },
+		});
+	}
+}
+
+function pushCurrentBranch(repoDir: string, branch: string) {
+	if (remoteBranchExistsSafe(repoDir, branch)) {
+		pushBranch(repoDir, branch);
+		return { createdRemoteBranch: false, pushed: true };
+	}
+	run('git', ['push', '-u', 'origin', branch], { cwd: repoDir });
+	return { createdRemoteBranch: true, pushed: true };
+}
+
+function tagExists(repoDir: string, tagName: string) {
+	try {
+		run('git', ['rev-parse', '--verify', `refs/tags/${tagName}`], { cwd: repoDir, capture: true });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function createAndPushTag(repoDir: string, tagName: string) {
+	if (!tagExists(repoDir, tagName)) {
+		run('git', ['tag', '-a', tagName, '-m', `release: ${tagName}`], { cwd: repoDir });
+	}
+	run('git', ['push', 'origin', tagName], { cwd: repoDir });
+}
+
+function createAndPushPackageTag(node: RepositorySaveNode, tagName: string, branch: string, workflowRunId?: string | null) {
+	let message: string | null = null;
+	if (!tagExists(node.path, tagName)) {
+		message = tagName.includes('-dev.')
+			? createDevTagMessage({
+				packageName: node.name,
+				version: tagName,
+				branch,
+				commitSha: headCommit(node.path),
+				workflowRunId,
+			})
+			: `release: ${tagName}`;
+		run('git', ['tag', '-a', tagName, '-m', message], { cwd: node.path });
+	}
+	run('git', ['push', 'origin', tagName], { cwd: node.path });
+	return message;
+}
+
+function refreshSubmodulePointers(node: RepositorySaveNode, finalizedCommits: Map<string, string>) {
+	let changed = false;
+	for (const [repoName] of finalizedCommits.entries()) {
+		const childRelativePath = node.id === '.'
+			? repoName
+			: repoName.startsWith(`${node.id}/`)
+				? repoName.slice(node.id.length + 1)
+				: null;
+		if (!childRelativePath) continue;
+		const childPath = resolve(node.path, childRelativePath);
+		if (!existsSync(childPath) || !isGitRepo(childPath)) continue;
+		const status = run('git', ['status', '--porcelain', '--', childRelativePath], { cwd: node.path, capture: true });
+		if (status.trim().length > 0) {
+			changed = true;
+		}
+	}
+	return changed;
+}
+
+function syncBranchBeforeSave(node: RepositorySaveNode, branch: string) {
+	checkoutOrCreateBranch(node.path, branch);
+}
+
+function refreshRepositoryNodePackageMetadata(node: RepositorySaveNode) {
+	const packageJsonPath = resolve(node.path, 'package.json');
+	const packageJson = existsSync(packageJsonPath) ? readJson(packageJsonPath) : null;
+	node.packageJsonPath = packageJson ? packageJsonPath : null;
+	node.packageJson = packageJson;
+	node.scripts = packageScripts(packageJson);
+	node.remoteUrl = originRemoteUrlSafe(node.path);
+	if (node.kind === 'package') {
+		node.name = repoDisplayName(node.path, packageJson);
+	}
+}
+
+function finalizePackageReference(node: RepositorySaveNode, version: string, options: RepositorySaveOptions) {
+	const reference = createPackageDependencyReference({
+		packageName: node.name,
+		version,
+		branchMode: node.branchMode === 'package-release-main' ? 'package-release-main' : 'package-dev-save',
+		remoteUrl: node.remoteUrl,
+		devDependencyReferenceMode: options.devDependencyReferenceMode ?? 'git-tag',
+		gitDependencyProtocol: options.gitDependencyProtocol ?? 'preserve-origin',
+	});
+	node.plannedDependencySpec = reference.spec;
+	return reference;
+}
+
+function branchModeLabel(branchMode: RepoBranchMode) {
+	switch (branchMode) {
+		case 'package-release-main':
+			return 'stable package release';
+		case 'package-dev-save':
+			return 'dev package save';
+		case 'project-save':
+			return 'project save';
+	}
+}
+
+function repoPlanCommands(
+	node: RepositorySaveNode,
+	options: RepositorySaveOptions,
+	plannedVersion: string | null,
+	plannedDependencySpec: string | null,
+	dependencyUpdates: string[],
+) {
+	const branch = node.branch || options.branch;
+	const remoteExists = remoteBranchExistsSafe(node.path, branch);
+	const commands = [
+		checkoutCommandFor(node.path, branch),
+	];
+	if (dependencyUpdates.length > 0) {
+		commands.push(`update package.json internal dependencies: ${dependencyUpdates.join(', ')}`);
+	}
+	if (node.submoduleDependencies.length > 0) {
+		commands.push(`refresh submodule pointers: ${node.submoduleDependencies.join(', ')}`);
+	}
+	if (node.kind === 'package' && plannedVersion) {
+		commands.push(`update package.json version to ${plannedVersion}`);
+		commands.push('npm install # retry up to 5 times with 60s delay');
+	}
+	commands.push('git add -A');
+	commands.push('generate commit message # Cloudflare AI when configured, fallback otherwise');
+	commands.push('git commit -m <generated-message>');
+	commands.push(remoteExists ? `git pull --rebase origin ${branch}` : `skip pull --rebase # origin/${branch} does not exist yet`);
+	if (node.kind === 'package') {
+		const verifyMode = options.verifyMode ?? 'action-first';
+		if (verifyMode === 'skip') {
+			commands.push('skip package verification');
+		} else if (verifyMode === 'local-only') {
+			commands.push('npm run verify:local');
+		} else {
+			commands.push('npm run verify:action # fallback to npm run verify:local on failure');
+		}
+		if (plannedVersion) {
+			commands.push(`git tag -a ${plannedVersion} -m <${plannedVersion.includes('-dev.') ? 'dev metadata' : 'release'}>`);
+			commands.push(`git push origin ${plannedVersion}`);
+			if (plannedDependencySpec?.startsWith('git+')) {
+				commands.push(`smoke install ${plannedDependencySpec}`);
+			}
+		}
+	} else {
+		commands.push('skip package verification # project repository');
+	}
+	commands.push(remoteExists ? `git push origin ${branch}` : `git push -u origin ${branch}`);
+	return commands;
+}
+
+export function planRepositorySave(options: RepositorySaveOptions): RepositorySavePlan {
+	const scope = options.branch === STAGING_BRANCH ? 'staging' : options.branch === PRODUCTION_BRANCH ? 'prod' : 'local';
+	const allNodes = discoverRepositorySaveNodes(options.root, options.gitRoot, options.branch, {
+		stablePackageRelease: options.stablePackageRelease === true,
+	});
+	const nodes = options.includeRoot === false ? allNodes.filter((node) => node.id !== '.') : allNodes;
+	const mode = nodes.some((node) => node.id !== '.') ? 'recursive-workspace' : 'root-only';
+	const waves = repositorySaveWaves(nodes);
+	const plannedVersions = new Map<string, string>();
+	const plannedReferences = new Map<string, PackageDependencyReference>();
+	const plans = new Map<string, RepositorySavePlanRepo>();
+
+	for (const wave of waves) {
+		for (const node of wave) {
+			const dependencyUpdates = node.dependencies
+				.map((id) => nodes.find((candidate) => candidate.id === id))
+				.filter((candidate): candidate is RepositorySaveNode => Boolean(candidate))
+				.map((dependency) => {
+					const reference = plannedReferences.get(dependency.name);
+					return reference ? `${dependency.name} -> ${reference.spec}` : null;
+				})
+				.filter((value): value is string => Boolean(value));
+			const dependencyChanged = dependencyUpdates.length > 0;
+			const submoduleChanged = node.submoduleDependencies.length > 0 && node.submoduleDependencies.some((id) => {
+				const dependency = plans.get(id);
+				return dependency?.dirty || Boolean(dependency?.plannedVersion);
+			});
+			const dirty = hasMeaningfulChanges(node.path);
+			const packageNeedsVersion = node.kind === 'package' && (dirty || dependencyChanged || submoduleChanged);
+			const currentVersion = typeof node.packageJson?.version === 'string' ? node.packageJson.version : null;
+			const plannedVersion = packageNeedsVersion ? planPackageVersion(node, options) : null;
+			let plannedDependencySpec: string | null = null;
+			if (node.kind === 'package' && plannedVersion) {
+				const reference = createPackageDependencyReference({
+					packageName: node.name,
+					version: plannedVersion,
+					branchMode: node.branchMode === 'package-release-main' ? 'package-release-main' : 'package-dev-save',
+					remoteUrl: node.remoteUrl,
+					devDependencyReferenceMode: options.devDependencyReferenceMode ?? 'git-tag',
+					gitDependencyProtocol: options.gitDependencyProtocol ?? 'preserve-origin',
+				});
+				plannedDependencySpec = reference.spec;
+				plannedVersions.set(node.name, plannedVersion);
+				plannedReferences.set(node.name, reference);
+			}
+			const current = currentBranch(node.path) || null;
+			const branch = node.branch || options.branch;
+			const notes = [
+				`${branchModeLabel(node.branchMode)} on top-level ${options.branch}`,
+				...(current && current !== branch ? [`current branch ${current} will be switched to ${branch}`] : []),
+				...(node.kind === 'package' && plannedVersion?.includes('-dev.')
+					? ['dev Git tag only; publish workflows reject prerelease/dev tags']
+					: []),
+			];
+			const repoPlan: RepositorySavePlanRepo = {
+				id: node.id,
+				name: node.name,
+				path: node.path,
+				relativePath: node.relativePath,
+				kind: node.kind,
+				currentBranch: current,
+				targetBranch: branch,
+				branchMode: node.branchMode,
+				dirty,
+				dependencies: node.dependencies,
+				dependents: node.dependents,
+				submoduleDependencies: node.submoduleDependencies,
+				currentVersion,
+				plannedVersion,
+				plannedTag: plannedVersion,
+				plannedDependencySpec,
+				remoteUrl: node.remoteUrl,
+				commands: repoPlanCommands(node, options, plannedVersion, plannedDependencySpec, dependencyUpdates),
+				notes,
+			};
+			plans.set(node.id, repoPlan);
+		}
+	}
+
+	const rootNode = nodes.find((node) => node.id === '.') ?? allNodes.find((node) => node.id === '.');
+	const rootRepo = rootNode ? plans.get(rootNode.id) : null;
+	if (!rootRepo) {
+		throw new RepositorySaveError('Unable to build repository save plan for root repository.');
+	}
+	const repoPlans = nodes
+		.filter((node) => node.id !== '.')
+		.sort(compareNodes)
+		.map((node) => plans.get(node.id))
+		.filter((plan): plan is RepositorySavePlanRepo => Boolean(plan));
+	const wavePlans = waves.map((wave, index) => ({
+		index: index + 1,
+		parallel: wave.length > 1,
+		repos: wave.map((node) => node.name),
+		commands: wave.map((node) => ({
+			repo: node.name,
+			commands: plans.get(node.id)?.commands ?? [],
+		})),
+	}));
+	return {
+		mode,
+		branch: options.branch,
+		scope,
+		devDependencyReferenceMode: options.devDependencyReferenceMode ?? 'git-tag',
+		gitDependencyProtocol: options.gitDependencyProtocol ?? 'preserve-origin',
+		verifyMode: options.verifyMode ?? 'action-first',
+		commitMessageMode: options.commitMessageMode ?? 'auto',
+		repos: repoPlans,
+		rootRepo,
+		waves: wavePlans,
+		plannedVersions: Object.fromEntries(plannedVersions.entries()),
+		plannedSteps: wavePlans.flatMap((wave) => wave.commands.map((entry) => ({
+			id: `wave-${wave.index}-${entry.repo}`,
+			description: `Wave ${wave.index}${wave.parallel ? ' parallel' : ''}: ${entry.repo}`,
+		}))),
+	};
+}
+
+async function saveOneRepository(
+	node: RepositorySaveNode,
+	options: RepositorySaveOptions,
+	state: SaveState,
+) {
+	const report = state.reports.get(node.id) ?? createReport(node);
+	state.reports.set(node.id, report);
+	const branch = node.branch || options.branch;
+	syncBranchBeforeSave(node, branch);
+	node.branch = currentBranch(node.path) || branch;
+	report.branch = node.branch;
+	refreshRepositoryNodePackageMetadata(node);
+
+	const dependencyChanged = updateDependencyReferences(node, state.finalizedReferences);
+	const submodulesChanged = refreshSubmodulePointers(node, state.finalizedCommits);
+	const packageNeedsVersion = node.kind === 'package' && (hasMeaningfulChanges(node.path) || dependencyChanged || submodulesChanged);
+	let plannedVersion: string | null = null;
+
+	if (packageNeedsVersion) {
+		plannedVersion = planPackageVersion(node, options);
+		if (!plannedVersion) {
+			throw new RepositorySaveError(`Unable to plan package version for ${node.name}.`);
+		}
+		applyPackageVersion(node, plannedVersion);
+		node.plannedVersion = plannedVersion;
+		node.plannedTag = plannedVersion;
+		report.version = plannedVersion;
+		report.tagName = plannedVersion;
+		const reference = finalizePackageReference(node, plannedVersion, options);
+		report.dependencySpec = reference.spec;
+		report.install = runNpmInstallWithRetry(node.path);
+	} else if (node.kind === 'package') {
+		report.version = String(node.packageJson?.version ?? report.version ?? '');
+	}
+
+	const dirty = hasMeaningfulChanges(node.path);
+	report.dirty = dirty;
+	if (!dirty) {
+		report.skippedReason = 'clean';
+		report.commitSha = headCommit(node.path);
+		if (node.kind === 'package' && report.version && tagExists(node.path, report.version)) {
+			createAndPushTag(node.path, report.version);
+			const push = pushCurrentBranch(node.path, branch);
+			report.pushed = push.pushed;
+			report.tagName = report.version;
+			const reference = finalizePackageReference(node, report.version, options);
+			report.dependencySpec = reference.spec;
+			state.finalizedVersions.set(node.name, report.version);
+			state.finalizedReferences.set(node.name, reference);
+			report.publishWait = {
+				...(report.publishWait ?? {}),
+				...push,
+			};
+		}
+		if (node.id === '.') {
+			const rebase = pullRebaseFromOrigin(node.path, branch);
+			const push = pushCurrentBranch(node.path, branch);
+			report.pushed = push.pushed;
+			report.publishWait = {
+				...rebase,
+				...push,
+			};
+			report.commitSha = headCommit(node.path);
+		}
+		state.finalizedCommits.set(node.relativePath, report.commitSha);
+		return report;
+	}
+
+	run('git', ['add', '-A'], { cwd: node.path });
+	const { changedFiles, diff } = gitDiffSummary(node.path);
+	const messageResult = await commitMessageFor(node, options, {
+		changedFiles,
+		diff,
+		plannedVersion: plannedVersion ?? report.version,
+		plannedTag: node.plannedTag ?? report.tagName,
+	});
+	report.commitMessage = messageResult.message;
+	report.commitMessageProvider = messageResult.provider;
+	report.commitMessageFallbackUsed = messageResult.fallbackUsed;
+	report.commitMessageError = messageResult.error;
+	run('git', ['commit', '-m', messageResult.message], { cwd: node.path });
+	report.committed = true;
+
+	const rebase = pullRebaseFromOrigin(node.path, branch);
+	const verifyMode = options.verifyMode ?? 'action-first';
+	report.verification = runRepoVerification(node, verifyMode);
+	report.verified = report.verification.status === 'passed';
+
+	if (node.kind === 'package') {
+		const version = plannedVersion ?? String((readJson(resolve(node.path, 'package.json')).version ?? report.version ?? ''));
+		const tagMessage = createAndPushPackageTag(node, version, branch, options.workflowRunId);
+		report.tagName = version;
+		report.version = version;
+		report.devTagMetadata = tagMessage?.includes('treeseed-dev-tag: true') ? tagMessage : null;
+		const reference = finalizePackageReference(node, version, options);
+		runGitDependencySmoke(reference);
+		report.dependencySpec = reference.spec;
+		state.finalizedVersions.set(node.name, version);
+		state.finalizedReferences.set(node.name, reference);
+	}
+	const push = pushCurrentBranch(node.path, branch);
+	report.pushed = push.pushed;
+	report.commitSha = headCommit(node.path);
+	report.skippedReason = null;
+	state.finalizedCommits.set(node.relativePath, report.commitSha);
+	report.publishWait = {
+		...rebase,
+		...push,
+	};
+	return report;
+}
+
+export async function runRepositorySaveOrchestrator(options: RepositorySaveOptions): Promise<RepositorySaveResult> {
+	const root = options.root;
+	const gitRoot = options.gitRoot;
+	const branch = options.branch;
+	const scope = branch === STAGING_BRANCH ? 'staging' : branch === PRODUCTION_BRANCH ? 'prod' : 'local';
+	const allNodes = discoverRepositorySaveNodes(root, gitRoot, branch, {
+		stablePackageRelease: options.stablePackageRelease === true,
+	});
+	const nodes = options.includeRoot === false ? allNodes.filter((node) => node.id !== '.') : allNodes;
+	const mode = nodes.some((node) => node.id !== '.') ? 'recursive-workspace' : 'root-only';
+	const waves = repositorySaveWaves(nodes);
+	const state: SaveState = {
+		finalizedVersions: new Map(),
+		finalizedReferences: new Map(),
+		finalizedCommits: new Map(),
+		reports: new Map(nodes.map((node) => [node.id, createReport(node)])),
+	};
+
+	for (const wave of waves) {
+		await runLimited(wave, 3, async (node) => {
+			try {
+				await saveOneRepository(node, options, state);
+			} catch (error) {
+				const existing = repositorySaveErrorDetails(error);
+				throw new RepositorySaveError(error instanceof Error ? error.message : String(error), {
+					exitCode: existing.exitCode,
+					details: {
+						...(existing.details ?? {}),
+						partialFailure: {
+							message: `Treeseed save stopped while saving ${node.name}.`,
+							failingRepo: node.name,
+							repos: [...state.reports.entries()]
+								.filter(([id]) => id !== '.')
+								.map(([, report]) => report),
+							rootRepo: state.reports.get('.') ?? null,
+							error: error instanceof Error ? error.message : String(error),
+						},
+					},
+				});
+			}
+		});
+	}
+
+	const rootNode = nodes.find((node) => node.id === '.') ?? allNodes.find((node) => node.id === '.');
+	const rootReport = rootNode
+		? (state.reports.get(rootNode.id) ?? createReport(rootNode))
+		: createReport({
+			id: '.',
+			name: '@treeseed/market',
+			path: gitRoot,
+			relativePath: '.',
+			kind: 'project',
+			branch,
+			branchMode: 'project-save',
+			packageJsonPath: null,
+			packageJson: null,
+			scripts: {},
+			remoteUrl: null,
+			dependencies: [],
+			dependents: [],
+			submoduleDependencies: [],
+			plannedVersion: null,
+			plannedTag: null,
+			plannedDependencySpec: null,
+		});
+	const packageReports = nodes
+		.filter((node) => node.id !== '.')
+		.sort(compareNodes)
+		.map((node) => state.reports.get(node.id) ?? createReport(node));
+
+	return {
+		mode,
+		branch,
+		scope,
+		repos: packageReports,
+		rootRepo: rootReport,
+		waves: waves.map((wave) => wave.map((node) => node.name)),
+		plannedVersions: Object.fromEntries(state.finalizedVersions.entries()),
+	};
+}
+
+export function repositorySaveErrorDetails(error: unknown) {
+	if (error instanceof RepositorySaveError) {
+		return {
+			exitCode: error.exitCode,
+			details: error.details,
+		};
+	}
+	return {
+		exitCode: undefined,
+		details: undefined,
+	};
+}

@@ -101,7 +101,7 @@ describe('environment registry overlays', () => {
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET')).toBeTruthy();
 	});
 
-	it('keeps Cloudflare account ID as required hosted shared environment config', async () => {
+	it('keeps Cloudflare account ID as required shared environment config in every environment', async () => {
 		const tenantRoot = await createTenantFixture('entries: {}\n');
 		tempRoots.add(tenantRoot);
 
@@ -125,8 +125,10 @@ describe('environment registry overlays', () => {
 			storage: 'shared',
 			startupProfile: 'core',
 		});
-		expect(entry?.scopes).toEqual(['staging', 'prod']);
-		expect(isTreeseedEnvironmentEntryRelevant(entry!, registry.context, 'local', 'config')).toBe(false);
+		expect(entry?.scopes).toEqual(['local', 'staging', 'prod']);
+		expect(entry?.targets).toContain('local-runtime');
+		expect(isTreeseedEnvironmentEntryRelevant(entry!, registry.context, 'local', 'config')).toBe(true);
+		expect(isTreeseedEnvironmentEntryRequired(entry!, registry.context, 'local', 'config')).toBe(true);
 		expect(isTreeseedEnvironmentEntryRequired(entry!, registry.context, 'prod', 'config')).toBe(true);
 		expect(getTreeseedEnvironmentSuggestedValues({
 			scope: 'local',
@@ -149,7 +151,7 @@ describe('environment registry overlays', () => {
 		}).CLOUDFLARE_ACCOUNT_ID).toBeUndefined();
 	});
 
-	it('does not surface hosted provider and infrastructure variables in local config', async () => {
+	it('scopes Cloudflare AI credentials to local, staging, and prod config', async () => {
 		const tenantRoot = await createTenantFixture('entries: {}\n');
 		tempRoots.add(tenantRoot);
 
@@ -165,10 +167,13 @@ describe('environment registry overlays', () => {
 			} as any,
 			plugins: [],
 		});
+		const cloudflareToken = registry.entries.find((entry) => entry.id === 'CLOUDFLARE_API_TOKEN');
 
-		expect(registry.entries.find((entry) => entry.id === 'CLOUDFLARE_API_TOKEN')?.scopes).toEqual(['staging', 'prod']);
+		expect(cloudflareToken?.scopes).toEqual(['local', 'staging', 'prod']);
+		expect(isTreeseedEnvironmentEntryRelevant(cloudflareToken!, registry.context, 'local', 'config')).toBe(true);
+		expect(isTreeseedEnvironmentEntryRequired(cloudflareToken!, registry.context, 'local', 'config')).toBe(true);
 		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN')?.scopes).toEqual(['staging', 'prod']);
-		expect(registry.entries.find((entry) => entry.id === 'CLOUDFLARE_ACCOUNT_ID')?.scopes).toEqual(['staging', 'prod']);
+		expect(registry.entries.find((entry) => entry.id === 'CLOUDFLARE_ACCOUNT_ID')?.scopes).toEqual(['local', 'staging', 'prod']);
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_RAILWAY_WORKSPACE')?.scopes).toEqual(['staging', 'prod']);
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_HOSTING_KIND')?.scopes).toEqual(['staging', 'prod']);
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_PROJECT_RUNNER_TOKEN')?.scopes).toEqual(['staging', 'prod']);

@@ -72,7 +72,6 @@ import { runTenantDeployPreflight, runWorkspaceSavePreflight } from '../operatio
 import { collectCliPreflight } from '../operations/services/workspace-preflight.ts';
 import {
 	applyWorkspaceVersionChanges,
-	assertWorkspaceVersionConsistency,
 	collectMergeConflictReport,
 	currentBranch,
 	formatMergeConflictReport,
@@ -83,6 +82,23 @@ import {
 	planWorkspaceReleaseBump,
 	repoRoot,
 } from '../operations/services/workspace-save.ts';
+import {
+	planRepositorySave,
+	repositorySaveErrorDetails,
+	runRepositorySaveOrchestrator,
+	type SaveCommitMessageMode,
+	type SaveDevVersionStrategy,
+	type SaveVerifyMode,
+	type ReleaseBumpLevel,
+} from '../operations/services/repository-save-orchestrator.ts';
+import {
+	assertNoInternalDevReferences,
+	cleanupDevTags,
+	collectInternalDevReferenceIssues,
+	devTagFromDependencySpec,
+	rewriteInternalDependenciesToStableVersions,
+	type DevTagCleanupMode,
+} from '../operations/services/package-reference-policy.ts';
 import {
 	hasCompleteTreeseedPackageCheckout,
 	changedWorkspacePackages,
@@ -939,6 +955,24 @@ function validateStagingWorkflowContracts(root: string) {
 			details: { missing },
 		});
 	}
+}
+
+function shouldSkipReleaseInstall() {
+	return process.env.TREESEED_GITHUB_AUTOMATION_MODE === 'stub' || process.env.TREESEED_SAVE_NPM_INSTALL_MODE === 'skip';
+}
+
+function runReleaseNpmInstall(repoDir: string) {
+	if (shouldSkipReleaseInstall()) {
+		return { status: 'skipped', reason: 'stubbed' };
+	}
+	run('npm', ['install'], { cwd: repoDir });
+	return { status: 'completed', reason: null };
+}
+
+function collectActiveDevTagReferences(root: string) {
+	return collectInternalDevReferenceIssues(root)
+		.map((issue) => devTagFromDependencySpec(issue.spec) ?? (issue.spec.includes('-dev.') ? issue.spec : null))
+		.filter((value): value is string => Boolean(value));
 }
 
 function assertSessionBranchSafety(
@@ -1894,7 +1928,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 	try {
 		return await withContextEnv(helpers.context.env, async () => {
 			const tenantRoot = resolveProjectRootOrThrow('save', helpers.cwd());
-			const message = ensureMessage('save', input.message, 'a commit message');
+			const message = String(input.message ?? '').trim();
 			const optionsHotfix = input.hotfix === true;
 			const root = workspaceRoot(tenantRoot);
 			const session = resolveTreeseedWorkflowSession(root);
@@ -1926,13 +1960,18 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				if (branch === PRODUCTION_BRANCH && !optionsHotfix) {
 					blockers.push('Main saves require --hotfix.');
 				}
-				if (recursiveWorkspace) {
-					try {
-						assertWorkspaceVersionConsistency(root);
-					} catch (error) {
-						blockers.push(error instanceof Error ? error.message : String(error));
-					}
-				}
+				const repositoryPlan = planRepositorySave({
+					root,
+					gitRoot,
+					branch,
+					message,
+					bump: (input.bump ?? 'patch') as ReleaseBumpLevel,
+					devVersionStrategy: (input.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
+					devDependencyReferenceMode: input.devDependencyReferenceMode ?? 'git-tag',
+					gitDependencyProtocol: input.gitDependencyProtocol ?? 'preserve-origin',
+					verifyMode: (input.verifyMode ?? (input.verify === false ? 'skip' : 'action-first')) as SaveVerifyMode,
+					commitMessageMode: (input.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
+				});
 				return buildWorkflowResult(
 					'save',
 					root,
@@ -1942,14 +1981,14 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						scope,
 						hotfix: optionsHotfix,
 						message,
-						repos: packageReports,
-						rootRepo,
+						repos: repositoryPlan.repos,
+						rootRepo: repositoryPlan.rootRepo,
 						blockers,
+						repositoryPlan,
+						waves: repositoryPlan.waves,
+						plannedVersions: repositoryPlan.plannedVersions,
 						plannedSteps: [
-							...packageReports.map((report) => ({ id: `save-${report.name}`, description: `Verify, commit, and push ${report.name}` })),
-							...(input.verify !== false ? [{ id: 'verify-root', description: 'Run market workspace verification' }] : []),
-							{ id: 'commit-root', description: 'Commit market repo changes if present' },
-							{ id: 'sync-root', description: `Push ${branch} to origin` },
+							...repositoryPlan.plannedSteps,
 							...((beforeState.branchRole === 'feature' && (input.preview === true || beforeState.preview.enabled))
 								? [{ id: 'preview', description: `Refresh preview deployment for ${branch}` }]
 								: []),
@@ -1982,35 +2021,17 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					preview: input.preview === true,
 					refreshPreview: input.refreshPreview !== false,
 					verify: input.verify !== false,
+					bump: input.bump ?? 'patch',
+					devVersionStrategy: input.devVersionStrategy ?? 'prerelease',
+					devDependencyReferenceMode: input.devDependencyReferenceMode ?? 'git-tag',
+					gitDependencyProtocol: input.gitDependencyProtocol ?? 'preserve-origin',
+					verifyMode: input.verifyMode ?? (input.verify === false ? 'skip' : 'action-first'),
+					commitMessageMode: input.commitMessageMode ?? 'auto',
 				},
 				[
-					...packageReports.map((report) => ({
-						id: `save-${report.name}`,
-						description: `Save ${report.name}`,
-						repoName: report.name,
-						repoPath: report.path,
-						branch,
-						resumable: true,
-					})),
-					...(input.verify !== false ? [{
-						id: 'verify-root',
-						description: 'Verify market workspace',
-						repoName: rootRepo.name,
-						repoPath: rootRepo.path,
-						branch,
-						resumable: true,
-					}] : []),
 					{
-						id: 'commit-root',
-						description: 'Commit market workspace changes',
-						repoName: rootRepo.name,
-						repoPath: rootRepo.path,
-						branch,
-						resumable: true,
-					},
-					{
-						id: 'sync-root',
-						description: `Push ${branch} to origin`,
+						id: 'save-repositories',
+						description: 'Save dependency-ordered repositories',
 						repoName: rootRepo.name,
 						repoPath: rootRepo.path,
 						branch,
@@ -2031,132 +2052,60 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 			);
 
 			try {
-			if (recursiveWorkspace) {
-				assertWorkspaceVersionConsistency(root);
-				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
-					const report = findReportByName(packageReports, pkg.name);
-					if (!report) {
-						continue;
-					}
-					try {
-						const step = readWorkflowRunJournal(root, workflowRun.runId)?.steps.find((entry) => entry.id === `save-${report.name}`) ?? null;
-						const resumePendingSync = workflowRun.resumed
-							&& step?.status === 'pending'
-							&& branchNeedsSync(report.path, branch);
-						if (!report.dirty && !resumePendingSync) {
-							report.skippedReason = 'clean';
-							skipJournalStep(root, workflowRun.runId, `save-${report.name}`, {
-								skippedReason: 'clean',
-							});
-							continue;
-						}
-						const savedReport = await executeJournalStep(root, workflowRun.runId, `save-${report.name}`, () =>
-							savePackageRepo(report, message, branch, input.verify !== false));
-						Object.assign(report, savedReport);
-					} catch (error) {
-						createSaveFailure(
-							`Treeseed save stopped while saving workspace package ${pkg.name}.`,
-							packageReports,
-							rootRepo,
-							report,
-							error,
-						);
-					}
-				}
-			}
+				const saveResult = await executeJournalStep(root, workflowRun.runId, 'save-repositories', () =>
+					runRepositorySaveOrchestrator({
+						root,
+						gitRoot,
+						branch,
+						message,
+						bump: (input.bump ?? 'patch') as ReleaseBumpLevel,
+						devVersionStrategy: (input.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
+						devDependencyReferenceMode: input.devDependencyReferenceMode ?? 'git-tag',
+						gitDependencyProtocol: input.gitDependencyProtocol ?? 'preserve-origin',
+						verifyMode: (input.verifyMode ?? (input.verify === false ? 'skip' : 'action-first')) as SaveVerifyMode,
+						commitMessageMode: (input.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
+						workflowRunId: workflowRun.runId,
+					}));
+				const savedPackageReports = saveResult?.repos ?? packageReports;
+				const savedRootRepo = saveResult?.rootRepo ?? rootRepo;
+				const head = savedRootRepo.commitSha ?? run('git', ['rev-parse', 'HEAD'], { cwd: gitRoot, capture: true }).trim();
+				const commitCreated = savedRootRepo.committed === true;
+				const branchSync = {
+					...(savedRootRepo.publishWait ?? {}),
+					pushed: savedRootRepo.pushed === true,
+				};
 
-			if (input.verify !== false) {
-				try {
-					await executeJournalStep(root, workflowRun.runId, 'verify-root', () => {
-						runWorkspaceSavePreflight({ cwd: root });
-						rootRepo.verified = true;
-						return {
-							verified: true,
+				let previewAction: Record<string, unknown> = { status: 'skipped' };
+				if (beforeState.branchRole === 'feature' && branch) {
+					if (input.preview === true) {
+						previewAction = {
+							status: beforeState.preview.enabled ? 'refreshed' : 'created',
+							details: await executeJournalStep(root, workflowRun.runId, 'preview', () =>
+								deployBranchPreview(root, branch, helpers.context, { initialize: !beforeState.preview.enabled })),
 						};
-					});
-				} catch (error) {
-					createSaveFailure(
-						'Treeseed save stopped while verifying the market workspace.',
-						packageReports,
-						rootRepo,
-						null,
-						error,
-					);
+					} else if (input.refreshPreview !== false && beforeState.preview.enabled) {
+						previewAction = {
+							status: 'refreshed',
+							details: await executeJournalStep(root, workflowRun.runId, 'preview', () =>
+								deployBranchPreview(root, branch, helpers.context, { initialize: false })),
+						};
+					}
 				}
-			}
-
-			const hadMeaningfulChanges = hasMeaningfulChanges(gitRoot);
-			let head = run('git', ['rev-parse', 'HEAD'], { cwd: gitRoot, capture: true }).trim();
-			let commitCreated = false;
-
-			if (hadMeaningfulChanges) {
-				const commitResult = await executeJournalStep(root, workflowRun.runId, 'commit-root', () => {
-					run('git', ['add', '-A'], { cwd: gitRoot });
-					run('git', ['commit', '-m', message], { cwd: gitRoot });
-					return {
-						commitSha: run('git', ['rev-parse', 'HEAD'], { cwd: gitRoot, capture: true }).trim(),
-					};
-				});
-				head = String(commitResult?.commitSha ?? head);
-				commitCreated = true;
-				rootRepo.committed = true;
-			} else {
-				skipJournalStep(root, workflowRun.runId, 'commit-root', {
-					skippedReason: 'clean',
-				});
-			}
-			rootRepo.commitSha = head;
-
-			let branchSync;
-			try {
-				branchSync = await executeJournalStep(root, workflowRun.runId, 'sync-root', () =>
-					syncCurrentBranchToOrigin('save', gitRoot, branch));
-			} catch (error) {
-				createSaveFailure(
-					'Treeseed save stopped while syncing the market repository.',
-					packageReports,
-					rootRepo,
-					rootRepo,
-					error,
-				);
-			}
-			rootRepo.pushed = branchSync.pushed === true;
-			if (input.verify !== false) {
-				rootRepo.verified = true;
-			}
-			if (!hadMeaningfulChanges) {
-				rootRepo.skippedReason = 'clean';
-			}
-
-			let previewAction: Record<string, unknown> = { status: 'skipped' };
-			if (beforeState.branchRole === 'feature' && branch) {
-				if (input.preview === true) {
-					previewAction = {
-						status: beforeState.preview.enabled ? 'refreshed' : 'created',
-						details: await executeJournalStep(root, workflowRun.runId, 'preview', () =>
-							deployBranchPreview(root, branch, helpers.context, { initialize: !beforeState.preview.enabled })),
-					};
-				} else if (input.refreshPreview !== false && beforeState.preview.enabled) {
-					previewAction = {
-						status: 'refreshed',
-						details: await executeJournalStep(root, workflowRun.runId, 'preview', () =>
-							deployBranchPreview(root, branch, helpers.context, { initialize: false })),
-					};
-				}
-			}
 
 				const payload = {
-					mode,
+					mode: saveResult?.mode ?? mode,
 					branch,
 					scope,
 					hotfix: optionsHotfix,
 					message,
 					commitSha: head,
 					commitCreated,
-					noChanges: !hadMeaningfulChanges,
+					noChanges: !commitCreated,
 					branchSync,
-					repos: packageReports,
-					rootRepo,
+					repos: savedPackageReports,
+					rootRepo: savedRootRepo,
+					waves: saveResult?.waves ?? [],
+					plannedVersions: saveResult?.plannedVersions ?? {},
 					partialFailure: null,
 					previewAction,
 					mergeConflict: null,
@@ -2178,7 +2127,17 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					},
 				);
 			} catch (error) {
-				const failingRepo = packageReports.find((report) => report.dirty && report.pushed !== true) ?? rootRepo;
+				const saveError = repositorySaveErrorDetails(error);
+				const savedPartialFailure = saveError.details?.partialFailure as {
+					message: string;
+					failingRepo: string;
+					repos: WorkflowRepoReport[];
+					rootRepo: WorkflowRepoReport | null;
+					error: string;
+				} | undefined;
+				const failingRepo = savedPartialFailure?.repos.find((report) => report.name === savedPartialFailure.failingRepo)
+					?? packageReports.find((report) => report.dirty && report.pushed !== true)
+					?? rootRepo;
 				const wrappedError = error instanceof TreeseedWorkflowError && error.details?.partialFailure != null
 					? error
 					: new TreeseedWorkflowError(
@@ -2188,7 +2147,8 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						{
 							details: {
 								...(error instanceof TreeseedWorkflowError ? (error.details ?? {}) : {}),
-								partialFailure: {
+								...(saveError.details ?? {}),
+								partialFailure: savedPartialFailure ?? {
 									message: 'Treeseed save stopped before the workspace could finish syncing.',
 									failingRepo: failingRepo.name,
 									repos: packageReports,
@@ -2196,7 +2156,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 									error: error instanceof Error ? error.message : String(error),
 								},
 							},
-							exitCode: error instanceof TreeseedWorkflowError ? error.exitCode : undefined,
+							exitCode: error instanceof TreeseedWorkflowError ? error.exitCode : saveError.exitCode,
 						},
 					);
 				failWorkflowRun(root, workflowRun.runId, wrappedError, {
@@ -2638,7 +2598,6 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 			}
 			if (mode === 'recursive-workspace') {
 				try {
-					assertWorkspaceVersionConsistency(root);
 					validatePackageReleaseWorkflows(root, packageSelection.selected);
 				} catch (error) {
 					blockers.push(error instanceof Error ? error.message : String(error));
@@ -2646,6 +2605,9 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 			}
 			const versionPlan = planWorkspaceReleaseBump(level, root, mode === 'recursive-workspace' ? { selectedPackageNames } : {});
 			const plannedVersions = Object.fromEntries(versionPlan.versions.entries());
+			const plannedDevReferenceRewrites = mode === 'recursive-workspace'
+				? collectInternalDevReferenceIssues(root, selectedPackageNames)
+				: [];
 			if (executionMode === 'plan') {
 				return buildWorkflowResult(
 					'release',
@@ -2658,6 +2620,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						productionBranch: PRODUCTION_BRANCH,
 						packageSelection,
 						plannedVersions,
+						plannedDevReferenceRewrites,
 						repos: packageReports,
 						rootRepo,
 						plannedSteps: [
@@ -2691,7 +2654,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 			const workflowRun = acquireWorkflowRun(
 				'release',
 				session,
-				{ bump: level },
+				{
+					bump: level,
+					devTagCleanup: input.devTagCleanup ?? 'safe-after-release',
+					gitDependencyProtocol: input.gitDependencyProtocol ?? 'preserve-origin',
+				},
 				[
 					...packageReports.filter((report) => selectedPackageNames.has(report.name)).map((report) => ({
 						id: `release-${report.name}`,
@@ -2702,6 +2669,9 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						resumable: true,
 					})),
 					{ id: 'release-root', description: 'Release market repo', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					...(mode === 'recursive-workspace'
+						? [{ id: 'cleanup-dev-tags', description: 'Clean replaced dev package tags', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: false }]
+						: []),
 				],
 				helpers.context,
 			);
@@ -2756,14 +2726,33 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					});
 				}
 
-				assertWorkspaceVersionConsistency(root);
 				validatePackageReleaseWorkflows(root, packageSelection.selected);
 				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
 					if (selectedPackageNames.has(pkg.name)) {
 						prepareReleaseBranches(pkg.dir);
 					}
 				}
+				const releasedPackageDevTags = new Map(
+					checkedOutWorkspacePackageRepos(root)
+						.filter((pkg) => selectedPackageNames.has(pkg.name))
+						.map((pkg) => {
+							const packageJson = JSON.parse(readFileSync(resolve(pkg.dir, 'package.json'), 'utf8')) as Record<string, unknown>;
+							return [pkg.name, String(packageJson.version ?? '')] as const;
+						})
+						.filter(([, version]) => version.includes('-dev.')),
+				);
+				const replacedDevReferences = rewriteInternalDependenciesToStableVersions(root, versionPlan.versions);
 				applyWorkspaceVersionChanges(versionPlan);
+				const releaseInstalls: Array<Record<string, unknown>> = [];
+				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
+					if (selectedPackageNames.has(pkg.name)) {
+						releaseInstalls.push({
+							name: pkg.name,
+							...runReleaseNpmInstall(pkg.dir),
+						});
+					}
+				}
+				assertNoInternalDevReferences(root, selectedPackageNames);
 				const publishWait: Array<Record<string, unknown>> = [];
 
 				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
@@ -2852,6 +2841,31 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				rootRepo.branch = PRODUCTION_BRANCH;
 				rootRepo.commitSha = String(rootRelease?.releasedCommit ?? headCommit(gitRoot));
 				rootRepo.tagName = String(rootRelease?.rootVersion ?? '');
+				const devTagCleanupMode = (input.devTagCleanup ?? 'safe-after-release') as DevTagCleanupMode;
+				const devTagCleanup = devTagCleanupMode === 'off'
+					? (skipJournalStep(root, workflowRun.runId, 'cleanup-dev-tags', { status: 'skipped', reason: 'disabled' }), { status: 'skipped', reason: 'disabled' })
+					: await executeJournalStep(root, workflowRun.runId, 'cleanup-dev-tags', () => {
+						const activeDevTags = collectActiveDevTagReferences(root);
+						const byPackage = new Map<string, string[]>();
+						for (const reference of replacedDevReferences) {
+							const tagName = reference.tagName ?? devTagFromDependencySpec(reference.from);
+							if (!tagName) continue;
+							byPackage.set(reference.packageName, [...(byPackage.get(reference.packageName) ?? []), tagName]);
+						}
+						for (const [packageName, tagName] of releasedPackageDevTags.entries()) {
+							byPackage.set(packageName, [...(byPackage.get(packageName) ?? []), tagName]);
+						}
+						const cleanupReports: Array<Record<string, unknown>> = [];
+						for (const pkg of checkedOutWorkspacePackageRepos(root)) {
+							const tagNames = byPackage.get(pkg.name) ?? [];
+							if (tagNames.length === 0) continue;
+							cleanupReports.push({
+								name: pkg.name,
+								...cleanupDevTags(pkg.dir, tagNames, activeDevTags),
+							});
+						}
+						return { status: 'completed', repos: cleanupReports };
+					});
 				const payload = {
 					mode,
 					mergeStrategy: 'merge-commit',
@@ -2863,6 +2877,9 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					productionBranch: PRODUCTION_BRANCH,
 					touchedPackages: packageSelection.selected,
 					packageSelection,
+					replacedDevReferences,
+					releaseInstalls,
+					devTagCleanup,
 					publishWait,
 					repos: packageReports,
 					rootRepo,
