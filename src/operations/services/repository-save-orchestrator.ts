@@ -835,14 +835,16 @@ async function runGitDependencySmoke(node: RepositorySaveNode, options: Reposito
 async function runNpmInstallWithRetry(
 	node: RepositorySaveNode,
 	options: RepositorySaveOptions,
-	forceGitDependencyRefresh = false,
+	gitDependencyRefreshSpecs: string[] = [],
 ): Promise<RepositoryInstallResult> {
 	if (shouldSkipNetworkInstall()) {
 		emitProgress(options, node, 'install', 'Skipped npm install because network install mode is disabled.');
 		return { status: 'skipped', attempts: 0, reason: 'stubbed' };
 	}
 	let lastError: string | null = null;
-	const args = forceGitDependencyRefresh ? ['install', '--force'] : ['install'];
+	const args = gitDependencyRefreshSpecs.length > 0
+		? ['install', ...gitDependencyRefreshSpecs, '--force']
+		: ['install'];
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
 		emitProgress(options, node, 'install', `npm ${args.join(' ')} attempt ${attempt}/5.`);
 		try {
@@ -1240,7 +1242,7 @@ function repoPlanCommands(
 	}
 	if (node.kind === 'package' && plannedVersion) {
 		commands.push(`update package.json version to ${plannedVersion}`);
-		commands.push('npm install # use --force for changed git-tag dependencies; retry up to 5 times with 60s delay');
+		commands.push('npm install # explicitly refresh changed git-tag dependencies with --force; retry up to 5 times with 60s delay');
 	}
 	commands.push('git add -A');
 	commands.push('generate commit message # Cloudflare AI when configured, fallback otherwise');
@@ -1406,7 +1408,10 @@ async function saveOneRepository(
 
 	const dependencyUpdates = updateDependencyReferences(node, state.finalizedReferences);
 	const dependencyChanged = dependencyUpdates.length > 0;
-	const forceGitDependencyRefresh = dependencyUpdates.some((update) => state.finalizedReferences.get(update.packageName)?.mode === 'dev-git-tag');
+	const gitDependencyRefreshSpecs = dependencyUpdates
+		.map((update) => state.finalizedReferences.get(update.packageName))
+		.filter((reference): reference is PackageDependencyReference => Boolean(reference) && reference.mode === 'dev-git-tag')
+		.map((reference) => `${reference.packageName}@${reference.spec}`);
 	const submodulesChanged = refreshSubmodulePointers(node, state.finalizedCommits);
 	const packageNeedsVersion = node.kind === 'package' && (hasMeaningfulChanges(node.path) || dependencyChanged || submodulesChanged);
 	let plannedVersion: string | null = null;
@@ -1431,7 +1436,7 @@ async function saveOneRepository(
 		}
 		const reference = finalizePackageReference(node, plannedVersion, options);
 		report.dependencySpec = reference.spec;
-		report.install = await runNpmInstallWithRetry(node, options, forceGitDependencyRefresh);
+		report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
 	} else if (node.kind === 'package') {
 		report.version = String(node.packageJson?.version ?? report.version ?? '');
 	}
