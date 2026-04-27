@@ -828,6 +828,36 @@ function hasNpmLockfile(repoDir: string) {
 	return existsSync(resolve(repoDir, 'package-lock.json')) || existsSync(resolve(repoDir, 'npm-shrinkwrap.json'));
 }
 
+async function withDeploymentInstallManifest<T>(
+	node: RepositorySaveNode,
+	options: RepositorySaveOptions,
+	action: () => Promise<T>,
+): Promise<T> {
+	const packageJsonPath = resolve(node.path, 'package.json');
+	if (node.path !== options.root || !existsSync(packageJsonPath)) {
+		return await action();
+	}
+	const originalPackageJson = readFileSync(packageJsonPath, 'utf8');
+	let parsed: Record<string, unknown>;
+	try {
+		parsed = JSON.parse(originalPackageJson) as Record<string, unknown>;
+	} catch {
+		return await action();
+	}
+	if (!('workspaces' in parsed)) {
+		return await action();
+	}
+	const installPackageJson = { ...parsed };
+	delete installPackageJson.workspaces;
+	emitProgress(options, node, 'install', 'Temporarily suppressing root workspaces for deployment lockfile install.');
+	writeJson(packageJsonPath, installPackageJson);
+	try {
+		return await action();
+	} finally {
+		writeFileSync(packageJsonPath, originalPackageJson, 'utf8');
+	}
+}
+
 async function runGitDependencySmoke(node: RepositorySaveNode, options: RepositorySaveOptions, reference: PackageDependencyReference) {
 	if (reference.mode !== 'dev-git-tag' || shouldSkipGitDependencySmoke()) return;
 	const installSpec = reference.installSpec ?? reference.spec;
@@ -873,7 +903,8 @@ async function runNpmInstallWithRetry(
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
 		emitProgress(options, node, 'install', `npm ${args.join(' ')} attempt ${attempt}/5.`);
 		try {
-			await runStreamingCommand(node, options, 'install', 'npm', args);
+			await withDeploymentInstallManifest(node, options, () =>
+				runStreamingCommand(node, options, 'install', 'npm', args));
 			return { status: 'completed', attempts: attempt, reason: null };
 		} catch (error) {
 			lastError = error instanceof Error ? error.message : String(error);
@@ -1475,12 +1506,12 @@ async function saveOneRepository(
 		const reference = finalizePackageReference(node, plannedVersion, options);
 		report.dependencySpec = reference.spec;
 		report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
-		assertNoWorkspaceLinksInDeploymentLockfiles(options.root);
+		assertNoWorkspaceLinksInDeploymentLockfiles(node.path);
 	} else if (node.kind === 'package') {
 		report.version = String(node.packageJson?.version ?? report.version ?? '');
 	} else if (node.kind === 'project' && dependencyChanged && hasNpmLockfile(node.path)) {
 		report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
-		assertNoWorkspaceLinksInDeploymentLockfiles(options.root);
+		assertNoWorkspaceLinksInDeploymentLockfiles(node.path);
 	}
 
 	const dirty = hasMeaningfulChanges(node.path);
