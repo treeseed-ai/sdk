@@ -35,7 +35,7 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(source).toContain('uses: actions/upload-artifact@v4');
 		expect(source).toContain('uses: actions/download-artifact@v4');
 		expect(source).toContain('Ensure Treeseed deployment state');
-		expect(source).toContain("'.treeseed/state/' + scope + '/deploy.json'");
+		expect(source).toContain("'.treeseed/state/environments/' + scope + '/deploy.json'");
 		expect(source).toContain('name: treeseed-deploy-state-${{ needs.classify.outputs.scope }}');
 		expect(source).toContain('path: .treeseed/state');
 		expect(source).toContain('include-hidden-files: true');
