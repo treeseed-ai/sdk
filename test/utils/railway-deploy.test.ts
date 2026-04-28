@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	configuredRailwayServices,
 	ensureRailwayScheduledJobs,
+	planRailwayServiceDeploy,
 	resolveRailwayAuthToken,
 	validateRailwayDeployPrerequisites,
 	verifyRailwayScheduledJobs,
@@ -165,6 +166,30 @@ describe('railway scheduled jobs', () => {
 		const result = await ensureRailwayScheduledJobs(tenantRoot, 'staging');
 
 		expect(result).toEqual([]);
+	});
+
+	it('passes project and environment selectors to Railway deploys', () => {
+		const plan = planRailwayServiceDeploy({
+			projectId: 'railway-project-1',
+			serviceName: 'acme-docs-api',
+			railwayEnvironment: 'staging',
+			rootDir: '.',
+		});
+
+		expect(plan).toMatchObject({
+			command: 'railway',
+			args: [
+				'up',
+				'--service',
+				'acme-docs-api',
+				'--ci',
+				'--project',
+				'railway-project-1',
+				'--environment',
+				'staging',
+			],
+			cwd: '.',
+		});
 	});
 
 	it('creates a missing schedule and returns its locator for prod deploy', async () => {

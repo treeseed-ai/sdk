@@ -982,6 +982,9 @@ export async function verifyRailwayScheduledJobs(
 
 export function planRailwayServiceDeploy(service) {
 	const args = ['up', '--service', service.serviceName ?? service.serviceId, '--ci'];
+	if (service.projectId) {
+		args.push('--project', service.projectId);
+	}
 	const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment);
 	if (environmentName) {
 		args.push('--environment', environmentName);
@@ -990,6 +993,25 @@ export function planRailwayServiceDeploy(service) {
 		command: 'railway',
 		args,
 		cwd: service.rootDir,
+	};
+}
+
+async function resolveRailwayDeployProjectContext(service, { env = process.env } = {}) {
+	if (service.projectId) {
+		return service;
+	}
+	const workspace = await resolveRailwayWorkspaceContext({ env });
+	const { project } = await ensureRailwayProject({
+		projectId: service.projectId,
+		projectName: service.projectName,
+		defaultEnvironmentName: service.railwayEnvironment,
+		env,
+		workspace: workspace.id,
+	});
+	return {
+		...service,
+		projectId: project.id,
+		projectName: project.name ?? service.projectName,
 	};
 }
 
@@ -1081,8 +1103,8 @@ export async function deployRailwayService(
 		env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	} = {},
 ) {
-	const plan = planRailwayServiceDeploy(service);
 	if (dryRun) {
+		const plan = planRailwayServiceDeploy(service);
 		return {
 			service: service.key,
 			status: 'planned',
@@ -1091,23 +1113,25 @@ export async function deployRailwayService(
 			publicBaseUrl: service.publicBaseUrl,
 		};
 	}
+	const deployService = await resolveRailwayDeployProjectContext(service, { env });
+	const plan = planRailwayServiceDeploy(deployService);
 
 	const taskPrefix = prefix ?? {
-		scope: normalizeScope(service.scope ?? service.railwayEnvironment ?? 'railway'),
-		system: service.key === 'api' ? 'api' : 'agents',
-		task: `${service.key}-railway-deploy`,
+		scope: normalizeScope(deployService.scope ?? deployService.railwayEnvironment ?? 'railway'),
+		system: deployService.key === 'api' ? 'api' : 'agents',
+		task: `${deployService.key}-railway-deploy`,
 		stage: 'deploy',
 	};
 	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
-	if (service.buildCommand) {
-		const buildResult = await runPrefixedCommand('bash', ['-lc', service.buildCommand], {
-			cwd: service.rootDir,
+	if (deployService.buildCommand) {
+		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
+			cwd: deployService.rootDir,
 			env: commandEnv,
 			write,
 			prefix: { ...taskPrefix, stage: 'build' },
 		});
 		if (buildResult.status !== 0) {
-			throw new Error(`Railway ${service.key} build command failed.`);
+			throw new Error(`Railway ${deployService.key} build command failed.`);
 		}
 	}
 
@@ -1128,22 +1152,22 @@ export async function deployRailwayService(
 			throw new Error(result.stderr?.trim() || result.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
 		}
 		const backoffMs = 5000 * attempt;
-		const warning = `Railway deploy for ${service.serviceName ?? service.serviceId ?? service.key} hit a transient failure; retrying in ${Math.round(backoffMs / 1000)}s...`;
+		const warning = `Railway deploy for ${deployService.serviceName ?? deployService.serviceId ?? deployService.key} hit a transient failure; retrying in ${Math.round(backoffMs / 1000)}s...`;
 		write ? write(`[${taskPrefix.scope}][${taskPrefix.system}][${taskPrefix.task}][retry] ${warning}`, 'stderr') : console.warn(warning);
 		await sleep(backoffMs);
 	}
 	if (lastFailure) {
 		throw new Error(lastFailure.stderr?.trim() || lastFailure.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
 	}
-	const runtimeConfiguration = await syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, service, {
+	const runtimeConfiguration = await syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, {
 		env: commandEnv,
 	});
 	return {
-		service: service.key,
+		service: deployService.key,
 		status: 'deployed',
 		command: [plan.command, ...plan.args].join(' '),
 		cwd: plan.cwd,
-		publicBaseUrl: service.publicBaseUrl,
+		publicBaseUrl: deployService.publicBaseUrl,
 		runtimeConfiguration: runtimeConfiguration
 			? {
 				updated: runtimeConfiguration.updated,
