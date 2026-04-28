@@ -66,12 +66,12 @@ import {
 	syncBranchWithOrigin,
 	waitForStagingAutomation,
 } from '../operations/services/git-workflow.ts';
-import { waitForGitHubWorkflowCompletion } from '../operations/services/github-automation.ts';
+import { resolveGitHubRepositorySlug, waitForGitHubWorkflowCompletion } from '../operations/services/github-automation.ts';
+import { createGitHubApiClient } from '../operations/services/github-api.ts';
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin } from '../operations/services/runtime-tools.ts';
 import { runTenantDeployPreflight, runWorkspaceSavePreflight } from '../operations/services/save-deploy-preflight.ts';
 import { collectCliPreflight } from '../operations/services/workspace-preflight.ts';
 import {
-	applyWorkspaceVersionChanges,
 	collectMergeConflictReport,
 	currentBranch,
 	formatMergeConflictReport,
@@ -96,7 +96,7 @@ import {
 	cleanupDevTags,
 	collectInternalDevReferenceIssues,
 	devTagFromDependencySpec,
-	rewriteInternalDependenciesToStableVersions,
+	rewriteProjectInternalDependenciesToStableVersions,
 	type DevTagCleanupMode,
 } from '../operations/services/package-reference-policy.ts';
 import {
@@ -476,12 +476,95 @@ function ensureLocalReadinessOrThrow(operation: TreeseedWorkflowOperationId, ten
 	return state;
 }
 
-function bumpRootPackageJson(root: string, level: string) {
+function planRootPackageVersion(root: string, level: string) {
 	const packageJsonPath = resolve(root, 'package.json');
 	const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, unknown>;
-	packageJson.version = incrementVersion(String(packageJson.version ?? '0.0.0'), level);
+	return incrementVersion(String(packageJson.version ?? '0.0.0'), level);
+}
+
+function setRootPackageJsonVersion(root: string, version: string) {
+	const packageJsonPath = resolve(root, 'package.json');
+	const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, unknown>;
+	packageJson.version = version;
 	writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
 	return String(packageJson.version);
+}
+
+function writeJsonFile(path: string, value: Record<string, unknown>) {
+	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function applyStableWorkspaceVersionChanges(root: string, versions: Map<string, string>) {
+	for (const pkg of workspacePackages(root)) {
+		const packageJsonPath = resolve(pkg.dir, 'package.json');
+		const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, unknown>;
+		let changed = false;
+		const plannedVersion = versions.get(pkg.name);
+		if (plannedVersion && packageJson.version !== plannedVersion) {
+			packageJson.version = plannedVersion;
+			changed = true;
+		}
+		for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
+			const values = packageJson[field];
+			if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
+			for (const [dependencyName, version] of versions.entries()) {
+				if (!(dependencyName in values)) continue;
+				if (String((values as Record<string, unknown>)[dependencyName]) === version) continue;
+				(values as Record<string, unknown>)[dependencyName] = version;
+				changed = true;
+			}
+		}
+		if (changed) {
+			writeJsonFile(packageJsonPath, packageJson);
+		}
+	}
+}
+
+function gitObjectCommit(repoDir: string, ref: string) {
+	try {
+		return run('git', ['rev-list', '-n', '1', ref], { cwd: repoDir, capture: true }).trim() || null;
+	} catch {
+		return null;
+	}
+}
+
+function remoteTagCommit(repoDir: string, tagName: string) {
+	const output = run('git', ['ls-remote', 'origin', `refs/tags/${tagName}`, `refs/tags/${tagName}^{}`], { cwd: repoDir, capture: true }).trim();
+	if (!output) return null;
+	const peeled = output.split('\n').find((line) => line.endsWith(`refs/tags/${tagName}^{}`));
+	const direct = output.split('\n').find((line) => line.endsWith(`refs/tags/${tagName}`));
+	return (peeled ?? direct)?.split(/\s+/u)[0] ?? null;
+}
+
+function ensureReleaseTag(repoDir: string, tagName: string, commitSha: string) {
+	const localCommit = gitObjectCommit(repoDir, tagName);
+	if (localCommit && localCommit !== commitSha) {
+		throw new Error(`Release tag ${tagName} already exists locally at ${localCommit}, expected ${commitSha}.`);
+	}
+	if (!localCommit) {
+		run('git', ['tag', '-a', tagName, commitSha, '-m', `release: ${tagName}`], { cwd: repoDir });
+	}
+	const remoteCommit = remoteTagCommit(repoDir, tagName);
+	if (remoteCommit && remoteCommit !== commitSha) {
+		throw new Error(`Release tag ${tagName} already exists on origin at ${remoteCommit}, expected ${commitSha}.`);
+	}
+	if (!remoteCommit) {
+		run('git', ['push', 'origin', tagName], { cwd: repoDir });
+	}
+	return {
+		tagName,
+		local: localCommit ? 'existing' : 'created',
+		remote: remoteCommit ? 'existing' : 'pushed',
+	};
+}
+
+function commitAllIfChanged(repoDir: string, message: string) {
+	run('git', ['add', '-A'], { cwd: repoDir });
+	if (!hasMeaningfulChanges(repoDir)) {
+		return { committed: false, commitSha: headCommit(repoDir) };
+	}
+	run('git', ['commit', '-m', message], { cwd: repoDir });
+	return { committed: true, commitSha: headCommit(repoDir) };
 }
 
 function createNextSteps(steps: TreeseedWorkflowNextStep[]) {
@@ -1015,6 +1098,118 @@ function collectActiveDevTagReferences(root: string) {
 	return collectInternalDevReferenceIssues(root)
 		.map((issue) => devTagFromDependencySpec(issue.spec) ?? (issue.spec.includes('-dev.') ? issue.spec : null))
 		.filter((value): value is string => Boolean(value));
+}
+
+function releasePlanVersionMap(plannedVersions: Record<string, unknown>) {
+	return new Map(
+		Object.entries(plannedVersions)
+			.filter(([name]) => name !== '@treeseed/market')
+			.map(([name, version]) => [name, String(version)] as const),
+	);
+}
+
+function releasePlanPackageSelection(value: unknown): { changed: string[]; dependents: string[]; selected: string[] } {
+	const record = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+	return {
+		changed: Array.isArray(record.changed) ? record.changed.map(String) : [],
+		dependents: Array.isArray(record.dependents) ? record.dependents.map(String) : [],
+		selected: Array.isArray(record.selected) ? record.selected.map(String) : [],
+	};
+}
+
+function buildReleasePlanSnapshot(input: {
+	root: string;
+	mode: TreeseedWorkflowMode;
+	level: string;
+	packageSelection: { changed: string[]; dependents: string[]; selected: string[] };
+	packageReports: WorkflowRepoReport[];
+	rootRepo: WorkflowRepoReport;
+	blockers: string[];
+}) {
+	const selectedPackageNames = new Set(input.packageSelection.selected);
+	const versionPlan = planWorkspaceReleaseBump(input.level, input.root, input.mode === 'recursive-workspace' ? { selectedPackageNames } : {});
+	const rootVersion = planRootPackageVersion(input.root, input.level);
+	const plannedVersions = {
+		'@treeseed/market': rootVersion,
+		...Object.fromEntries(versionPlan.versions.entries()),
+	};
+	const plannedDevReferenceRewrites = input.mode === 'recursive-workspace'
+		? collectInternalDevReferenceIssues(input.root, selectedPackageNames)
+		: [];
+	return {
+		mode: input.mode,
+		mergeStrategy: 'merge-commit',
+		level: input.level,
+		rootVersion,
+		releaseTag: rootVersion,
+		stagingBranch: STAGING_BRANCH,
+		productionBranch: PRODUCTION_BRANCH,
+		packageSelection: input.packageSelection,
+		plannedVersions,
+		plannedDevReferenceRewrites,
+		plannedPublishWaits: input.packageSelection.selected.map((name) => ({
+			name,
+			workflow: 'publish.yml',
+			branch: PRODUCTION_BRANCH,
+			status: 'planned',
+		})),
+		touchedPackages: input.packageSelection.selected,
+		repos: input.packageReports,
+		rootRepo: input.rootRepo,
+		finalBranch: STAGING_BRANCH,
+		plannedSteps: [
+			{ id: 'release-plan', description: 'Record immutable release plan and target versions' },
+			{ id: 'workspace-unlink', description: 'Remove local workspace links before stable release install' },
+			{ id: 'prepare-release-metadata', description: 'Rewrite package metadata and lockfiles to production dependency mode' },
+			...input.packageReports.filter((report) => selectedPackageNames.has(report.name)).map((report) => ({
+				id: `release-${report.name}`,
+				description: `Release ${report.name} from staging to main and tag ${plannedVersions[report.name] ?? '(planned)'}`,
+			})),
+			{ id: 'release-root', description: `Release market ${rootVersion}` },
+			{ id: 'cleanup-dev-tags', description: 'Clean replaced Treeseed dev tags after stable release' },
+			{ id: 'workspace-link', description: 'Restore local workspace links after release syncs back to staging' },
+		],
+		blockers: input.blockers,
+	};
+}
+
+function collectReleasePlanBlockers(session: TreeseedWorkflowSession, mode: TreeseedWorkflowMode, selectedPackageNames: string[]) {
+	const blockers: string[] = [];
+	if (session.branchName !== STAGING_BRANCH) {
+		blockers.push('Release must start from staging.');
+	}
+	if (session.rootRepo.dirty) {
+		blockers.push('@treeseed/market has uncommitted changes.');
+	}
+	if (!session.rootRepo.hasOriginRemote) {
+		blockers.push('@treeseed/market is missing origin remote.');
+	}
+	if (mode === 'recursive-workspace') {
+		for (const repo of session.packageRepos) {
+			if (!selectedPackageNames.includes(repo.name)) continue;
+			if (repo.detached) blockers.push(`${repo.name} is detached.`);
+			if (repo.branchName !== STAGING_BRANCH) blockers.push(`${repo.name} is on ${repo.branchName ?? '(detached)'} instead of staging.`);
+			if (repo.dirty) blockers.push(`${repo.name} has uncommitted changes.`);
+			if (!repo.hasOriginRemote) blockers.push(`${repo.name} is missing origin remote.`);
+		}
+		try {
+			validatePackageReleaseWorkflows(session.root, selectedPackageNames);
+		} catch (error) {
+			blockers.push(error instanceof Error ? error.message : String(error));
+		}
+	}
+	return blockers;
+}
+
+function assertReleaseGitHubAutomationReady(root: string, selectedPackageNames: Set<string>) {
+	if (process.env.TREESEED_GITHUB_AUTOMATION_MODE === 'stub') {
+		return;
+	}
+	createGitHubApiClient();
+	for (const pkg of checkedOutWorkspacePackageRepos(root)) {
+		if (!selectedPackageNames.has(pkg.name)) continue;
+		resolveGitHubRepositorySlug(pkg.dir);
+	}
 }
 
 function assertSessionBranchSafety(
@@ -2705,59 +2900,29 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 			const gitRoot = session.gitRoot;
 			const mode = session.mode;
 			const executionMode = normalizeExecutionMode(input);
+			const isResume = Boolean(helpers.context.workflow?.resumeRunId);
 			const rootRepo = createWorkspaceRootRepoReport(root);
 			const packageReports = createWorkspacePackageReports(root);
 			const packageSelection = session.packageSelection;
 			const selectedPackageNames = new Set(packageSelection.selected);
-			const blockers: string[] = [];
-			if (session.branchName !== STAGING_BRANCH) {
-				blockers.push('Release must start from staging.');
-			}
-			if (mode === 'recursive-workspace') {
-				try {
-					validatePackageReleaseWorkflows(root, packageSelection.selected);
-				} catch (error) {
-					blockers.push(error instanceof Error ? error.message : String(error));
-				}
-			}
-			const versionPlan = planWorkspaceReleaseBump(level, root, mode === 'recursive-workspace' ? { selectedPackageNames } : {});
-			const plannedVersions = Object.fromEntries(versionPlan.versions.entries());
-			const plannedDevReferenceRewrites = mode === 'recursive-workspace'
-				? collectInternalDevReferenceIssues(root, selectedPackageNames)
-				: [];
+			const blockers = isResume ? [] : collectReleasePlanBlockers(session, mode, packageSelection.selected);
+			const plannedRelease = buildReleasePlanSnapshot({
+				root,
+				mode,
+				level,
+				packageSelection,
+				packageReports,
+				rootRepo,
+				blockers,
+			});
+
 			if (executionMode === 'plan') {
-				return buildWorkflowResult(
-					'release',
-					root,
-					{
-						mode,
-						mergeStrategy: 'merge-commit',
-						level,
-						stagingBranch: STAGING_BRANCH,
-						productionBranch: PRODUCTION_BRANCH,
-						packageSelection,
-						plannedVersions,
-						plannedDevReferenceRewrites,
-						repos: packageReports,
-						rootRepo,
-						plannedSteps: [
-							{ id: 'workspace-unlink', description: 'Remove local workspace links before stable release install' },
-							...packageReports.filter((report) => selectedPackageNames.has(report.name)).map((report) => ({
-								id: `release-${report.name}`,
-								description: `Release ${report.name} from staging to main and tag ${plannedVersions[report.name] ?? '(planned)'}`,
-							})),
-							{ id: 'release-root', description: `Release market ${plannedVersions['@treeseed/market'] ?? '(planned)'}` },
-							{ id: 'workspace-link', description: 'Restore local workspace links after release syncs back to staging' },
-						],
-						blockers,
-					},
-					{
-						executionMode,
-						nextSteps: createNextSteps([
-							{ operation: 'release', reason: 'Run without --plan to promote staging into production.', input: { bump: level } },
-						]),
-					},
-				);
+				return buildWorkflowResult('release', root, plannedRelease, {
+					executionMode,
+					nextSteps: createNextSteps([
+						{ operation: 'release', reason: 'Run without --plan to promote staging into production.', input: { bump: level } },
+					]),
+				});
 			}
 
 			if (blockers.length > 0) {
@@ -2766,21 +2931,22 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				});
 			}
 
-			assertSessionBranchSafety('release', session);
-			prepareReleaseBranches(root);
-			applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
-			runWorkspaceSavePreflight({ cwd: root });
 			const workflowRun = acquireWorkflowRun(
 				'release',
 				session,
 				{
 					bump: level,
-						devTagCleanup: input.devTagCleanup ?? 'safe-after-release',
-						gitDependencyProtocol: input.gitDependencyProtocol ?? 'preserve-origin',
-						gitRemoteWriteMode: input.gitRemoteWriteMode ?? 'ssh-pushurl',
-						workspaceLinks: input.workspaceLinks ?? 'auto',
-					},
+					devTagCleanup: input.devTagCleanup ?? 'safe-after-release',
+					gitDependencyProtocol: input.gitDependencyProtocol ?? 'preserve-origin',
+					gitRemoteWriteMode: input.gitRemoteWriteMode ?? 'ssh-pushurl',
+					workspaceLinks: input.workspaceLinks ?? 'auto',
+				},
 				[
+					{ id: 'release-plan', description: 'Record release plan', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					{ id: 'workspace-unlink', description: 'Remove local workspace links before release', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					...(mode === 'recursive-workspace'
+						? [{ id: 'prepare-release-metadata', description: 'Rewrite stable release metadata', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true }]
+						: []),
 					...packageReports.filter((report) => selectedPackageNames.has(report.name)).map((report) => ({
 						id: `release-${report.name}`,
 						description: `Release ${report.name}`,
@@ -2791,29 +2957,43 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					})),
 					{ id: 'release-root', description: 'Release market repo', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					...(mode === 'recursive-workspace'
-						? [{ id: 'cleanup-dev-tags', description: 'Clean replaced dev package tags', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: false }]
+						? [{ id: 'cleanup-dev-tags', description: 'Clean replaced dev package tags', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true }]
 						: []),
 				],
 				helpers.context,
 			);
 
 			try {
-				unlinkWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
+				const releasePlan = await executeJournalStep(root, workflowRun.runId, 'release-plan', () => plannedRelease) as typeof plannedRelease;
+				const effectivePackageSelection = releasePlanPackageSelection(releasePlan.packageSelection);
+				const effectiveSelectedPackageNames = new Set(effectivePackageSelection.selected);
+				const effectiveVersions = releasePlanVersionMap(releasePlan.plannedVersions as Record<string, unknown>);
+				const rootVersion = String(releasePlan.rootVersion);
+
+				assertReleaseGitHubAutomationReady(root, effectiveSelectedPackageNames);
+				if (!isResume) {
+					assertSessionBranchSafety('release', session, { requireCleanPackages: true, requireCurrentBranch: true });
+					assertCleanWorktree(root);
+				}
+				prepareReleaseBranches(root);
+				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
+				runWorkspaceSavePreflight({ cwd: root });
+				await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
+					unlinkWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto'));
+
 				if (mode === 'root-only') {
 					const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
-						applyWorkspaceVersionChanges(versionPlan);
-						const rootVersion = bumpRootPackageJson(root, level);
+						setRootPackageJsonVersion(root, rootVersion);
 						run('git', ['checkout', STAGING_BRANCH], { cwd: gitRoot });
-						run('git', ['add', '-A'], { cwd: gitRoot });
-						run('git', ['commit', '-m', `release: ${level} bump`], { cwd: gitRoot });
+						commitAllIfChanged(gitRoot, `release: ${level} bump`);
 						pushBranch(gitRoot, STAGING_BRANCH);
 						const released = mergeStagingIntoMain(root);
-						run('git', ['tag', '-a', rootVersion, '-m', `release: ${rootVersion}`], { cwd: gitRoot });
-						run('git', ['push', 'origin', rootVersion], { cwd: gitRoot });
+						const tag = ensureReleaseTag(gitRoot, rootVersion, released.commitSha);
 						syncBranchWithOrigin(gitRoot, STAGING_BRANCH);
 						return {
 							rootVersion,
 							releasedCommit: released.commitSha,
+							tag,
 						};
 					});
 					rootRepo.committed = true;
@@ -2832,7 +3012,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						releasedCommit: String(rootRelease?.releasedCommit ?? rootRepo.commitSha ?? ''),
 						stagingBranch: STAGING_BRANCH,
 						productionBranch: PRODUCTION_BRANCH,
-						touchedPackages: [...versionPlan.touched],
+						touchedPackages: [],
 						packageSelection: { changed: [], dependents: [], selected: [] },
 						publishWait: [],
 						repos: [],
@@ -2850,38 +3030,52 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					});
 				}
 
-				validatePackageReleaseWorkflows(root, packageSelection.selected);
+				validatePackageReleaseWorkflows(root, effectivePackageSelection.selected);
 				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
-					if (selectedPackageNames.has(pkg.name)) {
+					if (effectiveSelectedPackageNames.has(pkg.name)) {
 						prepareReleaseBranches(pkg.dir);
 					}
 				}
-				const releasedPackageDevTags = new Map(
-					checkedOutWorkspacePackageRepos(root)
-						.filter((pkg) => selectedPackageNames.has(pkg.name))
-						.map((pkg) => {
-							const packageJson = JSON.parse(readFileSync(resolve(pkg.dir, 'package.json'), 'utf8')) as Record<string, unknown>;
-							return [pkg.name, String(packageJson.version ?? '')] as const;
-						})
-						.filter(([, version]) => version.includes('-dev.')),
-				);
-				const replacedDevReferences = rewriteInternalDependenciesToStableVersions(root, versionPlan.versions);
-				applyWorkspaceVersionChanges(versionPlan);
-				const releaseInstalls: Array<Record<string, unknown>> = [];
-				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
-					if (selectedPackageNames.has(pkg.name)) {
-						releaseInstalls.push({
-							name: pkg.name,
-							...runReleaseNpmInstall(pkg.dir),
-						});
+
+				const metadata = await executeJournalStep(root, workflowRun.runId, 'prepare-release-metadata', () => {
+					const releasedPackageDevTags = Object.fromEntries(
+						checkedOutWorkspacePackageRepos(root)
+							.filter((pkg) => effectiveSelectedPackageNames.has(pkg.name))
+							.map((pkg) => {
+								const packageJson = JSON.parse(readFileSync(resolve(pkg.dir, 'package.json'), 'utf8')) as Record<string, unknown>;
+								return [pkg.name, String(packageJson.version ?? '')] as const;
+							})
+							.filter(([, version]) => version.includes('-dev.')),
+					);
+					const replacedDevReferences = rewriteProjectInternalDependenciesToStableVersions(root, effectiveVersions);
+					applyStableWorkspaceVersionChanges(root, effectiveVersions);
+					setRootPackageJsonVersion(root, rootVersion);
+					const releaseInstalls: Array<Record<string, unknown>> = [
+						{ name: '@treeseed/market', ...runReleaseNpmInstall(root) },
+					];
+					for (const pkg of checkedOutWorkspacePackageRepos(root)) {
+						if (effectiveSelectedPackageNames.has(pkg.name)) {
+							releaseInstalls.push({
+								name: pkg.name,
+								...runReleaseNpmInstall(pkg.dir),
+							});
+						}
 					}
-				}
-				assertNoInternalDevReferences(root, selectedPackageNames);
+					assertNoInternalDevReferences(root, effectiveSelectedPackageNames);
+					return {
+						releasedPackageDevTags,
+						replacedDevReferences,
+						releaseInstalls,
+					};
+				});
+				const replacedDevReferences = Array.isArray(metadata?.replacedDevReferences) ? metadata.replacedDevReferences : [];
+				const releaseInstalls = Array.isArray(metadata?.releaseInstalls) ? metadata.releaseInstalls : [];
+				const releasedPackageDevTags = new Map(Object.entries((metadata?.releasedPackageDevTags ?? {}) as Record<string, unknown>).map(([name, version]) => [name, String(version)]));
 				const publishWait: Array<Record<string, unknown>> = [];
 
 				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
 					const report = findReportByName(packageReports, pkg.name);
-					if (!report || !selectedPackageNames.has(pkg.name)) {
+					if (!report || !effectiveSelectedPackageNames.has(pkg.name)) {
 						if (report) {
 							report.skippedReason = 'unchanged';
 						}
@@ -2891,7 +3085,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						checkoutBranch(pkg.dir, STAGING_BRANCH);
 						if (hasMeaningfulChanges(pkg.dir)) {
 							run('git', ['add', '-A'], { cwd: pkg.dir });
-							run('git', ['commit', '-m', `release: ${versionPlan.versions.get(pkg.name)}`], { cwd: pkg.dir });
+							run('git', ['commit', '-m', `release: ${effectiveVersions.get(pkg.name)}`], { cwd: pkg.dir });
 						}
 						pushBranch(pkg.dir, STAGING_BRANCH);
 						const mergeResult = mergeBranchIntoTarget(pkg.dir, {
@@ -2900,9 +3094,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							message: `release: ${STAGING_BRANCH} -> ${PRODUCTION_BRANCH}`,
 							pushTarget: true,
 						});
-						const tagName = String(versionPlan.versions.get(pkg.name));
-						run('git', ['tag', '-a', tagName, '-m', `release: ${tagName}`], { cwd: pkg.dir });
-						run('git', ['push', 'origin', tagName], { cwd: pkg.dir });
+						const tagName = String(effectiveVersions.get(pkg.name));
+						const tag = ensureReleaseTag(pkg.dir, tagName, mergeResult.commitSha);
 						const publish = await waitForGitHubWorkflowCompletion(pkg.dir, {
 							workflow: 'publish.yml',
 							headSha: mergeResult.commitSha,
@@ -2912,6 +3105,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						return {
 							commitSha: mergeResult.commitSha,
 							tagName,
+							tag,
 							publish,
 						};
 					});
@@ -2929,10 +3123,9 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				}
 
 				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
-					const rootVersion = bumpRootPackageJson(root, level);
+					setRootPackageJsonVersion(root, rootVersion);
 					run('git', ['checkout', STAGING_BRANCH], { cwd: gitRoot });
-					run('git', ['add', '-A'], { cwd: gitRoot });
-					run('git', ['commit', '-m', `release: ${level} bump`], { cwd: gitRoot });
+					commitAllIfChanged(gitRoot, `release: ${level} bump`);
 					pushBranch(gitRoot, STAGING_BRANCH);
 					const released = mergeBranchIntoTarget(root, {
 						sourceBranch: STAGING_BRANCH,
@@ -2941,22 +3134,21 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						pushTarget: false,
 					});
 					for (const pkg of checkedOutWorkspacePackageRepos(root)) {
-						if (selectedPackageNames.has(pkg.name)) {
+						if (effectiveSelectedPackageNames.has(pkg.name)) {
 							syncBranchWithOrigin(pkg.dir, PRODUCTION_BRANCH);
 						}
 					}
-					run('git', ['add', '-A'], { cwd: gitRoot });
-					if (hasMeaningfulChanges(gitRoot)) {
-						run('git', ['commit', '-m', 'release: sync package main heads'], { cwd: gitRoot });
-					}
-					run('git', ['tag', '-a', rootVersion, '-m', `release: ${rootVersion}`], { cwd: gitRoot });
+					commitAllIfChanged(gitRoot, 'release: sync package main heads');
+					const releasedCommit = headCommit(gitRoot);
+					const tag = ensureReleaseTag(gitRoot, rootVersion, releasedCommit);
 					run('git', ['push', 'origin', PRODUCTION_BRANCH], { cwd: gitRoot });
-					run('git', ['push', 'origin', rootVersion], { cwd: gitRoot });
 					syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
 					syncBranchWithOrigin(gitRoot, STAGING_BRANCH);
 					return {
 						rootVersion,
-						releasedCommit: headCommit(gitRoot),
+						releasedCommit,
+						mergeCommit: released.commitSha,
+						tag,
 					};
 				});
 				rootRepo.committed = true;
@@ -2971,10 +3163,13 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					: await executeJournalStep(root, workflowRun.runId, 'cleanup-dev-tags', () => {
 						const activeDevTags = collectActiveDevTagReferences(root);
 						const byPackage = new Map<string, string[]>();
-						for (const reference of replacedDevReferences) {
-							const tagName = reference.tagName ?? devTagFromDependencySpec(reference.from);
-							if (!tagName) continue;
-							byPackage.set(reference.packageName, [...(byPackage.get(reference.packageName) ?? []), tagName]);
+						for (const reference of replacedDevReferences as Array<{ packageName?: unknown; tagName?: unknown; from?: unknown }>) {
+							const tagName = typeof reference.tagName === 'string'
+								? reference.tagName
+								: devTagFromDependencySpec(String(reference.from ?? ''));
+							const packageName = typeof reference.packageName === 'string' ? reference.packageName : null;
+							if (!tagName || !packageName) continue;
+							byPackage.set(packageName, [...(byPackage.get(packageName) ?? []), tagName]);
 						}
 						for (const [packageName, tagName] of releasedPackageDevTags.entries()) {
 							byPackage.set(packageName, [...(byPackage.get(packageName) ?? []), tagName]);
@@ -3000,8 +3195,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					releasedCommit: String(rootRelease?.releasedCommit ?? rootRepo.commitSha ?? ''),
 					stagingBranch: STAGING_BRANCH,
 					productionBranch: PRODUCTION_BRANCH,
-					touchedPackages: packageSelection.selected,
-					packageSelection,
+					touchedPackages: effectivePackageSelection.selected,
+					packageSelection: effectivePackageSelection,
 					replacedDevReferences,
 					releaseInstalls,
 					devTagCleanup,
@@ -3017,17 +3212,12 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					workspaceLinks,
 				};
 				completeWorkflowRun(root, workflowRun.runId, payload);
-				return buildWorkflowResult(
-					'release',
-					root,
-					payload,
-					{
-						runId: workflowRun.runId,
-						nextSteps: createNextSteps([
-							{ operation: 'status', reason: 'Inspect release readiness and production state after the promotion.' },
-						]),
-					},
-				);
+				return buildWorkflowResult('release', root, payload, {
+					runId: workflowRun.runId,
+					nextSteps: createNextSteps([
+						{ operation: 'status', reason: 'Inspect release readiness and production state after the promotion.' },
+					]),
+				});
 			} catch (error) {
 				ensureWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
 				failWorkflowRun(root, workflowRun.runId, error, {

@@ -211,10 +211,49 @@ export function rewriteInternalDependenciesToStableVersions(root = workspaceRoot
 	return rewrites;
 }
 
+export function rewriteProjectInternalDependenciesToStableVersions(root = workspaceRoot(), versions: Map<string, string>) {
+	const rewrites: Array<RewrittenDevReference & { repoName: string; packageJsonPath: string }> = [];
+	const targets = [
+		{ name: '@treeseed/market', dir: root },
+		...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir })),
+	];
+	for (const target of targets) {
+		const packageJsonPath = resolve(target.dir, 'package.json');
+		if (!existsSync(packageJsonPath)) continue;
+		const packageJson = readJson(packageJsonPath);
+		const changed = updateInternalDependencySpecs(
+			packageJson,
+			new Map([...versions.entries()].map(([packageName, version]) => [packageName, {
+				packageName,
+				version,
+				spec: version,
+				manifestSpec: version,
+				installSpec: version,
+				tagName: version,
+				remoteUrl: null,
+				mode: 'stable-semver' as const,
+			}])),
+		);
+		if (changed.length === 0) continue;
+		writeJson(packageJsonPath, packageJson);
+		rewrites.push(...changed.map((entry) => ({
+			...entry,
+			repoName: target.name,
+			packageJsonPath,
+		})));
+	}
+	return rewrites;
+}
+
 export function collectInternalDevReferenceIssues(root = workspaceRoot(), packageNames = new Set(workspacePackages(root).map((pkg) => pkg.name))) {
 	const issues: Array<{ repoName: string; filePath: string; field?: string; dependencyName?: string; spec: string; reason: string }> = [];
-	for (const pkg of workspacePackages(root)) {
+	const manifestRoots = [
+		{ name: '@treeseed/market', dir: root },
+		...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir })),
+	];
+	for (const pkg of manifestRoots) {
 		const packageJsonPath = resolve(pkg.dir, 'package.json');
+		if (!existsSync(packageJsonPath)) continue;
 		const packageJson = readJson(packageJsonPath);
 		for (const field of internalDependencyFields(packageJson)) {
 			const values = packageJson[field] as Record<string, unknown>;

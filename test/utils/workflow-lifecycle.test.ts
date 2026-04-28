@@ -467,7 +467,7 @@ describe('treeseed workflow lifecycle', () => {
 	}, 90000);
 
 	it('releases only changed packages plus dependents and syncs market main to package main heads', async () => {
-		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = workflowFor(work);
 		await workflow.switchTask({ branch: 'feature/demo-task' });
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-release";\n', 'utf8');
@@ -481,6 +481,17 @@ describe('treeseed workflow lifecycle', () => {
 			message: 'stage: release sdk change',
 			waitForStaging: false,
 		});
+		const rootPackageJsonPath = resolve(work, 'package.json');
+		const rootPackageJson = JSON.parse(readFileSync(rootPackageJsonPath, 'utf8'));
+		const sdkDevVersion = JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version;
+		rootPackageJson.dependencies = {
+			...(rootPackageJson.dependencies ?? {}),
+			'@treeseed/sdk': `git+file://${packages!.sdk.origin}#${sdkDevVersion}`,
+		};
+		writeFileSync(rootPackageJsonPath, `${JSON.stringify(rootPackageJson, null, 2)}\n`, 'utf8');
+		git(work, ['add', 'package.json']);
+		git(work, ['commit', '-m', 'stage: root package dependency']);
+		git(work, ['push', 'origin', 'staging']);
 
 		const result = await workflow.release({ bump: 'patch' });
 
@@ -493,12 +504,61 @@ describe('treeseed workflow lifecycle', () => {
 		expect(JSON.parse(git(resolve(work, 'packages', 'cli'), ['show', 'main:package.json'])).version).toBe('0.4.12');
 		expect(JSON.parse(git(resolve(work, 'packages', 'core'), ['show', 'main:package.json'])).dependencies['@treeseed/sdk']).toBe('0.4.13');
 		expect(JSON.parse(git(resolve(work, 'packages', 'cli'), ['show', 'main:package.json'])).dependencies['@treeseed/sdk']).toBe('0.4.13');
+		expect(JSON.parse(git(work, ['show', 'main:package.json'])).dependencies['@treeseed/sdk']).toBe('0.4.13');
 		expect(git(work, ['ls-tree', 'main', 'packages/sdk'])).toContain(git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'main']));
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '*-dev.*'])).toBe('');
 		expect(git(resolve(work, 'packages', 'core'), ['tag', '--list', '*-dev.*'])).toBe('');
 		expect(git(resolve(work, 'packages', 'cli'), ['tag', '--list', '*-dev.*'])).toBe('');
 		expect(result.payload.publishWait.every((entry) => entry.status === 'skipped')).toBe(true);
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
+	}, 90000);
+
+	it('returns a recursive release plan without mutating package or market state', async () => {
+		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = workflowFor(work);
+		await workflow.switchTask({ branch: 'feature/demo-task' });
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-release-plan";\n', 'utf8');
+		writeFileSync(resolve(work, 'feature.txt'), 'demo\nrelease plan\n', 'utf8');
+		await workflow.save({
+			message: 'feat: release plan sdk change',
+			verify: false,
+			refreshPreview: false,
+		});
+		await workflow.stage({
+			message: 'stage: release plan sdk change',
+			waitForStaging: false,
+		});
+		const rootPackageJsonPath = resolve(work, 'package.json');
+		const rootPackageJson = JSON.parse(readFileSync(rootPackageJsonPath, 'utf8'));
+		const sdkDevVersion = JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version;
+		rootPackageJson.dependencies = {
+			...(rootPackageJson.dependencies ?? {}),
+			'@treeseed/sdk': `git+file://${packages!.sdk.origin}#${sdkDevVersion}`,
+		};
+		writeFileSync(rootPackageJsonPath, `${JSON.stringify(rootPackageJson, null, 2)}\n`, 'utf8');
+		git(work, ['add', 'package.json']);
+		git(work, ['commit', '-m', 'stage: root package dependency']);
+		const beforeRootHead = git(work, ['rev-parse', 'HEAD']);
+		const beforeSdkHead = git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'HEAD']);
+
+		const result = await workflow.release({ bump: 'patch', plan: true });
+
+		expect(result.executionMode).toBe('plan');
+		expect(result.payload.rootVersion).toBe('1.0.1');
+		expect(result.payload.releaseTag).toBe('1.0.1');
+		expect(result.payload.packageSelection.selected).toEqual(expect.arrayContaining(['@treeseed/sdk', '@treeseed/core', '@treeseed/cli']));
+		expect(result.payload.plannedVersions).toMatchObject({
+			'@treeseed/market': '1.0.1',
+			'@treeseed/sdk': '0.4.13',
+			'@treeseed/core': '0.4.13',
+			'@treeseed/cli': '0.4.12',
+		});
+		expect(result.payload.plannedDevReferenceRewrites.some((entry: { repoName: string }) => entry.repoName === '@treeseed/market')).toBe(true);
+		expect(result.payload.plannedPublishWaits).toHaveLength(3);
+		expect(result.payload.plannedSteps.map((step: { id: string }) => step.id)).toEqual(expect.arrayContaining(['release-plan', 'prepare-release-metadata', 'cleanup-dev-tags']));
+		expect(git(work, ['rev-parse', 'HEAD'])).toBe(beforeRootHead);
+		expect(git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'HEAD'])).toBe(beforeSdkHead);
+		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
 	}, 90000);
 
 	it('surfaces package branch drift and dirty package blockers in status', async () => {
