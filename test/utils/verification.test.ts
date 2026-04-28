@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -132,6 +132,9 @@ describe('verify driver', () => {
 				args: ['act', 'workflow_dispatch', '-W', expect.stringMatching(/treeseed-verify-act-.*\/verify\.yml$/), '-j', 'verify'],
 				cwd: fixture.root,
 			});
+			const workflow = await readFile(calls[0].args[3], 'utf8');
+			expect(workflow).toContain('npm --prefix packages/sdk ci --workspaces=false');
+			expect(workflow).toContain('npm ci --workspaces=false');
 		} finally {
 			await rm(fixture.root, { recursive: true, force: true });
 		}

@@ -109,9 +109,9 @@ function createWorkspaceActWorkflow(options: {
 
 			const commands = [
 				`if test -f ${packageDir}/package-lock.json; then`,
-				`  npm --prefix ${packageDir} ci`,
+				`  npm --prefix ${packageDir} ci --workspaces=false`,
 				'else',
-				`  npm --prefix ${packageDir} install --no-audit --no-fund`,
+				`  npm --prefix ${packageDir} install --workspaces=false --no-audit --no-fund`,
 				'fi',
 			];
 			if (manifest.scripts?.['build:dist']) {
@@ -164,9 +164,9 @@ ${siblingPreparationCommands.split('\n').map((line) => `          ${line}`).join
 ` : ''}      - name: Install dependencies
         run: |
           if test -f package-lock.json; then
-            npm ci
+            npm ci --workspaces=false
           else
-            npm install --no-audit --no-fund
+            npm install --workspaces=false --no-audit --no-fund
           fi
 
       - name: Verify package
