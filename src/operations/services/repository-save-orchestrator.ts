@@ -862,6 +862,7 @@ async function runGitDependencySmoke(node: RepositorySaveNode, options: Reposito
 	if (reference.mode !== 'dev-git-tag' || shouldSkipGitDependencySmoke()) return;
 	const installSpec = reference.installSpec ?? reference.spec;
 	const tempRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-git-dep-smoke-'));
+	const npmCacheRoot = resolve(tempRoot, '.npm-cache');
 	try {
 		emitProgress(options, node, 'smoke', `Installing ${installSpec} in a temporary project.`);
 		writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
@@ -874,7 +875,7 @@ async function runGitDependencySmoke(node: RepositorySaveNode, options: Reposito
 			},
 		}, null, 2), 'utf8');
 		try {
-			await runStreamingCommand(node, options, 'smoke', 'npm', ['install'], { cwd: tempRoot });
+			await runStreamingCommand(node, options, 'smoke', 'npm', ['install', '--cache', npmCacheRoot], { cwd: tempRoot });
 		} catch (error) {
 			throw new RepositorySaveError([
 				`Git dependency smoke install failed for ${reference.packageName}.`,
