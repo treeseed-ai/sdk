@@ -380,6 +380,10 @@ async function runCli(argv = process.argv.slice(2)) {
 	const mode = args.check ? 'check' : 'write';
 	const targets = await collectMarkdownTargets(args.targets);
 	if (targets.length === 0) {
+		if (mode === 'check') {
+			console.log('No Markdown files found for cleanup.');
+			return 0;
+		}
 		console.error('No Markdown files found for cleanup.');
 		return 1;
 	}
