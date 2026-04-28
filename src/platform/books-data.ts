@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { TreeseedBookDefinition, TreeseedTenantConfig } from './contracts.ts';
@@ -52,6 +52,9 @@ function sortPaths(paths: string[]) {
 }
 
 function collectMarkdownFiles(rootPath: string): string[] {
+	if (!existsSync(rootPath)) {
+		return [];
+	}
 	const stats = statSync(rootPath);
 	if (stats.isFile()) {
 		return [rootPath];
