@@ -271,6 +271,9 @@ __WORKING_DIRECTORY_BLOCK__
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
       - name: Provision Treeseed platform
         shell: bash
         run: |
@@ -401,6 +404,9 @@ __WORKING_DIRECTORY_BLOCK__
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
       - name: Download Treeseed deployment state
         uses: actions/download-artifact@v4
         with:
@@ -513,6 +519,9 @@ __WORKING_DIRECTORY_BLOCK__
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
 
       - name: Download Treeseed deployment state
         uses: actions/download-artifact@v4
