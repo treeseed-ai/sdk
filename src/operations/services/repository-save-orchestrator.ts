@@ -800,6 +800,15 @@ function gitDiffSummary(repoDir: string) {
 	return { changedFiles, diff };
 }
 
+function hasStagedChanges(repoDir: string) {
+	try {
+		run('git', ['diff', '--cached', '--quiet'], { cwd: repoDir, capture: true });
+		return false;
+	} catch {
+		return true;
+	}
+}
+
 function updateDependencyReferences(node: RepositorySaveNode, finalizedReferences: Map<string, PackageDependencyReference>) {
 	if (!node.packageJson || !node.packageJsonPath) return [];
 	const changed = updateInternalDependencySpecs(node.packageJson, finalizedReferences);
@@ -1631,6 +1640,30 @@ async function saveOneRepository(
 	}
 
 	runCapturedCommand(node, options, 'commit', 'git', ['add', '-A']);
+	if (!hasStagedChanges(node.path)) {
+		report.dirty = false;
+		report.skippedReason = 'clean-after-add';
+		report.commitSha = headCommit(node.path);
+		emitProgress(options, node, 'clean', 'No staged changes to commit after refreshing the index.');
+		if (node.kind === 'package') {
+			const finalized = await finalizeCleanPackageVersion(node, options, state, report, branch);
+			if (finalized) {
+				return report;
+			}
+		}
+		if (node.id === '.') {
+			const rebase = pullRebaseFromOrigin(node, options, branch);
+			const push = pushCurrentBranch(node, options, branch);
+			report.pushed = push.pushed;
+			report.publishWait = {
+				...rebase,
+				...push,
+			};
+			report.commitSha = headCommit(node.path);
+		}
+		state.finalizedCommits.set(node.relativePath, report.commitSha);
+		return report;
+	}
 	const { changedFiles, diff } = gitDiffSummary(node.path);
 	emitProgress(options, node, 'message', 'Generating commit message.');
 	const messageResult = await commitMessageFor(node, options, {
