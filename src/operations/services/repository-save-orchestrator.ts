@@ -862,15 +862,25 @@ async function runGitDependencySmoke(node: RepositorySaveNode, options: Reposito
 				[reference.packageName]: installSpec,
 			},
 		}, null, 2), 'utf8');
-		try {
-			await runStreamingCommand(node, options, 'smoke', 'npm', ['install', '--cache', npmCacheRoot], { cwd: tempRoot });
-		} catch (error) {
-			throw new RepositorySaveError([
-				`Git dependency smoke install failed for ${reference.packageName}.`,
-				`Spec: ${installSpec}`,
-				error instanceof Error ? error.message : String(error),
-			].join('\n'));
+		let lastError: string | null = null;
+		for (let attempt = 1; attempt <= 5; attempt += 1) {
+			emitProgress(options, node, 'smoke', `npm install --cache ${npmCacheRoot} attempt ${attempt}/5.`);
+			try {
+				await runStreamingCommand(node, options, 'smoke', 'npm', ['install', '--cache', npmCacheRoot], { cwd: tempRoot });
+				return;
+			} catch (error) {
+				lastError = error instanceof Error ? error.message : String(error);
+			}
+			if (attempt < 5) {
+				emitProgress(options, node, 'smoke', 'npm install failed; retrying in 60 seconds.', 'stderr');
+				spawnSync('sleep', ['60'], { stdio: 'ignore' });
+			}
 		}
+		throw new RepositorySaveError([
+			`Git dependency smoke install failed for ${reference.packageName} after 5 attempts.`,
+			`Spec: ${installSpec}`,
+			lastError ?? '',
+		].join('\n'));
 	} finally {
 		rmSync(tempRoot, { recursive: true, force: true });
 	}
