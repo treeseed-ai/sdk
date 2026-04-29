@@ -20,11 +20,12 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(source).toContain('submodules: recursive');
 	});
 
-	it('uses auto bootstrap mode with split checkout strategy in deploy jobs', () => {
+	it('uses auto bootstrap mode with workspace-aware deployment installs', () => {
 		const source = readFileSync(rootDeployWorkflowPath, 'utf8');
+		const verifySource = readFileSync(rootVerifyWorkflowPath, 'utf8');
 
 		expect(source).toContain('TREESEED_BOOTSTRAP_MODE: auto');
-		expect((source.match(/submodules: recursive/g) ?? []).length).toBeGreaterThanOrEqual(4);
+		expect((source.match(/submodules: recursive/g) ?? []).length).toBeGreaterThanOrEqual(5);
 		expect(source).toContain('migrations/*)');
 		expect(source).toContain('code_changed="true"');
 		expect(source).not.toContain('docs/*|migrations/*');
@@ -40,10 +41,10 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(source).toContain('path: .treeseed/state');
 		expect(source).toContain('include-hidden-files: true');
 		expect(source).toContain('TREESEED_CONTENT_SERVING_MODE: published_runtime');
-		expect(source).toContain('submodules: false');
-		expect(source).toContain('sparse-checkout: |');
-		expect(source).toContain('!/src/content/**');
-		expect(source).toContain('!/public/books/**');
+		expect(source).not.toContain('submodules: false');
+		expect(source).not.toContain('sparse-checkout: |');
+		expect(source).not.toContain('delete pkg.workspaces');
+		expect(verifySource).not.toContain('delete pkg.workspaces');
 	});
 });
 
