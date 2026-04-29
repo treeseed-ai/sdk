@@ -802,10 +802,9 @@ function gitDiffSummary(repoDir: string) {
 
 function hasStagedChanges(repoDir: string) {
 	try {
-		run('git', ['diff', '--cached', '--quiet'], { cwd: repoDir, capture: true });
-		return false;
+		return run('git', ['diff', '--cached', '--name-only'], { cwd: repoDir, capture: true }).trim().length > 0;
 	} catch {
-		return true;
+		return false;
 	}
 }
 
