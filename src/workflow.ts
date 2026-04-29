@@ -1,4 +1,4 @@
-import { resolveTreeseedWorkflowState } from './workflow-state.ts';
+import { resolveTreeseedWorkflowState, type TreeseedWorkflowStatusOptions } from './workflow-state.ts';
 import { listTaskBranches } from './operations/services/git-workflow.ts';
 import { resolveTreeseedWorkflowPaths } from './workflow/policy.ts';
 import {
@@ -281,7 +281,7 @@ export class TreeseedWorkflowSdk {
 	async execute(operation: TreeseedWorkflowOperationId, input: Record<string, unknown> = {}) {
 		switch (operation) {
 			case 'status':
-				return this.status();
+				return this.status(input as TreeseedWorkflowStatusOptions);
 			case 'tasks':
 				return this.tasks();
 			case 'config':
@@ -311,8 +311,8 @@ export class TreeseedWorkflowSdk {
 		}
 	}
 
-	async status(): Promise<TreeseedWorkflowResult<ReturnType<typeof resolveTreeseedWorkflowState>>> {
-		return workflowStatus(this.helpers());
+	async status(input: TreeseedWorkflowStatusOptions = {}): Promise<TreeseedWorkflowResult<ReturnType<typeof resolveTreeseedWorkflowState>>> {
+		return workflowStatus(this.helpers(), input);
 	}
 
 	async tasks(): Promise<TreeseedWorkflowResult<{ tasks: TreeseedTaskBranchMetadata[]; workstreams: TreeseedWorkflowWorkstreamSummary[] }>> {

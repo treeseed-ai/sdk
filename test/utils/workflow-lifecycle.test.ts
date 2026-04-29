@@ -6,6 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TreeseedWorkflowSdk } from '../../src/workflow.ts';
 import { TreeseedWorkflowError } from '../../src/workflow/operations.ts';
 import { acquireWorkflowLock, releaseWorkflowLock } from '../../src/workflow/runs.ts';
+import {
+	createDefaultTreeseedMachineConfig,
+	ensureTreeseedSecretSessionForConfig,
+	lockTreeseedSecretSession,
+	setTreeseedMachineEnvironmentValue,
+	TREESEED_MACHINE_KEY_PASSPHRASE_ENV,
+	writeTreeseedMachineConfig,
+} from '../../src/operations/services/config-runtime.ts';
 
 vi.mock('../../src/operations/services/save-deploy-preflight.ts', async () => {
 	const actual = await vi.importActual<typeof import('../../src/operations/services/save-deploy-preflight.ts')>('../../src/operations/services/save-deploy-preflight.ts');
@@ -57,6 +65,47 @@ providers:
   deploy: cloudflare
 `, 'utf8');
 	writeFileSync(resolve(root, 'README.md'), '# Demo\n', 'utf8');
+}
+
+function writeStatusConfigEntry(root: string) {
+	writeFileSync(resolve(root, 'src', 'env.yaml'), `entries:
+  STATUS_REQUIRED_TOKEN:
+    label: Status required token
+    group: auth
+    description: Required only for status configuration tests.
+    howToGet: Set any value.
+    sensitivity: secret
+    targets:
+      - local-runtime
+    scopes:
+      - staging
+    storage: scoped
+    requirement: required
+    purposes:
+      - config
+    validation:
+      kind: nonempty
+`, 'utf8');
+}
+
+function createMachineConfigForWorkflowRepo(root: string) {
+	return createDefaultTreeseedMachineConfig({
+		tenantRoot: root,
+		deployConfig: {
+			name: 'Demo',
+			slug: 'demo',
+			siteUrl: 'https://demo.example.com',
+			contactEmail: 'demo@example.com',
+			hosting: {
+				kind: 'hosted_project',
+				teamId: 'demo-team',
+				projectId: 'demo-project',
+			},
+			cloudflare: { accountId: 'replace-with-cloudflare-account-id' },
+			providers: { deploy: 'cloudflare' },
+		} as any,
+		tenantConfig: { id: 'demo' } as any,
+	});
 }
 
 function writePackageFiles(root: string, dirName: string, dependencies: Record<string, string> = {}) {
@@ -165,6 +214,45 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.cwd).toBe(work);
 		expect(result.payload.branchName).toBe('feature/demo-task');
 	});
+
+	it('loads existing machine config secrets before evaluating status readiness', async () => {
+		const { work } = createWorkflowRepo();
+		writeStatusConfigEntry(work);
+		writeTreeseedMachineConfig(work, createMachineConfigForWorkflowRepo(work));
+		const statusEnv = {
+			...process.env,
+			[TREESEED_MACHINE_KEY_PASSPHRASE_ENV]: 'status-passphrase',
+		};
+		await ensureTreeseedSecretSessionForConfig({
+			tenantRoot: work,
+			interactive: false,
+			env: statusEnv,
+			createIfMissing: true,
+			allowMigration: true,
+		});
+		setTreeseedMachineEnvironmentValue(work, 'staging', {
+			id: 'STATUS_REQUIRED_TOKEN',
+			sensitivity: 'secret',
+			storage: 'scoped',
+		} as any, 'from-machine-config');
+		setTreeseedMachineEnvironmentValue(work, 'staging', {
+			id: 'RAILWAY_API_TOKEN',
+			sensitivity: 'secret',
+			storage: 'scoped',
+		} as any, 'railway-token-from-machine-config');
+		lockTreeseedSecretSession(work);
+		const workflow = new TreeseedWorkflowSdk({ cwd: work, env: statusEnv, write: () => {} });
+
+		const result = await workflow.status();
+
+		expect(result.ok).toBe(true);
+		expect(result.payload.auth.railway).toBe(true);
+		expect(result.payload.providerStatus.staging.railway.configured).toBe(true);
+		expect(result.payload.providerStatus.local.railway.configured).toBe(true);
+		expect(result.payload.providerStatus.local.railway.applicable).toBe(false);
+		expect(result.payload.secrets.keyAgentUnlocked).toBe(true);
+		expect(result.payload.persistentEnvironments.staging.blockers.join('\n')).not.toContain('STATUS_REQUIRED_TOKEN');
+	}, 90000);
 
 	it('treats save with no new changes as a successful sync checkpoint', async () => {
 		const { work } = createWorkflowRepo();

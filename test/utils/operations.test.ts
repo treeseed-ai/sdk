@@ -52,6 +52,17 @@ describe('treeseed workflow sdk', () => {
 		expect(result.ok).toBe(true);
 		expect(result.operation).toBe('status');
 		expect(result.payload).toHaveProperty('branchRole');
+		expect(result.payload).toHaveProperty('environmentStatus');
+		expect(result.payload.environmentStatus).toHaveProperty('local');
+		expect(result.payload.environmentStatus).toHaveProperty('staging');
+		expect(result.payload.environmentStatus).toHaveProperty('prod');
+		expect(result.payload).toHaveProperty('providerStatus');
+		expect(result.payload.providerStatus).toHaveProperty('local');
+		expect(result.payload.providerStatus).toHaveProperty('staging');
+		expect(result.payload.providerStatus).toHaveProperty('prod');
+		expect(result.payload).toHaveProperty('auth');
+		expect(result.payload).toHaveProperty('persistentEnvironments');
+		expect(result.payload).toHaveProperty('readiness');
 	});
 
 	it('returns structured task metadata', async () => {

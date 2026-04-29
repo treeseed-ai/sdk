@@ -23,6 +23,12 @@ export type WorkspaceDependencyModeReport = {
 	issues: string[];
 };
 
+export type DeploymentLockfileWorkspaceIssue = {
+	filePath: string;
+	packageName: string;
+	reason: string;
+};
+
 const METADATA_VERSION = 1;
 const INTERNAL_DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies'];
 
@@ -157,6 +163,102 @@ function internalDependencyNames(packageJson: Record<string, unknown>, packageNa
 	return [...names].sort();
 }
 
+function dependencyNames(packageJson: Record<string, unknown> | null, filter: (name: string) => boolean) {
+	const names = new Set<string>();
+	if (!packageJson) return names;
+	for (const field of INTERNAL_DEPENDENCY_FIELDS) {
+		const deps = packageJson[field];
+		if (!deps || typeof deps !== 'object' || Array.isArray(deps)) continue;
+		for (const name of Object.keys(deps)) {
+			if (filter(name)) names.add(name);
+		}
+	}
+	return names;
+}
+
+function dependencySpec(packageJson: Record<string, unknown>, field: string, packageName: string) {
+	const deps = packageJson[field];
+	if (!deps || typeof deps !== 'object' || Array.isArray(deps)) return null;
+	const value = (deps as Record<string, unknown>)[packageName];
+	return typeof value === 'string' ? value : null;
+}
+
+function normalizedPathValue(value: string) {
+	return value.replaceAll('\\', '/').replace(/^\.\//u, '').replace(/\/$/u, '');
+}
+
+function rootLockfileAllowsWorkspaceLink(
+	root: string,
+	filePath: string,
+	packageName: string,
+	entry: Record<string, unknown>,
+	workspacePackageByName: Map<string, { relativeDir: string }>,
+) {
+	if (filePath !== resolve(root, 'package-lock.json')) return false;
+	const workspacePackage = workspacePackageByName.get(packageName);
+	if (!workspacePackage) return false;
+	return normalizedPathValue(String(entry.resolved ?? '')) === normalizedPathValue(workspacePackage.relativeDir);
+}
+
+function collectPackageLockConsistencyIssues(
+	filePath: string,
+	packageJson: Record<string, unknown>,
+	packages: Record<string, Record<string, unknown>>,
+	workspacePackageByName: Map<string, { relativeDir: string; packageJson: Record<string, unknown> }>,
+) {
+	const issues: DeploymentLockfileWorkspaceIssue[] = [];
+	const rootLockEntry = packages[''];
+	const declaredWorkspaces = Array.isArray(packageJson.workspaces)
+		? packageJson.workspaces.map(String)
+		: [];
+	if (declaredWorkspaces.length > 0) {
+		const lockWorkspaces = Array.isArray(rootLockEntry?.workspaces)
+			? rootLockEntry.workspaces.map(String)
+			: [];
+		if (JSON.stringify(lockWorkspaces) !== JSON.stringify(declaredWorkspaces)) {
+			issues.push({
+				filePath,
+				packageName: String(packageJson.name ?? '(root)'),
+				reason: `root-workspaces-mismatch:package.json=${JSON.stringify(declaredWorkspaces)} lockfile=${JSON.stringify(lockWorkspaces)}`,
+			});
+		}
+	}
+	for (const [packageName, workspacePackage] of workspacePackageByName) {
+		const relativeDir = normalizedPathValue(workspacePackage.relativeDir);
+		const packageEntry = packages[relativeDir];
+		if (!packageEntry) {
+			issues.push({ filePath, packageName, reason: `missing-workspace-package-entry:${relativeDir}` });
+			continue;
+		}
+		if (packageEntry.name !== packageName) {
+			issues.push({ filePath, packageName, reason: `workspace-package-name-mismatch:${relativeDir}` });
+		}
+		const expectedVersion = workspacePackage.packageJson.version;
+		if (typeof expectedVersion === 'string' && packageEntry.version !== expectedVersion) {
+			issues.push({ filePath, packageName, reason: `workspace-package-version-mismatch:${packageEntry.version ?? '(missing)'}!=${expectedVersion}` });
+		}
+		const linkEntry = packages[`node_modules/${packageName}`];
+		if (!linkEntry || linkEntry.link !== true || normalizedPathValue(String(linkEntry.resolved ?? '')) !== relativeDir) {
+			issues.push({ filePath, packageName, reason: `workspace-link-entry-mismatch:${relativeDir}` });
+		}
+	}
+	for (const field of INTERNAL_DEPENDENCY_FIELDS) {
+		for (const packageName of workspacePackageByName.keys()) {
+			const manifestSpec = dependencySpec(packageJson, field, packageName);
+			if (!manifestSpec) continue;
+			const lockSpec = dependencySpec(rootLockEntry ?? {}, field, packageName);
+			if (lockSpec !== manifestSpec) {
+				issues.push({
+					filePath,
+					packageName,
+					reason: `root-dependency-spec-mismatch:${field}:${lockSpec ?? '(missing)'}!=${manifestSpec}`,
+				});
+			}
+		}
+	}
+	return issues;
+}
+
 export function discoverWorkspaceLinks(root = workspaceRoot()) {
 	if (!existsSync(resolve(root, 'package.json'))) {
 		return [];
@@ -273,15 +375,22 @@ export function unlinkLocalWorkspaceLinks(root = workspaceRoot(), options: { mod
 	};
 }
 
-export function collectDeploymentLockfileWorkspaceIssues(root = workspaceRoot()) {
+export function collectDeploymentLockfileWorkspaceIssues(root = workspaceRoot()): DeploymentLockfileWorkspaceIssue[] {
 	if (!existsSync(resolve(root, 'package.json'))) {
 		return [];
 	}
-	const packageNames = new Set(workspacePackages(root)
-		.filter((pkg) => typeof pkg.name === 'string' && pkg.name.startsWith('@treeseed/'))
-		.map((pkg) => String(pkg.name)));
-	const lockRoots = [root, ...workspacePackages(root).map((pkg) => pkg.dir)];
-	const issues: Array<{ filePath: string; packageName: string; reason: string }> = [];
+	const rootPackageJson = readJson(resolve(root, 'package.json'));
+	const workspacePkgs = workspacePackages(root)
+		.filter((pkg) => typeof pkg.name === 'string' && pkg.name.startsWith('@treeseed/'));
+	const workspacePackageByName = new Map(workspacePkgs.map((pkg) => [String(pkg.name), {
+		relativeDir: pkg.relativeDir,
+		packageJson: pkg.packageJson,
+	}]));
+	const packageNames = workspacePackageByName.size > 0
+		? new Set(workspacePackageByName.keys())
+		: dependencyNames(rootPackageJson, (name) => name.startsWith('@treeseed/'));
+	const lockRoots = workspacePkgs.length > 0 ? [root, ...workspacePkgs.map((pkg) => pkg.dir)] : [root];
+	const issues: DeploymentLockfileWorkspaceIssue[] = [];
 	for (const dir of lockRoots) {
 		const filePath = resolve(dir, 'package-lock.json');
 		if (!existsSync(filePath)) continue;
@@ -294,24 +403,40 @@ export function collectDeploymentLockfileWorkspaceIssues(root = workspaceRoot())
 		const packages = lock.packages && typeof lock.packages === 'object' && !Array.isArray(lock.packages)
 			? lock.packages as Record<string, Record<string, unknown>>
 			: {};
-		for (const packageName of packageNames) {
+		if (dir === root && workspacePackageByName.size > 0) {
+			issues.push(...collectPackageLockConsistencyIssues(filePath, rootPackageJson, packages, workspacePackageByName));
+		}
+		const checkedPackageNames = dir === root ? packageNames : dependencyNames(
+			existsSync(resolve(dir, 'package.json')) ? readJson(resolve(dir, 'package.json')) : null,
+			(name) => name.startsWith('@treeseed/'),
+		);
+		const lockPackageNames = new Set(Object.keys(packages)
+			.map((key) => /^node_modules\/(@treeseed\/[^/]+)$/u.exec(key)?.[1] ?? null)
+			.filter((name): name is string => Boolean(name)));
+		for (const packageName of new Set([...packageNames, ...checkedPackageNames, ...lockPackageNames])) {
 			const entry = packages[`node_modules/${packageName}`];
 			if (!entry) continue;
 			const resolvedValue = String(entry.resolved ?? '');
 			if (entry.link === true) {
-				issues.push({ filePath, packageName, reason: 'workspace-link-lock-entry' });
+				if (!rootLockfileAllowsWorkspaceLink(root, filePath, packageName, entry, workspacePackageByName)) {
+					issues.push({ filePath, packageName, reason: 'workspace-link-lock-entry' });
+				}
 			} else if (/^(?:\.\.?\/|packages\/|file:)/u.test(resolvedValue)) {
 				issues.push({ filePath, packageName, reason: `local-lock-resolved:${resolvedValue}` });
 			}
 		}
 	}
-	return issues;
+	return issues.filter((issue, index, all) =>
+		all.findIndex((candidate) =>
+			candidate.filePath === issue.filePath
+			&& candidate.packageName === issue.packageName
+			&& candidate.reason === issue.reason) === index);
 }
 
 export function assertNoWorkspaceLinksInDeploymentLockfiles(root = workspaceRoot()) {
 	const issues = collectDeploymentLockfileWorkspaceIssues(root);
 	if (issues.length === 0) return;
-	throw new Error(`Deployment install resolved internal packages from local workspace links.\n${issues.map((issue) => `${issue.filePath}: ${issue.packageName} ${issue.reason}`).join('\n')}`);
+	throw new Error(`Deployment lockfile validation failed.\n${issues.map((issue) => `${issue.filePath}: ${issue.packageName} ${issue.reason}`).join('\n')}`);
 }
 
 export function inspectWorkspaceDependencyMode(root = workspaceRoot(), options: { mode?: WorkspaceLinksMode; env?: NodeJS.ProcessEnv } = {}): WorkspaceDependencyModeReport {

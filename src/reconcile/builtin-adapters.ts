@@ -409,6 +409,44 @@ function ensureCloudflareDnsRecord(env: Record<string, string>, zoneId: string, 
 	})?.result ?? null;
 }
 
+function unquoteDnsTxtContent(value: string) {
+	const trimmed = value.trim();
+	return trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')
+		? trimmed.slice(1, -1)
+		: trimmed;
+}
+
+function dnsRecordContentMatches(actual: unknown, expected: unknown, type: unknown) {
+	const actualText = String(actual ?? '');
+	const expectedText = String(expected ?? '');
+	if (String(type ?? '').toUpperCase() === 'TXT') {
+		return unquoteDnsTxtContent(actualText) === unquoteDnsTxtContent(expectedText);
+	}
+	return actualText === expectedText;
+}
+
+function dnsRecordProxiedMatches(actual: Record<string, unknown> | null, expected: { proxied?: boolean }) {
+	return expected.proxied === undefined || Boolean(actual?.proxied) === Boolean(expected.proxied);
+}
+
+function dnsRecordIdentityMatches(actual: Record<string, unknown> | null, expected: { name: string; type: string }) {
+	return actual?.name === expected.name && String(actual?.type ?? '').toUpperCase() === expected.type;
+}
+
+function dnsRecordMatches(actual: Record<string, unknown> | null, expected: { name: string; type: string; content: string; proxied?: boolean }) {
+	return Boolean(actual)
+		&& dnsRecordIdentityMatches(actual, expected)
+		&& dnsRecordContentMatches(actual?.content, expected.content, expected.type)
+		&& dnsRecordProxiedMatches(actual, expected);
+}
+
+function dnsRecordsFromCurrentResult(input: TreeseedReconcileAdapterInput & { result?: TreeseedReconcileResult | null }) {
+	const records = input.result?.state?.records;
+	return Array.isArray(records)
+		? records.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+		: [];
+}
+
 function getCloudflarePagesDomain(env: Record<string, string>, projectName: string, domain: string) {
 	const accountId = env.CLOUDFLARE_ACCOUNT_ID;
 	if (!accountId) {
@@ -1856,12 +1894,7 @@ function observeDnsRecordUnit(input: TreeseedReconcileAdapterInput): TreeseedObs
 		)
 		: [];
 	const matches = desiredRecords.length > 0 && liveRecords.every((entry, index) =>
-		Boolean(entry)
-		&& entry?.content === desiredRecords[index]?.content
-		&& (
-			desiredRecords[index]?.proxied === undefined
-			|| Boolean(entry?.proxied) === Boolean(desiredRecords[index]?.proxied)
-		),
+		dnsRecordMatches(entry, desiredRecords[index]!),
 	);
 	return {
 		exists: desiredRecords.length > 0 && liveRecords.every(Boolean),
@@ -1940,15 +1973,20 @@ function verifyDnsRecordUnit(input: TreeseedReconcileAdapterInput): TreeseedUnit
 	}
 	const checks = desiredRecords.map((record, index) => {
 		const live = listCloudflareDnsRecords(env, zoneId, record.name)
-			.find((entry) => entry?.name === record.name && entry?.type === record.type) ?? null;
-		const proxiedMatches = record.proxied === undefined ? true : Boolean(live?.proxied) === Boolean(record.proxied);
+			.find((entry) => dnsRecordIdentityMatches(entry, record)) ?? null;
+		const reconciled = dnsRecordsFromCurrentResult(input).find((entry) =>
+			dnsRecordIdentityMatches(entry, record),
+		) ?? null;
+		const effective = dnsRecordMatches(live, record) ? live : reconciled ?? live;
+		const contentMatches = dnsRecordContentMatches(effective?.content, record.content, record.type);
+		const proxiedMatches = dnsRecordProxiedMatches(effective, record);
 		return verificationCheck(`dns-record:${index + 1}`, `DNS record ${record.type} ${record.name} matches the desired value`, 'api', {
-			exists: Boolean(live?.id),
-			configured: live?.content === record.content && proxiedMatches,
+			exists: Boolean(effective?.id),
+			configured: contentMatches && proxiedMatches,
 			expected: `${record.type} ${record.name} -> ${record.content}${record.proxied === undefined ? '' : ` proxied=${record.proxied}`}`,
-			observed: live ? `${live.type} ${live.name} -> ${live.content}${typeof live.proxied === 'boolean' ? ` proxied=${live.proxied}` : ''}` : null,
-			issues: live?.id
-				? ((live.content === record.content && proxiedMatches) ? [] : [`DNS record ${record.name} does not match the expected value.`])
+			observed: effective ? `${effective.type} ${effective.name} -> ${effective.content}${typeof effective.proxied === 'boolean' ? ` proxied=${effective.proxied}` : ''}` : null,
+			issues: effective?.id
+				? ((contentMatches && proxiedMatches) ? [] : [`DNS record ${record.name} does not match the expected value.`])
 				: [`DNS record ${record.type} ${record.name} is missing.`],
 		});
 	});

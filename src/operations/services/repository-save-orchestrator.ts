@@ -48,7 +48,7 @@ import {
 	sortWorkspacePackages,
 	workspacePackages,
 } from './workspace-tools.ts';
-import { assertNoWorkspaceLinksInDeploymentLockfiles } from './workspace-dependency-mode.ts';
+import { collectDeploymentLockfileWorkspaceIssues } from './workspace-dependency-mode.ts';
 
 export type RepoKind = 'package' | 'project';
 export type RepoBranchMode = 'package-release-main' | 'package-dev-save' | 'project-save';
@@ -101,6 +101,7 @@ export type RepositorySaveReport = {
 	branchMode: RepoBranchMode;
 	verification: RepositoryVerificationResult | null;
 	install: RepositoryInstallResult | null;
+	lockfileValidation: RepositoryLockfileValidationResult | null;
 	commitMessage: string | null;
 	commitMessageProvider: 'cloudflare-workers-ai' | 'fallback' | null;
 	commitMessageFallbackUsed: boolean;
@@ -119,6 +120,13 @@ export type RepositoryInstallResult = {
 	status: 'completed' | 'skipped';
 	attempts: number;
 	reason: string | null;
+};
+
+export type RepositoryLockfileValidationResult = {
+	status: 'passed' | 'failed' | 'skipped';
+	command: string | null;
+	issues: string[];
+	error: string | null;
 };
 
 export type RepositoryCommitMessageContext = CommitMessageContext;
@@ -562,6 +570,7 @@ function createReport(node: RepositorySaveNode): RepositorySaveReport {
 		branchMode: node.branchMode,
 		verification: null,
 		install: null,
+		lockfileValidation: null,
 		commitMessage: null,
 		commitMessageProvider: null,
 		commitMessageFallbackUsed: false,
@@ -828,36 +837,6 @@ function hasNpmLockfile(repoDir: string) {
 	return existsSync(resolve(repoDir, 'package-lock.json')) || existsSync(resolve(repoDir, 'npm-shrinkwrap.json'));
 }
 
-async function withDeploymentInstallManifest<T>(
-	node: RepositorySaveNode,
-	options: RepositorySaveOptions,
-	action: () => Promise<T>,
-): Promise<T> {
-	const packageJsonPath = resolve(node.path, 'package.json');
-	if (node.path !== options.root || !existsSync(packageJsonPath)) {
-		return await action();
-	}
-	const originalPackageJson = readFileSync(packageJsonPath, 'utf8');
-	let parsed: Record<string, unknown>;
-	try {
-		parsed = JSON.parse(originalPackageJson) as Record<string, unknown>;
-	} catch {
-		return await action();
-	}
-	if (!('workspaces' in parsed)) {
-		return await action();
-	}
-	const installPackageJson = { ...parsed };
-	delete installPackageJson.workspaces;
-	emitProgress(options, node, 'install', 'Temporarily suppressing root workspaces for deployment lockfile install.');
-	writeJson(packageJsonPath, installPackageJson);
-	try {
-		return await action();
-	} finally {
-		writeFileSync(packageJsonPath, originalPackageJson, 'utf8');
-	}
-}
-
 async function runGitDependencySmoke(node: RepositorySaveNode, options: RepositorySaveOptions, reference: PackageDependencyReference) {
 	if (reference.mode !== 'dev-git-tag' || shouldSkipGitDependencySmoke()) return;
 	const installSpec = reference.installSpec ?? reference.spec;
@@ -890,7 +869,7 @@ async function runGitDependencySmoke(node: RepositorySaveNode, options: Reposito
 
 async function runNpmInstallWithRetry(
 	node: RepositorySaveNode,
-	options: RepositorySaveOptions,
+	options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>,
 	gitDependencyRefreshSpecs: string[] = [],
 ): Promise<RepositoryInstallResult> {
 	if (shouldSkipNetworkInstall()) {
@@ -898,14 +877,17 @@ async function runNpmInstallWithRetry(
 		return { status: 'skipped', attempts: 0, reason: 'stubbed' };
 	}
 	let lastError: string | null = null;
-	const args = gitDependencyRefreshSpecs.length > 0
-		? ['install', ...gitDependencyRefreshSpecs, '--force', '--workspaces=false']
-		: ['install', '--workspaces=false'];
+	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
+	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
+	const args = rootWorkspaceInstall
+		? (gitDependencyRefreshSpecs.length > 0 ? ['install', ...gitDependencyRefreshSpecs, '--force'] : ['install'])
+		: (gitDependencyRefreshSpecs.length > 0
+			? ['install', ...gitDependencyRefreshSpecs, '--force', '--workspaces=false']
+			: ['install', '--workspaces=false']);
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
 		emitProgress(options, node, 'install', `npm ${args.join(' ')} attempt ${attempt}/5.`);
 		try {
-			await withDeploymentInstallManifest(node, options, () =>
-				runStreamingCommand(node, options, 'install', 'npm', args));
+			await runStreamingCommand(node, options, 'install', 'npm', args);
 			return { status: 'completed', attempts: attempt, reason: null };
 		} catch (error) {
 			lastError = error instanceof Error ? error.message : String(error);
@@ -916,6 +898,63 @@ async function runNpmInstallWithRetry(
 		}
 	}
 	throw new RepositorySaveError(`npm install failed after 5 attempts.\n${lastError ?? ''}`);
+}
+
+function lockfileValidationCommand(node: Pick<RepositorySaveNode, 'path' | 'packageJson'>, options: Pick<RepositorySaveOptions, 'root'>) {
+	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
+	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
+	const args = rootWorkspaceInstall
+		? ['ci', '--ignore-scripts', '--dry-run']
+		: ['ci', '--ignore-scripts', '--dry-run', '--workspaces=false'];
+	return { command: 'npm', args };
+}
+
+async function validateRepositoryLockfile(
+	node: RepositorySaveNode,
+	options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>,
+): Promise<RepositoryLockfileValidationResult> {
+	if (!hasNpmLockfile(node.path)) {
+		return { status: 'skipped', command: null, issues: [], error: 'no npm lockfile' };
+	}
+	const issues = collectDeploymentLockfileWorkspaceIssues(node.path)
+		.map((issue) => `${issue.filePath}: ${issue.packageName} ${issue.reason}`);
+	if (issues.length > 0) {
+		throw new RepositorySaveError([
+			`Lockfile validation failed for ${node.name}.`,
+			...issues,
+		].join('\n'), {
+			details: {
+				failingRepo: node.name,
+				phase: 'lockfile',
+				issues,
+			},
+		});
+	}
+	const { command, args } = lockfileValidationCommand(node, options);
+	const commandText = `${command} ${args.join(' ')}`;
+	if (shouldSkipNetworkInstall()) {
+		emitProgress(options, node, 'lockfile', `Skipped ${commandText} because network install mode is disabled.`);
+		return { status: 'skipped', command: commandText, issues: [], error: 'stubbed' };
+	}
+	try {
+		runCapturedCommand(node, options, 'lockfile', command, args, { timeoutMs: 120_000 });
+		return { status: 'passed', command: commandText, issues: [], error: null };
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		const result = { status: 'failed' as const, command: commandText, issues: [message], error: message };
+		throw new RepositorySaveError([
+			`Lockfile validation failed for ${node.name}.`,
+			`Command: ${commandText}`,
+			message,
+		].join('\n'), {
+			details: {
+				failingRepo: node.name,
+				phase: 'lockfile',
+				command: commandText,
+				issues: result.issues,
+			},
+		});
+	}
 }
 
 function hasScript(node: RepositorySaveNode, scriptName: string) {
@@ -1307,11 +1346,20 @@ function repoPlanCommands(
 	if (node.submoduleDependencies.length > 0) {
 		commands.push(`refresh submodule pointers: ${node.submoduleDependencies.join(', ')}`);
 	}
+	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
+	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
 	if (node.kind === 'package' && plannedVersion) {
 		commands.push(`update package.json version to ${plannedVersion}`);
 		commands.push('npm install --workspaces=false # explicitly refresh changed git-tag dependencies with --force; retry up to 5 times with 60s delay');
 	} else if (node.kind === 'project' && dependencyUpdates.length > 0 && hasNpmLockfile(node.path)) {
-		commands.push('npm install --workspaces=false # refresh project lockfile after internal dependency updates');
+		commands.push(rootWorkspaceInstall
+			? 'npm install # refresh root workspace lockfile against the real checked-in manifest'
+			: 'npm install --workspaces=false # refresh project lockfile after internal dependency updates');
+	}
+	if (hasNpmLockfile(node.path) && (node.kind === 'project' || plannedVersion || dependencyUpdates.length > 0 || node.submoduleDependencies.length > 0)) {
+		commands.push(rootWorkspaceInstall
+			? 'npm ci --ignore-scripts --dry-run # validate root manifest, workspaces, and lockfile before commit'
+			: 'npm ci --ignore-scripts --dry-run --workspaces=false # validate deployment lockfile before commit');
 	}
 	commands.push('git add -A');
 	commands.push('generate commit message # Cloudflare AI when configured, fallback otherwise');
@@ -1461,6 +1509,45 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 	};
 }
 
+export async function refreshAndValidateRootWorkspaceLockfileForSave(options: {
+	root: string;
+	gitRoot?: string;
+	branch?: string | null;
+	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
+}): Promise<{ install: RepositoryInstallResult | null; lockfileValidation: RepositoryLockfileValidationResult | null }> {
+	const repoDir = options.gitRoot ?? options.root;
+	const packageJsonPath = resolve(repoDir, 'package.json');
+	const packageJson = existsSync(packageJsonPath) ? readJson(packageJsonPath) : null;
+	const node: RepositorySaveNode = {
+		id: '.',
+		name: repoDisplayName(repoDir, packageJson),
+		path: repoDir,
+		relativePath: '.',
+		kind: 'project',
+		branch: options.branch ?? currentBranch(repoDir) ?? null,
+		branchMode: 'project-save',
+		packageJsonPath: packageJson ? packageJsonPath : null,
+		packageJson,
+		scripts: packageScripts(packageJson),
+		remoteUrl: originRemoteUrlSafe(repoDir),
+		dependencies: [],
+		dependents: [],
+		submoduleDependencies: [],
+		plannedVersion: null,
+		plannedTag: null,
+		plannedDependencySpec: null,
+	};
+	if (!hasNpmLockfile(repoDir)) {
+		return {
+			install: null,
+			lockfileValidation: { status: 'skipped', command: null, issues: [], error: 'no npm lockfile' },
+		};
+	}
+	const install = await runNpmInstallWithRetry(node, { root: options.root, onProgress: options.onProgress });
+	const lockfileValidation = await validateRepositoryLockfile(node, { root: options.root, onProgress: options.onProgress });
+	return { install, lockfileValidation };
+}
+
 async function saveOneRepository(
 	node: RepositorySaveNode,
 	options: RepositorySaveOptions,
@@ -1507,12 +1594,14 @@ async function saveOneRepository(
 		const reference = finalizePackageReference(node, plannedVersion, options);
 		report.dependencySpec = reference.spec;
 		report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
-		assertNoWorkspaceLinksInDeploymentLockfiles(node.path);
 	} else if (node.kind === 'package') {
 		report.version = String(node.packageJson?.version ?? report.version ?? '');
 	} else if (node.kind === 'project' && dependencyChanged && hasNpmLockfile(node.path)) {
 		report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
-		assertNoWorkspaceLinksInDeploymentLockfiles(node.path);
+	}
+
+	if (hasNpmLockfile(node.path) && (node.kind === 'project' || packageNeedsVersion || dependencyChanged || submodulesChanged)) {
+		report.lockfileValidation = await validateRepositoryLockfile(node, options);
 	}
 
 	const dirty = hasMeaningfulChanges(node.path);

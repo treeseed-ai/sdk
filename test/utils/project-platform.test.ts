@@ -6,6 +6,7 @@ import type { ControlPlaneReporter } from '../../src/control-plane.ts';
 import {
 	monitorProjectPlatform,
 	publishProjectContent,
+	resolveRailwayServiceDeployDependencies,
 } from '../../src/operations/services/project-platform.ts';
 
 const tempRoots = new Set<string>();
@@ -76,6 +77,21 @@ afterEach(async () => {
 });
 
 describe('project platform workflow actions', () => {
+	it('chains Railway service deploy dependencies to avoid concurrent remote builds', () => {
+		expect(resolveRailwayServiceDeployDependencies({
+			includeDataDependency: true,
+			previousRailwayDeployNodeId: null,
+		})).toEqual(['data:d1-migrate']);
+		expect(resolveRailwayServiceDeployDependencies({
+			includeDataDependency: true,
+			previousRailwayDeployNodeId: 'api:api-railway-deploy',
+		})).toEqual(['data:d1-migrate', 'api:api-railway-deploy']);
+		expect(resolveRailwayServiceDeployDependencies({
+			includeDataDependency: false,
+			previousRailwayDeployNodeId: 'agents:manager-railway-deploy',
+		})).toEqual(['agents:manager-railway-deploy']);
+	});
+
 	it('skips API and agent monitor probes when runtime systems are not selected', async () => {
 		const tenantRoot = await createTenantFixture();
 		const fetched: string[] = [];

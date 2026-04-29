@@ -131,6 +131,7 @@ export {
 	inspectWorkspaceDependencyMode,
 	unlinkLocalWorkspaceLinks,
 	type DependencyResolutionMode,
+	type DeploymentLockfileWorkspaceIssue,
 	type WorkspaceLinksMode,
 } from './operations/services/workspace-dependency-mode.ts';
 export {

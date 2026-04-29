@@ -1283,13 +1283,17 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		const selectedServices = validation.services.filter((service) =>
 			service.key === 'api' ? selectedSystems.has('api') : selectedSystems.has('agents'),
 		);
+		let previousRailwayDeployNodeId: string | null = null;
 		for (const service of selectedServices) {
 			const system = service.key === 'api' ? 'api' : 'agents';
 			const nodeId = `${system}:${service.key}-railway-deploy`;
 			selectedRailwayServiceKeys.push(service.key);
 			nodes.push({
 				id: nodeId,
-				dependencies: selectedSystems.has('data') ? ['data:d1-migrate'] : [],
+				dependencies: resolveRailwayServiceDeployDependencies({
+					includeDataDependency: selectedSystems.has('data'),
+					previousRailwayDeployNodeId,
+				}),
 				run: async () => {
 					const result = await deployRailwayService(options.tenantRoot, service, {
 						dryRun: options.dryRun,
@@ -1306,6 +1310,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 					return result;
 				},
 			});
+			previousRailwayDeployNodeId = nodeId;
 		}
 	}
 
@@ -1393,6 +1398,19 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		monitor,
 		serviceResults,
 	};
+}
+
+export function resolveRailwayServiceDeployDependencies({
+	includeDataDependency,
+	previousRailwayDeployNodeId,
+}: {
+	includeDataDependency: boolean;
+	previousRailwayDeployNodeId?: string | null;
+}) {
+	return [
+		...(includeDataDependency ? ['data:d1-migrate'] : []),
+		...(previousRailwayDeployNodeId ? [previousRailwayDeployNodeId] : []),
+	];
 }
 
 export async function publishProjectContent(options: ProjectPlatformActionOptions) {

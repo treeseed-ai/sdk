@@ -1,11 +1,12 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	discoverRepositorySaveNodes,
 	nextDevVersion,
+	planRepositorySave,
 	repositorySaveWaves,
 	runRepositorySaveOrchestrator,
 	type RepositorySaveNode,
@@ -40,6 +41,11 @@ function node(input: Partial<RepositorySaveNode> & Pick<RepositorySaveNode, 'id'
 		plannedDependencySpec: null,
 		...input,
 	};
+}
+
+function writeJson(path: string, value: Record<string, unknown>) {
+	mkdirSync(dirname(path), { recursive: true });
+	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
 describe('repository save orchestrator helpers', () => {
@@ -95,6 +101,94 @@ describe('repository save orchestrator helpers', () => {
 		const [repo] = discoverRepositorySaveNodes(root, root, 'staging');
 		expect(repo.kind).toBe('project');
 		expect(repo.branchMode).toBe('project-save');
+	});
+
+	it('plans root workspace lockfile refresh against the real manifest', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-plan-lockfile-'));
+		git(root, ['init', '-b', 'staging']);
+		writeJson(resolve(root, 'package.json'), {
+			name: '@treeseed/market',
+			version: '1.0.0',
+			private: true,
+			workspaces: ['packages/*'],
+			dependencies: {
+				'@treeseed/sdk': 'github:treeseed-ai/sdk#0.1.0-dev.staging.20260427T000000Z',
+			},
+		});
+		writeJson(resolve(root, 'package-lock.json'), {
+			name: '@treeseed/market',
+			lockfileVersion: 3,
+			packages: { '': { name: '@treeseed/market', workspaces: ['packages/*'] } },
+		});
+		writeJson(resolve(root, 'packages/sdk/package.json'), {
+			name: '@treeseed/sdk',
+			version: '0.1.0',
+		});
+
+		const plan = planRepositorySave({
+			root,
+			gitRoot: root,
+			branch: 'staging',
+			commitMessageMode: 'fallback',
+			verifyMode: 'skip',
+		});
+
+		expect(plan.rootRepo.commands).toContain('npm ci --ignore-scripts --dry-run # validate root manifest, workspaces, and lockfile before commit');
+		expect(plan.rootRepo.commands).not.toContain('npm install --workspaces=false # refresh project lockfile after internal dependency updates');
+	});
+
+	it('fails stale root workspace lockfiles before committing', async () => {
+		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
+		try {
+			const root = mkdtempSync(join(tmpdir(), 'treeseed-save-lockfile-fail-'));
+			const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-lockfile-fail-origin-'));
+			git(origin, ['init', '--bare']);
+			git(root, ['init', '-b', 'staging']);
+			git(root, ['config', 'user.email', 'test@example.com']);
+			git(root, ['config', 'user.name', 'Test User']);
+			git(root, ['remote', 'add', 'origin', origin]);
+			writeJson(resolve(root, 'package.json'), {
+				name: '@treeseed/market',
+				version: '1.0.0',
+				private: true,
+				workspaces: ['packages/*'],
+				dependencies: {
+					'@treeseed/sdk': 'github:treeseed-ai/sdk#0.1.0-dev.staging.20260427T000000Z',
+				},
+			});
+			writeJson(resolve(root, 'packages/sdk/package.json'), {
+				name: '@treeseed/sdk',
+				version: '0.1.0',
+			});
+			writeJson(resolve(root, 'package-lock.json'), {
+				name: '@treeseed/market',
+				lockfileVersion: 3,
+				packages: {
+					'': { name: '@treeseed/market' },
+					'packages/sdk': { name: '@treeseed/sdk', version: '0.0.9' },
+					'node_modules/@treeseed/sdk': { resolved: 'packages/sdk', link: true },
+				},
+			});
+			writeFileSync(resolve(root, 'README.md'), 'initial\n', 'utf8');
+			git(root, ['add', '-A']);
+			git(root, ['commit', '-m', 'chore: initial']);
+			git(root, ['push', '-u', 'origin', 'staging']);
+			const before = git(root, ['rev-parse', 'HEAD']);
+			writeFileSync(resolve(root, 'README.md'), 'initial\nupdated\n', 'utf8');
+
+			await expect(runRepositorySaveOrchestrator({
+				root,
+				gitRoot: root,
+				branch: 'staging',
+				commitMessageMode: 'fallback',
+				verifyMode: 'skip',
+			})).rejects.toThrow(/Lockfile validation failed/u);
+
+			expect(git(root, ['rev-parse', 'HEAD'])).toBe(before);
+			expect(git(root, ['status', '--porcelain'])).toContain('README.md');
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it('streams save progress with repository and phase prefixes', async () => {

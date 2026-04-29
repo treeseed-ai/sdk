@@ -66,7 +66,7 @@ import {
 	syncBranchWithOrigin,
 	waitForStagingAutomation,
 } from '../operations/services/git-workflow.ts';
-import { resolveGitHubRepositorySlug, waitForGitHubWorkflowCompletion } from '../operations/services/github-automation.ts';
+import { getGitHubAutomationMode, resolveGitHubRepositorySlug, waitForGitHubWorkflowCompletion } from '../operations/services/github-automation.ts';
 import { createGitHubApiClient } from '../operations/services/github-api.ts';
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin } from '../operations/services/runtime-tools.ts';
 import { runTenantDeployPreflight, runWorkspaceSavePreflight } from '../operations/services/save-deploy-preflight.ts';
@@ -84,6 +84,7 @@ import {
 } from '../operations/services/workspace-save.ts';
 import {
 	planRepositorySave,
+	refreshAndValidateRootWorkspaceLockfileForSave,
 	repositorySaveErrorDetails,
 	runRepositorySaveOrchestrator,
 	type SaveCommitMessageMode,
@@ -114,7 +115,7 @@ import {
 	workspacePackages,
 	workspaceRoot,
 } from '../operations/services/workspace-tools.ts';
-import { resolveTreeseedWorkflowState } from '../workflow-state.ts';
+import { resolveTreeseedWorkflowState, type TreeseedWorkflowStatusOptions } from '../workflow-state.ts';
 import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, filterTreeseedDesiredUnitsByBootstrapSystems, planTreeseedReconciliation, resolveTreeseedBootstrapSelection, reconcileTreeseedTarget } from '../reconcile/index.ts';
 import {
 	acquireWorkflowLock,
@@ -240,6 +241,38 @@ function unlinkWorkflowWorkspaceLinks(root: string, helpers: WorkflowOperationHe
 	return report;
 }
 
+function ensureTreeseedCommandReadiness(root: string) {
+	if (getGitHubAutomationMode() === 'stub') {
+		return {
+			status: 'skipped',
+			reason: 'stubbed',
+			checks: [],
+			missing: [],
+		};
+	}
+	const checks = [
+		{ id: 'sdk', path: resolve(root, 'node_modules/@treeseed/sdk/package.json') },
+		{ id: 'sdk-workflow-support', path: resolve(root, 'node_modules/@treeseed/sdk/dist/workflow-support.js') },
+		{ id: 'core', path: resolve(root, 'node_modules/@treeseed/core/package.json') },
+		{ id: 'core-api', path: resolve(root, 'node_modules/@treeseed/core/dist/api.js') },
+		{ id: 'cli', path: resolve(root, 'node_modules/@treeseed/cli/package.json') },
+		{ id: 'cli-entrypoint', path: resolve(root, 'node_modules/@treeseed/cli/dist/cli/main.js') },
+		{ id: 'trsd-bin', path: resolve(root, 'node_modules/.bin/trsd') },
+	];
+	const missing = checks.filter((check) => !existsSync(check.path));
+	const report = {
+		status: missing.length === 0 ? 'passed' : 'failed',
+		checks: checks.map((check) => ({ ...check, exists: existsSync(check.path) })),
+		missing,
+	};
+	if (missing.length > 0) {
+		workflowError('save', 'validation_failed', `Treeseed save restored workspace links, but command readiness failed.\n${missing.map((check) => `${check.id}: ${check.path}`).join('\n')}`, {
+			details: report,
+		});
+	}
+	return report;
+}
+
 function workflowError(
 	operation: TreeseedWorkflowOperationId,
 	code: TreeseedWorkflowErrorCode,
@@ -255,9 +288,9 @@ function ageDays(lastCommitDate: string) {
 	return Math.max(0, Math.floor((Date.now() - timestamp) / 86_400_000));
 }
 
-function withContextEnv<T>(env: NodeJS.ProcessEnv | undefined, action: () => T): T {
+async function withContextEnv<T>(env: NodeJS.ProcessEnv | undefined, action: () => T | Promise<T>): Promise<T> {
 	if (!env) {
-		return action();
+		return await action();
 	}
 
 	const previous = new Map<string, string | undefined>();
@@ -271,7 +304,7 @@ function withContextEnv<T>(env: NodeJS.ProcessEnv | undefined, action: () => T):
 	}
 
 	try {
-		return action();
+		return await action();
 	} finally {
 		for (const [key, value] of previous.entries()) {
 			if (value === undefined) {
@@ -571,8 +604,8 @@ function createNextSteps(steps: TreeseedWorkflowNextStep[]) {
 	return steps.map(renderWorkflowStep);
 }
 
-function createStatusResult(cwd: string): TreeseedWorkflowResult<ReturnType<typeof resolveTreeseedWorkflowState>> {
-	const state = resolveTreeseedWorkflowState(cwd);
+function createStatusResult(cwd: string, options: TreeseedWorkflowStatusOptions = {}): TreeseedWorkflowResult<ReturnType<typeof resolveTreeseedWorkflowState>> {
+	const state = resolveTreeseedWorkflowState(cwd, options);
 	return buildWorkflowResult('status', cwd, state, {
 		nextSteps: createNextSteps(state.recommendations),
 		includeFinalState: false,
@@ -1584,8 +1617,28 @@ function hasStagedChanges(repoDir: string) {
 	return run('git', ['diff', '--cached', '--name-only'], { cwd: repoDir, capture: true }).trim().length > 0;
 }
 
-export async function workflowStatus(helpers: WorkflowOperationHelpers) {
-	return withContextEnv(helpers.context.env, () => createStatusResult(helpers.cwd()));
+export async function workflowStatus(helpers: WorkflowOperationHelpers, input: TreeseedWorkflowStatusOptions = {}) {
+	return withContextEnv(helpers.context.env, async () => {
+		const resolved = resolveTreeseedWorkflowPaths(helpers.cwd());
+		if (resolved.tenantRoot) {
+			try {
+				await ensureTreeseedSecretSessionForConfig({
+					tenantRoot: resolved.cwd,
+					interactive: false,
+					env: helpers.context.env,
+					createIfMissing: false,
+					allowMigration: false,
+				});
+			} catch {
+				// Status must remain observational. If secrets cannot be unlocked
+				// non-interactively, the resulting state reports locked/missing config.
+			}
+		}
+		return createStatusResult(helpers.cwd(), {
+			...input,
+			env: input.env ?? helpers.context.env,
+		});
+	});
 }
 
 export async function workflowTasks(helpers: WorkflowOperationHelpers) {
@@ -2255,6 +2308,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						plannedSteps: [
 							{ id: 'workspace-unlink', description: 'Remove local workspace links before deployment install and lockfile updates' },
 							...repositoryPlan.plannedSteps,
+							{ id: 'lockfile-validation', description: 'Validate refreshed package-lock.json files before any save commit is pushed' },
 							{ id: 'workspace-link', description: 'Restore local workspace links after save' },
 							...((beforeState.branchRole === 'feature' && (effectiveInput.preview === true || beforeState.preview.enabled))
 								? [{ id: 'preview', description: `Refresh preview deployment for ${branch}` }]
@@ -2363,6 +2417,16 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					...(savedRootRepo.publishWait ?? {}),
 					pushed: savedRootRepo.pushed === true,
 				};
+				const workspaceLinks = inspectWorkspaceDependencyMode(root, { mode: effectiveInput.workspaceLinks ?? 'auto', env: helpers.context.env });
+				const commandReadiness = ensureTreeseedCommandReadiness(root);
+				const lockfileValidation = {
+					root: savedRootRepo.lockfileValidation,
+					repos: savedPackageReports.map((repo) => ({
+						name: repo.name,
+						path: repo.path,
+						lockfileValidation: repo.lockfileValidation,
+					})),
+				};
 
 				let previewAction: Record<string, unknown> = { status: 'skipped' };
 				if (beforeState.branchRole === 'feature' && branch) {
@@ -2401,7 +2465,9 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					partialFailure: null,
 					previewAction,
 					mergeConflict: null,
-					workspaceLinks: inspectWorkspaceDependencyMode(root, { mode: effectiveInput.workspaceLinks ?? 'auto', env: helpers.context.env }),
+					workspaceLinks,
+					commandReadiness,
+					lockfileValidation,
 				};
 				completeWorkflowRun(root, workflowRun.runId, payload);
 				return buildWorkflowResult(
@@ -2673,6 +2739,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 							})),
 							{ id: 'workspace-unlink', description: 'Remove local workspace links before staging promotion' },
 							{ id: 'merge-root', description: `Squash-merge ${initialSession.branchName ?? '(current task)'} into market staging` },
+							{ id: 'lockfile-validation', description: 'Refresh and validate the merged root workspace lockfile before pushing staging' },
 							{ id: 'wait-staging', description: 'Wait for staging automation' },
 							{ id: 'preview-cleanup', description: 'Destroy preview resources' },
 							{ id: 'cleanup-root', description: 'Archive and delete the task branch from market' },
@@ -2771,14 +2838,21 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					}
 				}
 
+				let rootMerge: Record<string, unknown> | null = null;
 				try {
-					const rootMerge = await executeJournalStep(root, workflowRun.runId, 'merge-root', () => {
+					rootMerge = await executeJournalStep(root, workflowRun.runId, 'merge-root', async () => {
 						assertCleanWorktree(root);
 						syncBranchWithOrigin(repoDir, STAGING_BRANCH);
 						run('git', ['merge', '--squash', featureBranch], { cwd: repoDir });
 						if (mode === 'recursive-workspace') {
 							syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
 						}
+						const lockfileSafety = await refreshAndValidateRootWorkspaceLockfileForSave({
+							root,
+							gitRoot: repoDir,
+							branch: STAGING_BRANCH,
+							onProgress: (line, stream) => helpers.write(line, stream),
+						});
 						if (hasStagedChanges(repoDir) || hasMeaningfulChanges(repoDir)) {
 							run('git', ['add', '-A'], { cwd: repoDir });
 							run('git', ['commit', '-m', message], { cwd: repoDir });
@@ -2788,6 +2862,8 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 							commitSha: headCommit(repoDir),
 							branch: currentBranch(repoDir) || STAGING_BRANCH,
 							committed: hasMeaningfulChanges(repoDir) ? false : true,
+							lockfileValidation: lockfileSafety.lockfileValidation,
+							lockfileInstall: lockfileSafety.install,
 						};
 					});
 					rootRepo.merged = true;
@@ -2855,6 +2931,8 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					rootRepo,
 					stagingWait,
 					previewCleanup,
+					lockfileValidation: rootMerge?.lockfileValidation ?? null,
+					lockfileInstall: rootMerge?.lockfileInstall ?? null,
 					remoteDeleted: rootRepo.deletedRemote,
 					localDeleted: rootRepo.deletedLocal,
 					finalBranch: currentBranch(repoDir) || STAGING_BRANCH,
