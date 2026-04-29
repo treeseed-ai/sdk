@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { workspacePackages, workspaceRoot } from './workspace-tools.ts';
 
@@ -304,6 +304,14 @@ function isInstalledTreeseedPackage(path: string, packageName: string) {
 	}
 }
 
+function isEmptyDirectory(path: string) {
+	try {
+		return safeLstat(path)?.isDirectory() === true && readdirSync(path).length === 0;
+	} catch {
+		return false;
+	}
+}
+
 function removeLinkCandidate(link: WorkspaceLink, managedLinks: Set<string>) {
 	const stat = safeLstat(link.linkPath);
 	if (!stat) return true;
@@ -317,6 +325,10 @@ function removeLinkCandidate(link: WorkspaceLink, managedLinks: Set<string>) {
 		return true;
 	}
 	if (isInstalledTreeseedPackage(link.linkPath, link.packageName)) {
+		rmSync(link.linkPath, { recursive: true, force: true });
+		return true;
+	}
+	if (isEmptyDirectory(link.linkPath)) {
 		rmSync(link.linkPath, { recursive: true, force: true });
 		return true;
 	}

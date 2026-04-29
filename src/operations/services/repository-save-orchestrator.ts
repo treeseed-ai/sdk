@@ -1296,6 +1296,10 @@ async function finalizeCleanPackageVersion(
 	}
 
 	emitProgress(options, node, 'finalize', `Finalizing interrupted package version ${version}.`);
+	if (hasNpmLockfile(node.path)) {
+		report.install = await runNpmInstallWithRetry(node, options);
+		report.lockfileValidation = await validateRepositoryLockfile(node, options);
+	}
 	const rebase = pullRebaseFromOrigin(node, options, branch);
 	if (currentTagState.localCommit === head && localTreeseedTagWasCreatedByThisRun(node, version, options.workflowRunId)) {
 		emitProgress(options, node, 'verify', `Reusing verification from interrupted tag ${version}.`);
