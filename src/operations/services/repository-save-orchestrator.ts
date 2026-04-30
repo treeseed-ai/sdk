@@ -1048,14 +1048,28 @@ function pullRebaseFromOrigin(node: RepositorySaveNode, options: RepositorySaveO
 	}
 }
 
-function pushCurrentBranch(node: RepositorySaveNode, options: RepositorySaveOptions, branch: string) {
+function pushCurrentBranch(node: RepositorySaveNode, options: RepositorySaveOptions, branch: string, tagName?: string | null) {
 	ensureWritableRemote(node, options);
-	if (remoteBranchExistsSafe(node.path, branch)) {
-		runCapturedCommand(node, options, 'push', 'git', ['push', 'origin', branch]);
-		return { createdRemoteBranch: false, pushed: true };
+	const remoteBranchExists = remoteBranchExistsSafe(node.path, branch);
+	let pushedTag = false;
+	const args = remoteBranchExists
+		? ['push', 'origin', branch]
+		: ['push', '-u', 'origin', branch];
+	if (tagName) {
+		const state = tagState(node.path, tagName);
+		assertTagStateMatchesHead(node, tagName, state, headCommit(node.path));
+		if (!state.remoteExists) {
+			args.push(tagName);
+			pushedTag = true;
+		}
 	}
-	runCapturedCommand(node, options, 'push', 'git', ['push', '-u', 'origin', branch]);
-	return { createdRemoteBranch: true, pushed: true };
+	runCapturedCommand(node, options, 'push', 'git', args);
+	return {
+		createdRemoteBranch: !remoteBranchExists,
+		pushed: true,
+		pushedTag,
+		combinedBranchAndTagPush: pushedTag,
+	};
 }
 
 function tagExists(repoDir: string, tagName: string) {
@@ -1182,7 +1196,7 @@ function localTreeseedTagWasCreatedByThisRun(node: RepositorySaveNode, tagName: 
 	return message.includes(`workflowRunId: ${workflowRunId}`);
 }
 
-function ensurePackageTagPushed(node: RepositorySaveNode, options: RepositorySaveOptions, tagName: string, branch: string, workflowRunId?: string | null) {
+function ensurePackageTagReady(node: RepositorySaveNode, options: RepositorySaveOptions, tagName: string, branch: string, workflowRunId?: string | null) {
 	let message: string | null = null;
 	ensureWritableRemote(node, options);
 	const head = headCommit(node.path);
@@ -1202,9 +1216,7 @@ function ensurePackageTagPushed(node: RepositorySaveNode, options: RepositorySav
 		assertTagStateMatchesHead(node, tagName, state, head);
 	}
 
-	if (!state.remoteExists) {
-		runCapturedCommand(node, options, 'tag', 'git', ['push', 'origin', tagName]);
-	} else {
+	if (state.remoteExists) {
 		emitProgress(options, node, 'tag', `Remote tag ${tagName} already points at HEAD.`);
 	}
 	return message;
@@ -1315,12 +1327,12 @@ async function finalizeCleanPackageVersion(
 		report.verification = await runRepoVerification(node, options, options.verifyMode ?? 'action-first');
 		report.verified = report.verification.status === 'passed';
 	}
-	const tagMessage = ensurePackageTagPushed(node, options, version, branch, options.workflowRunId);
+	const tagMessage = ensurePackageTagReady(node, options, version, branch, options.workflowRunId);
 	report.devTagMetadata = tagMessage?.includes('treeseed-dev-tag: true') ? tagMessage : null;
 	const reference = finalizePackageReference(node, version, options);
+	const push = pushCurrentBranch(node, options, branch, version);
 	await runGitDependencySmoke(node, options, reference);
 	report.dependencySpec = reference.spec;
-	const push = pushCurrentBranch(node, options, branch);
 	report.pushed = push.pushed;
 	report.skippedReason = 'finalized-partial-save';
 	report.commitSha = headCommit(node.path);
@@ -1402,15 +1414,15 @@ function repoPlanCommands(
 		}
 		if (plannedVersion) {
 			commands.push(`git tag -a ${plannedVersion} -m <${plannedVersion.includes('-dev.') ? 'dev metadata' : 'release'}>`);
-			commands.push(`git push origin ${plannedVersion}`);
+			commands.push(remoteExists ? `git push origin ${branch} ${plannedVersion}` : `git push -u origin ${branch} ${plannedVersion}`);
 			if (plannedDependencySpec && node.branchMode === 'package-dev-save') {
 				commands.push(`smoke install ${plannedDependencySpec}`);
 			}
 		}
 	} else {
 		commands.push('skip package verification # project repository');
+		commands.push(remoteExists ? `git push origin ${branch}` : `git push -u origin ${branch}`);
 	}
-	commands.push(remoteExists ? `git push origin ${branch}` : `git push -u origin ${branch}`);
 	return commands;
 }
 
@@ -1703,25 +1715,32 @@ async function saveOneRepository(
 
 	if (node.kind === 'package') {
 		const version = plannedVersion ?? String((readJson(resolve(node.path, 'package.json')).version ?? report.version ?? ''));
-		const tagMessage = ensurePackageTagPushed(node, options, version, branch, options.workflowRunId);
+		const tagMessage = ensurePackageTagReady(node, options, version, branch, options.workflowRunId);
 		report.tagName = version;
 		report.version = version;
 		report.devTagMetadata = tagMessage?.includes('treeseed-dev-tag: true') ? tagMessage : null;
 		const reference = finalizePackageReference(node, version, options);
+		const push = pushCurrentBranch(node, options, branch, version);
 		await runGitDependencySmoke(node, options, reference);
 		report.dependencySpec = reference.spec;
 		state.finalizedVersions.set(node.name, version);
 		state.finalizedReferences.set(node.name, reference);
+		report.pushed = push.pushed;
+		report.publishWait = {
+			...rebase,
+			...push,
+		};
+	} else {
+		const push = pushCurrentBranch(node, options, branch);
+		report.pushed = push.pushed;
+		report.publishWait = {
+			...rebase,
+			...push,
+		};
 	}
-	const push = pushCurrentBranch(node, options, branch);
-	report.pushed = push.pushed;
 	report.commitSha = headCommit(node.path);
 	report.skippedReason = null;
 	state.finalizedCommits.set(node.relativePath, report.commitSha);
-	report.publishWait = {
-		...rebase,
-		...push,
-	};
 	emitProgress(options, node, 'done', `Saved ${report.commitSha?.slice(0, 12) ?? 'current HEAD'}.`);
 	return report;
 }

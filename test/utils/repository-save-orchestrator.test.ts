@@ -137,6 +137,35 @@ describe('repository save orchestrator helpers', () => {
 		expect(plan.rootRepo.commands).not.toContain('npm install --workspaces=false # refresh project lockfile after internal dependency updates');
 	});
 
+	it('plans package branch and tag publication in one push command', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-plan-package-push-'));
+		const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-plan-package-push-origin-'));
+		git(origin, ['init', '--bare']);
+		git(root, ['init', '-b', 'staging']);
+		git(root, ['remote', 'add', 'origin', origin]);
+		writeJson(resolve(root, 'package.json'), {
+			name: '@treeseed/demo',
+			version: '1.0.0',
+			type: 'module',
+			publishConfig: { access: 'public' },
+			scripts: { 'release:publish': 'node -e "process.exit(0)"' },
+		});
+		writeFileSync(resolve(root, 'README.md'), 'changed\n', 'utf8');
+
+		const plan = planRepositorySave({
+			root,
+			gitRoot: root,
+			branch: 'staging',
+			commitMessageMode: 'fallback',
+			verifyMode: 'skip',
+		});
+
+		const version = plan.rootRepo.plannedVersion;
+		expect(version).toMatch(/^1\.0\.1-dev\.staging\./u);
+		expect(plan.rootRepo.commands).toContain(`git push -u origin staging ${version}`);
+		expect(plan.rootRepo.commands).not.toContain(`git push origin ${version}`);
+	});
+
 	it('fails stale root workspace lockfiles before committing', async () => {
 		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
 		try {
@@ -265,17 +294,20 @@ describe('repository save orchestrator helpers', () => {
 			git(root, ['add', '-A']);
 			git(root, ['commit', '-m', 'feat: partial save']);
 
+			const progress: string[] = [];
 			const result = await runRepositorySaveOrchestrator({
 				root,
 				gitRoot: root,
 				branch: 'staging',
 				commitMessageMode: 'fallback',
 				verifyMode: 'skip',
+				onProgress: (line) => progress.push(line),
 			});
 
 			expect(result.rootRepo.version).toBe(version);
 			expect(result.rootRepo.tagName).toBe(version);
 			expect(result.rootRepo.pushed).toBe(true);
+			expect(progress).toContain(`[@treeseed/demo][push] $ git push origin staging ${version}`);
 			expect(git(root, ['rev-list', '-n', '1', version])).toBe(git(root, ['rev-parse', 'HEAD']));
 			expect(git(root, ['ls-remote', '--tags', 'origin', `refs/tags/${version}`])).toContain(version);
 		} finally {
