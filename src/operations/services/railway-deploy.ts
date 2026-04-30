@@ -192,8 +192,8 @@ function isRailwayAlreadyExistsMessage(result) {
 	return /already exists|already taken|duplicate|has already been taken/iu.test(railwayMessage(result));
 }
 
-function isRailwayTransientFailure(result) {
-	return /timed out|failed to fetch|temporarily unavailable|econnreset|etimedout/iu.test(railwayMessage(result));
+export function isRailwayTransientFailure(result) {
+	return /timed out|failed to fetch|temporarily unavailable|econnreset|etimedout|failed to stream build logs|failed to retrieve build log/iu.test(railwayMessage(result));
 }
 
 function sleepSync(milliseconds) {

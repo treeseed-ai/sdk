@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	configuredRailwayServices,
 	ensureRailwayScheduledJobs,
+	isRailwayTransientFailure,
 	planRailwayServiceDeploy,
 	resolveRailwayAuthToken,
 	validateRailwayDeployPrerequisites,
@@ -190,6 +191,14 @@ describe('railway scheduled jobs', () => {
 			],
 			cwd: '.',
 		});
+	});
+
+	it('treats Railway build log retrieval failures as transient deploy failures', () => {
+		expect(isRailwayTransientFailure({
+			status: 1,
+			stdout: 'Build Logs: https://railway.com/project/example',
+			stderr: 'Failed to stream build logs: Failed to retrieve build log',
+		})).toBe(true);
 	});
 
 	it('creates a missing schedule and returns its locator for prod deploy', async () => {
