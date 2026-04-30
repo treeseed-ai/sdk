@@ -167,7 +167,7 @@ export function syncBranchWithOrigin(repoDir, branchName) {
 	}
 
 	if (remoteBranchExists(repoDir, branchName)) {
-		runGit(['pull', '--rebase', 'origin', branchName], { cwd: repoDir });
+		runGit(['merge', '--ff-only', `origin/${branchName}`], { cwd: repoDir });
 	}
 }
 
@@ -402,7 +402,7 @@ export function mergeBranchIntoTarget(
 	const repoDir = prepareReleaseBranches(cwd);
 	checkoutBranch(repoDir, targetBranch);
 	if (remoteBranchExists(repoDir, targetBranch)) {
-		runGit(['pull', '--rebase', 'origin', targetBranch], { cwd: repoDir });
+		runGit(['merge', '--ff-only', `origin/${targetBranch}`], { cwd: repoDir });
 	}
 	runGit(['merge', '--no-ff', sourceBranch, '-m', message], { cwd: repoDir });
 	pushBranch(repoDir, STAGING_BRANCH);
