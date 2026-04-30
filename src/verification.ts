@@ -54,6 +54,8 @@ type LocalWorkspaceContext = {
 	localTreeseedSiblingDependencies: string[];
 };
 
+const defaultActUbuntuLatestImage = 'catthehacker/ubuntu:act-latest';
+
 function defaultWrite(message: string, stream: 'stdout' | 'stderr' = 'stdout') {
 	if (!message) return;
 	(stream === 'stderr' ? process.stderr : process.stdout).write(`${message}\n`);
@@ -91,6 +93,15 @@ function readPackageManifest(packageJsonPath: string): PackageManifest | null {
 	} catch {
 		return null;
 	}
+}
+
+function createActArgs(eventName: string, workflowPath: string) {
+	const image = process.env.TREESEED_VERIFY_ACT_UBUNTU_LATEST_IMAGE?.trim() || defaultActUbuntuLatestImage;
+	const args = ['act', eventName, '-W', workflowPath, '-j', 'verify'];
+	if (image) {
+		args.push('-P', `ubuntu-latest=${image}`);
+	}
+	return args;
 }
 
 function createWorkspaceActWorkflow(options: {
@@ -178,7 +189,7 @@ ${siblingPreparationCommands.split('\n').map((line) => `          ${line}`).join
 
 	return {
 		cwd: options.workspaceRoot,
-		args: ['act', options.eventName, '-W', workflowPath, '-j', 'verify'],
+		args: createActArgs(options.eventName, workflowPath),
 	};
 }
 
@@ -331,7 +342,7 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 			});
 			return runCommand(gh, workspaceAct.args, workspaceAct.cwd);
 		}
-		return runCommand(gh, ['act', status.eventName, '-W', '.github/workflows/verify.yml', '-j', 'verify'], status.packageRoot);
+		return runCommand(gh, createActArgs(status.eventName, '.github/workflows/verify.yml'), status.packageRoot);
 	}
 
 	if (status.prefersDirectForLocalWorkspace) {
@@ -339,7 +350,7 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 	}
 
 	if (status.canUseAct) {
-		return runCommand(gh, ['act', status.eventName, '-W', '.github/workflows/verify.yml', '-j', 'verify'], status.packageRoot);
+		return runCommand(gh, createActArgs(status.eventName, '.github/workflows/verify.yml'), status.packageRoot);
 	}
 
 	if (!status.workflowPresent) {
