@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { loadCliDeployConfig } from './runtime-tools.ts';
 import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from './deploy.ts';
 import { runPrefixedCommand, sleep, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from './bootstrap-runner.ts';
+import { resolveTreeseedToolCommand } from '../../managed-dependencies.ts';
 import {
 	ensureRailwayEnvironment,
 	ensureRailwayProject,
@@ -278,7 +279,11 @@ mutation TreeseedScheduleUpdate($id: String!, $name: String!, $schedule: String!
 
 export function runRailway(args, { cwd, capture = false, allowFailure = false, input, env } = {}) {
 	const effectiveEnv = buildRailwayCommandEnv({ ...process.env, ...(env ?? {}) });
-	const runWithEnv = (spawnEnv) => spawnSync('railway', args, {
+	const railway = resolveTreeseedToolCommand('railway', { env: effectiveEnv });
+	if (!railway) {
+		throw new Error('Railway CLI is unavailable.');
+	}
+	const runWithEnv = (spawnEnv) => spawnSync(railway.command, [...railway.argsPrefix, ...args], {
 		cwd,
 		stdio: input !== undefined ? ['pipe', capture ? 'pipe' : 'inherit', capture ? 'pipe' : 'inherit'] : (capture ? 'pipe' : 'inherit'),
 		encoding: 'utf8',
@@ -294,37 +299,36 @@ export function runRailway(args, { cwd, capture = false, allowFailure = false, i
 	return result;
 }
 
-function shellEscape(value) {
-	return `'${String(value).replace(/'/gu, `'\\''`)}'`;
-}
-
 export function setRailwaySecretVariable(
 	{ cwd, service, environment, key, value, env = process.env, capture = false, allowFailure = false },
 ) {
 	const effectiveEnv = buildRailwayCommandEnv({
 		...process.env,
 		...(env ?? {}),
-		TREESEED_RAILWAY_SECRET_VALUE: value,
 	});
-	const command = [
-		'printf %s\\\\n "$TREESEED_RAILWAY_SECRET_VALUE"',
-		'|',
-		'railway variable set',
-		'--service',
-		shellEscape(service),
-		'--environment',
-		shellEscape(environment),
-		'--stdin',
-		'--skip-deploys',
-		shellEscape(key),
-	].join(' ');
 	let result = null;
 	for (let attempt = 0; attempt < 3; attempt += 1) {
-		result = spawnSync('bash', ['-lc', command], {
+		const railway = resolveTreeseedToolCommand('railway', { env: effectiveEnv });
+		if (!railway) {
+			throw new Error('Railway CLI is unavailable.');
+		}
+		result = spawnSync(railway.command, [
+			...railway.argsPrefix,
+			'variable',
+			'set',
+			'--service',
+			service,
+			'--environment',
+			environment,
+			'--stdin',
+			'--skip-deploys',
+			key,
+		], {
 			cwd,
-			stdio: capture ? 'pipe' : 'inherit',
+			stdio: ['pipe', capture ? 'pipe' : 'inherit', capture ? 'pipe' : 'inherit'],
 			encoding: 'utf8',
 			env: effectiveEnv,
+			input: `${value}\n`,
 		});
 		if (result.status === 0) {
 			return result;

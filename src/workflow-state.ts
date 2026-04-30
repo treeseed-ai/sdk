@@ -25,6 +25,7 @@ import { currentBranch, gitStatusPorcelain } from './operations/services/workspa
 import { hasCompleteTreeseedPackageCheckout, isWorkspaceRoot, run, workspacePackages } from './operations/services/workspace-tools.ts';
 import { inspectWorkspaceDependencyMode } from './operations/services/workspace-dependency-mode.ts';
 import { inspectWorkflowLock, listInterruptedWorkflowRuns } from './workflow/runs.ts';
+import { createTreeseedManagedToolEnv, resolveTreeseedToolCommand } from './managed-dependencies.ts';
 import type { TreeseedWorkflowNextStep } from './workflow.ts';
 import {
 	type TreeseedWorkflowBranchRole,
@@ -389,11 +390,19 @@ function providerLiveCheck(provider: 'github' | 'cloudflare' | 'railway', config
 		return { checked: true, ready: false, skipped: true, detail: `${provider} token/config is missing.` };
 	}
 	try {
-		const result = provider === 'github'
-			? spawnLiveCheck('gh', ['api', 'user', '--jq', '.login'], cwd, env)
-			: provider === 'cloudflare'
-				? spawnLiveCheck(process.execPath, [resolveWranglerBin(), 'whoami'], cwd, env)
-				: spawnLiveCheck('railway', ['whoami'], cwd, env);
+		const result = (() => {
+			if (provider === 'github') {
+				const gh = resolveTreeseedToolCommand('gh', { env });
+				if (!gh) return { ok: false, detail: 'GitHub CLI `gh` is unavailable.' };
+				return spawnLiveCheck(gh.command, [...gh.argsPrefix, 'api', 'user', '--jq', '.login'], cwd, createTreeseedManagedToolEnv(env));
+			}
+			if (provider === 'cloudflare') {
+				return spawnLiveCheck(process.execPath, [resolveWranglerBin(), 'whoami'], cwd, env);
+			}
+			const railway = resolveTreeseedToolCommand('railway', { env });
+			if (!railway) return { ok: false, detail: 'Railway CLI is unavailable.' };
+			return spawnLiveCheck(railway.command, [...railway.argsPrefix, 'whoami'], cwd, env);
+		})();
 		return {
 			checked: true,
 			ready: result.ok,

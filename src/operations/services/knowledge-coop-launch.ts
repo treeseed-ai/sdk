@@ -17,6 +17,7 @@ import { loadCliDeployConfig } from './runtime-tools.ts';
 import { templateCatalogRoot } from './runtime-paths.ts';
 import { scaffoldTemplateProject } from './template-registry.ts';
 import { buildKnowledgeCoopKnowledgePackPackage, buildKnowledgeCoopTemplatePackage, importKnowledgeCoopKnowledgePack } from './knowledge-coop-packaging.ts';
+import { resolveTreeseedToolBinary } from '../../managed-dependencies.ts';
 
 export type KnowledgeCoopLaunchFailurePhase =
 	| 'repo_provision_failed'
@@ -651,6 +652,9 @@ function loadProjectMetadata(projectId: string, input: KnowledgeCoopManagedLaunc
 }
 
 function commandAvailable(command: string) {
+	if (command === 'gh' || command === 'wrangler' || command === 'railway') {
+		return Boolean(resolveTreeseedToolBinary(command));
+	}
 	return spawnSync('bash', ['-lc', `command -v ${command}`], { stdio: 'ignore' }).status === 0;
 }
 

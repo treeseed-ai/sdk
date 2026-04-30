@@ -85,6 +85,19 @@ export {
 } from './model-registry.ts';
 export { normalizeAgentCliOptions, buildCopilotAllowToolArgs } from './cli-tools.ts';
 export {
+	collectTreeseedDependencyStatus,
+	createTreeseedManagedToolEnv,
+	formatTreeseedDependencyReport,
+	installTreeseedDependencies,
+	resolveTreeseedToolBinary,
+	resolveTreeseedToolCommand,
+} from './managed-dependencies.ts';
+export {
+	runTreeseedCopilotTask,
+	type TreeseedCopilotTaskInput,
+	type TreeseedCopilotTaskResult,
+} from './copilot.ts';
+export {
 	findDispatchCapability,
 	listSdkDispatchCapabilities,
 	listWorkflowDispatchCapabilities,

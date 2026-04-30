@@ -112,6 +112,20 @@ export {
 } from './operations/services/save-deploy-preflight.ts';
 export { collectCliPreflight } from './operations/services/workspace-preflight.ts';
 export {
+	collectTreeseedDependencyStatus,
+	createTreeseedManagedToolEnv,
+	formatTreeseedDependencyFailureDetails,
+	formatTreeseedDependencyReport,
+	installTreeseedDependencies,
+	resolveTreeseedToolBinary,
+	resolveTreeseedToolCommand,
+} from './managed-dependencies.ts';
+export {
+	runTreeseedCopilotTask,
+	type TreeseedCopilotTaskInput,
+	type TreeseedCopilotTaskResult,
+} from './copilot.ts';
+export {
 	applyWorkspaceVersionChanges,
 	collectMergeConflictReport,
 	currentBranch,

@@ -1,6 +1,7 @@
 import { run, workspaceRoot } from './workspace-tools.ts';
 import { currentBranch, gitStatusPorcelain, repoRoot } from './workspace-save.ts';
 import { ensureSshPushUrlForOrigin } from './git-remote-policy.ts';
+import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../../managed-dependencies.ts';
 
 export const STAGING_BRANCH = 'staging';
 export const PRODUCTION_BRANCH = 'main';
@@ -356,7 +357,14 @@ export function waitForStagingAutomation(repoDir) {
 	}
 
 	try {
-		run('gh', ['run', 'watch', '--branch', STAGING_BRANCH, '--exit-status'], { cwd: repoDir });
+		const gh = resolveTreeseedToolBinary('gh');
+		if (!gh) {
+			throw new Error('GitHub CLI `gh` is unavailable.');
+		}
+		run(gh, ['run', 'watch', '--branch', STAGING_BRANCH, '--exit-status'], {
+			cwd: repoDir,
+			env: createTreeseedManagedToolEnv(process.env),
+		});
 		return { status: 'completed', branch: STAGING_BRANCH };
 	} catch (error) {
 		throw new Error([

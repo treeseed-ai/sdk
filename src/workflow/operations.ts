@@ -25,6 +25,7 @@ import {
 	setTreeseedRemoteSession,
 	writeTreeseedMachineConfig,
 } from '../operations/services/config-runtime.ts';
+import { formatTreeseedDependencyFailureDetails, installTreeseedDependencies } from '../managed-dependencies.ts';
 import { ControlPlaneClient } from '../control-plane-client.ts';
 import { exportTreeseedCodebase } from '../operations/services/export-runtime.ts';
 import {
@@ -1662,6 +1663,20 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 			const bootstrapSystemsInput = input.systems;
 			const skipUnavailable = input.skipUnavailable;
 			const bootstrapExecution = input.bootstrapExecution ?? 'parallel';
+			const dependencyInstall = await installTreeseedDependencies({
+				tenantRoot,
+				force: input.installMissingTooling === true,
+				env: helpers.context.env,
+				write: (line: string) => maybePrint(helpers.write, line),
+			});
+			if (!dependencyInstall.ok) {
+				workflowError(
+					'config',
+					'validation_failed',
+					`Treeseed dependency initialization failed:\n- ${formatTreeseedDependencyFailureDetails(dependencyInstall)}`,
+					{ details: { dependencies: dependencyInstall } },
+				);
+			}
 			const repairs = input.repair === false ? [] : (resolveTreeseedWorkflowState(tenantRoot).deployConfigPresent ? applyTreeseedSafeRepairs(tenantRoot) : []);
 			const toolHealth = ensureTreeseedActVerificationTooling({
 				tenantRoot,

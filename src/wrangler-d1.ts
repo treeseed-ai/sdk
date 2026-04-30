@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { D1DatabaseLike, D1PreparedStatementLike } from './types/cloudflare.ts';
+import { resolveTreeseedToolCommand } from './managed-dependencies.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -46,7 +47,11 @@ class WranglerD1PreparedStatement implements D1PreparedStatementLike {
 			args.splice(3, 0, '--local', '--persist-to', this.persistTo);
 		}
 
-		const { stdout } = await execFileAsync('wrangler', args, {
+		const wrangler = resolveTreeseedToolCommand('wrangler');
+		if (!wrangler) {
+			throw new Error('Wrangler CLI is unavailable.');
+		}
+		const { stdout } = await execFileAsync(wrangler.command, [...wrangler.argsPrefix, ...args], {
 			cwd: this.cwd,
 			env: process.env,
 		});

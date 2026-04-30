@@ -66,6 +66,10 @@ import { repoRoot } from '../../operations/services/workspace-save.ts';
 import { run } from '../../operations/services/workspace-tools.ts';
 import { resolveTreeseedWorkflowState } from '../../workflow-state.ts';
 import { TreeseedWorkflowError, TreeseedWorkflowSdk } from '../../workflow.ts';
+import {
+	formatTreeseedDependencyReport,
+	installTreeseedDependencies,
+} from '../../managed-dependencies.ts';
 
 function operationResult<TPayload>(
 	metadata: TreeseedOperationMetadata,
@@ -81,6 +85,7 @@ function operationResult<TPayload>(
 		exitCode: options.exitCode ?? (options.ok === false ? 1 : 0),
 		stdout: options.stdout,
 		stderr: options.stderr,
+		report: options.report,
 	};
 }
 
@@ -371,6 +376,30 @@ class DoctorOperation extends BaseOperation {
 	}
 }
 
+class InstallOperation extends BaseOperation<{ force?: boolean }> {
+	async execute(input: { force?: boolean }, context: TreeseedOperationContext) {
+		const result = await installTreeseedDependencies({
+			tenantRoot: context.cwd,
+			force: input.force === true,
+			env: context.env,
+			write: context.outputFormat === 'json' ? undefined : context.write,
+		});
+		const stdout = [formatTreeseedDependencyReport(result)];
+		return operationResult(this.metadata, result, {
+			ok: result.ok,
+			exitCode: result.ok ? 0 : 1,
+			stdout,
+			report: {
+				ok: result.ok,
+				toolsHome: result.toolsHome,
+				ghConfigDir: result.ghConfigDir,
+				npmInstalls: result.npmInstalls,
+				tools: result.reports,
+			},
+		});
+	}
+}
+
 class AuthLoginOperation extends BaseOperation {
 	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
 		const tenantRoot = context.cwd;
@@ -644,6 +673,7 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 			new TemplateOperation('template'),
 			new SyncTemplateOperation('sync'),
 			new DoctorOperation('doctor'),
+			new InstallOperation('install'),
 			new AuthLoginOperation('auth:login'),
 			new AuthLogoutOperation('auth:logout'),
 			new AuthWhoAmIOperation('auth:whoami'),

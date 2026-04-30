@@ -7,6 +7,7 @@ import {
 	fixtureWranglerConfig,
 	corePackageRoot,
 } from './runtime-paths.ts';
+import { resolveTreeseedToolCommand } from '../../managed-dependencies.ts';
 
 function mergeEnv(extraEnv = {}) {
 	return { ...process.env, ...extraEnv };
@@ -85,9 +86,13 @@ export function prepareCloudflareLocalRuntime({ envOverrides = {}, persistTo, ou
 }
 
 export function startWranglerDev(args = [], options = {}) {
+	const wrangler = resolveTreeseedToolCommand('wrangler');
+	if (!wrangler) {
+		throw new Error('Wrangler CLI is unavailable.');
+	}
 	return spawnProcess(
-		'wrangler',
-		['dev', '--local', '--config', fixtureWranglerConfig, ...args],
+		wrangler.command,
+		[...wrangler.argsPrefix, 'dev', '--local', '--config', fixtureWranglerConfig, ...args],
 		{
 			...options,
 			cwd: options.cwd ?? fixtureRoot,

@@ -88,6 +88,7 @@ export type TreeseedOperationResult<TPayload = Record<string, unknown>> = {
 	exitCode?: number;
 	stdout?: string[];
 	stderr?: string[];
+	report?: Record<string, unknown> | null;
 };
 
 export type TreeseedOperationWriter = (output: string, stream?: 'stdout' | 'stderr') => void;

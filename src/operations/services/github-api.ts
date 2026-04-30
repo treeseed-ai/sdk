@@ -2,6 +2,7 @@ import { Buffer } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { Octokit } from 'octokit';
+import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../../managed-dependencies.ts';
 
 const require = createRequire(import.meta.url);
 const sodium = require('libsodium-wrappers');
@@ -629,8 +630,12 @@ export function upsertGitHubRepositoryVariableWithGhCli(
 		GH_TOKEN: token,
 		GITHUB_TOKEN: token,
 	};
+	const gh = resolveTreeseedToolBinary('gh', { env: ghEnv });
+	if (!gh) {
+		throw new Error('GitHub CLI `gh` is unavailable.');
+	}
 	const create = spawnSync(
-		'gh',
+		gh,
 		[
 			'api',
 			`repos/${owner}/${repo}/actions/variables`,
@@ -641,7 +646,7 @@ export function upsertGitHubRepositoryVariableWithGhCli(
 			'-f',
 			`value=${value}`,
 		],
-		{ encoding: 'utf8', env: ghEnv },
+		{ encoding: 'utf8', env: createTreeseedManagedToolEnv(ghEnv) },
 	);
 	if (create.status === 0) {
 		return;
@@ -651,7 +656,7 @@ export function upsertGitHubRepositoryVariableWithGhCli(
 		throw new Error(combinedCreateOutput || `gh api exited with status ${create.status ?? 1}`);
 	}
 	const update = spawnSync(
-		'gh',
+		gh,
 		[
 			'api',
 			`repos/${owner}/${repo}/actions/variables/${name}`,
@@ -662,7 +667,7 @@ export function upsertGitHubRepositoryVariableWithGhCli(
 			'-f',
 			`value=${value}`,
 		],
-		{ encoding: 'utf8', env: ghEnv },
+		{ encoding: 'utf8', env: createTreeseedManagedToolEnv(ghEnv) },
 	);
 	if (update.status === 0) {
 		return;
