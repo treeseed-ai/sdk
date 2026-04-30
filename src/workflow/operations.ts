@@ -3063,13 +3063,13 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				const effectiveVersions = releasePlanVersionMap(releasePlan.plannedVersions as Record<string, unknown>);
 				const rootVersion = String(releasePlan.rootVersion);
 
+				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
 				assertReleaseGitHubAutomationReady(root, effectiveSelectedPackageNames);
 				if (!isResume) {
 					assertSessionBranchSafety('release', session, { requireCleanPackages: true, requireCurrentBranch: true });
 					assertCleanWorktree(root);
 				}
 				prepareReleaseBranches(root);
-				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
 				runWorkspaceSavePreflight({ cwd: root });
 				await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
 					unlinkWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto'));
