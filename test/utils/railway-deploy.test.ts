@@ -169,7 +169,7 @@ describe('railway scheduled jobs', () => {
 		expect(result).toEqual([]);
 	});
 
-	it('passes project and environment selectors to Railway deploys', () => {
+	it('detaches Railway deploys from build log streaming by default', () => {
 		const plan = planRailwayServiceDeploy({
 			projectId: 'railway-project-1',
 			serviceName: 'acme-docs-api',
@@ -183,7 +183,7 @@ describe('railway scheduled jobs', () => {
 				'up',
 				'--service',
 				'acme-docs-api',
-				'--ci',
+				'--detach',
 				'--project',
 				'railway-project-1',
 				'--environment',
@@ -191,6 +191,17 @@ describe('railway scheduled jobs', () => {
 			],
 			cwd: '.',
 		});
+	});
+
+	it('supports attached Railway build logs when explicitly requested', () => {
+		const plan = planRailwayServiceDeploy({
+			serviceName: 'acme-docs-api',
+			railwayEnvironment: 'staging',
+			rootDir: '.',
+		}, { env: { TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS: '1' } });
+
+		expect(plan.args).toContain('--ci');
+		expect(plan.args).not.toContain('--detach');
 	});
 
 	it('treats Railway build log retrieval failures as transient deploy failures', () => {

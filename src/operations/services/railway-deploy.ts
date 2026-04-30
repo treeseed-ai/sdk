@@ -984,8 +984,17 @@ export async function verifyRailwayScheduledJobs(
 	};
 }
 
-export function planRailwayServiceDeploy(service) {
-	const args = ['up', '--service', service.serviceName ?? service.serviceId, '--ci'];
+function shouldAttachRailwayDeployLogs(env = process.env) {
+	return configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS') === '1';
+}
+
+export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
+	const args = [
+		'up',
+		'--service',
+		service.serviceName ?? service.serviceId,
+		shouldAttachRailwayDeployLogs(env) ? '--ci' : '--detach',
+	];
 	if (service.projectId) {
 		args.push('--project', service.projectId);
 	}
@@ -1108,7 +1117,7 @@ export async function deployRailwayService(
 	} = {},
 ) {
 	if (dryRun) {
-		const plan = planRailwayServiceDeploy(service);
+		const plan = planRailwayServiceDeploy(service, { env });
 		return {
 			service: service.key,
 			status: 'planned',
@@ -1118,7 +1127,7 @@ export async function deployRailwayService(
 		};
 	}
 	const deployService = await resolveRailwayDeployProjectContext(service, { env });
-	const plan = planRailwayServiceDeploy(deployService);
+	const plan = planRailwayServiceDeploy(deployService, { env });
 
 	const taskPrefix = prefix ?? {
 		scope: normalizeScope(deployService.scope ?? deployService.railwayEnvironment ?? 'railway'),
