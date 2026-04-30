@@ -122,6 +122,8 @@ function writePackageFiles(root: string, dirName: string, dependencies: Record<s
 	}, null, 2), 'utf8');
 	writeFileSync(resolve(root, 'README.md'), `# ${dirName}\n`, 'utf8');
 	writeFileSync(resolve(root, 'index.js'), `export const name = '${dirName}';\n`, 'utf8');
+	mkdirSync(resolve(root, '.github', 'workflows'), { recursive: true });
+	writeFileSync(resolve(root, '.github', 'workflows', 'publish.yml'), 'name: Publish\non:\n  push:\n    branches: [main]\njobs:\n  publish:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo publish\n', 'utf8');
 }
 
 function createPackageRepo(root: string, dirName: string, dependencies: Record<string, string> = {}) {
@@ -599,6 +601,53 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'cli'), ['tag', '--list', '*-dev.*'])).toBe('');
 		expect(result.payload.publishWait.every((entry) => entry.status === 'skipped')).toBe(true);
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
+	}, 90000);
+
+	it('auto-resumes the newest failed same-staging-state release with the original input', async () => {
+		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = workflowFor(work);
+		await workflow.switchTask({ branch: 'feature/demo-task' });
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-release-auto-resume";\n', 'utf8');
+		writeFileSync(resolve(work, 'feature.txt'), 'demo\nrelease auto resume\n', 'utf8');
+		await workflow.save({
+			message: 'feat: release auto resume sdk change',
+			verify: false,
+			refreshPreview: false,
+		});
+		await workflow.stage({
+			message: 'stage: release auto resume sdk change',
+			waitForStaging: false,
+		});
+		const rootPackageJsonPath = resolve(work, 'package.json');
+		const rootPackageJson = JSON.parse(readFileSync(rootPackageJsonPath, 'utf8'));
+		const sdkDevVersion = JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version;
+		rootPackageJson.dependencies = {
+			...(rootPackageJson.dependencies ?? {}),
+			'@treeseed/sdk': `git+file://${packages!.sdk.origin}#${sdkDevVersion}`,
+		};
+		writeFileSync(rootPackageJsonPath, `${JSON.stringify(rootPackageJson, null, 2)}\n`, 'utf8');
+		git(work, ['add', 'package.json']);
+		git(work, ['commit', '-m', 'stage: root package dependency']);
+		git(work, ['push', 'origin', 'staging']);
+
+		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'live');
+		vi.stubEnv('GH_TOKEN', '');
+		vi.stubEnv('GITHUB_TOKEN', '');
+		await expect(workflow.release({ bump: 'patch' })).rejects.toThrow('Configure GH_TOKEN');
+		const recoverResult = await workflow.recover();
+		const runId = recoverResult.payload.interruptedRuns[0]?.runId;
+		expect(runId).toMatch(/^release-/);
+
+		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
+		const autoResumeResult = await workflow.release({ bump: 'minor' });
+
+		expect(autoResumeResult.runId).toBe(runId);
+		expect(autoResumeResult.payload.resumed).toBe(true);
+		expect(autoResumeResult.payload.resumedRunId).toBe(runId);
+		expect(autoResumeResult.payload.autoResumed).toBe(true);
+		expect(autoResumeResult.payload.level).toBe('patch');
+		expect(autoResumeResult.payload.rootVersion).toBe('1.0.1');
+		expect(JSON.parse(git(resolve(work, 'packages', 'sdk'), ['show', 'main:package.json'])).version).toBe('0.4.13');
 	}, 90000);
 
 	it('returns a recursive release plan without mutating package or market state', async () => {

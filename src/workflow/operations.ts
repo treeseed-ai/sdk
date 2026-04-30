@@ -927,6 +927,70 @@ function findAutoResumableSaveRun(root: string, branch: string | null) {
 		&& journal.session.branchName === branch) ?? null;
 }
 
+function stringRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === 'object' && !Array.isArray(value)
+		? value as Record<string, unknown>
+		: null;
+}
+
+function releasePlanHead(plan: Record<string, unknown>, repoName: string) {
+	if (repoName === '@treeseed/market') {
+		const rootRepo = stringRecord(plan.rootRepo);
+		return typeof rootRepo?.commitSha === 'string' ? rootRepo.commitSha : null;
+	}
+	const repos = Array.isArray(plan.repos) ? plan.repos : [];
+	for (const repo of repos) {
+		const record = stringRecord(repo);
+		if (record?.name === repoName) {
+			return typeof record.commitSha === 'string' ? record.commitSha : null;
+		}
+	}
+	return null;
+}
+
+function releasePlanMatchesCurrentHeads(plan: Record<string, unknown>, rootRepo: WorkflowRepoReport, packageReports: WorkflowRepoReport[]) {
+	if (releasePlanHead(plan, rootRepo.name) !== rootRepo.commitSha) {
+		return false;
+	}
+	const packageSelection = stringRecord(plan.packageSelection);
+	const selected = Array.isArray(packageSelection?.selected)
+		? packageSelection.selected.filter((name): name is string => typeof name === 'string')
+		: packageReports.map((report) => report.name);
+	for (const name of selected) {
+		const current = packageReports.find((report) => report.name === name);
+		if (!current || releasePlanHead(plan, name) !== current.commitSha) {
+			return false;
+		}
+	}
+	return true;
+}
+
+function releaseRunHasCompletedMutation(journal: TreeseedWorkflowRunJournal) {
+	return journal.steps.some((step) =>
+		step.status === 'completed'
+		&& step.id !== 'release-plan'
+		&& step.id !== 'workspace-unlink');
+}
+
+function findAutoResumableReleaseRun(
+	root: string,
+	branch: string | null,
+	rootRepo: WorkflowRepoReport,
+	packageReports: WorkflowRepoReport[],
+) {
+	if (branch !== STAGING_BRANCH) return null;
+	return listInterruptedWorkflowRuns(root).find((journal) => {
+		if (journal.command !== 'release' || !journal.resumable || journal.session.branchName !== STAGING_BRANCH) {
+			return false;
+		}
+		if (releaseRunHasCompletedMutation(journal)) {
+			return true;
+		}
+		const releasePlan = stringRecord(journal.steps.find((step) => step.id === 'release-plan')?.data);
+		return releasePlan ? releasePlanMatchesCurrentHeads(releasePlan, rootRepo, packageReports) : true;
+	}) ?? null;
+}
+
 async function executeJournalStep<T extends Record<string, unknown> | null>(
 	root: string,
 	runId: string,
@@ -1244,6 +1308,25 @@ function assertReleaseGitHubAutomationReady(root: string, selectedPackageNames: 
 		if (!selectedPackageNames.has(pkg.name)) continue;
 		resolveGitHubRepositorySlug(pkg.dir);
 	}
+}
+
+function assertReleaseGitHubWorkflowSucceeded(packageName: string, workflow: Record<string, unknown> | null | undefined) {
+	if (!workflow || workflow.status !== 'completed') {
+		return;
+	}
+	if (workflow.conclusion === 'success') {
+		return;
+	}
+	const workflowName = typeof workflow.workflow === 'string' ? workflow.workflow : 'publish.yml';
+	const repository = typeof workflow.repository === 'string' ? workflow.repository : packageName;
+	const url = typeof workflow.url === 'string' && workflow.url ? `\n${workflow.url}` : '';
+	const conclusion = typeof workflow.conclusion === 'string' && workflow.conclusion ? workflow.conclusion : 'unknown';
+	workflowError('release', 'github_workflow_failed', `${packageName} ${workflowName} completed with conclusion ${conclusion} in ${repository}.${url}`, {
+		details: {
+			packageName,
+			workflow,
+		},
+	});
 }
 
 function assertSessionBranchSafety(
@@ -2987,15 +3070,25 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 export async function workflowRelease(helpers: WorkflowOperationHelpers, input: TreeseedReleaseInput) {
 	try {
 		return await withContextEnv(helpers.context.env, async () => {
-			const level = input.bump ?? 'patch';
 			const root = resolveProjectRootOrThrow('release', helpers.cwd());
 			const session = resolveTreeseedWorkflowSession(root);
 			const gitRoot = session.gitRoot;
 			const mode = session.mode;
 			const executionMode = normalizeExecutionMode(input);
-			const isResume = Boolean(helpers.context.workflow?.resumeRunId);
 			const rootRepo = createWorkspaceRootRepoReport(root);
 			const packageReports = createWorkspacePackageReports(root);
+			const explicitResumeRunId = helpers.context.workflow?.resumeRunId ?? null;
+			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId
+				? findAutoResumableReleaseRun(root, session.branchName, rootRepo, packageReports)
+				: null;
+			const planAutoResumeRun = executionMode === 'plan'
+				? findAutoResumableReleaseRun(root, session.branchName, rootRepo, packageReports)
+				: null;
+			const effectiveInput = autoResumeRun
+				? (autoResumeRun.input as unknown as TreeseedReleaseInput)
+				: input;
+			const level = effectiveInput.bump ?? 'patch';
+			const isResume = Boolean(explicitResumeRunId || autoResumeRun);
 			const packageSelection = session.packageSelection;
 			const selectedPackageNames = new Set(packageSelection.selected);
 			const blockers = isResume ? [] : collectReleasePlanBlockers(session, mode, packageSelection.selected);
@@ -3010,10 +3103,19 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 			});
 
 			if (executionMode === 'plan') {
-				return buildWorkflowResult('release', root, plannedRelease, {
+				return buildWorkflowResult('release', root, {
+					...plannedRelease,
+					autoResumeCandidate: planAutoResumeRun
+						? {
+							runId: planAutoResumeRun.runId,
+							branch: planAutoResumeRun.session.branchName,
+							failure: planAutoResumeRun.failure,
+						}
+						: null,
+				}, {
 					executionMode,
 					nextSteps: createNextSteps([
-						{ operation: 'release', reason: 'Run without --plan to promote staging into production.', input: { bump: level } },
+						{ operation: 'release', reason: planAutoResumeRun ? `Run without --plan to resume ${planAutoResumeRun.runId}.` : 'Run without --plan to promote staging into production.', input: { bump: level } },
 					]),
 				});
 			}
@@ -3029,10 +3131,10 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				session,
 				{
 					bump: level,
-					devTagCleanup: input.devTagCleanup ?? 'safe-after-release',
-					gitDependencyProtocol: input.gitDependencyProtocol ?? 'preserve-origin',
-					gitRemoteWriteMode: input.gitRemoteWriteMode ?? 'ssh-pushurl',
-					workspaceLinks: input.workspaceLinks ?? 'auto',
+					devTagCleanup: effectiveInput.devTagCleanup ?? 'safe-after-release',
+					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
+					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
+					workspaceLinks: effectiveInput.workspaceLinks ?? 'auto',
 				},
 				[
 					{ id: 'release-plan', description: 'Record release plan', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
@@ -3053,8 +3155,19 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						? [{ id: 'cleanup-dev-tags', description: 'Clean replaced dev package tags', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true }]
 						: []),
 				],
-				helpers.context,
+				autoResumeRun
+					? {
+						...helpers.context,
+						workflow: {
+							...(helpers.context.workflow ?? {}),
+							resumeRunId: autoResumeRun.runId,
+						},
+					}
+					: helpers.context,
 			);
+			if (autoResumeRun) {
+				helpers.write(`[workflow][resume] Resuming interrupted release ${autoResumeRun.runId} on ${STAGING_BRANCH}.`);
+			}
 
 			try {
 				const releasePlan = await executeJournalStep(root, workflowRun.runId, 'release-plan', () => plannedRelease) as typeof plannedRelease;
@@ -3072,7 +3185,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				prepareReleaseBranches(root);
 				runWorkspaceSavePreflight({ cwd: root });
 				await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
-					unlinkWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto'));
+					unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
 
 				if (mode === 'root-only') {
 					const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
@@ -3095,11 +3208,14 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					rootRepo.branch = PRODUCTION_BRANCH;
 					rootRepo.commitSha = String(rootRelease?.releasedCommit ?? headCommit(gitRoot));
 					rootRepo.tagName = String(rootRelease?.rootVersion ?? '');
-					const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
+					const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 					const payload = {
 						mode,
 						mergeStrategy: 'merge-commit',
 						level,
+						resumed: workflowRun.resumed,
+						resumedRunId: workflowRun.resumed ? workflowRun.runId : null,
+						autoResumed: autoResumeRun != null,
 						rootVersion: String(rootRelease?.rootVersion ?? ''),
 						releaseTag: String(rootRelease?.rootVersion ?? ''),
 						releasedCommit: String(rootRelease?.releasedCommit ?? rootRepo.commitSha ?? ''),
@@ -3194,6 +3310,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							headSha: mergeResult.commitSha,
 							branch: PRODUCTION_BRANCH,
 						});
+						assertReleaseGitHubWorkflowSucceeded(pkg.name, publish);
 						syncBranchWithOrigin(pkg.dir, STAGING_BRANCH);
 						return {
 							commitSha: mergeResult.commitSha,
@@ -3250,7 +3367,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				rootRepo.branch = PRODUCTION_BRANCH;
 				rootRepo.commitSha = String(rootRelease?.releasedCommit ?? headCommit(gitRoot));
 				rootRepo.tagName = String(rootRelease?.rootVersion ?? '');
-				const devTagCleanupMode = (input.devTagCleanup ?? 'safe-after-release') as DevTagCleanupMode;
+				const devTagCleanupMode = (effectiveInput.devTagCleanup ?? 'safe-after-release') as DevTagCleanupMode;
 				const devTagCleanup = devTagCleanupMode === 'off'
 					? (skipJournalStep(root, workflowRun.runId, 'cleanup-dev-tags', { status: 'skipped', reason: 'disabled' }), { status: 'skipped', reason: 'disabled' })
 					: await executeJournalStep(root, workflowRun.runId, 'cleanup-dev-tags', () => {
@@ -3278,11 +3395,14 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						}
 						return { status: 'completed', repos: cleanupReports };
 					});
-				const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
+				const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 				const payload = {
 					mode,
 					mergeStrategy: 'merge-commit',
 					level,
+					resumed: workflowRun.resumed,
+					resumedRunId: workflowRun.resumed ? workflowRun.runId : null,
+					autoResumed: autoResumeRun != null,
 					rootVersion: String(rootRelease?.rootVersion ?? ''),
 					releaseTag: String(rootRelease?.rootVersion ?? ''),
 					releasedCommit: String(rootRelease?.releasedCommit ?? rootRepo.commitSha ?? ''),
@@ -3312,7 +3432,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					]),
 				});
 			} catch (error) {
-				ensureWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
+				ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 				failWorkflowRun(root, workflowRun.runId, error, {
 					resumable: true,
 					runId: workflowRun.runId,
