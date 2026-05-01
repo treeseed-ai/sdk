@@ -1184,11 +1184,12 @@ function shouldSkipReleaseInstall() {
 	return process.env.TREESEED_GITHUB_AUTOMATION_MODE === 'stub' || process.env.TREESEED_SAVE_NPM_INSTALL_MODE === 'skip';
 }
 
-function runReleaseNpmInstall(repoDir: string) {
+function runReleaseNpmInstall(repoDir: string, options: { workspaceRoot?: string } = {}) {
 	if (shouldSkipReleaseInstall()) {
 		return { status: 'skipped', reason: 'stubbed' };
 	}
-	run('npm', ['install'], { cwd: repoDir });
+	const args = repoDir === options.workspaceRoot ? ['install'] : ['install', '--workspaces=false'];
+	run('npm', args, { cwd: repoDir });
 	return { status: 'completed', reason: null };
 }
 
@@ -3260,13 +3261,13 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					applyStableWorkspaceVersionChanges(root, effectiveVersions);
 					setRootPackageJsonVersion(root, rootVersion);
 					const releaseInstalls: Array<Record<string, unknown>> = [
-						{ name: '@treeseed/market', ...runReleaseNpmInstall(root) },
+						{ name: '@treeseed/market', ...runReleaseNpmInstall(root, { workspaceRoot: root }) },
 					];
 					for (const pkg of checkedOutWorkspacePackageRepos(root)) {
 						if (effectiveSelectedPackageNames.has(pkg.name)) {
 							releaseInstalls.push({
 								name: pkg.name,
-								...runReleaseNpmInstall(pkg.dir),
+								...runReleaseNpmInstall(pkg.dir, { workspaceRoot: root }),
 							});
 						}
 					}
