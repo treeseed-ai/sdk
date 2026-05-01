@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import {
 	applyTreeseedEnvironmentToProcess,
@@ -1191,6 +1191,25 @@ function runReleaseNpmInstall(repoDir: string, options: { workspaceRoot?: string
 	const args = repoDir === options.workspaceRoot ? ['install'] : ['install', '--workspaces=false'];
 	run('npm', args, { cwd: repoDir });
 	return { status: 'completed', reason: null };
+}
+
+function pathIsWithin(parent: string, candidate: string) {
+	const path = relative(parent, candidate);
+	return path === '' || (!path.startsWith('..') && !isAbsolute(path));
+}
+
+function assertNoInternalDevReferencesForRepo(root: string, repoDir: string, packageNames: Set<string>) {
+	const issues = collectInternalDevReferenceIssues(root, packageNames)
+		.filter((issue) => {
+			if (!pathIsWithin(repoDir, issue.filePath)) return false;
+			if (repoDir !== root) return true;
+			return !relative(root, issue.filePath).includes('/');
+		});
+	if (issues.length === 0) return;
+	const rendered = issues
+		.map((issue) => `${issue.filePath}${issue.field ? ` ${issue.field}.${issue.dependencyName}` : ''}: ${issue.reason} ${issue.spec}`)
+		.join('\n');
+	throw new Error(`Stable release still contains internal Git/dev dependency references.\n${rendered}`);
 }
 
 function collectActiveDevTagReferences(root: string) {
@@ -3263,15 +3282,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					const releaseInstalls: Array<Record<string, unknown>> = [
 						{ name: '@treeseed/market', ...runReleaseNpmInstall(root, { workspaceRoot: root }) },
 					];
-					for (const pkg of checkedOutWorkspacePackageRepos(root)) {
-						if (effectiveSelectedPackageNames.has(pkg.name)) {
-							releaseInstalls.push({
-								name: pkg.name,
-								...runReleaseNpmInstall(pkg.dir, { workspaceRoot: root }),
-							});
-						}
-					}
-					assertNoInternalDevReferences(root, effectiveSelectedPackageNames);
+					assertNoInternalDevReferencesForRepo(root, root, effectiveSelectedPackageNames);
 					return {
 						releasedPackageDevTags,
 						replacedDevReferences,
@@ -3293,6 +3304,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					}
 					const releasedPackage = await executeJournalStep(root, workflowRun.runId, `release-${report.name}`, async () => {
 						checkoutBranch(pkg.dir, STAGING_BRANCH);
+						releaseInstalls.push({
+							name: pkg.name,
+							...runReleaseNpmInstall(pkg.dir, { workspaceRoot: root }),
+						});
+						assertNoInternalDevReferencesForRepo(root, pkg.dir, effectiveSelectedPackageNames);
 						if (hasMeaningfulChanges(pkg.dir)) {
 							run('git', ['add', '-A'], { cwd: pkg.dir });
 							run('git', ['commit', '-m', `release: ${effectiveVersions.get(pkg.name)}`], { cwd: pkg.dir });
@@ -3332,6 +3348,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						...(releasedPackage?.publish as Record<string, unknown> | undefined ?? {}),
 					});
 				}
+				assertNoInternalDevReferences(root, effectiveSelectedPackageNames);
 
 				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
 					setRootPackageJsonVersion(root, rootVersion);
