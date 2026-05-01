@@ -295,6 +295,13 @@ function runCapturedCommand(
 	return stdout;
 }
 
+function isNoOpGitCommitError(error: unknown) {
+	if (!(error instanceof RepositorySaveError)) return false;
+	const command = typeof error.details?.command === 'string' ? error.details.command : '';
+	if (!command.startsWith('git commit ')) return false;
+	return /nothing to commit|no changes added to commit/u.test(error.message);
+}
+
 function runQuietCommand(
 	node: Pick<RepositorySaveNode, 'name' | 'path'>,
 	phase: string,
@@ -1702,7 +1709,39 @@ async function saveOneRepository(
 	report.commitMessageFallbackUsed = messageResult.fallbackUsed;
 	report.commitMessageError = messageResult.error;
 	emitProgress(options, node, 'message', `${messageResult.provider}${messageResult.fallbackUsed ? ' fallback' : ''}: ${messageResult.message.split(/\r?\n/u)[0]}`);
-	runCapturedCommand(node, options, 'commit', 'git', ['commit', '-m', messageResult.message]);
+	try {
+		runCapturedCommand(node, options, 'commit', 'git', ['commit', '-m', messageResult.message]);
+	} catch (error) {
+		if (
+			!isNoOpGitCommitError(error)
+			|| hasMeaningfulChanges(node.path)
+			|| hasStagedChanges(node.path)
+		) {
+			throw error;
+		}
+		report.dirty = false;
+		report.skippedReason = 'clean-at-commit';
+		report.commitSha = headCommit(node.path);
+		emitProgress(options, node, 'clean', 'No changes remained to commit after Git refreshed the index.');
+		if (node.kind === 'package') {
+			const finalized = await finalizeCleanPackageVersion(node, options, state, report, branch);
+			if (finalized) {
+				return report;
+			}
+		}
+		if (node.id === '.') {
+			const rebase = pullRebaseFromOrigin(node, options, branch);
+			const push = pushCurrentBranch(node, options, branch);
+			report.pushed = push.pushed;
+			report.publishWait = {
+				...rebase,
+				...push,
+			};
+			report.commitSha = headCommit(node.path);
+		}
+		state.finalizedCommits.set(node.relativePath, report.commitSha);
+		return report;
+	}
 	report.committed = true;
 
 	const rebase = pullRebaseFromOrigin(node, options, branch);
