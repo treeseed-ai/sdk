@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.6.8",
+  "version": "0.6.9-dev.staging.20260501T060052Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -34,7 +34,7 @@
     "setup:ci": "npm ci",
     "build": "npm run build:dist",
     "build:dist": "node ./scripts/run-ts.mjs ./scripts/build-dist.ts",
-    "prepare": "npm run build:dist",
+    "prepare": "node ./scripts/prepare.mjs",
     "prepack": "npm run build:dist",
     "test": "npm run test:unit",
     "test:unit": "vitest run --config ./vitest.config.ts",

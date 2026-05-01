@@ -1268,7 +1268,7 @@ function buildReleasePlanSnapshot(input: {
 		plannedPublishWaits: input.packageSelection.selected.map((name) => ({
 			name,
 			workflow: 'publish.yml',
-			branch: PRODUCTION_BRANCH,
+			branch: String(plannedVersions[name] ?? PRODUCTION_BRANCH),
 			status: 'planned',
 		})),
 		touchedPackages: input.packageSelection.selected,
@@ -3325,7 +3325,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						const publish = await waitForGitHubWorkflowCompletion(pkg.dir, {
 							workflow: 'publish.yml',
 							headSha: mergeResult.commitSha,
-							branch: PRODUCTION_BRANCH,
+							branch: tagName,
 						});
 						assertReleaseGitHubWorkflowSucceeded(pkg.name, publish);
 						syncBranchWithOrigin(pkg.dir, STAGING_BRANCH);
