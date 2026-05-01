@@ -42,7 +42,8 @@ import {
 	validateRailwayServiceConfiguration,
 	verifyRailwayScheduledJobs,
 } from './railway-deploy.ts';
-import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin } from './runtime-tools.ts';
+import { loadCliDeployConfig, packageScriptPath } from './runtime-tools.ts';
+import { resolveTreeseedToolCommand } from '../../managed-dependencies.ts';
 import { CloudflareQueuePullClient, CloudflareQueuePushClient } from '../../remote.ts';
 import type { TreeseedRunnableBootstrapSystem } from '../../reconcile/index.ts';
 import { runPrefixedCommand, runTreeseedBootstrapDag, sleep, writeTreeseedBootstrapLine, type TreeseedBootstrapDagNode, type TreeseedBootstrapExecution, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from './bootstrap-runner.ts';
@@ -177,7 +178,11 @@ function runWrangler(
 	extraEnv: Record<string, string | undefined> = {},
 	options: { capture?: boolean; allowFailure?: boolean } = {},
 ) {
-	const result = spawnSync(process.execPath, [resolveWranglerBin(), ...args], {
+	const wrangler = resolveTreeseedToolCommand('wrangler');
+	if (!wrangler) {
+		throw new Error('Wrangler CLI is unavailable.');
+	}
+	const result = spawnSync(wrangler.command, [...wrangler.argsPrefix, ...args], {
 		cwd: tenantRoot,
 		stdio: options.capture ? 'pipe' : 'inherit',
 		encoding: options.capture ? 'utf8' : undefined,
@@ -208,7 +213,11 @@ async function runPrefixedWranglerWithRetry(
 ) {
 	let lastOutput = '';
 	for (let attempt = 1; attempt <= 3; attempt += 1) {
-		const result = await runPrefixedCommand(process.execPath, [resolveWranglerBin(), ...args], {
+		const wrangler = resolveTreeseedToolCommand('wrangler');
+		if (!wrangler) {
+			throw new Error('Wrangler CLI is unavailable.');
+		}
+		const result = await runPrefixedCommand(wrangler.command, [...wrangler.argsPrefix, ...args], {
 			cwd: tenantRoot,
 			env,
 			write,
@@ -1283,13 +1292,17 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		const selectedServices = validation.services.filter((service) =>
 			service.key === 'api' ? selectedSystems.has('api') : selectedSystems.has('agents'),
 		);
+		let previousRailwayDeployNodeId: string | null = null;
 		for (const service of selectedServices) {
 			const system = service.key === 'api' ? 'api' : 'agents';
 			const nodeId = `${system}:${service.key}-railway-deploy`;
 			selectedRailwayServiceKeys.push(service.key);
 			nodes.push({
 				id: nodeId,
-				dependencies: selectedSystems.has('data') ? ['data:d1-migrate'] : [],
+				dependencies: resolveRailwayServiceDeployDependencies({
+					includeDataDependency: selectedSystems.has('data'),
+					previousRailwayDeployNodeId,
+				}),
 				run: async () => {
 					const result = await deployRailwayService(options.tenantRoot, service, {
 						dryRun: options.dryRun,
@@ -1306,6 +1319,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 					return result;
 				},
 			});
+			previousRailwayDeployNodeId = nodeId;
 		}
 	}
 
@@ -1393,6 +1407,19 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		monitor,
 		serviceResults,
 	};
+}
+
+export function resolveRailwayServiceDeployDependencies({
+	includeDataDependency,
+	previousRailwayDeployNodeId,
+}: {
+	includeDataDependency: boolean;
+	previousRailwayDeployNodeId?: string | null;
+}) {
+	return [
+		...(includeDataDependency ? ['data:d1-migrate'] : []),
+		...(previousRailwayDeployNodeId ? [previousRailwayDeployNodeId] : []),
+	];
 }
 
 export async function publishProjectContent(options: ProjectPlatformActionOptions) {

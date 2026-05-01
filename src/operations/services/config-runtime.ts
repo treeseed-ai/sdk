@@ -57,6 +57,11 @@ import {
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin, withProcessCwd } from './runtime-tools.ts';
 import { PRODUCTION_BRANCH, STAGING_BRANCH } from './git-workflow.ts';
 import {
+	createTreeseedManagedToolEnv,
+	resolveTreeseedToolBinary,
+	resolveTreeseedToolCommand,
+} from '../../managed-dependencies.ts';
+import {
 	assertTreeseedKeyAgentResponse,
 	getTreeseedKeyAgentPaths,
 	inspectTreeseedKeyAgentDiagnostics,
@@ -1839,18 +1844,17 @@ function runGh(args, { cwd, dryRun = false, input, env } = {}) {
 	if (dryRun) {
 		return { status: 0, stdout: '', stderr: '' };
 	}
-	const result = spawnSync('gh', args, {
+	const gh = resolveTreeseedToolBinary('gh', { env });
+	if (!gh) {
+		throw new Error('GitHub CLI `gh` is not installed.');
+	}
+	const result = spawnSync(gh, args, {
 		cwd,
 		stdio: input !== undefined ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
 		encoding: 'utf8',
 		input,
 		timeout: 15000,
-		env: {
-			...process.env,
-			...(env ?? {}),
-			GH_PROMPT_DISABLED: '1',
-			GH_NO_UPDATE_NOTIFIER: '1',
-		},
+		env: createTreeseedManagedToolEnv({ ...process.env, ...(env ?? {}) }),
 	});
 	if (result.error?.code === 'ETIMEDOUT') {
 		throw new Error(`gh ${args.join(' ')} timed out`);
@@ -1865,7 +1869,11 @@ function runRailway(args, { cwd, dryRun = false, input } = {}) {
 	if (dryRun) {
 		return { status: 0, stdout: '', stderr: '' };
 	}
-	const result = spawnSync('railway', args, {
+	const railway = resolveTreeseedToolCommand('railway');
+	if (!railway) {
+		throw new Error('Railway CLI is unavailable.');
+	}
+	const result = spawnSync(railway.command, [...railway.argsPrefix, ...args], {
 		cwd,
 		stdio: input !== undefined ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
 		encoding: 'utf8',
@@ -1878,6 +1886,9 @@ function runRailway(args, { cwd, dryRun = false, input } = {}) {
 }
 
 function commandAvailable(command) {
+	if (command === 'gh' || command === 'wrangler' || command === 'railway' || command === 'copilot') {
+		return Boolean(resolveTreeseedToolBinary(command));
+	}
 	const result = spawnSync('bash', ['-lc', `command -v ${command}`], {
 		stdio: 'pipe',
 		encoding: 'utf8',
@@ -1916,10 +1927,12 @@ function toolStatus(name, available, detail, extra = {}) {
 }
 
 export function ensureTreeseedActVerificationTooling({ tenantRoot = process.cwd(), installIfMissing = true, env = process.env, write } = {}) {
-	const githubCli = !commandAvailable('gh')
+	const managedEnv = createTreeseedManagedToolEnv(env);
+	const ghBinary = resolveTreeseedToolBinary('gh', { env: managedEnv });
+	const githubCli = !ghBinary
 		? toolStatus('githubCli', false, 'GitHub CLI `gh` is not installed.')
 		: (() => {
-			const check = checkCommand('gh', ['--version'], { cwd: tenantRoot, env });
+			const check = checkCommand(ghBinary, ['--version'], { cwd: tenantRoot, env: managedEnv });
 			return toolStatus('githubCli', check.ok, check.ok ? check.stdout.split('\n')[0] ?? 'GitHub CLI detected.' : (check.detail || 'GitHub CLI check failed.'));
 		})();
 
@@ -1947,7 +1960,10 @@ export function ensureTreeseedActVerificationTooling({ tenantRoot = process.cwd(
 			);
 		}
 	})();
-	const railwayCheck = checkCommand('railway', ['--version'], { cwd: tenantRoot, env });
+	const railwayCommand = resolveTreeseedToolCommand('railway', { env });
+	const railwayCheck = railwayCommand
+		? checkCommand(railwayCommand.command, [...railwayCommand.argsPrefix, '--version'], { cwd: tenantRoot, env })
+		: { ok: false, stdout: '', detail: 'Railway CLI is unavailable.' };
 	const railwayCli = toolStatus(
 		'railwayCli',
 		railwayCheck.ok,
@@ -1956,17 +1972,17 @@ export function ensureTreeseedActVerificationTooling({ tenantRoot = process.cwd(
 			: railwayCheck.detail || 'Railway CLI is unavailable.',
 	);
 
-	if (githubCli.available) {
-		const check = checkCommand('gh', ['act', '--version'], { cwd: tenantRoot, env });
+	if (githubCli.available && ghBinary) {
+		const check = checkCommand(ghBinary, ['act', '--version'], { cwd: tenantRoot, env: managedEnv });
 		if (check.ok) {
 			ghActExtension = toolStatus('ghActExtension', true, check.stdout.split('\n')[0] ?? 'gh-act is installed.', {
 				attemptedInstall: false,
 				installedDuringConfig: false,
 			});
-		} else if (installIfMissing) {
+		} else if (installIfMissing && commandAvailable('docker')) {
 			write?.('Installing GitHub CLI extension `gh-act`...');
-			const install = checkCommand('gh', ['extension', 'install', 'https://github.com/nektos/gh-act'], { cwd: tenantRoot, env });
-			const postInstall = checkCommand('gh', ['act', '--version'], { cwd: tenantRoot, env });
+			const install = checkCommand(ghBinary, ['extension', 'install', 'https://github.com/nektos/gh-act'], { cwd: tenantRoot, env: managedEnv });
+			const postInstall = checkCommand(ghBinary, ['act', '--version'], { cwd: tenantRoot, env: managedEnv });
 			ghActExtension = toolStatus(
 				'ghActExtension',
 				postInstall.ok,
@@ -1979,6 +1995,11 @@ export function ensureTreeseedActVerificationTooling({ tenantRoot = process.cwd(
 					installStatus: install.status,
 				},
 			);
+		} else if (installIfMissing) {
+			ghActExtension = toolStatus('ghActExtension', false, 'Docker is not on PATH, so gh-act installation was skipped.', {
+				attemptedInstall: false,
+				installedDuringConfig: false,
+			});
 		} else {
 			ghActExtension = toolStatus('ghActExtension', false, check.detail || 'GitHub CLI extension `gh-act` is not installed.', {
 				attemptedInstall: false,
@@ -2045,7 +2066,8 @@ function checkGitHubConnection({ tenantRoot, env }) {
 	if (!env.GH_TOKEN) {
 		return providerConnectionResult('github', false, 'GH_TOKEN is not configured.', { skipped: true });
 	}
-	if (!commandAvailable('gh')) {
+	const gh = resolveTreeseedToolBinary('gh', { env });
+	if (!gh) {
 		return providerConnectionResult('github', false, 'GitHub CLI `gh` is not installed.');
 	}
 	const repository = maybeResolveGitHubRepositorySlug(tenantRoot);
@@ -2053,11 +2075,11 @@ function checkGitHubConnection({ tenantRoot, env }) {
 		? ['repo', 'view', repository, '--json', 'nameWithOwner', '--jq', '.nameWithOwner']
 		: ['api', 'user', '--jq', '.login'];
 	for (let attempt = 0; attempt < 3; attempt += 1) {
-		const result = spawnSync('gh', args, {
+		const result = spawnSync(gh, args, {
 			cwd: tenantRoot,
 			stdio: 'pipe',
 			encoding: 'utf8',
-			env: { ...process.env, ...env },
+			env: createTreeseedManagedToolEnv({ ...process.env, ...env }),
 			timeout: CLI_CHECK_TIMEOUT_MS,
 		});
 		if (result.status === 0) {
@@ -2130,7 +2152,10 @@ async function checkRailwayConnection({ tenantRoot, env }) {
 	const checkPromise = (async () => {
 		for (let attempt = 0; attempt < 3; attempt += 1) {
 			try {
-				const whoami = checkCommand('railway', ['whoami'], { cwd: tenantRoot, env });
+				const railwayCommand = resolveTreeseedToolCommand('railway', { env });
+				const whoami = railwayCommand
+					? checkCommand(railwayCommand.command, [...railwayCommand.argsPrefix, 'whoami'], { cwd: tenantRoot, env })
+					: { ok: false, stdout: '', detail: 'Railway CLI is unavailable.' };
 				if (!whoami.ok) {
 					if (/rate.?limit|too many requests|429/iu.test(whoami.detail || '')) {
 						return providerConnectionResult(

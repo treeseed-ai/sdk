@@ -5,7 +5,7 @@ import { changedWorkspacePackages, publishableWorkspacePackages, run, sortWorksp
 export const MERGE_CONFLICT_EXIT_CODE = 12;
 
 function parseSemver(version) {
-	const match = String(version).trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
+	const match = String(version).trim().match(/^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/);
 	if (!match) {
 		throw new Error(`Unsupported version "${version}". Expected x.y.z.`);
 	}
@@ -13,6 +13,7 @@ function parseSemver(version) {
 		major: Number(match[1]),
 		minor: Number(match[2]),
 		patch: Number(match[3]),
+		prerelease: String(version).includes('-'),
 	};
 }
 
@@ -30,6 +31,9 @@ export function incrementVersion(version, level = 'patch') {
 		return `${parsed.major}.${parsed.minor + 1}.0`;
 	}
 	if (level === 'patch') {
+		if (parsed.prerelease) {
+			return `${parsed.major}.${parsed.minor}.${parsed.patch}`;
+		}
 		return `${parsed.major}.${parsed.minor}.${parsed.patch + 1}`;
 	}
 	throw new Error(`Unsupported release bump "${level}". Expected major, minor, or patch.`);
@@ -82,7 +86,7 @@ export function planWorkspaceVersionChanges(root = workspaceRoot()) {
 					if (!versions.has(depName)) {
 						continue;
 					}
-					const nextSpec = `^${versions.get(depName)}`;
+					const nextSpec = `${versions.get(depName)}`;
 					if (pkg.packageJson[field][depName] === nextSpec) {
 						continue;
 					}
@@ -165,7 +169,7 @@ export function planWorkspaceReleaseBump(level = 'patch', root = workspaceRoot()
 				if (!versions.has(depName)) {
 					continue;
 				}
-				pkg.packageJson[field][depName] = `^${versions.get(depName)}`;
+				pkg.packageJson[field][depName] = `${versions.get(depName)}`;
 				touched.add(pkg.name);
 			}
 		}
@@ -194,7 +198,7 @@ export function collectWorkspaceVersionConsistencyIssues(root = workspaceRoot())
 				if (!versions.has(depName)) {
 					continue;
 				}
-				const expectedSpec = `^${versions.get(depName)}`;
+				const expectedSpec = `${versions.get(depName)}`;
 				if (currentSpec !== expectedSpec) {
 					issues.push({
 						packageName: pkg.name,
@@ -288,7 +292,7 @@ export function collectMergeConflictReport(repoDir) {
 
 export function formatMergeConflictReport(report, repoDir, targetBranch = 'main') {
 	const lines = [
-		`Treeseed save failed due to merge conflicts during \`git pull --rebase origin ${targetBranch}\`.`,
+		`Treeseed save failed due to merge conflicts during \`git pull --rebase --recurse-submodules=no origin ${targetBranch}\`.`,
 		`Repository root: ${repoDir}`,
 		`Branch: ${report.branch}`,
 		`Rebase in progress: ${report.rebaseInProgress ? 'yes' : 'no'}`,

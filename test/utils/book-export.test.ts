@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildBookExportManifest, exportBookLibrary, exportBookPackage } from '../../src/platform/book-export.ts';
+import { buildTenantBookRuntime } from '../../src/platform/books-data.ts';
 
 const tempRoots: string[] = [];
 
@@ -103,6 +104,20 @@ afterEach(() => {
 });
 
 describe('book export runtime', () => {
+	it('treats missing book content as an empty runtime library', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-book-runtime-'));
+		tempRoots.push(root);
+
+		const runtime = buildTenantBookRuntime({
+			content: {
+				books: './src/content/books',
+			},
+		}, { projectRoot: root });
+
+		expect(runtime.BOOKS).toEqual([]);
+		expect(runtime.BOOKS_LINK.link).toBe('/knowledge/');
+	});
+
 	it('builds ordered manifests from book definitions and export roots', () => {
 		const root = createBookFixture();
 		const manifest = buildBookExportManifest('alpha-book', { projectRoot: root });

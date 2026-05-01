@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import {
 	applyTreeseedEnvironmentToProcess,
@@ -25,6 +25,7 @@ import {
 	setTreeseedRemoteSession,
 	writeTreeseedMachineConfig,
 } from '../operations/services/config-runtime.ts';
+import { formatTreeseedDependencyFailureDetails, installTreeseedDependencies } from '../managed-dependencies.ts';
 import { ControlPlaneClient } from '../control-plane-client.ts';
 import { exportTreeseedCodebase } from '../operations/services/export-runtime.ts';
 import {
@@ -66,13 +67,12 @@ import {
 	syncBranchWithOrigin,
 	waitForStagingAutomation,
 } from '../operations/services/git-workflow.ts';
-import { waitForGitHubWorkflowCompletion } from '../operations/services/github-automation.ts';
+import { getGitHubAutomationMode, resolveGitHubRepositorySlug, waitForGitHubWorkflowCompletion } from '../operations/services/github-automation.ts';
+import { createGitHubApiClient } from '../operations/services/github-api.ts';
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin } from '../operations/services/runtime-tools.ts';
 import { runTenantDeployPreflight, runWorkspaceSavePreflight } from '../operations/services/save-deploy-preflight.ts';
 import { collectCliPreflight } from '../operations/services/workspace-preflight.ts';
 import {
-	applyWorkspaceVersionChanges,
-	assertWorkspaceVersionConsistency,
 	collectMergeConflictReport,
 	currentBranch,
 	formatMergeConflictReport,
@@ -84,6 +84,30 @@ import {
 	repoRoot,
 } from '../operations/services/workspace-save.ts';
 import {
+	planRepositorySave,
+	refreshAndValidateRootWorkspaceLockfileForSave,
+	repositorySaveErrorDetails,
+	runRepositorySaveOrchestrator,
+	type SaveCommitMessageMode,
+	type SaveDevVersionStrategy,
+	type SaveVerifyMode,
+	type ReleaseBumpLevel,
+} from '../operations/services/repository-save-orchestrator.ts';
+import {
+	assertNoInternalDevReferences,
+	cleanupDevTags,
+	collectInternalDevReferenceIssues,
+	devTagFromDependencySpec,
+	rewriteProjectInternalDependenciesToStableVersions,
+	type DevTagCleanupMode,
+} from '../operations/services/package-reference-policy.ts';
+import {
+	ensureLocalWorkspaceLinks,
+	inspectWorkspaceDependencyMode,
+	unlinkLocalWorkspaceLinks,
+	type WorkspaceLinksMode,
+} from '../operations/services/workspace-dependency-mode.ts';
+import {
 	hasCompleteTreeseedPackageCheckout,
 	changedWorkspacePackages,
 	publishableWorkspacePackages,
@@ -92,7 +116,7 @@ import {
 	workspacePackages,
 	workspaceRoot,
 } from '../operations/services/workspace-tools.ts';
-import { resolveTreeseedWorkflowState } from '../workflow-state.ts';
+import { resolveTreeseedWorkflowState, type TreeseedWorkflowStatusOptions } from '../workflow-state.ts';
 import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, filterTreeseedDesiredUnitsByBootstrapSystems, planTreeseedReconciliation, resolveTreeseedBootstrapSelection, reconcileTreeseedTarget } from '../reconcile/index.ts';
 import {
 	acquireWorkflowLock,
@@ -190,6 +214,66 @@ function defaultWrite(output: string, stream: 'stdout' | 'stderr' = 'stdout') {
 	(stream === 'stderr' ? process.stderr : process.stdout).write(`${output}\n`);
 }
 
+function shouldManageWorkspaceLinks(mode: WorkspaceLinksMode | undefined, env: NodeJS.ProcessEnv | undefined = process.env) {
+	if (mode === 'off') return false;
+	const envMode = String(env?.TREESEED_WORKSPACE_LINKS ?? 'auto').trim().toLowerCase();
+	return envMode !== 'off' && envMode !== 'false' && envMode !== '0';
+}
+
+function ensureWorkflowWorkspaceLinks(root: string, helpers: WorkflowOperationHelpers, mode: WorkspaceLinksMode | undefined = 'auto') {
+	if (!shouldManageWorkspaceLinks(mode, helpers.context.env)) {
+		return inspectWorkspaceDependencyMode(root, { mode: 'off', env: helpers.context.env });
+	}
+	const report = ensureLocalWorkspaceLinks(root, { mode, env: helpers.context.env });
+	if (report.created.length > 0) {
+		helpers.write(`[workspace][link] Linked ${report.created.length} local workspace package paths.`);
+	}
+	return report;
+}
+
+function unlinkWorkflowWorkspaceLinks(root: string, helpers: WorkflowOperationHelpers, mode: WorkspaceLinksMode | undefined = 'auto') {
+	if (!shouldManageWorkspaceLinks(mode, helpers.context.env)) {
+		return inspectWorkspaceDependencyMode(root, { mode: 'off', env: helpers.context.env });
+	}
+	const report = unlinkLocalWorkspaceLinks(root, { mode, env: helpers.context.env });
+	if (report.removed.length > 0) {
+		helpers.write(`[workspace][unlink] Removed ${report.removed.length} local workspace package links for deployment install.`);
+	}
+	return report;
+}
+
+function ensureTreeseedCommandReadiness(root: string) {
+	if (getGitHubAutomationMode() === 'stub') {
+		return {
+			status: 'skipped',
+			reason: 'stubbed',
+			checks: [],
+			missing: [],
+		};
+	}
+	const checks = [
+		{ id: 'sdk', path: resolve(root, 'node_modules/@treeseed/sdk/package.json') },
+		{ id: 'sdk-workflow-support', path: resolve(root, 'node_modules/@treeseed/sdk/dist/workflow-support.js') },
+		{ id: 'core', path: resolve(root, 'node_modules/@treeseed/core/package.json') },
+		{ id: 'core-api', path: resolve(root, 'node_modules/@treeseed/core/dist/api.js') },
+		{ id: 'cli', path: resolve(root, 'node_modules/@treeseed/cli/package.json') },
+		{ id: 'cli-entrypoint', path: resolve(root, 'node_modules/@treeseed/cli/dist/cli/main.js') },
+		{ id: 'trsd-bin', path: resolve(root, 'node_modules/.bin/trsd') },
+	];
+	const missing = checks.filter((check) => !existsSync(check.path));
+	const report = {
+		status: missing.length === 0 ? 'passed' : 'failed',
+		checks: checks.map((check) => ({ ...check, exists: existsSync(check.path) })),
+		missing,
+	};
+	if (missing.length > 0) {
+		workflowError('save', 'validation_failed', `Treeseed save restored workspace links, but command readiness failed.\n${missing.map((check) => `${check.id}: ${check.path}`).join('\n')}`, {
+			details: report,
+		});
+	}
+	return report;
+}
+
 function workflowError(
 	operation: TreeseedWorkflowOperationId,
 	code: TreeseedWorkflowErrorCode,
@@ -205,9 +289,9 @@ function ageDays(lastCommitDate: string) {
 	return Math.max(0, Math.floor((Date.now() - timestamp) / 86_400_000));
 }
 
-function withContextEnv<T>(env: NodeJS.ProcessEnv | undefined, action: () => T): T {
+async function withContextEnv<T>(env: NodeJS.ProcessEnv | undefined, action: () => T | Promise<T>): Promise<T> {
 	if (!env) {
-		return action();
+		return await action();
 	}
 
 	const previous = new Map<string, string | undefined>();
@@ -221,7 +305,7 @@ function withContextEnv<T>(env: NodeJS.ProcessEnv | undefined, action: () => T):
 	}
 
 	try {
-		return action();
+		return await action();
 	} finally {
 		for (const [key, value] of previous.entries()) {
 			if (value === undefined) {
@@ -426,20 +510,103 @@ function ensureLocalReadinessOrThrow(operation: TreeseedWorkflowOperationId, ten
 	return state;
 }
 
-function bumpRootPackageJson(root: string, level: string) {
+function planRootPackageVersion(root: string, level: string) {
 	const packageJsonPath = resolve(root, 'package.json');
 	const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, unknown>;
-	packageJson.version = incrementVersion(String(packageJson.version ?? '0.0.0'), level);
+	return incrementVersion(String(packageJson.version ?? '0.0.0'), level);
+}
+
+function setRootPackageJsonVersion(root: string, version: string) {
+	const packageJsonPath = resolve(root, 'package.json');
+	const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, unknown>;
+	packageJson.version = version;
 	writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
 	return String(packageJson.version);
+}
+
+function writeJsonFile(path: string, value: Record<string, unknown>) {
+	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function applyStableWorkspaceVersionChanges(root: string, versions: Map<string, string>) {
+	for (const pkg of workspacePackages(root)) {
+		const packageJsonPath = resolve(pkg.dir, 'package.json');
+		const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, unknown>;
+		let changed = false;
+		const plannedVersion = versions.get(pkg.name);
+		if (plannedVersion && packageJson.version !== plannedVersion) {
+			packageJson.version = plannedVersion;
+			changed = true;
+		}
+		for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
+			const values = packageJson[field];
+			if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
+			for (const [dependencyName, version] of versions.entries()) {
+				if (!(dependencyName in values)) continue;
+				if (String((values as Record<string, unknown>)[dependencyName]) === version) continue;
+				(values as Record<string, unknown>)[dependencyName] = version;
+				changed = true;
+			}
+		}
+		if (changed) {
+			writeJsonFile(packageJsonPath, packageJson);
+		}
+	}
+}
+
+function gitObjectCommit(repoDir: string, ref: string) {
+	try {
+		return run('git', ['rev-list', '-n', '1', ref], { cwd: repoDir, capture: true }).trim() || null;
+	} catch {
+		return null;
+	}
+}
+
+function remoteTagCommit(repoDir: string, tagName: string) {
+	const output = run('git', ['ls-remote', 'origin', `refs/tags/${tagName}`, `refs/tags/${tagName}^{}`], { cwd: repoDir, capture: true }).trim();
+	if (!output) return null;
+	const peeled = output.split('\n').find((line) => line.endsWith(`refs/tags/${tagName}^{}`));
+	const direct = output.split('\n').find((line) => line.endsWith(`refs/tags/${tagName}`));
+	return (peeled ?? direct)?.split(/\s+/u)[0] ?? null;
+}
+
+function ensureReleaseTag(repoDir: string, tagName: string, commitSha: string) {
+	const localCommit = gitObjectCommit(repoDir, tagName);
+	if (localCommit && localCommit !== commitSha) {
+		throw new Error(`Release tag ${tagName} already exists locally at ${localCommit}, expected ${commitSha}.`);
+	}
+	if (!localCommit) {
+		run('git', ['tag', '-a', tagName, commitSha, '-m', `release: ${tagName}`], { cwd: repoDir });
+	}
+	const remoteCommit = remoteTagCommit(repoDir, tagName);
+	if (remoteCommit && remoteCommit !== commitSha) {
+		throw new Error(`Release tag ${tagName} already exists on origin at ${remoteCommit}, expected ${commitSha}.`);
+	}
+	if (!remoteCommit) {
+		run('git', ['push', 'origin', tagName], { cwd: repoDir });
+	}
+	return {
+		tagName,
+		local: localCommit ? 'existing' : 'created',
+		remote: remoteCommit ? 'existing' : 'pushed',
+	};
+}
+
+function commitAllIfChanged(repoDir: string, message: string) {
+	run('git', ['add', '-A'], { cwd: repoDir });
+	if (!hasMeaningfulChanges(repoDir)) {
+		return { committed: false, commitSha: headCommit(repoDir) };
+	}
+	run('git', ['commit', '-m', message], { cwd: repoDir });
+	return { committed: true, commitSha: headCommit(repoDir) };
 }
 
 function createNextSteps(steps: TreeseedWorkflowNextStep[]) {
 	return steps.map(renderWorkflowStep);
 }
 
-function createStatusResult(cwd: string): TreeseedWorkflowResult<ReturnType<typeof resolveTreeseedWorkflowState>> {
-	const state = resolveTreeseedWorkflowState(cwd);
+function createStatusResult(cwd: string, options: TreeseedWorkflowStatusOptions = {}): TreeseedWorkflowResult<ReturnType<typeof resolveTreeseedWorkflowState>> {
+	const state = resolveTreeseedWorkflowState(cwd, options);
 	return buildWorkflowResult('status', cwd, state, {
 		nextSteps: createNextSteps(state.recommendations),
 		includeFinalState: false,
@@ -752,6 +919,78 @@ function nextPendingJournalStep(journal: TreeseedWorkflowRunJournal) {
 	return journal.steps.find((step) => step.status === 'pending') ?? null;
 }
 
+function findAutoResumableSaveRun(root: string, branch: string | null) {
+	if (!branch) return null;
+	return listInterruptedWorkflowRuns(root).find((journal) =>
+		journal.command === 'save'
+		&& journal.resumable
+		&& journal.session.branchName === branch) ?? null;
+}
+
+function stringRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === 'object' && !Array.isArray(value)
+		? value as Record<string, unknown>
+		: null;
+}
+
+function releasePlanHead(plan: Record<string, unknown>, repoName: string) {
+	if (repoName === '@treeseed/market') {
+		const rootRepo = stringRecord(plan.rootRepo);
+		return typeof rootRepo?.commitSha === 'string' ? rootRepo.commitSha : null;
+	}
+	const repos = Array.isArray(plan.repos) ? plan.repos : [];
+	for (const repo of repos) {
+		const record = stringRecord(repo);
+		if (record?.name === repoName) {
+			return typeof record.commitSha === 'string' ? record.commitSha : null;
+		}
+	}
+	return null;
+}
+
+function releasePlanMatchesCurrentHeads(plan: Record<string, unknown>, rootRepo: WorkflowRepoReport, packageReports: WorkflowRepoReport[]) {
+	if (releasePlanHead(plan, rootRepo.name) !== rootRepo.commitSha) {
+		return false;
+	}
+	const packageSelection = stringRecord(plan.packageSelection);
+	const selected = Array.isArray(packageSelection?.selected)
+		? packageSelection.selected.filter((name): name is string => typeof name === 'string')
+		: packageReports.map((report) => report.name);
+	for (const name of selected) {
+		const current = packageReports.find((report) => report.name === name);
+		if (!current || releasePlanHead(plan, name) !== current.commitSha) {
+			return false;
+		}
+	}
+	return true;
+}
+
+function releaseRunHasCompletedMutation(journal: TreeseedWorkflowRunJournal) {
+	return journal.steps.some((step) =>
+		step.status === 'completed'
+		&& step.id !== 'release-plan'
+		&& step.id !== 'workspace-unlink');
+}
+
+function findAutoResumableReleaseRun(
+	root: string,
+	branch: string | null,
+	rootRepo: WorkflowRepoReport,
+	packageReports: WorkflowRepoReport[],
+) {
+	if (branch !== STAGING_BRANCH) return null;
+	return listInterruptedWorkflowRuns(root).find((journal) => {
+		if (journal.command !== 'release' || !journal.resumable || journal.session.branchName !== STAGING_BRANCH) {
+			return false;
+		}
+		if (releaseRunHasCompletedMutation(journal)) {
+			return true;
+		}
+		const releasePlan = stringRecord(journal.steps.find((step) => step.id === 'release-plan')?.data);
+		return releasePlan ? releasePlanMatchesCurrentHeads(releasePlan, rootRepo, packageReports) : true;
+	}) ?? null;
+}
+
 async function executeJournalStep<T extends Record<string, unknown> | null>(
 	root: string,
 	runId: string,
@@ -939,6 +1178,175 @@ function validateStagingWorkflowContracts(root: string) {
 			details: { missing },
 		});
 	}
+}
+
+function shouldSkipReleaseInstall() {
+	return process.env.TREESEED_GITHUB_AUTOMATION_MODE === 'stub' || process.env.TREESEED_SAVE_NPM_INSTALL_MODE === 'skip';
+}
+
+function runReleaseNpmInstall(repoDir: string, options: { workspaceRoot?: string } = {}) {
+	if (shouldSkipReleaseInstall()) {
+		return { status: 'skipped', reason: 'stubbed' };
+	}
+	const args = repoDir === options.workspaceRoot ? ['install'] : ['install', '--workspaces=false'];
+	run('npm', args, { cwd: repoDir });
+	return { status: 'completed', reason: null };
+}
+
+function pathIsWithin(parent: string, candidate: string) {
+	const path = relative(parent, candidate);
+	return path === '' || (!path.startsWith('..') && !isAbsolute(path));
+}
+
+function assertNoInternalDevReferencesForRepo(root: string, repoDir: string, packageNames: Set<string>) {
+	const issues = collectInternalDevReferenceIssues(root, packageNames)
+		.filter((issue) => {
+			if (!pathIsWithin(repoDir, issue.filePath)) return false;
+			if (repoDir !== root) return true;
+			return !relative(root, issue.filePath).includes('/');
+		});
+	if (issues.length === 0) return;
+	const rendered = issues
+		.map((issue) => `${issue.filePath}${issue.field ? ` ${issue.field}.${issue.dependencyName}` : ''}: ${issue.reason} ${issue.spec}`)
+		.join('\n');
+	throw new Error(`Stable release still contains internal Git/dev dependency references.\n${rendered}`);
+}
+
+function collectActiveDevTagReferences(root: string) {
+	return collectInternalDevReferenceIssues(root)
+		.map((issue) => devTagFromDependencySpec(issue.spec) ?? (issue.spec.includes('-dev.') ? issue.spec : null))
+		.filter((value): value is string => Boolean(value));
+}
+
+function releasePlanVersionMap(plannedVersions: Record<string, unknown>) {
+	return new Map(
+		Object.entries(plannedVersions)
+			.filter(([name]) => name !== '@treeseed/market')
+			.map(([name, version]) => [name, String(version)] as const),
+	);
+}
+
+function releasePlanPackageSelection(value: unknown): { changed: string[]; dependents: string[]; selected: string[] } {
+	const record = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+	return {
+		changed: Array.isArray(record.changed) ? record.changed.map(String) : [],
+		dependents: Array.isArray(record.dependents) ? record.dependents.map(String) : [],
+		selected: Array.isArray(record.selected) ? record.selected.map(String) : [],
+	};
+}
+
+function buildReleasePlanSnapshot(input: {
+	root: string;
+	mode: TreeseedWorkflowMode;
+	level: string;
+	packageSelection: { changed: string[]; dependents: string[]; selected: string[] };
+	packageReports: WorkflowRepoReport[];
+	rootRepo: WorkflowRepoReport;
+	blockers: string[];
+}) {
+	const selectedPackageNames = new Set(input.packageSelection.selected);
+	const versionPlan = planWorkspaceReleaseBump(input.level, input.root, input.mode === 'recursive-workspace' ? { selectedPackageNames } : {});
+	const rootVersion = planRootPackageVersion(input.root, input.level);
+	const plannedVersions = {
+		'@treeseed/market': rootVersion,
+		...Object.fromEntries(versionPlan.versions.entries()),
+	};
+	const plannedDevReferenceRewrites = input.mode === 'recursive-workspace'
+		? collectInternalDevReferenceIssues(input.root, selectedPackageNames)
+		: [];
+	return {
+		mode: input.mode,
+		mergeStrategy: 'merge-commit',
+		level: input.level,
+		rootVersion,
+		releaseTag: rootVersion,
+		stagingBranch: STAGING_BRANCH,
+		productionBranch: PRODUCTION_BRANCH,
+		packageSelection: input.packageSelection,
+		plannedVersions,
+		plannedDevReferenceRewrites,
+		plannedPublishWaits: input.packageSelection.selected.map((name) => ({
+			name,
+			workflow: 'publish.yml',
+			branch: PRODUCTION_BRANCH,
+			status: 'planned',
+		})),
+		touchedPackages: input.packageSelection.selected,
+		repos: input.packageReports,
+		rootRepo: input.rootRepo,
+		finalBranch: STAGING_BRANCH,
+		plannedSteps: [
+			{ id: 'release-plan', description: 'Record immutable release plan and target versions' },
+			{ id: 'workspace-unlink', description: 'Remove local workspace links before stable release install' },
+			{ id: 'prepare-release-metadata', description: 'Rewrite package metadata and lockfiles to production dependency mode' },
+			...input.packageReports.filter((report) => selectedPackageNames.has(report.name)).map((report) => ({
+				id: `release-${report.name}`,
+				description: `Release ${report.name} from staging to main and tag ${plannedVersions[report.name] ?? '(planned)'}`,
+			})),
+			{ id: 'release-root', description: `Release market ${rootVersion}` },
+			{ id: 'cleanup-dev-tags', description: 'Clean replaced Treeseed dev tags after stable release' },
+			{ id: 'workspace-link', description: 'Restore local workspace links after release syncs back to staging' },
+		],
+		blockers: input.blockers,
+	};
+}
+
+function collectReleasePlanBlockers(session: TreeseedWorkflowSession, mode: TreeseedWorkflowMode, selectedPackageNames: string[]) {
+	const blockers: string[] = [];
+	if (session.branchName !== STAGING_BRANCH) {
+		blockers.push('Release must start from staging.');
+	}
+	if (session.rootRepo.dirty) {
+		blockers.push('@treeseed/market has uncommitted changes.');
+	}
+	if (!session.rootRepo.hasOriginRemote) {
+		blockers.push('@treeseed/market is missing origin remote.');
+	}
+	if (mode === 'recursive-workspace') {
+		for (const repo of session.packageRepos) {
+			if (!selectedPackageNames.includes(repo.name)) continue;
+			if (repo.detached) blockers.push(`${repo.name} is detached.`);
+			if (repo.branchName !== STAGING_BRANCH) blockers.push(`${repo.name} is on ${repo.branchName ?? '(detached)'} instead of staging.`);
+			if (repo.dirty) blockers.push(`${repo.name} has uncommitted changes.`);
+			if (!repo.hasOriginRemote) blockers.push(`${repo.name} is missing origin remote.`);
+		}
+		try {
+			validatePackageReleaseWorkflows(session.root, selectedPackageNames);
+		} catch (error) {
+			blockers.push(error instanceof Error ? error.message : String(error));
+		}
+	}
+	return blockers;
+}
+
+function assertReleaseGitHubAutomationReady(root: string, selectedPackageNames: Set<string>) {
+	if (process.env.TREESEED_GITHUB_AUTOMATION_MODE === 'stub') {
+		return;
+	}
+	createGitHubApiClient();
+	for (const pkg of checkedOutWorkspacePackageRepos(root)) {
+		if (!selectedPackageNames.has(pkg.name)) continue;
+		resolveGitHubRepositorySlug(pkg.dir);
+	}
+}
+
+function assertReleaseGitHubWorkflowSucceeded(packageName: string, workflow: Record<string, unknown> | null | undefined) {
+	if (!workflow || workflow.status !== 'completed') {
+		return;
+	}
+	if (workflow.conclusion === 'success') {
+		return;
+	}
+	const workflowName = typeof workflow.workflow === 'string' ? workflow.workflow : 'publish.yml';
+	const repository = typeof workflow.repository === 'string' ? workflow.repository : packageName;
+	const url = typeof workflow.url === 'string' && workflow.url ? `\n${workflow.url}` : '';
+	const conclusion = typeof workflow.conclusion === 'string' && workflow.conclusion ? workflow.conclusion : 'unknown';
+	workflowError('release', 'github_workflow_failed', `${packageName} ${workflowName} completed with conclusion ${conclusion} in ${repository}.${url}`, {
+		details: {
+			packageName,
+			workflow,
+		},
+	});
 }
 
 function assertSessionBranchSafety(
@@ -1313,8 +1721,28 @@ function hasStagedChanges(repoDir: string) {
 	return run('git', ['diff', '--cached', '--name-only'], { cwd: repoDir, capture: true }).trim().length > 0;
 }
 
-export async function workflowStatus(helpers: WorkflowOperationHelpers) {
-	return withContextEnv(helpers.context.env, () => createStatusResult(helpers.cwd()));
+export async function workflowStatus(helpers: WorkflowOperationHelpers, input: TreeseedWorkflowStatusOptions = {}) {
+	return withContextEnv(helpers.context.env, async () => {
+		const resolved = resolveTreeseedWorkflowPaths(helpers.cwd());
+		if (resolved.tenantRoot) {
+			try {
+				await ensureTreeseedSecretSessionForConfig({
+					tenantRoot: resolved.cwd,
+					interactive: false,
+					env: helpers.context.env,
+					createIfMissing: false,
+					allowMigration: false,
+				});
+			} catch {
+				// Status must remain observational. If secrets cannot be unlocked
+				// non-interactively, the resulting state reports locked/missing config.
+			}
+		}
+		return createStatusResult(helpers.cwd(), {
+			...input,
+			env: input.env ?? helpers.context.env,
+		});
+	});
 }
 
 export async function workflowTasks(helpers: WorkflowOperationHelpers) {
@@ -1338,6 +1766,20 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 			const bootstrapSystemsInput = input.systems;
 			const skipUnavailable = input.skipUnavailable;
 			const bootstrapExecution = input.bootstrapExecution ?? 'parallel';
+			const dependencyInstall = await installTreeseedDependencies({
+				tenantRoot,
+				force: input.installMissingTooling === true,
+				env: helpers.context.env,
+				write: (line: string) => maybePrint(helpers.write, line),
+			});
+			if (!dependencyInstall.ok) {
+				workflowError(
+					'config',
+					'validation_failed',
+					`Treeseed dependency initialization failed:\n- ${formatTreeseedDependencyFailureDetails(dependencyInstall)}`,
+					{ details: { dependencies: dependencyInstall } },
+				);
+			}
 			const repairs = input.repair === false ? [] : (resolveTreeseedWorkflowState(tenantRoot).deployConfigPresent ? applyTreeseedSafeRepairs(tenantRoot) : []);
 			const toolHealth = ensureTreeseedActVerificationTooling({
 				tenantRoot,
@@ -1691,6 +2133,7 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 						plannedSteps: [
 							{ id: 'switch-root', description: `Switch market repo to ${branchName}` },
 							...packageReports.map((report) => ({ id: `switch-${report.name}`, description: `Mirror ${branchName} into ${report.name}` })),
+							{ id: 'workspace-link', description: 'Apply local workspace links for integrated development' },
 							...(preview ? [{ id: 'preview', description: `Provision or refresh preview for ${branchName}` }] : []),
 						],
 					},
@@ -1723,6 +2166,7 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 						branch: branchName,
 						resumable: true,
 					})),
+					{ id: 'workspace-link', description: 'Apply local workspace links', repoName: rootRepo.name, repoPath: rootRepo.path, branch: branchName, resumable: true },
 					...(preview ? [{ id: 'preview', description: `Provision or refresh preview ${branchName}`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: branchName, resumable: true }] : []),
 				],
 				helpers.context,
@@ -1759,6 +2203,8 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 					report.dirty = hasMeaningfulChanges(pkg.dir);
 				}
 
+				const workspaceLinks = await executeJournalStep(root, workflowRun.runId, 'workspace-link', () =>
+					ensureWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto'));
 				const stateAfterSwitch = resolveTreeseedWorkflowState(root);
 				if (preview) {
 					previewResult = await executeJournalStep(root, workflowRun.runId, 'preview', () =>
@@ -1781,6 +2227,7 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 						lastDeploymentTimestamp: state.preview.lastDeploymentTimestamp,
 					},
 					previewResult,
+					workspaceLinks,
 					preconditions: {
 						cleanWorktreeRequired: true,
 						baseBranch: STAGING_BRANCH,
@@ -1825,6 +2272,7 @@ export async function workflowDev(helpers: WorkflowOperationHelpers, input: Tree
 				workflowError('dev', 'unsupported_transport', 'Treeseed dev is not supported over the HTTP workflow API.');
 			}
 			const tenantRoot = resolveProjectRootOrThrow('dev', helpers.cwd());
+			const workspaceLinks = ensureWorkflowWorkspaceLinks(workspaceRoot(tenantRoot), helpers, input.workspaceLinks ?? 'auto');
 			const readiness = ensureLocalReadinessOrThrow('dev', tenantRoot);
 			applyTreeseedEnvironmentToProcess({ tenantRoot, scope: 'local', override: true });
 			assertTreeseedCommandEnvironment({ tenantRoot, scope: 'local', purpose: 'dev' });
@@ -1861,6 +2309,7 @@ export async function workflowDev(helpers: WorkflowOperationHelpers, input: Tree
 						webUrl: 'http://127.0.0.1:8787',
 					},
 					readiness: readiness.readiness.local,
+					workspaceLinks,
 				});
 			}
 
@@ -1883,6 +2332,7 @@ export async function workflowDev(helpers: WorkflowOperationHelpers, input: Tree
 					webUrl: 'http://127.0.0.1:8787',
 				},
 				readiness: readiness.readiness.local,
+				workspaceLinks,
 			});
 		});
 	} catch (error) {
@@ -1894,8 +2344,6 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 	try {
 		return await withContextEnv(helpers.context.env, async () => {
 			const tenantRoot = resolveProjectRootOrThrow('save', helpers.cwd());
-			const message = ensureMessage('save', input.message, 'a commit message');
-			const optionsHotfix = input.hotfix === true;
 			const root = workspaceRoot(tenantRoot);
 			const session = resolveTreeseedWorkflowSession(root);
 			const gitRoot = session.gitRoot;
@@ -1905,6 +2353,18 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 			const recursiveWorkspace = session.mode === 'recursive-workspace';
 			const mode = session.mode;
 			const executionMode = normalizeExecutionMode(input);
+			const explicitResumeRunId = helpers.context.workflow?.resumeRunId ?? null;
+			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId
+				? findAutoResumableSaveRun(root, branch)
+				: null;
+			const planAutoResumeRun = executionMode === 'plan'
+				? findAutoResumableSaveRun(root, branch)
+				: null;
+			const effectiveInput = autoResumeRun
+				? (autoResumeRun.input as unknown as TreeseedSaveInput)
+				: input;
+			const message = String(effectiveInput.message ?? '').trim();
+			const optionsHotfix = effectiveInput.hotfix === true;
 
 			applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope, override: true });
 
@@ -1926,13 +2386,20 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				if (branch === PRODUCTION_BRANCH && !optionsHotfix) {
 					blockers.push('Main saves require --hotfix.');
 				}
-				if (recursiveWorkspace) {
-					try {
-						assertWorkspaceVersionConsistency(root);
-					} catch (error) {
-						blockers.push(error instanceof Error ? error.message : String(error));
-					}
-				}
+				const repositoryPlan = planRepositorySave({
+					root,
+					gitRoot,
+					branch,
+					message,
+					bump: (effectiveInput.bump ?? 'patch') as ReleaseBumpLevel,
+					devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
+					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-tag',
+					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
+					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
+					verifyMode: (effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'action-first')) as SaveVerifyMode,
+					commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
+				});
+				const workspaceLinks = inspectWorkspaceDependencyMode(root, { mode: effectiveInput.workspaceLinks ?? 'auto', env: helpers.context.env });
 				return buildWorkflowResult(
 					'save',
 					root,
@@ -1942,15 +2409,26 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						scope,
 						hotfix: optionsHotfix,
 						message,
-						repos: packageReports,
-						rootRepo,
+						repos: repositoryPlan.repos,
+						rootRepo: repositoryPlan.rootRepo,
 						blockers,
+						autoResumeCandidate: planAutoResumeRun
+							? {
+								runId: planAutoResumeRun.runId,
+								branch: planAutoResumeRun.session.branchName,
+								failure: planAutoResumeRun.failure,
+							}
+							: null,
+						workspaceLinks,
+						repositoryPlan,
+						waves: repositoryPlan.waves,
+						plannedVersions: repositoryPlan.plannedVersions,
 						plannedSteps: [
-							...packageReports.map((report) => ({ id: `save-${report.name}`, description: `Verify, commit, and push ${report.name}` })),
-							...(input.verify !== false ? [{ id: 'verify-root', description: 'Run market workspace verification' }] : []),
-							{ id: 'commit-root', description: 'Commit market repo changes if present' },
-							{ id: 'sync-root', description: `Push ${branch} to origin` },
-							...((beforeState.branchRole === 'feature' && (input.preview === true || beforeState.preview.enabled))
+							{ id: 'workspace-unlink', description: 'Remove local workspace links before deployment install and lockfile updates' },
+							...repositoryPlan.plannedSteps,
+							{ id: 'lockfile-validation', description: 'Validate refreshed package-lock.json files before any save commit is pushed' },
+							{ id: 'workspace-link', description: 'Restore local workspace links after save' },
+							...((beforeState.branchRole === 'feature' && (effectiveInput.preview === true || beforeState.preview.enabled))
 								? [{ id: 'preview', description: `Refresh preview deployment for ${branch}` }]
 								: []),
 						],
@@ -1958,7 +2436,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					{
 						executionMode,
 						nextSteps: createNextSteps([
-							{ operation: 'save', reason: 'Run without --plan to persist the workspace checkpoint.', input: { message, hotfix: optionsHotfix, preview: input.preview === true } },
+							{ operation: 'save', reason: planAutoResumeRun ? `Run without --plan to resume ${planAutoResumeRun.runId}.` : 'Run without --plan to persist the workspace checkpoint.', input: { message, hotfix: optionsHotfix, preview: effectiveInput.preview === true } },
 						]),
 					},
 				);
@@ -1979,44 +2457,28 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				{
 					message,
 					hotfix: optionsHotfix,
-					preview: input.preview === true,
-					refreshPreview: input.refreshPreview !== false,
-					verify: input.verify !== false,
+					preview: effectiveInput.preview === true,
+					refreshPreview: effectiveInput.refreshPreview !== false,
+					verify: effectiveInput.verify !== false,
+					bump: effectiveInput.bump ?? 'patch',
+					devVersionStrategy: effectiveInput.devVersionStrategy ?? 'prerelease',
+					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-tag',
+					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
+					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
+					verifyMode: effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'action-first'),
+					commitMessageMode: effectiveInput.commitMessageMode ?? 'auto',
+					workspaceLinks: effectiveInput.workspaceLinks ?? 'auto',
 				},
 				[
-					...packageReports.map((report) => ({
-						id: `save-${report.name}`,
-						description: `Save ${report.name}`,
-						repoName: report.name,
-						repoPath: report.path,
-						branch,
-						resumable: true,
-					})),
-					...(input.verify !== false ? [{
-						id: 'verify-root',
-						description: 'Verify market workspace',
-						repoName: rootRepo.name,
-						repoPath: rootRepo.path,
-						branch,
-						resumable: true,
-					}] : []),
 					{
-						id: 'commit-root',
-						description: 'Commit market workspace changes',
+						id: 'save-repositories',
+						description: 'Save dependency-ordered repositories',
 						repoName: rootRepo.name,
 						repoPath: rootRepo.path,
 						branch,
 						resumable: true,
 					},
-					{
-						id: 'sync-root',
-						description: `Push ${branch} to origin`,
-						repoName: rootRepo.name,
-						repoPath: rootRepo.path,
-						branch,
-						resumable: true,
-					},
-					...((beforeState.branchRole === 'feature' && (input.preview === true || (input.refreshPreview !== false && beforeState.preview.enabled)))
+					...((beforeState.branchRole === 'feature' && (effectiveInput.preview === true || (effectiveInput.refreshPreview !== false && beforeState.preview.enabled)))
 						? [{
 							id: 'preview',
 							description: `Refresh preview ${branch}`,
@@ -2027,139 +2489,103 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						}]
 						: []),
 				],
-				helpers.context,
+				autoResumeRun
+					? {
+						...helpers.context,
+						workflow: {
+							...(helpers.context.workflow ?? {}),
+							resumeRunId: autoResumeRun.runId,
+						},
+					}
+					: helpers.context,
 			);
+			if (autoResumeRun) {
+				helpers.write(`[workflow][resume] Resuming interrupted save ${autoResumeRun.runId} on ${branch}.`);
+			}
 
 			try {
-			if (recursiveWorkspace) {
-				assertWorkspaceVersionConsistency(root);
-				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
-					const report = findReportByName(packageReports, pkg.name);
-					if (!report) {
-						continue;
-					}
-					try {
-						const step = readWorkflowRunJournal(root, workflowRun.runId)?.steps.find((entry) => entry.id === `save-${report.name}`) ?? null;
-						const resumePendingSync = workflowRun.resumed
-							&& step?.status === 'pending'
-							&& branchNeedsSync(report.path, branch);
-						if (!report.dirty && !resumePendingSync) {
-							report.skippedReason = 'clean';
-							skipJournalStep(root, workflowRun.runId, `save-${report.name}`, {
-								skippedReason: 'clean',
+				const saveResult = await executeJournalStep(root, workflowRun.runId, 'save-repositories', () =>
+					(async () => {
+						unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
+						try {
+							return await runRepositorySaveOrchestrator({
+								root,
+								gitRoot,
+								branch,
+								message,
+								bump: (effectiveInput.bump ?? 'patch') as ReleaseBumpLevel,
+								devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
+								devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-tag',
+								gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
+								gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
+								verifyMode: (effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'action-first')) as SaveVerifyMode,
+								commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
+								workflowRunId: workflowRun.runId,
+								onProgress: (line, stream) => helpers.write(line, stream),
 							});
-							continue;
+						} finally {
+							ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 						}
-						const savedReport = await executeJournalStep(root, workflowRun.runId, `save-${report.name}`, () =>
-							savePackageRepo(report, message, branch, input.verify !== false));
-						Object.assign(report, savedReport);
-					} catch (error) {
-						createSaveFailure(
-							`Treeseed save stopped while saving workspace package ${pkg.name}.`,
-							packageReports,
-							rootRepo,
-							report,
-							error,
-						);
+					})());
+				const savedPackageReports = saveResult?.repos ?? packageReports;
+				const savedRootRepo = saveResult?.rootRepo ?? rootRepo;
+				const head = savedRootRepo.commitSha ?? run('git', ['rev-parse', 'HEAD'], { cwd: gitRoot, capture: true }).trim();
+				const commitCreated = savedRootRepo.committed === true;
+				const branchSync = {
+					...(savedRootRepo.publishWait ?? {}),
+					pushed: savedRootRepo.pushed === true,
+				};
+				const workspaceLinks = inspectWorkspaceDependencyMode(root, { mode: effectiveInput.workspaceLinks ?? 'auto', env: helpers.context.env });
+				const commandReadiness = ensureTreeseedCommandReadiness(root);
+				const lockfileValidation = {
+					root: savedRootRepo.lockfileValidation,
+					repos: savedPackageReports.map((repo) => ({
+						name: repo.name,
+						path: repo.path,
+						lockfileValidation: repo.lockfileValidation,
+					})),
+				};
+
+				let previewAction: Record<string, unknown> = { status: 'skipped' };
+				if (beforeState.branchRole === 'feature' && branch) {
+					if (effectiveInput.preview === true) {
+						previewAction = {
+							status: beforeState.preview.enabled ? 'refreshed' : 'created',
+							details: await executeJournalStep(root, workflowRun.runId, 'preview', () =>
+								deployBranchPreview(root, branch, helpers.context, { initialize: !beforeState.preview.enabled })),
+						};
+					} else if (effectiveInput.refreshPreview !== false && beforeState.preview.enabled) {
+						previewAction = {
+							status: 'refreshed',
+							details: await executeJournalStep(root, workflowRun.runId, 'preview', () =>
+								deployBranchPreview(root, branch, helpers.context, { initialize: false })),
+						};
 					}
 				}
-			}
-
-			if (input.verify !== false) {
-				try {
-					await executeJournalStep(root, workflowRun.runId, 'verify-root', () => {
-						runWorkspaceSavePreflight({ cwd: root });
-						rootRepo.verified = true;
-						return {
-							verified: true,
-						};
-					});
-				} catch (error) {
-					createSaveFailure(
-						'Treeseed save stopped while verifying the market workspace.',
-						packageReports,
-						rootRepo,
-						null,
-						error,
-					);
-				}
-			}
-
-			const hadMeaningfulChanges = hasMeaningfulChanges(gitRoot);
-			let head = run('git', ['rev-parse', 'HEAD'], { cwd: gitRoot, capture: true }).trim();
-			let commitCreated = false;
-
-			if (hadMeaningfulChanges) {
-				const commitResult = await executeJournalStep(root, workflowRun.runId, 'commit-root', () => {
-					run('git', ['add', '-A'], { cwd: gitRoot });
-					run('git', ['commit', '-m', message], { cwd: gitRoot });
-					return {
-						commitSha: run('git', ['rev-parse', 'HEAD'], { cwd: gitRoot, capture: true }).trim(),
-					};
-				});
-				head = String(commitResult?.commitSha ?? head);
-				commitCreated = true;
-				rootRepo.committed = true;
-			} else {
-				skipJournalStep(root, workflowRun.runId, 'commit-root', {
-					skippedReason: 'clean',
-				});
-			}
-			rootRepo.commitSha = head;
-
-			let branchSync;
-			try {
-				branchSync = await executeJournalStep(root, workflowRun.runId, 'sync-root', () =>
-					syncCurrentBranchToOrigin('save', gitRoot, branch));
-			} catch (error) {
-				createSaveFailure(
-					'Treeseed save stopped while syncing the market repository.',
-					packageReports,
-					rootRepo,
-					rootRepo,
-					error,
-				);
-			}
-			rootRepo.pushed = branchSync.pushed === true;
-			if (input.verify !== false) {
-				rootRepo.verified = true;
-			}
-			if (!hadMeaningfulChanges) {
-				rootRepo.skippedReason = 'clean';
-			}
-
-			let previewAction: Record<string, unknown> = { status: 'skipped' };
-			if (beforeState.branchRole === 'feature' && branch) {
-				if (input.preview === true) {
-					previewAction = {
-						status: beforeState.preview.enabled ? 'refreshed' : 'created',
-						details: await executeJournalStep(root, workflowRun.runId, 'preview', () =>
-							deployBranchPreview(root, branch, helpers.context, { initialize: !beforeState.preview.enabled })),
-					};
-				} else if (input.refreshPreview !== false && beforeState.preview.enabled) {
-					previewAction = {
-						status: 'refreshed',
-						details: await executeJournalStep(root, workflowRun.runId, 'preview', () =>
-							deployBranchPreview(root, branch, helpers.context, { initialize: false })),
-					};
-				}
-			}
 
 				const payload = {
-					mode,
+					mode: saveResult?.mode ?? mode,
 					branch,
 					scope,
 					hotfix: optionsHotfix,
 					message,
+					resumed: workflowRun.resumed,
+					resumedRunId: workflowRun.resumed ? workflowRun.runId : null,
+					autoResumed: autoResumeRun != null,
 					commitSha: head,
 					commitCreated,
-					noChanges: !hadMeaningfulChanges,
+					noChanges: !commitCreated,
 					branchSync,
-					repos: packageReports,
-					rootRepo,
+					repos: savedPackageReports,
+					rootRepo: savedRootRepo,
+					waves: saveResult?.waves ?? [],
+					plannedVersions: saveResult?.plannedVersions ?? {},
 					partialFailure: null,
 					previewAction,
 					mergeConflict: null,
+					workspaceLinks,
+					commandReadiness,
+					lockfileValidation,
 				};
 				completeWorkflowRun(root, workflowRun.runId, payload);
 				return buildWorkflowResult(
@@ -2178,7 +2604,22 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					},
 				);
 			} catch (error) {
-				const failingRepo = packageReports.find((report) => report.dirty && report.pushed !== true) ?? rootRepo;
+				const saveError = repositorySaveErrorDetails(error);
+				const savedPartialFailure = saveError.details?.partialFailure as {
+					message: string;
+					failingRepo: string;
+					phase?: string | null;
+					currentVersion?: string | null;
+					expectedTag?: string | null;
+					tagState?: Record<string, unknown> | null;
+					nextCommand?: string | null;
+					repos: WorkflowRepoReport[];
+					rootRepo: WorkflowRepoReport | null;
+					error: string;
+				} | undefined;
+				const failingRepo = savedPartialFailure?.repos.find((report) => report.name === savedPartialFailure.failingRepo)
+					?? packageReports.find((report) => report.dirty && report.pushed !== true)
+					?? rootRepo;
 				const wrappedError = error instanceof TreeseedWorkflowError && error.details?.partialFailure != null
 					? error
 					: new TreeseedWorkflowError(
@@ -2188,7 +2629,8 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						{
 							details: {
 								...(error instanceof TreeseedWorkflowError ? (error.details ?? {}) : {}),
-								partialFailure: {
+								...(saveError.details ?? {}),
+								partialFailure: savedPartialFailure ?? {
 									message: 'Treeseed save stopped before the workspace could finish syncing.',
 									failingRepo: failingRepo.name,
 									repos: packageReports,
@@ -2196,7 +2638,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 									error: error instanceof Error ? error.message : String(error),
 								},
 							},
-							exitCode: error instanceof TreeseedWorkflowError ? error.exitCode : undefined,
+							exitCode: error instanceof TreeseedWorkflowError ? error.exitCode : saveError.exitCode,
 						},
 					);
 				failWorkflowRun(root, workflowRun.runId, wrappedError, {
@@ -2246,6 +2688,7 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 								id: `cleanup-${pkg.name}`,
 								description: `Archive and delete ${branchName ?? '(current task)'} in ${pkg.name}`,
 							})),
+							{ id: 'workspace-link', description: 'Restore local workspace links on the final branch' },
 						],
 					},
 					{
@@ -2256,10 +2699,12 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 					},
 				);
 			}
+			unlinkWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
 			const autoSave = await maybeAutoSaveCurrentTaskBranch(helpers, 'close', {
 				message,
 				autoSave: input.autoSave,
 			});
+			unlinkWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
 			const activeSession = resolveTreeseedWorkflowSession(root);
 			const featureBranch = assertFeatureBranch(root);
 			const mode = activeSession.mode;
@@ -2330,6 +2775,7 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 						}));
 					Object.assign(report, cleanup);
 				}
+				const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
 
 				const payload = {
 					mode,
@@ -2344,6 +2790,7 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 					remoteDeleted: rootRepo.deletedRemote,
 					localDeleted: rootRepo.deletedLocal,
 					finalBranch: currentBranch(repoDir) || STAGING_BRANCH,
+					workspaceLinks,
 				};
 				completeWorkflowRun(root, workflowRun.runId, payload);
 				return buildWorkflowResult(
@@ -2358,6 +2805,7 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 					},
 				);
 			} catch (error) {
+				ensureWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
 				failWorkflowRun(root, workflowRun.runId, error, {
 					resumable: true,
 					runId: workflowRun.runId,
@@ -2407,7 +2855,9 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 								id: `merge-${pkg.name}`,
 								description: `Squash-merge ${initialSession.branchName ?? '(current task)'} into ${pkg.name} staging`,
 							})),
+							{ id: 'workspace-unlink', description: 'Remove local workspace links before staging promotion' },
 							{ id: 'merge-root', description: `Squash-merge ${initialSession.branchName ?? '(current task)'} into market staging` },
+							{ id: 'lockfile-validation', description: 'Refresh and validate the merged root workspace lockfile before pushing staging' },
 							{ id: 'wait-staging', description: 'Wait for staging automation' },
 							{ id: 'preview-cleanup', description: 'Destroy preview resources' },
 							{ id: 'cleanup-root', description: 'Archive and delete the task branch from market' },
@@ -2415,6 +2865,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 								id: `cleanup-${pkg.name}`,
 								description: `Archive and delete the task branch from ${pkg.name}`,
 							})),
+							{ id: 'workspace-link', description: 'Restore local workspace links on staging' },
 						],
 					},
 					{
@@ -2425,10 +2876,12 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					},
 				);
 			}
+			unlinkWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
 			const autoSave = await maybeAutoSaveCurrentTaskBranch(helpers, 'stage', {
 				message,
 				autoSave: input.autoSave,
 			});
+			unlinkWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
 			const session = resolveTreeseedWorkflowSession(root);
 			const featureBranch = assertFeatureBranch(root);
 			const mode = session.mode;
@@ -2473,6 +2926,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			);
 
 			try {
+				unlinkWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
 				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
 					const report = findReportByName(packageReports, pkg.name);
 					if (!report) {
@@ -2502,14 +2956,21 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					}
 				}
 
+				let rootMerge: Record<string, unknown> | null = null;
 				try {
-					const rootMerge = await executeJournalStep(root, workflowRun.runId, 'merge-root', () => {
+					rootMerge = await executeJournalStep(root, workflowRun.runId, 'merge-root', async () => {
 						assertCleanWorktree(root);
 						syncBranchWithOrigin(repoDir, STAGING_BRANCH);
 						run('git', ['merge', '--squash', featureBranch], { cwd: repoDir });
 						if (mode === 'recursive-workspace') {
 							syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
 						}
+						const lockfileSafety = await refreshAndValidateRootWorkspaceLockfileForSave({
+							root,
+							gitRoot: repoDir,
+							branch: STAGING_BRANCH,
+							onProgress: (line, stream) => helpers.write(line, stream),
+						});
 						if (hasStagedChanges(repoDir) || hasMeaningfulChanges(repoDir)) {
 							run('git', ['add', '-A'], { cwd: repoDir });
 							run('git', ['commit', '-m', message], { cwd: repoDir });
@@ -2519,6 +2980,8 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 							commitSha: headCommit(repoDir),
 							branch: currentBranch(repoDir) || STAGING_BRANCH,
 							committed: hasMeaningfulChanges(repoDir) ? false : true,
+							lockfileValidation: lockfileSafety.lockfileValidation,
+							lockfileInstall: lockfileSafety.install,
 						};
 					});
 					rootRepo.merged = true;
@@ -2571,6 +3034,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						}));
 					Object.assign(report, cleanup);
 				}
+				const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
 
 				const payload = {
 					mode,
@@ -2585,9 +3049,12 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					rootRepo,
 					stagingWait,
 					previewCleanup,
+					lockfileValidation: rootMerge?.lockfileValidation ?? null,
+					lockfileInstall: rootMerge?.lockfileInstall ?? null,
 					remoteDeleted: rootRepo.deletedRemote,
 					localDeleted: rootRepo.deletedLocal,
 					finalBranch: currentBranch(repoDir) || STAGING_BRANCH,
+					workspaceLinks,
 				};
 				completeWorkflowRun(root, workflowRun.runId, payload);
 				return buildWorkflowResult(
@@ -2603,6 +3070,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					},
 				);
 			} catch (error) {
+				ensureWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto');
 				failWorkflowRun(root, workflowRun.runId, error, {
 					resumable: true,
 					runId: workflowRun.runId,
@@ -2622,7 +3090,6 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 export async function workflowRelease(helpers: WorkflowOperationHelpers, input: TreeseedReleaseInput) {
 	try {
 		return await withContextEnv(helpers.context.env, async () => {
-			const level = input.bump ?? 'patch';
 			const root = resolveProjectRootOrThrow('release', helpers.cwd());
 			const session = resolveTreeseedWorkflowSession(root);
 			const gitRoot = session.gitRoot;
@@ -2630,52 +3097,47 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 			const executionMode = normalizeExecutionMode(input);
 			const rootRepo = createWorkspaceRootRepoReport(root);
 			const packageReports = createWorkspacePackageReports(root);
+			const explicitResumeRunId = helpers.context.workflow?.resumeRunId ?? null;
+			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId
+				? findAutoResumableReleaseRun(root, session.branchName, rootRepo, packageReports)
+				: null;
+			const planAutoResumeRun = executionMode === 'plan'
+				? findAutoResumableReleaseRun(root, session.branchName, rootRepo, packageReports)
+				: null;
+			const effectiveInput = autoResumeRun
+				? (autoResumeRun.input as unknown as TreeseedReleaseInput)
+				: input;
+			const level = effectiveInput.bump ?? 'patch';
+			const isResume = Boolean(explicitResumeRunId || autoResumeRun);
 			const packageSelection = session.packageSelection;
 			const selectedPackageNames = new Set(packageSelection.selected);
-			const blockers: string[] = [];
-			if (session.branchName !== STAGING_BRANCH) {
-				blockers.push('Release must start from staging.');
-			}
-			if (mode === 'recursive-workspace') {
-				try {
-					assertWorkspaceVersionConsistency(root);
-					validatePackageReleaseWorkflows(root, packageSelection.selected);
-				} catch (error) {
-					blockers.push(error instanceof Error ? error.message : String(error));
-				}
-			}
-			const versionPlan = planWorkspaceReleaseBump(level, root, mode === 'recursive-workspace' ? { selectedPackageNames } : {});
-			const plannedVersions = Object.fromEntries(versionPlan.versions.entries());
+			const blockers = isResume ? [] : collectReleasePlanBlockers(session, mode, packageSelection.selected);
+			const plannedRelease = buildReleasePlanSnapshot({
+				root,
+				mode,
+				level,
+				packageSelection,
+				packageReports,
+				rootRepo,
+				blockers,
+			});
+
 			if (executionMode === 'plan') {
-				return buildWorkflowResult(
-					'release',
-					root,
-					{
-						mode,
-						mergeStrategy: 'merge-commit',
-						level,
-						stagingBranch: STAGING_BRANCH,
-						productionBranch: PRODUCTION_BRANCH,
-						packageSelection,
-						plannedVersions,
-						repos: packageReports,
-						rootRepo,
-						plannedSteps: [
-							...packageReports.filter((report) => selectedPackageNames.has(report.name)).map((report) => ({
-								id: `release-${report.name}`,
-								description: `Release ${report.name} from staging to main and tag ${plannedVersions[report.name] ?? '(planned)'}`,
-							})),
-							{ id: 'release-root', description: `Release market ${plannedVersions['@treeseed/market'] ?? '(planned)'}` },
-						],
-						blockers,
-					},
-					{
-						executionMode,
-						nextSteps: createNextSteps([
-							{ operation: 'release', reason: 'Run without --plan to promote staging into production.', input: { bump: level } },
-						]),
-					},
-				);
+				return buildWorkflowResult('release', root, {
+					...plannedRelease,
+					autoResumeCandidate: planAutoResumeRun
+						? {
+							runId: planAutoResumeRun.runId,
+							branch: planAutoResumeRun.session.branchName,
+							failure: planAutoResumeRun.failure,
+						}
+						: null,
+				}, {
+					executionMode,
+					nextSteps: createNextSteps([
+						{ operation: 'release', reason: planAutoResumeRun ? `Run without --plan to resume ${planAutoResumeRun.runId}.` : 'Run without --plan to promote staging into production.', input: { bump: level } },
+					]),
+				});
 			}
 
 			if (blockers.length > 0) {
@@ -2684,15 +3146,22 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				});
 			}
 
-			assertSessionBranchSafety('release', session);
-			prepareReleaseBranches(root);
-			applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
-			runWorkspaceSavePreflight({ cwd: root });
 			const workflowRun = acquireWorkflowRun(
 				'release',
 				session,
-				{ bump: level },
+				{
+					bump: level,
+					devTagCleanup: effectiveInput.devTagCleanup ?? 'safe-after-release',
+					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
+					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
+					workspaceLinks: effectiveInput.workspaceLinks ?? 'auto',
+				},
 				[
+					{ id: 'release-plan', description: 'Record release plan', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					{ id: 'workspace-unlink', description: 'Remove local workspace links before release', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					...(mode === 'recursive-workspace'
+						? [{ id: 'prepare-release-metadata', description: 'Rewrite stable release metadata', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true }]
+						: []),
 					...packageReports.filter((report) => selectedPackageNames.has(report.name)).map((report) => ({
 						id: `release-${report.name}`,
 						description: `Release ${report.name}`,
@@ -2702,26 +3171,55 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						resumable: true,
 					})),
 					{ id: 'release-root', description: 'Release market repo', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					...(mode === 'recursive-workspace'
+						? [{ id: 'cleanup-dev-tags', description: 'Clean replaced dev package tags', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true }]
+						: []),
 				],
-				helpers.context,
+				autoResumeRun
+					? {
+						...helpers.context,
+						workflow: {
+							...(helpers.context.workflow ?? {}),
+							resumeRunId: autoResumeRun.runId,
+						},
+					}
+					: helpers.context,
 			);
+			if (autoResumeRun) {
+				helpers.write(`[workflow][resume] Resuming interrupted release ${autoResumeRun.runId} on ${STAGING_BRANCH}.`);
+			}
 
 			try {
+				const releasePlan = await executeJournalStep(root, workflowRun.runId, 'release-plan', () => plannedRelease) as typeof plannedRelease;
+				const effectivePackageSelection = releasePlanPackageSelection(releasePlan.packageSelection);
+				const effectiveSelectedPackageNames = new Set(effectivePackageSelection.selected);
+				const effectiveVersions = releasePlanVersionMap(releasePlan.plannedVersions as Record<string, unknown>);
+				const rootVersion = String(releasePlan.rootVersion);
+
+				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
+				assertReleaseGitHubAutomationReady(root, effectiveSelectedPackageNames);
+				if (!isResume) {
+					assertSessionBranchSafety('release', session, { requireCleanPackages: true, requireCurrentBranch: true });
+					assertCleanWorktree(root);
+				}
+				prepareReleaseBranches(root);
+				runWorkspaceSavePreflight({ cwd: root });
+				await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
+					unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
+
 				if (mode === 'root-only') {
 					const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
-						applyWorkspaceVersionChanges(versionPlan);
-						const rootVersion = bumpRootPackageJson(root, level);
+						setRootPackageJsonVersion(root, rootVersion);
 						run('git', ['checkout', STAGING_BRANCH], { cwd: gitRoot });
-						run('git', ['add', '-A'], { cwd: gitRoot });
-						run('git', ['commit', '-m', `release: ${level} bump`], { cwd: gitRoot });
+						commitAllIfChanged(gitRoot, `release: ${level} bump`);
 						pushBranch(gitRoot, STAGING_BRANCH);
 						const released = mergeStagingIntoMain(root);
-						run('git', ['tag', '-a', rootVersion, '-m', `release: ${rootVersion}`], { cwd: gitRoot });
-						run('git', ['push', 'origin', rootVersion], { cwd: gitRoot });
+						const tag = ensureReleaseTag(gitRoot, rootVersion, released.commitSha);
 						syncBranchWithOrigin(gitRoot, STAGING_BRANCH);
 						return {
 							rootVersion,
 							releasedCommit: released.commitSha,
+							tag,
 						};
 					});
 					rootRepo.committed = true;
@@ -2730,22 +3228,27 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					rootRepo.branch = PRODUCTION_BRANCH;
 					rootRepo.commitSha = String(rootRelease?.releasedCommit ?? headCommit(gitRoot));
 					rootRepo.tagName = String(rootRelease?.rootVersion ?? '');
+					const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 					const payload = {
 						mode,
 						mergeStrategy: 'merge-commit',
 						level,
+						resumed: workflowRun.resumed,
+						resumedRunId: workflowRun.resumed ? workflowRun.runId : null,
+						autoResumed: autoResumeRun != null,
 						rootVersion: String(rootRelease?.rootVersion ?? ''),
 						releaseTag: String(rootRelease?.rootVersion ?? ''),
 						releasedCommit: String(rootRelease?.releasedCommit ?? rootRepo.commitSha ?? ''),
 						stagingBranch: STAGING_BRANCH,
 						productionBranch: PRODUCTION_BRANCH,
-						touchedPackages: [...versionPlan.touched],
+						touchedPackages: [],
 						packageSelection: { changed: [], dependents: [], selected: [] },
 						publishWait: [],
 						repos: [],
 						rootRepo,
 						finalBranch: currentBranch(gitRoot) || STAGING_BRANCH,
 						pushStatus: { stagingPushed: true, productionPushed: true, tagPushed: true },
+						workspaceLinks,
 					};
 					completeWorkflowRun(root, workflowRun.runId, payload);
 					return buildWorkflowResult('release', root, payload, {
@@ -2756,19 +3259,44 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					});
 				}
 
-				assertWorkspaceVersionConsistency(root);
-				validatePackageReleaseWorkflows(root, packageSelection.selected);
+				validatePackageReleaseWorkflows(root, effectivePackageSelection.selected);
 				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
-					if (selectedPackageNames.has(pkg.name)) {
+					if (effectiveSelectedPackageNames.has(pkg.name)) {
 						prepareReleaseBranches(pkg.dir);
 					}
 				}
-				applyWorkspaceVersionChanges(versionPlan);
+
+				const metadata = await executeJournalStep(root, workflowRun.runId, 'prepare-release-metadata', () => {
+					const releasedPackageDevTags = Object.fromEntries(
+						checkedOutWorkspacePackageRepos(root)
+							.filter((pkg) => effectiveSelectedPackageNames.has(pkg.name))
+							.map((pkg) => {
+								const packageJson = JSON.parse(readFileSync(resolve(pkg.dir, 'package.json'), 'utf8')) as Record<string, unknown>;
+								return [pkg.name, String(packageJson.version ?? '')] as const;
+							})
+							.filter(([, version]) => version.includes('-dev.')),
+					);
+					const replacedDevReferences = rewriteProjectInternalDependenciesToStableVersions(root, effectiveVersions);
+					applyStableWorkspaceVersionChanges(root, effectiveVersions);
+					setRootPackageJsonVersion(root, rootVersion);
+					const releaseInstalls: Array<Record<string, unknown>> = [
+						{ name: '@treeseed/market', ...runReleaseNpmInstall(root, { workspaceRoot: root }) },
+					];
+					assertNoInternalDevReferencesForRepo(root, root, effectiveSelectedPackageNames);
+					return {
+						releasedPackageDevTags,
+						replacedDevReferences,
+						releaseInstalls,
+					};
+				});
+				const replacedDevReferences = Array.isArray(metadata?.replacedDevReferences) ? metadata.replacedDevReferences : [];
+				const releaseInstalls = Array.isArray(metadata?.releaseInstalls) ? metadata.releaseInstalls : [];
+				const releasedPackageDevTags = new Map(Object.entries((metadata?.releasedPackageDevTags ?? {}) as Record<string, unknown>).map(([name, version]) => [name, String(version)]));
 				const publishWait: Array<Record<string, unknown>> = [];
 
 				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
 					const report = findReportByName(packageReports, pkg.name);
-					if (!report || !selectedPackageNames.has(pkg.name)) {
+					if (!report || !effectiveSelectedPackageNames.has(pkg.name)) {
 						if (report) {
 							report.skippedReason = 'unchanged';
 						}
@@ -2776,9 +3304,14 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					}
 					const releasedPackage = await executeJournalStep(root, workflowRun.runId, `release-${report.name}`, async () => {
 						checkoutBranch(pkg.dir, STAGING_BRANCH);
+						releaseInstalls.push({
+							name: pkg.name,
+							...runReleaseNpmInstall(pkg.dir, { workspaceRoot: root }),
+						});
+						assertNoInternalDevReferencesForRepo(root, pkg.dir, effectiveSelectedPackageNames);
 						if (hasMeaningfulChanges(pkg.dir)) {
 							run('git', ['add', '-A'], { cwd: pkg.dir });
-							run('git', ['commit', '-m', `release: ${versionPlan.versions.get(pkg.name)}`], { cwd: pkg.dir });
+							run('git', ['commit', '-m', `release: ${effectiveVersions.get(pkg.name)}`], { cwd: pkg.dir });
 						}
 						pushBranch(pkg.dir, STAGING_BRANCH);
 						const mergeResult = mergeBranchIntoTarget(pkg.dir, {
@@ -2787,18 +3320,19 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							message: `release: ${STAGING_BRANCH} -> ${PRODUCTION_BRANCH}`,
 							pushTarget: true,
 						});
-						const tagName = String(versionPlan.versions.get(pkg.name));
-						run('git', ['tag', '-a', tagName, '-m', `release: ${tagName}`], { cwd: pkg.dir });
-						run('git', ['push', 'origin', tagName], { cwd: pkg.dir });
+						const tagName = String(effectiveVersions.get(pkg.name));
+						const tag = ensureReleaseTag(pkg.dir, tagName, mergeResult.commitSha);
 						const publish = await waitForGitHubWorkflowCompletion(pkg.dir, {
 							workflow: 'publish.yml',
 							headSha: mergeResult.commitSha,
 							branch: PRODUCTION_BRANCH,
 						});
+						assertReleaseGitHubWorkflowSucceeded(pkg.name, publish);
 						syncBranchWithOrigin(pkg.dir, STAGING_BRANCH);
 						return {
 							commitSha: mergeResult.commitSha,
 							tagName,
+							tag,
 							publish,
 						};
 					});
@@ -2814,12 +3348,12 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						...(releasedPackage?.publish as Record<string, unknown> | undefined ?? {}),
 					});
 				}
+				assertNoInternalDevReferences(root, effectiveSelectedPackageNames);
 
 				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
-					const rootVersion = bumpRootPackageJson(root, level);
+					setRootPackageJsonVersion(root, rootVersion);
 					run('git', ['checkout', STAGING_BRANCH], { cwd: gitRoot });
-					run('git', ['add', '-A'], { cwd: gitRoot });
-					run('git', ['commit', '-m', `release: ${level} bump`], { cwd: gitRoot });
+					commitAllIfChanged(gitRoot, `release: ${level} bump`);
 					pushBranch(gitRoot, STAGING_BRANCH);
 					const released = mergeBranchIntoTarget(root, {
 						sourceBranch: STAGING_BRANCH,
@@ -2828,22 +3362,21 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						pushTarget: false,
 					});
 					for (const pkg of checkedOutWorkspacePackageRepos(root)) {
-						if (selectedPackageNames.has(pkg.name)) {
+						if (effectiveSelectedPackageNames.has(pkg.name)) {
 							syncBranchWithOrigin(pkg.dir, PRODUCTION_BRANCH);
 						}
 					}
-					run('git', ['add', '-A'], { cwd: gitRoot });
-					if (hasMeaningfulChanges(gitRoot)) {
-						run('git', ['commit', '-m', 'release: sync package main heads'], { cwd: gitRoot });
-					}
-					run('git', ['tag', '-a', rootVersion, '-m', `release: ${rootVersion}`], { cwd: gitRoot });
+					commitAllIfChanged(gitRoot, 'release: sync package main heads');
+					const releasedCommit = headCommit(gitRoot);
+					const tag = ensureReleaseTag(gitRoot, rootVersion, releasedCommit);
 					run('git', ['push', 'origin', PRODUCTION_BRANCH], { cwd: gitRoot });
-					run('git', ['push', 'origin', rootVersion], { cwd: gitRoot });
 					syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
 					syncBranchWithOrigin(gitRoot, STAGING_BRANCH);
 					return {
 						rootVersion,
-						releasedCommit: headCommit(gitRoot),
+						releasedCommit,
+						mergeCommit: released.commitSha,
+						tag,
 					};
 				});
 				rootRepo.committed = true;
@@ -2852,17 +3385,52 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				rootRepo.branch = PRODUCTION_BRANCH;
 				rootRepo.commitSha = String(rootRelease?.releasedCommit ?? headCommit(gitRoot));
 				rootRepo.tagName = String(rootRelease?.rootVersion ?? '');
+				const devTagCleanupMode = (effectiveInput.devTagCleanup ?? 'safe-after-release') as DevTagCleanupMode;
+				const devTagCleanup = devTagCleanupMode === 'off'
+					? (skipJournalStep(root, workflowRun.runId, 'cleanup-dev-tags', { status: 'skipped', reason: 'disabled' }), { status: 'skipped', reason: 'disabled' })
+					: await executeJournalStep(root, workflowRun.runId, 'cleanup-dev-tags', () => {
+						const activeDevTags = collectActiveDevTagReferences(root);
+						const byPackage = new Map<string, string[]>();
+						for (const reference of replacedDevReferences as Array<{ packageName?: unknown; tagName?: unknown; from?: unknown }>) {
+							const tagName = typeof reference.tagName === 'string'
+								? reference.tagName
+								: devTagFromDependencySpec(String(reference.from ?? ''));
+							const packageName = typeof reference.packageName === 'string' ? reference.packageName : null;
+							if (!tagName || !packageName) continue;
+							byPackage.set(packageName, [...(byPackage.get(packageName) ?? []), tagName]);
+						}
+						for (const [packageName, tagName] of releasedPackageDevTags.entries()) {
+							byPackage.set(packageName, [...(byPackage.get(packageName) ?? []), tagName]);
+						}
+						const cleanupReports: Array<Record<string, unknown>> = [];
+						for (const pkg of checkedOutWorkspacePackageRepos(root)) {
+							const tagNames = byPackage.get(pkg.name) ?? [];
+							if (tagNames.length === 0) continue;
+							cleanupReports.push({
+								name: pkg.name,
+								...cleanupDevTags(pkg.dir, tagNames, activeDevTags),
+							});
+						}
+						return { status: 'completed', repos: cleanupReports };
+					});
+				const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 				const payload = {
 					mode,
 					mergeStrategy: 'merge-commit',
 					level,
+					resumed: workflowRun.resumed,
+					resumedRunId: workflowRun.resumed ? workflowRun.runId : null,
+					autoResumed: autoResumeRun != null,
 					rootVersion: String(rootRelease?.rootVersion ?? ''),
 					releaseTag: String(rootRelease?.rootVersion ?? ''),
 					releasedCommit: String(rootRelease?.releasedCommit ?? rootRepo.commitSha ?? ''),
 					stagingBranch: STAGING_BRANCH,
 					productionBranch: PRODUCTION_BRANCH,
-					touchedPackages: packageSelection.selected,
-					packageSelection,
+					touchedPackages: effectivePackageSelection.selected,
+					packageSelection: effectivePackageSelection,
+					replacedDevReferences,
+					releaseInstalls,
+					devTagCleanup,
 					publishWait,
 					repos: packageReports,
 					rootRepo,
@@ -2872,20 +3440,17 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						productionPushed: true,
 						tagPushed: true,
 					},
+					workspaceLinks,
 				};
 				completeWorkflowRun(root, workflowRun.runId, payload);
-				return buildWorkflowResult(
-					'release',
-					root,
-					payload,
-					{
-						runId: workflowRun.runId,
-						nextSteps: createNextSteps([
-							{ operation: 'status', reason: 'Inspect release readiness and production state after the promotion.' },
-						]),
-					},
-				);
+				return buildWorkflowResult('release', root, payload, {
+					runId: workflowRun.runId,
+					nextSteps: createNextSteps([
+						{ operation: 'status', reason: 'Inspect release readiness and production state after the promotion.' },
+					]),
+				});
 			} catch (error) {
+				ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 				failWorkflowRun(root, workflowRun.runId, error, {
 					resumable: true,
 					runId: workflowRun.runId,

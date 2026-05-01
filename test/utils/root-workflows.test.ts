@@ -20,11 +20,12 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(source).toContain('submodules: recursive');
 	});
 
-	it('uses auto bootstrap mode with split checkout strategy in deploy jobs', () => {
+	it('uses auto bootstrap mode with workspace-aware deployment installs', () => {
 		const source = readFileSync(rootDeployWorkflowPath, 'utf8');
+		const verifySource = readFileSync(rootVerifyWorkflowPath, 'utf8');
 
 		expect(source).toContain('TREESEED_BOOTSTRAP_MODE: auto');
-		expect((source.match(/submodules: recursive/g) ?? []).length).toBeGreaterThanOrEqual(4);
+		expect((source.match(/submodules: recursive/g) ?? []).length).toBeGreaterThanOrEqual(5);
 		expect(source).toContain('migrations/*)');
 		expect(source).toContain('code_changed="true"');
 		expect(source).not.toContain('docs/*|migrations/*');
@@ -35,14 +36,36 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(source).toContain('uses: actions/upload-artifact@v4');
 		expect(source).toContain('uses: actions/download-artifact@v4');
 		expect(source).toContain('Ensure Treeseed deployment state');
-		expect(source).toContain("'.treeseed/state/' + scope + '/deploy.json'");
+		expect(source).toContain("'.treeseed/state/environments/' + scope + '/deploy.json'");
 		expect(source).toContain('name: treeseed-deploy-state-${{ needs.classify.outputs.scope }}');
 		expect(source).toContain('path: .treeseed/state');
 		expect(source).toContain('include-hidden-files: true');
 		expect(source).toContain('TREESEED_CONTENT_SERVING_MODE: published_runtime');
-		expect(source).toContain('submodules: false');
-		expect(source).toContain('sparse-checkout: |');
-		expect(source).toContain('!/src/content/**');
-		expect(source).toContain('!/public/books/**');
+		expect(source).not.toContain('submodules: false');
+		expect(source).not.toContain('sparse-checkout: |');
+		expect(source).not.toContain('delete pkg.workspaces');
+		expect(verifySource).not.toContain('delete pkg.workspaces');
 	});
+});
+
+describe('package publish safeguards', () => {
+	for (const packageName of ['sdk', 'core', 'cli']) {
+		const packageRoot = resolve(workspaceRoot, 'packages', packageName);
+		const publishWorkflowPath = resolve(packageRoot, '.github', 'workflows', 'publish.yml');
+		const describePackagePublishSafeguard = existsSync(publishWorkflowPath)
+			? it
+			: it.skip;
+
+		describePackagePublishSafeguard(`guards ${packageName} publishing to stable semver tags`, () => {
+			const workflowSource = readFileSync(publishWorkflowPath, 'utf8');
+			const checkTagSource = readFileSync(resolve(packageRoot, 'scripts', 'assert-release-tag-version.ts'), 'utf8');
+			const publishSource = readFileSync(resolve(packageRoot, 'scripts', 'publish-package.ts'), 'utf8');
+
+			expect(workflowSource).toContain("startsWith(github.ref, 'refs/tags/')");
+			expect(workflowSource).toContain("!contains(github.ref_name, '-')");
+			expect(checkTagSource).toContain('^\\d+\\.\\d+\\.\\d+$');
+			expect(publishSource).toContain('Refusing to publish');
+			expect(publishSource).toContain('^\\d+\\.\\d+\\.\\d+$');
+		});
+	}
 });

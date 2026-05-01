@@ -112,6 +112,20 @@ export {
 } from './operations/services/save-deploy-preflight.ts';
 export { collectCliPreflight } from './operations/services/workspace-preflight.ts';
 export {
+	collectTreeseedDependencyStatus,
+	createTreeseedManagedToolEnv,
+	formatTreeseedDependencyFailureDetails,
+	formatTreeseedDependencyReport,
+	installTreeseedDependencies,
+	resolveTreeseedToolBinary,
+	resolveTreeseedToolCommand,
+} from './managed-dependencies.ts';
+export {
+	runTreeseedCopilotTask,
+	type TreeseedCopilotTaskInput,
+	type TreeseedCopilotTaskResult,
+} from './copilot.ts';
+export {
 	applyWorkspaceVersionChanges,
 	collectMergeConflictReport,
 	currentBranch,
@@ -123,6 +137,17 @@ export {
 	planWorkspaceReleaseBump,
 	repoRoot,
 } from './operations/services/workspace-save.ts';
+export {
+	assertNoWorkspaceLinksInDeploymentLockfiles,
+	collectDeploymentLockfileWorkspaceIssues,
+	discoverWorkspaceLinks,
+	ensureLocalWorkspaceLinks,
+	inspectWorkspaceDependencyMode,
+	unlinkLocalWorkspaceLinks,
+	type DependencyResolutionMode,
+	type DeploymentLockfileWorkspaceIssue,
+	type WorkspaceLinksMode,
+} from './operations/services/workspace-dependency-mode.ts';
 export {
 	findNearestTreeseedRoot,
 	findNearestTreeseedWorkspaceRoot,

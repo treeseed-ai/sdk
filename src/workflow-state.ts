@@ -1,15 +1,18 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import {
 	getTreeseedMachineConfigPaths,
 	inspectTreeseedKeyAgentStatus,
 	loadTreeseedMachineConfig,
+	collectTreeseedConfigSeedValues,
 	resolveTreeseedMachineEnvironmentValues,
 	resolveTreeseedRemoteSession,
 	collectTreeseedEnvironmentContext,
 	withTreeseedKeyAgentAutopromptDisabled,
 } from './operations/services/config-runtime.ts';
-import { validateTreeseedEnvironmentValues } from './platform/environment.ts';
+import { resolveWranglerBin } from './operations/services/runtime-tools.ts';
+import { getTreeseedEnvironmentSuggestedValues, validateTreeseedEnvironmentValues } from './platform/environment.ts';
 import { resolveTreeseedWebCachePolicy } from './platform/deploy-config.ts';
 import {
 	createBranchPreviewDeployTarget,
@@ -20,7 +23,9 @@ import { loadCliDeployConfig } from './operations/services/runtime-tools.ts';
 import { collectCliPreflight } from './operations/services/workspace-preflight.ts';
 import { currentBranch, gitStatusPorcelain } from './operations/services/workspace-save.ts';
 import { hasCompleteTreeseedPackageCheckout, isWorkspaceRoot, run, workspacePackages } from './operations/services/workspace-tools.ts';
+import { inspectWorkspaceDependencyMode } from './operations/services/workspace-dependency-mode.ts';
 import { inspectWorkflowLock, listInterruptedWorkflowRuns } from './workflow/runs.ts';
+import { createTreeseedManagedToolEnv, resolveTreeseedToolCommand } from './managed-dependencies.ts';
 import type { TreeseedWorkflowNextStep } from './workflow.ts';
 import {
 	type TreeseedWorkflowBranchRole,
@@ -31,6 +36,44 @@ import {
 export type TreeseedBranchRole = TreeseedWorkflowBranchRole;
 
 export type TreeseedWorkflowRecommendation = TreeseedWorkflowNextStep;
+
+export type TreeseedWorkflowEnvironmentStatus = {
+	phase: string;
+	ready: boolean;
+	configured: boolean;
+	initialized: boolean;
+	provisioned: boolean;
+	deployable: boolean;
+	lastValidatedAt: string | null;
+	lastDeploymentTimestamp: string | null;
+	lastDeployedUrl: string | null;
+	blockers: string[];
+	warnings: string[];
+};
+
+export type TreeseedWorkflowProviderCheck = {
+	configured: boolean;
+	applicable?: boolean;
+	detail?: string;
+	live?: {
+		checked: boolean;
+		ready: boolean;
+		skipped?: boolean;
+		detail: string;
+	};
+};
+
+export type TreeseedWorkflowProviderStatus = Record<'local' | 'staging' | 'prod', {
+	github: TreeseedWorkflowProviderCheck;
+	cloudflare: TreeseedWorkflowProviderCheck;
+	railway: TreeseedWorkflowProviderCheck;
+	localDevelopment: TreeseedWorkflowProviderCheck;
+}>;
+
+export type TreeseedWorkflowStatusOptions = {
+	live?: boolean;
+	env?: NodeJS.ProcessEnv;
+};
 
 export type TreeseedWorkflowState = {
 	cwd: string;
@@ -62,6 +105,8 @@ export type TreeseedWorkflowState = {
 	packageSync: {
 		mode: 'root-only' | 'recursive-workspace';
 		completeCheckout: boolean;
+		dependencyMode: string;
+		workspaceLinks: ReturnType<typeof inspectWorkspaceDependencyMode>;
 		expectedBranch: string | null;
 		aligned: boolean;
 		dirty: boolean;
@@ -105,6 +150,8 @@ export type TreeseedWorkflowState = {
 		lastDeploymentTimestamp: string | null;
 		lastDeployedUrl: string | null;
 	}>;
+	environmentStatus: Record<'local' | 'staging' | 'prod', TreeseedWorkflowEnvironmentStatus>;
+	providerStatus: TreeseedWorkflowProviderStatus;
 	auth: {
 		gh: boolean;
 		wrangler: boolean;
@@ -183,6 +230,31 @@ function emptyPersistentEnvironments(): TreeseedWorkflowState['persistentEnviron
 	};
 }
 
+function emptyEnvironmentStatus(): TreeseedWorkflowState['environmentStatus'] {
+	return {
+		local: { phase: 'pending', ready: false, configured: false, initialized: false, provisioned: false, deployable: false, lastValidatedAt: null, lastDeploymentTimestamp: null, lastDeployedUrl: null, blockers: [], warnings: [] },
+		staging: { phase: 'pending', ready: false, configured: false, initialized: false, provisioned: false, deployable: false, lastValidatedAt: null, lastDeploymentTimestamp: null, lastDeployedUrl: null, blockers: [], warnings: [] },
+		prod: { phase: 'pending', ready: false, configured: false, initialized: false, provisioned: false, deployable: false, lastValidatedAt: null, lastDeploymentTimestamp: null, lastDeployedUrl: null, blockers: [], warnings: [] },
+	};
+}
+
+function emptyProviderStatus(): TreeseedWorkflowProviderStatus {
+	const emptyScope = () => ({
+		github: { configured: false },
+		cloudflare: { configured: false },
+		railway: { configured: false },
+		localDevelopment: { configured: false },
+	});
+	return {
+		local: {
+			...emptyScope(),
+			railway: { configured: true, applicable: false, detail: 'Railway services run locally in the local environment.' },
+		},
+		staging: emptyScope(),
+		prod: emptyScope(),
+	};
+}
+
 function readinessForEnvironment(state: TreeseedWorkflowState, scope: 'local' | 'staging' | 'prod') {
 	const blockers = [...state.persistentEnvironments[scope].blockers];
 	const warnings = [...state.persistentEnvironments[scope].warnings];
@@ -231,6 +303,172 @@ function safeResolveMachineEnvironmentValues(cwd: string, scope: 'local' | 'stag
 	}
 }
 
+function collectStatusConfigScope(
+	cwd: string,
+	scope: 'local' | 'staging' | 'prod',
+	environmentContext: ReturnType<typeof collectTreeseedEnvironmentContext>,
+	env: NodeJS.ProcessEnv = process.env,
+) {
+	const values = collectTreeseedConfigSeedValues(cwd, scope, env);
+	const suggestedValues = getTreeseedEnvironmentSuggestedValues({
+		scope,
+		purpose: 'config',
+		deployConfig: environmentContext.context.deployConfig,
+		tenantConfig: environmentContext.context.tenantConfig,
+		plugins: environmentContext.context.plugins,
+		values,
+	});
+	const validation = validateTreeseedEnvironmentValues({
+		values: {
+			...suggestedValues,
+			...values,
+		},
+		scope,
+		purpose: 'config',
+		deployConfig: environmentContext.context.deployConfig,
+		tenantConfig: environmentContext.context.tenantConfig,
+		plugins: environmentContext.context.plugins,
+	});
+	return {
+		values,
+		suggestedValues,
+		resolvedValues: {
+			...suggestedValues,
+			...values,
+		} as Record<string, string>,
+		validation,
+	};
+}
+
+function providerProblems(
+	validation: ReturnType<typeof validateTreeseedEnvironmentValues>,
+	provider: 'github' | 'cloudflare' | 'railway' | 'localDevelopment',
+) {
+	const problems = [...validation.missing, ...validation.invalid];
+	return problems.filter((problem) => {
+		const id = problem.id.toUpperCase();
+		const group = problem.entry.group;
+		if (provider === 'github') {
+			return id === 'GH_TOKEN' || id === 'GITHUB_TOKEN' || group === 'github';
+		}
+		if (provider === 'cloudflare') {
+			return id.startsWith('CLOUDFLARE_') || id.includes('TURNSTILE') || group === 'cloudflare';
+		}
+		if (provider === 'railway') {
+			return id.startsWith('RAILWAY_') || group === 'railway';
+		}
+		return group === 'local-development';
+	});
+}
+
+function isCloudflareProviderProblem(problem: { id: string; entry: { group?: string } }) {
+	const id = problem.id.toUpperCase();
+	return id.startsWith('CLOUDFLARE_') || id.includes('TURNSTILE') || problem.entry.group === 'cloudflare';
+}
+
+function liveCheckResult(configured: boolean, live?: TreeseedWorkflowProviderCheck['live']): TreeseedWorkflowProviderCheck {
+	return live ? { configured, live } : { configured };
+}
+
+function spawnLiveCheck(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv) {
+	const result = spawnSync(command, args, {
+		cwd,
+		env: { ...process.env, ...env },
+		stdio: 'pipe',
+		encoding: 'utf8',
+		timeout: 15000,
+	});
+	const output = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim();
+	return {
+		ok: result.status === 0,
+		detail: output || (result.status === 0 ? 'Provider check succeeded.' : `Provider check failed with status ${result.status ?? 'unknown'}.`),
+	};
+}
+
+function providerLiveCheck(provider: 'github' | 'cloudflare' | 'railway', configured: boolean, cwd: string, env: NodeJS.ProcessEnv) {
+	if (!configured) {
+		return { checked: true, ready: false, skipped: true, detail: `${provider} token/config is missing.` };
+	}
+	try {
+		const result = (() => {
+			if (provider === 'github') {
+				const gh = resolveTreeseedToolCommand('gh', { env });
+				if (!gh) return { ok: false, detail: 'GitHub CLI `gh` is unavailable.' };
+				return spawnLiveCheck(gh.command, [...gh.argsPrefix, 'api', 'user', '--jq', '.login'], cwd, createTreeseedManagedToolEnv(env));
+			}
+			if (provider === 'cloudflare') {
+				return spawnLiveCheck(process.execPath, [resolveWranglerBin(), 'whoami'], cwd, env);
+			}
+			const railway = resolveTreeseedToolCommand('railway', { env });
+			if (!railway) return { ok: false, detail: 'Railway CLI is unavailable.' };
+			return spawnLiveCheck(railway.command, [...railway.argsPrefix, 'whoami'], cwd, env);
+		})();
+		return {
+			checked: true,
+			ready: result.ok,
+			detail: result.detail,
+		};
+	} catch (error) {
+		return {
+			checked: true,
+			ready: false,
+			detail: error instanceof Error ? error.message : `${provider} live check failed.`,
+		};
+	}
+}
+
+function providerStatusForScope(
+	cwd: string,
+	scope: 'local' | 'staging' | 'prod',
+	statusConfig: ReturnType<typeof collectStatusConfigScope>,
+	options: TreeseedWorkflowStatusOptions,
+) {
+	const values = statusConfig.values;
+	const githubConfigured = typeof values.GH_TOKEN === 'string' && values.GH_TOKEN.trim().length > 0;
+	const cloudflareConfigured = typeof values.CLOUDFLARE_API_TOKEN === 'string' && values.CLOUDFLARE_API_TOKEN.trim().length > 0;
+	const railwayConfigured = typeof values.RAILWAY_API_TOKEN === 'string' && values.RAILWAY_API_TOKEN.trim().length > 0;
+	const localDevelopmentConfigured = providerProblems(statusConfig.validation, 'localDevelopment').length === 0;
+	const live = options.live === true;
+	const env = statusConfig.resolvedValues as NodeJS.ProcessEnv;
+	const cloudflare = scope === 'local'
+		? {
+			configured: cloudflareConfigured,
+			applicable: false,
+			detail: cloudflareConfigured
+				? 'Cloudflare is used locally only for optional AI-backed features.'
+				: 'Cloudflare provider deployment is not used for the local runtime.',
+			...(live ? { live: { checked: true, ready: true, skipped: true, detail: 'Wrangler provider checks are not used for the local runtime.' } } : {}),
+		}
+		: liveCheckResult(cloudflareConfigured, live ? providerLiveCheck('cloudflare', cloudflareConfigured, cwd, env) : undefined);
+	const railway = scope === 'local'
+		? {
+			configured: true,
+			applicable: false,
+			detail: 'Railway services run locally in the local environment.',
+			...(live ? { live: { checked: true, ready: true, skipped: true, detail: 'Railway is not used for the local environment.' } } : {}),
+		}
+		: liveCheckResult(railwayConfigured, live ? providerLiveCheck('railway', railwayConfigured, cwd, env) : undefined);
+	return {
+		github: liveCheckResult(githubConfigured, live ? providerLiveCheck('github', githubConfigured, cwd, env) : undefined),
+		cloudflare,
+		railway,
+		localDevelopment: {
+			configured: localDevelopmentConfigured,
+			...(live ? { live: { checked: true, ready: localDevelopmentConfigured, skipped: true, detail: 'Local development readiness is validated from saved configuration.' } } : {}),
+		},
+	};
+}
+
+function hasStatusConfigValue(
+	statusConfigByScope: Record<'local' | 'staging' | 'prod', ReturnType<typeof collectStatusConfigScope>>,
+	key: string,
+) {
+	return (['local', 'staging', 'prod'] as const).some((scope) => {
+		const value = statusConfigByScope[scope].values[key];
+		return typeof value === 'string' && value.trim().length > 0;
+	});
+}
+
 function knownRemoteTrackingBranchExists(repoDir: string, branchName: string) {
 	try {
 		run('git', ['show-ref', '--verify', '--quiet', `refs/remotes/origin/${branchName}`], { cwd: repoDir, capture: true });
@@ -240,7 +478,16 @@ function knownRemoteTrackingBranchExists(repoDir: string, branchName: string) {
 	}
 }
 
-export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState {
+function resolveLocalStatusUrl(deployConfig: ReturnType<typeof loadCliDeployConfig>) {
+	return deployConfig.surfaces?.web?.localBaseUrl
+		?? deployConfig.surfaces?.api?.localBaseUrl
+		?? Object.values(deployConfig.services ?? {})
+			.find((service) => service?.enabled !== false && service.environments?.local?.baseUrl)
+			?.environments?.local?.baseUrl
+		?? null;
+}
+
+export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkflowStatusOptions = {}): TreeseedWorkflowState {
 	const resolved = resolveTreeseedWorkflowPaths(cwd);
 	const effectiveCwd = resolved.cwd;
 	const workspaceRoot = isWorkspaceRoot(effectiveCwd);
@@ -251,6 +498,7 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 	const branchRole = resolved.branchRole;
 	const dirtyWorktree = root ? gitStatusPorcelain(root).length > 0 : false;
 	const completePackageCheckout = hasCompleteTreeseedPackageCheckout(effectiveCwd);
+	const workspaceDependencyMode = inspectWorkspaceDependencyMode(effectiveCwd);
 	const packageSyncRepos = completePackageCheckout
 		? workspacePackages(effectiveCwd)
 			.filter((pkg) => pkg.name?.startsWith('@treeseed/'))
@@ -351,6 +599,8 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 		packageSync: {
 			mode: completePackageCheckout ? 'recursive-workspace' : 'root-only',
 			completeCheckout: completePackageCheckout,
+			dependencyMode: workspaceDependencyMode.mode,
+			workspaceLinks: workspaceDependencyMode,
 			expectedBranch: branchName,
 			aligned: packageSyncRepos.every((repo) => repo.aligned),
 			dirty: packageSyncRepos.some((repo) => repo.dirty),
@@ -375,6 +625,8 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 			lastContentPurgeCount: null,
 		},
 		persistentEnvironments: emptyPersistentEnvironments(),
+		environmentStatus: emptyEnvironmentStatus(),
+		providerStatus: emptyProviderStatus(),
 		auth: {
 			gh: preflight.checks.auth.gh?.authenticated === true,
 			wrangler: preflight.checks.auth.wrangler?.authenticated === true,
@@ -449,7 +701,19 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 		try {
 			const deployConfig = loadCliDeployConfig(effectiveCwd);
 			const environmentContext = collectTreeseedEnvironmentContext(effectiveCwd);
-			const sharedConfigValues = safeResolveMachineEnvironmentValues(effectiveCwd, 'prod');
+			const statusConfigByScope = Object.fromEntries(
+				(['local', 'staging', 'prod'] as const).map((scope) => [
+					scope,
+					collectStatusConfigScope(effectiveCwd, scope, environmentContext, options.env),
+				]),
+			) as Record<'local' | 'staging' | 'prod', ReturnType<typeof collectStatusConfigScope>>;
+			state.providerStatus = Object.fromEntries(
+				(['local', 'staging', 'prod'] as const).map((scope) => [
+					scope,
+					providerStatusForScope(effectiveCwd, scope, statusConfigByScope[scope], options),
+				]),
+			) as TreeseedWorkflowProviderStatus;
+			const sharedConfigValues = statusConfigByScope.prod.resolvedValues;
 			const runtimeMode = deployConfig.runtime?.mode ?? 'none';
 			const runtimeRegistration = deployConfig.runtime?.registration ?? 'none';
 			const webCachePolicy = resolveTreeseedWebCachePolicy(deployConfig);
@@ -459,6 +723,10 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 				marketSettings?.runnerReady === true
 				|| (typeof runnerSession?.accessToken === 'string' && runnerSession.accessToken.length > 0),
 			);
+			state.auth.gh = state.auth.gh || hasStatusConfigValue(statusConfigByScope, 'GH_TOKEN');
+			state.auth.wrangler = state.auth.wrangler || hasStatusConfigValue(statusConfigByScope, 'CLOUDFLARE_API_TOKEN');
+			state.auth.railway = state.auth.railway || hasStatusConfigValue(statusConfigByScope, 'RAILWAY_API_TOKEN');
+			state.auth.copilot = state.auth.copilot || state.auth.gh;
 			state.marketConnection.baseUrl = state.marketConnection.baseUrl
 				?? sharedConfigValues.TREESEED_MARKET_API_BASE_URL
 				?? deployConfig.runtime?.marketBaseUrl
@@ -488,17 +756,16 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 			state.marketConnection.configured = registrationRequired
 				? Boolean(state.marketConnection.baseUrl && state.marketConnection.projectId)
 				: state.marketConnection.configured;
+			const localStatusUrl = resolveLocalStatusUrl(deployConfig);
 			for (const scope of ['local', 'staging', 'prod'] as const) {
 				const deployState = loadDeployState(effectiveCwd, deployConfig, { target: createPersistentDeployTarget(scope) });
-				const validation = validateTreeseedEnvironmentValues({
-					values: safeResolveMachineEnvironmentValues(effectiveCwd, scope),
-					scope,
-					purpose: 'config',
-					deployConfig: environmentContext.context.deployConfig,
-					tenantConfig: environmentContext.context.tenantConfig,
-					plugins: environmentContext.context.plugins,
-				});
-				const validationProblems = [...validation.missing, ...validation.invalid].map((problem) => problem.message);
+				const validation = statusConfigByScope[scope].validation;
+				const rawValidationProblems = [...validation.missing, ...validation.invalid];
+				const statusValidationProblems = scope === 'local'
+					? rawValidationProblems.filter((problem) => !isCloudflareProviderProblem(problem))
+					: rawValidationProblems;
+				const validationProblems = statusValidationProblems.map((problem) => problem.message);
+				const statusValidationOk = statusValidationProblems.length === 0;
 				const persistentBlockers = Array.isArray(deployState.readiness?.blockers)
 					? deployState.readiness.blockers.map(String)
 					: [];
@@ -506,18 +773,18 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 					? deployState.readiness.warnings.map(String)
 					: [];
 				const configured = scope === 'local'
-					? validation.ok
-					: deployState.readiness?.configured === true && validation.ok;
+					? statusValidationOk
+					: deployState.readiness?.configured === true && statusValidationOk;
 				const provisioned = scope === 'local'
 					? true
 					: configured && deployState.readiness?.provisioned === true;
 				const deployable = scope === 'local'
-					? validation.ok
+					? statusValidationOk
 					: configured && deployState.readiness?.deployable === true;
 				const initialized = deployState.readiness?.initialized === true || scope === 'local';
 				state.persistentEnvironments[scope] = {
 					initialized,
-					phase: validation.ok
+					phase: statusValidationOk
 						? (scope === 'local'
 							? 'code_ready'
 							: provisioned
@@ -537,8 +804,8 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 					],
 					warnings: persistentWarnings,
 					lastValidatedAt: deployState.readiness?.lastValidatedAt ?? deployState.readiness?.initializedAt ?? null,
-					lastDeploymentTimestamp: deployState.lastDeploymentTimestamp ?? null,
-					lastDeployedUrl: deployState.lastDeployedUrl ?? null,
+					lastDeploymentTimestamp: scope === 'local' ? null : (deployState.lastDeploymentTimestamp ?? null),
+					lastDeployedUrl: scope === 'local' ? localStatusUrl : (deployState.lastDeployedUrl ?? null),
 				};
 				if (scope !== 'local') {
 					const history = Array.isArray((deployState as { deploymentHistory?: unknown[] }).deploymentHistory)
@@ -588,6 +855,23 @@ export function resolveTreeseedWorkflowState(cwd: string): TreeseedWorkflowState
 	state.readiness.local = readinessForEnvironment(state, 'local');
 	state.readiness.staging = readinessForEnvironment(state, 'staging');
 	state.readiness.prod = readinessForEnvironment(state, 'prod');
+	for (const scope of ['local', 'staging', 'prod'] as const) {
+		const persistent = state.persistentEnvironments[scope];
+		const readiness = state.readiness[scope];
+		state.environmentStatus[scope] = {
+			phase: persistent.phase,
+			ready: readiness.ready,
+			configured: persistent.configured,
+			initialized: persistent.initialized,
+			provisioned: persistent.provisioned,
+			deployable: persistent.deployable,
+			lastValidatedAt: persistent.lastValidatedAt,
+			lastDeploymentTimestamp: persistent.lastDeploymentTimestamp,
+			lastDeployedUrl: persistent.lastDeployedUrl,
+			blockers: readiness.blockers,
+			warnings: readiness.warnings,
+		};
+	}
 	state.marketConnection.verificationPosture = state.readiness.local.ready
 		? 'ready'
 		: state.files.machineConfig

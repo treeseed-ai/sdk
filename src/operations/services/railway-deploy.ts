@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { loadCliDeployConfig } from './runtime-tools.ts';
 import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from './deploy.ts';
 import { runPrefixedCommand, sleep, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from './bootstrap-runner.ts';
+import { resolveTreeseedToolCommand } from '../../managed-dependencies.ts';
 import {
 	ensureRailwayEnvironment,
 	ensureRailwayProject,
@@ -191,8 +192,8 @@ function isRailwayAlreadyExistsMessage(result) {
 	return /already exists|already taken|duplicate|has already been taken/iu.test(railwayMessage(result));
 }
 
-function isRailwayTransientFailure(result) {
-	return /timed out|failed to fetch|temporarily unavailable|econnreset|etimedout/iu.test(railwayMessage(result));
+export function isRailwayTransientFailure(result) {
+	return /timed out|failed to fetch|temporarily unavailable|econnreset|etimedout|failed to stream build logs|failed to retrieve build log/iu.test(railwayMessage(result));
 }
 
 function sleepSync(milliseconds) {
@@ -278,7 +279,11 @@ mutation TreeseedScheduleUpdate($id: String!, $name: String!, $schedule: String!
 
 export function runRailway(args, { cwd, capture = false, allowFailure = false, input, env } = {}) {
 	const effectiveEnv = buildRailwayCommandEnv({ ...process.env, ...(env ?? {}) });
-	const runWithEnv = (spawnEnv) => spawnSync('railway', args, {
+	const railway = resolveTreeseedToolCommand('railway', { env: effectiveEnv });
+	if (!railway) {
+		throw new Error('Railway CLI is unavailable.');
+	}
+	const runWithEnv = (spawnEnv) => spawnSync(railway.command, [...railway.argsPrefix, ...args], {
 		cwd,
 		stdio: input !== undefined ? ['pipe', capture ? 'pipe' : 'inherit', capture ? 'pipe' : 'inherit'] : (capture ? 'pipe' : 'inherit'),
 		encoding: 'utf8',
@@ -294,37 +299,36 @@ export function runRailway(args, { cwd, capture = false, allowFailure = false, i
 	return result;
 }
 
-function shellEscape(value) {
-	return `'${String(value).replace(/'/gu, `'\\''`)}'`;
-}
-
 export function setRailwaySecretVariable(
 	{ cwd, service, environment, key, value, env = process.env, capture = false, allowFailure = false },
 ) {
 	const effectiveEnv = buildRailwayCommandEnv({
 		...process.env,
 		...(env ?? {}),
-		TREESEED_RAILWAY_SECRET_VALUE: value,
 	});
-	const command = [
-		'printf %s\\\\n "$TREESEED_RAILWAY_SECRET_VALUE"',
-		'|',
-		'railway variable set',
-		'--service',
-		shellEscape(service),
-		'--environment',
-		shellEscape(environment),
-		'--stdin',
-		'--skip-deploys',
-		shellEscape(key),
-	].join(' ');
 	let result = null;
 	for (let attempt = 0; attempt < 3; attempt += 1) {
-		result = spawnSync('bash', ['-lc', command], {
+		const railway = resolveTreeseedToolCommand('railway', { env: effectiveEnv });
+		if (!railway) {
+			throw new Error('Railway CLI is unavailable.');
+		}
+		result = spawnSync(railway.command, [
+			...railway.argsPrefix,
+			'variable',
+			'set',
+			'--service',
+			service,
+			'--environment',
+			environment,
+			'--stdin',
+			'--skip-deploys',
+			key,
+		], {
 			cwd,
-			stdio: capture ? 'pipe' : 'inherit',
+			stdio: ['pipe', capture ? 'pipe' : 'inherit', capture ? 'pipe' : 'inherit'],
 			encoding: 'utf8',
 			env: effectiveEnv,
+			input: `${value}\n`,
 		});
 		if (result.status === 0) {
 			return result;
@@ -980,8 +984,20 @@ export async function verifyRailwayScheduledJobs(
 	};
 }
 
-export function planRailwayServiceDeploy(service) {
-	const args = ['up', '--service', service.serviceName ?? service.serviceId, '--ci'];
+function shouldAttachRailwayDeployLogs(env = process.env) {
+	return configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS') === '1';
+}
+
+export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
+	const args = [
+		'up',
+		'--service',
+		service.serviceName ?? service.serviceId,
+		shouldAttachRailwayDeployLogs(env) ? '--ci' : '--detach',
+	];
+	if (service.projectId) {
+		args.push('--project', service.projectId);
+	}
 	const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment);
 	if (environmentName) {
 		args.push('--environment', environmentName);
@@ -990,6 +1006,25 @@ export function planRailwayServiceDeploy(service) {
 		command: 'railway',
 		args,
 		cwd: service.rootDir,
+	};
+}
+
+async function resolveRailwayDeployProjectContext(service, { env = process.env } = {}) {
+	if (service.projectId) {
+		return service;
+	}
+	const workspace = await resolveRailwayWorkspaceContext({ env });
+	const { project } = await ensureRailwayProject({
+		projectId: service.projectId,
+		projectName: service.projectName,
+		defaultEnvironmentName: service.railwayEnvironment,
+		env,
+		workspace: workspace.id,
+	});
+	return {
+		...service,
+		projectId: project.id,
+		projectName: project.name ?? service.projectName,
 	};
 }
 
@@ -1081,8 +1116,8 @@ export async function deployRailwayService(
 		env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	} = {},
 ) {
-	const plan = planRailwayServiceDeploy(service);
 	if (dryRun) {
+		const plan = planRailwayServiceDeploy(service, { env });
 		return {
 			service: service.key,
 			status: 'planned',
@@ -1091,23 +1126,25 @@ export async function deployRailwayService(
 			publicBaseUrl: service.publicBaseUrl,
 		};
 	}
+	const deployService = await resolveRailwayDeployProjectContext(service, { env });
+	const plan = planRailwayServiceDeploy(deployService, { env });
 
 	const taskPrefix = prefix ?? {
-		scope: normalizeScope(service.scope ?? service.railwayEnvironment ?? 'railway'),
-		system: service.key === 'api' ? 'api' : 'agents',
-		task: `${service.key}-railway-deploy`,
+		scope: normalizeScope(deployService.scope ?? deployService.railwayEnvironment ?? 'railway'),
+		system: deployService.key === 'api' ? 'api' : 'agents',
+		task: `${deployService.key}-railway-deploy`,
 		stage: 'deploy',
 	};
 	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
-	if (service.buildCommand) {
-		const buildResult = await runPrefixedCommand('bash', ['-lc', service.buildCommand], {
-			cwd: service.rootDir,
+	if (deployService.buildCommand) {
+		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
+			cwd: deployService.rootDir,
 			env: commandEnv,
 			write,
 			prefix: { ...taskPrefix, stage: 'build' },
 		});
 		if (buildResult.status !== 0) {
-			throw new Error(`Railway ${service.key} build command failed.`);
+			throw new Error(`Railway ${deployService.key} build command failed.`);
 		}
 	}
 
@@ -1128,22 +1165,22 @@ export async function deployRailwayService(
 			throw new Error(result.stderr?.trim() || result.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
 		}
 		const backoffMs = 5000 * attempt;
-		const warning = `Railway deploy for ${service.serviceName ?? service.serviceId ?? service.key} hit a transient failure; retrying in ${Math.round(backoffMs / 1000)}s...`;
+		const warning = `Railway deploy for ${deployService.serviceName ?? deployService.serviceId ?? deployService.key} hit a transient failure; retrying in ${Math.round(backoffMs / 1000)}s...`;
 		write ? write(`[${taskPrefix.scope}][${taskPrefix.system}][${taskPrefix.task}][retry] ${warning}`, 'stderr') : console.warn(warning);
 		await sleep(backoffMs);
 	}
 	if (lastFailure) {
 		throw new Error(lastFailure.stderr?.trim() || lastFailure.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
 	}
-	const runtimeConfiguration = await syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, service, {
+	const runtimeConfiguration = await syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, {
 		env: commandEnv,
 	});
 	return {
-		service: service.key,
+		service: deployService.key,
 		status: 'deployed',
 		command: [plan.command, ...plan.args].join(' '),
 		cwd: plan.cwd,
-		publicBaseUrl: service.publicBaseUrl,
+		publicBaseUrl: deployService.publicBaseUrl,
 		runtimeConfiguration: runtimeConfiguration
 			? {
 				updated: runtimeConfiguration.updated,

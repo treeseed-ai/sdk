@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { collectTreeseedConfigSeedValues } from './config-runtime.ts';
 import { createTempDir } from './workspace-tools.ts';
+import { resolveTreeseedToolBinary } from '../../managed-dependencies.ts';
 
 function runCapture(command, args, options = {}) {
 	const result = spawnSync(command, args, {
@@ -23,6 +24,10 @@ function runCapture(command, args, options = {}) {
 }
 
 function locateBinary(candidate) {
+	const managed = resolveTreeseedToolBinary(candidate);
+	if (managed) {
+		return managed;
+	}
 	const result = runCapture('bash', ['-lc', `command -v ${candidate}`]);
 	return result.status === 0 ? result.stdout.trim() : null;
 }

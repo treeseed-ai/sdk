@@ -362,4 +362,85 @@ describe('cloudflare reconcile adapters', () => {
 			}),
 		}));
 	});
+
+	it('verifies a DNS record from the Cloudflare reconcile response when list reads are stale', async () => {
+		const { createCloudflareReconcileAdapters } = await import('../../src/reconcile/builtin-adapters.ts');
+		const adapter = createCloudflareReconcileAdapters().find((entry) => entry.unitTypes.includes('dns-record'));
+		expect(adapter).toBeTruthy();
+
+		cloudflareApiRequestMock.mockImplementation((path: string, options?: { method?: string; body?: Record<string, unknown> }) => {
+			if (path.includes('/dns_records') && !options?.method) {
+				return { success: true, result: [] };
+			}
+			if (options?.method === 'POST' && path.includes('/dns_records')) {
+				return {
+					success: true,
+					result: {
+						id: 'dns-txt-1',
+						type: options.body?.type,
+						name: options.body?.name,
+						content: `"${options.body?.content}"`,
+						proxied: options.body?.proxied,
+					},
+				};
+			}
+			return { success: true, result: [] };
+		});
+
+		const unit = {
+			unitId: 'dns-record:api:api-acme-docs-staging.example.com',
+			unitType: 'dns-record',
+			provider: 'cloudflare-dns',
+			target: { kind: 'persistent', scope: 'staging' },
+			logicalName: 'api:api-acme-docs-staging.example.com',
+			dependencies: [],
+			spec: {
+				domain: 'api-acme-docs-staging.example.com',
+				recordType: 'TXT',
+				recordName: '_railway-verify.api-acme-docs-staging.example.com',
+				recordContent: 'railway-token',
+				proxied: false,
+			},
+			secrets: {},
+			metadata: {},
+			identity: deployState.identity,
+		};
+		const context = {
+			tenantRoot: '/tmp/tenant',
+			target: { kind: 'persistent', scope: 'staging' },
+			deployConfig: {
+				name: 'Test',
+				slug: 'test',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				hosting: { kind: 'hosted_project', teamId: 'acme', projectId: 'docs' },
+				runtime: { mode: 'treeseed_managed', registration: 'none', teamId: 'acme', projectId: 'docs' },
+				providers: { dns: 'cloudflare-dns' },
+				cloudflare: { accountId: 'account-123', zoneId: 'zone-1' },
+			},
+			launchEnv: {
+				CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				CLOUDFLARE_API_TOKEN: 'cf-token',
+			},
+			session: new Map(),
+		};
+
+		const observed = adapter!.observe({ unit, context } as never);
+		const diff = adapter!.plan({ unit, context, observed } as never);
+		const result = await adapter!.reconcile({ unit, context, observed, diff } as never);
+		const verification = await adapter!.verify({ unit, context, observed: result.observed, diff, result, postconditions: [] } as never);
+
+		expect(verification.verified).toBe(true);
+		expect(cloudflareApiRequestMock).toHaveBeenCalledWith(
+			'/zones/zone-1/dns_records',
+			expect.objectContaining({
+				method: 'POST',
+				body: expect.objectContaining({
+					type: 'TXT',
+					name: '_railway-verify.api-acme-docs-staging.example.com',
+					content: 'railway-token',
+				}),
+			}),
+		);
+	});
 });

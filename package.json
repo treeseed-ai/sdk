@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.6.7",
+  "version": "0.6.8",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -34,6 +34,7 @@
     "setup:ci": "npm ci",
     "build": "npm run build:dist",
     "build:dist": "node ./scripts/run-ts.mjs ./scripts/build-dist.ts",
+    "prepare": "npm run build:dist",
     "prepack": "npm run build:dist",
     "test": "npm run test:unit",
     "test:unit": "vitest run --config ./vitest.config.ts",
@@ -51,7 +52,12 @@
     "release:publish": "node ./scripts/run-ts.mjs ./scripts/publish-package.ts"
   },
   "dependencies": {
+    "@github/copilot": "1.0.39",
+    "@github/copilot-language-server": "1.480.0",
+    "@github/copilot-sdk": "0.3.0",
+    "@railway/cli": "4.44.0",
     "esbuild": "^0.28.0",
+    "extract-zip": "2.0.1",
     "github-slugger": "^2.0.0",
     "ink": "^7.0.0",
     "libsodium-wrappers": "^0.7.15",
@@ -62,8 +68,10 @@
     "remark-mdx": "^3.1.1",
     "remark-parse": "^11.0.0",
     "repomix": "^1.13.1",
+    "tar": "7.5.13",
     "typescript": "^5.9.3",
     "unified": "^11.0.5",
+    "wrangler": "4.86.0",
     "yaml": "^2.8.1"
   },
   "devDependencies": {
@@ -187,6 +195,14 @@
     "./cli-tools": {
       "types": "./dist/cli-tools.d.ts",
       "default": "./dist/cli-tools.js"
+    },
+    "./managed-dependencies": {
+      "types": "./dist/managed-dependencies.d.ts",
+      "default": "./dist/managed-dependencies.js"
+    },
+    "./copilot": {
+      "types": "./dist/copilot.d.ts",
+      "default": "./dist/copilot.js"
     },
     "./types": {
       "types": "./dist/sdk-types.d.ts",

@@ -72,7 +72,7 @@ describe('github automation workflow generation', () => {
 		expect(rendered).toContain('uses: actions/upload-artifact@v4');
 		expect(rendered).toContain('uses: actions/download-artifact@v4');
 		expect(rendered).toContain('Ensure Treeseed deployment state');
-		expect(rendered).toContain("'.treeseed/state/' + scope + '/deploy.json'");
+		expect(rendered).toContain("'.treeseed/state/environments/' + scope + '/deploy.json'");
 		expect(rendered).toContain('name: treeseed-deploy-state-${{ needs.classify.outputs.scope }}');
 		expect(rendered).toContain('path: .treeseed/state');
 		expect(rendered).toContain('include-hidden-files: true');

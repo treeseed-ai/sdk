@@ -1,4 +1,4 @@
-import { resolveTreeseedWorkflowState } from './workflow-state.ts';
+import { resolveTreeseedWorkflowState, type TreeseedWorkflowStatusOptions } from './workflow-state.ts';
 import { listTaskBranches } from './operations/services/git-workflow.ts';
 import { resolveTreeseedWorkflowPaths } from './workflow/policy.ts';
 import {
@@ -128,12 +128,20 @@ export type TreeseedWorkflowWorkstreamSummary = {
 };
 
 export type TreeseedSaveInput = {
-	message: string;
+	message?: string;
 	hotfix?: boolean;
 	verify?: boolean;
 	refreshPreview?: boolean;
 	preview?: boolean;
 	rebase?: boolean;
+	bump?: 'major' | 'minor' | 'patch';
+	devVersionStrategy?: 'prerelease';
+	devDependencyReferenceMode?: 'git-tag' | 'registry-prerelease';
+	gitDependencyProtocol?: 'preserve-origin' | 'https' | 'ssh';
+	gitRemoteWriteMode?: 'ssh-pushurl' | 'off';
+	verifyMode?: 'action-first' | 'local-only' | 'skip';
+	commitMessageMode?: 'auto' | 'cloudflare' | 'generated' | 'fallback';
+	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -143,6 +151,7 @@ export type TreeseedCloseInput = {
 	deletePreview?: boolean;
 	deleteBranch?: boolean;
 	autoSave?: boolean;
+	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -153,6 +162,7 @@ export type TreeseedStageInput = {
 	deletePreview?: boolean;
 	deleteBranch?: boolean;
 	autoSave?: boolean;
+	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -163,6 +173,7 @@ export type TreeseedSwitchInput = {
 	preview?: boolean;
 	createIfMissing?: boolean;
 	baseBranch?: string;
+	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -206,6 +217,10 @@ export type TreeseedExportInput = {
 
 export type TreeseedReleaseInput = {
 	bump: 'major' | 'minor' | 'patch';
+	devTagCleanup?: 'safe-after-release' | 'off';
+	gitDependencyProtocol?: 'preserve-origin' | 'https' | 'ssh';
+	gitRemoteWriteMode?: 'ssh-pushurl' | 'off';
+	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -235,6 +250,7 @@ export type TreeseedWorkflowDevInput = {
 	port?: number | string;
 	background?: boolean;
 	stdio?: 'inherit' | 'pipe';
+	workspaceLinks?: 'auto' | 'off';
 };
 
 function defaultWrite(output: string, stream: 'stdout' | 'stderr' = 'stdout') {
@@ -265,7 +281,7 @@ export class TreeseedWorkflowSdk {
 	async execute(operation: TreeseedWorkflowOperationId, input: Record<string, unknown> = {}) {
 		switch (operation) {
 			case 'status':
-				return this.status();
+				return this.status(input as TreeseedWorkflowStatusOptions);
 			case 'tasks':
 				return this.tasks();
 			case 'config':
@@ -295,8 +311,8 @@ export class TreeseedWorkflowSdk {
 		}
 	}
 
-	async status(): Promise<TreeseedWorkflowResult<ReturnType<typeof resolveTreeseedWorkflowState>>> {
-		return workflowStatus(this.helpers());
+	async status(input: TreeseedWorkflowStatusOptions = {}): Promise<TreeseedWorkflowResult<ReturnType<typeof resolveTreeseedWorkflowState>>> {
+		return workflowStatus(this.helpers(), input);
 	}
 
 	async tasks(): Promise<TreeseedWorkflowResult<{ tasks: TreeseedTaskBranchMetadata[]; workstreams: TreeseedWorkflowWorkstreamSummary[] }>> {

@@ -1,5 +1,7 @@
 import { run, workspaceRoot } from './workspace-tools.ts';
 import { currentBranch, gitStatusPorcelain, repoRoot } from './workspace-save.ts';
+import { ensureSshPushUrlForOrigin } from './git-remote-policy.ts';
+import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../../managed-dependencies.ts';
 
 export const STAGING_BRANCH = 'staging';
 export const PRODUCTION_BRANCH = 'main';
@@ -7,6 +9,15 @@ const RESERVED_BRANCHES = new Set([STAGING_BRANCH, PRODUCTION_BRANCH]);
 
 function runGit(args, { cwd, capture = false } = {}) {
 	return run('git', args, { cwd, capture });
+}
+
+function ensureWritableOrigin(repoDir) {
+	try {
+		const remoteUrl = runGit(['remote', 'get-url', 'origin'], { cwd: repoDir, capture: true }).trim();
+		ensureSshPushUrlForOrigin(repoDir, remoteUrl);
+	} catch {
+		// Repositories without an origin will fail at the existing push call site.
+	}
 }
 
 function repoHasStagedChanges(repoDir) {
@@ -156,7 +167,7 @@ export function syncBranchWithOrigin(repoDir, branchName) {
 	}
 
 	if (remoteBranchExists(repoDir, branchName)) {
-		runGit(['pull', '--rebase', 'origin', branchName], { cwd: repoDir });
+		runGit(['merge', '--ff-only', `origin/${branchName}`], { cwd: repoDir });
 	}
 }
 
@@ -172,6 +183,7 @@ export function createFeatureBranchFromStaging(cwd, branchName) {
 }
 
 export function pushBranch(repoDir, branchName, { setUpstream = false } = {}) {
+	ensureWritableOrigin(repoDir);
 	const args = setUpstream ? ['push', '-u', 'origin', branchName] : ['push', 'origin', branchName];
 	runGit(args, { cwd: repoDir });
 }
@@ -228,6 +240,7 @@ export function deleteRemoteBranch(repoDir, branchName) {
 	if (!remoteBranchExists(repoDir, branchName)) {
 		return false;
 	}
+	ensureWritableOrigin(repoDir);
 	runGit(['push', 'origin', '--delete', branchName], { cwd: repoDir });
 	return true;
 }
@@ -333,6 +346,7 @@ export function createDeprecatedTaskTag(repoDir, branchName, message) {
 	const shortSha = head.slice(0, 12);
 	const tagName = `deprecated/${taskTagSlug(branchName)}/${shortSha}`;
 	runGit(['tag', '-a', tagName, head, '-m', message], { cwd: repoDir });
+	ensureWritableOrigin(repoDir);
 	runGit(['push', 'origin', tagName], { cwd: repoDir, capture: true });
 	return { tagName, head };
 }
@@ -343,7 +357,14 @@ export function waitForStagingAutomation(repoDir) {
 	}
 
 	try {
-		run('gh', ['run', 'watch', '--branch', STAGING_BRANCH, '--exit-status'], { cwd: repoDir });
+		const gh = resolveTreeseedToolBinary('gh');
+		if (!gh) {
+			throw new Error('GitHub CLI `gh` is unavailable.');
+		}
+		run(gh, ['run', 'watch', '--branch', STAGING_BRANCH, '--exit-status'], {
+			cwd: repoDir,
+			env: createTreeseedManagedToolEnv(process.env),
+		});
 		return { status: 'completed', branch: STAGING_BRANCH };
 	} catch (error) {
 		throw new Error([
@@ -381,7 +402,7 @@ export function mergeBranchIntoTarget(
 	const repoDir = prepareReleaseBranches(cwd);
 	checkoutBranch(repoDir, targetBranch);
 	if (remoteBranchExists(repoDir, targetBranch)) {
-		runGit(['pull', '--rebase', 'origin', targetBranch], { cwd: repoDir });
+		runGit(['merge', '--ff-only', `origin/${targetBranch}`], { cwd: repoDir });
 	}
 	runGit(['merge', '--no-ff', sourceBranch, '-m', message], { cwd: repoDir });
 	pushBranch(repoDir, STAGING_BRANCH);

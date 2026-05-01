@@ -139,6 +139,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -148,7 +150,7 @@ jobs:
           cache-dependency-path: __CACHE_DEPENDENCY_PATH__
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Verify workspace
         shell: bash
@@ -250,6 +252,8 @@ __WORKING_DIRECTORY_BLOCK__
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -259,7 +263,10 @@ __WORKING_DIRECTORY_BLOCK__
           cache-dependency-path: __CACHE_DEPENDENCY_PATH__
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
 
       - name: Provision Treeseed platform
         shell: bash
@@ -269,7 +276,7 @@ __TENANT_WORKFLOW_ACTION_COMMAND_BLOCK__
       - name: Ensure Treeseed deployment state
         shell: bash
         run: |
-          node --input-type=module -e "import { dirname } from 'node:path'; import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'; const scope = process.env.TREESEED_WORKFLOW_ENVIRONMENT || 'staging'; const filePath = '.treeseed/state/' + scope + '/deploy.json'; const now = new Date().toISOString(); let state = {}; if (existsSync(filePath)) { state = JSON.parse(readFileSync(filePath, 'utf8')); } state.target = state.target || { kind: 'persistent', scope }; state.readiness = { ...(state.readiness || {}), initialized: true, configured: true, phase: state.readiness?.phase || 'config_complete', initializedAt: state.readiness?.initializedAt || now, lastValidatedAt: now, blockers: state.readiness?.blockers || [], warnings: state.readiness?.warnings || [] }; mkdirSync(dirname(filePath), { recursive: true }); writeFileSync(filePath, JSON.stringify(state, null, 2) + '\n');"
+          node --input-type=module -e "import { existsSync, readFileSync, writeFileSync } from 'node:fs'; const scope = process.env.TREESEED_WORKFLOW_ENVIRONMENT || 'staging'; const filePath = '.treeseed/state/environments/' + scope + '/deploy.json'; if (!existsSync(filePath)) { throw new Error('Provision did not write deployment state at ' + filePath); } const state = JSON.parse(readFileSync(filePath, 'utf8')); const dbId = state?.d1Databases?.SITE_DATA_DB?.databaseId; if (!dbId || String(dbId).startsWith('dryrun-')) { throw new Error('Provision deployment state is missing a live D1 database id.'); } const now = new Date().toISOString(); state.target = state.target || { kind: 'persistent', scope }; state.readiness = { ...(state.readiness || {}), initialized: true, configured: true, phase: state.readiness?.phase || 'config_complete', initializedAt: state.readiness?.initializedAt || now, lastValidatedAt: now, blockers: state.readiness?.blockers || [], warnings: state.readiness?.warnings || [] }; writeFileSync(filePath, JSON.stringify(state, null, 2) + '\n');"
 
       - name: Upload Treeseed deployment state
         if: always()
@@ -367,14 +374,7 @@ __WORKING_DIRECTORY_BLOCK__
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: false
-          sparse-checkout: |
-            /*
-            !/src/content/
-            !/src/content/**
-            !/public/books/
-            !/public/books/**
-          sparse-checkout-cone-mode: false
+          submodules: recursive
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -384,7 +384,10 @@ __WORKING_DIRECTORY_BLOCK__
           cache-dependency-path: __CACHE_DEPENDENCY_PATH__
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
 
       - name: Download Treeseed deployment state
         uses: actions/download-artifact@v4
@@ -483,6 +486,8 @@ __WORKING_DIRECTORY_BLOCK__
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -492,7 +497,10 @@ __WORKING_DIRECTORY_BLOCK__
           cache-dependency-path: __CACHE_DEPENDENCY_PATH__
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
 
       - name: Download Treeseed deployment state
         uses: actions/download-artifact@v4
@@ -571,6 +579,8 @@ __WORKING_DIRECTORY_BLOCK__
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -580,7 +590,7 @@ __WORKING_DIRECTORY_BLOCK__
           cache-dependency-path: __CACHE_DEPENDENCY_PATH__
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Download Treeseed deployment state
         uses: actions/download-artifact@v4

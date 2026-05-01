@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -43,6 +43,7 @@ describe('verify driver', () => {
 		delete process.env.GITHUB_ACTIONS;
 		delete process.env.TREESEED_VERIFY_DRIVER;
 		delete process.env.TREESEED_VERIFY_EVENT;
+		delete process.env.TREESEED_VERIFY_ACT_UBUNTU_LATEST_IMAGE;
 	});
 
 	it('detects local sibling treeseed dependencies in a packages workspace', async () => {
@@ -129,9 +130,50 @@ describe('verify driver', () => {
 			expect(calls).toHaveLength(1);
 			expect(calls[0]).toMatchObject({
 				command: 'gh',
-				args: ['act', 'workflow_dispatch', '-W', expect.stringMatching(/treeseed-verify-act-.*\/verify\.yml$/), '-j', 'verify'],
+				args: [
+					'act',
+					'workflow_dispatch',
+					'-W',
+					expect.stringMatching(/treeseed-verify-act-.*\/verify\.yml$/),
+					'-j',
+					'verify',
+					'-P',
+					'ubuntu-latest=catthehacker/ubuntu:act-latest',
+				],
 				cwd: fixture.root,
 			});
+			const workflow = await readFile(calls[0].args[3], 'utf8');
+			expect(workflow).toContain('npm --prefix packages/sdk ci --workspaces=false');
+			expect(workflow).toContain('npm ci --workspaces=false');
+		} finally {
+			await rm(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	it('allows the act ubuntu-latest image mapping to be overridden', async () => {
+		const fixture = await createWorkspaceFixture('@treeseed/sdk');
+		const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+		process.env.TREESEED_VERIFY_ACT_UBUNTU_LATEST_IMAGE = 'example.local/ubuntu:verify';
+
+		try {
+			expect(runTreeseedVerifyDriver({
+				packageRoot: fixture.currentPackageRoot,
+				driver: 'act',
+				checkCommand() {
+					return { ok: true, detail: '' };
+				},
+				runCommand(command, args, cwd) {
+					calls.push({ command, args, cwd });
+					return 0;
+				},
+			})).toBe(0);
+			expect(calls).toEqual([
+				{
+					command: 'gh',
+					args: ['act', 'workflow_dispatch', '-W', '.github/workflows/verify.yml', '-j', 'verify', '-P', 'ubuntu-latest=example.local/ubuntu:verify'],
+					cwd: fixture.currentPackageRoot,
+				},
+			]);
 		} finally {
 			await rm(fixture.root, { recursive: true, force: true });
 		}

@@ -86,8 +86,18 @@ async function main() {
 	}
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+function isCliEntrypoint() {
+	if (!process.argv[1]) {
+		return false;
+	}
+	if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+		return true;
+	}
+	return /(?:^|\/)tenant-workflow-action\.(?:ts|js)$/u.test(process.argv[1]);
+}
+
+if (isCliEntrypoint()) {
 	await main();
 }
 
-export { parseArgs };
+export { isCliEntrypoint, parseArgs };

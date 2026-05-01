@@ -3,6 +3,7 @@ import * as childProcess from 'node:child_process';
 import { basename, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from './managed-dependencies.ts';
 
 export type TreeseedVerifyDriver = 'auto' | 'act' | 'direct';
 
@@ -53,6 +54,8 @@ type LocalWorkspaceContext = {
 	localTreeseedSiblingDependencies: string[];
 };
 
+const defaultActUbuntuLatestImage = 'catthehacker/ubuntu:act-latest';
+
 function defaultWrite(message: string, stream: 'stdout' | 'stderr' = 'stdout') {
 	if (!message) return;
 	(stream === 'stderr' ? process.stderr : process.stdout).write(`${message}\n`);
@@ -61,7 +64,7 @@ function defaultWrite(message: string, stream: 'stdout' | 'stderr' = 'stdout') {
 function run(command: string, args: string[], cwd: string) {
 	const result = childProcess.spawnSync(command, args, {
 		cwd,
-		env: process.env,
+		env: createTreeseedManagedToolEnv(process.env),
 		stdio: 'inherit',
 	});
 	return result.status ?? 1;
@@ -70,7 +73,7 @@ function run(command: string, args: string[], cwd: string) {
 function check(command: string, args: string[], cwd: string) {
 	const result = childProcess.spawnSync(command, args, {
 		cwd,
-		env: process.env,
+		env: createTreeseedManagedToolEnv(process.env),
 		stdio: 'pipe',
 		encoding: 'utf8',
 	});
@@ -92,6 +95,15 @@ function readPackageManifest(packageJsonPath: string): PackageManifest | null {
 	}
 }
 
+function createActArgs(eventName: string, workflowPath: string) {
+	const image = process.env.TREESEED_VERIFY_ACT_UBUNTU_LATEST_IMAGE?.trim() || defaultActUbuntuLatestImage;
+	const args = ['act', eventName, '-W', workflowPath, '-j', 'verify'];
+	if (image) {
+		args.push('-P', `ubuntu-latest=${image}`);
+	}
+	return args;
+}
+
 function createWorkspaceActWorkflow(options: {
 	workspaceRoot: string;
 	packageRoot: string;
@@ -109,9 +121,9 @@ function createWorkspaceActWorkflow(options: {
 
 			const commands = [
 				`if test -f ${packageDir}/package-lock.json; then`,
-				`  npm --prefix ${packageDir} ci`,
+				`  npm --prefix ${packageDir} ci --workspaces=false`,
 				'else',
-				`  npm --prefix ${packageDir} install --no-audit --no-fund`,
+				`  npm --prefix ${packageDir} install --workspaces=false --no-audit --no-fund`,
 				'fi',
 			];
 			if (manifest.scripts?.['build:dist']) {
@@ -164,9 +176,9 @@ ${siblingPreparationCommands.split('\n').map((line) => `          ${line}`).join
 ` : ''}      - name: Install dependencies
         run: |
           if test -f package-lock.json; then
-            npm ci
+            npm ci --workspaces=false
           else
-            npm install --no-audit --no-fund
+            npm install --workspaces=false --no-audit --no-fund
           fi
 
       - name: Verify package
@@ -177,7 +189,7 @@ ${siblingPreparationCommands.split('\n').map((line) => `          ${line}`).join
 
 	return {
 		cwd: options.workspaceRoot,
-		args: ['act', options.eventName, '-W', workflowPath, '-j', 'verify'],
+		args: createActArgs(options.eventName, workflowPath),
 	};
 }
 
@@ -269,7 +281,8 @@ export function getTreeseedVerifyDriverStatus(options: TreeseedVerifyDriverOptio
 	const workflowPresent = existsSync(workflowPath);
 	const workspace = resolveLocalWorkspaceContext(packageRoot);
 	const checkCommand = options.checkCommand ?? check;
-	const ghAct = checkCommand('gh', ['act', '--version'], packageRoot);
+	const gh = options.checkCommand ? 'gh' : (resolveTreeseedToolBinary('gh') ?? 'gh');
+	const ghAct = checkCommand(gh, ['act', '--version'], packageRoot);
 	const docker = checkCommand('docker', ['info'], packageRoot);
 	const prefersDirectForLocalWorkspace =
 		!inGitHubActions &&
@@ -299,6 +312,7 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 	const status = getTreeseedVerifyDriverStatus(options);
 	const runCommand = options.runCommand ?? run;
 	const checkCommand = options.checkCommand ?? check;
+	const gh = options.runCommand || options.checkCommand ? 'gh' : (resolveTreeseedToolBinary('gh') ?? 'gh');
 
 	if (status.driver === 'direct' || status.inGitHubActions) {
 		return runCommand('npm', ['run', 'verify:direct'], status.packageRoot);
@@ -310,7 +324,7 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 			return 1;
 		}
 		if (!status.ghActAvailable) {
-			const detail = checkCommand('gh', ['act', '--version'], status.packageRoot).detail;
+			const detail = checkCommand(gh, ['act', '--version'], status.packageRoot).detail;
 			write(detail || 'Treeseed verify requires `gh act` when TREESEED_VERIFY_DRIVER=act.', 'stderr');
 			return 1;
 		}
@@ -326,9 +340,9 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 				eventName: status.eventName,
 				localTreeseedSiblingDependencies: status.localTreeseedSiblingDependencies,
 			});
-			return runCommand('gh', workspaceAct.args, workspaceAct.cwd);
+			return runCommand(gh, workspaceAct.args, workspaceAct.cwd);
 		}
-		return runCommand('gh', ['act', status.eventName, '-W', '.github/workflows/verify.yml', '-j', 'verify'], status.packageRoot);
+		return runCommand(gh, createActArgs(status.eventName, '.github/workflows/verify.yml'), status.packageRoot);
 	}
 
 	if (status.prefersDirectForLocalWorkspace) {
@@ -336,7 +350,7 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 	}
 
 	if (status.canUseAct) {
-		return runCommand('gh', ['act', status.eventName, '-W', '.github/workflows/verify.yml', '-j', 'verify'], status.packageRoot);
+		return runCommand(gh, createActArgs(status.eventName, '.github/workflows/verify.yml'), status.packageRoot);
 	}
 
 	if (!status.workflowPresent) {
