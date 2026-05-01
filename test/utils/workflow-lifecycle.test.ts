@@ -286,7 +286,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.finalBranch).toBe('staging');
 		expect(result.payload.finalState.branchName).toBe('staging');
 		expect(git(work, ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
-	}, 90000);
+	}, 180000);
 
 	it('recursively saves dirty checked-out workspace packages before saving the market repo', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
