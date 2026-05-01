@@ -273,10 +273,29 @@ export function collectInternalDevReferenceIssues(root = workspaceRoot(), packag
 		for (const lockName of ['package-lock.json', 'npm-shrinkwrap.json']) {
 			const lockPath = resolve(lockRoot.dir, lockName);
 			if (!existsSync(lockPath)) continue;
-			const source = readFileSync(lockPath, 'utf8');
+			const lockfile = readJson(lockPath);
+			const packageEntries = lockfile.packages && typeof lockfile.packages === 'object'
+				? Object.values(lockfile.packages as Record<string, unknown>)
+				: [];
 			for (const packageName of packageNames) {
-				if (source.includes(`${packageName}.git#`) || source.includes(`${packageName}#`) || /-dev\.[0-9A-Za-z.-]+/u.test(source)) {
-					issues.push({ repoName: lockRoot.name, filePath: lockPath, spec: packageName, reason: 'lockfile-dev-ref' });
+				const entries = [
+					lockfile.dependencies?.[packageName],
+					...packageEntries
+						.map((entry) => entry && typeof entry === 'object' ? (entry as Record<string, unknown>).dependencies?.[packageName] : null),
+				];
+				for (const entry of entries) {
+					if (!entry || typeof entry !== 'object') continue;
+					const record = entry as Record<string, unknown>;
+					const spec = [
+						record.version,
+						record.resolved,
+						record.from,
+					].map((value) => typeof value === 'string' ? value : '').find((value) =>
+						isGitDependencySpec(value) || devTagFromDependencySpec(value) || isPrereleaseVersion(value),
+					);
+					if (spec) {
+						issues.push({ repoName: lockRoot.name, filePath: lockPath, spec, reason: 'lockfile-dev-ref', dependencyName: packageName });
+					}
 				}
 			}
 		}
