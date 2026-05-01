@@ -1189,7 +1189,9 @@ function runReleaseNpmInstall(repoDir: string, options: { workspaceRoot?: string
 	if (shouldSkipReleaseInstall()) {
 		return { status: 'skipped', reason: 'stubbed' };
 	}
-	const args = repoDir === options.workspaceRoot ? ['install'] : ['install', '--workspaces=false'];
+	const args = repoDir === options.workspaceRoot
+		? ['install', '--package-lock-only', '--ignore-scripts']
+		: ['install', '--package-lock-only', '--ignore-scripts', '--workspaces=false'];
 	run('npm', args, { cwd: repoDir });
 	return { status: 'completed', reason: null };
 }
