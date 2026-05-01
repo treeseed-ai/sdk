@@ -178,6 +178,37 @@ describe('config runtime shared environment values', () => {
 		).toBe('from-env');
 	});
 
+	it('keeps machine config values when hosted process environment values are empty', () => {
+		const tenantRoot = createTenantFixture();
+		const config = createDefaultTreeseedMachineConfig({
+			tenantRoot,
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://market.example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				services: { api: { provider: 'railway', enabled: true } },
+			} as any,
+			tenantConfig: { id: 'test-site' } as any,
+		});
+		writeTreeseedMachineConfig(tenantRoot, config);
+		unlockSecrets(tenantRoot);
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
+			id: 'GH_TOKEN',
+			sensitivity: 'secret',
+			storage: 'shared',
+		} as any, 'from-machine');
+
+		expect(
+			resolveTreeseedLaunchEnvironment({
+				tenantRoot,
+				scope: 'staging',
+				baseEnv: { GH_TOKEN: '' } as any,
+			}).GH_TOKEN,
+		).toBe('from-machine');
+	});
+
 	it('builds launch env from process values when no wrapped machine key exists', () => {
 		const tenantRoot = createTenantFixture();
 		writeTreeseedMachineConfig(tenantRoot, createDefaultTreeseedMachineConfig({
