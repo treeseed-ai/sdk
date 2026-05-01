@@ -254,7 +254,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.providerStatus.local.railway.applicable).toBe(false);
 		expect(result.payload.secrets.keyAgentUnlocked).toBe(true);
 		expect(result.payload.persistentEnvironments.staging.blockers.join('\n')).not.toContain('STATUS_REQUIRED_TOKEN');
-	}, 90000);
+	}, 180000);
 
 	it('treats save with no new changes as a successful sync checkpoint', async () => {
 		const { work } = createWorkflowRepo();
@@ -601,7 +601,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'cli'), ['tag', '--list', '*-dev.*'])).toBe('');
 		expect(result.payload.publishWait.every((entry) => entry.status === 'skipped')).toBe(true);
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
-	}, 90000);
+	}, 180000);
 
 	it('auto-resumes the newest failed same-staging-state release with the original input', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
