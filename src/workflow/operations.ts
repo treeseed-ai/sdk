@@ -996,13 +996,14 @@ async function executeJournalStep<T extends Record<string, unknown> | null>(
 	runId: string,
 	stepId: string,
 	action: () => Promise<T> | T,
+	options: { rerunCompleted?: boolean } = {},
 ) {
 	const current = readWorkflowRunJournal(root, runId);
 	const step = current?.steps.find((entry) => entry.id === stepId) ?? null;
 	if (!current || !step) {
 		throw new Error(`Unknown workflow step "${stepId}" for run ${runId}.`);
 	}
-	if (step.status === 'completed') {
+	if (step.status === 'completed' && !options.rerunCompleted) {
 		return (step.data ?? null) as T;
 	}
 	const data = await Promise.resolve(action());
@@ -3288,7 +3289,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						replacedDevReferences,
 						releaseInstalls,
 					};
-				});
+				}, { rerunCompleted: workflowRun.resumed });
 				const replacedDevReferences = Array.isArray(metadata?.replacedDevReferences) ? metadata.replacedDevReferences : [];
 				const releaseInstalls = Array.isArray(metadata?.releaseInstalls) ? metadata.releaseInstalls : [];
 				const releasedPackageDevTags = new Map(Object.entries((metadata?.releasedPackageDevTags ?? {}) as Record<string, unknown>).map(([name, version]) => [name, String(version)]));
