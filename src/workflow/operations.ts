@@ -4058,7 +4058,10 @@ export async function workflowResume(helpers: WorkflowOperationHelpers, input: T
 					details: { runId, status: journal.status, classification },
 				});
 			}
-			const resumedHelpers: WorkflowOperationHelpers = {
+			const resumeRoot = typeof journal.session?.root === 'string' && existsSync(journal.session.root)
+				? journal.session.root
+				: root;
+			const resumedHelpers: WorkflowOperationHelpers = helpersForCwd({
 				...helpers,
 				context: {
 					...helpers.context,
@@ -4067,7 +4070,7 @@ export async function workflowResume(helpers: WorkflowOperationHelpers, input: T
 						resumeRunId: runId,
 					},
 				},
-			};
+			}, resumeRoot);
 			switch (journal.command) {
 				case 'switch':
 					return workflowSwitch(resumedHelpers, journal.input as unknown as TreeseedSwitchInput);
