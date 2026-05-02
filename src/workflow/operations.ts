@@ -243,7 +243,38 @@ function ensureWorkflowWorkspaceLinks(root: string, helpers: WorkflowOperationHe
 	if (report.created.length > 0) {
 		helpers.write(`[workspace][link] Linked ${report.created.length} local workspace package paths.`);
 	}
+	ensureWorkflowWorkspacePackageArtifacts(root, helpers);
 	return report;
+}
+
+function readPackageScript(root: string, packageDir: string, scriptName: string) {
+	try {
+		const packageJson = JSON.parse(readFileSync(resolve(root, packageDir, 'package.json'), 'utf8')) as Record<string, unknown>;
+		const scripts = packageJson.scripts && typeof packageJson.scripts === 'object' && !Array.isArray(packageJson.scripts)
+			? packageJson.scripts as Record<string, unknown>
+			: null;
+		const script = scripts?.[scriptName];
+		return typeof script === 'string' && script.trim() ? script : null;
+	} catch {
+		return null;
+	}
+}
+
+function ensureWorkflowWorkspacePackageArtifacts(root: string, helpers: WorkflowOperationHelpers) {
+	const packages = [
+		{ name: '@treeseed/sdk', dir: 'packages/sdk', artifacts: ['dist/workflow-support.js', 'dist/plugin-default.js'] },
+		{ name: '@treeseed/core', dir: 'packages/core', artifacts: ['dist/api.js', 'dist/plugin-default.js'] },
+		{ name: '@treeseed/cli', dir: 'packages/cli', artifacts: ['dist/cli/main.js'] },
+	];
+	for (const entry of packages) {
+		const packageDir = resolve(root, entry.dir);
+		if (!existsSync(resolve(packageDir, 'package.json'))) continue;
+		if (!readPackageScript(root, entry.dir, 'build:dist')) continue;
+		const missing = entry.artifacts.filter((artifact) => !existsSync(resolve(packageDir, artifact)));
+		if (missing.length === 0) continue;
+		helpers.write(`[workspace][build] Building ${entry.name} artifacts for local workspace links.`);
+		run('npm', ['--prefix', packageDir, 'run', 'build:dist'], { cwd: root });
+	}
 }
 
 function unlinkWorkflowWorkspaceLinks(root: string, helpers: WorkflowOperationHelpers, mode: WorkspaceLinksMode | undefined = 'auto') {
