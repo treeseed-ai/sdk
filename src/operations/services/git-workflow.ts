@@ -98,7 +98,14 @@ export function checkoutTaskBranchFromStaging(
 ) {
 	const repoDir = assertCleanWorktree(cwd);
 	fetchOrigin(repoDir);
-	syncBranchWithOrigin(repoDir, STAGING_BRANCH);
+	const stagingBaseRef = remoteBranchExists(repoDir, STAGING_BRANCH)
+		? `origin/${STAGING_BRANCH}`
+		: branchExists(repoDir, STAGING_BRANCH)
+			? STAGING_BRANCH
+			: null;
+	if (!stagingBaseRef) {
+		throw new Error(`Base branch "${STAGING_BRANCH}" does not exist locally or on origin.`);
+	}
 
 	if (currentBranch(repoDir) === branchName) {
 		return {
@@ -143,8 +150,7 @@ export function checkoutTaskBranchFromStaging(
 		throw new Error(`Branch "${branchName}" does not exist locally or on origin.`);
 	}
 
-	checkoutBranch(repoDir, STAGING_BRANCH);
-	runGit(['checkout', '-b', branchName], { cwd: repoDir });
+	runGit(['checkout', '-b', branchName, stagingBaseRef], { cwd: repoDir });
 	if (pushIfCreated) {
 		pushBranch(repoDir, branchName, { setUpstream: true });
 	}
