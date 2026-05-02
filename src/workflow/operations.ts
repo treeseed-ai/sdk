@@ -265,20 +265,19 @@ function normalizeCiMode(mode: TreeseedWorkflowCiMode | undefined, operation: 's
 function normalizeSaveVerifyMode(mode: TreeseedSaveInput['verifyMode'] | undefined): SaveVerifyMode {
 	switch (mode) {
 		case 'skip':
+		case 'fast':
+		case undefined:
 			return 'skip';
 		case 'local':
-		case 'fast':
 		case 'local-only':
 			return 'local-only';
 		case 'hosted':
 			return 'skip';
-			case 'both':
-			case 'action-first':
-				return 'action-first';
-			case undefined:
-				return 'local-only';
-			default:
-				return 'local-only';
+		case 'both':
+		case 'action-first':
+			return 'action-first';
+		default:
+			return 'skip';
 	}
 }
 
