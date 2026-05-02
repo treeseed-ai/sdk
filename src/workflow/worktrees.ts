@@ -76,6 +76,10 @@ function worktreeList(repoDir: string) {
 	return parseWorktreeList(runGit(['worktree', 'list', '--porcelain'], { cwd: repoDir }).stdout ?? '');
 }
 
+function currentBranchName(repoDir: string) {
+	return runGit(['branch', '--show-current'], { cwd: repoDir, allowFailure: true }).stdout?.trim() || null;
+}
+
 function localBranchExists(repoDir: string, branchName: string) {
 	return runGit(['show-ref', '--verify', '--quiet', `refs/heads/${branchName}`], { cwd: repoDir, allowFailure: true }).status === 0;
 }
@@ -210,14 +214,17 @@ export function ensureManagedWorkflowWorktree({
 	}
 
 	const created = !existingEntry && !existsSync(worktreePath);
+	runGit(['fetch', 'origin'], { cwd: primaryGitRoot });
+	const branchExists = remoteBranchExists(primaryGitRoot, branchName);
+	const baseRef = branchExists ? `origin/${branchName}` : 'origin/staging';
 	if (created) {
 		mkdirSync(dirname(worktreePath), { recursive: true });
-		runGit(['fetch', 'origin'], { cwd: primaryGitRoot });
-		const branchExists = runGit(['ls-remote', '--heads', 'origin', branchName], { cwd: primaryGitRoot, allowFailure: true }).stdout?.trim();
-		const baseRef = branchExists ? `origin/${branchName}` : 'origin/staging';
 		runGit(['worktree', 'add', '--detach', worktreePath, baseRef], { cwd: primaryGitRoot });
 	} else if (!existingEntry) {
 		runGit(['worktree', 'prune'], { cwd: primaryGitRoot, allowFailure: true });
+	} else if (!currentBranchName(worktreePath)) {
+		runGit(['fetch', 'origin'], { cwd: worktreePath, allowFailure: true });
+		runGit(['reset', '--hard', baseRef], { cwd: worktreePath });
 	}
 
 	runGit(['submodule', 'update', '--init', '--recursive'], { cwd: worktreePath });
