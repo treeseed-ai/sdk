@@ -158,7 +158,8 @@ async function run() {
 	}
 
 	if (existingFiles.length === 0) {
-		throw new Error('Unable to find any Starlight collection helper files to patch.');
+		console.log('Starlight dependency tree not found; skipping knowledge-path patch.');
+		return;
 	}
 
 	let patchedAny = false;
