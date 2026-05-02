@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { workspaceRoot } from '../operations/services/workspace-tools.ts';
+import { sortWorkspacePackages, workspacePackages, workspaceRoot } from '../operations/services/workspace-tools.ts';
 import { repoRoot } from '../operations/services/workspace-save.ts';
 import type { TreeseedWorkflowWorktreeMode } from '../workflow.ts';
 
@@ -74,6 +74,39 @@ function parseWorktreeList(output: string) {
 
 function worktreeList(repoDir: string) {
 	return parseWorktreeList(runGit(['worktree', 'list', '--porcelain'], { cwd: repoDir }).stdout ?? '');
+}
+
+function localBranchExists(repoDir: string, branchName: string) {
+	return runGit(['show-ref', '--verify', '--quiet', `refs/heads/${branchName}`], { cwd: repoDir, allowFailure: true }).status === 0;
+}
+
+function remoteBranchExists(repoDir: string, branchName: string) {
+	return Boolean(runGit(['ls-remote', '--heads', 'origin', branchName], { cwd: repoDir, allowFailure: true }).stdout?.trim());
+}
+
+function checkoutManagedPackageBranch(repoDir: string, branchName: string) {
+	runGit(['fetch', 'origin'], { cwd: repoDir, allowFailure: true });
+	const targetBranch = localBranchExists(repoDir, branchName) || remoteBranchExists(repoDir, branchName)
+		? branchName
+		: 'staging';
+	if (localBranchExists(repoDir, targetBranch)) {
+		runGit(['checkout', targetBranch], { cwd: repoDir });
+	} else if (remoteBranchExists(repoDir, targetBranch)) {
+		runGit(['checkout', '-b', targetBranch, `origin/${targetBranch}`], { cwd: repoDir });
+	} else {
+		return;
+	}
+	if (remoteBranchExists(repoDir, targetBranch)) {
+		runGit(['merge', '--ff-only', `origin/${targetBranch}`], { cwd: repoDir, allowFailure: true });
+	}
+}
+
+function checkoutManagedPackageBranches(worktreePath: string, branchName: string) {
+	for (const pkg of sortWorkspacePackages(workspacePackages(worktreePath))) {
+		if (!pkg.name?.startsWith('@treeseed/')) continue;
+		if (!existsSync(resolve(pkg.dir, '.git'))) continue;
+		checkoutManagedPackageBranch(pkg.dir, branchName);
+	}
 }
 
 function metadataPath(root: string) {
@@ -188,6 +221,7 @@ export function ensureManagedWorkflowWorktree({
 	}
 
 	runGit(['submodule', 'update', '--init', '--recursive'], { cwd: worktreePath });
+	checkoutManagedPackageBranches(worktreePath, branchName);
 	ensureManagedWorktreeExclude(worktreePath);
 	const timestamp = nowIso();
 	const previous = readMetadata(worktreePath);

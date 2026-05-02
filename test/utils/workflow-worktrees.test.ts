@@ -42,6 +42,23 @@ function createRepo() {
 	return { root, origin, work };
 }
 
+function createPackageRepo(root: string, name: string) {
+	const origin = resolve(root, `${name}.git`);
+	const work = resolve(root, `${name}-work`);
+	git(root, ['init', '--bare', origin]);
+	mkdirSync(work, { recursive: true });
+	git(work, ['init', '-b', 'staging']);
+	git(work, ['config', 'user.name', 'Treeseed Test']);
+	git(work, ['config', 'user.email', 'treeseed@example.com']);
+	writeFileSync(resolve(work, 'package.json'), JSON.stringify({ name: `@treeseed/${name}`, version: '1.0.0' }, null, 2), 'utf8');
+	git(work, ['add', '-A']);
+	git(work, ['commit', '-m', `init ${name}`]);
+	git(work, ['remote', 'add', 'origin', origin]);
+	git(work, ['push', '-u', 'origin', 'staging']);
+	git(origin, ['symbolic-ref', 'HEAD', 'refs/heads/staging']);
+	return { origin, work };
+}
+
 describe('workflow managed worktrees', () => {
 	it('creates and resumes a managed worktree from staging', () => {
 		const { work } = createRepo();
@@ -65,6 +82,40 @@ describe('workflow managed worktrees', () => {
 		expect(resumed.resumed).toBe(true);
 		expect(resumed.worktreePath).toBe(created.worktreePath);
 		expect(managedWorkflowWorktreeMetadata(created.worktreePath)?.branch).toBe('feature/search filters');
+	});
+
+	it('checks package submodules out to staging before workflow switch runs', () => {
+		const { root, work } = createRepo();
+		const sdk = createPackageRepo(root, 'sdk');
+		writeFileSync(
+			resolve(work, 'package.json'),
+			JSON.stringify({ name: 'demo', version: '1.0.0', workspaces: ['packages/*'] }, null, 2),
+			'utf8',
+		);
+		git(work, ['-c', 'protocol.file.allow=always', 'submodule', 'add', sdk.origin, 'packages/sdk']);
+		git(work, ['config', 'protocol.file.allow', 'always']);
+		git(work, ['add', '-A']);
+		git(work, ['commit', '-m', 'add sdk submodule']);
+		git(work, ['push', 'origin', 'staging']);
+
+		const previousProtocol = process.env.GIT_ALLOW_PROTOCOL;
+		process.env.GIT_ALLOW_PROTOCOL = 'file:git:ssh:https';
+		let created: ReturnType<typeof ensureManagedWorkflowWorktree>;
+		try {
+			created = ensureManagedWorkflowWorktree({
+				root: work,
+				branchName: 'feature/submodule-worktree',
+				mode: 'on',
+			});
+		} finally {
+			if (previousProtocol == null) {
+				delete process.env.GIT_ALLOW_PROTOCOL;
+			} else {
+				process.env.GIT_ALLOW_PROTOCOL = previousProtocol;
+			}
+		}
+
+		expect(git(resolve(created.worktreePath, 'packages/sdk'), ['branch', '--show-current'])).toBe('staging');
 	});
 
 	it('rejects duplicate same-branch ownership in another active worktree', () => {
