@@ -241,15 +241,27 @@ function checkCommand(command: string, args: string[], options: { cwd?: string; 
 
 function resolvePackageJsonPath(packageName: string) {
 	try {
-		return require.resolve(`${packageName}/package.json`);
-	} catch {
-		for (const searchPath of require.resolve.paths(packageName) ?? []) {
-			const candidate = resolve(searchPath, packageName, 'package.json');
-			if (existsSync(candidate)) {
-				return candidate;
-			}
+		const packageJsonPath = require.resolve(`${packageName}/package.json`);
+		if (existsSync(packageJsonPath)) {
+			return packageJsonPath;
 		}
-		throw new Error(`Unable to resolve package manifest for "${packageName}".`);
+	} catch {
+		// Fall through to explicit path search below.
+	}
+	for (const searchPath of require.resolve.paths(packageName) ?? []) {
+		const candidate = resolve(searchPath, packageName, 'package.json');
+		if (existsSync(candidate)) {
+			return candidate;
+		}
+	}
+	throw new Error(`Unable to resolve package manifest for "${packageName}".`);
+}
+
+function resolvePackageJsonPathOptional(packageName: string) {
+	try {
+		return resolvePackageJsonPath(packageName);
+	} catch {
+		return null;
 	}
 }
 
@@ -266,6 +278,28 @@ function resolvePackageBinary(packageName: string, binName: string) {
 	}
 	const packageLocalFallback = resolve(dirname(packageJsonPath), relativeBin.replace(/^\.\.\//u, ''));
 	return existsSync(packageLocalFallback) ? packageLocalFallback : resolvedBin;
+}
+
+function resolvePackageBinaryOptional(packageName: string, binName: string) {
+	const packageJsonPath = resolvePackageJsonPathOptional(packageName);
+	if (!packageJsonPath) {
+		return null;
+	}
+	try {
+		const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { bin?: string | Record<string, string> };
+		const relativeBin = typeof packageJson.bin === 'string' ? packageJson.bin : packageJson.bin?.[binName];
+		if (!relativeBin) {
+			return null;
+		}
+		const resolvedBin = resolve(dirname(packageJsonPath), relativeBin);
+		if (existsSync(resolvedBin) || !relativeBin.startsWith('../')) {
+			return resolvedBin;
+		}
+		const packageLocalFallback = resolve(dirname(packageJsonPath), relativeBin.replace(/^\.\.\//u, ''));
+		return existsSync(packageLocalFallback) ? packageLocalFallback : resolvedBin;
+	} catch {
+		return null;
+	}
 }
 
 function resolvePackageRoot(packageName: string) {
@@ -414,7 +448,7 @@ export function resolveTreeseedToolBinary(toolName: TreeseedManagedToolName, opt
 	}
 	const npmTool = findNpmTool(toolName);
 	if (npmTool) {
-		return resolvePackageBinary(npmTool.packageName, npmTool.binName);
+		return resolvePackageBinaryOptional(npmTool.packageName, npmTool.binName);
 	}
 	if (toolName === 'git' || toolName === 'docker') {
 		return locateSystemBinary(toolName, spawnSync, options.env ?? process.env);
@@ -659,16 +693,16 @@ async function installGh(options: Required<Pick<DependencyInstallerOptions, 'env
 
 function statusForNpmTool(tool: (typeof NPM_TOOLS)[number], options: DependencyInstallerOptions): TreeseedDependencyReport {
 	try {
-		const binaryPath = resolvePackageBinary(tool.packageName, tool.binName);
+		const binaryPath = resolvePackageBinaryOptional(tool.packageName, tool.binName);
 		return report({
 			name: tool.name,
 			kind: 'npm',
 			version: tool.version,
 			source: 'package',
 			binaryPath,
-			status: existsSync(binaryPath) ? 'already-present' : 'missing',
+			status: binaryPath && existsSync(binaryPath) ? 'already-present' : 'missing',
 			required: true,
-			detail: existsSync(binaryPath)
+			detail: binaryPath && existsSync(binaryPath)
 				? `${tool.packageName} is available from the Treeseed SDK dependency graph.`
 				: `${tool.packageName} binary ${tool.binName} is missing from the installed package.`,
 		});
