@@ -26,6 +26,8 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 
 		expect(source).toContain('TREESEED_BOOTSTRAP_MODE: auto');
 		expect((source.match(/submodules: recursive/g) ?? []).length).toBeGreaterThanOrEqual(5);
+		expect((source.match(/npm ci --ignore-scripts/g) ?? []).length).toBeGreaterThanOrEqual(5);
+		expect(source).not.toContain('\n          npm ci\n');
 		expect(source).toContain('migrations/*)');
 		expect(source).toContain('code_changed="true"');
 		expect(source).not.toContain('docs/*|migrations/*');
