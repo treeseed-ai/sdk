@@ -84,7 +84,7 @@ describe('workflow managed worktrees', () => {
 		expect(managedWorkflowWorktreeMetadata(created.worktreePath)?.branch).toBe('feature/search filters');
 	});
 
-	it('checks package submodules out to staging before workflow switch runs', () => {
+	it('creates package task branches from staging before workflow switch runs', () => {
 		const { root, work } = createRepo();
 		const sdk = createPackageRepo(root, 'sdk');
 		writeFileSync(
@@ -115,7 +115,7 @@ describe('workflow managed worktrees', () => {
 			}
 		}
 
-		expect(git(resolve(created.worktreePath, 'packages/sdk'), ['branch', '--show-current'])).toBe('staging');
+		expect(git(resolve(created.worktreePath, 'packages/sdk'), ['branch', '--show-current'])).toBe('feature/submodule-worktree');
 	});
 
 	it('rejects duplicate same-branch ownership in another active worktree', () => {

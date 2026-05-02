@@ -90,18 +90,22 @@ function remoteBranchExists(repoDir: string, branchName: string) {
 
 function checkoutManagedPackageBranch(repoDir: string, branchName: string) {
 	runGit(['fetch', 'origin'], { cwd: repoDir, allowFailure: true });
-	const targetBranch = localBranchExists(repoDir, branchName) || remoteBranchExists(repoDir, branchName)
-		? branchName
-		: 'staging';
-	if (localBranchExists(repoDir, targetBranch)) {
-		runGit(['checkout', targetBranch], { cwd: repoDir });
-	} else if (remoteBranchExists(repoDir, targetBranch)) {
-		runGit(['checkout', '-b', targetBranch, `origin/${targetBranch}`], { cwd: repoDir });
+	const baseBranch = remoteBranchExists(repoDir, 'staging')
+		? 'staging'
+		: remoteBranchExists(repoDir, 'main')
+			? 'main'
+			: null;
+	if (localBranchExists(repoDir, branchName)) {
+		runGit(['checkout', branchName], { cwd: repoDir });
+	} else if (remoteBranchExists(repoDir, branchName)) {
+		runGit(['checkout', '-b', branchName, `origin/${branchName}`], { cwd: repoDir });
+	} else if (baseBranch) {
+		runGit(['checkout', '-b', branchName, `origin/${baseBranch}`], { cwd: repoDir });
 	} else {
 		return;
 	}
-	if (remoteBranchExists(repoDir, targetBranch)) {
-		runGit(['merge', '--ff-only', `origin/${targetBranch}`], { cwd: repoDir, allowFailure: true });
+	if (remoteBranchExists(repoDir, branchName)) {
+		runGit(['merge', '--ff-only', `origin/${branchName}`], { cwd: repoDir, allowFailure: true });
 	}
 }
 
