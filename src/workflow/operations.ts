@@ -983,10 +983,14 @@ function findAutoResumableReleaseRun(
 		if (journal.command !== 'release' || !journal.resumable || journal.session.branchName !== STAGING_BRANCH) {
 			return false;
 		}
+		const releasePlan = stringRecord(journal.steps.find((step) => step.id === 'release-plan')?.data);
+		const nextStep = nextPendingJournalStep(journal);
 		if (releaseRunHasCompletedMutation(journal)) {
+			if (nextStep?.id === 'release-root' && releasePlanHead(releasePlan ?? {}, rootRepo.name) !== rootRepo.commitSha) {
+				return false;
+			}
 			return true;
 		}
-		const releasePlan = stringRecord(journal.steps.find((step) => step.id === 'release-plan')?.data);
 		return releasePlan ? releasePlanMatchesCurrentHeads(releasePlan, rootRepo, packageReports) : true;
 	}) ?? null;
 }
