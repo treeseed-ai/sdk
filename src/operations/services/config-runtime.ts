@@ -1678,8 +1678,15 @@ export function collectTreeseedConfigSeedValues(tenantRoot, scope, env = process
 	}
 	return filterEnvironmentValuesByRegistry({
 		...machineValues,
-		...Object.fromEntries(Object.entries(env).map(([key, value]) => [key, value ?? undefined])),
+		...nonEmptyEnvironmentValues(env),
 	}, registry, scope);
+}
+
+function nonEmptyEnvironmentValues(env = process.env) {
+	return Object.fromEntries(
+		Object.entries(env)
+			.filter(([, value]) => typeof value === 'string' && value.length > 0),
+	);
 }
 
 function collectTreeseedConfigSeedValueSources(tenantRoot, scope, env = process.env) {
@@ -1736,9 +1743,10 @@ export function resolveTreeseedLaunchEnvironment({
 		}
 	}
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
+	const baseValues = nonEmptyEnvironmentValues(baseEnv);
 	const seedValues = scope === 'local'
-		? { ...baseEnv, ...machineValues }
-		: { ...machineValues, ...baseEnv };
+		? { ...baseValues, ...machineValues }
+		: { ...machineValues, ...baseValues };
 	const suggestedValues = getTreeseedEnvironmentSuggestedValues({
 		scope,
 		purpose: 'deploy',
@@ -1753,8 +1761,8 @@ export function resolveTreeseedLaunchEnvironment({
 			.map((entry) => [entry.id, suggestedValues[entry.id]]),
 	);
 	const scopedValues = scope === 'local'
-		? { ...nonSecretSuggestedValues, ...baseEnv, ...machineValues }
-		: { ...nonSecretSuggestedValues, ...machineValues, ...baseEnv };
+		? { ...nonSecretSuggestedValues, ...baseValues, ...machineValues }
+		: { ...nonSecretSuggestedValues, ...machineValues, ...baseValues };
 	return {
 		...scopedValues,
 		...overrides,

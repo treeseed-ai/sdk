@@ -78,6 +78,34 @@ describe('package reference policy', () => {
 		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).not.toThrow();
 	});
 
+	it('does not treat a lockfile root package prerelease version as an internal dependency ref', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-package-policy-'));
+		const sdkDir = resolve(root, 'packages', 'sdk');
+		mkdirSync(sdkDir, { recursive: true });
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: 'root',
+			version: '1.0.0',
+			workspaces: ['packages/*'],
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(sdkDir, 'package.json'), JSON.stringify({
+			name: '@treeseed/sdk',
+			version: '0.6.8',
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(sdkDir, 'package-lock.json'), JSON.stringify({
+			name: '@treeseed/sdk',
+			version: '0.6.9-dev.staging.20260501T202609Z',
+			lockfileVersion: 3,
+			packages: {
+				'': {
+					name: '@treeseed/sdk',
+					version: '0.6.9-dev.staging.20260501T202609Z',
+				},
+			},
+		}, null, 2), 'utf8');
+
+		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).not.toThrow();
+	});
+
 	it('writes machine-readable metadata for dev tags', () => {
 		const message = createDevTagMessage({
 			packageName: '@treeseed/sdk',

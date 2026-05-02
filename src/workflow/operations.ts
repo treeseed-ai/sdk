@@ -983,10 +983,14 @@ function findAutoResumableReleaseRun(
 		if (journal.command !== 'release' || !journal.resumable || journal.session.branchName !== STAGING_BRANCH) {
 			return false;
 		}
+		const releasePlan = stringRecord(journal.steps.find((step) => step.id === 'release-plan')?.data);
+		const nextStep = nextPendingJournalStep(journal);
 		if (releaseRunHasCompletedMutation(journal)) {
+			if (nextStep?.id === 'release-root' && releasePlanHead(releasePlan ?? {}, rootRepo.name) !== rootRepo.commitSha) {
+				return false;
+			}
 			return true;
 		}
-		const releasePlan = stringRecord(journal.steps.find((step) => step.id === 'release-plan')?.data);
 		return releasePlan ? releasePlanMatchesCurrentHeads(releasePlan, rootRepo, packageReports) : true;
 	}) ?? null;
 }
@@ -996,13 +1000,14 @@ async function executeJournalStep<T extends Record<string, unknown> | null>(
 	runId: string,
 	stepId: string,
 	action: () => Promise<T> | T,
+	options: { rerunCompleted?: boolean } = {},
 ) {
 	const current = readWorkflowRunJournal(root, runId);
 	const step = current?.steps.find((entry) => entry.id === stepId) ?? null;
 	if (!current || !step) {
 		throw new Error(`Unknown workflow step "${stepId}" for run ${runId}.`);
 	}
-	if (step.status === 'completed') {
+	if (step.status === 'completed' && !options.rerunCompleted) {
 		return (step.data ?? null) as T;
 	}
 	const data = await Promise.resolve(action());
@@ -1188,7 +1193,9 @@ function runReleaseNpmInstall(repoDir: string, options: { workspaceRoot?: string
 	if (shouldSkipReleaseInstall()) {
 		return { status: 'skipped', reason: 'stubbed' };
 	}
-	const args = repoDir === options.workspaceRoot ? ['install'] : ['install', '--workspaces=false'];
+	const args = repoDir === options.workspaceRoot
+		? ['install', '--package-lock-only', '--ignore-scripts']
+		: ['install', '--package-lock-only', '--ignore-scripts', '--workspaces=false'];
 	run('npm', args, { cwd: repoDir });
 	return { status: 'completed', reason: null };
 }
@@ -1268,7 +1275,7 @@ function buildReleasePlanSnapshot(input: {
 		plannedPublishWaits: input.packageSelection.selected.map((name) => ({
 			name,
 			workflow: 'publish.yml',
-			branch: PRODUCTION_BRANCH,
+			branch: String(plannedVersions[name] ?? PRODUCTION_BRANCH),
 			status: 'planned',
 		})),
 		touchedPackages: input.packageSelection.selected,
@@ -3288,7 +3295,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						replacedDevReferences,
 						releaseInstalls,
 					};
-				});
+				}, { rerunCompleted: workflowRun.resumed });
 				const replacedDevReferences = Array.isArray(metadata?.replacedDevReferences) ? metadata.replacedDevReferences : [];
 				const releaseInstalls = Array.isArray(metadata?.releaseInstalls) ? metadata.releaseInstalls : [];
 				const releasedPackageDevTags = new Map(Object.entries((metadata?.releasedPackageDevTags ?? {}) as Record<string, unknown>).map(([name, version]) => [name, String(version)]));
@@ -3325,7 +3332,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						const publish = await waitForGitHubWorkflowCompletion(pkg.dir, {
 							workflow: 'publish.yml',
 							headSha: mergeResult.commitSha,
-							branch: PRODUCTION_BRANCH,
+							branch: tagName,
 						});
 						assertReleaseGitHubWorkflowSucceeded(pkg.name, publish);
 						syncBranchWithOrigin(pkg.dir, STAGING_BRANCH);

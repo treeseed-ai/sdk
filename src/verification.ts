@@ -111,6 +111,23 @@ function createWorkspaceActWorkflow(options: {
 	localTreeseedSiblingDependencies: string[];
 }) {
 	const relativePackageRoot = relative(options.workspaceRoot, options.packageRoot).replace(/\\/g, '/');
+	const siblingLinkCommands = options.localTreeseedSiblingDependencies
+		.map((packageName) => {
+			const [, packageShortName] = packageName.split('/');
+			const packageDir = `packages/${packageShortName}`;
+			const packageScope = packageName.split('/')[0];
+			const linkParent = `node_modules/${packageScope}`;
+			const linkTarget = relative(
+				resolve(options.packageRoot, linkParent),
+				resolve(options.workspaceRoot, packageDir),
+			).replace(/\\/g, '/');
+			return [
+				`mkdir -p ${linkParent}`,
+				`rm -rf ${linkParent}/${packageShortName}`,
+				`ln -s ${linkTarget} ${linkParent}/${packageShortName}`,
+			].join('\n');
+		})
+		.join('\n');
 	const siblingPreparationCommands = options.localTreeseedSiblingDependencies
 		.map((packageName) => {
 			const packageDir = `packages/${packageName.split('/')[1]}`;
@@ -175,13 +192,19 @@ ${siblingPreparationCommands.split('\n').map((line) => `          ${line}`).join
 
 ` : ''}      - name: Install dependencies
         run: |
+          node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync('package.json', 'utf8')); if (p.scripts) delete p.scripts.prepare; fs.writeFileSync('package.json', JSON.stringify(p, null, '\\t') + '\\n');"
           if test -f package-lock.json; then
             npm ci --workspaces=false
           else
             npm install --workspaces=false --no-audit --no-fund
           fi
+          git checkout -- package.json || true
 
-      - name: Verify package
+${siblingLinkCommands ? `      - name: Link local Treeseed dependencies
+        run: |
+${siblingLinkCommands.split('\n').map((line) => `          ${line}`).join('\n')}
+
+` : ''}      - name: Verify package
         run: npm run verify:direct
 `,
 		'utf8',
