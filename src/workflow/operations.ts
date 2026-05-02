@@ -1684,6 +1684,15 @@ function previewStateFor(tenantRoot: string, branchName: string) {
 	});
 }
 
+function branchPreviewInitialized(tenantRoot: string, branchName: string | null) {
+	if (!branchName) return false;
+	try {
+		return previewStateFor(tenantRoot, branchName).readiness?.initialized === true;
+	} catch {
+		return false;
+	}
+}
+
 async function deployBranchPreview(
 	tenantRoot: string,
 	branchName: string,
@@ -2672,6 +2681,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				: input;
 			const message = String(effectiveInput.message ?? '').trim();
 			const optionsHotfix = effectiveInput.hotfix === true;
+			const previewInitialized = branchPreviewInitialized(root, branch);
 
 			applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope, override: true });
 
@@ -2738,7 +2748,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							...repositoryPlan.plannedSteps,
 							{ id: 'lockfile-validation', description: 'Validate refreshed package-lock.json files before any save commit is pushed' },
 							{ id: 'workspace-link', description: 'Restore local workspace links after save' },
-							...((beforeState.branchRole === 'feature' && (effectiveInput.preview === true || beforeState.preview.enabled))
+							...((beforeState.branchRole === 'feature' && (effectiveInput.preview === true || previewInitialized))
 								? [{ id: 'preview', description: `Refresh preview deployment for ${branch}` }]
 								: []),
 						],
@@ -2800,7 +2810,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							resumable: true,
 						}]
 						: []),
-					...((beforeState.branchRole === 'feature' && (effectiveInput.preview === true || (effectiveInput.refreshPreview !== false && beforeState.preview.enabled)))
+					...((beforeState.branchRole === 'feature' && (effectiveInput.preview === true || (effectiveInput.refreshPreview !== false && previewInitialized)))
 						? [{
 							id: 'preview',
 							description: `Refresh preview ${branch}`,
@@ -2895,11 +2905,11 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				if (beforeState.branchRole === 'feature' && branch) {
 					if (effectiveInput.preview === true) {
 						previewAction = {
-							status: beforeState.preview.enabled ? 'refreshed' : 'created',
+							status: previewInitialized ? 'refreshed' : 'created',
 							details: await executeJournalStep(root, workflowRun.runId, 'preview', () =>
-								deployBranchPreview(root, branch, helpers.context, { initialize: !beforeState.preview.enabled })),
+								deployBranchPreview(root, branch, helpers.context, { initialize: !previewInitialized })),
 						};
-					} else if (effectiveInput.refreshPreview !== false && beforeState.preview.enabled) {
+					} else if (effectiveInput.refreshPreview !== false && previewInitialized) {
 						previewAction = {
 							status: 'refreshed',
 							details: await executeJournalStep(root, workflowRun.runId, 'preview', () =>
