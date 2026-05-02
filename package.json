@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.6.10-dev.feature-workflow-live-proof-7.20260502T232614Z",
+  "version": "0.6.10-dev.feature-workflow-live-proof-7.20260502T234840Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {

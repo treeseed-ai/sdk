@@ -3080,13 +3080,11 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 					},
 				);
 			}
-			unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
-			const autoSave = await maybeAutoSaveCurrentTaskBranch(helpers, 'close', {
-				message,
-				autoSave: effectiveInput.autoSave,
-			});
-			unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
-			const activeSession = resolveTreeseedWorkflowSession(root);
+				const autoSave = await maybeAutoSaveCurrentTaskBranch(helpers, 'close', {
+					message,
+					autoSave: effectiveInput.autoSave,
+				});
+				const activeSession = resolveTreeseedWorkflowSession(root);
 			const featureBranch = assertFeatureBranch(root);
 			const mode = activeSession.mode;
 			const repoDir = activeSession.gitRoot;
@@ -3140,8 +3138,8 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 			}
 
 			try {
-				await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
-					unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
+					await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
+						unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'), { rerunCompleted: true });
 				const previewCleanup = effectiveInput.deletePreview === false
 					? (skipJournalStep(root, workflowRun.runId, 'preview-cleanup', { performed: false }), { performed: false })
 					: await executeJournalStep(root, workflowRun.runId, 'preview-cleanup', () => destroyPreviewIfPresent(root, featureBranch));
@@ -3314,24 +3312,23 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					},
 				);
 			}
-			unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
-			const autoSave = await maybeAutoSaveCurrentTaskBranch(helpers, 'stage', {
-				message,
-				autoSave: effectiveInput.autoSave,
-			});
-			unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
-			const session = resolveTreeseedWorkflowSession(root);
+				const autoSave = await maybeAutoSaveCurrentTaskBranch(helpers, 'stage', {
+					message,
+					autoSave: effectiveInput.autoSave,
+				});
+				const session = resolveTreeseedWorkflowSession(root);
 			const featureBranch = assertFeatureBranch(root);
 			const mode = session.mode;
 			assertSessionBranchSafety('stage', session);
-			if (mode === 'recursive-workspace') {
-				assertWorkspaceClean(root);
-			} else {
-				assertCleanWorktree(root);
-			}
-			applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
-			validateStagingWorkflowContracts(root);
-			runWorkspaceSavePreflight({ cwd: root });
+				if (mode === 'recursive-workspace') {
+					assertWorkspaceClean(root);
+				} else {
+					assertCleanWorktree(root);
+				}
+				ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
+				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
+				validateStagingWorkflowContracts(root);
+				runWorkspaceSavePreflight({ cwd: root });
 			const repoDir = session.gitRoot;
 			const rootRepo = createWorkspaceRootRepoReport(root);
 			const packageReports = createWorkspacePackageReports(root);
@@ -3388,8 +3385,8 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			}
 
 			try {
-				await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
-					unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
+					await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
+						unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'), { rerunCompleted: true });
 				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
 					const report = findReportByName(packageReports, pkg.name);
 					if (!report) {
@@ -3712,14 +3709,15 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 
 				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
 				assertReleaseGitHubAutomationReady(root, effectiveSelectedPackageNames);
-				if (!isResume) {
-					assertSessionBranchSafety('release', session, { requireCleanPackages: true, requireCurrentBranch: true });
-					assertCleanWorktree(root);
-				}
-				prepareReleaseBranches(root);
-				runWorkspaceSavePreflight({ cwd: root });
-				await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
-					unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
+					if (!isResume) {
+						assertSessionBranchSafety('release', session, { requireCleanPackages: true, requireCurrentBranch: true });
+						assertCleanWorktree(root);
+					}
+					prepareReleaseBranches(root);
+					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
+					runWorkspaceSavePreflight({ cwd: root });
+					await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
+						unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'), { rerunCompleted: true });
 
 				if (mode === 'root-only') {
 					const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
