@@ -404,6 +404,13 @@ export function classifyWorkflowRunJournal(
 			classifiedAt: now,
 		};
 	}
+	if (journal.command === 'switch' && journal.steps.every((step) => step.status === 'pending')) {
+		return {
+			state: 'obsolete',
+			reasons: ['switch failed before completing any checkout step; rerun switch instead'],
+			classifiedAt: now,
+		};
+	}
 	if (options.currentBranch && journal.session.branchName && options.currentBranch !== journal.session.branchName) {
 		reasons.push(`current branch ${options.currentBranch} does not match journal branch ${journal.session.branchName}`);
 	}

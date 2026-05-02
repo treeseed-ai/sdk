@@ -94,6 +94,44 @@ describe('workflow run journals', () => {
 		expect(classification.reasons.join('\n')).toContain('market head changed');
 	});
 
+	it('classifies failed switch runs with no completed checkout steps as obsolete', () => {
+		const root = makeRoot();
+		const journal = createWorkflowRunJournal(root, {
+			runId: 'switch-test',
+			command: 'switch',
+			input: { branch: 'feature/demo' },
+			session: {
+				root,
+				mode: 'recursive-workspace',
+				branchName: null,
+				repos: [{ name: '@treeseed/market', path: root, branchName: null }],
+			},
+			steps: [
+				{
+					id: 'switch-root',
+					description: 'Switch market repo',
+					repoName: '@treeseed/market',
+					repoPath: root,
+					branch: 'feature/demo',
+					resumable: true,
+				},
+			],
+		});
+		const failed = {
+			...journal,
+			status: 'failed' as const,
+			failure: { code: 'unsupported_state', message: 'failed', details: null, at: new Date().toISOString() },
+		};
+
+		const classification = classifyWorkflowRunJournal(failed, {
+			currentBranch: 'staging',
+			currentHeads: { '@treeseed/market': 'new-root' },
+		});
+
+		expect(classification.state).toBe('obsolete');
+		expect(classification.reasons.join('\n')).toContain('rerun switch');
+	});
+
 	it('archives stale runs without deleting their journal metadata', () => {
 		const root = makeRoot();
 		makeReleaseJournal(root);
