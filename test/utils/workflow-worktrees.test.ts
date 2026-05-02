@@ -9,6 +9,7 @@ import {
 	plannedManagedWorkflowWorktreePath,
 	removeManagedWorkflowWorktree,
 } from '../../src/workflow/worktrees.ts';
+import { getTreeseedMachineConfigPaths } from '../../src/operations/services/config-runtime.ts';
 
 function git(cwd: string, args: string[]) {
 	const result = spawnSync('git', args, {
@@ -62,6 +63,8 @@ function createPackageRepo(root: string, name: string) {
 describe('workflow managed worktrees', () => {
 	it('creates and resumes a managed worktree from staging', () => {
 		const { work } = createRepo();
+		mkdirSync(resolve(work, '.treeseed', 'config'), { recursive: true });
+		writeFileSync(resolve(work, '.treeseed', 'config', 'machine.yaml'), 'project:\n  slug: demo\n', 'utf8');
 		const created = ensureManagedWorkflowWorktree({
 			root: work,
 			branchName: 'feature/search filters',
@@ -82,6 +85,8 @@ describe('workflow managed worktrees', () => {
 		expect(resumed.resumed).toBe(true);
 		expect(resumed.worktreePath).toBe(created.worktreePath);
 		expect(managedWorkflowWorktreeMetadata(created.worktreePath)?.branch).toBe('feature/search filters');
+		expect(getTreeseedMachineConfigPaths(created.worktreePath).configPath)
+			.toBe(resolve(work, '.treeseed', 'config', 'machine.yaml'));
 	});
 
 	it('creates package task branches from staging before workflow switch runs', () => {
