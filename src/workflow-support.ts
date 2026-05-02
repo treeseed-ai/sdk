@@ -113,12 +113,14 @@ export {
 export { collectCliPreflight } from './operations/services/workspace-preflight.ts';
 export {
 	collectTreeseedDependencyStatus,
+	collectTreeseedToolStatus,
 	createTreeseedManagedToolEnv,
 	formatTreeseedDependencyFailureDetails,
 	formatTreeseedDependencyReport,
 	installTreeseedDependencies,
 	resolveTreeseedToolBinary,
 	resolveTreeseedToolCommand,
+	type TreeseedToolStatusResult,
 } from './managed-dependencies.ts';
 export {
 	runTreeseedCopilotTask,

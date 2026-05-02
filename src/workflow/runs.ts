@@ -15,6 +15,28 @@ export type TreeseedWorkflowExecutionMode = 'execute' | 'plan';
 
 export type TreeseedWorkflowRunStatus = 'running' | 'failed' | 'completed';
 
+export type TreeseedWorkflowRunClassificationState = 'resumable' | 'stale' | 'obsolete';
+
+export type TreeseedWorkflowRunClassification = {
+	state: TreeseedWorkflowRunClassificationState;
+	reasons: string[];
+	classifiedAt: string;
+	archivedAt?: string | null;
+};
+
+export type TreeseedWorkflowGateCacheEntry = {
+	repo: string | null;
+	workflow: string;
+	headSha: string;
+	branch: string | null;
+	status: string;
+	conclusion: string | null;
+	runId: string | number | null;
+	url: string | null;
+	cachedAt: string;
+	result: Record<string, unknown>;
+};
+
 export type TreeseedWorkflowRunStep = {
 	id: string;
 	description: string;
@@ -56,6 +78,8 @@ export type TreeseedWorkflowRunJournal = {
 		at: string;
 	};
 	result: Record<string, unknown> | null;
+	classification?: TreeseedWorkflowRunClassification | null;
+	gateCache?: TreeseedWorkflowGateCacheEntry[];
 };
 
 export type TreeseedWorkflowLockRecord = {
@@ -317,6 +341,181 @@ export function updateWorkflowRunJournal(
 		updatedAt: nowIso(),
 	});
 	return readWorkflowRunJournal(root, runId);
+}
+
+function stringRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === 'object' && !Array.isArray(value)
+		? value as Record<string, unknown>
+		: null;
+}
+
+function journalReleasePlanHead(plan: Record<string, unknown>, repoName: string) {
+	if (repoName === '@treeseed/market') {
+		const rootRepo = stringRecord(plan.rootRepo);
+		return typeof rootRepo?.commitSha === 'string' ? rootRepo.commitSha : null;
+	}
+	const repos = Array.isArray(plan.repos) ? plan.repos : [];
+	for (const repo of repos) {
+		const record = stringRecord(repo);
+		if (record?.name === repoName) {
+			return typeof record.commitSha === 'string' ? record.commitSha : null;
+		}
+	}
+	return null;
+}
+
+function selectedReleasePackageNames(plan: Record<string, unknown>) {
+	const selection = stringRecord(plan.packageSelection);
+	const selected = Array.isArray(selection?.selected)
+		? selection.selected.filter((name): name is string => typeof name === 'string')
+		: [];
+	return selected;
+}
+
+export function classifyWorkflowRunJournal(
+	journal: TreeseedWorkflowRunJournal,
+	options: {
+		currentBranch?: string | null;
+		currentHeads?: Record<string, string | null | undefined>;
+		now?: string;
+	} = {},
+): TreeseedWorkflowRunClassification {
+	const reasons: string[] = [];
+	const now = options.now ?? nowIso();
+	if (journal.classification?.archivedAt) {
+		return {
+			state: 'obsolete',
+			reasons: journal.classification.reasons.length > 0 ? journal.classification.reasons : ['workflow run was archived'],
+			classifiedAt: now,
+			archivedAt: journal.classification.archivedAt,
+		};
+	}
+	if (journal.status !== 'failed') {
+		return {
+			state: 'obsolete',
+			reasons: [`workflow run status is ${journal.status}`],
+			classifiedAt: now,
+		};
+	}
+	if (!journal.resumable) {
+		return {
+			state: 'obsolete',
+			reasons: ['workflow run is not marked resumable'],
+			classifiedAt: now,
+		};
+	}
+	if (options.currentBranch && journal.session.branchName && options.currentBranch !== journal.session.branchName) {
+		reasons.push(`current branch ${options.currentBranch} does not match journal branch ${journal.session.branchName}`);
+	}
+	if (journal.command === 'release' && options.currentHeads) {
+		const releasePlan = stringRecord(journal.steps.find((step) => step.id === 'release-plan')?.data);
+		if (releasePlan) {
+			const rootHead = options.currentHeads['@treeseed/market'];
+			const plannedRootHead = journalReleasePlanHead(releasePlan, '@treeseed/market');
+			if (rootHead && plannedRootHead && rootHead !== plannedRootHead) {
+				reasons.push(`market head changed from ${plannedRootHead} to ${rootHead}`);
+			}
+			for (const name of selectedReleasePackageNames(releasePlan)) {
+				const currentHead = options.currentHeads[name];
+				const plannedHead = journalReleasePlanHead(releasePlan, name);
+				if (currentHead && plannedHead && currentHead !== plannedHead) {
+					reasons.push(`${name} head changed from ${plannedHead} to ${currentHead}`);
+				}
+			}
+		}
+	}
+	return {
+		state: reasons.length > 0 ? 'stale' : 'resumable',
+		reasons: reasons.length > 0 ? reasons : ['workflow run can be resumed'],
+		classifiedAt: now,
+	};
+}
+
+export function classifyWorkflowRunJournals(
+	root: string,
+	options: Parameters<typeof classifyWorkflowRunJournal>[1] = {},
+) {
+	return listWorkflowRunJournals(root).map((journal) => ({
+		journal,
+		classification: classifyWorkflowRunJournal(journal, options),
+	}));
+}
+
+export function archiveWorkflowRun(root: string, runId: string, classification: TreeseedWorkflowRunClassification) {
+	const archivedAt = nowIso();
+	return updateWorkflowRunJournal(root, runId, (journal) => ({
+		...journal,
+		resumable: false,
+		classification: {
+			...classification,
+			state: classification.state === 'resumable' ? 'stale' : classification.state,
+			archivedAt,
+			classifiedAt: archivedAt,
+		},
+	}));
+}
+
+function gateCacheMatches(entry: TreeseedWorkflowGateCacheEntry, gate: {
+	repository?: string | null;
+	workflow: string;
+	headSha: string;
+	branch?: string | null;
+}) {
+	return entry.workflow === gate.workflow
+		&& entry.headSha === gate.headSha
+		&& (gate.repository == null || entry.repo === gate.repository)
+		&& (gate.branch == null || entry.branch === gate.branch);
+}
+
+export function getCachedSuccessfulWorkflowGate(
+	root: string,
+	runId: string,
+	gate: {
+		repository?: string | null;
+		workflow: string;
+		headSha: string;
+		branch?: string | null;
+	},
+) {
+	const journal = readWorkflowRunJournal(root, runId);
+	const cache = journal?.gateCache ?? [];
+	return cache.find((entry) =>
+		gateCacheMatches(entry, gate)
+		&& entry.status === 'completed'
+		&& entry.conclusion === 'success') ?? null;
+}
+
+export function cacheWorkflowGateResult(root: string, runId: string, result: Record<string, unknown>) {
+	const workflow = typeof result.workflow === 'string' ? result.workflow : null;
+	const headSha = typeof result.headSha === 'string' ? result.headSha : null;
+	if (!workflow || !headSha) {
+		return null;
+	}
+	const entry: TreeseedWorkflowGateCacheEntry = {
+		repo: typeof result.repository === 'string' ? result.repository : null,
+		workflow,
+		headSha,
+		branch: typeof result.branch === 'string' ? result.branch : null,
+		status: typeof result.status === 'string' ? result.status : 'unknown',
+		conclusion: typeof result.conclusion === 'string' ? result.conclusion : null,
+		runId: typeof result.runId === 'string' || typeof result.runId === 'number' ? result.runId : null,
+		url: typeof result.url === 'string' ? result.url : null,
+		cachedAt: nowIso(),
+		result,
+	};
+	updateWorkflowRunJournal(root, runId, (journal) => ({
+		...journal,
+		gateCache: [
+			...(journal.gateCache ?? []).filter((candidate) => !gateCacheMatches(candidate, {
+				repository: entry.repo,
+				workflow: entry.workflow,
+				headSha: entry.headSha,
+				branch: entry.branch,
+			})),
+			entry,
+		],
+	}));
+	return entry;
 }
 
 export function createWorkflowRunJournal(

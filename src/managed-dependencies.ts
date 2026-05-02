@@ -56,6 +56,31 @@ export type TreeseedDependencyInstallResult = {
 	reports: TreeseedDependencyReport[];
 };
 
+export type TreeseedToolInvocation = {
+	mode: 'direct' | 'node' | 'unavailable';
+	command: string | null;
+	argsPrefix: string[];
+	binaryPath: string | null;
+};
+
+export type TreeseedToolReport = TreeseedDependencyReport & {
+	invocation: TreeseedToolInvocation;
+};
+
+export type TreeseedToolStatusResult = TreeseedDependencyInstallResult & {
+	tools: TreeseedToolReport[];
+	auth: {
+		github: {
+			checked: boolean;
+			authenticated: boolean;
+			binaryPath: string | null;
+			command: string[];
+			detail: string;
+			remediation: string[];
+		};
+	};
+};
+
 type DependencyInstallerOptions = {
 	tenantRoot?: string;
 	force?: boolean;
@@ -157,6 +182,33 @@ function managedGhBin(env: NodeJS.ProcessEnv = process.env) {
 	return resolve(resolveToolsHome(env), 'gh', GH_VERSION, platformKey(), 'bin', 'gh');
 }
 
+function tokenEnv(env: NodeJS.ProcessEnv = process.env) {
+	const ghToken = env.GH_TOKEN?.trim() || env.GITHUB_TOKEN?.trim() || '';
+	return ghToken
+		? {
+			...env,
+			GH_TOKEN: ghToken,
+			GITHUB_TOKEN: ghToken,
+		}
+		: env;
+}
+
+function cleanCommandPathOutput(output: string) {
+	const lines = output.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+	for (let index = lines.length - 1; index >= 0; index -= 1) {
+		if (lines[index]?.startsWith('/')) {
+			return lines[index] ?? null;
+		}
+	}
+	return lines[lines.length - 1] ?? null;
+}
+
+function redactSensitiveOutput(output: string) {
+	return output
+		.replace(/^(\s*-\s*Token:\s*).+$/gim, '$1***')
+		.replace(/\b(?:github_pat|ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_*.-]+/gu, '***');
+}
+
 function locateSystemBinary(command: string, spawn = spawnSync, env: NodeJS.ProcessEnv = process.env) {
 	if (process.platform === 'win32') {
 		return null;
@@ -166,7 +218,7 @@ function locateSystemBinary(command: string, spawn = spawnSync, env: NodeJS.Proc
 		encoding: 'utf8',
 		env,
 	});
-	return result.status === 0 ? String(result.stdout ?? '').trim() || null : null;
+	return result.status === 0 ? cleanCommandPathOutput(String(result.stdout ?? '')) : null;
 }
 
 function checkCommand(command: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv; spawn?: typeof spawnSync } = {}) {
@@ -379,6 +431,62 @@ export function resolveTreeseedToolCommand(toolName: TreeseedManagedToolName, op
 		return { command: process.execPath, argsPrefix: [binaryPath], binaryPath };
 	}
 	return { command: binaryPath, argsPrefix: [], binaryPath };
+}
+
+function invocationForTool(toolName: TreeseedManagedToolName, env: NodeJS.ProcessEnv = process.env): TreeseedToolInvocation {
+	const command = resolveTreeseedToolCommand(toolName, { env });
+	if (!command) {
+		return {
+			mode: 'unavailable',
+			command: null,
+			argsPrefix: [],
+			binaryPath: null,
+		};
+	}
+	return {
+		mode: findNpmTool(toolName) ? 'node' : 'direct',
+		command: command.command,
+		argsPrefix: command.argsPrefix,
+		binaryPath: command.binaryPath,
+	};
+}
+
+function checkGitHubAuth(options: DependencyInstallerOptions): TreeseedToolStatusResult['auth']['github'] {
+	const env = tokenEnv(options.env ?? process.env);
+	const gh = resolveTreeseedToolCommand('gh', { env });
+	const command = gh ? [gh.command, ...gh.argsPrefix, 'auth', 'status', '--hostname', 'github.com'] : [];
+	const remediation = [
+		'Run `npx trsd install --json` to install or inspect managed tools.',
+		'Run `npx trsd secrets:unlock` or provide TREESEED_KEY_PASSPHRASE so machine secrets can be decrypted.',
+		'Verify GH_TOKEN is configured in machine.yaml or the environment.',
+	];
+	if (!gh) {
+		return {
+			checked: true,
+			authenticated: false,
+			binaryPath: null,
+			command,
+			detail: 'GitHub CLI `gh` is unavailable.',
+			remediation,
+		};
+	}
+	const result = (options.spawn ?? spawnSync)(gh.command, [...gh.argsPrefix, 'auth', 'status', '--hostname', 'github.com'], {
+		cwd: options.tenantRoot,
+		env: createTreeseedManagedToolEnv(env),
+		stdio: 'pipe',
+		encoding: 'utf8',
+		timeout: 15000,
+	});
+	const detail = redactSensitiveOutput(`${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim())
+		|| (result.status === 0 ? 'GitHub CLI authentication succeeded.' : 'GitHub CLI authentication failed.');
+	return {
+		checked: true,
+		authenticated: result.status === 0,
+		binaryPath: gh.binaryPath,
+		command,
+		detail,
+		remediation,
+	};
 }
 
 async function defaultDownloadFile(url: string, targetPath: string): Promise<void> {
@@ -768,6 +876,22 @@ export function collectTreeseedDependencyStatus(options: DependencyInstallerOpti
 		ghConfigDir: createTreeseedManagedToolEnv(env).GH_CONFIG_DIR,
 		npmInstalls: [],
 		reports,
+	};
+}
+
+export function collectTreeseedToolStatus(options: DependencyInstallerOptions = {}): TreeseedToolStatusResult {
+	const env = options.env ?? process.env;
+	const status = collectTreeseedDependencyStatus(options);
+	const tools = status.reports.map((entry) => ({
+		...entry,
+		invocation: invocationForTool(entry.name, env),
+	}));
+	return {
+		...status,
+		tools,
+		auth: {
+			github: checkGitHubAuth(options),
+		},
 	};
 }
 

@@ -86,11 +86,13 @@ export {
 export { normalizeAgentCliOptions, buildCopilotAllowToolArgs } from './cli-tools.ts';
 export {
 	collectTreeseedDependencyStatus,
+	collectTreeseedToolStatus,
 	createTreeseedManagedToolEnv,
 	formatTreeseedDependencyReport,
 	installTreeseedDependencies,
 	resolveTreeseedToolBinary,
 	resolveTreeseedToolCommand,
+	type TreeseedToolStatusResult,
 } from './managed-dependencies.ts';
 export {
 	runTreeseedCopilotTask,

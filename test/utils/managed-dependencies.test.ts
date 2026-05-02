@@ -5,6 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
 	collectTreeseedDependencyStatus,
+	collectTreeseedToolStatus,
 	installTreeseedDependencies,
 	resolveTreeseedToolBinary,
 } from '../../src/managed-dependencies.ts';
@@ -40,20 +41,25 @@ function spawnMock(options: { docker?: boolean; actInstalled?: boolean; npmStatu
 	let actInstalled = options.actInstalled === true;
 	return ((command: string, args: string[], spawnOptions?: { cwd?: string; env?: NodeJS.ProcessEnv }) => {
 		options.calls?.push({ command, args, cwd: spawnOptions?.cwd, env: spawnOptions?.env });
-		if (args.includes('install') && args.includes('--no-audit') && args.includes('--no-fund')) {
-			return options.npmStatus === 1
-				? { status: 1, stdout: '', stderr: 'npm install failed' }
-				: { status: 0, stdout: 'npm install completed\n', stderr: '' };
-		}
-		if (command === 'bash' && args.join(' ').includes('command -v git')) {
-			return { status: 0, stdout: '/usr/bin/git\n', stderr: '' };
-		}
+			if (args.includes('install') && args.includes('--no-audit') && args.includes('--no-fund')) {
+				return options.npmStatus === 1
+					? { status: 1, stdout: '', stderr: 'npm install failed' }
+					: { status: 0, stdout: 'npm install completed\n', stderr: '' };
+			}
+			if (command === 'bash' && args.join(' ').includes('command -v git')) {
+				return { status: 0, stdout: 'Agent pid 123\n/usr/bin/git\n', stderr: '' };
+			}
 		if (command === 'bash' && args.join(' ').includes('command -v docker')) {
 			return options.docker ? { status: 0, stdout: '/usr/bin/docker\n', stderr: '' } : { status: 1, stdout: '', stderr: '' };
 		}
 		if (args.includes('--version') && !args.includes('act')) {
 			return { status: 0, stdout: 'gh version 2.90.0\n', stderr: '' };
 		}
+			if (args[0] === 'auth' && args[1] === 'status') {
+				return spawnOptions?.env?.GH_TOKEN
+					? { status: 0, stdout: 'Logged in to github.com\n  - Token: github_pat_example123********************************\n', stderr: '' }
+					: { status: 1, stdout: '', stderr: 'You are not logged into any GitHub hosts.' };
+			}
 		if (args[0] === 'act' && args[1] === '--version') {
 			return actInstalled
 				? { status: 0, stdout: 'gh act version 0.2.80\n', stderr: '' }
@@ -97,6 +103,37 @@ describe('managed dependencies', () => {
 		expect(sdk?.status).toBe('already-present');
 		expect(sdk?.detail).toContain('@github/copilot-sdk');
 	});
+
+	it('reports tool invocation paths and GitHub auth remediation without installing', async () => {
+		const toolsHome = await createTempToolsHome();
+		const gh = await createManagedGh(toolsHome);
+		const result = collectTreeseedToolStatus({
+			env: { ...process.env, TREESEED_TOOLS_HOME: toolsHome, GH_TOKEN: '' },
+			spawn: spawnMock(),
+		});
+
+		expect(result.tools.find((entry) => entry.name === 'gh')?.invocation).toMatchObject({
+			mode: 'direct',
+			command: gh,
+			binaryPath: gh,
+		});
+		expect(result.auth.github.authenticated).toBe(false);
+		expect(result.auth.github.remediation.join('\n')).toContain('GH_TOKEN');
+	});
+
+	it('authenticates managed GitHub CLI through GH_TOKEN for hosted workflow gates', async () => {
+		const toolsHome = await createTempToolsHome();
+		await createManagedGh(toolsHome);
+		const result = collectTreeseedToolStatus({
+			env: { ...process.env, TREESEED_TOOLS_HOME: toolsHome, GH_TOKEN: 'secret-token' },
+			spawn: spawnMock(),
+		});
+
+			expect(result.auth.github.authenticated).toBe(true);
+			expect(result.auth.github.command.join(' ')).toContain('auth status --hostname github.com');
+			expect(result.auth.github.detail).not.toContain('github_pat_example123');
+			expect(result.auth.github.detail).toContain('Token: ***');
+		});
 
 	it('runs npm install when package.json exists and node_modules is missing', async () => {
 		const toolsHome = await createTempToolsHome();

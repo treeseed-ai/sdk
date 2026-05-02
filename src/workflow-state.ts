@@ -24,7 +24,7 @@ import { collectCliPreflight } from './operations/services/workspace-preflight.t
 import { currentBranch, gitStatusPorcelain } from './operations/services/workspace-save.ts';
 import { hasCompleteTreeseedPackageCheckout, isWorkspaceRoot, run, workspacePackages } from './operations/services/workspace-tools.ts';
 import { inspectWorkspaceDependencyMode } from './operations/services/workspace-dependency-mode.ts';
-import { inspectWorkflowLock, listInterruptedWorkflowRuns } from './workflow/runs.ts';
+import { classifyWorkflowRunJournals, inspectWorkflowLock } from './workflow/runs.ts';
 import { createTreeseedManagedToolEnv, resolveTreeseedToolCommand } from './managed-dependencies.ts';
 import type { TreeseedWorkflowNextStep } from './workflow.ts';
 import {
@@ -99,6 +99,19 @@ export type TreeseedWorkflowState = {
 			command: string;
 			updatedAt: string;
 			nextStep: string | null;
+		}>;
+		staleRuns: Array<{
+			runId: string;
+			command: string;
+			updatedAt: string;
+			nextStep: string | null;
+			reasons: string[];
+		}>;
+		obsoleteRuns: Array<{
+			runId: string;
+			command: string;
+			updatedAt: string;
+			reasons: string[];
 		}>;
 		blockers: string[];
 	};
@@ -478,6 +491,14 @@ function knownRemoteTrackingBranchExists(repoDir: string, branchName: string) {
 	}
 }
 
+function safeHeadCommit(repoDir: string) {
+	try {
+		return run('git', ['rev-parse', 'HEAD'], { cwd: repoDir, capture: true }).trim();
+	} catch {
+		return null;
+	}
+}
+
 function resolveLocalStatusUrl(deployConfig: ReturnType<typeof loadCliDeployConfig>) {
 	return deployConfig.surfaces?.web?.localBaseUrl
 		?? deployConfig.surfaces?.api?.localBaseUrl
@@ -558,12 +579,42 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			: null);
 	const runnerSession = runnerHostId ? safeResolveRemoteSession(effectiveCwd, runnerHostId) : null;
 	const workflowLock = inspectWorkflowLock(effectiveCwd);
-	const interruptedRuns = listInterruptedWorkflowRuns(effectiveCwd).map((journal) => ({
+	const workflowRunHeads: Record<string, string | null> = {};
+	if (root) {
+		workflowRunHeads['@treeseed/market'] = safeHeadCommit(root);
+	}
+	for (const pkg of completePackageCheckout ? workspacePackages(effectiveCwd).filter((entry) => entry.name?.startsWith('@treeseed/')) : []) {
+		workflowRunHeads[pkg.name] = safeHeadCommit(pkg.dir);
+	}
+	const classifiedRuns = classifyWorkflowRunJournals(effectiveCwd, {
+		currentBranch: branchName,
+		currentHeads: workflowRunHeads,
+	});
+	const interruptedRuns = classifiedRuns
+		.filter((entry) => entry.classification.state === 'resumable')
+		.map(({ journal }) => ({
 		runId: journal.runId,
 		command: journal.command,
 		updatedAt: journal.updatedAt,
 		nextStep: journal.steps.find((step) => step.status === 'pending')?.description ?? null,
 	}));
+	const staleRuns = classifiedRuns
+		.filter((entry) => entry.classification.state === 'stale')
+		.map(({ journal, classification }) => ({
+			runId: journal.runId,
+			command: journal.command,
+			updatedAt: journal.updatedAt,
+			nextStep: journal.steps.find((step) => step.status === 'pending')?.description ?? null,
+			reasons: classification.reasons,
+		}));
+	const obsoleteRuns = classifiedRuns
+		.filter((entry) => entry.classification.state === 'obsolete')
+		.map(({ journal, classification }) => ({
+			runId: journal.runId,
+			command: journal.command,
+			updatedAt: journal.updatedAt,
+			reasons: classification.reasons,
+		}));
 	const workflowBlockers: string[] = [];
 	if (workflowLock.active && workflowLock.lock) {
 		workflowBlockers.push(`Workflow lock active for ${workflowLock.lock.command} (${workflowLock.lock.runId}).`);
@@ -594,6 +645,8 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 				staleReason: workflowLock.staleReason,
 			},
 			interruptedRuns,
+			staleRuns,
+			obsoleteRuns,
 			blockers: workflowBlockers,
 		},
 		packageSync: {

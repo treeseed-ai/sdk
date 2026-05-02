@@ -243,6 +243,7 @@ export type TreeseedResumeInput = {
 
 export type TreeseedRecoverInput = {
 	runId?: string;
+	pruneStale?: boolean;
 };
 
 export type TreeseedDestroyInput = {

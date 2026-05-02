@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TreeseedWorkflowSdk } from '../../src/workflow.ts';
 import { TreeseedWorkflowError } from '../../src/workflow/operations.ts';
-import { acquireWorkflowLock, releaseWorkflowLock } from '../../src/workflow/runs.ts';
+import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, updateWorkflowRunJournal } from '../../src/workflow/runs.ts';
 import {
 	createDefaultTreeseedMachineConfig,
 	ensureTreeseedSecretSessionForConfig,
@@ -570,6 +570,58 @@ describe('treeseed workflow lifecycle', () => {
 		}
 	}, 180000);
 
+	it('classifies stale release runs and prunes them from resumable recovery', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = workflowFor(work);
+		const currentHead = git(work, ['rev-parse', 'HEAD']);
+		createWorkflowRunJournal(work, {
+			runId: 'release-stale-test',
+			command: 'release',
+			input: { bump: 'patch' },
+			session: {
+				root: work,
+				mode: 'recursive-workspace',
+				branchName: 'staging',
+				repos: [
+					{ name: '@treeseed/market', path: work, branchName: 'staging' },
+					{ name: '@treeseed/sdk', path: resolve(work, 'packages/sdk'), branchName: 'staging' },
+				],
+			},
+			steps: [
+				{ id: 'release-plan', description: 'Record release plan', repoName: '@treeseed/market', repoPath: work, branch: 'staging', resumable: true },
+				{ id: 'release-root', description: 'Release market repo', repoName: '@treeseed/market', repoPath: work, branch: 'staging', resumable: true },
+			],
+		});
+		updateWorkflowRunJournal(work, 'release-stale-test', (journal) => ({
+			...journal,
+			status: 'failed',
+			failure: { code: 'unsupported_state', message: 'old release failed', details: null, at: new Date().toISOString() },
+			steps: journal.steps.map((step) => step.id === 'release-plan'
+				? {
+					...step,
+					status: 'completed',
+					completedAt: new Date().toISOString(),
+					data: {
+						rootRepo: { name: '@treeseed/market', commitSha: 'old-root-head' },
+						repos: [{ name: '@treeseed/sdk', commitSha: git(resolve(work, 'packages/sdk'), ['rev-parse', 'HEAD']) }],
+						packageSelection: { selected: ['@treeseed/sdk'] },
+					},
+				}
+				: step),
+		}));
+		expect(currentHead).not.toBe('old-root-head');
+
+		const recover = await workflow.recover();
+		expect(recover.payload.interruptedRuns.map((run: { runId: string }) => run.runId)).not.toContain('release-stale-test');
+		expect(recover.payload.staleRuns.map((run: { runId: string }) => run.runId)).toContain('release-stale-test');
+
+		const pruned = await workflow.recover({ pruneStale: true });
+		expect(pruned.payload.prunedRuns.map((run: { runId: string }) => run.runId)).toContain('release-stale-test');
+
+		const finalRecover = await workflow.recover();
+		expect(finalRecover.payload.staleRuns.map((run: { runId: string }) => run.runId)).not.toContain('release-stale-test');
+	}, 180000);
+
 	it('stages package feature branches first and points market staging at package staging heads', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = workflowFor(work);
@@ -693,7 +745,7 @@ describe('treeseed workflow lifecycle', () => {
 		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'live');
 		vi.stubEnv('GH_TOKEN', '');
 		vi.stubEnv('GITHUB_TOKEN', '');
-		await expect(workflow.release({ bump: 'patch' })).rejects.toThrow('Configure GH_TOKEN');
+		await expect(workflow.release({ bump: 'patch' })).rejects.toThrow('authenticated managed GitHub CLI');
 		const recoverResult = await workflow.recover();
 		const runId = recoverResult.payload.interruptedRuns[0]?.runId;
 		expect(runId).toMatch(/^release-/);

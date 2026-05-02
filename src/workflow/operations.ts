@@ -25,7 +25,7 @@ import {
 	setTreeseedRemoteSession,
 	writeTreeseedMachineConfig,
 } from '../operations/services/config-runtime.ts';
-import { formatTreeseedDependencyFailureDetails, installTreeseedDependencies } from '../managed-dependencies.ts';
+import { collectTreeseedToolStatus, formatTreeseedDependencyFailureDetails, installTreeseedDependencies } from '../managed-dependencies.ts';
 import { ControlPlaneClient } from '../control-plane-client.ts';
 import { exportTreeseedCodebase } from '../operations/services/export-runtime.ts';
 import {
@@ -67,7 +67,6 @@ import {
 	syncBranchWithOrigin,
 } from '../operations/services/git-workflow.ts';
 import { getGitHubAutomationMode, resolveGitHubRepositorySlug, waitForGitHubWorkflowCompletion } from '../operations/services/github-automation.ts';
-import { createGitHubApiClient } from '../operations/services/github-api.ts';
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin } from '../operations/services/runtime-tools.ts';
 import { runTenantDeployPreflight, runWorkspaceSavePreflight } from '../operations/services/save-deploy-preflight.ts';
 import { collectCliPreflight } from '../operations/services/workspace-preflight.ts';
@@ -119,8 +118,13 @@ import { resolveTreeseedWorkflowState, type TreeseedWorkflowStatusOptions } from
 import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, filterTreeseedDesiredUnitsByBootstrapSystems, planTreeseedReconciliation, resolveTreeseedBootstrapSelection, reconcileTreeseedTarget } from '../reconcile/index.ts';
 import {
 	acquireWorkflowLock,
+	archiveWorkflowRun,
+	cacheWorkflowGateResult,
+	classifyWorkflowRunJournal,
+	classifyWorkflowRunJournals,
 	createWorkflowRunJournal,
 	generateWorkflowRunId,
+	getCachedSuccessfulWorkflowGate,
 	inspectWorkflowLock,
 	listInterruptedWorkflowRuns,
 	listWorkflowRunJournals,
@@ -188,7 +192,8 @@ export type TreeseedWorkflowErrorCode =
 	| 'workflow_locked'
 	| 'resume_unavailable'
 	| 'workflow_contract_missing'
-	| 'github_workflow_failed';
+	| 'github_workflow_failed'
+	| 'github_auth_unavailable';
 
 export class TreeseedWorkflowError extends Error {
 	code: TreeseedWorkflowErrorCode;
@@ -347,16 +352,71 @@ function workflowGateFailureMessage(gate: WorkflowGate, result: Record<string, u
 	return `${gate.name} ${gate.workflow} completed with conclusion ${String(result.conclusion ?? 'unknown')} in ${repository}.${url}${jobLine}${command}`;
 }
 
+function assertHostedGitHubWorkflowAuthReady(operation: TreeseedWorkflowOperationId, root: string) {
+	if (getGitHubAutomationMode() === 'stub') {
+		return null;
+	}
+	const tools = collectTreeseedToolStatus({
+		tenantRoot: root,
+		env: process.env,
+	});
+	const github = tools.auth.github;
+	if (!github.authenticated) {
+		const command = github.command.length > 0 ? github.command.join(' ') : 'npx trsd tools --json';
+		workflowError(
+			operation,
+			'github_auth_unavailable',
+			[
+				'Treeseed hosted GitHub workflow gates require an authenticated managed GitHub CLI.',
+				github.detail,
+				`Managed gh check: ${command}`,
+				'Remediation:',
+				...github.remediation.map((item) => `- ${item}`),
+			].join('\n'),
+			{
+				details: {
+					toolsHome: tools.toolsHome,
+					ghConfigDir: tools.ghConfigDir,
+					github,
+					tools: tools.tools,
+				},
+			},
+		);
+	}
+	return tools;
+}
+
 async function waitForWorkflowGates(
 	operation: TreeseedWorkflowOperationId,
 	gates: WorkflowGate[],
 	ciMode: TreeseedWorkflowCiMode,
+	options: { root?: string; runId?: string } = {},
 ) {
 	if (ciMode === 'off' || process.env.TREESEED_STAGE_WAIT_MODE === 'skip') {
 		return gates.map((gate) => skippedWorkflowGate(gate, ciMode === 'off' ? 'disabled' : 'stubbed'));
 	}
+	if (gates.length === 0) {
+		return [];
+	}
+	assertHostedGitHubWorkflowAuthReady(operation, options.root ?? gates[0]!.repoPath);
 	const results: Array<Record<string, unknown>> = [];
 	for (const gate of gates) {
+		if (options.root && options.runId) {
+			const cached = getCachedSuccessfulWorkflowGate(options.root, options.runId, {
+				repository: gate.repository ?? null,
+				workflow: gate.workflow,
+				headSha: gate.headSha,
+				branch: gate.branch,
+			});
+			if (cached) {
+				results.push({
+					...cached.result,
+					name: gate.name,
+					cached: true,
+				});
+				continue;
+			}
+		}
 		const result = await waitForGitHubWorkflowCompletion(gate.repoPath, {
 			repository: gate.repository,
 			workflow: gate.workflow,
@@ -374,6 +434,9 @@ async function waitForWorkflowGates(
 			workflowError(operation, 'github_workflow_failed', workflowGateFailureMessage(gate, normalized), {
 				details: { gate, workflow: normalized },
 			});
+		}
+		if (options.root && options.runId && normalized.status === 'completed' && normalized.conclusion === 'success') {
+			cacheWorkflowGateResult(options.root, options.runId, normalized);
 		}
 		results.push(normalized);
 	}
@@ -1478,7 +1541,7 @@ function assertReleaseGitHubAutomationReady(root: string, selectedPackageNames: 
 	if (process.env.TREESEED_GITHUB_AUTOMATION_MODE === 'stub') {
 		return;
 	}
-	createGitHubApiClient();
+	assertHostedGitHubWorkflowAuthReady('release', root);
 	for (const pkg of checkedOutWorkspacePackageRepos(root)) {
 		if (!selectedPackageNames.has(pkg.name)) continue;
 		resolveGitHubRepositorySlug(pkg.dir);
@@ -2765,7 +2828,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 									branch: String(repo.branch),
 									headSha: String(repo.commitSha),
 								})),
-						], 'hosted').then((workflowGates) => ({ workflowGates })))
+						], 'hosted', { root, runId: workflowRun.runId }).then((workflowGates) => ({ workflowGates })))
 					: { workflowGates: [] };
 
 				let previewAction: Record<string, unknown> = { status: 'skipped' };
@@ -3196,6 +3259,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			} else {
 				assertCleanWorktree(root);
 			}
+			applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
 			validateStagingWorkflowContracts(root);
 			runWorkspaceSavePreflight({ cwd: root });
 			const repoDir = session.gitRoot;
@@ -3353,7 +3417,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 									branch: STAGING_BRANCH,
 									headSha: String(report.commitSha),
 								})),
-						], ciMode).then((workflowGates) => ({
+						], ciMode, { root, runId: workflowRun.runId }).then((workflowGates) => ({
 							status: 'completed',
 							workflowGates,
 						})));
@@ -3647,7 +3711,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 								branch: PRODUCTION_BRANCH,
 								headSha: String(rootRelease?.releasedCommit ?? rootRepo.commitSha ?? ''),
 							},
-						].filter((gate) => gate.headSha), ciMode).then((workflowGates) => ({ workflowGates })));
+						].filter((gate) => gate.headSha), ciMode, { root, runId: workflowRun.runId }).then((workflowGates) => ({ workflowGates })));
 					const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 					const payload = {
 						mode,
@@ -3767,7 +3831,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 								headSha: mergeResult.commitSha,
 								branch: PRODUCTION_BRANCH,
 							},
-						], ciMode);
+						], ciMode, { root, runId: workflowRun.runId });
 						const publish = workflowGates.find((gate) => gate.workflow === 'publish.yml') ?? workflowGates[0] ?? null;
 						assertReleaseGitHubWorkflowSucceeded(pkg.name, publish);
 						syncBranchWithOrigin(pkg.dir, STAGING_BRANCH);
@@ -3868,7 +3932,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							branch: PRODUCTION_BRANCH,
 							headSha: String(rootRelease?.releasedCommit ?? rootRepo.commitSha ?? ''),
 						},
-					].filter((gate) => gate.headSha), ciMode).then((workflowGates) => ({ workflowGates })));
+					].filter((gate) => gate.headSha), ciMode, { root, runId: workflowRun.runId }).then((workflowGates) => ({ workflowGates })));
 				const devTagCleanupMode = (effectiveInput.devTagCleanup ?? 'safe-after-release') as DevTagCleanupMode;
 				const devTagCleanup = devTagCleanupMode === 'off'
 					? (skipJournalStep(root, workflowRun.runId, 'cleanup-dev-tags', { status: 'skipped', reason: 'disabled' }), { status: 'skipped', reason: 'disabled' })
@@ -3981,6 +4045,20 @@ export async function workflowResume(helpers: WorkflowOperationHelpers, input: T
 					details: { runId, status: journal.status },
 				});
 			}
+			const session = resolveTreeseedWorkflowSession(root);
+			const currentHeads = Object.fromEntries(
+				[createWorkspaceRootRepoReport(root), ...createWorkspacePackageReports(root)]
+					.map((report) => [report.name, report.commitSha ?? null]),
+			);
+			const classification = classifyWorkflowRunJournal(journal, {
+				currentBranch: session.branchName,
+				currentHeads,
+			});
+			if (classification.state !== 'resumable') {
+				workflowError('resume', 'resume_unavailable', `Run ${runId} is ${classification.state} and is not safe to resume.`, {
+					details: { runId, status: journal.status, classification },
+				});
+			}
 			const resumedHelpers: WorkflowOperationHelpers = {
 				...helpers,
 				context: {
@@ -4021,7 +4099,18 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 			const root = resolveProjectRootOrThrow('recover', helpers.cwd());
 			const lock = inspectWorkflowLock(root);
 			const journals = listWorkflowRunJournals(root);
-			const interruptedRuns = listInterruptedWorkflowRuns(root).map((journal) => ({
+			const session = resolveTreeseedWorkflowSession(root);
+			const currentHeads = Object.fromEntries(
+				[createWorkspaceRootRepoReport(root), ...createWorkspacePackageReports(root)]
+					.map((report) => [report.name, report.commitSha ?? null]),
+			);
+			const classifiedRuns = classifyWorkflowRunJournals(root, {
+				currentBranch: session.branchName,
+				currentHeads,
+			});
+			const interruptedRuns = classifiedRuns
+				.filter((entry) => entry.classification.state === 'resumable')
+				.map(({ journal }) => ({
 				runId: journal.runId,
 				command: journal.command,
 				status: journal.status,
@@ -4031,6 +4120,35 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 				failure: journal.failure,
 				resumeCommand: `treeseed resume ${journal.runId}`,
 			}));
+			const staleRuns = classifiedRuns
+				.filter((entry) => entry.classification.state === 'stale')
+				.map(({ journal, classification }) => ({
+					runId: journal.runId,
+					command: journal.command,
+					status: journal.status,
+					createdAt: journal.createdAt,
+					updatedAt: journal.updatedAt,
+					nextStep: nextPendingJournalStep(journal)?.description ?? null,
+					failure: journal.failure,
+					classification,
+				}));
+			const obsoleteRuns = classifiedRuns
+				.filter((entry) => entry.classification.state === 'obsolete')
+				.map(({ journal, classification }) => ({
+					runId: journal.runId,
+					command: journal.command,
+					status: journal.status,
+					createdAt: journal.createdAt,
+					updatedAt: journal.updatedAt,
+					failure: journal.failure,
+					classification,
+				}));
+			const prunedRuns = input.pruneStale === true
+				? staleRuns.map((run) => {
+					archiveWorkflowRun(root, run.runId, run.classification);
+					return run;
+				})
+				: [];
 			const selectedRun = input.runId ? readWorkflowRunJournal(root, input.runId) : null;
 			return buildWorkflowResult(
 				'recover',
@@ -4038,6 +4156,9 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 				{
 					lock,
 					interruptedRuns,
+					staleRuns,
+					obsoleteRuns,
+					prunedRuns,
 					selectedRun,
 					runCount: journals.length,
 				},
@@ -4046,6 +4167,8 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 					nextSteps: createNextSteps([
 						...(interruptedRuns.length > 0
 							? [{ operation: 'resume', reason: 'Resume the most recent interrupted workflow run.', input: { runId: interruptedRuns[0].runId } }]
+							: staleRuns.length > 0 && input.pruneStale !== true
+								? [{ operation: 'recover', reason: 'Archive stale interrupted runs that no longer match current heads.', input: { pruneStale: true } }]
 							: [{ operation: 'status', reason: 'No interrupted runs were found; inspect current workflow state instead.' }]),
 					]),
 				},

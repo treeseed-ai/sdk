@@ -67,6 +67,7 @@ import { run } from '../../operations/services/workspace-tools.ts';
 import { resolveTreeseedWorkflowState } from '../../workflow-state.ts';
 import { TreeseedWorkflowError, TreeseedWorkflowSdk } from '../../workflow.ts';
 import {
+	collectTreeseedToolStatus,
 	formatTreeseedDependencyReport,
 	installTreeseedDependencies,
 } from '../../managed-dependencies.ts';
@@ -400,6 +401,42 @@ class InstallOperation extends BaseOperation<{ force?: boolean }> {
 	}
 }
 
+class ToolsOperation extends BaseOperation {
+	async execute(_input: Record<string, unknown>, context: TreeseedOperationContext) {
+		const result = collectTreeseedToolStatus({
+			tenantRoot: context.cwd,
+			env: operationEnv(context),
+			spawn: context.spawn as typeof spawnSync | undefined,
+		});
+		const stdout = [
+			'Treeseed managed tools',
+			`Tools home: ${result.toolsHome}`,
+			`GitHub CLI config: ${result.ghConfigDir}`,
+			...result.tools.map((entry) => {
+				const invocation = entry.invocation.command
+					? `${entry.invocation.command}${entry.invocation.argsPrefix.length > 0 ? ` ${entry.invocation.argsPrefix.join(' ')}` : ''}`
+					: '(unavailable)';
+				return `- ${entry.name}: ${entry.status} (${entry.binaryPath ?? 'no binary'}; ${entry.invocation.mode}; ${invocation})`;
+			}),
+			`GitHub auth: ${result.auth.github.authenticated ? 'authenticated' : 'not authenticated'} - ${result.auth.github.detail}`,
+		];
+		return operationResult(this.metadata, result, {
+			ok: true,
+			exitCode: 0,
+			stdout,
+			report: {
+				ok: true,
+				dependenciesOk: result.ok,
+				toolsHome: result.toolsHome,
+				ghConfigDir: result.ghConfigDir,
+				npmInstalls: result.npmInstalls,
+				tools: result.tools,
+				auth: result.auth,
+			},
+		});
+	}
+}
+
 class AuthLoginOperation extends BaseOperation {
 	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
 		const tenantRoot = context.cwd;
@@ -674,6 +711,7 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 			new SyncTemplateOperation('sync'),
 			new DoctorOperation('doctor'),
 			new InstallOperation('install'),
+			new ToolsOperation('tools'),
 			new AuthLoginOperation('auth:login'),
 			new AuthLogoutOperation('auth:logout'),
 			new AuthWhoAmIOperation('auth:whoami'),
