@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import type { TreeseedWorkflowMode } from './session.ts';
 
 export type TreeseedWorkflowRunCommand =
@@ -81,26 +81,52 @@ export type TreeseedWorkflowLockInspection = {
 
 const WORKFLOW_CONTROL_DIR = '.treeseed/workflow';
 const WORKFLOW_RUNS_DIR = `${WORKFLOW_CONTROL_DIR}/runs`;
+const WORKTREE_METADATA_PATH = '.treeseed/worktree.json';
 const LOCK_STALE_AFTER_MS = 4 * 60 * 60 * 1000;
+const WORKFLOW_RUN_STORAGE_ROOTS = new Map<string, string>();
 
 function nowIso() {
 	return new Date().toISOString();
 }
 
-function workflowControlRoot(root: string) {
-	return resolve(root, WORKFLOW_CONTROL_DIR);
+function managedWorktreePrimaryRoot(root: string) {
+	const metadataPath = resolve(root, WORKTREE_METADATA_PATH);
+	if (!existsSync(metadataPath)) return null;
+	try {
+		const metadata = JSON.parse(readFileSync(metadataPath, 'utf8')) as Record<string, unknown>;
+		return metadata.kind === 'treeseed.workflow.worktree' && typeof metadata.primaryRoot === 'string'
+			? metadata.primaryRoot
+			: null;
+	} catch {
+		return null;
+	}
 }
 
-function workflowRunsRoot(root: string) {
-	return resolve(root, WORKFLOW_RUNS_DIR);
+function workflowStorageRoot(root: string, runId?: string | null) {
+	if (runId && WORKFLOW_RUN_STORAGE_ROOTS.has(runId)) {
+		return WORKFLOW_RUN_STORAGE_ROOTS.get(runId) as string;
+	}
+	const storageRoot = managedWorktreePrimaryRoot(root) ?? root;
+	if (runId) {
+		WORKFLOW_RUN_STORAGE_ROOTS.set(runId, storageRoot);
+	}
+	return storageRoot;
 }
 
-function workflowLockPath(root: string) {
-	return resolve(root, WORKFLOW_CONTROL_DIR, 'lock.json');
+function workflowControlRoot(root: string, runId?: string | null) {
+	return resolve(workflowStorageRoot(root, runId), WORKFLOW_CONTROL_DIR);
+}
+
+function workflowRunsRoot(root: string, runId?: string | null) {
+	return resolve(workflowStorageRoot(root, runId), WORKFLOW_RUNS_DIR);
+}
+
+function workflowLockPath(root: string, runId?: string | null) {
+	return resolve(workflowStorageRoot(root, runId), WORKFLOW_CONTROL_DIR, 'lock.json');
 }
 
 function workflowRunPath(root: string, runId: string) {
-	return resolve(root, WORKFLOW_RUNS_DIR, `${runId}.json`);
+	return resolve(workflowStorageRoot(root, runId), WORKFLOW_RUNS_DIR, `${runId}.json`);
 }
 
 function resolveGitDir(root: string) {
@@ -131,12 +157,13 @@ function ensureWorkflowExcludeRule(root: string) {
 	if (current.includes(pattern)) {
 		return;
 	}
+	mkdirSync(dirname(excludePath), { recursive: true });
 	writeFileSync(excludePath, `${current}${current.endsWith('\n') || current.length === 0 ? '' : '\n'}${pattern}\n`, 'utf8');
 }
 
-function ensureWorkflowControlDirs(root: string) {
-	const controlDir = workflowControlRoot(root);
-	const runsDir = workflowRunsRoot(root);
+function ensureWorkflowControlDirs(root: string, runId?: string | null) {
+	const controlDir = workflowControlRoot(root, runId);
+	const runsDir = workflowRunsRoot(root, runId);
 	mkdirSync(runsDir, { recursive: true });
 	ensureWorkflowExcludeRule(root);
 	writeFileSync(resolve(controlDir, '.gitignore'), '*\n!.gitignore\n!runs/\nruns/*\n!runs/.gitignore\n', 'utf8');
@@ -206,7 +233,7 @@ export function inspectWorkflowLock(root: string): TreeseedWorkflowLockInspectio
 }
 
 export function acquireWorkflowLock(root: string, command: TreeseedWorkflowRunCommand, runId: string) {
-	const dirs = ensureWorkflowControlDirs(root);
+	const dirs = ensureWorkflowControlDirs(root, runId);
 	const inspection = inspectWorkflowLock(root);
 	if (inspection.active && inspection.lock && inspection.lock.runId !== runId) {
 		return {
@@ -240,7 +267,7 @@ export function acquireWorkflowLock(root: string, command: TreeseedWorkflowRunCo
 }
 
 export function refreshWorkflowLock(root: string, runId: string) {
-	const path = workflowLockPath(root);
+	const path = workflowLockPath(root, runId);
 	const lock = safeJsonParse<TreeseedWorkflowLockRecord>(path);
 	if (!lock || lock.runId !== runId) {
 		return null;
@@ -256,7 +283,7 @@ export function refreshWorkflowLock(root: string, runId: string) {
 }
 
 export function releaseWorkflowLock(root: string, runId: string) {
-	const path = workflowLockPath(root);
+	const path = workflowLockPath(root, runId);
 	const lock = safeJsonParse<TreeseedWorkflowLockRecord>(path);
 	if (!lock || lock.runId !== runId) {
 		return false;
@@ -266,7 +293,7 @@ export function releaseWorkflowLock(root: string, runId: string) {
 }
 
 export function writeWorkflowRunJournal(root: string, journal: TreeseedWorkflowRunJournal) {
-	ensureWorkflowControlDirs(root);
+	ensureWorkflowControlDirs(root, journal.runId);
 	writeFileSync(workflowRunPath(root, journal.runId), `${JSON.stringify(journal, null, 2)}\n`, 'utf8');
 	return journal;
 }

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -380,6 +380,66 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(work, ['ls-remote', '--heads', 'origin', 'feature/plan-only'])).toBe('');
 		expect(git(resolve(work, 'packages', 'sdk'), ['ls-remote', '--heads', 'origin', 'feature/plan-only'])).toBe('');
+	}, 180000);
+
+	it('creates managed worktrees for agent switch without moving the primary checkout', async () => {
+		const { work } = createWorkflowRepo();
+		const workflow = new TreeseedWorkflowSdk({
+			cwd: work,
+			env: { ...process.env, CODEX_AGENT_ID: 'agent-1' },
+			write: () => {},
+		});
+
+		const result = await workflow.switchTask({
+			branch: 'feature/agent-worktree',
+		});
+
+		expect(String(result.payload.worktreePath)).toContain('.treeseed/worktrees/');
+		expect(git(work, ['branch', '--show-current'])).toBe('feature/demo-task');
+		expect(git(String(result.payload.worktreePath), ['branch', '--show-current'])).toBe('feature/agent-worktree');
+	}, 180000);
+
+	it('removes managed worktrees after agent close cleanup', async () => {
+		const { work } = createWorkflowRepo();
+		const env = { ...process.env, CODEX_AGENT_ID: 'agent-1' };
+		const workflow = new TreeseedWorkflowSdk({ cwd: work, env, write: () => {} });
+		const switched = await workflow.switchTask({
+			branch: 'feature/agent-close',
+		});
+		const worktreePath = String(switched.payload.worktreePath);
+		const managedWorkflow = new TreeseedWorkflowSdk({ cwd: worktreePath, env, write: () => {} });
+
+		const closed = await managedWorkflow.close({
+			message: 'close agent branch',
+			deletePreview: false,
+		});
+
+		expect(closed.payload.worktreeCleanup.removed).toBe(true);
+		expect(existsSync(worktreePath)).toBe(false);
+		expect(git(work, ['branch', '--show-current'])).toBe('feature/demo-task');
+	}, 180000);
+
+	it('stages from a managed worktree and removes it after promotion', async () => {
+		const { work } = createWorkflowRepo();
+		const env = { ...process.env, CODEX_AGENT_ID: 'agent-1' };
+		const workflow = new TreeseedWorkflowSdk({ cwd: work, env, write: () => {} });
+		const switched = await workflow.switchTask({
+			branch: 'feature/agent-stage',
+		});
+		const worktreePath = String(switched.payload.worktreePath);
+		writeFileSync(resolve(worktreePath, 'agent-stage.txt'), 'managed stage\n', 'utf8');
+		const managedWorkflow = new TreeseedWorkflowSdk({ cwd: worktreePath, env, write: () => {} });
+
+		const staged = await managedWorkflow.stage({
+			message: 'stage managed worktree',
+			deletePreview: false,
+		});
+
+		expect(staged.payload.worktreeCleanup.removed).toBe(true);
+		expect(existsSync(worktreePath)).toBe(false);
+		git(work, ['fetch', 'origin', 'staging']);
+		expect(git(work, ['show', 'origin/staging:agent-stage.txt'])).toBe('managed stage');
+		expect(git(work, ['branch', '--show-current'])).toBe('feature/demo-task');
 	}, 180000);
 
 	it('fails switch when a checked-out package repo is dirty', async () => {
