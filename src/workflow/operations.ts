@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import {
 	applyTreeseedEnvironmentToProcess,
@@ -244,6 +244,7 @@ function ensureWorkflowWorkspaceLinks(root: string, helpers: WorkflowOperationHe
 		helpers.write(`[workspace][link] Linked ${report.created.length} local workspace package paths.`);
 	}
 	ensureWorkflowWorkspacePackageArtifacts(root, helpers);
+	ensureWorkflowCommandBins(root, helpers);
 	return report;
 }
 
@@ -274,6 +275,35 @@ function ensureWorkflowWorkspacePackageArtifacts(root: string, helpers: Workflow
 		if (missing.length === 0) continue;
 		helpers.write(`[workspace][build] Building ${entry.name} artifacts for local workspace links.`);
 		run('npm', ['--prefix', packageDir, 'run', 'build:dist'], { cwd: root });
+	}
+}
+
+function ensureWorkflowCommandBins(root: string, helpers: WorkflowOperationHelpers) {
+	const cliBin = resolve(root, 'node_modules/@treeseed/cli/dist/cli/main.js');
+	if (!existsSync(cliBin)) return;
+	const binDir = resolve(root, 'node_modules/.bin');
+	mkdirSync(binDir, { recursive: true });
+	for (const name of ['trsd', 'treeseed']) {
+		const linkPath = resolve(binDir, name);
+		const target = relative(dirname(linkPath), cliBin) || cliBin;
+		try {
+			const stat = lstatSync(linkPath);
+			if (stat.isSymbolicLink()) {
+				const currentTarget = readlinkSync(linkPath);
+				if (currentTarget === target || resolve(dirname(linkPath), currentTarget) === cliBin) {
+					continue;
+				}
+				rmSync(linkPath, { force: true });
+			} else {
+				continue;
+			}
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+				throw error;
+			}
+		}
+		symlinkSync(target, linkPath);
+		helpers.write(`[workspace][link] Linked ${name} command shim.`);
 	}
 }
 

@@ -122,6 +122,18 @@ function writePackageFiles(root: string, dirName: string, dependencies: Record<s
 	}, null, 2), 'utf8');
 	writeFileSync(resolve(root, 'README.md'), `# ${dirName}\n`, 'utf8');
 	writeFileSync(resolve(root, 'index.js'), `export const name = '${dirName}';\n`, 'utf8');
+	if (dirName === 'sdk') {
+		mkdirSync(resolve(root, 'dist'), { recursive: true });
+		writeFileSync(resolve(root, 'dist', 'workflow-support.js'), 'export {};\n', 'utf8');
+		writeFileSync(resolve(root, 'dist', 'plugin-default.js'), 'export {};\n', 'utf8');
+	} else if (dirName === 'core') {
+		mkdirSync(resolve(root, 'dist'), { recursive: true });
+		writeFileSync(resolve(root, 'dist', 'api.js'), 'export {};\n', 'utf8');
+		writeFileSync(resolve(root, 'dist', 'plugin-default.js'), 'export {};\n', 'utf8');
+	} else if (dirName === 'cli') {
+		mkdirSync(resolve(root, 'dist', 'cli'), { recursive: true });
+		writeFileSync(resolve(root, 'dist', 'cli', 'main.js'), '#!/usr/bin/env node\n', 'utf8');
+	}
 	mkdirSync(resolve(root, '.github', 'workflows'), { recursive: true });
 	writeFileSync(resolve(root, '.github', 'workflows', 'publish.yml'), 'name: Publish\non:\n  push:\n    branches: [main]\njobs:\n  publish:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo publish\n', 'utf8');
 }
@@ -383,10 +395,10 @@ describe('treeseed workflow lifecycle', () => {
 	}, 180000);
 
 	it('creates managed worktrees for agent switch without moving the primary checkout', async () => {
-		const { work } = createWorkflowRepo();
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = new TreeseedWorkflowSdk({
 			cwd: work,
-			env: { ...process.env, CODEX_AGENT_ID: 'agent-1' },
+			env: { ...process.env, CODEX_AGENT_ID: 'agent-1', GIT_ALLOW_PROTOCOL: 'file' },
 			write: () => {},
 		});
 
@@ -397,6 +409,8 @@ describe('treeseed workflow lifecycle', () => {
 		expect(String(result.payload.worktreePath)).toContain('.treeseed/worktrees/');
 		expect(git(work, ['branch', '--show-current'])).toBe('feature/demo-task');
 		expect(git(String(result.payload.worktreePath), ['branch', '--show-current'])).toBe('feature/agent-worktree');
+		expect(existsSync(resolve(String(result.payload.worktreePath), 'node_modules/.bin/trsd'))).toBe(true);
+		expect(existsSync(resolve(String(result.payload.worktreePath), 'node_modules/.bin/treeseed'))).toBe(true);
 	}, 180000);
 
 	it('removes managed worktrees after agent close cleanup', async () => {
