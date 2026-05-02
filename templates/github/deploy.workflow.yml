@@ -159,6 +159,16 @@ jobs:
             fi
           done
 
+      - name: Build workspace package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in packages/sdk packages/core packages/cli; do
+            if test -f "${dir}/package.json"; then
+              npm --prefix "${dir}" run build:dist
+            fi
+          done
+
       - name: Verify workspace
         shell: bash
         run: |
@@ -276,6 +286,16 @@ __WORKING_DIRECTORY_BLOCK__
           for dir in packages/sdk packages/core packages/cli; do
             if test -d "${dir}/.git" || git -C "${dir}" rev-parse --git-dir >/dev/null 2>&1; then
               git -C "${dir}" checkout -- package.json
+            fi
+          done
+
+      - name: Build workspace package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in packages/sdk packages/core packages/cli; do
+            if test -f "${dir}/package.json"; then
+              npm --prefix "${dir}" run build:dist
             fi
           done
 
@@ -407,6 +427,16 @@ __WORKING_DIRECTORY_BLOCK__
             fi
           done
 
+      - name: Build workspace package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in packages/sdk packages/core packages/cli; do
+            if test -f "${dir}/package.json"; then
+              npm --prefix "${dir}" run build:dist
+            fi
+          done
+
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
@@ -527,6 +557,16 @@ __WORKING_DIRECTORY_BLOCK__
             fi
           done
 
+      - name: Build workspace package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in packages/sdk packages/core packages/cli; do
+            if test -f "${dir}/package.json"; then
+              npm --prefix "${dir}" run build:dist
+            fi
+          done
+
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
@@ -624,6 +664,16 @@ __WORKING_DIRECTORY_BLOCK__
           for dir in packages/sdk packages/core packages/cli; do
             if test -d "${dir}/.git" || git -C "${dir}" rev-parse --git-dir >/dev/null 2>&1; then
               git -C "${dir}" checkout -- package.json
+            fi
+          done
+
+      - name: Build workspace package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in packages/sdk packages/core packages/cli; do
+            if test -f "${dir}/package.json"; then
+              npm --prefix "${dir}" run build:dist
             fi
           done
 
