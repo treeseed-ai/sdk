@@ -108,6 +108,7 @@ export {
 } from './operations/services/railway-api.ts';
 export {
 	runTenantDeployPreflight,
+	runWorkspaceReleasePreflight,
 	runWorkspaceSavePreflight,
 } from './operations/services/save-deploy-preflight.ts';
 export { collectCliPreflight } from './operations/services/workspace-preflight.ts';

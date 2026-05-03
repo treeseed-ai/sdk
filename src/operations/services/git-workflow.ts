@@ -355,6 +355,7 @@ export function listTaskBranches(repoDir) {
 	);
 	const remote = new Set(
 		gitLines(repoDir, ['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin'])
+			.filter((branchName) => branchName.startsWith('origin/') && branchName !== 'origin/HEAD')
 			.map((branchName) => branchName.replace(/^origin\//, ''))
 			.filter(isTaskBranch),
 	);
