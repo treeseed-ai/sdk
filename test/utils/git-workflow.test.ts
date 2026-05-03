@@ -38,6 +38,7 @@ function makeRepo() {
 	git(work, ['push', '-u', 'origin', 'staging']);
 	git(work, ['checkout', '-b', 'main']);
 	git(work, ['push', '-u', 'origin', 'main']);
+	git(work, ['remote', 'set-head', 'origin', 'main']);
 	git(work, ['checkout', '-b', 'feature/search-filters']);
 	writeFileSync(resolve(work, 'feature.txt'), 'search\n', 'utf8');
 	git(work, ['add', '-A']);
@@ -50,7 +51,9 @@ describe('git workflow task helpers', () => {
 	it('lists task branches while excluding staging, main, and deprecated tags', () => {
 		const { work } = makeRepo();
 		const tasks = listTaskBranches(work);
+		const remoteRefs = git(work, ['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin']).split('\n');
 
+		expect(remoteRefs).toContain('origin');
 		expect(tasks.map((task) => task.name)).toEqual(['feature/search-filters']);
 		expect(tasks[0]).toMatchObject({
 			local: true,
