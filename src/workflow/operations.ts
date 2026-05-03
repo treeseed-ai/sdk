@@ -309,6 +309,33 @@ function ensureWorkflowCommandBins(root: string, helpers: WorkflowOperationHelpe
 	}
 }
 
+function unresolvedMergePaths(repoDir: string) {
+	return run('git', ['diff', '--name-only', '--diff-filter=U'], { cwd: repoDir, capture: true })
+		.split('\n')
+		.map((line) => line.trim())
+		.filter(Boolean);
+}
+
+function resolveRootReleaseSubmoduleConflicts(root: string, selectedPackageNames: Set<string>) {
+	const gitRoot = repoRoot(root);
+	const packages = checkedOutWorkspacePackageRepos(root)
+		.filter((pkg) => selectedPackageNames.has(pkg.name))
+		.map((pkg) => ({
+			...pkg,
+			repoPath: relative(gitRoot, pkg.dir),
+		}));
+	const packagePaths = new Set(packages.map((pkg) => pkg.repoPath));
+	const unresolved = unresolvedMergePaths(gitRoot);
+	if (unresolved.length === 0 || unresolved.some((filePath) => !packagePaths.has(filePath))) {
+		return false;
+	}
+	for (const pkg of packages) {
+		syncBranchWithOrigin(pkg.dir, PRODUCTION_BRANCH);
+		run('git', ['add', pkg.repoPath], { cwd: gitRoot });
+	}
+	return true;
+}
+
 function unlinkWorkflowWorkspaceLinks(root: string, helpers: WorkflowOperationHelpers, mode: WorkspaceLinksMode | undefined = 'auto') {
 	if (!shouldManageWorkspaceLinks(mode, helpers.context.env)) {
 		return inspectWorkspaceDependencyMode(root, { mode: 'off', env: helpers.context.env });
@@ -3942,12 +3969,21 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					commitAllIfChanged(gitRoot, `release: ${level} bump`);
 					pushBranch(gitRoot, STAGING_BRANCH);
 					const stagingCommit = headCommit(gitRoot);
-					const released = mergeBranchIntoTarget(root, {
-						sourceBranch: STAGING_BRANCH,
-						targetBranch: PRODUCTION_BRANCH,
-						message: `release: ${STAGING_BRANCH} -> ${PRODUCTION_BRANCH}`,
-						pushTarget: false,
-					});
+					let released: { commitSha: string };
+					try {
+						released = mergeBranchIntoTarget(root, {
+							sourceBranch: STAGING_BRANCH,
+							targetBranch: PRODUCTION_BRANCH,
+							message: `release: ${STAGING_BRANCH} -> ${PRODUCTION_BRANCH}`,
+							pushTarget: false,
+						});
+					} catch (error) {
+						if (!resolveRootReleaseSubmoduleConflicts(root, effectiveSelectedPackageNames)) {
+							throw error;
+						}
+						commitAllIfChanged(gitRoot, `release: ${STAGING_BRANCH} -> ${PRODUCTION_BRANCH}`);
+						released = { commitSha: headCommit(gitRoot) };
+					}
 					for (const pkg of checkedOutWorkspacePackageRepos(root)) {
 						if (effectiveSelectedPackageNames.has(pkg.name)) {
 							syncBranchWithOrigin(pkg.dir, PRODUCTION_BRANCH);
