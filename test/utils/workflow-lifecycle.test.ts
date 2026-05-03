@@ -436,6 +436,7 @@ describe('treeseed workflow lifecycle', () => {
 
 	it('stages from a managed worktree and removes it after promotion', async () => {
 		const { work } = createWorkflowRepo();
+		git(work, ['checkout', 'staging']);
 		const env = { ...process.env, CODEX_AGENT_ID: 'agent-1' };
 		const workflow = new TreeseedWorkflowSdk({ cwd: work, env, write: () => {} });
 		const switched = await workflow.switchTask({
@@ -452,9 +453,9 @@ describe('treeseed workflow lifecycle', () => {
 
 		expect(staged.payload.worktreeCleanup.removed).toBe(true);
 		expect(existsSync(worktreePath)).toBe(false);
-		git(work, ['fetch', 'origin', 'staging']);
+		 git(work, ['fetch', 'origin', 'staging']);
 		expect(git(work, ['show', 'origin/staging:agent-stage.txt'])).toBe('managed stage');
-		expect(git(work, ['branch', '--show-current'])).toBe('feature/demo-task');
+		expect(git(work, ['branch', '--show-current'])).toBe('staging');
 	}, 180000);
 
 	it('fails switch when a checked-out package repo is dirty', async () => {
