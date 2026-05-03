@@ -4075,6 +4075,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						}
 						return { status: 'completed', repos: cleanupReports };
 					});
+				syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
 				const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 				const payload = {
 					mode,

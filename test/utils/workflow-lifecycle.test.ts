@@ -732,6 +732,9 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'cli'), ['tag', '--list', '*-dev.*'])).toBe('');
 		expect(result.payload.publishWait.every((entry) => entry.status === 'skipped')).toBe(true);
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
+		expect(git(resolve(work, 'packages', 'core'), ['branch', '--show-current'])).toBe('staging');
+		expect(git(resolve(work, 'packages', 'cli'), ['branch', '--show-current'])).toBe('staging');
 	}, 180000);
 
 	it('auto-resumes the newest failed same-staging-state release with the original input', async () => {
