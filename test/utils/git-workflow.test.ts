@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	createDeprecatedTaskTag,
 	listTaskBranches,
+	squashMergeBranchIntoStaging,
 	taskTagSlug,
 } from '../../src/operations/services/git-workflow.ts';
 
@@ -66,5 +67,41 @@ describe('git workflow task helpers', () => {
 		expect(result.tagName).toBe(`deprecated/${taskTagSlug('feature/search-filters')}/${result.head.slice(0, 12)}`);
 		expect(git(work, ['rev-parse', `${result.tagName}^{}`])).toBe(result.head);
 		expect(git(work, ['ls-remote', '--tags', 'origin', result.tagName])).toContain(result.tagName);
+	});
+
+	it('resolves generated package metadata conflicts during repeated staging attempts', () => {
+		const { work } = makeRepo();
+		const packageJsonPath = resolve(work, 'package.json');
+		const lockfilePath = resolve(work, 'package-lock.json');
+		const writeVersion = (version: string) => {
+			writeFileSync(packageJsonPath, `${JSON.stringify({ name: '@treeseed/sdk', version }, null, 2)}\n`, 'utf8');
+			writeFileSync(lockfilePath, `${JSON.stringify({
+				name: '@treeseed/sdk',
+				version,
+				lockfileVersion: 3,
+				requires: true,
+				packages: {
+					'': { name: '@treeseed/sdk', version },
+				},
+			}, null, 2)}\n`, 'utf8');
+		};
+
+		git(work, ['checkout', 'staging']);
+		writeVersion('0.1.0-dev.old');
+		git(work, ['add', 'package.json', 'package-lock.json']);
+		git(work, ['commit', '-m', 'stage: old generated metadata']);
+		git(work, ['push', 'origin', 'staging']);
+
+		git(work, ['checkout', '-b', 'feature/generated-metadata', 'HEAD~1']);
+		writeVersion('0.1.0-dev.new');
+		git(work, ['add', 'package.json', 'package-lock.json']);
+		git(work, ['commit', '-m', 'feat: new generated metadata']);
+		git(work, ['push', '-u', 'origin', 'feature/generated-metadata']);
+
+		const result = squashMergeBranchIntoStaging(work, 'feature/generated-metadata', 'stage generated metadata', { pushTarget: false });
+
+		expect(result.committed).toBe(true);
+		expect(JSON.parse(git(work, ['show', 'HEAD:package.json'])).version).toBe('0.1.0-dev.new');
+		expect(git(work, ['diff', '--name-only', '--diff-filter=U'])).toBe('');
 	});
 });

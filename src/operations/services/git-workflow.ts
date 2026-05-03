@@ -29,6 +29,25 @@ function repoHasStagedChanges(repoDir) {
 	}
 }
 
+function conflictedFiles(repoDir) {
+	return runGit(['diff', '--name-only', '--diff-filter=U'], { cwd: repoDir, capture: true })
+		.split('\n')
+		.map((line) => line.trim())
+		.filter(Boolean);
+}
+
+function resolveGeneratedPackageMetadataConflicts(repoDir) {
+	const files = conflictedFiles(repoDir);
+	if (files.length === 0) return false;
+	const generatedMetadataFiles = new Set(['package.json', 'package-lock.json']);
+	if (files.some((file) => !generatedMetadataFiles.has(file))) {
+		return false;
+	}
+	runGit(['checkout', '--theirs', '--', ...files], { cwd: repoDir });
+	runGit(['add', '--', ...files], { cwd: repoDir });
+	return true;
+}
+
 export function headCommit(repoDir, ref = 'HEAD') {
 	return runGit(['rev-parse', ref], { cwd: repoDir, capture: true }).trim();
 }
@@ -272,7 +291,13 @@ export function squashMergeBranchIntoStaging(cwd, featureBranch, message, { push
 	const repoDir = assertCleanWorktree(cwd);
 	fetchOrigin(repoDir);
 	syncBranchWithOrigin(repoDir, STAGING_BRANCH);
-	runGit(['merge', '--squash', featureBranch], { cwd: repoDir });
+	try {
+		runGit(['merge', '--squash', featureBranch], { cwd: repoDir });
+	} catch (error) {
+		if (!resolveGeneratedPackageMetadataConflicts(repoDir)) {
+			throw error;
+		}
+	}
 	let committed = false;
 	if (repoHasStagedChanges(repoDir)) {
 		runGit(['commit', '-m', message], { cwd: repoDir });
