@@ -20,6 +20,7 @@ vi.mock('../../src/operations/services/save-deploy-preflight.ts', async () => {
 	const actual = await vi.importActual<typeof import('../../src/operations/services/save-deploy-preflight.ts')>('../../src/operations/services/save-deploy-preflight.ts');
 	return {
 		...actual,
+		runWorkspaceReleasePreflight: vi.fn(),
 		runWorkspaceSavePreflight: vi.fn(),
 		runTenantDeployPreflight: vi.fn(),
 	};

@@ -70,7 +70,7 @@ import {
 } from '../operations/services/git-workflow.ts';
 import { getGitHubAutomationMode, resolveGitHubRepositorySlug, waitForGitHubWorkflowCompletion } from '../operations/services/github-automation.ts';
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin } from '../operations/services/runtime-tools.ts';
-import { runTenantDeployPreflight, runWorkspaceSavePreflight } from '../operations/services/save-deploy-preflight.ts';
+import { runTenantDeployPreflight, runWorkspaceReleasePreflight, runWorkspaceSavePreflight } from '../operations/services/save-deploy-preflight.ts';
 import { collectCliPreflight } from '../operations/services/workspace-preflight.ts';
 import {
 	collectMergeConflictReport,
@@ -3752,7 +3752,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					}
 					prepareReleaseBranches(root);
 					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
-					runWorkspaceSavePreflight({ cwd: root });
+					runWorkspaceReleasePreflight({ cwd: root });
 					await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
 						unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'), { rerunCompleted: true });
 
