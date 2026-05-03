@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TreeseedWorkflowSdk } from '../../src/workflow.ts';
 import { TreeseedWorkflowError } from '../../src/workflow/operations.ts';
 import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, updateWorkflowRunJournal } from '../../src/workflow/runs.ts';
+import { runWorkspaceSavePreflight } from '../../src/operations/services/save-deploy-preflight.ts';
 import {
 	createDefaultTreeseedMachineConfig,
 	ensureTreeseedSecretSessionForConfig,
@@ -646,6 +647,9 @@ describe('treeseed workflow lifecycle', () => {
 			message: 'feat: prepare stage',
 			verify: false,
 			refreshPreview: false,
+		});
+		vi.mocked(runWorkspaceSavePreflight).mockImplementationOnce(({ cwd }) => {
+			expect(existsSync(resolve(cwd, 'node_modules', '@treeseed', 'core', 'package.json'))).toBe(true);
 		});
 
 		const result = await workflow.stage({
