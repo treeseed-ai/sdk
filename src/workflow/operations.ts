@@ -48,6 +48,7 @@ import {
 	assertFeatureBranch,
 	branchExists,
 	checkoutBranch,
+	checkoutDetachedOriginBranch,
 	checkoutTaskBranchFromStaging,
 	createDeprecatedTaskTag,
 	deleteLocalBranch,
@@ -61,6 +62,7 @@ import {
 	prepareReleaseBranches,
 	PRODUCTION_BRANCH,
 	pushBranch,
+	pushHeadToBranch,
 	remoteBranchExists,
 	STAGING_BRANCH,
 	squashMergeBranchIntoStaging,
@@ -3416,14 +3418,18 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					}
 				}
 
-				let rootMerge: Record<string, unknown> | null = null;
-				try {
-					rootMerge = await executeJournalStep(root, workflowRun.runId, 'merge-root', async () => {
-						assertCleanWorktree(root);
-						syncBranchWithOrigin(repoDir, STAGING_BRANCH);
-						run('git', ['merge', '--squash', featureBranch], { cwd: repoDir });
-						if (mode === 'recursive-workspace') {
-							syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
+					let rootMerge: Record<string, unknown> | null = null;
+					try {
+						rootMerge = await executeJournalStep(root, workflowRun.runId, 'merge-root', async () => {
+							assertCleanWorktree(root);
+							if (isManagedWorkflowWorktree(root)) {
+								checkoutDetachedOriginBranch(repoDir, STAGING_BRANCH);
+							} else {
+								syncBranchWithOrigin(repoDir, STAGING_BRANCH);
+							}
+							run('git', ['merge', '--squash', featureBranch], { cwd: repoDir });
+							if (mode === 'recursive-workspace') {
+								syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
 						}
 						const lockfileSafety = await refreshAndValidateRootWorkspaceLockfileForSave({
 							root,
@@ -3432,15 +3438,19 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 							onProgress: (line, stream) => helpers.write(line, stream),
 						});
 						if (hasStagedChanges(repoDir) || hasMeaningfulChanges(repoDir)) {
-							run('git', ['add', '-A'], { cwd: repoDir });
-							run('git', ['commit', '-m', message], { cwd: repoDir });
-						}
-						pushBranch(repoDir, STAGING_BRANCH);
-						return {
-							commitSha: headCommit(repoDir),
-							branch: currentBranch(repoDir) || STAGING_BRANCH,
-							committed: hasMeaningfulChanges(repoDir) ? false : true,
-							lockfileValidation: lockfileSafety.lockfileValidation,
+								run('git', ['add', '-A'], { cwd: repoDir });
+								run('git', ['commit', '-m', message], { cwd: repoDir });
+							}
+							if (isManagedWorkflowWorktree(root)) {
+								pushHeadToBranch(repoDir, STAGING_BRANCH);
+							} else {
+								pushBranch(repoDir, STAGING_BRANCH);
+							}
+							return {
+								commitSha: headCommit(repoDir),
+								branch: STAGING_BRANCH,
+								committed: hasMeaningfulChanges(repoDir) ? false : true,
+								lockfileValidation: lockfileSafety.lockfileValidation,
 							lockfileInstall: lockfileSafety.install,
 						};
 					});

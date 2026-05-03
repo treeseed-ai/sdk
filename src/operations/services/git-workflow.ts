@@ -177,6 +177,19 @@ export function syncBranchWithOrigin(repoDir, branchName) {
 	}
 }
 
+export function checkoutDetachedOriginBranch(repoDir, branchName) {
+	fetchOrigin(repoDir);
+	if (!remoteBranchExists(repoDir, branchName)) {
+		throw new Error(`Remote branch "origin/${branchName}" does not exist.`);
+	}
+	runGit(['checkout', '--detach', `origin/${branchName}`], { cwd: repoDir });
+}
+
+export function pushHeadToBranch(repoDir, branchName) {
+	ensureWritableOrigin(repoDir);
+	runGit(['push', 'origin', `HEAD:${branchName}`], { cwd: repoDir });
+}
+
 export function createFeatureBranchFromStaging(cwd, branchName) {
 	const result = checkoutTaskBranchFromStaging(cwd, branchName, {
 		createIfMissing: true,
