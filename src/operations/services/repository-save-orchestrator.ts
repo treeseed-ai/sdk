@@ -844,8 +844,10 @@ function shouldSkipNetworkInstall() {
 	return getGitHubAutomationMode() === 'stub' || process.env.TREESEED_SAVE_NPM_INSTALL_MODE === 'skip';
 }
 
-function shouldSkipGitDependencySmoke() {
-	return shouldSkipNetworkInstall() || process.env.TREESEED_GIT_DEPENDENCY_SMOKE === 'skip';
+function shouldSkipGitDependencySmoke(options?: Pick<RepositorySaveOptions, 'verifyMode'>) {
+	return shouldSkipNetworkInstall()
+		|| process.env.TREESEED_GIT_DEPENDENCY_SMOKE === 'skip'
+		|| options?.verifyMode === 'skip';
 }
 
 function hasNpmLockfile(repoDir: string) {
@@ -853,7 +855,7 @@ function hasNpmLockfile(repoDir: string) {
 }
 
 async function runGitDependencySmoke(node: RepositorySaveNode, options: RepositorySaveOptions, reference: PackageDependencyReference) {
-	if (reference.mode !== 'dev-git-tag' || shouldSkipGitDependencySmoke()) return;
+	if (reference.mode !== 'dev-git-tag' || shouldSkipGitDependencySmoke(options)) return;
 	const installSpec = reference.installSpec ?? reference.spec;
 	const tempRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-git-dep-smoke-'));
 	const npmCacheRoot = resolve(tempRoot, '.npm-cache');
@@ -904,11 +906,12 @@ async function runNpmInstallWithRetry(
 	let lastError: string | null = null;
 	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
 	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
+	const installFlags = ['--package-lock-only', '--ignore-scripts'];
 	const args = rootWorkspaceInstall
-		? (gitDependencyRefreshSpecs.length > 0 ? ['install', ...gitDependencyRefreshSpecs, '--force'] : ['install'])
+		? (gitDependencyRefreshSpecs.length > 0 ? ['install', ...gitDependencyRefreshSpecs, ...installFlags, '--force'] : ['install', ...installFlags])
 		: (gitDependencyRefreshSpecs.length > 0
-			? ['install', ...gitDependencyRefreshSpecs, '--force', '--workspaces=false']
-			: ['install', '--workspaces=false']);
+			? ['install', ...gitDependencyRefreshSpecs, ...installFlags, '--force', '--workspaces=false']
+			: ['install', ...installFlags, '--workspaces=false']);
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
 		emitProgress(options, node, 'install', `npm ${args.join(' ')} attempt ${attempt}/5.`);
 		try {
@@ -1642,6 +1645,11 @@ async function saveOneRepository(
 	}
 
 	if (hasNpmLockfile(node.path) && (node.kind === 'project' || packageNeedsVersion || dependencyChanged || submodulesChanged)) {
+		const lockfileIssues = collectDeploymentLockfileWorkspaceIssues(node.path);
+		if (node.kind === 'project' && lockfileIssues.length > 0 && !shouldSkipNetworkInstall()) {
+			emitProgress(options, node, 'lockfile', 'Refreshing package-lock.json before validation.');
+			report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
+		}
 		report.lockfileValidation = await validateRepositoryLockfile(node, options);
 	}
 

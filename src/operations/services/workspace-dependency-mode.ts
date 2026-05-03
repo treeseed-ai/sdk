@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { workspacePackages, workspaceRoot } from './workspace-tools.ts';
 
 export type DependencyResolutionMode = 'local-workspace' | 'git-dev' | 'stable-registry';
@@ -107,24 +108,15 @@ function writeMetadata(root: string, links: WorkspaceLink[]) {
 }
 
 function gitInfoExcludePath(repoPath: string) {
-	const gitPath = resolve(repoPath, '.git');
-	const stat = safeLstat(gitPath);
-	if (!stat) return null;
-	if (stat.isDirectory()) {
-		return resolve(gitPath, 'info', 'exclude');
-	}
-	if (stat.isFile()) {
-		try {
-			const content = readFileSync(gitPath, 'utf8').trim();
-			const match = /^gitdir:\s*(.+)$/iu.exec(content);
-			if (!match) return null;
-			const gitDir = resolve(repoPath, match[1]);
-			return resolve(gitDir, 'info', 'exclude');
-		} catch {
-			return null;
-		}
-	}
-	return null;
+	const result = spawnSync('git', ['rev-parse', '--git-common-dir'], {
+		cwd: repoPath,
+		stdio: 'pipe',
+		encoding: 'utf8',
+	});
+	if (result.status !== 0) return null;
+	const gitDir = result.stdout.trim();
+	if (!gitDir) return null;
+	return resolve(repoPath, gitDir, 'info', 'exclude');
 }
 
 function ensureGitInfoExcludes(root: string, links: WorkspaceLink[]) {

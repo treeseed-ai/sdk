@@ -11,6 +11,7 @@ const DEFAULT_COMPATIBILITY_DATE = '2026-04-05';
 const DEFAULT_COMPATIBILITY_FLAGS = ['nodejs_compat'];
 const GENERATED_ROOT = '.treeseed/generated';
 const STATE_ROOT = '.treeseed/state';
+const WORKTREE_METADATA_RELATIVE_PATH = '.treeseed/worktree.json';
 const PERSISTENT_SCOPES = new Set(['local', 'staging', 'prod']);
 const MANAGED_SERVICE_KEYS = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport'];
 const TRESEED_ENVELOPE_SCHEMA_GENERATION = 'runtime-envelopes-v1';
@@ -258,11 +259,28 @@ function targetKey(target) {
 		: `branch:${target.branchName}`;
 }
 
+function resolveManagedWorktreeStateRoot(tenantRoot) {
+	const metadataPath = resolve(tenantRoot, WORKTREE_METADATA_RELATIVE_PATH);
+	if (!existsSync(metadataPath)) return tenantRoot;
+	try {
+		const metadata = JSON.parse(readFileSync(metadataPath, 'utf8')) ?? {};
+		const primaryRoot = metadata.kind === 'treeseed.workflow.worktree' && typeof metadata.primaryRoot === 'string'
+			? metadata.primaryRoot
+			: null;
+		return primaryRoot && existsSync(resolve(primaryRoot, STATE_ROOT))
+			? primaryRoot
+			: tenantRoot;
+	} catch {
+		return tenantRoot;
+	}
+}
+
 function resolveTargetPaths(tenantRoot, scopeOrTarget = 'prod') {
 	const target = normalizeTarget(scopeOrTarget);
 	const pathParts = targetDirectoryParts(target);
+	const stateRoot = resolveManagedWorktreeStateRoot(tenantRoot);
 	const generatedRoot = resolve(tenantRoot, GENERATED_ROOT, ...pathParts);
-	const statePath = resolve(tenantRoot, STATE_ROOT, ...pathParts, 'deploy.json');
+	const statePath = resolve(stateRoot, STATE_ROOT, ...pathParts, 'deploy.json');
 
 	return {
 		target,

@@ -41,6 +41,14 @@ export interface GitHubWorkflowRunSummary {
 	headBranch: string | null;
 }
 
+export interface GitHubWorkflowJobSummary {
+	id: number;
+	name: string;
+	status: string | null;
+	conclusion: string | null;
+	url: string | null;
+}
+
 function normalizeGitHubVisibility(value: string | null | undefined, fallback: GitHubRepositorySummary['visibility'] = 'private') {
 	const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
 	return normalized === 'public' || normalized === 'internal' || normalized === 'private'
@@ -687,6 +695,16 @@ function normalizeWorkflowRun(run: Record<string, any>): GitHubWorkflowRunSummar
 	};
 }
 
+function normalizeWorkflowJob(job: Record<string, any>): GitHubWorkflowJobSummary {
+	return {
+		id: Number(job.id ?? 0),
+		name: String(job.name ?? ''),
+		status: typeof job.status === 'string' ? job.status : null,
+		conclusion: typeof job.conclusion === 'string' ? job.conclusion : null,
+		url: typeof job.html_url === 'string' ? job.html_url : null,
+	};
+}
+
 function sleep(ms: number) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -734,14 +752,24 @@ export async function waitForGitHubWorkflowRunCompletion(
 				});
 				const normalized = normalizeWorkflowRun(current.data as Record<string, any>);
 				if (normalized.status === 'completed') {
+					const jobs = await client.rest.actions.listJobsForWorkflowRun({
+						owner,
+						repo: name,
+						run_id: match.id,
+						per_page: 100,
+					});
+					const normalizedJobs = jobs.data.jobs.map((job) => normalizeWorkflowJob(job as Record<string, any>));
 					return {
 						status: 'completed',
 						repository: `${owner}/${name}`,
 						workflow,
 						runId: normalized.id,
 						headSha: normalized.headSha,
+						branch: normalized.headBranch,
 						conclusion: normalized.conclusion,
 						url: normalized.url,
+						jobs: normalizedJobs,
+						failedJobs: normalizedJobs.filter((job) => job.conclusion && job.conclusion !== 'success' && job.conclusion !== 'skipped'),
 					};
 				}
 				await sleep(pollSeconds * 1000);

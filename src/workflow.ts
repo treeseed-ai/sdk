@@ -62,6 +62,9 @@ export type TreeseedWorkflowRecovery = {
 };
 
 export type TreeseedWorkflowExecutionMode = 'execute' | 'plan';
+export type TreeseedWorkflowWorktreeMode = 'auto' | 'on' | 'off';
+export type TreeseedWorkflowCiMode = 'auto' | 'hosted' | 'off';
+export type TreeseedWorkflowVerifyMode = 'fast' | 'local' | 'hosted' | 'both' | 'skip';
 
 export type TreeseedWorkflowContext = {
 	cwd?: string;
@@ -139,7 +142,9 @@ export type TreeseedSaveInput = {
 	devDependencyReferenceMode?: 'git-tag' | 'registry-prerelease';
 	gitDependencyProtocol?: 'preserve-origin' | 'https' | 'ssh';
 	gitRemoteWriteMode?: 'ssh-pushurl' | 'off';
-	verifyMode?: 'action-first' | 'local-only' | 'skip';
+	verifyMode?: 'action-first' | 'local-only' | 'skip' | TreeseedWorkflowVerifyMode;
+	ciMode?: TreeseedWorkflowCiMode;
+	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	commitMessageMode?: 'auto' | 'cloudflare' | 'generated' | 'fallback';
 	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
@@ -151,6 +156,7 @@ export type TreeseedCloseInput = {
 	deletePreview?: boolean;
 	deleteBranch?: boolean;
 	autoSave?: boolean;
+	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
@@ -162,6 +168,8 @@ export type TreeseedStageInput = {
 	deletePreview?: boolean;
 	deleteBranch?: boolean;
 	autoSave?: boolean;
+	ciMode?: TreeseedWorkflowCiMode;
+	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
@@ -173,6 +181,7 @@ export type TreeseedSwitchInput = {
 	preview?: boolean;
 	createIfMissing?: boolean;
 	baseBranch?: string;
+	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
@@ -213,6 +222,7 @@ export type TreeseedConfigInput = {
 
 export type TreeseedExportInput = {
 	directory?: string;
+	worktreeMode?: TreeseedWorkflowWorktreeMode;
 };
 
 export type TreeseedReleaseInput = {
@@ -220,6 +230,8 @@ export type TreeseedReleaseInput = {
 	devTagCleanup?: 'safe-after-release' | 'off';
 	gitDependencyProtocol?: 'preserve-origin' | 'https' | 'ssh';
 	gitRemoteWriteMode?: 'ssh-pushurl' | 'off';
+	ciMode?: TreeseedWorkflowCiMode;
+	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
@@ -231,6 +243,7 @@ export type TreeseedResumeInput = {
 
 export type TreeseedRecoverInput = {
 	runId?: string;
+	pruneStale?: boolean;
 };
 
 export type TreeseedDestroyInput = {

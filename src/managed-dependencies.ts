@@ -56,6 +56,31 @@ export type TreeseedDependencyInstallResult = {
 	reports: TreeseedDependencyReport[];
 };
 
+export type TreeseedToolInvocation = {
+	mode: 'direct' | 'node' | 'unavailable';
+	command: string | null;
+	argsPrefix: string[];
+	binaryPath: string | null;
+};
+
+export type TreeseedToolReport = TreeseedDependencyReport & {
+	invocation: TreeseedToolInvocation;
+};
+
+export type TreeseedToolStatusResult = TreeseedDependencyInstallResult & {
+	tools: TreeseedToolReport[];
+	auth: {
+		github: {
+			checked: boolean;
+			authenticated: boolean;
+			binaryPath: string | null;
+			command: string[];
+			detail: string;
+			remediation: string[];
+		};
+	};
+};
+
 type DependencyInstallerOptions = {
 	tenantRoot?: string;
 	force?: boolean;
@@ -157,6 +182,33 @@ function managedGhBin(env: NodeJS.ProcessEnv = process.env) {
 	return resolve(resolveToolsHome(env), 'gh', GH_VERSION, platformKey(), 'bin', 'gh');
 }
 
+function tokenEnv(env: NodeJS.ProcessEnv = process.env) {
+	const ghToken = env.GH_TOKEN?.trim() || env.GITHUB_TOKEN?.trim() || '';
+	return ghToken
+		? {
+			...env,
+			GH_TOKEN: ghToken,
+			GITHUB_TOKEN: ghToken,
+		}
+		: env;
+}
+
+function cleanCommandPathOutput(output: string) {
+	const lines = output.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+	for (let index = lines.length - 1; index >= 0; index -= 1) {
+		if (lines[index]?.startsWith('/')) {
+			return lines[index] ?? null;
+		}
+	}
+	return lines[lines.length - 1] ?? null;
+}
+
+function redactSensitiveOutput(output: string) {
+	return output
+		.replace(/^(\s*-\s*Token:\s*).+$/gim, '$1***')
+		.replace(/\b(?:github_pat|ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_*.-]+/gu, '***');
+}
+
 function locateSystemBinary(command: string, spawn = spawnSync, env: NodeJS.ProcessEnv = process.env) {
 	if (process.platform === 'win32') {
 		return null;
@@ -166,7 +218,7 @@ function locateSystemBinary(command: string, spawn = spawnSync, env: NodeJS.Proc
 		encoding: 'utf8',
 		env,
 	});
-	return result.status === 0 ? String(result.stdout ?? '').trim() || null : null;
+	return result.status === 0 ? cleanCommandPathOutput(String(result.stdout ?? '')) : null;
 }
 
 function checkCommand(command: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv; spawn?: typeof spawnSync } = {}) {
@@ -189,15 +241,27 @@ function checkCommand(command: string, args: string[], options: { cwd?: string; 
 
 function resolvePackageJsonPath(packageName: string) {
 	try {
-		return require.resolve(`${packageName}/package.json`);
-	} catch {
-		for (const searchPath of require.resolve.paths(packageName) ?? []) {
-			const candidate = resolve(searchPath, packageName, 'package.json');
-			if (existsSync(candidate)) {
-				return candidate;
-			}
+		const packageJsonPath = require.resolve(`${packageName}/package.json`);
+		if (existsSync(packageJsonPath)) {
+			return packageJsonPath;
 		}
-		throw new Error(`Unable to resolve package manifest for "${packageName}".`);
+	} catch {
+		// Fall through to explicit path search below.
+	}
+	for (const searchPath of require.resolve.paths(packageName) ?? []) {
+		const candidate = resolve(searchPath, packageName, 'package.json');
+		if (existsSync(candidate)) {
+			return candidate;
+		}
+	}
+	throw new Error(`Unable to resolve package manifest for "${packageName}".`);
+}
+
+function resolvePackageJsonPathOptional(packageName: string) {
+	try {
+		return resolvePackageJsonPath(packageName);
+	} catch {
+		return null;
 	}
 }
 
@@ -214,6 +278,28 @@ function resolvePackageBinary(packageName: string, binName: string) {
 	}
 	const packageLocalFallback = resolve(dirname(packageJsonPath), relativeBin.replace(/^\.\.\//u, ''));
 	return existsSync(packageLocalFallback) ? packageLocalFallback : resolvedBin;
+}
+
+function resolvePackageBinaryOptional(packageName: string, binName: string) {
+	const packageJsonPath = resolvePackageJsonPathOptional(packageName);
+	if (!packageJsonPath) {
+		return null;
+	}
+	try {
+		const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { bin?: string | Record<string, string> };
+		const relativeBin = typeof packageJson.bin === 'string' ? packageJson.bin : packageJson.bin?.[binName];
+		if (!relativeBin) {
+			return null;
+		}
+		const resolvedBin = resolve(dirname(packageJsonPath), relativeBin);
+		if (existsSync(resolvedBin) || !relativeBin.startsWith('../')) {
+			return resolvedBin;
+		}
+		const packageLocalFallback = resolve(dirname(packageJsonPath), relativeBin.replace(/^\.\.\//u, ''));
+		return existsSync(packageLocalFallback) ? packageLocalFallback : resolvedBin;
+	} catch {
+		return null;
+	}
 }
 
 function resolvePackageRoot(packageName: string) {
@@ -362,7 +448,7 @@ export function resolveTreeseedToolBinary(toolName: TreeseedManagedToolName, opt
 	}
 	const npmTool = findNpmTool(toolName);
 	if (npmTool) {
-		return resolvePackageBinary(npmTool.packageName, npmTool.binName);
+		return resolvePackageBinaryOptional(npmTool.packageName, npmTool.binName);
 	}
 	if (toolName === 'git' || toolName === 'docker') {
 		return locateSystemBinary(toolName, spawnSync, options.env ?? process.env);
@@ -379,6 +465,62 @@ export function resolveTreeseedToolCommand(toolName: TreeseedManagedToolName, op
 		return { command: process.execPath, argsPrefix: [binaryPath], binaryPath };
 	}
 	return { command: binaryPath, argsPrefix: [], binaryPath };
+}
+
+function invocationForTool(toolName: TreeseedManagedToolName, env: NodeJS.ProcessEnv = process.env): TreeseedToolInvocation {
+	const command = resolveTreeseedToolCommand(toolName, { env });
+	if (!command) {
+		return {
+			mode: 'unavailable',
+			command: null,
+			argsPrefix: [],
+			binaryPath: null,
+		};
+	}
+	return {
+		mode: findNpmTool(toolName) ? 'node' : 'direct',
+		command: command.command,
+		argsPrefix: command.argsPrefix,
+		binaryPath: command.binaryPath,
+	};
+}
+
+function checkGitHubAuth(options: DependencyInstallerOptions): TreeseedToolStatusResult['auth']['github'] {
+	const env = tokenEnv(options.env ?? process.env);
+	const gh = resolveTreeseedToolCommand('gh', { env });
+	const command = gh ? [gh.command, ...gh.argsPrefix, 'auth', 'status', '--hostname', 'github.com'] : [];
+	const remediation = [
+		'Run `npx trsd install --json` to install or inspect managed tools.',
+		'Run `npx trsd secrets:unlock` or provide TREESEED_KEY_PASSPHRASE so machine secrets can be decrypted.',
+		'Verify GH_TOKEN is configured in machine.yaml or the environment.',
+	];
+	if (!gh) {
+		return {
+			checked: true,
+			authenticated: false,
+			binaryPath: null,
+			command,
+			detail: 'GitHub CLI `gh` is unavailable.',
+			remediation,
+		};
+	}
+	const result = (options.spawn ?? spawnSync)(gh.command, [...gh.argsPrefix, 'auth', 'status', '--hostname', 'github.com'], {
+		cwd: options.tenantRoot,
+		env: createTreeseedManagedToolEnv(env),
+		stdio: 'pipe',
+		encoding: 'utf8',
+		timeout: 15000,
+	});
+	const detail = redactSensitiveOutput(`${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim())
+		|| (result.status === 0 ? 'GitHub CLI authentication succeeded.' : 'GitHub CLI authentication failed.');
+	return {
+		checked: true,
+		authenticated: result.status === 0,
+		binaryPath: gh.binaryPath,
+		command,
+		detail,
+		remediation,
+	};
 }
 
 async function defaultDownloadFile(url: string, targetPath: string): Promise<void> {
@@ -551,16 +693,16 @@ async function installGh(options: Required<Pick<DependencyInstallerOptions, 'env
 
 function statusForNpmTool(tool: (typeof NPM_TOOLS)[number], options: DependencyInstallerOptions): TreeseedDependencyReport {
 	try {
-		const binaryPath = resolvePackageBinary(tool.packageName, tool.binName);
+		const binaryPath = resolvePackageBinaryOptional(tool.packageName, tool.binName);
 		return report({
 			name: tool.name,
 			kind: 'npm',
 			version: tool.version,
 			source: 'package',
 			binaryPath,
-			status: existsSync(binaryPath) ? 'already-present' : 'missing',
+			status: binaryPath && existsSync(binaryPath) ? 'already-present' : 'missing',
 			required: true,
-			detail: existsSync(binaryPath)
+			detail: binaryPath && existsSync(binaryPath)
 				? `${tool.packageName} is available from the Treeseed SDK dependency graph.`
 				: `${tool.packageName} binary ${tool.binName} is missing from the installed package.`,
 		});
@@ -768,6 +910,22 @@ export function collectTreeseedDependencyStatus(options: DependencyInstallerOpti
 		ghConfigDir: createTreeseedManagedToolEnv(env).GH_CONFIG_DIR,
 		npmInstalls: [],
 		reports,
+	};
+}
+
+export function collectTreeseedToolStatus(options: DependencyInstallerOptions = {}): TreeseedToolStatusResult {
+	const env = options.env ?? process.env;
+	const status = collectTreeseedDependencyStatus(options);
+	const tools = status.reports.map((entry) => ({
+		...entry,
+		invocation: invocationForTool(entry.name, env),
+	}));
+	return {
+		...status,
+		tools,
+		auth: {
+			github: checkGitHubAuth(options),
+		},
 	};
 }
 

@@ -175,6 +175,37 @@ describe('remote Treeseed support', () => {
 		expect(state.content.previewRootTemplate).toBe('teams/{teamId}/previews');
 	});
 
+	it('loads persistent deploy state from the primary checkout inside managed worktrees', () => {
+		const tenantRoot = createTenantFixture();
+		const worktreeRoot = mkdtempSync(join(tmpdir(), 'treeseed-managed-worktree-'));
+		mkdirSync(resolve(worktreeRoot, '.treeseed'), { recursive: true });
+		writeFileSync(resolve(worktreeRoot, 'treeseed.site.yaml'), readFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), 'utf8'), 'utf8');
+		writeFileSync(resolve(worktreeRoot, '.treeseed', 'worktree.json'), JSON.stringify({
+			schemaVersion: 1,
+			kind: 'treeseed.workflow.worktree',
+			branch: 'feature/demo',
+			worktreePath: worktreeRoot,
+			primaryRoot: tenantRoot,
+		}, null, 2), 'utf8');
+		mkdirSync(resolve(tenantRoot, '.treeseed', 'state', 'environments', 'staging'), { recursive: true });
+		writeFileSync(resolve(tenantRoot, '.treeseed', 'state', 'environments', 'staging', 'deploy.json'), JSON.stringify({
+			readiness: {
+				initialized: true,
+				configured: true,
+				provisioned: true,
+				deployable: true,
+			},
+			lastDeploymentTimestamp: '2026-05-02T00:00:00.000Z',
+		}, null, 2), 'utf8');
+
+		const deployConfig = loadCliDeployConfig(worktreeRoot);
+		const state = loadDeployState(worktreeRoot, deployConfig, { scope: 'staging' });
+
+		expect(state.readiness.initialized).toBe(true);
+		expect(state.readiness.deployable).toBe(true);
+		expect(state.lastDeploymentTimestamp).toBe('2026-05-02T00:00:00.000Z');
+	});
+
 	it('points preview, staging, and prod deployments at the team production manifest', () => {
 		const tenantRoot = createTenantFixture();
 		const deployConfig = loadCliDeployConfig(tenantRoot);

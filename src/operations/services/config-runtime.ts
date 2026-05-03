@@ -81,6 +81,7 @@ const MACHINE_CONFIG_RELATIVE_PATH = '.treeseed/config/machine.yaml';
 const MACHINE_KEY_HOME_RELATIVE_PATH = '.treeseed/config/machine.key';
 const LEGACY_MACHINE_KEY_RELATIVE_PATH = '.treeseed/config/machine.key';
 const REMOTE_AUTH_RELATIVE_PATH = '.treeseed/config/remote-auth.json';
+const WORKTREE_METADATA_RELATIVE_PATH = '.treeseed/worktree.json';
 const TEMPLATE_CATALOG_CACHE_RELATIVE_PATH = 'treeseed/cache/template-catalog.json';
 const TENANT_ENVIRONMENT_OVERLAY_PATH = 'src/env.yaml';
 const CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER = 'replace-with-cloudflare-account-id';
@@ -305,13 +306,30 @@ function findNearestTreeseedMachineConfig(startRoot = process.cwd()) {
 }
 
 export function getTreeseedMachineConfigPaths(tenantRoot) {
+	const configRoot = resolveManagedWorktreeMachineConfigRoot(tenantRoot);
 	const homeRoot = process.env.HOME && process.env.HOME.trim().length > 0 ? process.env.HOME : homedir();
 	return {
-		configPath: resolve(tenantRoot, MACHINE_CONFIG_RELATIVE_PATH),
-		authPath: resolve(tenantRoot, REMOTE_AUTH_RELATIVE_PATH),
+		configPath: resolve(configRoot, MACHINE_CONFIG_RELATIVE_PATH),
+		authPath: resolve(configRoot, REMOTE_AUTH_RELATIVE_PATH),
 		keyPath: resolve(homeRoot, MACHINE_KEY_HOME_RELATIVE_PATH),
-		legacyKeyPath: resolve(tenantRoot, LEGACY_MACHINE_KEY_RELATIVE_PATH),
+		legacyKeyPath: resolve(configRoot, LEGACY_MACHINE_KEY_RELATIVE_PATH),
 	};
+}
+
+function resolveManagedWorktreeMachineConfigRoot(tenantRoot) {
+	const metadataPath = resolve(tenantRoot, WORKTREE_METADATA_RELATIVE_PATH);
+	if (!existsSync(metadataPath)) return tenantRoot;
+	try {
+		const metadata = JSON.parse(readFileSync(metadataPath, 'utf8')) ?? {};
+		const primaryRoot = metadata.kind === 'treeseed.workflow.worktree' && typeof metadata.primaryRoot === 'string'
+			? metadata.primaryRoot
+			: null;
+		return primaryRoot && existsSync(resolve(primaryRoot, MACHINE_CONFIG_RELATIVE_PATH))
+			? primaryRoot
+			: tenantRoot;
+	} catch {
+		return tenantRoot;
+	}
 }
 
 function keyAgentScriptPath() {

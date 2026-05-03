@@ -95,6 +95,10 @@ function resolveIgnorePatterns(config: TreeseedDeployConfig) {
 		'.treeseed/exports/**',
 		'**/.treeseed/exports',
 		'**/.treeseed/exports/**',
+		'.treeseed/worktrees',
+		'.treeseed/worktrees/**',
+		'**/.treeseed/worktrees',
+		'**/.treeseed/worktrees/**',
 		...(config.export?.ignore ?? []),
 	];
 }

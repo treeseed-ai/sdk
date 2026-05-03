@@ -152,10 +152,29 @@ jobs:
       - name: Install dependencies
         run: |
           node -e "const fs = require('fs'); for (const file of ['packages/sdk/package.json', 'packages/core/package.json', 'packages/cli/package.json']) { if (!fs.existsSync(file)) continue; const p = JSON.parse(fs.readFileSync(file, 'utf8')); if (p.scripts) delete p.scripts.prepare; fs.writeFileSync(file, JSON.stringify(p, null, '\t') + '\n'); }"
-          npm ci
+          for attempt in 1 2 3; do
+            if npm ci --ignore-scripts; then
+              break
+            fi
+            if test "${attempt}" = "3"; then
+              exit 1
+            fi
+            echo "npm ci failed; retrying (${attempt}/3)."
+            sleep $((attempt * 10))
+          done
           for dir in packages/sdk packages/core packages/cli; do
             if test -d "${dir}/.git" || git -C "${dir}" rev-parse --git-dir >/dev/null 2>&1; then
               git -C "${dir}" checkout -- package.json
+            fi
+          done
+
+      - name: Build workspace package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in packages/sdk packages/core packages/cli; do
+            if test -f "${dir}/package.json"; then
+              npm --prefix "${dir}" run build:dist
             fi
           done
 
@@ -272,10 +291,29 @@ __WORKING_DIRECTORY_BLOCK__
       - name: Install dependencies
         run: |
           node -e "const fs = require('fs'); for (const file of ['packages/sdk/package.json', 'packages/core/package.json', 'packages/cli/package.json']) { if (!fs.existsSync(file)) continue; const p = JSON.parse(fs.readFileSync(file, 'utf8')); if (p.scripts) delete p.scripts.prepare; fs.writeFileSync(file, JSON.stringify(p, null, '\t') + '\n'); }"
-          npm ci
+          for attempt in 1 2 3; do
+            if npm ci --ignore-scripts; then
+              break
+            fi
+            if test "${attempt}" = "3"; then
+              exit 1
+            fi
+            echo "npm ci failed; retrying (${attempt}/3)."
+            sleep $((attempt * 10))
+          done
           for dir in packages/sdk packages/core packages/cli; do
             if test -d "${dir}/.git" || git -C "${dir}" rev-parse --git-dir >/dev/null 2>&1; then
               git -C "${dir}" checkout -- package.json
+            fi
+          done
+
+      - name: Build workspace package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in packages/sdk packages/core packages/cli; do
+            if test -f "${dir}/package.json"; then
+              npm --prefix "${dir}" run build:dist
             fi
           done
 
@@ -400,10 +438,29 @@ __WORKING_DIRECTORY_BLOCK__
       - name: Install dependencies
         run: |
           node -e "const fs = require('fs'); for (const file of ['packages/sdk/package.json', 'packages/core/package.json', 'packages/cli/package.json']) { if (!fs.existsSync(file)) continue; const p = JSON.parse(fs.readFileSync(file, 'utf8')); if (p.scripts) delete p.scripts.prepare; fs.writeFileSync(file, JSON.stringify(p, null, '\t') + '\n'); }"
-          npm ci
+          for attempt in 1 2 3; do
+            if npm ci --ignore-scripts; then
+              break
+            fi
+            if test "${attempt}" = "3"; then
+              exit 1
+            fi
+            echo "npm ci failed; retrying (${attempt}/3)."
+            sleep $((attempt * 10))
+          done
           for dir in packages/sdk packages/core packages/cli; do
             if test -d "${dir}/.git" || git -C "${dir}" rev-parse --git-dir >/dev/null 2>&1; then
               git -C "${dir}" checkout -- package.json
+            fi
+          done
+
+      - name: Build workspace package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in packages/sdk packages/core packages/cli; do
+            if test -f "${dir}/package.json"; then
+              npm --prefix "${dir}" run build:dist
             fi
           done
 
@@ -520,10 +577,29 @@ __WORKING_DIRECTORY_BLOCK__
       - name: Install dependencies
         run: |
           node -e "const fs = require('fs'); for (const file of ['packages/sdk/package.json', 'packages/core/package.json', 'packages/cli/package.json']) { if (!fs.existsSync(file)) continue; const p = JSON.parse(fs.readFileSync(file, 'utf8')); if (p.scripts) delete p.scripts.prepare; fs.writeFileSync(file, JSON.stringify(p, null, '\t') + '\n'); }"
-          npm ci
+          for attempt in 1 2 3; do
+            if npm ci --ignore-scripts; then
+              break
+            fi
+            if test "${attempt}" = "3"; then
+              exit 1
+            fi
+            echo "npm ci failed; retrying (${attempt}/3)."
+            sleep $((attempt * 10))
+          done
           for dir in packages/sdk packages/core packages/cli; do
             if test -d "${dir}/.git" || git -C "${dir}" rev-parse --git-dir >/dev/null 2>&1; then
               git -C "${dir}" checkout -- package.json
+            fi
+          done
+
+      - name: Build workspace package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in packages/sdk packages/core packages/cli; do
+            if test -f "${dir}/package.json"; then
+              npm --prefix "${dir}" run build:dist
             fi
           done
 
@@ -620,10 +696,29 @@ __WORKING_DIRECTORY_BLOCK__
       - name: Install dependencies
         run: |
           node -e "const fs = require('fs'); for (const file of ['packages/sdk/package.json', 'packages/core/package.json', 'packages/cli/package.json']) { if (!fs.existsSync(file)) continue; const p = JSON.parse(fs.readFileSync(file, 'utf8')); if (p.scripts) delete p.scripts.prepare; fs.writeFileSync(file, JSON.stringify(p, null, '\t') + '\n'); }"
-          npm ci
+          for attempt in 1 2 3; do
+            if npm ci --ignore-scripts; then
+              break
+            fi
+            if test "${attempt}" = "3"; then
+              exit 1
+            fi
+            echo "npm ci failed; retrying (${attempt}/3)."
+            sleep $((attempt * 10))
+          done
           for dir in packages/sdk packages/core packages/cli; do
             if test -d "${dir}/.git" || git -C "${dir}" rev-parse --git-dir >/dev/null 2>&1; then
               git -C "${dir}" checkout -- package.json
+            fi
+          done
+
+      - name: Build workspace package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in packages/sdk packages/core packages/cli; do
+            if test -f "${dir}/package.json"; then
+              npm --prefix "${dir}" run build:dist
             fi
           done
 

@@ -1,11 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TreeseedWorkflowSdk } from '../../src/workflow.ts';
 import { TreeseedWorkflowError } from '../../src/workflow/operations.ts';
-import { acquireWorkflowLock, releaseWorkflowLock } from '../../src/workflow/runs.ts';
+import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, updateWorkflowRunJournal } from '../../src/workflow/runs.ts';
+import { runWorkspaceSavePreflight } from '../../src/operations/services/save-deploy-preflight.ts';
 import {
 	createDefaultTreeseedMachineConfig,
 	ensureTreeseedSecretSessionForConfig,
@@ -122,6 +123,18 @@ function writePackageFiles(root: string, dirName: string, dependencies: Record<s
 	}, null, 2), 'utf8');
 	writeFileSync(resolve(root, 'README.md'), `# ${dirName}\n`, 'utf8');
 	writeFileSync(resolve(root, 'index.js'), `export const name = '${dirName}';\n`, 'utf8');
+	if (dirName === 'sdk') {
+		mkdirSync(resolve(root, 'dist'), { recursive: true });
+		writeFileSync(resolve(root, 'dist', 'workflow-support.js'), 'export {};\n', 'utf8');
+		writeFileSync(resolve(root, 'dist', 'plugin-default.js'), 'export {};\n', 'utf8');
+	} else if (dirName === 'core') {
+		mkdirSync(resolve(root, 'dist'), { recursive: true });
+		writeFileSync(resolve(root, 'dist', 'api.js'), 'export {};\n', 'utf8');
+		writeFileSync(resolve(root, 'dist', 'plugin-default.js'), 'export {};\n', 'utf8');
+	} else if (dirName === 'cli') {
+		mkdirSync(resolve(root, 'dist', 'cli'), { recursive: true });
+		writeFileSync(resolve(root, 'dist', 'cli', 'main.js'), '#!/usr/bin/env node\n', 'utf8');
+	}
 	mkdirSync(resolve(root, '.github', 'workflows'), { recursive: true });
 	writeFileSync(resolve(root, '.github', 'workflows', 'publish.yml'), 'name: Publish\non:\n  push:\n    branches: [main]\njobs:\n  publish:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo publish\n', 'utf8');
 }
@@ -382,6 +395,69 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'sdk'), ['ls-remote', '--heads', 'origin', 'feature/plan-only'])).toBe('');
 	}, 180000);
 
+	it('creates managed worktrees for agent switch without moving the primary checkout', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = new TreeseedWorkflowSdk({
+			cwd: work,
+			env: { ...process.env, CODEX_AGENT_ID: 'agent-1', GIT_ALLOW_PROTOCOL: 'file' },
+			write: () => {},
+		});
+
+		const result = await workflow.switchTask({
+			branch: 'feature/agent-worktree',
+		});
+
+		expect(String(result.payload.worktreePath)).toContain('.treeseed/worktrees/');
+		expect(git(work, ['branch', '--show-current'])).toBe('feature/demo-task');
+		expect(git(String(result.payload.worktreePath), ['branch', '--show-current'])).toBe('feature/agent-worktree');
+		expect(existsSync(resolve(String(result.payload.worktreePath), 'node_modules/.bin/trsd'))).toBe(true);
+		expect(existsSync(resolve(String(result.payload.worktreePath), 'node_modules/.bin/treeseed'))).toBe(true);
+	}, 180000);
+
+	it('removes managed worktrees after agent close cleanup', async () => {
+		const { work } = createWorkflowRepo();
+		const env = { ...process.env, CODEX_AGENT_ID: 'agent-1' };
+		const workflow = new TreeseedWorkflowSdk({ cwd: work, env, write: () => {} });
+		const switched = await workflow.switchTask({
+			branch: 'feature/agent-close',
+		});
+		const worktreePath = String(switched.payload.worktreePath);
+		const managedWorkflow = new TreeseedWorkflowSdk({ cwd: worktreePath, env, write: () => {} });
+
+		const closed = await managedWorkflow.close({
+			message: 'close agent branch',
+			deletePreview: false,
+		});
+
+		expect(closed.payload.worktreeCleanup.removed).toBe(true);
+		expect(existsSync(worktreePath)).toBe(false);
+		expect(git(work, ['branch', '--show-current'])).toBe('feature/demo-task');
+	}, 180000);
+
+	it('stages from a managed worktree and removes it after promotion', async () => {
+		const { work } = createWorkflowRepo();
+		git(work, ['checkout', 'staging']);
+		const env = { ...process.env, CODEX_AGENT_ID: 'agent-1' };
+		const workflow = new TreeseedWorkflowSdk({ cwd: work, env, write: () => {} });
+		const switched = await workflow.switchTask({
+			branch: 'feature/agent-stage',
+		});
+		const worktreePath = String(switched.payload.worktreePath);
+		writeFileSync(resolve(worktreePath, 'agent-stage.txt'), 'managed stage\n', 'utf8');
+		const managedWorkflow = new TreeseedWorkflowSdk({ cwd: worktreePath, env, write: () => {} });
+
+		const staged = await managedWorkflow.stage({
+			message: 'stage managed worktree',
+			deletePreview: false,
+		});
+
+		expect(staged.payload.worktreeCleanup.removed).toBe(true);
+		expect(existsSync(worktreePath)).toBe(false);
+		 git(work, ['fetch', 'origin', 'staging']);
+		expect(git(work, ['show', 'origin/staging:agent-stage.txt'])).toBe('managed stage');
+		expect(git(work, ['branch', '--show-current'])).toBe('staging');
+	}, 180000);
+
 	it('fails switch when a checked-out package repo is dirty', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-dirty";\n', 'utf8');
@@ -510,6 +586,58 @@ describe('treeseed workflow lifecycle', () => {
 		}
 	}, 180000);
 
+	it('classifies stale release runs and prunes them from resumable recovery', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = workflowFor(work);
+		const currentHead = git(work, ['rev-parse', 'HEAD']);
+		createWorkflowRunJournal(work, {
+			runId: 'release-stale-test',
+			command: 'release',
+			input: { bump: 'patch' },
+			session: {
+				root: work,
+				mode: 'recursive-workspace',
+				branchName: 'staging',
+				repos: [
+					{ name: '@treeseed/market', path: work, branchName: 'staging' },
+					{ name: '@treeseed/sdk', path: resolve(work, 'packages/sdk'), branchName: 'staging' },
+				],
+			},
+			steps: [
+				{ id: 'release-plan', description: 'Record release plan', repoName: '@treeseed/market', repoPath: work, branch: 'staging', resumable: true },
+				{ id: 'release-root', description: 'Release market repo', repoName: '@treeseed/market', repoPath: work, branch: 'staging', resumable: true },
+			],
+		});
+		updateWorkflowRunJournal(work, 'release-stale-test', (journal) => ({
+			...journal,
+			status: 'failed',
+			failure: { code: 'unsupported_state', message: 'old release failed', details: null, at: new Date().toISOString() },
+			steps: journal.steps.map((step) => step.id === 'release-plan'
+				? {
+					...step,
+					status: 'completed',
+					completedAt: new Date().toISOString(),
+					data: {
+						rootRepo: { name: '@treeseed/market', commitSha: 'old-root-head' },
+						repos: [{ name: '@treeseed/sdk', commitSha: git(resolve(work, 'packages/sdk'), ['rev-parse', 'HEAD']) }],
+						packageSelection: { selected: ['@treeseed/sdk'] },
+					},
+				}
+				: step),
+		}));
+		expect(currentHead).not.toBe('old-root-head');
+
+		const recover = await workflow.recover();
+		expect(recover.payload.interruptedRuns.map((run: { runId: string }) => run.runId)).not.toContain('release-stale-test');
+		expect(recover.payload.staleRuns.map((run: { runId: string }) => run.runId)).toContain('release-stale-test');
+
+		const pruned = await workflow.recover({ pruneStale: true });
+		expect(pruned.payload.prunedRuns.map((run: { runId: string }) => run.runId)).toContain('release-stale-test');
+
+		const finalRecover = await workflow.recover();
+		expect(finalRecover.payload.staleRuns.map((run: { runId: string }) => run.runId)).not.toContain('release-stale-test');
+	}, 180000);
+
 	it('stages package feature branches first and points market staging at package staging heads', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = workflowFor(work);
@@ -520,6 +648,9 @@ describe('treeseed workflow lifecycle', () => {
 			message: 'feat: prepare stage',
 			verify: false,
 			refreshPreview: false,
+		});
+		vi.mocked(runWorkspaceSavePreflight).mockImplementationOnce(({ cwd }) => {
+			expect(existsSync(resolve(cwd, 'node_modules', '@treeseed', 'core', 'package.json'))).toBe(true);
 		});
 
 		const result = await workflow.stage({
@@ -633,7 +764,7 @@ describe('treeseed workflow lifecycle', () => {
 		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'live');
 		vi.stubEnv('GH_TOKEN', '');
 		vi.stubEnv('GITHUB_TOKEN', '');
-		await expect(workflow.release({ bump: 'patch' })).rejects.toThrow('Configure GH_TOKEN');
+		await expect(workflow.release({ bump: 'patch' })).rejects.toThrow('authenticated managed GitHub CLI');
 		const recoverResult = await workflow.recover();
 		const runId = recoverResult.payload.interruptedRuns[0]?.runId;
 		expect(runId).toMatch(/^release-/);
