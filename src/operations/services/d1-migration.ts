@@ -64,9 +64,36 @@ function loadAppliedMigrations({ cwd, wranglerConfig, persistTo }) {
 		capture: true,
 		command: 'SELECT name FROM treeseed_schema_migrations ORDER BY name ASC;',
 	});
-	const parsed = JSON.parse(result.stdout);
+	const parsed = parseWranglerJsonOutput(result.stdout);
 	const rows = (Array.isArray(parsed) ? parsed : [parsed]).flatMap((entry) => entry.results ?? []);
 	return new Set(rows.map((row) => row.name).filter(Boolean));
+}
+
+function parseWranglerJsonOutput(stdout) {
+	const trimmed = String(stdout ?? '').trim();
+	try {
+		return JSON.parse(trimmed);
+	} catch {
+		const firstArray = trimmed.indexOf('[');
+		const firstObject = trimmed.indexOf('{');
+		const candidates = [firstArray, firstObject]
+			.filter((index) => index >= 0)
+			.sort((left, right) => left - right);
+		for (const start of candidates) {
+			const opener = trimmed[start];
+			const closer = opener === '[' ? ']' : '}';
+			const end = trimmed.lastIndexOf(closer);
+			if (end <= start) {
+				continue;
+			}
+			try {
+				return JSON.parse(trimmed.slice(start, end + 1));
+			} catch {
+				// Try the next candidate. Wrangler sometimes prints banners before JSON output.
+			}
+		}
+		throw new Error('Unable to parse JSON output from Wrangler D1.');
+	}
 }
 
 function markMigrationApplied({ cwd, wranglerConfig, persistTo, migration }) {
