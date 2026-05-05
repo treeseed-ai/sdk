@@ -266,11 +266,11 @@ function localTimezoneDefault() {
 	return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 }
 
-function localMailpitHostDefault() {
+function localSmtpHostDefault() {
 	return '127.0.0.1';
 }
 
-function localMailpitPortDefault() {
+function localSmtpPortDefault() {
 	return '1025';
 }
 
@@ -447,8 +447,8 @@ function resolveGitHubRepositoryNameDefault(context: TreeseedEnvironmentContext)
 const VALUE_RESOLVERS: NamedResolverMap = {
 	generatedSecret: () => generatedSecret(),
 	localFormsBypassDefault: () => 'true',
-	localMailpitHostDefault: () => localMailpitHostDefault(),
-	localMailpitPortDefault: () => localMailpitPortDefault(),
+	localSmtpHostDefault: () => localSmtpHostDefault(),
+	localSmtpPortDefault: () => localSmtpPortDefault(),
 	contactEmailDefault: (context) => contactEmailDefault(context),
 	projectDomainsDefault: (context) => primaryHostFromUrl(context.deployConfig.siteUrl),
 	apiBaseUrlDefault: (context, scope, values) => resolveConfiguredApiBaseUrl(context, scope, values),

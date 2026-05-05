@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	collectTreeseedConfigContext,
 	createDefaultTreeseedMachineConfig,
+	ensureTreeseedRailwayIgnoreEntries,
 	ensureTreeseedSecretSessionForConfig,
 	getTreeseedMachineConfigPaths,
 	inspectTreeseedKeyAgentStatus,
@@ -100,6 +101,18 @@ describe('config runtime shared environment values', () => {
 
 		expect(resolveTreeseedMachineEnvironmentValues(tenantRoot, 'local').SHARED_VALUE).toBe('shared-value');
 		expect(resolveTreeseedMachineEnvironmentValues(tenantRoot, 'prod').SHARED_VALUE).toBe('shared-value');
+	});
+
+	it('ensures Railway deploy ignore entries for local workspace artifacts', () => {
+		const tenantRoot = createTenantFixture();
+
+		const railwayIgnorePath = ensureTreeseedRailwayIgnoreEntries(tenantRoot);
+		const contents = readFileSync(railwayIgnorePath, 'utf8');
+
+		expect(contents).toContain('node_modules/');
+		expect(contents).toContain('packages/*/node_modules/');
+		expect(contents).toContain('packages/*/dist/');
+		expect(contents).toContain('public/books/*.json');
 	});
 
 	it('builds launch env from machine config without recreating deprecated env files', () => {
