@@ -11,9 +11,12 @@ import {
 } from './git-remote-policy.ts';
 import {
 	generateRepositoryCommitMessage,
+	type CommitMessageDependencyUpdate,
 	type CommitMessageContext,
+	type CommitMessagePackageChange,
 	type CommitMessageProvider,
 	type CommitMessageProviderMode,
+	type CommitMessageSubmodulePointer,
 } from './commit-message-provider.ts';
 import {
 	createDevTagMessage,
@@ -21,6 +24,7 @@ import {
 	type DevDependencyReferenceMode,
 	type GitDependencyProtocol,
 	type PackageDependencyReference,
+	type RewrittenDevReference,
 	updateInternalDependencySpecs,
 } from './package-reference-policy.ts';
 import {
@@ -785,7 +789,16 @@ function checkoutOrCreateBranch(node: RepositorySaveNode, options: RepositorySav
 async function commitMessageFor(
 	node: RepositorySaveNode,
 	options: RepositorySaveOptions,
-	context: Pick<RepositoryCommitMessageContext, 'changedFiles' | 'diff' | 'plannedVersion' | 'plannedTag'>,
+	context: Pick<
+		RepositoryCommitMessageContext,
+		'changedFiles'
+		| 'diff'
+		| 'plannedVersion'
+		| 'plannedTag'
+		| 'dependencyUpdates'
+		| 'submodulePointers'
+		| 'packageChanges'
+	>,
 ) {
 	return generateRepositoryCommitMessage({
 		repoName: node.name,
@@ -799,6 +812,10 @@ async function commitMessageFor(
 		mode: options.commitMessageMode ?? 'auto',
 		provider: options.commitMessageProvider,
 	});
+}
+
+function commitSubject(message: string | null | undefined) {
+	return String(message ?? '').split(/\r?\n/u)[0]?.trim() || null;
 }
 
 function gitDiffSummary(repoDir: string) {
@@ -1232,9 +1249,19 @@ function ensurePackageTagReady(node: RepositorySaveNode, options: RepositorySave
 	return message;
 }
 
-function refreshSubmodulePointers(node: RepositorySaveNode, finalizedCommits: Map<string, string>) {
-	let changed = false;
-	for (const [repoName] of finalizedCommits.entries()) {
+function treeCommitForPath(repoDir: string, ref: string, path: string) {
+	try {
+		const output = run('git', ['ls-tree', ref, '--', path], { cwd: repoDir, capture: true }).trim();
+		const match = output.match(/^\d+\s+commit\s+([0-9a-f]{40})\t/u);
+		return match?.[1] ?? null;
+	} catch {
+		return null;
+	}
+}
+
+function collectSubmodulePointerChanges(node: RepositorySaveNode, finalizedCommits: Map<string, string>): CommitMessageSubmodulePointer[] {
+	const changes: CommitMessageSubmodulePointer[] = [];
+	for (const [repoName, finalizedCommit] of finalizedCommits.entries()) {
 		const childRelativePath = node.id === '.'
 			? repoName
 			: repoName.startsWith(`${node.id}/`)
@@ -1244,11 +1271,61 @@ function refreshSubmodulePointers(node: RepositorySaveNode, finalizedCommits: Ma
 		const childPath = resolve(node.path, childRelativePath);
 		if (!existsSync(childPath) || !isGitRepo(childPath)) continue;
 		const status = run('git', ['status', '--porcelain', '--', childRelativePath], { cwd: node.path, capture: true });
-		if (status.trim().length > 0) {
-			changed = true;
+		const oldSha = treeCommitForPath(node.path, 'HEAD', childRelativePath);
+		const newSha = finalizedCommit || headCommit(childPath);
+		if (status.trim().length > 0 || (oldSha && newSha && oldSha !== newSha)) {
+			changes.push({
+				path: childRelativePath,
+				oldSha,
+				newSha,
+			});
 		}
 	}
-	return changed;
+	return changes;
+}
+
+function commitContextDependencyUpdates(updates: RewrittenDevReference[]): CommitMessageDependencyUpdate[] {
+	return updates.map((update) => ({
+		packageName: update.packageName,
+		field: update.field,
+		from: update.from,
+		to: update.to,
+		tagName: update.tagName,
+	}));
+}
+
+function commitContextPackageChanges(
+	node: RepositorySaveNode,
+	state: SaveState,
+	submodulePointers: CommitMessageSubmodulePointer[],
+): CommitMessagePackageChange[] {
+	const pointersByPath = new Map(submodulePointers.map((pointer) => [pointer.path, pointer]));
+	const changes: CommitMessagePackageChange[] = [];
+	for (const [relativePath, report] of state.reports.entries()) {
+		if (relativePath === node.id || relativePath === '.') continue;
+		const childRelativePath = node.id === '.'
+			? relativePath
+			: relativePath.startsWith(`${node.id}/`)
+				? relativePath.slice(node.id.length + 1)
+				: null;
+		if (!childRelativePath) continue;
+		const pointer = pointersByPath.get(childRelativePath);
+		if (!pointer && !report.committed && !report.tagName && !report.dependencySpec) continue;
+		changes.push({
+			name: report.name,
+			path: childRelativePath,
+			oldSha: pointer?.oldSha ?? null,
+			newSha: pointer?.newSha ?? report.commitSha,
+			tagName: report.tagName,
+			version: report.version,
+			dependencySpec: report.dependencySpec,
+			commitSubject: commitSubject(report.commitMessage),
+		});
+		if (pointer) {
+			pointer.packageName = report.name;
+		}
+	}
+	return changes;
 }
 
 function syncBranchBeforeSave(node: RepositorySaveNode, options: RepositorySaveOptions, branch: string) {
@@ -1613,7 +1690,8 @@ async function saveOneRepository(
 		.map((update) => state.finalizedReferences.get(update.packageName))
 		.filter((reference): reference is PackageDependencyReference => Boolean(reference) && reference.mode === 'dev-git-tag')
 		.map((reference) => `${reference.packageName}@${reference.installSpec ?? reference.spec}`);
-	const submodulesChanged = refreshSubmodulePointers(node, state.finalizedCommits);
+	const submodulePointers = collectSubmodulePointerChanges(node, state.finalizedCommits);
+	const submodulesChanged = submodulePointers.length > 0;
 	const packageNeedsVersion = node.kind === 'package' && (hasMeaningfulChanges(node.path) || dependencyChanged || submodulesChanged);
 	let plannedVersion: string | null = null;
 
@@ -1711,6 +1789,9 @@ async function saveOneRepository(
 		diff,
 		plannedVersion: plannedVersion ?? report.version,
 		plannedTag: node.plannedTag ?? report.tagName,
+		dependencyUpdates: commitContextDependencyUpdates(dependencyUpdates),
+		submodulePointers,
+		packageChanges: commitContextPackageChanges(node, state, submodulePointers),
 	});
 	report.commitMessage = messageResult.message;
 	report.commitMessageProvider = messageResult.provider;

@@ -163,6 +163,7 @@ export interface TreeseedPlatformSurfaceConfig {
 	rootDir?: string;
 	publicBaseUrl?: string;
 	localBaseUrl?: string;
+	local?: TreeseedLocalRuntimeConfig;
 	environments?: Partial<Record<'local' | 'staging' | 'prod', TreeseedManagedServiceEnvironmentConfig>>;
 	cache?: TreeseedWebSurfaceCacheConfig;
 }
@@ -235,6 +236,12 @@ export interface TreeseedManagedServiceEnvironmentConfig {
 	railwayEnvironment?: string;
 }
 
+export type TreeseedLocalRuntimeMode = 'auto' | 'provider' | 'local';
+
+export interface TreeseedLocalRuntimeConfig {
+	runtime?: TreeseedLocalRuntimeMode;
+}
+
 export interface TreeseedManagedServiceCloudflareConfig {
 	workerName?: string;
 }
@@ -262,6 +269,7 @@ export interface TreeseedManagedServiceConfig {
 	publicBaseUrl?: string;
 	cloudflare?: TreeseedManagedServiceCloudflareConfig;
 	railway?: TreeseedManagedServiceRailwayConfig;
+	local?: TreeseedLocalRuntimeConfig;
 	environments?: Partial<Record<'local' | 'staging' | 'prod', TreeseedManagedServiceEnvironmentConfig>>;
 }
 

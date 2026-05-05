@@ -286,7 +286,7 @@ function resolveTargetPaths(tenantRoot, scopeOrTarget = 'prod') {
 		target,
 		generatedRoot,
 		wranglerPath: resolve(generatedRoot, 'wrangler.toml'),
-		workerEntryPath: resolve(generatedRoot, 'worker/index.js'),
+		workerEntryPath: resolve(tenantRoot, 'dist/_worker.js/index.js'),
 		statePath,
 	};
 }
@@ -384,6 +384,76 @@ export function buildPublicVars(deployConfig) {
 	};
 }
 
+function envValue(env, key) {
+	const value = env?.[key] ?? process.env[key];
+	return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+const LOCAL_RUNTIME_AUTH_ENV_KEYS = [
+	'BETTER_AUTH_URL',
+	'TREESEED_SITE_URL',
+	'TREESEED_AUTH_MODE',
+	'TREESEED_AUTH_INTERNAL_SIGNUP',
+	'TREESEED_AUTH_EMAIL_LINKING',
+	'TREESEED_AUTH_ALLOW_MEMORY_DB',
+	'TREESEED_AUTH_LOCAL_USE_MAILPIT',
+	'TREESEED_AUTH_EMAIL_FROM',
+	'TREESEED_WEB_SESSION_TTL',
+	'TREESEED_API_BOOTSTRAP_ADMIN_ALLOWLIST',
+	'TREESEED_API_AUTH_SECRET',
+	'TREESEED_API_ISSUER',
+	'TREESEED_API_ACCESS_TOKEN_TTL',
+	'TREESEED_API_REFRESH_TOKEN_TTL',
+	'TREESEED_API_DEVICE_CODE_TTL',
+	'TREESEED_API_DEVICE_ACCESS_TOKEN_TTL',
+	'TREESEED_API_DEVICE_POLL_INTERVAL',
+	'TREESEED_API_WEB_EXCHANGE_TTL',
+	'TREESEED_GITHUB_CLIENT_ID',
+	'TREESEED_GITHUB_CLIENT_SECRET',
+	'TREESEED_GOOGLE_CLIENT_ID',
+	'TREESEED_GOOGLE_CLIENT_SECRET',
+	'TREESEED_MICROSOFT_CLIENT_ID',
+	'TREESEED_MICROSOFT_CLIENT_SECRET',
+	'TREESEED_APPLE_CLIENT_ID',
+	'TREESEED_APPLE_CLIENT_SECRET',
+];
+
+function localAuthRuntimeVars(env) {
+	return Object.fromEntries(
+		LOCAL_RUNTIME_AUTH_ENV_KEYS
+			.map((key) => [key, envValue(env, key)])
+			.filter(([, value]) => value != null),
+	);
+}
+
+function buildLocalRuntimeVars(deployConfig, state, target, env) {
+	if (target.kind !== 'persistent' || target.scope !== 'local') {
+		return {};
+	}
+
+	return {
+		...localAuthRuntimeVars(env),
+		TREESEED_LOCAL_DEV_MODE: envValue(env, 'TREESEED_LOCAL_DEV_MODE') ?? 'cloudflare',
+		TREESEED_FORM_TOKEN_SECRET:
+			envValue(env, 'TREESEED_FORM_TOKEN_SECRET')
+			?? state.generatedSecrets?.TREESEED_FORM_TOKEN_SECRET
+			?? 'treeseed-local-form-token-secret',
+		TREESEED_BETTER_AUTH_SECRET:
+			envValue(env, 'TREESEED_BETTER_AUTH_SECRET')
+			?? state.generatedSecrets?.TREESEED_BETTER_AUTH_SECRET
+			?? state.generatedSecrets?.TREESEED_FORM_TOKEN_SECRET
+			?? 'treeseed-local-better-auth-secret-minimum-32-characters',
+		TREESEED_EDITORIAL_PREVIEW_SECRET:
+			envValue(env, 'TREESEED_EDITORIAL_PREVIEW_SECRET')
+			?? state.generatedSecrets?.TREESEED_EDITORIAL_PREVIEW_SECRET
+			?? 'treeseed-local-editorial-preview-secret',
+		TREESEED_FORMS_LOCAL_BYPASS_CLOUDFLARE_GUARDS: envValue(env, 'TREESEED_FORMS_LOCAL_BYPASS_CLOUDFLARE_GUARDS') ?? '',
+		TREESEED_FORMS_LOCAL_USE_MAILPIT: envValue(env, 'TREESEED_FORMS_LOCAL_USE_MAILPIT') ?? 'false',
+		TREESEED_MAILPIT_SMTP_HOST: envValue(env, 'TREESEED_MAILPIT_SMTP_HOST') ?? '127.0.0.1',
+		TREESEED_MAILPIT_SMTP_PORT: envValue(env, 'TREESEED_MAILPIT_SMTP_PORT') ?? '1025',
+	};
+}
+
 export function buildSecretMap(deployConfig, state) {
 	const generatedSecret = state.generatedSecrets?.TREESEED_FORM_TOKEN_SECRET ?? randomBytes(24).toString('hex');
 	const previewSecret = state.generatedSecrets?.TREESEED_EDITORIAL_PREVIEW_SECRET ?? randomBytes(24).toString('hex');
@@ -416,12 +486,6 @@ function defaultStateFromConfig(deployConfig, target) {
 				binding: 'FORM_GUARD_KV',
 				id: `dryrun-${suffix}-form-guard`,
 				previewId: `dryrun-${suffix}-form-guard-preview`,
-			},
-			SESSION: {
-				name: environmentScopedIdentityName(identity, 'session', target),
-				binding: 'SESSION',
-				id: `dryrun-${suffix}-session`,
-				previewId: `dryrun-${suffix}-session-preview`,
 			},
 		},
 		d1Databases: {
@@ -586,19 +650,13 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 		workerName: defaults.workerName,
 		kvNamespaces: {
 			...defaults.kvNamespaces,
-			...(persisted.kvNamespaces ?? {}),
 			FORM_GUARD_KV: {
 				...defaults.kvNamespaces.FORM_GUARD_KV,
 				...(persisted.kvNamespaces?.FORM_GUARD_KV ?? {}),
 				name: defaults.kvNamespaces.FORM_GUARD_KV.name,
 				binding: defaults.kvNamespaces.FORM_GUARD_KV.binding,
 			},
-			SESSION: {
-				...defaults.kvNamespaces.SESSION,
-				...(persisted.kvNamespaces?.SESSION ?? {}),
-				name: defaults.kvNamespaces.SESSION.name,
-				binding: defaults.kvNamespaces.SESSION.binding,
-			},
+			...(persisted.kvNamespaces?.SESSION ? { SESSION: persisted.kvNamespaces.SESSION } : {}),
 		},
 		d1Databases: {
 			...defaults.d1Databases,
@@ -769,10 +827,13 @@ export function buildWranglerConfigContents(tenantRoot, deployConfig, state, opt
 	const target = normalizeTarget(options.scope ?? options.target ?? state.target ?? 'prod');
 	const { generatedRoot } = resolveTargetPaths(tenantRoot, target);
 	const workerName = state.workerName ?? targetWorkerName(deployConfig, target);
-	const mainPath = relativeFromGeneratedRoot(resolve(generatedRoot, 'worker/index.js'), generatedRoot);
+	const mainPath = relativeFromGeneratedRoot(resolve(tenantRoot, 'dist/_worker.js/index.js'), generatedRoot);
 	const assetsDirectory = relativeFromGeneratedRoot(resolve(tenantRoot, 'dist'), generatedRoot);
 	const migrationsDir = relativeFromGeneratedRoot(resolve(tenantRoot, 'migrations'), generatedRoot);
-	const vars = buildPublicVars(deployConfig);
+	const vars = {
+		...buildPublicVars(deployConfig),
+		...buildLocalRuntimeVars(deployConfig, state, target, options.env),
+	};
 	const r2Config = deployConfig.cloudflare.r2;
 	const r2Binding = resolveConfiguredContentBucketBinding(deployConfig);
 	const r2BucketName = resolveConfiguredContentBucketName(deployConfig);
@@ -795,11 +856,6 @@ export function buildWranglerConfigContents(tenantRoot, deployConfig, state, opt
 		'binding = "FORM_GUARD_KV"',
 		`id = ${renderTomlString(state.kvNamespaces.FORM_GUARD_KV.id)}`,
 		`preview_id = ${renderTomlString(state.kvNamespaces.FORM_GUARD_KV.previewId ?? state.kvNamespaces.FORM_GUARD_KV.id)}`,
-		'',
-		'[[kv_namespaces]]',
-		'binding = "SESSION"',
-		`id = ${renderTomlString(state.kvNamespaces.SESSION.id)}`,
-		`preview_id = ${renderTomlString(state.kvNamespaces.SESSION.previewId ?? state.kvNamespaces.SESSION.id)}`,
 		'',
 		'[[d1_databases]]',
 		'binding = "SITE_DATA_DB"',
@@ -825,7 +881,7 @@ export function ensureGeneratedWranglerConfig(tenantRoot, options = {}) {
 	const state = loadDeployState(tenantRoot, deployConfig, { target });
 	const { wranglerPath } = resolveTargetPaths(tenantRoot, target);
 	const manifestFingerprint = stableHash(JSON.stringify({ deployConfig, targetKey: targetKey(target) }));
-	const contents = buildWranglerConfigContents(tenantRoot, deployConfig, state, { target });
+	const contents = buildWranglerConfigContents(tenantRoot, deployConfig, state, { target, env: options.env });
 	ensureParent(wranglerPath);
 	writeFileSync(wranglerPath, contents, 'utf8');
 	state.lastManifestFingerprint = manifestFingerprint;
@@ -996,7 +1052,7 @@ export function buildProvisioningSummary(deployConfig, state, target) {
 		accountId: resolveConfiguredCloudflareAccountId(deployConfig),
 		pages: state.pages ?? null,
 		formGuardKv: state.kvNamespaces.FORM_GUARD_KV,
-		sessionKv: state.kvNamespaces.SESSION,
+		sessionKv: state.kvNamespaces.SESSION ?? null,
 		siteDataDb: state.d1Databases.SITE_DATA_DB,
 		queue: state.queues?.agentWork ?? null,
 		content: state.content ?? null,
@@ -1007,7 +1063,6 @@ export function buildProvisioningSummary(deployConfig, state, target) {
 			dlq: state.queues?.agentWork?.dlqName ?? null,
 			database: state.d1Databases?.SITE_DATA_DB?.databaseName ?? null,
 			formGuardKv: state.kvNamespaces?.FORM_GUARD_KV?.name ?? null,
-			sessionKv: state.kvNamespaces?.SESSION?.name ?? null,
 			railwayProject: state.services?.worker?.projectName ?? state.services?.api?.projectName ?? null,
 			webDomain: configuredWebDomain,
 			apiDomain: configuredApiDomain,
@@ -1411,7 +1466,6 @@ export function hasProvisionedCloudflareResources(state) {
 		&& state?.pages?.url
 		&& state?.d1Databases?.SITE_DATA_DB?.databaseId
 		&& state?.kvNamespaces?.FORM_GUARD_KV?.id
-		&& state?.kvNamespaces?.SESSION?.id
 		&& state?.queues?.agentWork?.name
 		&& state?.content?.bucketName,
 	);
@@ -1814,11 +1868,13 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 		state.kvNamespaces.FORM_GUARD_KV.name,
 		state.kvNamespaces.FORM_GUARD_KV.id,
 	);
-	state.kvNamespaces.SESSION.id = resolveExistingKvIdByName(
-		kvNamespaces,
-		state.kvNamespaces.SESSION.name,
-		state.kvNamespaces.SESSION.id,
-	);
+	if (state.kvNamespaces.SESSION?.name) {
+		state.kvNamespaces.SESSION.id = resolveExistingKvIdByName(
+			kvNamespaces,
+			state.kvNamespaces.SESSION.name,
+			state.kvNamespaces.SESSION.id,
+		);
+	}
 	state.d1Databases.SITE_DATA_DB = resolveExistingD1ByName(
 		d1Databases,
 		state.d1Databases.SITE_DATA_DB.databaseName,
@@ -1832,9 +1888,11 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 		&& state.kvNamespaces.FORM_GUARD_KV.previewId !== state.kvNamespaces.FORM_GUARD_KV.id
 			? deleteKvNamespace(tenantRoot, state.kvNamespaces.FORM_GUARD_KV.previewId, { env, dryRun, preview: true })
 			: null;
-	const session = deleteKvNamespace(tenantRoot, state.kvNamespaces.SESSION.id, { env, dryRun });
+	const session = state.kvNamespaces.SESSION?.id
+		? deleteKvNamespace(tenantRoot, state.kvNamespaces.SESSION.id, { env, dryRun })
+		: null;
 	const sessionPreview =
-		state.kvNamespaces.SESSION.previewId
+		state.kvNamespaces.SESSION?.previewId
 		&& state.kvNamespaces.SESSION.previewId !== state.kvNamespaces.SESSION.id
 			? deleteKvNamespace(tenantRoot, state.kvNamespaces.SESSION.previewId, { env, dryRun, preview: true })
 			: null;
@@ -2069,7 +2127,6 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 	};
 
 	ensureKv('FORM_GUARD_KV');
-	ensureKv('SESSION');
 	ensureD1();
 	ensureQueue();
 	ensureR2Bucket();
@@ -2157,7 +2214,6 @@ export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
 	const checks = {
 		pages: Boolean(state.pages?.projectName && pagesProjects.find((entry) => entry?.name === state.pages.projectName)),
 		formGuardKv: Boolean(state.kvNamespaces?.FORM_GUARD_KV?.name && kvNamespaces.find((entry) => entry?.title === state.kvNamespaces.FORM_GUARD_KV.name)),
-		sessionKv: Boolean(state.kvNamespaces?.SESSION?.name && kvNamespaces.find((entry) => entry?.title === state.kvNamespaces.SESSION.name)),
 		d1: Boolean(state.d1Databases?.SITE_DATA_DB?.databaseName && d1Databases.find((entry) => entry?.name === state.d1Databases.SITE_DATA_DB.databaseName)),
 		queue: Boolean(state.queues?.agentWork?.name && queues.find((entry) => queueName(entry) === state.queues.agentWork.name)),
 		dlq: !state.queues?.agentWork?.dlqName || Boolean(queues.find((entry) => queueName(entry) === state.queues.agentWork.dlqName)),
@@ -2355,7 +2411,6 @@ export function printDeploySummary(summary) {
 	console.log(`  Account ID: ${summary.accountId}`);
 	console.log(`  D1: ${summary.siteDataDb.databaseName} (${summary.siteDataDb.databaseId})`);
 	console.log(`  KV FORM_GUARD_KV: ${summary.formGuardKv.id}`);
-	console.log(`  KV SESSION: ${summary.sessionKv.id}`);
 }
 
 export function printDestroySummary(result) {
@@ -2370,7 +2425,9 @@ export function printDestroySummary(result) {
 	if (operations.formGuardPreview) {
 		console.log(`  KV FORM_GUARD_KV preview -> ${operations.formGuardPreview.status}`);
 	}
-	console.log(`  KV SESSION: ${summary.sessionKv.name} -> ${operations.session.status}`);
+	if (summary.sessionKv && operations.session) {
+		console.log(`  KV SESSION (deprecated): ${summary.sessionKv.name} -> ${operations.session.status}`);
+	}
 	if (operations.sessionPreview) {
 		console.log(`  KV SESSION preview -> ${operations.sessionPreview.status}`);
 	}

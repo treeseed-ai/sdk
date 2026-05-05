@@ -123,9 +123,10 @@ export function migrateLegacyDeployStateUnits(legacyState: Record<string, any>, 
 		};
 	}
 	for (const [binding, namespace] of Object.entries(legacyState.kvNamespaces ?? {})) {
+		if (binding !== 'FORM_GUARD_KV') continue;
 		const record = namespace as Record<string, any>;
 		if (!record?.name) continue;
-		const unitType = binding === 'FORM_GUARD_KV' ? 'kv-form-guard' : 'kv-session';
+		const unitType = 'kv-form-guard';
 		units[`${unitType}:${record.name}`] = {
 			unitId: `${unitType}:${record.name}`,
 			unitType,

@@ -238,7 +238,6 @@ function writeDeploySummary(write, summary) {
 	write(`  Account ID: ${summary.accountId}`);
 	write(`  D1: ${summary.siteDataDb.databaseName} (${summary.siteDataDb.databaseId})`);
 	write(`  KV FORM_GUARD_KV: ${summary.formGuardKv.id}`);
-	write(`  KV SESSION: ${summary.sessionKv.id}`);
 }
 
 function syncManagedServiceSettingsFromDeployConfig(tenantRoot) {

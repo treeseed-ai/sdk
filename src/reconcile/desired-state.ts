@@ -85,18 +85,6 @@ export function deriveTreeseedDesiredUnits({
 		secrets: {},
 		metadata: { bootstrapSystem: 'web' },
 	});
-	const sessionKvId = add({
-		unitId: createTreeseedReconcileUnitId('kv-session', legacyState.kvNamespaces.SESSION.name),
-		unitType: 'kv-session',
-		provider: 'cloudflare',
-		identity,
-		target,
-		logicalName: legacyState.kvNamespaces.SESSION.name,
-		dependencies: [],
-		spec: { binding: 'SESSION', name: legacyState.kvNamespaces.SESSION.name },
-		secrets: {},
-		metadata: { bootstrapSystem: 'web' },
-	});
 	const contentStoreId = add({
 		unitId: createTreeseedReconcileUnitId('content-store', legacyState.content.bucketName ?? deployConfig.slug),
 		unitType: 'content-store',
@@ -139,7 +127,7 @@ export function deriveTreeseedDesiredUnits({
 		identity,
 		target,
 		logicalName: legacyState.workerName,
-		dependencies: [queueId, databaseId, formGuardKvId, sessionKvId, contentStoreId, pagesProjectId],
+		dependencies: [queueId, databaseId, formGuardKvId, contentStoreId, pagesProjectId],
 		spec: {
 			workerName: legacyState.workerName,
 		},

@@ -27,11 +27,6 @@ const deployState = {
 			id: 'dryrun-staging-form-guard',
 			previewId: 'dryrun-staging-form-guard-preview',
 		},
-		SESSION: {
-			name: 'acme-docs-session-staging',
-			id: 'dryrun-staging-session',
-			previewId: 'dryrun-staging-session-preview',
-		},
 	},
 	d1Databases: {
 		SITE_DATA_DB: {
@@ -96,7 +91,6 @@ vi.mock('../../src/operations/services/deploy.ts', async () => {
 		listKvNamespaces: vi.fn(() => (kvCreated
 			? [
 				{ title: 'acme-docs-form-guard-staging', id: 'kv-form-1' },
-				{ title: 'acme-docs-session-staging', id: 'kv-session-1' },
 			]
 			: [])),
 		listPagesProjects: vi.fn(() => [{ name: 'acme-docs', subdomain: 'acme-docs.pages.dev' }]),

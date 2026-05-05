@@ -7,6 +7,7 @@ import type {
 	TreeseedDeployConfig,
 	TreeseedExportConfig,
 	TreeseedHubConfig,
+	TreeseedLocalRuntimeConfig,
 	TreeseedManagedServiceConfig,
 	TreeseedManagedServicesConfig,
 	TreeseedPlatformSurfacesConfig,
@@ -78,6 +79,10 @@ const webSurfaceCacheFieldAliases: TreeseedFieldAliasRegistry = {
 	sourcePages: { key: 'sourcePages', aliases: ['source_pages'] },
 	contentPages: { key: 'contentPages', aliases: ['content_pages'] },
 	r2PublishedObjects: { key: 'r2PublishedObjects', aliases: ['r2_published_objects'] },
+};
+
+const localRuntimeFieldAliases: TreeseedFieldAliasRegistry = {
+	runtime: { key: 'runtime', aliases: ['runtime', 'runtime_mode', 'runtimeMode'] },
 };
 
 const webCachePolicyFieldAliases: TreeseedFieldAliasRegistry = {
@@ -407,6 +412,19 @@ function parseServiceEnvironmentConfig(
 	};
 }
 
+function parseLocalRuntimeConfig(value: unknown, label: string): TreeseedLocalRuntimeConfig | undefined {
+	const record = normalizeAliasedRecord(
+		localRuntimeFieldAliases,
+		(optionalRecord(value, label) ?? {}) as Record<string, unknown>,
+	);
+	if (!value || Object.keys(record).length === 0) {
+		return undefined;
+	}
+	return {
+		runtime: optionalEnum(record.runtime, `${label}.runtime`, ['auto', 'provider', 'local'] as const),
+	};
+}
+
 function parseManagedServiceConfig(value: unknown, label: string): TreeseedManagedServiceConfig | undefined {
 	const record = optionalRecord(value, label);
 	if (!record) {
@@ -442,6 +460,7 @@ function parseManagedServiceConfig(value: unknown, label: string): TreeseedManag
 				? railway.schedule.map((entry) => optionalString(entry)).filter(Boolean)
 				: optionalString(railway.schedule),
 		},
+		local: parseLocalRuntimeConfig(record.local, `${label}.local`),
 		environments: {
 			local: parseServiceEnvironmentConfig(environments.local, `${label}.environments.local`),
 			staging: parseServiceEnvironmentConfig(environments.staging, `${label}.environments.staging`),
@@ -484,6 +503,7 @@ function parsePlatformSurfaceConfig(
 		rootDir: optionalString(record.rootDir),
 		publicBaseUrl: optionalString(record.publicBaseUrl),
 		localBaseUrl: optionalString(record.localBaseUrl),
+		local: parseLocalRuntimeConfig(record.local, `${label}.local`),
 		environments: (() => {
 			const environments = optionalRecord(record.environments, `${label}.environments`);
 			if (!environments) {

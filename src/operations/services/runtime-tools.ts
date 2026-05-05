@@ -123,6 +123,16 @@ function parseServiceEnvironmentConfig(value) {
 	};
 }
 
+function parseLocalRuntimeConfig(value, label) {
+	const record = optionalRecord(value, label);
+	if (!record) {
+		return undefined;
+	}
+	return {
+		runtime: optionalEnum(record.runtime ?? record.runtime_mode ?? record.runtimeMode, `${label}.runtime`, ['auto', 'provider', 'local']),
+	};
+}
+
 function parseManagedServiceConfig(value, label) {
 	const record = optionalRecord(value, label);
 	if (!record) {
@@ -136,6 +146,7 @@ function parseManagedServiceConfig(value, label) {
 		provider: optionalString(record.provider),
 		rootDir: optionalString(record.rootDir),
 		publicBaseUrl: optionalString(record.publicBaseUrl),
+		local: parseLocalRuntimeConfig(record.local, `${label}.local`),
 		cloudflare: {
 			workerName: optionalString(cloudflare.workerName),
 		},
@@ -234,6 +245,7 @@ function parseSurfaceConfig(value, label) {
 		rootDir: optionalString(record.rootDir),
 		publicBaseUrl: optionalString(record.publicBaseUrl),
 		localBaseUrl: optionalString(record.localBaseUrl),
+		local: parseLocalRuntimeConfig(record.local, `${label}.local`),
 		environments: (() => {
 			const environments = optionalRecord(record.environments, `${label}.environments`);
 			if (!environments) {

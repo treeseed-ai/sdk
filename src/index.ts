@@ -146,6 +146,7 @@ export {
 } from './operations-registry.ts';
 export { TreeseedOperationsSdk } from './operations/runtime.ts';
 export { TreeseedWorkflowSdk } from './workflow.ts';
+export * from './db/index.ts';
 export {
 	collectTreeseedReconcileStatus,
 	createTreeseedReconcileRegistry,

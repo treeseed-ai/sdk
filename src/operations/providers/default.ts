@@ -693,6 +693,7 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 	constructor() {
 		this.operations = [
 			new WorkflowOperation('status'),
+			new WorkflowOperation('ci'),
 			new WorkflowOperation('tasks'),
 			new WorkflowOperation('switch', 'switch'),
 			new WorkflowOperation('save'),

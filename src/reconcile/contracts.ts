@@ -16,7 +16,6 @@ export type TreeseedReconcileUnitType =
 	| 'queue'
 	| 'database'
 	| 'kv-form-guard'
-	| 'kv-session'
 	| 'pages-project'
 	| 'custom-domain:web'
 	| 'custom-domain:api'
