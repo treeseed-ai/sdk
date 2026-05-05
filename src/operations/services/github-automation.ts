@@ -637,6 +637,7 @@ export async function waitForGitHubWorkflowCompletion(
 		branch,
 		timeoutSeconds = 600,
 		pollSeconds = 5,
+		onProgress,
 	} = {},
 ) {
 	if (isGitHubAutomationStubbed()) {
@@ -658,5 +659,6 @@ export async function waitForGitHubWorkflowCompletion(
 		branch,
 		timeoutSeconds,
 		pollSeconds,
+		onProgress,
 	});
 }
