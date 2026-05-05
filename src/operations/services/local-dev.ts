@@ -54,8 +54,8 @@ export function runLocalD1Migration(persistTo) {
 
 export function prepareCloudflareLocalRuntime({ envOverrides = {}, persistTo, outDir } = {}) {
 	const mergedEnvOverrides = {
-		TREESEED_MAILPIT_SMTP_HOST: '127.0.0.1',
-		TREESEED_MAILPIT_SMTP_PORT: '1025',
+		TREESEED_SMTP_HOST: '127.0.0.1',
+		TREESEED_SMTP_PORT: '1025',
 		...envOverrides,
 	};
 

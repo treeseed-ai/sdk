@@ -1438,6 +1438,49 @@ export function ensureTreeseedGitignoreEntries(tenantRoot) {
 	return gitignorePath;
 }
 
+export function ensureTreeseedRailwayIgnoreEntries(tenantRoot) {
+	const railwayIgnorePath = resolve(tenantRoot, '.railwayignore');
+	const requiredEntries = [
+		'.astro/',
+		'.codex/',
+		'.dev.vars',
+		'.env.local',
+		'.git/',
+		'.treeseed/',
+		'.wrangler/',
+		'coverage/',
+		'dist/',
+		'node_modules/',
+		'npm-debug.log*',
+		'packages/*/.git/',
+		'packages/*/dist/',
+		'packages/*/node_modules/',
+		'public/__treeseed/*.json',
+		'public/books/*.json',
+		'public/books/*.md',
+		'scripts/.ts-run-*.mjs',
+		'tmp/',
+		'*.log',
+		'*.tgz',
+	];
+	const current = existsSync(railwayIgnorePath) ? readFileSync(railwayIgnorePath, 'utf8') : '';
+	const lines = current.split(/\r?\n/);
+	let changed = false;
+
+	for (const entry of requiredEntries) {
+		if (!lines.includes(entry)) {
+			lines.push(entry);
+			changed = true;
+		}
+	}
+
+	if (changed || !existsSync(railwayIgnorePath)) {
+		writeFileSync(railwayIgnorePath, `${lines.filter(Boolean).join('\n')}\n`, 'utf8');
+	}
+
+	return railwayIgnorePath;
+}
+
 export type TreeseedRepairAction = {
 	id: string;
 	detail: string;
@@ -1458,6 +1501,8 @@ export function applyTreeseedSafeRepairs(tenantRoot: string): TreeseedRepairActi
 	const actions: TreeseedRepairAction[] = [];
 	ensureTreeseedGitignoreEntries(tenantRoot);
 	actions.push({ id: 'gitignore', detail: 'Ensured Treeseed gitignore entries are present.' });
+	ensureTreeseedRailwayIgnoreEntries(tenantRoot);
+	actions.push({ id: 'railwayignore', detail: 'Ensured Railway deploy ignore entries are present.' });
 	const deprecatedFiles = warnDeprecatedTreeseedLocalEnvFiles(tenantRoot);
 	if (deprecatedFiles.length > 0) {
 		actions.push({ id: 'deprecated-local-env', detail: 'Detected deprecated .env.local/.dev.vars files that Treeseed now ignores.' });
@@ -2843,6 +2888,7 @@ export function collectTreeseedConfigContext({
 	env?: NodeJS.ProcessEnv;
 }): TreeseedCollectedConfigContext {
 	ensureTreeseedGitignoreEntries(tenantRoot);
+	ensureTreeseedRailwayIgnoreEntries(tenantRoot);
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
 	const { configPath, keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
 	const valuesByScope = Object.fromEntries(
