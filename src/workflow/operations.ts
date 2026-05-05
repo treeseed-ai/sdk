@@ -78,6 +78,10 @@ import {
 	type GitHubActionsWorkflowGate,
 	type GitHubActionsVerificationReport,
 } from '../operations/services/github-actions-verification.ts';
+import {
+	runReleaseCandidateGate,
+	type ReleaseCandidateReport,
+} from '../operations/services/release-candidate.ts';
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin } from '../operations/services/runtime-tools.ts';
 import { runTenantDeployPreflight, runWorkspaceReleasePreflight, runWorkspaceSavePreflight } from '../operations/services/save-deploy-preflight.ts';
 import { collectCliPreflight } from '../operations/services/workspace-preflight.ts';
@@ -648,6 +652,7 @@ type WorkflowRepoReport = {
 	skippedReason: string | null;
 	publishWait: Record<string, unknown> | null;
 	workflowGates: Array<Record<string, unknown>>;
+	backMerge: Record<string, unknown> | null;
 };
 
 function createRepoReport(name: string, path: string, branch: string | null, dirty: boolean): WorkflowRepoReport {
@@ -669,6 +674,7 @@ function createRepoReport(name: string, path: string, branch: string | null, dir
 		skippedReason: null,
 		publishWait: null,
 		workflowGates: [],
+		backMerge: null,
 	};
 }
 
@@ -1585,6 +1591,61 @@ function assertNoInternalDevReferencesForRepo(root: string, repoDir: string, pac
 	throw new Error(`Stable release still contains internal Git/dev dependency references.\n${rendered}`);
 }
 
+function backMergeProductionIntoStaging(repoDir: string, repoName: string) {
+	syncBranchWithOrigin(repoDir, PRODUCTION_BRANCH);
+	syncBranchWithOrigin(repoDir, STAGING_BRANCH);
+	checkoutBranch(repoDir, STAGING_BRANCH);
+	try {
+		run('git', ['merge-base', '--is-ancestor', `origin/${PRODUCTION_BRANCH}`, 'HEAD'], { cwd: repoDir, capture: true });
+		return {
+			status: 'up-to-date',
+			merged: false,
+			repoName,
+			sourceBranch: PRODUCTION_BRANCH,
+			targetBranch: STAGING_BRANCH,
+			commitSha: headCommit(repoDir),
+		};
+	} catch {
+		// A non-zero merge-base result means staging does not yet contain main.
+	}
+	try {
+		run('git', ['merge', '--no-ff', `origin/${PRODUCTION_BRANCH}`, '-m', `release: back-merge ${PRODUCTION_BRANCH} into ${STAGING_BRANCH}`], { cwd: repoDir });
+	} catch (error) {
+		const report = collectMergeConflictReport(repoDir);
+		throw new TreeseedWorkflowError('release', 'merge_conflict', formatMergeConflictReport(report, repoDir, STAGING_BRANCH), {
+			details: { repoName, branch: STAGING_BRANCH, sourceBranch: PRODUCTION_BRANCH, report, originalError: error instanceof Error ? error.message : String(error) },
+			exitCode: 12,
+		});
+	}
+	pushBranch(repoDir, STAGING_BRANCH);
+	return {
+		status: 'merged',
+		merged: true,
+		repoName,
+		sourceBranch: PRODUCTION_BRANCH,
+		targetBranch: STAGING_BRANCH,
+		commitSha: headCommit(repoDir),
+	};
+}
+
+function backMergeRootProductionIntoStaging(root: string, syncPackageStagingHeads: boolean) {
+	const gitRoot = repoRoot(root);
+	const backMerge = backMergeProductionIntoStaging(gitRoot, '@treeseed/market');
+	if (!syncPackageStagingHeads) {
+		return backMerge;
+	}
+	syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
+	const pointerSync = commitAllIfChanged(gitRoot, 'release: sync package staging heads');
+	if (pointerSync.committed) {
+		pushBranch(gitRoot, STAGING_BRANCH);
+	}
+	return {
+		...backMerge,
+		packageStagingPointersSynced: pointerSync.committed,
+		packageStagingPointerCommit: pointerSync.commitSha,
+	};
+}
+
 function collectActiveDevTagReferences(root: string) {
 	return collectInternalDevReferenceIssues(root)
 		.map((issue) => devTagFromDependencySpec(issue.spec) ?? (issue.spec.includes('-dev.') ? issue.spec : null))
@@ -1606,6 +1667,41 @@ function releasePlanPackageSelection(value: unknown): { changed: string[]; depen
 		dependents: Array.isArray(record.dependents) ? record.dependents.map(String) : [],
 		selected: Array.isArray(record.selected) ? record.selected.map(String) : [],
 	};
+}
+
+function assertReleaseCandidatePassed(operation: Extract<TreeseedWorkflowOperationId, 'save' | 'stage' | 'release'>, report: ReleaseCandidateReport) {
+	if (report.status === 'passed') {
+		return;
+	}
+	const rendered = report.failures.map((failure) => `- ${failure.scope}${failure.provider ? ` ${failure.provider}` : ''}: ${failure.message}`);
+	workflowError(operation, 'validation_failed', [
+		'Treeseed release-candidate readiness failed.',
+		...rendered,
+	].join('\n'), {
+		details: {
+			releaseCandidate: report,
+		},
+	});
+}
+
+async function runReleaseCandidateForPlan(
+	operation: Extract<TreeseedWorkflowOperationId, 'save' | 'stage' | 'release'>,
+	root: string,
+	plannedRelease: { plannedVersions?: unknown; packageSelection?: unknown },
+	options: { allowReuse?: boolean } = {},
+) {
+	const plannedVersions = plannedRelease.plannedVersions && typeof plannedRelease.plannedVersions === 'object' && !Array.isArray(plannedRelease.plannedVersions)
+		? plannedRelease.plannedVersions as Record<string, unknown>
+		: {};
+	const packageSelection = releasePlanPackageSelection(plannedRelease.packageSelection);
+	const report = await runReleaseCandidateGate({
+		root,
+		plannedVersions,
+		selectedPackageNames: packageSelection.selected,
+		allowReuse: options.allowReuse,
+	});
+	assertReleaseCandidatePassed(operation, report);
+	return report;
 }
 
 function buildReleasePlanSnapshot(input: {
@@ -1650,6 +1746,7 @@ function buildReleasePlanSnapshot(input: {
 		finalBranch: STAGING_BRANCH,
 		plannedSteps: [
 			{ id: 'release-plan', description: 'Record immutable release plan and target versions' },
+			{ id: 'release-candidate', description: 'Run exact staging release-candidate readiness checks' },
 			{ id: 'workspace-unlink', description: 'Remove local workspace links before stable release install' },
 			{ id: 'prepare-release-metadata', description: 'Rewrite package metadata and lockfiles to production dependency mode' },
 			...input.packageReports.filter((report) => selectedPackageNames.has(report.name)).map((report) => ({
@@ -1657,6 +1754,7 @@ function buildReleasePlanSnapshot(input: {
 				description: `Release ${report.name} from staging to main and tag ${plannedVersions[report.name] ?? '(planned)'}`,
 			})),
 			{ id: 'release-root', description: `Release market ${rootVersion}` },
+			{ id: 'release-back-merge', description: 'Back-merge production release history into staging' },
 			{ id: 'cleanup-dev-tags', description: 'Clean replaced Treeseed dev tags after stable release' },
 			{ id: 'workspace-link', description: 'Restore local workspace links after release syncs back to staging' },
 		],
@@ -2869,6 +2967,9 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							{ id: 'workspace-unlink', description: 'Remove local workspace links before deployment install and lockfile updates' },
 							...repositoryPlan.plannedSteps,
 							{ id: 'lockfile-validation', description: 'Validate refreshed package-lock.json files before any save commit is pushed' },
+							...(branch === STAGING_BRANCH
+								? [{ id: 'release-candidate', description: 'Run release-candidate readiness checks for the saved staging state' }]
+								: []),
 							{ id: 'workspace-link', description: 'Restore local workspace links after save' },
 							...((beforeState.branchRole === 'feature' && (effectiveInput.preview === true || previewInitialized))
 								? [{ id: 'preview', description: `Refresh preview deployment for ${branch}` }]
@@ -2926,6 +3027,16 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						? [{
 							id: 'hosted-ci',
 							description: `Wait for hosted save workflows on ${branch}`,
+							repoName: rootRepo.name,
+							repoPath: rootRepo.path,
+							branch,
+							resumable: true,
+						}]
+						: []),
+					...(branch === STAGING_BRANCH
+						? [{
+							id: 'release-candidate',
+							description: 'Run release-candidate readiness checks',
 							repoName: rootRepo.name,
 							repoPath: rootRepo.path,
 							branch,
@@ -3022,6 +3133,21 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 								})),
 						], 'hosted', { root, runId: workflowRun.runId }).then((workflowGates) => ({ workflowGates })))
 					: { workflowGates: [] };
+				const releaseCandidate = branch === STAGING_BRANCH
+					? await executeJournalStep(root, workflowRun.runId, 'release-candidate', () => {
+						const releaseSession = resolveTreeseedWorkflowSession(root);
+						const stagingReleasePlan = buildReleasePlanSnapshot({
+							root,
+							mode,
+							level: (effectiveInput.bump ?? 'patch') as string,
+							packageSelection: releaseSession.packageSelection,
+							packageReports: savedPackageReports,
+							rootRepo: savedRootRepo,
+							blockers: [],
+						});
+						return runReleaseCandidateForPlan('save', root, stagingReleasePlan);
+					})
+					: null;
 
 				let previewAction: Record<string, unknown> = { status: 'skipped' };
 				if (beforeState.branchRole === 'feature' && branch) {
@@ -3066,6 +3192,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					ciMode: normalizeCiMode(effectiveInput.ciMode, 'save'),
 					verifyMode: effectiveInput.verifyMode ?? 'fast',
 					workflowGates: saveWorkflowGates?.workflowGates ?? [],
+					releaseCandidate,
 					...worktreePayload(root, effectiveInput.worktreeMode),
 				};
 				completeWorkflowRun(root, workflowRun.runId, payload);
@@ -3417,6 +3544,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 							{ id: 'merge-root', description: `Squash-merge ${initialSession.branchName ?? '(current task)'} into market staging` },
 							{ id: 'lockfile-validation', description: 'Refresh and validate the merged root workspace lockfile before pushing staging' },
 							{ id: 'wait-staging', description: 'Wait for exact-SHA staging GitHub Actions gates' },
+							{ id: 'release-candidate', description: 'Run release-candidate readiness checks for the exact staging state' },
 							{ id: 'preview-cleanup', description: 'Destroy preview resources' },
 							{ id: 'cleanup-root', description: 'Archive and delete the task branch from market' },
 							...checkedOutWorkspacePackageRepos(root).map((pkg) => ({
@@ -3477,6 +3605,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					})),
 					{ id: 'merge-root', description: `Merge ${featureBranch} into market staging`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: featureBranch, resumable: true },
 					{ id: 'wait-staging', description: 'Wait for exact-SHA staging GitHub Actions gates', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					{ id: 'release-candidate', description: 'Run release-candidate readiness checks', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'preview-cleanup', description: 'Destroy preview resources', repoName: rootRepo.name, repoPath: rootRepo.path, branch: featureBranch, resumable: true },
 					{ id: 'cleanup-root', description: `Archive ${featureBranch} in market`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: featureBranch, resumable: true },
 					...packageReports.map((report) => ({
@@ -3622,6 +3751,17 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					status: String(stageWorkflowGateResult?.status ?? 'completed'),
 					workflowGates: Array.isArray(stageWorkflowGateResult?.workflowGates) ? stageWorkflowGateResult.workflowGates : [],
 				};
+				const stageReleasePlan = buildReleasePlanSnapshot({
+					root,
+					mode,
+					level: 'patch',
+					packageSelection: session.packageSelection,
+					packageReports,
+					rootRepo,
+					blockers: [],
+				});
+				const releaseCandidate = await executeJournalStep(root, workflowRun.runId, 'release-candidate', () =>
+					runReleaseCandidateForPlan('stage', root, stageReleasePlan));
 				const previewCleanup = effectiveInput.deletePreview === false
 					? (skipJournalStep(root, workflowRun.runId, 'preview-cleanup', { performed: false }), { performed: false })
 					: await executeJournalStep(root, workflowRun.runId, 'preview-cleanup', () => destroyPreviewIfPresent(root, featureBranch));
@@ -3676,6 +3816,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					repos: packageReports,
 					rootRepo,
 					stagingWait,
+					releaseCandidate,
 					previewCleanup,
 					lockfileValidation: rootMerge?.lockfileValidation ?? null,
 					lockfileInstall: rootMerge?.lockfileInstall ?? null,
@@ -3798,6 +3939,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				},
 				[
 					{ id: 'release-plan', description: 'Record release plan', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					{ id: 'release-candidate', description: 'Run release-candidate readiness checks', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'workspace-unlink', description: 'Remove local workspace links before release', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					...(mode === 'recursive-workspace'
 						? [{ id: 'prepare-release-metadata', description: 'Rewrite stable release metadata', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true }]
@@ -3812,6 +3954,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					})),
 					{ id: 'release-root', description: 'Release market repo', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'release-root-gates', description: 'Wait for market release GitHub Actions gates', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
+					{ id: 'release-back-merge', description: 'Back-merge main into staging', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					...(mode === 'recursive-workspace'
 						? [{ id: 'cleanup-dev-tags', description: 'Clean replaced dev package tags', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true }]
 						: []),
@@ -3839,6 +3982,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 
 				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
 				assertReleaseGitHubAutomationReady(root, effectiveSelectedPackageNames);
+				const releaseCandidate = await executeJournalStep(root, workflowRun.runId, 'release-candidate', () =>
+					runReleaseCandidateForPlan('release', root, releasePlan, { allowReuse: true }));
 					if (!isResume) {
 						assertSessionBranchSafety('release', session, { requireCleanPackages: true, requireCurrentBranch: true });
 						assertCleanWorktree(root);
@@ -3910,6 +4055,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 								headSha: String(rootRelease?.releasedCommit ?? rootRepo.commitSha ?? ''),
 							},
 						].filter((gate) => gate.headSha), ciMode, { root, runId: workflowRun.runId }).then((workflowGates) => ({ workflowGates })));
+					const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
+						backMergeRootProductionIntoStaging(root, false));
 					const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 					const payload = {
 						mode,
@@ -3928,6 +4075,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						publishWait: [],
 						repos: [],
 						rootRepo,
+						releaseCandidate,
+						releaseBackMerge,
 						finalBranch: currentBranch(gitRoot) || STAGING_BRANCH,
 						pushStatus: { stagingPushed: true, productionPushed: true, tagPushed: true },
 						workspaceLinks,
@@ -4032,6 +4181,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						], ciMode, { root, runId: workflowRun.runId });
 						const publish = workflowGates.find((gate) => gate.workflow === 'publish.yml') ?? workflowGates[0] ?? null;
 						assertReleaseGitHubWorkflowSucceeded(pkg.name, publish);
+						const backMerge = backMergeProductionIntoStaging(pkg.dir, pkg.name);
 						syncBranchWithOrigin(pkg.dir, STAGING_BRANCH);
 						return {
 							commitSha: mergeResult.commitSha,
@@ -4039,6 +4189,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							tag,
 							publish,
 							workflowGates,
+							backMerge,
 						};
 					});
 					report.committed = true;
@@ -4048,6 +4199,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					report.commitSha = String(releasedPackage?.commitSha ?? report.commitSha ?? '');
 					report.publishWait = (releasedPackage?.publish as Record<string, unknown> | undefined) ?? null;
 					report.workflowGates = Array.isArray(releasedPackage?.workflowGates) ? releasedPackage.workflowGates : [];
+					report.backMerge = (releasedPackage?.backMerge as Record<string, unknown> | undefined) ?? null;
 					report.branch = STAGING_BRANCH;
 					publishWait.push({
 						name: report.name,
@@ -4140,6 +4292,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							headSha: String(rootRelease?.releasedCommit ?? rootRepo.commitSha ?? ''),
 						},
 					].filter((gate) => gate.headSha), ciMode, { root, runId: workflowRun.runId }).then((workflowGates) => ({ workflowGates })));
+				const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
+					backMergeRootProductionIntoStaging(root, true));
 				const devTagCleanupMode = (effectiveInput.devTagCleanup ?? 'safe-after-release') as DevTagCleanupMode;
 				const devTagCleanup = devTagCleanupMode === 'off'
 					? (skipJournalStep(root, workflowRun.runId, 'cleanup-dev-tags', { status: 'skipped', reason: 'disabled' }), { status: 'skipped', reason: 'disabled' })
@@ -4190,6 +4344,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					publishWait,
 					repos: packageReports,
 					rootRepo,
+					releaseCandidate,
+					releaseBackMerge,
 					finalBranch: currentBranch(gitRoot) || STAGING_BRANCH,
 					pushStatus: {
 						stagingPushed: true,

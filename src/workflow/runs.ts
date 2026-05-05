@@ -372,6 +372,18 @@ function selectedReleasePackageNames(plan: Record<string, unknown>) {
 	return selected;
 }
 
+function isReleaseGateOnlyCompletion(journal: TreeseedWorkflowRunJournal) {
+	if (journal.command !== 'release') return false;
+	const releaseRoot = journal.steps.find((step) => step.id === 'release-root');
+	if (releaseRoot?.status !== 'completed') return false;
+	const releaseRootData = stringRecord(releaseRoot.data);
+	if (typeof releaseRootData?.releasedCommit !== 'string') return false;
+	const pendingStep = journal.steps.find((step) => step.status === 'pending');
+	return pendingStep?.id === 'release-root-gates'
+		|| pendingStep?.id === 'release-back-merge'
+		|| pendingStep?.id === 'cleanup-dev-tags';
+}
+
 export function classifyWorkflowRunJournal(
 	journal: TreeseedWorkflowRunJournal,
 	options: {
@@ -414,7 +426,8 @@ export function classifyWorkflowRunJournal(
 	if (options.currentBranch && journal.session.branchName && options.currentBranch !== journal.session.branchName) {
 		reasons.push(`current branch ${options.currentBranch} does not match journal branch ${journal.session.branchName}`);
 	}
-	if (journal.command === 'release' && options.currentHeads) {
+	const releaseGateOnlyCompletion = isReleaseGateOnlyCompletion(journal);
+	if (journal.command === 'release' && options.currentHeads && !releaseGateOnlyCompletion) {
 		const releasePlan = stringRecord(journal.steps.find((step) => step.id === 'release-plan')?.data);
 		if (releasePlan) {
 			const rootHead = options.currentHeads['@treeseed/market'];
@@ -433,7 +446,11 @@ export function classifyWorkflowRunJournal(
 	}
 	return {
 		state: reasons.length > 0 ? 'stale' : 'resumable',
-		reasons: reasons.length > 0 ? reasons : ['workflow run can be resumed'],
+		reasons: reasons.length > 0
+			? reasons
+			: releaseGateOnlyCompletion
+				? ['release commits already exist; remaining release gates can be rechecked']
+				: ['workflow run can be resumed'],
 		classifiedAt: now,
 	};
 }

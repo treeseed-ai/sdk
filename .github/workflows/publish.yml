@@ -30,7 +30,15 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          for attempt in 1 2 3; do
+            if npm ci; then
+              exit 0
+            fi
+            echo "npm ci failed; retrying (${attempt}/3)."
+            sleep $((attempt * 5))
+          done
+          npm ci
 
       - name: Validate release tag version
         if: startsWith(github.ref, 'refs/tags/')

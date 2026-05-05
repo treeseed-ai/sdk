@@ -60,11 +60,14 @@ describe('package publish safeguards', () => {
 
 		describePackagePublishSafeguard(`guards ${packageName} publishing to stable semver tags`, () => {
 			const workflowSource = readFileSync(publishWorkflowPath, 'utf8');
+			const verifyWorkflowSource = readFileSync(resolve(packageRoot, '.github', 'workflows', 'verify.yml'), 'utf8');
 			const checkTagSource = readFileSync(resolve(packageRoot, 'scripts', 'assert-release-tag-version.ts'), 'utf8');
 			const publishSource = readFileSync(resolve(packageRoot, 'scripts', 'publish-package.ts'), 'utf8');
 
 			expect(workflowSource).toContain("startsWith(github.ref, 'refs/tags/')");
 			expect(workflowSource).toContain("!contains(github.ref_name, '-')");
+			expect(workflowSource).toContain('npm ci failed; retrying');
+			expect(verifyWorkflowSource).toContain('dependency install failed; retrying');
 			expect(checkTagSource).toContain('^\\d+\\.\\d+\\.\\d+$');
 			expect(publishSource).toContain('Refusing to publish');
 			expect(publishSource).toContain('^\\d+\\.\\d+\\.\\d+$');
