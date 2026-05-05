@@ -52,6 +52,80 @@ export function headCommit(repoDir, ref = 'HEAD') {
 	return runGit(['rev-parse', ref], { cwd: repoDir, capture: true }).trim();
 }
 
+function maybeHeadCommit(repoDir, ref = 'HEAD') {
+	try {
+		return headCommit(repoDir, ref);
+	} catch {
+		return null;
+	}
+}
+
+export function inspectDetachedHeadRepair(repoDir, expectedBranches = [STAGING_BRANCH, PRODUCTION_BRANCH]) {
+	const branchName = currentBranch(repoDir) || null;
+	const headSha = maybeHeadCommit(repoDir);
+	const dirty = gitStatusPorcelain(repoDir).length > 0;
+	if (branchName) {
+		return {
+			repoDir,
+			branchName,
+			detached: false,
+			dirty,
+			headSha,
+			targetBranch: branchName,
+			targetSha: headSha,
+			repairable: false,
+			repaired: false,
+			blocker: null,
+		};
+	}
+
+	for (const branch of expectedBranches) {
+		const branchSha = branchExists(repoDir, branch) ? maybeHeadCommit(repoDir, branch) : null;
+		if (headSha && branchSha && headSha === branchSha) {
+			return {
+				repoDir,
+				branchName: null,
+				detached: true,
+				dirty,
+				headSha,
+				targetBranch: branch,
+				targetSha: branchSha,
+				repairable: true,
+				repaired: false,
+				blocker: null,
+			};
+		}
+	}
+
+	const expected = expectedBranches.join(' or ');
+	return {
+		repoDir,
+		branchName: null,
+		detached: true,
+		dirty,
+		headSha,
+		targetBranch: null,
+		targetSha: null,
+		repairable: false,
+		repaired: false,
+		blocker: `Detached HEAD ${headSha ?? '(unknown)'} does not match ${expected}; review manually before continuing.`,
+	};
+}
+
+export function reattachDetachedHeadIfSafe(repoDir, expectedBranches = [STAGING_BRANCH, PRODUCTION_BRANCH]) {
+	const inspection = inspectDetachedHeadRepair(repoDir, expectedBranches);
+	if (!inspection.detached || !inspection.repairable || !inspection.targetBranch) {
+		return inspection;
+	}
+	runGit(['switch', inspection.targetBranch], { cwd: repoDir });
+	return {
+		...inspection,
+		branchName: inspection.targetBranch,
+		detached: false,
+		repaired: true,
+	};
+}
+
 export function gitWorkflowRoot(cwd = workspaceRoot()) {
 	return repoRoot(cwd);
 }

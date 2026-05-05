@@ -7,6 +7,7 @@ import { TreeseedWorkflowSdk } from '../../src/workflow.ts';
 import { TreeseedWorkflowError } from '../../src/workflow/operations.ts';
 import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, updateWorkflowRunJournal } from '../../src/workflow/runs.ts';
 import { runWorkspaceSavePreflight } from '../../src/operations/services/save-deploy-preflight.ts';
+import { inspectDetachedHeadRepair, reattachDetachedHeadIfSafe } from '../../src/operations/services/git-workflow.ts';
 import {
 	createDefaultTreeseedMachineConfig,
 	ensureTreeseedSecretSessionForConfig,
@@ -230,6 +231,85 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.cwd).toBe(work);
 		expect(result.payload.branchName).toBe('feature/demo-task');
 	});
+
+	it('reattaches a clean detached package repo at staging head', () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const sdkRoot = resolve(work, 'packages', 'sdk');
+		const stagingHead = git(sdkRoot, ['rev-parse', 'staging']);
+		git(sdkRoot, ['checkout', '--detach', stagingHead]);
+
+		const report = reattachDetachedHeadIfSafe(sdkRoot, ['staging', 'main']);
+
+		expect(report.repaired).toBe(true);
+		expect(report.targetBranch).toBe('staging');
+		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('staging');
+	});
+
+	it('reattaches a dirty detached package repo at the same staging head without losing changes', () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const sdkRoot = resolve(work, 'packages', 'sdk');
+		const stagingHead = git(sdkRoot, ['rev-parse', 'staging']);
+		git(sdkRoot, ['checkout', '--detach', stagingHead]);
+		writeFileSync(resolve(sdkRoot, 'dirty.txt'), 'preserve me\n', 'utf8');
+
+		const report = reattachDetachedHeadIfSafe(sdkRoot, ['staging', 'main']);
+
+		expect(report.repaired).toBe(true);
+		expect(report.dirty).toBe(true);
+		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('staging');
+		expect(readFileSync(resolve(sdkRoot, 'dirty.txt'), 'utf8')).toBe('preserve me\n');
+		expect(git(sdkRoot, ['status', '--porcelain'])).toContain('dirty.txt');
+	});
+
+	it('leaves divergent detached package repos untouched with a clear blocker', () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const sdkRoot = resolve(work, 'packages', 'sdk');
+		git(sdkRoot, ['checkout', '-b', 'release-temp']);
+		writeFileSync(resolve(sdkRoot, 'temp.txt'), 'not a release branch\n', 'utf8');
+		git(sdkRoot, ['add', 'temp.txt']);
+		git(sdkRoot, ['commit', '-m', 'test: divergent detached head']);
+		const tempHead = git(sdkRoot, ['rev-parse', 'HEAD']);
+		git(sdkRoot, ['checkout', '--detach', tempHead]);
+
+		const report = reattachDetachedHeadIfSafe(sdkRoot, ['staging', 'main']);
+
+		expect(report.repaired).toBe(false);
+		expect(report.repairable).toBe(false);
+		expect(report.blocker).toContain('does not match staging or main');
+		expect(git(sdkRoot, ['rev-parse', 'HEAD'])).toBe(tempHead);
+		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('');
+	});
+
+	it('treats normal package branch checkouts as a no-op', () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const sdkRoot = resolve(work, 'packages', 'sdk');
+
+		const report = inspectDetachedHeadRepair(sdkRoot, ['staging', 'main']);
+
+		expect(report.detached).toBe(false);
+		expect(report.repairable).toBe(false);
+		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('staging');
+	});
+
+	it('save repairs package repos detached at the current branch head before preflight validation', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		git(work, ['checkout', 'staging']);
+		const sdkRoot = resolve(work, 'packages', 'sdk');
+		const stagingHead = git(sdkRoot, ['rev-parse', 'staging']);
+		git(sdkRoot, ['checkout', '--detach', stagingHead]);
+		const progress: string[] = [];
+		const workflow = new TreeseedWorkflowSdk({ cwd: work, write: (line) => progress.push(line) });
+
+		const result = await workflow.save({
+			message: 'chore: checkpoint after failed release',
+			verify: false,
+			refreshPreview: false,
+		});
+
+		expect(result.ok).toBe(true);
+		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('staging');
+		expect(progress.join('\n')).toContain('[workflow][repair] Reattached @treeseed/sdk to staging');
+	}, 180000);
 
 	it('loads existing machine config secrets before evaluating status readiness', async () => {
 		const { work } = createWorkflowRepo();

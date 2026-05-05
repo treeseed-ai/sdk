@@ -3,6 +3,7 @@ import {
 	createGitHubApiClient,
 	parseGitHubRepositorySlug,
 	type GitHubApiClient,
+	type GitHubWorkflowProgressEvent,
 } from './github-api.ts';
 
 export type GitHubActionsWorkflowState = 'success' | 'failure' | 'pending' | 'missing' | 'not_pushed' | 'error';
@@ -628,11 +629,45 @@ export function formatGitHubActionsGateFailure(gate: GitHubActionsWorkflowGate, 
 	return `${gate.name} ${gate.workflow} completed with conclusion ${String(result.conclusion ?? 'unknown')} in ${repository}.${url}${jobLine}${command}`;
 }
 
+function formatElapsed(seconds: number) {
+	const safe = Math.max(0, Math.round(seconds));
+	if (safe < 60) return `${safe}s`;
+	const minutes = Math.floor(safe / 60);
+	const remainder = safe % 60;
+	return remainder === 0 ? `${minutes}m` : `${minutes}m${remainder}s`;
+}
+
+function shortSha(value: string | null | undefined) {
+	return value ? value.slice(0, 12) : '(unknown)';
+}
+
+function formatGitHubActionsGateProgress(
+	gate: GitHubActionsWorkflowGate,
+	event: GitHubWorkflowProgressEvent,
+	operation: string,
+) {
+	const prefix = `[${operation}][gate][${gate.name}] ${event.workflow}`;
+	if (event.type === 'waiting') {
+		return `${prefix} on ${event.branch ?? gate.branch}: waiting for run for ${shortSha(event.headSha ?? gate.headSha)} (${formatElapsed(event.elapsedSeconds)} elapsed)`;
+	}
+	if (event.type === 'completed') {
+		const conclusion = event.conclusion === 'success' ? 'successfully' : `with conclusion ${event.conclusion ?? 'unknown'}`;
+		const url = event.url ? `: ${event.url}` : '';
+		return `${prefix} completed ${conclusion} in ${formatElapsed(event.elapsedSeconds)}${url}`;
+	}
+	const status = event.status ?? 'waiting';
+	const url = event.url ? `: ${event.url}` : '';
+	const run = event.runId ? ` run ${event.runId}` : '';
+	return `${prefix}${run} ${status}${url} (${formatElapsed(event.elapsedSeconds)} elapsed)`;
+}
+
 export async function waitForGitHubActionsGate(
 	gate: GitHubActionsWorkflowGate,
 	options: {
 		timeoutSeconds?: number;
 		pollSeconds?: number;
+		operation?: string;
+		onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
 	} = {},
 ) {
 	const { waitForGitHubWorkflowCompletion } = await import('./github-automation.ts');
@@ -643,5 +678,8 @@ export async function waitForGitHubActionsGate(
 		branch: gate.branch,
 		timeoutSeconds: options.timeoutSeconds,
 		pollSeconds: options.pollSeconds,
+		onProgress: (event: GitHubWorkflowProgressEvent) => {
+			options.onProgress?.(formatGitHubActionsGateProgress(gate, event, options.operation ?? 'workflow'));
+		},
 	}) as Record<string, unknown>;
 }

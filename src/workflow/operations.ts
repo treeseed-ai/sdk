@@ -63,6 +63,7 @@ import {
 	PRODUCTION_BRANCH,
 	pushBranch,
 	pushHeadToBranch,
+	reattachDetachedHeadIfSafe,
 	remoteBranchExists,
 	STAGING_BRANCH,
 	squashMergeBranchIntoStaging,
@@ -455,7 +456,7 @@ async function waitForWorkflowGates(
 	operation: TreeseedWorkflowOperationId,
 	gates: GitHubActionsWorkflowGate[],
 	ciMode: TreeseedWorkflowCiMode,
-	options: { root?: string; runId?: string } = {},
+	options: { root?: string; runId?: string; onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void } = {},
 ) {
 	if (ciMode === 'off' || process.env.TREESEED_STAGE_WAIT_MODE === 'skip') {
 		return gates.map((gate) => skippedGitHubActionsGate(gate, ciMode === 'off' ? 'disabled' : 'stubbed'));
@@ -482,7 +483,10 @@ async function waitForWorkflowGates(
 				continue;
 			}
 		}
-		const result = await waitForGitHubActionsGate(gate);
+		const result = await waitForGitHubActionsGate(gate, {
+			operation,
+			onProgress: options.onProgress,
+		});
 		const normalized = {
 			name: gate.name,
 			...result,
@@ -2168,6 +2172,37 @@ function syncAllCheckedOutPackageRepos(root: string, branchName: string) {
 	}
 }
 
+function reattachRepairablePackageRepos(
+	root: string,
+	expectedBranches: string[] = [STAGING_BRANCH, PRODUCTION_BRANCH],
+	options: {
+		operation?: TreeseedWorkflowRunCommand;
+		onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
+		throwOnBlocker?: boolean;
+	} = {},
+) {
+	const reports = checkedOutWorkspacePackageRepos(root).map((pkg) => {
+		const report = reattachDetachedHeadIfSafe(pkg.dir, expectedBranches);
+		if (report.repaired && report.targetBranch && report.headSha) {
+			options.onProgress?.(`[workflow][repair] Reattached ${pkg.name} to ${report.targetBranch} at ${report.headSha.slice(0, 12)}.`);
+		}
+		return {
+			name: pkg.name,
+			path: pkg.dir,
+			...report,
+		};
+	});
+	const blockers = reports
+		.filter((report) => report.detached && !report.repairable)
+		.map((report) => `${report.name}: ${report.blocker ?? 'detached HEAD requires manual review.'}`);
+	if (blockers.length > 0 && options.throwOnBlocker) {
+		workflowError(options.operation ?? 'release', 'validation_failed', `Detached package heads require manual recovery:\n${blockers.join('\n')}`, {
+			details: { blockers, reports },
+		});
+	}
+	return { reports, blockers };
+}
+
 function collectReleasePackageSelection(root: string) {
 	const publishable = sortWorkspacePackages(
 		publishableWorkspacePackages(root).filter((pkg) => pkg.name?.startsWith('@treeseed/')),
@@ -2609,11 +2644,16 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 		return await withContextEnv(helpers.context.env, async () => {
 			const tenantRoot = resolveProjectRootOrThrow('switch', helpers.cwd());
 			const root = workspaceRoot(tenantRoot);
-			const session = resolveTreeseedWorkflowSession(root);
 			const branchName = String(input.branch ?? input.branchName ?? '').trim();
 			if (!branchName) {
 				workflowError('switch', 'validation_failed', 'Treeseed switch requires a branch name.');
 			}
+			reattachRepairablePackageRepos(root, [branchName, STAGING_BRANCH, PRODUCTION_BRANCH], {
+				operation: 'switch',
+				onProgress: (line, stream) => helpers.write(line, stream),
+				throwOnBlocker: true,
+			});
+			const session = resolveTreeseedWorkflowSession(root);
 			const preview = input.preview === true;
 			const executionMode = normalizeExecutionMode(input);
 			if (executionMode !== 'plan' && shouldDispatchSwitchToManagedWorktree(root, input, helpers.context.env)) {
@@ -2881,6 +2921,12 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 		return await withContextEnv(helpers.context.env, async () => {
 			const tenantRoot = resolveProjectRootOrThrow('save', helpers.cwd());
 			const root = workspaceRoot(tenantRoot);
+			const rootBranch = currentBranch(repoRoot(root)) || null;
+			reattachRepairablePackageRepos(root, [rootBranch, STAGING_BRANCH, PRODUCTION_BRANCH].filter((branch): branch is string => Boolean(branch)), {
+				operation: 'save',
+				onProgress: (line, stream) => helpers.write(line, stream),
+				throwOnBlocker: true,
+			});
 			const session = resolveTreeseedWorkflowSession(root);
 			const gitRoot = session.gitRoot;
 			const branch = session.branchName;
@@ -3867,6 +3913,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 	try {
 		return await withContextEnv(helpers.context.env, async () => {
 			const root = resolveProjectRootOrThrow('release', helpers.cwd());
+			reattachRepairablePackageRepos(root, [STAGING_BRANCH, PRODUCTION_BRANCH], {
+				operation: 'release',
+				onProgress: (line, stream) => helpers.write(line, stream),
+				throwOnBlocker: true,
+			});
 			const session = resolveTreeseedWorkflowSession(root);
 			const gitRoot = session.gitRoot;
 			const mode = session.mode;
@@ -4054,7 +4105,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 								branch: PRODUCTION_BRANCH,
 								headSha: String(rootRelease?.releasedCommit ?? rootRepo.commitSha ?? ''),
 							},
-						].filter((gate) => gate.headSha), ciMode, { root, runId: workflowRun.runId }).then((workflowGates) => ({ workflowGates })));
+						].filter((gate) => gate.headSha), ciMode, {
+							root,
+							runId: workflowRun.runId,
+							onProgress: (line, stream) => helpers.write(line, stream),
+						}).then((workflowGates) => ({ workflowGates })));
 					const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
 						backMergeRootProductionIntoStaging(root, false));
 					const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
@@ -4178,7 +4233,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 								headSha: mergeResult.commitSha,
 								branch: PRODUCTION_BRANCH,
 							},
-						], ciMode, { root, runId: workflowRun.runId });
+						], ciMode, {
+							root,
+							runId: workflowRun.runId,
+							onProgress: (line, stream) => helpers.write(line, stream),
+						});
 						const publish = workflowGates.find((gate) => gate.workflow === 'publish.yml') ?? workflowGates[0] ?? null;
 						assertReleaseGitHubWorkflowSucceeded(pkg.name, publish);
 						const backMerge = backMergeProductionIntoStaging(pkg.dir, pkg.name);
@@ -4291,7 +4350,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							branch: PRODUCTION_BRANCH,
 							headSha: String(rootRelease?.releasedCommit ?? rootRepo.commitSha ?? ''),
 						},
-					].filter((gate) => gate.headSha), ciMode, { root, runId: workflowRun.runId }).then((workflowGates) => ({ workflowGates })));
+					].filter((gate) => gate.headSha), ciMode, {
+						root,
+						runId: workflowRun.runId,
+						onProgress: (line, stream) => helpers.write(line, stream),
+					}).then((workflowGates) => ({ workflowGates })));
 				const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
 					backMergeRootProductionIntoStaging(root, true));
 				const devTagCleanupMode = (effectiveInput.devTagCleanup ?? 'safe-after-release') as DevTagCleanupMode;
@@ -4369,13 +4432,28 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				});
 			} catch (error) {
 				ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
+				const latestJournal = readWorkflowRunJournal(root, workflowRun.runId);
+				const lastCompleted = [...(latestJournal?.steps ?? [])].reverse().find((step) => step.status === 'completed') ?? null;
+				const nextPending = latestJournal?.steps.find((step) => step.status === 'pending') ?? null;
+				helpers.write(`[release][recovery] Last release phase: ${lastCompleted?.id ?? 'not-started'}; next phase: ${nextPending?.id ?? 'none'}.`, 'stderr');
+				try {
+					const repair = reattachRepairablePackageRepos(root, [STAGING_BRANCH, PRODUCTION_BRANCH], {
+						onProgress: (line, stream) => helpers.write(line, stream),
+					});
+					if (repair.blockers.length > 0) {
+						helpers.write(`[release][recovery] Package repos need manual review before retrying:\n${repair.blockers.join('\n')}`, 'stderr');
+					}
+				} catch (repairError) {
+					helpers.write(`[release][recovery] Package repo repair failed: ${repairError instanceof Error ? repairError.message : String(repairError)}`, 'stderr');
+				}
+				helpers.write(`Safe recovery: npx trsd release --${level} --json, or inspect with npx trsd recover --json.`, 'stderr');
 				failWorkflowRun(root, workflowRun.runId, error, {
 					resumable: true,
 					runId: workflowRun.runId,
 					command: 'release',
-					message: `Resume the interrupted release on ${STAGING_BRANCH}.`,
-					recoverCommand: 'treeseed recover',
-					resumeCommand: `treeseed resume ${workflowRun.runId}`,
+					message: `Resume the interrupted release on ${STAGING_BRANCH}. Last phase: ${lastCompleted?.id ?? 'not-started'}; next phase: ${nextPending?.id ?? 'none'}.`,
+					recoverCommand: 'npx trsd recover --json',
+					resumeCommand: `npx trsd release --${level} --json`,
 				});
 				throw error;
 			}

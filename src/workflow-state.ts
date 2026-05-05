@@ -24,6 +24,7 @@ import { collectCliPreflight } from './operations/services/workspace-preflight.t
 import { currentBranch, gitStatusPorcelain } from './operations/services/workspace-save.ts';
 import { hasCompleteTreeseedPackageCheckout, isWorkspaceRoot, run, workspacePackages } from './operations/services/workspace-tools.ts';
 import { inspectWorkspaceDependencyMode } from './operations/services/workspace-dependency-mode.ts';
+import { inspectDetachedHeadRepair, PRODUCTION_BRANCH, STAGING_BRANCH } from './operations/services/git-workflow.ts';
 import { classifyWorkflowRunJournals, inspectWorkflowLock } from './workflow/runs.ts';
 import { createTreeseedManagedToolEnv, resolveTreeseedToolCommand } from './managed-dependencies.ts';
 import type { TreeseedWorkflowNextStep } from './workflow.ts';
@@ -131,8 +132,11 @@ export type TreeseedWorkflowState = {
 			aligned: boolean;
 			localBranch: boolean;
 			remoteBranch: boolean;
+			detached: boolean;
+			detachedRepair: Record<string, unknown> | null;
 		}>;
 		blockers: string[];
+		warnings: string[];
 	};
 	preview: {
 		enabled: boolean;
@@ -568,6 +572,9 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 				const repoBranch = currentBranch(pkg.dir) || null;
 				const dirty = gitStatusPorcelain(pkg.dir).length > 0;
 				const expectedBranch = branchName;
+				const detachedRepair = repoBranch
+					? null
+					: inspectDetachedHeadRepair(pkg.dir, [expectedBranch, STAGING_BRANCH, PRODUCTION_BRANCH].filter((branch): branch is string => Boolean(branch)));
 				let localBranch = false;
 				if (expectedBranch) {
 					if (repoBranch === expectedBranch) {
@@ -590,13 +597,36 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 					aligned: expectedBranch ? repoBranch === expectedBranch : true,
 					localBranch,
 					remoteBranch,
+					detached: repoBranch == null,
+					detachedRepair: detachedRepair
+						? {
+							repairable: detachedRepair.repairable,
+							targetBranch: detachedRepair.targetBranch,
+							headSha: detachedRepair.headSha,
+							targetSha: detachedRepair.targetSha,
+							dirty: detachedRepair.dirty,
+							blocker: detachedRepair.blocker,
+						}
+						: null,
 				};
 			})
 		: [];
 	const packageSyncBlockers: string[] = [];
+	const packageSyncWarnings: string[] = [];
 	for (const repo of packageSyncRepos) {
 		if (repo.dirty) {
 			packageSyncBlockers.push(`${repo.name} has uncommitted changes.`);
+		}
+		const detachedRepair = repo.detachedRepair;
+		if (repo.detached && detachedRepair?.repairable === true) {
+			const targetBranch = typeof detachedRepair.targetBranch === 'string' ? detachedRepair.targetBranch : branchName;
+			const dirtyNote = detachedRepair.dirty === true ? ' with local changes preserved' : '';
+			packageSyncWarnings.push(`${repo.name} is detached at ${targetBranch ?? 'an expected branch'} HEAD${dirtyNote}; workflow commands can reattach it automatically.`);
+			continue;
+		}
+		if (repo.detached && detachedRepair?.repairable !== true) {
+			packageSyncBlockers.push(`${repo.name} is detached at a commit that does not match ${branchName ?? STAGING_BRANCH}/${PRODUCTION_BRANCH}; review manually.`);
+			continue;
 		}
 		if (branchName && !repo.localBranch && !repo.remoteBranch) {
 			packageSyncBlockers.push(`${repo.name} is missing branch ${branchName}.`);
@@ -700,6 +730,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			dirty: packageSyncRepos.some((repo) => repo.dirty),
 			repos: packageSyncRepos,
 			blockers: packageSyncBlockers,
+			warnings: packageSyncWarnings,
 		},
 		preview: {
 			enabled: false,
@@ -1035,6 +1066,13 @@ export function recommendTreeseedNextSteps(state: TreeseedWorkflowState): Treese
 		return recommendations.slice(0, 3);
 	}
 	if (state.branchRole === 'staging') {
+		if (state.packageSync.mode === 'recursive-workspace' && state.packageSync.warnings.length > 0 && state.branchName) {
+			recommendations.push({
+				operation: 'release',
+				reason: 'Reattach repairable package repos automatically before continuing the release.',
+				input: { bump: 'patch' },
+			});
+		}
 		if (state.packageSync.mode === 'recursive-workspace' && state.packageSync.blockers.length > 0 && state.branchName) {
 			recommendations.push({
 				operation: 'switch',

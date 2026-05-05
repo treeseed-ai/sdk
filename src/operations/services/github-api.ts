@@ -49,6 +49,19 @@ export interface GitHubWorkflowJobSummary {
 	url: string | null;
 }
 
+export type GitHubWorkflowProgressEvent = {
+	type: 'waiting' | 'running' | 'completed';
+	repository: string;
+	workflow: string;
+	branch: string | null;
+	headSha: string | null;
+	elapsedSeconds: number;
+	runId: number | null;
+	url: string | null;
+	status: string | null;
+	conclusion: string | null;
+};
+
 function normalizeGitHubVisibility(value: string | null | undefined, fallback: GitHubRepositorySummary['visibility'] = 'private') {
 	const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
 	return normalized === 'public' || normalized === 'internal' || normalized === 'private'
@@ -718,6 +731,7 @@ export async function waitForGitHubWorkflowRunCompletion(
 		branch,
 		timeoutSeconds = 600,
 		pollSeconds = 5,
+		onProgress,
 	}: {
 		client?: GitHubApiClient;
 		workflow?: string;
@@ -725,10 +739,28 @@ export async function waitForGitHubWorkflowRunCompletion(
 		branch?: string | null;
 		timeoutSeconds?: number;
 		pollSeconds?: number;
+		onProgress?: (event: GitHubWorkflowProgressEvent) => void;
 	} = {},
 ) {
 	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	const startedAt = Date.now();
+	let lastProgress: GitHubWorkflowProgressEvent | null = null;
+	const emitProgress = (type: GitHubWorkflowProgressEvent['type'], run: GitHubWorkflowRunSummary | null = null) => {
+		const event: GitHubWorkflowProgressEvent = {
+			type,
+			repository: `${owner}/${name}`,
+			workflow,
+			branch: run?.headBranch ?? branch ?? null,
+			headSha: run?.headSha ?? headSha ?? null,
+			elapsedSeconds: Math.max(0, Math.round((Date.now() - startedAt) / 1000)),
+			runId: run?.id ?? null,
+			url: run?.url ?? null,
+			status: run?.status ?? null,
+			conclusion: run?.conclusion ?? null,
+		};
+		lastProgress = event;
+		onProgress?.(event);
+	};
 	while ((Date.now() - startedAt) < timeoutSeconds * 1000) {
 		try {
 			const listed = await client.rest.actions.listWorkflowRuns({
@@ -741,10 +773,14 @@ export async function waitForGitHubWorkflowRunCompletion(
 				.map((run) => normalizeWorkflowRun(run as Record<string, any>))
 				.find((run) => (!headSha || run.headSha === headSha) && (!branch || run.headBranch === branch));
 			if (!match?.id) {
+				emitProgress('waiting');
 				await sleep(pollSeconds * 1000);
 				continue;
 			}
 			for (;;) {
+				if ((Date.now() - startedAt) >= timeoutSeconds * 1000) {
+					break;
+				}
 				const current = await client.rest.actions.getWorkflowRun({
 					owner,
 					repo: name,
@@ -752,6 +788,7 @@ export async function waitForGitHubWorkflowRunCompletion(
 				});
 				const normalized = normalizeWorkflowRun(current.data as Record<string, any>);
 				if (normalized.status === 'completed') {
+					emitProgress('completed', normalized);
 					const jobs = await client.rest.actions.listJobsForWorkflowRun({
 						owner,
 						repo: name,
@@ -772,13 +809,17 @@ export async function waitForGitHubWorkflowRunCompletion(
 						failedJobs: normalizedJobs.filter((job) => job.conclusion && job.conclusion !== 'success' && job.conclusion !== 'skipped'),
 					};
 				}
+				emitProgress('running', normalized);
 				await sleep(pollSeconds * 1000);
 			}
 		} catch (error) {
 			throw normalizeGitHubApiError(error, `Unable to monitor GitHub workflow ${workflow} in ${owner}/${name}`);
 		}
 	}
-	throw new Error(`Timed out waiting for GitHub workflow ${workflow} in ${owner}/${name}.`);
+	const lastState = lastProgress
+		? ` Last known state: run ${lastProgress.runId ?? '(not created)'} ${lastProgress.status ?? 'waiting'}${lastProgress.conclusion ? `/${lastProgress.conclusion}` : ''}${lastProgress.url ? ` ${lastProgress.url}` : ''}.`
+		: '';
+	throw new Error(`Timed out waiting for GitHub workflow ${workflow} in ${owner}/${name}.${lastState}`);
 }
 
 export async function ensureGitHubBranchFromBase(
