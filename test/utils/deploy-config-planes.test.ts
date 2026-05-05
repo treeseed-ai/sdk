@@ -140,4 +140,50 @@ surfaces:
 			staleWhileRevalidateSeconds: 86400,
 		});
 	});
+
+	it('parses provider-aware local runtime config for surfaces and services', async () => {
+		const configPath = await writeDeployConfig(`name: Test Site
+slug: test-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+cloudflare:
+  accountId: account-123
+surfaces:
+  web:
+    provider: cloudflare
+    local:
+      runtime: provider
+services:
+  api:
+    provider: railway
+    local:
+      runtimeMode: local
+  worker:
+    provider: railway
+    local:
+      runtime_mode: auto
+`);
+
+		const config = loadTreeseedDeployConfigFromPath(configPath);
+		expect(config.surfaces?.web?.local?.runtime).toBe('provider');
+		expect(config.services?.api?.local?.runtime).toBe('local');
+		expect(config.services?.worker?.local?.runtime).toBe('auto');
+	});
+
+	it('rejects invalid provider-aware local runtime values', async () => {
+		const configPath = await writeDeployConfig(`name: Test Site
+slug: test-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+cloudflare:
+  accountId: account-123
+surfaces:
+  web:
+    provider: cloudflare
+    local:
+      runtime: remote
+`);
+
+		expect(() => loadTreeseedDeployConfigFromPath(configPath)).toThrow(/surfaces\.web\.local\.runtime/u);
+	});
 });

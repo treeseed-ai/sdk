@@ -1021,7 +1021,6 @@ function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRu
 	};
 
 	runStep('kv-form-guard', () => ensureKv('FORM_GUARD_KV'));
-	runStep('kv-session', () => ensureKv('SESSION'));
 	runStep('d1', ensureD1);
 	runStep('queue', ensureQueue);
 	runStep('r2', ensureR2Bucket);
@@ -1120,16 +1119,6 @@ function observeCloudflareUnit(input: TreeseedReconcileAdapterInput): TreeseedOb
 				warnings: [],
 			};
 		}
-		case 'kv-session': {
-			const liveNamespace = kvNamespaces.find((entry) => entry?.title === state.kvNamespaces?.SESSION?.name);
-			return {
-				exists: Boolean(liveNamespace || hasLiveResourceId(state.kvNamespaces?.SESSION?.id)),
-				status: liveNamespace ? 'ready' : 'pending',
-				live: { ...(state.kvNamespaces?.SESSION ?? {}) },
-				locators: { id: liveNamespace?.id ?? state.kvNamespaces?.SESSION?.id ?? null },
-				warnings: [],
-			};
-		}
 		case 'pages-project': {
 			const liveProject = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
 			return {
@@ -1221,9 +1210,8 @@ function verifyCloudflareUnitOnce(input: TreeseedReconcileAdapterInput, postcond
 				}),
 			]);
 		}
-		case 'kv-form-guard':
-		case 'kv-session': {
-			const binding = input.unit.unitType === 'kv-form-guard' ? 'FORM_GUARD_KV' : 'SESSION';
+		case 'kv-form-guard': {
+			const binding = 'FORM_GUARD_KV';
 			const namespace = state.kvNamespaces?.[binding];
 			const live = getCloudflareKvById(env, namespace?.id)
 				?? kvNamespaces.find((entry) => entry?.title === namespace?.name);
@@ -1408,7 +1396,6 @@ function buildCloudflareAdapter(unitType: TreeseedReconcileUnitType): TreeseedRe
 						{ key: 'database.binding', description: 'D1 binding matches desired config' },
 					];
 				case 'kv-form-guard':
-				case 'kv-session':
 					return [
 						{ key: 'kv.exists', description: 'KV namespace exists by title and id' },
 						{ key: 'kv.binding', description: 'KV binding matches desired config' },
@@ -2397,7 +2384,6 @@ export function createCloudflareReconcileAdapters() {
 		buildCloudflareAdapter('database'),
 		buildCloudflareAdapter('content-store'),
 		buildCloudflareAdapter('kv-form-guard'),
-		buildCloudflareAdapter('kv-session'),
 		buildCloudflareAdapter('pages-project'),
 		buildCloudflareAdapter('edge-worker'),
 		buildCustomDomainAdapter('custom-domain:web', 'cloudflare'),

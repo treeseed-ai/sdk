@@ -3,6 +3,12 @@ import { spawnSync } from 'node:child_process';
 const EXPECTED_PORTS = ['1025->1025/tcp', '8025->8025/tcp'];
 const KNOWN_MAILPIT_NAMES = ['treeseed_mailpit', 'karyon_docs_mailpit'];
 
+export type TreeseedMailpitContainer = {
+	name: string;
+	image: string;
+	ports: string;
+};
+
 function runDocker(args, options = {}) {
 	return spawnSync('docker', args, {
 		encoding: 'utf8',
@@ -21,7 +27,7 @@ function parseDockerPsOutput(stdout) {
 		});
 }
 
-function isCompatibleMailpitContainer(container) {
+function isCompatibleMailpitContainer(container: TreeseedMailpitContainer) {
 	const nameMatch = KNOWN_MAILPIT_NAMES.includes(container.name);
 	const imageMatch = container.image.includes('mailpit');
 	const portsMatch = EXPECTED_PORTS.every((port) => container.ports.includes(port));
@@ -48,12 +54,12 @@ export function stopKnownMailpitContainers() {
 		return true;
 	}
 
-	const stopResult = runDocker(['stop', container.name], { stdio: 'inherit' });
+	const stopResult = runDocker(['stop', container.name]);
 	if (stopResult.status !== 0) {
 		return false;
 	}
 
-	const removeResult = runDocker(['rm', '-f', container.name], { stdio: 'inherit' });
+	const removeResult = runDocker(['rm', '-f', container.name]);
 	return removeResult.status === 0;
 }
 

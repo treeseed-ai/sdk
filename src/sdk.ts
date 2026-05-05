@@ -66,7 +66,7 @@ import type {
 	TaskCreditLedgerEntry,
 	WorkdayPolicy,
 } from './sdk-types.ts';
-import { WranglerD1Database } from './wrangler-d1.ts';
+import { NodeSqliteD1Database } from './db/node-sqlite.ts';
 
 export interface AgentSdkOptions {
 	repoRoot?: string;
@@ -145,11 +145,7 @@ export class AgentSdk {
 		modelRegistry?: SdkModelRegistry;
 	}) {
 		const repoRoot = resolveSdkRepoRoot(options.repoRoot);
-		const d1 = new WranglerD1Database(
-			options.databaseName ?? 'karyon-docs-site-data',
-			repoRoot,
-			options.persistTo,
-		);
+		const d1 = new NodeSqliteD1Database(options.persistTo ?? options.databaseName ?? '.treeseed/generated/environments/local/site-data.sqlite');
 		return new AgentSdk({
 			repoRoot,
 			database: new CloudflareD1AgentDatabase(d1),

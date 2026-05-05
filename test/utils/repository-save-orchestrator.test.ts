@@ -254,6 +254,122 @@ describe('repository save orchestrator helpers', () => {
 		expect(progress.some((line) => line.startsWith('[@treeseed/demo][push] $ git push'))).toBe(true);
 	});
 
+	it('injects package summaries and submodule pointers into the root commit context', async () => {
+		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
+		try {
+			const root = mkdtempSync(join(tmpdir(), 'treeseed-save-root-context-'));
+			const rootOrigin = mkdtempSync(join(tmpdir(), 'treeseed-save-root-context-origin-'));
+			const sdkOrigin = mkdtempSync(join(tmpdir(), 'treeseed-save-root-context-sdk-origin-'));
+			const sdkDir = resolve(root, 'packages/sdk');
+			git(rootOrigin, ['init', '--bare']);
+			git(sdkOrigin, ['init', '--bare']);
+			git(root, ['init', '-b', 'staging']);
+			git(root, ['config', 'user.email', 'test@example.com']);
+			git(root, ['config', 'user.name', 'Test User']);
+			git(root, ['remote', 'add', 'origin', rootOrigin]);
+			writeJson(resolve(root, 'package.json'), {
+				name: '@treeseed/market',
+				version: '1.0.0',
+				private: true,
+				workspaces: ['packages/*'],
+				dependencies: {
+					'@treeseed/sdk': 'github:treeseed-ai/sdk#0.1.0-dev.old.20260427T000000Z',
+				},
+			});
+			writeJson(resolve(root, 'packages/core/package.json'), {
+				name: '@treeseed/core',
+				version: '0.1.0',
+				private: true,
+			});
+			writeJson(resolve(root, 'packages/cli/package.json'), {
+				name: '@treeseed/cli',
+				version: '0.1.0',
+				private: true,
+			});
+			mkdirSync(resolve(sdkDir, 'src'), { recursive: true });
+			git(sdkDir, ['init', '-b', 'staging']);
+			git(sdkDir, ['config', 'user.email', 'test@example.com']);
+			git(sdkDir, ['config', 'user.name', 'Test User']);
+			git(sdkDir, ['remote', 'add', 'origin', sdkOrigin]);
+			writeJson(resolve(sdkDir, 'package.json'), {
+				name: '@treeseed/sdk',
+				version: '0.1.0',
+				type: 'module',
+				publishConfig: { access: 'public' },
+				scripts: { 'release:publish': 'node -e "process.exit(0)"' },
+			});
+			writeFileSync(resolve(sdkDir, 'src/index.ts'), 'export const value = 1;\n', 'utf8');
+			git(sdkDir, ['add', '-A']);
+			git(sdkDir, ['commit', '-m', 'chore: initial sdk']);
+			git(sdkDir, ['push', '-u', 'origin', 'staging']);
+			const oldSdkHead = git(sdkDir, ['rev-parse', 'HEAD']);
+			git(root, ['add', '-A']);
+			git(root, ['commit', '-m', 'chore: initial root']);
+			git(root, ['push', '-u', 'origin', 'staging']);
+
+			writeFileSync(resolve(sdkDir, 'src/index.ts'), 'export const value = 2;\n', 'utf8');
+			const contexts: any[] = [];
+			const result = await runRepositorySaveOrchestrator({
+				root,
+				gitRoot: root,
+				branch: 'staging',
+				commitMessageMode: 'generated',
+				commitMessageProvider: {
+					generate(context) {
+						contexts.push(JSON.parse(JSON.stringify(context)));
+						if (context.repoName === '@treeseed/market') {
+							return [
+								'chore(deps): sync integrated package updates',
+								'',
+								'Changes:',
+								'- Updates root package metadata for finalized package commits.',
+								'',
+								'Integrated package changes:',
+								'- Records the finalized SDK package commit.',
+								'',
+								'Dependency and pointer updates:',
+								'- Updates package dependency specs and submodule pointers.',
+							].join('\n');
+						}
+						return [
+							'feat(save): record package source changes',
+							'',
+							'Changes:',
+							'- Updates package source files for the save workflow.',
+						].join('\n');
+					},
+				},
+				verifyMode: 'skip',
+			});
+
+			const sdkReport = result.repos.find((repo) => repo.name === '@treeseed/sdk');
+			const rootContext = contexts.find((context) => context.repoName === '@treeseed/market');
+			expect(sdkReport?.commitMessage?.split('\n')[0]).toBe('feat(save): record package source changes');
+			expect(rootContext?.packageChanges?.[0]).toMatchObject({
+				name: '@treeseed/sdk',
+				path: 'packages/sdk',
+				oldSha: oldSdkHead,
+				newSha: sdkReport?.commitSha,
+				tagName: sdkReport?.tagName,
+				commitSubject: 'feat(save): record package source changes',
+			});
+			expect(rootContext?.dependencyUpdates?.[0]).toMatchObject({
+				packageName: '@treeseed/sdk',
+				field: 'dependencies',
+			});
+			expect(rootContext?.dependencyUpdates?.[0]?.from).toContain('0.1.0-dev.old');
+			expect(rootContext?.dependencyUpdates?.[0]?.to).toContain(String(sdkReport?.tagName));
+			expect(rootContext?.submodulePointers?.[0]).toMatchObject({
+				path: 'packages/sdk',
+				oldSha: oldSdkHead,
+				newSha: sdkReport?.commitSha,
+				packageName: '@treeseed/sdk',
+			});
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it('finalizes a clean package with an interrupted dev version and missing tag', async () => {
 		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
 		try {

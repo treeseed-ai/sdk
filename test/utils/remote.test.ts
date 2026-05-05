@@ -19,6 +19,7 @@ import {
 import {
 	buildWranglerConfigContents,
 	createBranchPreviewDeployTarget,
+	createPersistentDeployTarget,
 	loadDeployState,
 	resolveConfiguredSurfaceBaseUrl,
 } from '../../src/operations/services/deploy.ts';
@@ -237,6 +238,28 @@ describe('remote Treeseed support', () => {
 		expect(previewWrangler).toContain('TREESEED_CONTENT_PREVIEW_ROOT_TEMPLATE = "teams/{teamId}/previews"');
 		expect(previewWrangler).toContain('[[r2_buckets]]');
 		expect(previewWrangler).toContain('binding = "TREESEED_CONTENT_BUCKET"');
+	});
+
+	it('passes local auth runtime values into generated Wrangler config', () => {
+		const tenantRoot = createTenantFixture();
+		const deployConfig = loadCliDeployConfig(tenantRoot);
+		const target = createPersistentDeployTarget('local');
+		const state = loadDeployState(tenantRoot, deployConfig, { target });
+
+		const wrangler = buildWranglerConfigContents(tenantRoot, deployConfig, state, {
+			target,
+			env: {
+				TREESEED_API_BOOTSTRAP_ADMIN_ALLOWLIST: 'admin@example.com,github:123',
+				TREESEED_AUTH_MODE: 'internal-first',
+				TREESEED_GITHUB_CLIENT_ID: 'github-client',
+				TREESEED_GITHUB_CLIENT_SECRET: 'github-secret',
+			},
+		});
+
+		expect(wrangler).toContain('TREESEED_API_BOOTSTRAP_ADMIN_ALLOWLIST = "admin@example.com,github:123"');
+		expect(wrangler).toContain('TREESEED_AUTH_MODE = "internal-first"');
+		expect(wrangler).toContain('TREESEED_GITHUB_CLIENT_ID = "github-client"');
+		expect(wrangler).toContain('TREESEED_GITHUB_CLIENT_SECRET = "github-secret"');
 	});
 
 	it('keeps dispatch local-first when no remote config is supplied', async () => {

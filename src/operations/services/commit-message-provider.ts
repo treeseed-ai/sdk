@@ -2,6 +2,32 @@ export const DEFAULT_COMMIT_AI_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 
 export type CommitMessageProviderMode = 'auto' | 'cloudflare' | 'fallback' | 'generated';
 
+export type CommitMessageDependencyUpdate = {
+	packageName: string;
+	field?: string | null;
+	from: string;
+	to: string;
+	tagName?: string | null;
+};
+
+export type CommitMessageSubmodulePointer = {
+	path: string;
+	oldSha: string | null;
+	newSha: string | null;
+	packageName?: string | null;
+};
+
+export type CommitMessagePackageChange = {
+	name: string;
+	path: string;
+	oldSha?: string | null;
+	newSha?: string | null;
+	tagName?: string | null;
+	version?: string | null;
+	dependencySpec?: string | null;
+	commitSubject?: string | null;
+};
+
 export type CommitMessageContext = {
 	repoName: string;
 	repoPath: string;
@@ -12,6 +38,9 @@ export type CommitMessageContext = {
 	diff: string;
 	plannedVersion: string | null;
 	plannedTag: string | null;
+	dependencyUpdates?: CommitMessageDependencyUpdate[];
+	submodulePointers?: CommitMessageSubmodulePointer[];
+	packageChanges?: CommitMessagePackageChange[];
 	userMessage?: string;
 };
 
@@ -33,7 +62,16 @@ type CommitMessageOptions = {
 	fetchImpl?: typeof fetch;
 };
 
+export type CommitMessageSections = {
+	intent?: string[];
+	changes: string[];
+	packageChanges?: string[];
+	dependencyUpdates?: string[];
+};
+
 const allowedTypes = new Set(['feat', 'fix', 'refactor', 'test', 'docs', 'build', 'ci', 'chore']);
+const allowedSectionHeadings = new Set(['Intent', 'Changes', 'Integrated package changes', 'Dependency and pointer updates']);
+const forbiddenSectionHeadings = new Set(['Why', 'Validation']);
 const danglingSubjectEndings = new Set([
 	'a',
 	'an',
@@ -63,6 +101,7 @@ const danglingSubjectEndings = new Set([
 ]);
 const defaultTimeoutMs = 30_000;
 const defaultMaxDiffChars = 12_000;
+const subjectMaxLength = 72;
 
 function envValue(env: NodeJS.ProcessEnv, key: string) {
 	const value = env[key];
@@ -83,6 +122,17 @@ function normalizeWhitespace(value: string) {
 	return stripControlCharacters(value).replace(/\s+/gu, ' ').trim();
 }
 
+function compactValue(value: string | null | undefined, maxLength = 120) {
+	const normalized = normalizeWhitespace(String(value ?? ''));
+	if (normalized.length <= maxLength) return normalized;
+	return `${normalized.slice(0, maxLength - 1).trim()}...`;
+}
+
+function shortSha(value: string | null | undefined) {
+	const normalized = String(value ?? '').trim();
+	return normalized ? normalized.slice(0, 12) : 'unknown';
+}
+
 function changedPaths(changedFiles: string) {
 	return changedFiles
 		.split(/\r?\n/u)
@@ -90,6 +140,41 @@ function changedPaths(changedFiles: string) {
 		.filter(Boolean)
 		.map((line) => line.replace(/^([MADRCU?!]{1,2})\s+/u, '').trim())
 		.filter(Boolean);
+}
+
+function changedFileGroups(paths: string[]) {
+	const counts = new Map<string, number>();
+	for (const path of paths) {
+		const group = path.startsWith('.github/') || path.includes('/workflows/')
+			? 'ci'
+			: /(^|\/)(test|tests|__tests__)\/|\.test\.|\.spec\./u.test(path)
+				? 'tests'
+				: path.startsWith('docs/') || /\.(md|mdx|txt)$/u.test(path)
+					? 'docs'
+					: path.includes('workflow') || path.includes('repository-save-orchestrator')
+						? 'workflow'
+						: path.includes('package-reference') || path.includes('release') || path.includes('publish')
+							? 'release'
+							: /(^|\/)(package|package-lock)\.json$/u.test(path) || path.includes('build') || path.includes('scripts/')
+								? 'build'
+								: path.includes('config') || path.endsWith('.yaml') || path.endsWith('.yml')
+									? 'config'
+									: path.startsWith('migrations/') || path.includes('/db/')
+										? 'database'
+										: path.startsWith('src/pages/') || path.startsWith('src/layouts/') || path.includes('/ui/')
+											? 'ui'
+											: path.startsWith('src/api/') || path.includes('/api/')
+												? 'api'
+												: 'source';
+		counts.set(group, (counts.get(group) ?? 0) + 1);
+	}
+	return [...counts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+}
+
+function formatGroups(paths: string[]) {
+	const groups = changedFileGroups(paths);
+	if (groups.length === 0) return 'none';
+	return groups.map(([group, count]) => `${group}: ${count}`).join(', ');
 }
 
 function conventionalParts(message: string | undefined) {
@@ -120,33 +205,9 @@ function inferType(context: CommitMessageContext) {
 function inferScope(context: CommitMessageContext) {
 	const conventional = conventionalParts(context.userMessage);
 	if (conventional?.scope) return conventional.scope;
-	const counts = new Map<string, number>();
-	for (const path of changedPaths(context.changedFiles)) {
-		const scope = path.startsWith('.github/')
-			? 'ci'
-			: path.includes('workflow') || path.includes('repository-save-orchestrator')
-				? 'workflow'
-				: path.includes('package-reference') || path.includes('publish') || path.includes('release')
-					? 'release'
-					: path.includes('save')
-						? 'save'
-						: path.includes('cli/') || path.startsWith('src/cli') || path.includes('operations-registry')
-							? 'cli'
-							: path.includes('config') || path.endsWith('.yaml') || path.endsWith('.yml')
-								? 'config'
-								: path.includes('test') || path.includes('__tests__')
-									? 'tests'
-									: path.endsWith('.md') || path.endsWith('.mdx')
-										? 'docs'
-										: path.includes('package.json') || path.includes('package-lock.json') || path.includes('build')
-											? 'build'
-											: context.branchMode === 'package-dev-save'
-												? 'save'
-												: 'workflow';
-		counts.set(scope, (counts.get(scope) ?? 0) + 1);
-	}
-	return [...counts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0]
-		?? (context.branchMode === 'package-release-main' ? 'release' : 'save');
+	if ((context.packageChanges?.length ?? 0) > 0 || (context.submodulePointers?.length ?? 0) > 0) return 'deps';
+	const groups = changedFileGroups(changedPaths(context.changedFiles));
+	return groups[0]?.[0] ?? (context.branchMode === 'package-release-main' ? 'release' : 'save');
 }
 
 function summaryFromHint(message: string | undefined) {
@@ -185,20 +246,20 @@ function repairSummaryEnding(summary: string, fallback = 'record changes') {
 function fallbackSummary(context: CommitMessageContext, type: string, scope: string) {
 	const hint = summaryFromHint(context.userMessage);
 	if (hint) return repairSummaryEnding(hint);
+	if ((context.packageChanges?.length ?? 0) > 0 || (context.submodulePointers?.length ?? 0) > 0) return 'sync integrated package updates';
+	if ((context.dependencyUpdates?.length ?? 0) > 0) return 'sync package dependency references';
 	if (context.branchMode === 'package-release-main') return 'prepare stable release';
-	if (scope === 'cli') return 'allow save without message';
-	if (scope === 'release' || scope === 'ci') return 'guard dev tags from publish';
-	if (scope === 'workflow' || scope === 'save') return 'generate save commit messages';
-	if (type === 'test') return 'cover save workflow behavior';
-	if (type === 'docs') return 'update workflow guidance';
-	if (type === 'build') return 'update package build metadata';
-	return 'record workflow changes';
+	if (scope === 'workflow' || scope === 'save') return 'update save workflow behavior';
+	if (type === 'test') return 'cover workflow behavior';
+	if (type === 'docs') return 'update workflow documentation';
+	if (type === 'build') return 'update package metadata';
+	return 'record repository changes';
 }
 
 function truncateSubject(type: string, scope: string, summary: string) {
 	const prefix = `${type}(${scope}): `;
 	const cleanSummary = repairSummaryEnding(summary);
-	const maxSummaryLength = Math.max(10, 50 - prefix.length);
+	const maxSummaryLength = Math.max(10, subjectMaxLength - prefix.length);
 	if (cleanSummary.length <= maxSummaryLength) return `${prefix}${cleanSummary}`;
 	const sliced = cleanSummary.slice(0, maxSummaryLength).replace(/\s+\S*$/u, '').trim();
 	const repaired = repairSummaryEnding(sliced || cleanSummary.slice(0, maxSummaryLength).trim());
@@ -228,60 +289,186 @@ function formatBullet(text: string) {
 	return lines.map((line, index) => `${index === 0 ? '-' : ' '} ${line}`).join('\n');
 }
 
-export function formatCommitMessage(type: string, scope: string, summary: string, bullets: string[]) {
+function normalizeSectionBullets(values: string[] | undefined) {
+	return (values ?? []).map((value) => normalizeWhitespace(value)).filter(Boolean);
+}
+
+function normalizeSections(sections: CommitMessageSections | string[]) {
+	if (Array.isArray(sections)) {
+		return { changes: normalizeSectionBullets(sections) } satisfies CommitMessageSections;
+	}
+	return {
+		intent: normalizeSectionBullets(sections.intent),
+		changes: normalizeSectionBullets(sections.changes),
+		packageChanges: normalizeSectionBullets(sections.packageChanges),
+		dependencyUpdates: normalizeSectionBullets(sections.dependencyUpdates),
+	} satisfies CommitMessageSections;
+}
+
+function formatSection(heading: string, bullets: string[]) {
+	if (bullets.length === 0) return null;
+	return [heading, ...bullets.map(formatBullet)].join('\n');
+}
+
+export function formatCommitMessage(type: string, scope: string, summary: string, sections: CommitMessageSections | string[]) {
 	const normalizedType = allowedTypes.has(type) ? type : 'chore';
 	const normalizedScope = scope.toLowerCase().replace(/[^a-z0-9-]+/gu, '-').replace(/^-+|-+$/gu, '') || 'workflow';
 	const subject = truncateSubject(normalizedType, normalizedScope, summary);
-	const body = bullets
-		.map((bullet) => normalizeWhitespace(bullet))
-		.filter(Boolean)
-		.slice(0, 3)
-		.map(formatBullet)
-		.join('\n');
+	const normalizedSections = normalizeSections(sections);
+	const changes = normalizedSections.changes.length > 0
+		? normalizedSections.changes
+		: ['Records the staged repository changes supplied to the save workflow.'];
+	const body = [
+		formatSection('Intent:', normalizedSections.intent ?? []),
+		formatSection('Changes:', changes),
+		formatSection('Integrated package changes:', normalizedSections.packageChanges ?? []),
+		formatSection('Dependency and pointer updates:', normalizedSections.dependencyUpdates ?? []),
+	].filter((section): section is string => Boolean(section)).join('\n\n');
 	return `${subject}\n\n${body}`;
+}
+
+function packageChangeBullet(change: CommitMessagePackageChange) {
+	const details = [
+		`${change.name} ${change.path}: ${shortSha(change.oldSha)} -> ${shortSha(change.newSha)}`,
+		change.tagName || change.version ? `tag ${change.tagName ?? change.version}` : null,
+		change.dependencySpec ? `dependency ${compactValue(change.dependencySpec, 96)}` : null,
+		change.commitSubject ? `child: ${compactValue(change.commitSubject, 96)}` : null,
+	].filter(Boolean);
+	return details.join(', ');
+}
+
+function dependencyUpdateBullet(update: CommitMessageDependencyUpdate) {
+	const field = update.field ? `${update.field}.` : '';
+	const tag = update.tagName ? `, previous tag ${update.tagName}` : '';
+	return `${field}${update.packageName}: ${compactValue(update.from, 90)} -> ${compactValue(update.to, 90)}${tag}`;
+}
+
+function pointerUpdateBullet(pointer: CommitMessageSubmodulePointer) {
+	const label = pointer.packageName ? `${pointer.packageName} ${pointer.path}` : pointer.path;
+	return `${label}: ${shortSha(pointer.oldSha)} -> ${shortSha(pointer.newSha)}`;
+}
+
+function fallbackChanges(context: CommitMessageContext) {
+	const paths = changedPaths(context.changedFiles);
+	const bullets: string[] = [];
+	if (paths.length > 0) {
+		bullets.push(`Updates ${paths.length} file${paths.length === 1 ? '' : 's'} across ${formatGroups(paths)}.`);
+		bullets.push(`Touches ${paths.slice(0, 6).join(', ')}${paths.length > 6 ? ', ...' : ''}.`);
+	} else {
+		bullets.push('Records the staged repository changes supplied to the save workflow.');
+	}
+	if (context.plannedTag || context.plannedVersion) {
+		bullets.push(`Plans package version/tag ${context.plannedTag ?? context.plannedVersion} for ${context.repoName}.`);
+	}
+	return bullets;
 }
 
 export function generateFallbackCommitMessage(context: CommitMessageContext) {
 	const type = inferType(context);
 	const scope = inferScope(context);
 	const summary = fallbackSummary(context, type, scope);
-	const bullets = [
-		context.userMessage?.trim()
-			? `Uses the provided save hint to describe why the ${scope} checkpoint is necessary.`
-			: `Records the current ${scope} changes in the standard save workflow.`,
-		context.branchMode === 'package-dev-save'
-			? 'Keeps development package state on Git tags without publishing stable NPM releases.'
-			: context.branchMode === 'package-release-main'
-				? 'Prepares stable package metadata for the main branch release path.'
-				: 'Preserves the project branch state for the parent workflow.',
-		'Keeps the message deterministic when AI generation is unavailable.',
+	const intent = context.userMessage?.trim()
+		? [`Save hint: ${summaryFromHint(context.userMessage) ?? normalizeWhitespace(context.userMessage)}`]
+		: [];
+	const dependencyUpdates = [
+		...(context.dependencyUpdates ?? []).map(dependencyUpdateBullet),
+		...(context.submodulePointers ?? []).map(pointerUpdateBullet),
 	];
-	return formatCommitMessage(type, scope, summary, bullets);
+	return formatCommitMessage(type, scope, summary, {
+		intent,
+		changes: fallbackChanges(context),
+		packageChanges: (context.packageChanges ?? []).map(packageChangeBullet),
+		dependencyUpdates,
+	});
 }
 
-function assertCommitTemplate(message: string) {
+type ParsedSections = {
+	intent: string[];
+	changes: string[];
+	packageChanges: string[];
+	dependencyUpdates: string[];
+};
+
+function sectionKey(heading: string) {
+	if (heading === 'Intent') return 'intent';
+	if (heading === 'Changes') return 'changes';
+	if (heading === 'Integrated package changes') return 'packageChanges';
+	if (heading === 'Dependency and pointer updates') return 'dependencyUpdates';
+	return null;
+}
+
+function parseCommitSections(lines: string[]) {
+	const sections: ParsedSections = {
+		intent: [],
+		changes: [],
+		packageChanges: [],
+		dependencyUpdates: [],
+	};
+	let current: keyof ParsedSections | null = null;
+	let lastBullet: string | null = null;
+	for (const rawLine of lines) {
+		const line = rawLine.trimEnd();
+		if (!line.trim()) continue;
+		const headingMatch = line.trim().match(/^([^:]+):$/u);
+		if (headingMatch) {
+			const heading = headingMatch[1].trim();
+			if (forbiddenSectionHeadings.has(heading)) {
+				throw new Error(`AI commit message included forbidden ${heading} section.`);
+			}
+			if (!allowedSectionHeadings.has(heading)) {
+				throw new Error(`AI commit message included unsupported ${heading} section.`);
+			}
+			current = sectionKey(heading);
+			lastBullet = null;
+			continue;
+		}
+		if (!current) {
+			throw new Error('AI commit message included body text before a supported section.');
+		}
+		if (line.trim().startsWith('- ')) {
+			lastBullet = line.trim().replace(/^-\s*/u, '');
+			sections[current].push(lastBullet);
+			continue;
+		}
+		if (/^\s+/u.test(line) && lastBullet != null) {
+			sections[current][sections[current].length - 1] = `${sections[current][sections[current].length - 1]} ${line.trim()}`;
+			continue;
+		}
+		throw new Error('AI commit message section content must use bullets.');
+	}
+	return sections;
+}
+
+function assertCommitTemplate(message: string, context: CommitMessageContext) {
 	const normalized = stripControlCharacters(message)
 		.replace(/^```(?:text)?\s*/iu, '')
 		.replace(/```\s*$/u, '')
 		.trim();
 	const [subject = '', ...rest] = normalized.split(/\r?\n/u);
-	if (!/^(feat|fix|refactor|test|docs|build|ci|chore)\([a-z0-9-]+\): .+/u.test(subject.trim())) {
+	const subjectMatch = subject.trim().match(/^(feat|fix|refactor|test|docs|build|ci|chore)\(([a-z0-9-]+)\):\s*(.+)$/u);
+	if (!subjectMatch) {
 		throw new Error('AI commit message did not use the required subject template.');
 	}
-	const summary = subject.replace(/^[a-z]+\([^)]+\):\s*/u, '').trim();
+	const [, type, scope, summary] = subjectMatch;
 	if (danglingSubjectEndings.has(lastSummaryWord(summary))) {
 		throw new Error('AI commit message subject appears truncated.');
 	}
-	const bullets = rest.map((line) => line.trim()).filter((line) => line.startsWith('- '));
-	if (bullets.length === 0) {
-		throw new Error('AI commit message did not include body bullets.');
+	const sections = parseCommitSections(rest);
+	if (sections.changes.length === 0) {
+		throw new Error('AI commit message did not include a Changes section.');
 	}
-	return formatCommitMessage(
-		subject.split('(')[0],
-		subject.match(/\(([^)]+)\)/u)?.[1] ?? 'workflow',
-		subject.replace(/^[a-z]+\([^)]+\):\s*/u, ''),
-		bullets.map((line) => line.replace(/^-\s*/u, '')),
-	);
+	if (sections.intent.length > 0 && !context.userMessage?.trim()) {
+		throw new Error('AI commit message included Intent without a save hint.');
+	}
+	if (context.userMessage?.trim() && sections.intent.length === 0) {
+		throw new Error('AI commit message omitted Intent for the provided save hint.');
+	}
+	return formatCommitMessage(type, scope, summary, {
+		intent: sections.intent,
+		changes: sections.changes,
+		packageChanges: sections.packageChanges,
+		dependencyUpdates: sections.dependencyUpdates,
+	});
 }
 
 function cloudflareEndpoint(accountId: string, model: string, gatewayId: string | null) {
@@ -292,33 +479,72 @@ function cloudflareEndpoint(accountId: string, model: string, gatewayId: string 
 	return `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/run/${normalizedModel}`;
 }
 
+function contextLines(context: CommitMessageContext) {
+	const paths = changedPaths(context.changedFiles);
+	const dependencyUpdates = [
+		...(context.dependencyUpdates ?? []).map(dependencyUpdateBullet),
+		...(context.submodulePointers ?? []).map(pointerUpdateBullet),
+	];
+	return [
+		'Repository context:',
+		`Repo: ${context.repoName}`,
+		`Path: ${context.repoPath}`,
+		`Branch: ${context.branch}`,
+		`Mode: ${context.branchMode}`,
+		`Kind: ${context.kind}`,
+		context.userMessage ? `User hint: ${context.userMessage}` : 'User hint: none',
+		context.plannedVersion ? `Planned version: ${context.plannedVersion}` : null,
+		context.plannedTag ? `Planned tag: ${context.plannedTag}` : null,
+		'',
+		'Changed file groups:',
+		formatGroups(paths),
+		'',
+		'Changed files:',
+		paths.length > 0 ? paths.join('\n') : '(none)',
+		'',
+		'Integrated package changes:',
+		(context.packageChanges ?? []).length > 0 ? (context.packageChanges ?? []).map(packageChangeBullet).join('\n') : '(none)',
+		'',
+		'Dependency and pointer updates:',
+		dependencyUpdates.length > 0 ? dependencyUpdates.join('\n') : '(none)',
+	].filter((line): line is string => line !== null);
+}
+
 function cloudflarePrompt(context: CommitMessageContext, maxDiffChars: number) {
 	return {
 		system: [
-			'Generate exactly one Git commit message.',
-			'Use this template:',
-			'type(scope): short imperative summary',
+			'You are an accurate repository historian generating one Git commit message.',
+			'You have no tool access. You cannot inspect files, history, tests, or prompts.',
+			'Use only the repository facts supplied in the user message.',
+			'Do not infer motivation, goals, test results, or validation results.',
+			'Do not include a Why section or a Validation section.',
 			'',
-			'- Explain why this change is necessary.',
-			'- Mention any side effects or constraints.',
-			'- Use 72 character wrap.',
+			'Required output shape:',
+			'type(scope): imperative summary',
+			'',
+			'Intent:',
+			'- Include this section only when User hint is not "none". Summarize the hint without inventing motivation.',
+			'',
+			'Changes:',
+			'- Describe concrete code, schema, config, docs, and test changes from the supplied facts.',
+			'',
+			'Integrated package changes:',
+			'- Include this section only when package changes are supplied.',
+			'',
+			'Dependency and pointer updates:',
+			'- Include this section only when dependency or submodule pointer updates are supplied.',
 			'',
 			'Use only these types: feat, fix, refactor, test, docs, build, ci, chore.',
 			'Infer scope from the changed area, not from the repository name.',
-			'Do not include repository name or package version in save messages.',
+			'Keep the subject concise; body lines should wrap at 72 characters.',
 			'Return only the commit message.',
 		].join('\n'),
 		user: [
-			`Branch: ${context.branch}`,
-			`Mode: ${context.branchMode}`,
-			`Kind: ${context.kind}`,
-			context.userMessage ? `User hint: ${context.userMessage}` : 'User hint: none',
-			context.plannedTag ? `Planned tag: ${context.plannedTag}` : null,
-			'Changed files:',
-			context.changedFiles || '(none)',
-			'Diff:',
+			...contextLines(context),
+			'',
+			'Diff (truncated; structured context above is complete):',
 			context.diff.slice(0, maxDiffChars) || '(none)',
-		].filter((line): line is string => line !== null).join('\n'),
+		].join('\n'),
 	};
 }
 
@@ -372,7 +598,7 @@ async function generateCloudflareCommitMessage(context: CommitMessageContext, en
 		if (!text) {
 			throw new Error('Cloudflare commit AI returned an empty response.');
 		}
-		return assertCommitTemplate(text);
+		return assertCommitTemplate(text, context);
 	} finally {
 		clearTimeout(timeout);
 	}
@@ -391,7 +617,7 @@ export async function generateRepositoryCommitMessage(
 	if (mode === 'generated' && options.provider) {
 		try {
 			return {
-				message: assertCommitTemplate(await Promise.resolve(options.provider.generate(context))),
+				message: assertCommitTemplate(await Promise.resolve(options.provider.generate(context)), context),
 				provider: 'cloudflare-workers-ai',
 				fallbackUsed: false,
 				error: null,

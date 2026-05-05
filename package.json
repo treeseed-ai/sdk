@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.6.16",
+  "version": "0.6.17-dev.staging.20260505T040452Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -62,6 +62,7 @@
     "esbuild": "^0.28.0",
     "extract-zip": "2.0.1",
     "github-slugger": "^2.0.0",
+    "drizzle-orm": "^0.45.2",
     "ink": "^7.0.0",
     "libsodium-wrappers": "^0.7.15",
     "mdast-util-to-string": "^4.0.0",
@@ -79,6 +80,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.6.0",
+    "drizzle-kit": "^0.31.10",
     "vitest": "^4.1.2"
   },
   "exports": {
@@ -227,13 +229,25 @@
       "types": "./dist/types/cloudflare.d.ts",
       "default": "./dist/types/cloudflare.js"
     },
-    "./wrangler-d1": {
-      "types": "./dist/wrangler-d1.d.ts",
-      "default": "./dist/wrangler-d1.js"
-    },
     "./d1-http": {
       "types": "./dist/d1-http.d.ts",
       "default": "./dist/d1-http.js"
+    },
+    "./db": {
+      "types": "./dist/db/index.d.ts",
+      "default": "./dist/db/index.js"
+    },
+    "./db/schema": {
+      "types": "./dist/db/schema.d.ts",
+      "default": "./dist/db/schema.js"
+    },
+    "./db/d1": {
+      "types": "./dist/db/d1.d.ts",
+      "default": "./dist/db/d1.js"
+    },
+    "./db/node-sqlite": {
+      "types": "./dist/db/node-sqlite.d.ts",
+      "default": "./dist/db/node-sqlite.js"
     },
     "./stores/cursor-store": {
       "types": "./dist/stores/cursor-store.d.ts",

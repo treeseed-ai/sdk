@@ -59,7 +59,6 @@ export interface CloudflareRuntime {
 	env: {
 		FORM_GUARD_KV: KvNamespaceLike;
 		SITE_DATA_DB: D1DatabaseLike;
-		SESSION: KvNamespaceLike;
 		ASSETS?: CloudflareRuntimeAssets;
 		[key: string]: unknown;
 	};
