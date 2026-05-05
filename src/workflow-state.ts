@@ -221,6 +221,12 @@ export type TreeseedWorkflowState = {
 		startupPassphraseConfigured: boolean;
 	};
 	releaseReady: boolean;
+	releaseHistory: {
+		stagingAheadMain: number | null;
+		stagingBehindMain: number | null;
+		backMerged: boolean | null;
+		detail: string;
+	};
 	readiness: {
 		local: { ready: boolean; blockers: string[]; warnings: string[] };
 		staging: { ready: boolean; blockers: string[]; warnings: string[] };
@@ -499,6 +505,41 @@ function safeHeadCommit(repoDir: string) {
 	}
 }
 
+function safeReleaseHistory(repoDir: string | null): TreeseedWorkflowState['releaseHistory'] {
+	if (!repoDir) {
+		return {
+			stagingAheadMain: null,
+			stagingBehindMain: null,
+			backMerged: null,
+			detail: 'Repository root is unavailable.',
+		};
+	}
+	try {
+		const output = run('git', ['rev-list', '--left-right', '--count', 'staging...main'], { cwd: repoDir, capture: true }).trim();
+		const [aheadRaw, behindRaw] = output.split(/\s+/u);
+		const stagingAheadMain = Number.parseInt(aheadRaw ?? '', 10);
+		const stagingBehindMain = Number.parseInt(behindRaw ?? '', 10);
+		if (!Number.isFinite(stagingAheadMain) || !Number.isFinite(stagingBehindMain)) {
+			throw new Error('invalid rev-list output');
+		}
+		return {
+			stagingAheadMain,
+			stagingBehindMain,
+			backMerged: stagingBehindMain === 0,
+			detail: stagingBehindMain === 0
+				? 'Staging contains current main release history.'
+				: `Staging is missing ${stagingBehindMain} main commit${stagingBehindMain === 1 ? '' : 's'}.`,
+		};
+	} catch {
+		return {
+			stagingAheadMain: null,
+			stagingBehindMain: null,
+			backMerged: null,
+			detail: 'Could not compare staging and main release history.',
+		};
+	}
+}
+
 function resolveLocalStatusUrl(deployConfig: ReturnType<typeof loadCliDeployConfig>) {
 	return deployConfig.surfaces?.web?.localBaseUrl
 		?? deployConfig.surfaces?.api?.localBaseUrl
@@ -741,6 +782,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			startupPassphraseConfigured: Boolean(process.env.TREESEED_KEY_PASSPHRASE?.trim()),
 		},
 		releaseReady: branchRole === 'staging' && !dirtyWorktree,
+		releaseHistory: safeReleaseHistory(root),
 		readiness: {
 			local: { ready: false, blockers: [], warnings: [] },
 			staging: { ready: false, blockers: [], warnings: [] },
