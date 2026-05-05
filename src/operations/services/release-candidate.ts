@@ -2,9 +2,11 @@ import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
-import { getGitHubAutomationMode, listGitHubSecretNames, listGitHubVariableNames, maybeResolveGitHubRepositorySlug, requiredGitHubEnvironment } from './github-automation.ts';
+import { isTreeseedEnvironmentEntryRelevant, isTreeseedEnvironmentEntryRequired } from '../../platform/environment.ts';
+import { getGitHubAutomationMode, maybeResolveGitHubRepositorySlug } from './github-automation.ts';
+import { createGitHubApiClient, listGitHubEnvironmentSecretNames, listGitHubEnvironmentVariableNames } from './github-api.ts';
 import { collectInternalDevReferenceIssues } from './package-reference-policy.ts';
-import { validateTreeseedCommandEnvironment } from './config-runtime.ts';
+import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, validateTreeseedCommandEnvironment } from './config-runtime.ts';
 import { loadDeployState } from './deploy.ts';
 import { loadCliDeployConfig } from './runtime-tools.ts';
 import { run, workspacePackages } from './workspace-tools.ts';
@@ -434,20 +436,22 @@ async function githubRemoteConfigCheck(root: string, scope: 'staging' | 'prod', 
 		return;
 	}
 	try {
-		const required = requiredGitHubEnvironment(root, { scope, purpose: 'deploy' });
+		const environment = scope === 'prod' ? 'production' : scope;
+		const expected = expectedGitHubDeployEnvironment(root, scope);
+		const client = createGitHubApiClient();
 		const [secretNames, variableNames] = await Promise.all([
-			listGitHubSecretNames(repository, root),
-			listGitHubVariableNames(repository, root),
+			listGitHubEnvironmentSecretNames(repository, environment, { client }),
+			listGitHubEnvironmentVariableNames(repository, environment, { client }),
 		]);
-		const missingSecrets = required.secrets.filter((key: string) => !secretNames.has(key));
-		const missingVariables = required.variables.filter((key: string) => !variableNames.has(key));
+		const missingSecrets = expected.secrets.filter((key: string) => !secretNames.has(key));
+		const missingVariables = expected.variables.filter((key: string) => !variableNames.has(key));
 		for (const key of missingSecrets) {
 			addFailure(failures, {
 				code: 'missing_remote_config',
 				scope,
 				provider: 'github-secret',
 				message: `${scope} GitHub secret is missing: ${key}.`,
-				details: { key, provider: 'github-secret', repository },
+				details: { key, provider: 'github-secret', repository, environment },
 			});
 		}
 		for (const key of missingVariables) {
@@ -456,7 +460,7 @@ async function githubRemoteConfigCheck(root: string, scope: 'staging' | 'prod', 
 				scope,
 				provider: 'github-variable',
 				message: `${scope} GitHub variable is missing: ${key}.`,
-				details: { key, provider: 'github-variable', repository },
+				details: { key, provider: 'github-variable', repository, environment },
 			});
 		}
 	} catch (error) {
@@ -468,6 +472,20 @@ async function githubRemoteConfigCheck(root: string, scope: 'staging' | 'prod', 
 			details: { error: error instanceof Error ? error.message : String(error) },
 		});
 	}
+}
+
+function expectedGitHubDeployEnvironment(root: string, scope: 'staging' | 'prod') {
+	const registry = collectTreeseedEnvironmentContext(root);
+	const values = resolveTreeseedMachineEnvironmentValues(root, scope);
+	const expectedEntries = registry.entries.filter((entry) => {
+		if (!isTreeseedEnvironmentEntryRelevant(entry, registry.context, scope, 'deploy')) return false;
+		if (isTreeseedEnvironmentEntryRequired(entry, registry.context, scope, 'deploy')) return true;
+		return typeof values[entry.id] === 'string' && values[entry.id].trim().length > 0;
+	});
+	return {
+		secrets: [...new Set(expectedEntries.filter((entry) => entry.targets.includes('github-secret')).map((entry) => entry.id))],
+		variables: [...new Set(expectedEntries.filter((entry) => entry.targets.includes('github-variable')).map((entry) => entry.id))],
+	};
 }
 
 function providerResourceIdentifierCheck(root: string, scope: 'staging' | 'prod', failures: ReleaseCandidateFailure[]) {
