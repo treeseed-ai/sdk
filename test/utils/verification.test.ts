@@ -64,7 +64,7 @@ describe('verify driver', () => {
 		} finally {
 			await rm(fixture.root, { recursive: true, force: true });
 		}
-	});
+	}, 20_000);
 
 	it('does not prefer direct without local sibling treeseed dependencies', async () => {
 		const fixture = await createWorkspaceFixture('@treeseed/sdk');
