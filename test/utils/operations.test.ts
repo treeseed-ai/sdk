@@ -36,6 +36,7 @@ function createTempWorkflowSite() {
 describe('treeseed operations registry', () => {
 	it('keeps workflow operations discoverable by name', () => {
 		expect(TRESEED_OPERATION_SPECS.map((spec) => spec.name)).toContain('status');
+		expect(TRESEED_OPERATION_SPECS.map((spec) => spec.name)).toContain('ci');
 		expect(TRESEED_OPERATION_SPECS.map((spec) => spec.name)).toContain('tasks');
 		expect(TRESEED_OPERATION_SPECS.map((spec) => spec.name)).toContain('release');
 	});

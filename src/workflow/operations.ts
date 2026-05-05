@@ -68,7 +68,16 @@ import {
 	squashMergeBranchIntoStaging,
 	syncBranchWithOrigin,
 } from '../operations/services/git-workflow.ts';
-import { getGitHubAutomationMode, resolveGitHubRepositorySlug, waitForGitHubWorkflowCompletion } from '../operations/services/github-automation.ts';
+import { getGitHubAutomationMode, resolveGitHubRepositorySlug } from '../operations/services/github-automation.ts';
+import {
+	formatGitHubActionsGateFailure,
+	inspectGitHubActionsVerification,
+	skippedGitHubActionsGate,
+	waitForGitHubActionsGate,
+	type GitHubActionsVerificationTarget,
+	type GitHubActionsWorkflowGate,
+	type GitHubActionsVerificationReport,
+} from '../operations/services/github-actions-verification.ts';
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin } from '../operations/services/runtime-tools.ts';
 import { runTenantDeployPreflight, runWorkspaceReleasePreflight, runWorkspaceSavePreflight } from '../operations/services/save-deploy-preflight.ts';
 import { collectCliPreflight } from '../operations/services/workspace-preflight.ts';
@@ -158,6 +167,7 @@ import {
 } from './worktrees.ts';
 import type {
 	TreeseedCloseInput,
+	TreeseedCiInput,
 	TreeseedConfigInput,
 	TreeseedDestroyInput,
 	TreeseedExportInput,
@@ -403,44 +413,6 @@ function shouldDispatchSwitchToManagedWorktree(root: string, input: TreeseedSwit
 		&& effectiveWorkflowWorktreeMode(input.worktreeMode, env) === 'on';
 }
 
-type WorkflowGate = {
-	name: string;
-	repoPath: string;
-	repository?: string;
-	workflow: string;
-	branch: string;
-	headSha: string;
-};
-
-function skippedWorkflowGate(gate: WorkflowGate, reason: string) {
-	return {
-		name: gate.name,
-		repository: gate.repository ?? null,
-		workflow: gate.workflow,
-		branch: gate.branch,
-		headSha: gate.headSha,
-		status: 'skipped',
-		reason,
-		conclusion: null,
-		runId: null,
-		url: null,
-	};
-}
-
-function workflowGateFailureMessage(gate: WorkflowGate, result: Record<string, unknown>) {
-	const repository = String(result.repository ?? gate.repository ?? gate.name);
-	const runId = typeof result.runId === 'number' || typeof result.runId === 'string' ? String(result.runId) : '';
-	const url = typeof result.url === 'string' && result.url ? `\n${result.url}` : '';
-	const failedJobs = Array.isArray(result.failedJobs)
-		? result.failedJobs
-			.map((job) => stringRecord(job)?.name)
-			.filter((name): name is string => typeof name === 'string' && name.length > 0)
-		: [];
-	const jobLine = failedJobs.length > 0 ? `\nFailed jobs: ${failedJobs.join(', ')}` : '';
-	const command = runId ? `\nInspect with: gh run view ${runId} --repo ${repository} --log-failed` : '';
-	return `${gate.name} ${gate.workflow} completed with conclusion ${String(result.conclusion ?? 'unknown')} in ${repository}.${url}${jobLine}${command}`;
-}
-
 function assertHostedGitHubWorkflowAuthReady(operation: TreeseedWorkflowOperationId, root: string) {
 	if (getGitHubAutomationMode() === 'stub') {
 		return null;
@@ -477,12 +449,12 @@ function assertHostedGitHubWorkflowAuthReady(operation: TreeseedWorkflowOperatio
 
 async function waitForWorkflowGates(
 	operation: TreeseedWorkflowOperationId,
-	gates: WorkflowGate[],
+	gates: GitHubActionsWorkflowGate[],
 	ciMode: TreeseedWorkflowCiMode,
 	options: { root?: string; runId?: string } = {},
 ) {
 	if (ciMode === 'off' || process.env.TREESEED_STAGE_WAIT_MODE === 'skip') {
-		return gates.map((gate) => skippedWorkflowGate(gate, ciMode === 'off' ? 'disabled' : 'stubbed'));
+		return gates.map((gate) => skippedGitHubActionsGate(gate, ciMode === 'off' ? 'disabled' : 'stubbed'));
 	}
 	if (gates.length === 0) {
 		return [];
@@ -506,12 +478,7 @@ async function waitForWorkflowGates(
 				continue;
 			}
 		}
-		const result = await waitForGitHubWorkflowCompletion(gate.repoPath, {
-			repository: gate.repository,
-			workflow: gate.workflow,
-			headSha: gate.headSha,
-			branch: gate.branch,
-		}) as Record<string, unknown>;
+		const result = await waitForGitHubActionsGate(gate);
 		const normalized = {
 			name: gate.name,
 			...result,
@@ -520,7 +487,7 @@ async function waitForWorkflowGates(
 			headSha: String(result.headSha ?? gate.headSha),
 		};
 		if (normalized.status === 'completed' && normalized.conclusion !== 'success') {
-			workflowError(operation, 'github_workflow_failed', workflowGateFailureMessage(gate, normalized), {
+			workflowError(operation, 'github_workflow_failed', formatGitHubActionsGateFailure(gate, normalized), {
 				details: { gate, workflow: normalized },
 			});
 		}
@@ -902,6 +869,105 @@ function createStatusResult(cwd: string, options: TreeseedWorkflowStatusOptions 
 	return buildWorkflowResult('status', cwd, state, {
 		nextSteps: createNextSteps(state.recommendations),
 		includeFinalState: false,
+	});
+}
+
+function normalizeCiScope(value: TreeseedCiInput['scope']): 'workspace' | 'root' | 'packages' {
+	return value === 'root' || value === 'packages' ? value : 'workspace';
+}
+
+function normalizeCiLogLines(value: TreeseedCiInput['logLines']) {
+	const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number.parseInt(value, 10) : 120;
+	return Number.isFinite(parsed) ? Math.max(20, Math.min(1000, Math.floor(parsed))) : 120;
+}
+
+function normalizeCiWorkflows(input: TreeseedCiInput) {
+	const raw = input.workflows ?? input.workflow ?? [];
+	return (Array.isArray(raw) ? raw : [raw])
+		.map((workflow) => String(workflow ?? '').trim())
+		.filter(Boolean);
+}
+
+function defaultCiWorkflows(kind: 'root' | 'package', branch: string | null) {
+	if (kind === 'package') {
+		return ['verify.yml'];
+	}
+	const workflows = ['verify.yml'];
+	if (branch === STAGING_BRANCH || branch === PRODUCTION_BRANCH) {
+		workflows.push('deploy.yml');
+	}
+	return workflows;
+}
+
+function githubRepositoryForRepo(repoDir: string) {
+	try {
+		return resolveGitHubRepositorySlug(repoDir);
+	} catch {
+		return null;
+	}
+}
+
+function ciTargetForRepo(
+	repo: { name: string; path: string; branchName: string | null },
+	kind: 'root' | 'package',
+	input: TreeseedCiInput,
+	workflowOverrides: string[],
+): GitHubActionsVerificationTarget {
+	const branch = typeof input.branch === 'string' && input.branch.trim() ? input.branch.trim() : repo.branchName;
+	const workflows = workflowOverrides.length > 0 ? workflowOverrides : defaultCiWorkflows(kind, branch);
+	return {
+		name: repo.name,
+		repoPath: repo.path,
+		repository: githubRepositoryForRepo(repo.path),
+		branch,
+		headSha: branch ? headCommit(repo.path) : null,
+		workflows,
+		kind,
+	};
+}
+
+function ciTargetsForSession(session: TreeseedWorkflowSession, input: TreeseedCiInput) {
+	const scope = normalizeCiScope(input.scope);
+	const workflows = normalizeCiWorkflows(input);
+	const targets: GitHubActionsVerificationTarget[] = [];
+	if (scope === 'workspace' || scope === 'root') {
+		targets.push(ciTargetForRepo(session.rootRepo, 'root', input, workflows));
+	}
+	if (scope === 'workspace' || scope === 'packages') {
+		targets.push(...session.packageRepos.map((repo) => ciTargetForRepo(repo, 'package', input, workflows)));
+	}
+	return { scope, targets };
+}
+
+async function createCiResult(cwd: string, input: TreeseedCiInput): Promise<TreeseedWorkflowResult<TreeseedCiResult>> {
+	const session = resolveTreeseedWorkflowSession(cwd);
+	const { scope, targets } = ciTargetsForSession(session, input);
+	const strict = input.strict === true;
+	const includeLogs = input.logs === true || input.includeLogs === true;
+	const report = await inspectGitHubActionsVerification(targets, {
+		includeLogs,
+		logLines: normalizeCiLogLines(input.logLines),
+	});
+	const hasFailures = report.failures.length > 0;
+	const hasPending = report.summary.pending > 0;
+	const exitCode = hasFailures || (strict && hasPending) ? 1 : 0;
+	const payload: TreeseedCiResult = {
+		...report,
+		mode: session.mode,
+		branch: typeof input.branch === 'string' && input.branch.trim() ? input.branch.trim() : session.branchName,
+		scope,
+		strict,
+		hasFailures,
+		hasPending,
+		exitCode,
+	};
+	return buildWorkflowResult('ci', cwd, payload, {
+		includeFinalState: false,
+		summary: hasFailures
+			? 'Treeseed CI found remote GitHub Actions failures.'
+			: strict && hasPending
+				? 'Treeseed CI found pending remote GitHub Actions runs.'
+				: 'Treeseed CI status is clear.',
 	});
 }
 
@@ -2058,6 +2124,33 @@ export async function workflowStatus(helpers: WorkflowOperationHelpers, input: T
 			...input,
 			env: input.env ?? helpers.context.env,
 		});
+	});
+}
+
+export async function workflowCi(helpers: WorkflowOperationHelpers, input: TreeseedCiInput = {}) {
+	return withContextEnv(helpers.context.env, async () => {
+		try {
+			const resolved = resolveTreeseedWorkflowPaths(helpers.cwd());
+			const branch = currentBranch(repoRoot(resolved.cwd)) || null;
+			const scope = branch === PRODUCTION_BRANCH ? 'prod' : branch === STAGING_BRANCH ? 'staging' : 'local';
+			const env = resolved.tenantRoot
+				? resolveTreeseedLaunchEnvironment({
+					tenantRoot: resolved.cwd,
+					scope,
+					baseEnv: { ...process.env, ...(helpers.context.env ?? {}) },
+				})
+				: { ...process.env, ...(helpers.context.env ?? {}) };
+			return await withContextEnv(env, () => createCiResult(helpers.cwd(), input));
+		} catch (error) {
+			if (error instanceof TreeseedWorkflowError) {
+				throw error;
+			}
+			const message = error instanceof Error ? error.message : String(error);
+			if (/GH_TOKEN|GITHUB_TOKEN|GitHub authentication|authenticated|Bad credentials|Requires authentication/iu.test(message)) {
+				workflowError('ci', 'github_auth_unavailable', message, { exitCode: 2 });
+			}
+			workflowError('ci', 'validation_failed', message, { exitCode: 2 });
+		}
 	});
 }
 

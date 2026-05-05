@@ -1,10 +1,12 @@
 import { resolveTreeseedWorkflowState, type TreeseedWorkflowStatusOptions } from './workflow-state.ts';
 import { listTaskBranches } from './operations/services/git-workflow.ts';
+import type { GitHubActionsVerificationReport } from './operations/services/github-actions-verification.ts';
 import { resolveTreeseedWorkflowPaths } from './workflow/policy.ts';
 import {
 	TreeseedWorkflowError,
 	type TreeseedWorkflowErrorCode,
 	workflowClose,
+	workflowCi,
 	workflowConfig,
 	workflowDestroy,
 	workflowDev,
@@ -21,6 +23,7 @@ import {
 
 export type TreeseedWorkflowOperationId =
 	| 'status'
+	| 'ci'
 	| 'config'
 	| 'tasks'
 	| 'switch'
@@ -149,6 +152,28 @@ export type TreeseedSaveInput = {
 	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
+};
+
+export type TreeseedCiInput = {
+	failed?: boolean;
+	logs?: boolean;
+	includeLogs?: boolean;
+	logLines?: number | string;
+	scope?: 'workspace' | 'root' | 'packages';
+	workflow?: string | string[];
+	workflows?: string | string[];
+	branch?: string;
+	strict?: boolean;
+};
+
+export type TreeseedCiResult = GitHubActionsVerificationReport & {
+	mode: 'root-only' | 'recursive-workspace';
+	branch: string | null;
+	scope: 'workspace' | 'root' | 'packages';
+	strict: boolean;
+	hasFailures: boolean;
+	hasPending: boolean;
+	exitCode: number;
 };
 
 export type TreeseedCloseInput = {
@@ -295,6 +320,8 @@ export class TreeseedWorkflowSdk {
 		switch (operation) {
 			case 'status':
 				return this.status(input as TreeseedWorkflowStatusOptions);
+			case 'ci':
+				return this.ci(input as TreeseedCiInput);
 			case 'tasks':
 				return this.tasks();
 			case 'config':
@@ -326,6 +353,10 @@ export class TreeseedWorkflowSdk {
 
 	async status(input: TreeseedWorkflowStatusOptions = {}): Promise<TreeseedWorkflowResult<ReturnType<typeof resolveTreeseedWorkflowState>>> {
 		return workflowStatus(this.helpers(), input);
+	}
+
+	async ci(input: TreeseedCiInput = {}): Promise<TreeseedWorkflowResult<TreeseedCiResult>> {
+		return workflowCi(this.helpers(), input);
 	}
 
 	async tasks(): Promise<TreeseedWorkflowResult<{ tasks: TreeseedTaskBranchMetadata[]; workstreams: TreeseedWorkflowWorkstreamSummary[] }>> {
