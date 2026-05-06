@@ -127,6 +127,28 @@ export {
 } from './sdk-fields.ts';
 export { RemoteTemplateCatalogClient, parseTemplateCatalogResponse } from './template-catalog.ts';
 export {
+	MarketClient,
+	MarketApiError,
+	DEFAULT_TREESEED_MARKET_BASE_URL,
+	TREESEED_CATALOG_MARKET_API_BASE_URLS_ENV,
+	TREESEED_CENTRAL_MARKET_API_BASE_URL_ENV,
+	TREESEED_MARKET_API_BASE_URL_ENV,
+	addMarketProfile,
+	clearMarketSession,
+	listIntegratedMarketCatalog,
+	loadMarketRegistryState,
+	removeMarketProfile,
+	resolveCatalogMarketProfiles,
+	resolveDefaultCentralMarketBaseUrl,
+	resolveIntegratedCatalogArtifactDownload,
+	resolveMarketProfile,
+	resolveMarketSession,
+	setActiveMarketProfile,
+	setMarketSession,
+	verifyArtifactBytes,
+	writeMarketRegistryState,
+} from './market-client.ts';
+export {
 	TREESEED_REMOTE_CONTRACT_HEADER,
 	TREESEED_REMOTE_CONTRACT_VERSION,
 	CloudflareQueuePullClient,

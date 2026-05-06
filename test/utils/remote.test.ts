@@ -8,6 +8,14 @@ import {
 	TREESEED_REMOTE_CONTRACT_HEADER,
 	TREESEED_REMOTE_CONTRACT_VERSION,
 } from '../../src/remote.ts';
+import {
+	MarketClient,
+	addMarketProfile,
+	listIntegratedMarketCatalog,
+	loadMarketRegistryState,
+	resolveDefaultCentralMarketBaseUrl,
+	resolveMarketProfile,
+} from '../../src/market-client.ts';
 import { AgentSdk } from '../../src/sdk.ts';
 import { findDispatchCapability } from '../../src/dispatch.ts';
 import {
@@ -158,7 +166,86 @@ describe('remote Treeseed support', () => {
 		expect(readFileSync(authPath, 'utf8')).not.toContain('access-token');
 	});
 
-	it('tracks managed API and worker service state in deploy state', () => {
+		it('stores market profiles and calls market-owned v1 endpoints as a client', async () => {
+			const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+			expect(resolveDefaultCentralMarketBaseUrl({})).toBe('https://api.treeseed.ai');
+			addMarketProfile({
+			id: 'enterprise',
+			label: 'Enterprise',
+			baseUrl: 'https://enterprise.example.com/',
+			kind: 'specialized',
+			teamId: 'team-1',
+		});
+		const state = loadMarketRegistryState();
+		expect(state.profiles.map((profile) => profile.id)).toContain('central');
+		expect(resolveMarketProfile('enterprise').baseUrl).toBe('https://enterprise.example.com');
+
+		const client = new MarketClient({
+			profile: resolveMarketProfile('enterprise'),
+			accessToken: 'market-token',
+			fetchImpl: async (input, init) => {
+				calls.push({
+					url: String(input),
+					headers: Object.fromEntries(new Headers(init?.headers).entries()),
+				});
+				return new Response(JSON.stringify({
+					ok: true,
+					payload: {
+						principal: { id: 'user-1', scopes: ['market'], roles: ['member'], permissions: [] },
+						teams: [],
+					},
+				}), {
+					status: 200,
+					headers: { 'content-type': 'application/json' },
+				});
+			},
+		});
+		const response = await client.me();
+
+		expect(response.payload.principal.id).toBe('user-1');
+		expect(calls[0]?.url).toBe('https://enterprise.example.com/v1/me');
+		expect(calls[0]?.headers.authorization).toBe('Bearer market-token');
+			expect(calls[0]?.headers[TREESEED_REMOTE_CONTRACT_HEADER]).toBe(String(TREESEED_REMOTE_CONTRACT_VERSION));
+		});
+
+		it('builds an integrated catalog across configured markets and labels item sources', async () => {
+			addMarketProfile({
+				id: 'enterprise',
+				label: 'Enterprise',
+				baseUrl: 'https://enterprise.example.com',
+				kind: 'specialized',
+				teamId: 'team-1',
+			});
+			const calls: string[] = [];
+			const response = await listIntegratedMarketCatalog({
+				kind: 'template',
+				fetchImpl: async (input) => {
+					const url = String(input);
+					calls.push(url);
+					const isEnterprise = url.startsWith('https://enterprise.example.com');
+					return new Response(JSON.stringify({
+						ok: true,
+						payload: [{
+							id: isEnterprise ? 'enterprise-template' : 'central-template',
+							title: isEnterprise ? 'Enterprise Template' : 'Central Template',
+						}],
+					}), {
+						status: 200,
+						headers: { 'content-type': 'application/json' },
+					});
+				},
+			});
+
+			expect(calls).toContain('https://api.treeseed.ai/v1/catalog?kind=template');
+			expect(calls).toContain('https://enterprise.example.com/v1/catalog?kind=template');
+			expect(response.errors).toEqual([]);
+			expect(response.payload.map((item) => [item.id, item.sourceMarket.id])).toEqual([
+				['central-template', 'central'],
+				['enterprise-template', 'enterprise'],
+			]);
+		});
+
+		it('tracks managed API and worker service state in deploy state', () => {
 		const tenantRoot = createTenantFixture();
 		const deployConfig = loadCliDeployConfig(tenantRoot);
 		const state = loadDeployState(tenantRoot, deployConfig, { scope: 'staging' });

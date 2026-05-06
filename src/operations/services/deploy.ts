@@ -9,6 +9,7 @@ import { loadCliDeployConfig, resolveWranglerBin } from './runtime-tools.ts';
 
 const DEFAULT_COMPATIBILITY_DATE = '2026-04-05';
 const DEFAULT_COMPATIBILITY_FLAGS = ['nodejs_compat'];
+const DEFAULT_TREESEED_MARKET_BASE_URL = 'https://api.treeseed.ai';
 const GENERATED_ROOT = '.treeseed/generated';
 const STATE_ROOT = '.treeseed/state';
 const WORKTREE_METADATA_RELATIVE_PATH = '.treeseed/worktree.json';
@@ -332,12 +333,14 @@ export function buildPublicVars(deployConfig) {
 	const webCachePolicy = resolveTreeseedWebCachePolicy(deployConfig);
 	return {
 		TREESEED_HOSTING_KIND: deployConfig.hosting?.kind ?? 'self_hosted_project',
-		TREESEED_HOSTING_REGISTRATION: deployConfig.hosting?.registration ?? 'none',
-		TREESEED_HUB_MODE: deployConfig.hub?.mode ?? 'treeseed_hosted',
-		TREESEED_RUNTIME_MODE: deployConfig.runtime?.mode ?? 'none',
-		TREESEED_RUNTIME_REGISTRATION: deployConfig.runtime?.registration ?? 'none',
-		TREESEED_MARKET_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig),
-		TREESEED_HOSTING_TEAM_ID: contentDefaultTeamId,
+			TREESEED_HOSTING_REGISTRATION: deployConfig.hosting?.registration ?? 'none',
+			TREESEED_HUB_MODE: deployConfig.hub?.mode ?? 'treeseed_hosted',
+			TREESEED_RUNTIME_MODE: deployConfig.runtime?.mode ?? 'none',
+			TREESEED_RUNTIME_REGISTRATION: deployConfig.runtime?.registration ?? 'none',
+			TREESEED_CENTRAL_MARKET_API_BASE_URL: envOrNull('TREESEED_CENTRAL_MARKET_API_BASE_URL') ?? DEFAULT_TREESEED_MARKET_BASE_URL,
+			TREESEED_MARKET_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig),
+			TREESEED_CATALOG_MARKET_API_BASE_URLS: envOrNull('TREESEED_CATALOG_MARKET_API_BASE_URLS') ?? resolveConfiguredMarketBaseUrl(deployConfig),
+			TREESEED_HOSTING_TEAM_ID: contentDefaultTeamId,
 		TREESEED_PROJECT_ID: identity.projectId,
 		TREESEED_AGENT_EXECUTION_PROVIDER: deployConfig.providers?.agents?.execution ?? 'stub',
 		TREESEED_AGENT_REPOSITORY_PROVIDER: deployConfig.providers?.agents?.repository ?? 'stub',
@@ -1604,9 +1607,10 @@ export function resolveConfiguredCloudflareAccountId(deployConfig) {
 
 function resolveConfiguredMarketBaseUrl(deployConfig) {
 	return envOrNull('TREESEED_MARKET_API_BASE_URL')
+		?? envOrNull('TREESEED_CENTRAL_MARKET_API_BASE_URL')
 		?? deployConfig.runtime?.marketBaseUrl
 		?? deployConfig.hosting?.marketBaseUrl
-		?? '';
+		?? DEFAULT_TREESEED_MARKET_BASE_URL;
 }
 
 function resolveConfiguredPagesProjectName(deployConfig) {
