@@ -182,6 +182,50 @@ describe('environment registry overlays', () => {
 		expect(registry.entries.find((entry) => entry.id === 'GH_TOKEN')?.scopes).toEqual(['local', 'staging', 'prod']);
 	});
 
+	it('registers staging and production market defaults for primary and integrated catalog markets', async () => {
+		const tenantRoot = await createTenantFixture('entries: {}\n');
+		tempRoots.add(tenantRoot);
+		const deployConfig = {
+			name: 'Test Site',
+			slug: 'test-site',
+			siteUrl: 'https://example.com',
+			contactEmail: 'hello@example.com',
+			cloudflare: { accountId: 'account-123' },
+			services: { api: { provider: 'railway', enabled: true } },
+			__tenantRoot: tenantRoot,
+		} as any;
+		const registry = resolveTreeseedEnvironmentRegistry({
+			deployConfig,
+			plugins: [],
+		});
+
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_CENTRAL_MARKET_API_BASE_URL')).toMatchObject({
+			scopes: ['staging', 'prod'],
+			requirement: 'optional',
+		});
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_MARKET_API_BASE_URL')?.scopes).toEqual(['staging', 'prod']);
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_CATALOG_MARKET_API_BASE_URLS')).toMatchObject({
+			scopes: ['staging', 'prod'],
+			requirement: 'optional',
+		});
+		expect(getTreeseedEnvironmentSuggestedValues({
+			scope: 'prod',
+			purpose: 'config',
+			deployConfig,
+			plugins: [],
+			values: {},
+		}).TREESEED_CENTRAL_MARKET_API_BASE_URL).toBe('https://api.treeseed.ai');
+		expect(getTreeseedEnvironmentSuggestedValues({
+			scope: 'staging',
+			purpose: 'config',
+			deployConfig,
+			plugins: [],
+			values: {
+				TREESEED_CENTRAL_MARKET_API_BASE_URL: 'https://staging-market.example.com',
+			},
+		}).TREESEED_CATALOG_MARKET_API_BASE_URLS).toBe('https://staging-market.example.com');
+	});
+
 	it('suggests local GitHub repository metadata from origin when present', async () => {
 		const tenantRoot = await createTenantFixture('entries: {}\n');
 		tempRoots.add(tenantRoot);

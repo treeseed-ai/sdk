@@ -173,6 +173,7 @@ function resolveCoreEnvironmentPath() {
 }
 const CORE_ENVIRONMENT_PATH = resolveCoreEnvironmentPath();
 const TENANT_ENVIRONMENT_OVERLAY_PATH = 'src/env.yaml';
+const DEFAULT_TREESEED_MARKET_BASE_URL = 'https://api.treeseed.ai';
 
 function loadOptionalTenantConfig() {
 	try {
@@ -392,9 +393,36 @@ function resolveMarketBaseUrl(
 	_scope: TreeseedEnvironmentScope,
 	values: Record<string, string | undefined> = {},
 ) {
-	return values.TREESEED_API_BASE_URL?.trim()
-		|| context.deployConfig.services?.api?.environments?.prod?.baseUrl?.trim()
-		|| 'https://api.treeseed.ai';
+	return values.TREESEED_MARKET_API_BASE_URL?.trim()
+		|| values.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
+		|| process.env.TREESEED_MARKET_API_BASE_URL?.trim()
+		|| process.env.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
+		|| context.deployConfig.runtime?.marketBaseUrl?.trim()
+		|| context.deployConfig.hosting?.marketBaseUrl?.trim()
+		|| DEFAULT_TREESEED_MARKET_BASE_URL;
+}
+
+function resolveCentralMarketBaseUrl(
+	context: TreeseedEnvironmentContext,
+	scope: TreeseedEnvironmentScope,
+	values: Record<string, string | undefined> = {},
+) {
+	return values.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
+		|| process.env.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
+		|| resolveMarketBaseUrl(context, scope, values)
+		|| DEFAULT_TREESEED_MARKET_BASE_URL;
+}
+
+function resolveCatalogMarketBaseUrls(
+	context: TreeseedEnvironmentContext,
+	scope: TreeseedEnvironmentScope,
+	values: Record<string, string | undefined> = {},
+) {
+	return values.TREESEED_CATALOG_MARKET_API_BASE_URLS?.trim()
+		|| values.TREESEED_MARKET_API_BASE_URL?.trim()
+		|| values.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
+		|| process.env.TREESEED_CATALOG_MARKET_API_BASE_URLS?.trim()
+		|| resolveCentralMarketBaseUrl(context, scope, values);
 }
 
 function resolveHostedTeamId(context: TreeseedEnvironmentContext) {
@@ -463,7 +491,9 @@ const VALUE_RESOLVERS: NamedResolverMap = {
 	hubModeDefault: (context) => resolveHubMode(context),
 	runtimeModeDefault: (context) => resolveRuntimeMode(context),
 	runtimeRegistrationDefault: (context) => resolveRuntimeRegistration(context),
-	marketBaseUrlDefault: (context) => resolveMarketBaseUrl(context),
+	marketBaseUrlDefault: (context, scope, values) => resolveMarketBaseUrl(context, scope, values),
+	centralMarketBaseUrlDefault: (context, scope, values) => resolveCentralMarketBaseUrl(context, scope, values),
+	catalogMarketBaseUrlsDefault: (context, scope, values) => resolveCatalogMarketBaseUrls(context, scope, values),
 	hostingTeamIdDefault: (context) => resolveHostedTeamId(context),
 	hostingProjectIdDefault: (context) => resolveHostedProjectId(context),
 	railwayWorkspaceDefault: () => resolveRailwayWorkspaceDefault(),
