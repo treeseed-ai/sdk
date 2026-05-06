@@ -994,7 +994,45 @@ export function listPagesProjects(tenantRoot, env) {
 	return Array.isArray(payload?.result) ? payload.result : [];
 }
 
-function ensurePagesProjectCompatibility(accountId, projectName, env, currentProject = null) {
+export function buildCloudflarePagesFunctionBindings(state) {
+	const kvNamespaces = Object.fromEntries(
+		Object.entries(state.kvNamespaces ?? {})
+			.map(([key, namespace]) => {
+				const binding = namespace?.binding ?? key;
+				const namespaceId = namespace?.id;
+				return binding && namespaceId && !isPlaceholderResourceId(namespaceId)
+					? [binding, { namespace_id: namespaceId }]
+					: null;
+			})
+			.filter(Boolean),
+	);
+	const database = state.d1Databases?.SITE_DATA_DB;
+	const d1Databases = database?.binding && database?.databaseId && !isPlaceholderResourceId(database.databaseId)
+		? { [database.binding]: { id: database.databaseId } }
+		: {};
+	const contentBinding = state.content?.r2Binding;
+	const contentBucketName = state.content?.bucketName;
+	const r2Buckets = contentBinding && contentBucketName
+		? { [contentBinding]: { name: contentBucketName } }
+		: {};
+	return {
+		...(Object.keys(kvNamespaces).length ? { kv_namespaces: kvNamespaces } : {}),
+		...(Object.keys(d1Databases).length ? { d1_databases: d1Databases } : {}),
+		...(Object.keys(r2Buckets).length ? { r2_buckets: r2Buckets } : {}),
+	};
+}
+
+export function mergeCloudflarePagesDeploymentConfig(config = {}, bindings = {}) {
+	return Object.entries(bindings).reduce((merged, [key, value]) => ({
+		...merged,
+		[key]: {
+			...(merged[key] ?? {}),
+			...value,
+		},
+	}), { ...config });
+}
+
+function ensurePagesProjectCompatibility(accountId, projectName, env, currentProject = null, options = {}) {
 	if (!accountId || !projectName) {
 		return;
 	}
@@ -1002,11 +1040,20 @@ function ensurePagesProjectCompatibility(accountId, projectName, env, currentPro
 	const projectPath = `/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}`;
 	const latestProject = cloudflareApiRequest(projectPath, { env, allowFailure: true })?.result ?? currentProject;
 	const currentConfigs = latestProject?.deployment_configs ?? {};
+	const target = options.target;
+	const targetConfigKey = target?.kind === 'persistent' && target.scope === 'prod' ? 'production' : 'preview';
+	const bindings = options.state ? buildCloudflarePagesFunctionBindings(options.state) : {};
 	const mergeCompatibility = (config = {}) => ({
 		...config,
 		compatibility_date: config.compatibility_date ?? DEFAULT_COMPATIBILITY_DATE,
 		compatibility_flags: [...new Set([...(config.compatibility_flags ?? []), ...DEFAULT_COMPATIBILITY_FLAGS])],
 	});
+	const mergeTarget = (key, config = {}) => {
+		const compatible = mergeCompatibility(config);
+		return key === targetConfigKey && Object.keys(bindings).length
+			? mergeCloudflarePagesDeploymentConfig(compatible, bindings)
+			: compatible;
+	};
 
 	cloudflareApiRequest(
 		projectPath,
@@ -1016,8 +1063,8 @@ function ensurePagesProjectCompatibility(accountId, projectName, env, currentPro
 			body: {
 				deployment_configs: {
 					...currentConfigs,
-					preview: mergeCompatibility(currentConfigs.preview),
-					production: mergeCompatibility(currentConfigs.production),
+					preview: mergeTarget('preview', currentConfigs.preview),
+					production: mergeTarget('production', currentConfigs.production),
 				},
 			},
 		},
@@ -2099,7 +2146,7 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 		const exists = pagesProjects.find((entry) => entry?.name === current.projectName);
 		if (exists) {
 			current.url = exists.subdomain ? `https://${exists.subdomain}` : current.url ?? `https://${current.projectName}.pages.dev`;
-			ensurePagesProjectCompatibility(env.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '', current.projectName, env, exists);
+			ensurePagesProjectCompatibility(env.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '', current.projectName, env, exists, { state, target });
 			return;
 		}
 		if (dryRun) {
@@ -2120,7 +2167,7 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 			capture: true,
 			env,
 		});
-		ensurePagesProjectCompatibility(env.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '', current.projectName, env);
+		ensurePagesProjectCompatibility(env.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '', current.projectName, env, null, { state, target });
 		current.url = `https://${current.projectName}.pages.dev`;
 	};
 
@@ -2208,14 +2255,29 @@ export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
 	const queues = dryRun ? [] : listQueues(tenantRoot, env);
 	const buckets = dryRun ? [] : listR2Buckets(tenantRoot, env);
 	const pagesProjects = dryRun ? [] : listPagesProjects(tenantRoot, env);
+	const livePages = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
+	const pagesProject = dryRun || !env.CLOUDFLARE_ACCOUNT_ID || !state.pages?.projectName
+		? livePages
+		: cloudflareApiRequest(
+			`/accounts/${encodeURIComponent(env.CLOUDFLARE_ACCOUNT_ID)}/pages/projects/${encodeURIComponent(state.pages.projectName)}`,
+			{ env, allowFailure: true },
+		)?.result ?? livePages;
+	const pagesConfigKey = target.kind === 'persistent' && target.scope === 'prod' ? 'production' : 'preview';
+	const pagesConfig = pagesProject?.deployment_configs?.[pagesConfigKey] ?? {};
+	const pagesBindings = buildCloudflarePagesFunctionBindings(state);
+	const pageBindingConfigured = (configKey, binding, expected) => pagesConfig?.[configKey]?.[binding]
+		&& Object.entries(expected).every(([key, value]) => pagesConfig[configKey][binding]?.[key] === value);
 
 	const checks = {
-		pages: Boolean(state.pages?.projectName && pagesProjects.find((entry) => entry?.name === state.pages.projectName)),
+		pages: Boolean(state.pages?.projectName && (livePages || pagesProject?.name === state.pages.projectName)),
 		formGuardKv: Boolean(state.kvNamespaces?.FORM_GUARD_KV?.name && kvNamespaces.find((entry) => entry?.title === state.kvNamespaces.FORM_GUARD_KV.name)),
 		d1: Boolean(state.d1Databases?.SITE_DATA_DB?.databaseName && d1Databases.find((entry) => entry?.name === state.d1Databases.SITE_DATA_DB.databaseName)),
 		queue: Boolean(state.queues?.agentWork?.name && queues.find((entry) => queueName(entry) === state.queues.agentWork.name)),
 		dlq: !state.queues?.agentWork?.dlqName || Boolean(queues.find((entry) => queueName(entry) === state.queues.agentWork.dlqName)),
 		r2: Boolean(state.content?.bucketName && buckets.find((entry) => entry?.name === state.content.bucketName)),
+		pagesFormGuardKvBinding: !pagesBindings.kv_namespaces?.FORM_GUARD_KV || pageBindingConfigured('kv_namespaces', 'FORM_GUARD_KV', pagesBindings.kv_namespaces.FORM_GUARD_KV),
+		pagesD1Binding: !pagesBindings.d1_databases?.SITE_DATA_DB || pageBindingConfigured('d1_databases', 'SITE_DATA_DB', pagesBindings.d1_databases.SITE_DATA_DB),
+		pagesR2Binding: !state.content?.r2Binding || !pagesBindings.r2_buckets?.[state.content.r2Binding] || pageBindingConfigured('r2_buckets', state.content.r2Binding, pagesBindings.r2_buckets[state.content.r2Binding]),
 		webCache: !shouldManageCloudflareWebCacheRules(deployConfig, target) || state.webCache?.rulesManaged === true,
 	};
 
@@ -2235,7 +2297,6 @@ export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
 		const liveDlq = queues.find((entry) => queueName(entry) === state.queues.agentWork.dlqName);
 		state.queues.agentWork.dlqId = queueId(liveDlq) ?? state.queues.agentWork.dlqId ?? null;
 	}
-	const livePages = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
 	if (state.pages) {
 		const configuredWebUrl = resolveConfiguredSurfaceBaseUrl(deployConfig, target, 'web');
 		if (configuredWebUrl) {

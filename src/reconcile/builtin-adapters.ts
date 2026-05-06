@@ -3,6 +3,7 @@ import { relative, resolve } from 'node:path';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues } from '../operations/services/config-runtime.ts';
 import {
 	buildPublicVars,
+	buildCloudflarePagesFunctionBindings,
 	buildProvisioningSummary,
 	buildSecretMap,
 	cloudflareApiRequest,
@@ -17,6 +18,7 @@ import {
 	listPagesProjects,
 	listQueues,
 	listR2Buckets,
+	mergeCloudflarePagesDeploymentConfig,
 	loadDeployState,
 	queueId,
 	queueName,
@@ -770,7 +772,7 @@ function syncPagesEnvironmentVariablesForTarget(input: TreeseedReconcileAdapterI
 	const mergedDeploymentConfigs = {
 		...deploymentConfigs,
 		[branchConfigKey]: {
-			...currentBranchConfig,
+			...mergeCloudflarePagesDeploymentConfig(currentBranchConfig, buildCloudflarePagesFunctionBindings(state)),
 			env_vars: {
 				...(currentBranchConfig?.env_vars ?? {}),
 				...envVars,
@@ -1263,6 +1265,11 @@ function verifyCloudflareUnitOnce(input: TreeseedReconcileAdapterInput, postcond
 			const branchKey = input.context.target.kind === 'persistent' && input.context.target.scope === 'prod' ? 'production' : 'preview';
 			const branchConfig = project?.deployment_configs?.[branchKey] ?? {};
 			const envVars = branchConfig?.env_vars && typeof branchConfig.env_vars === 'object' ? branchConfig.env_vars : {};
+			const pageBindings = buildCloudflarePagesFunctionBindings(state);
+			const pageBindingConfigured = (configKey: string, binding: string, expected: Record<string, unknown>) => {
+				const observed = branchConfig?.[configKey]?.[binding];
+				return Boolean(observed && Object.entries(expected).every(([key, value]) => observed?.[key] === value));
+			};
 			const sync = collectCloudflareEnvironmentSync(input);
 			const expectedVars = Object.entries(sync.vars).filter(([, value]) => typeof value === 'string' && value.length > 0);
 			const checks: TreeseedUnitVerificationCheck[] = [
@@ -1297,6 +1304,33 @@ function verifyCloudflareUnitOnce(input: TreeseedReconcileAdapterInput, postcond
 					expected: true,
 					observed: Boolean(envVars[name]),
 					issues: envVars[name] ? [] : [`Pages secret ${name} is missing from the ${branchKey} deployment config.`],
+				}));
+			}
+			for (const [binding, expected] of Object.entries(pageBindings.kv_namespaces ?? {})) {
+				checks.push(verificationCheck(`pages.kv:${binding}`, `Pages KV binding ${binding} points at the expected namespace`, 'api', {
+					exists: Boolean(branchConfig?.kv_namespaces?.[binding]),
+					configured: pageBindingConfigured('kv_namespaces', binding, expected),
+					expected,
+					observed: branchConfig?.kv_namespaces?.[binding] ?? null,
+					issues: pageBindingConfigured('kv_namespaces', binding, expected) ? [] : [`Pages KV binding ${binding} is missing or points at the wrong namespace for ${branchKey}.`],
+				}));
+			}
+			for (const [binding, expected] of Object.entries(pageBindings.d1_databases ?? {})) {
+				checks.push(verificationCheck(`pages.d1:${binding}`, `Pages D1 binding ${binding} points at the expected database`, 'api', {
+					exists: Boolean(branchConfig?.d1_databases?.[binding]),
+					configured: pageBindingConfigured('d1_databases', binding, expected),
+					expected,
+					observed: branchConfig?.d1_databases?.[binding] ?? null,
+					issues: pageBindingConfigured('d1_databases', binding, expected) ? [] : [`Pages D1 binding ${binding} is missing or points at the wrong database for ${branchKey}.`],
+				}));
+			}
+			for (const [binding, expected] of Object.entries(pageBindings.r2_buckets ?? {})) {
+				checks.push(verificationCheck(`pages.r2:${binding}`, `Pages R2 binding ${binding} points at the expected bucket`, 'api', {
+					exists: Boolean(branchConfig?.r2_buckets?.[binding]),
+					configured: pageBindingConfigured('r2_buckets', binding, expected),
+					expected,
+					observed: branchConfig?.r2_buckets?.[binding] ?? null,
+					issues: pageBindingConfigured('r2_buckets', binding, expected) ? [] : [`Pages R2 binding ${binding} is missing or points at the wrong bucket for ${branchKey}.`],
 				}));
 			}
 			return summarizeVerification(input.unit.unitId, checks);
