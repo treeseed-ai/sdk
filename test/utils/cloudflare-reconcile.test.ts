@@ -24,6 +24,7 @@ const deployState = {
 	kvNamespaces: {
 		FORM_GUARD_KV: {
 			name: 'acme-docs-form-guard-staging',
+			binding: 'FORM_GUARD_KV',
 			id: 'dryrun-staging-form-guard',
 			previewId: 'dryrun-staging-form-guard-preview',
 		},
@@ -31,6 +32,7 @@ const deployState = {
 	d1Databases: {
 		SITE_DATA_DB: {
 			databaseName: 'acme-docs-site-data-staging',
+			binding: 'SITE_DATA_DB',
 			databaseId: 'dryrun-staging-site-data',
 			previewDatabaseId: 'dryrun-staging-site-data-preview',
 		},
@@ -52,6 +54,7 @@ const deployState = {
 		url: null,
 	},
 	content: {
+		r2Binding: 'TREESEED_CONTENT_BUCKET',
 		bucketName: 'acme-docs-content',
 	},
 	generatedSecrets: {},
@@ -288,6 +291,15 @@ describe('cloudflare reconcile adapters', () => {
 						TREESEED_PUBLIC_TURNSTILE_SITE_KEY: { type: 'plain_text', value: 'site-key' },
 						TREESEED_PROJECT_ID: { type: 'plain_text', value: 'docs' },
 						TREESEED_HOSTING_TEAM_ID: { type: 'plain_text', value: 'acme' },
+					},
+					kv_namespaces: {
+						FORM_GUARD_KV: { namespace_id: 'kv-form-1' },
+					},
+					d1_databases: {
+						SITE_DATA_DB: { id: 'd1-1' },
+					},
+					r2_buckets: {
+						TREESEED_CONTENT_BUCKET: { name: 'acme-docs-content' },
 					},
 				},
 			},
