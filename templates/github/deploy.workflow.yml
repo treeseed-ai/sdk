@@ -208,7 +208,6 @@ __WORKING_DIRECTORY_BLOCK__
       needs.classify.outputs.release_tag == 'true'
     permissions:
       contents: read
-      deployments: write
     environment: ${{ needs.classify.outputs.scope == 'prod' && 'production' || 'staging' }}
     env:
       TREESEED_BOOTSTRAP_MODE: auto
@@ -352,7 +351,6 @@ __WORKING_DIRECTORY_BLOCK__
       - provision
     permissions:
       contents: read
-      deployments: write
     if: |
       needs.classify.outputs.workflow_action == 'deploy_code' ||
       needs.classify.outputs.code_changed == 'true' ||
@@ -494,7 +492,6 @@ __WORKING_DIRECTORY_BLOCK__
       - deploy-code
     permissions:
       contents: read
-      deployments: write
     if: |
       always() &&
       needs.provision.result == 'success' &&
@@ -645,7 +642,6 @@ __WORKING_DIRECTORY_BLOCK__
       (needs['publish-content'].result == 'success' || needs['publish-content'].result == 'skipped')
     permissions:
       contents: read
-      deployments: write
     environment: ${{ needs.classify.outputs.scope == 'prod' && 'production' || 'staging' }}
     env:
       TREESEED_BOOTSTRAP_MODE: auto
