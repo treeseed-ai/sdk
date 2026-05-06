@@ -419,6 +419,8 @@ function resolveCatalogMarketBaseUrls(
 	values: Record<string, string | undefined> = {},
 ) {
 	return values.TREESEED_CATALOG_MARKET_API_BASE_URLS?.trim()
+		|| values.TREESEED_MARKET_API_BASE_URL?.trim()
+		|| values.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
 		|| process.env.TREESEED_CATALOG_MARKET_API_BASE_URLS?.trim()
 		|| resolveCentralMarketBaseUrl(context, scope, values);
 }
