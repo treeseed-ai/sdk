@@ -59,6 +59,9 @@ describe('github automation workflow generation', () => {
 		expect(rendered).toContain('working-directory: apps/site');
 		expect(rendered).toContain('./packages/sdk/scripts/tenant-workflow-action.ts');
 		expect(rendered).toContain('TREESEED_BOOTSTRAP_MODE: auto');
+		expect(rendered).toContain("TREESEED_CENTRAL_MARKET_API_BASE_URL: ${{ vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}");
+		expect(rendered).toContain("TREESEED_MARKET_API_BASE_URL: ${{ vars.TREESEED_MARKET_API_BASE_URL || vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}");
+		expect(rendered).toContain("TREESEED_CATALOG_MARKET_API_BASE_URLS: ${{ vars.TREESEED_CATALOG_MARKET_API_BASE_URLS || vars.TREESEED_MARKET_API_BASE_URL || vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}");
 		expect(rendered).toContain('code_changed');
 		expect(rendered).toContain('action_kind');
 		expect(rendered).toContain('migrations/*)');
