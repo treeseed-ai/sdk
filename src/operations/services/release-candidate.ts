@@ -9,7 +9,7 @@ import { collectInternalDevReferenceIssues } from './package-reference-policy.ts
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, validateTreeseedCommandEnvironment } from './config-runtime.ts';
 import { loadDeployState } from './deploy.ts';
 import { loadCliDeployConfig } from './runtime-tools.ts';
-import { run, workspacePackages } from './workspace-tools.ts';
+import { packagesWithScript, run, workspacePackages } from './workspace-tools.ts';
 
 export type ReleaseCandidateStatus = 'passed' | 'failed';
 
@@ -290,6 +290,12 @@ function rehearsalVerifyScript(root: string) {
 	return null;
 }
 
+function buildRehearsalWorkspacePackageArtifacts(root: string) {
+	for (const pkg of packagesWithScript('build:dist', root)) {
+		run('npm', ['--prefix', pkg.dir, 'run', 'build:dist'], { cwd: root, timeoutMs: 300000 });
+	}
+}
+
 function runProductionDependencyRehearsal(
 	root: string,
 	plannedVersions: Record<string, string>,
@@ -306,7 +312,8 @@ function runProductionDependencyRehearsal(
 		tempParent = copied.tempParent;
 		applyPlannedStableMetadata(copied.tempRoot, plannedVersions);
 		run('npm', ['install', '--package-lock-only', '--ignore-scripts'], { cwd: copied.tempRoot, timeoutMs: 300000 });
-		run('npm', ['ci'], { cwd: copied.tempRoot, timeoutMs: 600000 });
+		run('npm', ['ci', '--ignore-scripts'], { cwd: copied.tempRoot, timeoutMs: 600000 });
+		buildRehearsalWorkspacePackageArtifacts(copied.tempRoot);
 		const scriptName = rehearsalVerifyScript(copied.tempRoot);
 		if (scriptName) {
 			run('npm', ['run', scriptName], { cwd: copied.tempRoot, timeoutMs: 900000 });
