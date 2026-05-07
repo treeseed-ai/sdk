@@ -27,6 +27,8 @@ describe('build warning scanner', () => {
 
 		const output = execFileSync('node', [scriptPath, logPath], { encoding: 'utf8' });
 
+		expect(output).toContain('Allowed build warnings: 1');
+		expect(output).toContain('vite-browser-external-libsodium-url: 1');
 		expect(output).toContain('No unexpected build warnings detected.');
 	});
 
@@ -37,6 +39,7 @@ describe('build warning scanner', () => {
 
 		expect(result.status).toBe(1);
 		expect(result.stderr).toContain('Unexpected build warnings detected');
+		expect(result.stdout).not.toContain('Allowed build warnings');
 	});
 
 	it('still fails unexpected warnings', () => {

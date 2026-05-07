@@ -228,6 +228,7 @@ export type TreeseedWorkflowState = {
 	releaseHistory: {
 		stagingAheadMain: number | null;
 		stagingBehindMain: number | null;
+		unreleasedStagingCommits: number | null;
 		backMerged: boolean | null;
 		detail: string;
 	};
@@ -514,6 +515,7 @@ function safeReleaseHistory(repoDir: string | null): TreeseedWorkflowState['rele
 		return {
 			stagingAheadMain: null,
 			stagingBehindMain: null,
+			unreleasedStagingCommits: null,
 			backMerged: null,
 			detail: 'Repository root is unavailable.',
 		};
@@ -526,18 +528,34 @@ function safeReleaseHistory(repoDir: string | null): TreeseedWorkflowState['rele
 		if (!Number.isFinite(stagingAheadMain) || !Number.isFinite(stagingBehindMain)) {
 			throw new Error('invalid rev-list output');
 		}
+		const stagingOnlySubjects = run('git', ['log', '--format=%s', 'main..staging'], { cwd: repoDir, capture: true })
+			.split('\n')
+			.map((line) => line.trim())
+			.filter(Boolean);
+		const unreleasedStagingCommits = stagingOnlySubjects
+			.filter((subject) =>
+				subject !== 'release: sync package staging heads'
+				&& subject !== 'release: back-merge main into staging'
+				&& !subject.startsWith('release: back-merge main into staging '))
+			.length;
 		return {
 			stagingAheadMain,
 			stagingBehindMain,
+			unreleasedStagingCommits,
 			backMerged: stagingBehindMain === 0,
-			detail: stagingBehindMain === 0
-				? 'Staging contains current main release history.'
+			detail: stagingBehindMain === 0 && unreleasedStagingCommits === 0
+				? (stagingAheadMain > 0
+					? 'Staging contains current main release history and is only ahead by release sync commits.'
+					: 'Staging contains current main release history.')
+				: stagingBehindMain === 0
+					? `Staging has ${unreleasedStagingCommits} unreleased commit${unreleasedStagingCommits === 1 ? '' : 's'} and contains current main release history.`
 				: `Staging is missing ${stagingBehindMain} main commit${stagingBehindMain === 1 ? '' : 's'}.`,
 		};
 	} catch {
 		return {
 			stagingAheadMain: null,
 			stagingBehindMain: null,
+			unreleasedStagingCommits: null,
 			backMerged: null,
 			detail: 'Could not compare staging and main release history.',
 		};
@@ -696,6 +714,10 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 	if (interruptedRuns.length > 0) {
 		workflowBlockers.push(`Interrupted workflow runs detected: ${interruptedRuns.map((run) => run.runId).join(', ')}.`);
 	}
+	const releaseHistory = safeReleaseHistory(root);
+	const releaseReady = branchRole === 'staging'
+		&& !dirtyWorktree
+		&& (releaseHistory.unreleasedStagingCommits ?? 0) > 0;
 	const state: TreeseedWorkflowState = {
 		cwd: effectiveCwd,
 		workspaceRoot,
@@ -812,8 +834,8 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			idleRemainingMs: keyStatus.idleRemainingMs,
 			startupPassphraseConfigured: Boolean(process.env.TREESEED_KEY_PASSPHRASE?.trim()),
 		},
-		releaseReady: branchRole === 'staging' && !dirtyWorktree,
-		releaseHistory: safeReleaseHistory(root),
+		releaseReady,
+		releaseHistory,
 		readiness: {
 			local: { ready: false, blockers: [], warnings: [] },
 			staging: { ready: false, blockers: [], warnings: [] },
@@ -1082,11 +1104,16 @@ export function recommendTreeseedNextSteps(state: TreeseedWorkflowState): Treese
 		}
 		if (!state.persistentEnvironments.staging.initialized) {
 			recommendations.push({ operation: 'config', reason: 'Initialize the staging environment before releasing.', input: { environment: ['staging'] } });
+		} else if ((state.releaseHistory.unreleasedStagingCommits ?? 0) > 0) {
+			recommendations.push({ operation: 'release', reason: 'Promote unreleased staging commits into production.', input: { bump: 'patch' } });
+			if (state.managedServices.api.enabled) {
+				recommendations.push({ operation: 'auth:login', reason: 'Keep the local runtime authenticated to the remote API used by managed services.' });
+			}
 		} else {
-			recommendations.push({ operation: 'release', reason: 'Promote staging into main when the integration branch is ready for production.', input: { bump: 'patch' } });
-				if (state.managedServices.api.enabled) {
-					recommendations.push({ operation: 'auth:login', reason: 'Keep the local runtime authenticated to the remote API used by managed services.' });
-				}
+			recommendations.push({ operation: 'status', reason: 'Inspect staging and production state; no unreleased staging commits are pending.' });
+			if (state.managedServices.api.enabled) {
+				recommendations.push({ operation: 'auth:login', reason: 'Keep the local runtime authenticated to the remote API used by managed services.' });
+			}
 		}
 		return recommendations.slice(0, 3);
 	}

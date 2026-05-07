@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
 	createDeprecatedTaskTag,
 	listTaskBranches,
@@ -101,10 +101,37 @@ describe('git workflow task helpers', () => {
 		git(work, ['commit', '-m', 'feat: new generated metadata']);
 		git(work, ['push', '-u', 'origin', 'feature/generated-metadata']);
 
+		const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 		const result = squashMergeBranchIntoStaging(work, 'feature/generated-metadata', 'stage generated metadata', { pushTarget: false });
 
 		expect(result.committed).toBe(true);
+		expect(log).toHaveBeenCalledWith('Resolving generated package metadata reconciliation for package-lock.json, package.json.');
+		log.mockRestore();
+		expect(result.generatedMetadataReconciliation).toMatchObject({
+			targetBranch: 'staging',
+			reconciledFiles: ['package-lock.json', 'package.json'],
+			allConflictsWereGeneratedMetadata: true,
+			commitSha: result.commitSha,
+		});
 		expect(JSON.parse(git(work, ['show', 'HEAD:package.json'])).version).toBe('0.1.0-dev.new');
 		expect(git(work, ['diff', '--name-only', '--diff-filter=U'])).toBe('');
+	});
+
+	it('keeps non-generated squash conflicts as hard failures with conflicted paths', () => {
+		const { work } = makeRepo();
+
+		git(work, ['checkout', 'staging']);
+		writeFileSync(resolve(work, 'README.md'), '# staging\n', 'utf8');
+		git(work, ['add', 'README.md']);
+		git(work, ['commit', '-m', 'stage: readme edit']);
+
+		git(work, ['checkout', '-b', 'feature/readme-conflict', 'HEAD~1']);
+		writeFileSync(resolve(work, 'README.md'), '# feature\n', 'utf8');
+		git(work, ['add', 'README.md']);
+		git(work, ['commit', '-m', 'feat: readme edit']);
+
+		expect(() => squashMergeBranchIntoStaging(work, 'feature/readme-conflict', 'stage readme conflict', { pushTarget: false }))
+			.toThrow(/README\.md|CONFLICT/u);
+		expect(git(work, ['diff', '--name-only', '--diff-filter=U'])).toBe('README.md');
 	});
 });

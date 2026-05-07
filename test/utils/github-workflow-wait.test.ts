@@ -22,6 +22,8 @@ describe('GitHub workflow wait progress', () => {
 										html_url: 'https://github.com/acme/widget/actions/runs/123',
 										head_sha: '2105baac5e2c999',
 										head_branch: '0.6.23',
+										created_at: '2026-05-07T01:00:00Z',
+										updated_at: '2026-05-07T01:00:05Z',
 									}],
 							},
 						};
@@ -36,6 +38,8 @@ describe('GitHub workflow wait progress', () => {
 								html_url: 'https://github.com/acme/widget/actions/runs/123',
 								head_sha: '2105baac5e2c999',
 								head_branch: '0.6.23',
+								created_at: '2026-05-07T01:00:00Z',
+								updated_at: getCalls === 1 ? '2026-05-07T01:00:10Z' : '2026-05-07T01:00:30Z',
 							},
 						};
 					},
@@ -80,6 +84,8 @@ describe('GitHub workflow wait progress', () => {
 			runId: 123,
 			conclusion: 'success',
 			url: 'https://github.com/acme/widget/actions/runs/123',
+			createdAt: '2026-05-07T01:00:00Z',
+			updatedAt: '2026-05-07T01:00:30Z',
 		});
 		expect(events.map((event) => event.type)).toEqual(['waiting', 'running', 'completed']);
 		expect(events[0]).toMatchObject({ runId: null, status: null, branch: '0.6.23' });
