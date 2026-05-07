@@ -53,6 +53,11 @@ import {
 	workspacePackages,
 } from './workspace-tools.ts';
 import { collectDeploymentLockfileWorkspaceIssues } from './workspace-dependency-mode.ts';
+import {
+	createBuildWarningSummary,
+	formatAllowedBuildWarnings,
+	type BuildWarningPolicyOptions,
+} from './build-warning-policy.js';
 
 export type RepoKind = 'package' | 'project';
 export type RepoBranchMode = 'package-release-main' | 'package-dev-save' | 'project-save';
@@ -266,7 +271,7 @@ function runCapturedCommand(
 	phase: string,
 	command: string,
 	args: string[],
-	commandOptions: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
+	commandOptions: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; emitOutputOnSuccess?: boolean } = {},
 ) {
 	emitProgress(options, node, phase, `$ ${command} ${args.join(' ')}`);
 	const result = spawnSync(command, args, {
@@ -278,8 +283,10 @@ function runCapturedCommand(
 	});
 	const stdout = result.stdout?.trim() ?? '';
 	const stderr = result.stderr?.trim() ?? '';
-	if (stdout) emitProgress(options, node, phase, stdout);
-	if (stderr) emitProgress(options, node, phase, stderr, 'stderr');
+	if (commandOptions.emitOutputOnSuccess !== false) {
+		if (stdout) emitProgress(options, node, phase, stdout);
+		if (stderr) emitProgress(options, node, phase, stderr, 'stderr');
+	}
 	if (result.status !== 0) {
 		const message =
 			(result.error?.message ? `${result.error.message}\n` : '')
@@ -297,6 +304,23 @@ function runCapturedCommand(
 		});
 	}
 	return stdout;
+}
+
+function npmLockfilePackageCount(repoDir: string) {
+	try {
+		const lockfile = readJson(resolve(repoDir, 'package-lock.json'));
+		const packages = lockfile.packages;
+		if (packages && typeof packages === 'object' && !Array.isArray(packages)) {
+			return Math.max(0, Object.keys(packages).filter((entry) => entry !== '').length);
+		}
+		const dependencies = lockfile.dependencies;
+		if (dependencies && typeof dependencies === 'object' && !Array.isArray(dependencies)) {
+			return Object.keys(dependencies).length;
+		}
+	} catch {
+		// Fall through to an unknown count. Lockfile validation still owns failure reporting.
+	}
+	return null;
 }
 
 function isNoOpGitCommitError(error: unknown) {
@@ -340,13 +364,13 @@ function runQuietCommand(
 	return stdout;
 }
 
-async function runStreamingCommand(
+export async function runStreamingCommand(
 	node: Pick<RepositorySaveNode, 'name' | 'path'>,
 	options: Pick<RepositorySaveOptions, 'onProgress'>,
 	phase: string,
 	command: string,
 	args: string[],
-	commandOptions: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
+	commandOptions: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; buildWarningPolicy?: BuildWarningPolicyOptions | false } = {},
 ) {
 	emitProgress(options, node, phase, `$ ${command} ${args.join(' ')}`);
 	return await new Promise<{ stdout: string; stderr: string }>((resolvePromise, reject) => {
@@ -360,6 +384,7 @@ async function runStreamingCommand(
 		let stdoutRemainder = '';
 		let stderrRemainder = '';
 		let settled = false;
+		const warningSummary = commandOptions.buildWarningPolicy === false ? null : createBuildWarningSummary();
 		const flush = (chunk: string, stream: 'stdout' | 'stderr') => {
 			const combined = stream === 'stdout' ? stdoutRemainder + chunk : stderrRemainder + chunk;
 			const parts = combined.split(/\r?\n/u);
@@ -367,6 +392,10 @@ async function runStreamingCommand(
 			if (stream === 'stdout') stdoutRemainder = parts.at(-1) ?? '';
 			else stderrRemainder = parts.at(-1) ?? '';
 			for (const line of complete) {
+				const classified = warningSummary?.record(line, commandOptions.buildWarningPolicy || undefined);
+				if (classified?.kind === 'allowed') {
+					continue;
+				}
 				emitProgress(options, node, phase, line, stream);
 			}
 		};
@@ -398,9 +427,20 @@ async function runStreamingCommand(
 			if (settled) return;
 			settled = true;
 			if (timeout) clearTimeout(timeout);
-			if (stdoutRemainder) emitProgress(options, node, phase, stdoutRemainder);
-			if (stderrRemainder) emitProgress(options, node, phase, stderrRemainder, 'stderr');
+			if (stdoutRemainder) {
+				const classified = warningSummary?.record(stdoutRemainder, commandOptions.buildWarningPolicy || undefined);
+				if (classified?.kind !== 'allowed') emitProgress(options, node, phase, stdoutRemainder);
+			}
+			if (stderrRemainder) {
+				const classified = warningSummary?.record(stderrRemainder, commandOptions.buildWarningPolicy || undefined);
+				if (classified?.kind !== 'allowed') emitProgress(options, node, phase, stderrRemainder, 'stderr');
+			}
 			if (code === 0) {
+				if (warningSummary) {
+					for (const line of formatAllowedBuildWarnings(warningSummary.allowedWarnings)) {
+						emitProgress(options, node, phase, line);
+					}
+				}
 				resolvePromise({ stdout, stderr });
 				return;
 			}
@@ -982,7 +1022,10 @@ async function validateRepositoryLockfile(
 		return { status: 'skipped', command: commandText, issues: [], error: 'stubbed' };
 	}
 	try {
-		runCapturedCommand(node, options, 'lockfile', command, args, { timeoutMs: 120_000 });
+		runCapturedCommand(node, options, 'lockfile', command, args, { timeoutMs: 120_000, emitOutputOnSuccess: false });
+		const packageCount = npmLockfilePackageCount(node.path);
+		const countText = packageCount === null ? 'package-lock entries' : `${packageCount} package${packageCount === 1 ? '' : 's'}`;
+		emitProgress(options, node, 'lockfile', `Lockfile validation passed: ${countText} checked, 0 issues.`);
 		return { status: 'passed', command: commandText, issues: [], error: null };
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);

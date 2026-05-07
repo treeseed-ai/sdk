@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	createGitHubActionsGateProgressReporter,
 	formatGitHubActionsGateFailure,
 	inspectGitHubActionsVerification,
 	type GitHubActionsVerificationTarget,
@@ -165,5 +166,61 @@ describe('GitHub Actions verification', () => {
 
 		expect(message).toContain('Failed jobs: verify');
 		expect(message).toContain('gh run view 42 --repo treeseed-ai/core --log-failed');
+	});
+
+	it('compacts repeated hosted gate progress for unchanged active steps', () => {
+		let now = 0;
+		const lines: string[] = [];
+		const report = createGitHubActionsGateProgressReporter({
+			name: '@treeseed/market',
+			repoPath: '/repo',
+			repository: 'knowledge-coop/market',
+			workflow: 'deploy.yml',
+			branch: 'main',
+			headSha: 'abc123',
+		}, {
+			operation: 'release',
+			now: () => now,
+			minRepeatMs: 60_000,
+			onProgress: (line) => lines.push(line),
+		});
+		const event = {
+			type: 'running' as const,
+			repository: 'knowledge-coop/market',
+			workflow: 'deploy.yml',
+			branch: 'main',
+			headSha: 'abc123',
+			elapsedSeconds: 10,
+			runId: 123,
+			url: 'https://github.com/knowledge-coop/market/actions/runs/123',
+			status: 'in_progress',
+			conclusion: null,
+			jobs: [],
+			activeJobs: [{
+				id: 1,
+				name: 'deploy-code',
+				status: 'in_progress',
+				conclusion: null,
+				url: null,
+				startedAt: null,
+				completedAt: null,
+				steps: [{ name: 'Deploy Treeseed platform', number: 1, status: 'in_progress', conclusion: null, startedAt: null, completedAt: null }],
+			}],
+			completedJobs: [],
+			failedJobs: [],
+		};
+
+		report(event);
+		now = 10_000;
+		report({ ...event, elapsedSeconds: 20 });
+		now = 20_000;
+		report({ ...event, elapsedSeconds: 30 });
+		now = 61_000;
+		report({ ...event, elapsedSeconds: 70 });
+
+		expect(lines).toHaveLength(2);
+		expect(lines[0]).toContain('deploy.yml run 123 in_progress; active: deploy-code > Deploy Treeseed platform');
+		expect(lines[1]).toContain('still active: deploy-code > Deploy Treeseed platform');
+		expect(lines[1]).toContain('3 polls');
 	});
 });

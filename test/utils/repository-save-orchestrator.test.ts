@@ -9,6 +9,7 @@ import {
 	planRepositorySave,
 	repositorySaveWaves,
 	runRepositorySaveOrchestrator,
+	runStreamingCommand,
 	type RepositorySaveNode,
 } from '../../src/operations/services/repository-save-orchestrator.ts';
 
@@ -429,5 +430,65 @@ describe('repository save orchestrator helpers', () => {
 		} finally {
 			vi.unstubAllEnvs();
 		}
+	});
+
+	it('summarizes successful lockfile dry-run output during save', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-lockfile-summary-'));
+		const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-lockfile-summary-origin-'));
+		git(origin, ['init', '--bare']);
+		git(root, ['init', '-b', 'staging']);
+		git(root, ['config', 'user.email', 'test@example.com']);
+		git(root, ['config', 'user.name', 'Test User']);
+		git(root, ['remote', 'add', 'origin', origin]);
+		writeJson(resolve(root, 'package.json'), {
+			name: '@treeseed/market',
+			version: '1.0.0',
+			private: true,
+		});
+		writeJson(resolve(root, 'package-lock.json'), {
+			name: '@treeseed/market',
+			lockfileVersion: 3,
+			packages: {
+				'': { name: '@treeseed/market', version: '1.0.0' },
+			},
+		});
+		writeFileSync(resolve(root, 'README.md'), 'initial\n', 'utf8');
+		git(root, ['add', '-A']);
+		git(root, ['commit', '-m', 'chore: initial']);
+		git(root, ['push', '-u', 'origin', 'staging']);
+		writeFileSync(resolve(root, 'README.md'), 'initial\nupdated\n', 'utf8');
+		const progress: string[] = [];
+
+		await runRepositorySaveOrchestrator({
+			root,
+			gitRoot: root,
+			branch: 'staging',
+			commitMessageMode: 'fallback',
+			verifyMode: 'skip',
+			onProgress: (line) => progress.push(line),
+		});
+
+		expect(progress.some((line) => line.includes('Lockfile validation passed: 0 packages checked, 0 issues.'))).toBe(true);
+		expect(progress.some((line) => /\[lockfile\] add /u.test(line))).toBe(false);
+	});
+
+	it('summarizes allowed build warnings in local subprocess output', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-warning-summary-'));
+		const progress: string[] = [];
+
+		await runStreamingCommand(
+			{ name: '@treeseed/demo-warning', path: root },
+			{ onProgress: (line) => progress.push(line) },
+			'verify',
+			process.execPath,
+			['-e', 'console.log(`[WARN] [vite] [plugin vite:resolve] Module "url" has been externalized for browser compatibility, imported by "/workspace/node_modules/libsodium-sumo/dist/modules-sumo-esm/libsodium-sumo.mjs".`)'],
+		);
+
+		expect(progress.some((line) => line.includes('Allowed build warnings: 1'))).toBe(true);
+		expect(progress.some((line) => line.includes('vite-browser-external-libsodium-url: 1'))).toBe(true);
+		expect(progress.some((line) =>
+			!line.includes('$ ')
+			&& line.includes('[WARN]')
+			&& line.includes('Module "url" has been externalized'))).toBe(false);
 	});
 });
