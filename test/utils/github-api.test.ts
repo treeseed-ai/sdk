@@ -110,6 +110,54 @@ describe('github environment api helpers', () => {
 		});
 	});
 
+	it('locks GitHub Actions environments to configured branch and tag policies', async () => {
+		const client = createMockClient();
+		client.request
+			.mockResolvedValueOnce({ data: {} })
+			.mockResolvedValueOnce({
+				data: {
+					branch_policies: [
+						{ id: 1, name: 'main', type: 'branch' },
+						{ id: 2, name: 'release/*', type: 'tag' },
+					],
+				},
+			})
+			.mockResolvedValueOnce({ data: {} })
+			.mockResolvedValueOnce({ data: { id: 3, name: '*.*.*', type: 'tag' } });
+
+		await expect(ensureGitHubActionsEnvironment('owner/repo', 'production', {
+			client,
+			branchName: 'main',
+			tagName: '*.*.*',
+		})).resolves.toEqual({
+			repository: 'owner/repo',
+			environment: 'production',
+		});
+
+		expect(client.request).toHaveBeenNthCalledWith(1, 'PUT /repos/{owner}/{repo}/environments/{environment_name}', {
+			owner: 'owner',
+			repo: 'repo',
+			environment_name: 'production',
+			deployment_branch_policy: {
+				protected_branches: false,
+				custom_branch_policies: true,
+			},
+		});
+		expect(client.request).toHaveBeenNthCalledWith(3, 'DELETE /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies/{branch_policy_id}', {
+			owner: 'owner',
+			repo: 'repo',
+			environment_name: 'production',
+			branch_policy_id: 2,
+		});
+		expect(client.request).toHaveBeenNthCalledWith(4, 'POST /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies', {
+			owner: 'owner',
+			repo: 'repo',
+			environment_name: 'production',
+			name: '*.*.*',
+			type: 'tag',
+		});
+	});
+
 	it('lists environment secret and variable names', async () => {
 		const client = createMockClient();
 		client.paginate

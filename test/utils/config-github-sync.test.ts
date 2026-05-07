@@ -308,6 +308,7 @@ describe('config GitHub environment sync', () => {
 		}));
 		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'production', expect.objectContaining({
 			branchName: 'main',
+			tagName: '*.*.*',
 		}));
 		expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
 			'owner/repo',

@@ -2374,12 +2374,14 @@ export async function syncTreeseedGitHubEnvironment({
 	const githubClient = createGitHubApiClient({ env: ghEnv });
 	const environment = scope === 'prod' ? 'production' : scope;
 	const deploymentBranch = scope === 'prod' ? PRODUCTION_BRANCH : scope === 'staging' ? STAGING_BRANCH : null;
+	const deploymentTag = scope === 'prod' ? '*.*.*' : null;
 	const progress = (message: string, stream: 'stdout' | 'stderr' = 'stdout') => onProgress?.(message, stream);
 	if (!dryRun) {
 		progress(`[${scope}][github][environment] Ensuring GitHub environment ${environment} exists...`);
 		await ensureGitHubActionsEnvironment(repository, environment, {
 			client: githubClient,
 			branchName: deploymentBranch,
+			tagName: deploymentTag,
 		});
 	}
 	progress(`[${scope}][github][sync] Loading existing GitHub secrets and variables...`);
