@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
 	ensureStandardizedGitHubWorkflows,
 	renderDeployWorkflow,
@@ -49,10 +49,6 @@ turnstile:
 }
 
 describe('github automation workflow generation', () => {
-	afterEach(() => {
-		delete process.env.TREESEED_GITHUB_AUTOMATION_MODE;
-	});
-
 	it('renders the standardized deploy workflow with the tenant deploy entrypoint', () => {
 		const rendered = renderDeployWorkflow({ workingDirectory: 'apps/site' });
 		expect(rendered).toContain('Treeseed Deploy');

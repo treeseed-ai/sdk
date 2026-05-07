@@ -70,7 +70,7 @@ import {
 	squashMergeBranchIntoStaging,
 	syncBranchWithOrigin,
 } from '../operations/services/git-workflow.ts';
-import { getGitHubAutomationMode, resolveGitHubRepositorySlug } from '../operations/services/github-automation.ts';
+import { resolveGitHubRepositorySlug } from '../operations/services/github-automation.ts';
 import {
 	formatGitHubActionsGateFailure,
 	inspectGitHubActionsVerification,
@@ -437,9 +437,6 @@ function shouldDispatchSwitchToManagedWorktree(root: string, input: TreeseedSwit
 }
 
 function assertHostedGitHubWorkflowAuthReady(operation: TreeseedWorkflowOperationId, root: string) {
-	if (getGitHubAutomationMode() === 'stub') {
-		return null;
-	}
 	const tools = collectTreeseedToolStatus({
 		tenantRoot: root,
 		env: process.env,
@@ -477,7 +474,7 @@ async function waitForWorkflowGates(
 	options: { root?: string; runId?: string; onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void } = {},
 ) {
 	if (ciMode === 'off' || process.env.TREESEED_STAGE_WAIT_MODE === 'skip') {
-		return gates.map((gate) => skippedGitHubActionsGate(gate, ciMode === 'off' ? 'disabled' : 'stubbed'));
+		return gates.map((gate) => skippedGitHubActionsGate(gate, 'disabled'));
 	}
 	if (gates.length === 0) {
 		return [];
@@ -569,10 +566,10 @@ function recordHostedDeploymentStatesFromRootGates(
 }
 
 function ensureTreeseedCommandReadiness(root: string) {
-	if (getGitHubAutomationMode() === 'stub') {
+	if (process.env.TREESEED_COMMAND_READINESS_MODE === 'skip') {
 		return {
 			status: 'skipped',
-			reason: 'stubbed',
+			reason: 'disabled',
 			checks: [],
 			missing: [],
 		};
@@ -1739,9 +1736,6 @@ function failWorkflowRun(
 }
 
 function validatePackageReleaseWorkflows(root: string, packageNames: string[]) {
-	if (process.env.TREESEED_GITHUB_AUTOMATION_MODE === 'stub') {
-		return;
-	}
 	const missing = checkedOutWorkspacePackageRepos(root)
 		.filter((pkg) => packageNames.includes(pkg.name))
 		.filter((pkg) => !existsSync(resolve(pkg.dir, '.github', 'workflows', 'publish.yml')))
@@ -1756,7 +1750,7 @@ function validatePackageReleaseWorkflows(root: string, packageNames: string[]) {
 }
 
 function validateStagingWorkflowContracts(root: string) {
-	if (process.env.TREESEED_GITHUB_AUTOMATION_MODE === 'stub' || process.env.TREESEED_STAGE_WAIT_MODE === 'skip') {
+	if (process.env.TREESEED_STAGE_WAIT_MODE === 'skip') {
 		return;
 	}
 	const missing: string[] = [];
@@ -1773,12 +1767,12 @@ function validateStagingWorkflowContracts(root: string) {
 }
 
 function shouldSkipReleaseInstall() {
-	return process.env.TREESEED_GITHUB_AUTOMATION_MODE === 'stub' || process.env.TREESEED_SAVE_NPM_INSTALL_MODE === 'skip';
+	return process.env.TREESEED_SAVE_NPM_INSTALL_MODE === 'skip';
 }
 
 function runReleaseNpmInstall(repoDir: string, options: { workspaceRoot?: string } = {}) {
 	if (shouldSkipReleaseInstall()) {
-		return { status: 'skipped', reason: 'stubbed' };
+		return { status: 'skipped', reason: 'disabled' };
 	}
 	const args = repoDir === options.workspaceRoot
 		? ['install', '--package-lock-only', '--ignore-scripts']
@@ -2005,8 +1999,8 @@ function collectReleasePlanBlockers(session: TreeseedWorkflowSession, mode: Tree
 	return blockers;
 }
 
-function assertReleaseGitHubAutomationReady(root: string, selectedPackageNames: Set<string>) {
-	if (process.env.TREESEED_GITHUB_AUTOMATION_MODE === 'stub') {
+function assertReleaseGitHubAutomationReady(root: string, selectedPackageNames: Set<string>, ciMode: TreeseedWorkflowCiMode) {
+	if (ciMode === 'off') {
 		return;
 	}
 	assertHostedGitHubWorkflowAuthReady('release', root);
@@ -4147,7 +4141,10 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				? findAutoResumableReleaseRun(root, session.branchName, rootRepo, packageReports)
 				: null;
 			const effectiveInput = autoResumeRun
-				? (autoResumeRun.input as unknown as TreeseedReleaseInput)
+				? {
+					...(autoResumeRun.input as unknown as TreeseedReleaseInput),
+					ciMode: input.ciMode ?? (autoResumeRun.input as unknown as TreeseedReleaseInput).ciMode,
+				}
 				: input;
 			const level = effectiveInput.bump ?? 'patch';
 			const ciMode = normalizeCiMode(effectiveInput.ciMode, 'release');
@@ -4251,7 +4248,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				const rootVersion = String(releasePlan.rootVersion);
 
 				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
-				assertReleaseGitHubAutomationReady(root, effectiveSelectedPackageNames);
+				assertReleaseGitHubAutomationReady(root, effectiveSelectedPackageNames, ciMode);
 				const releaseCandidate = await executeJournalStep(root, workflowRun.runId, 'release-candidate', () =>
 					runReleaseCandidateForPlan('release', root, releasePlan, { allowReuse: true }));
 					if (!isResume) {

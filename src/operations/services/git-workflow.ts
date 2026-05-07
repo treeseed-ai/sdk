@@ -505,8 +505,8 @@ export function createDeprecatedTaskTag(repoDir, branchName, message) {
 }
 
 export function waitForStagingAutomation(repoDir) {
-	if (process.env.TREESEED_STAGE_WAIT_MODE === 'skip' || process.env.TREESEED_GITHUB_AUTOMATION_MODE === 'stub') {
-		return { status: 'skipped', reason: 'stubbed' };
+	if (process.env.TREESEED_STAGE_WAIT_MODE === 'skip') {
+		return { status: 'skipped', reason: 'disabled' };
 	}
 
 	try {

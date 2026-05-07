@@ -13,6 +13,7 @@ function makeWorkspace() {
 	const root = mkdtempSync(join(tmpdir(), 'treeseed-release-candidate-'));
 	roots.push(root);
 	mkdirSync(resolve(root, 'packages', 'sdk'), { recursive: true });
+	mkdirSync(resolve(root, 'packages', 'sdk', '.github', 'workflows'), { recursive: true });
 	mkdirSync(resolve(root, 'migrations'), { recursive: true });
 	writeFileSync(resolve(root, 'package.json'), JSON.stringify({
 		name: '@treeseed/market',
@@ -36,6 +37,7 @@ function makeWorkspace() {
 			'release:publish': 'node -e "process.exit(0)"',
 		},
 	}, null, 2), 'utf8');
+	writeFileSync(resolve(root, 'packages', 'sdk', '.github', 'workflows', 'publish.yml'), 'name: Publish\n', 'utf8');
 	writeFileSync(resolve(root, 'migrations', '0007_site_web_sessions.sql'), '-- web sessions\n', 'utf8');
 	writeFileSync(resolve(root, 'migrations', '0014_better_auth_integer_timestamps.sql'), '-- auth timestamps\n', 'utf8');
 	return root;
@@ -43,7 +45,8 @@ function makeWorkspace() {
 
 describe('release candidate verification', () => {
 	beforeEach(() => {
-		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
+		vi.stubEnv('TREESEED_RELEASE_CANDIDATE_REHEARSAL_MODE', 'skip');
+		vi.stubEnv('TREESEED_RELEASE_CANDIDATE_CONFIG_PARITY_MODE', 'skip');
 	});
 
 	afterEach(() => {
@@ -93,7 +96,7 @@ describe('release candidate verification', () => {
 		});
 
 		expect(report.status).toBe('passed');
-		expect(report.checks.find((check) => check.name === 'production-dependency-rehearsal')?.detail).toContain('Rehearsed stable replacements');
+		expect(report.checks.find((check) => check.name === 'production-dependency-rehearsal')?.detail).toContain('Skipped clean install rehearsal by request');
 	});
 
 	it('rejects dev references without a selected stable replacement', async () => {

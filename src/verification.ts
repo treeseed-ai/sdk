@@ -167,7 +167,6 @@ jobs:
         working-directory: ${relativePackageRoot}
     env:
       CI: "true"
-      TREESEED_GITHUB_AUTOMATION_MODE: stub
       TREESEED_STAGE_WAIT_MODE: skip
       TREESEED_AGENT_DISABLE_GIT: "true"
       TREESEED_FIXTURE_ID: treeseed-working-site

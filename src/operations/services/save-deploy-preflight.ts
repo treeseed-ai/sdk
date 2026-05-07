@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { packageScriptPath } from './runtime-tools.ts';
 import { applyTreeseedEnvironmentToProcess, assertTreeseedCommandEnvironment } from './config-runtime.ts';
 import { collectCliPreflight } from './workspace-preflight.ts';
-import { getGitHubAutomationMode, requiredGitHubEnvironment } from './github-automation.ts';
+import { requiredGitHubEnvironment } from './github-automation.ts';
 
 function runStep(label, scriptName, { cwd, env } = {}) {
 	const result = spawnSync(process.execPath, [packageScriptPath(scriptName)], {
@@ -29,15 +29,6 @@ function missingRequiredEnv(requiredKeys) {
 export function validateSaveAutomationPrerequisites({ cwd }) {
 	applyTreeseedEnvironmentToProcess({ tenantRoot: cwd, scope: 'prod', override: true });
 	assertTreeseedCommandEnvironment({ tenantRoot: cwd, scope: 'prod', purpose: 'save' });
-
-	if (getGitHubAutomationMode() !== 'real') {
-		return {
-			ok: true,
-			mode: 'stub',
-			missingEnv: [],
-			preflight: null,
-		};
-	}
 
 	const preflight = collectCliPreflight({ cwd, requireAuth: true });
 	if (!preflight.ok) {
