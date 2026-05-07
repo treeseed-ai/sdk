@@ -184,7 +184,7 @@ export function remoteBranchExists(repoDir, branchName) {
 }
 
 export function fetchOrigin(repoDir) {
-	runGit(['fetch', 'origin'], { cwd: repoDir });
+	runGit(['fetch', 'origin'], { cwd: repoDir, capture: true });
 }
 
 export function ensureLocalBranchTracking(repoDir, branchName) {
@@ -201,7 +201,7 @@ export function ensureLocalBranchTracking(repoDir, branchName) {
 }
 
 export function checkoutBranch(repoDir, branchName) {
-	runGit(['checkout', branchName], { cwd: repoDir });
+	runGit(['checkout', branchName], { cwd: repoDir, capture: true });
 }
 
 export function checkoutTaskBranchFromStaging(
@@ -286,7 +286,7 @@ export function syncBranchWithOrigin(repoDir, branchName) {
 	}
 
 	if (remoteBranchExists(repoDir, branchName)) {
-		runGit(['merge', '--ff-only', `origin/${branchName}`], { cwd: repoDir });
+		runGit(['merge', '--ff-only', `origin/${branchName}`], { cwd: repoDir, capture: true });
 	}
 }
 

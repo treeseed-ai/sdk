@@ -25,6 +25,11 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		const verifySource = readFileSync(rootVerifyWorkflowPath, 'utf8');
 
 		expect(source).toContain('TREESEED_BOOTSTRAP_MODE: auto');
+		expect(source).toContain("branches:\n      - staging");
+		expect(source).not.toContain('      - main');
+		expect(source).toContain("tags:\n      - '*.*.*'");
+		expect(source).toContain('release_tag="true"');
+		expect(source).toContain('^[0-9]+\\.[0-9]+\\.[0-9]+$');
 		expect((source.match(/submodules: recursive/g) ?? []).length).toBeGreaterThanOrEqual(5);
 		expect((source.match(/npm ci --ignore-scripts/g) ?? []).length).toBeGreaterThanOrEqual(5);
 		expect(source).not.toContain('\n          npm ci\n');
@@ -68,6 +73,7 @@ describe('package publish safeguards', () => {
 			expect(workflowSource).toContain("!contains(github.ref_name, '-')");
 			expect(workflowSource).toContain('npm ci failed; retrying');
 			expect(verifyWorkflowSource).toContain('dependency install failed; retrying');
+			expect(verifyWorkflowSource).not.toContain('TREESEED_GITHUB_AUTOMATION_MODE');
 			expect(checkTagSource).toContain('^\\d+\\.\\d+\\.\\d+$');
 			expect(publishSource).toContain('Refusing to publish');
 			expect(publishSource).toContain('^\\d+\\.\\d+\\.\\d+$');
