@@ -18,6 +18,7 @@ import type {
 	RecordAgentPoolRegistrationRequest,
 	ScaleDecision,
 	TeamStorageLocator,
+	TeamWebHost,
 	UpsertAgentPoolRequest,
 	UpsertCatalogArtifactVersionRequest,
 	UpsertCatalogItemRequest,
@@ -25,6 +26,7 @@ import type {
 	UpsertProjectHostingRequest,
 	UpsertProjectInfrastructureResourceRequest,
 	UpsertTeamStorageLocatorRequest,
+	UpsertTeamWebHostRequest,
 	WorkdayPolicy,
 	SdkPriorityOverrideRequest,
 	SdkUpsertWorkPolicyRequest,
@@ -353,6 +355,34 @@ export class ControlPlaneClient {
 
 	listTeamMembers(teamId: string) {
 		return this.requestJson<TeamMemberSummary[]>('GET', `/v1/teams/${encodeURIComponent(teamId)}/members`);
+	}
+
+	listTeamWebHosts(teamId: string) {
+		return this.requestJson<TeamWebHost[]>('GET', `/v1/teams/${encodeURIComponent(teamId)}/hosts`);
+	}
+
+	createTeamWebHost(teamId: string, input: UpsertTeamWebHostRequest) {
+		return this.requestJson<TeamWebHost>('POST', `/v1/teams/${encodeURIComponent(teamId)}/hosts`, {
+			body: input as Record<string, unknown>,
+		});
+	}
+
+	updateTeamWebHost(teamId: string, hostId: string, input: Partial<UpsertTeamWebHostRequest>) {
+		return this.requestJson<TeamWebHost>('PUT', `/v1/teams/${encodeURIComponent(teamId)}/hosts/${encodeURIComponent(hostId)}`, {
+			body: input as Record<string, unknown>,
+		});
+	}
+
+	deleteTeamWebHost(teamId: string, hostId: string) {
+		return this.requestJson<{ ok: boolean; payload?: TeamWebHost; error?: string }>('DELETE', `/v1/teams/${encodeURIComponent(teamId)}/hosts/${encodeURIComponent(hostId)}`);
+	}
+
+	validateTeamWebHost(teamId: string, hostId: string, input: { decryptedConfig?: Record<string, unknown> | null }) {
+		return this.requestJson<{ host: TeamWebHost; validation: Record<string, unknown> | null }>(
+			'POST',
+			`/v1/teams/${encodeURIComponent(teamId)}/hosts/${encodeURIComponent(hostId)}/validate`,
+			{ body: input },
+		);
 	}
 
 	listTeamProducts(teamId: string) {

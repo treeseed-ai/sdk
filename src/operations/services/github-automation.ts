@@ -533,7 +533,14 @@ export async function ensureGitHubSecrets(tenantRoot, { dryRun = false } = {}) {
 	return (await ensureGitHubEnvironment(tenantRoot, { dryRun })).secrets;
 }
 
-export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scope = 'prod', purpose = 'save' } = {}) {
+function nonEmptyValues(values = {}) {
+	return Object.fromEntries(
+		Object.entries(values)
+			.filter(([, value]) => typeof value === 'string' && value.length > 0),
+	);
+}
+
+export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scope = 'prod', purpose = 'save', valuesOverlay = {} } = {}) {
 	if (isGitHubAutomationStubbed()) {
 		return {
 			repository: maybeResolveGitHubRepositorySlug(tenantRoot),
@@ -571,11 +578,19 @@ export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scop
 	const missingRemote = requiredSecrets.filter((name) => !existingSecrets.has(name));
 	const missingRemoteVariables = requiredVariables.filter((name) => !existingVariables.has(name));
 
+	const resolvedValues = {
+		...process.env,
+		...nonEmptyValues(valuesOverlay),
+	};
+	const localValue = (name) => {
+		const value = resolvedValues[name];
+		return typeof value === 'string' && value.trim().length > 0 ? value.trim() : '';
+	};
 	const missingLocal = missingRemote
-		.filter((name) => !envOrNull(name))
+		.filter((name) => !localValue(name))
 		.map((name) => ({ name, localEnvPresent: false, remotePresent: false }));
 	const missingLocalVariables = missingRemoteVariables
-		.filter((name) => !envOrNull(name))
+		.filter((name) => !localValue(name))
 		.map((name) => ({ name, localEnvPresent: false, remotePresent: false }));
 
 	if (missingLocal.length > 0 || missingLocalVariables.length > 0) {
@@ -588,7 +603,7 @@ export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scop
 			createdSecrets.push(name);
 			continue;
 		}
-		await upsertGitHubRepositorySecret(repository, name, envOrNull(name) ?? '', { client });
+		await upsertGitHubRepositorySecret(repository, name, localValue(name), { client });
 		createdSecrets.push(name);
 	}
 
@@ -598,7 +613,7 @@ export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scop
 			createdVariables.push(name);
 			continue;
 		}
-		await upsertGitHubRepositoryVariable(repository, name, envOrNull(name) ?? '', { client });
+		await upsertGitHubRepositoryVariable(repository, name, localValue(name), { client });
 		createdVariables.push(name);
 	}
 
@@ -615,9 +630,9 @@ export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scop
 	};
 }
 
-export async function ensureGitHubDeployAutomation(tenantRoot, { dryRun = false } = {}) {
+export async function ensureGitHubDeployAutomation(tenantRoot, { dryRun = false, valuesOverlay = {} } = {}) {
 	const workflows = ensureStandardizedGitHubWorkflows(tenantRoot);
-	const environment = await ensureGitHubEnvironment(tenantRoot, { dryRun });
+	const environment = await ensureGitHubEnvironment(tenantRoot, { dryRun, valuesOverlay });
 	return {
 		mode: getGitHubAutomationMode(),
 		workflow: workflows[0],

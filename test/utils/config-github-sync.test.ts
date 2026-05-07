@@ -227,6 +227,46 @@ describe('config GitHub environment sync', () => {
 		);
 	});
 
+	it('uses transient values overlays for GitHub environment sync without machine config writes', async () => {
+		const tenantRoot = createTenantFixture();
+		writeDefaultMachineConfig(tenantRoot);
+		unlockSecrets(tenantRoot);
+		seedHostedValues(tenantRoot);
+
+		const result = await syncTreeseedGitHubEnvironment({
+			tenantRoot,
+			scope: 'staging',
+			valuesOverlay: {
+				CLOUDFLARE_API_TOKEN: 'unlocked-cloudflare-token',
+				CLOUDFLARE_ACCOUNT_ID: 'unlocked-account',
+				TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME: 'unlocked-pages',
+			},
+		});
+
+		expect(result.scope).toBe('staging');
+		expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
+			'owner/repo',
+			'staging',
+			'CLOUDFLARE_API_TOKEN',
+			'unlocked-cloudflare-token',
+			expect.any(Object),
+		);
+		expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
+			'owner/repo',
+			'staging',
+			'CLOUDFLARE_ACCOUNT_ID',
+			'unlocked-account',
+			expect.any(Object),
+		);
+		expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
+			'owner/repo',
+			'staging',
+			'TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME',
+			'unlocked-pages',
+			expect.any(Object),
+		);
+	});
+
 	it('reports GitHub environment sync progress while syncing items', async () => {
 		const tenantRoot = createTenantFixture();
 		writeDefaultMachineConfig(tenantRoot);

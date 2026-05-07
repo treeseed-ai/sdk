@@ -182,6 +182,52 @@ export interface ProjectHosting {
 	updatedAt: string;
 }
 
+export interface EncryptedWebHostPayload {
+	version: number;
+	algorithm: string;
+	kdf: {
+		algorithm: string;
+		opsLimit?: number;
+		memLimit?: number;
+		[key: string]: unknown;
+	};
+	salt: string;
+	nonce: string;
+	ciphertext: string;
+}
+
+export type TeamWebHostProvider = 'cloudflare';
+export type TeamWebHostOwnership = 'team_owned' | 'treeseed_managed';
+
+export interface TeamWebHost {
+	id: string;
+	teamId: string;
+	provider: TeamWebHostProvider;
+	ownership: TeamWebHostOwnership;
+	name: string;
+	accountLabel: string | null;
+	allowedEnvironments: ProjectEnvironmentName[];
+	status: string;
+	encryptedPayload: EncryptedWebHostPayload | null;
+	metadata?: Record<string, unknown>;
+	createdById: string | null;
+	updatedById: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface UpsertTeamWebHostRequest {
+	id?: string;
+	provider?: TeamWebHostProvider;
+	ownership?: TeamWebHostOwnership;
+	name: string;
+	accountLabel?: string | null;
+	allowedEnvironments?: ProjectEnvironmentName[];
+	status?: string;
+	encryptedPayload?: EncryptedWebHostPayload | null;
+	metadata?: Record<string, unknown> | null;
+}
+
 export interface ProjectEnvironment {
 	id: string;
 	projectId: string;

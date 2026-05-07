@@ -3,6 +3,7 @@ export {
 	findTreeseedOperation,
 	listTreeseedOperationNames,
 } from './operations-registry.ts';
+export { collectTreeseedConfigSeedValues } from './operations/services/config-runtime.ts';
 export { TreeseedOperationsSdk } from './operations/runtime.ts';
 export type {
 	TreeseedOperationContext,
