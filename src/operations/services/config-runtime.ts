@@ -1727,7 +1727,7 @@ export function collectTreeseedEnvironmentContext(tenantRoot) {
 	});
 }
 
-export function collectTreeseedConfigSeedValues(tenantRoot, scope, env = process.env) {
+export function collectTreeseedConfigSeedValues(tenantRoot, scope, env = process.env, valuesOverlay = {}) {
 	warnDeprecatedTreeseedLocalEnvFiles(tenantRoot);
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
 	let machineValues = {};
@@ -1741,6 +1741,7 @@ export function collectTreeseedConfigSeedValues(tenantRoot, scope, env = process
 	return filterEnvironmentValuesByRegistry({
 		...machineValues,
 		...nonEmptyEnvironmentValues(env),
+		...nonEmptyEnvironmentValues(valuesOverlay),
 	}, registry, scope);
 }
 
@@ -2260,8 +2261,8 @@ async function checkRailwayConnection({ tenantRoot, env }) {
 	}
 }
 
-export async function checkTreeseedProviderConnections({ tenantRoot, scope = 'prod', env = process.env } = {}) {
-	const values = collectTreeseedConfigSeedValues(tenantRoot, scope, env);
+export async function checkTreeseedProviderConnections({ tenantRoot, scope = 'prod', env = process.env, valuesOverlay = {} } = {}) {
+	const values = collectTreeseedConfigSeedValues(tenantRoot, scope, env, valuesOverlay);
 	const rawCommandEnv = {
 		GH_TOKEN: values.GH_TOKEN,
 		CLOUDFLARE_API_TOKEN: values.CLOUDFLARE_API_TOKEN,
@@ -2338,6 +2339,7 @@ export async function syncTreeseedGitHubEnvironment({
 	scope = 'prod',
 	dryRun = false,
 	repository: repositoryInput,
+	valuesOverlay = {},
 	execution = 'parallel',
 	concurrency = 4,
 	onProgress,
@@ -2346,6 +2348,7 @@ export async function syncTreeseedGitHubEnvironment({
 	scope?: TreeseedConfigScope;
 	dryRun?: boolean;
 	repository?: string | null;
+	valuesOverlay?: Record<string, string | undefined>;
 	execution?: 'parallel' | 'sequential';
 	concurrency?: number;
 	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
@@ -2356,7 +2359,10 @@ export async function syncTreeseedGitHubEnvironment({
 	}
 
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
-	const values = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
+	const values = {
+		...resolveTreeseedMachineEnvironmentValues(tenantRoot, scope),
+		...nonEmptyEnvironmentValues(valuesOverlay),
+	};
 	const relevant = registry.entries.filter((entry) => entry.scopes.includes(scope));
 	const ghToken = values.GH_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
 	const ghEnv = ghToken

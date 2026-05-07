@@ -450,8 +450,12 @@ function buildLocalRuntimeVars(deployConfig, state, target, env) {
 			?? state.generatedSecrets?.TREESEED_EDITORIAL_PREVIEW_SECRET
 			?? 'treeseed-local-editorial-preview-secret',
 		TREESEED_FORMS_LOCAL_BYPASS_CLOUDFLARE_GUARDS: envValue(env, 'TREESEED_FORMS_LOCAL_BYPASS_CLOUDFLARE_GUARDS') ?? '',
-		TREESEED_SMTP_HOST: envValue(env, 'TREESEED_SMTP_HOST') ?? '127.0.0.1',
-		TREESEED_SMTP_PORT: envValue(env, 'TREESEED_SMTP_PORT') ?? '1025',
+		TREESEED_MAILPIT_SMTP_HOST: '127.0.0.1',
+		TREESEED_MAILPIT_SMTP_PORT: '1025',
+		TREESEED_SMTP_HOST: '127.0.0.1',
+		TREESEED_SMTP_PORT: '1025',
+		TREESEED_SMTP_USERNAME: '',
+		TREESEED_SMTP_PASSWORD: '',
 	};
 }
 

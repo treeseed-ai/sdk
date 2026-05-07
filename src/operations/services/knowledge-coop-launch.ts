@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { collectTreeseedReconcileStatus, reconcileTreeseedTarget } from '../../reconcile/index.ts';
-import { checkTreeseedProviderConnections, collectTreeseedConfigSeedValues } from './config-runtime.ts';
+import { checkTreeseedProviderConnections, collectTreeseedConfigSeedValues, syncTreeseedGitHubEnvironment } from './config-runtime.ts';
 import { createPersistentDeployTarget, runRemoteD1Migrations, finalizeDeploymentState } from './deploy.ts';
 import {
 	createGitHubRepository,
@@ -44,6 +44,44 @@ export interface KnowledgeCoopManagedLaunchInput {
 	contactEmail?: string | null;
 	enableDefaultAgents?: boolean;
 	preserveWorkingTree?: boolean;
+	cloudflareHost?: KnowledgeCoopCloudflareHostLaunchInput | null;
+	processingHost?: KnowledgeCoopProcessingHostLaunchInput | null;
+}
+
+export interface KnowledgeCoopCloudflareHostConfig {
+	CLOUDFLARE_API_TOKEN?: string;
+	CLOUDFLARE_ACCOUNT_ID?: string;
+	TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME?: string;
+	TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME?: string;
+	TREESEED_CONTENT_BUCKET_NAME?: string;
+	TREESEED_CONTENT_BUCKET_BINDING?: string;
+	TREESEED_PUBLIC_TURNSTILE_SITE_KEY?: string;
+	TREESEED_TURNSTILE_SECRET_KEY?: string;
+	environments?: Partial<Record<'staging' | 'prod', Record<string, unknown>>>;
+	[key: string]: unknown;
+}
+
+export interface KnowledgeCoopCloudflareHostLaunchInput {
+	mode: 'team_owned' | 'treeseed_managed';
+	hostId?: string | null;
+	targetEnvironments?: Array<'local' | 'staging' | 'prod'>;
+	config?: KnowledgeCoopCloudflareHostConfig | null;
+}
+
+export interface KnowledgeCoopProcessingHostConfig {
+	RAILWAY_API_TOKEN?: string;
+	TREESEED_RAILWAY_WORKSPACE?: string;
+	TREESEED_RAILWAY_API_URL?: string;
+	TREESEED_WORKER_POOL_SCALER?: string;
+	environments?: Partial<Record<'staging' | 'prod', Record<string, unknown>>>;
+	[key: string]: unknown;
+}
+
+export interface KnowledgeCoopProcessingHostLaunchInput {
+	mode: 'team_owned' | 'treeseed_managed';
+	hostId?: string | null;
+	targetEnvironments?: Array<'local' | 'staging' | 'prod'>;
+	config?: KnowledgeCoopProcessingHostConfig | null;
 }
 
 export interface KnowledgeCoopLaunchPhaseRecord {
@@ -69,6 +107,7 @@ export interface KnowledgeCoopManagedLaunchResult {
 		workflows: Array<{ workflowPath: string; changed: boolean; workingDirectory?: string; mode?: string }>;
 		secrets: { existing: string[]; created: string[] };
 		variables: { existing: string[]; created: string[] };
+		environmentSync?: Array<Awaited<ReturnType<typeof syncTreeseedGitHubEnvironment>>>;
 	};
 	cloudflare: {
 		staging: ReturnType<typeof provisionCloudflareResources>;
@@ -667,6 +706,58 @@ function appendPhase(phases: KnowledgeCoopLaunchPhaseRecord[], phase: string, st
 	});
 }
 
+function stringValue(value: unknown) {
+	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : '';
+}
+
+function overlayValue(target: Record<string, string>, key: string, value: unknown) {
+	const next = stringValue(value);
+	if (next) {
+		target[key] = next;
+	}
+}
+
+function buildCloudflareHostEnvironmentOverlay(input: KnowledgeCoopManagedLaunchInput, scope: 'staging' | 'prod') {
+	const config = input.cloudflareHost?.config ?? {};
+	const environmentConfig = config.environments?.[scope] ?? {};
+	const projectSlug = slugify(input.projectSlug, 'project');
+	const overlay: Record<string, string> = {};
+
+	for (const [key, value] of Object.entries(config)) {
+		if (key === 'environments') continue;
+		overlayValue(overlay, key, value);
+	}
+	for (const [key, value] of Object.entries(environmentConfig)) {
+		overlayValue(overlay, key, value);
+	}
+
+	overlay.CLOUDFLARE_ACCOUNT_ID = overlay.CLOUDFLARE_ACCOUNT_ID || overlay.TREESEED_CLOUDFLARE_ACCOUNT_ID || '';
+	overlayValue(overlay, 'TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME', overlay.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME || projectSlug);
+	overlayValue(overlay, 'TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME', overlay.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME || `${projectSlug}-staging`);
+	overlayValue(overlay, 'TREESEED_CONTENT_BUCKET_NAME', overlay.TREESEED_CONTENT_BUCKET_NAME || `${projectSlug}-content`);
+	overlayValue(overlay, 'TREESEED_CONTENT_BUCKET_BINDING', overlay.TREESEED_CONTENT_BUCKET_BINDING || 'TREESEED_CONTENT_BUCKET');
+
+	return overlay;
+}
+
+function buildProcessingHostEnvironmentOverlay(input: KnowledgeCoopManagedLaunchInput, scope: 'staging' | 'prod') {
+	const config = input.processingHost?.config ?? {};
+	const environmentConfig = config.environments?.[scope] ?? {};
+	const overlay: Record<string, string> = {};
+
+	for (const [key, value] of Object.entries(config)) {
+		if (key === 'environments') continue;
+		overlayValue(overlay, key, value);
+	}
+	for (const [key, value] of Object.entries(environmentConfig)) {
+		overlayValue(overlay, key, value);
+	}
+
+	overlayValue(overlay, 'TREESEED_WORKER_POOL_SCALER', overlay.TREESEED_WORKER_POOL_SCALER || 'railway');
+
+	return overlay;
+}
+
 function scaffoldKnowledgeCoopSource(projectRoot: string, input: KnowledgeCoopManagedLaunchInput) {
 	const templateId = input.sourceKind === 'template'
 		? slugify(input.sourceRef ?? 'starter-basic', 'starter-basic')
@@ -702,8 +793,11 @@ function scaffoldKnowledgeCoopSource(projectRoot: string, input: KnowledgeCoopMa
 	});
 }
 
-export async function validateKnowledgeCoopManagedLaunchPrerequisites(tenantRoot = process.cwd()): Promise<KnowledgeCoopLaunchPreflightReport> {
-	const values = collectTreeseedConfigSeedValues(tenantRoot, 'prod', process.env);
+export async function validateKnowledgeCoopManagedLaunchPrerequisites(
+	tenantRoot = process.cwd(),
+	{ valuesOverlay = {} }: { valuesOverlay?: Record<string, string | undefined> } = {},
+): Promise<KnowledgeCoopLaunchPreflightReport> {
+	const values = collectTreeseedConfigSeedValues(tenantRoot, 'prod', process.env, valuesOverlay);
 	const requiredConfig = [
 		['TREESEED_BETTER_AUTH_SECRET'],
 		['TREESEED_AGENT_POOL_MIN_WORKERS'],
@@ -721,7 +815,7 @@ export async function validateKnowledgeCoopManagedLaunchPrerequisites(tenantRoot
 			return typeof value === 'string' && value.trim().length > 0;
 		}))
 		.map((group) => group.join(' or '));
-	const providerChecks = await checkTreeseedProviderConnections({ tenantRoot, scope: 'prod', env: process.env });
+	const providerChecks = await checkTreeseedProviderConnections({ tenantRoot, scope: 'prod', env: process.env, valuesOverlay });
 	const commands = {
 		git: commandAvailable('git'),
 		gh: commandAvailable('gh'),
@@ -739,7 +833,15 @@ export async function validateKnowledgeCoopManagedLaunchPrerequisites(tenantRoot
 
 export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopManagedLaunchInput): Promise<KnowledgeCoopManagedLaunchResult> {
 	const phases: KnowledgeCoopLaunchPhaseRecord[] = [];
-	const preflight = await validateKnowledgeCoopManagedLaunchPrerequisites(process.cwd());
+	const prodEnvOverlay = {
+		...buildCloudflareHostEnvironmentOverlay(input, 'prod'),
+		...buildProcessingHostEnvironmentOverlay(input, 'prod'),
+	};
+	const stagingEnvOverlay = {
+		...buildCloudflareHostEnvironmentOverlay(input, 'staging'),
+		...buildProcessingHostEnvironmentOverlay(input, 'staging'),
+	};
+	const preflight = await validateKnowledgeCoopManagedLaunchPrerequisites(process.cwd(), { valuesOverlay: prodEnvOverlay });
 	if (!preflight.ok) {
 		throw new KnowledgeCoopLaunchError(
 			'runtime_connection_failed',
@@ -778,25 +880,36 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 			commitMessage: `Initialize ${input.projectName}`,
 		});
 		pushDefaultWorkstreamBranch(workingRoot);
-		const workflows = await ensureGitHubDeployAutomation(workingRoot);
+		const workflows = await ensureGitHubDeployAutomation(workingRoot, { valuesOverlay: prodEnvOverlay });
+		const githubEnvironmentSync = [];
+		for (const [scope, valuesOverlay] of [['staging', stagingEnvOverlay], ['prod', prodEnvOverlay]] as const) {
+			githubEnvironmentSync.push(await syncTreeseedGitHubEnvironment({
+				tenantRoot: workingRoot,
+				scope,
+				repository: repository.slug,
+				valuesOverlay,
+				execution: 'sequential',
+			}));
+		}
+		const workflowSummary = { ...workflows, environmentSync: githubEnvironmentSync };
 		appendPhase(phases, 'workflow_bootstrap', 'completed', 'Configured GitHub workflows, secrets, and variables.');
 
 		appendPhase(phases, 'hosting_registration', 'running', 'Provisioning Cloudflare resources and deploy state.');
 		const staging = await reconcileTreeseedTarget({
 			tenantRoot: workingRoot,
 			target: createPersistentDeployTarget('staging'),
-			env: process.env,
+			env: { ...process.env, ...stagingEnvOverlay },
 		});
 		const prod = await reconcileTreeseedTarget({
 			tenantRoot: workingRoot,
 			target: createPersistentDeployTarget('prod'),
-			env: process.env,
+			env: { ...process.env, ...prodEnvOverlay },
 		});
 		runRemoteD1Migrations(workingRoot, { scope: 'prod' });
 		const verification = await collectTreeseedReconcileStatus({
 			tenantRoot: workingRoot,
 			target: createPersistentDeployTarget('prod'),
-			env: process.env,
+			env: { ...process.env, ...prodEnvOverlay },
 		});
 		appendPhase(phases, 'hosting_registration', 'completed', 'Provisioned Cloudflare resources.');
 
@@ -808,14 +921,15 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 		let railwayVerification: Awaited<ReturnType<typeof verifyRailwayScheduledJobs>> = [];
 		if (managedRuntime) {
 			appendPhase(phases, 'runtime_connection', 'running', 'Deploying Railway services and registering runtime connectivity.');
-			validateRailwayDeployPrerequisites(workingRoot, 'prod');
+			const railwayEnv = { ...process.env, ...prodEnvOverlay };
+			validateRailwayDeployPrerequisites(workingRoot, 'prod', { env: railwayEnv });
 			services = configuredRailwayServices(workingRoot, 'prod');
 			deployments = [];
 			for (const service of services) {
-				deployments.push(await deployRailwayService(workingRoot, service));
+				deployments.push(await deployRailwayService(workingRoot, service, { env: railwayEnv }));
 			}
-			schedules = await ensureRailwayScheduledJobs(workingRoot, 'prod');
-			railwayVerification = await verifyRailwayScheduledJobs(workingRoot, 'prod');
+			schedules = await ensureRailwayScheduledJobs(workingRoot, 'prod', { env: railwayEnv });
+			railwayVerification = await verifyRailwayScheduledJobs(workingRoot, 'prod', { env: railwayEnv });
 			finalizeDeploymentState(workingRoot, { scope: 'prod', serviceResults: deployments });
 			appendPhase(phases, 'runtime_connection', 'completed', 'Deployed Railway services and recorded runtime readiness.');
 		} else {
@@ -870,7 +984,7 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 				stagingBranch: initResult.stagingBranch,
 				visibility: repository.visibility,
 			},
-			workflows,
+			workflows: workflowSummary,
 			cloudflare: {
 				staging,
 				prod,

@@ -267,6 +267,13 @@ export interface LaunchProjectRequest {
 	sourceKind: 'blank' | 'template' | 'knowledge_pack';
 	sourceRef?: string | null;
 	hostingMode: 'managed' | 'hybrid' | 'self_hosted';
+	cloudflareHostId?: string | null;
+	cloudflareHostMode?: 'team_owned' | 'treeseed_managed' | null;
+	cloudflareHostConfig?: Record<string, unknown> | null;
+	processingHostId?: string | null;
+	processingHostMode?: 'team_owned' | 'treeseed_managed' | null;
+	processingHostConfig?: Record<string, unknown> | null;
+	targetEnvironments?: Array<'local' | 'staging' | 'prod'>;
 	publicSite?: boolean;
 	repoProvider?: 'github';
 	repoVisibility?: 'private' | 'public';
