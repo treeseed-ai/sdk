@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { isTreeseedEnvironmentEntryRelevant, isTreeseedEnvironmentEntryRequired } from '../../platform/environment.ts';
-import { getGitHubAutomationMode, maybeResolveGitHubRepositorySlug } from './github-automation.ts';
+import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
 import { createGitHubApiClient, listGitHubEnvironmentSecretNames, listGitHubEnvironmentVariableNames } from './github-api.ts';
 import { collectInternalDevReferenceIssues } from './package-reference-policy.ts';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, validateTreeseedCommandEnvironment } from './config-runtime.ts';
@@ -183,9 +183,6 @@ function packageReadinessChecks(root: string, selectedPackageNames: string[], fa
 	if (selectedPackageNames.length === 0) {
 		return { name: 'package-release-readiness', status: 'skipped', detail: 'No packages are selected for this release.' };
 	}
-	if (getGitHubAutomationMode() === 'stub') {
-		return { name: 'package-release-readiness', status: 'skipped', detail: 'GitHub automation is stubbed.' };
-	}
 	const selected = new Set(selectedPackageNames);
 	const packages = workspacePackages(root).filter((pkg) => selected.has(pkg.name));
 	for (const pkg of packages) {
@@ -338,8 +335,8 @@ function runProductionDependencyRehearsal(
 	selectedPackageNames: string[],
 	failures: ReleaseCandidateFailure[],
 ) {
-	if (getGitHubAutomationMode() === 'stub' || process.env.TREESEED_RELEASE_CANDIDATE_REHEARSAL_MODE === 'skip') {
-		return 'Skipped clean install rehearsal in stub/skip mode.';
+	if (process.env.TREESEED_RELEASE_CANDIDATE_REHEARSAL_MODE === 'skip') {
+		return 'Skipped clean install rehearsal by request.';
 	}
 	const selectedPackageSet = new Set(selectedPackageNames);
 	let tempParent: string | null = null;
@@ -465,9 +462,6 @@ function localConfigCheck(root: string, scope: 'staging' | 'prod', failures: Rel
 }
 
 async function githubRemoteConfigCheck(root: string, scope: 'staging' | 'prod', failures: ReleaseCandidateFailure[]) {
-	if (getGitHubAutomationMode() === 'stub') {
-		return;
-	}
 	const repository = maybeResolveGitHubRepositorySlug(root);
 	if (!repository) {
 		addFailure(failures, {
@@ -581,8 +575,8 @@ function providerResourceIdentifierCheck(root: string, scope: 'staging' | 'prod'
 }
 
 async function configParityChecks(root: string, failures: ReleaseCandidateFailure[]): Promise<ReleaseCandidateCheck> {
-	if (getGitHubAutomationMode() === 'stub') {
-		return { name: 'config-parity', status: 'skipped', detail: 'GitHub automation is stubbed.' };
+	if (process.env.TREESEED_RELEASE_CANDIDATE_CONFIG_PARITY_MODE === 'skip') {
+		return { name: 'config-parity', status: 'skipped', detail: 'Remote config parity skipped by request.' };
 	}
 	const before = failures.length;
 	localConfigCheck(root, 'staging', failures);

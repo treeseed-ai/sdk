@@ -168,7 +168,7 @@ describe('repository save orchestrator helpers', () => {
 	});
 
 	it('fails stale root workspace lockfiles before committing', async () => {
-		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
+		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
 		try {
 			const root = mkdtempSync(join(tmpdir(), 'treeseed-save-lockfile-fail-'));
 			const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-lockfile-fail-origin-'));
@@ -256,7 +256,7 @@ describe('repository save orchestrator helpers', () => {
 	});
 
 	it('injects package summaries and submodule pointers into the root commit context', async () => {
-		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
+		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
 		try {
 			const root = mkdtempSync(join(tmpdir(), 'treeseed-save-root-context-'));
 			const rootOrigin = mkdtempSync(join(tmpdir(), 'treeseed-save-root-context-origin-'));
@@ -372,7 +372,7 @@ describe('repository save orchestrator helpers', () => {
 	});
 
 	it('finalizes a clean package with an interrupted dev version and missing tag', async () => {
-		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
+		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
 		try {
 			const root = mkdtempSync(join(tmpdir(), 'treeseed-save-partial-'));
 			const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-partial-origin-'));
@@ -433,43 +433,51 @@ describe('repository save orchestrator helpers', () => {
 	});
 
 	it('summarizes successful lockfile dry-run output during save', async () => {
+		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'run');
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-lockfile-summary-'));
 		const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-lockfile-summary-origin-'));
-		git(origin, ['init', '--bare']);
-		git(root, ['init', '-b', 'staging']);
-		git(root, ['config', 'user.email', 'test@example.com']);
-		git(root, ['config', 'user.name', 'Test User']);
-		git(root, ['remote', 'add', 'origin', origin]);
-		writeJson(resolve(root, 'package.json'), {
-			name: '@treeseed/market',
-			version: '1.0.0',
-			private: true,
-		});
-		writeJson(resolve(root, 'package-lock.json'), {
-			name: '@treeseed/market',
-			lockfileVersion: 3,
-			packages: {
-				'': { name: '@treeseed/market', version: '1.0.0' },
-			},
-		});
-		writeFileSync(resolve(root, 'README.md'), 'initial\n', 'utf8');
-		git(root, ['add', '-A']);
-		git(root, ['commit', '-m', 'chore: initial']);
-		git(root, ['push', '-u', 'origin', 'staging']);
-		writeFileSync(resolve(root, 'README.md'), 'initial\nupdated\n', 'utf8');
-		const progress: string[] = [];
+		try {
+			git(origin, ['init', '--bare']);
+			git(root, ['init', '-b', 'staging']);
+			git(root, ['config', 'user.email', 'test@example.com']);
+			git(root, ['config', 'user.name', 'Test User']);
+			git(root, ['remote', 'add', 'origin', origin]);
+			writeJson(resolve(root, 'package.json'), {
+				name: '@treeseed/market',
+				version: '1.0.0',
+				private: true,
+			});
+			writeJson(resolve(root, 'package-lock.json'), {
+				name: '@treeseed/market',
+				lockfileVersion: 3,
+				packages: {
+					'': { name: '@treeseed/market', version: '1.0.0' },
+				},
+			});
+			writeFileSync(resolve(root, 'README.md'), 'initial\n', 'utf8');
+			git(root, ['add', '-A']);
+			git(root, ['commit', '-m', 'chore: initial']);
+			git(root, ['push', '-u', 'origin', 'staging']);
+			writeFileSync(resolve(root, 'README.md'), 'initial\nupdated\n', 'utf8');
+			const progress: string[] = [];
 
-		await runRepositorySaveOrchestrator({
-			root,
-			gitRoot: root,
-			branch: 'staging',
-			commitMessageMode: 'fallback',
-			verifyMode: 'skip',
-			onProgress: (line) => progress.push(line),
-		});
+			await runRepositorySaveOrchestrator({
+				root,
+				gitRoot: root,
+				branch: 'staging',
+				commitMessageMode: 'fallback',
+				verifyMode: 'skip',
+				onProgress: (line) => progress.push(line),
+			});
 
-		expect(progress.some((line) => /Lockfile validation passed: \d+ packages? checked, 0 issues\./u.test(line))).toBe(true);
-		expect(progress.some((line) => /\[lockfile\] add /u.test(line))).toBe(false);
+			expect(
+				progress.some((line) => /Lockfile validation passed: \d+ packages? checked, 0 issues\./u.test(line)),
+				progress.join('\n'),
+			).toBe(true);
+			expect(progress.some((line) => /\[lockfile\] add /u.test(line))).toBe(false);
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it('summarizes allowed build warnings in local subprocess output', async () => {

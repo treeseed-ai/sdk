@@ -58,11 +58,7 @@ function slugifySegment(value, fallback = 'project') {
 }
 
 export function getGitHubAutomationMode() {
-	return process.env.TREESEED_GITHUB_AUTOMATION_MODE === 'stub' ? 'stub' : 'real';
-}
-
-function isGitHubAutomationStubbed() {
-	return getGitHubAutomationMode() === 'stub';
+	return 'real';
 }
 
 export function parseGitHubRepositoryFromRemote(remoteUrl) {
@@ -247,17 +243,6 @@ export async function ensureGitHubBootstrapRepository(
 	const remotes = resolveGitHubRemoteUrls(target.owner, target.name);
 	const slug = remotes.slug;
 	onProgress?.(`[local][github][repo] Preparing ${slug} from ${target.source}...`);
-	if (isGitHubAutomationStubbed()) {
-		onProgress?.(`[local][github][repo] Stubbed GitHub automation; repository ${slug} not changed.`);
-		return {
-			repository: slug,
-			target,
-			created: false,
-			remote: { changed: false, previous: null, next: remotes.sshUrl },
-			pushed: false,
-			mode: 'stub',
-		};
-	}
 
 	const client = createGitHubApiClient({
 		env: {
@@ -298,14 +283,6 @@ export async function ensureGitHubBootstrapRepository(
 export async function createGitHubRepository(input) {
 	const visibility = input.visibility ?? 'private';
 	const remotes = resolveGitHubRemoteUrls(input.owner, input.name);
-	if (isGitHubAutomationStubbed()) {
-		return {
-			...remotes,
-			visibility,
-			defaultBranch: 'main',
-			mode: 'stub',
-		};
-	}
 
 	return await ensureGitHubRepository({
 		owner: remotes.owner,
@@ -326,21 +303,10 @@ export function initializeGitHubRepositoryWorkingTree(
 		defaultBranch = 'main',
 		createStaging = true,
 		commitMessage = 'Initialize Knowledge Coop hub',
-		remoteName = 'origin',
-		push = true,
-	} = {},
+	remoteName = 'origin',
+	push = true,
+} = {},
 ) {
-	if (isGitHubAutomationStubbed()) {
-		return {
-			repository,
-			remoteName,
-			defaultBranch,
-			stagingBranch: createStaging ? 'staging' : null,
-			pushed: false,
-			mode: 'stub',
-		};
-	}
-
 	runGit(['init', '-b', defaultBranch], { cwd, allowFailure: true });
 	ensureGitIdentity(cwd);
 	const currentRemote = runGit(['remote', 'get-url', remoteName], { cwd, allowFailure: true }).stdout?.trim() ?? '';
@@ -457,15 +423,6 @@ function ensureWorkflowFile(tenantRoot, fileName, expected) {
 }
 
 export function ensureDeployWorkflow(tenantRoot) {
-	if (isGitHubAutomationStubbed()) {
-		return {
-			workflowPath: resolve(tenantRoot, '.github', 'workflows', 'deploy.yml'),
-			changed: false,
-			workingDirectory: '.',
-			mode: 'stub',
-		};
-	}
-
 	const repositoryRoot = resolveGitRepositoryRoot(tenantRoot);
 	const workingDirectory = relative(repositoryRoot, tenantRoot).replaceAll('\\', '/') || '.';
 	const expected = renderDeployWorkflow({ workingDirectory });
@@ -476,15 +433,6 @@ export function ensureDeployWorkflow(tenantRoot) {
 }
 
 export function ensureHostedProjectWorkflow(tenantRoot) {
-	if (isGitHubAutomationStubbed()) {
-		return {
-			workflowPath: resolve(tenantRoot, '.github', 'workflows', 'hosted-project.yml'),
-			changed: false,
-			workingDirectory: '.',
-			mode: 'stub',
-		};
-	}
-
 	const repositoryRoot = resolveGitRepositoryRoot(tenantRoot);
 	const workingDirectory = relative(repositoryRoot, tenantRoot).replaceAll('\\', '/') || '.';
 	const expected = renderHostedProjectWorkflow({ workingDirectory });
@@ -541,22 +489,6 @@ function nonEmptyValues(values = {}) {
 }
 
 export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scope = 'prod', purpose = 'save', valuesOverlay = {} } = {}) {
-	if (isGitHubAutomationStubbed()) {
-		return {
-			repository: maybeResolveGitHubRepositorySlug(tenantRoot),
-			secrets: {
-				existing: [],
-				created: [],
-			},
-			variables: {
-				existing: [],
-				created: [],
-			},
-			skipped: 'stubbed',
-			mode: 'stub',
-		};
-	}
-
 	const repository = maybeResolveGitHubRepositorySlug(tenantRoot);
 	if (!repository) {
 		if (dryRun) {
@@ -655,17 +587,6 @@ export async function waitForGitHubWorkflowCompletion(
 		onProgress,
 	} = {},
 ) {
-	if (isGitHubAutomationStubbed()) {
-		return {
-			status: 'skipped',
-			reason: 'stubbed',
-			repository: repository ?? maybeResolveGitHubRepositorySlug(tenantRoot),
-			workflow,
-			headSha: headSha ?? null,
-			branch: branch ?? null,
-		};
-	}
-
 	const repo = repository ?? resolveGitHubRepositorySlug(tenantRoot);
 	return await waitForGitHubWorkflowRunCompletion(repo, {
 		client: createGitHubApiClient(),

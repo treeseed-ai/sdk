@@ -2,7 +2,6 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { basename, resolve, relative } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { getGitHubAutomationMode } from './github-automation.ts';
 import {
 	ensureSshPushUrlForOrigin,
 	remoteWriteUrl,
@@ -898,7 +897,7 @@ function applyPackageVersion(node: RepositorySaveNode, version: string) {
 }
 
 function shouldSkipNetworkInstall() {
-	return getGitHubAutomationMode() === 'stub' || process.env.TREESEED_SAVE_NPM_INSTALL_MODE === 'skip';
+	return process.env.TREESEED_SAVE_NPM_INSTALL_MODE === 'skip';
 }
 
 function shouldSkipGitDependencySmoke(options?: Pick<RepositorySaveOptions, 'verifyMode'>) {
@@ -958,7 +957,7 @@ async function runNpmInstallWithRetry(
 ): Promise<RepositoryInstallResult> {
 	if (shouldSkipNetworkInstall()) {
 		emitProgress(options, node, 'install', 'Skipped npm install because network install mode is disabled.');
-		return { status: 'skipped', attempts: 0, reason: 'stubbed' };
+		return { status: 'skipped', attempts: 0, reason: 'disabled' };
 	}
 	let lastError: string | null = null;
 	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
@@ -1019,7 +1018,7 @@ async function validateRepositoryLockfile(
 	const commandText = `${command} ${args.join(' ')}`;
 	if (shouldSkipNetworkInstall()) {
 		emitProgress(options, node, 'lockfile', `Skipped ${commandText} because network install mode is disabled.`);
-		return { status: 'skipped', command: commandText, issues: [], error: 'stubbed' };
+		return { status: 'skipped', command: commandText, issues: [], error: 'disabled' };
 	}
 	try {
 		runCapturedCommand(node, options, 'lockfile', command, args, { timeoutMs: 120_000, emitOutputOnSuccess: false });
@@ -1054,9 +1053,9 @@ async function runScript(node: RepositorySaveNode, options: RepositorySaveOption
 }
 
 async function runRepoVerification(node: RepositorySaveNode, options: RepositorySaveOptions, verifyMode: SaveVerifyMode): Promise<RepositoryVerificationResult> {
-	if (verifyMode === 'skip' || getGitHubAutomationMode() === 'stub') {
-		emitProgress(options, node, 'verify', getGitHubAutomationMode() === 'stub' ? 'Skipped verification in stub automation mode.' : 'Skipped verification by request.');
-		return { mode: verifyMode, status: 'skipped', primary: null, fallbackUsed: false, error: getGitHubAutomationMode() === 'stub' ? 'stubbed' : null };
+	if (verifyMode === 'skip') {
+		emitProgress(options, node, 'verify', 'Skipped verification by request.');
+		return { mode: verifyMode, status: 'skipped', primary: null, fallbackUsed: false, error: null };
 	}
 	if (node.kind !== 'package') {
 		emitProgress(options, node, 'verify', 'Skipped package verification for project repository.');
@@ -1256,7 +1255,7 @@ function ensureRemoteAccessBeforeVerification(node: RepositorySaveNode, options:
 }
 
 function shouldSkipRemoteAccessPreflight() {
-	return getGitHubAutomationMode() === 'stub' || process.env.TREESEED_SAVE_REMOTE_PREFLIGHT === 'skip';
+	return process.env.TREESEED_SAVE_REMOTE_PREFLIGHT === 'skip';
 }
 
 function localTreeseedTagWasCreatedByThisRun(node: RepositorySaveNode, tagName: string, workflowRunId?: string | null) {

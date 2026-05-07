@@ -393,7 +393,7 @@ function writeWorkspaceStub(repoDir) {
 		resolve(repoDir, 'package.json'),
 		`${JSON.stringify(
 			{
-				name: 'treeseed-save-stub',
+				name: 'treeseed-save-local',
 				private: true,
 				workspaces: ['packages/*'],
 			},
@@ -630,7 +630,7 @@ async function runLocalSuite() {
 		}
 	});
 
-	await withStep('save success: local bare origin with stubbed automation', async () => {
+	await withStep('save success: local bare origin with local-only install checks', async () => {
 		const clonedWorkspace = cloneLocalWorkspaceWithBareOrigin();
 		try {
 			const notePath = resolve(clonedWorkspace.workingRoot, 'src/content/notes/first-note.mdx');
@@ -640,7 +640,7 @@ async function runLocalSuite() {
 				cwd: clonedWorkspace.workingRoot,
 				env: {
 					...cacheEnv(),
-					TREESEED_GITHUB_AUTOMATION_MODE: 'stub',
+					TREESEED_SAVE_NPM_INSTALL_MODE: 'skip',
 					TREESEED_SAVE_REPORT_PATH: saveReportPath,
 				},
 				timeoutMs: 1800000,

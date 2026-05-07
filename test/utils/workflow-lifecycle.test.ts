@@ -209,11 +209,13 @@ function workflowFor(cwd: string) {
 describe('treeseed workflow lifecycle', () => {
 	beforeEach(() => {
 		vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'treeseed-workflow-home-')));
-		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
 		vi.stubEnv('TREESEED_STAGE_WAIT_MODE', 'skip');
 		vi.stubEnv('TREESEED_COMMIT_MESSAGE_PROVIDER', 'fallback');
 		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
 		vi.stubEnv('TREESEED_GIT_DEPENDENCY_SMOKE', 'skip');
+		vi.stubEnv('TREESEED_COMMAND_READINESS_MODE', 'skip');
+		vi.stubEnv('TREESEED_RELEASE_CANDIDATE_REHEARSAL_MODE', 'skip');
+		vi.stubEnv('TREESEED_RELEASE_CANDIDATE_CONFIG_PARITY_MODE', 'skip');
 	});
 
 	afterEach(() => {
@@ -820,7 +822,7 @@ describe('treeseed workflow lifecycle', () => {
 		git(work, ['commit', '-m', 'stage: root package dependency']);
 		git(work, ['push', 'origin', 'staging']);
 
-		const result = await workflow.release({ bump: 'patch' });
+		const result = await workflow.release({ bump: 'patch', ciMode: 'off' });
 
 		expect(result.payload.mode).toBe('recursive-workspace');
 		expect(result.payload.packageSelection.changed).toContain('@treeseed/sdk');
@@ -870,7 +872,6 @@ describe('treeseed workflow lifecycle', () => {
 		git(work, ['commit', '-m', 'stage: root package dependency']);
 		git(work, ['push', 'origin', 'staging']);
 
-		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'live');
 		vi.stubEnv('GH_TOKEN', '');
 		vi.stubEnv('GITHUB_TOKEN', '');
 		await expect(workflow.release({ bump: 'patch' })).rejects.toThrow('authenticated managed GitHub CLI');
@@ -878,8 +879,7 @@ describe('treeseed workflow lifecycle', () => {
 		const runId = recoverResult.payload.interruptedRuns[0]?.runId;
 		expect(runId).toMatch(/^release-/);
 
-		vi.stubEnv('TREESEED_GITHUB_AUTOMATION_MODE', 'stub');
-		const autoResumeResult = await workflow.release({ bump: 'minor' });
+		const autoResumeResult = await workflow.release({ bump: 'minor', ciMode: 'off' });
 
 		expect(autoResumeResult.runId).toBe(runId);
 		expect(autoResumeResult.payload.resumed).toBe(true);
