@@ -25,6 +25,8 @@ export type GitHubActionsWorkflowGate = {
 	workflow: string;
 	branch: string;
 	headSha: string;
+	timeoutSeconds?: number;
+	pollSeconds?: number;
 };
 
 export type GitHubActionsWorkflowJobStep = {
@@ -614,6 +616,8 @@ export function skippedGitHubActionsGate(gate: GitHubActionsWorkflowGate, reason
 		url: null,
 		createdAt: null,
 		updatedAt: null,
+		timeoutSeconds: gate.timeoutSeconds ?? null,
+		cached: false,
 	};
 }
 
@@ -780,8 +784,8 @@ export async function waitForGitHubActionsGate(
 		workflow: gate.workflow,
 		headSha: gate.headSha,
 		branch: gate.branch,
-		timeoutSeconds: options.timeoutSeconds,
-		pollSeconds: options.pollSeconds,
+		timeoutSeconds: gate.timeoutSeconds ?? options.timeoutSeconds,
+		pollSeconds: gate.pollSeconds ?? options.pollSeconds,
 		onProgress: reportProgress,
 	}) as Record<string, unknown>;
 }
