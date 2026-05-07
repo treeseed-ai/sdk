@@ -38,6 +38,7 @@ import {
 	ensureGeneratedWranglerConfig,
 	finalizeDeploymentState,
 	loadDeployState,
+	recordHostedDeploymentState,
 	runRemoteD1Migrations,
 	validateDeployPrerequisites,
 	validateDestroyPrerequisites,
@@ -522,6 +523,49 @@ async function waitForWorkflowGates(
 		results.push(normalized);
 	}
 	return results;
+}
+
+function recordHostedDeploymentStatesFromRootGates(
+	root: string,
+	rootRelease: Record<string, unknown> | null | undefined,
+	workflowGates: unknown,
+) {
+	const gates = Array.isArray(workflowGates)
+		? workflowGates.map((gate) => stringRecord(gate)).filter((gate): gate is Record<string, unknown> => Boolean(gate))
+		: [];
+	const releaseRecord = stringRecord(rootRelease) ?? {};
+	const reports: Array<Record<string, unknown>> = [];
+	for (const target of [
+		{ scope: 'staging' as const, branch: STAGING_BRANCH, commit: releaseRecord.stagingCommit },
+		{ scope: 'prod' as const, branch: PRODUCTION_BRANCH, commit: releaseRecord.releasedCommit },
+	]) {
+		const gate = gates.find((candidate) =>
+			candidate.workflow === 'deploy.yml'
+			&& candidate.branch === target.branch
+			&& candidate.status === 'completed'
+			&& candidate.conclusion === 'success');
+		const timestamp = typeof gate?.updatedAt === 'string' && gate.updatedAt.trim() ? gate.updatedAt : null;
+		if (!gate || !timestamp) {
+			continue;
+		}
+		const state = recordHostedDeploymentState(root, {
+			scope: target.scope,
+			commit: typeof target.commit === 'string' ? target.commit : null,
+			timestamp,
+			workflow: gate.workflow,
+			runId: gate.runId ?? null,
+		});
+		reports.push({
+			scope: target.scope,
+			branch: target.branch,
+			commit: typeof target.commit === 'string' ? target.commit : null,
+			timestamp: state.lastDeploymentTimestamp ?? timestamp,
+			url: state.lastDeployedUrl ?? null,
+			workflow: gate.workflow,
+			runId: gate.runId ?? null,
+		});
+	}
+	return reports;
 }
 
 function ensureTreeseedCommandReadiness(root: string) {
@@ -4285,6 +4329,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							runId: workflowRun.runId,
 							onProgress: (line, stream) => helpers.write(line, stream),
 						}).then((workflowGates) => ({ workflowGates })));
+					const hostedDeploymentState = recordHostedDeploymentStatesFromRootGates(root, rootRelease, rootWorkflowGateResult?.workflowGates);
 					const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
 						backMergeRootProductionIntoStaging(root, false));
 					const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
@@ -4309,6 +4354,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						rootRepo,
 						releaseCandidate,
 						releaseBackMerge,
+						hostedDeploymentState,
 						finalBranch: currentBranch(gitRoot) || STAGING_BRANCH,
 						pushStatus: { stagingPushed: true, productionPushed: true, tagPushed: true },
 						workspaceLinks,
@@ -4539,6 +4585,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						runId: workflowRun.runId,
 						onProgress: (line, stream) => helpers.write(line, stream),
 					}).then((workflowGates) => ({ workflowGates })));
+				const hostedDeploymentState = recordHostedDeploymentStatesFromRootGates(root, rootRelease, rootWorkflowGateResult?.workflowGates);
 				const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
 					backMergeRootProductionIntoStaging(root, true));
 				const devTagCleanupMode = (effectiveInput.devTagCleanup ?? 'safe-after-release') as DevTagCleanupMode;
@@ -4595,6 +4642,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					rootRepo,
 					releaseCandidate,
 					releaseBackMerge,
+					hostedDeploymentState,
 					finalBranch: currentBranch(gitRoot) || STAGING_BRANCH,
 					pushStatus: {
 						stagingPushed: true,

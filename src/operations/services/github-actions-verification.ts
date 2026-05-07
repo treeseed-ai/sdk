@@ -612,6 +612,8 @@ export function skippedGitHubActionsGate(gate: GitHubActionsWorkflowGate, reason
 		conclusion: null,
 		runId: null,
 		url: null,
+		createdAt: null,
+		updatedAt: null,
 	};
 }
 

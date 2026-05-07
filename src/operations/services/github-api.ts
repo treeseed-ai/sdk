@@ -39,6 +39,8 @@ export interface GitHubWorkflowRunSummary {
 	url: string | null;
 	headSha: string | null;
 	headBranch: string | null;
+	createdAt: string | null;
+	updatedAt: string | null;
 }
 
 export interface GitHubWorkflowJobSummary {
@@ -716,6 +718,8 @@ function normalizeWorkflowRun(run: Record<string, any>): GitHubWorkflowRunSummar
 		url: typeof run.html_url === 'string' ? run.html_url : null,
 		headSha: typeof run.head_sha === 'string' ? run.head_sha : null,
 		headBranch: typeof run.head_branch === 'string' ? run.head_branch : null,
+		createdAt: typeof run.created_at === 'string' ? run.created_at : null,
+		updatedAt: typeof run.updated_at === 'string' ? run.updated_at : null,
 	};
 }
 
@@ -837,6 +841,8 @@ export async function waitForGitHubWorkflowRunCompletion(
 						runId: normalized.id,
 						headSha: normalized.headSha,
 						branch: normalized.headBranch,
+						createdAt: normalized.createdAt,
+						updatedAt: normalized.updatedAt,
 						conclusion: normalized.conclusion,
 						url: normalized.url,
 						jobs: normalizedJobs,

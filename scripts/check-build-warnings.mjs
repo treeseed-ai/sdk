@@ -5,7 +5,10 @@ import { resolve } from 'node:path';
 
 const args = process.argv.slice(2);
 const defaultAllowlisted = [
-	/Module "url" has been externalized for browser compatibility, imported by ".*libsodium-sumo.*"/u,
+	{
+		label: 'vite-browser-external-libsodium-url',
+		pattern: /Module "url" has been externalized for browser compatibility, imported by ".*libsodium-sumo.*"/u,
+	},
 ];
 const allowlisted = [];
 const files = [];
@@ -22,7 +25,10 @@ for (let index = 0; index < args.length; index += 1) {
 		if (!pattern) {
 			throw new Error('Missing value for --allow.');
 		}
-		allowlisted.push(new RegExp(pattern));
+		allowlisted.push({
+			label: `custom:${pattern}`,
+			pattern: new RegExp(pattern),
+		});
 		index += 1;
 		continue;
 	}
@@ -34,6 +40,7 @@ if (files.length === 0) {
 }
 
 const warningLines = [];
+const allowedWarnings = new Map();
 const effectiveAllowlisted = [
 	...(useDefaultPolicy ? defaultAllowlisted : []),
 	...allowlisted,
@@ -44,7 +51,10 @@ for (const file of files) {
 		if (!line.includes('[WARN]')) {
 			continue;
 		}
-		if (effectiveAllowlisted.some((pattern) => pattern.test(line))) {
+		const allowed = effectiveAllowlisted.find((rule) => rule.pattern.test(line));
+		if (allowed) {
+			const current = allowedWarnings.get(allowed.label) ?? 0;
+			allowedWarnings.set(allowed.label, current + 1);
 			continue;
 		}
 		warningLines.push(line);
@@ -59,4 +69,11 @@ if (warningLines.length > 0) {
 	process.exit(1);
 }
 
+const allowedTotal = [...allowedWarnings.values()].reduce((sum, count) => sum + count, 0);
+if (allowedTotal > 0) {
+	console.log(`Allowed build warnings: ${allowedTotal}`);
+	for (const [label, count] of [...allowedWarnings.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+		console.log(`- ${label}: ${count}`);
+	}
+}
 console.log('No unexpected build warnings detected.');

@@ -2401,6 +2401,50 @@ export function markManagedServicesInitialized(tenantRoot, options = {}) {
 	return state;
 }
 
+export function recordHostedDeploymentState(tenantRoot, options = {}) {
+	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');
+	const deployConfig = loadTenantDeployConfig(tenantRoot);
+	const state = loadDeployState(tenantRoot, deployConfig, { target });
+	const timestamp = typeof options.timestamp === 'string' && options.timestamp.trim()
+		? options.timestamp.trim()
+		: new Date().toISOString();
+	const deployedUrl = typeof options.url === 'string' && options.url.trim()
+		? options.url.trim()
+		: (state.lastDeployedUrl ?? resolveConfiguredSurfaceBaseUrl(deployConfig, target, 'web'));
+	const commit = typeof options.commit === 'string' && options.commit.trim()
+		? options.commit.trim()
+		: null;
+
+	state.lastDeployedUrl = deployedUrl;
+	state.lastDeploymentTimestamp = timestamp;
+	state.lastDeployedCommit = commit;
+	state.readiness = {
+		...(state.readiness ?? {}),
+		initialized: true,
+		configured: true,
+		provisioned: true,
+		deployable: true,
+		phase: 'provisioned',
+		initializedAt: state.readiness?.initializedAt ?? timestamp,
+		lastValidatedAt: timestamp,
+		blockers: [],
+		warnings: state.readiness?.warnings ?? [],
+	};
+	const nextHistoryEntry = {
+		commit,
+		timestamp,
+		url: deployedUrl,
+		target: deployTargetLabel(target),
+		source: options.source ?? 'hosted-github-workflow',
+		workflow: options.workflow ?? null,
+		runId: options.runId ?? null,
+	};
+	const history = Array.isArray(state.deploymentHistory) ? state.deploymentHistory : [];
+	state.deploymentHistory = [...history, nextHistoryEntry].slice(-20);
+	writeDeployState(tenantRoot, state, { target });
+	return state;
+}
+
 export function assertDeploymentInitialized(tenantRoot, options = {}) {
 	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');
 	const deployConfig = loadTenantDeployConfig(tenantRoot);

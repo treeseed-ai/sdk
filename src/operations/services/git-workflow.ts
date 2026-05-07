@@ -38,14 +38,34 @@ function conflictedFiles(repoDir) {
 
 function resolveGeneratedPackageMetadataConflicts(repoDir) {
 	const files = conflictedFiles(repoDir);
-	if (files.length === 0) return false;
+	if (files.length === 0) {
+		return {
+			resolved: false,
+			repoDir,
+			targetBranch: STAGING_BRANCH,
+			reconciledFiles: [],
+			allConflictsWereGeneratedMetadata: false,
+		};
+	}
 	const generatedMetadataFiles = new Set(['package.json', 'package-lock.json']);
 	if (files.some((file) => !generatedMetadataFiles.has(file))) {
-		return false;
+		return {
+			resolved: false,
+			repoDir,
+			targetBranch: STAGING_BRANCH,
+			reconciledFiles: files,
+			allConflictsWereGeneratedMetadata: false,
+		};
 	}
 	runGit(['checkout', '--theirs', '--', ...files], { cwd: repoDir });
 	runGit(['add', '--', ...files], { cwd: repoDir });
-	return true;
+	return {
+		resolved: true,
+		repoDir,
+		targetBranch: STAGING_BRANCH,
+		reconciledFiles: files,
+		allConflictsWereGeneratedMetadata: true,
+	};
 }
 
 export function headCommit(repoDir, ref = 'HEAD') {
@@ -361,21 +381,34 @@ export function mergeCurrentBranchIntoStaging(cwd, featureBranch) {
 	return squashMergeBranchIntoStaging(cwd, featureBranch, `stage: ${featureBranch}`);
 }
 
-export function squashMergeBranchIntoStaging(cwd, featureBranch, message, { pushTarget = true } = {}) {
+export function squashMergeBranchIntoStaging(cwd, featureBranch, message, { pushTarget = true, reportGeneratedMetadataReconciliation = true } = {}) {
 	const repoDir = assertCleanWorktree(cwd);
 	fetchOrigin(repoDir);
 	syncBranchWithOrigin(repoDir, STAGING_BRANCH);
+	let generatedMetadataReconciliation = null;
 	try {
-		runGit(['merge', '--squash', featureBranch], { cwd: repoDir });
+		runGit(['merge', '--squash', featureBranch], { cwd: repoDir, capture: true });
 	} catch (error) {
-		if (!resolveGeneratedPackageMetadataConflicts(repoDir)) {
+		const reconciliation = resolveGeneratedPackageMetadataConflicts(repoDir);
+		if (!reconciliation.resolved) {
 			throw error;
 		}
+		if (reportGeneratedMetadataReconciliation) {
+			console.log(`Resolving generated package metadata reconciliation for ${reconciliation.reconciledFiles.join(', ')}.`);
+		}
+		generatedMetadataReconciliation = {
+			...reconciliation,
+			commitSha: null,
+		};
 	}
 	let committed = false;
 	if (repoHasStagedChanges(repoDir)) {
 		runGit(['commit', '-m', message], { cwd: repoDir });
 		committed = true;
+	}
+	const commitSha = headCommit(repoDir);
+	if (generatedMetadataReconciliation) {
+		generatedMetadataReconciliation.commitSha = commitSha;
 	}
 	if (pushTarget) {
 		pushBranch(repoDir, STAGING_BRANCH);
@@ -384,8 +417,9 @@ export function squashMergeBranchIntoStaging(cwd, featureBranch, message, { push
 		repoDir,
 		targetBranch: STAGING_BRANCH,
 		committed,
-		commitSha: headCommit(repoDir),
+		commitSha,
 		pushed: pushTarget,
+		generatedMetadataReconciliation,
 	};
 }
 
