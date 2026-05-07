@@ -73,6 +73,7 @@ export type TreeseedWorkflowProviderStatus = Record<'local' | 'staging' | 'prod'
 
 export type TreeseedWorkflowStatusOptions = {
 	live?: boolean;
+	history?: 'recent' | 'all';
 	env?: NodeJS.ProcessEnv;
 };
 
@@ -114,6 +115,9 @@ export type TreeseedWorkflowState = {
 			updatedAt: string;
 			reasons: string[];
 		}>;
+		historyMode: 'recent' | 'all';
+		obsoleteRunsTotal: number;
+		obsoleteRunsOmitted: number;
 		blockers: string[];
 	};
 	packageSync: {
@@ -562,6 +566,32 @@ function safeReleaseHistory(repoDir: string | null): TreeseedWorkflowState['rele
 	}
 }
 
+const DEFAULT_OBSOLETE_RUN_HISTORY_LIMIT = 20;
+
+export function capObsoleteWorkflowRuns<T>(
+	obsoleteRuns: T[],
+	options: { history?: 'recent' | 'all'; limit?: number } = {},
+) {
+	const historyMode = options.history === 'all' ? 'all' : 'recent';
+	const limit = options.limit ?? DEFAULT_OBSOLETE_RUN_HISTORY_LIMIT;
+	const obsoleteRunsTotal = obsoleteRuns.length;
+	if (historyMode === 'all') {
+		return {
+			historyMode,
+			obsoleteRuns,
+			obsoleteRunsTotal,
+			obsoleteRunsOmitted: 0,
+		};
+	}
+	const cappedRuns = obsoleteRuns.slice(0, limit);
+	return {
+		historyMode,
+		obsoleteRuns: cappedRuns,
+		obsoleteRunsTotal,
+		obsoleteRunsOmitted: Math.max(0, obsoleteRunsTotal - cappedRuns.length),
+	};
+}
+
 function resolveLocalStatusUrl(deployConfig: ReturnType<typeof loadCliDeployConfig>) {
 	return deployConfig.surfaces?.web?.localBaseUrl
 		?? deployConfig.surfaces?.api?.localBaseUrl
@@ -704,6 +734,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			updatedAt: journal.updatedAt,
 			reasons: classification.reasons,
 		}));
+	const obsoleteHistory = capObsoleteWorkflowRuns(obsoleteRuns, { history: options.history });
 	const workflowBlockers: string[] = [];
 	if (workflowLock.active && workflowLock.lock) {
 		workflowBlockers.push(`Workflow lock active for ${workflowLock.lock.command} (${workflowLock.lock.runId}).`);
@@ -739,7 +770,10 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			},
 			interruptedRuns,
 			staleRuns,
-			obsoleteRuns,
+			obsoleteRuns: obsoleteHistory.obsoleteRuns,
+			historyMode: obsoleteHistory.historyMode,
+			obsoleteRunsTotal: obsoleteHistory.obsoleteRunsTotal,
+			obsoleteRunsOmitted: obsoleteHistory.obsoleteRunsOmitted,
 			blockers: workflowBlockers,
 		},
 		packageSync: {

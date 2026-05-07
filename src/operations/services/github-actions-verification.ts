@@ -643,13 +643,16 @@ function shortSha(value: string | null | undefined) {
 	return value ? value.slice(0, 12) : '(unknown)';
 }
 
-function activeJobSummary(event: GitHubWorkflowProgressEvent) {
+function activeJobSummaries(event: GitHubWorkflowProgressEvent) {
 	const activeJobs = event.activeJobs ?? [];
-	if (activeJobs.length === 0) return '';
-	const summaries = activeJobs.slice(0, 2).map((job) => {
+	return activeJobs.slice(0, 2).map((job) => {
 		const activeStep = (job.steps ?? []).find((step) => step.status && step.status !== 'completed');
 		return activeStep?.name ? `${job.name} > ${activeStep.name}` : job.name;
 	}).filter(Boolean);
+}
+
+function activeJobSummary(event: GitHubWorkflowProgressEvent) {
+	const summaries = activeJobSummaries(event);
 	return summaries.length > 0 ? `; active: ${summaries.join(', ')}` : '';
 }
 
@@ -680,6 +683,84 @@ function formatGitHubActionsGateProgress(
 	return `${prefix}${run} ${status}${activeJobSummary(event)}${url} (${formatElapsed(event.elapsedSeconds)} elapsed)`;
 }
 
+function progressCompactKey(gate: GitHubActionsWorkflowGate, event: GitHubWorkflowProgressEvent) {
+	const active = activeJobSummaries(event).join(',');
+	return [
+		gate.name,
+		event.workflow,
+		event.runId ?? 'none',
+		event.type,
+		event.status ?? 'none',
+		event.conclusion ?? 'none',
+		active,
+	].join('|');
+}
+
+function formatCompactedGitHubActionsGateProgress(
+	gate: GitHubActionsWorkflowGate,
+	event: GitHubWorkflowProgressEvent,
+	operation: string,
+	repeatedPolls: number,
+	lastChangeSeconds: number,
+) {
+	const prefix = `[${operation}][gate][${gate.name}] ${event.workflow}`;
+	const run = event.runId ? ` run ${event.runId}` : '';
+	const active = activeJobSummaries(event);
+	const activeText = active.length > 0 ? active.join(', ') : event.status ?? 'waiting';
+	const url = event.url ? `: ${event.url}` : '';
+	return `${prefix}${run} still active: ${activeText} (${repeatedPolls} polls, ${formatElapsed(lastChangeSeconds)} since last change)${url}`;
+}
+
+export function createGitHubActionsGateProgressReporter(
+	gate: GitHubActionsWorkflowGate,
+	options: {
+		operation?: string;
+		now?: () => number;
+		minRepeatMs?: number;
+		onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
+	} = {},
+) {
+	const operation = options.operation ?? 'workflow';
+	const now = options.now ?? (() => Date.now());
+	const minRepeatMs = options.minRepeatMs ?? 60_000;
+	let lastKey: string | null = null;
+	let lastChangeAt = now();
+	let lastEmitAt = 0;
+	let repeatedPolls = 0;
+	return (event: GitHubWorkflowProgressEvent) => {
+		if (event.type === 'completed') {
+			options.onProgress?.(formatGitHubActionsGateProgress(gate, event, operation));
+			lastKey = null;
+			repeatedPolls = 0;
+			lastEmitAt = now();
+			lastChangeAt = lastEmitAt;
+			return;
+		}
+		const currentKey = progressCompactKey(gate, event);
+		const currentTime = now();
+		if (currentKey !== lastKey) {
+			lastKey = currentKey;
+			lastChangeAt = currentTime;
+			lastEmitAt = currentTime;
+			repeatedPolls = 0;
+			options.onProgress?.(formatGitHubActionsGateProgress(gate, event, operation));
+			return;
+		}
+		repeatedPolls += 1;
+		if (currentTime - lastEmitAt >= minRepeatMs) {
+			options.onProgress?.(formatCompactedGitHubActionsGateProgress(
+				gate,
+				event,
+				operation,
+				repeatedPolls,
+				Math.max(0, Math.round((currentTime - lastChangeAt) / 1000)),
+			));
+			lastEmitAt = currentTime;
+			repeatedPolls = 0;
+		}
+	};
+}
+
 export async function waitForGitHubActionsGate(
 	gate: GitHubActionsWorkflowGate,
 	options: {
@@ -690,6 +771,10 @@ export async function waitForGitHubActionsGate(
 	} = {},
 ) {
 	const { waitForGitHubWorkflowCompletion } = await import('./github-automation.ts');
+	const reportProgress = createGitHubActionsGateProgressReporter(gate, {
+		operation: options.operation ?? 'workflow',
+		onProgress: options.onProgress,
+	});
 	return await waitForGitHubWorkflowCompletion(gate.repoPath, {
 		repository: gate.repository,
 		workflow: gate.workflow,
@@ -697,8 +782,6 @@ export async function waitForGitHubActionsGate(
 		branch: gate.branch,
 		timeoutSeconds: options.timeoutSeconds,
 		pollSeconds: options.pollSeconds,
-		onProgress: (event: GitHubWorkflowProgressEvent) => {
-			options.onProgress?.(formatGitHubActionsGateProgress(gate, event, options.operation ?? 'workflow'));
-		},
+		onProgress: reportProgress,
 	}) as Record<string, unknown>;
 }

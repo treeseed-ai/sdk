@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -10,6 +11,7 @@ import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentVal
 import { loadDeployState } from './deploy.ts';
 import { loadCliDeployConfig } from './runtime-tools.ts';
 import { packagesWithScript, run, workspacePackages } from './workspace-tools.ts';
+import { createBuildWarningSummary, formatAllowedBuildWarnings } from './build-warning-policy.js';
 
 export type ReleaseCandidateStatus = 'passed' | 'failed';
 
@@ -290,9 +292,43 @@ function rehearsalVerifyScript(root: string) {
 	return null;
 }
 
+function runNpmRehearsalCommand(args: string[], options: { cwd: string; timeoutMs: number }) {
+	const result = spawnSync('npm', args, {
+		cwd: options.cwd,
+		env: process.env,
+		stdio: 'pipe',
+		encoding: 'utf8',
+		timeout: options.timeoutMs,
+	});
+	const stdout = result.stdout ?? '';
+	const stderr = result.stderr ?? '';
+	if (result.status !== 0) {
+		if (stdout) process.stdout.write(stdout);
+		if (stderr) process.stderr.write(stderr);
+		const message =
+			(result.error?.message ? `${result.error.message}\n` : '')
+			+ (stderr.trim() || stdout.trim() || `npm ${args.join(' ')} failed`);
+		throw new Error(message);
+	}
+	const warningSummary = createBuildWarningSummary();
+	const emitFiltered = (text: string, stream: NodeJS.WriteStream) => {
+		for (const line of text.split(/\r?\n/u)) {
+			if (!line) continue;
+			const classified = warningSummary.record(line);
+			if (classified.kind === 'allowed') continue;
+			stream.write(`${line}\n`);
+		}
+	};
+	emitFiltered(stdout, process.stdout);
+	emitFiltered(stderr, process.stderr);
+	for (const line of formatAllowedBuildWarnings(warningSummary.allowedWarnings)) {
+		process.stdout.write(`${line}\n`);
+	}
+}
+
 function buildRehearsalWorkspacePackageArtifacts(root: string) {
 	for (const pkg of packagesWithScript('build:dist', root)) {
-		run('npm', ['--prefix', pkg.dir, 'run', 'build:dist'], { cwd: root, timeoutMs: 300000 });
+		runNpmRehearsalCommand(['--prefix', pkg.dir, 'run', 'build:dist'], { cwd: root, timeoutMs: 300000 });
 	}
 }
 
@@ -311,12 +347,12 @@ function runProductionDependencyRehearsal(
 		const copied = copyWorkspaceForProductionRehearsal(root);
 		tempParent = copied.tempParent;
 		applyPlannedStableMetadata(copied.tempRoot, plannedVersions);
-		run('npm', ['install', '--package-lock-only', '--ignore-scripts'], { cwd: copied.tempRoot, timeoutMs: 300000 });
-		run('npm', ['ci', '--ignore-scripts'], { cwd: copied.tempRoot, timeoutMs: 600000 });
+		runNpmRehearsalCommand(['install', '--package-lock-only', '--ignore-scripts'], { cwd: copied.tempRoot, timeoutMs: 300000 });
+		runNpmRehearsalCommand(['ci', '--ignore-scripts'], { cwd: copied.tempRoot, timeoutMs: 600000 });
 		buildRehearsalWorkspacePackageArtifacts(copied.tempRoot);
 		const scriptName = rehearsalVerifyScript(copied.tempRoot);
 		if (scriptName) {
-			run('npm', ['run', scriptName], { cwd: copied.tempRoot, timeoutMs: 900000 });
+			runNpmRehearsalCommand(['run', scriptName], { cwd: copied.tempRoot, timeoutMs: 900000 });
 		}
 		const postInstallIssues = collectInternalDevReferenceIssues(copied.tempRoot, selectedPackageSet);
 		if (postInstallIssues.length > 0) {

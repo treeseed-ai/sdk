@@ -2,14 +2,12 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {
+	formatAllowedBuildWarnings,
+	scanBuildWarningText,
+} from '../src/operations/services/build-warning-policy.js';
 
 const args = process.argv.slice(2);
-const defaultAllowlisted = [
-	{
-		label: 'vite-browser-external-libsodium-url',
-		pattern: /Module "url" has been externalized for browser compatibility, imported by ".*libsodium-sumo.*"/u,
-	},
-];
 const allowlisted = [];
 const files = [];
 let useDefaultPolicy = true;
@@ -25,10 +23,7 @@ for (let index = 0; index < args.length; index += 1) {
 		if (!pattern) {
 			throw new Error('Missing value for --allow.');
 		}
-		allowlisted.push({
-			label: `custom:${pattern}`,
-			pattern: new RegExp(pattern),
-		});
+		allowlisted.push(pattern);
 		index += 1;
 		continue;
 	}
@@ -41,24 +36,16 @@ if (files.length === 0) {
 
 const warningLines = [];
 const allowedWarnings = new Map();
-const effectiveAllowlisted = [
-	...(useDefaultPolicy ? defaultAllowlisted : []),
-	...allowlisted,
-];
 for (const file of files) {
 	const contents = readFileSync(resolve(process.cwd(), file), 'utf8');
-	for (const line of contents.split(/\r?\n/u)) {
-		if (!line.includes('[WARN]')) {
-			continue;
-		}
-		const allowed = effectiveAllowlisted.find((rule) => rule.pattern.test(line));
-		if (allowed) {
-			const current = allowedWarnings.get(allowed.label) ?? 0;
-			allowedWarnings.set(allowed.label, current + 1);
-			continue;
-		}
-		warningLines.push(line);
+	const scan = scanBuildWarningText(contents, {
+		useDefaultPolicy,
+		allow: allowlisted,
+	});
+	for (const [label, count] of scan.allowedWarnings.entries()) {
+		allowedWarnings.set(label, (allowedWarnings.get(label) ?? 0) + count);
 	}
+	warningLines.push(...scan.unexpectedWarnings);
 }
 
 if (warningLines.length > 0) {
@@ -69,11 +56,7 @@ if (warningLines.length > 0) {
 	process.exit(1);
 }
 
-const allowedTotal = [...allowedWarnings.values()].reduce((sum, count) => sum + count, 0);
-if (allowedTotal > 0) {
-	console.log(`Allowed build warnings: ${allowedTotal}`);
-	for (const [label, count] of [...allowedWarnings.entries()].sort(([left], [right]) => left.localeCompare(right))) {
-		console.log(`- ${label}: ${count}`);
-	}
+for (const line of formatAllowedBuildWarnings(allowedWarnings)) {
+	console.log(line);
 }
 console.log('No unexpected build warnings detected.');
