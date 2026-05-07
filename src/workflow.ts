@@ -62,6 +62,7 @@ export type TreeseedWorkflowRecovery = {
 	recoverCommand?: string | null;
 	resumeCommand?: string | null;
 	lock?: Record<string, unknown> | null;
+	localCleanup?: Record<string, unknown> | null;
 };
 
 export type TreeseedWorkflowExecutionMode = 'execute' | 'plan';
@@ -258,6 +259,7 @@ export type TreeseedReleaseInput = {
 	ciMode?: TreeseedWorkflowCiMode;
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
+	fresh?: boolean;
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -269,6 +271,8 @@ export type TreeseedResumeInput = {
 export type TreeseedRecoverInput = {
 	runId?: string;
 	pruneStale?: boolean;
+	obsoleteRunId?: string;
+	obsoleteReason?: string;
 };
 
 export type TreeseedDestroyInput = {

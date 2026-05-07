@@ -641,6 +641,23 @@ function shortSha(value: string | null | undefined) {
 	return value ? value.slice(0, 12) : '(unknown)';
 }
 
+function activeJobSummary(event: GitHubWorkflowProgressEvent) {
+	const activeJobs = event.activeJobs ?? [];
+	if (activeJobs.length === 0) return '';
+	const summaries = activeJobs.slice(0, 2).map((job) => {
+		const activeStep = (job.steps ?? []).find((step) => step.status && step.status !== 'completed');
+		return activeStep?.name ? `${job.name} > ${activeStep.name}` : job.name;
+	}).filter(Boolean);
+	return summaries.length > 0 ? `; active: ${summaries.join(', ')}` : '';
+}
+
+function failedJobSummary(event: GitHubWorkflowProgressEvent) {
+	const failedJobs = event.failedJobs ?? [];
+	if (failedJobs.length === 0) return '';
+	const names = failedJobs.slice(0, 3).map((job) => job.name).filter(Boolean);
+	return names.length > 0 ? `; failed: ${names.join(', ')}` : '';
+}
+
 function formatGitHubActionsGateProgress(
 	gate: GitHubActionsWorkflowGate,
 	event: GitHubWorkflowProgressEvent,
@@ -653,12 +670,12 @@ function formatGitHubActionsGateProgress(
 	if (event.type === 'completed') {
 		const conclusion = event.conclusion === 'success' ? 'successfully' : `with conclusion ${event.conclusion ?? 'unknown'}`;
 		const url = event.url ? `: ${event.url}` : '';
-		return `${prefix} completed ${conclusion} in ${formatElapsed(event.elapsedSeconds)}${url}`;
+		return `${prefix} completed ${conclusion}${failedJobSummary(event)} in ${formatElapsed(event.elapsedSeconds)}${url}`;
 	}
 	const status = event.status ?? 'waiting';
 	const url = event.url ? `: ${event.url}` : '';
 	const run = event.runId ? ` run ${event.runId}` : '';
-	return `${prefix}${run} ${status}${url} (${formatElapsed(event.elapsedSeconds)} elapsed)`;
+	return `${prefix}${run} ${status}${activeJobSummary(event)}${url} (${formatElapsed(event.elapsedSeconds)} elapsed)`;
 }
 
 export async function waitForGitHubActionsGate(

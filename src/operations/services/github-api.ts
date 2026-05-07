@@ -47,6 +47,13 @@ export interface GitHubWorkflowJobSummary {
 	status: string | null;
 	conclusion: string | null;
 	url: string | null;
+	steps?: GitHubWorkflowJobStepSummary[];
+}
+
+export interface GitHubWorkflowJobStepSummary {
+	name: string;
+	status: string | null;
+	conclusion: string | null;
 }
 
 export type GitHubWorkflowProgressEvent = {
@@ -60,6 +67,10 @@ export type GitHubWorkflowProgressEvent = {
 	url: string | null;
 	status: string | null;
 	conclusion: string | null;
+	jobs?: GitHubWorkflowJobSummary[];
+	activeJobs?: GitHubWorkflowJobSummary[];
+	completedJobs?: GitHubWorkflowJobSummary[];
+	failedJobs?: GitHubWorkflowJobSummary[];
 };
 
 function normalizeGitHubVisibility(value: string | null | undefined, fallback: GitHubRepositorySummary['visibility'] = 'private') {
@@ -715,7 +726,28 @@ function normalizeWorkflowJob(job: Record<string, any>): GitHubWorkflowJobSummar
 		status: typeof job.status === 'string' ? job.status : null,
 		conclusion: typeof job.conclusion === 'string' ? job.conclusion : null,
 		url: typeof job.html_url === 'string' ? job.html_url : null,
+		steps: Array.isArray(job.steps)
+			? job.steps.map((step: Record<string, any>) => ({
+				name: String(step.name ?? ''),
+				status: typeof step.status === 'string' ? step.status : null,
+				conclusion: typeof step.conclusion === 'string' ? step.conclusion : null,
+			}))
+			: [],
 	};
+}
+
+async function listWorkflowJobsForProgress(client: GitHubApiClient, owner: string, repo: string, runId: number) {
+	try {
+		const jobs = await client.rest.actions.listJobsForWorkflowRun({
+			owner,
+			repo,
+			run_id: runId,
+			per_page: 100,
+		});
+		return jobs.data.jobs.map((job) => normalizeWorkflowJob(job as Record<string, any>));
+	} catch {
+		return [];
+	}
 }
 
 function sleep(ms: number) {
@@ -745,7 +777,10 @@ export async function waitForGitHubWorkflowRunCompletion(
 	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	const startedAt = Date.now();
 	let lastProgress: GitHubWorkflowProgressEvent | null = null;
-	const emitProgress = (type: GitHubWorkflowProgressEvent['type'], run: GitHubWorkflowRunSummary | null = null) => {
+	const emitProgress = (type: GitHubWorkflowProgressEvent['type'], run: GitHubWorkflowRunSummary | null = null, jobs: GitHubWorkflowJobSummary[] = []) => {
+		const completedJobs = jobs.filter((job) => job.status === 'completed');
+		const failedJobs = jobs.filter((job) => job.conclusion && job.conclusion !== 'success' && job.conclusion !== 'skipped');
+		const activeJobs = jobs.filter((job) => job.status && job.status !== 'completed');
 		const event: GitHubWorkflowProgressEvent = {
 			type,
 			repository: `${owner}/${name}`,
@@ -757,6 +792,10 @@ export async function waitForGitHubWorkflowRunCompletion(
 			url: run?.url ?? null,
 			status: run?.status ?? null,
 			conclusion: run?.conclusion ?? null,
+			jobs,
+			activeJobs,
+			completedJobs,
+			failedJobs,
 		};
 		lastProgress = event;
 		onProgress?.(event);
@@ -787,15 +826,10 @@ export async function waitForGitHubWorkflowRunCompletion(
 					run_id: match.id,
 				});
 				const normalized = normalizeWorkflowRun(current.data as Record<string, any>);
+				const progressJobs = await listWorkflowJobsForProgress(client, owner, name, match.id);
 				if (normalized.status === 'completed') {
-					emitProgress('completed', normalized);
-					const jobs = await client.rest.actions.listJobsForWorkflowRun({
-						owner,
-						repo: name,
-						run_id: match.id,
-						per_page: 100,
-					});
-					const normalizedJobs = jobs.data.jobs.map((job) => normalizeWorkflowJob(job as Record<string, any>));
+					const normalizedJobs = progressJobs;
+					emitProgress('completed', normalized, normalizedJobs);
 					return {
 						status: 'completed',
 						repository: `${owner}/${name}`,
@@ -809,7 +843,7 @@ export async function waitForGitHubWorkflowRunCompletion(
 						failedJobs: normalizedJobs.filter((job) => job.conclusion && job.conclusion !== 'success' && job.conclusion !== 'skipped'),
 					};
 				}
-				emitProgress('running', normalized);
+				emitProgress('running', normalized, progressJobs);
 				await sleep(pollSeconds * 1000);
 			}
 		} catch (error) {
