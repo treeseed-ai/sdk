@@ -342,13 +342,30 @@ function resolveRootReleaseSubmoduleConflicts(root: string, selectedPackageNames
 	const packagePaths = new Set(packages.map((pkg) => pkg.repoPath));
 	const unresolved = unresolvedMergePaths(gitRoot);
 	if (unresolved.length === 0 || unresolved.some((filePath) => !packagePaths.has(filePath))) {
-		return false;
+		return {
+			resolved: false,
+			allUnresolvedPathsWerePackagePointers: unresolved.length > 0 && unresolved.every((filePath) => packagePaths.has(filePath)),
+			unresolvedPaths: unresolved,
+			entries: [],
+		};
 	}
+	const entries: Array<Record<string, unknown>> = [];
 	for (const pkg of packages) {
 		syncBranchWithOrigin(pkg.dir, PRODUCTION_BRANCH);
 		run('git', ['add', pkg.repoPath], { cwd: gitRoot });
+		entries.push({
+			packageName: pkg.name,
+			path: pkg.repoPath,
+			targetBranch: PRODUCTION_BRANCH,
+			resolvedCommit: headCommit(pkg.dir),
+		});
 	}
-	return true;
+	return {
+		resolved: true,
+		allUnresolvedPathsWerePackagePointers: true,
+		unresolvedPaths: unresolved,
+		entries,
+	};
 }
 
 function unlinkWorkflowWorkspaceLinks(root: string, helpers: WorkflowOperationHelpers, mode: WorkspaceLinksMode | undefined = 'auto') {
@@ -1346,6 +1363,156 @@ function releaseRunHasCompletedMutation(journal: TreeseedWorkflowRunJournal) {
 		step.status === 'completed'
 		&& step.id !== 'release-plan'
 		&& step.id !== 'workspace-unlink');
+}
+
+type ReleaseCleanupRepoSnapshot = {
+	name: string;
+	path: string;
+	branch: string | null;
+	files: string[];
+};
+
+type ReleaseCleanupSnapshot = {
+	repos: ReleaseCleanupRepoSnapshot[];
+};
+
+function generatedReleaseMetadataFiles(repoDir: string) {
+	return ['package.json', 'package-lock.json', 'npm-shrinkwrap.json']
+		.filter((filePath) => {
+			if (existsSync(resolve(repoDir, filePath))) return true;
+			try {
+				run('git', ['ls-files', '--error-unmatch', filePath], { cwd: repoDir, capture: true });
+				return true;
+			} catch {
+				return false;
+			}
+		});
+}
+
+function collectReleaseCleanupSnapshot(root: string, selectedPackageNames: Set<string>): ReleaseCleanupSnapshot {
+	return {
+		repos: [
+			{
+				name: '@treeseed/market',
+				path: repoRoot(root),
+				branch: currentBranch(repoRoot(root)) || null,
+				files: generatedReleaseMetadataFiles(repoRoot(root)),
+			},
+			...checkedOutWorkspacePackageRepos(root)
+				.filter((pkg) => selectedPackageNames.has(pkg.name))
+				.map((pkg) => ({
+					name: pkg.name,
+					path: pkg.dir,
+					branch: currentBranch(pkg.dir) || null,
+					files: generatedReleaseMetadataFiles(pkg.dir),
+				})),
+		],
+	};
+}
+
+function restoreReleaseGeneratedMetadata(repo: ReleaseCleanupRepoSnapshot) {
+	const restored: string[] = [];
+	const skipped: string[] = [];
+	for (const filePath of repo.files) {
+		const status = run('git', ['status', '--porcelain', '--', filePath], { cwd: repo.path, capture: true });
+		if (!status.trim()) {
+			skipped.push(filePath);
+			continue;
+		}
+		run('git', ['restore', '--staged', '--worktree', '--', filePath], { cwd: repo.path, capture: true });
+		restored.push(filePath);
+	}
+	return { restored, skipped };
+}
+
+function cleanupFailedReleaseLocalState(
+	root: string,
+	helpers: WorkflowOperationHelpers,
+	snapshot: ReleaseCleanupSnapshot | null,
+	workspaceLinksMode: WorkspaceLinksMode | undefined,
+) {
+	const report: {
+		restored: Array<Record<string, unknown>>;
+		skipped: Array<Record<string, unknown>>;
+		manualReview: Array<Record<string, unknown>>;
+	} = { restored: [], skipped: [], manualReview: [] };
+	try {
+		ensureWorkflowWorkspaceLinks(root, helpers, workspaceLinksMode ?? 'auto');
+	} catch (error) {
+		report.manualReview.push({
+			scope: 'workspace-links',
+			reason: error instanceof Error ? error.message : String(error),
+		});
+	}
+	if (!snapshot) {
+		report.skipped.push({ scope: 'release-metadata', reason: 'cleanup snapshot was not recorded before failure' });
+		return report;
+	}
+	for (const repo of snapshot.repos) {
+		try {
+			const restored = restoreReleaseGeneratedMetadata(repo);
+			if (repo.branch && currentBranch(repo.path) !== repo.branch) {
+				checkoutBranch(repo.path, repo.branch);
+			}
+			if (restored.restored.length > 0) {
+				report.restored.push({ repo: repo.name, path: repo.path, files: restored.restored });
+			}
+			if (restored.skipped.length > 0) {
+				report.skipped.push({ repo: repo.name, path: repo.path, files: restored.skipped, reason: 'unchanged' });
+			}
+		} catch (error) {
+			report.manualReview.push({
+				repo: repo.name,
+				path: repo.path,
+				branch: repo.branch,
+				files: repo.files,
+				reason: error instanceof Error ? error.message : String(error),
+				nextCommand: repo.branch ? `git -C ${repo.path} restore --staged --worktree -- ${repo.files.join(' ')} && git -C ${repo.path} checkout ${repo.branch}` : null,
+			});
+		}
+	}
+	return report;
+}
+
+function prepareFreshReleaseRun(
+	root: string,
+	branch: string | null,
+	rootRepo: WorkflowRepoReport,
+	packageReports: WorkflowRepoReport[],
+) {
+	if (branch !== STAGING_BRANCH) return { archived: [], blockers: [] };
+	const currentHeads = Object.fromEntries([
+		[rootRepo.name, rootRepo.commitSha ?? null],
+		...packageReports.map((report) => [report.name, report.commitSha ?? null] as const),
+	]);
+	const archived: Array<{ runId: string; reasons: string[] }> = [];
+	const blockers: string[] = [];
+	for (const journal of listInterruptedWorkflowRuns(root).filter((entry) => entry.command === 'release')) {
+		const classification = classifyWorkflowRunJournal(journal, {
+			currentBranch: branch,
+			currentHeads,
+		});
+		if (classification.state === 'stale') {
+			archiveWorkflowRun(root, journal.runId, {
+				...classification,
+				reasons: ['fresh release superseded stale failed release', ...classification.reasons],
+			});
+			archived.push({ runId: journal.runId, reasons: classification.reasons });
+			continue;
+		}
+		if (classification.state === 'resumable' && releaseRunHasCompletedMutation(journal)) {
+			blockers.push(`${journal.runId}: completed release mutations and is still safe to resume. Mark it obsolete with \`npx trsd recover --obsolete ${journal.runId} --reason "superseded by fresh release"\` before using --fresh.`);
+		}
+	}
+	if (blockers.length > 0) {
+		workflowError('release', 'validation_failed', [
+			'Treeseed release --fresh will not bypass a resumable partial release that already completed release mutations.',
+			...blockers,
+		].join('\n'), {
+			details: { archived, blockers },
+		});
+	}
+	return { archived, blockers };
 }
 
 function findAutoResumableReleaseRun(
@@ -3925,10 +4092,14 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 			const rootRepo = createWorkspaceRootRepoReport(root);
 			const packageReports = createWorkspacePackageReports(root);
 			const explicitResumeRunId = helpers.context.workflow?.resumeRunId ?? null;
-			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId
+			const freshRelease = input.fresh === true && !explicitResumeRunId;
+			const freshPreparation = freshRelease && executionMode === 'execute'
+				? prepareFreshReleaseRun(root, session.branchName, rootRepo, packageReports)
+				: { archived: [], blockers: [] };
+			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId && !freshRelease
 				? findAutoResumableReleaseRun(root, session.branchName, rootRepo, packageReports)
 				: null;
-			const planAutoResumeRun = executionMode === 'plan'
+			const planAutoResumeRun = executionMode === 'plan' && input.fresh !== true
 				? findAutoResumableReleaseRun(root, session.branchName, rootRepo, packageReports)
 				: null;
 			const effectiveInput = autoResumeRun
@@ -3954,6 +4125,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				return buildWorkflowResult('release', root, {
 					...plannedRelease,
 					ciMode,
+					fresh: input.fresh === true,
+					freshArchivedRuns: [],
 					...worktreePayload(root, effectiveInput.worktreeMode),
 					autoResumeCandidate: planAutoResumeRun
 						? {
@@ -3985,6 +4158,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
 					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
 					ciMode,
+					fresh: input.fresh === true,
 					worktreeMode: effectiveInput.worktreeMode ?? 'auto',
 					workspaceLinks: effectiveInput.workspaceLinks ?? 'auto',
 				},
@@ -4024,6 +4198,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				helpers.write(`[workflow][resume] Resuming interrupted release ${autoResumeRun.runId} on ${STAGING_BRANCH}.`);
 			}
 
+			let releaseCleanupSnapshot: ReleaseCleanupSnapshot | null = null;
 			try {
 				const releasePlan = await executeJournalStep(root, workflowRun.runId, 'release-plan', () => plannedRelease) as typeof plannedRelease;
 				const effectivePackageSelection = releasePlanPackageSelection(releasePlan.packageSelection);
@@ -4117,6 +4292,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						mode,
 						mergeStrategy: 'merge-commit',
 						level,
+						fresh: input.fresh === true,
+						freshArchivedRuns: freshPreparation.archived,
 						resumed: workflowRun.resumed,
 						resumedRunId: workflowRun.resumed ? workflowRun.runId : null,
 						autoResumed: autoResumeRun != null,
@@ -4155,6 +4332,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					}
 				}
 
+				releaseCleanupSnapshot = collectReleaseCleanupSnapshot(root, effectiveSelectedPackageNames);
 				const metadata = await executeJournalStep(root, workflowRun.runId, 'prepare-release-metadata', () => {
 					const releasedPackageDevTags = Object.fromEntries(
 						checkedOutWorkspacePackageRepos(root)
@@ -4274,17 +4452,22 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					pushBranch(gitRoot, STAGING_BRANCH);
 					const stagingCommit = headCommit(gitRoot);
 					let released: { commitSha: string };
+					let submoduleReconciliation: Record<string, unknown> | null = null;
 					try {
 						released = mergeBranchIntoTarget(root, {
 							sourceBranch: STAGING_BRANCH,
 							targetBranch: PRODUCTION_BRANCH,
 							message: `release: ${STAGING_BRANCH} -> ${PRODUCTION_BRANCH}`,
 							pushTarget: false,
+							quietMerge: true,
 						});
 					} catch (error) {
-						if (!resolveRootReleaseSubmoduleConflicts(root, effectiveSelectedPackageNames)) {
+						const reconciliation = resolveRootReleaseSubmoduleConflicts(root, effectiveSelectedPackageNames);
+						if (!reconciliation.resolved) {
 							throw error;
 						}
+						helpers.write(`[release][reconcile] Resolving generated package pointer reconciliation for ${reconciliation.entries.map((entry) => String(entry.path)).join(', ')}.`);
+						submoduleReconciliation = reconciliation;
 						commitAllIfChanged(gitRoot, `release: ${STAGING_BRANCH} -> ${PRODUCTION_BRANCH}`);
 						released = { commitSha: headCommit(gitRoot) };
 					}
@@ -4305,6 +4488,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						releasedCommit,
 						mergeCommit: released.commitSha,
 						tag,
+						submoduleReconciliation,
 					};
 				});
 				rootRepo.committed = true;
@@ -4391,6 +4575,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					mode,
 					mergeStrategy: 'merge-commit',
 					level,
+					fresh: input.fresh === true,
+					freshArchivedRuns: freshPreparation.archived,
 					resumed: workflowRun.resumed,
 					resumedRunId: workflowRun.resumed ? workflowRun.runId : null,
 					autoResumed: autoResumeRun != null,
@@ -4431,7 +4617,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					]),
 				});
 			} catch (error) {
-				ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
+				const localCleanup = cleanupFailedReleaseLocalState(root, helpers, releaseCleanupSnapshot, effectiveInput.workspaceLinks ?? 'auto');
 				const latestJournal = readWorkflowRunJournal(root, workflowRun.runId);
 				const lastCompleted = [...(latestJournal?.steps ?? [])].reverse().find((step) => step.status === 'completed') ?? null;
 				const nextPending = latestJournal?.steps.find((step) => step.status === 'pending') ?? null;
@@ -4446,7 +4632,13 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				} catch (repairError) {
 					helpers.write(`[release][recovery] Package repo repair failed: ${repairError instanceof Error ? repairError.message : String(repairError)}`, 'stderr');
 				}
-				helpers.write(`Safe recovery: npx trsd release --${level} --json, or inspect with npx trsd recover --json.`, 'stderr');
+				if (localCleanup.restored.length > 0) {
+					helpers.write(`[release][recovery] Restored generated release metadata in ${localCleanup.restored.length} repo(s).`, 'stderr');
+				}
+				if (localCleanup.manualReview.length > 0) {
+					helpers.write(`[release][recovery] Local cleanup needs manual review:\n${localCleanup.manualReview.map((entry) => `- ${String(entry.repo ?? entry.scope ?? 'repo')}: ${String(entry.reason ?? 'unknown')}`).join('\n')}`, 'stderr');
+				}
+				helpers.write(`Safe recovery: npx trsd release --${level} --json, npx trsd release --${level} --fresh --json, or inspect with npx trsd recover --json.`, 'stderr');
 				failWorkflowRun(root, workflowRun.runId, error, {
 					resumable: true,
 					runId: workflowRun.runId,
@@ -4454,6 +4646,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					message: `Resume the interrupted release on ${STAGING_BRANCH}. Last phase: ${lastCompleted?.id ?? 'not-started'}; next phase: ${nextPending?.id ?? 'none'}.`,
 					recoverCommand: 'npx trsd recover --json',
 					resumeCommand: `npx trsd release --${level} --json`,
+					localCleanup,
 				});
 				throw error;
 			}
@@ -4553,19 +4746,45 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 				currentBranch: session.branchName,
 				currentHeads,
 			});
-			const interruptedRuns = classifiedRuns
+			const markedObsoleteRun = input.obsoleteRunId
+				? (() => {
+					const entry = classifiedRuns.find((candidate) => candidate.journal.runId === input.obsoleteRunId);
+					if (!entry) {
+						workflowError('recover', 'validation_failed', `Treeseed recover could not find workflow run ${input.obsoleteRunId}.`);
+					}
+					const reason = input.obsoleteReason?.trim() || 'marked obsolete by operator';
+					const classification = {
+						state: 'obsolete' as const,
+						reasons: [reason],
+						classifiedAt: new Date().toISOString(),
+					};
+					archiveWorkflowRun(root, entry.journal.runId, classification);
+					return {
+						runId: entry.journal.runId,
+						command: entry.journal.command,
+						reason,
+					};
+				})()
+				: null;
+			const effectiveClassifiedRuns = markedObsoleteRun
+				? classifyWorkflowRunJournals(root, {
+					currentBranch: session.branchName,
+					currentHeads,
+				})
+				: classifiedRuns;
+			const interruptedRuns = effectiveClassifiedRuns
 				.filter((entry) => entry.classification.state === 'resumable')
 				.map(({ journal }) => ({
-				runId: journal.runId,
-				command: journal.command,
-				status: journal.status,
-				createdAt: journal.createdAt,
-				updatedAt: journal.updatedAt,
-				nextStep: nextPendingJournalStep(journal)?.description ?? null,
-				failure: journal.failure,
-				resumeCommand: `treeseed resume ${journal.runId}`,
-			}));
-			const staleRuns = classifiedRuns
+					runId: journal.runId,
+					command: journal.command,
+					status: journal.status,
+					createdAt: journal.createdAt,
+					updatedAt: journal.updatedAt,
+					nextStep: nextPendingJournalStep(journal)?.description ?? null,
+					failure: journal.failure,
+					resumeCommand: `treeseed resume ${journal.runId}`,
+				}));
+			const staleRuns = effectiveClassifiedRuns
 				.filter((entry) => entry.classification.state === 'stale')
 				.map(({ journal, classification }) => ({
 					runId: journal.runId,
@@ -4577,7 +4796,7 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 					failure: journal.failure,
 					classification,
 				}));
-			const obsoleteRuns = classifiedRuns
+			const obsoleteRuns = effectiveClassifiedRuns
 				.filter((entry) => entry.classification.state === 'obsolete')
 				.map(({ journal, classification }) => ({
 					runId: journal.runId,
@@ -4604,6 +4823,7 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 					staleRuns,
 					obsoleteRuns,
 					prunedRuns,
+					markedObsoleteRun,
 					selectedRun,
 					runCount: journals.length,
 				},

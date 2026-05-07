@@ -184,11 +184,9 @@ jobs:
           set -euo pipefail
           npm run verify:local 2>&1 | tee verify.log
           if test -f ./packages/sdk/scripts/check-build-warnings.mjs; then
-            node ./packages/sdk/scripts/check-build-warnings.mjs verify.log \
-              --allow 'Module "url" has been externalized for browser compatibility, imported by ".*libsodium-sumo.*"'
+            node ./packages/sdk/scripts/check-build-warnings.mjs verify.log
           elif test -f ./node_modules/@treeseed/sdk/dist/scripts/check-build-warnings.js; then
-            node ./node_modules/@treeseed/sdk/dist/scripts/check-build-warnings.js verify.log \
-              --allow 'Module "url" has been externalized for browser compatibility, imported by ".*libsodium-sumo.*"'
+            node ./node_modules/@treeseed/sdk/dist/scripts/check-build-warnings.js verify.log
           else
             echo "Unable to resolve @treeseed/sdk warning scanner entrypoint."
             exit 1

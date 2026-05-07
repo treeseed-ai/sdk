@@ -717,6 +717,31 @@ describe('treeseed workflow lifecycle', () => {
 
 		const finalRecover = await workflow.recover();
 		expect(finalRecover.payload.staleRuns.map((run: { runId: string }) => run.runId)).not.toContain('release-stale-test');
+
+		createWorkflowRunJournal(work, {
+			runId: 'release-obsolete-test',
+			command: 'release',
+			input: { bump: 'patch' },
+			session: {
+				root: work,
+				mode: 'recursive-workspace',
+				branchName: 'staging',
+				repos: [{ name: '@treeseed/market', path: work, branchName: 'staging' }],
+			},
+			steps: [
+				{ id: 'release-plan', description: 'Record release plan', repoName: '@treeseed/market', repoPath: work, branch: 'staging', resumable: true },
+			],
+		});
+		updateWorkflowRunJournal(work, 'release-obsolete-test', (journal) => ({
+			...journal,
+			status: 'failed',
+			failure: { code: 'unsupported_state', message: 'operator obsolete test', details: null, at: new Date().toISOString() },
+		}));
+
+		const obsolete = await workflow.recover({ obsoleteRunId: 'release-obsolete-test', obsoleteReason: 'superseded by test' });
+
+		expect(obsolete.payload.markedObsoleteRun).toMatchObject({ runId: 'release-obsolete-test', reason: 'superseded by test' });
+		expect(obsolete.payload.interruptedRuns.map((run: { runId: string }) => run.runId)).not.toContain('release-obsolete-test');
 	}, 180000);
 
 	it('stages package feature branches first and points market staging at package staging heads', async () => {

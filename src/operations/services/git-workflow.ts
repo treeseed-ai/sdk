@@ -516,14 +516,14 @@ export function mergeStagingIntoMain(cwd = workspaceRoot()) {
 
 export function mergeBranchIntoTarget(
 	cwd = workspaceRoot(),
-	{ sourceBranch, targetBranch, message, pushTarget = true } = {},
+	{ sourceBranch, targetBranch, message, pushTarget = true, quietMerge = false } = {},
 ) {
 	const repoDir = prepareReleaseBranches(cwd);
 	checkoutBranch(repoDir, targetBranch);
 	if (remoteBranchExists(repoDir, targetBranch)) {
 		runGit(['merge', '--ff-only', `origin/${targetBranch}`], { cwd: repoDir });
 	}
-	runGit(['merge', '--no-ff', sourceBranch, '-m', message], { cwd: repoDir });
+	runGit(['merge', '--no-ff', sourceBranch, '-m', message], { cwd: repoDir, capture: quietMerge });
 	pushBranch(repoDir, STAGING_BRANCH);
 	if (pushTarget) {
 		pushBranch(repoDir, targetBranch);

@@ -39,7 +39,27 @@ describe('GitHub workflow wait progress', () => {
 							},
 						};
 					},
-					listJobsForWorkflowRun: async () => ({ data: { jobs: [] } }),
+					listJobsForWorkflowRun: async () => ({
+						data: {
+							jobs: getCalls === 1
+								? [{
+									id: 1,
+									name: 'verify',
+									status: 'in_progress',
+									conclusion: null,
+									html_url: 'https://github.com/acme/widget/actions/runs/123/job/1',
+									steps: [{ name: 'npm run verify:local', status: 'in_progress', conclusion: null }],
+								}]
+								: [{
+									id: 1,
+									name: 'verify',
+									status: 'completed',
+									conclusion: 'success',
+									html_url: 'https://github.com/acme/widget/actions/runs/123/job/1',
+									steps: [{ name: 'npm run verify:local', status: 'completed', conclusion: 'success' }],
+								}],
+						},
+					}),
 				},
 			},
 		};
@@ -64,7 +84,10 @@ describe('GitHub workflow wait progress', () => {
 		expect(events.map((event) => event.type)).toEqual(['waiting', 'running', 'completed']);
 		expect(events[0]).toMatchObject({ runId: null, status: null, branch: '0.6.23' });
 		expect(events[1]).toMatchObject({ runId: 123, status: 'in_progress', url: 'https://github.com/acme/widget/actions/runs/123' });
+		expect(events[1].activeJobs?.[0]?.name).toBe('verify');
+		expect(events[1].activeJobs?.[0]?.steps?.[0]?.name).toBe('npm run verify:local');
 		expect(events[2]).toMatchObject({ runId: 123, status: 'completed', conclusion: 'success' });
+		expect(events[2].completedJobs?.[0]?.name).toBe('verify');
 	});
 
 	it('includes the last known workflow run state and URL in timeout errors', async () => {

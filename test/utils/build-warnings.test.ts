@@ -1,0 +1,50 @@
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+
+const roots: string[] = [];
+const scriptPath = resolve(process.cwd(), 'scripts/check-build-warnings.mjs');
+
+function makeLog(contents: string) {
+	const root = mkdtempSync(join(tmpdir(), 'treeseed-build-warnings-'));
+	roots.push(root);
+	const logPath = join(root, 'verify.log');
+	writeFileSync(logPath, contents, 'utf8');
+	return logPath;
+}
+
+describe('build warning scanner', () => {
+	afterEach(() => {
+		for (const root of roots.splice(0)) {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it('allows SDK-owned known provider warnings by default', () => {
+		const logPath = makeLog('[WARN] [vite] [plugin vite:resolve] Module "url" has been externalized for browser compatibility, imported by "/workspace/node_modules/libsodium-sumo/dist/modules-sumo-esm/libsodium-sumo.mjs".\n');
+
+		const output = execFileSync('node', [scriptPath, logPath], { encoding: 'utf8' });
+
+		expect(output).toContain('No unexpected build warnings detected.');
+	});
+
+	it('can disable the default warning policy for strict debugging', () => {
+		const logPath = makeLog('[WARN] [vite] [plugin vite:resolve] Module "url" has been externalized for browser compatibility, imported by "/workspace/node_modules/libsodium-sumo/dist/modules-sumo-esm/libsodium-sumo.mjs".\n');
+
+		const result = spawnSync('node', [scriptPath, logPath, '--no-default-policy'], { encoding: 'utf8' });
+
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain('Unexpected build warnings detected');
+	});
+
+	it('still fails unexpected warnings', () => {
+		const logPath = makeLog('[WARN] unexpected warning\n');
+
+		const result = spawnSync('node', [scriptPath, logPath], { encoding: 'utf8' });
+
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain('unexpected warning');
+	});
+});

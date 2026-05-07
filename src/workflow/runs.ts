@@ -384,6 +384,18 @@ function isReleaseGateOnlyCompletion(journal: TreeseedWorkflowRunJournal) {
 		|| pendingStep?.id === 'cleanup-dev-tags';
 }
 
+function releaseStepData(journal: TreeseedWorkflowRunJournal, stepId: string) {
+	return stringRecord(journal.steps.find((step) => step.id === stepId)?.data);
+}
+
+function expectedPackageHeadAfterReleaseGate(journal: TreeseedWorkflowRunJournal, packageName: string) {
+	const data = releaseStepData(journal, `release-${packageName}`);
+	const backMerge = stringRecord(data?.backMerge);
+	if (typeof backMerge?.commitSha === 'string') return backMerge.commitSha;
+	if (typeof data?.commitSha === 'string') return data.commitSha;
+	return null;
+}
+
 export function classifyWorkflowRunJournal(
 	journal: TreeseedWorkflowRunJournal,
 	options: {
@@ -427,6 +439,22 @@ export function classifyWorkflowRunJournal(
 		reasons.push(`current branch ${options.currentBranch} does not match journal branch ${journal.session.branchName}`);
 	}
 	const releaseGateOnlyCompletion = isReleaseGateOnlyCompletion(journal);
+	if (journal.command === 'release' && options.currentHeads && releaseGateOnlyCompletion) {
+		const rootRelease = releaseStepData(journal, 'release-root');
+		const expectedRootHead = typeof rootRelease?.stagingCommit === 'string' ? rootRelease.stagingCommit : null;
+		const rootHead = options.currentHeads['@treeseed/market'];
+		if (rootHead && expectedRootHead && rootHead !== expectedRootHead) {
+			reasons.push(`market staging head changed from ${expectedRootHead} to ${rootHead}`);
+		}
+		const releasePlan = releaseStepData(journal, 'release-plan');
+		for (const name of selectedReleasePackageNames(releasePlan)) {
+			const currentHead = options.currentHeads[name];
+			const expectedHead = expectedPackageHeadAfterReleaseGate(journal, name);
+			if (currentHead && expectedHead && currentHead !== expectedHead) {
+				reasons.push(`${name} staging head changed from ${expectedHead} to ${currentHead}`);
+			}
+		}
+	}
 	if (journal.command === 'release' && options.currentHeads && !releaseGateOnlyCompletion) {
 		const releasePlan = stringRecord(journal.steps.find((step) => step.id === 'release-plan')?.data);
 		if (releasePlan) {
