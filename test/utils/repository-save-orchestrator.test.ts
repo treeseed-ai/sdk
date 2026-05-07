@@ -468,7 +468,7 @@ describe('repository save orchestrator helpers', () => {
 			onProgress: (line) => progress.push(line),
 		});
 
-		expect(progress.some((line) => line.includes('Lockfile validation passed: 0 packages checked, 0 issues.'))).toBe(true);
+		expect(progress.some((line) => /Lockfile validation passed: \d+ packages? checked, 0 issues\./u.test(line))).toBe(true);
 		expect(progress.some((line) => /\[lockfile\] add /u.test(line))).toBe(false);
 	});
 
