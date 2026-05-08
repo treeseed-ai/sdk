@@ -1458,7 +1458,7 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		scaleProbe: probeScaleConfiguration(siteConfig, state),
 		railwayResources: options.scope === 'local' || (!apiSelected && !agentsSelected)
 			? Promise.resolve({ ok: true, skipped: true, reason: options.scope === 'local' ? 'local_scope' : 'railway_not_selected' })
-			: verifyRailwayManagedResources(options.tenantRoot, options.scope, { env }),
+			: verifyRailwayManagedResources(options.tenantRoot, options.scope, { env, settleDeployments: true }),
 		readiness: state.readiness,
 	};
 	const resolvedChecks = {

@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.6.44",
+  "version": "0.6.45-dev.staging.20260508T173948Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {

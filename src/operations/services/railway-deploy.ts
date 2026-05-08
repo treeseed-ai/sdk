@@ -117,6 +117,85 @@ function parseRailwayJsonOutput(output) {
 	return null;
 }
 
+function railwayEdgeNodes(value) {
+	return Array.isArray(value?.edges)
+		? value.edges.map((entry) => entry?.node).filter(Boolean)
+		: [];
+}
+
+function railwayStatusEnvironmentNodes(payload) {
+	if (!payload || typeof payload !== 'object') {
+		return [];
+	}
+	if (Array.isArray(payload.environments)) {
+		return payload.environments;
+	}
+	return railwayEdgeNodes(payload.environments);
+}
+
+function railwayStatusDeploymentSettled(status) {
+	const normalized = String(status ?? '').trim().toUpperCase();
+	return normalized === 'SUCCESS' || normalized === 'SLEEPING';
+}
+
+export function collectRailwayDeploymentStatusChecks(statusPayload, scope, services) {
+	const expectedEnvironment = resolveRailwayEnvironmentForScope(scope);
+	const environments = railwayStatusEnvironmentNodes(statusPayload);
+	const environment = environments.find((candidate) =>
+		normalizeRailwayEnvironmentName(candidate?.name) === expectedEnvironment
+	) ?? null;
+	if (!environment) {
+		return services.map((service) => ({
+			type: 'deployment-status',
+			service: service.key,
+			serviceName: service.serviceName,
+			environment: expectedEnvironment,
+			ok: false,
+			status: 'missing_environment',
+			message: `Railway status did not include the ${expectedEnvironment} environment.`,
+		}));
+	}
+
+	const instances = railwayEdgeNodes(environment.serviceInstances);
+	return services.map((service) => {
+		const instance = instances.find((candidate) => candidate?.serviceName === service.serviceName) ?? null;
+		if (!instance) {
+			return {
+				type: 'deployment-status',
+				service: service.key,
+				serviceName: service.serviceName,
+				environment: expectedEnvironment,
+				ok: false,
+				status: 'missing_service_instance',
+				message: `Railway status did not include service ${service.serviceName} in ${expectedEnvironment}.`,
+			};
+		}
+		const deployment = instance.latestDeployment ?? null;
+		const status = String(deployment?.status ?? '').trim().toUpperCase();
+		const instanceStatuses = Array.isArray(deployment?.instances)
+			? deployment.instances.map((entry) => String(entry?.status ?? '').trim()).filter(Boolean)
+			: [];
+		const ok = railwayStatusDeploymentSettled(status);
+		return {
+			type: 'deployment-status',
+			service: service.key,
+			serviceName: service.serviceName,
+			environment: normalizeRailwayEnvironmentName(environment.name),
+			ok,
+			status: status || 'missing_deployment',
+			observed: {
+				status: status || null,
+				deploymentStopped: deployment?.deploymentStopped ?? null,
+				instanceStatuses,
+				volumeMounts: Array.isArray(deployment?.meta?.volumeMounts) ? deployment.meta.volumeMounts : [],
+			},
+			message: ok
+				? undefined
+				: `Railway deployment for ${service.serviceName} is not settled yet; observed ${status || 'missing deployment status'}.`,
+		};
+	});
+}
+
 function normalizeRailwayCliVolume(value, { serviceId, environmentId, fallbackName, fallbackMountPath }) {
 	if (!value || typeof value !== 'object') {
 		return null;
@@ -381,6 +460,57 @@ export function runRailway(args, { cwd, capture = false, allowFailure = false, i
 	}
 
 	return result;
+}
+
+export async function waitForRailwayManagedDeploymentsSettled(
+	tenantRoot,
+	scope,
+	{
+		services = configuredRailwayServices(tenantRoot, scope),
+		env = process.env,
+		timeoutMs = 180_000,
+		pollMs = 15_000,
+	} = {},
+) {
+	const deadline = Date.now() + timeoutMs;
+	let checks = [];
+	let lastError = null;
+	for (;;) {
+		try {
+			const result = runRailway(['status', '--json'], {
+				cwd: tenantRoot,
+				capture: true,
+				env,
+			});
+			const payload = parseRailwayJsonOutput(result.stdout);
+			checks = collectRailwayDeploymentStatusChecks(payload, scope, services);
+			lastError = null;
+			if (checks.every((entry) => entry.ok === true)) {
+				return { ok: true, checks };
+			}
+		} catch (error) {
+			lastError = error;
+			checks = services.map((service) => ({
+				type: 'deployment-status',
+				service: service.key,
+				serviceName: service.serviceName,
+				environment: resolveRailwayEnvironmentForScope(scope),
+				ok: false,
+				status: 'status_error',
+				message: error instanceof Error ? error.message : String(error),
+			}));
+		}
+		if (Date.now() >= deadline) {
+			return {
+				ok: false,
+				checks,
+				message: lastError instanceof Error
+					? lastError.message
+					: 'Railway deployments did not settle before the monitor timeout.',
+			};
+		}
+		await sleep(pollMs);
+	}
 }
 
 export function setRailwaySecretVariable(
@@ -996,7 +1126,15 @@ export async function verifyRailwayScheduledJobs(
 export async function verifyRailwayManagedResources(
 	tenantRoot,
 	scope,
-	{ fetchImpl = fetch, apiToken, apiUrl, env = process.env } = {},
+	{
+		fetchImpl = fetch,
+		apiToken,
+		apiUrl,
+		env = process.env,
+		settleDeployments = false,
+		settleTimeoutMs = 180_000,
+		settlePollMs = 15_000,
+	} = {},
 ) {
 	const effectiveApiToken = apiToken || resolveRailwayAuthToken(env);
 	const effectiveApiUrl = apiUrl || resolveRailwayApiUrl(env);
@@ -1111,6 +1249,17 @@ export async function verifyRailwayManagedResources(
 			type: 'schedule',
 			...check,
 		});
+	}
+	if (settleDeployments) {
+		const settled = await waitForRailwayManagedDeploymentsSettled(tenantRoot, scope, {
+			services,
+			env: effectiveEnv,
+			timeoutMs: settleTimeoutMs,
+			pollMs: settlePollMs,
+		});
+		for (const check of settled.checks ?? []) {
+			checks.push(check);
+		}
 	}
 
 	return {
