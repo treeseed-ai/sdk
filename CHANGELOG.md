@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.43] - 2026-05-08
+
+### Added
+
+- feat(railway-deploy): upsert TREESEED_SKIP_PACKAGE_PREPARE variable (0f73eb649117)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.6.43.
+
 ## [0.6.42] - 2026-05-08
 
 ### Added
