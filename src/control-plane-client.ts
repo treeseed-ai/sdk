@@ -2,10 +2,22 @@ import type {
 	AgentPool,
 	AgentPoolRegistration,
 	AgentPoolScaleDecision,
+	ApprovalRequest,
+	CapacityGrant,
+	CapacityPlan,
+	CapacityProvider,
+	CapacityProviderLane,
+	CapacityReservation,
+	CapacityRoutingDecision,
 	CatalogArtifactVersion,
 	CatalogItem,
 	CatalogItemFilters,
+	CreateApprovalRequestRequest,
+	CreateCapacityReservationRequest,
+	CreateCapacityRoutingDecisionRequest,
 	CreateProjectDeploymentRequest,
+	CreateTaskEstimateRequest,
+	CreateTaskUsageActualRequest,
 	PriorityOverride,
 	PrioritySnapshot,
 	ProjectConnection,
@@ -16,10 +28,15 @@ import type {
 	ProjectInfrastructureResource,
 	ProjectWorkdaySummary,
 	RecordAgentPoolRegistrationRequest,
+	RecordCapacityUsageRequest,
 	ScaleDecision,
 	TeamStorageLocator,
 	TeamWebHost,
+	TaskEstimate,
 	UpsertAgentPoolRequest,
+	UpsertCapacityGrantRequest,
+	UpsertCapacityProviderLaneRequest,
+	UpsertCapacityProviderRequest,
 	UpsertCatalogArtifactVersionRequest,
 	UpsertCatalogItemRequest,
 	UpsertProjectEnvironmentRequest,
@@ -87,7 +104,7 @@ export class ControlPlaneClient {
 	}
 
 	private async requestJson<TPayload>(
-		method: 'GET' | 'POST' | 'PUT',
+		method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
 		pathname: string,
 		options: {
 			query?: Record<string, string | null | undefined>;
@@ -381,6 +398,111 @@ export class ControlPlaneClient {
 		return this.requestJson<{ host: TeamWebHost; validation: Record<string, unknown> | null }>(
 			'POST',
 			`/v1/teams/${encodeURIComponent(teamId)}/hosts/${encodeURIComponent(hostId)}/validate`,
+			{ body: input },
+		);
+	}
+
+	listCapacityProviders(teamId: string) {
+		return this.requestJson<Array<CapacityProvider & { lanes?: CapacityProviderLane[] }>>(
+			'GET',
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers`,
+		);
+	}
+
+	createCapacityProvider(teamId: string, input: UpsertCapacityProviderRequest) {
+		return this.requestJson<CapacityProvider>('POST', `/v1/teams/${encodeURIComponent(teamId)}/capacity-providers`, {
+			body: input as Record<string, unknown>,
+		});
+	}
+
+	updateCapacityProvider(teamId: string, providerId: string, input: Partial<UpsertCapacityProviderRequest>) {
+		return this.requestJson<CapacityProvider>(
+			'PATCH',
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	listCapacityProviderLanes(teamId: string, providerId: string) {
+		return this.requestJson<CapacityProviderLane[]>(
+			'GET',
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}/lanes`,
+		);
+	}
+
+	createCapacityProviderLane(teamId: string, providerId: string, input: UpsertCapacityProviderLaneRequest) {
+		return this.requestJson<CapacityProviderLane>(
+			'POST',
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}/lanes`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	listCapacityGrants(teamId: string, input: { projectId?: string | null; providerId?: string | null } = {}) {
+		return this.requestJson<CapacityGrant[]>('GET', `/v1/teams/${encodeURIComponent(teamId)}/capacity-grants`, {
+			query: {
+				projectId: input.projectId ?? null,
+				providerId: input.providerId ?? null,
+			},
+		});
+	}
+
+	createCapacityGrant(teamId: string, input: UpsertCapacityGrantRequest) {
+		return this.requestJson<CapacityGrant>('POST', `/v1/teams/${encodeURIComponent(teamId)}/capacity-grants`, {
+			body: input as Record<string, unknown>,
+		});
+	}
+
+	getProjectCapacityPlan(projectId: string, environment?: ProjectEnvironmentName | 'local' | null) {
+		return this.requestJson<CapacityPlan>('GET', `/v1/projects/${encodeURIComponent(projectId)}/capacity-plan`, {
+			query: { environment: environment ?? null },
+		});
+	}
+
+	recordRunnerCapacityEstimate(projectId: string, input: CreateTaskEstimateRequest | { estimates: CreateTaskEstimateRequest[] }) {
+		return this.requestJson<TaskEstimate | TaskEstimate[]>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/capacity/estimates`,
+			{ body: input as unknown as Record<string, unknown> },
+		);
+	}
+
+	createRunnerCapacityReservation(projectId: string, input: CreateCapacityReservationRequest) {
+		return this.requestJson<CapacityReservation>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/capacity/reservations`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	recordRunnerCapacityUsage(projectId: string, input: RecordCapacityUsageRequest & { usageActual?: CreateTaskUsageActualRequest }) {
+		return this.requestJson<{ entry: unknown; usageActual: unknown | null }>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/capacity/usage`,
+			{ body: input as unknown as Record<string, unknown> },
+		);
+	}
+
+	recordRunnerCapacityRoutingDecision(projectId: string, input: CreateCapacityRoutingDecisionRequest) {
+		return this.requestJson<CapacityRoutingDecision>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/capacity/routing-decisions`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	createRunnerApprovalRequest(projectId: string, input: CreateApprovalRequestRequest) {
+		return this.requestJson<ApprovalRequest>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/approval-requests`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	decideApprovalRequest(approvalRequestId: string, input: { state?: 'approved' | 'rejected'; optionId?: string | null; note?: string | null; decision?: Record<string, unknown> }) {
+		return this.requestJson<ApprovalRequest>(
+			'POST',
+			`/v1/approval-requests/${encodeURIComponent(approvalRequestId)}/decide`,
 			{ body: input },
 		);
 	}

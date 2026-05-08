@@ -196,7 +196,7 @@ export interface EncryptedWebHostPayload {
 	ciphertext: string;
 }
 
-export type TeamWebHostProvider = 'cloudflare';
+export type TeamWebHostProvider = 'cloudflare' | 'railway' | 'openai' | 'github_copilot' | 'openrouter' | 'custom';
 export type TeamWebHostOwnership = 'team_owned' | 'treeseed_managed';
 
 export interface TeamWebHost {
@@ -406,10 +406,270 @@ export interface TaskCreditLedgerEntry {
 	projectId: string;
 	workDayId: string;
 	taskId: string | null;
-	phase: 'seed' | 'settle' | 'refund';
+	phase: 'seed' | 'settle' | 'refund' | 'grant' | 'reserve' | 'consume' | 'release' | 'adjustment';
 	credits: number;
 	metadata?: Record<string, unknown>;
 	createdAt: string;
+}
+
+export type CapacityProviderKind = 'treeseed_managed' | 'team_owned' | 'external' | 'hybrid';
+export type CapacityProviderStatus = 'pending' | 'active' | 'paused' | 'configuration_required' | 'disabled';
+export type CapacityProviderBillingScope = 'treeseed' | 'team' | 'external';
+export type CapacityBusinessModel = 'subscription_quota' | 'token_metered' | 'hybrid_usage_based' | 'infrastructure_runtime' | 'custom';
+export type CapacityLaneUnit = 'treeseed_credit' | 'quota_minute' | 'token_usd' | 'github_ai_credit' | 'worker_second' | 'request' | 'custom';
+export type CapacityScarcityLevel = 'low' | 'medium' | 'high';
+export type CapacityGrantScope = 'team' | 'project' | 'workday' | 'overflow_pool';
+export type CapacityGrantState = 'active' | 'paused' | 'expired' | 'disabled';
+export type CapacityOverflowPolicy = 'hard_grant' | 'soft_grant' | 'weighted_fair_share' | 'approval_required';
+export type CapacityReservationState = 'reserved' | 'consumed' | 'released' | 'expired' | 'cancelled';
+export type CapacityEstimatePhase = 'intent' | 'discovery' | 'plan' | 'execution' | 'actual';
+export type CapacityEstimateConfidence = 'low' | 'medium' | 'high';
+export type CapacityApprovalState = 'pending' | 'approved' | 'rejected' | 'expired' | 'superseded';
+
+export interface CapacityProvider {
+	id: string;
+	teamId: string | null;
+	ownerTeamId: string | null;
+	name: string;
+	kind: CapacityProviderKind;
+	status: CapacityProviderStatus;
+	provider: TeamWebHostProvider | string;
+	billingScope: CapacityProviderBillingScope;
+	monthlyCreditBudget: number;
+	dailyCreditBudget: number;
+	maxConcurrentWorkdays: number;
+	maxConcurrentWorkers: number;
+	capacityModel: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CapacityProviderHost {
+	id: string;
+	capacityProviderId: string;
+	hostId: string;
+	role: string;
+	required: boolean;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CapacityProviderLane {
+	id: string;
+	capacityProviderId: string;
+	name: string;
+	businessModel: CapacityBusinessModel;
+	modelFamily: string | null;
+	modelClass: string | null;
+	regionPolicy: string | null;
+	unit: CapacityLaneUnit | string;
+	scarcityLevel: CapacityScarcityLevel;
+	hardLimits: Record<string, unknown>;
+	routingPolicy: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CapacityGrant {
+	id: string;
+	capacityProviderId: string;
+	laneId: string | null;
+	grantScope: CapacityGrantScope;
+	teamId: string;
+	projectId: string | null;
+	environment: ProjectEnvironmentName | 'local' | null;
+	state: CapacityGrantState;
+	dailyCreditLimit: number | null;
+	weeklyCreditLimit: number | null;
+	monthlyCreditLimit: number | null;
+	dailyUsdLimit: number | null;
+	weeklyQuotaMinutes: number | null;
+	monthlyProviderUnits: number | null;
+	priorityWeight: number;
+	overflowPolicy: CapacityOverflowPolicy;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CapacityReservation {
+	id: string;
+	capacityProviderId: string;
+	laneId: string;
+	teamId: string;
+	projectId: string;
+	workDayId: string | null;
+	taskId: string | null;
+	state: CapacityReservationState;
+	reservedCredits: number;
+	consumedCredits: number;
+	reservedProviderUnits: number | null;
+	consumedProviderUnits: number | null;
+	reservedUsd: number | null;
+	consumedUsd: number | null;
+	expiresAt: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CapacityLedgerEntry {
+	id: string;
+	capacityProviderId: string;
+	laneId: string | null;
+	reservationId: string | null;
+	teamId: string;
+	projectId: string | null;
+	workDayId: string | null;
+	taskId: string | null;
+	phase: TaskCreditLedgerEntry['phase'];
+	credits: number;
+	providerUnits: number | null;
+	usd: number | null;
+	source: string;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface CapacityRoutingDecision {
+	id: string;
+	taskId: string | null;
+	workDayId: string | null;
+	projectId: string;
+	selectedProviderId: string;
+	selectedLaneId: string;
+	selectedModel: string | null;
+	decision: string;
+	reason: string;
+	candidates: Record<string, unknown>[];
+	scores: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface TaskEstimate {
+	id: string;
+	taskId: string | null;
+	workDayId: string | null;
+	projectId: string;
+	estimatePhase: CapacityEstimatePhase;
+	taskSignature: string;
+	confidence: CapacityEstimateConfidence;
+	estimatedCreditsP50: number;
+	estimatedCreditsP90: number;
+	reservedCredits: number;
+	estimatedInputTokensP50: number | null;
+	estimatedInputTokensP90: number | null;
+	estimatedOutputTokensP50: number | null;
+	estimatedOutputTokensP90: number | null;
+	estimatedQuotaMinutesP50: number | null;
+	estimatedQuotaMinutesP90: number | null;
+	features: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface TaskUsageActual {
+	id: string;
+	taskId: string | null;
+	workDayId: string | null;
+	projectId: string;
+	taskSignature: string;
+	capacityProviderId: string | null;
+	laneId: string | null;
+	businessModel: CapacityBusinessModel | string;
+	modelName: string | null;
+	inputTokens: number | null;
+	outputTokens: number | null;
+	cachedInputTokens: number | null;
+	quotaMinutes: number | null;
+	wallMinutes: number | null;
+	filesOpened: number | null;
+	filesChanged: number | null;
+	diffLinesAdded: number | null;
+	diffLinesRemoved: number | null;
+	testRuns: number | null;
+	retryCount: number | null;
+	actualCredits: number;
+	actualUsd: number | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface TaskEstimateProfile {
+	taskSignature: string;
+	sampleCount: number;
+	inputTokensP50: number | null;
+	inputTokensP90: number | null;
+	outputTokensP50: number | null;
+	outputTokensP90: number | null;
+	quotaMinutesP50: number | null;
+	quotaMinutesP90: number | null;
+	filesChangedP50: number | null;
+	filesChangedP90: number | null;
+	creditsP50: number | null;
+	creditsP90: number | null;
+	updatedAt: string;
+}
+
+export interface ApprovalRequest {
+	id: string;
+	teamId: string;
+	projectId: string;
+	workDayId: string | null;
+	taskId: string | null;
+	kind: string;
+	state: CapacityApprovalState;
+	severity: 'low' | 'medium' | 'high';
+	requestedByType: 'agent' | 'scheduler' | 'worker' | 'service' | 'user';
+	requestedById: string | null;
+	title: string;
+	summary: string;
+	options: Record<string, unknown>[];
+	recommendation: Record<string, unknown>;
+	policySnapshot: Record<string, unknown>;
+	expiresAt: string | null;
+	decidedByType: string | null;
+	decidedById: string | null;
+	decidedAt: string | null;
+	decision: Record<string, unknown> | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CapacityTaskExecutionEnvelope {
+	providerId?: string | null;
+	laneId?: string | null;
+	model?: string | null;
+	modelClass?: string | null;
+	reservationIds?: string[];
+	maxCredits?: number | null;
+	maxProviderUnits?: number | null;
+	maxUsd?: number | null;
+	allowedFallbacks?: Array<Record<string, unknown>>;
+	approvalBehavior?: 'auto' | 'pause_task' | 'fail_task';
+	pausePolicy?: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+}
+
+export interface CapacityPlan {
+	projectId: string;
+	teamId: string;
+	environment: ProjectEnvironmentName | 'local';
+	providers: CapacityProvider[];
+	lanes: CapacityProviderLane[];
+	grants: CapacityGrant[];
+	activeReservations: CapacityReservation[];
+	estimateProfiles: TaskEstimateProfile[];
+	remaining: {
+		dailyCredits: number | null;
+		weeklyCredits: number | null;
+		monthlyCredits: number | null;
+		weeklyQuotaMinutes: number | null;
+		dailyUsd: number | null;
+	};
 }
 
 export interface ProjectWorkdaySummary {
@@ -1454,8 +1714,180 @@ export interface SdkRecordTaskCreditsRequest {
 	projectId: string;
 	workDayId: string;
 	taskId?: string | null;
-	phase: 'seed' | 'settle' | 'refund';
+	phase: TaskCreditLedgerEntry['phase'];
 	credits: number;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface UpsertCapacityProviderRequest {
+	id?: string;
+	teamId?: string | null;
+	ownerTeamId?: string | null;
+	name: string;
+	kind?: CapacityProviderKind;
+	status?: CapacityProviderStatus;
+	provider: TeamWebHostProvider | string;
+	billingScope?: CapacityProviderBillingScope;
+	monthlyCreditBudget?: number;
+	dailyCreditBudget?: number;
+	maxConcurrentWorkdays?: number;
+	maxConcurrentWorkers?: number;
+	capacityModel?: Record<string, unknown> | null;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface UpsertCapacityProviderHostRequest {
+	id?: string;
+	hostId: string;
+	role: string;
+	required?: boolean;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface UpsertCapacityProviderLaneRequest {
+	id?: string;
+	name: string;
+	businessModel?: CapacityBusinessModel;
+	modelFamily?: string | null;
+	modelClass?: string | null;
+	regionPolicy?: string | null;
+	unit?: CapacityLaneUnit | string;
+	scarcityLevel?: CapacityScarcityLevel;
+	hardLimits?: Record<string, unknown> | null;
+	routingPolicy?: Record<string, unknown> | null;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface UpsertCapacityGrantRequest {
+	id?: string;
+	capacityProviderId: string;
+	laneId?: string | null;
+	grantScope?: CapacityGrantScope;
+	teamId: string;
+	projectId?: string | null;
+	environment?: ProjectEnvironmentName | 'local' | null;
+	state?: CapacityGrantState;
+	dailyCreditLimit?: number | null;
+	weeklyCreditLimit?: number | null;
+	monthlyCreditLimit?: number | null;
+	dailyUsdLimit?: number | null;
+	weeklyQuotaMinutes?: number | null;
+	monthlyProviderUnits?: number | null;
+	priorityWeight?: number;
+	overflowPolicy?: CapacityOverflowPolicy;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface CreateCapacityReservationRequest {
+	id?: string;
+	capacityProviderId: string;
+	laneId: string;
+	teamId: string;
+	projectId: string;
+	workDayId?: string | null;
+	taskId?: string | null;
+	state?: CapacityReservationState;
+	reservedCredits: number;
+	reservedProviderUnits?: number | null;
+	reservedUsd?: number | null;
+	expiresAt?: string | null;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface RecordCapacityUsageRequest {
+	id?: string;
+	capacityProviderId: string;
+	laneId?: string | null;
+	reservationId?: string | null;
+	teamId: string;
+	projectId?: string | null;
+	workDayId?: string | null;
+	taskId?: string | null;
+	phase?: TaskCreditLedgerEntry['phase'];
+	credits: number;
+	providerUnits?: number | null;
+	usd?: number | null;
+	source?: string;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface CreateCapacityRoutingDecisionRequest {
+	id?: string;
+	taskId?: string | null;
+	workDayId?: string | null;
+	projectId: string;
+	selectedProviderId: string;
+	selectedLaneId: string;
+	selectedModel?: string | null;
+	decision?: string;
+	reason: string;
+	candidates?: Record<string, unknown>[];
+	scores?: Record<string, unknown>;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface CreateTaskEstimateRequest {
+	id?: string;
+	taskId?: string | null;
+	workDayId?: string | null;
+	projectId: string;
+	estimatePhase: CapacityEstimatePhase;
+	taskSignature: string;
+	confidence: CapacityEstimateConfidence;
+	estimatedCreditsP50: number;
+	estimatedCreditsP90: number;
+	reservedCredits?: number;
+	estimatedInputTokensP50?: number | null;
+	estimatedInputTokensP90?: number | null;
+	estimatedOutputTokensP50?: number | null;
+	estimatedOutputTokensP90?: number | null;
+	estimatedQuotaMinutesP50?: number | null;
+	estimatedQuotaMinutesP90?: number | null;
+	features?: Record<string, unknown> | null;
+}
+
+export interface CreateTaskUsageActualRequest {
+	id?: string;
+	taskId?: string | null;
+	workDayId?: string | null;
+	projectId: string;
+	taskSignature: string;
+	capacityProviderId?: string | null;
+	laneId?: string | null;
+	businessModel: CapacityBusinessModel | string;
+	modelName?: string | null;
+	inputTokens?: number | null;
+	outputTokens?: number | null;
+	cachedInputTokens?: number | null;
+	quotaMinutes?: number | null;
+	wallMinutes?: number | null;
+	filesOpened?: number | null;
+	filesChanged?: number | null;
+	diffLinesAdded?: number | null;
+	diffLinesRemoved?: number | null;
+	testRuns?: number | null;
+	retryCount?: number | null;
+	actualCredits: number;
+	actualUsd?: number | null;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface CreateApprovalRequestRequest {
+	id?: string;
+	teamId: string;
+	projectId: string;
+	workDayId?: string | null;
+	taskId?: string | null;
+	kind: string;
+	severity?: 'low' | 'medium' | 'high';
+	requestedByType?: ApprovalRequest['requestedByType'];
+	requestedById?: string | null;
+	title: string;
+	summary: string;
+	options?: Record<string, unknown>[];
+	recommendation?: Record<string, unknown> | null;
+	policySnapshot?: Record<string, unknown> | null;
+	expiresAt?: string | null;
 	metadata?: Record<string, unknown> | null;
 }
 

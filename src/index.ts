@@ -4,6 +4,13 @@ export { projectConnectionModeFromHosting } from './sdk-types.ts';
 export { createControlPlaneReporter } from './control-plane.ts';
 export { ControlPlaneClient } from './control-plane-client.ts';
 export {
+	reservationHasCapacity,
+	reserveCreditsForEstimate,
+	scoreCapacityLane,
+	selectBestCapacityLane,
+	summarizeCapacityPlan,
+} from './capacity.ts';
+export {
 	executeKnowledgeCoopManagedLaunch,
 	validateKnowledgeCoopManagedLaunchPrerequisites,
 } from './operations/services/knowledge-coop-launch.ts';
@@ -317,6 +324,33 @@ export type {
 	PrioritySnapshotItem,
 	PrioritySnapshot,
 	TaskCreditLedgerEntry,
+		ApprovalRequest,
+		CapacityBusinessModel,
+		CapacityGrant,
+		CapacityGrantScope,
+		CapacityLedgerEntry,
+		CapacityLaneUnit,
+		CapacityPlan,
+		CapacityProvider,
+		CapacityProviderHost,
+		CapacityProviderKind,
+		CapacityProviderLane,
+		CapacityReservation,
+		CapacityRoutingDecision,
+		CapacityTaskExecutionEnvelope,
+		CreateApprovalRequestRequest,
+		CreateCapacityReservationRequest,
+		CreateCapacityRoutingDecisionRequest,
+		CreateTaskEstimateRequest,
+		CreateTaskUsageActualRequest,
+		RecordCapacityUsageRequest,
+		TaskEstimate,
+		TaskEstimateProfile,
+		TaskUsageActual,
+		UpsertCapacityGrantRequest,
+		UpsertCapacityProviderHostRequest,
+		UpsertCapacityProviderLaneRequest,
+		UpsertCapacityProviderRequest,
 		ScaleDecision,
 		TeamStorageLocator,
 		TeamWebHost,
@@ -348,6 +382,11 @@ export type {
 	ControlPlaneWorkdaySummaryReport,
 } from './control-plane.ts';
 export type { ControlPlaneClientOptions } from './control-plane-client.ts';
+export type {
+	CapacityEstimateInput,
+	CapacityLaneCandidate,
+	CapacityLaneScore,
+} from './capacity.ts';
 export type {
 	TreeseedFieldAliasBinding,
 	TreeseedFieldAliasRegistry,

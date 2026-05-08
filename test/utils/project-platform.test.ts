@@ -21,6 +21,11 @@ function noopReporter(): ControlPlaneReporter {
 		async registerAgentPoolHeartbeat() {},
 		async reportScaleDecision() {},
 		async reportWorkdaySummary() {},
+		async getProjectCapacityPlan() { return null; },
+		async createCapacityReservation() { return null; },
+		async reportCapacityUsage() {},
+		async reportCapacityRoutingDecision() { return null; },
+		async createApprovalRequest() { return null; },
 	};
 }
 
