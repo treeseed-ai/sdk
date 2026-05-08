@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.48] - 2026-05-08
+
+### Infrastructure
+
+- chore(sdk): update railway deployment check implementation (df0be38fc3a4)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.6.48.
+
 ## [0.6.47] - 2026-05-08
 
 ### Dependencies
