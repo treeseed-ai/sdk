@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.42] - 2026-05-08
+
+### Added
+
+- feat(operations): add support for Railway cron schedules (b6dbca0c7593)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.6.42.
+
 ## [0.6.41] - 2026-05-08
 
 ### Infrastructure
