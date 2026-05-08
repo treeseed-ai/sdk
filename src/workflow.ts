@@ -153,6 +153,7 @@ export type TreeseedSaveInput = {
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	commitMessageMode?: 'auto' | 'cloudflare' | 'generated' | 'fallback';
 	workspaceLinks?: 'auto' | 'off';
+	verifyDeployedResources?: boolean;
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -199,6 +200,7 @@ export type TreeseedStageInput = {
 	ciMode?: TreeseedWorkflowCiMode;
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
+	verifyDeployedResources?: boolean;
 	plan?: boolean;
 	dryRun?: boolean;
 };

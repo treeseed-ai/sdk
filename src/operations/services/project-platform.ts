@@ -40,6 +40,7 @@ import {
 	ensureRailwayScheduledJobs,
 	validateRailwayDeployPrerequisites,
 	validateRailwayServiceConfiguration,
+	verifyRailwayManagedResources,
 	verifyRailwayScheduledJobs,
 } from './railway-deploy.ts';
 import { loadCliDeployConfig, packageScriptPath } from './runtime-tools.ts';
@@ -1431,6 +1432,7 @@ export async function publishProjectContent(options: ProjectPlatformActionOption
 
 export async function monitorProjectPlatform(options: ProjectPlatformActionOptions) {
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
+	const env = { ...process.env, ...(options.env ?? {}) };
 	const target = createPersistentDeployTarget(options.scope === 'local' ? 'staging' : options.scope);
 	const siteConfig = loadCliDeployConfig(options.tenantRoot);
 	const selectedSystems = new Set(resolveProjectPlatformBootstrapSystems(options, siteConfig));
@@ -1454,12 +1456,16 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		r2: options.dryRun ? { ok: true, skipped: true, reason: 'dry_run' } : probeR2(options.tenantRoot, siteConfig, state, target),
 		queue: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : probeQueue(siteConfig, state),
 		scaleProbe: probeScaleConfiguration(siteConfig, state),
+		railwayResources: options.scope === 'local' || (!apiSelected && !agentsSelected)
+			? Promise.resolve({ ok: true, skipped: true, reason: options.scope === 'local' ? 'local_scope' : 'railway_not_selected' })
+			: verifyRailwayManagedResources(options.tenantRoot, options.scope, { env }),
 		readiness: state.readiness,
 	};
 	const resolvedChecks = {
 		...checks,
 		r2: await checks.r2,
 		queue: await checks.queue,
+		railwayResources: await checks.railwayResources,
 	};
 	const ok = [
 		resolvedChecks.pages,
@@ -1470,6 +1476,7 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		resolvedChecks.r2,
 		resolvedChecks.queue,
 		resolvedChecks.scaleProbe,
+		resolvedChecks.railwayResources,
 	].every((check) => check?.ok === true || check?.skipped === true);
 	if (!ok) {
 		const failedChecks = Object.entries(resolvedChecks)

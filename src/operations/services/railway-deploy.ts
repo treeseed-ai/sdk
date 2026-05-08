@@ -15,6 +15,7 @@ import {
 	listRailwayEnvironments,
 	listRailwayProjects,
 	listRailwayServices,
+	listRailwayVolumes,
 	normalizeRailwayEnvironmentName,
 	railwayGraphqlRequest,
 	resolveRailwayApiToken,
@@ -988,6 +989,132 @@ export async function verifyRailwayScheduledJobs(
 
 	return {
 		ok: checks.every((entry) => entry.ok === true),
+		checks,
+	};
+}
+
+export async function verifyRailwayManagedResources(
+	tenantRoot,
+	scope,
+	{ fetchImpl = fetch, apiToken, apiUrl, env = process.env } = {},
+) {
+	const effectiveApiToken = apiToken || resolveRailwayAuthToken(env);
+	const effectiveApiUrl = apiUrl || resolveRailwayApiUrl(env);
+	const effectiveEnv = { ...env, RAILWAY_API_TOKEN: effectiveApiToken, TREESEED_RAILWAY_API_URL: effectiveApiUrl };
+	const services = configuredRailwayServices(tenantRoot, scope);
+	const checks = [];
+
+	for (const service of services) {
+		const target = await resolveRailwayScheduleTarget({
+			projectId: service.projectId,
+			projectName: service.projectName,
+			serviceId: service.serviceId,
+			serviceName: service.serviceName,
+			environment: normalizeRailwayEnvironmentName(service.railwayEnvironment),
+			environmentId: envValue('TREESEED_RAILWAY_ENVIRONMENT_ID') || null,
+		}, {
+			env: effectiveEnv,
+			fetchImpl,
+			ensure: false,
+		});
+		if (!target.project || !target.environment || !target.service) {
+			checks.push({
+				type: 'service',
+				service: service.key,
+				serviceName: service.serviceName,
+				projectName: service.projectName,
+				environment: service.railwayEnvironment,
+				ok: false,
+				status: 'missing',
+				message: `Railway service ${service.serviceName} is missing in ${service.railwayEnvironment}.`,
+			});
+			continue;
+		}
+		const instance = await getRailwayServiceInstance({
+			serviceId: target.service.id,
+			environmentId: target.environment.id,
+			env: effectiveEnv,
+			fetchImpl,
+		});
+		checks.push({
+			type: 'service-instance',
+			service: service.key,
+			serviceName: target.service.name,
+			serviceId: target.service.id,
+			projectId: target.project.id,
+			environment: target.environment.name,
+			environmentId: target.environment.id,
+			instanceId: instance.id,
+			ok: Boolean(instance.id),
+			status: instance.id ? 'checked' : 'missing',
+			observed: instance.id
+				? {
+					rootDirectory: instance.rootDirectory,
+					startCommand: instance.startCommand,
+					cronSchedule: instance.cronSchedule,
+					sleepApplication: instance.sleepApplication,
+					runtimeMode: instance.runtimeMode,
+				}
+				: null,
+			message: instance.id
+				? undefined
+				: `Railway service instance for ${target.service.name} is missing in ${target.environment.name}.`,
+		});
+		if (service.key === 'workerRunner') {
+			const expectedVolumeName = deriveRailwayWorkerRunnerVolumeName(target.service.name, target.environment.name);
+			const volumes = await listRailwayVolumes({
+				projectId: target.project.id,
+				env: effectiveEnv,
+				fetchImpl,
+			});
+			const volume = volumes.find((candidate) =>
+				candidate.name === expectedVolumeName
+				&& candidate.instances.some((entry) =>
+					entry.serviceId === target.service.id
+					&& entry.environmentId === target.environment.id
+					&& entry.mountPath === WORKER_RUNNER_VOLUME_MOUNT_PATH),
+			) ?? null;
+			checks.push({
+				type: 'worker-runner-volume',
+				service: service.key,
+				serviceName: target.service.name,
+				serviceId: target.service.id,
+				projectId: target.project.id,
+				environment: target.environment.name,
+				environmentId: target.environment.id,
+				volumeName: expectedVolumeName,
+				mountPath: WORKER_RUNNER_VOLUME_MOUNT_PATH,
+				ok: Boolean(volume),
+				status: volume ? 'checked' : 'missing',
+				observed: volume
+					? {
+						id: volume.id,
+						name: volume.name,
+						instances: volume.instances,
+					}
+					: null,
+				message: volume
+					? undefined
+					: `Railway worker-runner volume ${expectedVolumeName} is missing or is not mounted at ${WORKER_RUNNER_VOLUME_MOUNT_PATH}.`,
+			});
+		}
+	}
+
+	const schedules = await verifyRailwayScheduledJobs(tenantRoot, scope, {
+		fetchImpl,
+		apiToken: effectiveApiToken,
+		apiUrl: effectiveApiUrl,
+		env: effectiveEnv,
+	});
+	for (const check of schedules.checks ?? []) {
+		checks.push({
+			type: 'schedule',
+			...check,
+		});
+	}
+
+	return {
+		ok: checks.every((entry) => entry.ok === true || entry.skipped === true),
 		checks,
 	};
 }
