@@ -473,6 +473,16 @@ export async function waitForRailwayManagedDeploymentsSettled(
 	} = {},
 ) {
 	const deadline = Date.now() + timeoutMs;
+	const environment = resolveRailwayEnvironmentForScope(scope);
+	const projectId = services.find((service) => typeof service.projectId === 'string' && service.projectId.trim())?.projectId ?? null;
+	if (projectId) {
+		runRailway(['link', '--project', projectId, '--environment', environment, '--json'], {
+			cwd: tenantRoot,
+			capture: true,
+			allowFailure: true,
+			env,
+		});
+	}
 	let checks = [];
 	let lastError = null;
 	for (;;) {
@@ -494,7 +504,7 @@ export async function waitForRailwayManagedDeploymentsSettled(
 				type: 'deployment-status',
 				service: service.key,
 				serviceName: service.serviceName,
-				environment: resolveRailwayEnvironmentForScope(scope),
+				environment,
 				ok: false,
 				status: 'status_error',
 				message: error instanceof Error ? error.message : String(error),
@@ -1141,6 +1151,7 @@ export async function verifyRailwayManagedResources(
 	const effectiveEnv = { ...env, RAILWAY_API_TOKEN: effectiveApiToken, TREESEED_RAILWAY_API_URL: effectiveApiUrl };
 	const services = configuredRailwayServices(tenantRoot, scope);
 	const checks = [];
+	const deploymentStatusServices = [];
 
 	for (const service of services) {
 		const target = await resolveRailwayScheduleTarget({
@@ -1168,6 +1179,10 @@ export async function verifyRailwayManagedResources(
 			});
 			continue;
 		}
+		deploymentStatusServices.push({
+			...service,
+			projectId: target.project.id,
+		});
 		const instance = await getRailwayServiceInstance({
 			serviceId: target.service.id,
 			environmentId: target.environment.id,
@@ -1252,7 +1267,7 @@ export async function verifyRailwayManagedResources(
 	}
 	if (settleDeployments) {
 		const settled = await waitForRailwayManagedDeploymentsSettled(tenantRoot, scope, {
-			services,
+			services: deploymentStatusServices.length > 0 ? deploymentStatusServices : services,
 			env: effectiveEnv,
 			timeoutMs: settleTimeoutMs,
 			pollMs: settlePollMs,
