@@ -1188,7 +1188,7 @@ export async function verifyRailwayManagedResources(
 		apiUrl,
 		env = process.env,
 		settleDeployments = false,
-		settleTimeoutMs = 180_000,
+		settleTimeoutMs = 600_000,
 		settlePollMs = 15_000,
 	} = {},
 ) {
