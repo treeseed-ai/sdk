@@ -42,40 +42,24 @@ services:
       projectName: acme-docs
       serviceName: acme-docs-api
       rootDir: .
-  worker:
+  workerRunner:
     provider: railway
     enabled: true
     railway:
       projectName: acme-docs
-      serviceName: acme-docs-worker
+      serviceName: acme-docs-worker-runner-01
       rootDir: .
-  manager:
+  workdayManager:
     provider: railway
     enabled: true
     railway:
       projectId: railway-project-1
       projectName: acme-docs
       serviceId: svc-manager
-      serviceName: acme-docs-manager
-      startCommand: npm run manager:reconcile
-      schedule:
-        - "*/5 * * * *"
-  workdayStart:
-    provider: railway
-    enabled: true
-    railway:
-      projectName: acme-docs
       serviceName: acme-docs-workday-start
-      rootDir: .
-      startCommand: npm run workday:start
-  workdayReport:
-    provider: railway
-    enabled: true
-    railway:
-      projectName: acme-docs
-      serviceName: acme-docs-workday-report
-      rootDir: .
-      startCommand: npm run workday:report
+      startCommand: npm run workday-manager
+      schedule:
+        - "0 9 * * 1-5"
 `,
 	);
 	return tenantRoot;
@@ -118,7 +102,7 @@ function railwayProjectsPayload() {
 								{
 									node: {
 										id: 'svc-manager',
-										name: 'acme-docs-manager',
+										name: 'acme-docs-workday-start',
 									},
 								},
 								{
@@ -157,7 +141,7 @@ describe('railway scheduled jobs', () => {
 
 		const services = configuredRailwayServices(tenantRoot, 'prod');
 
-		expect(services).toHaveLength(5);
+		expect(services).toHaveLength(3);
 		expect(services.every((service) => service.railwayEnvironment === 'production')).toBe(true);
 	});
 
@@ -240,11 +224,11 @@ describe('railway scheduled jobs', () => {
 				data: {
 					cronTriggerCreate: {
 						id: 'cron-1',
-						name: 'manager:1',
-						schedule: '*/5 * * * *',
-						command: 'npm run manager:reconcile',
+						name: 'workdayManager:1',
+						schedule: '0 9 * * 1-5',
+						command: 'npm run workday-manager',
 						enabled: true,
-						service: { id: 'svc-manager', name: 'manager' },
+						service: { id: 'svc-manager', name: 'workdayManager' },
 						environment: { id: 'env-production', name: 'production' },
 					},
 				},
@@ -257,9 +241,9 @@ describe('railway scheduled jobs', () => {
 		expect(result).toHaveLength(1);
 		expect(result[0]).toMatchObject({
 			id: 'cron-1',
-			logicalName: 'manager:1',
+			logicalName: 'workdayManager:1',
 			status: 'created',
-			expression: '*/5 * * * *',
+			expression: '0 9 * * 1-5',
 		});
 	});
 
@@ -284,11 +268,11 @@ describe('railway scheduled jobs', () => {
 								edges: [{
 									node: {
 										id: 'cron-1',
-										name: 'manager:1',
+										name: 'workdayManager:1',
 										schedule: '0 * * * *',
 										command: 'npm run manager:old',
 										enabled: true,
-										service: { id: 'svc-manager', name: 'manager' },
+										service: { id: 'svc-manager', name: 'workdayManager' },
 										environment: { id: 'env-production', name: 'production' },
 									},
 								}],
@@ -301,11 +285,11 @@ describe('railway scheduled jobs', () => {
 				data: {
 					cronTriggerUpdate: {
 						id: 'cron-1',
-						name: 'manager:1',
-						schedule: '*/5 * * * *',
-						command: 'npm run manager:reconcile',
+						name: 'workdayManager:1',
+						schedule: '0 9 * * 1-5',
+						command: 'npm run workday-manager',
 						enabled: true,
-						service: { id: 'svc-manager', name: 'manager' },
+						service: { id: 'svc-manager', name: 'workdayManager' },
 						environment: { id: 'env-production', name: 'production' },
 					},
 				},
@@ -316,7 +300,7 @@ describe('railway scheduled jobs', () => {
 		expect(ensured[0]).toMatchObject({
 			id: 'cron-1',
 			status: 'updated',
-			command: 'npm run manager:reconcile',
+			command: 'npm run workday-manager',
 		});
 
 		const verifyFetchMock = vi.fn(async (_input, init) => {
@@ -334,11 +318,11 @@ describe('railway scheduled jobs', () => {
 							edges: [{
 								node: {
 									id: 'cron-1',
-									name: 'manager:1',
-									schedule: '*/5 * * * *',
-									command: 'npm run manager:reconcile',
+									name: 'workdayManager:1',
+									schedule: '0 9 * * 1-5',
+									command: 'npm run workday-manager',
 									enabled: true,
-									service: { id: 'svc-manager', name: 'manager' },
+									service: { id: 'svc-manager', name: 'workdayManager' },
 									environment: { id: 'env-production', name: 'production' },
 								},
 							}],
@@ -392,11 +376,11 @@ describe('railway scheduled jobs', () => {
 				data: {
 					cronTriggerCreate: {
 						id: 'cron-1',
-						name: 'manager:1',
-						schedule: '*/5 * * * *',
-						command: 'npm run manager:reconcile',
+						name: 'workdayManager:1',
+						schedule: '0 9 * * 1-5',
+						command: 'npm run workday-manager',
 						enabled: true,
-						service: { id: 'svc-manager', name: 'manager' },
+						service: { id: 'svc-manager', name: 'workdayManager' },
 						environment: { id: 'env-production', name: 'production' },
 					},
 				},

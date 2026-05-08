@@ -29,7 +29,13 @@ import type {
 	ProjectWorkdaySummary,
 	RecordAgentPoolRegistrationRequest,
 	RecordCapacityUsageRequest,
+	RepositoryClaim,
+	RunnerScaleDecision,
 	ScaleDecision,
+	SdkCreateWorkdayRequest,
+	SdkRecordRepositoryClaimRequest,
+	SdkRecordRunnerScaleDecisionRequest,
+	SdkRecordWorkerRunnerRequest,
 	TeamStorageLocator,
 	TeamWebHost,
 	TaskEstimate,
@@ -45,6 +51,8 @@ import type {
 	UpsertTeamStorageLocatorRequest,
 	UpsertTeamWebHostRequest,
 	WorkdayPolicy,
+	WorkdayRequest,
+	WorkerRunner,
 	SdkPriorityOverrideRequest,
 	SdkUpsertWorkPolicyRequest,
 } from './sdk-types.ts';
@@ -283,6 +291,38 @@ export class ControlPlaneClient {
 		);
 	}
 
+	getProjectWorkdayPolicy(projectId: string, environment: ProjectEnvironmentName = 'staging') {
+		return this.requestJson<WorkdayPolicy | null>(
+			'GET',
+			`/v1/projects/${encodeURIComponent(projectId)}/workday-policy`,
+			{ query: { environment } },
+		);
+	}
+
+	upsertProjectWorkdayPolicy(projectId: string, input: SdkUpsertWorkPolicyRequest) {
+		return this.requestJson<WorkdayPolicy>(
+			'PUT',
+			`/v1/projects/${encodeURIComponent(projectId)}/workday-policy`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	getProjectWorkdayStatus(projectId: string, environment: ProjectEnvironmentName = 'staging') {
+		return this.requestJson<Record<string, unknown>>(
+			'GET',
+			`/v1/projects/${encodeURIComponent(projectId)}/workday-status`,
+			{ query: { environment } },
+		);
+	}
+
+	createProjectWorkdayRequest(projectId: string, input: SdkCreateWorkdayRequest) {
+		return this.requestJson<WorkdayRequest>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/workday-requests`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
 	listProjectPriorityOverrides(projectId: string) {
 		return this.requestJson<PriorityOverride[]>(
 			'GET',
@@ -358,6 +398,46 @@ export class ControlPlaneClient {
 		return this.requestJson<ProjectWorkdaySummary>(
 			'POST',
 			`/v1/projects/${encodeURIComponent(projectId)}/runner/workdays`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	recordWorkerRunner(projectId: string, input: SdkRecordWorkerRunnerRequest) {
+		return this.requestJson<WorkerRunner>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/worker-runners`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	listWorkerRunners(projectId: string, environment: ProjectEnvironmentName = 'staging') {
+		return this.requestJson<WorkerRunner[]>(
+			'GET',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/worker-runners`,
+			{ query: { environment } },
+		);
+	}
+
+	recordRepositoryClaim(projectId: string, input: SdkRecordRepositoryClaimRequest) {
+		return this.requestJson<RepositoryClaim>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/repository-claims`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	listRepositoryClaims(projectId: string, repositoryId?: string | null) {
+		return this.requestJson<RepositoryClaim[]>(
+			'GET',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/repository-claims`,
+			{ query: { repositoryId: repositoryId ?? null } },
+		);
+	}
+
+	recordRunnerScaleDecisionV2(projectId: string, input: SdkRecordRunnerScaleDecisionRequest) {
+		return this.requestJson<RunnerScaleDecision>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/runner-scale-decisions`,
 			{ body: input as Record<string, unknown> },
 		);
 	}

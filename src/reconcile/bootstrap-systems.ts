@@ -94,7 +94,7 @@ function agentsSystemDisabled(config: TreeseedDeployConfig) {
 	if (config.runtime?.mode === 'none') {
 		return 'runtime.mode is none.';
 	}
-	const enabled = ['manager', 'worker', 'workdayStart', 'workdayReport'].some((serviceKey) => serviceEnabled(config, serviceKey));
+	const enabled = ['workdayManager', 'workerRunner'].some((serviceKey) => serviceEnabled(config, serviceKey));
 	return enabled ? null : 'No agent Railway services are enabled.';
 }
 

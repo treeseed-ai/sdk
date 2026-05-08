@@ -9,11 +9,11 @@ function stableHash(value: unknown) {
 }
 
 function railwayUnitTypeForServiceKey(serviceKey: string) {
-	if (serviceKey === 'workdayStart') {
-		return 'railway-service:workday-start' as const;
+	if (serviceKey === 'workdayManager') {
+		return 'railway-service:workday-manager' as const;
 	}
-	if (serviceKey === 'workdayReport') {
-		return 'railway-service:workday-report' as const;
+	if (serviceKey === 'workerRunner') {
+		return 'railway-service:worker-runner' as const;
 	}
 	return `railway-service:${serviceKey}` as const;
 }

@@ -28,18 +28,18 @@ function normalizeScope(scope) {
 function resolveRailwayEnvironmentForScope(scope, configuredEnvironment) {
 	return normalizeRailwayEnvironmentName(configuredEnvironment || normalizeScope(scope));
 }
-const RAILWAY_SERVICE_KEYS = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport'];
-const HOSTED_PROJECT_SERVICE_KEYS = ['api', 'manager', 'worker'];
+const RAILWAY_SERVICE_KEYS = ['api', 'workdayManager', 'workerRunner'];
+const HOSTED_PROJECT_SERVICE_KEYS = ['api', 'workdayManager', 'workerRunner'];
 
 function shouldManageRailwaySchedules(scope, phase = 'deploy') {
 	return phase === 'deploy' && normalizeRailwayEnvironmentName(scope) === 'production';
 }
 
 function railwayServiceNameSuffix(serviceKey) {
-	return serviceKey === 'workdayStart'
-		? 'workday-start'
-		: serviceKey === 'workdayReport'
-			? 'workday-report'
+	return serviceKey === 'workdayManager'
+		? 'workday-manager'
+		: serviceKey === 'workerRunner'
+			? 'worker-runner'
 			: serviceKey;
 }
 
@@ -534,7 +534,7 @@ export function configuredRailwayServices(tenantRoot, scope) {
 				return null;
 			}
 
-			const defaultRootDir = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport'].includes(serviceKey) ? '.' : 'packages/core';
+			const defaultRootDir = ['api', 'workdayManager', 'workerRunner'].includes(serviceKey) ? '.' : 'packages/core';
 			const serviceRoot = resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? defaultRootDir);
 			const railwayEnvironment = resolveRailwayEnvironmentForScope(
 				normalizedScope,

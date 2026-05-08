@@ -477,47 +477,25 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeCoopMa
 					},
 				},
 			},
-			manager: {
+			workdayManager: {
 				enabled: managedRuntime,
 				provider: managedRuntime ? 'railway' : 'none',
 				railway: {
-					serviceName: `${slug}-manager`,
+					serviceName: `${slug}-workday-manager`,
 					rootDir: '.',
 					buildCommand: 'npm run build',
-					startCommand: 'node ./node_modules/@treeseed/core/dist/services/manager.js',
-					schedule: '*/5 * * * *',
-				},
-			},
-			worker: {
-				enabled: managedRuntime,
-				provider: managedRuntime ? 'railway' : 'none',
-				railway: {
-					serviceName: `${slug}-worker`,
-					rootDir: '.',
-					buildCommand: 'npm run build',
-					startCommand: 'node ./node_modules/@treeseed/core/dist/services/worker.js',
-				},
-			},
-				workdayStart: {
-				enabled: managedRuntime,
-				provider: managedRuntime ? 'railway' : 'none',
-				railway: {
-					serviceName: `${slug}-workday-start`,
-					rootDir: '.',
-					buildCommand: 'npm run build',
-					startCommand: 'node ./node_modules/@treeseed/core/dist/services/workday-start.js',
+					startCommand: 'node ./node_modules/@treeseed/core/dist/services/workday-manager.js',
 					schedule: '0 9 * * 1-5',
 				},
 			},
-			workdayReport: {
+			workerRunner: {
 				enabled: managedRuntime,
 				provider: managedRuntime ? 'railway' : 'none',
 				railway: {
-					serviceName: `${slug}-workday-report`,
+					serviceName: `${slug}-worker-runner-01`,
 					rootDir: '.',
 					buildCommand: 'npm run build',
-					startCommand: 'node ./node_modules/@treeseed/core/dist/services/workday-report.js',
-					schedule: '5 17 * * 1-5',
+					startCommand: 'node ./node_modules/@treeseed/core/dist/services/worker.js',
 				},
 			},
 			...(config.services ?? {}),

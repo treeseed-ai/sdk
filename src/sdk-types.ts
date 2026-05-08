@@ -361,12 +361,86 @@ export interface WorkdayPolicy {
 	projectId: string;
 	environment: ProjectEnvironmentName | 'local';
 	schedule: WorkdaySchedule;
+	enabled: boolean;
+	startCron: string;
+	durationMinutes: number;
+	maxRunners: number;
+	maxWorkersPerRunner: number;
+	dailyCreditBudget: number;
+	closeoutGraceMinutes: number;
 	dailyTaskCreditBudget: number;
 	maxQueuedTasks: number;
 	maxQueuedCredits: number;
 	autoscale: AgentPoolAutoscalePolicy;
 	creditWeights: TaskCreditWeight[];
 	metadata?: Record<string, unknown>;
+}
+
+export type WorkdayRequestType = 'one_off_run' | 'early_close' | 'pause' | 'retry_open';
+export type WorkdayRequestState = 'pending' | 'applied' | 'rejected' | 'cancelled';
+
+export interface WorkdayRequest {
+	id: string;
+	projectId: string;
+	environment: ProjectEnvironmentName | 'local';
+	type: WorkdayRequestType;
+	state: WorkdayRequestState;
+	workDayId: string | null;
+	requestedBy: string | null;
+	reason: string | null;
+	payload: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface WorkdayManagerLease {
+	id: string;
+	projectId: string;
+	environment: ProjectEnvironmentName | 'local';
+	workDayId: string | null;
+	managerId: string;
+	state: 'active' | 'released' | 'stale';
+	heartbeatAt: string;
+	expiresAt: string;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export type WorkerRunnerState = 'active' | 'sleeping' | 'waking' | 'draining' | 'failed';
+
+export interface WorkerRunner {
+	id: string;
+	projectId: string;
+	environment: ProjectEnvironmentName | 'local';
+	runnerId: string;
+	runnerServiceName: string;
+	volumeIdentity: string;
+	state: WorkerRunnerState;
+	maxLocalWorkers: number;
+	activeLocalWorkers: number;
+	availableCapacity: number;
+	lastHeartbeatAt: string | null;
+	claimedRepositoryIds: string[];
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface RepositoryClaim {
+	id: string;
+	projectId: string;
+	repositoryId: string;
+	runnerId: string;
+	runnerServiceName: string;
+	volumeIdentity: string;
+	lastSeenCommit: string | null;
+	lastTaskAt: string | null;
+	claimState: 'active' | 'stale' | 'released';
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
 }
 
 export interface PrioritySnapshotItem {
@@ -696,6 +770,19 @@ export interface ScaleDecision {
 	desiredWorkers: number;
 	observedQueueDepth: number;
 	observedActiveLeases: number;
+	reason: string;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface RunnerScaleDecision {
+	id: string;
+	projectId: string;
+	environment: ProjectEnvironmentName | 'local';
+	workDayId: string | null;
+	runnerId: string | null;
+	runnerServiceName: string | null;
+	action: 'wake' | 'sleep' | 'drain' | 'provision' | 'noop';
 	reason: string;
 	metadata?: Record<string, unknown>;
 	createdAt: string;
@@ -1568,11 +1655,75 @@ export interface SdkUpsertWorkPolicyRequest {
 	projectId: string;
 	environment: ProjectEnvironmentName | 'local';
 	schedule: WorkdaySchedule;
+	enabled?: boolean;
+	startCron?: string;
+	durationMinutes?: number;
+	maxRunners?: number;
+	maxWorkersPerRunner?: number;
+	dailyCreditBudget?: number;
+	closeoutGraceMinutes?: number;
 	dailyTaskCreditBudget: number;
 	maxQueuedTasks: number;
 	maxQueuedCredits: number;
 	autoscale: AgentPoolAutoscalePolicy;
 	creditWeights?: TaskCreditWeight[];
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface SdkCreateWorkdayRequest {
+	id?: string;
+	projectId: string;
+	environment: ProjectEnvironmentName | 'local';
+	type: WorkdayRequestType;
+	state?: WorkdayRequestState;
+	workDayId?: string | null;
+	requestedBy?: string | null;
+	reason?: string | null;
+	payload?: Record<string, unknown> | null;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface SdkClaimWorkdayManagerLeaseRequest {
+	id?: string;
+	projectId: string;
+	environment: ProjectEnvironmentName | 'local';
+	workDayId?: string | null;
+	managerId: string;
+	ttlSeconds: number;
+	staleAfterSeconds?: number;
+	now?: string;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface SdkReleaseWorkdayManagerLeaseRequest {
+	id: string;
+	managerId: string;
+}
+
+export interface SdkRecordWorkerRunnerRequest {
+	id?: string;
+	projectId: string;
+	environment: ProjectEnvironmentName | 'local';
+	runnerId: string;
+	runnerServiceName: string;
+	volumeIdentity: string;
+	state?: WorkerRunnerState;
+	maxLocalWorkers: number;
+	activeLocalWorkers?: number;
+	claimedRepositoryIds?: string[];
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface SdkRecordRepositoryClaimRequest {
+	id?: string;
+	projectId: string;
+	repositoryId: string;
+	runnerId: string;
+	runnerServiceName: string;
+	volumeIdentity: string;
+	lastSeenCommit?: string | null;
+	lastTaskAt?: string | null;
+	claimState?: RepositoryClaim['claimState'];
 	metadata?: Record<string, unknown> | null;
 }
 
@@ -1902,6 +2053,24 @@ export interface SdkRecordScaleDecisionRequest {
 	observedActiveLeases: number;
 	reason: string;
 	metadata?: Record<string, unknown> | null;
+}
+
+export interface SdkRecordRunnerScaleDecisionRequest {
+	id?: string;
+	projectId: string;
+	environment: ProjectEnvironmentName | 'local';
+	workDayId?: string | null;
+	runnerId?: string | null;
+	runnerServiceName?: string | null;
+	action: RunnerScaleDecision['action'];
+	reason: string;
+	metadata?: Record<string, unknown> | null;
+}
+
+export interface SdkUpdateWorkDayGraphRequest {
+	id: string;
+	graphVersion: string;
+	summaryPatch?: Record<string, unknown> | null;
 }
 
 export interface SdkCloseWorkDayRequest {

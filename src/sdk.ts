@@ -45,14 +45,21 @@ import type {
 	SdkGraphDslParseResult,
 	SdkPickRequest,
 	SdkPriorityOverrideRequest,
+	SdkClaimWorkdayManagerLeaseRequest,
+	SdkCreateWorkdayRequest,
+	SdkRecordRepositoryClaimRequest,
+	SdkRecordRunnerScaleDecisionRequest,
+	SdkRecordWorkerRunnerRequest,
 	SdkRecordRunRequest,
 	SdkRecordScaleDecisionRequest,
 	SdkRecordTaskCreditsRequest,
+	SdkReleaseWorkdayManagerLeaseRequest,
 	SdkSearchRequest,
 	SdkStartWorkDayRequest,
 	SdkTaskProgressRequest,
 	SdkTaskSearchRequest,
 	SdkUpsertWorkPolicyRequest,
+	SdkUpdateWorkDayGraphRequest,
 	SdkUpdateRequest,
 	SdkModelDefinition,
 	SdkModelRegistry,
@@ -62,9 +69,14 @@ import type {
 	SdkDispatchResult,
 	SdkDispatchCredentialSource,
 	PrioritySnapshot,
+	RepositoryClaim,
+	RunnerScaleDecision,
 	ScaleDecision,
 	TaskCreditLedgerEntry,
+	WorkdayManagerLease,
 	WorkdayPolicy,
+	WorkdayRequest,
+	WorkerRunner,
 } from './sdk-types.ts';
 import { NodeSqliteD1Database } from './db/node-sqlite.ts';
 
@@ -417,6 +429,61 @@ export class AgentSdk {
 	async upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest) {
 		const payload = await this.database.upsertWorkPolicy(request);
 		return this.envelope<WorkdayPolicy>('work_day', 'update', payload);
+	}
+
+	async createWorkdayRequest(request: SdkCreateWorkdayRequest) {
+		const payload = await this.database.createWorkdayRequest(request);
+		return this.envelope<WorkdayRequest>('workday_request', 'create', payload);
+	}
+
+	async listWorkdayRequests(projectId: string, environment: string, state?: string | null) {
+		const payload = await this.database.listWorkdayRequests(projectId, environment, state);
+		return this.envelope<WorkdayRequest[]>('workday_request', 'search', payload, { count: payload.length });
+	}
+
+	async claimWorkdayManagerLease(request: SdkClaimWorkdayManagerLeaseRequest) {
+		const payload = await this.database.claimWorkdayManagerLease(request);
+		return this.envelope<WorkdayManagerLease>('workday_manager_lease', 'claim', payload);
+	}
+
+	async releaseWorkdayManagerLease(request: SdkReleaseWorkdayManagerLeaseRequest) {
+		const payload = await this.database.releaseWorkdayManagerLease(request);
+		return this.envelope<WorkdayManagerLease>('workday_manager_lease', 'release', payload);
+	}
+
+	async recordWorkerRunner(request: SdkRecordWorkerRunnerRequest) {
+		const payload = await this.database.recordWorkerRunner(request);
+		return this.envelope<WorkerRunner>('worker_runner', 'update', payload);
+	}
+
+	async listWorkerRunners(projectId: string, environment: string) {
+		const payload = await this.database.listWorkerRunners(projectId, environment);
+		return this.envelope<WorkerRunner[]>('worker_runner', 'search', payload, { count: payload.length });
+	}
+
+	async recordRepositoryClaim(request: SdkRecordRepositoryClaimRequest) {
+		const payload = await this.database.recordRepositoryClaim(request);
+		return this.envelope<RepositoryClaim>('repository_claim', 'update', payload);
+	}
+
+	async listRepositoryClaims(projectId: string, repositoryId?: string | null) {
+		const payload = await this.database.listRepositoryClaims(projectId, repositoryId);
+		return this.envelope<RepositoryClaim[]>('repository_claim', 'search', payload, { count: payload.length });
+	}
+
+	async recordRunnerScaleDecision(request: SdkRecordRunnerScaleDecisionRequest) {
+		const payload = await this.database.recordRunnerScaleDecision(request);
+		return this.envelope<RunnerScaleDecision>('runner_scale_decision', 'create', payload);
+	}
+
+	async listRunnerScaleDecisions(projectId: string, environment: string, workDayId?: string | null) {
+		const payload = await this.database.listRunnerScaleDecisions(projectId, environment, workDayId);
+		return this.envelope<RunnerScaleDecision[]>('runner_scale_decision', 'search', payload, { count: payload.length });
+	}
+
+	async updateWorkDayGraph(request: SdkUpdateWorkDayGraphRequest) {
+		const payload = await this.database.updateWorkDayGraph(request);
+		return this.envelope('work_day', 'update', payload);
 	}
 
 	async listPriorityOverrides(projectId: string) {

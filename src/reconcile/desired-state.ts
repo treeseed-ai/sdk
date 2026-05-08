@@ -9,18 +9,14 @@ import { normalizeRailwayEnvironmentName } from '../operations/services/railway-
 import type { TreeseedDesiredUnit, TreeseedReconcileTarget } from './contracts.ts';
 import { createTreeseedReconcileUnitId } from './units.ts';
 
-function railwayConcreteUnitTypeForServiceKey(serviceKey: 'api' | 'manager' | 'worker' | 'workdayStart' | 'workdayReport') {
+function railwayConcreteUnitTypeForServiceKey(serviceKey: string) {
 	switch (serviceKey) {
 		case 'api':
 			return 'railway-service:api' as const;
-		case 'manager':
-			return 'railway-service:manager' as const;
-		case 'worker':
-			return 'railway-service:worker' as const;
-		case 'workdayStart':
-			return 'railway-service:workday-start' as const;
-		case 'workdayReport':
-			return 'railway-service:workday-report' as const;
+		case 'workdayManager':
+			return 'railway-service:workday-manager' as const;
+		case 'workerRunner':
+			return 'railway-service:worker-runner' as const;
 		default:
 			return 'railway-service:api' as const;
 	}
@@ -291,10 +287,8 @@ export function deriveTreeseedDesiredUnits({
 		const runtimeUnitType = (() => {
 			switch (serviceKey) {
 				case 'api': return 'api-runtime';
-				case 'manager': return 'manager-runtime';
-				case 'worker': return 'worker-runtime';
-				case 'workdayStart': return 'workday-start-runtime';
-				case 'workdayReport': return 'workday-report-runtime';
+				case 'workdayManager': return 'workday-manager-runtime';
+				case 'workerRunner': return 'worker-runner-runtime';
 				default: return 'api-runtime';
 			}
 		})();

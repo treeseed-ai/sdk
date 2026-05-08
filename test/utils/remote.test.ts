@@ -60,12 +60,21 @@ cloudflare:
     previewRootTemplate: teams/{teamId}/previews
     previewTtlHours: 168
 services:
-  worker:
+  workdayManager:
     enabled: true
     provider: railway
     railway:
       projectName: acme-docs
-      serviceName: acme-docs-worker
+      serviceName: acme-docs-workday-manager
+      rootDir: .
+      schedule:
+        - "0 9 * * 1-5"
+  workerRunner:
+    enabled: true
+    provider: railway
+    railway:
+      projectName: acme-docs
+      serviceName: acme-docs-worker-runner-01
       rootDir: .
   api:
     enabled: true
@@ -245,7 +254,7 @@ describe('remote Treeseed support', () => {
 			]);
 		});
 
-		it('tracks managed API and worker service state in deploy state', () => {
+		it('tracks managed API and runner service state in deploy state', () => {
 		const tenantRoot = createTenantFixture();
 		const deployConfig = loadCliDeployConfig(tenantRoot);
 		const state = loadDeployState(tenantRoot, deployConfig, { scope: 'staging' });
@@ -256,7 +265,8 @@ describe('remote Treeseed support', () => {
 		expect(state.services.api.enabled).toBe(true);
 		expect(state.services.api.serviceName).toBe('acme-docs-api');
 		expect(state.services.api.publicBaseUrl).toBe(resolveConfiguredSurfaceBaseUrl(deployConfig, { kind: 'persistent', scope: 'staging' }, 'api'));
-		expect(state.services.worker.serviceName).toBe('acme-docs-worker');
+		expect(state.services.workdayManager.serviceName).toBe('acme-docs-workday-manager');
+		expect(state.services.workerRunner.serviceName).toBe('acme-docs-worker-runner-01');
 		expect(state.queues.agentWork.name).toBe('acme-docs-agent-work-staging');
 		expect(state.queues.agentWork.dlqName).toBe('acme-docs-agent-work-dlq-staging');
 		expect(state.content.manifestKey).toBe('teams/acme/published/common.json');

@@ -14,7 +14,7 @@ const GENERATED_ROOT = '.treeseed/generated';
 const STATE_ROOT = '.treeseed/state';
 const WORKTREE_METADATA_RELATIVE_PATH = '.treeseed/worktree.json';
 const PERSISTENT_SCOPES = new Set(['local', 'staging', 'prod']);
-const MANAGED_SERVICE_KEYS = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport'];
+const MANAGED_SERVICE_KEYS = ['api', 'workdayManager', 'workerRunner'];
 const TRESEED_ENVELOPE_SCHEMA_GENERATION = 'runtime-envelopes-v1';
 const TRESEED_MIGRATION_WAVE_ID = '0005_runtime_envelopes';
 const TRESEED_SUPPORTED_PAYLOAD_RANGE = { min: 1, max: 1 };
@@ -190,7 +190,12 @@ export function resolveConfiguredSurfaceBaseUrl(deployConfig, target, surface) {
 }
 
 function sharedDeploymentName(identity, role = '') {
-	return role ? `${identity.deploymentKey}-${sanitizeSegment(role)}` : identity.deploymentKey;
+	const roleSegment = role === 'workdayManager'
+		? 'workday-manager'
+		: role === 'workerRunner'
+			? 'worker-runner'
+			: role;
+	return role ? `${identity.deploymentKey}-${sanitizeSegment(roleSegment)}` : identity.deploymentKey;
 }
 
 function environmentScopedIdentityName(identity, role, target) {

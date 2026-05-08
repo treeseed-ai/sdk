@@ -105,10 +105,10 @@ cloudflare:
 runtime:
   mode: treeseed_managed
 services:
-  workdayStart:
+  workdayManager:
     enabled: true
     provider: railway
-  workdayReport:
+  workerRunner:
     enabled: true
     provider: railway
 `);
@@ -117,8 +117,8 @@ services:
 			target: { kind: 'persistent', scope: 'staging' },
 		});
 		const unitTypes = units.map((unit) => unit.unitType);
-		expect(unitTypes).toContain('railway-service:workday-start');
-		expect(unitTypes).toContain('railway-service:workday-report');
+		expect(unitTypes).toContain('railway-service:workday-manager');
+		expect(unitTypes).toContain('railway-service:worker-runner');
 		expect(unitTypes).not.toContain('railway-service:workdayStart');
 		expect(unitTypes).not.toContain('railway-service:workdayReport');
 	});
