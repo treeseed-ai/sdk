@@ -13,6 +13,7 @@ import {
 	railwayServiceRuntimeStartCommand,
 	resolveRailwayAuthToken,
 	validateRailwayDeployPrerequisites,
+	verifyRailwayManagedResources,
 	verifyRailwayScheduledJobs,
 } from '../../src/operations/services/railway-deploy.ts';
 import { ensureRailwayServiceVolume } from '../../src/operations/services/railway-api.ts';
@@ -99,14 +100,31 @@ function railwayProjectsPayload() {
 									id: 'env-production',
 									name: 'production',
 								},
+							}, {
+								node: {
+									id: 'env-staging',
+									name: 'staging',
+								},
 							}],
 						},
 						services: {
 							edges: [
 								{
 									node: {
+										id: 'svc-api',
+										name: 'acme-docs-api',
+									},
+								},
+								{
+									node: {
 										id: 'svc-manager',
 										name: 'acme-docs-workday-start',
+									},
+								},
+								{
+									node: {
+										id: 'svc-runner-01',
+										name: 'acme-docs-worker-runner-01',
 									},
 								},
 								{
@@ -481,6 +499,78 @@ describe('railway scheduled jobs', () => {
 			id: 'instance-1',
 			ok: true,
 		});
+	});
+
+	it('verifies managed Railway services, workday schedule, and worker-runner volume', async () => {
+		const tenantRoot = await createTenantFixture();
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('query TreeseedRailwayAuthProfile')) {
+				return new Response(JSON.stringify(railwayTopologyPayload()), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (String(body.query).includes('query TreeseedRailwayProjects')) {
+				return new Response(JSON.stringify(railwayProjectsPayload()), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (String(body.query).includes('query TreeseedRailwayServiceInstance')) {
+				const serviceId = body.variables.serviceId;
+				return new Response(JSON.stringify({
+					data: {
+						serviceInstance: {
+							id: `instance-${serviceId}`,
+							buildCommand: null,
+							startCommand: serviceId === 'svc-manager' ? 'npm run workday-manager' : null,
+							cronSchedule: serviceId === 'svc-manager' ? '0 9 * * 1-5' : null,
+							rootDirectory: null,
+							healthcheckPath: null,
+							healthcheckTimeout: null,
+							sleepApplication: serviceId === 'svc-api',
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (String(body.query).includes('query TreeseedRailwayVolumeList')) {
+				return new Response(JSON.stringify({
+					data: {
+						project: {
+							volumes: {
+								edges: [{
+									node: {
+										id: 'vol-1',
+										name: 'acme-docs-worker-runner-01-staging-data',
+										projectId: 'railway-project-1',
+										volumeInstances: {
+											edges: [{
+												node: {
+													id: 'vi-1',
+													serviceId: 'svc-runner-01',
+													environmentId: 'env-staging',
+													mountPath: '/data',
+												},
+											}],
+										},
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			throw new Error(`Unexpected Railway query: ${body.query}`);
+		});
+
+		const result = await verifyRailwayManagedResources(tenantRoot, 'staging', {
+			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		expect(result.ok).toBe(true);
+		expect(result.checks).toEqual(expect.arrayContaining([
+			expect.objectContaining({ type: 'service-instance', service: 'api', ok: true }),
+			expect.objectContaining({ type: 'service-instance', service: 'workdayManager', ok: true }),
+			expect.objectContaining({ type: 'service-instance', service: 'workerRunner', ok: true }),
+			expect.objectContaining({ type: 'worker-runner-volume', volumeName: 'acme-docs-worker-runner-01-staging-data', mountPath: '/data', ok: true }),
+			expect.objectContaining({ type: 'schedule', service: 'workdayManager', ok: true }),
+		]));
 	});
 
 	it('accepts Railway deploy prerequisites and schedule sync from explicit env overrides', async () => {

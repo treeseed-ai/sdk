@@ -416,7 +416,8 @@ function normalizeSaveVerifyMode(mode: TreeseedSaveInput['verifyMode'] | undefin
 function shouldUseHostedSaveCi(input: TreeseedSaveInput) {
 	return normalizeCiMode(input.ciMode, 'save') === 'hosted'
 		|| input.verifyMode === 'hosted'
-		|| input.verifyMode === 'both';
+		|| input.verifyMode === 'both'
+		|| input.verifyDeployedResources === true;
 }
 
 function worktreePayload(root: string, requestedMode?: TreeseedWorkflowWorktreeMode) {
@@ -3463,6 +3464,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					worktreeMode: effectiveInput.worktreeMode ?? 'auto',
 					commitMessageMode: effectiveInput.commitMessageMode ?? 'auto',
 					workspaceLinks: effectiveInput.workspaceLinks ?? 'auto',
+					verifyDeployedResources: effectiveInput.verifyDeployedResources === true,
 				},
 				[
 					{
@@ -3568,6 +3570,15 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 									name: savedRootRepo.name,
 									repoPath: savedRootRepo.path,
 									workflow: 'verify.yml',
+									branch,
+									headSha: savedRootRepo.commitSha,
+								}]
+								: []),
+							...(effectiveInput.verifyDeployedResources === true && scope !== 'local' && savedRootRepo.pushed && savedRootRepo.commitSha && branch
+								? [{
+									name: savedRootRepo.name,
+									repoPath: savedRootRepo.path,
+									workflow: 'deploy.yml',
 									branch,
 									headSha: savedRootRepo.commitSha,
 								}]
@@ -3953,6 +3964,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				: input;
 			const message = ensureMessage('stage', effectiveInput.message, 'a resolution message');
 			const ciMode = normalizeCiMode(effectiveInput.ciMode, 'stage');
+			const waitForStaging = effectiveInput.verifyDeployedResources === true || effectiveInput.waitForStaging !== false;
 				if (executionMode === 'plan') {
 					const blockers: string[] = [];
 					if (initialSession.branchRole !== 'feature') {
@@ -4037,11 +4049,12 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				session,
 				{
 					message,
-					waitForStaging: effectiveInput.waitForStaging !== false,
+					waitForStaging,
 					deletePreview: effectiveInput.deletePreview !== false,
 					deleteBranch: effectiveInput.deleteBranch !== false,
 					ciMode,
 					worktreeMode: effectiveInput.worktreeMode ?? 'auto',
+					verifyDeployedResources: effectiveInput.verifyDeployedResources === true,
 				},
 				[
 					{ id: 'workspace-unlink', description: 'Remove local workspace links', repoName: rootRepo.name, repoPath: rootRepo.path, branch: featureBranch, resumable: true },
@@ -4166,7 +4179,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					});
 				}
 
-				const stageWorkflowGateResult = effectiveInput.waitForStaging === false
+				const stageWorkflowGateResult = !waitForStaging
 					? (skipJournalStep(root, workflowRun.runId, 'wait-staging', { status: 'skipped', reason: 'disabled' }), { status: 'skipped', reason: 'disabled' })
 					: await executeJournalStep(root, workflowRun.runId, 'wait-staging', () =>
 						waitForWorkflowGates('stage', [
