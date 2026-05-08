@@ -492,7 +492,6 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeCoopMa
 				enabled: managedRuntime,
 				provider: managedRuntime ? 'railway' : 'none',
 				railway: {
-					serviceName: `${slug}-worker-runner-01`,
 					rootDir: '.',
 					buildCommand: 'npm run build',
 					startCommand: 'node ./node_modules/@treeseed/core/dist/services/worker.js',

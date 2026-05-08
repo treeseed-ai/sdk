@@ -74,7 +74,6 @@ services:
     provider: railway
     railway:
       projectName: acme-docs
-      serviceName: acme-docs-worker-runner-01
       rootDir: .
   api:
     enabled: true

@@ -193,7 +193,7 @@ function sharedDeploymentName(identity, role = '') {
 	const roleSegment = role === 'workdayManager'
 		? 'workday-manager'
 		: role === 'workerRunner'
-			? 'worker-runner'
+			? 'worker-runner-01'
 			: role;
 	return role ? `${identity.deploymentKey}-${sanitizeSegment(roleSegment)}` : identity.deploymentKey;
 }

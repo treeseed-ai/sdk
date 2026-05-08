@@ -239,7 +239,7 @@ export function deriveTreeseedDesiredUnits({
 				serviceKey,
 				scheduleManaged: Array.isArray(configuredService.schedule) && configuredService.schedule.length > 0,
 				scheduleBootstrap: false,
-				scheduleDeployScopes: ['prod'],
+				scheduleDeployScopes: ['staging', 'prod'],
 				bootstrapSystem: serviceBootstrapSystem,
 			},
 		});

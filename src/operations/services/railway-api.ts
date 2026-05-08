@@ -70,6 +70,22 @@ export type RailwayCustomDomainSummary = {
 	dnsRecords: RailwayCustomDomainDnsRecord[];
 };
 
+export type RailwayVolumeInstanceSummary = {
+	id: string;
+	serviceId: string | null;
+	environmentId: string | null;
+	mountPath: string | null;
+	sizeGb: number | null;
+	usedGb: number | null;
+};
+
+export type RailwayVolumeSummary = {
+	id: string;
+	name: string;
+	projectId: string | null;
+	instances: RailwayVolumeInstanceSummary[];
+};
+
 function configuredEnvValue(env: NodeJS.ProcessEnv | Record<string, string | undefined> | undefined, name: string) {
 	const value = env?.[name];
 	return typeof value === 'string' && value.trim() ? value.trim() : '';
@@ -280,6 +296,96 @@ function normalizeRailwayCustomDomain(node: Record<string, unknown>): RailwayCus
 		verificationToken: railwayConnectionLabel(status.verificationToken) || null,
 		dnsRecords,
 	};
+}
+
+function normalizeRailwayVolumeInstance(node: Record<string, unknown>): RailwayVolumeInstanceSummary | null {
+	const id = railwayConnectionLabel(node.id);
+	if (!id) {
+		return null;
+	}
+	const sizeGb = normalizeRailwayNumber(node.sizeGb ?? node.sizeGB ?? node.size_gb ?? node.capacityGb ?? node.capacityGB);
+	const usedGb = normalizeRailwayNumber(node.usedGb ?? node.usedGB ?? node.used_gb ?? node.currentUsageGb ?? node.currentUsageGB);
+	return {
+		id,
+		serviceId: railwayConnectionLabel(node.serviceId) || railwayConnectionLabel((node.service as { id?: unknown } | null)?.id) || null,
+		environmentId: railwayConnectionLabel(node.environmentId) || railwayConnectionLabel((node.environment as { id?: unknown } | null)?.id) || null,
+		mountPath: railwayConnectionLabel(node.mountPath) || railwayConnectionLabel(node.mount_path) || null,
+		sizeGb,
+		usedGb,
+	};
+}
+
+function normalizeVolumeInstances(value: unknown): RailwayVolumeInstanceSummary[] {
+	const direct = Array.isArray(value) ? value : null;
+	if (direct) {
+		return direct
+			.map((entry) => entry && typeof entry === 'object' ? normalizeRailwayVolumeInstance(entry as Record<string, unknown>) : null)
+			.filter(Boolean) as RailwayVolumeInstanceSummary[];
+	}
+	return normalizeConnectionNodes(value, normalizeRailwayVolumeInstance);
+}
+
+function normalizeRailwayVolume(node: Record<string, unknown>): RailwayVolumeSummary | null {
+	const id = railwayConnectionLabel(node.id);
+	if (!id) {
+		return null;
+	}
+	return {
+		id,
+		name: railwayConnectionLabel(node.name),
+		projectId: railwayConnectionLabel(node.projectId) || null,
+		instances: [
+			...normalizeVolumeInstances(node.instances),
+			...normalizeVolumeInstances(node.volumeInstances),
+			...normalizeVolumeInstances(node.volume_instances),
+		],
+	};
+}
+
+function collectRailwayVolumes(value: unknown, seen = new Set<object>()): RailwayVolumeSummary[] {
+	const volumes: RailwayVolumeSummary[] = [];
+	const visit = (entry: unknown) => {
+		if (!entry || typeof entry !== 'object') {
+			return;
+		}
+		if (seen.has(entry)) {
+			return;
+		}
+		seen.add(entry);
+		if (Array.isArray(entry)) {
+			for (const item of entry) {
+				visit(item);
+			}
+			return;
+		}
+		const record = entry as Record<string, unknown>;
+		const volume = normalizeRailwayVolume(record);
+		if (volume && (
+			record.volumeInstances !== undefined
+			|| record.instances !== undefined
+			|| record.projectId !== undefined
+			|| record.name !== undefined
+		)) {
+			volumes.push(volume);
+		}
+		for (const child of Object.values(record)) {
+			visit(child);
+		}
+	};
+	visit(value);
+	const byId = new Map<string, RailwayVolumeSummary>();
+	for (const volume of volumes) {
+		const existing = byId.get(volume.id);
+		byId.set(volume.id, existing
+			? {
+				...existing,
+				name: existing.name || volume.name,
+				projectId: existing.projectId || volume.projectId,
+				instances: [...existing.instances, ...volume.instances],
+			}
+			: volume);
+	}
+	return [...byId.values()];
 }
 
 export async function railwayGraphqlRequest<TData = unknown>({
@@ -1047,6 +1153,235 @@ mutation TreeseedRailwayVariableCollectionUpsert($input: VariableCollectionUpser
 		env,
 		fetchImpl,
 	});
+}
+
+export async function listRailwayVolumes({
+	projectId,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	projectId: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const query = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_LIST_QUERY') || `
+query TreeseedRailwayVolumeList($projectId: String!) {
+	project(id: $projectId) {
+		id
+		volumes {
+			edges {
+				node {
+					id
+					name
+					projectId
+					volumeInstances {
+						edges {
+							node {
+								id
+								serviceId
+								environmentId
+								mountPath
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+`.trim();
+	const payload = await railwayGraphqlRequest({
+		query,
+		variables: { projectId },
+		env,
+		fetchImpl,
+	});
+	return collectRailwayVolumes(payload.data);
+}
+
+async function createRailwayVolume({
+	projectId,
+	environmentId,
+	serviceId,
+	name,
+	mountPath,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	projectId: string;
+	environmentId: string;
+	serviceId: string;
+	name: string;
+	mountPath: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_CREATE_MUTATION') || `
+mutation TreeseedRailwayVolumeCreate($input: VolumeCreateInput!) {
+	volumeCreate(input: $input) {
+		id
+		name
+		projectId
+		volumeInstances {
+			edges {
+				node {
+					id
+					serviceId
+					environmentId
+					mountPath
+				}
+			}
+		}
+	}
+}
+`.trim();
+	const payload = await railwayGraphqlRequest({
+		query: mutation,
+		variables: {
+			input: {
+				projectId,
+				environmentId,
+				serviceId,
+				name,
+				mountPath,
+			},
+		},
+		env,
+		fetchImpl,
+	});
+	const volume = collectRailwayVolumes(payload.data)[0] ?? null;
+	if (!volume) {
+		throw new Error(`Railway volume create did not return a usable volume for ${name}.`);
+	}
+	return volume;
+}
+
+async function updateRailwayVolumeName({
+	volumeId,
+	name,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	volumeId: string;
+	name: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_UPDATE_MUTATION') || `
+mutation TreeseedRailwayVolumeUpdate($id: String!, $input: VolumeUpdateInput!) {
+	volumeUpdate(id: $id, input: $input) {
+		id
+		name
+		projectId
+		volumeInstances {
+			edges {
+				node {
+					id
+					serviceId
+					environmentId
+					mountPath
+				}
+			}
+		}
+	}
+}
+`.trim();
+	const payload = await railwayGraphqlRequest({
+		query: mutation,
+		variables: {
+			id: volumeId,
+			input: { name },
+		},
+		env,
+		fetchImpl,
+	});
+	return collectRailwayVolumes(payload.data)[0] ?? null;
+}
+
+async function updateRailwayVolumeInstanceMountPath({
+	instanceId,
+	mountPath,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	instanceId: string;
+	mountPath: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_INSTANCE_UPDATE_MUTATION') || `
+mutation TreeseedRailwayVolumeInstanceUpdate($id: String!, $input: VolumeInstanceUpdateInput!) {
+	volumeInstanceUpdate(id: $id, input: $input) {
+		id
+		serviceId
+		environmentId
+		mountPath
+	}
+}
+`.trim();
+	await railwayGraphqlRequest({
+		query: mutation,
+		variables: {
+			id: instanceId,
+			input: { mountPath },
+		},
+		env,
+		fetchImpl,
+	});
+}
+
+export async function ensureRailwayServiceVolume({
+	projectId,
+	environmentId,
+	serviceId,
+	name,
+	mountPath,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	projectId: string;
+	environmentId: string;
+	serviceId: string;
+	name: string;
+	mountPath: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	if (!mountPath.startsWith('/')) {
+		throw new Error(`Railway volume mount path must be absolute: ${mountPath}`);
+	}
+	const volumes = await listRailwayVolumes({ projectId, env, fetchImpl });
+	let volume = volumes.find((candidate) =>
+		candidate.instances.some((instance) => instance.serviceId === serviceId && instance.environmentId === environmentId),
+	) ?? volumes.find((candidate) => candidate.name === name) ?? null;
+	let created = false;
+	let updated = false;
+	if (!volume) {
+		volume = await createRailwayVolume({
+			projectId,
+			environmentId,
+			serviceId,
+			name,
+			mountPath,
+			env,
+			fetchImpl,
+		});
+		created = true;
+	}
+	if (volume.name && volume.name !== name) {
+		volume = await updateRailwayVolumeName({ volumeId: volume.id, name, env, fetchImpl }) ?? { ...volume, name };
+		updated = true;
+	}
+	const instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? null;
+	if (instance && instance.mountPath !== mountPath) {
+		await updateRailwayVolumeInstanceMountPath({ instanceId: instance.id, mountPath, env, fetchImpl });
+		volume = {
+			...volume,
+			instances: volume.instances.map((entry) => entry.id === instance.id ? { ...entry, mountPath } : entry),
+		};
+		updated = true;
+	}
+	return { volume, instance, created, updated };
 }
 
 export async function listRailwayCustomDomains({

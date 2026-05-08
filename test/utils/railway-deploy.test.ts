@@ -3,14 +3,19 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+	configuredRailwayScheduledJobs,
 	configuredRailwayServices,
+	deriveRailwayWorkerRunnerServiceName,
+	deriveRailwayWorkerRunnerVolumeName,
 	ensureRailwayScheduledJobs,
 	isRailwayTransientFailure,
 	planRailwayServiceDeploy,
+	railwayServiceRuntimeStartCommand,
 	resolveRailwayAuthToken,
 	validateRailwayDeployPrerequisites,
 	verifyRailwayScheduledJobs,
 } from '../../src/operations/services/railway-deploy.ts';
+import { ensureRailwayServiceVolume } from '../../src/operations/services/railway-api.ts';
 
 const tempRoots = new Set<string>();
 
@@ -47,7 +52,6 @@ services:
     enabled: true
     railway:
       projectName: acme-docs
-      serviceName: acme-docs-worker-runner-01
       rootDir: .
   workdayManager:
     provider: railway
@@ -145,12 +149,50 @@ describe('railway scheduled jobs', () => {
 		expect(services.every((service) => service.railwayEnvironment === 'production')).toBe(true);
 	});
 
-	it('does not plan recurring schedules for staging bootstrap', async () => {
+	it('derives worker-runner pool service and volume names outside tenant config', async () => {
 		const tenantRoot = await createTenantFixture();
 
-		const result = await ensureRailwayScheduledJobs(tenantRoot, 'staging');
+		const services = configuredRailwayServices(tenantRoot, 'staging');
+		const runner = services.find((service) => service.key === 'workerRunner');
 
-		expect(result).toEqual([]);
+		expect(deriveRailwayWorkerRunnerServiceName('acme-docs')).toBe('acme-docs-worker-runner-01');
+		expect(deriveRailwayWorkerRunnerVolumeName('acme-docs-worker-runner-01')).toBe('acme-docs-worker-runner-01-data');
+		expect(runner).toMatchObject({
+			serviceName: 'acme-docs-worker-runner-01',
+			runnerPool: {
+				bootstrapIndex: 1,
+				volumeMountPath: '/data',
+			},
+		});
+	});
+
+	it('plans workday-manager schedules for staging and prod', async () => {
+		const tenantRoot = await createTenantFixture();
+
+		const staging = configuredRailwayScheduledJobs(tenantRoot, 'staging');
+		const prod = configuredRailwayScheduledJobs(tenantRoot, 'prod');
+
+		expect(staging).toHaveLength(1);
+		expect(staging[0]).toMatchObject({
+			service: 'workdayManager',
+			serviceName: 'acme-docs-workday-start',
+			environment: 'staging',
+			expression: '0 9 * * 1-5',
+			command: 'npm run workday-manager',
+		});
+		expect(prod).toHaveLength(1);
+		expect(prod[0]).toMatchObject({
+			service: 'workdayManager',
+			environment: 'production',
+		});
+	});
+
+	it('keeps workday-manager cron command separate from deployed service start command', async () => {
+		const tenantRoot = await createTenantFixture();
+		const manager = configuredRailwayServices(tenantRoot, 'staging').find((service) => service.key === 'workdayManager');
+
+		expect(manager?.startCommand).toBe('npm run workday-manager');
+		expect(railwayServiceRuntimeStartCommand(manager)).toBe('node -e "console.log(\'workday-manager scheduled-only service idle\')"');
 	});
 
 	it('detaches Railway deploys from build log streaming by default', () => {
@@ -194,6 +236,122 @@ describe('railway scheduled jobs', () => {
 			stdout: 'Build Logs: https://railway.com/project/example',
 			stderr: 'Failed to stream build logs: Failed to retrieve build log',
 		})).toBe(true);
+	});
+
+	it('creates a missing worker-runner volume at the standard repository mount path', async () => {
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('TreeseedRailwayVolumeList')) {
+				return new Response(JSON.stringify({ data: { project: { volumes: { edges: [] } } } }), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			expect(body.variables.input).toMatchObject({
+				projectId: 'project-1',
+				environmentId: 'env-staging',
+				serviceId: 'svc-runner-01',
+				name: 'acme-docs-worker-runner-01-data',
+				mountPath: '/data',
+			});
+			return new Response(JSON.stringify({
+				data: {
+					volumeCreate: {
+						id: 'vol-1',
+						name: 'acme-docs-worker-runner-01-data',
+						projectId: 'project-1',
+						volumeInstances: {
+							edges: [{
+								node: {
+									id: 'vi-1',
+									serviceId: 'svc-runner-01',
+									environmentId: 'env-staging',
+									mountPath: '/data',
+								},
+							}],
+						},
+					},
+				},
+			}), { status: 200, headers: { 'content-type': 'application/json' } });
+		});
+
+		const result = await ensureRailwayServiceVolume({
+			projectId: 'project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-runner-01',
+			name: 'acme-docs-worker-runner-01-data',
+			mountPath: '/data',
+			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		expect(result).toMatchObject({
+			created: true,
+			updated: false,
+			volume: {
+				id: 'vol-1',
+				name: 'acme-docs-worker-runner-01-data',
+			},
+		});
+	});
+
+	it('updates a drifted worker-runner volume mount path without deleting it', async () => {
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('TreeseedRailwayVolumeList')) {
+				return new Response(JSON.stringify({
+					data: {
+						project: {
+							volumes: {
+								edges: [{
+									node: {
+										id: 'vol-1',
+										name: 'acme-docs-worker-runner-01-data',
+										projectId: 'project-1',
+										volumeInstances: {
+											edges: [{
+												node: {
+													id: 'vi-1',
+													serviceId: 'svc-runner-01',
+													environmentId: 'env-staging',
+													mountPath: '/app/data',
+												},
+											}],
+										},
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			expect(String(body.query)).toContain('TreeseedRailwayVolumeInstanceUpdate');
+			expect(body.variables).toEqual({
+				id: 'vi-1',
+				input: { mountPath: '/data' },
+			});
+			return new Response(JSON.stringify({
+				data: {
+					volumeInstanceUpdate: {
+						id: 'vi-1',
+						serviceId: 'svc-runner-01',
+						environmentId: 'env-staging',
+						mountPath: '/data',
+					},
+				},
+			}), { status: 200, headers: { 'content-type': 'application/json' } });
+		});
+
+		const result = await ensureRailwayServiceVolume({
+			projectId: 'project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-runner-01',
+			name: 'acme-docs-worker-runner-01-data',
+			mountPath: '/data',
+			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		expect(result.created).toBe(false);
+		expect(result.updated).toBe(true);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
 	it('creates a missing schedule and returns its locator for prod deploy', async () => {

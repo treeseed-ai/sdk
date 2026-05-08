@@ -126,7 +126,6 @@ describe('project platform workflow actions', () => {
     provider: railway
     railway:
       projectName: test-site
-      serviceName: test-site-worker-runner-01
 `);
 		vi.stubGlobal('fetch', vi.fn(async () => new Response('ok', { status: 200 })));
 		process.env.TREESEED_WORKER_POOL_SCALER = 'railway';
@@ -142,7 +141,7 @@ describe('project platform workflow actions', () => {
 		expect(result.checks.scaleProbe).toMatchObject({
 			ok: true,
 			mocked: true,
-			serviceName: 'test-site-worker-runner-01',
+			serviceName: 'acme-docs-worker-runner-01',
 		});
 	});
 

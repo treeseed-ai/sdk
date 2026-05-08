@@ -1675,7 +1675,7 @@ async function syncRailwayEnvironmentForScope(input: TreeseedReconcileAdapterInp
 		includeInstances: !dryRun,
 		includeVariables: false,
 	});
-	const workerEntry = topology.services.get('worker') ?? null;
+	const workerEntry = topology.services.get('workerRunner') ?? topology.services.get('worker') ?? null;
 	const railwayRuntimeVariables = Object.fromEntries(
 		[
 			['TREESEED_RAILWAY_PROJECT_ID', workerEntry?.project?.id],

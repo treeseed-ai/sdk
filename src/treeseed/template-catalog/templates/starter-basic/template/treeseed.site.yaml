@@ -63,7 +63,6 @@ services:
     enabled: true
     provider: railway
     railway:
-      serviceName: __SITE_SLUG__-worker-runner-01
       rootDir: .
       buildCommand: npm run build
       startCommand: node ./node_modules/@treeseed/core/dist/services/worker.js
