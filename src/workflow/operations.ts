@@ -1050,11 +1050,10 @@ function defaultCiWorkflows(kind: 'root' | 'package', branch: string | null) {
 	if (kind === 'package') {
 		return ['verify.yml'];
 	}
-	const workflows = ['verify.yml'];
 	if (branch === STAGING_BRANCH || branch === PRODUCTION_BRANCH) {
-		workflows.push('deploy.yml');
+		return ['deploy.yml'];
 	}
-	return workflows;
+	return ['verify.yml'];
 }
 
 function githubRepositoryForRepo(repoDir: string) {
@@ -4100,13 +4099,6 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					? (skipJournalStep(root, workflowRun.runId, 'wait-staging', { status: 'skipped', reason: 'disabled' }), { status: 'skipped', reason: 'disabled' })
 					: await executeJournalStep(root, workflowRun.runId, 'wait-staging', () =>
 						waitForWorkflowGates('stage', [
-							{
-								name: rootRepo.name,
-								repoPath: rootRepo.path,
-								workflow: 'verify.yml',
-								branch: STAGING_BRANCH,
-								headSha: rootRepo.commitSha,
-							},
 							{
 								name: rootRepo.name,
 								repoPath: rootRepo.path,

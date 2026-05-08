@@ -16,6 +16,7 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 	it('uses auto bootstrap mode in the root verify workflow', () => {
 		const source = readFileSync(rootVerifyWorkflowPath, 'utf8');
 
+		expect(source).toContain("branches-ignore:\n      - staging");
 		expect(source).toContain('TREESEED_BOOTSTRAP_MODE: auto');
 		expect(source).toContain('submodules: recursive');
 	});
