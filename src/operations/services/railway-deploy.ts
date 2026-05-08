@@ -1111,6 +1111,15 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			env,
 		})
 		: null;
+	await upsertRailwayVariables({
+		projectId: project.id,
+		environmentId: environment.id,
+		serviceId: railwayService.id,
+		variables: {
+			TREESEED_SKIP_PACKAGE_PREPARE: '1',
+		},
+		env,
+	});
 	const volumeMountPath = service.runnerPool?.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH;
 	const volumeConfiguration = wantsRunnerVolume
 		? await ensureRailwayServiceVolumeWithCliFallback({
