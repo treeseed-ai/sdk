@@ -1324,9 +1324,10 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		}
 	}
 
+	const managesRailwaySchedules = options.scope === 'staging' || options.scope === 'prod';
 	let railwaySchedules: any[] = [];
-	let railwayScheduleVerification: any = { ok: true, checks: [], skipped: true, reason: !selectedSystems.has('agents') ? 'agents_not_selected' : options.scope !== 'prod' ? 'prod_only' : 'dry_run' };
-	if (options.scope === 'prod' && selectedSystems.has('agents')) {
+	let railwayScheduleVerification: any = { ok: true, checks: [], skipped: true, reason: !selectedSystems.has('agents') ? 'agents_not_selected' : !managesRailwaySchedules ? 'scope_not_scheduled' : 'dry_run' };
+	if (managesRailwaySchedules && selectedSystems.has('agents')) {
 		const agentDeployNodeIds = nodes
 			.filter((node) => node.id.startsWith('agents:') && node.id.endsWith('-railway-deploy'))
 			.map((node) => node.id);
@@ -1368,9 +1369,9 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 			serviceResults,
 		});
 	}
-	if (options.scope !== 'prod' || !selectedSystems.has('agents')) {
+	if (!managesRailwaySchedules || !selectedSystems.has('agents')) {
 		railwaySchedules = [];
-		railwayScheduleVerification = { ok: true, checks: railwaySchedules, skipped: true, reason: !selectedSystems.has('agents') ? 'agents_not_selected' : options.scope !== 'prod' ? 'prod_only' : 'dry_run' };
+		railwayScheduleVerification = { ok: true, checks: railwaySchedules, skipped: true, reason: !selectedSystems.has('agents') ? 'agents_not_selected' : !managesRailwaySchedules ? 'scope_not_scheduled' : 'dry_run' };
 	}
 	if (selectedSystems.has('agents')) {
 		serviceResults.push({

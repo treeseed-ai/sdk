@@ -157,6 +157,7 @@ describe('railway scheduled jobs', () => {
 
 		expect(deriveRailwayWorkerRunnerServiceName('acme-docs')).toBe('acme-docs-worker-runner-01');
 		expect(deriveRailwayWorkerRunnerVolumeName('acme-docs-worker-runner-01')).toBe('acme-docs-worker-runner-01-data');
+		expect(deriveRailwayWorkerRunnerVolumeName('acme-docs-worker-runner-01', 'staging')).toBe('acme-docs-worker-runner-01-staging-data');
 		expect(runner).toMatchObject({
 			serviceName: 'acme-docs-worker-runner-01',
 			runnerPool: {
@@ -187,12 +188,12 @@ describe('railway scheduled jobs', () => {
 		});
 	});
 
-	it('keeps workday-manager cron command separate from deployed service start command', async () => {
+	it('configures the workday-manager service instance with the cron command', async () => {
 		const tenantRoot = await createTenantFixture();
 		const manager = configuredRailwayServices(tenantRoot, 'staging').find((service) => service.key === 'workdayManager');
 
 		expect(manager?.startCommand).toBe('npm run workday-manager');
-		expect(railwayServiceRuntimeStartCommand(manager)).toBe('node -e "console.log(\'workday-manager scheduled-only service idle\')"');
+		expect(railwayServiceRuntimeStartCommand(manager)).toBe('npm run workday-manager');
 	});
 
 	it('detaches Railway deploys from build log streaming by default', () => {
@@ -367,40 +368,40 @@ describe('railway scheduled jobs', () => {
 			if (String(body.query).includes('query TreeseedRailwayProjects')) {
 				return new Response(JSON.stringify(railwayProjectsPayload()), { status: 200, headers: { 'content-type': 'application/json' } });
 			}
-			if (String(body.query).includes('query TreeseedScheduleList')) {
+			if (String(body.query).includes('query TreeseedRailwayServiceInstance')) {
 				return new Response(JSON.stringify({
 					data: {
-						service: {
-							cronTriggers: {
-								edges: [],
-							},
+						serviceInstance: {
+							id: 'instance-1',
+							buildCommand: null,
+							startCommand: null,
+							cronSchedule: null,
+							rootDirectory: null,
+							healthcheckPath: null,
+							healthcheckTimeout: null,
+							sleepApplication: false,
 						},
 					},
 				}), { status: 200, headers: { 'content-type': 'application/json' } });
 			}
-			return new Response(JSON.stringify({
-				data: {
-					cronTriggerCreate: {
-						id: 'cron-1',
-						name: 'workdayManager:1',
-						schedule: '0 9 * * 1-5',
-						command: 'npm run workday-manager',
-						enabled: true,
-						service: { id: 'svc-manager', name: 'workdayManager' },
-						environment: { id: 'env-production', name: 'production' },
-					},
-				},
-			}), { status: 200, headers: { 'content-type': 'application/json' } });
+			if (String(body.query).includes('mutation TreeseedRailwayServiceInstanceUpdate')) {
+				expect(body.variables.input).toMatchObject({
+					startCommand: 'npm run workday-manager',
+					cronSchedule: '0 9 * * 1-5',
+				});
+				return new Response(JSON.stringify({ data: { serviceInstanceUpdate: true } }), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			throw new Error(`Unexpected Railway query: ${body.query}`);
 		});
 
 		const result = await ensureRailwayScheduledJobs(tenantRoot, 'prod', { fetchImpl: fetchMock as typeof fetch });
 
-		expect(fetchMock).toHaveBeenCalledTimes(4);
+		expect(fetchMock).toHaveBeenCalledTimes(6);
 		expect(result).toHaveLength(1);
 		expect(result[0]).toMatchObject({
-			id: 'cron-1',
+			id: 'instance-1',
 			logicalName: 'workdayManager:1',
-			status: 'created',
+			status: 'updated',
 			expression: '0 9 * * 1-5',
 		});
 	});
@@ -418,45 +419,31 @@ describe('railway scheduled jobs', () => {
 			if (String(body.query).includes('query TreeseedRailwayProjects')) {
 				return new Response(JSON.stringify(railwayProjectsPayload()), { status: 200, headers: { 'content-type': 'application/json' } });
 			}
-			if (String(body.query).includes('query TreeseedScheduleList')) {
+			if (String(body.query).includes('query TreeseedRailwayServiceInstance')) {
 				return new Response(JSON.stringify({
 					data: {
-						service: {
-							cronTriggers: {
-								edges: [{
-									node: {
-										id: 'cron-1',
-										name: 'workdayManager:1',
-										schedule: '0 * * * *',
-										command: 'npm run manager:old',
-										enabled: true,
-										service: { id: 'svc-manager', name: 'workdayManager' },
-										environment: { id: 'env-production', name: 'production' },
-									},
-								}],
-							},
+						serviceInstance: {
+							id: 'instance-1',
+							buildCommand: null,
+							startCommand: 'npm run manager:old',
+							cronSchedule: '0 * * * *',
+							rootDirectory: null,
+							healthcheckPath: null,
+							healthcheckTimeout: null,
+							sleepApplication: false,
 						},
 					},
 				}), { status: 200, headers: { 'content-type': 'application/json' } });
 			}
-			return new Response(JSON.stringify({
-				data: {
-					cronTriggerUpdate: {
-						id: 'cron-1',
-						name: 'workdayManager:1',
-						schedule: '0 9 * * 1-5',
-						command: 'npm run workday-manager',
-						enabled: true,
-						service: { id: 'svc-manager', name: 'workdayManager' },
-						environment: { id: 'env-production', name: 'production' },
-					},
-				},
-			}), { status: 200, headers: { 'content-type': 'application/json' } });
+			if (String(body.query).includes('mutation TreeseedRailwayServiceInstanceUpdate')) {
+				return new Response(JSON.stringify({ data: { serviceInstanceUpdate: true } }), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			throw new Error(`Unexpected Railway query: ${body.query}`);
 		});
 
 		const ensured = await ensureRailwayScheduledJobs(tenantRoot, 'prod', { fetchImpl: fetchMock as typeof fetch });
 		expect(ensured[0]).toMatchObject({
-			id: 'cron-1',
+			id: 'instance-1',
 			status: 'updated',
 			command: 'npm run workday-manager',
 		});
@@ -469,31 +456,29 @@ describe('railway scheduled jobs', () => {
 			if (String(body.query).includes('query TreeseedRailwayProjects')) {
 				return new Response(JSON.stringify(railwayProjectsPayload()), { status: 200, headers: { 'content-type': 'application/json' } });
 			}
-			return new Response(JSON.stringify({
+			if (String(body.query).includes('query TreeseedRailwayServiceInstance')) {
+				return new Response(JSON.stringify({
 				data: {
-					service: {
-						cronTriggers: {
-							edges: [{
-								node: {
-									id: 'cron-1',
-									name: 'workdayManager:1',
-									schedule: '0 9 * * 1-5',
-									command: 'npm run workday-manager',
-									enabled: true,
-									service: { id: 'svc-manager', name: 'workdayManager' },
-									environment: { id: 'env-production', name: 'production' },
-								},
-							}],
+					serviceInstance: {
+						id: 'instance-1',
+						buildCommand: null,
+						startCommand: 'npm run workday-manager',
+						cronSchedule: '0 9 * * 1-5',
+						rootDirectory: null,
+						healthcheckPath: null,
+						healthcheckTimeout: null,
+						sleepApplication: false,
 						},
 					},
-				},
-			}), { status: 200, headers: { 'content-type': 'application/json' } });
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			throw new Error(`Unexpected Railway query: ${body.query}`);
 		});
 
 		const verified = await verifyRailwayScheduledJobs(tenantRoot, 'prod', { fetchImpl: verifyFetchMock as typeof fetch });
 		expect(verified.ok).toBe(true);
 		expect(verified.checks[0]).toMatchObject({
-			id: 'cron-1',
+			id: 'instance-1',
 			ok: true,
 		});
 	});
@@ -516,33 +501,29 @@ describe('railway scheduled jobs', () => {
 			if (String(body.query).includes('query TreeseedRailwayProjects')) {
 				return new Response(JSON.stringify(railwayProjectsPayload()), { status: 200, headers: { 'content-type': 'application/json' } });
 			}
-			if (String(body.query).includes('query TreeseedScheduleList')) {
+			if (String(body.query).includes('query TreeseedRailwayServiceInstance')) {
 				expect(init?.headers).toMatchObject({
 					authorization: 'Bearer railway-token',
 				});
 				return new Response(JSON.stringify({
 					data: {
-						service: {
-							cronTriggers: {
-								edges: [],
-							},
+						serviceInstance: {
+							id: 'instance-1',
+							buildCommand: null,
+							startCommand: null,
+							cronSchedule: null,
+							rootDirectory: null,
+							healthcheckPath: null,
+							healthcheckTimeout: null,
+							sleepApplication: false,
 						},
 					},
 				}), { status: 200, headers: { 'content-type': 'application/json' } });
 			}
-			return new Response(JSON.stringify({
-				data: {
-					cronTriggerCreate: {
-						id: 'cron-1',
-						name: 'workdayManager:1',
-						schedule: '0 9 * * 1-5',
-						command: 'npm run workday-manager',
-						enabled: true,
-						service: { id: 'svc-manager', name: 'workdayManager' },
-						environment: { id: 'env-production', name: 'production' },
-					},
-				},
-			}), { status: 200, headers: { 'content-type': 'application/json' } });
+			if (String(body.query).includes('mutation TreeseedRailwayServiceInstanceUpdate')) {
+				return new Response(JSON.stringify({ data: { serviceInstanceUpdate: true } }), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			throw new Error(`Unexpected Railway query: ${body.query}`);
 		});
 
 		const result = await ensureRailwayScheduledJobs(tenantRoot, 'prod', {
@@ -551,8 +532,8 @@ describe('railway scheduled jobs', () => {
 		});
 
 		expect(result[0]).toMatchObject({
-			id: 'cron-1',
-			status: 'created',
+			id: 'instance-1',
+			status: 'updated',
 		});
 	});
 

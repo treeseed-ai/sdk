@@ -11,6 +11,7 @@ import {
 	ensureRailwayService,
 	ensureRailwayServiceInstanceConfiguration,
 	ensureRailwayServiceVolume,
+	getRailwayServiceInstance,
 	listRailwayEnvironments,
 	listRailwayProjects,
 	listRailwayServices,
@@ -53,14 +54,13 @@ export function deriveRailwayWorkerRunnerServiceName(projectSlug, index = WORKER
 	return `${projectSlug}-worker-runner-${String(normalizedIndex).padStart(2, '0')}`;
 }
 
-export function deriveRailwayWorkerRunnerVolumeName(serviceName) {
-	return `${serviceName}-data`;
+export function deriveRailwayWorkerRunnerVolumeName(serviceName, environmentName = '') {
+	const environment = normalizeRailwayEnvironmentName(environmentName);
+	const environmentSuffix = environment && environment !== 'production' ? `-${environment}` : '';
+	return `${serviceName}${environmentSuffix}-data`;
 }
 
 export function railwayServiceRuntimeStartCommand(service) {
-	if (service.key === 'workdayManager' && Array.isArray(service.schedule) && service.schedule.length > 0) {
-		return 'node -e "console.log(\'workday-manager scheduled-only service idle\')"';
-	}
 	return service.startCommand;
 }
 
@@ -821,7 +821,6 @@ export async function ensureRailwayScheduledJobs(
 	if (typeof effectiveApiToken !== 'string' || effectiveApiToken.trim().length === 0) {
 		throw new Error('Configure RAILWAY_API_TOKEN before deploying Railway-managed services.');
 	}
-	const queries = defaultRailwayScheduleQueries();
 	const results = [];
 
 	try {
@@ -844,27 +843,12 @@ export async function ensureRailwayScheduledJobs(
 				});
 				continue;
 			}
-			const variables = {
-				projectId: target.project.id,
+			const current = await getRailwayServiceInstance({
 				serviceId: target.service.id,
 				environmentId: target.environment.id,
-			};
-			const listed = await railwayGraphqlRequest({
-				query: queries.listQuery,
-				variables,
-				apiToken: effectiveApiToken,
-				apiUrl: effectiveApiUrl,
+				env: { ...env, RAILWAY_API_TOKEN: effectiveApiToken, TREESEED_RAILWAY_API_URL: effectiveApiUrl },
 				fetchImpl,
 			});
-			const existing = collectRailwaySchedules(listed?.data).find((entry) =>
-				(entry.id && entry.id === schedule.id)
-				|| (entry.name && entry.name === schedule.logicalName)
-				|| (
-					entry.expression === schedule.expression
-					&& entry.serviceId === schedule.serviceId
-					&& (!schedule.environmentId || entry.environmentId === schedule.environmentId)
-				)
-			);
 			const desired = {
 				name: schedule.logicalName,
 				schedule: schedule.expression,
@@ -872,95 +856,42 @@ export async function ensureRailwayScheduledJobs(
 				enabled: schedule.enabled !== false,
 			};
 			const drifted = Boolean(
-				existing
+				current.id
 				&& (
-					existing.expression !== desired.schedule
-					|| (existing.command ?? null) !== (desired.command ?? null)
-					|| existing.enabled !== desired.enabled
+					current.cronSchedule !== desired.schedule
+					|| (current.startCommand ?? null) !== (desired.command ?? null)
 				)
 			);
 			if (dryRun) {
 				results.push({
 					...schedule,
-					projectId: variables.projectId,
-					id: existing?.id ?? null,
-					status: existing ? (drifted ? 'planned_update' : 'planned_noop') : 'planned_create',
+					projectId: target.project.id,
+					id: current.id,
+					status: current.id ? (drifted ? 'planned_update' : 'planned_noop') : 'planned_create',
 					enabled: desired.enabled,
 					command: desired.command,
-					serviceId: variables.serviceId,
-					environmentId: variables.environmentId,
+					serviceId: target.service.id,
+					environmentId: target.environment.id,
 				});
 				continue;
 			}
-			if (!existing) {
-				const created = await railwayGraphqlRequest({
-					query: queries.createMutation,
-					variables: {
-						...variables,
-						name: desired.name,
-						schedule: desired.schedule,
-						command: desired.command,
-						enabled: desired.enabled,
-					},
-					apiToken: effectiveApiToken,
-					apiUrl: effectiveApiUrl,
-					fetchImpl,
-				});
-				const createdSchedule = collectRailwaySchedules(created?.data)[0];
-				if (!createdSchedule?.id) {
-					throw new Error(`Railway schedule create did not return an id for ${schedule.logicalName}.`);
-				}
-				results.push({
-					...schedule,
-					projectId: variables.projectId,
-					id: createdSchedule.id,
-					status: 'created',
-					enabled: createdSchedule.enabled,
-					command: createdSchedule.command ?? desired.command,
-					serviceId: variables.serviceId,
-					environmentId: variables.environmentId,
-				});
-				continue;
-			}
-			if (drifted) {
-				const updated = await railwayGraphqlRequest({
-					query: queries.updateMutation,
-					variables: {
-						id: existing.id,
-						name: desired.name,
-						schedule: desired.schedule,
-						command: desired.command,
-						enabled: desired.enabled,
-					},
-					apiToken: effectiveApiToken,
-					apiUrl: effectiveApiUrl,
-					fetchImpl,
-				});
-				const updatedSchedule = collectRailwaySchedules(updated?.data)[0];
-				if (!updatedSchedule?.id) {
-					throw new Error(`Railway schedule update did not return an id for ${schedule.logicalName}.`);
-				}
-				results.push({
-					...schedule,
-					projectId: variables.projectId,
-					id: updatedSchedule.id,
-					status: 'updated',
-					enabled: updatedSchedule.enabled,
-					command: updatedSchedule.command ?? desired.command,
-					serviceId: variables.serviceId,
-					environmentId: variables.environmentId,
-				});
-				continue;
-			}
+			const updated = await ensureRailwayServiceInstanceConfiguration({
+				serviceId: target.service.id,
+				environmentId: target.environment.id,
+				startCommand: desired.command,
+				cronSchedule: desired.schedule,
+				env: { ...env, RAILWAY_API_TOKEN: effectiveApiToken, TREESEED_RAILWAY_API_URL: effectiveApiUrl },
+				fetchImpl,
+			});
 			results.push({
 				...schedule,
-				projectId: variables.projectId,
-				id: existing.id,
-				status: 'noop',
-				enabled: existing.enabled,
-				command: existing.command ?? desired.command,
-				serviceId: variables.serviceId,
-				environmentId: variables.environmentId,
+				projectId: target.project.id,
+				id: updated.instance.id,
+				status: updated.updated ? 'updated' : 'noop',
+				enabled: desired.enabled,
+				command: desired.command,
+				serviceId: target.service.id,
+				environmentId: target.environment.id,
 			});
 		}
 	} catch (error) {
@@ -988,7 +919,6 @@ export async function verifyRailwayScheduledJobs(
 	const effectiveApiToken = apiToken || env?.RAILWAY_API_TOKEN;
 	const effectiveApiUrl = apiUrl || resolveRailwayApiUrl(env);
 	const configured = configuredRailwayScheduledJobs(tenantRoot, scope);
-	const queries = defaultRailwayScheduleQueries();
 	const checks = [];
 
 	try {
@@ -1008,46 +938,32 @@ export async function verifyRailwayScheduledJobs(
 				});
 				continue;
 			}
-			const listed = await railwayGraphqlRequest({
-				query: queries.listQuery,
-				variables: {
-					projectId: target.project.id,
-					serviceId: target.service.id,
-					environmentId: target.environment.id,
-				},
-				apiToken: effectiveApiToken,
-				apiUrl: effectiveApiUrl,
+			const existing = await getRailwayServiceInstance({
+				serviceId: target.service.id,
+				environmentId: target.environment.id,
+				env: { ...env, RAILWAY_API_TOKEN: effectiveApiToken, TREESEED_RAILWAY_API_URL: effectiveApiUrl },
 				fetchImpl,
 			});
-			const existing = collectRailwaySchedules(listed?.data).find((entry) =>
-				(entry.name && entry.name === schedule.logicalName)
-				|| (
-					entry.expression === schedule.expression
-					&& entry.serviceId === schedule.serviceId
-					&& (!schedule.environmentId || entry.environmentId === schedule.environmentId)
-				)
-			);
 			checks.push({
 				...schedule,
-				id: existing?.id ?? null,
+				id: existing.id,
 				projectId: target.project.id,
 				serviceId: target.service.id,
 				environmentId: target.environment.id,
 				ok: Boolean(
-					existing
-					&& existing.expression === schedule.expression
-					&& (existing.command ?? null) === (schedule.command ?? null)
-					&& existing.enabled !== false
+					existing.id
+					&& existing.cronSchedule === schedule.expression
+					&& (existing.startCommand ?? null) === (schedule.command ?? null)
 				),
-				status: existing ? 'checked' : 'missing',
-				observed: existing
+				status: existing.id ? 'checked' : 'missing',
+				observed: existing.id
 					? {
-						expression: existing.expression,
-						command: existing.command ?? null,
-						enabled: existing.enabled,
+						expression: existing.cronSchedule,
+						command: existing.startCommand ?? null,
+						enabled: true,
 					}
 					: null,
-				message: existing
+				message: existing.id
 					? undefined
 					: `Railway schedule ${schedule.logicalName} is missing for ${target.service.name} in ${target.environment.name}.`,
 			});
@@ -1185,6 +1101,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			environmentId: environment.id,
 			buildCommand: service.buildCommand,
 			startCommand: railwayServiceRuntimeStartCommand(service),
+			cronSchedule: service.schedule?.[0] ?? null,
 			rootDirectory: relativeRailwayRootDir(tenantRoot, service.rootDir),
 			healthcheckPath: service.healthcheckPath,
 			healthcheckTimeoutSeconds: service.healthcheckTimeoutSeconds,
@@ -1203,7 +1120,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			environmentName: environment.name,
 			serviceId: railwayService.id,
 			serviceName: railwayService.name,
-			name: deriveRailwayWorkerRunnerVolumeName(railwayService.name),
+			name: deriveRailwayWorkerRunnerVolumeName(railwayService.name, environment.name),
 			mountPath: volumeMountPath,
 			env,
 		})
@@ -1216,7 +1133,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			variables: {
 				TREESEED_RUNNER_SERVICE_NAME: railwayService.name,
 				TREESEED_RUNNER_VOLUME_ROOT: volumeMountPath,
-				TREESEED_RUNNER_VOLUME_NAME: volumeConfiguration?.volume.name ?? deriveRailwayWorkerRunnerVolumeName(railwayService.name),
+				TREESEED_RUNNER_VOLUME_NAME: volumeConfiguration?.volume.name ?? deriveRailwayWorkerRunnerVolumeName(railwayService.name, environment.name),
 				TREESEED_WORKER_IDLE_EXIT_MS: configuredEnvValue(env, 'TREESEED_WORKER_IDLE_EXIT_MS') || '60000',
 				...(volumeConfiguration?.volume.id ? { TREESEED_RUNNER_VOLUME_ID: volumeConfiguration.volume.id } : {}),
 			},
