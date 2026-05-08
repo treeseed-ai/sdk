@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.44] - 2026-05-08
+
+### Added
+
+- feat(sdk): add verification for Railway managed resources (ae70afb14c8d)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.6.44.
+
 ## [0.6.43] - 2026-05-08
 
 ### Added
