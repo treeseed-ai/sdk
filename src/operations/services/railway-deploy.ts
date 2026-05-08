@@ -486,29 +486,61 @@ export async function waitForRailwayManagedDeploymentsSettled(
 	let checks = [];
 	let lastError = null;
 	for (;;) {
-		try {
-			const result = runRailway(['status', '--json'], {
-				cwd: tenantRoot,
-				capture: true,
-				env,
-			});
-			const payload = parseRailwayJsonOutput(result.stdout);
-			checks = collectRailwayDeploymentStatusChecks(payload, scope, services);
-			lastError = null;
-			if (checks.every((entry) => entry.ok === true)) {
-				return { ok: true, checks };
+		checks = [];
+		lastError = null;
+		for (const service of services) {
+			try {
+				const result = runRailway([
+					'deployment',
+					'list',
+					'--service',
+					service.serviceName,
+					'--environment',
+					environment,
+					'--limit',
+					'1',
+					'--json',
+				], {
+					cwd: tenantRoot,
+					capture: true,
+					env,
+				});
+				const deployments = parseRailwayJsonOutput(result.stdout);
+				const latest = Array.isArray(deployments) ? deployments[0] : null;
+				const status = String(latest?.status ?? '').trim().toUpperCase();
+				const ok = railwayStatusDeploymentSettled(status);
+				checks.push({
+					type: 'deployment-status',
+					service: service.key,
+					serviceName: service.serviceName,
+					environment,
+					ok,
+					status: status || 'missing_deployment',
+					observed: {
+						id: latest?.id ?? null,
+						status: status || null,
+						createdAt: latest?.createdAt ?? null,
+						volumeMounts: Array.isArray(latest?.meta?.volumeMounts) ? latest.meta.volumeMounts : [],
+					},
+					message: ok
+						? undefined
+						: `Railway deployment for ${service.serviceName} is not settled yet; observed ${status || 'missing deployment status'}.`,
+				});
+			} catch (error) {
+				lastError = error;
+				checks.push({
+					type: 'deployment-status',
+					service: service.key,
+					serviceName: service.serviceName,
+					environment,
+					ok: false,
+					status: 'status_error',
+					message: error instanceof Error ? error.message : String(error),
+				});
 			}
-		} catch (error) {
-			lastError = error;
-			checks = services.map((service) => ({
-				type: 'deployment-status',
-				service: service.key,
-				serviceName: service.serviceName,
-				environment,
-				ok: false,
-				status: 'status_error',
-				message: error instanceof Error ? error.message : String(error),
-			}));
+		}
+		if (checks.every((entry) => entry.ok === true)) {
+			return { ok: true, checks };
 		}
 		if (Date.now() >= deadline) {
 			return {
