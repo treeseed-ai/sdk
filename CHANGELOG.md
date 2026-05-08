@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.49] - 2026-05-08
+
+### Infrastructure
+
+- chore(sdk): bump version and increase railway deploy settle timeout (762718efe711)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.6.49.
+
 ## [0.6.48] - 2026-05-08
 
 ### Infrastructure
