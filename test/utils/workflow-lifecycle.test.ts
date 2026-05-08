@@ -8,6 +8,7 @@ import { TreeseedWorkflowError } from '../../src/workflow/operations.ts';
 import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, updateWorkflowRunJournal } from '../../src/workflow/runs.ts';
 import { runWorkspaceSavePreflight } from '../../src/operations/services/save-deploy-preflight.ts';
 import { inspectDetachedHeadRepair, reattachDetachedHeadIfSafe } from '../../src/operations/services/git-workflow.ts';
+import { createDevTagMessage } from '../../src/operations/services/package-reference-policy.ts';
 import {
 	createDefaultTreeseedMachineConfig,
 	ensureTreeseedSecretSessionForConfig,
@@ -204,6 +205,17 @@ function createWorkflowRepo(options: { withWorkspacePackages?: boolean } = {}) {
 
 function workflowFor(cwd: string) {
 	return new TreeseedWorkflowSdk({ cwd, write: () => {} });
+}
+
+function createAnnotatedDevTag(repoDir: string, input: { packageName: string; version: string; branch: string }) {
+	git(repoDir, ['tag', '-a', input.version, '-m', createDevTagMessage({
+		packageName: input.packageName,
+		version: input.version,
+		branch: input.branch,
+		commitSha: git(repoDir, ['rev-parse', 'HEAD']),
+		createdAt: '2026-05-08T01:02:03.000Z',
+	})]);
+	git(repoDir, ['push', 'origin', input.version]);
 }
 
 describe('treeseed workflow lifecycle', () => {
@@ -821,6 +833,16 @@ describe('treeseed workflow lifecycle', () => {
 		git(work, ['add', 'package.json']);
 		git(work, ['commit', '-m', 'stage: root package dependency']);
 		git(work, ['push', 'origin', 'staging']);
+		createAnnotatedDevTag(resolve(work, 'packages', 'sdk'), {
+			packageName: '@treeseed/sdk',
+			version: '0.4.12-dev.staging.20260501T010203Z',
+			branch: 'staging',
+		});
+		createAnnotatedDevTag(resolve(work, 'packages', 'sdk'), {
+			packageName: '@treeseed/sdk',
+			version: '0.4.12-dev.feature-demo.20260501T010204Z',
+			branch: 'feature/demo',
+		});
 
 		const result = await workflow.release({ bump: 'patch', ciMode: 'off' });
 
@@ -835,9 +857,11 @@ describe('treeseed workflow lifecycle', () => {
 		expect(JSON.parse(git(resolve(work, 'packages', 'cli'), ['show', 'main:package.json'])).dependencies['@treeseed/sdk']).toBe('0.4.13');
 		expect(JSON.parse(git(work, ['show', 'main:package.json'])).dependencies['@treeseed/sdk']).toBe('0.4.13');
 		expect(git(work, ['ls-tree', 'main', 'packages/sdk'])).toContain(git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'main']));
-		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '*-dev.*'])).toBe('');
-		expect(git(resolve(work, 'packages', 'core'), ['tag', '--list', '*-dev.*'])).toBe('');
-		expect(git(resolve(work, 'packages', 'cli'), ['tag', '--list', '*-dev.*'])).toBe('');
+		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.12-dev.*'])).toBe('');
+		expect(git(resolve(work, 'packages', 'sdk'), ['ls-remote', '--tags', 'origin', '0.4.12-dev.*'])).toBe('');
+		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13-dev.*'])).toContain('0.4.13-dev.');
+		expect(result.payload.devTagCleanup.candidateCount).toBeGreaterThanOrEqual(2);
+		expect(result.payload.devTagCleanup.cleanedCount).toBeGreaterThanOrEqual(2);
 		expect(result.payload.publishWait.every((entry) => entry.status === 'skipped')).toBe(true);
 		expect(result.payload.repos.every((repo: { workflowGates: Array<{ workflow: string }> }) =>
 			repo.workflowGates.every((gate) => gate.workflow === 'publish.yml'))).toBe(true);
@@ -855,6 +879,85 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'core'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'cli'), ['branch', '--show-current'])).toBe('staging');
+	}, 180000);
+
+	it('keeps stale dev tags when release dev tag cleanup is disabled', async () => {
+		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = workflowFor(work);
+		await workflow.switchTask({ branch: 'feature/demo-task' });
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-release-no-cleanup";\n', 'utf8');
+		await workflow.save({
+			message: 'feat: release without cleanup',
+			verify: false,
+			refreshPreview: false,
+		});
+		await workflow.stage({
+			message: 'stage: release without cleanup',
+			waitForStaging: false,
+		});
+		const rootPackageJsonPath = resolve(work, 'package.json');
+		const rootPackageJson = JSON.parse(readFileSync(rootPackageJsonPath, 'utf8'));
+		const sdkDevVersion = JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version;
+		rootPackageJson.dependencies = {
+			...(rootPackageJson.dependencies ?? {}),
+			'@treeseed/sdk': `git+file://${packages!.sdk.origin}#${sdkDevVersion}`,
+		};
+		writeFileSync(rootPackageJsonPath, `${JSON.stringify(rootPackageJson, null, 2)}\n`, 'utf8');
+		git(work, ['add', 'package.json']);
+		git(work, ['commit', '-m', 'stage: root package dependency']);
+		git(work, ['push', 'origin', 'staging']);
+		createAnnotatedDevTag(resolve(work, 'packages', 'sdk'), {
+			packageName: '@treeseed/sdk',
+			version: '0.4.12-dev.staging.20260501T010203Z',
+			branch: 'staging',
+		});
+
+		const result = await workflow.release({ bump: 'patch', ciMode: 'off', devTagCleanup: 'off' });
+
+		expect(result.payload.devTagCleanup).toMatchObject({ status: 'skipped', reason: 'disabled' });
+		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.12-dev.staging.20260501T010203Z'])).toBe('0.4.12-dev.staging.20260501T010203Z');
+		expect(git(resolve(work, 'packages', 'sdk'), ['ls-remote', '--tags', 'origin', '0.4.12-dev.staging.20260501T010203Z'])).toContain('0.4.12-dev.staging.20260501T010203Z');
+	}, 180000);
+
+	it('plans and executes standalone stale dev tag cleanup', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = workflowFor(work);
+		const sdkDir = resolve(work, 'packages', 'sdk');
+		createAnnotatedDevTag(sdkDir, {
+			packageName: '@treeseed/sdk',
+			version: '0.4.11-dev.staging.20260501T010203Z',
+			branch: 'staging',
+		});
+		createAnnotatedDevTag(sdkDir, {
+			packageName: '@treeseed/sdk',
+			version: '0.4.11-dev.feature-demo.20260501T010204Z',
+			branch: 'feature/demo',
+		});
+		createAnnotatedDevTag(sdkDir, {
+			packageName: '@treeseed/sdk',
+			version: '0.4.12-dev.staging.20260501T010205Z',
+			branch: 'staging',
+		});
+
+		const plan = await workflow.tagsCleanup({
+			plan: true,
+			includePackages: '@treeseed/sdk',
+		});
+
+		expect(plan.executionMode).toBe('plan');
+		expect(plan.payload.candidateCount).toBe(2);
+		expect(plan.payload.cleanedCount).toBe(0);
+		expect(git(sdkDir, ['tag', '--list', '0.4.11-dev.*'])).toContain('0.4.11-dev.');
+
+		const result = await workflow.tagsCleanup({
+			includePackages: ['@treeseed/sdk'],
+		});
+
+		expect(result.payload.candidateCount).toBe(2);
+		expect(result.payload.cleanedCount).toBe(2);
+		expect(git(sdkDir, ['tag', '--list', '0.4.11-dev.*'])).toBe('');
+		expect(git(sdkDir, ['ls-remote', '--tags', 'origin', '0.4.11-dev.*'])).toBe('');
+		expect(git(sdkDir, ['tag', '--list', '0.4.12-dev.staging.20260501T010205Z'])).toBe('0.4.12-dev.staging.20260501T010205Z');
 	}, 180000);
 
 	it('auto-resumes the newest failed same-staging-state release with the original input', async () => {

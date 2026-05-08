@@ -6,6 +6,7 @@ import { run, workspacePackages, workspaceRoot } from './workspace-tools.ts';
 export type DevDependencyReferenceMode = 'git-tag' | 'registry-prerelease';
 export type DevTagCleanupMode = 'safe-after-release' | 'off';
 export type GitDependencyProtocol = 'preserve-origin' | 'https' | 'ssh';
+export type DevTagBranchScope = 'staging' | 'preview' | 'all';
 
 export type PackageDependencyReference = {
 	packageName: string;
@@ -24,6 +25,24 @@ export type RewrittenDevReference = {
 	from: string;
 	to: string;
 	tagName: string | null;
+};
+
+export type TreeseedDevTagInfo = {
+	tagName: string;
+	stableVersion: string;
+	branchSlug: string;
+	timestamp: string;
+	metadata: Record<string, string>;
+	branch: string | null;
+	packageName: string | null;
+	version: string | null;
+};
+
+export type StaleDevTagClassification = {
+	tagName: string;
+	action: 'delete' | 'skip';
+	reason: string;
+	info: TreeseedDevTagInfo | null;
 };
 
 const INTERNAL_DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies'];
@@ -48,6 +67,21 @@ export function isPrereleaseVersion(version: string) {
 
 export function isStableVersion(version: string) {
 	return /^\d+\.\d+\.\d+$/u.test(String(version).trim());
+}
+
+function stableVersionBase(version: string) {
+	const match = String(version).trim().match(/^(\d+\.\d+\.\d+)(?:-|$)/u);
+	return match?.[1] ?? null;
+}
+
+function compareStableVersions(left: string, right: string) {
+	const leftParts = left.split('.').map((part) => Number(part));
+	const rightParts = right.split('.').map((part) => Number(part));
+	for (let index = 0; index < 3; index += 1) {
+		const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+		if (difference !== 0) return difference;
+	}
+	return 0;
 }
 
 export function isGitDependencySpec(spec: string) {
@@ -347,8 +381,83 @@ export function gitTagMessage(repoDir: string, tagName: string) {
 	}
 }
 
+function gitRemoteTagMessage(repoDir: string, tagName: string) {
+	try {
+		run('git', ['fetch', '--no-tags', 'origin', `refs/tags/${tagName}`], { cwd: repoDir, capture: true });
+		return run('git', ['cat-file', '-p', 'FETCH_HEAD'], { cwd: repoDir, capture: true });
+	} catch {
+		return '';
+	}
+}
+
+function gitDevTagMessage(repoDir: string, tagName: string) {
+	const local = gitTagMessage(repoDir, tagName);
+	if (local.trim()) return local;
+	return gitRemoteTagMessage(repoDir, tagName);
+}
+
 export function tagHasTreeseedDevMetadata(repoDir: string, tagName: string) {
 	return gitTagMessage(repoDir, tagName).includes('treeseed-dev-tag: true');
+}
+
+export function parseTreeseedDevTag(tagName: string, message: string): TreeseedDevTagInfo | null {
+	const match = String(tagName).match(/^(\d+\.\d+\.\d+)-dev\.([0-9A-Za-z.-]+)\.(\d{8}T\d{6}Z)$/u);
+	if (!match) return null;
+	const metadata = Object.fromEntries(
+		String(message)
+			.split(/\r?\n/u)
+			.map((line) => line.match(/^([^:]+):\s*(.*)$/u))
+			.filter((lineMatch): lineMatch is RegExpMatchArray => Boolean(lineMatch))
+			.map((lineMatch) => [String(lineMatch[1]).trim(), String(lineMatch[2] ?? '').trim()]),
+	);
+	if (metadata['treeseed-dev-tag'] !== 'true') return null;
+	return {
+		tagName,
+		stableVersion: match[1],
+		branchSlug: match[2],
+		timestamp: match[3],
+		metadata,
+		branch: metadata.branch || null,
+		packageName: metadata.package || null,
+		version: metadata.version || null,
+	};
+}
+
+function devTagScope(info: TreeseedDevTagInfo): 'staging' | 'preview' | 'main' {
+	const branch = info.branch ?? info.branchSlug;
+	if (branch === 'staging' || info.branchSlug === 'staging') return 'staging';
+	if (branch === 'main' || branch === 'prod' || branch === 'production' || info.branchSlug === 'main' || info.branchSlug === 'prod' || info.branchSlug === 'production') return 'main';
+	return 'preview';
+}
+
+export function classifyStaleTreeseedDevTag(input: {
+	tagName: string;
+	message: string;
+	currentVersion: string;
+	activeReferences?: string[];
+	branchScope?: DevTagBranchScope;
+	expectedPackageName?: string | null;
+}): StaleDevTagClassification {
+	const tagName = String(input.tagName).trim();
+	if (!tagName.includes('-dev.')) return { tagName, action: 'skip', reason: 'not-dev-tag', info: null };
+	if (tagName.startsWith('deprecated/')) return { tagName, action: 'skip', reason: 'deprecated-tag', info: null };
+	const info = parseTreeseedDevTag(tagName, input.message);
+	if (!info) return { tagName, action: 'skip', reason: input.message.includes('treeseed-dev-tag: true') ? 'malformed-dev-tag' : 'missing-treeseed-metadata', info: null };
+	if (input.expectedPackageName && info.packageName && info.packageName !== input.expectedPackageName) {
+		return { tagName, action: 'skip', reason: 'package-mismatch', info };
+	}
+	if ((input.activeReferences ?? []).includes(tagName)) return { tagName, action: 'skip', reason: 'still-referenced', info };
+	const scope = devTagScope(info);
+	if (scope === 'main') return { tagName, action: 'skip', reason: 'main-or-production-tag', info };
+	const branchScope = input.branchScope ?? 'all';
+	if (branchScope !== 'all' && branchScope !== scope) return { tagName, action: 'skip', reason: `scope-${scope}`, info };
+	const currentStableVersion = stableVersionBase(input.currentVersion);
+	if (!currentStableVersion) return { tagName, action: 'skip', reason: 'invalid-current-version', info };
+	const comparison = compareStableVersions(info.stableVersion, currentStableVersion);
+	if (comparison >= 0) {
+		return { tagName, action: 'skip', reason: comparison === 0 ? 'current-version' : 'newer-version', info };
+	}
+	return { tagName, action: 'delete', reason: 'stale-before-current-version', info };
 }
 
 export function cleanupDevTags(repoDir: string, tagNames: string[], activeReferences: string[] = []) {
@@ -377,4 +486,92 @@ export function cleanupDevTags(repoDir: string, tagNames: string[], activeRefere
 		}
 	}
 	return { cleaned, skipped };
+}
+
+function localDevTags(repoDir: string) {
+	return run('git', ['tag', '-l', '*-dev.*'], { cwd: repoDir, capture: true })
+		.split(/\r?\n/u)
+		.map((line) => line.trim())
+		.filter(Boolean);
+}
+
+function remoteDevTags(repoDir: string) {
+	try {
+		return run('git', ['ls-remote', '--tags', 'origin', '*-dev.*'], { cwd: repoDir, capture: true })
+			.split(/\r?\n/u)
+			.map((line) => line.trim())
+			.filter(Boolean)
+			.filter((line) => !line.endsWith('^{}'))
+			.map((line) => line.split(/\s+/u)[1] ?? '')
+			.filter((ref) => ref.startsWith('refs/tags/'))
+			.map((ref) => ref.slice('refs/tags/'.length));
+	} catch {
+		return [];
+	}
+}
+
+export function collectTreeseedDevTagCleanupPlan(input: {
+	repoDir: string;
+	packageName: string;
+	currentVersion: string;
+	activeReferences?: string[];
+	branchScope?: DevTagBranchScope;
+}) {
+	const tagNames = [...new Set([...localDevTags(input.repoDir), ...remoteDevTags(input.repoDir)])].sort();
+	const classifications = tagNames.map((tagName) =>
+		classifyStaleTreeseedDevTag({
+			tagName,
+			message: gitDevTagMessage(input.repoDir, tagName),
+			currentVersion: input.currentVersion,
+			activeReferences: input.activeReferences ?? [],
+			branchScope: input.branchScope ?? 'all',
+			expectedPackageName: input.packageName,
+		}));
+	return {
+		packageName: input.packageName,
+		currentVersion: input.currentVersion,
+		branchScope: input.branchScope ?? 'all',
+		candidates: classifications.filter((classification) => classification.action === 'delete'),
+		skipped: classifications.filter((classification) => classification.action === 'skip'),
+		tags: classifications,
+	};
+}
+
+export function cleanupStaleTreeseedDevTags(input: {
+	repoDir: string;
+	packageName: string;
+	currentVersion: string;
+	activeReferences?: string[];
+	branchScope?: DevTagBranchScope;
+	dryRun?: boolean;
+}) {
+	const plan = collectTreeseedDevTagCleanupPlan(input);
+	const cleaned: string[] = [];
+	const skipped = [...plan.skipped.map((entry) => ({ tagName: entry.tagName, reason: entry.reason }))];
+	for (const candidate of plan.candidates) {
+		if (input.dryRun) continue;
+		try {
+			run('git', ['tag', '-d', candidate.tagName], { cwd: input.repoDir });
+		} catch {
+			// Missing local tags can still have a stale remote counterpart.
+		}
+		try {
+			run('git', ['push', 'origin', `:refs/tags/${candidate.tagName}`], { cwd: input.repoDir });
+			cleaned.push(candidate.tagName);
+		} catch (error) {
+			skipped.push({ tagName: candidate.tagName, reason: error instanceof Error ? error.message : String(error) });
+		}
+	}
+	return {
+		status: input.dryRun ? 'planned' : 'completed',
+		packageName: input.packageName,
+		currentVersion: input.currentVersion,
+		branchScope: input.branchScope ?? 'all',
+		candidates: plan.candidates.map((entry) => ({ tagName: entry.tagName, reason: entry.reason, branch: entry.info?.branch, branchSlug: entry.info?.branchSlug, version: entry.info?.version })),
+		candidateCount: plan.candidates.length,
+		cleaned,
+		cleanedCount: cleaned.length,
+		skipped,
+		skippedCount: skipped.length,
+	};
 }

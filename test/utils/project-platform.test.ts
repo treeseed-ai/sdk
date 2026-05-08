@@ -119,6 +119,33 @@ describe('project platform workflow actions', () => {
 		expect(fetched.every((url) => !url.startsWith('https://api.example.com'))).toBe(true);
 	});
 
+	it('uses the workerRunner service when checking Railway scale readiness', async () => {
+		const tenantRoot = await createTenantFixture(`services:
+  workerRunner:
+    enabled: true
+    provider: railway
+    railway:
+      projectName: test-site
+      serviceName: test-site-worker-runner-01
+`);
+		vi.stubGlobal('fetch', vi.fn(async () => new Response('ok', { status: 200 })));
+		process.env.TREESEED_WORKER_POOL_SCALER = 'railway';
+
+		const result = await monitorProjectPlatform({
+			tenantRoot,
+			scope: 'staging',
+			dryRun: true,
+			reporter: noopReporter(),
+			bootstrapSystems: ['data', 'web'],
+		});
+
+		expect(result.checks.scaleProbe).toMatchObject({
+			ok: true,
+			mocked: true,
+			serviceName: 'test-site-worker-runner-01',
+		});
+	});
+
 	it('fails publish-content preflight with deploy readiness errors before R2 operations', async () => {
 		const tenantRoot = await createTenantFixture();
 

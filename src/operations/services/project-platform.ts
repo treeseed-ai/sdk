@@ -795,9 +795,10 @@ function probeR2(
 }
 
 function probeScaleConfiguration(siteConfig, state) {
-	const worker = state.services?.worker ?? {};
+	const worker = state.services?.workerRunner ?? state.services?.worker ?? {};
+	const workerConfig = siteConfig.services?.workerRunner ?? siteConfig.services?.worker ?? {};
 	const scalerKind = String(process.env.TREESEED_WORKER_POOL_SCALER ?? '').trim();
-	if (scalerKind !== 'railway' && siteConfig.services?.worker?.provider !== 'railway') {
+	if (scalerKind !== 'railway' && workerConfig.provider !== 'railway') {
 		return {
 			ok: true,
 			skipped: true,
