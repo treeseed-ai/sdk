@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	buildReleaseCandidateFingerprint,
+	collectReleaseCandidateOutputFailures,
 	runReleaseCandidateGate,
 } from '../../src/operations/services/release-candidate.ts';
 
@@ -83,6 +84,19 @@ describe('release candidate verification', () => {
 		expect(first.key).not.toBe(changedVersion.key);
 		expect(first.key).not.toBe(changedLockfile.key);
 		expect(first.key).not.toBe(changedSelection.key);
+		expect(first.policyVersion).toBe('strict-output-v1');
+	});
+
+	it('classifies error-grade rehearsal output even when a command exits cleanly', () => {
+		expect(collectReleaseCandidateOutputFailures(
+			'stderr | test/lib/auth-flow.test.ts > market auth page flow > submits hosted email registration',
+		)).toContain('Captured test stderr: stderr | test/lib/auth-flow.test.ts > market auth page flow > submits hosted email registration');
+		expect(collectReleaseCandidateOutputFailures(
+			'2026-05-08T00:49:50.570Z ERROR [Better Auth]: Failed to run background task: Error: SMTP must be configured.',
+		).some((failure) => failure.includes('Error output'))).toBe(true);
+		expect(collectReleaseCandidateOutputFailures(
+			'[WARN] [vite] [plugin vite:resolve] Module "url" has been externalized for browser compatibility.',
+		)).toEqual([]);
 	});
 
 	it('allows selected dev references when a stable planned replacement exists', async () => {

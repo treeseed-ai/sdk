@@ -64,6 +64,41 @@ export interface AgentExecutionConfig {
 	leaseSeconds: number;
 	retryLimit: number;
 	branchPrefix: string;
+	providerProfile?: AgentProviderProfile;
+}
+
+export type AgentProviderFallbackPolicy =
+	| 'allow_substitution'
+	| 'require_same_model_class'
+	| 'fail_if_unavailable'
+	| 'ask_for_approval';
+
+export interface AgentProviderLanePreference {
+	providerId?: string;
+	provider?: string;
+	laneId?: string;
+	model?: string;
+	modelClass?: string;
+	weight: number;
+	reason?: string;
+}
+
+export interface AgentProviderFallback {
+	providerId?: string;
+	provider?: string;
+	laneId?: string;
+	model?: string;
+	modelClass?: string;
+	maxQualityPenalty?: number;
+}
+
+export interface AgentProviderProfile {
+	requiredCapabilities: string[];
+	preferredLanes: AgentProviderLanePreference[];
+	acceptableFallbacks: AgentProviderFallback[];
+	disallowedProviders?: string[];
+	disallowedRegions?: string[];
+	fallbackPolicy: AgentProviderFallbackPolicy;
 }
 
 export interface AgentTriggerPolicy {

@@ -2479,7 +2479,7 @@ export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dry
 		.filter((entry) => entry.scopes.includes(scope) && entry.targets.includes('railway-var'))
 		.map((entry) => entry.id)
 		.filter((key) => typeof values[key] === 'string' && values[key].length > 0);
-	const services = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport']
+	const services = ['api', 'workdayManager', 'workerRunner']
 		.map((serviceKey) => {
 			const service = deployConfig.services?.[serviceKey];
 			if (!service || service.enabled === false || (service.provider ?? 'railway') !== 'railway') {
@@ -2489,7 +2489,7 @@ export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dry
 				const fallbackServiceName = serviceKey === 'api'
 					? config.settings.services.railway.apiServiceName
 					: '';
-			const defaultRootDir = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport'].includes(serviceKey) ? '.' : 'packages/core';
+			const defaultRootDir = ['api', 'workdayManager', 'workerRunner'].includes(serviceKey) ? '.' : 'packages/core';
 			return {
 				service: serviceKey,
 				projectName: service.railway?.projectName ?? config.settings.services.railway.projectName,

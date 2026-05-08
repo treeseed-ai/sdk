@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.40] - 2026-05-08
+
+### Added
+
+- feat(operations): add Railway volume management capabilities (11dbbef98b58)
+- feat(sdk): add capacity management features (c083ccdab6d9)
+
+### Tests
+
+- build(tests): update package metadata (fd6651f0ae79)
+- build(build): update package metadata (ffe7b32141c1)
+- build(source): update package metadata (b2bcdcae673f)
+- build(build): update package metadata (b4501454d88d)
+
+### Dependencies
+
+- build(build): update package metadata (92877f3243ce)
+- Release @treeseed/sdk 0.6.40.
+
 ## [0.6.39] - 2026-05-07
 
 ### Added

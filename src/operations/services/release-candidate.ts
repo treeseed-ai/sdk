@@ -25,6 +25,7 @@ export type ReleaseCandidateFailure = {
 
 export type ReleaseCandidateFingerprint = {
 	key: string;
+	policyVersion: string;
 	rootSha: string | null;
 	packageShas: Record<string, string | null>;
 	plannedVersions: Record<string, string>;
@@ -55,6 +56,7 @@ export type ReleaseCandidateInput = {
 };
 
 const RELEASE_CANDIDATE_CACHE_DIR = '.treeseed/workflow/release-candidates';
+const RELEASE_CANDIDATE_POLICY_VERSION = 'strict-output-v1';
 const STABLE_SEMVER = /^\d+\.\d+\.\d+$/u;
 const REHEARSAL_IGNORED_SEGMENTS = new Set([
 	'.git',
@@ -143,6 +145,7 @@ export function buildReleaseCandidateFingerprint(input: ReleaseCandidateInput): 
 		...Object.fromEntries(packages.map((pkg) => [pkg.name, fileSha256(resolve(pkg.dir, 'package-lock.json'))])),
 	});
 	const base = {
+		policyVersion: RELEASE_CANDIDATE_POLICY_VERSION,
 		rootSha: safeGitHead(input.root),
 		packageShas,
 		plannedVersions,
@@ -308,11 +311,15 @@ function runNpmRehearsalCommand(args: string[], options: { cwd: string; timeoutM
 		throw new Error(message);
 	}
 	const warningSummary = createBuildWarningSummary();
+	const outputFailures: string[] = [];
 	const emitFiltered = (text: string, stream: NodeJS.WriteStream) => {
 		for (const line of text.split(/\r?\n/u)) {
 			if (!line) continue;
 			const classified = warningSummary.record(line);
 			if (classified.kind === 'allowed') continue;
+			for (const failure of collectReleaseCandidateOutputFailures(line)) {
+				outputFailures.push(failure);
+			}
 			stream.write(`${line}\n`);
 		}
 	};
@@ -321,6 +328,28 @@ function runNpmRehearsalCommand(args: string[], options: { cwd: string; timeoutM
 	for (const line of formatAllowedBuildWarnings(warningSummary.allowedWarnings)) {
 		process.stdout.write(`${line}\n`);
 	}
+	if (outputFailures.length > 0) {
+		throw new Error([
+			`npm ${args.join(' ')} completed with error output despite exit code 0.`,
+			...outputFailures.slice(0, 12),
+		].join('\n'));
+	}
+}
+
+export function collectReleaseCandidateOutputFailures(line: string) {
+	const value = String(line ?? '').trim();
+	if (!value) return [];
+	const failures: string[] = [];
+	if (/^stderr\s+\|\s+/u.test(value)) {
+		failures.push(`Captured test stderr: ${value}`);
+	}
+	if (/(^|\s)ERROR(?:\s|\[|:)/u.test(value)) {
+		failures.push(`Error output: ${value}`);
+	}
+	if (/\bFailed to run background task\b/u.test(value)) {
+		failures.push(`Background task failure output: ${value}`);
+	}
+	return failures;
 }
 
 function buildRehearsalWorkspacePackageArtifacts(root: string) {

@@ -10,6 +10,7 @@ import {
 	ensureRailwayProject,
 	ensureRailwayService,
 	ensureRailwayServiceInstanceConfiguration,
+	ensureRailwayServiceVolume,
 	listRailwayEnvironments,
 	listRailwayProjects,
 	listRailwayServices,
@@ -19,6 +20,7 @@ import {
 	resolveRailwayApiUrl,
 	resolveRailwayWorkspace,
 	resolveRailwayWorkspaceContext,
+	upsertRailwayVariables,
 } from './railway-api.ts';
 
 function normalizeScope(scope) {
@@ -28,19 +30,38 @@ function normalizeScope(scope) {
 function resolveRailwayEnvironmentForScope(scope, configuredEnvironment) {
 	return normalizeRailwayEnvironmentName(configuredEnvironment || normalizeScope(scope));
 }
-const RAILWAY_SERVICE_KEYS = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport'];
-const HOSTED_PROJECT_SERVICE_KEYS = ['api', 'manager', 'worker'];
+const RAILWAY_SERVICE_KEYS = ['api', 'workdayManager', 'workerRunner'];
+const HOSTED_PROJECT_SERVICE_KEYS = ['api', 'workdayManager', 'workerRunner'];
+const WORKER_RUNNER_BOOTSTRAP_INDEX = 1;
+const WORKER_RUNNER_VOLUME_MOUNT_PATH = '/data';
 
 function shouldManageRailwaySchedules(scope, phase = 'deploy') {
-	return phase === 'deploy' && normalizeRailwayEnvironmentName(scope) === 'production';
+	const environment = normalizeRailwayEnvironmentName(scope);
+	return phase === 'deploy' && (environment === 'staging' || environment === 'production');
 }
 
 function railwayServiceNameSuffix(serviceKey) {
-	return serviceKey === 'workdayStart'
-		? 'workday-start'
-		: serviceKey === 'workdayReport'
-			? 'workday-report'
+	return serviceKey === 'workdayManager'
+		? 'workday-manager'
+		: serviceKey === 'workerRunner'
+			? 'worker-runner'
 			: serviceKey;
+}
+
+export function deriveRailwayWorkerRunnerServiceName(projectSlug, index = WORKER_RUNNER_BOOTSTRAP_INDEX) {
+	const normalizedIndex = Math.max(1, Number.parseInt(String(index), 10) || WORKER_RUNNER_BOOTSTRAP_INDEX);
+	return `${projectSlug}-worker-runner-${String(normalizedIndex).padStart(2, '0')}`;
+}
+
+export function deriveRailwayWorkerRunnerVolumeName(serviceName) {
+	return `${serviceName}-data`;
+}
+
+export function railwayServiceRuntimeStartCommand(service) {
+	if (service.key === 'workdayManager' && Array.isArray(service.schedule) && service.schedule.length > 0) {
+		return 'node -e "console.log(\'workday-manager scheduled-only service idle\')"';
+	}
+	return service.startCommand;
 }
 
 function normalizeScheduleExpressions(value) {
@@ -534,7 +555,7 @@ export function configuredRailwayServices(tenantRoot, scope) {
 				return null;
 			}
 
-			const defaultRootDir = ['api', 'manager', 'worker', 'workdayStart', 'workdayReport'].includes(serviceKey) ? '.' : 'packages/core';
+			const defaultRootDir = ['api', 'workdayManager', 'workerRunner'].includes(serviceKey) ? '.' : 'packages/core';
 			const serviceRoot = resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? defaultRootDir);
 			const railwayEnvironment = resolveRailwayEnvironmentForScope(
 				normalizedScope,
@@ -547,7 +568,10 @@ export function configuredRailwayServices(tenantRoot, scope) {
 				projectId: service.railway?.projectId ?? null,
 				projectName: service.railway?.projectName ?? identity.deploymentKey,
 				serviceId: service.railway?.serviceId ?? null,
-				serviceName: service.railway?.serviceName ?? `${identity.deploymentKey}-${railwayServiceNameSuffix(serviceKey)}`,
+				serviceName: service.railway?.serviceName
+					?? (serviceKey === 'workerRunner'
+						? deriveRailwayWorkerRunnerServiceName(identity.deploymentKey)
+						: `${identity.deploymentKey}-${railwayServiceNameSuffix(serviceKey)}`),
 				rootDir: serviceRoot,
 				publicBaseUrl,
 				railwayEnvironment,
@@ -560,6 +584,12 @@ export function configuredRailwayServices(tenantRoot, scope) {
 				runtimeMode: service.railway?.runtimeMode ?? null,
 				schedule: normalizeScheduleExpressions(service.railway?.schedule),
 				hostingKind,
+				runnerPool: serviceKey === 'workerRunner'
+					? {
+						bootstrapIndex: WORKER_RUNNER_BOOTSTRAP_INDEX,
+						volumeMountPath: WORKER_RUNNER_VOLUME_MOUNT_PATH,
+					}
+					: null,
 			};
 		})
 		.filter(Boolean);
@@ -1039,7 +1069,8 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		|| service.healthcheckIntervalSeconds !== undefined
 		|| service.restartPolicy
 		|| service.runtimeMode;
-	if (!wantsInstanceConfig) {
+	const wantsRunnerVolume = service.key === 'workerRunner';
+	if (!wantsInstanceConfig && !wantsRunnerVolume) {
 		return null;
 	}
 
@@ -1086,19 +1117,60 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		}).then((result) => result.service);
 	}
 
-	return await ensureRailwayServiceInstanceConfiguration({
-		serviceId: railwayService.id,
-		environmentId: environment.id,
-		buildCommand: service.buildCommand,
-		startCommand: service.startCommand,
-		rootDirectory: relativeRailwayRootDir(tenantRoot, service.rootDir),
-		healthcheckPath: service.healthcheckPath,
-		healthcheckTimeoutSeconds: service.healthcheckTimeoutSeconds,
-		healthcheckIntervalSeconds: service.healthcheckIntervalSeconds,
-		restartPolicy: service.restartPolicy,
-		runtimeMode: service.runtimeMode,
-		env,
-	});
+	const runtimeConfiguration = wantsInstanceConfig
+		? await ensureRailwayServiceInstanceConfiguration({
+			serviceId: railwayService.id,
+			environmentId: environment.id,
+			buildCommand: service.buildCommand,
+			startCommand: railwayServiceRuntimeStartCommand(service),
+			rootDirectory: relativeRailwayRootDir(tenantRoot, service.rootDir),
+			healthcheckPath: service.healthcheckPath,
+			healthcheckTimeoutSeconds: service.healthcheckTimeoutSeconds,
+			healthcheckIntervalSeconds: service.healthcheckIntervalSeconds,
+			restartPolicy: service.restartPolicy,
+			runtimeMode: service.runtimeMode,
+			env,
+		})
+		: null;
+	const volumeMountPath = service.runnerPool?.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH;
+	const volumeConfiguration = wantsRunnerVolume
+		? await ensureRailwayServiceVolume({
+			projectId: project.id,
+			environmentId: environment.id,
+			serviceId: railwayService.id,
+			name: deriveRailwayWorkerRunnerVolumeName(railwayService.name),
+			mountPath: volumeMountPath,
+			env,
+		})
+		: null;
+	if (wantsRunnerVolume) {
+		await upsertRailwayVariables({
+			projectId: project.id,
+			environmentId: environment.id,
+			serviceId: railwayService.id,
+			variables: {
+				TREESEED_RUNNER_SERVICE_NAME: railwayService.name,
+				TREESEED_RUNNER_VOLUME_ROOT: volumeMountPath,
+				TREESEED_RUNNER_VOLUME_NAME: volumeConfiguration?.volume.name ?? deriveRailwayWorkerRunnerVolumeName(railwayService.name),
+				TREESEED_WORKER_IDLE_EXIT_MS: configuredEnvValue(env, 'TREESEED_WORKER_IDLE_EXIT_MS') || '60000',
+				...(volumeConfiguration?.volume.id ? { TREESEED_RUNNER_VOLUME_ID: volumeConfiguration.volume.id } : {}),
+			},
+			env,
+		});
+	}
+	return {
+		instance: runtimeConfiguration?.instance ?? null,
+		updated: Boolean(runtimeConfiguration?.updated || volumeConfiguration?.updated || volumeConfiguration?.created),
+		volume: volumeConfiguration
+			? {
+				id: volumeConfiguration.volume.id,
+				name: volumeConfiguration.volume.name,
+				mountPath: volumeConfiguration.instance?.mountPath ?? volumeMountPath,
+				created: volumeConfiguration.created,
+				updated: volumeConfiguration.updated,
+			}
+			: null,
+	};
 }
 
 export async function deployRailwayService(
@@ -1128,6 +1200,7 @@ export async function deployRailwayService(
 	}
 	const deployService = await resolveRailwayDeployProjectContext(service, { env });
 	const plan = planRailwayServiceDeploy(deployService, { env });
+	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
 
 	const taskPrefix = prefix ?? {
 		scope: normalizeScope(deployService.scope ?? deployService.railwayEnvironment ?? 'railway'),
@@ -1135,7 +1208,9 @@ export async function deployRailwayService(
 		task: `${deployService.key}-railway-deploy`,
 		stage: 'deploy',
 	};
-	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
+	const runtimeConfiguration = await syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, {
+		env: commandEnv,
+	});
 	if (deployService.buildCommand) {
 		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
 			cwd: deployService.rootDir,
@@ -1172,9 +1247,6 @@ export async function deployRailwayService(
 	if (lastFailure) {
 		throw new Error(lastFailure.stderr?.trim() || lastFailure.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
 	}
-	const runtimeConfiguration = await syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, {
-		env: commandEnv,
-	});
 	return {
 		service: deployService.key,
 		status: 'deployed',
@@ -1184,9 +1256,10 @@ export async function deployRailwayService(
 		runtimeConfiguration: runtimeConfiguration
 			? {
 				updated: runtimeConfiguration.updated,
-				healthcheckPath: runtimeConfiguration.instance.healthcheckPath,
-				healthcheckTimeoutSeconds: runtimeConfiguration.instance.healthcheckTimeoutSeconds,
-				runtimeMode: runtimeConfiguration.instance.runtimeMode,
+				healthcheckPath: runtimeConfiguration.instance?.healthcheckPath ?? null,
+				healthcheckTimeoutSeconds: runtimeConfiguration.instance?.healthcheckTimeoutSeconds ?? null,
+				runtimeMode: runtimeConfiguration.instance?.runtimeMode ?? null,
+				volume: runtimeConfiguration.volume ?? null,
 			}
 			: null,
 	};

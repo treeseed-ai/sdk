@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
 	assertNoInternalDevReferences,
+	classifyStaleTreeseedDevTag,
 	createDevTagMessage,
 	createPackageDependencyReference,
 	devTagFromDependencySpec,
@@ -120,5 +121,73 @@ describe('package reference policy', () => {
 		expect(message).toContain('package: @treeseed/sdk');
 		expect(message).toContain('branch: feature/demo');
 		expect(message).toContain('workflowRunId: run-1');
+	});
+
+	it('classifies old staging and preview Treeseed dev tags as cleanup candidates', () => {
+		const stagingTag = '0.6.39-dev.staging.20260507T010203Z';
+		const previewTag = '0.6.39-dev.feature-demo.20260507T010203Z';
+
+		expect(classifyStaleTreeseedDevTag({
+			tagName: stagingTag,
+			message: createDevTagMessage({
+				packageName: '@treeseed/sdk',
+				version: stagingTag,
+				branch: 'staging',
+				commitSha: 'abc123',
+			}),
+			currentVersion: '0.6.40-dev.staging.20260508T010203Z',
+		}).action).toBe('delete');
+		expect(classifyStaleTreeseedDevTag({
+			tagName: previewTag,
+			message: createDevTagMessage({
+				packageName: '@treeseed/sdk',
+				version: previewTag,
+				branch: 'feature/demo',
+				commitSha: 'abc123',
+			}),
+			currentVersion: '0.6.40-dev.staging.20260508T010203Z',
+		}).action).toBe('delete');
+	});
+
+	it('keeps current, stable, malformed, non-Treeseed, and referenced dev tags', () => {
+		const currentTag = '0.6.40-dev.staging.20260508T010203Z';
+		const currentMessage = createDevTagMessage({
+			packageName: '@treeseed/sdk',
+			version: currentTag,
+			branch: 'staging',
+			commitSha: 'abc123',
+		});
+
+		expect(classifyStaleTreeseedDevTag({
+			tagName: currentTag,
+			message: currentMessage,
+			currentVersion: '0.6.40-dev.staging.20260508T020304Z',
+		}).reason).toBe('current-version');
+		expect(classifyStaleTreeseedDevTag({
+			tagName: '0.6.39',
+			message: '',
+			currentVersion: '0.6.40',
+		}).reason).toBe('not-dev-tag');
+		expect(classifyStaleTreeseedDevTag({
+			tagName: '0.6.39-dev.staging.bad',
+			message: 'treeseed-dev-tag: true',
+			currentVersion: '0.6.40',
+		}).reason).toBe('malformed-dev-tag');
+		expect(classifyStaleTreeseedDevTag({
+			tagName: '0.6.39-dev.staging.20260508T010203Z',
+			message: 'save: old tag',
+			currentVersion: '0.6.40',
+		}).reason).toBe('missing-treeseed-metadata');
+		expect(classifyStaleTreeseedDevTag({
+			tagName: '0.6.39-dev.staging.20260508T010203Z',
+			message: createDevTagMessage({
+				packageName: '@treeseed/sdk',
+				version: '0.6.39-dev.staging.20260508T010203Z',
+				branch: 'staging',
+				commitSha: 'abc123',
+			}),
+			currentVersion: '0.6.40',
+			activeReferences: ['0.6.39-dev.staging.20260508T010203Z'],
+		}).reason).toBe('still-referenced');
 	});
 });

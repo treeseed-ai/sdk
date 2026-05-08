@@ -21,6 +21,11 @@ function noopReporter(): ControlPlaneReporter {
 		async registerAgentPoolHeartbeat() {},
 		async reportScaleDecision() {},
 		async reportWorkdaySummary() {},
+		async getProjectCapacityPlan() { return null; },
+		async createCapacityReservation() { return null; },
+		async reportCapacityUsage() {},
+		async reportCapacityRoutingDecision() { return null; },
+		async createApprovalRequest() { return null; },
 	};
 }
 
@@ -112,6 +117,32 @@ describe('project platform workflow actions', () => {
 		expect(result.checks.apiHealth).toMatchObject({ ok: true, skipped: true, reason: 'api_not_selected' });
 		expect(result.checks.agentHealth).toMatchObject({ ok: true, skipped: true, reason: 'agents_not_selected' });
 		expect(fetched.every((url) => !url.startsWith('https://api.example.com'))).toBe(true);
+	});
+
+	it('uses the workerRunner service when checking Railway scale readiness', async () => {
+		const tenantRoot = await createTenantFixture(`services:
+  workerRunner:
+    enabled: true
+    provider: railway
+    railway:
+      projectName: test-site
+`);
+		vi.stubGlobal('fetch', vi.fn(async () => new Response('ok', { status: 200 })));
+		process.env.TREESEED_WORKER_POOL_SCALER = 'railway';
+
+		const result = await monitorProjectPlatform({
+			tenantRoot,
+			scope: 'staging',
+			dryRun: true,
+			reporter: noopReporter(),
+			bootstrapSystems: ['data', 'web'],
+		});
+
+		expect(result.checks.scaleProbe).toMatchObject({
+			ok: true,
+			mocked: true,
+			serviceName: 'acme-docs-worker-runner-01',
+		});
 	});
 
 	it('fails publish-content preflight with deploy readiness errors before R2 operations', async () => {

@@ -1675,7 +1675,7 @@ async function syncRailwayEnvironmentForScope(input: TreeseedReconcileAdapterInp
 		includeInstances: !dryRun,
 		includeVariables: false,
 	});
-	const workerEntry = topology.services.get('worker') ?? null;
+	const workerEntry = topology.services.get('workerRunner') ?? topology.services.get('worker') ?? null;
 	const railwayRuntimeVariables = Object.fromEntries(
 		[
 			['TREESEED_RAILWAY_PROJECT_ID', workerEntry?.project?.id],
@@ -2429,15 +2429,11 @@ export function createCloudflareReconcileAdapters() {
 export function createRailwayReconcileAdapters() {
 	return [
 		buildRailwayAdapter('railway-service:api'),
-		buildRailwayAdapter('railway-service:manager'),
-		buildRailwayAdapter('railway-service:worker'),
-		buildRailwayAdapter('railway-service:workday-start'),
-		buildRailwayAdapter('railway-service:workday-report'),
+		buildRailwayAdapter('railway-service:workday-manager'),
+		buildRailwayAdapter('railway-service:worker-runner'),
 		buildCustomDomainAdapter('custom-domain:api', 'railway'),
 		buildCompositeAdapter('api-runtime'),
-		buildCompositeAdapter('manager-runtime'),
-		buildCompositeAdapter('worker-runtime'),
-		buildCompositeAdapter('workday-start-runtime'),
-		buildCompositeAdapter('workday-report-runtime'),
+		buildCompositeAdapter('workday-manager-runtime'),
+		buildCompositeAdapter('worker-runner-runtime'),
 	];
 }

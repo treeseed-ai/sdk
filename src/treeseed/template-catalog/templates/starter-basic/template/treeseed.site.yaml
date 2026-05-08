@@ -50,41 +50,22 @@ services:
     environments:
       local:
         baseUrl: http://127.0.0.1:3000
-  manager:
+  workdayManager:
     enabled: true
     provider: railway
     railway:
-      serviceName: __SITE_SLUG__-manager
+      serviceName: __SITE_SLUG__-workday-manager
       rootDir: .
       buildCommand: npm run build
-      startCommand: node ./node_modules/@treeseed/core/dist/services/manager.js
-      schedule: '*/5 * * * *'
-  worker:
+      startCommand: node ./node_modules/@treeseed/core/dist/services/workday-manager.js
+      schedule: '0 9 * * 1-5'
+  workerRunner:
     enabled: true
     provider: railway
     railway:
-      serviceName: __SITE_SLUG__-worker
       rootDir: .
       buildCommand: npm run build
       startCommand: node ./node_modules/@treeseed/core/dist/services/worker.js
-  workdayStart:
-    enabled: true
-    provider: railway
-    railway:
-      serviceName: __SITE_SLUG__-workday-start
-      rootDir: .
-      buildCommand: npm run build
-      startCommand: node ./node_modules/@treeseed/core/dist/services/workday-start.js
-      schedule: '0 9 * * 1-5'
-  workdayReport:
-    enabled: true
-    provider: railway
-    railway:
-      serviceName: __SITE_SLUG__-workday-report
-      rootDir: .
-      buildCommand: npm run build
-      startCommand: node ./node_modules/@treeseed/core/dist/services/workday-report.js
-      schedule: '5 17 * * 1-5'
 plugins:
   - package: '@treeseed/core/plugin-default'
 providers:

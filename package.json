@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.6.39",
+  "version": "0.6.40",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -212,6 +212,10 @@
     "./copilot": {
       "types": "./dist/copilot.d.ts",
       "default": "./dist/copilot.js"
+    },
+    "./capacity": {
+      "types": "./dist/capacity.d.ts",
+      "default": "./dist/capacity.js"
     },
     "./types": {
       "types": "./dist/sdk-types.d.ts",

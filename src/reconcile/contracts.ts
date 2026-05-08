@@ -7,10 +7,8 @@ export type TreeseedReconcileVerificationSource = 'cli' | 'api' | 'sdk' | 'deriv
 export type TreeseedReconcileUnitType =
 	| 'web-ui'
 	| 'api-runtime'
-	| 'manager-runtime'
-	| 'worker-runtime'
-	| 'workday-start-runtime'
-	| 'workday-report-runtime'
+	| 'workday-manager-runtime'
+	| 'worker-runner-runtime'
 	| 'edge-worker'
 	| 'content-store'
 	| 'queue'
@@ -21,10 +19,8 @@ export type TreeseedReconcileUnitType =
 	| 'custom-domain:api'
 	| 'dns-record'
 	| 'railway-service:api'
-	| 'railway-service:manager'
-	| 'railway-service:worker'
-	| 'railway-service:workday-start'
-	| 'railway-service:workday-report';
+	| 'railway-service:workday-manager'
+	| 'railway-service:worker-runner';
 
 export type TreeseedReconcileTarget =
 	| { kind: 'persistent'; scope: 'local' | 'staging' | 'prod' }

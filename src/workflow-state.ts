@@ -849,10 +849,8 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 		},
 			managedServices: {
 				api: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
-				manager: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
-				worker: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
-				workdayStart: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
-				workdayReport: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
+				workdayManager: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
+				workerRunner: { enabled: false, initialized: false, lastDeploymentTimestamp: null, lastDeployedUrl: null, provider: null },
 			},
 		files: {
 			treeseedConfig: tenantRoot,
@@ -1008,7 +1006,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 					state.webCache.lastContentPurgeAt = deployState.webCache?.contentPurge?.lastPurgedAt ?? null;
 					state.webCache.lastContentPurgeCount = deployState.webCache?.contentPurge?.purgeCount ?? null;
 				}
-						for (const serviceKey of ['api', 'manager', 'worker', 'workdayStart', 'workdayReport']) {
+						for (const serviceKey of ['api', 'workdayManager', 'workerRunner']) {
 							const service = deployState.services?.[serviceKey];
 							if (!service) continue;
 							state.managedServices[serviceKey] = {

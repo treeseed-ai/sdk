@@ -3,14 +3,19 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+	configuredRailwayScheduledJobs,
 	configuredRailwayServices,
+	deriveRailwayWorkerRunnerServiceName,
+	deriveRailwayWorkerRunnerVolumeName,
 	ensureRailwayScheduledJobs,
 	isRailwayTransientFailure,
 	planRailwayServiceDeploy,
+	railwayServiceRuntimeStartCommand,
 	resolveRailwayAuthToken,
 	validateRailwayDeployPrerequisites,
 	verifyRailwayScheduledJobs,
 } from '../../src/operations/services/railway-deploy.ts';
+import { ensureRailwayServiceVolume } from '../../src/operations/services/railway-api.ts';
 
 const tempRoots = new Set<string>();
 
@@ -42,40 +47,23 @@ services:
       projectName: acme-docs
       serviceName: acme-docs-api
       rootDir: .
-  worker:
+  workerRunner:
     provider: railway
     enabled: true
     railway:
       projectName: acme-docs
-      serviceName: acme-docs-worker
       rootDir: .
-  manager:
+  workdayManager:
     provider: railway
     enabled: true
     railway:
       projectId: railway-project-1
       projectName: acme-docs
       serviceId: svc-manager
-      serviceName: acme-docs-manager
-      startCommand: npm run manager:reconcile
-      schedule:
-        - "*/5 * * * *"
-  workdayStart:
-    provider: railway
-    enabled: true
-    railway:
-      projectName: acme-docs
       serviceName: acme-docs-workday-start
-      rootDir: .
-      startCommand: npm run workday:start
-  workdayReport:
-    provider: railway
-    enabled: true
-    railway:
-      projectName: acme-docs
-      serviceName: acme-docs-workday-report
-      rootDir: .
-      startCommand: npm run workday:report
+      startCommand: npm run workday-manager
+      schedule:
+        - "0 9 * * 1-5"
 `,
 	);
 	return tenantRoot;
@@ -118,7 +106,7 @@ function railwayProjectsPayload() {
 								{
 									node: {
 										id: 'svc-manager',
-										name: 'acme-docs-manager',
+										name: 'acme-docs-workday-start',
 									},
 								},
 								{
@@ -157,16 +145,54 @@ describe('railway scheduled jobs', () => {
 
 		const services = configuredRailwayServices(tenantRoot, 'prod');
 
-		expect(services).toHaveLength(5);
+		expect(services).toHaveLength(3);
 		expect(services.every((service) => service.railwayEnvironment === 'production')).toBe(true);
 	});
 
-	it('does not plan recurring schedules for staging bootstrap', async () => {
+	it('derives worker-runner pool service and volume names outside tenant config', async () => {
 		const tenantRoot = await createTenantFixture();
 
-		const result = await ensureRailwayScheduledJobs(tenantRoot, 'staging');
+		const services = configuredRailwayServices(tenantRoot, 'staging');
+		const runner = services.find((service) => service.key === 'workerRunner');
 
-		expect(result).toEqual([]);
+		expect(deriveRailwayWorkerRunnerServiceName('acme-docs')).toBe('acme-docs-worker-runner-01');
+		expect(deriveRailwayWorkerRunnerVolumeName('acme-docs-worker-runner-01')).toBe('acme-docs-worker-runner-01-data');
+		expect(runner).toMatchObject({
+			serviceName: 'acme-docs-worker-runner-01',
+			runnerPool: {
+				bootstrapIndex: 1,
+				volumeMountPath: '/data',
+			},
+		});
+	});
+
+	it('plans workday-manager schedules for staging and prod', async () => {
+		const tenantRoot = await createTenantFixture();
+
+		const staging = configuredRailwayScheduledJobs(tenantRoot, 'staging');
+		const prod = configuredRailwayScheduledJobs(tenantRoot, 'prod');
+
+		expect(staging).toHaveLength(1);
+		expect(staging[0]).toMatchObject({
+			service: 'workdayManager',
+			serviceName: 'acme-docs-workday-start',
+			environment: 'staging',
+			expression: '0 9 * * 1-5',
+			command: 'npm run workday-manager',
+		});
+		expect(prod).toHaveLength(1);
+		expect(prod[0]).toMatchObject({
+			service: 'workdayManager',
+			environment: 'production',
+		});
+	});
+
+	it('keeps workday-manager cron command separate from deployed service start command', async () => {
+		const tenantRoot = await createTenantFixture();
+		const manager = configuredRailwayServices(tenantRoot, 'staging').find((service) => service.key === 'workdayManager');
+
+		expect(manager?.startCommand).toBe('npm run workday-manager');
+		expect(railwayServiceRuntimeStartCommand(manager)).toBe('node -e "console.log(\'workday-manager scheduled-only service idle\')"');
 	});
 
 	it('detaches Railway deploys from build log streaming by default', () => {
@@ -212,6 +238,122 @@ describe('railway scheduled jobs', () => {
 		})).toBe(true);
 	});
 
+	it('creates a missing worker-runner volume at the standard repository mount path', async () => {
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('TreeseedRailwayVolumeList')) {
+				return new Response(JSON.stringify({ data: { project: { volumes: { edges: [] } } } }), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			expect(body.variables.input).toMatchObject({
+				projectId: 'project-1',
+				environmentId: 'env-staging',
+				serviceId: 'svc-runner-01',
+				name: 'acme-docs-worker-runner-01-data',
+				mountPath: '/data',
+			});
+			return new Response(JSON.stringify({
+				data: {
+					volumeCreate: {
+						id: 'vol-1',
+						name: 'acme-docs-worker-runner-01-data',
+						projectId: 'project-1',
+						volumeInstances: {
+							edges: [{
+								node: {
+									id: 'vi-1',
+									serviceId: 'svc-runner-01',
+									environmentId: 'env-staging',
+									mountPath: '/data',
+								},
+							}],
+						},
+					},
+				},
+			}), { status: 200, headers: { 'content-type': 'application/json' } });
+		});
+
+		const result = await ensureRailwayServiceVolume({
+			projectId: 'project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-runner-01',
+			name: 'acme-docs-worker-runner-01-data',
+			mountPath: '/data',
+			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		expect(result).toMatchObject({
+			created: true,
+			updated: false,
+			volume: {
+				id: 'vol-1',
+				name: 'acme-docs-worker-runner-01-data',
+			},
+		});
+	});
+
+	it('updates a drifted worker-runner volume mount path without deleting it', async () => {
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('TreeseedRailwayVolumeList')) {
+				return new Response(JSON.stringify({
+					data: {
+						project: {
+							volumes: {
+								edges: [{
+									node: {
+										id: 'vol-1',
+										name: 'acme-docs-worker-runner-01-data',
+										projectId: 'project-1',
+										volumeInstances: {
+											edges: [{
+												node: {
+													id: 'vi-1',
+													serviceId: 'svc-runner-01',
+													environmentId: 'env-staging',
+													mountPath: '/app/data',
+												},
+											}],
+										},
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			expect(String(body.query)).toContain('TreeseedRailwayVolumeInstanceUpdate');
+			expect(body.variables).toEqual({
+				id: 'vi-1',
+				input: { mountPath: '/data' },
+			});
+			return new Response(JSON.stringify({
+				data: {
+					volumeInstanceUpdate: {
+						id: 'vi-1',
+						serviceId: 'svc-runner-01',
+						environmentId: 'env-staging',
+						mountPath: '/data',
+					},
+				},
+			}), { status: 200, headers: { 'content-type': 'application/json' } });
+		});
+
+		const result = await ensureRailwayServiceVolume({
+			projectId: 'project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-runner-01',
+			name: 'acme-docs-worker-runner-01-data',
+			mountPath: '/data',
+			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		expect(result.created).toBe(false);
+		expect(result.updated).toBe(true);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
 	it('creates a missing schedule and returns its locator for prod deploy', async () => {
 		const tenantRoot = await createTenantFixture();
 		vi.stubEnv('RAILWAY_API_TOKEN', 'railway-token');
@@ -240,11 +382,11 @@ describe('railway scheduled jobs', () => {
 				data: {
 					cronTriggerCreate: {
 						id: 'cron-1',
-						name: 'manager:1',
-						schedule: '*/5 * * * *',
-						command: 'npm run manager:reconcile',
+						name: 'workdayManager:1',
+						schedule: '0 9 * * 1-5',
+						command: 'npm run workday-manager',
 						enabled: true,
-						service: { id: 'svc-manager', name: 'manager' },
+						service: { id: 'svc-manager', name: 'workdayManager' },
 						environment: { id: 'env-production', name: 'production' },
 					},
 				},
@@ -257,9 +399,9 @@ describe('railway scheduled jobs', () => {
 		expect(result).toHaveLength(1);
 		expect(result[0]).toMatchObject({
 			id: 'cron-1',
-			logicalName: 'manager:1',
+			logicalName: 'workdayManager:1',
 			status: 'created',
-			expression: '*/5 * * * *',
+			expression: '0 9 * * 1-5',
 		});
 	});
 
@@ -284,11 +426,11 @@ describe('railway scheduled jobs', () => {
 								edges: [{
 									node: {
 										id: 'cron-1',
-										name: 'manager:1',
+										name: 'workdayManager:1',
 										schedule: '0 * * * *',
 										command: 'npm run manager:old',
 										enabled: true,
-										service: { id: 'svc-manager', name: 'manager' },
+										service: { id: 'svc-manager', name: 'workdayManager' },
 										environment: { id: 'env-production', name: 'production' },
 									},
 								}],
@@ -301,11 +443,11 @@ describe('railway scheduled jobs', () => {
 				data: {
 					cronTriggerUpdate: {
 						id: 'cron-1',
-						name: 'manager:1',
-						schedule: '*/5 * * * *',
-						command: 'npm run manager:reconcile',
+						name: 'workdayManager:1',
+						schedule: '0 9 * * 1-5',
+						command: 'npm run workday-manager',
 						enabled: true,
-						service: { id: 'svc-manager', name: 'manager' },
+						service: { id: 'svc-manager', name: 'workdayManager' },
 						environment: { id: 'env-production', name: 'production' },
 					},
 				},
@@ -316,7 +458,7 @@ describe('railway scheduled jobs', () => {
 		expect(ensured[0]).toMatchObject({
 			id: 'cron-1',
 			status: 'updated',
-			command: 'npm run manager:reconcile',
+			command: 'npm run workday-manager',
 		});
 
 		const verifyFetchMock = vi.fn(async (_input, init) => {
@@ -334,11 +476,11 @@ describe('railway scheduled jobs', () => {
 							edges: [{
 								node: {
 									id: 'cron-1',
-									name: 'manager:1',
-									schedule: '*/5 * * * *',
-									command: 'npm run manager:reconcile',
+									name: 'workdayManager:1',
+									schedule: '0 9 * * 1-5',
+									command: 'npm run workday-manager',
 									enabled: true,
-									service: { id: 'svc-manager', name: 'manager' },
+									service: { id: 'svc-manager', name: 'workdayManager' },
 									environment: { id: 'env-production', name: 'production' },
 								},
 							}],
@@ -392,11 +534,11 @@ describe('railway scheduled jobs', () => {
 				data: {
 					cronTriggerCreate: {
 						id: 'cron-1',
-						name: 'manager:1',
-						schedule: '*/5 * * * *',
-						command: 'npm run manager:reconcile',
+						name: 'workdayManager:1',
+						schedule: '0 9 * * 1-5',
+						command: 'npm run workday-manager',
 						enabled: true,
-						service: { id: 'svc-manager', name: 'manager' },
+						service: { id: 'svc-manager', name: 'workdayManager' },
 						environment: { id: 'env-production', name: 'production' },
 					},
 				},

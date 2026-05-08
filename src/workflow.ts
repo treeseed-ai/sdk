@@ -18,6 +18,7 @@ import {
 	workflowStage,
 	workflowStatus,
 	workflowSwitch,
+	workflowTagsCleanup,
 	workflowTasks,
 } from './workflow/operations.ts';
 
@@ -32,6 +33,7 @@ export type TreeseedWorkflowOperationId =
 	| 'close'
 	| 'stage'
 	| 'release'
+	| 'tags:cleanup'
 	| 'resume'
 	| 'recover'
 	| 'destroy'
@@ -264,6 +266,13 @@ export type TreeseedReleaseInput = {
 	dryRun?: boolean;
 };
 
+export type TreeseedTagsCleanupInput = {
+	includePackages?: string | string[];
+	branchScope?: 'staging' | 'preview' | 'all';
+	plan?: boolean;
+	dryRun?: boolean;
+};
+
 export type TreeseedResumeInput = {
 	runId: string;
 };
@@ -342,6 +351,8 @@ export class TreeseedWorkflowSdk {
 				return this.stage(input as TreeseedStageInput);
 			case 'release':
 				return this.release(input as TreeseedReleaseInput);
+			case 'tags:cleanup':
+				return this.tagsCleanup(input as TreeseedTagsCleanupInput);
 			case 'resume':
 				return this.resume(input as TreeseedResumeInput);
 			case 'recover':
@@ -393,6 +404,10 @@ export class TreeseedWorkflowSdk {
 
 	async release(input: TreeseedReleaseInput): Promise<TreeseedWorkflowResult> {
 		return workflowRelease(this.helpers(), input);
+	}
+
+	async tagsCleanup(input: TreeseedTagsCleanupInput = {}): Promise<TreeseedWorkflowResult> {
+		return workflowTagsCleanup(this.helpers(), input);
 	}
 
 	async resume(input: TreeseedResumeInput): Promise<TreeseedWorkflowResult> {

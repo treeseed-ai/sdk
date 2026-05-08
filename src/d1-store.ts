@@ -40,9 +40,15 @@ import type {
 	SdkPickRequest,
 	SdkPickResult,
 	SdkPriorityOverrideRequest,
+	SdkClaimWorkdayManagerLeaseRequest,
+	SdkCreateWorkdayRequest,
+	SdkRecordRepositoryClaimRequest,
+	SdkRecordRunnerScaleDecisionRequest,
+	SdkRecordWorkerRunnerRequest,
 	SdkRecordRunRequest,
 	SdkRecordScaleDecisionRequest,
 	SdkRecordTaskCreditsRequest,
+	SdkReleaseWorkdayManagerLeaseRequest,
 	SdkReportEntity,
 	SdkRunEntity,
 	SdkSearchRequest,
@@ -52,11 +58,17 @@ import type {
 	SdkTaskSearchRequest,
 	SdkUpsertWorkPolicyRequest,
 	SdkTaskProgressRequest,
+	SdkUpdateWorkDayGraphRequest,
 	SdkUpdateRequest,
 	SdkWorkDayEntity,
+	RepositoryClaim,
+	RunnerScaleDecision,
 	ScaleDecision,
 	TaskCreditLedgerEntry,
+	WorkdayManagerLease,
 	WorkdayPolicy,
+	WorkdayRequest,
+	WorkerRunner,
 	PrioritySnapshot,
 } from './sdk-types.ts';
 import { CursorStore } from './stores/cursor-store.ts';
@@ -109,6 +121,17 @@ export interface AgentDatabase {
 	getManagerContext(taskId: string): Promise<SdkManagerContextPayload>;
 	getWorkPolicy(projectId: string, environment?: string): Promise<WorkdayPolicy | null>;
 	upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest): Promise<WorkdayPolicy | null>;
+	createWorkdayRequest(request: SdkCreateWorkdayRequest): Promise<WorkdayRequest | null>;
+	listWorkdayRequests(projectId: string, environment: string, state?: string | null): Promise<WorkdayRequest[]>;
+	claimWorkdayManagerLease(request: SdkClaimWorkdayManagerLeaseRequest): Promise<WorkdayManagerLease | null>;
+	releaseWorkdayManagerLease(request: SdkReleaseWorkdayManagerLeaseRequest): Promise<WorkdayManagerLease | null>;
+	recordWorkerRunner(request: SdkRecordWorkerRunnerRequest): Promise<WorkerRunner | null>;
+	listWorkerRunners(projectId: string, environment: string): Promise<WorkerRunner[]>;
+	recordRepositoryClaim(request: SdkRecordRepositoryClaimRequest): Promise<RepositoryClaim | null>;
+	listRepositoryClaims(projectId: string, repositoryId?: string | null): Promise<RepositoryClaim[]>;
+	recordRunnerScaleDecision(request: SdkRecordRunnerScaleDecisionRequest): Promise<RunnerScaleDecision | null>;
+	listRunnerScaleDecisions(projectId: string, environment: string, workDayId?: string | null): Promise<RunnerScaleDecision[]>;
+	updateWorkDayGraph(request: SdkUpdateWorkDayGraphRequest): Promise<SdkWorkDayEntity | null>;
 	listPriorityOverrides(projectId: string): Promise<Record<string, unknown>[]>;
 	upsertPriorityOverride(request: SdkPriorityOverrideRequest): Promise<Record<string, unknown> | null>;
 	createPrioritySnapshot(request: SdkCreatePrioritySnapshotRequest): Promise<PrioritySnapshot | null>;
@@ -177,6 +200,11 @@ export class MemoryAgentDatabase implements AgentDatabase {
 	private readonly graphRuns = new Map<string, SdkGraphRunEntity>();
 	private readonly reports = new Map<string, SdkReportEntity>();
 	private readonly workPolicies = new Map<string, WorkdayPolicy>();
+	private readonly workdayRequests = new Map<string, WorkdayRequest>();
+	private readonly workdayManagerLeases = new Map<string, WorkdayManagerLease>();
+	private readonly workerRunners = new Map<string, WorkerRunner>();
+	private readonly repositoryClaims = new Map<string, RepositoryClaim>();
+	private readonly runnerScaleDecisions = new Map<string, RunnerScaleDecision>();
 	private readonly priorityOverrides = new Map<string, Record<string, unknown>>();
 	private readonly prioritySnapshots = new Map<string, PrioritySnapshot>();
 	private readonly taskCreditLedger = new Map<string, TaskCreditLedgerEntry>();
@@ -951,11 +979,19 @@ export class MemoryAgentDatabase implements AgentDatabase {
 	}
 
 	async upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest) {
+		const dailyCreditBudget = Number(request.dailyCreditBudget ?? request.dailyTaskCreditBudget ?? 0);
 		const policy: WorkdayPolicy = {
 			projectId: request.projectId,
 			environment: request.environment,
 			schedule: request.schedule,
-			dailyTaskCreditBudget: request.dailyTaskCreditBudget,
+			enabled: request.enabled ?? true,
+			startCron: request.startCron ?? '0 9 * * 1-5',
+			durationMinutes: Number(request.durationMinutes ?? 480),
+			maxRunners: Number(request.maxRunners ?? request.autoscale.maxWorkers ?? 1),
+			maxWorkersPerRunner: Number(request.maxWorkersPerRunner ?? 4),
+			dailyCreditBudget,
+			closeoutGraceMinutes: Number(request.closeoutGraceMinutes ?? 15),
+			dailyTaskCreditBudget: dailyCreditBudget,
 			maxQueuedTasks: request.maxQueuedTasks,
 			maxQueuedCredits: request.maxQueuedCredits,
 			autoscale: request.autoscale,
@@ -964,6 +1000,172 @@ export class MemoryAgentDatabase implements AgentDatabase {
 		};
 		this.workPolicies.set(`${request.projectId}:${request.environment}`, policy);
 		return policy;
+	}
+
+	async createWorkdayRequest(request: SdkCreateWorkdayRequest) {
+		const timestamp = nowIso();
+		const record: WorkdayRequest = {
+			id: request.id ?? crypto.randomUUID(),
+			projectId: request.projectId,
+			environment: request.environment,
+			type: request.type,
+			state: request.state ?? 'pending',
+			workDayId: request.workDayId ?? null,
+			requestedBy: request.requestedBy ?? null,
+			reason: request.reason ?? null,
+			payload: request.payload ?? {},
+			metadata: request.metadata ?? {},
+			createdAt: timestamp,
+			updatedAt: timestamp,
+		};
+		this.workdayRequests.set(record.id, record);
+		return record;
+	}
+
+	async listWorkdayRequests(projectId: string, environment: string, state?: string | null) {
+		return [...this.workdayRequests.values()]
+			.filter((entry) => entry.projectId === projectId && entry.environment === environment)
+			.filter((entry) => !state || entry.state === state)
+			.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+	}
+
+	async claimWorkdayManagerLease(request: SdkClaimWorkdayManagerLeaseRequest) {
+		const timestamp = request.now ?? nowIso();
+		const nowMs = Date.parse(timestamp);
+		const staleAfterMs = (request.staleAfterSeconds ?? request.ttlSeconds) * 1000;
+		const existing = [...this.workdayManagerLeases.values()]
+			.find((entry) => entry.projectId === request.projectId && entry.environment === request.environment && entry.state === 'active');
+		if (existing && existing.managerId !== request.managerId) {
+			const heartbeatMs = Date.parse(existing.heartbeatAt);
+			if (Number.isFinite(heartbeatMs) && Number.isFinite(nowMs) && nowMs - heartbeatMs <= staleAfterMs) {
+				return null;
+			}
+		}
+		const id = existing?.id ?? request.id ?? crypto.randomUUID();
+		const record: WorkdayManagerLease = {
+			id,
+			projectId: request.projectId,
+			environment: request.environment,
+			workDayId: request.workDayId ?? existing?.workDayId ?? null,
+			managerId: request.managerId,
+			state: 'active',
+			heartbeatAt: timestamp,
+			expiresAt: new Date(Date.parse(timestamp) + (request.ttlSeconds * 1000)).toISOString(),
+			metadata: request.metadata ?? existing?.metadata ?? {},
+			createdAt: existing?.createdAt ?? timestamp,
+			updatedAt: timestamp,
+		};
+		this.workdayManagerLeases.set(id, record);
+		return record;
+	}
+
+	async releaseWorkdayManagerLease(request: SdkReleaseWorkdayManagerLeaseRequest) {
+		const existing = this.workdayManagerLeases.get(request.id);
+		if (!existing || existing.managerId !== request.managerId) return null;
+		const next = { ...existing, state: 'released' as const, updatedAt: nowIso() };
+		this.workdayManagerLeases.set(next.id, next);
+		return next;
+	}
+
+	async recordWorkerRunner(request: SdkRecordWorkerRunnerRequest) {
+		const timestamp = nowIso();
+		const id = request.id ?? `${request.projectId}:${request.environment}:${request.runnerId}`;
+		const activeLocalWorkers = Number(request.activeLocalWorkers ?? 0);
+		const maxLocalWorkers = Number(request.maxLocalWorkers ?? 4);
+		const record: WorkerRunner = {
+			id,
+			projectId: request.projectId,
+			environment: request.environment,
+			runnerId: request.runnerId,
+			runnerServiceName: request.runnerServiceName,
+			volumeIdentity: request.volumeIdentity,
+			state: request.state ?? 'active',
+			maxLocalWorkers,
+			activeLocalWorkers,
+			availableCapacity: Math.max(0, maxLocalWorkers - activeLocalWorkers),
+			lastHeartbeatAt: timestamp,
+			claimedRepositoryIds: request.claimedRepositoryIds ?? [],
+			metadata: request.metadata ?? {},
+			createdAt: this.workerRunners.get(id)?.createdAt ?? timestamp,
+			updatedAt: timestamp,
+		};
+		this.workerRunners.set(id, record);
+		return record;
+	}
+
+	async listWorkerRunners(projectId: string, environment: string) {
+		return [...this.workerRunners.values()]
+			.filter((entry) => entry.projectId === projectId && entry.environment === environment)
+			.sort((left, right) => left.runnerId.localeCompare(right.runnerId));
+	}
+
+	async recordRepositoryClaim(request: SdkRecordRepositoryClaimRequest) {
+		const timestamp = nowIso();
+		const id = request.id ?? `${request.projectId}:${request.repositoryId}:${request.runnerId}`;
+		const record: RepositoryClaim = {
+			id,
+			projectId: request.projectId,
+			repositoryId: request.repositoryId,
+			runnerId: request.runnerId,
+			runnerServiceName: request.runnerServiceName,
+			volumeIdentity: request.volumeIdentity,
+			lastSeenCommit: request.lastSeenCommit ?? null,
+			lastTaskAt: request.lastTaskAt ?? timestamp,
+			claimState: request.claimState ?? 'active',
+			metadata: request.metadata ?? {},
+			createdAt: this.repositoryClaims.get(id)?.createdAt ?? timestamp,
+			updatedAt: timestamp,
+		};
+		this.repositoryClaims.set(id, record);
+		return record;
+	}
+
+	async listRepositoryClaims(projectId: string, repositoryId?: string | null) {
+		return [...this.repositoryClaims.values()]
+			.filter((entry) => entry.projectId === projectId)
+			.filter((entry) => !repositoryId || entry.repositoryId === repositoryId)
+			.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+	}
+
+	async recordRunnerScaleDecision(request: SdkRecordRunnerScaleDecisionRequest) {
+		const record: RunnerScaleDecision = {
+			id: request.id ?? crypto.randomUUID(),
+			projectId: request.projectId,
+			environment: request.environment,
+			workDayId: request.workDayId ?? null,
+			runnerId: request.runnerId ?? null,
+			runnerServiceName: request.runnerServiceName ?? null,
+			action: request.action,
+			reason: request.reason,
+			metadata: request.metadata ?? {},
+			createdAt: nowIso(),
+		};
+		this.runnerScaleDecisions.set(record.id, record);
+		return record;
+	}
+
+	async listRunnerScaleDecisions(projectId: string, environment: string, workDayId?: string | null) {
+		return [...this.runnerScaleDecisions.values()]
+			.filter((entry) => entry.projectId === projectId && entry.environment === environment)
+			.filter((entry) => !workDayId || entry.workDayId === workDayId)
+			.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+	}
+
+	async updateWorkDayGraph(request: SdkUpdateWorkDayGraphRequest) {
+		const existing = this.workDays.get(request.id);
+		if (!existing) return null;
+		const summary = {
+			...(existing.summaryJson ? JSON.parse(existing.summaryJson) as Record<string, unknown> : {}),
+			...(request.summaryPatch ?? {}),
+		};
+		const next = {
+			...existing,
+			graphVersion: request.graphVersion,
+			summaryJson: JSON.stringify(summary),
+			updatedAt: nowIso(),
+		};
+		this.workDays.set(next.id, next);
+		return next;
 	}
 
 	async listPriorityOverrides(projectId: string) {
@@ -1497,6 +1699,50 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 
 	upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest) {
 		return this.operational.upsertWorkPolicy(request);
+	}
+
+	createWorkdayRequest(request: SdkCreateWorkdayRequest) {
+		return this.operational.createWorkdayRequest(request);
+	}
+
+	listWorkdayRequests(projectId: string, environment: string, state?: string | null) {
+		return this.operational.listWorkdayRequests(projectId, environment, state);
+	}
+
+	claimWorkdayManagerLease(request: SdkClaimWorkdayManagerLeaseRequest) {
+		return this.operational.claimWorkdayManagerLease(request);
+	}
+
+	releaseWorkdayManagerLease(request: SdkReleaseWorkdayManagerLeaseRequest) {
+		return this.operational.releaseWorkdayManagerLease(request);
+	}
+
+	recordWorkerRunner(request: SdkRecordWorkerRunnerRequest) {
+		return this.operational.recordWorkerRunner(request);
+	}
+
+	listWorkerRunners(projectId: string, environment: string) {
+		return this.operational.listWorkerRunners(projectId, environment);
+	}
+
+	recordRepositoryClaim(request: SdkRecordRepositoryClaimRequest) {
+		return this.operational.recordRepositoryClaim(request);
+	}
+
+	listRepositoryClaims(projectId: string, repositoryId?: string | null) {
+		return this.operational.listRepositoryClaims(projectId, repositoryId);
+	}
+
+	recordRunnerScaleDecision(request: SdkRecordRunnerScaleDecisionRequest) {
+		return this.operational.recordRunnerScaleDecision(request);
+	}
+
+	listRunnerScaleDecisions(projectId: string, environment: string, workDayId?: string | null) {
+		return this.operational.listRunnerScaleDecisions(projectId, environment, workDayId);
+	}
+
+	updateWorkDayGraph(request: SdkUpdateWorkDayGraphRequest) {
+		return this.operational.updateWorkDayGraph(request);
 	}
 
 	listPriorityOverrides(projectId: string) {

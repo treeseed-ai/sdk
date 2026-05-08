@@ -1,10 +1,18 @@
 import type {
 	AgentPoolAutoscalePolicy,
+	ApprovalRequest,
+	CapacityPlan,
+	CapacityReservation,
+	CapacityRoutingDecision,
+	CreateApprovalRequestRequest,
+	CreateCapacityReservationRequest,
+	CreateCapacityRoutingDecisionRequest,
 	ProjectDeploymentKind,
 	ProjectDeploymentStatus,
 	ProjectEnvironmentName,
 	ProjectInfrastructureResourceKind,
 	ProjectInfrastructureResourceProvider,
+	RecordCapacityUsageRequest,
 	TreeseedHostingKind,
 	TreeseedHostingRegistration,
 } from './sdk-types.ts';
@@ -95,6 +103,11 @@ export interface ControlPlaneReporter {
 	registerAgentPoolHeartbeat(input: ControlPlaneAgentPoolHeartbeat): Promise<void>;
 	reportScaleDecision(input: ControlPlaneScaleDecisionReport): Promise<void>;
 	reportWorkdaySummary(input: ControlPlaneWorkdaySummaryReport): Promise<void>;
+	getProjectCapacityPlan(environment?: ProjectEnvironmentName | 'local' | null): Promise<CapacityPlan | null>;
+	createCapacityReservation(input: CreateCapacityReservationRequest): Promise<CapacityReservation | null>;
+	reportCapacityUsage(input: RecordCapacityUsageRequest): Promise<void>;
+	reportCapacityRoutingDecision(input: CreateCapacityRoutingDecisionRequest): Promise<CapacityRoutingDecision | null>;
+	createApprovalRequest(input: CreateApprovalRequestRequest): Promise<ApprovalRequest | null>;
 }
 
 export interface ControlPlaneReporterOptions {
@@ -161,6 +174,11 @@ class NoopControlPlaneReporter implements ControlPlaneReporter {
 	async registerAgentPoolHeartbeat() {}
 	async reportScaleDecision() {}
 	async reportWorkdaySummary() {}
+	async getProjectCapacityPlan() { return null; }
+	async createCapacityReservation() { return null; }
+	async reportCapacityUsage() {}
+	async reportCapacityRoutingDecision() { return null; }
+	async createApprovalRequest() { return null; }
 }
 
 class HttpControlPlaneReporter implements ControlPlaneReporter {
@@ -176,9 +194,9 @@ class HttpControlPlaneReporter implements ControlPlaneReporter {
 		this.enabled = Boolean(this.projectId && this.baseUrl && this.runnerToken);
 	}
 
-	private async request(method: 'POST' | 'PUT', pathname: string, body: Record<string, unknown>) {
+	private async request<TPayload = unknown>(method: 'GET' | 'POST' | 'PUT', pathname: string, body?: Record<string, unknown>) {
 		if (!this.enabled || !this.baseUrl || !this.runnerToken) {
-			return;
+			return null;
 		}
 
 		const response = await this.fetchImpl(new URL(pathname, this.baseUrl), {
@@ -187,12 +205,14 @@ class HttpControlPlaneReporter implements ControlPlaneReporter {
 				authorization: `Bearer ${this.runnerToken}`,
 				'content-type': 'application/json',
 			},
-			body: JSON.stringify(body),
+			body: body === undefined ? undefined : JSON.stringify(body),
 		});
 
 		if (!response.ok) {
 			throw new Error(`Control-plane request failed for ${pathname}: ${response.status} ${response.statusText}`);
 		}
+		const envelope = await response.json().catch(() => null) as { ok?: boolean; payload?: TPayload } | null;
+		return envelope?.payload ?? null;
 	}
 
 	async reportEnvironment(input: ControlPlaneEnvironmentReport) {
@@ -235,6 +255,32 @@ class HttpControlPlaneReporter implements ControlPlaneReporter {
 	async reportWorkdaySummary(input: ControlPlaneWorkdaySummaryReport) {
 		if (!this.projectId) return;
 		await this.request('POST', `/v1/projects/${this.projectId}/runner/workdays`, input as Record<string, unknown>);
+	}
+
+	async getProjectCapacityPlan(environment?: ProjectEnvironmentName | 'local' | null) {
+		if (!this.projectId) return null;
+		const suffix = environment ? `?environment=${encodeURIComponent(environment)}` : '';
+		return this.request<CapacityPlan>('GET', `/v1/projects/${this.projectId}/capacity-plan${suffix}`);
+	}
+
+	async createCapacityReservation(input: CreateCapacityReservationRequest) {
+		if (!this.projectId) return null;
+		return this.request<CapacityReservation>('POST', `/v1/projects/${this.projectId}/runner/capacity/reservations`, input as Record<string, unknown>);
+	}
+
+	async reportCapacityUsage(input: RecordCapacityUsageRequest) {
+		if (!this.projectId) return;
+		await this.request('POST', `/v1/projects/${this.projectId}/runner/capacity/usage`, input as Record<string, unknown>);
+	}
+
+	async reportCapacityRoutingDecision(input: CreateCapacityRoutingDecisionRequest) {
+		if (!this.projectId) return null;
+		return this.request<CapacityRoutingDecision>('POST', `/v1/projects/${this.projectId}/runner/capacity/routing-decisions`, input as Record<string, unknown>);
+	}
+
+	async createApprovalRequest(input: CreateApprovalRequestRequest) {
+		if (!this.projectId) return null;
+		return this.request<ApprovalRequest>('POST', `/v1/projects/${this.projectId}/runner/approval-requests`, input as Record<string, unknown>);
 	}
 }
 
