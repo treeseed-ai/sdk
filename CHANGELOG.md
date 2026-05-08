@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.47] - 2026-05-08
+
+### Dependencies
+
+- build(build): update package metadata (3dacd011bd30)
+- Release @treeseed/sdk 0.6.47.
+
 ## [0.6.46] - 2026-05-08
 
 ### Dependencies
