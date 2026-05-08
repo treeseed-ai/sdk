@@ -468,76 +468,47 @@ export async function waitForRailwayManagedDeploymentsSettled(
 	{
 		services = configuredRailwayServices(tenantRoot, scope),
 		env = process.env,
-		timeoutMs = 180_000,
+		timeoutMs = 600_000,
 		pollMs = 15_000,
 	} = {},
 ) {
 	const deadline = Date.now() + timeoutMs;
-	const environment = resolveRailwayEnvironmentForScope(scope);
 	const projectId = services.find((service) => typeof service.projectId === 'string' && service.projectId.trim())?.projectId ?? null;
-	if (projectId) {
-		runRailway(['link', '--project', projectId, '--environment', environment, '--json'], {
-			cwd: tenantRoot,
-			capture: true,
-			allowFailure: true,
-			env,
-		});
+	if (!projectId) {
+		return {
+			ok: false,
+			checks: services.map((service) => ({
+				type: 'deployment-status',
+				service: service.key,
+				serviceName: service.serviceName,
+				environment: resolveRailwayEnvironmentForScope(scope),
+				ok: false,
+				status: 'missing_project',
+				message: `Railway deployment status for ${service.serviceName} cannot be checked without a project id.`,
+			})),
+		};
 	}
 	let checks = [];
 	let lastError = null;
 	for (;;) {
-		checks = [];
 		lastError = null;
-		for (const service of services) {
-			try {
-				const result = runRailway([
-					'deployment',
-					'list',
-					'--service',
-					service.serviceName,
-					'--environment',
-					environment,
-					'--limit',
-					'1',
-					'--json',
-				], {
-					cwd: tenantRoot,
-					capture: true,
-					env,
-				});
-				const deployments = parseRailwayJsonOutput(result.stdout);
-				const latest = Array.isArray(deployments) ? deployments[0] : null;
-				const status = String(latest?.status ?? '').trim().toUpperCase();
-				const ok = railwayStatusDeploymentSettled(status);
-				checks.push({
-					type: 'deployment-status',
-					service: service.key,
-					serviceName: service.serviceName,
-					environment,
-					ok,
-					status: status || 'missing_deployment',
-					observed: {
-						id: latest?.id ?? null,
-						status: status || null,
-						createdAt: latest?.createdAt ?? null,
-						volumeMounts: Array.isArray(latest?.meta?.volumeMounts) ? latest.meta.volumeMounts : [],
-					},
-					message: ok
-						? undefined
-						: `Railway deployment for ${service.serviceName} is not settled yet; observed ${status || 'missing deployment status'}.`,
-				});
-			} catch (error) {
-				lastError = error;
-				checks.push({
-					type: 'deployment-status',
-					service: service.key,
-					serviceName: service.serviceName,
-					environment,
-					ok: false,
-					status: 'status_error',
-					message: error instanceof Error ? error.message : String(error),
-				});
-			}
+		try {
+			const statusPayload = await fetchRailwayProjectDeploymentStatus({
+				projectId,
+				env,
+			});
+			checks = collectRailwayDeploymentStatusChecks(statusPayload, scope, services);
+		} catch (error) {
+			lastError = error;
+			checks = services.map((service) => ({
+				type: 'deployment-status',
+				service: service.key,
+				serviceName: service.serviceName,
+				environment: resolveRailwayEnvironmentForScope(scope),
+				ok: false,
+				status: 'status_error',
+				message: error instanceof Error ? error.message : String(error),
+			}));
 		}
 		if (checks.every((entry) => entry.ok === true)) {
 			return { ok: true, checks };
@@ -553,6 +524,49 @@ export async function waitForRailwayManagedDeploymentsSettled(
 		}
 		await sleep(pollMs);
 	}
+}
+
+async function fetchRailwayProjectDeploymentStatus({ projectId, env = process.env }) {
+	const payload = await railwayGraphqlRequest({
+		query: `
+query TreeseedRailwayDeploymentStatus($projectId: String!) {
+	project(id: $projectId) {
+		id
+		environments(first: 50) {
+			edges {
+				node {
+					id
+					name
+					serviceInstances {
+						edges {
+							node {
+								id
+								serviceId
+								serviceName
+								latestDeployment {
+									id
+									status
+									createdAt
+									deploymentStopped
+									meta
+									instances {
+										id
+										status
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+`.trim(),
+		variables: { projectId },
+		env,
+	});
+	return payload.data?.project ?? null;
 }
 
 export function setRailwaySecretVariable(
