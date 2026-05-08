@@ -91,6 +91,68 @@ function configuredEnvValue(env, name) {
 	return typeof value === 'string' && value.trim() ? value.trim() : '';
 }
 
+function parseRailwayJsonOutput(output) {
+	const trimmed = typeof output === 'string' ? output.trim() : '';
+	if (!trimmed) {
+		return null;
+	}
+	try {
+		return JSON.parse(trimmed);
+	} catch {
+		// Some Railway commands print a prompt/status line before --json output.
+	}
+	const lines = trimmed.split(/\r?\n/u);
+	for (let index = lines.length - 1; index >= 0; index -= 1) {
+		const candidate = lines.slice(index).join('\n').trim();
+		if (!candidate.startsWith('{') && !candidate.startsWith('[')) {
+			continue;
+		}
+		try {
+			return JSON.parse(candidate);
+		} catch {
+			// Keep looking for the final JSON payload.
+		}
+	}
+	return null;
+}
+
+function normalizeRailwayCliVolume(value, { serviceId, environmentId, fallbackName, fallbackMountPath }) {
+	if (!value || typeof value !== 'object') {
+		return null;
+	}
+	const record = value;
+	const id = typeof record.id === 'string' && record.id.trim() ? record.id.trim() : '';
+	if (!id) {
+		return null;
+	}
+	const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : fallbackName;
+	const mountPath = typeof record.mountPath === 'string' && record.mountPath.trim() ? record.mountPath.trim() : fallbackMountPath;
+	const sizeMb = typeof record.sizeMB === 'number' ? record.sizeMB : null;
+	const currentSizeMb = typeof record.currentSizeMB === 'number' ? record.currentSizeMB : null;
+	return {
+		id,
+		name,
+		projectId: null,
+		instances: [{
+			id,
+			serviceId,
+			environmentId,
+			mountPath,
+			sizeGb: sizeMb === null ? null : sizeMb / 1000,
+			usedGb: currentSizeMb === null ? null : currentSizeMb / 1000,
+		}],
+	};
+}
+
+function normalizeRailwayCliVolumeList(value, options) {
+	if (!value || typeof value !== 'object' || !Array.isArray(value.volumes)) {
+		return [];
+	}
+	return value.volumes
+		.map((entry) => normalizeRailwayCliVolume(entry, options))
+		.filter(Boolean);
+}
+
 export function isUsableRailwayToken(value) {
 	return typeof value === 'string' && value.trim().length >= 8;
 }
@@ -1134,10 +1196,13 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		: null;
 	const volumeMountPath = service.runnerPool?.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH;
 	const volumeConfiguration = wantsRunnerVolume
-		? await ensureRailwayServiceVolume({
+		? await ensureRailwayServiceVolumeWithCliFallback({
+			tenantRoot,
 			projectId: project.id,
 			environmentId: environment.id,
+			environmentName: environment.name,
 			serviceId: railwayService.id,
+			serviceName: railwayService.name,
 			name: deriveRailwayWorkerRunnerVolumeName(railwayService.name),
 			mountPath: volumeMountPath,
 			env,
@@ -1170,6 +1235,92 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 				updated: volumeConfiguration.updated,
 			}
 			: null,
+	};
+}
+
+async function ensureRailwayServiceVolumeWithCliFallback({
+	tenantRoot,
+	projectId,
+	environmentId,
+	environmentName,
+	serviceId,
+	serviceName,
+	name,
+	mountPath,
+	env = process.env,
+}) {
+	try {
+		return await ensureRailwayServiceVolume({
+			projectId,
+			environmentId,
+			serviceId,
+			name,
+			mountPath,
+			env,
+		});
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (!message.includes('Problem processing request')) {
+			throw error;
+		}
+	}
+
+	const cliOptions = {
+		cwd: tenantRoot,
+		capture: true,
+		env,
+	};
+	const volumeArgs = ['volume', '--service', serviceId, '--environment', environmentId];
+	const listResult = runRailway([...volumeArgs, 'list', '--json'], cliOptions);
+	const existingVolumes = normalizeRailwayCliVolumeList(parseRailwayJsonOutput(listResult.stdout ?? ''), {
+		serviceId,
+		environmentId,
+		fallbackName: name,
+		fallbackMountPath: mountPath,
+	});
+	let volume = existingVolumes.find((entry) => entry.name === name)
+		?? existingVolumes.find((entry) => entry.instances.some((instance) => instance.mountPath === mountPath))
+		?? existingVolumes[0]
+		?? null;
+	let created = false;
+	let updated = false;
+
+	if (!volume) {
+		const createResult = runRailway([...volumeArgs, 'add', '--mount-path', mountPath, '--json'], cliOptions);
+		volume = normalizeRailwayCliVolume(parseRailwayJsonOutput(createResult.stdout ?? ''), {
+			serviceId,
+			environmentId,
+			fallbackName: name,
+			fallbackMountPath: mountPath,
+		});
+		if (!volume) {
+			throw new Error(`Railway CLI volume add did not return a usable volume for ${serviceName} in ${environmentName}.`);
+		}
+		created = true;
+	}
+
+	const instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null;
+	if (volume.name !== name || instance?.mountPath !== mountPath) {
+		const updateResult = runRailway([...volumeArgs, 'update', '--volume', volume.id, '--name', name, '--mount-path', mountPath, '--json'], cliOptions);
+		const updatedVolume = normalizeRailwayCliVolume(parseRailwayJsonOutput(updateResult.stdout ?? ''), {
+			serviceId,
+			environmentId,
+			fallbackName: name,
+			fallbackMountPath: mountPath,
+		});
+		volume = updatedVolume ?? {
+			...volume,
+			name,
+			instances: volume.instances.map((entry) => ({ ...entry, mountPath })),
+		};
+		updated = true;
+	}
+
+	return {
+		volume,
+		instance: volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null,
+		created,
+		updated,
 	};
 }
 

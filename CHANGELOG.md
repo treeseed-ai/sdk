@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.41] - 2026-05-08
+
+### Infrastructure
+
+- chore(sdk): bump version to 0.6.41-dev.staging.20260508T083549Z (f957c1b83d47)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.6.41.
+
 ## [0.6.40] - 2026-05-08
 
 ### Added
