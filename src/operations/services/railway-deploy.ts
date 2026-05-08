@@ -1128,6 +1128,7 @@ export async function deployRailwayService(
 	}
 	const deployService = await resolveRailwayDeployProjectContext(service, { env });
 	const plan = planRailwayServiceDeploy(deployService, { env });
+	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
 
 	const taskPrefix = prefix ?? {
 		scope: normalizeScope(deployService.scope ?? deployService.railwayEnvironment ?? 'railway'),
@@ -1135,7 +1136,9 @@ export async function deployRailwayService(
 		task: `${deployService.key}-railway-deploy`,
 		stage: 'deploy',
 	};
-	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
+	const runtimeConfiguration = await syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, {
+		env: commandEnv,
+	});
 	if (deployService.buildCommand) {
 		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
 			cwd: deployService.rootDir,
@@ -1172,9 +1175,6 @@ export async function deployRailwayService(
 	if (lastFailure) {
 		throw new Error(lastFailure.stderr?.trim() || lastFailure.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
 	}
-	const runtimeConfiguration = await syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, {
-		env: commandEnv,
-	});
 	return {
 		service: deployService.key,
 		status: 'deployed',
