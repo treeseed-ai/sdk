@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	configuredRailwayScheduledJobs,
 	configuredRailwayServices,
+	collectRailwayDeploymentStatusChecks,
 	deriveRailwayWorkerRunnerServiceName,
 	deriveRailwayWorkerRunnerVolumeName,
 	ensureRailwayScheduledJobs,
@@ -570,6 +571,62 @@ describe('railway scheduled jobs', () => {
 			expect.objectContaining({ type: 'service-instance', service: 'workerRunner', ok: true }),
 			expect.objectContaining({ type: 'worker-runner-volume', volumeName: 'acme-docs-worker-runner-01-staging-data', mountPath: '/data', ok: true }),
 			expect.objectContaining({ type: 'schedule', service: 'workdayManager', ok: true }),
+		]));
+	});
+
+	it('reports Railway deployment status checks as unsettled until deploys reach success or sleeping', async () => {
+		const tenantRoot = await createTenantFixture();
+		const services = configuredRailwayServices(tenantRoot, 'staging');
+		const statusPayload = {
+			environments: {
+				edges: [{
+					node: {
+						name: 'staging',
+						serviceInstances: {
+							edges: services.map((service) => ({
+								node: {
+									serviceName: service.serviceName,
+									latestDeployment: {
+										status: service.key === 'workerRunner' ? 'BUILDING' : 'SUCCESS',
+										deploymentStopped: service.key === 'workerRunner',
+										instances: service.key === 'workerRunner' ? [{ status: 'CREATED' }] : [{ status: 'RUNNING' }],
+										meta: service.key === 'workerRunner' ? { volumeMounts: ['/data'] } : {},
+									},
+								},
+							})),
+						},
+					},
+				}],
+			},
+		};
+
+		const unsettled = collectRailwayDeploymentStatusChecks(statusPayload, 'staging', services);
+		expect(unsettled).toEqual(expect.arrayContaining([
+			expect.objectContaining({
+				type: 'deployment-status',
+				service: 'workerRunner',
+				ok: false,
+				status: 'BUILDING',
+			}),
+		]));
+
+		for (const edge of statusPayload.environments.edges[0].node.serviceInstances.edges) {
+			if (edge.node.serviceName.endsWith('worker-runner-01')) {
+				edge.node.latestDeployment.status = 'SUCCESS';
+				edge.node.latestDeployment.instances = [{ status: 'EXITED' }];
+			}
+		}
+		const settled = collectRailwayDeploymentStatusChecks(statusPayload, 'staging', services);
+		expect(settled.every((entry) => entry.ok)).toBe(true);
+		expect(settled).toEqual(expect.arrayContaining([
+			expect.objectContaining({
+				type: 'deployment-status',
+				service: 'workerRunner',
+				ok: true,
+				observed: expect.objectContaining({
+					volumeMounts: ['/data'],
+				}),
+			}),
 		]));
 	});
 

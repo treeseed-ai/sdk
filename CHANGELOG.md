@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.45] - 2026-05-08
+
+### Added
+
+- feat(operations): implement Railway deployment settlement checks (3f899721b019)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.6.45.
+
 ## [0.6.44] - 2026-05-08
 
 ### Added

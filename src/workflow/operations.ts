@@ -3592,7 +3592,11 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 									branch: String(repo.branch),
 									headSha: String(repo.commitSha),
 								})),
-						], 'hosted', { root, runId: workflowRun.runId }).then((workflowGates) => ({ workflowGates })))
+						], 'hosted', {
+							root,
+							runId: workflowRun.runId,
+							onProgress: (line, stream) => helpers.write(line, stream),
+						}).then((workflowGates) => ({ workflowGates })))
 					: { workflowGates: [] };
 				const releaseCandidate = branch === STAGING_BRANCH
 					? await executeJournalStep(root, workflowRun.runId, 'release-candidate', () => {
@@ -4199,7 +4203,11 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 									branch: STAGING_BRANCH,
 									headSha: String(report.commitSha),
 								})),
-						], ciMode, { root, runId: workflowRun.runId }).then((workflowGates) => ({
+						], ciMode, {
+							root,
+							runId: workflowRun.runId,
+							onProgress: (line, stream) => helpers.write(line, stream),
+						}).then((workflowGates) => ({
 							status: 'completed',
 							workflowGates,
 						})));
