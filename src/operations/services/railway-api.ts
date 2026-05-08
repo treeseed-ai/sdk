@@ -36,6 +36,7 @@ export type RailwayServiceInstanceSummary = {
 	id: string | null;
 	buildCommand: string | null;
 	startCommand: string | null;
+	cronSchedule: string | null;
 	rootDirectory: string | null;
 	healthcheckPath: string | null;
 	healthcheckTimeoutSeconds: number | null;
@@ -873,6 +874,7 @@ export async function getRailwayServiceInstance({
 		id: null,
 		buildCommand: null,
 		startCommand: null,
+		cronSchedule: null,
 		rootDirectory: null,
 		healthcheckPath: null,
 		healthcheckTimeoutSeconds: null,
@@ -892,6 +894,7 @@ query TreeseedRailwayServiceInstance($serviceId: String!, $environmentId: String
 		id
 		buildCommand
 		startCommand
+		cronSchedule
 		rootDirectory
 		healthcheckPath
 		healthcheckTimeout
@@ -908,6 +911,7 @@ query TreeseedRailwayServiceInstance($serviceId: String!, $environmentId: String
 			id: railwayConnectionLabel(instance?.id) || null,
 			buildCommand: railwayConnectionLabel(instance?.buildCommand) || null,
 			startCommand: railwayConnectionLabel(instance?.startCommand) || null,
+			cronSchedule: railwayConnectionLabel(instance?.cronSchedule) || null,
 			rootDirectory: railwayConnectionLabel(instance?.rootDirectory) || null,
 			healthcheckPath: railwayConnectionLabel(instance?.healthcheckPath) || null,
 			healthcheckTimeoutSeconds: normalizeRailwayNumber(instance?.healthcheckTimeout),
@@ -929,6 +933,7 @@ query TreeseedRailwayServiceInstanceLegacy($serviceId: String!, $environmentId: 
 		id
 		buildCommand
 		startCommand
+		cronSchedule
 		rootDirectory
 	}
 }
@@ -943,6 +948,7 @@ query TreeseedRailwayServiceInstanceLegacy($serviceId: String!, $environmentId: 
 				id: railwayConnectionLabel(instance?.id) || null,
 				buildCommand: railwayConnectionLabel(instance?.buildCommand) || null,
 				startCommand: railwayConnectionLabel(instance?.startCommand) || null,
+				cronSchedule: railwayConnectionLabel(instance?.cronSchedule) || null,
 				rootDirectory: railwayConnectionLabel(instance?.rootDirectory) || null,
 			} satisfies RailwayServiceInstanceSummary;
 		}
@@ -958,6 +964,7 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	environmentId,
 	buildCommand,
 	startCommand,
+	cronSchedule,
 	rootDirectory,
 	healthcheckPath,
 	healthcheckTimeoutSeconds,
@@ -971,6 +978,7 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	environmentId: string;
 	buildCommand?: string | null;
 	startCommand?: string | null;
+	cronSchedule?: string | null;
 	rootDirectory?: string | null;
 	healthcheckPath?: string | null;
 	healthcheckTimeoutSeconds?: number | null;
@@ -987,6 +995,7 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	const desired = {
 		buildCommand: railwayConnectionLabel(buildCommand) || null,
 		startCommand: railwayConnectionLabel(startCommand) || null,
+		cronSchedule: railwayConnectionLabel(cronSchedule) || null,
 		rootDirectory: railwayConnectionLabel(rootDirectory) || null,
 		healthcheckPath: railwayConnectionLabel(healthcheckPath) || null,
 		healthcheckTimeoutSeconds: normalizeRailwayNumber(healthcheckTimeoutSeconds),
@@ -1014,6 +1023,7 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	const drifted = (
 		(desired.buildCommand !== null && desired.buildCommand !== current.buildCommand)
 		|| (desired.startCommand !== null && desired.startCommand !== current.startCommand)
+		|| (desired.cronSchedule !== null && desired.cronSchedule !== current.cronSchedule)
 		|| (desired.rootDirectory !== null && desired.rootDirectory !== current.rootDirectory)
 		|| (desired.healthcheckPath !== null && desired.healthcheckPath !== current.healthcheckPath)
 		|| (desired.healthcheckTimeoutSeconds !== null && desired.healthcheckTimeoutSeconds !== current.healthcheckTimeoutSeconds)
@@ -1044,6 +1054,7 @@ mutation TreeseedRailwayServiceInstanceUpdateLegacy($serviceId: String!, $enviro
 				input: {
 					...(desired.buildCommand !== null ? { buildCommand: desired.buildCommand } : {}),
 					...(desired.startCommand !== null ? { startCommand: desired.startCommand } : {}),
+					...(desired.cronSchedule !== null ? { cronSchedule: desired.cronSchedule } : {}),
 					...(desired.rootDirectory !== null ? { rootDirectory: desired.rootDirectory } : {}),
 					...(desired.healthcheckPath !== null ? { healthcheckPath: desired.healthcheckPath } : {}),
 					...(desired.healthcheckTimeoutSeconds !== null ? { healthcheckTimeout: desired.healthcheckTimeoutSeconds } : {}),
@@ -1071,6 +1082,7 @@ mutation TreeseedRailwayServiceInstanceUpdateLegacy($serviceId: String!, $enviro
 			id: instance.id || current.id,
 			buildCommand: instance.buildCommand ?? desired.buildCommand,
 			startCommand: instance.startCommand ?? desired.startCommand,
+			cronSchedule: instance.cronSchedule ?? desired.cronSchedule,
 			rootDirectory: instance.rootDirectory ?? desired.rootDirectory,
 			healthcheckPath: instance.healthcheckPath ?? desired.healthcheckPath,
 			healthcheckTimeoutSeconds: instance.healthcheckTimeoutSeconds ?? desired.healthcheckTimeoutSeconds,
