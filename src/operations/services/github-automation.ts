@@ -280,7 +280,7 @@ export async function ensureGitHubBootstrapRepository(
 	};
 }
 
-export async function createGitHubRepository(input) {
+export async function createGitHubRepository(input, { env = process.env } = {}) {
 	const visibility = input.visibility ?? 'private';
 	const remotes = resolveGitHubRemoteUrls(input.owner, input.name);
 
@@ -292,7 +292,7 @@ export async function createGitHubRepository(input) {
 		visibility,
 		topics: Array.isArray(input.topics) ? input.topics.map((topic) => slugifySegment(topic, 'treeseed')) : [],
 	}, {
-		client: createGitHubApiClient(),
+		client: createGitHubApiClient({ env }),
 	});
 }
 

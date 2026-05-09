@@ -17,6 +17,7 @@ function defaultContext(overrides: Partial<TreeseedOperationContext> = {}): Tree
 		cwd: overrides.cwd ?? process.cwd(),
 		env: overrides.env ?? process.env,
 		write: overrides.write,
+		onProgress: overrides.onProgress,
 		spawn: overrides.spawn,
 		outputFormat: overrides.outputFormat ?? 'human',
 		prompt: overrides.prompt,

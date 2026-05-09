@@ -463,4 +463,18 @@ export class RemoteTreeseedRunnerClient {
 			requireAuth: true,
 		});
 	}
+
+	consumeCredentialSession(jobId: string, sessionId: string) {
+		return this.client.requestJson<{ ok: true; payload: {
+			id: string;
+			hostKind: string;
+			hostId: string;
+			purpose: string;
+			provider?: string | null;
+			config: Record<string, string>;
+		} }>(`/v1/jobs/${encodeURIComponent(jobId)}/provider-credential-sessions/${encodeURIComponent(sessionId)}/consume`, {
+			method: 'POST',
+			requireAuth: true,
+		});
+	}
 }

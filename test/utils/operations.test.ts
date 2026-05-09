@@ -5,8 +5,11 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import {
 	findTreeseedOperation,
+	planKnowledgeHubLaunch,
 	TRESEED_OPERATION_SPECS,
+	TreeseedOperationsSdk,
 	TreeseedWorkflowSdk,
+	validateRepositoryHost,
 } from '../../src/operations.ts';
 import { sdkFixtureRoot } from '../test-fixture.ts';
 
@@ -39,10 +42,55 @@ describe('treeseed operations registry', () => {
 		expect(TRESEED_OPERATION_SPECS.map((spec) => spec.name)).toContain('ci');
 		expect(TRESEED_OPERATION_SPECS.map((spec) => spec.name)).toContain('tasks');
 		expect(TRESEED_OPERATION_SPECS.map((spec) => spec.name)).toContain('release');
+		expect(TRESEED_OPERATION_SPECS.map((spec) => spec.name)).toContain('hub.plan_launch');
+		expect(TRESEED_OPERATION_SPECS.map((spec) => spec.name)).toContain('repository_host.create_repositories');
 	});
 
 	it('resolves aliases through the shared registry', () => {
 		expect(findTreeseedOperation('release:verify')?.name).toBe('test:release:full');
+	});
+});
+
+describe('knowledge hub launch operations', () => {
+	it('plans split software and content repositories by default', () => {
+		const plan = planKnowledgeHubLaunch({
+			team: { id: 'team-one' },
+			hub: { name: 'Launch Project', slug: 'launch-project' },
+		});
+		expect(plan.repository.topology).toBe('split_software_content');
+		expect(plan.repository.repositories).toEqual(expect.arrayContaining([
+			expect.objectContaining({ role: 'software', name: 'launch-project-site' }),
+			expect.objectContaining({ role: 'content', name: 'launch-project-content' }),
+		]));
+		expect(plan.contentResolution.productionSource).toBe('r2_published_artifacts');
+	});
+
+	it('validates GitHub Repository Host configuration', () => {
+		expect(validateRepositoryHost({
+			provider: 'github',
+			ownership: 'treeseed_managed',
+			name: 'TreeSeed Hosted Hubs',
+			organizationOrOwner: 'treeseed-sites',
+		}).ok).toBe(true);
+		expect(validateRepositoryHost({
+			provider: 'github',
+			ownership: 'treeseed_managed',
+			name: '',
+			organizationOrOwner: '',
+		}).ok).toBe(false);
+	});
+
+	it('executes hub plan through the operation runtime', async () => {
+		const operations = new TreeseedOperationsSdk();
+		const result = await operations.execute({
+			operationName: 'hub.plan_launch',
+			input: {
+				team: { id: 'team-one' },
+				hub: { name: 'Runtime Plan', slug: 'runtime-plan' },
+			},
+		}, { cwd: sdkFixtureRoot });
+		expect(result.ok).toBe(true);
+		expect(result.payload.repository.repositories.some((repository: { role: string }) => repository.role === 'content')).toBe(true);
 	});
 });
 

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -57,7 +57,17 @@ import {
 	syncTemplateProject,
 	validateTemplateProduct,
 } from '../../operations/services/template-registry.ts';
-import { validateKnowledgeCoopManagedLaunchPrerequisites } from '../../operations/services/knowledge-coop-launch.ts';
+import { validateKnowledgeHubProviderLaunchPrerequisites } from '../../operations/services/hub-provider-launch.ts';
+import { publishProjectContent } from '../../operations/services/project-platform.ts';
+import {
+	createKnowledgeHubRepositories,
+	executeKnowledgeHubLaunch,
+	planKnowledgeHubLaunch,
+	validateRepositoryHost,
+	type KnowledgeHubLaunchIntent,
+	type KnowledgeHubRepositoryPlan,
+	type RepositoryHost,
+} from '../../operations/services/hub-launch.ts';
 import {
 	collectCliPreflight,
 	formatCliPreflightReport,
@@ -176,6 +186,35 @@ function copyDirectory(sourceDir: string, targetDir: string) {
 	}
 }
 
+function copyFileIfExists(sourceFile: string, targetFile: string) {
+	if (!existsSync(sourceFile)) return;
+	mkdirSync(resolve(targetFile, '..'), { recursive: true });
+	writeFileSync(targetFile, readFileSync(sourceFile));
+}
+
+function prepareContentPublishRoot(tenantRoot: string, contentRepositoryRoot: string | null) {
+	if (!contentRepositoryRoot || resolve(contentRepositoryRoot) === resolve(tenantRoot)) {
+		return { root: tenantRoot, cleanup: () => {} };
+	}
+	const tempRoot = mkdtempSync(join(tmpdir(), 'treeseed-content-repo-publish-'));
+	copyFileIfExists(resolve(tenantRoot, 'treeseed.site.yaml'), resolve(tempRoot, 'treeseed.site.yaml'));
+	copyFileIfExists(resolve(tenantRoot, 'package.json'), resolve(tempRoot, 'package.json'));
+	copyFileIfExists(resolve(tenantRoot, 'src', 'manifest.yaml'), resolve(tempRoot, 'src', 'manifest.yaml'));
+	copyTreeseedOperationalState(tenantRoot, tempRoot);
+	const contentSource = resolve(contentRepositoryRoot, 'src', 'content');
+	if (existsSync(contentSource)) {
+		copyDirectory(contentSource, resolve(tempRoot, 'src', 'content'));
+	}
+	const publicSource = resolve(contentRepositoryRoot, 'public');
+	if (existsSync(publicSource)) {
+		copyDirectory(publicSource, resolve(tempRoot, 'public'));
+	}
+	return {
+		root: tempRoot,
+		cleanup: () => rmSync(tempRoot, { recursive: true, force: true }),
+	};
+}
+
 function workflowInputForOperation(name: string, input: Record<string, unknown>) {
 	switch (name) {
 		case 'status':
@@ -258,13 +297,13 @@ class PreflightOperation extends BaseOperation<{ requireAuth?: boolean }> {
 			requireAuth: input.requireAuth ?? this.requireAuth,
 		});
 		const launch = input.launch === true || input.managedLaunch === true
-			? await validateKnowledgeCoopManagedLaunchPrerequisites(context.cwd)
+			? await validateKnowledgeHubProviderLaunchPrerequisites(context.cwd)
 			: null;
 		const stdout = [formatCliPreflightReport(report)];
 		if (launch) {
 			stdout.push(
 				'',
-				'Knowledge Coop managed launch preflight',
+				'Knowledge Hub launch preflight',
 				`- ok: ${launch.ok ? 'yes' : 'no'}`,
 				`- commands: git=${launch.commands.git ? 'ok' : 'missing'}, gh=${launch.commands.gh ? 'ok' : 'missing'}, wrangler=${launch.commands.wrangler ? 'ok' : 'missing'}, railway=${launch.commands.railway ? 'ok' : 'missing'}`,
 			);
@@ -295,6 +334,23 @@ class InitOperation extends BaseOperation {
 		if (!directory) {
 			return failureResult(this.metadata, 'Init requires a target directory.');
 		}
+		const launchPlan = planKnowledgeHubLaunch({
+			team: { id: typeof input.teamId === 'string' ? input.teamId : 'local' },
+			hub: {
+				name: typeof input.name === 'string' ? input.name : directory,
+				slug: typeof input.slug === 'string' ? input.slug : directory,
+				visibility: 'team',
+			},
+			source: {
+				kind: 'template',
+				ref: String(input.template ?? 'starter-basic'),
+			},
+			repository: {
+				topology: input.repositoryTopology === 'split_software_content' ? 'split_software_content' : 'combined_compatibility',
+				provider: 'github',
+			},
+			hosting: { mode: 'self_hosted' },
+		});
 		const definition = await scaffoldTemplateProject(
 			String(input.template ?? 'starter-basic'),
 			resolve(context.cwd, directory),
@@ -312,6 +368,7 @@ class InitOperation extends BaseOperation {
 		return operationResult(this.metadata, {
 			directory,
 			template: definition.id,
+			launchPlan,
 		});
 	}
 }
@@ -359,6 +416,420 @@ class SyncTemplateOperation extends BaseOperation {
 		}, {
 			ok: input.check === true ? changed.length === 0 : true,
 			exitCode: input.check === true && changed.length > 0 ? 1 : 0,
+		});
+	}
+}
+
+class HubPlanLaunchOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, _context: TreeseedOperationContext) {
+		const intent = (input.intent && typeof input.intent === 'object' ? input.intent : input) as KnowledgeHubLaunchIntent;
+		return operationResult(this.metadata, planKnowledgeHubLaunch(intent));
+	}
+}
+
+class HubValidateLaunchOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, _context: TreeseedOperationContext) {
+		try {
+			const intent = (input.intent && typeof input.intent === 'object' ? input.intent : input) as KnowledgeHubLaunchIntent;
+			const plan = planKnowledgeHubLaunch(intent);
+			return operationResult(this.metadata, {
+				ok: true,
+				issues: [],
+				plan,
+			});
+		} catch (error) {
+			return operationResult(this.metadata, {
+				ok: false,
+				issues: [error instanceof Error ? error.message : String(error)],
+			}, {
+				ok: false,
+				exitCode: 1,
+			});
+		}
+	}
+}
+
+class HubExecuteLaunchOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+		const intent = (input.intent && typeof input.intent === 'object' ? input.intent : input) as KnowledgeHubLaunchIntent;
+		const result = await executeKnowledgeHubLaunch(intent, {
+			onPhase: async (phase) => {
+				await context.onProgress?.({
+					kind: 'hub_launch_phase',
+					...phase,
+				});
+			},
+		});
+		return operationResult(this.metadata, result);
+	}
+}
+
+class HubResumeLaunchOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+		const intent = (input.intent && typeof input.intent === 'object' ? input.intent : input) as KnowledgeHubLaunchIntent;
+		const result = await executeKnowledgeHubLaunch(intent, {
+			onPhase: async (phase) => {
+				await context.onProgress?.({
+					kind: 'hub_launch_phase',
+					resumed: true,
+					...phase,
+				});
+			},
+		});
+		return operationResult(this.metadata, {
+			resumed: true,
+			...result,
+		});
+	}
+}
+
+function plainObject(value: unknown): Record<string, unknown> {
+	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function stringValue(value: unknown, fallback = '') {
+	return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+function arrayOfStrings(value: unknown) {
+	return Array.isArray(value) ? value.map((entry) => String(entry)).filter(Boolean) : [];
+}
+
+function normalizeUpdatePlan(input: Record<string, unknown>, cwd: string) {
+	const source = plainObject(input.source);
+	const sourceKind = stringValue(input.sourceKind ?? source.kind, 'template');
+	const sourceRef = stringValue(input.sourceRef ?? source.ref, '');
+	const sourceVersion = stringValue(input.sourceVersion ?? source.version, '');
+	const requestedChanges = Array.isArray(input.changes) ? input.changes : [];
+	const changedPaths = requestedChanges.length > 0
+		? requestedChanges.flatMap((change) => {
+			const entry = plainObject(change);
+			return stringValue(entry.path) ? [String(entry.path)] : arrayOfStrings(entry.paths);
+		})
+		: arrayOfStrings(input.changedPaths);
+	const safeConfigOnly = input.safeConfigOnly === true || input.updateKind === 'runtime_config';
+	const behaviorChanges = arrayOfStrings(input.behaviorChanges);
+	const contentChanges = changedPaths.filter((path) => path.startsWith('src/content/') || path.startsWith('content/'));
+	const requiresDecision = input.requiresDecision === true
+		|| (!safeConfigOnly && (contentChanges.length > 0 || behaviorChanges.length > 0 || ['template', 'knowledge_pack', 'market_listing'].includes(sourceKind)));
+	const conflicts = arrayOfStrings(input.conflicts).map((path) => ({
+		path,
+		reason: 'caller_reported_conflict',
+	}));
+	return {
+		state: 'planned',
+		hubId: stringValue(input.hubId ?? input.projectId, ''),
+		sourceKind,
+		sourceRef: sourceRef || null,
+		sourceVersion: sourceVersion || null,
+		changedPaths,
+		conflicts,
+		requiredDecisions: requiresDecision
+			? [{
+				kind: 'binding_update',
+				reason: safeConfigOnly ? 'approval_policy' : 'template_or_content_change',
+				decisionId: stringValue(input.decisionId, '') || null,
+			}]
+			: [],
+		requiresDecision,
+		repositoryTargets: plainObject(input.repositoryTargets),
+		provenance: {
+			sourceKind,
+			sourceRef: sourceRef || null,
+			sourceVersion: sourceVersion || null,
+			plannedAt: new Date().toISOString(),
+		},
+		workspace: plainObject(input.workspace),
+		tenantRoot: stringValue(input.tenantRoot, cwd),
+	};
+}
+
+function writeJsonFile(path: string, value: unknown) {
+	mkdirSync(resolve(path, '..'), { recursive: true });
+	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function workspaceAttachPlan(input: Record<string, unknown>, cwd: string) {
+	const parent = plainObject(input.parent ?? input.parentRepository);
+	const software = plainObject(input.softwareRepository);
+	const content = plainObject(input.contentRepository);
+	const hubMountPath = stringValue(input.hubMountPath, 'docs');
+	const softwareSubmodulePath = stringValue(input.softwareSubmodulePath, `${hubMountPath}/hub-site`);
+	const contentSubmodulePath = stringValue(input.contentSubmodulePath, `${hubMountPath}/hub-content`);
+	const issues: string[] = [];
+	if (!stringValue(parent.owner) && !stringValue(parent.url)) issues.push('Parent repository owner/url is required.');
+	if (!stringValue(parent.name) && !stringValue(parent.url)) issues.push('Parent repository name/url is required.');
+	if (!stringValue(software.url) && !stringValue(software.name)) issues.push('Software repository url/name is required.');
+	if (!stringValue(content.url) && !stringValue(content.name)) issues.push('Content repository url/name is required.');
+	return {
+		state: issues.length > 0 ? 'invalid' : 'planned',
+		issues,
+		hubId: stringValue(input.hubId ?? input.projectId, ''),
+		tenantRoot: stringValue(input.tenantRoot, cwd),
+		parentRepository: parent,
+		softwareRepository: software,
+		contentRepository: content,
+		hubMountPath,
+		softwareSubmodulePath,
+		contentSubmodulePath,
+		updateSubmodulePointersEnabled: input.updateSubmodulePointersEnabled === true,
+		allowedWriteTargets: arrayOfStrings(input.allowedWriteTargets).length > 0 ? arrayOfStrings(input.allowedWriteTargets) : ['content'],
+		contentOverlay: stringValue(input.contentOverlay, 'src_content_when_present'),
+	};
+}
+
+class HubPlanUpdateOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+		return operationResult(this.metadata, normalizeUpdatePlan(input, context.cwd));
+	}
+}
+
+class HubValidateUpdateOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, _context: TreeseedOperationContext) {
+		const issues: string[] = [];
+		if (!input.hubId && !input.projectId) issues.push('hubId or projectId is required.');
+		if (!input.sourceKind) issues.push('sourceKind is required.');
+		return operationResult(this.metadata, {
+			ok: issues.length === 0,
+			issues,
+		}, {
+			ok: issues.length === 0,
+			exitCode: issues.length === 0 ? 0 : 1,
+		});
+	}
+}
+
+class HubExecuteUpdateOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+		const plan = normalizeUpdatePlan(plainObject(input.plan).state ? plainObject(input.plan) : input, context.cwd);
+		const decisionApproved = input.decisionApproved === true || typeof input.decisionId === 'string' || typeof input.approvedDecisionId === 'string';
+		if (plan.requiresDecision && !decisionApproved) {
+			const proposal = {
+				kind: 'treeseed_update_proposal',
+				plan,
+				createdAt: new Date().toISOString(),
+				reason: 'Decision required before binding template, pack, content, or behavior changes.',
+			};
+			const proposalPath = resolve(plan.tenantRoot, '.treeseed', 'proposals', `update-${Date.now()}.json`);
+			writeJsonFile(proposalPath, proposal);
+			return operationResult(this.metadata, {
+				state: 'waiting_for_decision',
+				applied: false,
+				requiresDecision: true,
+				proposalPath: relative(plan.tenantRoot, proposalPath),
+				plan,
+			});
+		}
+		const appliedPath = resolve(plan.tenantRoot, '.treeseed', 'updates', `applied-${Date.now()}.json`);
+		writeJsonFile(appliedPath, {
+			kind: 'treeseed_safe_update_application',
+			plan,
+			decisionApproved,
+			appliedAt: new Date().toISOString(),
+		});
+		return operationResult(this.metadata, {
+			state: 'applied',
+			applied: true,
+			requiresDecision: plan.requiresDecision,
+			appliedPath: relative(plan.tenantRoot, appliedPath),
+			plan,
+		});
+	}
+}
+
+class HubResumeUpdateOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+		const executor = new HubExecuteUpdateOperation(this.metadata.name);
+		return executor.execute({ ...input, resumed: true }, context);
+	}
+}
+
+class RepositoryHostValidateOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, _context: TreeseedOperationContext) {
+		const host = (input.host && typeof input.host === 'object' ? input.host : input) as RepositoryHost;
+		const result = validateRepositoryHost(host);
+		return operationResult(this.metadata, {
+			...result,
+			validatedAt: new Date().toISOString(),
+		}, {
+			ok: result.ok,
+			exitCode: result.ok ? 0 : 1,
+		});
+	}
+}
+
+class RepositoryHostCreateRepositoriesOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, _context: TreeseedOperationContext) {
+		const plan = input.plan as KnowledgeHubRepositoryPlan | undefined;
+		if (!plan) {
+			return failureResult(this.metadata, 'repository_host.create_repositories requires a repository plan.');
+		}
+		return operationResult(this.metadata, await createKnowledgeHubRepositories({
+			plan,
+			dryRun: input.dryRun === true,
+			description: typeof input.description === 'string' ? input.description : null,
+			homepageUrl: typeof input.homepageUrl === 'string' ? input.homepageUrl : null,
+		}));
+	}
+}
+
+class ContentVerifyPackageOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+		const tenantRoot = typeof input.tenantRoot === 'string' ? input.tenantRoot : context.cwd;
+		const contentRoot = resolve(tenantRoot, 'src', 'content');
+		return operationResult(this.metadata, {
+			ok: existsSync(contentRoot),
+			packageRef: typeof input.packageRef === 'string' ? input.packageRef : null,
+			contentRoot,
+			issues: existsSync(contentRoot) ? [] : [`Missing content root: ${contentRoot}`],
+		});
+	}
+}
+
+class ContentPublishOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+		const tenantRoot = typeof input.tenantRoot === 'string' ? input.tenantRoot : context.cwd;
+		const contentRepositoryRoot = typeof input.contentRepositoryRoot === 'string'
+			? input.contentRepositoryRoot
+			: typeof input.contentRoot === 'string'
+				? input.contentRoot
+				: null;
+		const scope = input.scope === 'staging' || input.scope === 'prod' || input.scope === 'local'
+			? input.scope
+			: 'prod';
+		if (input.dryRun === true) {
+			return operationResult(this.metadata, {
+				status: 'planned',
+				tenantRoot,
+				contentRepositoryRoot,
+				scope,
+				publishTarget: typeof input.publishTarget === 'string' ? input.publishTarget : 'r2_published_artifacts',
+			});
+		}
+		const preparedRoot = prepareContentPublishRoot(tenantRoot, contentRepositoryRoot);
+		try {
+			const result = await publishProjectContent({
+				tenantRoot: preparedRoot.root,
+				scope,
+				projectId: typeof input.projectId === 'string' ? input.projectId : null,
+				previewId: typeof input.previewId === 'string' ? input.previewId : null,
+				env: context.env,
+			});
+			return operationResult(this.metadata, {
+				status: 'published',
+				scope,
+				tenantRoot,
+				contentRepositoryRoot,
+				result,
+				publishTarget: 'r2_published_artifacts',
+				contentSource: contentRepositoryRoot ? 'content_repository' : 'tenant_root',
+				r2: {
+					bucketName: context.env?.TREESEED_CONTENT_BUCKET_NAME ?? process.env.TREESEED_CONTENT_BUCKET_NAME ?? null,
+					publicBaseUrl: context.env?.TREESEED_CONTENT_PUBLIC_BASE_URL ?? process.env.TREESEED_CONTENT_PUBLIC_BASE_URL ?? null,
+				},
+			});
+		} finally {
+			preparedRoot.cleanup();
+		}
+	}
+}
+
+class WorkspacePlanAttachParentOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+		const plan = workspaceAttachPlan(input, context.cwd);
+		return operationResult(this.metadata, {
+			...plan,
+			requiresTechnicalStewardApproval: true,
+		}, {
+			ok: plan.issues.length === 0,
+			exitCode: plan.issues.length === 0 ? 0 : 1,
+		});
+	}
+}
+
+class WorkspaceAttachParentOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+		const plan = workspaceAttachPlan(plainObject(input.plan).state ? plainObject(input.plan) : input, context.cwd);
+		if (plan.issues.length > 0) {
+			return operationResult(this.metadata, {
+				state: 'invalid',
+				attached: false,
+				issues: plan.issues,
+				plan,
+			}, {
+				ok: false,
+				exitCode: 1,
+			});
+		}
+		const manifest = {
+			schemaVersion: 1,
+			kind: 'treeseed_composed_workspace',
+			hubId: plan.hubId,
+			parentRepository: plan.parentRepository,
+			softwareRepository: plan.softwareRepository,
+			contentRepository: plan.contentRepository,
+			mounts: {
+				hub: plan.hubMountPath,
+				software: plan.softwareSubmodulePath,
+				content: plan.contentSubmodulePath,
+			},
+			updateSubmodulePointersEnabled: plan.updateSubmodulePointersEnabled,
+			allowedWriteTargets: plan.allowedWriteTargets,
+			credentialScopes: {
+				software: ['repository:software'],
+				content: ['repository:content'],
+				parentWorkspace: plan.updateSubmodulePointersEnabled ? ['repository:parent_workspace'] : [],
+			},
+			contentOverlay: plan.contentOverlay,
+			attachedAt: new Date().toISOString(),
+		};
+		const manifestPath = resolve(plan.tenantRoot, '.treeseed', 'workspace.json');
+		writeJsonFile(manifestPath, manifest);
+		return operationResult(this.metadata, {
+			state: 'attached',
+			attached: true,
+			manifestPath: relative(plan.tenantRoot, manifestPath),
+			manifest,
+			plan,
+		});
+	}
+}
+
+class WorkspaceUpdateSubmodulePointersOperation extends BaseOperation {
+	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
+		const plan = workspaceAttachPlan(plainObject(input.workspace).state ? plainObject(input.workspace) : input, context.cwd);
+		const hasCapability = input.hasParentWorkspaceCapability === true
+			|| arrayOfStrings(input.capabilities).includes('parent_workspace:update_submodule_pointers');
+		if (!plan.updateSubmodulePointersEnabled || !hasCapability) {
+			return operationResult(this.metadata, {
+				state: 'blocked',
+				updated: false,
+				reason: !plan.updateSubmodulePointersEnabled
+					? 'Workspace link does not allow TreeSeed to update submodule pointers.'
+					: 'Caller does not have parent workspace capability.',
+				softwareRef: stringValue(input.softwareRef) || null,
+				contentRef: stringValue(input.contentRef) || null,
+			}, {
+				ok: false,
+				exitCode: 1,
+			});
+		}
+		const pointerPlan = {
+			kind: 'treeseed_workspace_submodule_pointer_update',
+			hubId: plan.hubId,
+			softwareSubmodulePath: plan.softwareSubmodulePath,
+			contentSubmodulePath: plan.contentSubmodulePath,
+			softwareRef: stringValue(input.softwareRef) || null,
+			contentRef: stringValue(input.contentRef) || null,
+			updatedAt: new Date().toISOString(),
+		};
+		const pointerPath = resolve(plan.tenantRoot, '.treeseed', 'workspace-submodule-pointers.json');
+		writeJsonFile(pointerPath, pointerPlan);
+		return operationResult(this.metadata, {
+			state: 'updated',
+			updated: true,
+			pointerPath: relative(plan.tenantRoot, pointerPath),
+			...pointerPlan,
 		});
 	}
 }
@@ -708,6 +1179,21 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 			new WorkflowOperation('dev'),
 			new WorkflowOperation('dev:watch', 'dev'),
 			new InitOperation('init'),
+			new HubPlanLaunchOperation('hub.plan_launch'),
+			new HubValidateLaunchOperation('hub.validate_launch'),
+			new HubExecuteLaunchOperation('hub.execute_launch'),
+			new HubResumeLaunchOperation('hub.resume_launch'),
+			new HubPlanUpdateOperation('hub.plan_update'),
+			new HubValidateUpdateOperation('hub.validate_update'),
+			new HubExecuteUpdateOperation('hub.execute_update'),
+			new HubResumeUpdateOperation('hub.resume_update'),
+			new RepositoryHostValidateOperation('repository_host.validate'),
+			new RepositoryHostCreateRepositoriesOperation('repository_host.create_repositories'),
+			new ContentVerifyPackageOperation('content.verify_package'),
+			new ContentPublishOperation('content.publish'),
+			new WorkspacePlanAttachParentOperation('workspace.plan_attach_parent'),
+			new WorkspaceAttachParentOperation('workspace.attach_parent'),
+			new WorkspaceUpdateSubmodulePointersOperation('workspace.update_submodule_pointers'),
 			new TemplateOperation('template'),
 			new SyncTemplateOperation('sync'),
 			new DoctorOperation('doctor'),
