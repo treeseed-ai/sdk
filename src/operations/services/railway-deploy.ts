@@ -138,6 +138,24 @@ function railwayStatusDeploymentSettled(status) {
 	return normalized === 'SUCCESS' || normalized === 'SLEEPING';
 }
 
+function formatRailwayDeploymentStatusSummary(scope, checks) {
+	const aliases = {
+		api: 'api',
+		workdayManager: 'manager',
+		workerRunner: 'runner',
+	};
+	const parts = checks.map((check) => {
+		const name = aliases[check.service] ?? String(check.serviceName ?? check.service ?? 'service');
+		const status = String(check.status ?? 'unknown').toUpperCase();
+		const instanceStatuses = Array.isArray(check.observed?.instanceStatuses) && check.observed.instanceStatuses.length > 0
+			? `/${check.observed.instanceStatuses.join('+')}`
+			: '';
+		const stopped = check.observed?.deploymentStopped === true ? '/stopped' : '';
+		return `${name}=${status}${instanceStatuses}${stopped}`;
+	});
+	return `[railway][monitor][${scope}] ${parts.join(' ')}`;
+}
+
 export function collectRailwayDeploymentStatusChecks(statusPayload, scope, services) {
 	const expectedEnvironment = resolveRailwayEnvironmentForScope(scope);
 	const environments = railwayStatusEnvironmentNodes(statusPayload);
@@ -470,6 +488,7 @@ export async function waitForRailwayManagedDeploymentsSettled(
 		env = process.env,
 		timeoutMs = 600_000,
 		pollMs = 15_000,
+		onProgress,
 	} = {},
 ) {
 	const deadline = Date.now() + timeoutMs;
@@ -490,6 +509,7 @@ export async function waitForRailwayManagedDeploymentsSettled(
 	}
 	let checks = [];
 	let lastError = null;
+	let lastSummary = '';
 	for (;;) {
 		lastError = null;
 		try {
@@ -509,6 +529,11 @@ export async function waitForRailwayManagedDeploymentsSettled(
 				status: 'status_error',
 				message: error instanceof Error ? error.message : String(error),
 			}));
+		}
+		const summary = formatRailwayDeploymentStatusSummary(scope, checks);
+		if (summary !== lastSummary || !checks.every((entry) => entry.ok === true)) {
+			onProgress?.(summary, 'stdout');
+			lastSummary = summary;
 		}
 		if (checks.every((entry) => entry.ok === true)) {
 			return { ok: true, checks };
@@ -1190,6 +1215,7 @@ export async function verifyRailwayManagedResources(
 		settleDeployments = false,
 		settleTimeoutMs = 600_000,
 		settlePollMs = 15_000,
+		onProgress,
 	} = {},
 ) {
 	const effectiveApiToken = apiToken || resolveRailwayAuthToken(env);
@@ -1317,6 +1343,7 @@ export async function verifyRailwayManagedResources(
 			env: effectiveEnv,
 			timeoutMs: settleTimeoutMs,
 			pollMs: settlePollMs,
+			onProgress,
 		});
 		for (const check of settled.checks ?? []) {
 			checks.push(check);
