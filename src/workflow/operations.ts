@@ -3519,10 +3519,12 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 			if (autoResumeRun) {
 				helpers.write(`[workflow][resume] Resuming interrupted save ${autoResumeRun.runId} on ${branch}.`);
 			}
+			helpers.write(`[save][workflow] Preparing save on ${branch} (${mode}, ${scope}).`);
 
 			try {
 				const saveResult = await executeJournalStep(root, workflowRun.runId, 'save-repositories', () =>
 					(async () => {
+						helpers.write('[save][workflow] Saving repositories and validating lockfiles.');
 						unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 						try {
 							return await runRepositorySaveOrchestrator({
@@ -3546,6 +3548,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					})());
 				const savedPackageReports = saveResult?.repos ?? packageReports;
 				const savedRootRepo = saveResult?.rootRepo ?? rootRepo;
+				helpers.write('[save][workflow] Repository save phase complete; checking command readiness.');
 				const head = savedRootRepo.commitSha ?? run('git', ['rev-parse', 'HEAD'], { cwd: gitRoot, capture: true }).trim();
 				const commitCreated = savedRootRepo.committed === true;
 				const branchSync = {
@@ -3564,7 +3567,9 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				};
 				const saveWorkflowGates = shouldUseHostedSaveCi(effectiveInput)
 					? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', () =>
-						waitForWorkflowGates('save', [
+						{
+							helpers.write('[save][workflow] Waiting for hosted save workflow gates.');
+							return waitForWorkflowGates('save', [
 							...(savedRootRepo.pushed && savedRootRepo.commitSha && branch
 								? [{
 									name: savedRootRepo.name,
@@ -3596,10 +3601,12 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							root,
 							runId: workflowRun.runId,
 							onProgress: (line, stream) => helpers.write(line, stream),
-						}).then((workflowGates) => ({ workflowGates })))
+						}).then((workflowGates) => ({ workflowGates }));
+						})
 					: { workflowGates: [] };
 				const releaseCandidate = branch === STAGING_BRANCH
 					? await executeJournalStep(root, workflowRun.runId, 'release-candidate', () => {
+						helpers.write('[save][workflow] Running staging release-candidate readiness checks.');
 						const releaseSession = resolveTreeseedWorkflowSession(root);
 						const stagingReleasePlan = buildReleasePlanSnapshot({
 							root,
