@@ -108,6 +108,7 @@ export type TreeseedOperationContext = {
 	cwd: string;
 	env: NodeJS.ProcessEnv;
 	write?: TreeseedOperationWriter;
+	onProgress?: (event: Record<string, unknown>) => void | Promise<void>;
 	spawn?: TreeseedOperationSpawn;
 	outputFormat?: 'human' | 'json';
 	prompt?: TreeseedOperationPrompt;

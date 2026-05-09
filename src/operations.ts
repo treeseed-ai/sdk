@@ -4,7 +4,25 @@ export {
 	listTreeseedOperationNames,
 } from './operations-registry.ts';
 export { collectTreeseedConfigSeedValues } from './operations/services/config-runtime.ts';
+export {
+	createKnowledgeHubRepositories,
+	defaultHubContentResolutionPolicy,
+	executeKnowledgeHubLaunch,
+	normalizeKnowledgeHubLaunchIntent,
+	planKnowledgeHubLaunch,
+	planKnowledgeHubRepositories,
+	validateRepositoryHost,
+} from './operations/services/hub-launch.ts';
 export { TreeseedOperationsSdk } from './operations/runtime.ts';
+export type {
+	HubContentResolutionPolicy,
+	KnowledgeHubLaunchIntent,
+	KnowledgeHubLaunchPhase,
+	KnowledgeHubLaunchPlan,
+	KnowledgeHubLaunchResult,
+	KnowledgeHubRepositoryPlan,
+	RepositoryHost,
+} from './operations/services/hub-launch.ts';
 export type {
 	TreeseedOperationContext,
 	TreeseedOperationImplementation,

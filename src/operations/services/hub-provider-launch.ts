@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -19,14 +19,14 @@ import { scaffoldTemplateProject } from './template-registry.ts';
 import { buildKnowledgeCoopKnowledgePackPackage, buildKnowledgeCoopTemplatePackage, importKnowledgeCoopKnowledgePack } from './knowledge-coop-packaging.ts';
 import { resolveTreeseedToolBinary } from '../../managed-dependencies.ts';
 
-export type KnowledgeCoopLaunchFailurePhase =
+export type KnowledgeHubProviderLaunchFailurePhase =
 	| 'repo_provision_failed'
 	| 'content_bootstrap_failed'
 	| 'workflow_bootstrap_failed'
 	| 'hosting_registration_failed'
 	| 'runtime_connection_failed';
 
-export interface KnowledgeCoopManagedLaunchInput {
+export interface KnowledgeHubProviderLaunchInput {
 	projectId: string;
 	teamId: string;
 	teamSlug?: string | null;
@@ -38,17 +38,34 @@ export interface KnowledgeCoopManagedLaunchInput {
 	hostingMode?: 'managed' | 'hybrid' | 'self_hosted';
 	publicSite?: boolean;
 	repoOwner?: string | null;
+	repoName?: string | null;
 	repoVisibility?: 'private' | 'public' | 'internal';
+	existingRepository?: {
+		owner: string;
+		name: string;
+		url: string;
+		defaultBranch?: string | null;
+		stagingBranch?: string | null;
+		visibility?: 'private' | 'public' | 'internal';
+	} | null;
+	contentRepository?: {
+		owner?: string | null;
+		name: string;
+		url?: string | null;
+		visibility?: 'private' | 'public' | 'internal';
+		defaultBranch?: string | null;
+		stagingBranch?: string | null;
+	} | null;
 	marketBaseUrl?: string | null;
 	projectApiBaseUrl?: string | null;
 	contactEmail?: string | null;
 	enableDefaultAgents?: boolean;
 	preserveWorkingTree?: boolean;
-	cloudflareHost?: KnowledgeCoopCloudflareHostLaunchInput | null;
-	processingHost?: KnowledgeCoopProcessingHostLaunchInput | null;
+	cloudflareHost?: KnowledgeHubCloudflareHostLaunchInput | null;
+	processingHost?: KnowledgeHubProcessingHostLaunchInput | null;
 }
 
-export interface KnowledgeCoopCloudflareHostConfig {
+export interface KnowledgeHubCloudflareHostConfig {
 	CLOUDFLARE_API_TOKEN?: string;
 	CLOUDFLARE_ACCOUNT_ID?: string;
 	TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME?: string;
@@ -61,14 +78,14 @@ export interface KnowledgeCoopCloudflareHostConfig {
 	[key: string]: unknown;
 }
 
-export interface KnowledgeCoopCloudflareHostLaunchInput {
+export interface KnowledgeHubCloudflareHostLaunchInput {
 	mode: 'team_owned' | 'treeseed_managed';
 	hostId?: string | null;
 	targetEnvironments?: Array<'local' | 'staging' | 'prod'>;
-	config?: KnowledgeCoopCloudflareHostConfig | null;
+	config?: KnowledgeHubCloudflareHostConfig | null;
 }
 
-export interface KnowledgeCoopProcessingHostConfig {
+export interface KnowledgeHubProcessingHostConfig {
 	RAILWAY_API_TOKEN?: string;
 	TREESEED_RAILWAY_WORKSPACE?: string;
 	TREESEED_RAILWAY_API_URL?: string;
@@ -77,21 +94,21 @@ export interface KnowledgeCoopProcessingHostConfig {
 	[key: string]: unknown;
 }
 
-export interface KnowledgeCoopProcessingHostLaunchInput {
+export interface KnowledgeHubProcessingHostLaunchInput {
 	mode: 'team_owned' | 'treeseed_managed';
 	hostId?: string | null;
 	targetEnvironments?: Array<'local' | 'staging' | 'prod'>;
-	config?: KnowledgeCoopProcessingHostConfig | null;
+	config?: KnowledgeHubProcessingHostConfig | null;
 }
 
-export interface KnowledgeCoopLaunchPhaseRecord {
+export interface KnowledgeHubProviderLaunchPhaseRecord {
 	phase: string;
 	status: 'running' | 'completed' | 'failed';
 	detail: string;
 	timestamp: string;
 }
 
-export interface KnowledgeCoopManagedLaunchResult {
+export interface KnowledgeHubProviderLaunchResult {
 	workingRoot: string;
 	repository: {
 		slug: string;
@@ -102,6 +119,16 @@ export interface KnowledgeCoopManagedLaunchResult {
 		stagingBranch: string | null;
 		visibility: 'private' | 'public' | 'internal';
 	};
+	contentRepository?: {
+		slug: string;
+		owner: string;
+		name: string;
+		url: string;
+		defaultBranch: string;
+		stagingBranch: string | null;
+		visibility: 'private' | 'public' | 'internal';
+	} | null;
+	contentRepositoryWorkingRoot?: string | null;
 	workflows: {
 		repository: string | null;
 		workflows: Array<{ workflowPath: string; changed: boolean; workingDirectory?: string; mode?: string }>;
@@ -124,12 +151,12 @@ export interface KnowledgeCoopManagedLaunchResult {
 	projectSiteUrl: string;
 	projectMetadata: Record<string, unknown>;
 	defaultWorkstream: Record<string, unknown>;
-	phases: KnowledgeCoopLaunchPhaseRecord[];
+	phases: KnowledgeHubProviderLaunchPhaseRecord[];
 	templatePackage: ReturnType<typeof buildKnowledgeCoopTemplatePackage>;
 	knowledgePackPackage: ReturnType<typeof buildKnowledgeCoopKnowledgePackPackage>;
 }
 
-export interface KnowledgeCoopLaunchPreflightReport {
+export interface KnowledgeHubProviderLaunchPreflightReport {
 	ok: boolean;
 	missingConfig: string[];
 	providerChecks: ReturnType<typeof checkTreeseedProviderConnections>;
@@ -141,13 +168,15 @@ export interface KnowledgeCoopLaunchPreflightReport {
 	};
 }
 
-class KnowledgeCoopLaunchError extends Error {
-	readonly phase: KnowledgeCoopLaunchFailurePhase;
-	readonly phases: KnowledgeCoopLaunchPhaseRecord[];
+export type KnowledgeHubProviderLaunchPhaseReporter = (phase: KnowledgeHubProviderLaunchPhaseRecord) => void | Promise<void>;
 
-	constructor(phase: KnowledgeCoopLaunchFailurePhase, message: string, phases: KnowledgeCoopLaunchPhaseRecord[] = []) {
+class KnowledgeHubProviderLaunchError extends Error {
+	readonly phase: KnowledgeHubProviderLaunchFailurePhase;
+	readonly phases: KnowledgeHubProviderLaunchPhaseRecord[];
+
+	constructor(phase: KnowledgeHubProviderLaunchFailurePhase, message: string, phases: KnowledgeHubProviderLaunchPhaseRecord[] = []) {
 		super(message);
-		this.name = 'KnowledgeCoopLaunchError';
+		this.name = 'KnowledgeHubProviderLaunchError';
 		this.phase = phase;
 		this.phases = [...phases];
 	}
@@ -223,7 +252,7 @@ function currentTemplateCatalogUrl() {
 	return `file:${resolve(templateCatalogRoot, 'catalog.fixture.json')}`;
 }
 
-function seedKnowledgeCoopContent(projectRoot: string, input: KnowledgeCoopManagedLaunchInput) {
+function seedKnowledgeCoopContent(projectRoot: string, input: KnowledgeHubProviderLaunchInput) {
 	const objectiveId = `objective:launch-${slugify(input.projectSlug, 'hub')}`;
 	const questionId = `question:operating-${slugify(input.projectSlug, 'hub')}`;
 	const proposalId = `proposal:operating-${slugify(input.projectSlug, 'hub')}`;
@@ -274,13 +303,13 @@ The first release should verify that the hub is live, the core direction is visi
 `);
 	writeText(resolve(projectRoot, 'src/content/notes', `${noteSlug}.mdx`), `---
 title: ${input.projectName} Operating Model
-description: The initial working agreements for this Knowledge Coop hub.
+description: The initial working agreements for this Knowledge Hub.
 date: ${new Date().toISOString().slice(0, 10)}
 summary: Managed launch created the default branches, runtime wiring, and first operational checkpoints.
 status: live
 ---
 
-This hub starts with a managed launch, a seeded objective, and a visible first workstream so the team can continue from a known baseline.
+This hub starts with a Knowledge Hub launch, a seeded objective, and a visible first workstream so the team can continue from a known baseline.
 `);
 	writeText(resolve(projectRoot, 'src/content/proposals', 'establish-initial-operating-routine.mdx'), `---
 id: ${proposalId}
@@ -308,11 +337,11 @@ id: ${decisionId}
 title: Adopt The Initial Launch Posture
 description: Record the launch decision for the first operating cycle of the hub.
 date: ${new Date().toISOString().slice(0, 10)}
-summary: The managed launch will begin with a narrow first release and explicit direction artifacts.
+summary: The Knowledge Hub launch will begin with a narrow first release and explicit direction artifacts.
 status: live
 decisionType: approved
 rationale: The initial launch should bias toward clarity, setup completion, and a visible first release loop.
-authority: Knowledge Coop managed launch
+authority: Knowledge Hub launch
 primaryContributor: ${stewardSlug}
 relatedObjectives:
   - launch-knowledge-hub
@@ -378,7 +407,7 @@ console.log(\`Treeseed project API listening on \${server.url}\`);
 `);
 }
 
-function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeCoopManagedLaunchInput) {
+function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubProviderLaunchInput) {
 	const slug = slugify(input.projectSlug, 'project');
 	const marketBaseUrl = normalizeBaseUrl(input.marketBaseUrl ?? envOrNull('TREESEED_MARKET_API_BASE_URL') ?? 'https://knowledge.coop');
 	const siteUrl = resolveManagedWebUrl(slug);
@@ -565,7 +594,7 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeCoopMa
 	};
 }
 
-function createDefaultWorkstream(projectId: string, input: KnowledgeCoopManagedLaunchInput, seed: ReturnType<typeof seedKnowledgeCoopContent>) {
+function createDefaultWorkstream(projectId: string, input: KnowledgeHubProviderLaunchInput, seed: ReturnType<typeof seedKnowledgeCoopContent>) {
 	return {
 		id: `${projectId}:initial-launch`,
 		projectId,
@@ -599,7 +628,7 @@ function pushDefaultWorkstreamBranch(projectRoot: string) {
 	runGit(projectRoot, ['checkout', 'main'], false);
 }
 
-function loadProjectMetadata(projectId: string, input: KnowledgeCoopManagedLaunchInput, seed: ReturnType<typeof seedKnowledgeCoopContent>, workstream: Record<string, unknown>, siteUrl: string, projectApiBaseUrl: string, repository: { slug: string; url: string }) {
+function loadProjectMetadata(projectId: string, input: KnowledgeHubProviderLaunchInput, seed: ReturnType<typeof seedKnowledgeCoopContent>, workstream: Record<string, unknown>, siteUrl: string, projectApiBaseUrl: string, repository: { slug: string; url: string }) {
 	return {
 		publicSite: input.publicSite !== false,
 		sourceKind: input.sourceKind,
@@ -674,13 +703,21 @@ function commandAvailable(command: string) {
 	return spawnSync('bash', ['-lc', `command -v ${command}`], { stdio: 'ignore' }).status === 0;
 }
 
-function appendPhase(phases: KnowledgeCoopLaunchPhaseRecord[], phase: string, status: KnowledgeCoopLaunchPhaseRecord['status'], detail: string) {
-	phases.push({
+async function appendPhase(
+	phases: KnowledgeHubProviderLaunchPhaseRecord[],
+	phase: string,
+	status: KnowledgeHubProviderLaunchPhaseRecord['status'],
+	detail: string,
+	reporter?: KnowledgeHubProviderLaunchPhaseReporter,
+) {
+	const record: KnowledgeHubProviderLaunchPhaseRecord = {
 		phase,
 		status,
 		detail,
 		timestamp: nowIso(),
-	});
+	};
+	phases.push(record);
+	await reporter?.(record);
 }
 
 function stringValue(value: unknown) {
@@ -694,7 +731,7 @@ function overlayValue(target: Record<string, string>, key: string, value: unknow
 	}
 }
 
-function buildCloudflareHostEnvironmentOverlay(input: KnowledgeCoopManagedLaunchInput, scope: 'staging' | 'prod') {
+function buildCloudflareHostEnvironmentOverlay(input: KnowledgeHubProviderLaunchInput, scope: 'staging' | 'prod') {
 	const config = input.cloudflareHost?.config ?? {};
 	const environmentConfig = config.environments?.[scope] ?? {};
 	const projectSlug = slugify(input.projectSlug, 'project');
@@ -717,7 +754,7 @@ function buildCloudflareHostEnvironmentOverlay(input: KnowledgeCoopManagedLaunch
 	return overlay;
 }
 
-function buildProcessingHostEnvironmentOverlay(input: KnowledgeCoopManagedLaunchInput, scope: 'staging' | 'prod') {
+function buildProcessingHostEnvironmentOverlay(input: KnowledgeHubProviderLaunchInput, scope: 'staging' | 'prod') {
 	const config = input.processingHost?.config ?? {};
 	const environmentConfig = config.environments?.[scope] ?? {};
 	const overlay: Record<string, string> = {};
@@ -735,7 +772,8 @@ function buildProcessingHostEnvironmentOverlay(input: KnowledgeCoopManagedLaunch
 	return overlay;
 }
 
-function scaffoldKnowledgeCoopSource(projectRoot: string, input: KnowledgeCoopManagedLaunchInput) {
+function scaffoldKnowledgeCoopSource(projectRoot: string, input: KnowledgeHubProviderLaunchInput) {
+	const repositoryName = slugify(input.repoName ?? input.projectSlug, 'project');
 	const templateId = input.sourceKind === 'template'
 		? slugify(input.sourceRef ?? 'starter-basic', 'starter-basic')
 		: 'starter-basic';
@@ -763,17 +801,62 @@ function scaffoldKnowledgeCoopSource(projectRoot: string, input: KnowledgeCoopMa
 		slug: input.projectSlug,
 		siteUrl: resolveManagedWebUrl(slugify(input.projectSlug, 'project')),
 		contactEmail: input.contactEmail ?? `hello+${slugify(input.projectSlug, 'project')}@knowledge.coop`,
-		repositoryUrl: `https://github.com/${slugify(input.repoOwner ?? resolveDefaultGitHubOwner(), 'treeseed-ai')}/${slugify(input.projectSlug, 'project')}`,
+		repositoryUrl: `https://github.com/${slugify(input.repoOwner ?? resolveDefaultGitHubOwner(), 'treeseed-ai')}/${repositoryName}`,
 	}, {
 		cwd: projectRoot,
 		env: templateCatalogEnv,
 	});
 }
 
-export async function validateKnowledgeCoopManagedLaunchPrerequisites(
+function repositoryHostGitHubEnvOverlay() {
+	const token = process.env.TREESEED_HOSTED_HUBS_GITHUB_TOKEN
+		|| process.env.TREESEED_REPOSITORY_HOST_GITHUB_TOKEN
+		|| process.env.GH_TOKEN
+		|| process.env.GITHUB_TOKEN
+		|| '';
+	return token
+		? { ...process.env, GH_TOKEN: token, GITHUB_TOKEN: token }
+		: process.env;
+}
+
+function prepareKnowledgeHubContentRepositoryRoot(sourceRoot: string, contentRoot: string, input: KnowledgeHubProviderLaunchInput) {
+	mkdirSync(contentRoot, { recursive: true });
+	const contentSource = resolve(sourceRoot, 'src', 'content');
+	if (existsSync(contentSource)) {
+		cpSync(contentSource, resolve(contentRoot, 'src', 'content'), { recursive: true });
+	}
+	const publicSource = resolve(sourceRoot, 'public');
+	if (existsSync(publicSource)) {
+		cpSync(publicSource, resolve(contentRoot, 'public'), { recursive: true });
+	}
+	writeFileSync(resolve(contentRoot, 'README.md'), `# ${input.projectName} Content\n\nContent source for the ${input.projectName} TreeSeed Knowledge Hub.\n`, 'utf8');
+	writeFileSync(resolve(contentRoot, 'treeseed.content.json'), `${JSON.stringify({
+		schemaVersion: 1,
+		kind: 'treeseed_hub_content',
+		projectId: input.projectId,
+		projectSlug: input.projectSlug,
+		contentRoot: 'src/content',
+		productionSource: 'r2_published_artifacts',
+		overlayPolicy: 'src_content_when_present',
+	}, null, 2)}\n`, 'utf8');
+}
+
+function stripSoftwareContentOverlay(sourceRoot: string, input: KnowledgeHubProviderLaunchInput) {
+	const contentRoot = resolve(sourceRoot, 'src', 'content');
+	rmSync(contentRoot, { recursive: true, force: true });
+	mkdirSync(contentRoot, { recursive: true });
+	writeFileSync(resolve(contentRoot, '.gitkeep'), '', 'utf8');
+	writeFileSync(
+		resolve(contentRoot, 'README.md'),
+		`# Preview content overlay\n\nThis software repository does not own ordinary Knowledge Hub content. Production content is published from the content repository to R2 artifacts. Checked-out files under \`src/content\` are for local, staging, or preview overlays only.\n\nHub: ${input.projectName}\nContent source: ${input.contentRepository?.name ?? `${slugify(input.projectSlug, 'project')}-content`}\n`,
+		'utf8',
+	);
+}
+
+export async function validateKnowledgeHubProviderLaunchPrerequisites(
 	tenantRoot = process.cwd(),
 	{ valuesOverlay = {} }: { valuesOverlay?: Record<string, string | undefined> } = {},
-): Promise<KnowledgeCoopLaunchPreflightReport> {
+): Promise<KnowledgeHubProviderLaunchPreflightReport> {
 	const values = collectTreeseedConfigSeedValues(tenantRoot, 'prod', process.env, valuesOverlay);
 	const requiredConfig = [
 		['TREESEED_BETTER_AUTH_SECRET'],
@@ -808,8 +891,12 @@ export async function validateKnowledgeCoopManagedLaunchPrerequisites(
 	};
 }
 
-export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopManagedLaunchInput): Promise<KnowledgeCoopManagedLaunchResult> {
-	const phases: KnowledgeCoopLaunchPhaseRecord[] = [];
+export async function executeKnowledgeHubProviderLaunch(
+	input: KnowledgeHubProviderLaunchInput,
+	options: { onPhase?: KnowledgeHubProviderLaunchPhaseReporter } = {},
+): Promise<KnowledgeHubProviderLaunchResult> {
+	const phases: KnowledgeHubProviderLaunchPhaseRecord[] = [];
+	const reportPhase = options.onPhase;
 	const prodEnvOverlay = {
 		...buildCloudflareHostEnvironmentOverlay(input, 'prod'),
 		...buildProcessingHostEnvironmentOverlay(input, 'prod'),
@@ -818,39 +905,91 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 		...buildCloudflareHostEnvironmentOverlay(input, 'staging'),
 		...buildProcessingHostEnvironmentOverlay(input, 'staging'),
 	};
-	const preflight = await validateKnowledgeCoopManagedLaunchPrerequisites(process.cwd(), { valuesOverlay: prodEnvOverlay });
+	const preflight = await validateKnowledgeHubProviderLaunchPrerequisites(process.cwd(), { valuesOverlay: prodEnvOverlay });
 	if (!preflight.ok) {
-		throw new KnowledgeCoopLaunchError(
+		throw new KnowledgeHubProviderLaunchError(
 			'runtime_connection_failed',
-			`Knowledge Coop launch preflight failed: ${[...preflight.missingConfig, ...preflight.providerChecks.issues].join('; ') || 'provider checks failed.'}`,
+			`Knowledge Hub launch preflight failed: ${[...preflight.missingConfig, ...preflight.providerChecks.issues].join('; ') || 'provider checks failed.'}`,
 			[],
 		);
 	}
 
-	const workingRoot = mkdtempSync(join(tmpdir(), `knowledge-coop-launch-${slugify(input.projectSlug, 'project')}-`));
+	const workingRoot = mkdtempSync(join(tmpdir(), `hub-provider-launch-${slugify(input.projectSlug, 'project')}-`));
 	const repoOwner = slugify(input.repoOwner ?? resolveDefaultGitHubOwner(), 'treeseed-ai');
-	const repoName = slugify(input.projectSlug, 'project');
+	const repoName = slugify(input.repoName ?? input.projectSlug, 'project');
+	const githubEnv = repositoryHostGitHubEnvOverlay();
+	let packageSourceRoot: string | null = null;
 
 	try {
-		appendPhase(phases, 'repo_provision', 'running', 'Creating GitHub repository.');
-		const repository = await createGitHubRepository({
-			owner: repoOwner,
-			name: repoName,
-			description: input.summary ?? `Knowledge Coop hub for ${input.projectName}`,
-			visibility: input.repoVisibility ?? 'private',
-			homepageUrl: resolveManagedWebUrl(repoName),
-			topics: ['knowledge-coop', 'treeseed', 'knowledge-hub'],
-		});
-		appendPhase(phases, 'repo_provision', 'completed', `Created ${repository.slug}.`);
+		await appendPhase(phases, 'repo_provision', 'running', 'Creating or connecting GitHub software repository.', reportPhase);
+		const repository = input.existingRepository?.url
+			? {
+				slug: `${input.existingRepository.owner}/${input.existingRepository.name}`,
+				owner: input.existingRepository.owner,
+				name: input.existingRepository.name,
+				url: input.existingRepository.url,
+				visibility: input.existingRepository.visibility ?? input.repoVisibility ?? 'private',
+			}
+			: await createGitHubRepository({
+				owner: repoOwner,
+				name: repoName,
+				description: input.summary ?? `Knowledge Hub for ${input.projectName}`,
+				visibility: input.repoVisibility ?? 'private',
+				homepageUrl: resolveManagedWebUrl(repoName),
+				topics: ['knowledge-coop', 'treeseed', 'knowledge-hub'],
+			}, { env: githubEnv });
+		await appendPhase(phases, 'repo_provision', 'completed', `${input.existingRepository?.url ? 'Connected' : 'Created'} ${repository.slug}.`, reportPhase);
 
-		appendPhase(phases, 'content_bootstrap', 'running', 'Scaffolding the project and seeding initial content.');
+		await appendPhase(phases, 'content_bootstrap', 'running', 'Scaffolding the project and seeding initial content.', reportPhase);
 		await scaffoldKnowledgeCoopSource(workingRoot, input);
 		ensureHostedProjectFiles(workingRoot);
 		const managedDefaults = applyManagedProjectDefaults(workingRoot, input);
 		const seed = seedKnowledgeCoopContent(workingRoot, input);
-		appendPhase(phases, 'content_bootstrap', 'completed', 'Scaffolded the repo and seeded Direct content.');
+		packageSourceRoot = mkdtempSync(join(tmpdir(), `knowledge-coop-package-${slugify(input.projectSlug, 'project')}-`));
+		cpSync(workingRoot, packageSourceRoot, { recursive: true });
+		await appendPhase(phases, 'content_bootstrap', 'completed', 'Scaffolded the repo and seeded Direct content.', reportPhase);
 
-		appendPhase(phases, 'workflow_bootstrap', 'running', 'Initializing git branches and GitHub workflows.');
+		let contentRepository: KnowledgeHubProviderLaunchResult['contentRepository'] = null;
+		let contentRepositoryWorkingRoot: string | null = null;
+		if (input.contentRepository?.name) {
+			await appendPhase(phases, 'content_repository', 'running', 'Creating content repository.', reportPhase);
+			contentRepositoryWorkingRoot = mkdtempSync(join(tmpdir(), `knowledge-coop-content-${slugify(input.projectSlug, 'project')}-`));
+			prepareKnowledgeHubContentRepositoryRoot(workingRoot, contentRepositoryWorkingRoot, input);
+			const createdContentRepository = input.contentRepository.url
+				? {
+					slug: `${slugify(input.contentRepository.owner ?? repoOwner, 'treeseed-ai')}/${slugify(input.contentRepository.name, `${repoName}-content`)}`,
+					owner: slugify(input.contentRepository.owner ?? repoOwner, 'treeseed-ai'),
+					name: slugify(input.contentRepository.name, `${repoName}-content`),
+					url: input.contentRepository.url,
+					visibility: input.contentRepository.visibility ?? input.repoVisibility ?? 'private',
+				}
+				: await createGitHubRepository({
+					owner: slugify(input.contentRepository.owner ?? repoOwner, 'treeseed-ai'),
+					name: slugify(input.contentRepository.name, `${repoName}-content`),
+					description: input.summary ?? `Content source for ${input.projectName}`,
+					visibility: input.contentRepository.visibility ?? input.repoVisibility ?? 'private',
+					homepageUrl: resolveManagedWebUrl(repoName),
+					topics: ['knowledge-coop', 'treeseed', 'knowledge-hub', 'content'],
+				}, { env: githubEnv });
+			const contentInitResult = initializeGitHubRepositoryWorkingTree(contentRepositoryWorkingRoot, createdContentRepository, {
+				defaultBranch: input.contentRepository.defaultBranch ?? 'main',
+				createStaging: true,
+				commitMessage: `Initialize ${input.projectName} content`,
+			});
+			contentRepository = {
+				slug: createdContentRepository.slug,
+				owner: createdContentRepository.owner,
+				name: createdContentRepository.name,
+				url: createdContentRepository.url,
+				defaultBranch: contentInitResult.defaultBranch,
+				stagingBranch: contentInitResult.stagingBranch,
+				visibility: createdContentRepository.visibility,
+			};
+			await appendPhase(phases, 'content_repository', 'completed', `${input.contentRepository.url ? 'Connected' : 'Created'} ${contentRepository.slug}.`, reportPhase);
+			stripSoftwareContentOverlay(workingRoot, input);
+		}
+
+		await appendPhase(phases, 'workflow_bootstrap', 'running', 'Initializing git branches and GitHub workflows.', reportPhase);
 		const initResult = initializeGitHubRepositoryWorkingTree(workingRoot, repository, {
 			defaultBranch: 'main',
 			createStaging: true,
@@ -869,9 +1008,9 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 			}));
 		}
 		const workflowSummary = { ...workflows, environmentSync: githubEnvironmentSync };
-		appendPhase(phases, 'workflow_bootstrap', 'completed', 'Configured GitHub workflows, secrets, and variables.');
+		await appendPhase(phases, 'workflow_bootstrap', 'completed', 'Configured GitHub workflows, secrets, and variables.', reportPhase);
 
-		appendPhase(phases, 'hosting_registration', 'running', 'Provisioning Cloudflare resources and deploy state.');
+		await appendPhase(phases, 'hosting_registration', 'running', 'Provisioning Cloudflare resources and deploy state.', reportPhase);
 		const staging = await reconcileTreeseedTarget({
 			tenantRoot: workingRoot,
 			target: createPersistentDeployTarget('staging'),
@@ -888,7 +1027,7 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 			target: createPersistentDeployTarget('prod'),
 			env: { ...process.env, ...prodEnvOverlay },
 		});
-		appendPhase(phases, 'hosting_registration', 'completed', 'Provisioned Cloudflare resources.');
+		await appendPhase(phases, 'hosting_registration', 'completed', 'Provisioned Cloudflare resources.', reportPhase);
 
 		const launchConfig = loadCliDeployConfig(workingRoot);
 		const managedRuntime = launchConfig.runtime?.mode === 'treeseed_managed';
@@ -897,7 +1036,7 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 		let schedules: Awaited<ReturnType<typeof ensureRailwayScheduledJobs>> = [];
 		let railwayVerification: Awaited<ReturnType<typeof verifyRailwayScheduledJobs>> = [];
 		if (managedRuntime) {
-			appendPhase(phases, 'runtime_connection', 'running', 'Deploying Railway services and registering runtime connectivity.');
+			await appendPhase(phases, 'runtime_connection', 'running', 'Deploying Railway services and registering runtime connectivity.', reportPhase);
 			const railwayEnv = { ...process.env, ...prodEnvOverlay };
 			validateRailwayDeployPrerequisites(workingRoot, 'prod', { env: railwayEnv });
 			services = configuredRailwayServices(workingRoot, 'prod');
@@ -908,9 +1047,9 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 			schedules = await ensureRailwayScheduledJobs(workingRoot, 'prod', { env: railwayEnv });
 			railwayVerification = await verifyRailwayScheduledJobs(workingRoot, 'prod', { env: railwayEnv });
 			finalizeDeploymentState(workingRoot, { scope: 'prod', serviceResults: deployments });
-			appendPhase(phases, 'runtime_connection', 'completed', 'Deployed Railway services and recorded runtime readiness.');
+			await appendPhase(phases, 'runtime_connection', 'completed', 'Deployed Railway services and recorded runtime readiness.', reportPhase);
 		} else {
-			appendPhase(phases, 'runtime_connection', 'completed', 'Skipped managed runtime deployment for hub-only or BYO runtime launch.');
+			await appendPhase(phases, 'runtime_connection', 'completed', 'Skipped managed runtime deployment for hub-only or BYO runtime launch.', reportPhase);
 		}
 
 		const defaultWorkstream = createDefaultWorkstream(input.projectId, input, seed);
@@ -923,7 +1062,8 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 			managedDefaults.projectApiBaseUrl,
 			{ slug: repository.slug, url: repository.url },
 		);
-		const templatePackage = buildKnowledgeCoopTemplatePackage(workingRoot, {
+		const packageRoot = packageSourceRoot ?? workingRoot;
+		const templatePackage = buildKnowledgeCoopTemplatePackage(packageRoot, {
 			projectSlug: input.projectSlug,
 			title: `${input.projectName} template`,
 			summary: input.summary ?? null,
@@ -936,7 +1076,7 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 				},
 			},
 		});
-		const knowledgePackPackage = buildKnowledgeCoopKnowledgePackPackage(workingRoot, {
+		const knowledgePackPackage = buildKnowledgeCoopKnowledgePackPackage(packageRoot, {
 			projectSlug: input.projectSlug,
 			title: `${input.projectName} knowledge pack`,
 			summary: input.summary ?? null,
@@ -957,10 +1097,12 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 				owner: repository.owner,
 				name: repository.name,
 				url: repository.url,
-				defaultBranch: initResult.defaultBranch,
-				stagingBranch: initResult.stagingBranch,
+				defaultBranch: input.existingRepository?.defaultBranch ?? initResult.defaultBranch,
+				stagingBranch: input.existingRepository?.stagingBranch ?? initResult.stagingBranch,
 				visibility: repository.visibility,
 			},
+			contentRepository,
+			contentRepositoryWorkingRoot,
 			workflows: workflowSummary,
 			cloudflare: {
 				staging,
@@ -983,7 +1125,7 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		const phase = error instanceof KnowledgeCoopLaunchError ? error.phase : (
+		const phase = error instanceof KnowledgeHubProviderLaunchError ? error.phase : (
 			phases.some((entry) => entry.phase === 'runtime_connection' && entry.status === 'running')
 				? 'runtime_connection_failed'
 				: phases.some((entry) => entry.phase === 'hosting_registration' && entry.status === 'running')
@@ -994,11 +1136,14 @@ export async function executeKnowledgeCoopManagedLaunch(input: KnowledgeCoopMana
 							? 'content_bootstrap_failed'
 							: 'repo_provision_failed'
 		);
-		appendPhase(phases, phase.replace(/_failed$/u, ''), 'failed', message);
-		throw new KnowledgeCoopLaunchError(phase, message, phases);
+		await appendPhase(phases, phase.replace(/_failed$/u, ''), 'failed', message, reportPhase);
+		throw new KnowledgeHubProviderLaunchError(phase, message, phases);
 	} finally {
 		if (input.preserveWorkingTree === false) {
 			rmSync(workingRoot, { recursive: true, force: true });
+		}
+		if (packageSourceRoot && packageSourceRoot !== workingRoot && input.preserveWorkingTree === false) {
+			rmSync(packageSourceRoot, { recursive: true, force: true });
 		}
 	}
 }

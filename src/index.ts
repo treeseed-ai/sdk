@@ -11,9 +11,25 @@ export {
 	summarizeCapacityPlan,
 } from './capacity.ts';
 export {
-	executeKnowledgeCoopManagedLaunch,
-	validateKnowledgeCoopManagedLaunchPrerequisites,
-} from './operations/services/knowledge-coop-launch.ts';
+	executeKnowledgeHubProviderLaunch,
+	validateKnowledgeHubProviderLaunchPrerequisites,
+} from './operations/services/hub-provider-launch.ts';
+export {
+	createKnowledgeHubRepositories,
+	defaultHubContentResolutionPolicy,
+	executeKnowledgeHubLaunch,
+	normalizeKnowledgeHubLaunchIntent,
+	planKnowledgeHubLaunch,
+	planKnowledgeHubRepositories,
+	validateRepositoryHost,
+	type HubContentResolutionPolicy,
+	type KnowledgeHubLaunchIntent,
+	type KnowledgeHubLaunchPhase,
+	type KnowledgeHubLaunchPlan,
+	type KnowledgeHubLaunchResult,
+	type KnowledgeHubRepositoryPlan,
+	type RepositoryHost,
+} from './operations/services/hub-launch.ts';
 export {
 	ensureRailwayEnvironment,
 	ensureRailwayProject,
@@ -187,10 +203,10 @@ export {
 } from './reconcile/index.ts';
 export { getTreeseedVerifyDriverStatus, runTreeseedVerifyDriver } from './verification.ts';
 export type {
-	KnowledgeCoopLaunchPreflightReport,
-	KnowledgeCoopLaunchFailurePhase,
-	KnowledgeCoopManagedLaunchInput,
-	KnowledgeCoopManagedLaunchResult,
+	KnowledgeHubProviderLaunchPreflightReport,
+	KnowledgeHubProviderLaunchFailurePhase,
+	KnowledgeHubProviderLaunchInput,
+	KnowledgeHubProviderLaunchResult,
 	AgentMessageKind,
 	AgentMessageRecord,
 	AgentStatusRecord,
