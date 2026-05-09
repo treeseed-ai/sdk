@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.0] - 2026-05-09
+
+### Added
+
+- feat(build-warning-policy): expand warning detection and support ANSI (55c4c2e46915)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.8.0.
+
 ## [0.7.0] - 2026-05-09
 
 ### Tests

@@ -1,9 +1,16 @@
 export const DEFAULT_BUILD_WARNING_RULES = [
 	{
 		label: 'vite-browser-external-libsodium-url',
-		pattern: /Module "url" has been externalized for browser compatibility, imported by ".*libsodium-sumo.*"/u,
+		pattern:
+			/(?:Module "url" has been externalized for browser compatibility, imported by|Automatically externalized node built-in module "url" imported from) ".*libsodium-sumo.*"/u,
 	},
 ];
+
+const ANSI_CONTROL_SEQUENCE_PATTERN = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/gu;
+
+export function normalizeBuildWarningLine(line) {
+	return String(line ?? '').replace(ANSI_CONTROL_SEQUENCE_PATTERN, '');
+}
 
 export function createBuildWarningRules(options = {}) {
 	const useDefaultPolicy = options.useDefaultPolicy !== false;
@@ -18,7 +25,7 @@ export function createBuildWarningRules(options = {}) {
 }
 
 export function classifyBuildWarningLine(line, options = {}) {
-	const value = String(line ?? '');
+	const value = normalizeBuildWarningLine(line);
 	if (!value.includes('[WARN]')) {
 		return { kind: 'not-warning' };
 	}
