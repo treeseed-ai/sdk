@@ -32,6 +32,16 @@ describe('build warning scanner', () => {
 		expect(output).toContain('No unexpected build warnings detected.');
 	});
 
+	it('allows ANSI-styled newer Vite provider warnings by default', () => {
+		const logPath = makeLog('\u001b[33m\u001b[1m07:01:16\u001b[22m [WARN] [vite]\u001b[39m \u001b[33m[plugin vite:resolve] Automatically externalized node built-in module "url" imported from "node_modules/libsodium-sumo/dist/modules-sumo-esm/libsodium-sumo.mjs". Consider adding it to environments.ssr.external if it is intended.\u001b[39m\n');
+
+		const output = execFileSync('node', [scriptPath, logPath], { encoding: 'utf8' });
+
+		expect(output).toContain('Allowed build warnings: 1');
+		expect(output).toContain('vite-browser-external-libsodium-url: 1');
+		expect(output).toContain('No unexpected build warnings detected.');
+	});
+
 	it('can disable the default warning policy for strict debugging', () => {
 		const logPath = makeLog('[WARN] [vite] [plugin vite:resolve] Module "url" has been externalized for browser compatibility, imported by "/workspace/node_modules/libsodium-sumo/dist/modules-sumo-esm/libsodium-sumo.mjs".\n');
 
