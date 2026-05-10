@@ -1521,6 +1521,30 @@ mutation TreeseedProjectTokenCreate($input: ProjectTokenCreateInput!) {
 	return typeof token === 'string' && token.trim() ? token.trim() : '';
 }
 
+async function deployRailwayServiceInstanceWithApi(service, { env = process.env } = {}) {
+	const serviceId = configuredEnvValue(service, 'serviceId');
+	const environmentId = configuredEnvValue(service, 'environmentId');
+	if (!serviceId || !environmentId) {
+		throw new Error(`Railway API deploy requires serviceId and environmentId for ${service?.serviceName ?? service?.key ?? 'service'}.`);
+	}
+	const commitSha = configuredEnvValue(env, 'GITHUB_SHA') || null;
+	const payload = await railwayGraphqlRequest({
+		query: `
+mutation TreeseedServiceInstanceDeployV2($commitSha: String, $environmentId: String!, $serviceId: String!) {
+	serviceInstanceDeployV2(commitSha: $commitSha, environmentId: $environmentId, serviceId: $serviceId)
+}
+`.trim(),
+		variables: {
+			commitSha,
+			environmentId,
+			serviceId,
+		},
+		env,
+	});
+	const deploymentId = payload.data?.serviceInstanceDeployV2;
+	return typeof deploymentId === 'string' && deploymentId.trim() ? deploymentId.trim() : null;
+}
+
 async function resolveRailwayDeployProjectContext(service, { env = process.env } = {}) {
 	if (service.projectId) {
 		return service;
@@ -1861,6 +1885,9 @@ export async function deployRailwayService(
 		}
 		lastFailure = result;
 		if (!isRailwayTransientFailure(result) || attempt === 5) {
+			if (configuredEnvValue(commandEnv, 'CI') === 'true') {
+				break;
+			}
 			throw new Error(result.stderr?.trim() || result.stdout?.trim() || `railway ${plan.args.join(' ')} failed with exit code ${result.status ?? 'unknown'} in ${plan.cwd}`);
 		}
 		const backoffMs = 5000 * attempt;
@@ -1869,6 +1896,26 @@ export async function deployRailwayService(
 		await sleep(backoffMs);
 	}
 	if (lastFailure) {
+		if (configuredEnvValue(commandEnv, 'CI') === 'true') {
+			const deploymentId = await deployRailwayServiceInstanceWithApi(cliDeployService, { env: commandEnv });
+			return {
+				service: deployService.key,
+				status: 'deployed',
+				command: 'railway serviceInstanceDeployV2',
+				cwd: plan.cwd,
+				publicBaseUrl: deployService.publicBaseUrl,
+				deploymentId,
+				runtimeConfiguration: runtimeConfiguration
+					? {
+						updated: runtimeConfiguration.updated,
+						healthcheckPath: runtimeConfiguration.instance?.healthcheckPath ?? null,
+						healthcheckTimeoutSeconds: runtimeConfiguration.instance?.healthcheckTimeoutSeconds ?? null,
+						runtimeMode: runtimeConfiguration.instance?.runtimeMode ?? null,
+						volume: runtimeConfiguration.volume ?? null,
+					}
+					: null,
+			};
+		}
 		throw new Error(lastFailure.stderr?.trim() || lastFailure.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
 	}
 	return {
