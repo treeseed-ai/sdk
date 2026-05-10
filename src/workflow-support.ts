@@ -40,6 +40,15 @@ export {
 } from './operations/services/config-runtime.ts';
 export { exportTreeseedCodebase } from './operations/services/export-runtime.ts';
 export {
+	formatTreeseedHostingAuditReport,
+	resolveTreeseedHostingAuditTarget,
+	runTreeseedHostingAudit,
+	type TreeseedHostingAuditCheck,
+	type TreeseedHostingAuditEnvironment,
+	type TreeseedHostingAuditHostKind,
+	type TreeseedHostingAuditReport,
+} from './operations/services/hosting-audit.ts';
+export {
 	assertDeploymentInitialized,
 	cleanupDestroyedState,
 	createBranchPreviewDeployTarget,

@@ -139,6 +139,7 @@ import {
 	workspacePackages,
 	workspaceRoot,
 } from '../operations/services/workspace-tools.ts';
+import { runTreeseedHostingAudit, type TreeseedHostingAuditEnvironment } from '../operations/services/hosting-audit.ts';
 import { resolveTreeseedWorkflowState, type TreeseedWorkflowStatusOptions } from '../workflow-state.ts';
 import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, filterTreeseedDesiredUnitsByBootstrapSystems, planTreeseedReconciliation, resolveTreeseedBootstrapSelection, reconcileTreeseedTarget } from '../reconcile/index.ts';
 import {
@@ -825,6 +826,32 @@ function buildWorkflowResult<TPayload>(
 		recovery: options.recovery ?? null,
 		errors: options.errors ?? [],
 	};
+}
+
+async function runReadOnlyHostingAuditForWorkflow(
+	operation: TreeseedWorkflowOperationId,
+	root: string,
+	helpers: WorkflowOperationHelpers,
+	environment: TreeseedHostingAuditEnvironment,
+	options: { enabled: boolean; strict?: boolean } = { enabled: true },
+) {
+	if (!options.enabled) {
+		return null;
+	}
+	helpers.write(`[workflow][hosting-audit] Running read-only hosting audit for ${environment}.`);
+	const report = await runTreeseedHostingAudit({
+		tenantRoot: root,
+		environment,
+		repair: false,
+		env: helpers.context.env,
+		write: (line) => helpers.write(line),
+	});
+	if (options.strict && !report.ok) {
+		workflowError(operation, 'validation_failed', `Hosting audit failed for ${report.environment}: ${report.blockers.join('\n')}`, {
+			details: { hostingAudit: report },
+		});
+	}
+	return report;
 }
 
 function normalizeExecutionMode(input: { plan?: boolean; dryRun?: boolean } | undefined): TreeseedWorkflowExecutionMode {
@@ -3637,6 +3664,13 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						};
 					}
 				}
+				const hostingAudit = await runReadOnlyHostingAuditForWorkflow(
+					'save',
+					root,
+					helpers,
+					scope === 'prod' ? 'prod' : scope === 'local' ? 'local' : 'staging',
+					{ enabled: effectiveInput.verifyDeployedResources === true, strict: true },
+				);
 
 				const payload = {
 					mode: saveResult?.mode ?? mode,
@@ -3665,6 +3699,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					verifyMode: effectiveInput.verifyMode ?? 'fast',
 					workflowGates: saveWorkflowGates?.workflowGates ?? [],
 					releaseCandidate,
+					hostingAudit,
 					...worktreePayload(root, effectiveInput.worktreeMode),
 				};
 				completeWorkflowRun(root, workflowRun.runId, payload);
@@ -4233,6 +4268,13 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				});
 				const releaseCandidate = await executeJournalStep(root, workflowRun.runId, 'release-candidate', () =>
 					runReleaseCandidateForPlan('stage', root, stageReleasePlan));
+				const hostingAudit = await runReadOnlyHostingAuditForWorkflow(
+					'stage',
+					root,
+					helpers,
+					'staging',
+					{ enabled: effectiveInput.verifyDeployedResources === true, strict: true },
+				);
 				const previewCleanup = effectiveInput.deletePreview === false
 					? (skipJournalStep(root, workflowRun.runId, 'preview-cleanup', { performed: false }), { performed: false })
 					: await executeJournalStep(root, workflowRun.runId, 'preview-cleanup', () => destroyPreviewIfPresent(root, featureBranch));
@@ -4297,6 +4339,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					workspaceLinks,
 					ciMode,
 					workflowGates: stagingWait.workflowGates,
+					hostingAudit,
 					worktreeCleanup,
 					worktreeMode: effectiveInput.worktreeMode ?? 'auto',
 					managedWorktree,
@@ -4584,6 +4627,10 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							onProgress: (line, stream) => helpers.write(line, stream),
 						}).then((workflowGates) => ({ workflowGates })));
 					const hostedDeploymentState = recordHostedDeploymentStatesFromRootGates(root, rootRelease, rootWorkflowGateResult?.workflowGates);
+					const hostingAudit = await runReadOnlyHostingAuditForWorkflow('release', root, helpers, 'prod', {
+						enabled: true,
+						strict: false,
+					});
 					const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
 						backMergeRootProductionIntoStaging(root, false, {
 							version: rootVersion,
@@ -4617,6 +4664,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						workspaceLinks,
 						ciMode,
 						workflowGates: rootWorkflowGateResult?.workflowGates ?? [],
+						hostingAudit,
 						...worktreePayload(root, effectiveInput.worktreeMode),
 					};
 					completeWorkflowRun(root, workflowRun.runId, payload);
@@ -4894,6 +4942,10 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						onProgress: (line, stream) => helpers.write(line, stream),
 					}).then((workflowGates) => ({ workflowGates })));
 				const hostedDeploymentState = recordHostedDeploymentStatesFromRootGates(root, rootRelease, rootWorkflowGateResult?.workflowGates);
+				const hostingAudit = await runReadOnlyHostingAuditForWorkflow('release', root, helpers, 'prod', {
+					enabled: true,
+					strict: false,
+				});
 				const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
 					backMergeRootProductionIntoStaging(root, true, {
 						version: rootVersion,
@@ -4949,6 +5001,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						...packageReports.flatMap((report) => report.workflowGates),
 						...(Array.isArray(rootWorkflowGateResult?.workflowGates) ? rootWorkflowGateResult.workflowGates : []),
 					],
+					hostingAudit,
 					...worktreePayload(root, effectiveInput.worktreeMode),
 				};
 				completeWorkflowRun(root, workflowRun.runId, payload);

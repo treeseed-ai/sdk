@@ -1,0 +1,208 @@
+name: Treeseed Managed Hosted Project
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: Treeseed project id recorded in the Market control plane
+        required: false
+        type: string
+      environment:
+        description: Target environment
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - prod
+      action_kind:
+        description: Requested managed operation
+        required: true
+        default: deploy_code
+        type: choice
+        options:
+          - provision
+          - deploy_code
+          - publish_content
+          - monitor
+  push:
+    branches:
+      - staging
+      - main
+  release:
+    types: [published]
+
+concurrency:
+  group: treeseed-managed-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      scope: ${{ steps.classify.outputs.scope }}
+      workflow_action: ${{ steps.classify.outputs.workflow_action }}
+      code_changed: ${{ steps.classify.outputs.code_changed }}
+      content_changed: ${{ steps.classify.outputs.content_changed }}
+      release_tag: ${{ steps.classify.outputs.release_tag }}
+    steps:
+      - name: Classify change
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            scope="${{ inputs.environment }}"
+            workflow_action="${{ inputs.action_kind }}"
+            code_changed=$([[ "${workflow_action}" == "deploy_code" ]] && echo "true" || echo "false")
+            content_changed=$([[ "${workflow_action}" == "publish_content" ]] && echo "true" || echo "false")
+            release_tag="false"
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            scope="prod"
+            workflow_action="deploy_code"
+            code_changed="true"
+            content_changed="false"
+            release_tag="true"
+          elif [[ "${{ github.ref_name }}" == "main" ]]; then
+            scope="prod"
+            workflow_action="deploy_code"
+            code_changed="true"
+            content_changed="false"
+            release_tag="false"
+          else
+            scope="staging"
+            workflow_action="deploy_code"
+            code_changed="true"
+            content_changed="false"
+            release_tag="false"
+          fi
+          echo "scope=${scope}" >> "${GITHUB_OUTPUT}"
+          echo "workflow_action=${workflow_action}" >> "${GITHUB_OUTPUT}"
+          echo "code_changed=${code_changed}" >> "${GITHUB_OUTPUT}"
+          echo "content_changed=${content_changed}" >> "${GITHUB_OUTPUT}"
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+
+  verify:
+    runs-on: ubuntu-latest
+    needs: classify
+    permissions:
+      contents: read
+    __WORKING_DIRECTORY_BLOCK__
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: __CACHE_DEPENDENCY_PATH__
+
+      - name: Install dependencies
+        shell: bash
+        run: npm ci --ignore-scripts
+
+      - name: Build workspace package artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dir in packages/sdk packages/core packages/cli; do
+            if test -f "${dir}/package.json"; then
+              npm --prefix "${dir}" run build:dist
+            fi
+          done
+
+      - name: Verify workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify:local
+
+  request-managed-operation:
+    runs-on: ubuntu-latest
+    needs:
+      - classify
+      - verify
+    if: |
+      needs.classify.outputs.workflow_action == 'provision' ||
+      needs.classify.outputs.workflow_action == 'deploy_code' ||
+      needs.classify.outputs.workflow_action == 'publish_content' ||
+      needs.classify.outputs.workflow_action == 'monitor' ||
+      needs.classify.outputs.code_changed == 'true' ||
+      needs.classify.outputs.content_changed == 'true' ||
+      needs.classify.outputs.release_tag == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    environment: ${{ needs.classify.outputs.scope == 'prod' && 'production' || 'staging' }}
+    env:
+      TREESEED_MARKET_API_BASE_URL: ${{ vars.TREESEED_MARKET_API_BASE_URL || vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}
+      TREESEED_PROJECT_ID: ${{ inputs.project_id || vars.TREESEED_PROJECT_ID }}
+      TREESEED_WORKFLOW_ACTION: ${{ needs.classify.outputs.workflow_action }}
+      TREESEED_WORKFLOW_ENVIRONMENT: ${{ needs.classify.outputs.scope }}
+    steps:
+      - name: Request TreeSeed managed operation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${TREESEED_PROJECT_ID}" ]]; then
+            echo "TREESEED_PROJECT_ID is required for managed TreeSeed operations."
+            exit 1
+          fi
+          audience="treeseed:${TREESEED_PROJECT_ID}"
+          oidc_json="$(curl -fsSL -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${audience}")"
+          oidc_token="$(node -e "const fs=require('node:fs'); const data=JSON.parse(fs.readFileSync(0,'utf8')); process.stdout.write(data.value || '')" <<< "${oidc_json}")"
+          if [[ -z "${oidc_token}" ]]; then
+            echo "GitHub did not return an OIDC token."
+            exit 1
+          fi
+          request_json="$(OIDC_TOKEN="${oidc_token}" node --input-type=module <<'NODE'
+          const payload = {
+            oidcToken: process.env.OIDC_TOKEN,
+            actionKind: process.env.TREESEED_WORKFLOW_ACTION,
+            environment: process.env.TREESEED_WORKFLOW_ENVIRONMENT,
+            repository: process.env.GITHUB_REPOSITORY,
+            ref: process.env.GITHUB_REF,
+            refName: process.env.GITHUB_REF_NAME,
+            sha: process.env.GITHUB_SHA,
+            workflow: process.env.GITHUB_WORKFLOW,
+            workflowRef: process.env.GITHUB_WORKFLOW_REF,
+            runId: process.env.GITHUB_RUN_ID,
+            runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+          };
+          process.stdout.write(JSON.stringify(payload));
+          NODE
+          )"
+          response="$(curl -fsSL -X POST "${TREESEED_MARKET_API_BASE_URL%/}/v1/projects/${TREESEED_PROJECT_ID}/ci/oidc/exchange" \
+            -H "content-type: application/json" \
+            --data "${request_json}")"
+          node -e "const r=JSON.parse(process.argv[1]); if (!r.ok) { throw new Error(r.error || 'TreeSeed operation request failed'); } console.log('Requested TreeSeed job ' + r.payload.job.id + ' (' + r.payload.job.status + ')');" "${response}"
+          echo "${response}" > treeseed-operation.json
+
+      - name: Wait for TreeSeed managed operation
+        shell: bash
+        run: |
+          set -euo pipefail
+          job_id="$(node -e "const r=require('./treeseed-operation.json'); process.stdout.write(r.payload.job.id)")"
+          operation_token="$(node -e "const r=require('./treeseed-operation.json'); process.stdout.write(r.payload.operationToken || '')")"
+          if [[ -z "${operation_token}" ]]; then
+            echo "TreeSeed did not return an operation status token."
+            exit 1
+          fi
+          for attempt in $(seq 1 180); do
+            status_json="$(curl -fsSL "${TREESEED_MARKET_API_BASE_URL%/}/v1/projects/${TREESEED_PROJECT_ID}/ci/jobs/${job_id}" \
+              -H "authorization: Bearer ${operation_token}")"
+            status="$(node -e "const r=JSON.parse(process.argv[1]); process.stdout.write(r.payload.job.status)" "${status_json}")"
+            echo "TreeSeed job ${job_id}: ${status}"
+            if [[ "${status}" == "succeeded" ]]; then
+              exit 0
+            fi
+            if [[ "${status}" == "failed" || "${status}" == "cancelled" ]]; then
+              node -e "const r=JSON.parse(process.argv[1]); console.error(JSON.stringify(r.payload.job.error || {}, null, 2));" "${status_json}"
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for TreeSeed job ${job_id}."
+          exit 1

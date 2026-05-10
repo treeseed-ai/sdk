@@ -226,8 +226,6 @@ export function planKnowledgeHubRepositories(
 	const owner = normalized.repository?.owner
 		?? host?.organizationOrOwner
 		?? process.env.TREESEED_HOSTED_HUBS_GITHUB_OWNER
-		?? process.env.TREESEED_REPOSITORY_HOST_GITHUB_OWNER
-		?? process.env.GITHUB_REPOSITORY_OWNER
 		?? 'treeseed-sites';
 	const topology = normalized.repository?.topology ?? 'split_software_content';
 	const visibility = normalized.repository?.visibility ?? host?.defaultVisibility ?? 'private';
@@ -329,11 +327,7 @@ export async function createKnowledgeHubRepositories(input: {
 	description?: string | null;
 	homepageUrl?: string | null;
 }) {
-	const githubToken = process.env.TREESEED_HOSTED_HUBS_GITHUB_TOKEN
-		|| process.env.TREESEED_REPOSITORY_HOST_GITHUB_TOKEN
-		|| process.env.GH_TOKEN
-		|| process.env.GITHUB_TOKEN
-		|| '';
+	const githubToken = process.env.TREESEED_HOSTED_HUBS_GITHUB_TOKEN || '';
 	const githubEnv = githubToken ? { ...process.env, GH_TOKEN: githubToken, GITHUB_TOKEN: githubToken } : process.env;
 	const created = [];
 	for (const repository of input.plan.repositories) {
