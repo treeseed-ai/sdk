@@ -12,6 +12,193 @@ import {
 
 const tempRoots = new Set<string>();
 
+const agentProcessingRegistryFixtureYaml = `entries:
+  TREESEED_PROJECT_RUNNER_TOKEN:
+    label: Project runner registration token
+    group: hosting
+    description: Project runner token.
+    howToGet: Set the project runner token.
+    sensitivity: secret
+    targets:
+      - github-secret
+    scopes:
+      - staging
+      - prod
+    storage: scoped
+    requirement: conditional
+    purposes:
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+    sourcePriority:
+      - machine-config
+      - process-env
+    relevanceRef: projectRegistrationEnabled
+`;
+
+const coreFormsRegistryFixtureYaml = `entries:
+  TREESEED_FORM_TOKEN_SECRET:
+    label: Forms token secret
+    group: forms
+    description: Forms token secret.
+    howToGet: Generate a shared forms token secret.
+    sensitivity: secret
+    targets:
+      - github-secret
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: shared
+    requirement: required
+    purposes:
+      - dev
+      - save
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+    sourcePriority:
+      - machine-config
+      - process-env
+    defaultValueRef: generatedSecret
+    localDefaultValueRef: generatedSecret
+    relevanceRef: formsEnabled
+  TREESEED_TURNSTILE_SECRET_KEY:
+    label: Turnstile secret key
+    group: forms
+    description: Turnstile secret key.
+    howToGet: Set the Cloudflare Turnstile secret key.
+    sensitivity: secret
+    targets:
+      - github-secret
+    scopes:
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - save
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+    sourcePriority:
+      - machine-config
+      - process-env
+    relevanceRef: turnstileEnabled
+    requiredWhenRef: turnstileNonLocal
+  TREESEED_SMTP_HOST:
+    label: SMTP host
+    group: smtp
+    description: SMTP host.
+    howToGet: Set the SMTP host.
+    sensitivity: plain
+    targets:
+      - github-variable
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - dev
+      - save
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+    sourcePriority:
+      - machine-config
+      - process-env
+    localDefaultValueRef: localSmtpHostDefault
+    relevanceRef: smtpEnabled
+    requiredWhenRef: smtpNonLocal
+  TREESEED_SMTP_PORT:
+    label: SMTP port
+    group: smtp
+    description: SMTP port.
+    howToGet: Set the SMTP port.
+    sensitivity: plain
+    targets:
+      - github-variable
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - dev
+      - save
+      - deploy
+      - config
+    validation:
+      kind: number
+    sourcePriority:
+      - machine-config
+      - process-env
+    localDefaultValueRef: localSmtpPortDefault
+    relevanceRef: smtpEnabled
+    requiredWhenRef: smtpNonLocal
+  TREESEED_SMTP_FROM:
+    label: SMTP from address
+    group: smtp
+    description: SMTP from address.
+    howToGet: Set a verified sender address.
+    sensitivity: plain
+    targets:
+      - github-variable
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - dev
+      - save
+      - deploy
+      - config
+    validation:
+      kind: email
+    sourcePriority:
+      - machine-config
+      - process-env
+    localDefaultValueRef: contactEmailDefault
+    relevanceRef: smtpEnabled
+    requiredWhenRef: smtpNonLocal
+  TREESEED_SMTP_REPLY_TO:
+    label: SMTP reply-to address
+    group: smtp
+    description: SMTP reply-to address.
+    howToGet: Set a reply-to address.
+    sensitivity: plain
+    targets:
+      - github-variable
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - dev
+      - save
+      - deploy
+      - config
+    validation:
+      kind: email
+    sourcePriority:
+      - machine-config
+      - process-env
+    localDefaultValueRef: contactEmailDefault
+    relevanceRef: smtpEnabled
+    requiredWhenRef: smtpNonLocal
+`;
+
 async function createTenantFixture(envYaml: string) {
 	const tenantRoot = await mkdtemp(join(tmpdir(), 'treeseed-sdk-env-registry-'));
 	await mkdir(join(tenantRoot, 'src'), { recursive: true });
@@ -88,7 +275,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('surfaces agent API entries when the API processing plane is enabled', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(agentProcessingRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 
 		const registry = resolveTreeseedEnvironmentRegistry({
@@ -113,7 +300,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('uses the active workflow plane to keep web deploy validation free of processing entries', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 		const previousPlane = process.env.TREESEED_WORKFLOW_PLANE;
 		process.env.TREESEED_WORKFLOW_PLANE = 'web';
@@ -145,7 +332,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('keeps Cloudflare account ID as required shared environment config in every environment', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 
 		const deployConfig = {
