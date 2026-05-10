@@ -397,6 +397,22 @@ function resolveNpmInstallCommand(env: NodeJS.ProcessEnv = process.env) {
 	};
 }
 
+function resolveNpmRebuildCommand(env: NodeJS.ProcessEnv = process.env, packageNames: string[]) {
+	const npmExecPath = env.npm_execpath || env.NPM_EXEC_PATH;
+	if (npmExecPath?.trim()) {
+		return {
+			command: process.execPath,
+			args: [npmExecPath, 'rebuild', ...packageNames],
+			display: [process.execPath, npmExecPath, 'rebuild', ...packageNames],
+		};
+	}
+	return {
+		command: 'npm',
+		args: ['rebuild', ...packageNames],
+		display: ['npm', 'rebuild', ...packageNames],
+	};
+}
+
 function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'force' | 'write'>): TreeseedNpmInstallReport[] {
 	const tenantRoot = options.tenantRoot ? resolve(options.tenantRoot) : null;
 	const npmCommand = resolveNpmInstallCommand(options.env);
@@ -421,6 +437,16 @@ function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env
 
 	const nodeModulesMissing = !existsSync(resolve(tenantRoot, 'node_modules'));
 	const npmDepsMissing = !npmBackedDependenciesAvailable();
+	const missingRuntimeTools = npmToolsMissingRuntime();
+	if (!options.force && !nodeModulesMissing && npmDepsMissing && missingRuntimeTools.length > 0) {
+		return [{
+			root: tenantRoot,
+			command: npmCommand.display,
+			status: 'already-present',
+			exitCode: 0,
+			detail: `npm dependencies are installed; rebuilding missing runtime tools: ${missingRuntimeTools.map((tool) => tool.packageName).join(', ')}.`,
+		}];
+	}
 	if (!options.force && !nodeModulesMissing && !npmDepsMissing) {
 		return [{
 			root: tenantRoot,
@@ -467,13 +493,71 @@ function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env
 	}];
 }
 
+function npmToolsMissingRuntime() {
+	return NPM_TOOLS.filter((tool) => !resolveNpmToolRuntimeBinary(tool));
+}
+
+function runNpmToolRebuilds(options: Required<Pick<DependencyInstallerOptions, 'env' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'write'>): TreeseedNpmInstallReport[] {
+	const missingRuntimeTools = npmToolsMissingRuntime();
+	if (missingRuntimeTools.length === 0) {
+		return [];
+	}
+	const tenantRoot = options.tenantRoot ? resolve(options.tenantRoot) : null;
+	const npmCommand = resolveNpmRebuildCommand(options.env, missingRuntimeTools.map((tool) => tool.packageName));
+	if (!tenantRoot || !existsSync(resolve(tenantRoot, 'package.json'))) {
+		return [{
+			root: tenantRoot,
+			command: npmCommand.display,
+			status: 'skipped',
+			exitCode: null,
+			detail: tenantRoot ? `No package.json found in ${tenantRoot}; npm rebuild skipped.` : 'No tenant root was provided; npm rebuild skipped.',
+		}];
+	}
+	if (options.env.TREESEED_MANAGED_NPM_INSTALL === '1') {
+		return [{
+			root: tenantRoot,
+			command: npmCommand.display,
+			status: 'skipped',
+			exitCode: null,
+			detail: 'npm rebuild skipped because TREESEED_MANAGED_NPM_INSTALL=1 is set.',
+		}];
+	}
+
+	options.write?.(`Rebuilding npm-backed Treeseed tools in ${tenantRoot}...`);
+	const result = options.spawn(npmCommand.command, npmCommand.args, {
+		cwd: tenantRoot,
+		env: {
+			...options.env,
+			TREESEED_MANAGED_NPM_INSTALL: '1',
+		},
+		stdio: 'pipe',
+		encoding: 'utf8',
+	});
+	const detail = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim() || result.error?.message || '';
+	const stillMissing = npmToolsMissingRuntime().map((tool) => tool.packageName);
+	const ok = result.status === 0 && !result.error && stillMissing.length === 0;
+	return [{
+		root: tenantRoot,
+		command: npmCommand.display,
+		status: ok ? 'installed' : 'failed',
+		exitCode: result.status ?? (ok ? 0 : 1),
+		detail: ok
+			? detail || 'npm-backed Treeseed tools rebuilt successfully.'
+			: [
+				detail || 'npm-backed Treeseed tool rebuild failed.',
+				stillMissing.length > 0 ? `Missing runtime tools after rebuild: ${stillMissing.join(', ')}` : '',
+			].filter(Boolean).join('\n'),
+	}];
+}
+
 export function formatTreeseedDependencyFailureDetails(result: Pick<TreeseedDependencyInstallResult, 'npmInstalls' | 'reports'>) {
 	const npmFailures = result.npmInstalls
 		.filter((entry) => entry.status === 'failed')
 		.map((entry) => {
 			const root = entry.root ?? 'no tenant root';
 			const exit = entry.exitCode === null ? 'unknown exit code' : `exit code ${entry.exitCode}`;
-			return `npm install in ${root}: ${entry.command.join(' ')} failed with ${exit}${entry.detail ? `: ${entry.detail}` : ''}`;
+			const operation = entry.command.includes('rebuild') ? 'npm rebuild' : 'npm install';
+			return `${operation} in ${root}: ${entry.command.join(' ')} failed with ${exit}${entry.detail ? `: ${entry.detail}` : ''}`;
 		});
 	const toolFailures = result.reports
 		.filter((entry) => entry.required && ['failed', 'missing', 'unsupported'].includes(entry.status))
@@ -883,7 +967,10 @@ export async function installTreeseedDependencies(options: DependencyInstallerOp
 	};
 	mkdirSync(resolveToolsHome(env), { recursive: true });
 	mkdirSync(createTreeseedManagedToolEnv(env).GH_CONFIG_DIR, { recursive: true });
-	const npmInstalls = runNpmBootstrap(effectiveOptions);
+	const npmInstalls = [
+		...runNpmBootstrap(effectiveOptions),
+		...runNpmToolRebuilds(effectiveOptions),
+	];
 	const reports: TreeseedDependencyReport[] = [
 		systemStatus('git', true, effectiveOptions),
 		await installGh(effectiveOptions),
