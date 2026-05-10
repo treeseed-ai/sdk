@@ -268,7 +268,7 @@ export function buildRailwayCommandEnv(env = process.env) {
 	} else {
 		merged.RAILWAY_API_TOKEN = undefined;
 	}
-	merged.RAILWAY_TOKEN = projectToken || undefined;
+	merged.RAILWAY_TOKEN = projectToken || token || undefined;
 	return merged;
 }
 
