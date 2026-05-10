@@ -1372,7 +1372,7 @@ function shouldAttachRailwayDeployLogs(env = process.env) {
 	if (configured === '0' || configured === 'false') {
 		return false;
 	}
-	return false;
+	return configuredEnvValue(env, 'GITHUB_ACTIONS') === 'true' || configuredEnvValue(env, 'CI') === 'true';
 }
 
 function shouldUseVerboseRailwayDeploy(env = process.env) {
