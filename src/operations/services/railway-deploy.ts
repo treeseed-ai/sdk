@@ -272,6 +272,12 @@ export function buildRailwayCommandEnv(env = process.env) {
 	return merged;
 }
 
+export function buildRailwayDeployCommandEnv(env = process.env) {
+	const merged = buildRailwayCommandEnv(env);
+	merged.CI = shouldAttachRailwayDeployLogs(merged) ? 'true' : 'false';
+	return merged;
+}
+
 function normalizeRailwaySchedule(schedule) {
 	if (!schedule || typeof schedule !== 'object') {
 		return null;
@@ -1676,6 +1682,7 @@ export async function deployRailwayService(
 	const deployService = await resolveRailwayDeployProjectContext(service, { env });
 	const plan = planRailwayServiceDeploy(deployService, { env });
 	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
+	const railwayDeployEnv = buildRailwayDeployCommandEnv(commandEnv);
 	const railway = resolveTreeseedToolCommand('railway', { env: commandEnv });
 	if (!railway) {
 		throw new Error('Railway CLI is unavailable.');
@@ -1706,7 +1713,7 @@ export async function deployRailwayService(
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
 		const result = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...plan.args], {
 			cwd: service.rootDir,
-			env: commandEnv,
+			env: railwayDeployEnv,
 			write,
 			prefix: taskPrefix,
 		});

@@ -7,6 +7,7 @@ import {
 	configuredRailwayServices,
 	collectRailwayDeploymentStatusChecks,
 	buildRailwayCommandEnv,
+	buildRailwayDeployCommandEnv,
 	deriveRailwayWorkerRunnerServiceName,
 	deriveRailwayWorkerRunnerVolumeName,
 	ensureRailwayScheduledJobs,
@@ -262,6 +263,24 @@ describe('railway scheduled jobs', () => {
 		expect(plan.args).toContain('--detach');
 		expect(plan.args).not.toContain('--ci');
 		expect(plan.args).not.toContain('--verbose');
+	});
+
+	it('disables Railway CLI CI mode for detached deploys in hosted CI', () => {
+		expect(buildRailwayDeployCommandEnv({
+			CI: 'true',
+			RAILWAY_API_TOKEN: 'railway-api-token',
+		})).toMatchObject({
+			CI: 'false',
+			RAILWAY_TOKEN: 'railway-api-token',
+		});
+		expect(buildRailwayDeployCommandEnv({
+			CI: 'true',
+			RAILWAY_API_TOKEN: 'railway-api-token',
+			TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS: '1',
+		})).toMatchObject({
+			CI: 'true',
+			RAILWAY_TOKEN: 'railway-api-token',
+		});
 	});
 
 	it('allows Railway deploy log attachment to be disabled explicitly in CI', () => {
