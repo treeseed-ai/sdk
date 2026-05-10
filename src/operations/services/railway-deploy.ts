@@ -1421,10 +1421,14 @@ export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
 	};
 }
 
-export function planRailwayServiceLink(service) {
+export function planRailwayServiceLink(service, { env = process.env } = {}) {
 	const args = ['link'];
 	if (service.projectId) {
 		args.push('--project', service.projectId);
+	}
+	const workspace = resolveRailwayWorkspace(env);
+	if (workspace) {
+		args.push('--workspace', workspace);
 	}
 	const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment);
 	if (environmentName) {
@@ -1434,6 +1438,7 @@ export function planRailwayServiceLink(service) {
 	if (serviceSelector) {
 		args.push('--service', serviceSelector);
 	}
+	args.push('--json');
 	return {
 		command: 'railway',
 		args,
@@ -1809,7 +1814,7 @@ export async function deployRailwayService(
 			railwayDeployEnv = { ...railwayDeployEnv, RAILWAY_TOKEN: projectToken };
 		}
 	}
-	const linkPlan = planRailwayServiceLink(cliDeployService);
+	const linkPlan = planRailwayServiceLink(cliDeployService, { env: commandEnv });
 	const plan = planRailwayServiceDeploy(cliDeployService, { env });
 	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
 		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {

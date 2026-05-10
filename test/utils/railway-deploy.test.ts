@@ -266,6 +266,8 @@ describe('railway scheduled jobs', () => {
 			serviceName: 'acme-docs-api',
 			railwayEnvironment: 'staging',
 			rootDir: '.',
+		}, {
+			env: { TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop' },
 		});
 
 		expect(plan).toMatchObject({
@@ -274,10 +276,13 @@ describe('railway scheduled jobs', () => {
 				'link',
 				'--project',
 				'railway-project-1',
+				'--workspace',
+				'knowledge-coop',
 				'--environment',
 				'staging',
 				'--service',
 				'acme-docs-api',
+				'--json',
 			],
 			cwd: '.',
 		});
