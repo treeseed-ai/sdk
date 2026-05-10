@@ -148,6 +148,7 @@ export type RepositorySaveResult = {
 	rootRepo: RepositorySaveReport;
 	waves: string[][];
 	plannedVersions: Record<string, string>;
+	workflowGates?: Array<Record<string, unknown>>;
 };
 
 export type RepositorySavePlanRepo = {
@@ -214,6 +215,13 @@ export type RepositorySaveOptions = {
 	includeRoot?: boolean;
 	stablePackageRelease?: boolean;
 	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
+	onWaveSaved?: (wave: {
+		index: number;
+		nodes: RepositorySaveNode[];
+		reports: RepositorySaveReport[];
+		allReports: RepositorySaveReport[];
+		rootRepo: RepositorySaveReport | null;
+	}) => Promise<Array<Record<string, unknown>> | void> | Array<Record<string, unknown>> | void;
 };
 
 type SaveState = {
@@ -222,6 +230,7 @@ type SaveState = {
 	finalizedCommits: Map<string, string>;
 	reports: Map<string, RepositorySaveReport>;
 	remoteAccessChecked: Set<string>;
+	workflowGates: Array<Record<string, unknown>>;
 };
 
 class RepositorySaveError extends Error {
@@ -1932,9 +1941,10 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 		finalizedCommits: new Map(),
 		reports: new Map(nodes.map((node) => [node.id, createReport(node)])),
 		remoteAccessChecked: new Set(),
+		workflowGates: [],
 	};
 
-	for (const wave of waves) {
+	for (const [index, wave] of waves.entries()) {
 		await runLimited(wave, 3, async (node) => {
 			try {
 				await saveOneRepository(node, options, state);
@@ -1962,6 +1972,17 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 				});
 			}
 		});
+		const waveReports = wave.map((node) => state.reports.get(node.id) ?? createReport(node));
+		const waveGates = await options.onWaveSaved?.({
+			index: index + 1,
+			nodes: wave,
+			reports: waveReports,
+			allReports: [...state.reports.values()],
+			rootRepo: state.reports.get('.') ?? null,
+		});
+		if (Array.isArray(waveGates)) {
+			state.workflowGates.push(...waveGates);
+		}
 	}
 
 	const rootNode = nodes.find((node) => node.id === '.') ?? allNodes.find((node) => node.id === '.');
@@ -1999,6 +2020,7 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 		rootRepo: rootReport,
 		waves: waves.map((wave) => wave.map((node) => node.name)),
 		plannedVersions: Object.fromEntries(state.finalizedVersions.entries()),
+		workflowGates: state.workflowGates,
 	};
 }
 

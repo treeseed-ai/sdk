@@ -905,12 +905,16 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.publishWait.every((entry) => entry.status === 'skipped')).toBe(true);
 		expect(result.payload.repos.every((repo: { workflowGates: Array<{ workflow: string }> }) =>
 			repo.workflowGates.every((gate) => gate.workflow === 'publish.yml'))).toBe(true);
-		expect(result.payload.workflowGates.filter((gate: { name: string }) => gate.name === '@treeseed/market')).toEqual([
-			expect.objectContaining({
-				workflow: 'deploy.yml',
-				branch: result.payload.rootVersion,
-				timeoutSeconds: 2700,
-			}),
+			expect(result.payload.workflowGates.filter((gate: { name: string }) => gate.name === '@treeseed/market')).toEqual([
+				expect.objectContaining({
+					workflow: 'deploy.yml',
+					branch: 'staging',
+				}),
+				expect.objectContaining({
+					workflow: 'deploy.yml',
+					branch: result.payload.rootVersion,
+					timeoutSeconds: 2700,
+				}),
 		]);
 		expect(git(work, ['show', 'main:CHANGELOG.md'])).toContain(`## [${result.payload.rootVersion}]`);
 		expect(git(resolve(work, 'packages', 'sdk'), ['show', 'main:CHANGELOG.md'])).toContain('## [0.4.13]');

@@ -109,6 +109,7 @@ import {
 	refreshAndValidateRootWorkspaceLockfileForSave,
 	repositorySaveErrorDetails,
 	runRepositorySaveOrchestrator,
+	type RepositorySaveReport,
 	type SaveCommitMessageMode,
 	type SaveDevVersionStrategy,
 	type SaveVerifyMode,
@@ -1481,6 +1482,40 @@ function findAutoResumableSaveRun(root: string, branch: string | null) {
 		journal.command === 'save'
 		&& journal.resumable
 		&& journal.session.branchName === branch) ?? null;
+}
+
+function gatesForSavedPackageReports(reports: RepositorySaveReport[]) {
+	return reports
+		.filter((repo) => repo.pushed && repo.commitSha && repo.branch)
+		.map((repo) => ({
+			name: repo.name,
+			repoPath: repo.path,
+			workflow: 'verify.yml',
+			branch: String(repo.branch),
+			headSha: String(repo.commitSha),
+		}));
+}
+
+function gateForSavedRootReport(report: RepositorySaveReport, branch: string | null, scope: string) {
+	if (!branch || scope === 'local' || !report.pushed || !report.commitSha) {
+		return [];
+	}
+	if (branch === STAGING_BRANCH) {
+		return [{
+			name: report.name,
+			repoPath: report.path,
+			workflow: 'deploy.yml',
+			branch,
+			headSha: report.commitSha,
+		}];
+	}
+	return [{
+		name: report.name,
+		repoPath: report.path,
+		workflow: 'verify.yml',
+		branch,
+		headSha: report.commitSha,
+	}];
 }
 
 function findAutoResumableTaskRun(root: string, command: 'stage' | 'close', branch: string | null) {
@@ -3599,6 +3634,32 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 								commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
 								workflowRunId: workflowRun.runId,
 								onProgress: (line, stream) => helpers.write(line, stream),
+								onWaveSaved: branch === STAGING_BRANCH && shouldUseHostedSaveCi(effectiveInput, branch)
+									? async ({ nodes, reports, rootRepo: waveRootRepo }) => {
+										const packageReportsForWave = reports.filter((repo, index) => nodes[index]?.kind === 'package');
+										const rootReportForWave = nodes.some((node) => node.kind === 'project')
+											? waveRootRepo
+											: null;
+										const gates = [
+											...gatesForSavedPackageReports(packageReportsForWave),
+											...(rootReportForWave ? gateForSavedRootReport(rootReportForWave, branch, scope) : []),
+										];
+										if (gates.length === 0) {
+											return [];
+										}
+										const packageNames = packageReportsForWave.map((repo) => repo.name).join(', ');
+										if (packageNames) {
+											helpers.write(`[save][workflow] Waiting for hosted package gates before saving dependents: ${packageNames}.`);
+										} else if (rootReportForWave) {
+											helpers.write('[save][workflow] Waiting for hosted market deploy gate.');
+										}
+										return waitForWorkflowGates('save', gates, 'hosted', {
+											root,
+											runId: workflowRun.runId,
+											onProgress: (line, stream) => helpers.write(line, stream),
+										});
+									}
+									: undefined,
 							});
 						} finally {
 							ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
@@ -3626,6 +3687,9 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				const saveWorkflowGates = shouldUseHostedSaveCi(effectiveInput, branch)
 					? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', () =>
 						{
+							if (branch === STAGING_BRANCH) {
+								return { workflowGates: saveResult?.workflowGates ?? [] };
+							}
 							helpers.write('[save][workflow] Waiting for hosted save workflow gates.');
 							return waitForWorkflowGates('save', [
 							...(branch !== STAGING_BRANCH && savedRootRepo.pushed && savedRootRepo.commitSha && branch
@@ -4521,6 +4585,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				},
 				[
 					{ id: 'release-plan', description: 'Record release plan', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					{ id: 'release-staging-gates', description: 'Verify current staging GitHub Actions gates', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'release-candidate', description: 'Run release-candidate readiness checks', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'workspace-unlink', description: 'Remove local workspace links before release', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					...(mode === 'recursive-workspace'
@@ -4569,6 +4634,34 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 
 				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
 				assertReleaseGitHubAutomationReady(root, effectiveSelectedPackageNames, ciMode);
+				const stagingGateResult = resumeAtRootGates
+					? (completedJournalStepData(root, workflowRun.runId, 'release-staging-gates') as { workflowGates?: Array<Record<string, unknown>> } | null)
+					: await executeJournalStep(root, workflowRun.runId, 'release-staging-gates', () => {
+						helpers.write('[release][workflow] Verifying current staging gates before production release.');
+						const packageGates = checkedOutWorkspacePackageRepos(root)
+							.filter((pkg) => effectiveSelectedPackageNames.has(pkg.name))
+							.map((pkg) => ({
+								name: pkg.name,
+								repoPath: pkg.dir,
+								workflow: 'verify.yml',
+								branch: STAGING_BRANCH,
+								headSha: headCommit(pkg.dir),
+							}));
+						return waitForWorkflowGates('release', [
+							{
+								name: rootRepo.name,
+								repoPath: rootRepo.path,
+								workflow: 'deploy.yml',
+								branch: STAGING_BRANCH,
+								headSha: headCommit(gitRoot),
+							},
+							...packageGates,
+						], ciMode, {
+							root,
+							runId: workflowRun.runId,
+							onProgress: (line, stream) => helpers.write(line, stream),
+						}).then((workflowGates) => ({ workflowGates }));
+					});
 				const releaseCandidate = resumeAtRootGates
 					? (completedJournalStepData(root, workflowRun.runId, 'release-candidate') as ReleaseCandidateReport | null)
 					: await executeJournalStep(root, workflowRun.runId, 'release-candidate', () =>
@@ -4689,13 +4782,17 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						repos: [],
 						rootRepo,
 						releaseCandidate,
+						stagingWorkflowGates: stagingGateResult?.workflowGates ?? [],
 						releaseBackMerge,
 						hostedDeploymentState,
 						finalBranch: currentBranch(gitRoot) || STAGING_BRANCH,
 						pushStatus: { stagingPushed: true, productionPushed: true, tagPushed: true },
 						workspaceLinks,
 						ciMode,
-						workflowGates: rootWorkflowGateResult?.workflowGates ?? [],
+						workflowGates: [
+							...(Array.isArray(stagingGateResult?.workflowGates) ? stagingGateResult.workflowGates : []),
+							...(Array.isArray(rootWorkflowGateResult?.workflowGates) ? rootWorkflowGateResult.workflowGates : []),
+						],
 						hostingAudit,
 						...worktreePayload(root, effectiveInput.worktreeMode),
 					};
@@ -5020,6 +5117,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					repos: packageReports,
 					rootRepo,
 					releaseCandidate,
+					stagingWorkflowGates: stagingGateResult?.workflowGates ?? [],
 					releaseBackMerge,
 					hostedDeploymentState,
 					finalBranch: currentBranch(gitRoot) || STAGING_BRANCH,
@@ -5031,6 +5129,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					workspaceLinks,
 					ciMode,
 					workflowGates: [
+						...(Array.isArray(stagingGateResult?.workflowGates) ? stagingGateResult.workflowGates : []),
 						...packageReports.flatMap((report) => report.workflowGates),
 						...(Array.isArray(rootWorkflowGateResult?.workflowGates) ? rootWorkflowGateResult.workflowGates : []),
 					],
