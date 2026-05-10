@@ -497,8 +497,9 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubPro
 				publicBaseUrl: projectApiBaseUrl,
 				railway: {
 					serviceName: `${slug}-api`,
-					buildCommand: 'npm run build',
-					startCommand: 'node ./src/api/server.js',
+					buildCommand: 'npm run build:api',
+					startCommand: 'npm run build:api && node ./src/api/server.js',
+					healthcheckTimeoutSeconds: 120,
 				},
 				environments: {
 					local: {
@@ -512,8 +513,8 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubPro
 				railway: {
 					serviceName: `${slug}-workday-manager`,
 					rootDir: '.',
-					buildCommand: 'npm run build',
-					startCommand: 'node ./node_modules/@treeseed/agent/dist/services/workday-manager.js',
+					buildCommand: 'npm run build:api',
+					startCommand: 'npm run build:api && node ./packages/agent/dist/services/workday-manager.js',
 					schedule: '0 9 * * 1-5',
 				},
 			},
@@ -522,8 +523,8 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubPro
 				provider: managedRuntime ? 'railway' : 'none',
 				railway: {
 					rootDir: '.',
-					buildCommand: 'npm run build',
-					startCommand: 'node ./node_modules/@treeseed/agent/dist/services/worker.js',
+					buildCommand: 'npm run build:api',
+					startCommand: 'npm run build:api && node ./packages/agent/dist/services/worker.js',
 				},
 			},
 			...(config.services ?? {}),

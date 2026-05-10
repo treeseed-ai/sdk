@@ -199,13 +199,16 @@ describe('config runtime shared environment values', () => {
 
 	it('ensures Railway deploy ignore entries for local workspace artifacts', () => {
 		const tenantRoot = createTenantFixture();
+		writeFileSync(join(tenantRoot, '.railwayignore'), 'dist/\n**/dist/\npackages/*/dist/\n', 'utf8');
 
 		const railwayIgnorePath = ensureTreeseedRailwayIgnoreEntries(tenantRoot);
 		const contents = readFileSync(railwayIgnorePath, 'utf8');
 
 		expect(contents).toContain('node_modules/');
 		expect(contents).toContain('packages/*/node_modules/');
-		expect(contents).toContain('packages/*/dist/');
+		expect(contents).not.toContain('\ndist/\n');
+		expect(contents).not.toContain('**/dist/');
+		expect(contents).not.toContain('packages/*/dist/');
 		expect(contents).toContain('public/books/*.json');
 	});
 

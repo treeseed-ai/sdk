@@ -45,8 +45,9 @@ services:
     publicBaseUrl: https://__SITE_SLUG__-api.up.railway.app
     railway:
       serviceName: __SITE_SLUG__-api
-      buildCommand: npm run build
-      startCommand: node ./src/api/server.js
+      buildCommand: npm run build:api
+      startCommand: npm run build:api && node ./src/api/server.js
+      healthcheckTimeoutSeconds: 120
     environments:
       local:
         baseUrl: http://127.0.0.1:3000
@@ -56,16 +57,16 @@ services:
     railway:
       serviceName: __SITE_SLUG__-workday-manager
       rootDir: .
-      buildCommand: npm run build
-      startCommand: node ./node_modules/@treeseed/agent/dist/services/workday-manager.js
+      buildCommand: npm run build:api
+      startCommand: npm run build:api && node ./packages/agent/dist/services/workday-manager.js
       schedule: '0 9 * * 1-5'
   workerRunner:
     enabled: true
     provider: railway
     railway:
       rootDir: .
-      buildCommand: npm run build
-      startCommand: node ./node_modules/@treeseed/agent/dist/services/worker.js
+      buildCommand: npm run build:api
+      startCommand: npm run build:api && node ./packages/agent/dist/services/worker.js
 plugins:
   - package: '@treeseed/core/plugin-default'
 providers:
