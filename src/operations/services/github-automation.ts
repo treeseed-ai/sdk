@@ -4,6 +4,10 @@ import { spawnSync } from 'node:child_process';
 import { resolveTreeseedEnvironmentRegistry } from '../../platform/environment.ts';
 import { packageRoot, loadCliDeployConfig } from './runtime-tools.ts';
 import {
+	filterManagedHostGitHubEnvironment,
+	usesManagedHostOperationRequests,
+} from './managed-host-security.ts';
+import {
 	createGitHubApiClient,
 	ensureGitHubRepository,
 	maybeGetGitHubRepository,
@@ -344,7 +348,7 @@ export function resolveGitRepositoryRoot(tenantRoot) {
 	return result.status === 0 ? result.stdout.trim() : tenantRoot;
 }
 
-export function requiredGitHubEnvironment(tenantRoot, { scope = 'prod', purpose = 'save' } = {}) {
+export function requiredGitHubEnvironment(tenantRoot, { scope = 'prod', purpose = 'save', managedHostMode = 'auto' } = {}) {
 	const deployConfig = loadCliDeployConfig(tenantRoot);
 	const registry = resolveTreeseedEnvironmentRegistry({ deployConfig });
 	const relevant = registry.entries.filter(
@@ -354,10 +358,13 @@ export function requiredGitHubEnvironment(tenantRoot, { scope = 'prod', purpose 
 			&& (!entry.isRelevant || entry.isRelevant(registry.context, scope, purpose)),
 	);
 
-	return {
+	const required = {
 		secrets: [...new Set(relevant.filter((entry) => entry.targets.includes('github-secret')).map((entry) => entry.id))],
 		variables: [...new Set(relevant.filter((entry) => entry.targets.includes('github-variable')).map((entry) => entry.id))],
 	};
+	const managedBoundary = managedHostMode === 'managed'
+		|| (managedHostMode === 'auto' && usesManagedHostOperationRequests(deployConfig));
+	return managedBoundary ? filterManagedHostGitHubEnvironment(required) : required;
 }
 
 export function requiredGitHubSecrets(tenantRoot) {
@@ -401,8 +408,12 @@ function renderWorkflowTemplate(templateName, { workingDirectory }) {
 		);
 }
 
-export function renderDeployWorkflow({ workingDirectory }) {
-	return renderWorkflowTemplate('deploy.workflow.yml', { workingDirectory });
+function deployWorkflowTemplateName(executionBoundary = 'direct') {
+	return executionBoundary === 'managed' ? 'deploy.managed.workflow.yml' : 'deploy.workflow.yml';
+}
+
+export function renderDeployWorkflow({ workingDirectory, executionBoundary = 'direct' }) {
+	return renderWorkflowTemplate(deployWorkflowTemplateName(executionBoundary), { workingDirectory });
 }
 
 export function renderHostedProjectWorkflow({ workingDirectory }) {
@@ -425,10 +436,13 @@ function ensureWorkflowFile(tenantRoot, fileName, expected) {
 export function ensureDeployWorkflow(tenantRoot) {
 	const repositoryRoot = resolveGitRepositoryRoot(tenantRoot);
 	const workingDirectory = relative(repositoryRoot, tenantRoot).replaceAll('\\', '/') || '.';
-	const expected = renderDeployWorkflow({ workingDirectory });
+	const deployConfig = loadCliDeployConfig(tenantRoot);
+	const executionBoundary = usesManagedHostOperationRequests(deployConfig) ? 'managed' : 'direct';
+	const expected = renderDeployWorkflow({ workingDirectory, executionBoundary });
 	return {
 		...ensureWorkflowFile(tenantRoot, 'deploy.yml', expected),
 		workingDirectory,
+		executionBoundary,
 	};
 }
 
@@ -488,7 +502,7 @@ function nonEmptyValues(values = {}) {
 	);
 }
 
-export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scope = 'prod', purpose = 'save', valuesOverlay = {} } = {}) {
+export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scope = 'prod', purpose = 'save', valuesOverlay = {}, managedHostMode = 'auto' } = {}) {
 	const repository = maybeResolveGitHubRepositorySlug(tenantRoot);
 	if (!repository) {
 		if (dryRun) {
@@ -501,7 +515,7 @@ export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scop
 		}
 		throw new Error('Unable to determine GitHub repository from the current tenant. Configure an origin remote before syncing GitHub secrets.');
 	}
-	const required = requiredGitHubEnvironment(tenantRoot, { scope, purpose });
+	const required = requiredGitHubEnvironment(tenantRoot, { scope, purpose, managedHostMode });
 	const requiredSecrets = required.secrets;
 	const requiredVariables = required.variables;
 	const client = createGitHubApiClient();

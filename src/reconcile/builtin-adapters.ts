@@ -35,6 +35,7 @@ import {
 	runRailway,
 	validateRailwayDeployPrerequisites,
 } from '../operations/services/railway-deploy.ts';
+import { shouldExposeManagedHostRuntimeSecret } from '../operations/services/managed-host-security.ts';
 import {
 	ensureRailwayEnvironment,
 	ensureRailwayProject,
@@ -638,7 +639,7 @@ function collectCloudflareEnvironmentSync(input: TreeseedReconcileAdapterInput) 
 		const value = typeof values[entry.id] === 'string' ? values[entry.id] : '';
 		if (entry.targets.includes('cloudflare-secret')) {
 			const secretValue = value || (typeof generatedSecrets[entry.id] === 'string' ? generatedSecrets[entry.id] : '');
-			if (secretValue) {
+			if (secretValue && shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, entry.id)) {
 				secrets[entry.id] = secretValue;
 				secretNames.add(entry.id);
 			}
@@ -650,7 +651,7 @@ function collectCloudflareEnvironmentSync(input: TreeseedReconcileAdapterInput) 
 	}
 
 	for (const [key, value] of Object.entries(generatedSecrets)) {
-		if (typeof value === 'string' && value.length > 0) {
+		if (typeof value === 'string' && value.length > 0 && shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, key)) {
 			secrets[key] = value;
 			secretNames.add(key);
 		}
@@ -1770,7 +1771,10 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput) {
 	const state = loadDeployState(input.context.tenantRoot, input.context.deployConfig, { target: toDeployTarget(input.context.target) });
 	const secrets = Object.fromEntries(
 		registry.entries
-			.filter((entry) => entry.scopes.includes(scope) && entry.targets.includes('railway-secret'))
+			.filter((entry) =>
+				entry.scopes.includes(scope)
+				&& entry.targets.includes('railway-secret')
+				&& shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, entry.id))
 			.map((entry) => [entry.id, values[entry.id]])
 			.filter(([, value]) => typeof value === 'string' && value.length > 0),
 	);
@@ -1781,7 +1785,11 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput) {
 			.filter(([, value]) => typeof value === 'string' && value.length > 0),
 	);
 
-	if (typeof values.CLOUDFLARE_API_TOKEN === 'string' && values.CLOUDFLARE_API_TOKEN.length > 0) {
+	if (
+		typeof values.CLOUDFLARE_API_TOKEN === 'string'
+		&& values.CLOUDFLARE_API_TOKEN.length > 0
+		&& shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, 'CLOUDFLARE_API_TOKEN')
+	) {
 		secrets.CLOUDFLARE_API_TOKEN = values.CLOUDFLARE_API_TOKEN;
 	}
 	if (typeof values.CLOUDFLARE_ACCOUNT_ID === 'string' && values.CLOUDFLARE_ACCOUNT_ID.length > 0) {

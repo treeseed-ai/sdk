@@ -89,6 +89,38 @@ services:
 	return tenantRoot;
 }
 
+function createManagedHostedTenantFixture() {
+	const tenantRoot = createTenantFixture();
+	writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test Site
+slug: test-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+hosting:
+  kind: hosted_project
+  registration: optional
+  marketBaseUrl: https://api.treeseed.ai
+  teamId: acme
+  projectId: docs
+hub:
+  mode: treeseed_hosted
+runtime:
+  mode: treeseed_managed
+cloudflare:
+  accountId: account-123
+  pages:
+    projectName: test-site
+    previewProjectName: test-site-staging
+  r2:
+    bucketName: test-site-content
+    binding: TREESEED_CONTENT_BUCKET
+services:
+  api:
+    provider: railway
+    enabled: true
+`);
+	return tenantRoot;
+}
+
 function unlockSecrets(tenantRoot: string) {
 	vi.stubEnv(TREESEED_MACHINE_KEY_PASSPHRASE_ENV, 'test-passphrase');
 	unlockTreeseedSecretSessionFromEnv(tenantRoot);
@@ -265,6 +297,36 @@ describe('config GitHub environment sync', () => {
 			'unlocked-pages',
 			expect.any(Object),
 		);
+	});
+
+	it('does not sync TreeSeed-managed provider secrets into hosted project GitHub environments', async () => {
+		const tenantRoot = createManagedHostedTenantFixture();
+		writeDefaultMachineConfig(tenantRoot);
+		unlockSecrets(tenantRoot);
+		seedHostedValues(tenantRoot);
+		setConfigValue(tenantRoot, 'staging', 'TREESEED_PROJECT_ID', 'docs');
+
+		const result = await syncTreeseedGitHubEnvironment({
+			tenantRoot,
+			scope: 'staging',
+			valuesOverlay: {
+				CLOUDFLARE_API_TOKEN: 'unlocked-cloudflare-token',
+				RAILWAY_API_TOKEN: 'unlocked-railway-token',
+				TREESEED_SMTP_PASSWORD: 'unlocked-smtp-password',
+				TREESEED_PROJECT_ID: 'docs',
+			},
+		});
+
+		expect(result.scope).toBe('staging');
+		const secretNames = upsertGitHubEnvironmentSecretMock.mock.calls.map((call) => call[2]);
+		const variableNames = upsertGitHubEnvironmentVariableMock.mock.calls.map((call) => call[2]);
+		expect(secretNames).not.toContain('GH_TOKEN');
+		expect(secretNames).not.toContain('CLOUDFLARE_API_TOKEN');
+		expect(secretNames).not.toContain('RAILWAY_API_TOKEN');
+		expect(secretNames).not.toContain('TREESEED_SMTP_PASSWORD');
+		expect(variableNames).not.toContain('CLOUDFLARE_ACCOUNT_ID');
+		expect(variableNames).not.toContain('TREESEED_RAILWAY_WORKSPACE');
+		expect(variableNames).toContain('TREESEED_PROJECT_ID');
 	});
 
 	it('reports GitHub environment sync progress while syncing items', async () => {

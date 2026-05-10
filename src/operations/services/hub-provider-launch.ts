@@ -412,7 +412,7 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubPro
 	const marketBaseUrl = normalizeBaseUrl(input.marketBaseUrl ?? envOrNull('TREESEED_MARKET_API_BASE_URL') ?? 'https://knowledge.coop');
 	const siteUrl = resolveManagedWebUrl(slug);
 	const projectApiBaseUrl = normalizeBaseUrl(input.projectApiBaseUrl ?? resolveManagedApiUrl(slug));
-	const cloudflareAccountId = envOrNull('TREESEED_CLOUDFLARE_ACCOUNT_ID') ?? envOrNull('CLOUDFLARE_ACCOUNT_ID') ?? 'replace-with-cloudflare-account-id';
+	const cloudflareAccountId = envOrNull('CLOUDFLARE_ACCOUNT_ID') ?? 'replace-with-cloudflare-account-id';
 	const runtimeMode = input.hostingMode === 'managed'
 		? 'treeseed_managed'
 		: input.hostingMode === 'hybrid'
@@ -745,7 +745,7 @@ function buildCloudflareHostEnvironmentOverlay(input: KnowledgeHubProviderLaunch
 		overlayValue(overlay, key, value);
 	}
 
-	overlay.CLOUDFLARE_ACCOUNT_ID = overlay.CLOUDFLARE_ACCOUNT_ID || overlay.TREESEED_CLOUDFLARE_ACCOUNT_ID || '';
+	overlay.CLOUDFLARE_ACCOUNT_ID = overlay.CLOUDFLARE_ACCOUNT_ID || '';
 	overlayValue(overlay, 'TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME', overlay.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME || projectSlug);
 	overlayValue(overlay, 'TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME', overlay.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME || `${projectSlug}-staging`);
 	overlayValue(overlay, 'TREESEED_CONTENT_BUCKET_NAME', overlay.TREESEED_CONTENT_BUCKET_NAME || `${projectSlug}-content`);
@@ -809,11 +809,7 @@ function scaffoldKnowledgeCoopSource(projectRoot: string, input: KnowledgeHubPro
 }
 
 function repositoryHostGitHubEnvOverlay() {
-	const token = process.env.TREESEED_HOSTED_HUBS_GITHUB_TOKEN
-		|| process.env.TREESEED_REPOSITORY_HOST_GITHUB_TOKEN
-		|| process.env.GH_TOKEN
-		|| process.env.GITHUB_TOKEN
-		|| '';
+	const token = process.env.TREESEED_HOSTED_HUBS_GITHUB_TOKEN || '';
 	return token
 		? { ...process.env, GH_TOKEN: token, GITHUB_TOKEN: token }
 		: process.env;
@@ -867,7 +863,7 @@ export async function validateKnowledgeHubProviderLaunchPrerequisites(
 		['TREESEED_API_WEB_SERVICE_ID'],
 		['TREESEED_API_WEB_SERVICE_SECRET'],
 		['TREESEED_API_WEB_ASSERTION_SECRET'],
-		['CLOUDFLARE_ACCOUNT_ID', 'TREESEED_CLOUDFLARE_ACCOUNT_ID'],
+		['CLOUDFLARE_ACCOUNT_ID'],
 	];
 	const missingConfig = requiredConfig
 		.filter((group) => !group.some((name) => {

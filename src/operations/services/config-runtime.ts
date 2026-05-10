@@ -62,6 +62,10 @@ import {
 	resolveTreeseedToolCommand,
 } from '../../managed-dependencies.ts';
 import {
+	filterManagedHostGitHubEnvironment,
+	usesManagedHostOperationRequests,
+} from './managed-host-security.ts';
+import {
 	assertTreeseedKeyAgentResponse,
 	getTreeseedKeyAgentPaths,
 	inspectTreeseedKeyAgentDiagnostics,
@@ -2340,6 +2344,7 @@ export async function syncTreeseedGitHubEnvironment({
 	dryRun = false,
 	repository: repositoryInput,
 	valuesOverlay = {},
+	managedHostMode = 'auto',
 	execution = 'parallel',
 	concurrency = 4,
 	onProgress,
@@ -2349,6 +2354,7 @@ export async function syncTreeseedGitHubEnvironment({
 	dryRun?: boolean;
 	repository?: string | null;
 	valuesOverlay?: Record<string, string | undefined>;
+	managedHostMode?: 'auto' | 'direct' | 'managed';
 	execution?: 'parallel' | 'sequential';
 	concurrency?: number;
 	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
@@ -2363,7 +2369,25 @@ export async function syncTreeseedGitHubEnvironment({
 		...resolveTreeseedMachineEnvironmentValues(tenantRoot, scope),
 		...nonEmptyEnvironmentValues(valuesOverlay),
 	};
-	const relevant = registry.entries.filter((entry) => entry.scopes.includes(scope));
+	const deployConfig = loadCliDeployConfig(tenantRoot);
+	const managedBoundary = managedHostMode === 'managed'
+		|| (managedHostMode === 'auto' && usesManagedHostOperationRequests(deployConfig));
+	const allowed = managedBoundary
+		? filterManagedHostGitHubEnvironment({
+			secrets: registry.entries.filter((entry) => entry.scopes.includes(scope) && entry.targets.includes('github-secret')).map((entry) => entry.id),
+			variables: registry.entries.filter((entry) => entry.scopes.includes(scope) && entry.targets.includes('github-variable')).map((entry) => entry.id),
+		})
+		: null;
+	const allowedSecrets = allowed ? new Set(allowed.secrets) : null;
+	const allowedVariables = allowed ? new Set(allowed.variables) : null;
+	const relevant = registry.entries.filter((entry) => {
+		if (!entry.scopes.includes(scope)) return false;
+		if (!managedBoundary) return true;
+		if (entry.sensitivity === 'secret') {
+			return Boolean(entry.targets.includes('github-secret') && allowedSecrets?.has(entry.id));
+		}
+		return Boolean(entry.targets.includes('github-variable') && allowedVariables?.has(entry.id));
+	});
 	const ghToken = values.GH_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
 	const ghEnv = ghToken
 		? {

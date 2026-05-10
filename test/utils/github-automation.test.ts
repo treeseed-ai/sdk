@@ -106,6 +106,23 @@ describe('github automation workflow generation', () => {
 		expect(rendered).not.toContain('TREESEED_SMTP_HOST: ${{ secrets.TREESEED_SMTP_HOST }}');
 	});
 
+	it('renders managed hosted project workflows without provider secrets', () => {
+		const rendered = renderDeployWorkflow({ workingDirectory: '.', executionBoundary: 'managed' });
+
+		expect(rendered).toContain('Treeseed Managed Hosted Project');
+		expect(rendered).toContain('id-token: write');
+		expect(rendered).toContain('/v1/projects/${TREESEED_PROJECT_ID}/ci/oidc/exchange');
+		for (const forbidden of [
+			'CLOUDFLARE_API_TOKEN',
+			'RAILWAY_API_TOKEN',
+			'TREESEED_SMTP_PASSWORD',
+			'TREESEED_WEB_SERVICE_SECRET',
+			'TREESEED_API_AUTH_SECRET',
+		]) {
+			expect(rendered).not.toContain(forbidden);
+		}
+	});
+
 	it('renders the hosted project orchestration workflow template', () => {
 		const rendered = renderHostedProjectWorkflow({ workingDirectory: '.' });
 		expect(rendered).toContain('Treeseed Hosted Project Orchestration');
@@ -117,12 +134,16 @@ describe('github automation workflow generation', () => {
 		const marketRoot = createTenantRoot(`hosting:
   kind: market_control_plane
   registration: none`);
-		const hostedRoot = createTenantRoot(`hosting:
+	const hostedRoot = createTenantRoot(`hosting:
   kind: hosted_project
   registration: optional
   marketBaseUrl: https://api.treeseed.ai
   teamId: team-1
-  projectId: project-1`);
+  projectId: project-1
+hub:
+  mode: treeseed_hosted
+runtime:
+  mode: treeseed_managed`);
 
 		const marketWorkflows = ensureStandardizedGitHubWorkflows(marketRoot);
 		const hostedWorkflows = ensureStandardizedGitHubWorkflows(hostedRoot);
@@ -131,7 +152,10 @@ describe('github automation workflow generation', () => {
 		expect(hostedWorkflows).toHaveLength(1);
 		expect(readFileSync(resolve(marketRoot, '.github', 'workflows', 'deploy.yml'), 'utf8')).toContain('Treeseed Deploy');
 		expect(readFileSync(resolve(marketRoot, '.github', 'workflows', 'hosted-project.yml'), 'utf8')).toContain('Treeseed Hosted Project Orchestration');
-		expect(readFileSync(resolve(hostedRoot, '.github', 'workflows', 'deploy.yml'), 'utf8')).toContain('./packages/sdk/scripts/tenant-workflow-action.ts');
+		const hostedDeploy = readFileSync(resolve(hostedRoot, '.github', 'workflows', 'deploy.yml'), 'utf8');
+		expect(hostedDeploy).toContain('Treeseed Managed Hosted Project');
+		expect(hostedDeploy).toContain('/v1/projects/${TREESEED_PROJECT_ID}/ci/oidc/exchange');
+		expect(hostedDeploy).not.toContain('CLOUDFLARE_API_TOKEN');
 	});
 
 	it('uses configured GitHub repository metadata over a mismatched origin', () => {
