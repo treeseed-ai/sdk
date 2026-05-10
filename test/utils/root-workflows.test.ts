@@ -45,6 +45,8 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('packages/sdk packages/agent packages/core packages/cli');
 		expect(webSource).toContain('npm ci --ignore-scripts');
 		expect(processingSource).toContain('npm ci --ignore-scripts');
+		expect(webSource).toContain('npx trsd install --json');
+		expect(processingSource).toContain('npx trsd install --json');
 		expect(webSource).not.toContain('RAILWAY_API_TOKEN');
 		expect(webSource).not.toContain('TREESEED_WORKER_POOL_SCALER');
 		expect(processingSource).toContain('RAILWAY_API_TOKEN');

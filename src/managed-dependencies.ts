@@ -112,9 +112,16 @@ const NPM_TOOLS: Array<{
 	packageName: string;
 	binName: string;
 	version: string;
+	runtimeBinary?: (packageRoot: string) => string;
 }> = [
 	{ name: 'wrangler', packageName: 'wrangler', binName: 'wrangler', version: '4.86.0' },
-	{ name: 'railway', packageName: '@railway/cli', binName: 'railway', version: '4.44.0' },
+	{
+		name: 'railway',
+		packageName: '@railway/cli',
+		binName: 'railway',
+		version: '4.44.0',
+		runtimeBinary: (packageRoot) => resolve(packageRoot, 'bin', process.platform === 'win32' ? 'railway.exe' : 'railway'),
+	},
 	{ name: 'copilot', packageName: '@github/copilot', binName: 'copilot', version: '1.0.39' },
 	{ name: 'copilot-language-server', packageName: '@github/copilot-language-server', binName: 'copilot-language-server', version: '1.480.0' },
 ];
@@ -310,11 +317,47 @@ function findNpmTool(name: TreeseedManagedToolName) {
 	return NPM_TOOLS.find((tool) => tool.name === name) ?? null;
 }
 
+function resolveNpmToolRuntimeBinary(tool: (typeof NPM_TOOLS)[number]) {
+	const packageJsonPath = resolvePackageJsonPathOptional(tool.packageName);
+	if (!packageJsonPath) {
+		return null;
+	}
+	const packageRoot = dirname(packageJsonPath);
+	const packageBin = resolvePackageBinaryOptional(tool.packageName, tool.binName);
+	if (!packageBin || !existsSync(packageBin)) {
+		return null;
+	}
+	if (!tool.runtimeBinary) {
+		return packageBin;
+	}
+	const runtimeBinary = tool.runtimeBinary(packageRoot);
+	return existsSync(runtimeBinary) ? runtimeBinary : null;
+}
+
+function npmToolMissingDetail(tool: (typeof NPM_TOOLS)[number]) {
+	const packageJsonPath = resolvePackageJsonPathOptional(tool.packageName);
+	if (!packageJsonPath) {
+		return `${tool.packageName} is missing from the installed package graph.`;
+	}
+	const packageRoot = dirname(packageJsonPath);
+	const packageBin = resolvePackageBinaryOptional(tool.packageName, tool.binName);
+	if (!packageBin || !existsSync(packageBin)) {
+		return `${tool.packageName} binary ${tool.binName} is missing from the installed package.`;
+	}
+	if (tool.runtimeBinary) {
+		const runtimeBinary = tool.runtimeBinary(packageRoot);
+		if (!existsSync(runtimeBinary)) {
+			return `${tool.packageName} runtime binary ${runtimeBinary} is missing. Run \`npx trsd install --json\` or npm install without --ignore-scripts.`;
+		}
+	}
+	return `${tool.packageName} is unavailable.`;
+}
+
 function npmBackedDependenciesAvailable() {
 	try {
 		for (const tool of NPM_TOOLS) {
-			const binaryPath = resolvePackageBinary(tool.packageName, tool.binName);
-			if (!existsSync(binaryPath)) {
+			const binaryPath = resolveNpmToolRuntimeBinary(tool);
+			if (!binaryPath || !existsSync(binaryPath)) {
 				return false;
 			}
 		}
@@ -448,7 +491,7 @@ export function resolveTreeseedToolBinary(toolName: TreeseedManagedToolName, opt
 	}
 	const npmTool = findNpmTool(toolName);
 	if (npmTool) {
-		return resolvePackageBinaryOptional(npmTool.packageName, npmTool.binName);
+		return resolveNpmToolRuntimeBinary(npmTool);
 	}
 	if (toolName === 'git' || toolName === 'docker') {
 		return locateSystemBinary(toolName, spawnSync, options.env ?? process.env);
@@ -461,7 +504,7 @@ export function resolveTreeseedToolCommand(toolName: TreeseedManagedToolName, op
 	if (!binaryPath) {
 		return null;
 	}
-	if (findNpmTool(toolName)) {
+	if (findNpmTool(toolName) && /\.(?:cjs|mjs|js)$/u.test(binaryPath)) {
 		return { command: process.execPath, argsPrefix: [binaryPath], binaryPath };
 	}
 	return { command: binaryPath, argsPrefix: [], binaryPath };
@@ -478,7 +521,7 @@ function invocationForTool(toolName: TreeseedManagedToolName, env: NodeJS.Proces
 		};
 	}
 	return {
-		mode: findNpmTool(toolName) ? 'node' : 'direct',
+		mode: findNpmTool(toolName) && /\.(?:cjs|mjs|js)$/u.test(command.binaryPath) ? 'node' : 'direct',
 		command: command.command,
 		argsPrefix: command.argsPrefix,
 		binaryPath: command.binaryPath,
@@ -693,7 +736,7 @@ async function installGh(options: Required<Pick<DependencyInstallerOptions, 'env
 
 function statusForNpmTool(tool: (typeof NPM_TOOLS)[number], options: DependencyInstallerOptions): TreeseedDependencyReport {
 	try {
-		const binaryPath = resolvePackageBinaryOptional(tool.packageName, tool.binName);
+		const binaryPath = resolveNpmToolRuntimeBinary(tool);
 		return report({
 			name: tool.name,
 			kind: 'npm',
@@ -704,7 +747,7 @@ function statusForNpmTool(tool: (typeof NPM_TOOLS)[number], options: DependencyI
 			required: true,
 			detail: binaryPath && existsSync(binaryPath)
 				? `${tool.packageName} is available from the Treeseed SDK dependency graph.`
-				: `${tool.packageName} binary ${tool.binName} is missing from the installed package.`,
+				: npmToolMissingDetail(tool),
 		});
 	} catch (error) {
 		return report({

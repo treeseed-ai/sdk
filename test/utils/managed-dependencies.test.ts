@@ -93,6 +93,7 @@ describe('managed dependencies', () => {
 	it('resolves npm-backed tool binaries from the SDK dependency graph', () => {
 		expect(resolveTreeseedToolBinary('wrangler')).toContain('wrangler');
 		expect(resolveTreeseedToolBinary('railway')).toContain('@railway');
+		expect(resolveTreeseedToolBinary('railway')).not.toMatch(/railway\.js$/u);
 		expect(resolveTreeseedToolBinary('copilot')).toContain('@github');
 		expect(resolveTreeseedToolBinary('copilot-sdk')).toBeNull();
 	});
