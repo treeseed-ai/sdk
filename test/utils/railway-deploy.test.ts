@@ -233,7 +233,6 @@ describe('railway scheduled jobs', () => {
 				'up',
 				'--service',
 				'acme-docs-api',
-				'--no-gitignore',
 				'--detach',
 				'--project',
 				'railway-project-1',
@@ -291,7 +290,6 @@ describe('railway scheduled jobs', () => {
 
 		expect(plan.args).toEqual([
 			'up',
-			'--no-gitignore',
 			'--detach',
 		]);
 		expect(plan.args).not.toContain('--project');
@@ -347,9 +345,19 @@ describe('railway scheduled jobs', () => {
 		}, { env: { CI: 'true' } });
 
 		expect(plan.args).toContain('--detach');
-		expect(plan.args).toContain('--no-gitignore');
+		expect(plan.args).not.toContain('--no-gitignore');
 		expect(plan.args).not.toContain('--ci');
 		expect(plan.args).not.toContain('--verbose');
+	});
+
+	it('can include ignored files for Railway deploys when explicitly requested', () => {
+		const plan = planRailwayServiceDeploy({
+			serviceName: 'acme-docs-api',
+			railwayEnvironment: 'staging',
+			rootDir: '.',
+		}, { env: { TREESEED_RAILWAY_DEPLOY_INCLUDE_IGNORED: '1' } });
+
+		expect(plan.args).toContain('--no-gitignore');
 	});
 
 	it('keeps Railway CLI CI mode enabled only when log streaming is explicit', () => {

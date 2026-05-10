@@ -1390,6 +1390,11 @@ function shouldUseVerboseRailwayDeploy(env = process.env) {
 	return shouldAttachRailwayDeployLogs(env);
 }
 
+function shouldIncludeRailwayIgnoredFiles(env = process.env) {
+	const configured = configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_INCLUDE_IGNORED');
+	return configured === '1' || configured === 'true';
+}
+
 export function shouldRunRailwayPredeployBuild(env = process.env) {
 	const configured = configuredEnvValue(env, 'TREESEED_RAILWAY_PREDEPLOY_BUILD');
 	if (configured === '1' || configured === 'true') {
@@ -1407,7 +1412,10 @@ export function planRailwayServiceDeploy(service, { env = process.env, projectTo
 	if (!projectTokenMode && serviceSelector) {
 		args.push('--service', serviceSelector);
 	}
-	args.push('--no-gitignore', shouldAttachRailwayDeployLogs(env) ? '--ci' : '--detach');
+	if (shouldIncludeRailwayIgnoredFiles(env)) {
+		args.push('--no-gitignore');
+	}
+	args.push(shouldAttachRailwayDeployLogs(env) ? '--ci' : '--detach');
 	if (shouldUseVerboseRailwayDeploy(env)) {
 		args.push('--verbose');
 	}
