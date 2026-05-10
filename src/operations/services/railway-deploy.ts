@@ -1397,7 +1397,7 @@ export function shouldRunRailwayPredeployBuild(env = process.env) {
 	return configuredEnvValue(env, 'CI') !== 'true';
 }
 
-export function planRailwayServiceDeploy(service, { env = process.env, projectTokenMode = false } = {}) {
+export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
 	const serviceSelector = service.serviceName ?? service.serviceId;
 	const args = [
 		'up',
@@ -1409,7 +1409,7 @@ export function planRailwayServiceDeploy(service, { env = process.env, projectTo
 	if (shouldUseVerboseRailwayDeploy(env)) {
 		args.push('--verbose');
 	}
-	if (!projectTokenMode && service.projectId) {
+	if (service.projectId) {
 		args.push('--project', service.projectId);
 	}
 	const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment);
@@ -1420,6 +1420,15 @@ export function planRailwayServiceDeploy(service, { env = process.env, projectTo
 		command: 'railway',
 		args,
 		cwd: service.rootDir,
+	};
+}
+
+function buildRailwayCliContextEnv(env, service) {
+	return {
+		...env,
+		RAILWAY_PROJECT_ID: configuredEnvValue(service, 'projectId') || configuredEnvValue(env, 'RAILWAY_PROJECT_ID') || undefined,
+		RAILWAY_ENVIRONMENT_ID: configuredEnvValue(service, 'environmentId') || configuredEnvValue(env, 'RAILWAY_ENVIRONMENT_ID') || undefined,
+		RAILWAY_SERVICE_ID: configuredEnvValue(service, 'serviceId') || configuredEnvValue(env, 'RAILWAY_SERVICE_ID') || undefined,
 	};
 }
 
@@ -1810,18 +1819,19 @@ export async function deployRailwayService(
 		serviceName: runtimeConfiguration?.serviceName ?? deployService.serviceName,
 		railwayEnvironment: runtimeConfiguration?.environmentName ?? runtimeConfiguration?.environmentId ?? deployService.railwayEnvironment,
 	};
+	railwayDeployEnv = buildRailwayCliContextEnv(railwayDeployEnv, cliDeployService);
 	let usesProjectToken = Boolean(configuredEnvValue(railwayDeployEnv, 'RAILWAY_TOKEN'));
 	if (!usesProjectToken) {
 		const projectToken = await createRailwayCliProjectToken(cliDeployService, { env: commandEnv });
 		if (projectToken) {
-			railwayDeployEnv = { ...railwayDeployEnv, RAILWAY_TOKEN: projectToken };
+			railwayDeployEnv = buildRailwayCliContextEnv({ ...railwayDeployEnv, RAILWAY_TOKEN: projectToken }, cliDeployService);
 			usesProjectToken = true;
 		} else if (configuredEnvValue(commandEnv, 'CI') === 'true') {
 			throw new Error(`Railway CI deploy requires a project token for ${cliDeployService.serviceName ?? cliDeployService.key}. Automatic project token creation did not return a token.`);
 		}
 	}
 	const linkPlan = planRailwayServiceLink(cliDeployService, { env: commandEnv });
-	const plan = planRailwayServiceDeploy(cliDeployService, { env, projectTokenMode: usesProjectToken });
+	const plan = planRailwayServiceDeploy(cliDeployService, { env });
 	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
 		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
 			cwd: deployService.rootDir,
@@ -1834,10 +1844,14 @@ export async function deployRailwayService(
 		}
 	}
 
-	if (!usesProjectToken) {
+	const canLinkRailwayProject = Boolean(configuredEnvValue(commandEnv, 'RAILWAY_API_TOKEN')) || !usesProjectToken;
+	if (canLinkRailwayProject) {
+		const linkEnv = usesProjectToken
+			? buildRailwayCliContextEnv({ ...commandEnv, RAILWAY_TOKEN: undefined }, cliDeployService)
+			: railwayDeployEnv;
 		const linkResult = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...linkPlan.args], {
 			cwd: linkPlan.cwd,
-			env: railwayDeployEnv,
+			env: linkEnv,
 			write,
 			prefix: { ...taskPrefix, stage: 'link' },
 		});
