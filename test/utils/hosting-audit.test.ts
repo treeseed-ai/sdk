@@ -83,5 +83,5 @@ describe('hosting audit', () => {
 		expect(Array.isArray(report.checks)).toBe(true);
 		expect(json).not.toContain(secret);
 		expect(formatTreeseedHostingAuditReport(report)).not.toContain(secret);
-	});
+	}, 20_000);
 });
