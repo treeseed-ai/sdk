@@ -1401,7 +1401,7 @@ export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
 	const args = [
 		'up',
 		'--service',
-		service.serviceId ?? service.serviceName,
+		service.serviceName ?? service.serviceId,
 		shouldAttachRailwayDeployLogs(env) ? '--ci' : '--detach',
 	];
 	if (shouldUseVerboseRailwayDeploy(env)) {
@@ -1726,7 +1726,7 @@ export async function deployRailwayService(
 	let lastFailure = null;
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
 		const result = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...plan.args], {
-			cwd: service.rootDir,
+			cwd: plan.cwd,
 			env: railwayDeployEnv,
 			write,
 			prefix: taskPrefix,

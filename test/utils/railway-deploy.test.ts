@@ -242,7 +242,7 @@ describe('railway scheduled jobs', () => {
 		});
 	});
 
-	it('uses Railway service IDs for deploys when available', () => {
+	it('uses Railway service names for CLI deploys even when IDs are available', () => {
 		const plan = planRailwayServiceDeploy({
 			projectId: 'railway-project-1',
 			serviceId: 'service-id-1',
@@ -253,9 +253,9 @@ describe('railway scheduled jobs', () => {
 
 		expect(plan.args).toEqual(expect.arrayContaining([
 			'--service',
-			'service-id-1',
+			'acme-docs-api',
 		]));
-		expect(plan.args).not.toContain('acme-docs-api');
+		expect(plan.args).not.toContain('service-id-1');
 	});
 
 	it('supports attached Railway build logs when explicitly requested', () => {
