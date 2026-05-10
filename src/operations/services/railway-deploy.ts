@@ -1844,14 +1844,10 @@ export async function deployRailwayService(
 		}
 	}
 
-	const canLinkRailwayProject = Boolean(configuredEnvValue(commandEnv, 'RAILWAY_API_TOKEN')) || !usesProjectToken;
-	if (canLinkRailwayProject) {
-		const linkEnv = usesProjectToken
-			? buildRailwayCliContextEnv({ ...commandEnv, RAILWAY_TOKEN: undefined }, cliDeployService)
-			: railwayDeployEnv;
+	if (!usesProjectToken) {
 		const linkResult = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...linkPlan.args], {
 			cwd: linkPlan.cwd,
-			env: linkEnv,
+			env: railwayDeployEnv,
 			write,
 			prefix: { ...taskPrefix, stage: 'link' },
 		});
