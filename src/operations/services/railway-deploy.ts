@@ -1923,11 +1923,12 @@ export async function deployRailwayService(
 		railwayEnvironment: runtimeConfiguration?.environmentName ?? runtimeConfiguration?.environmentId ?? deployService.railwayEnvironment,
 	};
 	railwayDeployEnv = buildRailwayCliContextEnv(railwayDeployEnv, cliDeployService);
+	const hasCommandApiToken = Boolean(configuredEnvValue(commandEnv, 'RAILWAY_API_TOKEN'));
 	let usesProjectToken = Boolean(configuredEnvValue(railwayDeployEnv, 'RAILWAY_TOKEN'));
 	if (usesProjectToken) {
 		railwayDeployEnv = { ...railwayDeployEnv, RAILWAY_API_TOKEN: undefined };
 	}
-	if (!usesProjectToken) {
+	if (!usesProjectToken && !hasCommandApiToken) {
 		const projectToken = await createRailwayCliProjectToken(cliDeployService, { env: commandEnv });
 		if (projectToken) {
 			railwayDeployEnv = buildRailwayCliContextEnv({ ...railwayDeployEnv, RAILWAY_API_TOKEN: undefined, RAILWAY_TOKEN: projectToken }, cliDeployService);
