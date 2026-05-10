@@ -50,6 +50,7 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(processingSource).toContain('RAILWAY_API_TOKEN');
 		expect(processingSource).toContain('TREESEED_WORKER_POOL_SCALER');
 		expect(source).toContain('migrations/*)');
+		expect(source).toContain('scripts/build-api.mjs');
 		expect(source).toContain('processing_changed="true"');
 		expect(source).not.toContain('docs/*|migrations/*');
 		expect(webSource).not.toContain('TREESEED_WORKFLOW_SKIP_PROVISION');
