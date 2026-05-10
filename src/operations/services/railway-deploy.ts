@@ -1421,6 +1421,34 @@ export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
 	};
 }
 
+export function buildRailwayProjectLinkArgs(service, { env = process.env } = {}) {
+	const projectSelector = typeof service?.projectId === 'string' ? service.projectId.trim() : '';
+	if (!projectSelector) {
+		return [];
+	}
+	const args = [
+		'link',
+		'--project',
+		projectSelector,
+	];
+	const workspace = resolveRailwayWorkspace(env);
+	if (workspace) {
+		args.push('--workspace', workspace);
+	}
+	const serviceSelector = typeof (service?.serviceId ?? service?.serviceName) === 'string'
+		? String(service.serviceId ?? service.serviceName).trim()
+		: '';
+	if (serviceSelector) {
+		args.push('--service', serviceSelector);
+	}
+	const environmentName = normalizeRailwayEnvironmentName(service?.railwayEnvironment);
+	if (environmentName) {
+		args.push('--environment', environmentName);
+	}
+	args.push('--json');
+	return args;
+}
+
 async function resolveRailwayDeployProjectContext(service, { env = process.env } = {}) {
 	if (service.projectId) {
 		return service;
@@ -1710,24 +1738,16 @@ export async function deployRailwayService(
 		serviceName: runtimeConfiguration?.serviceName ?? deployService.serviceName,
 		railwayEnvironment: runtimeConfiguration?.environmentName ?? runtimeConfiguration?.environmentId ?? deployService.railwayEnvironment,
 	};
-	const railwayEnvironmentName = normalizeRailwayEnvironmentName(cliDeployService.railwayEnvironment);
-	if (cliDeployService.projectId && railwayEnvironmentName) {
-		const linkResult = await runPrefixedCommand(railway.command, [
-			...railway.argsPrefix,
-			'link',
-			'--project',
-			cliDeployService.projectId,
-			'--environment',
-			railwayEnvironmentName,
-			'--json',
-		], {
+	const linkArgs = buildRailwayProjectLinkArgs(cliDeployService, { env: commandEnv });
+	if (linkArgs.length > 0) {
+		const linkResult = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...linkArgs], {
 			cwd: cliDeployService.rootDir,
 			env: railwayDeployEnv,
 			write,
 			prefix: { ...taskPrefix, stage: 'link' },
 		});
 		if (linkResult.status !== 0) {
-			throw new Error(linkResult.stderr?.trim() || linkResult.stdout?.trim() || `railway link --project ${cliDeployService.projectId} --environment ${railwayEnvironmentName} failed`);
+			throw new Error(linkResult.stderr?.trim() || linkResult.stdout?.trim() || `railway ${linkArgs.join(' ')} failed`);
 		}
 	}
 	const plan = planRailwayServiceDeploy(cliDeployService, { env });
