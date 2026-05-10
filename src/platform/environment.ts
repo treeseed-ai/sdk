@@ -236,7 +236,9 @@ function apiSurfaceEnabled(context: TreeseedEnvironmentContext) {
 	if (!workflowPlaneAllows('processing')) {
 		return false;
 	}
-	return platformSurfaceEnabled(context, 'api') && managedServiceEnabled(context, 'api');
+	const apiSurfaceExplicitlyEnabled = context.deployConfig.surfaces?.api?.enabled === true;
+	const apiServiceConfigured = context.deployConfig.services?.api != null && managedServiceEnabled(context, 'api');
+	return (apiSurfaceExplicitlyEnabled || apiServiceConfigured) && managedServiceEnabled(context, 'api');
 }
 
 function processingPlaneEnabled(context: TreeseedEnvironmentContext) {
@@ -244,7 +246,7 @@ function processingPlaneEnabled(context: TreeseedEnvironmentContext) {
 		return false;
 	}
 	const mode = context.deployConfig.processing?.mode ?? 'market-assigned';
-	if (mode !== 'none') {
+	if (mode === 'team-owned' || mode === 'project-owned' || mode === 'local') {
 		return true;
 	}
 	return Object.entries(context.deployConfig.services ?? {}).some(([service, config]) =>
@@ -260,6 +262,9 @@ function formsEnabled(context: TreeseedEnvironmentContext) {
 
 function railwayManagedEnabled(context: TreeseedEnvironmentContext) {
 	if (!workflowPlaneAllows('processing')) {
+		return false;
+	}
+	if (!processingPlaneEnabled(context)) {
 		return false;
 	}
 	if (context.deployConfig.runtime?.mode === 'treeseed_managed') {

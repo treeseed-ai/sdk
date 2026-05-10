@@ -331,6 +331,31 @@ describe('environment registry overlays', () => {
 		}
 	});
 
+	it('keeps market-assigned processing free of processing-host secrets by default', async () => {
+		const tenantRoot = await createTenantFixture(agentProcessingRegistryFixtureYaml);
+		tempRoots.add(tenantRoot);
+
+		const registry = resolveTreeseedEnvironmentRegistry({
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				processing: { mode: 'market-assigned' },
+				__tenantRoot: tenantRoot,
+			} as any,
+			plugins: [],
+		});
+
+		for (const id of ['RAILWAY_API_TOKEN', 'TREESEED_API_WEB_SERVICE_SECRET', 'TREESEED_CAPACITY_PROVIDER_ID']) {
+			const entry = findRegistryEntry(registry, id);
+			if (entry) {
+				expect(isTreeseedEnvironmentEntryRelevant(entry, registry.context, 'staging', 'config')).toBe(false);
+			}
+		}
+	});
+
 	it('keeps Cloudflare account ID as required shared environment config in every environment', async () => {
 		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
