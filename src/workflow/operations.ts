@@ -396,6 +396,11 @@ function normalizeCiMode(mode: TreeseedWorkflowCiMode | undefined, operation: 's
 	return operation === 'save' ? 'off' : 'hosted';
 }
 
+function normalizeSaveCiMode(mode: TreeseedWorkflowCiMode | undefined, branch: string | null | undefined) {
+	if (mode === 'hosted' || mode === 'off') return mode;
+	return branch === STAGING_BRANCH ? 'hosted' : 'off';
+}
+
 function normalizeSaveVerifyMode(mode: TreeseedSaveInput['verifyMode'] | undefined): SaveVerifyMode {
 	switch (mode) {
 		case 'skip':
@@ -415,8 +420,8 @@ function normalizeSaveVerifyMode(mode: TreeseedSaveInput['verifyMode'] | undefin
 	}
 }
 
-function shouldUseHostedSaveCi(input: TreeseedSaveInput) {
-	return normalizeCiMode(input.ciMode, 'save') === 'hosted'
+function shouldUseHostedSaveCi(input: TreeseedSaveInput, branch: string | null | undefined) {
+	return normalizeSaveCiMode(input.ciMode, branch) === 'hosted'
 		|| input.verifyMode === 'hosted'
 		|| input.verifyMode === 'both'
 		|| input.verifyDeployedResources === true;
@@ -3454,7 +3459,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							}
 							: null,
 						workspaceLinks,
-						ciMode: normalizeCiMode(effectiveInput.ciMode, 'save'),
+						ciMode: normalizeSaveCiMode(effectiveInput.ciMode, branch),
 						verifyMode: effectiveInput.verifyMode ?? 'fast',
 						...worktreePayload(root, effectiveInput.worktreeMode),
 						repositoryPlan,
@@ -3464,6 +3469,9 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							{ id: 'workspace-unlink', description: 'Remove local workspace links before deployment install and lockfile updates' },
 							...repositoryPlan.plannedSteps,
 							{ id: 'lockfile-validation', description: 'Validate refreshed package-lock.json files before any save commit is pushed' },
+							...(shouldUseHostedSaveCi(effectiveInput, branch)
+								? [{ id: 'hosted-ci', description: `Wait for hosted save workflows on ${branch}` }]
+								: []),
 							...(branch === STAGING_BRANCH
 								? [{ id: 'release-candidate', description: 'Run release-candidate readiness checks for the saved staging state' }]
 								: []),
@@ -3506,7 +3514,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
 					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
 						verifyMode: effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'fast'),
-					ciMode: effectiveInput.ciMode ?? 'auto',
+					ciMode: effectiveInput.ciMode ?? (branch === STAGING_BRANCH ? 'hosted' : 'auto'),
 					worktreeMode: effectiveInput.worktreeMode ?? 'auto',
 					commitMessageMode: effectiveInput.commitMessageMode ?? 'auto',
 					workspaceLinks: effectiveInput.workspaceLinks ?? 'auto',
@@ -3521,7 +3529,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						branch,
 						resumable: true,
 					},
-					...(shouldUseHostedSaveCi(effectiveInput)
+					...(shouldUseHostedSaveCi(effectiveInput, branch)
 						? [{
 							id: 'hosted-ci',
 							description: `Wait for hosted save workflows on ${branch}`,
@@ -3611,7 +3619,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						lockfileValidation: repo.lockfileValidation,
 					})),
 				};
-				const saveWorkflowGates = shouldUseHostedSaveCi(effectiveInput)
+				const saveWorkflowGates = shouldUseHostedSaveCi(effectiveInput, branch)
 					? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', () =>
 						{
 							helpers.write('[save][workflow] Waiting for hosted save workflow gates.');
@@ -3625,7 +3633,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 									headSha: savedRootRepo.commitSha,
 								}]
 								: []),
-							...(effectiveInput.verifyDeployedResources === true && scope !== 'local' && savedRootRepo.pushed && savedRootRepo.commitSha && branch
+							...((branch === STAGING_BRANCH || effectiveInput.verifyDeployedResources === true) && scope !== 'local' && savedRootRepo.pushed && savedRootRepo.commitSha && branch
 								? [{
 									name: savedRootRepo.name,
 									repoPath: savedRootRepo.path,
@@ -3714,7 +3722,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					workspaceLinks,
 					commandReadiness,
 					lockfileValidation,
-					ciMode: normalizeCiMode(effectiveInput.ciMode, 'save'),
+					ciMode: normalizeSaveCiMode(effectiveInput.ciMode, branch),
 					verifyMode: effectiveInput.verifyMode ?? 'fast',
 					workflowGates: saveWorkflowGates?.workflowGates ?? [],
 					releaseCandidate,

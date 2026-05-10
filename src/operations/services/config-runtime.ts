@@ -2809,7 +2809,7 @@ function createConfigReadiness(values, validation) {
 			configured: providerIssues('cloudflare').length === 0,
 		},
 		railway: {
-			configured: providerIssues('railway').length === 0,
+			configured: validConfigValue('RAILWAY_API_TOKEN') && providerIssues('railway').length === 0,
 		},
 		localDevelopment: {
 			configured: localDevelopmentIssues.length === 0,

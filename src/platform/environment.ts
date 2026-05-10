@@ -211,19 +211,38 @@ function platformSurfaceEnabled(context: TreeseedEnvironmentContext, surface: st
 	return context.deployConfig.surfaces?.[surface]?.enabled !== false;
 }
 
+function activeWorkflowPlane() {
+	const plane = process.env.TREESEED_WORKFLOW_PLANE;
+	return plane === 'web' || plane === 'processing' ? plane : null;
+}
+
+function workflowPlaneAllows(plane: 'web' | 'processing') {
+	const activePlane = activeWorkflowPlane();
+	return activePlane === null || activePlane === plane;
+}
+
 function managedServiceEnabled(context: TreeseedEnvironmentContext, service: string) {
 	return context.deployConfig.services?.[service]?.enabled !== false;
 }
 
 function webSurfaceEnabled(context: TreeseedEnvironmentContext) {
+	if (!workflowPlaneAllows('web')) {
+		return false;
+	}
 	return platformSurfaceEnabled(context, 'web');
 }
 
 function apiSurfaceEnabled(context: TreeseedEnvironmentContext) {
+	if (!workflowPlaneAllows('processing')) {
+		return false;
+	}
 	return platformSurfaceEnabled(context, 'api') && managedServiceEnabled(context, 'api');
 }
 
 function processingPlaneEnabled(context: TreeseedEnvironmentContext) {
+	if (!workflowPlaneAllows('processing')) {
+		return false;
+	}
 	const mode = context.deployConfig.processing?.mode ?? 'market-assigned';
 	if (mode !== 'none') {
 		return true;
@@ -240,6 +259,9 @@ function formsEnabled(context: TreeseedEnvironmentContext) {
 }
 
 function railwayManagedEnabled(context: TreeseedEnvironmentContext) {
+	if (!workflowPlaneAllows('processing')) {
+		return false;
+	}
 	if (context.deployConfig.runtime?.mode === 'treeseed_managed') {
 		return true;
 	}

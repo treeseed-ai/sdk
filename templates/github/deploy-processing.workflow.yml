@@ -80,6 +80,7 @@ __WORKING_DIRECTORY_BLOCK__  processing:
       TREESEED_PROCESSING_DRAIN: ${{ vars.TREESEED_PROCESSING_DRAIN }}
       TREESEED_WORKFLOW_ACTION: ${{ inputs.action_kind }}
       TREESEED_WORKFLOW_ENVIRONMENT: ${{ inputs.environment }}
+      TREESEED_WORKFLOW_PLANE: processing
       TREESEED_WORKFLOW_PROJECT: ${{ inputs.project_id || vars.TREESEED_PROJECT_ID }}
       TREESEED_WORKFLOW_PREVIEW_ID: ${{ inputs.preview_id }}
     steps:

@@ -73,6 +73,8 @@ function parseAction(value: string): ProjectPlatformAction {
 
 async function main() {
 	const options = parseArgs(process.argv.slice(2));
+	process.env.TREESEED_WORKFLOW_ACTION = options.action;
+	process.env.TREESEED_WORKFLOW_PLANE ||= options.action === 'deploy_processing' ? 'processing' : 'web';
 	const scope = resolveScope(options.environment);
 	const result = await runProjectPlatformAction(options.action, {
 		tenantRoot,

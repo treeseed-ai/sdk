@@ -38,6 +38,8 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(source).toContain('uses: ./.github/workflows/deploy-processing.yml');
 		expect(webSource).toContain('TREESEED_BOOTSTRAP_MODE: auto');
 		expect(processingSource).toContain('TREESEED_BOOTSTRAP_MODE: auto');
+		expect(webSource).toContain('TREESEED_WORKFLOW_PLANE: web');
+		expect(processingSource).toContain('TREESEED_WORKFLOW_PLANE: processing');
 		expect(webSource).toContain('npm ci --ignore-scripts');
 		expect(processingSource).toContain('npm ci --ignore-scripts');
 		expect(webSource).not.toContain('RAILWAY_API_TOKEN');

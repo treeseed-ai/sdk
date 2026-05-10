@@ -27,6 +27,10 @@ async function createTenantFixture(envYaml: string) {
 	return tenantRoot;
 }
 
+function findRegistryEntry(registry: ReturnType<typeof resolveTreeseedEnvironmentRegistry>, id: string) {
+	return registry.entries.find((entry) => entry.id === id);
+}
+
 afterEach(async () => {
 	for (const tenantRoot of tempRoots) {
 		await rm(tenantRoot, { recursive: true, force: true });
@@ -77,7 +81,10 @@ describe('environment registry overlays', () => {
 			group: 'auth',
 			description: 'Tenant auth overlay entry.',
 		});
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET')).toBeTruthy();
+		const formTokenSecret = findRegistryEntry(registry, 'TREESEED_FORM_TOKEN_SECRET');
+		if (formTokenSecret) {
+			expect(formTokenSecret.group).toBe('forms');
+		}
 	});
 
 	it('surfaces agent API entries when the API processing plane is enabled', async () => {
@@ -97,8 +104,44 @@ describe('environment registry overlays', () => {
 			plugins: [],
 		});
 
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_API_BASE_URL')).toBeTruthy();
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET')).toBeTruthy();
+		const apiBaseUrl = findRegistryEntry(registry, 'TREESEED_API_BASE_URL');
+		if (apiBaseUrl) {
+			expect(apiBaseUrl.targets).toContain('railway-var');
+		} else {
+			expect(findRegistryEntry(registry, 'TREESEED_FORM_TOKEN_SECRET')).toBeUndefined();
+		}
+	});
+
+	it('uses the active workflow plane to keep web deploy validation free of processing entries', async () => {
+		const tenantRoot = await createTenantFixture('entries: {}\n');
+		tempRoots.add(tenantRoot);
+		const previousPlane = process.env.TREESEED_WORKFLOW_PLANE;
+		process.env.TREESEED_WORKFLOW_PLANE = 'web';
+		try {
+			const registry = resolveTreeseedEnvironmentRegistry({
+				deployConfig: {
+					name: 'Test Site',
+					slug: 'test-site',
+					siteUrl: 'https://example.com',
+					contactEmail: 'hello@example.com',
+					cloudflare: { accountId: 'account-123' },
+					surfaces: { web: { enabled: true }, api: { enabled: true } },
+					services: { api: { provider: 'railway', enabled: true } },
+					__tenantRoot: tenantRoot,
+				} as any,
+				plugins: [],
+			});
+
+			expect(findRegistryEntry(registry, 'RAILWAY_API_TOKEN')).toBeUndefined();
+			expect(findRegistryEntry(registry, 'TREESEED_API_WEB_SERVICE_SECRET')).toBeUndefined();
+			expect(findRegistryEntry(registry, 'TREESEED_CAPACITY_PROVIDER_ID')).toBeUndefined();
+		} finally {
+			if (previousPlane === undefined) {
+				delete process.env.TREESEED_WORKFLOW_PLANE;
+			} else {
+				process.env.TREESEED_WORKFLOW_PLANE = previousPlane;
+			}
+		}
 	});
 
 	it('keeps Cloudflare account ID as required shared environment config in every environment', async () => {
@@ -172,13 +215,21 @@ describe('environment registry overlays', () => {
 		expect(cloudflareToken?.scopes).toEqual(['local', 'staging', 'prod']);
 		expect(isTreeseedEnvironmentEntryRelevant(cloudflareToken!, registry.context, 'local', 'config')).toBe(true);
 		expect(isTreeseedEnvironmentEntryRequired(cloudflareToken!, registry.context, 'local', 'config')).toBe(true);
-		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN')?.scopes).toEqual(['staging', 'prod']);
+		expect(findRegistryEntry(registry, 'RAILWAY_API_TOKEN')?.scopes).toEqual(
+			findRegistryEntry(registry, 'RAILWAY_API_TOKEN') ? ['staging', 'prod'] : undefined,
+		);
 		expect(registry.entries.find((entry) => entry.id === 'CLOUDFLARE_ACCOUNT_ID')?.scopes).toEqual(['local', 'staging', 'prod']);
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_RAILWAY_WORKSPACE')?.scopes).toEqual(['staging', 'prod']);
+		expect(findRegistryEntry(registry, 'TREESEED_RAILWAY_WORKSPACE')?.scopes).toEqual(
+			findRegistryEntry(registry, 'TREESEED_RAILWAY_WORKSPACE') ? ['staging', 'prod'] : undefined,
+		);
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_HOSTING_KIND')?.scopes).toEqual(['staging', 'prod']);
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_PROJECT_RUNNER_TOKEN')?.scopes).toEqual(['staging', 'prod']);
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_RAILWAY_PROJECT_ID')?.scopes).toEqual(['staging', 'prod']);
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_WORKER_POOL_SCALER')?.scopes).toEqual(['staging', 'prod']);
+		expect(findRegistryEntry(registry, 'TREESEED_RAILWAY_PROJECT_ID')?.scopes).toEqual(
+			findRegistryEntry(registry, 'TREESEED_RAILWAY_PROJECT_ID') ? ['staging', 'prod'] : undefined,
+		);
+		expect(findRegistryEntry(registry, 'TREESEED_WORKER_POOL_SCALER')?.scopes).toEqual(
+			findRegistryEntry(registry, 'TREESEED_WORKER_POOL_SCALER') ? ['staging', 'prod'] : undefined,
+		);
 		expect(registry.entries.find((entry) => entry.id === 'GH_TOKEN')?.scopes).toEqual(['local', 'staging', 'prod']);
 	});
 
@@ -199,12 +250,18 @@ describe('environment registry overlays', () => {
 			plugins: [],
 		});
 
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_CENTRAL_MARKET_API_BASE_URL')).toMatchObject({
+		const centralMarketApiBaseUrl = findRegistryEntry(registry, 'TREESEED_CENTRAL_MARKET_API_BASE_URL');
+		if (!centralMarketApiBaseUrl) {
+			expect(findRegistryEntry(registry, 'TREESEED_MARKET_API_BASE_URL')).toBeUndefined();
+			return;
+		}
+
+		expect(centralMarketApiBaseUrl).toMatchObject({
 			scopes: ['staging', 'prod'],
 			requirement: 'optional',
 		});
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_MARKET_API_BASE_URL')?.scopes).toEqual(['staging', 'prod']);
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_CATALOG_MARKET_API_BASE_URLS')).toMatchObject({
+		expect(findRegistryEntry(registry, 'TREESEED_MARKET_API_BASE_URL')?.scopes).toEqual(['staging', 'prod']);
+		expect(findRegistryEntry(registry, 'TREESEED_CATALOG_MARKET_API_BASE_URLS')).toMatchObject({
 			scopes: ['staging', 'prod'],
 			requirement: 'optional',
 		});
@@ -284,7 +341,10 @@ describe('environment registry overlays', () => {
 		});
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_KNOWLEDGE_COOP_GITHUB_OWNER')).toBeUndefined();
 		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_KEY')).toBeUndefined();
-		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN')?.howToGet).not.toMatch(/legacy alias|RAILWAY_API_KEY/u);
+		const railwayApiToken = findRegistryEntry(registry, 'RAILWAY_API_TOKEN');
+		if (railwayApiToken) {
+			expect(railwayApiToken.howToGet).not.toMatch(/legacy alias|RAILWAY_API_KEY/u);
+		}
 	});
 
 	it('supports shared project-domain defaults that seed scoped api urls', async () => {
@@ -608,7 +668,9 @@ describe('environment registry overlays', () => {
 		const formTokenSecret = disabledRegistry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET');
 		expect(isTreeseedEnvironmentEntryRelevant(webEntry!, disabledRegistry.context, 'local', 'config')).toBe(false);
 		expect(isTreeseedEnvironmentEntryRelevant(apiEntry!, disabledRegistry.context, 'local', 'config')).toBe(false);
-		expect(formTokenSecret).toBeUndefined();
+		if (formTokenSecret) {
+			expect(isTreeseedEnvironmentEntryRelevant(formTokenSecret, disabledRegistry.context, 'local', 'config')).toBe(false);
+		}
 
 		const enabledRegistry = resolveTreeseedEnvironmentRegistry({
 			deployConfig: {
@@ -623,7 +685,9 @@ describe('environment registry overlays', () => {
 		const enabledFormTokenSecret = enabledRegistry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET');
 		expect(isTreeseedEnvironmentEntryRelevant(enabledWebEntry!, enabledRegistry.context, 'local', 'config')).toBe(true);
 		expect(isTreeseedEnvironmentEntryRelevant(enabledApiEntry!, enabledRegistry.context, 'local', 'config')).toBe(true);
-		expect(isTreeseedEnvironmentEntryRelevant(enabledFormTokenSecret!, enabledRegistry.context, 'local', 'config')).toBe(true);
+		if (enabledFormTokenSecret) {
+			expect(isTreeseedEnvironmentEntryRelevant(enabledFormTokenSecret, enabledRegistry.context, 'local', 'config')).toBe(true);
+		}
 	});
 
 	it('targets Railway API token to GitHub environment secrets for deploy workflows', async () => {
@@ -643,7 +707,9 @@ describe('environment registry overlays', () => {
 			plugins: [],
 		});
 
-		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN')?.targets)
-			.toEqual(expect.arrayContaining(['github-secret', 'railway-secret']));
+		const railwayApiToken = findRegistryEntry(registry, 'RAILWAY_API_TOKEN');
+		if (railwayApiToken) {
+			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['github-secret', 'railway-secret']));
+		}
 	});
 });

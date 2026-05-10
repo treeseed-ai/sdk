@@ -1532,6 +1532,10 @@ export async function syncControlPlaneState(options: ProjectPlatformActionOption
 }
 
 export async function runProjectPlatformAction(action: ProjectPlatformAction, options: ProjectPlatformActionOptions) {
+	const previousWorkflowAction = process.env.TREESEED_WORKFLOW_ACTION;
+	const previousWorkflowPlane = process.env.TREESEED_WORKFLOW_PLANE;
+	process.env.TREESEED_WORKFLOW_ACTION = action;
+	process.env.TREESEED_WORKFLOW_PLANE = previousWorkflowPlane ?? (action === 'deploy_processing' ? 'processing' : 'web');
 	applyTreeseedEnvironmentToProcess({ tenantRoot: options.tenantRoot, scope: options.scope, override: true });
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	try {
@@ -1573,5 +1577,16 @@ export async function runProjectPlatformAction(action: ProjectPlatformAction, op
 			finishedAt: new Date().toISOString(),
 		}).catch(() => undefined);
 		throw error;
+	} finally {
+		if (previousWorkflowAction === undefined) {
+			delete process.env.TREESEED_WORKFLOW_ACTION;
+		} else {
+			process.env.TREESEED_WORKFLOW_ACTION = previousWorkflowAction;
+		}
+		if (previousWorkflowPlane === undefined) {
+			delete process.env.TREESEED_WORKFLOW_PLANE;
+		} else {
+			process.env.TREESEED_WORKFLOW_PLANE = previousWorkflowPlane;
+		}
 	}
 }

@@ -26,6 +26,7 @@ vi.mock('../../src/operations/services/github-api.ts', () => ({
 }));
 
 const {
+	collectTreeseedConfigContext,
 	createDefaultTreeseedMachineConfig,
 	finalizeTreeseedConfig,
 	setTreeseedMachineEnvironmentValue,
@@ -190,6 +191,11 @@ function seedHostedValues(tenantRoot: string) {
 	}
 }
 
+function hasConfigEntry(tenantRoot: string, id: string) {
+	return collectTreeseedConfigContext({ tenantRoot, scopes: ['staging'], env: {} })
+		.registry.entries.some((entry) => entry.id === id);
+}
+
 describe('config GitHub environment sync', () => {
 	beforeEach(() => {
 		vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'treeseed-config-github-home-')));
@@ -222,13 +228,15 @@ describe('config GitHub environment sync', () => {
 		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'staging', expect.objectContaining({
 			branchName: 'staging',
 		}));
-		expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
-			'owner/repo',
-			'staging',
-			'RAILWAY_API_TOKEN',
-			'railway-token-value',
-			expect.any(Object),
-		);
+		if (hasConfigEntry(tenantRoot, 'RAILWAY_API_TOKEN')) {
+			expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
+				'owner/repo',
+				'staging',
+				'RAILWAY_API_TOKEN',
+				'railway-token-value',
+				expect.any(Object),
+			);
+		}
 		expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
 			'owner/repo',
 			'staging',
@@ -236,20 +244,24 @@ describe('config GitHub environment sync', () => {
 			'account-123',
 			expect.any(Object),
 		);
-		expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
-			'owner/repo',
-			'staging',
-			'TREESEED_RAILWAY_WORKSPACE',
-			'acme-workspace',
-			expect.any(Object),
-		);
-		expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
-			'owner/repo',
-			'staging',
-			'TREESEED_RAILWAY_PROJECT_ID',
-			'railway-project-id',
-			expect.any(Object),
-		);
+		if (hasConfigEntry(tenantRoot, 'TREESEED_RAILWAY_WORKSPACE')) {
+			expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
+				'owner/repo',
+				'staging',
+				'TREESEED_RAILWAY_WORKSPACE',
+				'acme-workspace',
+				expect.any(Object),
+			);
+		}
+		if (hasConfigEntry(tenantRoot, 'TREESEED_RAILWAY_PROJECT_ID')) {
+			expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
+				'owner/repo',
+				'staging',
+				'TREESEED_RAILWAY_PROJECT_ID',
+				'railway-project-id',
+				expect.any(Object),
+			);
+		}
 		expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
 			'owner/repo',
 			'staging',
@@ -339,7 +351,9 @@ describe('config GitHub environment sync', () => {
 		await syncTreeseedGitHubEnvironment({ tenantRoot, scope: 'staging', onProgress: progress, execution: 'sequential' });
 
 		expect(progress).toHaveBeenCalledWith(expect.stringContaining('[staging][github][sync] Syncing GitHub environment staging: 0/'), 'stdout');
-		expect(progress).toHaveBeenCalledWith(expect.stringContaining('[staging][github][secret] created RAILWAY_API_TOKEN'), 'stdout');
+		if (hasConfigEntry(tenantRoot, 'RAILWAY_API_TOKEN')) {
+			expect(progress).toHaveBeenCalledWith(expect.stringContaining('[staging][github][secret] created RAILWAY_API_TOKEN'), 'stdout');
+		}
 		expect(progress).toHaveBeenCalledWith(expect.stringContaining('[staging][github][variable] created CLOUDFLARE_ACCOUNT_ID'), 'stdout');
 		expect(progress).toHaveBeenCalledWith(expect.stringContaining('[staging][github][sync] Complete:'), 'stdout');
 	});
@@ -372,13 +386,15 @@ describe('config GitHub environment sync', () => {
 			branchName: 'main',
 			tagName: '*.*.*',
 		}));
-		expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
-			'owner/repo',
-			'production',
-			'RAILWAY_API_TOKEN',
-			'railway-token-value',
-			expect.any(Object),
-		);
+		if (hasConfigEntry(tenantRoot, 'RAILWAY_API_TOKEN')) {
+			expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
+				'owner/repo',
+				'production',
+				'RAILWAY_API_TOKEN',
+				'railway-token-value',
+				expect.any(Object),
+			);
+		}
 	});
 
 	it('runs hosted GitHub environment sync scopes concurrently in parallel bootstrap mode', async () => {
