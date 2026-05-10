@@ -1359,7 +1359,14 @@ export async function verifyRailwayManagedResources(
 }
 
 function shouldAttachRailwayDeployLogs(env = process.env) {
-	return configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS') === '1';
+	const configured = configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS');
+	if (configured === '1' || configured === 'true') {
+		return true;
+	}
+	if (configured === '0' || configured === 'false') {
+		return false;
+	}
+	return configuredEnvValue(env, 'CI') === 'true';
 }
 
 export function planRailwayServiceDeploy(service, { env = process.env } = {}) {

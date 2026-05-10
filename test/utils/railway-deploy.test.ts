@@ -216,13 +216,13 @@ describe('railway scheduled jobs', () => {
 		expect(railwayServiceRuntimeStartCommand(manager)).toBe('npm run workday-manager');
 	});
 
-	it('detaches Railway deploys from build log streaming by default', () => {
+	it('detaches Railway deploys from build log streaming by default outside CI', () => {
 		const plan = planRailwayServiceDeploy({
 			projectId: 'railway-project-1',
 			serviceName: 'acme-docs-api',
 			railwayEnvironment: 'staging',
 			rootDir: '.',
-		});
+		}, { env: {} });
 
 		expect(plan).toMatchObject({
 			command: 'railway',
@@ -249,6 +249,28 @@ describe('railway scheduled jobs', () => {
 
 		expect(plan.args).toContain('--ci');
 		expect(plan.args).not.toContain('--detach');
+	});
+
+	it('uses Railway CI deploy mode in hosted CI', () => {
+		const plan = planRailwayServiceDeploy({
+			serviceName: 'acme-docs-api',
+			railwayEnvironment: 'staging',
+			rootDir: '.',
+		}, { env: { CI: 'true' } });
+
+		expect(plan.args).toContain('--ci');
+		expect(plan.args).not.toContain('--detach');
+	});
+
+	it('allows Railway deploy log attachment to be disabled explicitly in CI', () => {
+		const plan = planRailwayServiceDeploy({
+			serviceName: 'acme-docs-api',
+			railwayEnvironment: 'staging',
+			rootDir: '.',
+		}, { env: { CI: 'true', TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS: '0' } });
+
+		expect(plan.args).toContain('--detach');
+		expect(plan.args).not.toContain('--ci');
 	});
 
 	it('treats Railway build log retrieval failures as transient deploy failures', () => {
