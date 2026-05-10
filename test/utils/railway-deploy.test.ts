@@ -14,6 +14,7 @@ import {
 	planRailwayServiceDeploy,
 	railwayServiceRuntimeStartCommand,
 	resolveRailwayAuthToken,
+	shouldRunRailwayPredeployBuild,
 	validateRailwayDeployPrerequisites,
 	verifyRailwayManagedResources,
 	verifyRailwayScheduledJobs,
@@ -259,6 +260,7 @@ describe('railway scheduled jobs', () => {
 		}, { env: { CI: 'true' } });
 
 		expect(plan.args).toContain('--ci');
+		expect(plan.args).toContain('--verbose');
 		expect(plan.args).not.toContain('--detach');
 	});
 
@@ -271,6 +273,14 @@ describe('railway scheduled jobs', () => {
 
 		expect(plan.args).toContain('--detach');
 		expect(plan.args).not.toContain('--ci');
+		expect(plan.args).not.toContain('--verbose');
+	});
+
+	it('lets Railway run service build commands from a clean upload in hosted CI', () => {
+		expect(shouldRunRailwayPredeployBuild({ CI: 'true' })).toBe(false);
+		expect(shouldRunRailwayPredeployBuild({ CI: 'true', TREESEED_RAILWAY_PREDEPLOY_BUILD: '1' })).toBe(true);
+		expect(shouldRunRailwayPredeployBuild({ CI: 'true', TREESEED_RAILWAY_PREDEPLOY_BUILD: '0' })).toBe(false);
+		expect(shouldRunRailwayPredeployBuild({})).toBe(true);
 	});
 
 	it('treats Railway build log retrieval failures as transient deploy failures', () => {

@@ -1369,6 +1369,28 @@ function shouldAttachRailwayDeployLogs(env = process.env) {
 	return configuredEnvValue(env, 'CI') === 'true';
 }
 
+function shouldUseVerboseRailwayDeploy(env = process.env) {
+	const configured = configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_VERBOSE');
+	if (configured === '1' || configured === 'true') {
+		return true;
+	}
+	if (configured === '0' || configured === 'false') {
+		return false;
+	}
+	return shouldAttachRailwayDeployLogs(env);
+}
+
+export function shouldRunRailwayPredeployBuild(env = process.env) {
+	const configured = configuredEnvValue(env, 'TREESEED_RAILWAY_PREDEPLOY_BUILD');
+	if (configured === '1' || configured === 'true') {
+		return true;
+	}
+	if (configured === '0' || configured === 'false') {
+		return false;
+	}
+	return configuredEnvValue(env, 'CI') !== 'true';
+}
+
 export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
 	const args = [
 		'up',
@@ -1376,6 +1398,9 @@ export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
 		service.serviceName ?? service.serviceId,
 		shouldAttachRailwayDeployLogs(env) ? '--ci' : '--detach',
 	];
+	if (shouldUseVerboseRailwayDeploy(env)) {
+		args.push('--verbose');
+	}
 	if (service.projectId) {
 		args.push('--project', service.projectId);
 	}
@@ -1665,7 +1690,7 @@ export async function deployRailwayService(
 	const runtimeConfiguration = await syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, {
 		env: commandEnv,
 	});
-	if (deployService.buildCommand) {
+	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
 		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
 			cwd: deployService.rootDir,
 			env: commandEnv,
