@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.3] - 2026-05-10
+
+### Added
+
+- feat(workflow): add support for archiving stale resumable release runs (f51fe1340630)
+- feat(workflow): ensure workflow workspace links during release (88285965c676)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.8.3.
+
 ## [0.8.2] - 2026-05-10
 
 ### Tests
