@@ -126,11 +126,11 @@ describe('GitHub Actions verification', () => {
 	});
 
 	it('normalizes missing and pending workflow runs', async () => {
-		const report = await inspectGitHubActionsVerification([target({ workflows: ['verify.yml', 'deploy.yml'] })], {
+		const report = await inspectGitHubActionsVerification([target({ workflows: ['verify.yml', 'deploy-web.yml'] })], {
 			client: fakeClient({
 				remoteHead: 'abc123',
 				runs: {
-					'deploy.yml': [{
+					'deploy-web.yml': [{
 						id: 77,
 						status: 'in_progress',
 						conclusion: null,
@@ -175,7 +175,7 @@ describe('GitHub Actions verification', () => {
 			name: '@treeseed/market',
 			repoPath: '/repo',
 			repository: 'knowledge-coop/market',
-			workflow: 'deploy.yml',
+			workflow: 'deploy-web.yml',
 			branch: 'main',
 			headSha: 'abc123',
 		}, {
@@ -187,7 +187,7 @@ describe('GitHub Actions verification', () => {
 		const event = {
 			type: 'running' as const,
 			repository: 'knowledge-coop/market',
-			workflow: 'deploy.yml',
+			workflow: 'deploy-web.yml',
 			branch: 'main',
 			headSha: 'abc123',
 			elapsedSeconds: 10,
@@ -198,7 +198,7 @@ describe('GitHub Actions verification', () => {
 			jobs: [],
 			activeJobs: [{
 				id: 1,
-				name: 'deploy-code',
+				name: 'deploy-web',
 				status: 'in_progress',
 				conclusion: null,
 				url: null,
@@ -219,8 +219,8 @@ describe('GitHub Actions verification', () => {
 		report({ ...event, elapsedSeconds: 70 });
 
 		expect(lines).toHaveLength(2);
-		expect(lines[0]).toContain('deploy.yml run 123 in_progress; active: deploy-code > Deploy Treeseed platform');
-		expect(lines[1]).toContain('still active: deploy-code > Deploy Treeseed platform');
+		expect(lines[0]).toContain('deploy-web.yml run 123 in_progress; active: deploy-web > Deploy Treeseed platform');
+		expect(lines[1]).toContain('still active: deploy-web > Deploy Treeseed platform');
 		expect(lines[1]).toContain('3 polls');
 	});
 });

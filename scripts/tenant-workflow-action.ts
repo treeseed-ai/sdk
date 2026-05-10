@@ -11,12 +11,11 @@ const tenantRoot = process.cwd();
 
 function parseArgs(argv: string[]) {
 	const parsed = {
-		action: 'deploy_code' as ProjectPlatformAction,
+		action: 'deploy_web' as ProjectPlatformAction,
 		environment: null as string | null,
 		projectId: null as string | null,
 		previewId: null as string | null,
 		dryRun: false,
-		skipProvision: false,
 	};
 
 	const rest = [...argv];
@@ -24,11 +23,11 @@ function parseArgs(argv: string[]) {
 		const current = rest.shift();
 		if (!current) continue;
 		if (current === '--action') {
-			parsed.action = (rest.shift() ?? parsed.action) as ProjectPlatformAction;
+			parsed.action = parseAction(rest.shift() ?? parsed.action);
 			continue;
 		}
 		if (current.startsWith('--action=')) {
-			parsed.action = (current.split('=', 2)[1] ?? parsed.action) as ProjectPlatformAction;
+			parsed.action = parseAction(current.split('=', 2)[1] ?? parsed.action);
 			continue;
 		}
 		if (current === '--environment') {
@@ -59,14 +58,17 @@ function parseArgs(argv: string[]) {
 			parsed.dryRun = true;
 			continue;
 		}
-		if (current === '--skip-provision') {
-			parsed.skipProvision = true;
-			continue;
-		}
 		throw new Error(`Unknown workflow action argument: ${current}`);
 	}
 
 	return parsed;
+}
+
+function parseAction(value: string): ProjectPlatformAction {
+	if (value === 'deploy_web' || value === 'deploy_processing' || value === 'publish_content' || value === 'monitor') {
+		return value;
+	}
+	throw new Error(`Unsupported workflow action "${value}". Expected deploy_web, deploy_processing, publish_content, or monitor.`);
 }
 
 async function main() {
@@ -78,7 +80,6 @@ async function main() {
 		projectId: options.projectId ?? process.env.TREESEED_PROJECT_ID ?? null,
 		previewId: options.previewId,
 		dryRun: options.dryRun,
-		skipProvision: options.skipProvision,
 	});
 
 	if (result !== undefined) {

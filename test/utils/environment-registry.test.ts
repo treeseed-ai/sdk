@@ -80,7 +80,7 @@ describe('environment registry overlays', () => {
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET')).toBeTruthy();
 	});
 
-	it('does not surface market auth entries for tenants without the overlay', async () => {
+	it('surfaces agent API entries when the API processing plane is enabled', async () => {
 		const tenantRoot = await createTenantFixture('entries: {}\n');
 		tempRoots.add(tenantRoot);
 
@@ -97,7 +97,7 @@ describe('environment registry overlays', () => {
 			plugins: [],
 		});
 
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_API_BASE_URL')).toBeUndefined();
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_API_BASE_URL')).toBeTruthy();
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET')).toBeTruthy();
 	});
 
@@ -608,7 +608,7 @@ describe('environment registry overlays', () => {
 		const formTokenSecret = disabledRegistry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET');
 		expect(isTreeseedEnvironmentEntryRelevant(webEntry!, disabledRegistry.context, 'local', 'config')).toBe(false);
 		expect(isTreeseedEnvironmentEntryRelevant(apiEntry!, disabledRegistry.context, 'local', 'config')).toBe(false);
-		expect(isTreeseedEnvironmentEntryRelevant(formTokenSecret!, disabledRegistry.context, 'local', 'config')).toBe(false);
+		expect(formTokenSecret).toBeUndefined();
 
 		const enabledRegistry = resolveTreeseedEnvironmentRegistry({
 			deployConfig: {

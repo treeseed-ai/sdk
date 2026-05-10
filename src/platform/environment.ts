@@ -163,15 +163,31 @@ type NamedPredicateMap = Record<
 >;
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
-function resolveCoreEnvironmentPath() {
+function firstExistingPath(candidates: string[]) {
+	return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+}
+
+function resolveSdkEnvironmentPath() {
 	const candidates = [
 		resolve(moduleDir, 'env.yaml'),
 		resolve(moduleDir, '../src/platform/env.yaml'),
 		resolve(moduleDir, '../dist/platform/env.yaml'),
 	];
-	return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+	return firstExistingPath(candidates);
 }
-const CORE_ENVIRONMENT_PATH = resolveCoreEnvironmentPath();
+
+function resolveSiblingPackageEnvironmentPath(packageDir: string) {
+	return firstExistingPath([
+		resolve(moduleDir, `../../../${packageDir}/src/env.yaml`),
+		resolve(moduleDir, `../../../${packageDir}/dist/env.yaml`),
+		resolve(moduleDir, `../../${packageDir}/src/env.yaml`),
+		resolve(moduleDir, `../../${packageDir}/dist/env.yaml`),
+	]);
+}
+
+const SDK_ENVIRONMENT_PATH = resolveSdkEnvironmentPath();
+const CORE_ENVIRONMENT_PATH = resolveSiblingPackageEnvironmentPath('core');
+const AGENT_ENVIRONMENT_PATH = resolveSiblingPackageEnvironmentPath('agent');
 const TENANT_ENVIRONMENT_OVERLAY_PATH = 'src/env.yaml';
 const DEFAULT_TREESEED_MARKET_BASE_URL = 'https://api.treeseed.ai';
 
@@ -205,6 +221,18 @@ function webSurfaceEnabled(context: TreeseedEnvironmentContext) {
 
 function apiSurfaceEnabled(context: TreeseedEnvironmentContext) {
 	return platformSurfaceEnabled(context, 'api') && managedServiceEnabled(context, 'api');
+}
+
+function processingPlaneEnabled(context: TreeseedEnvironmentContext) {
+	const mode = context.deployConfig.processing?.mode ?? 'market-assigned';
+	if (mode !== 'none') {
+		return true;
+	}
+	return Object.entries(context.deployConfig.services ?? {}).some(([service, config]) =>
+		['api', 'manager', 'worker', 'workerRunner', 'workdayStart', 'workdayReport'].includes(service)
+		&& config
+		&& config.enabled !== false
+	);
 }
 
 function formsEnabled(context: TreeseedEnvironmentContext) {
@@ -521,6 +549,7 @@ const PREDICATES: NamedPredicateMap = {
 	smtpNonLocal: (context, scope) => smtpEnabled(context) && scope !== 'local',
 	webSurfaceEnabled: (context) => webSurfaceEnabled(context),
 	apiSurfaceEnabled: (context) => apiSurfaceEnabled(context),
+	processingPlaneEnabled: (context) => processingPlaneEnabled(context),
 	formsEnabled: (context) => formsEnabled(context),
 	railwayManagedEnabled: (context) => railwayManagedEnabled(context),
 	hubTreeseedHosted: (context) => resolveHubMode(context) === 'treeseed_hosted',
@@ -679,11 +708,25 @@ function mergeEntryYaml(
 function collectOverlaySources(context: TreeseedEnvironmentContext) {
 	const sources: Array<{ label: string; overlay: TreeseedEnvironmentRegistryOverlay }> = [];
 
-	const coreOverlay = readYamlOverlayIfPresent(CORE_ENVIRONMENT_PATH);
-	if (!coreOverlay) {
-		throw new Error(`Treeseed core environment registry file was not found at ${CORE_ENVIRONMENT_PATH}.`);
+	const sdkOverlay = readYamlOverlayIfPresent(SDK_ENVIRONMENT_PATH);
+	if (!sdkOverlay) {
+		throw new Error(`Treeseed SDK environment registry file was not found at ${SDK_ENVIRONMENT_PATH}.`);
 	}
-	sources.push({ label: CORE_ENVIRONMENT_PATH, overlay: coreOverlay });
+	sources.push({ label: SDK_ENVIRONMENT_PATH, overlay: sdkOverlay });
+
+	if (webSurfaceEnabled(context)) {
+		const coreOverlay = readYamlOverlayIfPresent(CORE_ENVIRONMENT_PATH);
+		if (coreOverlay) {
+			sources.push({ label: CORE_ENVIRONMENT_PATH, overlay: coreOverlay });
+		}
+	}
+
+	if (apiSurfaceEnabled(context) || processingPlaneEnabled(context)) {
+		const agentOverlay = readYamlOverlayIfPresent(AGENT_ENVIRONMENT_PATH);
+		if (agentOverlay) {
+			sources.push({ label: AGENT_ENVIRONMENT_PATH, overlay: agentOverlay });
+		}
+	}
 
 	for (const pluginEntry of context.plugins) {
 		const fileOverlay = readPluginEnvironmentOverlay(pluginEntry.baseDir);

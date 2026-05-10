@@ -51,7 +51,7 @@ import { runPrefixedCommand, runTreeseedBootstrapDag, sleep, writeTreeseedBootst
 import { runTenantDeployPreflight } from './save-deploy-preflight.ts';
 
 export type ProjectPlatformScope = 'local' | 'staging' | 'prod';
-export type ProjectPlatformAction = 'provision' | 'deploy_code' | 'publish_content' | 'monitor';
+export type ProjectPlatformAction = 'deploy_web' | 'deploy_processing' | 'publish_content' | 'monitor';
 
 export interface ProjectPlatformActionOptions {
 	tenantRoot: string;
@@ -68,6 +68,8 @@ export interface ProjectPlatformActionOptions {
 }
 
 const PROJECT_PLATFORM_BOOTSTRAP_SYSTEMS: TreeseedRunnableBootstrapSystem[] = ['data', 'web', 'api', 'agents'];
+const WEB_PLATFORM_BOOTSTRAP_SYSTEMS: TreeseedRunnableBootstrapSystem[] = ['data', 'web'];
+const PROCESSING_PLATFORM_BOOTSTRAP_SYSTEMS: TreeseedRunnableBootstrapSystem[] = ['api', 'agents'];
 
 function stableHash(value: Buffer | string) {
 	return createHash('sha256').update(value).digest('hex');
@@ -1534,10 +1536,18 @@ export async function runProjectPlatformAction(action: ProjectPlatformAction, op
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	try {
 		switch (action) {
-			case 'provision':
-				return await provisionProjectPlatform({ ...options, reporter });
-			case 'deploy_code':
-				return await deployProjectPlatform({ ...options, reporter });
+			case 'deploy_web':
+				return await deployProjectPlatform({
+					...options,
+					reporter,
+					bootstrapSystems: options.bootstrapSystems ?? WEB_PLATFORM_BOOTSTRAP_SYSTEMS,
+				});
+			case 'deploy_processing':
+				return await deployProjectPlatform({
+					...options,
+					reporter,
+					bootstrapSystems: options.bootstrapSystems ?? PROCESSING_PLATFORM_BOOTSTRAP_SYSTEMS,
+				});
 			case 'publish_content':
 				return await publishProjectContent({ ...options, reporter });
 			case 'monitor':
@@ -1548,11 +1558,9 @@ export async function runProjectPlatformAction(action: ProjectPlatformAction, op
 	} catch (error) {
 		await reportDeployment(reporter, {
 			environment: options.scope,
-			deploymentKind: action === 'provision'
-				? 'provision'
-				: action === 'publish_content'
+			deploymentKind: action === 'publish_content'
 					? 'content'
-					: action === 'deploy_code'
+					: action === 'deploy_web' || action === 'deploy_processing'
 						? 'code'
 						: 'mixed',
 			status: 'failed',

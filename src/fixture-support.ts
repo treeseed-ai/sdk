@@ -18,7 +18,7 @@ export type FixtureSupportDeclaration = {
 	modes: readonly FixtureInjectionMode[];
 	workspaceDirName?: string;
 	entrySpecifier?: string;
-	contractsShim?: 'core-agent';
+	contractsShim?: 'agent-contracts';
 };
 
 export type ResolveSharedFixtureOptions = {
@@ -158,8 +158,8 @@ function ensureFixtureLinkedPackage(fixtureRoot: string, packageName: string, re
 	symlinkSync(resolvedPackageRoot, packageDir, 'dir');
 }
 
-function buildCoreAgentContractsShimPackage(fixtureRoot: string) {
-	const packageDir = resolve(fixtureRoot, 'node_modules', '@treeseed', 'core');
+function buildAgentContractsShimPackage(fixtureRoot: string) {
+	const packageDir = resolve(fixtureRoot, 'node_modules', '@treeseed', 'agent');
 	rmSync(packageDir, { recursive: true, force: true });
 	mkdirSync(resolve(packageDir, 'contracts'), { recursive: true });
 
@@ -167,7 +167,7 @@ function buildCoreAgentContractsShimPackage(fixtureRoot: string) {
 		resolve(packageDir, 'package.json'),
 		JSON.stringify(
 			{
-				name: '@treeseed/core',
+				name: '@treeseed/agent',
 				type: 'module',
 				exports: {
 					'./runtime-types': {
@@ -373,8 +373,8 @@ export function prepareFixturePackages(options: PrepareFixturePackagesOptions) {
 				break;
 			}
 
-			if (mode === 'contracts-only' && declaration.contractsShim === 'core-agent') {
-				buildCoreAgentContractsShimPackage(options.fixtureRoot);
+			if (mode === 'contracts-only' && declaration.contractsShim === 'agent-contracts') {
+				buildAgentContractsShimPackage(options.fixtureRoot);
 				satisfied = true;
 				break;
 			}

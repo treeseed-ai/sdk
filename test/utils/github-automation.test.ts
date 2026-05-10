@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import {
 	ensureStandardizedGitHubWorkflows,
-	renderDeployWorkflow,
+	renderDeployProcessingWorkflow,
+	renderDeployWebWorkflow,
 	renderHostedProjectWorkflow,
 	resolveGitHubRepositoryTarget,
 } from '../../src/operations/services/github-automation.ts';
@@ -49,78 +50,39 @@ turnstile:
 }
 
 describe('github automation workflow generation', () => {
-	it('renders the standardized deploy workflow with the tenant deploy entrypoint', () => {
-		const rendered = renderDeployWorkflow({ workingDirectory: 'apps/site' });
-		expect(rendered).toContain('Treeseed Deploy');
-		expect(rendered).toContain('working-directory: apps/site');
-		expect(rendered).toContain('./packages/sdk/scripts/tenant-workflow-action.ts');
-		expect(rendered).toContain('TREESEED_BOOTSTRAP_MODE: auto');
-		expect(rendered).toContain("TREESEED_CENTRAL_MARKET_API_BASE_URL: ${{ vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}");
-		expect(rendered).toContain("TREESEED_MARKET_API_BASE_URL: ${{ vars.TREESEED_MARKET_API_BASE_URL || vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}");
-		expect(rendered).toContain("TREESEED_CATALOG_MARKET_API_BASE_URLS: ${{ vars.TREESEED_CATALOG_MARKET_API_BASE_URLS || vars.TREESEED_MARKET_API_BASE_URL || vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}");
-		expect(rendered).toContain('code_changed');
-		expect(rendered).toContain('action_kind');
-		expect(rendered).toContain('migrations/*)');
-		expect(rendered).toContain('code_changed="true"');
-		expect(rendered).not.toContain('docs/*|migrations/*');
-		expect(rendered).toContain("needs['deploy-code'].result");
-		expect(rendered).toContain('always() &&');
-		expect(rendered).toContain("needs.provision.result == 'success'");
-		expect(rendered).toContain('TREESEED_WORKFLOW_SKIP_PROVISION: "1"');
-		expect(rendered).toContain('if [[ "${TREESEED_WORKFLOW_SKIP_PROVISION:-}" == "1" ]]; then EXTRA_ARGS+=(--skip-provision); fi');
-		expect(rendered).toContain('uses: actions/upload-artifact@v4');
-		expect(rendered).toContain('uses: actions/download-artifact@v4');
-		expect(rendered).toContain('Ensure Treeseed deployment state');
-		expect(rendered).toContain("'.treeseed/state/environments/' + scope + '/deploy.json'");
-		expect(rendered).toContain('name: treeseed-deploy-state-${{ needs.classify.outputs.scope }}');
-		expect(rendered).toContain('path: .treeseed/state');
-		expect(rendered).toContain('include-hidden-files: true');
-		expect(rendered).toContain('TREESEED_CONTENT_BUCKET_NAME');
-		expect(rendered).toContain('TREESEED_WORKFLOW_PREVIEW_ID');
-		expect(rendered).toContain('check-build-warnings');
-		expect(rendered).toContain("environment: ${{ needs.classify.outputs.scope == 'prod' && 'production' || 'staging' }}");
-		expect(rendered).toContain('TREESEED_SMTP_HOST: ${{ vars.TREESEED_SMTP_HOST }}');
-		expect(rendered).toContain('TREESEED_SMTP_PORT: ${{ vars.TREESEED_SMTP_PORT }}');
-		expect(rendered).toContain('TREESEED_SMTP_USERNAME: ${{ vars.TREESEED_SMTP_USERNAME }}');
-		expect(rendered).toContain('TREESEED_SMTP_PASSWORD: ${{ secrets.TREESEED_SMTP_PASSWORD }}');
-		expect(rendered).toContain('TREESEED_SMTP_FROM: ${{ vars.TREESEED_SMTP_FROM }}');
-		expect(rendered).toContain('TREESEED_SMTP_REPLY_TO: ${{ vars.TREESEED_SMTP_REPLY_TO }}');
-		expect(rendered).toContain('RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}');
-		for (const line of [
-			'TREESEED_RAILWAY_WORKSPACE: ${{ vars.TREESEED_RAILWAY_WORKSPACE }}',
-			'TREESEED_HOSTING_KIND: ${{ vars.TREESEED_HOSTING_KIND }}',
-			'TREESEED_HOSTING_REGISTRATION: ${{ vars.TREESEED_HOSTING_REGISTRATION }}',
-			'TREESEED_API_BASE_URL: ${{ vars.TREESEED_API_BASE_URL }}',
-			'TREESEED_BETTER_AUTH_SECRET: ${{ secrets.TREESEED_BETTER_AUTH_SECRET }}',
-			'TREESEED_API_AUTH_SECRET: ${{ secrets.TREESEED_API_AUTH_SECRET }}',
-			'TREESEED_WEB_SERVICE_ID: ${{ vars.TREESEED_WEB_SERVICE_ID }}',
-			'TREESEED_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_WEB_SERVICE_SECRET }}',
-			'TREESEED_WEB_ASSERTION_SECRET: ${{ secrets.TREESEED_WEB_ASSERTION_SECRET }}',
-			'TREESEED_WEB_CSRF_SECRET: ${{ secrets.TREESEED_WEB_CSRF_SECRET }}',
-			'TREESEED_API_WEB_SERVICE_ID: ${{ vars.TREESEED_API_WEB_SERVICE_ID }}',
-			'TREESEED_API_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_API_WEB_SERVICE_SECRET }}',
-			'TREESEED_API_WEB_ASSERTION_SECRET: ${{ secrets.TREESEED_API_WEB_ASSERTION_SECRET }}',
-		]) {
-			expect(rendered).toContain(line);
+	it('renders separate web and processing deploy workflows with the tenant action entrypoint', () => {
+		const web = renderDeployWebWorkflow({ workingDirectory: 'apps/site' });
+		const processing = renderDeployProcessingWorkflow({ workingDirectory: 'apps/site' });
+		for (const rendered of [web, processing]) {
+			expect(rendered).toContain('working-directory: apps/site');
+			expect(rendered).toContain('./packages/sdk/scripts/tenant-workflow-action.ts');
+			expect(rendered).toContain('TREESEED_BOOTSTRAP_MODE: auto');
+			expect(rendered).toContain('TREESEED_WORKFLOW_ACTION: ${{ inputs.action_kind }}');
+			expect(rendered).toContain('TREESEED_WORKFLOW_PREVIEW_ID');
+			expect(rendered).not.toContain('TREESEED_WORKFLOW_SKIP_PROVISION');
+			expect(rendered).not.toContain('--skip-provision');
+			expect(rendered).not.toContain('deploy_code');
+			expect(rendered).not.toContain('provision');
 		}
-		expect(rendered).not.toContain('TREESEED_SMTP_HOST: ${{ secrets.TREESEED_SMTP_HOST }}');
-	});
 
-	it('renders managed hosted project workflows without provider secrets', () => {
-		const rendered = renderDeployWorkflow({ workingDirectory: '.', executionBoundary: 'managed' });
+		expect(web).toContain('Treeseed Web Deploy');
+		expect(web).toContain('default: deploy_web');
+		expect(web).toContain('publish_content');
+		expect(web).toContain('TREESEED_CONTENT_BUCKET_NAME');
+		expect(web).toContain('TREESEED_SMTP_PASSWORD: ${{ secrets.TREESEED_SMTP_PASSWORD }}');
+		expect(web).toContain("TREESEED_CENTRAL_MARKET_API_BASE_URL: ${{ vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}");
+		expect(web).not.toContain('RAILWAY_API_TOKEN');
+		expect(web).not.toContain('TREESEED_API_AUTH_SECRET');
+		expect(web).not.toContain('TREESEED_AGENT_POOL_MAX_WORKERS');
 
-		expect(rendered).toContain('Treeseed Managed Hosted Project');
-		expect(rendered).toContain('id-token: write');
-		expect(rendered).toContain('/v1/projects/${TREESEED_PROJECT_ID}/ci/oidc/exchange');
-		for (const forbidden of [
-			'CLOUDFLARE_API_TOKEN',
-			'RAILWAY_API_TOKEN',
-			'TREESEED_SMTP_PASSWORD',
-			'TREESEED_WEB_SERVICE_SECRET',
-			'TREESEED_API_AUTH_SECRET',
-		]) {
-			expect(rendered).not.toContain(forbidden);
-		}
+		expect(processing).toContain('Treeseed Processing Deploy');
+		expect(processing).toContain('default: deploy_processing');
+		expect(processing).toContain('RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}');
+		expect(processing).toContain('TREESEED_API_BASE_URL: ${{ vars.TREESEED_API_BASE_URL }}');
+		expect(processing).toContain('TREESEED_API_AUTH_SECRET: ${{ secrets.TREESEED_API_AUTH_SECRET }}');
+		expect(processing).toContain('TREESEED_AGENT_POOL_MAX_WORKERS');
+		expect(processing).toContain('TREESEED_CAPACITY_PROVIDER_ID');
+		expect(processing).not.toContain('TREESEED_SMTP_PASSWORD');
 	});
 
 	it('renders the hosted project orchestration workflow template', () => {
@@ -148,14 +110,16 @@ runtime:
 		const marketWorkflows = ensureStandardizedGitHubWorkflows(marketRoot);
 		const hostedWorkflows = ensureStandardizedGitHubWorkflows(hostedRoot);
 
-		expect(marketWorkflows).toHaveLength(2);
+		expect(marketWorkflows).toHaveLength(3);
 		expect(hostedWorkflows).toHaveLength(1);
-		expect(readFileSync(resolve(marketRoot, '.github', 'workflows', 'deploy.yml'), 'utf8')).toContain('Treeseed Deploy');
+		expect(readFileSync(resolve(marketRoot, '.github', 'workflows', 'deploy-web.yml'), 'utf8')).toContain('Treeseed Web Deploy');
+		expect(readFileSync(resolve(marketRoot, '.github', 'workflows', 'deploy-processing.yml'), 'utf8')).toContain('Treeseed Processing Deploy');
 		expect(readFileSync(resolve(marketRoot, '.github', 'workflows', 'hosted-project.yml'), 'utf8')).toContain('Treeseed Hosted Project Orchestration');
-		const hostedDeploy = readFileSync(resolve(hostedRoot, '.github', 'workflows', 'deploy.yml'), 'utf8');
-		expect(hostedDeploy).toContain('Treeseed Managed Hosted Project');
-		expect(hostedDeploy).toContain('/v1/projects/${TREESEED_PROJECT_ID}/ci/oidc/exchange');
-		expect(hostedDeploy).not.toContain('CLOUDFLARE_API_TOKEN');
+		const hostedDeploy = readFileSync(resolve(hostedRoot, '.github', 'workflows', 'deploy-web.yml'), 'utf8');
+		expect(hostedDeploy).toContain('Treeseed Web Deploy');
+		expect(hostedDeploy).toContain('default: deploy_web');
+		expect(hostedDeploy).toContain('CLOUDFLARE_API_TOKEN');
+		expect(hostedDeploy).not.toContain('RAILWAY_API_TOKEN');
 	});
 
 	it('uses configured GitHub repository metadata over a mismatched origin', () => {

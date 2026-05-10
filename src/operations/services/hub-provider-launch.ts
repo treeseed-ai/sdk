@@ -513,7 +513,7 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubPro
 					serviceName: `${slug}-workday-manager`,
 					rootDir: '.',
 					buildCommand: 'npm run build',
-					startCommand: 'node ./node_modules/@treeseed/core/dist/services/workday-manager.js',
+					startCommand: 'node ./node_modules/@treeseed/agent/dist/services/workday-manager.js',
 					schedule: '0 9 * * 1-5',
 				},
 			},
@@ -523,7 +523,7 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubPro
 				railway: {
 					rootDir: '.',
 					buildCommand: 'npm run build',
-					startCommand: 'node ./node_modules/@treeseed/core/dist/services/worker.js',
+					startCommand: 'node ./node_modules/@treeseed/agent/dist/services/worker.js',
 				},
 			},
 			...(config.services ?? {}),

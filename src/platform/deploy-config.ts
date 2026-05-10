@@ -11,6 +11,7 @@ import type {
 	TreeseedManagedServiceConfig,
 	TreeseedManagedServicesConfig,
 	TreeseedPlatformSurfacesConfig,
+	TreeseedProcessingConfig,
 	TreeseedPluginReference,
 	TreeseedProviderSelections,
 	TreeseedRuntimeConfig,
@@ -46,6 +47,12 @@ const runtimeFieldAliases: TreeseedFieldAliasRegistry = {
 	marketBaseUrl: { key: 'marketBaseUrl', aliases: ['market_base_url'] },
 	teamId: { key: 'teamId', aliases: ['team_id'] },
 	projectId: { key: 'projectId', aliases: ['project_id'] },
+};
+
+const processingFieldAliases: TreeseedFieldAliasRegistry = {
+	mode: { key: 'mode', aliases: ['mode'] },
+	providerRef: { key: 'providerRef', aliases: ['provider_ref', 'providerRef'] },
+	requiredCapabilities: { key: 'requiredCapabilities', aliases: ['required_capabilities', 'requiredCapabilities'] },
 };
 
 const cloudflareFieldAliases: TreeseedFieldAliasRegistry = {
@@ -482,6 +489,29 @@ function parseManagedServicesConfig(value: unknown): TreeseedManagedServicesConf
 	);
 }
 
+function parseProcessingConfig(value: unknown, services: TreeseedManagedServicesConfig | undefined): TreeseedProcessingConfig {
+	const record = normalizeAliasedRecord(
+		processingFieldAliases,
+		(optionalRecord(value, 'processing') ?? {}) as Record<string, unknown>,
+	);
+	const hasProcessingServices = Object.entries(services ?? {}).some(([serviceKey, service]) =>
+		['api', 'manager', 'worker', 'workerRunner', 'workdayStart', 'workdayReport'].includes(serviceKey)
+		&& service
+		&& service.enabled !== false
+	);
+	return {
+		mode: optionalEnum(record.mode, 'processing.mode', [
+			'market-assigned',
+			'team-owned',
+			'project-owned',
+			'local',
+			'none',
+		] as const) ?? (hasProcessingServices ? 'project-owned' : 'market-assigned'),
+		providerRef: optionalString(record.providerRef),
+		requiredCapabilities: optionalStringArray(record.requiredCapabilities, 'processing.requiredCapabilities'),
+	};
+}
+
 function inferManagedRuntimeFromServices(services: TreeseedManagedServicesConfig | undefined) {
 	return Object.values(services ?? {}).some((service) =>
 		service && service.enabled !== false && (service.provider ?? 'railway') === 'railway',
@@ -612,6 +642,7 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 	);
 	const hosting = parseHostingConfig(parsed.hosting);
 	const services = parseManagedServicesConfig(parsed.services);
+	const processing = parseProcessingConfig(parsed.processing, services);
 	const normalizedPlanes = normalizePlanesFromLegacyHosting(hosting);
 	const inferredPlanes = !hosting && !parsed.hub && !parsed.runtime && inferManagedRuntimeFromServices(services)
 		? {
@@ -671,6 +702,8 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 		providers: parseProviderSelections(parsed.providers),
 		surfaces: parsePlatformSurfacesConfig(parsed.surfaces),
 		services,
+		processing,
+		capacityProviders: optionalRecord(parsed.capacityProviders, 'capacityProviders') as any,
 		smtp: {
 			enabled: optionalBoolean(smtp.enabled, 'smtp.enabled'),
 		},

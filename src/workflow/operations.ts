@@ -292,7 +292,8 @@ function readPackageScript(root: string, packageDir: string, scriptName: string)
 function ensureWorkflowWorkspacePackageArtifacts(root: string, helpers: WorkflowOperationHelpers) {
 	const packages = [
 		{ name: '@treeseed/sdk', dir: 'packages/sdk', artifacts: ['dist/workflow-support.js', 'dist/plugin-default.js', 'dist/platform/env.yaml'] },
-		{ name: '@treeseed/core', dir: 'packages/core', artifacts: ['dist/api.js', 'dist/plugin-default.js'] },
+		{ name: '@treeseed/agent', dir: 'packages/agent', artifacts: ['dist/api/index.js', 'dist/services/worker.js'] },
+		{ name: '@treeseed/core', dir: 'packages/core', artifacts: ['dist/plugin-default.js'] },
 		{ name: '@treeseed/cli', dir: 'packages/cli', artifacts: ['dist/cli/main.js'] },
 	];
 	for (const entry of packages) {
@@ -560,7 +561,7 @@ function recordHostedDeploymentStatesFromRootGates(
 		{ scope: 'prod' as const, branch: releaseTag ?? PRODUCTION_BRANCH, commit: releaseRecord.releasedCommit },
 	]) {
 		const gate = gates.find((candidate) =>
-			candidate.workflow === 'deploy.yml'
+			(candidate.workflow === 'deploy-web.yml' || candidate.workflow === 'deploy-processing.yml')
 			&& candidate.branch === target.branch
 			&& candidate.status === 'completed'
 			&& candidate.conclusion === 'success');
@@ -601,7 +602,7 @@ function ensureTreeseedCommandReadiness(root: string) {
 		{ id: 'sdk', path: resolve(root, 'node_modules/@treeseed/sdk/package.json') },
 		{ id: 'sdk-workflow-support', path: resolve(root, 'node_modules/@treeseed/sdk/dist/workflow-support.js') },
 		{ id: 'core', path: resolve(root, 'node_modules/@treeseed/core/package.json') },
-		{ id: 'core-api', path: resolve(root, 'node_modules/@treeseed/core/dist/api.js') },
+		{ id: 'agent-api', path: resolve(root, 'node_modules/@treeseed/agent/dist/api/index.js') },
 		{ id: 'cli', path: resolve(root, 'node_modules/@treeseed/cli/package.json') },
 		{ id: 'cli-entrypoint', path: resolve(root, 'node_modules/@treeseed/cli/dist/cli/main.js') },
 		{ id: 'trsd-bin', path: resolve(root, 'node_modules/.bin/trsd') },
@@ -1082,7 +1083,7 @@ function defaultCiWorkflows(kind: 'root' | 'package', branch: string | null) {
 		return ['verify.yml'];
 	}
 	if (branch === STAGING_BRANCH || branch === PRODUCTION_BRANCH) {
-		return ['deploy.yml'];
+		return ['deploy-web.yml', 'deploy-processing.yml'];
 	}
 	return ['verify.yml'];
 }
@@ -1892,7 +1893,7 @@ function validateStagingWorkflowContracts(root: string) {
 		return;
 	}
 	const missing: string[] = [];
-	for (const fileName of ['verify.yml', 'deploy.yml']) {
+	for (const fileName of ['verify.yml', 'deploy-web.yml', 'deploy-processing.yml']) {
 		if (!existsSync(resolve(root, '.github', 'workflows', fileName))) {
 			missing.push(fileName);
 		}

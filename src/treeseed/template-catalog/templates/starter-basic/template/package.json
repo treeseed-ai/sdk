@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@treeseed/cli": "__CLI_VERSION__",
+    "@treeseed/agent": "__AGENT_VERSION__",
     "@treeseed/core": "__CORE_VERSION__",
     "@treeseed/sdk": "__SDK_VERSION__",
     "yaml": "^2.8.1"

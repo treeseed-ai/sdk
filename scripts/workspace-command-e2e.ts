@@ -412,7 +412,7 @@ function cloneLocalWorkspace() {
 	run('git', ['config', 'user.email', 'e2e@treeseed.dev'], { cwd: cloneRoot });
 	const workflow = ensureDeployWorkflow(workingRoot);
 	if (workflow.changed) {
-		run('git', ['add', 'docs/.github/workflows/deploy.yml'], { cwd: cloneRoot });
+		run('git', ['add', 'docs/.github/workflows/deploy-web.yml'], { cwd: cloneRoot });
 		run('git', ['commit', '-m', 'test: sync deploy workflow for no-op save guard'], { cwd: cloneRoot });
 	}
 	return {

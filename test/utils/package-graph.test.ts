@@ -7,11 +7,13 @@ const workspaceRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const sdkPackageJsonPath = resolve(workspaceRoot, 'package.json');
 const verifyConsumerPackageJsonPaths = [
 	resolve(workspaceRoot, '..', '..', 'package.json'),
+	resolve(workspaceRoot, '..', 'agent', 'package.json'),
 	resolve(workspaceRoot, '..', 'core', 'package.json'),
 	resolve(workspaceRoot, '..', 'cli', 'package.json'),
 ];
 const verifyDriverPaths = [
 	resolve(workspaceRoot, '..', '..', 'scripts', 'verify-driver.mjs'),
+	resolve(workspaceRoot, '..', 'agent', 'scripts', 'verify-driver.mjs'),
 	resolve(workspaceRoot, '..', 'core', 'scripts', 'verify-driver.mjs'),
 	resolve(workspaceRoot, '..', 'cli', 'scripts', 'verify-driver.mjs'),
 ];
@@ -39,7 +41,7 @@ describe('sdk package graph', () => {
 		expect(packageJson.dependencies?.['@treeseed/core']).toBeUndefined();
 	});
 
-	it('keeps core package.json independent from removed agent package', () => {
+	it('keeps core package.json independent from the agent package', () => {
 		const corePackageJsonPath = resolve(workspaceRoot, '..', 'core', 'package.json');
 		if (!existsSync(corePackageJsonPath)) {
 			return;
@@ -79,6 +81,10 @@ describe('sdk package graph', () => {
 			{
 				root: resolve(workspaceRoot, '..', 'core', 'src'),
 				forbidden: ["from '@treeseed/agent", 'from "@treeseed/agent'],
+			},
+			{
+				root: resolve(workspaceRoot, '..', 'agent', 'src'),
+				forbidden: ["from '@treeseed/core", 'from "@treeseed/core'],
 			},
 		];
 
@@ -124,11 +130,11 @@ describe('sdk package graph', () => {
 		}
 	});
 
-	it('keeps the canonical core agent contracts shim in sdk fixture support', () => {
+	it('keeps the canonical agent contracts shim in sdk fixture support', () => {
 		const sdkFixtureSupportPath = resolve(workspaceRoot, 'src', 'fixture-support.ts');
 		expect(existsSync(sdkFixtureSupportPath)).toBe(true);
 		const sdkFixtureSupport = readFileSync(sdkFixtureSupportPath, 'utf8');
-		expect(sdkFixtureSupport.includes("contractsShim?: 'core-agent'")).toBe(true);
+		expect(sdkFixtureSupport.includes("contractsShim?: 'agent-contracts'")).toBe(true);
 
 		const coreRunFixturePath = resolve(workspaceRoot, '..', 'core', 'scripts', 'run-fixture-astro-command.ts');
 		if (existsSync(coreRunFixturePath)) {

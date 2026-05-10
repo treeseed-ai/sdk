@@ -1,3 +1,5 @@
+import type { CapacityProviderRegistration } from '../capacity.ts';
+
 export type TreeseedFeatureName =
 	| 'docs'
 	| 'books'
@@ -209,6 +211,7 @@ export type TreeseedHostingRegistration = 'optional' | 'none';
 export type TreeseedHubMode = 'treeseed_hosted' | 'customer_hosted';
 export type TreeseedRuntimeMode = 'none' | 'byo_attached' | 'treeseed_managed';
 export type TreeseedRuntimeRegistration = 'optional' | 'required' | 'none';
+export type TreeseedProcessingMode = 'market-assigned' | 'team-owned' | 'project-owned' | 'local' | 'none';
 
 export interface TreeseedHostingConfig {
 	kind: TreeseedHostingKind;
@@ -228,6 +231,12 @@ export interface TreeseedRuntimeConfig {
 	marketBaseUrl?: string;
 	teamId?: string;
 	projectId?: string;
+}
+
+export interface TreeseedProcessingConfig {
+	mode: TreeseedProcessingMode;
+	providerRef?: string;
+	requiredCapabilities?: string[];
 }
 
 export interface TreeseedManagedServiceEnvironmentConfig {
@@ -334,6 +343,8 @@ export interface TreeseedDeployConfig {
 	providers: TreeseedProviderSelections;
 	surfaces?: TreeseedPlatformSurfacesConfig;
 	services?: TreeseedManagedServicesConfig;
+	processing?: TreeseedProcessingConfig;
+	capacityProviders?: Record<string, CapacityProviderRegistration>;
 	smtp?: {
 		enabled?: boolean;
 	};
