@@ -280,6 +280,25 @@ describe('railway scheduled jobs', () => {
 		expect(plan.args).not.toContain('service-id-1');
 	});
 
+	it('uses environment-provided Railway context for project-token deploys', () => {
+		const plan = planRailwayServiceDeploy({
+			projectId: 'railway-project-1',
+			serviceId: 'service-id-1',
+			serviceName: 'acme-docs-api',
+			railwayEnvironment: 'staging',
+			rootDir: '.',
+		}, { env: { CI: 'true' }, projectTokenMode: true });
+
+		expect(plan.args).toEqual([
+			'up',
+			'--no-gitignore',
+			'--detach',
+		]);
+		expect(plan.args).not.toContain('--project');
+		expect(plan.args).not.toContain('--service');
+		expect(plan.args).not.toContain('--environment');
+	});
+
 	it('links Railway project context before CLI deploys', () => {
 		const plan = planRailwayServiceLink({
 			projectId: 'railway-project-1',
@@ -387,6 +406,14 @@ describe('railway scheduled jobs', () => {
 			status: 1,
 			stdout: 'Build Logs: https://railway.com/project/example',
 			stderr: 'Failed to stream build logs: Failed to retrieve build log',
+		})).toBe(true);
+	});
+
+	it('retries blank Railway CLI exits from detached upload mode', () => {
+		expect(isRailwayTransientFailure({
+			status: 1,
+			stdout: '',
+			stderr: '',
 		})).toBe(true);
 	});
 

@@ -382,7 +382,11 @@ function isRailwayAlreadyExistsMessage(result) {
 }
 
 export function isRailwayTransientFailure(result) {
-	return /timed out|failed to fetch|temporarily unavailable|econnreset|etimedout|failed to stream build logs|failed to retrieve build log/iu.test(railwayMessage(result));
+	const message = railwayMessage(result);
+	if (!message.trim() && result?.status === 1) {
+		return true;
+	}
+	return /timed out|failed to fetch|temporarily unavailable|econnreset|etimedout|failed to stream build logs|failed to retrieve build log/iu.test(message);
 }
 
 function sleepSync(milliseconds) {
@@ -1397,23 +1401,21 @@ export function shouldRunRailwayPredeployBuild(env = process.env) {
 	return configuredEnvValue(env, 'CI') !== 'true';
 }
 
-export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
+export function planRailwayServiceDeploy(service, { env = process.env, projectTokenMode = false } = {}) {
 	const serviceSelector = service.serviceName ?? service.serviceId;
-	const args = [
-		'up',
-		'--service',
-		serviceSelector,
-		'--no-gitignore',
-		shouldAttachRailwayDeployLogs(env) ? '--ci' : '--detach',
-	];
+	const args = ['up'];
+	if (!projectTokenMode && serviceSelector) {
+		args.push('--service', serviceSelector);
+	}
+	args.push('--no-gitignore', shouldAttachRailwayDeployLogs(env) ? '--ci' : '--detach');
 	if (shouldUseVerboseRailwayDeploy(env)) {
 		args.push('--verbose');
 	}
-	if (service.projectId) {
+	if (!projectTokenMode && service.projectId) {
 		args.push('--project', service.projectId);
 	}
 	const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment);
-	if (environmentName) {
+	if (!projectTokenMode && environmentName) {
 		args.push('--environment', environmentName);
 	}
 	return {
@@ -1831,7 +1833,7 @@ export async function deployRailwayService(
 		}
 	}
 	const linkPlan = planRailwayServiceLink(cliDeployService, { env: commandEnv });
-	const plan = planRailwayServiceDeploy(cliDeployService, { env });
+	const plan = planRailwayServiceDeploy(cliDeployService, { env, projectTokenMode: usesProjectToken });
 	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
 		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
 			cwd: deployService.rootDir,
