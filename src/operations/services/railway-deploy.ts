@@ -1459,6 +1459,13 @@ function buildRailwayCliContextEnv(env, service) {
 	};
 }
 
+export function buildRailwayLinkCommandEnv(env = process.env, service = {}) {
+	return buildRailwayCliContextEnv({
+		...buildRailwayDeployCommandEnv({ ...env, RAILWAY_TOKEN: undefined }),
+		RAILWAY_TOKEN: undefined,
+	}, service);
+}
+
 export function planRailwayServiceLink(service, { env = process.env } = {}) {
 	const args = ['link'];
 	if (service.projectId) {
@@ -1874,10 +1881,18 @@ export async function deployRailwayService(
 		}
 	}
 
-	const effectiveLinkPlan = usesProjectToken ? planRailwayProjectEnvironmentLink(cliDeployService) : linkPlan;
+	const hasRailwayApiToken = Boolean(configuredEnvValue(commandEnv, 'RAILWAY_API_TOKEN'));
+	const effectiveLinkPlan = hasRailwayApiToken
+		? linkPlan
+		: usesProjectToken
+			? planRailwayProjectEnvironmentLink(cliDeployService)
+			: linkPlan;
+	const railwayLinkEnv = hasRailwayApiToken
+		? buildRailwayLinkCommandEnv(commandEnv, cliDeployService)
+		: railwayDeployEnv;
 	const linkResult = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...effectiveLinkPlan.args], {
 		cwd: effectiveLinkPlan.cwd,
-		env: railwayDeployEnv,
+		env: railwayLinkEnv,
 		write,
 		prefix: { ...taskPrefix, stage: 'link' },
 	});

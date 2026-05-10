@@ -8,6 +8,7 @@ import {
 	collectRailwayDeploymentStatusChecks,
 	buildRailwayCommandEnv,
 	buildRailwayDeployCommandEnv,
+	buildRailwayLinkCommandEnv,
 	deriveRailwayWorkerRunnerServiceName,
 	deriveRailwayWorkerRunnerVolumeName,
 	ensureRailwayScheduledJobs,
@@ -869,5 +870,26 @@ describe('railway scheduled jobs', () => {
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_TOKEN: 'railway-project-token',
 		});
+	});
+
+	it('uses API auth, not project-token auth, when linking Railway CLI context', () => {
+		const env = buildRailwayLinkCommandEnv({
+			CI: 'true',
+			RAILWAY_API_TOKEN: 'railway-api-token',
+			RAILWAY_TOKEN: 'railway-project-token',
+		}, {
+			projectId: 'railway-project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-api',
+		});
+
+		expect(env).toMatchObject({
+			CI: 'false',
+			RAILWAY_API_TOKEN: 'railway-api-token',
+			RAILWAY_PROJECT_ID: 'railway-project-1',
+			RAILWAY_ENVIRONMENT_ID: 'env-staging',
+			RAILWAY_SERVICE_ID: 'svc-api',
+		});
+		expect(env.RAILWAY_TOKEN).toBeUndefined();
 	});
 });
