@@ -310,15 +310,19 @@ describe('railway scheduled jobs', () => {
 			RAILWAY_API_TOKEN: 'railway-api-token',
 		})).toMatchObject({
 			CI: 'false',
-			RAILWAY_TOKEN: 'railway-api-token',
+			RAILWAY_API_TOKEN: 'railway-api-token',
 		});
+		expect(buildRailwayDeployCommandEnv({
+			CI: 'true',
+			RAILWAY_API_TOKEN: 'railway-api-token',
+		})).not.toHaveProperty('RAILWAY_TOKEN');
 		expect(buildRailwayDeployCommandEnv({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS: '1',
 		})).toMatchObject({
 			CI: 'true',
-			RAILWAY_TOKEN: 'railway-api-token',
+			RAILWAY_API_TOKEN: 'railway-api-token',
 		});
 	});
 
@@ -782,7 +786,7 @@ describe('railway scheduled jobs', () => {
 		expect(resolveRailwayAuthToken({})).toBe('');
 		expect(buildRailwayCommandEnv({ RAILWAY_API_TOKEN: 'railway-api-token' })).toMatchObject({
 			RAILWAY_API_TOKEN: 'railway-api-token',
-			RAILWAY_TOKEN: 'railway-api-token',
 		});
+		expect(buildRailwayCommandEnv({ RAILWAY_API_TOKEN: 'railway-api-token' })).not.toHaveProperty('RAILWAY_TOKEN');
 	});
 });
