@@ -1366,7 +1366,7 @@ function shouldAttachRailwayDeployLogs(env = process.env) {
 	if (configured === '0' || configured === 'false') {
 		return false;
 	}
-	return configuredEnvValue(env, 'CI') === 'true';
+	return false;
 }
 
 function shouldUseVerboseRailwayDeploy(env = process.env) {

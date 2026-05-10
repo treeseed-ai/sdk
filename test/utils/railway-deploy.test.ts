@@ -252,16 +252,16 @@ describe('railway scheduled jobs', () => {
 		expect(plan.args).not.toContain('--detach');
 	});
 
-	it('uses Railway CI deploy mode in hosted CI', () => {
+	it('uses detached Railway deploy mode in hosted CI unless attachment is requested', () => {
 		const plan = planRailwayServiceDeploy({
 			serviceName: 'acme-docs-api',
 			railwayEnvironment: 'staging',
 			rootDir: '.',
 		}, { env: { CI: 'true' } });
 
-		expect(plan.args).toContain('--ci');
-		expect(plan.args).toContain('--verbose');
-		expect(plan.args).not.toContain('--detach');
+		expect(plan.args).toContain('--detach');
+		expect(plan.args).not.toContain('--ci');
+		expect(plan.args).not.toContain('--verbose');
 	});
 
 	it('allows Railway deploy log attachment to be disabled explicitly in CI', () => {
