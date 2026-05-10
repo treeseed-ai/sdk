@@ -68,9 +68,8 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 	it('uploads built processing package artifacts for Railway service starts', () => {
 		const source = readFileSync(resolve(workspaceRoot, '.railwayignore'), 'utf8');
 
-		expect(source).toContain('**/dist/');
-		expect(source).toContain('!packages/sdk/dist/**');
-		expect(source).toContain('!packages/agent/dist/**');
+		expect(source).not.toContain('\ndist/\n');
+		expect(source).not.toContain('**/dist/');
 	});
 });
 
