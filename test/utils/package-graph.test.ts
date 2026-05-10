@@ -17,6 +17,12 @@ const verifyDriverPaths = [
 	resolve(workspaceRoot, '..', 'core', 'scripts', 'verify-driver.mjs'),
 	resolve(workspaceRoot, '..', 'cli', 'scripts', 'verify-driver.mjs'),
 ];
+const packageVerifyWorkflowPaths = [
+	resolve(workspaceRoot, '.github', 'workflows', 'verify.yml'),
+	resolve(workspaceRoot, '..', 'agent', '.github', 'workflows', 'verify.yml'),
+	resolve(workspaceRoot, '..', 'core', '.github', 'workflows', 'verify.yml'),
+	resolve(workspaceRoot, '..', 'cli', '.github', 'workflows', 'verify.yml'),
+];
 
 function walkSourceFiles(root: string): string[] {
 	if (!existsSync(root)) {
@@ -147,6 +153,17 @@ describe('sdk package graph', () => {
 	it('publishes the shared verify executable for package consumers', () => {
 		const packageJson = JSON.parse(readFileSync(sdkPackageJsonPath, 'utf8'));
 		expect(packageJson.bin?.['treeseed-sdk-verify']).toBe('./scripts/verify-driver.mjs');
+	});
+
+	it('keeps package verify workflows branch-push triggerable for staging saves', () => {
+		for (const workflowPath of packageVerifyWorkflowPaths) {
+			if (!existsSync(workflowPath)) continue;
+			const workflow = readFileSync(workflowPath, 'utf8');
+			expect(workflow, `${workflowPath} should define a push trigger`).toMatch(/\bon:\s*\n\s+push:\s*(?:\n|$)/u);
+			expect(workflow, `${workflowPath} should not filter verify branch pushes by tag`).not.toMatch(
+				/\b(tags|tags-ignore|branches|branches-ignore):/u,
+			);
+		}
 	});
 
 	it('keeps verify consumers on package-local entrypoints without workspace-linked verify dependencies', () => {
