@@ -233,6 +233,7 @@ describe('railway scheduled jobs', () => {
 				'up',
 				'--service',
 				'acme-docs-api',
+				'--no-gitignore',
 				'--detach',
 				'--project',
 				'railway-project-1',
@@ -326,6 +327,7 @@ describe('railway scheduled jobs', () => {
 
 		expect(plan.args).toContain('--ci');
 		expect(plan.args).toContain('--verbose');
+		expect(plan.args).toContain('--no-gitignore');
 		expect(plan.args).not.toContain('--detach');
 	});
 

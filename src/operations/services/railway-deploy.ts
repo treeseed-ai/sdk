@@ -1405,6 +1405,7 @@ export function planRailwayServiceDeploy(service, { env = process.env, projectTo
 		'up',
 		'--service',
 		serviceSelector,
+		'--no-gitignore',
 		shouldAttachRailwayDeployLogs(env) ? '--ci' : '--detach',
 	];
 	if (shouldUseVerboseRailwayDeploy(env)) {
