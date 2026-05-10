@@ -1831,10 +1831,13 @@ export async function deployRailwayService(
 	};
 	railwayDeployEnv = buildRailwayCliContextEnv(railwayDeployEnv, cliDeployService);
 	let usesProjectToken = Boolean(configuredEnvValue(railwayDeployEnv, 'RAILWAY_TOKEN'));
+	if (usesProjectToken) {
+		railwayDeployEnv = { ...railwayDeployEnv, RAILWAY_API_TOKEN: undefined };
+	}
 	if (!usesProjectToken) {
 		const projectToken = await createRailwayCliProjectToken(cliDeployService, { env: commandEnv });
 		if (projectToken) {
-			railwayDeployEnv = buildRailwayCliContextEnv({ ...railwayDeployEnv, RAILWAY_TOKEN: projectToken }, cliDeployService);
+			railwayDeployEnv = buildRailwayCliContextEnv({ ...railwayDeployEnv, RAILWAY_API_TOKEN: undefined, RAILWAY_TOKEN: projectToken }, cliDeployService);
 			usesProjectToken = true;
 		} else if (configuredEnvValue(commandEnv, 'CI') === 'true') {
 			throw new Error(`Railway CI deploy requires a project token for ${cliDeployService.serviceName ?? cliDeployService.key}. Automatic project token creation did not return a token.`);

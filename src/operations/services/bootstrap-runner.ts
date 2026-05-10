@@ -117,9 +117,15 @@ export async function runPrefixedCommand(
 	},
 ) {
 	return await new Promise<{ status: number | null; stdout: string; stderr: string }>((resolvePromise, reject) => {
+		const childEnv: Record<string, string> = {};
+		for (const [key, value] of Object.entries({ ...process.env, ...env })) {
+			if (value !== undefined) {
+				childEnv[key] = String(value);
+			}
+		}
 		const child = spawn(command, args, {
 			cwd,
-			env: { ...process.env, ...env },
+			env: childEnv,
 			stdio: ['pipe', 'pipe', 'pipe'],
 		});
 		let stdout = '';
