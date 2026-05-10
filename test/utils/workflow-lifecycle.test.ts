@@ -89,6 +89,28 @@ function writeStatusConfigEntry(root: string) {
       - config
     validation:
       kind: nonempty
+  RAILWAY_API_TOKEN:
+    label: Railway API token
+    group: auth
+    description: Railway API token for status configuration tests.
+    howToGet: Set any value.
+    sensitivity: secret
+    targets:
+      - github-secret
+    scopes:
+      - staging
+      - prod
+    storage: scoped
+    requirement: conditional
+    purposes:
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+      minLength: 8
+    sourcePriority:
+      - machine-config
+      - process-env
 `, 'utf8');
 }
 

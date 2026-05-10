@@ -382,7 +382,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('scopes Cloudflare AI credentials to local, staging, and prod config', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(agentProcessingRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 
 		const registry = resolveTreeseedEnvironmentRegistry({
@@ -421,7 +421,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('registers staging and production market defaults for primary and integrated catalog markets', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 		const deployConfig = {
 			name: 'Test Site',
@@ -471,7 +471,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('suggests local GitHub repository metadata from origin when present', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 		spawnSync('git', ['init', '-b', 'main'], { cwd: tenantRoot, stdio: 'ignore' });
 		spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:knowledge-coop/market.git'], { cwd: tenantRoot, stdio: 'ignore' });

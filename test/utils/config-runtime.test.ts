@@ -286,7 +286,7 @@ describe('config runtime shared environment values', () => {
 	});
 
 	it('keeps machine config values when hosted process environment values are empty', () => {
-		const tenantRoot = createTenantFixture();
+			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		const config = createDefaultTreeseedMachineConfig({
 			tenantRoot,
 			deployConfig: {
@@ -317,7 +317,7 @@ describe('config runtime shared environment values', () => {
 	});
 
 	it('builds launch env from process values when no wrapped machine key exists', () => {
-		const tenantRoot = createTenantFixture();
+			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		writeTreeseedMachineConfig(tenantRoot, createDefaultTreeseedMachineConfig({
 			tenantRoot,
 			deployConfig: {
