@@ -315,7 +315,7 @@ describe('railway scheduled jobs', () => {
 		expect(buildRailwayDeployCommandEnv({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
-		})).not.toHaveProperty('RAILWAY_TOKEN');
+		}).RAILWAY_TOKEN).toBeUndefined();
 		expect(buildRailwayDeployCommandEnv({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
@@ -787,6 +787,6 @@ describe('railway scheduled jobs', () => {
 		expect(buildRailwayCommandEnv({ RAILWAY_API_TOKEN: 'railway-api-token' })).toMatchObject({
 			RAILWAY_API_TOKEN: 'railway-api-token',
 		});
-		expect(buildRailwayCommandEnv({ RAILWAY_API_TOKEN: 'railway-api-token' })).not.toHaveProperty('RAILWAY_TOKEN');
+		expect(buildRailwayCommandEnv({ RAILWAY_API_TOKEN: 'railway-api-token' }).RAILWAY_TOKEN).toBeUndefined();
 	});
 });

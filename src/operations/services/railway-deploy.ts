@@ -264,10 +264,10 @@ export function buildRailwayCommandEnv(env = process.env) {
 	const token = resolveRailwayAuthToken(merged);
 	if (token) {
 		merged.RAILWAY_API_TOKEN = token;
-		delete merged.RAILWAY_TOKEN;
+		merged.RAILWAY_TOKEN = undefined;
 	} else {
-		delete merged.RAILWAY_API_TOKEN;
-		delete merged.RAILWAY_TOKEN;
+		merged.RAILWAY_API_TOKEN = undefined;
+		merged.RAILWAY_TOKEN = undefined;
 	}
 	return merged;
 }
