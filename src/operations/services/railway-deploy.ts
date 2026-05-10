@@ -274,7 +274,9 @@ export function buildRailwayCommandEnv(env = process.env) {
 
 export function buildRailwayDeployCommandEnv(env = process.env) {
 	const merged = buildRailwayCommandEnv(env);
-	merged.CI = shouldAttachRailwayDeployLogs(merged) ? 'true' : 'false';
+	if (shouldAttachRailwayDeployLogs(merged)) {
+		merged.CI = 'true';
+	}
 	return merged;
 }
 

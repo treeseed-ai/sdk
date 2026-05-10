@@ -363,13 +363,13 @@ describe('railway scheduled jobs', () => {
 		expect(plan.args).toContain('--no-gitignore');
 	});
 
-	it('keeps Railway CLI CI mode enabled only when log streaming is explicit', () => {
+	it('preserves hosted CI mode while detached deploys are selected by arguments', () => {
 		expect(buildRailwayDeployCommandEnv({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_TOKEN: 'railway-project-token',
 		})).toMatchObject({
-			CI: 'false',
+			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_TOKEN: 'railway-project-token',
 		});
@@ -885,7 +885,7 @@ describe('railway scheduled jobs', () => {
 		});
 
 		expect(env).toMatchObject({
-			CI: 'false',
+			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_PROJECT_ID: 'railway-project-1',
 			RAILWAY_ENVIRONMENT_ID: 'env-staging',
