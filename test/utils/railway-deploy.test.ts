@@ -19,7 +19,6 @@ import {
 	validateRailwayDeployPrerequisites,
 	verifyRailwayManagedResources,
 	verifyRailwayScheduledJobs,
-	buildRailwayProjectLinkArgs,
 } from '../../src/operations/services/railway-deploy.ts';
 import { ensureRailwayServiceVolume } from '../../src/operations/services/railway-api.ts';
 
@@ -257,28 +256,6 @@ describe('railway scheduled jobs', () => {
 			'service-id-1',
 		]));
 		expect(plan.args).not.toContain('acme-docs-api');
-	});
-
-	it('links Railway projects non-interactively with workspace, service, and environment selectors', () => {
-		const args = buildRailwayProjectLinkArgs({
-			projectId: 'railway-project-1',
-			serviceId: 'service-id-1',
-			serviceName: 'acme-docs-api',
-			railwayEnvironment: 'staging',
-		}, { env: { TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop' } });
-
-		expect(args).toEqual([
-			'link',
-			'--project',
-			'railway-project-1',
-			'--workspace',
-			'knowledge-coop',
-			'--service',
-			'service-id-1',
-			'--environment',
-			'staging',
-			'--json',
-		]);
 	});
 
 	it('supports attached Railway build logs when explicitly requested', () => {
