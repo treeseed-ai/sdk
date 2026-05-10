@@ -318,33 +318,39 @@ describe('railway scheduled jobs', () => {
 		expect(plan.args).not.toContain('--detach');
 	});
 
-	it('uses Railway CI log streaming in hosted CI', () => {
+	it('keeps Railway deploys detached in hosted CI by default', () => {
 		const plan = planRailwayServiceDeploy({
 			serviceName: 'acme-docs-api',
 			railwayEnvironment: 'staging',
 			rootDir: '.',
 		}, { env: { CI: 'true' } });
 
-		expect(plan.args).toContain('--ci');
-		expect(plan.args).toContain('--verbose');
+		expect(plan.args).toContain('--detach');
 		expect(plan.args).toContain('--no-gitignore');
-		expect(plan.args).not.toContain('--detach');
+		expect(plan.args).not.toContain('--ci');
+		expect(plan.args).not.toContain('--verbose');
 	});
 
-	it('keeps Railway CLI CI mode enabled for hosted CI log streaming', () => {
+	it('keeps Railway CLI CI mode enabled only when log streaming is explicit', () => {
 		expect(buildRailwayDeployCommandEnv({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_TOKEN: 'railway-project-token',
 		})).toMatchObject({
-			CI: 'true',
+			CI: 'false',
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_TOKEN: 'railway-project-token',
 		});
 		expect(buildRailwayDeployCommandEnv({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
-		}).RAILWAY_TOKEN).toBeUndefined();
+			RAILWAY_TOKEN: 'railway-project-token',
+			TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS: '1',
+		})).toMatchObject({
+			CI: 'true',
+			RAILWAY_API_TOKEN: 'railway-api-token',
+			RAILWAY_TOKEN: 'railway-project-token',
+		});
 		expect(buildRailwayDeployCommandEnv({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
