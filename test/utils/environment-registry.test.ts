@@ -923,5 +923,10 @@ describe('environment registry overlays', () => {
 		if (railwayApiToken) {
 			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['github-secret', 'railway-secret']));
 		}
+		const railwayProjectToken = findRegistryEntry(registry, 'RAILWAY_TOKEN');
+		if (railwayProjectToken) {
+			expect(railwayProjectToken.targets).toEqual(expect.arrayContaining(['github-secret']));
+			expect(railwayProjectToken.requirement).toBe('optional');
+		}
 	});
 });

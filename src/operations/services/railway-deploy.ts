@@ -262,13 +262,13 @@ export function resolveRailwayAuthToken(env = process.env) {
 export function buildRailwayCommandEnv(env = process.env) {
 	const merged = { ...env };
 	const token = resolveRailwayAuthToken(merged);
+	const projectToken = configuredEnvValue(merged, 'RAILWAY_TOKEN');
 	if (token) {
 		merged.RAILWAY_API_TOKEN = token;
-		merged.RAILWAY_TOKEN = undefined;
 	} else {
 		merged.RAILWAY_API_TOKEN = undefined;
-		merged.RAILWAY_TOKEN = undefined;
 	}
+	merged.RAILWAY_TOKEN = projectToken || undefined;
 	return merged;
 }
 
@@ -1441,6 +1441,78 @@ export function planRailwayServiceLink(service) {
 	};
 }
 
+function railwayProjectTokenName(service) {
+	const environment = normalizeRailwayEnvironmentName(service.railwayEnvironment) || 'environment';
+	const serviceName = String(service.serviceName ?? service.serviceId ?? service.key ?? 'service')
+		.toLowerCase()
+		.replace(/[^a-z0-9-]+/gu, '-')
+		.replace(/^-+|-+$/gu, '')
+		.slice(0, 48) || 'service';
+	return `treeseed-ci-${environment}-${serviceName}`;
+}
+
+async function createRailwayCliProjectToken(service, { env = process.env } = {}) {
+	const projectId = configuredEnvValue(service, 'projectId');
+	const environmentId = configuredEnvValue(service, 'environmentId');
+	if (!projectId || !environmentId) {
+		return '';
+	}
+	const name = railwayProjectTokenName(service);
+	try {
+		const existingPayload = await railwayGraphqlRequest({
+			query: `
+query TreeseedProjectTokens($projectId: String!) {
+	projectTokens(projectId: $projectId, first: 100) {
+		edges {
+			node {
+				id
+				name
+				projectId
+				environmentId
+			}
+		}
+	}
+}
+`.trim(),
+			variables: { projectId },
+			env,
+		});
+		const existingTokens = railwayEdgeNodes(existingPayload.data?.projectTokens);
+		for (const token of existingTokens) {
+			if (token?.name === name && token?.projectId === projectId && token?.environmentId === environmentId && token?.id) {
+				await railwayGraphqlRequest({
+					query: `
+mutation TreeseedProjectTokenDelete($id: String!) {
+	projectTokenDelete(id: $id)
+}
+`.trim(),
+					variables: { id: token.id },
+					env,
+				});
+			}
+		}
+	} catch {
+		// Token deletion is best-effort; creation below is the authoritative deploy credential.
+	}
+	const payload = await railwayGraphqlRequest({
+		query: `
+mutation TreeseedProjectTokenCreate($input: ProjectTokenCreateInput!) {
+	projectTokenCreate(input: $input)
+}
+`.trim(),
+		variables: {
+			input: {
+				projectId,
+				environmentId,
+				name,
+			},
+		},
+		env,
+	});
+	const token = payload.data?.projectTokenCreate;
+	return typeof token === 'string' && token.trim() ? token.trim() : '';
+}
+
 async function resolveRailwayDeployProjectContext(service, { env = process.env } = {}) {
 	if (service.projectId) {
 		return service;
@@ -1707,7 +1779,7 @@ export async function deployRailwayService(
 	}
 	const deployService = await resolveRailwayDeployProjectContext(service, { env });
 	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
-	const railwayDeployEnv = buildRailwayDeployCommandEnv(commandEnv);
+	let railwayDeployEnv = buildRailwayDeployCommandEnv(commandEnv);
 	const railway = resolveTreeseedToolCommand('railway', { env: commandEnv });
 	if (!railway) {
 		throw new Error('Railway CLI is unavailable.');
@@ -1726,10 +1798,17 @@ export async function deployRailwayService(
 		...deployService,
 		projectId: runtimeConfiguration?.projectId ?? deployService.projectId,
 		projectName: runtimeConfiguration?.projectName ?? deployService.projectName,
+		environmentId: runtimeConfiguration?.environmentId ?? deployService.environmentId,
 		serviceId: runtimeConfiguration?.serviceId ?? deployService.serviceId,
 		serviceName: runtimeConfiguration?.serviceName ?? deployService.serviceName,
 		railwayEnvironment: runtimeConfiguration?.environmentName ?? runtimeConfiguration?.environmentId ?? deployService.railwayEnvironment,
 	};
+	if (!configuredEnvValue(railwayDeployEnv, 'RAILWAY_TOKEN')) {
+		const projectToken = await createRailwayCliProjectToken(cliDeployService, { env: commandEnv });
+		if (projectToken) {
+			railwayDeployEnv = { ...railwayDeployEnv, RAILWAY_TOKEN: projectToken };
+		}
+	}
 	const linkPlan = planRailwayServiceLink(cliDeployService);
 	const plan = planRailwayServiceDeploy(cliDeployService, { env });
 	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {

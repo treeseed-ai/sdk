@@ -82,6 +82,7 @@ describe('github automation workflow generation', () => {
 		expect(processing).toContain('default: deploy_processing');
 		expect(processing).toContain('TREESEED_WORKFLOW_PLANE: processing');
 		expect(processing).toContain('RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}');
+		expect(processing).toContain('RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}');
 		expect(processing).toContain('TREESEED_API_BASE_URL: ${{ vars.TREESEED_API_BASE_URL }}');
 		expect(processing).toContain('TREESEED_API_AUTH_SECRET: ${{ secrets.TREESEED_API_AUTH_SECRET }}');
 		expect(processing).toContain('TREESEED_AGENT_POOL_MAX_WORKERS');
