@@ -1710,6 +1710,26 @@ export async function deployRailwayService(
 		serviceName: runtimeConfiguration?.serviceName ?? deployService.serviceName,
 		railwayEnvironment: runtimeConfiguration?.environmentName ?? runtimeConfiguration?.environmentId ?? deployService.railwayEnvironment,
 	};
+	const railwayEnvironmentName = normalizeRailwayEnvironmentName(cliDeployService.railwayEnvironment);
+	if (cliDeployService.projectId && railwayEnvironmentName) {
+		const linkResult = await runPrefixedCommand(railway.command, [
+			...railway.argsPrefix,
+			'link',
+			'--project',
+			cliDeployService.projectId,
+			'--environment',
+			railwayEnvironmentName,
+			'--json',
+		], {
+			cwd: cliDeployService.rootDir,
+			env: railwayDeployEnv,
+			write,
+			prefix: { ...taskPrefix, stage: 'link' },
+		});
+		if (linkResult.status !== 0) {
+			throw new Error(linkResult.stderr?.trim() || linkResult.stdout?.trim() || `railway link --project ${cliDeployService.projectId} --environment ${railwayEnvironmentName} failed`);
+		}
+	}
 	const plan = planRailwayServiceDeploy(cliDeployService, { env });
 	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
 		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
