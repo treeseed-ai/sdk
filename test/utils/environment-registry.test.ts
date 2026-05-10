@@ -498,7 +498,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('requires clean local GitHub metadata and does not advertise legacy env names', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 		const deployConfig = {
 			name: 'Test Site',
@@ -698,7 +698,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('uses local smtp defaults without making local smtp required', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 
 		const deployConfig = {
@@ -750,7 +750,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('gates hosted smtp and turnstile entries on deploy config enablement', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 
 		const deployConfig = {

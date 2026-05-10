@@ -168,7 +168,7 @@ describe('config runtime shared environment values', () => {
 	});
 
 	it('resolves shared entries across scopes and persists them in shared storage', () => {
-			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
+		const tenantRoot = createTenantFixture();
 		const config = createDefaultTreeseedMachineConfig({
 			tenantRoot,
 			deployConfig: {
@@ -198,7 +198,7 @@ describe('config runtime shared environment values', () => {
 	});
 
 	it('ensures Railway deploy ignore entries for local workspace artifacts', () => {
-			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
+		const tenantRoot = createTenantFixture();
 
 		const railwayIgnorePath = ensureTreeseedRailwayIgnoreEntries(tenantRoot);
 		const contents = readFileSync(railwayIgnorePath, 'utf8');
@@ -210,7 +210,7 @@ describe('config runtime shared environment values', () => {
 	});
 
 	it('builds launch env from machine config without recreating deprecated env files', () => {
-			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
+		const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		const config = createDefaultTreeseedMachineConfig({
 			tenantRoot,
 			deployConfig: {
@@ -255,7 +255,7 @@ describe('config runtime shared environment values', () => {
 	});
 
 	it('keeps hosted process environment values ahead of machine config values', () => {
-			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
+		const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		const config = createDefaultTreeseedMachineConfig({
 			tenantRoot,
 			deployConfig: {
@@ -349,7 +349,7 @@ describe('config runtime shared environment values', () => {
 	});
 
 	it('uses non-secret deploy defaults in hosted launch env without generating secrets', () => {
-		const tenantRoot = createTenantFixture();
+			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		writeTreeseedMachineConfig(tenantRoot, createDefaultTreeseedMachineConfig({
 			tenantRoot,
 			deployConfig: {
@@ -380,7 +380,7 @@ describe('config runtime shared environment values', () => {
 	});
 
 	it('does not overwrite hosted process env values when applying config', () => {
-		const tenantRoot = createTenantFixture();
+			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		const config = createDefaultTreeseedMachineConfig({
 			tenantRoot,
 			deployConfig: {
@@ -556,7 +556,7 @@ describe('config runtime shared environment values', () => {
 	});
 
 	it('hides system-managed Railway topology IDs from the config editor', () => {
-		const tenantRoot = createTenantFixture();
+			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		const config = createDefaultTreeseedMachineConfig({
 			tenantRoot,
 			deployConfig: {
@@ -599,7 +599,7 @@ describe('config runtime shared environment values', () => {
 	});
 
 	it('does not treat one-character Railway token values as configured', () => {
-		const tenantRoot = createTenantFixture();
+			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		const config = createDefaultTreeseedMachineConfig({
 			tenantRoot,
 			deployConfig: {
