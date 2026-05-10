@@ -476,7 +476,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(sdkReport?.tagName).toMatch(/^0\.4\.13-dev\.staging\./);
 		expect(result.payload.ciMode).toBe('hosted');
 		expect(result.payload.workflowGates).toEqual(expect.arrayContaining([
-			expect.objectContaining({ name: result.payload.rootRepo.name, workflow: 'deploy.yml', branch: 'staging' }),
+			expect.objectContaining({ name: result.payload.rootRepo.name, workflow: 'deploy.yml', branch: 'staging', timeoutSeconds: 2700 }),
 			expect.objectContaining({ name: '@treeseed/sdk', workflow: 'verify.yml', branch: 'staging' }),
 		]));
 		expect(result.payload.workflowGates).not.toEqual(expect.arrayContaining([

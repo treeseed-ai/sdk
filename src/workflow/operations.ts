@@ -542,12 +542,12 @@ async function waitForWorkflowGates(
 	return results;
 }
 
-const RELEASE_DEPLOY_GATE_TIMEOUT_SECONDS = 45 * 60;
+const HOSTED_DEPLOY_GATE_TIMEOUT_SECONDS = 45 * 60;
 
-function releaseDeployGate(gate: GitHubActionsWorkflowGate): GitHubActionsWorkflowGate {
+function hostedDeployGate(gate: GitHubActionsWorkflowGate): GitHubActionsWorkflowGate {
 	return {
 		...gate,
-		timeoutSeconds: gate.timeoutSeconds ?? RELEASE_DEPLOY_GATE_TIMEOUT_SECONDS,
+		timeoutSeconds: gate.timeoutSeconds ?? HOSTED_DEPLOY_GATE_TIMEOUT_SECONDS,
 	};
 }
 
@@ -1501,13 +1501,13 @@ function gateForSavedRootReport(report: RepositorySaveReport, branch: string | n
 		return [];
 	}
 	if (branch === STAGING_BRANCH) {
-		return [{
+		return [hostedDeployGate({
 			name: report.name,
 			repoPath: report.path,
 			workflow: 'deploy.yml',
 			branch,
 			headSha: report.commitSha,
-		}];
+		})];
 	}
 	return [{
 		name: report.name,
@@ -3702,13 +3702,13 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 								}]
 								: []),
 							...((branch === STAGING_BRANCH || effectiveInput.verifyDeployedResources === true) && scope !== 'local' && savedRootRepo.pushed && savedRootRepo.commitSha && branch
-								? [{
+								? [hostedDeployGate({
 									name: savedRootRepo.name,
 									repoPath: savedRootRepo.path,
 									workflow: 'deploy.yml',
 									branch,
 									headSha: savedRootRepo.commitSha,
-								}]
+								})]
 								: []),
 							...savedPackageReports
 								.filter((repo) => repo.pushed && repo.commitSha && repo.branch)
@@ -4323,14 +4323,14 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				const stageWorkflowGateResult = !waitForStaging
 					? (skipJournalStep(root, workflowRun.runId, 'wait-staging', { status: 'skipped', reason: 'disabled' }), { status: 'skipped', reason: 'disabled' })
 					: await executeJournalStep(root, workflowRun.runId, 'wait-staging', () =>
-						waitForWorkflowGates('stage', [
-							{
-								name: rootRepo.name,
-								repoPath: rootRepo.path,
-								workflow: 'deploy.yml',
-								branch: STAGING_BRANCH,
-								headSha: rootRepo.commitSha,
-							},
+							waitForWorkflowGates('stage', [
+								hostedDeployGate({
+									name: rootRepo.name,
+									repoPath: rootRepo.path,
+									workflow: 'deploy.yml',
+									branch: STAGING_BRANCH,
+									headSha: rootRepo.commitSha,
+								}),
 							...packageReports
 								.filter((report) => report.merged && report.commitSha)
 								.map((report) => ({
@@ -4647,14 +4647,14 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 								branch: STAGING_BRANCH,
 								headSha: headCommit(pkg.dir),
 							}));
-						return waitForWorkflowGates('release', [
-							{
-								name: rootRepo.name,
-								repoPath: rootRepo.path,
-								workflow: 'deploy.yml',
-								branch: STAGING_BRANCH,
-								headSha: headCommit(gitRoot),
-							},
+							return waitForWorkflowGates('release', [
+								hostedDeployGate({
+									name: rootRepo.name,
+									repoPath: rootRepo.path,
+									workflow: 'deploy.yml',
+									branch: STAGING_BRANCH,
+									headSha: headCommit(gitRoot),
+								}),
 							...packageGates,
 						], ciMode, {
 							root,
@@ -4738,7 +4738,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					rootRepo.tagName = String(rootRelease?.rootVersion ?? '');
 					const rootWorkflowGateResult = await executeJournalStep(root, workflowRun.runId, 'release-root-gates', () =>
 						waitForWorkflowGates('release', [
-							releaseDeployGate({
+							hostedDeployGate({
 								name: rootRepo.name,
 								repoPath: rootRepo.path,
 								workflow: 'deploy.yml',
@@ -5058,7 +5058,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				rootRepo.tagName = String(rootRelease?.rootVersion ?? '');
 				const rootWorkflowGateResult = await executeJournalStep(root, workflowRun.runId, 'release-root-gates', () =>
 					waitForWorkflowGates('release', [
-						releaseDeployGate({
+						hostedDeployGate({
 							name: rootRepo.name,
 							repoPath: rootRepo.path,
 							workflow: 'deploy.yml',
