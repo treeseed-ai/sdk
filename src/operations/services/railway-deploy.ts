@@ -1398,10 +1398,13 @@ export function shouldRunRailwayPredeployBuild(env = process.env) {
 }
 
 export function planRailwayServiceDeploy(service, { env = process.env, projectTokenMode = false } = {}) {
+	const serviceSelector = projectTokenMode
+		? (service.serviceId ?? service.serviceName)
+		: (service.serviceName ?? service.serviceId);
 	const args = [
 		'up',
 		'--service',
-		service.serviceName ?? service.serviceId,
+		serviceSelector,
 		shouldAttachRailwayDeployLogs(env) ? '--ci' : '--detach',
 	];
 	if (shouldUseVerboseRailwayDeploy(env)) {

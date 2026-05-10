@@ -270,8 +270,9 @@ describe('railway scheduled jobs', () => {
 
 		expect(plan.args).toEqual(expect.arrayContaining([
 			'--service',
-			'acme-docs-api',
+			'service-id-1',
 		]));
+		expect(plan.args).not.toContain('acme-docs-api');
 		expect(plan.args).not.toContain('--project');
 		expect(plan.args).not.toContain('--environment');
 	});
