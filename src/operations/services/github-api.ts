@@ -309,13 +309,13 @@ export async function listGitHubRepositorySecretNames(
 ) {
 	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	try {
-		return await paginateNames(() =>
+		return await withGitHubApiRetries(() => paginateNames(() =>
 			client.paginate(client.rest.actions.listRepoSecrets, {
 				owner,
 				repo: name,
 				per_page: 100,
 			}) as Promise<Array<{ name?: string | null }>>,
-		);
+		));
 	} catch (error) {
 		throw normalizeGitHubApiError(error, `Unable to list GitHub secrets for ${owner}/${name}`);
 	}
@@ -327,13 +327,13 @@ export async function listGitHubRepositoryVariableNames(
 ) {
 	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	try {
-		return await paginateNames(() =>
+		return await withGitHubApiRetries(() => paginateNames(() =>
 			client.paginate(client.rest.actions.listRepoVariables, {
 				owner,
 				repo: name,
 				per_page: 100,
 			}) as Promise<Array<{ name?: string | null }>>,
-		);
+		));
 	} catch (error) {
 		throw normalizeGitHubApiError(error, `Unable to list GitHub variables for ${owner}/${name}`);
 	}
@@ -472,11 +472,11 @@ export async function listGitHubEnvironmentSecretNames(
 ) {
 	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	try {
-		return await paginateGitHubEnvironmentNames(
+		return await withGitHubApiRetries(() => paginateGitHubEnvironmentNames(
 			client,
 			'GET /repos/{owner}/{repo}/environments/{environment_name}/secrets',
 			{ owner, repo: name, environment_name: environmentName },
-		);
+		));
 	} catch (error) {
 		throw normalizeGitHubApiError(error, `Unable to list GitHub environment secrets for ${owner}/${name}:${environmentName}`);
 	}
@@ -489,11 +489,11 @@ export async function listGitHubEnvironmentVariableNames(
 ) {
 	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	try {
-		return await paginateGitHubEnvironmentNames(
+		return await withGitHubApiRetries(() => paginateGitHubEnvironmentNames(
 			client,
 			'GET /repos/{owner}/{repo}/environments/{environment_name}/variables',
 			{ owner, repo: name, environment_name: environmentName },
-		);
+		));
 	} catch (error) {
 		throw normalizeGitHubApiError(error, `Unable to list GitHub environment variables for ${owner}/${name}:${environmentName}`);
 	}
