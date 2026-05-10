@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.2] - 2026-05-10
+
+### Tests
+
+- build(source): update package metadata (045cb0686615)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.8.2.
+
 ## [0.8.1] - 2026-05-09
 
 ### Dependencies
