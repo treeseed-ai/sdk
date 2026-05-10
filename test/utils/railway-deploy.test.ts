@@ -13,6 +13,7 @@ import {
 	ensureRailwayScheduledJobs,
 	isRailwayTransientFailure,
 	planRailwayServiceDeploy,
+	planRailwayServiceLink,
 	railwayServiceRuntimeStartCommand,
 	resolveRailwayAuthToken,
 	shouldRunRailwayPredeployBuild,
@@ -256,6 +257,30 @@ describe('railway scheduled jobs', () => {
 			'acme-docs-api',
 		]));
 		expect(plan.args).not.toContain('service-id-1');
+	});
+
+	it('links Railway project context before CLI deploys', () => {
+		const plan = planRailwayServiceLink({
+			projectId: 'railway-project-1',
+			serviceId: 'service-id-1',
+			serviceName: 'acme-docs-api',
+			railwayEnvironment: 'staging',
+			rootDir: '.',
+		});
+
+		expect(plan).toMatchObject({
+			command: 'railway',
+			args: [
+				'link',
+				'--project',
+				'railway-project-1',
+				'--environment',
+				'staging',
+				'--service',
+				'acme-docs-api',
+			],
+			cwd: '.',
+		});
 	});
 
 	it('supports attached Railway build logs when explicitly requested', () => {

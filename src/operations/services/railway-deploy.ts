@@ -1421,6 +1421,26 @@ export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
 	};
 }
 
+export function planRailwayServiceLink(service) {
+	const args = ['link'];
+	if (service.projectId) {
+		args.push('--project', service.projectId);
+	}
+	const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment);
+	if (environmentName) {
+		args.push('--environment', environmentName);
+	}
+	const serviceSelector = service.serviceName ?? service.serviceId;
+	if (serviceSelector) {
+		args.push('--service', serviceSelector);
+	}
+	return {
+		command: 'railway',
+		args,
+		cwd: service.rootDir,
+	};
+}
+
 async function resolveRailwayDeployProjectContext(service, { env = process.env } = {}) {
 	if (service.projectId) {
 		return service;
@@ -1710,6 +1730,7 @@ export async function deployRailwayService(
 		serviceName: runtimeConfiguration?.serviceName ?? deployService.serviceName,
 		railwayEnvironment: runtimeConfiguration?.environmentName ?? runtimeConfiguration?.environmentId ?? deployService.railwayEnvironment,
 	};
+	const linkPlan = planRailwayServiceLink(cliDeployService);
 	const plan = planRailwayServiceDeploy(cliDeployService, { env });
 	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
 		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
@@ -1721,6 +1742,16 @@ export async function deployRailwayService(
 		if (buildResult.status !== 0) {
 			throw new Error(`Railway ${deployService.key} build command failed.`);
 		}
+	}
+
+	const linkResult = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...linkPlan.args], {
+		cwd: linkPlan.cwd,
+		env: railwayDeployEnv,
+		write,
+		prefix: { ...taskPrefix, stage: 'link' },
+	});
+	if (linkResult.status !== 0) {
+		throw new Error(linkResult.stderr?.trim() || linkResult.stdout?.trim() || `railway ${linkPlan.args.join(' ')} failed with exit code ${linkResult.status ?? 'unknown'} in ${linkPlan.cwd}`);
 	}
 
 	let lastFailure = null;
