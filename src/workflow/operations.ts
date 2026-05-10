@@ -1681,10 +1681,28 @@ function findAutoResumableReleaseRun(
 	branch: string | null,
 	rootRepo: WorkflowRepoReport,
 	packageReports: WorkflowRepoReport[],
+	options: { archiveStale?: boolean } = {},
 ) {
 	if (branch !== STAGING_BRANCH) return null;
+	const currentHeads = Object.fromEntries([
+		[rootRepo.name, rootRepo.commitSha ?? null],
+		...packageReports.map((report) => [report.name, report.commitSha ?? null] as const),
+	]);
 	return listInterruptedWorkflowRuns(root).find((journal) => {
 		if (journal.command !== 'release' || !journal.resumable || journal.session.branchName !== STAGING_BRANCH) {
+			return false;
+		}
+		const classification = classifyWorkflowRunJournal(journal, {
+			currentBranch: branch,
+			currentHeads,
+		});
+		if (classification.state !== 'resumable') {
+			if (options.archiveStale && classification.state === 'stale') {
+				archiveWorkflowRun(root, journal.runId, {
+					...classification,
+					reasons: ['release auto-resume skipped stale failed release', ...classification.reasons],
+				});
+			}
 			return false;
 		}
 		const releasePlan = stringRecord(journal.steps.find((step) => step.id === 'release-plan')?.data);
@@ -4420,7 +4438,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				? prepareFreshReleaseRun(root, session.branchName, rootRepo, packageReports)
 				: { archived: [], blockers: [] };
 			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId && !freshRelease
-				? findAutoResumableReleaseRun(root, session.branchName, rootRepo, packageReports)
+				? findAutoResumableReleaseRun(root, session.branchName, rootRepo, packageReports, { archiveStale: true })
 				: null;
 			const planAutoResumeRun = executionMode === 'plan' && input.fresh !== true
 				? findAutoResumableReleaseRun(root, session.branchName, rootRepo, packageReports)
@@ -4627,6 +4645,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							onProgress: (line, stream) => helpers.write(line, stream),
 						}).then((workflowGates) => ({ workflowGates })));
 					const hostedDeploymentState = recordHostedDeploymentStatesFromRootGates(root, rootRelease, rootWorkflowGateResult?.workflowGates);
+					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 					const hostingAudit = await runReadOnlyHostingAuditForWorkflow('release', root, helpers, 'prod', {
 						enabled: true,
 						strict: false,
@@ -4942,6 +4961,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						onProgress: (line, stream) => helpers.write(line, stream),
 					}).then((workflowGates) => ({ workflowGates })));
 				const hostedDeploymentState = recordHostedDeploymentStatesFromRootGates(root, rootRelease, rootWorkflowGateResult?.workflowGates);
+				ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 				const hostingAudit = await runReadOnlyHostingAuditForWorkflow('release', root, helpers, 'prod', {
 					enabled: true,
 					strict: false,
