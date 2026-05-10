@@ -242,6 +242,22 @@ describe('railway scheduled jobs', () => {
 		});
 	});
 
+	it('uses Railway service IDs for deploys when available', () => {
+		const plan = planRailwayServiceDeploy({
+			projectId: 'railway-project-1',
+			serviceId: 'service-id-1',
+			serviceName: 'acme-docs-api',
+			railwayEnvironment: 'staging',
+			rootDir: '.',
+		}, { env: {} });
+
+		expect(plan.args).toEqual(expect.arrayContaining([
+			'--service',
+			'service-id-1',
+		]));
+		expect(plan.args).not.toContain('acme-docs-api');
+	});
+
 	it('supports attached Railway build logs when explicitly requested', () => {
 		const plan = planRailwayServiceDeploy({
 			serviceName: 'acme-docs-api',

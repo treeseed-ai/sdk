@@ -1401,7 +1401,7 @@ export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
 	const args = [
 		'up',
 		'--service',
-		service.serviceName ?? service.serviceId,
+		service.serviceId ?? service.serviceName,
 		shouldAttachRailwayDeployLogs(env) ? '--ci' : '--detach',
 	];
 	if (shouldUseVerboseRailwayDeploy(env)) {
@@ -1554,6 +1554,12 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		});
 	}
 	return {
+		projectId: project.id,
+		projectName: project.name ?? service.projectName ?? null,
+		environmentId: environment.id,
+		environmentName: environment.name ?? environmentName,
+		serviceId: railwayService.id,
+		serviceName: railwayService.name ?? service.serviceName ?? null,
 		instance: runtimeConfiguration?.instance ?? null,
 		updated: Boolean(runtimeConfiguration?.updated || volumeConfiguration?.updated || volumeConfiguration?.created),
 		volume: volumeConfiguration
@@ -1680,7 +1686,6 @@ export async function deployRailwayService(
 		};
 	}
 	const deployService = await resolveRailwayDeployProjectContext(service, { env });
-	const plan = planRailwayServiceDeploy(deployService, { env });
 	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
 	const railwayDeployEnv = buildRailwayDeployCommandEnv(commandEnv);
 	const railway = resolveTreeseedToolCommand('railway', { env: commandEnv });
@@ -1697,6 +1702,15 @@ export async function deployRailwayService(
 	const runtimeConfiguration = await syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, {
 		env: commandEnv,
 	});
+	const cliDeployService = {
+		...deployService,
+		projectId: runtimeConfiguration?.projectId ?? deployService.projectId,
+		projectName: runtimeConfiguration?.projectName ?? deployService.projectName,
+		serviceId: runtimeConfiguration?.serviceId ?? deployService.serviceId,
+		serviceName: runtimeConfiguration?.serviceName ?? deployService.serviceName,
+		railwayEnvironment: runtimeConfiguration?.environmentName ?? runtimeConfiguration?.environmentId ?? deployService.railwayEnvironment,
+	};
+	const plan = planRailwayServiceDeploy(cliDeployService, { env });
 	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
 		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
 			cwd: deployService.rootDir,
