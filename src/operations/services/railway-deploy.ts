@@ -1397,7 +1397,7 @@ export function shouldRunRailwayPredeployBuild(env = process.env) {
 	return configuredEnvValue(env, 'CI') !== 'true';
 }
 
-export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
+export function planRailwayServiceDeploy(service, { env = process.env, projectTokenMode = false } = {}) {
 	const args = [
 		'up',
 		'--service',
@@ -1407,11 +1407,11 @@ export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
 	if (shouldUseVerboseRailwayDeploy(env)) {
 		args.push('--verbose');
 	}
-	if (service.projectId) {
+	if (!projectTokenMode && service.projectId) {
 		args.push('--project', service.projectId);
 	}
 	const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment);
-	if (environmentName) {
+	if (!projectTokenMode && environmentName) {
 		args.push('--environment', environmentName);
 	}
 	return {
@@ -1819,7 +1819,7 @@ export async function deployRailwayService(
 		}
 	}
 	const linkPlan = planRailwayServiceLink(cliDeployService, { env: commandEnv });
-	const plan = planRailwayServiceDeploy(cliDeployService, { env });
+	const plan = planRailwayServiceDeploy(cliDeployService, { env, projectTokenMode: usesProjectToken });
 	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
 		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
 			cwd: deployService.rootDir,

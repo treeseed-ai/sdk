@@ -259,6 +259,23 @@ describe('railway scheduled jobs', () => {
 		expect(plan.args).not.toContain('service-id-1');
 	});
 
+	it('omits project and environment selectors when Railway project-token auth is used', () => {
+		const plan = planRailwayServiceDeploy({
+			projectId: 'railway-project-1',
+			serviceId: 'service-id-1',
+			serviceName: 'acme-docs-api',
+			railwayEnvironment: 'staging',
+			rootDir: '.',
+		}, { env: { CI: 'true' }, projectTokenMode: true });
+
+		expect(plan.args).toEqual(expect.arrayContaining([
+			'--service',
+			'acme-docs-api',
+		]));
+		expect(plan.args).not.toContain('--project');
+		expect(plan.args).not.toContain('--environment');
+	});
+
 	it('links Railway project context before CLI deploys', () => {
 		const plan = planRailwayServiceLink({
 			projectId: 'railway-project-1',
