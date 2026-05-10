@@ -1973,13 +1973,45 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 			}
 		});
 		const waveReports = wave.map((node) => state.reports.get(node.id) ?? createReport(node));
-		const waveGates = await options.onWaveSaved?.({
-			index: index + 1,
-			nodes: wave,
-			reports: waveReports,
-			allReports: [...state.reports.values()],
-			rootRepo: state.reports.get('.') ?? null,
-		});
+		const allReports = [...state.reports.values()];
+		let waveGates: Array<Record<string, unknown>> | undefined;
+		try {
+			waveGates = await options.onWaveSaved?.({
+				index: index + 1,
+				nodes: wave,
+				reports: waveReports,
+				allReports,
+				rootRepo: state.reports.get('.') ?? null,
+			});
+		} catch (error) {
+			const existing = repositorySaveErrorDetails(error);
+			const errorDetails = existing.details
+				?? (error && typeof error === 'object' && 'details' in error && error.details && typeof error.details === 'object'
+					? error.details as Record<string, unknown>
+					: undefined);
+			const errorExitCode = existing.exitCode
+				?? (error && typeof error === 'object' && 'exitCode' in error && typeof error.exitCode === 'number'
+					? error.exitCode
+					: undefined);
+			const gate = errorDetails?.gate;
+			const failingRepo = gate && typeof gate === 'object' && 'name' in gate && typeof gate.name === 'string'
+				? gate.name
+				: wave.map((node) => node.name).join(', ');
+			throw new RepositorySaveError(error instanceof Error ? error.message : String(error), {
+				exitCode: errorExitCode,
+				details: {
+					...(errorDetails ?? {}),
+					partialFailure: {
+						message: `Treeseed save stopped while waiting for hosted gates after wave ${index + 1}.`,
+						failingRepo,
+						nextCommand: `treeseed resume ${options.workflowRunId ?? '<run-id>'}`,
+						repos: allReports.filter((report) => report.name !== '@treeseed/market'),
+						rootRepo: state.reports.get('.') ?? null,
+						error: error instanceof Error ? error.message : String(error),
+					},
+				},
+			});
+		}
 		if (Array.isArray(waveGates)) {
 			state.workflowGates.push(...waveGates);
 		}

@@ -139,7 +139,8 @@ describe('sdk package graph', () => {
 		const coreRunFixturePath = resolve(workspaceRoot, '..', 'core', 'scripts', 'run-fixture-astro-command.ts');
 		if (existsSync(coreRunFixturePath)) {
 			const coreRunFixture = readFileSync(coreRunFixturePath, 'utf8');
-			expect(coreRunFixture.includes('contractsShim')).toBe(false);
+			expect(coreRunFixture.includes("from '@treeseed/sdk/fixture-support'")).toBe(true);
+			expect(coreRunFixture.includes('buildAgentContractsShimPackage')).toBe(false);
 		}
 	});
 

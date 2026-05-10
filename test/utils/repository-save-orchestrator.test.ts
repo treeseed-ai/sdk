@@ -7,6 +7,7 @@ import {
 	discoverRepositorySaveNodes,
 	nextDevVersion,
 	planRepositorySave,
+	repositorySaveErrorDetails,
 	repositorySaveWaves,
 	runRepositorySaveOrchestrator,
 	runStreamingCommand,
@@ -435,18 +436,32 @@ describe('repository save orchestrator helpers', () => {
 
 			writeFileSync(resolve(root, 'packages/sdk/src/index.ts'), 'export const name = "sdk-updated";\n', 'utf8');
 			const gateWaves: string[][] = [];
-			await expect(runRepositorySaveOrchestrator({
-				root,
-				gitRoot: root,
-				branch: 'staging',
-				commitMessageMode: 'fallback',
-				verifyMode: 'skip',
-				onWaveSaved: ({ reports }) => {
-					gateWaves.push(reports.map((report) => report.name));
-					throw new Error('sdk remote ci failed');
-				},
-			})).rejects.toThrow('sdk remote ci failed');
+			let caughtError: unknown;
+			try {
+				await runRepositorySaveOrchestrator({
+					root,
+					gitRoot: root,
+					branch: 'staging',
+					commitMessageMode: 'fallback',
+					verifyMode: 'skip',
+					onWaveSaved: ({ reports }) => {
+						gateWaves.push(reports.map((report) => report.name));
+						const error = new Error('sdk remote ci failed');
+						Object.assign(error, { details: { gate: { name: '@treeseed/sdk' } } });
+						throw error;
+					},
+				});
+			} catch (error) {
+				caughtError = error;
+			}
 
+			expect(caughtError).toBeInstanceOf(Error);
+			expect((caughtError as Error).message).toContain('sdk remote ci failed');
+			expect(repositorySaveErrorDetails(caughtError).details?.partialFailure).toMatchObject({
+				message: 'Treeseed save stopped while waiting for hosted gates after wave 1.',
+				failingRepo: '@treeseed/sdk',
+				error: 'sdk remote ci failed',
+			});
 			expect(gateWaves).toEqual([['@treeseed/sdk']]);
 			expect(git(resolve(root, 'packages/agent'), ['rev-parse', 'HEAD'])).toBe(before.agent);
 			expect(git(resolve(root, 'packages/core'), ['rev-parse', 'HEAD'])).toBe(before.core);
