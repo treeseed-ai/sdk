@@ -4627,6 +4627,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							onProgress: (line, stream) => helpers.write(line, stream),
 						}).then((workflowGates) => ({ workflowGates })));
 					const hostedDeploymentState = recordHostedDeploymentStatesFromRootGates(root, rootRelease, rootWorkflowGateResult?.workflowGates);
+					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 					const hostingAudit = await runReadOnlyHostingAuditForWorkflow('release', root, helpers, 'prod', {
 						enabled: true,
 						strict: false,
@@ -4942,6 +4943,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						onProgress: (line, stream) => helpers.write(line, stream),
 					}).then((workflowGates) => ({ workflowGates })));
 				const hostedDeploymentState = recordHostedDeploymentStatesFromRootGates(root, rootRelease, rootWorkflowGateResult?.workflowGates);
+				ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 				const hostingAudit = await runReadOnlyHostingAuditForWorkflow('release', root, helpers, 'prod', {
 					enabled: true,
 					strict: false,
