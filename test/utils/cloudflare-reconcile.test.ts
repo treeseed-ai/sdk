@@ -308,6 +308,7 @@ describe('cloudflare reconcile adapters', () => {
 	});
 
 	it('syncs Railway hosted env values from launch env without reading the machine key', async () => {
+		d1Created = true;
 		const { createRailwayReconcileAdapters } = await import('../../src/reconcile/builtin-adapters.ts');
 		const adapter = createRailwayReconcileAdapters().find((entry) => entry.unitTypes.includes('railway-service:api'));
 		expect(adapter).toBeTruthy();
@@ -365,6 +366,7 @@ describe('cloudflare reconcile adapters', () => {
 				GH_TOKEN: 'github-token',
 				CLOUDFLARE_API_TOKEN: 'cf-token',
 				CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				TREESEED_API_D1_DATABASE_ID: 'd1-1',
 			}),
 		}));
 	});

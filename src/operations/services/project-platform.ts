@@ -585,24 +585,39 @@ function stableArtifactAliasKey(teamId: string, artifact: { kind: string; itemId
 	return `teams/${teamId}/published/artifacts/${artifact.kind}/${artifact.itemId}/${fileName}`;
 }
 
-async function probeHttp(url: string) {
-	try {
-		const response = await fetch(url, {
-			headers: { accept: 'application/json,text/html;q=0.9,*/*;q=0.8' },
-		});
-		return {
-			ok: response.ok,
-			status: response.status,
-			url,
-		};
-	} catch (error) {
-		return {
-			ok: false,
-			status: null,
-			url,
-			error: error instanceof Error ? error.message : String(error),
-		};
+async function probeHttp(url: string, { attempts = 1, delayMs = 2000 }: { attempts?: number; delayMs?: number } = {}) {
+	let result: { ok: boolean; status: number | null; url: string; error?: string; attempts?: number } = {
+		ok: false,
+		status: null,
+		url,
+	};
+	const maxAttempts = Math.max(1, Math.floor(attempts));
+	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+		try {
+			const response = await fetch(url, {
+				headers: { accept: 'application/json,text/html;q=0.9,*/*;q=0.8' },
+			});
+			result = {
+				ok: response.ok,
+				status: response.status,
+				url,
+				attempts: attempt,
+			};
+		} catch (error) {
+			result = {
+				ok: false,
+				status: null,
+				url,
+				error: error instanceof Error ? error.message : String(error),
+				attempts: attempt,
+			};
+		}
+		if (result.ok || attempt >= maxAttempts) {
+			return result;
+		}
+		await sleep(delayMs);
 	}
+	return result;
 }
 
 function queueClientConfig(siteConfig, state) {
@@ -1443,6 +1458,13 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 	const state = loadDeployState(options.tenantRoot, siteConfig, { target });
 	const webProbeUrl = resolveImmediatePagesProbeUrl(siteConfig, state, target);
 	const apiBaseUrl = resolveImmediateApiProbeUrl(siteConfig, state, target);
+	const railwayResources = options.scope === 'local' || (!apiSelected && !agentsSelected)
+		? { ok: true, skipped: true, reason: options.scope === 'local' ? 'local_scope' : 'railway_not_selected' }
+		: await verifyRailwayManagedResources(options.tenantRoot, options.scope, {
+			env,
+			settleDeployments: true,
+			onProgress: options.write,
+		});
 	const skippedApiCheck = apiSelected
 		? { ok: false, skipped: true, reason: 'api_url_unconfigured' }
 		: { ok: true, skipped: true, reason: 'api_not_selected' };
@@ -1450,28 +1472,21 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		? { ok: false, skipped: true, reason: 'api_url_unconfigured' }
 		: { ok: true, skipped: true, reason: 'agents_not_selected' };
 	const checks = {
-		pages: await probeHttp(webProbeUrl),
-		apiHealth: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz`) : skippedApiCheck,
-		apiReady: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/readyz`) : skippedApiCheck,
-		d1Health: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz/deep`) : skippedApiCheck,
-		agentHealth: agentsSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/internal/core/agent/healthz`) : skippedAgentCheck,
+		pages: await probeHttp(webProbeUrl, { attempts: 3, delayMs: 5000 }),
+		apiHealth: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz`, { attempts: 8, delayMs: 10000 }) : skippedApiCheck,
+		apiReady: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/readyz`, { attempts: 8, delayMs: 10000 }) : skippedApiCheck,
+		d1Health: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz/deep`, { attempts: 8, delayMs: 10000 }) : skippedApiCheck,
+		agentHealth: agentsSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/internal/core/agent/healthz`, { attempts: 8, delayMs: 10000 }) : skippedAgentCheck,
 		r2: options.dryRun ? { ok: true, skipped: true, reason: 'dry_run' } : probeR2(options.tenantRoot, siteConfig, state, target),
 		queue: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : probeQueue(siteConfig, state),
 		scaleProbe: probeScaleConfiguration(siteConfig, state),
-		railwayResources: options.scope === 'local' || (!apiSelected && !agentsSelected)
-			? Promise.resolve({ ok: true, skipped: true, reason: options.scope === 'local' ? 'local_scope' : 'railway_not_selected' })
-			: verifyRailwayManagedResources(options.tenantRoot, options.scope, {
-				env,
-				settleDeployments: true,
-				onProgress: options.write,
-			}),
+		railwayResources,
 		readiness: state.readiness,
 	};
 	const resolvedChecks = {
 		...checks,
 		r2: await checks.r2,
 		queue: await checks.queue,
-		railwayResources: await checks.railwayResources,
 	};
 	const ok = [
 		resolvedChecks.pages,
