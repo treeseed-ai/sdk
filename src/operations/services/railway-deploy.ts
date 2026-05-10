@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { loadCliDeployConfig } from './runtime-tools.ts';
 import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from './deploy.ts';
@@ -1466,6 +1466,75 @@ export function buildRailwayLinkCommandEnv(env = process.env, service = {}) {
 	}, service);
 }
 
+function railwayCliConfigPath(env = process.env) {
+	const railwayHome = configuredEnvValue(env, 'RAILWAY_HOME');
+	if (railwayHome) {
+		return resolve(railwayHome, 'config.json');
+	}
+	const home = configuredEnvValue(env, 'HOME');
+	if (!home) {
+		return '';
+	}
+	return resolve(home, '.railway', 'config.json');
+}
+
+function readRailwayCliConfig(configPath) {
+	if (!configPath || !existsSync(configPath)) {
+		return {};
+	}
+	try {
+		const parsed = JSON.parse(readFileSync(configPath, 'utf8'));
+		return parsed && typeof parsed === 'object' ? parsed : {};
+	} catch {
+		return {};
+	}
+}
+
+export function writeRailwayCliProjectConfig(service, { env = process.env, cwd = service.rootDir } = {}) {
+	const projectId = configuredEnvValue(service, 'projectId');
+	const environmentId = configuredEnvValue(service, 'environmentId');
+	const serviceId = configuredEnvValue(service, 'serviceId');
+	const projectPath = cwd ? resolve(cwd) : '';
+	const configPath = railwayCliConfigPath(env);
+	if (!configPath || !projectPath || !projectId || !environmentId || !serviceId) {
+		return null;
+	}
+	const existing = readRailwayCliConfig(configPath);
+	const projects = existing.projects && typeof existing.projects === 'object' ? existing.projects : {};
+	const next = {
+		...existing,
+		projects: {
+			...projects,
+			[projectPath]: {
+				projectPath,
+				name: configuredEnvValue(service, 'projectName') || configuredEnvValue(service, 'serviceName') || projectId,
+				project: projectId,
+				environment: environmentId,
+				environmentName: normalizeRailwayEnvironmentName(service.railwayEnvironment) || configuredEnvValue(service, 'environmentName') || environmentId,
+				service: serviceId,
+			},
+		},
+		user: existing.user && typeof existing.user === 'object'
+			? existing.user
+			: {
+				token: null,
+				accessToken: null,
+				refreshToken: null,
+				tokenExpiresAt: null,
+			},
+		linkedFunctions: existing.linkedFunctions ?? null,
+	};
+	mkdirSync(dirname(configPath), { recursive: true });
+	writeFileSync(configPath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+	return {
+		configPath,
+		projectPath,
+		projectId,
+		environmentId,
+		serviceId,
+	};
+}
+
 export function planRailwayServiceLink(service, { env = process.env } = {}) {
 	const args = ['link'];
 	if (service.projectId) {
@@ -1882,6 +1951,9 @@ export async function deployRailwayService(
 	}
 
 	const hasRailwayApiToken = Boolean(configuredEnvValue(commandEnv, 'RAILWAY_API_TOKEN'));
+	const cliConfig = configuredEnvValue(commandEnv, 'CI') === 'true'
+		? writeRailwayCliProjectConfig(cliDeployService, { env: railwayDeployEnv, cwd: plan.cwd })
+		: null;
 	const effectiveLinkPlan = hasRailwayApiToken
 		? linkPlan
 		: usesProjectToken
@@ -1890,14 +1962,18 @@ export async function deployRailwayService(
 	const railwayLinkEnv = hasRailwayApiToken
 		? buildRailwayLinkCommandEnv(commandEnv, cliDeployService)
 		: railwayDeployEnv;
-	const linkResult = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...effectiveLinkPlan.args], {
-		cwd: effectiveLinkPlan.cwd,
-		env: railwayLinkEnv,
-		write,
-		prefix: { ...taskPrefix, stage: 'link' },
-	});
-	if (linkResult.status !== 0) {
-		throw new Error(linkResult.stderr?.trim() || linkResult.stdout?.trim() || `railway ${effectiveLinkPlan.args.join(' ')} failed with exit code ${linkResult.status ?? 'unknown'} in ${effectiveLinkPlan.cwd}`);
+	if (cliConfig) {
+		write ? write(`[${taskPrefix.scope}][${taskPrefix.system}][${taskPrefix.task}][link] Wrote Railway CLI project context for ${cliConfig.projectPath}.`, 'stdout') : null;
+	} else {
+		const linkResult = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...effectiveLinkPlan.args], {
+			cwd: effectiveLinkPlan.cwd,
+			env: railwayLinkEnv,
+			write,
+			prefix: { ...taskPrefix, stage: 'link' },
+		});
+		if (linkResult.status !== 0) {
+			throw new Error(linkResult.stderr?.trim() || linkResult.stdout?.trim() || `railway ${effectiveLinkPlan.args.join(' ')} failed with exit code ${linkResult.status ?? 'unknown'} in ${effectiveLinkPlan.cwd}`);
+		}
 	}
 
 	let lastFailure = null;

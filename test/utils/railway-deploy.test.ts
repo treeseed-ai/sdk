@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -21,6 +21,7 @@ import {
 	validateRailwayDeployPrerequisites,
 	verifyRailwayManagedResources,
 	verifyRailwayScheduledJobs,
+	writeRailwayCliProjectConfig,
 } from '../../src/operations/services/railway-deploy.ts';
 import { ensureRailwayServiceVolume } from '../../src/operations/services/railway-api.ts';
 
@@ -891,5 +892,42 @@ describe('railway scheduled jobs', () => {
 			RAILWAY_SERVICE_ID: 'svc-api',
 		});
 		expect(env.RAILWAY_TOKEN).toBeUndefined();
+	});
+
+	it('writes Railway CLI project context directly for hosted CI deploys', async () => {
+		const railwayHome = await mkdtemp(join(tmpdir(), 'treeseed-railway-home-'));
+		tempRoots.add(railwayHome);
+		const projectRoot = await mkdtemp(join(tmpdir(), 'treeseed-railway-project-'));
+		tempRoots.add(projectRoot);
+
+		const result = writeRailwayCliProjectConfig({
+			projectId: 'railway-project-1',
+			projectName: 'acme-docs',
+			environmentId: 'env-staging',
+			railwayEnvironment: 'staging',
+			serviceId: 'svc-api',
+			serviceName: 'acme-docs-api',
+			rootDir: projectRoot,
+		}, {
+			env: { RAILWAY_HOME: railwayHome },
+			cwd: projectRoot,
+		});
+
+		expect(result).toMatchObject({
+			configPath: join(railwayHome, 'config.json'),
+			projectPath: projectRoot,
+			projectId: 'railway-project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-api',
+		});
+		const config = JSON.parse(await readFile(join(railwayHome, 'config.json'), 'utf8'));
+		expect(config.projects[projectRoot]).toMatchObject({
+			projectPath: projectRoot,
+			name: 'acme-docs',
+			project: 'railway-project-1',
+			environment: 'env-staging',
+			environmentName: 'staging',
+			service: 'svc-api',
+		});
 	});
 });
