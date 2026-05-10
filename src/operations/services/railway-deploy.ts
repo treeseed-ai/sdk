@@ -268,7 +268,7 @@ export function buildRailwayCommandEnv(env = process.env) {
 	} else {
 		merged.RAILWAY_API_TOKEN = undefined;
 	}
-	merged.RAILWAY_TOKEN = projectToken || token || undefined;
+	merged.RAILWAY_TOKEN = projectToken || undefined;
 	return merged;
 }
 
@@ -1808,10 +1808,14 @@ export async function deployRailwayService(
 		serviceName: runtimeConfiguration?.serviceName ?? deployService.serviceName,
 		railwayEnvironment: runtimeConfiguration?.environmentName ?? runtimeConfiguration?.environmentId ?? deployService.railwayEnvironment,
 	};
-	if (!configuredEnvValue(railwayDeployEnv, 'RAILWAY_TOKEN')) {
+	let usesProjectToken = Boolean(configuredEnvValue(railwayDeployEnv, 'RAILWAY_TOKEN'));
+	if (!usesProjectToken) {
 		const projectToken = await createRailwayCliProjectToken(cliDeployService, { env: commandEnv });
 		if (projectToken) {
 			railwayDeployEnv = { ...railwayDeployEnv, RAILWAY_TOKEN: projectToken };
+			usesProjectToken = true;
+		} else if (configuredEnvValue(commandEnv, 'CI') === 'true') {
+			throw new Error(`Railway CI deploy requires a project token for ${cliDeployService.serviceName ?? cliDeployService.key}. Automatic project token creation did not return a token.`);
 		}
 	}
 	const linkPlan = planRailwayServiceLink(cliDeployService, { env: commandEnv });
@@ -1828,14 +1832,16 @@ export async function deployRailwayService(
 		}
 	}
 
-	const linkResult = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...linkPlan.args], {
-		cwd: linkPlan.cwd,
-		env: railwayDeployEnv,
-		write,
-		prefix: { ...taskPrefix, stage: 'link' },
-	});
-	if (linkResult.status !== 0) {
-		throw new Error(linkResult.stderr?.trim() || linkResult.stdout?.trim() || `railway ${linkPlan.args.join(' ')} failed with exit code ${linkResult.status ?? 'unknown'} in ${linkPlan.cwd}`);
+	if (!usesProjectToken) {
+		const linkResult = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...linkPlan.args], {
+			cwd: linkPlan.cwd,
+			env: railwayDeployEnv,
+			write,
+			prefix: { ...taskPrefix, stage: 'link' },
+		});
+		if (linkResult.status !== 0) {
+			throw new Error(linkResult.stderr?.trim() || linkResult.stdout?.trim() || `railway ${linkPlan.args.join(' ')} failed with exit code ${linkResult.status ?? 'unknown'} in ${linkPlan.cwd}`);
+		}
 	}
 
 	let lastFailure = null;

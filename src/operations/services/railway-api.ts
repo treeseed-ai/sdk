@@ -97,7 +97,7 @@ export function isUsableRailwayToken(value: string | undefined | null) {
 }
 
 export function resolveRailwayApiToken(env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env) {
-	const token = configuredEnvValue(env, 'RAILWAY_API_TOKEN') || configuredEnvValue(env, 'RAILWAY_TOKEN');
+	const token = configuredEnvValue(env, 'RAILWAY_API_TOKEN');
 	return isUsableRailwayToken(token) ? token : '';
 }
 

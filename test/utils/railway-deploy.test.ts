@@ -324,11 +324,7 @@ describe('railway scheduled jobs', () => {
 		expect(buildRailwayDeployCommandEnv({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
-		})).toMatchObject({
-			CI: 'true',
-			RAILWAY_API_TOKEN: 'railway-api-token',
-			RAILWAY_TOKEN: 'railway-api-token',
-		});
+		}).RAILWAY_TOKEN).toBeUndefined();
 		expect(buildRailwayDeployCommandEnv({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
@@ -336,7 +332,6 @@ describe('railway scheduled jobs', () => {
 		})).toMatchObject({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
-			RAILWAY_TOKEN: 'railway-api-token',
 		});
 	});
 
@@ -793,18 +788,16 @@ describe('railway scheduled jobs', () => {
 		});
 	});
 
-	it('uses RAILWAY_API_TOKEN as the Treeseed-owned Railway auth source', async () => {
+	it('uses RAILWAY_API_TOKEN as the Treeseed-owned Railway API auth source', async () => {
 		expect(resolveRailwayAuthToken({
 			RAILWAY_API_TOKEN: 'railway-api-token',
 		})).toBe('railway-api-token');
-		expect(resolveRailwayAuthToken({
-			RAILWAY_TOKEN: 'railway-cli-token',
-		})).toBe('railway-cli-token');
+		expect(resolveRailwayAuthToken({ RAILWAY_TOKEN: 'railway-cli-token' })).toBe('');
 		expect(resolveRailwayAuthToken({})).toBe('');
 		expect(buildRailwayCommandEnv({ RAILWAY_API_TOKEN: 'railway-api-token' })).toMatchObject({
 			RAILWAY_API_TOKEN: 'railway-api-token',
-			RAILWAY_TOKEN: 'railway-api-token',
 		});
+		expect(buildRailwayCommandEnv({ RAILWAY_API_TOKEN: 'railway-api-token' }).RAILWAY_TOKEN).toBeUndefined();
 		expect(buildRailwayCommandEnv({
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_TOKEN: 'railway-project-token',
