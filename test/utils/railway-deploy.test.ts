@@ -6,6 +6,7 @@ import {
 	configuredRailwayScheduledJobs,
 	configuredRailwayServices,
 	collectRailwayDeploymentStatusChecks,
+	buildRailwayCommandEnv,
 	deriveRailwayWorkerRunnerServiceName,
 	deriveRailwayWorkerRunnerVolumeName,
 	ensureRailwayScheduledJobs,
@@ -684,10 +685,14 @@ describe('railway scheduled jobs', () => {
 		});
 	});
 
-	it('uses only RAILWAY_API_TOKEN for Railway auth resolution', async () => {
+	it('uses RAILWAY_API_TOKEN as the Treeseed-owned Railway auth source', async () => {
 		expect(resolveRailwayAuthToken({
 			RAILWAY_API_TOKEN: 'railway-api-token',
 		})).toBe('railway-api-token');
 		expect(resolveRailwayAuthToken({})).toBe('');
+		expect(buildRailwayCommandEnv({ RAILWAY_API_TOKEN: 'railway-api-token' })).toMatchObject({
+			RAILWAY_API_TOKEN: 'railway-api-token',
+			RAILWAY_TOKEN: 'railway-api-token',
+		});
 	});
 });

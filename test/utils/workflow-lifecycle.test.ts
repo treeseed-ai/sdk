@@ -671,6 +671,38 @@ describe('treeseed workflow lifecycle', () => {
 		expect(autoResumeResult.payload.rootRepo.pushed).toBe(true);
 	}, 180000);
 
+	it('does not auto-resume a failed save when the workspace has new edits', async () => {
+		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
+		git(work, ['checkout', 'staging']);
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-dirty-save";\n', 'utf8');
+		git(resolve(work, 'packages', 'core'), ['remote', 'remove', 'origin']);
+		const workflow = workflowFor(work);
+
+		await expect(workflow.save({
+			message: 'feat: original dirty save',
+			verify: false,
+			ciMode: 'off',
+			refreshPreview: false,
+		})).rejects.toBeInstanceOf(TreeseedWorkflowError);
+
+		const recoverResult = await workflow.recover();
+		const runId = recoverResult.payload.interruptedRuns[0]?.runId;
+		expect(runId).toMatch(/^save-/);
+
+		git(resolve(work, 'packages', 'core'), ['remote', 'add', 'origin', packages!.core.origin]);
+		writeFileSync(resolve(work, 'README.md'), '# Demo\n\nnew repair edits\n', 'utf8');
+
+		const freshResult = await workflow.save({
+			message: 'fix: save repair edits',
+			verify: false,
+			ciMode: 'off',
+			refreshPreview: false,
+		});
+		expect(freshResult.runId).not.toBe(runId);
+		expect(freshResult.payload.autoResumed).toBe(false);
+		expect(freshResult.payload.message).toBe('fix: save repair edits');
+	}, 180000);
+
 	it('surfaces active workflow locks through recover and blocks concurrent mutating commands', async () => {
 		const { work } = createWorkflowRepo();
 		const workflow = workflowFor(work);

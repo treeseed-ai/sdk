@@ -42,6 +42,7 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(processingSource).toContain('TREESEED_WORKFLOW_PLANE: processing');
 		expect(webSource).toContain('TREESEED_BETTER_AUTH_SECRET');
 		expect(webSource).toContain('TREESEED_WEB_SERVICE_SECRET');
+		expect(webSource).toContain('packages/sdk packages/agent packages/core packages/cli');
 		expect(webSource).toContain('npm ci --ignore-scripts');
 		expect(processingSource).toContain('npm ci --ignore-scripts');
 		expect(webSource).not.toContain('RAILWAY_API_TOKEN');

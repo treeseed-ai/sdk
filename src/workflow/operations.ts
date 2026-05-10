@@ -1473,6 +1473,10 @@ function nextPendingJournalStep(journal: TreeseedWorkflowRunJournal) {
 
 function findAutoResumableSaveRun(root: string, branch: string | null) {
 	if (!branch) return null;
+	if (branch === STAGING_BRANCH
+		&& (hasMeaningfulChanges(repoRoot(root)) || checkedOutWorkspacePackageRepos(root).some((repo) => hasMeaningfulChanges(repo.dir)))) {
+		return null;
+	}
 	return listInterruptedWorkflowRuns(root).find((journal) =>
 		journal.command === 'save'
 		&& journal.resumable

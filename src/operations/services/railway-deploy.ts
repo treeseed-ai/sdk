@@ -264,8 +264,10 @@ export function buildRailwayCommandEnv(env = process.env) {
 	const token = resolveRailwayAuthToken(merged);
 	if (token) {
 		merged.RAILWAY_API_TOKEN = token;
+		merged.RAILWAY_TOKEN = token;
 	} else {
 		delete merged.RAILWAY_API_TOKEN;
+		delete merged.RAILWAY_TOKEN;
 	}
 	return merged;
 }
@@ -1682,7 +1684,7 @@ export async function deployRailwayService(
 		}
 		lastFailure = result;
 		if (!isRailwayTransientFailure(result) || attempt === 5) {
-			throw new Error(result.stderr?.trim() || result.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
+			throw new Error(result.stderr?.trim() || result.stdout?.trim() || `railway ${plan.args.join(' ')} failed with exit code ${result.status ?? 'unknown'} in ${plan.cwd}`);
 		}
 		const backoffMs = 5000 * attempt;
 		const warning = `Railway deploy for ${deployService.serviceName ?? deployService.serviceId ?? deployService.key} hit a transient failure; retrying in ${Math.round(backoffMs / 1000)}s...`;
