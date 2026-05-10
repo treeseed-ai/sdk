@@ -290,10 +290,11 @@ describe('railway scheduled jobs', () => {
 
 		expect(plan.args).toEqual([
 			'up',
+			'--service',
+			'acme-docs-api',
 			'--detach',
 		]);
 		expect(plan.args).not.toContain('--project');
-		expect(plan.args).not.toContain('--service');
 		expect(plan.args).not.toContain('--environment');
 	});
 

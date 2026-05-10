@@ -1409,7 +1409,7 @@ export function shouldRunRailwayPredeployBuild(env = process.env) {
 export function planRailwayServiceDeploy(service, { env = process.env, projectTokenMode = false } = {}) {
 	const serviceSelector = service.serviceName ?? service.serviceId;
 	const args = ['up'];
-	if (!projectTokenMode && serviceSelector) {
+	if (serviceSelector) {
 		args.push('--service', serviceSelector);
 	}
 	if (shouldIncludeRailwayIgnoredFiles(env)) {
@@ -1426,6 +1426,23 @@ export function planRailwayServiceDeploy(service, { env = process.env, projectTo
 	if (!projectTokenMode && environmentName) {
 		args.push('--environment', environmentName);
 	}
+	return {
+		command: 'railway',
+		args,
+		cwd: service.rootDir,
+	};
+}
+
+function planRailwayProjectEnvironmentLink(service) {
+	const args = ['link'];
+	if (service.projectId) {
+		args.push('--project', service.projectId);
+	}
+	const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment);
+	if (environmentName) {
+		args.push('--environment', environmentName);
+	}
+	args.push('--json');
 	return {
 		command: 'railway',
 		args,
@@ -1857,16 +1874,15 @@ export async function deployRailwayService(
 		}
 	}
 
-	if (!usesProjectToken) {
-		const linkResult = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...linkPlan.args], {
-			cwd: linkPlan.cwd,
-			env: railwayDeployEnv,
-			write,
-			prefix: { ...taskPrefix, stage: 'link' },
-		});
-		if (linkResult.status !== 0) {
-			throw new Error(linkResult.stderr?.trim() || linkResult.stdout?.trim() || `railway ${linkPlan.args.join(' ')} failed with exit code ${linkResult.status ?? 'unknown'} in ${linkPlan.cwd}`);
-		}
+	const effectiveLinkPlan = usesProjectToken ? planRailwayProjectEnvironmentLink(cliDeployService) : linkPlan;
+	const linkResult = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...effectiveLinkPlan.args], {
+		cwd: effectiveLinkPlan.cwd,
+		env: railwayDeployEnv,
+		write,
+		prefix: { ...taskPrefix, stage: 'link' },
+	});
+	if (linkResult.status !== 0) {
+		throw new Error(linkResult.stderr?.trim() || linkResult.stdout?.trim() || `railway ${effectiveLinkPlan.args.join(' ')} failed with exit code ${linkResult.status ?? 'unknown'} in ${effectiveLinkPlan.cwd}`);
 	}
 
 	let lastFailure = null;
