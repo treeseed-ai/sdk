@@ -27,6 +27,9 @@ export type GitHubActionsWorkflowGate = {
 	headSha: string;
 	timeoutSeconds?: number;
 	pollSeconds?: number;
+	dispatchIfMissing?: boolean;
+	dispatchAfterSeconds?: number;
+	dispatchInputs?: Record<string, string>;
 };
 
 export type GitHubActionsWorkflowJobStep = {
@@ -786,6 +789,9 @@ export async function waitForGitHubActionsGate(
 		branch: gate.branch,
 		timeoutSeconds: gate.timeoutSeconds ?? options.timeoutSeconds,
 		pollSeconds: gate.pollSeconds ?? options.pollSeconds,
+		dispatchIfMissing: gate.dispatchIfMissing ?? gate.workflow === 'verify.yml',
+		dispatchAfterSeconds: gate.dispatchAfterSeconds ?? 75,
+		dispatchInputs: gate.dispatchInputs,
 		onProgress: reportProgress,
 	}) as Record<string, unknown>;
 }

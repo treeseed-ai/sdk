@@ -777,6 +777,9 @@ export async function waitForGitHubWorkflowRunCompletion(
 		branch,
 		timeoutSeconds = 600,
 		pollSeconds = 5,
+		dispatchIfMissing = false,
+		dispatchAfterSeconds = 60,
+		dispatchInputs,
 		onProgress,
 	}: {
 		client?: GitHubApiClient;
@@ -785,11 +788,15 @@ export async function waitForGitHubWorkflowRunCompletion(
 		branch?: string | null;
 		timeoutSeconds?: number;
 		pollSeconds?: number;
+		dispatchIfMissing?: boolean;
+		dispatchAfterSeconds?: number;
+		dispatchInputs?: Record<string, string>;
 		onProgress?: (event: GitHubWorkflowProgressEvent) => void;
 	} = {},
 ) {
 	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	const startedAt = Date.now();
+	let dispatchedMissingRun = false;
 	let lastProgress: GitHubWorkflowProgressEvent | null = null;
 	const emitProgress = (type: GitHubWorkflowProgressEvent['type'], run: GitHubWorkflowRunSummary | null = null, jobs: GitHubWorkflowJobSummary[] = []) => {
 		const completedJobs = jobs.filter((job) => job.status === 'completed');
@@ -827,6 +834,20 @@ export async function waitForGitHubWorkflowRunCompletion(
 				.find((run) => (!headSha || run.headSha === headSha) && (!branch || run.headBranch === branch));
 			if (!match?.id) {
 				emitProgress('waiting');
+				if (dispatchIfMissing && branch && !dispatchedMissingRun && (Date.now() - startedAt) >= dispatchAfterSeconds * 1000) {
+					try {
+						await client.rest.actions.createWorkflowDispatch({
+							owner,
+							repo: name,
+							workflow_id: workflow,
+							ref: branch,
+							inputs: dispatchInputs,
+						});
+						dispatchedMissingRun = true;
+					} catch (error) {
+						throw normalizeGitHubApiError(error, `Unable to dispatch GitHub workflow ${workflow} in ${owner}/${name}`);
+					}
+				}
 				await sleep(pollSeconds * 1000);
 				continue;
 			}

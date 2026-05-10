@@ -630,6 +630,9 @@ export async function waitForGitHubWorkflowCompletion(
 		branch,
 		timeoutSeconds = 600,
 		pollSeconds = 5,
+		dispatchIfMissing = false,
+		dispatchAfterSeconds,
+		dispatchInputs,
 		onProgress,
 	} = {},
 ) {
@@ -641,6 +644,9 @@ export async function waitForGitHubWorkflowCompletion(
 		branch,
 		timeoutSeconds,
 		pollSeconds,
+		dispatchIfMissing,
+		dispatchAfterSeconds,
+		dispatchInputs,
 		onProgress,
 	});
 }
