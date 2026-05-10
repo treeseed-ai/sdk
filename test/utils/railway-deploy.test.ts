@@ -260,7 +260,7 @@ describe('railway scheduled jobs', () => {
 		expect(plan.args).not.toContain('service-id-1');
 	});
 
-	it('omits project and environment selectors when Railway project-token auth is used', () => {
+	it('keeps service names and environment selectors when Railway project-token auth is used', () => {
 		const plan = planRailwayServiceDeploy({
 			projectId: 'railway-project-1',
 			serviceId: 'service-id-1',
@@ -271,11 +271,12 @@ describe('railway scheduled jobs', () => {
 
 		expect(plan.args).toEqual(expect.arrayContaining([
 			'--service',
-			'service-id-1',
+			'acme-docs-api',
+			'--environment',
+			'staging',
 		]));
-		expect(plan.args).not.toContain('acme-docs-api');
+		expect(plan.args).not.toContain('service-id-1');
 		expect(plan.args).not.toContain('--project');
-		expect(plan.args).not.toContain('--environment');
 	});
 
 	it('links Railway project context before CLI deploys', () => {

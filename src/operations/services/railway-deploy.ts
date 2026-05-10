@@ -1398,9 +1398,7 @@ export function shouldRunRailwayPredeployBuild(env = process.env) {
 }
 
 export function planRailwayServiceDeploy(service, { env = process.env, projectTokenMode = false } = {}) {
-	const serviceSelector = projectTokenMode
-		? (service.serviceId ?? service.serviceName)
-		: (service.serviceName ?? service.serviceId);
+	const serviceSelector = service.serviceName ?? service.serviceId;
 	const args = [
 		'up',
 		'--service',
@@ -1415,7 +1413,7 @@ export function planRailwayServiceDeploy(service, { env = process.env, projectTo
 		args.push('--project', service.projectId);
 	}
 	const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment);
-	if (!projectTokenMode && environmentName) {
+	if (environmentName) {
 		args.push('--environment', environmentName);
 	}
 	return {
