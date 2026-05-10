@@ -1642,6 +1642,10 @@ export async function deployRailwayService(
 	const deployService = await resolveRailwayDeployProjectContext(service, { env });
 	const plan = planRailwayServiceDeploy(deployService, { env });
 	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
+	const railway = resolveTreeseedToolCommand('railway', { env: commandEnv });
+	if (!railway) {
+		throw new Error('Railway CLI is unavailable.');
+	}
 
 	const taskPrefix = prefix ?? {
 		scope: normalizeScope(deployService.scope ?? deployService.railwayEnvironment ?? 'railway'),
@@ -1666,7 +1670,7 @@ export async function deployRailwayService(
 
 	let lastFailure = null;
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
-		const result = await runPrefixedCommand(plan.command, plan.args, {
+		const result = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...plan.args], {
 			cwd: service.rootDir,
 			env: commandEnv,
 			write,

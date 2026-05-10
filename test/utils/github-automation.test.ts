@@ -71,6 +71,8 @@ describe('github automation workflow generation', () => {
 		expect(web).toContain('TREESEED_CONTENT_BUCKET_NAME');
 		expect(web).toContain('TREESEED_WORKFLOW_PLANE: web');
 		expect(web).toContain('TREESEED_SMTP_PASSWORD: ${{ secrets.TREESEED_SMTP_PASSWORD }}');
+		expect(web).toContain('TREESEED_BETTER_AUTH_SECRET: ${{ secrets.TREESEED_BETTER_AUTH_SECRET }}');
+		expect(web).toContain('TREESEED_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_WEB_SERVICE_SECRET }}');
 		expect(web).toContain("TREESEED_CENTRAL_MARKET_API_BASE_URL: ${{ vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}");
 		expect(web).not.toContain('RAILWAY_API_TOKEN');
 		expect(web).not.toContain('TREESEED_API_AUTH_SECRET');

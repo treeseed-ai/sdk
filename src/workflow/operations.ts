@@ -3624,7 +3624,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						{
 							helpers.write('[save][workflow] Waiting for hosted save workflow gates.');
 							return waitForWorkflowGates('save', [
-							...(savedRootRepo.pushed && savedRootRepo.commitSha && branch
+							...(branch !== STAGING_BRANCH && savedRootRepo.pushed && savedRootRepo.commitSha && branch
 								? [{
 									name: savedRootRepo.name,
 									repoPath: savedRootRepo.path,
