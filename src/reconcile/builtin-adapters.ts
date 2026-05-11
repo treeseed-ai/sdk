@@ -61,6 +61,8 @@ import type {
 	TreeseedUnitVerificationResult,
 	TreeseedReconcileUnitType,
 } from './contracts.ts';
+import { loadTreeseedReconcileState } from './state.ts';
+import { createTreeseedReconcileUnitId } from './units.ts';
 
 function toDeployTarget(target: TreeseedReconcileTarget) {
 	return target.kind === 'persistent'
@@ -363,6 +365,30 @@ function getCustomDomainState(input: TreeseedReconcileAdapterInput, provider: st
 	return input.context.session.get(customDomainStateKey(provider, domain)) as Record<string, unknown> | undefined;
 }
 
+function getPersistedCustomDomainState(input: TreeseedReconcileAdapterInput, provider: string, domain: string) {
+	if (!domain) {
+		return null;
+	}
+	if (provider === 'railway') {
+		try {
+			const state = loadTreeseedReconcileState(input.context.tenantRoot, input.context.target);
+			const unitId = createTreeseedReconcileUnitId('custom-domain:api', domain);
+			const unit = state.units[unitId];
+			const reconciled = unit?.lastReconciledState;
+			if (reconciled && typeof reconciled === 'object' && reconciled.domain === domain) {
+				return reconciled;
+			}
+			const observed = unit?.lastObservedState;
+			if (observed && typeof observed === 'object' && observed.domain === domain) {
+				return observed;
+			}
+		} catch {
+			// Persisted reconcile state is a convenience cache; live/session state remains authoritative.
+		}
+	}
+	return null;
+}
+
 function listCloudflareDnsRecords(env: Record<string, string>, zoneId: string, recordName?: string | null) {
 	const query = recordName ? `?name=${encodeURIComponent(recordName)}` : '';
 	const payload = cloudflareApiRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records${query}`, {
@@ -522,46 +548,92 @@ function normalizeRailwayDomainDnsRecord(value: unknown) {
 	};
 }
 
+function firstRailwayDomainString(...values: unknown[]) {
+	for (const value of values) {
+		if (typeof value === 'string' && value.trim()) {
+			return value.trim();
+		}
+	}
+	return null;
+}
+
+function firstRailwayDomainArray(...values: unknown[]) {
+	for (const value of values) {
+		if (Array.isArray(value)) {
+			return value;
+		}
+	}
+	return [];
+}
+
 function normalizeRailwayDomainPayload(value: unknown) {
 	if (!value || typeof value !== 'object') {
 		return null;
 	}
 	const record = value as Record<string, unknown>;
+	const status = record.status && typeof record.status === 'object'
+		? record.status as Record<string, unknown>
+		: {};
 	const domain = typeof record.domain === 'string'
 		? record.domain.trim()
 		: typeof record.name === 'string'
 			? record.name.trim()
 			: '';
-	const dnsRecordCandidates = Array.isArray(record.dnsRecords)
-		? record.dnsRecords
-		: Array.isArray((record.status as Record<string, unknown> | undefined)?.dnsRecords)
-			? ((record.status as Record<string, unknown>).dnsRecords as unknown[])
-			: [];
+	const serviceDomain = firstRailwayDomainString(
+		record.serviceDomain,
+		record.target,
+		record.targetDomain,
+		record.cnameTarget,
+		record.cname,
+		record.dnsTarget,
+		status.serviceDomain,
+		status.target,
+		status.targetDomain,
+		status.cnameTarget,
+		status.cname,
+		status.dnsTarget,
+	);
+	const dnsRecordCandidates = firstRailwayDomainArray(
+		record.dnsRecords,
+		record.requiredDnsRecords,
+		record.requiredRecords,
+		record.records,
+		record.dns,
+		status.dnsRecords,
+		status.requiredDnsRecords,
+		status.requiredRecords,
+		status.records,
+		status.dns,
+	);
 	const dnsRecords = dnsRecordCandidates
 		.map((entry) => normalizeRailwayDomainDnsRecord(entry))
 		.filter(Boolean);
+	const effectiveDnsRecords = dnsRecords.length > 0 || !domain || !serviceDomain || serviceDomain === domain
+		? dnsRecords
+		: [{
+			type: 'CNAME',
+			name: domain,
+			content: serviceDomain,
+			status: '',
+		}];
 	return {
 		id: typeof record.id === 'string' ? record.id.trim() : null,
 		domain,
-		serviceDomain: typeof record.serviceDomain === 'string'
-			? record.serviceDomain.trim()
-			: typeof record.target === 'string'
-				? record.target.trim()
-				: null,
-		certificateStatus: typeof (record.status as Record<string, unknown> | undefined)?.certificateStatus === 'string'
-			? String((record.status as Record<string, unknown>).certificateStatus).trim().toUpperCase()
+		serviceDomain,
+		certificateStatus: typeof status.certificateStatus === 'string'
+			? String(status.certificateStatus).trim().toUpperCase()
 			: null,
 		verificationDnsHost: typeof record.verificationDnsHost === 'string'
 			? record.verificationDnsHost.trim()
-			: typeof (record.status as Record<string, unknown> | undefined)?.verificationDnsHost === 'string'
-				? String((record.status as Record<string, unknown>).verificationDnsHost).trim()
+			: typeof status.verificationDnsHost === 'string'
+				? String(status.verificationDnsHost).trim()
 				: null,
 		verificationToken: typeof record.verificationToken === 'string'
 			? record.verificationToken.trim()
-			: typeof (record.status as Record<string, unknown> | undefined)?.verificationToken === 'string'
-				? String((record.status as Record<string, unknown>).verificationToken).trim()
+			: typeof status.verificationToken === 'string'
+				? String(status.verificationToken).trim()
 				: null,
-		dnsRecords,
+		dnsRecords: effectiveDnsRecords,
 	};
 }
 
@@ -1840,11 +1912,25 @@ function resolveDesiredDnsRecords(input: TreeseedReconcileAdapterInput) {
 		return [];
 	}
 	const railwayState = getCustomDomainState(input, 'railway', domain)
+		?? getPersistedCustomDomainState(input, 'railway', domain)
 		?? (input.persistedState?.lastObservedState as Record<string, unknown> | undefined)
 		?? (input.persistedState?.lastReconciledState as Record<string, unknown> | undefined);
 	const records = Array.isArray(railwayState?.dnsRecords)
 		? railwayState.dnsRecords.map((entry) => normalizeRailwayDomainDnsRecord(entry)).filter(Boolean)
 		: [];
+	if (
+		records.length === 0
+		&& typeof railwayState?.serviceDomain === 'string'
+		&& railwayState.serviceDomain.trim()
+		&& railwayState.serviceDomain.trim() !== domain
+	) {
+		records.push({
+			type: 'CNAME',
+			name: domain,
+			content: railwayState.serviceDomain.trim(),
+			status: '',
+		});
+	}
 	const desiredRecords = records.map((record) => ({
 		...record,
 		proxied: false,
@@ -1963,10 +2049,15 @@ function verifyCustomDomainUnit(input: TreeseedReconcileAdapterInput): TreeseedU
 		case 'custom-domain:api': {
 			const domain = String(input.unit.spec.domain ?? '').trim();
 			const live = getCustomDomainState(input, 'railway', domain)
+				?? getPersistedCustomDomainState(input, 'railway', domain)
 				?? (input.persistedState?.lastObservedState as Record<string, unknown> | undefined)
 				?? (input.persistedState?.lastReconciledState as Record<string, unknown> | undefined)
 				?? null;
 			const dnsRecords = Array.isArray(live?.dnsRecords) ? live.dnsRecords : [];
+			const hasDnsRequirements = dnsRecords.length > 0
+				|| (typeof live?.serviceDomain === 'string' && live.serviceDomain.trim().length > 0)
+				|| (typeof live?.verificationDnsHost === 'string' && live.verificationDnsHost.trim().length > 0
+					&& typeof live?.verificationToken === 'string' && live.verificationToken.trim().length > 0);
 			return summarizeVerification(input.unit.unitId, [
 				verificationCheck('custom-domain.exists', 'Railway custom domain attachment exists', 'cli', {
 					exists: Boolean(live?.domain),
@@ -1975,10 +2066,13 @@ function verifyCustomDomainUnit(input: TreeseedReconcileAdapterInput): TreeseedU
 					issues: live?.domain ? [] : [`Railway custom domain ${domain || '(unset)'} is missing.`],
 				}),
 				verificationCheck('custom-domain.dns-requirements', 'Railway custom domain exposes DNS requirements', 'api', {
-					exists: dnsRecords.length > 0,
+					exists: hasDnsRequirements,
 					expected: true,
-					observed: dnsRecords.length,
-					issues: dnsRecords.length > 0 ? [] : [`Railway custom domain ${domain || '(unset)'} did not expose DNS requirements.`],
+					observed: dnsRecords.length > 0 ? dnsRecords.length : {
+						serviceDomain: typeof live?.serviceDomain === 'string' ? live.serviceDomain : null,
+						verificationDnsHost: typeof live?.verificationDnsHost === 'string' ? live.verificationDnsHost : null,
+					},
+					issues: hasDnsRequirements ? [] : [`Railway custom domain ${domain || '(unset)'} did not expose DNS requirements.`],
 				}),
 			]);
 		}

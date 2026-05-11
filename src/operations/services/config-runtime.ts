@@ -2192,34 +2192,59 @@ function checkGitHubConnection({ tenantRoot, env }) {
 	if (!gh) {
 		return providerConnectionResult('github', false, 'GitHub CLI `gh` is not installed.');
 	}
-	const repository = maybeResolveGitHubRepositorySlug(tenantRoot);
-	const args = repository
-		? ['repo', 'view', repository, '--json', 'nameWithOwner', '--jq', '.nameWithOwner']
-		: ['api', 'user', '--jq', '.login'];
+	const identityMode = env.TREESEED_GITHUB_IDENTITY_MODE === 'account' ? 'account' : 'repository';
+	const repository = identityMode === 'repository' ? maybeResolveGitHubRepositorySlug(tenantRoot) : null;
+	const owner = typeof env.TREESEED_HOSTED_HUBS_GITHUB_OWNER === 'string'
+		? env.TREESEED_HOSTED_HUBS_GITHUB_OWNER.trim()
+		: '';
+	const commandCandidates = repository
+		? [{
+			args: ['repo', 'view', repository, '--json', 'nameWithOwner', '--jq', '.nameWithOwner'],
+			successMessage: (resolved: string) => `GitHub token can access ${resolved || repository}.`,
+		}]
+		: owner
+			? [
+				{
+					args: ['api', `orgs/${owner}`, '--jq', '.login'],
+					successMessage: (resolved: string) => `GitHub token can access organization ${resolved || owner}.`,
+					optional: true,
+				},
+				{
+					args: ['api', `users/${owner}`, '--jq', '.login'],
+					successMessage: (resolved: string) => `GitHub token can access user ${resolved || owner}.`,
+					optional: true,
+				},
+			]
+			: [
+			{
+				args: ['api', 'user', '--jq', '.login'],
+				successMessage: (resolved: string) => resolved ? `Authenticated as ${resolved}.` : 'GitHub API check succeeded.',
+			},
+		];
+	let lastDetail = '';
 	for (let attempt = 0; attempt < 3; attempt += 1) {
-		const result = spawnSync(gh, args, {
-			cwd: tenantRoot,
-			stdio: 'pipe',
-			encoding: 'utf8',
-			env: createTreeseedManagedToolEnv({ ...process.env, ...env }),
-			timeout: CLI_CHECK_TIMEOUT_MS,
-		});
-		if (result.status === 0) {
-			const resolved = result.stdout.trim();
-			return providerConnectionResult(
-				'github',
-				true,
-				repository
-					? `GitHub token can access ${resolved || repository}.`
-					: resolved ? `Authenticated as ${resolved}.` : 'GitHub API check succeeded.',
-			);
+		for (const candidate of commandCandidates) {
+			const result = spawnSync(gh, candidate.args, {
+				cwd: tenantRoot,
+				stdio: 'pipe',
+				encoding: 'utf8',
+				env: createTreeseedManagedToolEnv({ ...process.env, ...env }),
+				timeout: CLI_CHECK_TIMEOUT_MS,
+			});
+			if (result.status === 0) {
+				return providerConnectionResult('github', true, candidate.successMessage(result.stdout.trim()));
+			}
+			lastDetail = formatCheckOutput(result) || 'GitHub API check failed.';
+			if (candidate.optional && !isTransientProviderConnectionError(lastDetail)) {
+				continue;
+			}
+			break;
 		}
-		const detail = formatCheckOutput(result) || 'GitHub API check failed.';
-		if (attempt >= 2 || !isTransientProviderConnectionError(detail)) {
-			return providerConnectionResult('github', false, detail);
+		if (attempt >= 2 || !isTransientProviderConnectionError(lastDetail)) {
+			return providerConnectionResult('github', false, lastDetail || 'GitHub API check failed.');
 		}
 	}
-	return providerConnectionResult('github', false, 'GitHub API check failed.');
+	return providerConnectionResult('github', false, lastDetail || 'GitHub API check failed.');
 }
 
 function checkCloudflareConnection({ tenantRoot, env }) {
@@ -2312,8 +2337,22 @@ async function checkRailwayConnection({ tenantRoot, env }) {
 
 export async function checkTreeseedProviderConnections({ tenantRoot, scope = 'prod', env = process.env, valuesOverlay = {} } = {}) {
 	const values = collectTreeseedConfigSeedValues(tenantRoot, scope, env, valuesOverlay);
+	const passthroughValue = (key: string) => {
+		const overlayValue = valuesOverlay?.[key];
+		if (typeof overlayValue === 'string' && overlayValue.trim()) {
+			return overlayValue.trim();
+		}
+		const envValue = env?.[key];
+		if (typeof envValue === 'string' && envValue.trim()) {
+			return envValue.trim();
+		}
+		const resolvedValue = values?.[key];
+		return typeof resolvedValue === 'string' && resolvedValue.trim() ? resolvedValue.trim() : undefined;
+	};
 	const rawCommandEnv = {
 		GH_TOKEN: values.GH_TOKEN,
+		TREESEED_GITHUB_IDENTITY_MODE: passthroughValue('TREESEED_GITHUB_IDENTITY_MODE'),
+		TREESEED_HOSTED_HUBS_GITHUB_OWNER: passthroughValue('TREESEED_HOSTED_HUBS_GITHUB_OWNER'),
 		CLOUDFLARE_API_TOKEN: values.CLOUDFLARE_API_TOKEN,
 		CLOUDFLARE_ACCOUNT_ID: values.CLOUDFLARE_ACCOUNT_ID,
 		RAILWAY_API_TOKEN: values.RAILWAY_API_TOKEN,
