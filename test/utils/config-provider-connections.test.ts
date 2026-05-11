@@ -17,6 +17,34 @@ function createTenantFixture() {
 	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-provider-checks-'));
 	mkdirSync(resolve(tenantRoot, 'src'), { recursive: true });
 	writeFileSync(resolve(tenantRoot, 'src', 'manifest.yaml'), 'id: test-site\n');
+	writeFileSync(resolve(tenantRoot, 'src', 'env.yaml'), `entries:
+  RAILWAY_API_TOKEN:
+    label: Railway API token
+    group: auth
+    scope: shared
+    storage: shared
+    requirement: required
+    scopes:
+      - staging
+    sourcePriority:
+      - machine-config
+      - process-env
+    validation:
+      kind: nonempty
+  TREESEED_RAILWAY_WORKSPACE:
+    label: Railway workspace
+    group: railway
+    scope: shared
+    storage: shared
+    requirement: required
+    scopes:
+      - staging
+    sourcePriority:
+      - machine-config
+      - process-env
+    validation:
+      kind: nonempty
+`);
 	writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test Site
 slug: test-site
 siteUrl: https://example.com
