@@ -464,6 +464,62 @@ export class MarketClient {
 		);
 	}
 
+	teamCapacity(teamId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity`,
+			{ requireAuth: true },
+		);
+	}
+
+	launchManagedCapacityProvider(teamId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/providers/managed`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	capacityProvider(providerId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/capacity/providers/${encodeURIComponent(providerId)}`,
+			{ requireAuth: true },
+		);
+	}
+
+	resetCapacityProviderApiKey(providerId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/capacity/providers/${encodeURIComponent(providerId)}/api-keys/reset`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	revokeCapacityProviderApiKey(providerId: string, keyId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/capacity/providers/${encodeURIComponent(providerId)}/api-keys/${encodeURIComponent(keyId)}/revoke`,
+			{ method: 'POST', requireAuth: true },
+		);
+	}
+
+	capacityGrants(teamId: string) {
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-grants`,
+			{ requireAuth: true },
+		);
+	}
+
+	createCapacityGrant(teamId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-grants`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	enqueueAgentTask(projectId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/agent-tasks`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
 	catalog(kind?: string | null) {
 		const query = kind ? `?kind=${encodeURIComponent(kind)}` : '';
 		return this.request<{ ok: true; payload: unknown[] }>(`/v1/catalog${query}`, { requireAuth: Boolean(this.accessToken) });

@@ -6,9 +6,14 @@ export { ControlPlaneClient } from './control-plane-client.ts';
 export {
 	reservationHasCapacity,
 	reserveCreditsForEstimate,
+	routeAndReserveCapacity,
 	scoreCapacityLane,
 	selectBestCapacityLane,
+	settleCapacityActuals,
+	createReservationReleaseEntry,
 	summarizeCapacityPlan,
+	summarizeProjectCapacityPlan,
+	summarizeTeamCapacityPlan,
 } from './capacity.ts';
 export {
 	executeKnowledgeHubProviderLaunch,

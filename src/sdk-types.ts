@@ -480,22 +480,65 @@ export interface TaskCreditLedgerEntry {
 	projectId: string;
 	workDayId: string;
 	taskId: string | null;
-	phase: 'seed' | 'settle' | 'refund' | 'grant' | 'reserve' | 'consume' | 'release' | 'adjustment';
+	phase:
+		| 'seed'
+		| 'settle'
+		| 'refund'
+		| 'grant'
+		| 'reserve'
+		| 'consume'
+		| 'release'
+		| 'adjustment'
+		| 'grant_created'
+		| 'reservation_created'
+		| 'reservation_released'
+		| 'task_started'
+		| 'task_completed_estimate_settlement'
+		| 'task_completed_actual_settlement'
+		| 'task_failed_refund'
+		| 'manual_adjustment'
+		| 'monthly_rollover'
+		| 'overrun_hold';
 	credits: number;
 	metadata?: Record<string, unknown>;
 	createdAt: string;
 }
 
 export type CapacityProviderKind = 'treeseed_managed' | 'team_owned' | 'external' | 'hybrid';
-export type CapacityProviderStatus = 'pending' | 'active' | 'paused' | 'configuration_required' | 'disabled';
+export type CapacityProviderStatus =
+	| 'pending'
+	| 'credential_required'
+	| 'registering'
+	| 'active'
+	| 'degraded'
+	| 'draining'
+	| 'paused'
+	| 'configuration_required'
+	| 'disabled'
+	| 'failed';
 export type CapacityProviderBillingScope = 'treeseed' | 'team' | 'external';
 export type CapacityBusinessModel = 'subscription_quota' | 'token_metered' | 'hybrid_usage_based' | 'infrastructure_runtime' | 'custom';
 export type CapacityLaneUnit = 'treeseed_credit' | 'quota_minute' | 'token_usd' | 'github_ai_credit' | 'worker_second' | 'request' | 'custom';
 export type CapacityScarcityLevel = 'low' | 'medium' | 'high';
 export type CapacityGrantScope = 'team' | 'project' | 'workday' | 'overflow_pool';
 export type CapacityGrantState = 'active' | 'paused' | 'expired' | 'disabled';
-export type CapacityOverflowPolicy = 'hard_grant' | 'soft_grant' | 'weighted_fair_share' | 'approval_required';
-export type CapacityReservationState = 'reserved' | 'consumed' | 'released' | 'expired' | 'cancelled';
+export type CapacityOverflowPolicy =
+	| 'deny'
+	| 'hard_grant'
+	| 'soft_grant'
+	| 'weighted_fair_share'
+	| 'approval_required'
+	| 'fallback_lane'
+	| 'platform_subsidy';
+export type CapacityReservationState =
+	| 'reserved'
+	| 'consuming'
+	| 'consumed'
+	| 'released'
+	| 'expired'
+	| 'cancelled'
+	| 'failed'
+	| 'overran_pending_approval';
 export type CapacityEstimatePhase = 'intent' | 'discovery' | 'plan' | 'execution' | 'actual';
 export type CapacityEstimateConfidence = 'low' | 'medium' | 'high';
 export type CapacityApprovalState = 'pending' | 'approved' | 'rejected' | 'expired' | 'superseded';
@@ -1960,6 +2003,7 @@ export interface RecordCapacityUsageRequest {
 	usd?: number | null;
 	source?: string;
 	metadata?: Record<string, unknown> | null;
+	usageActual?: Record<string, unknown> | null;
 }
 
 export interface CreateCapacityRoutingDecisionRequest {
