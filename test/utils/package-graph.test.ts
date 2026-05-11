@@ -182,7 +182,10 @@ describe('sdk package graph', () => {
 			const verifyDriverPath = verifyDriverPaths[index + 1];
 			const verifyScript = packageJson.scripts?.verify;
 
-			if (verifyScript === 'node --input-type=module -e "await import(\'./scripts/verify-driver.mjs\')"') {
+			if (
+				verifyScript === 'node --input-type=module -e "await import(\'./scripts/verify-driver.mjs\')"'
+				|| verifyScript === 'node ./scripts/verify-driver.mjs'
+			) {
 				expect(
 					existsSync(verifyDriverPath),
 					`${verifyDriverPath} should exist when ${packageJsonPath} uses a package-local verify wrapper`,
