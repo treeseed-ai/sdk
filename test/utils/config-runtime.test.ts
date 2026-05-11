@@ -17,6 +17,7 @@ import {
 	setTreeseedMachineEnvironmentValue,
 	TREESEED_MACHINE_KEY_PASSPHRASE_ENV,
 	unlockTreeseedSecretSessionFromEnv,
+	validateTreeseedCommandEnvironment,
 	warnDeprecatedTreeseedLocalEnvFiles,
 	writeTreeseedMachineConfig,
 } from '../../src/operations/services/config-runtime.ts';
@@ -267,6 +268,90 @@ cloudflare:
 			['TREESEED_HOSTED_HUBS_GITHUB_OWNER', true],
 			['TREESEED_HOSTED_HUBS_GITHUB_TOKEN', true],
 		]);
+	});
+
+	it('does not require processing-only hosted repository entries for web deploy validation', () => {
+		const tenantRoot = createTenantFixture(`
+  TREESEED_HOSTED_HUBS_GITHUB_OWNER:
+    label: Hosted repository owner
+    group: github
+    description: GitHub owner for hosted hub repositories.
+    howToGet: Set a GitHub organization or owner.
+    sensitivity: plain
+    targets:
+      - local-runtime
+      - railway-var
+    scopes:
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    relevanceRef: marketControlPlaneEnabled
+    requiredWhenRef: marketControlPlaneEnabled
+    purposes:
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+  TREESEED_HOSTED_HUBS_GITHUB_TOKEN:
+    label: Hosted repository access token
+    group: github
+    description: GitHub token for hosted hub repositories.
+    howToGet: Set a GitHub token with repository permissions.
+    sensitivity: secret
+    targets:
+      - local-runtime
+      - railway-secret
+    scopes:
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    relevanceRef: marketControlPlaneEnabled
+    requiredWhenRef: marketControlPlaneEnabled
+    purposes:
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+      minLength: 8
+`);
+		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test Market
+slug: test-market
+siteUrl: https://market.example.com
+contactEmail: hello@example.com
+hosting:
+  kind: market_control_plane
+  teamId: treeseed
+  projectId: market
+hub:
+  mode: treeseed_hosted
+runtime:
+  mode: treeseed_managed
+  registration: none
+cloudflare:
+  accountId: account-123
+`);
+
+		vi.stubEnv('TREESEED_WORKFLOW_PLANE', 'web');
+		const webValidation = validateTreeseedCommandEnvironment({
+			tenantRoot,
+			scope: 'staging',
+			purpose: 'deploy',
+		}).validation;
+		expect(webValidation.missing.map((entry) => entry.id)).not.toContain('TREESEED_HOSTED_HUBS_GITHUB_OWNER');
+		expect(webValidation.missing.map((entry) => entry.id)).not.toContain('TREESEED_HOSTED_HUBS_GITHUB_TOKEN');
+
+		vi.stubEnv('TREESEED_WORKFLOW_PLANE', 'processing');
+		const processingValidation = validateTreeseedCommandEnvironment({
+			tenantRoot,
+			scope: 'staging',
+			purpose: 'deploy',
+		}).validation;
+		expect(processingValidation.missing.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+			'TREESEED_HOSTED_HUBS_GITHUB_OWNER',
+			'TREESEED_HOSTED_HUBS_GITHUB_TOKEN',
+		]));
 	});
 
 	it('ensures Railway deploy ignore entries for local workspace artifacts', () => {

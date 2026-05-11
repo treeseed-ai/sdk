@@ -1891,19 +1891,54 @@ export function applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override 
 export function validateTreeseedCommandEnvironment({ tenantRoot, scope, purpose }) {
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
 	const values = resolveTreeseedLaunchEnvironment({ tenantRoot, scope });
-	const validation = validateTreeseedEnvironmentValues({
+	const validation = filterValidationByWorkflowPlane(validateTreeseedEnvironmentValues({
 		values,
 		scope,
 		purpose,
 		deployConfig: registry.context.deployConfig,
 		tenantConfig: registry.context.tenantConfig,
 		plugins: registry.context.plugins,
-	});
+	}));
 	return {
 		registry,
 		values,
 		validation,
 	};
+}
+
+function filterValidationByWorkflowPlane(validation) {
+	const plane = process.env.TREESEED_WORKFLOW_PLANE;
+	if (plane !== 'web' && plane !== 'processing') {
+		return validation;
+	}
+	const problemApplies = (problem) => doesEntryApplyToWorkflowPlane(problem.entry, plane);
+	const missing = validation.missing.filter(problemApplies);
+	const invalid = validation.invalid.filter(problemApplies);
+	const entries = validation.entries.filter((entry) => doesEntryApplyToWorkflowPlane(entry, plane));
+	const required = validation.required.filter((entry) => doesEntryApplyToWorkflowPlane(entry, plane));
+	return {
+		...validation,
+		ok: missing.length === 0 && invalid.length === 0,
+		entries,
+		required,
+		missing,
+		invalid,
+	};
+}
+
+function doesEntryApplyToWorkflowPlane(entry, plane) {
+	const targets = new Set(entry.targets ?? []);
+	const hasProcessingTarget = targets.has('railway-secret') || targets.has('railway-var');
+	const hasWebTarget = targets.has('cloudflare-secret') || targets.has('cloudflare-var') || targets.has('local-cloudflare');
+	const hasWorkflowTarget = targets.has('github-secret') || targets.has('github-variable');
+
+	if (plane === 'web') {
+		return !hasProcessingTarget || hasWebTarget || hasWorkflowTarget;
+	}
+	if (plane === 'processing') {
+		return !hasWebTarget || hasProcessingTarget || hasWorkflowTarget;
+	}
+	return true;
 }
 
 export function assertTreeseedCommandEnvironment({ tenantRoot, scope, purpose }) {
