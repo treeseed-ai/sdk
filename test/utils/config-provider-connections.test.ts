@@ -21,11 +21,17 @@ function createTenantFixture() {
   RAILWAY_API_TOKEN:
     label: Railway API token
     group: auth
-    scope: shared
+    description: Railway token used by provider preflight tests.
+    howToGet: Provide a Railway token in the test value overlay.
+    sensitivity: secret
+    targets:
+      - local-runtime
     storage: shared
     requirement: required
     scopes:
       - staging
+    purposes:
+      - config
     sourcePriority:
       - machine-config
       - process-env
@@ -34,11 +40,17 @@ function createTenantFixture() {
   TREESEED_RAILWAY_WORKSPACE:
     label: Railway workspace
     group: railway
-    scope: shared
+    description: Railway workspace used by provider preflight tests.
+    howToGet: Provide a Railway workspace in the test value overlay.
+    sensitivity: plain
+    targets:
+      - local-runtime
     storage: shared
     requirement: required
     scopes:
       - staging
+    purposes:
+      - config
     sourcePriority:
       - machine-config
       - process-env
