@@ -1,5 +1,64 @@
 # Changelog
 
+## [0.8.4] - 2026-05-11
+
+### Added
+
+- feat(workflow): mark 'save' journals as stale if repository heads have (66e5376e44b1)
+- feat(sdk): add retry mechanism to HTTP probes and D1 discovery (0c0077b51bf6)
+- feat(managed-dependencies): improve npm tool binary resolution (61c82460c76e)
+- feat(railway-deploy): implement direct Railway CLI config writing for CI (938a84cce78f)
+- feat(railway-deploy): implement Railway CLI link command environment (21672375c123)
+- feat(railway): allow including ignored files via environment variable (d4bf8f2dd18d)
+- feat(railway): add --no-gitignore flag to deployment plan (11f99030742e)
+- feat(railway-deploy): omit project and environment selectors (749ffa5ae56f)
+- feat(railway): support RAILWAY_TOKEN fallback for API token resolution (9ca29194775c)
+- feat(railway): support railway project tokens for deployments (61b41f301d26)
+- feat(operations): add railway link step to deployRailwayService (ebfc658adf28)
+- feat(railway): update log attachment logic to support CI and booleans (c64d6c166e00)
+- feat(orchestrator): add partial failure details to wave gate errors (b38c45dd04d5)
+
+### Fixed
+
+- fix(railway-deploy): enable Railway log attachment in CI environments (4267edbe25db)
+- fix(railway-deploy): disable automatic Railway deploy log attachment (689eecdbb579)
+
+### Infrastructure
+
+- refactor(operations): sanitize environment variables in service runners (0f6e32e6c4ab)
+
+### Tests
+
+- chore(sdk): add retries to GitHub API pagination helpers (0195925ef189)
+- build(build): update package metadata (8c168aba45e9)
+- build(build): update package metadata (3fed6013db9b)
+- build(build): update package metadata (56f8661dfa4e)
+- build(build): update package metadata (2fa3273cde72)
+- refactor(railway): improve Railway CLI deployment context management (d7d35d452c1a)
+- refactor(railway): simplify argument selection in deployment plans (f69709362986)
+- refactor(railway): remove automatic CI log attachment and API-based (248c8e048aec)
+- build(build): update package metadata (95251c189771)
+- chore(sdk): bump version and update root workflow tests (66e9034e90c7)
+- build(build): update package metadata (89e8579a040c)
+- build(build): update package metadata (f7a30fa3571a)
+- build(build): update package metadata (7bed751432a1)
+- chore(sdk): bump version to 0.8.4-dev.staging.20260510T131633Z (e37bf6d58620)
+- build(build): update package metadata (9f66271e657e)
+- refactor(railway-deploy): prioritize service name and use plan directory (3a03c6d5559c)
+- build(build): update package metadata (43aa170185d9)
+- refactor(railway): remove buildRailwayProjectLinkArgs and the project (99a1425b7c22)
+- refactor(railway-deploy): replace property deletion with undefined (e25ea20b4d41)
+- refactor(railway-deploy): remove redundant RAILWAY_TOKEN in environment (614d8fe5b844)
+- 17 additional changes omitted from this summary.
+
+### Dependencies
+
+- build(build): update package metadata (e53e95c96aae)
+- build(build): update package metadata (af9be019ab9e)
+- build(build): update package metadata (acb22b8b018e)
+- build(build): update package metadata (806e8e96d53b)
+- Release @treeseed/sdk 0.8.4.
+
 ## [0.8.3] - 2026-05-10
 
 ### Added
