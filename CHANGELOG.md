@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.6] - 2026-05-11
+
+### Tests
+
+- build(build): update package metadata (4cf148f37962)
+- chore(sdk): bump version and update .gitignore (9085292344c4)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.8.6.
+
 ## [0.8.5] - 2026-05-11
 
 ### Tests
