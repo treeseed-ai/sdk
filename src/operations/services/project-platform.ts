@@ -487,7 +487,21 @@ function summarizePostDeployHostingAudit(report: Awaited<ReturnType<typeof runTr
 	};
 }
 
-async function repairHostingAfterSuccessfulDeploy(options: ProjectPlatformActionOptions) {
+function hostingAuditHostKindsForSystems(systems: TreeseedRunnableBootstrapSystem[]) {
+	const hostKinds = new Set<'repository' | 'web' | 'processing' | 'email'>();
+	for (const system of systems) {
+		if (system === 'github') {
+			hostKinds.add('repository');
+		} else if (system === 'data' || system === 'web') {
+			hostKinds.add('web');
+		} else if (system === 'api' || system === 'agents') {
+			hostKinds.add('processing');
+		}
+	}
+	return [...hostKinds];
+}
+
+async function repairHostingAfterSuccessfulDeploy(options: ProjectPlatformActionOptions, systems: TreeseedRunnableBootstrapSystem[]) {
 	if (options.scope === 'local') {
 		return {
 			ok: true,
@@ -509,9 +523,16 @@ async function repairHostingAfterSuccessfulDeploy(options: ProjectPlatformAction
 			reason: 'disabled',
 		};
 	}
+	const hostKinds = hostingAuditHostKindsForSystems(systems);
+	if (hostKinds.length === 0) {
+		return {
+			ok: true,
+			skipped: true,
+			reason: 'no_host_kinds',
+		};
+	}
 	const environment = options.scope === 'prod' ? 'prod' : 'staging';
 	const env = { ...process.env, ...(options.env ?? {}) };
-	const hostKinds = ['repository', 'web', 'processing', 'email'] as const;
 	const audit = await runTreeseedHostingAudit({
 		tenantRoot: options.tenantRoot,
 		environment,
@@ -522,7 +543,7 @@ async function repairHostingAfterSuccessfulDeploy(options: ProjectPlatformAction
 	if (audit.ok) {
 		return summarizePostDeployHostingAudit(audit, 'already_ready');
 	}
-	options.write?.(`[${environment}][hosting][repair] Hosting readiness needs repair after deploy.`);
+	options.write?.(`[${environment}][hosting][repair] Hosting readiness needs repair after deploy for ${hostKinds.join(', ')}.`);
 	const repaired = await runTreeseedHostingAudit({
 		tenantRoot: options.tenantRoot,
 		environment,
@@ -1472,7 +1493,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		});
 	}
 	const monitor = await monitorProjectPlatform({ ...options, reporter, bootstrapSystems });
-	const hostingRepair = await repairHostingAfterSuccessfulDeploy(options);
+	const hostingRepair = await repairHostingAfterSuccessfulDeploy(options, bootstrapSystems);
 
 	await reportDeployment(reporter, {
 		environment: options.scope,
