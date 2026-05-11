@@ -339,8 +339,8 @@ cloudflare:
 			scope: 'staging',
 			purpose: 'deploy',
 		}).validation;
-		expect(webValidation.missing.map((entry) => entry.id)).not.toContain('TREESEED_HOSTED_HUBS_GITHUB_OWNER');
-		expect(webValidation.missing.map((entry) => entry.id)).not.toContain('TREESEED_HOSTED_HUBS_GITHUB_TOKEN');
+		expect(webValidation.required.map((entry) => entry.id)).not.toContain('TREESEED_HOSTED_HUBS_GITHUB_OWNER');
+		expect(webValidation.required.map((entry) => entry.id)).not.toContain('TREESEED_HOSTED_HUBS_GITHUB_TOKEN');
 
 		vi.stubEnv('TREESEED_WORKFLOW_PLANE', 'processing');
 		const processingValidation = validateTreeseedCommandEnvironment({
@@ -348,7 +348,7 @@ cloudflare:
 			scope: 'staging',
 			purpose: 'deploy',
 		}).validation;
-		expect(processingValidation.missing.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+		expect(processingValidation.required.map((entry) => entry.id)).toEqual(expect.arrayContaining([
 			'TREESEED_HOSTED_HUBS_GITHUB_OWNER',
 			'TREESEED_HOSTED_HUBS_GITHUB_TOKEN',
 		]));
