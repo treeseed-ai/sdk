@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.5] - 2026-05-11
+
+### Tests
+
+- chore(sdk): bump version and add test timeout (71a9e3ce64b3)
+
+### Dependencies
+
+- build(sdk): bump version and update deployment workflow (702834c25e4f)
+- build(build): update package metadata (78d721e5cd05)
+- Release @treeseed/sdk 0.8.5.
+
 ## [0.8.4] - 2026-05-11
 
 ### Added
