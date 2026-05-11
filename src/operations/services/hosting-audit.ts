@@ -90,8 +90,8 @@ export type TreeseedHostingAuditOptions = {
 const HOST_KINDS: TreeseedHostingAuditHostKind[] = ['repository', 'web', 'processing', 'email'];
 const HOST_GROUPS: Record<TreeseedHostingAuditHostKind, Set<string>> = {
 	repository: new Set(['auth', 'github']),
-	web: new Set(['auth', 'cloudflare', 'hosting']),
-	processing: new Set(['auth', 'railway', 'hosting']),
+	web: new Set(['cloudflare', 'hosting']),
+	processing: new Set(['railway', 'hosting']),
 	email: new Set(['smtp']),
 };
 

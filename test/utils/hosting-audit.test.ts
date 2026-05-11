@@ -84,4 +84,30 @@ describe('hosting audit', () => {
 		expect(json).not.toContain(secret);
 		expect(formatTreeseedHostingAuditReport(report)).not.toContain(secret);
 	}, 20_000);
+
+	it('does not require GitHub config when auditing only web and processing hosts', async () => {
+		const tenantRoot = createTenantFixture();
+		const report = await runTreeseedHostingAudit({
+			tenantRoot,
+			environment: 'staging',
+			hostKinds: ['web', 'processing'],
+			env: {
+				CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+				CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				RAILWAY_API_TOKEN: 'railway-token',
+				TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop',
+			},
+			valuesOverlay: {
+				TREESEED_HOSTING_KIND: 'hosted_project',
+				TREESEED_HOSTING_REGISTRATION: 'optional',
+				TREESEED_MARKET_API_BASE_URL: 'https://api.example.com',
+				TREESEED_HOSTING_TEAM_ID: 'team_123',
+				TREESEED_PROJECT_ID: 'project_123',
+			},
+		});
+
+		expect(report.hostKinds).toEqual(['web', 'processing']);
+		expect(report.checks.some((check) => check.provider === 'github')).toBe(false);
+		expect(report.checks.some((check) => check.id === 'config.GH_TOKEN')).toBe(false);
+	}, 20_000);
 });
