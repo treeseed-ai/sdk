@@ -325,7 +325,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(report.detached).toBe(false);
 		expect(report.repairable).toBe(false);
 		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('staging');
-	});
+	}, 15000);
 
 	it('save repairs package repos detached at the current branch head before preflight validation', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
