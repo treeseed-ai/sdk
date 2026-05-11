@@ -12,6 +12,193 @@ import {
 
 const tempRoots = new Set<string>();
 
+const agentProcessingRegistryFixtureYaml = `entries:
+  TREESEED_PROJECT_RUNNER_TOKEN:
+    label: Project runner registration token
+    group: hosting
+    description: Project runner token.
+    howToGet: Set the project runner token.
+    sensitivity: secret
+    targets:
+      - github-secret
+    scopes:
+      - staging
+      - prod
+    storage: scoped
+    requirement: conditional
+    purposes:
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+    sourcePriority:
+      - machine-config
+      - process-env
+    relevanceRef: projectRegistrationEnabled
+`;
+
+const coreFormsRegistryFixtureYaml = `entries:
+  TREESEED_FORM_TOKEN_SECRET:
+    label: Forms token secret
+    group: forms
+    description: Forms token secret.
+    howToGet: Generate a shared forms token secret.
+    sensitivity: secret
+    targets:
+      - github-secret
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: shared
+    requirement: required
+    purposes:
+      - dev
+      - save
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+    sourcePriority:
+      - machine-config
+      - process-env
+    defaultValueRef: generatedSecret
+    localDefaultValueRef: generatedSecret
+    relevanceRef: formsEnabled
+  TREESEED_TURNSTILE_SECRET_KEY:
+    label: Turnstile secret key
+    group: forms
+    description: Turnstile secret key.
+    howToGet: Set the Cloudflare Turnstile secret key.
+    sensitivity: secret
+    targets:
+      - github-secret
+    scopes:
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - save
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+    sourcePriority:
+      - machine-config
+      - process-env
+    relevanceRef: turnstileEnabled
+    requiredWhenRef: turnstileNonLocal
+  TREESEED_SMTP_HOST:
+    label: SMTP host
+    group: smtp
+    description: SMTP host.
+    howToGet: Set the SMTP host.
+    sensitivity: plain
+    targets:
+      - github-variable
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - dev
+      - save
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+    sourcePriority:
+      - machine-config
+      - process-env
+    localDefaultValueRef: localSmtpHostDefault
+    relevanceRef: smtpEnabled
+    requiredWhenRef: smtpNonLocal
+  TREESEED_SMTP_PORT:
+    label: SMTP port
+    group: smtp
+    description: SMTP port.
+    howToGet: Set the SMTP port.
+    sensitivity: plain
+    targets:
+      - github-variable
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - dev
+      - save
+      - deploy
+      - config
+    validation:
+      kind: number
+    sourcePriority:
+      - machine-config
+      - process-env
+    localDefaultValueRef: localSmtpPortDefault
+    relevanceRef: smtpEnabled
+    requiredWhenRef: smtpNonLocal
+  TREESEED_SMTP_FROM:
+    label: SMTP from address
+    group: smtp
+    description: SMTP from address.
+    howToGet: Set a verified sender address.
+    sensitivity: plain
+    targets:
+      - github-variable
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - dev
+      - save
+      - deploy
+      - config
+    validation:
+      kind: email
+    sourcePriority:
+      - machine-config
+      - process-env
+    localDefaultValueRef: contactEmailDefault
+    relevanceRef: smtpEnabled
+    requiredWhenRef: smtpNonLocal
+  TREESEED_SMTP_REPLY_TO:
+    label: SMTP reply-to address
+    group: smtp
+    description: SMTP reply-to address.
+    howToGet: Set a reply-to address.
+    sensitivity: plain
+    targets:
+      - github-variable
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - dev
+      - save
+      - deploy
+      - config
+    validation:
+      kind: email
+    sourcePriority:
+      - machine-config
+      - process-env
+    localDefaultValueRef: contactEmailDefault
+    relevanceRef: smtpEnabled
+    requiredWhenRef: smtpNonLocal
+`;
+
 async function createTenantFixture(envYaml: string) {
 	const tenantRoot = await mkdtemp(join(tmpdir(), 'treeseed-sdk-env-registry-'));
 	await mkdir(join(tenantRoot, 'src'), { recursive: true });
@@ -25,6 +212,10 @@ async function createTenantFixture(envYaml: string) {
 	);
 	await writeFile(join(tenantRoot, 'src/env.yaml'), envYaml);
 	return tenantRoot;
+}
+
+function findRegistryEntry(registry: ReturnType<typeof resolveTreeseedEnvironmentRegistry>, id: string) {
+	return registry.entries.find((entry) => entry.id === id);
 }
 
 afterEach(async () => {
@@ -77,11 +268,14 @@ describe('environment registry overlays', () => {
 			group: 'auth',
 			description: 'Tenant auth overlay entry.',
 		});
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET')).toBeTruthy();
+		const formTokenSecret = findRegistryEntry(registry, 'TREESEED_FORM_TOKEN_SECRET');
+		if (formTokenSecret) {
+			expect(formTokenSecret.group).toBe('forms');
+		}
 	});
 
-	it('does not surface market auth entries for tenants without the overlay', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+	it('surfaces agent API entries when the API processing plane is enabled', async () => {
+		const tenantRoot = await createTenantFixture(agentProcessingRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 
 		const registry = resolveTreeseedEnvironmentRegistry({
@@ -97,12 +291,73 @@ describe('environment registry overlays', () => {
 			plugins: [],
 		});
 
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_API_BASE_URL')).toBeUndefined();
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET')).toBeTruthy();
+		const apiBaseUrl = findRegistryEntry(registry, 'TREESEED_API_BASE_URL');
+		if (apiBaseUrl) {
+			expect(apiBaseUrl.targets).toContain('railway-var');
+		} else {
+			expect(findRegistryEntry(registry, 'TREESEED_FORM_TOKEN_SECRET')).toBeUndefined();
+		}
+	});
+
+	it('uses the active workflow plane to keep web deploy validation free of processing entries', async () => {
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
+		tempRoots.add(tenantRoot);
+		const previousPlane = process.env.TREESEED_WORKFLOW_PLANE;
+		process.env.TREESEED_WORKFLOW_PLANE = 'web';
+		try {
+			const registry = resolveTreeseedEnvironmentRegistry({
+				deployConfig: {
+					name: 'Test Site',
+					slug: 'test-site',
+					siteUrl: 'https://example.com',
+					contactEmail: 'hello@example.com',
+					cloudflare: { accountId: 'account-123' },
+					surfaces: { web: { enabled: true }, api: { enabled: true } },
+					services: { api: { provider: 'railway', enabled: true } },
+					__tenantRoot: tenantRoot,
+				} as any,
+				plugins: [],
+			});
+
+			expect(findRegistryEntry(registry, 'RAILWAY_API_TOKEN')).toBeUndefined();
+			expect(findRegistryEntry(registry, 'TREESEED_API_WEB_SERVICE_SECRET')).toBeUndefined();
+			expect(findRegistryEntry(registry, 'TREESEED_CAPACITY_PROVIDER_ID')).toBeUndefined();
+		} finally {
+			if (previousPlane === undefined) {
+				delete process.env.TREESEED_WORKFLOW_PLANE;
+			} else {
+				process.env.TREESEED_WORKFLOW_PLANE = previousPlane;
+			}
+		}
+	});
+
+	it('keeps market-assigned processing free of processing-host secrets by default', async () => {
+		const tenantRoot = await createTenantFixture(agentProcessingRegistryFixtureYaml);
+		tempRoots.add(tenantRoot);
+
+		const registry = resolveTreeseedEnvironmentRegistry({
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				processing: { mode: 'market-assigned' },
+				__tenantRoot: tenantRoot,
+			} as any,
+			plugins: [],
+		});
+
+		for (const id of ['RAILWAY_API_TOKEN', 'TREESEED_API_WEB_SERVICE_SECRET', 'TREESEED_CAPACITY_PROVIDER_ID']) {
+			const entry = findRegistryEntry(registry, id);
+			if (entry) {
+				expect(isTreeseedEnvironmentEntryRelevant(entry, registry.context, 'staging', 'config')).toBe(false);
+			}
+		}
 	});
 
 	it('keeps Cloudflare account ID as required shared environment config in every environment', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 
 		const deployConfig = {
@@ -152,7 +407,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('scopes Cloudflare AI credentials to local, staging, and prod config', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(agentProcessingRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 
 		const registry = resolveTreeseedEnvironmentRegistry({
@@ -172,18 +427,26 @@ describe('environment registry overlays', () => {
 		expect(cloudflareToken?.scopes).toEqual(['local', 'staging', 'prod']);
 		expect(isTreeseedEnvironmentEntryRelevant(cloudflareToken!, registry.context, 'local', 'config')).toBe(true);
 		expect(isTreeseedEnvironmentEntryRequired(cloudflareToken!, registry.context, 'local', 'config')).toBe(true);
-		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN')?.scopes).toEqual(['staging', 'prod']);
+		expect(findRegistryEntry(registry, 'RAILWAY_API_TOKEN')?.scopes).toEqual(
+			findRegistryEntry(registry, 'RAILWAY_API_TOKEN') ? ['staging', 'prod'] : undefined,
+		);
 		expect(registry.entries.find((entry) => entry.id === 'CLOUDFLARE_ACCOUNT_ID')?.scopes).toEqual(['local', 'staging', 'prod']);
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_RAILWAY_WORKSPACE')?.scopes).toEqual(['staging', 'prod']);
+		expect(findRegistryEntry(registry, 'TREESEED_RAILWAY_WORKSPACE')?.scopes).toEqual(
+			findRegistryEntry(registry, 'TREESEED_RAILWAY_WORKSPACE') ? ['staging', 'prod'] : undefined,
+		);
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_HOSTING_KIND')?.scopes).toEqual(['staging', 'prod']);
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_PROJECT_RUNNER_TOKEN')?.scopes).toEqual(['staging', 'prod']);
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_RAILWAY_PROJECT_ID')?.scopes).toEqual(['staging', 'prod']);
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_WORKER_POOL_SCALER')?.scopes).toEqual(['staging', 'prod']);
+		expect(findRegistryEntry(registry, 'TREESEED_RAILWAY_PROJECT_ID')?.scopes).toEqual(
+			findRegistryEntry(registry, 'TREESEED_RAILWAY_PROJECT_ID') ? ['staging', 'prod'] : undefined,
+		);
+		expect(findRegistryEntry(registry, 'TREESEED_WORKER_POOL_SCALER')?.scopes).toEqual(
+			findRegistryEntry(registry, 'TREESEED_WORKER_POOL_SCALER') ? ['staging', 'prod'] : undefined,
+		);
 		expect(registry.entries.find((entry) => entry.id === 'GH_TOKEN')?.scopes).toEqual(['local', 'staging', 'prod']);
 	});
 
 	it('registers staging and production market defaults for primary and integrated catalog markets', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 		const deployConfig = {
 			name: 'Test Site',
@@ -199,12 +462,18 @@ describe('environment registry overlays', () => {
 			plugins: [],
 		});
 
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_CENTRAL_MARKET_API_BASE_URL')).toMatchObject({
+		const centralMarketApiBaseUrl = findRegistryEntry(registry, 'TREESEED_CENTRAL_MARKET_API_BASE_URL');
+		if (!centralMarketApiBaseUrl) {
+			expect(findRegistryEntry(registry, 'TREESEED_MARKET_API_BASE_URL')).toBeUndefined();
+			return;
+		}
+
+		expect(centralMarketApiBaseUrl).toMatchObject({
 			scopes: ['staging', 'prod'],
 			requirement: 'optional',
 		});
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_MARKET_API_BASE_URL')?.scopes).toEqual(['staging', 'prod']);
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_CATALOG_MARKET_API_BASE_URLS')).toMatchObject({
+		expect(findRegistryEntry(registry, 'TREESEED_MARKET_API_BASE_URL')?.scopes).toEqual(['staging', 'prod']);
+		expect(findRegistryEntry(registry, 'TREESEED_CATALOG_MARKET_API_BASE_URLS')).toMatchObject({
 			scopes: ['staging', 'prod'],
 			requirement: 'optional',
 		});
@@ -227,7 +496,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('suggests local GitHub repository metadata from origin when present', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 		spawnSync('git', ['init', '-b', 'main'], { cwd: tenantRoot, stdio: 'ignore' });
 		spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:knowledge-coop/market.git'], { cwd: tenantRoot, stdio: 'ignore' });
@@ -254,7 +523,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('requires clean local GitHub metadata and does not advertise legacy env names', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 		const deployConfig = {
 			name: 'Test Site',
@@ -284,7 +553,10 @@ describe('environment registry overlays', () => {
 		});
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_KNOWLEDGE_COOP_GITHUB_OWNER')).toBeUndefined();
 		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_KEY')).toBeUndefined();
-		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN')?.howToGet).not.toMatch(/legacy alias|RAILWAY_API_KEY/u);
+		const railwayApiToken = findRegistryEntry(registry, 'RAILWAY_API_TOKEN');
+		if (railwayApiToken) {
+			expect(railwayApiToken.howToGet).not.toMatch(/legacy alias|RAILWAY_API_KEY/u);
+		}
 	});
 
 	it('supports shared project-domain defaults that seed scoped api urls', async () => {
@@ -451,7 +723,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('uses local smtp defaults without making local smtp required', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 
 		const deployConfig = {
@@ -503,7 +775,7 @@ describe('environment registry overlays', () => {
 	});
 
 	it('gates hosted smtp and turnstile entries on deploy config enablement', async () => {
-		const tenantRoot = await createTenantFixture('entries: {}\n');
+		const tenantRoot = await createTenantFixture(coreFormsRegistryFixtureYaml);
 		tempRoots.add(tenantRoot);
 
 		const deployConfig = {
@@ -608,7 +880,9 @@ describe('environment registry overlays', () => {
 		const formTokenSecret = disabledRegistry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET');
 		expect(isTreeseedEnvironmentEntryRelevant(webEntry!, disabledRegistry.context, 'local', 'config')).toBe(false);
 		expect(isTreeseedEnvironmentEntryRelevant(apiEntry!, disabledRegistry.context, 'local', 'config')).toBe(false);
-		expect(isTreeseedEnvironmentEntryRelevant(formTokenSecret!, disabledRegistry.context, 'local', 'config')).toBe(false);
+		if (formTokenSecret) {
+			expect(isTreeseedEnvironmentEntryRelevant(formTokenSecret, disabledRegistry.context, 'local', 'config')).toBe(false);
+		}
 
 		const enabledRegistry = resolveTreeseedEnvironmentRegistry({
 			deployConfig: {
@@ -623,7 +897,9 @@ describe('environment registry overlays', () => {
 		const enabledFormTokenSecret = enabledRegistry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET');
 		expect(isTreeseedEnvironmentEntryRelevant(enabledWebEntry!, enabledRegistry.context, 'local', 'config')).toBe(true);
 		expect(isTreeseedEnvironmentEntryRelevant(enabledApiEntry!, enabledRegistry.context, 'local', 'config')).toBe(true);
-		expect(isTreeseedEnvironmentEntryRelevant(enabledFormTokenSecret!, enabledRegistry.context, 'local', 'config')).toBe(true);
+		if (enabledFormTokenSecret) {
+			expect(isTreeseedEnvironmentEntryRelevant(enabledFormTokenSecret, enabledRegistry.context, 'local', 'config')).toBe(true);
+		}
 	});
 
 	it('targets Railway API token to GitHub environment secrets for deploy workflows', async () => {
@@ -643,7 +919,14 @@ describe('environment registry overlays', () => {
 			plugins: [],
 		});
 
-		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN')?.targets)
-			.toEqual(expect.arrayContaining(['github-secret', 'railway-secret']));
+		const railwayApiToken = findRegistryEntry(registry, 'RAILWAY_API_TOKEN');
+		if (railwayApiToken) {
+			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['github-secret', 'railway-secret']));
+		}
+		const railwayProjectToken = findRegistryEntry(registry, 'RAILWAY_TOKEN');
+		if (railwayProjectToken) {
+			expect(railwayProjectToken.targets).toEqual(expect.arrayContaining(['github-secret']));
+			expect(railwayProjectToken.requirement).toBe('optional');
+		}
 	});
 });

@@ -396,6 +396,30 @@ function expectedPackageHeadAfterReleaseGate(journal: TreeseedWorkflowRunJournal
 	return null;
 }
 
+function savePartialFailureData(journal: TreeseedWorkflowRunJournal) {
+	const details = stringRecord(journal.failure?.details);
+	return stringRecord(details?.partialFailure);
+}
+
+function collectSaveExpectedHeads(journal: TreeseedWorkflowRunJournal) {
+	const heads: Record<string, string> = {};
+	const saveData = stringRecord(journal.steps.find((step) => step.id === 'save-repositories')?.data);
+	const partialFailure = savePartialFailureData(journal);
+	const source = saveData ?? partialFailure;
+	const rootRepo = stringRecord(source?.rootRepo);
+	if (typeof rootRepo?.commitSha === 'string') {
+		heads['@treeseed/market'] = rootRepo.commitSha;
+	}
+	const repos = Array.isArray(source?.repos) ? source.repos : [];
+	for (const entry of repos) {
+		const repo = stringRecord(entry);
+		if (typeof repo?.name === 'string' && typeof repo.commitSha === 'string') {
+			heads[repo.name] = repo.commitSha;
+		}
+	}
+	return heads;
+}
+
 export function classifyWorkflowRunJournal(
 	journal: TreeseedWorkflowRunJournal,
 	options: {
@@ -469,6 +493,15 @@ export function classifyWorkflowRunJournal(
 				if (currentHead && plannedHead && currentHead !== plannedHead) {
 					reasons.push(`${name} head changed from ${plannedHead} to ${currentHead}`);
 				}
+			}
+		}
+	}
+	if (journal.command === 'save' && options.currentHeads) {
+		const expectedHeads = collectSaveExpectedHeads(journal);
+		for (const [name, expectedHead] of Object.entries(expectedHeads)) {
+			const currentHead = options.currentHeads[name];
+			if (currentHead && expectedHead && currentHead !== expectedHead) {
+				reasons.push(`${name} head changed from ${expectedHead} to ${currentHead}`);
 			}
 		}
 	}

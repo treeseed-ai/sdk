@@ -66,6 +66,12 @@
       "required": true
     },
     {
+      "name": "Agent version",
+      "token": "__AGENT_VERSION__",
+      "deriveFrom": "agentVersion",
+      "required": true
+    },
+    {
       "name": "SDK version",
       "token": "__SDK_VERSION__",
       "deriveFrom": "sdkVersion",

@@ -109,6 +109,7 @@ import {
 	refreshAndValidateRootWorkspaceLockfileForSave,
 	repositorySaveErrorDetails,
 	runRepositorySaveOrchestrator,
+	type RepositorySaveReport,
 	type SaveCommitMessageMode,
 	type SaveDevVersionStrategy,
 	type SaveVerifyMode,
@@ -292,7 +293,8 @@ function readPackageScript(root: string, packageDir: string, scriptName: string)
 function ensureWorkflowWorkspacePackageArtifacts(root: string, helpers: WorkflowOperationHelpers) {
 	const packages = [
 		{ name: '@treeseed/sdk', dir: 'packages/sdk', artifacts: ['dist/workflow-support.js', 'dist/plugin-default.js', 'dist/platform/env.yaml'] },
-		{ name: '@treeseed/core', dir: 'packages/core', artifacts: ['dist/api.js', 'dist/plugin-default.js'] },
+		{ name: '@treeseed/agent', dir: 'packages/agent', artifacts: ['dist/api/index.js', 'dist/services/worker.js'] },
+		{ name: '@treeseed/core', dir: 'packages/core', artifacts: ['dist/plugin-default.js'] },
 		{ name: '@treeseed/cli', dir: 'packages/cli', artifacts: ['dist/cli/main.js'] },
 	];
 	for (const entry of packages) {
@@ -395,6 +397,11 @@ function normalizeCiMode(mode: TreeseedWorkflowCiMode | undefined, operation: 's
 	return operation === 'save' ? 'off' : 'hosted';
 }
 
+function normalizeSaveCiMode(mode: TreeseedWorkflowCiMode | undefined, branch: string | null | undefined) {
+	if (mode === 'hosted' || mode === 'off') return mode;
+	return branch === STAGING_BRANCH ? 'hosted' : 'off';
+}
+
 function normalizeSaveVerifyMode(mode: TreeseedSaveInput['verifyMode'] | undefined): SaveVerifyMode {
 	switch (mode) {
 		case 'skip':
@@ -414,8 +421,8 @@ function normalizeSaveVerifyMode(mode: TreeseedSaveInput['verifyMode'] | undefin
 	}
 }
 
-function shouldUseHostedSaveCi(input: TreeseedSaveInput) {
-	return normalizeCiMode(input.ciMode, 'save') === 'hosted'
+function shouldUseHostedSaveCi(input: TreeseedSaveInput, branch: string | null | undefined) {
+	return normalizeSaveCiMode(input.ciMode, branch) === 'hosted'
 		|| input.verifyMode === 'hosted'
 		|| input.verifyMode === 'both'
 		|| input.verifyDeployedResources === true;
@@ -535,12 +542,12 @@ async function waitForWorkflowGates(
 	return results;
 }
 
-const RELEASE_DEPLOY_GATE_TIMEOUT_SECONDS = 45 * 60;
+const HOSTED_DEPLOY_GATE_TIMEOUT_SECONDS = 45 * 60;
 
-function releaseDeployGate(gate: GitHubActionsWorkflowGate): GitHubActionsWorkflowGate {
+function hostedDeployGate(gate: GitHubActionsWorkflowGate): GitHubActionsWorkflowGate {
 	return {
 		...gate,
-		timeoutSeconds: gate.timeoutSeconds ?? RELEASE_DEPLOY_GATE_TIMEOUT_SECONDS,
+		timeoutSeconds: gate.timeoutSeconds ?? HOSTED_DEPLOY_GATE_TIMEOUT_SECONDS,
 	};
 }
 
@@ -560,7 +567,7 @@ function recordHostedDeploymentStatesFromRootGates(
 		{ scope: 'prod' as const, branch: releaseTag ?? PRODUCTION_BRANCH, commit: releaseRecord.releasedCommit },
 	]) {
 		const gate = gates.find((candidate) =>
-			candidate.workflow === 'deploy.yml'
+			(candidate.workflow === 'deploy-web.yml' || candidate.workflow === 'deploy-processing.yml')
 			&& candidate.branch === target.branch
 			&& candidate.status === 'completed'
 			&& candidate.conclusion === 'success');
@@ -601,7 +608,7 @@ function ensureTreeseedCommandReadiness(root: string) {
 		{ id: 'sdk', path: resolve(root, 'node_modules/@treeseed/sdk/package.json') },
 		{ id: 'sdk-workflow-support', path: resolve(root, 'node_modules/@treeseed/sdk/dist/workflow-support.js') },
 		{ id: 'core', path: resolve(root, 'node_modules/@treeseed/core/package.json') },
-		{ id: 'core-api', path: resolve(root, 'node_modules/@treeseed/core/dist/api.js') },
+		{ id: 'agent-api', path: resolve(root, 'node_modules/@treeseed/agent/dist/api/index.js') },
 		{ id: 'cli', path: resolve(root, 'node_modules/@treeseed/cli/package.json') },
 		{ id: 'cli-entrypoint', path: resolve(root, 'node_modules/@treeseed/cli/dist/cli/main.js') },
 		{ id: 'trsd-bin', path: resolve(root, 'node_modules/.bin/trsd') },
@@ -1082,7 +1089,7 @@ function defaultCiWorkflows(kind: 'root' | 'package', branch: string | null) {
 		return ['verify.yml'];
 	}
 	if (branch === STAGING_BRANCH || branch === PRODUCTION_BRANCH) {
-		return ['deploy.yml'];
+		return ['deploy-web.yml', 'deploy-processing.yml'];
 	}
 	return ['verify.yml'];
 }
@@ -1467,10 +1474,48 @@ function nextPendingJournalStep(journal: TreeseedWorkflowRunJournal) {
 
 function findAutoResumableSaveRun(root: string, branch: string | null) {
 	if (!branch) return null;
+	if (branch === STAGING_BRANCH
+		&& (hasMeaningfulChanges(repoRoot(root)) || checkedOutWorkspacePackageRepos(root).some((repo) => hasMeaningfulChanges(repo.dir)))) {
+		return null;
+	}
 	return listInterruptedWorkflowRuns(root).find((journal) =>
 		journal.command === 'save'
 		&& journal.resumable
 		&& journal.session.branchName === branch) ?? null;
+}
+
+function gatesForSavedPackageReports(reports: RepositorySaveReport[]) {
+	return reports
+		.filter((repo) => repo.pushed && repo.commitSha && repo.branch)
+		.map((repo) => ({
+			name: repo.name,
+			repoPath: repo.path,
+			workflow: 'verify.yml',
+			branch: String(repo.branch),
+			headSha: String(repo.commitSha),
+		}));
+}
+
+function gateForSavedRootReport(report: RepositorySaveReport, branch: string | null, scope: string) {
+	if (!branch || scope === 'local' || !report.pushed || !report.commitSha) {
+		return [];
+	}
+	if (branch === STAGING_BRANCH) {
+		return [hostedDeployGate({
+			name: report.name,
+			repoPath: report.path,
+			workflow: 'deploy.yml',
+			branch,
+			headSha: report.commitSha,
+		})];
+	}
+	return [{
+		name: report.name,
+		repoPath: report.path,
+		workflow: 'verify.yml',
+		branch,
+		headSha: report.commitSha,
+	}];
 }
 
 function findAutoResumableTaskRun(root: string, command: 'stage' | 'close', branch: string | null) {
@@ -1892,7 +1937,7 @@ function validateStagingWorkflowContracts(root: string) {
 		return;
 	}
 	const missing: string[] = [];
-	for (const fileName of ['verify.yml', 'deploy.yml']) {
+	for (const fileName of ['verify.yml', 'deploy-web.yml', 'deploy-processing.yml']) {
 		if (!existsSync(resolve(root, '.github', 'workflows', fileName))) {
 			missing.push(fileName);
 		}
@@ -3453,7 +3498,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							}
 							: null,
 						workspaceLinks,
-						ciMode: normalizeCiMode(effectiveInput.ciMode, 'save'),
+						ciMode: normalizeSaveCiMode(effectiveInput.ciMode, branch),
 						verifyMode: effectiveInput.verifyMode ?? 'fast',
 						...worktreePayload(root, effectiveInput.worktreeMode),
 						repositoryPlan,
@@ -3463,6 +3508,9 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							{ id: 'workspace-unlink', description: 'Remove local workspace links before deployment install and lockfile updates' },
 							...repositoryPlan.plannedSteps,
 							{ id: 'lockfile-validation', description: 'Validate refreshed package-lock.json files before any save commit is pushed' },
+							...(shouldUseHostedSaveCi(effectiveInput, branch)
+								? [{ id: 'hosted-ci', description: `Wait for hosted save workflows on ${branch}` }]
+								: []),
 							...(branch === STAGING_BRANCH
 								? [{ id: 'release-candidate', description: 'Run release-candidate readiness checks for the saved staging state' }]
 								: []),
@@ -3505,7 +3553,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
 					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
 						verifyMode: effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'fast'),
-					ciMode: effectiveInput.ciMode ?? 'auto',
+					ciMode: effectiveInput.ciMode ?? (branch === STAGING_BRANCH ? 'hosted' : 'auto'),
 					worktreeMode: effectiveInput.worktreeMode ?? 'auto',
 					commitMessageMode: effectiveInput.commitMessageMode ?? 'auto',
 					workspaceLinks: effectiveInput.workspaceLinks ?? 'auto',
@@ -3520,7 +3568,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						branch,
 						resumable: true,
 					},
-					...(shouldUseHostedSaveCi(effectiveInput)
+					...(shouldUseHostedSaveCi(effectiveInput, branch)
 						? [{
 							id: 'hosted-ci',
 							description: `Wait for hosted save workflows on ${branch}`,
@@ -3586,6 +3634,32 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 								commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
 								workflowRunId: workflowRun.runId,
 								onProgress: (line, stream) => helpers.write(line, stream),
+								onWaveSaved: branch === STAGING_BRANCH && shouldUseHostedSaveCi(effectiveInput, branch)
+									? async ({ nodes, reports, rootRepo: waveRootRepo }) => {
+										const packageReportsForWave = reports.filter((repo, index) => nodes[index]?.kind === 'package');
+										const rootReportForWave = nodes.some((node) => node.kind === 'project')
+											? waveRootRepo
+											: null;
+										const gates = [
+											...gatesForSavedPackageReports(packageReportsForWave),
+											...(rootReportForWave ? gateForSavedRootReport(rootReportForWave, branch, scope) : []),
+										];
+										if (gates.length === 0) {
+											return [];
+										}
+										const packageNames = packageReportsForWave.map((repo) => repo.name).join(', ');
+										if (packageNames) {
+											helpers.write(`[save][workflow] Waiting for hosted package gates before saving dependents: ${packageNames}.`);
+										} else if (rootReportForWave) {
+											helpers.write('[save][workflow] Waiting for hosted market deploy gate.');
+										}
+										return waitForWorkflowGates('save', gates, 'hosted', {
+											root,
+											runId: workflowRun.runId,
+											onProgress: (line, stream) => helpers.write(line, stream),
+										});
+									}
+									: undefined,
 							});
 						} finally {
 							ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
@@ -3610,12 +3684,15 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						lockfileValidation: repo.lockfileValidation,
 					})),
 				};
-				const saveWorkflowGates = shouldUseHostedSaveCi(effectiveInput)
+				const saveWorkflowGates = shouldUseHostedSaveCi(effectiveInput, branch)
 					? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', () =>
 						{
+							if (branch === STAGING_BRANCH) {
+								return { workflowGates: saveResult?.workflowGates ?? [] };
+							}
 							helpers.write('[save][workflow] Waiting for hosted save workflow gates.');
 							return waitForWorkflowGates('save', [
-							...(savedRootRepo.pushed && savedRootRepo.commitSha && branch
+							...(branch !== STAGING_BRANCH && savedRootRepo.pushed && savedRootRepo.commitSha && branch
 								? [{
 									name: savedRootRepo.name,
 									repoPath: savedRootRepo.path,
@@ -3624,14 +3701,14 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 									headSha: savedRootRepo.commitSha,
 								}]
 								: []),
-							...(effectiveInput.verifyDeployedResources === true && scope !== 'local' && savedRootRepo.pushed && savedRootRepo.commitSha && branch
-								? [{
+							...((branch === STAGING_BRANCH || effectiveInput.verifyDeployedResources === true) && scope !== 'local' && savedRootRepo.pushed && savedRootRepo.commitSha && branch
+								? [hostedDeployGate({
 									name: savedRootRepo.name,
 									repoPath: savedRootRepo.path,
 									workflow: 'deploy.yml',
 									branch,
 									headSha: savedRootRepo.commitSha,
-								}]
+								})]
 								: []),
 							...savedPackageReports
 								.filter((repo) => repo.pushed && repo.commitSha && repo.branch)
@@ -3713,7 +3790,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					workspaceLinks,
 					commandReadiness,
 					lockfileValidation,
-					ciMode: normalizeCiMode(effectiveInput.ciMode, 'save'),
+					ciMode: normalizeSaveCiMode(effectiveInput.ciMode, branch),
 					verifyMode: effectiveInput.verifyMode ?? 'fast',
 					workflowGates: saveWorkflowGates?.workflowGates ?? [],
 					releaseCandidate,
@@ -4246,14 +4323,14 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				const stageWorkflowGateResult = !waitForStaging
 					? (skipJournalStep(root, workflowRun.runId, 'wait-staging', { status: 'skipped', reason: 'disabled' }), { status: 'skipped', reason: 'disabled' })
 					: await executeJournalStep(root, workflowRun.runId, 'wait-staging', () =>
-						waitForWorkflowGates('stage', [
-							{
-								name: rootRepo.name,
-								repoPath: rootRepo.path,
-								workflow: 'deploy.yml',
-								branch: STAGING_BRANCH,
-								headSha: rootRepo.commitSha,
-							},
+							waitForWorkflowGates('stage', [
+								hostedDeployGate({
+									name: rootRepo.name,
+									repoPath: rootRepo.path,
+									workflow: 'deploy.yml',
+									branch: STAGING_BRANCH,
+									headSha: rootRepo.commitSha,
+								}),
 							...packageReports
 								.filter((report) => report.merged && report.commitSha)
 								.map((report) => ({
@@ -4508,6 +4585,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				},
 				[
 					{ id: 'release-plan', description: 'Record release plan', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					{ id: 'release-staging-gates', description: 'Verify current staging GitHub Actions gates', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'release-candidate', description: 'Run release-candidate readiness checks', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'workspace-unlink', description: 'Remove local workspace links before release', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					...(mode === 'recursive-workspace'
@@ -4556,6 +4634,34 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 
 				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
 				assertReleaseGitHubAutomationReady(root, effectiveSelectedPackageNames, ciMode);
+				const stagingGateResult = resumeAtRootGates
+					? (completedJournalStepData(root, workflowRun.runId, 'release-staging-gates') as { workflowGates?: Array<Record<string, unknown>> } | null)
+					: await executeJournalStep(root, workflowRun.runId, 'release-staging-gates', () => {
+						helpers.write('[release][workflow] Verifying current staging gates before production release.');
+						const packageGates = checkedOutWorkspacePackageRepos(root)
+							.filter((pkg) => effectiveSelectedPackageNames.has(pkg.name))
+							.map((pkg) => ({
+								name: pkg.name,
+								repoPath: pkg.dir,
+								workflow: 'verify.yml',
+								branch: STAGING_BRANCH,
+								headSha: headCommit(pkg.dir),
+							}));
+							return waitForWorkflowGates('release', [
+								hostedDeployGate({
+									name: rootRepo.name,
+									repoPath: rootRepo.path,
+									workflow: 'deploy.yml',
+									branch: STAGING_BRANCH,
+									headSha: headCommit(gitRoot),
+								}),
+							...packageGates,
+						], ciMode, {
+							root,
+							runId: workflowRun.runId,
+							onProgress: (line, stream) => helpers.write(line, stream),
+						}).then((workflowGates) => ({ workflowGates }));
+					});
 				const releaseCandidate = resumeAtRootGates
 					? (completedJournalStepData(root, workflowRun.runId, 'release-candidate') as ReleaseCandidateReport | null)
 					: await executeJournalStep(root, workflowRun.runId, 'release-candidate', () =>
@@ -4632,7 +4738,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					rootRepo.tagName = String(rootRelease?.rootVersion ?? '');
 					const rootWorkflowGateResult = await executeJournalStep(root, workflowRun.runId, 'release-root-gates', () =>
 						waitForWorkflowGates('release', [
-							releaseDeployGate({
+							hostedDeployGate({
 								name: rootRepo.name,
 								repoPath: rootRepo.path,
 								workflow: 'deploy.yml',
@@ -4676,13 +4782,17 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						repos: [],
 						rootRepo,
 						releaseCandidate,
+						stagingWorkflowGates: stagingGateResult?.workflowGates ?? [],
 						releaseBackMerge,
 						hostedDeploymentState,
 						finalBranch: currentBranch(gitRoot) || STAGING_BRANCH,
 						pushStatus: { stagingPushed: true, productionPushed: true, tagPushed: true },
 						workspaceLinks,
 						ciMode,
-						workflowGates: rootWorkflowGateResult?.workflowGates ?? [],
+						workflowGates: [
+							...(Array.isArray(stagingGateResult?.workflowGates) ? stagingGateResult.workflowGates : []),
+							...(Array.isArray(rootWorkflowGateResult?.workflowGates) ? rootWorkflowGateResult.workflowGates : []),
+						],
 						hostingAudit,
 						...worktreePayload(root, effectiveInput.worktreeMode),
 					};
@@ -4948,7 +5058,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				rootRepo.tagName = String(rootRelease?.rootVersion ?? '');
 				const rootWorkflowGateResult = await executeJournalStep(root, workflowRun.runId, 'release-root-gates', () =>
 					waitForWorkflowGates('release', [
-						releaseDeployGate({
+						hostedDeployGate({
 							name: rootRepo.name,
 							repoPath: rootRepo.path,
 							workflow: 'deploy.yml',
@@ -5007,6 +5117,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					repos: packageReports,
 					rootRepo,
 					releaseCandidate,
+					stagingWorkflowGates: stagingGateResult?.workflowGates ?? [],
 					releaseBackMerge,
 					hostedDeploymentState,
 					finalBranch: currentBranch(gitRoot) || STAGING_BRANCH,
@@ -5018,6 +5129,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					workspaceLinks,
 					ciMode,
 					workflowGates: [
+						...(Array.isArray(stagingGateResult?.workflowGates) ? stagingGateResult.workflowGates : []),
 						...packageReports.flatMap((report) => report.workflowGates),
 						...(Array.isArray(rootWorkflowGateResult?.workflowGates) ? rootWorkflowGateResult.workflowGates : []),
 					],

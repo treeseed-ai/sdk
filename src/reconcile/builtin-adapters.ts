@@ -1795,8 +1795,13 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput) {
 	if (typeof values.CLOUDFLARE_ACCOUNT_ID === 'string' && values.CLOUDFLARE_ACCOUNT_ID.length > 0) {
 		variables.CLOUDFLARE_ACCOUNT_ID = values.CLOUDFLARE_ACCOUNT_ID;
 	}
-	const apiD1DatabaseId = state.d1Databases?.SITE_DATA_DB?.databaseId;
-	if (typeof apiD1DatabaseId === 'string' && apiD1DatabaseId.length > 0) {
+	const siteDataDb = state.d1Databases?.SITE_DATA_DB;
+	let apiD1DatabaseId = siteDataDb?.databaseId;
+	if (!hasLiveResourceId(apiD1DatabaseId)) {
+		const liveDatabase = findCloudflareD1ByName(input, buildCloudflareEnv(input), siteDataDb?.databaseName, { attempts: 3, delayMs: 250 });
+		apiD1DatabaseId = liveDatabase?.uuid ?? liveDatabase?.id ?? apiD1DatabaseId;
+	}
+	if (hasLiveResourceId(apiD1DatabaseId)) {
 		variables.TREESEED_API_D1_DATABASE_ID = apiD1DatabaseId;
 	}
 

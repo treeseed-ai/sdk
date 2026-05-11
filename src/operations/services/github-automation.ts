@@ -374,7 +374,6 @@ export function requiredGitHubSecrets(tenantRoot) {
 function renderTenantWorkflowActionCommand() {
 	return [
 		'EXTRA_ARGS=()',
-		'if [[ "${TREESEED_WORKFLOW_SKIP_PROVISION:-}" == "1" ]]; then EXTRA_ARGS+=(--skip-provision); fi',
 		'if [[ -n "${TREESEED_WORKFLOW_PROJECT:-}" ]]; then EXTRA_ARGS+=(--project-id "${TREESEED_WORKFLOW_PROJECT}"); fi',
 		'if [[ -n "${TREESEED_WORKFLOW_PREVIEW_ID:-}" ]]; then EXTRA_ARGS+=(--preview-id "${TREESEED_WORKFLOW_PREVIEW_ID}"); fi',
 		'if test -f ./packages/sdk/scripts/tenant-workflow-action.ts; then',
@@ -408,12 +407,12 @@ function renderWorkflowTemplate(templateName, { workingDirectory }) {
 		);
 }
 
-function deployWorkflowTemplateName(executionBoundary = 'direct') {
-	return executionBoundary === 'managed' ? 'deploy.managed.workflow.yml' : 'deploy.workflow.yml';
+export function renderDeployWebWorkflow({ workingDirectory }) {
+	return renderWorkflowTemplate('deploy-web.workflow.yml', { workingDirectory });
 }
 
-export function renderDeployWorkflow({ workingDirectory, executionBoundary = 'direct' }) {
-	return renderWorkflowTemplate(deployWorkflowTemplateName(executionBoundary), { workingDirectory });
+export function renderDeployProcessingWorkflow({ workingDirectory }) {
+	return renderWorkflowTemplate('deploy-processing.workflow.yml', { workingDirectory });
 }
 
 export function renderHostedProjectWorkflow({ workingDirectory }) {
@@ -433,16 +432,49 @@ function ensureWorkflowFile(tenantRoot, fileName, expected) {
 	return { workflowPath, changed: true };
 }
 
+function hasConcreteProcessingServices(deployConfig) {
+	return Object.entries(deployConfig.services ?? {}).some(([serviceKey, service]) =>
+		['api', 'manager', 'worker', 'workerRunner', 'workdayStart', 'workdayReport'].includes(serviceKey)
+		&& service
+		&& service.enabled !== false
+	);
+}
+
+function shouldWriteProcessingWorkflow(deployConfig) {
+	if ((deployConfig.hosting?.kind ?? 'self_hosted_project') === 'market_control_plane') {
+		return true;
+	}
+
+	const mode = deployConfig.processing?.mode ?? 'market-assigned';
+	return mode === 'project-owned' || mode === 'local' || hasConcreteProcessingServices(deployConfig);
+}
+
 export function ensureDeployWorkflow(tenantRoot) {
 	const repositoryRoot = resolveGitRepositoryRoot(tenantRoot);
 	const workingDirectory = relative(repositoryRoot, tenantRoot).replaceAll('\\', '/') || '.';
 	const deployConfig = loadCliDeployConfig(tenantRoot);
-	const executionBoundary = usesManagedHostOperationRequests(deployConfig) ? 'managed' : 'direct';
-	const expected = renderDeployWorkflow({ workingDirectory, executionBoundary });
+	const web = ensureWorkflowFile(tenantRoot, 'deploy-web.yml', renderDeployWebWorkflow({ workingDirectory }));
+	const additionalWorkflows = [];
+	let changed = web.changed;
+	if (shouldWriteProcessingWorkflow(deployConfig)) {
+		const processing = ensureWorkflowFile(
+			tenantRoot,
+			'deploy-processing.yml',
+			renderDeployProcessingWorkflow({ workingDirectory }),
+		);
+		changed = changed || processing.changed;
+		additionalWorkflows.push({
+			...processing,
+			workingDirectory,
+			executionBoundary: 'split-plane',
+		});
+	}
 	return {
-		...ensureWorkflowFile(tenantRoot, 'deploy.yml', expected),
+		workflowPath: web.workflowPath,
+		changed,
 		workingDirectory,
-		executionBoundary,
+		executionBoundary: 'split-plane',
+		additionalWorkflows,
 	};
 }
 
@@ -459,7 +491,7 @@ export function ensureHostedProjectWorkflow(tenantRoot) {
 export function ensureStandardizedGitHubWorkflows(tenantRoot) {
 	const deployConfig = loadCliDeployConfig(tenantRoot);
 	const deploy = ensureDeployWorkflow(tenantRoot);
-	const workflows = [deploy];
+	const workflows = [deploy, ...(deploy.additionalWorkflows ?? [])];
 	if ((deployConfig.hosting?.kind ?? 'self_hosted_project') === 'market_control_plane') {
 		workflows.push(ensureHostedProjectWorkflow(tenantRoot));
 	}
@@ -598,6 +630,9 @@ export async function waitForGitHubWorkflowCompletion(
 		branch,
 		timeoutSeconds = 600,
 		pollSeconds = 5,
+		dispatchIfMissing = false,
+		dispatchAfterSeconds,
+		dispatchInputs,
 		onProgress,
 	} = {},
 ) {
@@ -609,6 +644,9 @@ export async function waitForGitHubWorkflowCompletion(
 		branch,
 		timeoutSeconds,
 		pollSeconds,
+		dispatchIfMissing,
+		dispatchAfterSeconds,
+		dispatchInputs,
 		onProgress,
 	});
 }

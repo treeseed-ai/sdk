@@ -1453,11 +1453,9 @@ export function ensureTreeseedRailwayIgnoreEntries(tenantRoot) {
 		'.treeseed/',
 		'.wrangler/',
 		'coverage/',
-		'dist/',
 		'node_modules/',
 		'npm-debug.log*',
 		'packages/*/.git/',
-		'packages/*/dist/',
 		'packages/*/node_modules/',
 		'public/__treeseed/*.json',
 		'public/books/*.json',
@@ -1467,9 +1465,22 @@ export function ensureTreeseedRailwayIgnoreEntries(tenantRoot) {
 		'*.log',
 		'*.tgz',
 	];
+	const removedEntries = new Set([
+		'dist/',
+		'**/dist/',
+		'packages/*/dist/',
+	]);
 	const current = existsSync(railwayIgnorePath) ? readFileSync(railwayIgnorePath, 'utf8') : '';
-	const lines = current.split(/\r?\n/);
 	let changed = false;
+	const lines = current
+		.split(/\r?\n/)
+		.filter((line) => {
+			const keep = !removedEntries.has(line.trim());
+			if (!keep) {
+				changed = true;
+			}
+			return keep;
+		});
 
 	for (const entry of requiredEntries) {
 		if (!lines.includes(entry)) {
@@ -2809,7 +2820,7 @@ function createConfigReadiness(values, validation) {
 			configured: providerIssues('cloudflare').length === 0,
 		},
 		railway: {
-			configured: providerIssues('railway').length === 0,
+			configured: validConfigValue('RAILWAY_API_TOKEN') && providerIssues('railway').length === 0,
 		},
 		localDevelopment: {
 			configured: localDevelopmentIssues.length === 0,

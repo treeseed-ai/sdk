@@ -7,8 +7,10 @@ const sdkRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const workspaceRoot = resolve(sdkRoot, '..', '..');
 const rootVerifyWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'verify.yml');
 const rootDeployWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'deploy.yml');
+const rootDeployWebWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'deploy-web.yml');
+const rootDeployProcessingWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'deploy-processing.yml');
 const describeRootWorkflowSelection =
-	existsSync(rootVerifyWorkflowPath) && existsSync(rootDeployWorkflowPath)
+	existsSync(rootVerifyWorkflowPath) && existsSync(rootDeployWorkflowPath) && existsSync(rootDeployWebWorkflowPath) && existsSync(rootDeployProcessingWorkflowPath)
 		? describe
 		: describe.skip;
 
@@ -23,41 +25,58 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 
 	it('uses auto bootstrap mode with workspace-aware deployment installs', () => {
 		const source = readFileSync(rootDeployWorkflowPath, 'utf8');
+		const webSource = readFileSync(rootDeployWebWorkflowPath, 'utf8');
+		const processingSource = readFileSync(rootDeployProcessingWorkflowPath, 'utf8');
 		const verifySource = readFileSync(rootVerifyWorkflowPath, 'utf8');
 
-		expect(source).toContain('TREESEED_BOOTSTRAP_MODE: auto');
 		expect(source).toContain("branches:\n      - staging");
 		expect(source).not.toContain('      - main');
 		expect(source).toContain("tags:\n      - '*.*.*'");
-		expect(source).toContain('release_tag="true"');
+		expect(source).toContain('release_tag=$');
 		expect(source).toContain('^[0-9]+\\.[0-9]+\\.[0-9]+$');
-		expect((source.match(/submodules: recursive/g) ?? []).length).toBeGreaterThanOrEqual(5);
-		expect((source.match(/npm ci --ignore-scripts/g) ?? []).length).toBeGreaterThanOrEqual(5);
-		expect(source).not.toContain('\n          npm ci\n');
-		expect(source).toContain('migrations/*)');
-		expect(source).toContain('code_changed="true"');
+		expect(source).toContain('uses: ./.github/workflows/deploy-web.yml');
+		expect(source).toContain('uses: ./.github/workflows/deploy-processing.yml');
+		expect(webSource).toContain('TREESEED_BOOTSTRAP_MODE: auto');
+		expect(processingSource).toContain('TREESEED_BOOTSTRAP_MODE: auto');
+		expect(webSource).toContain('TREESEED_WORKFLOW_PLANE: web');
+		expect(processingSource).toContain('TREESEED_WORKFLOW_PLANE: processing');
+		expect(webSource).toContain('TREESEED_BETTER_AUTH_SECRET');
+		expect(webSource).toContain('TREESEED_WEB_SERVICE_SECRET');
+		expect(webSource).toContain('packages/sdk packages/agent packages/core packages/cli');
+		expect(webSource).toContain('npm ci --ignore-scripts');
+		expect(processingSource).toContain('npm ci --ignore-scripts');
+		expect(webSource).toContain('node ./packages/sdk/scripts/run-ts.mjs ./packages/sdk/scripts/install-managed-dependencies.ts');
+		expect(processingSource).toContain('node ./packages/sdk/scripts/run-ts.mjs ./packages/sdk/scripts/install-managed-dependencies.ts');
+		expect(webSource).not.toContain('RAILWAY_API_TOKEN');
+		expect(webSource).not.toContain('TREESEED_WORKER_POOL_SCALER');
+		expect(processingSource).toContain('RAILWAY_API_TOKEN');
+		expect(processingSource).toContain('RAILWAY_TOKEN');
+		expect(processingSource).toContain('TREESEED_WORKER_POOL_SCALER');
+		expect(source).toContain('migrations/*');
+		expect(source).toContain('scripts/build-api.mjs');
+		expect(source).toContain('treeseed.site.yaml');
+		expect(source).toContain('.railwayignore');
+		expect(source).toContain('.gitignore');
+		expect(source).toContain('processing_changed="true"');
 		expect(source).not.toContain('docs/*|migrations/*');
-		expect(source).toContain('always() &&');
-		expect(source).toContain("needs.provision.result == 'success'");
-		expect(source).toContain('TREESEED_WORKFLOW_SKIP_PROVISION: "1"');
-		expect(source).toContain('EXTRA_ARGS+=(--skip-provision)');
-		expect(source).toContain('uses: actions/upload-artifact@v4');
-		expect(source).toContain('uses: actions/download-artifact@v4');
-		expect(source).toContain('Ensure Treeseed deployment state');
-		expect(source).toContain("'.treeseed/state/environments/' + scope + '/deploy.json'");
-		expect(source).toContain('name: treeseed-deploy-state-${{ needs.classify.outputs.scope }}');
-		expect(source).toContain('path: .treeseed/state');
-		expect(source).toContain('include-hidden-files: true');
-		expect(source).toContain('TREESEED_CONTENT_SERVING_MODE: published_runtime');
+		expect(webSource).not.toContain('TREESEED_WORKFLOW_SKIP_PROVISION');
+		expect(processingSource).not.toContain('TREESEED_WORKFLOW_SKIP_PROVISION');
 		expect(source).not.toContain('submodules: false');
 		expect(source).not.toContain('sparse-checkout: |');
 		expect(source).not.toContain('delete pkg.workspaces');
 		expect(verifySource).not.toContain('delete pkg.workspaces');
 	});
+
+	it('uploads built processing package artifacts for Railway service starts', () => {
+		const source = readFileSync(resolve(workspaceRoot, '.railwayignore'), 'utf8');
+
+		expect(source).not.toContain('\ndist/\n');
+		expect(source).not.toContain('**/dist/');
+	});
 });
 
 describe('package publish safeguards', () => {
-	for (const packageName of ['sdk', 'core', 'cli']) {
+	for (const packageName of ['sdk', 'agent', 'core', 'cli']) {
 		const packageRoot = resolve(workspaceRoot, 'packages', packageName);
 		const publishWorkflowPath = resolve(packageRoot, '.github', 'workflows', 'publish.yml');
 		const describePackagePublishSafeguard = existsSync(publishWorkflowPath)

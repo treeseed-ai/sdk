@@ -13,6 +13,7 @@ import {
 } from './config-runtime.ts';
 import {
 	cliPackageVersion,
+	agentPackageVersion,
 	corePackageVersion,
 	localTemplateArtifactsRoot,
 	sdkPackageVersion,
@@ -374,6 +375,8 @@ function resolveVariableValue(variable: TemplateVariableDefinition, input: Start
 			return input.discordUrl ?? variable.default ?? '';
 		case 'cliVersion':
 			return `^${cliPackageVersion}`;
+		case 'agentVersion':
+			return `^${agentPackageVersion}`;
 		case 'coreVersion':
 			return `^${corePackageVersion}`;
 		case 'sdkVersion':

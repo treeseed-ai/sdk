@@ -181,6 +181,18 @@ describe('github environment api helpers', () => {
 		);
 	});
 
+	it('retries transient GitHub pagination failures for config parity reads', async () => {
+		const client = createMockClient();
+		client.paginate
+			.mockRejectedValueOnce(new Error('Connect Timeout Error'))
+			.mockResolvedValueOnce([{ name: 'CLOUDFLARE_ACCOUNT_ID' }]);
+
+		await expect(listGitHubEnvironmentVariableNames('owner/repo', 'production', { client }))
+			.resolves.toEqual(new Set(['CLOUDFLARE_ACCOUNT_ID']));
+
+		expect(client.paginate).toHaveBeenCalledTimes(2);
+	});
+
 	it('encrypts and upserts environment secrets', async () => {
 		const client = createMockClient();
 		client.request

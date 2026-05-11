@@ -367,6 +367,7 @@ export function resolveWranglerBin() {
 	return resolvePackageBinary('wrangler', 'wrangler');
 }
 export const corePackageRoot = resolveTreeseedPackageRoot('@treeseed/core', '@treeseed/core/config', 'core');
+export const agentPackageRoot = resolveTreeseedPackageRoot('@treeseed/agent', '@treeseed/agent', 'agent');
 export const sdkPackageRoot = resolveTreeseedPackageRoot('@treeseed/sdk', '@treeseed/sdk', 'sdk');
 
 export function loadPackageJson(root = process.cwd()) {

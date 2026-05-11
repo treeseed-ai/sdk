@@ -14,7 +14,7 @@ on:
       workflow_file:
         description: Workflow file to dispatch in the tenant repository
         required: false
-        default: deploy.yml
+        default: deploy-web.yml
         type: string
       project_id:
         description: Treeseed project id recorded in the market control plane
@@ -31,11 +31,11 @@ on:
       action_kind:
         description: Requested orchestration action
         required: true
-        default: deploy_code
+        default: deploy_web
         type: choice
         options:
-          - provision
-          - deploy_code
+          - deploy_web
+          - deploy_processing
           - publish_content
           - monitor
 

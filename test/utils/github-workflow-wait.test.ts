@@ -136,4 +136,70 @@ describe('GitHub workflow wait progress', () => {
 			pollSeconds: 0,
 		})).rejects.toThrow(/Last known state: run 456 in_progress.*actions\/runs\/456/u);
 	});
+
+	it('dispatches a workflow once when no pushed run appears for the requested head', async () => {
+		const dispatches: Array<Record<string, unknown>> = [];
+		let listCalls = 0;
+		const client = {
+			rest: {
+				actions: {
+					listWorkflowRuns: async () => {
+						listCalls += 1;
+						return {
+							data: {
+								workflow_runs: listCalls < 3
+									? []
+									: [{
+										id: 789,
+										status: 'completed',
+										conclusion: 'success',
+										html_url: 'https://github.com/acme/widget/actions/runs/789',
+										head_sha: 'missing-head',
+										head_branch: 'staging',
+										created_at: '2026-05-07T01:00:00Z',
+										updated_at: '2026-05-07T01:00:30Z',
+									}],
+							},
+						};
+					},
+					createWorkflowDispatch: async (params: Record<string, unknown>) => {
+						dispatches.push(params);
+						return { status: 204 };
+					},
+					getWorkflowRun: async () => ({
+						data: {
+							id: 789,
+							status: 'completed',
+							conclusion: 'success',
+							html_url: 'https://github.com/acme/widget/actions/runs/789',
+							head_sha: 'missing-head',
+							head_branch: 'staging',
+							created_at: '2026-05-07T01:00:00Z',
+							updated_at: '2026-05-07T01:00:30Z',
+						},
+					}),
+					listJobsForWorkflowRun: async () => ({ data: { jobs: [] } }),
+				},
+			},
+		};
+
+		const result = await waitForGitHubWorkflowRunCompletion('acme/widget', {
+			client: client as any,
+			workflow: 'verify.yml',
+			headSha: 'missing-head',
+			branch: 'staging',
+			dispatchIfMissing: true,
+			dispatchAfterSeconds: 0,
+			pollSeconds: 0,
+		});
+
+		expect(result).toMatchObject({ runId: 789, conclusion: 'success' });
+		expect(dispatches).toEqual([{
+			owner: 'acme',
+			repo: 'widget',
+			workflow_id: 'verify.yml',
+			ref: 'staging',
+			inputs: undefined,
+		}]);
+	});
 });

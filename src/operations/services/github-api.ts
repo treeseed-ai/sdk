@@ -309,13 +309,13 @@ export async function listGitHubRepositorySecretNames(
 ) {
 	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	try {
-		return await paginateNames(() =>
+		return await withGitHubApiRetries(() => paginateNames(() =>
 			client.paginate(client.rest.actions.listRepoSecrets, {
 				owner,
 				repo: name,
 				per_page: 100,
 			}) as Promise<Array<{ name?: string | null }>>,
-		);
+		));
 	} catch (error) {
 		throw normalizeGitHubApiError(error, `Unable to list GitHub secrets for ${owner}/${name}`);
 	}
@@ -327,13 +327,13 @@ export async function listGitHubRepositoryVariableNames(
 ) {
 	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	try {
-		return await paginateNames(() =>
+		return await withGitHubApiRetries(() => paginateNames(() =>
 			client.paginate(client.rest.actions.listRepoVariables, {
 				owner,
 				repo: name,
 				per_page: 100,
 			}) as Promise<Array<{ name?: string | null }>>,
-		);
+		));
 	} catch (error) {
 		throw normalizeGitHubApiError(error, `Unable to list GitHub variables for ${owner}/${name}`);
 	}
@@ -472,11 +472,11 @@ export async function listGitHubEnvironmentSecretNames(
 ) {
 	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	try {
-		return await paginateGitHubEnvironmentNames(
+		return await withGitHubApiRetries(() => paginateGitHubEnvironmentNames(
 			client,
 			'GET /repos/{owner}/{repo}/environments/{environment_name}/secrets',
 			{ owner, repo: name, environment_name: environmentName },
-		);
+		));
 	} catch (error) {
 		throw normalizeGitHubApiError(error, `Unable to list GitHub environment secrets for ${owner}/${name}:${environmentName}`);
 	}
@@ -489,11 +489,11 @@ export async function listGitHubEnvironmentVariableNames(
 ) {
 	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	try {
-		return await paginateGitHubEnvironmentNames(
+		return await withGitHubApiRetries(() => paginateGitHubEnvironmentNames(
 			client,
 			'GET /repos/{owner}/{repo}/environments/{environment_name}/variables',
 			{ owner, repo: name, environment_name: environmentName },
-		);
+		));
 	} catch (error) {
 		throw normalizeGitHubApiError(error, `Unable to list GitHub environment variables for ${owner}/${name}:${environmentName}`);
 	}
@@ -777,6 +777,9 @@ export async function waitForGitHubWorkflowRunCompletion(
 		branch,
 		timeoutSeconds = 600,
 		pollSeconds = 5,
+		dispatchIfMissing = false,
+		dispatchAfterSeconds = 60,
+		dispatchInputs,
 		onProgress,
 	}: {
 		client?: GitHubApiClient;
@@ -785,11 +788,15 @@ export async function waitForGitHubWorkflowRunCompletion(
 		branch?: string | null;
 		timeoutSeconds?: number;
 		pollSeconds?: number;
+		dispatchIfMissing?: boolean;
+		dispatchAfterSeconds?: number;
+		dispatchInputs?: Record<string, string>;
 		onProgress?: (event: GitHubWorkflowProgressEvent) => void;
 	} = {},
 ) {
 	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	const startedAt = Date.now();
+	let dispatchedMissingRun = false;
 	let lastProgress: GitHubWorkflowProgressEvent | null = null;
 	const emitProgress = (type: GitHubWorkflowProgressEvent['type'], run: GitHubWorkflowRunSummary | null = null, jobs: GitHubWorkflowJobSummary[] = []) => {
 		const completedJobs = jobs.filter((job) => job.status === 'completed');
@@ -827,6 +834,20 @@ export async function waitForGitHubWorkflowRunCompletion(
 				.find((run) => (!headSha || run.headSha === headSha) && (!branch || run.headBranch === branch));
 			if (!match?.id) {
 				emitProgress('waiting');
+				if (dispatchIfMissing && branch && !dispatchedMissingRun && (Date.now() - startedAt) >= dispatchAfterSeconds * 1000) {
+					try {
+						await client.rest.actions.createWorkflowDispatch({
+							owner,
+							repo: name,
+							workflow_id: workflow,
+							ref: branch,
+							inputs: dispatchInputs,
+						});
+						dispatchedMissingRun = true;
+					} catch (error) {
+						throw normalizeGitHubApiError(error, `Unable to dispatch GitHub workflow ${workflow} in ${owner}/${name}`);
+					}
+				}
 				await sleep(pollSeconds * 1000);
 				continue;
 			}

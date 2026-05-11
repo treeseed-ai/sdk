@@ -136,7 +136,7 @@ describe('control-plane reporter', () => {
 				sourceRepoOwner: 'treeseed-ai',
 				sourceRepoName: 'market',
 				sourceRepoUrl: 'https://github.com/treeseed-ai/market',
-				sourceRepoWorkflowPath: '.github/workflows/deploy.yml',
+				sourceRepoWorkflowPath: '.github/workflows/deploy-web.yml',
 				metadata: {},
 				createdAt: '2026-04-16T00:00:00.000Z',
 				updatedAt: '2026-04-16T00:00:00.000Z',
@@ -160,7 +160,7 @@ describe('control-plane reporter', () => {
 			sourceRepoOwner: 'treeseed-ai',
 			sourceRepoName: 'market',
 			sourceRepoUrl: 'https://github.com/treeseed-ai/market',
-			sourceRepoWorkflowPath: '.github/workflows/deploy.yml',
+			sourceRepoWorkflowPath: '.github/workflows/deploy-web.yml',
 		});
 
 		expect(hosting).toMatchObject({

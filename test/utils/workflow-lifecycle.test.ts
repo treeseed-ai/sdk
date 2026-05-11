@@ -89,6 +89,28 @@ function writeStatusConfigEntry(root: string) {
       - config
     validation:
       kind: nonempty
+  RAILWAY_API_TOKEN:
+    label: Railway API token
+    group: auth
+    description: Railway API token for status configuration tests.
+    howToGet: Set any value.
+    sensitivity: secret
+    targets:
+      - github-secret
+    scopes:
+      - staging
+      - prod
+    storage: scoped
+    requirement: conditional
+    purposes:
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+      minLength: 8
+    sourcePriority:
+      - machine-config
+      - process-env
 `, 'utf8');
 }
 
@@ -452,6 +474,14 @@ describe('treeseed workflow lifecycle', () => {
 		expect(sdkReport?.branch).toBe('staging');
 		expect(sdkReport?.branchMode).toBe('package-dev-save');
 		expect(sdkReport?.tagName).toMatch(/^0\.4\.13-dev\.staging\./);
+		expect(result.payload.ciMode).toBe('hosted');
+		expect(result.payload.workflowGates).toEqual(expect.arrayContaining([
+			expect.objectContaining({ name: result.payload.rootRepo.name, workflow: 'deploy.yml', branch: 'staging', timeoutSeconds: 2700 }),
+			expect.objectContaining({ name: '@treeseed/sdk', workflow: 'verify.yml', branch: 'staging' }),
+		]));
+		expect(result.payload.workflowGates).not.toEqual(expect.arrayContaining([
+			expect.objectContaining({ name: result.payload.rootRepo.name, workflow: 'verify.yml', branch: 'staging' }),
+		]));
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
 	}, 180000);
@@ -663,6 +693,38 @@ describe('treeseed workflow lifecycle', () => {
 		expect(autoResumeResult.payload.rootRepo.pushed).toBe(true);
 	}, 180000);
 
+	it('does not auto-resume a failed save when the workspace has new edits', async () => {
+		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
+		git(work, ['checkout', 'staging']);
+		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-dirty-save";\n', 'utf8');
+		git(resolve(work, 'packages', 'core'), ['remote', 'remove', 'origin']);
+		const workflow = workflowFor(work);
+
+		await expect(workflow.save({
+			message: 'feat: original dirty save',
+			verify: false,
+			ciMode: 'off',
+			refreshPreview: false,
+		})).rejects.toBeInstanceOf(TreeseedWorkflowError);
+
+		const recoverResult = await workflow.recover();
+		const runId = recoverResult.payload.interruptedRuns[0]?.runId;
+		expect(runId).toMatch(/^save-/);
+
+		git(resolve(work, 'packages', 'core'), ['remote', 'add', 'origin', packages!.core.origin]);
+		writeFileSync(resolve(work, 'README.md'), '# Demo\n\nnew repair edits\n', 'utf8');
+
+		const freshResult = await workflow.save({
+			message: 'fix: save repair edits',
+			verify: false,
+			ciMode: 'off',
+			refreshPreview: false,
+		});
+		expect(freshResult.runId).not.toBe(runId);
+		expect(freshResult.payload.autoResumed).toBe(false);
+		expect(freshResult.payload.message).toBe('fix: save repair edits');
+	}, 180000);
+
 	it('surfaces active workflow locks through recover and blocks concurrent mutating commands', async () => {
 		const { work } = createWorkflowRepo();
 		const workflow = workflowFor(work);
@@ -865,12 +927,16 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.publishWait.every((entry) => entry.status === 'skipped')).toBe(true);
 		expect(result.payload.repos.every((repo: { workflowGates: Array<{ workflow: string }> }) =>
 			repo.workflowGates.every((gate) => gate.workflow === 'publish.yml'))).toBe(true);
-		expect(result.payload.workflowGates.filter((gate: { name: string }) => gate.name === '@treeseed/market')).toEqual([
-			expect.objectContaining({
-				workflow: 'deploy.yml',
-				branch: result.payload.rootVersion,
-				timeoutSeconds: 2700,
-			}),
+			expect(result.payload.workflowGates.filter((gate: { name: string }) => gate.name === '@treeseed/market')).toEqual([
+				expect.objectContaining({
+					workflow: 'deploy.yml',
+					branch: 'staging',
+				}),
+				expect.objectContaining({
+					workflow: 'deploy.yml',
+					branch: result.payload.rootVersion,
+					timeoutSeconds: 2700,
+				}),
 		]);
 		expect(git(work, ['show', 'main:CHANGELOG.md'])).toContain(`## [${result.payload.rootVersion}]`);
 		expect(git(resolve(work, 'packages', 'sdk'), ['show', 'main:CHANGELOG.md'])).toContain('## [0.4.13]');

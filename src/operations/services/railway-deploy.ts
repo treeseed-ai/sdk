@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { loadCliDeployConfig } from './runtime-tools.ts';
 import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from './deploy.ts';
@@ -262,10 +262,20 @@ export function resolveRailwayAuthToken(env = process.env) {
 export function buildRailwayCommandEnv(env = process.env) {
 	const merged = { ...env };
 	const token = resolveRailwayAuthToken(merged);
+	const projectToken = configuredEnvValue(merged, 'RAILWAY_TOKEN');
 	if (token) {
 		merged.RAILWAY_API_TOKEN = token;
 	} else {
-		delete merged.RAILWAY_API_TOKEN;
+		merged.RAILWAY_API_TOKEN = undefined;
+	}
+	merged.RAILWAY_TOKEN = projectToken || undefined;
+	return merged;
+}
+
+export function buildRailwayDeployCommandEnv(env = process.env) {
+	const merged = buildRailwayCommandEnv(env);
+	if (shouldAttachRailwayDeployLogs(merged)) {
+		merged.CI = 'true';
 	}
 	return merged;
 }
@@ -374,7 +384,11 @@ function isRailwayAlreadyExistsMessage(result) {
 }
 
 export function isRailwayTransientFailure(result) {
-	return /timed out|failed to fetch|temporarily unavailable|econnreset|etimedout|failed to stream build logs|failed to retrieve build log/iu.test(railwayMessage(result));
+	const message = railwayMessage(result);
+	if (!message.trim() && result?.status === 1) {
+		return true;
+	}
+	return /timed out|failed to fetch|temporarily unavailable|econnreset|etimedout|failed to stream build logs|failed to retrieve build log/iu.test(message);
 }
 
 function sleepSync(milliseconds) {
@@ -1357,21 +1371,61 @@ export async function verifyRailwayManagedResources(
 }
 
 function shouldAttachRailwayDeployLogs(env = process.env) {
-	return configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS') === '1';
+	const configured = configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS');
+	if (configured === '1' || configured === 'true') {
+		return true;
+	}
+	if (configured === '0' || configured === 'false') {
+		return false;
+	}
+	return false;
 }
 
-export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
-	const args = [
-		'up',
-		'--service',
-		service.serviceName ?? service.serviceId,
-		shouldAttachRailwayDeployLogs(env) ? '--ci' : '--detach',
-	];
-	if (service.projectId) {
+function shouldUseVerboseRailwayDeploy(env = process.env) {
+	const configured = configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_VERBOSE');
+	if (configured === '1' || configured === 'true') {
+		return true;
+	}
+	if (configured === '0' || configured === 'false') {
+		return false;
+	}
+	return shouldAttachRailwayDeployLogs(env);
+}
+
+function shouldIncludeRailwayIgnoredFiles(env = process.env) {
+	const configured = configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_INCLUDE_IGNORED');
+	return configured === '1' || configured === 'true';
+}
+
+export function shouldRunRailwayPredeployBuild(env = process.env) {
+	const configured = configuredEnvValue(env, 'TREESEED_RAILWAY_PREDEPLOY_BUILD');
+	if (configured === '1' || configured === 'true') {
+		return true;
+	}
+	if (configured === '0' || configured === 'false') {
+		return false;
+	}
+	return configuredEnvValue(env, 'CI') !== 'true';
+}
+
+export function planRailwayServiceDeploy(service, { env = process.env, projectTokenMode = false } = {}) {
+	const serviceSelector = service.serviceName ?? service.serviceId;
+	const args = ['up'];
+	if (serviceSelector) {
+		args.push('--service', serviceSelector);
+	}
+	if (shouldIncludeRailwayIgnoredFiles(env)) {
+		args.push('--no-gitignore');
+	}
+	args.push(shouldAttachRailwayDeployLogs(env) ? '--ci' : '--detach');
+	if (shouldUseVerboseRailwayDeploy(env)) {
+		args.push('--verbose');
+	}
+	if (!projectTokenMode && service.projectId) {
 		args.push('--project', service.projectId);
 	}
 	const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment);
-	if (environmentName) {
+	if (!projectTokenMode && environmentName) {
 		args.push('--environment', environmentName);
 	}
 	return {
@@ -1379,6 +1433,205 @@ export function planRailwayServiceDeploy(service, { env = process.env } = {}) {
 		args,
 		cwd: service.rootDir,
 	};
+}
+
+function planRailwayProjectEnvironmentLink(service) {
+	const args = ['link'];
+	if (service.projectId) {
+		args.push('--project', service.projectId);
+	}
+	const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment);
+	if (environmentName) {
+		args.push('--environment', environmentName);
+	}
+	args.push('--json');
+	return {
+		command: 'railway',
+		args,
+		cwd: service.rootDir,
+	};
+}
+
+function buildRailwayCliContextEnv(env, service) {
+	return {
+		...env,
+		RAILWAY_PROJECT_ID: configuredEnvValue(service, 'projectId') || configuredEnvValue(env, 'RAILWAY_PROJECT_ID') || undefined,
+		RAILWAY_ENVIRONMENT_ID: configuredEnvValue(service, 'environmentId') || configuredEnvValue(env, 'RAILWAY_ENVIRONMENT_ID') || undefined,
+		RAILWAY_SERVICE_ID: configuredEnvValue(service, 'serviceId') || configuredEnvValue(env, 'RAILWAY_SERVICE_ID') || undefined,
+	};
+}
+
+export function buildRailwayLinkCommandEnv(env = process.env, service = {}) {
+	return buildRailwayCliContextEnv({
+		...buildRailwayDeployCommandEnv({ ...env, RAILWAY_TOKEN: undefined }),
+		RAILWAY_TOKEN: undefined,
+	}, service);
+}
+
+function railwayCliConfigPath(env = process.env) {
+	const railwayHome = configuredEnvValue(env, 'RAILWAY_HOME');
+	if (railwayHome) {
+		return resolve(railwayHome, 'config.json');
+	}
+	const home = configuredEnvValue(env, 'HOME');
+	if (!home) {
+		return '';
+	}
+	return resolve(home, '.railway', 'config.json');
+}
+
+function readRailwayCliConfig(configPath) {
+	if (!configPath || !existsSync(configPath)) {
+		return {};
+	}
+	try {
+		const parsed = JSON.parse(readFileSync(configPath, 'utf8'));
+		return parsed && typeof parsed === 'object' ? parsed : {};
+	} catch {
+		return {};
+	}
+}
+
+export function writeRailwayCliProjectConfig(service, { env = process.env, cwd = service.rootDir } = {}) {
+	const projectId = configuredEnvValue(service, 'projectId');
+	const environmentId = configuredEnvValue(service, 'environmentId');
+	const serviceId = configuredEnvValue(service, 'serviceId');
+	const projectPath = cwd ? resolve(cwd) : '';
+	const configPath = railwayCliConfigPath(env);
+	if (!configPath || !projectPath || !projectId || !environmentId || !serviceId) {
+		return null;
+	}
+	const existing = readRailwayCliConfig(configPath);
+	const projects = existing.projects && typeof existing.projects === 'object' ? existing.projects : {};
+	const next = {
+		...existing,
+		projects: {
+			...projects,
+			[projectPath]: {
+				projectPath,
+				name: configuredEnvValue(service, 'projectName') || configuredEnvValue(service, 'serviceName') || projectId,
+				project: projectId,
+				environment: environmentId,
+				environmentName: normalizeRailwayEnvironmentName(service.railwayEnvironment) || configuredEnvValue(service, 'environmentName') || environmentId,
+				service: serviceId,
+			},
+		},
+		user: existing.user && typeof existing.user === 'object'
+			? existing.user
+			: {
+				token: null,
+				accessToken: null,
+				refreshToken: null,
+				tokenExpiresAt: null,
+			},
+		linkedFunctions: existing.linkedFunctions ?? null,
+	};
+	mkdirSync(dirname(configPath), { recursive: true });
+	writeFileSync(configPath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+	return {
+		configPath,
+		projectPath,
+		projectId,
+		environmentId,
+		serviceId,
+	};
+}
+
+export function planRailwayServiceLink(service, { env = process.env } = {}) {
+	const args = ['link'];
+	if (service.projectId) {
+		args.push('--project', service.projectId);
+	}
+	const workspace = resolveRailwayWorkspace(env);
+	if (workspace) {
+		args.push('--workspace', workspace);
+	}
+	const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment);
+	if (environmentName) {
+		args.push('--environment', environmentName);
+	}
+	const serviceSelector = service.serviceName ?? service.serviceId;
+	if (serviceSelector) {
+		args.push('--service', serviceSelector);
+	}
+	args.push('--json');
+	return {
+		command: 'railway',
+		args,
+		cwd: service.rootDir,
+	};
+}
+
+function railwayProjectTokenName(service) {
+	const environment = normalizeRailwayEnvironmentName(service.railwayEnvironment) || 'environment';
+	const serviceName = String(service.serviceName ?? service.serviceId ?? service.key ?? 'service')
+		.toLowerCase()
+		.replace(/[^a-z0-9-]+/gu, '-')
+		.replace(/^-+|-+$/gu, '')
+		.slice(0, 48) || 'service';
+	return `treeseed-ci-${environment}-${serviceName}`;
+}
+
+async function createRailwayCliProjectToken(service, { env = process.env } = {}) {
+	const projectId = configuredEnvValue(service, 'projectId');
+	const environmentId = configuredEnvValue(service, 'environmentId');
+	if (!projectId || !environmentId) {
+		return '';
+	}
+	const name = railwayProjectTokenName(service);
+	try {
+		const existingPayload = await railwayGraphqlRequest({
+			query: `
+query TreeseedProjectTokens($projectId: String!) {
+	projectTokens(projectId: $projectId, first: 100) {
+		edges {
+			node {
+				id
+				name
+				projectId
+				environmentId
+			}
+		}
+	}
+}
+`.trim(),
+			variables: { projectId },
+			env,
+		});
+		const existingTokens = railwayEdgeNodes(existingPayload.data?.projectTokens);
+		for (const token of existingTokens) {
+			if (token?.name === name && token?.projectId === projectId && token?.environmentId === environmentId && token?.id) {
+				await railwayGraphqlRequest({
+					query: `
+mutation TreeseedProjectTokenDelete($id: String!) {
+	projectTokenDelete(id: $id)
+}
+`.trim(),
+					variables: { id: token.id },
+					env,
+				});
+			}
+		}
+	} catch {
+		// Token deletion is best-effort; creation below is the authoritative deploy credential.
+	}
+	const payload = await railwayGraphqlRequest({
+		query: `
+mutation TreeseedProjectTokenCreate($input: ProjectTokenCreateInput!) {
+	projectTokenCreate(input: $input)
+}
+`.trim(),
+		variables: {
+			input: {
+				projectId,
+				environmentId,
+				name,
+			},
+		},
+		env,
+	});
+	const token = payload.data?.projectTokenCreate;
+	return typeof token === 'string' && token.trim() ? token.trim() : '';
 }
 
 async function resolveRailwayDeployProjectContext(service, { env = process.env } = {}) {
@@ -1514,6 +1767,12 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		});
 	}
 	return {
+		projectId: project.id,
+		projectName: project.name ?? service.projectName ?? null,
+		environmentId: environment.id,
+		environmentName: environment.name ?? environmentName,
+		serviceId: railwayService.id,
+		serviceName: railwayService.name ?? service.serviceName ?? null,
 		instance: runtimeConfiguration?.instance ?? null,
 		updated: Boolean(runtimeConfiguration?.updated || volumeConfiguration?.updated || volumeConfiguration?.created),
 		volume: volumeConfiguration
@@ -1640,8 +1899,12 @@ export async function deployRailwayService(
 		};
 	}
 	const deployService = await resolveRailwayDeployProjectContext(service, { env });
-	const plan = planRailwayServiceDeploy(deployService, { env });
 	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
+	let railwayDeployEnv = buildRailwayDeployCommandEnv(commandEnv);
+	const railway = resolveTreeseedToolCommand('railway', { env: commandEnv });
+	if (!railway) {
+		throw new Error('Railway CLI is unavailable.');
+	}
 
 	const taskPrefix = prefix ?? {
 		scope: normalizeScope(deployService.scope ?? deployService.railwayEnvironment ?? 'railway'),
@@ -1652,7 +1915,33 @@ export async function deployRailwayService(
 	const runtimeConfiguration = await syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, {
 		env: commandEnv,
 	});
-	if (deployService.buildCommand) {
+	const cliDeployService = {
+		...deployService,
+		projectId: runtimeConfiguration?.projectId ?? deployService.projectId,
+		projectName: runtimeConfiguration?.projectName ?? deployService.projectName,
+		environmentId: runtimeConfiguration?.environmentId ?? deployService.environmentId,
+		serviceId: runtimeConfiguration?.serviceId ?? deployService.serviceId,
+		serviceName: runtimeConfiguration?.serviceName ?? deployService.serviceName,
+		railwayEnvironment: runtimeConfiguration?.environmentName ?? runtimeConfiguration?.environmentId ?? deployService.railwayEnvironment,
+	};
+	railwayDeployEnv = buildRailwayCliContextEnv(railwayDeployEnv, cliDeployService);
+	const hasCommandApiToken = Boolean(configuredEnvValue(commandEnv, 'RAILWAY_API_TOKEN'));
+	let usesProjectToken = Boolean(configuredEnvValue(railwayDeployEnv, 'RAILWAY_TOKEN'));
+	if (usesProjectToken) {
+		railwayDeployEnv = { ...railwayDeployEnv, RAILWAY_API_TOKEN: undefined };
+	}
+	if (!usesProjectToken && !hasCommandApiToken) {
+		const projectToken = await createRailwayCliProjectToken(cliDeployService, { env: commandEnv });
+		if (projectToken) {
+			railwayDeployEnv = buildRailwayCliContextEnv({ ...railwayDeployEnv, RAILWAY_API_TOKEN: undefined, RAILWAY_TOKEN: projectToken }, cliDeployService);
+			usesProjectToken = true;
+		} else if (configuredEnvValue(commandEnv, 'CI') === 'true') {
+			throw new Error(`Railway CI deploy requires a project token for ${cliDeployService.serviceName ?? cliDeployService.key}. Automatic project token creation did not return a token.`);
+		}
+	}
+	const linkPlan = planRailwayServiceLink(cliDeployService, { env: commandEnv });
+	const plan = planRailwayServiceDeploy(cliDeployService, { env, projectTokenMode: usesProjectToken });
+	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
 		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
 			cwd: deployService.rootDir,
 			env: commandEnv,
@@ -1664,11 +1953,37 @@ export async function deployRailwayService(
 		}
 	}
 
+	const hasRailwayApiToken = Boolean(configuredEnvValue(commandEnv, 'RAILWAY_API_TOKEN'));
+	const cliConfig = configuredEnvValue(commandEnv, 'CI') === 'true'
+		? writeRailwayCliProjectConfig(cliDeployService, { env: railwayDeployEnv, cwd: plan.cwd })
+		: null;
+	const effectiveLinkPlan = hasRailwayApiToken
+		? linkPlan
+		: usesProjectToken
+			? planRailwayProjectEnvironmentLink(cliDeployService)
+			: linkPlan;
+	const railwayLinkEnv = hasRailwayApiToken
+		? buildRailwayLinkCommandEnv(commandEnv, cliDeployService)
+		: railwayDeployEnv;
+	if (cliConfig) {
+		write ? write(`[${taskPrefix.scope}][${taskPrefix.system}][${taskPrefix.task}][link] Wrote Railway CLI project context for ${cliConfig.projectPath}.`, 'stdout') : null;
+	} else {
+		const linkResult = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...effectiveLinkPlan.args], {
+			cwd: effectiveLinkPlan.cwd,
+			env: railwayLinkEnv,
+			write,
+			prefix: { ...taskPrefix, stage: 'link' },
+		});
+		if (linkResult.status !== 0) {
+			throw new Error(linkResult.stderr?.trim() || linkResult.stdout?.trim() || `railway ${effectiveLinkPlan.args.join(' ')} failed with exit code ${linkResult.status ?? 'unknown'} in ${effectiveLinkPlan.cwd}`);
+		}
+	}
+
 	let lastFailure = null;
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
-		const result = await runPrefixedCommand(plan.command, plan.args, {
-			cwd: service.rootDir,
-			env: commandEnv,
+		const result = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...plan.args], {
+			cwd: plan.cwd,
+			env: railwayDeployEnv,
 			write,
 			prefix: taskPrefix,
 		});
@@ -1678,7 +1993,7 @@ export async function deployRailwayService(
 		}
 		lastFailure = result;
 		if (!isRailwayTransientFailure(result) || attempt === 5) {
-			throw new Error(result.stderr?.trim() || result.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
+			throw new Error(result.stderr?.trim() || result.stdout?.trim() || `railway ${plan.args.join(' ')} failed with exit code ${result.status ?? 'unknown'} in ${plan.cwd}`);
 		}
 		const backoffMs = 5000 * attempt;
 		const warning = `Railway deploy for ${deployService.serviceName ?? deployService.serviceId ?? deployService.key} hit a transient failure; retrying in ${Math.round(backoffMs / 1000)}s...`;

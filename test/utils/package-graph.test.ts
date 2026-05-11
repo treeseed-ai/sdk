@@ -7,13 +7,21 @@ const workspaceRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const sdkPackageJsonPath = resolve(workspaceRoot, 'package.json');
 const verifyConsumerPackageJsonPaths = [
 	resolve(workspaceRoot, '..', '..', 'package.json'),
+	resolve(workspaceRoot, '..', 'agent', 'package.json'),
 	resolve(workspaceRoot, '..', 'core', 'package.json'),
 	resolve(workspaceRoot, '..', 'cli', 'package.json'),
 ];
 const verifyDriverPaths = [
 	resolve(workspaceRoot, '..', '..', 'scripts', 'verify-driver.mjs'),
+	resolve(workspaceRoot, '..', 'agent', 'scripts', 'verify-driver.mjs'),
 	resolve(workspaceRoot, '..', 'core', 'scripts', 'verify-driver.mjs'),
 	resolve(workspaceRoot, '..', 'cli', 'scripts', 'verify-driver.mjs'),
+];
+const packageVerifyWorkflowPaths = [
+	resolve(workspaceRoot, '.github', 'workflows', 'verify.yml'),
+	resolve(workspaceRoot, '..', 'agent', '.github', 'workflows', 'verify.yml'),
+	resolve(workspaceRoot, '..', 'core', '.github', 'workflows', 'verify.yml'),
+	resolve(workspaceRoot, '..', 'cli', '.github', 'workflows', 'verify.yml'),
 ];
 
 function walkSourceFiles(root: string): string[] {
@@ -39,7 +47,7 @@ describe('sdk package graph', () => {
 		expect(packageJson.dependencies?.['@treeseed/core']).toBeUndefined();
 	});
 
-	it('keeps core package.json independent from removed agent package', () => {
+	it('keeps core package.json independent from the agent package', () => {
 		const corePackageJsonPath = resolve(workspaceRoot, '..', 'core', 'package.json');
 		if (!existsSync(corePackageJsonPath)) {
 			return;
@@ -79,6 +87,10 @@ describe('sdk package graph', () => {
 			{
 				root: resolve(workspaceRoot, '..', 'core', 'src'),
 				forbidden: ["from '@treeseed/agent", 'from "@treeseed/agent'],
+			},
+			{
+				root: resolve(workspaceRoot, '..', 'agent', 'src'),
+				forbidden: ["from '@treeseed/core", 'from "@treeseed/core'],
 			},
 		];
 
@@ -124,22 +136,34 @@ describe('sdk package graph', () => {
 		}
 	});
 
-	it('keeps the canonical core agent contracts shim in sdk fixture support', () => {
+	it('keeps the canonical agent contracts shim in sdk fixture support', () => {
 		const sdkFixtureSupportPath = resolve(workspaceRoot, 'src', 'fixture-support.ts');
 		expect(existsSync(sdkFixtureSupportPath)).toBe(true);
 		const sdkFixtureSupport = readFileSync(sdkFixtureSupportPath, 'utf8');
-		expect(sdkFixtureSupport.includes("contractsShim?: 'core-agent'")).toBe(true);
+		expect(sdkFixtureSupport.includes("contractsShim?: 'agent-contracts'")).toBe(true);
 
 		const coreRunFixturePath = resolve(workspaceRoot, '..', 'core', 'scripts', 'run-fixture-astro-command.ts');
 		if (existsSync(coreRunFixturePath)) {
 			const coreRunFixture = readFileSync(coreRunFixturePath, 'utf8');
-			expect(coreRunFixture.includes('contractsShim')).toBe(false);
+			expect(coreRunFixture.includes("from '@treeseed/sdk/fixture-support'")).toBe(true);
+			expect(coreRunFixture.includes('buildAgentContractsShimPackage')).toBe(false);
 		}
 	});
 
 	it('publishes the shared verify executable for package consumers', () => {
 		const packageJson = JSON.parse(readFileSync(sdkPackageJsonPath, 'utf8'));
 		expect(packageJson.bin?.['treeseed-sdk-verify']).toBe('./scripts/verify-driver.mjs');
+	});
+
+	it('keeps package verify workflows branch-push triggerable for staging saves', () => {
+		for (const workflowPath of packageVerifyWorkflowPaths) {
+			if (!existsSync(workflowPath)) continue;
+			const workflow = readFileSync(workflowPath, 'utf8');
+			expect(workflow, `${workflowPath} should define a push trigger`).toMatch(/\bon:\s*\n\s+push:\s*(?:\n|$)/u);
+			expect(workflow, `${workflowPath} should not filter verify branch pushes by tag`).not.toMatch(
+				/\b(tags|tags-ignore|branches|branches-ignore):/u,
+			);
+		}
 	});
 
 	it('keeps verify consumers on package-local entrypoints without workspace-linked verify dependencies', () => {

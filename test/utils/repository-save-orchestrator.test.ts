@@ -7,6 +7,7 @@ import {
 	discoverRepositorySaveNodes,
 	nextDevVersion,
 	planRepositorySave,
+	repositorySaveErrorDetails,
 	repositorySaveWaves,
 	runRepositorySaveOrchestrator,
 	runStreamingCommand,
@@ -366,6 +367,106 @@ describe('repository save orchestrator helpers', () => {
 				newSha: sdkReport?.commitSha,
 				packageName: '@treeseed/sdk',
 			});
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it('stops before dependent packages when a wave gate fails', async () => {
+		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
+		try {
+			const root = mkdtempSync(join(tmpdir(), 'treeseed-save-wave-gate-'));
+			const rootOrigin = mkdtempSync(join(tmpdir(), 'treeseed-save-wave-gate-root-origin-'));
+			const packageNames = ['sdk', 'agent', 'core', 'cli'];
+			const packageOrigins = new Map(packageNames.map((name) => [
+				name,
+				mkdtempSync(join(tmpdir(), `treeseed-save-wave-gate-${name}-origin-`)),
+			]));
+
+			git(rootOrigin, ['init', '--bare']);
+			git(root, ['init', '-b', 'staging']);
+			git(root, ['config', 'user.email', 'test@example.com']);
+			git(root, ['config', 'user.name', 'Test User']);
+			git(root, ['remote', 'add', 'origin', rootOrigin]);
+			writeJson(resolve(root, 'package.json'), {
+				name: '@treeseed/market',
+				version: '1.0.0',
+				private: true,
+				workspaces: ['packages/*'],
+				dependencies: {
+					'@treeseed/agent': 'github:treeseed-ai/agent#old',
+					'@treeseed/core': 'github:treeseed-ai/core#old',
+					'@treeseed/cli': 'github:treeseed-ai/cli#old',
+				},
+			});
+
+			for (const name of packageNames) {
+				const packageDir = resolve(root, 'packages', name);
+				mkdirSync(resolve(packageDir, 'src'), { recursive: true });
+				git(packageOrigins.get(name)!, ['init', '--bare']);
+				git(packageDir, ['init', '-b', 'staging']);
+				git(packageDir, ['config', 'user.email', 'test@example.com']);
+				git(packageDir, ['config', 'user.name', 'Test User']);
+				git(packageDir, ['remote', 'add', 'origin', packageOrigins.get(name)!]);
+				writeJson(resolve(packageDir, 'package.json'), {
+					name: `@treeseed/${name}`,
+					version: '0.1.0',
+					type: 'module',
+					publishConfig: { access: 'public' },
+					scripts: { 'release:publish': 'node -e "process.exit(0)"' },
+					...(name === 'sdk'
+						? {}
+						: { dependencies: { '@treeseed/sdk': 'github:treeseed-ai/sdk#old' } }),
+				});
+				writeFileSync(resolve(packageDir, 'src/index.ts'), `export const name = '${name}';\n`, 'utf8');
+				git(packageDir, ['add', '-A']);
+				git(packageDir, ['commit', '-m', `chore: initial ${name}`]);
+				git(packageDir, ['push', '-u', 'origin', 'staging']);
+			}
+
+			git(root, ['add', '-A']);
+			git(root, ['commit', '-m', 'chore: initial root']);
+			git(root, ['push', '-u', 'origin', 'staging']);
+			const before = {
+				root: git(root, ['rev-parse', 'HEAD']),
+				agent: git(resolve(root, 'packages/agent'), ['rev-parse', 'HEAD']),
+				core: git(resolve(root, 'packages/core'), ['rev-parse', 'HEAD']),
+				cli: git(resolve(root, 'packages/cli'), ['rev-parse', 'HEAD']),
+			};
+
+			writeFileSync(resolve(root, 'packages/sdk/src/index.ts'), 'export const name = "sdk-updated";\n', 'utf8');
+			const gateWaves: string[][] = [];
+			let caughtError: unknown;
+			try {
+				await runRepositorySaveOrchestrator({
+					root,
+					gitRoot: root,
+					branch: 'staging',
+					commitMessageMode: 'fallback',
+					verifyMode: 'skip',
+					onWaveSaved: ({ reports }) => {
+						gateWaves.push(reports.map((report) => report.name));
+						const error = new Error('sdk remote ci failed');
+						Object.assign(error, { details: { gate: { name: '@treeseed/sdk' } } });
+						throw error;
+					},
+				});
+			} catch (error) {
+				caughtError = error;
+			}
+
+			expect(caughtError).toBeInstanceOf(Error);
+			expect((caughtError as Error).message).toContain('sdk remote ci failed');
+			expect(repositorySaveErrorDetails(caughtError).details?.partialFailure).toMatchObject({
+				message: 'Treeseed save stopped while waiting for hosted gates after wave 1.',
+				failingRepo: '@treeseed/sdk',
+				error: 'sdk remote ci failed',
+			});
+			expect(gateWaves).toEqual([['@treeseed/sdk']]);
+			expect(git(resolve(root, 'packages/agent'), ['rev-parse', 'HEAD'])).toBe(before.agent);
+			expect(git(resolve(root, 'packages/core'), ['rev-parse', 'HEAD'])).toBe(before.core);
+			expect(git(resolve(root, 'packages/cli'), ['rev-parse', 'HEAD'])).toBe(before.cli);
+			expect(git(root, ['rev-parse', 'HEAD'])).toBe(before.root);
 		} finally {
 			vi.unstubAllEnvs();
 		}

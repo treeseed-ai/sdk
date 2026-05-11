@@ -112,9 +112,16 @@ const NPM_TOOLS: Array<{
 	packageName: string;
 	binName: string;
 	version: string;
+	runtimeBinary?: (packageRoot: string) => string;
 }> = [
 	{ name: 'wrangler', packageName: 'wrangler', binName: 'wrangler', version: '4.86.0' },
-	{ name: 'railway', packageName: '@railway/cli', binName: 'railway', version: '4.44.0' },
+	{
+		name: 'railway',
+		packageName: '@railway/cli',
+		binName: 'railway',
+		version: '4.44.0',
+		runtimeBinary: (packageRoot) => resolve(packageRoot, 'bin', process.platform === 'win32' ? 'railway.exe' : 'railway'),
+	},
 	{ name: 'copilot', packageName: '@github/copilot', binName: 'copilot', version: '1.0.39' },
 	{ name: 'copilot-language-server', packageName: '@github/copilot-language-server', binName: 'copilot-language-server', version: '1.480.0' },
 ];
@@ -310,11 +317,47 @@ function findNpmTool(name: TreeseedManagedToolName) {
 	return NPM_TOOLS.find((tool) => tool.name === name) ?? null;
 }
 
+function resolveNpmToolRuntimeBinary(tool: (typeof NPM_TOOLS)[number]) {
+	const packageJsonPath = resolvePackageJsonPathOptional(tool.packageName);
+	if (!packageJsonPath) {
+		return null;
+	}
+	const packageRoot = dirname(packageJsonPath);
+	const packageBin = resolvePackageBinaryOptional(tool.packageName, tool.binName);
+	if (!packageBin || !existsSync(packageBin)) {
+		return null;
+	}
+	if (!tool.runtimeBinary) {
+		return packageBin;
+	}
+	const runtimeBinary = tool.runtimeBinary(packageRoot);
+	return existsSync(runtimeBinary) ? runtimeBinary : null;
+}
+
+function npmToolMissingDetail(tool: (typeof NPM_TOOLS)[number]) {
+	const packageJsonPath = resolvePackageJsonPathOptional(tool.packageName);
+	if (!packageJsonPath) {
+		return `${tool.packageName} is missing from the installed package graph.`;
+	}
+	const packageRoot = dirname(packageJsonPath);
+	const packageBin = resolvePackageBinaryOptional(tool.packageName, tool.binName);
+	if (!packageBin || !existsSync(packageBin)) {
+		return `${tool.packageName} binary ${tool.binName} is missing from the installed package.`;
+	}
+	if (tool.runtimeBinary) {
+		const runtimeBinary = tool.runtimeBinary(packageRoot);
+		if (!existsSync(runtimeBinary)) {
+			return `${tool.packageName} runtime binary ${runtimeBinary} is missing. Run \`npx trsd install --json\` or npm install without --ignore-scripts.`;
+		}
+	}
+	return `${tool.packageName} is unavailable.`;
+}
+
 function npmBackedDependenciesAvailable() {
 	try {
 		for (const tool of NPM_TOOLS) {
-			const binaryPath = resolvePackageBinary(tool.packageName, tool.binName);
-			if (!existsSync(binaryPath)) {
+			const binaryPath = resolveNpmToolRuntimeBinary(tool);
+			if (!binaryPath || !existsSync(binaryPath)) {
 				return false;
 			}
 		}
@@ -354,6 +397,22 @@ function resolveNpmInstallCommand(env: NodeJS.ProcessEnv = process.env) {
 	};
 }
 
+function resolveNpmRebuildCommand(env: NodeJS.ProcessEnv = process.env, packageNames: string[]) {
+	const npmExecPath = env.npm_execpath || env.NPM_EXEC_PATH;
+	if (npmExecPath?.trim()) {
+		return {
+			command: process.execPath,
+			args: [npmExecPath, 'rebuild', ...packageNames],
+			display: [process.execPath, npmExecPath, 'rebuild', ...packageNames],
+		};
+	}
+	return {
+		command: 'npm',
+		args: ['rebuild', ...packageNames],
+		display: ['npm', 'rebuild', ...packageNames],
+	};
+}
+
 function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'force' | 'write'>): TreeseedNpmInstallReport[] {
 	const tenantRoot = options.tenantRoot ? resolve(options.tenantRoot) : null;
 	const npmCommand = resolveNpmInstallCommand(options.env);
@@ -378,6 +437,16 @@ function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env
 
 	const nodeModulesMissing = !existsSync(resolve(tenantRoot, 'node_modules'));
 	const npmDepsMissing = !npmBackedDependenciesAvailable();
+	const missingRuntimeTools = npmToolsMissingRuntime();
+	if (!options.force && !nodeModulesMissing && npmDepsMissing && missingRuntimeTools.length > 0) {
+		return [{
+			root: tenantRoot,
+			command: npmCommand.display,
+			status: 'already-present',
+			exitCode: 0,
+			detail: `npm dependencies are installed; rebuilding missing runtime tools: ${missingRuntimeTools.map((tool) => tool.packageName).join(', ')}.`,
+		}];
+	}
 	if (!options.force && !nodeModulesMissing && !npmDepsMissing) {
 		return [{
 			root: tenantRoot,
@@ -424,13 +493,71 @@ function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env
 	}];
 }
 
+function npmToolsMissingRuntime() {
+	return NPM_TOOLS.filter((tool) => !resolveNpmToolRuntimeBinary(tool));
+}
+
+function runNpmToolRebuilds(options: Required<Pick<DependencyInstallerOptions, 'env' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'write'>): TreeseedNpmInstallReport[] {
+	const missingRuntimeTools = npmToolsMissingRuntime();
+	if (missingRuntimeTools.length === 0) {
+		return [];
+	}
+	const tenantRoot = options.tenantRoot ? resolve(options.tenantRoot) : null;
+	const npmCommand = resolveNpmRebuildCommand(options.env, missingRuntimeTools.map((tool) => tool.packageName));
+	if (!tenantRoot || !existsSync(resolve(tenantRoot, 'package.json'))) {
+		return [{
+			root: tenantRoot,
+			command: npmCommand.display,
+			status: 'skipped',
+			exitCode: null,
+			detail: tenantRoot ? `No package.json found in ${tenantRoot}; npm rebuild skipped.` : 'No tenant root was provided; npm rebuild skipped.',
+		}];
+	}
+	if (options.env.TREESEED_MANAGED_NPM_INSTALL === '1') {
+		return [{
+			root: tenantRoot,
+			command: npmCommand.display,
+			status: 'skipped',
+			exitCode: null,
+			detail: 'npm rebuild skipped because TREESEED_MANAGED_NPM_INSTALL=1 is set.',
+		}];
+	}
+
+	options.write?.(`Rebuilding npm-backed Treeseed tools in ${tenantRoot}...`);
+	const result = options.spawn(npmCommand.command, npmCommand.args, {
+		cwd: tenantRoot,
+		env: {
+			...options.env,
+			TREESEED_MANAGED_NPM_INSTALL: '1',
+		},
+		stdio: 'pipe',
+		encoding: 'utf8',
+	});
+	const detail = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim() || result.error?.message || '';
+	const stillMissing = npmToolsMissingRuntime().map((tool) => tool.packageName);
+	const ok = result.status === 0 && !result.error && stillMissing.length === 0;
+	return [{
+		root: tenantRoot,
+		command: npmCommand.display,
+		status: ok ? 'installed' : 'failed',
+		exitCode: result.status ?? (ok ? 0 : 1),
+		detail: ok
+			? detail || 'npm-backed Treeseed tools rebuilt successfully.'
+			: [
+				detail || 'npm-backed Treeseed tool rebuild failed.',
+				stillMissing.length > 0 ? `Missing runtime tools after rebuild: ${stillMissing.join(', ')}` : '',
+			].filter(Boolean).join('\n'),
+	}];
+}
+
 export function formatTreeseedDependencyFailureDetails(result: Pick<TreeseedDependencyInstallResult, 'npmInstalls' | 'reports'>) {
 	const npmFailures = result.npmInstalls
 		.filter((entry) => entry.status === 'failed')
 		.map((entry) => {
 			const root = entry.root ?? 'no tenant root';
 			const exit = entry.exitCode === null ? 'unknown exit code' : `exit code ${entry.exitCode}`;
-			return `npm install in ${root}: ${entry.command.join(' ')} failed with ${exit}${entry.detail ? `: ${entry.detail}` : ''}`;
+			const operation = entry.command.includes('rebuild') ? 'npm rebuild' : 'npm install';
+			return `${operation} in ${root}: ${entry.command.join(' ')} failed with ${exit}${entry.detail ? `: ${entry.detail}` : ''}`;
 		});
 	const toolFailures = result.reports
 		.filter((entry) => entry.required && ['failed', 'missing', 'unsupported'].includes(entry.status))
@@ -448,7 +575,7 @@ export function resolveTreeseedToolBinary(toolName: TreeseedManagedToolName, opt
 	}
 	const npmTool = findNpmTool(toolName);
 	if (npmTool) {
-		return resolvePackageBinaryOptional(npmTool.packageName, npmTool.binName);
+		return resolveNpmToolRuntimeBinary(npmTool);
 	}
 	if (toolName === 'git' || toolName === 'docker') {
 		return locateSystemBinary(toolName, spawnSync, options.env ?? process.env);
@@ -461,7 +588,7 @@ export function resolveTreeseedToolCommand(toolName: TreeseedManagedToolName, op
 	if (!binaryPath) {
 		return null;
 	}
-	if (findNpmTool(toolName)) {
+	if (findNpmTool(toolName) && /\.(?:cjs|mjs|js)$/u.test(binaryPath)) {
 		return { command: process.execPath, argsPrefix: [binaryPath], binaryPath };
 	}
 	return { command: binaryPath, argsPrefix: [], binaryPath };
@@ -478,7 +605,7 @@ function invocationForTool(toolName: TreeseedManagedToolName, env: NodeJS.Proces
 		};
 	}
 	return {
-		mode: findNpmTool(toolName) ? 'node' : 'direct',
+		mode: findNpmTool(toolName) && /\.(?:cjs|mjs|js)$/u.test(command.binaryPath) ? 'node' : 'direct',
 		command: command.command,
 		argsPrefix: command.argsPrefix,
 		binaryPath: command.binaryPath,
@@ -693,7 +820,7 @@ async function installGh(options: Required<Pick<DependencyInstallerOptions, 'env
 
 function statusForNpmTool(tool: (typeof NPM_TOOLS)[number], options: DependencyInstallerOptions): TreeseedDependencyReport {
 	try {
-		const binaryPath = resolvePackageBinaryOptional(tool.packageName, tool.binName);
+		const binaryPath = resolveNpmToolRuntimeBinary(tool);
 		return report({
 			name: tool.name,
 			kind: 'npm',
@@ -704,7 +831,7 @@ function statusForNpmTool(tool: (typeof NPM_TOOLS)[number], options: DependencyI
 			required: true,
 			detail: binaryPath && existsSync(binaryPath)
 				? `${tool.packageName} is available from the Treeseed SDK dependency graph.`
-				: `${tool.packageName} binary ${tool.binName} is missing from the installed package.`,
+				: npmToolMissingDetail(tool),
 		});
 	} catch (error) {
 		return report({
@@ -840,7 +967,10 @@ export async function installTreeseedDependencies(options: DependencyInstallerOp
 	};
 	mkdirSync(resolveToolsHome(env), { recursive: true });
 	mkdirSync(createTreeseedManagedToolEnv(env).GH_CONFIG_DIR, { recursive: true });
-	const npmInstalls = runNpmBootstrap(effectiveOptions);
+	const npmInstalls = [
+		...runNpmBootstrap(effectiveOptions),
+		...runNpmToolRebuilds(effectiveOptions),
+	];
 	const reports: TreeseedDependencyReport[] = [
 		systemStatus('git', true, effectiveOptions),
 		await installGh(effectiveOptions),

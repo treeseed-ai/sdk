@@ -51,7 +51,7 @@ import { runPrefixedCommand, runTreeseedBootstrapDag, sleep, writeTreeseedBootst
 import { runTenantDeployPreflight } from './save-deploy-preflight.ts';
 
 export type ProjectPlatformScope = 'local' | 'staging' | 'prod';
-export type ProjectPlatformAction = 'provision' | 'deploy_code' | 'publish_content' | 'monitor';
+export type ProjectPlatformAction = 'deploy_web' | 'deploy_processing' | 'publish_content' | 'monitor';
 
 export interface ProjectPlatformActionOptions {
 	tenantRoot: string;
@@ -68,6 +68,8 @@ export interface ProjectPlatformActionOptions {
 }
 
 const PROJECT_PLATFORM_BOOTSTRAP_SYSTEMS: TreeseedRunnableBootstrapSystem[] = ['data', 'web', 'api', 'agents'];
+const WEB_PLATFORM_BOOTSTRAP_SYSTEMS: TreeseedRunnableBootstrapSystem[] = ['data', 'web'];
+const PROCESSING_PLATFORM_BOOTSTRAP_SYSTEMS: TreeseedRunnableBootstrapSystem[] = ['api', 'agents'];
 
 function stableHash(value: Buffer | string) {
 	return createHash('sha256').update(value).digest('hex');
@@ -583,24 +585,39 @@ function stableArtifactAliasKey(teamId: string, artifact: { kind: string; itemId
 	return `teams/${teamId}/published/artifacts/${artifact.kind}/${artifact.itemId}/${fileName}`;
 }
 
-async function probeHttp(url: string) {
-	try {
-		const response = await fetch(url, {
-			headers: { accept: 'application/json,text/html;q=0.9,*/*;q=0.8' },
-		});
-		return {
-			ok: response.ok,
-			status: response.status,
-			url,
-		};
-	} catch (error) {
-		return {
-			ok: false,
-			status: null,
-			url,
-			error: error instanceof Error ? error.message : String(error),
-		};
+async function probeHttp(url: string, { attempts = 1, delayMs = 2000 }: { attempts?: number; delayMs?: number } = {}) {
+	let result: { ok: boolean; status: number | null; url: string; error?: string; attempts?: number } = {
+		ok: false,
+		status: null,
+		url,
+	};
+	const maxAttempts = Math.max(1, Math.floor(attempts));
+	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+		try {
+			const response = await fetch(url, {
+				headers: { accept: 'application/json,text/html;q=0.9,*/*;q=0.8' },
+			});
+			result = {
+				ok: response.ok,
+				status: response.status,
+				url,
+				attempts: attempt,
+			};
+		} catch (error) {
+			result = {
+				ok: false,
+				status: null,
+				url,
+				error: error instanceof Error ? error.message : String(error),
+				attempts: attempt,
+			};
+		}
+		if (result.ok || attempt >= maxAttempts) {
+			return result;
+		}
+		await sleep(delayMs);
 	}
+	return result;
 }
 
 function queueClientConfig(siteConfig, state) {
@@ -1441,6 +1458,13 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 	const state = loadDeployState(options.tenantRoot, siteConfig, { target });
 	const webProbeUrl = resolveImmediatePagesProbeUrl(siteConfig, state, target);
 	const apiBaseUrl = resolveImmediateApiProbeUrl(siteConfig, state, target);
+	const railwayResources = options.scope === 'local' || (!apiSelected && !agentsSelected)
+		? { ok: true, skipped: true, reason: options.scope === 'local' ? 'local_scope' : 'railway_not_selected' }
+		: await verifyRailwayManagedResources(options.tenantRoot, options.scope, {
+			env,
+			settleDeployments: true,
+			onProgress: options.write,
+		});
 	const skippedApiCheck = apiSelected
 		? { ok: false, skipped: true, reason: 'api_url_unconfigured' }
 		: { ok: true, skipped: true, reason: 'api_not_selected' };
@@ -1448,28 +1472,21 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		? { ok: false, skipped: true, reason: 'api_url_unconfigured' }
 		: { ok: true, skipped: true, reason: 'agents_not_selected' };
 	const checks = {
-		pages: await probeHttp(webProbeUrl),
-		apiHealth: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz`) : skippedApiCheck,
-		apiReady: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/readyz`) : skippedApiCheck,
-		d1Health: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz/deep`) : skippedApiCheck,
-		agentHealth: agentsSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/internal/core/agent/healthz`) : skippedAgentCheck,
+		pages: await probeHttp(webProbeUrl, { attempts: 3, delayMs: 5000 }),
+		apiHealth: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz`, { attempts: 8, delayMs: 10000 }) : skippedApiCheck,
+		apiReady: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/readyz`, { attempts: 8, delayMs: 10000 }) : skippedApiCheck,
+		d1Health: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz/deep`, { attempts: 8, delayMs: 10000 }) : skippedApiCheck,
+		agentHealth: agentsSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/internal/core/agent/healthz`, { attempts: 8, delayMs: 10000 }) : skippedAgentCheck,
 		r2: options.dryRun ? { ok: true, skipped: true, reason: 'dry_run' } : probeR2(options.tenantRoot, siteConfig, state, target),
 		queue: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : probeQueue(siteConfig, state),
 		scaleProbe: probeScaleConfiguration(siteConfig, state),
-		railwayResources: options.scope === 'local' || (!apiSelected && !agentsSelected)
-			? Promise.resolve({ ok: true, skipped: true, reason: options.scope === 'local' ? 'local_scope' : 'railway_not_selected' })
-			: verifyRailwayManagedResources(options.tenantRoot, options.scope, {
-				env,
-				settleDeployments: true,
-				onProgress: options.write,
-			}),
+		railwayResources,
 		readiness: state.readiness,
 	};
 	const resolvedChecks = {
 		...checks,
 		r2: await checks.r2,
 		queue: await checks.queue,
-		railwayResources: await checks.railwayResources,
 	};
 	const ok = [
 		resolvedChecks.pages,
@@ -1530,14 +1547,26 @@ export async function syncControlPlaneState(options: ProjectPlatformActionOption
 }
 
 export async function runProjectPlatformAction(action: ProjectPlatformAction, options: ProjectPlatformActionOptions) {
+	const previousWorkflowAction = process.env.TREESEED_WORKFLOW_ACTION;
+	const previousWorkflowPlane = process.env.TREESEED_WORKFLOW_PLANE;
+	process.env.TREESEED_WORKFLOW_ACTION = action;
+	process.env.TREESEED_WORKFLOW_PLANE = previousWorkflowPlane ?? (action === 'deploy_processing' ? 'processing' : 'web');
 	applyTreeseedEnvironmentToProcess({ tenantRoot: options.tenantRoot, scope: options.scope, override: true });
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	try {
 		switch (action) {
-			case 'provision':
-				return await provisionProjectPlatform({ ...options, reporter });
-			case 'deploy_code':
-				return await deployProjectPlatform({ ...options, reporter });
+			case 'deploy_web':
+				return await deployProjectPlatform({
+					...options,
+					reporter,
+					bootstrapSystems: options.bootstrapSystems ?? WEB_PLATFORM_BOOTSTRAP_SYSTEMS,
+				});
+			case 'deploy_processing':
+				return await deployProjectPlatform({
+					...options,
+					reporter,
+					bootstrapSystems: options.bootstrapSystems ?? PROCESSING_PLATFORM_BOOTSTRAP_SYSTEMS,
+				});
 			case 'publish_content':
 				return await publishProjectContent({ ...options, reporter });
 			case 'monitor':
@@ -1548,11 +1577,9 @@ export async function runProjectPlatformAction(action: ProjectPlatformAction, op
 	} catch (error) {
 		await reportDeployment(reporter, {
 			environment: options.scope,
-			deploymentKind: action === 'provision'
-				? 'provision'
-				: action === 'publish_content'
+			deploymentKind: action === 'publish_content'
 					? 'content'
-					: action === 'deploy_code'
+					: action === 'deploy_web' || action === 'deploy_processing'
 						? 'code'
 						: 'mixed',
 			status: 'failed',
@@ -1565,5 +1592,16 @@ export async function runProjectPlatformAction(action: ProjectPlatformAction, op
 			finishedAt: new Date().toISOString(),
 		}).catch(() => undefined);
 		throw error;
+	} finally {
+		if (previousWorkflowAction === undefined) {
+			delete process.env.TREESEED_WORKFLOW_ACTION;
+		} else {
+			process.env.TREESEED_WORKFLOW_ACTION = previousWorkflowAction;
+		}
+		if (previousWorkflowPlane === undefined) {
+			delete process.env.TREESEED_WORKFLOW_PLANE;
+		} else {
+			process.env.TREESEED_WORKFLOW_PLANE = previousWorkflowPlane;
+		}
 	}
 }

@@ -50,7 +50,7 @@ describe('hosted deployment state', () => {
 			scope: 'prod',
 			commit: 'abc123',
 			timestamp: '2026-05-07T02:30:00Z',
-			workflow: 'deploy.yml',
+			workflow: 'deploy-web.yml',
 			runId: 12345,
 		});
 		const persisted = loadDeployState(root, loadCliDeployConfig(root), {
@@ -74,7 +74,7 @@ describe('hosted deployment state', () => {
 			url: 'https://example.com',
 			target: 'prod',
 			source: 'hosted-github-workflow',
-			workflow: 'deploy.yml',
+			workflow: 'deploy-web.yml',
 			runId: 12345,
 		});
 	});

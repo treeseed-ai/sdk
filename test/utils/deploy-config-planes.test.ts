@@ -35,6 +35,7 @@ cloudflare:
 		expect(config.hub).toMatchObject({ mode: 'treeseed_hosted' });
 		expect(config.runtime).toMatchObject({ mode: 'none', registration: 'none' });
 		expect(config.hosting).toMatchObject({ kind: 'self_hosted_project', registration: 'none' });
+		expect(config.processing).toMatchObject({ mode: 'market-assigned' });
 	});
 
 	it('normalizes legacy hosted_project configs into a treeseed-managed runtime plane', async () => {
@@ -168,6 +169,30 @@ services:
 		expect(config.surfaces?.web?.local?.runtime).toBe('provider');
 		expect(config.services?.api?.local?.runtime).toBe('local');
 		expect(config.services?.worker?.local?.runtime).toBe('auto');
+		expect(config.processing).toMatchObject({ mode: 'project-owned' });
+	});
+
+	it('parses explicit processing capacity assignment', async () => {
+		const configPath = await writeDeployConfig(`name: Test Site
+slug: test-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+cloudflare:
+  accountId: account-123
+processing:
+  mode: team-owned
+  providerRef: team-default-processing
+  requiredCapabilities:
+    - graph.refresh
+    - task.execute
+`);
+
+		const config = loadTreeseedDeployConfigFromPath(configPath);
+		expect(config.processing).toEqual({
+			mode: 'team-owned',
+			providerRef: 'team-default-processing',
+			requiredCapabilities: ['graph.refresh', 'task.execute'],
+		});
 	});
 
 	it('rejects invalid provider-aware local runtime values', async () => {
