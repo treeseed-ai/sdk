@@ -19,6 +19,7 @@ import { createPublishedContentPipeline } from '../../platform/published-content
 import { collectTreeseedReconcileStatus, reconcileTreeseedTarget, resolveTreeseedBootstrapSelection } from '../../reconcile/index.ts';
 import { loadTreeseedManifest } from '../../platform/tenant-config.ts';
 import { applyTreeseedEnvironmentToProcess, assertTreeseedCommandEnvironment } from './config-runtime.ts';
+import { runTreeseedHostingAudit } from './hosting-audit.ts';
 import {
 	assertDeploymentInitialized,
 	createPersistentDeployTarget,
@@ -467,6 +468,74 @@ async function reportDeployment(
 	input: ControlPlaneDeploymentReport,
 ) {
 	await reporter.reportDeployment(input);
+}
+
+function summarizePostDeployHostingAudit(report: Awaited<ReturnType<typeof runTreeseedHostingAudit>>, phase: 'already_ready' | 'repaired') {
+	const failedChecks = report.checks.filter((check) => check.status === 'failed').length;
+	const repairedChecks = report.checks.filter((check) => check.status === 'repaired').length;
+	return {
+		ok: report.ok,
+		phase,
+		environment: report.environment,
+		repairMode: report.repairMode,
+		repaired: report.repaired || repairedChecks > 0,
+		repairedChecks,
+		failedChecks,
+		blockers: report.blockers,
+		warnings: report.warnings,
+		checkedAt: report.checkedAt,
+	};
+}
+
+async function repairHostingAfterSuccessfulDeploy(options: ProjectPlatformActionOptions) {
+	if (options.scope === 'local') {
+		return {
+			ok: true,
+			skipped: true,
+			reason: 'local_environment',
+		};
+	}
+	if (options.dryRun) {
+		return {
+			ok: true,
+			skipped: true,
+			reason: 'dry_run',
+		};
+	}
+	if (process.env.TREESEED_POST_DEPLOY_HOSTING_REPAIR === 'off') {
+		return {
+			ok: true,
+			skipped: true,
+			reason: 'disabled',
+		};
+	}
+	const environment = options.scope === 'prod' ? 'prod' : 'staging';
+	const env = { ...process.env, ...(options.env ?? {}) };
+	const hostKinds = ['repository', 'web', 'processing', 'email'] as const;
+	const audit = await runTreeseedHostingAudit({
+		tenantRoot: options.tenantRoot,
+		environment,
+		repair: false,
+		env,
+		hostKinds: [...hostKinds],
+	});
+	if (audit.ok) {
+		return summarizePostDeployHostingAudit(audit, 'already_ready');
+	}
+	options.write?.(`[${environment}][hosting][repair] Hosting readiness needs repair after deploy.`);
+	const repaired = await runTreeseedHostingAudit({
+		tenantRoot: options.tenantRoot,
+		environment,
+		repair: true,
+		env,
+		hostKinds: [...hostKinds],
+		write: (line) => options.write?.(`[${environment}][hosting][repair] ${line}`),
+	});
+	const summary = summarizePostDeployHostingAudit(repaired, 'repaired');
+	if (!summary.ok) {
+		throw new Error(`Post-deploy hosting repair failed: ${summary.blockers[0] ?? `${summary.failedChecks} failed hosting readiness checks remain.`}`);
+	}
+	return summary;
 }
 
 function resolveReporter(tenantRoot: string, explicit: ControlPlaneReporter | undefined) {
@@ -1403,6 +1472,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		});
 	}
 	const monitor = await monitorProjectPlatform({ ...options, reporter, bootstrapSystems });
+	const hostingRepair = await repairHostingAfterSuccessfulDeploy(options);
 
 	await reportDeployment(reporter, {
 		environment: options.scope,
@@ -1417,6 +1487,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 				.map((service) => service.key)
 				.filter((serviceKey) => serviceKey === 'api' ? selectedSystems.has('api') : selectedSystems.has('agents')),
 			monitor,
+			hostingRepair,
 		},
 		finishedAt: new Date().toISOString(),
 	});
@@ -1425,6 +1496,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		ok: true,
 		scope: options.scope,
 		monitor,
+		hostingRepair,
 		serviceResults,
 	};
 }
