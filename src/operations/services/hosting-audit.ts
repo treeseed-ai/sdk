@@ -669,8 +669,14 @@ export async function runTreeseedHostingAudit({
 	const connectionReport = await checkTreeseedProviderConnections({
 		tenantRoot,
 		scope: resolved.scope,
-		env: values,
-		valuesOverlay: values,
+		env: {
+			...values,
+			TREESEED_GITHUB_IDENTITY_MODE: 'account',
+		},
+		valuesOverlay: {
+			...values,
+			TREESEED_GITHUB_IDENTITY_MODE: 'account',
+		},
 	});
 	checks.push(...providerConnectionChecks(connectionReport, hostKinds));
 
