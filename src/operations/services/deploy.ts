@@ -1194,22 +1194,44 @@ function shouldManageCloudflareWebCacheRules(deployConfig, target) {
 export function cloudflareApiRequest(path, { method = 'GET', body, env, allowFailure = false } = {}) {
 	const requestScript = `import { readFileSync } from 'node:fs';
 const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
-const response = await fetch(input.url, {
-  method: input.method,
-  headers: {
-    authorization: 'Bearer ' + input.token,
-    'content-type': 'application/json',
-  },
-  body: input.body ? JSON.stringify(input.body) : undefined,
-});
-const rawBody = await response.text();
-let payload;
-try {
-  payload = rawBody ? JSON.parse(rawBody) : {};
-} catch {
-  payload = { success: false, errors: [{ message: rawBody || 'empty response' }] };
+function errorMessage(error) {
+  const parts = [];
+  if (error && typeof error.message === 'string') parts.push(error.message);
+  const cause = error?.cause;
+  if (cause && typeof cause.message === 'string') parts.push(cause.message);
+  if (cause && typeof cause.code === 'string') parts.push(cause.code);
+  if (Array.isArray(cause?.errors)) {
+    for (const entry of cause.errors) {
+      if (entry && typeof entry.message === 'string') parts.push(entry.message);
+      if (entry && typeof entry.code === 'string') parts.push(entry.code);
+    }
+  }
+  return [...new Set(parts.filter(Boolean))].join('; ') || String(error);
 }
-process.stdout.write(JSON.stringify({ ok: response.ok, payload }));`;
+try {
+  const response = await fetch(input.url, {
+    method: input.method,
+    headers: {
+      authorization: 'Bearer ' + input.token,
+      'content-type': 'application/json',
+    },
+    body: input.body ? JSON.stringify(input.body) : undefined,
+  });
+  const rawBody = await response.text();
+  let payload;
+  try {
+    payload = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    payload = { success: false, errors: [{ message: rawBody || 'empty response' }] };
+  }
+  process.stdout.write(JSON.stringify({ ok: response.ok, payload }));
+} catch (error) {
+  process.stdout.write(JSON.stringify({
+    ok: false,
+    transient: true,
+    payload: { success: false, errors: [{ message: errorMessage(error) }] },
+  }));
+}`;
 	const requestInput = JSON.stringify({
 		url: `https://api.cloudflare.com/client/v4${path}`,
 		method,
@@ -1217,6 +1239,15 @@ process.stdout.write(JSON.stringify({ ok: response.ok, payload }));`;
 		token: env?.CLOUDFLARE_API_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN ?? '',
 	});
 	const isTransient = (text) => /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted/iu.test(text || '');
+	const formatPayloadErrors = (payload) => Array.isArray(payload?.errors)
+		? payload.errors.map((entry) => entry?.message ?? JSON.stringify(entry)).join('; ')
+		: '';
+	const summarizeChildError = (text) => {
+		const lines = String(text || '').split('\n').map((line) => line.trim()).filter(Boolean);
+		return lines.find((line) => /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted|typeerror|error/iu.test(line))
+			?? lines[0]
+			?? '';
+	};
 	let attempt = 0;
 	for (;;) {
 		const response = spawnSync(
@@ -1235,32 +1266,53 @@ process.stdout.write(JSON.stringify({ ok: response.ok, payload }));`;
 			},
 		);
 		if (response.error?.code === 'ETIMEDOUT') {
-			if (attempt < 2) {
+			if (attempt < 4) {
 				attempt += 1;
+				sleepSync(500 * attempt);
 				continue;
 			}
 			if (!allowFailure) {
-				throw new Error(`Cloudflare API request timed out: ${method} ${path}`);
+				throw new Error(`Cloudflare API request timed out after ${attempt + 1} attempts: ${method} ${path}`);
 			}
 			return null;
 		}
 		const stderr = response.stderr?.trim() || '';
 		if (response.status !== 0) {
-			if (attempt < 2 && isTransient(stderr)) {
+			if (attempt < 4 && isTransient(stderr)) {
 				attempt += 1;
+				sleepSync(500 * attempt);
 				continue;
 			}
 			if (!allowFailure) {
-				throw new Error(stderr || `Cloudflare API request failed: ${method} ${path}`);
+				const detail = summarizeChildError(stderr);
+				throw new Error(detail
+					? `Cloudflare API request failed after ${attempt + 1} attempts: ${method} ${path}: ${detail}`
+					: `Cloudflare API request failed after ${attempt + 1} attempts: ${method} ${path}`);
 			}
 		}
 
-		const parsed = JSON.parse(response.stdout?.trim() || '{"ok":false,"payload":{"success":false,"errors":[{"message":"empty response"}]}}');
+		let parsed;
+		try {
+			parsed = JSON.parse(response.stdout?.trim() || '{"ok":false,"payload":{"success":false,"errors":[{"message":"empty response"}]}}');
+		} catch {
+			parsed = {
+				ok: false,
+				payload: {
+					success: false,
+					errors: [{ message: response.stdout?.trim() || stderr || 'empty response' }],
+				},
+			};
+		}
+		const details = formatPayloadErrors(parsed.payload);
+		if (!parsed.ok && parsed.transient && attempt < 4 && isTransient(details)) {
+			attempt += 1;
+			sleepSync(500 * attempt);
+			continue;
+		}
 		if (!parsed.ok && !allowFailure) {
-			const details = Array.isArray(parsed.payload?.errors)
-				? parsed.payload.errors.map((entry) => entry?.message ?? JSON.stringify(entry)).join('; ')
-				: 'unknown error';
-			throw new Error(details || `Cloudflare API request failed: ${method} ${path}`);
+			throw new Error(details
+				? `Cloudflare API request failed after ${attempt + 1} attempts: ${method} ${path}: ${details}`
+				: `Cloudflare API request failed after ${attempt + 1} attempts: ${method} ${path}`);
 		}
 		return parsed.payload;
 	}

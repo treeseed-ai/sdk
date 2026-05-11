@@ -197,6 +197,78 @@ describe('config runtime shared environment values', () => {
 		expect(resolveTreeseedMachineEnvironmentValues(tenantRoot, 'prod').SHARED_VALUE).toBe('shared-value');
 	});
 
+	it('includes market control plane hosted repository entries when hub and runtime planes are explicit', () => {
+		const tenantRoot = createTenantFixture(`
+  TREESEED_HOSTED_HUBS_GITHUB_OWNER:
+    label: Hosted repository owner
+    group: github
+    description: GitHub owner for hosted hub repositories.
+    howToGet: Set a GitHub organization or owner.
+    sensitivity: plain
+    targets:
+      - local-runtime
+    scopes:
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    relevanceRef: marketControlPlaneEnabled
+    requiredWhenRef: marketControlPlaneEnabled
+    purposes:
+      - config
+    validation:
+      kind: nonempty
+  TREESEED_HOSTED_HUBS_GITHUB_TOKEN:
+    label: Hosted repository access token
+    group: github
+    description: GitHub token for hosted hub repositories.
+    howToGet: Set a GitHub token with repository permissions.
+    sensitivity: secret
+    targets:
+      - local-runtime
+    scopes:
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    relevanceRef: marketControlPlaneEnabled
+    requiredWhenRef: marketControlPlaneEnabled
+    purposes:
+      - config
+    validation:
+      kind: nonempty
+      minLength: 8
+`);
+		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test Market
+slug: test-market
+siteUrl: https://market.example.com
+contactEmail: hello@example.com
+hosting:
+  kind: market_control_plane
+  teamId: treeseed
+  projectId: market
+hub:
+  mode: treeseed_hosted
+runtime:
+  mode: treeseed_managed
+  registration: none
+cloudflare:
+  accountId: account-123
+`);
+
+		const context = collectTreeseedConfigContext({
+			tenantRoot,
+			scopes: ['staging'],
+			env: {},
+		});
+		const entries = context.entriesByScope.staging.filter((entry) => entry.id.startsWith('TREESEED_HOSTED_HUBS_GITHUB_'));
+
+		expect(entries.map((entry) => [entry.id, entry.required]).sort()).toEqual([
+			['TREESEED_HOSTED_HUBS_GITHUB_OWNER', true],
+			['TREESEED_HOSTED_HUBS_GITHUB_TOKEN', true],
+		]);
+	});
+
 	it('ensures Railway deploy ignore entries for local workspace artifacts', () => {
 		const tenantRoot = createTenantFixture();
 		writeFileSync(join(tenantRoot, '.railwayignore'), 'dist/\n**/dist/\npackages/*/dist/\n', 'utf8');

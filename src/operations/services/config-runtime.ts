@@ -44,6 +44,7 @@ import {
 import {
 	normalizeRailwayEnvironmentName,
 	resolveRailwayWorkspace,
+	resolveRailwayWorkspaceContext,
 } from './railway-api.ts';
 import {
 	createGitHubApiClient,
@@ -2238,28 +2239,26 @@ async function checkRailwayConnection({ tenantRoot, env }) {
 	const checkPromise = (async () => {
 		for (let attempt = 0; attempt < 3; attempt += 1) {
 			try {
-				const railwayCommand = resolveTreeseedToolCommand('railway', { env });
-				const whoami = railwayCommand
-					? checkCommand(railwayCommand.command, [...railwayCommand.argsPrefix, 'whoami'], { cwd: tenantRoot, env })
-					: { ok: false, stdout: '', detail: 'Railway CLI is unavailable.' };
-				if (!whoami.ok) {
-					if (/rate.?limit|too many requests|429/iu.test(whoami.detail || '')) {
-						return providerConnectionResult(
-							'railway',
-							false,
-							'Railway connectivity preflight was rate-limited; bootstrap will continue and rely on API-backed reconcile verification.',
-							{ skipped: true, warning: true, rateLimited: true },
-						);
-					}
-					throw new Error(whoami.detail || 'Railway CLI authentication check failed.');
-				}
-				const identity = whoami.stdout
-					.replace(/^logged in as\s+/iu, '')
-					.replace(/\s*👋\s*$/u, '')
-					.trim() || 'an account';
-				return providerConnectionResult('railway', true, `Railway authenticated as ${identity} in workspace ${workspaceName}. Project and service existence will be reconciled during bootstrap.`);
+				const workspace = await resolveRailwayWorkspaceContext({ env, workspace: workspaceName });
+				return providerConnectionResult('railway', true, `Railway API token can access workspace ${workspace.name}. Project and service existence will be reconciled during bootstrap.`);
 			} catch (error) {
 				const detail = error instanceof Error ? error.message : 'Railway API check failed.';
+				if (/rate.?limit|too many requests|429/iu.test(detail || '')) {
+					return providerConnectionResult(
+						'railway',
+						false,
+						'Railway connectivity preflight was rate-limited; bootstrap will continue and rely on API-backed reconcile verification.',
+						{ skipped: true, warning: true, rateLimited: true },
+					);
+				}
+				if (attempt >= 2 && isTransientProviderConnectionError(detail)) {
+					return providerConnectionResult(
+						'railway',
+						false,
+						'Railway connectivity preflight hit transient API failures; bootstrap will continue and rely on API-backed reconcile verification.',
+						{ skipped: true, warning: true, transient: true },
+					);
+				}
 				if (attempt >= 2 || !isTransientProviderConnectionError(detail)) {
 					return providerConnectionResult('railway', false, detail);
 				}
