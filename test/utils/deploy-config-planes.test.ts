@@ -90,6 +90,36 @@ cloudflare:
 		expect(config.hosting).toMatchObject({ kind: 'self_hosted_project', registration: 'optional' });
 	});
 
+	it('preserves market control plane hosting when explicit plane config is present', async () => {
+		const configPath = await writeDeployConfig(`name: Test Market
+slug: test-market
+siteUrl: https://market.example.com
+contactEmail: hello@example.com
+hosting:
+  kind: market_control_plane
+  registration: optional
+  teamId: treeseed
+  projectId: market
+hub:
+  mode: treeseed_hosted
+runtime:
+  mode: treeseed_managed
+  registration: none
+cloudflare:
+  accountId: account-123
+`);
+
+		const config = loadTreeseedDeployConfigFromPath(configPath);
+		expect(config.hub).toMatchObject({ mode: 'treeseed_hosted' });
+		expect(config.runtime).toMatchObject({ mode: 'treeseed_managed', registration: 'none' });
+		expect(config.hosting).toMatchObject({
+			kind: 'market_control_plane',
+			registration: 'none',
+			teamId: 'treeseed',
+			projectId: 'market',
+		});
+	});
+
 	it('parses explicit web cache policy for the public hub surface', async () => {
 		const configPath = await writeDeployConfig(`name: Test Site
 slug: test-site

@@ -44,6 +44,7 @@ import {
 import {
 	normalizeRailwayEnvironmentName,
 	resolveRailwayWorkspace,
+	resolveRailwayWorkspaceContext,
 } from './railway-api.ts';
 import {
 	createGitHubApiClient,
@@ -1890,19 +1891,54 @@ export function applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override 
 export function validateTreeseedCommandEnvironment({ tenantRoot, scope, purpose }) {
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
 	const values = resolveTreeseedLaunchEnvironment({ tenantRoot, scope });
-	const validation = validateTreeseedEnvironmentValues({
+	const validation = filterValidationByWorkflowPlane(validateTreeseedEnvironmentValues({
 		values,
 		scope,
 		purpose,
 		deployConfig: registry.context.deployConfig,
 		tenantConfig: registry.context.tenantConfig,
 		plugins: registry.context.plugins,
-	});
+	}));
 	return {
 		registry,
 		values,
 		validation,
 	};
+}
+
+function filterValidationByWorkflowPlane(validation) {
+	const plane = process.env.TREESEED_WORKFLOW_PLANE;
+	if (plane !== 'web' && plane !== 'processing') {
+		return validation;
+	}
+	const problemApplies = (problem) => doesEntryApplyToWorkflowPlane(problem.entry, plane);
+	const missing = validation.missing.filter(problemApplies);
+	const invalid = validation.invalid.filter(problemApplies);
+	const entries = validation.entries.filter((entry) => doesEntryApplyToWorkflowPlane(entry, plane));
+	const required = validation.required.filter((entry) => doesEntryApplyToWorkflowPlane(entry, plane));
+	return {
+		...validation,
+		ok: missing.length === 0 && invalid.length === 0,
+		entries,
+		required,
+		missing,
+		invalid,
+	};
+}
+
+function doesEntryApplyToWorkflowPlane(entry, plane) {
+	const targets = new Set(entry.targets ?? []);
+	const hasProcessingTarget = targets.has('railway-secret') || targets.has('railway-var');
+	const hasWebTarget = targets.has('cloudflare-secret') || targets.has('cloudflare-var') || targets.has('local-cloudflare');
+	const hasWorkflowTarget = targets.has('github-secret') || targets.has('github-variable');
+
+	if (plane === 'web') {
+		return !hasProcessingTarget || hasWebTarget || hasWorkflowTarget;
+	}
+	if (plane === 'processing') {
+		return !hasWebTarget || hasProcessingTarget || hasWorkflowTarget;
+	}
+	return true;
 }
 
 export function assertTreeseedCommandEnvironment({ tenantRoot, scope, purpose }) {
@@ -2238,28 +2274,26 @@ async function checkRailwayConnection({ tenantRoot, env }) {
 	const checkPromise = (async () => {
 		for (let attempt = 0; attempt < 3; attempt += 1) {
 			try {
-				const railwayCommand = resolveTreeseedToolCommand('railway', { env });
-				const whoami = railwayCommand
-					? checkCommand(railwayCommand.command, [...railwayCommand.argsPrefix, 'whoami'], { cwd: tenantRoot, env })
-					: { ok: false, stdout: '', detail: 'Railway CLI is unavailable.' };
-				if (!whoami.ok) {
-					if (/rate.?limit|too many requests|429/iu.test(whoami.detail || '')) {
-						return providerConnectionResult(
-							'railway',
-							false,
-							'Railway connectivity preflight was rate-limited; bootstrap will continue and rely on API-backed reconcile verification.',
-							{ skipped: true, warning: true, rateLimited: true },
-						);
-					}
-					throw new Error(whoami.detail || 'Railway CLI authentication check failed.');
-				}
-				const identity = whoami.stdout
-					.replace(/^logged in as\s+/iu, '')
-					.replace(/\s*👋\s*$/u, '')
-					.trim() || 'an account';
-				return providerConnectionResult('railway', true, `Railway authenticated as ${identity} in workspace ${workspaceName}. Project and service existence will be reconciled during bootstrap.`);
+				const workspace = await resolveRailwayWorkspaceContext({ env, workspace: workspaceName });
+				return providerConnectionResult('railway', true, `Railway API token can access workspace ${workspace.name}. Project and service existence will be reconciled during bootstrap.`);
 			} catch (error) {
 				const detail = error instanceof Error ? error.message : 'Railway API check failed.';
+				if (/rate.?limit|too many requests|429/iu.test(detail || '')) {
+					return providerConnectionResult(
+						'railway',
+						false,
+						'Railway connectivity preflight was rate-limited; bootstrap will continue and rely on API-backed reconcile verification.',
+						{ skipped: true, warning: true, rateLimited: true },
+					);
+				}
+				if (attempt >= 2 && isTransientProviderConnectionError(detail)) {
+					return providerConnectionResult(
+						'railway',
+						false,
+						'Railway connectivity preflight hit transient API failures; bootstrap will continue and rely on API-backed reconcile verification.',
+						{ skipped: true, warning: true, transient: true },
+					);
+				}
 				if (attempt >= 2 || !isTransientProviderConnectionError(detail)) {
 					return providerConnectionResult('railway', false, detail);
 				}

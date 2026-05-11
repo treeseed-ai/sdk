@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.8.7] - 2026-05-11
+
+### Added
+
+- feat(config-runtime): filter environment validation by workflow plane (5d631771e256)
+
+### Fixed
+
+- chore(sdk): bump version and fix environment validation tests (8edd1c80ec79)
+
+### Tests
+
+- build(build): update package metadata (15d7b061232b)
+- build(build): update package metadata (775003e01159)
+- build(tests): update package metadata (1e94e0a63ab3)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.8.7.
+
 ## [0.8.6] - 2026-05-11
 
 ### Tests

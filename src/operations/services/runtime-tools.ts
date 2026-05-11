@@ -579,7 +579,9 @@ function parseFallbackDeployConfig(configPath) {
 		slug: expectString(record.slug, 'slug'),
 		siteUrl: expectString(record.siteUrl, 'siteUrl'),
 		contactEmail: expectString(record.contactEmail, 'contactEmail'),
-		hosting: parsedHosting && record.hub === undefined && record.runtime === undefined
+		hosting: parsedHosting?.kind === 'market_control_plane'
+			? { ...parsedHosting, registration: 'none' }
+			: parsedHosting && record.hub === undefined && record.runtime === undefined
 			? parsedHosting
 			: normalizeLegacyHostingFromPlanes(hub, runtime),
 		hub,

@@ -656,7 +656,9 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 	const turnstile = optionalRecord(parsed.turnstile, 'turnstile') ?? {};
 	optionalBoolean(turnstile.enabled, 'turnstile.enabled');
 	const normalizedHosting = normalizeLegacyHostingFromPlanes(hub, runtime);
-	const compatibilityHosting = hosting && !parsed.hub && !parsed.runtime
+	const compatibilityHosting = hosting?.kind === 'market_control_plane'
+		? { ...hosting, registration: 'none' as const }
+		: hosting && !parsed.hub && !parsed.runtime
 		? hosting
 		: normalizedHosting;
 
