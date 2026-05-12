@@ -1,6 +1,6 @@
 import type { ProjectConnection, RemoteJobStatus } from './sdk-types.ts';
 
-export const KNOWLEDGE_COOP_TEAM_CAPABILITIES = [
+export const PROJECT_TEAM_CAPABILITIES = [
 	'launch_projects',
 	'edit_direct',
 	'manage_workstreams',
@@ -12,7 +12,7 @@ export const KNOWLEDGE_COOP_TEAM_CAPABILITIES = [
 	'approve_remote_execution',
 ] as const;
 
-export const KNOWLEDGE_COOP_JOB_STATUSES = [
+export const PROJECT_JOB_STATUSES = [
 	'queued',
 	'running',
 	'waiting_for_approval',
@@ -22,7 +22,7 @@ export const KNOWLEDGE_COOP_JOB_STATUSES = [
 	'cancelled',
 ] as const;
 
-export const KNOWLEDGE_COOP_WORKSTREAM_STATES = [
+export const WORKSTREAM_STATES = [
 	'drafting',
 	'active_local',
 	'verifying',
@@ -31,7 +31,7 @@ export const KNOWLEDGE_COOP_WORKSTREAM_STATES = [
 	'archived',
 ] as const;
 
-export const KNOWLEDGE_COOP_RELEASE_STATES = [
+export const RELEASE_STATES = [
 	'drafting',
 	'waiting_on_verification',
 	'ready_to_publish',
@@ -39,7 +39,7 @@ export const KNOWLEDGE_COOP_RELEASE_STATES = [
 	'rolled_back',
 ] as const;
 
-export const KNOWLEDGE_COOP_SHARE_PACKAGE_STATES = [
+export const SHARE_PACKAGE_STATES = [
 	'draft',
 	'packaged',
 	'ready_to_publish',
@@ -48,19 +48,19 @@ export const KNOWLEDGE_COOP_SHARE_PACKAGE_STATES = [
 	'failed',
 ] as const;
 
-export const KNOWLEDGE_COOP_AGENT_MESSAGE_KINDS = [
+export const AGENT_MESSAGE_KINDS = [
 	'informational',
 	'warning',
 	'action_requested',
 	'release_readiness',
 ] as const;
 
-export type TeamCapability = (typeof KNOWLEDGE_COOP_TEAM_CAPABILITIES)[number];
-export type KnowledgeCoopJobStatus = (typeof KNOWLEDGE_COOP_JOB_STATUSES)[number];
-export type WorkstreamState = (typeof KNOWLEDGE_COOP_WORKSTREAM_STATES)[number];
-export type ReleaseState = (typeof KNOWLEDGE_COOP_RELEASE_STATES)[number];
-export type SharePackageState = (typeof KNOWLEDGE_COOP_SHARE_PACKAGE_STATES)[number];
-export type AgentMessageKind = (typeof KNOWLEDGE_COOP_AGENT_MESSAGE_KINDS)[number];
+export type TeamCapability = (typeof PROJECT_TEAM_CAPABILITIES)[number];
+export type ProjectJobStatus = (typeof PROJECT_JOB_STATUSES)[number];
+export type WorkstreamState = (typeof WORKSTREAM_STATES)[number];
+export type ReleaseState = (typeof RELEASE_STATES)[number];
+export type SharePackageState = (typeof SHARE_PACKAGE_STATES)[number];
+export type AgentMessageKind = (typeof AGENT_MESSAGE_KINDS)[number];
 
 export interface LinkedProjectRecordRef {
 	model: 'objective' | 'question' | 'note' | 'proposal' | 'decision';
@@ -250,7 +250,7 @@ export interface InboxItem {
 	teamId: string;
 	projectId: string | null;
 	kind: string;
-	state: KnowledgeCoopJobStatus | string;
+	state: ProjectJobStatus | string;
 	title: string;
 	summary: string | null;
 	href: string | null;
@@ -294,7 +294,7 @@ export interface LaunchProjectResult {
 	overview: ProjectOverviewSummary | null;
 }
 
-export function normalizeKnowledgeCoopJobStatus(status: string | null | undefined): KnowledgeCoopJobStatus {
+export function normalizeProjectJobStatus(status: string | null | undefined): ProjectJobStatus {
 	switch (String(status ?? '').trim()) {
 		case 'running':
 			return 'running';
@@ -315,6 +315,6 @@ export function normalizeKnowledgeCoopJobStatus(status: string | null | undefine
 	}
 }
 
-export function normalizeRemoteJobStatus(status: RemoteJobStatus): KnowledgeCoopJobStatus {
-	return normalizeKnowledgeCoopJobStatus(status);
+export function normalizeRemoteJobStatus(status: RemoteJobStatus): ProjectJobStatus {
+	return normalizeProjectJobStatus(status);
 }

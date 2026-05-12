@@ -52,20 +52,20 @@ export {
 	upsertRailwayVariables,
 } from './operations/services/railway-api.ts';
 export {
-	buildKnowledgeCoopKnowledgePackPackage,
-	buildKnowledgeCoopTemplatePackage,
-	importKnowledgeCoopKnowledgePack,
-} from './operations/services/knowledge-coop-packaging.ts';
+	buildKnowledgePackMarketPackage,
+	buildTemplateMarketPackage,
+	importKnowledgePack,
+} from './operations/services/market-packaging.ts';
 export {
-	KNOWLEDGE_COOP_AGENT_MESSAGE_KINDS,
-	KNOWLEDGE_COOP_JOB_STATUSES,
-	KNOWLEDGE_COOP_RELEASE_STATES,
-	KNOWLEDGE_COOP_SHARE_PACKAGE_STATES,
-	KNOWLEDGE_COOP_TEAM_CAPABILITIES,
-	KNOWLEDGE_COOP_WORKSTREAM_STATES,
-	normalizeKnowledgeCoopJobStatus,
+	AGENT_MESSAGE_KINDS,
+	PROJECT_JOB_STATUSES,
+	RELEASE_STATES,
+	SHARE_PACKAGE_STATES,
+	PROJECT_TEAM_CAPABILITIES,
+	WORKSTREAM_STATES,
+	normalizeProjectJobStatus,
 	normalizeRemoteJobStatus,
-} from './knowledge-coop.ts';
+} from './project-workflow.ts';
 export {
 	PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION,
 	EDITORIAL_PREVIEW_COOKIE,
@@ -217,7 +217,7 @@ export type {
 	AgentStatusRecord,
 	DirectBoardItemSummary,
 	InboxItem,
-	KnowledgeCoopJobStatus,
+	ProjectJobStatus,
 	LaunchProjectRequest,
 	LaunchProjectResult,
 	LinkedProjectRecordRef,
@@ -404,7 +404,7 @@ export type {
 		WorkerPoolScaleResult,
 	WorkerPoolScaler,
 	} from './sdk-types.ts';
-export type * from './knowledge-coop.ts';
+export type * from './project-workflow.ts';
 export type {
 	ControlPlaneAgentPoolHeartbeat,
 	ControlPlaneDeploymentReport,

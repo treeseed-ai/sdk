@@ -8,7 +8,7 @@ import type {
 	WorkstreamDetail,
 	WorkstreamEvent,
 	WorkstreamSummary,
-} from './knowledge-coop.ts';
+} from './project-workflow.ts';
 import { applyFilters, applySort } from './sdk-filters.ts';
 import { normalizeFilterFields, normalizeMutationData, normalizeRecordToCanonicalShape, normalizeSortFields } from './sdk-fields.ts';
 import { assertExpectedVersion } from './sdk-version.ts';
@@ -72,7 +72,7 @@ import type {
 	PrioritySnapshot,
 } from './sdk-types.ts';
 import { CursorStore } from './stores/cursor-store.ts';
-import { MemoryKnowledgeCoopStore, SqliteKnowledgeCoopStore } from './stores/knowledge-coop-store.ts';
+import { MemoryProjectWorkflowStore, SqliteProjectWorkflowStore } from './stores/project-workflow-store.ts';
 import { LeaseStore, type LeaseClaimInput } from './stores/lease-store.ts';
 import { MessageStore } from './stores/message-store.ts';
 import { OperationalStore } from './stores/operational-store.ts';
@@ -209,7 +209,7 @@ export class MemoryAgentDatabase implements AgentDatabase {
 	private readonly prioritySnapshots = new Map<string, PrioritySnapshot>();
 	private readonly taskCreditLedger = new Map<string, TaskCreditLedgerEntry>();
 	private readonly scaleDecisions = new Map<string, ScaleDecision>();
-	private readonly knowledgeCoop = new MemoryKnowledgeCoopStore();
+	private readonly projectWorkflow = new MemoryProjectWorkflowStore();
 	private messageId = 0;
 
 	constructor(seed?: {
@@ -1263,43 +1263,43 @@ export class MemoryAgentDatabase implements AgentDatabase {
 	}
 
 	listWorkstreams(projectId: string) {
-		return Promise.resolve(this.knowledgeCoop.listWorkstreams(projectId));
+		return Promise.resolve(this.projectWorkflow.listWorkstreams(projectId));
 	}
 
 	getWorkstream(workstreamId: string) {
-		return Promise.resolve(this.knowledgeCoop.getWorkstream(workstreamId));
+		return Promise.resolve(this.projectWorkflow.getWorkstream(workstreamId));
 	}
 
 	upsertWorkstream(input: Partial<WorkstreamSummary> & Pick<WorkstreamSummary, 'projectId' | 'title'>) {
-		return Promise.resolve(this.knowledgeCoop.upsertWorkstream(input));
+		return Promise.resolve(this.projectWorkflow.upsertWorkstream(input));
 	}
 
 	appendWorkstreamEvent(input: Pick<WorkstreamEvent, 'projectId' | 'workstreamId' | 'kind'> & Partial<WorkstreamEvent>) {
-		return Promise.resolve(this.knowledgeCoop.appendWorkstreamEvent(input));
+		return Promise.resolve(this.projectWorkflow.appendWorkstreamEvent(input));
 	}
 
 	listReleases(projectId: string) {
-		return Promise.resolve(this.knowledgeCoop.listReleases(projectId));
+		return Promise.resolve(this.projectWorkflow.listReleases(projectId));
 	}
 
 	getRelease(releaseId: string) {
-		return Promise.resolve(this.knowledgeCoop.getRelease(releaseId));
+		return Promise.resolve(this.projectWorkflow.getRelease(releaseId));
 	}
 
 	upsertRelease(input: Partial<ReleaseSummary> & Pick<ReleaseSummary, 'projectId' | 'version'> & { items?: ReleaseDetail['items'] }): Promise<ReleaseDetail | null> {
-		return Promise.resolve(this.knowledgeCoop.upsertRelease(input));
+		return Promise.resolve(this.projectWorkflow.upsertRelease(input));
 	}
 
 	listSharePackages(projectId: string) {
-		return Promise.resolve(this.knowledgeCoop.listSharePackages(projectId));
+		return Promise.resolve(this.projectWorkflow.listSharePackages(projectId));
 	}
 
 	getSharePackage(packageId: string) {
-		return Promise.resolve(this.knowledgeCoop.getSharePackage(packageId));
+		return Promise.resolve(this.projectWorkflow.getSharePackage(packageId));
 	}
 
 	upsertSharePackage(input: Partial<SharePackageStatus> & Pick<SharePackageStatus, 'projectId' | 'kind' | 'title'>) {
-		return Promise.resolve(this.knowledgeCoop.upsertSharePackage(input));
+		return Promise.resolve(this.projectWorkflow.upsertSharePackage(input));
 	}
 }
 
@@ -1310,7 +1310,7 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 	private readonly cursors: CursorStore;
 	private readonly leases: LeaseStore;
 	private readonly operational: OperationalStore;
-	private readonly knowledgeCoop: SqliteKnowledgeCoopStore;
+	private readonly projectWorkflow: SqliteProjectWorkflowStore;
 
 	constructor(readonly db: D1DatabaseLike) {
 		this.subscriptions = new SubscriptionStore(db);
@@ -1319,7 +1319,7 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 		this.cursors = new CursorStore(db);
 		this.leases = new LeaseStore(db);
 		this.operational = new OperationalStore(db);
-		this.knowledgeCoop = new SqliteKnowledgeCoopStore(db);
+		this.projectWorkflow = new SqliteProjectWorkflowStore(db);
 	}
 
 	async get(request: SdkGetRequest) {
@@ -1778,42 +1778,42 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 	}
 
 	listWorkstreams(projectId: string) {
-		return this.knowledgeCoop.listWorkstreams(projectId);
+		return this.projectWorkflow.listWorkstreams(projectId);
 	}
 
 	getWorkstream(workstreamId: string) {
-		return this.knowledgeCoop.getWorkstream(workstreamId);
+		return this.projectWorkflow.getWorkstream(workstreamId);
 	}
 
 	upsertWorkstream(input: Partial<WorkstreamSummary> & Pick<WorkstreamSummary, 'projectId' | 'title'>) {
-		return this.knowledgeCoop.upsertWorkstream(input);
+		return this.projectWorkflow.upsertWorkstream(input);
 	}
 
 	appendWorkstreamEvent(input: Pick<WorkstreamEvent, 'projectId' | 'workstreamId' | 'kind'> & Partial<WorkstreamEvent>) {
-		return this.knowledgeCoop.appendWorkstreamEvent(input);
+		return this.projectWorkflow.appendWorkstreamEvent(input);
 	}
 
 	listReleases(projectId: string) {
-		return this.knowledgeCoop.listReleases(projectId);
+		return this.projectWorkflow.listReleases(projectId);
 	}
 
 	getRelease(releaseId: string) {
-		return this.knowledgeCoop.getRelease(releaseId);
+		return this.projectWorkflow.getRelease(releaseId);
 	}
 
 	upsertRelease(input: Partial<ReleaseSummary> & Pick<ReleaseSummary, 'projectId' | 'version'> & { items?: ReleaseDetail['items'] }): Promise<ReleaseDetail | null> {
-		return this.knowledgeCoop.upsertRelease(input);
+		return this.projectWorkflow.upsertRelease(input);
 	}
 
 	listSharePackages(projectId: string) {
-		return this.knowledgeCoop.listSharePackages(projectId);
+		return this.projectWorkflow.listSharePackages(projectId);
 	}
 
 	getSharePackage(packageId: string) {
-		return this.knowledgeCoop.getSharePackage(packageId);
+		return this.projectWorkflow.getSharePackage(packageId);
 	}
 
 	upsertSharePackage(input: Partial<SharePackageStatus> & Pick<SharePackageStatus, 'projectId' | 'kind' | 'title'>) {
-		return this.knowledgeCoop.upsertSharePackage(input);
+		return this.projectWorkflow.upsertSharePackage(input);
 	}
 }

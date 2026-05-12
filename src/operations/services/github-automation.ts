@@ -306,7 +306,7 @@ export function initializeGitHubRepositoryWorkingTree(
 	{
 		defaultBranch = 'main',
 		createStaging = true,
-		commitMessage = 'Initialize Knowledge Coop hub',
+		commitMessage = 'Initialize TreeSeed hub',
 	remoteName = 'origin',
 	push = true,
 } = {},

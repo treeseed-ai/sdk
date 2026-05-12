@@ -92,38 +92,64 @@ export interface TreeseedBookDefinition {
 	id?: string;
 }
 
+export type TreeseedThemeMode = 'light' | 'dark' | 'system';
+
+export type TreeseedColorSchemeId = 'fern' | 'lichen' | 'cedar' | 'tidepool' | (string & {});
+
+export interface TreeseedSemanticColorTokens {
+	canvas: string;
+	canvasSubtle: string;
+	surface: string;
+	surfaceMuted: string;
+	surfaceRaised: string;
+	surfaceOverlay: string;
+	text: string;
+	textMuted: string;
+	textSubtle: string;
+	textInverse: string;
+	link: string;
+	linkHover: string;
+	border: string;
+	borderMuted: string;
+	borderStrong: string;
+	focus: string;
+	accent: string;
+	accentHover: string;
+	accentStrong: string;
+	accentSoft: string;
+	accentText: string;
+	info: string;
+	infoSoft: string;
+	infoText: string;
+	infoBorder: string;
+	success: string;
+	successSoft: string;
+	successText: string;
+	successBorder: string;
+	warning: string;
+	warningSoft: string;
+	warningText: string;
+	warningBorder: string;
+	danger: string;
+	dangerSoft: string;
+	dangerText: string;
+	dangerBorder: string;
+	shadow: string;
+	grid: string;
+}
+
+export interface TreeseedSchemeTokens {
+	light: TreeseedSemanticColorTokens;
+	dark: TreeseedSemanticColorTokens;
+}
+
 export interface TreeseedThemeConfig {
-	surfaces?: {
-		background?: string;
-		backgroundElevated?: string;
-		backgroundSoft?: string;
-		panel?: string;
-		panelStrong?: string;
-	};
-	text?: {
-		body?: string;
-		muted?: string;
-		soft?: string;
-	};
-	border?: {
-		base?: string;
-		strong?: string;
-		grid?: string;
-	};
-	accent?: {
-		base?: string;
-		strong?: string;
-		soft?: string;
-	};
-	info?: {
-		base?: string;
-		strong?: string;
-		soft?: string;
-	};
-	warm?: {
-		base?: string;
-		strong?: string;
-	};
+	defaultScheme?: TreeseedColorSchemeId;
+	defaultMode?: TreeseedThemeMode;
+	schemes?: Record<TreeseedColorSchemeId, Partial<{
+		light: Partial<TreeseedSemanticColorTokens>;
+		dark: Partial<TreeseedSemanticColorTokens>;
+	}>>;
 }
 
 export interface TreeseedPluginReference {

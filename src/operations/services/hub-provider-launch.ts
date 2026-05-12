@@ -16,7 +16,7 @@ import { configuredRailwayServices, deployRailwayService, ensureRailwayScheduled
 import { loadCliDeployConfig } from './runtime-tools.ts';
 import { templateCatalogRoot } from './runtime-paths.ts';
 import { scaffoldTemplateProject } from './template-registry.ts';
-import { buildKnowledgeCoopKnowledgePackPackage, buildKnowledgeCoopTemplatePackage, importKnowledgeCoopKnowledgePack } from './knowledge-coop-packaging.ts';
+import { buildKnowledgePackMarketPackage, buildTemplateMarketPackage, importKnowledgePack } from './market-packaging.ts';
 import { resolveTreeseedToolBinary } from '../../managed-dependencies.ts';
 
 export type KnowledgeHubProviderLaunchFailurePhase =
@@ -152,8 +152,8 @@ export interface KnowledgeHubProviderLaunchResult {
 	projectMetadata: Record<string, unknown>;
 	defaultWorkstream: Record<string, unknown>;
 	phases: KnowledgeHubProviderLaunchPhaseRecord[];
-	templatePackage: ReturnType<typeof buildKnowledgeCoopTemplatePackage>;
-	knowledgePackPackage: ReturnType<typeof buildKnowledgeCoopKnowledgePackPackage>;
+	templatePackage: ReturnType<typeof buildTemplateMarketPackage>;
+	knowledgePackPackage: ReturnType<typeof buildKnowledgePackMarketPackage>;
 }
 
 export interface KnowledgeHubProviderLaunchPreflightReport {
@@ -252,7 +252,7 @@ function currentTemplateCatalogUrl() {
 	return `file:${resolve(templateCatalogRoot, 'catalog.fixture.json')}`;
 }
 
-function seedKnowledgeCoopContent(projectRoot: string, input: KnowledgeHubProviderLaunchInput) {
+function seedLaunchContent(projectRoot: string, input: KnowledgeHubProviderLaunchInput) {
 	const objectiveId = `objective:launch-${slugify(input.projectSlug, 'hub')}`;
 	const questionId = `question:operating-${slugify(input.projectSlug, 'hub')}`;
 	const proposalId = `proposal:operating-${slugify(input.projectSlug, 'hub')}`;
@@ -279,7 +279,7 @@ date: ${new Date().toISOString().slice(0, 10)}
 summary: Stand up the hub, connect the runtime, and make the first workstream visible to the team.
 status: live
 timeHorizon: near-term
-motivation: Knowledge Coop launches should create immediately usable hubs instead of leaving teams in setup limbo.
+motivation: TreeSeed launches should create immediately usable hubs instead of leaving teams in setup limbo.
 primaryContributor: ${stewardSlug}
 ---
 
@@ -376,7 +376,7 @@ audience:
 
 # ${input.projectName}
 
-This knowledge hub was launched from Knowledge Coop and is ready for Direct, Workstreams, Releases, and Share workflows.
+This knowledge hub was launched from TreeSeed and is ready for Direct, Workstreams, Releases, and Share workflows.
 `);
 	writeText(resolve(projectRoot, 'src/content/pages', 'welcome.mdx'), `---
 title: Welcome
@@ -595,7 +595,7 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubPro
 	};
 }
 
-function createDefaultWorkstream(projectId: string, input: KnowledgeHubProviderLaunchInput, seed: ReturnType<typeof seedKnowledgeCoopContent>) {
+function createDefaultWorkstream(projectId: string, input: KnowledgeHubProviderLaunchInput, seed: ReturnType<typeof seedLaunchContent>) {
 	return {
 		id: `${projectId}:initial-launch`,
 		projectId,
@@ -604,7 +604,7 @@ function createDefaultWorkstream(projectId: string, input: KnowledgeHubProviderL
 		state: 'saved_remote',
 		branchName: 'task/initial-launch',
 		branchRef: 'refs/heads/task/initial-launch',
-		owner: 'Knowledge Coop',
+		owner: 'TreeSeed',
 		linkedItems: [
 			{ model: 'objective', id: seed.objectiveId },
 			{ model: 'question', id: seed.questionId },
@@ -618,7 +618,7 @@ function createDefaultWorkstream(projectId: string, input: KnowledgeHubProviderL
 		createdAt: nowIso(),
 		updatedAt: nowIso(),
 		metadata: {
-			launchedBy: 'knowledge_coop_market',
+			launchedBy: 'treeseed_market',
 		},
 	};
 }
@@ -629,7 +629,7 @@ function pushDefaultWorkstreamBranch(projectRoot: string) {
 	runGit(projectRoot, ['checkout', 'main'], false);
 }
 
-function loadProjectMetadata(projectId: string, input: KnowledgeHubProviderLaunchInput, seed: ReturnType<typeof seedKnowledgeCoopContent>, workstream: Record<string, unknown>, siteUrl: string, projectApiBaseUrl: string, repository: { slug: string; url: string }) {
+function loadProjectMetadata(projectId: string, input: KnowledgeHubProviderLaunchInput, seed: ReturnType<typeof seedLaunchContent>, workstream: Record<string, unknown>, siteUrl: string, projectApiBaseUrl: string, repository: { slug: string; url: string }) {
 	return {
 		publicSite: input.publicSite !== false,
 		sourceKind: input.sourceKind,
@@ -773,7 +773,7 @@ function buildProcessingHostEnvironmentOverlay(input: KnowledgeHubProviderLaunch
 	return overlay;
 }
 
-function scaffoldKnowledgeCoopSource(projectRoot: string, input: KnowledgeHubProviderLaunchInput) {
+function scaffoldLaunchSource(projectRoot: string, input: KnowledgeHubProviderLaunchInput) {
 	const repositoryName = slugify(input.repoName ?? input.projectSlug, 'project');
 	const templateId = input.sourceKind === 'template'
 		? slugify(input.sourceRef ?? 'starter-basic', 'starter-basic')
@@ -793,7 +793,7 @@ function scaffoldKnowledgeCoopSource(projectRoot: string, input: KnowledgeHubPro
 			if (!input.sourceRef) {
 				throw new Error('Knowledge pack launch requires sourceRef to point to a package manifest or directory.');
 			}
-			return importKnowledgeCoopKnowledgePack(projectRoot, input.sourceRef);
+			return importKnowledgePack(projectRoot, input.sourceRef);
 		});
 	}
 	return scaffoldTemplateProject(templateId, projectRoot, {
@@ -933,16 +933,16 @@ export async function executeKnowledgeHubProviderLaunch(
 				description: input.summary ?? `Knowledge Hub for ${input.projectName}`,
 				visibility: input.repoVisibility ?? 'private',
 				homepageUrl: resolveManagedWebUrl(repoName),
-				topics: ['knowledge-coop', 'treeseed', 'knowledge-hub'],
+				topics: ['treeseed', 'knowledge-hub', 'market'],
 			}, { env: githubEnv });
 		await appendPhase(phases, 'repo_provision', 'completed', `${input.existingRepository?.url ? 'Connected' : 'Created'} ${repository.slug}.`, reportPhase);
 
 		await appendPhase(phases, 'content_bootstrap', 'running', 'Scaffolding the project and seeding initial content.', reportPhase);
-		await scaffoldKnowledgeCoopSource(workingRoot, input);
+		await scaffoldLaunchSource(workingRoot, input);
 		ensureHostedProjectFiles(workingRoot);
 		const managedDefaults = applyManagedProjectDefaults(workingRoot, input);
-		const seed = seedKnowledgeCoopContent(workingRoot, input);
-		packageSourceRoot = mkdtempSync(join(tmpdir(), `knowledge-coop-package-${slugify(input.projectSlug, 'project')}-`));
+		const seed = seedLaunchContent(workingRoot, input);
+		packageSourceRoot = mkdtempSync(join(tmpdir(), `market-package-${slugify(input.projectSlug, 'project')}-`));
 		cpSync(workingRoot, packageSourceRoot, { recursive: true });
 		await appendPhase(phases, 'content_bootstrap', 'completed', 'Scaffolded the repo and seeded Direct content.', reportPhase);
 
@@ -950,7 +950,7 @@ export async function executeKnowledgeHubProviderLaunch(
 		let contentRepositoryWorkingRoot: string | null = null;
 		if (input.contentRepository?.name) {
 			await appendPhase(phases, 'content_repository', 'running', 'Creating content repository.', reportPhase);
-			contentRepositoryWorkingRoot = mkdtempSync(join(tmpdir(), `knowledge-coop-content-${slugify(input.projectSlug, 'project')}-`));
+			contentRepositoryWorkingRoot = mkdtempSync(join(tmpdir(), `market-content-${slugify(input.projectSlug, 'project')}-`));
 			prepareKnowledgeHubContentRepositoryRoot(workingRoot, contentRepositoryWorkingRoot, input);
 			const createdContentRepository = input.contentRepository.url
 				? {
@@ -966,7 +966,7 @@ export async function executeKnowledgeHubProviderLaunch(
 					description: input.summary ?? `Content source for ${input.projectName}`,
 					visibility: input.contentRepository.visibility ?? input.repoVisibility ?? 'private',
 					homepageUrl: resolveManagedWebUrl(repoName),
-					topics: ['knowledge-coop', 'treeseed', 'knowledge-hub', 'content'],
+					topics: ['treeseed', 'knowledge-hub', 'content'],
 				}, { env: githubEnv });
 			const contentInitResult = initializeGitHubRepositoryWorkingTree(contentRepositoryWorkingRoot, createdContentRepository, {
 				defaultBranch: input.contentRepository.defaultBranch ?? 'main',
@@ -1060,7 +1060,7 @@ export async function executeKnowledgeHubProviderLaunch(
 			{ slug: repository.slug, url: repository.url },
 		);
 		const packageRoot = packageSourceRoot ?? workingRoot;
-		const templatePackage = buildKnowledgeCoopTemplatePackage(packageRoot, {
+		const templatePackage = buildTemplateMarketPackage(packageRoot, {
 			projectSlug: input.projectSlug,
 			title: `${input.projectName} template`,
 			summary: input.summary ?? null,
@@ -1073,7 +1073,7 @@ export async function executeKnowledgeHubProviderLaunch(
 				},
 			},
 		});
-		const knowledgePackPackage = buildKnowledgeCoopKnowledgePackPackage(packageRoot, {
+		const knowledgePackPackage = buildKnowledgePackMarketPackage(packageRoot, {
 			projectSlug: input.projectSlug,
 			title: `${input.projectName} knowledge pack`,
 			summary: input.summary ?? null,

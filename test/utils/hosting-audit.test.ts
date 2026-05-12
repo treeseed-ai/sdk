@@ -89,12 +89,11 @@ describe('hosting audit', () => {
 		const tenantRoot = createTenantFixture();
 		const report = await runTreeseedHostingAudit({
 			tenantRoot,
-			environment: 'staging',
+			environment: 'local',
 			hostKinds: ['web', 'processing'],
+			providerConnectionChecks: false,
 			env: {
-				CLOUDFLARE_API_TOKEN: 'cloudflare-token',
 				CLOUDFLARE_ACCOUNT_ID: 'account-123',
-				RAILWAY_API_TOKEN: 'railway-token',
 				TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop',
 			},
 			valuesOverlay: {

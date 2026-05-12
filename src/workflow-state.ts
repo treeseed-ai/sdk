@@ -1059,8 +1059,8 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			: 'pending';
 	const registrationRequired = state.marketConnection.runtimeRegistration === 'required';
 	state.marketConnection.approvalBlockers = [
-		...(registrationRequired && !state.marketConnection.configured ? ['Knowledge Coop runtime attachment is not configured.'] : []),
-		...(registrationRequired && !state.marketConnection.runtimeReady ? ['Knowledge Coop runtime credential is missing or not ready.'] : []),
+		...(registrationRequired && !state.marketConnection.configured ? ['TreeSeed runtime attachment is not configured.'] : []),
+		...(registrationRequired && !state.marketConnection.runtimeReady ? ['TreeSeed runtime credential is missing or not ready.'] : []),
 	];
 	state.recommendations = recommendTreeseedNextSteps(state);
 	return state;
