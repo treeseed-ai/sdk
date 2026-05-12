@@ -14,3 +14,5 @@ runLocalD1Migrations({
 	wranglerConfig,
 	migrationsRoot,
 });
+
+process.exit(0);

@@ -4,13 +4,15 @@ import { spawnSync } from 'node:child_process';
 import { resolveWranglerBin } from './runtime-tools.ts';
 
 const DATABASE_BINDING = 'SITE_DATA_DB';
+const WRANGLER_D1_TIMEOUT_MS = 120_000;
 
 function runWrangler(args, { cwd, capture = false } = {}) {
 	return spawnSync(process.execPath, [resolveWranglerBin(), ...args], {
 		cwd,
-		env: { ...process.env },
+		env: { ...process.env, WRANGLER_SEND_METRICS: 'false' },
 		stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
 		encoding: capture ? 'utf8' : undefined,
+		timeout: WRANGLER_D1_TIMEOUT_MS,
 	});
 }
 
@@ -31,12 +33,18 @@ function executeSqlCommand({ cwd, wranglerConfig, command, persistTo, capture = 
 	if (persistTo) {
 		args.push('--persist-to', persistTo);
 	}
+	if (capture) {
+		args.push('--json');
+	}
 
 	const result = runWrangler(args, { cwd, capture });
 	if (result.status !== 0) {
 		if (capture) {
 			if (result.stdout) process.stdout.write(result.stdout);
 			if (result.stderr) process.stderr.write(result.stderr);
+		}
+		if (result.error && 'code' in result.error && result.error.code === 'ETIMEDOUT') {
+			console.error(`Wrangler D1 command timed out after ${Math.round(WRANGLER_D1_TIMEOUT_MS / 1000)} seconds.`);
 		}
 		process.exit(result.status ?? 1);
 	}
