@@ -71,7 +71,7 @@ import type {
 	TeamMemberSummary,
 	WorkstreamDetail,
 	WorkstreamSummary,
-} from './knowledge-coop.ts';
+} from './project-workflow.ts';
 
 type JsonEnvelope<TPayload> = {
 	ok: boolean;

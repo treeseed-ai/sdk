@@ -51,6 +51,14 @@ export const betterAuthVerification = sqliteTable('better_auth_verification', {
 	updatedAt: integer('updatedAt', { mode: 'timestamp_ms' }).notNull(),
 });
 
+export const userPreferences = sqliteTable('user_preferences', {
+	userId: text('user_id').primaryKey().references(() => betterAuthUser.id, { onDelete: 'cascade' }),
+	colorScheme: text('color_scheme').notNull().default('fern'),
+	themeMode: text('theme_mode').notNull().default('system'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+});
+
 export const users = sqliteTable('users', {
 	id: text('id').primaryKey(),
 	email: text('email'),
@@ -210,6 +218,7 @@ export const treeseedSchema = {
 	better_auth_session: betterAuthSession,
 	better_auth_account: betterAuthAccount,
 	better_auth_verification: betterAuthVerification,
+	userPreferences,
 	user: betterAuthUser,
 	session: betterAuthSession,
 	account: betterAuthAccount,

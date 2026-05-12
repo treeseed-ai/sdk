@@ -51,6 +51,19 @@ function optionalRecord(value, path) {
 	return expectRecord(value, path);
 }
 
+function optionalEnum(value, path, allowed) {
+	if (value === undefined || value === null || value === '') {
+		return undefined;
+	}
+
+	const parsedValue = expectString(value, path);
+	if (!allowed.includes(parsedValue)) {
+		throw new Error(`Expected ${path} to be one of: ${allowed.join(', ')}.`);
+	}
+
+	return parsedValue;
+}
+
 function stringArray(value, path) {
 	if (value === undefined || value === null) {
 		return [];
@@ -103,66 +116,121 @@ function parseContactRouting(value, path) {
 	);
 }
 
+const BUILT_IN_THEME_SCHEMES = new Set(['fern', 'lichen', 'cedar', 'tidepool']);
+const THEME_TOKEN_NAMES = new Set([
+	'canvas',
+	'canvasSubtle',
+	'surface',
+	'surfaceMuted',
+	'surfaceRaised',
+	'surfaceOverlay',
+	'text',
+	'textMuted',
+	'textSubtle',
+	'textInverse',
+	'link',
+	'linkHover',
+	'border',
+	'borderMuted',
+	'borderStrong',
+	'focus',
+	'accent',
+	'accentHover',
+	'accentStrong',
+	'accentSoft',
+	'accentText',
+	'info',
+	'infoSoft',
+	'infoText',
+	'infoBorder',
+	'success',
+	'successSoft',
+	'successText',
+	'successBorder',
+	'warning',
+	'warningSoft',
+	'warningText',
+	'warningBorder',
+	'danger',
+	'dangerSoft',
+	'dangerText',
+	'dangerBorder',
+	'shadow',
+	'grid',
+]);
+
+function parseThemeSchemeId(value, path) {
+	const schemeId = expectString(value, path);
+	if (!/^[a-z][a-z0-9-]*$/u.test(schemeId)) {
+		throw new Error(`Expected ${path} to be a stable lowercase slug.`);
+	}
+	return schemeId;
+}
+
+function parseThemeTokenOverrides(value, path) {
+	const record = optionalRecord(value, path);
+	if (!record) {
+		return undefined;
+	}
+
+	return Object.fromEntries(
+		Object.entries(record).map(([tokenName, tokenValue]) => {
+			if (!THEME_TOKEN_NAMES.has(tokenName)) {
+				throw new Error(`Unknown theme token ${path}.${tokenName}.`);
+			}
+			return [tokenName, expectString(tokenValue, `${path}.${tokenName}`)];
+		}),
+	);
+}
+
+function parseThemeScheme(value, path) {
+	const scheme = expectRecord(value, path);
+	const allowedKeys = new Set(['light', 'dark']);
+	for (const key of Object.keys(scheme)) {
+		if (!allowedKeys.has(key)) {
+			throw new Error(`Unknown theme scheme key ${path}.${key}.`);
+		}
+	}
+	return {
+		light: parseThemeTokenOverrides(scheme.light, `${path}.light`),
+		dark: parseThemeTokenOverrides(scheme.dark, `${path}.dark`),
+	};
+}
+
 function parseTheme(value, path) {
 	const theme = optionalRecord(value, path);
 	if (!theme) {
 		return undefined;
 	}
 
-	const surfaces = optionalRecord(theme.surfaces, `${path}.surfaces`);
-	const text = optionalRecord(theme.text, `${path}.text`);
-	const border = optionalRecord(theme.border, `${path}.border`);
-	const accent = optionalRecord(theme.accent, `${path}.accent`);
-	const info = optionalRecord(theme.info, `${path}.info`);
-	const warm = optionalRecord(theme.warm, `${path}.warm`);
+	const allowedKeys = new Set(['defaultScheme', 'defaultMode', 'schemes']);
+	for (const key of Object.keys(theme)) {
+		if (!allowedKeys.has(key)) {
+			throw new Error(`Unknown theme key ${path}.${key}.`);
+		}
+	}
+
+	const schemes = optionalRecord(theme.schemes, `${path}.schemes`);
+	const parsedSchemes = schemes
+		? Object.fromEntries(
+			Object.entries(schemes).map(([schemeId, scheme]) => [
+				parseThemeSchemeId(schemeId, `${path}.schemes.${schemeId}`),
+				parseThemeScheme(scheme, `${path}.schemes.${schemeId}`),
+			]),
+		)
+		: undefined;
+	const defaultScheme = optionalString(theme.defaultScheme, `${path}.defaultScheme`);
+	if (defaultScheme) {
+		parseThemeSchemeId(defaultScheme, `${path}.defaultScheme`);
+		if (!BUILT_IN_THEME_SCHEMES.has(defaultScheme) && !(parsedSchemes && defaultScheme in parsedSchemes)) {
+			throw new Error(`Expected ${path}.defaultScheme to reference a built-in or configured scheme.`);
+		}
+	}
 
 	return {
-		surfaces: surfaces
-			? {
-				background: optionalString(surfaces.background, `${path}.surfaces.background`),
-				backgroundElevated: optionalString(
-					surfaces.backgroundElevated,
-					`${path}.surfaces.backgroundElevated`,
-				),
-				backgroundSoft: optionalString(surfaces.backgroundSoft, `${path}.surfaces.backgroundSoft`),
-				panel: optionalString(surfaces.panel, `${path}.surfaces.panel`),
-				panelStrong: optionalString(surfaces.panelStrong, `${path}.surfaces.panelStrong`),
-			}
-			: undefined,
-		text: text
-			? {
-				body: optionalString(text.body, `${path}.text.body`),
-				muted: optionalString(text.muted, `${path}.text.muted`),
-				soft: optionalString(text.soft, `${path}.text.soft`),
-			}
-			: undefined,
-		border: border
-			? {
-				base: optionalString(border.base, `${path}.border.base`),
-				strong: optionalString(border.strong, `${path}.border.strong`),
-				grid: optionalString(border.grid, `${path}.border.grid`),
-			}
-			: undefined,
-		accent: accent
-			? {
-				base: optionalString(accent.base, `${path}.accent.base`),
-				strong: optionalString(accent.strong, `${path}.accent.strong`),
-				soft: optionalString(accent.soft, `${path}.accent.soft`),
-			}
-			: undefined,
-		info: info
-			? {
-				base: optionalString(info.base, `${path}.info.base`),
-				strong: optionalString(info.strong, `${path}.info.strong`),
-				soft: optionalString(info.soft, `${path}.info.soft`),
-			}
-			: undefined,
-		warm: warm
-			? {
-				base: optionalString(warm.base, `${path}.warm.base`),
-				strong: optionalString(warm.strong, `${path}.warm.strong`),
-			}
-			: undefined,
+		defaultScheme,
+		defaultMode: optionalEnum(theme.defaultMode, `${path}.defaultMode`, ['light', 'dark', 'system']),
+		schemes: parsedSchemes,
 	};
 }
 

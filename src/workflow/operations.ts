@@ -1268,7 +1268,7 @@ async function connectTreeseedMarketProject(
 		);
 	}
 
-	const hostId = normalizeOptionalString(marketSettings.hostId) ?? 'knowledge-coop';
+	const hostId = normalizeOptionalString(marketSettings.hostId) ?? 'treeseed-market';
 	const activeRemoteSession = resolveTreeseedRemoteSession(tenantRoot, hostId)
 		?? resolveTreeseedRemoteSession(tenantRoot, remoteSettings.activeHostId)
 		?? resolveTreeseedRemoteSession(tenantRoot, 'official');
@@ -1277,7 +1277,7 @@ async function connectTreeseedMarketProject(
 		workflowError(
 			'config',
 			'validation_failed',
-			'Treeseed config --connect-market requires a market access token. Authenticate to the Knowledge Coop control-plane first or pass --market-access-token.',
+			'Treeseed config --connect-market requires a market access token. Authenticate to the TreeSeed control-plane first or pass --market-access-token.',
 		);
 	}
 
@@ -1323,7 +1323,7 @@ async function connectTreeseedMarketProject(
 	const hosts = Array.isArray(remoteSettings.hosts) ? [...remoteSettings.hosts] : [];
 	const updatedHost = {
 		id: hostId,
-		label: 'Knowledge Coop',
+		label: 'TreeSeed',
 		baseUrl,
 		official: false,
 	};
@@ -1358,7 +1358,7 @@ async function connectTreeseedMarketProject(
 			expiresAt: '',
 			principal: {
 				id: `runner:${projectId}`,
-				displayName: 'Knowledge Coop Project Runner',
+				displayName: 'TreeSeed Project Runner',
 				scopes: [],
 				roles: ['project_runner'],
 				permissions: [],
@@ -1413,10 +1413,10 @@ async function connectTreeseedMarketProject(
 			runnerTokenIssued: Boolean(connectionResult.runnerToken),
 		},
 		{
-			summary: 'Knowledge Coop project pairing completed.',
+			summary: 'TreeSeed project pairing completed.',
 			nextSteps: createNextSteps([
 				{ operation: 'status', reason: 'Confirm the new market connection, runner health, and current workstream posture.' },
-				{ operation: 'tasks', reason: 'Inspect the branch-backed workstreams that will now sync into the Knowledge Coop UI.' },
+				{ operation: 'tasks', reason: 'Inspect the branch-backed workstreams that will now sync into the TreeSeed UI.' },
 			]),
 		},
 	);

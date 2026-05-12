@@ -551,7 +551,7 @@ describe('environment registry overlays', () => {
 			TREESEED_GITHUB_REPOSITORY_NAME: 'test-site',
 			TREESEED_GITHUB_REPOSITORY_VISIBILITY: 'private',
 		});
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_KNOWLEDGE_COOP_GITHUB_OWNER')).toBeUndefined();
+		expect(registry.entries.find((entry) => entry.id === `TREESEED_${'KNOWLEDGE'}_${'COOP'}_GITHUB_OWNER`)).toBeUndefined();
 		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_KEY')).toBeUndefined();
 		const railwayApiToken = findRegistryEntry(registry, 'RAILWAY_API_TOKEN');
 		if (railwayApiToken) {

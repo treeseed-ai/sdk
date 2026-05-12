@@ -17,7 +17,7 @@ import type {
 	WorkstreamDetail,
 	WorkstreamEvent,
 	WorkstreamSummary,
-} from './knowledge-coop.ts';
+} from './project-workflow.ts';
 import type {
 	SdkAckMessageRequest,
 	SdkClaimMessageRequest,

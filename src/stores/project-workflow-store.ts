@@ -11,7 +11,7 @@ import type {
 	WorkstreamState,
 	WorkstreamSummary,
 	LinkedProjectRecordRef,
-} from '../knowledge-coop.ts';
+} from '../project-workflow.ts';
 import { SqliteStoreBase, nowIso, toSqlValue, type DatabaseRow } from './helpers.ts';
 
 type JsonRecord = Record<string, unknown>;
@@ -108,7 +108,7 @@ function sharePackageFromRow(row: DatabaseRow): SharePackageStatus {
 	};
 }
 
-export class MemoryKnowledgeCoopStore {
+export class MemoryProjectWorkflowStore {
 	private readonly workstreams = new Map<string, WorkstreamSummary>();
 	private readonly workstreamEvents = new Map<string, WorkstreamEvent[]>();
 	private readonly releases = new Map<string, ReleaseSummary>();
@@ -251,7 +251,7 @@ export class MemoryKnowledgeCoopStore {
 	}
 }
 
-export class SqliteKnowledgeCoopStore extends SqliteStoreBase {
+export class SqliteProjectWorkflowStore extends SqliteStoreBase {
 	private initialized = false;
 
 	private async ensureSchema() {

@@ -84,14 +84,15 @@ export type TreeseedHostingAuditOptions = {
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	valuesOverlay?: Record<string, string | undefined>;
 	hostKinds?: TreeseedHostingAuditHostKind[];
+	providerConnectionChecks?: boolean;
 	write?: (line: string) => void;
 };
 
 const HOST_KINDS: TreeseedHostingAuditHostKind[] = ['repository', 'web', 'processing', 'email'];
 const HOST_GROUPS: Record<TreeseedHostingAuditHostKind, Set<string>> = {
 	repository: new Set(['auth', 'github']),
-	web: new Set(['auth', 'cloudflare', 'hosting']),
-	processing: new Set(['auth', 'railway', 'hosting']),
+	web: new Set(['cloudflare', 'hosting']),
+	processing: new Set(['railway', 'hosting']),
 	email: new Set(['smtp']),
 };
 
@@ -639,6 +640,7 @@ export async function runTreeseedHostingAudit({
 	env = process.env,
 	valuesOverlay = {},
 	hostKinds: requestedHostKinds,
+	providerConnectionChecks: shouldCheckProviderConnections = true,
 	write,
 }: TreeseedHostingAuditOptions): Promise<TreeseedHostingAuditReport> {
 	const resolved = resolveTreeseedHostingAuditTarget({ tenantRoot, environment });
@@ -666,19 +668,21 @@ export async function runTreeseedHostingAudit({
 	appendManualConfigChecks(checks, values, hostKinds);
 	appendRegistryConfigChecks({ checks, tenantRoot, scope: resolved.scope, values, hostKinds });
 
-	const connectionReport = await checkTreeseedProviderConnections({
-		tenantRoot,
-		scope: resolved.scope,
-		env: {
-			...values,
-			TREESEED_GITHUB_IDENTITY_MODE: 'account',
-		},
-		valuesOverlay: {
-			...values,
-			TREESEED_GITHUB_IDENTITY_MODE: 'account',
-		},
-	});
-	checks.push(...providerConnectionChecks(connectionReport, hostKinds));
+	if (shouldCheckProviderConnections) {
+		const connectionReport = await checkTreeseedProviderConnections({
+			tenantRoot,
+			scope: resolved.scope,
+			env: {
+				...values,
+				TREESEED_GITHUB_IDENTITY_MODE: 'account',
+			},
+			valuesOverlay: {
+				...values,
+				TREESEED_GITHUB_IDENTITY_MODE: 'account',
+			},
+		});
+		checks.push(...providerConnectionChecks(connectionReport, hostKinds));
+	}
 
 	if (hostKinds.includes('email')) {
 		checks.push(await checkSmtpReachability(values));

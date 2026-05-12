@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, wri
 import { basename, dirname, resolve, relative } from 'node:path';
 import { cliPackageVersion, corePackageVersion, sdkPackageVersion } from './runtime-paths.ts';
 
-export interface KnowledgeCoopPackageManifest {
+export interface MarketPackageManifest {
 	schemaVersion: 1;
 	kind: 'template' | 'knowledge_pack';
 	id: string;
@@ -29,16 +29,16 @@ export interface KnowledgeCoopPackageManifest {
 	};
 }
 
-export interface KnowledgeCoopPackageBuildResult {
+export interface MarketPackageBuildResult {
 	outputRoot: string;
 	payloadRoot: string;
 	manifestPath: string;
 	files: string[];
-	manifest: KnowledgeCoopPackageManifest;
+	manifest: MarketPackageManifest;
 }
 
-export interface KnowledgeCoopKnowledgePackImportResult {
-	manifest: KnowledgeCoopPackageManifest;
+export interface KnowledgePackImportResult {
+	manifest: MarketPackageManifest;
 	manifestPath: string;
 	payloadRoot: string;
 	importedPaths: string[];
@@ -114,7 +114,7 @@ function listFiles(root: string, relativeRoot = '', ignorePatterns: string[] = [
 	return files.sort((left, right) => left.localeCompare(right));
 }
 
-function writeManifest(outputRoot: string, manifest: KnowledgeCoopPackageManifest) {
+function writeManifest(outputRoot: string, manifest: MarketPackageManifest) {
 	const manifestPath = resolve(outputRoot, 'manifest.json');
 	writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 	return manifestPath;
@@ -174,16 +174,16 @@ function defaultTemplatePaths(projectRoot: string) {
 function buildManifest(
 	projectRoot: string,
 	input: {
-		kind: KnowledgeCoopPackageManifest['kind'];
+		kind: MarketPackageManifest['kind'];
 		id: string;
 		title: string;
 		summary?: string | null;
 		projectSlug: string;
 		files: string[];
 		sourceSelection: string[];
-		market?: KnowledgeCoopPackageManifest['market'];
+		market?: MarketPackageManifest['market'];
 	},
-): KnowledgeCoopPackageManifest {
+): MarketPackageManifest {
 	return {
 		schemaVersion: 1,
 		kind: input.kind,
@@ -212,21 +212,21 @@ function buildManifest(
 	};
 }
 
-export function resolveKnowledgeCoopPackageOutputRoot(projectRoot: string, kind: 'template' | 'knowledge_pack', slug: string) {
+export function resolveMarketPackageOutputRoot(projectRoot: string, kind: 'template' | 'knowledge_pack', slug: string) {
 	return resolve(projectRoot, '.treeseed', 'packages', kind, `${slug}-${nowStamp()}`);
 }
 
-export function buildKnowledgeCoopTemplatePackage(projectRoot: string, input: {
+export function buildTemplateMarketPackage(projectRoot: string, input: {
 	id?: string;
 	title?: string;
 	summary?: string | null;
 	outputRoot?: string | null;
 	projectSlug?: string | null;
-	market?: KnowledgeCoopPackageManifest['market'];
-} = {}): KnowledgeCoopPackageBuildResult {
+	market?: MarketPackageManifest['market'];
+} = {}): MarketPackageBuildResult {
 	const projectSlug = slugify(input.projectSlug ?? basename(projectRoot), 'project');
 	const packageId = slugify(input.id ?? `${projectSlug}-template`, 'template');
-	const outputRoot = resolve(input.outputRoot ?? resolveKnowledgeCoopPackageOutputRoot(projectRoot, 'template', packageId));
+	const outputRoot = resolve(input.outputRoot ?? resolveMarketPackageOutputRoot(projectRoot, 'template', packageId));
 	const payloadRoot = resolve(outputRoot, 'payload');
 	ensureDir(payloadRoot);
 	const files = copySelectedPaths(projectRoot, payloadRoot, defaultTemplatePaths(projectRoot), TEMPLATE_IGNORES);
@@ -250,18 +250,18 @@ export function buildKnowledgeCoopTemplatePackage(projectRoot: string, input: {
 	};
 }
 
-export function buildKnowledgeCoopKnowledgePackPackage(projectRoot: string, input: {
+export function buildKnowledgePackMarketPackage(projectRoot: string, input: {
 	id?: string;
 	title?: string;
 	summary?: string | null;
 	outputRoot?: string | null;
 	projectSlug?: string | null;
 	includePaths?: string[];
-	market?: KnowledgeCoopPackageManifest['market'];
-} = {}): KnowledgeCoopPackageBuildResult {
+	market?: MarketPackageManifest['market'];
+} = {}): MarketPackageBuildResult {
 	const projectSlug = slugify(input.projectSlug ?? basename(projectRoot), 'project');
 	const packageId = slugify(input.id ?? `${projectSlug}-knowledge-pack`, 'knowledge-pack');
-	const outputRoot = resolve(input.outputRoot ?? resolveKnowledgeCoopPackageOutputRoot(projectRoot, 'knowledge_pack', packageId));
+	const outputRoot = resolve(input.outputRoot ?? resolveMarketPackageOutputRoot(projectRoot, 'knowledge_pack', packageId));
 	const payloadRoot = resolve(outputRoot, 'payload');
 	ensureDir(payloadRoot);
 	const includePaths = (input.includePaths ?? KNOWLEDGE_PACK_DEFAULT_PATHS).filter((relativePath) => existsSync(resolve(projectRoot, relativePath)));
@@ -286,12 +286,12 @@ export function buildKnowledgeCoopKnowledgePackPackage(projectRoot: string, inpu
 	};
 }
 
-export function importKnowledgeCoopKnowledgePack(targetRoot: string, sourcePath: string): KnowledgeCoopKnowledgePackImportResult {
+export function importKnowledgePack(targetRoot: string, sourcePath: string): KnowledgePackImportResult {
 	const resolvedSource = resolve(sourcePath);
 	const manifestPath = statSync(resolvedSource).isDirectory()
 		? resolve(resolvedSource, 'manifest.json')
 		: resolvedSource;
-	const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as KnowledgeCoopPackageManifest;
+	const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as MarketPackageManifest;
 	const sourceRoot = dirname(manifestPath);
 	const payloadRoot = resolve(sourceRoot, manifest.payloadRoot || 'payload');
 	if (!existsSync(payloadRoot)) {
