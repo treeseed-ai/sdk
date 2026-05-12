@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.9] - 2026-05-12
+
+### Tests
+
+- build(source): update package metadata (a491c836ad69)
+- build(build): update package metadata (d99c52d39dfe)
+
+### Dependencies
+
+- build(build): update package metadata (7dfddfe7b921)
+- build(sdk): bump version to 0.8.9-dev.staging.20260511T220922Z (50daf0b68a76)
+- build(build): update package metadata (7ac17bd94dd2)
+- Release @treeseed/sdk 0.8.9.
+
 ## [0.8.8] - 2026-05-11
 
 ### Tests
