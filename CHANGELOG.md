@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.11] - 2026-05-13
+
+### Added
+
+- feat(sdk): add declarative context query contracts and agent operation (d8945d393f5d)
+
+### Tests
+
+- chore(operations): increase default commit message provider timeout (e43ade7956b1)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.8.11.
+
 ## [0.8.10] - 2026-05-13
 
 ### Tests
