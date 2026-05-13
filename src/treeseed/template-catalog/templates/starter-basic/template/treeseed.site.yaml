@@ -72,7 +72,7 @@ plugins:
 providers:
   forms: store_only
   agents:
-    execution: copilot
+    execution: codex
     mutation: local_branch
     repository: git
     verification: local

@@ -60,6 +60,7 @@ describe('deploy runtime accessors', () => {
 			expect(getTreeseedFormsProvider()).toBe('store_only');
 			expect(getTreeseedOperationsProvider()).toBe('default');
 			expect(getTreeseedAgentProviderSelections()).toMatchObject(TREESEED_DEFAULT_PROVIDER_SELECTIONS.agents);
+			expect(getTreeseedAgentProviderSelections().execution).toBe('codex');
 			expect(getTreeseedDeployProvider()).toBe(TREESEED_DEFAULT_PROVIDER_SELECTIONS.deploy);
 			expect(getTreeseedContentRuntimeProvider()).toBe(TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.runtime);
 			expect(getTreeseedContentPublishProvider()).toBe(TREESEED_DEFAULT_PROVIDER_SELECTIONS.content.publish);

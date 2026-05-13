@@ -4,7 +4,7 @@ export const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 	forms: 'store_only',
 	operations: 'default',
 	agents: {
-		execution: 'copilot',
+		execution: 'codex',
 		mutation: 'local_branch',
 		repository: 'git',
 		verification: 'local',

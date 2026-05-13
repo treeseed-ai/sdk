@@ -101,6 +101,19 @@ export {
 	tenantModelRendered,
 } from './platform/tenant-config.ts';
 export { parseGraphDsl } from './graph/dsl.ts';
+export {
+	compileDeclarativeContextQuery,
+	declarativeContextFormatToGraphView,
+	declarativeContextPurposeToGraphStage,
+	type CompiledDeclarativeContextQuery,
+	type DeclarativeContextQuery,
+	type DeclarativeContextQueryCompileResult,
+	type DeclarativeContextQueryFormat,
+	type DeclarativeContextQueryPurpose,
+	type DeclarativeContextQuerySourceRef,
+	type HandlerContextPackSource,
+	type ResolvedHandlerContextPack,
+} from './graph/context-query-contracts.ts';
 export { createDefaultGraphRankingProvider, DEFAULT_GRAPH_RANKING_PROVIDER } from './graph/ranking.ts';
 export {
 	BUILTIN_MODEL_REGISTRY,
@@ -137,6 +150,27 @@ export {
 	findSdkOperation,
 	listSdkOperationNames,
 } from './sdk-dispatch.ts';
+export {
+	AGENT_OPERATION_MODES,
+	AGENT_OPERATION_NAMES,
+	createAgentOperationEvent,
+	decideAgentOperationPermission,
+	deniedAgentOperationResult,
+	isAgentOperationName,
+	resolveAgentOperationGrant,
+	type AgentDeterministicOperationStep,
+	type AgentOperationApprovalRef,
+	type AgentOperationEvent,
+	type AgentOperationGrant,
+	type AgentOperationMergeFailure,
+	type AgentOperationMode,
+	type AgentOperationName,
+	type AgentOperationPermissionCode,
+	type AgentOperationPermissionDecision,
+	type AgentOperationRequest,
+	type AgentOperationResult,
+	type AgentOperationStatus,
+} from './operations/agent-tools.ts';
 export { resolveSdkRecordVersion } from './sdk-version.ts';
 export {
 	normalizeAliasedRecord,

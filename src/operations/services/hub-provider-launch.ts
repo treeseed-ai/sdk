@@ -534,7 +534,7 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubPro
 			...(config.providers ?? {}),
 			forms: config.providers?.forms ?? 'store_only',
 			agents: {
-				execution: 'copilot',
+				execution: 'codex',
 				mutation: 'local_branch',
 				repository: 'git',
 				verification: 'local',

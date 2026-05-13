@@ -274,6 +274,9 @@ export class MemoryAgentDatabase implements AgentDatabase {
 		if (model === 'task') {
 			return [...this.tasks.values()];
 		}
+		if (model === 'task_output') {
+			return [...this.taskOutputs.values()].flat();
+		}
 		if (model === 'graph_run') {
 			return [...this.graphRuns.values()];
 		}
@@ -318,6 +321,9 @@ export class MemoryAgentDatabase implements AgentDatabase {
 		}
 		if (request.model === 'task') {
 			return this.tasks.get(key) ?? null;
+		}
+		if (request.model === 'task_output') {
+			return [...this.taskOutputs.values()].flat().find((output) => output.id === key) ?? null;
 		}
 		if (request.model === 'graph_run') {
 			return this.graphRuns.get(key) ?? null;
