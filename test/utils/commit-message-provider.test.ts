@@ -132,6 +132,41 @@ describe('commit message provider', () => {
 		expect(result.message).toContain('Changes:');
 	});
 
+	it('uses a sixty second default Cloudflare timeout', async () => {
+		const fetchImpl = vi.fn(async () => ({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				result: {
+					response: [
+						'feat(workflow): generate save messages',
+						'',
+						'Changes:',
+						'- Updates the save workflow commit message provider.',
+					].join('\n'),
+				},
+			}),
+		} as Response));
+		const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+		let timeoutDelays: unknown[] = [];
+
+		try {
+			await generateRepositoryCommitMessage(baseContext, {
+				mode: 'cloudflare',
+				env: {
+					CLOUDFLARE_API_TOKEN: 'token',
+					CLOUDFLARE_ACCOUNT_ID: 'account',
+				},
+				fetchImpl,
+			});
+			timeoutDelays = setTimeoutSpy.mock.calls.map((call) => call[1]);
+		} finally {
+			setTimeoutSpy.mockRestore();
+		}
+
+		expect(timeoutDelays).toContain(60_000);
+	});
+
 	it('falls back when Cloudflare returns invalid output', async () => {
 		const fetchImpl = vi.fn(async () => ({
 			ok: true,
