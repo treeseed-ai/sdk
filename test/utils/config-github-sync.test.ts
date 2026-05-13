@@ -165,6 +165,7 @@ function setConfigValue(
 function seedHostedValues(tenantRoot: string) {
 	for (const scope of ['staging', 'prod'] as const) {
 		setConfigValue(tenantRoot, scope, 'GH_TOKEN', 'github-token-value', 'secret');
+		setConfigValue(tenantRoot, scope, 'CODEX_API_KEY', 'codex-test-key-1234567890', 'secret', 'scoped');
 		setConfigValue(tenantRoot, scope, 'CLOUDFLARE_API_TOKEN', 'cloudflare-token-value', 'secret');
 		setConfigValue(tenantRoot, scope, 'RAILWAY_API_TOKEN', 'railway-token-value', 'secret');
 		setConfigValue(tenantRoot, scope, 'TREESEED_RAILWAY_WORKSPACE', 'acme-workspace');
@@ -427,6 +428,7 @@ describe('config GitHub environment sync', () => {
 		const tenantRoot = createTenantFixtureWithPlaceholderCloudflareAccount();
 		writeDefaultMachineConfig(tenantRoot);
 		unlockSecrets(tenantRoot);
+		setConfigValue(tenantRoot, 'staging', 'CODEX_API_KEY', 'codex-test-key-1234567890', 'secret', 'scoped');
 		setConfigValue(tenantRoot, 'staging', 'GH_TOKEN', 'github-token-value', 'secret');
 
 		const result = await finalizeTreeseedConfig({

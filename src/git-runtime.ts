@@ -66,11 +66,15 @@ export class GitRuntime {
 		try {
 			await execFileAsync('git', ['commit', '-m', commitMessage], { cwd: worktreePath });
 		} catch (error) {
-			const message =
+			const stderr =
 				error && typeof error === 'object' && 'stderr' in error
 					? String((error as { stderr?: string }).stderr ?? '')
 					: '';
-			if (!message.includes('nothing to commit')) {
+			const stdout =
+				error && typeof error === 'object' && 'stdout' in error
+					? String((error as { stdout?: string }).stdout ?? '')
+					: '';
+			if (!`${stdout}\n${stderr}`.includes('nothing to commit')) {
 				throw error;
 			}
 		}

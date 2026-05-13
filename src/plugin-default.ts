@@ -7,7 +7,7 @@ export default defineTreeseedPlugin({
 		forms: ['store_only', 'notify_admin', 'full_email'],
 		operations: ['default'],
 		agents: {
-			execution: ['stub', 'manual', 'copilot'],
+			execution: ['stub', 'manual', 'copilot', 'codex', 'codex_subscription'],
 			mutation: ['local_branch'],
 			repository: ['stub', 'git'],
 			verification: ['stub', 'local'],

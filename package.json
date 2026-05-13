@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.8.10",
+  "version": "0.8.11",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -95,6 +95,10 @@
     "./operations": {
       "types": "./dist/operations.d.ts",
       "default": "./dist/operations.js"
+    },
+    "./operations/agent-tools": {
+      "types": "./dist/operations/agent-tools.d.ts",
+      "default": "./dist/operations/agent-tools.js"
     },
     "./workflow": {
       "types": "./dist/workflow.d.ts",
@@ -196,6 +200,10 @@
     "./graph": {
       "types": "./dist/graph.d.ts",
       "default": "./dist/graph.js"
+    },
+    "./graph/context-query-contracts": {
+      "types": "./dist/graph/context-query-contracts.d.ts",
+      "default": "./dist/graph/context-query-contracts.js"
     },
     "./sdk-filters": {
       "types": "./dist/sdk-filters.d.ts",

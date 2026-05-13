@@ -58,6 +58,18 @@ export interface AgentOutputContract {
 }
 
 export interface AgentExecutionConfig {
+	provider?: string;
+	model?: string;
+	approvalPolicy?: 'never' | 'on_request' | 'always' | string;
+	sandboxMode?: 'read_only' | 'workspace_write' | string;
+	reasoningEffort?: 'low' | 'medium' | 'high' | string;
+	allowedPaths?: string[];
+	forbiddenPaths?: string[];
+	worktree?: {
+		enabled?: boolean;
+		root?: string;
+		branchPrefix?: string;
+	};
 	maxConcurrency: number;
 	timeoutSeconds: number;
 	cooldownSeconds: number;

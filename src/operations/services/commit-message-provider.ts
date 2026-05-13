@@ -99,7 +99,7 @@ const danglingSubjectEndings = new Set([
 	'update',
 	'with',
 ]);
-const defaultTimeoutMs = 30_000;
+const defaultTimeoutMs = 60_000;
 const defaultMaxDiffChars = 12_000;
 const subjectMaxLength = 72;
 

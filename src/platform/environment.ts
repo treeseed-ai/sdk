@@ -260,6 +260,11 @@ function formsEnabled(context: TreeseedEnvironmentContext) {
 	return webSurfaceEnabled(context) && (context.deployConfig.providers?.forms ?? 'store_only') !== 'none';
 }
 
+function codexExecutionSelected(context: TreeseedEnvironmentContext) {
+	const execution = context.deployConfig.providers?.agents?.execution ?? 'codex';
+	return execution === 'codex' || execution === 'codex_subscription';
+}
+
 function railwayManagedEnabled(context: TreeseedEnvironmentContext) {
 	if (!workflowPlaneAllows('processing')) {
 		return false;
@@ -578,6 +583,7 @@ const PREDICATES: NamedPredicateMap = {
 	apiSurfaceEnabled: (context) => apiSurfaceEnabled(context),
 	processingPlaneEnabled: (context) => processingPlaneEnabled(context),
 	formsEnabled: (context) => formsEnabled(context),
+	codexExecutionSelected: (context) => codexExecutionSelected(context),
 	railwayManagedEnabled: (context) => railwayManagedEnabled(context),
 	hubTreeseedHosted: (context) => resolveHubMode(context) === 'treeseed_hosted',
 	hubCustomerHosted: (context) => resolveHubMode(context) === 'customer_hosted',
