@@ -115,7 +115,7 @@ describe('book export runtime', () => {
 		}, { projectRoot: root });
 
 		expect(runtime.BOOKS).toEqual([]);
-		expect(runtime.BOOKS_LINK.link).toBe('/knowledge/');
+		expect(runtime.BOOKS_LINK.link).toBe('/books/');
 	});
 
 	it('builds ordered manifests from book definitions and export roots', () => {

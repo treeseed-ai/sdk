@@ -27,7 +27,7 @@ function fallbackTenantBookRuntime(options: {
 	docsHomePath?: string;
 	docsLibraryDownload?: DocsLibraryDownload;
 } = {}): TreeseedBookRuntime {
-	const docsHomePath = options.docsHomePath ?? '/knowledge/';
+	const docsHomePath = options.docsHomePath ?? '/books/';
 	const docsLibraryDownload = options.docsLibraryDownload ?? {
 		downloadFileName: 'treeseed-knowledge.md',
 		downloadHref: '/books/treeseed-knowledge.md',
@@ -115,7 +115,7 @@ export function buildTenantBookRuntime(
 		})
 		.sort((left, right) => left.order - right.order);
 
-	const docsHomePath = options.docsHomePath ?? '/knowledge/';
+	const docsHomePath = options.docsHomePath ?? '/books/';
 	const docsLibraryDownload = options.docsLibraryDownload ?? inferDocsLibraryDownload(tenantConfig);
 
 	return {

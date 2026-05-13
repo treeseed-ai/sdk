@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.10] - 2026-05-13
+
+### Tests
+
+- refactor(platform): update default docs home path to /books/ (092cf475f875)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.8.10.
+
 ## [0.8.9] - 2026-05-12
 
 ### Tests
