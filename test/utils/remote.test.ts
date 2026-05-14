@@ -347,15 +347,15 @@ describe('remote Treeseed support', () => {
 			env: {
 				TREESEED_API_BOOTSTRAP_ADMIN_ALLOWLIST: 'admin@example.com,github:123',
 				TREESEED_AUTH_MODE: 'internal-first',
-				TREESEED_GITHUB_CLIENT_ID: 'github-client',
-				TREESEED_GITHUB_CLIENT_SECRET: 'github-secret',
+				TREESEED_AUTH_GITHUB_CLIENT_ID: 'github-client',
+				TREESEED_AUTH_GITHUB_CLIENT_SECRET: 'github-secret',
 			},
 		});
 
 		expect(wrangler).toContain('TREESEED_API_BOOTSTRAP_ADMIN_ALLOWLIST = "admin@example.com,github:123"');
 		expect(wrangler).toContain('TREESEED_AUTH_MODE = "internal-first"');
-		expect(wrangler).toContain('TREESEED_GITHUB_CLIENT_ID = "github-client"');
-		expect(wrangler).toContain('TREESEED_GITHUB_CLIENT_SECRET = "github-secret"');
+		expect(wrangler).toContain('TREESEED_AUTH_GITHUB_CLIENT_ID = "github-client"');
+		expect(wrangler).toContain('TREESEED_AUTH_GITHUB_CLIENT_SECRET = "github-secret"');
 	});
 
 	it('keeps dispatch local-first when no remote config is supplied', async () => {
