@@ -13,6 +13,7 @@ runLocalD1Migrations({
 	cwd: tenantRoot,
 	wranglerConfig,
 	migrationsRoot,
+	persistTo: process.env.TREESEED_API_D1_LOCAL_PERSIST_TO?.trim() || undefined,
 });
 
 process.exit(0);
