@@ -23,6 +23,7 @@ If you are unsure, use `AgentSdk`.
 - generic model reads and mutations across content-backed and D1-backed models
 - operational runtime state such as messages, runs, cursors, and leases
 - control-plane orchestration for work days, tasks, task events, graph runs, and reports
+- provider-neutral capacity scheduling contracts for task classification, admission, execution profiles, routing, estimates, planning proposals, attention load, utility, predictive reserve, hybrid execution, checkpoints, and usage actuals
 - graph-first context retrieval through `parseGraphDsl()`, `resolveSeeds()`, `queryGraph()`, and `buildContextPack()`
 - agent scoping through `scopeForAgent()`
 
@@ -101,6 +102,12 @@ ctx <target>
 ```
 
 The old `key=value` graph DSL is no longer supported.
+
+## Capacity Scheduling Contracts
+
+The SDK owns the provider-neutral capacity runtime helpers used by the agent manager, workers, and market control plane. These helpers keep work estimation separate from provider cost by normalizing `taskSignature + executionProfileId` estimates, then routing against grants, provider lanes, quality requirements, quota/congestion pressure, attention/context saturation, utility, predictive reserve, and hybrid phase metadata.
+
+Capacity records remain metadata-compatible: advanced scheduling data lives in task payload JSON, routing decision candidates/scores, reservation metadata, capacity plan metadata, checkpoint artifacts, and usage actual metadata. Missing metadata is neutral, so older callers continue to use the credit-only behavior.
 
 ## Shared Fixture Support
 

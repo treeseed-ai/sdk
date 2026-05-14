@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.12] - 2026-05-14
+
+### Added
+
+- feat(capacity): introduce provider-neutral capacity scheduling contracts (59a439e44715)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.8.12.
+
 ## [0.8.11] - 2026-05-13
 
 ### Added
