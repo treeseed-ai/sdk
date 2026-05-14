@@ -23,6 +23,7 @@ function noopReporter(): ControlPlaneReporter {
 		async reportWorkdaySummary() {},
 		async getProjectCapacityPlan() { return null; },
 		async createCapacityReservation() { return null; },
+		async reportCapacityEstimate() { return null; },
 		async reportCapacityUsage() {},
 		async reportCapacityRoutingDecision() { return null; },
 		async createApprovalRequest() { return null; },

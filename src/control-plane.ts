@@ -7,12 +7,14 @@ import type {
 	CreateApprovalRequestRequest,
 	CreateCapacityReservationRequest,
 	CreateCapacityRoutingDecisionRequest,
+	CreateTaskEstimateRequest,
 	ProjectDeploymentKind,
 	ProjectDeploymentStatus,
 	ProjectEnvironmentName,
 	ProjectInfrastructureResourceKind,
 	ProjectInfrastructureResourceProvider,
 	RecordCapacityUsageRequest,
+	TaskEstimate,
 	TreeseedHostingKind,
 	TreeseedHostingRegistration,
 } from './sdk-types.ts';
@@ -105,6 +107,7 @@ export interface ControlPlaneReporter {
 	reportWorkdaySummary(input: ControlPlaneWorkdaySummaryReport): Promise<void>;
 	getProjectCapacityPlan(environment?: ProjectEnvironmentName | 'local' | null): Promise<CapacityPlan | null>;
 	createCapacityReservation(input: CreateCapacityReservationRequest): Promise<CapacityReservation | null>;
+	reportCapacityEstimate(input: CreateTaskEstimateRequest): Promise<TaskEstimate | null>;
 	reportCapacityUsage(input: RecordCapacityUsageRequest): Promise<void>;
 	reportCapacityRoutingDecision(input: CreateCapacityRoutingDecisionRequest): Promise<CapacityRoutingDecision | null>;
 	createApprovalRequest(input: CreateApprovalRequestRequest): Promise<ApprovalRequest | null>;
@@ -176,6 +179,7 @@ class NoopControlPlaneReporter implements ControlPlaneReporter {
 	async reportWorkdaySummary() {}
 	async getProjectCapacityPlan() { return null; }
 	async createCapacityReservation() { return null; }
+	async reportCapacityEstimate() { return null; }
 	async reportCapacityUsage() {}
 	async reportCapacityRoutingDecision() { return null; }
 	async createApprovalRequest() { return null; }
@@ -266,6 +270,11 @@ class HttpControlPlaneReporter implements ControlPlaneReporter {
 	async createCapacityReservation(input: CreateCapacityReservationRequest) {
 		if (!this.projectId) return null;
 		return this.request<CapacityReservation>('POST', `/v1/projects/${this.projectId}/runner/capacity/reservations`, input as Record<string, unknown>);
+	}
+
+	async reportCapacityEstimate(input: CreateTaskEstimateRequest) {
+		if (!this.projectId) return null;
+		return this.request<TaskEstimate>('POST', `/v1/projects/${this.projectId}/runner/capacity/estimates`, input as unknown as Record<string, unknown>);
 	}
 
 	async reportCapacityUsage(input: RecordCapacityUsageRequest) {
