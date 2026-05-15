@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.15] - 2026-05-15
+
+### Added
+
+- feat(market-client): add local market profile and legacy auth fallback (5be789571d8b)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.8.15.
+
 ## [0.8.14] - 2026-05-15
 
 ### Added
