@@ -32,10 +32,26 @@ import type {
 	RepositoryClaim,
 	RunnerScaleDecision,
 	ScaleDecision,
-	SdkCreateWorkdayRequest,
+	SdkAppendTaskEventRequest,
+	SdkClaimTaskRequest,
+	SdkClaimWorkdayManagerLeaseRequest,
+	SdkCloseWorkDayRequest,
+	SdkCompleteTaskRequest,
+	SdkCreateTaskRequest,
+	SdkFailTaskRequest,
+	SdkManagerContextPayload,
 	SdkRecordRepositoryClaimRequest,
 	SdkRecordRunnerScaleDecisionRequest,
 	SdkRecordWorkerRunnerRequest,
+	SdkReleaseWorkdayManagerLeaseRequest,
+	SdkStartWorkDayRequest,
+	SdkTaskEntity,
+	SdkTaskEventEntity,
+	SdkTaskOutputEntity,
+	SdkTaskProgressRequest,
+	SdkTaskSearchRequest,
+	SdkCreateWorkdayRequest,
+	SdkWorkDayEntity,
 	TeamStorageLocator,
 	TeamWebHost,
 	TaskEstimate,
@@ -51,6 +67,7 @@ import type {
 	UpsertTeamStorageLocatorRequest,
 	UpsertTeamWebHostRequest,
 	WorkdayPolicy,
+	WorkdayManagerLease,
 	WorkdayRequest,
 	WorkerRunner,
 	SdkPriorityOverrideRequest,
@@ -315,6 +332,168 @@ export class ControlPlaneClient {
 		);
 	}
 
+	startRunnerWorkday(projectId: string, input: SdkStartWorkDayRequest & { environment?: string | null }) {
+		return this.requestJson<SdkWorkDayEntity>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/workdays/start`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	closeRunnerWorkday(projectId: string, input: SdkCloseWorkDayRequest & { environment?: string | null }) {
+		return this.requestJson<SdkWorkDayEntity>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/workdays/${encodeURIComponent(input.id)}/close`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	listRunnerWorkdays(projectId: string, input: { state?: string | null; limit?: number | null } = {}) {
+		return this.requestJson<SdkWorkDayEntity[]>(
+			'GET',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/workdays/runtime`,
+			{
+				query: {
+					state: input.state ?? null,
+					limit: input.limit ? String(input.limit) : null,
+				},
+			},
+		);
+	}
+
+	createRunnerTask(projectId: string, input: SdkCreateTaskRequest) {
+		return this.requestJson<SdkTaskEntity>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	listRunnerTasks(projectId: string, input: SdkTaskSearchRequest = {}) {
+		return this.requestJson<SdkTaskEntity[]>(
+			'GET',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks`,
+			{
+				query: {
+					workDayId: input.workDayId ?? null,
+					agentId: input.agentId ?? null,
+					state: Array.isArray(input.state) ? input.state.join(',') : input.state ?? null,
+					limit: input.limit ? String(input.limit) : null,
+				},
+			},
+		);
+	}
+
+	claimRunnerTask(projectId: string, taskId: string, input: Omit<SdkClaimTaskRequest, 'id'>) {
+		return this.requestJson<SdkTaskEntity | null>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/claim`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	recordRunnerTaskProgress(projectId: string, taskId: string, input: Omit<SdkTaskProgressRequest, 'id'>) {
+		return this.requestJson<SdkTaskEntity | null>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/progress`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	appendRunnerTaskEvent(projectId: string, taskId: string, input: Omit<SdkAppendTaskEventRequest, 'taskId'>) {
+		return this.requestJson<SdkTaskEventEntity | null>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/events`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	completeRunnerTask(projectId: string, taskId: string, input: Omit<SdkCompleteTaskRequest, 'id'>) {
+		return this.requestJson<SdkTaskEntity | null>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/complete`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	failRunnerTask(projectId: string, taskId: string, input: Omit<SdkFailTaskRequest, 'id'>) {
+		return this.requestJson<SdkTaskEntity | null>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/fail`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	getRunnerTaskContext(projectId: string, taskId: string) {
+		return this.requestJson<SdkManagerContextPayload>(
+			'GET',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/context`,
+		);
+	}
+
+	listRunnerTaskEvents(projectId: string, taskId: string) {
+		return this.requestJson<SdkTaskEventEntity[]>(
+			'GET',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/events`,
+		);
+	}
+
+	listRunnerTaskOutputs(projectId: string, taskId: string) {
+		return this.requestJson<SdkTaskOutputEntity[]>(
+			'GET',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/outputs`,
+		);
+	}
+
+	storeRunnerArtifact(projectId: string, input: {
+		objectKey?: string | null;
+		content?: string | Record<string, unknown> | null;
+		contentBase64?: string | null;
+		contentType?: string | null;
+		sha256?: string | null;
+	}) {
+		return this.requestJson<{
+			artifactStorage: string;
+			storageMode: string;
+			outputRef: string;
+			objectKey: string;
+			contentType: string;
+			sizeBytes: number;
+			sha256: string;
+			teamId: string;
+			projectId: string;
+			createdAt: string;
+		}>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/artifacts`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	claimRunnerManagerLease(projectId: string, input: SdkClaimWorkdayManagerLeaseRequest) {
+		return this.requestJson<WorkdayManagerLease | null>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/manager-leases/claim`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	releaseRunnerManagerLease(projectId: string, input: SdkReleaseWorkdayManagerLeaseRequest) {
+		return this.requestJson<WorkdayManagerLease | null>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/manager-leases/${encodeURIComponent(input.id)}/release`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	listRunnerManagerLeases(projectId: string, environment: ProjectEnvironmentName | 'local' = 'staging') {
+		return this.requestJson<WorkdayManagerLease[]>(
+			'GET',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/manager-leases`,
+			{ query: { environment } },
+		);
+	}
+
 	createProjectWorkdayRequest(projectId: string, input: SdkCreateWorkdayRequest) {
 		return this.requestJson<WorkdayRequest>(
 			'POST',
@@ -431,6 +610,22 @@ export class ControlPlaneClient {
 			'GET',
 			`/v1/projects/${encodeURIComponent(projectId)}/runner/repository-claims`,
 			{ query: { repositoryId: repositoryId ?? null } },
+		);
+	}
+
+	reportRunnerCapacityUsage(projectId: string, input: RecordCapacityUsageRequest) {
+		return this.requestJson<{ entry: unknown; settlement?: unknown; usageActual?: unknown }>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/capacity/usage`,
+			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	createRunnerApprovalRequest(projectId: string, input: Omit<CreateApprovalRequestRequest, 'projectId'> & Partial<Pick<CreateApprovalRequestRequest, 'projectId'>>) {
+		return this.requestJson<ApprovalRequest>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/approval-requests`,
+			{ body: input as Record<string, unknown> },
 		);
 	}
 

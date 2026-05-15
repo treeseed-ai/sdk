@@ -174,4 +174,190 @@ describe('control-plane reporter', () => {
 			registration: 'optional',
 		});
 	});
+
+	it('calls hosted runner task and manager lease routes through the typed client', async () => {
+		const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+			const pathname = new URL(String(url)).pathname;
+			const body = init?.body ? JSON.parse(String(init.body)) : {};
+			if (pathname.endsWith('/runner/tasks') && init?.method === 'POST') {
+				return new Response(JSON.stringify({
+					ok: true,
+					payload: {
+						id: 'task-1',
+						workDayId: body.workDayId,
+						agentId: body.agentId,
+						type: body.type,
+						state: 'pending',
+						priority: 0,
+						idempotencyKey: body.idempotencyKey,
+						payloadJson: JSON.stringify(body.payload ?? {}),
+						payloadHash: null,
+						attemptCount: 0,
+						maxAttempts: 3,
+						claimedBy: null,
+						leaseExpiresAt: null,
+						availableAt: '2026-05-14T00:00:00.000Z',
+						lastErrorCode: null,
+						lastErrorMessage: null,
+						graphVersion: null,
+						parentTaskId: null,
+						createdAt: '2026-05-14T00:00:00.000Z',
+						startedAt: null,
+						completedAt: null,
+						updatedAt: '2026-05-14T00:00:00.000Z',
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (pathname.endsWith('/runner/manager-leases/claim')) {
+				return new Response(JSON.stringify({
+					ok: true,
+					payload: {
+						id: 'lease-1',
+						projectId: 'project-1',
+						environment: body.environment,
+						workDayId: body.workDayId,
+						managerId: body.managerId,
+						state: 'active',
+						heartbeatAt: body.now,
+						expiresAt: '2026-05-14T00:01:00.000Z',
+						metadata: {},
+						createdAt: body.now,
+						updatedAt: body.now,
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			return new Response(JSON.stringify({ ok: true, payload: [] }), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			});
+		});
+		const client = new ControlPlaneClient({
+			baseUrl: 'https://market.example.com',
+			accessToken: 'runner-token',
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		const task = await client.createRunnerTask('project-1', {
+			workDayId: 'workday-1',
+			agentId: 'system',
+			type: 'refresh_project_graph',
+			idempotencyKey: 'workday-1:refresh_project_graph',
+			payload: {},
+			actor: 'manager',
+		});
+		const lease = await client.claimRunnerManagerLease('project-1', {
+			projectId: 'project-1',
+			environment: 'staging',
+			workDayId: 'workday-1',
+			managerId: 'manager-1',
+			ttlSeconds: 60,
+			now: '2026-05-14T00:00:00.000Z',
+		});
+
+		expect(task).toMatchObject({ id: 'task-1', type: 'refresh_project_graph' });
+		expect(lease).toMatchObject({ id: 'lease-1', managerId: 'manager-1' });
+		expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/v1/projects/project-1/runner/tasks');
+		expect(String(fetchMock.mock.calls[1]?.[0])).toContain('/v1/projects/project-1/runner/manager-leases/claim');
+	});
+
+	it('calls hosted artifact, approval, and capacity runner routes through the typed client', async () => {
+		const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+			const pathname = new URL(String(url)).pathname;
+			const body = init?.body ? JSON.parse(String(init.body)) : {};
+			if (pathname.endsWith('/runner/artifacts')) {
+				return new Response(JSON.stringify({
+					ok: true,
+					payload: {
+						artifactStorage: 'r2',
+						storageMode: 'local_r2_emulation',
+						outputRef: 'r2:agent-artifacts/body.json',
+						objectKey: body.objectKey,
+						contentType: body.contentType,
+						sizeBytes: 42,
+						sha256: body.sha256,
+						teamId: 'team-1',
+						projectId: 'project-1',
+						createdAt: '2026-05-14T00:00:00.000Z',
+					},
+				}), { status: 201, headers: { 'content-type': 'application/json' } });
+			}
+			if (pathname.endsWith('/runner/approval-requests')) {
+				return new Response(JSON.stringify({
+					ok: true,
+					payload: {
+						id: body.id,
+						teamId: 'team-1',
+						projectId: 'project-1',
+						workDayId: body.workDayId ?? null,
+						taskId: body.taskId ?? null,
+						kind: body.kind,
+						state: 'pending',
+						severity: body.severity ?? 'medium',
+						title: body.title,
+						summary: body.summary,
+						options: body.options ?? [],
+						recommendation: body.recommendation ?? null,
+						policySnapshot: body.policySnapshot ?? {},
+						metadata: body.metadata ?? {},
+						decision: null,
+						requestedByType: 'worker',
+						requestedById: null,
+						expiresAt: null,
+						createdAt: '2026-05-14T00:00:00.000Z',
+						updatedAt: '2026-05-14T00:00:00.000Z',
+					},
+				}), { status: 201, headers: { 'content-type': 'application/json' } });
+			}
+			if (pathname.endsWith('/runner/capacity/usage')) {
+				return new Response(JSON.stringify({
+					ok: true,
+					payload: {
+						entry: {
+							id: 'usage-1',
+							capacityProviderId: body.capacityProviderId,
+							projectId: 'project-1',
+							credits: body.credits,
+						},
+					},
+				}), { status: 201, headers: { 'content-type': 'application/json' } });
+			}
+			return new Response(JSON.stringify({ ok: false }), { status: 404 });
+		});
+		const client = new ControlPlaneClient({
+			baseUrl: 'https://market.example.com',
+			accessToken: 'runner-token',
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		const artifact = await client.storeRunnerArtifact('project-1', {
+			objectKey: 'agent-artifacts/body.json',
+			content: '{"ok":true}',
+			contentType: 'application/json',
+			sha256: 'checksum',
+		});
+		const approval = await client.createRunnerApprovalRequest('project-1', {
+			id: 'approval-1',
+			teamId: 'team-1',
+			projectId: 'project-1',
+			workDayId: 'workday-1',
+			kind: 'promote_knowledge_draft',
+			title: 'Approve docs',
+			summary: 'Approve generated docs.',
+		});
+		const usage = await client.reportRunnerCapacityUsage('project-1', {
+			capacityProviderId: 'provider-1',
+			teamId: 'team-1',
+			projectId: 'project-1',
+			workDayId: 'workday-1',
+			phase: 'consume',
+			credits: 2,
+		});
+
+		expect(artifact.outputRef).toBe('r2:agent-artifacts/body.json');
+		expect(approval).toMatchObject({ id: 'approval-1', kind: 'promote_knowledge_draft' });
+		expect(usage.entry).toMatchObject({ id: 'usage-1', credits: 2 });
+		expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/v1/projects/project-1/runner/artifacts');
+		expect(String(fetchMock.mock.calls[1]?.[0])).toContain('/v1/projects/project-1/runner/approval-requests');
+		expect(String(fetchMock.mock.calls[2]?.[0])).toContain('/v1/projects/project-1/runner/capacity/usage');
+	});
 });

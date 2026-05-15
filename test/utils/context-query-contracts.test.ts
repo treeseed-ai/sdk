@@ -101,4 +101,32 @@ describe('declarative context query contracts', () => {
 		expect(result.compiled?.request.relations).toEqual(['related', 'references']);
 		expect(result.warnings.join('\n')).toContain('duplicate relations');
 	});
+
+	it('preserves normalized code scopes for scanner-backed context packs', () => {
+		const result = compileDeclarativeContextQuery({
+			id: 'runtime-code',
+			purpose: 'research',
+			query: 'agent runtime worker',
+			scope: '/knowledge',
+			codeScopes: [' packages/agent/src/services ', 'packages/agent/src/services', 'flow:agent runtime'],
+		});
+
+		expect(result.ok).toBe(true);
+		expect(result.compiled?.query.codeScopes).toEqual(['packages/agent/src/services', 'flow:agent runtime']);
+		expect(result.compiled?.request.scopePaths).toEqual(['/knowledge']);
+	});
+
+	it('rejects malformed code scopes', () => {
+		const result = compileDeclarativeContextQuery({
+			id: 'bad-code-scopes',
+			purpose: 'research',
+			query: 'agent runtime worker',
+			codeScopes: [],
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.errors).toEqual(expect.arrayContaining([
+			expect.stringContaining('codeScopes'),
+		]));
+	});
 });

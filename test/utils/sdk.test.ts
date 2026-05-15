@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { MemoryAgentDatabase } from '../../src/d1-store.ts';
+import { CloudflareD1AgentDatabase, MemoryAgentDatabase } from '../../src/d1-store.ts';
+import { NodeSqliteD1Database } from '../../src/db/node-sqlite.ts';
 import { AgentSdk } from '../../src/sdk.ts';
 import { sdkFixtureRoot } from '../test-fixture.ts';
 
@@ -528,5 +529,150 @@ describe('agent sdk', () => {
 		const context = await sdk.getManagerContext(String(task.payload?.id));
 		expect(context.payload.task?.id).toBe(task.payload?.id);
 		expect(context.payload.workDay?.id).toBe(workDay.payload?.id);
+	});
+
+	it('persists manager leases and worker runner heartbeats in memory and sqlite stores', async () => {
+		const sqlitePath = join(mkdtempSync(join(tmpdir(), 'treeseed-sdk-runner-')), 'site-data.sqlite');
+		const sqliteD1 = new NodeSqliteD1Database(sqlitePath);
+		const databases = [
+			new MemoryAgentDatabase(),
+			new CloudflareD1AgentDatabase(sqliteD1),
+		];
+		for (const database of databases) {
+			const sdk = new AgentSdk({
+				repoRoot: sdkFixtureRoot,
+				database,
+			});
+			const first = await sdk.claimWorkdayManagerLease({
+				projectId: 'project-1',
+				environment: 'local',
+				workDayId: 'workday-1',
+				managerId: 'manager-a',
+				ttlSeconds: 60,
+				staleAfterSeconds: 120,
+				now: '2026-05-14T12:00:00.000Z',
+				metadata: { mode: 'reconcile' },
+			});
+			expect(first.payload).toMatchObject({ managerId: 'manager-a', state: 'active' });
+
+			const blocked = await sdk.claimWorkdayManagerLease({
+				projectId: 'project-1',
+				environment: 'local',
+				workDayId: 'workday-1',
+				managerId: 'manager-b',
+				ttlSeconds: 60,
+				staleAfterSeconds: 120,
+				now: '2026-05-14T12:01:00.000Z',
+			});
+			expect(blocked.payload).toBeNull();
+
+			const takeover = await sdk.claimWorkdayManagerLease({
+				projectId: 'project-1',
+				environment: 'local',
+				workDayId: 'workday-1',
+				managerId: 'manager-b',
+				ttlSeconds: 60,
+				staleAfterSeconds: 120,
+				now: '2026-05-14T12:03:30.000Z',
+			});
+			expect(takeover.payload).toMatchObject({ managerId: 'manager-b', state: 'active' });
+			const leases = await sdk.listWorkdayManagerLeases('project-1', 'local');
+			expect(leases.payload?.[0]).toMatchObject({ managerId: 'manager-b' });
+
+			await sdk.recordWorkerRunner({
+				projectId: 'project-1',
+				environment: 'local',
+				runnerId: 'runner-1',
+				runnerServiceName: 'worker-runner-1',
+				volumeIdentity: 'volume-1',
+				state: 'idle',
+				maxLocalWorkers: 4,
+				activeLocalWorkers: 0,
+				metadata: { phase: 'idle' },
+			});
+			const runners = await sdk.listWorkerRunners('project-1', 'local');
+			expect(runners.payload).toEqual([expect.objectContaining({
+				runnerId: 'runner-1',
+				state: 'idle',
+				availableCapacity: 4,
+			})]);
+		}
+	});
+
+	it('persists approval requests, decisions, and inbox items in memory and sqlite stores', async () => {
+		const sqlitePath = join(mkdtempSync(join(tmpdir(), 'treeseed-sdk-approval-')), 'site-data.sqlite');
+		const sqliteD1 = new NodeSqliteD1Database(sqlitePath);
+		const databases = [
+			new MemoryAgentDatabase(),
+			new CloudflareD1AgentDatabase(sqliteD1),
+		];
+		try {
+			for (const database of databases) {
+				const sdk = new AgentSdk({
+					repoRoot: sdkFixtureRoot,
+					database,
+				});
+				const created = await sdk.createApprovalRequest({
+					id: 'approval:test',
+					teamId: 'team-1',
+					projectId: 'project-1',
+					workDayId: 'workday-1',
+					taskId: 'task-1',
+					kind: 'promote_knowledge_draft',
+					title: 'Promote Runtime Knowledge',
+					summary: 'Review generated runtime knowledge.',
+					options: [{ id: 'approve_as_book_content' }],
+					recommendation: { action: 'approve', totalScore: 29 },
+					policySnapshot: { approvalPolicy: 'manual' },
+					metadata: { draftId: 'knowledge:runtime' },
+				});
+				expect(created.payload).toMatchObject({
+					id: 'approval:test',
+					state: 'pending',
+					metadata: { draftId: 'knowledge:runtime' },
+				});
+
+				const listed = await sdk.listApprovalRequests({ projectId: 'project-1' });
+				expect(listed.payload).toEqual([expect.objectContaining({ id: 'approval:test' })]);
+
+				const decided = await sdk.decideApprovalRequest('approval:test', {
+					state: 'changes_requested',
+					optionId: 'request_more_research',
+					note: 'Needs another source-map pass.',
+					decision: { decision: 'request_more_research' },
+					decidedByType: 'user',
+					decidedById: 'user-1',
+				});
+				expect(decided.payload).toMatchObject({
+					id: 'approval:test',
+					state: 'changes_requested',
+					decidedById: 'user-1',
+					decision: expect.objectContaining({
+						decision: 'request_more_research',
+						optionId: 'request_more_research',
+					}),
+				});
+
+				const inbox = await sdk.upsertTeamInboxItem({
+					id: 'approval:approval:test',
+					teamId: 'team-1',
+					projectId: 'project-1',
+					kind: 'approval_required',
+					state: 'waiting_for_approval',
+					title: 'Approval required',
+					summary: 'Generated knowledge is waiting.',
+					href: '/app/teams/team-1/projects/project-1/agents',
+					itemKey: 'approval:approval:test',
+					metadata: { approvalId: 'approval:test' },
+				});
+				expect(inbox.payload).toMatchObject({
+					id: 'approval:approval:test',
+					state: 'waiting_for_approval',
+					metadata: { approvalId: 'approval:test' },
+				});
+			}
+		} finally {
+			sqliteD1.close();
+		}
 	});
 });
