@@ -174,10 +174,14 @@ describe('remote Treeseed support', () => {
 		expect(readFileSync(authPath, 'utf8')).not.toContain('access-token');
 	});
 
-		it('stores market profiles and calls market-owned v1 endpoints as a client', async () => {
-			const calls: Array<{ url: string; headers: Record<string, string> }> = [];
-			expect(resolveDefaultCentralMarketBaseUrl({})).toBe('https://api.treeseed.ai');
-			addMarketProfile({
+	it('stores market profiles and calls market-owned v1 endpoints as a client', async () => {
+		const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+		expect(resolveDefaultCentralMarketBaseUrl({})).toBe('https://api.treeseed.ai');
+		expect(resolveDefaultCentralMarketBaseUrl({ TREESEED_MARKET_API_BASE_URL: 'http://127.0.0.1:3000' }))
+			.toBe('https://api.treeseed.ai');
+		expect(resolveDefaultCentralMarketBaseUrl({ TREESEED_CENTRAL_MARKET_API_BASE_URL: 'https://central.example.com/' }))
+			.toBe('https://central.example.com');
+		addMarketProfile({
 			id: 'enterprise',
 			label: 'Enterprise',
 			baseUrl: 'https://enterprise.example.com/',
