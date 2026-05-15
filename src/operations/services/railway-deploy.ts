@@ -1461,6 +1461,39 @@ function buildRailwayCliContextEnv(env, service) {
 	};
 }
 
+async function syncRailwayApiDeviceLoginVariables(service, env, write, prefix) {
+	if (service.key !== 'api') {
+		return null;
+	}
+	const projectId = configuredEnvValue(service, 'projectId');
+	const environmentId = configuredEnvValue(service, 'environmentId');
+	const serviceId = configuredEnvValue(service, 'serviceId');
+	if (!projectId || !environmentId || !serviceId) {
+		return null;
+	}
+	const variables = Object.fromEntries(
+		[
+			'TREESEED_API_AUTH_APPROVAL_BASE_URL',
+			'TREESEED_SITE_URL',
+			'BETTER_AUTH_URL',
+		]
+			.map((key) => [key, configuredEnvValue(env, key)])
+			.filter(([, value]) => value),
+	);
+	if (Object.keys(variables).length === 0) {
+		return null;
+	}
+	await upsertRailwayVariables({
+		projectId,
+		environmentId,
+		serviceId,
+		variables,
+		env,
+	});
+	write ? write(`[${prefix.scope}][${prefix.system}][${prefix.task}][vars] Synced device login approval URL variables for ${service.serviceName ?? serviceId}.`, 'stdout') : null;
+	return { variables: Object.keys(variables) };
+}
+
 export function buildRailwayLinkCommandEnv(env = process.env, service = {}) {
 	return buildRailwayCliContextEnv({
 		...buildRailwayDeployCommandEnv({ ...env, RAILWAY_TOKEN: undefined }),
@@ -1924,6 +1957,7 @@ export async function deployRailwayService(
 		serviceName: runtimeConfiguration?.serviceName ?? deployService.serviceName,
 		railwayEnvironment: runtimeConfiguration?.environmentName ?? runtimeConfiguration?.environmentId ?? deployService.railwayEnvironment,
 	};
+	await syncRailwayApiDeviceLoginVariables(cliDeployService, commandEnv, write, taskPrefix);
 	railwayDeployEnv = buildRailwayCliContextEnv(railwayDeployEnv, cliDeployService);
 	const hasCommandApiToken = Boolean(configuredEnvValue(commandEnv, 'RAILWAY_API_TOKEN'));
 	let usesProjectToken = Boolean(configuredEnvValue(railwayDeployEnv, 'RAILWAY_TOKEN'));

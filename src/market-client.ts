@@ -124,7 +124,6 @@ function envValue(name: string, env: Record<string, string | undefined> = proces
 export function resolveDefaultCentralMarketBaseUrl(env: Record<string, string | undefined> = process.env) {
 	return normalizeBaseUrl(
 			envValue(TREESEED_CENTRAL_MARKET_API_BASE_URL_ENV, env)
-			?? envValue(TREESEED_MARKET_API_BASE_URL_ENV, env)
 			?? DEFAULT_TREESEED_MARKET_BASE_URL,
 		);
 }

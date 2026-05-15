@@ -42,6 +42,11 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(processingSource).toContain('TREESEED_WORKFLOW_PLANE: processing');
 		expect(webSource).toContain('TREESEED_BETTER_AUTH_SECRET');
 		expect(webSource).toContain('TREESEED_WEB_SERVICE_SECRET');
+		expect(webSource).toContain('TREESEED_SITE_URL');
+		expect(webSource).toContain('BETTER_AUTH_URL');
+		expect(processingSource).toContain('TREESEED_API_AUTH_APPROVAL_BASE_URL');
+		expect(processingSource).toContain('TREESEED_SITE_URL');
+		expect(processingSource).toContain('BETTER_AUTH_URL');
 		expect(webSource).toContain('packages/sdk packages/agent packages/core packages/cli');
 		expect(webSource).toContain('npm ci --ignore-scripts');
 		expect(processingSource).toContain('npm ci --ignore-scripts');
