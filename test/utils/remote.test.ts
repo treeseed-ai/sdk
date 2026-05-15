@@ -187,6 +187,11 @@ describe('remote Treeseed support', () => {
 		const state = loadMarketRegistryState();
 		expect(state.profiles.map((profile) => profile.id)).toContain('central');
 		expect(resolveMarketProfile('enterprise').baseUrl).toBe('https://enterprise.example.com');
+		expect(resolveMarketProfile('local')).toMatchObject({
+			id: 'local',
+			baseUrl: 'http://127.0.0.1:3000',
+			kind: 'specialized',
+		});
 
 		const client = new MarketClient({
 			profile: resolveMarketProfile('enterprise'),

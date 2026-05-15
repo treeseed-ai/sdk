@@ -139,6 +139,19 @@ function defaultCentralMarket(): MarketProfile {
 	};
 }
 
+function defaultLocalMarket(env: Record<string, string | undefined> = process.env): MarketProfile {
+	return {
+		id: 'local',
+		label: 'Local TreeSeed Market',
+		baseUrl: normalizeBaseUrl(
+			envValue(TREESEED_MARKET_API_BASE_URL_ENV, env)
+			?? 'http://127.0.0.1:3000',
+		),
+		kind: 'specialized',
+		alwaysAvailable: true,
+	};
+}
+
 function homeConfigPath() {
 	const homeRoot = process.env.HOME && process.env.HOME.trim().length > 0 ? process.env.HOME : homedir();
 	return resolve(homeRoot, MARKET_REGISTRY_RELATIVE_PATH);
@@ -255,6 +268,9 @@ export function resolveMarketProfile(selector?: string | null): MarketProfile {
 			kind: 'specialized',
 			alwaysAvailable: false,
 		};
+	}
+	if (trimmed === 'local') {
+		return defaultLocalMarket();
 	}
 	const marketId = trimmed || state.activeMarketId || 'central';
 	const profile = state.profiles.find((entry) => entry.id === marketId);
@@ -400,22 +416,42 @@ export class MarketClient {
 		return payload as T;
 	}
 
+	private localAuthPaths(v1Path: string, legacyPath: string) {
+		return this.options.profile.id === 'local' ? [legacyPath, v1Path] : [v1Path];
+	}
+
+	private async requestFirst<T>(paths: string[], options: { method?: string; body?: unknown; requireAuth?: boolean } = {}): Promise<T> {
+		let notFound: MarketApiError | null = null;
+		for (const path of paths) {
+			try {
+				return await this.request<T>(path, options);
+			} catch (error) {
+				if (error instanceof MarketApiError && error.status === 404) {
+					notFound = error;
+					continue;
+				}
+				throw error;
+			}
+		}
+		throw notFound ?? new MarketApiError('Market request failed with 404.', 404, {});
+	}
+
 	startDeviceLogin(request: DeviceCodeStartRequest) {
-		return this.request<DeviceCodeStartResponse>('/v1/auth/device/start', {
+		return this.requestFirst<DeviceCodeStartResponse>(this.localAuthPaths('/v1/auth/device/start', '/auth/device/start'), {
 			method: 'POST',
 			body: request,
 		});
 	}
 
 	pollDeviceLogin(request: DeviceCodePollRequest) {
-		return this.request<DeviceCodePollResponse>('/v1/auth/device/poll', {
+		return this.requestFirst<DeviceCodePollResponse>(this.localAuthPaths('/v1/auth/device/poll', '/auth/device/poll'), {
 			method: 'POST',
 			body: request,
 		});
 	}
 
 	refreshToken(request: TokenRefreshRequest) {
-		return this.request<TokenRefreshResponse>('/v1/auth/token/refresh', {
+		return this.requestFirst<TokenRefreshResponse>(this.localAuthPaths('/v1/auth/token/refresh', '/auth/token/refresh'), {
 			method: 'POST',
 			body: request,
 		});
