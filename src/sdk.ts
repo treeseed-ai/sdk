@@ -24,6 +24,7 @@ import type {
 	SdkClaimTaskRequest,
 	SdkCloseWorkDayRequest,
 	SdkCompleteTaskRequest,
+	CreateApprovalRequestRequest,
 	SdkCreateReportRequest,
 	SdkCreateMessageRequest,
 	SdkCreatePrioritySnapshotRequest,
@@ -68,6 +69,8 @@ import type {
 	SdkDispatchRequest,
 	SdkDispatchResult,
 	SdkDispatchCredentialSource,
+	DecideApprovalRequestRequest,
+	ListApprovalRequestsRequest,
 	PrioritySnapshot,
 	RepositoryClaim,
 	RunnerScaleDecision,
@@ -77,6 +80,7 @@ import type {
 	WorkdayPolicy,
 	WorkdayRequest,
 	WorkerRunner,
+	UpsertTeamInboxItemRequest,
 } from './sdk-types.ts';
 import { NodeSqliteD1Database } from './db/node-sqlite.ts';
 
@@ -451,6 +455,11 @@ export class AgentSdk {
 		return this.envelope<WorkdayManagerLease>('workday_manager_lease', 'release', payload);
 	}
 
+	async listWorkdayManagerLeases(projectId: string, environment: string) {
+		const payload = await this.database.listWorkdayManagerLeases(projectId, environment);
+		return this.envelope<WorkdayManagerLease[]>('workday_manager_lease', 'search', payload, { count: payload.length });
+	}
+
 	async recordWorkerRunner(request: SdkRecordWorkerRunnerRequest) {
 		const payload = await this.database.recordWorkerRunner(request);
 		return this.envelope<WorkerRunner>('worker_runner', 'update', payload);
@@ -524,6 +533,26 @@ export class AgentSdk {
 	async getLatestScaleDecision(projectId: string, environment: string, poolName: string) {
 		const payload = await this.database.getLatestScaleDecision(projectId, environment, poolName);
 		return this.envelope<ScaleDecision>('report', 'get', payload);
+	}
+
+	async createApprovalRequest(request: CreateApprovalRequestRequest) {
+		const payload = await this.database.createApprovalRequest(request);
+		return this.envelope('approval_request', 'create', payload);
+	}
+
+	async listApprovalRequests(request: ListApprovalRequestsRequest = {}) {
+		const payload = await this.database.listApprovalRequests(request);
+		return this.envelope('approval_request', 'search', payload, { count: payload.length });
+	}
+
+	async decideApprovalRequest(id: string, request: DecideApprovalRequestRequest) {
+		const payload = await this.database.decideApprovalRequest(id, request);
+		return this.envelope('approval_request', 'update', payload);
+	}
+
+	async upsertTeamInboxItem(request: UpsertTeamInboxItemRequest) {
+		const payload = await this.database.upsertTeamInboxItem(request);
+		return this.envelope('team_inbox_item', 'update', payload);
 	}
 
 	async listWorkstreams(projectId: string) {

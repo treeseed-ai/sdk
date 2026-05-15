@@ -30,6 +30,7 @@ export interface DeclarativeContextQuery {
 	purpose: DeclarativeContextQueryPurpose;
 	query: string;
 	scope?: string;
+	codeScopes?: string[];
 	relations?: string[];
 	depth?: number;
 	budget?: number;
@@ -156,6 +157,14 @@ export function compileDeclarativeContextQuery(
 	if (scope !== undefined && (!scope || !scope.startsWith('/'))) {
 		errors.push(`Context query "${id || '<unknown>'}" scope must start with "/".`);
 	}
+	const codeScopes = query.codeScopes === undefined
+		? undefined
+		: Array.isArray(query.codeScopes)
+			? [...new Set(query.codeScopes.map((entry) => typeof entry === 'string' ? entry.trim() : '').filter(Boolean))]
+			: [];
+	if (query.codeScopes !== undefined && (!Array.isArray(query.codeScopes) || codeScopes.length === 0)) {
+		errors.push(`Context query "${id || '<unknown>'}" codeScopes must be a non-empty array of strings.`);
+	}
 
 	const relations = (query.relations ?? ['related', 'references']).map((entry) => entry.trim().toLowerCase());
 	const invalidRelations = relations.filter((relation) => !VALID_RELATIONS.includes(relation as SdkGraphDslRelation));
@@ -209,6 +218,7 @@ export function compileDeclarativeContextQuery(
 				purpose,
 				query: textQuery,
 				scope,
+				codeScopes,
 				relations: uniqueRelations,
 			},
 			request,

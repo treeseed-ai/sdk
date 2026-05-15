@@ -3,6 +3,7 @@ export { ContentGraphRuntime } from './graph.ts';
 export { projectConnectionModeFromHosting } from './sdk-types.ts';
 export { createControlPlaneReporter } from './control-plane.ts';
 export { ControlPlaneClient } from './control-plane-client.ts';
+export * from './seeds/index.ts';
 export {
 	DEFAULT_EXECUTION_PROFILE_ID,
 	DEFAULT_EXECUTION_PROFILES,
@@ -415,6 +416,8 @@ export type {
 	PrioritySnapshot,
 		TaskCreditLedgerEntry,
 		ApprovalRequest,
+		DecideApprovalRequestRequest,
+		ListApprovalRequestsRequest,
 		CapacityBusinessModel,
 		CapacityGrant,
 		CapacityGrantScope,
@@ -434,6 +437,7 @@ export type {
 		CreateCapacityRoutingDecisionRequest,
 		CreateTaskEstimateRequest,
 		CreateTaskUsageActualRequest,
+		UpsertTeamInboxItemRequest,
 		ExecutionProfile,
 		HybridExecutionPhase,
 		HybridExecutionPlan,
@@ -479,13 +483,27 @@ export type {
 		UpsertTeamWebHostRequest,
 		CreateProjectDeploymentRequest,
 		RecordAgentPoolRegistrationRequest,
+		SdkAppendTaskEventRequest,
+		SdkClaimTaskRequest,
 		SdkCreateWorkdayRequest,
+		SdkCloseWorkDayRequest,
+		SdkCompleteTaskRequest,
+		SdkCreateTaskRequest,
+		SdkFailTaskRequest,
+		SdkManagerContextPayload,
 		SdkClaimWorkdayManagerLeaseRequest,
 		SdkReleaseWorkdayManagerLeaseRequest,
 		SdkRecordWorkerRunnerRequest,
 		SdkRecordRepositoryClaimRequest,
 		SdkRecordRunnerScaleDecisionRequest,
+		SdkStartWorkDayRequest,
+		SdkTaskEntity,
+		SdkTaskEventEntity,
+		SdkTaskOutputEntity,
+		SdkTaskProgressRequest,
+		SdkTaskSearchRequest,
 		SdkUpdateWorkDayGraphRequest,
+		SdkWorkDayEntity,
 		WorkerPoolScaleResult,
 	WorkerPoolScaler,
 	} from './sdk-types.ts';

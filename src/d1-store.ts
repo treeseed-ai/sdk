@@ -5,6 +5,7 @@ import type {
 	ReleaseDetail,
 	ReleaseSummary,
 	SharePackageStatus,
+	InboxItem,
 	WorkstreamDetail,
 	WorkstreamEvent,
 	WorkstreamSummary,
@@ -20,7 +21,10 @@ import type {
 	SdkClaimTaskRequest,
 	SdkCloseWorkDayRequest,
 	SdkCompleteTaskRequest,
+	ApprovalRequest,
 	SdkCreateReportRequest,
+	CreateApprovalRequestRequest,
+	DecideApprovalRequestRequest,
 	SdkCreateMessageRequest,
 	SdkCreatePrioritySnapshotRequest,
 	SdkCreateTaskRequest,
@@ -53,9 +57,11 @@ import type {
 	SdkRunEntity,
 	SdkSearchRequest,
 	SdkStartWorkDayRequest,
+	ListApprovalRequestsRequest,
 	SdkSubscriptionEntity,
 	SdkTaskEntity,
 	SdkTaskSearchRequest,
+	UpsertTeamInboxItemRequest,
 	SdkUpsertWorkPolicyRequest,
 	SdkTaskProgressRequest,
 	SdkUpdateWorkDayGraphRequest,
@@ -125,6 +131,7 @@ export interface AgentDatabase {
 	listWorkdayRequests(projectId: string, environment: string, state?: string | null): Promise<WorkdayRequest[]>;
 	claimWorkdayManagerLease(request: SdkClaimWorkdayManagerLeaseRequest): Promise<WorkdayManagerLease | null>;
 	releaseWorkdayManagerLease(request: SdkReleaseWorkdayManagerLeaseRequest): Promise<WorkdayManagerLease | null>;
+	listWorkdayManagerLeases(projectId: string, environment: string): Promise<WorkdayManagerLease[]>;
 	recordWorkerRunner(request: SdkRecordWorkerRunnerRequest): Promise<WorkerRunner | null>;
 	listWorkerRunners(projectId: string, environment: string): Promise<WorkerRunner[]>;
 	recordRepositoryClaim(request: SdkRecordRepositoryClaimRequest): Promise<RepositoryClaim | null>;
@@ -140,6 +147,10 @@ export interface AgentDatabase {
 	listTaskCredits(workDayId: string): Promise<TaskCreditLedgerEntry[]>;
 	recordScaleDecision(request: SdkRecordScaleDecisionRequest): Promise<ScaleDecision | null>;
 	getLatestScaleDecision(projectId: string, environment: string, poolName: string): Promise<ScaleDecision | null>;
+	createApprovalRequest(request: CreateApprovalRequestRequest): Promise<ApprovalRequest | null>;
+	listApprovalRequests(request: ListApprovalRequestsRequest): Promise<ApprovalRequest[]>;
+	decideApprovalRequest(id: string, request: DecideApprovalRequestRequest): Promise<ApprovalRequest | null>;
+	upsertTeamInboxItem(request: UpsertTeamInboxItemRequest): Promise<InboxItem | null>;
 	listWorkstreams(projectId: string): Promise<WorkstreamSummary[]>;
 	getWorkstream(workstreamId: string): Promise<WorkstreamDetail | null>;
 	upsertWorkstream(input: Partial<WorkstreamSummary> & Pick<WorkstreamSummary, 'projectId' | 'title'>): Promise<WorkstreamSummary | null>;
@@ -187,6 +198,75 @@ function filterSinceField(model: string) {
 	}
 }
 
+function approvalStateFor(value: string | null | undefined) {
+	const state = String(value ?? 'pending').trim();
+	return state || 'pending';
+}
+
+function approvalRequestFromInput(input: CreateApprovalRequestRequest, existing?: ApprovalRequest | null): ApprovalRequest {
+	const timestamp = nowIso();
+	return {
+		id: input.id ?? existing?.id ?? crypto.randomUUID(),
+		teamId: input.teamId,
+		projectId: input.projectId,
+		workDayId: input.workDayId ?? existing?.workDayId ?? null,
+		taskId: input.taskId ?? existing?.taskId ?? null,
+		kind: input.kind,
+		state: existing?.state ?? 'pending',
+		severity: input.severity ?? existing?.severity ?? 'medium',
+		requestedByType: input.requestedByType ?? existing?.requestedByType ?? 'worker',
+		requestedById: input.requestedById ?? existing?.requestedById ?? null,
+		title: input.title,
+		summary: input.summary,
+		options: input.options ?? existing?.options ?? [],
+		recommendation: input.recommendation ?? existing?.recommendation ?? {},
+		policySnapshot: input.policySnapshot ?? existing?.policySnapshot ?? {},
+		expiresAt: input.expiresAt ?? existing?.expiresAt ?? null,
+		decidedByType: existing?.decidedByType ?? null,
+		decidedById: existing?.decidedById ?? null,
+		decidedAt: existing?.decidedAt ?? null,
+		decision: existing?.decision ?? null,
+		metadata: input.metadata ?? existing?.metadata ?? {},
+		createdAt: existing?.createdAt ?? timestamp,
+		updatedAt: timestamp,
+	};
+}
+
+function decidedApprovalRequest(existing: ApprovalRequest, input: DecideApprovalRequestRequest): ApprovalRequest {
+	const timestamp = nowIso();
+	return {
+		...existing,
+		state: approvalStateFor(input.state) as ApprovalRequest['state'],
+		decidedByType: input.decidedByType ?? 'user',
+		decidedById: input.decidedById ?? null,
+		decidedAt: timestamp,
+		decision: {
+			...(input.decision ?? {}),
+			...(input.optionId ? { optionId: input.optionId } : {}),
+			...(input.note ? { note: input.note } : {}),
+		},
+		updatedAt: timestamp,
+	};
+}
+
+function inboxItemFromInput(input: UpsertTeamInboxItemRequest, existing?: InboxItem | null): InboxItem {
+	const timestamp = nowIso();
+	return {
+		id: input.id ?? existing?.id ?? crypto.randomUUID(),
+		teamId: input.teamId,
+		projectId: input.projectId ?? existing?.projectId ?? null,
+		kind: input.kind,
+		state: input.state,
+		title: input.title,
+		summary: input.summary ?? existing?.summary ?? null,
+		href: input.href ?? existing?.href ?? null,
+		itemKey: input.itemKey ?? existing?.itemKey ?? null,
+		metadata: input.metadata ?? existing?.metadata ?? {},
+		createdAt: existing?.createdAt ?? timestamp,
+		updatedAt: timestamp,
+	};
+}
+
 export class MemoryAgentDatabase implements AgentDatabase {
 	private readonly subscriptions = new Map<string, SdkSubscriptionEntity>();
 	private readonly messages = new Map<number, SdkMessageEntity>();
@@ -209,6 +289,8 @@ export class MemoryAgentDatabase implements AgentDatabase {
 	private readonly prioritySnapshots = new Map<string, PrioritySnapshot>();
 	private readonly taskCreditLedger = new Map<string, TaskCreditLedgerEntry>();
 	private readonly scaleDecisions = new Map<string, ScaleDecision>();
+	private readonly approvalRequests = new Map<string, ApprovalRequest>();
+	private readonly teamInboxItems = new Map<string, InboxItem>();
 	private readonly projectWorkflow = new MemoryProjectWorkflowStore();
 	private messageId = 0;
 
@@ -1073,6 +1155,13 @@ export class MemoryAgentDatabase implements AgentDatabase {
 		return next;
 	}
 
+	async listWorkdayManagerLeases(projectId: string, environment: string) {
+		return [...this.workdayManagerLeases.values()]
+			.filter((entry) => entry.projectId === projectId && entry.environment === environment)
+			.sort((left, right) => right.heartbeatAt.localeCompare(left.heartbeatAt))
+			.slice(0, 10);
+	}
+
 	async recordWorkerRunner(request: SdkRecordWorkerRunnerRequest) {
 		const timestamp = nowIso();
 		const id = request.id ?? `${request.projectId}:${request.environment}:${request.runnerId}`;
@@ -1266,6 +1355,43 @@ export class MemoryAgentDatabase implements AgentDatabase {
 		return [...this.scaleDecisions.values()]
 			.filter((entry) => entry.projectId === projectId && entry.environment === environment && entry.poolName === poolName)
 			.sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
+	}
+
+	async createApprovalRequest(request: CreateApprovalRequestRequest) {
+		const existing = request.id ? this.approvalRequests.get(request.id) : null;
+		if (existing && existing.state !== 'pending') return existing;
+		const approval = approvalRequestFromInput(request, existing);
+		this.approvalRequests.set(approval.id, approval);
+		return approval;
+	}
+
+	async listApprovalRequests(request: ListApprovalRequestsRequest = {}) {
+		const states = request.state
+			? new Set((Array.isArray(request.state) ? request.state : [request.state]).map(String))
+			: null;
+		return [...this.approvalRequests.values()]
+			.filter((approval) => !request.projectId || approval.projectId === request.projectId)
+			.filter((approval) => !request.teamId || approval.teamId === request.teamId)
+			.filter((approval) => !states || states.has(approval.state))
+			.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+			.slice(0, request.limit ?? 100);
+	}
+
+	async decideApprovalRequest(id: string, request: DecideApprovalRequestRequest) {
+		const existing = this.approvalRequests.get(id);
+		if (!existing) return null;
+		const decided = decidedApprovalRequest(existing, request);
+		this.approvalRequests.set(id, decided);
+		return decided;
+	}
+
+	async upsertTeamInboxItem(request: UpsertTeamInboxItemRequest) {
+		const id = request.id ?? request.itemKey ?? crypto.randomUUID();
+		const existing = this.teamInboxItems.get(id) ?? [...this.teamInboxItems.values()]
+			.find((item) => request.itemKey && item.teamId === request.teamId && item.itemKey === request.itemKey) ?? null;
+		const item = inboxItemFromInput({ ...request, id }, existing);
+		this.teamInboxItems.set(item.id, item);
+		return item;
 	}
 
 	listWorkstreams(projectId: string) {
@@ -1723,6 +1849,10 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 		return this.operational.releaseWorkdayManagerLease(request);
 	}
 
+	listWorkdayManagerLeases(projectId: string, environment: string) {
+		return this.operational.listWorkdayManagerLeases(projectId, environment);
+	}
+
 	recordWorkerRunner(request: SdkRecordWorkerRunnerRequest) {
 		return this.operational.recordWorkerRunner(request);
 	}
@@ -1781,6 +1911,22 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 
 	getLatestScaleDecision(projectId: string, environment: string, poolName: string) {
 		return this.operational.getLatestScaleDecision(projectId, environment, poolName);
+	}
+
+	createApprovalRequest(request: CreateApprovalRequestRequest) {
+		return this.operational.createApprovalRequest(request);
+	}
+
+	listApprovalRequests(request: ListApprovalRequestsRequest = {}) {
+		return this.operational.listApprovalRequests(request);
+	}
+
+	decideApprovalRequest(id: string, request: DecideApprovalRequestRequest) {
+		return this.operational.decideApprovalRequest(id, request);
+	}
+
+	upsertTeamInboxItem(request: UpsertTeamInboxItemRequest) {
+		return this.operational.upsertTeamInboxItem(request);
 	}
 
 	listWorkstreams(projectId: string) {

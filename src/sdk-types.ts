@@ -22,6 +22,10 @@ export const SDK_MODEL_NAMES = [
 	'task_output',
 	'graph_run',
 	'report',
+	'approval_request',
+	'team_inbox_item',
+	'workday_manager_lease',
+	'worker_runner',
 ] as const;
 
 export const SDK_OPERATIONS = ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'] as const;
@@ -408,7 +412,7 @@ export interface WorkdayManagerLease {
 	updatedAt: string;
 }
 
-export type WorkerRunnerState = 'active' | 'sleeping' | 'waking' | 'draining' | 'failed';
+export type WorkerRunnerState = 'active' | 'idle' | 'offline' | 'sleeping' | 'waking' | 'draining' | 'failed';
 
 export interface WorkerRunner {
 	id: string;
@@ -541,7 +545,7 @@ export type CapacityReservationState =
 	| 'overran_pending_approval';
 export type CapacityEstimatePhase = 'intent' | 'discovery' | 'plan' | 'execution' | 'actual';
 export type CapacityEstimateConfidence = 'low' | 'medium' | 'high';
-export type CapacityApprovalState = 'pending' | 'approved' | 'rejected' | 'expired' | 'superseded';
+export type CapacityApprovalState = 'pending' | 'approved' | 'changes_requested' | 'deferred' | 'rejected' | 'expired' | 'superseded';
 export type TaskRiskClass = 'low' | 'medium' | 'high';
 export type TaskMutationScope = 'none' | 'repository_read' | 'repository_write' | 'production';
 export type TaskConcurrencyClass = 'read_only' | 'repository_claim' | 'exclusive_project' | 'human_attention';
@@ -1025,8 +1029,38 @@ export interface ApprovalRequest {
 	decidedById: string | null;
 	decidedAt: string | null;
 	decision: Record<string, unknown> | null;
+	metadata: Record<string, unknown>;
 	createdAt: string;
 	updatedAt: string;
+}
+
+export interface ListApprovalRequestsRequest {
+	projectId?: string | null;
+	teamId?: string | null;
+	state?: CapacityApprovalState | string | Array<CapacityApprovalState | string> | null;
+	limit?: number;
+}
+
+export interface DecideApprovalRequestRequest {
+	state: CapacityApprovalState | string;
+	optionId?: string | null;
+	note?: string | null;
+	decision?: Record<string, unknown> | null;
+	decidedByType?: string | null;
+	decidedById?: string | null;
+}
+
+export interface UpsertTeamInboxItemRequest {
+	id?: string;
+	teamId: string;
+	projectId?: string | null;
+	kind: string;
+	state: string;
+	title: string;
+	summary?: string | null;
+	href?: string | null;
+	itemKey?: string | null;
+	metadata?: Record<string, unknown> | null;
 }
 
 export interface CapacityTaskExecutionEnvelope {

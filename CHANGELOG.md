@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.14] - 2026-05-15
+
+### Added
+
+- feat(seeds): add capacity provider registration (85553d02de0e)
+- feat(sdk): add runner and approval request functionality (facd88dc4800)
+
+### Tests
+
+- build(source): update package metadata (39209358c3bc)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.8.14.
+
 ## [0.8.13] - 2026-05-14
 
 ### Tests
