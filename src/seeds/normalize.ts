@@ -149,6 +149,7 @@ export function normalizeSeedResources(manifest: SeedManifest, selected: SeedEnv
 				maxConcurrentWorkdays: provider.maxConcurrentWorkdays ?? null,
 				maxConcurrentWorkers: provider.maxConcurrentWorkers ?? null,
 				capacityModel: provider.capacityModel ?? null,
+				registration: provider.registration ?? null,
 				metadata: withMetadata(manifest, provider.key, provider.metadata),
 			},
 		});

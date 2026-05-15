@@ -29,6 +29,13 @@ const manifest: SeedManifest = {
 				name: 'demo-local',
 				kind: 'local',
 				provider: 'local',
+				registration: {
+					apiKey: {
+						createIfMissing: true,
+						name: 'Demo local provider security code',
+						scopes: ['provider:heartbeat', 'provider:registration:complete'],
+					},
+				},
 				lanes: [
 					{
 						key: 'lane:demo/local/codex',
@@ -67,6 +74,14 @@ describe('seed planner current-state diffing', () => {
 			update: 0,
 			unchanged: 0,
 			skip: 1,
+		});
+		expect(empty.actions.find((action) => action.key === 'capacity-provider:demo/local')?.payload.registration).toEqual({
+			apiKey: {
+				createIfMissing: true,
+				name: 'Demo local provider security code',
+				scopes: ['provider:heartbeat', 'provider:registration:complete'],
+				expiresAt: undefined,
+			},
 		});
 
 		const matching = createSeedPlan({
@@ -249,5 +264,39 @@ describe('seed planner current-state diffing', () => {
 			'seed.invalid_reference',
 			'seed.inline_artifact_content',
 		]));
+	});
+
+	it('rejects secret-looking capacity provider registration values', () => {
+		const diagnostics = [];
+		parseSeedManifest({
+			name: 'demo',
+			version: 1,
+			environments: ['local'],
+			resources: {
+				teams: [{ key: 'team:demo', slug: 'demo' }],
+				repositoryHosts: [],
+				projects: [],
+				hubRepositories: [],
+				products: [],
+				catalogArtifacts: [],
+				capacityProviders: [{
+					key: 'capacity-provider:demo/local',
+					team: 'team:demo',
+					name: 'demo-local',
+					provider: 'local',
+					registration: {
+						apiKey: {
+							createIfMissing: true,
+							token: 'tsp_inline-secret',
+						},
+					},
+				}],
+				capacityGrants: [],
+				workPolicies: [],
+				agentPools: [],
+			},
+		}, diagnostics);
+
+		expect(diagnostics.map((diagnostic) => diagnostic.code)).toContain('seed.secret_field');
 	});
 });

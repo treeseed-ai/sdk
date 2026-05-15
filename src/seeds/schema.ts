@@ -287,6 +287,31 @@ function parseLane(value: unknown, path: string, diagnostics: SeedDiagnostic[]):
 	};
 }
 
+function parseProviderRegistration(value: unknown, path: string, diagnostics: SeedDiagnostic[]) {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_object', 'Expected registration to be an object.', path));
+		return undefined;
+	}
+	const apiKeyValue = value.apiKey;
+	if (apiKeyValue === undefined) return {};
+	if (!isRecord(apiKeyValue)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_object', 'Expected registration.apiKey to be an object.', `${path}.apiKey`));
+		return {};
+	}
+	if (apiKeyValue.createIfMissing !== undefined && typeof apiKeyValue.createIfMissing !== 'boolean') {
+		diagnostics.push(errorDiagnostic('seed.invalid_boolean', 'Expected registration.apiKey.createIfMissing to be a boolean.', `${path}.apiKey.createIfMissing`));
+	}
+	return {
+		apiKey: {
+			createIfMissing: typeof apiKeyValue.createIfMissing === 'boolean' ? apiKeyValue.createIfMissing : undefined,
+			name: asString(apiKeyValue.name) || undefined,
+			scopes: stringArrayField(apiKeyValue, 'scopes', `${path}.apiKey`, diagnostics),
+			expiresAt: asString(apiKeyValue.expiresAt) || undefined,
+		},
+	};
+}
+
 function parseProvider(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedCapacityProviderResource | null {
 	if (!isRecord(value)) {
 		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected capacity provider resource to be an object.', path));
@@ -310,6 +335,7 @@ function parseProvider(value: unknown, path: string, diagnostics: SeedDiagnostic
 		maxConcurrentWorkdays: numberField(value, 'maxConcurrentWorkdays', path, diagnostics),
 		maxConcurrentWorkers: numberField(value, 'maxConcurrentWorkers', path, diagnostics),
 		capacityModel: objectField(value, 'capacityModel', path, diagnostics),
+		registration: parseProviderRegistration(value.registration, `${path}.registration`, diagnostics),
 		metadata: objectField(value, 'metadata', path, diagnostics),
 		lanes,
 	};

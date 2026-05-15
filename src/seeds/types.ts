@@ -154,6 +154,17 @@ export type SeedCapacityLaneResource = SeedResourceBase & {
 	metadata?: Record<string, unknown>;
 };
 
+export type SeedCapacityProviderRegistrationApiKey = {
+	createIfMissing?: boolean;
+	name?: string;
+	scopes?: string[];
+	expiresAt?: string;
+};
+
+export type SeedCapacityProviderRegistration = {
+	apiKey?: SeedCapacityProviderRegistrationApiKey;
+};
+
 export type SeedCapacityProviderResource = SeedResourceBase & {
 	team: string;
 	name: string;
@@ -165,6 +176,7 @@ export type SeedCapacityProviderResource = SeedResourceBase & {
 	maxConcurrentWorkdays?: number;
 	maxConcurrentWorkers?: number;
 	capacityModel?: Record<string, unknown>;
+	registration?: SeedCapacityProviderRegistration;
 	metadata?: Record<string, unknown>;
 	lanes?: SeedCapacityLaneResource[];
 };
