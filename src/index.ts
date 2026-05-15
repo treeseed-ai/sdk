@@ -3,6 +3,7 @@ export { ContentGraphRuntime } from './graph.ts';
 export { projectConnectionModeFromHosting } from './sdk-types.ts';
 export { createControlPlaneReporter } from './control-plane.ts';
 export { ControlPlaneClient } from './control-plane-client.ts';
+export * from './seeds/index.ts';
 export {
 	DEFAULT_EXECUTION_PROFILE_ID,
 	DEFAULT_EXECUTION_PROFILES,

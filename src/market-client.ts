@@ -513,6 +513,32 @@ export class MarketClient {
 		);
 	}
 
+	planSeed(seedName: string, body: Record<string, unknown>) {
+		return this.request<Record<string, unknown>>(
+			`/v1/seeds/${encodeURIComponent(seedName)}/plan`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	applySeed(seedName: string, body: Record<string, unknown>) {
+		return this.request<Record<string, unknown>>(
+			`/v1/seeds/${encodeURIComponent(seedName)}/apply`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	listSeedRuns(limit?: number) {
+		const query = limit ? `?limit=${encodeURIComponent(String(limit))}` : '';
+		return this.request<{ ok: true; payload: unknown[] }>(`/v1/seeds/runs${query}`, { requireAuth: true });
+	}
+
+	exportSeed(teamId: string, body: Record<string, unknown>) {
+		return this.request<Record<string, unknown>>(
+			`/v1/teams/${encodeURIComponent(teamId)}/seeds/export`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
 	enqueueAgentTask(projectId: string, body: Record<string, unknown>) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/agent-tasks`,

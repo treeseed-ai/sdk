@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.8.14-dev.staging.20260515T021534Z",
+  "version": "0.8.14-dev.staging.20260515T054038Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -111,6 +111,10 @@
     "./fixture-support": {
       "types": "./dist/fixture-support.d.ts",
       "default": "./dist/fixture-support.js"
+    },
+    "./seeds": {
+      "types": "./dist/seeds/index.d.ts",
+      "default": "./dist/seeds/index.js"
     },
     "./scripts/verify-driver": "./scripts/verify-driver.mjs",
     "./workflow-support": {
