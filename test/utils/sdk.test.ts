@@ -661,7 +661,7 @@ describe('agent sdk', () => {
 					state: 'waiting_for_approval',
 					title: 'Approval required',
 					summary: 'Generated knowledge is waiting.',
-					href: '/app/teams/team-1/projects/project-1/agents',
+					href: '/app/governance/approval%3Atest',
 					itemKey: 'approval:approval:test',
 					metadata: { approvalId: 'approval:test' },
 				});
