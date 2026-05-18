@@ -590,6 +590,16 @@ function packageVersionEligibleForBranch(node: RepositorySaveNode, version: stri
 		: isDevVersionForBranch(version, node.branch || options.branch);
 }
 
+function packageVersionTagConflictsWithHead(node: RepositorySaveNode, options: RepositorySaveOptions) {
+	if (node.kind !== 'package') return false;
+	const version = typeof node.packageJson?.version === 'string' ? node.packageJson.version : null;
+	if (!version || !packageVersionEligibleForBranch(node, version, options)) return false;
+	const head = headCommit(node.path);
+	const state = tagState(node.path, version);
+	return (state.localCommit != null && state.localCommit !== head)
+		|| (state.remoteCommit != null && state.remoteCommit !== head);
+}
+
 function selectPackageVersion(node: RepositorySaveNode, options: RepositorySaveOptions) {
 	const current = String(node.packageJson?.version ?? '0.0.0');
 	if (node.branchMode === 'package-dev-save' && isDevVersionForBranch(current, node.branch || options.branch) && !tagExists(node.path, current)) {
@@ -1743,7 +1753,13 @@ async function saveOneRepository(
 		.map((reference) => `${reference.packageName}@${reference.installSpec ?? reference.spec}`);
 	const submodulePointers = collectSubmodulePointerChanges(node, state.finalizedCommits);
 	const submodulesChanged = submodulePointers.length > 0;
-	const packageNeedsVersion = node.kind === 'package' && (hasMeaningfulChanges(node.path) || dependencyChanged || submodulesChanged);
+		const packageHasMeaningfulChanges = hasMeaningfulChanges(node.path);
+		const packageNeedsVersion = node.kind === 'package' && (
+			packageHasMeaningfulChanges
+			|| dependencyChanged
+			|| submodulesChanged
+			|| packageVersionTagConflictsWithHead(node, options)
+		);
 	let plannedVersion: string | null = null;
 
 	if (packageNeedsVersion) {
