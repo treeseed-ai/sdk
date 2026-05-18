@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
@@ -11,7 +11,19 @@ function isDirectoryLike(path: string) {
 
 export function resolveTreeseedSqlitePath(input?: string | null) {
 	const base = input?.trim() || '.treeseed/generated/environments/local/site-data.sqlite';
-	return isDirectoryLike(base) ? resolve(base, 'site-data.sqlite') : resolve(base);
+	if (!isDirectoryLike(base)) return resolve(base);
+	const miniflareRoot = resolve(base, 'miniflare-D1DatabaseObject');
+	if (existsSync(miniflareRoot)) {
+		const candidates = readdirSync(miniflareRoot)
+			.filter((entry) => /\.sqlite$/u.test(entry) && entry !== 'metadata.sqlite')
+			.map((entry) => {
+				const path = resolve(miniflareRoot, entry);
+				return { path, size: statSync(path).size };
+			})
+			.sort((left, right) => right.size - left.size || left.path.localeCompare(right.path));
+		if (candidates[0]?.path) return candidates[0].path;
+	}
+	return resolve(base, 'site-data.sqlite');
 }
 
 function toD1Result(result: { changes?: number; lastInsertRowid?: number | bigint } | undefined, rows: Record<string, unknown>[] = []) {

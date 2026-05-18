@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { CloudflareD1AgentDatabase, MemoryAgentDatabase } from '../../src/d1-store.ts';
-import { NodeSqliteD1Database } from '../../src/db/node-sqlite.ts';
+import { NodeSqliteD1Database, resolveTreeseedSqlitePath } from '../../src/db/node-sqlite.ts';
 import { AgentSdk } from '../../src/sdk.ts';
 import { sdkFixtureRoot } from '../test-fixture.ts';
 
@@ -64,6 +64,20 @@ Starter basic template body
 	);
 	return root;
 }
+
+describe('Node SQLite D1 path resolution', () => {
+	it('prefers Wrangler Miniflare SQLite files when a D1 state directory is provided', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-sdk-d1-state-'));
+		const d1Root = resolve(root, 'v3', 'd1');
+		const miniflareRoot = resolve(d1Root, 'miniflare-D1DatabaseObject');
+		mkdirSync(miniflareRoot, { recursive: true });
+		writeFileSync(resolve(d1Root, 'site-data.sqlite'), 'small');
+		writeFileSync(resolve(miniflareRoot, 'metadata.sqlite'), 'metadata');
+		writeFileSync(resolve(miniflareRoot, 'local.sqlite'), 'larger local database');
+
+		expect(resolveTreeseedSqlitePath(d1Root)).toBe(resolve(miniflareRoot, 'local.sqlite'));
+	});
+});
 
 describe('agent sdk', () => {
 	it('reads content-backed models through the public knowledge alias', async () => {
@@ -472,63 +486,212 @@ describe('agent sdk', () => {
 		expect(oldest.payload.item?.id).toBe(1);
 	});
 
+	it('persists agent runtime state through the D1 runtime state migration', async () => {
+		const sqlitePath = join(mkdtempSync(join(tmpdir(), 'treeseed-sdk-runtime-state-')), 'site-data.sqlite');
+		const sqliteD1 = new NodeSqliteD1Database(sqlitePath);
+		try {
+			await sqliteD1.exec(readFileSync(resolve('..', '..', 'migrations', '0025_agent_runtime_state.sql'), 'utf8'));
+			const sdk = new AgentSdk({
+				repoRoot: sdkFixtureRoot,
+				database: new CloudflareD1AgentDatabase(sqliteD1),
+			});
+
+			const message = await sdk.createMessage({
+				type: 'agent.trigger',
+				payload: { task: 'scan_codebase_documentation_surface' },
+				relatedModel: 'work_day',
+				relatedId: 'local-docs-1',
+				priority: 9,
+				maxAttempts: 2,
+				actor: 'test',
+			});
+			expect(message.payload).toMatchObject({
+				type: 'agent.trigger',
+				status: 'pending',
+				priority: 9,
+			});
+
+			const claimed = await sdk.claimMessage({
+				messageTypes: ['agent.trigger'],
+				workerId: 'worker-1',
+				leaseSeconds: 60,
+			});
+			expect(claimed.payload).toMatchObject({
+				type: 'agent.trigger',
+				status: 'claimed',
+				claimedBy: 'worker-1',
+			});
+			await sdk.ackMessage({ id: Number(claimed.payload?.id), status: 'completed' });
+			const completedMessage = await sdk.read({ model: 'message', id: String(claimed.payload?.id) });
+			expect(completedMessage.payload).toMatchObject({ status: 'completed' });
+
+			const run = await sdk.recordRun({
+				run: {
+					runId: 'run-1',
+					agentSlug: 'planner-agent',
+					triggerSource: 'workday:local-docs-1',
+					status: 'running',
+					selectedItemKey: null,
+					selectedMessageId: null,
+					branchName: null,
+					prUrl: null,
+					summary: null,
+					error: null,
+					startedAt: '2026-05-17T12:00:00.000Z',
+					finishedAt: null,
+				},
+			});
+			expect(run.payload).toMatchObject({
+				runId: 'run-1',
+				agentSlug: 'planner-agent',
+				status: 'running',
+			});
+
+			await sdk.upsertCursor({
+				agentSlug: 'planner-agent',
+				cursorKey: 'last_run_at',
+				cursorValue: '2026-05-17T12:00:00.000Z',
+			});
+			const cursor = await sdk.getCursor({
+				agentSlug: 'planner-agent',
+				cursorKey: 'last_run_at',
+			});
+			expect(cursor.payload).toBe('2026-05-17T12:00:00.000Z');
+
+			const lease = await sdk.create({
+				model: 'content_lease',
+				actor: 'test',
+				data: {
+					model: 'knowledge',
+					itemKey: 'docs/runtime-loop',
+					claimedBy: 'worker-1',
+				},
+			});
+			expect(lease.payload).toMatchObject({
+				model: 'knowledge',
+				itemKey: 'docs/runtime-loop',
+				claimedBy: 'worker-1',
+			});
+
+			await sdk.releaseLease({ model: 'knowledge', itemKey: 'docs/runtime-loop' });
+			const leases = await sdk.search({
+				model: 'content_lease',
+				filters: [{ field: 'model', op: 'eq', value: 'knowledge' }],
+			});
+			expect(leases.payload).toEqual([]);
+		} finally {
+			sqliteD1.close();
+		}
+	});
+
 	it('supports work-day and task lifecycle operations', async () => {
-		const sdk = new AgentSdk({
-			repoRoot: sdkFixtureRoot,
-			database: new MemoryAgentDatabase(),
-		});
+		const sqlitePath = join(mkdtempSync(join(tmpdir(), 'treeseed-sdk-task-lifecycle-')), 'site-data.sqlite');
+		const sqliteD1 = new NodeSqliteD1Database(sqlitePath);
+		await sqliteD1.exec(readFileSync(resolve('..', '..', 'migrations', '0006_agent_control_plane.sql'), 'utf8'));
+		const databases = [
+			new MemoryAgentDatabase(),
+			new CloudflareD1AgentDatabase(sqliteD1),
+		];
+		try {
+			for (const database of databases) {
+				const sdk = new AgentSdk({
+					repoRoot: sdkFixtureRoot,
+					database,
+				});
 
-		const workDay = await sdk.startWorkDay({
-			projectId: 'treeseed-market',
-			capacityBudget: 50,
-			actor: 'test',
-		});
-		expect(workDay.payload?.projectId).toBe('treeseed-market');
+				const workDay = await sdk.startWorkDay({
+					projectId: 'treeseed-market',
+					capacityBudget: 50,
+					actor: 'test',
+				});
+				expect(workDay.payload?.projectId).toBe('treeseed-market');
 
-		const task = await sdk.createTask({
-			workDayId: String(workDay.payload?.id),
-			agentId: 'market-curator',
-			type: 'agent_root',
-			idempotencyKey: `${workDay.payload?.id}:market-curator`,
-			payload: { hello: 'world' },
-			actor: 'test',
-		});
-		expect(task.payload?.agentId).toBe('market-curator');
+				const graphRun = await sdk.create({
+					model: 'graph_run',
+					actor: 'test',
+					data: {
+						id: 'graph-run:test',
+						workDayId: String(workDay.payload?.id),
+						corpusHash: 'corpus:test',
+						graphVersion: 'graph:test',
+					},
+				});
+				expect(graphRun.payload).toMatchObject({
+					id: 'graph-run:test',
+					workDayId: String(workDay.payload?.id),
+				});
 
-		const claimed = await sdk.claimTask({
-			id: String(task.payload?.id),
-			workerId: 'worker-1',
-			leaseSeconds: 60,
-			actor: 'test',
-		});
-		expect(claimed.payload?.state).toBe('claimed');
+				const task = await sdk.createTask({
+					workDayId: String(workDay.payload?.id),
+					agentId: 'market-curator',
+					type: 'agent_root',
+					idempotencyKey: `${workDay.payload?.id}:market-curator`,
+					payload: { hello: 'world' },
+					actor: 'test',
+				});
+				expect(task.payload?.agentId).toBe('market-curator');
 
-		await sdk.recordTaskProgress({
-			id: String(task.payload?.id),
-			state: 'running',
-			appendEvent: { kind: 'worker_started', data: { workerId: 'worker-1' } },
-			actor: 'test',
-		});
+				const claimed = await sdk.claimTask({
+					id: String(task.payload?.id),
+					workerId: 'worker-1',
+					leaseSeconds: 60,
+					actor: 'test',
+				});
+				expect(claimed.payload?.state).toBe('claimed');
 
-		const completed = await sdk.completeTask({
-			id: String(task.payload?.id),
-			output: { ok: true },
-			summary: { status: 'done' },
-			actor: 'test',
-		});
-		expect(completed.payload?.state).toBe('completed');
+				await sdk.recordTaskProgress({
+					id: String(task.payload?.id),
+					state: 'running',
+					appendEvent: { kind: 'worker_started', data: { workerId: 'worker-1' } },
+					actor: 'test',
+				});
+				const taskEvents = await sdk.search({
+					model: 'task_event',
+					filters: [{ field: 'task_id', op: 'in', value: [String(task.payload?.id)] }],
+					limit: 10,
+				});
+				expect(taskEvents.payload).toEqual([
+					expect.objectContaining({
+						taskId: String(task.payload?.id),
+						kind: 'worker_started',
+					}),
+				]);
 
-		const report = await sdk.createReport({
-			workDayId: String(workDay.payload?.id),
-			kind: 'workday_summary',
-			body: { totalTasks: 1 },
-			actor: 'test',
-		});
-		expect(report.payload?.kind).toBe('workday_summary');
+				const completed = await sdk.completeTask({
+					id: String(task.payload?.id),
+					output: { ok: true },
+					summary: { status: 'done' },
+					actor: 'test',
+				});
+				expect(completed.payload?.state).toBe('completed');
 
-		const context = await sdk.getManagerContext(String(task.payload?.id));
-		expect(context.payload.task?.id).toBe(task.payload?.id);
-		expect(context.payload.workDay?.id).toBe(workDay.payload?.id);
+				const taskOutputs = await sdk.search({
+					model: 'task_output',
+					filters: [{ field: 'task_id', op: 'in', value: [String(task.payload?.id)] }],
+					limit: 10,
+				});
+				expect(taskOutputs.payload).toEqual([
+					expect.objectContaining({
+						taskId: String(task.payload?.id),
+						outputJson: JSON.stringify({ ok: true }),
+					}),
+				]);
+
+				const report = await sdk.createReport({
+					workDayId: String(workDay.payload?.id),
+					kind: 'workday_summary',
+					body: { totalTasks: 1 },
+					actor: 'test',
+				});
+				expect(report.payload?.kind).toBe('workday_summary');
+
+				const context = await sdk.getManagerContext(String(task.payload?.id));
+				expect(context.payload.task?.id).toBe(task.payload?.id);
+				expect(context.payload.workDay?.id).toBe(workDay.payload?.id);
+			}
+		} finally {
+			sqliteD1.close();
+		}
 	});
 
 	it('persists manager leases and worker runner heartbeats in memory and sqlite stores', async () => {

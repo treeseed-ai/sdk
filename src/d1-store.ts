@@ -356,6 +356,9 @@ export class MemoryAgentDatabase implements AgentDatabase {
 		if (model === 'task') {
 			return [...this.tasks.values()];
 		}
+		if (model === 'task_event') {
+			return [...this.taskEvents.values()].flat();
+		}
 		if (model === 'task_output') {
 			return [...this.taskOutputs.values()].flat();
 		}
@@ -1476,6 +1479,12 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 		if (request.model === 'task') {
 			return this.operational.getTask(String(request.id ?? request.key ?? request.slug ?? '')) as Promise<Record<string, unknown> | null>;
 		}
+		if (request.model === 'task_event') {
+			return this.operational.getTaskEvent(String(request.id ?? request.key ?? request.slug ?? '')) as Promise<Record<string, unknown> | null>;
+		}
+		if (request.model === 'task_output') {
+			return this.operational.getTaskOutput(String(request.id ?? request.key ?? request.slug ?? '')) as Promise<Record<string, unknown> | null>;
+		}
 		if (request.model === 'report') {
 			return this.operational.getReport(String(request.id ?? request.key ?? request.slug ?? '')) as Promise<Record<string, unknown> | null>;
 		}
@@ -1509,9 +1518,24 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 		}
 		if (request.model === 'task') {
 			return this.operational.searchTasks({
-				workDayId: request.filters?.find((entry) => entry.field === 'workDayId' || entry.field === 'work_day_id')?.value as string | undefined,
-				agentId: request.filters?.find((entry) => entry.field === 'agentId' || entry.field === 'agent_id')?.value as string | undefined,
-				state: request.filters?.find((entry) => entry.field === 'state')?.value as string | string[] | undefined,
+				workDayId: normalizedRequest.filters?.find((entry) => entry.field === 'work_day_id')?.value as string | undefined,
+				agentId: normalizedRequest.filters?.find((entry) => entry.field === 'agent_id')?.value as string | undefined,
+				state: normalizedRequest.filters?.find((entry) => entry.field === 'state')?.value as string | string[] | undefined,
+				limit: request.limit,
+			}) as Promise<Record<string, unknown>[]>;
+		}
+		if (request.model === 'task_event') {
+			return this.operational.searchTaskEvents({
+				id: normalizedRequest.filters?.find((entry) => entry.field === 'id')?.value as string | string[] | undefined,
+				taskId: normalizedRequest.filters?.find((entry) => entry.field === 'task_id')?.value as string | string[] | undefined,
+				kind: normalizedRequest.filters?.find((entry) => entry.field === 'kind')?.value as string | string[] | undefined,
+				limit: request.limit,
+			}) as Promise<Record<string, unknown>[]>;
+		}
+		if (request.model === 'task_output') {
+			return this.operational.searchTaskOutputs({
+				id: normalizedRequest.filters?.find((entry) => entry.field === 'id')?.value as string | string[] | undefined,
+				taskId: normalizedRequest.filters?.find((entry) => entry.field === 'task_id')?.value as string | string[] | undefined,
 				limit: request.limit,
 			}) as Promise<Record<string, unknown>[]>;
 		}

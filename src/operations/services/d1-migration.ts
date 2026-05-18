@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { NodeSqliteD1Database } from '../../db/node-sqlite.ts';
 import { resolveWranglerBin } from './runtime-tools.ts';
 
 const DATABASE_BINDING = 'SITE_DATA_DB';
@@ -143,6 +144,39 @@ function migrationAlreadySatisfied({ cwd, wranglerConfig, persistTo, filePath })
 		&& profileColumns.has('confidence_score');
 }
 
+function ensureLocalSdkRuntimeState({ migrationsRoot, persistTo }) {
+	if (!persistTo) {
+		return;
+	}
+	const migrationPath = resolve(migrationsRoot, '0025_agent_runtime_state.sql');
+	if (!existsSync(migrationPath)) {
+		return;
+	}
+	const sql = readFileSync(migrationPath, 'utf8');
+	const targets = new Set<string>();
+	const sdkDb = new NodeSqliteD1Database(persistTo);
+	targets.add(sdkDb.path);
+	sdkDb.close();
+
+	const miniflareRoot = resolve(persistTo, 'miniflare-D1DatabaseObject');
+	if (existsSync(miniflareRoot)) {
+		for (const entry of readdirSync(miniflareRoot)) {
+			if (entry.endsWith('.sqlite') && entry !== 'metadata.sqlite') {
+				targets.add(resolve(miniflareRoot, entry));
+			}
+		}
+	}
+
+	for (const target of targets) {
+		const db = new NodeSqliteD1Database(target);
+		try {
+			db.client.exec(sql);
+		} finally {
+			db.close();
+		}
+	}
+}
+
 export function runLocalD1Migrations({ cwd, wranglerConfig, migrationsRoot, persistTo }) {
 	ensureSchemaMigrationsTable({ cwd, wranglerConfig, persistTo });
 	const appliedMigrations = loadAppliedMigrations({ cwd, wranglerConfig, persistTo });
@@ -168,4 +202,5 @@ export function runLocalD1Migrations({ cwd, wranglerConfig, migrationsRoot, pers
 		executeSqlFile({ cwd, wranglerConfig, filePath, persistTo });
 		markMigrationApplied({ cwd, wranglerConfig, persistTo, migration });
 	}
+	ensureLocalSdkRuntimeState({ migrationsRoot, persistTo });
 }
