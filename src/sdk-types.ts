@@ -26,6 +26,7 @@ export const SDK_MODEL_NAMES = [
 	'team_inbox_item',
 	'workday_manager_lease',
 	'worker_runner',
+	'repository_claim',
 ] as const;
 
 export const SDK_OPERATIONS = ['get', 'read', 'search', 'follow', 'pick', 'create', 'update'] as const;

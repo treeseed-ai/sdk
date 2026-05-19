@@ -438,9 +438,12 @@ function buildLocalRuntimeVars(deployConfig, state, target, env) {
 		return {};
 	}
 
+	const localDevAuthTtlSeconds = String(365 * 24 * 60 * 60);
 	return {
 		...localAuthRuntimeVars(env),
 		TREESEED_LOCAL_DEV_MODE: envValue(env, 'TREESEED_LOCAL_DEV_MODE') ?? 'cloudflare',
+		TREESEED_API_ACCESS_TOKEN_TTL: envValue(env, 'TREESEED_API_ACCESS_TOKEN_TTL') ?? localDevAuthTtlSeconds,
+		TREESEED_API_REFRESH_TOKEN_TTL: envValue(env, 'TREESEED_API_REFRESH_TOKEN_TTL') ?? localDevAuthTtlSeconds,
 		TREESEED_FORM_TOKEN_SECRET:
 			envValue(env, 'TREESEED_FORM_TOKEN_SECRET')
 			?? state.generatedSecrets?.TREESEED_FORM_TOKEN_SECRET

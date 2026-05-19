@@ -724,10 +724,64 @@ export class OperationalStore extends SqliteStoreBase {
 		return rows.map(taskEventFromRow);
 	}
 
+	async getTaskEvent(id: string) {
+		const row = await this.selectFirst(`SELECT * FROM task_events WHERE id = ${toSqlValue(id)} LIMIT 1`);
+		return row ? taskEventFromRow(row) : null;
+	}
+
+	async searchTaskEvents(request: { id?: string | string[]; taskId?: string | string[]; kind?: string | string[]; limit?: number } = {}) {
+		const clauses = [];
+		if (request.id) {
+			const ids = Array.isArray(request.id) ? request.id : [request.id];
+			clauses.push(`id IN (${ids.map((entry) => toSqlValue(entry)).join(', ')})`);
+		}
+		if (request.taskId) {
+			const taskIds = Array.isArray(request.taskId) ? request.taskId : [request.taskId];
+			clauses.push(`task_id IN (${taskIds.map((entry) => toSqlValue(entry)).join(', ')})`);
+		}
+		if (request.kind) {
+			const kinds = Array.isArray(request.kind) ? request.kind : [request.kind];
+			clauses.push(`kind IN (${kinds.map((entry) => toSqlValue(entry)).join(', ')})`);
+		}
+		const sql = [
+			'SELECT * FROM task_events',
+			clauses.length ? `WHERE ${clauses.join(' AND ')}` : '',
+			'ORDER BY created_at DESC, seq DESC',
+			`LIMIT ${request.limit ?? 50}`,
+		].filter(Boolean).join(' ');
+		const rows = await this.selectAll(sql);
+		return rows.map(taskEventFromRow);
+	}
+
 	async listTaskOutputs(taskId: string) {
 		const rows = await this.selectAll(
 			`SELECT * FROM task_outputs WHERE task_id = ${toSqlValue(taskId)} ORDER BY created_at ASC`,
 		);
+		return rows.map(taskOutputFromRow);
+	}
+
+	async getTaskOutput(id: string) {
+		const row = await this.selectFirst(`SELECT * FROM task_outputs WHERE id = ${toSqlValue(id)} LIMIT 1`);
+		return row ? taskOutputFromRow(row) : null;
+	}
+
+	async searchTaskOutputs(request: { id?: string | string[]; taskId?: string | string[]; limit?: number } = {}) {
+		const clauses = [];
+		if (request.id) {
+			const ids = Array.isArray(request.id) ? request.id : [request.id];
+			clauses.push(`id IN (${ids.map((entry) => toSqlValue(entry)).join(', ')})`);
+		}
+		if (request.taskId) {
+			const taskIds = Array.isArray(request.taskId) ? request.taskId : [request.taskId];
+			clauses.push(`task_id IN (${taskIds.map((entry) => toSqlValue(entry)).join(', ')})`);
+		}
+		const sql = [
+			'SELECT * FROM task_outputs',
+			clauses.length ? `WHERE ${clauses.join(' AND ')}` : '',
+			'ORDER BY created_at DESC',
+			`LIMIT ${request.limit ?? 50}`,
+		].filter(Boolean).join(' ');
+		const rows = await this.selectAll(sql);
 		return rows.map(taskOutputFromRow);
 	}
 

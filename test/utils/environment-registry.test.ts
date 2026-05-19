@@ -37,6 +37,275 @@ const agentProcessingRegistryFixtureYaml = `entries:
     relevanceRef: projectRegistrationEnabled
 `;
 
+const codexRegistryFixtureYaml = `entries:
+  TREESEED_CODEX_AUTH_JSON_B64:
+    label: Codex auth JSON bootstrap secret
+    group: auth
+    description: Base64-encoded Codex login auth.json.
+    howToGet: Store a base64-encoded Codex auth.json.
+    sensitivity: secret
+    targets:
+      - railway-secret
+      - github-secret
+    scopes:
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - bootstrap
+      - config
+    validation:
+      kind: nonempty
+    relevanceRef: codexExecutionSelected
+  TREESEED_CODEX_AUTH_OVERWRITE:
+    label: Overwrite Codex auth file
+    group: auth
+    description: Codex auth overwrite flag.
+    howToGet: Set only during auth rotation.
+    sensitivity: plain
+    targets:
+      - railway-var
+      - local-runtime
+    scopes:
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - bootstrap
+      - config
+    validation:
+      kind: boolean
+    relevanceRef: codexExecutionSelected
+  TREESEED_CODEX_SUBSCRIPTION_PLAN:
+    label: Codex subscription plan
+    group: auth
+    description: Codex subscription plan.
+    howToGet: Set the subscription plan.
+    sensitivity: plain
+    targets:
+      - github-variable
+      - railway-var
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - config
+    validation:
+      kind: enum
+      values:
+        - plus
+        - pro
+        - business
+        - edu
+        - enterprise
+        - unknown
+    relevanceRef: codexExecutionSelected
+  TREESEED_CODEX_DEFAULT_MODEL:
+    label: Codex default model
+    group: auth
+    description: Codex default model.
+    howToGet: Set the default model.
+    sensitivity: plain
+    targets:
+      - github-variable
+      - railway-var
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - config
+    validation:
+      kind: nonempty
+    relevanceRef: codexExecutionSelected
+  TREESEED_CODEX_APPROVAL_POLICY:
+    label: Codex approval policy
+    group: auth
+    description: Codex approval policy.
+    howToGet: Set the approval policy.
+    sensitivity: plain
+    targets:
+      - github-variable
+      - railway-var
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - config
+    validation:
+      kind: enum
+      values:
+        - never
+        - on_request
+        - always
+    relevanceRef: codexExecutionSelected
+  TREESEED_CODEX_SANDBOX_MODE:
+    label: Codex sandbox mode
+    group: auth
+    description: Codex sandbox mode.
+    howToGet: Set the sandbox mode.
+    sensitivity: plain
+    targets:
+      - github-variable
+      - railway-var
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - config
+    validation:
+      kind: enum
+      values:
+        - read_only
+        - workspace_write
+    relevanceRef: codexExecutionSelected
+  TREESEED_CODEX_TIMEOUT_MS:
+    label: Codex execution timeout
+    group: auth
+    description: Codex execution timeout.
+    howToGet: Set the timeout in milliseconds.
+    sensitivity: plain
+    targets:
+      - github-variable
+      - railway-var
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - config
+    validation:
+      kind: number
+    relevanceRef: codexExecutionSelected
+  TREESEED_CODEX_REQUIRE_RELEASE_DECISION:
+    label: Require Codex release decision
+    group: auth
+    description: Require release decision.
+    howToGet: Set true or false.
+    sensitivity: plain
+    targets:
+      - github-variable
+      - railway-var
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - config
+    validation:
+      kind: boolean
+    relevanceRef: codexExecutionSelected
+  TREESEED_CODEX_ALLOW_FEATURE_BRANCH_MUTATION:
+    label: Allow feature branch mutation
+    group: auth
+    description: Allow feature branch mutation.
+    howToGet: Set true or false.
+    sensitivity: plain
+    targets:
+      - github-variable
+      - railway-var
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - config
+    validation:
+      kind: boolean
+    relevanceRef: codexExecutionSelected
+  TREESEED_CODEX_ALLOW_AUTOMATIC_STAGING_MERGE:
+    label: Allow automatic staging merge
+    group: auth
+    description: Allow automatic staging merge.
+    howToGet: Set true or false.
+    sensitivity: plain
+    targets:
+      - github-variable
+      - railway-var
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - config
+    validation:
+      kind: boolean
+    relevanceRef: codexExecutionSelected
+  TREESEED_CODEX_REQUIRE_ALLOWED_PATHS:
+    label: Require allowed paths
+    group: auth
+    description: Require allowed paths.
+    howToGet: Set true or false.
+    sensitivity: plain
+    targets:
+      - github-variable
+      - railway-var
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - config
+    validation:
+      kind: boolean
+    relevanceRef: codexExecutionSelected
+  TREESEED_CODEX_RECORD_THREAD_IDS:
+    label: Record Codex thread IDs
+    group: auth
+    description: Record Codex thread IDs.
+    howToGet: Set true or false.
+    sensitivity: plain
+    targets:
+      - github-variable
+      - railway-var
+    scopes:
+      - local
+      - staging
+      - prod
+    storage: scoped
+    requirement: optional
+    purposes:
+      - agent-execution
+      - config
+    validation:
+      kind: boolean
+    relevanceRef: codexExecutionSelected
+`;
+
 const coreFormsRegistryFixtureYaml = `entries:
   TREESEED_FORM_TOKEN_SECRET:
     label: Forms token secret
@@ -296,6 +565,57 @@ describe('environment registry overlays', () => {
 			expect(apiBaseUrl.targets).toContain('railway-var');
 		} else {
 			expect(findRegistryEntry(registry, 'TREESEED_FORM_TOKEN_SECRET')).toBeUndefined();
+		}
+	});
+
+	it('surfaces hosted Codex auth bootstrap and policy entries from the agent registry', async () => {
+		const tenantRoot = await createTenantFixture(codexRegistryFixtureYaml);
+		tempRoots.add(tenantRoot);
+
+		const registry = resolveTreeseedEnvironmentRegistry({
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				providers: { agents: { execution: 'codex' } },
+				services: { api: { provider: 'railway', enabled: true } },
+				__tenantRoot: tenantRoot,
+			} as any,
+			plugins: [],
+		});
+
+		const authBootstrap = findRegistryEntry(registry, 'TREESEED_CODEX_AUTH_JSON_B64');
+		expect(authBootstrap).toMatchObject({
+			sensitivity: 'secret',
+			storage: 'scoped',
+		});
+		expect(authBootstrap?.targets).toEqual(expect.arrayContaining(['railway-secret', 'github-secret']));
+		expect(authBootstrap?.scopes).toEqual(expect.arrayContaining(['staging', 'prod']));
+
+		const overwrite = findRegistryEntry(registry, 'TREESEED_CODEX_AUTH_OVERWRITE');
+		expect(overwrite?.sensitivity).toBe('plain');
+		expect(overwrite?.targets).toEqual(expect.arrayContaining(['railway-var', 'local-runtime']));
+		expect(overwrite?.targets).not.toContain('railway-secret');
+
+		for (const id of [
+			'TREESEED_CODEX_SUBSCRIPTION_PLAN',
+			'TREESEED_CODEX_DEFAULT_MODEL',
+			'TREESEED_CODEX_APPROVAL_POLICY',
+			'TREESEED_CODEX_SANDBOX_MODE',
+			'TREESEED_CODEX_TIMEOUT_MS',
+			'TREESEED_CODEX_REQUIRE_RELEASE_DECISION',
+			'TREESEED_CODEX_ALLOW_FEATURE_BRANCH_MUTATION',
+			'TREESEED_CODEX_ALLOW_AUTOMATIC_STAGING_MERGE',
+			'TREESEED_CODEX_REQUIRE_ALLOWED_PATHS',
+			'TREESEED_CODEX_RECORD_THREAD_IDS',
+		]) {
+			const entry = findRegistryEntry(registry, id);
+			expect(entry, id).toBeDefined();
+			expect(entry?.targets).toEqual(expect.arrayContaining(['railway-var', 'github-variable']));
+			expect(entry?.sensitivity).toBe('plain');
+			expect(isTreeseedEnvironmentEntryRelevant(entry!, registry.context, 'staging', 'config')).toBe(true);
 		}
 	});
 

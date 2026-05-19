@@ -486,6 +486,43 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
 	}, 180000);
 
+	it('plans a fresh dev version when a clean package HEAD is ahead of its dev tag', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		git(work, ['checkout', 'staging']);
+		const sdkRoot = resolve(work, 'packages', 'sdk');
+		git(sdkRoot, ['checkout', 'staging']);
+		writeFileSync(resolve(sdkRoot, 'index.js'), 'export const name = "sdk-tagged";\n', 'utf8');
+		const workflow = workflowFor(work);
+		const first = await workflow.save({
+			verify: false,
+			refreshPreview: false,
+		});
+		expect(first.ok).toBe(true);
+		const firstSdkReport = first.payload.repos.find((repo) => repo.name === '@treeseed/sdk');
+		expect(firstSdkReport?.tagName).toMatch(/^0\.4\.13-dev\.staging\./);
+		const oldTag = String(firstSdkReport?.tagName);
+		const oldTagCommit = git(sdkRoot, ['rev-list', '-n', '1', oldTag]);
+
+		writeFileSync(resolve(sdkRoot, 'README.md'), '# sdk\nstandalone ci fix\n', 'utf8');
+		git(sdkRoot, ['add', 'README.md']);
+		git(sdkRoot, ['commit', '-m', 'fix: standalone ci']);
+		git(sdkRoot, ['push', 'origin', 'staging']);
+		expect(JSON.parse(readFileSync(resolve(sdkRoot, 'package.json'), 'utf8')).version).toBe(oldTag);
+
+		const second = await workflow.save({
+			verify: false,
+			refreshPreview: false,
+		});
+
+		expect(second.ok).toBe(true);
+		const secondSdkReport = second.payload.repos.find((repo) => repo.name === '@treeseed/sdk');
+		expect(secondSdkReport?.committed).toBe(true);
+		expect(secondSdkReport?.tagName).toMatch(/^0\.4\.13-dev\.staging\./);
+		expect(secondSdkReport?.tagName).not.toBe(oldTag);
+		expect(git(sdkRoot, ['rev-list', '-n', '1', oldTag])).toBe(oldTagCommit);
+		expect(git(sdkRoot, ['rev-list', '-n', '1', String(secondSdkReport?.tagName)])).toBe(secondSdkReport?.commitSha);
+	}, 180000);
+
 	it('switch mirrors task branches into checked-out package repos without pushing package branches', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = workflowFor(work);

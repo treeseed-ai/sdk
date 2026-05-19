@@ -784,6 +784,33 @@ function resolveImmediateApiProbeUrl(siteConfig, state, target) {
 	return null;
 }
 
+function isProcessingAgentApiService(siteConfig) {
+	const startCommand = String(siteConfig.services?.api?.railway?.startCommand ?? siteConfig.services?.api?.startCommand ?? '');
+	return /\btreeseed-processing(?:\.js)?\s+api\b/u.test(startCommand)
+		|| /treeseed-processing\.js\s+api\b/u.test(startCommand);
+}
+
+function resolveApiMonitorEndpoints(siteConfig, apiBaseUrl: string | null) {
+	if (!apiBaseUrl) {
+		return {
+			apiHealth: null,
+			apiReady: null,
+			d1Health: null,
+			agentHealth: null,
+			processingAgentApi: isProcessingAgentApiService(siteConfig),
+		};
+	}
+	const baseUrl = String(apiBaseUrl).replace(/\/+$/u, '');
+	const processingAgentApi = isProcessingAgentApiService(siteConfig);
+	return {
+		apiHealth: `${baseUrl}/healthz`,
+		apiReady: `${baseUrl}/readyz`,
+		d1Health: processingAgentApi ? null : `${baseUrl}/healthz/deep`,
+		agentHealth: processingAgentApi ? `${baseUrl}/agent/healthz` : `${baseUrl}/internal/core/agent/healthz`,
+		processingAgentApi,
+	};
+}
+
 async function probeQueue(siteConfig, state) {
 	const config = queueClientConfig(siteConfig, state);
 	if (!config) {
@@ -1551,6 +1578,7 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 	const state = loadDeployState(options.tenantRoot, siteConfig, { target });
 	const webProbeUrl = resolveImmediatePagesProbeUrl(siteConfig, state, target);
 	const apiBaseUrl = resolveImmediateApiProbeUrl(siteConfig, state, target);
+	const apiMonitorEndpoints = resolveApiMonitorEndpoints(siteConfig, apiBaseUrl);
 	const railwayResources = options.scope === 'local' || (!apiSelected && !agentsSelected)
 		? { ok: true, skipped: true, reason: options.scope === 'local' ? 'local_scope' : 'railway_not_selected' }
 		: await verifyRailwayManagedResources(options.tenantRoot, options.scope, {
@@ -1564,17 +1592,25 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 	const skippedAgentCheck = agentsSelected
 		? { ok: false, skipped: true, reason: 'api_url_unconfigured' }
 		: { ok: true, skipped: true, reason: 'agents_not_selected' };
+	const skippedD1Check = apiMonitorEndpoints.processingAgentApi
+		? { ok: true, skipped: true, reason: 'processing_agent_api' }
+		: skippedApiCheck;
 	const checks = {
 		pages: await probeHttp(webProbeUrl, { attempts: 3, delayMs: 5000 }),
-		apiHealth: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz`, { attempts: 8, delayMs: 10000 }) : skippedApiCheck,
-		apiReady: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/readyz`, { attempts: 8, delayMs: 10000 }) : skippedApiCheck,
-		d1Health: apiSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/healthz/deep`, { attempts: 8, delayMs: 10000 }) : skippedApiCheck,
-		agentHealth: agentsSelected && apiBaseUrl ? await probeHttp(`${String(apiBaseUrl).replace(/\/+$/u, '')}/internal/core/agent/healthz`, { attempts: 8, delayMs: 10000 }) : skippedAgentCheck,
+		apiHealth: apiSelected && apiMonitorEndpoints.apiHealth ? await probeHttp(apiMonitorEndpoints.apiHealth, { attempts: 8, delayMs: 10000 }) : skippedApiCheck,
+		apiReady: apiSelected && apiMonitorEndpoints.apiReady ? await probeHttp(apiMonitorEndpoints.apiReady, { attempts: 8, delayMs: 10000 }) : skippedApiCheck,
+		d1Health: apiSelected && apiMonitorEndpoints.d1Health ? await probeHttp(apiMonitorEndpoints.d1Health, { attempts: 8, delayMs: 10000 }) : skippedD1Check,
+		agentHealth: agentsSelected && apiMonitorEndpoints.agentHealth ? await probeHttp(apiMonitorEndpoints.agentHealth, { attempts: 8, delayMs: 10000 }) : skippedAgentCheck,
 		r2: options.dryRun ? { ok: true, skipped: true, reason: 'dry_run' } : probeR2(options.tenantRoot, siteConfig, state, target),
 		queue: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : probeQueue(siteConfig, state),
 		scaleProbe: probeScaleConfiguration(siteConfig, state),
 		railwayResources,
 		readiness: state.readiness,
+		apiMonitor: {
+			ok: true,
+			processingAgentApi: apiMonitorEndpoints.processingAgentApi,
+			endpoints: apiMonitorEndpoints,
+		},
 	};
 	const resolvedChecks = {
 		...checks,

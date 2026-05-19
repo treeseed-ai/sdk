@@ -46,7 +46,7 @@ services:
     railway:
       serviceName: __SITE_SLUG__-api
       buildCommand: npm run build:api
-      startCommand: npm run build:api && node ./src/api/server.js
+      startCommand: node ./packages/agent/dist/scripts/treeseed-processing.js api
       healthcheckTimeoutSeconds: 120
     environments:
       local:
@@ -58,7 +58,7 @@ services:
       serviceName: __SITE_SLUG__-workday-manager
       rootDir: .
       buildCommand: npm run build:api
-      startCommand: npm run build:api && node ./packages/agent/dist/services/workday-manager.js
+      startCommand: node ./packages/agent/dist/scripts/treeseed-processing.js manager
       schedule: '0 9 * * 1-5'
   workerRunner:
     enabled: true
@@ -66,7 +66,7 @@ services:
     railway:
       rootDir: .
       buildCommand: npm run build:api
-      startCommand: npm run build:api && node ./packages/agent/dist/services/worker.js
+      startCommand: node ./packages/agent/dist/scripts/treeseed-processing.js worker
 plugins:
   - package: '@treeseed/core/plugin-default'
 providers:
