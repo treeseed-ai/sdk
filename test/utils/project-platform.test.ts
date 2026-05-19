@@ -120,6 +120,45 @@ describe('project platform workflow actions', () => {
 		expect(fetched.every((url) => !url.startsWith('https://api.example.com'))).toBe(true);
 	});
 
+	it('uses processing Agent API health endpoints for treeseed-processing api services', async () => {
+		const tenantRoot = await createTenantFixture(`surfaces:
+  api:
+    enabled: true
+    provider: railway
+services:
+  api:
+    enabled: true
+    provider: railway
+    railway:
+      startCommand: node ./packages/agent/dist/scripts/treeseed-processing.js api
+`);
+		const fetched: string[] = [];
+		vi.stubGlobal('fetch', vi.fn(async (input) => {
+			fetched.push(String(input));
+			return new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			});
+		}));
+		process.env.TREESEED_API_BASE_URL = 'https://api.example.com';
+
+		const result = await monitorProjectPlatform({
+			tenantRoot,
+			scope: 'local',
+			dryRun: true,
+			reporter: noopReporter(),
+			bootstrapSystems: ['api', 'agents'],
+		});
+
+		expect(result.checks.apiMonitor).toMatchObject({ ok: true, processingAgentApi: true });
+		expect(result.checks.d1Health).toMatchObject({ ok: true, skipped: true, reason: 'processing_agent_api' });
+		expect(fetched.some((url) => url.endsWith('/healthz'))).toBe(true);
+		expect(fetched.some((url) => url.endsWith('/readyz'))).toBe(true);
+		expect(fetched.some((url) => url.endsWith('/agent/healthz'))).toBe(true);
+		expect(fetched.some((url) => url.endsWith('/healthz/deep'))).toBe(false);
+		expect(fetched.some((url) => url.endsWith('/internal/core/agent/healthz'))).toBe(false);
+	});
+
 	it('uses the workerRunner service when checking Railway scale readiness', async () => {
 		const tenantRoot = await createTenantFixture(`services:
   workerRunner:

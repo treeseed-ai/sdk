@@ -15,6 +15,7 @@ import {
 	resolveTreeseedMachineEnvironmentValues,
 	applyTreeseedConfigValues,
 	setTreeseedMachineEnvironmentValue,
+	syncTreeseedRailwayEnvironment,
 	TREESEED_MACHINE_KEY_PASSPHRASE_ENV,
 	unlockTreeseedSecretSessionFromEnv,
 	validateTreeseedCommandEnvironment,
@@ -351,6 +352,55 @@ cloudflare:
 		expect(processingValidation.required.map((entry) => entry.id)).toEqual(expect.arrayContaining([
 			'TREESEED_HOSTED_HUBS_GITHUB_OWNER',
 			'TREESEED_HOSTED_HUBS_GITHUB_TOKEN',
+		]));
+	});
+
+	it('includes Codex auth bootstrap secrets and policy variables in Railway sync plans', () => {
+		const tenantRoot = createTenantFixture();
+		writeTreeseedMachineConfig(tenantRoot, createDefaultTreeseedMachineConfig({
+			tenantRoot,
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://market.example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				providers: { agents: { execution: 'codex' } },
+				services: { api: { provider: 'railway', enabled: true } },
+			} as any,
+			tenantConfig: { id: 'test-site' } as any,
+		}));
+		unlockSecrets(tenantRoot);
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
+			id: 'TREESEED_CODEX_AUTH_JSON_B64',
+			sensitivity: 'secret',
+			storage: 'scoped',
+		} as any, 'eyJPUEVOQUlfQ09ERVhfTE9HSU4iOiJ0ZXN0In0=');
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
+			id: 'TREESEED_CODEX_APPROVAL_POLICY',
+			sensitivity: 'plain',
+			storage: 'scoped',
+		} as any, 'never');
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
+			id: 'TREESEED_CODEX_AUTH_OVERWRITE',
+			sensitivity: 'plain',
+			storage: 'scoped',
+		} as any, '0');
+
+		const plan = syncTreeseedRailwayEnvironment({ tenantRoot, scope: 'staging', dryRun: true });
+		const apiService = plan.services.find((service) => service.service === 'api');
+		const context = collectTreeseedConfigContext({ tenantRoot, scopes: ['staging'], env: {} });
+		const configEntryIds = context.entriesByScope.staging.map((entry) => entry.id);
+
+		expect(configEntryIds).toEqual(expect.arrayContaining([
+			'TREESEED_CODEX_AUTH_JSON_B64',
+			'TREESEED_CODEX_APPROVAL_POLICY',
+			'TREESEED_CODEX_AUTH_OVERWRITE',
+		]));
+		expect(apiService?.secrets).toContain('TREESEED_CODEX_AUTH_JSON_B64');
+		expect(apiService?.variables).toEqual(expect.arrayContaining([
+			'TREESEED_CODEX_APPROVAL_POLICY',
+			'TREESEED_CODEX_AUTH_OVERWRITE',
 		]));
 	});
 
