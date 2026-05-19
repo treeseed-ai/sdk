@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.9.0] - 2026-05-19
+
+### Added
+
+- feat(orchestrator): plan new version if package tag conflicts with HEAD (b5eb79f9d5ee)
+- feat(deploy): add API token TTL environment variables (e26c8d2738a7)
+
+### Fixed
+
+- fix(sdk): keep migration tests standalone (ca229cb85f01)
+
+### Tests
+
+- chore(sdk): bump version to 0.8.20-dev.staging.20260519T110614Z (0546d1b55b06)
+- refactor(operations): update service start commands and health (df056806e290)
+- chore(sdk): bump version to 0.8.20-dev.staging.20260518T044526Z (a9791b17c328)
+- chore(sdk): bump version and update test href (2df693e89b37)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.9.0.
+
 ## [0.8.19] - 2026-05-16
 
 ### Dependencies
