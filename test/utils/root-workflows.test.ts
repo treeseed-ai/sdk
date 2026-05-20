@@ -84,7 +84,12 @@ describe('package publish safeguards', () => {
 
 			expect(workflowSource).toContain("startsWith(github.ref, 'refs/tags/')");
 			expect(workflowSource).toContain("!contains(github.ref_name, '-')");
+			expect(workflowSource).toContain('contents: write');
 			expect(workflowSource).toContain('npm ci failed; retrying');
+			expect(workflowSource).toContain('Create GitHub release');
+			expect(workflowSource).toContain('gh release create "${GITHUB_REF_NAME}"');
+			expect(workflowSource).toContain('--generate-notes');
+			expect(workflowSource).toContain('--verify-tag');
 			expect(verifyWorkflowSource).toContain('dependency install failed; retrying');
 			expect(verifyWorkflowSource).not.toContain('TREESEED_GITHUB_AUTOMATION_MODE');
 			expect(checkTagSource).toContain('^\\d+\\.\\d+\\.\\d+$');

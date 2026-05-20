@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.4] - 2026-05-20
+
+### Tests
+
+- ci(build): create github releases for package publishes (b6d38f567223)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.4.
+
 ## [0.10.3] - 2026-05-20
 
 ### Fixed
