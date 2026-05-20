@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.10.2] - 2026-05-20
+
+### Added
+
+- feat(sdk): allow internal packages to use stable git tags (5ea02f3c2aaf)
+
+### Tests
+
+- build(build): release internal packages from stable git tags (551b7d75da4c)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.2.
+
 ## [0.10.1] - 2026-05-20
 
 ### Dependencies
