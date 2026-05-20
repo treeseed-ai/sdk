@@ -6,7 +6,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { isTreeseedEnvironmentEntryRelevant, isTreeseedEnvironmentEntryRequired } from '../../platform/environment.ts';
 import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
 import { createGitHubApiClient, listGitHubEnvironmentSecretNames, listGitHubEnvironmentVariableNames } from './github-api.ts';
-import { collectInternalDevReferenceIssues } from './package-reference-policy.ts';
+import { collectInternalDevReferenceIssues, normalizeGitRemoteForManifest } from './package-reference-policy.ts';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, validateTreeseedCommandEnvironment } from './config-runtime.ts';
 import { loadDeployState } from './deploy.ts';
 import { loadCliDeployConfig } from './runtime-tools.ts';
@@ -252,6 +252,7 @@ function applyPlannedStableMetadata(root: string, plannedVersions: Record<string
 	const stableVersions = new Map(
 		Object.entries(plannedVersions).filter(([, version]) => STABLE_SEMVER.test(version)),
 	);
+	const stableGitReferences = stablePackageGitReferences(root, stableVersions);
 	const targets = [
 		{ name: '@treeseed/market', dir: root },
 		...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir })),
@@ -271,8 +272,9 @@ function applyPlannedStableMetadata(root: string, plannedVersions: Record<string
 			if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
 			for (const [dependencyName, version] of stableVersions.entries()) {
 				if (!(dependencyName in values)) continue;
-				if (String((values as Record<string, unknown>)[dependencyName]) === version) continue;
-				(values as Record<string, unknown>)[dependencyName] = version;
+				const dependencySpec = stableGitReferences.get(dependencyName) ?? version;
+				if (String((values as Record<string, unknown>)[dependencyName]) === dependencySpec) continue;
+				(values as Record<string, unknown>)[dependencyName] = dependencySpec;
 				changed = true;
 			}
 		}
@@ -280,6 +282,23 @@ function applyPlannedStableMetadata(root: string, plannedVersions: Record<string
 			writeJsonFile(packageJsonPath, packageJson);
 		}
 	}
+}
+
+function stablePackageGitReferences(root: string, versions: Map<string, string>) {
+	return new Map(workspacePackages(root)
+		.map((pkg) => {
+			const version = versions.get(pkg.name);
+			if (!version) return null;
+			let remote: string | null = null;
+			try {
+				remote = run('git', ['remote', 'get-url', 'origin'], { cwd: pkg.dir, capture: true }).trim();
+			} catch {
+				remote = null;
+			}
+			const manifestRemote = normalizeGitRemoteForManifest(remote ?? '', 'preserve-origin');
+			return manifestRemote ? [pkg.name, `${manifestRemote}#${version}`] as const : null;
+		})
+		.filter((entry): entry is readonly [string, string] => Boolean(entry)));
 }
 
 function rehearsalVerifyScript(root: string) {

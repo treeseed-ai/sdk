@@ -121,6 +121,7 @@ import {
 	collectTreeseedDevTagCleanupPlan,
 	collectInternalDevReferenceIssues,
 	devTagFromDependencySpec,
+	normalizeGitRemoteForManifest,
 	rewriteProjectInternalDependenciesToStableVersions,
 	type DevTagBranchScope,
 	type DevTagCleanupMode,
@@ -914,11 +915,13 @@ function writeJsonFile(path: string, value: Record<string, unknown>) {
 }
 
 function applyStableWorkspaceVersionChanges(root: string, versions: Map<string, string>) {
-	for (const pkg of workspacePackages(root)) {
-		const packageJsonPath = resolve(pkg.dir, 'package.json');
+	const stableGitReferences = stablePackageGitReferences(root, versions);
+	for (const target of [{ name: '@treeseed/market', dir: root }, ...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir }))]) {
+		const packageJsonPath = resolve(target.dir, 'package.json');
+		if (!existsSync(packageJsonPath)) continue;
 		const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, unknown>;
 		let changed = false;
-		const plannedVersion = versions.get(pkg.name);
+		const plannedVersion = versions.get(target.name);
 		if (plannedVersion && packageJson.version !== plannedVersion) {
 			packageJson.version = plannedVersion;
 			changed = true;
@@ -928,8 +931,9 @@ function applyStableWorkspaceVersionChanges(root: string, versions: Map<string, 
 			if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
 			for (const [dependencyName, version] of versions.entries()) {
 				if (!(dependencyName in values)) continue;
-				if (String((values as Record<string, unknown>)[dependencyName]) === version) continue;
-				(values as Record<string, unknown>)[dependencyName] = version;
+				const dependencySpec = stableGitReferences.get(dependencyName) ?? version;
+				if (String((values as Record<string, unknown>)[dependencyName]) === dependencySpec) continue;
+				(values as Record<string, unknown>)[dependencyName] = dependencySpec;
 				changed = true;
 			}
 		}
@@ -937,6 +941,23 @@ function applyStableWorkspaceVersionChanges(root: string, versions: Map<string, 
 			writeJsonFile(packageJsonPath, packageJson);
 		}
 	}
+}
+
+function stablePackageGitReferences(root: string, versions: Map<string, string>) {
+	return new Map(workspacePackages(root)
+		.map((pkg) => {
+			const version = versions.get(pkg.name);
+			if (!version) return null;
+			let remote: string | null = null;
+			try {
+				remote = originRemoteUrl(pkg.dir);
+			} catch {
+				remote = null;
+			}
+			const manifestRemote = normalizeGitRemoteForManifest(remote ?? '', 'preserve-origin');
+			return manifestRemote ? [pkg.name, `${manifestRemote}#${version}`] as const : null;
+		})
+		.filter((entry): entry is readonly [string, string] => Boolean(entry)));
 }
 
 function gitObjectCommit(repoDir: string, ref: string) {

@@ -97,6 +97,14 @@ export function devTagFromDependencySpec(spec: string) {
 	return ref.includes('-dev.') ? ref : null;
 }
 
+export function releaseTagFromDependencySpec(spec: string) {
+	const value = String(spec).trim();
+	const hashIndex = value.lastIndexOf('#');
+	if (hashIndex === -1) return null;
+	const ref = decodeURIComponent(value.slice(hashIndex + 1));
+	return isStableVersion(ref) ? ref : null;
+}
+
 export function normalizeGitRemoteForDependency(remoteUrl: string, protocol: GitDependencyProtocol = 'preserve-origin') {
 	const remote = String(remoteUrl).trim();
 	if (!remote) return null;
@@ -294,7 +302,7 @@ export function collectInternalDevReferenceIssues(root = workspaceRoot(), packag
 			for (const [depName, specValue] of Object.entries(values)) {
 				if (!packageNames.has(depName)) continue;
 				const spec = String(specValue);
-				if (isGitDependencySpec(spec) || devTagFromDependencySpec(spec)) {
+				if (isGitDependencySpec(spec) && !releaseTagFromDependencySpec(spec)) {
 					issues.push({ repoName: pkg.name, filePath: packageJsonPath, field, dependencyName: depName, spec, reason: 'git-dev-ref' });
 				} else if (isPrereleaseVersion(spec)) {
 					issues.push({ repoName: pkg.name, filePath: packageJsonPath, field, dependencyName: depName, spec, reason: 'prerelease-dev-ref' });
@@ -325,7 +333,7 @@ export function collectInternalDevReferenceIssues(root = workspaceRoot(), packag
 						record.resolved,
 						record.from,
 					].map((value) => typeof value === 'string' ? value : '').find((value) =>
-						isGitDependencySpec(value) || devTagFromDependencySpec(value) || isPrereleaseVersion(value),
+						(isGitDependencySpec(value) && !releaseTagFromDependencySpec(value)) || devTagFromDependencySpec(value) || isPrereleaseVersion(value),
 					);
 					if (spec) {
 						issues.push({ repoName: lockRoot.name, filePath: lockPath, spec, reason: 'lockfile-dev-ref', dependencyName: packageName });

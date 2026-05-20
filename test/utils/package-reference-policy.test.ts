@@ -79,6 +79,38 @@ describe('package reference policy', () => {
 		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).not.toThrow();
 	});
 
+	it('allows stable release tag Git refs while rejecting dev Git refs', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-package-policy-'));
+		const sdkDir = resolve(root, 'packages', 'sdk');
+		const coreDir = resolve(root, 'packages', 'core');
+		mkdirSync(sdkDir, { recursive: true });
+		mkdirSync(coreDir, { recursive: true });
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: 'root',
+			version: '1.0.0',
+			workspaces: ['packages/*'],
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(sdkDir, 'package.json'), JSON.stringify({
+			name: '@treeseed/sdk',
+			version: '0.10.1',
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(coreDir, 'package.json'), JSON.stringify({
+			name: '@treeseed/core',
+			version: '0.10.1',
+			dependencies: {
+				'@treeseed/sdk': 'github:treeseed-ai/sdk#0.10.1',
+			},
+		}, null, 2), 'utf8');
+
+		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).not.toThrow();
+
+		const corePackageJson = JSON.parse(readFileSync(resolve(coreDir, 'package.json'), 'utf8'));
+		corePackageJson.dependencies['@treeseed/sdk'] = 'github:treeseed-ai/sdk#0.10.2-dev.staging.20260520T010203Z';
+		writeFileSync(resolve(coreDir, 'package.json'), JSON.stringify(corePackageJson, null, 2), 'utf8');
+
+		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).toThrow(/Stable release still contains internal Git\/dev dependency references/u);
+	});
+
 	it('does not treat a lockfile root package prerelease version as an internal dependency ref', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-package-policy-'));
 		const sdkDir = resolve(root, 'packages', 'sdk');
