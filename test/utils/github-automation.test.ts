@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import {
 	ensureStandardizedGitHubWorkflows,
-	renderDeployProcessingWorkflow,
 	renderDeployWebWorkflow,
 	renderHostedProjectWorkflow,
 	resolveGitHubRepositoryTarget,
@@ -50,20 +49,17 @@ turnstile:
 }
 
 describe('github automation workflow generation', () => {
-	it('renders separate web and processing deploy workflows with the tenant action entrypoint', () => {
+	it('renders the web deploy workflow with the tenant action entrypoint', () => {
 		const web = renderDeployWebWorkflow({ workingDirectory: 'apps/site' });
-		const processing = renderDeployProcessingWorkflow({ workingDirectory: 'apps/site' });
-		for (const rendered of [web, processing]) {
-			expect(rendered).toContain('working-directory: apps/site');
-			expect(rendered).toContain('./packages/sdk/scripts/tenant-workflow-action.ts');
-			expect(rendered).toContain('TREESEED_BOOTSTRAP_MODE: auto');
-			expect(rendered).toContain('TREESEED_WORKFLOW_ACTION: ${{ inputs.action_kind }}');
-			expect(rendered).toContain('TREESEED_WORKFLOW_PREVIEW_ID');
-			expect(rendered).not.toContain('TREESEED_WORKFLOW_SKIP_PROVISION');
-			expect(rendered).not.toContain('--skip-provision');
-			expect(rendered).not.toContain('deploy_code');
-			expect(rendered).not.toContain('provision');
-		}
+		expect(web).toContain('working-directory: apps/site');
+		expect(web).toContain('./packages/sdk/scripts/tenant-workflow-action.ts');
+		expect(web).toContain('TREESEED_BOOTSTRAP_MODE: auto');
+		expect(web).toContain('TREESEED_WORKFLOW_ACTION: ${{ inputs.action_kind }}');
+		expect(web).toContain('TREESEED_WORKFLOW_PREVIEW_ID');
+		expect(web).not.toContain('TREESEED_WORKFLOW_SKIP_PROVISION');
+		expect(web).not.toContain('--skip-provision');
+		expect(web).not.toContain('deploy_code');
+		expect(web).not.toContain('provision');
 
 		expect(web).toContain('Treeseed Web Deploy');
 		expect(web).toContain('default: deploy_web');
@@ -77,17 +73,6 @@ describe('github automation workflow generation', () => {
 		expect(web).not.toContain('RAILWAY_API_TOKEN');
 		expect(web).not.toContain('TREESEED_API_AUTH_SECRET');
 		expect(web).not.toContain('TREESEED_AGENT_POOL_MAX_WORKERS');
-
-		expect(processing).toContain('Treeseed Processing Deploy');
-		expect(processing).toContain('default: deploy_processing');
-		expect(processing).toContain('TREESEED_WORKFLOW_PLANE: processing');
-		expect(processing).toContain('RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}');
-		expect(processing).toContain('RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}');
-		expect(processing).toContain('TREESEED_API_BASE_URL: ${{ vars.TREESEED_API_BASE_URL }}');
-		expect(processing).toContain('TREESEED_API_AUTH_SECRET: ${{ secrets.TREESEED_API_AUTH_SECRET }}');
-		expect(processing).toContain('TREESEED_AGENT_POOL_MAX_WORKERS');
-		expect(processing).toContain('TREESEED_CAPACITY_PROVIDER_ID');
-		expect(processing).not.toContain('TREESEED_SMTP_PASSWORD');
 	});
 
 	it('renders the hosted project orchestration workflow template', () => {
@@ -115,11 +100,12 @@ runtime:
 		const marketWorkflows = ensureStandardizedGitHubWorkflows(marketRoot);
 		const hostedWorkflows = ensureStandardizedGitHubWorkflows(hostedRoot);
 
-		expect(marketWorkflows).toHaveLength(3);
+		expect(marketWorkflows).toHaveLength(2);
 		expect(hostedWorkflows).toHaveLength(1);
 		expect(readFileSync(resolve(marketRoot, '.github', 'workflows', 'deploy-web.yml'), 'utf8')).toContain('Treeseed Web Deploy');
-		expect(readFileSync(resolve(marketRoot, '.github', 'workflows', 'deploy-processing.yml'), 'utf8')).toContain('Treeseed Processing Deploy');
+		expect(readFileSync(resolve(marketRoot, '.github', 'workflows', 'deploy-web.yml'), 'utf8')).not.toContain('deploy_processing');
 		expect(readFileSync(resolve(marketRoot, '.github', 'workflows', 'hosted-project.yml'), 'utf8')).toContain('Treeseed Hosted Project Orchestration');
+		expect(readFileSync(resolve(marketRoot, '.github', 'workflows', 'hosted-project.yml'), 'utf8')).not.toContain('deploy_processing');
 		const hostedDeploy = readFileSync(resolve(hostedRoot, '.github', 'workflows', 'deploy-web.yml'), 'utf8');
 		expect(hostedDeploy).toContain('Treeseed Web Deploy');
 		expect(hostedDeploy).toContain('default: deploy_web');

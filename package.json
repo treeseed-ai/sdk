@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -63,6 +63,7 @@
     "extract-zip": "2.0.1",
     "github-slugger": "^2.0.0",
     "drizzle-orm": "^0.45.2",
+    "hono": "^4.8.2",
     "ink": "^7.0.0",
     "libsodium-wrappers": "^0.7.15",
     "mdast-util-to-string": "^4.0.0",
@@ -99,6 +100,14 @@
     "./operations/agent-tools": {
       "types": "./dist/operations/agent-tools.d.ts",
       "default": "./dist/operations/agent-tools.js"
+    },
+    "./api": {
+      "types": "./dist/api/index.d.ts",
+      "default": "./dist/api/index.js"
+    },
+    "./api/auth/d1-provider": {
+      "types": "./dist/api/auth/d1-provider.d.ts",
+      "default": "./dist/api/auth/d1-provider.js"
     },
     "./workflow": {
       "types": "./dist/workflow.d.ts",
@@ -228,6 +237,10 @@
     "./capacity": {
       "types": "./dist/capacity.d.ts",
       "default": "./dist/capacity.js"
+    },
+    "./capacity-provider": {
+      "types": "./dist/capacity-provider.d.ts",
+      "default": "./dist/capacity-provider.js"
     },
     "./types": {
       "types": "./dist/sdk-types.d.ts",

@@ -69,7 +69,7 @@ services:
       projectName: acme-docs
       serviceId: svc-manager
       serviceName: acme-docs-workday-start
-      startCommand: node ./packages/agent/dist/scripts/treeseed-processing.js manager
+      startCommand: node ./packages/agent/dist/provider/entrypoint.js manager
       schedule:
         - "0 9 * * 1-5"
 `,
@@ -204,7 +204,7 @@ describe('railway scheduled jobs', () => {
 			serviceName: 'acme-docs-workday-start',
 			environment: 'staging',
 			expression: '0 9 * * 1-5',
-			command: 'node ./packages/agent/dist/scripts/treeseed-processing.js manager',
+			command: 'node ./packages/agent/dist/provider/entrypoint.js manager',
 		});
 		expect(prod).toHaveLength(1);
 		expect(prod[0]).toMatchObject({
@@ -217,15 +217,15 @@ describe('railway scheduled jobs', () => {
 		const tenantRoot = await createTenantFixture();
 		const manager = configuredRailwayServices(tenantRoot, 'staging').find((service) => service.key === 'workdayManager');
 
-		expect(manager?.startCommand).toBe('node ./packages/agent/dist/scripts/treeseed-processing.js manager');
-		expect(railwayServiceRuntimeStartCommand(manager)).toBe('node ./packages/agent/dist/scripts/treeseed-processing.js manager');
+		expect(manager?.startCommand).toBe('node ./packages/agent/dist/provider/entrypoint.js manager');
+		expect(railwayServiceRuntimeStartCommand(manager)).toBe('node ./packages/agent/dist/provider/entrypoint.js manager');
 	});
 
-	it('keeps processing start commands role-oriented without runtime build chaining', async () => {
+	it('keeps provider start commands role-oriented without runtime build chaining', async () => {
 		const tenantRoot = await createTenantFixture();
 		const services = configuredRailwayServices(tenantRoot, 'staging');
 		expect(services.map((service) => service.startCommand).filter(Boolean).join('\n')).not.toContain('npm run build:api &&');
-		expect(services.find((service) => service.key === 'workdayManager')?.startCommand).toContain('treeseed-processing.js manager');
+		expect(services.find((service) => service.key === 'workdayManager')?.startCommand).toContain('provider/entrypoint.js manager');
 	});
 
 	it('detaches Railway deploys from build log streaming by default outside CI', () => {
@@ -582,7 +582,7 @@ describe('railway scheduled jobs', () => {
 			}
 			if (String(body.query).includes('mutation TreeseedRailwayServiceInstanceUpdate')) {
 				expect(body.variables.input).toMatchObject({
-					startCommand: 'node ./packages/agent/dist/scripts/treeseed-processing.js manager',
+					startCommand: 'node ./packages/agent/dist/provider/entrypoint.js manager',
 					cronSchedule: '0 9 * * 1-5',
 				});
 				return new Response(JSON.stringify({ data: { serviceInstanceUpdate: true } }), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -621,7 +621,7 @@ describe('railway scheduled jobs', () => {
 						serviceInstance: {
 							id: 'instance-1',
 							buildCommand: null,
-						startCommand: 'node ./packages/agent/dist/scripts/treeseed-processing.js worker',
+						startCommand: 'node ./packages/agent/dist/provider/entrypoint.js runner',
 							cronSchedule: '0 * * * *',
 							rootDirectory: null,
 							healthcheckPath: null,
@@ -641,7 +641,7 @@ describe('railway scheduled jobs', () => {
 		expect(ensured[0]).toMatchObject({
 			id: 'instance-1',
 			status: 'updated',
-			command: 'node ./packages/agent/dist/scripts/treeseed-processing.js manager',
+			command: 'node ./packages/agent/dist/provider/entrypoint.js manager',
 		});
 
 		const verifyFetchMock = vi.fn(async (_input, init) => {
@@ -658,7 +658,7 @@ describe('railway scheduled jobs', () => {
 					serviceInstance: {
 						id: 'instance-1',
 						buildCommand: null,
-						startCommand: 'node ./packages/agent/dist/scripts/treeseed-processing.js manager',
+						startCommand: 'node ./packages/agent/dist/provider/entrypoint.js manager',
 						cronSchedule: '0 9 * * 1-5',
 						rootDirectory: null,
 						healthcheckPath: null,
@@ -696,7 +696,7 @@ describe('railway scheduled jobs', () => {
 						serviceInstance: {
 							id: `instance-${serviceId}`,
 							buildCommand: null,
-							startCommand: serviceId === 'svc-manager' ? 'node ./packages/agent/dist/scripts/treeseed-processing.js manager' : null,
+							startCommand: serviceId === 'svc-manager' ? 'node ./packages/agent/dist/provider/entrypoint.js manager' : null,
 							cronSchedule: serviceId === 'svc-manager' ? '0 9 * * 1-5' : null,
 							rootDirectory: null,
 							healthcheckPath: null,

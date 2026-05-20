@@ -567,7 +567,7 @@ function recordHostedDeploymentStatesFromRootGates(
 		{ scope: 'prod' as const, branch: releaseTag ?? PRODUCTION_BRANCH, commit: releaseRecord.releasedCommit },
 	]) {
 		const gate = gates.find((candidate) =>
-			(candidate.workflow === 'deploy-web.yml' || candidate.workflow === 'deploy-processing.yml')
+			candidate.workflow === 'deploy-web.yml'
 			&& candidate.branch === target.branch
 			&& candidate.status === 'completed'
 			&& candidate.conclusion === 'success');
@@ -1089,7 +1089,7 @@ function defaultCiWorkflows(kind: 'root' | 'package', branch: string | null) {
 		return ['verify.yml'];
 	}
 	if (branch === STAGING_BRANCH || branch === PRODUCTION_BRANCH) {
-		return ['deploy-web.yml', 'deploy-processing.yml'];
+		return ['deploy-web.yml'];
 	}
 	return ['verify.yml'];
 }
@@ -1937,7 +1937,7 @@ function validateStagingWorkflowContracts(root: string) {
 		return;
 	}
 	const missing: string[] = [];
-	for (const fileName of ['verify.yml', 'deploy-web.yml', 'deploy-processing.yml']) {
+	for (const fileName of ['verify.yml', 'deploy-web.yml']) {
 		if (!existsSync(resolve(root, '.github', 'workflows', fileName))) {
 			missing.push(fileName);
 		}

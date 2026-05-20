@@ -124,6 +124,7 @@ describe('sdk package graph', () => {
 
 		const files = walkSourceFiles(packagesRoot)
 			.filter((filePath) => /\.(ts|tsx|js|mjs|cjs|json|md)$/u.test(filePath))
+			.filter((filePath) => !filePath.includes('/.treeseed/'))
 			.filter((filePath) => !filePath.includes('/.ts-run-'))
 			.filter((filePath) => !filePath.includes('/package-lock.json'))
 			.filter((filePath) => !filePath.endsWith('/sdk/test/utils/package-graph.test.ts'));

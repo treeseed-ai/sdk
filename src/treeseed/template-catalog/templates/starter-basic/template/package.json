@@ -13,9 +13,7 @@
     "config": "treeseed config",
     "preflight": "treeseed preflight",
     "dev": "treeseed dev",
-    "dev:web": "treeseed dev:web",
-    "dev:api": "treeseed dev:api",
-    "dev:watch": "treeseed dev --watch",
+    "capacity": "treeseed capacity",
     "check": "treeseed check",
     "build:web": "treeseed build",
     "build": "npm run build:web",
@@ -26,7 +24,6 @@
   },
   "dependencies": {
     "@treeseed/cli": "__CLI_VERSION__",
-    "@treeseed/agent": "__AGENT_VERSION__",
     "@treeseed/core": "__CORE_VERSION__",
     "@treeseed/sdk": "__SDK_VERSION__",
     "yaml": "^2.8.1"

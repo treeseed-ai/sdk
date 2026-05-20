@@ -38,12 +38,6 @@ services:
   api:
     provider: railway
     enabled: false
-  workdayManager:
-    provider: railway
-    enabled: false
-  workerRunner:
-    provider: railway
-    enabled: false
 `);
 	return tenantRoot;
 }
@@ -85,16 +79,15 @@ describe('hosting audit', () => {
 		expect(formatTreeseedHostingAuditReport(report)).not.toContain(secret);
 	}, 20_000);
 
-	it('does not require GitHub config when auditing only web and processing hosts', async () => {
+	it('does not require GitHub config when auditing only web and email hosts', async () => {
 		const tenantRoot = createTenantFixture();
 		const report = await runTreeseedHostingAudit({
 			tenantRoot,
 			environment: 'local',
-			hostKinds: ['web', 'processing'],
+			hostKinds: ['web', 'email'],
 			providerConnectionChecks: false,
 			env: {
 				CLOUDFLARE_ACCOUNT_ID: 'account-123',
-				TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop',
 			},
 			valuesOverlay: {
 				TREESEED_HOSTING_KIND: 'hosted_project',
@@ -105,7 +98,7 @@ describe('hosting audit', () => {
 			},
 		});
 
-		expect(report.hostKinds).toEqual(['web', 'processing']);
+		expect(report.hostKinds).toEqual(['web', 'email']);
 		expect(report.checks.some((check) => check.provider === 'github')).toBe(false);
 		expect(report.checks.some((check) => check.id === 'config.GH_TOKEN')).toBe(false);
 	}, 20_000);

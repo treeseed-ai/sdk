@@ -220,13 +220,6 @@ function workflowInputForOperation(name: string, input: Record<string, unknown>)
 		case 'status':
 		case 'tasks':
 			return {};
-		case 'dev:watch':
-			return { ...input, watch: true };
-		case 'dev:manager':
-			return {
-				...input,
-				surfaces: input.withWorker === true ? 'manager,worker' : (typeof input.surfaces === 'string' ? input.surfaces : 'manager'),
-			};
 		default:
 			return input;
 	}
@@ -1182,8 +1175,6 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 			new WorkflowOperation('release'),
 			new WorkflowOperation('destroy'),
 			new WorkflowOperation('dev'),
-			new WorkflowOperation('dev:manager', 'dev'),
-			new WorkflowOperation('dev:watch', 'dev'),
 			new InitOperation('init'),
 			new HubPlanLaunchOperation('hub.plan_launch'),
 			new HubValidateLaunchOperation('hub.validate_launch'),

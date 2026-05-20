@@ -7,12 +7,15 @@ import type {
 	CapacityPlan,
 	CapacityProvider,
 	CapacityProviderLane,
+	CapacityProviderRotateKeyResponse,
 	CapacityReservation,
 	CapacityRoutingDecision,
 	CatalogArtifactVersion,
 	CatalogItem,
 	CatalogItemFilters,
 	CreateApprovalRequestRequest,
+	CreateCapacityProviderRequest,
+	CreateCapacityProviderResponse,
 	CreateCapacityReservationRequest,
 	CreateCapacityRoutingDecisionRequest,
 	CreateProjectDeploymentRequest,
@@ -29,6 +32,7 @@ import type {
 	ProjectWorkdaySummary,
 	RecordAgentPoolRegistrationRequest,
 	RecordCapacityUsageRequest,
+	RenameCapacityProviderRequest,
 	RepositoryClaim,
 	RunnerScaleDecision,
 	ScaleDecision,
@@ -158,7 +162,9 @@ export class ControlPlaneClient {
 		if (!payload.ok) {
 			throw new Error(`Control-plane request returned a non-ok envelope for ${pathname}.`);
 		}
-		return payload.payload;
+		return Object.prototype.hasOwnProperty.call(payload, 'payload')
+			? payload.payload
+			: payload as unknown as TPayload;
 	}
 
 	listCatalogItems(filters: CatalogItemFilters = {}) {
@@ -685,16 +691,29 @@ export class ControlPlaneClient {
 	}
 
 	createCapacityProvider(teamId: string, input: UpsertCapacityProviderRequest) {
-		return this.requestJson<CapacityProvider>('POST', `/v1/teams/${encodeURIComponent(teamId)}/capacity-providers`, {
+		return this.requestJson<CreateCapacityProviderResponse>('POST', `/v1/teams/${encodeURIComponent(teamId)}/capacity-providers`, {
+			body: input as unknown as Record<string, unknown>,
+		});
+	}
+
+	createCapacityProviderRegistration(teamId: string, input: CreateCapacityProviderRequest) {
+		return this.requestJson<CreateCapacityProviderResponse>('POST', `/v1/teams/${encodeURIComponent(teamId)}/capacity-providers`, {
 			body: input as Record<string, unknown>,
 		});
 	}
 
-	updateCapacityProvider(teamId: string, providerId: string, input: Partial<UpsertCapacityProviderRequest>) {
-		return this.requestJson<CapacityProvider>(
+	updateCapacityProvider(teamId: string, providerId: string, input: Partial<UpsertCapacityProviderRequest> | RenameCapacityProviderRequest) {
+		return this.requestJson<{ ok: true; provider: CapacityProvider }>(
 			'PATCH',
 			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}`,
 			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	rotateCapacityProviderApiKey(teamId: string, providerId: string) {
+		return this.requestJson<CapacityProviderRotateKeyResponse>(
+			'POST',
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}/keys/rotate`,
 		);
 	}
 

@@ -93,7 +93,6 @@ const LOCAL_ONLY_WORKFLOW_OPERATIONS = new Set([
 	'secrets:rotate-passphrase',
 	'secrets:rotate-machine-key',
 	'dev',
-	'dev:watch',
 	'mailpit:up',
 	'mailpit:down',
 	'mailpit:logs',

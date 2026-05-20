@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.0] - 2026-05-20
+
+### Added
+
+- feat(api): migrate to Hono and complete capacity provider implementation (f100d7afd5eb)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.0.
+
 ## [0.9.0] - 2026-05-19
 
 ### Added
