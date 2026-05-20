@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.3] - 2026-05-20
+
+### Fixed
+
+- fix(publish): tolerate npm scoped package permission 404 (1609228268c0)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.3.
+
 ## [0.10.2] - 2026-05-20
 
 ### Added
