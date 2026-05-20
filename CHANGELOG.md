@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1] - 2026-05-20
+
+### Dependencies
+
+- build(build): make package publish tolerate unprovisioned npm scope (7e8db931eb94)
+- Release @treeseed/sdk 0.10.1.
+
 ## [0.10.0] - 2026-05-20
 
 ### Added
