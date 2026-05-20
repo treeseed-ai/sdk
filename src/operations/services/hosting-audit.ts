@@ -31,7 +31,7 @@ import type { TreeseedReconcileTarget } from '../../reconcile/contracts.ts';
 
 export type TreeseedHostingAuditEnvironment = 'current' | 'local' | 'staging' | 'prod';
 export type TreeseedHostingAuditResolvedEnvironment = 'local' | 'staging' | 'prod' | 'preview';
-export type TreeseedHostingAuditHostKind = 'repository' | 'web' | 'processing' | 'email';
+export type TreeseedHostingAuditHostKind = 'repository' | 'web' | 'email';
 export type TreeseedHostingAuditCheckStatus = 'passed' | 'warning' | 'failed' | 'skipped' | 'repaired';
 export type TreeseedHostingAuditSeverity = 'info' | 'warning' | 'critical';
 
@@ -88,11 +88,10 @@ export type TreeseedHostingAuditOptions = {
 	write?: (line: string) => void;
 };
 
-const HOST_KINDS: TreeseedHostingAuditHostKind[] = ['repository', 'web', 'processing', 'email'];
+const HOST_KINDS: TreeseedHostingAuditHostKind[] = ['repository', 'web', 'email'];
 const HOST_GROUPS: Record<TreeseedHostingAuditHostKind, Set<string>> = {
 	repository: new Set(['auth', 'github']),
 	web: new Set(['cloudflare', 'hosting']),
-	processing: new Set(['railway', 'hosting']),
 	email: new Set(['smtp']),
 };
 
@@ -353,24 +352,6 @@ function appendManualConfigChecks(
 			remediation: 'Set CLOUDFLARE_ACCOUNT_ID for TreeSeed-managed Web hosting.',
 		});
 	}
-	if (hostKinds.includes('processing')) {
-		requiredKeyCheck(checks, values, {
-			id: 'processing.railway.token',
-			hostType: 'processing',
-			provider: 'railway',
-			keys: ['RAILWAY_API_TOKEN'],
-			label: 'Processing provider token',
-			remediation: 'Set RAILWAY_API_TOKEN for TreeSeed-managed Processing hosting.',
-		});
-		requiredKeyCheck(checks, values, {
-			id: 'processing.railway.workspace',
-			hostType: 'processing',
-			provider: 'railway',
-			keys: ['TREESEED_RAILWAY_WORKSPACE'],
-			label: 'Processing provider workspace',
-			remediation: 'Set TREESEED_RAILWAY_WORKSPACE for TreeSeed-managed Processing hosting.',
-		});
-	}
 	if (hostKinds.includes('email')) {
 		requiredKeyCheck(checks, values, {
 			id: 'email.smtp.host',
@@ -453,12 +434,11 @@ function providerConnectionChecks(report: Awaited<ReturnType<typeof checkTreesee
 	const allowedProviders = new Set<string>();
 	if (hostKinds.includes('repository')) allowedProviders.add('github');
 	if (hostKinds.includes('web')) allowedProviders.add('cloudflare');
-	if (hostKinds.includes('processing')) allowedProviders.add('railway');
 	return report.checks
 		.filter((check) => allowedProviders.has(check.provider))
 		.map((check): TreeseedHostingAuditCheck => {
-			const hostType: TreeseedHostingAuditHostKind =
-				check.provider === 'github' ? 'repository' : check.provider === 'railway' ? 'processing' : 'web';
+				const hostType: TreeseedHostingAuditHostKind =
+					check.provider === 'github' ? 'repository' : 'web';
 			return {
 				id: `identity.${check.provider}`,
 				hostType,
@@ -481,21 +461,15 @@ function reconcileSystemsForHostKinds(hostKinds: TreeseedHostingAuditHostKind[])
 		systems.add('data');
 		systems.add('web');
 	}
-	if (hostKinds.includes('processing')) {
-		systems.add('api');
-		systems.add('agents');
-	}
 	return [...systems];
 }
 
 function reconcileStatusChecks(status: Awaited<ReturnType<typeof collectTreeseedReconcileStatus>>, repairedIds = new Set<string>()) {
 	const checks: TreeseedHostingAuditCheck[] = [];
 	for (const unit of status.units) {
-		const hostType: TreeseedHostingAuditHostKind =
-			unit.provider === 'github'
-				? 'repository'
-				: unit.provider === 'railway'
-					? 'processing'
+			const hostType: TreeseedHostingAuditHostKind =
+				unit.provider === 'github'
+					? 'repository'
 					: 'web';
 		const verified = unit.verification?.verified === true;
 		const id = `resource.${unit.provider}.${unit.unitType}.${unit.unitId}`;

@@ -1,4 +1,4 @@
-import type { CapacityProviderRegistration } from '../capacity.ts';
+import type { CapacityProviderRegistrationRequest } from '../capacity-provider.ts';
 
 export type TreeseedFeatureName =
 	| 'docs'
@@ -370,7 +370,7 @@ export interface TreeseedDeployConfig {
 	surfaces?: TreeseedPlatformSurfacesConfig;
 	services?: TreeseedManagedServicesConfig;
 	processing?: TreeseedProcessingConfig;
-	capacityProviders?: Record<string, CapacityProviderRegistration>;
+	capacityProviders?: Record<string, CapacityProviderRegistrationRequest>;
 	smtp?: {
 		enabled?: boolean;
 	};

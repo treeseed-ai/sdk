@@ -279,7 +279,56 @@ function syncManagedServiceSettingsFromDeployConfig(tenantRoot) {
 }
 
 function loadTenantDeployConfig(tenantRoot) {
-	return loadCliDeployConfig(tenantRoot);
+	try {
+		return loadCliDeployConfig(tenantRoot);
+	} catch (error) {
+		const packageJsonPath = resolve(tenantRoot, 'package.json');
+		if (!existsSync(packageJsonPath)) {
+			throw error;
+		}
+		try {
+			const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+			if (packageJson?.name !== '@treeseed/agent') {
+				throw error;
+			}
+			const deployConfig = {
+				name: 'TreeSeed Agent Capacity Provider',
+				slug: 'treeseed-agent-capacity-provider',
+				siteUrl: 'http://127.0.0.1:3100',
+				contactEmail: 'hello@treeseed.ai',
+				hosting: { kind: 'self_hosted_project', registration: 'none' },
+				hub: { mode: 'treeseed_hosted' },
+				runtime: { mode: 'byo_attached', registration: 'none' },
+				surfaces: {
+					web: { enabled: false },
+					api: { enabled: true, provider: 'local', rootDir: '.', localBaseUrl: 'http://127.0.0.1:3100' },
+				},
+				services: {
+					api: { enabled: true, provider: 'local', rootDir: '.' },
+				},
+				processing: { mode: 'local' },
+				providers: {
+					agents: {
+						execution: 'codex',
+						mutation: 'local_branch',
+						repository: 'git',
+						verification: 'local',
+						notification: 'sdk_message',
+						research: 'project_graph',
+					},
+				},
+				plugins: [],
+			};
+			Object.defineProperty(deployConfig, '__tenantRoot', {
+				value: tenantRoot,
+				enumerable: false,
+			});
+			return deployConfig;
+		} catch (fallbackError) {
+			if (fallbackError === error) throw error;
+			throw fallbackError;
+		}
+	}
 }
 
 function loadOptionalTenantManifest(tenantRoot) {
@@ -1675,7 +1724,7 @@ function resolveEntryValueFromBuckets(entry, entryId, scope, bucketValuesByScope
 	return bucketValuesByScope[scope]?.[entryId] ?? '';
 }
 
-export function resolveTreeseedMachineEnvironmentValues(tenantRoot, scope) {
+export function resolveTreeseedMachineEnvironmentValues(tenantRoot, scope, additionalKeys = []) {
 	const key = loadMachineKey(tenantRoot);
 	const config = loadTreeseedMachineConfig(tenantRoot);
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
@@ -1690,7 +1739,10 @@ export function resolveTreeseedMachineEnvironmentValues(tenantRoot, scope) {
 	};
 	const entryById = new Map(registry.entries.map((entry) => [entry.id, entry]));
 	const values = {};
-	const knownKeys = new Set(registry.entries.map((entry) => entry.id));
+	const knownKeys = new Set([
+		...registry.entries.map((entry) => entry.id),
+		...additionalKeys,
+	]);
 
 	for (const entryId of knownKeys) {
 		const resolved = resolveEntryValueFromBuckets(entryById.get(entryId), entryId, scope, bucketValuesByScope);

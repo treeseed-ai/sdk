@@ -62,7 +62,6 @@ export interface KnowledgeHubProviderLaunchInput {
 	enableDefaultAgents?: boolean;
 	preserveWorkingTree?: boolean;
 	cloudflareHost?: KnowledgeHubCloudflareHostLaunchInput | null;
-	processingHost?: KnowledgeHubProcessingHostLaunchInput | null;
 }
 
 export interface KnowledgeHubCloudflareHostConfig {
@@ -83,22 +82,6 @@ export interface KnowledgeHubCloudflareHostLaunchInput {
 	hostId?: string | null;
 	targetEnvironments?: Array<'local' | 'staging' | 'prod'>;
 	config?: KnowledgeHubCloudflareHostConfig | null;
-}
-
-export interface KnowledgeHubProcessingHostConfig {
-	RAILWAY_API_TOKEN?: string;
-	TREESEED_RAILWAY_WORKSPACE?: string;
-	TREESEED_RAILWAY_API_URL?: string;
-	TREESEED_WORKER_POOL_SCALER?: string;
-	environments?: Partial<Record<'staging' | 'prod', Record<string, unknown>>>;
-	[key: string]: unknown;
-}
-
-export interface KnowledgeHubProcessingHostLaunchInput {
-	mode: 'team_owned' | 'treeseed_managed';
-	hostId?: string | null;
-	targetEnvironments?: Array<'local' | 'staging' | 'prod'>;
-	config?: KnowledgeHubProcessingHostConfig | null;
 }
 
 export interface KnowledgeHubProviderLaunchPhaseRecord {
@@ -399,8 +382,8 @@ This hub is live and ready for the first team release cycle.
 }
 
 function ensureHostedProjectFiles(projectRoot: string) {
-	const agentApiPackage = ['@treeseed', 'agent/api'].join('/');
-	writeText(resolve(projectRoot, 'src/api/server.js'), `import { createRailwayTreeseedApiServer } from '${agentApiPackage}';
+	const sdkApiPackage = ['@treeseed', 'sdk/api'].join('/');
+	writeText(resolve(projectRoot, 'src/api/server.js'), `import { createRailwayTreeseedApiServer } from '${sdkApiPackage}';
 
 const server = await createRailwayTreeseedApiServer();
 console.log(\`Treeseed project API listening on \${server.url}\`);
@@ -498,33 +481,13 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubPro
 				railway: {
 					serviceName: `${slug}-api`,
 					buildCommand: 'npm run build:api',
-					startCommand: 'node ./packages/agent/dist/scripts/treeseed-processing.js api',
+					startCommand: 'node ./src/api/server.js',
 					healthcheckTimeoutSeconds: 120,
 				},
 				environments: {
 					local: {
 						baseUrl: 'http://127.0.0.1:3000',
 					},
-				},
-			},
-			workdayManager: {
-				enabled: managedRuntime,
-				provider: managedRuntime ? 'railway' : 'none',
-				railway: {
-					serviceName: `${slug}-workday-manager`,
-					rootDir: '.',
-					buildCommand: 'npm run build:api',
-					startCommand: 'node ./packages/agent/dist/scripts/treeseed-processing.js manager',
-					schedule: '0 9 * * 1-5',
-				},
-			},
-			workerRunner: {
-				enabled: managedRuntime,
-				provider: managedRuntime ? 'railway' : 'none',
-				railway: {
-					rootDir: '.',
-					buildCommand: 'npm run build:api',
-					startCommand: 'node ./packages/agent/dist/scripts/treeseed-processing.js worker',
 				},
 			},
 			...(config.services ?? {}),
@@ -755,24 +718,6 @@ function buildCloudflareHostEnvironmentOverlay(input: KnowledgeHubProviderLaunch
 	return overlay;
 }
 
-function buildProcessingHostEnvironmentOverlay(input: KnowledgeHubProviderLaunchInput, scope: 'staging' | 'prod') {
-	const config = input.processingHost?.config ?? {};
-	const environmentConfig = config.environments?.[scope] ?? {};
-	const overlay: Record<string, string> = {};
-
-	for (const [key, value] of Object.entries(config)) {
-		if (key === 'environments') continue;
-		overlayValue(overlay, key, value);
-	}
-	for (const [key, value] of Object.entries(environmentConfig)) {
-		overlayValue(overlay, key, value);
-	}
-
-	overlayValue(overlay, 'TREESEED_WORKER_POOL_SCALER', overlay.TREESEED_WORKER_POOL_SCALER || 'railway');
-
-	return overlay;
-}
-
 function scaffoldLaunchSource(projectRoot: string, input: KnowledgeHubProviderLaunchInput) {
 	const repositoryName = slugify(input.repoName ?? input.projectSlug, 'project');
 	const templateId = input.sourceKind === 'template'
@@ -896,11 +841,9 @@ export async function executeKnowledgeHubProviderLaunch(
 	const reportPhase = options.onPhase;
 	const prodEnvOverlay = {
 		...buildCloudflareHostEnvironmentOverlay(input, 'prod'),
-		...buildProcessingHostEnvironmentOverlay(input, 'prod'),
 	};
 	const stagingEnvOverlay = {
 		...buildCloudflareHostEnvironmentOverlay(input, 'staging'),
-		...buildProcessingHostEnvironmentOverlay(input, 'staging'),
 	};
 	const preflight = await validateKnowledgeHubProviderLaunchPrerequisites(process.cwd(), { valuesOverlay: prodEnvOverlay });
 	if (!preflight.ok) {

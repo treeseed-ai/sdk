@@ -52,7 +52,7 @@ import { runPrefixedCommand, runTreeseedBootstrapDag, sleep, writeTreeseedBootst
 import { runTenantDeployPreflight } from './save-deploy-preflight.ts';
 
 export type ProjectPlatformScope = 'local' | 'staging' | 'prod';
-export type ProjectPlatformAction = 'deploy_web' | 'deploy_processing' | 'publish_content' | 'monitor';
+export type ProjectPlatformAction = 'deploy_web' | 'publish_content' | 'monitor';
 
 export interface ProjectPlatformActionOptions {
 	tenantRoot: string;
@@ -784,12 +784,6 @@ function resolveImmediateApiProbeUrl(siteConfig, state, target) {
 	return null;
 }
 
-function isProcessingAgentApiService(siteConfig) {
-	const startCommand = String(siteConfig.services?.api?.railway?.startCommand ?? siteConfig.services?.api?.startCommand ?? '');
-	return /\btreeseed-processing(?:\.js)?\s+api\b/u.test(startCommand)
-		|| /treeseed-processing\.js\s+api\b/u.test(startCommand);
-}
-
 function resolveApiMonitorEndpoints(siteConfig, apiBaseUrl: string | null) {
 	if (!apiBaseUrl) {
 		return {
@@ -797,17 +791,16 @@ function resolveApiMonitorEndpoints(siteConfig, apiBaseUrl: string | null) {
 			apiReady: null,
 			d1Health: null,
 			agentHealth: null,
-			processingAgentApi: isProcessingAgentApiService(siteConfig),
+			processingAgentApi: false,
 		};
 	}
 	const baseUrl = String(apiBaseUrl).replace(/\/+$/u, '');
-	const processingAgentApi = isProcessingAgentApiService(siteConfig);
 	return {
 		apiHealth: `${baseUrl}/healthz`,
 		apiReady: `${baseUrl}/readyz`,
-		d1Health: processingAgentApi ? null : `${baseUrl}/healthz/deep`,
-		agentHealth: processingAgentApi ? `${baseUrl}/agent/healthz` : `${baseUrl}/internal/core/agent/healthz`,
-		processingAgentApi,
+		d1Health: `${baseUrl}/healthz/deep`,
+		agentHealth: null,
+		processingAgentApi: false,
 	};
 }
 
@@ -1679,7 +1672,7 @@ export async function runProjectPlatformAction(action: ProjectPlatformAction, op
 	const previousWorkflowAction = process.env.TREESEED_WORKFLOW_ACTION;
 	const previousWorkflowPlane = process.env.TREESEED_WORKFLOW_PLANE;
 	process.env.TREESEED_WORKFLOW_ACTION = action;
-	process.env.TREESEED_WORKFLOW_PLANE = previousWorkflowPlane ?? (action === 'deploy_processing' ? 'processing' : 'web');
+	process.env.TREESEED_WORKFLOW_PLANE = previousWorkflowPlane ?? 'web';
 	applyTreeseedEnvironmentToProcess({ tenantRoot: options.tenantRoot, scope: options.scope, override: true });
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	try {
@@ -1689,12 +1682,6 @@ export async function runProjectPlatformAction(action: ProjectPlatformAction, op
 					...options,
 					reporter,
 					bootstrapSystems: options.bootstrapSystems ?? WEB_PLATFORM_BOOTSTRAP_SYSTEMS,
-				});
-			case 'deploy_processing':
-				return await deployProjectPlatform({
-					...options,
-					reporter,
-					bootstrapSystems: options.bootstrapSystems ?? PROCESSING_PLATFORM_BOOTSTRAP_SYSTEMS,
 				});
 			case 'publish_content':
 				return await publishProjectContent({ ...options, reporter });
@@ -1708,7 +1695,7 @@ export async function runProjectPlatformAction(action: ProjectPlatformAction, op
 			environment: options.scope,
 			deploymentKind: action === 'publish_content'
 					? 'content'
-					: action === 'deploy_web' || action === 'deploy_processing'
+					: action === 'deploy_web'
 						? 'code'
 						: 'mixed',
 			status: 'failed',

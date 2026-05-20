@@ -6,7 +6,7 @@ import {
 	deployTargetLabel,
 	loadDeployState,
 } from '../dist/scripts/deploy-lib.js';
-import { renderDeployProcessingWorkflow, renderDeployWebWorkflow } from '../dist/operations/services/github-automation.js';
+import { renderDeployWebWorkflow } from '../dist/operations/services/github-automation.js';
 import { incrementVersion } from '../dist/scripts/workspace-save-lib.js';
 import { makeTenantRoot } from './cli-test-fixtures.mjs';
 
@@ -25,15 +25,12 @@ test('branch preview state derives branch-specific worker names', () => {
 	assert.equal(state.previewEnabled, true);
 });
 
-test('deploy workflows expose final web and processing actions', () => {
+test('deploy workflow exposes final web actions only', () => {
 	const webWorkflow = renderDeployWebWorkflow({ workingDirectory: '.' });
-	const processingWorkflow = renderDeployProcessingWorkflow({ workingDirectory: '.' });
 	assert.match(webWorkflow, /default: deploy_web/);
 	assert.match(webWorkflow, /- publish_content/);
 	assert.doesNotMatch(webWorkflow, /RAILWAY_API_TOKEN/);
-	assert.match(processingWorkflow, /default: deploy_processing/);
-	assert.match(processingWorkflow, /RAILWAY_API_TOKEN/);
-	assert.match(processingWorkflow, /TREESEED_CAPACITY_PROVIDER_ID/);
+	assert.doesNotMatch(webWorkflow, /deploy_processing/);
 });
 
 test('version bump utility supports major, minor, and patch', () => {

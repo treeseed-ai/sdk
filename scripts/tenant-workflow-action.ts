@@ -65,16 +65,16 @@ function parseArgs(argv: string[]) {
 }
 
 function parseAction(value: string): ProjectPlatformAction {
-	if (value === 'deploy_web' || value === 'deploy_processing' || value === 'publish_content' || value === 'monitor') {
+	if (value === 'deploy_web' || value === 'publish_content' || value === 'monitor') {
 		return value;
 	}
-	throw new Error(`Unsupported workflow action "${value}". Expected deploy_web, deploy_processing, publish_content, or monitor.`);
+	throw new Error(`Unsupported workflow action "${value}". Expected deploy_web, publish_content, or monitor.`);
 }
 
 async function main() {
 	const options = parseArgs(process.argv.slice(2));
 	process.env.TREESEED_WORKFLOW_ACTION = options.action;
-	process.env.TREESEED_WORKFLOW_PLANE ||= options.action === 'deploy_processing' ? 'processing' : 'web';
+	process.env.TREESEED_WORKFLOW_PLANE ||= 'web';
 	const scope = resolveScope(options.environment);
 	const result = await runProjectPlatformAction(options.action, {
 		tenantRoot,

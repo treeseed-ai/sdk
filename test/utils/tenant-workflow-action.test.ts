@@ -8,21 +8,7 @@ describe('tenant workflow action arguments', () => {
 			environment: 'staging',
 		});
 
-		expect(parseArgs([
-			'--action=deploy_processing',
-			'--environment=staging',
-			'--project-id',
-			'project-1',
-			'--preview-id=preview-1',
-			'--dry-run',
-		])).toMatchObject({
-			action: 'deploy_processing',
-			environment: 'staging',
-			projectId: 'project-1',
-			previewId: 'preview-1',
-			dryRun: true,
-		});
-
+		expect(() => parseArgs(['--action', 'deploy_processing'])).toThrow(/Unsupported workflow action/u);
 		expect(() => parseArgs(['--action', 'deploy_code'])).toThrow(/Unsupported workflow action/u);
 	});
 });

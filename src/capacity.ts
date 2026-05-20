@@ -16,6 +16,7 @@ import type {
 	PlanningAdmissionResult,
 	PlanningPolicy,
 	PredictiveReservePolicy,
+	ProjectEnvironmentName,
 	RecordCapacityUsageRequest,
 	ReservePrediction,
 	TaskAdmissionDecision,
@@ -30,43 +31,6 @@ import type {
 	WorkdayBudgetEnvelope,
 } from './sdk-types.ts';
 import type { AgentProviderProfile } from './types/agents.ts';
-
-export type ProcessingEnvironment = 'local' | 'staging' | 'prod';
-
-export interface CapacityProviderRegistration {
-	id: string;
-	teamId: string;
-	providerKind: 'processing-host';
-	serviceBaseUrl: string;
-	environments: ProcessingEnvironment[];
-	capabilities: string[];
-	status: 'pending' | 'active' | 'degraded' | 'disabled';
-	heartbeatAt: string;
-	limits: {
-		maxWorkers: number;
-		dailyTaskCreditBudget: number;
-		maxQueuedTasks: number;
-	};
-}
-
-export interface CapacityProviderHeartbeat {
-	providerId: string;
-	status: CapacityProviderRegistration['status'];
-	heartbeatAt: string;
-	queueDepth?: number | null;
-	activeWorkers?: number | null;
-	draining?: boolean;
-}
-
-export interface CapacityProviderHealth {
-	ok: boolean;
-	status: CapacityProviderRegistration['status'];
-	capabilities: string[];
-	queueDepth: number;
-	activeWorkers: number;
-	draining: boolean;
-	checkedAt: string;
-}
 
 export interface CapacityEstimateInput {
 	taskSignature?: string | null;
@@ -185,7 +149,7 @@ export interface TeamCapacitySummary {
 
 export interface ProjectCapacitySummary extends TeamCapacitySummary {
 	projectId: string;
-	environment: ProcessingEnvironment;
+	environment: ProjectEnvironmentName | 'local';
 	readiness:
 		| 'ready'
 		| 'waiting_for_budget'

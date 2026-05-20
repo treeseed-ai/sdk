@@ -33,7 +33,7 @@ const manifest: SeedManifest = {
 					apiKey: {
 						createIfMissing: true,
 						name: 'Demo local provider security code',
-						scopes: ['provider:heartbeat', 'provider:registration:complete'],
+						scopes: ['provider:register', 'provider:heartbeat', 'provider:portfolio:read', 'provider:tasks:claim', 'provider:tasks:update', 'provider:usage:report', 'provider:reports:write', 'provider:capabilities:write'],
 					},
 				},
 				lanes: [
@@ -79,7 +79,7 @@ describe('seed planner current-state diffing', () => {
 			apiKey: {
 				createIfMissing: true,
 				name: 'Demo local provider security code',
-				scopes: ['provider:heartbeat', 'provider:registration:complete'],
+				scopes: ['provider:register', 'provider:heartbeat', 'provider:portfolio:read', 'provider:tasks:claim', 'provider:tasks:update', 'provider:usage:report', 'provider:reports:write', 'provider:capabilities:write'],
 				expiresAt: undefined,
 			},
 		});

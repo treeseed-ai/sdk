@@ -520,16 +520,9 @@ export class MarketClient {
 		);
 	}
 
-	resetCapacityProviderApiKey(providerId: string, body: Record<string, unknown> = {}) {
+	rotateCapacityProviderApiKey(teamId: string, providerId: string) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/capacity/providers/${encodeURIComponent(providerId)}/api-keys/reset`,
-			{ method: 'POST', body, requireAuth: true },
-		);
-	}
-
-	revokeCapacityProviderApiKey(providerId: string, keyId: string) {
-		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/capacity/providers/${encodeURIComponent(providerId)}/api-keys/${encodeURIComponent(keyId)}/revoke`,
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}/keys/rotate`,
 			{ method: 'POST', requireAuth: true },
 		);
 	}

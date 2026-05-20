@@ -411,10 +411,6 @@ export function renderDeployWebWorkflow({ workingDirectory }) {
 	return renderWorkflowTemplate('deploy-web.workflow.yml', { workingDirectory });
 }
 
-export function renderDeployProcessingWorkflow({ workingDirectory }) {
-	return renderWorkflowTemplate('deploy-processing.workflow.yml', { workingDirectory });
-}
-
 export function renderHostedProjectWorkflow({ workingDirectory }) {
 	return renderWorkflowTemplate('hosted-project.workflow.yml', { workingDirectory });
 }
@@ -432,49 +428,16 @@ function ensureWorkflowFile(tenantRoot, fileName, expected) {
 	return { workflowPath, changed: true };
 }
 
-function hasConcreteProcessingServices(deployConfig) {
-	return Object.entries(deployConfig.services ?? {}).some(([serviceKey, service]) =>
-		['api', 'manager', 'worker', 'workerRunner', 'workdayStart', 'workdayReport'].includes(serviceKey)
-		&& service
-		&& service.enabled !== false
-	);
-}
-
-function shouldWriteProcessingWorkflow(deployConfig) {
-	if ((deployConfig.hosting?.kind ?? 'self_hosted_project') === 'market_control_plane') {
-		return true;
-	}
-
-	const mode = deployConfig.processing?.mode ?? 'market-assigned';
-	return mode === 'project-owned' || mode === 'local' || hasConcreteProcessingServices(deployConfig);
-}
-
 export function ensureDeployWorkflow(tenantRoot) {
 	const repositoryRoot = resolveGitRepositoryRoot(tenantRoot);
 	const workingDirectory = relative(repositoryRoot, tenantRoot).replaceAll('\\', '/') || '.';
-	const deployConfig = loadCliDeployConfig(tenantRoot);
 	const web = ensureWorkflowFile(tenantRoot, 'deploy-web.yml', renderDeployWebWorkflow({ workingDirectory }));
-	const additionalWorkflows = [];
-	let changed = web.changed;
-	if (shouldWriteProcessingWorkflow(deployConfig)) {
-		const processing = ensureWorkflowFile(
-			tenantRoot,
-			'deploy-processing.yml',
-			renderDeployProcessingWorkflow({ workingDirectory }),
-		);
-		changed = changed || processing.changed;
-		additionalWorkflows.push({
-			...processing,
-			workingDirectory,
-			executionBoundary: 'split-plane',
-		});
-	}
 	return {
 		workflowPath: web.workflowPath,
-		changed,
+		changed: web.changed,
 		workingDirectory,
-		executionBoundary: 'split-plane',
-		additionalWorkflows,
+		executionBoundary: 'market-web-api',
+		additionalWorkflows: [],
 	};
 }
 

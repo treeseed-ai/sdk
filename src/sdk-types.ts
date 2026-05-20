@@ -512,6 +512,8 @@ export interface TaskCreditLedgerEntry {
 export type CapacityProviderKind = 'treeseed_managed' | 'team_owned' | 'external' | 'hybrid';
 export type CapacityProviderStatus =
 	| 'pending'
+	| 'online'
+	| 'offline'
 	| 'credential_required'
 	| 'registering'
 	| 'active'
@@ -519,6 +521,7 @@ export type CapacityProviderStatus =
 	| 'draining'
 	| 'paused'
 	| 'configuration_required'
+	| 'rotation_required'
 	| 'disabled'
 	| 'failed';
 export type CapacityProviderBillingScope = 'treeseed' | 'team' | 'external';
@@ -824,6 +827,14 @@ export interface CapacityProvider {
 	maxConcurrentWorkdays: number;
 	maxConcurrentWorkers: number;
 	capacityModel: Record<string, unknown>;
+	connectionState?: string | null;
+	lastSeenAt?: string | null;
+	activeKeyPrefix?: string | null;
+	lastRotatedAt?: string | null;
+	rotationRequired?: boolean;
+	capabilities?: unknown[];
+	budgets?: Record<string, unknown>;
+	deployment?: Record<string, unknown> | null;
 	metadata?: Record<string, unknown>;
 	createdAt: string;
 	updatedAt: string;
@@ -2236,6 +2247,34 @@ export interface UpsertCapacityProviderRequest {
 	maxConcurrentWorkers?: number;
 	capacityModel?: Record<string, unknown> | null;
 	metadata?: Record<string, unknown> | null;
+}
+
+export interface CreateCapacityProviderRequest {
+	name: string;
+	launchMode: 'self_hosted' | 'managed_market_host' | 'connected_host';
+}
+
+export interface CreateCapacityProviderResponse {
+	ok: true;
+	provider: CapacityProvider;
+	apiKey: {
+		plaintext: string;
+		prefix: string;
+	};
+	selfHosting: Record<string, unknown>;
+}
+
+export interface RenameCapacityProviderRequest {
+	name: string;
+}
+
+export interface CapacityProviderRotateKeyResponse {
+	ok: true;
+	apiKey: {
+		plaintext: string;
+		prefix: string;
+	};
+	requiresRestart: boolean;
 }
 
 export interface UpsertCapacityProviderHostRequest {

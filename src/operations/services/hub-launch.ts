@@ -68,11 +68,10 @@ export interface KnowledgeHubLaunchIntent {
 		contentRepository?: RepositorySelection | null;
 		visibility?: 'private' | 'internal' | 'public';
 	};
-	hosting?: {
-		mode?: KnowledgeHubHostMode | 'managed';
-		webHost?: Record<string, unknown> | null;
-		processingHost?: Record<string, unknown> | null;
-	};
+		hosting?: {
+			mode?: KnowledgeHubHostMode | 'managed';
+			webHost?: Record<string, unknown> | null;
+		};
 	contentResolution?: HubContentResolutionPolicy;
 	direction?: {
 		objective?: string | null;
@@ -196,11 +195,10 @@ export function normalizeKnowledgeHubLaunchIntent(input: KnowledgeHubLaunchInten
 			softwareRepository: input.repository?.softwareRepository ?? null,
 			contentRepository: input.repository?.contentRepository ?? null,
 		},
-		hosting: {
-			mode: input.hosting?.mode === 'managed' ? 'treeseed_managed' : input.hosting?.mode ?? 'treeseed_managed',
-			webHost: input.hosting?.webHost ?? null,
-			processingHost: input.hosting?.processingHost ?? null,
-		},
+			hosting: {
+				mode: input.hosting?.mode === 'managed' ? 'treeseed_managed' : input.hosting?.mode ?? 'treeseed_managed',
+				webHost: input.hosting?.webHost ?? null,
+			},
 		contentResolution: input.contentResolution ?? defaultHubContentResolutionPolicy(),
 		direction: input.direction ?? {},
 		capabilities: input.capabilities ?? [],
