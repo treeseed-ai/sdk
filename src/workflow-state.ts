@@ -21,7 +21,7 @@ import {
 } from './operations/services/deploy.ts';
 import { loadCliDeployConfig } from './operations/services/runtime-tools.ts';
 import { collectCliPreflight } from './operations/services/workspace-preflight.ts';
-import { currentBranch, gitStatusPorcelain } from './operations/services/workspace-save.ts';
+import { collectPublicPackageReleaseLineState, currentBranch, gitStatusPorcelain } from './operations/services/workspace-save.ts';
 import { hasCompleteTreeseedPackageCheckout, isWorkspaceRoot, run, workspacePackages } from './operations/services/workspace-tools.ts';
 import { inspectWorkspaceDependencyMode } from './operations/services/workspace-dependency-mode.ts';
 import { inspectDetachedHeadRepair, PRODUCTION_BRANCH, STAGING_BRANCH } from './operations/services/git-workflow.ts';
@@ -141,6 +141,7 @@ export type TreeseedWorkflowState = {
 		}>;
 		blockers: string[];
 		warnings: string[];
+		releaseLine: ReturnType<typeof collectPublicPackageReleaseLineState> | null;
 	};
 	preview: {
 		enabled: boolean;
@@ -661,6 +662,10 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 		: [];
 	const packageSyncBlockers: string[] = [];
 	const packageSyncWarnings: string[] = [];
+	const packageReleaseLine = completePackageCheckout ? collectPublicPackageReleaseLineState(effectiveCwd) : null;
+	if (packageReleaseLine?.drifted) {
+		packageSyncWarnings.push(`Public package release lines are drifted: ${packageReleaseLine.packages.map((pkg) => `${pkg.name}@${pkg.version}`).join(', ')}.`);
+	}
 	for (const repo of packageSyncRepos) {
 		if (repo.dirty) {
 			packageSyncBlockers.push(`${repo.name} has uncommitted changes.`);
@@ -787,6 +792,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			repos: packageSyncRepos,
 			blockers: packageSyncBlockers,
 			warnings: packageSyncWarnings,
+			releaseLine: packageReleaseLine,
 		},
 		preview: {
 			enabled: false,

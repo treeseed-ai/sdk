@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 
-export const TREESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli'];
+export const TREESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli', 'agent'];
 
 function packageSortWeight(pkg) {
 	const relativeDir = String(pkg.relativeDir ?? '');

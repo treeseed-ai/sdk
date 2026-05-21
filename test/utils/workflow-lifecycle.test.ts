@@ -193,6 +193,7 @@ function createWorkflowRepo(options: { withWorkspacePackages?: boolean } = {}) {
 			sdk: createPackageRepo(root, 'sdk'),
 			core: createPackageRepo(root, 'core', { '@treeseed/sdk': '^0.4.12' }),
 			cli: createPackageRepo(root, 'cli', { '@treeseed/sdk': '^0.4.12' }),
+			agent: createPackageRepo(root, 'agent', { '@treeseed/sdk': '^0.4.12' }),
 		}
 		: null;
 	mkdirSync(work, { recursive: true });
@@ -205,7 +206,8 @@ function createWorkflowRepo(options: { withWorkspacePackages?: boolean } = {}) {
 		gitAllowFile(work, ['submodule', 'add', packages.sdk.origin, 'packages/sdk']);
 		gitAllowFile(work, ['submodule', 'add', packages.core.origin, 'packages/core']);
 		gitAllowFile(work, ['submodule', 'add', packages.cli.origin, 'packages/cli']);
-		for (const dirName of ['sdk', 'core', 'cli']) {
+		gitAllowFile(work, ['submodule', 'add', packages.agent.origin, 'packages/agent']);
+		for (const dirName of ['sdk', 'core', 'cli', 'agent']) {
 			const packageRoot = resolve(work, 'packages', dirName);
 			git(packageRoot, ['config', 'user.name', 'Treeseed Test']);
 			git(packageRoot, ['config', 'user.email', 'treeseed@example.com']);
@@ -238,6 +240,16 @@ function createAnnotatedDevTag(repoDir: string, input: { packageName: string; ve
 		createdAt: '2026-05-08T01:02:03.000Z',
 	})]);
 	git(repoDir, ['push', 'origin', input.version]);
+}
+
+function setPackageVersion(repoDir: string, version: string) {
+	const packageJsonPath = resolve(repoDir, 'package.json');
+	const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+	packageJson.version = version;
+	writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+	git(repoDir, ['add', 'package.json']);
+	git(repoDir, ['commit', '-m', `test: set version ${version}`]);
+	git(repoDir, ['push', 'origin', 'staging']);
 }
 
 describe('treeseed workflow lifecycle', () => {
@@ -437,6 +449,7 @@ describe('treeseed workflow lifecycle', () => {
 			'@treeseed/sdk',
 			'@treeseed/core',
 			'@treeseed/cli',
+			'@treeseed/agent',
 		]);
 		expect(result.payload.repos[0].committed).toBe(true);
 		expect(result.payload.repos[0].pushed).toBe(true);
@@ -1147,13 +1160,79 @@ describe('treeseed workflow lifecycle', () => {
 			'@treeseed/sdk': '0.4.13',
 			'@treeseed/core': '0.4.13',
 			'@treeseed/cli': '0.4.12',
+			'@treeseed/agent': '0.4.13',
 		});
 		expect(result.payload.plannedDevReferenceRewrites.some((entry: { repoName: string }) => entry.repoName === '@treeseed/market')).toBe(true);
-		expect(result.payload.plannedPublishWaits).toHaveLength(3);
+		expect(result.payload.plannedPublishWaits).toHaveLength(4);
 		expect(result.payload.plannedSteps.map((step: { id: string }) => step.id)).toEqual(expect.arrayContaining(['release-plan', 'prepare-release-metadata', 'cleanup-dev-tags']));
 		expect(git(work, ['rev-parse', 'HEAD'])).toBe(beforeRootHead);
 		expect(git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'HEAD'])).toBe(beforeSdkHead);
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
+	}, 180000);
+
+	it('plans release-line repair without bumping packages already on the target line', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = workflowFor(work);
+		git(work, ['checkout', 'staging']);
+		setPackageVersion(resolve(work, 'packages', 'sdk'), '0.10.6');
+		setPackageVersion(resolve(work, 'packages', 'core'), '0.9.4');
+		setPackageVersion(resolve(work, 'packages', 'cli'), '0.9.3');
+		setPackageVersion(resolve(work, 'packages', 'agent'), '0.9.3');
+		git(work, ['add', 'packages/sdk', 'packages/core', 'packages/cli', 'packages/agent']);
+		git(work, ['commit', '-m', 'test: drift public package lines']);
+		git(work, ['push', 'origin', 'staging']);
+
+		const result = await workflow.release({
+			bump: 'patch',
+			repairVersionLine: true,
+			targetVersionLine: '0.10',
+			plan: true,
+		});
+
+		expect(result.executionMode).toBe('plan');
+		expect(result.payload.releaseLine).toMatchObject({
+			repair: true,
+			targetLine: '0.10',
+			highestCurrentLine: '0.10',
+			alignedBefore: false,
+		});
+		expect(result.payload.packageSelection.selected).toEqual([
+			'@treeseed/core',
+			'@treeseed/cli',
+			'@treeseed/agent',
+		]);
+		expect(result.payload.plannedVersions).toMatchObject({
+			'@treeseed/market': '1.0.1',
+			'@treeseed/core': '0.10.0',
+			'@treeseed/cli': '0.10.0',
+			'@treeseed/agent': '0.10.0',
+		});
+		expect(result.payload.plannedVersions).not.toHaveProperty('@treeseed/sdk');
+		expect(result.payload.blockers).toEqual([]);
+	}, 180000);
+
+	it('blocks normal patch releases when public package release lines are drifted', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = workflowFor(work);
+		git(work, ['checkout', 'staging']);
+		setPackageVersion(resolve(work, 'packages', 'sdk'), '0.10.6');
+		setPackageVersion(resolve(work, 'packages', 'core'), '0.9.4');
+		setPackageVersion(resolve(work, 'packages', 'cli'), '0.9.3');
+		setPackageVersion(resolve(work, 'packages', 'agent'), '0.9.3');
+		git(work, ['add', 'packages/sdk', 'packages/core', 'packages/cli', 'packages/agent']);
+		git(work, ['commit', '-m', 'test: drift public package lines']);
+		git(work, ['push', 'origin', 'staging']);
+
+		const plan = await workflow.release({ bump: 'patch', plan: true });
+
+		expect(plan.payload.blockers.join('\n')).toContain('Public package version line drift detected');
+		await expect(workflow.release({ bump: 'patch', ciMode: 'off' })).rejects.toThrow('Public package version line drift detected');
+		await expect(workflow.release({
+			bump: 'patch',
+			repairVersionLine: true,
+			targetVersionLine: '0.11',
+			plan: true,
+		})).rejects.toThrow('Release line repair target must match the highest current public package line');
 	}, 180000);
 
 	it('surfaces package branch drift and dirty package blockers in status', async () => {
