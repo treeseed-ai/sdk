@@ -74,6 +74,30 @@ function localGitTagExists(repoDir, tagName) {
 	}
 }
 
+export function highestStableGitTagOnLine(repoDir, lineLabel) {
+	const line = parseVersionLine(lineLabel);
+	try {
+		const tags = run('git', ['tag', '--list', `${line.label}.*`], { cwd: repoDir, capture: true })
+			.split(/\r?\n/u)
+			.map((tag) => tag.trim())
+			.filter(Boolean)
+			.map((tag) => {
+				try {
+					const parsed = parseSemver(tag);
+					if (parsed.prerelease || parsed.major !== line.major || parsed.minor !== line.minor) return null;
+					return { tag, patch: parsed.patch };
+				} catch {
+					return null;
+				}
+			})
+			.filter((entry) => entry != null)
+			.sort((left, right) => right.patch - left.patch);
+		return tags[0]?.tag ?? null;
+	} catch {
+		return null;
+	}
+}
+
 function firstAvailablePatchVersionOnLine(pkg, line) {
 	for (let patch = 0; patch < 1000; patch += 1) {
 		const candidate = versionForLine(line, patch);

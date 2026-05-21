@@ -100,6 +100,7 @@ import {
 	formatMergeConflictReport,
 	gitStatusPorcelain,
 	hasMeaningfulChanges,
+	highestStableGitTagOnLine,
 	incrementVersion,
 	originRemoteUrl,
 	planWorkspaceReleaseBump,
@@ -2181,6 +2182,13 @@ function releasePlanVersionMap(plannedVersions: Record<string, unknown>) {
 	);
 }
 
+function releasePlanStableDependencyVersionMap(plannedRelease: { stableDependencyVersions?: unknown }) {
+	const stableDependencyVersions = plannedRelease.stableDependencyVersions && typeof plannedRelease.stableDependencyVersions === 'object' && !Array.isArray(plannedRelease.stableDependencyVersions)
+		? plannedRelease.stableDependencyVersions as Record<string, unknown>
+		: {};
+	return new Map(Object.entries(stableDependencyVersions).map(([name, version]) => [name, String(version)] as const));
+}
+
 function releasePlanPackageSelection(value: unknown): { changed: string[]; dependents: string[]; selected: string[] } {
 	const record = value && typeof value === 'object' ? value as Record<string, unknown> : {};
 	return {
@@ -2188,6 +2196,25 @@ function releasePlanPackageSelection(value: unknown): { changed: string[]; depen
 		dependents: Array.isArray(record.dependents) ? record.dependents.map(String) : [],
 		selected: Array.isArray(record.selected) ? record.selected.map(String) : [],
 	};
+}
+
+function stableDependencyVersionsForReleaseLine(root: string, options: {
+	targetLine?: unknown;
+	group?: unknown;
+	selected: Set<string>;
+}) {
+	const targetLine = typeof options.targetLine === 'string' ? options.targetLine : null;
+	const group = new Set(Array.isArray(options.group) ? options.group.map(String) : []);
+	if (!targetLine || group.size === 0) return {};
+	const versions: Record<string, string> = {};
+	for (const pkg of workspacePackages(root)) {
+		if (!group.has(pkg.name) || options.selected.has(pkg.name)) continue;
+		const stableVersion = highestStableGitTagOnLine(pkg.dir, targetLine);
+		if (stableVersion) {
+			versions[pkg.name] = stableVersion;
+		}
+	}
+	return versions;
 }
 
 function assertReleaseCandidatePassed(operation: Extract<TreeseedWorkflowOperationId, 'save' | 'stage' | 'release'>, report: ReleaseCandidateReport) {
@@ -2214,10 +2241,13 @@ async function runReleaseCandidateForPlan(
 	const plannedVersions = plannedRelease.plannedVersions && typeof plannedRelease.plannedVersions === 'object' && !Array.isArray(plannedRelease.plannedVersions)
 		? plannedRelease.plannedVersions as Record<string, unknown>
 		: {};
+	const stableDependencyVersions = plannedRelease.stableDependencyVersions && typeof plannedRelease.stableDependencyVersions === 'object' && !Array.isArray(plannedRelease.stableDependencyVersions)
+		? plannedRelease.stableDependencyVersions as Record<string, unknown>
+		: {};
 	const packageSelection = releasePlanPackageSelection(plannedRelease.packageSelection);
 	const report = await runReleaseCandidateGate({
 		root,
-		plannedVersions,
+		plannedVersions: { ...stableDependencyVersions, ...plannedVersions },
 		selectedPackageNames: packageSelection.selected,
 		allowReuse: options.allowReuse,
 	});
@@ -2251,12 +2281,20 @@ function buildReleasePlanSnapshot(input: {
 		selected: plannedSelected,
 	};
 	const rootVersion = planRootPackageVersion(input.root, input.level);
+	const stableDependencyVersions = stableDependencyVersionsForReleaseLine(input.root, {
+		targetLine: versionPlan.releaseLine?.targetLine,
+		group: versionPlan.releaseLine?.group,
+		selected: new Set(plannedPackageSelection.selected),
+	});
 	const plannedVersions = {
 		'@treeseed/market': rootVersion,
 		...Object.fromEntries(versionPlan.versions.entries()),
 	};
 	const plannedDevReferenceRewrites = input.mode === 'recursive-workspace'
-		? collectInternalDevReferenceIssues(input.root, new Set(plannedPackageSelection.selected))
+		? collectInternalDevReferenceIssues(input.root, new Set([
+			...plannedPackageSelection.selected,
+			...Object.keys(stableDependencyVersions),
+		]))
 		: [];
 	return {
 		mode: input.mode,
@@ -2269,6 +2307,7 @@ function buildReleasePlanSnapshot(input: {
 		productionBranch: PRODUCTION_BRANCH,
 		packageSelection: plannedPackageSelection,
 		plannedVersions,
+		stableDependencyVersions,
 		plannedDevReferenceRewrites,
 		plannedPublishWaits: plannedPackageSelection.selected.map((name) => ({
 			name,
@@ -4687,6 +4726,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				const effectivePackageSelection = releasePlanPackageSelection(releasePlan.packageSelection);
 				const effectiveSelectedPackageNames = new Set(effectivePackageSelection.selected);
 				const effectiveVersions = releasePlanVersionMap(releasePlan.plannedVersions as Record<string, unknown>);
+				const effectiveStableDependencyVersions = releasePlanStableDependencyVersionMap(releasePlan);
+				const effectiveDependencyReplacementVersions = new Map([
+					...effectiveStableDependencyVersions.entries(),
+					...effectiveVersions.entries(),
+				]);
 				const rootVersion = String(releasePlan.rootVersion);
 
 				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
@@ -4882,7 +4926,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							})
 							.filter(([, version]) => version.includes('-dev.')),
 					);
-					const replacedDevReferences = rewriteProjectInternalDependenciesToStableVersions(root, effectiveVersions);
+					const replacedDevReferences = rewriteProjectInternalDependenciesToStableVersions(root, effectiveDependencyReplacementVersions);
 					applyStableWorkspaceVersionChanges(root, effectiveVersions);
 					setRootPackageJsonVersion(root, rootVersion);
 					const releaseInstalls: Array<Record<string, unknown>> = [
