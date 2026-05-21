@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.5] - 2026-05-21
+
+### Fixed
+
+- fix(release): fail package release when npm publish fails (075ff331c850)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.5.
+
 ## [0.10.4] - 2026-05-20
 
 ### Tests
