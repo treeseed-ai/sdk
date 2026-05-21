@@ -159,7 +159,7 @@ services:
 		expect(fetched.some((url) => url.endsWith('/internal/core/agent/healthz'))).toBe(false);
 	});
 
-	it('uses the workerRunner service when checking Railway scale readiness', async () => {
+	it('does not probe root Market worker runner scale readiness after provider migration', async () => {
 		const tenantRoot = await createTenantFixture(`services:
   workerRunner:
     enabled: true
@@ -168,7 +168,6 @@ services:
       projectName: test-site
 `);
 		vi.stubGlobal('fetch', vi.fn(async () => new Response('ok', { status: 200 })));
-		process.env.TREESEED_WORKER_POOL_SCALER = 'railway';
 
 		const result = await monitorProjectPlatform({
 			tenantRoot,
@@ -180,8 +179,9 @@ services:
 
 		expect(result.checks.scaleProbe).toMatchObject({
 			ok: true,
+			skipped: true,
 			mocked: true,
-			serviceName: 'acme-docs-worker-runner-01',
+			serviceId: null,
 		});
 	});
 

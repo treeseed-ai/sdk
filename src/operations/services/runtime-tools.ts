@@ -57,7 +57,7 @@ const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 	},
 	site: 'default',
 };
-const TRESEED_MANAGED_SERVICE_KEYS = ['api', 'workdayManager', 'workerRunner'];
+const TRESEED_MANAGED_SERVICE_KEYS = ['api'];
 const TRESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli'];
 const CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER = 'replace-with-cloudflare-account-id';
 

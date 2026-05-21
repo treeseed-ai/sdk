@@ -88,7 +88,7 @@ describe('reconcile registry and desired units', () => {
 		expect(units.find((unit) => unit.unitType === 'railway-service:api')?.provider).toBe('railway');
 	});
 
-	it('normalizes workday railway units to registered kebab-case names', () => {
+	it('does not derive root Market Railway units for deleted processing roles', () => {
 		const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-reconcile-workday-'));
 		mkdirSync(resolve(tenantRoot, 'src'), { recursive: true });
 		writeFileSync(resolve(tenantRoot, 'src', 'manifest.yaml'), 'id: test\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n');
@@ -117,8 +117,8 @@ services:
 			target: { kind: 'persistent', scope: 'staging' },
 		});
 		const unitTypes = units.map((unit) => unit.unitType);
-		expect(unitTypes).toContain('railway-service:workday-manager');
-		expect(unitTypes).toContain('railway-service:worker-runner');
+		expect(unitTypes).not.toContain('railway-service:workday-manager');
+		expect(unitTypes).not.toContain('railway-service:worker-runner');
 		expect(unitTypes).not.toContain('railway-service:workdayStart');
 		expect(unitTypes).not.toContain('railway-service:workdayReport');
 	});

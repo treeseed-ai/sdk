@@ -32,8 +32,8 @@ function normalizeScope(scope) {
 function resolveRailwayEnvironmentForScope(scope, configuredEnvironment) {
 	return normalizeRailwayEnvironmentName(configuredEnvironment || normalizeScope(scope));
 }
-const RAILWAY_SERVICE_KEYS = ['api', 'workdayManager', 'workerRunner'];
-const HOSTED_PROJECT_SERVICE_KEYS = ['api', 'workdayManager', 'workerRunner'];
+const RAILWAY_SERVICE_KEYS = ['api'];
+const HOSTED_PROJECT_SERVICE_KEYS = ['api'];
 const WORKER_RUNNER_BOOTSTRAP_INDEX = 1;
 const WORKER_RUNNER_VOLUME_MOUNT_PATH = '/data';
 
