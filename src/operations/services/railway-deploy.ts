@@ -32,10 +32,11 @@ function normalizeScope(scope) {
 function resolveRailwayEnvironmentForScope(scope, configuredEnvironment) {
 	return normalizeRailwayEnvironmentName(configuredEnvironment || normalizeScope(scope));
 }
-const RAILWAY_SERVICE_KEYS = ['api'];
+const RAILWAY_SERVICE_KEYS = ['api', 'marketOperationsRunner'];
 const HOSTED_PROJECT_SERVICE_KEYS = ['api'];
 const WORKER_RUNNER_BOOTSTRAP_INDEX = 1;
 const WORKER_RUNNER_VOLUME_MOUNT_PATH = '/data';
+const MARKET_OPERATIONS_RUNNER_BOOTSTRAP_COUNT = 2;
 
 function shouldManageRailwaySchedules(scope, phase = 'deploy') {
 	const environment = normalizeRailwayEnvironmentName(scope);
@@ -47,7 +48,9 @@ function railwayServiceNameSuffix(serviceKey) {
 		? 'workday-manager'
 		: serviceKey === 'workerRunner'
 			? 'worker-runner'
-			: serviceKey;
+			: serviceKey === 'marketOperationsRunner'
+				? 'market-operations-runner'
+				: serviceKey;
 }
 
 export function deriveRailwayWorkerRunnerServiceName(projectSlug, index = WORKER_RUNNER_BOOTSTRAP_INDEX) {
@@ -55,10 +58,23 @@ export function deriveRailwayWorkerRunnerServiceName(projectSlug, index = WORKER
 	return `${projectSlug}-worker-runner-${String(normalizedIndex).padStart(2, '0')}`;
 }
 
+export function deriveRailwayMarketOperationsRunnerServiceName(baseServiceName, index = WORKER_RUNNER_BOOTSTRAP_INDEX) {
+	const normalizedIndex = Math.max(1, Number.parseInt(String(index), 10) || WORKER_RUNNER_BOOTSTRAP_INDEX);
+	const base = String(baseServiceName ?? '').trim().replace(/-\d+$/u, '') || 'treeseed-market-operations-runner';
+	return `${base}-${String(normalizedIndex).padStart(2, '0')}`;
+}
+
 export function deriveRailwayWorkerRunnerVolumeName(serviceName, environmentName = '') {
 	const environment = normalizeRailwayEnvironmentName(environmentName);
-	const environmentSuffix = environment && environment !== 'production' ? `-${environment}` : '';
+	const environmentSuffix = environment === 'production' ? '-prod' : environment ? `-${environment}` : '';
 	return `${serviceName}${environmentSuffix}-data`;
+}
+
+export function deriveRailwayMarketOperationsRunnerVolumeName(serviceName, environmentName = '') {
+	const environment = normalizeRailwayEnvironmentName(environmentName);
+	const environmentSuffix = environment === 'production' ? '-prod' : environment ? `-${environment}` : '';
+	const index = String(serviceName ?? '').match(/-(\d+)$/u)?.[1] ?? '01';
+	return `market-ops-runner-${index}${environmentSuffix}-data`;
 }
 
 export function railwayServiceRuntimeStartCommand(service) {
@@ -236,6 +252,7 @@ function normalizeRailwayCliVolume(value, { serviceId, environmentId, fallbackNa
 			serviceId,
 			environmentId,
 			mountPath,
+			state: 'READY',
 			sizeGb: sizeMb === null ? null : sizeMb / 1000,
 			usedGb: currentSizeMb === null ? null : currentSizeMb / 1000,
 		}],
@@ -769,6 +786,76 @@ export function ensureRailwayServiceExists(
 	return refreshed;
 }
 
+export function ensureRailwayDatabaseServiceExists(
+	service,
+	{
+		database = 'postgres',
+		env = process.env,
+	} = {},
+) {
+	const serviceSelector = typeof (service?.serviceName ?? service?.serviceId) === 'string'
+		? String(service.serviceName ?? service.serviceId).trim()
+		: '';
+	if (!serviceSelector) {
+		throw new Error(`Railway database service ${service?.key ?? '(unknown)'} is missing a service selector.`);
+	}
+	const projectSelector = typeof service?.projectId === 'string' && service.projectId.trim()
+		? service.projectId.trim()
+		: typeof service?.projectName === 'string' && service.projectName.trim()
+			? service.projectName.trim()
+			: '';
+	if (!projectSelector) {
+		throw new Error(`Railway database service ${service?.key ?? serviceSelector} is missing a project selector.`);
+	}
+	const linkArgs = ['link', '--project', projectSelector];
+	const workspace = resolveRailwayWorkspace(env);
+	if (workspace) {
+		linkArgs.push('--workspace', workspace);
+	}
+	const environmentName = normalizeRailwayEnvironmentName(service?.railwayEnvironment);
+	if (environmentName) {
+		linkArgs.push('--environment', environmentName);
+	}
+	const linkResult = runRailway(linkArgs, {
+		cwd: service.rootDir,
+		capture: true,
+		allowFailure: true,
+		env,
+	});
+	if ((linkResult.status ?? 1) !== 0) {
+		throw new Error(railwayMessage(linkResult) || `railway ${linkArgs.join(' ')} failed`);
+	}
+	const statusArgs = ['service', 'status', '--service', serviceSelector, '--environment', service.railwayEnvironment, '--json'];
+	const statusResult = runRailway(statusArgs, {
+		cwd: service.rootDir,
+		capture: true,
+		allowFailure: true,
+		env,
+	});
+	if (statusResult.status === 0) {
+		return statusResult;
+	}
+	const addResult = runRailway(['add', '--database', database, '--service', serviceSelector, '--json'], {
+		cwd: service.rootDir,
+		capture: true,
+		allowFailure: true,
+		env,
+	});
+	if (addResult.status !== 0 && !isRailwayAlreadyExistsMessage(addResult)) {
+		throw new Error(railwayMessage(addResult) || `railway add --database ${database} --service ${serviceSelector} failed`);
+	}
+	const refreshed = runRailway(statusArgs, {
+		cwd: service.rootDir,
+		capture: true,
+		allowFailure: true,
+		env,
+	});
+	if (refreshed.status !== 0) {
+		throw new Error(railwayMessage(refreshed) || `railway service status --service ${serviceSelector} failed`);
+	}
+	return refreshed;
+}
+
 export function ensureRailwayProjectContext(
 	service,
 	{ env = process.env, allowFailure = false, capture = false } = {},
@@ -824,7 +911,12 @@ export function ensureRailwayProjectContext(
 export function configuredRailwayServices(tenantRoot, scope) {
 	const deployConfig = loadCliDeployConfig(tenantRoot);
 	const normalizedScope = normalizeScope(scope);
-	const identity = resolveTreeseedResourceIdentity(deployConfig, createPersistentDeployTarget(normalizedScope));
+	let identity;
+	try {
+		identity = resolveTreeseedResourceIdentity(deployConfig, createPersistentDeployTarget(normalizedScope));
+	} catch {
+		identity = { deploymentKey: deployConfig.slug ?? deployConfig.name ?? 'treeseed' };
+	}
 	const managedRuntime = deployConfig.runtime?.mode === 'treeseed_managed';
 	const hostingKind = deployConfig.hosting?.kind ?? (managedRuntime ? 'hosted_project' : 'self_hosted_project');
 	if (!managedRuntime) {
@@ -837,29 +929,54 @@ export function configuredRailwayServices(tenantRoot, scope) {
 		: RAILWAY_SERVICE_KEYS;
 
 	return serviceKeys
-		.map((serviceKey) => {
+		.flatMap((serviceKey) => {
 			const service = deployConfig.services?.[serviceKey];
 			if (!service || service.enabled === false || (service.provider ?? 'railway') !== 'railway') {
-				return null;
+				return [];
 			}
 
-			const defaultRootDir = ['api', 'workdayManager', 'workerRunner'].includes(serviceKey) ? '.' : 'packages/core';
+			const defaultRootDir = ['api', 'marketOperationsRunner'].includes(serviceKey) ? '.' : 'packages/core';
 			const serviceRoot = resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? defaultRootDir);
 			const railwayEnvironment = resolveRailwayEnvironmentForScope(
 				normalizedScope,
 				service.environments?.[normalizedScope]?.railwayEnvironment,
 			);
 			const publicBaseUrl = service.environments?.[normalizedScope]?.baseUrl ?? service.publicBaseUrl ?? null;
-			return {
+			const configuredServiceName = service.railway?.serviceName
+				?? (serviceKey === 'workerRunner'
+					? deriveRailwayWorkerRunnerServiceName(identity.deploymentKey)
+					: `${identity.deploymentKey}-${railwayServiceNameSuffix(serviceKey)}`);
+			const configuredRunnerPool = service.railway?.runnerPool && typeof service.railway.runnerPool === 'object'
+				? service.railway.runnerPool
+				: null;
+			const runnerPool = serviceKey === 'marketOperationsRunner'
+				? {
+					bootstrapCount: Math.max(1, Number.parseInt(String(configuredRunnerPool?.bootstrapCount ?? MARKET_OPERATIONS_RUNNER_BOOTSTRAP_COUNT), 10) || MARKET_OPERATIONS_RUNNER_BOOTSTRAP_COUNT),
+					maxRunners: Math.max(1, Number.parseInt(String(configuredRunnerPool?.maxRunners ?? configuredRunnerPool?.bootstrapCount ?? MARKET_OPERATIONS_RUNNER_BOOTSTRAP_COUNT), 10) || MARKET_OPERATIONS_RUNNER_BOOTSTRAP_COUNT),
+					volumeMountPath: service.railway?.volumeMountPath ?? configuredRunnerPool?.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH,
+				}
+				: serviceKey === 'workerRunner'
+					? {
+						bootstrapIndex: WORKER_RUNNER_BOOTSTRAP_INDEX,
+						volumeMountPath: WORKER_RUNNER_VOLUME_MOUNT_PATH,
+					}
+					: null;
+			const instanceCount = serviceKey === 'marketOperationsRunner' ? runnerPool.bootstrapCount : 1;
+			return Array.from({ length: instanceCount }, (_, offset) => {
+				const runnerIndex = offset + 1;
+				const serviceName = serviceKey === 'marketOperationsRunner'
+					? deriveRailwayMarketOperationsRunnerServiceName(configuredServiceName, runnerIndex)
+					: configuredServiceName;
+				return {
 				key: serviceKey,
+				instanceKey: serviceKey === 'marketOperationsRunner' ? `${serviceKey}:${runnerIndex}` : serviceKey,
+				runnerIndex: serviceKey === 'marketOperationsRunner' ? runnerIndex : null,
 				scope: normalizedScope,
 				projectId: service.railway?.projectId ?? null,
 				projectName: service.railway?.projectName ?? identity.deploymentKey,
 				serviceId: service.railway?.serviceId ?? null,
-				serviceName: service.railway?.serviceName
-					?? (serviceKey === 'workerRunner'
-						? deriveRailwayWorkerRunnerServiceName(identity.deploymentKey)
-						: `${identity.deploymentKey}-${railwayServiceNameSuffix(serviceKey)}`),
+				serviceName,
+				runnerId: serviceKey === 'marketOperationsRunner' ? serviceName : null,
 				rootDir: serviceRoot,
 				publicBaseUrl,
 				railwayEnvironment,
@@ -870,15 +987,12 @@ export function configuredRailwayServices(tenantRoot, scope) {
 				healthcheckIntervalSeconds: service.railway?.healthcheckIntervalSeconds ?? null,
 				restartPolicy: service.railway?.restartPolicy ?? null,
 				runtimeMode: service.railway?.runtimeMode ?? null,
+				volumeMountPath: serviceKey === 'marketOperationsRunner' ? runnerPool.volumeMountPath : service.railway?.volumeMountPath ?? null,
 				schedule: normalizeScheduleExpressions(service.railway?.schedule),
 				hostingKind,
-				runnerPool: serviceKey === 'workerRunner'
-					? {
-						bootstrapIndex: WORKER_RUNNER_BOOTSTRAP_INDEX,
-						volumeMountPath: WORKER_RUNNER_VOLUME_MOUNT_PATH,
-					}
-					: null,
+				runnerPool,
 			};
+			});
 		})
 		.filter(Boolean);
 }
@@ -1697,7 +1811,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		|| service.healthcheckIntervalSeconds !== undefined
 		|| service.restartPolicy
 		|| service.runtimeMode;
-	const wantsRunnerVolume = service.key === 'workerRunner';
+	const wantsRunnerVolume = service.key === 'workerRunner' || Boolean(service.volumeMountPath);
 	if (!wantsInstanceConfig && !wantsRunnerVolume) {
 		return null;
 	}
@@ -1767,10 +1881,22 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		serviceId: railwayService.id,
 		variables: {
 			TREESEED_SKIP_PACKAGE_PREPARE: '1',
+			...(service.key === 'marketOperationsRunner' ? {
+				NIXPACKS_APT_PKGS: 'git',
+				NIXPACKS_PKGS: 'git',
+				TREESEED_PLATFORM_RUNNER_ID: service.runnerId ?? railwayService.name,
+				TREESEED_PLATFORM_RUNNER_DATA_DIR: service.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH,
+				TREESEED_PLATFORM_RUNNER_ENVIRONMENT: normalizeScope(service.scope) === 'prod' ? 'production' : normalizeScope(service.scope),
+				TREESEED_MARKET_ID: normalizeScope(service.scope),
+				...(configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET') ? { TREESEED_PLATFORM_RUNNER_SECRET: configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET') } : {}),
+				...(configuredEnvValue(env, 'TREESEED_MARKET_API_BASE_URL') || configuredEnvValue(env, 'TREESEED_MARKET_URL') ? {
+					TREESEED_MARKET_API_BASE_URL: configuredEnvValue(env, 'TREESEED_MARKET_API_BASE_URL') || configuredEnvValue(env, 'TREESEED_MARKET_URL'),
+				} : {}),
+			} : {}),
 		},
 		env,
 	});
-	const volumeMountPath = service.runnerPool?.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH;
+	const volumeMountPath = service.volumeMountPath ?? service.runnerPool?.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH;
 	const volumeConfiguration = wantsRunnerVolume
 		? await ensureRailwayServiceVolumeWithCliFallback({
 			tenantRoot,
@@ -1779,25 +1905,30 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			environmentName: environment.name,
 			serviceId: railwayService.id,
 			serviceName: railwayService.name,
-			name: deriveRailwayWorkerRunnerVolumeName(railwayService.name, environment.name),
+			name: service.key === 'marketOperationsRunner'
+				? deriveRailwayMarketOperationsRunnerVolumeName(railwayService.name, environment.name)
+				: deriveRailwayWorkerRunnerVolumeName(railwayService.name, environment.name),
 			mountPath: volumeMountPath,
+			preferCli: service.key === 'marketOperationsRunner',
 			env,
 		})
 		: null;
 	if (wantsRunnerVolume) {
-		await upsertRailwayVariables({
-			projectId: project.id,
-			environmentId: environment.id,
-			serviceId: railwayService.id,
-			variables: {
-				TREESEED_RUNNER_SERVICE_NAME: railwayService.name,
-				TREESEED_RUNNER_VOLUME_ROOT: volumeMountPath,
-				TREESEED_RUNNER_VOLUME_NAME: volumeConfiguration?.volume.name ?? deriveRailwayWorkerRunnerVolumeName(railwayService.name, environment.name),
-				TREESEED_WORKER_IDLE_EXIT_MS: configuredEnvValue(env, 'TREESEED_WORKER_IDLE_EXIT_MS') || '60000',
-				...(volumeConfiguration?.volume.id ? { TREESEED_RUNNER_VOLUME_ID: volumeConfiguration.volume.id } : {}),
-			},
-			env,
-		});
+		if (service.key === 'workerRunner') {
+			await upsertRailwayVariables({
+				projectId: project.id,
+				environmentId: environment.id,
+				serviceId: railwayService.id,
+				variables: {
+					TREESEED_RUNNER_SERVICE_NAME: railwayService.name,
+					TREESEED_RUNNER_VOLUME_ROOT: volumeMountPath,
+					TREESEED_RUNNER_VOLUME_NAME: volumeConfiguration?.volume.name ?? deriveRailwayWorkerRunnerVolumeName(railwayService.name, environment.name),
+					TREESEED_WORKER_IDLE_EXIT_MS: configuredEnvValue(env, 'TREESEED_WORKER_IDLE_EXIT_MS') || '60000',
+					...(volumeConfiguration?.volume.id ? { TREESEED_RUNNER_VOLUME_ID: volumeConfiguration.volume.id } : {}),
+				},
+				env,
+			});
+		}
 	}
 	return {
 		projectId: project.id,
@@ -1829,21 +1960,24 @@ async function ensureRailwayServiceVolumeWithCliFallback({
 	serviceName,
 	name,
 	mountPath,
+	preferCli = false,
 	env = process.env,
 }) {
-	try {
-		return await ensureRailwayServiceVolume({
-			projectId,
-			environmentId,
-			serviceId,
-			name,
-			mountPath,
-			env,
-		});
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		if (!message.includes('Problem processing request')) {
-			throw error;
+	if (!preferCli) {
+		try {
+			return await ensureRailwayServiceVolume({
+				projectId,
+				environmentId,
+				serviceId,
+				name,
+				mountPath,
+				env,
+			});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			if (!message.includes('Problem processing request')) {
+				throw error;
+			}
 		}
 	}
 

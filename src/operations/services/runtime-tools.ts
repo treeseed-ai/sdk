@@ -57,7 +57,7 @@ const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 	},
 	site: 'default',
 };
-const TRESEED_MANAGED_SERVICE_KEYS = ['api'];
+const TRESEED_MANAGED_SERVICE_KEYS = ['marketDatabase', 'api', 'marketOperationsRunner'];
 const TRESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli'];
 const CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER = 'replace-with-cloudflare-account-id';
 
@@ -155,9 +155,27 @@ function parseManagedServiceConfig(value, label) {
 			projectName: optionalString(railway.projectName),
 			serviceId: optionalString(railway.serviceId),
 			serviceName: optionalString(railway.serviceName),
+			resourceType: optionalString(railway.resourceType),
+			environmentVariable: optionalString(railway.environmentVariable),
+			serviceTargets: Array.isArray(railway.serviceTargets)
+				? railway.serviceTargets.map((entry) => optionalString(entry)).filter(Boolean)
+				: undefined,
 			rootDir: optionalString(railway.rootDir),
 			buildCommand: optionalString(railway.buildCommand),
 			startCommand: optionalString(railway.startCommand),
+			healthcheckPath: optionalString(railway.healthcheckPath),
+			healthcheckTimeoutSeconds: optionalNonNegativeNumber(railway.healthcheckTimeoutSeconds, `${label}.railway.healthcheckTimeoutSeconds`),
+			healthcheckIntervalSeconds: optionalNonNegativeNumber(railway.healthcheckIntervalSeconds, `${label}.railway.healthcheckIntervalSeconds`),
+			restartPolicy: optionalString(railway.restartPolicy),
+			runtimeMode: optionalString(railway.runtimeMode),
+			volumeMountPath: optionalString(railway.volumeMountPath),
+			runnerPool: optionalRecord(railway.runnerPool, `${label}.railway.runnerPool`)
+				? {
+					bootstrapCount: optionalNonNegativeNumber(railway.runnerPool.bootstrapCount, `${label}.railway.runnerPool.bootstrapCount`),
+					maxRunners: optionalNonNegativeNumber(railway.runnerPool.maxRunners, `${label}.railway.runnerPool.maxRunners`),
+					volumeMountPath: optionalString(railway.runnerPool.volumeMountPath),
+				}
+				: undefined,
 			schedule: Array.isArray(railway.schedule)
 				? railway.schedule.map((entry) => optionalString(entry)).filter(Boolean)
 				: optionalString(railway.schedule),

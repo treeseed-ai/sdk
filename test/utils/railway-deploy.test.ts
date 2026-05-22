@@ -187,6 +187,65 @@ describe('railway scheduled jobs', () => {
 		expect(railwayServiceRuntimeStartCommand(services[0])).toBeNull();
 	});
 
+	it('includes the market operations runner when the deploy config declares it', async () => {
+		const tenantRoot = await createTenantFixture();
+		await writeFile(
+			join(tenantRoot, 'treeseed.site.yaml'),
+			`name: Test Site
+slug: test-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+hosting:
+  kind: hosted_project
+  teamId: acme
+  projectId: docs
+cloudflare:
+  accountId: account-123
+services:
+  api:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-market
+      serviceName: treeseed-market-api
+      rootDir: .
+  marketOperationsRunner:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-market
+      serviceName: treeseed-market-operations-runner
+      rootDir: .
+      buildCommand: npm run build:market-operations-runner
+      startCommand: node ./dist/market-operations-runner/entrypoint.js run
+      healthcheckPath: /healthz
+      runtimeMode: service
+      volumeMountPath: /data
+      runnerPool:
+        bootstrapCount: 1
+        maxRunners: 4
+        volumeMountPath: /data
+`,
+		);
+		const services = configuredRailwayServices(tenantRoot, 'staging');
+		const runners = services.filter((service) => service.key === 'marketOperationsRunner');
+
+		expect(services.map((service) => service.key)).toEqual(['api', 'marketOperationsRunner']);
+		expect(runners.map((service) => service.serviceName)).toEqual([
+			'treeseed-market-operations-runner-01',
+		]);
+		expect(runners[0]).toMatchObject({
+			instanceKey: 'marketOperationsRunner:1',
+			runnerId: 'treeseed-market-operations-runner-01',
+			buildCommand: 'npm run build:market-operations-runner',
+			startCommand: 'node ./dist/market-operations-runner/entrypoint.js run',
+			healthcheckPath: '/healthz',
+			runtimeMode: 'service',
+			volumeMountPath: '/data',
+		});
+		expect(runners[0]?.runnerPool).toMatchObject({ bootstrapCount: 1, maxRunners: 4, volumeMountPath: '/data' });
+	});
+
 	it('keeps provider runtime commands out of root Market Railway services', async () => {
 		const tenantRoot = await createTenantFixture();
 		const services = configuredRailwayServices(tenantRoot, 'staging');
@@ -407,18 +466,42 @@ describe('railway scheduled jobs', () => {
 			if (String(body.query).includes('TreeseedRailwayVolumeList')) {
 				return new Response(JSON.stringify({ data: { project: { volumes: { edges: [] } } } }), { status: 200, headers: { 'content-type': 'application/json' } });
 			}
+			if (String(body.query).includes('TreeseedRailwayVolumeUpdate')) {
+				expect(body.variables).toMatchObject({
+					volumeId: 'vol-1',
+					input: { name: 'acme-docs-worker-runner-01-data' },
+				});
+				return new Response(JSON.stringify({
+					data: {
+						volumeUpdate: {
+							id: 'vol-1',
+							name: 'acme-docs-worker-runner-01-data',
+							projectId: 'project-1',
+							volumeInstances: {
+								edges: [{
+									node: {
+										id: 'vi-1',
+										serviceId: 'svc-runner-01',
+										environmentId: 'env-staging',
+										mountPath: '/data',
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
 			expect(body.variables.input).toMatchObject({
 				projectId: 'project-1',
 				environmentId: 'env-staging',
 				serviceId: 'svc-runner-01',
-				name: 'acme-docs-worker-runner-01-data',
 				mountPath: '/data',
 			});
 			return new Response(JSON.stringify({
 				data: {
 					volumeCreate: {
 						id: 'vol-1',
-						name: 'acme-docs-worker-runner-01-data',
+						name: 'generated-volume-name',
 						projectId: 'project-1',
 						volumeInstances: {
 							edges: [{
@@ -487,17 +570,12 @@ describe('railway scheduled jobs', () => {
 			}
 			expect(String(body.query)).toContain('TreeseedRailwayVolumeInstanceUpdate');
 			expect(body.variables).toEqual({
-				id: 'vi-1',
+				volumeId: 'vol-1',
 				input: { mountPath: '/data' },
 			});
 			return new Response(JSON.stringify({
 				data: {
-					volumeInstanceUpdate: {
-						id: 'vi-1',
-						serviceId: 'svc-runner-01',
-						environmentId: 'env-staging',
-						mountPath: '/data',
-					},
+					volumeInstanceUpdate: true,
 				},
 			}), { status: 200, headers: { 'content-type': 'application/json' } });
 		});

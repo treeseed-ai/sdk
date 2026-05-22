@@ -11,6 +11,7 @@ import {
 	inspectTreeseedKeyAgentStatus,
 	loadTreeseedMachineConfig,
 	applyTreeseedEnvironmentToProcess,
+	collectTreeseedEnvironmentContext,
 	resolveTreeseedLaunchEnvironment,
 	resolveTreeseedMachineEnvironmentValues,
 	applyTreeseedConfigValues,
@@ -471,6 +472,95 @@ cloudflare:
 			'TREESEED_CODEX_APPROVAL_POLICY',
 			'TREESEED_CODEX_AUTH_OVERWRITE',
 		]));
+	});
+
+	it('syncs platform runner environment only to the market operations runner Railway service', () => {
+		const tenantRoot = createTenantFixture();
+		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test Site
+slug: test-site
+siteUrl: https://market.example.com
+contactEmail: hello@example.com
+cloudflare:
+  accountId: account-123
+services:
+  api:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-market
+      serviceName: treeseed-market-api
+      rootDir: .
+  marketOperationsRunner:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-market
+      serviceName: treeseed-market-operations-runner
+      rootDir: .
+      buildCommand: npm run build:market-operations-runner
+      startCommand: node ./dist/market-operations-runner/entrypoint.js run
+      volumeMountPath: /data
+      runnerPool:
+        bootstrapCount: 1
+        maxRunners: 4
+        volumeMountPath: /data
+`);
+		writeTreeseedMachineConfig(tenantRoot, createDefaultTreeseedMachineConfig({
+			tenantRoot,
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://market.example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				services: {
+					api: { provider: 'railway', enabled: true },
+					marketOperationsRunner: { provider: 'railway', enabled: true },
+				},
+			} as any,
+			tenantConfig: { id: 'test-site' } as any,
+		}));
+		unlockSecrets(tenantRoot);
+		const registry = collectTreeseedEnvironmentContext(tenantRoot);
+		const entry = (id: string) => {
+			const found = registry.entries.find((candidate) => candidate.id === id);
+			if (!found) throw new Error(`Missing config entry ${id}`);
+			return found as any;
+		};
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_PLATFORM_RUNNER_SECRET'), 'platform-secret-value');
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_PLATFORM_RUNNER_ID'), 'market-ops-staging-1');
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_PLATFORM_RUNNER_DATA_DIR'), '/data');
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_PLATFORM_RUNNER_ENVIRONMENT'), 'staging');
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_MARKET_API_BASE_URL'), 'https://api-staging.example.com');
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_MARKET_DATABASE_URL'), 'postgres://market-db-secret');
+
+		const plan = syncTreeseedRailwayEnvironment({ tenantRoot, scope: 'staging', dryRun: true });
+		const apiService = plan.services.find((service) => service.service === 'api');
+		const runnerServices = plan.services.filter((service) => service.service === 'marketOperationsRunner');
+
+		expect(plan.services.map((service) => service.service)).toEqual(['api', 'marketOperationsRunner']);
+		expect(apiService?.secrets).toEqual(expect.arrayContaining(['TREESEED_PLATFORM_RUNNER_SECRET', 'TREESEED_MARKET_DATABASE_URL']));
+		expect(apiService?.variables).not.toEqual(expect.arrayContaining([
+			'TREESEED_PLATFORM_RUNNER_ID',
+			'TREESEED_PLATFORM_RUNNER_DATA_DIR',
+			'TREESEED_PLATFORM_RUNNER_ENVIRONMENT',
+		]));
+		expect(runnerServices.map((service) => service.serviceName)).toEqual([
+			'treeseed-market-operations-runner-01',
+		]);
+		expect(runnerServices[0]).toMatchObject({
+			secrets: expect.arrayContaining(['TREESEED_PLATFORM_RUNNER_SECRET', 'TREESEED_MARKET_DATABASE_URL']),
+			variables: expect.arrayContaining([
+				'TREESEED_MARKET_API_BASE_URL',
+				'TREESEED_PLATFORM_RUNNER_ID',
+				'TREESEED_PLATFORM_RUNNER_DATA_DIR',
+				'TREESEED_PLATFORM_RUNNER_ENVIRONMENT',
+			]),
+		});
+		expect(JSON.stringify(apiService)).not.toContain('platform-secret-value');
+		expect(JSON.stringify(runnerServices)).not.toContain('platform-secret-value');
+		expect(JSON.stringify(plan)).not.toContain('postgres://market-db-secret');
+		expect(JSON.stringify(runnerServices)).not.toContain('TREESEED_CAPACITY_PROVIDER_API_KEY');
 	});
 
 	it('ensures Railway deploy ignore entries for local workspace artifacts', () => {

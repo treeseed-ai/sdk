@@ -41,6 +41,7 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('TREESEED_WEB_SERVICE_SECRET');
 		expect(webSource).toContain('TREESEED_SITE_URL');
 		expect(webSource).toContain('BETTER_AUTH_URL');
+		expect(webSource).toContain('https://api-treeseed-market-staging-ca844c56.treeseed.ai');
 		expect(webSource).toContain('packages/sdk packages/agent packages/core packages/cli');
 		expect(webSource).toContain('npm ci --ignore-scripts');
 		expect(webSource).toContain('node ./packages/sdk/scripts/run-ts.mjs ./packages/sdk/scripts/install-managed-dependencies.ts');
@@ -54,6 +55,7 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(source).not.toContain('processing_changed');
 		expect(source).not.toContain('docs/*|migrations/*');
 		expect(webSource).not.toContain('TREESEED_WORKFLOW_SKIP_PROVISION');
+		expect(verifySource).toContain('npm run build:market-operations-runner');
 		expect(source).not.toContain('submodules: false');
 		expect(source).not.toContain('sparse-checkout: |');
 		expect(source).not.toContain('delete pkg.workspaces');

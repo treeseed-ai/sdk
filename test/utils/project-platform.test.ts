@@ -185,6 +185,33 @@ services:
 		});
 	});
 
+	it('uses market operations runner readiness instead of old worker-runner scale readiness', async () => {
+		const tenantRoot = await createTenantFixture(`services:
+  marketOperationsRunner:
+    enabled: true
+    provider: railway
+    railway:
+      projectName: treeseed-market
+      serviceName: treeseed-market-operations-runner
+`);
+		vi.stubGlobal('fetch', vi.fn(async () => new Response('ok', { status: 200 })));
+
+		const result = await monitorProjectPlatform({
+			tenantRoot,
+			scope: 'local',
+			dryRun: true,
+			reporter: noopReporter(),
+			bootstrapSystems: ['agents'],
+		});
+
+		expect(result.checks.scaleProbe).toMatchObject({
+			ok: true,
+			mocked: true,
+			serviceName: 'treeseed-market-operations-runner',
+			runnerKind: 'market_operations_runner',
+		});
+	});
+
 	it('fails publish-content preflight with deploy readiness errors before R2 operations', async () => {
 		const tenantRoot = await createTenantFixture();
 

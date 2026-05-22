@@ -9,6 +9,9 @@ function stableHash(value: unknown) {
 }
 
 function railwayUnitTypeForServiceKey(serviceKey: string) {
+	if (serviceKey === 'marketOperationsRunner') {
+		return 'railway-service:market-operations-runner' as const;
+	}
 	if (serviceKey === 'workdayManager') {
 		return 'railway-service:workday-manager' as const;
 	}
