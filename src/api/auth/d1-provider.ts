@@ -61,6 +61,10 @@ export class D1AuthProvider implements ApiAuthProvider {
 		return this.store.refreshAccessToken(request);
 	}
 
+	issueUserSession(userId: string, options: { sessionType?: string; scopes?: string[]; data?: Record<string, unknown> } = {}) {
+		return this.store.issueUserSession(userId, options);
+	}
+
 	approveDeviceFlow(request: DeviceCodeApproveRequest): Promise<{ ok: true }> {
 		return this.store.approveDeviceFlow(request);
 	}

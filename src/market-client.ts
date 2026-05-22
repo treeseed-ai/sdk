@@ -45,6 +45,14 @@ export interface MarketSession {
 	principal?: ApiPrincipal | null;
 }
 
+export interface MarketWebAuthSession {
+	accessToken: string;
+	refreshToken?: string | null;
+	expiresInSeconds?: number;
+	principal: ApiPrincipal;
+	session?: Record<string, unknown> | null;
+}
+
 export interface MarketRegistryState {
 	version: 1;
 	activeMarketId: string;
@@ -459,6 +467,106 @@ export class MarketClient {
 	logout() {
 		return this.request<{ ok: true }>('/v1/auth/logout', {
 			method: 'POST',
+			requireAuth: true,
+		});
+	}
+
+	webSignUp(body: {
+		email: string;
+		password: string;
+		username?: string | null;
+		name?: string | null;
+		firstName?: string | null;
+		lastName?: string | null;
+	}) {
+		return this.request<{ ok: true; payload: MarketWebAuthSession }>('/v1/auth/web/sign-up', {
+			method: 'POST',
+			body,
+		});
+	}
+
+	webSignIn(body: { email?: string; username?: string; login?: string; password: string }) {
+		return this.request<{ ok: true; payload: MarketWebAuthSession }>('/v1/auth/web/sign-in', {
+			method: 'POST',
+			body,
+		});
+	}
+
+	checkWebUsername(username: string) {
+		return this.request<{ ok: true; payload: { username: string; available: boolean; status: string } }>(
+			`/v1/auth/web/username/check?username=${encodeURIComponent(username)}`,
+		);
+	}
+
+	webSessions() {
+		return this.request<{ ok: true; payload: unknown[] }>('/v1/auth/web/sessions', { requireAuth: true });
+	}
+
+	revokeWebSession(sessionId: string) {
+		return this.request<{ ok: true; payload: { sessionId: string } }>(
+			`/v1/auth/web/sessions/${encodeURIComponent(sessionId)}/revoke`,
+			{ method: 'POST', requireAuth: true },
+		);
+	}
+
+	updateWebProfile(body: { name?: string | null; image?: string | null }) {
+		return this.request<{ ok: true; payload: MarketWebAuthSession }>('/v1/auth/web/profile', {
+			method: 'PATCH',
+			body,
+			requireAuth: true,
+		});
+	}
+
+	webAppearance() {
+		return this.request<{ ok: true; payload: { scheme: string; mode: string } }>('/v1/auth/web/appearance', { requireAuth: true });
+	}
+
+	updateWebAppearance(body: { colorScheme?: string | null; scheme?: string | null; themeMode?: string | null; mode?: string | null }) {
+		return this.request<{ ok: true; payload: { scheme: string; mode: string } }>('/v1/auth/web/appearance', {
+			method: 'PATCH',
+			body,
+			requireAuth: true,
+		});
+	}
+
+	updateWebEmail(body: { email: string }) {
+		return this.request<{ ok: true; payload: MarketWebAuthSession }>('/v1/auth/web/email', {
+			method: 'PATCH',
+			body,
+			requireAuth: true,
+		});
+	}
+
+	updateWebPassword(body: { currentPassword?: string; password: string }) {
+		return this.request<{ ok: true; payload: { changed: true } }>('/v1/auth/web/password', {
+			method: 'PATCH',
+			body,
+			requireAuth: true,
+		});
+	}
+
+	requestWebPasswordReset(body: { email: string }) {
+		return this.request<{ ok: true; payload: { sent: true; resetToken?: string | null } }>('/v1/auth/web/password-reset/request', {
+			method: 'POST',
+			body,
+		});
+	}
+
+	completeWebPasswordReset(body: { token: string; password: string }) {
+		return this.request<{ ok: true; payload: { reset: true } }>('/v1/auth/web/password-reset/complete', {
+			method: 'POST',
+			body,
+		});
+	}
+
+	accountDeletionBlockers() {
+		return this.request<{ ok: true; payload: { blockers: unknown[]; canDelete: boolean } }>('/v1/auth/web/account/deletion-blockers', { requireAuth: true });
+	}
+
+	deleteAccount(body: { confirmation?: string } = {}) {
+		return this.request<{ ok: true; payload: { deleted: true } }>('/v1/auth/web/account', {
+			method: 'DELETE',
+			body,
 			requireAuth: true,
 		});
 	}

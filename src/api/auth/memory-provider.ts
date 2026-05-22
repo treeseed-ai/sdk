@@ -202,6 +202,48 @@ export class MemoryDeviceCodeAuthProvider implements ApiAuthProvider {
 		};
 	}
 
+	async issueUserSession(userId: string, options: { sessionType?: string; scopes?: string[]; data?: Record<string, unknown> } = {}): Promise<TokenRefreshResponse> {
+		const principal: ApiPrincipal = {
+			id: userId,
+			displayName: userId,
+			scopes: options.scopes ?? ['auth:me'],
+			roles: ['member'],
+			permissions: ['auth:read:self'],
+			metadata: {
+				...(options.data ?? {}),
+				sessionType: options.sessionType ?? 'web',
+			},
+		};
+		const refreshToken = nextOpaqueToken('refresh');
+		this.refreshSessions.set(refreshToken, {
+			principal,
+			expiresAt: nowSeconds() + this.config.refreshTokenTtlSeconds,
+		});
+		const expiresAt = nowSeconds() + this.config.accessTokenTtlSeconds;
+		return {
+			ok: true,
+			status: 'approved',
+			accessToken: createAccessToken({
+				sub: principal.id,
+				displayName: principal.displayName,
+				scopes: principal.scopes,
+				roles: principal.roles,
+				permissions: principal.permissions,
+				metadata: principal.metadata,
+				iat: nowSeconds(),
+				exp: expiresAt,
+				iss: this.config.issuer,
+				jti: randomUUID(),
+				tokenType: 'access',
+			}, this.config.authSecret),
+			refreshToken,
+			tokenType: 'Bearer',
+			expiresAt: formatExpiry(expiresAt),
+			expiresInSeconds: this.config.accessTokenTtlSeconds,
+			principal,
+		};
+	}
+
 	async authenticateBearerToken(token: string) {
 		const payload = verifyAccessToken(token, this.config.authSecret);
 		return payload
