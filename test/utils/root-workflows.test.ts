@@ -45,7 +45,8 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('packages/sdk packages/agent packages/core packages/cli');
 		expect(webSource).toContain('npm ci --ignore-scripts');
 		expect(webSource).toContain('node ./packages/sdk/scripts/run-ts.mjs ./packages/sdk/scripts/install-managed-dependencies.ts');
-		expect(webSource).not.toContain('RAILWAY_API_TOKEN');
+		expect(webSource).toContain('RAILWAY_API_TOKEN');
+		expect(webSource).toContain('TREESEED_RAILWAY_PROJECT_ID');
 		expect(webSource).not.toContain('TREESEED_WORKER_POOL_SCALER');
 		expect(source).toContain('migrations/*');
 		expect(source).toContain('scripts/build-api.mjs');
