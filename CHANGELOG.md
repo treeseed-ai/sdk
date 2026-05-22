@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.10.7] - 2026-05-22
+
+### Fixed
+
+- fix(build): rehearse repair releases against stable dependencies (f2bffa1fef7e)
+- fix(workflow): keep release package lines aligned (d3b8fcc12120)
+
+### Tests
+
+- test(workflow-lifecycle): update railway token storage and auth (388cc452ff27)
+- build(build): update package metadata (0339422e4e49)
+- build(source): update package metadata (d2c8becdfda9)
+- build(tests): update package metadata (e2c617dba02c)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.7.
+
 ## [0.10.6] - 2026-05-21
 
 ### Dependencies
