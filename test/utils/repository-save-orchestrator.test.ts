@@ -288,6 +288,11 @@ describe('repository save orchestrator helpers', () => {
 				version: '0.1.0',
 				private: true,
 			});
+			writeJson(resolve(root, 'packages/agent/package.json'), {
+				name: '@treeseed/agent',
+				version: '0.1.0',
+				private: true,
+			});
 			mkdirSync(resolve(sdkDir, 'src'), { recursive: true });
 			git(sdkDir, ['init', '-b', 'staging']);
 			git(sdkDir, ['config', 'user.email', 'test@example.com']);

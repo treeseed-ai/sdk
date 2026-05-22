@@ -450,12 +450,11 @@ function dependencyRehearsalChecks(
 			});
 		}
 	}
-	const selectedPackageSet = new Set(selectedPackageNames);
 	const devReferenceIssues = collectInternalDevReferenceIssues(root);
 	const unrehearsableDevReferences = devReferenceIssues.filter((issue) => {
 		const dependencyName = issue.dependencyName ?? '';
 		const planned = plannedVersions[dependencyName];
-		return !selectedPackageSet.has(dependencyName) || !planned || !STABLE_SEMVER.test(planned);
+		return !planned || !STABLE_SEMVER.test(planned);
 	});
 	if (unrehearsableDevReferences.length > 0) {
 		addFailure(failures, {

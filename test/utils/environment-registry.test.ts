@@ -639,7 +639,10 @@ describe('environment registry overlays', () => {
 				plugins: [],
 			});
 
-			expect(findRegistryEntry(registry, 'RAILWAY_API_TOKEN')).toBeUndefined();
+			const railwayApiToken = findRegistryEntry(registry, 'RAILWAY_API_TOKEN');
+			if (railwayApiToken) {
+				expect(isTreeseedEnvironmentEntryRelevant(railwayApiToken, registry.context, 'staging', 'config')).toBe(false);
+			}
 			expect(findRegistryEntry(registry, 'TREESEED_API_WEB_SERVICE_SECRET')).toBeUndefined();
 			expect(findRegistryEntry(registry, 'TREESEED_CAPACITY_PROVIDER_ID')).toBeUndefined();
 		} finally {
@@ -748,7 +751,7 @@ describe('environment registry overlays', () => {
 		expect(isTreeseedEnvironmentEntryRelevant(cloudflareToken!, registry.context, 'local', 'config')).toBe(true);
 		expect(isTreeseedEnvironmentEntryRequired(cloudflareToken!, registry.context, 'local', 'config')).toBe(true);
 		expect(findRegistryEntry(registry, 'RAILWAY_API_TOKEN')?.scopes).toEqual(
-			findRegistryEntry(registry, 'RAILWAY_API_TOKEN') ? ['staging', 'prod'] : undefined,
+			findRegistryEntry(registry, 'RAILWAY_API_TOKEN') ? ['local', 'staging', 'prod'] : undefined,
 		);
 		expect(registry.entries.find((entry) => entry.id === 'CLOUDFLARE_ACCOUNT_ID')?.scopes).toEqual(['local', 'staging', 'prod']);
 		expect(findRegistryEntry(registry, 'TREESEED_RAILWAY_WORKSPACE')?.scopes).toEqual(
@@ -1241,7 +1244,8 @@ describe('environment registry overlays', () => {
 
 		const railwayApiToken = findRegistryEntry(registry, 'RAILWAY_API_TOKEN');
 		if (railwayApiToken) {
-			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['github-secret', 'railway-secret']));
+			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['github-secret']));
+			expect(railwayApiToken.targets).not.toContain('railway-secret');
 		}
 		const railwayProjectToken = findRegistryEntry(registry, 'RAILWAY_TOKEN');
 		if (railwayProjectToken) {

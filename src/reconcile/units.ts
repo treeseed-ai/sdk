@@ -3,6 +3,7 @@ import type { TreeseedDesiredUnit, TreeseedReconcileTarget, TreeseedReconcileUni
 export const TRESEED_RECONCILE_UNIT_TYPES: TreeseedReconcileUnitType[] = [
 	'web-ui',
 	'api-runtime',
+	'market-operations-runner-runtime',
 	'workday-manager-runtime',
 	'worker-runner-runtime',
 	'edge-worker',
@@ -15,6 +16,7 @@ export const TRESEED_RECONCILE_UNIT_TYPES: TreeseedReconcileUnitType[] = [
 	'custom-domain:api',
 	'dns-record',
 	'railway-service:api',
+	'railway-service:market-operations-runner',
 	'railway-service:workday-manager',
 	'railway-service:worker-runner',
 ];

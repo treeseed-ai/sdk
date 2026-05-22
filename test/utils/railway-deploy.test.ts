@@ -55,23 +55,6 @@ services:
       projectName: acme-docs
       serviceName: acme-docs-api
       rootDir: .
-  workerRunner:
-    provider: railway
-    enabled: true
-    railway:
-      projectName: acme-docs
-      rootDir: .
-  workdayManager:
-    provider: railway
-    enabled: true
-    railway:
-      projectId: railway-project-1
-      projectName: acme-docs
-      serviceId: svc-manager
-      serviceName: acme-docs-workday-start
-      startCommand: node ./packages/agent/dist/provider/entrypoint.js manager
-      schedule:
-        - "0 9 * * 1-5"
 `,
 	);
 	return tenantRoot;
@@ -170,11 +153,11 @@ describe('railway scheduled jobs', () => {
 
 		const services = configuredRailwayServices(tenantRoot, 'prod');
 
-		expect(services).toHaveLength(3);
+		expect(services).toHaveLength(1);
 		expect(services.every((service) => service.railwayEnvironment === 'production')).toBe(true);
 	});
 
-	it('derives worker-runner pool service and volume names outside tenant config', async () => {
+	it('keeps worker-runner naming helpers private to package-owned provider assets', async () => {
 		const tenantRoot = await createTenantFixture();
 
 		const services = configuredRailwayServices(tenantRoot, 'staging');
@@ -183,49 +166,91 @@ describe('railway scheduled jobs', () => {
 		expect(deriveRailwayWorkerRunnerServiceName('acme-docs')).toBe('acme-docs-worker-runner-01');
 		expect(deriveRailwayWorkerRunnerVolumeName('acme-docs-worker-runner-01')).toBe('acme-docs-worker-runner-01-data');
 		expect(deriveRailwayWorkerRunnerVolumeName('acme-docs-worker-runner-01', 'staging')).toBe('acme-docs-worker-runner-01-staging-data');
-		expect(runner).toMatchObject({
-			serviceName: 'acme-docs-worker-runner-01',
-			runnerPool: {
-				bootstrapIndex: 1,
-				volumeMountPath: '/data',
-			},
-		});
+		expect(runner).toBeUndefined();
 	});
 
-	it('plans workday-manager schedules for staging and prod', async () => {
+	it('does not plan root Market workday-manager schedules', async () => {
 		const tenantRoot = await createTenantFixture();
 
 		const staging = configuredRailwayScheduledJobs(tenantRoot, 'staging');
 		const prod = configuredRailwayScheduledJobs(tenantRoot, 'prod');
 
-		expect(staging).toHaveLength(1);
-		expect(staging[0]).toMatchObject({
-			service: 'workdayManager',
-			serviceName: 'acme-docs-workday-start',
-			environment: 'staging',
-			expression: '0 9 * * 1-5',
-			command: 'node ./packages/agent/dist/provider/entrypoint.js manager',
-		});
-		expect(prod).toHaveLength(1);
-		expect(prod[0]).toMatchObject({
-			service: 'workdayManager',
-			environment: 'production',
-		});
+		expect(staging).toEqual([]);
+		expect(prod).toEqual([]);
 	});
 
-	it('configures the workday-manager service instance with the cron command', async () => {
+	it('keeps root Market Railway services to the API service', async () => {
 		const tenantRoot = await createTenantFixture();
-		const manager = configuredRailwayServices(tenantRoot, 'staging').find((service) => service.key === 'workdayManager');
+		const services = configuredRailwayServices(tenantRoot, 'staging');
 
-		expect(manager?.startCommand).toBe('node ./packages/agent/dist/provider/entrypoint.js manager');
-		expect(railwayServiceRuntimeStartCommand(manager)).toBe('node ./packages/agent/dist/provider/entrypoint.js manager');
+		expect(services.map((service) => service.key)).toEqual(['api']);
+		expect(railwayServiceRuntimeStartCommand(services[0])).toBeNull();
 	});
 
-	it('keeps provider start commands role-oriented without runtime build chaining', async () => {
+	it('includes the market operations runner when the deploy config declares it', async () => {
+		const tenantRoot = await createTenantFixture();
+		await writeFile(
+			join(tenantRoot, 'treeseed.site.yaml'),
+			`name: Test Site
+slug: test-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+hosting:
+  kind: hosted_project
+  teamId: acme
+  projectId: docs
+cloudflare:
+  accountId: account-123
+services:
+  api:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-market
+      serviceName: treeseed-market-api
+      rootDir: .
+  marketOperationsRunner:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-market
+      serviceName: treeseed-market-operations-runner
+      rootDir: .
+      buildCommand: npm run build:market-operations-runner
+      startCommand: node ./dist/market-operations-runner/entrypoint.js run
+      healthcheckPath: /healthz
+      runtimeMode: service
+      volumeMountPath: /data
+      runnerPool:
+        bootstrapCount: 1
+        maxRunners: 4
+        volumeMountPath: /data
+`,
+		);
+		const services = configuredRailwayServices(tenantRoot, 'staging');
+		const runners = services.filter((service) => service.key === 'marketOperationsRunner');
+
+		expect(services.map((service) => service.key)).toEqual(['api', 'marketOperationsRunner']);
+		expect(runners.map((service) => service.serviceName)).toEqual([
+			'treeseed-market-operations-runner-01',
+		]);
+		expect(runners[0]).toMatchObject({
+			instanceKey: 'marketOperationsRunner:1',
+			runnerId: 'treeseed-market-operations-runner-01',
+			buildCommand: 'npm run build:market-operations-runner',
+			startCommand: 'node ./dist/market-operations-runner/entrypoint.js run',
+			healthcheckPath: '/healthz',
+			runtimeMode: 'service',
+			volumeMountPath: '/data',
+		});
+		expect(runners[0]?.runnerPool).toMatchObject({ bootstrapCount: 1, maxRunners: 4, volumeMountPath: '/data' });
+	});
+
+	it('keeps provider runtime commands out of root Market Railway services', async () => {
 		const tenantRoot = await createTenantFixture();
 		const services = configuredRailwayServices(tenantRoot, 'staging');
 		expect(services.map((service) => service.startCommand).filter(Boolean).join('\n')).not.toContain('npm run build:api &&');
-		expect(services.find((service) => service.key === 'workdayManager')?.startCommand).toContain('provider/entrypoint.js manager');
+		expect(services.map((service) => service.startCommand).filter(Boolean).join('\n')).not.toContain('provider/entrypoint.js');
 	});
 
 	it('detaches Railway deploys from build log streaming by default outside CI', () => {
@@ -441,18 +466,42 @@ describe('railway scheduled jobs', () => {
 			if (String(body.query).includes('TreeseedRailwayVolumeList')) {
 				return new Response(JSON.stringify({ data: { project: { volumes: { edges: [] } } } }), { status: 200, headers: { 'content-type': 'application/json' } });
 			}
+			if (String(body.query).includes('TreeseedRailwayVolumeUpdate')) {
+				expect(body.variables).toMatchObject({
+					volumeId: 'vol-1',
+					input: { name: 'acme-docs-worker-runner-01-data' },
+				});
+				return new Response(JSON.stringify({
+					data: {
+						volumeUpdate: {
+							id: 'vol-1',
+							name: 'acme-docs-worker-runner-01-data',
+							projectId: 'project-1',
+							volumeInstances: {
+								edges: [{
+									node: {
+										id: 'vi-1',
+										serviceId: 'svc-runner-01',
+										environmentId: 'env-staging',
+										mountPath: '/data',
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
 			expect(body.variables.input).toMatchObject({
 				projectId: 'project-1',
 				environmentId: 'env-staging',
 				serviceId: 'svc-runner-01',
-				name: 'acme-docs-worker-runner-01-data',
 				mountPath: '/data',
 			});
 			return new Response(JSON.stringify({
 				data: {
 					volumeCreate: {
 						id: 'vol-1',
-						name: 'acme-docs-worker-runner-01-data',
+						name: 'generated-volume-name',
 						projectId: 'project-1',
 						volumeInstances: {
 							edges: [{
@@ -521,17 +570,12 @@ describe('railway scheduled jobs', () => {
 			}
 			expect(String(body.query)).toContain('TreeseedRailwayVolumeInstanceUpdate');
 			expect(body.variables).toEqual({
-				id: 'vi-1',
+				volumeId: 'vol-1',
 				input: { mountPath: '/data' },
 			});
 			return new Response(JSON.stringify({
 				data: {
-					volumeInstanceUpdate: {
-						id: 'vi-1',
-						serviceId: 'svc-runner-01',
-						environmentId: 'env-staging',
-						mountPath: '/data',
-					},
+					volumeInstanceUpdate: true,
 				},
 			}), { status: 200, headers: { 'content-type': 'application/json' } });
 		});
@@ -551,7 +595,7 @@ describe('railway scheduled jobs', () => {
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
-	it('creates a missing schedule and returns its locator for prod deploy', async () => {
+	it('does not create schedules for deleted root Market processing roles', async () => {
 		const tenantRoot = await createTenantFixture();
 		vi.stubEnv('RAILWAY_API_TOKEN', 'railway-token');
 		vi.stubEnv('TREESEED_RAILWAY_ENVIRONMENT_ID', 'env-production');
@@ -592,17 +636,11 @@ describe('railway scheduled jobs', () => {
 
 		const result = await ensureRailwayScheduledJobs(tenantRoot, 'prod', { fetchImpl: fetchMock as typeof fetch });
 
-		expect(fetchMock).toHaveBeenCalledTimes(6);
-		expect(result).toHaveLength(1);
-		expect(result[0]).toMatchObject({
-			id: 'instance-1',
-			logicalName: 'workdayManager:1',
-			status: 'updated',
-			expression: '0 9 * * 1-5',
-		});
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(result).toEqual([]);
 	});
 
-	it('updates a drifted schedule and verifies reconciled jobs', async () => {
+	it('verifies no Railway schedules for deleted root Market processing roles', async () => {
 		const tenantRoot = await createTenantFixture();
 		vi.stubEnv('RAILWAY_API_TOKEN', 'railway-token');
 		vi.stubEnv('TREESEED_RAILWAY_ENVIRONMENT_ID', 'env-production');
@@ -638,11 +676,7 @@ describe('railway scheduled jobs', () => {
 		});
 
 		const ensured = await ensureRailwayScheduledJobs(tenantRoot, 'prod', { fetchImpl: fetchMock as typeof fetch });
-		expect(ensured[0]).toMatchObject({
-			id: 'instance-1',
-			status: 'updated',
-			command: 'node ./packages/agent/dist/provider/entrypoint.js manager',
-		});
+		expect(ensured).toEqual([]);
 
 		const verifyFetchMock = vi.fn(async (_input, init) => {
 			const body = JSON.parse(String(init?.body ?? '{}'));
@@ -673,13 +707,10 @@ describe('railway scheduled jobs', () => {
 
 		const verified = await verifyRailwayScheduledJobs(tenantRoot, 'prod', { fetchImpl: verifyFetchMock as typeof fetch });
 		expect(verified.ok).toBe(true);
-		expect(verified.checks[0]).toMatchObject({
-			id: 'instance-1',
-			ok: true,
-		});
+		expect(verified.checks).toEqual([]);
 	});
 
-	it('verifies managed Railway services, workday schedule, and worker-runner volume', async () => {
+	it('verifies only the managed Market API Railway service', async () => {
 		const tenantRoot = await createTenantFixture();
 		const fetchMock = vi.fn(async (_input, init) => {
 			const body = JSON.parse(String(init?.body ?? '{}'));
@@ -744,11 +775,9 @@ describe('railway scheduled jobs', () => {
 		expect(result.ok).toBe(true);
 		expect(result.checks).toEqual(expect.arrayContaining([
 			expect.objectContaining({ type: 'service-instance', service: 'api', ok: true }),
-			expect.objectContaining({ type: 'service-instance', service: 'workdayManager', ok: true }),
-			expect.objectContaining({ type: 'service-instance', service: 'workerRunner', ok: true }),
-			expect.objectContaining({ type: 'worker-runner-volume', volumeName: 'acme-docs-worker-runner-01-staging-data', mountPath: '/data', ok: true }),
-			expect.objectContaining({ type: 'schedule', service: 'workdayManager', ok: true }),
 		]));
+		expect(result.checks.some((check) => check.service === 'workdayManager' || check.service === 'workerRunner')).toBe(false);
+		expect(result.checks.some((check) => check.type === 'worker-runner-volume' || check.type === 'schedule')).toBe(false);
 	});
 
 	it('reports Railway deployment status checks as unsettled until deploys reach success or sleeping', async () => {
@@ -764,10 +793,10 @@ describe('railway scheduled jobs', () => {
 								node: {
 									serviceName: service.serviceName,
 									latestDeployment: {
-										status: service.key === 'workerRunner' ? 'BUILDING' : 'SUCCESS',
-										deploymentStopped: service.key === 'workerRunner',
-										instances: service.key === 'workerRunner' ? [{ status: 'CREATED' }] : [{ status: 'RUNNING' }],
-										meta: service.key === 'workerRunner' ? { volumeMounts: ['/data'] } : {},
+										status: 'BUILDING',
+										deploymentStopped: false,
+										instances: [{ status: 'CREATED' }],
+										meta: {},
 									},
 								},
 							})),
@@ -781,16 +810,16 @@ describe('railway scheduled jobs', () => {
 		expect(unsettled).toEqual(expect.arrayContaining([
 			expect.objectContaining({
 				type: 'deployment-status',
-				service: 'workerRunner',
+				service: 'api',
 				ok: false,
 				status: 'BUILDING',
 			}),
 		]));
 
 		for (const edge of statusPayload.environments.edges[0].node.serviceInstances.edges) {
-			if (edge.node.serviceName.endsWith('worker-runner-01')) {
+			if (edge.node.serviceName.endsWith('-api')) {
 				edge.node.latestDeployment.status = 'SUCCESS';
-				edge.node.latestDeployment.instances = [{ status: 'EXITED' }];
+				edge.node.latestDeployment.instances = [{ status: 'RUNNING' }];
 			}
 		}
 		const settled = collectRailwayDeploymentStatusChecks(statusPayload, 'staging', services);
@@ -798,11 +827,8 @@ describe('railway scheduled jobs', () => {
 		expect(settled).toEqual(expect.arrayContaining([
 			expect.objectContaining({
 				type: 'deployment-status',
-				service: 'workerRunner',
+				service: 'api',
 				ok: true,
-				observed: expect.objectContaining({
-					volumeMounts: ['/data'],
-				}),
 			}),
 		]));
 	});
@@ -855,10 +881,8 @@ describe('railway scheduled jobs', () => {
 			fetchImpl: fetchMock as typeof fetch,
 		});
 
-		expect(result[0]).toMatchObject({
-			id: 'instance-1',
-			status: 'updated',
-		});
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(result).toEqual([]);
 	});
 
 	it('uses RAILWAY_API_TOKEN as the Treeseed-owned Railway API auth source', async () => {

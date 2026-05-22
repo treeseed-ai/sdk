@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { changedWorkspacePackages, publishableWorkspacePackages, run, sortWorkspacePackages, workspacePackages, workspaceRoot } from './workspace-tools.ts';
 
 export const MERGE_CONFLICT_EXIT_CODE = 12;
+export const TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES = ['@treeseed/sdk', '@treeseed/core', '@treeseed/cli', '@treeseed/agent'];
 
 function parseSemver(version) {
 	const match = String(version).trim().match(/^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/);
@@ -15,6 +16,96 @@ function parseSemver(version) {
 		patch: Number(match[3]),
 		prerelease: String(version).includes('-'),
 	};
+}
+
+function versionLine(version) {
+	const parsed = parseSemver(version);
+	return {
+		major: parsed.major,
+		minor: parsed.minor,
+		label: `${parsed.major}.${parsed.minor}`,
+	};
+}
+
+function compareVersionLines(left, right) {
+	if (left.major !== right.major) return left.major - right.major;
+	return left.minor - right.minor;
+}
+
+function parseVersionLine(input) {
+	const match = String(input ?? '').trim().match(/^(\d+)\.(\d+)$/);
+	if (!match) {
+		throw new Error(`Unsupported release version line "${input}". Expected major.minor, for example 0.10.`);
+	}
+	return {
+		major: Number(match[1]),
+		minor: Number(match[2]),
+		label: `${Number(match[1])}.${Number(match[2])}`,
+	};
+}
+
+function nextLineFor(level, highestLine) {
+	if (level === 'major') {
+		return {
+			major: highestLine.major + 1,
+			minor: 0,
+			label: `${highestLine.major + 1}.0`,
+		};
+	}
+	if (level === 'minor') {
+		return {
+			major: highestLine.major,
+			minor: highestLine.minor + 1,
+			label: `${highestLine.major}.${highestLine.minor + 1}`,
+		};
+	}
+	return highestLine;
+}
+
+function versionForLine(line, patch = 0) {
+	return `${line.major}.${line.minor}.${patch}`;
+}
+
+function localGitTagExists(repoDir, tagName) {
+	try {
+		return run('git', ['tag', '--list', tagName], { cwd: repoDir, capture: true }).trim() === tagName;
+	} catch {
+		return false;
+	}
+}
+
+export function highestStableGitTagOnLine(repoDir, lineLabel) {
+	const line = parseVersionLine(lineLabel);
+	try {
+		const tags = run('git', ['tag', '--list', `${line.label}.*`], { cwd: repoDir, capture: true })
+			.split(/\r?\n/u)
+			.map((tag) => tag.trim())
+			.filter(Boolean)
+			.map((tag) => {
+				try {
+					const parsed = parseSemver(tag);
+					if (parsed.prerelease || parsed.major !== line.major || parsed.minor !== line.minor) return null;
+					return { tag, patch: parsed.patch };
+				} catch {
+					return null;
+				}
+			})
+			.filter((entry) => entry != null)
+			.sort((left, right) => right.patch - left.patch);
+		return tags[0]?.tag ?? null;
+	} catch {
+		return null;
+	}
+}
+
+function firstAvailablePatchVersionOnLine(pkg, line) {
+	for (let patch = 0; patch < 1000; patch += 1) {
+		const candidate = versionForLine(line, patch);
+		if (!localGitTagExists(pkg.dir, candidate)) {
+			return candidate;
+		}
+	}
+	throw new Error(`Unable to find an available ${line.label}.x version for ${pkg.name}.`);
 }
 
 export function incrementPatchVersion(version) {
@@ -37,6 +128,36 @@ export function incrementVersion(version, level = 'patch') {
 		return `${parsed.major}.${parsed.minor}.${parsed.patch + 1}`;
 	}
 	throw new Error(`Unsupported release bump "${level}". Expected major, minor, or patch.`);
+}
+
+export function collectPublicPackageReleaseLineState(root = workspaceRoot()) {
+	const publishable = new Set(publishableWorkspacePackages(root).map((pkg) => pkg.name));
+	const packages = sortWorkspacePackages(workspacePackages(root))
+		.filter((pkg) => TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES.includes(pkg.name))
+		.filter((pkg) => publishable.has(pkg.name))
+		.map((pkg) => {
+			const packageJson = readPackageJson(resolve(pkg.dir, 'package.json'));
+			const line = versionLine(packageJson.version);
+			return {
+				name: pkg.name,
+				path: pkg.relativeDir,
+				version: String(packageJson.version ?? ''),
+				line: line.label,
+				major: line.major,
+				minor: line.minor,
+			};
+		});
+	const lineMap = new Map(packages.map((pkg) => [pkg.line, { major: pkg.major, minor: pkg.minor, label: pkg.line }]));
+	const lines = [...lineMap.values()].sort(compareVersionLines);
+	const highestLine = lines.at(-1) ?? null;
+	return {
+		group: TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES.filter((name) => packages.some((pkg) => pkg.name === name)),
+		packages,
+		lines: lines.map((line) => line.label),
+		highestLine: highestLine?.label ?? null,
+		aligned: lines.length <= 1,
+		drifted: lines.length > 1,
+	};
 }
 
 function readPackageJson(filePath) {
@@ -140,13 +261,43 @@ export function planWorkspaceReleaseBump(level = 'patch', root = workspaceRoot()
 		packageJson: readPackageJson(resolve(pkg.dir, 'package.json')),
 	}));
 	const publishable = new Set(publishableWorkspacePackages(root).map((pkg) => pkg.name));
-	const selected = options.selectedPackageNames
+	const baseSelected = options.selectedPackageNames
 		? new Set(
 			[...options.selectedPackageNames]
 				.map((name) => String(name))
 				.filter((name) => publishable.has(name)),
 		)
 		: new Set(publishable);
+	const publicPackages = sortWorkspacePackages(packages)
+		.filter((pkg) => TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES.includes(pkg.name))
+		.filter((pkg) => publishable.has(pkg.name));
+	const publicLines = publicPackages.map((pkg) => versionLine(pkg.packageJson.version));
+	const highestPublicLine = publicLines.sort(compareVersionLines).at(-1) ?? { major: 0, minor: 0, label: '0.0' };
+	const repairVersionLine = options.repairVersionLine === true;
+	const explicitTargetLine = options.targetVersionLine ? parseVersionLine(options.targetVersionLine) : null;
+	let targetLine = explicitTargetLine ?? highestPublicLine;
+
+	if (repairVersionLine) {
+		if (explicitTargetLine && compareVersionLines(explicitTargetLine, highestPublicLine) !== 0) {
+			throw new Error(`Release line repair target must match the highest current public package line (${highestPublicLine.label}). Received ${explicitTargetLine.label}.`);
+		}
+	} else if (level === 'major' || level === 'minor') {
+		targetLine = nextLineFor(level, highestPublicLine);
+	}
+
+	const selected = new Set(baseSelected);
+	if (repairVersionLine) {
+		selected.clear();
+		for (const pkg of publicPackages) {
+			if (versionLine(pkg.packageJson.version).label !== targetLine.label) {
+				selected.add(pkg.name);
+			}
+		}
+	} else if (level === 'major' || level === 'minor') {
+		for (const pkg of publicPackages) {
+			selected.add(pkg.name);
+		}
+	}
 	const touched = new Set();
 	const versions = new Map();
 
@@ -154,7 +305,12 @@ export function planWorkspaceReleaseBump(level = 'patch', root = workspaceRoot()
 		if (!publishable.has(pkg.name) || !selected.has(pkg.name)) {
 			continue;
 		}
-		const nextVersion = incrementVersion(pkg.packageJson.version, level);
+		const isPublicReleasePackage = TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES.includes(pkg.name);
+		const nextVersion = repairVersionLine && isPublicReleasePackage
+			? firstAvailablePatchVersionOnLine(pkg, targetLine)
+			: (isPublicReleasePackage && (level === 'major' || level === 'minor')
+				? versionForLine(targetLine, 0)
+				: incrementVersion(pkg.packageJson.version, level));
 		pkg.packageJson.version = nextVersion;
 		versions.set(pkg.name, nextVersion);
 		touched.add(pkg.name);
@@ -181,6 +337,13 @@ export function planWorkspaceReleaseBump(level = 'patch', root = workspaceRoot()
 		versions,
 		level,
 		selected,
+		releaseLine: {
+			group: TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES.filter((name) => publishable.has(name)),
+			repair: repairVersionLine,
+			targetLine: targetLine.label,
+			highestCurrentLine: highestPublicLine.label,
+			alignedBefore: new Set(publicLines.map((line) => line.label)).size <= 1,
+		},
 	};
 }
 

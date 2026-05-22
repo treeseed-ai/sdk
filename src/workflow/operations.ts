@@ -95,10 +95,12 @@ import { runTenantDeployPreflight, runWorkspaceReleasePreflight, runWorkspaceSav
 import { collectCliPreflight } from '../operations/services/workspace-preflight.ts';
 import {
 	collectMergeConflictReport,
+	collectPublicPackageReleaseLineState,
 	currentBranch,
 	formatMergeConflictReport,
 	gitStatusPorcelain,
 	hasMeaningfulChanges,
+	highestStableGitTagOnLine,
 	incrementVersion,
 	originRemoteUrl,
 	planWorkspaceReleaseBump,
@@ -2180,6 +2182,13 @@ function releasePlanVersionMap(plannedVersions: Record<string, unknown>) {
 	);
 }
 
+function releasePlanStableDependencyVersionMap(plannedRelease: { stableDependencyVersions?: unknown }) {
+	const stableDependencyVersions = plannedRelease.stableDependencyVersions && typeof plannedRelease.stableDependencyVersions === 'object' && !Array.isArray(plannedRelease.stableDependencyVersions)
+		? plannedRelease.stableDependencyVersions as Record<string, unknown>
+		: {};
+	return new Map(Object.entries(stableDependencyVersions).map(([name, version]) => [name, String(version)] as const));
+}
+
 function releasePlanPackageSelection(value: unknown): { changed: string[]; dependents: string[]; selected: string[] } {
 	const record = value && typeof value === 'object' ? value as Record<string, unknown> : {};
 	return {
@@ -2187,6 +2196,25 @@ function releasePlanPackageSelection(value: unknown): { changed: string[]; depen
 		dependents: Array.isArray(record.dependents) ? record.dependents.map(String) : [],
 		selected: Array.isArray(record.selected) ? record.selected.map(String) : [],
 	};
+}
+
+function stableDependencyVersionsForReleaseLine(root: string, options: {
+	targetLine?: unknown;
+	group?: unknown;
+	selected: Set<string>;
+}) {
+	const targetLine = typeof options.targetLine === 'string' ? options.targetLine : null;
+	const group = new Set(Array.isArray(options.group) ? options.group.map(String) : []);
+	if (!targetLine || group.size === 0) return {};
+	const versions: Record<string, string> = {};
+	for (const pkg of workspacePackages(root)) {
+		if (!group.has(pkg.name) || options.selected.has(pkg.name)) continue;
+		const stableVersion = highestStableGitTagOnLine(pkg.dir, targetLine);
+		if (stableVersion) {
+			versions[pkg.name] = stableVersion;
+		}
+	}
+	return versions;
 }
 
 function assertReleaseCandidatePassed(operation: Extract<TreeseedWorkflowOperationId, 'save' | 'stage' | 'release'>, report: ReleaseCandidateReport) {
@@ -2213,10 +2241,13 @@ async function runReleaseCandidateForPlan(
 	const plannedVersions = plannedRelease.plannedVersions && typeof plannedRelease.plannedVersions === 'object' && !Array.isArray(plannedRelease.plannedVersions)
 		? plannedRelease.plannedVersions as Record<string, unknown>
 		: {};
+	const stableDependencyVersions = plannedRelease.stableDependencyVersions && typeof plannedRelease.stableDependencyVersions === 'object' && !Array.isArray(plannedRelease.stableDependencyVersions)
+		? plannedRelease.stableDependencyVersions as Record<string, unknown>
+		: {};
 	const packageSelection = releasePlanPackageSelection(plannedRelease.packageSelection);
 	const report = await runReleaseCandidateGate({
 		root,
-		plannedVersions,
+		plannedVersions: { ...stableDependencyVersions, ...plannedVersions },
 		selectedPackageNames: packageSelection.selected,
 		allowReuse: options.allowReuse,
 	});
@@ -2228,39 +2259,63 @@ function buildReleasePlanSnapshot(input: {
 	root: string;
 	mode: TreeseedWorkflowMode;
 	level: string;
+	repairVersionLine?: boolean;
+	targetVersionLine?: string;
 	packageSelection: { changed: string[]; dependents: string[]; selected: string[] };
 	packageReports: WorkflowRepoReport[];
 	rootRepo: WorkflowRepoReport;
 	blockers: string[];
 }) {
 	const selectedPackageNames = new Set(input.packageSelection.selected);
-	const versionPlan = planWorkspaceReleaseBump(input.level, input.root, input.mode === 'recursive-workspace' ? { selectedPackageNames } : {});
+	const versionPlan = planWorkspaceReleaseBump(input.level, input.root, input.mode === 'recursive-workspace'
+		? { selectedPackageNames, repairVersionLine: input.repairVersionLine === true, targetVersionLine: input.targetVersionLine }
+		: {});
+	const plannedSelected = [...versionPlan.selected].filter((name) => versionPlan.versions.has(name));
+	const plannedChanged = input.repairVersionLine === true
+		? plannedSelected
+		: Array.from(new Set(input.packageSelection.changed.filter((name) => plannedSelected.includes(name))));
+	const plannedDependents = plannedSelected.filter((name) => !plannedChanged.includes(name));
+	const plannedPackageSelection = {
+		changed: plannedChanged,
+		dependents: plannedDependents,
+		selected: plannedSelected,
+	};
 	const rootVersion = planRootPackageVersion(input.root, input.level);
+	const stableDependencyVersions = stableDependencyVersionsForReleaseLine(input.root, {
+		targetLine: versionPlan.releaseLine?.targetLine,
+		group: versionPlan.releaseLine?.group,
+		selected: new Set(plannedPackageSelection.selected),
+	});
 	const plannedVersions = {
 		'@treeseed/market': rootVersion,
 		...Object.fromEntries(versionPlan.versions.entries()),
 	};
 	const plannedDevReferenceRewrites = input.mode === 'recursive-workspace'
-		? collectInternalDevReferenceIssues(input.root, selectedPackageNames)
+		? collectInternalDevReferenceIssues(input.root, new Set([
+			...plannedPackageSelection.selected,
+			...Object.keys(stableDependencyVersions),
+		]))
 		: [];
 	return {
 		mode: input.mode,
 		mergeStrategy: 'merge-commit',
 		level: input.level,
+		releaseLine: versionPlan.releaseLine,
 		rootVersion,
 		releaseTag: rootVersion,
 		stagingBranch: STAGING_BRANCH,
 		productionBranch: PRODUCTION_BRANCH,
-		packageSelection: input.packageSelection,
+		packageSelection: plannedPackageSelection,
 		plannedVersions,
+		stableDependencyVersions,
 		plannedDevReferenceRewrites,
-		plannedPublishWaits: input.packageSelection.selected.map((name) => ({
+		plannedPublishWaits: plannedPackageSelection.selected.map((name) => ({
 			name,
 			workflow: 'publish.yml',
 			branch: String(plannedVersions[name] ?? PRODUCTION_BRANCH),
 			status: 'planned',
 		})),
-		touchedPackages: input.packageSelection.selected,
+		touchedPackages: plannedPackageSelection.selected,
 		repos: input.packageReports,
 		rootRepo: input.rootRepo,
 		finalBranch: STAGING_BRANCH,
@@ -2269,7 +2324,7 @@ function buildReleasePlanSnapshot(input: {
 			{ id: 'release-candidate', description: 'Run exact staging release-candidate readiness checks' },
 			{ id: 'workspace-unlink', description: 'Remove local workspace links before stable release install' },
 			{ id: 'prepare-release-metadata', description: 'Rewrite package metadata and lockfiles to production dependency mode' },
-			...input.packageReports.filter((report) => selectedPackageNames.has(report.name)).map((report) => ({
+			...input.packageReports.filter((report) => plannedPackageSelection.selected.includes(report.name)).map((report) => ({
 				id: `release-${report.name}`,
 				description: `Release ${report.name} from staging to main and tag ${plannedVersions[report.name] ?? '(planned)'}`,
 			})),
@@ -2282,7 +2337,12 @@ function buildReleasePlanSnapshot(input: {
 	};
 }
 
-function collectReleasePlanBlockers(session: TreeseedWorkflowSession, mode: TreeseedWorkflowMode, selectedPackageNames: string[]) {
+function collectReleasePlanBlockers(
+	session: TreeseedWorkflowSession,
+	mode: TreeseedWorkflowMode,
+	selectedPackageNames: string[],
+	options: { level?: string; repairVersionLine?: boolean } = {},
+) {
 	const blockers: string[] = [];
 	if (session.branchName !== STAGING_BRANCH) {
 		blockers.push('Release must start from staging.');
@@ -2294,6 +2354,10 @@ function collectReleasePlanBlockers(session: TreeseedWorkflowSession, mode: Tree
 		blockers.push('@treeseed/market is missing origin remote.');
 	}
 	if (mode === 'recursive-workspace') {
+		const lineState = collectPublicPackageReleaseLineState(session.root);
+		if (options.repairVersionLine !== true && options.level === 'patch' && lineState.drifted) {
+			blockers.push(`Public package version line drift detected (${lineState.packages.map((pkg) => `${pkg.name}@${pkg.version}`).join(', ')}). Run \`treeseed release --repair-version-line --target-version-line ${lineState.highestLine} --plan\` first.`);
+		}
 		for (const repo of session.packageRepos) {
 			if (!selectedPackageNames.includes(repo.name)) continue;
 			if (repo.detached) blockers.push(`${repo.name} is detached.`);
@@ -4551,17 +4615,26 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 			const ciMode = normalizeCiMode(effectiveInput.ciMode, 'release');
 			const isResume = Boolean(explicitResumeRunId || autoResumeRun);
 			const packageSelection = session.packageSelection;
-			const selectedPackageNames = new Set(packageSelection.selected);
-			const blockers = isResume ? [] : collectReleasePlanBlockers(session, mode, packageSelection.selected);
 			const plannedRelease = buildReleasePlanSnapshot({
 				root,
 				mode,
 				level,
+				repairVersionLine: effectiveInput.repairVersionLine === true,
+				targetVersionLine: effectiveInput.targetVersionLine,
 				packageSelection,
 				packageReports,
 				rootRepo,
-				blockers,
+				blockers: [],
 			});
+			const plannedPackageSelection = releasePlanPackageSelection(plannedRelease.packageSelection);
+			const selectedPackageNames = new Set(plannedPackageSelection.selected);
+			const blockers = isResume
+				? []
+				: collectReleasePlanBlockers(session, mode, plannedPackageSelection.selected, {
+					level,
+					repairVersionLine: effectiveInput.repairVersionLine === true,
+				});
+			plannedRelease.blockers = blockers;
 
 			if (executionMode === 'plan') {
 				return buildWorkflowResult('release', root, {
@@ -4596,6 +4669,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				session,
 				{
 					bump: level,
+					repairVersionLine: effectiveInput.repairVersionLine === true,
+					targetVersionLine: effectiveInput.targetVersionLine,
 					devTagCleanup: effectiveInput.devTagCleanup ?? 'safe-after-release',
 					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
 					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
@@ -4651,6 +4726,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				const effectivePackageSelection = releasePlanPackageSelection(releasePlan.packageSelection);
 				const effectiveSelectedPackageNames = new Set(effectivePackageSelection.selected);
 				const effectiveVersions = releasePlanVersionMap(releasePlan.plannedVersions as Record<string, unknown>);
+				const effectiveStableDependencyVersions = releasePlanStableDependencyVersionMap(releasePlan);
+				const effectiveDependencyReplacementVersions = new Map([
+					...effectiveStableDependencyVersions.entries(),
+					...effectiveVersions.entries(),
+				]);
 				const rootVersion = String(releasePlan.rootVersion);
 
 				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
@@ -4846,7 +4926,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							})
 							.filter(([, version]) => version.includes('-dev.')),
 					);
-					const replacedDevReferences = rewriteProjectInternalDependenciesToStableVersions(root, effectiveVersions);
+					const replacedDevReferences = rewriteProjectInternalDependenciesToStableVersions(root, effectiveDependencyReplacementVersions);
 					applyStableWorkspaceVersionChanges(root, effectiveVersions);
 					setRootPackageJsonVersion(root, rootVersion);
 					const releaseInstalls: Array<Record<string, unknown>> = [

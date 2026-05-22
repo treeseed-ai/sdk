@@ -13,6 +13,8 @@ function railwayConcreteUnitTypeForServiceKey(serviceKey: string) {
 	switch (serviceKey) {
 		case 'api':
 			return 'railway-service:api' as const;
+		case 'marketOperationsRunner':
+			return 'railway-service:market-operations-runner' as const;
 		case 'workdayManager':
 			return 'railway-service:workday-manager' as const;
 		case 'workerRunner':
@@ -287,6 +289,7 @@ export function deriveTreeseedDesiredUnits({
 		const runtimeUnitType = (() => {
 			switch (serviceKey) {
 				case 'api': return 'api-runtime';
+				case 'marketOperationsRunner': return 'market-operations-runner-runtime';
 				case 'workdayManager': return 'workday-manager-runtime';
 				case 'workerRunner': return 'worker-runner-runtime';
 				default: return 'api-runtime';

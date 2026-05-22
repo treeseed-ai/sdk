@@ -925,7 +925,20 @@ function probeR2(
 function probeScaleConfiguration(siteConfig, state) {
 	const worker = state.services?.workerRunner ?? state.services?.worker ?? {};
 	const workerConfig = siteConfig.services?.workerRunner ?? siteConfig.services?.worker ?? {};
+	const marketRunner = state.services?.marketOperationsRunner ?? {};
+	const marketRunnerConfig = siteConfig.services?.marketOperationsRunner ?? {};
 	const scalerKind = String(process.env.TREESEED_WORKER_POOL_SCALER ?? '').trim();
+	if (marketRunnerConfig.provider === 'railway' && workerConfig.provider !== 'railway') {
+		const runnerServiceId = marketRunner.serviceId ?? null;
+		const runnerServiceName = marketRunner.serviceName ?? marketRunnerConfig.railway?.serviceName ?? null;
+		return {
+			ok: Boolean(runnerServiceId || runnerServiceName),
+			mocked: true,
+			serviceId: runnerServiceId,
+			serviceName: runnerServiceName,
+			runnerKind: 'market_operations_runner',
+		};
+	}
 	if (scalerKind !== 'railway' && workerConfig.provider !== 'railway') {
 		return {
 			ok: true,

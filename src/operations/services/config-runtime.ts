@@ -2626,56 +2626,86 @@ export function syncTreeseedCloudflareEnvironment({ tenantRoot, scope = 'prod', 
 	};
 }
 
+function environmentEntryTargetsService(entry, serviceKey) {
+	const targets = Array.isArray(entry.serviceTargets)
+		? entry.serviceTargets.map((value) => String(value).trim()).filter(Boolean)
+		: [];
+	return targets.length === 0 || targets.includes(serviceKey);
+}
+
+function railwayEnvironmentEntryIdsForService(registry, values, scope, target, serviceKey) {
+	return registry.entries
+		.filter((entry) =>
+			entry.scopes.includes(scope)
+			&& entry.targets.includes(target)
+			&& environmentEntryTargetsService(entry, serviceKey))
+		.map((entry) => entry.id)
+		.filter((key) => typeof values[key] === 'string' && values[key].length > 0);
+}
+
 export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dryRun = false } = {}) {
 	const config = syncManagedServiceSettingsFromDeployConfig(tenantRoot);
-	const deployConfig = loadTenantDeployConfig(tenantRoot);
 	const values = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
+	const deployConfig = loadCliDeployConfig(tenantRoot);
+	const marketDatabaseService = deployConfig.services?.marketDatabase;
+	const marketDatabaseBaseName = typeof marketDatabaseService?.railway?.serviceName === 'string' && marketDatabaseService.railway.serviceName.trim()
+		? marketDatabaseService.railway.serviceName.trim()
+		: `${deployConfig.slug ?? 'treeseed-market'}-postgres`;
+	const marketDatabaseServiceName = `${marketDatabaseBaseName.replace(/-(staging|prod|production)$/u, '')}-${scope === 'prod' ? 'prod' : scope}`;
+	const marketDatabaseUrl = typeof values.TREESEED_MARKET_DATABASE_URL === 'string' && values.TREESEED_MARKET_DATABASE_URL.length > 0
+		? values.TREESEED_MARKET_DATABASE_URL
+		: marketDatabaseService?.enabled !== false && marketDatabaseService?.provider === 'railway'
+			? `\${{${marketDatabaseServiceName}.DATABASE_URL}}`
+			: '';
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
-	const railwaySecretNames = registry.entries
-		.filter((entry) => entry.scopes.includes(scope) && entry.targets.includes('railway-secret'))
-		.map((entry) => entry.id)
-		.filter((key) => typeof values[key] === 'string' && values[key].length > 0);
-	const railwayVariableNames = registry.entries
-		.filter((entry) => entry.scopes.includes(scope) && entry.targets.includes('railway-var'))
-		.map((entry) => entry.id)
-		.filter((key) => typeof values[key] === 'string' && values[key].length > 0);
-	const services = ['api', 'workdayManager', 'workerRunner']
-		.map((serviceKey) => {
-			const service = deployConfig.services?.[serviceKey];
-			if (!service || service.enabled === false || (service.provider ?? 'railway') !== 'railway') {
-				return null;
-			}
-			const environment = service.environments?.[scope];
-				const fallbackServiceName = serviceKey === 'api'
-					? config.settings.services.railway.apiServiceName
-					: '';
-			const defaultRootDir = ['api', 'workdayManager', 'workerRunner'].includes(serviceKey) ? '.' : 'packages/core';
+	const serviceValuesByName = new Map();
+	const services = configuredRailwayServices(tenantRoot, scope)
+		.map((service) => {
+			const fallbackServiceName = service.key === 'api'
+				? config.settings.services.railway.apiServiceName
+				: service.serviceName;
+			const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment ?? scope);
+			const serviceValues = {
+				...values,
+				...(service.key === 'marketOperationsRunner' ? {
+					TREESEED_PLATFORM_RUNNER_ID: service.runnerId ?? service.serviceName,
+					TREESEED_PLATFORM_RUNNER_DATA_DIR: service.volumeMountPath ?? values.TREESEED_PLATFORM_RUNNER_DATA_DIR,
+					TREESEED_PLATFORM_RUNNER_ENVIRONMENT: scope === 'prod' ? 'production' : scope,
+				} : {}),
+				...(marketDatabaseUrl && ['api', 'marketOperationsRunner'].includes(service.key)
+					? { TREESEED_MARKET_DATABASE_URL: marketDatabaseUrl }
+					: {}),
+			};
+			const serviceName = service.serviceName ?? fallbackServiceName;
+			serviceValuesByName.set(serviceName || service.serviceId || service.instanceKey || service.key, serviceValues);
 			return {
-				service: serviceKey,
-				projectName: service.railway?.projectName ?? config.settings.services.railway.projectName,
-				serviceName: service.railway?.serviceName ?? fallbackServiceName,
-				serviceId: service.railway?.serviceId ?? '',
-				rootDir: resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? defaultRootDir),
-				baseUrl: environment?.baseUrl ?? service.publicBaseUrl ?? '(unset)',
-				environmentName: normalizeRailwayEnvironmentName(environment?.railwayEnvironment ?? scope),
-				secrets: railwaySecretNames,
-				variables: railwayVariableNames,
+				service: service.key,
+				instanceKey: service.instanceKey ?? service.key,
+				projectName: service.projectName ?? config.settings.services.railway.projectName,
+				serviceName,
+				serviceId: service.serviceId ?? '',
+				rootDir: service.rootDir,
+				baseUrl: service.publicBaseUrl ?? '(unset)',
+				environmentName,
+				secrets: railwayEnvironmentEntryIdsForService(registry, serviceValues, scope, 'railway-secret', service.key),
+				variables: railwayEnvironmentEntryIdsForService(registry, serviceValues, scope, 'railway-var', service.key),
 				dryRun,
 			};
 		})
 		.filter(Boolean);
 
 	for (const service of services) {
+		const serviceValues = serviceValuesByName.get(service.serviceName || service.serviceId || service.instanceKey || service.service) ?? values;
 		for (const key of service.secrets) {
 			runRailway(
 				['variable', 'set', '--service', service.serviceName || service.serviceId, '--environment', service.environmentName, '--stdin', '--skip-deploys', key],
-				{ cwd: service.rootDir, dryRun, input: values[key] },
+				{ cwd: service.rootDir, dryRun, input: serviceValues[key] },
 			);
 		}
 		for (const key of service.variables) {
 			runRailway(
 				['variable', 'set', '--service', service.serviceName || service.serviceId, '--environment', service.environmentName, '--stdin', '--skip-deploys', key],
-				{ cwd: service.rootDir, dryRun, input: values[key] },
+				{ cwd: service.rootDir, dryRun, input: serviceValues[key] },
 			);
 		}
 	}
@@ -3019,7 +3049,8 @@ function buildConfigEntrySnapshot(scope: TreeseedConfigScope, entry, currentValu
 				return true;
 		}
 	})();
-	const allowSuggestedDefault = !(entry.sensitivity === 'secret' && entry.requirement !== 'optional');
+	const allowGeneratedSecretDefault = entry.id === 'TREESEED_PLATFORM_RUNNER_SECRET';
+	const allowSuggestedDefault = allowGeneratedSecretDefault || !(entry.sensitivity === 'secret' && entry.requirement !== 'optional');
 	const effectiveValue = currentValueValid
 		? (currentValue || (allowSuggestedDefault ? suggestedValue : '') || '')
 		: ((allowSuggestedDefault ? suggestedValue : '') || currentValue || '');
@@ -3412,7 +3443,7 @@ export async function finalizeTreeseedConfig({
 					result: {},
 				});
 			}
-			const deploySystems = selection.runnable.filter((system) => system === 'data' || system === 'web' || system === 'api' || system === 'agents');
+			const deploySystems = selection.runnable.filter((system) => system === 'data' || system === 'web');
 			if (deploySystems.length > 0) {
 				progress(`[${scope}][bootstrap][deploy] Deploying ${deploySystems.join(', ')}...`);
 				applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override: true });

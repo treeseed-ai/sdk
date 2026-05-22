@@ -31,6 +31,7 @@ import {
 } from '../operations/services/deploy.ts';
 import {
 	configuredRailwayServices,
+	deriveRailwayMarketOperationsRunnerVolumeName,
 	ensureRailwayProjectContext,
 	runRailway,
 	validateRailwayDeployPrerequisites,
@@ -38,15 +39,19 @@ import {
 import { shouldExposeManagedHostRuntimeSecret } from '../operations/services/managed-host-security.ts';
 import {
 	ensureRailwayEnvironment,
+	ensureRailwayCustomDomain as ensureRailwayCustomDomainViaApi,
 	ensureRailwayProject,
 	ensureRailwayService,
 	ensureRailwayServiceInstanceConfiguration,
+	ensureRailwayServiceVolume,
 	getRailwayServiceInstance,
 	getRailwayProject,
 	listRailwayCustomDomains,
 	listRailwayProjects,
+	listRailwayVolumes,
 	listRailwayVariables,
 	resolveRailwayWorkspaceContext,
+	updateRailwayServiceName,
 	upsertRailwayVariables,
 } from '../operations/services/railway-api.ts';
 import type {
@@ -116,6 +121,31 @@ function noopDiff(): TreeseedReconcileUnitDiff {
 		before: {},
 		after: {},
 	};
+}
+
+function parseRailwayJsonPayload(output: unknown) {
+	const text = typeof output === 'string' ? output.trim() : '';
+	if (!text) {
+		return null;
+	}
+	try {
+		return JSON.parse(text);
+	} catch {
+		// Railway sometimes prints a prompt/status line before a --json payload.
+	}
+	const lines = text.split(/\r?\n/u);
+	for (let index = lines.length - 1; index >= 0; index -= 1) {
+		const candidate = lines.slice(index).join('\n').trim();
+		if (!candidate.startsWith('{') && !candidate.startsWith('[')) {
+			continue;
+		}
+		try {
+			return JSON.parse(candidate);
+		} catch {
+			// Keep searching for the final JSON payload.
+		}
+	}
+	return null;
 }
 
 function buildCompositeAdapter(unitType: TreeseedReconcileUnitType): TreeseedReconcileAdapter {
@@ -203,9 +233,20 @@ function resolveReconcileEnvironmentValues(
 		return resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
 	}
 
-	const values = {
+	const hostedRuntimeValues = {
 		...normalizeEnvironmentValues(process.env),
 		...normalizeEnvironmentValues(input.context.launchEnv),
+	};
+	if (
+		hostedRuntimeValues.CLOUDFLARE_API_TOKEN
+		|| hostedRuntimeValues.RAILWAY_API_TOKEN
+		|| hostedRuntimeValues.GH_TOKEN
+	) {
+		return hostedRuntimeValues;
+	}
+	const values = {
+		...resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope),
+		...hostedRuntimeValues,
 	};
 	return values;
 }
@@ -639,15 +680,15 @@ function normalizeRailwayDomainPayload(value: unknown) {
 
 async function ensureRailwayCustomDomain(input: TreeseedReconcileAdapterInput, service, domain: string, env: Record<string, string>, identifiers?: { projectId?: string | null; environmentId?: string | null; serviceId?: string | null }) {
 	if (identifiers?.projectId && identifiers?.environmentId && identifiers?.serviceId) {
-		const existing = await listRailwayCustomDomains({
+		const ensured = await ensureRailwayCustomDomainViaApi({
 			projectId: identifiers.projectId,
 			environmentId: identifiers.environmentId,
 			serviceId: identifiers.serviceId,
+			domain,
 			env,
 		});
-		const matched = existing.find((entry) => entry.domain === domain) ?? null;
-		if (matched) {
-			return matched;
+		if (ensured.domain) {
+			return ensured.domain;
 		}
 	}
 	ensureRailwayProjectContext(service, { env, capture: true });
@@ -1616,6 +1657,9 @@ async function resolveRailwayTopologyForScope(
 			if (!project) {
 				continue;
 			}
+			if (typeof project.deletedAt === 'string' && project.deletedAt.trim()) {
+				continue;
+			}
 			projectsByKey.set(project.id, project);
 			projectsByKey.set(project.name, project);
 		}
@@ -1748,31 +1792,60 @@ async function syncRailwayEnvironmentForScope(input: TreeseedReconcileAdapterInp
 		includeInstances: !dryRun,
 		includeVariables: false,
 	});
-	const workerEntry = topology.services.get('workerRunner') ?? topology.services.get('worker') ?? null;
-	const railwayRuntimeVariables = Object.fromEntries(
-		[
-			['TREESEED_RAILWAY_PROJECT_ID', workerEntry?.project?.id],
-			['TREESEED_RAILWAY_ENVIRONMENT_ID', workerEntry?.environment?.id],
-			['TREESEED_RAILWAY_WORKER_SERVICE_ID', workerEntry?.service?.id],
-		].filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length > 0),
-	);
 	if (!dryRun) {
-		const combinedVariables = {
-			...sync.variables,
-			...railwayRuntimeVariables,
-			...sync.secrets,
-		};
+		await ensureRailwayMarketDatabaseForScope(input, topology);
 		for (const entry of topology.services.values()) {
 			if (!entry.project || !entry.environment || !entry.service) {
 				continue;
 			}
+			const serviceSync = sync.forService(entry.configuredService.key);
 			await upsertRailwayVariables({
 				projectId: entry.project.id,
 				environmentId: entry.environment.id,
 				serviceId: entry.service.id,
-				variables: combinedVariables,
+				variables: {
+					...serviceSync.variables,
+					...serviceSync.secrets,
+				},
 				env: topology.env,
 			});
+			if (entry.configuredService.volumeMountPath) {
+				const volumeName = entry.configuredService.key === 'marketOperationsRunner'
+					? deriveRailwayMarketOperationsRunnerVolumeName(entry.service.name, entry.environment.name)
+					: `${entry.service.name}-volume`;
+				const volume = await ensureRailwayServiceVolume({
+					projectId: entry.project.id,
+					environmentId: entry.environment.id,
+					serviceId: entry.service.id,
+					name: volumeName,
+					mountPath: entry.configuredService.volumeMountPath,
+					env: topology.env,
+				});
+				if (!volume.instance?.serviceId) {
+					ensureRailwayProjectContext(entry.configuredService, { env: topology.env, capture: true });
+					const attachResult = runRailway([
+						'volume',
+						'--service',
+						entry.service.id,
+						'attach',
+						'--volume',
+						volume.volume.id,
+						'--yes',
+						'--json',
+					], {
+						cwd: entry.configuredService.rootDir,
+						capture: true,
+						allowFailure: true,
+						env: topology.env,
+					});
+					if ((attachResult.status ?? 1) !== 0) {
+						const attachMessage = attachResult.stderr?.trim() || attachResult.stdout?.trim() || '';
+						if (!/already mounted/iu.test(attachMessage)) {
+							throw new Error(attachMessage || `Railway volume attach failed for ${entry.service.name}.`);
+						}
+					}
+				}
+			}
 		}
 	}
 	return {
@@ -1783,6 +1856,75 @@ async function syncRailwayEnvironmentForScope(input: TreeseedReconcileAdapterInp
 		dryRun,
 		workspace: topology.workspace.name,
 	};
+}
+
+async function ensureRailwayMarketDatabaseForScope(
+	input: TreeseedReconcileAdapterInput,
+	topology: Awaited<ReturnType<typeof resolveRailwayTopologyForScope>>,
+) {
+	const marketDatabaseService = input.context.deployConfig.services?.marketDatabase;
+	if (
+		!marketDatabaseService
+		|| marketDatabaseService.enabled === false
+		|| marketDatabaseService.provider !== 'railway'
+		|| marketDatabaseService.railway?.resourceType !== 'postgres'
+	) {
+		return;
+	}
+	const firstService = [...topology.services.values()].find((entry) => entry.project && entry.environment);
+	if (!firstService?.project || !firstService.environment) {
+		return;
+	}
+	const baseName = typeof marketDatabaseService.railway?.serviceName === 'string' && marketDatabaseService.railway.serviceName.trim()
+		? marketDatabaseService.railway.serviceName.trim()
+		: `${input.context.deployConfig.slug ?? 'treeseed-market'}-postgres`;
+	const serviceName = `${baseName.replace(/-(staging|prod|production)$/u, '')}-${topology.scope === 'prod' ? 'prod' : topology.scope}`;
+	let postgresService = firstService.project.services.find((entry) => entry.name === serviceName || entry.id === serviceName) ?? null;
+	if (!postgresService) {
+		ensureRailwayProjectContext(firstService.configuredService, { env: topology.env, capture: true });
+		const addResult = runRailway(['add', '--database', 'postgres', '--json'], {
+			cwd: firstService.configuredService.rootDir,
+			capture: true,
+			allowFailure: true,
+			env: topology.env,
+		});
+		if ((addResult.status ?? 1) !== 0) {
+			throw new Error(addResult.stderr?.trim() || addResult.stdout?.trim() || `Railway database provisioning failed for ${serviceName}.`);
+		}
+		const payload = parseRailwayJsonPayload(addResult.stdout) as { serviceId?: unknown; serviceName?: unknown } | null;
+		const createdServiceId = typeof payload?.serviceId === 'string' && payload.serviceId.trim() ? payload.serviceId.trim() : '';
+		if (!createdServiceId) {
+			throw new Error(`Railway database provisioning did not return a service id for ${serviceName}.`);
+		}
+		postgresService = await updateRailwayServiceName({
+			serviceId: createdServiceId,
+			name: serviceName,
+			env: topology.env,
+		});
+	}
+	for (let attempt = 0; attempt < 8; attempt += 1) {
+		const existingVolumes = await listRailwayVolumes({
+			projectId: firstService.project.id,
+			env: topology.env,
+		});
+		const attached = existingVolumes.some((volume) => volume.instances.some((instance) =>
+			instance.serviceId === postgresService.id
+			&& instance.environmentId === firstService.environment?.id
+			&& instance.mountPath === '/var/lib/postgresql/data'
+		));
+		if (attached) {
+			break;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 1500));
+	}
+	await ensureRailwayServiceVolume({
+		projectId: firstService.project.id,
+		environmentId: firstService.environment.id,
+		serviceId: postgresService.id,
+		name: `postgres-${topology.scope === 'prod' ? 'prod' : topology.scope}-data`,
+		mountPath: '/var/lib/postgresql/data',
+		env: topology.env,
+	});
 }
 
 async function observeRailwayUnit(input: TreeseedReconcileAdapterInput, { refresh = false }: { refresh?: boolean } = {}): Promise<TreeseedObservedUnitState> {
@@ -1841,21 +1983,41 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput) {
 	const values = resolveReconcileEnvironmentValues(input, scope);
 	const registry = collectTreeseedEnvironmentContext(input.context.tenantRoot);
 	const state = loadDeployState(input.context.tenantRoot, input.context.deployConfig, { target: toDeployTarget(input.context.target) });
-	const secrets = Object.fromEntries(
-		registry.entries
-			.filter((entry) =>
-				entry.scopes.includes(scope)
-				&& entry.targets.includes('railway-secret')
-				&& shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, entry.id))
-			.map((entry) => [entry.id, values[entry.id]])
-			.filter(([, value]) => typeof value === 'string' && value.length > 0),
-	);
-	const variables = Object.fromEntries(
-		registry.entries
-			.filter((entry) => entry.scopes.includes(scope) && entry.targets.includes('railway-var'))
-			.map((entry) => [entry.id, values[entry.id]])
-			.filter(([, value]) => typeof value === 'string' && value.length > 0),
-	);
+	const serviceTargetsEntry = (entry: Record<string, unknown>, serviceKey: string) => {
+		const targets = Array.isArray(entry.serviceTargets)
+			? entry.serviceTargets.map((value) => String(value).trim()).filter(Boolean)
+			: [];
+		return targets.length === 0 || targets.includes(serviceKey);
+	};
+	const entriesForService = (target: 'railway-secret' | 'railway-var', serviceKey: string) => registry.entries
+		.filter((entry) =>
+			entry.scopes.includes(scope)
+			&& entry.targets.includes(target)
+			&& serviceTargetsEntry(entry as unknown as Record<string, unknown>, serviceKey)
+			&& (target !== 'railway-secret' || shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, entry.id)))
+		.map((entry) => [entry.id, values[entry.id]] as const)
+		.filter(([, value]) => typeof value === 'string' && value.length > 0);
+	const aggregateEntries = (target: 'railway-secret' | 'railway-var') => registry.entries
+		.filter((entry) =>
+			entry.scopes.includes(scope)
+			&& entry.targets.includes(target)
+			&& (target !== 'railway-secret' || shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, entry.id)))
+		.map((entry) => [entry.id, values[entry.id]] as const)
+		.filter(([, value]) => typeof value === 'string' && value.length > 0);
+	const secrets = Object.fromEntries(aggregateEntries('railway-secret'));
+	const variables = Object.fromEntries(aggregateEntries('railway-var'));
+	const apiOnlySecrets: Record<string, string> = {};
+	const apiOnlyVariables: Record<string, string> = {};
+	const marketDatabaseService = input.context.deployConfig.services?.marketDatabase;
+	const marketDatabaseBaseName = typeof marketDatabaseService?.railway?.serviceName === 'string' && marketDatabaseService.railway.serviceName.trim()
+		? marketDatabaseService.railway.serviceName.trim()
+		: `${input.context.deployConfig.slug ?? 'treeseed-market'}-postgres`;
+	const marketDatabaseServiceName = `${marketDatabaseBaseName.replace(/-(staging|prod|production)$/u, '')}-${scope === 'prod' ? 'prod' : scope}`;
+	const marketDatabaseUrl = typeof values.TREESEED_MARKET_DATABASE_URL === 'string' && values.TREESEED_MARKET_DATABASE_URL.length > 0
+		? values.TREESEED_MARKET_DATABASE_URL
+		: marketDatabaseService?.enabled !== false && marketDatabaseService?.provider === 'railway'
+			? `\${{${marketDatabaseServiceName}.DATABASE_URL}}`
+			: '';
 
 	if (
 		typeof values.CLOUDFLARE_API_TOKEN === 'string'
@@ -1863,9 +2025,11 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput) {
 		&& shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, 'CLOUDFLARE_API_TOKEN')
 	) {
 		secrets.CLOUDFLARE_API_TOKEN = values.CLOUDFLARE_API_TOKEN;
+		apiOnlySecrets.CLOUDFLARE_API_TOKEN = values.CLOUDFLARE_API_TOKEN;
 	}
 	if (typeof values.CLOUDFLARE_ACCOUNT_ID === 'string' && values.CLOUDFLARE_ACCOUNT_ID.length > 0) {
 		variables.CLOUDFLARE_ACCOUNT_ID = values.CLOUDFLARE_ACCOUNT_ID;
+		apiOnlyVariables.CLOUDFLARE_ACCOUNT_ID = values.CLOUDFLARE_ACCOUNT_ID;
 	}
 	const siteDataDb = state.d1Databases?.SITE_DATA_DB;
 	let apiD1DatabaseId = siteDataDb?.databaseId;
@@ -1875,9 +2039,32 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput) {
 	}
 	if (hasLiveResourceId(apiD1DatabaseId)) {
 		variables.TREESEED_API_D1_DATABASE_ID = apiD1DatabaseId;
+		apiOnlyVariables.TREESEED_API_D1_DATABASE_ID = apiD1DatabaseId;
+	}
+	if (marketDatabaseUrl) {
+		secrets.TREESEED_MARKET_DATABASE_URL = marketDatabaseUrl;
 	}
 
-	return { scope, secrets, variables };
+	return {
+		scope,
+		secrets,
+		variables,
+		forService(serviceKey: string) {
+			return {
+				secrets: {
+					...Object.fromEntries(entriesForService('railway-secret', serviceKey)),
+					...(marketDatabaseUrl && ['api', 'marketOperationsRunner'].includes(serviceKey)
+						? { TREESEED_MARKET_DATABASE_URL: marketDatabaseUrl }
+						: {}),
+					...(serviceKey === 'api' ? apiOnlySecrets : {}),
+				},
+				variables: {
+					...Object.fromEntries(entriesForService('railway-var', serviceKey)),
+					...(serviceKey === 'api' ? apiOnlyVariables : {}),
+				},
+			};
+		},
+	};
 }
 
 function buildAttachmentDiff(input: TreeseedReconcileAdapterInput, observed: TreeseedObservedUnitState): TreeseedReconcileUnitDiff {
@@ -2240,7 +2427,7 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 					}),
 				]);
 			}
-			const sync = collectRailwayEnvironmentSync(input);
+			const sync = collectRailwayEnvironmentSync(input).forService(serviceKey);
 			const checks: TreeseedUnitVerificationCheck[] = [
 		verificationCheck('railway.workspace', 'Railway workspace is resolved', 'api', {
 			exists: Boolean(topology.workspace.id),
@@ -2274,12 +2461,13 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 		}),
 	];
 	if (service.startCommand) {
+		const startCommandMatches = railwayStartCommandMatches(serviceKey, entry.instance?.startCommand, service.startCommand);
 		checks.push(verificationCheck('railway.instance.start-command', 'Railway start command matches desired config', 'api', {
 			exists: Boolean(entry.instance?.id),
-			configured: entry.instance?.startCommand === service.startCommand,
+			configured: startCommandMatches,
 			expected: service.startCommand,
 			observed: entry.instance?.startCommand ?? null,
-			issues: entry.instance?.startCommand === service.startCommand ? [] : ['Railway start command does not match the desired value.'],
+			issues: startCommandMatches ? [] : ['Railway start command does not match the desired value.'],
 		}));
 	}
 	const desiredRootDirectory = relativeRailwayRootDir(input.context.tenantRoot, service.rootDir);
@@ -2347,6 +2535,30 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 			}));
 		}
 	}
+	if (service.volumeMountPath) {
+		const volumes = entry.project?.id
+			? await listRailwayVolumes({ projectId: entry.project.id, env: topology.env })
+			: [];
+		const expectedServiceId = entry.service?.id ?? null;
+		const expectedEnvironmentId = entry.environment?.id ?? null;
+		const mountedVolume = volumes.find((volume) => volume.instances.some((instance) =>
+			instance.serviceId === expectedServiceId
+			&& instance.environmentId === expectedEnvironmentId
+			&& instance.mountPath === service.volumeMountPath,
+		)) ?? null;
+		checks.push(verificationCheck('railway.volume:data', 'Railway service has persistent data volume mounted', 'api', {
+			exists: Boolean(mountedVolume),
+			configured: Boolean(mountedVolume),
+			expected: service.volumeMountPath,
+			observed: mountedVolume
+				? {
+					name: mountedVolume.name,
+					mountPath: service.volumeMountPath,
+				}
+				: null,
+			issues: mountedVolume ? [] : [`Railway service ${service.serviceName ?? service.key} is missing a persistent volume mounted at ${service.volumeMountPath}.`],
+		}));
+	}
 	for (const [key, value] of Object.entries(sync.variables)) {
 		checks.push(verificationCheck(`railway.var:${key}`, `Railway variable ${key} exists with the expected value`, 'api', {
 			exists: Object.hasOwn(entry.currentVariables, key),
@@ -2373,6 +2585,31 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 			sleepMs(1000 * attempt);
 		}
 	}
+}
+
+function railwayStartCommandMatches(serviceKey: string, observed: string | null | undefined, expected: string) {
+	if (observed === expected) {
+		return true;
+	}
+	if (serviceKey !== 'marketOperationsRunner') {
+		return false;
+	}
+	const normalizedObserved = String(observed ?? '').trim().replace(/\s+/gu, ' ');
+	const normalizedExpected = String(expected ?? '').trim().replace(/\s+/gu, ' ');
+	if (normalizedObserved === normalizedExpected) {
+		return true;
+	}
+	const allowedInlineEnv = [
+		'TREESEED_MARKET_ID',
+		'TREESEED_PLATFORM_RUNNER_ID',
+		'TREESEED_PLATFORM_RUNNER_DATA_DIR',
+		'TREESEED_PLATFORM_RUNNER_ENVIRONMENT',
+	];
+	let remainder = normalizedObserved;
+	for (const key of allowedInlineEnv) {
+		remainder = remainder.replace(new RegExp(`^${key}=[^\\s]+\\s+`, 'u'), '');
+	}
+	return remainder === normalizedExpected;
 }
 
 function buildRailwayDiff(input: TreeseedReconcileAdapterInput, observed: TreeseedObservedUnitState): TreeseedReconcileUnitDiff {
@@ -2536,10 +2773,12 @@ export function createCloudflareReconcileAdapters() {
 export function createRailwayReconcileAdapters() {
 	return [
 		buildRailwayAdapter('railway-service:api'),
+		buildRailwayAdapter('railway-service:market-operations-runner'),
 		buildRailwayAdapter('railway-service:workday-manager'),
 		buildRailwayAdapter('railway-service:worker-runner'),
 		buildCustomDomainAdapter('custom-domain:api', 'railway'),
 		buildCompositeAdapter('api-runtime'),
+		buildCompositeAdapter('market-operations-runner-runtime'),
 		buildCompositeAdapter('workday-manager-runtime'),
 		buildCompositeAdapter('worker-runner-runtime'),
 	];

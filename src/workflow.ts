@@ -257,6 +257,8 @@ export type TreeseedExportInput = {
 
 export type TreeseedReleaseInput = {
 	bump: 'major' | 'minor' | 'patch';
+	repairVersionLine?: boolean;
+	targetVersionLine?: string;
 	devTagCleanup?: 'safe-after-release' | 'off';
 	gitDependencyProtocol?: 'preserve-origin' | 'https' | 'ssh';
 	gitRemoteWriteMode?: 'ssh-pushurl' | 'off';

@@ -101,6 +101,7 @@ export type TreeseedEnvironmentEntry = {
 	howToGet: string;
 	sensitivity: TreeseedEnvironmentSensitivity;
 	targets: TreeseedEnvironmentTarget[];
+	serviceTargets?: string[];
 	scopes: TreeseedEnvironmentScope[];
 	requirement: TreeseedEnvironmentRequirement;
 	purposes: TreeseedEnvironmentPurpose[];
@@ -497,6 +498,14 @@ function resolveRailwayWorkspaceDefault() {
 	return 'knowledge-coop';
 }
 
+function resolvePlatformRunnerIdDefault(_context: TreeseedEnvironmentContext, scope: TreeseedEnvironmentScope) {
+	return scope === 'prod' ? 'market-ops-prod-1' : scope === 'staging' ? 'market-ops-staging-1' : 'market-ops-local-1';
+}
+
+function resolvePlatformRunnerEnvironmentDefault(_context: TreeseedEnvironmentContext, scope: TreeseedEnvironmentScope) {
+	return scope === 'prod' ? 'production' : scope;
+}
+
 function parseGitHubRepositorySlugFromRemote(remoteUrl: string | undefined) {
 	const normalized = String(remoteUrl ?? '').trim();
 	const sshMatch = normalized.match(/^git@github\.com:([^/]+)\/(.+?)(?:\.git)?$/u);
@@ -557,6 +566,9 @@ const VALUE_RESOLVERS: NamedResolverMap = {
 	hostingTeamIdDefault: (context) => resolveHostedTeamId(context),
 	hostingProjectIdDefault: (context) => resolveHostedProjectId(context),
 	railwayWorkspaceDefault: () => resolveRailwayWorkspaceDefault(),
+	platformRunnerIdDefault: (context, scope) => resolvePlatformRunnerIdDefault(context, scope),
+	platformRunnerEnvironmentDefault: (context, scope) => resolvePlatformRunnerEnvironmentDefault(context, scope),
+	platformRunnerDataDirDefault: () => '/data',
 	githubOwnerDefault: (context) => resolveGitHubOwnerDefault(context),
 	githubRepositoryNameDefault: (context) => resolveGitHubRepositoryNameDefault(context),
 	githubRepositoryVisibilityDefault: () => 'private',

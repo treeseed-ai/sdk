@@ -1,5 +1,7 @@
 const DEFAULT_RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
 const DEFAULT_RAILWAY_WORKSPACE = 'knowledge-coop';
+const RAILWAY_POSTGRES_TEMPLATE_ID = 'b55da7dc-09be-4140-bc65-1284d15d349c';
+const RAILWAY_POSTGRES_TEMPLATE_SERVICE_ID = 'b55da7dc-09be-4140-bc65-1284b15d349b';
 
 export function normalizeRailwayEnvironmentName(value: string | null | undefined) {
 	const normalized = typeof value === 'string' ? value.trim() : '';
@@ -28,6 +30,7 @@ export type RailwayProjectSummary = {
 	id: string;
 	name: string;
 	workspaceId: string | null;
+	deletedAt: string | null;
 	environments: RailwayEnvironmentSummary[];
 	services: RailwayServiceSummary[];
 };
@@ -76,6 +79,7 @@ export type RailwayVolumeInstanceSummary = {
 	serviceId: string | null;
 	environmentId: string | null;
 	mountPath: string | null;
+	state: string | null;
 	sizeGb: number | null;
 	usedGb: number | null;
 };
@@ -213,6 +217,7 @@ function normalizeProject(node: Record<string, unknown>): RailwayProjectSummary 
 		id,
 		name,
 		workspaceId: railwayConnectionLabel(node.workspaceId) || null,
+		deletedAt: railwayConnectionLabel(node.deletedAt) || null,
 		environments: normalizeConnectionNodes(node.environments, normalizeEnvironment),
 		services: normalizeConnectionNodes(node.services, normalizeService),
 	};
@@ -311,9 +316,15 @@ function normalizeRailwayVolumeInstance(node: Record<string, unknown>): RailwayV
 		serviceId: railwayConnectionLabel(node.serviceId) || railwayConnectionLabel((node.service as { id?: unknown } | null)?.id) || null,
 		environmentId: railwayConnectionLabel(node.environmentId) || railwayConnectionLabel((node.environment as { id?: unknown } | null)?.id) || null,
 		mountPath: railwayConnectionLabel(node.mountPath) || railwayConnectionLabel(node.mount_path) || null,
+		state: railwayConnectionLabel(node.state) || null,
 		sizeGb,
 		usedGb,
 	};
+}
+
+function isActiveRailwayVolumeInstance(instance: RailwayVolumeInstanceSummary) {
+	const state = String(instance.state ?? 'READY').toUpperCase();
+	return state !== 'DELETING' && state !== 'DELETED';
 }
 
 function normalizeVolumeInstances(value: unknown): RailwayVolumeInstanceSummary[] {
@@ -548,6 +559,7 @@ query TreeseedRailwayProjects($workspaceId: String!, $first: Int!) {
 				id
 				name
 				workspaceId
+				deletedAt
 				environments(first: 50) {
 					edges {
 						node {
@@ -594,6 +606,7 @@ query TreeseedRailwayProject($projectId: String!) {
 		id
 		name
 		workspaceId
+		deletedAt
 		environments(first: 50) {
 			edges {
 				node {
@@ -640,8 +653,10 @@ export async function ensureRailwayProject({
 	const desiredProjectName = railwayConnectionLabel(projectName);
 	const desiredProjectId = railwayConnectionLabel(projectId);
 	const existing = projects.find((project) =>
-		(desiredProjectId && project.id === desiredProjectId)
-		|| (desiredProjectName && project.name === desiredProjectName),
+		!project.deletedAt && (
+			(desiredProjectId && project.id === desiredProjectId)
+			|| (desiredProjectName && project.name === desiredProjectName)
+		),
 	) ?? null;
 	if (existing) {
 		return { workspace: workspaceContext, project: existing, created: false };
@@ -658,6 +673,7 @@ mutation TreeseedRailwayProjectCreate($input: ProjectCreateInput!) {
 		id
 		name
 		workspaceId
+		deletedAt
 		environments(first: 50) {
 			edges {
 				node {
@@ -821,6 +837,98 @@ mutation TreeseedRailwayServiceCreate($input: ServiceCreateInput!) {
 	const service = created.data?.serviceCreate ? normalizeService(created.data.serviceCreate) : null;
 	if (!service) {
 		throw new Error(`Railway service create did not return a usable service for ${desiredServiceName}.`);
+	}
+	return { service, created: true };
+}
+
+export async function updateRailwayServiceName({
+	serviceId,
+	name,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	serviceId: string;
+	name: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const desiredName = railwayConnectionLabel(name);
+	if (!serviceId || !desiredName) {
+		throw new Error('Railway service rename requires a service id and name.');
+	}
+	const payload = await railwayGraphqlRequest<{
+		serviceUpdate?: Record<string, unknown> | null;
+	}>({
+		query: `
+mutation TreeseedRailwayServiceUpdate($id: String!, $input: ServiceUpdateInput!) {
+	serviceUpdate(id: $id, input: $input) {
+		id
+		name
+	}
+}
+`.trim(),
+		variables: {
+			id: serviceId,
+			input: { name: desiredName },
+		},
+		env,
+		fetchImpl,
+	});
+	const service = payload.data?.serviceUpdate ? normalizeService(payload.data.serviceUpdate) : null;
+	if (!service) {
+		throw new Error(`Railway service rename did not return a usable service for ${desiredName}.`);
+	}
+	return service;
+}
+
+export async function ensureRailwayPostgresService({
+	projectId,
+	environmentId,
+	serviceName,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	projectId: string;
+	environmentId: string;
+	serviceName: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const desiredServiceName = railwayConnectionLabel(serviceName);
+	if (!desiredServiceName) {
+		throw new Error('Railway Postgres service creation requires a service name.');
+	}
+	const services = await listRailwayServices({ projectId, env, fetchImpl });
+	const existing = services.find((service) => service.name === desiredServiceName || service.id === desiredServiceName) ?? null;
+	if (existing) {
+		return { service: existing, created: false };
+	}
+	const created = await railwayGraphqlRequest<{
+		serviceCreate?: Record<string, unknown> | null;
+	}>({
+		query: `
+mutation TreeseedRailwayPostgresServiceCreate($input: ServiceCreateInput!) {
+	serviceCreate(input: $input) {
+		id
+		name
+	}
+}
+`.trim(),
+		variables: {
+			input: {
+				projectId,
+				environmentId,
+				name: desiredServiceName,
+				templateId: RAILWAY_POSTGRES_TEMPLATE_ID,
+				templateServiceId: RAILWAY_POSTGRES_TEMPLATE_SERVICE_ID,
+			},
+		},
+		env,
+		fetchImpl,
+	});
+	const service = created.data?.serviceCreate ? normalizeService(created.data.serviceCreate) : null;
+	if (!service) {
+		throw new Error(`Railway Postgres service create did not return a usable service for ${desiredServiceName}.`);
 	}
 	return { service, created: true };
 }
@@ -1146,25 +1254,49 @@ export async function upsertRailwayVariables({
 	if (Object.keys(variables).length === 0) {
 		return;
 	}
-	await railwayGraphqlRequest({
-		query: `
+	const query = `
 mutation TreeseedRailwayVariableCollectionUpsert($input: VariableCollectionUpsertInput!) {
 	variableCollectionUpsert(input: $input)
 }
-`.trim(),
-		variables: {
-			input: {
-				projectId,
-				environmentId,
-				serviceId: serviceId || null,
-				variables,
-				replace: false,
-				skipDeploys: true,
-			},
-		},
-		env,
-		fetchImpl,
-	});
+`.trim();
+	const input = {
+		projectId,
+		environmentId,
+		serviceId: serviceId || null,
+		variables,
+		replace: false,
+		skipDeploys: true,
+	};
+	try {
+		await railwayGraphqlRequest({
+			query,
+			variables: { input },
+			env,
+			fetchImpl,
+		});
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error ?? '');
+		if (!/Problem processing request/iu.test(message) || Object.keys(variables).length <= 1) {
+			throw error;
+		}
+		for (const [key, value] of Object.entries(variables)) {
+			await railwayGraphqlRequest({
+				query,
+				variables: {
+					input: {
+						projectId,
+						environmentId,
+						serviceId: serviceId || null,
+						variables: { [key]: value },
+						replace: false,
+						skipDeploys: true,
+					},
+				},
+				env,
+				fetchImpl,
+			});
+		}
+	}
 }
 
 export async function listRailwayVolumes({
@@ -1193,6 +1325,7 @@ query TreeseedRailwayVolumeList($projectId: String!) {
 								serviceId
 								environmentId
 								mountPath
+								state
 							}
 						}
 					}
@@ -1241,6 +1374,7 @@ mutation TreeseedRailwayVolumeCreate($input: VolumeCreateInput!) {
 					serviceId
 					environmentId
 					mountPath
+								state
 				}
 			}
 		}
@@ -1254,7 +1388,6 @@ mutation TreeseedRailwayVolumeCreate($input: VolumeCreateInput!) {
 				projectId,
 				environmentId,
 				serviceId,
-				name,
 				mountPath,
 			},
 		},
@@ -1264,6 +1397,25 @@ mutation TreeseedRailwayVolumeCreate($input: VolumeCreateInput!) {
 	const volume = collectRailwayVolumes(payload.data)[0] ?? null;
 	if (!volume) {
 		throw new Error(`Railway volume create did not return a usable volume for ${name}.`);
+	}
+	if (name && volume.name !== name) {
+		try {
+			const renamed = await updateRailwayVolumeName({
+				volumeId: volume.id,
+				name,
+				env,
+				fetchImpl,
+			});
+			return {
+				...volume,
+				name: renamed.name || name,
+			};
+		} catch {
+			return {
+				...volume,
+				name: volume.name || name,
+			};
+		}
 	}
 	return volume;
 }
@@ -1280,8 +1432,8 @@ async function updateRailwayVolumeName({
 	fetchImpl?: typeof fetch;
 }) {
 	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_UPDATE_MUTATION') || `
-mutation TreeseedRailwayVolumeUpdate($id: String!, $input: VolumeUpdateInput!) {
-	volumeUpdate(id: $id, input: $input) {
+mutation TreeseedRailwayVolumeUpdate($volumeId: String!, $input: VolumeUpdateInput!) {
+	volumeUpdate(volumeId: $volumeId, input: $input) {
 		id
 		name
 		projectId
@@ -1292,6 +1444,7 @@ mutation TreeseedRailwayVolumeUpdate($id: String!, $input: VolumeUpdateInput!) {
 					serviceId
 					environmentId
 					mountPath
+								state
 				}
 			}
 		}
@@ -1301,7 +1454,7 @@ mutation TreeseedRailwayVolumeUpdate($id: String!, $input: VolumeUpdateInput!) {
 	const payload = await railwayGraphqlRequest({
 		query: mutation,
 		variables: {
-			id: volumeId,
+			volumeId,
 			input: { name },
 		},
 		env,
@@ -1311,31 +1464,31 @@ mutation TreeseedRailwayVolumeUpdate($id: String!, $input: VolumeUpdateInput!) {
 }
 
 async function updateRailwayVolumeInstanceMountPath({
-	instanceId,
+	volumeId,
+	serviceId,
 	mountPath,
 	env = process.env,
 	fetchImpl = fetch,
 }: {
-	instanceId: string;
+	volumeId: string;
+	serviceId?: string | null;
 	mountPath: string;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
 }) {
 	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_INSTANCE_UPDATE_MUTATION') || `
-mutation TreeseedRailwayVolumeInstanceUpdate($id: String!, $input: VolumeInstanceUpdateInput!) {
-	volumeInstanceUpdate(id: $id, input: $input) {
-		id
-		serviceId
-		environmentId
-		mountPath
-	}
+mutation TreeseedRailwayVolumeInstanceUpdate($volumeId: String!, $input: VolumeInstanceUpdateInput!) {
+	volumeInstanceUpdate(volumeId: $volumeId, input: $input)
 }
 `.trim();
 	await railwayGraphqlRequest({
 		query: mutation,
 		variables: {
-			id: instanceId,
-			input: { mountPath },
+			volumeId,
+			input: {
+				...(serviceId ? { serviceId } : {}),
+				mountPath,
+			},
 		},
 		env,
 		fetchImpl,
@@ -1363,9 +1516,15 @@ export async function ensureRailwayServiceVolume({
 		throw new Error(`Railway volume mount path must be absolute: ${mountPath}`);
 	}
 	const volumes = await listRailwayVolumes({ projectId, env, fetchImpl });
-	let volume = volumes.find((candidate) =>
+	const activeVolumes = volumes
+		.map((candidate) => ({
+			...candidate,
+			instances: candidate.instances.filter(isActiveRailwayVolumeInstance),
+		}))
+		.filter((candidate) => candidate.instances.length > 0);
+	let volume = activeVolumes.find((candidate) =>
 		candidate.instances.some((instance) => instance.serviceId === serviceId && instance.environmentId === environmentId),
-	) ?? volumes.find((candidate) => candidate.name === name) ?? null;
+	) ?? activeVolumes.find((candidate) => candidate.name === name) ?? null;
 	let created = false;
 	let updated = false;
 	if (!volume) {
@@ -1384,9 +1543,16 @@ export async function ensureRailwayServiceVolume({
 		volume = await updateRailwayVolumeName({ volumeId: volume.id, name, env, fetchImpl }) ?? { ...volume, name };
 		updated = true;
 	}
-	const instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? null;
+	let instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? null;
+	if (!instance && volume.instances.some((entry) => entry.environmentId === environmentId)) {
+		await updateRailwayVolumeInstanceMountPath({ volumeId: volume.id, serviceId, mountPath, env, fetchImpl });
+		volume = await listRailwayVolumes({ projectId, env, fetchImpl })
+			.then((refreshed) => refreshed.find((candidate) => candidate.id === volume?.id) ?? volume);
+		instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? null;
+		updated = true;
+	}
 	if (instance && instance.mountPath !== mountPath) {
-		await updateRailwayVolumeInstanceMountPath({ instanceId: instance.id, mountPath, env, fetchImpl });
+		await updateRailwayVolumeInstanceMountPath({ volumeId: volume.id, mountPath, env, fetchImpl });
 		volume = {
 			...volume,
 			instances: volume.instances.map((entry) => entry.id === instance.id ? { ...entry, mountPath } : entry),
@@ -1456,4 +1622,78 @@ query TreeseedRailwayCustomDomains($projectId: String!, $environmentId: String!,
 			.map((entry) => entry && typeof entry === 'object' ? normalizeRailwayCustomDomain(entry as Record<string, unknown>) : null)
 			.filter(Boolean) as RailwayCustomDomainSummary[]
 		: [];
+}
+
+export async function ensureRailwayCustomDomain({
+	projectId,
+	environmentId,
+	serviceId,
+	domain,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	projectId: string;
+	environmentId: string;
+	serviceId: string;
+	domain: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const normalizedDomain = railwayConnectionLabel(domain);
+	if (!normalizedDomain) {
+		throw new Error('Railway custom domain creation requires a domain.');
+	}
+	const existing = await listRailwayCustomDomains({ projectId, environmentId, serviceId, env, fetchImpl });
+	const matched = existing.find((entry) => entry.domain === normalizedDomain) ?? null;
+	if (matched) {
+		return { domain: matched, created: false };
+	}
+	const payload = await railwayGraphqlRequest<{
+		customDomainCreate?: Record<string, unknown> | null;
+	}>({
+		query: `
+mutation TreeseedRailwayCustomDomainCreate($input: CustomDomainCreateInput!) {
+	customDomainCreate(input: $input) {
+		id
+		domain
+		environmentId
+		serviceId
+		targetPort
+		status {
+			verified
+			certificateStatus
+			verificationDnsHost
+			verificationToken
+			dnsRecords {
+				fqdn
+				hostlabel
+				recordType
+				requiredValue
+				currentValue
+				status
+				zone
+				purpose
+			}
+		}
+	}
+}
+`.trim(),
+		variables: {
+			input: {
+				projectId,
+				environmentId,
+				serviceId,
+				domain: normalizedDomain,
+			},
+		},
+		env,
+		fetchImpl,
+	});
+	const created = payload.data?.customDomainCreate
+		? normalizeRailwayCustomDomain(payload.data.customDomainCreate)
+		: null;
+	if (!created) {
+		throw new Error(`Railway custom domain create did not return a usable domain for ${normalizedDomain}.`);
+	}
+	return { domain: created, created: true };
 }

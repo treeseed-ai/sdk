@@ -7,6 +7,7 @@ export type TreeseedReconcileVerificationSource = 'cli' | 'api' | 'sdk' | 'deriv
 export type TreeseedReconcileUnitType =
 	| 'web-ui'
 	| 'api-runtime'
+	| 'market-operations-runner-runtime'
 	| 'workday-manager-runtime'
 	| 'worker-runner-runtime'
 	| 'edge-worker'
@@ -19,6 +20,7 @@ export type TreeseedReconcileUnitType =
 	| 'custom-domain:api'
 	| 'dns-record'
 	| 'railway-service:api'
+	| 'railway-service:market-operations-runner'
 	| 'railway-service:workday-manager'
 	| 'railway-service:worker-runner';
 
