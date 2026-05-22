@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.8] - 2026-05-22
+
+### Added
+
+- feat(operations): update web platform bootstrap systems (3b1c103afc34)
+- feat(auth): add user session issuance and web authentication methods (ac7260edf6ab)
+
+### Tests
+
+- test(root-workflows): update expected environment variables (ed0e2edafec8)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.8.
+
 ## [0.10.7] - 2026-05-22
 
 ### Fixed

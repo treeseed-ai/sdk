@@ -86,6 +86,7 @@ export interface ApiAuthProvider {
 		expiresInSeconds: number;
 		principal: ApiPrincipal;
 	}>;
+	issueUserSession?(userId: string, options?: { sessionType?: string; scopes?: string[]; data?: Record<string, unknown> }): Promise<TokenRefreshResponse>;
 }
 
 export type ApiRuntimeProviderSelections = {
