@@ -653,7 +653,15 @@ async function commitIfRequested(repoPath: string, repository: PlatformRepositor
 	await runGit(['checkout', '-B', branchName], repoPath);
 	if (changed.length === 0) return { branch: branchName, commitSha: null };
 	await runGit(['add', '--', ...changed], repoPath);
-	await runGit(['commit', '-m', input.commitMessage || `TreeSeed platform operation: ${input.projectId ?? 'repository'}`], repoPath).catch((error) => {
+	await runGit([
+		'-c',
+		'user.name=TreeSeed Platform Runner',
+		'-c',
+		'user.email=platform-runner@treeseed.local',
+		'commit',
+		'-m',
+		input.commitMessage || `TreeSeed platform operation: ${input.projectId ?? 'repository'}`,
+	], repoPath).catch((error) => {
 		const message = error instanceof Error ? error.message : String(error);
 		if (!message.includes('nothing to commit')) throw error;
 	});

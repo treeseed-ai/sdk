@@ -233,10 +233,20 @@ function resolveReconcileEnvironmentValues(
 		return resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
 	}
 
-	const values = {
-		...resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope),
+	const hostedRuntimeValues = {
 		...normalizeEnvironmentValues(process.env),
 		...normalizeEnvironmentValues(input.context.launchEnv),
+	};
+	if (
+		hostedRuntimeValues.CLOUDFLARE_API_TOKEN
+		|| hostedRuntimeValues.RAILWAY_API_TOKEN
+		|| hostedRuntimeValues.GH_TOKEN
+	) {
+		return hostedRuntimeValues;
+	}
+	const values = {
+		...resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope),
+		...hostedRuntimeValues,
 	};
 	return values;
 }
