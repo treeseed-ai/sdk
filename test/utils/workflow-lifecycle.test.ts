@@ -382,7 +382,7 @@ describe('treeseed workflow lifecycle', () => {
 		setTreeseedMachineEnvironmentValue(work, 'staging', {
 			id: 'RAILWAY_API_TOKEN',
 			sensitivity: 'secret',
-			storage: 'scoped',
+			storage: 'shared',
 		} as any, 'railway-token-from-machine-config');
 		lockTreeseedSecretSession(work);
 		const workflow = new TreeseedWorkflowSdk({ cwd: work, env: statusEnv, write: () => {} });
@@ -390,8 +390,8 @@ describe('treeseed workflow lifecycle', () => {
 		const result = await workflow.status();
 
 		expect(result.ok).toBe(true);
-		expect(result.payload.auth.railway).toBe(true);
-		expect(result.payload.providerStatus.staging.railway.configured).toBe(true);
+		expect(result.payload.auth.railway).toBe(false);
+		expect(result.payload.providerStatus.staging.railway.configured).toBe(false);
 		expect(result.payload.providerStatus.local.railway.configured).toBe(true);
 		expect(result.payload.providerStatus.local.railway.applicable).toBe(false);
 		expect(result.payload.secrets.keyAgentUnlocked).toBe(true);
