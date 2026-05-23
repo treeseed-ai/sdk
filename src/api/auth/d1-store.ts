@@ -270,15 +270,6 @@ export class D1AuthStore {
 
 	private async seedCatalog() {
 		const createdAt = isoNow();
-		const seeded = await this.first<{ key: string }>(
-			`SELECT key FROM permissions WHERE key = '*:*:*' LIMIT 1`,
-		);
-		const adminRole = await this.first<{ key: string }>(
-			`SELECT key FROM roles WHERE key = 'platform_admin' LIMIT 1`,
-		);
-		if (seeded?.key && adminRole?.key) {
-			return;
-		}
 		for (const permission of DEFAULT_PERMISSIONS) {
 			await this.run(
 				`INSERT OR IGNORE INTO permissions (id, key, resource, action, scope, description, created_at)
