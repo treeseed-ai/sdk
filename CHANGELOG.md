@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.9] - 2026-05-23
+
+### Infrastructure
+
+- chore(package): bump version and simplify auth seeding (dda07eae8aac)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.9.
+
 ## [0.10.8] - 2026-05-22
 
 ### Added
