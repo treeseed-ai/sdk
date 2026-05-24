@@ -7,6 +7,8 @@ import {
 	type SeedCapacityProviderResource,
 	type SeedDiagnostic,
 	type SeedEnvironment,
+	type SeedExecutionProviderNativeLimitResource,
+	type SeedExecutionProviderResource,
 	type SeedHubRepositoryResource,
 	type SeedManifest,
 	type SeedManifestResources,
@@ -77,6 +79,15 @@ function numberField(record: Record<string, unknown>, field: string, path: strin
 	if (value === undefined) return undefined;
 	if (typeof value !== 'number' || !Number.isFinite(value)) {
 		diagnostics.push(errorDiagnostic('seed.invalid_number', `Expected ${field} to be a finite number.`, `${path}.${field}`));
+		return undefined;
+	}
+	return value;
+}
+
+function nonNegativeNumberField(record: Record<string, unknown>, field: string, path: string, diagnostics: SeedDiagnostic[]) {
+	const value = numberField(record, field, path, diagnostics);
+	if (value !== undefined && value < 0) {
+		diagnostics.push(errorDiagnostic('seed.invalid_number', `Expected ${field} to be non-negative.`, `${path}.${field}`));
 		return undefined;
 	}
 	return value;
@@ -312,6 +323,56 @@ function parseProviderRegistration(value: unknown, path: string, diagnostics: Se
 	};
 }
 
+function parseNativeLimit(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedExecutionProviderNativeLimitResource | null {
+	if (!isRecord(value)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected native limit to be an object.', path));
+		return null;
+	}
+	const limitAmount = nonNegativeNumberField(value, 'limitAmount', path, diagnostics);
+	if (limitAmount === undefined) {
+		diagnostics.push(errorDiagnostic('seed.missing_field', 'Missing required field: limitAmount.', `${path}.limitAmount`));
+	}
+	return {
+		id: asString(value.id) || undefined,
+		scope: asString(value.scope) || undefined,
+		limitScope: asString(value.limitScope) || undefined,
+		nativeUnit: asString(value.nativeUnit) || undefined,
+		limitAmount: limitAmount ?? 0,
+		reserveBufferPercent: nonNegativeNumberField(value, 'reserveBufferPercent', path, diagnostics),
+		resetCadence: asString(value.resetCadence) || undefined,
+		resetAt: asString(value.resetAt) || undefined,
+		confidence: asString(value.confidence) || undefined,
+		source: asString(value.source) || undefined,
+		metadata: objectField(value, 'metadata', path, diagnostics),
+	};
+}
+
+function parseExecutionProvider(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedExecutionProviderResource | null {
+	if (!isRecord(value)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected execution provider resource to be an object.', path));
+		return null;
+	}
+	const limitsValue = value.nativeLimits;
+	const nativeLimits = limitsValue === undefined
+		? []
+		: Array.isArray(limitsValue)
+			? limitsValue.map((limit, index) => parseNativeLimit(limit, `${path}.nativeLimits[${index}]`, diagnostics)).filter((limit): limit is SeedExecutionProviderNativeLimitResource => Boolean(limit))
+			: (diagnostics.push(errorDiagnostic('seed.invalid_native_limits', 'Expected nativeLimits to be an array.', `${path}.nativeLimits`)), []);
+	return {
+		id: asString(value.id) || undefined,
+		name: requireString(value, 'name', path, diagnostics),
+		kind: requireString(value, 'kind', path, diagnostics),
+		status: asString(value.status) || undefined,
+		nativeUnit: requireString(value, 'nativeUnit', path, diagnostics),
+		quotaVisibility: asString(value.quotaVisibility) || undefined,
+		maxConcurrentWorkers: nonNegativeNumberField(value, 'maxConcurrentWorkers', path, diagnostics),
+		resetCadence: asString(value.resetCadence) || undefined,
+		config: objectField(value, 'config', path, diagnostics),
+		metadata: objectField(value, 'metadata', path, diagnostics),
+		nativeLimits,
+	};
+}
+
 function parseProvider(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedCapacityProviderResource | null {
 	if (!isRecord(value)) {
 		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected capacity provider resource to be an object.', path));
@@ -323,6 +384,12 @@ function parseProvider(value: unknown, path: string, diagnostics: SeedDiagnostic
 		: Array.isArray(lanesValue)
 			? lanesValue.map((lane, index) => parseLane(lane, `${path}.lanes[${index}]`, diagnostics)).filter((lane): lane is SeedCapacityLaneResource => Boolean(lane))
 			: (diagnostics.push(errorDiagnostic('seed.invalid_lanes', 'Expected lanes to be an array.', `${path}.lanes`)), []);
+	const executionProvidersValue = value.executionProviders;
+	const executionProviders = executionProvidersValue === undefined
+		? []
+		: Array.isArray(executionProvidersValue)
+			? executionProvidersValue.map((entry, index) => parseExecutionProvider(entry, `${path}.executionProviders[${index}]`, diagnostics)).filter((entry): entry is SeedExecutionProviderResource => Boolean(entry))
+			: (diagnostics.push(errorDiagnostic('seed.invalid_execution_providers', 'Expected executionProviders to be an array.', `${path}.executionProviders`)), []);
 	return {
 		...keyBase(value, path, diagnostics),
 		team: requireString(value, 'team', path, diagnostics),
@@ -330,6 +397,7 @@ function parseProvider(value: unknown, path: string, diagnostics: SeedDiagnostic
 		kind: asString(value.kind) || undefined,
 		provider: requireString(value, 'provider', path, diagnostics),
 		billingScope: asString(value.billingScope) || undefined,
+		creditBudgetMode: asString(value.creditBudgetMode) || undefined,
 		monthlyCreditBudget: numberField(value, 'monthlyCreditBudget', path, diagnostics),
 		dailyCreditBudget: numberField(value, 'dailyCreditBudget', path, diagnostics),
 		maxConcurrentWorkdays: numberField(value, 'maxConcurrentWorkdays', path, diagnostics),
@@ -338,6 +406,7 @@ function parseProvider(value: unknown, path: string, diagnostics: SeedDiagnostic
 		registration: parseProviderRegistration(value.registration, `${path}.registration`, diagnostics),
 		metadata: objectField(value, 'metadata', path, diagnostics),
 		lanes,
+		executionProviders,
 	};
 }
 
@@ -364,6 +433,10 @@ function parseGrant(value: unknown, path: string, diagnostics: SeedDiagnostic[])
 		dailyUsdLimit: numberField(value, 'dailyUsdLimit', path, diagnostics),
 		weeklyQuotaMinutes: numberField(value, 'weeklyQuotaMinutes', path, diagnostics),
 		monthlyProviderUnits: numberField(value, 'monthlyProviderUnits', path, diagnostics),
+		portfolioAllocationPercent: numberField(value, 'portfolioAllocationPercent', path, diagnostics),
+		reservePoolPercent: numberField(value, 'reservePoolPercent', path, diagnostics),
+		maxDailyProjectCredits: numberField(value, 'maxDailyProjectCredits', path, diagnostics),
+		emergencyOverride: typeof value.emergencyOverride === 'boolean' ? value.emergencyOverride : undefined,
 		priorityWeight: numberField(value, 'priorityWeight', path, diagnostics),
 		overflowPolicy: asString(value.overflowPolicy) || undefined,
 		state: asString(value.state) || undefined,

@@ -15,7 +15,8 @@ function makeWorkspace() {
 	roots.push(root);
 	mkdirSync(resolve(root, 'packages', 'sdk'), { recursive: true });
 	mkdirSync(resolve(root, 'packages', 'sdk', '.github', 'workflows'), { recursive: true });
-	mkdirSync(resolve(root, 'migrations'), { recursive: true });
+	mkdirSync(resolve(root, 'packages', 'sdk', 'drizzle', 'd1'), { recursive: true });
+	mkdirSync(resolve(root, 'packages', 'sdk', 'drizzle', 'market'), { recursive: true });
 	writeFileSync(resolve(root, 'package.json'), JSON.stringify({
 		name: '@treeseed/market',
 		version: '1.0.0',
@@ -39,8 +40,8 @@ function makeWorkspace() {
 		},
 	}, null, 2), 'utf8');
 	writeFileSync(resolve(root, 'packages', 'sdk', '.github', 'workflows', 'publish.yml'), 'name: Publish\n', 'utf8');
-	writeFileSync(resolve(root, 'migrations', '0007_site_web_sessions.sql'), '-- web sessions\n', 'utf8');
-	writeFileSync(resolve(root, 'migrations', '0014_better_auth_integer_timestamps.sql'), '-- auth timestamps\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'sdk', 'drizzle', 'd1', '0000_treeseed_d1.sql'), '-- d1 schema\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'sdk', 'drizzle', 'market', '0000_market_control_plane.sql'), '-- market pg schema\n', 'utf8');
 	return root;
 }
 

@@ -640,30 +640,30 @@ async function configParityChecks(root: string, failures: ReleaseCandidateFailur
 }
 
 function migrationCompatibilityChecks(root: string, failures: ReleaseCandidateFailure[]): ReleaseCandidateCheck {
-	if (!existsSync(resolve(root, 'migrations'))) {
+	if (!existsSync(resolve(root, 'packages/sdk/package.json'))) {
 		return {
 			name: 'migration-compatibility',
 			status: 'skipped',
-			detail: 'No migrations directory is present in this workspace.',
+			detail: 'No SDK package checkout is present in this workspace.',
 		};
 	}
-	const requiredMigrations = [
-		'migrations/0007_site_web_sessions.sql',
-		'migrations/0014_better_auth_integer_timestamps.sql',
+	const requiredArtifacts = [
+		'packages/sdk/drizzle/d1/0000_treeseed_d1.sql',
+		'packages/sdk/drizzle/market/0000_market_control_plane.sql',
 	];
-	const missing = requiredMigrations.filter((path) => !existsSync(resolve(root, path)));
+	const missing = requiredArtifacts.filter((path) => !existsSync(resolve(root, path)));
 	for (const path of missing) {
 		addFailure(failures, {
-			code: 'missing_migration_fixture',
+			code: 'missing_drizzle_migration_artifact',
 			scope: '@treeseed/market',
-			message: `Migration compatibility check is missing ${path}.`,
+			message: `Drizzle migration compatibility check is missing ${path}.`,
 			details: { path },
 		});
 	}
 	return {
 		name: 'migration-compatibility',
 		status: missing.length > 0 ? 'failed' : 'passed',
-		detail: 'Checked required legacy web session and Better Auth migration coverage.',
+		detail: 'Checked required Drizzle migration artifacts for Market PostgreSQL and SDK D1.',
 	};
 }
 

@@ -2,10 +2,10 @@ import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { runLocalD1Migrations as applyLocalD1Migrations } from './d1-migration.ts';
 import {
-	fixtureMigrationsRoot,
 	fixtureRoot,
 	fixtureWranglerConfig,
 	corePackageRoot,
+	sdkD1MigrationsRoot,
 } from './runtime-paths.ts';
 import { resolveTreeseedToolCommand } from '../../managed-dependencies.ts';
 
@@ -47,7 +47,7 @@ export function runLocalD1Migration(persistTo) {
 	applyLocalD1Migrations({
 		cwd: fixtureRoot,
 		wranglerConfig: fixtureWranglerConfig,
-		migrationsRoot: fixtureMigrationsRoot,
+		migrationsRoot: sdkD1MigrationsRoot,
 		persistTo,
 	});
 }

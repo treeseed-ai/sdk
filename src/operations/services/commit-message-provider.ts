@@ -159,7 +159,7 @@ function changedFileGroups(paths: string[]) {
 								? 'build'
 								: path.includes('config') || path.endsWith('.yaml') || path.endsWith('.yml')
 									? 'config'
-									: path.startsWith('migrations/') || path.includes('/db/')
+									: path.startsWith('packages/sdk/drizzle/') || path.includes('/db/')
 										? 'database'
 										: path.startsWith('src/pages/') || path.startsWith('src/layouts/') || path.includes('/ui/')
 											? 'ui'

@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline/promises';
 import { resolveTreeseedWebCachePolicy } from '../../platform/deploy-config.ts';
 import { normalizeRailwayEnvironmentName } from './railway-api.ts';
 import { loadCliDeployConfig, resolveWranglerBin } from './runtime-tools.ts';
+import { sdkD1MigrationsRoot } from './runtime-paths.ts';
 
 const DEFAULT_COMPATIBILITY_DATE = '2026-04-05';
 const DEFAULT_COMPATIBILITY_FLAGS = ['nodejs_compat'];
@@ -842,7 +843,7 @@ export function buildWranglerConfigContents(tenantRoot, deployConfig, state, opt
 	const workerName = state.workerName ?? targetWorkerName(deployConfig, target);
 	const mainPath = relativeFromGeneratedRoot(resolve(tenantRoot, 'dist/_worker.js/index.js'), generatedRoot);
 	const assetsDirectory = relativeFromGeneratedRoot(resolve(tenantRoot, 'dist'), generatedRoot);
-	const migrationsDir = relativeFromGeneratedRoot(resolve(tenantRoot, 'migrations'), generatedRoot);
+	const migrationsDir = relativeFromGeneratedRoot(sdkD1MigrationsRoot, generatedRoot);
 	const vars = {
 		...buildPublicVars(deployConfig),
 		...buildLocalRuntimeVars(deployConfig, state, target, options.env),

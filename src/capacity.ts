@@ -8,10 +8,15 @@ import type {
 	CapacityProviderLane,
 	CapacityReservation,
 	CapacityScarcityLevel,
+	CreditConversionProfile,
 	CreateCapacityReservationRequest,
 	CreateCapacityRoutingDecisionRequest,
+	DerivedCapacityAvailability,
+	DerivedCapacityInput,
 	ExecutionProfile,
+	ExecutionProvider,
 	HybridExecutionPlan,
+	NativeUsageObservation,
 	PlannedTaskNode,
 	PlanningAdmissionResult,
 	PlanningPolicy,
@@ -31,6 +36,565 @@ import type {
 	WorkdayBudgetEnvelope,
 } from './sdk-types.ts';
 import type { AgentProviderProfile } from './types/agents.ts';
+
+export const ACTUAL_CREDIT_FORMULA_VERSION = 'treeseed.actual-credits.v1';
+
+export interface ActualCreditCalculationInput {
+	nativeUsage?: NativeUsageObservation | Record<string, unknown> | null;
+	conversionProfile?: CreditConversionProfile | null;
+	legacyActualCredits?: number | null;
+	actualCreditsOverride?: boolean | null;
+	reservedCredits?: number | null;
+	actualUsd?: number | null;
+	inputTokens?: number | null;
+	outputTokens?: number | null;
+	cachedInputTokens?: number | null;
+	quotaMinutes?: number | null;
+	wallMinutes?: number | null;
+	filesOpened?: number | null;
+	filesChanged?: number | null;
+	diffLinesAdded?: number | null;
+	diffLinesRemoved?: number | null;
+	testRuns?: number | null;
+	retryCount?: number | null;
+	source?: string | null;
+}
+
+export interface ActualCreditCalculation {
+	actualCredits: number;
+	formulaVersion: string;
+	source: 'central_calculator' | 'conversion_profile' | 'blended_conversion_profile' | 'legacy_override' | 'legacy_fallback' | 'reserved_fallback' | 'zero_fallback';
+	nativeUsage: NativeUsageObservation;
+	components: Record<string, number>;
+	partial: boolean;
+	interrupted: boolean;
+	conversionProfileId?: string | null;
+	conversionConfidence?: string | null;
+}
+
+function finiteActualMetric(value: unknown): number | null {
+	if (typeof value === 'number' && Number.isFinite(value)) return value;
+	if (typeof value === 'string' && value.trim()) {
+		const parsed = Number(value);
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	return null;
+}
+
+function firstActualMetric(...values: unknown[]): number | null {
+	for (const value of values) {
+		const next = finiteActualMetric(value);
+		if (next !== null) return next;
+	}
+	return null;
+}
+
+function objectActualValue(value: unknown): Record<string, unknown> {
+	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function booleanActualFlag(value: unknown): boolean {
+	return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+function roundActualCredits(value: number): number {
+	if (!Number.isFinite(value) || value <= 0) return 0;
+	return Math.round(value * 100) / 100;
+}
+
+function roundUpCreditComponent(value: number): number {
+	if (!Number.isFinite(value) || value <= 0) return 0;
+	return Math.ceil(value * 100) / 100;
+}
+
+function stringActualValue(value: unknown, fallback = '') {
+	return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+export function nativeUsageUnit(input: NativeUsageObservation | Record<string, unknown> | null | undefined): string | null {
+	const native = objectActualValue(input);
+	const explicit = stringActualValue(native.nativeUnit, stringActualValue(native.native_unit));
+	if (explicit) return explicit;
+	if (firstActualMetric(native.wallMinutes, native.wall_minutes, native.durationMinutes, native.duration_minutes) !== null) return 'wall_minute';
+	if (firstActualMetric(native.quotaMinutes, native.quota_minutes) !== null) return 'quota_minute';
+	if (firstActualMetric(native.usd, native.costUsd, native.cost_usd) !== null) return 'usd';
+	if (firstActualMetric(native.inputTokens, native.input_tokens, native.outputTokens, native.output_tokens) !== null) return 'token';
+	return null;
+}
+
+export function nativeUsageAmount(input: NativeUsageObservation | Record<string, unknown> | null | undefined, nativeUnit?: string | null): number | null {
+	const native = objectActualValue(input);
+	const unit = nativeUnit?.trim() || nativeUsageUnit(native);
+	if (!unit) return null;
+	if (unit === 'wall_minute') {
+		return firstActualMetric(native.wallMinutes, native.wall_minutes, native.durationMinutes, native.duration_minutes);
+	}
+	if (unit === 'quota_minute') {
+		return firstActualMetric(native.quotaMinutes, native.quota_minutes);
+	}
+	if (unit === 'usd') {
+		return firstActualMetric(native.usd, native.costUsd, native.cost_usd);
+	}
+	if (unit === 'token') {
+		const inputTokens = firstActualMetric(native.inputTokens, native.input_tokens) ?? 0;
+		const outputTokens = firstActualMetric(native.outputTokens, native.output_tokens) ?? 0;
+		const cachedInputTokens = firstActualMetric(native.cachedInputTokens, native.cached_input_tokens) ?? 0;
+		const total = Math.max(0, inputTokens + outputTokens - cachedInputTokens);
+		return total > 0 ? total : null;
+	}
+	return firstActualMetric(native.amount, native.value, native.nativeAmount, native.native_amount);
+}
+
+function conversionConfidence(input: {
+	completedSampleCount: number;
+	ratioVariance: number;
+	nativeUnitsPerCreditP50: number | null;
+}) {
+	if (input.completedSampleCount < 5) return 'low';
+	if (input.completedSampleCount < 20) return 'medium';
+	const p50 = Math.max(1, input.nativeUnitsPerCreditP50 ?? 1);
+	const spread = Math.sqrt(Math.max(0, input.ratioVariance)) / p50;
+	return spread <= 0.5 ? 'high' : 'medium';
+}
+
+export function selectCreditConversionProfile(input: {
+	profiles?: CreditConversionProfile[] | null;
+	taskSignature?: string | null;
+	executionProfileId?: string | null;
+	executionProviderKind?: string | null;
+	nativeUnit?: string | null;
+}) {
+	const taskSignature = input.taskSignature?.trim();
+	const executionProfileId = input.executionProfileId?.trim() || DEFAULT_EXECUTION_PROFILE_ID;
+	const executionProviderKind = input.executionProviderKind?.trim();
+	const nativeUnit = input.nativeUnit?.trim();
+	if (!taskSignature || !executionProviderKind || !nativeUnit) return null;
+	return (input.profiles ?? []).find((profile) =>
+		profile.taskSignature === taskSignature
+		&& (profile.executionProfileId || DEFAULT_EXECUTION_PROFILE_ID) === executionProfileId
+		&& profile.executionProviderKind === executionProviderKind
+		&& profile.nativeUnit === nativeUnit
+	) ?? null;
+}
+
+export function buildCreditConversionProfileFromActuals(input: {
+	taskSignature: string;
+	executionProfileId?: string | null;
+	executionProviderKind: string;
+	nativeUnit: string;
+	actuals: TaskUsageActual[];
+	formulaVersion?: string | null;
+	now?: Date | string | null;
+	id?: string | null;
+}): CreditConversionProfile {
+	const taskSignature = input.taskSignature;
+	const executionProfileId = input.executionProfileId?.trim() || DEFAULT_EXECUTION_PROFILE_ID;
+	const executionProviderKind = input.executionProviderKind.trim();
+	const nativeUnit = input.nativeUnit.trim();
+	const matching = input.actuals.filter((actual) =>
+		actual.taskSignature === taskSignature
+		&& (actual.executionProfileId || DEFAULT_EXECUTION_PROFILE_ID) === executionProfileId
+	);
+	const completed = matching.filter((actual) => !isInterruptedUsageActual(actual));
+	const interrupted = matching.filter((actual) => isInterruptedUsageActual(actual));
+	const completedRatios = completed
+		.map((actual) => {
+			const amount = nativeUsageAmount(actual.nativeUsage, nativeUnit);
+			const credits = finiteOrParsedNumber(actual.actualCredits);
+			if (amount === null || amount <= 0 || credits === null || credits <= 0) return null;
+			return {
+				nativeUnitsPerCredit: amount / credits,
+				creditsPerNativeUnit: credits / amount,
+				actualCredits: credits,
+				nativeAmount: amount,
+			};
+		})
+		.filter((value): value is {
+			nativeUnitsPerCredit: number;
+			creditsPerNativeUnit: number;
+			actualCredits: number;
+			nativeAmount: number;
+		} => value !== null);
+	const ratioP50 = estimateLearningPercentile(completedRatios.map((sample) => sample.nativeUnitsPerCredit), 50);
+	const ratioP90 = estimateLearningPercentile(completedRatios.map((sample) => sample.nativeUnitsPerCredit), 90);
+	const ratioVariance = estimateLearningVariance(completedRatios.map((sample) => sample.nativeUnitsPerCredit));
+	const outlierLimit = ratioP90 === null ? null : Math.max(ratioP90 * 1.5, (ratioP50 ?? ratioP90) + Math.sqrt(ratioVariance));
+	const filteredRatios = outlierLimit === null
+		? completedRatios
+		: completedRatios.filter((sample) => sample.nativeUnitsPerCredit <= outlierLimit);
+	const dates = matching
+		.map((actual) => actual.createdAt)
+		.filter((value): value is string => typeof value === 'string' && value.length > 0)
+		.sort();
+	const partialCredits = interrupted.reduce((total, actual) => total + Math.max(0, finiteOrParsedNumber(actual.actualCredits) ?? 0), 0);
+	const partialNativeAmount = interrupted.reduce((total, actual) => total + Math.max(0, nativeUsageAmount(actual.nativeUsage, nativeUnit) ?? 0), 0);
+	const updatedAt = input.now instanceof Date ? input.now.toISOString() : typeof input.now === 'string' ? input.now : new Date().toISOString();
+	const nativeUnitsPerCreditP50 = estimateLearningPercentile(filteredRatios.map((sample) => sample.nativeUnitsPerCredit), 50);
+	const nativeUnitsPerCreditP90 = estimateLearningPercentile(filteredRatios.map((sample) => sample.nativeUnitsPerCredit), 90);
+	return {
+		id: input.id ?? `${taskSignature}:${executionProfileId}:${executionProviderKind}:${nativeUnit}`,
+		taskSignature,
+		executionProfileId,
+		executionProviderKind,
+		nativeUnit,
+		sampleCount: matching.length,
+		completedSampleCount: completedRatios.length,
+		interruptedSampleCount: interrupted.length,
+		nativeUnitsPerCreditP50,
+		nativeUnitsPerCreditP90,
+		creditsPerNativeUnitP50: estimateLearningPercentile(filteredRatios.map((sample) => sample.creditsPerNativeUnit), 50),
+		creditsPerNativeUnitP90: estimateLearningPercentile(filteredRatios.map((sample) => sample.creditsPerNativeUnit), 90),
+		actualCreditsP50: estimateLearningPercentile(filteredRatios.map((sample) => sample.actualCredits), 50),
+		actualCreditsP90: estimateLearningPercentile(filteredRatios.map((sample) => sample.actualCredits), 90),
+		confidence: conversionConfidence({
+			completedSampleCount: completedRatios.length,
+			ratioVariance,
+			nativeUnitsPerCreditP50,
+		}),
+		formulaVersion: input.formulaVersion ?? ACTUAL_CREDIT_FORMULA_VERSION,
+		metadata: {
+			outlierCount: outlierLimit === null ? 0 : completedRatios.length - filteredRatios.length,
+			ratioVariance,
+			partialCredits,
+			partialNativeAmount,
+			firstSampleAt: dates[0] ?? null,
+			lastSampleAt: dates.at(-1) ?? null,
+		},
+		updatedAt,
+	};
+}
+
+function derivedConfidenceRank(value: string | null | undefined) {
+	if (value === 'high') return 3;
+	if (value === 'medium') return 2;
+	return 1;
+}
+
+function derivedConfidenceFromRank(rank: number): 'low' | 'medium' | 'high' {
+	if (rank >= 3) return 'high';
+	if (rank >= 2) return 'medium';
+	return 'low';
+}
+
+function lowerDerivedConfidence(value: string | null | undefined): 'low' | 'medium' | 'high' {
+	return derivedConfidenceFromRank(Math.min(derivedConfidenceRank(value), 2));
+}
+
+function nativeRemainingAmount(input: Record<string, unknown>, nativeUnit: string) {
+	return nativeUsageAmount({
+		...input,
+		nativeUnit,
+	}, nativeUnit);
+}
+
+function reservationNativeDebit(reservation: CapacityReservation, executionProvider: ExecutionProvider, nativeUnit: string) {
+	if (!['reserved', 'consuming', 'consumed', 'failed', 'overran_pending_approval'].includes(reservation.state)) {
+		return { reserved: 0, consumed: 0, inferred: false };
+	}
+	const metadata = readRecord(reservation.metadata);
+	const metadataNativeUnit = typeof metadata.nativeUnit === 'string' && metadata.nativeUnit.trim()
+		? metadata.nativeUnit.trim()
+		: typeof metadata.native_unit === 'string' && metadata.native_unit.trim()
+			? metadata.native_unit.trim()
+			: null;
+	const directReserved = finiteOrParsedNumber(reservation.reservedNativeAmount);
+	const directConsumed = finiteOrParsedNumber(reservation.consumedNativeAmount);
+	if ((reservation.nativeUnit ?? null) === nativeUnit && (directReserved !== null || directConsumed !== null)) {
+		return {
+			reserved: ['reserved', 'consuming'].includes(reservation.state) ? Math.max(directReserved ?? 0, directConsumed ?? 0) : 0,
+			consumed: ['consumed', 'failed', 'overran_pending_approval'].includes(reservation.state) ? Math.max(directConsumed ?? 0, 0) : 0,
+			inferred: false,
+		};
+	}
+	const metadataReserved = finiteOrParsedNumber(metadata.reservedNativeAmount) ?? finiteOrParsedNumber(metadata.reserved_native_amount);
+	const metadataConsumed = finiteOrParsedNumber(metadata.consumedNativeAmount) ?? finiteOrParsedNumber(metadata.consumed_native_amount);
+	if (metadataNativeUnit === nativeUnit && (metadataReserved !== null || metadataConsumed !== null)) {
+		return {
+			reserved: ['reserved', 'consuming'].includes(reservation.state) ? Math.max(metadataReserved ?? 0, metadataConsumed ?? 0) : 0,
+			consumed: ['consumed', 'failed', 'overran_pending_approval'].includes(reservation.state) ? Math.max(metadataConsumed ?? 0, 0) : 0,
+			inferred: true,
+		};
+	}
+	if (nativeUnit === 'usd' && reservation.reservedUsd !== null) {
+		return {
+			reserved: ['reserved', 'consuming'].includes(reservation.state) ? Math.max(reservation.reservedUsd ?? 0, reservation.consumedUsd ?? 0) : 0,
+			consumed: ['consumed', 'failed', 'overran_pending_approval'].includes(reservation.state) ? Math.max(reservation.consumedUsd ?? 0, 0) : 0,
+			inferred: true,
+		};
+	}
+	if (reservation.reservedProviderUnits !== null && executionProvider.nativeUnit === nativeUnit) {
+		return {
+			reserved: ['reserved', 'consuming'].includes(reservation.state) ? Math.max(reservation.reservedProviderUnits ?? 0, reservation.consumedProviderUnits ?? 0) : 0,
+			consumed: ['consumed', 'failed', 'overran_pending_approval'].includes(reservation.state) ? Math.max(reservation.consumedProviderUnits ?? 0, 0) : 0,
+			inferred: true,
+		};
+	}
+	return { reserved: 0, consumed: 0, inferred: false };
+}
+
+function roundDownCredits(value: number) {
+	if (!Number.isFinite(value) || value <= 0) return 0;
+	return Math.floor(value * 100) / 100;
+}
+
+export function deriveAvailableCredits(input: DerivedCapacityInput): DerivedCapacityAvailability {
+	const executionProvider = input.executionProvider;
+	const nativeUnit = input.nativeUnit?.trim() || input.nativeLimit?.nativeUnit || executionProvider.nativeUnit;
+	const reasons: string[] = [];
+	const configuredNativeLimit = finiteOrParsedNumber(input.nativeLimit?.limitAmount);
+	const observationRemaining = nativeRemainingAmount(readRecord(input.latestObservation?.nativeRemaining), nativeUnit);
+	let nativeBase: number | null = null;
+	let nativeRemainingSource: DerivedCapacityAvailability['nativeRemainingSource'] = 'unknown';
+	if (observationRemaining !== null) {
+		nativeBase = Math.max(0, observationRemaining);
+		nativeRemainingSource = 'observation';
+		reasons.push('observation_remaining');
+	} else if (configuredNativeLimit !== null) {
+		nativeBase = Math.max(0, configuredNativeLimit);
+		nativeRemainingSource = 'configured_limit';
+		reasons.push(executionProvider.quotaVisibility === 'opaque' ? 'opaque_limit_fallback' : 'configured_limit');
+	} else {
+		reasons.push('missing_native_limit');
+	}
+	const scopedReservations = (input.activeReservations ?? []).filter((reservation) =>
+		reservation.executionProviderId
+			? reservation.executionProviderId === executionProvider.id
+			: reservation.capacityProviderId === executionProvider.capacityProviderId
+	);
+	let activeReservedNativeAmount = 0;
+	let activeConsumedNativeAmount = 0;
+	let inferredReservationCount = 0;
+	for (const reservation of scopedReservations) {
+		const debit = reservationNativeDebit(reservation, executionProvider, nativeUnit);
+		activeReservedNativeAmount += debit.reserved;
+		activeConsumedNativeAmount += debit.consumed;
+		if (debit.inferred && (debit.reserved > 0 || debit.consumed > 0)) inferredReservationCount += 1;
+	}
+	if (activeReservedNativeAmount > 0) reasons.push('active_native_reservations');
+	if (inferredReservationCount > 0) reasons.push('inferred_legacy_native_reservations');
+	const reserveBufferPercent = Math.max(0, finiteOrParsedNumber(input.nativeLimit?.reserveBufferPercent) ?? 0);
+	const reserveBufferNativeAmount = configuredNativeLimit === null ? 0 : (configuredNativeLimit * reserveBufferPercent) / 100;
+	if (reserveBufferNativeAmount > 0) reasons.push('reserve_buffer');
+	const availableNativeAmount = Math.max(0, (nativeBase ?? 0) - activeReservedNativeAmount - reserveBufferNativeAmount);
+	const profile = input.conversionProfile ?? null;
+	let nativeUnitsPerCredit = profile?.nativeUnitsPerCreditP90 ?? null;
+	let confidence = profile?.confidence ?? 'low';
+	if (nativeUnitsPerCredit !== null && nativeUnitsPerCredit > 0) {
+		reasons.push('p90_conversion_profile');
+	} else if (profile?.nativeUnitsPerCreditP50 !== null && profile?.nativeUnitsPerCreditP50 !== undefined && profile.nativeUnitsPerCreditP50 > 0) {
+		nativeUnitsPerCredit = profile.nativeUnitsPerCreditP50;
+		confidence = lowerDerivedConfidence(profile.confidence);
+		reasons.push('p50_conversion_fallback');
+	} else {
+		reasons.push('missing_conversion_profile');
+	}
+	if (nativeRemainingSource === 'unknown') confidence = 'low';
+	const derivedAvailableCredits = nativeUnitsPerCredit !== null && nativeUnitsPerCredit > 0
+		? roundDownCredits(availableNativeAmount / nativeUnitsPerCredit)
+		: null;
+	return {
+		executionProviderId: executionProvider.id,
+		capacityProviderId: executionProvider.capacityProviderId,
+		executionProviderKind: executionProvider.kind,
+		nativeUnit,
+		scope: input.scope ?? input.nativeLimit?.scope ?? null,
+		configuredNativeLimit,
+		observedNativeRemaining: observationRemaining,
+		nativeRemainingSource,
+		activeReservedNativeAmount,
+		activeConsumedNativeAmount,
+		reserveBufferPercent,
+		reserveBufferNativeAmount,
+		availableNativeAmount,
+		nativeUnitsPerCredit,
+		conversionProfileId: profile?.id ?? null,
+		conversionTaskSignature: profile?.taskSignature ?? null,
+		conversionConfidence: profile?.confidence ?? null,
+		derivedAvailableCredits,
+		confidence,
+		resetAt: input.latestObservation?.resetAt ?? input.nativeLimit?.resetAt ?? null,
+		reasons: [...new Set(reasons)],
+		metadata: {
+			quotaVisibility: executionProvider.quotaVisibility,
+			latestObservedAt: input.latestObservation?.observedAt ?? null,
+			conversionFormulaVersion: profile?.formulaVersion ?? null,
+		},
+	};
+}
+
+export function calculateActualCredits(input: ActualCreditCalculationInput): ActualCreditCalculation {
+	const native = objectActualValue(input.nativeUsage);
+	const metadata = objectActualValue(native.metadata);
+	const wallMinutes = firstActualMetric(input.wallMinutes, native.wallMinutes, native.wall_minutes, native.durationMinutes, native.duration_minutes);
+	const quotaMinutes = firstActualMetric(input.quotaMinutes, native.quotaMinutes, native.quota_minutes);
+	const inputTokens = firstActualMetric(input.inputTokens, native.inputTokens, native.input_tokens);
+	const outputTokens = firstActualMetric(input.outputTokens, native.outputTokens, native.output_tokens);
+	const cachedInputTokens = firstActualMetric(input.cachedInputTokens, native.cachedInputTokens, native.cached_input_tokens);
+	const usd = firstActualMetric(input.actualUsd, native.usd, native.costUsd, native.cost_usd);
+	const filesOpened = firstActualMetric(input.filesOpened, native.filesOpened, native.files_opened);
+	const filesChanged = firstActualMetric(input.filesChanged, native.filesChanged, native.files_changed);
+	const diffLinesAdded = firstActualMetric(input.diffLinesAdded, native.diffLinesAdded, native.diff_lines_added);
+	const diffLinesRemoved = firstActualMetric(input.diffLinesRemoved, native.diffLinesRemoved, native.diff_lines_removed);
+	const testRuns = firstActualMetric(input.testRuns, native.testRuns, native.test_runs);
+	const retryCount = firstActualMetric(input.retryCount, native.retryCount, native.retry_count);
+	const nativeUnit = typeof native.nativeUnit === 'string'
+		? native.nativeUnit
+		: typeof native.native_unit === 'string'
+			? native.native_unit
+			: nativeUsageUnit(native)
+				?? (wallMinutes !== null ? 'wall_minute' : quotaMinutes !== null ? 'quota_minute' : usd !== null ? 'usd' : Math.max(0, (inputTokens ?? 0) + (outputTokens ?? 0) - (cachedInputTokens ?? 0)) > 0 ? 'token' : null);
+	const observedAt = typeof native.observedAt === 'string'
+		? native.observedAt
+		: typeof native.observed_at === 'string'
+			? native.observed_at
+			: null;
+	const partial = booleanActualFlag(native.partial) || booleanActualFlag(metadata.partial);
+	const interrupted = booleanActualFlag(native.interrupted) || booleanActualFlag(metadata.interrupted);
+	const legacyActualCredits = finiteActualMetric(input.legacyActualCredits);
+	const reservedCredits = finiteActualMetric(input.reservedCredits);
+
+	const components: Record<string, number> = {};
+	if (wallMinutes !== null && wallMinutes > 0) {
+		components.wallMinutes = Math.ceil(wallMinutes / 5);
+	} else if (quotaMinutes !== null && quotaMinutes > 0) {
+		components.quotaMinutes = Math.ceil(quotaMinutes / 5);
+	}
+	if (usd !== null && usd > 0) components.usd = roundUpCreditComponent(usd / 0.03);
+	const billableTokens = Math.max(0, (inputTokens ?? 0) + (outputTokens ?? 0) - (cachedInputTokens ?? 0));
+	if (billableTokens > 0) components.tokens = Math.ceil(billableTokens / 8000);
+	if (filesChanged !== null && filesChanged > 0) components.filesChanged = Math.ceil(filesChanged) * 2;
+	if (testRuns !== null && testRuns > 0) components.testRuns = Math.ceil(testRuns);
+	if (retryCount !== null && retryCount > 0) components.retryCount = Math.ceil(retryCount) * 3;
+
+	const nativeUsage: NativeUsageObservation = {
+		...native,
+		nativeUnit,
+		wallMinutes,
+		quotaMinutes,
+		inputTokens,
+		outputTokens,
+		cachedInputTokens,
+		usd,
+		filesOpened,
+		filesChanged,
+		diffLinesAdded,
+		diffLinesRemoved,
+		testRuns,
+		retryCount,
+		partial,
+		interrupted,
+		source: typeof native.source === 'string' ? native.source : input.source ?? null,
+		observedAt,
+		metadata,
+	};
+	const componentTotal = Object.values(components).reduce((total, value) => total + value, 0);
+	const conversionProfile = input.conversionProfile ?? null;
+	const conversionProfileNativeAmount = conversionProfile
+		? nativeUsageAmount(nativeUsage, conversionProfile.nativeUnit)
+		: null;
+	const conversionProfileCredits = conversionProfileNativeAmount !== null
+		&& conversionProfileNativeAmount > 0
+		&& conversionProfile.nativeUnitsPerCreditP50 !== null
+		&& conversionProfile.nativeUnitsPerCreditP50 > 0
+		? roundActualCredits(conversionProfileNativeAmount / conversionProfile.nativeUnitsPerCreditP50)
+		: null;
+	if (legacyActualCredits !== null && input.actualCreditsOverride === true) {
+		return {
+			actualCredits: roundActualCredits(legacyActualCredits),
+			formulaVersion: ACTUAL_CREDIT_FORMULA_VERSION,
+			source: 'legacy_override',
+			nativeUsage,
+			components,
+			partial,
+			interrupted,
+			conversionProfileId: conversionProfile?.id ?? null,
+			conversionConfidence: conversionProfile?.confidence ?? null,
+		};
+	}
+	if (conversionProfile?.confidence === 'high' && conversionProfileCredits !== null) {
+		return {
+			actualCredits: conversionProfileCredits,
+			formulaVersion: ACTUAL_CREDIT_FORMULA_VERSION,
+			source: 'conversion_profile',
+			nativeUsage,
+			components: {
+				...components,
+				conversionProfile: conversionProfileCredits,
+			},
+			partial,
+			interrupted,
+			conversionProfileId: conversionProfile.id ?? null,
+			conversionConfidence: conversionProfile.confidence,
+		};
+	}
+	if (conversionProfile?.confidence === 'medium' && conversionProfileCredits !== null && componentTotal > 0) {
+		return {
+			actualCredits: roundActualCredits((conversionProfileCredits + componentTotal) / 2),
+			formulaVersion: ACTUAL_CREDIT_FORMULA_VERSION,
+			source: 'blended_conversion_profile',
+			nativeUsage,
+			components: {
+				...components,
+				conversionProfile: conversionProfileCredits,
+				bootstrap: roundActualCredits(componentTotal),
+			},
+			partial,
+			interrupted,
+			conversionProfileId: conversionProfile.id ?? null,
+			conversionConfidence: conversionProfile.confidence,
+		};
+	}
+	if (componentTotal > 0) {
+		return {
+			actualCredits: roundActualCredits(componentTotal),
+			formulaVersion: ACTUAL_CREDIT_FORMULA_VERSION,
+			source: 'central_calculator',
+			nativeUsage,
+			components,
+			partial,
+			interrupted,
+			conversionProfileId: conversionProfile?.id ?? null,
+			conversionConfidence: conversionProfile?.confidence ?? null,
+		};
+	}
+	if (legacyActualCredits !== null) {
+		return {
+			actualCredits: roundActualCredits(legacyActualCredits),
+			formulaVersion: ACTUAL_CREDIT_FORMULA_VERSION,
+			source: 'legacy_fallback',
+			nativeUsage,
+			components,
+			partial,
+			interrupted,
+			conversionProfileId: conversionProfile?.id ?? null,
+			conversionConfidence: conversionProfile?.confidence ?? null,
+		};
+	}
+	if (reservedCredits !== null) {
+		return {
+			actualCredits: roundActualCredits(reservedCredits),
+			formulaVersion: ACTUAL_CREDIT_FORMULA_VERSION,
+			source: 'reserved_fallback',
+			nativeUsage,
+			components,
+			partial,
+			interrupted,
+			conversionProfileId: conversionProfile?.id ?? null,
+			conversionConfidence: conversionProfile?.confidence ?? null,
+		};
+	}
+	return {
+		actualCredits: 0,
+		formulaVersion: ACTUAL_CREDIT_FORMULA_VERSION,
+		source: 'zero_fallback',
+		nativeUsage,
+		components,
+		partial,
+		interrupted,
+		conversionProfileId: conversionProfile?.id ?? null,
+		conversionConfidence: conversionProfile?.confidence ?? null,
+	};
+}
 
 export interface CapacityEstimateInput {
 	taskSignature?: string | null;
@@ -71,6 +635,7 @@ export interface CapacityLaneScore {
 	congestionPenalty?: number;
 	attentionPenalty?: number;
 	contextPenalty?: number;
+	nativePressurePenalty?: number;
 	utilityScore?: number;
 	utilityPerCredit?: number;
 	predictedReserveImpact?: number;
@@ -211,13 +776,21 @@ export interface RouteAndReserveCandidate {
 	providerId: string;
 	laneId: string;
 	grantId: string;
+	executionProviderId?: string | null;
 	executionProfileId?: string | null;
+	nativeUnit?: string | null;
 	remainingCredits: number | null;
+	staticRemainingCredits?: number | null;
+	derivedAvailableCredits?: number | null;
+	reservedNativeAmount?: number | null;
+	derivedCapacity?: DerivedCapacityAvailability | null;
+	derivedCapacityMode?: 'static' | 'hybrid' | 'derived';
 	score: CapacityLaneScore;
 	eligible: boolean;
 	reasons: string[];
 	estimate?: CapacityTaskEstimate;
 	pressure?: CapacityRoutePressure;
+	nativePressure?: CapacityRouteNativePressure | null;
 	qualityFit?: number;
 	attentionEstimate?: AttentionEstimate;
 	utilityEstimate?: UtilityEstimate;
@@ -225,6 +798,18 @@ export interface RouteAndReserveCandidate {
 	trustScore?: number | null;
 	successProbability?: number | null;
 	spilloverReason?: string | null;
+}
+
+export interface CapacityRouteNativePressure {
+	executionProviderId: string;
+	nativeUnit: string;
+	availableNativeAmount: number;
+	activeReservedNativeAmount: number;
+	reserveBufferNativeAmount: number;
+	reservedNativeAmount: number | null;
+	pressureRatio: number | null;
+	confidence: string;
+	reasons: string[];
 }
 
 export interface CapacityRoutePressure {
@@ -263,6 +848,12 @@ export type RouteAndReserveResult =
 			estimatedCreditsP50: number;
 			estimatedCreditsP90: number;
 			reservedCredits: number;
+			executionProviderId?: string | null;
+			nativeUnit?: string | null;
+			reservedNativeAmount?: number | null;
+			derivedAvailableCredits?: number | null;
+			derivedCapacityMode?: 'static' | 'hybrid' | 'derived';
+			nativePressure?: CapacityRouteNativePressure | null;
 			executionProfileId?: string | null;
 			costMultiplier?: number | null;
 			score?: number | null;
@@ -319,6 +910,10 @@ function finiteOrParsedNumber(value: unknown) {
 		return Number.isFinite(parsed) ? parsed : null;
 	}
 	return null;
+}
+
+function stringValue(value: unknown) {
+	return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 function positiveNumber(value: unknown, fallback: number) {
@@ -1076,6 +1671,23 @@ function activeReservationDebit(reservation: CapacityReservation) {
 	return 0;
 }
 
+function metadataNumber(metadata: Record<string, unknown> | undefined, ...keys: string[]) {
+	for (const key of keys) {
+		const value = finiteOrParsedNumber(metadata?.[key]);
+		if (value !== null) return value;
+	}
+	return null;
+}
+
+function metadataBoolean(metadata: Record<string, unknown> | undefined, ...keys: string[]) {
+	for (const key of keys) {
+		const value = metadata?.[key];
+		if (value === true || value === 'true' || value === 1 || value === '1') return true;
+		if (value === false || value === 'false' || value === 0 || value === '0') return false;
+	}
+	return false;
+}
+
 function grantMatchesReservation(grant: CapacityGrant, reservation: CapacityReservation) {
 	if (grant.teamId !== reservation.teamId) return false;
 	if (grant.capacityProviderId !== reservation.capacityProviderId) return false;
@@ -1084,13 +1696,59 @@ function grantMatchesReservation(grant: CapacityGrant, reservation: CapacityRese
 	return true;
 }
 
-function grantRemainingCredits(plan: CapacityPlan, grant: CapacityGrant) {
-	const limit = grant.dailyCreditLimit ?? grant.monthlyCreditLimit;
+function grantPortfolioAllocationPercent(grant: CapacityGrant) {
+	const metadata = readRecord(grant.metadata);
+	const value = finiteOrParsedNumber(grant.portfolioAllocationPercent)
+		?? metadataNumber(metadata, 'portfolioAllocationPercent', 'allocationPercent', 'derivedAllocationPercent', 'percentOfDerivedCapacity');
+	if (value === null) return null;
+	return Math.max(0, Math.min(100, value));
+}
+
+function grantReservePoolPercent(grant: CapacityGrant) {
+	const metadata = readRecord(grant.metadata);
+	const value = finiteOrParsedNumber(grant.reservePoolPercent)
+		?? metadataNumber(metadata, 'reservePoolPercent', 'minimumReservePercent', 'reservePercent');
+	if (value === null) return 0;
+	return Math.max(0, Math.min(100, value));
+}
+
+function grantMaxDailyProjectCredits(grant: CapacityGrant) {
+	const metadata = readRecord(grant.metadata);
+	const value = finiteOrParsedNumber(grant.maxDailyProjectCredits)
+		?? metadataNumber(metadata, 'maxDailyProjectCredits', 'dailyProjectCreditCap');
+	if (value === null) return null;
+	return Math.max(0, value);
+}
+
+function grantEmergencyOverrideEnabled(grant: CapacityGrant) {
+	return grant.emergencyOverride === true || metadataBoolean(readRecord(grant.metadata), 'emergencyOverride', 'emergencyOverrideEnabled');
+}
+
+function routeEmergencyOverrideRequested(input: RouteAndReserveInput) {
+	return metadataBoolean(readRecord(input.metadata), 'emergencyOverride', 'emergencyOverrideRequested');
+}
+
+function grantPortfolioCreditLimit(grant: CapacityGrant, derivedCapacity?: DerivedCapacityAvailability | null) {
+	const percent = grantPortfolioAllocationPercent(grant);
+	if (percent === null || !derivedCapacity || derivedCapacity.derivedAvailableCredits === null) return null;
+	return Math.max(0, (derivedCapacity.derivedAvailableCredits * percent) / 100);
+}
+
+function grantRemainingCredits(plan: CapacityPlan, grant: CapacityGrant, derivedCapacity?: DerivedCapacityAvailability | null, input?: RouteAndReserveInput) {
+	const staticLimit = grant.dailyCreditLimit ?? grant.monthlyCreditLimit;
+	const portfolioLimit = grantPortfolioCreditLimit(grant, derivedCapacity);
+	const maxDailyProjectCredits = grantMaxDailyProjectCredits(grant);
+	const limits = [staticLimit, portfolioLimit, maxDailyProjectCredits]
+		.filter((value): value is number => value !== null && value !== undefined);
+	const limit = limits.length > 0 ? Math.min(...limits.map((value) => Number(value))) : null;
 	if (limit === null || limit === undefined) return null;
+	const reservePoolPercent = portfolioLimit !== null ? grantReservePoolPercent(grant) : 0;
+	const emergencyOverride = input ? routeEmergencyOverrideRequested(input) && grantEmergencyOverrideEnabled(grant) : false;
+	const reservePoolCredits = emergencyOverride ? 0 : (limit * reservePoolPercent) / 100;
 	const debits = plan.activeReservations
 		.filter((reservation) => grantMatchesReservation(grant, reservation))
 		.reduce((total, reservation) => total + reservationDebit(reservation), 0);
-	return Math.max(0, Number(limit) - debits);
+	return Math.max(0, Number(limit) - reservePoolCredits - debits);
 }
 
 function providerIsEligible(provider: CapacityProvider, input: RouteAndReserveInput) {
@@ -1826,6 +2484,170 @@ function routePriceMultiplier(provider: CapacityProvider, lane: CapacityProvider
 		?? 1);
 }
 
+function capacityBudgetMode(provider: CapacityProvider): 'static' | 'hybrid' | 'derived' {
+	const mode = String(provider.creditBudgetMode ?? 'derived').toLowerCase();
+	if (mode === 'static' || mode === 'hybrid' || mode === 'derived') return mode;
+	return 'derived';
+}
+
+function routeDerivedEntries(plan: CapacityPlan): DerivedCapacityAvailability[] {
+	const seen = new Set<string>();
+	const entries: DerivedCapacityAvailability[] = [];
+	const add = (entry: DerivedCapacityAvailability | null | undefined) => {
+		if (!entry) return;
+		const key = `${entry.executionProviderId}:${entry.nativeUnit}:${entry.scope ?? ''}`;
+		if (seen.has(key)) return;
+		seen.add(key);
+		entries.push(entry);
+	};
+	for (const entry of plan.derivedCapacity?.entries ?? []) add(entry);
+	for (const summary of plan.derivedCapacity?.providers ?? []) {
+		for (const entry of summary.entries ?? []) add(entry);
+	}
+	return entries;
+}
+
+function routeDerivedHints(provider: CapacityProvider, lane: CapacityProviderLane, profile: ExecutionProfile) {
+	const providerMetadata = readRecord(provider.metadata);
+	const laneMetadata = readRecord(lane.metadata);
+	const profileMetadata = readRecord(profile.metadata);
+	return {
+		executionProviderId: stringValue(laneMetadata.executionProviderId)
+			?? stringValue(providerMetadata.executionProviderId)
+			?? stringValue(profileMetadata.executionProviderId),
+		executionProviderKind: stringValue(laneMetadata.executionProviderKind)
+			?? stringValue(laneMetadata.providerKind)
+			?? stringValue(providerMetadata.executionProviderKind)
+			?? stringValue(providerMetadata.providerKind)
+			?? stringValue(profileMetadata.executionProviderKind),
+		nativeUnit: stringValue(laneMetadata.nativeUnit)
+			?? stringValue(providerMetadata.nativeUnit)
+			?? stringValue(profileMetadata.nativeUnit),
+	};
+}
+
+function selectDerivedCapacityForRoute(
+	plan: CapacityPlan,
+	provider: CapacityProvider,
+	lane: CapacityProviderLane,
+	profile: ExecutionProfile,
+) {
+	const hints = routeDerivedHints(provider, lane, profile);
+	const entries = routeDerivedEntries(plan)
+		.filter((entry) => entry.capacityProviderId === provider.id || entry.capacityProviderId === null)
+		.filter((entry) => !hints.executionProviderId || entry.executionProviderId === hints.executionProviderId)
+		.filter((entry) => !hints.executionProviderKind || entry.executionProviderKind === hints.executionProviderKind)
+		.filter((entry) => !hints.nativeUnit || entry.nativeUnit === hints.nativeUnit);
+	return entries.sort((left, right) => {
+		const leftExact = (hints.executionProviderId && left.executionProviderId === hints.executionProviderId ? 20 : 0)
+			+ (hints.executionProviderKind && left.executionProviderKind === hints.executionProviderKind ? 10 : 0)
+			+ (hints.nativeUnit && left.nativeUnit === hints.nativeUnit ? 5 : 0);
+		const rightExact = (hints.executionProviderId && right.executionProviderId === hints.executionProviderId ? 20 : 0)
+			+ (hints.executionProviderKind && right.executionProviderKind === hints.executionProviderKind ? 10 : 0)
+			+ (hints.nativeUnit && right.nativeUnit === hints.nativeUnit ? 5 : 0);
+		return rightExact - leftExact
+			|| derivedConfidenceRank(right.confidence) - derivedConfidenceRank(left.confidence)
+			|| Number(left.derivedAvailableCredits ?? Number.POSITIVE_INFINITY) - Number(right.derivedAvailableCredits ?? Number.POSITIVE_INFINITY)
+			|| Number(left.availableNativeAmount ?? Number.POSITIVE_INFINITY) - Number(right.availableNativeAmount ?? Number.POSITIVE_INFINITY)
+			|| `${left.executionProviderId}:${left.nativeUnit}`.localeCompare(`${right.executionProviderId}:${right.nativeUnit}`);
+	})[0] ?? null;
+}
+
+function roundUpNativeAmount(value: number) {
+	if (!Number.isFinite(value) || value <= 0) return 0;
+	return Math.ceil(value * 1000) / 1000;
+}
+
+function nativePressureForRoute(
+	entry: DerivedCapacityAvailability | null,
+	estimate: CapacityTaskEstimate,
+): CapacityRouteNativePressure | null {
+	if (!entry) return null;
+	const reservedNativeAmount = entry.nativeUnitsPerCredit && entry.nativeUnitsPerCredit > 0
+		? roundUpNativeAmount(estimate.reservedCredits * entry.nativeUnitsPerCredit)
+		: null;
+	const pressureRatio = reservedNativeAmount !== null && entry.availableNativeAmount > 0
+		? reservedNativeAmount / entry.availableNativeAmount
+		: entry.availableNativeAmount <= 0 ? 1 : null;
+	return {
+		executionProviderId: entry.executionProviderId,
+		nativeUnit: entry.nativeUnit,
+		availableNativeAmount: entry.availableNativeAmount,
+		activeReservedNativeAmount: entry.activeReservedNativeAmount,
+		reserveBufferNativeAmount: entry.reserveBufferNativeAmount,
+		reservedNativeAmount,
+		pressureRatio,
+		confidence: entry.confidence,
+		reasons: entry.reasons,
+	};
+}
+
+function derivedRouteBudget(input: {
+	mode: 'static' | 'hybrid' | 'derived';
+	staticRemainingCredits: number | null;
+	derivedCapacity: DerivedCapacityAvailability | null;
+	estimate: CapacityTaskEstimate;
+	grant: CapacityGrant;
+}) {
+	const reasons: string[] = [];
+	const derivedCredits = input.derivedCapacity?.derivedAvailableCredits ?? null;
+	const confidenceRank = derivedConfidenceRank(input.derivedCapacity?.confidence);
+	const hasUsableDerived = Boolean(input.derivedCapacity && derivedCredits !== null && confidenceRank >= 2);
+	const portfolioPercent = grantPortfolioAllocationPercent(input.grant);
+	let remainingCredits = input.staticRemainingCredits;
+	let appliesDerived = false;
+
+	if (input.mode === 'derived') {
+		appliesDerived = true;
+		if (!input.derivedCapacity) {
+			reasons.push('missing_derived_capacity', 'insufficient_budget');
+			return { remainingCredits: null, appliesDerived, hasUsableDerived: false, reasons };
+		}
+		if (derivedCredits === null) {
+			reasons.push('missing_conversion_profile', 'insufficient_budget');
+			return { remainingCredits: null, appliesDerived, hasUsableDerived: false, reasons };
+		}
+		if (confidenceRank < 2) {
+			reasons.push('derived_capacity_learning', 'insufficient_budget');
+			return { remainingCredits: derivedCredits, appliesDerived, hasUsableDerived: false, reasons };
+		}
+		remainingCredits = input.staticRemainingCredits === null ? derivedCredits : Math.min(input.staticRemainingCredits, derivedCredits);
+		reasons.push('derived_capacity_available');
+		if (portfolioPercent !== null) reasons.push('portfolio_allocation_applied');
+	} else if (input.mode === 'hybrid') {
+		if (hasUsableDerived) {
+			appliesDerived = true;
+			remainingCredits = input.staticRemainingCredits === null
+				? derivedCredits
+				: Math.min(input.staticRemainingCredits, derivedCredits);
+			reasons.push('hybrid_derived_capacity_applied');
+			if (portfolioPercent !== null) reasons.push('portfolio_allocation_applied');
+			if (input.staticRemainingCredits !== null && input.staticRemainingCredits <= derivedCredits) {
+				reasons.push('hybrid_static_cap_applied');
+			}
+		} else if (input.derivedCapacity && derivedCredits !== null && confidenceRank < 2) {
+			reasons.push('derived_capacity_learning');
+		} else if (input.derivedCapacity && derivedCredits === null) {
+			reasons.push('missing_conversion_profile');
+		}
+	}
+
+	if (appliesDerived && hasUsableDerived && derivedCredits !== null && derivedCredits < input.estimate.reservedCredits) {
+		reasons.push('derived_capacity_exhausted');
+		if (input.grant.overflowPolicy === 'approval_required') {
+			reasons.push('approval_required');
+		} else if (input.grant.overflowPolicy === 'fallback_lane') {
+			reasons.push('fallback_lane_exhausted');
+		} else if (input.grant.overflowPolicy === 'deny' || input.grant.overflowPolicy === 'hard_grant' || input.mode === 'derived') {
+			reasons.push('insufficient_budget');
+		} else {
+			reasons.push('soft_budget_pressure', 'derived_capacity_pressure');
+		}
+	}
+
+	return { remainingCredits, appliesDerived, hasUsableDerived, reasons };
+}
+
 function routeScore(input: {
 	provider: CapacityProvider;
 	lane: CapacityProviderLane;
@@ -1843,6 +2665,7 @@ function routeScore(input: {
 	successProbability: number;
 	cooperativeRouting: boolean;
 	baseScore: CapacityLaneScore;
+	nativePressure?: CapacityRouteNativePressure | null;
 }) {
 	const reasons = [...input.baseScore.reasons];
 	const qualityFit = input.minimumQualityWeight > 0
@@ -1865,6 +2688,9 @@ function routeScore(input: {
 	const predictedReserveImpact = input.reservePrediction?.reserveCredits ?? 0;
 	const laneModelFit = input.profile.modelClass && input.lane.modelClass === input.profile.modelClass ? 15 : 0;
 	const riskBonus = input.minimumQualityWeight >= 1.25 && input.profile.qualityWeight >= input.minimumQualityWeight ? 10 : 0;
+	const nativePressurePenalty = input.nativePressure?.pressureRatio !== null && input.nativePressure?.pressureRatio !== undefined
+		? Math.max(0, input.nativePressure.pressureRatio) * 35
+		: 0;
 	const score = input.baseScore.score
 		+ qualityBonus
 		+ laneModelFit
@@ -1877,6 +2703,7 @@ function routeScore(input: {
 		- quota
 		- attention
 		- context
+		- nativePressurePenalty
 		- Math.max(0, priceMultiplier - 1) * 8
 		- (input.reservePrediction && input.reservePrediction.reservePercent > 0 ? Math.min(20, predictedReserveImpact * 0.25) : 0);
 	if (laneModelFit > 0) reasons.push('execution_profile_model_class_match');
@@ -1884,6 +2711,7 @@ function routeScore(input: {
 	if (quota > 0) reasons.push('quota_pressure');
 	if (attention > 0) reasons.push('attention_pressure');
 	if (context > 0) reasons.push('context_pressure');
+	if (nativePressurePenalty > 0) reasons.push('native_capacity_pressure');
 	if (utilityBonus > 0) reasons.push('utility_scored');
 	if (cooperativeBonus > 0) reasons.push('cooperative_route_scored');
 	if (predictedReserveImpact > 0) reasons.push('predictive_reserve_applied');
@@ -1896,6 +2724,7 @@ function routeScore(input: {
 		congestionPenalty: congestion,
 		attentionPenalty: attention,
 		contextPenalty: context,
+		nativePressurePenalty,
 		utilityScore: input.utilityEstimate.utilityScore,
 		utilityPerCredit: input.utilityEstimate.utilityPerCredit,
 		predictedReserveImpact,
@@ -1937,10 +2766,23 @@ export function routeAndReserveCapacity(input: RouteAndReserveInput): RouteAndRe
 			&& (!grant.laneId || grant.laneId === lane.id)
 		);
 		for (const lane of lanes) {
-			const remainingCredits = grantRemainingCredits(input.plan, grant);
 			const pressure = capacityRoutePressure(input.plan, provider, lane);
 			for (const profile of executionProfiles) {
 				const estimate = estimateForRouteProfile(input, profile);
+				const derivedCapacityMode = capacityBudgetMode(provider);
+				const derivedCapacity = derivedCapacityMode === 'static'
+					? null
+					: selectDerivedCapacityForRoute(input.plan, provider, lane, profile);
+				const staticRemainingCredits = grantRemainingCredits(input.plan, grant, derivedCapacity, input);
+				const routeBudget = derivedRouteBudget({
+					mode: derivedCapacityMode,
+					staticRemainingCredits,
+					derivedCapacity,
+					estimate,
+					grant,
+				});
+				const remainingCredits = routeBudget.remainingCredits;
+				const nativePressure = nativePressureForRoute(derivedCapacity, estimate);
 				const attentionEstimate = attentionEstimateForRoute(input, profile);
 				const utilityEstimate = input.utilityEstimate ?? estimateUtilityForTask({
 					classification: input.classification,
@@ -1970,7 +2812,7 @@ export function routeAndReserveCapacity(input: RouteAndReserveInput): RouteAndRe
 					utilityEstimate,
 				});
 				const estimateInput = { ...input, estimate };
-				const reasons = lanePolicyReasons(lane, estimateInput);
+				const reasons = [...routeBudget.reasons, ...lanePolicyReasons(lane, estimateInput)];
 				let spilloverReason: string | null = null;
 				if (trustRequirement !== null && trustScore < trustRequirement) reasons.push('trust_below_requirement');
 				if (utilityPolicy.minimumUtilityScore !== null && utilityEstimate.utilityScore < utilityPolicy.minimumUtilityScore) reasons.push('utility_below_minimum');
@@ -2017,6 +2859,7 @@ export function routeAndReserveCapacity(input: RouteAndReserveInput): RouteAndRe
 				if (pressure.quotaRemainingPercent !== null && pressure.quotaRemainingPercent <= 0) reasons.push('quota_exhausted');
 				if (pressure.sessionRemainingMinutes !== null && pressure.sessionRemainingMinutes <= 0) reasons.push('session_exhausted');
 				if (remainingCredits !== null && remainingCredits < estimate.reservedCredits) {
+					if (grantPortfolioAllocationPercent(grant) !== null) reasons.push('portfolio_allocation_exhausted');
 					if (grant.overflowPolicy === 'approval_required') {
 						reasons.push('approval_required');
 					} else if (grant.overflowPolicy === 'fallback_lane') {
@@ -2053,21 +2896,36 @@ export function routeAndReserveCapacity(input: RouteAndReserveInput): RouteAndRe
 					successProbability,
 					cooperativeRouting,
 					baseScore,
+					nativePressure,
 				});
 				candidates.push({
 					providerId: provider.id,
 					laneId: lane.id,
 					grantId: grant.id,
+					executionProviderId: routeBudget.appliesDerived && routeBudget.hasUsableDerived ? derivedCapacity?.executionProviderId ?? null : null,
 					executionProfileId: profile.id,
+					nativeUnit: routeBudget.appliesDerived && routeBudget.hasUsableDerived ? derivedCapacity?.nativeUnit ?? null : null,
 					remainingCredits,
+					staticRemainingCredits,
+					derivedAvailableCredits: derivedCapacity?.derivedAvailableCredits ?? null,
+					reservedNativeAmount: routeBudget.appliesDerived && routeBudget.hasUsableDerived ? nativePressure?.reservedNativeAmount ?? null : null,
+					derivedCapacity: derivedCapacity ?? null,
+					derivedCapacityMode,
 					score,
 					eligible: reasons.filter((reason) =>
 						reason !== 'soft_budget_pressure'
 						&& reason !== 'execution_profile_not_preferred'
+						&& reason !== 'derived_capacity_available'
+						&& reason !== 'hybrid_derived_capacity_applied'
+						&& reason !== 'hybrid_static_cap_applied'
+						&& reason !== 'portfolio_allocation_applied'
+						&& reason !== 'derived_capacity_learning'
+						&& reason !== 'missing_conversion_profile'
 					).length === 0,
 					reasons: [...new Set([...reasons, ...score.reasons])],
 					estimate,
 					pressure,
+					nativePressure,
 					qualityFit: score.qualityFit,
 					attentionEstimate,
 					utilityEstimate,
@@ -2141,8 +2999,14 @@ export function routeAndReserveCapacity(input: RouteAndReserveInput): RouteAndRe
 		providerId: candidate.providerId,
 		laneId: candidate.laneId,
 		grantId: candidate.grantId,
+		executionProviderId: candidate.executionProviderId ?? null,
 		executionProfileId: candidate.executionProfileId ?? null,
+		nativeUnit: candidate.nativeUnit ?? null,
 		remainingCredits: candidate.remainingCredits,
+		staticRemainingCredits: candidate.staticRemainingCredits ?? null,
+		derivedAvailableCredits: candidate.derivedAvailableCredits ?? null,
+		reservedNativeAmount: candidate.reservedNativeAmount ?? null,
+		derivedCapacityMode: candidate.derivedCapacityMode ?? 'derived',
 		eligible: candidate.eligible,
 		reasons: candidate.reasons,
 		score: candidate.score.score,
@@ -2154,6 +3018,8 @@ export function routeAndReserveCapacity(input: RouteAndReserveInput): RouteAndRe
 		trustScore: candidate.trustScore ?? null,
 		successProbability: candidate.successProbability ?? null,
 		pressure: candidate.pressure ?? null,
+		nativePressure: candidate.nativePressure ?? null,
+		derivedCapacity: candidate.derivedCapacity ?? null,
 		spilloverReason: candidate.spilloverReason ?? null,
 	}));
 	const scorePayload = Object.fromEntries(candidates.map((candidate) => [routeCandidateKey(candidate), candidate.score]));
@@ -2166,9 +3032,18 @@ export function routeAndReserveCapacity(input: RouteAndReserveInput): RouteAndRe
 		taskId: input.taskId ?? null,
 		state: 'reserved',
 		reservedCredits: selectedEstimate.reservedCredits,
+		executionProviderId: selected.executionProviderId ?? null,
+		nativeUnit: selected.nativeUnit ?? null,
+		reservedNativeAmount: selected.reservedNativeAmount ?? null,
 		metadata: {
 			...(input.metadata ?? {}),
 			grantId: grant.id,
+			derivedCapacityMode: selected.derivedCapacityMode ?? 'derived',
+			executionProviderId: selected.executionProviderId ?? null,
+			nativeUnit: selected.nativeUnit ?? null,
+			reservedNativeAmount: selected.reservedNativeAmount ?? null,
+			derivedAvailableCredits: selected.derivedAvailableCredits ?? null,
+			nativePressure: selected.nativePressure ?? null,
 			executionProfileId: selected.executionProfileId ?? selectedEstimate.executionProfileId ?? null,
 			taskSignature: selectedEstimate.taskSignature,
 			estimatedCreditsP50: selectedEstimate.estimatedCreditsP50,
@@ -2197,6 +3072,13 @@ export function routeAndReserveCapacity(input: RouteAndReserveInput): RouteAndRe
 			grantId: grant.id,
 			executionProfileId: selected.executionProfileId ?? selectedEstimate.executionProfileId ?? null,
 			remainingCreditsBefore: selected.remainingCredits,
+			staticRemainingCreditsBefore: selected.staticRemainingCredits ?? null,
+			derivedCapacityMode: selected.derivedCapacityMode ?? 'derived',
+			executionProviderId: selected.executionProviderId ?? null,
+			nativeUnit: selected.nativeUnit ?? null,
+			reservedNativeAmount: selected.reservedNativeAmount ?? null,
+			derivedAvailableCreditsBefore: selected.derivedAvailableCredits ?? null,
+			nativePressure: selected.nativePressure ?? null,
 			reservedCredits: selectedEstimate.reservedCredits,
 			attentionEstimate: selected.attentionEstimate ?? null,
 			utilityEstimate: selected.utilityEstimate ?? null,
@@ -2223,6 +3105,12 @@ export function routeAndReserveCapacity(input: RouteAndReserveInput): RouteAndRe
 			...(input.metadata ?? {}),
 			grantId: grant.id,
 			executionProfileId: selected.executionProfileId ?? selectedEstimate.executionProfileId ?? null,
+			derivedCapacityMode: selected.derivedCapacityMode ?? 'derived',
+			executionProviderId: selected.executionProviderId ?? null,
+			nativeUnit: selected.nativeUnit ?? null,
+			reservedNativeAmount: selected.reservedNativeAmount ?? null,
+			derivedAvailableCredits: selected.derivedAvailableCredits ?? null,
+			nativePressure: selected.nativePressure ?? null,
 			taskSignature: selectedEstimate.taskSignature,
 			attentionEstimate: selected.attentionEstimate ?? null,
 			utilityEstimate: selected.utilityEstimate ?? null,
@@ -2251,6 +3139,12 @@ export function routeAndReserveCapacity(input: RouteAndReserveInput): RouteAndRe
 			estimatedCreditsP90: selectedEstimate.estimatedCreditsP90,
 			reservedCredits: selectedEstimate.reservedCredits,
 			executionProfileId: selected.executionProfileId ?? selectedEstimate.executionProfileId ?? null,
+			executionProviderId: selected.executionProviderId ?? null,
+			nativeUnit: selected.nativeUnit ?? null,
+			reservedNativeAmount: selected.reservedNativeAmount ?? null,
+			derivedAvailableCredits: selected.derivedAvailableCredits ?? null,
+			derivedCapacityMode: selected.derivedCapacityMode ?? 'derived',
+			nativePressure: selected.nativePressure ?? null,
 			costMultiplier: selectedEstimate.costMultiplier ?? null,
 			score: selected.score.score,
 			attentionEstimate: selected.attentionEstimate ?? null,

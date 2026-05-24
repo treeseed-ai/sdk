@@ -1,9 +1,8 @@
-import { resolve } from 'node:path';
 import { runLocalD1Migrations } from '../src/operations/services/d1-migration.ts';
 import { createPersistentDeployTarget, ensureGeneratedWranglerConfig } from '../src/operations/services/deploy.ts';
+import { sdkD1MigrationsRoot } from '../src/operations/services/runtime-paths.ts';
 
 const tenantRoot = process.cwd();
-const migrationsRoot = resolve(tenantRoot, 'migrations');
 const { wranglerPath: wranglerConfig } = ensureGeneratedWranglerConfig(tenantRoot, {
 	target: createPersistentDeployTarget('local'),
 	env: process.env,
@@ -12,7 +11,7 @@ const { wranglerPath: wranglerConfig } = ensureGeneratedWranglerConfig(tenantRoo
 runLocalD1Migrations({
 	cwd: tenantRoot,
 	wranglerConfig,
-	migrationsRoot,
+	migrationsRoot: sdkD1MigrationsRoot,
 	persistTo: process.env.TREESEED_API_D1_LOCAL_PERSIST_TO?.trim() || undefined,
 });
 

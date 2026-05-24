@@ -234,11 +234,23 @@ function runGit(commandArgs: string[], cwd?: string) {
 	}
 }
 
+function readGitOutput(commandArgs: string[], cwd?: string) {
+	const result = spawnSync('git', commandArgs, {
+		cwd,
+		stdio: 'pipe',
+		encoding: 'utf8',
+	});
+	return result.status === 0 ? result.stdout.trim() : null;
+}
+
 function materializeGitTemplateSource(product: TemplateProductDefinition, options: TemplateCatalogOptions) {
 	const cacheRoot = resolveTemplateSourceCacheRoot(product, options);
 	const repoRoot = resolve(cacheRoot, 'repo');
 	const source = product.fulfillment.source;
-	if (!existsSync(resolve(repoRoot, '.git'))) {
+	const cachedOrigin = existsSync(resolve(repoRoot, '.git'))
+		? readGitOutput(['config', '--get', 'remote.origin.url'], repoRoot)
+		: null;
+	if (cachedOrigin !== source.repoUrl) {
 		rmSync(cacheRoot, { recursive: true, force: true });
 		mkdirSync(cacheRoot, { recursive: true });
 		runGit(['clone', '--no-checkout', source.repoUrl, repoRoot]);
