@@ -1,11 +1,11 @@
-CREATE TABLE "agent_messages" (
+CREATE TABLE IF NOT EXISTS "agent_messages" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"type" text NOT NULL,
 	"payload_json" text NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "agent_pool_registrations" (
+CREATE TABLE IF NOT EXISTS "agent_pool_registrations" (
 	"id" text PRIMARY KEY NOT NULL,
 	"pool_id" text NOT NULL,
 	"project_id" text NOT NULL,
@@ -21,7 +21,7 @@ CREATE TABLE "agent_pool_registrations" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "agent_pool_scale_decisions" (
+CREATE TABLE IF NOT EXISTS "agent_pool_scale_decisions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"pool_id" text NOT NULL,
 	"project_id" text NOT NULL,
@@ -36,7 +36,7 @@ CREATE TABLE "agent_pool_scale_decisions" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "agent_pools" (
+CREATE TABLE IF NOT EXISTS "agent_pools" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -54,14 +54,14 @@ CREATE TABLE "agent_pools" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "agent_runs" (
+CREATE TABLE IF NOT EXISTS "agent_runs" (
 	"run_id" text PRIMARY KEY NOT NULL,
 	"agent_slug" text NOT NULL,
 	"status" text NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "api_tokens" (
+CREATE TABLE IF NOT EXISTS "api_tokens" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"kind" text NOT NULL,
@@ -77,7 +77,7 @@ CREATE TABLE "api_tokens" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "approval_requests" (
+CREATE TABLE IF NOT EXISTS "approval_requests" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"project_id" text NOT NULL,
@@ -103,7 +103,7 @@ CREATE TABLE "approval_requests" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "audit_events" (
+CREATE TABLE IF NOT EXISTS "audit_events" (
 	"id" text PRIMARY KEY NOT NULL,
 	"actor_type" text NOT NULL,
 	"actor_id" text,
@@ -114,7 +114,7 @@ CREATE TABLE "audit_events" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "auth_sessions" (
+CREATE TABLE IF NOT EXISTS "auth_sessions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"session_type" text NOT NULL,
@@ -127,7 +127,7 @@ CREATE TABLE "auth_sessions" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "better_auth_account" (
+CREATE TABLE IF NOT EXISTS "better_auth_account" (
 	"id" text PRIMARY KEY NOT NULL,
 	"accountId" text NOT NULL,
 	"providerId" text NOT NULL,
@@ -143,7 +143,7 @@ CREATE TABLE "better_auth_account" (
 	"updatedAt" integer NOT NULL
 );
 
-CREATE TABLE "better_auth_session" (
+CREATE TABLE IF NOT EXISTS "better_auth_session" (
 	"id" text PRIMARY KEY NOT NULL,
 	"expiresAt" integer NOT NULL,
 	"token" text NOT NULL,
@@ -155,7 +155,7 @@ CREATE TABLE "better_auth_session" (
 	CONSTRAINT "better_auth_session_token_unique" UNIQUE("token")
 );
 
-CREATE TABLE "better_auth_user" (
+CREATE TABLE IF NOT EXISTS "better_auth_user" (
 	"id" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"email" text NOT NULL,
@@ -169,7 +169,7 @@ CREATE TABLE "better_auth_user" (
 	CONSTRAINT "better_auth_user_email_unique" UNIQUE("email")
 );
 
-CREATE TABLE "better_auth_verification" (
+CREATE TABLE IF NOT EXISTS "better_auth_verification" (
 	"id" text PRIMARY KEY NOT NULL,
 	"identifier" text NOT NULL,
 	"value" text NOT NULL,
@@ -178,7 +178,7 @@ CREATE TABLE "better_auth_verification" (
 	"updatedAt" integer NOT NULL
 );
 
-CREATE TABLE "capacity_grants" (
+CREATE TABLE IF NOT EXISTS "capacity_grants" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"lane_id" text,
@@ -200,7 +200,7 @@ CREATE TABLE "capacity_grants" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "capacity_ledger_entries" (
+CREATE TABLE IF NOT EXISTS "capacity_ledger_entries" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"lane_id" text,
@@ -218,7 +218,7 @@ CREATE TABLE "capacity_ledger_entries" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "capacity_provider_api_keys" (
+CREATE TABLE IF NOT EXISTS "capacity_provider_api_keys" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -236,7 +236,7 @@ CREATE TABLE "capacity_provider_api_keys" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "capacity_provider_deployments" (
+CREATE TABLE IF NOT EXISTS "capacity_provider_deployments" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"capacity_provider_id" text NOT NULL,
@@ -255,7 +255,7 @@ CREATE TABLE "capacity_provider_deployments" (
 	"completed_at" text
 );
 
-CREATE TABLE "capacity_provider_hosts" (
+CREATE TABLE IF NOT EXISTS "capacity_provider_hosts" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"host_id" text NOT NULL,
@@ -266,7 +266,7 @@ CREATE TABLE "capacity_provider_hosts" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "capacity_provider_lanes" (
+CREATE TABLE IF NOT EXISTS "capacity_provider_lanes" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"name" text NOT NULL,
@@ -283,7 +283,7 @@ CREATE TABLE "capacity_provider_lanes" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "capacity_provider_registrations" (
+CREATE TABLE IF NOT EXISTS "capacity_provider_registrations" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -300,7 +300,7 @@ CREATE TABLE "capacity_provider_registrations" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "capacity_providers" (
+CREATE TABLE IF NOT EXISTS "capacity_providers" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text,
 	"owner_team_id" text,
@@ -320,7 +320,7 @@ CREATE TABLE "capacity_providers" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "capacity_reservations" (
+CREATE TABLE IF NOT EXISTS "capacity_reservations" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"execution_provider_id" text,
@@ -345,7 +345,7 @@ CREATE TABLE "capacity_reservations" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "capacity_routing_decisions" (
+CREATE TABLE IF NOT EXISTS "capacity_routing_decisions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_id" text,
 	"work_day_id" text,
@@ -361,7 +361,7 @@ CREATE TABLE "capacity_routing_decisions" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "catalog_artifact_versions" (
+CREATE TABLE IF NOT EXISTS "catalog_artifact_versions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"item_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -375,7 +375,7 @@ CREATE TABLE "catalog_artifact_versions" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "catalog_item_collaborators" (
+CREATE TABLE IF NOT EXISTS "catalog_item_collaborators" (
 	"id" text PRIMARY KEY NOT NULL,
 	"item_id" text NOT NULL,
 	"subject_type" text NOT NULL,
@@ -386,7 +386,7 @@ CREATE TABLE "catalog_item_collaborators" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "catalog_items" (
+CREATE TABLE IF NOT EXISTS "catalog_items" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"kind" text NOT NULL,
@@ -404,14 +404,14 @@ CREATE TABLE "catalog_items" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "contact_submissions" (
+CREATE TABLE IF NOT EXISTS "contact_submissions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"email" text NOT NULL,
 	"message" text NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "credit_conversion_profiles" (
+CREATE TABLE IF NOT EXISTS "credit_conversion_profiles" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_signature" text NOT NULL,
 	"execution_profile_id" text DEFAULT 'standard-code-model' NOT NULL,
@@ -433,7 +433,7 @@ CREATE TABLE "credit_conversion_profiles" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "cursor_state" (
+CREATE TABLE IF NOT EXISTS "cursor_state" (
 	"agent_slug" text,
 	"cursor_key" text,
 	"status" text NOT NULL,
@@ -444,7 +444,7 @@ CREATE TABLE "cursor_state" (
 	CONSTRAINT "cursor_state_agent_slug_cursor_key_pk" PRIMARY KEY("agent_slug","cursor_key")
 );
 
-CREATE TABLE "device_codes" (
+CREATE TABLE IF NOT EXISTS "device_codes" (
 	"id" text PRIMARY KEY NOT NULL,
 	"device_code" text NOT NULL,
 	"user_code" text NOT NULL,
@@ -459,7 +459,7 @@ CREATE TABLE "device_codes" (
 	CONSTRAINT "device_codes_user_code_unique" UNIQUE("user_code")
 );
 
-CREATE TABLE "entitlements" (
+CREATE TABLE IF NOT EXISTS "entitlements" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text,
 	"project_id" text,
@@ -470,7 +470,7 @@ CREATE TABLE "entitlements" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "execution_provider_native_limits" (
+CREATE TABLE IF NOT EXISTS "execution_provider_native_limits" (
 	"id" text PRIMARY KEY NOT NULL,
 	"execution_provider_id" text NOT NULL,
 	"scope" text NOT NULL,
@@ -486,7 +486,7 @@ CREATE TABLE "execution_provider_native_limits" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "execution_provider_observations" (
+CREATE TABLE IF NOT EXISTS "execution_provider_observations" (
 	"id" text PRIMARY KEY NOT NULL,
 	"execution_provider_id" text NOT NULL,
 	"observed_at" text NOT NULL,
@@ -501,7 +501,7 @@ CREATE TABLE "execution_provider_observations" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "execution_providers" (
+CREATE TABLE IF NOT EXISTS "execution_providers" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"capacity_provider_id" text,
@@ -518,7 +518,7 @@ CREATE TABLE "execution_providers" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "graph_runs" (
+CREATE TABLE IF NOT EXISTS "graph_runs" (
 	"id" text PRIMARY KEY NOT NULL,
 	"work_day_id" text NOT NULL,
 	"corpus_hash" text NOT NULL,
@@ -531,7 +531,7 @@ CREATE TABLE "graph_runs" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "hub_content_sources" (
+CREATE TABLE IF NOT EXISTS "hub_content_sources" (
 	"id" text PRIMARY KEY NOT NULL,
 	"hub_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -549,7 +549,7 @@ CREATE TABLE "hub_content_sources" (
 	CONSTRAINT "hub_content_sources_hub_id_unique" UNIQUE("hub_id")
 );
 
-CREATE TABLE "hub_launch_events" (
+CREATE TABLE IF NOT EXISTS "hub_launch_events" (
 	"id" text PRIMARY KEY NOT NULL,
 	"launch_id" text NOT NULL,
 	"seq" integer NOT NULL,
@@ -564,7 +564,7 @@ CREATE TABLE "hub_launch_events" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "hub_launches" (
+CREATE TABLE IF NOT EXISTS "hub_launches" (
 	"id" text PRIMARY KEY NOT NULL,
 	"hub_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -581,7 +581,7 @@ CREATE TABLE "hub_launches" (
 	"completed_at" text
 );
 
-CREATE TABLE "hub_repositories" (
+CREATE TABLE IF NOT EXISTS "hub_repositories" (
 	"id" text PRIMARY KEY NOT NULL,
 	"hub_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -603,7 +603,7 @@ CREATE TABLE "hub_repositories" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "hub_workspace_links" (
+CREATE TABLE IF NOT EXISTS "hub_workspace_links" (
 	"id" text PRIMARY KEY NOT NULL,
 	"hub_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -622,7 +622,7 @@ CREATE TABLE "hub_workspace_links" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "knowledge_packs" (
+CREATE TABLE IF NOT EXISTS "knowledge_packs" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"slug" text NOT NULL,
@@ -638,7 +638,7 @@ CREATE TABLE "knowledge_packs" (
 	CONSTRAINT "knowledge_packs_slug_unique" UNIQUE("slug")
 );
 
-CREATE TABLE "lease_state" (
+CREATE TABLE IF NOT EXISTS "lease_state" (
 	"model" text,
 	"item_key" text,
 	"status" text NOT NULL,
@@ -653,7 +653,7 @@ CREATE TABLE "lease_state" (
 	CONSTRAINT "lease_state_model_item_key_pk" PRIMARY KEY("model","item_key")
 );
 
-CREATE TABLE "market_auth_credentials" (
+CREATE TABLE IF NOT EXISTS "market_auth_credentials" (
 	"user_id" text PRIMARY KEY NOT NULL,
 	"email" text NOT NULL,
 	"username" text,
@@ -665,7 +665,7 @@ CREATE TABLE "market_auth_credentials" (
 	CONSTRAINT "market_auth_credentials_username_unique" UNIQUE("username")
 );
 
-CREATE TABLE "market_auth_password_resets" (
+CREATE TABLE IF NOT EXISTS "market_auth_password_resets" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"token_hash" text NOT NULL,
@@ -675,7 +675,7 @@ CREATE TABLE "market_auth_password_resets" (
 	CONSTRAINT "market_auth_password_resets_token_hash_unique" UNIQUE("token_hash")
 );
 
-CREATE TABLE "market_operation_runners" (
+CREATE TABLE IF NOT EXISTS "market_operation_runners" (
 	"id" text PRIMARY KEY NOT NULL,
 	"runner_key" text NOT NULL,
 	"name" text NOT NULL,
@@ -692,7 +692,7 @@ CREATE TABLE "market_operation_runners" (
 	CONSTRAINT "market_operation_runners_runner_key_unique" UNIQUE("runner_key")
 );
 
-CREATE TABLE "message_queue" (
+CREATE TABLE IF NOT EXISTS "message_queue" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"message_type" text NOT NULL,
 	"status" text NOT NULL,
@@ -712,7 +712,7 @@ CREATE TABLE "message_queue" (
 	"meta_json" text NOT NULL
 );
 
-CREATE TABLE "native_usage_observations" (
+CREATE TABLE IF NOT EXISTS "native_usage_observations" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_usage_actual_id" text,
 	"task_id" text,
@@ -732,7 +732,7 @@ CREATE TABLE "native_usage_observations" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "permissions" (
+CREATE TABLE IF NOT EXISTS "permissions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"key" text NOT NULL,
 	"resource" text NOT NULL,
@@ -743,7 +743,7 @@ CREATE TABLE "permissions" (
 	CONSTRAINT "permissions_key_unique" UNIQUE("key")
 );
 
-CREATE TABLE "platform_operation_events" (
+CREATE TABLE IF NOT EXISTS "platform_operation_events" (
 	"id" text PRIMARY KEY NOT NULL,
 	"operation_id" text NOT NULL,
 	"seq" integer NOT NULL,
@@ -752,7 +752,7 @@ CREATE TABLE "platform_operation_events" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "platform_operations" (
+CREATE TABLE IF NOT EXISTS "platform_operations" (
 	"id" text PRIMARY KEY NOT NULL,
 	"namespace" text NOT NULL,
 	"operation" text NOT NULL,
@@ -773,7 +773,7 @@ CREATE TABLE "platform_operations" (
 	"cancelled_at" text
 );
 
-CREATE TABLE "platform_repository_claims" (
+CREATE TABLE IF NOT EXISTS "platform_repository_claims" (
 	"id" text PRIMARY KEY NOT NULL,
 	"repository_key" text NOT NULL,
 	"runner_id" text NOT NULL,
@@ -787,7 +787,7 @@ CREATE TABLE "platform_repository_claims" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "priority_overrides" (
+CREATE TABLE IF NOT EXISTS "priority_overrides" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"model" text NOT NULL,
@@ -799,7 +799,7 @@ CREATE TABLE "priority_overrides" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "priority_snapshots" (
+CREATE TABLE IF NOT EXISTS "priority_snapshots" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"work_day_id" text,
@@ -810,7 +810,7 @@ CREATE TABLE "priority_snapshots" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "project_capability_grants" (
+CREATE TABLE IF NOT EXISTS "project_capability_grants" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"label" text,
@@ -827,7 +827,7 @@ CREATE TABLE "project_capability_grants" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "project_connections" (
+CREATE TABLE IF NOT EXISTS "project_connections" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"mode" text NOT NULL,
@@ -844,7 +844,7 @@ CREATE TABLE "project_connections" (
 	CONSTRAINT "project_connections_project_id_unique" UNIQUE("project_id")
 );
 
-CREATE TABLE "project_deployments" (
+CREATE TABLE IF NOT EXISTS "project_deployments" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -862,7 +862,7 @@ CREATE TABLE "project_deployments" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "project_environments" (
+CREATE TABLE IF NOT EXISTS "project_environments" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -880,7 +880,7 @@ CREATE TABLE "project_environments" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "project_hosting" (
+CREATE TABLE IF NOT EXISTS "project_hosting" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"hosting_kind" text NOT NULL,
@@ -896,7 +896,7 @@ CREATE TABLE "project_hosting" (
 	CONSTRAINT "project_hosting_project_id_unique" UNIQUE("project_id")
 );
 
-CREATE TABLE "project_infrastructure_resources" (
+CREATE TABLE IF NOT EXISTS "project_infrastructure_resources" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -909,7 +909,7 @@ CREATE TABLE "project_infrastructure_resources" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "project_summary_snapshots" (
+CREATE TABLE IF NOT EXISTS "project_summary_snapshots" (
 	"project_id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"summary_json" text NOT NULL,
@@ -918,7 +918,7 @@ CREATE TABLE "project_summary_snapshots" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "project_update_plans" (
+CREATE TABLE IF NOT EXISTS "project_update_plans" (
 	"id" text PRIMARY KEY NOT NULL,
 	"hub_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -934,7 +934,7 @@ CREATE TABLE "project_update_plans" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "project_workday_summaries" (
+CREATE TABLE IF NOT EXISTS "project_workday_summaries" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -949,7 +949,7 @@ CREATE TABLE "project_workday_summaries" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "projects" (
+CREATE TABLE IF NOT EXISTS "projects" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"slug" text NOT NULL,
@@ -961,7 +961,7 @@ CREATE TABLE "projects" (
 	CONSTRAINT "projects_slug_unique" UNIQUE("slug")
 );
 
-CREATE TABLE "provider_credential_sessions" (
+CREATE TABLE IF NOT EXISTS "provider_credential_sessions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"project_id" text,
@@ -979,7 +979,7 @@ CREATE TABLE "provider_credential_sessions" (
 	"metadata_json" text DEFAULT '{}' NOT NULL
 );
 
-CREATE TABLE "remote_job_events" (
+CREATE TABLE IF NOT EXISTS "remote_job_events" (
 	"id" text PRIMARY KEY NOT NULL,
 	"job_id" text NOT NULL,
 	"seq" integer NOT NULL,
@@ -988,7 +988,7 @@ CREATE TABLE "remote_job_events" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "remote_jobs" (
+CREATE TABLE IF NOT EXISTS "remote_jobs" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"namespace" text NOT NULL,
@@ -1011,7 +1011,7 @@ CREATE TABLE "remote_jobs" (
 	"cancelled_at" text
 );
 
-CREATE TABLE "reports" (
+CREATE TABLE IF NOT EXISTS "reports" (
 	"id" text PRIMARY KEY NOT NULL,
 	"work_day_id" text NOT NULL,
 	"kind" text NOT NULL,
@@ -1021,7 +1021,7 @@ CREATE TABLE "reports" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "repository_claims" (
+CREATE TABLE IF NOT EXISTS "repository_claims" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"repository_id" text NOT NULL,
@@ -1036,7 +1036,7 @@ CREATE TABLE "repository_claims" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "repository_hosts" (
+CREATE TABLE IF NOT EXISTS "repository_hosts" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text,
 	"provider" text NOT NULL,
@@ -1059,14 +1059,14 @@ CREATE TABLE "repository_hosts" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "role_permissions" (
+CREATE TABLE IF NOT EXISTS "role_permissions" (
 	"role_id" text,
 	"permission_id" text,
 	"created_at" text NOT NULL,
 	CONSTRAINT "role_permissions_role_id_permission_id_pk" PRIMARY KEY("role_id","permission_id")
 );
 
-CREATE TABLE "roles" (
+CREATE TABLE IF NOT EXISTS "roles" (
 	"id" text PRIMARY KEY NOT NULL,
 	"key" text NOT NULL,
 	"description" text,
@@ -1074,7 +1074,7 @@ CREATE TABLE "roles" (
 	CONSTRAINT "roles_key_unique" UNIQUE("key")
 );
 
-CREATE TABLE "runner_scale_decisions" (
+CREATE TABLE IF NOT EXISTS "runner_scale_decisions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -1087,14 +1087,14 @@ CREATE TABLE "runner_scale_decisions" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "runtime_envelopes" (
+CREATE TABLE IF NOT EXISTS "runtime_envelopes" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"record_type" text NOT NULL,
 	"payload_json" text NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "runtime_records" (
+CREATE TABLE IF NOT EXISTS "runtime_records" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"record_type" text NOT NULL,
 	"record_key" text NOT NULL,
@@ -1108,7 +1108,7 @@ CREATE TABLE "runtime_records" (
 	"meta_json" text NOT NULL
 );
 
-CREATE TABLE "scale_decisions" (
+CREATE TABLE IF NOT EXISTS "scale_decisions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -1122,7 +1122,7 @@ CREATE TABLE "scale_decisions" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "seed_runs" (
+CREATE TABLE IF NOT EXISTS "seed_runs" (
 	"id" text PRIMARY KEY NOT NULL,
 	"seed_name" text NOT NULL,
 	"seed_version" integer NOT NULL,
@@ -1140,7 +1140,7 @@ CREATE TABLE "seed_runs" (
 	"completed_at" text
 );
 
-CREATE TABLE "service_credentials" (
+CREATE TABLE IF NOT EXISTS "service_credentials" (
 	"id" text PRIMARY KEY NOT NULL,
 	"service_id" text NOT NULL,
 	"name" text NOT NULL,
@@ -1154,12 +1154,12 @@ CREATE TABLE "service_credentials" (
 	CONSTRAINT "service_credentials_service_id_unique" UNIQUE("service_id")
 );
 
-CREATE TABLE "subscribers" (
+CREATE TABLE IF NOT EXISTS "subscribers" (
 	"email" text PRIMARY KEY NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "task_credit_ledger" (
+CREATE TABLE IF NOT EXISTS "task_credit_ledger" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"work_day_id" text NOT NULL,
@@ -1170,7 +1170,7 @@ CREATE TABLE "task_credit_ledger" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "task_estimate_profiles" (
+CREATE TABLE IF NOT EXISTS "task_estimate_profiles" (
 	"task_signature" text,
 	"execution_profile_id" text DEFAULT 'standard-code-model',
 	"sample_count" integer DEFAULT 0 NOT NULL,
@@ -1196,7 +1196,7 @@ CREATE TABLE "task_estimate_profiles" (
 	CONSTRAINT "task_estimate_profiles_task_signature_execution_profile_id_pk" PRIMARY KEY("task_signature","execution_profile_id")
 );
 
-CREATE TABLE "task_estimates" (
+CREATE TABLE IF NOT EXISTS "task_estimates" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_id" text,
 	"work_day_id" text,
@@ -1218,7 +1218,7 @@ CREATE TABLE "task_estimates" (
 	"execution_profile_id" text DEFAULT 'standard-code-model' NOT NULL
 );
 
-CREATE TABLE "task_events" (
+CREATE TABLE IF NOT EXISTS "task_events" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_id" text NOT NULL,
 	"seq" integer NOT NULL,
@@ -1227,7 +1227,7 @@ CREATE TABLE "task_events" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "task_outputs" (
+CREATE TABLE IF NOT EXISTS "task_outputs" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_id" text NOT NULL,
 	"output_json" text NOT NULL,
@@ -1235,7 +1235,7 @@ CREATE TABLE "task_outputs" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "task_usage_actuals" (
+CREATE TABLE IF NOT EXISTS "task_usage_actuals" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_id" text,
 	"work_day_id" text,
@@ -1267,7 +1267,7 @@ CREATE TABLE "task_usage_actuals" (
 	"execution_profile_id" text DEFAULT 'standard-code-model' NOT NULL
 );
 
-CREATE TABLE "tasks" (
+CREATE TABLE IF NOT EXISTS "tasks" (
 	"id" text PRIMARY KEY NOT NULL,
 	"work_day_id" text NOT NULL,
 	"agent_id" text NOT NULL,
@@ -1293,7 +1293,7 @@ CREATE TABLE "tasks" (
 	CONSTRAINT "tasks_idempotency_key_unique" UNIQUE("idempotency_key")
 );
 
-CREATE TABLE "team_api_keys" (
+CREATE TABLE IF NOT EXISTS "team_api_keys" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"name" text NOT NULL,
@@ -1307,7 +1307,7 @@ CREATE TABLE "team_api_keys" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "team_inbox_items" (
+CREATE TABLE IF NOT EXISTS "team_inbox_items" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"project_id" text,
@@ -1322,7 +1322,7 @@ CREATE TABLE "team_inbox_items" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "team_invites" (
+CREATE TABLE IF NOT EXISTS "team_invites" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"email" text NOT NULL,
@@ -1338,7 +1338,7 @@ CREATE TABLE "team_invites" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "team_memberships" (
+CREATE TABLE IF NOT EXISTS "team_memberships" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"user_id" text NOT NULL,
@@ -1347,14 +1347,14 @@ CREATE TABLE "team_memberships" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "team_role_bindings" (
+CREATE TABLE IF NOT EXISTS "team_role_bindings" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_membership_id" text NOT NULL,
 	"role_id" text NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "team_storage_locators" (
+CREATE TABLE IF NOT EXISTS "team_storage_locators" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"bucket_name" text NOT NULL,
@@ -1367,7 +1367,7 @@ CREATE TABLE "team_storage_locators" (
 	CONSTRAINT "team_storage_locators_team_id_unique" UNIQUE("team_id")
 );
 
-CREATE TABLE "team_web_hosts" (
+CREATE TABLE IF NOT EXISTS "team_web_hosts" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"provider" text NOT NULL,
@@ -1384,7 +1384,7 @@ CREATE TABLE "team_web_hosts" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "teams" (
+CREATE TABLE IF NOT EXISTS "teams" (
 	"id" text PRIMARY KEY NOT NULL,
 	"slug" text NOT NULL,
 	"name" text NOT NULL,
@@ -1397,7 +1397,7 @@ CREATE TABLE "teams" (
 	CONSTRAINT "teams_slug_unique" UNIQUE("slug")
 );
 
-CREATE TABLE "user_identities" (
+CREATE TABLE IF NOT EXISTS "user_identities" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"provider" text NOT NULL,
@@ -1409,7 +1409,7 @@ CREATE TABLE "user_identities" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "user_preferences" (
+CREATE TABLE IF NOT EXISTS "user_preferences" (
 	"user_id" text PRIMARY KEY NOT NULL,
 	"color_scheme" text DEFAULT 'fern' NOT NULL,
 	"theme_mode" text DEFAULT 'system' NOT NULL,
@@ -1417,14 +1417,14 @@ CREATE TABLE "user_preferences" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "user_role_bindings" (
+CREATE TABLE IF NOT EXISTS "user_role_bindings" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"role_id" text NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE "users" (
+CREATE TABLE IF NOT EXISTS "users" (
 	"id" text PRIMARY KEY NOT NULL,
 	"email" text,
 	"display_name" text,
@@ -1435,7 +1435,7 @@ CREATE TABLE "users" (
 	"username" text
 );
 
-CREATE TABLE "web_sessions" (
+CREATE TABLE IF NOT EXISTS "web_sessions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"identity_id" text,
@@ -1456,7 +1456,7 @@ CREATE TABLE "web_sessions" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "work_days" (
+CREATE TABLE IF NOT EXISTS "work_days" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"state" text NOT NULL,
@@ -1470,7 +1470,7 @@ CREATE TABLE "work_days" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "work_policies" (
+CREATE TABLE IF NOT EXISTS "work_policies" (
 	"project_id" text,
 	"environment" text,
 	"schedule_json" text NOT NULL,
@@ -1492,7 +1492,7 @@ CREATE TABLE "work_policies" (
 	CONSTRAINT "work_policies_project_id_environment_pk" PRIMARY KEY("project_id","environment")
 );
 
-CREATE TABLE "workday_manager_leases" (
+CREATE TABLE IF NOT EXISTS "workday_manager_leases" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -1506,7 +1506,7 @@ CREATE TABLE "workday_manager_leases" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "workday_requests" (
+CREATE TABLE IF NOT EXISTS "workday_requests" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -1521,7 +1521,7 @@ CREATE TABLE "workday_requests" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE "worker_runners" (
+CREATE TABLE IF NOT EXISTS "worker_runners" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -1539,113 +1539,113 @@ CREATE TABLE "worker_runners" (
 	"updated_at" text NOT NULL
 );
 
-CREATE INDEX "idx_agent_pool_registrations_pool_heartbeat" ON "agent_pool_registrations" USING btree ("pool_id","heartbeat_at");
-CREATE INDEX "idx_agent_pool_scale_decisions_pool_created" ON "agent_pool_scale_decisions" USING btree ("pool_id","created_at");
-CREATE UNIQUE INDEX "idx_agent_pools_project_environment_name" ON "agent_pools" USING btree ("project_id","environment","name");
-CREATE INDEX "idx_api_tokens_user_id" ON "api_tokens" USING btree ("user_id");
-CREATE INDEX "idx_api_tokens_prefix" ON "api_tokens" USING btree ("token_prefix");
-CREATE INDEX "idx_approval_requests_team_state" ON "approval_requests" USING btree ("team_id","state","created_at");
-CREATE INDEX "idx_approval_requests_project_workday" ON "approval_requests" USING btree ("project_id","work_day_id","state","created_at");
-CREATE INDEX "idx_audit_events_target" ON "audit_events" USING btree ("target_type","target_id");
-CREATE INDEX "idx_auth_sessions_user_id" ON "auth_sessions" USING btree ("user_id");
-CREATE INDEX "idx_better_auth_account_userId" ON "better_auth_account" USING btree ("userId");
-CREATE UNIQUE INDEX "idx_better_auth_account_provider_account" ON "better_auth_account" USING btree ("providerId","accountId");
-CREATE INDEX "idx_better_auth_session_token" ON "better_auth_session" USING btree ("token");
-CREATE INDEX "idx_better_auth_session_userId" ON "better_auth_session" USING btree ("userId");
-CREATE UNIQUE INDEX "idx_better_auth_user_username" ON "better_auth_user" USING btree ("username");
-CREATE INDEX "idx_better_auth_verification_identifier" ON "better_auth_verification" USING btree ("identifier");
-CREATE INDEX "idx_capacity_grants_team_project" ON "capacity_grants" USING btree ("team_id","project_id","state");
-CREATE INDEX "idx_capacity_grants_provider_lane" ON "capacity_grants" USING btree ("capacity_provider_id","lane_id","state");
-CREATE INDEX "idx_capacity_ledger_project_workday_created" ON "capacity_ledger_entries" USING btree ("project_id","work_day_id","created_at");
-CREATE INDEX "idx_capacity_provider_api_keys_provider_status" ON "capacity_provider_api_keys" USING btree ("capacity_provider_id","status","created_at");
-CREATE INDEX "idx_capacity_provider_api_keys_prefix" ON "capacity_provider_api_keys" USING btree ("key_prefix");
-CREATE INDEX "idx_capacity_provider_deployments_provider_created" ON "capacity_provider_deployments" USING btree ("capacity_provider_id","created_at");
-CREATE UNIQUE INDEX "idx_capacity_provider_hosts_unique" ON "capacity_provider_hosts" USING btree ("capacity_provider_id","host_id","role");
-CREATE INDEX "idx_capacity_provider_lanes_provider" ON "capacity_provider_lanes" USING btree ("capacity_provider_id","business_model","scarcity_level");
-CREATE INDEX "idx_capacity_provider_registrations_provider_seen" ON "capacity_provider_registrations" USING btree ("capacity_provider_id","last_seen_at");
-CREATE INDEX "idx_capacity_providers_team_status" ON "capacity_providers" USING btree ("team_id","status","provider");
-CREATE INDEX "idx_capacity_reservations_project_workday_state" ON "capacity_reservations" USING btree ("project_id","work_day_id","state","created_at");
-CREATE INDEX "idx_capacity_reservations_provider_state" ON "capacity_reservations" USING btree ("capacity_provider_id","lane_id","state");
-CREATE INDEX "idx_capacity_reservations_execution_provider_state" ON "capacity_reservations" USING btree ("execution_provider_id","state","created_at");
-CREATE INDEX "idx_capacity_routing_decisions_project_workday" ON "capacity_routing_decisions" USING btree ("project_id","work_day_id","created_at");
-CREATE UNIQUE INDEX "idx_catalog_artifact_versions_item_version" ON "catalog_artifact_versions" USING btree ("item_id","version");
-CREATE INDEX "idx_catalog_artifact_versions_team_kind" ON "catalog_artifact_versions" USING btree ("team_id","kind","published_at");
-CREATE UNIQUE INDEX "idx_catalog_item_collaborators_subject_role" ON "catalog_item_collaborators" USING btree ("item_id","subject_type","subject_id","role");
-CREATE UNIQUE INDEX "idx_catalog_items_kind_slug" ON "catalog_items" USING btree ("kind","slug");
-CREATE INDEX "idx_catalog_items_team_kind" ON "catalog_items" USING btree ("team_id","kind","updated_at");
-CREATE INDEX "idx_catalog_items_visibility_listing" ON "catalog_items" USING btree ("visibility","listing_enabled","updated_at");
-CREATE UNIQUE INDEX "idx_credit_conversion_profiles_profile_key" ON "credit_conversion_profiles" USING btree ("task_signature","execution_profile_id","execution_provider_kind","native_unit");
-CREATE INDEX "idx_credit_conversion_profiles_kind_unit" ON "credit_conversion_profiles" USING btree ("execution_provider_kind","native_unit","updated_at");
-CREATE INDEX "idx_cursor_state_updated" ON "cursor_state" USING btree ("updated_at");
-CREATE UNIQUE INDEX "idx_entitlements_project" ON "entitlements" USING btree ("project_id");
-CREATE INDEX "idx_execution_provider_native_limits_provider_scope" ON "execution_provider_native_limits" USING btree ("execution_provider_id","scope","native_unit");
-CREATE INDEX "idx_execution_provider_observations_provider_observed" ON "execution_provider_observations" USING btree ("execution_provider_id","observed_at");
-CREATE INDEX "idx_execution_providers_team_status" ON "execution_providers" USING btree ("team_id","status","kind");
-CREATE INDEX "idx_execution_providers_capacity_provider" ON "execution_providers" USING btree ("capacity_provider_id","status");
-CREATE UNIQUE INDEX "idx_hub_launch_events_launch_seq" ON "hub_launch_events" USING btree ("launch_id","seq");
-CREATE INDEX "idx_hub_launches_hub_created" ON "hub_launches" USING btree ("hub_id","created_at");
-CREATE UNIQUE INDEX "idx_hub_repositories_hub_role" ON "hub_repositories" USING btree ("hub_id","role");
-CREATE INDEX "idx_hub_workspace_links_hub" ON "hub_workspace_links" USING btree ("hub_id");
-CREATE INDEX "idx_knowledge_packs_team_id" ON "knowledge_packs" USING btree ("team_id");
-CREATE INDEX "idx_lease_state_status_expires" ON "lease_state" USING btree ("status","lease_expires_at");
-CREATE INDEX "idx_lease_state_claimed_by" ON "lease_state" USING btree ("claimed_by","updated_at");
-CREATE INDEX "idx_message_queue_claimable" ON "message_queue" USING btree ("status","available_at","priority");
-CREATE INDEX "idx_message_queue_related" ON "message_queue" USING btree ("related_model","related_id","created_at");
-CREATE INDEX "idx_native_usage_observations_profile" ON "native_usage_observations" USING btree ("project_id","task_signature","execution_profile_id","created_at");
-CREATE INDEX "idx_native_usage_observations_provider" ON "native_usage_observations" USING btree ("execution_provider_id","created_at");
-CREATE UNIQUE INDEX "idx_platform_operation_events_seq" ON "platform_operation_events" USING btree ("operation_id","seq");
-CREATE UNIQUE INDEX "idx_platform_operations_idempotency" ON "platform_operations" USING btree ("namespace","operation","idempotency_key");
-CREATE INDEX "idx_platform_operations_runnable" ON "platform_operations" USING btree ("status","created_at");
-CREATE UNIQUE INDEX "idx_platform_repository_claims_active" ON "platform_repository_claims" USING btree ("repository_key","runner_id");
-CREATE INDEX "idx_platform_repository_claims_runner" ON "platform_repository_claims" USING btree ("runner_id","claim_state");
-CREATE INDEX "idx_priority_overrides_project_priority" ON "priority_overrides" USING btree ("project_id","priority","updated_at");
-CREATE INDEX "idx_priority_snapshots_project_generated" ON "priority_snapshots" USING btree ("project_id","generated_at");
-CREATE UNIQUE INDEX "idx_project_capability_grants_project_operation" ON "project_capability_grants" USING btree ("project_id","namespace","operation");
-CREATE INDEX "idx_project_deployments_project_environment" ON "project_deployments" USING btree ("project_id","environment","created_at");
-CREATE UNIQUE INDEX "idx_project_environments_project_environment" ON "project_environments" USING btree ("project_id","environment");
-CREATE UNIQUE INDEX "idx_project_infrastructure_resource_unique" ON "project_infrastructure_resources" USING btree ("project_id","environment","provider","resource_kind","logical_name");
-CREATE INDEX "idx_project_summary_snapshots_team_generated" ON "project_summary_snapshots" USING btree ("team_id","generated_at");
-CREATE INDEX "idx_project_update_plans_hub" ON "project_update_plans" USING btree ("hub_id","created_at");
-CREATE INDEX "idx_project_workday_summaries_project_environment_created" ON "project_workday_summaries" USING btree ("project_id","environment","created_at");
-CREATE INDEX "idx_projects_team_id" ON "projects" USING btree ("team_id");
-CREATE INDEX "idx_provider_credential_sessions_team_host" ON "provider_credential_sessions" USING btree ("team_id","host_kind","host_id","status");
-CREATE INDEX "idx_provider_credential_sessions_job" ON "provider_credential_sessions" USING btree ("job_id","status");
-CREATE UNIQUE INDEX "idx_remote_job_events_job_seq" ON "remote_job_events" USING btree ("job_id","seq");
-CREATE INDEX "idx_remote_jobs_project_status" ON "remote_jobs" USING btree ("project_id","status","created_at");
-CREATE INDEX "idx_remote_jobs_project_idempotency" ON "remote_jobs" USING btree ("project_id","idempotency_key");
-CREATE UNIQUE INDEX "idx_repository_claims_runner_repo" ON "repository_claims" USING btree ("project_id","repository_id","runner_id");
-CREATE INDEX "idx_repository_claims_repo_state" ON "repository_claims" USING btree ("project_id","repository_id","claim_state","updated_at");
-CREATE INDEX "idx_repository_hosts_team_provider" ON "repository_hosts" USING btree ("team_id","provider","status");
-CREATE UNIQUE INDEX "idx_repository_hosts_team_provider_name" ON "repository_hosts" USING btree ("team_id","provider","name");
-CREATE UNIQUE INDEX "idx_repository_hosts_platform_provider_name" ON "repository_hosts" USING btree ("provider","name");
-CREATE INDEX "idx_runner_scale_decisions_project_workday" ON "runner_scale_decisions" USING btree ("project_id","environment","work_day_id","created_at");
-CREATE INDEX "idx_runtime_records_type_lookup_updated" ON "runtime_records" USING btree ("record_type","lookup_key","updated_at");
-CREATE INDEX "idx_runtime_records_type_status_updated" ON "runtime_records" USING btree ("record_type","status","updated_at");
-CREATE INDEX "idx_scale_decisions_project_environment_pool_created" ON "scale_decisions" USING btree ("project_id","environment","pool_name","created_at");
-CREATE INDEX "idx_seed_runs_seed_created" ON "seed_runs" USING btree ("seed_name","created_at");
-CREATE INDEX "idx_seed_runs_state_created" ON "seed_runs" USING btree ("state","created_at");
-CREATE INDEX "idx_task_credit_ledger_work_day_created" ON "task_credit_ledger" USING btree ("work_day_id","created_at");
-CREATE INDEX "idx_task_estimates_project_signature" ON "task_estimates" USING btree ("project_id","task_signature","created_at");
-CREATE INDEX "idx_task_estimates_project_signature_profile" ON "task_estimates" USING btree ("project_id","task_signature","execution_profile_id","created_at");
-CREATE UNIQUE INDEX "idx_task_events_seq" ON "task_events" USING btree ("task_id","seq");
-CREATE INDEX "idx_task_usage_actuals_project_signature" ON "task_usage_actuals" USING btree ("project_id","task_signature","created_at");
-CREATE INDEX "idx_task_usage_actuals_project_signature_profile" ON "task_usage_actuals" USING btree ("project_id","task_signature","execution_profile_id","created_at");
-CREATE INDEX "idx_task_usage_actuals_execution_provider" ON "task_usage_actuals" USING btree ("execution_provider_id","created_at");
-CREATE INDEX "idx_tasks_runnable" ON "tasks" USING btree ("state","priority","available_at");
-CREATE INDEX "idx_tasks_work_day_agent" ON "tasks" USING btree ("work_day_id","agent_id","created_at");
-CREATE INDEX "idx_team_api_keys_prefix" ON "team_api_keys" USING btree ("key_prefix");
-CREATE INDEX "idx_team_inbox_items_team_created" ON "team_inbox_items" USING btree ("team_id","created_at");
-CREATE INDEX "idx_team_invites_team_status" ON "team_invites" USING btree ("team_id","status","created_at");
-CREATE INDEX "idx_team_invites_token_prefix" ON "team_invites" USING btree ("token_prefix");
-CREATE UNIQUE INDEX "idx_team_memberships_team_user" ON "team_memberships" USING btree ("team_id","user_id");
-CREATE INDEX "idx_team_web_hosts_team_provider" ON "team_web_hosts" USING btree ("team_id","provider","status");
-CREATE UNIQUE INDEX "idx_team_web_hosts_team_provider_name" ON "team_web_hosts" USING btree ("team_id","provider","name");
-CREATE UNIQUE INDEX "idx_teams_name" ON "teams" USING btree ("name");
-CREATE UNIQUE INDEX "idx_user_identities_provider_subject" ON "user_identities" USING btree ("provider","provider_subject");
-CREATE UNIQUE INDEX "idx_user_role_bindings_user_role" ON "user_role_bindings" USING btree ("user_id","role_id");
-CREATE UNIQUE INDEX "idx_users_username" ON "users" USING btree ("username");
-CREATE INDEX "idx_web_sessions_user_id" ON "web_sessions" USING btree ("user_id");
-CREATE INDEX "idx_workday_manager_leases_active" ON "workday_manager_leases" USING btree ("project_id","environment","state","heartbeat_at");
-CREATE INDEX "idx_workday_requests_project_environment_state" ON "workday_requests" USING btree ("project_id","environment","state","created_at");
-CREATE UNIQUE INDEX "idx_worker_runners_identity" ON "worker_runners" USING btree ("project_id","environment","runner_id");
-CREATE INDEX "idx_worker_runners_state_capacity" ON "worker_runners" USING btree ("project_id","environment","state","available_capacity");
+CREATE INDEX IF NOT EXISTS "idx_agent_pool_registrations_pool_heartbeat" ON "agent_pool_registrations" USING btree ("pool_id","heartbeat_at");
+CREATE INDEX IF NOT EXISTS "idx_agent_pool_scale_decisions_pool_created" ON "agent_pool_scale_decisions" USING btree ("pool_id","created_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_agent_pools_project_environment_name" ON "agent_pools" USING btree ("project_id","environment","name");
+CREATE INDEX IF NOT EXISTS "idx_api_tokens_user_id" ON "api_tokens" USING btree ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_api_tokens_prefix" ON "api_tokens" USING btree ("token_prefix");
+CREATE INDEX IF NOT EXISTS "idx_approval_requests_team_state" ON "approval_requests" USING btree ("team_id","state","created_at");
+CREATE INDEX IF NOT EXISTS "idx_approval_requests_project_workday" ON "approval_requests" USING btree ("project_id","work_day_id","state","created_at");
+CREATE INDEX IF NOT EXISTS "idx_audit_events_target" ON "audit_events" USING btree ("target_type","target_id");
+CREATE INDEX IF NOT EXISTS "idx_auth_sessions_user_id" ON "auth_sessions" USING btree ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_better_auth_account_userId" ON "better_auth_account" USING btree ("userId");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_better_auth_account_provider_account" ON "better_auth_account" USING btree ("providerId","accountId");
+CREATE INDEX IF NOT EXISTS "idx_better_auth_session_token" ON "better_auth_session" USING btree ("token");
+CREATE INDEX IF NOT EXISTS "idx_better_auth_session_userId" ON "better_auth_session" USING btree ("userId");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_better_auth_user_username" ON "better_auth_user" USING btree ("username");
+CREATE INDEX IF NOT EXISTS "idx_better_auth_verification_identifier" ON "better_auth_verification" USING btree ("identifier");
+CREATE INDEX IF NOT EXISTS "idx_capacity_grants_team_project" ON "capacity_grants" USING btree ("team_id","project_id","state");
+CREATE INDEX IF NOT EXISTS "idx_capacity_grants_provider_lane" ON "capacity_grants" USING btree ("capacity_provider_id","lane_id","state");
+CREATE INDEX IF NOT EXISTS "idx_capacity_ledger_project_workday_created" ON "capacity_ledger_entries" USING btree ("project_id","work_day_id","created_at");
+CREATE INDEX IF NOT EXISTS "idx_capacity_provider_api_keys_provider_status" ON "capacity_provider_api_keys" USING btree ("capacity_provider_id","status","created_at");
+CREATE INDEX IF NOT EXISTS "idx_capacity_provider_api_keys_prefix" ON "capacity_provider_api_keys" USING btree ("key_prefix");
+CREATE INDEX IF NOT EXISTS "idx_capacity_provider_deployments_provider_created" ON "capacity_provider_deployments" USING btree ("capacity_provider_id","created_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_capacity_provider_hosts_unique" ON "capacity_provider_hosts" USING btree ("capacity_provider_id","host_id","role");
+CREATE INDEX IF NOT EXISTS "idx_capacity_provider_lanes_provider" ON "capacity_provider_lanes" USING btree ("capacity_provider_id","business_model","scarcity_level");
+CREATE INDEX IF NOT EXISTS "idx_capacity_provider_registrations_provider_seen" ON "capacity_provider_registrations" USING btree ("capacity_provider_id","last_seen_at");
+CREATE INDEX IF NOT EXISTS "idx_capacity_providers_team_status" ON "capacity_providers" USING btree ("team_id","status","provider");
+CREATE INDEX IF NOT EXISTS "idx_capacity_reservations_project_workday_state" ON "capacity_reservations" USING btree ("project_id","work_day_id","state","created_at");
+CREATE INDEX IF NOT EXISTS "idx_capacity_reservations_provider_state" ON "capacity_reservations" USING btree ("capacity_provider_id","lane_id","state");
+CREATE INDEX IF NOT EXISTS "idx_capacity_reservations_execution_provider_state" ON "capacity_reservations" USING btree ("execution_provider_id","state","created_at");
+CREATE INDEX IF NOT EXISTS "idx_capacity_routing_decisions_project_workday" ON "capacity_routing_decisions" USING btree ("project_id","work_day_id","created_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_catalog_artifact_versions_item_version" ON "catalog_artifact_versions" USING btree ("item_id","version");
+CREATE INDEX IF NOT EXISTS "idx_catalog_artifact_versions_team_kind" ON "catalog_artifact_versions" USING btree ("team_id","kind","published_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_catalog_item_collaborators_subject_role" ON "catalog_item_collaborators" USING btree ("item_id","subject_type","subject_id","role");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_catalog_items_kind_slug" ON "catalog_items" USING btree ("kind","slug");
+CREATE INDEX IF NOT EXISTS "idx_catalog_items_team_kind" ON "catalog_items" USING btree ("team_id","kind","updated_at");
+CREATE INDEX IF NOT EXISTS "idx_catalog_items_visibility_listing" ON "catalog_items" USING btree ("visibility","listing_enabled","updated_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_credit_conversion_profiles_profile_key" ON "credit_conversion_profiles" USING btree ("task_signature","execution_profile_id","execution_provider_kind","native_unit");
+CREATE INDEX IF NOT EXISTS "idx_credit_conversion_profiles_kind_unit" ON "credit_conversion_profiles" USING btree ("execution_provider_kind","native_unit","updated_at");
+CREATE INDEX IF NOT EXISTS "idx_cursor_state_updated" ON "cursor_state" USING btree ("updated_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_entitlements_project" ON "entitlements" USING btree ("project_id");
+CREATE INDEX IF NOT EXISTS "idx_execution_provider_native_limits_provider_scope" ON "execution_provider_native_limits" USING btree ("execution_provider_id","scope","native_unit");
+CREATE INDEX IF NOT EXISTS "idx_execution_provider_observations_provider_observed" ON "execution_provider_observations" USING btree ("execution_provider_id","observed_at");
+CREATE INDEX IF NOT EXISTS "idx_execution_providers_team_status" ON "execution_providers" USING btree ("team_id","status","kind");
+CREATE INDEX IF NOT EXISTS "idx_execution_providers_capacity_provider" ON "execution_providers" USING btree ("capacity_provider_id","status");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_hub_launch_events_launch_seq" ON "hub_launch_events" USING btree ("launch_id","seq");
+CREATE INDEX IF NOT EXISTS "idx_hub_launches_hub_created" ON "hub_launches" USING btree ("hub_id","created_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_hub_repositories_hub_role" ON "hub_repositories" USING btree ("hub_id","role");
+CREATE INDEX IF NOT EXISTS "idx_hub_workspace_links_hub" ON "hub_workspace_links" USING btree ("hub_id");
+CREATE INDEX IF NOT EXISTS "idx_knowledge_packs_team_id" ON "knowledge_packs" USING btree ("team_id");
+CREATE INDEX IF NOT EXISTS "idx_lease_state_status_expires" ON "lease_state" USING btree ("status","lease_expires_at");
+CREATE INDEX IF NOT EXISTS "idx_lease_state_claimed_by" ON "lease_state" USING btree ("claimed_by","updated_at");
+CREATE INDEX IF NOT EXISTS "idx_message_queue_claimable" ON "message_queue" USING btree ("status","available_at","priority");
+CREATE INDEX IF NOT EXISTS "idx_message_queue_related" ON "message_queue" USING btree ("related_model","related_id","created_at");
+CREATE INDEX IF NOT EXISTS "idx_native_usage_observations_profile" ON "native_usage_observations" USING btree ("project_id","task_signature","execution_profile_id","created_at");
+CREATE INDEX IF NOT EXISTS "idx_native_usage_observations_provider" ON "native_usage_observations" USING btree ("execution_provider_id","created_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_platform_operation_events_seq" ON "platform_operation_events" USING btree ("operation_id","seq");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_platform_operations_idempotency" ON "platform_operations" USING btree ("namespace","operation","idempotency_key");
+CREATE INDEX IF NOT EXISTS "idx_platform_operations_runnable" ON "platform_operations" USING btree ("status","created_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_platform_repository_claims_active" ON "platform_repository_claims" USING btree ("repository_key","runner_id");
+CREATE INDEX IF NOT EXISTS "idx_platform_repository_claims_runner" ON "platform_repository_claims" USING btree ("runner_id","claim_state");
+CREATE INDEX IF NOT EXISTS "idx_priority_overrides_project_priority" ON "priority_overrides" USING btree ("project_id","priority","updated_at");
+CREATE INDEX IF NOT EXISTS "idx_priority_snapshots_project_generated" ON "priority_snapshots" USING btree ("project_id","generated_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_project_capability_grants_project_operation" ON "project_capability_grants" USING btree ("project_id","namespace","operation");
+CREATE INDEX IF NOT EXISTS "idx_project_deployments_project_environment" ON "project_deployments" USING btree ("project_id","environment","created_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_project_environments_project_environment" ON "project_environments" USING btree ("project_id","environment");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_project_infrastructure_resource_unique" ON "project_infrastructure_resources" USING btree ("project_id","environment","provider","resource_kind","logical_name");
+CREATE INDEX IF NOT EXISTS "idx_project_summary_snapshots_team_generated" ON "project_summary_snapshots" USING btree ("team_id","generated_at");
+CREATE INDEX IF NOT EXISTS "idx_project_update_plans_hub" ON "project_update_plans" USING btree ("hub_id","created_at");
+CREATE INDEX IF NOT EXISTS "idx_project_workday_summaries_project_environment_created" ON "project_workday_summaries" USING btree ("project_id","environment","created_at");
+CREATE INDEX IF NOT EXISTS "idx_projects_team_id" ON "projects" USING btree ("team_id");
+CREATE INDEX IF NOT EXISTS "idx_provider_credential_sessions_team_host" ON "provider_credential_sessions" USING btree ("team_id","host_kind","host_id","status");
+CREATE INDEX IF NOT EXISTS "idx_provider_credential_sessions_job" ON "provider_credential_sessions" USING btree ("job_id","status");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_remote_job_events_job_seq" ON "remote_job_events" USING btree ("job_id","seq");
+CREATE INDEX IF NOT EXISTS "idx_remote_jobs_project_status" ON "remote_jobs" USING btree ("project_id","status","created_at");
+CREATE INDEX IF NOT EXISTS "idx_remote_jobs_project_idempotency" ON "remote_jobs" USING btree ("project_id","idempotency_key");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_repository_claims_runner_repo" ON "repository_claims" USING btree ("project_id","repository_id","runner_id");
+CREATE INDEX IF NOT EXISTS "idx_repository_claims_repo_state" ON "repository_claims" USING btree ("project_id","repository_id","claim_state","updated_at");
+CREATE INDEX IF NOT EXISTS "idx_repository_hosts_team_provider" ON "repository_hosts" USING btree ("team_id","provider","status");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_repository_hosts_team_provider_name" ON "repository_hosts" USING btree ("team_id","provider","name");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_repository_hosts_platform_provider_name" ON "repository_hosts" USING btree ("provider","name");
+CREATE INDEX IF NOT EXISTS "idx_runner_scale_decisions_project_workday" ON "runner_scale_decisions" USING btree ("project_id","environment","work_day_id","created_at");
+CREATE INDEX IF NOT EXISTS "idx_runtime_records_type_lookup_updated" ON "runtime_records" USING btree ("record_type","lookup_key","updated_at");
+CREATE INDEX IF NOT EXISTS "idx_runtime_records_type_status_updated" ON "runtime_records" USING btree ("record_type","status","updated_at");
+CREATE INDEX IF NOT EXISTS "idx_scale_decisions_project_environment_pool_created" ON "scale_decisions" USING btree ("project_id","environment","pool_name","created_at");
+CREATE INDEX IF NOT EXISTS "idx_seed_runs_seed_created" ON "seed_runs" USING btree ("seed_name","created_at");
+CREATE INDEX IF NOT EXISTS "idx_seed_runs_state_created" ON "seed_runs" USING btree ("state","created_at");
+CREATE INDEX IF NOT EXISTS "idx_task_credit_ledger_work_day_created" ON "task_credit_ledger" USING btree ("work_day_id","created_at");
+CREATE INDEX IF NOT EXISTS "idx_task_estimates_project_signature" ON "task_estimates" USING btree ("project_id","task_signature","created_at");
+CREATE INDEX IF NOT EXISTS "idx_task_estimates_project_signature_profile" ON "task_estimates" USING btree ("project_id","task_signature","execution_profile_id","created_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_task_events_seq" ON "task_events" USING btree ("task_id","seq");
+CREATE INDEX IF NOT EXISTS "idx_task_usage_actuals_project_signature" ON "task_usage_actuals" USING btree ("project_id","task_signature","created_at");
+CREATE INDEX IF NOT EXISTS "idx_task_usage_actuals_project_signature_profile" ON "task_usage_actuals" USING btree ("project_id","task_signature","execution_profile_id","created_at");
+CREATE INDEX IF NOT EXISTS "idx_task_usage_actuals_execution_provider" ON "task_usage_actuals" USING btree ("execution_provider_id","created_at");
+CREATE INDEX IF NOT EXISTS "idx_tasks_runnable" ON "tasks" USING btree ("state","priority","available_at");
+CREATE INDEX IF NOT EXISTS "idx_tasks_work_day_agent" ON "tasks" USING btree ("work_day_id","agent_id","created_at");
+CREATE INDEX IF NOT EXISTS "idx_team_api_keys_prefix" ON "team_api_keys" USING btree ("key_prefix");
+CREATE INDEX IF NOT EXISTS "idx_team_inbox_items_team_created" ON "team_inbox_items" USING btree ("team_id","created_at");
+CREATE INDEX IF NOT EXISTS "idx_team_invites_team_status" ON "team_invites" USING btree ("team_id","status","created_at");
+CREATE INDEX IF NOT EXISTS "idx_team_invites_token_prefix" ON "team_invites" USING btree ("token_prefix");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_team_memberships_team_user" ON "team_memberships" USING btree ("team_id","user_id");
+CREATE INDEX IF NOT EXISTS "idx_team_web_hosts_team_provider" ON "team_web_hosts" USING btree ("team_id","provider","status");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_team_web_hosts_team_provider_name" ON "team_web_hosts" USING btree ("team_id","provider","name");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_teams_name" ON "teams" USING btree ("name");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_identities_provider_subject" ON "user_identities" USING btree ("provider","provider_subject");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_role_bindings_user_role" ON "user_role_bindings" USING btree ("user_id","role_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_users_username" ON "users" USING btree ("username");
+CREATE INDEX IF NOT EXISTS "idx_web_sessions_user_id" ON "web_sessions" USING btree ("user_id");
+CREATE INDEX IF NOT EXISTS "idx_workday_manager_leases_active" ON "workday_manager_leases" USING btree ("project_id","environment","state","heartbeat_at");
+CREATE INDEX IF NOT EXISTS "idx_workday_requests_project_environment_state" ON "workday_requests" USING btree ("project_id","environment","state","created_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_worker_runners_identity" ON "worker_runners" USING btree ("project_id","environment","runner_id");
+CREATE INDEX IF NOT EXISTS "idx_worker_runners_state_capacity" ON "worker_runners" USING btree ("project_id","environment","state","available_capacity");
