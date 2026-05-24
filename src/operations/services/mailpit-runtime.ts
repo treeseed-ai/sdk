@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
 const EXPECTED_PORTS = ['1025->1025/tcp', '8025->8025/tcp'];
-const KNOWN_MAILPIT_NAMES = ['treeseed_mailpit', 'karyon_docs_mailpit'];
+const KNOWN_MAILPIT_NAMES = ['treeseed_mailpit', 'docs_mailpit'];
 
 export type TreeseedMailpitContainer = {
 	name: string;
