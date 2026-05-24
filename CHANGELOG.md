@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.10.12] - 2026-05-24
+
+### Fixed
+
+- build(build): fix sdk template source cache reuse (43e50b305d15)
+
+### Tests
+
+- build(source): complete dynamic capacity budgeting (32f6360ccce9)
+
+### Dependencies
+
+- build(build): add market postgres baseline adoption columns (d1d9a21c398e)
+- build(build): make market postgres baseline adopt existing schema (043c80837dfa)
+- build(build): make static hub d1 baseline idempotent (9faf8f4e7b7f)
+- Release @treeseed/sdk 0.10.12.
+
 ## [0.10.11] - 2026-05-23
 
 ### Dependencies
