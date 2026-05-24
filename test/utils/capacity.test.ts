@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+	buildCreditConversionProfileFromActuals,
 	buildTaskEstimateProfileFromActuals,
+	calculateActualCredits,
 	computeWorkdayBudgetEnvelope,
 	decideTaskAdmission,
+	deriveAvailableCredits,
 	estimateConfidenceFromProfile,
 	estimateAttentionForTask,
 	estimateLearningPercentile,
@@ -16,15 +19,124 @@ import {
 	reserveCreditsForEstimate,
 	routeAndReserveCapacity,
 	scoreCapacityLane,
+	selectCreditConversionProfile,
 	selectTaskEstimateProfile,
 	shouldInterruptForCapacity,
 	synthesizePlanEstimate,
 	summarizeCapacityPlan,
 	validateTaskPlanProposal,
 } from '../../src/capacity.ts';
-import type { CapacityPlan, TaskEstimateProfile, TaskUsageActual } from '../../src/sdk-types.ts';
+import type { CapacityPlan, CreditConversionProfile, DerivedCapacityAvailability, ExecutionProvider, TaskEstimateProfile, TaskUsageActual } from '../../src/sdk-types.ts';
 
 const timestamp = '2026-05-07T00:00:00.000Z';
+
+function usageActual(overrides: Partial<TaskUsageActual> = {}): TaskUsageActual {
+	return {
+		id: 'actual',
+		taskId: null,
+		workDayId: null,
+		projectId: 'project-1',
+		taskSignature: 'engineer.small_fix',
+		executionProfileId: 'standard-code-model',
+		capacityProviderId: 'provider-1',
+		executionProviderId: 'execution-provider-1',
+		laneId: null,
+		businessModel: 'subscription_quota',
+		modelName: null,
+		inputTokens: null,
+		outputTokens: null,
+		cachedInputTokens: null,
+		quotaMinutes: null,
+		wallMinutes: null,
+		filesOpened: null,
+		filesChanged: null,
+		diffLinesAdded: null,
+		diffLinesRemoved: null,
+		testRuns: null,
+		retryCount: null,
+		actualCredits: 1,
+		actualUsd: null,
+		nativeUsage: null,
+		metadata: {},
+		createdAt: timestamp,
+		...overrides,
+	};
+}
+
+function executionProvider(overrides: Partial<ExecutionProvider> = {}): ExecutionProvider {
+	return {
+		id: 'execution-provider-1',
+		teamId: 'team-1',
+		capacityProviderId: 'provider-1',
+		name: 'Codex seat',
+		kind: 'codex_subscription',
+		status: 'active',
+		nativeUnit: 'wall_minute',
+		quotaVisibility: 'opaque',
+		maxConcurrentWorkers: 1,
+		resetCadence: 'daily',
+		config: {},
+		metadata: {},
+		nativeLimits: [],
+		latestObservation: null,
+		createdAt: timestamp,
+		updatedAt: timestamp,
+		...overrides,
+	};
+}
+
+function conversionProfile(overrides: Partial<CreditConversionProfile> = {}): CreditConversionProfile {
+	return {
+		id: 'conversion-profile-1',
+		taskSignature: 'engineer.small_fix',
+		executionProfileId: 'standard-code-model',
+		executionProviderKind: 'codex_subscription',
+		nativeUnit: 'wall_minute',
+		sampleCount: 20,
+		completedSampleCount: 20,
+		interruptedSampleCount: 0,
+		nativeUnitsPerCreditP50: 4,
+		nativeUnitsPerCreditP90: 5,
+		creditsPerNativeUnitP50: 0.25,
+		creditsPerNativeUnitP90: 0.2,
+		actualCreditsP50: 2,
+		actualCreditsP90: 4,
+		confidence: 'high',
+		formulaVersion: 'treeseed.actual-credits.v1',
+		metadata: {},
+		createdAt: timestamp,
+		updatedAt: timestamp,
+		...overrides,
+	};
+}
+
+function derivedCapacityEntry(overrides: Partial<DerivedCapacityAvailability> = {}): DerivedCapacityAvailability {
+	return {
+		executionProviderId: 'codex-seat-1',
+		capacityProviderId: 'provider-1',
+		executionProviderKind: 'codex_subscription',
+		nativeUnit: 'wall_minute',
+		scope: 'daily',
+		configuredNativeLimit: 240,
+		observedNativeRemaining: null,
+		nativeRemainingSource: 'configured_limit',
+		activeReservedNativeAmount: 0,
+		activeConsumedNativeAmount: 0,
+		reserveBufferPercent: 25,
+		reserveBufferNativeAmount: 60,
+		availableNativeAmount: 180,
+		nativeUnitsPerCredit: 5,
+		conversionProfileId: 'conversion-profile-1',
+		conversionTaskSignature: 'proposal.draft',
+		conversionConfidence: 'high',
+		derivedAvailableCredits: 36,
+		confidence: 'high',
+		resetAt: null,
+		reasons: ['configured_limit', 'reserve_buffer', 'p90_conversion_profile'],
+		metadata: {},
+		...overrides,
+	};
+}
 
 function createCapacityPlan(overrides: Partial<CapacityPlan> = {}): CapacityPlan {
 	return {
@@ -42,6 +154,7 @@ function createCapacityPlan(overrides: Partial<CapacityPlan> = {}): CapacityPlan
 			billingScope: 'team',
 			monthlyCreditBudget: 1000,
 			dailyCreditBudget: 50,
+			creditBudgetMode: 'static',
 			maxConcurrentWorkdays: 1,
 			maxConcurrentWorkers: 2,
 			capacityModel: {},
@@ -319,6 +432,353 @@ describe('capacity helpers', () => {
 			creditsP90: 4,
 			partialCredits: 20,
 		});
+	});
+
+	it('builds credit conversion profiles from native usage while separating interrupted samples', () => {
+		const actuals = [
+			usageActual({ id: 'a1', actualCredits: 2, nativeUsage: { nativeUnit: 'wall_minute', wallMinutes: 10 }, createdAt: '2026-05-01T00:00:00.000Z' }),
+			usageActual({ id: 'a2', actualCredits: 4, nativeUsage: { nativeUnit: 'wall_minute', wallMinutes: 20 }, createdAt: '2026-05-02T00:00:00.000Z' }),
+			usageActual({ id: 'a3', actualCredits: 20, nativeUsage: { nativeUnit: 'wall_minute', wallMinutes: 15 }, metadata: { interrupted: true, partial: true }, createdAt: '2026-05-03T00:00:00.000Z' }),
+		];
+
+		expect(buildCreditConversionProfileFromActuals({
+			taskSignature: 'engineer.small_fix',
+			executionProfileId: 'standard-code-model',
+			executionProviderKind: 'codex_subscription',
+			nativeUnit: 'wall_minute',
+			actuals,
+			now: timestamp,
+		})).toMatchObject({
+			taskSignature: 'engineer.small_fix',
+			executionProviderKind: 'codex_subscription',
+			nativeUnit: 'wall_minute',
+			sampleCount: 3,
+			completedSampleCount: 2,
+			interruptedSampleCount: 1,
+			nativeUnitsPerCreditP50: 5,
+			nativeUnitsPerCreditP90: 5,
+			creditsPerNativeUnitP50: 0.2,
+			actualCreditsP90: 4,
+			confidence: 'low',
+			metadata: expect.objectContaining({
+				partialCredits: 20,
+				partialNativeAmount: 15,
+			}),
+		});
+	});
+
+	it('learns USD and token conversion ratios from native usage facts', () => {
+		const usdProfile = buildCreditConversionProfileFromActuals({
+			taskSignature: 'engineer.small_fix',
+			executionProviderKind: 'token_metered_api',
+			nativeUnit: 'usd',
+			actuals: [
+				usageActual({ id: 'usd-1', actualCredits: 3, nativeUsage: { nativeUnit: 'usd', usd: 0.09 } }),
+				usageActual({ id: 'usd-2', actualCredits: 6, nativeUsage: { nativeUnit: 'usd', usd: 0.18 } }),
+			],
+			now: timestamp,
+		});
+		const tokenProfile = buildCreditConversionProfileFromActuals({
+			taskSignature: 'engineer.small_fix',
+			executionProviderKind: 'token_metered_api',
+			nativeUnit: 'token',
+			actuals: [
+				usageActual({ id: 'token-1', actualCredits: 2, nativeUsage: { nativeUnit: 'token', inputTokens: 8000, outputTokens: 2000 } }),
+				usageActual({ id: 'token-2', actualCredits: 4, nativeUsage: { nativeUnit: 'token', inputTokens: 18000, outputTokens: 2000 } }),
+			],
+			now: timestamp,
+		});
+
+		expect(usdProfile).toMatchObject({
+			nativeUnitsPerCreditP50: 0.03,
+			creditsPerNativeUnitP50: 33.333333333333336,
+		});
+		expect(tokenProfile).toMatchObject({
+			nativeUnitsPerCreditP50: 5000,
+			nativeUnitsPerCreditP90: 5000,
+		});
+	});
+
+	it('selects matching conversion profiles and uses high-confidence profiles for actual credits', () => {
+		const actuals = Array.from({ length: 20 }, (_, index) => usageActual({
+			id: `high-${index}`,
+			actualCredits: 2,
+			nativeUsage: { nativeUnit: 'wall_minute', wallMinutes: 10 },
+			createdAt: `2026-05-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`,
+		}));
+		const profile = buildCreditConversionProfileFromActuals({
+			taskSignature: 'engineer.small_fix',
+			executionProviderKind: 'codex_subscription',
+			nativeUnit: 'wall_minute',
+			actuals,
+			now: timestamp,
+		});
+		const selected = selectCreditConversionProfile({
+			profiles: [profile],
+			taskSignature: 'engineer.small_fix',
+			executionProfileId: 'standard-code-model',
+			executionProviderKind: 'codex_subscription',
+			nativeUnit: 'wall_minute',
+		});
+		const calculated = calculateActualCredits({
+			nativeUsage: { nativeUnit: 'wall_minute', wallMinutes: 20, filesChanged: 10 },
+			conversionProfile: selected,
+		});
+
+		expect(profile.confidence).toBe('high');
+		expect(calculated).toMatchObject({
+			actualCredits: 4,
+			source: 'conversion_profile',
+			conversionConfidence: 'high',
+		});
+	});
+
+	it('blends medium-confidence profiles and falls back for low-confidence profiles', () => {
+		const mediumProfile = buildCreditConversionProfileFromActuals({
+			taskSignature: 'engineer.small_fix',
+			executionProviderKind: 'codex_subscription',
+			nativeUnit: 'wall_minute',
+			actuals: Array.from({ length: 5 }, (_, index) => usageActual({
+				id: `medium-${index}`,
+				actualCredits: 2,
+				nativeUsage: { nativeUnit: 'wall_minute', wallMinutes: 10 },
+			})),
+			now: timestamp,
+		});
+		const lowProfile = buildCreditConversionProfileFromActuals({
+			taskSignature: 'engineer.small_fix',
+			executionProviderKind: 'codex_subscription',
+			nativeUnit: 'wall_minute',
+			actuals: Array.from({ length: 4 }, (_, index) => usageActual({
+				id: `low-${index}`,
+				actualCredits: 2,
+				nativeUsage: { nativeUnit: 'wall_minute', wallMinutes: 10 },
+			})),
+			now: timestamp,
+		});
+
+		expect(calculateActualCredits({
+			nativeUsage: { nativeUnit: 'wall_minute', wallMinutes: 20, filesChanged: 10 },
+			conversionProfile: mediumProfile,
+		})).toMatchObject({
+			actualCredits: 14,
+			source: 'blended_conversion_profile',
+		});
+		expect(calculateActualCredits({
+			nativeUsage: { nativeUnit: 'wall_minute', wallMinutes: 20, filesChanged: 10 },
+			conversionProfile: lowProfile,
+		})).toMatchObject({
+			actualCredits: 24,
+			source: 'central_calculator',
+		});
+	});
+
+	it('derives Codex wall-minute availability from limits, buffers, reservations, and learned conversion', () => {
+		const result = deriveAvailableCredits({
+			executionProvider: executionProvider(),
+			nativeLimit: {
+				id: 'limit-1',
+				executionProviderId: 'execution-provider-1',
+				scope: 'daily',
+				nativeUnit: 'wall_minute',
+				limitAmount: 100,
+				reserveBufferPercent: 10,
+				resetCadence: 'daily',
+				resetAt: null,
+				confidence: 'estimated',
+				source: 'configured',
+				metadata: {},
+				createdAt: timestamp,
+				updatedAt: timestamp,
+			},
+			activeReservations: [{
+				id: 'reservation-1',
+				capacityProviderId: 'provider-1',
+				executionProviderId: 'execution-provider-1',
+				laneId: 'lane-1',
+				teamId: 'team-1',
+				projectId: 'project-1',
+				workDayId: null,
+				taskId: null,
+				state: 'reserved',
+				reservedCredits: 5,
+				consumedCredits: 0,
+				nativeUnit: 'wall_minute',
+				reservedNativeAmount: 15,
+				consumedNativeAmount: null,
+				reservedProviderUnits: null,
+				consumedProviderUnits: null,
+				reservedUsd: null,
+				consumedUsd: null,
+				expiresAt: null,
+				metadata: {},
+				createdAt: timestamp,
+				updatedAt: timestamp,
+			}],
+			conversionProfile: conversionProfile(),
+		});
+
+		expect(result).toMatchObject({
+			configuredNativeLimit: 100,
+			nativeRemainingSource: 'configured_limit',
+			activeReservedNativeAmount: 15,
+			reserveBufferNativeAmount: 10,
+			availableNativeAmount: 75,
+			nativeUnitsPerCredit: 5,
+			derivedAvailableCredits: 15,
+			confidence: 'high',
+			reasons: expect.arrayContaining(['opaque_limit_fallback', 'active_native_reservations', 'reserve_buffer', 'p90_conversion_profile']),
+		});
+	});
+
+	it('derives USD/token availability from observed remaining native facts', () => {
+		const result = deriveAvailableCredits({
+			executionProvider: executionProvider({
+				kind: 'token_metered_api',
+				nativeUnit: 'usd',
+				quotaVisibility: 'reported',
+			}),
+			nativeLimit: {
+				id: 'limit-usd',
+				executionProviderId: 'execution-provider-1',
+				scope: 'daily',
+				nativeUnit: 'usd',
+				limitAmount: 1,
+				reserveBufferPercent: 10,
+				resetCadence: 'daily',
+				resetAt: null,
+				confidence: 'configured',
+				source: 'configured',
+				metadata: {},
+				createdAt: timestamp,
+				updatedAt: timestamp,
+			},
+			latestObservation: {
+				id: 'observation-1',
+				executionProviderId: 'execution-provider-1',
+				observedAt: timestamp,
+				health: 'healthy',
+				activeWorkers: 0,
+				queuedTasks: 0,
+				throttleState: null,
+				nativeRemaining: { usd: 0.4 },
+				resetAt: null,
+				confidence: 'reported',
+				metadata: {},
+				createdAt: timestamp,
+			},
+			conversionProfile: conversionProfile({
+				executionProviderKind: 'token_metered_api',
+				nativeUnit: 'usd',
+				nativeUnitsPerCreditP50: 0.03,
+				nativeUnitsPerCreditP90: 0.05,
+				confidence: 'medium',
+			}),
+		});
+
+		expect(result).toMatchObject({
+			observedNativeRemaining: 0.4,
+			nativeRemainingSource: 'observation',
+			reserveBufferNativeAmount: 0.1,
+			availableNativeAmount: 0.30000000000000004,
+			nativeUnitsPerCredit: 0.05,
+			derivedAvailableCredits: 6,
+			confidence: 'medium',
+			reasons: expect.arrayContaining(['observation_remaining', 'p90_conversion_profile']),
+		});
+	});
+
+	it('exposes native availability while learning when conversion is missing', () => {
+		const result = deriveAvailableCredits({
+			executionProvider: executionProvider(),
+			nativeLimit: {
+				id: 'limit-1',
+				executionProviderId: 'execution-provider-1',
+				scope: 'daily',
+				nativeUnit: 'wall_minute',
+				limitAmount: 60,
+				reserveBufferPercent: 0,
+				resetCadence: 'daily',
+				resetAt: null,
+				confidence: 'estimated',
+				source: 'configured',
+				metadata: {},
+				createdAt: timestamp,
+				updatedAt: timestamp,
+			},
+			conversionProfile: null,
+		});
+
+		expect(result).toMatchObject({
+			availableNativeAmount: 60,
+			nativeUnitsPerCredit: null,
+			derivedAvailableCredits: null,
+			confidence: 'low',
+			reasons: expect.arrayContaining(['missing_conversion_profile']),
+		});
+	});
+
+	it('keeps native-to-credit availability monotonic as buffers and reservations grow', () => {
+		const nativeLimit = {
+			id: 'limit-1',
+			executionProviderId: 'execution-provider-1',
+			scope: 'daily',
+			nativeUnit: 'wall_minute',
+			limitAmount: 100,
+			reserveBufferPercent: 0,
+			resetCadence: 'daily',
+			resetAt: null,
+			confidence: 'estimated',
+			source: 'configured',
+			metadata: {},
+			createdAt: timestamp,
+			updatedAt: timestamp,
+		};
+		const base = deriveAvailableCredits({
+			executionProvider: executionProvider(),
+			nativeLimit,
+			conversionProfile: conversionProfile(),
+		});
+		const buffered = deriveAvailableCredits({
+			executionProvider: executionProvider(),
+			nativeLimit: { ...nativeLimit, reserveBufferPercent: 25 },
+			conversionProfile: conversionProfile(),
+		});
+		const reserved = deriveAvailableCredits({
+			executionProvider: executionProvider(),
+			nativeLimit: { ...nativeLimit, reserveBufferPercent: 25 },
+			activeReservations: [{
+				id: 'reservation-1',
+				capacityProviderId: 'provider-1',
+				executionProviderId: 'execution-provider-1',
+				laneId: 'lane-1',
+				teamId: 'team-1',
+				projectId: 'project-1',
+				workDayId: null,
+				taskId: null,
+				state: 'reserved',
+				reservedCredits: 5,
+				consumedCredits: 0,
+				nativeUnit: 'wall_minute',
+				reservedNativeAmount: 90,
+				consumedNativeAmount: null,
+				reservedProviderUnits: null,
+				consumedProviderUnits: null,
+				reservedUsd: null,
+				consumedUsd: null,
+				expiresAt: null,
+				metadata: {},
+				createdAt: timestamp,
+				updatedAt: timestamp,
+			}],
+			conversionProfile: conversionProfile(),
+		});
+
+		expect(buffered.availableNativeAmount).toBeLessThanOrEqual(base.availableNativeAmount);
+		expect(buffered.derivedAvailableCredits).toBeLessThanOrEqual(base.derivedAvailableCredits ?? Number.POSITIVE_INFINITY);
+		expect(reserved.availableNativeAmount).toBe(0);
+		expect(reserved.derivedAvailableCredits).toBe(0);
+		expect(reserved.availableNativeAmount).toBeGreaterThanOrEqual(0);
 	});
 
 	it('computes reserve-aware workday budget envelopes', () => {
@@ -981,6 +1441,294 @@ describe('capacity helpers', () => {
 			remainingCredits: 10,
 		});
 		expect(result.candidates[0]?.reasons).toContain('insufficient_budget');
+	});
+
+	it('routes derived-mode providers against medium-confidence native-derived availability', () => {
+		const base = createCapacityPlan();
+		const result = routeAndReserveCapacity({
+			plan: createCapacityPlan({
+				providers: [{ ...base.providers[0], creditBudgetMode: 'derived', dailyCreditBudget: 0, monthlyCreditBudget: 0 }],
+				grants: [{ ...base.grants[0], dailyCreditLimit: null }],
+				derivedCapacity: { entries: [derivedCapacityEntry({ confidence: 'medium', derivedAvailableCredits: 36 })] },
+			}),
+			estimate: reserveCreditsForEstimate({
+				taskSignature: 'proposal.draft',
+				confidence: 'medium',
+				estimatedCreditsP50: 6,
+				estimatedCreditsP90: 8,
+			}),
+			taskKind: 'proposal.draft',
+			requiredCapabilities: ['agent_execution'],
+		});
+
+		expect(result).toMatchObject({ ok: true });
+		if (!result.ok) throw new Error(result.reason);
+		expect(result.remainingCreditsBefore).toBe(36);
+		expect(result.reservation).toMatchObject({
+			executionProviderId: 'codex-seat-1',
+			nativeUnit: 'wall_minute',
+			reservedNativeAmount: 40,
+		});
+		expect(result.capacityMetadata).toMatchObject({
+			derivedCapacityMode: 'derived',
+			derivedAvailableCredits: 36,
+			nativePressure: expect.objectContaining({
+				executionProviderId: 'codex-seat-1',
+				nativeUnit: 'wall_minute',
+			}),
+		});
+		expect(result.candidates[0]?.reasons).toEqual(expect.arrayContaining([
+			'derived_capacity_available',
+			'native_capacity_pressure',
+		]));
+	});
+
+	it('blocks derived-mode providers when native-derived availability is exhausted', () => {
+		const base = createCapacityPlan();
+		const result = routeAndReserveCapacity({
+			plan: createCapacityPlan({
+				providers: [{ ...base.providers[0], creditBudgetMode: 'derived', dailyCreditBudget: 0, monthlyCreditBudget: 0 }],
+				grants: [{ ...base.grants[0], dailyCreditLimit: null }],
+				derivedCapacity: { entries: [derivedCapacityEntry({ availableNativeAmount: 10, derivedAvailableCredits: 2 })] },
+			}),
+			estimate: reserveCreditsForEstimate({
+				taskSignature: 'proposal.draft',
+				confidence: 'medium',
+				estimatedCreditsP50: 6,
+				estimatedCreditsP90: 8,
+			}),
+			taskKind: 'proposal.draft',
+			requiredCapabilities: ['agent_execution'],
+		});
+
+		expect(result).toMatchObject({ ok: false, code: 'insufficient_budget' });
+		expect(result.candidates[0]).toMatchObject({
+			eligible: false,
+			remainingCredits: 2,
+			derivedAvailableCredits: 2,
+		});
+		expect(result.candidates[0]?.reasons).toEqual(expect.arrayContaining([
+			'derived_capacity_exhausted',
+			'insufficient_budget',
+		]));
+	});
+
+	it('keeps low-confidence derived capacity in learning mode and does not admit derived routes', () => {
+		const base = createCapacityPlan();
+		const result = routeAndReserveCapacity({
+			plan: createCapacityPlan({
+				providers: [{ ...base.providers[0], creditBudgetMode: 'derived', dailyCreditBudget: 0, monthlyCreditBudget: 0 }],
+				grants: [{ ...base.grants[0], dailyCreditLimit: null }],
+				derivedCapacity: { entries: [derivedCapacityEntry({ confidence: 'low', conversionConfidence: 'low', derivedAvailableCredits: 36 })] },
+			}),
+			estimate: reserveCreditsForEstimate({
+				taskSignature: 'proposal.draft',
+				confidence: 'medium',
+				estimatedCreditsP50: 6,
+				estimatedCreditsP90: 8,
+			}),
+			taskKind: 'proposal.draft',
+			requiredCapabilities: ['agent_execution'],
+		});
+
+		expect(result).toMatchObject({ ok: false, code: 'insufficient_budget' });
+		expect(result.candidates[0]).toMatchObject({
+			eligible: false,
+			remainingCredits: 36,
+			reservedNativeAmount: null,
+		});
+		expect(result.candidates[0]?.reasons).toEqual(expect.arrayContaining([
+			'derived_capacity_learning',
+			'insufficient_budget',
+		]));
+	});
+
+	it('treats missing credit budget mode as derived instead of inferring static from legacy budgets', () => {
+		const base = createCapacityPlan();
+		const { creditBudgetMode: _mode, ...providerWithoutMode } = base.providers[0];
+		const result = routeAndReserveCapacity({
+			plan: createCapacityPlan({
+				providers: [providerWithoutMode],
+				grants: [{ ...base.grants[0], dailyCreditLimit: null }],
+				derivedCapacity: { entries: [derivedCapacityEntry({ confidence: 'low', conversionConfidence: 'low', derivedAvailableCredits: 36 })] },
+			}),
+			estimate: reserveCreditsForEstimate({
+				taskSignature: 'proposal.draft',
+				confidence: 'medium',
+				estimatedCreditsP50: 6,
+				estimatedCreditsP90: 8,
+			}),
+			taskKind: 'proposal.draft',
+			requiredCapabilities: ['agent_execution'],
+		});
+
+		expect(result).toMatchObject({ ok: false, code: 'insufficient_budget' });
+		expect(result.candidates[0]).toMatchObject({
+			derivedCapacityMode: 'derived',
+			staticRemainingCredits: null,
+		});
+		expect(result.candidates[0]?.reasons).toEqual(expect.arrayContaining([
+			'derived_capacity_learning',
+			'insufficient_budget',
+		]));
+	});
+
+	it('applies both derived availability and grant caps in hybrid mode', () => {
+		const base = createCapacityPlan();
+		const result = routeAndReserveCapacity({
+			plan: createCapacityPlan({
+				providers: [{ ...base.providers[0], creditBudgetMode: 'hybrid' }],
+				grants: [{ ...base.grants[0], dailyCreditLimit: 10 }],
+				derivedCapacity: { entries: [derivedCapacityEntry({ derivedAvailableCredits: 36 })] },
+			}),
+			estimate: reserveCreditsForEstimate({
+				taskSignature: 'proposal.draft',
+				confidence: 'medium',
+				estimatedCreditsP50: 11,
+				estimatedCreditsP90: 12,
+			}),
+			taskKind: 'proposal.draft',
+			requiredCapabilities: ['agent_execution'],
+		});
+
+		expect(result).toMatchObject({ ok: false, code: 'insufficient_budget' });
+		expect(result.candidates[0]).toMatchObject({
+			remainingCredits: 10,
+			staticRemainingCredits: 10,
+			derivedAvailableCredits: 36,
+		});
+		expect(result.candidates[0]?.reasons).toEqual(expect.arrayContaining([
+			'hybrid_derived_capacity_applied',
+			'hybrid_static_cap_applied',
+			'insufficient_budget',
+		]));
+	});
+
+	it('caps derived routes by portfolio allocation percentage and reserve pool', () => {
+		const base = createCapacityPlan();
+		const result = routeAndReserveCapacity({
+			plan: createCapacityPlan({
+				providers: [{ ...base.providers[0], creditBudgetMode: 'derived', dailyCreditBudget: 0, monthlyCreditBudget: 0 }],
+				grants: [{
+					...base.grants[0],
+					dailyCreditLimit: null,
+					portfolioAllocationPercent: 50,
+					reservePoolPercent: 20,
+					metadata: { portfolioAllocationPercent: 50, reservePoolPercent: 20 },
+				}],
+				derivedCapacity: { entries: [derivedCapacityEntry({ derivedAvailableCredits: 40 })] },
+			}),
+			estimate: reserveCreditsForEstimate({
+				taskSignature: 'proposal.draft',
+				confidence: 'medium',
+				estimatedCreditsP50: 16,
+				estimatedCreditsP90: 17,
+			}),
+			taskKind: 'proposal.draft',
+			requiredCapabilities: ['agent_execution'],
+		});
+
+		expect(result).toMatchObject({ ok: false, code: 'insufficient_budget' });
+		expect(result.candidates[0]).toMatchObject({
+			remainingCredits: 16,
+			staticRemainingCredits: 16,
+			derivedAvailableCredits: 40,
+		});
+		expect(result.candidates[0]?.reasons).toEqual(expect.arrayContaining([
+			'portfolio_allocation_applied',
+			'portfolio_allocation_exhausted',
+			'insufficient_budget',
+		]));
+	});
+
+	it('allows explicit emergency override to borrow from the grant reserve pool', () => {
+		const base = createCapacityPlan();
+		const result = routeAndReserveCapacity({
+			plan: createCapacityPlan({
+				providers: [{ ...base.providers[0], creditBudgetMode: 'derived', dailyCreditBudget: 0, monthlyCreditBudget: 0 }],
+				grants: [{
+					...base.grants[0],
+					dailyCreditLimit: null,
+					portfolioAllocationPercent: 50,
+					reservePoolPercent: 20,
+					emergencyOverride: true,
+					metadata: { portfolioAllocationPercent: 50, reservePoolPercent: 20, emergencyOverride: true },
+				}],
+				derivedCapacity: { entries: [derivedCapacityEntry({ derivedAvailableCredits: 40 })] },
+			}),
+			estimate: reserveCreditsForEstimate({
+				taskSignature: 'proposal.draft',
+				confidence: 'medium',
+				estimatedCreditsP50: 16,
+				estimatedCreditsP90: 17,
+			}),
+			taskKind: 'proposal.draft',
+			requiredCapabilities: ['agent_execution'],
+			metadata: { emergencyOverride: true },
+		});
+
+		expect(result).toMatchObject({ ok: true });
+		if (!result.ok) throw new Error(result.reason);
+		expect(result.remainingCreditsBefore).toBe(20);
+		expect(result.capacityMetadata.candidates?.[0]).toMatchObject({
+			remainingCredits: 20,
+			staticRemainingCredits: 20,
+			derivedCapacityMode: 'derived',
+		});
+	});
+
+	it('falls back to another provider when one native-derived unit is exhausted', () => {
+		const base = createCapacityPlan();
+		const result = routeAndReserveCapacity({
+			plan: createCapacityPlan({
+				providers: [
+					{ ...base.providers[0], creditBudgetMode: 'derived', dailyCreditBudget: 0, monthlyCreditBudget: 0 },
+					{ ...base.providers[0], id: 'provider-2', name: 'OpenRouter budget', creditBudgetMode: 'derived', dailyCreditBudget: 0, monthlyCreditBudget: 0 },
+				],
+				lanes: [
+					base.lanes[0],
+					{ ...base.lanes[0], id: 'lane-2', capacityProviderId: 'provider-2', metadata: { nativeUnit: 'usd' } },
+				],
+				grants: [
+					{ ...base.grants[0], id: 'grant-exhausted', dailyCreditLimit: null, overflowPolicy: 'fallback_lane' },
+					{ ...base.grants[0], id: 'grant-fallback', capacityProviderId: 'provider-2', dailyCreditLimit: null },
+				],
+				derivedCapacity: {
+					entries: [
+						derivedCapacityEntry({ availableNativeAmount: 10, derivedAvailableCredits: 2 }),
+						derivedCapacityEntry({
+							executionProviderId: 'openrouter-budget-1',
+							capacityProviderId: 'provider-2',
+							executionProviderKind: 'token_metered_api',
+							nativeUnit: 'usd',
+							configuredNativeLimit: 3,
+							availableNativeAmount: 3,
+							nativeUnitsPerCredit: 0.03,
+							derivedAvailableCredits: 100,
+						}),
+					],
+				},
+			}),
+			estimate: reserveCreditsForEstimate({
+				taskSignature: 'proposal.draft',
+				confidence: 'medium',
+				estimatedCreditsP50: 6,
+				estimatedCreditsP90: 8,
+			}),
+			taskKind: 'proposal.draft',
+			requiredCapabilities: ['agent_execution'],
+		});
+
+		expect(result).toMatchObject({ ok: true });
+		if (!result.ok) throw new Error(result.reason);
+		expect(result.provider.id).toBe('provider-2');
+		expect(result.reservation).toMatchObject({
+			executionProviderId: 'openrouter-budget-1',
+			nativeUnit: 'usd',
+			reservedNativeAmount: 0.24,
+		});
+		expect(result.candidates.find((candidate) => candidate.providerId === 'provider-1')?.reasons)
+			.toEqual(expect.arrayContaining(['derived_capacity_exhausted', 'fallback_lane_exhausted']));
 	});
 
 	it('blocks repository mutation on lanes that only allow drafting work', () => {

@@ -20,7 +20,7 @@ If you are unsure, use `AgentSdk`.
 
 `AgentSdk` covers five main areas:
 
-- generic model reads and mutations across content-backed and D1-backed models
+- generic model reads and mutations across content-backed models and the static-hub D1 form store
 - operational runtime state such as messages, runs, cursors, and leases
 - control-plane orchestration for work days, tasks, task events, graph runs, and reports
 - provider-neutral capacity scheduling contracts for task classification, admission, execution profiles, routing, estimates, planning proposals, attention load, utility, predictive reserve, hybrid execution, checkpoints, and usage actuals
@@ -49,7 +49,7 @@ const sdk = new AgentSdk({
 });
 ```
 
-Use `AgentSdk.createLocal()` when you want a local Wrangler-backed D1 database:
+Use `AgentSdk.createLocal()` when you want the local static-hub D1 form store:
 
 ```ts
 import { AgentSdk } from '@treeseed/sdk/sdk';

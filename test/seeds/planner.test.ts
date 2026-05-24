@@ -29,6 +29,25 @@ const manifest: SeedManifest = {
 				name: 'demo-local',
 				kind: 'local',
 				provider: 'local',
+				creditBudgetMode: 'derived',
+				executionProviders: [{
+					id: 'demo-local-codex',
+					name: 'Demo local Codex',
+					kind: 'codex_subscription',
+					nativeUnit: 'wall_minute',
+					quotaVisibility: 'opaque',
+					maxConcurrentWorkers: 4,
+					resetCadence: 'daily',
+					nativeLimits: [{
+						scope: 'daily',
+						nativeUnit: 'wall_minute',
+						limitAmount: 480,
+						reserveBufferPercent: 20,
+						resetCadence: 'daily',
+						confidence: 'estimated',
+						source: 'configured',
+					}],
+				}],
 				registration: {
 					apiKey: {
 						createIfMissing: true,
@@ -82,6 +101,22 @@ describe('seed planner current-state diffing', () => {
 				scopes: ['provider:register', 'provider:heartbeat', 'provider:portfolio:read', 'provider:tasks:claim', 'provider:tasks:update', 'provider:usage:report', 'provider:reports:write', 'provider:capabilities:write'],
 				expiresAt: undefined,
 			},
+		});
+		expect(empty.actions.find((action) => action.key === 'capacity-provider:demo/local')?.payload).toMatchObject({
+			creditBudgetMode: 'derived',
+			monthlyCreditBudget: null,
+			dailyCreditBudget: null,
+			executionProviders: [{
+				id: 'demo-local-codex',
+				kind: 'codex_subscription',
+				nativeUnit: 'wall_minute',
+				nativeLimits: [{
+					scope: 'daily',
+					nativeUnit: 'wall_minute',
+					limitAmount: 480,
+					reserveBufferPercent: 20,
+				}],
+			}],
 		});
 
 		const matching = createSeedPlan({
@@ -298,5 +333,43 @@ describe('seed planner current-state diffing', () => {
 		}, diagnostics);
 
 		expect(diagnostics.map((diagnostic) => diagnostic.code)).toContain('seed.secret_field');
+	});
+
+	it('rejects invalid native execution-provider limits', () => {
+		const diagnostics = [];
+		parseSeedManifest({
+			name: 'demo',
+			version: 1,
+			environments: ['local'],
+			resources: {
+				teams: [{ key: 'team:demo', slug: 'demo' }],
+				repositoryHosts: [],
+				projects: [],
+				hubRepositories: [],
+				products: [],
+				catalogArtifacts: [],
+				capacityProviders: [{
+					key: 'capacity-provider:demo/local',
+					team: 'team:demo',
+					name: 'demo-local',
+					provider: 'local',
+					executionProviders: [{
+						name: 'Demo local Codex',
+						kind: 'codex_subscription',
+						nativeUnit: 'wall_minute',
+						nativeLimits: [{
+							scope: 'daily',
+							nativeUnit: 'wall_minute',
+							limitAmount: -1,
+						}],
+					}],
+				}],
+				capacityGrants: [],
+				workPolicies: [],
+				agentPools: [],
+			},
+		}, diagnostics);
+
+		expect(diagnostics.map((diagnostic) => diagnostic.code)).toContain('seed.invalid_number');
 	});
 });

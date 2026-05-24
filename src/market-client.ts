@@ -614,6 +614,13 @@ export class MarketClient {
 		);
 	}
 
+	teamCapacityProviders(teamId: string) {
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers`,
+			{ requireAuth: true },
+		);
+	}
+
 	launchManagedCapacityProvider(teamId: string, body: Record<string, unknown> = {}) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/teams/${encodeURIComponent(teamId)}/capacity/providers/managed`,
@@ -642,10 +649,53 @@ export class MarketClient {
 		);
 	}
 
+	updateCapacityProvider(teamId: string, providerId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; provider: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}`,
+			{ method: 'PATCH', body, requireAuth: true },
+		);
+	}
+
 	createCapacityGrant(teamId: string, body: Record<string, unknown>) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/teams/${encodeURIComponent(teamId)}/capacity-grants`,
 			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	executionProviders(teamId: string, providerId: string) {
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}/execution-providers`,
+			{ requireAuth: true },
+		);
+	}
+
+	createExecutionProvider(teamId: string, providerId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}/execution-providers`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	updateExecutionProvider(teamId: string, providerId: string, executionProviderId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}/execution-providers/${encodeURIComponent(executionProviderId)}`,
+			{ method: 'PATCH', body, requireAuth: true },
+		);
+	}
+
+	createExecutionProviderNativeLimit(teamId: string, providerId: string, executionProviderId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity-providers/${encodeURIComponent(providerId)}/execution-providers/${encodeURIComponent(executionProviderId)}/native-limits`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	projectCapacityPlan(projectId: string, environment?: string | null) {
+		const query = environment ? `?environment=${encodeURIComponent(environment)}` : '';
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/capacity-plan${query}`,
+			{ requireAuth: true },
 		);
 	}
 

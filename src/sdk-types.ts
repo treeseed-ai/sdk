@@ -824,6 +824,7 @@ export interface CapacityProvider {
 	billingScope: CapacityProviderBillingScope;
 	monthlyCreditBudget: number;
 	dailyCreditBudget: number;
+	creditBudgetMode?: 'static' | 'hybrid' | 'derived' | string;
 	maxConcurrentWorkdays: number;
 	maxConcurrentWorkers: number;
 	capacityModel: Record<string, unknown>;
@@ -836,6 +837,56 @@ export interface CapacityProvider {
 	budgets?: Record<string, unknown>;
 	deployment?: Record<string, unknown> | null;
 	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ExecutionProviderNativeLimit {
+	id: string;
+	executionProviderId: string;
+	scope: string;
+	nativeUnit: string;
+	limitAmount: number;
+	reserveBufferPercent: number;
+	resetCadence: string | null;
+	resetAt: string | null;
+	confidence: string;
+	source: string;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface ExecutionProviderObservation {
+	id: string;
+	executionProviderId: string;
+	observedAt: string;
+	health: string;
+	activeWorkers: number | null;
+	queuedTasks: number | null;
+	throttleState: string | null;
+	nativeRemaining: Record<string, unknown>;
+	resetAt: string | null;
+	confidence: string;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface ExecutionProvider {
+	id: string;
+	teamId: string;
+	capacityProviderId: string | null;
+	name: string;
+	kind: string;
+	status: string;
+	nativeUnit: string;
+	quotaVisibility: string;
+	maxConcurrentWorkers: number;
+	resetCadence: string | null;
+	config: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	nativeLimits?: ExecutionProviderNativeLimit[];
+	latestObservation?: ExecutionProviderObservation | null;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -883,6 +934,10 @@ export interface CapacityGrant {
 	dailyUsdLimit: number | null;
 	weeklyQuotaMinutes: number | null;
 	monthlyProviderUnits: number | null;
+	portfolioAllocationPercent?: number | null;
+	reservePoolPercent?: number | null;
+	maxDailyProjectCredits?: number | null;
+	emergencyOverride?: boolean;
 	priorityWeight: number;
 	overflowPolicy: CapacityOverflowPolicy;
 	metadata?: Record<string, unknown>;
@@ -893,6 +948,7 @@ export interface CapacityGrant {
 export interface CapacityReservation {
 	id: string;
 	capacityProviderId: string;
+	executionProviderId?: string | null;
 	laneId: string;
 	teamId: string;
 	projectId: string;
@@ -901,6 +957,9 @@ export interface CapacityReservation {
 	state: CapacityReservationState;
 	reservedCredits: number;
 	consumedCredits: number;
+	nativeUnit?: string | null;
+	reservedNativeAmount?: number | null;
+	consumedNativeAmount?: number | null;
 	reservedProviderUnits: number | null;
 	consumedProviderUnits: number | null;
 	reservedUsd: number | null;
@@ -975,6 +1034,7 @@ export interface TaskUsageActual {
 	taskSignature: string;
 	executionProfileId: string;
 	capacityProviderId: string | null;
+	executionProviderId?: string | null;
 	laneId: string | null;
 	businessModel: CapacityBusinessModel | string;
 	modelName: string | null;
@@ -991,8 +1051,110 @@ export interface TaskUsageActual {
 	retryCount: number | null;
 	actualCredits: number;
 	actualUsd: number | null;
+	creditFormulaVersion?: string | null;
+	actualCreditSource?: string | null;
+	nativeUsage?: NativeUsageObservation | Record<string, unknown> | null;
 	metadata?: Record<string, unknown>;
 	createdAt: string;
+}
+
+export interface NativeUsageObservation {
+	nativeUnit?: string | null;
+	amount?: number | null;
+	wallMinutes?: number | null;
+	quotaMinutes?: number | null;
+	inputTokens?: number | null;
+	outputTokens?: number | null;
+	cachedInputTokens?: number | null;
+	usd?: number | null;
+	filesOpened?: number | null;
+	filesChanged?: number | null;
+	diffLinesAdded?: number | null;
+	diffLinesRemoved?: number | null;
+	testRuns?: number | null;
+	retryCount?: number | null;
+	partial?: boolean | null;
+	interrupted?: boolean | null;
+	source?: string | null;
+	observedAt?: string | null;
+	metadata?: Record<string, unknown> | null;
+	[key: string]: unknown;
+}
+
+export interface CreditConversionProfile {
+	id?: string | null;
+	taskSignature: string;
+	executionProfileId: string;
+	executionProviderKind: string;
+	nativeUnit: string;
+	sampleCount: number;
+	completedSampleCount: number;
+	interruptedSampleCount?: number;
+	nativeUnitsPerCreditP50: number | null;
+	nativeUnitsPerCreditP90: number | null;
+	creditsPerNativeUnitP50: number | null;
+	creditsPerNativeUnitP90: number | null;
+	actualCreditsP50: number | null;
+	actualCreditsP90: number | null;
+	confidence: 'low' | 'medium' | 'high' | string;
+	formulaVersion: string;
+	metadata?: Record<string, unknown>;
+	createdAt?: string | null;
+	updatedAt: string;
+}
+
+export interface DerivedCapacityAvailability {
+	executionProviderId: string;
+	capacityProviderId: string | null;
+	executionProviderKind: string;
+	nativeUnit: string;
+	scope: string | null;
+	configuredNativeLimit: number | null;
+	observedNativeRemaining: number | null;
+	nativeRemainingSource: 'observation' | 'configured_limit' | 'unknown';
+	activeReservedNativeAmount: number;
+	activeConsumedNativeAmount: number;
+	reserveBufferPercent: number;
+	reserveBufferNativeAmount: number;
+	availableNativeAmount: number;
+	nativeUnitsPerCredit: number | null;
+	conversionProfileId?: string | null;
+	conversionTaskSignature?: string | null;
+	conversionConfidence?: string | null;
+	derivedAvailableCredits: number | null;
+	confidence: 'low' | 'medium' | 'high' | string;
+	resetAt?: string | null;
+	reasons: string[];
+	metadata?: Record<string, unknown>;
+}
+
+export interface DerivedCapacitySummary {
+	entries: DerivedCapacityAvailability[];
+	totalDerivedAvailableCredits?: number | null;
+	derivedEntryCount?: number;
+	learningEntryCount?: number;
+	availableNativeByUnit?: Record<string, number>;
+	providers?: Array<{
+		capacityProviderId: string;
+		entries?: DerivedCapacityAvailability[];
+		totalDerivedAvailableCredits?: number | null;
+		derivedEntryCount?: number;
+		learningEntryCount?: number;
+		availableNativeByUnit?: Record<string, number>;
+		[key: string]: unknown;
+	}>;
+	[key: string]: unknown;
+}
+
+export interface DerivedCapacityInput {
+	executionProvider: ExecutionProvider;
+	nativeLimit?: ExecutionProviderNativeLimit | null;
+	latestObservation?: ExecutionProviderObservation | null;
+	activeReservations?: CapacityReservation[];
+	conversionProfile?: CreditConversionProfile | null;
+	scope?: string | null;
+	nativeUnit?: string | null;
+	now?: Date | string | null;
 }
 
 export interface TaskEstimateProfile {
@@ -1099,6 +1261,7 @@ export interface CapacityPlan {
 	grants: CapacityGrant[];
 	activeReservations: CapacityReservation[];
 	estimateProfiles: TaskEstimateProfile[];
+	derivedCapacity?: DerivedCapacitySummary | null;
 	remaining: {
 		dailyCredits: number | null;
 		weeklyCredits: number | null;
@@ -2314,6 +2477,10 @@ export interface UpsertCapacityGrantRequest {
 	dailyUsdLimit?: number | null;
 	weeklyQuotaMinutes?: number | null;
 	monthlyProviderUnits?: number | null;
+	portfolioAllocationPercent?: number | null;
+	reservePoolPercent?: number | null;
+	maxDailyProjectCredits?: number | null;
+	emergencyOverride?: boolean;
 	priorityWeight?: number;
 	overflowPolicy?: CapacityOverflowPolicy;
 	metadata?: Record<string, unknown> | null;
@@ -2322,6 +2489,7 @@ export interface UpsertCapacityGrantRequest {
 export interface CreateCapacityReservationRequest {
 	id?: string;
 	capacityProviderId: string;
+	executionProviderId?: string | null;
 	laneId: string;
 	teamId: string;
 	projectId: string;
@@ -2329,6 +2497,9 @@ export interface CreateCapacityReservationRequest {
 	taskId?: string | null;
 	state?: CapacityReservationState;
 	reservedCredits: number;
+	nativeUnit?: string | null;
+	reservedNativeAmount?: number | null;
+	consumedNativeAmount?: number | null;
 	reservedProviderUnits?: number | null;
 	reservedUsd?: number | null;
 	expiresAt?: string | null;
@@ -2346,6 +2517,8 @@ export interface RecordCapacityUsageRequest {
 	taskId?: string | null;
 	phase?: TaskCreditLedgerEntry['phase'];
 	credits: number;
+	nativeUnit?: string | null;
+	nativeAmount?: number | null;
 	providerUnits?: number | null;
 	usd?: number | null;
 	source?: string;
@@ -2397,8 +2570,9 @@ export interface CreateTaskUsageActualRequest {
 	taskSignature: string;
 	executionProfileId?: string | null;
 	capacityProviderId?: string | null;
+	executionProviderId?: string | null;
 	laneId?: string | null;
-	businessModel: CapacityBusinessModel | string;
+	businessModel?: CapacityBusinessModel | string;
 	modelName?: string | null;
 	inputTokens?: number | null;
 	outputTokens?: number | null;
@@ -2411,8 +2585,12 @@ export interface CreateTaskUsageActualRequest {
 	diffLinesRemoved?: number | null;
 	testRuns?: number | null;
 	retryCount?: number | null;
-	actualCredits: number;
+	actualCredits?: number | null;
 	actualUsd?: number | null;
+	creditFormulaVersion?: string | null;
+	actualCreditSource?: string | null;
+	actualCreditsOverride?: boolean | null;
+	nativeUsage?: NativeUsageObservation | Record<string, unknown> | null;
 	metadata?: Record<string, unknown> | null;
 }
 

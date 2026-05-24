@@ -165,12 +165,41 @@ export type SeedCapacityProviderRegistration = {
 	apiKey?: SeedCapacityProviderRegistrationApiKey;
 };
 
+export type SeedExecutionProviderNativeLimitResource = {
+	id?: string;
+	scope?: string;
+	limitScope?: string;
+	nativeUnit?: string;
+	limitAmount: number;
+	reserveBufferPercent?: number;
+	resetCadence?: string;
+	resetAt?: string;
+	confidence?: string;
+	source?: string;
+	metadata?: Record<string, unknown>;
+};
+
+export type SeedExecutionProviderResource = {
+	id?: string;
+	name: string;
+	kind: string;
+	status?: string;
+	nativeUnit: string;
+	quotaVisibility?: string;
+	maxConcurrentWorkers?: number;
+	resetCadence?: string;
+	config?: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	nativeLimits?: SeedExecutionProviderNativeLimitResource[];
+};
+
 export type SeedCapacityProviderResource = SeedResourceBase & {
 	team: string;
 	name: string;
 	kind?: string;
 	provider: string;
 	billingScope?: string;
+	creditBudgetMode?: 'static' | 'hybrid' | 'derived' | string;
 	monthlyCreditBudget?: number;
 	dailyCreditBudget?: number;
 	maxConcurrentWorkdays?: number;
@@ -179,6 +208,7 @@ export type SeedCapacityProviderResource = SeedResourceBase & {
 	registration?: SeedCapacityProviderRegistration;
 	metadata?: Record<string, unknown>;
 	lanes?: SeedCapacityLaneResource[];
+	executionProviders?: SeedExecutionProviderResource[];
 };
 
 export type SeedCapacityGrantResource = SeedResourceBase & {
@@ -194,6 +224,10 @@ export type SeedCapacityGrantResource = SeedResourceBase & {
 	dailyUsdLimit?: number;
 	weeklyQuotaMinutes?: number;
 	monthlyProviderUnits?: number;
+	portfolioAllocationPercent?: number;
+	reservePoolPercent?: number;
+	maxDailyProjectCredits?: number;
+	emergencyOverride?: boolean;
 	priorityWeight?: number;
 	overflowPolicy?: string;
 	state?: string;
