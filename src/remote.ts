@@ -239,7 +239,11 @@ export class RemoteTreeseedClient {
 }
 
 export class RemoteTreeseedAuthClient {
-	constructor(private readonly client: RemoteTreeseedClient) {}
+	private readonly client: RemoteTreeseedClient;
+
+	constructor(client: RemoteTreeseedClient) {
+		this.client = client;
+	}
 
 	startDeviceFlow(request: DeviceCodeStartRequest) {
 		return this.client.requestJson<DeviceCodeStartResponse>('/auth/device/start', {
@@ -270,7 +274,11 @@ export class RemoteTreeseedAuthClient {
 }
 
 export class RemoteTreeseedSdkClient {
-	constructor(private readonly client: RemoteTreeseedClient) {}
+	private readonly client: RemoteTreeseedClient;
+
+	constructor(client: RemoteTreeseedClient) {
+		this.client = client;
+	}
 
 	execute<T = unknown>(operation: string, request: RemoteSdkOperationRequest) {
 		return this.client.requestJson<RemoteSdkOperationResponse<T>>(`/sdk/${encodeURIComponent(operation)}`, {
@@ -383,7 +391,11 @@ export class CloudflareQueuePushClient {
 }
 
 export class RemoteTreeseedOperationsClient {
-	constructor(private readonly client: RemoteTreeseedClient) {}
+	private readonly client: RemoteTreeseedClient;
+
+	constructor(client: RemoteTreeseedClient) {
+		this.client = client;
+	}
 
 	execute(operation: string, request: RemoteWorkflowOperationRequest) {
 		return this.client.requestJson<RemoteWorkflowOperationResponse>(`/operations/${encodeURIComponent(operation)}`, {
@@ -395,7 +407,11 @@ export class RemoteTreeseedOperationsClient {
 }
 
 export class RemoteTreeseedDispatchClient {
-	constructor(private readonly client: RemoteTreeseedClient) {}
+	private readonly client: RemoteTreeseedClient;
+
+	constructor(client: RemoteTreeseedClient) {
+		this.client = client;
+	}
 
 	dispatch(projectId: string, request: SdkDispatchRequest) {
 		return this.client.requestJson<SdkDispatchResult>(`/v1/projects/${encodeURIComponent(projectId)}/dispatch`, {
@@ -407,7 +423,11 @@ export class RemoteTreeseedDispatchClient {
 }
 
 export class RemoteTreeseedJobsClient {
-	constructor(private readonly client: RemoteTreeseedClient) {}
+	private readonly client: RemoteTreeseedClient;
+
+	constructor(client: RemoteTreeseedClient) {
+		this.client = client;
+	}
 
 	get(jobId: string) {
 		return this.client.requestJson<{ ok: true; payload: RemoteJob }>(`/v1/jobs/${encodeURIComponent(jobId)}`, {
@@ -430,7 +450,11 @@ export class RemoteTreeseedJobsClient {
 }
 
 export class RemoteTreeseedRunnerClient {
-	constructor(private readonly client: RemoteTreeseedClient) {}
+	private readonly client: RemoteTreeseedClient;
+
+	constructor(client: RemoteTreeseedClient) {
+		this.client = client;
+	}
 
 	pull(projectId: string, request: RemoteJobPullRequest = {}) {
 		return this.client.requestJson<RemoteJobPullResponse>(`/v1/projects/${encodeURIComponent(projectId)}/runner/jobs/pull`, {

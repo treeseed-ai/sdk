@@ -44,7 +44,9 @@ export const PROJECT_EXECUTION_OWNERS = ['project_api', 'project_runner', 'marke
 export const REMOTE_JOB_STATUSES = ['pending', 'claimed', 'running', 'completed', 'failed', 'cancelled'] as const;
 export const PROJECT_ENVIRONMENT_NAMES = ['local', 'staging', 'prod'] as const;
 export const PROJECT_DEPLOYMENT_KINDS = ['provision', 'code', 'content', 'mixed'] as const;
-export const PROJECT_DEPLOYMENT_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'cancelled'] as const;
+export const PROJECT_WEB_DEPLOYMENT_ACTIONS = ['deploy_web', 'publish_content', 'monitor'] as const;
+export const PROJECT_DEPLOYMENT_ENVIRONMENTS = ['staging', 'prod'] as const;
+export const PROJECT_DEPLOYMENT_STATUSES = ['pending', 'queued', 'claimed', 'dispatching', 'running', 'monitoring', 'succeeded', 'failed', 'cancelled', 'timed_out'] as const;
 export const PROJECT_INFRA_RESOURCE_PROVIDERS = ['cloudflare', 'railway', 'github', 'market'] as const;
 export const PROJECT_INFRA_RESOURCE_KINDS = [
 	'pages',
@@ -77,7 +79,12 @@ export type ProjectExecutionOwner = (typeof PROJECT_EXECUTION_OWNERS)[number];
 export type RemoteJobStatus = (typeof REMOTE_JOB_STATUSES)[number];
 export type ProjectEnvironmentName = (typeof PROJECT_ENVIRONMENT_NAMES)[number];
 export type ProjectDeploymentKind = (typeof PROJECT_DEPLOYMENT_KINDS)[number];
+export type ProjectWebDeploymentAction = (typeof PROJECT_WEB_DEPLOYMENT_ACTIONS)[number];
+export type ProjectDeploymentEnvironment = (typeof PROJECT_DEPLOYMENT_ENVIRONMENTS)[number];
 export type ProjectDeploymentStatus = (typeof PROJECT_DEPLOYMENT_STATUSES)[number];
+export type ProjectWebMonitorStatus = 'healthy' | 'degraded' | 'failed' | 'unknown';
+export type ProjectWebMonitorCheckStatus = 'passed' | 'warning' | 'failed' | 'skipped';
+export type ProjectWebMonitorCheckSource = 'market' | 'github' | 'cloudflare' | 'http' | 'sdk';
 export type ProjectInfrastructureResourceProvider = (typeof PROJECT_INFRA_RESOURCE_PROVIDERS)[number];
 export type ProjectInfrastructureResourceKind = (typeof PROJECT_INFRA_RESOURCE_KINDS)[number];
 export type AgentPoolStatus = (typeof AGENT_POOL_STATUSES)[number];
@@ -266,20 +273,105 @@ export interface ProjectInfrastructureResource {
 
 export interface ProjectDeployment {
 	id: string;
+	teamId: string | null;
 	projectId: string;
 	environment: ProjectEnvironmentName;
 	deploymentKind: ProjectDeploymentKind;
+	action: ProjectWebDeploymentAction | string;
 	status: ProjectDeploymentStatus;
+	platformOperationId: string | null;
+	retryOfDeploymentId: string | null;
+	resumedFromDeploymentId: string | null;
+	idempotencyKey: string | null;
+	requestedByUserId: string | null;
 	sourceRef: string | null;
 	releaseTag: string | null;
 	commitSha: string | null;
 	triggeredByType: string | null;
 	triggeredById: string | null;
+	repository?: Record<string, unknown>;
+	externalWorkflow?: Record<string, unknown>;
+	target?: Record<string, unknown>;
+	monitor?: Record<string, unknown>;
+	summary: string | null;
+	error?: Record<string, unknown>;
 	metadata?: Record<string, unknown>;
 	startedAt: string | null;
 	finishedAt: string | null;
 	createdAt: string;
 	updatedAt: string;
+	completedAt: string | null;
+}
+
+export interface ProjectWebMonitorCheck {
+	key: string;
+	label: string;
+	status: ProjectWebMonitorCheckStatus;
+	summary: string;
+	source: ProjectWebMonitorCheckSource;
+	url?: string;
+	inspectCommand?: string;
+}
+
+export interface ProjectWebMonitorResult {
+	environment: ProjectDeploymentEnvironment;
+	status: ProjectWebMonitorStatus;
+	checkedAt: string;
+	checks: ProjectWebMonitorCheck[];
+	urls: string[];
+	warnings: string[];
+}
+
+export interface ProjectDeploymentEvent {
+	id: string;
+	deploymentId: string;
+	projectId: string;
+	teamId: string;
+	operationId: string | null;
+	kind: string;
+	message: string;
+	status: string | null;
+	severity: string;
+	sequence: number;
+	payload?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface ProjectDeploymentActionAvailability {
+	environment: ProjectDeploymentEnvironment;
+	action: ProjectWebDeploymentAction;
+	available: boolean;
+	blockedBy: Array<{
+		code: string;
+		message: string;
+		href?: string;
+	}>;
+}
+
+export interface ProjectDeploymentReadiness {
+	ready: boolean;
+	blockers: Array<{ code: string; message: string; href?: string }>;
+	checks: Array<{ code: string; label: string; ready: boolean; message: string; href?: string }>;
+}
+
+export interface CreateProjectWebDeploymentRequest {
+	environment: ProjectDeploymentEnvironment;
+	action: ProjectWebDeploymentAction;
+	source?: 'market_ui' | 'market_api' | 'cli' | 'launch_flow';
+	reason?: string;
+	idempotencyKey?: string;
+	previewId?: string | null;
+	dryRun?: boolean;
+	confirmProduction?: boolean;
+}
+
+export interface CreateProjectWebDeploymentResponse {
+	ok: true;
+	deployment: ProjectDeployment;
+	operation: Record<string, unknown>;
+	pollUrl: string;
+	eventsUrl: string;
+	stateUrl: string;
 }
 
 export interface AgentPoolAutoscalePolicy {
@@ -2293,14 +2385,27 @@ export interface CreateProjectDeploymentRequest {
 	environment: ProjectEnvironmentName;
 	deploymentKind: ProjectDeploymentKind;
 	status?: ProjectDeploymentStatus;
+	action?: ProjectWebDeploymentAction | string;
+	platformOperationId?: string | null;
+	retryOfDeploymentId?: string | null;
+	resumedFromDeploymentId?: string | null;
+	idempotencyKey?: string | null;
+	requestedByUserId?: string | null;
 	sourceRef?: string | null;
 	releaseTag?: string | null;
 	commitSha?: string | null;
 	triggeredByType?: string | null;
 	triggeredById?: string | null;
+	repository?: Record<string, unknown> | null;
+	externalWorkflow?: Record<string, unknown> | null;
+	target?: Record<string, unknown> | null;
+	monitor?: Record<string, unknown> | null;
+	summary?: string | null;
+	error?: Record<string, unknown> | null;
 	metadata?: Record<string, unknown> | null;
 	startedAt?: string | null;
 	finishedAt?: string | null;
+	completedAt?: string | null;
 }
 
 export interface UpsertAgentPoolRequest {

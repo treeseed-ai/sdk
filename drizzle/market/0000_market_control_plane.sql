@@ -135,20 +135,20 @@ CREATE TABLE IF NOT EXISTS "better_auth_account" (
 	"accessToken" text,
 	"refreshToken" text,
 	"idToken" text,
-	"accessTokenExpiresAt" integer,
-	"refreshTokenExpiresAt" integer,
+	"accessTokenExpiresAt" bigint,
+	"refreshTokenExpiresAt" bigint,
 	"scope" text,
 	"password" text,
-	"createdAt" integer NOT NULL,
-	"updatedAt" integer NOT NULL
+	"createdAt" bigint NOT NULL,
+	"updatedAt" bigint NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "better_auth_session" (
 	"id" text PRIMARY KEY NOT NULL,
-	"expiresAt" integer NOT NULL,
+	"expiresAt" bigint NOT NULL,
 	"token" text NOT NULL,
-	"createdAt" integer NOT NULL,
-	"updatedAt" integer NOT NULL,
+	"createdAt" bigint NOT NULL,
+	"updatedAt" bigint NOT NULL,
 	"ipAddress" text,
 	"userAgent" text,
 	"userId" text NOT NULL,
@@ -161,8 +161,8 @@ CREATE TABLE IF NOT EXISTS "better_auth_user" (
 	"email" text NOT NULL,
 	"emailVerified" integer DEFAULT 0 NOT NULL,
 	"image" text,
-	"createdAt" integer NOT NULL,
-	"updatedAt" integer NOT NULL,
+	"createdAt" bigint NOT NULL,
+	"updatedAt" bigint NOT NULL,
 	"username" text,
 	"firstName" text,
 	"lastName" text,
@@ -173,9 +173,9 @@ CREATE TABLE IF NOT EXISTS "better_auth_verification" (
 	"id" text PRIMARY KEY NOT NULL,
 	"identifier" text NOT NULL,
 	"value" text NOT NULL,
-	"expiresAt" integer NOT NULL,
-	"createdAt" integer NOT NULL,
-	"updatedAt" integer NOT NULL
+	"expiresAt" bigint NOT NULL,
+	"createdAt" bigint NOT NULL,
+	"updatedAt" bigint NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "capacity_grants" (
@@ -844,22 +844,51 @@ CREATE TABLE IF NOT EXISTS "project_connections" (
 	CONSTRAINT "project_connections_project_id_unique" UNIQUE("project_id")
 );
 
+CREATE TABLE IF NOT EXISTS "project_deployment_events" (
+	"id" text PRIMARY KEY NOT NULL,
+	"deployment_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"operation_id" text,
+	"kind" text NOT NULL,
+	"message" text NOT NULL,
+	"status" text,
+	"severity" text DEFAULT 'info' NOT NULL,
+	"sequence" integer NOT NULL,
+	"payload_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS "project_deployments" (
 	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
 	"deployment_kind" text NOT NULL,
+	"action" text DEFAULT 'deploy_web' NOT NULL,
 	"status" text NOT NULL,
+	"platform_operation_id" text,
+	"retry_of_deployment_id" text,
+	"resumed_from_deployment_id" text,
+	"idempotency_key" text,
+	"requested_by_user_id" text,
 	"source_ref" text,
 	"release_tag" text,
 	"commit_sha" text,
 	"triggered_by_type" text,
 	"triggered_by_id" text,
+	"repository_json" text DEFAULT '{}' NOT NULL,
+	"external_workflow_json" text DEFAULT '{}' NOT NULL,
+	"target_json" text DEFAULT '{}' NOT NULL,
+	"monitor_json" text DEFAULT '{}' NOT NULL,
+	"summary" text,
+	"error_json" text DEFAULT '{}' NOT NULL,
 	"metadata_json" text,
 	"started_at" text,
 	"finished_at" text,
 	"created_at" text NOT NULL,
-	"updated_at" text NOT NULL
+	"updated_at" text NOT NULL,
+	"completed_at" text
 );
 
 CREATE TABLE IF NOT EXISTS "project_environments" (
@@ -1397,6 +1426,20 @@ CREATE TABLE IF NOT EXISTS "teams" (
 	CONSTRAINT "teams_slug_unique" UNIQUE("slug")
 );
 
+CREATE TABLE IF NOT EXISTS "user_email_addresses" (
+	"id" text PRIMARY KEY NOT NULL,
+	"user_id" text NOT NULL,
+	"email" text NOT NULL,
+	"normalized_email" text NOT NULL,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"is_primary" integer DEFAULT 0 NOT NULL,
+	"verification_requested_at" text,
+	"verified_at" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	CONSTRAINT "user_email_addresses_normalized_email_unique" UNIQUE("normalized_email")
+);
+
 CREATE TABLE IF NOT EXISTS "user_identities" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
@@ -1539,7 +1582,6 @@ CREATE TABLE IF NOT EXISTS "worker_runners" (
 	"updated_at" text NOT NULL
 );
 
-
 -- Treeseed Market schema adoption columns
 ALTER TABLE "agent_messages" ADD COLUMN IF NOT EXISTS "id" integer;
 ALTER TABLE "agent_messages" ADD COLUMN IF NOT EXISTS "type" text;
@@ -1680,6 +1722,9 @@ ALTER TABLE "better_auth_verification" ADD COLUMN IF NOT EXISTS "value" text;
 ALTER TABLE "better_auth_verification" ADD COLUMN IF NOT EXISTS "expiresAt" integer;
 ALTER TABLE "better_auth_verification" ADD COLUMN IF NOT EXISTS "createdAt" integer;
 ALTER TABLE "better_auth_verification" ADD COLUMN IF NOT EXISTS "updatedAt" integer;
+ALTER TABLE "better_auth_verification" ALTER COLUMN "expiresAt" TYPE bigint;
+ALTER TABLE "better_auth_verification" ALTER COLUMN "createdAt" TYPE bigint;
+ALTER TABLE "better_auth_verification" ALTER COLUMN "updatedAt" TYPE bigint;
 ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "id" text;
 ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "capacity_provider_id" text;
 ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "lane_id" text;
@@ -2751,6 +2796,17 @@ ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "created_at" text;
 ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "updated_at" text;
 -- End Treeseed Market schema adoption columns
 
+-- Backfill verified account emails from existing active credential rows.
+INSERT INTO user_email_addresses (
+	id, user_id, email, normalized_email, status, is_primary, verification_requested_at, verified_at, created_at, updated_at
+)
+SELECT 'email_' || md5(user_id || ':' || LOWER(email)), user_id, email, LOWER(email), 'verified', 1, created_at, COALESCE(updated_at, created_at), created_at, updated_at
+  FROM market_auth_credentials
+ WHERE email IS NOT NULL
+   AND email != ''
+   AND status = 'active'
+ON CONFLICT (normalized_email) DO NOTHING;
+
 CREATE INDEX IF NOT EXISTS "idx_agent_pool_registrations_pool_heartbeat" ON "agent_pool_registrations" USING btree ("pool_id","heartbeat_at");
 CREATE INDEX IF NOT EXISTS "idx_agent_pool_scale_decisions_pool_created" ON "agent_pool_scale_decisions" USING btree ("pool_id","created_at");
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_agent_pools_project_environment_name" ON "agent_pools" USING btree ("project_id","environment","name");
@@ -2813,7 +2869,15 @@ CREATE INDEX IF NOT EXISTS "idx_platform_repository_claims_runner" ON "platform_
 CREATE INDEX IF NOT EXISTS "idx_priority_overrides_project_priority" ON "priority_overrides" USING btree ("project_id","priority","updated_at");
 CREATE INDEX IF NOT EXISTS "idx_priority_snapshots_project_generated" ON "priority_snapshots" USING btree ("project_id","generated_at");
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_project_capability_grants_project_operation" ON "project_capability_grants" USING btree ("project_id","namespace","operation");
+CREATE INDEX IF NOT EXISTS "idx_project_deployment_events_deployment_sequence" ON "project_deployment_events" USING btree ("deployment_id","sequence");
+CREATE INDEX IF NOT EXISTS "idx_project_deployment_events_project_created" ON "project_deployment_events" USING btree ("project_id","created_at");
+CREATE INDEX IF NOT EXISTS "idx_project_deployment_events_operation" ON "project_deployment_events" USING btree ("operation_id");
+CREATE INDEX IF NOT EXISTS "idx_project_deployments_project_created" ON "project_deployments" USING btree ("project_id","created_at");
 CREATE INDEX IF NOT EXISTS "idx_project_deployments_project_environment" ON "project_deployments" USING btree ("project_id","environment","created_at");
+CREATE INDEX IF NOT EXISTS "idx_project_deployments_project_status" ON "project_deployments" USING btree ("project_id","status","updated_at");
+CREATE INDEX IF NOT EXISTS "idx_project_deployments_operation" ON "project_deployments" USING btree ("platform_operation_id");
+CREATE INDEX IF NOT EXISTS "idx_project_deployments_team_created" ON "project_deployments" USING btree ("team_id","created_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_project_deployments_idempotency" ON "project_deployments" USING btree ("project_id","idempotency_key");
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_project_environments_project_environment" ON "project_environments" USING btree ("project_id","environment");
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_project_infrastructure_resource_unique" ON "project_infrastructure_resources" USING btree ("project_id","environment","provider","resource_kind","logical_name");
 CREATE INDEX IF NOT EXISTS "idx_project_summary_snapshots_team_generated" ON "project_summary_snapshots" USING btree ("team_id","generated_at");
@@ -2853,6 +2917,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "idx_team_memberships_team_user" ON "team_memb
 CREATE INDEX IF NOT EXISTS "idx_team_web_hosts_team_provider" ON "team_web_hosts" USING btree ("team_id","provider","status");
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_team_web_hosts_team_provider_name" ON "team_web_hosts" USING btree ("team_id","provider","name");
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_teams_name" ON "teams" USING btree ("name");
+CREATE INDEX IF NOT EXISTS "idx_user_email_addresses_user" ON "user_email_addresses" USING btree ("user_id","status","is_primary");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_email_addresses_normalized" ON "user_email_addresses" USING btree ("normalized_email");
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_identities_provider_subject" ON "user_identities" USING btree ("provider","provider_subject");
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_role_bindings_user_role" ON "user_role_bindings" USING btree ("user_id","role_id");
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_users_username" ON "users" USING btree ("username");
