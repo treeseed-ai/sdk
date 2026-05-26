@@ -63,6 +63,19 @@ export interface MarketWebAuthSession {
 	session?: Record<string, unknown> | null;
 }
 
+export interface MarketUserEmailAddress {
+	id: string;
+	userId: string;
+	email: string;
+	status: string;
+	verified: boolean;
+	isPrimary: boolean;
+	verificationRequestedAt?: string | null;
+	verifiedAt?: string | null;
+	createdAt?: string | null;
+	updatedAt?: string | null;
+}
+
 export interface MarketRegistryState {
 	version: 1;
 	activeMarketId: string;
@@ -535,9 +548,49 @@ export class MarketClient {
 		});
 	}
 
+	confirmWebEmail(body: { token: string }) {
+		return this.request<{ ok: true; payload: MarketWebAuthSession }>('/v1/auth/web/confirm-email', {
+			method: 'POST',
+			body,
+		});
+	}
+
 	checkWebUsername(username: string) {
 		return this.request<{ ok: true; payload: { username: string; available: boolean; status: string } }>(
 			`/v1/auth/web/username/check?username=${encodeURIComponent(username)}`,
+		);
+	}
+
+	webEmails() {
+		return this.request<{ ok: true; payload: MarketUserEmailAddress[] }>('/v1/auth/web/emails', { requireAuth: true });
+	}
+
+	addWebEmail(body: { email: string }) {
+		return this.request<{ ok: true; payload: { emailAddress: MarketUserEmailAddress; verificationSent: boolean; confirmationToken?: string } }>('/v1/auth/web/emails', {
+			method: 'POST',
+			body,
+			requireAuth: true,
+		});
+	}
+
+	verifyWebEmail(emailId: string) {
+		return this.request<{ ok: true; payload: { emailAddress: MarketUserEmailAddress; verificationSent: boolean; confirmationToken?: string } }>(
+			`/v1/auth/web/emails/${encodeURIComponent(emailId)}/verify`,
+			{ method: 'POST', requireAuth: true },
+		);
+	}
+
+	setPrimaryWebEmail(emailId: string) {
+		return this.request<{ ok: true; payload: MarketWebAuthSession & { emailAddress: MarketUserEmailAddress } }>(
+			`/v1/auth/web/emails/${encodeURIComponent(emailId)}/primary`,
+			{ method: 'POST', requireAuth: true },
+		);
+	}
+
+	deleteWebEmail(emailId: string) {
+		return this.request<{ ok: true; payload: MarketUserEmailAddress[] }>(
+			`/v1/auth/web/emails/${encodeURIComponent(emailId)}`,
+			{ method: 'DELETE', requireAuth: true },
 		);
 	}
 

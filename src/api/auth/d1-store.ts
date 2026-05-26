@@ -739,6 +739,10 @@ export class D1AuthStore {
 			principal: {
 				...principalRecord.principal,
 				scopes: requestedScopes,
+				metadata: {
+					...principalRecord.principal.metadata,
+					sessionId,
+				},
 			},
 		};
 	}
