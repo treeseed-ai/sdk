@@ -42,6 +42,9 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('TREESEED_WORKFLOW_ENVIRONMENT: ${{ inputs.environment }}');
 		expect(webSource).toContain('TREESEED_BETTER_AUTH_SECRET');
 		expect(webSource).toContain('TREESEED_WEB_SERVICE_SECRET');
+		expect(webSource).toContain('TREESEED_API_WEB_SERVICE_SECRET');
+		expect(webSource).toContain('TREESEED_PLATFORM_RUNNER_SECRET');
+		expect(webSource).toContain('TREESEED_HOSTED_HUBS_GITHUB_TOKEN');
 		expect(webSource).toContain('TREESEED_SITE_URL');
 		expect(webSource).toContain('BETTER_AUTH_URL');
 		expect(webSource).toContain('https://api-treeseed-market-staging-ca844c56.treeseed.ai');
