@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { waitForGitHubWorkflowRunCompletion, type GitHubWorkflowProgressEvent } from '../../src/operations/services/github-api.ts';
+import {
+	cancelGitHubWorkflowRun,
+	dispatchGitHubWorkflowRun,
+	formatGitHubWorkflowFailure,
+	getGitHubWorkflowFileStatus,
+	getLatestGitHubWorkflowRun,
+	waitForGitHubWorkflowRunCompletion,
+	type GitHubWorkflowProgressEvent,
+} from '../../src/operations/services/github-api.ts';
 
 describe('GitHub workflow wait progress', () => {
 	it('emits waiting, running, and completion heartbeats while preserving the gate result', async () => {
@@ -200,6 +208,191 @@ describe('GitHub workflow wait progress', () => {
 			workflow_id: 'verify.yml',
 			ref: 'staging',
 			inputs: undefined,
+		}]);
+	});
+
+	it('dispatches and cancels workflow runs through explicit helpers', async () => {
+		const calls: Array<Record<string, unknown>> = [];
+		const client = {
+			rest: {
+				actions: {
+					createWorkflowDispatch: async (params: Record<string, unknown>) => {
+						calls.push({ kind: 'dispatch', ...params });
+						return { status: 204 };
+					},
+					cancelWorkflowRun: async (params: Record<string, unknown>) => {
+						calls.push({ kind: 'cancel', ...params });
+						return { status: 202 };
+					},
+				},
+			},
+		};
+
+		const dispatched = await dispatchGitHubWorkflowRun('acme/widget', {
+			client: client as any,
+			workflow: 'deploy-web.yml',
+			branch: 'staging',
+			inputs: { deployment_id: 'dep-1' },
+		});
+		const cancelled = await cancelGitHubWorkflowRun('acme/widget', 123, { client: client as any });
+
+		expect(dispatched).toMatchObject({
+			repository: 'acme/widget',
+			workflow: 'deploy-web.yml',
+			branch: 'staging',
+			status: 204,
+		});
+		expect(cancelled).toMatchObject({
+			ok: true,
+			supported: true,
+			repository: 'acme/widget',
+			runId: 123,
+			message: 'GitHub workflow cancellation requested.',
+		});
+		expect(calls).toEqual([
+			{
+				kind: 'dispatch',
+				owner: 'acme',
+				repo: 'widget',
+				workflow_id: 'deploy-web.yml',
+				ref: 'staging',
+				inputs: { deployment_id: 'dep-1' },
+			},
+			{
+				kind: 'cancel',
+				owner: 'acme',
+				repo: 'widget',
+				run_id: 123,
+			},
+		]);
+	});
+
+	it('formats workflow failures with an inspect command and stable retry guidance', () => {
+		const failure = formatGitHubWorkflowFailure({
+			repository: 'acme/widget',
+			workflow: 'deploy-web.yml',
+			runId: 987,
+			runUrl: 'https://github.com/acme/widget/actions/runs/987',
+			conclusion: 'failure',
+			failedJobName: 'deploy',
+		});
+
+		expect(failure).toMatchObject({
+			provider: 'github',
+			repository: 'acme/widget',
+			workflow: 'deploy-web.yml',
+			runId: 987,
+			runUrl: 'https://github.com/acme/widget/actions/runs/987',
+			inspectCommand: 'gh run view 987 --repo acme/widget --log-failed',
+			failedJobName: 'deploy',
+			retrySafe: true,
+			resumeSafe: false,
+			blockerCode: 'github_workflow_failed',
+		});
+		expect(failure.summary).toContain('deploy-web.yml');
+	});
+
+	it('checks workflow file presence through GitHub content metadata', async () => {
+		const requested: Array<Record<string, unknown>> = [];
+		const client = {
+			rest: {
+				repos: {
+					getContent: async (params: Record<string, unknown>) => {
+						requested.push(params);
+						return {
+							data: {
+								html_url: 'https://github.com/acme/widget/blob/main/.github/workflows/deploy-web.yml',
+							},
+						};
+					},
+				},
+			},
+		};
+
+		const present = await getGitHubWorkflowFileStatus('acme/widget', 'deploy-web.yml', { client: client as any });
+
+		expect(present).toMatchObject({
+			ok: true,
+			exists: true,
+			repository: 'acme/widget',
+			workflow: 'deploy-web.yml',
+			url: 'https://github.com/acme/widget/blob/main/.github/workflows/deploy-web.yml',
+		});
+		expect(requested).toEqual([{
+			owner: 'acme',
+			repo: 'widget',
+			path: '.github/workflows/deploy-web.yml',
+		}]);
+	});
+
+	it('normalizes missing workflow files without throwing', async () => {
+		const client = {
+			rest: {
+				repos: {
+					getContent: async () => {
+						const error = new Error('Not Found') as Error & { status?: number };
+						error.status = 404;
+						throw error;
+					},
+				},
+			},
+		};
+
+		await expect(getGitHubWorkflowFileStatus('acme/widget', 'missing.yml', { client: client as any }))
+			.resolves.toMatchObject({
+				ok: true,
+				exists: false,
+				repository: 'acme/widget',
+				workflow: 'missing.yml',
+			});
+	});
+
+	it('reads the latest workflow run for monitor state', async () => {
+		const requested: Array<Record<string, unknown>> = [];
+		const client = {
+			rest: {
+				actions: {
+					listWorkflowRuns: async (params: Record<string, unknown>) => {
+						requested.push(params);
+						return {
+							data: {
+								workflow_runs: [{
+									id: 321,
+									status: 'completed',
+									conclusion: 'failure',
+									html_url: 'https://github.com/acme/widget/actions/runs/321',
+									head_sha: 'abc123',
+									head_branch: 'staging',
+									created_at: '2026-05-01T10:00:00Z',
+									updated_at: '2026-05-01T10:04:00Z',
+								}],
+							},
+						};
+					},
+				},
+			},
+		};
+
+		const latest = await getLatestGitHubWorkflowRun('acme/widget', {
+			client: client as any,
+			workflow: 'deploy-web.yml',
+			branch: 'staging',
+		});
+
+		expect(latest).toMatchObject({
+			id: 321,
+			status: 'completed',
+			conclusion: 'failure',
+			url: 'https://github.com/acme/widget/actions/runs/321',
+			headSha: 'abc123',
+			headBranch: 'staging',
+		});
+		expect(requested).toEqual([{
+			owner: 'acme',
+			repo: 'widget',
+			workflow_id: 'deploy-web.yml',
+			branch: 'staging',
+			per_page: 1,
 		}]);
 	});
 });

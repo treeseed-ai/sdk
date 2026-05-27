@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
 const EXPECTED_PORTS = ['1025->1025/tcp', '8025->8025/tcp'];
-const KNOWN_MAILPIT_NAMES = ['treeseed_mailpit', 'karyon_docs_mailpit'];
+const KNOWN_MAILPIT_NAMES = ['treeseed_mailpit', 'docs_mailpit'];
 
 export type TreeseedMailpitContainer = {
 	name: string;
@@ -9,14 +9,16 @@ export type TreeseedMailpitContainer = {
 	ports: string;
 };
 
-function runDocker(args, options = {}) {
+type RunDocker = typeof runDocker;
+
+function runDocker(args: string[], options = {}) {
 	return spawnSync('docker', args, {
 		encoding: 'utf8',
 		...options,
 	});
 }
 
-function parseDockerPsOutput(stdout) {
+function parseDockerPsOutput(stdout: string) {
 	return stdout
 		.split(/\r?\n/)
 		.map((line) => line.trim())
@@ -39,28 +41,32 @@ export function dockerIsAvailable() {
 	return result.status === 0;
 }
 
-export function findRunningMailpitContainer() {
-	const result = runDocker(['ps', '--format', '{{.Names}}\t{{.Image}}\t{{.Ports}}']);
+function findKnownMailpitContainers({ all = false, run = runDocker }: { all?: boolean; run?: RunDocker } = {}) {
+	const args = [
+		'ps',
+		...(all ? ['-a'] : []),
+		'--format',
+		'{{.Names}}\t{{.Image}}\t{{.Ports}}',
+	];
+	const result = run(args);
 	if (result.status !== 0) {
-		return null;
+		return [];
 	}
-
-	return parseDockerPsOutput(result.stdout).find(isCompatibleMailpitContainer) ?? null;
+	return parseDockerPsOutput(result.stdout).filter(isCompatibleMailpitContainer);
 }
 
-export function stopKnownMailpitContainers() {
-	const container = findRunningMailpitContainer();
-	if (!container) {
+export function findRunningMailpitContainer(options: { run?: RunDocker } = {}) {
+	return findKnownMailpitContainers(options).at(0) ?? null;
+}
+
+export function stopKnownMailpitContainers(options: { run?: RunDocker } = {}) {
+	const run = options.run ?? runDocker;
+	const containers = findKnownMailpitContainers({ all: true, run });
+	if (containers.length === 0) {
 		return true;
 	}
 
-	const stopResult = runDocker(['stop', container.name]);
-	if (stopResult.status !== 0) {
-		return false;
-	}
-
-	const removeResult = runDocker(['rm', '-f', container.name]);
-	return removeResult.status === 0;
+	return containers.every((container) => run(['rm', '-f', container.name]).status === 0);
 }
 
 export function streamKnownMailpitLogs() {

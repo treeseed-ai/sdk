@@ -355,6 +355,9 @@ describe('remote Treeseed support', () => {
 			target,
 			env: {
 				TREESEED_API_BOOTSTRAP_ADMIN_ALLOWLIST: 'admin@example.com,github:123',
+				TREESEED_API_WEB_SERVICE_ID: 'web',
+				TREESEED_API_WEB_SERVICE_SECRET: 'web-secret',
+				TREESEED_PLATFORM_RUNNER_SECRET: 'runner-secret',
 				TREESEED_AUTH_MODE: 'internal-first',
 				TREESEED_AUTH_GITHUB_CLIENT_ID: 'github-client',
 				TREESEED_AUTH_GITHUB_CLIENT_SECRET: 'github-secret',
@@ -362,6 +365,9 @@ describe('remote Treeseed support', () => {
 		});
 
 		expect(wrangler).toContain('TREESEED_API_BOOTSTRAP_ADMIN_ALLOWLIST = "admin@example.com,github:123"');
+		expect(wrangler).toContain('TREESEED_API_WEB_SERVICE_ID = "web"');
+		expect(wrangler).toContain('TREESEED_API_WEB_SERVICE_SECRET = "web-secret"');
+		expect(wrangler).toContain('TREESEED_PLATFORM_RUNNER_SECRET = "runner-secret"');
 		expect(wrangler).toContain('TREESEED_AUTH_MODE = "internal-first"');
 		expect(wrangler).toContain('TREESEED_AUTH_GITHUB_CLIENT_ID = "github-client"');
 		expect(wrangler).toContain('TREESEED_AUTH_GITHUB_CLIENT_SECRET = "github-secret"');

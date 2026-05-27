@@ -391,6 +391,7 @@ export class D1AuthStore {
 				scopes: this.scopesForPrincipal(permissions),
 				metadata: {
 					...parseJson(user.metadata_json, {}),
+					email: user.email ?? undefined,
 					username: user.username ?? undefined,
 				},
 			},
@@ -738,6 +739,10 @@ export class D1AuthStore {
 			principal: {
 				...principalRecord.principal,
 				scopes: requestedScopes,
+				metadata: {
+					...principalRecord.principal.metadata,
+					sessionId,
+				},
 			},
 		};
 	}
@@ -989,6 +994,31 @@ export class D1AuthStore {
 		}
 		const payload = verifyAccessToken(token, this.config.authSecret);
 		if (!payload) return null;
+		const sessionId = typeof payload.metadata?.sessionId === 'string' ? payload.metadata.sessionId.trim() : '';
+		if (sessionId) {
+			const session = await this.first<{
+				id: string;
+				user_id: string;
+				expires_at: string;
+				revoked_at: string | null;
+			}>(
+				`SELECT id, user_id, expires_at, revoked_at
+				 FROM auth_sessions
+				 WHERE id = ?`,
+				[sessionId],
+			);
+			const sessionExpiresAt = session ? new Date(session.expires_at).getTime() : 0;
+			if (
+				!session
+				|| session.user_id !== payload.sub
+				|| session.revoked_at
+				|| !Number.isFinite(sessionExpiresAt)
+				|| sessionExpiresAt <= Date.now()
+			) {
+				return null;
+			}
+			await this.run(`UPDATE auth_sessions SET updated_at = ? WHERE id = ?`, [isoNow(), session.id]);
+		}
 		return {
 			principal: principalFromAccessTokenPayload(payload),
 			credential: {

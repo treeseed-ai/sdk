@@ -14,6 +14,17 @@ export {
 	validateRepositoryHost,
 } from './operations/services/hub-launch.ts';
 export { TreeseedOperationsSdk } from './operations/runtime.ts';
+export {
+	cancelGitHubWorkflowRun,
+	dispatchGitHubWorkflowRun,
+	formatGitHubWorkflowFailure,
+	waitForGitHubWorkflowRunCompletion,
+	type GitHubWorkflowCancellationResult,
+	type GitHubWorkflowDispatchResult,
+	type GitHubWorkflowFailureSummary,
+	type GitHubWorkflowFailureSummaryInput,
+	type GitHubWorkflowProgressEvent,
+} from './operations/services/github-api.ts';
 export type {
 	HubContentResolutionPolicy,
 	KnowledgeHubLaunchIntent,

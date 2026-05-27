@@ -1,4 +1,4 @@
-import { index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigint, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
 
 // Source of truth for the Treeseed Market PostgreSQL control-plane schema.
 // Regenerate the checked-in Market Drizzle SQL with npm run db:generate:market.
@@ -145,6 +145,22 @@ export const userIdentities = pgTable('user_identities', {
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
 	uniqueIndex('idx_user_identities_provider_subject').on(table.provider, table.providerSubject)
+]);
+
+export const userEmailAddresses = pgTable('user_email_addresses', {
+	id: text('id').primaryKey(),
+	userId: text('user_id').notNull(),
+	email: text('email').notNull(),
+	normalizedEmail: text('normalized_email').notNull().unique(),
+	status: text('status').notNull().default('pending'),
+	isPrimary: integer('is_primary').notNull().default(0),
+	verificationRequestedAt: text('verification_requested_at'),
+	verifiedAt: text('verified_at'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_user_email_addresses_user').on(table.userId, table.status, table.isPrimary),
+	uniqueIndex('idx_user_email_addresses_normalized').on(table.normalizedEmail)
 ]);
 
 export const roles = pgTable('roles', {
@@ -556,22 +572,60 @@ export const projectInfrastructureResources = pgTable('project_infrastructure_re
 
 export const projectDeployments = pgTable('project_deployments', {
 	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
 	projectId: text('project_id').notNull(),
 	environment: text('environment').notNull(),
 	deploymentKind: text('deployment_kind').notNull(),
+	action: text('action').notNull().default('deploy_web'),
 	status: text('status').notNull(),
+	platformOperationId: text('platform_operation_id'),
+	retryOfDeploymentId: text('retry_of_deployment_id'),
+	resumedFromDeploymentId: text('resumed_from_deployment_id'),
+	idempotencyKey: text('idempotency_key'),
+	requestedByUserId: text('requested_by_user_id'),
 	sourceRef: text('source_ref'),
 	releaseTag: text('release_tag'),
 	commitSha: text('commit_sha'),
 	triggeredByType: text('triggered_by_type'),
 	triggeredById: text('triggered_by_id'),
+	repositoryJson: text('repository_json').notNull().default('{}'),
+	externalWorkflowJson: text('external_workflow_json').notNull().default('{}'),
+	targetJson: text('target_json').notNull().default('{}'),
+	monitorJson: text('monitor_json').notNull().default('{}'),
+	summary: text('summary'),
+	errorJson: text('error_json').notNull().default('{}'),
 	metadataJson: text('metadata_json'),
 	startedAt: text('started_at'),
 	finishedAt: text('finished_at'),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
+	completedAt: text('completed_at'),
 }, (table) => [
-	index('idx_project_deployments_project_environment').on(table.projectId, table.environment, table.createdAt)
+	index('idx_project_deployments_project_created').on(table.projectId, table.createdAt),
+	index('idx_project_deployments_project_environment').on(table.projectId, table.environment, table.createdAt),
+	index('idx_project_deployments_project_status').on(table.projectId, table.status, table.updatedAt),
+	index('idx_project_deployments_operation').on(table.platformOperationId),
+	index('idx_project_deployments_team_created').on(table.teamId, table.createdAt),
+	uniqueIndex('idx_project_deployments_idempotency').on(table.projectId, table.idempotencyKey)
+]);
+
+export const projectDeploymentEvents = pgTable('project_deployment_events', {
+	id: text('id').primaryKey(),
+	deploymentId: text('deployment_id').notNull(),
+	projectId: text('project_id').notNull(),
+	teamId: text('team_id').notNull(),
+	operationId: text('operation_id'),
+	kind: text('kind').notNull(),
+	message: text('message').notNull(),
+	status: text('status'),
+	severity: text('severity').notNull().default('info'),
+	sequence: integer('sequence').notNull(),
+	payloadJson: text('payload_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_project_deployment_events_deployment_sequence').on(table.deploymentId, table.sequence),
+	index('idx_project_deployment_events_project_created').on(table.projectId, table.createdAt),
+	index('idx_project_deployment_events_operation').on(table.operationId)
 ]);
 
 export const agentPools = pgTable('agent_pools', {
@@ -759,8 +813,8 @@ export const betterAuthUser = pgTable('better_auth_user', {
 	email: text('email').notNull().unique(),
 	emailVerified: integer('emailVerified').notNull().default(0),
 	image: text('image'),
-	createdAt: integer('createdAt').notNull(),
-	updatedAt: integer('updatedAt').notNull(),
+	createdAt: bigint('createdAt', { mode: 'number' }).notNull(),
+	updatedAt: bigint('updatedAt', { mode: 'number' }).notNull(),
 	username: text('username'),
 	firstName: text('firstName'),
 	lastName: text('lastName'),
@@ -770,10 +824,10 @@ export const betterAuthUser = pgTable('better_auth_user', {
 
 export const betterAuthSession = pgTable('better_auth_session', {
 	id: text('id').primaryKey(),
-	expiresAt: integer('expiresAt').notNull(),
+	expiresAt: bigint('expiresAt', { mode: 'number' }).notNull(),
 	token: text('token').notNull().unique(),
-	createdAt: integer('createdAt').notNull(),
-	updatedAt: integer('updatedAt').notNull(),
+	createdAt: bigint('createdAt', { mode: 'number' }).notNull(),
+	updatedAt: bigint('updatedAt', { mode: 'number' }).notNull(),
 	ipAddress: text('ipAddress'),
 	userAgent: text('userAgent'),
 	userId: text('userId').notNull(),
@@ -790,12 +844,12 @@ export const betterAuthAccount = pgTable('better_auth_account', {
 	accessToken: text('accessToken'),
 	refreshToken: text('refreshToken'),
 	idToken: text('idToken'),
-	accessTokenExpiresAt: integer('accessTokenExpiresAt'),
-	refreshTokenExpiresAt: integer('refreshTokenExpiresAt'),
+	accessTokenExpiresAt: bigint('accessTokenExpiresAt', { mode: 'number' }),
+	refreshTokenExpiresAt: bigint('refreshTokenExpiresAt', { mode: 'number' }),
 	scope: text('scope'),
 	password: text('password'),
-	createdAt: integer('createdAt').notNull(),
-	updatedAt: integer('updatedAt').notNull(),
+	createdAt: bigint('createdAt', { mode: 'number' }).notNull(),
+	updatedAt: bigint('updatedAt', { mode: 'number' }).notNull(),
 }, (table) => [
 	index('idx_better_auth_account_userId').on(table.userId),
 	uniqueIndex('idx_better_auth_account_provider_account').on(table.providerId, table.accountId)
@@ -805,9 +859,9 @@ export const betterAuthVerification = pgTable('better_auth_verification', {
 	id: text('id').primaryKey(),
 	identifier: text('identifier').notNull(),
 	value: text('value').notNull(),
-	expiresAt: integer('expiresAt').notNull(),
-	createdAt: integer('createdAt').notNull(),
-	updatedAt: integer('updatedAt').notNull(),
+	expiresAt: bigint('expiresAt', { mode: 'number' }).notNull(),
+	createdAt: bigint('createdAt', { mode: 'number' }).notNull(),
+	updatedAt: bigint('updatedAt', { mode: 'number' }).notNull(),
 }, (table) => [
 	index('idx_better_auth_verification_identifier').on(table.identifier)
 ]);
@@ -1730,6 +1784,7 @@ export const treeseedMarketSchema = {
 	reports,
 	users,
 	userIdentities,
+	userEmailAddresses,
 	roles,
 	permissions,
 	rolePermissions,
@@ -1759,6 +1814,7 @@ export const treeseedMarketSchema = {
 	projectEnvironments,
 	projectInfrastructureResources,
 	projectDeployments,
+	projectDeploymentEvents,
 	agentPools,
 	agentPoolRegistrations,
 	agentPoolScaleDecisions,

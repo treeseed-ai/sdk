@@ -186,6 +186,7 @@ export interface PlatformOperationRunnerCoreClient {
 	checkpoint(operationId: string, request: PlatformRunnerJobUpdateRequest): Promise<{ ok: true; operation: PlatformOperation }>;
 	complete(operationId: string, request: PlatformRunnerJobUpdateRequest): Promise<{ ok: true; operation: PlatformOperation }>;
 	fail(operationId: string, request: PlatformRunnerJobUpdateRequest): Promise<{ ok: true; operation: PlatformOperation }>;
+	cancel?(operationId: string, request: PlatformRunnerJobUpdateRequest): Promise<{ ok: true; operation: PlatformOperation }>;
 }
 
 export interface PlatformOperationRunnerCoreOptions {
@@ -384,6 +385,7 @@ export async function runPlatformOperationOnce(options: PlatformOperationRunnerC
 	const claimed = await options.client.claimJob({
 		runnerId: options.runnerId,
 		operationId: options.operationId ?? undefined,
+		capabilities: registry.keys(),
 		limit: options.limit ?? 1,
 		leaseSeconds: options.leaseSeconds ?? 300,
 	});
@@ -455,6 +457,14 @@ export async function runPlatformOperationOnce(options: PlatformOperationRunnerC
 		const eventKind = failure.message.toLowerCase().includes('cancel')
 			? 'runner.cancelled'
 			: 'runner.retry_safe_failure';
+		if (eventKind === 'runner.cancelled' && options.client.cancel) {
+			const cancelled = await options.client.cancel(operation.id, {
+				runnerId: options.runnerId,
+				error: failure,
+				event: { kind: eventKind, data: failure },
+			});
+			return { ok: false, claimed: true, operation: cancelled.operation, error: failure };
+		}
 		if (eventKind === 'runner.cancelled' && options.client.getOperation) {
 			await options.client.appendEvent(operation.id, {
 				runnerId: options.runnerId,
@@ -604,6 +614,17 @@ export class PlatformRunnerClient {
 			body: { ...request, marketId: this.marketId },
 		}).then((response) => {
 			assertPlatformOperationOkEnvelope(response, 'Platform operation failure response');
+			assertPlatformOperation(response.operation);
+			return response;
+		});
+	}
+
+	cancel(operationId: string, request: PlatformRunnerJobUpdateRequest) {
+		return this.requestJson<{ ok: true; operation: PlatformOperation }>(`${PLATFORM_OPERATION_ENDPOINTS.runnerJob(operationId)}/cancel`, {
+			method: 'POST',
+			body: { ...request, marketId: this.marketId },
+		}).then((response) => {
+			assertPlatformOperationOkEnvelope(response, 'Platform operation cancellation response');
 			assertPlatformOperation(response.operation);
 			return response;
 		});

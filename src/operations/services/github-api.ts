@@ -75,6 +75,64 @@ export type GitHubWorkflowProgressEvent = {
 	failedJobs?: GitHubWorkflowJobSummary[];
 };
 
+export interface GitHubWorkflowDispatchResult {
+	repository: string;
+	workflow: string;
+	branch: string;
+	inputs: Record<string, string> | undefined;
+	status: number | null;
+	dispatchedAt: string;
+}
+
+export interface GitHubWorkflowCancellationResult {
+	ok: boolean;
+	supported: boolean;
+	repository: string | null;
+	runId: number | null;
+	url?: string | null;
+	message: string;
+	cancelledAt?: string | null;
+}
+
+export interface GitHubWorkflowFileStatus {
+	ok: boolean;
+	exists: boolean | null;
+	repository: string;
+	workflow: string;
+	url: string | null;
+	message: string;
+}
+
+export interface GitHubWorkflowFailureSummaryInput {
+	repository?: string | null;
+	workflow?: string | null;
+	runId?: number | string | null;
+	runUrl?: string | null;
+	conclusion?: string | null;
+	failedJobName?: string | null;
+	lastActiveStep?: string | null;
+	message?: string | null;
+	blockerCode?: string | null;
+	retrySafe?: boolean;
+	resumeSafe?: boolean;
+}
+
+export interface GitHubWorkflowFailureSummary {
+	summary: string;
+	provider: 'github';
+	repository: string | null;
+	workflow: string | null;
+	runId: number | null;
+	runUrl: string | null;
+	inspectCommand: string | null;
+	failedJobName: string | null;
+	lastActiveStep: string | null;
+	conclusion: string | null;
+	retrySafe: boolean;
+	resumeSafe: boolean;
+	blockerCode: string;
+}
+
 function normalizeGitHubVisibility(value: string | null | undefined, fallback: GitHubRepositorySummary['visibility'] = 'private') {
 	const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
 	return normalized === 'public' || normalized === 'internal' || normalized === 'private'
@@ -748,6 +806,209 @@ function normalizeWorkflowJob(job: Record<string, any>): GitHubWorkflowJobSummar
 			}))
 			: [],
 	};
+}
+
+function workflowInspectCommand(repository: string | null, runId: number | null) {
+	return repository && runId ? `gh run view ${runId} --repo ${repository} --log-failed` : null;
+}
+
+export function formatGitHubWorkflowFailure(input: GitHubWorkflowFailureSummaryInput = {}): GitHubWorkflowFailureSummary {
+	const repository = typeof input.repository === 'string' && input.repository.trim() ? input.repository.trim() : null;
+	const workflow = typeof input.workflow === 'string' && input.workflow.trim() ? input.workflow.trim() : null;
+	const numericRunId = Number(input.runId);
+	const runId = Number.isFinite(numericRunId) && numericRunId > 0 ? numericRunId : null;
+	const runUrl = typeof input.runUrl === 'string' && input.runUrl.trim() ? input.runUrl.trim() : null;
+	const conclusion = typeof input.conclusion === 'string' && input.conclusion.trim() ? input.conclusion.trim() : null;
+	const failedJobName = typeof input.failedJobName === 'string' && input.failedJobName.trim() ? input.failedJobName.trim() : null;
+	const lastActiveStep = typeof input.lastActiveStep === 'string' && input.lastActiveStep.trim() ? input.lastActiveStep.trim() : null;
+	const blockerCode = typeof input.blockerCode === 'string' && input.blockerCode.trim()
+		? input.blockerCode.trim()
+		: conclusion === 'cancelled'
+			? 'github_workflow_cancelled'
+			: conclusion === 'timed_out'
+				? 'github_workflow_timed_out'
+				: 'github_workflow_failed';
+	const detail = failedJobName
+		? ` Failed job: ${failedJobName}.`
+		: lastActiveStep
+			? ` Last active step: ${lastActiveStep}.`
+			: '';
+	const summary = typeof input.message === 'string' && input.message.trim()
+		? input.message.trim()
+		: `${workflow ?? 'GitHub workflow'} ${conclusion ? `completed with conclusion ${conclusion}` : 'failed'}.${detail}`;
+	return {
+		summary,
+		provider: 'github',
+		repository,
+		workflow,
+		runId,
+		runUrl,
+		inspectCommand: workflowInspectCommand(repository, runId),
+		failedJobName,
+		lastActiveStep,
+		conclusion,
+		retrySafe: input.retrySafe ?? true,
+		resumeSafe: input.resumeSafe ?? false,
+		blockerCode,
+	};
+}
+
+export async function dispatchGitHubWorkflowRun(
+	repository: string | { owner: string; name: string },
+	{
+		client = createGitHubApiClient(),
+		workflow = 'deploy-web.yml',
+		branch,
+		inputs,
+	}: {
+		client?: GitHubApiClient;
+		workflow?: string;
+		branch: string;
+		inputs?: Record<string, string>;
+	},
+): Promise<GitHubWorkflowDispatchResult> {
+	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
+	try {
+		const result = await client.rest.actions.createWorkflowDispatch({
+			owner,
+			repo: name,
+			workflow_id: workflow,
+			ref: branch,
+			inputs,
+		});
+		return {
+			repository: `${owner}/${name}`,
+			workflow,
+			branch,
+			inputs,
+			status: typeof result.status === 'number' ? result.status : null,
+			dispatchedAt: new Date().toISOString(),
+		};
+	} catch (error) {
+		throw normalizeGitHubApiError(error, `Unable to dispatch GitHub workflow ${workflow} in ${owner}/${name}`);
+	}
+}
+
+export async function cancelGitHubWorkflowRun(
+	repository: string | { owner: string; name: string } | null | undefined,
+	runId: number | string | null | undefined,
+	{ client = createGitHubApiClient() }: { client?: GitHubApiClient } = {},
+): Promise<GitHubWorkflowCancellationResult> {
+	if (!repository || !runId) {
+		return {
+			ok: false,
+			supported: false,
+			repository: typeof repository === 'string' ? repository : null,
+			runId: null,
+			message: 'GitHub workflow cancellation requires a repository and run id.',
+		};
+	}
+	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
+	const numericRunId = Number(runId);
+	if (!Number.isFinite(numericRunId) || numericRunId <= 0) {
+		return {
+			ok: false,
+			supported: false,
+			repository: `${owner}/${name}`,
+			runId: null,
+			message: 'GitHub workflow cancellation requires a numeric run id.',
+		};
+	}
+	try {
+		await client.rest.actions.cancelWorkflowRun({
+			owner,
+			repo: name,
+			run_id: numericRunId,
+		});
+		return {
+			ok: true,
+			supported: true,
+			repository: `${owner}/${name}`,
+			runId: numericRunId,
+			url: `https://github.com/${owner}/${name}/actions/runs/${numericRunId}`,
+			message: 'GitHub workflow cancellation requested.',
+			cancelledAt: new Date().toISOString(),
+		};
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error ?? '');
+		if (/not supported|not found|404/iu.test(message)) {
+			return {
+				ok: false,
+				supported: false,
+				repository: `${owner}/${name}`,
+				runId: numericRunId,
+				message: 'GitHub workflow cancellation is not supported for this run.',
+			};
+		}
+		throw normalizeGitHubApiError(error, `Unable to cancel GitHub workflow run ${numericRunId} in ${owner}/${name}`);
+	}
+}
+
+export async function getGitHubWorkflowFileStatus(
+	repository: string | { owner: string; name: string },
+	workflow = 'deploy-web.yml',
+	{ client = createGitHubApiClient() }: { client?: GitHubApiClient } = {},
+): Promise<GitHubWorkflowFileStatus> {
+	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
+	const normalizedWorkflow = workflow.replace(/^\.github\/workflows\//u, '');
+	const path = `.github/workflows/${normalizedWorkflow}`;
+	try {
+		const result = await client.rest.repos.getContent({
+			owner,
+			repo: name,
+			path,
+		});
+		const data = result.data as Record<string, any>;
+		return {
+			ok: true,
+			exists: true,
+			repository: `${owner}/${name}`,
+			workflow: normalizedWorkflow,
+			url: typeof data.html_url === 'string' ? data.html_url : `https://github.com/${owner}/${name}/blob/HEAD/${path}`,
+			message: `${normalizedWorkflow} is present.`,
+		};
+	} catch (error) {
+		const status = typeof (error as { status?: unknown })?.status === 'number' ? (error as { status: number }).status : null;
+		if (status === 404) {
+			return {
+				ok: true,
+				exists: false,
+				repository: `${owner}/${name}`,
+				workflow: normalizedWorkflow,
+				url: null,
+				message: `${normalizedWorkflow} is missing from ${owner}/${name}.`,
+			};
+		}
+		throw normalizeGitHubApiError(error, `Unable to inspect GitHub workflow file ${path} in ${owner}/${name}`);
+	}
+}
+
+export async function getLatestGitHubWorkflowRun(
+	repository: string | { owner: string; name: string },
+	{
+		client = createGitHubApiClient(),
+		workflow = 'deploy-web.yml',
+		branch,
+	}: {
+		client?: GitHubApiClient;
+		workflow?: string;
+		branch?: string | null;
+	} = {},
+): Promise<GitHubWorkflowRunSummary | null> {
+	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
+	try {
+		const listed = await client.rest.actions.listWorkflowRuns({
+			owner,
+			repo: name,
+			workflow_id: workflow,
+			...(branch ? { branch } : {}),
+			per_page: 1,
+		});
+		const run = listed.data.workflow_runs[0] ?? null;
+		return run ? normalizeWorkflowRun(run as Record<string, any>) : null;
+	} catch (error) {
+		throw normalizeGitHubApiError(error, `Unable to inspect latest GitHub workflow run ${workflow} in ${owner}/${name}`);
+	}
 }
 
 async function listWorkflowJobsForProgress(client: GitHubApiClient, owner: string, repo: string, runId: number) {

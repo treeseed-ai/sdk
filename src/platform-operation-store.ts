@@ -174,6 +174,12 @@ function repositoryWorkspacePath(workspaceRoot: unknown, repository: Record<stri
 	return `${root}/repositories/${repositoryKey(repository)}/repo`;
 }
 
+function normalizeOperationCapabilities(capabilities: unknown) {
+	return Array.isArray(capabilities)
+		? capabilities.map((entry) => String(entry ?? '').trim()).filter(Boolean)
+		: [];
+}
+
 function convertQuestionPlaceholders(query: string) {
 	let index = 0;
 	return query.replace(/\?/gu, () => `$${++index}`);
@@ -369,6 +375,11 @@ export class PlatformOperationStore {
 		const leaseSeconds = Math.max(30, Math.min(Number(input.leaseSeconds ?? 300), 3600));
 		const now = isoNow(this.now);
 		const leaseExpiresAt = new Date(this.now().getTime() + leaseSeconds * 1000).toISOString();
+		const capabilities = normalizeOperationCapabilities(input.capabilities);
+		const capabilityWhere = capabilities.length > 0
+			? ` AND (${capabilities.map(() => `(namespace || ':' || operation) = ?`).join(' OR ')})`
+			: '';
+		const capabilityParams = capabilities;
 		const rows = input.operationId
 			? await this.database.all(
 				`SELECT * FROM platform_operations
@@ -376,15 +387,19 @@ export class PlatformOperationStore {
 				    status = 'queued'
 				    OR (status = 'leased' AND lease_expires_at IS NOT NULL AND lease_expires_at < ?)
 				 )
+				 ${capabilityWhere}
 				 ORDER BY created_at ASC LIMIT 1`,
-				[input.operationId, now],
+				[input.operationId, now, ...capabilityParams],
 			)
 			: await this.database.all(
 				`SELECT * FROM platform_operations
-				 WHERE status = 'queued'
+				 WHERE (
+				    status = 'queued'
 				    OR (status = 'leased' AND lease_expires_at IS NOT NULL AND lease_expires_at < ?)
+				 )
+				 ${capabilityWhere}
 				 ORDER BY created_at ASC LIMIT 1`,
-				[now],
+				[now, ...capabilityParams],
 			);
 		const row = rows[0];
 		if (!row) return { ok: true as const, operation: null };
@@ -487,6 +502,23 @@ export class PlatformOperationStore {
 		await this.releaseRepositoryClaimsForRunner(request.runnerId, {
 			claimState: 'released',
 			metadata: { operationId, status: 'failed' },
+		});
+		return this.getOperation(operationId);
+	}
+
+	async cancel(operationId: string, request: PlatformRunnerJobUpdateRequest) {
+		await this.assertRunnerUpdate(operationId, request.runnerId);
+		const timestamp = isoNow(this.now);
+		await this.database.run(
+			`UPDATE platform_operations
+			 SET status = 'cancelled', error_json = ?, lease_expires_at = NULL, cancelled_at = COALESCE(cancelled_at, ?), updated_at = ?, finished_at = COALESCE(finished_at, ?)
+			 WHERE id = ?`,
+			[JSON.stringify(request.error ?? { message: 'Platform operation was cancelled.' }), timestamp, timestamp, timestamp, operationId],
+		);
+		await this.appendPlatformOperationEvent(operationId, request.event?.kind ?? 'runner.cancelled', request.event?.data ?? {});
+		await this.releaseRepositoryClaimsForRunner(request.runnerId, {
+			claimState: 'released',
+			metadata: { operationId, status: 'cancelled' },
 		});
 		return this.getOperation(operationId);
 	}

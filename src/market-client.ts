@@ -11,6 +11,16 @@ import type {
 	TokenRefreshRequest,
 	TokenRefreshResponse,
 } from './remote.ts';
+import type {
+	CreateProjectWebDeploymentRequest,
+	CreateProjectWebDeploymentResponse,
+	ProjectDeployment,
+	ProjectDeploymentActionAvailability,
+	ProjectDeploymentEnvironment,
+	ProjectDeploymentEvent,
+	ProjectDeploymentReadiness,
+	ProjectWebDeploymentAction,
+} from './sdk-types.ts';
 import {
 	TREESEED_REMOTE_CONTRACT_HEADER,
 	TREESEED_REMOTE_CONTRACT_VERSION,
@@ -51,6 +61,19 @@ export interface MarketWebAuthSession {
 	expiresInSeconds?: number;
 	principal: ApiPrincipal;
 	session?: Record<string, unknown> | null;
+}
+
+export interface MarketUserEmailAddress {
+	id: string;
+	userId: string;
+	email: string;
+	status: string;
+	verified: boolean;
+	isPrimary: boolean;
+	verificationRequestedAt?: string | null;
+	verifiedAt?: string | null;
+	createdAt?: string | null;
+	updatedAt?: string | null;
 }
 
 export interface MarketRegistryState {
@@ -115,6 +138,36 @@ export interface IntegratedMarketCatalogResult<T extends Record<string, unknown>
 		status?: number;
 		error: string;
 	}>;
+}
+
+export interface MarketProjectDeploymentState {
+	ok: true;
+	project: Record<string, unknown>;
+	launch: Record<string, unknown> | null;
+	environments: unknown[];
+	repositories: unknown[];
+	hosts: unknown[];
+	runner: Record<string, unknown>;
+	latestDeployments: {
+		staging: ProjectDeployment | null;
+		prod: ProjectDeployment | null;
+	};
+	latestMonitors: {
+		staging: Record<string, unknown> | null;
+		prod: Record<string, unknown> | null;
+	};
+	activeOperations: ProjectDeployment[];
+	recentDeployments: ProjectDeployment[];
+	readiness: ProjectDeploymentReadiness;
+	actions: ProjectDeploymentActionAvailability[];
+	target: Record<string, unknown> | null;
+}
+
+export interface ProjectDeploymentListFilters {
+	environment?: ProjectDeploymentEnvironment | string | null;
+	action?: ProjectWebDeploymentAction | string | null;
+	status?: string | null;
+	limit?: number | string | null;
 }
 
 export interface MarketClientOptions {
@@ -415,9 +468,12 @@ export class MarketClient {
 		});
 		const payload = await response.json().catch(() => ({}));
 		if (!response.ok) {
-			const error = typeof (payload as { error?: unknown }).error === 'string'
-				? String((payload as { error?: unknown }).error)
-				: `Market request failed with ${response.status}.`;
+			const payloadError = (payload as { error?: unknown }).error;
+			const error = typeof payloadError === 'string'
+				? String(payloadError)
+				: payloadError && typeof payloadError === 'object' && typeof (payloadError as { message?: unknown }).message === 'string'
+					? String((payloadError as { message: string }).message)
+					: `Market request failed with ${response.status}.`;
 			throw new MarketApiError(error, response.status, payload);
 		}
 		return payload as T;
@@ -492,9 +548,49 @@ export class MarketClient {
 		});
 	}
 
+	confirmWebEmail(body: { token: string }) {
+		return this.request<{ ok: true; payload: MarketWebAuthSession }>('/v1/auth/web/confirm-email', {
+			method: 'POST',
+			body,
+		});
+	}
+
 	checkWebUsername(username: string) {
 		return this.request<{ ok: true; payload: { username: string; available: boolean; status: string } }>(
 			`/v1/auth/web/username/check?username=${encodeURIComponent(username)}`,
+		);
+	}
+
+	webEmails() {
+		return this.request<{ ok: true; payload: MarketUserEmailAddress[] }>('/v1/auth/web/emails', { requireAuth: true });
+	}
+
+	addWebEmail(body: { email: string }) {
+		return this.request<{ ok: true; payload: { emailAddress: MarketUserEmailAddress; verificationSent: boolean; confirmationToken?: string } }>('/v1/auth/web/emails', {
+			method: 'POST',
+			body,
+			requireAuth: true,
+		});
+	}
+
+	verifyWebEmail(emailId: string) {
+		return this.request<{ ok: true; payload: { emailAddress: MarketUserEmailAddress; verificationSent: boolean; confirmationToken?: string } }>(
+			`/v1/auth/web/emails/${encodeURIComponent(emailId)}/verify`,
+			{ method: 'POST', requireAuth: true },
+		);
+	}
+
+	setPrimaryWebEmail(emailId: string) {
+		return this.request<{ ok: true; payload: MarketWebAuthSession & { emailAddress: MarketUserEmailAddress } }>(
+			`/v1/auth/web/emails/${encodeURIComponent(emailId)}/primary`,
+			{ method: 'POST', requireAuth: true },
+		);
+	}
+
+	deleteWebEmail(emailId: string) {
+		return this.request<{ ok: true; payload: MarketUserEmailAddress[] }>(
+			`/v1/auth/web/emails/${encodeURIComponent(emailId)}`,
+			{ method: 'DELETE', requireAuth: true },
 		);
 	}
 
@@ -604,6 +700,69 @@ export class MarketClient {
 		return this.request<{ ok: true; payload: { projectId: string; team: TeamAccessSummary; environments: ProjectEnvironmentAccess[] } }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/access`,
 			{ requireAuth: true },
+		);
+	}
+
+	projectDeploymentState(projectId: string) {
+		return this.request<MarketProjectDeploymentState>(
+			`/v1/projects/${encodeURIComponent(projectId)}/deployment-state`,
+			{ requireAuth: true },
+		);
+	}
+
+	projectDeployments(projectId: string, filters: ProjectDeploymentListFilters = {}) {
+		const query = new URLSearchParams();
+		if (filters.environment) query.set('environment', String(filters.environment));
+		if (filters.action) query.set('action', String(filters.action));
+		if (filters.status) query.set('status', String(filters.status));
+		if (filters.limit) query.set('limit', String(filters.limit));
+		const suffix = query.size > 0 ? `?${query.toString()}` : '';
+		return this.request<{ ok: true; payload: ProjectDeployment[] }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/deployments${suffix}`,
+			{ requireAuth: true },
+		);
+	}
+
+	projectDeployment(projectId: string, deploymentId: string) {
+		return this.request<{ ok: true; payload: ProjectDeployment }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/deployments/${encodeURIComponent(deploymentId)}`,
+			{ requireAuth: true },
+		);
+	}
+
+	projectDeploymentEvents(projectId: string, deploymentId: string, options: { limit?: number | string | null } = {}) {
+		const query = options.limit ? `?limit=${encodeURIComponent(String(options.limit))}` : '';
+		return this.request<{ ok: true; payload: ProjectDeploymentEvent[] }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/deployments/${encodeURIComponent(deploymentId)}/events${query}`,
+			{ requireAuth: true },
+		);
+	}
+
+	createProjectWebDeployment(projectId: string, body: CreateProjectWebDeploymentRequest) {
+		return this.request<CreateProjectWebDeploymentResponse>(
+			`/v1/projects/${encodeURIComponent(projectId)}/deployments/web`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	retryProjectDeployment(projectId: string, deploymentId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; originalDeployment: ProjectDeployment; retryDeployment: ProjectDeployment; operation: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/deployments/${encodeURIComponent(deploymentId)}/retry`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	resumeProjectDeployment(projectId: string, deploymentId: string, body: Record<string, unknown> = {}) {
+		return this.request<Record<string, unknown>>(
+			`/v1/projects/${encodeURIComponent(projectId)}/deployments/${encodeURIComponent(deploymentId)}/resume`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	cancelProjectDeployment(projectId: string, deploymentId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; deployment: ProjectDeployment; cancellation: 'completed' | 'requested' | string }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/deployments/${encodeURIComponent(deploymentId)}/cancel`,
+			{ method: 'POST', body, requireAuth: true },
 		);
 	}
 
