@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.10.13] - 2026-05-27
+
+### Changed
+
+- refactor(railway-api): increase timeout and retry defaults (f98aa6148440)
+
+### Tests
+
+- build(source): update package metadata (1292c6a22c2f)
+- build(build): update package metadata (10249533eb1d)
+
+### Dependencies
+
+- build(build): update package metadata (3406ce41476a)
+- chore(sdk): bump version to 0.10.13-dev.staging.20260524T233127Z (40db8a06ad52)
+- Release @treeseed/sdk 0.10.13.
+
 ## [0.10.12] - 2026-05-24
 
 ### Fixed
