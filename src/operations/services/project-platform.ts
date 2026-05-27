@@ -574,15 +574,19 @@ function resolveReporter(tenantRoot: string, explicit: ControlPlaneReporter | un
 	return createControlPlaneReporter({ deployConfig });
 }
 
-function uploadObject(
+async function uploadObject(
 	tenantRoot: string,
 	wranglerPath: string,
 	wranglerEnv: Record<string, string | undefined>,
 	bucketName: string,
 	pointer: PublishedContentObjectPointer,
 	filePath: string,
+	options: {
+		write?: TreeseedBootstrapWriter;
+		prefix: TreeseedBootstrapTaskPrefix;
+	},
 ) {
-	runWrangler(tenantRoot, [
+	await runPrefixedWranglerWithRetry(tenantRoot, [
 		'r2',
 		'object',
 		'put',
@@ -595,7 +599,11 @@ function uploadObject(
 		filePath,
 		'--content-type',
 		pointer.contentType ?? inferContentType(filePath),
-	], wranglerEnv);
+	], {
+		env: wranglerEnv,
+		write: options.write,
+		prefix: options.prefix,
+	});
 }
 
 function deleteObject(
@@ -1098,13 +1106,22 @@ async function publishContent(
 	const tempRoot = mkdtempSync(join(tmpdir(), 'treeseed-content-publish-'));
 	try {
 		if (!options.dryRun) {
+			const uploadOptions = {
+				write: options.write,
+				prefix: {
+					scope: options.scope,
+					system: 'content',
+					task: 'publish',
+					stage: 'upload',
+				},
+			};
 			for (const object of built.objects) {
 				const filePath = writeTempFile(tempRoot, objectFileName(object.pointer), toBuffer(object.body));
-				uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, object.pointer, filePath);
+				await uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, object.pointer, filePath, uploadOptions);
 			}
 			for (const alias of stableObjectUploads) {
 				const filePath = writeTempFile(tempRoot, objectFileName(alias.pointer), alias.body);
-				uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, alias.pointer, filePath);
+				await uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, alias.pointer, filePath, uploadOptions);
 			}
 			for (const objectKey of deletedObjectKeys) {
 				deleteObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, objectKey);
@@ -1112,7 +1129,7 @@ async function publishContent(
 
 			if ('overlay' in built) {
 				const overlayFile = writeTempFile(tempRoot, 'overlay.json', Buffer.from(JSON.stringify(built.overlay, null, 2)));
-				uploadObject(
+				await uploadObject(
 					options.tenantRoot,
 					wranglerPath,
 					wranglerEnv,
@@ -1124,22 +1141,23 @@ async function publishContent(
 						contentType: 'application/json',
 					},
 					overlayFile,
+					uploadOptions,
 				);
 			} else {
 				const manifestFile = writeTempFile(tempRoot, 'manifest.json', Buffer.from(JSON.stringify(built.manifest, null, 2)));
 				const snapshotKey = locator.manifestKey.replace(/\/common\.json$/u, `/manifests/${built.manifest.revision}.json`);
-				uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, {
+				await uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, {
 					objectKey: snapshotKey,
 					sha256: stableHash(readFileSync(manifestFile)),
 					size: statSync(manifestFile).size,
 					contentType: 'application/json',
-				}, manifestFile);
-				uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, {
+				}, manifestFile, uploadOptions);
+				await uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, {
 					objectKey: locator.manifestKey,
 					sha256: stableHash(readFileSync(manifestFile)),
 					size: statSync(manifestFile).size,
 					contentType: 'application/json',
-				}, manifestFile);
+				}, manifestFile, uploadOptions);
 				if (contentPurgeUrls.size > 0) {
 					try {
 						purgePublishedContentCaches(options.tenantRoot, [...contentPurgeUrls].filter(Boolean), { target });
