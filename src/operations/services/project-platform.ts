@@ -1724,7 +1724,7 @@ export async function runProjectPlatformAction(action: ProjectPlatformAction, op
 	const previousWorkflowAction = process.env.TREESEED_WORKFLOW_ACTION;
 	const previousWorkflowPlane = process.env.TREESEED_WORKFLOW_PLANE;
 	process.env.TREESEED_WORKFLOW_ACTION = action;
-	process.env.TREESEED_WORKFLOW_PLANE = previousWorkflowPlane ?? 'web';
+	process.env.TREESEED_WORKFLOW_PLANE = previousWorkflowPlane ?? 'all';
 	applyTreeseedEnvironmentToProcess({ tenantRoot: options.tenantRoot, scope: options.scope, override: true });
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	try {

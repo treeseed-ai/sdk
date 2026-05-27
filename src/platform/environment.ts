@@ -214,6 +214,9 @@ function platformSurfaceEnabled(context: TreeseedEnvironmentContext, surface: st
 
 function activeWorkflowPlane() {
 	const plane = process.env.TREESEED_WORKFLOW_PLANE;
+	if (plane === 'all') {
+		return null;
+	}
 	return plane === 'web' || plane === 'processing' ? plane : null;
 }
 

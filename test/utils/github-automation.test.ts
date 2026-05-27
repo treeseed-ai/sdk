@@ -65,7 +65,7 @@ describe('github automation workflow generation', () => {
 		expect(web).toContain('default: deploy_web');
 		expect(web).toContain('publish_content');
 		expect(web).toContain('TREESEED_CONTENT_BUCKET_NAME');
-		expect(web).toContain('TREESEED_WORKFLOW_PLANE: web');
+		expect(web).toContain('TREESEED_WORKFLOW_PLANE: all');
 		expect(web).toContain('TREESEED_SMTP_PASSWORD: ${{ secrets.TREESEED_SMTP_PASSWORD }}');
 		expect(web).toContain('TREESEED_BETTER_AUTH_SECRET: ${{ secrets.TREESEED_BETTER_AUTH_SECRET }}');
 		expect(web).toContain('TREESEED_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_WEB_SERVICE_SECRET }}');
