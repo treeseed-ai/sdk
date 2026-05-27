@@ -400,6 +400,11 @@ describe('remote Treeseed support', () => {
 		expect(secrets.TREESEED_SMTP_PASSWORD).toBe('smtp-password');
 	});
 
+	it('syncs Cloudflare Pages secrets during hosted web deploy preparation', () => {
+		const source = readFileSync(new URL('../../src/operations/services/project-platform.ts', import.meta.url), 'utf8');
+		expect(source).toContain("syncCloudflareSecrets(tenantRoot, { target, dryRun })");
+	});
+
 	it('keeps dispatch local-first when no remote config is supplied', async () => {
 		const sdk = new AgentSdk({
 			repoRoot: sdkFixtureRoot,

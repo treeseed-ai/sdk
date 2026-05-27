@@ -32,6 +32,7 @@ import {
 	resolveConfiguredCloudflareAccountId,
 	resolveConfiguredSurfaceBaseUrl,
 	runRemoteD1Migrations,
+	syncCloudflareSecrets,
 	writeDeployState,
 } from './deploy.ts';
 import { currentManagedBranch, PRODUCTION_BRANCH, STAGING_BRANCH } from './git-workflow.ts';
@@ -279,6 +280,9 @@ export function prepareTenantCloudflareDeploy({
 		runTenantDeployPreflight({ cwd: tenantRoot, scope });
 	}
 	const { wranglerPath, deployConfig, state } = ensureGeneratedWranglerConfig(tenantRoot, { target });
+	if (scope !== 'local') {
+		syncCloudflareSecrets(tenantRoot, { target, dryRun });
+	}
 	const deployState = loadDeployState(tenantRoot, deployConfig, { target });
 	const pagesProjectName = target.kind === 'persistent' ? deployState.pages?.projectName ?? null : null;
 	const pagesBranchName = target.kind === 'persistent'
