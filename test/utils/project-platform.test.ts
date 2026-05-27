@@ -89,13 +89,17 @@ describe('project platform workflow actions', () => {
 		const deployStart = source.indexOf('export async function deployProjectPlatform');
 		const provisionCall = source.indexOf('await provisionProjectPlatform({ ...options, reporter, bootstrapSystems });', deployStart);
 		const cloudflarePrepare = source.indexOf('cloudflareContext = prepareTenantCloudflareDeploy', deployStart);
+		const contentPublish = source.indexOf("const contentNodeId = 'content:publish-runtime';", deployStart);
 		const railwayDeploy = source.indexOf('deployRailwayService(options.tenantRoot, service', deployStart);
 
 		expect(deployStart).toBeGreaterThanOrEqual(0);
 		expect(provisionCall).toBeGreaterThan(deployStart);
 		expect(cloudflarePrepare).toBeGreaterThan(provisionCall);
+		expect(contentPublish).toBeGreaterThan(cloudflarePrepare);
 		expect(railwayDeploy).toBeGreaterThan(provisionCall);
 		expect(source.slice(deployStart, cloudflarePrepare)).toContain('if (!options.skipProvision)');
+		expect(source.slice(contentPublish, railwayDeploy)).toContain("mode: 'production'");
+		expect(source.slice(contentPublish, railwayDeploy)).toContain("dependencies: ['web:build', contentNodeId");
 	});
 
 	it('chains Railway service deploy dependencies to avoid concurrent remote builds', () => {

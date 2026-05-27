@@ -54,6 +54,7 @@ import { runTenantDeployPreflight } from './save-deploy-preflight.ts';
 
 export type ProjectPlatformScope = 'local' | 'staging' | 'prod';
 export type ProjectPlatformAction = 'deploy_web' | 'publish_content' | 'monitor';
+type ProjectPlatformContentPublishMode = 'production' | 'editorial_overlay';
 
 export interface ProjectPlatformActionOptions {
 	tenantRoot: string;
@@ -968,6 +969,7 @@ function probeScaleConfiguration(siteConfig, state) {
 async function publishContent(
 	options: ProjectPlatformActionOptions,
 	reporter: ControlPlaneReporter,
+	publishOptions: { mode?: ProjectPlatformContentPublishMode } = {},
 ) {
 	const target = runTenantPublishContentPreflight(options);
 	const siteConfig = loadCliDeployConfig(options.tenantRoot);
@@ -1005,7 +1007,8 @@ async function publishContent(
 		previewId,
 	});
 
-	const built = options.scope === 'staging'
+	const publishMode = publishOptions.mode ?? (options.scope === 'staging' ? 'editorial_overlay' : 'production');
+	const built = publishMode === 'editorial_overlay'
 		? await pipeline.buildEditorialOverlay({ previousManifest, previewId })
 		: await pipeline.buildProductionRevision({ previousManifest });
 	const changedEntrySet = 'manifest' in built ? changedEntries(previousManifest, built.manifest.entries) : [];
@@ -1147,13 +1150,15 @@ async function publishContent(
 		}
 
 		const state = loadDeployState(options.tenantRoot, siteConfig, { target });
-		state.content.lastPublishedManifestRevision = 'overlay' in built ? built.overlay.previewId : built.manifest.revision;
-		state.content.lastPublishedManifestSha256 = stableHash(
-			JSON.stringify('overlay' in built ? built.overlay : built.manifest),
-		);
-		writeDeployState(options.tenantRoot, state, { target });
+		if (!options.dryRun) {
+			state.content.lastPublishedManifestRevision = 'overlay' in built ? built.overlay.previewId : built.manifest.revision;
+			state.content.lastPublishedManifestSha256 = stableHash(
+				JSON.stringify('overlay' in built ? built.overlay : built.manifest),
+			);
+			writeDeployState(options.tenantRoot, state, { target });
+		}
 
-		const previewToken = options.scope === 'staging' && process.env.TREESEED_EDITORIAL_PREVIEW_SECRET
+		const previewToken = publishMode === 'editorial_overlay' && process.env.TREESEED_EDITORIAL_PREVIEW_SECRET
 			? signEditorialPreviewToken({
 				teamId,
 				previewId,
@@ -1173,9 +1178,9 @@ async function publishContent(
 			commitSha,
 			triggeredByType: 'project_runner',
 			metadata: {
-				mode: options.scope === 'staging' ? 'editorial_overlay' : 'production',
+				mode: publishMode,
 				revision: 'overlay' in built ? built.overlay.previewId : built.manifest.revision,
-				previewId: options.scope === 'staging' ? previewId : null,
+				previewId: publishMode === 'editorial_overlay' ? previewId : null,
 				previewUrl,
 				entries: ('overlay' in built ? built.overlay.entries : built.manifest.entries).length,
 				artifacts: ('overlay' in built ? built.overlay.artifacts : built.manifest.artifacts)?.length ?? 0,
@@ -1188,9 +1193,9 @@ async function publishContent(
 		return {
 			ok: true,
 			scope: options.scope,
-			mode: options.scope === 'staging' ? 'editorial_overlay' : 'production',
+			mode: publishMode,
 			revision: 'overlay' in built ? built.overlay.previewId : built.manifest.revision,
-			previewId: options.scope === 'staging' ? previewId : null,
+			previewId: publishMode === 'editorial_overlay' ? previewId : null,
 			previewUrl,
 			target: deployTargetLabel(target),
 		};
@@ -1421,13 +1426,23 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 	}
 	if (cloudflareContext && selectedSystems.has('web')) {
 		const context = cloudflareContext;
+		const contentNodeId = 'content:publish-runtime';
+		nodes.push({
+			id: contentNodeId,
+			dependencies: selectedSystems.has('data') ? ['data:d1-migrate'] : [],
+			run: () => publishContent({
+				...options,
+				reporter,
+				bootstrapSystems: ['web'],
+			}, reporter, { mode: 'production' }),
+		});
 		nodes.push({
 			id: 'web:build',
 			run: () => runTenantWebBuild(context),
 		});
 		nodes.push({
 			id: 'web:publish',
-			dependencies: ['web:build', ...(selectedSystems.has('data') ? ['data:d1-migrate'] : [])],
+			dependencies: ['web:build', contentNodeId, ...(selectedSystems.has('data') ? ['data:d1-migrate'] : [])],
 			run: () => runTenantWebPublish(context),
 		});
 	}
