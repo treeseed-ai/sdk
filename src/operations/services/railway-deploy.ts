@@ -405,7 +405,7 @@ export function isRailwayTransientFailure(result) {
 	if (!message.trim() && result?.status === 1) {
 		return true;
 	}
-	return /timed out|failed to fetch|temporarily unavailable|econnreset|etimedout|failed to stream build logs|failed to retrieve build log/iu.test(message);
+	return /timed out|failed to fetch|error decoding response body|expected value at line 1 column 1|temporarily unavailable|econnreset|etimedout|failed to stream build logs|failed to retrieve build log/iu.test(message);
 }
 
 function sleepSync(milliseconds) {
@@ -489,7 +489,7 @@ mutation TreeseedScheduleUpdate($id: String!, $name: String!, $schedule: String!
 	};
 }
 
-export function runRailway(args, { cwd, capture = false, allowFailure = false, input, env } = {}) {
+export function runRailway(args, { cwd, capture = false, allowFailure = false, input, env, retryTransient = true, retryAttempts = 3, retryDelayMs = 2000 } = {}) {
 	const effectiveEnv = buildRailwayCommandEnv({ ...process.env, ...(env ?? {}) });
 	const railway = resolveTreeseedToolCommand('railway', { env: effectiveEnv });
 	if (!railway) {
@@ -502,9 +502,17 @@ export function runRailway(args, { cwd, capture = false, allowFailure = false, i
 		env: spawnEnv,
 		input,
 	});
-	const result = runWithEnv(effectiveEnv);
+	let result = null;
+	const maxAttempts = retryTransient && !allowFailure ? Math.max(1, Number(retryAttempts) || 1) : 1;
+	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+		result = runWithEnv(effectiveEnv);
+		if (result.status === 0 || allowFailure || !isRailwayTransientFailure(result) || attempt === maxAttempts) {
+			break;
+		}
+		sleepSync((Number(retryDelayMs) || 0) * attempt);
+	}
 
-	if (result.status !== 0 && !allowFailure) {
+	if (result?.status !== 0 && !allowFailure) {
 		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `railway ${args.join(' ')} failed`);
 	}
 

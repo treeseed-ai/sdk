@@ -452,6 +452,14 @@ services:
 		})).toBe(true);
 	});
 
+	it('treats Railway CLI response decoding failures as transient', () => {
+		expect(isRailwayTransientFailure({
+			status: 1,
+			stdout: '',
+			stderr: 'Failed to fetch: error decoding response body\nCaused by:\n    expected value at line 1 column 1',
+		})).toBe(true);
+	});
+
 	it('retries blank Railway CLI exits from detached upload mode', () => {
 		expect(isRailwayTransientFailure({
 			status: 1,
