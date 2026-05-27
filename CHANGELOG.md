@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.15] - 2026-05-27
+
+### Tests
+
+- build(build): update package metadata (cf674a8ee8fe)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.15.
+
 ## [0.10.14] - 2026-05-27
 
 ### Tests
