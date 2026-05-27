@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.10.16] - 2026-05-27
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.16.
+
 ## [0.10.15] - 2026-05-27
 
 ### Tests
