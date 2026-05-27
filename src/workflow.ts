@@ -297,6 +297,7 @@ export type TreeseedDestroyInput = {
 	destroyRemote?: boolean;
 	destroyLocal?: boolean;
 	force?: boolean;
+	deleteData?: boolean;
 	removeBuildArtifacts?: boolean;
 };
 

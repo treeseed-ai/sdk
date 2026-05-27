@@ -35,6 +35,7 @@ import {
 	createBranchPreviewDeployTarget,
 	createPersistentDeployTarget,
 	destroyCloudflareResources,
+	destroyTreeseedEnvironmentResources,
 	ensureGeneratedWranglerConfig,
 	finalizeDeploymentState,
 	loadDeployState,
@@ -5486,6 +5487,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 			const target = createPersistentDeployTarget(scope);
 			const dryRun = executionMode === 'plan';
 			const force = input.force === true;
+			const deleteData = input.deleteData === true;
 			const destroyRemote = input.destroyRemote !== false;
 			const destroyLocal = input.destroyLocal !== false;
 			const removeBuildArtifacts = input.removeBuildArtifacts === true;
@@ -5498,6 +5500,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 				scope,
 				dryRun,
 				force,
+				deleteData,
 				destroyRemote,
 				destroyLocal,
 				removeBuildArtifacts,
@@ -5514,14 +5517,20 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 			};
 
 			if (executionMode === 'plan') {
+				const plannedRemoteResult = destroyRemote
+					? await destroyTreeseedEnvironmentResources(tenantRoot, { dryRun: true, force, deleteData, target })
+					: null;
 				return buildWorkflowResult(
 					'destroy',
 					tenantRoot,
-					payload,
+					{
+						...payload,
+						remoteResult: plannedRemoteResult,
+					},
 					{
 						executionMode,
 						nextSteps: createNextSteps([
-							{ operation: 'destroy', reason: 'Run without --plan to destroy the selected environment.', input: { environment: scope, force, removeBuildArtifacts } },
+							{ operation: 'destroy', reason: 'Run without --plan to destroy the selected environment.', input: { environment: scope, force, deleteData, removeBuildArtifacts } },
 							{ operation: 'status', reason: 'Confirm the current environment state before making destructive changes.' },
 						]),
 					},
@@ -5534,6 +5543,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 				{
 					environment: scope,
 					force,
+					deleteData,
 					destroyRemote,
 					destroyLocal,
 					removeBuildArtifacts,
@@ -5571,7 +5581,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 
 				const remoteResult = destroyRemote
 					? await executeJournalStep(root, workflowRun.runId, 'destroy-remote', () =>
-						destroyCloudflareResources(tenantRoot, { dryRun: false, force, target }) as Record<string, unknown>)
+						destroyTreeseedEnvironmentResources(tenantRoot, { dryRun: false, force, deleteData, target }) as Record<string, unknown>)
 					: null;
 				if (!destroyRemote) {
 					skipJournalStep(root, workflowRun.runId, 'destroy-remote', { skippedReason: 'destroyRemote=false' });

@@ -1697,3 +1697,141 @@ mutation TreeseedRailwayCustomDomainCreate($input: CustomDomainCreateInput!) {
 	}
 	return { domain: created, created: true };
 }
+
+function looksLikeRailwayMissingResource(error: unknown) {
+	const message = error instanceof Error ? error.message : String(error ?? '');
+	return /not found|does not exist|could not find|unknown|invalid .*id/iu.test(message);
+}
+
+async function railwayDeleteMutation({
+	query,
+	variables,
+	env,
+	fetchImpl,
+	missingResult,
+}: {
+	query: string;
+	variables: Record<string, unknown>;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+	missingResult: Record<string, unknown>;
+}) {
+	try {
+		await railwayGraphqlRequest({
+			query,
+			variables,
+			env,
+			fetchImpl,
+		});
+		return { status: 'deleted' };
+	} catch (error) {
+		if (looksLikeRailwayMissingResource(error)) {
+			return missingResult;
+		}
+		throw error;
+	}
+}
+
+export async function deleteRailwayCustomDomain({
+	domainId,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	domainId: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	if (!railwayConnectionLabel(domainId)) {
+		return { status: 'missing', id: domainId };
+	}
+	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_CUSTOM_DOMAIN_DELETE_MUTATION') || `
+mutation TreeseedRailwayCustomDomainDelete($id: String!) {
+	customDomainDelete(id: $id)
+}
+`.trim();
+	return railwayDeleteMutation({
+		query: mutation,
+		variables: { id: domainId },
+		env,
+		fetchImpl,
+		missingResult: { status: 'missing', id: domainId },
+	});
+}
+
+export async function deleteRailwayVolume({
+	volumeId,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	volumeId: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	if (!railwayConnectionLabel(volumeId)) {
+		return { status: 'missing', id: volumeId };
+	}
+	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_DELETE_MUTATION') || `
+mutation TreeseedRailwayVolumeDelete($volumeId: String!) {
+	volumeDelete(volumeId: $volumeId)
+}
+`.trim();
+	return railwayDeleteMutation({
+		query: mutation,
+		variables: { volumeId },
+		env,
+		fetchImpl,
+		missingResult: { status: 'missing', id: volumeId },
+	});
+}
+
+export async function deleteRailwayEnvironment({
+	environmentId,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	environmentId: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	if (!railwayConnectionLabel(environmentId)) {
+		return { status: 'missing', id: environmentId };
+	}
+	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_ENVIRONMENT_DELETE_MUTATION') || `
+mutation TreeseedRailwayEnvironmentDelete($id: String!) {
+	environmentDelete(id: $id)
+}
+`.trim();
+	return railwayDeleteMutation({
+		query: mutation,
+		variables: { id: environmentId },
+		env,
+		fetchImpl,
+		missingResult: { status: 'missing', id: environmentId },
+	});
+}
+
+export async function deleteRailwayProject({
+	projectId,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	projectId: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	if (!railwayConnectionLabel(projectId)) {
+		return { status: 'missing', id: projectId };
+	}
+	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_PROJECT_DELETE_MUTATION') || `
+mutation TreeseedRailwayProjectDelete($id: String!) {
+	projectDelete(id: $id)
+}
+`.trim();
+	return railwayDeleteMutation({
+		query: mutation,
+		variables: { id: projectId },
+		env,
+		fetchImpl,
+		missingResult: { status: 'missing', id: projectId },
+	});
+}

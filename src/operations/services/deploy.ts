@@ -1,10 +1,24 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { resolveTreeseedWebCachePolicy } from '../../platform/deploy-config.ts';
-import { normalizeRailwayEnvironmentName } from './railway-api.ts';
+import {
+	deleteRailwayCustomDomain,
+	deleteRailwayEnvironment,
+	deleteRailwayProject,
+	deleteRailwayVolume,
+	getRailwayServiceInstance,
+	listRailwayCustomDomains,
+	listRailwayProjects,
+	listRailwayVariables,
+	listRailwayVolumes,
+	normalizeRailwayEnvironmentName,
+	resolveRailwayApiToken,
+	resolveRailwayWorkspace,
+	resolveRailwayWorkspaceContext,
+} from './railway-api.ts';
 import { loadCliDeployConfig, resolveWranglerBin } from './runtime-tools.ts';
 import { sdkD1MigrationsRoot } from './runtime-paths.ts';
 
@@ -1891,7 +1905,7 @@ function resolveExistingD1ByName(d1Databases, expectedName, current) {
 }
 
 function looksLikeMissingResource(output) {
-	return /not found|does not exist|could not find|unknown/i.test(output);
+	return /not found|does not exist|could(?: not|n't) find|couldnt find/i.test(output);
 }
 
 function deleteKvNamespace(tenantRoot, namespaceId, { env, dryRun, preview = false }) {
@@ -1973,7 +1987,711 @@ function deleteWorker(tenantRoot, workerName, { env, dryRun, force = false }) {
 	return { status: result.status === 0 ? 'deleted' : 'missing', name: workerName };
 }
 
-export function destroyCloudflareResources(tenantRoot, options = {}) {
+function resourceOperation(provider, type, name, status, extra = {}) {
+	return {
+		provider,
+		type,
+		name: name ?? null,
+		status,
+		...extra,
+	};
+}
+
+function deleteCloudflareApiResource(path, { env, dryRun, name, type }) {
+	if (!path) {
+		return resourceOperation('cloudflare', type, name, 'missing');
+	}
+	if (dryRun) {
+		return resourceOperation('cloudflare', type, name, 'planned', { path });
+	}
+	const result = cloudflareApiRequest(path, { method: 'DELETE', env, allowFailure: true });
+	if (result?.success === false && !looksLikeMissingResource(formatCloudflareErrors(result))) {
+		throw new Error(formatCloudflareErrors(result) || `Failed to delete Cloudflare ${type} ${name}.`);
+	}
+	return resourceOperation('cloudflare', type, name, result?.success === false ? 'missing' : 'deleted', { path });
+}
+
+function formatCloudflareErrors(payload) {
+	return Array.isArray(payload?.errors)
+		? payload.errors.map((entry) => entry?.message ?? JSON.stringify(entry)).filter(Boolean).join('; ')
+		: '';
+}
+
+function deleteQueueByName(tenantRoot, queue, { env, dryRun }) {
+	const name = queueName(queue) ?? queue?.name ?? null;
+	const id = queueId(queue);
+	if (!name) {
+		return resourceOperation('cloudflare', 'queue', name, 'missing');
+	}
+	if (dryRun) {
+		return resourceOperation('cloudflare', 'queue', name, 'planned', { id });
+	}
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const path = id
+		? `/accounts/${encodeURIComponent(accountId)}/queues/${encodeURIComponent(id)}`
+		: null;
+	if (path) {
+		const deleted = deleteCloudflareApiResource(path, { env, dryRun: false, name, type: 'queue' });
+		if (deleted.status === 'deleted' || deleted.status === 'missing') {
+			return { ...deleted, id };
+		}
+	}
+	const result = runWrangler(['queues', 'delete', name], {
+		cwd: tenantRoot,
+		allowFailure: true,
+		capture: true,
+		env,
+		input: 'y\n',
+	});
+	const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+	if (result.status !== 0 && !looksLikeMissingResource(output)) {
+		throw new Error(output.trim() || `Failed to delete queue ${name}.`);
+	}
+	return resourceOperation('cloudflare', 'queue', name, result.status === 0 ? 'deleted' : 'missing', { id });
+}
+
+function isLegacyTreeseedQueueName(name, scope) {
+	if (!name || !scope) {
+		return false;
+	}
+	const environmentNames = scope === 'prod' ? ['prod', 'production'] : [scope];
+	return environmentNames.some((environmentName) =>
+		name === `agent-work-${environmentName}` || name === `agent-work-dlq-${environmentName}`,
+	);
+}
+
+function legacyQueueDestroyOperations(tenantRoot, queues, target, knownNames, { env, dryRun }) {
+	const scope = target.kind === 'persistent' ? target.scope : target.branchName;
+	return queues
+		.filter((queue) => {
+			const name = queueName(queue);
+			return name && !knownNames.has(name) && isLegacyTreeseedQueueName(name, scope);
+		})
+		.map((queue) => {
+			const deleted = deleteQueueByName(tenantRoot, queue, { env, dryRun });
+			return { ...deleted, legacy: true };
+		});
+}
+
+function deleteR2Bucket(tenantRoot, bucketName, { env, dryRun, deleteData }) {
+	if (!bucketName) {
+		return resourceOperation('cloudflare', 'r2-bucket', bucketName, 'missing');
+	}
+	if (!deleteData) {
+		return resourceOperation('cloudflare', 'r2-bucket', bucketName, 'skipped', { reason: 'data_preserved' });
+	}
+	if (dryRun) {
+		return resourceOperation('cloudflare', 'r2-bucket', bucketName, 'planned');
+	}
+	const drained = drainR2Bucket(bucketName, { env });
+	const result = runWrangler(['r2', 'bucket', 'delete', bucketName], {
+		cwd: tenantRoot,
+		allowFailure: true,
+		capture: true,
+		env,
+		input: 'y\n',
+	});
+	const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+	if (result.status !== 0 && !looksLikeMissingResource(output)) {
+		throw new Error(output.trim() || `Failed to delete R2 bucket ${bucketName}.`);
+	}
+	return resourceOperation('cloudflare', 'r2-bucket', bucketName, result.status === 0 ? 'deleted' : 'missing', drained);
+}
+
+function r2ObjectKey(entry) {
+	return typeof entry?.key === 'string' ? entry.key
+		: typeof entry?.name === 'string' ? entry.name
+			: '';
+}
+
+function listR2Objects(bucketName, { env }) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!accountId || !bucketName) {
+		return [];
+	}
+	const objects = [];
+	let cursor = '';
+	for (let page = 0; page < 100; page += 1) {
+		const payload = cloudflareApiRequest(
+			`/accounts/${encodeURIComponent(accountId)}/r2/buckets/${encodeURIComponent(bucketName)}/objects?per_page=1000${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+			{ env, allowFailure: true },
+		);
+		if (payload?.success === false) {
+			break;
+		}
+		const pageObjects = Array.isArray(payload?.result)
+			? payload.result
+			: Array.isArray(payload?.result?.objects)
+				? payload.result.objects
+				: [];
+		objects.push(...pageObjects);
+		const nextCursor = typeof payload?.result_info?.cursor === 'string' ? payload.result_info.cursor
+			: typeof payload?.result?.cursor === 'string' ? payload.result.cursor
+				: '';
+		if (!nextCursor || nextCursor === cursor || pageObjects.length === 0) {
+			break;
+		}
+		cursor = nextCursor;
+	}
+	return objects;
+}
+
+function drainR2Bucket(bucketName, { env }) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!accountId || !bucketName) {
+		return { objectsDeleted: 0 };
+	}
+	let objectsDeleted = 0;
+	for (let batch = 0; batch < 100; batch += 1) {
+		const objects = listR2Objects(bucketName, { env });
+		if (objects.length === 0) {
+			break;
+		}
+		let batchDeleted = 0;
+		for (const object of objects) {
+			const key = r2ObjectKey(object);
+			if (!key) {
+				continue;
+			}
+			const result = cloudflareApiRequest(
+				`/accounts/${encodeURIComponent(accountId)}/r2/buckets/${encodeURIComponent(bucketName)}/objects/${encodeURIComponent(key)}`,
+				{ method: 'DELETE', env, allowFailure: true },
+			);
+			if (result?.success === false) {
+				const message = formatCloudflareErrors(result);
+				if (looksLikeMissingResource(message)) {
+					continue;
+				}
+				throw new Error(message || `Failed to delete R2 object ${key}.`);
+			}
+			objectsDeleted += 1;
+			batchDeleted += 1;
+		}
+		if (batchDeleted === 0) {
+			break;
+		}
+	}
+	return { objectsDeleted };
+}
+
+function deleteD1DatabaseForDestroy(tenantRoot, databaseName, { env, dryRun, deleteData }) {
+	if (!deleteData) {
+		return resourceOperation('cloudflare', 'd1-database', databaseName, 'skipped', { reason: 'data_preserved' });
+	}
+	const result = deleteD1Database(tenantRoot, databaseName, { env, dryRun });
+	return resourceOperation('cloudflare', 'd1-database', databaseName, result.status, result);
+}
+
+function pagesDomainName(domain) {
+	return typeof domain?.name === 'string' ? domain.name
+		: typeof domain?.domain === 'string' ? domain.domain
+			: typeof domain?.hostname === 'string' ? domain.hostname
+				: '';
+}
+
+function listPagesCustomDomains(projectName, { env }) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!projectName || !accountId) {
+		return [];
+	}
+	const domains = [];
+	let page = 1;
+	let totalPages = 1;
+	while (page <= totalPages && page <= 50) {
+		const payload = cloudflareApiRequest(
+			`/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/domains?per_page=100&page=${page}`,
+			{ env, allowFailure: true },
+		);
+		if (payload?.success === false) {
+			break;
+		}
+		if (Array.isArray(payload?.result)) {
+			domains.push(...payload.result);
+		}
+		const reportedTotal = Number(payload?.result_info?.total_pages);
+		totalPages = Number.isFinite(reportedTotal) && reportedTotal > 0 ? reportedTotal : page;
+		page += 1;
+	}
+	return domains;
+}
+
+function listPagesCustomDomainsWithWrangler(tenantRoot, projectName, { env }) {
+	const result = runWrangler(['pages', 'project', 'list', '--json'], {
+		cwd: tenantRoot,
+		allowFailure: true,
+		capture: true,
+		env,
+	});
+	if (result.status !== 0) {
+		return [];
+	}
+	try {
+		const projects = JSON.parse(result.stdout || '[]');
+		const project = (Array.isArray(projects) ? projects : [])
+			.find((entry) => entry?.name === projectName || entry?.projectName === projectName || entry?.['Project Name'] === projectName);
+		const domains = typeof project?.['Project Domains'] === 'string'
+			? project['Project Domains']
+			: typeof project?.domains === 'string'
+				? project.domains
+				: '';
+		return domains.split(',').map((entry) => entry.trim()).filter((entry) => entry && !entry.endsWith('.pages.dev'));
+	} catch {
+		return [];
+	}
+}
+
+function deletePagesCustomDomains(tenantRoot, projectName, knownNames, { env, dryRun }) {
+	if (!projectName) {
+		return [resourceOperation('cloudflare', 'pages-custom-domain', projectName, 'missing')];
+	}
+	const desiredNames = [...new Set((knownNames ?? []).filter(Boolean))];
+	if (dryRun) {
+		return desiredNames.length > 0
+			? desiredNames.map((name) => resourceOperation('cloudflare', 'pages-custom-domain', name, 'planned', { projectName }))
+			: [resourceOperation('cloudflare', 'pages-custom-domain', projectName, 'planned', { reason: 'project_delete_prerequisite' })];
+	}
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!accountId) {
+		return desiredNames.length > 0
+			? desiredNames.map((name) => resourceOperation('cloudflare', 'pages-custom-domain', name, 'blocked', { projectName, reason: 'missing_cloudflare_account_id' }))
+			: [resourceOperation('cloudflare', 'pages-custom-domain', projectName, 'blocked', { reason: 'missing_cloudflare_account_id' })];
+	}
+	const listedNames = listPagesCustomDomains(projectName, { env }).map(pagesDomainName).filter(Boolean);
+	const wranglerNames = listPagesCustomDomainsWithWrangler(tenantRoot, projectName, { env });
+	const domainNames = [...new Set([...desiredNames, ...listedNames, ...wranglerNames])];
+	if (domainNames.length === 0) {
+		return [resourceOperation('cloudflare', 'pages-custom-domain', projectName, 'missing', { projectName })];
+	}
+	return domainNames.map((name) => deleteCloudflareApiResource(
+		`/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/domains/${encodeURIComponent(name)}`,
+		{ env, dryRun: false, name, type: 'pages-custom-domain' },
+	));
+}
+
+function normalizePagesDeploymentId(deployment) {
+	return typeof deployment?.id === 'string' ? deployment.id
+		: typeof deployment?.Id === 'string' ? deployment.Id
+			: '';
+}
+
+function normalizePagesDeployments(value) {
+	return (Array.isArray(value) ? value : Array.isArray(value?.result) ? value.result : [])
+		.filter((entry) => normalizePagesDeploymentId(entry));
+}
+
+function listPagesDeploymentsWithApi(projectName, { env }) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!projectName || !accountId) {
+		return [];
+	}
+	const deployments = [];
+	for (const pagesEnvironment of ['preview', 'production']) {
+		let page = 1;
+		let totalPages = 1;
+		while (page <= totalPages && page <= 50) {
+			const payload = cloudflareApiRequest(
+				`/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/deployments?per_page=100&page=${page}&env=${pagesEnvironment}`,
+				{ env, allowFailure: true },
+			);
+			if (payload?.success === false) {
+				break;
+			}
+			deployments.push(...normalizePagesDeployments(payload));
+			const reportedTotal = Number(payload?.result_info?.total_pages);
+			totalPages = Number.isFinite(reportedTotal) && reportedTotal > 0 ? reportedTotal : page;
+			page += 1;
+		}
+	}
+	return deployments;
+}
+
+function listPagesDeployments(tenantRoot, projectName, { env }) {
+	const deployments = [];
+	for (const pagesEnvironment of ['preview', 'production']) {
+		const result = runWrangler(['pages', 'deployment', 'list', '--project-name', projectName, '--environment', pagesEnvironment, '--json'], {
+			cwd: tenantRoot,
+			allowFailure: true,
+			capture: true,
+			env,
+		});
+		if (result.status !== 0) {
+			continue;
+		}
+		try {
+			deployments.push(...normalizePagesDeployments(JSON.parse(result.stdout || '[]')));
+		} catch {
+			// Fall back to the API list below.
+		}
+	}
+	if (deployments.length > 0) {
+		const byId = new Map(deployments.map((deployment) => [normalizePagesDeploymentId(deployment), deployment]));
+		return [...byId.values()];
+	}
+	return listPagesDeploymentsWithApi(projectName, { env });
+}
+
+function deletePagesDeployments(tenantRoot, projectName, { env, dryRun }) {
+	if (!projectName) {
+		return resourceOperation('cloudflare', 'pages-deployments', projectName, 'missing');
+	}
+	if (dryRun) {
+		return resourceOperation('cloudflare', 'pages-deployments', projectName, 'planned', { reason: 'project_delete_prerequisite' });
+	}
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!accountId) {
+		return resourceOperation('cloudflare', 'pages-deployments', projectName, 'blocked', { reason: 'missing_cloudflare_account_id' });
+	}
+	let deleted = 0;
+	let skipped = 0;
+	let total = 0;
+	for (let batch = 0; batch < 100; batch += 1) {
+		const deployments = listPagesDeployments(tenantRoot, projectName, { env });
+		if (deployments.length === 0) {
+			return resourceOperation('cloudflare', 'pages-deployments', projectName, deleted > 0 ? 'deleted' : 'missing', {
+				deleted,
+				skipped,
+				total,
+			});
+		}
+		total += deployments.length;
+		let batchDeleted = 0;
+		let batchSkipped = 0;
+		for (const deployment of deployments) {
+			const deploymentId = normalizePagesDeploymentId(deployment);
+			if (!deploymentId) {
+				continue;
+			}
+			const result = cloudflareApiRequest(
+				`/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/deployments/${encodeURIComponent(deploymentId)}`,
+				{ method: 'DELETE', env, allowFailure: true },
+			);
+			if (result?.success === false) {
+				const message = formatCloudflareErrors(result);
+				if (/active production deployment|production deployment|deployment is aliased|aliased deployment/iu.test(message)) {
+					skipped += 1;
+					batchSkipped += 1;
+					continue;
+				}
+				if (looksLikeMissingResource(message)) {
+					continue;
+				}
+				throw new Error(message || `Failed to delete Pages deployment ${deploymentId}.`);
+			}
+			deleted += 1;
+			batchDeleted += 1;
+		}
+		if (batchDeleted === 0 && batchSkipped >= deployments.length) {
+			break;
+		}
+	}
+	return resourceOperation('cloudflare', 'pages-deployments', projectName, deleted > 0 ? 'deleted' : 'skipped', {
+		deleted,
+		skipped,
+		total,
+	});
+}
+
+function deletePagesProject(projectName, { env, dryRun }) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!projectName || !accountId) {
+		return resourceOperation('cloudflare', 'pages-project', projectName, 'missing');
+	}
+	return deleteCloudflareApiResource(
+		`/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}`,
+		{ env, dryRun, name: projectName, type: 'pages-project' },
+	);
+}
+
+function listDnsRecordsForName(zoneId, name, env) {
+	if (!zoneId || !name) {
+		return [];
+	}
+	const result = cloudflareApiRequest(`/zones/${encodeURIComponent(zoneId)}/dns_records?name=${encodeURIComponent(name)}&per_page=100`, { env, allowFailure: true });
+	return Array.isArray(result?.result) ? result.result : [];
+}
+
+function deleteDnsRecordsForName(deployConfig, name, { env, dryRun }) {
+	if (!name) {
+		return [resourceOperation('cloudflare', 'dns-record', name, 'missing')];
+	}
+	if (dryRun) {
+		return [resourceOperation('cloudflare', 'dns-record', name, 'planned')];
+	}
+	const zoneId = resolveCloudflareZoneIdForHost(deployConfig, name, env);
+	if (!zoneId) {
+		return [resourceOperation('cloudflare', 'dns-record', name, 'blocked', { reason: 'zone_unresolved' })];
+	}
+	const records = listDnsRecordsForName(zoneId, name, env);
+	if (records.length === 0) {
+		return [resourceOperation('cloudflare', 'dns-record', name, 'missing', { zoneId })];
+	}
+	return records.map((record) => {
+		const recordName = record?.name ?? name;
+		return deleteCloudflareApiResource(
+			`/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(record.id)}`,
+			{ env, dryRun: false, name: recordName, type: 'dns-record' },
+		);
+	});
+}
+
+function deleteTreeseedCacheRules(deployConfig, state, { env, dryRun }) {
+	const targets = [
+		{ role: 'web', zoneId: state.webCache?.webZoneId, host: state.webCache?.webHost },
+		{ role: 'content', zoneId: state.webCache?.contentZoneId, host: state.webCache?.contentHost },
+	].filter((entry) => entry.host || entry.zoneId);
+	if (targets.length === 0) {
+		return [resourceOperation('cloudflare', 'cache-rules', null, 'missing')];
+	}
+	return targets.map((target) => {
+		const zoneId = target.zoneId ?? resolveCloudflareZoneIdForHost(deployConfig, target.host, env);
+		if (!zoneId) {
+			return resourceOperation('cloudflare', 'cache-rules', target.host, 'blocked', { reason: 'zone_unresolved' });
+		}
+		if (dryRun) {
+			return resourceOperation('cloudflare', 'cache-rules', target.host, 'planned', { zoneId });
+		}
+		const rulesets = listCloudflareZoneRulesets(zoneId, env);
+		const ruleset = rulesets.find((entry) => entry?.phase === 'http_request_cache_settings') ?? null;
+		const rules = Array.isArray(ruleset?.rules) ? ruleset.rules : [];
+		const kept = rules.filter((rule) => typeof rule?.description !== 'string' || !rule.description.startsWith('treeseed-managed:'));
+		if (!ruleset || kept.length === rules.length) {
+			return resourceOperation('cloudflare', 'cache-rules', target.host, 'missing', { zoneId });
+		}
+		cloudflareApiRequest(`/zones/${encodeURIComponent(zoneId)}/rulesets/${encodeURIComponent(ruleset.id)}`, {
+			method: 'PUT',
+			body: { rules: kept },
+			env,
+		});
+		return resourceOperation('cloudflare', 'cache-rules', target.host, 'deleted', { zoneId, rulesetId: ruleset.id, removed: rules.length - kept.length });
+	});
+}
+
+function configuredRailwayDestroyTargets(tenantRoot, deployConfig, scope) {
+	const normalizedScope = scope === 'prod' ? 'prod' : scope === 'staging' ? 'staging' : 'local';
+	if (normalizedScope === 'local' || deployConfig.runtime?.mode !== 'treeseed_managed') {
+		return [];
+	}
+	let identity;
+	try {
+		identity = resolveTreeseedResourceIdentity(deployConfig, createPersistentDeployTarget(normalizedScope));
+	} catch {
+		identity = { deploymentKey: deployConfig.slug ?? deployConfig.name ?? 'treeseed' };
+	}
+	const services = [];
+	for (const serviceKey of ['api', 'marketOperationsRunner']) {
+		const service = deployConfig.services?.[serviceKey];
+		if (!service || service.enabled === false || (service.provider ?? 'railway') !== 'railway') {
+			continue;
+		}
+		const baseServiceName = service.railway?.serviceName ?? `${identity.deploymentKey}-${serviceKey === 'marketOperationsRunner' ? 'market-operations-runner' : serviceKey}`;
+		const runnerPool = serviceKey === 'marketOperationsRunner' && service.railway?.runnerPool && typeof service.railway.runnerPool === 'object'
+			? service.railway.runnerPool
+			: null;
+		const count = serviceKey === 'marketOperationsRunner'
+			? Math.max(1, Number.parseInt(String(runnerPool?.bootstrapCount ?? 1), 10) || 1)
+			: 1;
+		for (let index = 1; index <= count; index += 1) {
+			const serviceName = serviceKey === 'marketOperationsRunner'
+				? `${String(baseServiceName).replace(/-\d+$/u, '')}-${String(index).padStart(2, '0')}`
+				: baseServiceName;
+			services.push({
+				key: serviceKey,
+				projectName: service.railway?.projectName ?? identity.deploymentKey,
+				serviceName,
+				railwayEnvironment: normalizeRailwayEnvironmentName(service.environments?.[normalizedScope]?.railwayEnvironment ?? normalizedScope),
+				domain: service.environments?.[normalizedScope]?.domain ?? null,
+				volumeMountPath: serviceKey === 'marketOperationsRunner' ? (service.railway?.volumeMountPath ?? runnerPool?.volumeMountPath ?? '/data') : null,
+			});
+		}
+	}
+	const marketDatabase = deployConfig.services?.marketDatabase;
+	if (marketDatabase?.enabled !== false && marketDatabase?.provider === 'railway' && marketDatabase?.railway?.resourceType === 'postgres') {
+		const baseName = typeof marketDatabase.railway?.serviceName === 'string' && marketDatabase.railway.serviceName.trim()
+			? marketDatabase.railway.serviceName.trim()
+			: `${deployConfig.slug ?? 'treeseed-market'}-postgres`;
+		services.push({
+			key: 'marketDatabase',
+			projectName: deployConfig.services?.api?.railway?.projectName ?? identity.deploymentKey,
+			serviceName: `${baseName.replace(/-(staging|prod|production)$/u, '')}-${normalizedScope === 'prod' ? 'prod' : normalizedScope}`,
+			railwayEnvironment: normalizeRailwayEnvironmentName(normalizedScope),
+			domain: null,
+			volumeMountPath: null,
+			dataStore: true,
+		});
+	}
+	return services;
+}
+
+async function destroyRailwayResources(tenantRoot, deployConfig, target, { dryRun = false, deleteData = false, env = process.env } = {}) {
+	const scope = target.kind === 'persistent' ? target.scope : target.branchName;
+	const services = configuredRailwayDestroyTargets(tenantRoot, deployConfig, scope);
+	if (services.length === 0) {
+		return { operations: [resourceOperation('railway', 'environment', scope, 'skipped', { reason: 'not_applicable' })] };
+	}
+	const operations = [];
+	if (!resolveRailwayApiToken(env)) {
+		return {
+			operations: services.map((service) => resourceOperation('railway', 'service', service.serviceName, 'blocked', { reason: 'missing_railway_api_token' })),
+		};
+	}
+	const workspace = await resolveRailwayWorkspaceContext({ env, workspace: resolveRailwayWorkspace(env) });
+	const projects = await listRailwayProjects({ env, workspaceId: workspace.id });
+	const projectNames = [...new Set(services.map((service) => service.projectName).filter(Boolean))];
+	for (const projectName of projectNames) {
+		const project = projects.find((entry) => !entry.deletedAt && (entry.name === projectName || entry.id === projectName)) ?? null;
+		if (!project) {
+			operations.push(resourceOperation('railway', 'project', projectName, 'missing'));
+			continue;
+		}
+		const serviceTargets = services.filter((service) => service.projectName === projectName);
+		const environmentName = normalizeRailwayEnvironmentName(scope);
+		const environment = project.environments.find((entry) => entry.name === environmentName || entry.id === environmentName) ?? null;
+		if (!environment) {
+			operations.push(resourceOperation('railway', 'environment', environmentName, 'missing', { projectId: project.id }));
+		}
+		for (const service of serviceTargets) {
+			const railwayService = project.services.find((entry) => entry.name === service.serviceName || entry.id === service.serviceName) ?? null;
+			const shouldDeleteData = service.dataStore ? deleteData : true;
+			operations.push(resourceOperation('railway', service.dataStore ? 'postgres-service' : 'service', service.serviceName, railwayService ? (dryRun ? 'planned' : 'planned') : 'missing', {
+				projectId: project.id,
+				serviceId: railwayService?.id ?? null,
+				...(service.dataStore && !shouldDeleteData ? { status: 'skipped', reason: 'data_preserved' } : {}),
+			}));
+			if (!railwayService || !environment) {
+				continue;
+			}
+			if (shouldDeleteData) {
+				const variables = await listRailwayVariables({
+					projectId: project.id,
+					environmentId: environment.id,
+					serviceId: railwayService.id,
+					env,
+				});
+				for (const variableName of Object.keys(variables).sort()) {
+					operations.push(resourceOperation('railway', 'variable', `${service.serviceName}:${variableName}`, dryRun ? 'planned' : 'deleted', {
+						projectId: project.id,
+						serviceId: railwayService.id,
+						environmentId: environment.id,
+						reason: scope === 'prod' && deleteData ? 'project_delete' : 'environment_delete',
+					}));
+				}
+			}
+			const instance = await getRailwayServiceInstance({ serviceId: railwayService.id, environmentId: environment.id, env });
+			if (instance.cronSchedule) {
+				operations.push(resourceOperation('railway', 'schedule', `${service.serviceName}:${instance.cronSchedule}`, dryRun ? 'planned' : 'deleted', {
+					projectId: project.id,
+					serviceId: railwayService.id,
+					environmentId: environment.id,
+					reason: scope === 'prod' && deleteData ? 'project_delete' : 'environment_delete',
+				}));
+			}
+			if (!service.dataStore && service.domain) {
+				const domains = await listRailwayCustomDomains({ projectId: project.id, environmentId: environment.id, serviceId: railwayService.id, env });
+				for (const domain of domains.filter((entry) => entry.domain === service.domain)) {
+					if (dryRun) {
+						operations.push(resourceOperation('railway', 'custom-domain', domain.domain, 'planned', { id: domain.id }));
+					} else {
+						const result = await deleteRailwayCustomDomain({ domainId: domain.id, env });
+						operations.push(resourceOperation('railway', 'custom-domain', domain.domain, result.status, { id: domain.id }));
+					}
+				}
+			}
+		}
+		const volumes = await listRailwayVolumes({ projectId: project.id, env });
+		for (const volume of volumes) {
+			const matchingInstance = volume.instances.find((instance) => instance.environmentId === environment?.id);
+			if (!matchingInstance) {
+				continue;
+			}
+			if (dryRun) {
+				operations.push(resourceOperation('railway', 'volume', volume.name, 'planned', { id: volume.id, projectId: project.id }));
+			} else {
+				const result = await deleteRailwayVolume({ volumeId: volume.id, env });
+				operations.push(resourceOperation('railway', 'volume', volume.name, result.status, { id: volume.id, projectId: project.id }));
+			}
+		}
+		if (scope === 'prod' && deleteData) {
+			if (dryRun) {
+				operations.push(resourceOperation('railway', 'project', project.name, 'planned', { id: project.id, reason: 'prod_delete_data_cleanup' }));
+			} else {
+				const result = await deleteRailwayProject({ projectId: project.id, env });
+				operations.push(resourceOperation('railway', 'project', project.name, result.status, { id: project.id, reason: 'prod_delete_data_cleanup' }));
+			}
+		} else if (environment) {
+			if (dryRun) {
+				operations.push(resourceOperation('railway', 'environment', environment.name, 'planned', { id: environment.id, projectId: project.id }));
+			} else {
+				const result = await deleteRailwayEnvironment({ environmentId: environment.id, env });
+				operations.push(resourceOperation('railway', 'environment', environment.name, result.status, { id: environment.id, projectId: project.id }));
+			}
+		}
+	}
+	return { operations };
+}
+
+function killPidFromFile(filePath, { dryRun }) {
+	const pid = Number.parseInt(readFileSync(filePath, 'utf8').trim(), 10);
+	if (!Number.isFinite(pid) || pid <= 0) {
+		return resourceOperation('local', 'dev-process', filePath, 'missing');
+	}
+	if (dryRun) {
+		return resourceOperation('local', 'dev-process', String(pid), 'planned', { pidFile: filePath });
+	}
+	try {
+		process.kill(-pid, 'SIGTERM');
+	} catch {
+		try {
+			process.kill(pid, 'SIGTERM');
+		} catch {
+			// Already stopped or not owned by this session.
+		}
+	}
+	try {
+		unlinkSync(filePath);
+	} catch {
+		// Best effort cleanup.
+	}
+	return resourceOperation('local', 'dev-process', String(pid), 'deleted', { pidFile: filePath });
+}
+
+function destroyLocalRuntimeResources(tenantRoot, { dryRun = false, deleteData = false } = {}) {
+	const operations = [];
+	const pidDir = resolve(tenantRoot, '.treeseed/dev-pids');
+	if (existsSync(pidDir)) {
+		for (const entry of readdirSync(pidDir)) {
+			if (entry.endsWith('.pid')) {
+				operations.push(killPidFromFile(resolve(pidDir, entry), { dryRun }));
+			}
+		}
+	} else {
+		operations.push(resourceOperation('local', 'dev-pids', pidDir, 'missing'));
+	}
+	if (deleteData) {
+		for (const relativePath of [
+			'.treeseed/generated/environments/local',
+			'.treeseed/generated/dev',
+			'.treeseed/market-operations-runner',
+			'.treeseed/local-capacity-provider/data',
+		]) {
+			const absolutePath = resolve(tenantRoot, relativePath);
+			if (!existsSync(absolutePath)) {
+				operations.push(resourceOperation('local', 'data-path', relativePath, 'missing'));
+				continue;
+			}
+			if (dryRun) {
+				operations.push(resourceOperation('local', 'data-path', relativePath, 'planned'));
+				continue;
+			}
+			rmSync(absolutePath, { recursive: true, force: true });
+			operations.push(resourceOperation('local', 'data-path', relativePath, 'deleted'));
+		}
+	} else {
+		operations.push(resourceOperation('local', 'data-path', '.treeseed/generated/environments/local', 'skipped', { reason: 'data_preserved' }));
+	}
+	return { operations };
+}
+
+export async function destroyTreeseedEnvironmentResources(tenantRoot, options = {}) {
 	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
 	const state = loadDeployState(tenantRoot, deployConfig, { target });
@@ -1984,9 +2702,13 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 	};
 
 	const dryRun = options.dryRun ?? false;
+	const deleteData = options.deleteData === true;
 	const force = options.force ?? false;
 	const kvNamespaces = dryRun ? [] : listKvNamespaces(tenantRoot, env);
 	const d1Databases = dryRun ? [] : listD1Databases(tenantRoot, env);
+	const queues = listQueues(tenantRoot, env);
+	const buckets = dryRun ? [] : listR2Buckets(tenantRoot, env);
+	const pagesProjects = dryRun ? [] : listPagesProjects(tenantRoot, env);
 
 	state.kvNamespaces.FORM_GUARD_KV.id = resolveExistingKvIdByName(
 		kvNamespaces,
@@ -2006,7 +2728,12 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 		state.d1Databases.SITE_DATA_DB,
 	);
 
-	const worker = deleteWorker(tenantRoot, state.workerName, { env, dryRun, force });
+	const pagesProject = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
+	const bucket = buckets.find((entry) => entry?.name === state.content?.bucketName);
+	const queue = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.name);
+	const dlq = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.dlqName);
+
+	const workerResult = deleteWorker(tenantRoot, state.workerName, { env, dryRun, force });
 	const formGuard = deleteKvNamespace(tenantRoot, state.kvNamespaces.FORM_GUARD_KV.id, { env, dryRun });
 	const formGuardPreview =
 		state.kvNamespaces.FORM_GUARD_KV.previewId
@@ -2021,19 +2748,160 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 		&& state.kvNamespaces.SESSION.previewId !== state.kvNamespaces.SESSION.id
 			? deleteKvNamespace(tenantRoot, state.kvNamespaces.SESSION.previewId, { env, dryRun, preview: true })
 			: null;
-	const database = deleteD1Database(tenantRoot, state.d1Databases.SITE_DATA_DB.databaseName, { env, dryRun });
+	const knownKvIds = new Set([
+		state.kvNamespaces.FORM_GUARD_KV.id,
+		state.kvNamespaces.FORM_GUARD_KV.previewId,
+		state.kvNamespaces.SESSION?.id,
+		state.kvNamespaces.SESSION?.previewId,
+	].filter(Boolean));
+	const legacyKvPrefix = state.identity?.deploymentKey ?? state.pages?.projectName ?? '';
+	const legacyKvNamespaces = dryRun ? [] : kvNamespaces
+		.filter((namespace) => {
+			const title = typeof namespace?.title === 'string' ? namespace.title : '';
+			const id = typeof namespace?.id === 'string' ? namespace.id : '';
+			return title
+				&& id
+				&& !knownKvIds.has(id)
+				&& legacyKvPrefix
+				&& title.includes(legacyKvPrefix)
+				&& title.includes(target.scope);
+		})
+		.map((namespace) => {
+			const result = deleteKvNamespace(tenantRoot, namespace.id, { env, dryRun: false });
+			return resourceOperation('cloudflare', 'kv-namespace', namespace.title, result.status, { ...result, legacy: true });
+		});
+	const database = deleteD1DatabaseForDestroy(tenantRoot, state.d1Databases.SITE_DATA_DB.databaseName, { env, dryRun, deleteData });
+	const deletedQueue = deleteQueueByName(tenantRoot, queue ?? { name: state.queues?.agentWork?.name }, { env, dryRun });
+	const deletedDlq = state.queues?.agentWork?.dlqName
+		? deleteQueueByName(tenantRoot, dlq ?? { name: state.queues.agentWork.dlqName }, { env, dryRun })
+		: null;
+	const knownQueueNames = new Set([
+		state.queues?.agentWork?.name,
+		state.queues?.agentWork?.dlqName,
+	].filter(Boolean));
+	const legacyQueues = legacyQueueDestroyOperations(tenantRoot, queues, target, knownQueueNames, { env, dryRun });
+	const r2Bucket = bucket || dryRun ? deleteR2Bucket(tenantRoot, state.content?.bucketName, { env, dryRun, deleteData }) : resourceOperation('cloudflare', 'r2-bucket', state.content?.bucketName, 'missing');
+	const pageDnsNames = [
+		state.pages?.customDomain,
+		deployConfig.surfaces?.web?.environments?.[target.scope]?.domain,
+		target.scope === 'prod' ? primaryHost(deployConfig.surfaces?.web?.publicBaseUrl ?? deployConfig.siteUrl) : null,
+	].filter(Boolean);
+	const apiDnsNames = [
+		deployConfig.services?.api?.environments?.[target.scope]?.domain,
+		deployConfig.surfaces?.api?.environments?.[target.scope]?.domain,
+	].filter(Boolean);
+	const dnsRecords = [...new Set([...pageDnsNames, ...apiDnsNames])]
+		.flatMap((name) => deleteDnsRecordsForName(deployConfig, name, { env, dryRun }));
+	const cacheRules = deleteTreeseedCacheRules(deployConfig, state, { env, dryRun });
+	const pageCustomDomains = pagesProject || dryRun
+		? deletePagesCustomDomains(tenantRoot, state.pages?.projectName, pageDnsNames, { env, dryRun })
+		: [resourceOperation('cloudflare', 'pages-custom-domain', state.pages?.projectName, 'missing')];
+	const pageDeployments = pagesProject || dryRun
+		? deletePagesDeployments(tenantRoot, state.pages?.projectName, { env, dryRun })
+		: resourceOperation('cloudflare', 'pages-deployments', state.pages?.projectName, 'missing');
+	const pages = pagesProject || dryRun
+		? deletePagesProject(state.pages?.projectName, { env, dryRun })
+		: resourceOperation('cloudflare', 'pages-project', state.pages?.projectName, 'missing');
+	const local = target.kind === 'persistent' && target.scope === 'local'
+		? destroyLocalRuntimeResources(tenantRoot, { dryRun, deleteData })
+		: { operations: [] };
+	const railway = await destroyRailwayResources(tenantRoot, deployConfig, target, { dryRun, deleteData, env: process.env });
+
+	const operations = {
+		cloudflare: [
+			resourceOperation('cloudflare', 'worker', state.workerName, workerResult.status, workerResult),
+			resourceOperation('cloudflare', 'kv-namespace', state.kvNamespaces.FORM_GUARD_KV.name, formGuard.status, formGuard),
+			...(formGuardPreview ? [resourceOperation('cloudflare', 'kv-namespace-preview', state.kvNamespaces.FORM_GUARD_KV.name, formGuardPreview.status, formGuardPreview)] : []),
+			...(session ? [resourceOperation('cloudflare', 'kv-namespace', state.kvNamespaces.SESSION.name, session.status, session)] : []),
+			...(sessionPreview ? [resourceOperation('cloudflare', 'kv-namespace-preview', state.kvNamespaces.SESSION.name, sessionPreview.status, sessionPreview)] : []),
+			...legacyKvNamespaces,
+			database,
+			deletedQueue,
+			...(deletedDlq ? [deletedDlq] : []),
+			...legacyQueues,
+			r2Bucket,
+			...pageCustomDomains,
+			pageDeployments,
+			pages,
+			...dnsRecords,
+			...cacheRules,
+		],
+		railway: railway.operations,
+		local: local.operations,
+	};
 
 	return {
 		target,
+		deleteData,
 		summary: buildDestroySummary(deployConfig, state, target),
-		operations: {
-			worker,
-			formGuard,
-			formGuardPreview,
-			session,
-			sessionPreview,
-			database,
-		},
+		operations,
+	};
+}
+
+export function destroyCloudflareResources(tenantRoot, options = {}) {
+	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');
+	const deployConfig = loadTenantDeployConfig(tenantRoot);
+	const state = loadDeployState(tenantRoot, deployConfig, { target });
+	state.workerName = targetWorkerName(deployConfig, target);
+	const env = {
+		CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig),
+	};
+	const dryRun = options.dryRun ?? false;
+	const deleteData = options.deleteData === true;
+	const force = options.force ?? false;
+	const kvNamespaces = dryRun ? [] : listKvNamespaces(tenantRoot, env);
+	const d1Databases = dryRun ? [] : listD1Databases(tenantRoot, env);
+	const queues = listQueues(tenantRoot, env);
+	const buckets = dryRun ? [] : listR2Buckets(tenantRoot, env);
+	const pagesProjects = dryRun ? [] : listPagesProjects(tenantRoot, env);
+
+	state.kvNamespaces.FORM_GUARD_KV.id = resolveExistingKvIdByName(
+		kvNamespaces,
+		state.kvNamespaces.FORM_GUARD_KV.name,
+		state.kvNamespaces.FORM_GUARD_KV.id,
+	);
+	state.d1Databases.SITE_DATA_DB = resolveExistingD1ByName(
+		d1Databases,
+		state.d1Databases.SITE_DATA_DB.databaseName,
+		state.d1Databases.SITE_DATA_DB,
+	);
+	const queue = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.name);
+	const dlq = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.dlqName);
+	const bucket = buckets.find((entry) => entry?.name === state.content?.bucketName);
+	const pagesProject = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
+	const worker = deleteWorker(tenantRoot, state.workerName, { env, dryRun, force });
+	const formGuard = deleteKvNamespace(tenantRoot, state.kvNamespaces.FORM_GUARD_KV.id, { env, dryRun });
+	const database = deleteD1DatabaseForDestroy(tenantRoot, state.d1Databases.SITE_DATA_DB.databaseName, { env, dryRun, deleteData });
+	const deletedQueue = deleteQueueByName(tenantRoot, queue ?? { name: state.queues?.agentWork?.name }, { env, dryRun });
+	const deletedDlq = state.queues?.agentWork?.dlqName
+		? deleteQueueByName(tenantRoot, dlq ?? { name: state.queues.agentWork.dlqName }, { env, dryRun })
+		: null;
+	const knownQueueNames = new Set([
+		state.queues?.agentWork?.name,
+		state.queues?.agentWork?.dlqName,
+	].filter(Boolean));
+	const legacyQueues = legacyQueueDestroyOperations(tenantRoot, queues, target, knownQueueNames, { env, dryRun });
+	const r2Bucket = bucket || dryRun
+		? deleteR2Bucket(tenantRoot, state.content?.bucketName, { env, dryRun, deleteData })
+		: resourceOperation('cloudflare', 'r2-bucket', state.content?.bucketName, 'missing');
+	const pages = pagesProject || dryRun
+		? deletePagesProject(state.pages?.projectName, { env, dryRun })
+		: resourceOperation('cloudflare', 'pages-project', state.pages?.projectName, 'missing');
+	const operations = {
+		worker,
+		formGuard,
+		database,
+		queue: deletedQueue,
+		dlq: deletedDlq,
+		legacyQueues,
+		r2Bucket,
+		pages,
+	};
+	return {
+		target,
+		deleteData,
+		summary: buildDestroySummary(deployConfig, state, target),
+		operations,
 	};
 }
 
@@ -2043,6 +2911,9 @@ export function cleanupDestroyedState(tenantRoot, options = {}) {
 		const { statePath, generatedRoot } = resolveTargetPaths(tenantRoot, target);
 		rmSync(statePath, { force: true });
 		rmSync(generatedRoot, { recursive: true, force: true });
+		if (options.removeBuildArtifacts) {
+			rmSync(resolve(tenantRoot, 'dist'), { recursive: true, force: true });
+		}
 		return;
 	}
 
@@ -2598,20 +3469,40 @@ export function printDeploySummary(summary) {
 
 export function printDestroySummary(result) {
 	const { summary, operations } = result;
+	const cloudflare = Array.isArray(operations?.cloudflare) ? operations.cloudflare : null;
+	const legacy = cloudflare
+		? {
+			worker: cloudflare.find((entry) => entry.type === 'worker'),
+			database: cloudflare.find((entry) => entry.type === 'd1-database'),
+			formGuard: cloudflare.find((entry) => entry.type === 'kv-namespace'),
+			formGuardPreview: cloudflare.find((entry) => entry.type === 'kv-namespace-preview'),
+			session: cloudflare.find((entry) => entry.type === 'kv-namespace' && entry.name === summary.sessionKv?.name),
+			sessionPreview: cloudflare.find((entry) => entry.type === 'kv-namespace-preview' && entry.name === summary.sessionKv?.name),
+		}
+		: operations;
 	console.log('Treeseed destroy summary');
 	console.log(`  Target: ${summary.target}`);
-	console.log(`  Worker: ${summary.workerName} -> ${operations.worker.status}`);
+	console.log(`  Worker: ${summary.workerName} -> ${legacy.worker?.status ?? 'unknown'}`);
 	console.log(`  Site URL: ${summary.siteUrl}`);
 	console.log(`  Account ID: ${summary.accountId}`);
-	console.log(`  D1: ${summary.siteDataDb.databaseName} -> ${operations.database.status}`);
-	console.log(`  KV FORM_GUARD_KV: ${summary.formGuardKv.name} -> ${operations.formGuard.status}`);
-	if (operations.formGuardPreview) {
-		console.log(`  KV FORM_GUARD_KV preview -> ${operations.formGuardPreview.status}`);
+	console.log(`  D1: ${summary.siteDataDb.databaseName} -> ${legacy.database?.status ?? 'unknown'}`);
+	console.log(`  KV FORM_GUARD_KV: ${summary.formGuardKv.name} -> ${legacy.formGuard?.status ?? 'unknown'}`);
+	if (legacy.formGuardPreview) {
+		console.log(`  KV FORM_GUARD_KV preview -> ${legacy.formGuardPreview.status}`);
 	}
-	if (summary.sessionKv && operations.session) {
-		console.log(`  KV SESSION (deprecated): ${summary.sessionKv.name} -> ${operations.session.status}`);
+	if (summary.sessionKv && legacy.session) {
+		console.log(`  KV SESSION (deprecated): ${summary.sessionKv.name} -> ${legacy.session.status}`);
 	}
-	if (operations.sessionPreview) {
-		console.log(`  KV SESSION preview -> ${operations.sessionPreview.status}`);
+	if (legacy.sessionPreview) {
+		console.log(`  KV SESSION preview -> ${legacy.sessionPreview.status}`);
+	}
+	if (cloudflare) {
+		for (const entry of [
+			...cloudflare.filter((item) => !['worker', 'd1-database', 'kv-namespace', 'kv-namespace-preview'].includes(item.type)),
+			...(Array.isArray(operations?.railway) ? operations.railway : []),
+			...(Array.isArray(operations?.local) ? operations.local : []),
+		]) {
+			console.log(`  ${entry.provider} ${entry.type} ${entry.name ?? '(none)'} -> ${entry.status}`);
+		}
 	}
 }
