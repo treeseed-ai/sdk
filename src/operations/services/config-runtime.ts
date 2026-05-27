@@ -1891,9 +1891,18 @@ export function resolveTreeseedLaunchEnvironment({
 			.filter((entry) => entry.sensitivity !== 'secret' && typeof suggestedValues[entry.id] === 'string' && suggestedValues[entry.id].length > 0)
 			.map((entry) => [entry.id, suggestedValues[entry.id]]),
 	);
+	const systemSecretSuggestedValues = Object.fromEntries(
+		registry.entries
+			.filter((entry) =>
+				entry.id === 'TREESEED_PLATFORM_RUNNER_SECRET'
+				&& typeof suggestedValues[entry.id] === 'string'
+				&& suggestedValues[entry.id].length > 0
+			)
+			.map((entry) => [entry.id, suggestedValues[entry.id]]),
+	);
 	const scopedValues = scope === 'local'
-		? { ...nonSecretSuggestedValues, ...baseValues, ...machineValues }
-		: { ...nonSecretSuggestedValues, ...machineValues, ...baseValues };
+		? { ...nonSecretSuggestedValues, ...systemSecretSuggestedValues, ...baseValues, ...machineValues }
+		: { ...nonSecretSuggestedValues, ...systemSecretSuggestedValues, ...machineValues, ...baseValues };
 	return {
 		...scopedValues,
 		...overrides,
