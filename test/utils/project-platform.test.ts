@@ -100,6 +100,7 @@ describe('project platform workflow actions', () => {
 		expect(source.slice(deployStart, cloudflarePrepare)).toContain('if (!options.skipProvision)');
 		expect(source.slice(contentPublish, railwayDeploy)).toContain("mode: 'production'");
 		expect(source.slice(contentPublish, railwayDeploy)).toContain("dependencies: ['web:build', contentNodeId");
+		expect(source.slice(source.indexOf('async function publishContent'), deployStart)).toContain('resolveTreeseedResourceIdentity(siteConfig, target).teamId');
 	});
 
 	it('chains Railway service deploy dependencies to avoid concurrent remote builds', () => {

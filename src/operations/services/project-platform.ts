@@ -31,6 +31,7 @@ import {
 	purgePublishedContentCaches,
 	resolveConfiguredCloudflareAccountId,
 	resolveConfiguredSurfaceBaseUrl,
+	resolveTreeseedResourceIdentity,
 	runRemoteD1Migrations,
 	syncCloudflareSecrets,
 	writeDeployState,
@@ -974,7 +975,7 @@ async function publishContent(
 	const target = runTenantPublishContentPreflight(options);
 	const siteConfig = loadCliDeployConfig(options.tenantRoot);
 	const tenantConfig = loadTreeseedManifest(resolve(options.tenantRoot, 'src', 'manifest.yaml'));
-	const teamId = String(process.env.TREESEED_HOSTING_TEAM_ID ?? siteConfig.hosting?.teamId ?? siteConfig.slug).trim() || siteConfig.slug;
+	const teamId = resolveTreeseedResourceIdentity(siteConfig, target).teamId;
 	const timestamp = new Date().toISOString();
 	const commitSha = currentCommit(options.tenantRoot);
 	const branchName = currentRef(options.tenantRoot);
