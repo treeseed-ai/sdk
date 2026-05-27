@@ -25,6 +25,7 @@ import {
 	unlockTreeseedSecretSessionFromEnv,
 } from '../../src/operations/services/config-runtime.ts';
 import {
+	buildSecretMap,
 	buildWranglerConfigContents,
 	createBranchPreviewDeployTarget,
 	createPersistentDeployTarget,
@@ -371,6 +372,32 @@ describe('remote Treeseed support', () => {
 		expect(wrangler).toContain('TREESEED_AUTH_MODE = "internal-first"');
 		expect(wrangler).toContain('TREESEED_AUTH_GITHUB_CLIENT_ID = "github-client"');
 		expect(wrangler).toContain('TREESEED_AUTH_GITHUB_CLIENT_SECRET = "github-secret"');
+	});
+
+	it('passes hosted SMTP runtime values into generated Wrangler config', () => {
+		vi.stubEnv('TREESEED_SMTP_HOST', 'smtp.example.com');
+		vi.stubEnv('TREESEED_SMTP_PORT', '587');
+		vi.stubEnv('TREESEED_SMTP_USERNAME', 'smtp-user');
+		vi.stubEnv('TREESEED_SMTP_PASSWORD', 'smtp-password');
+		vi.stubEnv('TREESEED_SMTP_FROM', 'TreeSeed <auth@example.com>');
+		vi.stubEnv('TREESEED_SMTP_REPLY_TO', 'support@example.com');
+		vi.stubEnv('TREESEED_SMTP_SECURE', 'starttls');
+		const tenantRoot = createTenantFixture();
+		const deployConfig = loadCliDeployConfig(tenantRoot);
+		const target = createPersistentDeployTarget('prod');
+		const state = loadDeployState(tenantRoot, deployConfig, { target });
+
+		const wrangler = buildWranglerConfigContents(tenantRoot, deployConfig, state, { target });
+		const secrets = buildSecretMap(deployConfig, state);
+
+		expect(wrangler).toContain('TREESEED_SMTP_HOST = "smtp.example.com"');
+		expect(wrangler).toContain('TREESEED_SMTP_PORT = "587"');
+		expect(wrangler).toContain('TREESEED_SMTP_USERNAME = "smtp-user"');
+		expect(wrangler).toContain('TREESEED_SMTP_FROM = "TreeSeed <auth@example.com>"');
+		expect(wrangler).toContain('TREESEED_SMTP_REPLY_TO = "support@example.com"');
+		expect(wrangler).toContain('TREESEED_SMTP_SECURE = "starttls"');
+		expect(wrangler).not.toContain('smtp-password');
+		expect(secrets.TREESEED_SMTP_PASSWORD).toBe('smtp-password');
 	});
 
 	it('keeps dispatch local-first when no remote config is supplied', async () => {
