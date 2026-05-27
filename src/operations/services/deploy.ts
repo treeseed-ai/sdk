@@ -337,13 +337,23 @@ function relativeFromGeneratedRoot(targetPath, generatedRoot) {
 	return relative(generatedRoot, targetPath).replaceAll('\\', '/');
 }
 
-export function buildPublicVars(deployConfig) {
+function resolveContentServingMode(deployConfig, options = {}) {
+	const override = envOrNull('TREESEED_CONTENT_SERVING_MODE');
+	if (override) {
+		return override;
+	}
+	const target = options.target ? normalizeTarget(options.target) : null;
+	if (target?.kind === 'persistent' && target.scope !== 'local') {
+		return 'published_runtime';
+	}
+	return deployConfig.providers?.content?.serving ?? 'local_collections';
+}
+
+export function buildPublicVars(deployConfig, options = {}) {
 	const identity = resolveTreeseedResourceIdentity(deployConfig, createPersistentDeployTarget('prod'));
 	const contentRuntimeProvider = deployConfig.providers?.content?.runtime ?? 'team_scoped_r2_overlay';
 	const contentPublishProvider = deployConfig.providers?.content?.publish ?? contentRuntimeProvider;
-	const contentServingMode = envOrNull('TREESEED_CONTENT_SERVING_MODE')
-		?? deployConfig.providers?.content?.serving
-		?? 'local_collections';
+	const contentServingMode = resolveContentServingMode(deployConfig, options);
 	const contentDefaultTeamId = identity.teamId;
 	const contentManifestKeyTemplate = deployConfig.cloudflare.r2?.manifestKeyTemplate ?? 'teams/{teamId}/published/common.json';
 	const contentPreviewRootTemplate = deployConfig.cloudflare.r2?.previewRootTemplate ?? 'teams/{teamId}/previews';
@@ -870,7 +880,7 @@ export function buildWranglerConfigContents(tenantRoot, deployConfig, state, opt
 	const assetsDirectory = relativeFromGeneratedRoot(resolve(tenantRoot, 'dist'), generatedRoot);
 	const migrationsDir = relativeFromGeneratedRoot(sdkD1MigrationsRoot, generatedRoot);
 	const vars = {
-		...buildPublicVars(deployConfig),
+		...buildPublicVars(deployConfig, { target }),
 		...buildLocalRuntimeVars(deployConfig, state, target, options.env),
 	};
 	const r2Config = deployConfig.cloudflare.r2;

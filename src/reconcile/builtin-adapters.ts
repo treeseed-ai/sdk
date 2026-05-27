@@ -739,7 +739,7 @@ function collectCloudflareEnvironmentSync(input: TreeseedReconcileAdapterInput) 
 	const registry = collectTreeseedEnvironmentContext(input.context.tenantRoot);
 	const state = loadDeployState(input.context.tenantRoot, input.context.deployConfig, { target });
 	const generatedSecrets = buildSecretMap(input.context.deployConfig, state);
-	const publicVars = buildPublicVars(input.context.deployConfig);
+	const publicVars = buildPublicVars(input.context.deployConfig, { target });
 	const secrets: Record<string, string> = {};
 	const vars: Record<string, string> = { ...publicVars };
 	const secretNames = new Set<string>();

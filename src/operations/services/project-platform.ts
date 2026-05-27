@@ -305,6 +305,7 @@ export function prepareTenantCloudflareDeploy({
 			...process.env,
 			...env,
 			CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig),
+			...(target.kind === 'persistent' && target.scope !== 'local' ? { TREESEED_CONTENT_SERVING_MODE: 'published_runtime' } : {}),
 		},
 		write,
 	};
