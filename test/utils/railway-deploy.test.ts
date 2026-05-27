@@ -595,6 +595,87 @@ services:
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
+	it('recreates a named volume when Railway reports the listed volume as missing', async () => {
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('TreeseedRailwayVolumeList')) {
+				return new Response(JSON.stringify({
+					data: {
+						project: {
+							volumes: {
+								edges: [{
+									node: {
+										id: 'stale-volume',
+										name: 'acme-docs-worker-runner-01-data',
+										projectId: 'project-1',
+										volumeInstances: {
+											edges: [{
+												node: {
+													id: 'vi-stale',
+													serviceId: 'old-service',
+													environmentId: 'env-staging',
+													mountPath: '/old-data',
+													state: 'READY',
+												},
+											}],
+										},
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (String(body.query).includes('TreeseedRailwayVolumeInstanceUpdate')) {
+				return new Response(JSON.stringify({
+					errors: [{ message: 'Volume stale-volume not found.' }],
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			expect(String(body.query)).toContain('TreeseedRailwayVolumeCreate');
+			expect(body.variables.input).toMatchObject({
+				projectId: 'project-1',
+				environmentId: 'env-staging',
+				serviceId: 'svc-runner-01',
+				mountPath: '/data',
+			});
+			return new Response(JSON.stringify({
+				data: {
+					volumeCreate: {
+						id: 'replacement-volume',
+						name: 'acme-docs-worker-runner-01-data',
+						projectId: 'project-1',
+						volumeInstances: {
+							edges: [{
+								node: {
+									id: 'vi-replacement',
+									serviceId: 'svc-runner-01',
+									environmentId: 'env-staging',
+									mountPath: '/data',
+									state: 'READY',
+								},
+							}],
+						},
+					},
+				},
+			}), { status: 200, headers: { 'content-type': 'application/json' } });
+		});
+
+		const result = await ensureRailwayServiceVolume({
+			projectId: 'project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-runner-01',
+			name: 'acme-docs-worker-runner-01-data',
+			mountPath: '/data',
+			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		expect(result.created).toBe(true);
+		expect(result.updated).toBe(true);
+		expect(result.volume.id).toBe('replacement-volume');
+		expect(result.instance?.serviceId).toBe('svc-runner-01');
+	});
+
 	it('does not create schedules for deleted root Market processing roles', async () => {
 		const tenantRoot = await createTenantFixture();
 		vi.stubEnv('RAILWAY_API_TOKEN', 'railway-token');
