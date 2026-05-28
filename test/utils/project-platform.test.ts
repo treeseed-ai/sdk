@@ -127,6 +127,19 @@ describe('project platform workflow actions', () => {
 		expect(syncSource).toContain("preferCli: entry.configuredService.key === 'marketOperationsRunner'");
 	});
 
+	it('waits for Railway CLI-created runner volumes to become API-visible mounts', () => {
+		const source = readFileSync(new URL('../../src/operations/services/railway-deploy.ts', import.meta.url), 'utf8');
+		const fallbackStart = source.indexOf('export async function ensureRailwayServiceVolumeWithCliFallback');
+		const fallbackEnd = source.indexOf('export async function deployRailwayService', fallbackStart);
+		const fallbackSource = source.slice(fallbackStart, fallbackEnd);
+
+		expect(fallbackStart).toBeGreaterThanOrEqual(0);
+		expect(fallbackEnd).toBeGreaterThan(fallbackStart);
+		expect(fallbackSource).toContain("'attach', '--volume'");
+		expect(fallbackSource).toContain('waitForRailwayServiceVolumeMount');
+		expect(fallbackSource).toContain('listRailwayVolumes({ projectId, env })');
+	});
+
 	it('chains Railway service deploy dependencies to avoid concurrent remote builds', () => {
 		expect(resolveRailwayServiceDeployDependencies({
 			includeDataDependency: true,
