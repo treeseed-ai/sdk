@@ -144,6 +144,74 @@ describe('railwayGraphqlRequest', () => {
 		});
 	});
 
+	it('waits for Railway service instance settings to settle after an update', async () => {
+		const staleInstance = {
+			id: 'svc-inst-1',
+			buildCommand: null,
+			startCommand: null,
+			rootDirectory: null,
+			healthcheckPath: null,
+			healthcheckTimeout: null,
+			sleepApplication: false,
+		};
+		const fetchMock = vi.fn<typeof fetch>()
+			.mockResolvedValueOnce(new Response(JSON.stringify({
+				data: {
+					serviceInstance: staleInstance,
+				},
+			}), { status: 200, headers: { 'content-type': 'application/json' } }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({
+				data: {
+					serviceInstanceUpdate: true,
+				},
+			}), { status: 200, headers: { 'content-type': 'application/json' } }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({
+				data: {
+					serviceInstance: staleInstance,
+				},
+			}), { status: 200, headers: { 'content-type': 'application/json' } }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({
+				data: {
+					serviceInstance: staleInstance,
+				},
+			}), { status: 200, headers: { 'content-type': 'application/json' } }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({
+				data: {
+					serviceInstance: {
+						id: 'svc-inst-1',
+						buildCommand: null,
+						startCommand: 'node ./src/api/server.js',
+						rootDirectory: '.',
+						healthcheckPath: '/healthz',
+						healthcheckTimeout: 10,
+						sleepApplication: true,
+					},
+				},
+			}), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+		const result = await ensureRailwayServiceInstanceConfiguration({
+			serviceId: 'svc-api',
+			environmentId: 'env-production',
+			startCommand: 'node ./src/api/server.js',
+			rootDirectory: '.',
+			healthcheckPath: '/healthz',
+			healthcheckTimeoutSeconds: 10,
+			runtimeMode: 'serverless',
+			env: { RAILWAY_API_TOKEN: 'railway-token-value' },
+			fetchImpl: fetchMock,
+			settleDelayMs: 0,
+		});
+
+		expect(fetchMock).toHaveBeenCalledTimes(5);
+		expect(result.instance).toMatchObject({
+			startCommand: 'node ./src/api/server.js',
+			rootDirectory: '.',
+			healthcheckPath: '/healthz',
+			healthcheckTimeoutSeconds: 10,
+			runtimeMode: 'serverless',
+		});
+	});
+
 	it('waits for a new Railway service instance before applying runtime settings', async () => {
 		const fetchMock = vi.fn<typeof fetch>()
 			.mockResolvedValueOnce(new Response(JSON.stringify({

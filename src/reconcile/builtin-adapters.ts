@@ -2590,7 +2590,13 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 			issues: Object.hasOwn(entry.currentVariables, key) ? [] : [`Railway secret ${key} is missing.`],
 		}));
 	}
-			return summarizeVerification(input.unit.unitId, checks);
+			const verification = summarizeVerification(input.unit.unitId, checks);
+			if (!verification.verified && attempt < 12 && railwayVerificationMaySettle(verification)) {
+				attempt += 1;
+				sleepMs(5_000);
+				continue;
+			}
+			return verification;
 		} catch (error) {
 			if (attempt >= 2 || !isTransientRailwayReconcileError(error)) {
 				throw error;
@@ -2599,6 +2605,17 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 			sleepMs(1000 * attempt);
 		}
 	}
+}
+
+function railwayVerificationMaySettle(verification: TreeseedUnitVerificationResult) {
+	return verification.checks.some((check) =>
+		!check.verified
+		&& (
+			check.key === 'railway.instance'
+			|| check.key.startsWith('railway.instance.')
+			|| check.key === 'railway.volume:data'
+		),
+	);
 }
 
 function railwayStartCommandMatches(serviceKey: string, observed: string | null | undefined, expected: string) {
