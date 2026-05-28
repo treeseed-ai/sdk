@@ -660,6 +660,86 @@ services:
 		expect(result.instance?.serviceId).toBe('svc-postgres');
 	});
 
+	it('reuses a Railway service volume that appears after a not authorized create response', async () => {
+		let listCount = 0;
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('TreeseedRailwayVolumeList')) {
+				listCount += 1;
+				return new Response(JSON.stringify({
+					data: {
+						project: {
+							volumes: {
+								edges: listCount === 1 ? [] : [{
+									node: {
+										id: 'railway-managed-postgres-volume',
+										name: 'generated-postgres-volume',
+										projectId: 'project-1',
+										volumeInstances: {
+											edges: [{
+												node: {
+													id: 'vi-postgres',
+													serviceId: 'svc-postgres',
+													environmentId: 'env-staging',
+													mountPath: '/var/lib/postgresql/data',
+													state: 'READY',
+												},
+											}],
+										},
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (String(body.query).includes('TreeseedRailwayVolumeCreate')) {
+				return new Response(JSON.stringify({
+					errors: [{ message: 'Not Authorized' }],
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (String(body.query).includes('TreeseedRailwayVolumeUpdate')) {
+				return new Response(JSON.stringify({
+					data: {
+						volumeUpdate: {
+							id: 'railway-managed-postgres-volume',
+							name: 'postgres-staging-data',
+							projectId: 'project-1',
+							volumeInstances: {
+								edges: [{
+									node: {
+										id: 'vi-postgres',
+										serviceId: 'svc-postgres',
+										environmentId: 'env-staging',
+										mountPath: '/var/lib/postgresql/data',
+										state: 'READY',
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			throw new Error(`Unexpected Railway query: ${body.query}`);
+		});
+
+		const result = await ensureRailwayServiceVolume({
+			projectId: 'project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-postgres',
+			name: 'postgres-staging-data',
+			mountPath: '/var/lib/postgresql/data',
+			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		expect(result.created).toBe(false);
+		expect(result.updated).toBe(true);
+		expect(result.volume.id).toBe('railway-managed-postgres-volume');
+		expect(result.volume.name).toBe('postgres-staging-data');
+		expect(result.instance?.serviceId).toBe('svc-postgres');
+	});
+
 	it('recreates a named volume when Railway reports the listed volume as missing', async () => {
 		const fetchMock = vi.fn(async (_input, init) => {
 			const body = JSON.parse(String(init?.body ?? '{}'));

@@ -1580,7 +1580,7 @@ export async function ensureRailwayServiceVolume({
 				fetchImpl,
 			});
 		} catch (error) {
-			if (!looksLikeRailwayVolumeLimitConflict(error)) {
+			if (!looksLikeRailwayVolumeCreateRace(error)) {
 				throw error;
 			}
 			for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -1654,9 +1654,9 @@ function findRailwayVolumeForService(volumes: RailwayVolumeSummary[], serviceId:
 	) ?? null;
 }
 
-function looksLikeRailwayVolumeLimitConflict(error: unknown) {
+function looksLikeRailwayVolumeCreateRace(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error ?? '');
-	return /would have \d+ volumes attached|can only have one volume/iu.test(message);
+	return /would have \d+ volumes attached|can only have one volume|not authorized/iu.test(message);
 }
 
 export async function listRailwayCustomDomains({
