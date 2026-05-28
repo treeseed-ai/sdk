@@ -230,13 +230,17 @@ export function collectRailwayDeploymentStatusChecks(statusPayload, scope, servi
 	});
 }
 
-function normalizeRailwayCliVolume(value, { serviceId, environmentId, fallbackName, fallbackMountPath }) {
+function normalizeRailwayCliVolume(value, { serviceId, serviceName, environmentId, fallbackName, fallbackMountPath }) {
 	if (!value || typeof value !== 'object') {
 		return null;
 	}
 	const record = value;
 	const id = typeof record.id === 'string' && record.id.trim() ? record.id.trim() : '';
 	if (!id) {
+		return null;
+	}
+	const listedServiceName = typeof record.serviceName === 'string' && record.serviceName.trim() ? record.serviceName.trim() : '';
+	if (listedServiceName && serviceName && listedServiceName !== serviceName) {
 		return null;
 	}
 	const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : fallbackName;
@@ -271,6 +275,7 @@ function normalizeRailwayCliVolumeList(value, options) {
 export function listRailwayServiceVolumesWithCli({
 	cwd,
 	serviceId,
+	serviceName,
 	environmentId,
 	name,
 	mountPath,
@@ -287,6 +292,7 @@ export function listRailwayServiceVolumesWithCli({
 	}
 	return normalizeRailwayCliVolumeList(parseRailwayJsonOutput(listResult.stdout ?? ''), {
 		serviceId,
+		serviceName,
 		environmentId,
 		fallbackName: name,
 		fallbackMountPath: mountPath,
@@ -2037,6 +2043,7 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 	const listResult = runRailway([...volumeArgs, 'list', '--json'], cliOptions);
 	const existingVolumes = normalizeRailwayCliVolumeList(parseRailwayJsonOutput(listResult.stdout ?? ''), {
 		serviceId,
+		serviceName,
 		environmentId,
 		fallbackName: name,
 		fallbackMountPath: mountPath,
@@ -2052,6 +2059,7 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 		const createResult = runRailway([...volumeArgs, 'add', '--mount-path', mountPath, '--json'], cliOptions);
 		volume = normalizeRailwayCliVolume(parseRailwayJsonOutput(createResult.stdout ?? ''), {
 			serviceId,
+			serviceName,
 			environmentId,
 			fallbackName: name,
 			fallbackMountPath: mountPath,
@@ -2077,6 +2085,7 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 		const attachedVolume = (attachResult.status ?? 1) === 0
 			? normalizeRailwayCliVolume(parseRailwayJsonOutput(attachResult.stdout ?? ''), {
 				serviceId,
+				serviceName,
 				environmentId,
 				fallbackName: name,
 				fallbackMountPath: mountPath,
@@ -2102,16 +2111,20 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 		updated = true;
 	}
 	if (volume.name !== name || instance?.mountPath !== mountPath) {
-		const updateResult = runRailway([...volumeArgs, 'update', '--volume', volume.id, '--name', name, '--mount-path', mountPath, '--json'], cliOptions);
+		const apiVolumes = await listRailwayVolumes({ projectId, env });
+		const desiredNameInUse = apiVolumes.some((candidate) => candidate.id !== volume.id && candidate.name === name);
+		const nextName = desiredNameInUse ? volume.name : name;
+		const updateResult = runRailway([...volumeArgs, 'update', '--volume', volume.id, '--name', nextName, '--mount-path', mountPath, '--json'], cliOptions);
 		const updatedVolume = normalizeRailwayCliVolume(parseRailwayJsonOutput(updateResult.stdout ?? ''), {
 			serviceId,
+			serviceName,
 			environmentId,
-			fallbackName: name,
+			fallbackName: nextName,
 			fallbackMountPath: mountPath,
 		});
 		volume = updatedVolume ?? {
 			...volume,
-			name,
+			name: nextName,
 			instances: volume.instances.map((entry) => ({ ...entry, mountPath })),
 		};
 		updated = true;
@@ -2128,6 +2141,8 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 	});
 	if (apiVolume) {
 		volume = apiVolume;
+	} else {
+		throw new Error(`Railway volume ${name} was not attached to ${serviceName} at ${mountPath}.`);
 	}
 
 	return {
@@ -2149,15 +2164,17 @@ async function waitForRailwayServiceVolumeMount({
 }) {
 	for (let attempt = 0; attempt <= 24; attempt += 1) {
 		const volumes = await listRailwayVolumes({ projectId, env });
-		const match = volumes.find((entry) =>
-			entry.id === volumeId
-			|| entry.name === volumeName
-			|| entry.instances.some((instance) =>
+		const mounted = volumes.find((entry) =>
+			entry.instances.some((instance) =>
 				instance.serviceId === serviceId
 				&& instance.environmentId === environmentId
 				&& instance.mountPath === mountPath,
 			),
 		) ?? null;
+		const match = mounted
+			?? volumes.find((entry) => entry.id === volumeId)
+			?? volumes.find((entry) => entry.name === volumeName)
+			?? null;
 		if (match?.instances.some((instance) =>
 			instance.serviceId === serviceId
 			&& instance.environmentId === environmentId
