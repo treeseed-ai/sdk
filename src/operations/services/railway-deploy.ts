@@ -2019,6 +2019,16 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 		capture: true,
 		env,
 	};
+	ensureRailwayProjectContext({
+		key: serviceName,
+		projectId,
+		serviceName,
+		rootDir: tenantRoot,
+		railwayEnvironment: environmentName,
+	}, {
+		env,
+		capture: true,
+	});
 	const volumeArgs = ['volume', '--service', serviceId, '--environment', environmentId];
 	const listResult = runRailway([...volumeArgs, 'list', '--json'], cliOptions);
 	const existingVolumes = normalizeRailwayCliVolumeList(parseRailwayJsonOutput(listResult.stdout ?? ''), {
