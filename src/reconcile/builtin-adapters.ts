@@ -1916,7 +1916,7 @@ async function ensureRailwayMarketDatabaseForScope(
 			env: topology.env,
 		});
 	}
-	for (let attempt = 0; attempt < 8; attempt += 1) {
+	for (let attempt = 0; attempt < 20; attempt += 1) {
 		const existingVolumes = await listRailwayVolumes({
 			projectId: firstService.project.id,
 			env: topology.env,
@@ -1927,18 +1927,13 @@ async function ensureRailwayMarketDatabaseForScope(
 			&& instance.mountPath === '/var/lib/postgresql/data'
 		));
 		if (attached) {
-			break;
+			return;
 		}
-		await new Promise((resolve) => setTimeout(resolve, 1500));
+		await new Promise((resolve) => setTimeout(resolve, 3000));
 	}
-	await ensureRailwayServiceVolume({
-		projectId: firstService.project.id,
-		environmentId: firstService.environment.id,
-		serviceId: postgresService.id,
-		name: `postgres-${topology.scope === 'prod' ? 'prod' : topology.scope}-data`,
-		mountPath: '/var/lib/postgresql/data',
-		env: topology.env,
-	});
+	// Railway Postgres creates and owns its backing volume asynchronously. Do not
+	// create a replacement volume for the plugin service when the managed volume
+	// is not visible yet; the database service itself is the desired resource.
 }
 
 async function observeRailwayUnit(input: TreeseedReconcileAdapterInput, { refresh = false }: { refresh?: boolean } = {}): Promise<TreeseedObservedUnitState> {

@@ -103,6 +103,18 @@ describe('project platform workflow actions', () => {
 		expect(source.slice(source.indexOf('async function publishContent'), deployStart)).toContain('resolveTreeseedResourceIdentity(siteConfig, target).teamId');
 	});
 
+	it('does not manually create replacement volumes for Railway Postgres plugin services', () => {
+		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
+		const databaseStart = source.indexOf('async function ensureRailwayMarketDatabaseForScope');
+		const databaseEnd = source.indexOf('async function observeRailwayUnit', databaseStart);
+		const databaseSource = source.slice(databaseStart, databaseEnd);
+
+		expect(databaseStart).toBeGreaterThanOrEqual(0);
+		expect(databaseEnd).toBeGreaterThan(databaseStart);
+		expect(databaseSource).toContain('Railway Postgres creates and owns its backing volume asynchronously');
+		expect(databaseSource).not.toContain('await ensureRailwayServiceVolume({');
+	});
+
 	it('chains Railway service deploy dependencies to avoid concurrent remote builds', () => {
 		expect(resolveRailwayServiceDeployDependencies({
 			includeDataDependency: true,
