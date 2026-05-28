@@ -2620,12 +2620,19 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { dryRu
 				operations.push(resourceOperation('railway', 'volume', volume.name, result.status, { id: volume.id, projectId: project.id }));
 			}
 		}
-		if (scope === 'prod' && deleteData) {
+		const shouldDeleteProject = shouldDeleteRailwayProjectAfterEnvironmentDestroy(project, scope, deleteData, environment?.id ?? null);
+		if ((scope === 'prod' && deleteData) || shouldDeleteProject) {
 			if (dryRun) {
-				operations.push(resourceOperation('railway', 'project', project.name, 'planned', { id: project.id, reason: 'prod_delete_data_cleanup' }));
+				operations.push(resourceOperation('railway', 'project', project.name, 'planned', {
+					id: project.id,
+					reason: scope === 'prod' ? 'prod_delete_data_cleanup' : 'no_managed_persistent_environments',
+				}));
 			} else {
 				const result = await deleteRailwayProject({ projectId: project.id, env });
-				operations.push(resourceOperation('railway', 'project', project.name, result.status, { id: project.id, reason: 'prod_delete_data_cleanup' }));
+				operations.push(resourceOperation('railway', 'project', project.name, result.status, {
+					id: project.id,
+					reason: scope === 'prod' ? 'prod_delete_data_cleanup' : 'no_managed_persistent_environments',
+				}));
 			}
 		} else if (environment) {
 			if (dryRun) {
@@ -2637,6 +2644,19 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { dryRu
 		}
 	}
 	return { operations };
+}
+
+export function shouldDeleteRailwayProjectAfterEnvironmentDestroy(project, scope, deleteData, deletedEnvironmentId = null) {
+	if (!deleteData || scope === 'prod') {
+		return false;
+	}
+	const managedPersistentNames = new Set(['staging', 'production', 'prod']);
+	const targetEnvironmentName = normalizeRailwayEnvironmentName(scope);
+	const remainingManagedEnvironments = (project?.environments ?? [])
+		.filter((environment) => environment?.id !== deletedEnvironmentId)
+		.filter((environment) => environment?.name !== targetEnvironmentName)
+		.filter((environment) => managedPersistentNames.has(environment?.name));
+	return remainingManagedEnvironments.length === 0;
 }
 
 function killPidFromFile(filePath, { dryRun }) {

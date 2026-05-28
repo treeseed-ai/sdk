@@ -6,6 +6,7 @@ import {
 	createPersistentDeployTarget,
 	destroyTreeseedEnvironmentResources,
 	loadDeployState,
+	shouldDeleteRailwayProjectAfterEnvironmentDestroy,
 	writeDeployState,
 } from '../../src/operations/services/deploy.ts';
 import { loadCliDeployConfig } from '../../src/operations/services/runtime-tools.ts';
@@ -127,5 +128,30 @@ describe('destroy planning', () => {
 		expect(cloudflare.find((entry) => entry.type === 'd1-database')?.status).toBe('planned');
 		expect(cloudflare.find((entry) => entry.type === 'r2-bucket')?.status).toBe('planned');
 		expect(cloudflare.find((entry) => entry.type === 'pages-project')?.status).toBe('planned');
+	});
+
+	it('removes the Railway project when delete-data leaves no managed persistent environments', () => {
+		const project = {
+			id: 'project-1',
+			name: 'destroy-test',
+			environments: [
+				{ id: 'env-staging', name: 'staging' },
+			],
+		};
+
+		expect(shouldDeleteRailwayProjectAfterEnvironmentDestroy(project, 'staging', true, 'env-staging')).toBe(true);
+	});
+
+	it('keeps the Railway project when production still exists', () => {
+		const project = {
+			id: 'project-1',
+			name: 'destroy-test',
+			environments: [
+				{ id: 'env-staging', name: 'staging' },
+				{ id: 'env-production', name: 'production' },
+			],
+		};
+
+		expect(shouldDeleteRailwayProjectAfterEnvironmentDestroy(project, 'staging', true, 'env-staging')).toBe(false);
 	});
 });
