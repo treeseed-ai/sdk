@@ -2110,26 +2110,6 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 		instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null;
 		updated = true;
 	}
-	if (volume.name !== name || instance?.mountPath !== mountPath) {
-		const apiVolumes = await listRailwayVolumes({ projectId, env });
-		const desiredNameInUse = apiVolumes.some((candidate) => candidate.id !== volume.id && candidate.name === name);
-		const nextName = desiredNameInUse ? volume.name : name;
-		const updateResult = runRailway([...volumeArgs, 'update', '--volume', volume.id, '--name', nextName, '--mount-path', mountPath, '--json'], cliOptions);
-		const updatedVolume = normalizeRailwayCliVolume(parseRailwayJsonOutput(updateResult.stdout ?? ''), {
-			serviceId,
-			serviceName,
-			environmentId,
-			fallbackName: nextName,
-			fallbackMountPath: mountPath,
-		});
-		volume = updatedVolume ?? {
-			...volume,
-			name: nextName,
-			instances: volume.instances.map((entry) => ({ ...entry, mountPath })),
-		};
-		updated = true;
-	}
-
 	const apiVolume = await waitForRailwayServiceVolumeMount({
 		projectId,
 		volumeId: volume.id,

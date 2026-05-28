@@ -189,8 +189,8 @@ describe('project platform workflow actions', () => {
 		expect(fallbackSource).toContain('already mounted');
 		expect(fallbackSource).toContain('waitForRailwayServiceVolumeMount');
 		expect(fallbackSource).toContain('listRailwayVolumes({ projectId, env })');
-		expect(fallbackSource).toContain('desiredNameInUse');
 		expect(fallbackSource.indexOf('const mounted = volumes.find')).toBeLessThan(fallbackSource.indexOf('entry.name === volumeName'));
+		expect(fallbackSource).not.toContain("'update', '--volume'");
 	});
 
 	it('allows Railway CLI project context linking from a project id alone', () => {
