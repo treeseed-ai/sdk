@@ -174,6 +174,19 @@ describe('project platform workflow actions', () => {
 		expect(fallbackSource).toContain('listRailwayVolumes({ projectId, env })');
 	});
 
+	it('allows Railway CLI project context linking from a project id alone', () => {
+		const source = readFileSync(new URL('../../src/operations/services/railway-deploy.ts', import.meta.url), 'utf8');
+		const helperStart = source.indexOf('export function ensureRailwayProjectExists');
+		const helperEnd = source.indexOf('export function ensureRailwayEnvironmentExists', helperStart);
+		const helperSource = source.slice(helperStart, helperEnd);
+
+		expect(helperStart).toBeGreaterThanOrEqual(0);
+		expect(helperEnd).toBeGreaterThan(helperStart);
+		expect(helperSource).toContain('const projectId');
+		expect(helperSource).toContain('entry.id === projectId');
+		expect(helperSource).toContain("return { id: projectId, name: '' }");
+	});
+
 	it('exposes a safe Railway CLI volume lister for verification fallback', () => {
 		const source = readFileSync(new URL('../../src/operations/services/railway-deploy.ts', import.meta.url), 'utf8');
 		const helperStart = source.indexOf('export function listRailwayServiceVolumesWithCli');
