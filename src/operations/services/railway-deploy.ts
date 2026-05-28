@@ -108,7 +108,7 @@ function configuredEnvValue(env, name) {
 	return typeof value === 'string' && value.trim() ? value.trim() : '';
 }
 
-function parseRailwayJsonOutput(output) {
+export function parseRailwayJsonOutput(output) {
 	const trimmed = typeof output === 'string' ? output.trim() : '';
 	if (!trimmed) {
 		return null;
@@ -266,6 +266,31 @@ function normalizeRailwayCliVolumeList(value, options) {
 	return value.volumes
 		.map((entry) => normalizeRailwayCliVolume(entry, options))
 		.filter(Boolean);
+}
+
+export function listRailwayServiceVolumesWithCli({
+	cwd,
+	serviceId,
+	environmentId,
+	name,
+	mountPath,
+	env = process.env,
+}) {
+	const listResult = runRailway(['volume', '--service', serviceId, '--environment', environmentId, 'list', '--json'], {
+		cwd,
+		capture: true,
+		allowFailure: true,
+		env,
+	});
+	if ((listResult.status ?? 1) !== 0) {
+		return [];
+	}
+	return normalizeRailwayCliVolumeList(parseRailwayJsonOutput(listResult.stdout ?? ''), {
+		serviceId,
+		environmentId,
+		fallbackName: name,
+		fallbackMountPath: mountPath,
+	});
 }
 
 export function isUsableRailwayToken(value) {
