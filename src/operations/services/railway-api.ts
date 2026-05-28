@@ -1096,7 +1096,13 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
 }) {
-	const current = await getRailwayServiceInstance({ serviceId, environmentId, env, fetchImpl });
+	let current = await getRailwayServiceInstance({ serviceId, environmentId, env, fetchImpl });
+	if (!current.id) {
+		for (let attempt = 0; attempt < 8 && !current.id; attempt += 1) {
+			await new Promise((resolve) => setTimeout(resolve, 1500));
+			current = await getRailwayServiceInstance({ serviceId, environmentId, env, fetchImpl });
+		}
+	}
 	if (!current.id) {
 		return { instance: current, updated: false };
 	}
@@ -1179,12 +1185,21 @@ mutation TreeseedRailwayServiceInstanceUpdateLegacy($serviceId: String!, $enviro
 		}
 		throw error;
 	}
-	const instance = await getRailwayServiceInstance({
+	let instance = await getRailwayServiceInstance({
 		serviceId,
 		environmentId,
 		env,
 		fetchImpl,
 	});
+	for (let attempt = 0; attempt < 5 && serviceInstanceDrifted(instance, desired); attempt += 1) {
+		await new Promise((resolve) => setTimeout(resolve, 1000));
+		instance = await getRailwayServiceInstance({
+			serviceId,
+			environmentId,
+			env,
+			fetchImpl,
+		});
+	}
 	return {
 		instance: {
 			id: instance.id || current.id,
@@ -1202,6 +1217,29 @@ mutation TreeseedRailwayServiceInstanceUpdateLegacy($serviceId: String!, $enviro
 		} satisfies RailwayServiceInstanceSummary,
 		updated: true,
 	};
+}
+
+function serviceInstanceDrifted(
+	current: RailwayServiceInstanceSummary,
+	desired: {
+		buildCommand: string | null;
+		startCommand: string | null;
+		cronSchedule: string | null;
+		rootDirectory: string | null;
+		healthcheckPath: string | null;
+		healthcheckTimeoutSeconds: number | null;
+		runtimeMode: string | null;
+	},
+) {
+	return (
+		(desired.buildCommand !== null && desired.buildCommand !== current.buildCommand)
+		|| (desired.startCommand !== null && desired.startCommand !== current.startCommand)
+		|| (desired.cronSchedule !== null && desired.cronSchedule !== current.cronSchedule)
+		|| (desired.rootDirectory !== null && desired.rootDirectory !== current.rootDirectory)
+		|| (desired.healthcheckPath !== null && desired.healthcheckPath !== current.healthcheckPath)
+		|| (desired.healthcheckTimeoutSeconds !== null && desired.healthcheckTimeoutSeconds !== current.healthcheckTimeoutSeconds)
+		|| (desired.runtimeMode !== null && desired.runtimeMode !== current.runtimeMode)
+	);
 }
 
 export async function listRailwayVariables({
@@ -1522,24 +1560,39 @@ export async function ensureRailwayServiceVolume({
 			instances: candidate.instances.filter(isActiveRailwayVolumeInstance),
 		}))
 		.filter((candidate) => candidate.instances.length > 0);
-	let volume = activeVolumes.find((candidate) =>
-		candidate.instances.some((instance) => instance.serviceId === serviceId && instance.environmentId === environmentId),
-	) ?? activeVolumes.find((candidate) =>
+	let volume = findRailwayVolumeForService(volumes, serviceId, environmentId)
+		?? activeVolumes.find((candidate) =>
 		candidate.name === name
 		&& candidate.instances.some((instance) => instance.environmentId === environmentId),
 	) ?? null;
 	let created = false;
 	let updated = false;
 	const createReplacementVolume = async () => {
-		const replacement = await createRailwayVolume({
-			projectId,
-			environmentId,
-			serviceId,
-			name,
-			mountPath,
-			env,
-			fetchImpl,
-		});
+		let replacement: Awaited<ReturnType<typeof createRailwayVolume>>;
+		try {
+			replacement = await createRailwayVolume({
+				projectId,
+				environmentId,
+				serviceId,
+				name,
+				mountPath,
+				env,
+				fetchImpl,
+			});
+		} catch (error) {
+			if (!looksLikeRailwayVolumeCreateRace(error)) {
+				throw error;
+			}
+			for (let attempt = 0; attempt < 8; attempt += 1) {
+				await new Promise((resolve) => setTimeout(resolve, 1500));
+				const refreshed = await listRailwayVolumes({ projectId, env, fetchImpl });
+				const existing = findRailwayVolumeForService(refreshed, serviceId, environmentId);
+				if (existing) {
+					return existing;
+				}
+			}
+			throw error;
+		}
 		created = true;
 		return replacement;
 	};
@@ -1589,6 +1642,21 @@ export async function ensureRailwayServiceVolume({
 		updated = true;
 	}
 	return { volume, instance, created, updated };
+}
+
+function findRailwayVolumeForService(volumes: RailwayVolumeSummary[], serviceId: string, environmentId: string) {
+	return volumes.find((candidate) =>
+		candidate.instances.some((instance) =>
+			instance.serviceId === serviceId
+			&& instance.environmentId === environmentId
+			&& isActiveRailwayVolumeInstance(instance)
+		),
+	) ?? null;
+}
+
+function looksLikeRailwayVolumeCreateRace(error: unknown) {
+	const message = error instanceof Error ? error.message : String(error ?? '');
+	return /would have \d+ volumes attached|can only have one volume|not authorized/iu.test(message);
 }
 
 export async function listRailwayCustomDomains({

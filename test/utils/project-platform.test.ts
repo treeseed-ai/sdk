@@ -103,6 +103,30 @@ describe('project platform workflow actions', () => {
 		expect(source.slice(source.indexOf('async function publishContent'), deployStart)).toContain('resolveTreeseedResourceIdentity(siteConfig, target).teamId');
 	});
 
+	it('does not manually create replacement volumes for Railway Postgres plugin services', () => {
+		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
+		const databaseStart = source.indexOf('async function ensureRailwayMarketDatabaseForScope');
+		const databaseEnd = source.indexOf('async function observeRailwayUnit', databaseStart);
+		const databaseSource = source.slice(databaseStart, databaseEnd);
+
+		expect(databaseStart).toBeGreaterThanOrEqual(0);
+		expect(databaseEnd).toBeGreaterThan(databaseStart);
+		expect(databaseSource).toContain('Railway Postgres creates and owns its backing volume asynchronously');
+		expect(databaseSource).not.toContain('await ensureRailwayServiceVolume({');
+	});
+
+	it('uses the Railway CLI volume path for market operations runner reconciliation', () => {
+		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
+		const syncStart = source.indexOf('async function syncRailwayEnvironmentForScope');
+		const syncEnd = source.indexOf('async function ensureRailwayMarketDatabaseForScope', syncStart);
+		const syncSource = source.slice(syncStart, syncEnd);
+
+		expect(syncStart).toBeGreaterThanOrEqual(0);
+		expect(syncEnd).toBeGreaterThan(syncStart);
+		expect(syncSource).toContain('ensureRailwayServiceVolumeWithCliFallback');
+		expect(syncSource).toContain("preferCli: entry.configuredService.key === 'marketOperationsRunner'");
+	});
+
 	it('chains Railway service deploy dependencies to avoid concurrent remote builds', () => {
 		expect(resolveRailwayServiceDeployDependencies({
 			includeDataDependency: true,
