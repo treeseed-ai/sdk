@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.20] - 2026-05-28
+
+### Tests
+
+- build(build): redeploy staging from clean provider state (aa546a23f8f6)
+- build(build): allow railway context link by project id (da0dae703fe3)
+- build(build): link railway context before cli volume fallback (a71f5e0ac068)
+- build(build): fallback railway environment creation when API is opaque (83df3499d01f)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.20.
+
 ## [0.10.19] - 2026-05-28
 
 ### Tests
