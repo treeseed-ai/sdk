@@ -278,12 +278,13 @@ describe('treeseed workflow lifecycle', () => {
 		const hostedCiEnd = source.indexOf("helpers.write('[save][workflow] Waiting for hosted save workflow gates.');", hostedCiStart);
 		const hostedCiSource = source.slice(hostedCiStart, hostedCiEnd);
 
-		expect(hostedCiSource).toContain('effectiveInput.verifyDeployedResources !== true');
+		expect(hostedCiSource).toContain("if (effectiveInput.verifyDeployedResources !== true || scope === 'local' || !savedRootRepo.commitSha)");
 		expect(hostedCiSource).toContain('dispatchGitHubWorkflowRun');
 		expect(hostedCiSource).toContain("workflow: 'deploy.yml'");
 		expect(hostedCiSource).toContain("environment: 'staging'");
 		expect(hostedCiSource).toContain("action_kind: 'deploy_web'");
 		expect(hostedCiSource).toContain('waitForWorkflowGates');
+		expect(hostedCiSource).toContain("workflowGates.filter((gate) => !(gate.repository === repository && gate.workflow === 'deploy.yml'))");
 	});
 
 	it('resolves status from nested directories against the tenant root', async () => {

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.10.21] - 2026-05-28
+
+### Tests
+
+- build(build): force fresh deployed-resource verification on staging save (c6f780514551)
+- build(build): refresh Railway topology during verification (589279f2d999)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.21.
+
 ## [0.10.20] - 2026-05-28
 
 ### Tests

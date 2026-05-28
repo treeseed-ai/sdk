@@ -3780,7 +3780,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						{
 							if (branch === STAGING_BRANCH) {
 								const workflowGates = saveResult?.workflowGates ?? [];
-								if (workflowGates.length > 0 || effectiveInput.verifyDeployedResources !== true || scope === 'local' || !savedRootRepo.commitSha) {
+								if (effectiveInput.verifyDeployedResources !== true || scope === 'local' || !savedRootRepo.commitSha) {
 									return { workflowGates };
 								}
 								helpers.write('[save][workflow] Dispatching hosted market deploy gate for deployed resource verification.');
@@ -3809,7 +3809,12 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 									runId: workflowRun.runId,
 									onProgress: (line, stream) => helpers.write(line, stream),
 								});
-								return { workflowGates: dispatchedGates };
+								return {
+									workflowGates: [
+										...workflowGates.filter((gate) => !(gate.repository === repository && gate.workflow === 'deploy.yml')),
+										...dispatchedGates,
+									],
+								};
 							}
 							helpers.write('[save][workflow] Waiting for hosted save workflow gates.');
 							return waitForWorkflowGates('save', [

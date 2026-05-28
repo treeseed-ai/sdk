@@ -2478,6 +2478,7 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 				serviceKeys: [serviceKey],
 				includeInstances: true,
 				includeVariables: true,
+				refresh: true,
 			});
 			const entry = topology.services.get(serviceKey) ?? null;
 			const service = entry?.configuredService ?? null;
