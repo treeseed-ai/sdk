@@ -2025,13 +2025,24 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 
 	let instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null;
 	if (!instance || instance.mountPath !== mountPath) {
-		const attachResult = runRailway([...volumeArgs, 'attach', '--volume', volume.id, '--yes', '--json'], cliOptions);
-		const attachedVolume = normalizeRailwayCliVolume(parseRailwayJsonOutput(attachResult.stdout ?? ''), {
-			serviceId,
-			environmentId,
-			fallbackName: name,
-			fallbackMountPath: mountPath,
+		const attachResult = runRailway([...volumeArgs, 'attach', '--volume', volume.id, '--yes', '--json'], {
+			...cliOptions,
+			allowFailure: true,
 		});
+		if ((attachResult.status ?? 1) !== 0) {
+			const attachMessage = attachResult.stderr?.trim() || attachResult.stdout?.trim() || '';
+			if (!/already mounted/iu.test(attachMessage)) {
+				throw new Error(attachMessage || `Railway volume attach failed for ${serviceName} in ${environmentName}.`);
+			}
+		}
+		const attachedVolume = (attachResult.status ?? 1) === 0
+			? normalizeRailwayCliVolume(parseRailwayJsonOutput(attachResult.stdout ?? ''), {
+				serviceId,
+				environmentId,
+				fallbackName: name,
+				fallbackMountPath: mountPath,
+			})
+			: null;
 		volume = attachedVolume ?? {
 			...volume,
 			instances: [{

@@ -136,6 +136,8 @@ describe('project platform workflow actions', () => {
 		expect(fallbackStart).toBeGreaterThanOrEqual(0);
 		expect(fallbackEnd).toBeGreaterThan(fallbackStart);
 		expect(fallbackSource).toContain("'attach', '--volume'");
+		expect(fallbackSource).toContain('allowFailure: true');
+		expect(fallbackSource).toContain('already mounted');
 		expect(fallbackSource).toContain('waitForRailwayServiceVolumeMount');
 		expect(fallbackSource).toContain('listRailwayVolumes({ projectId, env })');
 	});
