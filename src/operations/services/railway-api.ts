@@ -1081,7 +1081,7 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	runtimeMode,
 	env = process.env,
 	fetchImpl = fetch,
-	settleAttempts = 24,
+	settleAttempts = 60,
 	settleDelayMs = 5_000,
 }: {
 	serviceId: string;
@@ -1102,8 +1102,8 @@ export async function ensureRailwayServiceInstanceConfiguration({
 }) {
 	let current = await getRailwayServiceInstance({ serviceId, environmentId, env, fetchImpl });
 	if (!current.id) {
-		for (let attempt = 0; attempt < 8 && !current.id; attempt += 1) {
-			await new Promise((resolve) => setTimeout(resolve, 1500));
+		for (let attempt = 0; attempt < settleAttempts && !current.id; attempt += 1) {
+			await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
 			current = await getRailwayServiceInstance({ serviceId, environmentId, env, fetchImpl });
 		}
 	}
