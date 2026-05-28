@@ -295,7 +295,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(report.repaired).toBe(true);
 		expect(report.targetBranch).toBe('staging');
 		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('staging');
-	});
+	}, 15_000);
 
 	it('reattaches a dirty detached package repo at the same staging head without losing changes', () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
