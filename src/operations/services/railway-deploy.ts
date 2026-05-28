@@ -108,7 +108,7 @@ function configuredEnvValue(env, name) {
 	return typeof value === 'string' && value.trim() ? value.trim() : '';
 }
 
-function parseRailwayJsonOutput(output) {
+export function parseRailwayJsonOutput(output) {
 	const trimmed = typeof output === 'string' ? output.trim() : '';
 	if (!trimmed) {
 		return null;
@@ -266,6 +266,31 @@ function normalizeRailwayCliVolumeList(value, options) {
 	return value.volumes
 		.map((entry) => normalizeRailwayCliVolume(entry, options))
 		.filter(Boolean);
+}
+
+export function listRailwayServiceVolumesWithCli({
+	cwd,
+	serviceId,
+	environmentId,
+	name,
+	mountPath,
+	env = process.env,
+}) {
+	const listResult = runRailway(['volume', '--service', serviceId, '--environment', environmentId, 'list', '--json'], {
+		cwd,
+		capture: true,
+		allowFailure: true,
+		env,
+	});
+	if ((listResult.status ?? 1) !== 0) {
+		return [];
+	}
+	return normalizeRailwayCliVolumeList(parseRailwayJsonOutput(listResult.stdout ?? ''), {
+		serviceId,
+		environmentId,
+		fallbackName: name,
+		fallbackMountPath: mountPath,
+	});
 }
 
 export function isUsableRailwayToken(value) {
@@ -2023,7 +2048,45 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 		created = true;
 	}
 
-	const instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null;
+	let instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null;
+	if (!instance || instance.mountPath !== mountPath) {
+		const attachResult = runRailway([...volumeArgs, 'attach', '--volume', volume.id, '--yes', '--json'], {
+			...cliOptions,
+			allowFailure: true,
+		});
+		if ((attachResult.status ?? 1) !== 0) {
+			const attachMessage = attachResult.stderr?.trim() || attachResult.stdout?.trim() || '';
+			if (!/already mounted/iu.test(attachMessage)) {
+				throw new Error(attachMessage || `Railway volume attach failed for ${serviceName} in ${environmentName}.`);
+			}
+		}
+		const attachedVolume = (attachResult.status ?? 1) === 0
+			? normalizeRailwayCliVolume(parseRailwayJsonOutput(attachResult.stdout ?? ''), {
+				serviceId,
+				environmentId,
+				fallbackName: name,
+				fallbackMountPath: mountPath,
+			})
+			: null;
+		volume = attachedVolume ?? {
+			...volume,
+			instances: [{
+				...(instance ?? {
+					id: volume.id,
+					serviceId,
+					environmentId,
+					state: 'READY',
+					sizeGb: null,
+					usedGb: null,
+				}),
+				serviceId,
+				environmentId,
+				mountPath,
+			}],
+		};
+		instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null;
+		updated = true;
+	}
 	if (volume.name !== name || instance?.mountPath !== mountPath) {
 		const updateResult = runRailway([...volumeArgs, 'update', '--volume', volume.id, '--name', name, '--mount-path', mountPath, '--json'], cliOptions);
 		const updatedVolume = normalizeRailwayCliVolume(parseRailwayJsonOutput(updateResult.stdout ?? ''), {
@@ -2040,12 +2103,59 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 		updated = true;
 	}
 
+	const apiVolume = await waitForRailwayServiceVolumeMount({
+		projectId,
+		volumeId: volume.id,
+		volumeName: name,
+		serviceId,
+		environmentId,
+		mountPath,
+		env,
+	});
+	if (apiVolume) {
+		volume = apiVolume;
+	}
+
 	return {
 		volume,
 		instance: volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null,
 		created,
 		updated,
 	};
+}
+
+async function waitForRailwayServiceVolumeMount({
+	projectId,
+	volumeId,
+	volumeName,
+	serviceId,
+	environmentId,
+	mountPath,
+	env,
+}) {
+	for (let attempt = 0; attempt <= 24; attempt += 1) {
+		const volumes = await listRailwayVolumes({ projectId, env });
+		const match = volumes.find((entry) =>
+			entry.id === volumeId
+			|| entry.name === volumeName
+			|| entry.instances.some((instance) =>
+				instance.serviceId === serviceId
+				&& instance.environmentId === environmentId
+				&& instance.mountPath === mountPath,
+			),
+		) ?? null;
+		if (match?.instances.some((instance) =>
+			instance.serviceId === serviceId
+			&& instance.environmentId === environmentId
+			&& instance.mountPath === mountPath,
+		)) {
+			return match;
+		}
+		if (attempt < 24) {
+			await sleep(5_000);
+		}
+	}
+	return null;
 }
 
 export async function deployRailwayService(

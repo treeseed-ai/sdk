@@ -34,6 +34,7 @@ import {
 	deriveRailwayMarketOperationsRunnerVolumeName,
 	ensureRailwayProjectContext,
 	ensureRailwayServiceVolumeWithCliFallback,
+	listRailwayServiceVolumesWithCli,
 	runRailway,
 	validateRailwayDeployPrerequisites,
 } from '../operations/services/railway-deploy.ts';
@@ -2555,11 +2556,29 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 			: [];
 		const expectedServiceId = entry.service?.id ?? null;
 		const expectedEnvironmentId = entry.environment?.id ?? null;
-		const mountedVolume = volumes.find((volume) => volume.instances.some((instance) =>
+		let mountedVolume = volumes.find((volume) => volume.instances.some((instance) =>
 			instance.serviceId === expectedServiceId
 			&& instance.environmentId === expectedEnvironmentId
 			&& instance.mountPath === service.volumeMountPath,
 		)) ?? null;
+		let mountedVolumeSource = 'api';
+		if (!mountedVolume && serviceKey === 'marketOperationsRunner' && expectedServiceId && expectedEnvironmentId) {
+			ensureRailwayProjectContext(service, { env: topology.env, capture: true });
+			const cliVolumes = listRailwayServiceVolumesWithCli({
+				cwd: service.rootDir,
+				serviceId: expectedServiceId,
+				environmentId: expectedEnvironmentId,
+				name: deriveRailwayMarketOperationsRunnerVolumeName(entry.service?.name ?? service.serviceName ?? service.key, entry.environment?.name ?? service.railwayEnvironment),
+				mountPath: service.volumeMountPath,
+				env: topology.env,
+			});
+			mountedVolume = cliVolumes.find((volume) => volume.instances.some((instance) =>
+				instance.serviceId === expectedServiceId
+				&& instance.environmentId === expectedEnvironmentId
+				&& instance.mountPath === service.volumeMountPath,
+			)) ?? null;
+			mountedVolumeSource = mountedVolume ? 'cli' : 'api';
+		}
 		checks.push(verificationCheck('railway.volume:data', 'Railway service has persistent data volume mounted', 'api', {
 			exists: Boolean(mountedVolume),
 			configured: Boolean(mountedVolume),
@@ -2568,6 +2587,7 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 				? {
 					name: mountedVolume.name,
 					mountPath: service.volumeMountPath,
+					source: mountedVolumeSource,
 				}
 				: null,
 			issues: mountedVolume ? [] : [`Railway service ${service.serviceName ?? service.key} is missing a persistent volume mounted at ${service.volumeMountPath}.`],
@@ -2590,7 +2610,13 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 			issues: Object.hasOwn(entry.currentVariables, key) ? [] : [`Railway secret ${key} is missing.`],
 		}));
 	}
-			return summarizeVerification(input.unit.unitId, checks);
+			const verification = summarizeVerification(input.unit.unitId, checks);
+			if (!verification.verified && attempt < 12 && railwayVerificationMaySettle(verification)) {
+				attempt += 1;
+				sleepMs(5_000);
+				continue;
+			}
+			return verification;
 		} catch (error) {
 			if (attempt >= 2 || !isTransientRailwayReconcileError(error)) {
 				throw error;
@@ -2599,6 +2625,17 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 			sleepMs(1000 * attempt);
 		}
 	}
+}
+
+function railwayVerificationMaySettle(verification: TreeseedUnitVerificationResult) {
+	return verification.checks.some((check) =>
+		!check.verified
+		&& (
+			check.key === 'railway.instance'
+			|| check.key.startsWith('railway.instance.')
+			|| check.key === 'railway.volume:data'
+		),
+	);
 }
 
 function railwayStartCommandMatches(serviceKey: string, observed: string | null | undefined, expected: string) {

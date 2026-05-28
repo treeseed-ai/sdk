@@ -127,6 +127,48 @@ describe('project platform workflow actions', () => {
 		expect(syncSource).toContain("preferCli: entry.configuredService.key === 'marketOperationsRunner'");
 	});
 
+	it('falls back to the Railway CLI view when verifying runner volume mounts', () => {
+		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
+		const verifyStart = source.indexOf('async function verifyRailwayUnit');
+		const verifyEnd = source.indexOf('function railwayVerificationMaySettle', verifyStart);
+		const verifySource = source.slice(verifyStart, verifyEnd);
+
+		expect(verifyStart).toBeGreaterThanOrEqual(0);
+		expect(verifyEnd).toBeGreaterThan(verifyStart);
+		expect(verifySource).toContain("serviceKey === 'marketOperationsRunner'");
+		expect(verifySource).toContain('listRailwayServiceVolumesWithCli');
+		expect(verifySource).toContain("source: mountedVolumeSource");
+	});
+
+	it('waits for Railway CLI-created runner volumes to become API-visible mounts', () => {
+		const source = readFileSync(new URL('../../src/operations/services/railway-deploy.ts', import.meta.url), 'utf8');
+		const fallbackStart = source.indexOf('export async function ensureRailwayServiceVolumeWithCliFallback');
+		const fallbackEnd = source.indexOf('export async function deployRailwayService', fallbackStart);
+		const fallbackSource = source.slice(fallbackStart, fallbackEnd);
+
+		expect(fallbackStart).toBeGreaterThanOrEqual(0);
+		expect(fallbackEnd).toBeGreaterThan(fallbackStart);
+		expect(fallbackSource).toContain("'attach', '--volume'");
+		expect(fallbackSource).toContain('allowFailure: true');
+		expect(fallbackSource).toContain('already mounted');
+		expect(fallbackSource).toContain('waitForRailwayServiceVolumeMount');
+		expect(fallbackSource).toContain('listRailwayVolumes({ projectId, env })');
+	});
+
+	it('exposes a safe Railway CLI volume lister for verification fallback', () => {
+		const source = readFileSync(new URL('../../src/operations/services/railway-deploy.ts', import.meta.url), 'utf8');
+		const helperStart = source.indexOf('export function listRailwayServiceVolumesWithCli');
+		const helperEnd = source.indexOf('export function isUsableRailwayToken', helperStart);
+		const helperSource = source.slice(helperStart, helperEnd);
+
+		expect(helperStart).toBeGreaterThanOrEqual(0);
+		expect(helperEnd).toBeGreaterThan(helperStart);
+		expect(helperSource).toContain("'volume', '--service'");
+		expect(helperSource).toContain('allowFailure: true');
+		expect(helperSource).toContain('normalizeRailwayCliVolumeList');
+	});
+
+
 	it('chains Railway service deploy dependencies to avoid concurrent remote builds', () => {
 		expect(resolveRailwayServiceDeployDependencies({
 			includeDataDependency: true,

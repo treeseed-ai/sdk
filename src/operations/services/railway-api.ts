@@ -1081,6 +1081,8 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	runtimeMode,
 	env = process.env,
 	fetchImpl = fetch,
+	settleAttempts = 24,
+	settleDelayMs = 5_000,
 }: {
 	serviceId: string;
 	environmentId: string;
@@ -1095,6 +1097,8 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	runtimeMode?: string | null;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
+	settleAttempts?: number;
+	settleDelayMs?: number;
 }) {
 	let current = await getRailwayServiceInstance({ serviceId, environmentId, env, fetchImpl });
 	if (!current.id) {
@@ -1185,34 +1189,32 @@ mutation TreeseedRailwayServiceInstanceUpdateLegacy($serviceId: String!, $enviro
 		}
 		throw error;
 	}
-	let instance = await getRailwayServiceInstance({
-		serviceId,
-		environmentId,
-		env,
-		fetchImpl,
-	});
-	for (let attempt = 0; attempt < 5 && serviceInstanceDrifted(instance, desired); attempt += 1) {
-		await new Promise((resolve) => setTimeout(resolve, 1000));
+	let instance = current;
+	for (let attempt = 0; attempt <= settleAttempts; attempt += 1) {
 		instance = await getRailwayServiceInstance({
 			serviceId,
 			environmentId,
 			env,
 			fetchImpl,
 		});
+		if (!serviceInstanceDrifted(instance, desired) || attempt >= settleAttempts) {
+			break;
+		}
+		await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
 	}
 	return {
 		instance: {
 			id: instance.id || current.id,
-			buildCommand: instance.buildCommand ?? desired.buildCommand,
-			startCommand: instance.startCommand ?? desired.startCommand,
-			cronSchedule: instance.cronSchedule ?? desired.cronSchedule,
-			rootDirectory: instance.rootDirectory ?? desired.rootDirectory,
-			healthcheckPath: instance.healthcheckPath ?? desired.healthcheckPath,
-			healthcheckTimeoutSeconds: instance.healthcheckTimeoutSeconds ?? desired.healthcheckTimeoutSeconds,
-			healthcheckIntervalSeconds: instance.healthcheckIntervalSeconds ?? desired.healthcheckIntervalSeconds,
-			restartPolicy: instance.restartPolicy ?? desired.restartPolicy,
-			runtimeMode: instance.runtimeMode ?? desired.runtimeMode,
-			sleepApplication: instance.sleepApplication ?? desired.sleepApplication,
+			buildCommand: instance.buildCommand,
+			startCommand: instance.startCommand,
+			cronSchedule: instance.cronSchedule,
+			rootDirectory: instance.rootDirectory,
+			healthcheckPath: instance.healthcheckPath,
+			healthcheckTimeoutSeconds: instance.healthcheckTimeoutSeconds,
+			healthcheckIntervalSeconds: instance.healthcheckIntervalSeconds,
+			restartPolicy: instance.restartPolicy,
+			runtimeMode: instance.runtimeMode,
+			sleepApplication: instance.sleepApplication,
 			runtimeConfigSupported: instance.runtimeConfigSupported,
 		} satisfies RailwayServiceInstanceSummary,
 		updated: true,
