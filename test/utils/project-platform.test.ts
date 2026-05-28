@@ -158,6 +158,23 @@ describe('project platform workflow actions', () => {
 		expect(topologySource).toContain('ensureRailwayEnvironmentForService');
 	});
 
+	it('refreshes Railway topology during service instance verification retries', () => {
+		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
+		const topologyStart = source.indexOf('async function resolveRailwayTopologyForScope');
+		const topologyEnd = source.indexOf('async function syncRailwayEnvironmentForScope', topologyStart);
+		const verifyStart = source.indexOf('async function verifyRailwayUnit');
+		const verifyEnd = source.indexOf('function railwayVerificationMaySettle', verifyStart);
+		const topologySource = source.slice(topologyStart, topologyEnd);
+		const verifySource = source.slice(verifyStart, verifyEnd);
+
+		expect(topologyStart).toBeGreaterThanOrEqual(0);
+		expect(topologyEnd).toBeGreaterThan(topologyStart);
+		expect(verifyStart).toBeGreaterThanOrEqual(0);
+		expect(verifyEnd).toBeGreaterThan(verifyStart);
+		expect(topologySource).toContain('}, refresh);');
+		expect(verifySource).toContain('refresh: true');
+	});
+
 	it('waits for Railway CLI-created runner volumes to become API-visible mounts', () => {
 		const source = readFileSync(new URL('../../src/operations/services/railway-deploy.ts', import.meta.url), 'utf8');
 		const fallbackStart = source.indexOf('export async function ensureRailwayServiceVolumeWithCliFallback');
