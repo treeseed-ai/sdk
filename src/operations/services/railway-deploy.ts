@@ -1959,7 +1959,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 	};
 }
 
-async function ensureRailwayServiceVolumeWithCliFallback({
+export async function ensureRailwayServiceVolumeWithCliFallback({
 	tenantRoot,
 	projectId,
 	environmentId,

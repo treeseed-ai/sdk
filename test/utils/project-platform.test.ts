@@ -115,6 +115,18 @@ describe('project platform workflow actions', () => {
 		expect(databaseSource).not.toContain('await ensureRailwayServiceVolume({');
 	});
 
+	it('uses the Railway CLI volume path for market operations runner reconciliation', () => {
+		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
+		const syncStart = source.indexOf('async function syncRailwayEnvironmentForScope');
+		const syncEnd = source.indexOf('async function ensureRailwayMarketDatabaseForScope', syncStart);
+		const syncSource = source.slice(syncStart, syncEnd);
+
+		expect(syncStart).toBeGreaterThanOrEqual(0);
+		expect(syncEnd).toBeGreaterThan(syncStart);
+		expect(syncSource).toContain('ensureRailwayServiceVolumeWithCliFallback');
+		expect(syncSource).toContain("preferCli: entry.configuredService.key === 'marketOperationsRunner'");
+	});
+
 	it('chains Railway service deploy dependencies to avoid concurrent remote builds', () => {
 		expect(resolveRailwayServiceDeployDependencies({
 			includeDataDependency: true,
