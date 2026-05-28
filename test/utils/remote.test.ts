@@ -342,6 +342,11 @@ describe('remote Treeseed support', () => {
 		expect(previewWrangler).toContain('TREESEED_CONTENT_MANIFEST_KEY = "teams/acme/published/common.json"');
 		expect(previewWrangler).toContain('TREESEED_CONTENT_MANIFEST_KEY_TEMPLATE = "teams/{teamId}/published/common.json"');
 		expect(previewWrangler).toContain('TREESEED_CONTENT_PREVIEW_ROOT_TEMPLATE = "teams/{teamId}/previews"');
+		const stagingWrangler = buildWranglerConfigContents(tenantRoot, deployConfig, stagingState, { target: createPersistentDeployTarget('staging') });
+		expect(stagingWrangler).toContain('TREESEED_CONTENT_SERVING_MODE = "published_runtime"');
+		const localState = loadDeployState(tenantRoot, deployConfig, { target: createPersistentDeployTarget('local') });
+		const localWrangler = buildWranglerConfigContents(tenantRoot, deployConfig, localState, { target: createPersistentDeployTarget('local') });
+		expect(localWrangler).toContain('TREESEED_CONTENT_SERVING_MODE = "local_collections"');
 		expect(previewWrangler).toContain('[[r2_buckets]]');
 		expect(previewWrangler).toContain('binding = "TREESEED_CONTENT_BUCKET"');
 	});

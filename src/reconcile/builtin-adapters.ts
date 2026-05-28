@@ -739,7 +739,7 @@ function collectCloudflareEnvironmentSync(input: TreeseedReconcileAdapterInput) 
 	const registry = collectTreeseedEnvironmentContext(input.context.tenantRoot);
 	const state = loadDeployState(input.context.tenantRoot, input.context.deployConfig, { target });
 	const generatedSecrets = buildSecretMap(input.context.deployConfig, state);
-	const publicVars = buildPublicVars(input.context.deployConfig);
+	const publicVars = buildPublicVars(input.context.deployConfig, { target });
 	const secrets: Record<string, string> = {};
 	const vars: Record<string, string> = { ...publicVars };
 	const secretNames = new Set<string>();
@@ -1823,26 +1823,40 @@ async function syncRailwayEnvironmentForScope(input: TreeseedReconcileAdapterInp
 				});
 				if (!volume.instance?.serviceId) {
 					ensureRailwayProjectContext(entry.configuredService, { env: topology.env, capture: true });
-					const attachResult = runRailway([
-						'volume',
-						'--service',
-						entry.service.id,
-						'attach',
-						'--volume',
-						volume.volume.id,
-						'--yes',
-						'--json',
-					], {
-						cwd: entry.configuredService.rootDir,
-						capture: true,
-						allowFailure: true,
-						env: topology.env,
-					});
-					if ((attachResult.status ?? 1) !== 0) {
-						const attachMessage = attachResult.stderr?.trim() || attachResult.stdout?.trim() || '';
-						if (!/already mounted/iu.test(attachMessage)) {
-							throw new Error(attachMessage || `Railway volume attach failed for ${entry.service.name}.`);
+					let attachMessage = '';
+					let attached = false;
+					for (let attempt = 0; attempt < 5; attempt += 1) {
+						const attachResult = runRailway([
+							'volume',
+							'--service',
+							entry.service.id,
+							'attach',
+							'--volume',
+							volume.volume.id,
+							'--yes',
+							'--json',
+						], {
+							cwd: entry.configuredService.rootDir,
+							capture: true,
+							allowFailure: true,
+							env: topology.env,
+						});
+						if ((attachResult.status ?? 1) === 0) {
+							attached = true;
+							break;
 						}
+						attachMessage = attachResult.stderr?.trim() || attachResult.stdout?.trim() || '';
+						if (/already mounted/iu.test(attachMessage)) {
+							attached = true;
+							break;
+						}
+						if (!/volume .*not found|not found|does not exist/iu.test(attachMessage)) {
+							break;
+						}
+						sleepMs(2_000 * (attempt + 1));
+					}
+					if (!attached) {
+						throw new Error(attachMessage || `Railway volume attach failed for ${entry.service.name}.`);
 					}
 				}
 			}

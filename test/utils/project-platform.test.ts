@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -83,6 +84,25 @@ afterEach(async () => {
 });
 
 describe('project platform workflow actions', () => {
+	it('provisions configured provider resources before hosted deploy steps', () => {
+		const source = readFileSync(new URL('../../src/operations/services/project-platform.ts', import.meta.url), 'utf8');
+		const deployStart = source.indexOf('export async function deployProjectPlatform');
+		const provisionCall = source.indexOf('await provisionProjectPlatform({ ...options, reporter, bootstrapSystems });', deployStart);
+		const cloudflarePrepare = source.indexOf('cloudflareContext = prepareTenantCloudflareDeploy', deployStart);
+		const contentPublish = source.indexOf("const contentNodeId = 'content:publish-runtime';", deployStart);
+		const railwayDeploy = source.indexOf('deployRailwayService(options.tenantRoot, service', deployStart);
+
+		expect(deployStart).toBeGreaterThanOrEqual(0);
+		expect(provisionCall).toBeGreaterThan(deployStart);
+		expect(cloudflarePrepare).toBeGreaterThan(provisionCall);
+		expect(contentPublish).toBeGreaterThan(cloudflarePrepare);
+		expect(railwayDeploy).toBeGreaterThan(provisionCall);
+		expect(source.slice(deployStart, cloudflarePrepare)).toContain('if (!options.skipProvision)');
+		expect(source.slice(contentPublish, railwayDeploy)).toContain("mode: 'production'");
+		expect(source.slice(contentPublish, railwayDeploy)).toContain("dependencies: ['web:build', contentNodeId");
+		expect(source.slice(source.indexOf('async function publishContent'), deployStart)).toContain('resolveTreeseedResourceIdentity(siteConfig, target).teamId');
+	});
+
 	it('chains Railway service deploy dependencies to avoid concurrent remote builds', () => {
 		expect(resolveRailwayServiceDeployDependencies({
 			includeDataDependency: true,

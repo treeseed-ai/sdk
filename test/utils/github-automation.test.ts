@@ -65,13 +65,16 @@ describe('github automation workflow generation', () => {
 		expect(web).toContain('default: deploy_web');
 		expect(web).toContain('publish_content');
 		expect(web).toContain('TREESEED_CONTENT_BUCKET_NAME');
-		expect(web).toContain('TREESEED_WORKFLOW_PLANE: web');
+		expect(web).toContain('TREESEED_WORKFLOW_PLANE: all');
 		expect(web).toContain('TREESEED_SMTP_PASSWORD: ${{ secrets.TREESEED_SMTP_PASSWORD }}');
 		expect(web).toContain('TREESEED_BETTER_AUTH_SECRET: ${{ secrets.TREESEED_BETTER_AUTH_SECRET }}');
 		expect(web).toContain('TREESEED_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_WEB_SERVICE_SECRET }}');
+		expect(web).toContain('TREESEED_API_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_API_WEB_SERVICE_SECRET || secrets.TREESEED_WEB_SERVICE_SECRET }}');
+		expect(web).toContain('TREESEED_PLATFORM_RUNNER_SECRET: ${{ secrets.TREESEED_PLATFORM_RUNNER_SECRET }}');
+		expect(web).toContain('TREESEED_HOSTED_HUBS_GITHUB_TOKEN: ${{ secrets.TREESEED_HOSTED_HUBS_GITHUB_TOKEN }}');
+		expect(web).toContain('TREESEED_API_AUTH_SECRET: ${{ secrets.TREESEED_API_AUTH_SECRET || secrets.TREESEED_BETTER_AUTH_SECRET }}');
 		expect(web).toContain("TREESEED_CENTRAL_MARKET_API_BASE_URL: ${{ vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}");
 		expect(web).not.toContain('RAILWAY_API_TOKEN');
-		expect(web).not.toContain('TREESEED_API_AUTH_SECRET');
 		expect(web).not.toContain('TREESEED_AGENT_POOL_MAX_WORKERS');
 	});
 

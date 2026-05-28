@@ -31,6 +31,7 @@ import {
 	purgePublishedContentCaches,
 	resolveConfiguredCloudflareAccountId,
 	resolveConfiguredSurfaceBaseUrl,
+	resolveTreeseedResourceIdentity,
 	runRemoteD1Migrations,
 	syncCloudflareSecrets,
 	writeDeployState,
@@ -54,6 +55,7 @@ import { runTenantDeployPreflight } from './save-deploy-preflight.ts';
 
 export type ProjectPlatformScope = 'local' | 'staging' | 'prod';
 export type ProjectPlatformAction = 'deploy_web' | 'publish_content' | 'monitor';
+type ProjectPlatformContentPublishMode = 'production' | 'editorial_overlay';
 
 export interface ProjectPlatformActionOptions {
 	tenantRoot: string;
@@ -305,6 +307,7 @@ export function prepareTenantCloudflareDeploy({
 			...process.env,
 			...env,
 			CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig),
+			...(target.kind === 'persistent' && target.scope !== 'local' ? { TREESEED_CONTENT_SERVING_MODE: 'published_runtime' } : {}),
 		},
 		write,
 	};
@@ -571,15 +574,19 @@ function resolveReporter(tenantRoot: string, explicit: ControlPlaneReporter | un
 	return createControlPlaneReporter({ deployConfig });
 }
 
-function uploadObject(
+async function uploadObject(
 	tenantRoot: string,
 	wranglerPath: string,
 	wranglerEnv: Record<string, string | undefined>,
 	bucketName: string,
 	pointer: PublishedContentObjectPointer,
 	filePath: string,
+	options: {
+		write?: TreeseedBootstrapWriter;
+		prefix: TreeseedBootstrapTaskPrefix;
+	},
 ) {
-	runWrangler(tenantRoot, [
+	await runPrefixedWranglerWithRetry(tenantRoot, [
 		'r2',
 		'object',
 		'put',
@@ -592,7 +599,11 @@ function uploadObject(
 		filePath,
 		'--content-type',
 		pointer.contentType ?? inferContentType(filePath),
-	], wranglerEnv);
+	], {
+		env: wranglerEnv,
+		write: options.write,
+		prefix: options.prefix,
+	});
 }
 
 function deleteObject(
@@ -967,11 +978,12 @@ function probeScaleConfiguration(siteConfig, state) {
 async function publishContent(
 	options: ProjectPlatformActionOptions,
 	reporter: ControlPlaneReporter,
+	publishOptions: { mode?: ProjectPlatformContentPublishMode } = {},
 ) {
 	const target = runTenantPublishContentPreflight(options);
 	const siteConfig = loadCliDeployConfig(options.tenantRoot);
 	const tenantConfig = loadTreeseedManifest(resolve(options.tenantRoot, 'src', 'manifest.yaml'));
-	const teamId = String(process.env.TREESEED_HOSTING_TEAM_ID ?? siteConfig.hosting?.teamId ?? siteConfig.slug).trim() || siteConfig.slug;
+	const teamId = resolveTreeseedResourceIdentity(siteConfig, target).teamId;
 	const timestamp = new Date().toISOString();
 	const commitSha = currentCommit(options.tenantRoot);
 	const branchName = currentRef(options.tenantRoot);
@@ -1004,7 +1016,8 @@ async function publishContent(
 		previewId,
 	});
 
-	const built = options.scope === 'staging'
+	const publishMode = publishOptions.mode ?? (options.scope === 'staging' ? 'editorial_overlay' : 'production');
+	const built = publishMode === 'editorial_overlay'
 		? await pipeline.buildEditorialOverlay({ previousManifest, previewId })
 		: await pipeline.buildProductionRevision({ previousManifest });
 	const changedEntrySet = 'manifest' in built ? changedEntries(previousManifest, built.manifest.entries) : [];
@@ -1093,13 +1106,22 @@ async function publishContent(
 	const tempRoot = mkdtempSync(join(tmpdir(), 'treeseed-content-publish-'));
 	try {
 		if (!options.dryRun) {
+			const uploadOptions = {
+				write: options.write,
+				prefix: {
+					scope: options.scope,
+					system: 'content',
+					task: 'publish',
+					stage: 'upload',
+				},
+			};
 			for (const object of built.objects) {
 				const filePath = writeTempFile(tempRoot, objectFileName(object.pointer), toBuffer(object.body));
-				uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, object.pointer, filePath);
+				await uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, object.pointer, filePath, uploadOptions);
 			}
 			for (const alias of stableObjectUploads) {
 				const filePath = writeTempFile(tempRoot, objectFileName(alias.pointer), alias.body);
-				uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, alias.pointer, filePath);
+				await uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, alias.pointer, filePath, uploadOptions);
 			}
 			for (const objectKey of deletedObjectKeys) {
 				deleteObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, objectKey);
@@ -1107,7 +1129,7 @@ async function publishContent(
 
 			if ('overlay' in built) {
 				const overlayFile = writeTempFile(tempRoot, 'overlay.json', Buffer.from(JSON.stringify(built.overlay, null, 2)));
-				uploadObject(
+				await uploadObject(
 					options.tenantRoot,
 					wranglerPath,
 					wranglerEnv,
@@ -1119,22 +1141,23 @@ async function publishContent(
 						contentType: 'application/json',
 					},
 					overlayFile,
+					uploadOptions,
 				);
 			} else {
 				const manifestFile = writeTempFile(tempRoot, 'manifest.json', Buffer.from(JSON.stringify(built.manifest, null, 2)));
 				const snapshotKey = locator.manifestKey.replace(/\/common\.json$/u, `/manifests/${built.manifest.revision}.json`);
-				uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, {
+				await uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, {
 					objectKey: snapshotKey,
 					sha256: stableHash(readFileSync(manifestFile)),
 					size: statSync(manifestFile).size,
 					contentType: 'application/json',
-				}, manifestFile);
-				uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, {
+				}, manifestFile, uploadOptions);
+				await uploadObject(options.tenantRoot, wranglerPath, wranglerEnv, bucketName, {
 					objectKey: locator.manifestKey,
 					sha256: stableHash(readFileSync(manifestFile)),
 					size: statSync(manifestFile).size,
 					contentType: 'application/json',
-				}, manifestFile);
+				}, manifestFile, uploadOptions);
 				if (contentPurgeUrls.size > 0) {
 					try {
 						purgePublishedContentCaches(options.tenantRoot, [...contentPurgeUrls].filter(Boolean), { target });
@@ -1146,13 +1169,15 @@ async function publishContent(
 		}
 
 		const state = loadDeployState(options.tenantRoot, siteConfig, { target });
-		state.content.lastPublishedManifestRevision = 'overlay' in built ? built.overlay.previewId : built.manifest.revision;
-		state.content.lastPublishedManifestSha256 = stableHash(
-			JSON.stringify('overlay' in built ? built.overlay : built.manifest),
-		);
-		writeDeployState(options.tenantRoot, state, { target });
+		if (!options.dryRun) {
+			state.content.lastPublishedManifestRevision = 'overlay' in built ? built.overlay.previewId : built.manifest.revision;
+			state.content.lastPublishedManifestSha256 = stableHash(
+				JSON.stringify('overlay' in built ? built.overlay : built.manifest),
+			);
+			writeDeployState(options.tenantRoot, state, { target });
+		}
 
-		const previewToken = options.scope === 'staging' && process.env.TREESEED_EDITORIAL_PREVIEW_SECRET
+		const previewToken = publishMode === 'editorial_overlay' && process.env.TREESEED_EDITORIAL_PREVIEW_SECRET
 			? signEditorialPreviewToken({
 				teamId,
 				previewId,
@@ -1172,9 +1197,9 @@ async function publishContent(
 			commitSha,
 			triggeredByType: 'project_runner',
 			metadata: {
-				mode: options.scope === 'staging' ? 'editorial_overlay' : 'production',
+				mode: publishMode,
 				revision: 'overlay' in built ? built.overlay.previewId : built.manifest.revision,
-				previewId: options.scope === 'staging' ? previewId : null,
+				previewId: publishMode === 'editorial_overlay' ? previewId : null,
 				previewUrl,
 				entries: ('overlay' in built ? built.overlay.entries : built.manifest.entries).length,
 				artifacts: ('overlay' in built ? built.overlay.artifacts : built.manifest.artifacts)?.length ?? 0,
@@ -1187,9 +1212,9 @@ async function publishContent(
 		return {
 			ok: true,
 			scope: options.scope,
-			mode: options.scope === 'staging' ? 'editorial_overlay' : 'production',
+			mode: publishMode,
 			revision: 'overlay' in built ? built.overlay.previewId : built.manifest.revision,
-			previewId: options.scope === 'staging' ? previewId : null,
+			previewId: publishMode === 'editorial_overlay' ? previewId : null,
 			previewUrl,
 			target: deployTargetLabel(target),
 		};
@@ -1420,13 +1445,23 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 	}
 	if (cloudflareContext && selectedSystems.has('web')) {
 		const context = cloudflareContext;
+		const contentNodeId = 'content:publish-runtime';
+		nodes.push({
+			id: contentNodeId,
+			dependencies: selectedSystems.has('data') ? ['data:d1-migrate'] : [],
+			run: () => publishContent({
+				...options,
+				reporter,
+				bootstrapSystems: ['web'],
+			}, reporter, { mode: 'production' }),
+		});
 		nodes.push({
 			id: 'web:build',
 			run: () => runTenantWebBuild(context),
 		});
 		nodes.push({
 			id: 'web:publish',
-			dependencies: ['web:build', ...(selectedSystems.has('data') ? ['data:d1-migrate'] : [])],
+			dependencies: ['web:build', contentNodeId, ...(selectedSystems.has('data') ? ['data:d1-migrate'] : [])],
 			run: () => runTenantWebPublish(context),
 		});
 	}
@@ -1689,7 +1724,7 @@ export async function runProjectPlatformAction(action: ProjectPlatformAction, op
 	const previousWorkflowAction = process.env.TREESEED_WORKFLOW_ACTION;
 	const previousWorkflowPlane = process.env.TREESEED_WORKFLOW_PLANE;
 	process.env.TREESEED_WORKFLOW_ACTION = action;
-	process.env.TREESEED_WORKFLOW_PLANE = previousWorkflowPlane ?? 'web';
+	process.env.TREESEED_WORKFLOW_PLANE = previousWorkflowPlane ?? 'all';
 	applyTreeseedEnvironmentToProcess({ tenantRoot: options.tenantRoot, scope: options.scope, override: true });
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	try {

@@ -6,7 +6,7 @@ import { applyTreeseedEnvironmentToProcess, assertTreeseedCommandEnvironment } f
 import {
 	cleanupDestroyedState,
 	createPersistentDeployTarget,
-	destroyCloudflareResources,
+	destroyTreeseedEnvironmentResources,
 	loadDeployState,
 	printDestroySummary,
 	validateDestroyPrerequisites,
@@ -21,6 +21,7 @@ function parseArgs(argv) {
 		force: false,
 		skipConfirmation: false,
 		confirm: null,
+		deleteData: false,
 		removeBuildArtifacts: false,
 		environment: null,
 	};
@@ -35,6 +36,10 @@ function parseArgs(argv) {
 		}
 		if (current === '--force') {
 			parsed.force = true;
+			continue;
+		}
+		if (current === '--delete-data') {
+			parsed.deleteData = true;
 			continue;
 		}
 		if (current === '--skip-confirmation') {
@@ -111,9 +116,10 @@ if (!options.skipConfirmation) {
 	}
 }
 
-const result = destroyCloudflareResources(tenantRoot, {
+const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
 	dryRun: options.dryRun,
 	force: options.force,
+	deleteData: options.deleteData,
 	target,
 });
 

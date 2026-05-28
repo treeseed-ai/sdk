@@ -717,7 +717,7 @@ services:
 		});
 	});
 
-	it('uses non-secret deploy defaults in hosted launch env without generating secrets', () => {
+	it('uses safe deploy defaults in hosted launch env without generating user-facing secrets', () => {
 			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		writeTreeseedMachineConfig(tenantRoot, createDefaultTreeseedMachineConfig({
 			tenantRoot,
@@ -745,6 +745,7 @@ services:
 		expect(env.TREESEED_HOSTING_KIND).toBe('self_hosted_project');
 		expect(env.TREESEED_HOSTING_REGISTRATION).toBe('none');
 		expect(env.TREESEED_CONTENT_BUCKET_BINDING).toBe('TREESEED_CONTENT_BUCKET');
+		expect(env.TREESEED_PLATFORM_RUNNER_SECRET).toMatch(/^[a-f0-9]{48}$/);
 		expect(env.TREESEED_EDITORIAL_PREVIEW_SECRET).toBeUndefined();
 	});
 
