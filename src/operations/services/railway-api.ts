@@ -1,3 +1,5 @@
+import { request as httpsRequest } from 'node:https';
+
 const DEFAULT_RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
 const DEFAULT_RAILWAY_WORKSPACE = 'knowledge-coop';
 const RAILWAY_POSTGRES_TEMPLATE_ID = 'b55da7dc-09be-4140-bc65-1284d15d349c';
@@ -428,28 +430,40 @@ export async function railwayGraphqlRequest<TData = unknown>({
 		const controller = new AbortController();
 		let timer: ReturnType<typeof setTimeout> | null = null;
 		try {
-			const response = await Promise.race([
-				fetchImpl(apiUrl || resolveRailwayApiUrl(env), {
-					method: 'POST',
-					headers: {
-						authorization: `Bearer ${token}`,
-						'content-type': 'application/json',
-					},
-					body: JSON.stringify({ query, variables }),
-					signal: controller.signal,
-				}),
-				new Promise<Response>((_, reject) => {
-					timer = setTimeout(() => {
-						controller.abort();
-						reject(markRailwayTransientError(new Error(`Railway API request timed out after ${timeoutMs}ms.`)));
-					}, timeoutMs);
-				}),
-			]);
-			const payload = await response.json().catch(() => ({}));
+			const response = fetchImpl === fetch
+				? await railwayGraphqlHttpsRequest(apiUrl || resolveRailwayApiUrl(env), token, { query, variables }, timeoutMs)
+				: await Promise.race([
+					fetchImpl(apiUrl || resolveRailwayApiUrl(env), {
+						method: 'POST',
+						headers: {
+							authorization: `Bearer ${token}`,
+							'content-type': 'application/json',
+						},
+						body: JSON.stringify({ query, variables }),
+						signal: controller.signal,
+					}).then(async (fetchResponse) => ({
+						ok: fetchResponse.ok,
+						status: fetchResponse.status,
+						payload: await fetchResponse.json().catch(() => ({})),
+						retryAfter: fetchResponse.headers.get('retry-after'),
+					})),
+					new Promise<{
+						ok: boolean;
+						status: number;
+						payload: unknown;
+						retryAfter: string | null;
+					}>((_, reject) => {
+						timer = setTimeout(() => {
+							controller.abort();
+							reject(markRailwayTransientError(new Error(`Railway API request timed out after ${timeoutMs}ms.`)));
+						}, timeoutMs);
+					}),
+				]);
+			const payload = response.payload;
 			if (!response.ok || (Array.isArray((payload as { errors?: unknown[] }).errors) && (payload as { errors: unknown[] }).errors.length > 0)) {
 				const message = normalizeRailwayErrorMessage(payload, response.status);
 				const hasGraphqlErrors = Array.isArray((payload as { errors?: unknown[] }).errors) && (payload as { errors: unknown[] }).errors.length > 0;
-				const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
+				const retryAfterMs = parseRetryAfterMs(response.retryAfter);
 				const shouldRetry = isRetryableRailwayStatus(response.status) || /rate limit|too many requests/iu.test(message);
 				const error = new Error(message);
 				if (shouldRetry || (hasGraphqlErrors && /rate limit|too many requests/iu.test(message))) {
@@ -474,6 +488,53 @@ export async function railwayGraphqlRequest<TData = unknown>({
 			}
 		}
 	}
+}
+
+async function railwayGraphqlHttpsRequest(
+	url: string,
+	token: string,
+	body: unknown,
+	timeoutMs: number,
+): Promise<{ ok: boolean; status: number; payload: unknown; retryAfter: string | null }> {
+	const rawBody = JSON.stringify(body);
+	return new Promise((resolve, reject) => {
+		const req = httpsRequest(url, {
+			method: 'POST',
+			headers: {
+				authorization: `Bearer ${token}`,
+				'content-type': 'application/json',
+				'content-length': Buffer.byteLength(rawBody),
+			},
+			timeout: timeoutMs,
+		}, (res) => {
+			const chunks: string[] = [];
+			res.setEncoding('utf8');
+			res.on('data', (chunk) => chunks.push(chunk));
+			res.on('end', () => {
+				const text = chunks.join('');
+				let payload: unknown = {};
+				try {
+					payload = text ? JSON.parse(text) : {};
+				} catch {
+					payload = {};
+				}
+				const status = res.statusCode ?? 0;
+				const retryAfterHeader = res.headers['retry-after'];
+				resolve({
+					ok: status >= 200 && status < 300,
+					status,
+					payload,
+					retryAfter: Array.isArray(retryAfterHeader) ? retryAfterHeader[0] ?? null : retryAfterHeader ?? null,
+				});
+			});
+		});
+		req.on('timeout', () => {
+			req.destroy(markRailwayTransientError(new Error(`Railway API request timed out after ${timeoutMs}ms.`)));
+		});
+		req.on('error', reject);
+		req.write(rawBody);
+		req.end();
+	});
 }
 
 export async function getRailwayAuthProfile({
@@ -1081,7 +1142,7 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	runtimeMode,
 	env = process.env,
 	fetchImpl = fetch,
-	settleAttempts = 24,
+	settleAttempts = 60,
 	settleDelayMs = 5_000,
 }: {
 	serviceId: string;
@@ -1102,8 +1163,8 @@ export async function ensureRailwayServiceInstanceConfiguration({
 }) {
 	let current = await getRailwayServiceInstance({ serviceId, environmentId, env, fetchImpl });
 	if (!current.id) {
-		for (let attempt = 0; attempt < 8 && !current.id; attempt += 1) {
-			await new Promise((resolve) => setTimeout(resolve, 1500));
+		for (let attempt = 0; attempt < settleAttempts && !current.id; attempt += 1) {
+			await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
 			current = await getRailwayServiceInstance({ serviceId, environmentId, env, fetchImpl });
 		}
 	}

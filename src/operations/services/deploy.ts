@@ -1232,6 +1232,7 @@ function shouldManageCloudflareWebCacheRules(deployConfig, target) {
 
 export function cloudflareApiRequest(path, { method = 'GET', body, env, allowFailure = false } = {}) {
 	const requestScript = `import { readFileSync } from 'node:fs';
+import { request } from 'node:https';
 const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
 function errorMessage(error) {
   const parts = [];
@@ -1248,15 +1249,32 @@ function errorMessage(error) {
   return [...new Set(parts.filter(Boolean))].join('; ') || String(error);
 }
 try {
-  const response = await fetch(input.url, {
-    method: input.method,
-    headers: {
-      authorization: 'Bearer ' + input.token,
-      'content-type': 'application/json',
-    },
-    body: input.body ? JSON.stringify(input.body) : undefined,
+  const body = input.body ? JSON.stringify(input.body) : undefined;
+  const response = await new Promise((resolve, reject) => {
+    const req = request(input.url, {
+      method: input.method,
+      headers: {
+        authorization: 'Bearer ' + input.token,
+        'content-type': 'application/json',
+      },
+      timeout: input.timeoutMs ?? 12000,
+    }, (res) => {
+      const chunks = [];
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => resolve({
+        ok: typeof res.statusCode === 'number' && res.statusCode >= 200 && res.statusCode < 300,
+        text: chunks.join(''),
+      }));
+    });
+    req.on('timeout', () => {
+      req.destroy(new Error('Cloudflare API request timed out'));
+    });
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
   });
-  const rawBody = await response.text();
+  const rawBody = response.text;
   let payload;
   try {
     payload = rawBody ? JSON.parse(rawBody) : {};
@@ -1275,6 +1293,7 @@ try {
 		url: `https://api.cloudflare.com/client/v4${path}`,
 		method,
 		body,
+		timeoutMs: 12_000,
 		token: env?.CLOUDFLARE_API_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN ?? '',
 	});
 	const isTransient = (text) => /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted/iu.test(text || '');
@@ -1927,22 +1946,12 @@ function deleteKvNamespace(tenantRoot, namespaceId, { env, dryRun, preview = fal
 		return { status: 'planned', id: namespaceId, preview };
 	}
 
-	const args = ['kv', 'namespace', 'delete', '--namespace-id', namespaceId, '--skip-confirmation'];
-	if (preview) {
-		args.push('--preview');
-	}
-	const result = runWrangler(args, {
-		cwd: tenantRoot,
-		allowFailure: true,
-		capture: true,
-		env,
-	});
-	const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-	if (result.status !== 0 && !looksLikeMissingResource(output)) {
-		throw new Error(output.trim() || `Failed to delete KV namespace ${namespaceId}.`);
-	}
-
-	return { status: result.status === 0 ? 'deleted' : 'missing', id: namespaceId, preview };
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const path = accountId
+		? `/accounts/${encodeURIComponent(accountId)}/storage/kv/namespaces/${encodeURIComponent(namespaceId)}`
+		: null;
+	const deleted = deleteCloudflareApiResource(path, { env, dryRun: false, name: namespaceId, type: 'kv-namespace' });
+	return { status: deleted.status, id: namespaceId, preview };
 }
 
 function deleteD1Database(tenantRoot, databaseName, { env, dryRun }) {
@@ -1954,18 +1963,16 @@ function deleteD1Database(tenantRoot, databaseName, { env, dryRun }) {
 		return { status: 'planned', name: databaseName };
 	}
 
-	const result = runWrangler(['d1', 'delete', databaseName, '--skip-confirmation'], {
-		cwd: tenantRoot,
-		allowFailure: true,
-		capture: true,
-		env,
-	});
-	const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-	if (result.status !== 0 && !looksLikeMissingResource(output)) {
-		throw new Error(output.trim() || `Failed to delete D1 database ${databaseName}.`);
-	}
-
-	return { status: result.status === 0 ? 'deleted' : 'missing', name: databaseName };
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const database = accountId
+		? listD1Databases(tenantRoot, env).find((entry) => entry?.name === databaseName)
+		: null;
+	const databaseId = database?.uuid ?? database?.id ?? null;
+	const path = accountId && databaseId
+		? `/accounts/${encodeURIComponent(accountId)}/d1/database/${encodeURIComponent(databaseId)}`
+		: null;
+	const deleted = deleteCloudflareApiResource(path, { env, dryRun: false, name: databaseName, type: 'd1-database' });
+	return { status: deleted.status, name: databaseName, id: databaseId };
 }
 
 function deleteWorker(tenantRoot, workerName, { env, dryRun, force = false }) {
@@ -1977,24 +1984,12 @@ function deleteWorker(tenantRoot, workerName, { env, dryRun, force = false }) {
 		return { status: 'planned', name: workerName };
 	}
 
-	const args = ['delete', workerName];
-	if (force) {
-		args.push('--force');
-	}
-
-	const result = runWrangler(args, {
-		cwd: tenantRoot,
-		allowFailure: true,
-		capture: true,
-		env,
-		input: 'y\n',
-	});
-	const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-	if (result.status !== 0 && !looksLikeMissingResource(output)) {
-		throw new Error(output.trim() || `Failed to delete Worker ${workerName}.`);
-	}
-
-	return { status: result.status === 0 ? 'deleted' : 'missing', name: workerName };
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const path = accountId
+		? `/accounts/${encodeURIComponent(accountId)}/workers/services/${encodeURIComponent(workerName)}`
+		: null;
+	const deleted = deleteCloudflareApiResource(path, { env, dryRun: false, name: workerName, type: 'worker' });
+	return { status: deleted.status, name: workerName };
 }
 
 function resourceOperation(provider, type, name, status, extra = {}) {
@@ -2029,7 +2024,7 @@ function formatCloudflareErrors(payload) {
 
 function deleteQueueByName(tenantRoot, queue, { env, dryRun }) {
 	const name = queueName(queue) ?? queue?.name ?? null;
-	const id = queueId(queue);
+	let id = queueId(queue);
 	if (!name) {
 		return resourceOperation('cloudflare', 'queue', name, 'missing');
 	}
@@ -2037,6 +2032,10 @@ function deleteQueueByName(tenantRoot, queue, { env, dryRun }) {
 		return resourceOperation('cloudflare', 'queue', name, 'planned', { id });
 	}
 	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!id && accountId) {
+		const live = listQueues(tenantRoot, env).find((entry) => queueName(entry) === name);
+		id = queueId(live);
+	}
 	const path = id
 		? `/accounts/${encodeURIComponent(accountId)}/queues/${encodeURIComponent(id)}`
 		: null;
@@ -2046,18 +2045,10 @@ function deleteQueueByName(tenantRoot, queue, { env, dryRun }) {
 			return { ...deleted, id };
 		}
 	}
-	const result = runWrangler(['queues', 'delete', name], {
-		cwd: tenantRoot,
-		allowFailure: true,
-		capture: true,
-		env,
-		input: 'y\n',
-	});
-	const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-	if (result.status !== 0 && !looksLikeMissingResource(output)) {
-		throw new Error(output.trim() || `Failed to delete queue ${name}.`);
+	if (accountId) {
+		return resourceOperation('cloudflare', 'queue', name, 'missing', { id });
 	}
-	return resourceOperation('cloudflare', 'queue', name, result.status === 0 ? 'deleted' : 'missing', { id });
+	throw new Error(`Failed to delete queue ${name}: CLOUDFLARE_ACCOUNT_ID is not configured.`);
 }
 
 function isLegacyTreeseedQueueName(name, scope) {
@@ -2094,18 +2085,12 @@ function deleteR2Bucket(tenantRoot, bucketName, { env, dryRun, deleteData }) {
 		return resourceOperation('cloudflare', 'r2-bucket', bucketName, 'planned');
 	}
 	const drained = drainR2Bucket(bucketName, { env });
-	const result = runWrangler(['r2', 'bucket', 'delete', bucketName], {
-		cwd: tenantRoot,
-		allowFailure: true,
-		capture: true,
-		env,
-		input: 'y\n',
-	});
-	const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-	if (result.status !== 0 && !looksLikeMissingResource(output)) {
-		throw new Error(output.trim() || `Failed to delete R2 bucket ${bucketName}.`);
-	}
-	return resourceOperation('cloudflare', 'r2-bucket', bucketName, result.status === 0 ? 'deleted' : 'missing', drained);
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const path = accountId
+		? `/accounts/${encodeURIComponent(accountId)}/r2/buckets/${encodeURIComponent(bucketName)}`
+		: null;
+	const deleted = deleteCloudflareApiResource(path, { env, dryRun: false, name: bucketName, type: 'r2-bucket' });
+	return resourceOperation('cloudflare', 'r2-bucket', bucketName, deleted.status, drained);
 }
 
 function r2ObjectKey(entry) {
@@ -2736,7 +2721,7 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 	const force = options.force ?? false;
 	const kvNamespaces = dryRun ? [] : listKvNamespaces(tenantRoot, env);
 	const d1Databases = dryRun ? [] : listD1Databases(tenantRoot, env);
-	const queues = listQueues(tenantRoot, env);
+	const queues = dryRun ? [] : listQueues(tenantRoot, env);
 	const buckets = dryRun ? [] : listR2Buckets(tenantRoot, env);
 	const pagesProjects = dryRun ? [] : listPagesProjects(tenantRoot, env);
 
