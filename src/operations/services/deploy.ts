@@ -2721,7 +2721,7 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 	const force = options.force ?? false;
 	const kvNamespaces = dryRun ? [] : listKvNamespaces(tenantRoot, env);
 	const d1Databases = dryRun ? [] : listD1Databases(tenantRoot, env);
-	const queues = listQueues(tenantRoot, env);
+	const queues = dryRun ? [] : listQueues(tenantRoot, env);
 	const buckets = dryRun ? [] : listR2Buckets(tenantRoot, env);
 	const pagesProjects = dryRun ? [] : listPagesProjects(tenantRoot, env);
 
