@@ -140,6 +140,24 @@ describe('project platform workflow actions', () => {
 		expect(verifySource).toContain("source: mountedVolumeSource");
 	});
 
+	it('falls back to Railway CLI environment creation for opaque API failures', () => {
+		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
+		const fallbackStart = source.indexOf('async function ensureRailwayEnvironmentForService');
+		const fallbackEnd = source.indexOf('async function resolveRailwayTopologyForScope', fallbackStart);
+		const topologyStart = source.indexOf('async function resolveRailwayTopologyForScope');
+		const topologyEnd = source.indexOf('async function ensureRailwayPostgresDataService', topologyStart);
+		const fallbackSource = source.slice(fallbackStart, fallbackEnd);
+		const topologySource = source.slice(topologyStart, topologyEnd);
+
+		expect(fallbackStart).toBeGreaterThanOrEqual(0);
+		expect(fallbackEnd).toBeGreaterThan(fallbackStart);
+		expect(fallbackSource).toContain('Problem processing request');
+		expect(fallbackSource).toContain('ensureRailwayProjectContext');
+		expect(fallbackSource).toContain('allowFailure: true');
+		expect(fallbackSource).toContain('listRailwayEnvironments');
+		expect(topologySource).toContain('ensureRailwayEnvironmentForService');
+	});
+
 	it('waits for Railway CLI-created runner volumes to become API-visible mounts', () => {
 		const source = readFileSync(new URL('../../src/operations/services/railway-deploy.ts', import.meta.url), 'utf8');
 		const fallbackStart = source.indexOf('export async function ensureRailwayServiceVolumeWithCliFallback');
@@ -149,10 +167,24 @@ describe('project platform workflow actions', () => {
 		expect(fallbackStart).toBeGreaterThanOrEqual(0);
 		expect(fallbackEnd).toBeGreaterThan(fallbackStart);
 		expect(fallbackSource).toContain("'attach', '--volume'");
+		expect(fallbackSource.indexOf('ensureRailwayProjectContext')).toBeLessThan(fallbackSource.indexOf("'volume', '--service'"));
 		expect(fallbackSource).toContain('allowFailure: true');
 		expect(fallbackSource).toContain('already mounted');
 		expect(fallbackSource).toContain('waitForRailwayServiceVolumeMount');
 		expect(fallbackSource).toContain('listRailwayVolumes({ projectId, env })');
+	});
+
+	it('allows Railway CLI project context linking from a project id alone', () => {
+		const source = readFileSync(new URL('../../src/operations/services/railway-deploy.ts', import.meta.url), 'utf8');
+		const helperStart = source.indexOf('export function ensureRailwayProjectExists');
+		const helperEnd = source.indexOf('export function ensureRailwayEnvironmentExists', helperStart);
+		const helperSource = source.slice(helperStart, helperEnd);
+
+		expect(helperStart).toBeGreaterThanOrEqual(0);
+		expect(helperEnd).toBeGreaterThan(helperStart);
+		expect(helperSource).toContain('const projectId');
+		expect(helperSource).toContain('entry.id === projectId');
+		expect(helperSource).toContain("return { id: projectId, name: '' }");
 	});
 
 	it('exposes a safe Railway CLI volume lister for verification fallback', () => {

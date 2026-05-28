@@ -272,6 +272,20 @@ describe('treeseed workflow lifecycle', () => {
 		vi.unstubAllEnvs();
 	});
 
+	it('dispatches staging deploy when deployed resource verification has no pushed save', () => {
+		const source = readFileSync(new URL('../../src/workflow/operations.ts', import.meta.url), 'utf8');
+		const hostedCiStart = source.indexOf("if (branch === STAGING_BRANCH) {");
+		const hostedCiEnd = source.indexOf("helpers.write('[save][workflow] Waiting for hosted save workflow gates.');", hostedCiStart);
+		const hostedCiSource = source.slice(hostedCiStart, hostedCiEnd);
+
+		expect(hostedCiSource).toContain('effectiveInput.verifyDeployedResources !== true');
+		expect(hostedCiSource).toContain('dispatchGitHubWorkflowRun');
+		expect(hostedCiSource).toContain("workflow: 'deploy.yml'");
+		expect(hostedCiSource).toContain("environment: 'staging'");
+		expect(hostedCiSource).toContain("action_kind: 'deploy_web'");
+		expect(hostedCiSource).toContain('waitForWorkflowGates');
+	});
+
 	it('resolves status from nested directories against the tenant root', async () => {
 		const { work } = createWorkflowRepo();
 		const nested = resolve(work, 'src', 'content');

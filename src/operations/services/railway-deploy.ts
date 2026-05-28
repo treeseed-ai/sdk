@@ -707,9 +707,7 @@ export function ensureRailwayProjectExists(
 	{ env = process.env } = {},
 ) {
 	const projectName = typeof service?.projectName === 'string' ? service.projectName.trim() : '';
-	if (!projectName) {
-		throw new Error(`Railway service ${service?.key ?? service?.serviceName ?? service?.serviceId ?? '(unknown)'} is missing a projectName.`);
-	}
+	const projectId = typeof service?.projectId === 'string' ? service.projectId.trim() : '';
 	const listed = runRailway(['list', '--json'], {
 		cwd: service.rootDir,
 		capture: true,
@@ -718,10 +716,16 @@ export function ensureRailwayProjectExists(
 	});
 	if (listed.status === 0) {
 		const match = normalizeRailwayProjectList(listed.stdout ?? '')
-			.find((entry) => entry.name === projectName || entry.id === projectName);
+			.find((entry) => entry.name === projectName || entry.id === projectName || entry.id === projectId);
 		if (match) {
 			return match;
 		}
+	}
+	if (!projectName) {
+		if (projectId) {
+			return { id: projectId, name: '' };
+		}
+		throw new Error(`Railway service ${service?.key ?? service?.serviceName ?? service?.serviceId ?? '(unknown)'} is missing a projectName.`);
 	}
 	const args = ['init', '--name', projectName, '--json'];
 	const workspace = resolveRailwayWorkspace(env);
@@ -2019,6 +2023,16 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 		capture: true,
 		env,
 	};
+	ensureRailwayProjectContext({
+		key: serviceName,
+		projectId,
+		serviceName,
+		rootDir: tenantRoot,
+		railwayEnvironment: environmentName,
+	}, {
+		env,
+		capture: true,
+	});
 	const volumeArgs = ['volume', '--service', serviceId, '--environment', environmentId];
 	const listResult = runRailway([...volumeArgs, 'list', '--json'], cliOptions);
 	const existingVolumes = normalizeRailwayCliVolumeList(parseRailwayJsonOutput(listResult.stdout ?? ''), {

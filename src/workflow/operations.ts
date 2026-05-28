@@ -71,6 +71,7 @@ import {
 	syncBranchWithOrigin,
 } from '../operations/services/git-workflow.ts';
 import { resolveGitHubRepositorySlug } from '../operations/services/github-automation.ts';
+import { dispatchGitHubWorkflowRun } from '../operations/services/github-api.ts';
 import {
 	formatGitHubActionsGateFailure,
 	inspectGitHubActionsVerification,
@@ -1490,6 +1491,10 @@ function workflowSessionSnapshot(session: TreeseedWorkflowSession): TreeseedWork
 			branchName: repo.branchName,
 		})),
 	};
+}
+
+function sleep(ms: number) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function nextPendingJournalStep(journal: TreeseedWorkflowRunJournal) {
@@ -3771,10 +3776,40 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					})),
 				};
 				const saveWorkflowGates = shouldUseHostedSaveCi(effectiveInput, branch)
-					? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', () =>
+					? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', async () =>
 						{
 							if (branch === STAGING_BRANCH) {
-								return { workflowGates: saveResult?.workflowGates ?? [] };
+								const workflowGates = saveResult?.workflowGates ?? [];
+								if (workflowGates.length > 0 || effectiveInput.verifyDeployedResources !== true || scope === 'local' || !savedRootRepo.commitSha) {
+									return { workflowGates };
+								}
+								helpers.write('[save][workflow] Dispatching hosted market deploy gate for deployed resource verification.');
+								const repository = resolveGitHubRepositorySlug(savedRootRepo.path);
+								await dispatchGitHubWorkflowRun(repository, {
+									workflow: 'deploy.yml',
+									branch,
+									inputs: {
+										environment: 'staging',
+										action_kind: 'deploy_web',
+									},
+								});
+								await sleep(5000);
+								helpers.write('[save][workflow] Waiting for hosted market deploy gate.');
+								const dispatchedGates = await waitForWorkflowGates('save', [
+									hostedDeployGate({
+										name: savedRootRepo.name,
+										repoPath: savedRootRepo.path,
+										repository,
+										workflow: 'deploy.yml',
+										branch,
+										headSha: savedRootRepo.commitSha,
+									}),
+								], 'hosted', {
+									root,
+									runId: workflowRun.runId,
+									onProgress: (line, stream) => helpers.write(line, stream),
+								});
+								return { workflowGates: dispatchedGates };
 							}
 							helpers.write('[save][workflow] Waiting for hosted save workflow gates.');
 							return waitForWorkflowGates('save', [
