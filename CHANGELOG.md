@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.10.18] - 2026-05-28
+
+### Tests
+
+- build(build): use railway cli volume path for runner reconcile (6b48d715a2a0)
+- build(build): do not create replacement volumes for railway postgres (7bcc829cddcb)
+- build(build): reuse railway managed postgres volume after not (7deb937999eb)
+- build(build): reuse railway postgres volume after create conflict (80e74737e5f4)
+- build(build): wait for new railway service instances before runtime (cfdbac9579aa)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.18.
+
 ## [0.10.17] - 2026-05-28
 
 ### Fixed
