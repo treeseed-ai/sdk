@@ -49,6 +49,7 @@ import {
 	getRailwayServiceInstance,
 	getRailwayProject,
 	listRailwayCustomDomains,
+	listRailwayEnvironments,
 	listRailwayProjects,
 	listRailwayVolumes,
 	listRailwayVariables,
@@ -1604,6 +1605,51 @@ function relativeRailwayRootDir(tenantRoot: string, serviceRoot: string) {
 	return !resolved || resolved === '' ? '.' : resolved;
 }
 
+async function ensureRailwayEnvironmentForService({
+	service,
+	project,
+	environmentName,
+	env,
+}: {
+	service: ReturnType<typeof configuredRailwayServices>[number];
+	project: Awaited<ReturnType<typeof ensureRailwayProject>>['project'];
+	environmentName: string;
+	env: Record<string, string>;
+}) {
+	try {
+		return (await ensureRailwayEnvironment({
+			projectId: project.id,
+			environmentName,
+			env,
+		})).environment;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error ?? '');
+		if (!/Problem processing request/iu.test(message)) {
+			throw error;
+		}
+	}
+
+	ensureRailwayProjectContext({
+		...service,
+		projectId: project.id,
+		projectName: project.name ?? service.projectName,
+		railwayEnvironment: environmentName,
+	}, {
+		env,
+		allowFailure: true,
+		capture: true,
+	});
+	for (let attempt = 0; attempt < 12; attempt += 1) {
+		const environments = await listRailwayEnvironments({ projectId: project.id, env });
+		const existing = environments.find((environment) => environment.name === environmentName || environment.id === environmentName) ?? null;
+		if (existing) {
+			return existing;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 2500));
+	}
+	throw new Error(`Railway environment ${environmentName} was created through the CLI fallback but was not visible through the Railway API.`);
+}
+
 async function resolveRailwayTopologyForScope(
 	input: TreeseedReconcileAdapterInput,
 	scope: 'local' | 'staging' | 'prod',
@@ -1701,11 +1747,12 @@ async function resolveRailwayTopologyForScope(
 
 			let environment = project?.environments.find((entry) => entry.name === service.railwayEnvironment || entry.id === service.railwayEnvironment) ?? null;
 			if (project && !environment && ensure) {
-				environment = (await ensureRailwayEnvironment({
-					projectId: project.id,
+				environment = await ensureRailwayEnvironmentForService({
+					service,
+					project,
 					environmentName: service.railwayEnvironment,
 					env,
-				})).environment;
+				});
 				project = {
 					...project,
 					environments: [...project.environments.filter((entry) => entry.id !== environment?.id), environment],
