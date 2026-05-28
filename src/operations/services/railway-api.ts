@@ -1560,24 +1560,39 @@ export async function ensureRailwayServiceVolume({
 			instances: candidate.instances.filter(isActiveRailwayVolumeInstance),
 		}))
 		.filter((candidate) => candidate.instances.length > 0);
-	let volume = activeVolumes.find((candidate) =>
-		candidate.instances.some((instance) => instance.serviceId === serviceId && instance.environmentId === environmentId),
-	) ?? activeVolumes.find((candidate) =>
+	let volume = findRailwayVolumeForService(volumes, serviceId, environmentId)
+		?? activeVolumes.find((candidate) =>
 		candidate.name === name
 		&& candidate.instances.some((instance) => instance.environmentId === environmentId),
 	) ?? null;
 	let created = false;
 	let updated = false;
 	const createReplacementVolume = async () => {
-		const replacement = await createRailwayVolume({
-			projectId,
-			environmentId,
-			serviceId,
-			name,
-			mountPath,
-			env,
-			fetchImpl,
-		});
+		let replacement: Awaited<ReturnType<typeof createRailwayVolume>>;
+		try {
+			replacement = await createRailwayVolume({
+				projectId,
+				environmentId,
+				serviceId,
+				name,
+				mountPath,
+				env,
+				fetchImpl,
+			});
+		} catch (error) {
+			if (!looksLikeRailwayVolumeLimitConflict(error)) {
+				throw error;
+			}
+			for (let attempt = 0; attempt < 8; attempt += 1) {
+				await new Promise((resolve) => setTimeout(resolve, 1500));
+				const refreshed = await listRailwayVolumes({ projectId, env, fetchImpl });
+				const existing = findRailwayVolumeForService(refreshed, serviceId, environmentId);
+				if (existing) {
+					return existing;
+				}
+			}
+			throw error;
+		}
 		created = true;
 		return replacement;
 	};
@@ -1627,6 +1642,21 @@ export async function ensureRailwayServiceVolume({
 		updated = true;
 	}
 	return { volume, instance, created, updated };
+}
+
+function findRailwayVolumeForService(volumes: RailwayVolumeSummary[], serviceId: string, environmentId: string) {
+	return volumes.find((candidate) =>
+		candidate.instances.some((instance) =>
+			instance.serviceId === serviceId
+			&& instance.environmentId === environmentId
+			&& isActiveRailwayVolumeInstance(instance)
+		),
+	) ?? null;
+}
+
+function looksLikeRailwayVolumeLimitConflict(error: unknown) {
+	const message = error instanceof Error ? error.message : String(error ?? '');
+	return /would have \d+ volumes attached|can only have one volume/iu.test(message);
 }
 
 export async function listRailwayCustomDomains({
