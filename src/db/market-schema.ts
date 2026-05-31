@@ -328,13 +328,14 @@ export const webSessions = pgTable('web_sessions', {
 export const projects = pgTable('projects', {
 	id: text('id').primaryKey(),
 	teamId: text('team_id').notNull(),
-	slug: text('slug').notNull().unique(),
+	slug: text('slug').notNull(),
 	name: text('name').notNull(),
 	description: text('description'),
 	metadataJson: text('metadata_json'),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
+	uniqueIndex('idx_projects_team_slug').on(table.teamId, table.slug),
 	index('idx_projects_team_id').on(table.teamId)
 ]);
 
@@ -485,7 +486,7 @@ export const catalogItems = pgTable('catalog_items', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	uniqueIndex('idx_catalog_items_kind_slug').on(table.kind, table.slug),
+	uniqueIndex('idx_catalog_items_team_kind_slug').on(table.teamId, table.kind, table.slug),
 	index('idx_catalog_items_team_kind').on(table.teamId, table.kind, table.updatedAt),
 	index('idx_catalog_items_visibility_listing').on(table.visibility, table.listingEnabled, table.updatedAt)
 ]);

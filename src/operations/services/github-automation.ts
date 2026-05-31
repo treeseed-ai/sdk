@@ -106,7 +106,7 @@ function sleepSeconds(seconds) {
 	});
 }
 
-function resolveGitHubRemoteUrls(owner, name) {
+export function resolveGitHubRemoteUrls(owner, name) {
 	const normalizedOwner = slugifySegment(owner, 'owner');
 	const normalizedName = slugifySegment(name, 'repo');
 	return {

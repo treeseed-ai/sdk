@@ -986,8 +986,7 @@ CREATE TABLE IF NOT EXISTS "projects" (
 	"description" text,
 	"metadata_json" text,
 	"created_at" text NOT NULL,
-	"updated_at" text NOT NULL,
-	CONSTRAINT "projects_slug_unique" UNIQUE("slug")
+	"updated_at" text NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "provider_credential_sessions" (
@@ -2839,8 +2838,8 @@ CREATE INDEX IF NOT EXISTS "idx_capacity_routing_decisions_project_workday" ON "
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_catalog_artifact_versions_item_version" ON "catalog_artifact_versions" USING btree ("item_id","version");
 CREATE INDEX IF NOT EXISTS "idx_catalog_artifact_versions_team_kind" ON "catalog_artifact_versions" USING btree ("team_id","kind","published_at");
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_catalog_item_collaborators_subject_role" ON "catalog_item_collaborators" USING btree ("item_id","subject_type","subject_id","role");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_catalog_items_kind_slug" ON "catalog_items" USING btree ("kind","slug");
 CREATE INDEX IF NOT EXISTS "idx_catalog_items_team_kind" ON "catalog_items" USING btree ("team_id","kind","updated_at");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_catalog_items_team_kind_slug" ON "catalog_items" USING btree ("team_id","kind","slug");
 CREATE INDEX IF NOT EXISTS "idx_catalog_items_visibility_listing" ON "catalog_items" USING btree ("visibility","listing_enabled","updated_at");
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_credit_conversion_profiles_profile_key" ON "credit_conversion_profiles" USING btree ("task_signature","execution_profile_id","execution_provider_kind","native_unit");
 CREATE INDEX IF NOT EXISTS "idx_credit_conversion_profiles_kind_unit" ON "credit_conversion_profiles" USING btree ("execution_provider_kind","native_unit","updated_at");
@@ -2884,6 +2883,7 @@ CREATE INDEX IF NOT EXISTS "idx_project_summary_snapshots_team_generated" ON "pr
 CREATE INDEX IF NOT EXISTS "idx_project_update_plans_hub" ON "project_update_plans" USING btree ("hub_id","created_at");
 CREATE INDEX IF NOT EXISTS "idx_project_workday_summaries_project_environment_created" ON "project_workday_summaries" USING btree ("project_id","environment","created_at");
 CREATE INDEX IF NOT EXISTS "idx_projects_team_id" ON "projects" USING btree ("team_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_projects_team_slug" ON "projects" USING btree ("team_id","slug");
 CREATE INDEX IF NOT EXISTS "idx_provider_credential_sessions_team_host" ON "provider_credential_sessions" USING btree ("team_id","host_kind","host_id","status");
 CREATE INDEX IF NOT EXISTS "idx_provider_credential_sessions_job" ON "provider_credential_sessions" USING btree ("job_id","status");
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_remote_job_events_job_seq" ON "remote_job_events" USING btree ("job_id","seq");

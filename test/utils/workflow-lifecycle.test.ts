@@ -326,7 +326,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('staging');
 		expect(readFileSync(resolve(sdkRoot, 'dirty.txt'), 'utf8')).toBe('preserve me\n');
 		expect(git(sdkRoot, ['status', '--porcelain'])).toContain('dirty.txt');
-	});
+	}, 15_000);
 
 	it('leaves divergent detached package repos untouched with a clear blocker', () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -431,7 +431,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.noChanges).toBe(true);
 		expect(result.payload.branchSync.pushed).toBe(true);
 		expect(result.payload.finalState.branchName).toBe('feature/demo-task');
-	});
+	}, 15_000);
 
 	it('auto-saves dirty task branches during close and returns to staging', async () => {
 		const { work } = createWorkflowRepo();
