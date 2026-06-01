@@ -115,7 +115,11 @@ vi.mock('../../src/operations/services/deploy.ts', async () => {
 			{ name: 'acme-docs-agent-work-dlq-staging', id: 'queue-dlq-1' },
 		]),
 		listR2Buckets: vi.fn(() => [{ name: 'acme-docs-content' }]),
-		listTurnstileWidgets: vi.fn(() => turnstileWidgets),
+		getTurnstileWidget: vi.fn((_env, sitekey) => {
+			const widget = turnstileWidgets.find((entry) => entry.sitekey === sitekey);
+			return widget ? { ...widget, domains: [...(widget.domains ?? [])] } : null;
+		}),
+		listTurnstileWidgets: vi.fn(() => turnstileWidgets.map((entry) => ({ ...entry, domains: [...(entry.domains ?? [])] }))),
 		createTurnstileWidget: vi.fn((_env, input) => {
 			const widget = {
 				name: input.name,
@@ -352,6 +356,76 @@ beforeEach(() => {
 			},
 		});
 		expect(resolveTreeseedMachineEnvironmentValuesMock).not.toHaveBeenCalled();
+	});
+
+	it('verifies Turnstile widgets against a fresh lookup after reconcile updates domains', async () => {
+		turnstileWidgets = [
+			{
+				name: 'acme-docs-turnstile-staging',
+				sitekey: 'managed-site-key',
+				secret: 'managed-secret-key',
+				domains: ['old.example.com'],
+				mode: 'managed',
+			},
+		];
+		deployState.turnstileWidgets.formGuard.sitekey = 'managed-site-key';
+		deployState.turnstileWidgets.formGuard.secret = 'managed-secret-key';
+		deployState.turnstileWidgets.formGuard.domains = ['example.com'];
+		const { createCloudflareReconcileAdapters } = await import('../../src/reconcile/builtin-adapters.ts');
+		const adapter = createCloudflareReconcileAdapters().find((entry) => entry.unitTypes.includes('turnstile-widget'));
+		expect(adapter).toBeTruthy();
+
+		const unit = {
+			unitId: 'turnstile-widget:acme-docs-turnstile-staging',
+			unitType: 'turnstile-widget',
+			provider: 'cloudflare',
+			target: { kind: 'persistent', scope: 'staging' },
+			logicalName: 'acme-docs-turnstile-staging',
+			dependencies: [],
+			spec: {
+				name: 'acme-docs-turnstile-staging',
+				domains: ['example.com', 'acme-docs.pages.dev'],
+				mode: 'managed',
+			},
+			secrets: {},
+			metadata: {},
+			identity: deployState.identity,
+		};
+		const context = {
+			tenantRoot: '/tmp/tenant',
+			target: { kind: 'persistent', scope: 'staging' },
+			deployConfig: {
+				name: 'Test',
+				slug: 'test',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				hosting: { kind: 'hosted_project', teamId: 'acme', projectId: 'docs' },
+				runtime: { mode: 'treeseed_managed', registration: 'none', teamId: 'acme', projectId: 'docs' },
+				providers: { content: { runtime: 'team_scoped_r2_overlay', publish: 'team_scoped_r2_overlay' } },
+				cloudflare: {
+					accountId: 'account-123',
+					queueName: 'agent-work',
+					dlqName: 'agent-work-dlq',
+					queueBinding: 'AGENT_WORK_QUEUE',
+					pages: { productionBranch: 'main', stagingBranch: 'staging' },
+					r2: {},
+				},
+				turnstile: { enabled: true },
+			},
+			launchEnv: {
+				CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				CLOUDFLARE_API_TOKEN: 'cf-token',
+			},
+			session: new Map(),
+		};
+
+		const observed = adapter!.observe({ unit, context } as never);
+		const diff = adapter!.plan({ unit, context, observed } as never);
+		const result = await adapter!.reconcile({ unit, context, observed, diff } as never);
+		const verification = await adapter!.verify({ unit, context, observed: result.observed, diff, result, postconditions: [] } as never);
+
+		expect(turnstileWidgets[0]?.domains).toEqual(['acme-docs.pages.dev', 'example.com']);
+		expect(verification.verified).toBe(true);
 	});
 
 	it('syncs Railway hosted env values from launch env without reading the machine key', async () => {

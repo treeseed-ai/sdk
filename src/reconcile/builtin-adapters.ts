@@ -12,6 +12,7 @@ import {
 	createPersistentDeployTarget,
 	destroyCloudflareResources,
 	ensureGeneratedWranglerConfig,
+	getTurnstileWidget,
 	hasProvisionedCloudflareResources,
 	isWranglerAlreadyExistsError,
 	listD1Databases,
@@ -1450,7 +1451,9 @@ function verifyCloudflareUnitOnce(input: TreeseedReconcileAdapterInput, postcond
 		}
 		case 'turnstile-widget': {
 			const current = state.turnstileWidgets?.formGuard ?? {};
-			const live = findTurnstileWidget(turnstileWidgets, current, input.unit.spec.name as string);
+			const cachedLive = findTurnstileWidget(turnstileWidgets, current, input.unit.spec.name as string);
+			const refreshedLive = current.sitekey ? getTurnstileWidget(env, String(current.sitekey)) : null;
+			const live = refreshedLive ?? cachedLive;
 			const desiredDomains = normalizeTurnstileDomains(input.unit.spec.domains);
 			return summarizeVerification(input.unit.unitId, [
 				verificationCheck('turnstile.exists', 'Turnstile widget exists by name and sitekey', 'api', {

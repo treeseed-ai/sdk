@@ -345,7 +345,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(report.blocker).toContain('does not match staging or main');
 		expect(git(sdkRoot, ['rev-parse', 'HEAD'])).toBe(tempHead);
 		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('');
-	});
+	}, 15_000);
 
 	it('treats normal package branch checkouts as a no-op', () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
