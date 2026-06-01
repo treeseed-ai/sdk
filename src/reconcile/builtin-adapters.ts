@@ -1476,7 +1476,12 @@ function verifyCloudflareUnitOnce(input: TreeseedReconcileAdapterInput, postcond
 				refreshedListedLive,
 				refreshedLive,
 			);
-			const desiredDomains = normalizeTurnstileDomains(input.unit.spec.domains);
+			const pagesHost = state.pages?.url ? new URL(state.pages.url).hostname : null;
+			const desiredDomains = normalizeTurnstileDomains([
+				...(Array.isArray(input.unit.spec.domains) ? input.unit.spec.domains : []),
+				...(Array.isArray(current.domains) ? current.domains : []),
+				pagesHost,
+			]);
 			return summarizeVerification(input.unit.unitId, [
 				verificationCheck('turnstile.exists', 'Turnstile widget exists by name and sitekey', 'api', {
 					exists: Boolean(live?.sitekey),

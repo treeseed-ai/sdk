@@ -384,7 +384,7 @@ beforeEach(() => {
 			dependencies: [],
 			spec: {
 				name: 'acme-docs-turnstile-staging',
-				domains: ['example.com', 'acme-docs.pages.dev'],
+				domains: ['example.com'],
 				mode: 'managed',
 			},
 			secrets: {},
