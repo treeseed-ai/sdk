@@ -51,6 +51,8 @@ export const PROJECT_INFRA_RESOURCE_PROVIDERS = ['cloudflare', 'railway', 'githu
 export const PROJECT_INFRA_RESOURCE_KINDS = [
 	'pages',
 	'worker',
+	'kv',
+	'turnstile-widget',
 	'r2',
 	'd1',
 	'queue',

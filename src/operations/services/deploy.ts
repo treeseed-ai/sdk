@@ -46,6 +46,14 @@ function stableHash(value) {
 	return createHash('sha256').update(value).digest('hex');
 }
 
+function compactDeploymentKey(input) {
+	const rawKey = sanitizeResourceKey(input.rawKey ?? '');
+	if (rawKey && rawKey.length <= 40) return rawKey;
+	const base = sanitizeSegment(input.slug ?? input.projectSegment ?? 'project').slice(0, 27) || 'project';
+	const hash = stableHash(`${input.teamId ?? ''}:${input.projectId ?? ''}:${input.slug ?? ''}`).slice(0, 8);
+	return `${base}-${hash}`;
+}
+
 function readJson(filePath, fallback) {
 	if (!existsSync(filePath)) {
 		return fallback;
@@ -86,6 +94,15 @@ function sanitizeSegment(value) {
 		.slice(0, 36) || 'default';
 }
 
+function sanitizeResourceKey(value) {
+	return String(value)
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9-]+/g, '-')
+		.replace(/^-+|-+$/g, '')
+		.replace(/-{2,}/g, '');
+}
+
 function requireConfiguredIdentityValue(value, label) {
 	const normalized = typeof value === 'string' && value.trim() ? value.trim() : '';
 	if (!normalized) {
@@ -109,7 +126,13 @@ export function resolveTreeseedResourceIdentity(deployConfig, target) {
 	);
 	const teamSegment = sanitizeSegment(teamId);
 	const projectSegment = sanitizeSegment(projectId);
-	const deploymentKey = `${teamSegment}-${projectSegment}`;
+	const deploymentKey = compactDeploymentKey({
+		rawKey: `${teamSegment}-${projectSegment}`,
+		teamId,
+		projectId,
+		projectSegment,
+		slug: deployConfig.slug,
+	});
 	const environment = target.kind === 'persistent' ? target.scope : target.branchName;
 	const environmentSegment = target.kind === 'persistent' ? target.scope : sanitizeSegment(target.branchName);
 	return {
@@ -202,6 +225,16 @@ export function resolveConfiguredSurfaceBaseUrl(deployConfig, target, surface) {
 			?? null;
 	}
 	return null;
+}
+
+function configuredSurfaceHosts(deployConfig, target, surface) {
+	const hosts = [
+		resolveConfiguredSurfaceDomain(deployConfig, target, surface),
+		surface === 'web' && target.kind === 'persistent' && target.scope === 'prod'
+			? primaryHost(deployConfig.surfaces?.web?.publicBaseUrl ?? deployConfig.siteUrl)
+			: null,
+	].filter(Boolean);
+	return [...new Set(hosts)];
 }
 
 function sharedDeploymentName(identity, role = '') {
@@ -509,7 +542,7 @@ export function buildSecretMap(deployConfig, state) {
 	return {
 		TREESEED_FORM_TOKEN_SECRET: envOrNull('TREESEED_FORM_TOKEN_SECRET') ?? generatedSecret,
 		TREESEED_EDITORIAL_PREVIEW_SECRET: envOrNull('TREESEED_EDITORIAL_PREVIEW_SECRET') ?? previewSecret,
-		TREESEED_TURNSTILE_SECRET_KEY: envOrNull('TREESEED_TURNSTILE_SECRET_KEY'),
+		TREESEED_TURNSTILE_SECRET_KEY: state.turnstileWidgets?.formGuard?.secret ?? envOrNull('TREESEED_TURNSTILE_SECRET_KEY'),
 		TREESEED_SMTP_PASSWORD: envOrNull('TREESEED_SMTP_PASSWORD'),
 	};
 }
@@ -522,6 +555,8 @@ function defaultStateFromConfig(deployConfig, target) {
 	const contentPreviewRootTemplate = deployConfig.cloudflare.r2?.previewRootTemplate ?? 'teams/{teamId}/previews';
 	const contentDefaultTeamId = identity.teamId;
 	const contentManifestKey = contentManifestKeyTemplate.replaceAll('{teamId}', contentDefaultTeamId);
+	const turnstileName = environmentScopedIdentityName(identity, 'turnstile', target);
+	const turnstileDomains = configuredSurfaceHosts(deployConfig, target, 'web');
 
 	return {
 		version: 2,
@@ -560,6 +595,17 @@ function defaultStateFromConfig(deployConfig, target) {
 			stagingBranch: deployConfig.cloudflare.pages?.stagingBranch ?? 'staging',
 			buildOutputDir: deployConfig.cloudflare.pages?.buildOutputDir ?? 'dist',
 			url: resolveConfiguredSurfaceBaseUrl(deployConfig, target, 'web'),
+		},
+		turnstileWidgets: {
+			formGuard: {
+				name: turnstileName,
+				sitekey: null,
+				secret: null,
+				mode: 'managed',
+				domains: turnstileDomains,
+				managed: true,
+				lastSyncedAt: null,
+			},
 		},
 		content: {
 			runtimeProvider: deployConfig.providers?.content?.runtime ?? 'team_scoped_r2_overlay',
@@ -733,6 +779,23 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 		generatedSecrets: {
 			...(defaults.generatedSecrets ?? {}),
 			...(persisted.generatedSecrets ?? {}),
+		},
+		turnstileWidgets: {
+			...(defaults.turnstileWidgets ?? {}),
+			...(persisted.turnstileWidgets ?? {}),
+			formGuard: {
+				...(defaults.turnstileWidgets?.formGuard ?? {}),
+				...(persisted.turnstileWidgets?.formGuard ?? {}),
+				name: defaults.turnstileWidgets?.formGuard?.name ?? persisted.turnstileWidgets?.formGuard?.name ?? null,
+				mode: 'managed',
+				managed: true,
+				domains: [
+					...new Set([
+						...(Array.isArray(defaults.turnstileWidgets?.formGuard?.domains) ? defaults.turnstileWidgets.formGuard.domains : []),
+						...(Array.isArray(persisted.turnstileWidgets?.formGuard?.domains) ? persisted.turnstileWidgets.formGuard.domains : []),
+					].filter(Boolean)),
+				],
+			},
 		},
 		content: {
 			...(defaults.content ?? {}),
@@ -1045,6 +1108,72 @@ export function listPagesProjects(tenantRoot, env) {
 	return Array.isArray(payload?.result) ? payload.result : [];
 }
 
+export function listTurnstileWidgets(tenantRoot, env) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!accountId) {
+		return [];
+	}
+	const payload = cloudflareApiRequest(`/accounts/${encodeURIComponent(accountId)}/challenges/widgets?per_page=100`, {
+		env,
+		allowFailure: true,
+	});
+	return Array.isArray(payload?.result) ? payload.result : [];
+}
+
+export function getTurnstileWidget(env, sitekey) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!accountId || !sitekey) {
+		return null;
+	}
+	const payload = cloudflareApiRequest(
+		`/accounts/${encodeURIComponent(accountId)}/challenges/widgets/${encodeURIComponent(sitekey)}`,
+		{ env, allowFailure: true },
+	);
+	return payload?.result ?? null;
+}
+
+export function createTurnstileWidget(env, input) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!accountId) {
+		throw new Error('Configure CLOUDFLARE_ACCOUNT_ID before creating Turnstile widgets.');
+	}
+	try {
+		return cloudflareApiRequest(`/accounts/${encodeURIComponent(accountId)}/challenges/widgets`, {
+			method: 'POST',
+			env,
+			body: {
+				name: input.name,
+				domains: input.domains ?? [],
+				mode: input.mode ?? 'managed',
+			},
+		})?.result ?? null;
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : String(error);
+		throw new Error(`Cloudflare Turnstile widget creation failed. Ensure the API token has Turnstile Sites Write permission: ${detail}`);
+	}
+}
+
+export function updateTurnstileWidget(env, sitekey, input) {
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	if (!accountId || !sitekey) {
+		throw new Error('Configure CLOUDFLARE_ACCOUNT_ID and sitekey before updating Turnstile widgets.');
+	}
+	try {
+		return cloudflareApiRequest(`/accounts/${encodeURIComponent(accountId)}/challenges/widgets/${encodeURIComponent(sitekey)}`, {
+			method: 'PUT',
+			env,
+			body: {
+				name: input.name,
+				domains: input.domains ?? [],
+				mode: input.mode ?? 'managed',
+			},
+		})?.result ?? null;
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : String(error);
+		throw new Error(`Cloudflare Turnstile widget update failed. Ensure the API token has Turnstile Sites Write permission: ${detail}`);
+	}
+}
+
 export function buildCloudflarePagesFunctionBindings(state) {
 	const kvNamespaces = Object.fromEntries(
 		Object.entries(state.kvNamespaces ?? {})
@@ -1147,6 +1276,7 @@ export function buildProvisioningSummary(deployConfig, state, target) {
 		siteUrl: target.kind === 'branch' ? targetWorkersDevUrl(state.workerName) : deployConfig.siteUrl,
 		accountId: resolveConfiguredCloudflareAccountId(deployConfig),
 		pages: state.pages ?? null,
+		turnstileWidget: state.turnstileWidgets?.formGuard ?? null,
 		formGuardKv: state.kvNamespaces.FORM_GUARD_KV,
 		sessionKv: state.kvNamespaces.SESSION ?? null,
 		siteDataDb: state.d1Databases.SITE_DATA_DB,
@@ -1158,6 +1288,7 @@ export function buildProvisioningSummary(deployConfig, state, target) {
 			queue: state.queues?.agentWork?.name ?? null,
 			dlq: state.queues?.agentWork?.dlqName ?? null,
 			database: state.d1Databases?.SITE_DATA_DB?.databaseName ?? null,
+			turnstileWidget: state.turnstileWidgets?.formGuard?.name ?? null,
 			formGuardKv: state.kvNamespaces?.FORM_GUARD_KV?.name ?? null,
 			railwayProject: state.services?.worker?.projectName ?? state.services?.api?.projectName ?? null,
 			webDomain: configuredWebDomain,
@@ -1753,14 +1884,7 @@ function resolveConfiguredContentPublicBaseUrl(deployConfig) {
 }
 
 function missingTurnstileRequirements() {
-	const issues = [];
-	if (!envOrNull('TREESEED_PUBLIC_TURNSTILE_SITE_KEY')) {
-		issues.push('Set TREESEED_PUBLIC_TURNSTILE_SITE_KEY before deploying.');
-	}
-	if (!envOrNull('TREESEED_TURNSTILE_SECRET_KEY')) {
-		issues.push('Set TREESEED_TURNSTILE_SECRET_KEY before deploying.');
-	}
-	return issues;
+	return [];
 }
 
 function missingContentRuntimeRequirements(deployConfig) {
@@ -1788,21 +1912,6 @@ export function collectMissingDeployInputs(tenantRoot) {
 		});
 	}
 
-	if (!envOrNull('TREESEED_PUBLIC_TURNSTILE_SITE_KEY')) {
-		missing.push({
-			key: 'TREESEED_PUBLIC_TURNSTILE_SITE_KEY',
-			label: 'Turnstile public site key',
-			message: 'Turnstile public site key is missing for deploy.',
-		});
-	}
-
-	if (!envOrNull('TREESEED_TURNSTILE_SECRET_KEY')) {
-		missing.push({
-			key: 'TREESEED_TURNSTILE_SECRET_KEY',
-			label: 'Turnstile secret key',
-			message: 'Turnstile secret key is missing for deploy.',
-		});
-	}
 	if (deployConfig.providers?.content?.runtime === 'team_scoped_r2_overlay' && !envOrNull('TREESEED_EDITORIAL_PREVIEW_SECRET')) {
 		missing.push({
 			key: 'TREESEED_EDITORIAL_PREVIEW_SECRET',
@@ -1916,6 +2025,26 @@ function resolveExistingKvIdByName(kvNamespaces, expectedName, fallbackId) {
 	return kvNamespaces.find((entry) => entry?.title === expectedName)?.id ?? null;
 }
 
+function resolveExistingTurnstileWidget(widgets, current) {
+	if (!current?.name && !current?.sitekey) {
+		return current;
+	}
+	const existing = widgets.find((entry) =>
+		(current.sitekey && entry?.sitekey === current.sitekey)
+		|| (current.name && entry?.name === current.name),
+	);
+	if (!existing?.sitekey) {
+		return current;
+	}
+	return {
+		...current,
+		sitekey: existing.sitekey,
+		secret: existing.secret ?? current.secret ?? null,
+		domains: Array.isArray(existing.domains) ? existing.domains : current.domains ?? [],
+		mode: existing.mode ?? current.mode ?? 'managed',
+	};
+}
+
 function resolveExistingD1ByName(d1Databases, expectedName, current) {
 	if (current?.databaseId && !isPlaceholderResourceId(current.databaseId)) {
 		return current;
@@ -1952,6 +2081,29 @@ function deleteKvNamespace(tenantRoot, namespaceId, { env, dryRun, preview = fal
 		: null;
 	const deleted = deleteCloudflareApiResource(path, { env, dryRun: false, name: namespaceId, type: 'kv-namespace' });
 	return { status: deleted.status, id: namespaceId, preview };
+}
+
+function deleteTurnstileWidget(sitekey, { env, dryRun, name = null }) {
+	if (!sitekey || isPlaceholderResourceId(sitekey)) {
+		return { status: 'missing', sitekey, name };
+	}
+
+	if (dryRun) {
+		return { status: 'planned', sitekey, name };
+	}
+
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const path = accountId
+		? `/accounts/${encodeURIComponent(accountId)}/challenges/widgets/${encodeURIComponent(sitekey)}`
+		: null;
+	let deleted;
+	try {
+		deleted = deleteCloudflareApiResource(path, { env, dryRun: false, name: name ?? sitekey, type: 'turnstile-widget' });
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : String(error);
+		throw new Error(`Cloudflare Turnstile widget deletion failed. Ensure the API token has Turnstile Sites Write permission: ${detail}`);
+	}
+	return { status: deleted.status, sitekey, name };
 }
 
 function deleteD1Database(tenantRoot, databaseName, { env, dryRun }) {
@@ -2724,6 +2876,7 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 	const queues = dryRun ? [] : listQueues(tenantRoot, env);
 	const buckets = dryRun ? [] : listR2Buckets(tenantRoot, env);
 	const pagesProjects = dryRun ? [] : listPagesProjects(tenantRoot, env);
+	const turnstileWidgets = dryRun ? [] : listTurnstileWidgets(tenantRoot, env);
 
 	state.kvNamespaces.FORM_GUARD_KV.id = resolveExistingKvIdByName(
 		kvNamespaces,
@@ -2742,6 +2895,7 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 		state.d1Databases.SITE_DATA_DB.databaseName,
 		state.d1Databases.SITE_DATA_DB,
 	);
+	state.turnstileWidgets.formGuard = resolveExistingTurnstileWidget(turnstileWidgets, state.turnstileWidgets?.formGuard);
 
 	const pagesProject = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
 	const bucket = buckets.find((entry) => entry?.name === state.content?.bucketName);
@@ -2749,6 +2903,11 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 	const dlq = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.dlqName);
 
 	const workerResult = deleteWorker(tenantRoot, state.workerName, { env, dryRun, force });
+	const turnstileWidget = deleteTurnstileWidget(state.turnstileWidgets?.formGuard?.sitekey, {
+		env,
+		dryRun,
+		name: state.turnstileWidgets?.formGuard?.name,
+	});
 	const formGuard = deleteKvNamespace(tenantRoot, state.kvNamespaces.FORM_GUARD_KV.id, { env, dryRun });
 	const formGuardPreview =
 		state.kvNamespaces.FORM_GUARD_KV.previewId
@@ -2825,6 +2984,7 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 	const operations = {
 		cloudflare: [
 			resourceOperation('cloudflare', 'worker', state.workerName, workerResult.status, workerResult),
+			resourceOperation('cloudflare', 'turnstile-widget', state.turnstileWidgets?.formGuard?.name, turnstileWidget.status, turnstileWidget),
 			resourceOperation('cloudflare', 'kv-namespace', state.kvNamespaces.FORM_GUARD_KV.name, formGuard.status, formGuard),
 			...(formGuardPreview ? [resourceOperation('cloudflare', 'kv-namespace-preview', state.kvNamespaces.FORM_GUARD_KV.name, formGuardPreview.status, formGuardPreview)] : []),
 			...(session ? [resourceOperation('cloudflare', 'kv-namespace', state.kvNamespaces.SESSION.name, session.status, session)] : []),
@@ -2869,6 +3029,7 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 	const queues = listQueues(tenantRoot, env);
 	const buckets = dryRun ? [] : listR2Buckets(tenantRoot, env);
 	const pagesProjects = dryRun ? [] : listPagesProjects(tenantRoot, env);
+	const turnstileWidgets = dryRun ? [] : listTurnstileWidgets(tenantRoot, env);
 
 	state.kvNamespaces.FORM_GUARD_KV.id = resolveExistingKvIdByName(
 		kvNamespaces,
@@ -2880,11 +3041,17 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 		state.d1Databases.SITE_DATA_DB.databaseName,
 		state.d1Databases.SITE_DATA_DB,
 	);
+	state.turnstileWidgets.formGuard = resolveExistingTurnstileWidget(turnstileWidgets, state.turnstileWidgets?.formGuard);
 	const queue = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.name);
 	const dlq = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.dlqName);
 	const bucket = buckets.find((entry) => entry?.name === state.content?.bucketName);
 	const pagesProject = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
 	const worker = deleteWorker(tenantRoot, state.workerName, { env, dryRun, force });
+	const turnstileWidget = deleteTurnstileWidget(state.turnstileWidgets?.formGuard?.sitekey, {
+		env,
+		dryRun,
+		name: state.turnstileWidgets?.formGuard?.name,
+	});
 	const formGuard = deleteKvNamespace(tenantRoot, state.kvNamespaces.FORM_GUARD_KV.id, { env, dryRun });
 	const database = deleteD1DatabaseForDestroy(tenantRoot, state.d1Databases.SITE_DATA_DB.databaseName, { env, dryRun, deleteData });
 	const deletedQueue = deleteQueueByName(tenantRoot, queue ?? { name: state.queues?.agentWork?.name }, { env, dryRun });
@@ -2904,6 +3071,7 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 		: resourceOperation('cloudflare', 'pages-project', state.pages?.projectName, 'missing');
 	const operations = {
 		worker,
+		turnstileWidget,
 		formGuard,
 		database,
 		queue: deletedQueue,

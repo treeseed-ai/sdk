@@ -881,7 +881,7 @@ export type TreeseedConfigEntrySnapshot = {
 	group: string;
 	cluster: string;
 	startupProfile: 'core' | 'optional' | 'advanced';
-	requirement: 'required' | 'conditional' | 'optional';
+	requirement: 'required' | 'conditional' | 'optional' | 'generated';
 	description: string;
 	howToGet: string;
 	sensitivity: 'secret' | 'plain' | 'derived';

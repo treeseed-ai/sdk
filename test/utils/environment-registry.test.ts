@@ -338,26 +338,23 @@ const coreFormsRegistryFixtureYaml = `entries:
     label: Turnstile secret key
     group: forms
     description: Turnstile secret key.
-    howToGet: Set the Cloudflare Turnstile secret key.
+    howToGet: Treeseed creates and syncs this from the managed Cloudflare Turnstile widget during deploy.
     sensitivity: secret
+    visibility: system
     targets:
       - github-secret
     scopes:
       - staging
       - prod
     storage: shared
-    requirement: conditional
+    requirement: generated
     purposes:
-      - save
       - deploy
-      - config
     validation:
       kind: nonempty
     sourcePriority:
-      - machine-config
-      - process-env
+      - generated
     relevanceRef: turnstileEnabled
-    requiredWhenRef: turnstileNonLocal
   TREESEED_SMTP_HOST:
     label: SMTP host
     group: smtp
@@ -1134,13 +1131,16 @@ describe('environment registry overlays', () => {
 		const enabledTurnstileSecret = enabledRegistry.entries.find((entry) => entry.id === 'TREESEED_TURNSTILE_SECRET_KEY');
 		const formTokenSecret = enabledRegistry.entries.find((entry) => entry.id === 'TREESEED_FORM_TOKEN_SECRET');
 		expect(isTreeseedEnvironmentEntryRelevant(enabledSmtpHost!, enabledRegistry.context, 'staging', 'config')).toBe(true);
-		expect(isTreeseedEnvironmentEntryRelevant(enabledTurnstileSecret!, enabledRegistry.context, 'prod', 'config')).toBe(true);
+		expect(isTreeseedEnvironmentEntryRelevant(enabledTurnstileSecret!, enabledRegistry.context, 'prod', 'config')).toBe(false);
+		expect(isTreeseedEnvironmentEntryRelevant(enabledTurnstileSecret!, enabledRegistry.context, 'prod', 'deploy')).toBe(true);
 		expect(enabledSmtpHost?.storage).toBe('shared');
 		expect(enabledTurnstileSecret?.storage).toBe('shared');
+		expect(enabledTurnstileSecret?.visibility).toBe('system');
+		expect(enabledTurnstileSecret?.requirement).toBe('generated');
 		expect(formTokenSecret?.storage).toBe('shared');
 		expect(enabledTurnstileSecret?.scopes).toEqual(['staging', 'prod']);
 		expect(isTreeseedEnvironmentEntryRelevant(enabledTurnstileSecret!, enabledRegistry.context, 'local', 'config')).toBe(false);
-		expect(isTreeseedEnvironmentEntryRequired(enabledTurnstileSecret!, enabledRegistry.context, 'staging', 'config')).toBe(true);
+		expect(isTreeseedEnvironmentEntryRequired(enabledTurnstileSecret!, enabledRegistry.context, 'staging', 'config')).toBe(false);
 		expect(enabledRegistry.entries.find((entry) => entry.id === 'TREESEED_PUBLIC_FORMS_LOCAL_BYPASS_TURNSTILE')).toBeUndefined();
 	});
 

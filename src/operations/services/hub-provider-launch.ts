@@ -230,7 +230,19 @@ function runGit(cwd: string, args: string[], capture = true) {
 		encoding: 'utf8',
 	});
 	if (result.status !== 0) {
-		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `git ${args.join(' ')} failed`);
+		if (args[0] === 'push' && !args.includes('--force')) {
+			const retryArgs = ['push', '--force', ...args.slice(1)];
+			const retry = spawnSync('git', retryArgs, {
+				cwd,
+				stdio: capture ? 'pipe' : 'inherit',
+				encoding: 'utf8',
+			});
+			if (retry.status === 0) return retry;
+			const retryDetail = retry.stderr?.trim() || retry.stdout?.trim();
+			throw new Error(`git ${retryArgs.join(' ')} failed${retryDetail ? `: ${retryDetail}` : ''}`);
+		}
+		const detail = result.stderr?.trim() || result.stdout?.trim();
+		throw new Error(`git ${args.join(' ')} failed${detail ? `: ${detail}` : ''}`);
 	}
 	return result;
 }
@@ -469,18 +481,10 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubPro
 	const siteUrl = productionSiteUrl;
 	const projectApiBaseUrl = normalizeBaseUrl(input.projectApiBaseUrl ?? resolveManagedApiUrl(slug));
 	const cloudflareAccountId = envOrNull('CLOUDFLARE_ACCOUNT_ID') ?? 'replace-with-cloudflare-account-id';
-	const runtimeMode = input.hostingMode === 'managed'
-		? 'treeseed_managed'
-		: input.hostingMode === 'hybrid'
-			? 'byo_attached'
-			: 'none';
-	const runtimeRegistration = input.hostingMode === 'managed'
-		? 'required'
-		: input.hostingMode === 'hybrid'
-			? 'optional'
-			: 'none';
+	const runtimeMode = input.hostingMode === 'hybrid' ? 'byo_attached' : 'none';
+	const runtimeRegistration = input.hostingMode === 'hybrid' ? 'optional' : 'none';
 	const hubMode = input.hostingMode === 'self_hosted' ? 'customer_hosted' : 'treeseed_hosted';
-	const managedRuntime = runtimeMode === 'treeseed_managed';
+	const managedRuntime = false;
 
 	updateYamlFile(resolve(projectRoot, 'treeseed.site.yaml'), (config) => ({
 		...config,
@@ -545,31 +549,25 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubPro
 			},
 			api: {
 				enabled: managedRuntime,
-				provider: managedRuntime ? 'railway' : 'none',
+				provider: 'none',
 				rootDir: '.',
 				localBaseUrl: 'http://127.0.0.1:3000',
 				...(config.surfaces?.api ?? {}),
 			},
 		},
 		services: {
+			...(config.services ?? {}),
 			api: {
 				enabled: managedRuntime,
-				provider: managedRuntime ? 'railway' : 'none',
+				provider: 'none',
 				rootDir: '.',
 				publicBaseUrl: projectApiBaseUrl,
-				railway: {
-					serviceName: `${slug}-api`,
-					buildCommand: 'npm run build:api',
-					startCommand: 'node ./src/api/server.js',
-					healthcheckTimeoutSeconds: 120,
-				},
 				environments: {
 					local: {
 						baseUrl: 'http://127.0.0.1:3000',
 					},
 				},
 			},
-			...(config.services ?? {}),
 		},
 		plugins: [{ package: '@treeseed/core/plugin-default' }],
 		providers: {
@@ -667,20 +665,20 @@ function createDefaultWorkstream(projectId: string, input: KnowledgeHubProviderL
 
 function pushDefaultWorkstreamBranch(projectRoot: string) {
 	runGit(projectRoot, ['checkout', '-B', 'task/initial-launch'], false);
-	runGit(projectRoot, ['push', '-u', 'origin', 'task/initial-launch'], false);
+	runGit(projectRoot, ['push', '--force', '-u', 'origin', 'task/initial-launch'], false);
 	runGit(projectRoot, ['checkout', 'main'], false);
 }
 
-function commitAndPushLaunchRepository(projectRoot: string, message: string) {
+function commitAndPushLaunchRepository(projectRoot: string, message: string, { forcePush = false } = {}) {
 	runGit(projectRoot, ['checkout', 'main'], false);
 	runGit(projectRoot, ['add', '-A'], false);
 	if (gitOutput(projectRoot, ['status', '--porcelain'])) {
 		runGit(projectRoot, ['commit', '-m', message], false);
 	}
-	runGit(projectRoot, ['push', '-u', 'origin', 'main'], false);
+	runGit(projectRoot, ['push', ...(forcePush ? ['--force'] : []), '-u', 'origin', 'main'], false);
 	runGit(projectRoot, ['checkout', 'staging'], false);
 	runGit(projectRoot, ['merge', '--ff-only', 'main'], false);
-	runGit(projectRoot, ['push', '-u', 'origin', 'staging'], false);
+	runGit(projectRoot, ['push', ...(forcePush ? ['--force'] : []), '-u', 'origin', 'staging'], false);
 	runGit(projectRoot, ['checkout', 'main'], false);
 }
 
@@ -877,6 +875,8 @@ function prepareKnowledgeHubContentRepositoryRoot(sourceRoot: string, contentRoo
 
 function stripSoftwareContentOverlay(sourceRoot: string, input: KnowledgeHubProviderLaunchInput) {
 	const contentRoot = resolve(sourceRoot, 'src', 'content');
+	const coreObjectiveSource = resolve(contentRoot, 'objectives', 'core.md');
+	const coreObjective = existsSync(coreObjectiveSource) ? readFileSync(coreObjectiveSource, 'utf8') : null;
 	rmSync(contentRoot, { recursive: true, force: true });
 	mkdirSync(contentRoot, { recursive: true });
 	writeFileSync(resolve(contentRoot, '.gitkeep'), '', 'utf8');
@@ -885,6 +885,10 @@ function stripSoftwareContentOverlay(sourceRoot: string, input: KnowledgeHubProv
 		`# Preview content overlay\n\nThis software repository does not own ordinary Knowledge Hub content. Production content is published from the content repository to R2 artifacts. Checked-out files under \`src/content\` are for local, staging, or preview overlays only.\n\nHub: ${input.projectName}\nContent source: ${input.contentRepository?.name ?? `${slugify(input.projectSlug, 'project')}-content`}\n`,
 		'utf8',
 	);
+	if (coreObjective) {
+		mkdirSync(resolve(contentRoot, 'objectives'), { recursive: true });
+		writeFileSync(resolve(contentRoot, 'objectives', 'core.md'), coreObjective, 'utf8');
+	}
 }
 
 export async function validateKnowledgeHubProviderLaunchPrerequisites(
@@ -1011,6 +1015,7 @@ export async function executeKnowledgeHubProviderLaunch(
 				defaultBranch: input.contentRepository.defaultBranch ?? 'main',
 				createStaging: true,
 				commitMessage: `Initialize ${input.projectName} content`,
+				forcePush: !input.contentRepository.url,
 			});
 			contentRepository = {
 				slug: createdContentRepository.slug,
@@ -1033,20 +1038,10 @@ export async function executeKnowledgeHubProviderLaunch(
 			push: false,
 		});
 		const workflows = await ensureGitHubDeployAutomation(workingRoot, { valuesOverlay: prodEnvOverlay });
-		commitAndPushLaunchRepository(workingRoot, `Configure ${input.projectName} deployment`);
+		commitAndPushLaunchRepository(workingRoot, `Configure ${input.projectName} deployment`, { forcePush: !input.existingRepository?.url });
 		pushDefaultWorkstreamBranch(workingRoot);
-		const githubEnvironmentSync = [];
-		for (const [scope, valuesOverlay] of [['staging', stagingEnvOverlay], ['prod', prodEnvOverlay]] as const) {
-			githubEnvironmentSync.push(await syncTreeseedGitHubEnvironment({
-				tenantRoot: workingRoot,
-				scope,
-				repository: repository.slug,
-				valuesOverlay,
-				execution: 'sequential',
-			}));
-		}
-		const workflowSummary = { ...workflows, environmentSync: githubEnvironmentSync };
-		await appendPhase(phases, 'workflow_bootstrap', 'completed', 'Configured GitHub workflows, secrets, and variables.', reportPhase);
+		let workflowSummary = { ...workflows, environmentSync: [] as Array<Awaited<ReturnType<typeof syncTreeseedGitHubEnvironment>>> };
+		await appendPhase(phases, 'workflow_bootstrap', 'completed', 'Configured GitHub workflows.', reportPhase);
 
 		await appendPhase(phases, 'hosting_registration', 'running', 'Provisioning Cloudflare resources and deploy state.', reportPhase);
 		const staging = await reconcileTreeseedTarget({
@@ -1059,6 +1054,32 @@ export async function executeKnowledgeHubProviderLaunch(
 			target: createPersistentDeployTarget('prod'),
 			env: { ...process.env, ...prodEnvOverlay },
 		});
+		const turnstileOverlay = (state: Record<string, any>, base: Record<string, string | undefined>) => {
+			const widget = state?.turnstileWidgets?.formGuard ?? {};
+			return {
+				...base,
+				...(typeof widget.sitekey === 'string' && widget.sitekey.length > 0
+					? { TREESEED_PUBLIC_TURNSTILE_SITE_KEY: widget.sitekey }
+					: {}),
+				...(typeof widget.secret === 'string' && widget.secret.length > 0
+					? { TREESEED_TURNSTILE_SECRET_KEY: widget.secret }
+					: {}),
+			};
+		};
+		const githubEnvironmentSync = [];
+		for (const [scope, valuesOverlay] of [
+			['staging', turnstileOverlay(staging.state as Record<string, any>, stagingEnvOverlay)],
+			['prod', turnstileOverlay(prod.state as Record<string, any>, prodEnvOverlay)],
+		] as const) {
+			githubEnvironmentSync.push(await syncTreeseedGitHubEnvironment({
+				tenantRoot: workingRoot,
+				scope,
+				repository: repository.slug,
+				valuesOverlay,
+				execution: 'sequential',
+			}));
+		}
+		workflowSummary = { ...workflowSummary, environmentSync: githubEnvironmentSync };
 		runRemoteD1Migrations(workingRoot, { scope: 'staging' });
 		runRemoteD1Migrations(workingRoot, { scope: 'prod' });
 		const verification = await collectTreeseedReconcileStatus({

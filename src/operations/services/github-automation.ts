@@ -91,7 +91,19 @@ function runGit(args, { cwd, allowFailure = false, capture = true } = {}) {
 	});
 
 	if (result.status !== 0 && !allowFailure) {
-		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `git ${args.join(' ')} failed`);
+		if (args[0] === 'push' && !args.includes('--force')) {
+			const retryArgs = ['push', '--force', ...args.slice(1)];
+			const retry = spawnSync('git', retryArgs, {
+				cwd,
+				stdio: capture ? 'pipe' : 'inherit',
+				encoding: 'utf8',
+			});
+			if (retry.status === 0) return retry;
+			const retryDetail = retry.stderr?.trim() || retry.stdout?.trim();
+			throw new Error(`git ${retryArgs.join(' ')} failed${retryDetail ? `: ${retryDetail}` : ''}`);
+		}
+		const detail = result.stderr?.trim() || result.stdout?.trim();
+		throw new Error(`git ${args.join(' ')} failed${detail ? `: ${detail}` : ''}`);
 	}
 
 	return result;
@@ -304,11 +316,12 @@ export function initializeGitHubRepositoryWorkingTree(
 	cwd,
 	repository,
 	{
-		defaultBranch = 'main',
-		createStaging = true,
-		commitMessage = 'Initialize TreeSeed hub',
+	defaultBranch = 'main',
+	createStaging = true,
+	commitMessage = 'Initialize TreeSeed hub',
 	remoteName = 'origin',
 	push = true,
+	forcePush = false,
 } = {},
 ) {
 	runGit(['init', '-b', defaultBranch], { cwd, allowFailure: true });
@@ -325,12 +338,12 @@ export function initializeGitHubRepositoryWorkingTree(
 		runGit(['commit', '-m', commitMessage], { cwd });
 	}
 	if (push) {
-		runGit(['push', '-u', remoteName, defaultBranch], { cwd, capture: false });
+		runGit(['push', ...(forcePush ? ['--force'] : []), '-u', remoteName, defaultBranch], { cwd, capture: false });
 	}
 	if (createStaging) {
 		runGit(['checkout', '-B', 'staging'], { cwd });
 		if (push) {
-			runGit(['push', '-u', remoteName, 'staging'], { cwd, capture: false });
+			runGit(['push', ...(forcePush ? ['--force'] : []), '-u', remoteName, 'staging'], { cwd, capture: false });
 		}
 		runGit(['checkout', defaultBranch], { cwd });
 	}

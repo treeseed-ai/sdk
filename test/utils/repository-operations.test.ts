@@ -28,6 +28,7 @@ function createRepo() {
 	git(repo, ['config', 'user.email', 'test@example.com']);
 	git(repo, ['config', 'user.name', 'TreeSeed Test']);
 	mkdirSync(resolve(repo, 'src/content/notes'), { recursive: true });
+	mkdirSync(resolve(repo, 'src/content/objectives'), { recursive: true });
 	mkdirSync(resolve(repo, 'src/content/proposals'), { recursive: true });
 	mkdirSync(resolve(repo, 'src/content/decisions'), { recursive: true });
 	writeFileSync(resolve(repo, 'README.md'), 'fixture\n', 'utf8');
@@ -132,6 +133,54 @@ describe('platform repository operations', () => {
 				collection: 'secrets',
 				payload: { title: 'Nope' },
 			}, { workspaceRoot: fixture.workspace })).rejects.toThrow(/Unsupported/u);
+		} finally {
+			rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	it('can overwrite an existing content body while preserving frontmatter', async () => {
+		const fixture = createRepo();
+		try {
+			writeFileSync(resolve(fixture.repo, 'src/content/objectives/core.mdx'), [
+				'---',
+				'id: objective:core',
+				'title: Launch Core Objective',
+				'description: Original launch description',
+				'status: live',
+				'timeHorizon: long-term',
+				'customLineage: from-template',
+				'---',
+				'',
+				'Original body.',
+				'',
+			].join('\n'), 'utf8');
+			git(fixture.repo, ['add', '.']);
+			git(fixture.repo, ['commit', '-m', 'seed core objective']);
+			const normalized = normalizePlatformContentInput('objectives', {
+				title: 'Core Objective',
+				slug: 'core',
+				description: 'Updated generated description',
+				body: '# Core Objective\n\nUpdated body.',
+			});
+			if ('error' in normalized) throw new Error(normalized.error);
+			const result = await executePlatformRepositoryOperation('write_content_record', {
+				projectId: 'project-1',
+				repository: fixture.descriptor,
+				collection: 'objectives',
+				normalized,
+				payload: {
+					title: 'Core Objective',
+					slug: 'core',
+					overwrite: true,
+					preserveFrontmatter: true,
+				},
+			}, { workspaceRoot: fixture.workspace });
+			const written = readFileSync(resolve(result.repositoryPath, 'src/content/objectives/core.mdx'), 'utf8');
+			expect(written).toContain('title: Launch Core Objective');
+			expect(written).toContain('customLineage: from-template');
+			expect(written).toContain('# Core Objective');
+			expect(written).toContain('Updated body.');
+			expect(written).not.toContain('Original body.');
 		} finally {
 			rmSync(fixture.root, { recursive: true, force: true });
 		}

@@ -12,6 +12,10 @@ const SAFE_MANAGED_HOST_CI_VARIABLES = new Set([
 	'TREESEED_PROJECT_ID',
 ]);
 
+const SAFE_MANAGED_HOST_CI_SECRETS = new Set([
+	'TREESEED_TURNSTILE_SECRET_KEY',
+]);
+
 const MANAGED_HOST_FORBIDDEN_VARIABLE_PREFIXES = [
 	'CLOUDFLARE_',
 	'RAILWAY_',
@@ -44,7 +48,7 @@ export function usesManagedHostOperationRequests(
 
 export function filterManagedHostGitHubEnvironment(required: { secrets: string[]; variables: string[] }) {
 	return {
-		secrets: [],
+		secrets: required.secrets.filter((name) => SAFE_MANAGED_HOST_CI_SECRETS.has(name)),
 		variables: required.variables.filter((name) => {
 			if (SAFE_MANAGED_HOST_CI_VARIABLES.has(name)) {
 				return true;

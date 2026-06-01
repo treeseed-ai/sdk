@@ -85,6 +85,7 @@ export type TreeseedHostingAuditOptions = {
 	valuesOverlay?: Record<string, string | undefined>;
 	hostKinds?: TreeseedHostingAuditHostKind[];
 	providerConnectionChecks?: boolean;
+	resourceChecks?: boolean;
 	write?: (line: string) => void;
 };
 
@@ -615,6 +616,7 @@ export async function runTreeseedHostingAudit({
 	valuesOverlay = {},
 	hostKinds: requestedHostKinds,
 	providerConnectionChecks: shouldCheckProviderConnections = true,
+	resourceChecks: shouldCheckResources = true,
 	write,
 }: TreeseedHostingAuditOptions): Promise<TreeseedHostingAuditReport> {
 	const resolved = resolveTreeseedHostingAuditTarget({ tenantRoot, environment });
@@ -665,7 +667,17 @@ export async function runTreeseedHostingAudit({
 	const systems = reconcileSystemsForHostKinds(hostKinds);
 	let resources: Record<string, unknown> = {};
 	let repaired = false;
-	if (resolved.environment !== 'local' && systems.length > 0) {
+	if (!shouldCheckResources) {
+		checks.push({
+			id: 'resources.skipped',
+			hostType: 'platform',
+			provider: 'treeseed',
+			category: 'resource',
+			status: 'skipped',
+			severity: 'info',
+			summary: 'Hosted provider resource checks are skipped for this audit.',
+		});
+	} else if (resolved.environment !== 'local' && systems.length > 0) {
 		try {
 			const state = loadDeployState(tenantRoot, deployConfig, { target: resolved.target });
 			resources = buildProvisioningSummary(deployConfig, state, resolved.target) as Record<string, unknown>;

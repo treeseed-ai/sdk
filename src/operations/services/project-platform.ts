@@ -1296,6 +1296,22 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 		{
 			environment: options.scope,
 			provider: 'cloudflare' as const,
+			resourceKind: 'kv' as const,
+			logicalName: state.kvNamespaces?.FORM_GUARD_KV?.name ?? 'form-guard',
+			locator: state.kvNamespaces?.FORM_GUARD_KV?.id ?? null,
+			metadata: state.kvNamespaces?.FORM_GUARD_KV ?? {},
+		},
+		{
+			environment: options.scope,
+			provider: 'cloudflare' as const,
+			resourceKind: 'turnstile-widget' as const,
+			logicalName: state.turnstileWidgets?.formGuard?.name ?? 'form-guard-turnstile',
+			locator: state.turnstileWidgets?.formGuard?.sitekey ?? null,
+			metadata: state.turnstileWidgets?.formGuard ?? {},
+		},
+		{
+			environment: options.scope,
+			provider: 'cloudflare' as const,
 			resourceKind: 'r2' as const,
 			logicalName: state.content?.bucketName ?? 'content',
 			locator: state.content?.manifestKey ?? null,

@@ -10,7 +10,7 @@ import { loadTreeseedPlugins, type LoadedTreeseedPluginEntry } from './plugins.t
 import { loadTreeseedManifest } from './tenant-config.ts';
 
 export const TREESEED_ENVIRONMENT_SCOPES = ['local', 'staging', 'prod'] as const;
-export const TREESEED_ENVIRONMENT_REQUIREMENTS = ['required', 'conditional', 'optional'] as const;
+export const TREESEED_ENVIRONMENT_REQUIREMENTS = ['required', 'conditional', 'optional', 'generated'] as const;
 export const TREESEED_ENVIRONMENT_TARGETS = [
 	'local-runtime',
 	'local-cloudflare',

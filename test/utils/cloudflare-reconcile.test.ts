@@ -8,6 +8,7 @@ const railwayEnvMock = vi.fn();
 
 let kvCreated = false;
 let d1Created = false;
+let turnstileWidgets: Array<{ name: string; sitekey: string; secret?: string; domains?: string[]; mode?: string }> = [];
 
 const deployState = {
 	version: 2,
@@ -53,6 +54,17 @@ const deployState = {
 		buildOutputDir: 'dist',
 		url: null,
 	},
+	turnstileWidgets: {
+		formGuard: {
+			name: 'acme-docs-turnstile-staging',
+			sitekey: null,
+			secret: null,
+			mode: 'managed',
+			domains: ['example.com'],
+			managed: true,
+			lastSyncedAt: null,
+		},
+	},
 	content: {
 		r2Binding: 'TREESEED_CONTENT_BUCKET',
 		bucketName: 'acme-docs-content',
@@ -83,6 +95,7 @@ vi.mock('../../src/operations/services/deploy.ts', async () => {
 		buildSecretMap: vi.fn(() => ({
 			TREESEED_FORM_TOKEN_SECRET: 'generated-form-secret',
 			TREESEED_EDITORIAL_PREVIEW_SECRET: 'generated-preview-secret',
+			TREESEED_TURNSTILE_SECRET_KEY: deployState.turnstileWidgets.formGuard.secret,
 		})),
 		cloudflareApiRequest: cloudflareApiRequestMock,
 		ensureGeneratedWranglerConfig: vi.fn(() => ({
@@ -102,6 +115,29 @@ vi.mock('../../src/operations/services/deploy.ts', async () => {
 			{ name: 'acme-docs-agent-work-dlq-staging', id: 'queue-dlq-1' },
 		]),
 		listR2Buckets: vi.fn(() => [{ name: 'acme-docs-content' }]),
+		listTurnstileWidgets: vi.fn(() => turnstileWidgets),
+		createTurnstileWidget: vi.fn((_env, input) => {
+			const widget = {
+				name: input.name,
+				sitekey: 'managed-site-key',
+				secret: 'managed-secret-key',
+				domains: input.domains,
+				mode: input.mode,
+			};
+			turnstileWidgets.push(widget);
+			return widget;
+		}),
+		updateTurnstileWidget: vi.fn((_env, sitekey, input) => {
+			const widget = turnstileWidgets.find((entry) => entry.sitekey === sitekey) ?? {
+				name: input.name,
+				sitekey,
+				secret: 'managed-secret-key',
+			};
+			widget.name = input.name;
+			widget.domains = input.domains;
+			widget.mode = input.mode;
+			return widget;
+		}),
 		loadDeployState: vi.fn(() => deployState),
 		reconcileCloudflareWebCacheRules: vi.fn(),
 		runWrangler: vi.fn((args: string[]) => {
@@ -189,10 +225,15 @@ vi.mock('../../src/operations/services/railway-api.ts', () => ({
 }));
 
 describe('cloudflare reconcile adapters', () => {
-	beforeEach(() => {
-		kvCreated = false;
-		d1Created = false;
-		cloudflareApiRequestMock.mockReset();
+beforeEach(() => {
+	kvCreated = false;
+	d1Created = false;
+	turnstileWidgets = [];
+	deployState.turnstileWidgets.formGuard.sitekey = null;
+	deployState.turnstileWidgets.formGuard.secret = null;
+	deployState.turnstileWidgets.formGuard.domains = ['example.com'];
+	deployState.pages.url = null;
+	cloudflareApiRequestMock.mockReset();
 		runWranglerMock.mockReset();
 		upsertRailwayVariablesMock.mockReset();
 		railwayEnvMock.mockReset();
@@ -256,6 +297,7 @@ describe('cloudflare reconcile adapters', () => {
 					pages: { productionBranch: 'main', stagingBranch: 'staging' },
 					r2: {},
 				},
+				turnstile: { enabled: true },
 			},
 			launchEnv: {},
 			session: new Map(),
@@ -263,8 +305,6 @@ describe('cloudflare reconcile adapters', () => {
 		context.launchEnv = {
 			CLOUDFLARE_ACCOUNT_ID: 'account-123',
 			CLOUDFLARE_API_TOKEN: 'cf-token',
-			TREESEED_PUBLIC_TURNSTILE_SITE_KEY: 'site-key',
-			TREESEED_TURNSTILE_SECRET_KEY: 'secret-key',
 		};
 
 		const observed = adapter!.observe({ unit, context } as never);
@@ -280,6 +320,13 @@ describe('cloudflare reconcile adapters', () => {
 				&& options?.body?.name === 'acme-docs-site-data-staging'
 			),
 		).toBe(true);
+		expect(deployState.turnstileWidgets.formGuard).toMatchObject({
+			name: 'acme-docs-turnstile-staging',
+			sitekey: 'managed-site-key',
+			secret: 'managed-secret-key',
+			mode: 'managed',
+		});
+		expect(deployState.turnstileWidgets.formGuard.domains).toEqual(expect.arrayContaining(['example.com', 'acme-docs.pages.dev']));
 
 		const patchCall = cloudflareApiRequestMock.mock.calls.find(([, options]) => options?.method === 'PATCH');
 		expect(patchCall).toBeTruthy();
@@ -288,7 +335,7 @@ describe('cloudflare reconcile adapters', () => {
 				preview: {
 					env_vars: {
 						EXISTING_VAR: { type: 'plain_text', value: 'keep' },
-						TREESEED_PUBLIC_TURNSTILE_SITE_KEY: { type: 'plain_text', value: 'site-key' },
+						TREESEED_PUBLIC_TURNSTILE_SITE_KEY: { type: 'plain_text', value: 'managed-site-key' },
 						TREESEED_PROJECT_ID: { type: 'plain_text', value: 'docs' },
 						TREESEED_HOSTING_TEAM_ID: { type: 'plain_text', value: 'acme' },
 					},
