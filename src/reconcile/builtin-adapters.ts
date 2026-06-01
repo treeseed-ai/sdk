@@ -384,6 +384,19 @@ function turnstileDomainsEqual(left: unknown, right: unknown) {
 	return JSON.stringify(normalizeTurnstileDomains(left)) === JSON.stringify(normalizeTurnstileDomains(right));
 }
 
+function mergeTurnstileWidget(...widgets: Array<Record<string, unknown> | null | undefined>) {
+	const merged: Record<string, unknown> = {};
+	for (const widget of widgets) {
+		if (!widget) continue;
+		for (const [key, value] of Object.entries(widget)) {
+			if (value === undefined || value === null) continue;
+			if (key === 'domains' && !Array.isArray(value)) continue;
+			merged[key] = value;
+		}
+	}
+	return Object.keys(merged).length > 0 ? merged : null;
+}
+
 function findTurnstileWidget(widgets: unknown[], current: Record<string, unknown> | null | undefined, desiredName: string | null | undefined) {
 	return widgets.find((entry: any) => {
 		if (!entry || typeof entry !== 'object') return false;
@@ -1452,8 +1465,17 @@ function verifyCloudflareUnitOnce(input: TreeseedReconcileAdapterInput, postcond
 		case 'turnstile-widget': {
 			const current = state.turnstileWidgets?.formGuard ?? {};
 			const cachedLive = findTurnstileWidget(turnstileWidgets, current, input.unit.spec.name as string);
+			const refreshedListedLive = findTurnstileWidget(
+				listTurnstileWidgets(input.context.tenantRoot, env),
+				current,
+				input.unit.spec.name as string,
+			);
 			const refreshedLive = current.sitekey ? getTurnstileWidget(env, String(current.sitekey)) : null;
-			const live = refreshedLive ?? cachedLive;
+			const live = mergeTurnstileWidget(
+				cachedLive,
+				refreshedListedLive,
+				refreshedLive,
+			);
 			const desiredDomains = normalizeTurnstileDomains(input.unit.spec.domains);
 			return summarizeVerification(input.unit.unitId, [
 				verificationCheck('turnstile.exists', 'Turnstile widget exists by name and sitekey', 'api', {
