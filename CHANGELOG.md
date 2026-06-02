@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.10.24] - 2026-06-02
+
+### Added
+
+- feat(sdk): add local starter support and projectRoot to deploy config (c696d9130251)
+- feat(operations): add timing instrumentation to bootstrap and deployment (024ad64ed27b)
+
+### Tests
+
+- build(build): update package metadata (48f5daf9c8ad)
+- build(build): update package metadata (849a81d6f201)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.24.
+
 ## [0.10.23] - 2026-06-02
 
 ### Added
