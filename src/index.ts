@@ -1,5 +1,6 @@
 export { AgentSdk, ScopedAgentSdk } from './sdk.ts';
 export { ContentGraphRuntime } from './graph.ts';
+export * from './treedb/index.ts';
 export {
 	TREESEED_DEFAULT_STARTER_TEMPLATE_ID,
 	TREESEED_TEMPLATE_ID_ALIASES,

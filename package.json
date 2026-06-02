@@ -234,6 +234,10 @@
       "types": "./dist/graph/context-query-contracts.d.ts",
       "default": "./dist/graph/context-query-contracts.js"
     },
+    "./treedb": {
+      "types": "./dist/treedb/index.d.ts",
+      "default": "./dist/treedb/index.js"
+    },
     "./sdk-filters": {
       "types": "./dist/sdk-filters.d.ts",
       "default": "./dist/sdk-filters.js"

@@ -4,6 +4,11 @@ import { normalizeAgentCliOptions } from './cli-tools.ts';
 import { ContentStore } from './content-store.ts';
 import { CloudflareD1AgentDatabase, MemoryAgentDatabase, type AgentDatabase } from './d1-store.ts';
 import { ContentGraphRuntime } from './graph.ts';
+import { TreeDbClient, type TreeDbClientOptions } from './treedb/client.ts';
+import { TreeDbGraphAdapter } from './treedb/graph-adapter.ts';
+import { TreeDbQueryAdapter } from './treedb/query-adapter.ts';
+import { TreeDbRepositoryAdapter } from './treedb/repository-adapter.ts';
+import { TreeDbWorkspaceAdapter } from './treedb/workspace-adapter.ts';
 import { loadTreeseedPlugins, type LoadedTreeseedPluginEntry } from './platform/plugins.ts';
 import { buildScopedModelRegistry, resolveModelDefinition } from './model-registry.ts';
 import { findDispatchCapability } from './dispatch.ts';
@@ -92,7 +97,20 @@ export interface AgentSdkOptions {
 	graphRankingProvider?: SdkGraphRankingProvider;
 	plugins?: LoadedTreeseedPluginEntry[];
 	dispatch?: SdkDispatchConfig;
+	treeDb?: AgentSdkTreeDbOptions;
 }
+
+export interface AgentSdkTreeDbOptions {
+	enabled: boolean;
+	client: TreeDbClient | TreeDbClientOptions;
+	repoId?: string;
+	contentPathMap?: Record<string, string>;
+	defaultRef?: string;
+	defaultAuthor?: { name: string; email: string };
+	branchPrefix?: string;
+}
+
+type SdkContentPort = Pick<ContentStore, 'list' | 'get' | 'search' | 'follow' | 'pick' | 'create' | 'update'>;
 
 function normalizeAgentSpec(entry: Record<string, unknown> | null): AgentRuntimeSpec | null {
 	if (!entry) {
@@ -127,9 +145,17 @@ function operationAllowed(
 export class AgentSdk {
 	readonly repoRoot: string;
 	readonly database: AgentDatabase;
-	readonly content: ContentStore;
+	readonly content: SdkContentPort;
 	readonly models: SdkModelRegistry;
-	private readonly graph: ContentGraphRuntime;
+	readonly treeDb?: {
+		client: TreeDbClient;
+		content: TreeDbRepositoryAdapter;
+		graph: TreeDbGraphAdapter;
+		workspace: TreeDbWorkspaceAdapter;
+		query: TreeDbQueryAdapter;
+	};
+	private readonly contentPort: SdkContentPort;
+	private readonly graph: ContentGraphRuntime | TreeDbGraphAdapter;
 	private readonly dispatchConfig?: SdkDispatchConfig;
 
 	constructor(options: AgentSdkOptions = {}) {
@@ -137,7 +163,7 @@ export class AgentSdk {
 		this.repoRoot = repoRoot;
 		this.models = options.modelRegistry ?? buildScopedModelRegistry(repoRoot, options.models);
 		this.database = options.database ?? new MemoryAgentDatabase();
-		this.content = new ContentStore(repoRoot, this.database, this.models);
+		const localContent = new ContentStore(repoRoot, this.database, this.models);
 		let plugins = options.plugins;
 		if (!plugins) {
 			try {
@@ -146,10 +172,54 @@ export class AgentSdk {
 				plugins = [];
 			}
 		}
-		this.graph = new ContentGraphRuntime(repoRoot, this.models, {
+		const localGraph = new ContentGraphRuntime(repoRoot, this.models, {
 			rankingProvider: options.graphRankingProvider,
 			plugins,
 		});
+		if (options.treeDb?.enabled) {
+			const client = options.treeDb.client instanceof TreeDbClient
+				? options.treeDb.client
+				: new TreeDbClient(options.treeDb.client);
+			const repoId = options.treeDb.repoId
+				?? (options.treeDb.client instanceof TreeDbClient ? undefined : options.treeDb.client.repoId);
+			if (!repoId) {
+				throw new Error('AgentSdk TreeDB mode requires a repoId.');
+			}
+			const content = new TreeDbRepositoryAdapter({
+				client,
+				models: this.models,
+				repoRoot,
+				defaultRef: options.treeDb.defaultRef,
+				defaultAuthor: options.treeDb.defaultAuthor,
+				contentPathMap: options.treeDb.contentPathMap,
+				branchPrefix: options.treeDb.branchPrefix,
+			});
+			const graph = new TreeDbGraphAdapter({
+				client,
+				repoId,
+				defaultRef: options.treeDb.defaultRef,
+			});
+			this.treeDb = {
+				client,
+				content,
+				graph,
+				workspace: new TreeDbWorkspaceAdapter({ client, repoId }),
+				query: new TreeDbQueryAdapter({
+					client,
+					models: this.models,
+					repoRoot,
+					contentPathMap: options.treeDb.contentPathMap,
+					defaultRef: options.treeDb.defaultRef,
+				}),
+			};
+			this.content = content;
+			this.contentPort = content;
+			this.graph = graph;
+		} else {
+			this.content = localContent;
+			this.contentPort = localContent;
+			this.graph = localGraph;
+		}
 		this.dispatchConfig = options.dispatch;
 	}
 
@@ -260,7 +330,7 @@ export class AgentSdk {
 		const definition = resolveModelDefinition(request.model, this.models);
 		const payload =
 			definition.storage === 'content'
-				? await this.content.get({ ...request, model: definition.name })
+				? await this.contentPort.get({ ...request, model: definition.name })
 				: await this.database.get({ ...request, model: definition.name });
 		return this.envelope(definition.name, 'get', payload);
 	}
@@ -276,7 +346,7 @@ export class AgentSdk {
 		const definition = resolveModelDefinition(request.model, this.models);
 		const payload =
 			definition.storage === 'content'
-				? await this.content.search({ ...request, model: definition.name })
+				? await this.contentPort.search({ ...request, model: definition.name })
 				: await this.database.search({ ...request, model: definition.name });
 		return this.envelope(definition.name, 'search', payload, {
 			count: Array.isArray(payload) ? payload.length : 0,
@@ -287,7 +357,7 @@ export class AgentSdk {
 		const definition = resolveModelDefinition(request.model, this.models);
 		const payload =
 			definition.storage === 'content'
-				? await this.content.follow({ ...request, model: definition.name })
+				? await this.contentPort.follow({ ...request, model: definition.name })
 				: await this.database.follow({ ...request, model: definition.name });
 		return this.envelope(definition.name, 'follow', payload, {
 			count: payload.items.length,
@@ -298,7 +368,7 @@ export class AgentSdk {
 		const definition = resolveModelDefinition(request.model, this.models);
 		const payload =
 			definition.storage === 'content'
-				? await this.content.pick({ ...request, model: definition.name })
+				? await this.contentPort.pick({ ...request, model: definition.name })
 				: await this.database.pick({ ...request, model: definition.name });
 		return this.envelope(definition.name, 'pick', payload, {
 			claimed: Boolean(payload.item),
@@ -309,7 +379,7 @@ export class AgentSdk {
 		const definition = resolveModelDefinition(request.model, this.models);
 		const payload =
 			definition.storage === 'content'
-				? await this.content.create({ ...request, model: definition.name })
+				? await this.contentPort.create({ ...request, model: definition.name })
 				: await this.database.create({ ...request, model: definition.name });
 		return this.envelope(definition.name, 'create', payload);
 	}
@@ -318,7 +388,7 @@ export class AgentSdk {
 		const definition = resolveModelDefinition(request.model, this.models);
 		const payload =
 			definition.storage === 'content'
-				? await this.content.update({ ...request, model: definition.name })
+				? await this.contentPort.update({ ...request, model: definition.name })
 				: await this.database.update({ ...request, model: definition.name });
 		return this.envelope(definition.name, 'update', payload);
 	}

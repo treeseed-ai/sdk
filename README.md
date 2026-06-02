@@ -103,6 +103,57 @@ ctx <target>
 
 The old `key=value` graph DSL is no longer supported.
 
+## TreeDB Remote Repository Mode
+
+TreeDB support is opt-in. Local SDK behavior remains the default.
+
+Use the low-level TreeDB client when you want direct repository, workspace, query, graph, registry, or context calls:
+
+```ts
+import { TreeDbClient } from '@treeseed/sdk/treedb';
+
+const treeDb = new TreeDbClient({
+  baseUrl: 'http://localhost:4000',
+  token: process.env.TREEDB_TOKEN,
+  repoId: 'repo_123',
+});
+
+const whoami = await treeDb.whoami();
+const file = await treeDb.readRepositoryFile({
+  path: 'docs/readme.md',
+  parseFrontmatter: true,
+});
+```
+
+`AgentSdk` can delegate content-backed model and graph calls to TreeDB when configured explicitly:
+
+```ts
+import { AgentSdk, TreeDbClient } from '@treeseed/sdk';
+
+const treeDb = new TreeDbClient({
+  baseUrl: 'http://localhost:4000',
+  token: process.env.TREEDB_TOKEN,
+  repoId: 'repo_123',
+});
+
+const sdk = new AgentSdk({
+  repoRoot: process.cwd(),
+  treeDb: {
+    enabled: true,
+    client: treeDb,
+    repoId: 'repo_123',
+    defaultRef: 'refs/heads/main',
+  },
+});
+
+const docs = await sdk.search({
+  model: 'knowledge',
+  filters: [{ field: 'status', op: 'eq', value: 'published' }],
+});
+```
+
+TreeDB mode keeps TreeSeed model semantics in the SDK model registry. TreeDB receives generic repository/ref/path/frontmatter/body/query requests and returns generic repository/file/query/graph results.
+
 ## Capacity Scheduling Contracts
 
 The SDK owns the provider-neutral capacity runtime helpers used by the agent manager, workers, and market control plane. These helpers keep work estimation separate from provider cost by normalizing `taskSignature + executionProfileId` estimates, then routing against grants, provider lanes, quality requirements, quota/congestion pressure, attention/context saturation, utility, predictive reserve, and hybrid phase metadata.
