@@ -6,6 +6,8 @@ import type {
 	TreeDbFederatedQueryResult,
 	TreeDbFederatedSearchRequest,
 	TreeDbFederatedSearchResult,
+	TreeDbFederationQueryPlan,
+	TreeDbFederationQueryPlanRequest,
 	TreeDbRepositoryPlacement,
 } from './types.ts';
 
@@ -45,6 +47,10 @@ export class TreeDbFederatedClient {
 
 	async resolveRepositoryForWrite(repoId: string): Promise<TreeDbClient> {
 		return this.clientForPlacement(await this.registry.resolveRepository(repoId), repoId);
+	}
+
+	async planQuery(input: TreeDbFederationQueryPlanRequest): Promise<TreeDbFederationQueryPlan> {
+		return this.registry.client.planFederatedQuery(input);
 	}
 
 	async query(input: TreeDbFederatedQueryRequest): Promise<TreeDbFederatedQueryResult> {

@@ -4,7 +4,7 @@ import type { TreeDbClientOptions, TreeDbNode, TreeDbRepositoryPlacement } from 
 export interface TreeDbRegistryClientOptions extends TreeDbClientOptions {}
 
 export class TreeDbRegistryClient {
-	private readonly client: TreeDbClient;
+	readonly client: TreeDbClient;
 
 	constructor(options: TreeDbRegistryClientOptions | TreeDbClient) {
 		this.client = options instanceof TreeDbClient ? options : new TreeDbClient(options);

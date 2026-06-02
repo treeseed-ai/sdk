@@ -1,6 +1,9 @@
 import { TreeDbApiError } from './errors.ts';
 import type {
 	SdkGraphSearchResult,
+	TreeDbAuditEvent,
+	TreeDbAuthMode,
+	TreeDbCapabilityGrant,
 	TreeDbCommitRequest,
 	TreeDbCommitResult,
 	TreeDbContextRequest,
@@ -12,6 +15,8 @@ import type {
 	TreeDbEffectiveScopeRequest,
 	TreeDbExecRequest,
 	TreeDbExecResult,
+	TreeDbFederationQueryPlan,
+	TreeDbFederationQueryPlanRequest,
 	TreeDbFile,
 	TreeDbFileMutationResult,
 	TreeDbGraphNodeRequest,
@@ -189,11 +194,50 @@ export class TreeDbClient {
 		return this.request<TreeDbWhoami>('GET', '/api/v1/auth/whoami');
 	}
 
+	authMode(): Promise<TreeDbAuthMode> {
+		return this.request<TreeDbAuthMode>('GET', '/api/v1/auth/mode');
+	}
+
 	effectiveScope(input: TreeDbEffectiveScopeRequest = {}): Promise<TreeDbEffectiveScope> {
 		return this.request<TreeDbEffectiveScope>('GET', '/api/v1/policy/effective-scope', undefined, {
 			query: { repoId: input.repoId },
 			tokenRequired: true,
 		});
+	}
+
+	listCapabilities(): Promise<{ capabilities: string[] }> {
+		return this.request<{ capabilities: string[] }>('GET', '/api/v1/policy/capabilities', undefined, { tokenRequired: true });
+	}
+
+	listCapabilityGrants(input: { actorId?: string; repoId?: string } = {}): Promise<TreeDbCapabilityGrant[]> {
+		return this.request<Record<string, unknown>>('GET', '/api/v1/policy/grants', undefined, {
+			query: input,
+			tokenRequired: true,
+		}).then((payload) => firstPayload<TreeDbCapabilityGrant[]>(payload, ['grants']));
+	}
+
+	putCapabilityGrant(input: TreeDbCapabilityGrant): Promise<TreeDbCapabilityGrant> {
+		return this.request<Record<string, unknown>>('POST', '/api/v1/policy/grants', input, { tokenRequired: true })
+			.then((payload) => firstPayload<TreeDbCapabilityGrant>(payload, ['grant']));
+	}
+
+	listAuditEvents(input: {
+		actorId?: string;
+		tenantId?: string;
+		repoId?: string;
+		eventType?: string;
+		limit?: number;
+	} = {}): Promise<{ events: TreeDbAuditEvent[]; page: { limit: number; hasMore: boolean } }> {
+		return this.request<{ events: TreeDbAuditEvent[]; page: { limit: number; hasMore: boolean } }>(
+			'GET',
+			'/api/v1/audit/events',
+			undefined,
+			{ query: input, tokenRequired: true },
+		);
+	}
+
+	planFederatedQuery(input: TreeDbFederationQueryPlanRequest): Promise<TreeDbFederationQueryPlan> {
+		return this.request<TreeDbFederationQueryPlan>('POST', '/api/v1/federation/query/plan', input, { tokenRequired: true });
 	}
 
 	getNode(): Promise<TreeDbNode> {

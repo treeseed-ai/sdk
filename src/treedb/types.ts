@@ -88,6 +88,59 @@ export interface TreeDbEffectiveScope {
 	paths: string[];
 }
 
+export interface TreeDbAuthMode {
+	mode: 'dev' | 'connected';
+	connected: boolean;
+	verifier?: {
+		type: 'jwt_hs256';
+		issuer?: string;
+	};
+}
+
+export interface TreeDbCapabilityGrant {
+	id?: string;
+	actorId: string;
+	tenantId: string;
+	repoIds: string[];
+	capabilities: string[];
+	refs: string[];
+	paths: string[];
+	expiresAt?: string | null;
+}
+
+export interface TreeDbAuditEvent {
+	id: string;
+	eventType: string;
+	actorId?: string | null;
+	tenantId?: string | null;
+	repoId?: string | null;
+	nodeId?: string | null;
+	workspaceId?: string | null;
+	operation?: string | null;
+	status?: string | null;
+	requestId?: string | null;
+	requestedScope?: Record<string, unknown> | null;
+	effectiveScope?: Record<string, unknown> | null;
+	data: Record<string, unknown>;
+	recordedAt: string;
+}
+
+export interface TreeDbFederationQueryPlanRequest {
+	repoIds: string[];
+	refs?: Record<string, string>;
+	paths?: Record<string, string[]>;
+	queryType?: string;
+	capabilities?: string[];
+}
+
+export interface TreeDbFederationQueryPlan {
+	requestedScope: Record<string, unknown>;
+	effectiveScope: Record<string, unknown>;
+	rejected: Array<Record<string, unknown>>;
+	executable: false;
+	reason: string;
+}
+
 export interface TreeDbNode {
 	id: string;
 	baseUrl: string;

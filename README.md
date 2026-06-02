@@ -154,6 +154,36 @@ const docs = await sdk.search({
 
 TreeDB mode keeps TreeSeed model semantics in the SDK model registry. TreeDB receives generic repository/ref/path/frontmatter/body/query requests and returns generic repository/file/query/graph results.
 
+TreeDB auth, policy, audit, and federation planning helpers are available on the same client:
+
+```ts
+const mode = await treeDb.authMode();
+const scope = await treeDb.effectiveScope({ repoId: 'repo_123' });
+
+await treeDb.putCapabilityGrant({
+  actorId: 'actor_agent',
+  tenantId: 'tenant_demo',
+  repoIds: ['repo_123'],
+  capabilities: ['files:read', 'files:search'],
+  refs: ['refs/heads/main'],
+  paths: ['docs/**'],
+});
+
+const audit = await treeDb.listAuditEvents({
+  repoId: 'repo_123',
+  eventType: 'repo.query_executed',
+  limit: 25,
+});
+
+const plan = await treeDb.planFederatedQuery({
+  repoIds: ['repo_123'],
+  capabilities: ['files:search'],
+  paths: { repo_123: ['docs/**'] },
+});
+```
+
+Federation planning is scope reduction only in this phase. The SDK does not fan out across every TreeDB node and filter locally.
+
 ## Capacity Scheduling Contracts
 
 The SDK owns the provider-neutral capacity runtime helpers used by the agent manager, workers, and market control plane. These helpers keep work estimation separate from provider cost by normalizing `taskSignature + executionProfileId` estimates, then routing against grants, provider lanes, quality requirements, quota/congestion pressure, attention/context saturation, utility, predictive reserve, and hybrid phase metadata.
