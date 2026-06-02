@@ -15,6 +15,9 @@ import type {
 	TreeDbEffectiveScopeRequest,
 	TreeDbExecRequest,
 	TreeDbExecResult,
+	TreeDbArtifact,
+	TreeDbArtifactDownload,
+	TreeDbArtifactExportRequest,
 	TreeDbFederationQueryPlan,
 	TreeDbFederationQueryPlanRequest,
 	TreeDbFile,
@@ -29,6 +32,10 @@ import type {
 	TreeDbGraphSubgraphRequest,
 	TreeDbHealth,
 	TreeDbListTreeRequest,
+	TreeDbMigration,
+	TreeDbMigrationRequest,
+	TreeDbMirrorSyncRequest,
+	TreeDbMirrorSyncResult,
 	TreeDbNode,
 	TreeDbPatchFileRequest,
 	TreeDbReadFileRequest,
@@ -41,6 +48,8 @@ import type {
 	TreeDbRepositorySearchRequest,
 	TreeDbSearchRequest,
 	TreeDbSearchResult,
+	TreeDbSnapshot,
+	TreeDbSnapshotBuildRequest,
 	TreeDbStatus,
 	TreeDbTreeEntry,
 	TreeDbClientOptions,
@@ -186,6 +195,64 @@ export class TreeDbClient {
 		return stripOk<T>(payload);
 	}
 
+	private async requestBinary(
+		path: string,
+		body: unknown,
+		options: {
+			query?: Record<string, string | number | boolean | null | undefined>;
+			tokenRequired?: boolean;
+		} = {},
+	): Promise<TreeDbArtifactDownload> {
+		if (options.tokenRequired && !this.token) {
+			throw new TreeDbApiError('TreeDB bearer token is required.', {
+				status: 401,
+				code: 'missing_token',
+			});
+		}
+		const response = await this.fetchImpl(`${this.baseUrl}${path}${this.query({ ...options.query, download: true })}`, {
+			method: 'POST',
+			headers: this.headers(true),
+			body: JSON.stringify(body),
+		}).catch((error: unknown) => {
+			throw new TreeDbApiError(error instanceof Error ? error.message : 'TreeDB network request failed.', {
+				status: 0,
+				code: 'network_error',
+				payload: error,
+			});
+		});
+
+		if (!response.ok) {
+			let payload: unknown;
+			try {
+				payload = await response.json();
+			} catch {
+				payload = undefined;
+			}
+			const errorBody = isRecord(payload) && isRecord(payload.error) ? payload.error : {};
+			throw new TreeDbApiError(
+				typeof errorBody.message === 'string'
+					? errorBody.message
+					: `TreeDB request failed with status ${response.status}.`,
+				{
+					status: response.status,
+					code: typeof errorBody.code === 'string' ? errorBody.code : 'treedb_api_error',
+					details: isRecord(errorBody.details) ? errorBody.details : {},
+					payload,
+				},
+			);
+		}
+
+		const content = await response.arrayBuffer();
+		const contentDisposition = response.headers.get('content-disposition');
+		return {
+			content,
+			contentType: response.headers.get('content-type'),
+			filename: parseFilename(contentDisposition),
+			checksum: response.headers.get('x-treedb-artifact-checksum') ?? undefined,
+			snapshotId: response.headers.get('x-treedb-snapshot-id') ?? undefined,
+		};
+	}
+
 	health(): Promise<TreeDbHealth> {
 		return this.request<TreeDbHealth>('GET', '/api/v1/health');
 	}
@@ -238,6 +305,63 @@ export class TreeDbClient {
 
 	planFederatedQuery(input: TreeDbFederationQueryPlanRequest): Promise<TreeDbFederationQueryPlan> {
 		return this.request<TreeDbFederationQueryPlan>('POST', '/api/v1/federation/query/plan', input, { tokenRequired: true });
+	}
+
+	buildSnapshot(input: TreeDbSnapshotBuildRequest = {}): Promise<TreeDbSnapshot> {
+		const { repoId, ...body } = input;
+		return this.request<Record<string, unknown>>('POST', `/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}/snapshots/build`, body, { tokenRequired: true })
+			.then((payload) => firstPayload<TreeDbSnapshot>(payload, ['snapshot']));
+	}
+
+	getSnapshot(input: { repoId?: string; snapshotId: string }): Promise<TreeDbSnapshot> {
+		return this.request<Record<string, unknown>>(
+			'GET',
+			`/api/v1/repos/${encodeURIComponent(this.repoId(input.repoId))}/snapshots/${encodeURIComponent(input.snapshotId)}`,
+			undefined,
+			{ tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbSnapshot>(payload, ['snapshot']));
+	}
+
+	exportArtifact(input: TreeDbArtifactExportRequest = {}): Promise<TreeDbArtifact> {
+		const { repoId, ...body } = input;
+		return this.request<Record<string, unknown>>('POST', `/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}/artifacts/export`, body, { tokenRequired: true })
+			.then((payload) => firstPayload<TreeDbArtifact>(payload, ['artifact']));
+	}
+
+	downloadArtifact(input: TreeDbArtifactExportRequest = {}): Promise<TreeDbArtifactDownload> {
+		const { repoId, ...body } = input;
+		return this.requestBinary(`/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}/artifacts/export`, body, {
+			tokenRequired: true,
+		});
+	}
+
+	syncMirror(input: TreeDbMirrorSyncRequest): Promise<TreeDbMirrorSyncResult> {
+		const { repoId, mirrorId, ...body } = input;
+		return this.request<TreeDbMirrorSyncResult>(
+			'POST',
+			`/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}/mirrors/${encodeURIComponent(mirrorId)}/sync`,
+			body,
+			{ tokenRequired: true },
+		);
+	}
+
+	createMigration(input: TreeDbMigrationRequest): Promise<{ migration: TreeDbMigration; placement?: TreeDbRepositoryPlacement }> {
+		const { repoId, ...body } = input;
+		return this.request<{ migration: TreeDbMigration; placement?: TreeDbRepositoryPlacement }>(
+			'POST',
+			`/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}/migrations`,
+			body,
+			{ tokenRequired: true },
+		);
+	}
+
+	getMigration(input: { repoId?: string; migrationId: string }): Promise<TreeDbMigration> {
+		return this.request<Record<string, unknown>>(
+			'GET',
+			`/api/v1/repos/${encodeURIComponent(this.repoId(input.repoId))}/migrations/${encodeURIComponent(input.migrationId)}`,
+			undefined,
+			{ tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbMigration>(payload, ['migration']));
 	}
 
 	getNode(): Promise<TreeDbNode> {
@@ -408,4 +532,12 @@ export class TreeDbClient {
 		return this.request<Record<string, unknown>>('POST', `/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}${path}`, body, { tokenRequired: true })
 			.then((payload) => firstPayload<SdkGraphSearchResult[]>(payload, ['results']));
 	}
+}
+
+function parseFilename(contentDisposition: string | null) {
+	if (!contentDisposition) {
+		return undefined;
+	}
+	const match = /filename="([^"]+)"/u.exec(contentDisposition) ?? /filename=([^;]+)/u.exec(contentDisposition);
+	return match?.[1];
 }

@@ -127,7 +127,7 @@ describe('sdk package graph', () => {
 			.filter((filePath) => !filePath.includes('/.treeseed/'))
 			.filter((filePath) => !filePath.includes('/.ts-run-'))
 			.filter((filePath) => !filePath.includes('/package-lock.json'))
-			.filter((filePath) => !filePath.endsWith('/sdk/test/utils/package-graph.test.ts'));
+			.filter((filePath) => !filePath.endsWith('/ts-sdk/test/utils/package-graph.test.ts'));
 
 		for (const filePath of files) {
 			const contents = readFileSync(filePath, 'utf8');

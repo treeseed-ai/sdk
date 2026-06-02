@@ -184,6 +184,39 @@ const plan = await treeDb.planFederatedQuery({
 
 Federation planning is scope reduction only in this phase. The SDK does not fan out across every TreeDB node and filter locally.
 
+Snapshot, artifact, mirror sync, and migration helpers are also available on `TreeDbClient`:
+
+```ts
+const snapshot = await treeDb.buildSnapshot({
+  ref: 'refs/heads/main',
+  kind: 'repository_snapshot',
+  paths: ['docs/**'],
+  includeGraph: true,
+});
+
+const artifact = await treeDb.exportArtifact({
+  snapshotId: snapshot.snapshotId,
+});
+
+const download = await treeDb.downloadArtifact({
+  snapshotId: snapshot.snapshotId,
+});
+
+await treeDb.syncMirror({
+  mirrorId: 'mirror_123',
+  remoteName: 'origin',
+});
+
+await treeDb.createMigration({
+  targetNodeId: 'node_mirror',
+  mode: 'primary_transfer',
+  dryRun: true,
+  requireMirrorSynced: false,
+});
+```
+
+`downloadArtifact()` returns an `ArrayBuffer` plus content type, filename, checksum, and snapshot headers. These APIs are generic TreeDB repository operations; TreeSeed package or release semantics are not encoded in TreeDB.
+
 ## Capacity Scheduling Contracts
 
 The SDK owns the provider-neutral capacity runtime helpers used by the agent manager, workers, and market control plane. These helpers keep work estimation separate from provider cost by normalizing `taskSignature + executionProfileId` estimates, then routing against grants, provider lanes, quality requirements, quota/congestion pressure, attention/context saturation, utility, predictive reserve, and hybrid phase metadata.

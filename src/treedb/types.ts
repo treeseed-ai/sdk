@@ -159,6 +159,7 @@ export interface TreeDbRepositoryPlacement {
 }
 
 export interface TreeDbMirror {
+	id?: string;
 	repositoryId?: string;
 	repoId?: string;
 	sourceNodeId: string;
@@ -509,6 +510,107 @@ export interface TreeDbFederatedSearchRequest extends TreeDbRepositorySearchRequ
 export interface TreeDbFederatedSearchResult {
 	results: Array<{ repoId: string; result: TreeDbRepositoryQueryResult }>;
 	errors?: Array<{ repoId: string; error: { code: string; message: string; status: number } }>;
+}
+
+export type TreeDbSnapshotKind =
+	| 'repository_snapshot'
+	| 'index_snapshot'
+	| 'graph_snapshot'
+	| 'search_snapshot'
+	| 'audit_export';
+
+export interface TreeDbSnapshotFile {
+	path: string;
+	objectId: string;
+	size: number;
+	contentHash: string;
+}
+
+export interface TreeDbArtifact {
+	artifactId: string;
+	snapshotId: string;
+	repoId: string;
+	format: 'tar.zst';
+	size: number;
+	checksum: string;
+	uri: string;
+	downloadUrl?: string;
+	createdAt?: string;
+}
+
+export interface TreeDbSnapshot {
+	snapshotId: string;
+	repoId: string;
+	ref: string;
+	commitSha: string;
+	kind: TreeDbSnapshotKind;
+	includedPaths: string[];
+	graphVersion?: string | null;
+	fileCount: number;
+	totalBytes: number;
+	files?: TreeDbSnapshotFile[];
+	checksums: Record<string, unknown>;
+	artifact?: TreeDbArtifact | null;
+	createdAt: string;
+}
+
+export interface TreeDbSnapshotBuildRequest {
+	repoId?: string;
+	ref?: string;
+	kind?: TreeDbSnapshotKind;
+	paths?: string[];
+	allowProtected?: boolean;
+	includeGraph?: boolean;
+}
+
+export interface TreeDbArtifactExportRequest extends TreeDbSnapshotBuildRequest {
+	snapshotId?: string;
+}
+
+export interface TreeDbArtifactDownload {
+	content: ArrayBuffer;
+	contentType: string | null;
+	filename?: string;
+	checksum?: string;
+	snapshotId?: string;
+}
+
+export interface TreeDbMirrorSyncRequest {
+	repoId?: string;
+	mirrorId: string;
+	remoteName?: string;
+	remoteUrl?: string;
+	refspecs?: string[];
+	dryRun?: boolean;
+}
+
+export interface TreeDbMirrorSyncResult {
+	mirror: TreeDbMirror;
+	sync: Record<string, unknown>;
+}
+
+export interface TreeDbMigrationRequest {
+	repoId?: string;
+	targetNodeId: string;
+	sourceNodeId?: string;
+	mode?: 'primary_transfer' | 'mirror_promotion';
+	dryRun?: boolean;
+	requireMirrorSynced?: boolean;
+}
+
+export interface TreeDbMigration {
+	id: string;
+	repositoryId: string;
+	sourceNodeId: string;
+	targetNodeId: string;
+	mode: string;
+	status: string;
+	dryRun: boolean;
+	requireMirrorSynced: boolean;
+	previousPlacement?: TreeDbRepositoryPlacement | null;
+	resultingPlacement?: TreeDbRepositoryPlacement | null;
+	createdAt: string;
+	completedAt?: string | null;
 }
 
 export type {
