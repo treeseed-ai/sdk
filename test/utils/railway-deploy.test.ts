@@ -19,6 +19,7 @@ import {
 	resolveRailwayAuthToken,
 	shouldRunRailwayPredeployBuild,
 	validateRailwayDeployPrerequisites,
+	waitForRailwayManagedDeploymentsSettled,
 	verifyRailwayManagedResources,
 	verifyRailwayScheduledJobs,
 	writeRailwayCliProjectConfig,
@@ -1055,6 +1056,116 @@ services:
 				type: 'deployment-status',
 				service: 'api',
 				ok: true,
+			}),
+		]));
+	});
+
+	it('fast-skips Railway deployment settle when no active deployment is present', async () => {
+		const tenantRoot = await createTenantFixture();
+		const services = configuredRailwayServices(tenantRoot, 'staging');
+		const progress: string[] = [];
+		const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+			data: {
+				project: {
+					id: 'railway-project-1',
+					environments: {
+						edges: [{
+							node: {
+								name: 'staging',
+								serviceInstances: {
+									edges: services.map((service) => ({
+										node: {
+											id: `instance-${service.key}`,
+											serviceId: `svc-${service.key}`,
+											serviceName: service.serviceName,
+											latestDeployment: null,
+										},
+									})),
+								},
+							},
+						}],
+					},
+				},
+			},
+		}), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+		const result = await waitForRailwayManagedDeploymentsSettled(tenantRoot, 'staging', {
+			services: services.map((service) => ({ ...service, projectId: 'railway-project-1' })),
+			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+			pollMs: 0,
+			onProgress(line) {
+				progress.push(line);
+			},
+		});
+
+		expect(result.ok).toBe(true);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(result.settle).toMatchObject({ pollCount: 1, status: 'skipped' });
+		expect(result.checks).toEqual(expect.arrayContaining([
+			expect.objectContaining({
+				type: 'deployment-status',
+				service: 'api',
+				ok: true,
+				skipped: true,
+				status: 'no_active_deployment',
+				settle: expect.objectContaining({ pollCount: 1, fastSkipped: true }),
+			}),
+		]));
+		expect(progress[0]).toMatch(/poll=1 elapsed=/u);
+	});
+
+	it('reports Railway settle timeout diagnostics with poll metadata', async () => {
+		const tenantRoot = await createTenantFixture();
+		const services = configuredRailwayServices(tenantRoot, 'staging');
+		const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+			data: {
+				project: {
+					id: 'railway-project-1',
+					environments: {
+						edges: [{
+							node: {
+								name: 'staging',
+								serviceInstances: {
+									edges: services.map((service) => ({
+										node: {
+											id: `instance-${service.key}`,
+											serviceId: `svc-${service.key}`,
+											serviceName: service.serviceName,
+											latestDeployment: {
+												id: 'deploy-1',
+												status: 'BUILDING',
+												createdAt: '2026-06-02T00:00:00.000Z',
+												deploymentStopped: false,
+												instances: [{ status: 'CREATED' }],
+												meta: {},
+											},
+										},
+									})),
+								},
+							},
+						}],
+					},
+				},
+			},
+		}), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+		const result = await waitForRailwayManagedDeploymentsSettled(tenantRoot, 'staging', {
+			services: services.map((service) => ({ ...service, projectId: 'railway-project-1' })),
+			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+			timeoutMs: 0,
+			pollMs: 0,
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.settle).toMatchObject({ pollCount: 1, status: 'timeout' });
+		expect(result.checks).toEqual(expect.arrayContaining([
+			expect.objectContaining({
+				service: 'api',
+				status: 'BUILDING',
+				observed: expect.objectContaining({ deploymentId: 'deploy-1' }),
+				settle: expect.objectContaining({ pollCount: 1, timeout: true }),
 			}),
 		]));
 	});

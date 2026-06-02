@@ -14,6 +14,7 @@ import { deriveTreeseedDesiredUnits } from './desired-state.ts';
 import { ensureTreeseedPersistedUnitState, desiredUnitSpecHash, loadTreeseedReconcileState, updateTreeseedPersistedUnitState, writeTreeseedReconcileState } from './state.ts';
 import { reverseTopologicallySortedUnits, topologicallySortDesiredUnits } from './units.ts';
 import { filterTreeseedDesiredUnitsByBootstrapSystems, type TreeseedRunnableBootstrapSystem } from './bootstrap-systems.ts';
+import { elapsedMs, formatDurationMs, type TreeseedTimingEntry } from '../timing.ts';
 
 function nowIso() {
 	return new Date().toISOString();
@@ -278,7 +279,9 @@ export async function reconcileTreeseedTarget({
 	const context = createRunContext(tenantRoot, target, env, write);
 	const results: TreeseedReconcileResult[] = [];
 	const verificationMap = new Map<string, TreeseedUnitVerificationResult>();
+	const timingEntries: TreeseedTimingEntry[] = [];
 	context.session.set('treeseed:verification-results', verificationMap);
+	context.session.set('treeseed:timings', timingEntries);
 	const planByUnitId = new Map(planned.plans.map((plan) => [plan.unit.unitId, plan]));
 	let persistChain = Promise.resolve();
 	const persistVerifiedResult = async (persisted: TreeseedUnitPersistedState, verifiedResult: TreeseedReconcileResult) => {
@@ -290,20 +293,43 @@ export async function reconcileTreeseedTarget({
 	};
 	await runByDependencyLevel(topologicallySortDesiredUnits(planned.units), async (unit) => {
 		const plan = planByUnitId.get(unit.unitId)!;
-		write?.(`Reconciling ${plan.unit.provider}:${plan.unit.unitType}...`);
+		const unitTiming: TreeseedTimingEntry = {
+			name: `reconcile:${plan.unit.provider}:${plan.unit.unitType}:${plan.unit.logicalName}`,
+			durationMs: 0,
+			status: 'running',
+			children: [],
+			metadata: { unitId: plan.unit.unitId, action: plan.diff.action },
+		};
+		const unitStartMs = performance.now();
+		timingEntries.push(unitTiming);
+		write?.(`Reconciling ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName})...`);
 		const adapter = registry.get(plan.unit.unitType, plan.unit.provider);
 		const persisted = ensureTreeseedPersistedUnitState(planned.state, plan.unit);
 		try {
+			const stageStartMs = performance.now();
 			await Promise.resolve(adapter.validate?.({
 				context,
 				unit: plan.unit,
 				persistedState: persisted,
 			}));
+			unitTiming.children?.push({
+				name: `${unitTiming.name}:validate`,
+				durationMs: elapsedMs(stageStartMs),
+				status: 'success',
+			});
 		} catch (error) {
+			unitTiming.children?.push({
+				name: `${unitTiming.name}:validate`,
+				durationMs: elapsedMs(unitStartMs),
+				status: 'failed',
+			});
+			unitTiming.durationMs = elapsedMs(unitStartMs);
+			unitTiming.status = 'failed';
 			wrapAdapterFailure('validate', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
 		}
 		let result;
 		try {
+			const stageStartMs = performance.now();
 			result = await Promise.resolve(adapter.reconcile({
 				context,
 				unit: plan.unit,
@@ -311,10 +337,22 @@ export async function reconcileTreeseedTarget({
 				observed: plan.observed,
 				diff: plan.diff,
 			}));
+			unitTiming.children?.push({
+				name: `${unitTiming.name}:reconcile`,
+				durationMs: elapsedMs(stageStartMs),
+				status: 'success',
+			});
 		} catch (error) {
+			unitTiming.children?.push({
+				name: `${unitTiming.name}:reconcile`,
+				durationMs: elapsedMs(unitStartMs),
+				status: 'failed',
+			});
+			unitTiming.durationMs = elapsedMs(unitStartMs);
+			unitTiming.status = 'failed';
 			wrapAdapterFailure('reconcile', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
 		}
-		write?.(`Verifying ${plan.unit.provider}:${plan.unit.unitType}...`);
+		write?.(`Verifying ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName})...`);
 		const postconditions = await Promise.resolve(adapter.requiredPostconditions?.({
 			context,
 			unit: plan.unit,
@@ -322,6 +360,7 @@ export async function reconcileTreeseedTarget({
 		}) ?? []);
 		let verification;
 		try {
+			const stageStartMs = performance.now();
 			verification = await Promise.resolve(adapter.verify({
 				context,
 				unit: plan.unit,
@@ -331,7 +370,19 @@ export async function reconcileTreeseedTarget({
 				result: result as TreeseedReconcileResult,
 				postconditions,
 			}));
+			unitTiming.children?.push({
+				name: `${unitTiming.name}:verify`,
+				durationMs: elapsedMs(stageStartMs),
+				status: (verification as TreeseedUnitVerificationResult).verified ? 'success' : 'failed',
+			});
 		} catch (error) {
+			unitTiming.children?.push({
+				name: `${unitTiming.name}:verify`,
+				durationMs: elapsedMs(unitStartMs),
+				status: 'failed',
+			});
+			unitTiming.durationMs = elapsedMs(unitStartMs);
+			unitTiming.status = 'failed';
 			wrapAdapterFailure('verify', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
 		}
 		const verifiedResult = {
@@ -343,6 +394,9 @@ export async function reconcileTreeseedTarget({
 			],
 		};
 		verificationMap.set(plan.unit.unitId, verification as TreeseedUnitVerificationResult);
+		unitTiming.durationMs = elapsedMs(unitStartMs);
+		unitTiming.status = (verification as TreeseedUnitVerificationResult).verified ? 'success' : 'failed';
+		write?.(`Finished ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName}) in ${formatDurationMs(unitTiming.durationMs)}.`);
 		if (!(verification as TreeseedUnitVerificationResult).verified) {
 			await persistVerifiedResult(persisted, verifiedResult);
 			throw new Error(`Treeseed reconcile verification failed for ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.unitId}): ${formatVerificationFailure(verification as TreeseedUnitVerificationResult)}`);
@@ -357,6 +411,7 @@ export async function reconcileTreeseedTarget({
 		plans: planned.plans,
 		results,
 		state: planned.state,
+		timings: timingEntries,
 	};
 }
 

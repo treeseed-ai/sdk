@@ -79,6 +79,48 @@ describe('bootstrap DAG runner', () => {
 
 		expect(maxActive).toBe(1);
 	});
+
+	it('records node timings and emits progress without changing results', async () => {
+		const timings: Array<{ name: string; durationMs: number; status?: string }> = [];
+		const writes: string[] = [];
+		const result = await runTreeseedBootstrapDag<string>({
+			nodes: [
+				{ id: 'a', label: 'first task', run: () => 'one' },
+				{ id: 'b', dependencies: ['a'], run: async () => 'two' },
+			],
+			execution: 'sequential',
+			timings,
+			write(line) {
+				writes.push(line);
+			},
+		});
+
+		expect(result.get('a')).toBe('one');
+		expect(result.get('b')).toBe('two');
+		expect(timings).toHaveLength(2);
+		expect(timings[0]).toMatchObject({ name: 'bootstrap:first task', status: 'success' });
+		expect(timings[0]?.durationMs).toBeGreaterThanOrEqual(0);
+		expect(writes).toEqual(expect.arrayContaining([
+			'[bootstrap][a] started',
+			expect.stringMatching(/^\[bootstrap\]\[a\] completed in /u),
+		]));
+	});
+
+	it('records failed node timings before rethrowing', async () => {
+		const timings: Array<{ name: string; durationMs: number; status?: string; metadata?: Record<string, unknown> }> = [];
+
+		await expect(runTreeseedBootstrapDag({
+			nodes: [{ id: 'fail', run: () => { throw new Error('nope'); } }],
+			timings,
+		})).rejects.toThrow('nope');
+
+		expect(timings).toHaveLength(1);
+		expect(timings[0]).toMatchObject({
+			name: 'bootstrap:fail',
+			status: 'failed',
+			metadata: expect.objectContaining({ error: 'nope' }),
+		});
+	});
 });
 
 describe('prefixed bootstrap process output', () => {

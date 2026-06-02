@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, extname, join, resolve } from 'node:path';
+import { elapsedMs, formatTimingMarkdown, formatTimingSummary, type TreeseedTimingEntry } from '../../timing.ts';
 import {
 	createControlPlaneReporter,
 	type ControlPlaneDeploymentReport,
@@ -77,6 +78,47 @@ const PROCESSING_PLATFORM_BOOTSTRAP_SYSTEMS: TreeseedRunnableBootstrapSystem[] =
 
 function stableHash(value: Buffer | string) {
 	return createHash('sha256').update(value).digest('hex');
+}
+
+function recordTiming(timings: TreeseedTimingEntry[], name: string, startMs: number, status = 'success', metadata?: Record<string, unknown>) {
+	const entry: TreeseedTimingEntry = {
+		name,
+		durationMs: elapsedMs(startMs),
+		status,
+		...(metadata ? { metadata } : {}),
+	};
+	timings.push(entry);
+	return entry;
+}
+
+async function timedPhase<T>(
+	timings: TreeseedTimingEntry[],
+	name: string,
+	run: () => Promise<T> | T,
+	metadata?: Record<string, unknown>,
+) {
+	const startMs = performance.now();
+	try {
+		const result = await Promise.resolve(run());
+		recordTiming(timings, name, startMs, 'success', metadata);
+		return result;
+	} catch (error) {
+		recordTiming(timings, name, startMs, 'failed', {
+			...(metadata ?? {}),
+			error: error instanceof Error ? error.message : String(error),
+		});
+		throw error;
+	}
+}
+
+function writeProviderTimingSummary(options: ProjectPlatformActionOptions, timings: TreeseedTimingEntry[]) {
+	const text = formatTimingSummary(timings);
+	options.write?.(text);
+	const summaryPath = String(options.env?.TREESEED_PROVIDER_TIMING_SUMMARY_PATH ?? process.env.TREESEED_PROVIDER_TIMING_SUMMARY_PATH ?? '').trim();
+	if (!summaryPath) {
+		return;
+	}
+	writeFileSync(summaryPath, formatTimingMarkdown(timings), { flag: 'a' });
 }
 
 export function inferEnvironmentFromBranch(tenantRoot: string) {
@@ -1224,25 +1266,30 @@ async function publishContent(
 }
 
 export async function provisionProjectPlatform(options: ProjectPlatformActionOptions) {
+	const timings: TreeseedTimingEntry[] = [];
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	const target = createPersistentDeployTarget(options.scope === 'local' ? 'staging' : options.scope);
 	const siteConfig = loadCliDeployConfig(options.tenantRoot);
 	const bootstrapSystems = resolveProjectPlatformBootstrapSystems(options, siteConfig);
 	const selectedSystems = new Set(bootstrapSystems);
 	const env = { ...process.env, ...(options.env ?? {}) };
-	const summary = await reconcileTreeseedTarget({
+	const summary = await timedPhase(timings, 'provision:reconcile', () => reconcileTreeseedTarget({
 		tenantRoot: options.tenantRoot,
 		target,
 		env,
 		systems: bootstrapSystems,
-	});
-	const verification = await collectTreeseedReconcileStatus({
+		write: options.write,
+	}));
+	timings.push(...((summary as { timings?: TreeseedTimingEntry[] }).timings ?? []));
+	const verification = await timedPhase(timings, 'provision:collect-reconcile-status', () => collectTreeseedReconcileStatus({
 		tenantRoot: options.tenantRoot,
 		target,
 		env,
 		systems: bootstrapSystems,
+	}));
+	await timedPhase(timings, 'provision:ensure-wrangler-config', () => {
+		ensureGeneratedWranglerConfig(options.tenantRoot, { target });
 	});
-	ensureGeneratedWranglerConfig(options.tenantRoot, { target });
 	const shouldValidateRailway = selectedSystems.has('api') || selectedSystems.has('agents');
 	const railwayValidation = shouldValidateRailway
 		? options.scope === 'local'
@@ -1381,6 +1428,7 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 			target: deployTargetLabel(target),
 			summary,
 			verification,
+			timings,
 			reconcileActions: summary.results.map((result) => ({
 				unitId: result.unit.unitId,
 				action: result.action,
@@ -1399,6 +1447,7 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 		target: deployTargetLabel(target),
 		summary,
 		verification,
+		timings,
 		railway: {
 			services: railwayValidation.services.map((service) => service.key),
 			schedules: railwaySchedules,
@@ -1408,6 +1457,8 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 }
 
 export async function deployProjectPlatform(options: ProjectPlatformActionOptions) {
+	const timings: TreeseedTimingEntry[] = [];
+	const deployStartMs = performance.now();
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	const commitSha = currentCommit(options.tenantRoot);
 	const branchName = currentRef(options.tenantRoot);
@@ -1427,7 +1478,8 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 	});
 
 	if (!options.skipProvision) {
-		await provisionProjectPlatform({ ...options, reporter, bootstrapSystems });
+		const provision = await timedPhase(timings, 'deploy:provision', () => provisionProjectPlatform({ ...options, reporter, bootstrapSystems }));
+		timings.push(...((provision as { timings?: TreeseedTimingEntry[] }).timings ?? []));
 	}
 
 	const nodes: Array<TreeseedBootstrapDagNode> = [];
@@ -1554,7 +1606,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		});
 	}
 
-	await runTreeseedBootstrapDag({ nodes, execution });
+	await runTreeseedBootstrapDag({ nodes, execution, write, timings });
 
 	const serviceResults = selectedRailwayServiceKeys
 		.map((serviceKey) => serviceResultsByKey.get(serviceKey))
@@ -1580,8 +1632,11 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 			scheduleVerification: railwayScheduleVerification,
 		});
 	}
-	const monitor = await monitorProjectPlatform({ ...options, reporter, bootstrapSystems });
-	const hostingRepair = await repairHostingAfterSuccessfulDeploy(options, bootstrapSystems);
+	const monitor = await timedPhase(timings, 'deploy:monitor', () => monitorProjectPlatform({ ...options, reporter, bootstrapSystems }));
+	timings.push(...((monitor as { timings?: TreeseedTimingEntry[] }).timings ?? []));
+	const hostingRepair = await timedPhase(timings, 'deploy:hosting-repair', () => repairHostingAfterSuccessfulDeploy(options, bootstrapSystems));
+	recordTiming(timings, 'deploy:total', deployStartMs);
+	writeProviderTimingSummary(options, timings);
 
 	await reportDeployment(reporter, {
 		environment: options.scope,
@@ -1597,6 +1652,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 				.filter((serviceKey) => serviceKey === 'api' ? selectedSystems.has('api') : selectedSystems.has('agents')),
 			monitor,
 			hostingRepair,
+			timings,
 		},
 		finishedAt: new Date().toISOString(),
 	});
@@ -1607,6 +1663,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		monitor,
 		hostingRepair,
 		serviceResults,
+		timings,
 	};
 }
 
@@ -1629,6 +1686,7 @@ export async function publishProjectContent(options: ProjectPlatformActionOption
 }
 
 export async function monitorProjectPlatform(options: ProjectPlatformActionOptions) {
+	const timings: TreeseedTimingEntry[] = [];
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
 	const env = { ...process.env, ...(options.env ?? {}) };
 	const target = createPersistentDeployTarget(options.scope === 'local' ? 'staging' : options.scope);
@@ -1642,11 +1700,11 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 	const apiMonitorEndpoints = resolveApiMonitorEndpoints(siteConfig, apiBaseUrl);
 	const railwayResources = options.scope === 'local' || (!apiSelected && !agentsSelected)
 		? { ok: true, skipped: true, reason: options.scope === 'local' ? 'local_scope' : 'railway_not_selected' }
-		: await verifyRailwayManagedResources(options.tenantRoot, options.scope, {
+		: await timedPhase(timings, 'monitor:railway-resources', () => verifyRailwayManagedResources(options.tenantRoot, options.scope, {
 			env,
 			settleDeployments: true,
 			onProgress: options.write,
-		});
+		}));
 	const skippedApiCheck = apiSelected
 		? { ok: false, skipped: true, reason: 'api_url_unconfigured' }
 		: { ok: true, skipped: true, reason: 'api_not_selected' };
@@ -1657,14 +1715,14 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		? { ok: true, skipped: true, reason: 'processing_agent_api' }
 		: skippedApiCheck;
 	const checks = {
-		pages: await probeHttp(webProbeUrl, { attempts: 3, delayMs: 5000 }),
-		apiHealth: apiSelected && apiMonitorEndpoints.apiHealth ? await probeHttp(apiMonitorEndpoints.apiHealth, { attempts: 8, delayMs: 10000 }) : skippedApiCheck,
-		apiReady: apiSelected && apiMonitorEndpoints.apiReady ? await probeHttp(apiMonitorEndpoints.apiReady, { attempts: 8, delayMs: 10000 }) : skippedApiCheck,
-		d1Health: apiSelected && apiMonitorEndpoints.d1Health ? await probeHttp(apiMonitorEndpoints.d1Health, { attempts: 8, delayMs: 10000 }) : skippedD1Check,
-		agentHealth: agentsSelected && apiMonitorEndpoints.agentHealth ? await probeHttp(apiMonitorEndpoints.agentHealth, { attempts: 8, delayMs: 10000 }) : skippedAgentCheck,
-		r2: options.dryRun ? { ok: true, skipped: true, reason: 'dry_run' } : probeR2(options.tenantRoot, siteConfig, state, target),
-		queue: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : probeQueue(siteConfig, state),
-		scaleProbe: probeScaleConfiguration(siteConfig, state),
+		pages: await timedPhase(timings, 'monitor:probe-pages', () => probeHttp(webProbeUrl, { attempts: 3, delayMs: 5000 })),
+		apiHealth: apiSelected && apiMonitorEndpoints.apiHealth ? await timedPhase(timings, 'monitor:probe-api-health', () => probeHttp(apiMonitorEndpoints.apiHealth, { attempts: 8, delayMs: 10000 })) : skippedApiCheck,
+		apiReady: apiSelected && apiMonitorEndpoints.apiReady ? await timedPhase(timings, 'monitor:probe-api-ready', () => probeHttp(apiMonitorEndpoints.apiReady, { attempts: 8, delayMs: 10000 })) : skippedApiCheck,
+		d1Health: apiSelected && apiMonitorEndpoints.d1Health ? await timedPhase(timings, 'monitor:probe-d1-health', () => probeHttp(apiMonitorEndpoints.d1Health, { attempts: 8, delayMs: 10000 })) : skippedD1Check,
+		agentHealth: agentsSelected && apiMonitorEndpoints.agentHealth ? await timedPhase(timings, 'monitor:probe-agent-health', () => probeHttp(apiMonitorEndpoints.agentHealth, { attempts: 8, delayMs: 10000 })) : skippedAgentCheck,
+		r2: options.dryRun ? { ok: true, skipped: true, reason: 'dry_run' } : timedPhase(timings, 'monitor:probe-r2', () => probeR2(options.tenantRoot, siteConfig, state, target)),
+		queue: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : timedPhase(timings, 'monitor:probe-queue', () => probeQueue(siteConfig, state)),
+		scaleProbe: await timedPhase(timings, 'monitor:probe-scale', () => probeScaleConfiguration(siteConfig, state)),
 		railwayResources,
 		readiness: state.readiness,
 		apiMonitor: {
@@ -1706,6 +1764,7 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 			mode: 'monitor',
 			target: deployTargetLabel(target),
 			checks: resolvedChecks,
+			timings,
 		},
 		finishedAt: new Date().toISOString(),
 	});
@@ -1713,6 +1772,7 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		ok,
 		target: deployTargetLabel(target),
 		checks: resolvedChecks,
+		timings,
 	};
 }
 

@@ -24,6 +24,7 @@ import {
 	resolveRailwayWorkspaceContext,
 	upsertRailwayVariables,
 } from './railway-api.ts';
+import { elapsedMs, formatDurationMs } from '../../timing.ts';
 
 function normalizeScope(scope) {
 	return scope === 'prod' ? 'prod' : scope === 'staging' ? 'staging' : 'local';
@@ -205,6 +206,26 @@ export function collectRailwayDeploymentStatusChecks(statusPayload, scope, servi
 			};
 		}
 		const deployment = instance.latestDeployment ?? null;
+		if (!deployment) {
+			return {
+				type: 'deployment-status',
+				service: service.key,
+				serviceName: service.serviceName,
+				environment: normalizeRailwayEnvironmentName(environment.name),
+				ok: true,
+				skipped: true,
+				status: 'no_active_deployment',
+				observed: {
+					status: null,
+					deploymentId: null,
+					deploymentCreatedAt: null,
+					deploymentStopped: null,
+					instanceStatuses: [],
+					volumeMounts: [],
+				},
+				message: `Railway service ${service.serviceName} has no active deployment to wait for.`,
+			};
+		}
 		const status = String(deployment?.status ?? '').trim().toUpperCase();
 		const instanceStatuses = Array.isArray(deployment?.instances)
 			? deployment.instances.map((entry) => String(entry?.status ?? '').trim()).filter(Boolean)
@@ -219,6 +240,8 @@ export function collectRailwayDeploymentStatusChecks(statusPayload, scope, servi
 			status: status || 'missing_deployment',
 			observed: {
 				status: status || null,
+				deploymentId: deployment?.id ?? null,
+				deploymentCreatedAt: deployment?.createdAt ?? null,
 				deploymentStopped: deployment?.deploymentStopped ?? null,
 				instanceStatuses,
 				volumeMounts: Array.isArray(deployment?.meta?.volumeMounts) ? deployment.meta.volumeMounts : [],
@@ -558,9 +581,11 @@ export async function waitForRailwayManagedDeploymentsSettled(
 		env = process.env,
 		timeoutMs = 600_000,
 		pollMs = 15_000,
+		fetchImpl = fetch,
 		onProgress,
 	} = {},
 ) {
+	const startMs = performance.now();
 	const deadline = Date.now() + timeoutMs;
 	const projectId = services.find((service) => typeof service.projectId === 'string' && service.projectId.trim())?.projectId ?? null;
 	if (!projectId) {
@@ -573,6 +598,11 @@ export async function waitForRailwayManagedDeploymentsSettled(
 				environment: resolveRailwayEnvironmentForScope(scope),
 				ok: false,
 				status: 'missing_project',
+				settle: {
+					durationMs: elapsedMs(startMs),
+					pollCount: 0,
+					finalStatus: 'missing_project',
+				},
 				message: `Railway deployment status for ${service.serviceName} cannot be checked without a project id.`,
 			})),
 		};
@@ -580,12 +610,15 @@ export async function waitForRailwayManagedDeploymentsSettled(
 	let checks = [];
 	let lastError = null;
 	let lastSummary = '';
+	let pollCount = 0;
 	for (;;) {
 		lastError = null;
+		pollCount += 1;
 		try {
 			const statusPayload = await fetchRailwayProjectDeploymentStatus({
 				projectId,
 				env,
+				fetchImpl,
 			});
 			checks = collectRailwayDeploymentStatusChecks(statusPayload, scope, services);
 		} catch (error) {
@@ -597,21 +630,56 @@ export async function waitForRailwayManagedDeploymentsSettled(
 				environment: resolveRailwayEnvironmentForScope(scope),
 				ok: false,
 				status: 'status_error',
+				settle: {
+					durationMs: elapsedMs(startMs),
+					pollCount,
+					finalStatus: 'status_error',
+				},
 				message: error instanceof Error ? error.message : String(error),
 			}));
 		}
 		const summary = formatRailwayDeploymentStatusSummary(scope, checks);
-		if (summary !== lastSummary || !checks.every((entry) => entry.ok === true)) {
-			onProgress?.(summary, 'stdout');
-			lastSummary = summary;
+		const progress = `${summary} poll=${pollCount} elapsed=${formatDurationMs(elapsedMs(startMs))}`;
+		if (progress !== lastSummary || !checks.every((entry) => entry.ok === true || entry.skipped === true)) {
+			onProgress?.(progress, 'stdout');
+			lastSummary = progress;
 		}
-		if (checks.every((entry) => entry.ok === true)) {
-			return { ok: true, checks };
+		if (checks.every((entry) => entry.ok === true || entry.skipped === true)) {
+			return {
+				ok: true,
+				checks: checks.map((check) => ({
+					...check,
+					settle: {
+						durationMs: elapsedMs(startMs),
+						pollCount,
+						finalStatus: check.status,
+						fastSkipped: check.skipped === true,
+					},
+				})),
+				settle: {
+					durationMs: elapsedMs(startMs),
+					pollCount,
+					status: checks.every((entry) => entry.skipped === true) ? 'skipped' : 'settled',
+				},
+			};
 		}
 		if (Date.now() >= deadline) {
 			return {
 				ok: false,
-				checks,
+				checks: checks.map((check) => ({
+					...check,
+					settle: {
+						durationMs: elapsedMs(startMs),
+						pollCount,
+						finalStatus: check.status,
+						timeout: true,
+					},
+				})),
+				settle: {
+					durationMs: elapsedMs(startMs),
+					pollCount,
+					status: 'timeout',
+				},
 				message: lastError instanceof Error
 					? lastError.message
 					: 'Railway deployments did not settle before the monitor timeout.',
@@ -621,7 +689,7 @@ export async function waitForRailwayManagedDeploymentsSettled(
 	}
 }
 
-async function fetchRailwayProjectDeploymentStatus({ projectId, env = process.env }) {
+async function fetchRailwayProjectDeploymentStatus({ projectId, env = process.env, fetchImpl = fetch }) {
 	const payload = await railwayGraphqlRequest({
 		query: `
 query TreeseedRailwayDeploymentStatus($projectId: String!) {
@@ -660,6 +728,7 @@ query TreeseedRailwayDeploymentStatus($projectId: String!) {
 `.trim(),
 		variables: { projectId },
 		env,
+		fetchImpl,
 	});
 	return payload.data?.project ?? null;
 }
@@ -1512,6 +1581,7 @@ export async function verifyRailwayManagedResources(
 		const settled = await waitForRailwayManagedDeploymentsSettled(tenantRoot, scope, {
 			services: deploymentStatusServices.length > 0 ? deploymentStatusServices : services,
 			env: effectiveEnv,
+			fetchImpl,
 			timeoutMs: settleTimeoutMs,
 			pollMs: settlePollMs,
 			onProgress,

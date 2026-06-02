@@ -87,7 +87,7 @@ describe('project platform workflow actions', () => {
 	it('provisions configured provider resources before hosted deploy steps', () => {
 		const source = readFileSync(new URL('../../src/operations/services/project-platform.ts', import.meta.url), 'utf8');
 		const deployStart = source.indexOf('export async function deployProjectPlatform');
-		const provisionCall = source.indexOf('await provisionProjectPlatform({ ...options, reporter, bootstrapSystems });', deployStart);
+		const provisionCall = source.indexOf("timedPhase(timings, 'deploy:provision'", deployStart);
 		const cloudflarePrepare = source.indexOf('cloudflareContext = prepareTenantCloudflareDeploy', deployStart);
 		const contentPublish = source.indexOf("const contentNodeId = 'content:publish-runtime';", deployStart);
 		const railwayDeploy = source.indexOf('deployRailwayService(options.tenantRoot, service', deployStart);
@@ -101,6 +101,21 @@ describe('project platform workflow actions', () => {
 		expect(source.slice(contentPublish, railwayDeploy)).toContain("mode: 'production'");
 		expect(source.slice(contentPublish, railwayDeploy)).toContain("dependencies: ['web:build', contentNodeId");
 		expect(source.slice(source.indexOf('async function publishContent'), deployStart)).toContain('resolveTreeseedResourceIdentity(siteConfig, target).teamId');
+	});
+
+	it('writes provider timing summaries into deploy workflow GitHub step summaries', () => {
+		const workflowPaths = [
+			new URL('../../../../.github/workflows/deploy-web.yml', import.meta.url),
+			new URL('../../templates/github/deploy-web.workflow.yml', import.meta.url),
+			new URL('../../../core/templates/github/deploy-web.workflow.yml', import.meta.url),
+		];
+
+		for (const workflowPath of workflowPaths) {
+			const source = readFileSync(workflowPath, 'utf8');
+			expect(source).toContain('TREESEED_PROVIDER_TIMING_SUMMARY_PATH');
+			expect(source).toContain('treeseed-provider-timing.md');
+			expect(source).toContain('GITHUB_STEP_SUMMARY');
+		}
 	});
 
 	it('does not manually create replacement volumes for Railway Postgres plugin services', () => {
