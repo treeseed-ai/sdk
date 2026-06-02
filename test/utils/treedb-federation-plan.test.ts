@@ -22,7 +22,7 @@ describe('TreeDB federation planning', () => {
 					effectiveScope: { repos: [{ repoId: 'repo_a' }] },
 					rejected: [],
 					executable: false,
-					reason: 'planner_only_phase_8',
+					reason: 'planner_only_mvp',
 				});
 			}
 			throw new Error(`unexpected request: ${url}`);

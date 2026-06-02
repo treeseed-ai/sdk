@@ -23,7 +23,7 @@ describe('TreeDB auth policy and audit client methods', () => {
 			if (url.includes('/policy/grants')) return json({ ok: true, grants: [] });
 			if (url.includes('/audit/events')) return json({ ok: true, events: [], page: { limit: 100, hasMore: false } });
 			if (url.endsWith('/federation/query/plan')) {
-				return json({ ok: true, requestedScope: {}, effectiveScope: { repos: [] }, rejected: [], executable: false, reason: 'planner_only_phase_8' });
+				return json({ ok: true, requestedScope: {}, effectiveScope: { repos: [] }, rejected: [], executable: false, reason: 'planner_only_mvp' });
 			}
 			return json({ ok: true });
 		});

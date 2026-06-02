@@ -39,7 +39,7 @@ function clientWith(payloads: Array<unknown | Response>) {
 	const calls: Array<{ url: string; method?: string; headers: Headers; body?: unknown }> = [];
 	const client = new TreeDbClient({
 		baseUrl: 'https://treedb.example.test/',
-		token: 'phase10-token',
+		token: 'mvp-token',
 		repoId: 'repo_1',
 		fetch: (async (input, init) => {
 			calls.push({
@@ -62,16 +62,16 @@ describe('TreeDB end-to-end SDK contract', () => {
 			{ ok: true, effectiveScope: { actorId: 'actor_demo', capabilities: ['files:read'], refs: ['*'], paths: ['**'] } },
 			{ ok: true, placement: { repositoryId: 'repo_1', primaryNodeId: 'node_local', mirrorNodeIds: [], readPolicy: 'primary_or_mirror', writePolicy: 'primary_only', migrationState: 'stable' } },
 			{ ok: true, workspaceId: 'ws_1', repoId: 'repo_1', baseRef: 'refs/heads/main', baseCommitSha: 'abc', mode: 'writable', status: 'ready', allowedPaths: ['docs/**'] },
-			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', results: [{ path: 'docs/readme.md', snippet: 'phase ten provenance' }] },
+			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', results: [{ path: 'docs/readme.md', snippet: 'mvp provenance' }] },
 			{ ok: true, ready: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', graphVersion: 'graph_1', snapshotRoot: 'treedb://graph/repo_1/graph_1', changed: {}, metrics: {} },
 			{ ok: true, repoId: 'repo_1', graphVersion: 'graph_1', seedIds: [], totalTokenEstimate: 0, includedNodeIds: [], includedPaths: [], nodes: [], edges: [] },
-			{ ok: true, requestedScope: {}, effectiveScope: { repos: [] }, rejected: [], executable: false, reason: 'planner_only_phase_8' },
+			{ ok: true, requestedScope: {}, effectiveScope: { repos: [] }, rejected: [], executable: false, reason: 'planner_only_mvp' },
 			{ ok: true, file: { path: 'docs/readme.md', sha: 'sha_new', source: 'overlay' } },
 			{ ok: true, exitCode: 0, stdout: '', stderr: '', elapsedMs: 1, truncated: false, changedPaths: [] },
 			{ ok: true, workspaceId: 'ws_1', status: 'ready', changes: [{ path: 'docs/readme.md' }] },
 			{ ok: true, workspaceId: 'ws_1', diff: 'diff', changedPaths: ['docs/readme.md'] },
-			{ ok: true, repoId: 'repo_1', workspaceId: 'ws_1', branchName: 'refs/heads/agent/phase10', commitSha: 'def', changedPaths: ['docs/readme.md'], status: 'committed' },
-			{ ok: true, snapshot: { snapshotId: 'snap_1', repoId: 'repo_1', ref: 'refs/heads/agent/phase10', commitSha: 'def', kind: 'repository_snapshot', includedPaths: ['docs/**'], fileCount: 1, totalBytes: 10, checksums: {}, createdAt: '2026-06-02T00:00:00Z', artifact: { artifactId: 'artifact_1', snapshotId: 'snap_1', repoId: 'repo_1', format: 'tar.zst', size: 100, checksum: 'blake3:abc', uri: 'treedb://artifact/snap_1' } } },
+			{ ok: true, repoId: 'repo_1', workspaceId: 'ws_1', branchName: 'refs/heads/agent/mvp', commitSha: 'def', changedPaths: ['docs/readme.md'], status: 'committed' },
+			{ ok: true, snapshot: { snapshotId: 'snap_1', repoId: 'repo_1', ref: 'refs/heads/agent/mvp', commitSha: 'def', kind: 'repository_snapshot', includedPaths: ['docs/**'], fileCount: 1, totalBytes: 10, checksums: {}, createdAt: '2026-06-02T00:00:00Z', artifact: { artifactId: 'artifact_1', snapshotId: 'snap_1', repoId: 'repo_1', format: 'tar.zst', size: 100, checksum: 'blake3:abc', uri: 'treedb://artifact/snap_1' } } },
 			{ ok: true, artifact: { artifactId: 'artifact_1', snapshotId: 'snap_1', repoId: 'repo_1', format: 'tar.zst', size: 100, checksum: 'blake3:abc', uri: 'treedb://artifact/snap_1' } },
 			{ ok: true, migration: { id: 'mig_1', repositoryId: 'repo_1', sourceNodeId: 'node_local', targetNodeId: 'node_mirror', mode: 'primary_transfer', status: 'planned', dryRun: true, requireMirrorSynced: false, createdAt: '2026-06-02T00:00:00Z' }, placement: { repositoryId: 'repo_1', primaryNodeId: 'node_local' } },
 			{ ok: true, events: [], page: { limit: 200, hasMore: false } },
@@ -81,16 +81,16 @@ describe('TreeDB end-to-end SDK contract', () => {
 		await client.effectiveScope({ repoId: 'repo_1' });
 		await client.getPlacement('repo_1');
 		await client.createWorkspace({ repoId: 'repo_1', baseRef: 'refs/heads/main', mode: 'writable' });
-		await client.searchRepositoryFiles({ repoId: 'repo_1', query: 'phase ten provenance', paths: ['docs/**'] });
+		await client.searchRepositoryFiles({ repoId: 'repo_1', query: 'mvp provenance', paths: ['docs/**'] });
 		await client.refreshGraph({ repoId: 'repo_1', ref: 'refs/heads/main' });
-		await client.buildContext({ repoId: 'repo_1', query: 'phase ten provenance' });
+		await client.buildContext({ repoId: 'repo_1', query: 'mvp provenance' });
 		await client.planFederatedQuery({ repoIds: ['repo_1'], capabilities: ['files:search'] });
 		await client.writeFile({ workspaceId: 'ws_1', path: 'docs/readme.md', content: 'updated' });
-		await client.exec({ workspaceId: 'ws_1', mode: 'read_only', cmd: 'rg phase docs' });
+		await client.exec({ workspaceId: 'ws_1', mode: 'read_only', cmd: 'rg mvp docs' });
 		await client.status({ workspaceId: 'ws_1' });
 		await client.diff({ workspaceId: 'ws_1' });
-		await client.commit({ workspaceId: 'ws_1', message: 'Phase 10 update', author: { name: 'TreeDB Agent', email: 'agent@example.invalid' } });
-		await client.buildSnapshot({ repoId: 'repo_1', ref: 'refs/heads/agent/phase10', paths: ['docs/**'] });
+		await client.commit({ workspaceId: 'ws_1', message: 'MVP update', author: { name: 'TreeDB Agent', email: 'agent@example.invalid' } });
+		await client.buildSnapshot({ repoId: 'repo_1', ref: 'refs/heads/agent/mvp', paths: ['docs/**'] });
 		await client.exportArtifact({ repoId: 'repo_1', snapshotId: 'snap_1' });
 		await client.createMigration({ repoId: 'repo_1', targetNodeId: 'node_mirror', dryRun: true, requireMirrorSynced: false });
 		await client.listAuditEvents({ repoId: 'repo_1', limit: 200 });
@@ -114,7 +114,7 @@ describe('TreeDB end-to-end SDK contract', () => {
 			'https://treedb.example.test/api/v1/repos/repo_1/migrations',
 			'https://treedb.example.test/api/v1/audit/events?repoId=repo_1&limit=200',
 		]);
-		expect(calls.every((call) => call.headers.get('authorization') === 'Bearer phase10-token')).toBe(true);
+		expect(calls.every((call) => call.headers.get('authorization') === 'Bearer mvp-token')).toBe(true);
 		expect(JSON.stringify(calls.map((call) => call.body))).not.toContain('TreeSeed');
 	});
 
@@ -151,8 +151,8 @@ describe('TreeDB end-to-end SDK contract', () => {
 		const graph = new TreeDbGraphAdapter({ client, repoId: 'repo_1', defaultRef: 'refs/heads/main' });
 		expect((await graph.refresh()).ready).toBe(true);
 		expect(await graph.searchSections('phase')).toHaveLength(1);
-		expect((await graph.queryGraph({ query: 'phase' })).providerId).toBe('treedb-graph-mvp');
-		expect((await graph.buildContextPack({ query: 'phase' })).totalTokenEstimate).toBe(0);
+		expect((await graph.queryGraph({ query: 'mvp' })).providerId).toBe('treedb-graph-mvp');
+		expect((await graph.buildContextPack({ query: 'mvp' })).totalTokenEstimate).toBe(0);
 		expect(calls.map((call) => call.url)).toEqual([
 			'https://treedb.example.test/api/v1/repos/repo_1/graph/refresh',
 			'https://treedb.example.test/api/v1/repos/repo_1/graph/search-sections',
@@ -170,7 +170,7 @@ describe('TreeDB end-to-end SDK contract', () => {
 
 		const graphClient = new TreeDbClient({
 			baseUrl: 'https://treedb.example.test',
-			token: 'phase10-token',
+			token: 'mvp-token',
 			repoId: 'repo_1',
 			fetch: (async () => json({ ok: false, error: { code: 'not_found', message: 'Not found.' } }, 404)) as typeof fetch,
 		});
