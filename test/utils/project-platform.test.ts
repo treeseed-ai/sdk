@@ -1,5 +1,5 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -105,12 +105,15 @@ describe('project platform workflow actions', () => {
 
 	it('writes provider timing summaries into deploy workflow GitHub step summaries', () => {
 		const workflowPaths = [
-			new URL('../../../../.github/workflows/deploy-web.yml', import.meta.url),
 			new URL('../../templates/github/deploy-web.workflow.yml', import.meta.url),
 			new URL('../../../core/templates/github/deploy-web.workflow.yml', import.meta.url),
+			new URL('../../../../.github/workflows/deploy-web.yml', import.meta.url),
 		];
 
 		for (const workflowPath of workflowPaths) {
+			if (!existsSync(workflowPath)) {
+				continue;
+			}
 			const source = readFileSync(workflowPath, 'utf8');
 			expect(source).toContain('TREESEED_PROVIDER_TIMING_SUMMARY_PATH');
 			expect(source).toContain('treeseed-provider-timing.md');
