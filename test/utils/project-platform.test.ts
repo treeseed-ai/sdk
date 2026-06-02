@@ -127,7 +127,7 @@ describe('project platform workflow actions', () => {
 		expect(syncSource).toContain("preferCli: entry.configuredService.key === 'marketOperationsRunner'");
 	});
 
-	it('falls back to the Railway CLI view when verifying runner volume mounts', () => {
+	it('verifies runner volume mounts through the Railway API view', () => {
 		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
 		const verifyStart = source.indexOf('async function verifyRailwayUnit');
 		const verifyEnd = source.indexOf('function railwayVerificationMaySettle', verifyStart);
@@ -135,9 +135,9 @@ describe('project platform workflow actions', () => {
 
 		expect(verifyStart).toBeGreaterThanOrEqual(0);
 		expect(verifyEnd).toBeGreaterThan(verifyStart);
-		expect(verifySource).toContain("serviceKey === 'marketOperationsRunner'");
-		expect(verifySource).toContain('listRailwayServiceVolumesWithCli');
-		expect(verifySource).toContain("source: mountedVolumeSource");
+		expect(verifySource).toContain('listRailwayVolumes({ projectId: entry.project.id, env: topology.env })');
+		expect(verifySource).not.toContain('listRailwayServiceVolumesWithCli');
+		expect(verifySource).toContain("source: 'api'");
 	});
 
 	it('falls back to Railway CLI environment creation for opaque API failures', () => {
@@ -189,6 +189,8 @@ describe('project platform workflow actions', () => {
 		expect(fallbackSource).toContain('already mounted');
 		expect(fallbackSource).toContain('waitForRailwayServiceVolumeMount');
 		expect(fallbackSource).toContain('listRailwayVolumes({ projectId, env })');
+		expect(fallbackSource.indexOf('const mounted = volumes.find')).toBeLessThan(fallbackSource.indexOf('entry.name === volumeName'));
+		expect(fallbackSource).not.toContain("'update', '--volume'");
 	});
 
 	it('allows Railway CLI project context linking from a project id alone', () => {
@@ -215,6 +217,7 @@ describe('project platform workflow actions', () => {
 		expect(helperSource).toContain("'volume', '--service'");
 		expect(helperSource).toContain('allowFailure: true');
 		expect(helperSource).toContain('normalizeRailwayCliVolumeList');
+		expect(helperSource).toContain('serviceName');
 	});
 
 

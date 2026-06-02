@@ -8,13 +8,26 @@ const workspaceRoot = resolve(sdkRoot, '..', '..');
 const rootVerifyWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'verify.yml');
 const rootDeployWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'deploy.yml');
 const rootDeployWebWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'deploy-web.yml');
-const describeRootWorkflowSelection =
-	existsSync(rootVerifyWorkflowPath) && existsSync(rootDeployWorkflowPath) && existsSync(rootDeployWebWorkflowPath)
-		? describe
-		: describe.skip;
+const packageVerifyWorkflowPath = resolve(sdkRoot, '.github', 'workflows', 'verify.yml');
+const integratedWorkspaceAvailable = existsSync(rootVerifyWorkflowPath)
+	&& existsSync(rootDeployWorkflowPath)
+	&& existsSync(rootDeployWebWorkflowPath)
+	&& existsSync(resolve(workspaceRoot, '.railwayignore'));
 
-describeRootWorkflowSelection('root workflow bootstrap selection', () => {
+function packageRootFor(packageName: string) {
+	const integratedPackageRoot = resolve(workspaceRoot, 'packages', packageName);
+	if (existsSync(resolve(integratedPackageRoot, 'package.json'))) return integratedPackageRoot;
+	if (packageName === 'sdk') return sdkRoot;
+	return null;
+}
+
+describe('root workflow bootstrap selection', () => {
 	it('uses auto bootstrap mode in the root verify workflow', () => {
+		if (!integratedWorkspaceAvailable) {
+			expect(existsSync(packageVerifyWorkflowPath), `${packageVerifyWorkflowPath} must exist in package-only verification`).toBe(true);
+			return;
+		}
+		expect(existsSync(rootVerifyWorkflowPath), `${rootVerifyWorkflowPath} must exist`).toBe(true);
 		const source = readFileSync(rootVerifyWorkflowPath, 'utf8');
 
 		expect(source).toContain("branches-ignore:\n      - staging");
@@ -23,6 +36,13 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 	});
 
 	it('uses auto bootstrap mode with workspace-aware deployment installs', () => {
+		if (!integratedWorkspaceAvailable) {
+			expect(existsSync(packageVerifyWorkflowPath), `${packageVerifyWorkflowPath} must exist in package-only verification`).toBe(true);
+			return;
+		}
+		expect(existsSync(rootDeployWorkflowPath), `${rootDeployWorkflowPath} must exist`).toBe(true);
+		expect(existsSync(rootDeployWebWorkflowPath), `${rootDeployWebWorkflowPath} must exist`).toBe(true);
+		expect(existsSync(rootVerifyWorkflowPath), `${rootVerifyWorkflowPath} must exist`).toBe(true);
 		const source = readFileSync(rootDeployWorkflowPath, 'utf8');
 		const webSource = readFileSync(rootDeployWebWorkflowPath, 'utf8');
 		const verifySource = readFileSync(rootVerifyWorkflowPath, 'utf8');
@@ -70,6 +90,11 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 	});
 
 	it('uploads built packages for Market API starts', () => {
+		if (!integratedWorkspaceAvailable) {
+			expect(existsSync(packageVerifyWorkflowPath), `${packageVerifyWorkflowPath} must exist in package-only verification`).toBe(true);
+			return;
+		}
+		expect(existsSync(resolve(workspaceRoot, '.railwayignore')), `${resolve(workspaceRoot, '.railwayignore')} must exist`).toBe(true);
 		const source = readFileSync(resolve(workspaceRoot, '.railwayignore'), 'utf8');
 
 		expect(source).not.toContain('\ndist/\n');
@@ -79,13 +104,14 @@ describeRootWorkflowSelection('root workflow bootstrap selection', () => {
 
 describe('package publish safeguards', () => {
 	for (const packageName of ['sdk', 'agent', 'core', 'cli']) {
-		const packageRoot = resolve(workspaceRoot, 'packages', packageName);
-		const publishWorkflowPath = resolve(packageRoot, '.github', 'workflows', 'publish.yml');
-		const describePackagePublishSafeguard = existsSync(publishWorkflowPath)
-			? it
-			: it.skip;
-
-		describePackagePublishSafeguard(`guards ${packageName} publishing to stable semver tags`, () => {
+		it(`guards ${packageName} publishing to stable semver tags`, () => {
+			const packageRoot = packageRootFor(packageName);
+			if (!packageRoot) {
+				expect(integratedWorkspaceAvailable, `${packageName} package workflow is only available in integrated workspace verification`).toBe(false);
+				return;
+			}
+			const publishWorkflowPath = resolve(packageRoot, '.github', 'workflows', 'publish.yml');
+			expect(existsSync(publishWorkflowPath), `${publishWorkflowPath} must exist`).toBe(true);
 			const workflowSource = readFileSync(publishWorkflowPath, 'utf8');
 			const verifyWorkflowSource = readFileSync(resolve(packageRoot, '.github', 'workflows', 'verify.yml'), 'utf8');
 			const checkTagSource = readFileSync(resolve(packageRoot, 'scripts', 'assert-release-tag-version.ts'), 'utf8');

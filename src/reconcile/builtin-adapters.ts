@@ -7,10 +7,12 @@ import {
 	buildProvisioningSummary,
 	buildSecretMap,
 	cloudflareApiRequest,
+	createTurnstileWidget,
 	createBranchPreviewDeployTarget,
 	createPersistentDeployTarget,
 	destroyCloudflareResources,
 	ensureGeneratedWranglerConfig,
+	getTurnstileWidget,
 	hasProvisionedCloudflareResources,
 	isWranglerAlreadyExistsError,
 	listD1Databases,
@@ -18,6 +20,7 @@ import {
 	listPagesProjects,
 	listQueues,
 	listR2Buckets,
+	listTurnstileWidgets,
 	mergeCloudflarePagesDeploymentConfig,
 	loadDeployState,
 	queueId,
@@ -27,6 +30,7 @@ import {
 	resolveCloudflareZoneIdForHost,
 	runWrangler,
 	scopeFromTarget,
+	updateTurnstileWidget,
 	writeDeployState,
 } from '../operations/services/deploy.ts';
 import {
@@ -34,7 +38,6 @@ import {
 	deriveRailwayMarketOperationsRunnerVolumeName,
 	ensureRailwayProjectContext,
 	ensureRailwayServiceVolumeWithCliFallback,
-	listRailwayServiceVolumesWithCli,
 	runRailway,
 	validateRailwayDeployPrerequisites,
 } from '../operations/services/railway-deploy.ts';
@@ -370,6 +373,38 @@ function getCloudflareKvById(env: Record<string, string>, namespaceId: string | 
 	return payload?.result ?? null;
 }
 
+function normalizeTurnstileDomains(value: unknown) {
+	return [...new Set((Array.isArray(value) ? value : [])
+		.map((entry) => typeof entry === 'string' ? entry.trim() : '')
+		.filter(Boolean))]
+		.sort();
+}
+
+function turnstileDomainsEqual(left: unknown, right: unknown) {
+	return JSON.stringify(normalizeTurnstileDomains(left)) === JSON.stringify(normalizeTurnstileDomains(right));
+}
+
+function mergeTurnstileWidget(...widgets: Array<Record<string, unknown> | null | undefined>) {
+	const merged: Record<string, unknown> = {};
+	for (const widget of widgets) {
+		if (!widget) continue;
+		for (const [key, value] of Object.entries(widget)) {
+			if (value === undefined || value === null) continue;
+			if (key === 'domains' && !Array.isArray(value)) continue;
+			merged[key] = value;
+		}
+	}
+	return Object.keys(merged).length > 0 ? merged : null;
+}
+
+function findTurnstileWidget(widgets: unknown[], current: Record<string, unknown> | null | undefined, desiredName: string | null | undefined) {
+	return widgets.find((entry: any) => {
+		if (!entry || typeof entry !== 'object') return false;
+		return (current?.sitekey && entry.sitekey === current.sitekey)
+			|| (desiredName && entry.name === desiredName);
+	}) as Record<string, unknown> | null | undefined;
+}
+
 function listCloudflareQueuesViaApi(env: Record<string, string>) {
 	const accountId = env.CLOUDFLARE_ACCOUNT_ID;
 	if (!accountId) {
@@ -393,6 +428,7 @@ function cloudflareObservationSnapshot(input: TreeseedReconcileAdapterInput, for
 			queues: listCloudflareQueuesViaApi(env),
 			buckets: listR2Buckets(input.context.tenantRoot, env),
 			pagesProjects: listPagesProjects(input.context.tenantRoot, env),
+			turnstileWidgets: listTurnstileWidgets(input.context.tenantRoot, env),
 		};
 	}, forceRefresh);
 }
@@ -744,7 +780,12 @@ function collectCloudflareEnvironmentSync(input: TreeseedReconcileAdapterInput) 
 	const generatedSecrets = buildSecretMap(input.context.deployConfig, state);
 	const publicVars = buildPublicVars(input.context.deployConfig, { target });
 	const secrets: Record<string, string> = {};
-	const vars: Record<string, string> = { ...publicVars };
+	const generatedTurnstileSiteKey = typeof state.turnstileWidgets?.formGuard?.sitekey === 'string'
+		? state.turnstileWidgets.formGuard.sitekey
+		: '';
+	const vars: Record<string, string> = {
+		...publicVars,
+	};
 	const secretNames = new Set<string>();
 	const varNames = new Set<string>(Object.keys(publicVars));
 
@@ -766,8 +807,15 @@ function collectCloudflareEnvironmentSync(input: TreeseedReconcileAdapterInput) 
 		}
 	}
 
+	if (generatedTurnstileSiteKey) {
+		vars.TREESEED_PUBLIC_TURNSTILE_SITE_KEY = generatedTurnstileSiteKey;
+		varNames.add('TREESEED_PUBLIC_TURNSTILE_SITE_KEY');
+	}
+
 	for (const [key, value] of Object.entries(generatedSecrets)) {
-		if (typeof value === 'string' && value.length > 0 && shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, key)) {
+		const exposeRuntimeSecret = key === 'TREESEED_TURNSTILE_SECRET_KEY'
+			|| shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, key);
+		if (typeof value === 'string' && value.length > 0 && exposeRuntimeSecret) {
 			secrets[key] = value;
 			secretNames.add(key);
 		}
@@ -919,6 +967,7 @@ function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRu
 	const queues = dryRun ? [] : listQueues(input.context.tenantRoot, env);
 	const buckets = dryRun ? [] : listR2Buckets(input.context.tenantRoot, env);
 	const pagesProjects = dryRun ? [] : listPagesProjects(input.context.tenantRoot, env);
+	const turnstileWidgets = dryRun ? [] : listTurnstileWidgets(input.context.tenantRoot, env);
 	const runStep = <T>(label: string, fn: () => T): T => {
 		try {
 			return fn();
@@ -1139,11 +1188,64 @@ function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRu
 		current.url = `https://${current.projectName}.pages.dev`;
 	};
 
+	const ensureTurnstileWidget = () => {
+		if (deployConfig.turnstile?.enabled !== true) {
+			return;
+		}
+		const current = state.turnstileWidgets?.formGuard;
+		if (!current?.name) {
+			return;
+		}
+		const pagesHost = state.pages?.url ? new URL(state.pages.url).hostname : null;
+		const desiredDomains = normalizeTurnstileDomains([
+			...(Array.isArray(current.domains) ? current.domains : []),
+			pagesHost,
+		]);
+		current.domains = desiredDomains;
+		current.mode = 'managed';
+		current.managed = true;
+		const existing = findTurnstileWidget(turnstileWidgets, current, current.name);
+		if (dryRun) {
+			current.sitekey = current.sitekey ?? `dryrun-${current.name}-sitekey`;
+			current.secret = current.secret ?? `dryrun-${current.name}-secret`;
+			current.lastSyncedAt = nowIso();
+			return;
+		}
+		if (existing?.sitekey) {
+			const needsUpdate = existing.name !== current.name
+				|| existing.mode !== 'managed'
+				|| !turnstileDomainsEqual(existing.domains, desiredDomains);
+			const updated = needsUpdate
+				? updateTurnstileWidget(env, String(existing.sitekey), {
+					name: current.name,
+					domains: desiredDomains,
+					mode: 'managed',
+				})
+				: existing;
+			current.sitekey = String(updated?.sitekey ?? existing.sitekey);
+			current.secret = String(updated?.secret ?? current.secret ?? '');
+			current.lastSyncedAt = nowIso();
+			return;
+		}
+		const created = createTurnstileWidget(env, {
+			name: current.name,
+			domains: desiredDomains,
+			mode: 'managed',
+		});
+		if (!created?.sitekey || !created?.secret) {
+			throw new Error(`Unable to resolve created Turnstile widget keys for ${current.name}.`);
+		}
+		current.sitekey = String(created.sitekey);
+		current.secret = String(created.secret);
+		current.lastSyncedAt = nowIso();
+	};
+
 	runStep('kv-form-guard', () => ensureKv('FORM_GUARD_KV'));
 	runStep('d1', ensureD1);
 	runStep('queue', ensureQueue);
 	runStep('r2', ensureR2Bucket);
 	runStep('pages', ensurePagesProject);
+	runStep('turnstile-widget', ensureTurnstileWidget);
 	runStep('web-cache', () => reconcileCloudflareWebCacheRules(input.context.tenantRoot, deployConfig, state, target, { dryRun, env }));
 	state.readiness.configured = true;
 	state.readiness.provisioned = hasProvisionedCloudflareResources(state);
@@ -1185,7 +1287,7 @@ function syncCloudflareSecretsForTarget(input: TreeseedReconcileAdapterInput, { 
 
 function observeCloudflareUnit(input: TreeseedReconcileAdapterInput): TreeseedObservedUnitState {
 	const snapshot = cloudflareObservationSnapshot(input);
-	const { state, kvNamespaces, d1Databases, queues, buckets, pagesProjects } = snapshot;
+	const { state, kvNamespaces, d1Databases, queues, buckets, pagesProjects, turnstileWidgets } = snapshot;
 	switch (input.unit.unitType) {
 		case 'queue': {
 			const liveQueue = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.name);
@@ -1238,6 +1340,17 @@ function observeCloudflareUnit(input: TreeseedReconcileAdapterInput): TreeseedOb
 				warnings: [],
 			};
 		}
+		case 'turnstile-widget': {
+			const current = state.turnstileWidgets?.formGuard ?? {};
+			const liveWidget = findTurnstileWidget(turnstileWidgets, current, input.unit.spec.name as string);
+			return {
+				exists: Boolean(liveWidget?.sitekey || current?.sitekey),
+				status: liveWidget?.sitekey ? 'ready' : 'pending',
+				live: { ...current, ...(liveWidget ?? {}) },
+				locators: { sitekey: String(liveWidget?.sitekey ?? current?.sitekey ?? '') || null },
+				warnings: [],
+			};
+		}
 		case 'pages-project': {
 			const liveProject = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
 			return {
@@ -1278,7 +1391,7 @@ function verifyCloudflareUnitOnce(input: TreeseedReconcileAdapterInput, postcond
 		]);
 	}
 	const snapshot = cloudflareObservationSnapshot(input, true);
-	const { state, kvNamespaces, d1Databases, queues, buckets, pagesProjects, env } = snapshot;
+	const { state, kvNamespaces, d1Databases, queues, buckets, pagesProjects, turnstileWidgets, env } = snapshot;
 	switch (input.unit.unitType) {
 		case 'queue': {
 			const queue = state.queues?.agentWork;
@@ -1347,6 +1460,49 @@ function verifyCloudflareUnitOnce(input: TreeseedReconcileAdapterInput, postcond
 					expected: input.unit.spec.binding,
 					observed: namespace?.binding ?? null,
 					issues: namespace?.binding === input.unit.spec.binding ? [] : ['Configured KV binding does not match the desired value.'],
+				}),
+			]);
+		}
+		case 'turnstile-widget': {
+			const current = state.turnstileWidgets?.formGuard ?? {};
+			const cachedLive = findTurnstileWidget(turnstileWidgets, current, input.unit.spec.name as string);
+			const refreshedListedLive = findTurnstileWidget(
+				listTurnstileWidgets(input.context.tenantRoot, env),
+				current,
+				input.unit.spec.name as string,
+			);
+			const refreshedLive = current.sitekey ? getTurnstileWidget(env, String(current.sitekey)) : null;
+			const live = mergeTurnstileWidget(
+				cachedLive,
+				refreshedListedLive,
+				refreshedLive,
+			);
+			const pagesHost = state.pages?.url ? new URL(state.pages.url).hostname : null;
+			const desiredDomains = normalizeTurnstileDomains([
+				...(Array.isArray(input.unit.spec.domains) ? input.unit.spec.domains : []),
+				...(Array.isArray(current.domains) ? current.domains : []),
+				pagesHost,
+			]);
+			return summarizeVerification(input.unit.unitId, [
+				verificationCheck('turnstile.exists', 'Turnstile widget exists by name and sitekey', 'api', {
+					exists: Boolean(live?.sitekey),
+					expected: input.unit.spec.name ?? null,
+					observed: live ? { name: live.name, sitekey: live.sitekey } : null,
+					issues: live?.sitekey ? [] : [`Cloudflare Turnstile widget ${String(input.unit.spec.name ?? '(unset)')} was not found after reconcile.`],
+				}),
+				verificationCheck('turnstile.mode', 'Turnstile widget mode is managed', 'api', {
+					exists: Boolean(live?.sitekey),
+					configured: live?.mode === 'managed',
+					expected: 'managed',
+					observed: live?.mode ?? null,
+					issues: live?.mode === 'managed' ? [] : ['Turnstile widget mode does not match managed.'],
+				}),
+				verificationCheck('turnstile.domains', 'Turnstile widget domains match desired config', 'api', {
+					exists: Boolean(live?.sitekey),
+					configured: turnstileDomainsEqual(live?.domains, desiredDomains),
+					expected: desiredDomains,
+					observed: normalizeTurnstileDomains(live?.domains),
+					issues: turnstileDomainsEqual(live?.domains, desiredDomains) ? [] : ['Turnstile widget domains do not match desired config.'],
 				}),
 			]);
 		}
@@ -1550,6 +1706,12 @@ function buildCloudflareAdapter(unitType: TreeseedReconcileUnitType): TreeseedRe
 					return [
 						{ key: 'kv.exists', description: 'KV namespace exists by title and id' },
 						{ key: 'kv.binding', description: 'KV binding matches desired config' },
+					];
+				case 'turnstile-widget':
+					return [
+						{ key: 'turnstile.exists', description: 'Turnstile widget exists by name and sitekey' },
+						{ key: 'turnstile.mode', description: 'Turnstile widget mode is managed' },
+						{ key: 'turnstile.domains', description: 'Turnstile widget domains match desired config' },
 					];
 				case 'content-store':
 					return [
@@ -1874,7 +2036,11 @@ async function syncRailwayEnvironmentForScope(input: TreeseedReconcileAdapterInp
 					preferCli: entry.configuredService.key === 'marketOperationsRunner',
 					env: topology.env,
 				});
-				if (!volume.instance?.serviceId) {
+				if (
+					volume.instance?.serviceId !== entry.service.id
+					|| volume.instance?.environmentId !== entry.environment.id
+					|| volume.instance?.mountPath !== entry.configuredService.volumeMountPath
+				) {
 					ensureRailwayProjectContext(entry.configuredService, { env: topology.env, capture: true });
 					let attachMessage = '';
 					let attached = false;
@@ -2604,29 +2770,11 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 			: [];
 		const expectedServiceId = entry.service?.id ?? null;
 		const expectedEnvironmentId = entry.environment?.id ?? null;
-		let mountedVolume = volumes.find((volume) => volume.instances.some((instance) =>
+		const mountedVolume = volumes.find((volume) => volume.instances.some((instance) =>
 			instance.serviceId === expectedServiceId
 			&& instance.environmentId === expectedEnvironmentId
 			&& instance.mountPath === service.volumeMountPath,
 		)) ?? null;
-		let mountedVolumeSource = 'api';
-		if (!mountedVolume && serviceKey === 'marketOperationsRunner' && expectedServiceId && expectedEnvironmentId) {
-			ensureRailwayProjectContext(service, { env: topology.env, capture: true });
-			const cliVolumes = listRailwayServiceVolumesWithCli({
-				cwd: service.rootDir,
-				serviceId: expectedServiceId,
-				environmentId: expectedEnvironmentId,
-				name: deriveRailwayMarketOperationsRunnerVolumeName(entry.service?.name ?? service.serviceName ?? service.key, entry.environment?.name ?? service.railwayEnvironment),
-				mountPath: service.volumeMountPath,
-				env: topology.env,
-			});
-			mountedVolume = cliVolumes.find((volume) => volume.instances.some((instance) =>
-				instance.serviceId === expectedServiceId
-				&& instance.environmentId === expectedEnvironmentId
-				&& instance.mountPath === service.volumeMountPath,
-			)) ?? null;
-			mountedVolumeSource = mountedVolume ? 'cli' : 'api';
-		}
 		checks.push(verificationCheck('railway.volume:data', 'Railway service has persistent data volume mounted', 'api', {
 			exists: Boolean(mountedVolume),
 			configured: Boolean(mountedVolume),
@@ -2635,7 +2783,7 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 				? {
 					name: mountedVolume.name,
 					mountPath: service.volumeMountPath,
-					source: mountedVolumeSource,
+					source: 'api',
 				}
 				: null,
 			issues: mountedVolume ? [] : [`Railway service ${service.serviceName ?? service.key} is missing a persistent volume mounted at ${service.volumeMountPath}.`],
@@ -2861,6 +3009,7 @@ export function createCloudflareReconcileAdapters() {
 		buildCloudflareAdapter('database'),
 		buildCloudflareAdapter('content-store'),
 		buildCloudflareAdapter('kv-form-guard'),
+		buildCloudflareAdapter('turnstile-widget'),
 		buildCloudflareAdapter('pages-project'),
 		buildCloudflareAdapter('edge-worker'),
 		buildCustomDomainAdapter('custom-domain:web', 'cloudflare'),

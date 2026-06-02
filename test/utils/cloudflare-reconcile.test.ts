@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const cloudflareApiRequestMock = vi.fn();
 const runWranglerMock = vi.fn();
@@ -8,6 +8,7 @@ const railwayEnvMock = vi.fn();
 
 let kvCreated = false;
 let d1Created = false;
+let turnstileWidgets: Array<{ name: string; sitekey: string; secret?: string; domains?: string[]; mode?: string }> = [];
 
 const deployState = {
 	version: 2,
@@ -53,6 +54,17 @@ const deployState = {
 		buildOutputDir: 'dist',
 		url: null,
 	},
+	turnstileWidgets: {
+		formGuard: {
+			name: 'acme-docs-turnstile-staging',
+			sitekey: null,
+			secret: null,
+			mode: 'managed',
+			domains: ['example.com'],
+			managed: true,
+			lastSyncedAt: null,
+		},
+	},
 	content: {
 		r2Binding: 'TREESEED_CONTENT_BUCKET',
 		bucketName: 'acme-docs-content',
@@ -83,6 +95,7 @@ vi.mock('../../src/operations/services/deploy.ts', async () => {
 		buildSecretMap: vi.fn(() => ({
 			TREESEED_FORM_TOKEN_SECRET: 'generated-form-secret',
 			TREESEED_EDITORIAL_PREVIEW_SECRET: 'generated-preview-secret',
+			TREESEED_TURNSTILE_SECRET_KEY: deployState.turnstileWidgets.formGuard.secret,
 		})),
 		cloudflareApiRequest: cloudflareApiRequestMock,
 		ensureGeneratedWranglerConfig: vi.fn(() => ({
@@ -102,6 +115,33 @@ vi.mock('../../src/operations/services/deploy.ts', async () => {
 			{ name: 'acme-docs-agent-work-dlq-staging', id: 'queue-dlq-1' },
 		]),
 		listR2Buckets: vi.fn(() => [{ name: 'acme-docs-content' }]),
+		getTurnstileWidget: vi.fn((_env, sitekey) => {
+			const widget = turnstileWidgets.find((entry) => entry.sitekey === sitekey);
+			return widget ? { ...widget, domains: [...(widget.domains ?? [])] } : null;
+		}),
+		listTurnstileWidgets: vi.fn(() => turnstileWidgets.map((entry) => ({ ...entry, domains: [...(entry.domains ?? [])] }))),
+		createTurnstileWidget: vi.fn((_env, input) => {
+			const widget = {
+				name: input.name,
+				sitekey: 'managed-site-key',
+				secret: 'managed-secret-key',
+				domains: input.domains,
+				mode: input.mode,
+			};
+			turnstileWidgets.push(widget);
+			return widget;
+		}),
+		updateTurnstileWidget: vi.fn((_env, sitekey, input) => {
+			const widget = turnstileWidgets.find((entry) => entry.sitekey === sitekey) ?? {
+				name: input.name,
+				sitekey,
+				secret: 'managed-secret-key',
+			};
+			widget.name = input.name;
+			widget.domains = input.domains;
+			widget.mode = input.mode;
+			return widget;
+		}),
 		loadDeployState: vi.fn(() => deployState),
 		reconcileCloudflareWebCacheRules: vi.fn(),
 		runWrangler: vi.fn((args: string[]) => {
@@ -189,10 +229,15 @@ vi.mock('../../src/operations/services/railway-api.ts', () => ({
 }));
 
 describe('cloudflare reconcile adapters', () => {
-	beforeEach(() => {
-		kvCreated = false;
-		d1Created = false;
-		cloudflareApiRequestMock.mockReset();
+beforeEach(() => {
+	kvCreated = false;
+	d1Created = false;
+	turnstileWidgets = [];
+	deployState.turnstileWidgets.formGuard.sitekey = null;
+	deployState.turnstileWidgets.formGuard.secret = null;
+	deployState.turnstileWidgets.formGuard.domains = ['example.com'];
+	deployState.pages.url = null;
+	cloudflareApiRequestMock.mockReset();
 		runWranglerMock.mockReset();
 		upsertRailwayVariablesMock.mockReset();
 		railwayEnvMock.mockReset();
@@ -218,6 +263,10 @@ describe('cloudflare reconcile adapters', () => {
 				},
 			};
 		});
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
 	});
 
 	it('creates live KV and D1 resources when deploy state still has placeholder ids and syncs Pages env vars', async () => {
@@ -256,6 +305,7 @@ describe('cloudflare reconcile adapters', () => {
 					pages: { productionBranch: 'main', stagingBranch: 'staging' },
 					r2: {},
 				},
+				turnstile: { enabled: true },
 			},
 			launchEnv: {},
 			session: new Map(),
@@ -263,9 +313,8 @@ describe('cloudflare reconcile adapters', () => {
 		context.launchEnv = {
 			CLOUDFLARE_ACCOUNT_ID: 'account-123',
 			CLOUDFLARE_API_TOKEN: 'cf-token',
-			TREESEED_PUBLIC_TURNSTILE_SITE_KEY: 'site-key',
-			TREESEED_TURNSTILE_SECRET_KEY: 'secret-key',
 		};
+		vi.stubEnv('TREESEED_PUBLIC_TURNSTILE_SITE_KEY', 'manual-site-key');
 
 		const observed = adapter!.observe({ unit, context } as never);
 		const diff = adapter!.plan({ unit, context, observed } as never);
@@ -280,6 +329,13 @@ describe('cloudflare reconcile adapters', () => {
 				&& options?.body?.name === 'acme-docs-site-data-staging'
 			),
 		).toBe(true);
+		expect(deployState.turnstileWidgets.formGuard).toMatchObject({
+			name: 'acme-docs-turnstile-staging',
+			sitekey: 'managed-site-key',
+			secret: 'managed-secret-key',
+			mode: 'managed',
+		});
+		expect(deployState.turnstileWidgets.formGuard.domains).toEqual(expect.arrayContaining(['example.com', 'acme-docs.pages.dev']));
 
 		const patchCall = cloudflareApiRequestMock.mock.calls.find(([, options]) => options?.method === 'PATCH');
 		expect(patchCall).toBeTruthy();
@@ -288,7 +344,7 @@ describe('cloudflare reconcile adapters', () => {
 				preview: {
 					env_vars: {
 						EXISTING_VAR: { type: 'plain_text', value: 'keep' },
-						TREESEED_PUBLIC_TURNSTILE_SITE_KEY: { type: 'plain_text', value: 'site-key' },
+						TREESEED_PUBLIC_TURNSTILE_SITE_KEY: { type: 'plain_text', value: 'managed-site-key' },
 						TREESEED_PROJECT_ID: { type: 'plain_text', value: 'docs' },
 						TREESEED_HOSTING_TEAM_ID: { type: 'plain_text', value: 'acme' },
 					},
@@ -305,6 +361,76 @@ describe('cloudflare reconcile adapters', () => {
 			},
 		});
 		expect(resolveTreeseedMachineEnvironmentValuesMock).not.toHaveBeenCalled();
+	});
+
+	it('verifies Turnstile widgets against a fresh lookup after reconcile updates domains', async () => {
+		turnstileWidgets = [
+			{
+				name: 'acme-docs-turnstile-staging',
+				sitekey: 'managed-site-key',
+				secret: 'managed-secret-key',
+				domains: ['old.example.com'],
+				mode: 'managed',
+			},
+		];
+		deployState.turnstileWidgets.formGuard.sitekey = 'managed-site-key';
+		deployState.turnstileWidgets.formGuard.secret = 'managed-secret-key';
+		deployState.turnstileWidgets.formGuard.domains = ['example.com'];
+		const { createCloudflareReconcileAdapters } = await import('../../src/reconcile/builtin-adapters.ts');
+		const adapter = createCloudflareReconcileAdapters().find((entry) => entry.unitTypes.includes('turnstile-widget'));
+		expect(adapter).toBeTruthy();
+
+		const unit = {
+			unitId: 'turnstile-widget:acme-docs-turnstile-staging',
+			unitType: 'turnstile-widget',
+			provider: 'cloudflare',
+			target: { kind: 'persistent', scope: 'staging' },
+			logicalName: 'acme-docs-turnstile-staging',
+			dependencies: [],
+			spec: {
+				name: 'acme-docs-turnstile-staging',
+				domains: ['example.com'],
+				mode: 'managed',
+			},
+			secrets: {},
+			metadata: {},
+			identity: deployState.identity,
+		};
+		const context = {
+			tenantRoot: '/tmp/tenant',
+			target: { kind: 'persistent', scope: 'staging' },
+			deployConfig: {
+				name: 'Test',
+				slug: 'test',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				hosting: { kind: 'hosted_project', teamId: 'acme', projectId: 'docs' },
+				runtime: { mode: 'treeseed_managed', registration: 'none', teamId: 'acme', projectId: 'docs' },
+				providers: { content: { runtime: 'team_scoped_r2_overlay', publish: 'team_scoped_r2_overlay' } },
+				cloudflare: {
+					accountId: 'account-123',
+					queueName: 'agent-work',
+					dlqName: 'agent-work-dlq',
+					queueBinding: 'AGENT_WORK_QUEUE',
+					pages: { productionBranch: 'main', stagingBranch: 'staging' },
+					r2: {},
+				},
+				turnstile: { enabled: true },
+			},
+			launchEnv: {
+				CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				CLOUDFLARE_API_TOKEN: 'cf-token',
+			},
+			session: new Map(),
+		};
+
+		const observed = adapter!.observe({ unit, context } as never);
+		const diff = adapter!.plan({ unit, context, observed } as never);
+		const result = await adapter!.reconcile({ unit, context, observed, diff } as never);
+		const verification = await adapter!.verify({ unit, context, observed: result.observed, diff, result, postconditions: [] } as never);
+
+		expect(turnstileWidgets[0]?.domains).toEqual(['acme-docs.pages.dev', 'example.com']);
+		expect(verification.verified).toBe(true);
 	});
 
 	it('syncs Railway hosted env values from launch env without reading the machine key', async () => {

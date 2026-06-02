@@ -1662,7 +1662,8 @@ export async function ensureRailwayServiceVolume({
 	if (!volume) {
 		volume = await createReplacementVolume();
 	}
-	if (volume.name && volume.name !== name) {
+	const desiredNameInUse = volumes.some((candidate) => candidate.id !== volume?.id && candidate.name === name);
+	if (volume.name && volume.name !== name && !desiredNameInUse) {
 		try {
 			volume = await updateRailwayVolumeName({ volumeId: volume.id, name, env, fetchImpl }) ?? { ...volume, name };
 		} catch (error) {

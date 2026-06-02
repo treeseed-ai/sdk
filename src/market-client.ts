@@ -730,6 +730,13 @@ export class MarketClient {
 		);
 	}
 
+	projectDeploymentById(deploymentId: string) {
+		return this.request<{ ok: true; payload: ProjectDeployment }>(
+			`/v1/project-deployments/${encodeURIComponent(deploymentId)}`,
+			{ requireAuth: true },
+		);
+	}
+
 	projectDeploymentEvents(projectId: string, deploymentId: string, options: { limit?: number | string | null } = {}) {
 		const query = options.limit ? `?limit=${encodeURIComponent(String(options.limit))}` : '';
 		return this.request<{ ok: true; payload: ProjectDeploymentEvent[] }>(

@@ -52,6 +52,7 @@ export interface KnowledgeHubLaunchIntent {
 		name: string;
 		slug: string;
 		purpose?: string | null;
+		coreObjective?: string | null;
 		visibility?: 'private' | 'team' | 'public';
 	};
 	source?: {
@@ -366,6 +367,7 @@ function providerLaunchInputFromIntent(plan: KnowledgeHubLaunchPlan): KnowledgeH
 		projectSlug: intent.hub.slug,
 		projectName: intent.hub.name,
 		summary: intent.hub.purpose ?? null,
+		coreObjective: providerInput.coreObjective ?? intent.hub.coreObjective ?? intent.hub.purpose ?? null,
 		sourceKind: sourceKind === 'blank_hub' ? 'blank' : sourceKind === 'market_listing' ? 'template' : sourceKind,
 		sourceRef: intent.source?.ref ?? null,
 		hostingMode: intent.hosting?.mode === 'treeseed_managed' ? 'managed' : intent.hosting?.mode ?? 'managed',

@@ -478,15 +478,21 @@ async function writeContentRecord(repoPath: string, collection: string, input: R
 		: null;
 	const target = existingTarget ?? safeContentPath(repoPath, collection, normalized.slug, normalized.extension);
 	if (existsSync(target) && input.overwrite !== true) throw new Error('A content record with that slug already exists.');
+	const frontmatter = existingTarget && input.preserveFrontmatter === true
+		? {
+			...normalized.frontmatter,
+			...(await readContentRecord(repoPath, collection, normalized.slug)).frontmatter,
+		}
+		: normalized.frontmatter;
 	const relativePath = await writeParsedRecord(repoPath, {
 		path: target,
-		frontmatter: normalized.frontmatter,
+		frontmatter,
 		body: normalized.body,
 	});
 	return {
 		collection,
 		slug: normalized.slug,
-		id: normalized.frontmatter.id,
+		id: frontmatter.id,
 		path: relativePath,
 		href: collection === 'agents'
 			? `/app/projects/${encodeURIComponent(String(input.projectId ?? ''))}/agents/${encodeURIComponent(normalized.slug)}`

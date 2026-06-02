@@ -83,6 +83,24 @@ export function deriveTreeseedDesiredUnits({
 		secrets: {},
 		metadata: { bootstrapSystem: 'web' },
 	});
+	const turnstileWidgetId = legacyState.turnstileWidgets?.formGuard?.name && deployConfig.turnstile?.enabled === true
+		? add({
+			unitId: createTreeseedReconcileUnitId('turnstile-widget', legacyState.turnstileWidgets.formGuard.name),
+			unitType: 'turnstile-widget',
+			provider: 'cloudflare',
+			identity,
+			target,
+			logicalName: legacyState.turnstileWidgets.formGuard.name,
+			dependencies: [],
+			spec: {
+				name: legacyState.turnstileWidgets.formGuard.name,
+				domains: legacyState.turnstileWidgets.formGuard.domains ?? [],
+				mode: 'managed',
+			},
+			secrets: {},
+			metadata: { bootstrapSystem: 'web' },
+		})
+		: null;
 	const contentStoreId = add({
 		unitId: createTreeseedReconcileUnitId('content-store', legacyState.content.bucketName ?? deployConfig.slug),
 		unitType: 'content-store',
@@ -125,7 +143,7 @@ export function deriveTreeseedDesiredUnits({
 		identity,
 		target,
 		logicalName: legacyState.workerName,
-		dependencies: [queueId, databaseId, formGuardKvId, contentStoreId, pagesProjectId],
+		dependencies: [queueId, databaseId, formGuardKvId, ...(turnstileWidgetId ? [turnstileWidgetId] : []), contentStoreId, pagesProjectId],
 		spec: {
 			workerName: legacyState.workerName,
 		},

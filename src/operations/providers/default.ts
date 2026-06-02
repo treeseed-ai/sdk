@@ -117,6 +117,29 @@ function contextEnv(context: TreeseedOperationContext) {
 	return { ...process.env, ...(context.env ?? {}) };
 }
 
+async function withTemporaryProcessEnv<T>(env: Record<string, string | undefined>, action: () => Promise<T>) {
+	const previous = new Map<string, string | undefined>();
+	for (const [key, value] of Object.entries(env)) {
+		previous.set(key, process.env[key]);
+		if (value === undefined) {
+			delete process.env[key];
+		} else {
+			process.env[key] = value;
+		}
+	}
+	try {
+		return await action();
+	} finally {
+		for (const [key, value] of previous) {
+			if (value === undefined) {
+				delete process.env[key];
+			} else {
+				process.env[key] = value;
+			}
+		}
+	}
+}
+
 function operationEnv(context: TreeseedOperationContext) {
 	const tenantConfigPath = resolve(context.cwd, 'treeseed.site.yaml');
 	return existsSync(tenantConfigPath)
@@ -450,14 +473,14 @@ class HubValidateLaunchOperation extends BaseOperation {
 class HubExecuteLaunchOperation extends BaseOperation {
 	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
 		const intent = (input.intent && typeof input.intent === 'object' ? input.intent : input) as KnowledgeHubLaunchIntent;
-		const result = await executeKnowledgeHubLaunch(intent, {
+		const result = await withTemporaryProcessEnv(contextEnv(context), () => executeKnowledgeHubLaunch(intent, {
 			onPhase: async (phase) => {
 				await context.onProgress?.({
 					kind: 'hub_launch_phase',
 					...phase,
 				});
 			},
-		});
+		}));
 		return operationResult(this.metadata, result);
 	}
 }
@@ -465,7 +488,7 @@ class HubExecuteLaunchOperation extends BaseOperation {
 class HubResumeLaunchOperation extends BaseOperation {
 	async execute(input: Record<string, unknown>, context: TreeseedOperationContext) {
 		const intent = (input.intent && typeof input.intent === 'object' ? input.intent : input) as KnowledgeHubLaunchIntent;
-		const result = await executeKnowledgeHubLaunch(intent, {
+		const result = await withTemporaryProcessEnv(contextEnv(context), () => executeKnowledgeHubLaunch(intent, {
 			onPhase: async (phase) => {
 				await context.onProgress?.({
 					kind: 'hub_launch_phase',
@@ -473,7 +496,7 @@ class HubResumeLaunchOperation extends BaseOperation {
 					...phase,
 				});
 			},
-		});
+		}));
 		return operationResult(this.metadata, {
 			resumed: true,
 			...result,

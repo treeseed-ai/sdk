@@ -11,6 +11,7 @@ export const TRESEED_RECONCILE_UNIT_TYPES: TreeseedReconcileUnitType[] = [
 	'queue',
 	'database',
 	'kv-form-guard',
+	'turnstile-widget',
 	'pages-project',
 	'custom-domain:web',
 	'custom-domain:api',
