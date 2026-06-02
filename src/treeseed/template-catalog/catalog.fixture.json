@@ -47,6 +47,156 @@
       "relatedBooks": [],
       "relatedKnowledge": [],
       "relatedObjectives": []
+    },
+    {
+      "id": "starter-research",
+      "displayName": "TreeSeed Research",
+      "description": "First-party TreeSeed starter for freestanding research projects and knowledge-pack publishing.",
+      "summary": "A research starter for building source-backed books, gathered assets, synthesis notes, and reusable knowledge packs.",
+      "status": "live",
+      "featured": true,
+      "category": "starter",
+      "audience": [
+        "researchers",
+        "maintainers"
+      ],
+      "tags": [
+        "starter",
+        "research",
+        "books",
+        "knowledge-packs",
+        "agents"
+      ],
+      "publisher": {
+        "id": "treeseed",
+        "name": "TreeSeed",
+        "url": "https://treeseed.ai"
+      },
+      "publisherVerified": true,
+      "templateVersion": "1.0.0",
+      "templateApiVersion": 1,
+      "minCliVersion": "0.1.1",
+      "minCoreVersion": "0.1.2",
+      "fulfillment": {
+        "mode": "git",
+        "source": {
+          "kind": "git",
+          "repoUrl": "https://github.com/treeseed-ai/starter-research.git",
+          "directory": ".",
+          "ref": "main",
+          "integrity": "pending-external-repo"
+        },
+        "hooksPolicy": "builtin_only",
+        "supportsReconcile": true
+      },
+      "offer": {
+        "priceModel": "free",
+        "license": "AGPL-3.0-only",
+        "support": "community"
+      },
+      "relatedBooks": [],
+      "relatedKnowledge": [],
+      "relatedObjectives": []
+    },
+    {
+      "id": "starter-engineering",
+      "displayName": "TreeSeed Engineering",
+      "description": "First-party TreeSeed starter for integrated software guidance, docs, and engineering agents.",
+      "summary": "An engineering starter for guiding software projects with research, architecture, implementation, review, and release agents.",
+      "status": "live",
+      "featured": true,
+      "category": "starter",
+      "audience": [
+        "engineers",
+        "maintainers"
+      ],
+      "tags": [
+        "starter",
+        "engineering",
+        "software",
+        "docs",
+        "agents"
+      ],
+      "publisher": {
+        "id": "treeseed",
+        "name": "TreeSeed",
+        "url": "https://treeseed.ai"
+      },
+      "publisherVerified": true,
+      "templateVersion": "1.0.0",
+      "templateApiVersion": 1,
+      "minCliVersion": "0.1.1",
+      "minCoreVersion": "0.1.2",
+      "fulfillment": {
+        "mode": "git",
+        "source": {
+          "kind": "git",
+          "repoUrl": "https://github.com/treeseed-ai/starter-engineering.git",
+          "directory": ".",
+          "ref": "main",
+          "integrity": "pending-external-repo"
+        },
+        "hooksPolicy": "builtin_only",
+        "supportsReconcile": true
+      },
+      "offer": {
+        "priceModel": "free",
+        "license": "AGPL-3.0-only",
+        "support": "community"
+      },
+      "relatedBooks": [],
+      "relatedKnowledge": [],
+      "relatedObjectives": []
+    },
+    {
+      "id": "starter-information-hub",
+      "displayName": "TreeSeed Information Hub",
+      "description": "First-party TreeSeed starter for recurring information retrieval, distillation, and downstream distribution.",
+      "summary": "An information distribution starter for retrieving updates over time, distilling derived knowledge, and packaging it for downstream projects.",
+      "status": "live",
+      "featured": true,
+      "category": "starter",
+      "audience": [
+        "curators",
+        "maintainers"
+      ],
+      "tags": [
+        "starter",
+        "information-hub",
+        "distribution",
+        "knowledge-packs",
+        "agents"
+      ],
+      "publisher": {
+        "id": "treeseed",
+        "name": "TreeSeed",
+        "url": "https://treeseed.ai"
+      },
+      "publisherVerified": true,
+      "templateVersion": "1.0.0",
+      "templateApiVersion": 1,
+      "minCliVersion": "0.1.1",
+      "minCoreVersion": "0.1.2",
+      "fulfillment": {
+        "mode": "git",
+        "source": {
+          "kind": "git",
+          "repoUrl": "https://github.com/treeseed-ai/starter-information-hub.git",
+          "directory": ".",
+          "ref": "main",
+          "integrity": "pending-external-repo"
+        },
+        "hooksPolicy": "builtin_only",
+        "supportsReconcile": true
+      },
+      "offer": {
+        "priceModel": "free",
+        "license": "AGPL-3.0-only",
+        "support": "community"
+      },
+      "relatedBooks": [],
+      "relatedKnowledge": [],
+      "relatedObjectives": []
     }
   ],
   "meta": {

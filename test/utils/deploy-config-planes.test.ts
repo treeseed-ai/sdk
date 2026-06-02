@@ -1,5 +1,5 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadTreeseedDeployConfigFromPath } from '../../src/platform/deploy-config.ts';
@@ -22,6 +22,25 @@ async function writeDeployConfig(body: string) {
 }
 
 describe('deploy config plane normalization', () => {
+	it('resolves projectRoot relative to the TreeSeed tenant root', async () => {
+		const configPath = await writeDeployConfig(`name: Test Site
+slug: test-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+projectRoot: ..
+cloudflare:
+  accountId: account-123
+`);
+
+		const config = loadTreeseedDeployConfigFromPath(configPath) as ReturnType<typeof loadTreeseedDeployConfigFromPath> & {
+			__tenantRoot?: string;
+			__projectRoot?: string;
+		};
+		expect(config.projectRoot).toBe('..');
+		expect(config.__tenantRoot).toBe(dirname(configPath));
+		expect(config.__projectRoot).toBe(resolve(dirname(configPath), '..'));
+	});
+
 	it('defaults to a treeseed-hosted hub without a runtime when no plane or hosting config is present', async () => {
 		const configPath = await writeDeployConfig(`name: Test Site
 slug: test-site

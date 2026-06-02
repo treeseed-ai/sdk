@@ -1,9 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { scaffoldTemplateProject } from '../../src/operations/services/template-registry.ts';
+import {
+	scaffoldTemplateProject,
+	validateTemplateProduct,
+} from '../../src/operations/services/template-registry.ts';
 
 function git(cwd: string, args: string[]) {
 	const result = spawnSync('git', args, {
@@ -17,6 +20,58 @@ function git(cwd: string, args: string[]) {
 }
 
 describe('template registry fulfillment', () => {
+	const firstPartyStarterIds = [
+		'starter-research',
+		'starter-engineering',
+		'starter-information-hub',
+	] as const;
+	const fixtureCatalogPath = resolve(process.cwd(), 'src/treeseed/template-catalog/catalog.fixture.json');
+	const fixtureCatalogEnv = {
+		TREESEED_TEMPLATE_CATALOG_URL: `file:${fixtureCatalogPath}`,
+	};
+
+	it('loads first-party starter definitions from the local submodule-ready starter source', async () => {
+		for (const id of firstPartyStarterIds) {
+			const definition = await validateTemplateProduct({ id }, {
+				cwd: process.cwd(),
+				env: fixtureCatalogEnv,
+			});
+
+			expect(definition.product.id).toBe(id);
+			expect(definition.product.fulfillment.source.kind).toBe('git');
+			expect(definition.product.fulfillment.source.directory).toBe('.');
+			expect(definition.product.fulfillment.source.repoUrl).toContain(`treeseed-ai/${id}`);
+			expect(definition.manifest.id).toBe(id);
+			expect(definition.templateRoot).toContain('/starters/');
+			expect(existsSync(resolve(definition.templateRoot, 'src/manifest.yaml'))).toBe(true);
+		}
+	});
+
+	it('scaffolds each first-party starter with agent specs, tests, and expected content roots', async () => {
+		for (const id of firstPartyStarterIds) {
+			const root = mkdtempSync(join(tmpdir(), `treeseed-${id}-`));
+			const targetRoot = resolve(root, 'generated');
+			const product = await scaffoldTemplateProject(id, targetRoot, {
+				target: 'generated',
+				name: `Generated ${id}`,
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+			}, {
+				cwd: root,
+				env: fixtureCatalogEnv,
+			});
+
+			expect(product.id).toBe(id);
+			expect(existsSync(resolve(targetRoot, 'src/manifest.yaml'))).toBe(true);
+			expect(existsSync(resolve(targetRoot, 'treeseed.site.yaml'))).toBe(true);
+			expect(existsSync(resolve(targetRoot, 'src/content/agents'))).toBe(true);
+			expect(existsSync(resolve(targetRoot, 'src/content/agent-tests'))).toBe(true);
+			expect(existsSync(resolve(targetRoot, 'src/content/books'))).toBe(true);
+			expect(existsSync(resolve(targetRoot, 'src/content/knowledge'))).toBe(true);
+			expect(readFileSync(resolve(targetRoot, '.treeseed/template-state.json'), 'utf8')).toContain(id);
+		}
+	});
+
 	it('can scaffold a template from a remote git fulfillment source when no packaged artifact exists', async () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-template-registry-'));
 		const repoRoot = resolve(root, 'template-repo');

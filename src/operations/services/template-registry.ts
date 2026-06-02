@@ -15,6 +15,7 @@ import {
 	cliPackageVersion,
 	agentPackageVersion,
 	corePackageVersion,
+	cliPackageRoot,
 	localTemplateArtifactsRoot,
 	sdkPackageVersion,
 } from './runtime-paths.ts';
@@ -128,14 +129,46 @@ function listFiles(root: string): string[] {
 }
 
 function listTemplateArtifactIds() {
-	if (!existsSync(localTemplateArtifactsRoot)) {
-		return [];
-	}
-
-	return readdirSync(localTemplateArtifactsRoot, { withFileTypes: true })
+	const packagedIds = existsSync(localTemplateArtifactsRoot)
+		? readdirSync(localTemplateArtifactsRoot, { withFileTypes: true })
 		.filter((entry) => entry.isDirectory())
 		.map((entry) => entry.name)
+		: [];
+	const localStarterIds = listLocalStarterArtifacts()
+		.map((entry) => entry.id);
+
+	return [...new Set([...packagedIds, ...localStarterIds])]
 		.sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+}
+
+const LOCAL_STARTER_ID_TO_DIRECTORY: Record<string, string> = {
+	'starter-research': 'research',
+	'starter-engineering': 'engineering',
+	'starter-information-hub': 'information-hub',
+};
+
+function localStartersRoot() {
+	return resolve(cliPackageRoot, '..', '..', 'starters');
+}
+
+function resolveLocalStarterArtifactRoot(id: string) {
+	const directory = LOCAL_STARTER_ID_TO_DIRECTORY[id];
+	if (!directory) {
+		return null;
+	}
+	const artifactRoot = resolve(localStartersRoot(), directory);
+	return existsSync(resolve(artifactRoot, 'template.config.json')) && existsSync(resolve(artifactRoot, 'template'))
+		? artifactRoot
+		: null;
+}
+
+function listLocalStarterArtifacts() {
+	return Object.keys(LOCAL_STARTER_ID_TO_DIRECTORY)
+		.map((id) => {
+			const artifactRoot = resolveLocalStarterArtifactRoot(id);
+			return artifactRoot ? { id, artifactRoot } : null;
+		})
+		.filter((entry): entry is { id: string; artifactRoot: string } => Boolean(entry));
 }
 
 function isTextFile(filePath: string) {
@@ -281,6 +314,14 @@ function materializeR2TemplateSource(product: TemplateProductDefinition) {
 }
 
 function resolveTemplateDefinitionPaths(product: TemplateProductDefinition, options: TemplateCatalogOptions) {
+	const localStarterArtifactRoot = resolveLocalStarterArtifactRoot(product.id);
+	if (localStarterArtifactRoot) {
+		return {
+			artifactRoot: localStarterArtifactRoot,
+			manifestPath: resolve(localStarterArtifactRoot, 'template.config.json'),
+			templateRoot: resolve(localStarterArtifactRoot, 'template'),
+		};
+	}
 	if (existsSync(product.artifactManifestPath) && existsSync(product.templateRoot)) {
 		return {
 			artifactRoot: product.artifactRoot,

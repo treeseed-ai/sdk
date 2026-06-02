@@ -27,6 +27,7 @@ import {
 const deployConfigFieldAliases: TreeseedFieldAliasRegistry = {
 	siteUrl: { key: 'siteUrl', aliases: ['site_url'] },
 	contactEmail: { key: 'contactEmail', aliases: ['contact_email'] },
+	projectRoot: { key: 'projectRoot', aliases: ['project_root'] },
 };
 
 const hostingFieldAliases: TreeseedFieldAliasRegistry = {
@@ -667,6 +668,7 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 		slug: expectString(parsed.slug, 'slug'),
 		siteUrl: expectString(parsed.siteUrl, 'siteUrl'),
 		contactEmail: expectString(parsed.contactEmail, 'contactEmail'),
+		projectRoot: optionalString(parsed.projectRoot),
 		hosting: compatibilityHosting,
 		hub,
 		runtime,
@@ -764,9 +766,15 @@ export function loadTreeseedDeployConfig(configPath = 'treeseed.site.yaml'): Tre
 export function loadTreeseedDeployConfigFromPath(resolvedConfigPath: string): TreeseedDeployConfig {
 	const tenantRoot = dirname(resolvedConfigPath);
 	const parsed = parseDeployConfig(readFileSync(resolvedConfigPath, 'utf8'));
+	const projectRoot = parsed.projectRoot ? resolve(tenantRoot, parsed.projectRoot) : tenantRoot;
 
 	Object.defineProperty(parsed, '__tenantRoot', {
 		value: tenantRoot,
+		enumerable: false,
+	});
+
+	Object.defineProperty(parsed, '__projectRoot', {
+		value: projectRoot,
 		enumerable: false,
 	});
 
