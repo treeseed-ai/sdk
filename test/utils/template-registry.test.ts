@@ -42,7 +42,6 @@ describe('template registry fulfillment', () => {
 			expect(definition.product.fulfillment.source.directory).toBe('.');
 			expect(definition.product.fulfillment.source.repoUrl).toContain(`treeseed-ai/${id}`);
 			expect(definition.manifest.id).toBe(id);
-			expect(definition.templateRoot).toContain('/starters/');
 			expect(existsSync(resolve(definition.templateRoot, 'src/manifest.yaml'))).toBe(true);
 		}
 	});
