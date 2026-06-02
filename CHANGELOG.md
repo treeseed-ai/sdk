@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.10.23] - 2026-06-02
+
+### Added
+
+- feat(market): expand hub launch inputs and scope process environment (96657f956531)
+
+### Tests
+
+- refactor(reconcile): refactor Turnstile site key assignment (864ca362722e)
+- build(build): update package metadata (1177650f4627)
+- build(build): update package metadata (de4b15df982c)
+- build(source): update package metadata (9a0325ae9955)
+- build(build): update package metadata (5d634bddcb64)
+- build(build): avoid Railway volume update after attach (2b7cc07d6473)
+- build(source): harden Railway runner volume reconciliation (104e4720b044)
+
+### Dependencies
+
+- build(build): update package metadata (1733824f7873)
+- build(build): update package metadata (cf235f066729)
+- Release @treeseed/sdk 0.10.23.
+
 ## [0.10.22] - 2026-05-28
 
 ### Tests
