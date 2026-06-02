@@ -351,6 +351,7 @@ export interface TreeseedDeployConfig {
 	slug: string;
 	siteUrl: string;
 	contactEmail: string;
+	projectRoot?: string;
 	hosting?: TreeseedHostingConfig;
 	hub: TreeseedHubConfig;
 	runtime: TreeseedRuntimeConfig;

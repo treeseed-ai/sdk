@@ -11,6 +11,7 @@ function defaultDeployConfig(): TreeseedDeployConfig {
 		slug: 'treeseed-site',
 		siteUrl: 'https://example.com',
 		contactEmail: 'contact@example.com',
+		projectRoot: '.',
 		cloudflare: {
 			accountId: '',
 			workerName: 'treeseed-site',

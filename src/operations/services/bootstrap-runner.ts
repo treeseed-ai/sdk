@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { elapsedMs, formatDurationMs, type TreeseedTimingEntry } from '../../timing.ts';
 
 export type TreeseedBootstrapExecution = 'parallel' | 'sequential';
 export type TreeseedBootstrapStream = 'stdout' | 'stderr';
@@ -15,6 +16,7 @@ export type TreeseedBootstrapDagNode<TResult = unknown> = {
 	id: string;
 	dependencies?: string[];
 	run: () => Promise<TResult> | TResult;
+	label?: string;
 };
 
 export function formatTreeseedBootstrapPrefix(prefix: TreeseedBootstrapTaskPrefix) {
@@ -73,21 +75,51 @@ function dependencyLevels<T extends TreeseedBootstrapDagNode>(nodes: T[]) {
 export async function runTreeseedBootstrapDag<TResult = unknown>({
 	nodes,
 	execution = 'parallel',
+	write,
+	timings,
 }: {
 	nodes: Array<TreeseedBootstrapDagNode<TResult>>;
 	execution?: TreeseedBootstrapExecution;
+	write?: TreeseedBootstrapWriter;
+	timings?: TreeseedTimingEntry[];
 }) {
 	const results = new Map<string, TResult>();
+	const recordNode = async (node: TreeseedBootstrapDagNode<TResult>) => {
+		const label = node.label ?? node.id;
+		const startMs = performance.now();
+		const entry: TreeseedTimingEntry = {
+			name: `bootstrap:${label}`,
+			durationMs: 0,
+			status: 'running',
+			metadata: { nodeId: node.id, dependencies: node.dependencies ?? [] },
+		};
+		timings?.push(entry);
+		write?.(`[bootstrap][${node.id}] started`);
+		try {
+			const result = await Promise.resolve(node.run());
+			entry.durationMs = elapsedMs(startMs);
+			entry.status = 'success';
+			write?.(`[bootstrap][${node.id}] completed in ${formatDurationMs(entry.durationMs)}`);
+			results.set(node.id, result);
+		} catch (error) {
+			entry.durationMs = elapsedMs(startMs);
+			entry.status = 'failed';
+			entry.metadata = {
+				...(entry.metadata ?? {}),
+				error: error instanceof Error ? error.message : String(error),
+			};
+			write?.(`[bootstrap][${node.id}] failed after ${formatDurationMs(entry.durationMs)}`, 'stderr');
+			throw error;
+		}
+	};
 	for (const level of dependencyLevels(nodes)) {
 		if (execution === 'sequential') {
 			for (const node of level) {
-				results.set(node.id, await Promise.resolve(node.run()));
+				await recordNode(node);
 			}
 			continue;
 		}
-		await Promise.all(level.map(async (node) => {
-			results.set(node.id, await Promise.resolve(node.run()));
-		}));
+		await Promise.all(level.map(recordNode));
 	}
 	return results;
 }
