@@ -785,13 +785,9 @@ function collectCloudflareEnvironmentSync(input: TreeseedReconcileAdapterInput) 
 		: '';
 	const vars: Record<string, string> = {
 		...publicVars,
-		...(generatedTurnstileSiteKey ? { TREESEED_PUBLIC_TURNSTILE_SITE_KEY: generatedTurnstileSiteKey } : {}),
 	};
 	const secretNames = new Set<string>();
 	const varNames = new Set<string>(Object.keys(publicVars));
-	if (generatedTurnstileSiteKey) {
-		varNames.add('TREESEED_PUBLIC_TURNSTILE_SITE_KEY');
-	}
 
 	for (const entry of registry.entries) {
 		if (!entry.scopes.includes(scope)) {
@@ -809,6 +805,11 @@ function collectCloudflareEnvironmentSync(input: TreeseedReconcileAdapterInput) 
 			vars[entry.id] = value;
 			varNames.add(entry.id);
 		}
+	}
+
+	if (generatedTurnstileSiteKey) {
+		vars.TREESEED_PUBLIC_TURNSTILE_SITE_KEY = generatedTurnstileSiteKey;
+		varNames.add('TREESEED_PUBLIC_TURNSTILE_SITE_KEY');
 	}
 
 	for (const [key, value] of Object.entries(generatedSecrets)) {

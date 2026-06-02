@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const cloudflareApiRequestMock = vi.fn();
 const runWranglerMock = vi.fn();
@@ -265,6 +265,10 @@ beforeEach(() => {
 		});
 	});
 
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
 	it('creates live KV and D1 resources when deploy state still has placeholder ids and syncs Pages env vars', async () => {
 		const { createCloudflareReconcileAdapters } = await import('../../src/reconcile/builtin-adapters.ts');
 		const adapter = createCloudflareReconcileAdapters().find((entry) => entry.unitTypes.includes('queue'));
@@ -310,6 +314,7 @@ beforeEach(() => {
 			CLOUDFLARE_ACCOUNT_ID: 'account-123',
 			CLOUDFLARE_API_TOKEN: 'cf-token',
 		};
+		vi.stubEnv('TREESEED_PUBLIC_TURNSTILE_SITE_KEY', 'manual-site-key');
 
 		const observed = adapter!.observe({ unit, context } as never);
 		const diff = adapter!.plan({ unit, context, observed } as never);
