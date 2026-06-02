@@ -217,6 +217,20 @@ await treeDb.createMigration({
 
 `downloadArtifact()` returns an `ArrayBuffer` plus content type, filename, checksum, and snapshot headers. These APIs are generic TreeDB repository operations; TreeSeed package or release semantics are not encoded in TreeDB.
 
+Phase 10 adds mocked end-to-end TreeDB contract tests that prove the SDK can drive the TreeDB repository loop without an agent-side clone when `contentPathMap` is supplied:
+
+```bash
+npx vitest run --config ./vitest.config.ts test/utils/treedb-e2e-contract.test.ts
+```
+
+An optional live contract test is skipped unless all of these are set:
+
+```text
+TREEDB_LIVE_URL
+TREEDB_LIVE_TOKEN
+TREEDB_LIVE_REPO_ID
+```
+
 ## Capacity Scheduling Contracts
 
 The SDK owns the provider-neutral capacity runtime helpers used by the agent manager, workers, and market control plane. These helpers keep work estimation separate from provider cost by normalizing `taskSignature + executionProfileId` estimates, then routing against grants, provider lanes, quality requirements, quota/congestion pressure, attention/context saturation, utility, predictive reserve, and hybrid phase metadata.
