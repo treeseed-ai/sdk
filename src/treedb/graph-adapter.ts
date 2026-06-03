@@ -9,12 +9,12 @@ import type {
 	SdkGraphQueryRequest,
 	SdkGraphQueryResult,
 	SdkGraphRefreshPayload,
-	SdkGraphRefreshRequest,
 	SdkGraphSearchOptions,
 	SdkGraphSearchResult,
 	SdkGraphSeedResolution,
 	SdkGraphTraversalResult,
 	TreeDbGraphQueryResult,
+	TreeDbGraphRefreshRequest,
 } from './types.ts';
 
 export interface TreeDbGraphAdapterOptions {
@@ -26,7 +26,7 @@ export interface TreeDbGraphAdapterOptions {
 export class TreeDbGraphAdapter {
 	constructor(private readonly options: TreeDbGraphAdapterOptions) {}
 
-	async refresh(request: SdkGraphRefreshRequest = {}): Promise<SdkGraphRefreshPayload> {
+	async refresh(request: TreeDbGraphRefreshRequest = {}): Promise<SdkGraphRefreshPayload> {
 		return this.options.client.refreshGraph({
 			...request,
 			repoId: this.options.repoId,

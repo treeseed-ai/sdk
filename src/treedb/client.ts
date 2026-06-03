@@ -43,6 +43,8 @@ import type {
 	TreeDbGraphNodeRequest,
 	TreeDbGraphQueryRequest,
 	TreeDbGraphQueryResult,
+	TreeDbGraphRefreshJob,
+	TreeDbGraphRefreshJobRequest,
 	TreeDbGraphRefreshRequest,
 	TreeDbGraphRefreshResult,
 	TreeDbGraphRelatedRequest,
@@ -69,6 +71,12 @@ import type {
 	TreeDbRepositoryReadRequest,
 	TreeDbRepositorySearchRequest,
 	TreeDbSearchRequest,
+	TreeDbSearchIndexCompactRequest,
+	TreeDbSearchIndexCompactResult,
+	TreeDbSearchIndexRefreshRequest,
+	TreeDbSearchIndexRefreshResult,
+	TreeDbSearchIndexStatus,
+	TreeDbSearchIndexStatusRequest,
 	TreeDbSearchResult,
 	TreeDbSnapshot,
 	TreeDbSnapshotBuildRequest,
@@ -738,6 +746,36 @@ export class TreeDbClient {
 	refreshGraph(input: TreeDbGraphRefreshRequest = {}): Promise<TreeDbGraphRefreshResult> {
 		const { repoId, ...body } = input;
 		return this.request<TreeDbGraphRefreshResult>('POST', `/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}/graph/refresh`, body, { tokenRequired: true });
+	}
+
+	getGraphRefreshJob(input: TreeDbGraphRefreshJobRequest): Promise<TreeDbGraphRefreshJob> {
+		return this.request<Record<string, unknown>>(
+			'GET',
+			`/api/v1/repos/${encodeURIComponent(this.repoId(input.repoId))}/graph/refresh-jobs/${encodeURIComponent(input.jobId)}`,
+			undefined,
+			{ query: { ref: input.ref }, tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbGraphRefreshJob>(payload, ['job']));
+	}
+
+	refreshSearchIndex(input: TreeDbSearchIndexRefreshRequest = {}): Promise<TreeDbSearchIndexRefreshResult> {
+		const { repoId, ...body } = input;
+		return this.request<Record<string, unknown>>('POST', `/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}/search/index/refresh`, body, { tokenRequired: true })
+			.then((payload) => firstPayload<TreeDbSearchIndexRefreshResult>(payload, ['index']));
+	}
+
+	getSearchIndexStatus(input: TreeDbSearchIndexStatusRequest = {}): Promise<TreeDbSearchIndexStatus> {
+		return this.request<Record<string, unknown>>(
+			'GET',
+			`/api/v1/repos/${encodeURIComponent(this.repoId(input.repoId))}/search/index/status`,
+			undefined,
+			{ query: { ref: input.ref }, tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbSearchIndexStatus>(payload, ['index']));
+	}
+
+	compactSearchIndex(input: TreeDbSearchIndexCompactRequest = {}): Promise<TreeDbSearchIndexCompactResult> {
+		const { repoId, ...body } = input;
+		return this.request<Record<string, unknown>>('POST', `/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}/search/index/compact`, body, { tokenRequired: true })
+			.then((payload) => firstPayload<TreeDbSearchIndexCompactResult>(payload, ['compact']));
 	}
 
 	queryGraph(input: TreeDbGraphQueryRequest): Promise<TreeDbGraphQueryResult> {

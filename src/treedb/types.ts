@@ -479,6 +479,8 @@ export interface TreeDbRepositorySearchRequest {
 	includeBody?: boolean;
 	includeFrontmatter?: boolean;
 	allowProtected?: boolean;
+	includeDiagnostics?: boolean;
+	diagnosticsLevel?: 'none' | 'summary' | 'ranking';
 }
 
 export interface TreeDbRepositoryQueryRequest {
@@ -498,6 +500,16 @@ export interface TreeDbRepositoryQueryRequest {
 	includeFrontmatter?: boolean;
 	parseFrontmatter?: boolean;
 	encoding?: 'utf8' | 'base64';
+	includeDiagnostics?: boolean;
+	diagnosticsLevel?: 'none' | 'summary' | 'ranking';
+}
+
+export interface TreeDbRankingDiagnostics {
+	level: 'none' | 'summary' | 'ranking';
+	authorizedResultCount: number;
+	returnedResultCount: number;
+	searchedPatterns?: string[];
+	scoreFactors?: unknown;
 }
 
 export interface TreeDbRepositoryQueryResult {
@@ -509,6 +521,7 @@ export interface TreeDbRepositoryQueryResult {
 	entries?: unknown[];
 	file?: unknown;
 	files?: unknown[];
+	diagnostics?: TreeDbRankingDiagnostics;
 	page?: {
 		limit: number;
 		nextCursor: string | null;
@@ -521,6 +534,10 @@ export interface TreeDbGraphRefreshRequest extends SdkGraphRefreshRequest {
 	ref?: string;
 	allowProtected?: boolean;
 	force?: boolean;
+	incremental?: boolean;
+	changedPaths?: string[];
+	baseGraphVersion?: string;
+	forceFull?: boolean;
 }
 
 export type TreeDbGraphRefreshResult = SdkGraphRefreshPayload & {
@@ -528,7 +545,102 @@ export type TreeDbGraphRefreshResult = SdkGraphRefreshPayload & {
 	ref: string;
 	resolvedRef: string;
 	graphVersion: string;
+	jobId?: string;
+	refreshMode?: 'full' | 'incremental';
+	fallbackReason?: string | null;
+	changedPathCount?: number;
+	indexedPathCount?: number;
+	removedPathCount?: number;
+	stale?: boolean;
 };
+
+export interface TreeDbGraphRefreshJobRequest {
+	repoId?: string;
+	ref?: string;
+	jobId: string;
+}
+
+export interface TreeDbGraphRefreshJob {
+	jobId: string;
+	repoId: string;
+	ref: string;
+	requestedPaths: string[];
+	changedPaths: string[];
+	baseGraphVersion?: string | null;
+	graphVersion?: string | null;
+	refreshMode: 'full' | 'incremental';
+	fallbackReason?: string | null;
+	stale: boolean;
+	status: 'running' | 'completed' | 'failed';
+	startedAt: string;
+	completedAt?: string | null;
+	indexedPathCount: number;
+	removedPathCount: number;
+	errorCode?: string | null;
+}
+
+export type TreeDbContextMode = 'brief' | 'detailed' | 'citations' | 'mixed';
+
+export interface TreeDbContextBudgetDiagnostics {
+	requestedMaxNodes: number;
+	usedNodes: number;
+	requestedMaxTokens: number;
+	estimatedTokens: number;
+	truncated: boolean;
+}
+
+export interface TreeDbSearchIndexRefreshRequest {
+	repoId?: string;
+	ref?: string;
+	paths?: string[];
+	allowProtected?: boolean;
+}
+
+export interface TreeDbSearchIndexRefreshResult {
+	repoId: string;
+	ref: string;
+	resolvedRef: string;
+	indexVersion: string;
+	graphVersion?: string | null;
+	segmentIds: string[];
+	indexedPathCount: number;
+	sourceCommit?: string | null;
+	stale: boolean;
+}
+
+export interface TreeDbSearchIndexStatusRequest {
+	repoId?: string;
+	ref?: string;
+}
+
+export interface TreeDbSearchIndexStatus {
+	repoId: string;
+	ref: string;
+	resolvedRef: string;
+	ready: boolean;
+	indexVersion?: string | null;
+	graphVersion?: string | null;
+	segmentIds: string[];
+	indexedPathCount: number;
+	segmentCount: number;
+	sourceCommit?: string | null;
+	stale: boolean;
+}
+
+export interface TreeDbSearchIndexCompactRequest {
+	repoId?: string;
+	ref?: string;
+	dryRun?: boolean;
+}
+
+export interface TreeDbSearchIndexCompactResult {
+	repoId: string;
+	ref: string;
+	dryRun: boolean;
+	segmentsBefore: number;
+	segmentsAfter: number;
+	compacted: boolean;
+}
 
 export interface TreeDbGraphSearchRequest {
 	repoId?: string;
@@ -572,11 +684,19 @@ export type TreeDbGraphQueryResult = SdkGraphQueryResult & {
 export interface TreeDbContextRequest extends SdkContextPackRequest {
 	repoId?: string;
 	ref?: string;
+	mode?: TreeDbContextMode;
 }
 
 export type TreeDbContextResult = SdkContextPack & {
 	repoId: string;
 	graphVersion: string;
+	mode?: TreeDbContextMode;
+	diagnostics?: {
+		mode?: TreeDbContextMode;
+		budget?: TreeDbContextBudgetDiagnostics;
+		provenancePaths?: string[];
+		[key: string]: unknown;
+	};
 };
 
 export interface TreeDbCtxParseRequest {
