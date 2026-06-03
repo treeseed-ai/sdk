@@ -587,24 +587,101 @@ export interface TreeDbCtxParseRequest {
 
 export type TreeDbCtxParseResult = SdkGraphDslParseResult;
 
-export interface TreeDbFederatedQueryRequest extends TreeDbRepositoryQueryRequest {
+export interface TreeDbFederatedScopeInput {
 	repoIds?: string[];
+	refs?: Record<string, string>;
+	paths?: Record<string, string[]>;
 	includeErrors?: boolean;
+	timeoutMs?: number;
+	limit?: number;
+	cursor?: string | null;
 }
 
-export interface TreeDbFederatedQueryResult {
-	results: Array<{ repoId: string; result: TreeDbRepositoryQueryResult }>;
-	errors?: Array<{ repoId: string; error: { code: string; message: string; status: number } }>;
+export interface TreeDbFederatedError {
+	repoId?: string;
+	nodeId?: string;
+	code: string;
+	message: string;
+	status?: number;
 }
 
-export interface TreeDbFederatedSearchRequest extends TreeDbRepositorySearchRequest {
-	repoIds?: string[];
-	includeErrors?: boolean;
+export interface TreeDbFederatedDiagnostics {
+	requestedRepoCount: number;
+	executedRepoCount: number;
+	rejectedRepoCount: number;
+	partialFailureCount: number;
+	routing: Array<{
+		repoId?: string;
+		nodeId?: string;
+		source: 'local' | 'remote';
+		status: 'ok' | 'rejected' | 'partial_failure';
+		error?: { code: string };
+	}>;
+}
+
+export interface TreeDbFederatedSearchRequest extends TreeDbFederatedScopeInput {
+	repoId?: string;
+	query: string;
+	filters?: unknown[];
+	sort?: Array<{ field: string; direction: 'asc' | 'desc' }>;
 }
 
 export interface TreeDbFederatedSearchResult {
-	results: Array<{ repoId: string; result: TreeDbRepositoryQueryResult }>;
-	errors?: Array<{ repoId: string; error: { code: string; message: string; status: number } }>;
+	query: string;
+	results: Array<Record<string, unknown> & { repoId: string; ref: string; source: 'local' | 'remote' }>;
+	page: { limit: number; hasMore: boolean; cursor?: string | null };
+	diagnostics: TreeDbFederatedDiagnostics;
+	errors?: TreeDbFederatedError[];
+}
+
+export interface TreeDbFederatedQueryRequest extends TreeDbFederatedScopeInput {
+	repoId?: string;
+	type: 'path' | 'text' | 'frontmatter' | 'section' | 'link' | 'changed_path' | 'combined';
+	query?: string;
+	filters?: unknown[];
+	sort?: Array<{ field: string; direction: 'asc' | 'desc' }>;
+}
+
+export interface TreeDbFederatedQueryResult {
+	type: string;
+	results: Array<Record<string, unknown> & { repoId: string; ref: string; source: 'local' | 'remote' }>;
+	page: { limit: number; hasMore: boolean; cursor?: string | null };
+	diagnostics: TreeDbFederatedDiagnostics;
+	errors?: TreeDbFederatedError[];
+}
+
+export interface TreeDbFederatedContextRequest extends TreeDbFederatedScopeInput {
+	query?: string;
+	seedIds?: string[];
+	seeds?: unknown[];
+	relations?: unknown[];
+	scopePaths?: string[];
+	budget?: Record<string, unknown>;
+}
+
+export interface TreeDbFederatedContextResult {
+	nodes: unknown[];
+	edges: unknown[];
+	files?: unknown[];
+	sections?: unknown[];
+	diagnostics: TreeDbFederatedDiagnostics & Record<string, unknown>;
+	errors?: TreeDbFederatedError[];
+}
+
+export interface TreeDbFederatedGraphRequest extends TreeDbFederatedScopeInput {
+	query?: string;
+	seedIds?: string[];
+	seeds?: unknown[];
+	relations?: unknown[];
+	scopePaths?: string[];
+	options?: Record<string, unknown>;
+}
+
+export interface TreeDbFederatedGraphResult {
+	nodes: unknown[];
+	edges: unknown[];
+	diagnostics: TreeDbFederatedDiagnostics & { crossRepoEdgeCount?: number };
+	errors?: TreeDbFederatedError[];
 }
 
 export type TreeDbSnapshotKind =

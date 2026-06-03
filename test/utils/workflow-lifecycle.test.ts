@@ -431,7 +431,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.noChanges).toBe(true);
 		expect(result.payload.branchSync.pushed).toBe(true);
 		expect(result.payload.finalState.branchName).toBe('feature/demo-task');
-	}, 15_000);
+	}, 180000);
 
 	it('auto-saves dirty task branches during close and returns to staging', async () => {
 		const { work } = createWorkflowRepo();

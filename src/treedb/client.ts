@@ -25,6 +25,14 @@ import type {
 	TreeDbExecResult,
 	TreeDbFetchRemoteRequest,
 	TreeDbFetchRemoteResult,
+	TreeDbFederatedContextRequest,
+	TreeDbFederatedContextResult,
+	TreeDbFederatedGraphRequest,
+	TreeDbFederatedGraphResult,
+	TreeDbFederatedQueryRequest,
+	TreeDbFederatedQueryResult,
+	TreeDbFederatedSearchRequest,
+	TreeDbFederatedSearchResult,
 	TreeDbArtifact,
 	TreeDbArtifactDownload,
 	TreeDbArtifactExportRequest,
@@ -705,6 +713,26 @@ export class TreeDbClient {
 	queryRepository(input: TreeDbRepositoryQueryRequest): Promise<TreeDbRepositoryQueryResult> {
 		const { repoId, ...body } = input;
 		return this.request<TreeDbRepositoryQueryResult>('POST', `/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}/query`, body, { tokenRequired: true });
+	}
+
+	federatedSearch(input: TreeDbFederatedSearchRequest): Promise<TreeDbFederatedSearchResult> {
+		return this.request<Record<string, unknown>>('POST', '/api/v1/search', input, { tokenRequired: true })
+			.then((payload) => firstPayload<TreeDbFederatedSearchResult>(payload, ['search']));
+	}
+
+	federatedQuery(input: TreeDbFederatedQueryRequest): Promise<TreeDbFederatedQueryResult> {
+		return this.request<Record<string, unknown>>('POST', '/api/v1/query', input, { tokenRequired: true })
+			.then((payload) => firstPayload<TreeDbFederatedQueryResult>(payload, ['query']));
+	}
+
+	federatedContext(input: TreeDbFederatedContextRequest): Promise<TreeDbFederatedContextResult> {
+		return this.request<Record<string, unknown>>('POST', '/api/v1/context/build', input, { tokenRequired: true })
+			.then((payload) => firstPayload<TreeDbFederatedContextResult>(payload, ['context']));
+	}
+
+	federatedGraph(input: TreeDbFederatedGraphRequest): Promise<TreeDbFederatedGraphResult> {
+		return this.request<Record<string, unknown>>('POST', '/api/v1/graph/query', input, { tokenRequired: true })
+			.then((payload) => firstPayload<TreeDbFederatedGraphResult>(payload, ['graph']));
 	}
 
 	refreshGraph(input: TreeDbGraphRefreshRequest = {}): Promise<TreeDbGraphRefreshResult> {

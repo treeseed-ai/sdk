@@ -2,6 +2,10 @@ import { TreeDbClient } from './client.ts';
 import { TreeDbApiError } from './errors.ts';
 import { TreeDbRegistryClient, type TreeDbRegistryClientOptions } from './registry-client.ts';
 import type {
+	TreeDbFederatedContextRequest,
+	TreeDbFederatedContextResult,
+	TreeDbFederatedGraphRequest,
+	TreeDbFederatedGraphResult,
 	TreeDbFederatedQueryRequest,
 	TreeDbFederatedQueryResult,
 	TreeDbFederatedSearchRequest,
@@ -56,22 +60,21 @@ export class TreeDbFederatedClient {
 	async query(input: TreeDbFederatedQueryRequest): Promise<TreeDbFederatedQueryResult> {
 		const repoIds = input.repoIds ?? (input.repoId ? [input.repoId] : []);
 		if (repoIds.length !== 1) {
-			throw new TreeDbApiError('Federated multi-repository query is not implemented in Phase 7.', {
-				status: 501,
-				code: 'federated_query_not_implemented',
-			});
+			return this.federatedQuery({ ...input, repoIds });
 		}
 		const repoId = repoIds[0]!;
 		try {
 			const client = await this.resolveRepositoryForRead(repoId);
-			return {
-				results: [{ repoId, result: await client.queryRepository({ ...input, repoId }) }],
-			};
+			const result = await client.queryRepository({ ...input, repoId });
+			return singleQueryResult(repoId, input.type, result);
 		} catch (error) {
 			if (input.includeErrors && error instanceof TreeDbApiError) {
 				return {
+					type: input.type,
 					results: [],
-					errors: [{ repoId, error: { code: error.code, message: error.message, status: error.status } }],
+					page: { limit: input.limit ?? 20, hasMore: false, cursor: null },
+					diagnostics: singleDiagnostics(repoId, 1),
+					errors: [{ repoId, code: error.code, message: error.message, status: error.status }],
 				};
 			}
 			throw error;
@@ -81,26 +84,41 @@ export class TreeDbFederatedClient {
 	async search(input: TreeDbFederatedSearchRequest): Promise<TreeDbFederatedSearchResult> {
 		const repoIds = input.repoIds ?? (input.repoId ? [input.repoId] : []);
 		if (repoIds.length !== 1) {
-			throw new TreeDbApiError('Federated multi-repository search is not implemented in Phase 7.', {
-				status: 501,
-				code: 'federated_query_not_implemented',
-			});
+			return this.federatedSearch({ ...input, repoIds });
 		}
 		const repoId = repoIds[0]!;
 		try {
 			const client = await this.resolveRepositoryForRead(repoId);
-			return {
-				results: [{ repoId, result: await client.searchRepositoryFiles({ ...input, repoId }) }],
-			};
+			const result = await client.searchRepositoryFiles({ ...input, repoId });
+			return singleSearchResult(repoId, input.query, result);
 		} catch (error) {
 			if (input.includeErrors && error instanceof TreeDbApiError) {
 				return {
+					query: input.query,
 					results: [],
-					errors: [{ repoId, error: { code: error.code, message: error.message, status: error.status } }],
+					page: { limit: input.limit ?? 20, hasMore: false, cursor: null },
+					diagnostics: singleDiagnostics(repoId, 1),
+					errors: [{ repoId, code: error.code, message: error.message, status: error.status }],
 				};
 			}
 			throw error;
 		}
+	}
+
+	async federatedSearch(input: TreeDbFederatedSearchRequest): Promise<TreeDbFederatedSearchResult> {
+		return this.registry.client.federatedSearch(input);
+	}
+
+	async federatedQuery(input: TreeDbFederatedQueryRequest): Promise<TreeDbFederatedQueryResult> {
+		return this.registry.client.federatedQuery(input);
+	}
+
+	async federatedContext(input: TreeDbFederatedContextRequest): Promise<TreeDbFederatedContextResult> {
+		return this.registry.client.federatedContext(input);
+	}
+
+	async federatedGraph(input: TreeDbFederatedGraphRequest): Promise<TreeDbFederatedGraphResult> {
+		return this.registry.client.federatedGraph(input);
 	}
 
 	private async clientForPlacement(placement: TreeDbRepositoryPlacement, fallbackRepoId: string) {
@@ -124,4 +142,57 @@ export class TreeDbFederatedClient {
 			repoId: placementRepoId(placement, fallbackRepoId),
 		});
 	}
+}
+
+function singleDiagnostics(repoId: string, partialFailureCount = 0) {
+	return {
+		requestedRepoCount: 1,
+		executedRepoCount: partialFailureCount === 0 ? 1 : 0,
+		rejectedRepoCount: 0,
+		partialFailureCount,
+		routing: [
+			{
+				repoId,
+				source: 'remote' as const,
+				status: partialFailureCount === 0 ? 'ok' as const : 'partial_failure' as const,
+			},
+		],
+	};
+}
+
+function resultItems(result: Record<string, unknown>, repoId: string) {
+	const ref = typeof result.ref === 'string' ? result.ref : 'refs/heads/main';
+	const items = Array.isArray(result.results) ? result.results : [];
+	return items.map((item) => ({
+		...(typeof item === 'object' && item !== null ? item as Record<string, unknown> : { value: item }),
+		repoId,
+		ref,
+		source: 'remote' as const,
+	}));
+}
+
+function resultPage(result: Record<string, unknown>, limit = 20) {
+	return typeof result.page === 'object' && result.page !== null
+		? result.page as { limit: number; hasMore: boolean; cursor?: string | null }
+		: { limit, hasMore: false, cursor: null };
+}
+
+function singleQueryResult(repoId: string, type: string, result: Record<string, unknown>): TreeDbFederatedQueryResult {
+	return {
+		type: typeof result.type === 'string' ? result.type : type,
+		results: resultItems(result, repoId),
+		page: resultPage(result),
+		diagnostics: singleDiagnostics(repoId),
+		errors: [],
+	};
+}
+
+function singleSearchResult(repoId: string, query: string, result: Record<string, unknown>): TreeDbFederatedSearchResult {
+	return {
+		query,
+		results: resultItems(result, repoId),
+		page: resultPage(result),
+		diagnostics: singleDiagnostics(repoId),
+		errors: [],
+	};
 }

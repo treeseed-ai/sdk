@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { TreeDbApiError, TreeDbFederatedClient, TreeDbRegistryClient } from '../../src/treedb/index.ts';
+import { TreeDbFederatedClient, TreeDbRegistryClient } from '../../src/treedb/index.ts';
 
 function json(payload: unknown, status = 200) {
 	return new Response(JSON.stringify(payload), {
@@ -47,27 +47,34 @@ describe('TreeDB registry and federated clients', () => {
 		});
 
 		const result = await federated.query({ repoId: 'repo_1', type: 'text', query: 'release' });
-		expect(result.results[0]?.repoId).toBe('repo_1');
+		expect(result.diagnostics).toMatchObject({ requestedRepoCount: 1, executedRepoCount: 1 });
 		expect(calls).toEqual(['https://node-a.example.test/api/v1/repos/repo_1/query']);
 	});
 
-	it('throws for unknown nodes and multi-repo fan-out in Phase 7', async () => {
+	it('throws for unknown nodes and routes multi-repo fan-out through server federation', async () => {
+		const calls: string[] = [];
 		const registry = new TreeDbRegistryClient({
 			baseUrl: 'https://registry.example.test',
 			token: 'token',
 			fetch: (async (input) => {
+				calls.push(String(input));
 				if (String(input).endsWith('/registry/nodes')) {
 					return json({ ok: true, nodes: [] });
+				}
+				if (String(input).endsWith('/api/v1/query')) {
+					return json({ ok: true, query: { type: 'text', results: [], page: { limit: 20, hasMore: false }, diagnostics: { requestedRepoCount: 2, executedRepoCount: 0, rejectedRepoCount: 0, partialFailureCount: 0, routing: [] }, errors: [] } });
+				}
+				if (String(input).endsWith('/api/v1/search')) {
+					return json({ ok: true, search: { query: 'release', results: [], page: { limit: 20, hasMore: false }, diagnostics: { requestedRepoCount: 2, executedRepoCount: 0, rejectedRepoCount: 0, partialFailureCount: 0, routing: [] }, errors: [] } });
 				}
 				return json({ ok: true, placement: { repoId: 'repo_1', primaryNodeId: 'missing', mirrorNodeIds: [], readPolicy: 'primary', writePolicy: 'primary', migrationState: 'stable' } });
 			}) as typeof fetch,
 		});
 		const federated = new TreeDbFederatedClient({ registry });
 		await expect(federated.resolveRepository('repo_1')).rejects.toMatchObject({ code: 'node_not_configured' });
-		await expect(federated.query({ repoIds: ['repo_1', 'repo_2'], type: 'text' })).rejects.toMatchObject({
-			code: 'federated_query_not_implemented',
-			status: 501,
-		});
-		await expect(federated.search({ repoIds: ['repo_1', 'repo_2'], query: 'release' })).rejects.toBeInstanceOf(TreeDbApiError);
+		await expect(federated.query({ repoIds: ['repo_1', 'repo_2'], type: 'text' })).resolves.toMatchObject({ type: 'text' });
+		await expect(federated.search({ repoIds: ['repo_1', 'repo_2'], query: 'release' })).resolves.toMatchObject({ query: 'release' });
+		expect(calls).toContain('https://registry.example.test/api/v1/query');
+		expect(calls).toContain('https://registry.example.test/api/v1/search');
 	});
 });
