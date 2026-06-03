@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.10.25-dev.staging.20260603T195405Z",
+  "version": "0.10.25-dev.staging.20260603T201852Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -62,6 +62,7 @@
     "@github/copilot-language-server": "1.480.0",
     "@github/copilot-sdk": "0.3.0",
     "@railway/cli": "4.44.0",
+    "@treeseed/sdk": "github:treeseed-ai/sdk#0.10.25-dev.staging.20260603T195405Z",
     "drizzle-orm": "^0.45.2",
     "esbuild": "^0.28.0",
     "extract-zip": "2.0.1",
