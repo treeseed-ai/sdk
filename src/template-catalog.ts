@@ -4,6 +4,7 @@ import type {
 	SdkTemplateCatalogEntry,
 	SdkTemplateCatalogResponse,
 } from './sdk-types.ts';
+import { normalizeTemplateLaunchRequirements } from './template-launch-requirements.ts';
 
 export interface RemoteTemplateCatalogClientOptions {
 	endpoint: string;
@@ -115,6 +116,7 @@ function normalizeTemplateCatalogEntry(value: unknown): SdkTemplateCatalogEntry 
 		relatedBooks: optionalStringArray(record.relatedBooks, 'relatedBooks') ?? [],
 		relatedKnowledge: optionalStringArray(record.relatedKnowledge, 'relatedKnowledge') ?? [],
 		relatedObjectives: optionalStringArray(record.relatedObjectives, 'relatedObjectives') ?? [],
+		launchRequirements: normalizeTemplateLaunchRequirements(record.launchRequirements, 'launchRequirements'),
 	};
 }
 

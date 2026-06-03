@@ -112,6 +112,9 @@ export type TreeseedEnvironmentEntry = {
 	localDefaultValue?: TreeseedEnvironmentValueResolver;
 	isRelevant?: (context: TreeseedEnvironmentContext, scope: TreeseedEnvironmentScope, purpose?: TreeseedEnvironmentPurpose) => boolean;
 	requiredWhen?: (context: TreeseedEnvironmentContext, scope: TreeseedEnvironmentScope, purpose?: TreeseedEnvironmentPurpose) => boolean;
+	sourceRequirement?: string;
+	sourceHostType?: string | null;
+	sourceProvider?: string | null;
 };
 
 export type TreeseedEnvironmentEntryYaml = Omit<

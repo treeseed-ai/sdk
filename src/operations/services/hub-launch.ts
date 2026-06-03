@@ -402,6 +402,7 @@ export function phaseFromProviderLaunch(entry: KnowledgeHubProviderLaunchResult[
 		repo_provision: 'repository_create',
 		content_repository: 'content_repository_create',
 		content_bootstrap: 'starting_shape_apply',
+		host_binding_config: 'host_binding_config',
 		workflow_bootstrap: 'config_sync',
 		hosting_registration: 'cloudflare_reconcile',
 		runtime_connection: 'backend_processing_connect',

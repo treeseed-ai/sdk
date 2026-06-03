@@ -889,6 +889,9 @@ export type TreeseedConfigEntrySnapshot = {
 	purposes: string[];
 	storage: 'shared' | 'scoped';
 	validation?: TreeseedEnvironmentValidation;
+	sourceRequirement?: string;
+	sourceHostType?: string | null;
+	sourceProvider?: string | null;
 	scope: TreeseedConfigScope;
 	sharedScopes: TreeseedConfigScope[];
 	required: boolean;
@@ -2489,6 +2492,7 @@ export async function syncTreeseedGitHubEnvironment({
 	dryRun = false,
 	repository: repositoryInput,
 	valuesOverlay = {},
+	entryIds,
 	managedHostMode = 'auto',
 	execution = 'parallel',
 	concurrency = 4,
@@ -2499,6 +2503,7 @@ export async function syncTreeseedGitHubEnvironment({
 	dryRun?: boolean;
 	repository?: string | null;
 	valuesOverlay?: Record<string, string | undefined>;
+	entryIds?: string[];
 	managedHostMode?: 'auto' | 'direct' | 'managed';
 	execution?: 'parallel' | 'sequential';
 	concurrency?: number;
@@ -2525,8 +2530,10 @@ export async function syncTreeseedGitHubEnvironment({
 		: null;
 	const allowedSecrets = allowed ? new Set(allowed.secrets) : null;
 	const allowedVariables = allowed ? new Set(allowed.variables) : null;
+	const entryFilter = Array.isArray(entryIds) && entryIds.length > 0 ? new Set(entryIds) : null;
 	const relevant = registry.entries.filter((entry) => {
 		if (!entry.scopes.includes(scope)) return false;
+		if (entryFilter && !entryFilter.has(entry.id)) return false;
 		if (!managedBoundary) return true;
 		if (entry.sensitivity === 'secret') {
 			return Boolean(entry.targets.includes('github-secret') && allowedSecrets?.has(entry.id));
@@ -2605,31 +2612,70 @@ export async function syncTreeseedGitHubEnvironment({
 		repository,
 		scope,
 		environment,
+		entryIds: entryFilter ? [...entryFilter] : undefined,
 		...synced,
 	};
 }
 
-export function syncTreeseedCloudflareEnvironment({ tenantRoot, scope = 'prod', dryRun = false } = {}) {
-	const values = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
+export function syncTreeseedCloudflareEnvironment({
+	tenantRoot,
+	scope = 'prod',
+	dryRun = false,
+	valuesOverlay = {},
+	entryIds,
+	onProgress,
+}: {
+	tenantRoot: string;
+	scope?: TreeseedConfigScope;
+	dryRun?: boolean;
+	valuesOverlay?: Record<string, string | undefined>;
+	entryIds?: string[];
+	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
+}) {
+	const values = {
+		...resolveTreeseedMachineEnvironmentValues(tenantRoot, scope),
+		...nonEmptyEnvironmentValues(valuesOverlay),
+	};
 	const target = createPersistentDeployTarget(scope);
+	const progress = (message: string, stream: 'stdout' | 'stderr' = 'stdout') => onProgress?.(message, stream);
 	for (const [key, value] of Object.entries(values)) {
 		if (typeof value === 'string' && value.length > 0) {
 			process.env[key] = value;
 		}
 	}
 
+	progress(`[${scope}][cloudflare][config] Generating Wrangler config...`);
 	const { wranglerPath } = ensureGeneratedWranglerConfig(tenantRoot, { target });
-	const syncedSecrets = syncCloudflareSecrets(tenantRoot, { dryRun, target });
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
+	const entryFilter = Array.isArray(entryIds) && entryIds.length > 0 ? new Set(entryIds) : null;
+	const cloudflareSecrets = Object.fromEntries(registry.entries
+		.filter((entry) =>
+			entry.scopes.includes(scope)
+			&& entry.targets.includes('cloudflare-secret')
+			&& (!entryFilter || entryFilter.has(entry.id)))
+		.map((entry) => [entry.id, values[entry.id]])
+		.filter(([, value]) => typeof value === 'string' && value.length > 0));
+	progress(`[${scope}][cloudflare][sync] Syncing Cloudflare secrets...`);
+	const syncedSecrets = syncCloudflareSecrets(tenantRoot, {
+		dryRun,
+		target,
+		extraSecrets: cloudflareSecrets,
+		entryIds,
+	});
 	const cloudflareVars = registry.entries
-		.filter((entry) => entry.scopes.includes(scope) && entry.targets.includes('cloudflare-var'))
+		.filter((entry) =>
+			entry.scopes.includes(scope)
+			&& entry.targets.includes('cloudflare-var')
+			&& (!entryFilter || entryFilter.has(entry.id)))
 		.map((entry) => entry.id)
 		.filter((key) => typeof values[key] === 'string' && values[key].length > 0);
+	progress(`[${scope}][cloudflare][sync] Complete: ${syncedSecrets.length} secrets, ${cloudflareVars.length} vars.`);
 
 	return {
 		scope,
 		target,
 		wranglerPath,
+		entryIds: entryFilter ? [...entryFilter] : undefined,
 		secrets: syncedSecrets,
 		varsManagedByWranglerConfig: cloudflareVars,
 	};
@@ -2642,19 +2688,37 @@ function environmentEntryTargetsService(entry, serviceKey) {
 	return targets.length === 0 || targets.includes(serviceKey);
 }
 
-function railwayEnvironmentEntryIdsForService(registry, values, scope, target, serviceKey) {
+function railwayEnvironmentEntryIdsForService(registry, values, scope, target, serviceKey, entryFilter = null) {
 	return registry.entries
 		.filter((entry) =>
 			entry.scopes.includes(scope)
 			&& entry.targets.includes(target)
+			&& (!entryFilter || entryFilter.has(entry.id))
 			&& environmentEntryTargetsService(entry, serviceKey))
 		.map((entry) => entry.id)
 		.filter((key) => typeof values[key] === 'string' && values[key].length > 0);
 }
 
-export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dryRun = false } = {}) {
+export function syncTreeseedRailwayEnvironment({
+	tenantRoot,
+	scope = 'prod',
+	dryRun = false,
+	valuesOverlay = {},
+	entryIds,
+	onProgress,
+}: {
+	tenantRoot: string;
+	scope?: TreeseedConfigScope;
+	dryRun?: boolean;
+	valuesOverlay?: Record<string, string | undefined>;
+	entryIds?: string[];
+	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
+}) {
 	const config = syncManagedServiceSettingsFromDeployConfig(tenantRoot);
-	const values = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
+	const values = {
+		...resolveTreeseedMachineEnvironmentValues(tenantRoot, scope),
+		...nonEmptyEnvironmentValues(valuesOverlay),
+	};
 	const deployConfig = loadCliDeployConfig(tenantRoot);
 	const marketDatabaseService = deployConfig.services?.marketDatabase;
 	const marketDatabaseBaseName = typeof marketDatabaseService?.railway?.serviceName === 'string' && marketDatabaseService.railway.serviceName.trim()
@@ -2667,6 +2731,8 @@ export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dry
 			? `\${{${marketDatabaseServiceName}.DATABASE_URL}}`
 			: '';
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
+	const entryFilter = Array.isArray(entryIds) && entryIds.length > 0 ? new Set(entryIds) : null;
+	const progress = (message: string, stream: 'stdout' | 'stderr' = 'stdout') => onProgress?.(message, stream);
 	const serviceValuesByName = new Map();
 	const services = configuredRailwayServices(tenantRoot, scope)
 		.map((service) => {
@@ -2696,8 +2762,8 @@ export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dry
 				rootDir: service.rootDir,
 				baseUrl: service.publicBaseUrl ?? '(unset)',
 				environmentName,
-				secrets: railwayEnvironmentEntryIdsForService(registry, serviceValues, scope, 'railway-secret', service.key),
-				variables: railwayEnvironmentEntryIdsForService(registry, serviceValues, scope, 'railway-var', service.key),
+				secrets: railwayEnvironmentEntryIdsForService(registry, serviceValues, scope, 'railway-secret', service.key, entryFilter),
+				variables: railwayEnvironmentEntryIdsForService(registry, serviceValues, scope, 'railway-var', service.key, entryFilter),
 				dryRun,
 			};
 		})
@@ -2705,6 +2771,7 @@ export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dry
 
 	for (const service of services) {
 		const serviceValues = serviceValuesByName.get(service.serviceName || service.serviceId || service.instanceKey || service.service) ?? values;
+		progress(`[${scope}][railway][${service.service}] Syncing ${service.secrets.length} secrets and ${service.variables.length} variables...`);
 		for (const key of service.secrets) {
 			runRailway(
 				['variable', 'set', '--service', service.serviceName || service.serviceId, '--environment', service.environmentName, '--stdin', '--skip-deploys', key],
@@ -2717,10 +2784,12 @@ export function syncTreeseedRailwayEnvironment({ tenantRoot, scope = 'prod', dry
 				{ cwd: service.rootDir, dryRun, input: serviceValues[key] },
 			);
 		}
+		progress(`[${scope}][railway][${service.service}] Complete.`);
 	}
 
 	return {
 		scope,
+		entryIds: entryFilter ? [...entryFilter] : undefined,
 		services,
 	};
 }
@@ -2934,7 +3003,10 @@ function formatTreeseedConfigValidationFailure(
 		lines.push(`${scope}:`);
 		for (const problem of [...validation.missing, ...validation.invalid]) {
 			const targets = problem.entry.targets.length > 0 ? ` Targets: ${problem.entry.targets.join(', ')}.` : '';
-			lines.push(`- ${problem.id}: ${problem.message}${targets}`);
+			const source = problem.entry.sourceRequirement
+				? ` Source: ${problem.entry.sourceRequirement}${problem.entry.sourceProvider ? ` (${problem.entry.sourceProvider})` : ''}.`
+				: '';
+			lines.push(`- ${problem.id}: ${problem.message}${targets}${source}`);
 		}
 	}
 	return lines.join('\n');
@@ -3077,6 +3149,9 @@ function buildConfigEntrySnapshot(scope: TreeseedConfigScope, entry, currentValu
 		purposes: [...entry.purposes],
 		storage: entry.storage ?? 'scoped',
 		validation: entry.validation,
+		sourceRequirement: entry.sourceRequirement,
+		sourceHostType: entry.sourceHostType ?? null,
+		sourceProvider: entry.sourceProvider ?? null,
 		scope,
 		sharedScopes: entry.storage === 'shared' ? [...entry.scopes] : [scope],
 		required: false,
@@ -3591,6 +3666,9 @@ export function collectTreeseedPrintEnvReport({
 					? (entry.sensitivity === 'secret' && !revealSecrets ? maskValue(rawValue) : rawValue)
 					: '(unset)',
 				source: sources[entry.id] ?? 'unset',
+				sourceRequirement: entry.sourceRequirement,
+				sourceHostType: entry.sourceHostType ?? null,
+				sourceProvider: entry.sourceProvider ?? null,
 			};
 		}),
 	};

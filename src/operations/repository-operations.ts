@@ -4,6 +4,11 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { serializeFrontmatterDocument, parseFrontmatterDocument } from '../frontmatter.ts';
+import {
+	applyProjectLaunchHostBindingConfig,
+	auditProjectLaunchHostBindingConfig,
+	type ApplyProjectLaunchHostBindingConfigOptions,
+} from './services/template-host-bindings.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -172,6 +177,10 @@ export interface PlatformRepositoryOperationInput {
 	commitMessage?: string;
 	approvalRequired?: boolean;
 	approvalId?: string;
+	hostBindings?: ApplyProjectLaunchHostBindingConfigOptions['hostBindings'];
+	hostBindingPlans?: ApplyProjectLaunchHostBindingConfigOptions['hostBindingPlans'];
+	launchInput?: ApplyProjectLaunchHostBindingConfigOptions['launchInput'];
+	derived?: ApplyProjectLaunchHostBindingConfigOptions['derived'];
 }
 
 export interface PlatformRepositoryOperationOptions {
@@ -756,8 +765,23 @@ function outputHref(output: Record<string, unknown>) {
 	return null;
 }
 
+const HOST_BINDING_CONFIG_PATHS = new Set([
+	'treeseed.site.yaml',
+	'src/env.yaml',
+	'src/manifest.yaml',
+	'package.json',
+]);
+
+function assertHostBindingChangedPaths(changed: string[]) {
+	for (const changedPath of changed) {
+		if (!HOST_BINDING_CONFIG_PATHS.has(changedPath)) {
+			throw new Error(`Host binding repository operation attempted to change unsupported path "${changedPath}".`);
+		}
+	}
+}
+
 export async function executePlatformRepositoryOperation(
-	operation: 'write_content_record' | 'create_related_content' | 'create_decision_from_proposals' | string,
+	operation: 'write_content_record' | 'create_related_content' | 'create_decision_from_proposals' | 'apply_host_binding_config' | 'audit_host_binding_config' | string,
 	input: PlatformRepositoryOperationInput,
 	options: PlatformRepositoryOperationOptions,
 ): Promise<PlatformRepositoryOperationResult> {
@@ -780,11 +804,38 @@ export async function executePlatformRepositoryOperation(
 		output = await createRelatedContent(repoPath, input);
 	} else if (operation === 'create_decision_from_proposals') {
 		output = await createDecisionFromProposals(repoPath, input);
+	} else if (operation === 'apply_host_binding_config') {
+		const hostBindingConfig = applyProjectLaunchHostBindingConfig({
+			projectRoot: repoPath,
+			hostBindings: input.hostBindings,
+			hostBindingPlans: input.hostBindingPlans,
+			launchInput: input.launchInput,
+			derived: input.derived,
+		});
+		output = {
+			hostBindingConfig,
+			changedPaths: hostBindingConfig.targets,
+		};
+	} else if (operation === 'audit_host_binding_config') {
+		const hostBindingAudit = auditProjectLaunchHostBindingConfig({
+			projectRoot: repoPath,
+			hostBindings: input.hostBindings,
+			hostBindingPlans: input.hostBindingPlans,
+			launchInput: input.launchInput,
+			derived: input.derived,
+		});
+		output = {
+			hostBindingAudit,
+			changedPaths: [],
+		};
 	} else {
 		throw new Error(`Unsupported repository operation "${operation}".`);
 	}
 	const gitChanged = await changedPaths(repoPath);
 	const changed = gitChanged.length > 0 ? gitChanged : changedPathsFromOutput(output);
+	if (operation === 'apply_host_binding_config' || operation === 'audit_host_binding_config') {
+		assertHostBindingChangedPaths(changed);
+	}
 	const verification = await runVerificationCommands(repoPath, input.repository);
 	const commit = await commitIfRequested(repoPath, input.repository, input, changed);
 	return {

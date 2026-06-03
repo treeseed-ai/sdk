@@ -2,11 +2,12 @@
 
 import { resolve } from 'node:path';
 import { scaffoldTemplateProject } from '../src/operations/services/template-registry.ts';
+import { TREESEED_DEFAULT_STARTER_TEMPLATE_ID } from '../src/sdk-types.ts';
 
 function parseArgs(argv) {
   const args = {
     target: null,
-    template: 'starter-basic',
+    template: TREESEED_DEFAULT_STARTER_TEMPLATE_ID,
     name: null,
     slug: null,
     siteUrl: null,
@@ -53,7 +54,7 @@ console.log(`Created Treeseed tenant from ${definition.id} at ${targetRoot}`);
 console.log('Next steps:');
 console.log(`  cd ${options.target}`);
 console.log('  npm install');
-console.log('  treeseed template show starter-basic');
+console.log(`  treeseed template show ${options.template}`);
 console.log('  treeseed sync --check');
 console.log('  treeseed config --environment local');
 console.log('  treeseed dev');

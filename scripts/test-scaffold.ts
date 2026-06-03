@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { corePackageRoot, packageRoot, packageScriptPath, sdkPackageRoot } from '../src/operations/services/runtime-tools.ts';
 import { listTemplateProducts, validateTemplateProduct } from '../src/operations/services/template-registry.ts';
+import { TREESEED_DEFAULT_STARTER_TEMPLATE_ID } from '../src/sdk-types.ts';
 
 const npmCacheDir = process.env.TREESEED_SCAFFOLD_NPM_CACHE_DIR
 	? resolve(process.env.TREESEED_SCAFFOLD_NPM_CACHE_DIR)
@@ -227,7 +228,7 @@ async function scaffoldSite(siteRoot) {
 	for (const definition of await listTemplateProducts({ writeWarning: (message) => console.warn(message) })) {
 		await validateTemplateProduct(definition, { writeWarning: (message) => console.warn(message) });
 	}
-	runStep(process.execPath, [packageScriptPath('scaffold-site'), siteRoot, '--template', 'starter-basic', '--name', 'Smoke Site', '--site-url', 'https://smoke.example.com', '--contact-email', 'hello@example.com']);
+	runStep(process.execPath, [packageScriptPath('scaffold-site'), siteRoot, '--template', TREESEED_DEFAULT_STARTER_TEMPLATE_ID, '--name', 'Smoke Site', '--site-url', 'https://smoke.example.com', '--contact-email', 'hello@example.com']);
 }
 
 function installScaffold(siteRoot, { coreTarballPath, sdkTarballPath, cliTarballPath }) {

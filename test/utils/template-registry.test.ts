@@ -3,10 +3,18 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import {
+	recordTemplateHostBindingState,
 	scaffoldTemplateProject,
+	syncTemplateProject,
 	validateTemplateProduct,
 } from '../../src/operations/services/template-registry.ts';
+import {
+	normalizeProjectLaunchHostBindings,
+	resolveProjectLaunchHostBindings,
+} from '../../src/template-launch-requirements.ts';
+import { applyProjectLaunchHostBindingConfig } from '../../src/operations/services/template-host-bindings.ts';
 
 function git(cwd: string, args: string[]) {
 	const result = spawnSync('git', args, {
@@ -69,6 +77,168 @@ describe('template registry fulfillment', () => {
 			expect(existsSync(resolve(targetRoot, 'src/content/knowledge'))).toBe(true);
 			expect(readFileSync(resolve(targetRoot, '.treeseed/template-state.json'), 'utf8')).toContain(id);
 		}
+	});
+
+	it('applies launch host binding config to a scaffolded first-party starter', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-starter-host-bindings-'));
+		const targetRoot = resolve(root, 'generated');
+		const product = await scaffoldTemplateProject('starter-research', targetRoot, {
+			target: 'generated',
+			name: 'Generated Research',
+			siteUrl: 'https://research.example.com',
+			contactEmail: 'hello@example.com',
+		}, {
+			cwd: root,
+			env: fixtureCatalogEnv,
+		});
+		const launchRequirements = product.launchRequirements;
+		const resolved = resolveProjectLaunchHostBindings({
+			launchRequirements,
+			hostBindings: normalizeProjectLaunchHostBindings({}),
+			repositoryHosts: [{
+				id: 'platform:github:hosted-hubs',
+				type: 'repository',
+				provider: 'github',
+				ownership: 'treeseed_managed',
+				name: 'TreeSeed Hosted Hubs',
+				organizationOrOwner: 'treeseed-sites',
+				status: 'active',
+			}],
+			managedHosts: [{
+				id: 'treeseed-managed-web',
+				provider: 'cloudflare',
+				ownership: 'treeseed_managed',
+				name: 'TreeSeed Web Host',
+				status: 'active',
+				allowedEnvironments: ['staging', 'prod'],
+				metadata: { hostType: 'web', managed: true },
+			}],
+			selectedAt: '2026-06-02T00:00:00.000Z',
+		});
+
+		const result = applyProjectLaunchHostBindingConfig({
+			projectRoot: targetRoot,
+			hostBindings: resolved.hostBindings,
+			hostBindingPlans: {
+				configWrites: resolved.configWritePlan,
+				secretDeployment: resolved.secretDeploymentPlan,
+			},
+			launchInput: {
+				projectSlug: 'generated-research',
+				projectName: 'Generated Research',
+				domains: {
+					productionDomain: 'research.example.com',
+					stagingDomain: 'staging.research.example.com',
+				},
+			},
+			derived: {
+				projectSlug: 'generated-research',
+				repositoryName: 'generated-research-site',
+			},
+		});
+
+		const config = parseYaml(readFileSync(resolve(targetRoot, 'treeseed.site.yaml'), 'utf8')) as any;
+		expect(config.hosting.hostBindings.sourceRepository).toMatchObject({
+			provider: 'github',
+			owner: 'treeseed-sites',
+			repository: 'generated-research-site',
+		});
+		expect(config.hosting.hostBindings.publicWeb.provider).toBe('cloudflare');
+		expect(config.surfaces.web.environments.prod.domain).toBe('research.example.com');
+		expect(config.surfaces.web.environments.staging.domain).toBe('staging.research.example.com');
+		expect(result.configWrites.length).toBeGreaterThan(0);
+		expect(JSON.stringify(config)).not.toContain('secret-token');
+	});
+
+	it('preserves host-bound config overlays during template sync checks', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-starter-host-sync-'));
+		const targetRoot = resolve(root, 'generated');
+		const product = await scaffoldTemplateProject('starter-research', targetRoot, {
+			target: 'generated',
+			name: 'Generated Research',
+			siteUrl: 'https://research.example.com',
+			contactEmail: 'hello@example.com',
+		}, {
+			cwd: root,
+			env: fixtureCatalogEnv,
+		});
+		const resolved = resolveProjectLaunchHostBindings({
+			launchRequirements: product.launchRequirements,
+			hostBindings: normalizeProjectLaunchHostBindings({}),
+			repositoryHosts: [{
+				id: 'platform:github:hosted-hubs',
+				type: 'repository',
+				provider: 'github',
+				ownership: 'treeseed_managed',
+				name: 'TreeSeed Hosted Hubs',
+				organizationOrOwner: 'treeseed-sites',
+				status: 'active',
+			}],
+			managedHosts: [{
+				id: 'treeseed-managed-web',
+				provider: 'cloudflare',
+				ownership: 'treeseed_managed',
+				name: 'TreeSeed Web Host',
+				status: 'active',
+				allowedEnvironments: ['staging', 'prod'],
+				metadata: { hostType: 'web', managed: true },
+			}],
+			selectedAt: '2026-06-02T00:00:00.000Z',
+		});
+		const hostBindingPlans = {
+			configWrites: resolved.configWritePlan,
+			secretDeployment: {
+				items: [
+					...resolved.secretDeploymentPlan.items,
+					{
+						requirementKey: 'sourceRepository',
+						requirementKind: 'host' as const,
+						env: 'GITHUB_TOKEN',
+						sensitivity: 'secret',
+						source: 'selected-host',
+						targets: ['github-secret'],
+						scopes: ['staging', 'prod'] as const,
+						sourceHostId: 'platform:github:hosted-hubs',
+					},
+				],
+			},
+		};
+		const hostBindingConfig = applyProjectLaunchHostBindingConfig({
+			projectRoot: targetRoot,
+			hostBindings: resolved.hostBindings,
+			hostBindingPlans,
+			launchInput: {
+				projectSlug: 'generated-research',
+				projectName: 'Generated Research',
+				domains: {
+					productionDomain: 'research.example.com',
+					stagingDomain: 'staging.research.example.com',
+				},
+			},
+			derived: {
+				projectSlug: 'generated-research',
+				repositoryName: 'generated-research-site',
+			},
+		});
+		recordTemplateHostBindingState(targetRoot, {
+			hostBindings: resolved.hostBindings,
+			hostBindingPlans,
+			hostBindingConfig,
+		});
+
+		await expect(syncTemplateProject(targetRoot, {
+			check: true,
+			cwd: root,
+			env: fixtureCatalogEnv,
+		})).resolves.toEqual([]);
+		expect(parseYaml(readFileSync(resolve(targetRoot, 'src/env.yaml'), 'utf8'))).toMatchObject({
+			entries: {
+				GITHUB_TOKEN: {
+					sourceRequirement: 'sourceRepository',
+					sourceProvider: 'github',
+				},
+			},
+		});
 	});
 
 	it('can scaffold a template from a remote git fulfillment source when no packaged artifact exists', async () => {

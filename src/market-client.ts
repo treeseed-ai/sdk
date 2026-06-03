@@ -703,6 +703,41 @@ export class MarketClient {
 		);
 	}
 
+	projectHosts(projectId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/hosts`,
+			{ requireAuth: true },
+		);
+	}
+
+	auditProjectHosts(projectId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/hosts/audit`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	replaceProjectHost(projectId: string, requirementKey: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: Record<string, unknown>; operation: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/hosts/${encodeURIComponent(requirementKey)}/replace`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	resyncProjectHost(projectId: string, requirementKey: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: Record<string, unknown>; operation: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/hosts/${encodeURIComponent(requirementKey)}/resync`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	rotateProjectHost(projectId: string, requirementKey: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: Record<string, unknown>; operation: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/hosts/${encodeURIComponent(requirementKey)}/rotate`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
 	projectDeploymentState(projectId: string) {
 		return this.request<MarketProjectDeploymentState>(
 			`/v1/projects/${encodeURIComponent(projectId)}/deployment-state`,
