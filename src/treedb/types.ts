@@ -418,6 +418,12 @@ export interface TreeDbExecRequest extends TreeDbWorkspaceRequest {
 	mode?: 'read_only' | 'verification' | 'write_limited';
 	timeoutMs?: number;
 	maxOutputBytes?: number;
+	network?: 'none' | 'host';
+	resourceLimits?: {
+		cpu?: number;
+		memoryMb?: number;
+		pids?: number;
+	};
 }
 
 export interface TreeDbExecResult {
@@ -427,6 +433,16 @@ export interface TreeDbExecResult {
 	elapsedMs: number;
 	truncated: boolean;
 	changedPaths: string[];
+	sandbox?: {
+		backend: 'direct_dev' | 'container_sandbox' | 'external_worker' | string;
+		network: string;
+		resourceLimits?: {
+			cpu?: number;
+			memoryMb?: number;
+			pids?: number;
+		};
+		isolated: boolean;
+	};
 }
 
 export interface TreeDbRepositoryReadRequest {
@@ -666,6 +682,119 @@ export interface TreeDbMirrorSyncRequest {
 export interface TreeDbMirrorSyncResult {
 	mirror: TreeDbMirror;
 	sync: Record<string, unknown>;
+}
+
+export interface TreeDbFetchRemoteRequest {
+	repoId?: string;
+	remoteName?: string;
+	remoteUrl?: string;
+	refspecs?: string[];
+	dryRun?: boolean;
+}
+
+export interface TreeDbFetchRemoteResult {
+	fetch: {
+		repoId?: string;
+		remoteName: string;
+		remoteUrl?: string | null;
+		refspecs: string[];
+		updatedRefs: string[];
+		receivedPack?: boolean;
+		beforeHead?: string | null;
+		afterHead?: string | null;
+		status: string;
+	};
+}
+
+export interface TreeDbPushRequest extends TreeDbFetchRemoteRequest {
+	refspecs: string[];
+	expectedRemoteHead?: string | null;
+}
+
+export interface TreeDbPushResult {
+	repoId?: string;
+	remoteName: string;
+	remoteUrl?: string | null;
+	refspecs: string[];
+	dryRun?: boolean;
+	backend: string;
+	status: 'dry_run' | 'pushed' | string;
+	updatedRefs: string[];
+	rejectedRefs: string[];
+	beforeHead?: string | null;
+	afterHead?: string | null;
+}
+
+export interface TreeDbMirrorHealthRequest {
+	repoId?: string;
+	mirrorId: string;
+}
+
+export interface TreeDbMirrorHealthResult {
+	health: {
+		mirrorId: string;
+		repoId: string;
+		status: 'healthy' | 'degraded' | 'unhealthy' | string;
+		mirrorStatus?: string;
+		behindBy?: number | null;
+		lastSeenCommit?: string | null;
+	};
+}
+
+export interface TreeDbMirrorPromotionRequest {
+	repoId?: string;
+	mirrorId: string;
+	dryRun?: boolean;
+	requireSynced?: boolean;
+}
+
+export interface TreeDbMirrorPromotionResult {
+	promotion: {
+		mirrorId: string;
+		repoId: string;
+		dryRun: boolean;
+		status: 'planned' | 'promoted' | string;
+		previousPlacement?: TreeDbRepositoryPlacement | null;
+		resultingPlacement?: TreeDbRepositoryPlacement | null;
+	};
+}
+
+export interface TreeDbStorageCompactRequest {
+	logs?: string[];
+	dryRun?: boolean;
+	backupBefore?: boolean;
+}
+
+export interface TreeDbStorageCompactResult {
+	compact: {
+		status: string;
+		dryRun: boolean;
+		backupId?: string | null;
+		files: Array<{
+			file: string;
+			recordsBefore: number;
+			recordsAfter: number;
+			bytesBefore: number;
+			bytesAfter: number;
+			compacted: boolean;
+		}>;
+	};
+}
+
+export interface TreeDbStorageBackupRequest {
+	include?: string[];
+	verify?: boolean;
+}
+
+export interface TreeDbStorageBackupResult {
+	backup: {
+		backupId: string;
+		format: 'tar.zst';
+		uri: string;
+		checksum: string;
+		byteLength: number;
+		verified: boolean;
+	};
 }
 
 export interface TreeDbMigrationRequest {

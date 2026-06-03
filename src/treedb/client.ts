@@ -23,6 +23,8 @@ import type {
 	TreeDbEffectiveScopeRequest,
 	TreeDbExecRequest,
 	TreeDbExecResult,
+	TreeDbFetchRemoteRequest,
+	TreeDbFetchRemoteResult,
 	TreeDbArtifact,
 	TreeDbArtifactDownload,
 	TreeDbArtifactExportRequest,
@@ -42,6 +44,10 @@ import type {
 	TreeDbListTreeRequest,
 	TreeDbMigration,
 	TreeDbMigrationRequest,
+	TreeDbMirrorHealthRequest,
+	TreeDbMirrorHealthResult,
+	TreeDbMirrorPromotionRequest,
+	TreeDbMirrorPromotionResult,
 	TreeDbMirrorSyncRequest,
 	TreeDbMirrorSyncResult,
 	TreeDbNode,
@@ -58,9 +64,15 @@ import type {
 	TreeDbSearchResult,
 	TreeDbSnapshot,
 	TreeDbSnapshotBuildRequest,
+	TreeDbStorageBackupRequest,
+	TreeDbStorageBackupResult,
+	TreeDbStorageCompactRequest,
+	TreeDbStorageCompactResult,
 	TreeDbStatus,
 	TreeDbTreeEntry,
 	TreeDbClientOptions,
+	TreeDbPushRequest,
+	TreeDbPushResult,
 	TreeDbWhoami,
 	TreeDbWorkspace,
 	TreeDbCreateWorkspaceRequest,
@@ -473,6 +485,58 @@ export class TreeDbClient {
 			body,
 			{ tokenRequired: true },
 		);
+	}
+
+	fetchRemote(input: TreeDbFetchRemoteRequest): Promise<TreeDbFetchRemoteResult> {
+		const { repoId, ...body } = input;
+		return this.request<TreeDbFetchRemoteResult>(
+			'POST',
+			`/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}/sync`,
+			body,
+			{ tokenRequired: true },
+		);
+	}
+
+	push(input: TreeDbPushRequest): Promise<TreeDbPushResult> {
+		const { repoId, ...body } = input;
+		return this.request<Record<string, unknown>>(
+			'POST',
+			`/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}/push`,
+			body,
+			{ tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbPushResult>(payload, ['push']));
+	}
+
+	checkMirrorHealth(input: TreeDbMirrorHealthRequest): Promise<TreeDbMirrorHealthResult> {
+		const { repoId, mirrorId } = input;
+		return this.request<TreeDbMirrorHealthResult>(
+			'POST',
+			`/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}/mirrors/${encodeURIComponent(mirrorId)}/health`,
+			{},
+			{ tokenRequired: true },
+		);
+	}
+
+	promoteMirror(input: TreeDbMirrorPromotionRequest): Promise<TreeDbMirrorPromotionResult> {
+		const { repoId, mirrorId, ...body } = input;
+		return this.request<TreeDbMirrorPromotionResult>(
+			'POST',
+			`/api/v1/repos/${encodeURIComponent(this.repoId(repoId))}/mirrors/${encodeURIComponent(mirrorId)}/promote`,
+			body,
+			{ tokenRequired: true },
+		);
+	}
+
+	compactStorage(input: TreeDbStorageCompactRequest = {}): Promise<TreeDbStorageCompactResult> {
+		return this.request<TreeDbStorageCompactResult>('POST', '/api/v1/admin/storage/compact', input, {
+			tokenRequired: true,
+		});
+	}
+
+	backupStorage(input: TreeDbStorageBackupRequest = {}): Promise<TreeDbStorageBackupResult> {
+		return this.request<TreeDbStorageBackupResult>('POST', '/api/v1/admin/storage/backup', input, {
+			tokenRequired: true,
+		});
 	}
 
 	createMigration(input: TreeDbMigrationRequest): Promise<{ migration: TreeDbMigration; placement?: TreeDbRepositoryPlacement }> {
