@@ -86,14 +86,17 @@ export interface TreeDbEffectiveScope {
 	capabilities: string[];
 	refs: string[];
 	paths: string[];
+	policyVersion?: string;
+	policyHash?: string;
 }
 
 export interface TreeDbAuthMode {
 	mode: 'dev' | 'connected';
 	connected: boolean;
 	verifier?: {
-		type: 'jwt_hs256';
+		type: 'jwt_hs256' | 'hs256_dev' | 'jwks_oidc' | 'trusted_internal';
 		issuer?: string;
+		jwksUrl?: string;
 	};
 }
 
@@ -106,6 +109,9 @@ export interface TreeDbCapabilityGrant {
 	refs: string[];
 	paths: string[];
 	expiresAt?: string | null;
+	revokedAt?: string | null;
+	revokedByActorId?: string | null;
+	revocationReason?: string | null;
 }
 
 export interface TreeDbAuditEvent {
@@ -215,6 +221,10 @@ export interface TreeDbWorkspace {
 	status: string;
 	allowedPaths: string[];
 	commitSha?: string | null;
+	policyVersion?: string;
+	policyHash?: string;
+	revokedAt?: string | null;
+	revokedReason?: string | null;
 }
 
 export interface TreeDbWorkspaceRequest {
