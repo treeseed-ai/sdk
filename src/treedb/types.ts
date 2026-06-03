@@ -296,6 +296,75 @@ export interface TreeDbFileMutationResult {
 	};
 }
 
+export interface TreeDbBlobReadRequest {
+	repoId?: string;
+	ref?: string;
+	path: string;
+	encoding?: 'base64';
+	expectedContentHash?: string;
+	allowProtected?: boolean;
+}
+
+export interface TreeDbBlobWriteRequest extends TreeDbWorkspaceRequest {
+	path: string;
+	encoding?: 'base64';
+	contentBase64: string;
+	contentType?: string;
+	expectedSha?: string;
+	expectedContentHash?: string;
+	allowProtected?: boolean;
+}
+
+export interface TreeDbBlobDeleteRequest extends TreeDbWorkspaceRequest {
+	path: string;
+	expectedSha?: string;
+	allowProtected?: boolean;
+}
+
+export interface TreeDbBlobDownloadRequest extends TreeDbWorkspaceRequest {
+	path: string;
+	allowProtected?: boolean;
+}
+
+export interface TreeDbBlobUploadRequest extends TreeDbWorkspaceRequest {
+	path: string;
+	content: ArrayBuffer | Uint8Array | Blob;
+	contentType?: string;
+	expectedSha?: string;
+	expectedContentHash?: string;
+	allowProtected?: boolean;
+}
+
+export interface TreeDbBlob {
+	path: string;
+	encoding: 'base64';
+	contentBase64: string;
+	objectId?: string | null;
+	sha?: string | null;
+	contentHash: string;
+	byteLength: number;
+	contentType: string;
+	source: 'base' | 'workspace';
+}
+
+export interface TreeDbBlobMutationResult {
+	workspaceId: string;
+	path: string;
+	op: 'put' | 'delete';
+	encoding?: 'base64';
+	contentHash?: string | null;
+	byteLength?: number;
+	contentType?: string | null;
+}
+
+export interface TreeDbBlobDownload {
+	content: ArrayBuffer;
+	contentType: string | null;
+	contentHash?: string;
+	objectId?: string;
+	source?: 'base' | 'workspace';
+}
+
 export interface TreeDbSearchRequest extends TreeDbWorkspaceRequest {
 	query: string;
 	path?: string;
