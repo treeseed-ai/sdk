@@ -30,6 +30,8 @@ import {
 
 type Mutable<T> = { -readonly [P in keyof T]: T[P] };
 
+export type { TemplateLaunchRequirements } from './sdk-types.ts';
+
 export interface ProjectLaunchHostInventoryRecord {
 	id: string;
 	type?: string | null;
