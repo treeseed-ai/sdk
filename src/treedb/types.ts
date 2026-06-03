@@ -25,7 +25,48 @@ export interface TreeDbClientOptions {
 	fetch?: typeof fetch;
 	defaultRef?: string;
 	defaultActor?: TreeDbActor;
+	timeoutMs?: number;
 }
+
+export type TreeDbErrorCode =
+	| 'authentication_required'
+	| 'invalid_token'
+	| 'permission_denied'
+	| 'workspace_revoked'
+	| 'not_found'
+	| 'conflict'
+	| 'payload_too_large'
+	| 'unsupported_media_type'
+	| 'validation_error'
+	| 'graph_not_ready'
+	| 'federated_query_not_implemented'
+	| 'network_error'
+	| 'timeout'
+	| 'partial_failure'
+	| 'federated_node_unavailable'
+	| 'federated_node_timeout'
+	| 'federated_partial_failure'
+	| 'federated_scope_empty'
+	| 'federated_route_not_configured'
+	| 'unsupported_transport'
+	| 'push_rejected'
+	| 'credential_not_configured'
+	| 'sandbox_unavailable'
+	| 'sandbox_policy_denied'
+	| 'storage_compaction_failed'
+	| 'backup_failed'
+	| 'missing_repo_id'
+	| 'missing_token'
+	| 'invalid_response'
+	| 'treedb_api_error'
+	| 'model_not_content_backed'
+	| 'operation_not_allowed'
+	| 'missing_content_path_mapping'
+	| 'not_implemented'
+	| 'workspace_required'
+	| 'node_not_configured'
+	| 'unsupported_tree_db_graph_operation'
+	| (string & {});
 
 export interface TreeDbOkEnvelope<T> {
 	ok: true;
@@ -363,6 +404,53 @@ export interface TreeDbBlobDownload {
 	contentHash?: string;
 	objectId?: string;
 	source?: 'base' | 'workspace';
+}
+
+export interface TreeDbBlobUploadSession {
+	uploadId: string;
+	workspaceId: string;
+	path: string;
+	contentType?: string | null;
+	expectedContentHash?: string | null;
+	expectedSha?: string | null;
+	createdAt: string;
+	expiresAt: string;
+	status: 'open' | 'completed' | 'aborted' | string;
+}
+
+export interface TreeDbBlobUploadCreateRequest extends TreeDbWorkspaceRequest {
+	path: string;
+	contentType?: string;
+	expectedSha?: string;
+	expectedContentHash?: string;
+	allowProtected?: boolean;
+}
+
+export interface TreeDbBlobUploadPartRequest extends TreeDbWorkspaceRequest {
+	uploadId: string;
+	partNumber: number;
+	content: ArrayBuffer | Uint8Array | Blob;
+}
+
+export interface TreeDbBlobUploadCompleteRequest extends TreeDbWorkspaceRequest {
+	uploadId: string;
+	expectedSha?: string;
+	expectedContentHash?: string;
+	allowProtected?: boolean;
+	contentType?: string;
+}
+
+export interface TreeDbBlobUploadAbortRequest extends TreeDbWorkspaceRequest {
+	uploadId: string;
+}
+
+export interface TreeDbBlobUploadPart {
+	uploadId: string;
+	workspaceId: string;
+	partNumber: number;
+	byteLength: number;
+	contentHash: string;
+	createdAt: string;
 }
 
 export interface TreeDbSearchRequest extends TreeDbWorkspaceRequest {
@@ -828,6 +916,30 @@ export interface TreeDbArtifact {
 	uri: string;
 	downloadUrl?: string;
 	createdAt?: string;
+	status?: string;
+}
+
+export interface TreeDbArtifactListRequest {
+	repoId?: string;
+}
+
+export interface TreeDbArtifactGetRequest {
+	repoId?: string;
+	artifactId: string;
+}
+
+export interface TreeDbArtifactDeleteRequest {
+	repoId?: string;
+	artifactId: string;
+}
+
+export interface TreeDbArtifactCleanupRequest {
+	retentionDays?: number;
+}
+
+export interface TreeDbArtifactCleanupResult {
+	deletedCount: number;
+	retentionDays: number;
 }
 
 export interface TreeDbSnapshot {
@@ -872,6 +984,7 @@ export interface TreeDbMirrorSyncRequest {
 	mirrorId: string;
 	remoteName?: string;
 	remoteUrl?: string;
+	credentialId?: string;
 	refspecs?: string[];
 	dryRun?: boolean;
 }
@@ -885,6 +998,7 @@ export interface TreeDbFetchRemoteRequest {
 	repoId?: string;
 	remoteName?: string;
 	remoteUrl?: string;
+	credentialId?: string;
 	refspecs?: string[];
 	dryRun?: boolean;
 }
@@ -991,6 +1105,51 @@ export interface TreeDbStorageBackupResult {
 		checksum: string;
 		byteLength: number;
 		verified: boolean;
+	};
+}
+
+export interface TreeDbStorageMigration {
+	migrationId: string;
+	fromVersion?: string;
+	toVersion?: string;
+	dryRun?: boolean;
+	reversible?: boolean;
+	logs?: string[];
+	status: string;
+	backupId?: string | null;
+	startedAt?: string;
+	completedAt?: string;
+}
+
+export interface TreeDbStorageMigrationPlanRequest {
+	targetVersion?: string;
+	backupBefore?: boolean;
+}
+
+export interface TreeDbStorageMigrationRollbackRequest {
+	migrationId: string;
+}
+
+export interface TreeDbStorageRestoreVerifyRequest {
+	backupId: string;
+}
+
+export interface TreeDbStorageRestoreRequest extends TreeDbStorageRestoreVerifyRequest {
+	dryRun?: boolean;
+	backupBeforeRestore?: boolean;
+	force?: boolean;
+}
+
+export interface TreeDbStorageRestoreResult {
+	restore: {
+		restoreId?: string;
+		backupId: string;
+		dryRun: boolean;
+		verified?: boolean;
+		backupBeforeRestore?: boolean;
+		preRestoreBackupId?: string | null;
+		status?: string;
+		uri: string;
 	};
 }
 

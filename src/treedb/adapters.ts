@@ -1,8 +1,3 @@
-export { TreeDbClient } from './client.ts';
-export { TreeDbRegistryClient, type TreeDbRegistryClientOptions } from './registry-client.ts';
-export { TreeDbFederatedClient, type TreeDbFederatedClientOptions } from './federated-client.ts';
-export { TreeDbApiError } from './errors.ts';
-export { resolveAgentTreeDbIntegration, type AgentSdkTreeDbIntegration, type AgentSdkTreeDbOptions } from './sdk-integration.ts';
 export {
 	TreeDbRepositoryAdapter,
 	resolveContentDir,
@@ -25,4 +20,3 @@ export {
 	TreeDbRepositoryQueryPort,
 } from './ports.ts';
 export type * from './ports.ts';
-export type * from './types.ts';

@@ -88,7 +88,7 @@ describe('TreeDbClient git remote and storage helpers', () => {
 		expect(calls.every((call) => (call.init.headers as Record<string, string>).authorization === 'Bearer token')).toBe(true);
 	});
 
-	it('maps Stage 3 error envelopes to TreeDbApiError', async () => {
+	it('maps Git remote error envelopes to TreeDbApiError', async () => {
 		const { client } = mockClient([
 			json(
 				{

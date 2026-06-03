@@ -56,7 +56,7 @@ function clientWith(payloads: Array<unknown | Response>) {
 }
 
 describe('TreeDB end-to-end SDK contract', () => {
-	it('drives the Phase 10 route sequence with bearer auth', async () => {
+	it('drives the unified TreeDB route sequence with bearer auth', async () => {
 		const { client, calls } = clientWith([
 			{ ok: true, authenticated: true, principal: { actorId: 'actor_demo', tenantId: 'tenant_demo' } },
 			{ ok: true, effectiveScope: { actorId: 'actor_demo', capabilities: ['files:read'], refs: ['*'], paths: ['**'] } },
@@ -150,7 +150,7 @@ describe('TreeDB end-to-end SDK contract', () => {
 		]);
 		const graph = new TreeDbGraphAdapter({ client, repoId: 'repo_1', defaultRef: 'refs/heads/main' });
 		expect((await graph.refresh()).ready).toBe(true);
-		expect(await graph.searchSections('phase')).toHaveLength(1);
+		expect(await graph.searchSections('release')).toHaveLength(1);
 		expect((await graph.queryGraph({ query: 'mvp' })).providerId).toBe('treedb-graph-mvp');
 		expect((await graph.buildContextPack({ query: 'mvp' })).totalTokenEstimate).toBe(0);
 		expect(calls.map((call) => call.url)).toEqual([

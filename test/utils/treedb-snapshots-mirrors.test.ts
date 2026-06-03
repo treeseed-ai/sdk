@@ -21,7 +21,7 @@ function binary(bytes: Uint8Array) {
 }
 
 describe('TreeDB snapshots, mirrors, and migrations client methods', () => {
-	it('maps Phase 9 JSON endpoints and sends bearer auth', async () => {
+	it('maps TreeDB snapshot, mirror, and migration endpoints and sends bearer auth', async () => {
 		const calls: Array<{ url: string; init: RequestInit }> = [];
 		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const url = String(input);

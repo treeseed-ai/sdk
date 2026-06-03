@@ -126,4 +126,24 @@ describe('TreeDbClient', () => {
 		expect(() => missingRepo.getRepository()).toThrow(TreeDbApiError);
 		expect(() => missingRepo.getRepository()).toThrow(/repository ID/iu);
 	});
+
+	it('maps aborted requests to timeout errors', async () => {
+		const client = new TreeDbClient({
+			baseUrl: 'https://treedb.example.test',
+			token: 'token',
+			repoId: 'repo_1',
+			timeoutMs: 1,
+			fetch: ((_, init) => new Promise<Response>((_resolve, reject) => {
+				init?.signal?.addEventListener('abort', () => {
+					reject(new DOMException('aborted', 'AbortError'));
+				});
+			})) as typeof fetch,
+		});
+
+		await expect(client.health()).rejects.toMatchObject({
+			code: 'timeout',
+			status: 0,
+			details: { timeoutMs: 1 },
+		});
+	});
 });

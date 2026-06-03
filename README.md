@@ -91,7 +91,7 @@ The public `ctx` syntax is:
 
 ```text
 ctx <target>
-  [for <stage>]
+  [for <focus>]
   [in <scope>]
   [via <relation[,relation...]>]
   [depth <0-3>]
@@ -182,7 +182,7 @@ const plan = await treeDb.planFederatedQuery({
 });
 ```
 
-Federation planning is scope reduction only in this phase. The SDK does not fan out across every TreeDB node and filter locally.
+Federation planning performs scope reduction before execution. The SDK delegates global execution to TreeDB instead of fanning out across every node and filtering locally.
 
 Snapshot, artifact, mirror sync, and migration helpers are also available on `TreeDbClient`:
 
@@ -217,7 +217,7 @@ await treeDb.createMigration({
 
 `downloadArtifact()` returns an `ArrayBuffer` plus content type, filename, checksum, and snapshot headers. These APIs are generic TreeDB repository operations; TreeSeed package or release semantics are not encoded in TreeDB.
 
-Phase 10 adds mocked end-to-end TreeDB contract tests that prove the SDK can drive the TreeDB repository loop without an agent-side clone when `contentPathMap` is supplied:
+Mocked end-to-end TreeDB contract tests prove the SDK can drive the TreeDB repository loop without an agent-side clone when `contentPathMap` is supplied:
 
 ```bash
 npx vitest run --config ./vitest.config.ts test/utils/treedb-e2e-contract.test.ts
@@ -233,7 +233,7 @@ TREEDB_LIVE_REPO_ID
 
 ## Capacity Scheduling Contracts
 
-The SDK owns the provider-neutral capacity runtime helpers used by the agent manager, workers, and market control plane. These helpers keep work estimation separate from provider cost by normalizing `taskSignature + executionProfileId` estimates, then routing against grants, provider lanes, quality requirements, quota/congestion pressure, attention/context saturation, utility, predictive reserve, and hybrid phase metadata.
+The SDK owns the provider-neutral capacity runtime helpers used by the agent manager, workers, and market control plane. These helpers keep work estimation separate from provider cost by normalizing `taskSignature + executionProfileId` estimates, then routing against grants, provider lanes, quality requirements, quota/congestion pressure, attention/context saturation, utility, predictive reserve, and hybrid execution metadata.
 
 Capacity records remain metadata-compatible: advanced scheduling data lives in task payload JSON, routing decision candidates/scores, reservation metadata, capacity plan metadata, checkpoint artifacts, and usage actual metadata. Missing metadata is neutral, so older callers continue to use the credit-only behavior.
 

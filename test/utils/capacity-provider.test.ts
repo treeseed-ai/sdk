@@ -401,8 +401,8 @@ describe('capacity provider SDK contracts', () => {
 			intent,
 			env,
 			redactedEnv: redactCapacityProviderEnv(env),
-			imageRef: 'ghcr.io/treeseed-ai/agent:phase9',
-			serviceNamePrefix: 'provider-phase9',
+			imageRef: 'ghcr.io/treeseed-ai/agent:verified',
+			serviceNamePrefix: 'provider-verified',
 			adapter: {
 				async provisionService(spec) {
 					seen.push({ role: spec.role, command: spec.startCommand, env: spec.env, redactedEnv: spec.redactedEnv });

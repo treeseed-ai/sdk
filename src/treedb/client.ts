@@ -4,6 +4,12 @@ import type {
 	TreeDbAuditEvent,
 	TreeDbAuthMode,
 	TreeDbBlob,
+	TreeDbBlobUploadAbortRequest,
+	TreeDbBlobUploadCompleteRequest,
+	TreeDbBlobUploadCreateRequest,
+	TreeDbBlobUploadPart,
+	TreeDbBlobUploadPartRequest,
+	TreeDbBlobUploadSession,
 	TreeDbBlobDeleteRequest,
 	TreeDbBlobDownload,
 	TreeDbBlobDownloadRequest,
@@ -34,8 +40,13 @@ import type {
 	TreeDbFederatedSearchRequest,
 	TreeDbFederatedSearchResult,
 	TreeDbArtifact,
+	TreeDbArtifactCleanupRequest,
+	TreeDbArtifactCleanupResult,
+	TreeDbArtifactDeleteRequest,
 	TreeDbArtifactDownload,
 	TreeDbArtifactExportRequest,
+	TreeDbArtifactGetRequest,
+	TreeDbArtifactListRequest,
 	TreeDbFederationQueryPlan,
 	TreeDbFederationQueryPlanRequest,
 	TreeDbFile,
@@ -84,6 +95,12 @@ import type {
 	TreeDbStorageBackupResult,
 	TreeDbStorageCompactRequest,
 	TreeDbStorageCompactResult,
+	TreeDbStorageMigration,
+	TreeDbStorageMigrationPlanRequest,
+	TreeDbStorageMigrationRollbackRequest,
+	TreeDbStorageRestoreRequest,
+	TreeDbStorageRestoreResult,
+	TreeDbStorageRestoreVerifyRequest,
 	TreeDbStatus,
 	TreeDbTreeEntry,
 	TreeDbClientOptions,
@@ -105,6 +122,11 @@ function normalizeBaseUrl(baseUrl: string) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isAbortError(error: unknown) {
+	return error instanceof DOMException && error.name === 'AbortError'
+		|| error instanceof Error && error.name === 'AbortError';
 }
 
 function stripOk<T>(payload: unknown): T {
@@ -175,6 +197,40 @@ export class TreeDbClient {
 		return headers;
 	}
 
+	private async fetchWithTimeout(input: string, init: RequestInit): Promise<Response> {
+		const timeoutMs = this.options.timeoutMs;
+		let timeout: ReturnType<typeof setTimeout> | undefined;
+		let controller: AbortController | undefined;
+		if (timeoutMs && timeoutMs > 0) {
+			controller = new AbortController();
+			timeout = setTimeout(() => controller?.abort(), timeoutMs);
+		}
+		try {
+			return await this.fetchImpl(input, {
+				...init,
+				signal: controller?.signal ?? init.signal,
+			});
+		} catch (error: unknown) {
+			if (isAbortError(error)) {
+				throw new TreeDbApiError(`TreeDB request timed out after ${timeoutMs}ms.`, {
+					status: 0,
+					code: 'timeout',
+					details: { timeoutMs },
+					payload: error,
+				});
+			}
+			throw new TreeDbApiError(error instanceof Error ? error.message : 'TreeDB network request failed.', {
+				status: 0,
+				code: 'network_error',
+				payload: error,
+			});
+		} finally {
+			if (timeout) {
+				clearTimeout(timeout);
+			}
+		}
+	}
+
 	private async request<T>(
 		method: HttpMethod,
 		path: string,
@@ -190,16 +246,10 @@ export class TreeDbClient {
 				code: 'missing_token',
 			});
 		}
-		const response = await this.fetchImpl(`${this.baseUrl}${path}${this.query(options.query ?? {})}`, {
+		const response = await this.fetchWithTimeout(`${this.baseUrl}${path}${this.query(options.query ?? {})}`, {
 			method,
 			headers: this.headers(body !== undefined),
 			body: body === undefined ? undefined : JSON.stringify(body),
-		}).catch((error: unknown) => {
-			throw new TreeDbApiError(error instanceof Error ? error.message : 'TreeDB network request failed.', {
-				status: 0,
-				code: 'network_error',
-				payload: error,
-			});
 		});
 
 		let payload: unknown;
@@ -245,16 +295,10 @@ export class TreeDbClient {
 				code: 'missing_token',
 			});
 		}
-		const response = await this.fetchImpl(`${this.baseUrl}${path}${this.query({ ...options.query, download: true })}`, {
+		const response = await this.fetchWithTimeout(`${this.baseUrl}${path}${this.query({ ...options.query, download: true })}`, {
 			method: 'POST',
 			headers: this.headers(true),
 			body: JSON.stringify(body),
-		}).catch((error: unknown) => {
-			throw new TreeDbApiError(error instanceof Error ? error.message : 'TreeDB network request failed.', {
-				status: 0,
-				code: 'network_error',
-				payload: error,
-			});
 		});
 
 		if (!response.ok) {
@@ -296,7 +340,7 @@ export class TreeDbClient {
 				code: 'missing_token',
 			});
 		}
-		const response = await this.fetchImpl(
+		const response = await this.fetchWithTimeout(
 			`${this.baseUrl}/api/v1/workspaces/${encodeURIComponent(input.workspaceId)}/blobs/download${this.query({
 				path: input.path,
 				allowProtected: input.allowProtected,
@@ -305,13 +349,7 @@ export class TreeDbClient {
 				method: 'GET',
 				headers: this.headers(false),
 			},
-		).catch((error: unknown) => {
-			throw new TreeDbApiError(error instanceof Error ? error.message : 'TreeDB network request failed.', {
-				status: 0,
-				code: 'network_error',
-				payload: error,
-			});
-		});
+		);
 
 		await this.assertBinaryOk(response);
 		return {
@@ -347,7 +385,7 @@ export class TreeDbClient {
 			headers['x-treedb-allow-protected'] = String(input.allowProtected);
 		}
 
-		const response = await this.fetchImpl(
+		const response = await this.fetchWithTimeout(
 			`${this.baseUrl}/api/v1/workspaces/${encodeURIComponent(input.workspaceId)}/blobs/upload${this.query({
 				path: input.path,
 			})}`,
@@ -356,13 +394,7 @@ export class TreeDbClient {
 				headers,
 				body: input.content,
 			},
-		).catch((error: unknown) => {
-			throw new TreeDbApiError(error instanceof Error ? error.message : 'TreeDB network request failed.', {
-				status: 0,
-				code: 'network_error',
-				payload: error,
-			});
-		});
+		);
 
 		const payload = await this.parseJsonResponse(response);
 		if (!response.ok || (isRecord(payload) && payload.ok === false)) {
@@ -555,6 +587,60 @@ export class TreeDbClient {
 		});
 	}
 
+	listStorageMigrations(): Promise<{ migrations: TreeDbStorageMigration[]; manifest: Record<string, unknown> }> {
+		return this.request<{ migrations: TreeDbStorageMigration[]; manifest: Record<string, unknown> }>(
+			'GET',
+			'/api/v1/admin/storage/migrations',
+			undefined,
+			{ tokenRequired: true },
+		);
+	}
+
+	planStorageMigration(input: TreeDbStorageMigrationPlanRequest = {}): Promise<TreeDbStorageMigration> {
+		return this.request<Record<string, unknown>>(
+			'POST',
+			'/api/v1/admin/storage/migrations/plan',
+			input,
+			{ tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbStorageMigration>(payload, ['migration']));
+	}
+
+	applyStorageMigration(input: TreeDbStorageMigrationPlanRequest = {}): Promise<TreeDbStorageMigration> {
+		return this.request<Record<string, unknown>>(
+			'POST',
+			'/api/v1/admin/storage/migrations/apply',
+			input,
+			{ tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbStorageMigration>(payload, ['migration']));
+	}
+
+	rollbackStorageMigration(input: TreeDbStorageMigrationRollbackRequest): Promise<TreeDbStorageMigration> {
+		return this.request<Record<string, unknown>>(
+			'POST',
+			'/api/v1/admin/storage/migrations/rollback',
+			input,
+			{ tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbStorageMigration>(payload, ['migration']));
+	}
+
+	verifyStorageRestore(input: TreeDbStorageRestoreVerifyRequest): Promise<TreeDbStorageRestoreResult['restore']> {
+		return this.request<TreeDbStorageRestoreResult>(
+			'POST',
+			'/api/v1/admin/storage/restore/verify',
+			input,
+			{ tokenRequired: true },
+		).then((payload) => payload.restore);
+	}
+
+	restoreStorage(input: TreeDbStorageRestoreRequest): Promise<TreeDbStorageRestoreResult['restore']> {
+		return this.request<TreeDbStorageRestoreResult>(
+			'POST',
+			'/api/v1/admin/storage/restore',
+			input,
+			{ tokenRequired: true },
+		).then((payload) => payload.restore);
+	}
+
 	createMigration(input: TreeDbMigrationRequest): Promise<{ migration: TreeDbMigration; placement?: TreeDbRepositoryPlacement }> {
 		const { repoId, ...body } = input;
 		return this.request<{ migration: TreeDbMigration; placement?: TreeDbRepositoryPlacement }>(
@@ -674,6 +760,97 @@ export class TreeDbClient {
 
 	uploadBlob(input: TreeDbBlobUploadRequest): Promise<TreeDbBlobMutationResult> {
 		return this.requestBlobUpload(input);
+	}
+
+	createBlobUpload(input: TreeDbBlobUploadCreateRequest): Promise<TreeDbBlobUploadSession> {
+		const { workspaceId, ...body } = input;
+		return this.request<Record<string, unknown>>(
+			'POST',
+			`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/blobs/uploads`,
+			body,
+			{ tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbBlobUploadSession>(payload, ['upload']));
+	}
+
+	async uploadBlobPart(input: TreeDbBlobUploadPartRequest): Promise<TreeDbBlobUploadPart> {
+		if (!this.token) {
+			throw new TreeDbApiError('TreeDB bearer token is required.', {
+				status: 401,
+				code: 'missing_token',
+			});
+		}
+		const response = await this.fetchWithTimeout(
+			`${this.baseUrl}/api/v1/workspaces/${encodeURIComponent(input.workspaceId)}/blobs/uploads/${encodeURIComponent(input.uploadId)}/parts/${encodeURIComponent(input.partNumber)}`,
+			{
+				method: 'PUT',
+				headers: {
+					accept: 'application/json',
+					authorization: `Bearer ${this.token}`,
+					'content-type': 'application/octet-stream',
+				},
+				body: input.content,
+			},
+		);
+		const payload = await this.parseJsonResponse(response);
+		if (!response.ok || (isRecord(payload) && payload.ok === false)) {
+			this.throwApiError(response, payload);
+		}
+		return firstPayload<TreeDbBlobUploadPart>(payload, ['part']);
+	}
+
+	completeBlobUpload(input: TreeDbBlobUploadCompleteRequest): Promise<TreeDbBlobMutationResult> {
+		const { workspaceId, uploadId, ...body } = input;
+		return this.request<Record<string, unknown>>(
+			'POST',
+			`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/blobs/uploads/${encodeURIComponent(uploadId)}/complete`,
+			body,
+			{ tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbBlobMutationResult>(payload, ['result']));
+	}
+
+	abortBlobUpload(input: TreeDbBlobUploadAbortRequest): Promise<TreeDbBlobUploadSession> {
+		return this.request<Record<string, unknown>>(
+			'DELETE',
+			`/api/v1/workspaces/${encodeURIComponent(input.workspaceId)}/blobs/uploads/${encodeURIComponent(input.uploadId)}`,
+			undefined,
+			{ tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbBlobUploadSession>(payload, ['upload']));
+	}
+
+	listArtifacts(input: TreeDbArtifactListRequest = {}): Promise<TreeDbArtifact[]> {
+		return this.request<Record<string, unknown>>(
+			'GET',
+			`/api/v1/repos/${encodeURIComponent(this.repoId(input.repoId))}/artifacts`,
+			undefined,
+			{ tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbArtifact[]>(payload, ['artifacts']));
+	}
+
+	getArtifact(input: TreeDbArtifactGetRequest): Promise<TreeDbArtifact> {
+		return this.request<Record<string, unknown>>(
+			'GET',
+			`/api/v1/repos/${encodeURIComponent(this.repoId(input.repoId))}/artifacts/${encodeURIComponent(input.artifactId)}`,
+			undefined,
+			{ tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbArtifact>(payload, ['artifact']));
+	}
+
+	deleteArtifact(input: TreeDbArtifactDeleteRequest): Promise<TreeDbArtifact> {
+		return this.request<Record<string, unknown>>(
+			'DELETE',
+			`/api/v1/repos/${encodeURIComponent(this.repoId(input.repoId))}/artifacts/${encodeURIComponent(input.artifactId)}`,
+			undefined,
+			{ tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbArtifact>(payload, ['artifact']));
+	}
+
+	cleanupArtifacts(input: TreeDbArtifactCleanupRequest = {}): Promise<TreeDbArtifactCleanupResult> {
+		return this.request<Record<string, unknown>>(
+			'POST',
+			'/api/v1/admin/artifacts/cleanup',
+			input,
+			{ tokenRequired: true },
+		).then((payload) => firstPayload<TreeDbArtifactCleanupResult>(payload, ['cleanup']));
 	}
 
 	search(input: TreeDbSearchRequest): Promise<TreeDbSearchResult> {

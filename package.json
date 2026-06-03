@@ -236,7 +236,23 @@
     },
     "./treedb": {
       "types": "./dist/treedb/index.d.ts",
+      "import": "./dist/treedb/index.js",
       "default": "./dist/treedb/index.js"
+    },
+    "./treedb/client": {
+      "types": "./dist/treedb/client.d.ts",
+      "import": "./dist/treedb/client.js",
+      "default": "./dist/treedb/client.js"
+    },
+    "./treedb/types": {
+      "types": "./dist/treedb/types.d.ts",
+      "import": "./dist/treedb/types.js",
+      "default": "./dist/treedb/types.js"
+    },
+    "./treedb/adapters": {
+      "types": "./dist/treedb/adapters.d.ts",
+      "import": "./dist/treedb/adapters.js",
+      "default": "./dist/treedb/adapters.js"
     },
     "./sdk-filters": {
       "types": "./dist/sdk-filters.d.ts",

@@ -277,7 +277,7 @@ export class TreeDbRepositoryAdapter {
 	}
 
 	async pick(request: SdkPickRequest): Promise<SdkPickResult<SdkContentEntry>> {
-		throw new TreeDbApiError('TreeDB remote content leases are not implemented in Phase 7.', {
+		throw new TreeDbApiError('TreeDB remote content leases are not implemented by the TreeDB remote graph adapter.', {
 			status: 501,
 			code: 'not_implemented',
 			details: { strategy: request.strategy ?? 'latest', sort: pickSortForStrategy(resolveModelDefinition(request.model, this.options.models), request) },

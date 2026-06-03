@@ -7,9 +7,20 @@ import { AgentSdk } from '../../src/sdk.ts';
 import type { SdkModelRegistry } from '../../src/sdk-types.ts';
 import {
 	TreeDbApiError,
+	TreeDbArtifactPort,
 	TreeDbClient,
+	TreeDbExecPort,
+	TreeDbFederatedClient,
+	TreeDbFederatedPort,
 	TreeDbGraphAdapter,
+	TreeDbGraphPort,
+	LocalGraphPort,
+	LocalRepositoryPort,
+	LocalRepositoryQueryPort,
+	TreeDbRegistryClient,
 	TreeDbRepositoryAdapter,
+	TreeDbRepositoryPort,
+	TreeDbRepositoryQueryPort,
 	resolveContentDir,
 } from '../../src/treedb/index.ts';
 
@@ -183,6 +194,9 @@ describe('TreeDB SDK adapters', () => {
 			database: new MemoryAgentDatabase(),
 		});
 		expect(local.treeDb).toBeUndefined();
+		expect(local.ports.repository).toBeInstanceOf(LocalRepositoryPort);
+		expect(local.ports.query).toBeInstanceOf(LocalRepositoryQueryPort);
+		expect(local.ports.graph).toBeInstanceOf(LocalGraphPort);
 
 		const { client } = clientWith([
 			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', results: [] },
@@ -198,6 +212,9 @@ describe('TreeDB SDK adapters', () => {
 			},
 		});
 		expect(remote.treeDb?.client).toBe(client);
+		expect(remote.ports.repository).toBeInstanceOf(TreeDbRepositoryPort);
+		expect(remote.ports.query).toBeInstanceOf(TreeDbRepositoryQueryPort);
+		expect(remote.ports.graph).toBeInstanceOf(TreeDbGraphPort);
 		const response = await remote.search({ model: 'knowledge', limit: 5 });
 		expect(response.payload).toEqual([]);
 	});
@@ -206,5 +223,43 @@ describe('TreeDB SDK adapters', () => {
 		const models = registry('/abs/other');
 		const definition = models.knowledge!;
 		expect(() => resolveContentDir(definition, {})).toThrow(TreeDbApiError);
+	});
+
+	it('exposes TreeDB-backed transport ports as thin client adapters', async () => {
+		const { client, calls } = clientWith([
+			{ ok: true, workspaceId: 'ws_1', repoId: 'repo_1', baseRef: 'refs/heads/main', baseCommitSha: 'abc', mode: 'writable', status: 'ready', allowedPaths: ['docs/**'] },
+			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', results: [] },
+			{ ok: true, exitCode: 0, stdout: '', stderr: '', elapsedMs: 1, truncated: false, changedPaths: [] },
+			{ ok: true, snapshot: { snapshotId: 'snap_1', repoId: 'repo_1', ref: 'refs/heads/main', commitSha: 'abc', kind: 'repository_snapshot', includedPaths: [], fileCount: 0, totalBytes: 0, checksums: {}, createdAt: '2026-06-03T00:00:00Z' } },
+		]);
+		const repository = new TreeDbRepositoryPort(client);
+		const query = new TreeDbRepositoryQueryPort(client);
+		const exec = new TreeDbExecPort(client);
+		const artifact = new TreeDbArtifactPort(client);
+
+		await repository.createWorkspace({ mode: 'writable' });
+		await query.search({ query: 'release' });
+		await exec.exec({ workspaceId: 'ws_1', cmd: 'true' });
+		await artifact.buildSnapshot();
+
+		expect(calls.map((call) => call.url)).toEqual([
+			'https://treedb.example.test/api/v1/repos/repo_1/workspaces',
+			'https://treedb.example.test/api/v1/repos/repo_1/files/search',
+			'https://treedb.example.test/api/v1/workspaces/ws_1/exec',
+			'https://treedb.example.test/api/v1/repos/repo_1/snapshots/build',
+		]);
+	});
+
+	it('exposes graph and federated ports', async () => {
+		const { client, calls } = clientWith([
+			{ ok: true, ready: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', graphVersion: 'graph_1', snapshotRoot: 'treedb://graph/repo_1/graph_1', changed: {}, metrics: {} },
+			{ ok: true, search: { query: 'release', results: [], page: { limit: 20, hasMore: false, cursor: null }, diagnostics: { requestedRepoCount: 1, executedRepoCount: 1, rejectedRepoCount: 0, partialFailureCount: 0, routing: [] }, errors: [] } },
+		]);
+		const graph = new TreeDbGraphPort(new TreeDbGraphAdapter({ client, repoId: 'repo_1' }));
+		const federated = new TreeDbFederatedPort(new TreeDbFederatedClient({ registry: new TreeDbRegistryClient(client) }));
+		await graph.refresh();
+		await federated.search({ repoIds: ['repo_1'], query: 'release' });
+		expect(calls[0]?.url).toBe('https://treedb.example.test/api/v1/repos/repo_1/graph/refresh');
+		expect(calls[1]?.url).toBe('https://treedb.example.test/api/v1/search');
 	});
 });

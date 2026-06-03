@@ -110,7 +110,7 @@ export class TreeDbGraphAdapter {
 	}
 
 	async resolveSeeds(_request: SdkGraphQueryRequest): Promise<SdkGraphSeedResolution> {
-		throw new TreeDbApiError('TreeDB remote graph seed resolution is not implemented in Phase 7.', {
+		throw new TreeDbApiError('TreeDB remote graph seed resolution is not implemented by the TreeDB remote graph adapter.', {
 			status: 501,
 			code: 'unsupported_tree_db_graph_operation',
 		});
@@ -155,14 +155,14 @@ export class TreeDbGraphAdapter {
 	}
 
 	resolveReference(_reference?: string, _options?: { fromNodeId?: string; fromPath?: string; models?: string[] }): Promise<never> {
-		return Promise.reject(new TreeDbApiError('TreeDB remote reference resolution is not implemented in Phase 7.', {
+		return Promise.reject(new TreeDbApiError('TreeDB remote reference resolution is not implemented by the TreeDB remote graph adapter.', {
 			status: 501,
 			code: 'unsupported_tree_db_graph_operation',
 		}));
 	}
 
 	explainReferenceChain(_fromId?: string, _toId?: string): Promise<never> {
-		return Promise.reject(new TreeDbApiError('TreeDB remote reference-chain explanation is not implemented in Phase 7.', {
+		return Promise.reject(new TreeDbApiError('TreeDB remote reference-chain explanation is not implemented by the TreeDB remote graph adapter.', {
 			status: 501,
 			code: 'unsupported_tree_db_graph_operation',
 		}));

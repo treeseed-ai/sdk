@@ -4,11 +4,33 @@ import { normalizeAgentCliOptions } from './cli-tools.ts';
 import { ContentStore } from './content-store.ts';
 import { CloudflareD1AgentDatabase, MemoryAgentDatabase, type AgentDatabase } from './d1-store.ts';
 import { ContentGraphRuntime } from './graph.ts';
-import { TreeDbClient, type TreeDbClientOptions } from './treedb/client.ts';
+import { TreeDbClient } from './treedb/client.ts';
+import { TreeDbFederatedClient } from './treedb/federated-client.ts';
 import { TreeDbGraphAdapter } from './treedb/graph-adapter.ts';
 import { TreeDbQueryAdapter } from './treedb/query-adapter.ts';
+import { TreeDbRegistryClient } from './treedb/registry-client.ts';
 import { TreeDbRepositoryAdapter } from './treedb/repository-adapter.ts';
+import { resolveAgentTreeDbIntegration, type AgentSdkTreeDbOptions } from './treedb/sdk-integration.ts';
 import { TreeDbWorkspaceAdapter } from './treedb/workspace-adapter.ts';
+import {
+	LocalGraphPort,
+	LocalRepositoryPort,
+	LocalRepositoryQueryPort,
+	TreeDbArtifactPort,
+	TreeDbExecPort,
+	TreeDbFederatedPort,
+	TreeDbGraphPort,
+	TreeDbRegistryPort,
+	TreeDbRepositoryPort,
+	TreeDbRepositoryQueryPort,
+	type ArtifactPort,
+	type ExecPort,
+	type FederatedPort,
+	type GraphPort,
+	type RegistryPort,
+	type RepositoryPort,
+	type RepositoryQueryPort,
+} from './treedb/ports.ts';
 import { loadTreeseedPlugins, type LoadedTreeseedPluginEntry } from './platform/plugins.ts';
 import { buildScopedModelRegistry, resolveModelDefinition } from './model-registry.ts';
 import { findDispatchCapability } from './dispatch.ts';
@@ -100,15 +122,7 @@ export interface AgentSdkOptions {
 	treeDb?: AgentSdkTreeDbOptions;
 }
 
-export interface AgentSdkTreeDbOptions {
-	enabled: boolean;
-	client: TreeDbClient | TreeDbClientOptions;
-	repoId?: string;
-	contentPathMap?: Record<string, string>;
-	defaultRef?: string;
-	defaultAuthor?: { name: string; email: string };
-	branchPrefix?: string;
-}
+export type { AgentSdkTreeDbOptions } from './treedb/sdk-integration.ts';
 
 type SdkContentPort = Pick<ContentStore, 'list' | 'get' | 'search' | 'follow' | 'pick' | 'create' | 'update'>;
 
@@ -147,8 +161,19 @@ export class AgentSdk {
 	readonly database: AgentDatabase;
 	readonly content: SdkContentPort;
 	readonly models: SdkModelRegistry;
+	readonly ports: {
+		repository: LocalRepositoryPort | RepositoryPort;
+		query: LocalRepositoryQueryPort | RepositoryQueryPort;
+		graph: GraphPort;
+		registry?: RegistryPort;
+		federated?: FederatedPort;
+		exec?: ExecPort;
+		artifact?: ArtifactPort;
+	};
 	readonly treeDb?: {
 		client: TreeDbClient;
+		registry?: TreeDbRegistryClient;
+		federated?: TreeDbFederatedClient;
 		content: TreeDbRepositoryAdapter;
 		graph: TreeDbGraphAdapter;
 		workspace: TreeDbWorkspaceAdapter;
@@ -159,32 +184,22 @@ export class AgentSdk {
 	private readonly dispatchConfig?: SdkDispatchConfig;
 
 	constructor(options: AgentSdkOptions = {}) {
-		const repoRoot = resolveSdkRepoRoot(options.repoRoot);
+		const treeDbIntegration = options.treeDb?.enabled
+			? resolveAgentTreeDbIntegration(options.treeDb)
+			: undefined;
+		if (treeDbIntegration && !options.repoRoot && !options.modelRegistry && !options.models) {
+			throw new Error('AgentSdk TreeDB no-clone mode requires models or modelRegistry.');
+		}
+		const repoRoot = options.repoRoot
+			? resolveSdkRepoRoot(options.repoRoot)
+			: treeDbIntegration
+				? process.cwd()
+				: resolveSdkRepoRoot();
 		this.repoRoot = repoRoot;
 		this.models = options.modelRegistry ?? buildScopedModelRegistry(repoRoot, options.models);
 		this.database = options.database ?? new MemoryAgentDatabase();
-		const localContent = new ContentStore(repoRoot, this.database, this.models);
-		let plugins = options.plugins;
-		if (!plugins) {
-			try {
-				plugins = loadTreeseedPlugins();
-			} catch {
-				plugins = [];
-			}
-		}
-		const localGraph = new ContentGraphRuntime(repoRoot, this.models, {
-			rankingProvider: options.graphRankingProvider,
-			plugins,
-		});
-		if (options.treeDb?.enabled) {
-			const client = options.treeDb.client instanceof TreeDbClient
-				? options.treeDb.client
-				: new TreeDbClient(options.treeDb.client);
-			const repoId = options.treeDb.repoId
-				?? (options.treeDb.client instanceof TreeDbClient ? undefined : options.treeDb.client.repoId);
-			if (!repoId) {
-				throw new Error('AgentSdk TreeDB mode requires a repoId.');
-			}
+		if (treeDbIntegration && options.treeDb?.enabled) {
+			const { client, repoId } = treeDbIntegration;
 			const content = new TreeDbRepositoryAdapter({
 				client,
 				models: this.models,
@@ -201,6 +216,8 @@ export class AgentSdk {
 			});
 			this.treeDb = {
 				client,
+				registry: treeDbIntegration.registry,
+				federated: treeDbIntegration.federated,
 				content,
 				graph,
 				workspace: new TreeDbWorkspaceAdapter({ client, repoId }),
@@ -212,10 +229,37 @@ export class AgentSdk {
 					defaultRef: options.treeDb.defaultRef,
 				}),
 			};
+			this.ports = {
+				repository: new TreeDbRepositoryPort(client, content, this.treeDb.workspace),
+				query: new TreeDbRepositoryQueryPort(client, this.treeDb.query),
+				graph: new TreeDbGraphPort(graph),
+				registry: treeDbIntegration.registry ? new TreeDbRegistryPort(treeDbIntegration.registry) : undefined,
+				federated: treeDbIntegration.federated ? new TreeDbFederatedPort(treeDbIntegration.federated) : undefined,
+				exec: new TreeDbExecPort(client),
+				artifact: new TreeDbArtifactPort(client),
+			};
 			this.content = content;
 			this.contentPort = content;
 			this.graph = graph;
 		} else {
+			const localContent = new ContentStore(repoRoot, this.database, this.models);
+			let plugins = options.plugins;
+			if (!plugins) {
+				try {
+					plugins = loadTreeseedPlugins();
+				} catch {
+					plugins = [];
+				}
+			}
+			const localGraph = new ContentGraphRuntime(repoRoot, this.models, {
+				rankingProvider: options.graphRankingProvider,
+				plugins,
+			});
+			this.ports = {
+				repository: new LocalRepositoryPort(localContent),
+				query: new LocalRepositoryQueryPort(localContent),
+				graph: new LocalGraphPort(localGraph),
+			};
 			this.content = localContent;
 			this.contentPort = localContent;
 			this.graph = localGraph;
