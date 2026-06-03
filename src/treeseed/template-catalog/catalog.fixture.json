@@ -83,7 +83,7 @@
           "kind": "git",
           "repoUrl": "https://github.com/treeseed-ai/starter-research.git",
           "directory": ".",
-          "ref": "main",
+          "ref": "staging",
           "integrity": "pending-external-repo"
         },
         "hooksPolicy": "builtin_only",
@@ -191,7 +191,7 @@
           "kind": "git",
           "repoUrl": "https://github.com/treeseed-ai/starter-engineering.git",
           "directory": ".",
-          "ref": "main",
+          "ref": "staging",
           "integrity": "pending-external-repo"
         },
         "hooksPolicy": "builtin_only",
@@ -299,7 +299,7 @@
           "kind": "git",
           "repoUrl": "https://github.com/treeseed-ai/starter-information-hub.git",
           "directory": ".",
-          "ref": "main",
+          "ref": "staging",
           "integrity": "pending-external-repo"
         },
         "hooksPolicy": "builtin_only",
