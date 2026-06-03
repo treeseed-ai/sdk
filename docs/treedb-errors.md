@@ -43,8 +43,12 @@ try {
 - `sandbox_unavailable`
 - `storage_compaction_failed`
 - `backup_failed`
+- `service_unavailable`
 
 Network failures use `status: 0` and `code: "network_error"`. SDK timeout failures use `status: 0`, `code: "timeout"`, and `details.timeoutMs`.
+
+Readiness and deep health failures use `service_unavailable` with HTTP 503 and
+sanitized check details.
 
 ## Partial Federation
 

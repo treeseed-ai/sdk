@@ -50,8 +50,14 @@ await sdk.create({
 
 await sdk.treeDb?.graph.queryGraph({ query: 'release' });
 await sdk.treeDb?.graph.buildContextPack({ query: 'release' });
-await sdk.treeDb?.client.buildSnapshot({ paths: ['src/content/**'] });
-await sdk.treeDb?.client.exportArtifact({ paths: ['src/content/**'] });
+const snapshot = await sdk.treeDb?.client.buildSnapshot({ paths: ['src/content/**'] });
+if (snapshot) {
+  await sdk.treeDb?.client.exportArtifact({ snapshotId: snapshot.snapshotId });
+}
+await sdk.treeDb?.client.ready();
+await sdk.treeDb?.client.deepHealth();
+await sdk.treeDb?.client.metrics();
+await sdk.treeDb?.client.prometheusMetrics();
 ```
 
 ## Exports
@@ -70,4 +76,5 @@ import { TreeDbGraphAdapter } from '@treeseed/sdk/treedb/adapters';
 - Remote mode uses generic TreeDB repo/ref/path APIs.
 - Product model names are SDK mapping concerns only.
 - TreeDB mode does not require a local clone when `modelRegistry` or `models` and needed `contentPathMap` entries are provided.
-- `pick` leases for remote content remain explicit `not_implemented`.
+- Local-only SDK workflows remain local unless they are explicitly mapped to a
+  TreeDB adapter or port.

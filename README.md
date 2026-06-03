@@ -154,7 +154,7 @@ const docs = await sdk.search({
 
 TreeDB mode keeps TreeSeed model semantics in the SDK model registry. TreeDB receives generic repository/ref/path/frontmatter/body/query requests and returns generic repository/file/query/graph results.
 
-TreeDB auth, policy, audit, and federation planning helpers are available on the same client:
+TreeDB auth, policy, audit, and federation helpers are available on the same client:
 
 ```ts
 const mode = await treeDb.authMode();
@@ -179,6 +179,14 @@ const plan = await treeDb.planFederatedQuery({
   repoIds: ['repo_123'],
   capabilities: ['files:search'],
   paths: { repo_123: ['docs/**'] },
+});
+
+const search = await treeDb.federatedSearch({
+  repoIds: ['repo_123'],
+  refs: { repo_123: 'refs/heads/main' },
+  paths: { repo_123: ['docs/**'] },
+  query: 'release',
+  includeErrors: true,
 });
 ```
 
@@ -213,6 +221,10 @@ await treeDb.createMigration({
   dryRun: true,
   requireMirrorSynced: false,
 });
+
+await treeDb.ready();
+await treeDb.deepHealth();
+await treeDb.metrics();
 ```
 
 `downloadArtifact()` returns an `ArrayBuffer` plus content type, filename, checksum, and snapshot headers. These APIs are generic TreeDB repository operations; TreeSeed package or release semantics are not encoded in TreeDB.
@@ -223,7 +235,8 @@ Mocked end-to-end TreeDB contract tests prove the SDK can drive the TreeDB repos
 npx vitest run --config ./vitest.config.ts test/utils/treedb-e2e-contract.test.ts
 ```
 
-An optional live contract test is skipped unless all of these are set:
+The optional live contract command reports `not configured` and exits
+successfully unless all of these are set:
 
 ```text
 TREEDB_LIVE_URL

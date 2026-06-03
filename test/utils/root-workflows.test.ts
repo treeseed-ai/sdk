@@ -68,9 +68,9 @@ describe('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('TREESEED_SITE_URL');
 		expect(webSource).toContain('BETTER_AUTH_URL');
 		expect(webSource).toContain('https://api-treeseed-market-staging-ca844c56.treeseed.ai');
-			expect(webSource).toContain('npm --prefix packages/sdk run build:dist');
-			expect(webSource).toContain('for dir in packages/core packages/cli packages/agent');
-			expect(webSource).toContain('pids["${dir}"]="$!"');
+		expect(webSource).toContain('npm --prefix packages/sdk run build:dist');
+		expect(webSource).toContain('for dir in packages/core packages/cli packages/agent');
+		expect(webSource).toContain('pids["${dir}"]="$!"');
 		expect(webSource).toContain('npm ci --ignore-scripts');
 		expect(webSource).toContain('node ./packages/sdk/scripts/run-ts.mjs ./packages/sdk/scripts/install-managed-dependencies.ts');
 		expect(webSource).toContain('RAILWAY_API_TOKEN');

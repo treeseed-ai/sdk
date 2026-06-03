@@ -1113,7 +1113,7 @@ export async function waitForGitHubWorkflowRunCompletion(
 				continue;
 			}
 			for (;;) {
-				if ((Date.now() - startedAt) >= timeoutSeconds * 1000) {
+				if ((Date.now() - startedAt) >= timeoutSeconds * 1000 && lastProgress?.runId === match.id) {
 					break;
 				}
 				const current = await client.rest.actions.getWorkflowRun({

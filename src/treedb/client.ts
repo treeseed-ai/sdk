@@ -110,8 +110,11 @@ import type {
 	TreeDbWorkspace,
 	TreeDbCreateWorkspaceRequest,
 	TreeDbDeleteFileRequest,
+	TreeDbDeepHealth,
 	TreeDbWorkspaceRequest,
 	TreeDbWriteFileRequest,
+	TreeDbMetrics,
+	TreeDbReadiness,
 } from './types.ts';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -147,6 +150,93 @@ function firstPayload<T>(payload: unknown, keys: string[]): T {
 	}
 	return stripOk<T>(payload);
 }
+
+export const TREE_DB_CLIENT_OPERATION_MAP = {
+	health: 'getHealth',
+	ready: 'getReadiness',
+	deepHealth: 'getDeepHealth',
+	adminDeepHealth: 'getAdminDeepHealth',
+	metrics: 'getMetrics',
+	prometheusMetrics: 'getPrometheusMetrics',
+	whoami: 'getWhoami',
+	authMode: 'getAuthMode',
+	effectiveScope: 'getEffectiveScope',
+	listCapabilities: 'listCapabilities',
+	listCapabilityGrants: 'listCapabilityGrants',
+	putCapabilityGrant: 'putCapabilityGrant',
+	listAuditEvents: 'listAuditEvents',
+	planFederatedQuery: 'planFederationQuery',
+	buildSnapshot: 'buildSnapshot',
+	getSnapshot: 'getSnapshot',
+	exportArtifact: 'exportArtifact',
+	syncMirror: 'syncMirror',
+	fetchRemote: 'syncRepository',
+	push: 'pushRepository',
+	checkMirrorHealth: 'checkMirrorHealth',
+	promoteMirror: 'promoteMirror',
+	compactStorage: 'compactAdminStorage',
+	backupStorage: 'backupAdminStorage',
+	listStorageMigrations: 'listStorageMigrations',
+	planStorageMigration: 'planStorageMigration',
+	applyStorageMigration: 'applyStorageMigration',
+	rollbackStorageMigration: 'rollbackStorageMigration',
+	verifyStorageRestore: 'verifyStorageRestore',
+	restoreStorage: 'restoreStorage',
+	createMigration: 'createMigration',
+	getMigration: 'getMigration',
+	getNode: 'getLocalNode',
+	listNodes: 'listRegistryNodes',
+	getPlacement: 'getRepositoryPlacement',
+	getRepository: 'getRepository',
+	createWorkspace: 'createWorkspace',
+	closeWorkspace: 'closeWorkspace',
+	listTree: 'listWorkspaceTree',
+	readFile: 'readWorkspaceFile',
+	writeFile: 'writeWorkspaceFile',
+	patchFile: 'patchWorkspaceFile',
+	deleteFile: 'deleteWorkspaceFile',
+	readBlob: 'readRepositoryBlob',
+	writeBlob: 'writeWorkspaceBlob',
+	deleteBlob: 'deleteWorkspaceBlob',
+	downloadBlob: 'downloadWorkspaceBlob',
+	uploadBlob: 'uploadWorkspaceBlob',
+	createBlobUpload: 'createWorkspaceBlobUpload',
+	uploadBlobPart: 'uploadWorkspaceBlobPart',
+	completeBlobUpload: 'completeWorkspaceBlobUpload',
+	abortBlobUpload: 'abortWorkspaceBlobUpload',
+	listArtifacts: 'listArtifacts',
+	getArtifact: 'getArtifact',
+	deleteArtifact: 'deleteArtifact',
+	cleanupArtifacts: 'cleanupArtifacts',
+	search: 'searchWorkspace',
+	status: 'getWorkspaceStatus',
+	diff: 'getWorkspaceDiff',
+	commit: 'commitWorkspace',
+	exec: 'execWorkspace',
+	readRepositoryFiles: 'readRepositoryFile',
+	readRepositoryFile: 'readRepositoryFile',
+	listRepositoryPaths: 'listRepositoryPaths',
+	searchRepositoryFiles: 'searchRepositoryFiles',
+	queryRepository: 'queryRepository',
+	federatedSearch: 'federatedSearch',
+	federatedQuery: 'federatedQuery',
+	federatedContext: 'federatedContextBuild',
+	federatedGraph: 'federatedGraphQuery',
+	refreshGraph: 'refreshRepositoryGraph',
+	getGraphRefreshJob: 'getGraphRefreshJob',
+	refreshSearchIndex: 'refreshSearchIndex',
+	getSearchIndexStatus: 'getSearchIndexStatus',
+	compactSearchIndex: 'compactSearchIndex',
+	queryGraph: 'queryRepositoryGraph',
+	searchGraphFiles: 'searchGraphFiles',
+	searchGraphSections: 'searchGraphSections',
+	searchGraphEntities: 'searchGraphEntities',
+	getGraphNode: 'getGraphNode',
+	getRelated: 'getRelatedGraphNodes',
+	getSubgraph: 'getGraphSubgraph',
+	buildContext: 'buildContext',
+	parseContextDsl: 'parseContextQuery',
+} as const;
 
 export class TreeDbClient {
 	readonly baseUrl: string;
@@ -445,6 +535,42 @@ export class TreeDbClient {
 
 	health(): Promise<TreeDbHealth> {
 		return this.request<TreeDbHealth>('GET', '/api/v1/health');
+	}
+
+	ready(): Promise<TreeDbReadiness> {
+		return this.request<Record<string, unknown>>('GET', '/api/v1/ready')
+			.then((payload) => firstPayload<TreeDbReadiness>(payload, ['readiness']));
+	}
+
+	deepHealth(input: { admin?: boolean } = {}): Promise<TreeDbDeepHealth> {
+		return this.request<Record<string, unknown>>(
+			'GET',
+			input.admin ? '/api/v1/admin/health/deep' : '/api/v1/health/deep',
+			undefined,
+			{ tokenRequired: input.admin === true },
+		).then((payload) => firstPayload<TreeDbDeepHealth>(payload, ['health']));
+	}
+
+	metrics(): Promise<TreeDbMetrics> {
+		return this.request<Record<string, unknown>>('GET', '/api/v1/metrics')
+			.then((payload) => firstPayload<TreeDbMetrics>(payload, ['metrics']));
+	}
+
+	async prometheusMetrics(): Promise<string> {
+		const response = await this.fetchWithTimeout(`${this.baseUrl}/metrics`, {
+			method: 'GET',
+			headers: { accept: 'text/plain' },
+		});
+		if (!response.ok) {
+			let payload: unknown;
+			try {
+				payload = await response.json();
+			} catch {
+				payload = undefined;
+			}
+			this.throwApiError(response, payload);
+		}
+		return response.text();
 	}
 
 	whoami(): Promise<TreeDbWhoami> {

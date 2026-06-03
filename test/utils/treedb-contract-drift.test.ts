@@ -1,11 +1,14 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 import packageJson from '../../package.json' with { type: 'json' };
 import * as treedb from '../../src/treedb/index.ts';
 
-const openApi = parse(readFileSync(resolve(process.cwd(), '../../docs/api/openapi.yaml'), 'utf8')) as {
+const workspaceOpenApiPath = resolve(process.cwd(), '../../docs/api/openapi.yaml');
+const packageOpenApiPath = resolve(process.cwd(), 'docs/api/openapi.yaml');
+const openApiPath = existsSync(workspaceOpenApiPath) ? workspaceOpenApiPath : packageOpenApiPath;
+const openApi = parse(readFileSync(openApiPath, 'utf8')) as {
 	paths?: Record<string, Record<string, unknown>>;
 };
 

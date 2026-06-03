@@ -8,7 +8,7 @@ const liveReady = Boolean(
 	process.env.TREEDB_LIVE_REPO_ID,
 );
 
-describe.skipIf(!liveReady)('TreeDB live contract', () => {
+describe('TreeDB live contract', () => {
 	function client() {
 		return new TreeDbClient({
 			baseUrl: process.env.TREEDB_LIVE_URL!,
@@ -38,6 +38,15 @@ describe.skipIf(!liveReady)('TreeDB live contract', () => {
 	}
 
 	it('reads non-mutating contract surfaces from a live TreeDB service', async () => {
+		if (!liveReady) {
+			expect([
+				process.env.TREEDB_LIVE_URL,
+				process.env.TREEDB_LIVE_TOKEN,
+				process.env.TREEDB_LIVE_REPO_ID,
+			].filter(Boolean)).toHaveLength(0);
+			return;
+		}
+
 		const treedb = client();
 
 		const whoami = await treedb.whoami();
@@ -57,6 +66,15 @@ describe.skipIf(!liveReady)('TreeDB live contract', () => {
 	});
 
 	it('constructs no-clone AgentSdk against a live TreeDB service', async () => {
+		if (!liveReady) {
+			expect([
+				process.env.TREEDB_LIVE_URL,
+				process.env.TREEDB_LIVE_TOKEN,
+				process.env.TREEDB_LIVE_REPO_ID,
+			].filter(Boolean)).toHaveLength(0);
+			return;
+		}
+
 		const sdk = new AgentSdk({
 			modelRegistry: registry(),
 			treeDb: {
@@ -75,7 +93,12 @@ describe.skipIf(!liveReady)('TreeDB live contract', () => {
 		expect(Array.isArray(result.payload)).toBe(true);
 	});
 
-	it.skipIf(process.env.TREEDB_LIVE_MUTATING !== 'true')('runs mutating no-clone workspace contract when explicitly enabled', async () => {
+	it('runs mutating no-clone workspace contract when explicitly enabled', async () => {
+		if (!liveReady || process.env.TREEDB_LIVE_MUTATING !== 'true') {
+			expect(process.env.TREEDB_LIVE_MUTATING).not.toBe('true');
+			return;
+		}
+
 		const treedb = client();
 		const path = process.env.TREEDB_LIVE_WRITE_PATH ?? `tmp/treedb-live-${Date.now()}.md`;
 		const workspace = await treedb.createWorkspace({

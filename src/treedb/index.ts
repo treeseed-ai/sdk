@@ -1,4 +1,4 @@
-export { TreeDbClient } from './client.ts';
+export { TREE_DB_CLIENT_OPERATION_MAP, TreeDbClient } from './client.ts';
 export { TreeDbRegistryClient, type TreeDbRegistryClientOptions } from './registry-client.ts';
 export { TreeDbFederatedClient, type TreeDbFederatedClientOptions } from './federated-client.ts';
 export { TreeDbApiError } from './errors.ts';
@@ -26,3 +26,8 @@ export {
 } from './ports.ts';
 export type * from './ports.ts';
 export type * from './types.ts';
+export type {
+	components as TreeDbOpenApiComponents,
+	operations as TreeDbOpenApiOperations,
+	paths as TreeDbOpenApiPaths,
+} from './generated/openapi-types.ts';

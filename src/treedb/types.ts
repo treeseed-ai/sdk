@@ -12,6 +12,7 @@ import type {
 	SdkGraphSearchResult,
 	SdkGraphTraversalResult,
 } from '../sdk-types.ts';
+import type { components, operations, paths } from './generated/openapi-types.ts';
 
 export interface TreeDbActor {
 	actorId: string;
@@ -29,32 +30,7 @@ export interface TreeDbClientOptions {
 }
 
 export type TreeDbErrorCode =
-	| 'authentication_required'
-	| 'invalid_token'
-	| 'permission_denied'
-	| 'workspace_revoked'
-	| 'not_found'
-	| 'conflict'
-	| 'payload_too_large'
-	| 'unsupported_media_type'
-	| 'validation_error'
-	| 'graph_not_ready'
-	| 'federated_query_not_implemented'
-	| 'network_error'
-	| 'timeout'
-	| 'partial_failure'
-	| 'federated_node_unavailable'
-	| 'federated_node_timeout'
-	| 'federated_partial_failure'
-	| 'federated_scope_empty'
-	| 'federated_route_not_configured'
-	| 'unsupported_transport'
-	| 'push_rejected'
-	| 'credential_not_configured'
-	| 'sandbox_unavailable'
-	| 'sandbox_policy_denied'
-	| 'storage_compaction_failed'
-	| 'backup_failed'
+	| components['schemas']['TreeDbErrorCode']
 	| 'missing_repo_id'
 	| 'missing_token'
 	| 'invalid_response'
@@ -98,6 +74,10 @@ export interface TreeDbHealth {
 	service: string;
 	dataDir?: string;
 }
+
+export type TreeDbReadiness = components['schemas']['TreeDbReadiness'];
+export type TreeDbDeepHealth = components['schemas']['TreeDbHealthSummary'];
+export type TreeDbMetrics = components['schemas']['TreeDbMetrics'];
 
 export interface TreeDbVersion {
 	service: string;
@@ -1178,6 +1158,9 @@ export interface TreeDbMigration {
 }
 
 export type {
+	components as TreeDbOpenApiComponents,
+	operations as TreeDbOpenApiOperations,
+	paths as TreeDbOpenApiPaths,
 	SdkContextPack,
 	SdkContextPackRequest,
 	SdkGraphDslParseResult,
@@ -1191,3 +1174,57 @@ export type {
 	SdkGraphSearchResult,
 	SdkGraphTraversalResult,
 };
+
+export type TreeDbWhoamiResponse = components['schemas']['TreeDbGetWhoamiResponse'];
+export type TreeDbReadinessResponse = components['schemas']['TreeDbReadinessResponse'];
+export type TreeDbDeepHealthResponse = components['schemas']['TreeDbDeepHealthResponse'];
+export type TreeDbMetricsResponse = components['schemas']['TreeDbMetricsResponse'];
+export type TreeDbAuthModeResponse = components['schemas']['TreeDbGetAuthModeResponse'];
+export type TreeDbDevTokenResponse = components['schemas']['TreeDbCreateDevTokenResponse'];
+export type TreeDbEffectiveScopeResponse = components['schemas']['TreeDbGetEffectiveScopeResponse'];
+export type TreeDbPolicyRefreshResponse = components['schemas']['TreeDbRefreshPolicyResponse'];
+export type TreeDbCapabilityGrantResponse = components['schemas']['TreeDbPutCapabilityGrantResponse'];
+export type TreeDbCapabilityGrantListResponse = components['schemas']['TreeDbListCapabilityGrantsResponse'];
+export type TreeDbAuditEventListResponse = components['schemas']['TreeDbListAuditEventsResponse'];
+export type TreeDbNodeResponse = components['schemas']['TreeDbGetLocalNodeResponse'];
+export type TreeDbNodeListResponse = components['schemas']['TreeDbListRegistryNodesResponse'];
+export type TreeDbRepositoryPlacementResponse = components['schemas']['TreeDbGetRepositoryPlacementResponse'];
+export type TreeDbRepositoryResponse = components['schemas']['TreeDbGetRepositoryResponse'];
+export type TreeDbRepositoryListResponse = components['schemas']['TreeDbListRepositoriesResponse'];
+export type TreeDbRepositoryStatusResponse = components['schemas']['TreeDbGetRepositoryStatusResponse'];
+export type TreeDbRepositoryRefListResponse = components['schemas']['TreeDbListRepositoryRefsResponse'];
+export type TreeDbRepositoryRemoteListResponse = components['schemas']['TreeDbListRepositoryRemotesResponse'];
+export type TreeDbFetchRemoteResponse = components['schemas']['TreeDbSyncRepositoryResponse'];
+export type TreeDbPushResponse = components['schemas']['TreeDbPushRepositoryResponse'];
+export type TreeDbWorkspaceResponse = components['schemas']['TreeDbGetWorkspaceResponse'];
+export type TreeDbWorkspaceClosedResponse = components['schemas']['TreeDbCloseWorkspaceResponse'];
+export type TreeDbTreeResponse = components['schemas']['TreeDbListWorkspaceTreeResponse'];
+export type TreeDbFileResponse = components['schemas']['TreeDbReadWorkspaceFileResponse'];
+export type TreeDbFileMutationResponse = components['schemas']['TreeDbWriteWorkspaceFileResponse'];
+export type TreeDbBlobResponse = components['schemas']['TreeDbReadRepositoryBlobResponse'];
+export type TreeDbBlobMutationResponse = components['schemas']['TreeDbWriteWorkspaceBlobResponse'];
+export type TreeDbBlobUploadSessionResponse = components['schemas']['TreeDbCreateWorkspaceBlobUploadResponse'];
+export type TreeDbBlobUploadPartResponse = components['schemas']['TreeDbUploadWorkspaceBlobPartResponse'];
+export type TreeDbRepositoryQueryResponse = components['schemas']['TreeDbQueryRepositoryResponse'];
+export type TreeDbGraphRefreshResponse = components['schemas']['TreeDbRefreshRepositoryGraphResponse'];
+export type TreeDbGraphRefreshJobResponse = components['schemas']['TreeDbGetGraphRefreshJobResponse'];
+export type TreeDbGraphQueryResponse = components['schemas']['TreeDbQueryRepositoryGraphResponse'];
+export type TreeDbGraphSearchResponse = components['schemas']['TreeDbSearchGraphFilesResponse'];
+export type TreeDbGraphNodeResponse = components['schemas']['TreeDbGetGraphNodeResponse'];
+export type TreeDbGraphTraversalResponse = components['schemas']['TreeDbGetRelatedGraphNodesResponse'];
+export type TreeDbContextResponse = components['schemas']['TreeDbBuildContextResponse'];
+export type TreeDbCtxParseResponse = components['schemas']['TreeDbParseContextQueryResponse'];
+export type TreeDbSnapshotResponse = components['schemas']['TreeDbGetSnapshotResponse'];
+export type TreeDbArtifactResponse = components['schemas']['TreeDbGetArtifactResponse'];
+export type TreeDbArtifactListResponse = components['schemas']['TreeDbListArtifactsResponse'];
+export type TreeDbMirrorListResponse = components['schemas']['TreeDbListMirrorsResponse'];
+export type TreeDbMirrorResponse = components['schemas']['TreeDbPutMirrorResponse'];
+export type TreeDbMigrationResponse = components['schemas']['TreeDbGetMigrationResponse'];
+export type TreeDbFederationQueryPlanResponse = components['schemas']['TreeDbPlanFederationQueryResponse'];
+export type TreeDbFederatedSearchResponse = components['schemas']['TreeDbFederatedSearchResponse'];
+export type TreeDbFederatedQueryResponse = components['schemas']['TreeDbFederatedQueryResponse'];
+export type TreeDbFederatedContextResponse = components['schemas']['TreeDbFederatedContextBuildResponse'];
+export type TreeDbFederatedGraphResponse = components['schemas']['TreeDbFederatedGraphQueryResponse'];
+export type TreeDbStorageHealthResponse = components['schemas']['TreeDbGetAdminStorageHealthResponse'];
+export type TreeDbStorageCheckResponse = components['schemas']['TreeDbCheckAdminStorageResponse'];
+export type TreeDbStorageMigrationListResponse = components['schemas']['TreeDbListStorageMigrationsResponse'];
