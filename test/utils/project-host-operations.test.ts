@@ -306,6 +306,7 @@ describe('project host binding operations', () => {
 			}, {
 				workspaceRoot: join(fixture.root, 'workspace-missing-secret'),
 				environment: 'staging',
+				processEnv: {},
 			});
 			expect(missingSecret.ok).toBe(false);
 			expect(missingSecret.secretSync?.diagnostics[0]).toMatchObject({

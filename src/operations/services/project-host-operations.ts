@@ -143,6 +143,7 @@ export interface ExecuteProjectHostBindingOperationContext {
 	environment?: string;
 	valuesOverlay?: Record<string, string | undefined> | null;
 	valuesByScope?: Record<string, Record<string, string | undefined> | null> | null;
+	processEnv?: Record<string, string | undefined>;
 	onProgress?: (event: ProjectLaunchSecretSyncProgressEvent) => void | Promise<void>;
 }
 
@@ -524,6 +525,7 @@ export async function executeProjectHostBindingOperation(
 				secretDeploymentPlan: plans.secretDeployment,
 				valuesOverlay: context.valuesOverlay,
 				valuesByScope: context.valuesByScope as any,
+				processEnv: context.processEnv,
 				dryRun: input.dryRun,
 				onProgress: context.onProgress,
 			});

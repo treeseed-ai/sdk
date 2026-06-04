@@ -116,6 +116,7 @@ describe('project launch host-bound secret sync', () => {
 			projectRoot: '/tmp/project',
 			repository: 'acme/test-project',
 			secretDeploymentPlan: { items: [secretItem()] },
+			processEnv: {},
 			adapters: {
 				github: (async () => {
 					throw new Error('should not run');
