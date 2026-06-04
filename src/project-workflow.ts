@@ -1,4 +1,4 @@
-import type { ProjectConnection, RemoteJobStatus } from './sdk-types.ts';
+import type { ProjectConnection, ProjectLaunchHostBindingInput, RemoteJobStatus } from './sdk-types.ts';
 
 export const PROJECT_TEAM_CAPABILITIES = [
 	'launch_projects',
@@ -266,11 +266,17 @@ export interface LaunchProjectRequest {
 	summary?: string | null;
 	sourceKind: 'blank' | 'template' | 'knowledge_pack';
 	sourceRef?: string | null;
-		hostingMode: 'managed' | 'hybrid' | 'self_hosted';
-		cloudflareHostId?: string | null;
-		cloudflareHostMode?: 'team_owned' | 'treeseed_managed' | null;
-		cloudflareHostConfig?: Record<string, unknown> | null;
-		targetEnvironments?: Array<'local' | 'staging' | 'prod'>;
+	hostingMode: 'managed' | 'hybrid' | 'self_hosted';
+	repositoryHostId?: string | null;
+	repositoryHostConfig?: Record<string, unknown> | null;
+	cloudflareHostId?: string | null;
+	cloudflareHostMode?: 'team_owned' | 'treeseed_managed' | null;
+	cloudflareHostConfig?: Record<string, unknown> | null;
+	emailHostId?: string | null;
+	emailHostMode?: 'team_owned' | 'treeseed_managed' | null;
+	emailHostConfig?: Record<string, unknown> | null;
+	hostBindings?: Record<string, ProjectLaunchHostBindingInput>;
+	targetEnvironments?: Array<'local' | 'staging' | 'prod'>;
 	publicSite?: boolean;
 	repoProvider?: 'github';
 	repoVisibility?: 'private' | 'public';

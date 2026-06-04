@@ -4,8 +4,17 @@ import { basename, dirname, relative, resolve } from 'node:path';
 import {
 	type SdkTemplateCatalogEntry,
 	type SdkTemplateCatalogResponse,
+	type TemplateLaunchRequirements,
 } from '../../sdk-types.ts';
 import { RemoteTemplateCatalogClient } from '../../template-catalog.ts';
+import {
+	type ProjectLaunchConfigWritePlanItem,
+	type ProjectLaunchLocalHostBindingSummary,
+	type ProjectLaunchResolvedHostBinding,
+	type ProjectLaunchSecretDeploymentPlanItem,
+	normalizeTemplateLaunchRequirements,
+} from '../../template-launch-requirements.ts';
+import { preserveProjectLaunchHostBindingConfigOverlay } from './template-host-bindings.ts';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
 	resolveTreeseedTemplateCatalogCachePath,
@@ -51,6 +60,7 @@ export interface TemplateManifest {
 		validatedOnly?: string[];
 		tenantManaged?: string[];
 	};
+	launchRequirements?: TemplateLaunchRequirements;
 	testing: {
 		smokeCommand?: string;
 		buildCommand?: string;
@@ -80,6 +90,23 @@ export interface StarterResolutionInput {
 	contactEmail?: string | null;
 	repositoryUrl?: string | null;
 	discordUrl?: string | null;
+	hostBindingState?: StarterHostBindingState | null;
+}
+
+export interface StarterHostBindingState {
+	hostBindings: Record<string, ProjectLaunchResolvedHostBinding>;
+	hostBindingPlans: {
+		configWrites: ProjectLaunchConfigWritePlanItem[];
+		secretDeployment: {
+			items: ProjectLaunchSecretDeploymentPlanItem[];
+		};
+	};
+	hostBindingSummaries?: ProjectLaunchLocalHostBindingSummary[];
+	hostBindingConfig?: {
+		configWrites?: unknown[];
+		environmentWrites?: unknown[];
+		targets?: string[];
+	} | null;
 }
 
 interface TemplateState {
@@ -89,6 +116,10 @@ interface TemplateState {
 	installedAt: string;
 	lastSyncedAt?: string;
 	replacements: Record<string, string>;
+	hostBindings?: StarterHostBindingState['hostBindings'];
+	hostBindingPlans?: StarterHostBindingState['hostBindingPlans'];
+	hostBindingSummaries?: ProjectLaunchLocalHostBindingSummary[];
+	hostBindingConfig?: StarterHostBindingState['hostBindingConfig'];
 }
 
 interface TemplateCatalogCache {
@@ -207,6 +238,7 @@ function validateTemplateManifest(definition: ResolvedTemplateDefinition) {
 	if (!existsSync(templateRoot)) {
 		throw new Error(`Template ${manifest.id} is missing template/ at ${templateRoot}.`);
 	}
+	manifest.launchRequirements = normalizeTemplateLaunchRequirements(manifest.launchRequirements, `${manifestPath}: launchRequirements`);
 	validateTemplatePlaceholders(definition);
 }
 
@@ -582,8 +614,63 @@ export async function scaffoldTemplateProject(templateId: string, targetRoot: st
 		installedAt: new Date().toISOString(),
 		lastSyncedAt: new Date().toISOString(),
 		replacements,
+		...(input.hostBindingState ? {
+			hostBindings: input.hostBindingState.hostBindings,
+			hostBindingPlans: input.hostBindingState.hostBindingPlans,
+			hostBindingSummaries: input.hostBindingState.hostBindingSummaries,
+			hostBindingConfig: input.hostBindingState.hostBindingConfig,
+		} : {}),
 	});
 	return definition.product;
+}
+
+export function recordTemplateHostBindingState(siteRoot: string, hostBindingState: StarterHostBindingState) {
+	const state = loadTemplateState(siteRoot);
+	writeTemplateState(siteRoot, {
+		...state,
+		hostBindings: hostBindingState.hostBindings,
+		hostBindingPlans: hostBindingState.hostBindingPlans,
+		hostBindingSummaries: hostBindingState.hostBindingSummaries,
+		hostBindingConfig: hostBindingState.hostBindingConfig,
+	});
+}
+
+function preserveHostBindingOverlayIfNeeded(relativePath: string, currentContent: string, nextContent: string, state: TemplateState) {
+	if (!state.hostBindingPlans) {
+		return nextContent;
+	}
+	if (
+		relativePath !== 'treeseed.site.yaml'
+		&& relativePath !== 'src/env.yaml'
+		&& relativePath !== 'src/manifest.yaml'
+		&& relativePath !== 'package.json'
+	) {
+		return nextContent;
+	}
+	return preserveProjectLaunchHostBindingConfigOverlay({
+		target: relativePath as 'treeseed.site.yaml' | 'src/env.yaml' | 'src/manifest.yaml' | 'package.json',
+		currentContent,
+		nextContent,
+		hostBindingPlans: state.hostBindingPlans,
+	});
+}
+
+function structuredTemplateContentMatches(relativePath: string, currentContent: string, nextContent: string) {
+	if (
+		relativePath !== 'treeseed.site.yaml'
+		&& relativePath !== 'src/env.yaml'
+		&& relativePath !== 'src/manifest.yaml'
+		&& relativePath !== 'package.json'
+	) {
+		return false;
+	}
+	try {
+		const current = relativePath === 'package.json' ? JSON.parse(currentContent || '{}') : parseYaml(currentContent || '{}');
+		const next = relativePath === 'package.json' ? JSON.parse(nextContent || '{}') : parseYaml(nextContent || '{}');
+		return JSON.stringify(current) === JSON.stringify(next);
+	} catch {
+		return false;
+	}
 }
 
 export async function syncTemplateProject(siteRoot: string, options: TemplateCatalogOptions & { check?: boolean } = {}) {
@@ -607,9 +694,17 @@ export async function syncTemplateProject(siteRoot: string, options: TemplateCat
 			continue;
 		}
 
-		const nextContent = renderTemplateFile(sourcePath, state.replacements);
 		const currentContent = existsSync(targetPath) ? readFileSync(targetPath, 'utf8') : '';
+		const nextContent = preserveHostBindingOverlayIfNeeded(
+			relativePath,
+			currentContent,
+			renderTemplateFile(sourcePath, state.replacements),
+			state,
+		);
 		if (currentContent === nextContent) {
+			continue;
+		}
+		if (state.hostBindingPlans && structuredTemplateContentMatches(relativePath, currentContent, nextContent)) {
 			continue;
 		}
 		if (!check) {
@@ -639,7 +734,7 @@ export async function syncTemplateProject(siteRoot: string, options: TemplateCat
 	return changes;
 }
 
-export function serializeTemplateRegistryEntry(product: Pick<TemplateProductDefinition, 'id' | 'displayName' | 'description' | 'summary' | 'status' | 'featured' | 'category' | 'tags' | 'publisher' | 'templateVersion' | 'templateApiVersion' | 'minCliVersion' | 'minCoreVersion' | 'fulfillment'>) {
+export function serializeTemplateRegistryEntry(product: Pick<TemplateProductDefinition, 'id' | 'displayName' | 'description' | 'summary' | 'status' | 'featured' | 'category' | 'tags' | 'publisher' | 'templateVersion' | 'templateApiVersion' | 'minCliVersion' | 'minCoreVersion' | 'fulfillment' | 'launchRequirements'>) {
 	return {
 		id: product.id,
 		displayName: product.displayName,
@@ -656,6 +751,7 @@ export function serializeTemplateRegistryEntry(product: Pick<TemplateProductDefi
 		minCoreVersion: product.minCoreVersion,
 		fulfillmentMode: product.fulfillment.mode ?? 'packaged',
 		source: product.fulfillment.source,
+		launchRequirements: product.launchRequirements,
 	};
 }
 

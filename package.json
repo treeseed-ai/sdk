@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.10.24",
+  "version": "0.10.25",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -197,6 +197,18 @@
     "./template-catalog": {
       "types": "./dist/template-catalog.d.ts",
       "default": "./dist/template-catalog.js"
+    },
+    "./template-launch-requirements": {
+      "types": "./dist/template-launch-requirements.d.ts",
+      "default": "./dist/template-launch-requirements.js"
+    },
+    "./template-launch-ui": {
+      "types": "./dist/template-launch-ui.d.ts",
+      "default": "./dist/template-launch-ui.js"
+    },
+    "./template-secret-sync": {
+      "types": "./dist/operations/services/template-secret-sync.d.ts",
+      "default": "./dist/operations/services/template-secret-sync.js"
     },
     "./d1-store": {
       "types": "./dist/d1-store.d.ts",

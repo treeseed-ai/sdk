@@ -17,14 +17,27 @@ import { configuredRailwayServices, deployRailwayService, ensureRailwayScheduled
 import { loadCliDeployConfig } from './runtime-tools.ts';
 import { templateCatalogRoot } from './runtime-paths.ts';
 import { scaffoldTemplateProject } from './template-registry.ts';
+import { applyProjectLaunchHostBindingConfig } from './template-host-bindings.ts';
+import {
+	ProjectLaunchSecretSyncError,
+	syncProjectLaunchHostBindingSecrets,
+	type ProjectLaunchSecretSyncResult,
+} from './template-secret-sync.ts';
 import { buildKnowledgePackMarketPackage, buildTemplateMarketPackage, importKnowledgePack } from './market-packaging.ts';
 import { resolveTreeseedToolBinary } from '../../managed-dependencies.ts';
+import { TREESEED_DEFAULT_STARTER_TEMPLATE_ID } from '../../sdk-types.ts';
+import type {
+	ProjectLaunchConfigWritePlanItem,
+	ProjectLaunchResolvedHostBinding,
+	ProjectLaunchSecretDeploymentPlanItem,
+} from '../../template-launch-requirements.ts';
 
 export type KnowledgeHubProviderLaunchFailurePhase =
 	| 'repo_provision_failed'
 	| 'content_bootstrap_failed'
 	| 'workflow_bootstrap_failed'
 	| 'hosting_registration_failed'
+	| 'host_binding_secret_sync_failed'
 	| 'runtime_connection_failed';
 
 export interface KnowledgeHubProviderLaunchInput {
@@ -72,6 +85,13 @@ export interface KnowledgeHubProviderLaunchInput {
 		manageDns?: boolean;
 		provider?: string | null;
 	} | null;
+	hostBindings?: Record<string, ProjectLaunchResolvedHostBinding>;
+	hostBindingPlans?: {
+		configWrites?: ProjectLaunchConfigWritePlanItem[];
+		secretDeployment?: {
+			items?: ProjectLaunchSecretDeploymentPlanItem[];
+		};
+	};
 }
 
 export interface KnowledgeHubCloudflareHostConfig {
@@ -128,6 +148,7 @@ export interface KnowledgeHubProviderLaunchResult {
 		secrets: { existing: string[]; created: string[] };
 		variables: { existing: string[]; created: string[] };
 		environmentSync?: Array<Awaited<ReturnType<typeof syncTreeseedGitHubEnvironment>>>;
+		hostBindingSecretSync?: ProjectLaunchSecretSyncResult | null;
 	};
 	cloudflare: {
 		staging: ReturnType<typeof provisionCloudflareResources>;
@@ -811,11 +832,11 @@ function buildCloudflareHostEnvironmentOverlay(input: KnowledgeHubProviderLaunch
 function scaffoldLaunchSource(projectRoot: string, input: KnowledgeHubProviderLaunchInput) {
 	const repositoryName = slugify(input.repoName ?? input.projectSlug, 'project');
 	const templateId = input.sourceKind === 'template'
-		? slugify(input.sourceRef ?? 'starter-basic', 'starter-basic')
-		: 'starter-basic';
+		? slugify(input.sourceRef ?? TREESEED_DEFAULT_STARTER_TEMPLATE_ID, TREESEED_DEFAULT_STARTER_TEMPLATE_ID)
+		: TREESEED_DEFAULT_STARTER_TEMPLATE_ID;
 	const templateCatalogEnv = { TREESEED_TEMPLATE_CATALOG_URL: currentTemplateCatalogUrl() };
 	if (input.sourceKind === 'knowledge_pack') {
-		return scaffoldTemplateProject('starter-basic', projectRoot, {
+		return scaffoldTemplateProject(TREESEED_DEFAULT_STARTER_TEMPLATE_ID, projectRoot, {
 			target: input.projectSlug,
 			name: input.projectName,
 			slug: input.projectSlug,
@@ -982,6 +1003,26 @@ export async function executeKnowledgeHubProviderLaunch(
 		await scaffoldLaunchSource(workingRoot, input);
 		ensureHostedProjectFiles(workingRoot);
 		const managedDefaults = applyManagedProjectDefaults(workingRoot, input);
+		const hostBindingConfig = applyProjectLaunchHostBindingConfig({
+			projectRoot: workingRoot,
+			hostBindings: input.hostBindings,
+			hostBindingPlans: input.hostBindingPlans,
+			launchInput: input,
+			derived: {
+				projectSlug: slugify(input.projectSlug, 'project'),
+				projectName: input.projectName,
+				repositoryName: repoName,
+			},
+		});
+		if (hostBindingConfig.configWrites.length > 0 || hostBindingConfig.environmentWrites.length > 0) {
+			await appendPhase(
+				phases,
+				'host_binding_config',
+				'completed',
+				`Applied ${hostBindingConfig.configWrites.length} host config write${hostBindingConfig.configWrites.length === 1 ? '' : 's'} and ${hostBindingConfig.environmentWrites.length} environment overlay entr${hostBindingConfig.environmentWrites.length === 1 ? 'y' : 'ies'}.`,
+				reportPhase,
+			);
+		}
 		const seed = seedLaunchContent(workingRoot, input);
 		packageSourceRoot = mkdtempSync(join(tmpdir(), `market-package-${slugify(input.projectSlug, 'project')}-`));
 		cpSync(workingRoot, packageSourceRoot, { recursive: true });
@@ -1040,7 +1081,11 @@ export async function executeKnowledgeHubProviderLaunch(
 		const workflows = await ensureGitHubDeployAutomation(workingRoot, { valuesOverlay: prodEnvOverlay });
 		commitAndPushLaunchRepository(workingRoot, `Configure ${input.projectName} deployment`, { forcePush: !input.existingRepository?.url });
 		pushDefaultWorkstreamBranch(workingRoot);
-		let workflowSummary = { ...workflows, environmentSync: [] as Array<Awaited<ReturnType<typeof syncTreeseedGitHubEnvironment>>> };
+		let workflowSummary = {
+			...workflows,
+			environmentSync: [] as Array<Awaited<ReturnType<typeof syncTreeseedGitHubEnvironment>>>,
+			hostBindingSecretSync: null as ProjectLaunchSecretSyncResult | null,
+		};
 		await appendPhase(phases, 'workflow_bootstrap', 'completed', 'Configured GitHub workflows.', reportPhase);
 
 		await appendPhase(phases, 'hosting_registration', 'running', 'Provisioning Cloudflare resources and deploy state.', reportPhase);
@@ -1066,11 +1111,51 @@ export async function executeKnowledgeHubProviderLaunch(
 					: {}),
 			};
 		};
-		const githubEnvironmentSync = [];
-		for (const [scope, valuesOverlay] of [
+		const scopedEnvironmentOverlays = [
 			['staging', turnstileOverlay(staging.state as Record<string, any>, stagingEnvOverlay)],
 			['prod', turnstileOverlay(prod.state as Record<string, any>, prodEnvOverlay)],
-		] as const) {
+		] as const;
+		const hostBindingSecretPlanItems = input.hostBindingPlans?.secretDeployment?.items ?? [];
+		if (hostBindingSecretPlanItems.length > 0) {
+			await appendPhase(
+				phases,
+				'host_binding_secret_sync',
+				'running',
+				`Syncing ${hostBindingSecretPlanItems.length} host-bound environment entr${hostBindingSecretPlanItems.length === 1 ? 'y' : 'ies'}.`,
+				reportPhase,
+			);
+			try {
+				const hostBindingSecretSync = await syncProjectLaunchHostBindingSecrets({
+					projectRoot: workingRoot,
+					repository: repository.slug,
+					hostBindings: input.hostBindings,
+					secretDeploymentPlan: input.hostBindingPlans?.secretDeployment,
+					valuesByScope: Object.fromEntries(scopedEnvironmentOverlays),
+					onProgress: async (event) => {
+						await appendPhase(
+							phases,
+							`host_binding_secret_sync_${event.provider}_${event.scope}`,
+							event.status === 'running' ? 'running' : event.status,
+							event.message,
+							reportPhase,
+						);
+					},
+				});
+				workflowSummary = { ...workflowSummary, hostBindingSecretSync };
+				await appendPhase(phases, 'host_binding_secret_sync', 'completed', 'Synced host-bound environment entries.', reportPhase);
+			} catch (error) {
+				const result = error instanceof ProjectLaunchSecretSyncError ? error.result : null;
+				workflowSummary = { ...workflowSummary, hostBindingSecretSync: result };
+				await appendPhase(phases, 'host_binding_secret_sync', 'failed', error instanceof Error ? error.message : String(error), reportPhase);
+				throw new KnowledgeHubProviderLaunchError(
+					'host_binding_secret_sync_failed',
+					error instanceof Error ? error.message : String(error),
+					phases,
+				);
+			}
+		}
+		const githubEnvironmentSync = [];
+		for (const [scope, valuesOverlay] of scopedEnvironmentOverlays) {
 			githubEnvironmentSync.push(await syncTreeseedGitHubEnvironment({
 				tenantRoot: workingRoot,
 				scope,
@@ -1188,15 +1273,20 @@ export async function executeKnowledgeHubProviderLaunch(
 		const phase = error instanceof KnowledgeHubProviderLaunchError ? error.phase : (
 			phases.some((entry) => entry.phase === 'runtime_connection' && entry.status === 'running')
 				? 'runtime_connection_failed'
-				: phases.some((entry) => entry.phase === 'hosting_registration' && entry.status === 'running')
-					? 'hosting_registration_failed'
-					: phases.some((entry) => entry.phase === 'workflow_bootstrap' && entry.status === 'running')
-						? 'workflow_bootstrap_failed'
-						: phases.some((entry) => entry.phase === 'content_bootstrap' && entry.status === 'running')
-							? 'content_bootstrap_failed'
-							: 'repo_provision_failed'
+				: phases.some((entry) => entry.phase === 'host_binding_secret_sync' && entry.status === 'running')
+					? 'host_binding_secret_sync_failed'
+					: phases.some((entry) => entry.phase === 'hosting_registration' && entry.status === 'running')
+						? 'hosting_registration_failed'
+						: phases.some((entry) => entry.phase === 'workflow_bootstrap' && entry.status === 'running')
+							? 'workflow_bootstrap_failed'
+							: phases.some((entry) => entry.phase === 'content_bootstrap' && entry.status === 'running')
+								? 'content_bootstrap_failed'
+								: 'repo_provision_failed'
 		);
-		await appendPhase(phases, phase.replace(/_failed$/u, ''), 'failed', message, reportPhase);
+		const failedPhase = phase.replace(/_failed$/u, '');
+		if (!phases.some((entry) => entry.phase === failedPhase && entry.status === 'failed')) {
+			await appendPhase(phases, failedPhase, 'failed', message, reportPhase);
+		}
 		throw new KnowledgeHubProviderLaunchError(phase, message, phases);
 	} finally {
 		if (input.preserveWorkingTree === false) {

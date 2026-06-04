@@ -24,7 +24,7 @@ import {
 	resolveRailwayWorkspaceContext,
 	upsertRailwayVariables,
 } from './railway-api.ts';
-import { elapsedMs, formatDurationMs } from '../../timing.ts';
+import { elapsedMs, formatDurationMs, type TreeseedTimingEntry } from '../../timing.ts';
 
 function normalizeScope(scope) {
 	return scope === 'prod' ? 'prod' : scope === 'staging' ? 'staging' : 'local';
@@ -107,6 +107,36 @@ function relativeRailwayRootDir(tenantRoot, serviceRoot) {
 function configuredEnvValue(env, name) {
 	const value = env?.[name];
 	return typeof value === 'string' && value.trim() ? value.trim() : '';
+}
+
+async function timedRailwayPhase<T>(
+	timings: TreeseedTimingEntry[],
+	name: string,
+	run: () => Promise<T> | T,
+	metadata?: Record<string, unknown>,
+) {
+	const startMs = performance.now();
+	try {
+		const result = await Promise.resolve(run());
+		timings.push({
+			name,
+			durationMs: elapsedMs(startMs),
+			status: 'success',
+			...(metadata ? { metadata } : {}),
+		});
+		return result;
+	} catch (error) {
+		timings.push({
+			name,
+			durationMs: elapsedMs(startMs),
+			status: 'failed',
+			metadata: {
+				...(metadata ?? {}),
+				error: error instanceof Error ? error.name || 'Error' : 'Error',
+			},
+		});
+		throw error;
+	}
 }
 
 export function parseRailwayJsonOutput(output) {
@@ -2254,6 +2284,7 @@ export async function deployRailwayService(
 		env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	} = {},
 ) {
+	const timings: TreeseedTimingEntry[] = [];
 	if (dryRun) {
 		const plan = planRailwayServiceDeploy(service, { env });
 		return {
@@ -2262,9 +2293,12 @@ export async function deployRailwayService(
 			command: [plan.command, ...plan.args].join(' '),
 			cwd: plan.cwd,
 			publicBaseUrl: service.publicBaseUrl,
+			timings,
 		};
 	}
-	const deployService = await resolveRailwayDeployProjectContext(service, { env });
+	const deployService = await timedRailwayPhase(timings, 'railway:resolve-context', () => resolveRailwayDeployProjectContext(service, { env }), {
+		service: service.key,
+	});
 	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
 	let railwayDeployEnv = buildRailwayDeployCommandEnv(commandEnv);
 	const railway = resolveTreeseedToolCommand('railway', { env: commandEnv });
@@ -2278,9 +2312,9 @@ export async function deployRailwayService(
 		task: `${deployService.key}-railway-deploy`,
 		stage: 'deploy',
 	};
-	const runtimeConfiguration = await syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, {
+	const runtimeConfiguration = await timedRailwayPhase(timings, 'railway:sync-runtime-config', () => syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, {
 		env: commandEnv,
-	});
+	}), { service: deployService.key });
 	const cliDeployService = {
 		...deployService,
 		projectId: runtimeConfiguration?.projectId ?? deployService.projectId,
@@ -2290,14 +2324,19 @@ export async function deployRailwayService(
 		serviceName: runtimeConfiguration?.serviceName ?? deployService.serviceName,
 		railwayEnvironment: runtimeConfiguration?.environmentName ?? runtimeConfiguration?.environmentId ?? deployService.railwayEnvironment,
 	};
-	await syncRailwayApiDeviceLoginVariables(cliDeployService, commandEnv, write, taskPrefix);
+	await timedRailwayPhase(timings, 'railway:device-login-vars', () => syncRailwayApiDeviceLoginVariables(cliDeployService, commandEnv, write, taskPrefix), {
+		service: cliDeployService.key,
+	});
 	railwayDeployEnv = buildRailwayCliContextEnv(railwayDeployEnv, cliDeployService);
 	const hasCommandApiToken = Boolean(configuredEnvValue(commandEnv, 'RAILWAY_API_TOKEN'));
 	let usesProjectToken = Boolean(configuredEnvValue(railwayDeployEnv, 'RAILWAY_TOKEN'));
 	if (usesProjectToken) {
 		railwayDeployEnv = { ...railwayDeployEnv, RAILWAY_API_TOKEN: undefined };
 	}
-	if (!usesProjectToken && !hasCommandApiToken) {
+	await timedRailwayPhase(timings, 'railway:project-token', async () => {
+		if (usesProjectToken || hasCommandApiToken) {
+			return null;
+		}
 		const projectToken = await createRailwayCliProjectToken(cliDeployService, { env: commandEnv });
 		if (projectToken) {
 			railwayDeployEnv = buildRailwayCliContextEnv({ ...railwayDeployEnv, RAILWAY_API_TOKEN: undefined, RAILWAY_TOKEN: projectToken }, cliDeployService);
@@ -2305,16 +2344,17 @@ export async function deployRailwayService(
 		} else if (configuredEnvValue(commandEnv, 'CI') === 'true') {
 			throw new Error(`Railway CI deploy requires a project token for ${cliDeployService.serviceName ?? cliDeployService.key}. Automatic project token creation did not return a token.`);
 		}
-	}
+		return null;
+	}, { service: cliDeployService.key });
 	const linkPlan = planRailwayServiceLink(cliDeployService, { env: commandEnv });
 	const plan = planRailwayServiceDeploy(cliDeployService, { env, projectTokenMode: usesProjectToken });
 	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
-		const buildResult = await runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
+		const buildResult = await timedRailwayPhase(timings, 'railway:predeploy-build', () => runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
 			cwd: deployService.rootDir,
 			env: commandEnv,
 			write,
 			prefix: { ...taskPrefix, stage: 'build' },
-		});
+		}), { service: deployService.key });
 		if (buildResult.status !== 0) {
 			throw new Error(`Railway ${deployService.key} build command failed.`);
 		}
@@ -2332,9 +2372,11 @@ export async function deployRailwayService(
 	const railwayLinkEnv = hasRailwayApiToken
 		? buildRailwayLinkCommandEnv(commandEnv, cliDeployService)
 		: railwayDeployEnv;
-	if (cliConfig) {
-		write ? write(`[${taskPrefix.scope}][${taskPrefix.system}][${taskPrefix.task}][link] Wrote Railway CLI project context for ${cliConfig.projectPath}.`, 'stdout') : null;
-	} else {
+	await timedRailwayPhase(timings, 'railway:link', async () => {
+		if (cliConfig) {
+			write ? write(`[${taskPrefix.scope}][${taskPrefix.system}][${taskPrefix.task}][link] Wrote Railway CLI project context for ${cliConfig.projectPath}.`, 'stdout') : null;
+			return;
+		}
 		const linkResult = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...effectiveLinkPlan.args], {
 			cwd: effectiveLinkPlan.cwd,
 			env: railwayLinkEnv,
@@ -2344,38 +2386,41 @@ export async function deployRailwayService(
 		if (linkResult.status !== 0) {
 			throw new Error(linkResult.stderr?.trim() || linkResult.stdout?.trim() || `railway ${effectiveLinkPlan.args.join(' ')} failed with exit code ${linkResult.status ?? 'unknown'} in ${effectiveLinkPlan.cwd}`);
 		}
-	}
+	}, { service: cliDeployService.key });
 
-	let lastFailure = null;
-	for (let attempt = 1; attempt <= 5; attempt += 1) {
-		const result = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...plan.args], {
-			cwd: plan.cwd,
-			env: railwayDeployEnv,
-			write,
-			prefix: taskPrefix,
-		});
-		if (result.status === 0) {
-			lastFailure = null;
-			break;
+	await timedRailwayPhase(timings, 'railway:deploy', async () => {
+		let lastFailure = null;
+		for (let attempt = 1; attempt <= 5; attempt += 1) {
+			const result = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...plan.args], {
+				cwd: plan.cwd,
+				env: railwayDeployEnv,
+				write,
+				prefix: taskPrefix,
+			});
+			if (result.status === 0) {
+				lastFailure = null;
+				break;
+			}
+			lastFailure = result;
+			if (!isRailwayTransientFailure(result) || attempt === 5) {
+				throw new Error(result.stderr?.trim() || result.stdout?.trim() || `railway ${plan.args.join(' ')} failed with exit code ${result.status ?? 'unknown'} in ${plan.cwd}`);
+			}
+			const backoffMs = 5000 * attempt;
+			const warning = `Railway deploy for ${deployService.serviceName ?? deployService.serviceId ?? deployService.key} hit a transient failure; retrying in ${Math.round(backoffMs / 1000)}s...`;
+			write ? write(`[${taskPrefix.scope}][${taskPrefix.system}][${taskPrefix.task}][retry] ${warning}`, 'stderr') : console.warn(warning);
+			await sleep(backoffMs);
 		}
-		lastFailure = result;
-		if (!isRailwayTransientFailure(result) || attempt === 5) {
-			throw new Error(result.stderr?.trim() || result.stdout?.trim() || `railway ${plan.args.join(' ')} failed with exit code ${result.status ?? 'unknown'} in ${plan.cwd}`);
+		if (lastFailure) {
+			throw new Error(lastFailure.stderr?.trim() || lastFailure.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
 		}
-		const backoffMs = 5000 * attempt;
-		const warning = `Railway deploy for ${deployService.serviceName ?? deployService.serviceId ?? deployService.key} hit a transient failure; retrying in ${Math.round(backoffMs / 1000)}s...`;
-		write ? write(`[${taskPrefix.scope}][${taskPrefix.system}][${taskPrefix.task}][retry] ${warning}`, 'stderr') : console.warn(warning);
-		await sleep(backoffMs);
-	}
-	if (lastFailure) {
-		throw new Error(lastFailure.stderr?.trim() || lastFailure.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
-	}
+	}, { service: cliDeployService.key });
 	return {
 		service: deployService.key,
 		status: 'deployed',
 		command: [plan.command, ...plan.args].join(' '),
 		cwd: plan.cwd,
 		publicBaseUrl: deployService.publicBaseUrl,
+		timings,
 		runtimeConfiguration: runtimeConfiguration
 			? {
 				updated: runtimeConfiguration.updated,

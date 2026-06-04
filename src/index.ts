@@ -1,6 +1,6 @@
 export { AgentSdk, ScopedAgentSdk } from './sdk.ts';
 export { ContentGraphRuntime } from './graph.ts';
-export { projectConnectionModeFromHosting } from './sdk-types.ts';
+export { TREESEED_DEFAULT_STARTER_TEMPLATE_ID, projectConnectionModeFromHosting } from './sdk-types.ts';
 export { createControlPlaneReporter } from './control-plane.ts';
 export { ControlPlaneClient } from './control-plane-client.ts';
 export * from './seeds/index.ts';
@@ -312,6 +312,86 @@ export {
 } from './sdk-fields.ts';
 export { RemoteTemplateCatalogClient, parseTemplateCatalogResponse } from './template-catalog.ts';
 export {
+	normalizeProjectLaunchHostBindings,
+	normalizeTemplateLaunchRequirements,
+	parseProjectLaunchHostBindingSpecs,
+	resolveProjectLaunchHostBindings,
+	validateTemplateLaunchRequirements,
+} from './template-launch-requirements.ts';
+export type {
+	ParseProjectLaunchHostBindingSpecsOptions,
+	ParseProjectLaunchHostBindingSpecsResult,
+	ProjectLaunchConfigWritePlanItem,
+	ProjectLaunchHostInventoryRecord,
+	ProjectLaunchLocalHostBindingSummary,
+	ProjectLaunchResolvedHostBinding,
+	ProjectLaunchSecretDeploymentPlanItem,
+	ResolveProjectLaunchHostBindingsOptions,
+	ResolveProjectLaunchHostBindingsResult,
+} from './template-launch-requirements.ts';
+export {
+	deriveProjectLaunchRequirementsViewModel,
+} from './template-launch-ui.ts';
+export type {
+	DeriveProjectLaunchRequirementsViewModelOptions,
+	ProjectLaunchHostRequirementViewModel,
+	ProjectLaunchRequirementHostChoice,
+	ProjectLaunchRequirementsViewModel,
+	ProjectLaunchResourceRequirementViewModel,
+	ProjectLaunchSecretRequirementViewModel,
+} from './template-launch-ui.ts';
+export {
+	applyProjectLaunchHostBindingConfig,
+	auditProjectLaunchHostBindingConfig,
+	preserveProjectLaunchHostBindingConfigOverlay,
+} from './operations/services/template-host-bindings.ts';
+export type {
+	ApplyProjectLaunchHostBindingConfigOptions,
+	ProjectLaunchHostBindingConfigAuditDiagnostic,
+	ProjectLaunchHostBindingConfigAuditResult,
+	ProjectLaunchHostBindingConfigApplyResult,
+	ProjectLaunchHostBindingConfigWriteSummary,
+	ProjectLaunchHostBindingEnvironmentWriteSummary,
+} from './operations/services/template-host-bindings.ts';
+export {
+	ProjectLaunchSecretSyncError,
+	resolveProjectLaunchSecretValueOverlay,
+	syncProjectLaunchHostBindingSecrets,
+} from './operations/services/template-secret-sync.ts';
+export type {
+	ProjectLaunchResolvedSecretValueItem,
+	ProjectLaunchSecretSyncAdapters,
+	ProjectLaunchSecretSyncProgressEvent,
+	ProjectLaunchSecretSyncProvider,
+	ProjectLaunchSecretSyncProviderStatus,
+	ProjectLaunchSecretSyncProviderSummary,
+	ProjectLaunchSecretSyncResult,
+	ProjectLaunchSecretSyncStatus,
+	ProjectLaunchSecretSyncSummaryItem,
+	ProjectLaunchSecretSyncTargetKind,
+	ProjectLaunchSecretValueDiagnostic,
+	ProjectLaunchSecretValueOverlayResult,
+	ResolveProjectLaunchSecretValueOverlayOptions,
+	SyncProjectLaunchHostBindingSecretsOptions,
+} from './operations/services/template-secret-sync.ts';
+export {
+	deriveProjectHostBindingsView,
+	executeProjectHostBindingOperation,
+	planProjectHostBindingOperation,
+} from './operations/services/project-host-operations.ts';
+export type {
+	ExecuteProjectHostBindingOperationContext,
+	ExecuteProjectHostBindingOperationInput,
+	ExecuteProjectHostBindingOperationResult,
+	PlanProjectHostBindingOperationOptions,
+	PlanProjectHostBindingOperationResult,
+	ProjectHostBindingsView,
+	ProjectHostOperationDiagnostic,
+	ProjectHostOperationKind,
+	ProjectHostOperationStatus,
+	ProjectHostRequirementBindingView,
+} from './operations/services/project-host-operations.ts';
+export {
 	MarketClient,
 	MarketApiError,
 	DEFAULT_TREESEED_MARKET_BASE_URL,
@@ -377,6 +457,7 @@ export type {
 	ProjectJobStatus,
 	LaunchProjectRequest,
 	LaunchProjectResult,
+	ProjectLaunchHostBindingInput,
 	LinkedProjectRecordRef,
 	ProjectConnectionStatus,
 	ProjectOverviewSummary,
@@ -463,6 +544,12 @@ export type {
 	SdkTemplateCatalogPublisher,
 	SdkTemplateCatalogResponse,
 	SdkTemplateCatalogSource,
+	TemplateConfigWrite,
+	TemplateEnvironmentWrite,
+	TemplateHostRequirement,
+	TemplateLaunchRequirements,
+	TemplateResourceRequirement,
+	TemplateSecretRequirement,
 	SdkUpdateRequest,
 	ProjectCapabilityGrant,
 	ProjectConnection,

@@ -52,11 +52,14 @@ import {
 import {
 	scaffoldTemplateProject,
 	listTemplateProducts,
+	recordTemplateHostBindingState,
+	resolveTemplateDefinition,
 	resolveTemplateProduct,
 	serializeTemplateRegistryEntry,
 	syncTemplateProject,
 	validateTemplateProduct,
 } from '../../operations/services/template-registry.ts';
+import { applyProjectLaunchHostBindingConfig } from '../../operations/services/template-host-bindings.ts';
 import { validateKnowledgeHubProviderLaunchPrerequisites } from '../../operations/services/hub-provider-launch.ts';
 import { publishProjectContent } from '../../operations/services/project-platform.ts';
 import {
@@ -73,6 +76,11 @@ import {
 	formatCliPreflightReport,
 } from '../../operations/services/workspace-preflight.ts';
 import { repoRoot } from '../../operations/services/workspace-save.ts';
+import { TREESEED_DEFAULT_STARTER_TEMPLATE_ID } from '../../sdk-types.ts';
+import {
+	parseProjectLaunchHostBindingSpecs,
+	resolveProjectLaunchHostBindings,
+} from '../../template-launch-requirements.ts';
 import { run } from '../../operations/services/workspace-tools.ts';
 import { resolveTreeseedWorkflowState } from '../../workflow-state.ts';
 import { TreeseedWorkflowError, TreeseedWorkflowSdk } from '../../workflow.ts';
@@ -355,16 +363,78 @@ class InitOperation extends BaseOperation {
 		if (!directory) {
 			return failureResult(this.metadata, 'Init requires a target directory.');
 		}
+		const templateId = String(input.template ?? TREESEED_DEFAULT_STARTER_TEMPLATE_ID);
+		const writeWarning = (message: string) => context.write?.(message, 'stderr');
+		const templateOptions = {
+			cwd: context.cwd,
+			env: contextEnv(context),
+			writeWarning,
+		};
+		const targetRoot = resolve(context.cwd, directory);
+		const projectSlug = typeof input.slug === 'string' && input.slug.trim()
+			? input.slug.trim()
+			: directory.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+		const projectName = typeof input.name === 'string' && input.name.trim() ? input.name.trim() : directory;
+		const siteUrl = typeof input.siteUrl === 'string' ? input.siteUrl : null;
+		const domains = (() => {
+			if (!siteUrl) return null;
+			try {
+				const hostname = new URL(siteUrl).hostname;
+				return hostname ? {
+					productionDomain: hostname,
+					stagingDomain: `staging.${hostname}`,
+				} : null;
+			} catch {
+				return null;
+			}
+		})();
+		const hostBindingSpecs = [
+			...(Array.isArray(input.hostBindingSpecs) ? input.hostBindingSpecs.map(String) : typeof input.hostBindingSpecs === 'string' ? [input.hostBindingSpecs] : []),
+			...(Array.isArray(input.host) ? input.host.map(String) : typeof input.host === 'string' ? [input.host] : []),
+		];
+		const templateDefinition = await resolveTemplateDefinition(templateId, templateOptions);
+		const resolvedHostBindingState = hostBindingSpecs.length > 0
+			? (() => {
+				const parsed = parseProjectLaunchHostBindingSpecs({
+					specs: hostBindingSpecs,
+					launchRequirements: templateDefinition.manifest.launchRequirements,
+				});
+				const resolved = resolveProjectLaunchHostBindings({
+					hostBindings: parsed.hostBindings,
+					launchRequirements: templateDefinition.manifest.launchRequirements,
+					repositoryHosts: parsed.repositoryHosts,
+					teamHosts: parsed.teamHosts,
+					managedHosts: parsed.managedHosts,
+					projectSlug,
+					projectName,
+					domains,
+					standardProjectLaunch: true,
+				});
+				return {
+					parsed,
+					resolved,
+					state: {
+						hostBindings: resolved.hostBindings,
+						hostBindingPlans: {
+							configWrites: resolved.configWritePlan,
+							secretDeployment: resolved.secretDeploymentPlan,
+						},
+						hostBindingSummaries: [...parsed.summaries, ...parsed.omitted],
+						hostBindingConfig: null,
+					},
+				};
+			})()
+			: null;
 		const launchPlan = planKnowledgeHubLaunch({
 			team: { id: typeof input.teamId === 'string' ? input.teamId : 'local' },
 			hub: {
-				name: typeof input.name === 'string' ? input.name : directory,
-				slug: typeof input.slug === 'string' ? input.slug : directory,
+				name: projectName,
+				slug: projectSlug,
 				visibility: 'team',
 			},
 			source: {
 				kind: 'template',
-				ref: String(input.template ?? 'starter-basic'),
+				ref: templateId,
 			},
 			repository: {
 				topology: input.repositoryTopology === 'split_software_content' ? 'split_software_content' : 'combined_compatibility',
@@ -373,22 +443,51 @@ class InitOperation extends BaseOperation {
 			hosting: { mode: 'self_hosted' },
 		});
 		const definition = await scaffoldTemplateProject(
-			String(input.template ?? 'starter-basic'),
-			resolve(context.cwd, directory),
+			templateId,
+			targetRoot,
 			{
 				target: directory,
-				name: typeof input.name === 'string' ? input.name : null,
-				slug: typeof input.slug === 'string' ? input.slug : null,
-				siteUrl: typeof input.siteUrl === 'string' ? input.siteUrl : null,
+				name: projectName,
+				slug: projectSlug,
+				siteUrl,
 				contactEmail: typeof input.contactEmail === 'string' ? input.contactEmail : null,
 				repositoryUrl: typeof input.repositoryUrl === 'string' ? input.repositoryUrl : typeof input.repo === 'string' ? input.repo : null,
 				discordUrl: typeof input.discordUrl === 'string' ? input.discordUrl : typeof input.discord === 'string' ? input.discord : undefined,
+				hostBindingState: resolvedHostBindingState?.state ?? null,
 			},
-			{ writeWarning: (message) => context.write?.(message, 'stderr') },
+			templateOptions,
 		);
+		const hostBindingConfig = resolvedHostBindingState
+			? applyProjectLaunchHostBindingConfig({
+				projectRoot: targetRoot,
+				hostBindings: resolvedHostBindingState.resolved.hostBindings,
+				hostBindingPlans: resolvedHostBindingState.state.hostBindingPlans,
+				launchInput: {
+					projectSlug,
+					projectName,
+					repoName: projectSlug,
+					domains,
+				},
+				derived: {
+					projectSlug,
+					projectName,
+					repositoryName: projectSlug,
+				},
+			})
+			: null;
+		if (resolvedHostBindingState && hostBindingConfig) {
+			recordTemplateHostBindingState(targetRoot, {
+				...resolvedHostBindingState.state,
+				hostBindingConfig,
+			});
+		}
 		return operationResult(this.metadata, {
 			directory,
 			template: definition.id,
+			hostBindings: resolvedHostBindingState?.resolved.hostBindings ?? {},
+			hostBindingPlans: resolvedHostBindingState?.state.hostBindingPlans ?? null,
+			hostBindingSummaries: resolvedHostBindingState?.state.hostBindingSummaries ?? [],
+			hostBindingConfig,
 			launchPlan,
 		});
 	}

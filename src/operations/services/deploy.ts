@@ -3336,7 +3336,18 @@ export function syncCloudflareSecrets(tenantRoot, options = {}) {
 	const env = {
 		CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig),
 	};
-	const secrets = buildSecretMap(deployConfig, state);
+	const entryFilter = Array.isArray(options.entryIds) && options.entryIds.length > 0 ? new Set(options.entryIds) : null;
+	const extraSecrets = options.extraSecrets && typeof options.extraSecrets === 'object'
+		? Object.fromEntries(Object.entries(options.extraSecrets)
+			.filter(([key, value]) =>
+				(!entryFilter || entryFilter.has(key))
+				&& typeof value === 'string'
+				&& value.length > 0))
+		: {};
+	const secrets = {
+		...buildSecretMap(deployConfig, state),
+		...extraSecrets,
+	};
 	const synced = [];
 	const dryRun = options.dryRun ?? false;
 

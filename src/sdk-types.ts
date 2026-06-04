@@ -62,6 +62,25 @@ export const PROJECT_INFRA_RESOURCE_KINDS = [
 	'railway_schedule',
 ] as const;
 export const AGENT_POOL_STATUSES = ['pending', 'active', 'degraded', 'offline'] as const;
+export const TREESEED_DEFAULT_STARTER_TEMPLATE_ID = 'starter-research' as const;
+export const TEMPLATE_HOST_REQUIREMENT_TYPES = ['repository', 'web', 'email', 'ai'] as const;
+export const TEMPLATE_RESOURCE_REQUIREMENT_TYPES = ['service', 'database', 'object-storage', 'queue', 'dns-zone'] as const;
+export const TEMPLATE_SECRET_SENSITIVITIES = ['secret', 'plain', 'derived'] as const;
+export const TEMPLATE_SECRET_TARGETS = [
+	'github-secret',
+	'github-variable',
+	'cloudflare-secret',
+	'cloudflare-var',
+	'railway-secret',
+	'railway-var',
+	'config-file',
+	'local-runtime',
+] as const;
+export const TEMPLATE_SECRET_SOURCES = ['generated', 'selected-host', 'user-input', 'derived'] as const;
+export const TEMPLATE_CONFIG_WRITE_TARGETS = ['treeseed.site.yaml', 'src/env.yaml', 'src/manifest.yaml', 'package.json'] as const;
+export const TEMPLATE_CONFIG_WRITE_WHEN = ['always', 'host-selected', 'feature-enabled'] as const;
+export const TEMPLATE_CONFIG_MERGE_STRATEGIES = ['replace', 'deep-merge', 'append-unique'] as const;
+export const PROJECT_LAUNCH_REQUIREMENT_KINDS = ['host', 'resource', 'secret'] as const;
 
 export type SdkBuiltinModelName = (typeof SDK_MODEL_NAMES)[number];
 export type SdkModelName = SdkBuiltinModelName | (string & {});
@@ -91,6 +110,89 @@ export type ProjectInfrastructureResourceProvider = (typeof PROJECT_INFRA_RESOUR
 export type ProjectInfrastructureResourceKind = (typeof PROJECT_INFRA_RESOURCE_KINDS)[number];
 export type AgentPoolStatus = (typeof AGENT_POOL_STATUSES)[number];
 export type RemoteJobRequestedByType = 'user' | 'team_api_key' | 'service' | 'runner' | 'system';
+export type TemplateHostRequirementType = (typeof TEMPLATE_HOST_REQUIREMENT_TYPES)[number];
+export type TemplateResourceRequirementType = (typeof TEMPLATE_RESOURCE_REQUIREMENT_TYPES)[number];
+export type TemplateSecretSensitivity = (typeof TEMPLATE_SECRET_SENSITIVITIES)[number];
+export type TemplateSecretTarget = (typeof TEMPLATE_SECRET_TARGETS)[number];
+export type TemplateSecretSource = (typeof TEMPLATE_SECRET_SOURCES)[number];
+export type TemplateConfigWriteTarget = (typeof TEMPLATE_CONFIG_WRITE_TARGETS)[number];
+export type TemplateConfigWriteWhen = (typeof TEMPLATE_CONFIG_WRITE_WHEN)[number];
+export type TemplateConfigMergeStrategy = (typeof TEMPLATE_CONFIG_MERGE_STRATEGIES)[number];
+export type ProjectLaunchRequirementKind = (typeof PROJECT_LAUNCH_REQUIREMENT_KINDS)[number];
+
+export interface TemplateConfigWrite {
+	target: TemplateConfigWriteTarget;
+	path: string;
+	valueFrom: string;
+	writeWhen?: TemplateConfigWriteWhen;
+	mergeStrategy?: TemplateConfigMergeStrategy;
+}
+
+export interface TemplateEnvironmentWrite {
+	env: string;
+	valueFrom: string;
+	targets?: TemplateSecretTarget[];
+	scopes?: ProjectEnvironmentName[];
+	sensitivity?: TemplateSecretSensitivity;
+}
+
+export interface TemplateHostRequirement {
+	kind: 'host';
+	key: string;
+	type: TemplateHostRequirementType;
+	required: boolean;
+	compatibleProviders?: string[];
+	displayName: string;
+	purpose: string;
+	defaultSelection?: 'team-default' | 'managed' | 'none';
+	configWrites: TemplateConfigWrite[];
+	environmentWrites?: TemplateEnvironmentWrite[];
+}
+
+export interface TemplateResourceRequirement {
+	kind: 'resource';
+	key: string;
+	type: TemplateResourceRequirementType;
+	required: boolean;
+	compatibleProviders?: string[];
+	displayName: string;
+	purpose: string;
+	configWrites: TemplateConfigWrite[];
+	environmentWrites?: TemplateEnvironmentWrite[];
+}
+
+export interface TemplateSecretRequirement {
+	kind: 'secret';
+	key: string;
+	env: string;
+	required: boolean;
+	sensitivity: TemplateSecretSensitivity;
+	targets: TemplateSecretTarget[];
+	source: TemplateSecretSource;
+}
+
+export interface TemplateLaunchRequirements {
+	version?: number;
+	hosts?: TemplateHostRequirement[];
+	resources?: TemplateResourceRequirement[];
+	secrets?: TemplateSecretRequirement[];
+}
+
+export interface ProjectLaunchHostBindingInput {
+	requirementKey: string;
+	requirementKind: ProjectLaunchRequirementKind;
+	type: string;
+	provider: string;
+	hostId?: string | null;
+	managedHostKey?: string | null;
+	mode?: string | null;
+	displayName?: string;
+	environmentScopes?: ProjectEnvironmentName[];
+	configValues?: Record<string, unknown>;
+	environmentValues?: Record<string, string>;
+	secretRefs?: Record<string, string>;
+	selectedBy?: 'user' | 'team-default' | 'managed-default' | 'template-default';
+}
 
 export function projectConnectionModeFromHosting(
 	kind: TreeseedHostingKind,
@@ -2972,6 +3074,7 @@ export interface SdkTemplateCatalogEntry {
 	relatedBooks?: string[];
 	relatedKnowledge?: string[];
 	relatedObjectives?: string[];
+	launchRequirements?: TemplateLaunchRequirements;
 }
 
 export interface SdkTemplateCatalogResponse {
