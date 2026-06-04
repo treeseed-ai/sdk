@@ -1541,6 +1541,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		const selectedServices = validation.services.filter((service) =>
 			service.key === 'api' ? selectedSystems.has('api') : selectedSystems.has('agents'),
 		);
+		const sequentialRailwayDeploys = String(env.TREESEED_RAILWAY_DEPLOY_SEQUENTIAL ?? '').trim() === '1';
 		let previousRailwayDeployNodeId: string | null = null;
 		for (const service of selectedServices) {
 			const system = service.key === 'api' ? 'api' : 'agents';
@@ -1551,6 +1552,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 				dependencies: resolveRailwayServiceDeployDependencies({
 					includeDataDependency: selectedSystems.has('data'),
 					previousRailwayDeployNodeId,
+					sequentialRailwayDeploys,
 				}),
 				run: async () => {
 					const result = await deployRailwayService(options.tenantRoot, service, {
@@ -1568,7 +1570,9 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 					return result;
 				},
 			});
-			previousRailwayDeployNodeId = nodeId;
+			if (sequentialRailwayDeploys) {
+				previousRailwayDeployNodeId = nodeId;
+			}
 		}
 	}
 
@@ -1611,6 +1615,9 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 	const serviceResults = selectedRailwayServiceKeys
 		.map((serviceKey) => serviceResultsByKey.get(serviceKey))
 		.filter(Boolean);
+	for (const result of serviceResults) {
+		timings.push(...((result as { timings?: TreeseedTimingEntry[] }).timings ?? []));
+	}
 	if (options.scope !== 'local' && !options.dryRun && (selectedSystems.has('web') || serviceResults.length > 0)) {
 		finalizeDeploymentState(options.tenantRoot, {
 			target: createPersistentDeployTarget(options.scope),
@@ -1670,13 +1677,15 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 export function resolveRailwayServiceDeployDependencies({
 	includeDataDependency,
 	previousRailwayDeployNodeId,
+	sequentialRailwayDeploys = false,
 }: {
 	includeDataDependency: boolean;
 	previousRailwayDeployNodeId?: string | null;
+	sequentialRailwayDeploys?: boolean;
 }) {
 	return [
 		...(includeDataDependency ? ['data:d1-migrate'] : []),
-		...(previousRailwayDeployNodeId ? [previousRailwayDeployNodeId] : []),
+		...(sequentialRailwayDeploys && previousRailwayDeployNodeId ? [previousRailwayDeployNodeId] : []),
 	];
 }
 
@@ -1698,9 +1707,9 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 	const webProbeUrl = resolveImmediatePagesProbeUrl(siteConfig, state, target);
 	const apiBaseUrl = resolveImmediateApiProbeUrl(siteConfig, state, target);
 	const apiMonitorEndpoints = resolveApiMonitorEndpoints(siteConfig, apiBaseUrl);
-	const railwayResources = options.scope === 'local' || (!apiSelected && !agentsSelected)
+	const railwayResourcesPromise = options.scope === 'local' || (!apiSelected && !agentsSelected)
 		? { ok: true, skipped: true, reason: options.scope === 'local' ? 'local_scope' : 'railway_not_selected' }
-		: await timedPhase(timings, 'monitor:railway-resources', () => verifyRailwayManagedResources(options.tenantRoot, options.scope, {
+		: timedPhase(timings, 'monitor:railway-resources', () => verifyRailwayManagedResources(options.tenantRoot, options.scope, {
 			env,
 			settleDeployments: true,
 			onProgress: options.write,
@@ -1715,15 +1724,15 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		? { ok: true, skipped: true, reason: 'processing_agent_api' }
 		: skippedApiCheck;
 	const checks = {
-		pages: await timedPhase(timings, 'monitor:probe-pages', () => probeHttp(webProbeUrl, { attempts: 3, delayMs: 5000 })),
-		apiHealth: apiSelected && apiMonitorEndpoints.apiHealth ? await timedPhase(timings, 'monitor:probe-api-health', () => probeHttp(apiMonitorEndpoints.apiHealth, { attempts: 8, delayMs: 10000 })) : skippedApiCheck,
-		apiReady: apiSelected && apiMonitorEndpoints.apiReady ? await timedPhase(timings, 'monitor:probe-api-ready', () => probeHttp(apiMonitorEndpoints.apiReady, { attempts: 8, delayMs: 10000 })) : skippedApiCheck,
-		d1Health: apiSelected && apiMonitorEndpoints.d1Health ? await timedPhase(timings, 'monitor:probe-d1-health', () => probeHttp(apiMonitorEndpoints.d1Health, { attempts: 8, delayMs: 10000 })) : skippedD1Check,
-		agentHealth: agentsSelected && apiMonitorEndpoints.agentHealth ? await timedPhase(timings, 'monitor:probe-agent-health', () => probeHttp(apiMonitorEndpoints.agentHealth, { attempts: 8, delayMs: 10000 })) : skippedAgentCheck,
-		r2: options.dryRun ? { ok: true, skipped: true, reason: 'dry_run' } : timedPhase(timings, 'monitor:probe-r2', () => probeR2(options.tenantRoot, siteConfig, state, target)),
+		pages: timedPhase(timings, 'monitor:probe-pages', () => probeHttp(webProbeUrl, { attempts: 3, delayMs: 5000 })),
+		apiHealth: apiSelected && apiMonitorEndpoints.apiHealth ? timedPhase(timings, 'monitor:probe-api-health', () => probeHttp(apiMonitorEndpoints.apiHealth, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedApiCheck),
+		apiReady: apiSelected && apiMonitorEndpoints.apiReady ? timedPhase(timings, 'monitor:probe-api-ready', () => probeHttp(apiMonitorEndpoints.apiReady, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedApiCheck),
+		d1Health: apiSelected && apiMonitorEndpoints.d1Health ? timedPhase(timings, 'monitor:probe-d1-health', () => probeHttp(apiMonitorEndpoints.d1Health, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedD1Check),
+		agentHealth: agentsSelected && apiMonitorEndpoints.agentHealth ? timedPhase(timings, 'monitor:probe-agent-health', () => probeHttp(apiMonitorEndpoints.agentHealth, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedAgentCheck),
+		r2: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : timedPhase(timings, 'monitor:probe-r2', () => probeR2(options.tenantRoot, siteConfig, state, target)),
 		queue: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : timedPhase(timings, 'monitor:probe-queue', () => probeQueue(siteConfig, state)),
-		scaleProbe: await timedPhase(timings, 'monitor:probe-scale', () => probeScaleConfiguration(siteConfig, state)),
-		railwayResources,
+		scaleProbe: timedPhase(timings, 'monitor:probe-scale', () => probeScaleConfiguration(siteConfig, state)),
+		railwayResources: Promise.resolve(railwayResourcesPromise),
 		readiness: state.readiness,
 		apiMonitor: {
 			ok: true,
@@ -1733,8 +1742,15 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 	};
 	const resolvedChecks = {
 		...checks,
+		pages: await checks.pages,
+		apiHealth: await checks.apiHealth,
+		apiReady: await checks.apiReady,
+		d1Health: await checks.d1Health,
+		agentHealth: await checks.agentHealth,
 		r2: await checks.r2,
 		queue: await checks.queue,
+		scaleProbe: await checks.scaleProbe,
+		railwayResources: await checks.railwayResources,
 	};
 	const ok = [
 		resolvedChecks.pages,

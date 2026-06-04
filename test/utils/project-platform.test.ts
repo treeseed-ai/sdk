@@ -81,6 +81,7 @@ afterEach(async () => {
 	tempRoots.clear();
 	delete process.env.TREESEED_API_BASE_URL;
 	delete process.env.TREESEED_WORKER_POOL_SCALER;
+	delete process.env.TREESEED_RAILWAY_DEPLOY_SEQUENTIAL;
 });
 
 describe('project platform workflow actions', () => {
@@ -239,7 +240,7 @@ describe('project platform workflow actions', () => {
 	});
 
 
-	it('chains Railway service deploy dependencies to avoid concurrent remote builds', () => {
+	it('runs Railway service deploy dependencies in parallel by default', () => {
 		expect(resolveRailwayServiceDeployDependencies({
 			includeDataDependency: true,
 			previousRailwayDeployNodeId: null,
@@ -247,11 +248,90 @@ describe('project platform workflow actions', () => {
 		expect(resolveRailwayServiceDeployDependencies({
 			includeDataDependency: true,
 			previousRailwayDeployNodeId: 'api:api-railway-deploy',
+		})).toEqual(['data:d1-migrate']);
+		expect(resolveRailwayServiceDeployDependencies({
+			includeDataDependency: false,
+			previousRailwayDeployNodeId: 'agents:manager-railway-deploy',
+		})).toEqual([]);
+	});
+
+	it('can restore sequential Railway service deploy dependencies with an env fallback', () => {
+		expect(resolveRailwayServiceDeployDependencies({
+			includeDataDependency: true,
+			previousRailwayDeployNodeId: 'api:api-railway-deploy',
+			sequentialRailwayDeploys: true,
 		})).toEqual(['data:d1-migrate', 'api:api-railway-deploy']);
 		expect(resolveRailwayServiceDeployDependencies({
 			includeDataDependency: false,
 			previousRailwayDeployNodeId: 'agents:manager-railway-deploy',
+			sequentialRailwayDeploys: true,
 		})).toEqual(['agents:manager-railway-deploy']);
+	});
+
+	it('records redacted Railway deploy child timing entries', () => {
+		const source = readFileSync(new URL('../../src/operations/services/railway-deploy.ts', import.meta.url), 'utf8');
+		const deployStart = source.indexOf('export async function deployRailwayService');
+		const deploySource = source.slice(deployStart);
+
+		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:resolve-context'");
+		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:sync-runtime-config'");
+		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:device-login-vars'");
+		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:project-token'");
+		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:predeploy-build'");
+		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:link'");
+		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:deploy'");
+		expect(deploySource).not.toContain('metadata: { env');
+		expect(deploySource).toContain('service: cliDeployService.key');
+	});
+
+	it('starts monitor probes concurrently once endpoints are known', async () => {
+		const tenantRoot = await createTenantFixture(`surfaces:
+  api:
+    enabled: true
+    provider: railway
+services:
+  api:
+    enabled: true
+    provider: railway
+    railway:
+      startCommand: node ./src/api/server.js
+`);
+		const fetched: string[] = [];
+		const releases: Array<() => void> = [];
+		vi.stubGlobal('fetch', vi.fn(async (input) => {
+			fetched.push(String(input));
+			return await new Promise<Response>((resolve) => {
+				releases.push(() => resolve(new Response(JSON.stringify({ ok: true }), {
+					status: 200,
+					headers: { 'content-type': 'application/json' },
+				})));
+			});
+		}));
+		process.env.TREESEED_API_BASE_URL = 'https://api.example.com';
+
+		const monitoring = monitorProjectPlatform({
+			tenantRoot,
+			scope: 'local',
+			dryRun: true,
+			reporter: noopReporter(),
+			bootstrapSystems: ['api'],
+		});
+
+		for (let attempt = 0; attempt < 20 && fetched.length < 4; attempt += 1) {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		expect(fetched.some((url) => url.endsWith('/healthz'))).toBe(true);
+		expect(fetched.some((url) => url.endsWith('/readyz'))).toBe(true);
+		expect(fetched.some((url) => url.endsWith('/healthz/deep'))).toBe(true);
+		expect(fetched.length).toBeGreaterThanOrEqual(4);
+		for (const release of releases) {
+			release();
+		}
+
+		const result = await monitoring;
+		expect(result.checks.apiHealth).toMatchObject({ ok: true });
+		expect(result.checks.apiReady).toMatchObject({ ok: true });
+		expect(result.checks.d1Health).toMatchObject({ ok: true });
 	});
 
 	it('skips API and agent monitor probes when runtime systems are not selected', async () => {
