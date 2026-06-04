@@ -311,10 +311,10 @@ function rehearsalVerifyScript(root: string) {
 	return null;
 }
 
-function runNpmRehearsalCommand(args: string[], options: { cwd: string; timeoutMs: number }) {
+function runNpmRehearsalCommand(args: string[], options: { cwd: string; timeoutMs: number; env?: NodeJS.ProcessEnv }) {
 	const result = spawnSync('npm', args, {
 		cwd: options.cwd,
-		env: process.env,
+		env: options.env ?? process.env,
 		stdio: 'pipe',
 		encoding: 'utf8',
 		timeout: options.timeoutMs,
@@ -397,7 +397,14 @@ function runProductionDependencyRehearsal(
 		buildRehearsalWorkspacePackageArtifacts(copied.tempRoot);
 		const scriptName = rehearsalVerifyScript(copied.tempRoot);
 		if (scriptName) {
-			runNpmRehearsalCommand(['run', scriptName], { cwd: copied.tempRoot, timeoutMs: 900000 });
+			const packageJson = safePackageJson(resolve(copied.tempRoot, 'package.json'));
+			const parallelMarketVerify = packageJson?.name === '@treeseed/market'
+				&& (scriptName === 'verify:direct' || scriptName === 'verify:local' || scriptName === 'verify');
+			runNpmRehearsalCommand(['run', scriptName], {
+				cwd: copied.tempRoot,
+				timeoutMs: 900000,
+				env: parallelMarketVerify ? { ...process.env, TREESEED_VERIFY_PARALLEL: '1' } : process.env,
+			});
 		}
 		const postInstallIssues = collectInternalDevReferenceIssues(copied.tempRoot, selectedPackageSet);
 		if (postInstallIssues.length > 0) {
