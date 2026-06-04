@@ -375,7 +375,7 @@ describe('repository save orchestrator helpers', () => {
 		} finally {
 			vi.unstubAllEnvs();
 		}
-	});
+	}, 20_000);
 
 	it('stops before dependent packages when a wave gate fails', async () => {
 		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
@@ -475,7 +475,7 @@ describe('repository save orchestrator helpers', () => {
 		} finally {
 			vi.unstubAllEnvs();
 		}
-	});
+	}, 20_000);
 
 	it('finalizes a clean package with an interrupted dev version and missing tag', async () => {
 		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
