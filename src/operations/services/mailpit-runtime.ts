@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process';
 
-const EXPECTED_PORTS = ['1025->1025/tcp', '8025->8025/tcp'];
 const KNOWN_MAILPIT_NAMES = ['treeseed_mailpit', 'docs_mailpit'];
 
 export type TreeseedMailpitContainer = {
@@ -30,9 +29,13 @@ function parseDockerPsOutput(stdout: string) {
 }
 
 function isCompatibleMailpitContainer(container: TreeseedMailpitContainer) {
-	const nameMatch = KNOWN_MAILPIT_NAMES.includes(container.name);
+	const expectedName = process.env.TREESEED_MAILPIT_CONTAINER_NAME?.trim();
+	const smtpPort = process.env.TREESEED_MAILPIT_SMTP_PORT?.trim() || '1025';
+	const uiPort = process.env.TREESEED_MAILPIT_UI_PORT?.trim() || '8025';
+	const expectedPorts = [`${smtpPort}->1025/tcp`, `${uiPort}->8025/tcp`];
+	const nameMatch = expectedName ? container.name === expectedName : KNOWN_MAILPIT_NAMES.includes(container.name);
 	const imageMatch = container.image.includes('mailpit');
-	const portsMatch = EXPECTED_PORTS.every((port) => container.ports.includes(port));
+	const portsMatch = expectedPorts.every((port) => container.ports.includes(port));
 	return (nameMatch || imageMatch) && portsMatch;
 }
 
@@ -72,7 +75,7 @@ export function stopKnownMailpitContainers(options: { run?: RunDocker } = {}) {
 export function streamKnownMailpitLogs() {
 	const container = findRunningMailpitContainer();
 	if (!container) {
-		console.error('No running Mailpit container was found on ports 1025 and 8025.');
+		console.error('No running Mailpit container was found for the configured local ports.');
 		process.exit(1);
 	}
 
