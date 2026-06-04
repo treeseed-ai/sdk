@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.10.25] - 2026-06-04
+
+### Added
+
+- feat(operations): add processEnv to binding operation context (a7ed45ecb42f)
+- feat(railway): add sequential deployment and improve timing (002b22420046)
+- feat(template-launch-requirements): export TemplateLaunchRequirements (1f075e089611)
+- feat(sdk): expose template launch, host binding, and secret sync APIs (3fcd72c9d730)
+
+### Infrastructure
+
+- chore(sdk): bump version and update catalog fixture git refs (ec6789604929)
+
+### Dependencies
+
+- build(build): update package metadata (e20d282425c0)
+- chore(sdk): bump version to 0.10.25-dev.staging.20260603T210802Z (d42fe52370ad)
+- build(sdk): bump version to 0.10.25-dev.staging.20260603T201852Z (0c3710079aa4)
+- Release @treeseed/sdk 0.10.25.
+
 ## [0.10.24] - 2026-06-02
 
 ### Added
