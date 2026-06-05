@@ -16,7 +16,7 @@ describe('template launch requirements', () => {
 	};
 
 	it('validates launch requirements on the three first-party starter manifests', async () => {
-		for (const id of ['starter-research', 'starter-engineering', 'starter-information-hub']) {
+		for (const id of ['research', 'engineering', 'information-hub']) {
 			const definition = await validateTemplateProduct({ id }, {
 				cwd: process.cwd(),
 				env: fixtureCatalogEnv,

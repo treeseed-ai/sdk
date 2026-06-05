@@ -1,6 +1,11 @@
 export { AgentSdk, ScopedAgentSdk } from './sdk.ts';
 export { ContentGraphRuntime } from './graph.ts';
-export { TREESEED_DEFAULT_STARTER_TEMPLATE_ID, projectConnectionModeFromHosting } from './sdk-types.ts';
+export {
+	TREESEED_DEFAULT_STARTER_TEMPLATE_ID,
+	TREESEED_TEMPLATE_ID_ALIASES,
+	normalizeTreeseedTemplateId,
+	projectConnectionModeFromHosting,
+} from './sdk-types.ts';
 export { createControlPlaneReporter } from './control-plane.ts';
 export { ControlPlaneClient } from './control-plane-client.ts';
 export * from './seeds/index.ts';

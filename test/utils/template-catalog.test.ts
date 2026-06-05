@@ -10,8 +10,8 @@ describe('template catalog client', () => {
 			payload: {
 				items: [
 					{
-						id: 'starter-basic',
-						title: 'TreeSeed Basic',
+						id: 'fixture-template',
+						title: 'Fixture Template',
 						description: 'Starter',
 						summary: 'Starter summary',
 						status: 'live',
@@ -27,7 +27,7 @@ describe('template catalog client', () => {
 						fulfillment: {
 							source: {
 								repoUrl: 'https://example.com/repo.git',
-								directory: 'templates/starter-basic',
+								directory: 'templates/fixture-template',
 								ref: 'main',
 							},
 							hooksPolicy: 'builtin_only',
@@ -56,8 +56,8 @@ describe('template catalog client', () => {
 		});
 
 		expect(normalized.items).toHaveLength(1);
-		expect(normalized.items[0]?.displayName).toBe('TreeSeed Basic');
-		expect(normalized.items[0]?.fulfillment.source.directory).toBe('templates/starter-basic');
+		expect(normalized.items[0]?.displayName).toBe('Fixture Template');
+		expect(normalized.items[0]?.fulfillment.source.directory).toBe('templates/fixture-template');
 		expect(normalized.items[0]?.launchRequirements?.hosts?.[0]?.key).toBe('sourceRepository');
 	});
 
@@ -67,8 +67,8 @@ describe('template catalog client', () => {
 		writeFileSync(fixturePath, JSON.stringify({
 			items: [
 				{
-					id: 'starter-basic',
-					displayName: 'TreeSeed Basic',
+					id: 'fixture-template',
+					displayName: 'Fixture Template',
 					description: 'Starter',
 					summary: 'Starter summary',
 					status: 'live',
@@ -84,7 +84,7 @@ describe('template catalog client', () => {
 					fulfillment: {
 						source: {
 							repoUrl: 'https://example.com/repo.git',
-							directory: 'templates/starter-basic',
+							directory: 'templates/fixture-template',
 							ref: 'main',
 						},
 						hooksPolicy: 'builtin_only',
@@ -100,6 +100,6 @@ describe('template catalog client', () => {
 		const catalog = await client.listTemplates();
 
 		expect(catalog.items).toHaveLength(1);
-		expect(catalog.items[0]?.id).toBe('starter-basic');
+		expect(catalog.items[0]?.id).toBe('fixture-template');
 	});
 });

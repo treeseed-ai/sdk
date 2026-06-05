@@ -47,18 +47,18 @@ Aliased body
 		'utf8',
 	);
 	writeFileSync(
-		resolve(templatesRoot, 'starter-basic.mdx'),
+		resolve(templatesRoot, 'fixture-template.mdx'),
 		`---
-title: Starter Basic
-slug: starter-basic
+title: Fixture Template
+slug: fixture-template
 status: active
 category: starter
 tags:
-  - basics
+  - fixture
 templateVersion: 1.0.0
 updatedAt: 2026-04-10T00:00:00.000Z
 ---
-Starter basic template body
+Fixture template body
 `,
 		'utf8',
 	);
@@ -242,13 +242,13 @@ describe('agent sdk', () => {
 		const response = await sdk.search({
 			model: 'template',
 			limit: 1,
-			filters: [{ field: 'title', op: 'contains', value: 'Basic' }],
+			filters: [{ field: 'title', op: 'contains', value: 'Fixture' }],
 		});
 
 		expect(response.ok).toBe(true);
 		expect(response.model).toBe('template');
 		expect(response.payload.length).toBeGreaterThan(0);
-		expect(response.payload[0]?.slug).toBe('starter-basic');
+		expect(response.payload[0]?.slug).toBe('fixture-template');
 	});
 
 	it('enforces expectedVersion for content-backed updates', async () => {

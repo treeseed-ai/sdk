@@ -188,11 +188,11 @@ Queue legacy design describes the outdated queue layout that has been superseded
 	);
 
 	writeFileSync(
-		resolve(contentRoot, 'templates', 'starter-basic.mdx'),
+		resolve(contentRoot, 'templates', 'fixture-template.mdx'),
 		`---
-id: template:starter-basic
-slug: starter-basic
-title: Starter Basic
+id: template:fixture-template
+slug: fixture-template
+title: Fixture Template
 status: live
 category: starter
 tags: [planning, starter]
@@ -201,7 +201,7 @@ about:
   - knowledge/planning
 ---
 
-Starter Basic gives the graph a custom content model to index.
+Fixture Template gives the graph a custom content model to index.
 `,
 		'utf8',
 	);
@@ -256,7 +256,7 @@ describe('content graph runtime', () => {
 
 		const fileResults = await sdk.searchFiles('capacity budget');
 		const sectionResults = await sdk.searchSections('capacity budget');
-		const entityResults = await sdk.searchEntities('starter basic');
+		const entityResults = await sdk.searchEntities('fixture template');
 
 		expect(fileResults[0]?.node.title).toBe('Launch The Market Site');
 		expect(sectionResults[0]?.node.heading).toBe('Capacity Budget');
