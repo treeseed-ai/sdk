@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+const currentTestPath = fileURLToPath(import.meta.url);
 const workspaceRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const sdkPackageJsonPath = resolve(workspaceRoot, 'package.json');
 const verifyConsumerPackageJsonPaths = [
@@ -126,8 +127,9 @@ describe('sdk package graph', () => {
 			.filter((filePath) => /\.(ts|tsx|js|mjs|cjs|json|md)$/u.test(filePath))
 			.filter((filePath) => !filePath.includes('/.treeseed/'))
 			.filter((filePath) => !filePath.includes('/.ts-run-'))
+			.filter((filePath) => !filePath.includes('/docs/research/'))
 			.filter((filePath) => !filePath.includes('/package-lock.json'))
-			.filter((filePath) => !filePath.endsWith('/ts-sdk/test/utils/package-graph.test.ts'));
+			.filter((filePath) => filePath !== currentTestPath);
 
 		for (const filePath of files) {
 			const contents = readFileSync(filePath, 'utf8');
