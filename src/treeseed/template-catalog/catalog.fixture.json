@@ -1,55 +1,7 @@
 {
   "items": [
     {
-      "id": "starter-basic",
-      "displayName": "TreeSeed Basic",
-      "description": "Opinionated first-party TreeSeed starter for documentation-first teams.",
-      "summary": "A general-purpose starter for Astro, Cloudflare, docs, and the standard Treeseed workflow.",
-      "status": "live",
-      "featured": true,
-      "category": "starter",
-      "audience": [
-        "maintainers",
-        "teams"
-      ],
-      "tags": [
-        "starter",
-        "astro",
-        "cloudflare",
-        "docs"
-      ],
-      "publisher": {
-        "id": "treeseed",
-        "name": "TreeSeed",
-        "url": "https://treeseed.ai"
-      },
-      "publisherVerified": true,
-      "templateVersion": "1.0.0",
-      "templateApiVersion": 1,
-      "minCliVersion": "0.1.1",
-      "minCoreVersion": "0.1.2",
-      "fulfillment": {
-        "source": {
-          "kind": "git",
-          "repoUrl": "https://github.com/treeseed-ai/market.git",
-          "directory": "templates/starter-basic",
-          "ref": "main",
-          "integrity": "catalog-fixture"
-        },
-        "hooksPolicy": "builtin_only",
-        "supportsReconcile": true
-      },
-      "offer": {
-        "priceModel": "free",
-        "license": "AGPL-3.0-only",
-        "support": "community"
-      },
-      "relatedBooks": [],
-      "relatedKnowledge": [],
-      "relatedObjectives": []
-    },
-    {
-      "id": "starter-research",
+      "id": "research",
       "displayName": "TreeSeed Research",
       "description": "First-party TreeSeed starter for freestanding research projects and knowledge-pack publishing.",
       "summary": "A research starter for building source-backed books, gathered assets, synthesis notes, and reusable knowledge packs.",
@@ -81,7 +33,7 @@
         "mode": "git",
         "source": {
           "kind": "git",
-          "repoUrl": "https://github.com/treeseed-ai/starter-research.git",
+          "repoUrl": "https://github.com/treeseed-templates/research.git",
           "directory": ".",
           "ref": "staging",
           "integrity": "pending-external-repo"
@@ -102,17 +54,42 @@
             "key": "sourceRepository",
             "type": "repository",
             "required": true,
-            "compatibleProviders": ["github"],
+            "compatibleProviders": [
+              "github"
+            ],
             "displayName": "Source repository",
             "purpose": "Create and push the generated research project repository.",
             "defaultSelection": "team-default",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.sourceRepository.provider", "valueFrom": "selectedHost.provider" },
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.sourceRepository.owner", "valueFrom": "selectedHost.github.owner" },
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.sourceRepository.repository", "valueFrom": "derived.repositoryName" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.sourceRepository.provider",
+                "valueFrom": "selectedHost.provider"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.sourceRepository.owner",
+                "valueFrom": "selectedHost.github.owner"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.sourceRepository.repository",
+                "valueFrom": "derived.repositoryName"
+              }
             ],
             "environmentWrites": [
-              { "env": "GITHUB_TOKEN", "valueFrom": "selectedHost.token", "targets": ["github-secret"], "scopes": ["staging", "prod"], "sensitivity": "secret" }
+              {
+                "env": "GITHUB_TOKEN",
+                "valueFrom": "selectedHost.token",
+                "targets": [
+                  "github-secret"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "secret"
+              }
             ]
           },
           {
@@ -120,18 +97,50 @@
             "key": "publicWeb",
             "type": "web",
             "required": true,
-            "compatibleProviders": ["cloudflare"],
+            "compatibleProviders": [
+              "cloudflare"
+            ],
             "displayName": "Public web host",
             "purpose": "Deploy the research site, previews, content storage, and web runtime resources.",
             "defaultSelection": "managed",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.publicWeb.provider", "valueFrom": "selectedHost.provider" },
-              { "target": "treeseed.site.yaml", "path": "surfaces.web.provider", "valueFrom": "selectedHost.provider" },
-              { "target": "treeseed.site.yaml", "path": "surfaces.web.environments.prod.domain", "valueFrom": "launchInput.domains.productionDomain", "writeWhen": "host-selected" },
-              { "target": "treeseed.site.yaml", "path": "surfaces.web.environments.staging.domain", "valueFrom": "launchInput.domains.stagingDomain", "writeWhen": "host-selected" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.publicWeb.provider",
+                "valueFrom": "selectedHost.provider"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "surfaces.web.provider",
+                "valueFrom": "selectedHost.provider"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "surfaces.web.environments.prod.domain",
+                "valueFrom": "launchInput.domains.productionDomain",
+                "writeWhen": "host-selected"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "surfaces.web.environments.staging.domain",
+                "valueFrom": "launchInput.domains.stagingDomain",
+                "writeWhen": "host-selected"
+              }
             ],
             "environmentWrites": [
-              { "env": "TREESEED_PUBLIC_WEB_PROVIDER", "valueFrom": "selectedHost.provider", "targets": ["github-variable", "cloudflare-var"], "scopes": ["staging", "prod"], "sensitivity": "plain" }
+              {
+                "env": "TREESEED_PUBLIC_WEB_PROVIDER",
+                "valueFrom": "selectedHost.provider",
+                "targets": [
+                  "github-variable",
+                  "cloudflare-var"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "plain"
+              }
             ]
           },
           {
@@ -139,15 +148,34 @@
             "key": "transactionalEmail",
             "type": "email",
             "required": false,
-            "compatibleProviders": ["smtp"],
+            "compatibleProviders": [
+              "smtp"
+            ],
             "displayName": "Transactional email",
             "purpose": "Send form, account, and research project notification email.",
             "defaultSelection": "managed",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.transactionalEmail.provider", "valueFrom": "selectedHost.provider", "writeWhen": "host-selected" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.transactionalEmail.provider",
+                "valueFrom": "selectedHost.provider",
+                "writeWhen": "host-selected"
+              }
             ],
             "environmentWrites": [
-              { "env": "SMTP_HOST", "valueFrom": "selectedHost.smtpHost", "targets": ["github-secret", "railway-secret"], "scopes": ["staging", "prod"], "sensitivity": "secret" }
+              {
+                "env": "SMTP_HOST",
+                "valueFrom": "selectedHost.smtpHost",
+                "targets": [
+                  "github-secret",
+                  "railway-secret"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "secret"
+              }
             ]
           }
         ]
@@ -157,7 +185,7 @@
       "relatedObjectives": []
     },
     {
-      "id": "starter-engineering",
+      "id": "engineering",
       "displayName": "TreeSeed Engineering",
       "description": "First-party TreeSeed starter for integrated software guidance, docs, and engineering agents.",
       "summary": "An engineering starter for guiding software projects with research, architecture, implementation, review, and release agents.",
@@ -189,7 +217,7 @@
         "mode": "git",
         "source": {
           "kind": "git",
-          "repoUrl": "https://github.com/treeseed-ai/starter-engineering.git",
+          "repoUrl": "https://github.com/treeseed-templates/engineering.git",
           "directory": ".",
           "ref": "staging",
           "integrity": "pending-external-repo"
@@ -210,17 +238,42 @@
             "key": "sourceRepository",
             "type": "repository",
             "required": true,
-            "compatibleProviders": ["github"],
+            "compatibleProviders": [
+              "github"
+            ],
             "displayName": "Source repository",
             "purpose": "Create and push the generated engineering project repository.",
             "defaultSelection": "team-default",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.sourceRepository.provider", "valueFrom": "selectedHost.provider" },
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.sourceRepository.owner", "valueFrom": "selectedHost.github.owner" },
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.sourceRepository.repository", "valueFrom": "derived.repositoryName" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.sourceRepository.provider",
+                "valueFrom": "selectedHost.provider"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.sourceRepository.owner",
+                "valueFrom": "selectedHost.github.owner"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.sourceRepository.repository",
+                "valueFrom": "derived.repositoryName"
+              }
             ],
             "environmentWrites": [
-              { "env": "GITHUB_TOKEN", "valueFrom": "selectedHost.token", "targets": ["github-secret"], "scopes": ["staging", "prod"], "sensitivity": "secret" }
+              {
+                "env": "GITHUB_TOKEN",
+                "valueFrom": "selectedHost.token",
+                "targets": [
+                  "github-secret"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "secret"
+              }
             ]
           },
           {
@@ -228,18 +281,50 @@
             "key": "publicWeb",
             "type": "web",
             "required": true,
-            "compatibleProviders": ["cloudflare"],
+            "compatibleProviders": [
+              "cloudflare"
+            ],
             "displayName": "Public web host",
             "purpose": "Deploy the engineering site, previews, content storage, and web runtime resources.",
             "defaultSelection": "managed",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.publicWeb.provider", "valueFrom": "selectedHost.provider" },
-              { "target": "treeseed.site.yaml", "path": "surfaces.web.provider", "valueFrom": "selectedHost.provider" },
-              { "target": "treeseed.site.yaml", "path": "surfaces.web.environments.prod.domain", "valueFrom": "launchInput.domains.productionDomain", "writeWhen": "host-selected" },
-              { "target": "treeseed.site.yaml", "path": "surfaces.web.environments.staging.domain", "valueFrom": "launchInput.domains.stagingDomain", "writeWhen": "host-selected" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.publicWeb.provider",
+                "valueFrom": "selectedHost.provider"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "surfaces.web.provider",
+                "valueFrom": "selectedHost.provider"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "surfaces.web.environments.prod.domain",
+                "valueFrom": "launchInput.domains.productionDomain",
+                "writeWhen": "host-selected"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "surfaces.web.environments.staging.domain",
+                "valueFrom": "launchInput.domains.stagingDomain",
+                "writeWhen": "host-selected"
+              }
             ],
             "environmentWrites": [
-              { "env": "TREESEED_PUBLIC_WEB_PROVIDER", "valueFrom": "selectedHost.provider", "targets": ["github-variable", "cloudflare-var"], "scopes": ["staging", "prod"], "sensitivity": "plain" }
+              {
+                "env": "TREESEED_PUBLIC_WEB_PROVIDER",
+                "valueFrom": "selectedHost.provider",
+                "targets": [
+                  "github-variable",
+                  "cloudflare-var"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "plain"
+              }
             ]
           },
           {
@@ -247,15 +332,34 @@
             "key": "transactionalEmail",
             "type": "email",
             "required": false,
-            "compatibleProviders": ["smtp"],
+            "compatibleProviders": [
+              "smtp"
+            ],
             "displayName": "Transactional email",
             "purpose": "Send form, account, and engineering project notification email.",
             "defaultSelection": "managed",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.transactionalEmail.provider", "valueFrom": "selectedHost.provider", "writeWhen": "host-selected" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.transactionalEmail.provider",
+                "valueFrom": "selectedHost.provider",
+                "writeWhen": "host-selected"
+              }
             ],
             "environmentWrites": [
-              { "env": "SMTP_HOST", "valueFrom": "selectedHost.smtpHost", "targets": ["github-secret", "railway-secret"], "scopes": ["staging", "prod"], "sensitivity": "secret" }
+              {
+                "env": "SMTP_HOST",
+                "valueFrom": "selectedHost.smtpHost",
+                "targets": [
+                  "github-secret",
+                  "railway-secret"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "secret"
+              }
             ]
           }
         ]
@@ -265,7 +369,7 @@
       "relatedObjectives": []
     },
     {
-      "id": "starter-information-hub",
+      "id": "information-hub",
       "displayName": "TreeSeed Information Hub",
       "description": "First-party TreeSeed starter for recurring information retrieval, distillation, and downstream distribution.",
       "summary": "An information distribution starter for retrieving updates over time, distilling derived knowledge, and packaging it for downstream projects.",
@@ -297,7 +401,7 @@
         "mode": "git",
         "source": {
           "kind": "git",
-          "repoUrl": "https://github.com/treeseed-ai/starter-information-hub.git",
+          "repoUrl": "https://github.com/treeseed-templates/information-hub.git",
           "directory": ".",
           "ref": "staging",
           "integrity": "pending-external-repo"
@@ -318,17 +422,42 @@
             "key": "sourceRepository",
             "type": "repository",
             "required": true,
-            "compatibleProviders": ["github"],
+            "compatibleProviders": [
+              "github"
+            ],
             "displayName": "Source repository",
             "purpose": "Create and push the generated information hub project repository.",
             "defaultSelection": "team-default",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.sourceRepository.provider", "valueFrom": "selectedHost.provider" },
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.sourceRepository.owner", "valueFrom": "selectedHost.github.owner" },
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.sourceRepository.repository", "valueFrom": "derived.repositoryName" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.sourceRepository.provider",
+                "valueFrom": "selectedHost.provider"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.sourceRepository.owner",
+                "valueFrom": "selectedHost.github.owner"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.sourceRepository.repository",
+                "valueFrom": "derived.repositoryName"
+              }
             ],
             "environmentWrites": [
-              { "env": "GITHUB_TOKEN", "valueFrom": "selectedHost.token", "targets": ["github-secret"], "scopes": ["staging", "prod"], "sensitivity": "secret" }
+              {
+                "env": "GITHUB_TOKEN",
+                "valueFrom": "selectedHost.token",
+                "targets": [
+                  "github-secret"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "secret"
+              }
             ]
           },
           {
@@ -336,18 +465,50 @@
             "key": "publicWeb",
             "type": "web",
             "required": true,
-            "compatibleProviders": ["cloudflare"],
+            "compatibleProviders": [
+              "cloudflare"
+            ],
             "displayName": "Public web host",
             "purpose": "Deploy the information hub site, previews, content storage, and web runtime resources.",
             "defaultSelection": "managed",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.publicWeb.provider", "valueFrom": "selectedHost.provider" },
-              { "target": "treeseed.site.yaml", "path": "surfaces.web.provider", "valueFrom": "selectedHost.provider" },
-              { "target": "treeseed.site.yaml", "path": "surfaces.web.environments.prod.domain", "valueFrom": "launchInput.domains.productionDomain", "writeWhen": "host-selected" },
-              { "target": "treeseed.site.yaml", "path": "surfaces.web.environments.staging.domain", "valueFrom": "launchInput.domains.stagingDomain", "writeWhen": "host-selected" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.publicWeb.provider",
+                "valueFrom": "selectedHost.provider"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "surfaces.web.provider",
+                "valueFrom": "selectedHost.provider"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "surfaces.web.environments.prod.domain",
+                "valueFrom": "launchInput.domains.productionDomain",
+                "writeWhen": "host-selected"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "surfaces.web.environments.staging.domain",
+                "valueFrom": "launchInput.domains.stagingDomain",
+                "writeWhen": "host-selected"
+              }
             ],
             "environmentWrites": [
-              { "env": "TREESEED_PUBLIC_WEB_PROVIDER", "valueFrom": "selectedHost.provider", "targets": ["github-variable", "cloudflare-var"], "scopes": ["staging", "prod"], "sensitivity": "plain" }
+              {
+                "env": "TREESEED_PUBLIC_WEB_PROVIDER",
+                "valueFrom": "selectedHost.provider",
+                "targets": [
+                  "github-variable",
+                  "cloudflare-var"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "plain"
+              }
             ]
           },
           {
@@ -355,15 +516,34 @@
             "key": "transactionalEmail",
             "type": "email",
             "required": false,
-            "compatibleProviders": ["smtp"],
+            "compatibleProviders": [
+              "smtp"
+            ],
             "displayName": "Transactional email",
             "purpose": "Send form, account, and information hub project notification email.",
             "defaultSelection": "managed",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.transactionalEmail.provider", "valueFrom": "selectedHost.provider", "writeWhen": "host-selected" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.transactionalEmail.provider",
+                "valueFrom": "selectedHost.provider",
+                "writeWhen": "host-selected"
+              }
             ],
             "environmentWrites": [
-              { "env": "SMTP_HOST", "valueFrom": "selectedHost.smtpHost", "targets": ["github-secret", "railway-secret"], "scopes": ["staging", "prod"], "sensitivity": "secret" }
+              {
+                "env": "SMTP_HOST",
+                "valueFrom": "selectedHost.smtpHost",
+                "targets": [
+                  "github-secret",
+                  "railway-secret"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "secret"
+              }
             ]
           }
         ]
@@ -426,17 +606,42 @@
             "key": "sourceRepository",
             "type": "repository",
             "required": true,
-            "compatibleProviders": ["github"],
+            "compatibleProviders": [
+              "github"
+            ],
             "displayName": "Source repository",
             "purpose": "Create and push the Market control-plane repository.",
             "defaultSelection": "team-default",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.sourceRepository.provider", "valueFrom": "selectedHost.provider" },
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.sourceRepository.owner", "valueFrom": "selectedHost.github.owner" },
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.sourceRepository.repository", "valueFrom": "derived.repositoryName" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.sourceRepository.provider",
+                "valueFrom": "selectedHost.provider"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.sourceRepository.owner",
+                "valueFrom": "selectedHost.github.owner"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.sourceRepository.repository",
+                "valueFrom": "derived.repositoryName"
+              }
             ],
             "environmentWrites": [
-              { "env": "GITHUB_TOKEN", "valueFrom": "selectedHost.token", "targets": ["github-secret"], "scopes": ["staging", "prod"], "sensitivity": "secret" }
+              {
+                "env": "GITHUB_TOKEN",
+                "valueFrom": "selectedHost.token",
+                "targets": [
+                  "github-secret"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "secret"
+              }
             ]
           },
           {
@@ -444,19 +649,55 @@
             "key": "publicWeb",
             "type": "web",
             "required": true,
-            "compatibleProviders": ["cloudflare"],
+            "compatibleProviders": [
+              "cloudflare"
+            ],
             "displayName": "Public web host",
             "purpose": "Deploy the Market web surface and public control-plane routes.",
             "defaultSelection": "managed",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "hosting.hostBindings.publicWeb.provider", "valueFrom": "selectedHost.provider" },
-              { "target": "treeseed.site.yaml", "path": "hosting.kind", "valueFrom": "literal.market_control_plane" },
-              { "target": "treeseed.site.yaml", "path": "surfaces.web.provider", "valueFrom": "selectedHost.provider" },
-              { "target": "treeseed.site.yaml", "path": "surfaces.web.environments.prod.domain", "valueFrom": "launchInput.domains.productionDomain", "writeWhen": "host-selected" },
-              { "target": "treeseed.site.yaml", "path": "surfaces.web.environments.staging.domain", "valueFrom": "launchInput.domains.stagingDomain", "writeWhen": "host-selected" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.hostBindings.publicWeb.provider",
+                "valueFrom": "selectedHost.provider"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "hosting.kind",
+                "valueFrom": "literal.market_control_plane"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "surfaces.web.provider",
+                "valueFrom": "selectedHost.provider"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "surfaces.web.environments.prod.domain",
+                "valueFrom": "launchInput.domains.productionDomain",
+                "writeWhen": "host-selected"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "surfaces.web.environments.staging.domain",
+                "valueFrom": "launchInput.domains.stagingDomain",
+                "writeWhen": "host-selected"
+              }
             ],
             "environmentWrites": [
-              { "env": "TREESEED_PUBLIC_WEB_PROVIDER", "valueFrom": "selectedHost.provider", "targets": ["github-variable", "cloudflare-var"], "scopes": ["staging", "prod"], "sensitivity": "plain" }
+              {
+                "env": "TREESEED_PUBLIC_WEB_PROVIDER",
+                "valueFrom": "selectedHost.provider",
+                "targets": [
+                  "github-variable",
+                  "cloudflare-var"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "plain"
+              }
             ]
           }
         ],
@@ -466,18 +707,52 @@
             "key": "marketDatabase",
             "type": "database",
             "required": true,
-            "compatibleProviders": ["railway-postgres"],
+            "compatibleProviders": [
+              "railway-postgres"
+            ],
             "displayName": "Market database",
             "purpose": "Provide the PostgreSQL database used by the Market API control plane.",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "services.marketDatabase.enabled", "valueFrom": "literal.true" },
-              { "target": "treeseed.site.yaml", "path": "services.marketDatabase.provider", "valueFrom": "literal.railway" },
-              { "target": "treeseed.site.yaml", "path": "services.marketDatabase.railway.resourceType", "valueFrom": "literal.postgres" },
-              { "target": "treeseed.site.yaml", "path": "services.marketDatabase.railway.serviceName", "valueFrom": "selectedResource.configValues.serviceName" },
-              { "target": "treeseed.site.yaml", "path": "services.marketDatabase.railway.environmentVariable", "valueFrom": "literal.TREESEED_MARKET_DATABASE_URL" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.marketDatabase.enabled",
+                "valueFrom": "literal.true"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.marketDatabase.provider",
+                "valueFrom": "literal.railway"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.marketDatabase.railway.resourceType",
+                "valueFrom": "literal.postgres"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.marketDatabase.railway.serviceName",
+                "valueFrom": "selectedResource.configValues.serviceName"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.marketDatabase.railway.environmentVariable",
+                "valueFrom": "literal.TREESEED_MARKET_DATABASE_URL"
+              }
             ],
             "environmentWrites": [
-              { "env": "TREESEED_MARKET_DATABASE_URL", "valueFrom": "selectedResource.secretRefs.databaseUrl", "targets": ["github-secret", "railway-secret"], "scopes": ["staging", "prod"], "sensitivity": "secret" }
+              {
+                "env": "TREESEED_MARKET_DATABASE_URL",
+                "valueFrom": "selectedResource.secretRefs.databaseUrl",
+                "targets": [
+                  "github-secret",
+                  "railway-secret"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "secret"
+              }
             ]
           },
           {
@@ -485,18 +760,51 @@
             "key": "api",
             "type": "service",
             "required": true,
-            "compatibleProviders": ["railway"],
+            "compatibleProviders": [
+              "railway"
+            ],
             "displayName": "Market API service",
             "purpose": "Run the Market API service that serves the control-plane routes.",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "services.api.enabled", "valueFrom": "literal.true" },
-              { "target": "treeseed.site.yaml", "path": "services.api.provider", "valueFrom": "literal.railway" },
-              { "target": "treeseed.site.yaml", "path": "services.api.railway.serviceName", "valueFrom": "selectedResource.configValues.serviceName" },
-              { "target": "treeseed.site.yaml", "path": "services.api.railway.rootDirectory", "valueFrom": "literal." },
-              { "target": "treeseed.site.yaml", "path": "services.api.railway.startCommand", "valueFrom": "literal.node dist/api/server.js" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.api.enabled",
+                "valueFrom": "literal.true"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.api.provider",
+                "valueFrom": "literal.railway"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.api.railway.serviceName",
+                "valueFrom": "selectedResource.configValues.serviceName"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.api.railway.rootDirectory",
+                "valueFrom": "literal."
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.api.railway.startCommand",
+                "valueFrom": "literal.node dist/api/server.js"
+              }
             ],
             "environmentWrites": [
-              { "env": "TREESEED_MARKET_DATABASE_URL", "valueFrom": "selectedResource.secretRefs.databaseUrl", "targets": ["railway-secret"], "scopes": ["staging", "prod"], "sensitivity": "secret" }
+              {
+                "env": "TREESEED_MARKET_DATABASE_URL",
+                "valueFrom": "selectedResource.secretRefs.databaseUrl",
+                "targets": [
+                  "railway-secret"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "secret"
+              }
             ]
           },
           {
@@ -504,19 +812,70 @@
             "key": "marketOperationsRunner",
             "type": "service",
             "required": true,
-            "compatibleProviders": ["railway"],
+            "compatibleProviders": [
+              "railway"
+            ],
             "displayName": "Market operations runner",
             "purpose": "Run the governed Market operations runner for queued control-plane operations.",
             "configWrites": [
-              { "target": "treeseed.site.yaml", "path": "services.marketOperationsRunner.enabled", "valueFrom": "literal.true" },
-              { "target": "treeseed.site.yaml", "path": "services.marketOperationsRunner.provider", "valueFrom": "literal.railway" },
-              { "target": "treeseed.site.yaml", "path": "services.marketOperationsRunner.railway.serviceName", "valueFrom": "selectedResource.configValues.serviceName" },
-              { "target": "treeseed.site.yaml", "path": "services.marketOperationsRunner.railway.startCommand", "valueFrom": "literal.node dist/market-operations-runner/runner.js" }
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.marketOperationsRunner.enabled",
+                "valueFrom": "literal.true"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.marketOperationsRunner.provider",
+                "valueFrom": "literal.railway"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.marketOperationsRunner.railway.serviceName",
+                "valueFrom": "selectedResource.configValues.serviceName"
+              },
+              {
+                "target": "treeseed.site.yaml",
+                "path": "services.marketOperationsRunner.railway.startCommand",
+                "valueFrom": "literal.node dist/market-operations-runner/runner.js"
+              }
             ],
             "environmentWrites": [
-              { "env": "TREESEED_MARKET_DATABASE_URL", "valueFrom": "selectedResource.secretRefs.databaseUrl", "targets": ["railway-secret"], "scopes": ["staging", "prod"], "sensitivity": "secret" },
-              { "env": "TREESEED_PLATFORM_RUNNER_TOKEN", "valueFrom": "selectedResource.secretRefs.runnerToken", "targets": ["railway-secret"], "scopes": ["staging", "prod"], "sensitivity": "secret" },
-              { "env": "TREESEED_PLATFORM_RUNNER_ID", "valueFrom": "selectedResource.environmentValues.runnerId", "targets": ["railway-var"], "scopes": ["staging", "prod"], "sensitivity": "plain" }
+              {
+                "env": "TREESEED_MARKET_DATABASE_URL",
+                "valueFrom": "selectedResource.secretRefs.databaseUrl",
+                "targets": [
+                  "railway-secret"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "secret"
+              },
+              {
+                "env": "TREESEED_PLATFORM_RUNNER_TOKEN",
+                "valueFrom": "selectedResource.secretRefs.runnerToken",
+                "targets": [
+                  "railway-secret"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "secret"
+              },
+              {
+                "env": "TREESEED_PLATFORM_RUNNER_ID",
+                "valueFrom": "selectedResource.environmentValues.runnerId",
+                "targets": [
+                  "railway-var"
+                ],
+                "scopes": [
+                  "staging",
+                  "prod"
+                ],
+                "sensitivity": "plain"
+              }
             ]
           }
         ]

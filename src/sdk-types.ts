@@ -62,7 +62,12 @@ export const PROJECT_INFRA_RESOURCE_KINDS = [
 	'railway_schedule',
 ] as const;
 export const AGENT_POOL_STATUSES = ['pending', 'active', 'degraded', 'offline'] as const;
-export const TREESEED_DEFAULT_STARTER_TEMPLATE_ID = 'starter-research' as const;
+export const TREESEED_DEFAULT_STARTER_TEMPLATE_ID = 'research' as const;
+export const TREESEED_TEMPLATE_ID_ALIASES = {} as const;
+export function normalizeTreeseedTemplateId(templateId: string | null | undefined) {
+	const trimmed = String(templateId ?? '').trim();
+	return (TREESEED_TEMPLATE_ID_ALIASES as Record<string, string>)[trimmed] ?? trimmed;
+}
 export const TEMPLATE_HOST_REQUIREMENT_TYPES = ['repository', 'web', 'email', 'ai'] as const;
 export const TEMPLATE_RESOURCE_REQUIREMENT_TYPES = ['service', 'database', 'object-storage', 'queue', 'dns-zone'] as const;
 export const TEMPLATE_SECRET_SENSITIVITIES = ['secret', 'plain', 'derived'] as const;

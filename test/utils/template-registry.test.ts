@@ -29,10 +29,15 @@ function git(cwd: string, args: string[]) {
 
 describe('template registry fulfillment', () => {
 	const firstPartyStarterIds = [
-		'starter-research',
-		'starter-engineering',
-		'starter-information-hub',
+		'research',
+		'engineering',
+		'information-hub',
 	] as const;
+	const firstPartyStarterRepoUrls: Record<(typeof firstPartyStarterIds)[number], string> = {
+		'research': 'https://github.com/treeseed-templates/research.git',
+		'engineering': 'https://github.com/treeseed-templates/engineering.git',
+		'information-hub': 'https://github.com/treeseed-templates/information-hub.git',
+	};
 	const fixtureCatalogPath = resolve(process.cwd(), 'src/treeseed/template-catalog/catalog.fixture.json');
 	const fixtureCatalogEnv = {
 		TREESEED_TEMPLATE_CATALOG_URL: `file:${fixtureCatalogPath}`,
@@ -48,10 +53,18 @@ describe('template registry fulfillment', () => {
 			expect(definition.product.id).toBe(id);
 			expect(definition.product.fulfillment.source.kind).toBe('git');
 			expect(definition.product.fulfillment.source.directory).toBe('.');
-			expect(definition.product.fulfillment.source.repoUrl).toContain(`treeseed-ai/${id}`);
+			expect(definition.product.fulfillment.source.repoUrl).toBe(firstPartyStarterRepoUrls[id]);
 			expect(definition.manifest.id).toBe(id);
 			expect(existsSync(resolve(definition.templateRoot, 'src/manifest.yaml'))).toBe(true);
 		}
+	});
+
+	it('rejects legacy starter-prefixed template ids', async () => {
+		const legacyId = ['starter', 'research'].join('-');
+		await expect(validateTemplateProduct({ id: legacyId }, {
+			cwd: process.cwd(),
+			env: fixtureCatalogEnv,
+		})).rejects.toThrow(new RegExp(`Unable to resolve remote template product "${legacyId}"`, 'u'));
 	});
 
 	it('scaffolds each first-party starter with agent specs, tests, and expected content roots', async () => {
@@ -82,7 +95,7 @@ describe('template registry fulfillment', () => {
 	it('applies launch host binding config to a scaffolded first-party starter', async () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-starter-host-bindings-'));
 		const targetRoot = resolve(root, 'generated');
-		const product = await scaffoldTemplateProject('starter-research', targetRoot, {
+		const product = await scaffoldTemplateProject('research', targetRoot, {
 			target: 'generated',
 			name: 'Generated Research',
 			siteUrl: 'https://research.example.com',
@@ -153,7 +166,7 @@ describe('template registry fulfillment', () => {
 	it('preserves host-bound config overlays during template sync checks', async () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-starter-host-sync-'));
 		const targetRoot = resolve(root, 'generated');
-		const product = await scaffoldTemplateProject('starter-research', targetRoot, {
+		const product = await scaffoldTemplateProject('research', targetRoot, {
 			target: 'generated',
 			name: 'Generated Research',
 			siteUrl: 'https://research.example.com',

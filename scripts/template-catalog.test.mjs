@@ -36,8 +36,8 @@ function writeCatalogCache(root, endpoint, items) {
 }
 
 const starterTemplate = {
-	id: 'starter-basic',
-	displayName: 'TreeSeed Basic',
+	id: 'fixture-template',
+	displayName: 'Fixture Template',
 	description: 'Starter',
 	summary: 'Starter summary',
 	status: 'live',
@@ -53,7 +53,7 @@ const starterTemplate = {
 	fulfillment: {
 		source: {
 			repoUrl: 'https://example.com/repo.git',
-			directory: 'templates/starter-basic',
+			directory: 'templates/fixture-template',
 			ref: 'main',
 		},
 		hooksPolicy: 'builtin_only',
@@ -69,7 +69,7 @@ test('template registry reads the remote catalog from a configured file endpoint
 
 	const remoteProducts = await listTemplateProducts({ cwd, env: {} });
 	assert.equal(remoteProducts.length, 1);
-	assert.equal(remoteProducts[0]?.id, 'starter-basic');
+	assert.equal(remoteProducts[0]?.id, 'fixture-template');
 
 	writeCatalogCache(cwd, fallbackEndpoint, [starterTemplate]);
 
@@ -83,7 +83,7 @@ test('template registry reads the remote catalog from a configured file endpoint
 	});
 
 	assert.equal(cachedProducts.length, 1);
-	assert.equal(cachedProducts[0]?.id, 'starter-basic');
+	assert.equal(cachedProducts[0]?.id, 'fixture-template');
 	assert.equal(warnings.length, 1);
 	assert.match(warnings[0], /Using cached template catalog/);
 });
@@ -94,7 +94,7 @@ test('template definition resolution rejects templates missing from the remote c
 	const cwd = makeMachineConfigRoot(`file:${fixturePath}`);
 
 	await assert.rejects(
-		() => resolveTemplateDefinition('starter-basic', { cwd, env: {} }),
-		/Unable to resolve remote template product "starter-basic"\./,
+		() => resolveTemplateDefinition('fixture-template', { cwd, env: {} }),
+		/Unable to resolve remote template product "fixture-template"\./,
 	);
 });

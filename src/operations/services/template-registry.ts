@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, write
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, relative, resolve } from 'node:path';
 import {
+	normalizeTreeseedTemplateId,
 	type SdkTemplateCatalogEntry,
 	type SdkTemplateCatalogResponse,
 	type TemplateLaunchRequirements,
@@ -173,9 +174,9 @@ function listTemplateArtifactIds() {
 }
 
 const LOCAL_STARTER_ID_TO_DIRECTORY: Record<string, string> = {
-	'starter-research': 'research',
-	'starter-engineering': 'engineering',
-	'starter-information-hub': 'information-hub',
+	'research': 'research',
+	'engineering': 'engineering',
+	'information-hub': 'information-hub',
 };
 
 function localStartersRoot() {
@@ -183,7 +184,7 @@ function localStartersRoot() {
 }
 
 function resolveLocalStarterArtifactRoot(id: string) {
-	const directory = LOCAL_STARTER_ID_TO_DIRECTORY[id];
+	const directory = LOCAL_STARTER_ID_TO_DIRECTORY[normalizeTreeseedTemplateId(id)];
 	if (!directory) {
 		return null;
 	}
@@ -262,13 +263,15 @@ function validateTemplatePlaceholders(definition: ResolvedTemplateDefinition) {
 }
 
 function normalizeTemplateProduct(remoteProduct: SdkTemplateCatalogEntry): TemplateProductDefinition {
-	const artifactRoot = resolve(localTemplateArtifactsRoot, remoteProduct.id);
+	const id = normalizeTreeseedTemplateId(remoteProduct.id);
+	const artifactRoot = resolve(localTemplateArtifactsRoot, id);
 	const source = remoteProduct.fulfillment.source;
 	return {
 		...remoteProduct,
+		id,
 		contentPath: source.kind === 'git'
-			? `${source.repoUrl}#${remoteProduct.id}`
-			: `r2://${source.bucket ?? 'bucket'}/${source.objectKey}#${remoteProduct.id}`,
+			? `${source.repoUrl}#${id}`
+			: `r2://${source.bucket ?? 'bucket'}/${source.objectKey}#${id}`,
 		artifactRoot,
 		artifactManifestPath: resolve(artifactRoot, 'template.config.json'),
 		templateRoot: resolve(artifactRoot, 'template'),
@@ -541,7 +544,8 @@ export async function listTemplateProducts(options: TemplateCatalogOptions = {})
 }
 
 export async function resolveTemplateProduct(id: string, options: TemplateCatalogOptions = {}) {
-	const product = (await listTemplateProducts(options)).find((entry) => entry.id === id);
+	const normalizedId = normalizeTreeseedTemplateId(id);
+	const product = (await listTemplateProducts(options)).find((entry) => entry.id === normalizedId);
 	if (!product) {
 		throw new Error(`Unable to resolve remote template product "${id}".`);
 	}
@@ -725,6 +729,7 @@ export async function syncTemplateProject(siteRoot: string, options: TemplateCat
 	if (!check) {
 		writeTemplateState(siteRoot, {
 			...state,
+			templateId: definition.product.id,
 			templateVersion: definition.product.templateVersion,
 			sourceRef: definition.product.fulfillment.source.ref,
 			lastSyncedAt: new Date().toISOString(),
