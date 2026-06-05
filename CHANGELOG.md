@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.28] - 2026-06-05
+
+### Added
+
+- feat(sdk): implement template ID normalization and update starter IDs (37bf7b9f151d)
+
+### Dependencies
+
+- Release @treeseed/sdk 0.10.28.
+
 ## [0.10.27] - 2026-06-04
 
 ### Tests
