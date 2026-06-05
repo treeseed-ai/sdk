@@ -96,6 +96,15 @@ export {
 	buildProjectWebMonitorResult,
 } from './operations/services/project-web-monitor.ts';
 export {
+	discoverTreeseedPackageAdapters,
+	findTreeseedPackageAdapter,
+	packageAdapterPlanSummary,
+	readMixProjectVersion,
+	type TreeseedPackageAdapter,
+	type TreeseedPackageCommand,
+	type TreeseedPackageKind,
+} from './operations/services/package-adapters.ts';
+export {
 	DEFAULT_EXECUTION_PROFILE_ID,
 	DEFAULT_EXECUTION_PROFILES,
 	DEFAULT_TASK_ADMISSION_POLICY,

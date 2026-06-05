@@ -12,6 +12,7 @@ import { loadDeployState } from './deploy.ts';
 import { loadCliDeployConfig } from './runtime-tools.ts';
 import { packagesWithScript, run, workspacePackages } from './workspace-tools.ts';
 import { createBuildWarningSummary, formatAllowedBuildWarnings } from './build-warning-policy.js';
+import { discoverTreeseedPackageAdapters, type TreeseedPackageAdapter } from './package-adapters.ts';
 
 export type ReleaseCandidateStatus = 'passed' | 'failed';
 
@@ -56,7 +57,7 @@ export type ReleaseCandidateInput = {
 };
 
 const RELEASE_CANDIDATE_CACHE_DIR = '.treeseed/workflow/release-candidates';
-const RELEASE_CANDIDATE_POLICY_VERSION = 'strict-output-v1';
+const RELEASE_CANDIDATE_POLICY_VERSION = 'package-adapters-v1';
 const STABLE_SEMVER = /^\d+\.\d+\.\d+$/u;
 const REHEARSAL_IGNORED_SEGMENTS = new Set([
 	'.git',
@@ -101,6 +102,10 @@ function safePackageJson(filePath: string) {
 	}
 }
 
+function dockerManifestCheckMode() {
+	return process.env.TREESEED_RELEASE_CANDIDATE_DOCKER_MANIFEST_MODE === 'check' ? 'check' : 'skip';
+}
+
 function writeJsonFile(filePath: string, value: Record<string, unknown>) {
 	writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
@@ -130,10 +135,10 @@ function ensureReleaseCandidateCacheDir(root: string) {
 export function buildReleaseCandidateFingerprint(input: ReleaseCandidateInput): ReleaseCandidateFingerprint {
 	const selectedPackages = [...new Set((input.selectedPackageNames ?? []).map(String))].sort();
 	const selectedPackageSet = new Set(selectedPackages);
-	const packages = workspacePackages(input.root)
-		.filter((pkg) => typeof pkg.name === 'string' && pkg.name.startsWith('@treeseed/'));
+	const packages = discoverTreeseedPackageAdapters(input.root)
+		.filter((pkg) => selectedPackageSet.size === 0 || selectedPackageSet.has(pkg.id) || selectedPackageSet.has(pkg.name));
 	const packageShas = sortedRecord(Object.fromEntries(
-		packages.map((pkg) => [pkg.name, safeGitHead(pkg.dir)]),
+		packages.map((pkg) => [pkg.id, safeGitHead(pkg.dir)]),
 	));
 	const plannedVersions = sortedRecord(Object.fromEntries(
 		Object.entries(input.plannedVersions)
@@ -142,7 +147,12 @@ export function buildReleaseCandidateFingerprint(input: ReleaseCandidateInput): 
 	));
 	const lockfiles = sortedRecord({
 		'@treeseed/market': fileSha256(resolve(input.root, 'package-lock.json')),
-		...Object.fromEntries(packages.map((pkg) => [pkg.name, fileSha256(resolve(pkg.dir, 'package-lock.json'))])),
+		...Object.fromEntries(packages.map((pkg) => [
+			pkg.id,
+			pkg.kind === 'node-typescript'
+				? fileSha256(resolve(pkg.dir, 'package-lock.json'))
+				: (fileSha256(resolve(pkg.dir, 'Cargo.lock')) ?? fileSha256(resolve(pkg.dir, 'mix.lock'))),
+		])),
 	});
 	const base = {
 		policyVersion: RELEASE_CANDIDATE_POLICY_VERSION,
@@ -187,8 +197,22 @@ function packageReadinessChecks(root: string, selectedPackageNames: string[], fa
 		return { name: 'package-release-readiness', status: 'skipped', detail: 'No packages are selected for this release.' };
 	}
 	const selected = new Set(selectedPackageNames);
-	const packages = workspacePackages(root).filter((pkg) => selected.has(pkg.name));
+	const packages = discoverTreeseedPackageAdapters(root).filter((pkg) => selected.has(pkg.id) || selected.has(pkg.name));
 	for (const pkg of packages) {
+		checkPackageAdapterReadiness(pkg, failures);
+	}
+	return {
+		name: 'package-release-readiness',
+		status: failures.some((failure) =>
+			failure.code.startsWith('missing_')
+			|| failure.code === 'npm_pack_dry_run_failed'
+			|| failure.code === 'docker_manifest_check_failed') ? 'failed' : 'passed',
+		detail: `Checked ${packages.length} selected package adapter${packages.length === 1 ? '' : 's'}: ${packages.map((pkg) => `${pkg.id} (${pkg.kind})`).join(', ') || 'none'}.`,
+	};
+}
+
+function checkPackageAdapterReadiness(pkg: TreeseedPackageAdapter, failures: ReleaseCandidateFailure[]) {
+	if (pkg.kind === 'node-typescript') {
 		const packageJson = safePackageJson(resolve(pkg.dir, 'package.json'));
 		const scripts = packageJson?.scripts && typeof packageJson.scripts === 'object' && !Array.isArray(packageJson.scripts)
 			? packageJson.scripts as Record<string, unknown>
@@ -196,23 +220,23 @@ function packageReadinessChecks(root: string, selectedPackageNames: string[], fa
 		if (!existsSync(resolve(pkg.dir, '.github', 'workflows', 'publish.yml'))) {
 			addFailure(failures, {
 				code: 'missing_publish_workflow',
-				scope: pkg.name,
+				scope: pkg.id,
 				provider: 'github',
-				message: `${pkg.name} is missing .github/workflows/publish.yml.`,
+				message: `${pkg.id} is missing .github/workflows/publish.yml.`,
 			});
 		}
 		if (typeof scripts['release:publish'] !== 'string') {
 			addFailure(failures, {
 				code: 'missing_publish_script',
-				scope: pkg.name,
-				message: `${pkg.name} is missing a release:publish script.`,
+				scope: pkg.id,
+				message: `${pkg.id} is missing a release:publish script.`,
 			});
 		}
-		if (typeof scripts['verify:local'] !== 'string' && typeof scripts['verify'] !== 'string' && typeof scripts['verify:action'] !== 'string') {
+		if (typeof scripts['verify:local'] !== 'string' && typeof scripts.verify !== 'string' && typeof scripts['verify:action'] !== 'string') {
 			addFailure(failures, {
 				code: 'missing_verify_script',
-				scope: pkg.name,
-				message: `${pkg.name} is missing a release-ready verify script.`,
+				scope: pkg.id,
+				message: `${pkg.id} is missing a release-ready verify script.`,
 			});
 		}
 		try {
@@ -220,17 +244,52 @@ function packageReadinessChecks(root: string, selectedPackageNames: string[], fa
 		} catch (error) {
 			addFailure(failures, {
 				code: 'npm_pack_dry_run_failed',
-				scope: pkg.name,
-				message: `${pkg.name} failed npm pack --dry-run.`,
+				scope: pkg.id,
+				message: `${pkg.id} failed npm pack --dry-run.`,
 				details: { error: error instanceof Error ? error.message : String(error) },
 			});
 		}
+		return;
 	}
-	return {
-		name: 'package-release-readiness',
-		status: failures.some((failure) => failure.code.startsWith('missing_') || failure.code === 'npm_pack_dry_run_failed') ? 'failed' : 'passed',
-		detail: `Checked ${packages.length} selected package${packages.length === 1 ? '' : 's'}.`,
-	};
+	if (!pkg.version) {
+		addFailure(failures, {
+			code: 'missing_package_version',
+			scope: pkg.id,
+			message: `${pkg.id} is missing a readable BEAM package version.`,
+			details: { versionSource: pkg.versionSource },
+		});
+	}
+	if (!pkg.verifyCommands.local) {
+		addFailure(failures, {
+			code: 'missing_verify_script',
+			scope: pkg.id,
+			message: `${pkg.id} is missing a BEAM package local verification command.`,
+		});
+	}
+	if (!pkg.verifyCommands.release) {
+		addFailure(failures, {
+			code: 'missing_release_gate',
+			scope: pkg.id,
+			message: `${pkg.id} is missing a BEAM package release gate command.`,
+		});
+	}
+	if (dockerManifestCheckMode() !== 'check') return;
+	for (const artifact of pkg.artifacts.filter((entry) => entry.provider === 'docker')) {
+		for (const tag of artifact.tags ?? []) {
+			if (tag.includes('<')) continue;
+			try {
+				run('docker', ['manifest', 'inspect', `${artifact.name}:${tag}`], { cwd: pkg.dir, capture: true, timeoutMs: 120000 });
+			} catch (error) {
+				addFailure(failures, {
+					code: 'docker_manifest_check_failed',
+					scope: pkg.id,
+					provider: 'docker',
+					message: `${pkg.id} Docker artifact is not published: ${artifact.name}:${tag}.`,
+					details: { error: error instanceof Error ? error.message : String(error) },
+				});
+			}
+		}
+	}
 }
 
 function copyWorkspaceForProductionRehearsal(root: string) {

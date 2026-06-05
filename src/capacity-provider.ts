@@ -9,6 +9,7 @@ import {
 	setTreeseedMachineEnvironmentValue,
 } from './operations/services/config-runtime.ts';
 import type { NativeUsageObservation } from './sdk-types.ts';
+import type { ProjectRepositoryTopology } from './sdk-types.ts';
 
 export const CAPACITY_PROVIDER_ENDPOINTS = {
 	register: '/v1/provider/register',
@@ -212,6 +213,7 @@ export interface CapacityProviderPortfolioProject {
 		submodulePath?: string | null;
 		webUrl?: string | null;
 	};
+	repositoryTopology?: ProjectRepositoryTopology;
 	agentSpecs: {
 		root: string;
 		testsRoot: string;
@@ -597,6 +599,30 @@ export function assertCapacityProviderPortfolioManifest(value: unknown): asserts
 		requireString(project, 'slug', `Capacity provider portfolio project ${index}`);
 		requireString(project, 'name', `Capacity provider portfolio project ${index}`);
 		if (!isRecord(project.repository)) throw new Error(`Capacity provider portfolio project ${index} is missing repository.`);
+		if (project.repositoryTopology !== undefined) {
+			if (!isRecord(project.repositoryTopology)) {
+				throw new Error(`Capacity provider portfolio project ${index} repositoryTopology must be an object.`);
+			}
+			if (!isRecord(project.repositoryTopology.contentRepository)) {
+				throw new Error(`Capacity provider portfolio project ${index} repositoryTopology is missing contentRepository.`);
+			}
+			if (project.repositoryTopology.contentRepository.accessMode !== 'treedb') {
+				throw new Error(`Capacity provider portfolio project ${index} contentRepository must use treedb access.`);
+			}
+			if (!isRecord(project.repositoryTopology.siteRepository)) {
+				throw new Error(`Capacity provider portfolio project ${index} repositoryTopology is missing siteRepository.`);
+			}
+			if (project.repositoryTopology.siteRepository.accessMode !== 'filesystem') {
+				throw new Error(`Capacity provider portfolio project ${index} siteRepository must use filesystem access.`);
+			}
+			if (
+				project.repositoryTopology.projectRepository !== undefined
+				&& project.repositoryTopology.projectRepository !== null
+				&& (!isRecord(project.repositoryTopology.projectRepository) || project.repositoryTopology.projectRepository.accessMode !== 'filesystem')
+			) {
+				throw new Error(`Capacity provider portfolio project ${index} projectRepository must use filesystem access.`);
+			}
+		}
 		if (!isRecord(project.agentSpecs)) throw new Error(`Capacity provider portfolio project ${index} is missing agentSpecs.`);
 		if (!isRecord(project.workPolicy)) throw new Error(`Capacity provider portfolio project ${index} is missing workPolicy.`);
 	}

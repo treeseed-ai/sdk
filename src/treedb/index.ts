@@ -12,6 +12,7 @@ export {
 export { TreeDbQueryAdapter, type TreeDbQueryAdapterOptions } from './query-adapter.ts';
 export { TreeDbGraphAdapter, type TreeDbGraphAdapterOptions } from './graph-adapter.ts';
 export { TreeDbWorkspaceAdapter, type TreeDbWorkspaceAdapterOptions } from './workspace-adapter.ts';
+export * from './market-integration.ts';
 export {
 	LocalGraphPort,
 	LocalRepositoryPort,
