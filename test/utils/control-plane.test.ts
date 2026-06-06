@@ -80,6 +80,29 @@ describe('control-plane reporter', () => {
 			});
 		});
 
+	it('times out control-plane requests instead of waiting indefinitely', async () => {
+		const fetchMock = vi.fn((_url: URL | RequestInfo, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+			init?.signal?.addEventListener('abort', () => {
+				reject(new DOMException('aborted', 'AbortError'));
+			});
+		}));
+		const reporter = createControlPlaneReporter({
+			kind: 'market_http',
+			projectId: 'project-1',
+			baseUrl: 'https://market.example.com',
+			runnerToken: 'runner-secret',
+			fetchImpl: fetchMock,
+			requestTimeoutMs: 5,
+		});
+
+		await expect(reporter.reportDeployment({
+			environment: 'staging',
+			deploymentKind: 'code',
+			status: 'running',
+		} satisfies ControlPlaneDeploymentReport)).rejects.toThrow(/timed out/u);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
 	it('lists catalog items through the typed control-plane client', async () => {
 		const fetchMock = vi.fn(async () => new Response(JSON.stringify({
 			ok: true,

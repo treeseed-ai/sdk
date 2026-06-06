@@ -1665,7 +1665,7 @@ function shouldUseVerboseRailwayDeploy(env = process.env) {
 
 function railwayDeployCommandTimeoutMs(env = process.env) {
 	const configured = Number.parseInt(configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_COMMAND_TIMEOUT_MS'), 10);
-	return Number.isFinite(configured) && configured > 0 ? configured : 600_000;
+	return Number.isFinite(configured) && configured > 0 ? configured : 300_000;
 }
 
 function railwayPhaseTimeoutMs(env = process.env, phase = 'default') {
@@ -1677,7 +1677,7 @@ function railwayPhaseTimeoutMs(env = process.env, phase = 'default') {
 	if (Number.isFinite(defaultConfigured) && defaultConfigured > 0) {
 		return defaultConfigured;
 	}
-	return phase === 'deploy' ? 900_000 : 180_000;
+	return phase === 'deploy' ? 300_000 : 180_000;
 }
 
 async function withRailwayPhaseTimeout(run, timeoutMs, message) {

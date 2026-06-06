@@ -55,6 +55,7 @@ function createRunContext(
 	target: TreeseedReconcileTarget,
 	launchEnv: NodeJS.ProcessEnv,
 	write?: (line: string) => void,
+	dryRun = false,
 ): TreeseedReconcileRunContext {
 	const { deployConfig } = deriveTreeseedDesiredUnits({ tenantRoot, target });
 	return {
@@ -62,6 +63,7 @@ function createRunContext(
 		target,
 		deployConfig,
 		launchEnv,
+		dryRun,
 		write,
 		session: new Map<string, unknown>(),
 	};
@@ -267,16 +269,18 @@ export async function reconcileTreeseedTarget({
 	env = process.env,
 	systems,
 	write,
+	dryRun = false,
 }: {
 	tenantRoot: string;
 	target: TreeseedReconcileTarget;
 	env?: NodeJS.ProcessEnv;
 	systems?: TreeseedRunnableBootstrapSystem[];
 	write?: (line: string) => void;
+	dryRun?: boolean;
 }) {
 	const planned = await planTreeseedReconciliation({ tenantRoot, target, env, systems, write });
 	const registry = createTreeseedReconcileRegistry(planned.deployConfig);
-	const context = createRunContext(tenantRoot, target, env, write);
+	const context = createRunContext(tenantRoot, target, env, write, dryRun);
 	const results: TreeseedReconcileResult[] = [];
 	const verificationMap = new Map<string, TreeseedUnitVerificationResult>();
 	const timingEntries: TreeseedTimingEntry[] = [];
@@ -330,17 +334,30 @@ export async function reconcileTreeseedTarget({
 		let result;
 		try {
 			const stageStartMs = performance.now();
-			result = await Promise.resolve(adapter.reconcile({
-				context,
-				unit: plan.unit,
-				persistedState: persisted,
-				observed: plan.observed,
-				diff: plan.diff,
-			}));
+			if (dryRun) {
+				result = {
+					unit: plan.unit,
+					observed: plan.observed,
+					diff: plan.diff,
+					action: plan.diff.action,
+					warnings: [...plan.observed.warnings, 'dry run: reconcile skipped'],
+					resourceLocators: plan.observed.locators,
+					state: plan.observed.live,
+					verification: null,
+				};
+			} else {
+				result = await Promise.resolve(adapter.reconcile({
+					context,
+					unit: plan.unit,
+					persistedState: persisted,
+					observed: plan.observed,
+					diff: plan.diff,
+				}));
+			}
 			unitTiming.children?.push({
 				name: `${unitTiming.name}:reconcile`,
 				durationMs: elapsedMs(stageStartMs),
-				status: 'success',
+				status: dryRun ? 'skipped' : 'success',
 			});
 		} catch (error) {
 			unitTiming.children?.push({
@@ -398,13 +415,19 @@ export async function reconcileTreeseedTarget({
 		unitTiming.status = (verification as TreeseedUnitVerificationResult).verified ? 'success' : 'failed';
 		write?.(`Finished ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName}) in ${formatDurationMs(unitTiming.durationMs)}.`);
 		if (!(verification as TreeseedUnitVerificationResult).verified) {
-			await persistVerifiedResult(persisted, verifiedResult);
+			if (!dryRun) {
+				await persistVerifiedResult(persisted, verifiedResult);
+			}
 			throw new Error(`Treeseed reconcile verification failed for ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.unitId}): ${formatVerificationFailure(verification as TreeseedUnitVerificationResult)}`);
 		}
-		await persistVerifiedResult(persisted, verifiedResult);
+		if (!dryRun) {
+			await persistVerifiedResult(persisted, verifiedResult);
+		}
 		results.push(verifiedResult);
 	});
-	writeTreeseedReconcileState(tenantRoot, planned.state);
+	if (!dryRun) {
+		writeTreeseedReconcileState(tenantRoot, planned.state);
+	}
 	return {
 		target,
 		units: planned.units,

@@ -91,6 +91,13 @@ function recordTiming(timings: TreeseedTimingEntry[], name: string, startMs: num
 	return entry;
 }
 
+function writeWorkflowStatus(message: string) {
+	if (!process.env.TREESEED_WORKFLOW_ACTION && !process.env.TREESEED_WORKFLOW_DEBUG) {
+		return;
+	}
+	process.stderr.write(`[project-platform] ${message}\n`);
+}
+
 async function timedPhase<T>(
 	timings: TreeseedTimingEntry[],
 	name: string,
@@ -1266,30 +1273,42 @@ async function publishContent(
 }
 
 export async function provisionProjectPlatform(options: ProjectPlatformActionOptions) {
+	writeWorkflowStatus(`provision:start scope=${options.scope}`);
 	const timings: TreeseedTimingEntry[] = [];
+	writeWorkflowStatus('provision:resolve-reporter');
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
+	writeWorkflowStatus(`provision:reporter kind=${reporter.kind} enabled=${reporter.enabled ? 'true' : 'false'}`);
 	const target = createPersistentDeployTarget(options.scope === 'local' ? 'staging' : options.scope);
+	writeWorkflowStatus(`provision:target ${deployTargetLabel(target)}`);
 	const siteConfig = loadCliDeployConfig(options.tenantRoot);
+	writeWorkflowStatus('provision:resolve-bootstrap-systems');
 	const bootstrapSystems = resolveProjectPlatformBootstrapSystems(options, siteConfig);
 	const selectedSystems = new Set(bootstrapSystems);
 	const env = { ...process.env, ...(options.env ?? {}) };
+	writeWorkflowStatus(`provision:reconcile:start systems=${bootstrapSystems.join(',') || '(none)'}`);
 	const summary = await timedPhase(timings, 'provision:reconcile', () => reconcileTreeseedTarget({
 		tenantRoot: options.tenantRoot,
 		target,
 		env,
 		systems: bootstrapSystems,
 		write: options.write,
+		dryRun: options.dryRun,
 	}));
+	writeWorkflowStatus('provision:reconcile:done');
 	timings.push(...((summary as { timings?: TreeseedTimingEntry[] }).timings ?? []));
+	writeWorkflowStatus('provision:collect-reconcile-status:start');
 	const verification = await timedPhase(timings, 'provision:collect-reconcile-status', () => collectTreeseedReconcileStatus({
 		tenantRoot: options.tenantRoot,
 		target,
 		env,
 		systems: bootstrapSystems,
 	}));
+	writeWorkflowStatus('provision:collect-reconcile-status:done');
+	writeWorkflowStatus('provision:ensure-wrangler-config:start');
 	await timedPhase(timings, 'provision:ensure-wrangler-config', () => {
 		ensureGeneratedWranglerConfig(options.tenantRoot, { target });
 	});
+	writeWorkflowStatus('provision:ensure-wrangler-config:done');
 	const shouldValidateRailway = selectedSystems.has('api') || selectedSystems.has('agents');
 	const railwayValidation = shouldValidateRailway
 		? options.scope === 'local'
@@ -1457,16 +1476,22 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 }
 
 export async function deployProjectPlatform(options: ProjectPlatformActionOptions) {
+	writeWorkflowStatus(`deploy:start scope=${options.scope} dryRun=${options.dryRun ? 'true' : 'false'}`);
 	const timings: TreeseedTimingEntry[] = [];
 	const deployStartMs = performance.now();
+	writeWorkflowStatus('deploy:resolve-reporter');
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
+	writeWorkflowStatus(`deploy:reporter kind=${reporter.kind} enabled=${reporter.enabled ? 'true' : 'false'}`);
 	const commitSha = currentCommit(options.tenantRoot);
 	const branchName = currentRef(options.tenantRoot);
+	writeWorkflowStatus('deploy:resolve-bootstrap-systems');
 	const bootstrapSystems = resolveProjectPlatformBootstrapSystems(options);
 	const selectedSystems = new Set(bootstrapSystems);
 	const execution = options.bootstrapExecution ?? 'parallel';
 	const write = options.write;
 	const env = { ...process.env, ...(options.env ?? {}) };
+	writeWorkflowStatus(`deploy:bootstrap-systems ${bootstrapSystems.join(',') || '(none)'}`);
+	writeWorkflowStatus('deploy:report-running');
 	await reportDeployment(reporter, {
 		environment: options.scope,
 		deploymentKind: 'code',
@@ -1476,10 +1501,13 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		triggeredByType: 'project_runner',
 		metadata: { scope: options.scope },
 	});
+	writeWorkflowStatus('deploy:reported-running');
 
 	if (!options.skipProvision) {
+		writeWorkflowStatus('deploy:provision:start');
 		const provision = await timedPhase(timings, 'deploy:provision', () => provisionProjectPlatform({ ...options, reporter, bootstrapSystems }));
 		timings.push(...((provision as { timings?: TreeseedTimingEntry[] }).timings ?? []));
+		writeWorkflowStatus('deploy:provision:done');
 	}
 
 	const nodes: Array<TreeseedBootstrapDagNode> = [];
@@ -1817,8 +1845,13 @@ export async function runProjectPlatformAction(action: ProjectPlatformAction, op
 	const previousWorkflowPlane = process.env.TREESEED_WORKFLOW_PLANE;
 	process.env.TREESEED_WORKFLOW_ACTION = action;
 	process.env.TREESEED_WORKFLOW_PLANE = previousWorkflowPlane ?? 'all';
+	writeWorkflowStatus(`action:start ${action} scope=${options.scope}`);
+	writeWorkflowStatus('action:apply-environment:start');
 	applyTreeseedEnvironmentToProcess({ tenantRoot: options.tenantRoot, scope: options.scope, override: true });
+	writeWorkflowStatus('action:apply-environment:done');
+	writeWorkflowStatus('action:resolve-reporter:start');
 	const reporter = resolveReporter(options.tenantRoot, options.reporter);
+	writeWorkflowStatus(`action:resolve-reporter:done kind=${reporter.kind} enabled=${reporter.enabled ? 'true' : 'false'}`);
 	try {
 		switch (action) {
 			case 'deploy_web':
