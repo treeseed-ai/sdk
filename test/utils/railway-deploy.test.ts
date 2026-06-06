@@ -396,13 +396,13 @@ services:
 		expect(plan.args).toContain('--no-gitignore');
 	});
 
-	it('preserves hosted CI mode while detached deploys are selected by arguments', () => {
+	it('clears hosted CI mode when detached Railway deploys are selected by arguments', () => {
 		expect(buildRailwayDeployCommandEnv({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_TOKEN: 'railway-project-token',
 		})).toMatchObject({
-			CI: 'true',
+			CI: undefined,
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_TOKEN: 'railway-project-token',
 		});
@@ -1380,7 +1380,7 @@ services:
 		});
 	});
 
-	it('uses API auth, not project-token auth, when linking Railway CLI context', () => {
+	it('uses API auth without hosted CI mode when linking Railway CLI context', () => {
 		const env = buildRailwayLinkCommandEnv({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
@@ -1392,7 +1392,7 @@ services:
 		});
 
 		expect(env).toMatchObject({
-			CI: 'true',
+			CI: undefined,
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_PROJECT_ID: 'railway-project-1',
 			RAILWAY_ENVIRONMENT_ID: 'env-staging',

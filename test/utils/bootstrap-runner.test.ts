@@ -148,4 +148,32 @@ describe('prefixed bootstrap process output', () => {
 		expect(writes).toContainEqual({ line: '[staging][web][publish][deploy] err-a', stream: 'stderr' });
 		expect(writes).toContainEqual({ line: '[staging][web][publish][deploy] err-b', stream: 'stderr' });
 	});
+
+	it('terminates commands that exceed the configured timeout', async () => {
+		const writes: Array<{ line: string; stream?: 'stdout' | 'stderr' }> = [];
+		const result = await runPrefixedCommand('bash', [
+			'-lc',
+			'sleep 2',
+		], {
+			cwd: process.cwd(),
+			prefix: {
+				scope: 'staging',
+				system: 'web',
+				task: 'publish',
+				stage: 'deploy',
+			},
+			timeoutMs: 100,
+			write(line, stream) {
+				writes.push({ line, stream });
+			},
+		});
+
+		expect(result.status).not.toBe(0);
+		expect(result.timedOut).toBe(true);
+		expect(result.stderr).toContain('Command timed out after');
+		expect(writes).toContainEqual(expect.objectContaining({
+			line: expect.stringContaining('Command timed out after'),
+			stream: 'stderr',
+		}));
+	});
 });

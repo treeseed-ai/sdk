@@ -377,6 +377,8 @@ export function buildRailwayDeployCommandEnv(env = process.env) {
 	const merged = buildRailwayCommandEnv(env);
 	if (shouldAttachRailwayDeployLogs(merged)) {
 		merged.CI = 'true';
+	} else {
+		merged.CI = undefined;
 	}
 	return merged;
 }
@@ -1649,6 +1651,11 @@ function shouldUseVerboseRailwayDeploy(env = process.env) {
 	return shouldAttachRailwayDeployLogs(env);
 }
 
+function railwayDeployCommandTimeoutMs(env = process.env) {
+	const configured = Number.parseInt(configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_COMMAND_TIMEOUT_MS'), 10);
+	return Number.isFinite(configured) && configured > 0 ? configured : 600_000;
+}
+
 function shouldIncludeRailwayIgnoredFiles(env = process.env) {
 	const configured = configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_INCLUDE_IGNORED');
 	return configured === '1' || configured === 'true';
@@ -2475,11 +2482,15 @@ export async function deployRailwayService(
 	await timedRailwayPhase(timings, 'railway:deploy', async () => {
 		let lastFailure = null;
 		for (let attempt = 1; attempt <= 5; attempt += 1) {
+			if (write && attempt === 1) {
+				write(`[${taskPrefix.scope}][${taskPrefix.system}][${taskPrefix.task}][deploy] $ railway ${plan.args.join(' ')}`, 'stdout');
+			}
 			const result = await runPrefixedCommand(railway.command, [...railway.argsPrefix, ...plan.args], {
 				cwd: plan.cwd,
 				env: railwayDeployEnv,
 				write,
 				prefix: taskPrefix,
+				timeoutMs: railwayDeployCommandTimeoutMs(commandEnv),
 			});
 			if (result.status === 0) {
 				lastFailure = null;
