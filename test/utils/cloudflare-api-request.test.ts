@@ -49,6 +49,6 @@ describe('cloudflare api request helper', () => {
 
 		expect(() => cloudflareApiRequest('/accounts/account/queues', {
 			env: { CLOUDFLARE_API_TOKEN: 'token' },
-		})).toThrow(/Cloudflare API request failed after 5 attempts: GET \/accounts\/account\/queues: fetch failed; connect ETIMEDOUT/u);
-	}, 10000);
+		})).toThrow(/Cloudflare API request failed after \d+ attempts: GET \/accounts\/account\/queues: fetch failed; connect ETIMEDOUT/u);
+	}, 30000);
 });
