@@ -2031,6 +2031,8 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 				TREESEED_PLATFORM_RUNNER_DATA_DIR: service.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH,
 				TREESEED_PLATFORM_RUNNER_ENVIRONMENT: normalizeScope(service.scope) === 'prod' ? 'production' : normalizeScope(service.scope),
 				TREESEED_MARKET_ID: normalizeScope(service.scope),
+				...(configuredEnvValue(env, 'RAILWAY_API_TOKEN') ? { RAILWAY_API_TOKEN: configuredEnvValue(env, 'RAILWAY_API_TOKEN') } : {}),
+				...(configuredEnvValue(env, 'TREESEED_RAILWAY_WORKSPACE') ? { TREESEED_RAILWAY_WORKSPACE: configuredEnvValue(env, 'TREESEED_RAILWAY_WORKSPACE') } : {}),
 				...(configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET') ? { TREESEED_PLATFORM_RUNNER_SECRET: configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET') } : {}),
 				...(configuredEnvValue(env, 'TREESEED_MARKET_API_BASE_URL') || configuredEnvValue(env, 'TREESEED_MARKET_URL') ? {
 					TREESEED_MARKET_API_BASE_URL: configuredEnvValue(env, 'TREESEED_MARKET_API_BASE_URL') || configuredEnvValue(env, 'TREESEED_MARKET_URL'),
