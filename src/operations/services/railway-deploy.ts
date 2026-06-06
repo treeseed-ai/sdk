@@ -1677,6 +1677,9 @@ function railwayPhaseTimeoutMs(env = process.env, phase = 'default') {
 	if (Number.isFinite(defaultConfigured) && defaultConfigured > 0) {
 		return defaultConfigured;
 	}
+	if (phase === 'sync_runtime_config') {
+		return 600_000;
+	}
 	return phase === 'deploy' ? 300_000 : 180_000;
 }
 
@@ -1990,7 +1993,12 @@ async function resolveRailwayDeployProjectContext(service, { env = process.env }
 	};
 }
 
-async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, service, { env = process.env } = {}) {
+async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, service, { env = process.env, writePhase = null } = {}) {
+	const writeSyncPhase = (stage, message) => {
+		if (typeof writePhase === 'function') {
+			writePhase(`sync-runtime-config:${stage}`, message);
+		}
+	};
 	const wantsInstanceConfig = service.buildCommand
 		|| service.startCommand
 		|| service.rootDir
@@ -2003,12 +2011,15 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		|| service.runtimeMode;
 	const wantsRunnerVolume = service.key === 'workerRunner' || Boolean(service.volumeMountPath);
 	if (!wantsInstanceConfig && !wantsRunnerVolume) {
+		writeSyncPhase('skip', 'No runtime configuration changes requested.');
 		return null;
 	}
 
+	writeSyncPhase('workspace', 'Resolving Railway workspace.');
 	const workspace = await resolveRailwayWorkspaceContext({ env });
 	let project = null;
 	if (service.projectId) {
+		writeSyncPhase('project', `Resolving Railway project ${service.projectName ?? service.projectId}.`);
 		project = await ensureRailwayProject({
 			projectId: service.projectId,
 			projectName: service.projectName,
@@ -2017,9 +2028,11 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			workspace: workspace.id,
 		}).then((result) => result.project);
 	} else {
+		writeSyncPhase('project', `Looking up Railway project ${service.projectName}.`);
 		const projects = await listRailwayProjects({ env, workspaceId: workspace.id });
 		project = projects.find((entry) => entry.name === service.projectName) ?? null;
 		if (!project) {
+			writeSyncPhase('project', `Creating Railway project ${service.projectName}.`);
 			project = await ensureRailwayProject({
 				projectName: service.projectName,
 				defaultEnvironmentName: service.railwayEnvironment,
@@ -2032,6 +2045,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 	const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment);
 	let environment = project.environments.find((entry) => entry.name === environmentName || entry.id === environmentName) ?? null;
 	if (!environment) {
+		writeSyncPhase('environment', `Creating Railway environment ${environmentName}.`);
 		environment = await ensureRailwayEnvironment({
 			projectId: project.id,
 			environmentName,
@@ -2041,6 +2055,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 
 	let railwayService = project.services.find((entry) => entry.id === service.serviceId || entry.name === service.serviceName) ?? null;
 	if (!railwayService) {
+		writeSyncPhase('service', `Creating Railway service ${service.serviceName ?? service.key}.`);
 		railwayService = await ensureRailwayService({
 			projectId: project.id,
 			serviceId: service.serviceId,
@@ -2049,6 +2064,9 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		}).then((result) => result.service);
 	}
 
+	if (wantsInstanceConfig) {
+		writeSyncPhase('instance', 'Ensuring Railway service instance configuration.');
+	}
 	const runtimeConfiguration = wantsInstanceConfig
 		? await ensureRailwayServiceInstanceConfiguration({
 			serviceId: railwayService.id,
@@ -2065,6 +2083,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			env,
 		})
 		: null;
+	writeSyncPhase('variables', 'Upserting Railway runtime variables.');
 	await upsertRailwayVariables({
 		projectId: project.id,
 		environmentId: environment.id,
@@ -2089,6 +2108,9 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		env,
 	});
 	const volumeMountPath = service.volumeMountPath ?? service.runnerPool?.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH;
+	if (wantsRunnerVolume) {
+		writeSyncPhase('volume', `Ensuring Railway volume mounted at ${volumeMountPath}.`);
+	}
 	const volumeConfiguration = wantsRunnerVolume
 		? await ensureRailwayServiceVolumeWithCliFallback({
 			tenantRoot,
@@ -2107,6 +2129,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		: null;
 	if (wantsRunnerVolume) {
 		if (service.key === 'workerRunner') {
+			writeSyncPhase('volume-vars', 'Upserting Railway worker volume variables.');
 			await upsertRailwayVariables({
 				projectId: project.id,
 				environmentId: environment.id,
@@ -2122,6 +2145,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			});
 		}
 	}
+	writeSyncPhase('done', 'Runtime configuration is synchronized.');
 	return {
 		projectId: project.id,
 		projectName: project.name ?? service.projectName ?? null,
@@ -2449,7 +2473,7 @@ export async function deployRailwayService(
 	writePhase('resolve-context', `Resolved Railway service ${deployService.serviceName ?? deployService.serviceId ?? deployService.key}.`);
 	writePhase('sync-runtime-config', 'Syncing Railway runtime configuration.');
 	const runtimeConfiguration = await timedRailwayPhase(timings, 'railway:sync-runtime-config', () => withRailwayPhaseTimeout(
-		() => syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, { env: commandEnv }),
+		() => syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, { env: commandEnv, writePhase }),
 		railwayPhaseTimeoutMs(commandEnv, 'sync_runtime_config'),
 		`Railway runtime configuration sync timed out for ${deployService.serviceName ?? deployService.key}.`,
 	), { service: deployService.key });
