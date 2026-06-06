@@ -61,18 +61,18 @@ const sdk = AgentSdk.createLocal({
 });
 ```
 
-## TreeDB Content Repository
+## TreeDX Content Repository
 
-TreeDB is the default adapter for the TreeSeed project content repository when
-TreeDB service configuration is available. The SDK configures the TreeDB
+TreeDX is the default adapter for the TreeSeed project content repository when
+TreeDX service configuration is available. The SDK configures the TreeDX
 portfolio, not a single repository id; repository ids are discovered internally
-when repo-scoped TreeDB endpoints require them.
+when repo-scoped TreeDX endpoints require them.
 
 Project site code and optional project repositories remain local filesystem/git
 workspace concerns by default. Use `contentRepository: { adapter: 'local' }` or
 `AgentSdk.createLocal()` for explicit local content behavior.
 
-See [TreeDB Content Repository](./docs/treedb-content-repository.md).
+See [TreeDX Content Repository](./docs/treedx-content-repository.md).
 
 ## Preferred Graph Workflow
 
@@ -116,44 +116,44 @@ ctx <target>
 
 The old `key=value` graph DSL is no longer supported.
 
-## TreeDB Remote Repository Mode
+## TreeDX Remote Repository Mode
 
-TreeDB support is opt-in. Local SDK behavior remains the default.
+TreeDX support is opt-in. Local SDK behavior remains the default.
 
-Use the low-level TreeDB client when you want direct repository, workspace, query, graph, registry, or context calls:
+Use the low-level TreeDX client when you want direct repository, workspace, query, graph, registry, or context calls:
 
 ```ts
-import { TreeDbClient } from '@treeseed/sdk/treedb';
+import { TreeDxClient } from '@treeseed/sdk/treedx';
 
-const treeDb = new TreeDbClient({
+const treeDx = new TreeDxClient({
   baseUrl: 'http://localhost:4000',
-  token: process.env.TREEDB_TOKEN,
+  token: process.env.TREEDX_TOKEN,
   repoId: 'repo_123',
 });
 
-const whoami = await treeDb.whoami();
-const file = await treeDb.readRepositoryFile({
+const whoami = await treeDx.whoami();
+const file = await treeDx.readRepositoryFile({
   path: 'docs/readme.md',
   parseFrontmatter: true,
 });
 ```
 
-`AgentSdk` can delegate content-backed model and graph calls to TreeDB when configured explicitly:
+`AgentSdk` can delegate content-backed model and graph calls to TreeDX when configured explicitly:
 
 ```ts
-import { AgentSdk, TreeDbClient } from '@treeseed/sdk';
+import { AgentSdk, TreeDxClient } from '@treeseed/sdk';
 
-const treeDb = new TreeDbClient({
+const treeDx = new TreeDxClient({
   baseUrl: 'http://localhost:4000',
-  token: process.env.TREEDB_TOKEN,
+  token: process.env.TREEDX_TOKEN,
   repoId: 'repo_123',
 });
 
 const sdk = new AgentSdk({
   repoRoot: process.cwd(),
-  treeDb: {
+  treeDx: {
     enabled: true,
-    client: treeDb,
+    client: treeDx,
     repoId: 'repo_123',
     defaultRef: 'refs/heads/main',
   },
@@ -165,15 +165,15 @@ const docs = await sdk.search({
 });
 ```
 
-TreeDB mode keeps TreeSeed model semantics in the SDK model registry. TreeDB receives generic repository/ref/path/frontmatter/body/query requests and returns generic repository/file/query/graph results.
+TreeDX mode keeps TreeSeed model semantics in the SDK model registry. TreeDX receives generic repository/ref/path/frontmatter/body/query requests and returns generic repository/file/query/graph results.
 
-TreeDB auth, policy, audit, and federation helpers are available on the same client:
+TreeDX auth, policy, audit, and federation helpers are available on the same client:
 
 ```ts
-const mode = await treeDb.authMode();
-const scope = await treeDb.effectiveScope({ repoId: 'repo_123' });
+const mode = await treeDx.authMode();
+const scope = await treeDx.effectiveScope({ repoId: 'repo_123' });
 
-await treeDb.putCapabilityGrant({
+await treeDx.putCapabilityGrant({
   actorId: 'actor_agent',
   tenantId: 'tenant_demo',
   repoIds: ['repo_123'],
@@ -182,19 +182,19 @@ await treeDb.putCapabilityGrant({
   paths: ['docs/**'],
 });
 
-const audit = await treeDb.listAuditEvents({
+const audit = await treeDx.listAuditEvents({
   repoId: 'repo_123',
   eventType: 'repo.query_executed',
   limit: 25,
 });
 
-const plan = await treeDb.planFederatedQuery({
+const plan = await treeDx.planFederatedQuery({
   repoIds: ['repo_123'],
   capabilities: ['files:search'],
   paths: { repo_123: ['docs/**'] },
 });
 
-const search = await treeDb.federatedSearch({
+const search = await treeDx.federatedSearch({
   repoIds: ['repo_123'],
   refs: { repo_123: 'refs/heads/main' },
   paths: { repo_123: ['docs/**'] },
@@ -203,58 +203,58 @@ const search = await treeDb.federatedSearch({
 });
 ```
 
-Federation planning performs scope reduction before execution. The SDK delegates global execution to TreeDB instead of fanning out across every node and filtering locally.
+Federation planning performs scope reduction before execution. The SDK delegates global execution to TreeDX instead of fanning out across every node and filtering locally.
 
-Snapshot, artifact, mirror sync, and migration helpers are also available on `TreeDbClient`:
+Snapshot, artifact, mirror sync, and migration helpers are also available on `TreeDxClient`:
 
 ```ts
-const snapshot = await treeDb.buildSnapshot({
+const snapshot = await treeDx.buildSnapshot({
   ref: 'refs/heads/main',
   kind: 'repository_snapshot',
   paths: ['docs/**'],
   includeGraph: true,
 });
 
-const artifact = await treeDb.exportArtifact({
+const artifact = await treeDx.exportArtifact({
   snapshotId: snapshot.snapshotId,
 });
 
-const download = await treeDb.downloadArtifact({
+const download = await treeDx.downloadArtifact({
   snapshotId: snapshot.snapshotId,
 });
 
-await treeDb.syncMirror({
+await treeDx.syncMirror({
   mirrorId: 'mirror_123',
   remoteName: 'origin',
 });
 
-await treeDb.createMigration({
+await treeDx.createMigration({
   targetNodeId: 'node_mirror',
   mode: 'primary_transfer',
   dryRun: true,
   requireMirrorSynced: false,
 });
 
-await treeDb.ready();
-await treeDb.deepHealth();
-await treeDb.metrics();
+await treeDx.ready();
+await treeDx.deepHealth();
+await treeDx.metrics();
 ```
 
-`downloadArtifact()` returns an `ArrayBuffer` plus content type, filename, checksum, and snapshot headers. These APIs are generic TreeDB repository operations; TreeSeed package or release semantics are not encoded in TreeDB.
+`downloadArtifact()` returns an `ArrayBuffer` plus content type, filename, checksum, and snapshot headers. These APIs are generic TreeDX repository operations; TreeSeed package or release semantics are not encoded in TreeDX.
 
-Mocked end-to-end TreeDB contract tests prove the SDK can drive the TreeDB repository loop without an agent-side clone when `contentPathMap` is supplied:
+Mocked end-to-end TreeDX contract tests prove the SDK can drive the TreeDX repository loop without an agent-side clone when `contentPathMap` is supplied:
 
 ```bash
-npx vitest run --config ./vitest.config.ts test/utils/treedb-e2e-contract.test.ts
+npx vitest run --config ./vitest.config.ts test/utils/treedx-e2e-contract.test.ts
 ```
 
 The optional live contract command reports `not configured` and exits
 successfully unless all of these are set:
 
 ```text
-TREEDB_LIVE_URL
-TREEDB_LIVE_TOKEN
-TREEDB_LIVE_REPO_ID
+TREEDX_LIVE_URL
+TREEDX_LIVE_TOKEN
+TREEDX_LIVE_REPO_ID
 ```
 
 ## Capacity Scheduling Contracts

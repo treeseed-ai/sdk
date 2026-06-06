@@ -1,4 +1,4 @@
-name: TreeDB Release Gate
+name: TreeDX Release Gate
 
 on:
   pull_request:
@@ -10,18 +10,18 @@ jobs:
   release-gate:
     runs-on: ubuntu-latest
     env:
-      CARGO_TARGET_DIR: /tmp/treedb-target
-      RUSTLER_TARGET_DIR: /tmp/treedb-target
+      CARGO_TARGET_DIR: /tmp/treedx-target
+      RUSTLER_TARGET_DIR: /tmp/treedx-target
       MIX_ENV: test
-      TREEDB_LIVE_URL: ${{ secrets.TREEDB_LIVE_URL }}
-      TREEDB_LIVE_TOKEN: ${{ secrets.TREEDB_LIVE_TOKEN }}
-      TREEDB_LIVE_REPO_ID: ${{ secrets.TREEDB_LIVE_REPO_ID }}
-      TREEDB_LIVE_NODE_A_URL: ${{ secrets.TREEDB_LIVE_NODE_A_URL }}
-      TREEDB_LIVE_NODE_A_TOKEN: ${{ secrets.TREEDB_LIVE_NODE_A_TOKEN }}
-      TREEDB_LIVE_NODE_A_REPO_ID: ${{ secrets.TREEDB_LIVE_NODE_A_REPO_ID }}
-      TREEDB_LIVE_NODE_B_URL: ${{ secrets.TREEDB_LIVE_NODE_B_URL }}
-      TREEDB_LIVE_NODE_B_TOKEN: ${{ secrets.TREEDB_LIVE_NODE_B_TOKEN }}
-      TREEDB_LIVE_NODE_B_REPO_ID: ${{ secrets.TREEDB_LIVE_NODE_B_REPO_ID }}
+      TREEDX_LIVE_URL: ${{ secrets.TREEDX_LIVE_URL }}
+      TREEDX_LIVE_TOKEN: ${{ secrets.TREEDX_LIVE_TOKEN }}
+      TREEDX_LIVE_REPO_ID: ${{ secrets.TREEDX_LIVE_REPO_ID }}
+      TREEDX_LIVE_NODE_A_URL: ${{ secrets.TREEDX_LIVE_NODE_A_URL }}
+      TREEDX_LIVE_NODE_A_TOKEN: ${{ secrets.TREEDX_LIVE_NODE_A_TOKEN }}
+      TREEDX_LIVE_NODE_A_REPO_ID: ${{ secrets.TREEDX_LIVE_NODE_A_REPO_ID }}
+      TREEDX_LIVE_NODE_B_URL: ${{ secrets.TREEDX_LIVE_NODE_B_URL }}
+      TREEDX_LIVE_NODE_B_TOKEN: ${{ secrets.TREEDX_LIVE_NODE_B_TOKEN }}
+      TREEDX_LIVE_NODE_B_REPO_ID: ${{ secrets.TREEDX_LIVE_NODE_B_REPO_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,7 +42,7 @@ jobs:
             echo "sdk-dir=." >> "$GITHUB_OUTPUT"
             echo "sdk-lock=package-lock.json" >> "$GITHUB_OUTPUT"
           else
-            echo "Unable to find TreeDB monorepo or SDK package layout." >&2
+            echo "Unable to find TreeDX monorepo or SDK package layout." >&2
             exit 1
           fi
 
@@ -54,8 +54,8 @@ jobs:
         if: steps.layout.outputs.monorepo == 'true'
         uses: actions/cache@v4
         with:
-          path: /tmp/treedb-target
-          key: ${{ runner.os }}-treedb-rust-${{ hashFiles('Cargo.lock', 'apps/api/native/**/Cargo.lock') }}
+          path: /tmp/treedx-target
+          key: ${{ runner.os }}-treedx-rust-${{ hashFiles('Cargo.lock', 'apps/api/native/**/Cargo.lock') }}
 
       - name: Setup Elixir
         if: steps.layout.outputs.monorepo == 'true'

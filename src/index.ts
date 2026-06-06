@@ -1,31 +1,31 @@
 export { AgentSdk, ScopedAgentSdk } from './sdk.ts';
 export type {
 	AgentSdkContentRepositoryOptions,
-	AgentSdkTreeDbOptions,
-	TreeSeedTreeDbContentPathRule,
-	TreeSeedTreeDbRepositoryHint,
+	AgentSdkTreeDxOptions,
+	TreeSeedTreeDxContentPathRule,
+	TreeSeedTreeDxRepositoryHint,
 } from './sdk.ts';
 export { ContentGraphRuntime } from './graph.ts';
-export * from './treedb/index.ts';
+export * from './treedx/index.ts';
 export {
-	createTreeDbClientFromAgentOptions,
+	createTreeDxClientFromAgentOptions,
 	LocalContentBackend,
 	LocalExecBackend,
 	LocalGraphBackend,
-	TreeDbApiError,
-	TreeDbContentBackend,
-	TreeDbContentRepositoryConfigError,
-	TreeDbExecBackend,
-	TreeDbGraphBackend,
-	TreeDbPortfolioResolver,
-} from './treedb-backends.ts';
+	TreeDxApiError,
+	TreeDxContentBackend,
+	TreeDxContentRepositoryConfigError,
+	TreeDxExecBackend,
+	TreeDxGraphBackend,
+	TreeDxPortfolioResolver,
+} from './treedx-backends.ts';
 export type {
 	ContentBackend,
 	ExecBackend,
 	GraphBackend,
-	ResolvedTreeDbOptions,
-	TreeDbRepositoryCandidate,
-} from './treedb-backends.ts';
+	ResolvedTreeDxOptions,
+	TreeDxRepositoryCandidate,
+} from './treedx-backends.ts';
 export {
 	TREESEED_DEFAULT_STARTER_TEMPLATE_ID,
 	TREESEED_TEMPLATE_ID_ALIASES,

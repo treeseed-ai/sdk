@@ -46,23 +46,23 @@ function makeWorkspace() {
 	return root;
 }
 
-function addTreeDbPackage(root: string) {
-	mkdirSync(resolve(root, 'packages', 'treedb', 'apps', 'api'), { recursive: true });
-	mkdirSync(resolve(root, 'packages', 'treedb', 'scripts'), { recursive: true });
-	writeFileSync(resolve(root, 'packages', 'treedb', 'apps', 'api', 'mix.exs'), `
-defmodule TreeDb.MixProject do
+function addTreeDxPackage(root: string) {
+	mkdirSync(resolve(root, 'packages', 'treedx', 'apps', 'api'), { recursive: true });
+	mkdirSync(resolve(root, 'packages', 'treedx', 'scripts'), { recursive: true });
+	writeFileSync(resolve(root, 'packages', 'treedx', 'apps', 'api', 'mix.exs'), `
+defmodule TreeDx.MixProject do
   use Mix.Project
   def project do
-    [app: :treedb, version: "0.1.0"]
+    [app: :treedx, version: "0.1.0"]
   end
 end
 `, 'utf8');
-	writeFileSync(resolve(root, 'packages', 'treedb', 'Cargo.toml'), '[workspace]\n', 'utf8');
-	writeFileSync(resolve(root, 'packages', 'treedb', 'Cargo.lock'), '# lock\n', 'utf8');
-	writeFileSync(resolve(root, 'packages', 'treedb', 'Dockerfile'), 'FROM scratch\n', 'utf8');
-	writeFileSync(resolve(root, 'packages', 'treedb', 'scripts', 'test-treedb-fast.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
-	writeFileSync(resolve(root, 'packages', 'treedb', 'scripts', 'test-all.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
-	writeFileSync(resolve(root, 'packages', 'treedb', 'scripts', 'release-gate.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', 'Cargo.toml'), '[workspace]\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', 'Cargo.lock'), '# lock\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', 'Dockerfile'), 'FROM scratch\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', 'scripts', 'test-treedx-fast.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', 'scripts', 'test-all.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', 'scripts', 'release-gate.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
 }
 
 describe('release candidate verification', () => {
@@ -108,33 +108,33 @@ describe('release candidate verification', () => {
 		expect(first.policyVersion).toBe('package-adapters-v1');
 	});
 
-	it('discovers TreeDB as a BEAM package adapter', () => {
+	it('discovers TreeDX as a BEAM package adapter', () => {
 		const root = makeWorkspace();
-		addTreeDbPackage(root);
+		addTreeDxPackage(root);
 
 		const adapters = discoverTreeseedPackageAdapters(root);
-		const treedb = adapters.find((adapter) => adapter.id === 'treedb');
+		const treedx = adapters.find((adapter) => adapter.id === 'treedx');
 
-		expect(treedb?.kind).toBe('beam-elixir-rust');
-		expect(treedb?.version).toBe('0.1.0');
-		expect(treedb?.publishTarget).toBe('treeseed/treedb');
-		expect(treedb?.verifyCommands.local?.args).toEqual(['scripts/test-all.sh']);
-		expect(treedb?.releaseChecks.some((check) => check.kind === 'docker-manifest')).toBe(true);
+		expect(treedx?.kind).toBe('beam-elixir-rust');
+		expect(treedx?.version).toBe('0.1.0');
+		expect(treedx?.publishTarget).toBe('treeseed/treedx');
+		expect(treedx?.verifyCommands.local?.args).toEqual(['scripts/test-all.sh']);
+		expect(treedx?.releaseChecks.some((check) => check.kind === 'docker-manifest')).toBe(true);
 	});
 
 	it('checks BEAM package readiness without npm pack', async () => {
 		const root = makeWorkspace();
-		addTreeDbPackage(root);
+		addTreeDxPackage(root);
 
 		const report = await runReleaseCandidateGate({
 			root,
-			selectedPackageNames: ['@treeseed/sdk', 'treedb'],
-			plannedVersions: { '@treeseed/market': '1.0.1', '@treeseed/sdk': '0.4.13', treedb: '0.1.0' },
+			selectedPackageNames: ['@treeseed/sdk', 'treedx'],
+			plannedVersions: { '@treeseed/market': '1.0.1', '@treeseed/sdk': '0.4.13', treedx: '0.1.0' },
 			allowReuse: false,
 		});
 
 		expect(report.status).toBe('passed');
-		expect(report.checks.find((check) => check.name === 'package-release-readiness')?.detail).toContain('treedb (beam-elixir-rust)');
+		expect(report.checks.find((check) => check.name === 'package-release-readiness')?.detail).toContain('treedx (beam-elixir-rust)');
 		expect(report.failures.some((failure) => failure.code === 'npm_pack_dry_run_failed')).toBe(false);
 	});
 

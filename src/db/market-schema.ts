@@ -1320,7 +1320,7 @@ export const hubContentSources = pgTable('hub_content_sources', {
 	updatedAt: text('updated_at').notNull(),
 });
 
-export const treeDbInstances = pgTable('treedb_instances', {
+export const treeDxInstances = pgTable('treedx_instances', {
 	id: text('id').primaryKey(),
 	teamId: text('team_id').notNull(),
 	kind: text('kind').notNull(),
@@ -1340,10 +1340,10 @@ export const treeDbInstances = pgTable('treedb_instances', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	index('idx_treedb_instances_team_status').on(table.teamId, table.status),
+	index('idx_treedx_instances_team_status').on(table.teamId, table.status),
 ]);
 
-export const treeDbProjectLibraries = pgTable('treedb_project_libraries', {
+export const treeDxProjectLibraries = pgTable('treedx_project_libraries', {
 	id: text('id').primaryKey(),
 	teamId: text('team_id').notNull(),
 	projectId: text('project_id').notNull(),
@@ -1361,11 +1361,11 @@ export const treeDbProjectLibraries = pgTable('treedb_project_libraries', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	uniqueIndex('idx_treedb_project_libraries_project').on(table.projectId),
-	index('idx_treedb_project_libraries_instance').on(table.instanceId),
+	uniqueIndex('idx_treedx_project_libraries_project').on(table.projectId),
+	index('idx_treedx_project_libraries_instance').on(table.instanceId),
 ]);
 
-export const treeDbMirrors = pgTable('treedb_mirrors', {
+export const treeDxMirrors = pgTable('treedx_mirrors', {
 	id: text('id').primaryKey(),
 	teamId: text('team_id').notNull(),
 	instanceId: text('instance_id').notNull(),
@@ -1382,10 +1382,10 @@ export const treeDbMirrors = pgTable('treedb_mirrors', {
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
-	index('idx_treedb_mirrors_team_instance').on(table.teamId, table.instanceId),
+	index('idx_treedx_mirrors_team_instance').on(table.teamId, table.instanceId),
 ]);
 
-export const treeDbShares = pgTable('treedb_shares', {
+export const treeDxShares = pgTable('treedx_shares', {
 	id: text('id').primaryKey(),
 	teamId: text('team_id').notNull(),
 	instanceId: text('instance_id'),
@@ -1402,10 +1402,10 @@ export const treeDbShares = pgTable('treedb_shares', {
 	updatedAt: text('updated_at').notNull(),
 	revokedAt: text('revoked_at'),
 }, (table) => [
-	index('idx_treedb_shares_team_scope').on(table.teamId, table.scope, table.status),
+	index('idx_treedx_shares_team_scope').on(table.teamId, table.scope, table.status),
 ]);
 
-export const treeDbDeployments = pgTable('treedb_deployments', {
+export const treeDxDeployments = pgTable('treedx_deployments', {
 	id: text('id').primaryKey(),
 	teamId: text('team_id').notNull(),
 	instanceId: text('instance_id'),
@@ -1420,7 +1420,7 @@ export const treeDbDeployments = pgTable('treedb_deployments', {
 	updatedAt: text('updated_at').notNull(),
 	completedAt: text('completed_at'),
 }, (table) => [
-	index('idx_treedb_deployments_team_instance').on(table.teamId, table.instanceId, table.createdAt),
+	index('idx_treedx_deployments_team_instance').on(table.teamId, table.instanceId, table.createdAt),
 ]);
 
 export const hubLaunches = pgTable('hub_launches', {
@@ -1955,11 +1955,11 @@ export const treeseedMarketSchema = {
 	repositoryHosts,
 	hubRepositories,
 	hubContentSources,
-	treeDbInstances,
-	treeDbProjectLibraries,
-	treeDbMirrors,
-	treeDbShares,
-	treeDbDeployments,
+	treeDxInstances,
+	treeDxProjectLibraries,
+	treeDxMirrors,
+	treeDxShares,
+	treeDxDeployments,
 	hubLaunches,
 	hubLaunchEvents,
 	hubWorkspaceLinks,

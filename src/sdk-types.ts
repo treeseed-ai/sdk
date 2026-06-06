@@ -69,14 +69,14 @@ export function normalizeTreeseedTemplateId(templateId: string | null | undefine
 	return (TREESEED_TEMPLATE_ID_ALIASES as Record<string, string>)[trimmed] ?? trimmed;
 }
 export const TEMPLATE_HOST_REQUIREMENT_TYPES = ['repository', 'web', 'email', 'ai', 'knowledge-library'] as const;
-export const TREE_DB_INSTANCE_KINDS = ['managed_private', 'managed_public_federation', 'self_hosted'] as const;
-export const TREE_DB_INSTANCE_STATUSES = ['pending', 'active', 'degraded', 'offline', 'disabled'] as const;
-export const TREE_DB_DEPLOYMENT_PROVIDERS = ['railway', 'self_hosted', 'public_federation'] as const;
-export const TREE_DB_MIRROR_DIRECTIONS = ['pull', 'push', 'bidirectional'] as const;
-export const TREE_DB_MIRROR_STATUSES = ['pending', 'active', 'syncing', 'degraded', 'disabled'] as const;
-export const TREE_DB_SHARE_SCOPES = ['team', 'library', 'public_federation'] as const;
-export const TREE_DB_SHARE_STATUSES = ['active', 'revoked', 'expired'] as const;
-export const PROJECT_REPOSITORY_ACCESS_MODES = ['treedb', 'filesystem'] as const;
+export const TREEDX_INSTANCE_KINDS = ['managed_private', 'managed_public_federation', 'self_hosted'] as const;
+export const TREEDX_INSTANCE_STATUSES = ['pending', 'active', 'degraded', 'offline', 'disabled'] as const;
+export const TREEDX_DEPLOYMENT_PROVIDERS = ['railway', 'self_hosted', 'public_federation'] as const;
+export const TREEDX_MIRROR_DIRECTIONS = ['pull', 'push', 'bidirectional'] as const;
+export const TREEDX_MIRROR_STATUSES = ['pending', 'active', 'syncing', 'degraded', 'disabled'] as const;
+export const TREEDX_SHARE_SCOPES = ['team', 'library', 'public_federation'] as const;
+export const TREEDX_SHARE_STATUSES = ['active', 'revoked', 'expired'] as const;
+export const PROJECT_REPOSITORY_ACCESS_MODES = ['treedx', 'filesystem'] as const;
 export const PROJECT_REPOSITORY_TOPOLOGY_PARTS = ['contentRepository', 'siteRepository', 'projectRepository'] as const;
 export const TEMPLATE_RESOURCE_REQUIREMENT_TYPES = ['service', 'database', 'object-storage', 'queue', 'dns-zone'] as const;
 export const TEMPLATE_SECRET_SENSITIVITIES = ['secret', 'plain', 'derived'] as const;
@@ -119,19 +119,19 @@ export type ProjectDeploymentEnvironment = (typeof PROJECT_DEPLOYMENT_ENVIRONMEN
 export type ProjectDeploymentStatus = (typeof PROJECT_DEPLOYMENT_STATUSES)[number];
 export type ProjectWebMonitorStatus = 'healthy' | 'degraded' | 'failed' | 'unknown';
 export type ProjectWebMonitorCheckStatus = 'passed' | 'warning' | 'failed' | 'skipped';
-export type ProjectWebMonitorCheckSource = 'market' | 'github' | 'cloudflare' | 'http' | 'sdk' | 'treedb';
+export type ProjectWebMonitorCheckSource = 'market' | 'github' | 'cloudflare' | 'http' | 'sdk' | 'treedx';
 export type ProjectInfrastructureResourceProvider = (typeof PROJECT_INFRA_RESOURCE_PROVIDERS)[number];
 export type ProjectInfrastructureResourceKind = (typeof PROJECT_INFRA_RESOURCE_KINDS)[number];
 export type AgentPoolStatus = (typeof AGENT_POOL_STATUSES)[number];
 export type RemoteJobRequestedByType = 'user' | 'team_api_key' | 'service' | 'runner' | 'system';
 export type TemplateHostRequirementType = (typeof TEMPLATE_HOST_REQUIREMENT_TYPES)[number];
-export type TreeDbInstanceKind = (typeof TREE_DB_INSTANCE_KINDS)[number];
-export type TreeDbInstanceStatus = (typeof TREE_DB_INSTANCE_STATUSES)[number];
-export type TreeDbDeploymentProvider = (typeof TREE_DB_DEPLOYMENT_PROVIDERS)[number];
-export type TreeDbMirrorDirection = (typeof TREE_DB_MIRROR_DIRECTIONS)[number];
-export type TreeDbMirrorStatus = (typeof TREE_DB_MIRROR_STATUSES)[number];
-export type TreeDbShareScope = (typeof TREE_DB_SHARE_SCOPES)[number];
-export type TreeDbShareStatus = (typeof TREE_DB_SHARE_STATUSES)[number];
+export type TreeDxInstanceKind = (typeof TREEDX_INSTANCE_KINDS)[number];
+export type TreeDxInstanceStatus = (typeof TREEDX_INSTANCE_STATUSES)[number];
+export type TreeDxDeploymentProvider = (typeof TREEDX_DEPLOYMENT_PROVIDERS)[number];
+export type TreeDxMirrorDirection = (typeof TREEDX_MIRROR_DIRECTIONS)[number];
+export type TreeDxMirrorStatus = (typeof TREEDX_MIRROR_STATUSES)[number];
+export type TreeDxShareScope = (typeof TREEDX_SHARE_SCOPES)[number];
+export type TreeDxShareStatus = (typeof TREEDX_SHARE_STATUSES)[number];
 export type ProjectRepositoryAccessMode = (typeof PROJECT_REPOSITORY_ACCESS_MODES)[number];
 export type ProjectRepositoryTopologyPart = (typeof PROJECT_REPOSITORY_TOPOLOGY_PARTS)[number];
 export type TemplateResourceRequirementType = (typeof TEMPLATE_RESOURCE_REQUIREMENT_TYPES)[number];
@@ -217,17 +217,17 @@ export interface ProjectLaunchHostBindingInput {
 	selectedBy?: 'user' | 'team-default' | 'managed-default' | 'template-default';
 }
 
-export interface TreeDbInstance {
+export interface TreeDxInstance {
 	id: string;
 	teamId: string;
-	kind: TreeDbInstanceKind;
-	provider: TreeDbDeploymentProvider | (string & {});
+	kind: TreeDxInstanceKind;
+	provider: TreeDxDeploymentProvider | (string & {});
 	name: string;
 	baseUrl?: string | null;
 	registryUrl?: string | null;
 	publicRead: boolean;
 	primary: boolean;
-	status: TreeDbInstanceStatus;
+	status: TreeDxInstanceStatus;
 	imageRef?: string | null;
 	railwayProjectId?: string | null;
 	railwayServiceId?: string | null;
@@ -238,11 +238,11 @@ export interface TreeDbInstance {
 	updatedAt?: string;
 }
 
-export interface TreeDbDeployment {
+export interface TreeDxDeployment {
 	id: string;
 	teamId: string;
 	instanceId?: string | null;
-	provider: TreeDbDeploymentProvider | (string & {});
+	provider: TreeDxDeploymentProvider | (string & {});
 	status: string;
 	imageRef?: string | null;
 	volumeMountPath?: string | null;
@@ -254,11 +254,11 @@ export interface TreeDbDeployment {
 	completedAt?: string | null;
 }
 
-export interface TreeDbDeploymentRequest {
+export interface TreeDxDeploymentRequest {
 	teamId: string;
 	instanceId?: string | null;
 	deploymentId?: string | null;
-	provider?: TreeDbDeploymentProvider | (string & {});
+	provider?: TreeDxDeploymentProvider | (string & {});
 	imageRef?: string | null;
 	volumeMountPath?: string | null;
 	publicRead?: boolean;
@@ -266,12 +266,12 @@ export interface TreeDbDeploymentRequest {
 	dryRun?: boolean;
 }
 
-export interface TreeDbDeploymentResult {
+export interface TreeDxDeploymentResult {
 	ok: boolean;
 	teamId: string;
 	instanceId: string;
 	deploymentId: string;
-	provider: TreeDbDeploymentProvider | (string & {});
+	provider: TreeDxDeploymentProvider | (string & {});
 	status: string;
 	baseUrl?: string | null;
 	imageRef?: string | null;
@@ -281,15 +281,15 @@ export interface TreeDbDeploymentResult {
 	error?: Record<string, unknown> | null;
 }
 
-export interface TreeDbMirror {
+export interface TreeDxMirror {
 	id: string;
 	teamId: string;
 	instanceId: string;
 	name: string;
-	direction: TreeDbMirrorDirection;
+	direction: TreeDxMirrorDirection;
 	targetKind: string;
 	targetUrl?: string | null;
-	status: TreeDbMirrorStatus;
+	status: TreeDxMirrorStatus;
 	instructions?: string | null;
 	lastSyncAt?: string | null;
 	lastSyncStatus?: string | null;
@@ -299,17 +299,17 @@ export interface TreeDbMirror {
 	updatedAt?: string;
 }
 
-export interface TreeDbShareLink {
+export interface TreeDxShareLink {
 	id: string;
 	teamId: string;
 	instanceId?: string | null;
 	projectId?: string | null;
 	libraryId?: string | null;
-	scope: TreeDbShareScope;
+	scope: TreeDxShareScope;
 	targetTeamId?: string | null;
 	trustGrant?: Record<string, unknown>;
 	publicRead: boolean;
-	status: TreeDbShareStatus;
+	status: TreeDxShareStatus;
 	expiresAt?: string | null;
 	metadata?: Record<string, unknown>;
 	createdAt?: string;
@@ -317,7 +317,7 @@ export interface TreeDbShareLink {
 	revokedAt?: string | null;
 }
 
-export interface TreeDbProjectLibraryBinding {
+export interface TreeDxProjectLibraryBinding {
 	id: string;
 	teamId: string;
 	projectId: string;
@@ -336,12 +336,12 @@ export interface TreeDbProjectLibraryBinding {
 }
 
 export interface ProjectContentRepositoryTopology {
-	accessMode: 'treedb';
+	accessMode: 'treedx';
 	githubUrl?: string | null;
 	defaultBranch?: string | null;
 	ref?: string | null;
 	contentPath: string;
-	treeDb: {
+	treeDx: {
 		instanceId: string;
 		libraryId: string;
 		repositoryId?: string | null;

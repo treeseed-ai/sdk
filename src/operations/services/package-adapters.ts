@@ -146,13 +146,13 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 	const versionSource = resolve(dir, versionSourceRel);
 	const image = typeof manifest?.image === 'string' && manifest.image.trim()
 		? manifest.image.trim()
-		: id === 'treedb'
-			? 'treeseed/treedb'
+		: id === 'treedx'
+			? 'treeseed/treedx'
 			: null;
 	const verify = manifest?.verify && typeof manifest.verify === 'object' && !Array.isArray(manifest.verify)
 		? manifest.verify as Record<string, unknown>
 		: {};
-	const fast = verify.fast ?? (existsSync(resolve(dir, 'scripts/test-treedb-fast.sh')) ? 'scripts/test-treedb-fast.sh' : null);
+	const fast = verify.fast ?? (existsSync(resolve(dir, 'scripts/test-treedx-fast.sh')) ? 'scripts/test-treedx-fast.sh' : null);
 	const local = verify.local ?? (existsSync(resolve(dir, 'scripts/test-all.sh')) ? 'scripts/test-all.sh' : null);
 	const releaseGate = manifest?.releaseGate ?? verify.release ?? (existsSync(resolve(dir, 'scripts/release-gate.sh')) ? 'scripts/release-gate.sh' : null);
 	const version = readMixProjectVersion(versionSource);
@@ -192,7 +192,7 @@ export function discoverTreeseedPackageAdapters(root = workspaceRoot()): Treesee
 		}
 	}
 	const packagesDir = resolve(root, 'packages');
-	for (const name of ['treedb']) {
+	for (const name of ['treedx']) {
 		const dir = resolve(packagesDir, name);
 		if (!existsSync(dir)) continue;
 		const adapter = beamPackageAdapter(root, dir);

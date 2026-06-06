@@ -83,15 +83,15 @@ function workflowRunCheck(input: {
 	latestWorkflowRun?: GitHubWorkflowRunSummary | null;
 	repository: string | null;
 	workflowFile: string;
-	treeDbPublish?: boolean;
+	treeDxPublish?: boolean;
 }) {
-	if (input.treeDbPublish) {
+	if (input.treeDxPublish) {
 		return check({
 			key: 'latest_workflow',
 			label: 'Latest workflow',
 			status: 'skipped',
-			source: 'treedb',
-			summary: 'TreeDB content publish does not dispatch a GitHub Actions workflow.',
+			source: 'treedx',
+			summary: 'TreeDX content publish does not dispatch a GitHub Actions workflow.',
 		});
 	}
 	const run = input.workflowResult?.runId ? input.workflowResult : input.latestWorkflowRun;
@@ -134,15 +134,15 @@ async function workflowFileCheck(input: {
 	githubClient?: GitHubApiClient | null;
 	mockExternal?: boolean;
 	dryRun?: boolean;
-	treeDbPublish?: boolean;
+	treeDxPublish?: boolean;
 }) {
-	if (input.treeDbPublish) {
+	if (input.treeDxPublish) {
 		return check({
 			key: 'workflow_file',
 			label: 'Workflow file',
 			status: 'skipped',
-			source: 'treedb',
-			summary: 'TreeDB content publish uses the Market operations runner and Cloudflare R2 directly.',
+			source: 'treedx',
+			summary: 'TreeDX content publish uses the Market operations runner and Cloudflare R2 directly.',
 		});
 	}
 	if (!input.repository) {
@@ -267,7 +267,7 @@ export async function buildProjectWebMonitorResult(input: {
 	const workflowFile = text(input.workflowFile ?? input.repository?.workflowFile, 'deploy-web.yml');
 	const target = objectValue(input.target);
 	const contentPublish = objectValue(target.contentPublish);
-	const treeDbPublish = input.action === 'publish_content' && contentPublish.provider === 'treedb';
+	const treeDxPublish = input.action === 'publish_content' && contentPublish.provider === 'treedx';
 	const targetUrl = externalUrl(target.url, target.baseUrl, target.previewUrl, target.lastDeploymentUrl);
 	const latestWorkflowRun = !input.workflowResult && repository && input.githubClient
 		? await getLatestGitHubWorkflowRun(repository, {
@@ -282,7 +282,7 @@ export async function buildProjectWebMonitorResult(input: {
 			latestWorkflowRun,
 			repository,
 			workflowFile,
-			treeDbPublish,
+			treeDxPublish,
 		}),
 		await workflowFileCheck({
 			repository,
@@ -290,7 +290,7 @@ export async function buildProjectWebMonitorResult(input: {
 			githubClient: input.githubClient,
 			mockExternal: input.mockExternal,
 			dryRun: input.dryRun,
-			treeDbPublish,
+			treeDxPublish,
 		}),
 		check({
 			key: 'web_host',
@@ -317,9 +317,9 @@ export async function buildProjectWebMonitorResult(input: {
 			key: 'content_publish',
 			label: 'Content publish',
 			status: input.action === 'publish_content' ? 'passed' : 'skipped',
-			source: treeDbPublish ? 'treedb' : 'sdk',
-			summary: treeDbPublish
-				? 'TreeDB content snapshot was published without GitHub Actions.'
+			source: treeDxPublish ? 'treedx' : 'sdk',
+			summary: treeDxPublish
+				? 'TreeDX content snapshot was published without GitHub Actions.'
 				: input.action === 'publish_content' ? 'Content publish workflow completed.' : 'Content publish was not part of this action.',
 		}),
 		check({

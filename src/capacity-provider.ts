@@ -606,8 +606,8 @@ export function assertCapacityProviderPortfolioManifest(value: unknown): asserts
 			if (!isRecord(project.repositoryTopology.contentRepository)) {
 				throw new Error(`Capacity provider portfolio project ${index} repositoryTopology is missing contentRepository.`);
 			}
-			if (project.repositoryTopology.contentRepository.accessMode !== 'treedb') {
-				throw new Error(`Capacity provider portfolio project ${index} contentRepository must use treedb access.`);
+			if (project.repositoryTopology.contentRepository.accessMode !== 'treedx') {
+				throw new Error(`Capacity provider portfolio project ${index} contentRepository must use treedx access.`);
 			}
 			if (!isRecord(project.repositoryTopology.siteRepository)) {
 				throw new Error(`Capacity provider portfolio project ${index} repositoryTopology is missing siteRepository.`);
