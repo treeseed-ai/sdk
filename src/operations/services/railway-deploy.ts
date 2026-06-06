@@ -1668,6 +1668,34 @@ function railwayDeployCommandTimeoutMs(env = process.env) {
 	return Number.isFinite(configured) && configured > 0 ? configured : 600_000;
 }
 
+function railwayPhaseTimeoutMs(env = process.env, phase = 'default') {
+	const configured = Number.parseInt(configuredEnvValue(env, `TREESEED_RAILWAY_${String(phase).toUpperCase().replace(/[^A-Z0-9]+/gu, '_')}_TIMEOUT_MS`), 10);
+	if (Number.isFinite(configured) && configured > 0) {
+		return configured;
+	}
+	const defaultConfigured = Number.parseInt(configuredEnvValue(env, 'TREESEED_RAILWAY_PHASE_TIMEOUT_MS'), 10);
+	if (Number.isFinite(defaultConfigured) && defaultConfigured > 0) {
+		return defaultConfigured;
+	}
+	return phase === 'deploy' ? 900_000 : 180_000;
+}
+
+async function withRailwayPhaseTimeout(run, timeoutMs, message) {
+	let timer: NodeJS.Timeout | null = null;
+	try {
+		return await Promise.race([
+			Promise.resolve().then(run),
+			new Promise((_, reject) => {
+				timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+			}),
+		]);
+	} finally {
+		if (timer) {
+			clearTimeout(timer);
+		}
+	}
+}
+
 function shouldIncludeRailwayIgnoredFiles(env = process.env) {
 	const configured = configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_INCLUDE_IGNORED');
 	return configured === '1' || configured === 'true';
@@ -2420,9 +2448,11 @@ export async function deployRailwayService(
 	};
 	writePhase('resolve-context', `Resolved Railway service ${deployService.serviceName ?? deployService.serviceId ?? deployService.key}.`);
 	writePhase('sync-runtime-config', 'Syncing Railway runtime configuration.');
-	const runtimeConfiguration = await timedRailwayPhase(timings, 'railway:sync-runtime-config', () => syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, {
-		env: commandEnv,
-	}), { service: deployService.key });
+	const runtimeConfiguration = await timedRailwayPhase(timings, 'railway:sync-runtime-config', () => withRailwayPhaseTimeout(
+		() => syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, { env: commandEnv }),
+		railwayPhaseTimeoutMs(commandEnv, 'sync_runtime_config'),
+		`Railway runtime configuration sync timed out for ${deployService.serviceName ?? deployService.key}.`,
+	), { service: deployService.key });
 	const cliDeployService = {
 		...deployService,
 		projectId: runtimeConfiguration?.projectId ?? deployService.projectId,
@@ -2433,7 +2463,11 @@ export async function deployRailwayService(
 		railwayEnvironment: runtimeConfiguration?.environmentName ?? runtimeConfiguration?.environmentId ?? deployService.railwayEnvironment,
 	};
 	writePhase('device-login-vars', 'Syncing Railway device-login variables.');
-	await timedRailwayPhase(timings, 'railway:device-login-vars', () => syncRailwayApiDeviceLoginVariables(cliDeployService, commandEnv, write, taskPrefix), {
+	await timedRailwayPhase(timings, 'railway:device-login-vars', () => withRailwayPhaseTimeout(
+		() => syncRailwayApiDeviceLoginVariables(cliDeployService, commandEnv, write, taskPrefix),
+		railwayPhaseTimeoutMs(commandEnv, 'device_login_vars'),
+		`Railway device-login variable sync timed out for ${cliDeployService.serviceName ?? cliDeployService.key}.`,
+	), {
 		service: cliDeployService.key,
 	});
 	railwayDeployEnv = buildRailwayCliContextEnv(railwayDeployEnv, cliDeployService);
@@ -2443,7 +2477,7 @@ export async function deployRailwayService(
 		railwayDeployEnv = { ...railwayDeployEnv, RAILWAY_API_TOKEN: undefined };
 	}
 	writePhase('project-token', usesProjectToken || hasCommandApiToken ? 'Using configured Railway authentication.' : 'Creating Railway project token.');
-	await timedRailwayPhase(timings, 'railway:project-token', async () => {
+	await timedRailwayPhase(timings, 'railway:project-token', () => withRailwayPhaseTimeout(async () => {
 		if (usesProjectToken || hasCommandApiToken) {
 			return null;
 		}
@@ -2455,7 +2489,7 @@ export async function deployRailwayService(
 			throw new Error(`Railway CI deploy requires a project token for ${cliDeployService.serviceName ?? cliDeployService.key}. Automatic project token creation did not return a token.`);
 		}
 		return null;
-	}, { service: cliDeployService.key });
+	}, railwayPhaseTimeoutMs(commandEnv, 'project_token'), `Railway project-token phase timed out for ${cliDeployService.serviceName ?? cliDeployService.key}.`), { service: cliDeployService.key });
 	const linkPlan = planRailwayServiceLink(cliDeployService, { env: commandEnv });
 	const plan = planRailwayServiceDeploy(cliDeployService, { env, projectTokenMode: usesProjectToken });
 	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
@@ -2483,7 +2517,7 @@ export async function deployRailwayService(
 		? buildRailwayLinkCommandEnv(commandEnv, cliDeployService)
 		: railwayDeployEnv;
 	writePhase('link', `Linking Railway project context for ${cliDeployService.serviceName ?? cliDeployService.serviceId ?? cliDeployService.key}.`);
-	await timedRailwayPhase(timings, 'railway:link', async () => {
+	await timedRailwayPhase(timings, 'railway:link', () => withRailwayPhaseTimeout(async () => {
 		if (cliConfig) {
 			write ? write(`[${taskPrefix.scope}][${taskPrefix.system}][${taskPrefix.task}][link] Wrote Railway CLI project context for ${cliConfig.projectPath}.`, 'stdout') : null;
 			return;
@@ -2497,9 +2531,9 @@ export async function deployRailwayService(
 		if (linkResult.status !== 0) {
 			throw new Error(linkResult.stderr?.trim() || linkResult.stdout?.trim() || `railway ${effectiveLinkPlan.args.join(' ')} failed with exit code ${linkResult.status ?? 'unknown'} in ${effectiveLinkPlan.cwd}`);
 		}
-	}, { service: cliDeployService.key });
+	}, railwayPhaseTimeoutMs(commandEnv, 'link'), `Railway link phase timed out for ${cliDeployService.serviceName ?? cliDeployService.key}.`), { service: cliDeployService.key });
 
-	await timedRailwayPhase(timings, 'railway:deploy', async () => {
+	await timedRailwayPhase(timings, 'railway:deploy', () => withRailwayPhaseTimeout(async () => {
 		let lastFailure = null;
 		for (let attempt = 1; attempt <= 5; attempt += 1) {
 			if (write && attempt === 1) {
@@ -2528,7 +2562,7 @@ export async function deployRailwayService(
 		if (lastFailure) {
 			throw new Error(lastFailure.stderr?.trim() || lastFailure.stdout?.trim() || `railway ${plan.args.join(' ')} failed`);
 		}
-	}, { service: cliDeployService.key });
+	}, railwayPhaseTimeoutMs(commandEnv, 'deploy'), `Railway deploy phase timed out for ${cliDeployService.serviceName ?? cliDeployService.key}.`), { service: cliDeployService.key });
 	return {
 		service: deployService.key,
 		status: 'deployed',
