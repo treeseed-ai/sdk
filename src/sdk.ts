@@ -5,19 +5,39 @@ import { ContentStore } from './content-store.ts';
 import { CloudflareD1AgentDatabase, MemoryAgentDatabase, type AgentDatabase } from './d1-store.ts';
 import { ContentGraphRuntime } from './graph.ts';
 import {
-	createTreeDbClientFromAgentOptions,
 	LocalContentBackend,
 	LocalGraphBackend,
-	MissingTreeDbContentBackend,
-	resolveTreeDbOptions,
-	TreeDbContentBackend,
-	TreeDbGraphBackend,
-	TreeDbPortfolioResolver,
 	type AgentSdkContentRepositoryOptions,
-	type AgentSdkTreeDbOptions,
 	type ContentBackend,
 	type GraphBackend,
 } from './treedb-backends.ts';
+import {
+	resolveAgentTreeDbIntegration,
+	type AgentSdkTreeDbIntegration,
+	type AgentSdkTreeDbOptions,
+} from './treedb/sdk-integration.ts';
+import {
+	LocalGraphPort,
+	LocalRepositoryPort,
+	LocalRepositoryQueryPort,
+	TreeDbArtifactPort,
+	TreeDbExecPort,
+	TreeDbFederatedPort,
+	TreeDbGraphAdapter,
+	TreeDbGraphPort,
+	TreeDbQueryAdapter,
+	TreeDbRegistryPort,
+	TreeDbRepositoryAdapter,
+	TreeDbRepositoryPort,
+	TreeDbRepositoryQueryPort,
+	type ArtifactPort,
+	type ExecPort,
+	type FederatedPort,
+	type GraphPort,
+	type RegistryPort,
+	type RepositoryPort,
+	type RepositoryQueryPort,
+} from './treedb/index.ts';
 import { loadTreeseedPlugins, type LoadedTreeseedPluginEntry } from './platform/plugins.ts';
 import { buildScopedModelRegistry, resolveModelDefinition } from './model-registry.ts';
 import { findDispatchCapability } from './dispatch.ts';
@@ -98,6 +118,10 @@ import type {
 } from './sdk-types.ts';
 import { NodeSqliteD1Database } from './db/node-sqlite.ts';
 
+type AgentSdkTreeDbRuntime = AgentSdkTreeDbIntegration & {
+	graph: TreeDbGraphAdapter;
+};
+
 export interface AgentSdkOptions {
 	repoRoot?: string;
 	database?: AgentDatabase;
@@ -112,10 +136,10 @@ export interface AgentSdkOptions {
 
 export type {
 	AgentSdkContentRepositoryOptions,
-	AgentSdkTreeDbOptions,
 	TreeSeedTreeDbContentPathRule,
 	TreeSeedTreeDbRepositoryHint,
 } from './treedb-backends.ts';
+export type { AgentSdkTreeDbOptions } from './treedb/sdk-integration.ts';
 
 function normalizeAgentSpec(entry: Record<string, unknown> | null): AgentRuntimeSpec | null {
 	if (!entry) {
@@ -152,13 +176,24 @@ export class AgentSdk {
 	readonly database: AgentDatabase;
 	readonly content: ContentBackend;
 	readonly models: SdkModelRegistry;
+	readonly ports: {
+		repository: RepositoryPort | LocalRepositoryPort;
+		query: RepositoryQueryPort | LocalRepositoryQueryPort;
+		graph: GraphPort | LocalGraphPort;
+		registry?: RegistryPort;
+		federated?: FederatedPort;
+		exec?: ExecPort;
+		artifact?: ArtifactPort;
+	};
+	readonly treeDb?: AgentSdkTreeDbRuntime;
 	private readonly localContentStore: ContentStore;
 	private readonly localGraphRuntime: ContentGraphRuntime;
 	private readonly graph: GraphBackend;
 	private readonly dispatchConfig?: SdkDispatchConfig;
 
 	constructor(options: AgentSdkOptions = {}) {
-		const repoRoot = resolveSdkRepoRoot(options.repoRoot);
+		const explicitTreeDbMode = options.treeDb?.enabled === true;
+		const repoRoot = explicitTreeDbMode && !options.repoRoot ? process.cwd() : resolveSdkRepoRoot(options.repoRoot);
 		this.repoRoot = repoRoot;
 		this.models = options.modelRegistry ?? buildScopedModelRegistry(repoRoot, options.models);
 		this.database = options.database ?? new MemoryAgentDatabase();
@@ -175,36 +210,55 @@ export class AgentSdk {
 			rankingProvider: options.graphRankingProvider,
 			plugins,
 		});
-		const treeDbOptions = resolveTreeDbOptions(options.treeDb);
-		if (options.contentRepository?.adapter === 'local') {
+		const treeDbOptions = options.treeDb?.enabled ? options.treeDb : undefined;
+		if (treeDbOptions && !options.repoRoot && !options.models && !options.modelRegistry) {
+			throw new Error('AgentSdk TreeDB mode requires models or modelRegistry when no repoRoot clone is supplied.');
+		}
+		if (treeDbOptions) {
+			const treeDb = resolveAgentTreeDbIntegration(treeDbOptions);
+			const content = new TreeDbRepositoryAdapter({
+				client: treeDb.client,
+				models: this.models,
+				repoRoot,
+				defaultRef: treeDbOptions.defaultRef,
+				defaultAuthor: treeDbOptions.defaultAuthor,
+				contentPathMap: treeDbOptions.contentPathMap,
+				branchPrefix: treeDbOptions.branchPrefix,
+			});
+			const query = new TreeDbQueryAdapter({
+				client: treeDb.client,
+				models: this.models,
+				repoRoot,
+				contentPathMap: treeDbOptions.contentPathMap,
+				defaultRef: treeDbOptions.defaultRef,
+			});
+			const graph = new TreeDbGraphAdapter({
+				client: treeDb.client,
+				repoId: treeDb.repoId,
+				defaultRef: treeDbOptions.defaultRef,
+			});
+			this.treeDb = { ...treeDb, graph };
+			this.content = content;
+			this.graph = graph;
+			this.ports = {
+				repository: new TreeDbRepositoryPort(treeDb.client, content),
+				query: new TreeDbRepositoryQueryPort(treeDb.client, query),
+				graph: new TreeDbGraphPort(graph),
+				registry: treeDb.registry ? new TreeDbRegistryPort(treeDb.registry) : undefined,
+				federated: treeDb.federated ? new TreeDbFederatedPort(treeDb.federated) : undefined,
+				exec: new TreeDbExecPort(treeDb.client),
+				artifact: new TreeDbArtifactPort(treeDb.client),
+			};
+		} else if (options.contentRepository?.adapter === 'treedb') {
+			throw new Error('AgentSdk contentRepository.adapter = "treedb" requires treeDb configuration.');
+		} else {
 			this.content = new LocalContentBackend(this.localContentStore);
 			this.graph = new LocalGraphBackend(this.localGraphRuntime);
-		} else if (treeDbOptions) {
-			const client = createTreeDbClientFromAgentOptions(treeDbOptions);
-			const resolver = new TreeDbPortfolioResolver({
-				client,
-				ref: treeDbOptions.ref,
-				repositoryHints: treeDbOptions.repositoryHints,
-			});
-			this.content = new TreeDbContentBackend({
-				client,
-				repoRoot,
-				models: this.models,
-				resolver,
-				ref: treeDbOptions.ref,
-				workspaceId: treeDbOptions.workspaceId,
-				contentPathMap: treeDbOptions.contentPathMap,
-				localLeaseStore: this.localContentStore,
-			});
-			this.graph = new TreeDbGraphBackend({
-				client,
-				resolver,
-				localRuntime: this.localGraphRuntime,
-				ref: treeDbOptions.ref,
-			});
-		} else {
-			this.content = new MissingTreeDbContentBackend();
-			this.graph = new LocalGraphBackend(this.localGraphRuntime);
+			this.ports = {
+				repository: new LocalRepositoryPort(this.localContentStore),
+				query: new LocalRepositoryQueryPort(this.localContentStore),
+				graph: new LocalGraphPort(this.localGraphRuntime),
+			};
 		}
 		this.dispatchConfig = options.dispatch;
 	}

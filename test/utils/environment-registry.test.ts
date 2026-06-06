@@ -1225,7 +1225,7 @@ describe('environment registry overlays', () => {
 		}
 	});
 
-	it('targets Railway API token to GitHub environment secrets for deploy workflows', async () => {
+	it('targets Railway API token to GitHub deploy workflows and the operations runner service', async () => {
 		const tenantRoot = await createTenantFixture('entries: {}\n');
 		tempRoots.add(tenantRoot);
 
@@ -1245,7 +1245,8 @@ describe('environment registry overlays', () => {
 		const railwayApiToken = findRegistryEntry(registry, 'RAILWAY_API_TOKEN');
 		if (railwayApiToken) {
 			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['github-secret']));
-			expect(railwayApiToken.targets).not.toContain('railway-secret');
+			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['railway-secret']));
+			expect(railwayApiToken.serviceTargets).toEqual(expect.arrayContaining(['marketOperationsRunner']));
 		}
 		const railwayProjectToken = findRegistryEntry(registry, 'RAILWAY_TOKEN');
 		if (railwayProjectToken) {

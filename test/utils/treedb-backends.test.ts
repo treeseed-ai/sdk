@@ -10,11 +10,11 @@ import { TreeDbApiError, TreeDbClient, type Transport, type TreeDbRequest, type 
 import {
 	LocalContentBackend,
 	TreeDbContentBackend,
-	TreeDbContentRepositoryConfigError,
 	TreeDbExecBackend,
 	TreeDbGraphBackend,
 	TreeDbPortfolioResolver,
 } from '../../src/treedb-backends.ts';
+import { TreeDbRepositoryAdapter } from '../../src/treedb/index.ts';
 import { buildScopedModelRegistry } from '../../src/model-registry.ts';
 import { sdkFixtureRoot } from '../test-fixture.ts';
 
@@ -104,24 +104,22 @@ ${slug} body
 }
 
 describe('TreeDB-backed TreeSeed content repository', () => {
-	it('selects TreeDB content by default when TreeDB service config is present', () => {
+	it('keeps AgentSdk local by default when TreeDB mode is not explicitly enabled', () => {
 		const sdk = new AgentSdk({
 			repoRoot: sdkFixtureRoot,
-			treeDb: { baseUrl: 'http://treedb.test' },
+			treeDb: { enabled: false, baseUrl: 'http://treedb.test' },
 		});
 
-		expect(sdk.content).toBeInstanceOf(TreeDbContentBackend);
+		expect(sdk.content).toBeInstanceOf(LocalContentBackend);
+		expect(sdk.treeDb).toBeUndefined();
 	});
 
-	it('fails clearly on default content access when TreeDB service config is absent', async () => {
-		const sdk = new AgentSdk({
+	it('fails clearly when TreeDB content is selected without TreeDB config', () => {
+		expect(() => new AgentSdk({
 			repoRoot: sdkFixtureRoot,
 			database: new MemoryAgentDatabase(),
-		});
-
-		await expect(sdk.search({ model: 'knowledge', limit: 1 }))
-			.rejects
-			.toBeInstanceOf(TreeDbContentRepositoryConfigError);
+			contentRepository: { adapter: 'treedb' },
+		})).toThrow(/requires treeDb configuration/iu);
 	});
 
 	it('keeps AgentSdk.createLocal on local content', () => {
@@ -141,16 +139,19 @@ describe('TreeDB-backed TreeSeed content repository', () => {
 		expect(sdk.content).toBeInstanceOf(LocalContentBackend);
 	});
 
-	it('does not require a repo id in TreeDB config', () => {
+	it('uses TreeDB content adapters when TreeDB mode is explicitly configured', () => {
 		const sdk = new AgentSdk({
 			repoRoot: sdkFixtureRoot,
 			treeDb: {
+				enabled: true,
 				baseUrl: 'http://treedb.test',
-				ref: 'refs/heads/main',
+				repoId: 'repo-a',
+				defaultRef: 'refs/heads/main',
 			},
 		});
 
-		expect(sdk.content).toBeInstanceOf(TreeDbContentBackend);
+		expect(sdk.content).toBeInstanceOf(TreeDbRepositoryAdapter);
+		expect(sdk.treeDb?.repoId).toBe('repo-a');
 	});
 
 	it('discovers repositories through the portfolio before repo-scoped reads', async () => {
