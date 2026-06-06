@@ -35,8 +35,8 @@
     "setup:ci": "npm ci",
     "build": "npm run build:dist",
     "build:dist": "node ./scripts/run-ts.mjs ./scripts/build-dist.ts",
-    "db:generate:d1": "node ../../node_modules/drizzle-kit/bin.cjs export --config drizzle.config.ts > drizzle/d1/0000_treeseed_d1.sql",
-    "db:generate:market": "node ../../node_modules/drizzle-kit/bin.cjs export --config drizzle.market.config.ts > drizzle/market/0000_market_control_plane.sql",
+    "db:generate:d1": "drizzle-kit export --config drizzle.config.ts > drizzle/d1/0000_treeseed_d1.sql",
+    "db:generate:market": "drizzle-kit export --config drizzle.market.config.ts > drizzle/market/0000_market_control_plane.sql",
     "prepare": "node ./scripts/prepare.mjs",
     "prepack": "npm run build:dist",
     "test": "npm run test:unit",
@@ -193,6 +193,10 @@
     "./content-store": {
       "types": "./dist/content-store.d.ts",
       "default": "./dist/content-store.js"
+    },
+    "./treedb-backends": {
+      "types": "./dist/treedb-backends.d.ts",
+      "default": "./dist/treedb-backends.js"
     },
     "./template-catalog": {
       "types": "./dist/template-catalog.d.ts",

@@ -61,6 +61,19 @@ const sdk = AgentSdk.createLocal({
 });
 ```
 
+## TreeDB Content Repository
+
+TreeDB is the default adapter for the TreeSeed project content repository when
+TreeDB service configuration is available. The SDK configures the TreeDB
+portfolio, not a single repository id; repository ids are discovered internally
+when repo-scoped TreeDB endpoints require them.
+
+Project site code and optional project repositories remain local filesystem/git
+workspace concerns by default. Use `contentRepository: { adapter: 'local' }` or
+`AgentSdk.createLocal()` for explicit local content behavior.
+
+See [TreeDB Content Repository](./docs/treedb-content-repository.md).
+
 ## Preferred Graph Workflow
 
 The preferred graph API for new integrations is:
