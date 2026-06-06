@@ -1806,6 +1806,7 @@ export async function ensureRailwayServiceVolume({
 		}))
 		.filter((candidate) => candidate.instances.length > 0);
 	let volume = findRailwayVolumeForService(volumes, serviceId, environmentId)
+		?? findRailwayVolumeForService(volumes, serviceId)
 		?? activeVolumes.find((candidate) =>
 		candidate.name === name
 		&& candidate.instances.some((instance) => instance.environmentId === environmentId),
@@ -1831,7 +1832,8 @@ export async function ensureRailwayServiceVolume({
 			for (let attempt = 0; attempt < 8; attempt += 1) {
 				await new Promise((resolve) => setTimeout(resolve, 1500));
 				const refreshed = await listRailwayVolumes({ projectId, env, fetchImpl });
-				const existing = findRailwayVolumeForService(refreshed, serviceId, environmentId);
+				const existing = findRailwayVolumeForService(refreshed, serviceId, environmentId)
+					?? findRailwayVolumeForService(refreshed, serviceId);
 				if (existing) {
 					return existing;
 				}
@@ -1871,6 +1873,20 @@ export async function ensureRailwayServiceVolume({
 		instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? null;
 		updated = true;
 	}
+	if (!instance) {
+		try {
+			await updateRailwayVolumeInstanceMountPath({ volumeId: volume.id, serviceId, mountPath, env, fetchImpl });
+			volume = await listRailwayVolumes({ projectId, env, fetchImpl })
+				.then((refreshed) => refreshed.find((candidate) => candidate.id === volume?.id) ?? volume);
+		} catch (error) {
+			if (!looksLikeRailwayMissingResource(error)) {
+				throw error;
+			}
+			volume = await createReplacementVolume();
+		}
+		instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? null;
+		updated = true;
+	}
 	if (instance && instance.mountPath !== mountPath) {
 		try {
 			await updateRailwayVolumeInstanceMountPath({ volumeId: volume.id, mountPath, env, fetchImpl });
@@ -1890,11 +1906,11 @@ export async function ensureRailwayServiceVolume({
 	return { volume, instance, created, updated };
 }
 
-function findRailwayVolumeForService(volumes: RailwayVolumeSummary[], serviceId: string, environmentId: string) {
+function findRailwayVolumeForService(volumes: RailwayVolumeSummary[], serviceId: string, environmentId?: string) {
 	return volumes.find((candidate) =>
 		candidate.instances.some((instance) =>
 			instance.serviceId === serviceId
-			&& instance.environmentId === environmentId
+			&& (!environmentId || instance.environmentId === environmentId)
 			&& isActiveRailwayVolumeInstance(instance)
 		),
 	) ?? null;

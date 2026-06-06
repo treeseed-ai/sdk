@@ -604,6 +604,66 @@ services:
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
+	it('adopts an existing service volume before creating a second Railway volume', async () => {
+		let listCount = 0;
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('TreeseedRailwayVolumeList')) {
+				listCount += 1;
+				return new Response(JSON.stringify({
+					data: {
+						project: {
+							volumes: {
+								edges: [{
+									node: {
+										id: 'existing-volume',
+										name: 'acme-docs-worker-runner-01-data',
+										projectId: 'project-1',
+										volumeInstances: {
+											edges: [{
+												node: {
+													id: 'vi-existing',
+													serviceId: 'svc-runner-01',
+													environmentId: listCount === 1 ? 'env-production' : 'env-staging',
+													mountPath: '/data',
+													state: 'READY',
+												},
+											}],
+										},
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			expect(String(body.query)).toContain('TreeseedRailwayVolumeInstanceUpdate');
+			expect(body.variables).toEqual({
+				volumeId: 'existing-volume',
+				input: {
+					serviceId: 'svc-runner-01',
+					mountPath: '/data',
+				},
+			});
+			return new Response(JSON.stringify({ data: { volumeInstanceUpdate: true } }), { status: 200, headers: { 'content-type': 'application/json' } });
+		});
+
+		const result = await ensureRailwayServiceVolume({
+			projectId: 'project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-runner-01',
+			name: 'acme-docs-worker-runner-01-data',
+			mountPath: '/data',
+			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		expect(result.created).toBe(false);
+		expect(result.updated).toBe(true);
+		expect(result.volume.id).toBe('existing-volume');
+		expect(fetchMock.mock.calls.some(([, init]) => String(init?.body ?? '').includes('TreeseedRailwayVolumeCreate'))).toBe(false);
+	});
+
 	it('reuses a Railway service volume that appears after a create conflict', async () => {
 		let listCount = 0;
 		const fetchMock = vi.fn(async (_input, init) => {
