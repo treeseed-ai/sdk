@@ -1320,6 +1320,109 @@ export const hubContentSources = pgTable('hub_content_sources', {
 	updatedAt: text('updated_at').notNull(),
 });
 
+export const treeDbInstances = pgTable('treedb_instances', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	kind: text('kind').notNull(),
+	provider: text('provider').notNull(),
+	name: text('name').notNull(),
+	baseUrl: text('base_url'),
+	registryUrl: text('registry_url'),
+	publicRead: integer('public_read').notNull().default(0),
+	primary: integer('primary').notNull().default(1),
+	status: text('status').notNull().default('pending'),
+	imageRef: text('image_ref'),
+	railwayProjectId: text('railway_project_id'),
+	railwayServiceId: text('railway_service_id'),
+	railwayEnvironmentId: text('railway_environment_id'),
+	volumeMountPath: text('volume_mount_path'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_treedb_instances_team_status').on(table.teamId, table.status),
+]);
+
+export const treeDbProjectLibraries = pgTable('treedb_project_libraries', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id').notNull(),
+	instanceId: text('instance_id').notNull(),
+	libraryId: text('library_id').notNull(),
+	repositoryId: text('repository_id'),
+	contentPath: text('content_path').notNull().default('src/content'),
+	contentRepositoryUrl: text('content_repository_url'),
+	contentRepositoryDefaultBranch: text('content_repository_default_branch'),
+	contentRepositoryRef: text('content_repository_ref'),
+	r2BucketName: text('r2_bucket_name'),
+	r2ManifestKey: text('r2_manifest_key'),
+	topologyJson: text('topology_json').notNull().default('{}'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_treedb_project_libraries_project').on(table.projectId),
+	index('idx_treedb_project_libraries_instance').on(table.instanceId),
+]);
+
+export const treeDbMirrors = pgTable('treedb_mirrors', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	instanceId: text('instance_id').notNull(),
+	name: text('name').notNull(),
+	direction: text('direction').notNull().default('bidirectional'),
+	targetKind: text('target_kind').notNull(),
+	targetUrl: text('target_url'),
+	status: text('status').notNull().default('pending'),
+	instructions: text('instructions'),
+	lastSyncAt: text('last_sync_at'),
+	lastSyncStatus: text('last_sync_status'),
+	lastSyncMetadataJson: text('last_sync_metadata_json').notNull().default('{}'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_treedb_mirrors_team_instance').on(table.teamId, table.instanceId),
+]);
+
+export const treeDbShares = pgTable('treedb_shares', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	instanceId: text('instance_id'),
+	projectId: text('project_id'),
+	libraryId: text('library_id'),
+	scope: text('scope').notNull(),
+	targetTeamId: text('target_team_id'),
+	trustGrantJson: text('trust_grant_json').notNull().default('{}'),
+	publicRead: integer('public_read').notNull().default(0),
+	status: text('status').notNull().default('active'),
+	expiresAt: text('expires_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+	revokedAt: text('revoked_at'),
+}, (table) => [
+	index('idx_treedb_shares_team_scope').on(table.teamId, table.scope, table.status),
+]);
+
+export const treeDbDeployments = pgTable('treedb_deployments', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	instanceId: text('instance_id'),
+	provider: text('provider').notNull(),
+	status: text('status').notNull().default('queued'),
+	imageRef: text('image_ref'),
+	volumeMountPath: text('volume_mount_path'),
+	serviceRefsJson: text('service_refs_json').notNull().default('{}'),
+	resultJson: text('result_json').notNull().default('{}'),
+	errorJson: text('error_json'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+	completedAt: text('completed_at'),
+}, (table) => [
+	index('idx_treedb_deployments_team_instance').on(table.teamId, table.instanceId, table.createdAt),
+]);
+
 export const hubLaunches = pgTable('hub_launches', {
 	id: text('id').primaryKey(),
 	hubId: text('hub_id').notNull(),
@@ -1852,6 +1955,11 @@ export const treeseedMarketSchema = {
 	repositoryHosts,
 	hubRepositories,
 	hubContentSources,
+	treeDbInstances,
+	treeDbProjectLibraries,
+	treeDbMirrors,
+	treeDbShares,
+	treeDbDeployments,
 	hubLaunches,
 	hubLaunchEvents,
 	hubWorkspaceLinks,

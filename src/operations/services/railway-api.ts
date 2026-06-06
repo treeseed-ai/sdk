@@ -76,6 +76,15 @@ export type RailwayCustomDomainSummary = {
 	dnsRecords: RailwayCustomDomainDnsRecord[];
 };
 
+export type RailwayServiceDomainSummary = {
+	id: string;
+	domain: string;
+	kind: 'service' | 'custom';
+	environmentId: string;
+	serviceId: string;
+	targetPort: number | null;
+};
+
 export type RailwayVolumeInstanceSummary = {
 	id: string;
 	serviceId: string | null;
@@ -304,6 +313,33 @@ function normalizeRailwayCustomDomain(node: Record<string, unknown>): RailwayCus
 		verificationToken: railwayConnectionLabel(status.verificationToken) || null,
 		dnsRecords,
 	};
+}
+
+function normalizeRailwayDomain(node: unknown, kind: 'service' | 'custom' = 'service'): RailwayServiceDomainSummary | null {
+	if (!node || typeof node !== 'object') {
+		return null;
+	}
+	const record = node as Record<string, unknown>;
+	const id = railwayConnectionLabel(record.id) || railwayConnectionLabel(record.domain);
+	const domain = railwayConnectionLabel(record.domain);
+	if (!id || !domain) {
+		return null;
+	}
+	return {
+		id,
+		domain,
+		kind,
+		environmentId: railwayConnectionLabel(record.environmentId),
+		serviceId: railwayConnectionLabel(record.serviceId),
+		targetPort: normalizeRailwayNumber(record.targetPort),
+	};
+}
+
+function normalizeRailwayDomainList(value: unknown, kind: 'service' | 'custom') {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	return value.map((entry) => normalizeRailwayDomain(entry, kind)).filter(Boolean) as RailwayServiceDomainSummary[];
 }
 
 function normalizeRailwayVolumeInstance(node: Record<string, unknown>): RailwayVolumeInstanceSummary | null {
@@ -853,12 +889,16 @@ export async function ensureRailwayService({
 	projectId,
 	serviceName,
 	serviceId,
+	environmentId,
+	imageRef,
 	env = process.env,
 	fetchImpl = fetch,
 }: {
 	projectId: string;
 	serviceName?: string | null;
 	serviceId?: string | null;
+	environmentId?: string | null;
+	imageRef?: string | null;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
 }) {
@@ -890,6 +930,14 @@ mutation TreeseedRailwayServiceCreate($input: ServiceCreateInput!) {
 			input: {
 				projectId,
 				name: desiredServiceName,
+				...(railwayConnectionLabel(environmentId) ? { environmentId: railwayConnectionLabel(environmentId) } : {}),
+				...(railwayConnectionLabel(imageRef)
+					? {
+						source: {
+							image: railwayConnectionLabel(imageRef),
+						},
+					}
+					: {}),
 			},
 		},
 		env,
@@ -900,6 +948,140 @@ mutation TreeseedRailwayServiceCreate($input: ServiceCreateInput!) {
 		throw new Error(`Railway service create did not return a usable service for ${desiredServiceName}.`);
 	}
 	return { service, created: true };
+}
+
+export async function ensureRailwayGeneratedServiceDomain({
+	projectId,
+	environmentId,
+	serviceId,
+	targetPort,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	projectId: string;
+	environmentId: string;
+	serviceId: string;
+	targetPort?: number | null;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const domains = await listRailwayServiceDomains({ projectId, environmentId, serviceId, env, fetchImpl });
+	const existing = domains.find((domain) => domain.kind === 'service') ?? domains.find((domain) => domain.domain.endsWith('.railway.app')) ?? null;
+	if (existing) {
+		return { domain: existing, created: false };
+	}
+	const payload = await railwayGraphqlRequest<{
+		serviceDomainCreate?: Record<string, unknown> | null;
+	}>({
+		query: `
+mutation TreeseedRailwayServiceDomainCreate($input: ServiceDomainCreateInput!) {
+	serviceDomainCreate(input: $input) {
+		id
+		domain
+		serviceId
+		environmentId
+		targetPort
+	}
+}
+`.trim(),
+		variables: {
+			input: {
+				projectId,
+				environmentId,
+				serviceId,
+				...(Number.isFinite(Number(targetPort)) ? { targetPort: Number(targetPort) } : {}),
+			},
+		},
+		env,
+		fetchImpl,
+	});
+	const domain = normalizeRailwayDomain(payload.data?.serviceDomainCreate);
+	if (!domain) {
+		throw new Error('Railway service domain create did not return a usable domain.');
+	}
+	return { domain, created: true };
+}
+
+export async function listRailwayServiceDomains({
+	projectId,
+	environmentId,
+	serviceId,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	projectId: string;
+	environmentId: string;
+	serviceId: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const payload = await railwayGraphqlRequest<{
+		domains?: unknown;
+	}>({
+		query: `
+query TreeseedRailwayServiceDomains($projectId: String!, $environmentId: String!, $serviceId: String!) {
+	domains(projectId: $projectId, environmentId: $environmentId, serviceId: $serviceId) {
+		serviceDomains {
+			id
+			domain
+			serviceId
+			environmentId
+			targetPort
+		}
+		customDomains {
+			id
+			domain
+			serviceId
+			environmentId
+			targetPort
+		}
+	}
+}
+`.trim(),
+		variables: { projectId, environmentId, serviceId },
+		env,
+		fetchImpl,
+	});
+	const domains = payload.data?.domains && typeof payload.data.domains === 'object'
+		? payload.data.domains as Record<string, unknown>
+		: {};
+	return [
+		...normalizeRailwayDomainList(domains.serviceDomains, 'service'),
+		...normalizeRailwayDomainList(domains.customDomains, 'custom'),
+	];
+}
+
+export async function deployRailwayServiceInstance({
+	serviceId,
+	environmentId,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	serviceId: string;
+	environmentId: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const payload = await railwayGraphqlRequest<{
+		serviceInstanceDeployV2?: string | Record<string, unknown> | null;
+	}>({
+		query: `
+mutation TreeseedRailwayServiceInstanceDeploy($serviceId: String!, $environmentId: String!) {
+	serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId)
+}
+`.trim(),
+		variables: { serviceId, environmentId },
+		env,
+		fetchImpl,
+	});
+	const value = payload.data?.serviceInstanceDeployV2;
+	if (typeof value === 'string' && value.trim()) {
+		return { deploymentId: value.trim() };
+	}
+	if (value && typeof value === 'object') {
+		return { deploymentId: railwayConnectionLabel((value as Record<string, unknown>).id) || null };
+	}
+	return { deploymentId: null };
 }
 
 export async function updateRailwayServiceName({

@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.10.28",
+  "version": "0.10.29-dev.staging.20260606T022627Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -45,6 +45,9 @@
     "test:workflow:lifecycle": "vitest run --config ./vitest.config.ts test/utils/workflow-lifecycle.test.ts",
     "test:release": "npm run test:unit:fast",
     "test:smoke": "node ./scripts/run-ts.mjs ./scripts/test-smoke.ts",
+    "treedb:generate-types": "node ./scripts/run-ts.mjs ./scripts/generate-treedb-openapi-types.ts",
+    "treedb:check-types": "node ./scripts/run-ts.mjs ./scripts/generate-treedb-openapi-types.ts --check",
+    "treedb:contract": "vitest run --config ./vitest.config.ts test/utils/treedb-openapi-contract.test.ts test/utils/treedb-sdk-request-contract.test.ts test/utils/treedb-generated-types.test.ts",
     "fixtures:resolve": "node ./scripts/run-ts.mjs ./scripts/fixture-tools.ts resolve",
     "fixtures:check": "node ./scripts/run-ts.mjs ./scripts/fixture-tools.ts check",
     "lint": "npm run fixtures:check && npm run build:dist",
@@ -237,6 +240,26 @@
     "./graph/context-query-contracts": {
       "types": "./dist/graph/context-query-contracts.d.ts",
       "default": "./dist/graph/context-query-contracts.js"
+    },
+    "./treedb": {
+      "types": "./dist/treedb/index.d.ts",
+      "import": "./dist/treedb/index.js",
+      "default": "./dist/treedb/index.js"
+    },
+    "./treedb/client": {
+      "types": "./dist/treedb/client.d.ts",
+      "import": "./dist/treedb/client.js",
+      "default": "./dist/treedb/client.js"
+    },
+    "./treedb/types": {
+      "types": "./dist/treedb/types.d.ts",
+      "import": "./dist/treedb/types.js",
+      "default": "./dist/treedb/types.js"
+    },
+    "./treedb/adapters": {
+      "types": "./dist/treedb/adapters.d.ts",
+      "import": "./dist/treedb/adapters.js",
+      "default": "./dist/treedb/adapters.js"
     },
     "./sdk-filters": {
       "types": "./dist/sdk-filters.d.ts",

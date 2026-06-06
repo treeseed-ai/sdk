@@ -7,6 +7,7 @@ import {
 	collectReleaseCandidateOutputFailures,
 	runReleaseCandidateGate,
 } from '../../src/operations/services/release-candidate.ts';
+import { discoverTreeseedPackageAdapters } from '../../src/operations/services/package-adapters.ts';
 
 const roots: string[] = [];
 
@@ -43,6 +44,25 @@ function makeWorkspace() {
 	writeFileSync(resolve(root, 'packages', 'sdk', 'drizzle', 'd1', '0000_treeseed_d1.sql'), '-- d1 schema\n', 'utf8');
 	writeFileSync(resolve(root, 'packages', 'sdk', 'drizzle', 'market', '0000_market_control_plane.sql'), '-- market pg schema\n', 'utf8');
 	return root;
+}
+
+function addTreeDbPackage(root: string) {
+	mkdirSync(resolve(root, 'packages', 'treedb', 'apps', 'api'), { recursive: true });
+	mkdirSync(resolve(root, 'packages', 'treedb', 'scripts'), { recursive: true });
+	writeFileSync(resolve(root, 'packages', 'treedb', 'apps', 'api', 'mix.exs'), `
+defmodule TreeDb.MixProject do
+  use Mix.Project
+  def project do
+    [app: :treedb, version: "0.1.0"]
+  end
+end
+`, 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedb', 'Cargo.toml'), '[workspace]\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedb', 'Cargo.lock'), '# lock\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedb', 'Dockerfile'), 'FROM scratch\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedb', 'scripts', 'test-treedb-fast.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedb', 'scripts', 'test-all.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedb', 'scripts', 'release-gate.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
 }
 
 describe('release candidate verification', () => {
@@ -85,7 +105,37 @@ describe('release candidate verification', () => {
 		expect(first.key).not.toBe(changedVersion.key);
 		expect(first.key).not.toBe(changedLockfile.key);
 		expect(first.key).not.toBe(changedSelection.key);
-		expect(first.policyVersion).toBe('strict-output-v1');
+		expect(first.policyVersion).toBe('package-adapters-v1');
+	});
+
+	it('discovers TreeDB as a BEAM package adapter', () => {
+		const root = makeWorkspace();
+		addTreeDbPackage(root);
+
+		const adapters = discoverTreeseedPackageAdapters(root);
+		const treedb = adapters.find((adapter) => adapter.id === 'treedb');
+
+		expect(treedb?.kind).toBe('beam-elixir-rust');
+		expect(treedb?.version).toBe('0.1.0');
+		expect(treedb?.publishTarget).toBe('treeseed/treedb');
+		expect(treedb?.verifyCommands.local?.args).toEqual(['scripts/test-all.sh']);
+		expect(treedb?.releaseChecks.some((check) => check.kind === 'docker-manifest')).toBe(true);
+	});
+
+	it('checks BEAM package readiness without npm pack', async () => {
+		const root = makeWorkspace();
+		addTreeDbPackage(root);
+
+		const report = await runReleaseCandidateGate({
+			root,
+			selectedPackageNames: ['@treeseed/sdk', 'treedb'],
+			plannedVersions: { '@treeseed/market': '1.0.1', '@treeseed/sdk': '0.4.13', treedb: '0.1.0' },
+			allowReuse: false,
+		});
+
+		expect(report.status).toBe('passed');
+		expect(report.checks.find((check) => check.name === 'package-release-readiness')?.detail).toContain('treedb (beam-elixir-rust)');
+		expect(report.failures.some((failure) => failure.code === 'npm_pack_dry_run_failed')).toBe(false);
 	});
 
 	it('classifies error-grade rehearsal output even when a command exits cleanly', () => {

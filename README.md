@@ -104,7 +104,7 @@ The public `ctx` syntax is:
 
 ```text
 ctx <target>
-  [for <stage>]
+  [for <focus>]
   [in <scope>]
   [via <relation[,relation...]>]
   [depth <0-3>]
@@ -116,9 +116,150 @@ ctx <target>
 
 The old `key=value` graph DSL is no longer supported.
 
+## TreeDB Remote Repository Mode
+
+TreeDB support is opt-in. Local SDK behavior remains the default.
+
+Use the low-level TreeDB client when you want direct repository, workspace, query, graph, registry, or context calls:
+
+```ts
+import { TreeDbClient } from '@treeseed/sdk/treedb';
+
+const treeDb = new TreeDbClient({
+  baseUrl: 'http://localhost:4000',
+  token: process.env.TREEDB_TOKEN,
+  repoId: 'repo_123',
+});
+
+const whoami = await treeDb.whoami();
+const file = await treeDb.readRepositoryFile({
+  path: 'docs/readme.md',
+  parseFrontmatter: true,
+});
+```
+
+`AgentSdk` can delegate content-backed model and graph calls to TreeDB when configured explicitly:
+
+```ts
+import { AgentSdk, TreeDbClient } from '@treeseed/sdk';
+
+const treeDb = new TreeDbClient({
+  baseUrl: 'http://localhost:4000',
+  token: process.env.TREEDB_TOKEN,
+  repoId: 'repo_123',
+});
+
+const sdk = new AgentSdk({
+  repoRoot: process.cwd(),
+  treeDb: {
+    enabled: true,
+    client: treeDb,
+    repoId: 'repo_123',
+    defaultRef: 'refs/heads/main',
+  },
+});
+
+const docs = await sdk.search({
+  model: 'knowledge',
+  filters: [{ field: 'status', op: 'eq', value: 'published' }],
+});
+```
+
+TreeDB mode keeps TreeSeed model semantics in the SDK model registry. TreeDB receives generic repository/ref/path/frontmatter/body/query requests and returns generic repository/file/query/graph results.
+
+TreeDB auth, policy, audit, and federation helpers are available on the same client:
+
+```ts
+const mode = await treeDb.authMode();
+const scope = await treeDb.effectiveScope({ repoId: 'repo_123' });
+
+await treeDb.putCapabilityGrant({
+  actorId: 'actor_agent',
+  tenantId: 'tenant_demo',
+  repoIds: ['repo_123'],
+  capabilities: ['files:read', 'files:search'],
+  refs: ['refs/heads/main'],
+  paths: ['docs/**'],
+});
+
+const audit = await treeDb.listAuditEvents({
+  repoId: 'repo_123',
+  eventType: 'repo.query_executed',
+  limit: 25,
+});
+
+const plan = await treeDb.planFederatedQuery({
+  repoIds: ['repo_123'],
+  capabilities: ['files:search'],
+  paths: { repo_123: ['docs/**'] },
+});
+
+const search = await treeDb.federatedSearch({
+  repoIds: ['repo_123'],
+  refs: { repo_123: 'refs/heads/main' },
+  paths: { repo_123: ['docs/**'] },
+  query: 'release',
+  includeErrors: true,
+});
+```
+
+Federation planning performs scope reduction before execution. The SDK delegates global execution to TreeDB instead of fanning out across every node and filtering locally.
+
+Snapshot, artifact, mirror sync, and migration helpers are also available on `TreeDbClient`:
+
+```ts
+const snapshot = await treeDb.buildSnapshot({
+  ref: 'refs/heads/main',
+  kind: 'repository_snapshot',
+  paths: ['docs/**'],
+  includeGraph: true,
+});
+
+const artifact = await treeDb.exportArtifact({
+  snapshotId: snapshot.snapshotId,
+});
+
+const download = await treeDb.downloadArtifact({
+  snapshotId: snapshot.snapshotId,
+});
+
+await treeDb.syncMirror({
+  mirrorId: 'mirror_123',
+  remoteName: 'origin',
+});
+
+await treeDb.createMigration({
+  targetNodeId: 'node_mirror',
+  mode: 'primary_transfer',
+  dryRun: true,
+  requireMirrorSynced: false,
+});
+
+await treeDb.ready();
+await treeDb.deepHealth();
+await treeDb.metrics();
+```
+
+`downloadArtifact()` returns an `ArrayBuffer` plus content type, filename, checksum, and snapshot headers. These APIs are generic TreeDB repository operations; TreeSeed package or release semantics are not encoded in TreeDB.
+
+Mocked end-to-end TreeDB contract tests prove the SDK can drive the TreeDB repository loop without an agent-side clone when `contentPathMap` is supplied:
+
+```bash
+npx vitest run --config ./vitest.config.ts test/utils/treedb-e2e-contract.test.ts
+```
+
+The optional live contract command reports `not configured` and exits
+successfully unless all of these are set:
+
+```text
+TREEDB_LIVE_URL
+TREEDB_LIVE_TOKEN
+TREEDB_LIVE_REPO_ID
+```
+
 ## Capacity Scheduling Contracts
 
-The SDK owns the provider-neutral capacity runtime helpers used by the agent manager, workers, and market control plane. These helpers keep work estimation separate from provider cost by normalizing `taskSignature + executionProfileId` estimates, then routing against grants, provider lanes, quality requirements, quota/congestion pressure, attention/context saturation, utility, predictive reserve, and hybrid phase metadata.
+The SDK owns the provider-neutral capacity runtime helpers used by the agent manager, workers, and market control plane. These helpers keep work estimation separate from provider cost by normalizing `taskSignature + executionProfileId` estimates, then routing against grants, provider lanes, quality requirements, quota/congestion pressure, attention/context saturation, utility, predictive reserve, and hybrid execution metadata.
 
 Capacity records remain metadata-compatible: advanced scheduling data lives in task payload JSON, routing decision candidates/scores, reservation metadata, capacity plan metadata, checkpoint artifacts, and usage actual metadata. Missing metadata is neutral, so older callers continue to use the credit-only behavior.
 

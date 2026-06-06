@@ -19,7 +19,12 @@ import type {
 	ProjectDeploymentEnvironment,
 	ProjectDeploymentEvent,
 	ProjectDeploymentReadiness,
+	ProjectRepositoryTopology,
 	ProjectWebDeploymentAction,
+	TreeDbInstance,
+	TreeDbMirror,
+	TreeDbProjectLibraryBinding,
+	TreeDbShareLink,
 } from './sdk-types.ts';
 import {
 	TREESEED_REMOTE_CONTRACT_HEADER,
@@ -707,6 +712,90 @@ export class MarketClient {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/hosts`,
 			{ requireAuth: true },
+		);
+	}
+
+	teamTreeDb(teamId: string) {
+		return this.request<{ ok: true; payload: { instance: TreeDbInstance | null; mirrors: TreeDbMirror[]; shares: TreeDbShareLink[]; deployments: unknown[] } }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedb`,
+			{ requireAuth: true },
+		);
+	}
+
+	updateTeamTreeDb(teamId: string, body: Partial<TreeDbInstance> & Record<string, unknown>) {
+		return this.request<{ ok: true; payload: { instance: TreeDbInstance } }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedb`,
+			{ method: 'PUT', body, requireAuth: true },
+		);
+	}
+
+	provisionTeamTreeDb(teamId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: { instance: TreeDbInstance | null; mirrors: TreeDbMirror[]; shares: TreeDbShareLink[]; deployments: unknown[] } }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedb/provision`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	treeDbMirrors(teamId: string) {
+		return this.request<{ ok: true; payload: TreeDbMirror[] }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedb/mirrors`,
+			{ requireAuth: true },
+		);
+	}
+
+	createTreeDbMirror(teamId: string, body: Partial<TreeDbMirror> & Record<string, unknown>) {
+		return this.request<{ ok: true; payload: TreeDbMirror }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedb/mirrors`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	syncTreeDbMirror(teamId: string, mirrorId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: TreeDbMirror }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedb/mirrors/${encodeURIComponent(mirrorId)}/sync`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	treeDbShares(teamId: string) {
+		return this.request<{ ok: true; payload: TreeDbShareLink[] }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedb/shares`,
+			{ requireAuth: true },
+		);
+	}
+
+	createTreeDbShare(teamId: string, body: Partial<TreeDbShareLink> & Record<string, unknown>) {
+		return this.request<{ ok: true; payload: TreeDbShareLink }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedb/shares`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	projectTreeDbLibrary(projectId: string) {
+		return this.request<{ ok: true; payload: TreeDbProjectLibraryBinding | null }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/treedb-library`,
+			{ requireAuth: true },
+		);
+	}
+
+	upsertProjectTreeDbLibrary(projectId: string, body: Partial<TreeDbProjectLibraryBinding> & Record<string, unknown>) {
+		return this.request<{ ok: true; payload: TreeDbProjectLibraryBinding }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/treedb-library`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	projectRepositoryTopology(projectId: string) {
+		return this.request<{ ok: true; payload: ProjectRepositoryTopology }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/repository-topology`,
+			{ requireAuth: true },
+		);
+	}
+
+	updateProjectRepositoryTopology(projectId: string, body: ProjectRepositoryTopology | Record<string, unknown>) {
+		return this.request<{ ok: true; payload: ProjectRepositoryTopology }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/repository-topology`,
+			{ method: 'PUT', body, requireAuth: true },
 		);
 	}
 
