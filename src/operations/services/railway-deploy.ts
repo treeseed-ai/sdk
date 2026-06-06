@@ -575,7 +575,7 @@ mutation TreeseedScheduleUpdate($id: String!, $name: String!, $schedule: String!
 	};
 }
 
-export function runRailway(args, { cwd, capture = false, allowFailure = false, input, env, retryTransient = true, retryAttempts = 3, retryDelayMs = 2000 } = {}) {
+export function runRailway(args, { cwd, capture = false, allowFailure = false, input, env, retryTransient = true, retryAttempts = 3, retryDelayMs = 2000, timeoutMs = 120_000 } = {}) {
 	const effectiveEnv = buildRailwayCommandEnv({ ...process.env, ...(env ?? {}) });
 	const railway = resolveTreeseedToolCommand('railway', { env: effectiveEnv });
 	if (!railway) {
@@ -587,6 +587,7 @@ export function runRailway(args, { cwd, capture = false, allowFailure = false, i
 		encoding: 'utf8',
 		env: spawnEnv,
 		input,
+		timeout: Number.isFinite(timeoutMs) && Number(timeoutMs) > 0 ? Number(timeoutMs) : undefined,
 	});
 	let result = null;
 	const maxAttempts = retryTransient && !allowFailure ? Math.max(1, Number(retryAttempts) || 1) : 1;
@@ -596,6 +597,17 @@ export function runRailway(args, { cwd, capture = false, allowFailure = false, i
 			break;
 		}
 		sleepSync((Number(retryDelayMs) || 0) * attempt);
+	}
+
+	if (result?.error) {
+		const errorMessage = result.error instanceof Error ? result.error.message : String(result.error);
+		const timeoutMessage = /timed out|ETIMEDOUT/iu.test(errorMessage)
+			? `railway ${args.join(' ')} timed out after ${Math.round(Number(timeoutMs) / 1000)}s`
+			: errorMessage;
+		if (!allowFailure) {
+			throw new Error(timeoutMessage);
+		}
+		result.stderr = result.stderr || timeoutMessage;
 	}
 
 	if (result?.status !== 0 && !allowFailure) {
@@ -2403,6 +2415,11 @@ export async function deployRailwayService(
 		task: `${deployService.key}-railway-deploy`,
 		stage: 'deploy',
 	};
+	const writePhase = (stage, message) => {
+		write ? write(`[${taskPrefix.scope}][${taskPrefix.system}][${taskPrefix.task}][${stage}] ${message}`, 'stdout') : null;
+	};
+	writePhase('resolve-context', `Resolved Railway service ${deployService.serviceName ?? deployService.serviceId ?? deployService.key}.`);
+	writePhase('sync-runtime-config', 'Syncing Railway runtime configuration.');
 	const runtimeConfiguration = await timedRailwayPhase(timings, 'railway:sync-runtime-config', () => syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, {
 		env: commandEnv,
 	}), { service: deployService.key });
@@ -2415,6 +2432,7 @@ export async function deployRailwayService(
 		serviceName: runtimeConfiguration?.serviceName ?? deployService.serviceName,
 		railwayEnvironment: runtimeConfiguration?.environmentName ?? runtimeConfiguration?.environmentId ?? deployService.railwayEnvironment,
 	};
+	writePhase('device-login-vars', 'Syncing Railway device-login variables.');
 	await timedRailwayPhase(timings, 'railway:device-login-vars', () => syncRailwayApiDeviceLoginVariables(cliDeployService, commandEnv, write, taskPrefix), {
 		service: cliDeployService.key,
 	});
@@ -2424,6 +2442,7 @@ export async function deployRailwayService(
 	if (usesProjectToken) {
 		railwayDeployEnv = { ...railwayDeployEnv, RAILWAY_API_TOKEN: undefined };
 	}
+	writePhase('project-token', usesProjectToken || hasCommandApiToken ? 'Using configured Railway authentication.' : 'Creating Railway project token.');
 	await timedRailwayPhase(timings, 'railway:project-token', async () => {
 		if (usesProjectToken || hasCommandApiToken) {
 			return null;
@@ -2463,6 +2482,7 @@ export async function deployRailwayService(
 	const railwayLinkEnv = hasRailwayApiToken
 		? buildRailwayLinkCommandEnv(commandEnv, cliDeployService)
 		: railwayDeployEnv;
+	writePhase('link', `Linking Railway project context for ${cliDeployService.serviceName ?? cliDeployService.serviceId ?? cliDeployService.key}.`);
 	await timedRailwayPhase(timings, 'railway:link', async () => {
 		if (cliConfig) {
 			write ? write(`[${taskPrefix.scope}][${taskPrefix.system}][${taskPrefix.task}][link] Wrote Railway CLI project context for ${cliConfig.projectPath}.`, 'stdout') : null;
