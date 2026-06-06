@@ -2158,18 +2158,39 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 	let updated = false;
 
 	if (!volume) {
-		const createResult = runRailway([...volumeArgs, 'add', '--mount-path', mountPath, '--json'], cliOptions);
-		volume = normalizeRailwayCliVolume(parseRailwayJsonOutput(createResult.stdout ?? ''), {
-			serviceId,
-			serviceName,
-			environmentId,
-			fallbackName: name,
-			fallbackMountPath: mountPath,
+		const createResult = runRailway([...volumeArgs, 'add', '--mount-path', mountPath, '--json'], {
+			...cliOptions,
+			allowFailure: true,
 		});
-		if (!volume) {
-			throw new Error(`Railway CLI volume add did not return a usable volume for ${serviceName} in ${environmentName}.`);
+		if ((createResult.status ?? 0) === 0) {
+			volume = normalizeRailwayCliVolume(parseRailwayJsonOutput(createResult.stdout ?? ''), {
+				serviceId,
+				serviceName,
+				environmentId,
+				fallbackName: name,
+				fallbackMountPath: mountPath,
+			});
+			if (!volume) {
+				throw new Error(`Railway CLI volume add did not return a usable volume for ${serviceName} in ${environmentName}.`);
+			}
+			created = true;
+		} else {
+			const createMessage = createResult.stderr?.trim() || createResult.stdout?.trim() || '';
+			if (!looksLikeRailwaySingleVolumeConflict(createMessage)) {
+				throw new Error(createMessage || `Railway volume add failed for ${serviceName} in ${environmentName}.`);
+			}
+			volume = await findExistingRailwayServiceVolumeMount({
+				projectId,
+				serviceId,
+				environmentId,
+				mountPath,
+				env,
+			});
+			if (!volume) {
+				throw new Error(createMessage || `Railway volume add failed for ${serviceName} in ${environmentName}.`);
+			}
+			updated = true;
 		}
-		created = true;
 	}
 
 	let instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null;
@@ -2180,7 +2201,22 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 		});
 		if ((attachResult.status ?? 1) !== 0) {
 			const attachMessage = attachResult.stderr?.trim() || attachResult.stdout?.trim() || '';
-			if (!/already mounted/iu.test(attachMessage)) {
+			if (looksLikeRailwaySingleVolumeConflict(attachMessage)) {
+				const existing = await findExistingRailwayServiceVolumeMount({
+					projectId,
+					serviceId,
+					environmentId,
+					mountPath,
+					env,
+				});
+				if (existing) {
+					volume = existing;
+					instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null;
+					updated = true;
+				} else {
+					throw new Error(attachMessage || `Railway volume attach failed for ${serviceName} in ${environmentName}.`);
+				}
+			} else if (!/already mounted/iu.test(attachMessage)) {
 				throw new Error(attachMessage || `Railway volume attach failed for ${serviceName} in ${environmentName}.`);
 			}
 		}
@@ -2193,7 +2229,7 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 				fallbackMountPath: mountPath,
 			})
 			: null;
-		volume = attachedVolume ?? {
+		volume = attachedVolume ?? volume ?? {
 			...volume,
 			instances: [{
 				...(instance ?? {
@@ -2233,6 +2269,52 @@ export async function ensureRailwayServiceVolumeWithCliFallback({
 		created,
 		updated,
 	};
+}
+
+function looksLikeRailwaySingleVolumeConflict(message) {
+	return /already has a volume attached|would have \d+ volumes attached|can only have one volume/iu.test(String(message ?? ''));
+}
+
+function isActiveRailwayDeployVolumeInstance(instance) {
+	const state = String(instance?.state ?? 'READY').toUpperCase();
+	return state !== 'DELETING' && state !== 'DELETED';
+}
+
+async function findExistingRailwayServiceVolumeMount({
+	projectId,
+	serviceId,
+	environmentId,
+	mountPath,
+	env,
+}) {
+	const volumes = await listRailwayVolumes({ projectId, env });
+	const serviceVolume = volumes.find((entry) =>
+		entry.instances.some((instance) =>
+			instance.serviceId === serviceId
+			&& instance.environmentId === environmentId
+			&& isActiveRailwayDeployVolumeInstance(instance),
+		),
+	) ?? null;
+	if (serviceVolume) {
+		return serviceVolume;
+	}
+	const mounted = volumes.find((entry) =>
+		entry.instances.some((instance) =>
+			instance.environmentId === environmentId
+			&& instance.mountPath === mountPath
+			&& isActiveRailwayDeployVolumeInstance(instance),
+		),
+	) ?? null;
+	if (mounted) {
+		return mounted;
+	}
+	const environmentVolumes = volumes.filter((entry) =>
+		entry.instances.some((instance) =>
+			instance.environmentId === environmentId
+			&& isActiveRailwayDeployVolumeInstance(instance),
+		),
+	);
+	return environmentVolumes.length === 1 ? environmentVolumes[0] : null;
 }
 
 async function waitForRailwayServiceVolumeMount({

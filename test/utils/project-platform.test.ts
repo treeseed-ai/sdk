@@ -206,10 +206,26 @@ describe('project platform workflow actions', () => {
 		expect(fallbackSource.indexOf('ensureRailwayProjectContext')).toBeLessThan(fallbackSource.indexOf("'volume', '--service'"));
 		expect(fallbackSource).toContain('allowFailure: true');
 		expect(fallbackSource).toContain('already mounted');
+		expect(fallbackSource).toContain('looksLikeRailwaySingleVolumeConflict');
+		expect(fallbackSource).toContain('findExistingRailwayServiceVolumeMount');
 		expect(fallbackSource).toContain('waitForRailwayServiceVolumeMount');
 		expect(fallbackSource).toContain('listRailwayVolumes({ projectId, env })');
 		expect(fallbackSource.indexOf('const mounted = volumes.find')).toBeLessThan(fallbackSource.indexOf('entry.name === volumeName'));
 		expect(fallbackSource).not.toContain("'update', '--volume'");
+	});
+
+	it('treats Railway one-volume service conflicts as existing volume adoption during reconciliation', () => {
+		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
+		const syncStart = source.indexOf('async function syncRailwayEnvironmentForScope');
+		const syncEnd = source.indexOf('async function ensureRailwayMarketDatabaseForScope', syncStart);
+		const syncSource = source.slice(syncStart, syncEnd);
+
+		expect(syncStart).toBeGreaterThanOrEqual(0);
+		expect(syncEnd).toBeGreaterThan(syncStart);
+		expect(syncSource).toContain('looksLikeRailwaySingleVolumeConflict');
+		expect(syncSource).toContain('findRailwayVolumeMountedForService');
+		expect(syncSource).toContain('already has a volume attached');
+		expect(syncSource).toContain('can only have one volume');
 	});
 
 	it('allows Railway CLI project context linking from a project id alone', () => {

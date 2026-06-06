@@ -2069,6 +2069,19 @@ async function syncRailwayEnvironmentForScope(input: TreeseedReconcileAdapterInp
 							attached = true;
 							break;
 						}
+						if (looksLikeRailwaySingleVolumeConflict(attachMessage)) {
+							const existingVolume = await findRailwayVolumeMountedForService({
+								projectId: entry.project.id,
+								serviceId: entry.service.id,
+								environmentId: entry.environment.id,
+								mountPath: entry.configuredService.volumeMountPath,
+								env: topology.env,
+							});
+							if (existingVolume) {
+								attached = true;
+								break;
+							}
+						}
 						if (!/volume .*not found|not found|does not exist/iu.test(attachMessage)) {
 							break;
 						}
@@ -2089,6 +2102,44 @@ async function syncRailwayEnvironmentForScope(input: TreeseedReconcileAdapterInp
 		dryRun,
 		workspace: topology.workspace.name,
 	};
+}
+
+function looksLikeRailwaySingleVolumeConflict(message: string) {
+	return /already has a volume attached|would have \d+ volumes attached|can only have one volume/iu.test(message);
+}
+
+function isActiveRailwayVolumeInstance(instance: { state?: unknown }) {
+	const state = String(instance.state ?? 'READY').toUpperCase();
+	return state !== 'DELETING' && state !== 'DELETED';
+}
+
+async function findRailwayVolumeMountedForService({
+	projectId,
+	serviceId,
+	environmentId,
+	mountPath,
+	env,
+}: {
+	projectId: string;
+	serviceId: string;
+	environmentId: string;
+	mountPath: string;
+	env: NodeJS.ProcessEnv | Record<string, string | undefined>;
+}) {
+	const volumes = await listRailwayVolumes({ projectId, env });
+	return volumes.find((volume) =>
+		volume.instances.some((instance) =>
+			instance.serviceId === serviceId
+			&& instance.environmentId === environmentId
+			&& isActiveRailwayVolumeInstance(instance),
+		),
+	) ?? volumes.find((volume) =>
+		volume.instances.some((instance) =>
+			instance.environmentId === environmentId
+			&& instance.mountPath === mountPath
+			&& isActiveRailwayVolumeInstance(instance),
+		),
+	) ?? null;
 }
 
 async function ensureRailwayMarketDatabaseForScope(
