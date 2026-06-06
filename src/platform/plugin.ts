@@ -8,6 +8,11 @@ import type {
 import type { TreeseedEnvironmentRegistryOverlay } from './environment.ts';
 import type { SdkGraphRankingProvider } from '../sdk-types.ts';
 import type { TreeseedReconcileAdapter } from '../reconcile/contracts.ts';
+import type {
+	TreeseedApplicationHostingProfile,
+	TreeseedHostAdapter,
+	TreeseedServiceTypeAdapter,
+} from '../hosting/contracts.ts';
 
 export type TreeseedSiteLayerDefinition = TreeseedPlatformLayerDefinition & {
 	kinds?: Array<'pages' | 'styles' | 'components'>;
@@ -85,6 +90,14 @@ export type TreeseedGraphRankingProviderContribution =
 	| SdkGraphRankingProvider
 	| ((context: TreeseedPluginEnvironmentContext) => SdkGraphRankingProvider | undefined);
 
+export type TreeseedHostingContribution = {
+	hostAdapters?: Record<string, TreeseedHostAdapter>;
+	serviceTypeAdapters?: Record<string, TreeseedServiceTypeAdapter>;
+	profiles?: TreeseedApplicationHostingProfile[];
+	uiPlacements?: Record<string, unknown>;
+	environmentDefaults?: Record<string, unknown>;
+};
+
 export interface TreeseedPlugin {
 	id?: string;
 	provides?: Record<string, any> & {
@@ -122,6 +135,9 @@ export interface TreeseedPlugin {
 	reconcileAdapters?:
 		| Record<string, TreeseedReconcileAdapter | ((context: TreeseedPluginEnvironmentContext) => TreeseedReconcileAdapter | undefined)>
 		| ((context: TreeseedPluginEnvironmentContext) => Record<string, TreeseedReconcileAdapter | ((context: TreeseedPluginEnvironmentContext) => TreeseedReconcileAdapter | undefined)> | undefined);
+	hosting?:
+		| TreeseedHostingContribution
+		| ((context: TreeseedPluginEnvironmentContext) => TreeseedHostingContribution | undefined);
 	graphRankingProviders?: Record<string, TreeseedGraphRankingProviderContribution>;
 	[key: string]: unknown;
 }

@@ -5528,6 +5528,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 			const dryRun = executionMode === 'plan';
 			const force = input.force === true;
 			const deleteData = input.deleteData === true;
+			const sweepTreeseed = input.sweepTreeseed === true;
 			const destroyRemote = input.destroyRemote !== false;
 			const destroyLocal = input.destroyLocal !== false;
 			const removeBuildArtifacts = input.removeBuildArtifacts === true;
@@ -5541,6 +5542,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 				dryRun,
 				force,
 				deleteData,
+				sweepTreeseed,
 				destroyRemote,
 				destroyLocal,
 				removeBuildArtifacts,
@@ -5551,6 +5553,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 				},
 				plannedSteps: [
 					...(destroyRemote ? [{ id: 'destroy-remote', description: `Destroy remote ${scope} resources` }] : []),
+					...(sweepTreeseed ? [{ id: 'sweep-treeseed-resources', description: 'Sweep TreeSeed-owned provider resources across persistent environments' }] : []),
 					...(destroyLocal ? [{ id: 'cleanup-local', description: `Clean local ${scope} state${removeBuildArtifacts ? ' and build artifacts' : ''}` }] : []),
 				],
 				remoteResult: null,
@@ -5558,7 +5561,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 
 			if (executionMode === 'plan') {
 				const plannedRemoteResult = destroyRemote
-					? await destroyTreeseedEnvironmentResources(tenantRoot, { dryRun: true, force, deleteData, target })
+					? await destroyTreeseedEnvironmentResources(tenantRoot, { dryRun: true, force, deleteData, sweepTreeseed, target })
 					: null;
 				return buildWorkflowResult(
 					'destroy',
@@ -5570,7 +5573,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 					{
 						executionMode,
 						nextSteps: createNextSteps([
-							{ operation: 'destroy', reason: 'Run without --plan to destroy the selected environment.', input: { environment: scope, force, deleteData, removeBuildArtifacts } },
+							{ operation: 'destroy', reason: 'Run without --plan to destroy the selected environment.', input: { environment: scope, force, deleteData, sweepTreeseed, removeBuildArtifacts } },
 							{ operation: 'status', reason: 'Confirm the current environment state before making destructive changes.' },
 						]),
 					},
@@ -5584,6 +5587,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 					environment: scope,
 					force,
 					deleteData,
+					sweepTreeseed,
 					destroyRemote,
 					destroyLocal,
 					removeBuildArtifacts,
@@ -5621,7 +5625,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 
 				const remoteResult = destroyRemote
 					? await executeJournalStep(root, workflowRun.runId, 'destroy-remote', () =>
-						destroyTreeseedEnvironmentResources(tenantRoot, { dryRun: false, force, deleteData, target }) as Record<string, unknown>)
+						destroyTreeseedEnvironmentResources(tenantRoot, { dryRun: false, force, deleteData, sweepTreeseed, target }) as Record<string, unknown>)
 					: null;
 				if (!destroyRemote) {
 					skipJournalStep(root, workflowRun.runId, 'destroy-remote', { skippedReason: 'destroyRemote=false' });
