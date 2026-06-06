@@ -801,6 +801,85 @@ services:
 		expect(result.instance?.serviceId).toBe('svc-postgres');
 	});
 
+	it('adopts the sole active environment volume after Railway reports a one-volume service conflict', async () => {
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('TreeseedRailwayVolumeList')) {
+				return new Response(JSON.stringify({
+					data: {
+						project: {
+							volumes: {
+								edges: [{
+									node: {
+										id: 'existing-env-volume',
+										name: 'legacy-data',
+										projectId: 'project-1',
+										volumeInstances: {
+											edges: [{
+												node: {
+													id: 'vi-existing',
+													environmentId: 'env-staging',
+													mountPath: '/data',
+													state: 'READY',
+												},
+											}],
+										},
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (String(body.query).includes('TreeseedRailwayVolumeUpdate')) {
+				return new Response(JSON.stringify({
+					data: {
+						volumeUpdate: {
+							id: 'existing-env-volume',
+							name: 'public-treedb-data',
+							projectId: 'project-1',
+							volumeInstances: {
+								edges: [{
+									node: {
+										id: 'vi-existing',
+										environmentId: 'env-staging',
+										mountPath: '/data',
+										state: 'READY',
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (String(body.query).includes('TreeseedRailwayVolumeInstanceUpdate')) {
+				expect(body.variables).toEqual({
+					volumeId: 'existing-env-volume',
+					input: {
+						serviceId: 'svc-treedb',
+						mountPath: '/data',
+					},
+				});
+				return new Response(JSON.stringify({ data: { volumeInstanceUpdate: true } }), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			throw new Error(`Unexpected Railway API call: ${body.query}`);
+		});
+
+		const result = await ensureRailwayServiceVolume({
+			projectId: 'project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-treedb',
+			name: 'public-treedb-data',
+			mountPath: '/data',
+			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		expect(result.created).toBe(false);
+		expect(result.volume.id).toBe('existing-env-volume');
+		expect(fetchMock.mock.calls.some(([, init]) => String(init?.body ?? '').includes('TreeseedRailwayVolumeCreate'))).toBe(false);
+	});
+
 	it('recreates a named volume when Railway reports the listed volume as missing', async () => {
 		const fetchMock = vi.fn(async (_input, init) => {
 			const body = JSON.parse(String(init?.body ?? '{}'));
