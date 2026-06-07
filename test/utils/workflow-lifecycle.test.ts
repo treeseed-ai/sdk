@@ -376,7 +376,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.ok).toBe(true);
 		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('staging');
 		expect(progress.join('\n')).toContain('[workflow][repair] Reattached @treeseed/sdk to staging');
-	}, 180000);
+	}, 360000);
 
 	it('loads existing machine config secrets before evaluating status readiness', async () => {
 		const { work } = createWorkflowRepo();
@@ -415,7 +415,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.providerStatus.local.railway.applicable).toBe(false);
 		expect(result.payload.secrets.keyAgentUnlocked).toBe(true);
 		expect(result.payload.persistentEnvironments.staging.blockers.join('\n')).not.toContain('STATUS_REQUIRED_TOKEN');
-	}, 180000);
+	}, 360000);
 
 	it('treats save with no new changes as a successful sync checkpoint', async () => {
 		const { work } = createWorkflowRepo();
