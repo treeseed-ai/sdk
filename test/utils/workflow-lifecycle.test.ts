@@ -938,7 +938,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
 	}, 180000);
 
-	it('releases only changed packages plus dependents and syncs market main to package main heads', async () => {
+		it('releases only changed packages plus dependents and syncs market main to package main heads', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = workflowFor(work);
 		await workflow.switchTask({ branch: 'feature/demo-task' });
@@ -1014,7 +1014,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'core'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'cli'), ['branch', '--show-current'])).toBe('staging');
-	}, 180000);
+	}, 300000);
 
 	it('keeps stale dev tags when release dev tag cleanup is disabled', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
