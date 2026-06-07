@@ -56,7 +56,7 @@ describe('root workflow bootstrap selection', () => {
 		expect(source).not.toContain('deploy-processing');
 		expect(source).not.toContain('deploy_processing');
 		expect(webSource).toContain('TREESEED_BOOTSTRAP_MODE: auto');
-		expect(webSource).toContain('TREESEED_WORKFLOW_PLANE: all');
+		expect(webSource).toContain('TREESEED_WORKFLOW_PLANE: web');
 		expect(webSource).toContain('tenant-workflow-action.ts --action "${TREESEED_WORKFLOW_ACTION}" --environment "${TREESEED_WORKFLOW_ENVIRONMENT}"');
 		expect(webSource).toContain('TREESEED_WORKFLOW_ACTION: ${{ inputs.action_kind }}');
 		expect(webSource).toContain('TREESEED_WORKFLOW_ENVIRONMENT: ${{ inputs.environment }}');
