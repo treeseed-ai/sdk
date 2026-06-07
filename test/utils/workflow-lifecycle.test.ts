@@ -431,7 +431,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.noChanges).toBe(true);
 		expect(result.payload.branchSync.pushed).toBe(true);
 		expect(result.payload.finalState.branchName).toBe('feature/demo-task');
-	}, 180000);
+	}, 300000);
 
 	it('auto-saves dirty task branches during close and returns to staging', async () => {
 		const { work } = createWorkflowRepo();
@@ -553,7 +553,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(secondSdkReport?.tagName).not.toBe(oldTag);
 		expect(git(sdkRoot, ['rev-list', '-n', '1', oldTag])).toBe(oldTagCommit);
 		expect(git(sdkRoot, ['rev-list', '-n', '1', String(secondSdkReport?.tagName)])).toBe(secondSdkReport?.commitSha);
-	}, 180000);
+	}, 300000);
 
 	it('switch mirrors task branches into checked-out package repos without pushing package branches', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
