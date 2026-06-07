@@ -291,6 +291,9 @@ describe('project platform workflow actions', () => {
 
 		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:resolve-context'");
 		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:sync-runtime-config'");
+		expect(deploySource).toContain("railwayPhaseTimeoutMs(commandEnv, 'sync_runtime_config')");
+		expect(source).toContain("if (phase === 'sync_runtime_config')");
+		expect(source).toContain("writePhase(`sync-runtime-config:${stage}`, message)");
 		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:device-login-vars'");
 		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:project-token'");
 		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:predeploy-build'");

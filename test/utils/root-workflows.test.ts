@@ -65,6 +65,8 @@ describe('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('TREESEED_API_WEB_SERVICE_SECRET');
 		expect(webSource).toContain('TREESEED_PLATFORM_RUNNER_SECRET');
 		expect(webSource).toContain('TREESEED_HOSTED_HUBS_GITHUB_TOKEN');
+		expect(webSource).toContain('GH_TOKEN: ${{ secrets.TREESEED_HOSTED_HUBS_GITHUB_TOKEN }}');
+		expect(webSource).toContain('GITHUB_TOKEN: ${{ secrets.TREESEED_HOSTED_HUBS_GITHUB_TOKEN }}');
 		expect(webSource).toContain('TREESEED_SITE_URL');
 		expect(webSource).toContain('BETTER_AUTH_URL');
 		expect(webSource).toContain('https://api-treeseed-market-staging-ca844c56.treeseed.ai');
