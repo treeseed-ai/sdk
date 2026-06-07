@@ -66,7 +66,7 @@ services:
     railway:
       projectName: treeseed-market
       serviceName: treeseed-market-api
-      rootDir: .
+      rootDir: packages/api
       buildCommand: npm run build
       startCommand: npm run start:api
       healthcheckPath: /healthz
@@ -84,7 +84,7 @@ services:
     railway:
       projectName: treeseed-market
       serviceName: treeseed-market-operations-runner
-      rootDir: .
+      rootDir: packages/api
       buildCommand: npm run build
       startCommand: npm run start:runner
       healthcheckPath: /healthz
@@ -126,7 +126,7 @@ describe('hosted service checks', () => {
 					serviceName: 'treeseed-market-api',
 					projectName: 'treeseed-market',
 					environmentName: 'staging',
-					rootDirectory: '.',
+					rootDirectory: 'packages/api',
 					buildCommand: 'npm run build',
 					startCommand: 'npm run start:api',
 					healthcheckPath: '/healthz',
@@ -137,7 +137,7 @@ describe('hosted service checks', () => {
 					serviceName: 'treeseed-market-operations-runner-01',
 					projectName: 'treeseed-market',
 					environmentName: 'staging',
-					rootDirectory: '.',
+					rootDirectory: 'packages/api',
 					buildCommand: 'npm run build',
 					startCommand: 'npm run start:runner',
 					healthcheckPath: '/healthz',
@@ -148,7 +148,7 @@ describe('hosted service checks', () => {
 			},
 		});
 		expect(report.target).toBe('staging');
-		expect(byId(report, 'railway:api:rootDirectory')).toMatchObject({ status: 'passed', expected: { rootDirectory: '.' } });
+		expect(byId(report, 'railway:api:rootDirectory')).toMatchObject({ status: 'passed', expected: { rootDirectory: 'packages/api' } });
 		expect(byId(report, 'railway:api:buildCommand')).toMatchObject({ status: 'passed', expected: { buildCommand: 'npm run build' } });
 		expect(byId(report, 'railway:api:startCommand')).toMatchObject({ status: 'passed', expected: { startCommand: 'npm run start:api' } });
 		expect(byId(report, 'railway:marketOperationsRunner:1:startCommand')).toMatchObject({ status: 'passed', expected: { startCommand: 'npm run start:runner' } });
@@ -167,7 +167,7 @@ describe('hosted service checks', () => {
 			observedRailwayServices: {
 				'treeseed-market-api': {
 					serviceName: 'treeseed-market-api',
-					rootDirectory: 'packages/api',
+					rootDirectory: '.',
 					buildCommand: 'npm run build:api',
 					startCommand: 'node ./src/api/server.js',
 				},

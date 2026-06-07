@@ -490,7 +490,7 @@ services:
     railway:
       projectName: treeseed-market
       serviceName: treeseed-market-api
-      rootDir: .
+      rootDir: packages/api
   marketOperationsRunner:
     provider: railway
     enabled: true
@@ -498,7 +498,7 @@ services:
     railway:
       projectName: treeseed-market
       serviceName: treeseed-market-operations-runner
-      rootDir: .
+      rootDir: packages/api
       buildCommand: npm run build
       startCommand: npm run start:runner
       volumeMountPath: /data
