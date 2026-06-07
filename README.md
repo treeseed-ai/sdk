@@ -24,8 +24,35 @@ If you are unsure, use `AgentSdk`.
 - operational runtime state such as messages, runs, cursors, and leases
 - control-plane orchestration for work days, tasks, task events, graph runs, and reports
 - provider-neutral capacity scheduling contracts for task classification, admission, execution profiles, routing, estimates, planning proposals, attention load, utility, predictive reserve, hybrid execution, checkpoints, and usage actuals
+- hosting graph compilation, deployment readiness, live hosted-service checks, Market runner smoke helpers, and verification cache support for Treeseed workflows
 - graph-first context retrieval through `parseGraphDsl()`, `resolveSeeds()`, `queryGraph()`, and `buildContextPack()`
 - agent scoping through `scopeForAgent()`
+
+## Workflow And Hosting Support
+
+The SDK owns the shared implementation behind the fail-fast `trsd` deployment workflow.
+
+Current workflow-support exports include:
+
+```ts
+import {
+  collectTreeseedDeploymentReadiness,
+  collectTreeseedLiveHostedServiceChecks,
+  formatTreeseedReadinessReport,
+  runTreeseedMarketRunnerSmoke,
+} from '@treeseed/sdk/workflow-support';
+```
+
+These helpers are used by:
+
+- `trsd ready <local|staging|prod>`
+- `trsd hosting plan|apply|verify --environment <env> --service <id>`
+- `trsd audit hosting --environment <env> --live`
+- `trsd doctor --live --hosted-services`
+- `trsd operations smoke --environment <env> --service marketOperationsRunner`
+- `trsd stage|release --verify-deployed-resources`
+
+For the Market control plane, the expected hosted backend services are `api` and `marketOperationsRunner`, both built from `packages/api`, plus the `marketDatabase` service targeted only to those backend services. The root Market app remains a web UI and `/v1/*` proxy/client surface.
 
 ## Install
 

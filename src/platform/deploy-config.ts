@@ -464,6 +464,23 @@ function parseManagedServiceConfig(value: unknown, label: string): TreeseedManag
 			),
 			restartPolicy: optionalString(railway.restartPolicy),
 			runtimeMode: optionalString(railway.runtimeMode),
+			resourceType: optionalString(railway.resourceType),
+			environmentVariable: optionalString(railway.environmentVariable),
+			serviceTargets: optionalStringArray(railway.serviceTargets, `${label}.railway.serviceTargets`),
+			volumeMountPath: optionalString(railway.volumeMountPath),
+			runnerPool: optionalRecord(railway.runnerPool, `${label}.railway.runnerPool`)
+				? {
+					bootstrapCount: optionalPositiveNumber(
+						optionalRecord(railway.runnerPool, `${label}.railway.runnerPool`)?.bootstrapCount,
+						`${label}.railway.runnerPool.bootstrapCount`,
+					),
+					maxRunners: optionalPositiveNumber(
+						optionalRecord(railway.runnerPool, `${label}.railway.runnerPool`)?.maxRunners,
+						`${label}.railway.runnerPool.maxRunners`,
+					),
+					volumeMountPath: optionalString(optionalRecord(railway.runnerPool, `${label}.railway.runnerPool`)?.volumeMountPath),
+				}
+				: undefined,
 			schedule: Array.isArray(railway.schedule)
 				? railway.schedule.map((entry) => optionalString(entry)).filter(Boolean)
 				: optionalString(railway.schedule),

@@ -7,6 +7,7 @@ import type {
 	TreeseedHostProjectGroup,
 	TreeseedHostingApplyResult,
 	TreeseedHostingEnvironment,
+	TreeseedHostingGraphFilter,
 	TreeseedHostingGraph,
 	TreeseedHostingGraphInput,
 	TreeseedHostingPlan,
@@ -201,6 +202,7 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 				buildCommand: service.railway?.buildCommand ?? null,
 				startCommand: service.railway?.startCommand ?? null,
 				healthcheckPath: service.railway?.healthcheckPath ?? null,
+				runtimeMode: service.railway?.runtimeMode ?? null,
 				volumeMountPath: service.railway?.volumeMountPath ?? null,
 				runnerPool: service.railway?.runnerPool ?? null,
 				resourceType: service.railway?.resourceType ?? null,
@@ -411,6 +413,26 @@ function summarizePlacements(units: TreeseedHostingUnit[]): TreeseedHostingPlace
 	}));
 }
 
+function normalizeFilterValues(values: string[] | undefined) {
+	return new Set((values ?? []).map((value) => value.trim()).filter(Boolean));
+}
+
+function filterHostingUnits(units: TreeseedHostingUnit[], filter: TreeseedHostingGraphFilter | undefined) {
+	const serviceIds = normalizeFilterValues(filter?.serviceIds);
+	const placements = normalizeFilterValues(filter?.placements as string[] | undefined);
+	const hosts = normalizeFilterValues(filter?.hosts);
+	if (serviceIds.size === 0 && placements.size === 0 && hosts.size === 0) return units;
+	const allServiceIds = new Set(units.map((unit) => unit.id));
+	const missingServices = [...serviceIds].filter((serviceId) => !allServiceIds.has(serviceId));
+	if (missingServices.length > 0) {
+		throw new Error(`Unknown hosting service id${missingServices.length === 1 ? '' : 's'}: ${missingServices.join(', ')}.`);
+	}
+	return units.filter((unit) =>
+		(serviceIds.size === 0 || serviceIds.has(unit.id))
+		&& (placements.size === 0 || placements.has(unit.placement))
+		&& (hosts.size === 0 || hosts.has(unit.host.id)));
+}
+
 export function compileTreeseedHostingGraph(input: TreeseedHostingGraphInput): TreeseedHostingGraph {
 	const environment = normalizeEnvironment(input.environment);
 	const deployConfig = input.deployConfig ?? loadTreeseedDeployConfig(resolve(input.tenantRoot, 'treeseed.site.yaml'));
@@ -428,9 +450,9 @@ export function compileTreeseedHostingGraph(input: TreeseedHostingGraphInput): T
 		profiles.flatMap((profile) => profile.projectGroups ?? []).map((group) => [group.id, group]),
 	);
 	const services = profiles.flatMap((profile) => profile.services);
-	const units = orderUnits(services
+	const units = filterHostingUnits(orderUnits(services
 		.map((service) => createUnit(service, environment, hosts, serviceTypes, projectGroups))
-		.filter((unit): unit is TreeseedHostingUnit => Boolean(unit)));
+		.filter((unit): unit is TreeseedHostingUnit => Boolean(unit))), input.filter);
 
 	return {
 		tenantRoot: input.tenantRoot,

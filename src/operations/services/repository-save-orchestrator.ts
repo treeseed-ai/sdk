@@ -57,6 +57,10 @@ import {
 	formatAllowedBuildWarnings,
 	type BuildWarningPolicyOptions,
 } from './build-warning-policy.js';
+import {
+	readTreeseedVerificationCache,
+	writeTreeseedVerificationCache,
+} from './verification-cache.ts';
 
 export type RepoKind = 'package' | 'project';
 export type RepoBranchMode = 'package-release-main' | 'package-dev-save' | 'project-save';
@@ -1071,6 +1075,27 @@ async function runScript(node: RepositorySaveNode, options: RepositorySaveOption
 	await runStreamingCommand(node, options, 'verify', 'npm', ['run', scriptName]);
 }
 
+async function runCachedScript(node: RepositorySaveNode, options: RepositorySaveOptions, verifyMode: SaveVerifyMode, scriptName: string) {
+	const command = `npm run ${scriptName}`;
+	const cacheInput = {
+		workspaceRoot: options.root,
+		repoName: node.name,
+		repoPath: node.path,
+		command,
+		verifyMode,
+		env: process.env,
+	};
+	const cached = readTreeseedVerificationCache(cacheInput);
+	if (cached) {
+		emitProgress(options, node, 'verify', `[verify][cache] Reused ${node.name} ${scriptName} for ${cached.headSha.slice(0, 12)}.`);
+		return { cached: true };
+	}
+	const started = Date.now();
+	await runScript(node, options, scriptName);
+	writeTreeseedVerificationCache(cacheInput, Date.now() - started);
+	return { cached: false };
+}
+
 async function runRepoVerification(node: RepositorySaveNode, options: RepositorySaveOptions, verifyMode: SaveVerifyMode): Promise<RepositoryVerificationResult> {
 	if (verifyMode === 'skip') {
 		emitProgress(options, node, 'verify', 'Skipped verification by request.');
@@ -1084,7 +1109,7 @@ async function runRepoVerification(node: RepositorySaveNode, options: Repository
 		if (!hasScript(node, 'verify:local')) {
 			throw new RepositorySaveError(`Package ${node.name} is missing required verify:local script.`);
 		}
-		await runScript(node, options, 'verify:local');
+		await runCachedScript(node, options, verifyMode, 'verify:local');
 		return { mode: verifyMode, status: 'passed', primary: 'verify:local', fallbackUsed: false, error: null };
 	}
 	if (!hasScript(node, 'verify:action') && !hasScript(node, 'verify:local')) {
@@ -1092,14 +1117,14 @@ async function runRepoVerification(node: RepositorySaveNode, options: Repository
 	}
 	if (hasScript(node, 'verify:action')) {
 		try {
-			await runScript(node, options, 'verify:action');
+			await runCachedScript(node, options, verifyMode, 'verify:action');
 			return { mode: verifyMode, status: 'passed', primary: 'verify:action', fallbackUsed: false, error: null };
 		} catch (error) {
 			if (!hasScript(node, 'verify:local')) {
 				throw error;
 			}
 			emitProgress(options, node, 'verify', 'verify:action failed; falling back to verify:local.', 'stderr');
-			await runScript(node, options, 'verify:local');
+			await runCachedScript(node, options, verifyMode, 'verify:local');
 			return {
 				mode: verifyMode,
 				status: 'passed',
@@ -1109,7 +1134,7 @@ async function runRepoVerification(node: RepositorySaveNode, options: Repository
 			};
 		}
 	}
-	await runScript(node, options, 'verify:local');
+	await runCachedScript(node, options, verifyMode, 'verify:local');
 	return { mode: verifyMode, status: 'passed', primary: 'verify:local', fallbackUsed: true, error: null };
 }
 

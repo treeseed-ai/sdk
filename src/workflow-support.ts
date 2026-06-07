@@ -57,6 +57,29 @@ export {
 	type TreeseedObservedRailwayServiceState,
 } from './operations/services/hosted-service-checks.ts';
 export {
+	collectTreeseedDeploymentReadiness,
+	formatTreeseedReadinessReport,
+	type TreeseedDeploymentReadinessCheck,
+	type TreeseedDeploymentReadinessReport,
+	type TreeseedDeploymentReadinessStatus,
+} from './operations/services/deployment-readiness.ts';
+export {
+	collectTreeseedLiveHostedServiceChecks,
+	type TreeseedLiveHostedServiceCheckOptions,
+	type TreeseedLiveHostedServiceCheckReport,
+} from './operations/services/live-hosted-service-checks.ts';
+export {
+	runTreeseedMarketRunnerSmoke,
+	type TreeseedMarketRunnerSmokeOptions,
+	type TreeseedMarketRunnerSmokeReport,
+} from './operations/services/market-runner-smoke.ts';
+export {
+	readTreeseedVerificationCache,
+	treeseedVerificationCacheKey,
+	writeTreeseedVerificationCache,
+	type TreeseedVerificationCacheEntry,
+} from './operations/services/verification-cache.ts';
+export {
 	assertDeploymentInitialized,
 	cleanupDestroyedState,
 	createBranchPreviewDeployTarget,

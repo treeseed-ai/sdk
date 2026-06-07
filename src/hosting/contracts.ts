@@ -131,6 +131,13 @@ export interface TreeseedHostingGraphInput {
 	hostAdapters?: Record<string, TreeseedHostAdapter>;
 	serviceTypeAdapters?: Record<string, TreeseedServiceTypeAdapter>;
 	profiles?: TreeseedApplicationHostingProfile[];
+	filter?: TreeseedHostingGraphFilter;
+}
+
+export interface TreeseedHostingGraphFilter {
+	serviceIds?: string[];
+	placements?: TreeseedServicePlacement[];
+	hosts?: string[];
 }
 
 export interface TreeseedHostingUnit {
@@ -232,4 +239,3 @@ export interface TreeseedPersistedHostingLocator {
 	locators: Record<string, string | null>;
 	updatedAt: string;
 }
-

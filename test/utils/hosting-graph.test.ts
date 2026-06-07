@@ -131,6 +131,25 @@ describe('hosting graph', () => {
 		expect(graph.units.find((unit) => unit.id === 'public-treedx-node')?.host.id).toBe('local-docker');
 	});
 
+	it('filters hosting graph units by service id', async () => {
+		const tenantRoot = createTenant(marketConfig());
+		const plan = await planTreeseedHostingGraph({
+			tenantRoot,
+			environment: 'staging',
+			filter: { serviceIds: ['api'] },
+		});
+
+		expect(plan.units.map((entry) => entry.unit.id)).toEqual(['api']);
+	});
+
+	it('fails targeted hosting graph requests for unknown services', () => {
+		expect(() => compileTreeseedHostingGraph({
+			tenantRoot: createTenant(marketConfig()),
+			environment: 'staging',
+			filter: { serviceIds: ['missing'] },
+		})).toThrow(/Unknown hosting service id/u);
+	});
+
 	it('keeps public TreeDX in one Railway project while isolating staging and production by environment', () => {
 		const tenantRoot = createTenant(marketConfig());
 		const staging = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging' });

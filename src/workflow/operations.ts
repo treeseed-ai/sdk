@@ -147,6 +147,8 @@ import {
 } from '../operations/services/workspace-tools.ts';
 import { runTreeseedHostingAudit, type TreeseedHostingAuditEnvironment } from '../operations/services/hosting-audit.ts';
 import { collectTreeseedHostedServiceChecks } from '../operations/services/hosted-service-checks.ts';
+import { collectTreeseedDeploymentReadiness } from '../operations/services/deployment-readiness.ts';
+import { collectTreeseedLiveHostedServiceChecks } from '../operations/services/live-hosted-service-checks.ts';
 import { resolveTreeseedWorkflowState, type TreeseedWorkflowStatusOptions } from '../workflow-state.ts';
 import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, filterTreeseedDesiredUnitsByBootstrapSystems, planTreeseedReconciliation, resolveTreeseedBootstrapSelection, reconcileTreeseedTarget } from '../reconcile/index.ts';
 import {
@@ -841,44 +843,65 @@ function buildWorkflowResult<TPayload>(
 	};
 }
 
-async function runReadOnlyHostingAuditForWorkflow(
+async function runWorkflowHostedResourceVerification(
 	operation: TreeseedWorkflowOperationId,
 	root: string,
 	helpers: WorkflowOperationHelpers,
 	environment: TreeseedHostingAuditEnvironment,
-	options: { enabled: boolean; strict?: boolean } = { enabled: true },
+	options: { enabled: boolean; strict?: boolean; live?: boolean } = { enabled: true },
 ) {
-	if (!options.enabled) {
-		return null;
+	if (!options.enabled) return null;
+	const target = environment === 'prod' ? 'prod' : environment === 'local' ? 'local' : 'staging';
+	const readiness = collectTreeseedDeploymentReadiness({
+		tenantRoot: root,
+		environment: target,
+	});
+	if (options.strict && !readiness.ok) {
+		const failures = readiness.checks
+			.filter((check) => check.status === 'failed')
+			.map((check) => `${check.id}: ${check.message}${check.remediation ? ` Remediation: ${check.remediation}` : ''}`);
+		workflowError(operation, 'validation_failed', `Deployment readiness failed for ${target}:\n${failures.join('\n')}`, {
+			details: { readiness },
+		});
 	}
-	helpers.write(`[workflow][hosting-audit] Running read-only hosting audit for ${environment}.`);
-	const report = await runTreeseedHostingAudit({
+	const hostingAudit = await runTreeseedHostingAudit({
 		tenantRoot: root,
 		environment,
 		repair: false,
 		env: helpers.context.env,
 		write: (line) => helpers.write(line),
 	});
-	const hostedServices = collectTreeseedHostedServiceChecks({
-		tenantRoot: root,
-		target: report.environment === 'prod' ? 'prod' : report.environment === 'local' ? 'local' : 'staging',
-	});
-	if (options.strict && !report.ok) {
-		workflowError(operation, 'validation_failed', `Hosting audit failed for ${report.environment}: ${report.blockers.join('\n')}`, {
-			details: { hostingAudit: report, hostedServices },
+	const hostedServices = options.live
+		? await collectTreeseedLiveHostedServiceChecks({
+			tenantRoot: root,
+			target,
+			strict: options.strict === true,
+			requireLiveRailway: options.strict === true,
+			requireLiveHttp: options.strict === true,
+			env: helpers.context.env,
+		})
+		: collectTreeseedHostedServiceChecks({
+			tenantRoot: root,
+			target,
+		});
+	if (options.strict && !hostingAudit.ok) {
+		workflowError(operation, 'validation_failed', `Hosting audit failed for ${hostingAudit.environment}: ${hostingAudit.blockers.join('\n')}`, {
+			details: { hostingAudit, hostedServices, readiness },
 		});
 	}
 	if (options.strict && hostedServices.summary.failed > 0) {
 		const failures = hostedServices.checks
 			.filter((check) => check.status === 'failed')
-			.map((check) => `${check.id}: ${check.issues.join('; ') || check.description}`);
-		workflowError(operation, 'validation_failed', `Hosted service checks failed for ${hostedServices.target}: ${failures.join('\n')}`, {
-			details: { hostingAudit: report, hostedServices },
+			.map((check) => `${check.id}: ${check.issues.join('; ') || check.description}${check.remediation ? ` Remediation: ${check.remediation}` : ''}`);
+		workflowError(operation, 'validation_failed', `Hosted service checks failed for ${hostedServices.target}:\n${failures.join('\n')}`, {
+			details: { hostingAudit, hostedServices, readiness },
 		});
 	}
 	return {
-		...report,
+		hostingAudit,
 		hostedServices,
+		readiness,
+		live: options.live === true,
 	};
 }
 
@@ -3901,12 +3924,16 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						};
 					}
 				}
-				const hostingAudit = await runReadOnlyHostingAuditForWorkflow(
+				const hostingAudit = await runWorkflowHostedResourceVerification(
 					'save',
 					root,
 					helpers,
 					scope === 'prod' ? 'prod' : scope === 'local' ? 'local' : 'staging',
-					{ enabled: effectiveInput.verifyDeployedResources === true, strict: true },
+					{
+						enabled: effectiveInput.verifyDeployedResources === true,
+						strict: true,
+						live: effectiveInput.verifyDeployedResources === true,
+					},
 				);
 
 				const payload = {
@@ -4258,6 +4285,10 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					} catch (error) {
 					blockers.push(error instanceof Error ? error.message : String(error));
 				}
+				const readiness = collectTreeseedDeploymentReadiness({ tenantRoot: root, environment: 'staging' });
+				blockers.push(...readiness.checks
+					.filter((check) => check.status === 'failed')
+					.map((check) => `${check.id}: ${check.message}${check.remediation ? ` Remediation: ${check.remediation}` : ''}`));
 				return buildWorkflowResult(
 					'stage',
 					root,
@@ -4278,6 +4309,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						...worktreePayload(root, effectiveInput.worktreeMode),
 						autoSaveRequired: initialSession.rootRepo.dirty || initialSession.packageRepos.some((repo) => repo.dirty),
 						blockers,
+						readiness,
 						rootRepo: createWorkspaceRootRepoReport(root),
 						repos: createWorkspacePackageReports(root),
 						plannedSteps: [
@@ -4324,6 +4356,18 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
 				validateStagingWorkflowContracts(root);
 				runWorkspaceSavePreflight({ cwd: root });
+				const stagingReadiness = collectTreeseedDeploymentReadiness({ tenantRoot: root, environment: 'staging' });
+				if (!stagingReadiness.ok) {
+					workflowError(
+						'stage',
+						'validation_failed',
+						`Deployment readiness failed for staging:\n${stagingReadiness.checks
+							.filter((check) => check.status === 'failed')
+							.map((check) => `${check.id}: ${check.message}${check.remediation ? ` Remediation: ${check.remediation}` : ''}`)
+							.join('\n')}`,
+						{ details: { readiness: stagingReadiness } },
+					);
+				}
 			const repoDir = session.gitRoot;
 			const rootRepo = createWorkspaceRootRepoReport(root);
 			const packageReports = createWorkspacePackageReports(root);
@@ -4505,12 +4549,16 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				});
 				const releaseCandidate = await executeJournalStep(root, workflowRun.runId, 'release-candidate', () =>
 					runReleaseCandidateForPlan('stage', root, stageReleasePlan));
-				const hostingAudit = await runReadOnlyHostingAuditForWorkflow(
+				const hostingAudit = await runWorkflowHostedResourceVerification(
 					'stage',
 					root,
 					helpers,
 					'staging',
-					{ enabled: effectiveInput.verifyDeployedResources === true, strict: true },
+					{
+						enabled: effectiveInput.verifyDeployedResources === true,
+						strict: true,
+						live: effectiveInput.verifyDeployedResources === true,
+					},
 				);
 				const previewCleanup = effectiveInput.deletePreview === false
 					? (skipJournalStep(root, workflowRun.runId, 'preview-cleanup', { performed: false }), { performed: false })
@@ -4691,11 +4739,18 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					level,
 					repairVersionLine: effectiveInput.repairVersionLine === true,
 				});
+			const plannedReadiness = collectTreeseedDeploymentReadiness({ tenantRoot: root, environment: 'prod' });
+			if (!isResume) {
+				blockers.push(...plannedReadiness.checks
+					.filter((check) => check.status === 'failed')
+					.map((check) => `${check.id}: ${check.message}${check.remediation ? ` Remediation: ${check.remediation}` : ''}`));
+			}
 			plannedRelease.blockers = blockers;
 
 			if (executionMode === 'plan') {
 				return buildWorkflowResult('release', root, {
 					...plannedRelease,
+					readiness: plannedReadiness,
 					ciMode,
 					fresh: input.fresh === true,
 					freshArchivedRuns: [],
@@ -4792,6 +4847,18 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 
 				applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
 				assertReleaseGitHubAutomationReady(root, effectiveSelectedPackageNames, ciMode);
+				const productionReadiness = collectTreeseedDeploymentReadiness({ tenantRoot: root, environment: 'prod' });
+				if (!productionReadiness.ok) {
+					workflowError(
+						'release',
+						'validation_failed',
+						`Deployment readiness failed for prod:\n${productionReadiness.checks
+							.filter((check) => check.status === 'failed')
+							.map((check) => `${check.id}: ${check.message}${check.remediation ? ` Remediation: ${check.remediation}` : ''}`)
+							.join('\n')}`,
+						{ details: { readiness: productionReadiness } },
+					);
+				}
 				const stagingGateResult = resumeAtRootGates
 					? (completedJournalStepData(root, workflowRun.runId, 'release-staging-gates') as { workflowGates?: Array<Record<string, unknown>> } | null)
 					: await executeJournalStep(root, workflowRun.runId, 'release-staging-gates', () => {
@@ -4910,9 +4977,10 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						}).then((workflowGates) => ({ workflowGates })));
 					const hostedDeploymentState = recordHostedDeploymentStatesFromRootGates(root, rootRelease, rootWorkflowGateResult?.workflowGates);
 					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
-					const hostingAudit = await runReadOnlyHostingAuditForWorkflow('release', root, helpers, 'prod', {
+					const hostingAudit = await runWorkflowHostedResourceVerification('release', root, helpers, 'prod', {
 						enabled: true,
 						strict: effectiveInput.verifyDeployedResources === true,
+						live: effectiveInput.verifyDeployedResources === true,
 					});
 					const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
 						backMergeRootProductionIntoStaging(root, false, {
@@ -5230,9 +5298,10 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					}).then((workflowGates) => ({ workflowGates })));
 				const hostedDeploymentState = recordHostedDeploymentStatesFromRootGates(root, rootRelease, rootWorkflowGateResult?.workflowGates);
 				ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
-				const hostingAudit = await runReadOnlyHostingAuditForWorkflow('release', root, helpers, 'prod', {
+				const hostingAudit = await runWorkflowHostedResourceVerification('release', root, helpers, 'prod', {
 					enabled: true,
 					strict: effectiveInput.verifyDeployedResources === true,
+					live: effectiveInput.verifyDeployedResources === true,
 				});
 				const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
 					backMergeRootProductionIntoStaging(root, true, {

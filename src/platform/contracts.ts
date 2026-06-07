@@ -294,6 +294,15 @@ export interface TreeseedManagedServiceRailwayConfig {
 	healthcheckIntervalSeconds?: number;
 	restartPolicy?: string;
 	runtimeMode?: string;
+	resourceType?: string;
+	environmentVariable?: string;
+	serviceTargets?: string[];
+	volumeMountPath?: string;
+	runnerPool?: {
+		bootstrapCount?: number;
+		maxRunners?: number;
+		volumeMountPath?: string;
+	};
 	schedule?: string | string[];
 }
 
