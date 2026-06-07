@@ -457,7 +457,8 @@ function runProductionDependencyRehearsal(
 		const scriptName = rehearsalVerifyScript(copied.tempRoot);
 		if (scriptName) {
 			const packageJson = safePackageJson(resolve(copied.tempRoot, 'package.json'));
-			const parallelMarketVerify = packageJson?.name === '@treeseed/market'
+			const parallelMarketVerify = process.env.TREESEED_RELEASE_CANDIDATE_MARKET_VERIFY_PARALLEL === '1'
+				&& packageJson?.name === '@treeseed/market'
 				&& (scriptName === 'verify:direct' || scriptName === 'verify:local' || scriptName === 'verify');
 			runNpmRehearsalCommand(['run', scriptName], {
 				cwd: copied.tempRoot,
