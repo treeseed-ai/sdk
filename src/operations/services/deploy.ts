@@ -2988,6 +2988,108 @@ function killPidFromFile(filePath, { dryRun }) {
 	return resourceOperation('local', 'dev-process', String(pid), 'deleted', { pidFile: filePath });
 }
 
+const LOCAL_DOCKER_RESOURCE_PATTERN = /(?:^|[-_.])(?:treeseed|treedx|treedb)(?:[-_.]|$)|(?:treeseed|treedx|treedb)/iu;
+let destroyDockerRunnerForTests = null;
+
+export function setDestroyDockerRunnerForTests(runner) {
+	destroyDockerRunnerForTests = runner;
+}
+
+function runDestroyDocker(args) {
+	if (destroyDockerRunnerForTests) {
+		return destroyDockerRunnerForTests(args);
+	}
+	return spawnSync('docker', args, { encoding: 'utf8', stdio: 'pipe' });
+}
+
+function dockerAvailable() {
+	const result = runDestroyDocker(['info']);
+	return result.status === 0;
+}
+
+function dockerList(formatArgs) {
+	const result = runDestroyDocker(formatArgs);
+	if (result.status !== 0) {
+		return [];
+	}
+	return result.stdout
+		.split('\n')
+		.map((line) => line.trim())
+		.filter(Boolean);
+}
+
+function matchingDockerEntries(lines, parser) {
+	return lines
+		.map(parser)
+		.filter((entry) => entry && LOCAL_DOCKER_RESOURCE_PATTERN.test(`${entry.name} ${entry.image ?? ''}`));
+}
+
+function removeDockerResource(kind, id, name) {
+	const args = kind === 'container'
+		? ['rm', '-f', id]
+		: kind === 'volume'
+			? ['volume', 'rm', '-f', id]
+			: ['network', 'rm', id];
+	const result = runDestroyDocker(args);
+	if (result.status === 0) {
+		return resourceOperation('local', `docker-${kind}`, name, 'deleted', { id });
+	}
+	return resourceOperation('local', `docker-${kind}`, name, 'blocked', {
+		id,
+		reason: result.stderr?.trim() || result.stdout?.trim() || 'docker_remove_failed',
+	});
+}
+
+export function dockerLocalRuntimeResourceOperations({ dryRun = false } = {}) {
+	if (!dockerAvailable()) {
+		return [resourceOperation('local', 'docker-cleanup', 'docker', 'skipped', { reason: 'docker_unavailable' })];
+	}
+	const containers = matchingDockerEntries(
+		dockerList(['ps', '-a', '--format', '{{.ID}}\t{{.Names}}\t{{.Image}}']),
+		(line) => {
+			const [id, name, image] = line.split('\t');
+			return id && name ? { id, name, image } : null;
+		},
+	);
+	const volumes = matchingDockerEntries(
+		dockerList(['volume', 'ls', '--format', '{{.Name}}']),
+		(line) => ({ id: line, name: line }),
+	);
+	const networks = matchingDockerEntries(
+		dockerList(['network', 'ls', '--format', '{{.ID}}\t{{.Name}}']),
+		(line) => {
+			const [id, name] = line.split('\t');
+			return id && name ? { id, name } : null;
+		},
+	).filter((entry) => !['bridge', 'host', 'none'].includes(entry.name));
+
+	if (dryRun) {
+		return [
+			...containers.map((entry) => resourceOperation('local', 'docker-container', entry.name, 'planned', { id: entry.id })),
+			...volumes.map((entry) => resourceOperation('local', 'docker-volume', entry.name, 'planned', { id: entry.id })),
+			...networks.map((entry) => resourceOperation('local', 'docker-network', entry.name, 'planned', { id: entry.id })),
+			...(containers.length || volumes.length || networks.length
+				? []
+				: [resourceOperation('local', 'docker-cleanup', 'docker', 'missing', { reason: 'no_matching_resources' })]),
+		];
+	}
+
+	const operations = [];
+	for (const entry of containers) {
+		operations.push(removeDockerResource('container', entry.id, entry.name));
+	}
+	for (const entry of volumes) {
+		operations.push(removeDockerResource('volume', entry.id, entry.name));
+	}
+	for (const entry of networks) {
+		operations.push(removeDockerResource('network', entry.id, entry.name));
+	}
+	if (!operations.length) {
+		operations.push(resourceOperation('local', 'docker-cleanup', 'docker', 'missing', { reason: 'no_matching_resources' }));
+	}
+	return operations;
+}
+
 function destroyLocalRuntimeResources(tenantRoot, { dryRun = false, deleteData = false } = {}) {
 	const operations = [];
 	const pidDir = resolve(tenantRoot, '.treeseed/dev-pids');
@@ -3019,6 +3121,7 @@ function destroyLocalRuntimeResources(tenantRoot, { dryRun = false, deleteData =
 			rmSync(absolutePath, { recursive: true, force: true });
 			operations.push(resourceOperation('local', 'data-path', relativePath, 'deleted'));
 		}
+		operations.push(...dockerLocalRuntimeResourceOperations({ dryRun }));
 	} else {
 		operations.push(resourceOperation('local', 'data-path', '.treeseed/generated/environments/local', 'skipped', { reason: 'data_preserved' }));
 	}
@@ -3165,6 +3268,93 @@ function sweepTreeSeedCloudflareResources(tenantRoot, deployConfig, state, { env
 	return operations.length > 0
 		? operations
 		: [resourceOperation('cloudflare', 'treeseed-sweep', 'cloudflare', 'missing', { reason: 'no_matching_resources' })];
+}
+
+function countMatchingCloudflareEntries(entries, tokens) {
+	return entries.filter((entry) => cloudflareEntryMatchesTreeSeed(entry, tokens)).length;
+}
+
+export function cloudflareDestroyVerification(tenantRoot, deployConfig, state, env) {
+	const tokens = treeSeedSweepTokens(deployConfig, state);
+	const zoneIds = new Set([
+		deployConfig.cloudflare?.zoneId,
+		state.webCache?.webZoneId,
+		state.webCache?.contentZoneId,
+	]);
+	for (const zone of listDnsZones(env)) {
+		if (zone?.id) {
+			zoneIds.add(zone.id);
+		}
+	}
+	const dnsRecords = [];
+	for (const zoneId of [...zoneIds].filter(Boolean)) {
+		dnsRecords.push(...listDnsRecords(zoneId, env));
+	}
+	const remaining = {
+		pages: countMatchingCloudflareEntries(listPagesProjects(tenantRoot, env), tokens),
+		workers: countMatchingCloudflareEntries(listWorkers(tenantRoot, env), tokens),
+		kvNamespaces: countMatchingCloudflareEntries(listKvNamespaces(tenantRoot, env), tokens),
+		queues: countMatchingCloudflareEntries(listQueues(tenantRoot, env), tokens),
+		d1Databases: countMatchingCloudflareEntries(listD1Databases(tenantRoot, env), tokens),
+		r2Buckets: countMatchingCloudflareEntries(listR2Buckets(tenantRoot, env), tokens),
+		turnstileWidgets: countMatchingCloudflareEntries(listTurnstileWidgets(tenantRoot, env), tokens),
+		dnsRecords: countMatchingCloudflareEntries(
+			dnsRecords.filter((record) => record?.type !== 'SOA' && record?.type !== 'NS'),
+			tokens,
+		),
+	};
+	const totalRemaining = Object.values(remaining).reduce((sum, value) => sum + value, 0);
+	return {
+		provider: 'cloudflare',
+		method: 'cloudflare-api',
+		status: totalRemaining === 0 ? 'clean' : 'remaining',
+		remaining,
+		totalRemaining,
+	};
+}
+
+function localDockerDestroyVerification() {
+	if (!dockerAvailable()) {
+		return {
+			provider: 'local-docker',
+			method: 'docker-cli',
+			status: 'skipped',
+			reason: 'docker_unavailable',
+			remaining: {
+				containers: 0,
+				volumes: 0,
+				networks: 0,
+			},
+			totalRemaining: 0,
+		};
+	}
+	const containers = matchingDockerEntries(
+		dockerList(['ps', '-a', '--format', '{{.ID}}\t{{.Names}}\t{{.Image}}']),
+		(line) => {
+			const [id, name, image] = line.split('\t');
+			return id && name ? { id, name, image } : null;
+		},
+	).length;
+	const volumes = matchingDockerEntries(
+		dockerList(['volume', 'ls', '--format', '{{.Name}}']),
+		(line) => ({ id: line, name: line }),
+	).length;
+	const networks = matchingDockerEntries(
+		dockerList(['network', 'ls', '--format', '{{.ID}}\t{{.Name}}']),
+		(line) => {
+			const [id, name] = line.split('\t');
+			return id && name ? { id, name } : null;
+		},
+	).filter((entry) => !['bridge', 'host', 'none'].includes(entry.name)).length;
+	const remaining = { containers, volumes, networks };
+	const totalRemaining = containers + volumes + networks;
+	return {
+		provider: 'local-docker',
+		method: 'docker-cli',
+		status: totalRemaining === 0 ? 'clean' : 'remaining',
+		remaining,
+		totalRemaining,
+	};
 }
 
 async function sweepTreeSeedRailwayResources(deployConfig, state, { env, dryRun }) {
@@ -3363,6 +3553,14 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 		],
 		local: local.operations,
 	};
+	const verification = dryRun
+		? null
+		: {
+			cloudflare: cloudflareDestroyVerification(tenantRoot, deployConfig, state, env),
+			...(target.kind === 'persistent' && target.scope === 'local'
+				? { localDocker: localDockerDestroyVerification() }
+				: {}),
+		};
 
 	return {
 		target,
@@ -3370,6 +3568,7 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 		sweepTreeseed,
 		summary: buildDestroySummary(deployConfig, state, target),
 		operations,
+		verification,
 	};
 }
 
