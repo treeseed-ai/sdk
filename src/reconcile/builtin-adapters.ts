@@ -1637,6 +1637,17 @@ function buildCloudflareDiff(input: TreeseedReconcileAdapterInput, observed: Tre
 			after: input.unit.spec,
 		};
 	}
+	if (input.unit.unitType === 'pages-project') {
+		const verification = verifyCloudflareUnit(input, []);
+		if (verification.supported && !verification.verified) {
+			return {
+				action: 'update',
+				reasons: [...verification.missing, ...verification.drifted],
+				before: observed.live,
+				after: input.unit.spec,
+			};
+		}
+	}
 	const locatorValues = Object.values(observed.locators).filter(Boolean);
 	return {
 		action: locatorValues.length > 0 ? 'reuse' : 'update',

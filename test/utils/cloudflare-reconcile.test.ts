@@ -363,6 +363,76 @@ beforeEach(() => {
 		expect(resolveTreeseedMachineEnvironmentValuesMock).not.toHaveBeenCalled();
 	});
 
+	it('plans existing Pages projects for update when preview environment variables drift', async () => {
+		const { createCloudflareReconcileAdapters } = await import('../../src/reconcile/builtin-adapters.ts');
+		const adapter = createCloudflareReconcileAdapters().find((entry) => entry.unitTypes.includes('pages-project'));
+		expect(adapter).toBeTruthy();
+
+		const unit = {
+			unitId: 'pages-project:acme-docs',
+			unitType: 'pages-project',
+			provider: 'cloudflare',
+			target: { kind: 'persistent', scope: 'staging' },
+			logicalName: 'acme-docs',
+			dependencies: [],
+			spec: {
+				projectName: 'acme-docs',
+				productionBranch: 'main',
+				stagingBranch: 'staging',
+				buildOutputDir: 'dist',
+			},
+			secrets: {},
+			metadata: {},
+			identity: deployState.identity,
+		};
+		const context = {
+			tenantRoot: '/tmp/tenant',
+			target: { kind: 'persistent', scope: 'staging' },
+			deployConfig: {
+				name: 'Test',
+				slug: 'test',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				hosting: { kind: 'hosted_project', teamId: 'acme', projectId: 'docs' },
+				runtime: { mode: 'treeseed_managed', registration: 'none', teamId: 'acme', projectId: 'docs' },
+				providers: { content: { runtime: 'team_scoped_r2_overlay', publish: 'team_scoped_r2_overlay' } },
+				cloudflare: {
+					accountId: 'account-123',
+					queueName: 'agent-work',
+					dlqName: 'agent-work-dlq',
+					queueBinding: 'AGENT_WORK_QUEUE',
+					pages: { productionBranch: 'main', stagingBranch: 'staging' },
+					r2: {},
+				},
+				turnstile: { enabled: true },
+			},
+			launchEnv: {
+				CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				CLOUDFLARE_API_TOKEN: 'cf-token',
+			},
+			session: new Map(),
+		};
+
+		const observed = adapter!.observe({ unit, context } as never);
+		const diff = adapter!.plan({ unit, context, observed } as never);
+		expect(diff.action).toBe('update');
+		expect(diff.reasons.some((reason) => reason.includes('TREESEED_PROJECT_ID'))).toBe(true);
+
+		await adapter!.reconcile({ unit, context, observed, diff } as never);
+		const patchCall = cloudflareApiRequestMock.mock.calls.find(([, options]) => options?.method === 'PATCH');
+		expect(patchCall?.[1]?.body).toMatchObject({
+			deployment_configs: {
+				preview: {
+					env_vars: {
+						EXISTING_VAR: { type: 'plain_text', value: 'keep' },
+						TREESEED_PROJECT_ID: { type: 'plain_text', value: 'docs' },
+						TREESEED_HOSTING_TEAM_ID: { type: 'plain_text', value: 'acme' },
+					},
+				},
+			},
+		});
+	});
+
 	it('verifies Turnstile widgets against a fresh lookup after reconcile updates domains', async () => {
 		turnstileWidgets = [
 			{
