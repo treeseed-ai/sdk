@@ -77,6 +77,7 @@ const RAILWAY_SECRET_KEYS_BY_SERVICE: Record<string, string[]> = {
 	marketOperationsRunner: [
 		'TREESEED_MARKET_DATABASE_URL',
 		'TREESEED_PLATFORM_RUNNER_SECRET',
+		'TREESEED_MARKET_CREDENTIAL_SESSION_SECRET',
 	],
 };
 
@@ -127,6 +128,7 @@ function valuePresence(values: Record<string, string | undefined>, observed: Tre
 		serviceTarget,
 		present: providerPresent || machinePresent,
 		source: providerPresent ? 'provider' : machinePresent ? 'machine-config' : 'missing',
+		observation: observed ? 'provider-live' : 'not-observed',
 	};
 }
 
@@ -282,6 +284,7 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 
 		for (const key of [...(RAILWAY_SECRET_KEYS_BY_SERVICE[service.key] ?? []), ...(RAILWAY_VARIABLE_KEYS_BY_SERVICE[service.key] ?? [])]) {
 			const presence = valuePresence(values, observed, key, service.key);
+			const status = presence.present ? 'passed' : observed ? 'failed' : 'skipped';
 			checks.push(check({
 				id: `railway:${service.instanceKey}:env:${key}`,
 				provider: 'railway',
@@ -291,8 +294,8 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 				description: `Railway ${service.serviceName} has ${key}.`,
 				expected: { key, serviceTarget: service.key, present: true },
 				observed: presence,
-				status: presence.present ? 'passed' : 'failed',
-				issues: presence.present ? [] : [`${key} is missing for ${service.key}.`],
+				status,
+				issues: presence.present ? [] : observed ? [`${key} is missing for ${service.key}.`] : ['No live Railway variable observation was provided.'],
 			}));
 		}
 
