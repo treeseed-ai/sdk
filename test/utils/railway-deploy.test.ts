@@ -209,14 +209,14 @@ services:
     railway:
       projectName: treeseed-market
       serviceName: treeseed-market-api
-      rootDir: packages/api
+      rootDir: .
   marketOperationsRunner:
     provider: railway
     enabled: true
     railway:
       projectName: treeseed-market
       serviceName: treeseed-market-operations-runner
-      rootDir: packages/api
+      rootDir: .
       buildCommand: npm run build
       startCommand: npm run start:runner
       healthcheckPath: /healthz
