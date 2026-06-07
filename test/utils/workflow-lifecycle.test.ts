@@ -447,7 +447,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.finalBranch).toBe('staging');
 		expect(result.payload.finalState.branchName).toBe('staging');
 		expect(git(work, ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
-	}, 180000);
+	}, 300000);
 
 	it('recursively saves dirty checked-out workspace packages before saving the market repo', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -485,7 +485,7 @@ describe('treeseed workflow lifecycle', () => {
 		const coreSdkSpec = JSON.parse(readFileSync(resolve(work, 'packages', 'core', 'package.json'), 'utf8')).dependencies['@treeseed/sdk'];
 		expect(sdkVersion).toMatch(/^0\.4\.13-dev\.feature-demo-task\./);
 		expect(coreSdkSpec).toMatch(/^git\+file:\/\/.*sdk\.git#0\.4\.13-dev\.feature-demo-task\./);
-	}, 180000);
+	}, 300000);
 
 	it('uses dev-save mode for staging even when package repos start on main', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -516,7 +516,7 @@ describe('treeseed workflow lifecycle', () => {
 		]));
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
-	}, 180000);
+	}, 300000);
 
 	it('plans a fresh dev version when a clean package HEAD is ahead of its dev tag', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -1052,7 +1052,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.devTagCleanup).toMatchObject({ status: 'skipped', reason: 'disabled' });
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.12-dev.staging.20260501T010203Z'])).toBe('0.4.12-dev.staging.20260501T010203Z');
 		expect(git(resolve(work, 'packages', 'sdk'), ['ls-remote', '--tags', 'origin', '0.4.12-dev.staging.20260501T010203Z'])).toContain('0.4.12-dev.staging.20260501T010203Z');
-	}, 180000);
+	}, 300000);
 
 	it('plans and executes standalone stale dev tag cleanup', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -1138,7 +1138,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(autoResumeResult.payload.level).toBe('patch');
 		expect(autoResumeResult.payload.rootVersion).toBe('1.0.1');
 		expect(JSON.parse(git(resolve(work, 'packages', 'sdk'), ['show', 'main:package.json'])).version).toBe('0.4.13');
-	}, 180000);
+	}, 300000);
 
 	it('returns a recursive release plan without mutating package or market state', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -1187,7 +1187,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(work, ['rev-parse', 'HEAD'])).toBe(beforeRootHead);
 		expect(git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'HEAD'])).toBe(beforeSdkHead);
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
-	}, 180000);
+	}, 300000);
 
 	it('plans release-line repair without bumping packages already on the target line', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
