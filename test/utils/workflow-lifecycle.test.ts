@@ -431,7 +431,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.noChanges).toBe(true);
 		expect(result.payload.branchSync.pushed).toBe(true);
 		expect(result.payload.finalState.branchName).toBe('feature/demo-task');
-	}, 300000);
+	}, 180000);
 
 	it('auto-saves dirty task branches during close and returns to staging', async () => {
 		const { work } = createWorkflowRepo();
@@ -447,7 +447,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.finalBranch).toBe('staging');
 		expect(result.payload.finalState.branchName).toBe('staging');
 		expect(git(work, ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
-	}, 300000);
+	}, 180000);
 
 	it('recursively saves dirty checked-out workspace packages before saving the market repo', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -485,7 +485,7 @@ describe('treeseed workflow lifecycle', () => {
 		const coreSdkSpec = JSON.parse(readFileSync(resolve(work, 'packages', 'core', 'package.json'), 'utf8')).dependencies['@treeseed/sdk'];
 		expect(sdkVersion).toMatch(/^0\.4\.13-dev\.feature-demo-task\./);
 		expect(coreSdkSpec).toMatch(/^git\+file:\/\/.*sdk\.git#0\.4\.13-dev\.feature-demo-task\./);
-	}, 300000);
+	}, 180000);
 
 	it('uses dev-save mode for staging even when package repos start on main', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -516,7 +516,7 @@ describe('treeseed workflow lifecycle', () => {
 		]));
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
-	}, 300000);
+	}, 180000);
 
 	it('plans a fresh dev version when a clean package HEAD is ahead of its dev tag', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
