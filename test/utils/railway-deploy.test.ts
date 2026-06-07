@@ -836,7 +836,7 @@ services:
 					data: {
 						volumeUpdate: {
 							id: 'existing-env-volume',
-							name: 'public-treedb-data',
+							name: 'public-treedx-data',
 							projectId: 'project-1',
 							volumeInstances: {
 								edges: [{
@@ -856,7 +856,7 @@ services:
 				expect(body.variables).toEqual({
 					volumeId: 'existing-env-volume',
 					input: {
-						serviceId: 'svc-treedb',
+						serviceId: 'svc-treedx',
 						mountPath: '/data',
 					},
 				});
@@ -868,8 +868,8 @@ services:
 		const result = await ensureRailwayServiceVolume({
 			projectId: 'project-1',
 			environmentId: 'env-staging',
-			serviceId: 'svc-treedb',
-			name: 'public-treedb-data',
+			serviceId: 'svc-treedx',
+			name: 'public-treedx-data',
 			mountPath: '/data',
 			env: { RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,

@@ -122,15 +122,15 @@ function marketProjectGroup(environment: TreeseedHostingEnvironment): TreeseedHo
 	};
 }
 
-function publicTreeDbProjectGroup(environment: TreeseedHostingEnvironment): TreeseedHostProjectGroup {
+function publicTreeDxProjectGroup(environment: TreeseedHostingEnvironment): TreeseedHostProjectGroup {
 	return {
-		id: 'public-treedb-federation',
-		label: 'Public TreeDB federation',
+		id: 'public-treedx-federation',
+		label: 'Public TreeDX federation',
 		hostId: environment === 'local' ? 'local-docker' : 'railway',
 		environments: {
-			local: { projectName: 'treeseed-public-treedb-local', environmentName: 'local' },
-			staging: { projectName: 'treeseed-public-treedb', environmentName: 'staging', sharedAcrossEnvironments: true },
-			prod: { projectName: 'treeseed-public-treedb', environmentName: 'production', sharedAcrossEnvironments: true },
+			local: { projectName: 'treeseed-public-treedx-local', environmentName: 'local' },
+			staging: { projectName: 'treeseed-public-treedx', environmentName: 'staging', sharedAcrossEnvironments: true },
+			prod: { projectName: 'treeseed-public-treedx', environmentName: 'production', sharedAcrossEnvironments: true },
 		},
 		metadata: {
 			publicFederation: true,
@@ -140,14 +140,14 @@ function publicTreeDbProjectGroup(environment: TreeseedHostingEnvironment): Tree
 	};
 }
 
-function privateTreeDbProjectGroup(teamId = '{teamId}'): TreeseedHostProjectGroup {
+function privateTreeDxProjectGroup(teamId = '{teamId}'): TreeseedHostProjectGroup {
 	return {
-		id: 'private-team-treedb',
-		label: 'Private team TreeDB',
+		id: 'private-team-treedx',
+		label: 'Private team TreeDX',
 		hostId: 'railway',
 		environments: {
-			staging: { projectName: `treeseed-team-${teamId}-treedb`, environmentName: 'staging' },
-			prod: { projectName: `treeseed-team-${teamId}-treedb`, environmentName: 'production' },
+			staging: { projectName: `treeseed-team-${teamId}-treedx`, environmentName: 'staging' },
+			prod: { projectName: `treeseed-team-${teamId}-treedx`, environmentName: 'production' },
 		},
 		metadata: { transferable: true, privateTeam: true },
 	};
@@ -159,8 +159,8 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 	const services: TreeseedServiceInstanceSpec[] = [];
 	const projectGroups = [
 		marketProjectGroup(environment),
-		publicTreeDbProjectGroup(environment),
-		privateTreeDbProjectGroup(),
+		publicTreeDxProjectGroup(environment),
+		privateTreeDxProjectGroup(),
 	];
 
 	if (config.surfaces?.web?.enabled !== false) {
@@ -268,44 +268,44 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 	if (config.hosting?.kind === 'market_control_plane' || config.slug === 'treeseed-market') {
 		services.push(
 			{
-				id: 'public-treedb-federation',
-				label: 'Public TreeDB federation',
-				serviceType: 'treedb-federation',
+				id: 'public-treedx-federation',
+				label: 'Public TreeDX federation',
+				serviceType: 'treedx-federation',
 				placement: 'knowledge-library',
-				projectGroupId: 'public-treedb-federation',
-				dependencies: ['public-treedb-node'],
+				projectGroupId: 'public-treedx-federation',
+				dependencies: ['public-treedx-node'],
 				config: {
-					projectName: 'treeseed-public-treedb',
+					projectName: 'treeseed-public-treedx',
 					isolation: 'separate Railway environments, services, volumes, and domains',
 				},
 				environments: {
-					local: { hostId: 'local-docker', projectGroupId: 'public-treedb-federation' },
-					staging: { hostId: 'railway', projectGroupId: 'public-treedb-federation' },
-					prod: { hostId: 'railway', projectGroupId: 'public-treedb-federation' },
+					local: { hostId: 'local-docker', projectGroupId: 'public-treedx-federation' },
+					staging: { hostId: 'railway', projectGroupId: 'public-treedx-federation' },
+					prod: { hostId: 'railway', projectGroupId: 'public-treedx-federation' },
 				},
 				metadata: { publicFederation: true, nodeCount: 'one-or-more' },
 			},
 			{
-				id: 'public-treedb-node',
-				label: 'Public TreeDB node',
-				serviceType: 'treedb-node',
+				id: 'public-treedx-node',
+				label: 'Public TreeDX node',
+				serviceType: 'treedx-node',
 				placement: 'knowledge-library',
-				projectGroupId: 'public-treedb-federation',
+				projectGroupId: 'public-treedx-federation',
 				config: {
-					image: 'treeseed/treedb',
-					imageTagRef: 'TREESEED_PUBLIC_TREEDB_IMAGE_REF',
-					volumeName: 'public-treedb-data',
+					image: 'treeseed/treedx',
+					imageTagRef: 'TREESEED_PUBLIC_TREEDX_IMAGE_REF',
+					volumeName: 'public-treedx-data',
 					volumeMountPath: '/data',
 					environmentVariables: {
-						TREEDB_DATA_DIR: '/data',
+						TREEDX_DATA_DIR: '/data',
 					},
 				},
-				variableRefs: ['TREESEED_PUBLIC_TREEDB_IMAGE_REF', 'TREEDB_DATA_DIR'],
-				secretRefs: ['TREESEED_TREEDB_ADMIN_TOKEN'],
+				variableRefs: ['TREESEED_PUBLIC_TREEDX_IMAGE_REF', 'TREEDX_DATA_DIR'],
+				secretRefs: ['TREESEED_TREEDX_ADMIN_TOKEN'],
 				environments: {
-					local: { hostId: 'local-docker', projectGroupId: 'public-treedb-federation' },
-					staging: { hostId: 'railway', projectGroupId: 'public-treedb-federation' },
-					prod: { hostId: 'railway', projectGroupId: 'public-treedb-federation' },
+					local: { hostId: 'local-docker', projectGroupId: 'public-treedx-federation' },
+					staging: { hostId: 'railway', projectGroupId: 'public-treedx-federation' },
+					prod: { hostId: 'railway', projectGroupId: 'public-treedx-federation' },
 				},
 				metadata: { publicFederation: true, defaultNode: true },
 			},

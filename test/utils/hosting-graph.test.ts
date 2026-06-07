@@ -125,36 +125,36 @@ describe('hosting graph', () => {
 		expect(graph.units.find((unit) => unit.id === 'api')?.host.id).toBe('local-process');
 		expect(graph.units.find((unit) => unit.id === 'marketDatabase')?.host.id).toBe('local-docker');
 		expect(graph.units.find((unit) => unit.id === 'marketOperationsRunner')?.host.id).toBe('local-docker');
-		expect(graph.units.find((unit) => unit.id === 'public-treedb-node')?.host.id).toBe('local-docker');
+		expect(graph.units.find((unit) => unit.id === 'public-treedx-node')?.host.id).toBe('local-docker');
 	});
 
-	it('keeps public TreeDB in one Railway project while isolating staging and production by environment', () => {
+	it('keeps public TreeDX in one Railway project while isolating staging and production by environment', () => {
 		const tenantRoot = createTenant(marketConfig());
 		const staging = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging' });
 		const prod = compileTreeseedHostingGraph({ tenantRoot, environment: 'prod' });
 
-		const stagingGroup = staging.projectGroups['public-treedb-federation'];
-		const prodGroup = prod.projectGroups['public-treedb-federation'];
-		expect(stagingGroup.environments.staging?.projectName).toBe('treeseed-public-treedb');
-		expect(prodGroup.environments.prod?.projectName).toBe('treeseed-public-treedb');
+		const stagingGroup = staging.projectGroups['public-treedx-federation'];
+		const prodGroup = prod.projectGroups['public-treedx-federation'];
+		expect(stagingGroup.environments.staging?.projectName).toBe('treeseed-public-treedx');
+		expect(prodGroup.environments.prod?.projectName).toBe('treeseed-public-treedx');
 		expect(stagingGroup.environments.staging?.environmentName).toBe('staging');
 		expect(prodGroup.environments.prod?.environmentName).toBe('production');
-		expect(staging.units.find((unit) => unit.id === 'public-treedb-node')).toMatchObject({
+		expect(staging.units.find((unit) => unit.id === 'public-treedx-node')).toMatchObject({
 			host: { id: 'railway' },
-			projectGroup: { id: 'public-treedb-federation' },
+			projectGroup: { id: 'public-treedx-federation' },
 			config: {
 				volumeMountPath: '/data',
 			},
 		});
 	});
 
-	it('models private TreeDB as a transferable per-team project group', () => {
+	it('models private TreeDX as a transferable per-team project group', () => {
 		const graph = compileTreeseedHostingGraph({
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'staging',
 		});
 
-		expect(graph.projectGroups['private-team-treedb']).toMatchObject({
+		expect(graph.projectGroups['private-team-treedx']).toMatchObject({
 			hostId: 'railway',
 			metadata: {
 				transferable: true,
@@ -224,8 +224,8 @@ describe('hosting graph', () => {
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'staging',
 		});
-		const nodeIndex = graph.units.findIndex((unit) => unit.id === 'public-treedb-node');
-		const federationIndex = graph.units.findIndex((unit) => unit.id === 'public-treedb-federation');
+		const nodeIndex = graph.units.findIndex((unit) => unit.id === 'public-treedx-node');
+		const federationIndex = graph.units.findIndex((unit) => unit.id === 'public-treedx-federation');
 		expect(nodeIndex).toBeGreaterThanOrEqual(0);
 		expect(federationIndex).toBeGreaterThan(nodeIndex);
 	});
@@ -287,9 +287,9 @@ describe('hosting graph', () => {
 		const serviceTypes = createDefaultServiceTypeAdapters();
 		expect(serviceTypes['stateful-container'].requiredCapabilities).toEqual(expect.arrayContaining(['container', 'volume']));
 		expect(serviceTypes['runner-pool'].requiredCapabilities).toEqual(expect.arrayContaining(['container', 'volume']));
-		expect(serviceTypes['treedb-node'].composes).toContain('stateful-container');
-		expect(serviceTypes['treedb-federation'].composes).toContain('treedb-node');
-		expect(serviceTypes['treedb-node'].defaultHostByEnvironment).toMatchObject({
+		expect(serviceTypes['treedx-node'].composes).toContain('stateful-container');
+		expect(serviceTypes['treedx-federation'].composes).toContain('treedx-node');
+		expect(serviceTypes['treedx-node'].defaultHostByEnvironment).toMatchObject({
 			local: 'local-docker',
 			staging: 'railway',
 			prod: 'railway',
@@ -347,11 +347,11 @@ plugins:
 	it('keeps service type adapters independent from a single host id', () => {
 		const serviceTypes = createDefaultServiceTypeAdapters();
 		const stateful = serviceTypes['stateful-container'];
-		const treedb = serviceTypes['treedb-node'];
+		const treedx = serviceTypes['treedx-node'];
 
-		expect(stateful.requiredCapabilities).toEqual(treedb.requiredCapabilities);
+		expect(stateful.requiredCapabilities).toEqual(treedx.requiredCapabilities);
 		expect(new Set(Object.values(stateful.defaultHostByEnvironment))).toEqual(new Set(['local-docker', 'railway']));
-		expect(new Set(Object.values(treedb.defaultHostByEnvironment))).toEqual(new Set(['local-docker', 'railway']));
+		expect(new Set(Object.values(treedx.defaultHostByEnvironment))).toEqual(new Set(['local-docker', 'railway']));
 	});
 
 	it('returns a serializable hosting plan with placement-first UI metadata', async () => {
@@ -364,10 +364,10 @@ plugins:
 			label: 'Knowledge Library',
 			hostIds: ['railway'],
 		});
-		expect(plan.units.find((entry) => entry.unit.id === 'public-treedb-node')?.unit).toMatchObject({
-			serviceType: 'treedb-node',
+		expect(plan.units.find((entry) => entry.unit.id === 'public-treedx-node')?.unit).toMatchObject({
+			serviceType: 'treedx-node',
 			hostId: 'railway',
-			projectGroupId: 'public-treedb-federation',
+			projectGroupId: 'public-treedx-federation',
 		});
 	});
 

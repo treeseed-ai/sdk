@@ -242,17 +242,17 @@ export function createDefaultServiceTypeAdapters(): Record<string, TreeseedServi
 			local: 'local-docker',
 			staging: 'railway',
 			prod: 'railway',
-		}, ['treedb-federation']),
-		'treedb-node': serviceType('treedb-node', 'TreeDB node', 'knowledge-library', ['container', 'volume', 'variable', 'deployment', 'health'], {
+		}, ['treedx-federation']),
+		'treedx-node': serviceType('treedx-node', 'TreeDX node', 'knowledge-library', ['container', 'volume', 'variable', 'deployment', 'health'], {
 			local: 'local-docker',
 			staging: 'railway',
 			prod: 'railway',
 		}, ['stateful-container']),
-		'treedb-federation': serviceType('treedb-federation', 'TreeDB federation', 'knowledge-library', [], {
+		'treedx-federation': serviceType('treedx-federation', 'TreeDX federation', 'knowledge-library', [], {
 			local: 'local-docker',
 			staging: 'railway',
 			prod: 'railway',
-		}, ['treedb-node']),
+		}, ['treedx-node']),
 		'market-control-plane': serviceType('market-control-plane', 'Market control plane', 'operations', [], {
 			local: 'local-process',
 			staging: 'railway',
@@ -271,7 +271,7 @@ export function createDefaultHostingProfiles(): TreeseedApplicationHostingProfil
 		{
 			id: 'treeseed-managed-public-team',
 			label: 'TreeSeed managed public team',
-			description: 'Public teams use the shared public TreeDB federation and managed web/content defaults.',
+			description: 'Public teams use the shared public TreeDX federation and managed web/content defaults.',
 			services: [],
 			metadata: { publicRead: true, managed: true },
 		},
