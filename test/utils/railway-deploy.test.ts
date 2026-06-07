@@ -396,13 +396,13 @@ services:
 		expect(plan.args).toContain('--no-gitignore');
 	});
 
-	it('preserves hosted CI mode while detached deploys are selected by arguments', () => {
+	it('clears hosted CI mode when detached Railway deploys are selected by arguments', () => {
 		expect(buildRailwayDeployCommandEnv({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_TOKEN: 'railway-project-token',
 		})).toMatchObject({
-			CI: 'true',
+			CI: undefined,
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_TOKEN: 'railway-project-token',
 		});
@@ -604,6 +604,66 @@ services:
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
+	it('adopts an existing service volume before creating a second Railway volume', async () => {
+		let listCount = 0;
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('TreeseedRailwayVolumeList')) {
+				listCount += 1;
+				return new Response(JSON.stringify({
+					data: {
+						project: {
+							volumes: {
+								edges: [{
+									node: {
+										id: 'existing-volume',
+										name: 'acme-docs-worker-runner-01-data',
+										projectId: 'project-1',
+										volumeInstances: {
+											edges: [{
+												node: {
+													id: 'vi-existing',
+													serviceId: 'svc-runner-01',
+													environmentId: listCount === 1 ? 'env-production' : 'env-staging',
+													mountPath: '/data',
+													state: 'READY',
+												},
+											}],
+										},
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			expect(String(body.query)).toContain('TreeseedRailwayVolumeInstanceUpdate');
+			expect(body.variables).toEqual({
+				volumeId: 'existing-volume',
+				input: {
+					serviceId: 'svc-runner-01',
+					mountPath: '/data',
+				},
+			});
+			return new Response(JSON.stringify({ data: { volumeInstanceUpdate: true } }), { status: 200, headers: { 'content-type': 'application/json' } });
+		});
+
+		const result = await ensureRailwayServiceVolume({
+			projectId: 'project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-runner-01',
+			name: 'acme-docs-worker-runner-01-data',
+			mountPath: '/data',
+			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		expect(result.created).toBe(false);
+		expect(result.updated).toBe(true);
+		expect(result.volume.id).toBe('existing-volume');
+		expect(fetchMock.mock.calls.some(([, init]) => String(init?.body ?? '').includes('TreeseedRailwayVolumeCreate'))).toBe(false);
+	});
+
 	it('reuses a Railway service volume that appears after a create conflict', async () => {
 		let listCount = 0;
 		const fetchMock = vi.fn(async (_input, init) => {
@@ -739,6 +799,85 @@ services:
 		expect(result.volume.id).toBe('railway-managed-postgres-volume');
 		expect(result.volume.name).toBe('postgres-staging-data');
 		expect(result.instance?.serviceId).toBe('svc-postgres');
+	});
+
+	it('adopts the sole active environment volume after Railway reports a one-volume service conflict', async () => {
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('TreeseedRailwayVolumeList')) {
+				return new Response(JSON.stringify({
+					data: {
+						project: {
+							volumes: {
+								edges: [{
+									node: {
+										id: 'existing-env-volume',
+										name: 'legacy-data',
+										projectId: 'project-1',
+										volumeInstances: {
+											edges: [{
+												node: {
+													id: 'vi-existing',
+													environmentId: 'env-staging',
+													mountPath: '/data',
+													state: 'READY',
+												},
+											}],
+										},
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (String(body.query).includes('TreeseedRailwayVolumeUpdate')) {
+				return new Response(JSON.stringify({
+					data: {
+						volumeUpdate: {
+							id: 'existing-env-volume',
+							name: 'public-treedb-data',
+							projectId: 'project-1',
+							volumeInstances: {
+								edges: [{
+									node: {
+										id: 'vi-existing',
+										environmentId: 'env-staging',
+										mountPath: '/data',
+										state: 'READY',
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (String(body.query).includes('TreeseedRailwayVolumeInstanceUpdate')) {
+				expect(body.variables).toEqual({
+					volumeId: 'existing-env-volume',
+					input: {
+						serviceId: 'svc-treedb',
+						mountPath: '/data',
+					},
+				});
+				return new Response(JSON.stringify({ data: { volumeInstanceUpdate: true } }), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			throw new Error(`Unexpected Railway API call: ${body.query}`);
+		});
+
+		const result = await ensureRailwayServiceVolume({
+			projectId: 'project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-treedb',
+			name: 'public-treedb-data',
+			mountPath: '/data',
+			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		expect(result.created).toBe(false);
+		expect(result.volume.id).toBe('existing-env-volume');
+		expect(fetchMock.mock.calls.some(([, init]) => String(init?.body ?? '').includes('TreeseedRailwayVolumeCreate'))).toBe(false);
 	});
 
 	it('recreates a named volume when Railway reports the listed volume as missing', async () => {
@@ -1241,7 +1380,7 @@ services:
 		});
 	});
 
-	it('uses API auth, not project-token auth, when linking Railway CLI context', () => {
+	it('uses API auth without hosted CI mode when linking Railway CLI context', () => {
 		const env = buildRailwayLinkCommandEnv({
 			CI: 'true',
 			RAILWAY_API_TOKEN: 'railway-api-token',
@@ -1253,7 +1392,7 @@ services:
 		});
 
 		expect(env).toMatchObject({
-			CI: 'true',
+			CI: undefined,
 			RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_PROJECT_ID: 'railway-project-1',
 			RAILWAY_ENVIRONMENT_ID: 'env-staging',

@@ -1806,10 +1806,12 @@ export async function ensureRailwayServiceVolume({
 		}))
 		.filter((candidate) => candidate.instances.length > 0);
 	let volume = findRailwayVolumeForService(volumes, serviceId, environmentId)
+		?? findRailwayVolumeForService(volumes, serviceId)
 		?? activeVolumes.find((candidate) =>
 		candidate.name === name
 		&& candidate.instances.some((instance) => instance.environmentId === environmentId),
-	) ?? null;
+	) ?? findSoleActiveRailwayVolumeForEnvironment(activeVolumes, environmentId)
+		?? null;
 	let created = false;
 	let updated = false;
 	const createReplacementVolume = async () => {
@@ -1831,7 +1833,9 @@ export async function ensureRailwayServiceVolume({
 			for (let attempt = 0; attempt < 8; attempt += 1) {
 				await new Promise((resolve) => setTimeout(resolve, 1500));
 				const refreshed = await listRailwayVolumes({ projectId, env, fetchImpl });
-				const existing = findRailwayVolumeForService(refreshed, serviceId, environmentId);
+				const existing = findRailwayVolumeForService(refreshed, serviceId, environmentId)
+					?? findRailwayVolumeForService(refreshed, serviceId)
+					?? findSoleActiveRailwayVolumeForEnvironment(refreshed, environmentId);
 				if (existing) {
 					return existing;
 				}
@@ -1863,10 +1867,40 @@ export async function ensureRailwayServiceVolume({
 			volume = await listRailwayVolumes({ projectId, env, fetchImpl })
 				.then((refreshed) => refreshed.find((candidate) => candidate.id === volume?.id) ?? volume);
 		} catch (error) {
-			if (!looksLikeRailwayMissingResource(error)) {
+			if (looksLikeRailwayVolumeCreateRace(error)) {
+				volume = await listRailwayVolumes({ projectId, env, fetchImpl })
+					.then((refreshed) =>
+						findRailwayVolumeForService(refreshed, serviceId, environmentId)
+						?? findSoleActiveRailwayVolumeForEnvironment(refreshed, environmentId)
+						?? volume,
+					);
+			} else if (!looksLikeRailwayMissingResource(error)) {
 				throw error;
+			} else {
+				volume = await createReplacementVolume();
 			}
-			volume = await createReplacementVolume();
+		}
+		instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? null;
+		updated = true;
+	}
+	if (!instance) {
+		try {
+			await updateRailwayVolumeInstanceMountPath({ volumeId: volume.id, serviceId, mountPath, env, fetchImpl });
+			volume = await listRailwayVolumes({ projectId, env, fetchImpl })
+				.then((refreshed) => refreshed.find((candidate) => candidate.id === volume?.id) ?? volume);
+		} catch (error) {
+			if (looksLikeRailwayVolumeCreateRace(error)) {
+				volume = await listRailwayVolumes({ projectId, env, fetchImpl })
+					.then((refreshed) =>
+						findRailwayVolumeForService(refreshed, serviceId, environmentId)
+						?? findSoleActiveRailwayVolumeForEnvironment(refreshed, environmentId)
+						?? volume,
+					);
+			} else if (!looksLikeRailwayMissingResource(error)) {
+				throw error;
+			} else {
+				volume = await createReplacementVolume();
+			}
 		}
 		instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? null;
 		updated = true;
@@ -1890,19 +1924,29 @@ export async function ensureRailwayServiceVolume({
 	return { volume, instance, created, updated };
 }
 
-function findRailwayVolumeForService(volumes: RailwayVolumeSummary[], serviceId: string, environmentId: string) {
+function findRailwayVolumeForService(volumes: RailwayVolumeSummary[], serviceId: string, environmentId?: string) {
 	return volumes.find((candidate) =>
 		candidate.instances.some((instance) =>
 			instance.serviceId === serviceId
-			&& instance.environmentId === environmentId
+			&& (!environmentId || instance.environmentId === environmentId)
 			&& isActiveRailwayVolumeInstance(instance)
 		),
 	) ?? null;
 }
 
+function findSoleActiveRailwayVolumeForEnvironment(volumes: RailwayVolumeSummary[], environmentId: string) {
+	const matches = volumes.filter((candidate) =>
+		candidate.instances.some((instance) =>
+			instance.environmentId === environmentId
+			&& isActiveRailwayVolumeInstance(instance)
+		),
+	);
+	return matches.length === 1 ? matches[0] : null;
+}
+
 function looksLikeRailwayVolumeCreateRace(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error ?? '');
-	return /would have \d+ volumes attached|can only have one volume|not authorized/iu.test(message);
+	return /already has a volume attached|would have \d+ volumes attached|can only have one volume|not authorized/iu.test(message);
 }
 
 export async function listRailwayCustomDomains({

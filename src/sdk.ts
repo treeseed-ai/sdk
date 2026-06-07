@@ -22,6 +22,8 @@ import {
 	LocalGraphPort,
 	LocalRepositoryPort,
 	LocalRepositoryQueryPort,
+	TreeDxArtifactPort,
+	TreeDxExecPort,
 	TreeDxFederatedClient,
 	TreeDxFederatedPort,
 	TreeDxGraphAdapter,
@@ -173,12 +175,16 @@ export class AgentSdk {
 		graph: LocalGraphPort | TreeDxGraphPort;
 		registry?: TreeDxRegistryPort;
 		federated?: TreeDxFederatedPort;
+		exec?: TreeDxExecPort;
+		artifact?: TreeDxArtifactPort;
 	};
 	readonly treeDx?: {
 		client: PublicTreeDxClient;
 		graph: TreeDxGraphAdapter;
 		registry?: TreeDxRegistryClient;
 		federated?: TreeDxFederatedClient;
+		exec?: TreeDxExecPort;
+		artifact?: TreeDxArtifactPort;
 	};
 	private readonly localContentStore: ContentStore;
 	private readonly localGraphRuntime: ContentGraphRuntime;
@@ -267,6 +273,8 @@ export class AgentSdk {
 					fetch: treeDxOptions.fetchImpl,
 				})
 				: undefined;
+			const publicExec = new TreeDxExecPort(publicClient);
+			const publicArtifact = new TreeDxArtifactPort(publicClient);
 			this.content = new TreeDxContentBackend({
 				client,
 				repoRoot,
@@ -289,6 +297,8 @@ export class AgentSdk {
 				graph: publicGraph,
 				registry: publicRegistry,
 				federated: publicFederated,
+				exec: publicExec,
+				artifact: publicArtifact,
 			};
 			this.ports = {
 				repository: new TreeDxRepositoryPort(publicClient),
@@ -296,6 +306,8 @@ export class AgentSdk {
 				graph: new TreeDxGraphPort(publicGraph),
 				registry: publicRegistry ? new TreeDxRegistryPort(publicRegistry) : undefined,
 				federated: publicFederated ? new TreeDxFederatedPort(publicFederated) : undefined,
+				exec: publicExec,
+				artifact: publicArtifact,
 			};
 		} else if (rawTreeDxOptions?.client) {
 			const publicClient = rawTreeDxOptions.client instanceof PublicTreeDxClient
@@ -306,16 +318,22 @@ export class AgentSdk {
 				repoId: rawTreeDxOptions.repoId,
 				defaultRef: rawTreeDxOptions.ref,
 			});
+			const publicExec = new TreeDxExecPort(publicClient);
+			const publicArtifact = new TreeDxArtifactPort(publicClient);
 			this.content = new LocalContentBackend(this.localContentStore);
 			this.graph = new LocalGraphBackend(this.localGraphRuntime);
 			this.treeDx = {
 				client: publicClient,
 				graph: publicGraph,
+				exec: publicExec,
+				artifact: publicArtifact,
 			};
 			this.ports = {
 				repository: new TreeDxRepositoryPort(publicClient),
 				query: new TreeDxRepositoryQueryPort(publicClient),
 				graph: new TreeDxGraphPort(publicGraph),
+				exec: publicExec,
+				artifact: publicArtifact,
 			};
 		} else {
 			this.content = new MissingTreeDxContentBackend();

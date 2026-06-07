@@ -298,6 +298,7 @@ export type TreeseedDestroyInput = {
 	destroyLocal?: boolean;
 	force?: boolean;
 	deleteData?: boolean;
+	sweepTreeseed?: boolean;
 	removeBuildArtifacts?: boolean;
 };
 

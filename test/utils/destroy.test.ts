@@ -127,7 +127,31 @@ describe('destroy planning', () => {
 		const cloudflare = result.operations.cloudflare;
 		expect(cloudflare.find((entry) => entry.type === 'd1-database')?.status).toBe('planned');
 		expect(cloudflare.find((entry) => entry.type === 'r2-bucket')?.status).toBe('planned');
+		expect(cloudflare.find((entry) => entry.type === 'pages-project')?.status).toBe('skipped');
+		expect(cloudflare.find((entry) => entry.type === 'pages-project')?.reason).toBe('shared_web_surface');
+		expect(cloudflare.find((entry) => entry.type === 'pages-deployments')?.environment).toBe('preview');
+		expect(cloudflare.filter((entry) => entry.type === 'pages-custom-domain').map((entry) => entry.name)).toEqual([
+			'staging.destroy.example.com',
+		]);
+	});
+
+	it('plans shared Pages project deletion only for production delete-data destroys', async () => {
+		const tenantRoot = createDestroyFixture();
+		vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'account-123');
+		vi.stubEnv('RAILWAY_API_TOKEN', '');
+
+		const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
+			target: createPersistentDeployTarget('prod'),
+			dryRun: true,
+			deleteData: true,
+		});
+
+		const cloudflare = result.operations.cloudflare;
 		expect(cloudflare.find((entry) => entry.type === 'pages-project')?.status).toBe('planned');
+		expect(cloudflare.find((entry) => entry.type === 'pages-deployments')?.environment).toBe('all');
+		expect(cloudflare.filter((entry) => entry.type === 'pages-custom-domain').map((entry) => entry.name)).toEqual([
+			'destroy.example.com',
+		]);
 	});
 
 	it('removes the Railway project when delete-data leaves no managed persistent environments', () => {
