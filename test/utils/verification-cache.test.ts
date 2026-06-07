@@ -31,9 +31,30 @@ function repo() {
 }
 
 describe('verification cache', () => {
+	it('stays disabled in GitHub Actions unless explicitly enabled', () => {
+		const { root, pkg } = repo();
+		const input = {
+			workspaceRoot: root,
+			repoName: 'pkg',
+			repoPath: pkg,
+			command: 'npm run verify:local',
+			verifyMode: 'local-only',
+			env: { GITHUB_ACTIONS: 'true' },
+		};
+		expect(writeTreeseedVerificationCache(input, 12)).toBeNull();
+		expect(readTreeseedVerificationCache(input)).toBeNull();
+	});
+
 	it('reuses successful verification for the same head and lockfile', () => {
 		const { root, pkg } = repo();
-		const input = { workspaceRoot: root, repoName: 'pkg', repoPath: pkg, command: 'npm run verify:local', verifyMode: 'local-only' };
+		const input = {
+			workspaceRoot: root,
+			repoName: 'pkg',
+			repoPath: pkg,
+			command: 'npm run verify:local',
+			verifyMode: 'local-only',
+			env: { GITHUB_ACTIONS: 'true', TREESEED_VERIFY_CACHE: '1' },
+		};
 		expect(readTreeseedVerificationCache(input)).toBeNull();
 		const written = writeTreeseedVerificationCache(input, 12);
 		expect(written?.status).toBe('passed');
@@ -42,7 +63,14 @@ describe('verification cache', () => {
 
 	it('misses after lockfile changes', () => {
 		const { root, pkg } = repo();
-		const input = { workspaceRoot: root, repoName: 'pkg', repoPath: pkg, command: 'npm run verify:local', verifyMode: 'local-only' };
+		const input = {
+			workspaceRoot: root,
+			repoName: 'pkg',
+			repoPath: pkg,
+			command: 'npm run verify:local',
+			verifyMode: 'local-only',
+			env: { GITHUB_ACTIONS: 'true', TREESEED_VERIFY_CACHE: '1' },
+		};
 		const before = treeseedVerificationCacheKey(input).key;
 		writeTreeseedVerificationCache(input, 12);
 		writeFileSync(resolve(pkg, 'package-lock.json'), '{"lockfileVersion":3,"packages":{"x":{}}}\n');
