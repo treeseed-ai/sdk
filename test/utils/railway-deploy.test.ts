@@ -209,16 +209,16 @@ services:
     railway:
       projectName: treeseed-market
       serviceName: treeseed-market-api
-      rootDir: .
+      rootDir: packages/api
   marketOperationsRunner:
     provider: railway
     enabled: true
     railway:
       projectName: treeseed-market
       serviceName: treeseed-market-operations-runner
-      rootDir: .
-      buildCommand: npm run build:market-operations-runner
-      startCommand: node ./dist/market-operations-runner/entrypoint.js run
+      rootDir: packages/api
+      buildCommand: npm run build
+      startCommand: npm run start:runner
       healthcheckPath: /healthz
       runtimeMode: service
       volumeMountPath: /data
@@ -238,8 +238,8 @@ services:
 		expect(runners[0]).toMatchObject({
 			instanceKey: 'marketOperationsRunner:1',
 			runnerId: 'treeseed-market-operations-runner-01',
-			buildCommand: 'npm run build:market-operations-runner',
-			startCommand: 'node ./dist/market-operations-runner/entrypoint.js run',
+			buildCommand: 'npm run build',
+			startCommand: 'npm run start:runner',
 			healthcheckPath: '/healthz',
 			runtimeMode: 'service',
 			volumeMountPath: '/data',
@@ -250,7 +250,7 @@ services:
 	it('keeps provider runtime commands out of root Market Railway services', async () => {
 		const tenantRoot = await createTenantFixture();
 		const services = configuredRailwayServices(tenantRoot, 'staging');
-		expect(services.map((service) => service.startCommand).filter(Boolean).join('\n')).not.toContain('npm run build:api &&');
+		expect(services.map((service) => service.startCommand).filter(Boolean).join('\n')).not.toContain('npm run build &&');
 		expect(services.map((service) => service.startCommand).filter(Boolean).join('\n')).not.toContain('provider/entrypoint.js');
 	});
 

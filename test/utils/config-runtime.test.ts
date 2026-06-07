@@ -486,19 +486,21 @@ services:
   api:
     provider: railway
     enabled: true
+    rootDir: packages/api
     railway:
       projectName: treeseed-market
       serviceName: treeseed-market-api
-      rootDir: .
+      rootDir: packages/api
   marketOperationsRunner:
     provider: railway
     enabled: true
+    rootDir: packages/api
     railway:
       projectName: treeseed-market
       serviceName: treeseed-market-operations-runner
-      rootDir: .
-      buildCommand: npm run build:market-operations-runner
-      startCommand: node ./dist/market-operations-runner/entrypoint.js run
+      rootDir: packages/api
+      buildCommand: npm run build
+      startCommand: npm run start:runner
       volumeMountPath: /data
       runnerPool:
         bootstrapCount: 1

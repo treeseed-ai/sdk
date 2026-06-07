@@ -265,6 +265,7 @@ export type TreeseedReleaseInput = {
 	ciMode?: TreeseedWorkflowCiMode;
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
+	verifyDeployedResources?: boolean;
 	fresh?: boolean;
 	plan?: boolean;
 	dryRun?: boolean;

@@ -49,6 +49,14 @@ export {
 	type TreeseedHostingAuditReport,
 } from './operations/services/hosting-audit.ts';
 export {
+	collectTreeseedHostedServiceChecks,
+	type TreeseedHostedServiceCheck,
+	type TreeseedHostedServiceCheckReport,
+	type TreeseedHostedServiceCheckStatus,
+	type TreeseedHostedServiceType,
+	type TreeseedObservedRailwayServiceState,
+} from './operations/services/hosted-service-checks.ts';
+export {
 	assertDeploymentInitialized,
 	cleanupDestroyedState,
 	createBranchPreviewDeployTarget,

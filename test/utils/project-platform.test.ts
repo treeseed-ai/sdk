@@ -313,7 +313,7 @@ services:
     enabled: true
     provider: railway
     railway:
-      startCommand: node ./src/api/server.js
+      startCommand: npm run start:api
 `);
 		const fetched: string[] = [];
 		const releases: Array<() => void> = [];
@@ -385,7 +385,7 @@ services:
     enabled: true
     provider: railway
     railway:
-      startCommand: node ./src/api/server.js
+      startCommand: npm run start:api
 `);
 		const fetched: string[] = [];
 		vi.stubGlobal('fetch', vi.fn(async (input) => {

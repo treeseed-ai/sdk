@@ -64,21 +64,24 @@ services:
   api:
     enabled: true
     provider: railway
-    rootDir: .
+    rootDir: packages/api
     railway:
       projectName: treeseed-market
       serviceName: treeseed-market-api
-      buildCommand: npm run build:api
-      startCommand: node ./src/api/server.js
+      rootDir: packages/api
+      buildCommand: npm run build
+      startCommand: npm run start:api
       healthcheckPath: /healthz
   marketOperationsRunner:
     enabled: true
     provider: railway
+    rootDir: packages/api
     railway:
       projectName: treeseed-market
       serviceName: treeseed-market-operations-runner
-      buildCommand: npm run build:market-operations-runner
-      startCommand: node ./dist/market-operations-runner/entrypoint.js run
+      rootDir: packages/api
+      buildCommand: npm run build
+      startCommand: npm run start:runner
       volumeMountPath: /data
       runnerPool:
         bootstrapCount: 1
@@ -429,4 +432,3 @@ plugins:
 		]));
 	});
 });
-

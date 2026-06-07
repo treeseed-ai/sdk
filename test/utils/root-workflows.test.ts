@@ -79,14 +79,14 @@ describe('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('TREESEED_RAILWAY_PROJECT_ID');
 		expect(webSource).not.toContain('TREESEED_WORKER_POOL_SCALER');
 		expect(source).not.toContain('migrations/*');
-		expect(source).toContain('scripts/build-api.mjs');
+		expect(source).toContain('packages/api');
 		expect(source).toContain('treeseed.site.yaml');
 		expect(source).toContain('.railwayignore');
 		expect(source).toContain('.gitignore');
 		expect(source).not.toContain('processing_changed');
 		expect(source).not.toContain('docs/*|migrations/*');
 		expect(webSource).not.toContain('TREESEED_WORKFLOW_SKIP_PROVISION');
-		expect(verifySource).toContain('npm run build:market-operations-runner');
+		expect(verifySource).toContain('packages/api');
 		expect(source).not.toContain('submodules: false');
 		expect(source).not.toContain('sparse-checkout: |');
 		expect(source).not.toContain('delete pkg.workspaces');

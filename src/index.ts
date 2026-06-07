@@ -118,6 +118,14 @@ export {
 	type GitHubWorkflowProgressEvent,
 } from './operations/services/github-api.ts';
 export {
+	collectTreeseedHostedServiceChecks,
+	type TreeseedHostedServiceCheck,
+	type TreeseedHostedServiceCheckReport,
+	type TreeseedHostedServiceCheckStatus,
+	type TreeseedHostedServiceType,
+	type TreeseedObservedRailwayServiceState,
+} from './operations/services/hosted-service-checks.ts';
+export {
 	buildProjectWebMonitorResult,
 } from './operations/services/project-web-monitor.ts';
 export {

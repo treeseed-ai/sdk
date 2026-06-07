@@ -146,6 +146,7 @@ import {
 	workspaceRoot,
 } from '../operations/services/workspace-tools.ts';
 import { runTreeseedHostingAudit, type TreeseedHostingAuditEnvironment } from '../operations/services/hosting-audit.ts';
+import { collectTreeseedHostedServiceChecks } from '../operations/services/hosted-service-checks.ts';
 import { resolveTreeseedWorkflowState, type TreeseedWorkflowStatusOptions } from '../workflow-state.ts';
 import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, filterTreeseedDesiredUnitsByBootstrapSystems, planTreeseedReconciliation, resolveTreeseedBootstrapSelection, reconcileTreeseedTarget } from '../reconcile/index.ts';
 import {
@@ -858,12 +859,27 @@ async function runReadOnlyHostingAuditForWorkflow(
 		env: helpers.context.env,
 		write: (line) => helpers.write(line),
 	});
+	const hostedServices = collectTreeseedHostedServiceChecks({
+		tenantRoot: root,
+		target: report.environment === 'prod' ? 'prod' : report.environment === 'local' ? 'local' : 'staging',
+	});
 	if (options.strict && !report.ok) {
 		workflowError(operation, 'validation_failed', `Hosting audit failed for ${report.environment}: ${report.blockers.join('\n')}`, {
-			details: { hostingAudit: report },
+			details: { hostingAudit: report, hostedServices },
 		});
 	}
-	return report;
+	if (options.strict && hostedServices.summary.failed > 0) {
+		const failures = hostedServices.checks
+			.filter((check) => check.status === 'failed')
+			.map((check) => `${check.id}: ${check.issues.join('; ') || check.description}`);
+		workflowError(operation, 'validation_failed', `Hosted service checks failed for ${hostedServices.target}: ${failures.join('\n')}`, {
+			details: { hostingAudit: report, hostedServices },
+		});
+	}
+	return {
+		...report,
+		hostedServices,
+	};
 }
 
 function normalizeExecutionMode(input: { plan?: boolean; dryRun?: boolean } | undefined): TreeseedWorkflowExecutionMode {
@@ -4896,7 +4912,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 					const hostingAudit = await runReadOnlyHostingAuditForWorkflow('release', root, helpers, 'prod', {
 						enabled: true,
-						strict: false,
+						strict: effectiveInput.verifyDeployedResources === true,
 					});
 					const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
 						backMergeRootProductionIntoStaging(root, false, {
@@ -5216,7 +5232,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 				const hostingAudit = await runReadOnlyHostingAuditForWorkflow('release', root, helpers, 'prod', {
 					enabled: true,
-					strict: false,
+					strict: effectiveInput.verifyDeployedResources === true,
 				});
 				const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
 					backMergeRootProductionIntoStaging(root, true, {
