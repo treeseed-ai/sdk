@@ -9,10 +9,11 @@ const listGitHubEnvironmentVariableNamesMock = vi.fn();
 const upsertGitHubEnvironmentSecretMock = vi.fn();
 const upsertGitHubEnvironmentVariableMock = vi.fn();
 const ensureGitHubBootstrapRepositoryMock = vi.fn();
+const maybeResolveGitHubRepositorySlugMock = vi.fn((root: string) => root.includes('/packages/api') ? 'treeseed-ai/api' : 'owner/repo');
 
 vi.mock('../../src/operations/services/github-automation.ts', () => ({
 	ensureGitHubBootstrapRepository: ensureGitHubBootstrapRepositoryMock,
-	maybeResolveGitHubRepositorySlug: vi.fn(() => 'owner/repo'),
+	maybeResolveGitHubRepositorySlug: maybeResolveGitHubRepositorySlugMock,
 }));
 
 vi.mock('../../src/operations/services/github-api.ts', () => ({
@@ -62,6 +63,39 @@ services:
     enabled: true
 `);
 	return tenantRoot;
+}
+
+function addPackageApiApplication(tenantRoot: string) {
+	mkdirSync(resolve(tenantRoot, 'packages', 'api'), { recursive: true });
+	writeFileSync(resolve(tenantRoot, 'package.json'), JSON.stringify({
+		name: 'workspace',
+		workspaces: ['packages/*'],
+	}, null, 2));
+	writeFileSync(resolve(tenantRoot, 'packages', 'api', 'package.json'), JSON.stringify({
+		name: '@treeseed/api',
+		repository: {
+			type: 'git',
+			url: 'git+ssh://git@github.com/treeseed-ai/api.git',
+		},
+	}, null, 2));
+	writeFileSync(resolve(tenantRoot, 'packages', 'api', 'treeseed.site.yaml'), `name: TreeSeed API
+slug: treeseed-api
+siteUrl: https://api.example.com
+contactEmail: hello@example.com
+hosting:
+  kind: treeseed_control_plane
+  registration: none
+runtime:
+  mode: treeseed_managed
+surfaces:
+  api:
+    enabled: true
+    provider: railway
+services:
+  api:
+    enabled: true
+    provider: railway
+`);
 }
 
 function createTenantFixtureWithPlaceholderCloudflareAccount() {
@@ -200,6 +234,7 @@ function hasConfigEntry(tenantRoot: string, id: string) {
 describe('config GitHub environment sync', () => {
 	beforeEach(() => {
 		vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'treeseed-config-github-home-')));
+		maybeResolveGitHubRepositorySlugMock.mockClear();
 		ensureGitHubBootstrapRepositoryMock.mockReset().mockResolvedValue({ repository: 'owner/repo', created: false });
 		ensureGitHubActionsEnvironmentMock.mockReset().mockResolvedValue({});
 		listGitHubEnvironmentSecretNamesMock.mockReset().mockResolvedValue(new Set());
@@ -349,6 +384,20 @@ describe('config GitHub environment sync', () => {
 		expect(variableNames).toContain('TREESEED_PROJECT_ID');
 	});
 
+	it('explains repository-scoped credential requirements when fallback GitHub tokens cannot manage environments', async () => {
+		const tenantRoot = createTenantFixture();
+		writeDefaultMachineConfig(tenantRoot);
+		unlockSecrets(tenantRoot);
+		seedHostedValues(tenantRoot);
+		listGitHubEnvironmentSecretNamesMock.mockRejectedValueOnce(new Error('Unable to list GitHub environment secrets: GitHub authentication failed.'));
+
+		await expect(syncTreeseedGitHubEnvironment({
+			tenantRoot,
+			scope: 'staging',
+			repository: 'treeseed-ai/api',
+		})).rejects.toThrow(/Configure TREESEED_GITHUB_TOKEN_TREESEED_AI_API/u);
+	});
+
 	it('reports GitHub environment sync progress while syncing items', async () => {
 		const tenantRoot = createTenantFixture();
 		writeDefaultMachineConfig(tenantRoot);
@@ -400,6 +449,64 @@ describe('config GitHub environment sync', () => {
 				'production',
 				'RAILWAY_API_TOKEN',
 				'railway-token-value',
+				expect.any(Object),
+			);
+		}
+	});
+
+	it('syncs GitHub environments for package-owned hosted app repositories', async () => {
+		const tenantRoot = createTenantFixture();
+		addPackageApiApplication(tenantRoot);
+		writeDefaultMachineConfig(tenantRoot);
+		unlockSecrets(tenantRoot);
+		seedHostedValues(tenantRoot);
+		setConfigValue(tenantRoot, 'staging', 'TREESEED_RAILWAY_PROJECT_ID', 'railway-project-id', 'plain', 'scoped');
+
+		const result = await finalizeTreeseedConfig({
+			tenantRoot,
+			scopes: ['staging'],
+			sync: 'github',
+			checkConnections: false,
+			initializePersistent: false,
+		});
+
+		expect(result.synced.github).toMatchObject({
+			repositories: ['owner/repo', 'treeseed-ai/api'],
+			scopes: [
+				expect.objectContaining({ repository: 'owner/repo', scope: 'staging', environment: 'staging' }),
+				expect.objectContaining({ repository: 'treeseed-ai/api', scope: 'staging', environment: 'staging' }),
+			],
+		});
+		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'staging', expect.objectContaining({
+			branchName: 'staging',
+		}));
+		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('treeseed-ai/api', 'staging', expect.objectContaining({
+			branchName: 'staging',
+		}));
+		if (hasConfigEntry(tenantRoot, 'RAILWAY_API_TOKEN')) {
+			expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
+				'treeseed-ai/api',
+				'staging',
+				'RAILWAY_API_TOKEN',
+				'railway-token-value',
+				expect.any(Object),
+			);
+		}
+		if (hasConfigEntry(tenantRoot, 'TREESEED_RAILWAY_WORKSPACE')) {
+			expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
+				'treeseed-ai/api',
+				'staging',
+				'TREESEED_RAILWAY_WORKSPACE',
+				'acme-workspace',
+				expect.any(Object),
+			);
+		}
+		if (hasConfigEntry(tenantRoot, 'TREESEED_RAILWAY_PROJECT_ID')) {
+			expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
+				'treeseed-ai/api',
+				'staging',
+				'TREESEED_RAILWAY_PROJECT_ID',
+				'railway-project-id',
 				expect.any(Object),
 			);
 		}

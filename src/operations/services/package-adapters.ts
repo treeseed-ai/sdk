@@ -111,6 +111,24 @@ function readPackageJsonVersion(filePath: string) {
 	return typeof packageJson?.version === 'string' ? packageJson.version : null;
 }
 
+function normalizeGitHubRepositorySlug(value: unknown) {
+	const raw = typeof value === 'string'
+		? value
+		: value && typeof value === 'object' && !Array.isArray(value)
+			? (value as Record<string, unknown>).url
+			: null;
+	if (typeof raw !== 'string' || !raw.trim()) return null;
+	const normalized = raw
+		.trim()
+		.replace(/^git\+/u, '')
+		.replace(/^ssh:\/\/git@github\.com[:/]/u, '')
+		.replace(/^git@github\.com:/u, '')
+		.replace(/^https:\/\/github\.com\//u, '')
+		.replace(/\.git$/u, '')
+		.replace(/\/$/u, '');
+	return /^[^/\s]+\/[^/\s]+$/u.test(normalized) ? normalized : null;
+}
+
 export function readMixProjectVersion(filePath: string) {
 	if (!existsSync(filePath)) return null;
 	const source = readFileSync(filePath, 'utf8');
@@ -131,6 +149,7 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 	const scripts = pkg.packageJson?.scripts && typeof pkg.packageJson.scripts === 'object' && !Array.isArray(pkg.packageJson.scripts)
 		? pkg.packageJson.scripts as Record<string, unknown>
 		: {};
+	const repository = normalizeGitHubRepositorySlug(pkg.packageJson?.repository);
 	const verifyLocal = typeof scripts['verify:local'] === 'string'
 		? 'verify:local'
 		: typeof scripts.verify === 'string'
@@ -159,6 +178,7 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 			{ kind: 'npm-pack-dry-run', name: 'npm pack', detail: 'npm pack --dry-run' },
 		],
 		metadata: {
+			...(repository ? { repository } : {}),
 			scripts,
 		},
 	};

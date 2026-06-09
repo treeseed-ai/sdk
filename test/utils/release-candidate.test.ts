@@ -101,6 +101,22 @@ developmentImages:
 `, 'utf8');
 }
 
+function addApiPackage(root: string) {
+	mkdirSync(resolve(root, 'packages', 'api'), { recursive: true });
+	writeFileSync(resolve(root, 'packages', 'api', 'package.json'), JSON.stringify({
+		name: '@treeseed/api',
+		version: '0.1.0',
+		private: true,
+		repository: {
+			type: 'git',
+			url: 'git+ssh://git@github.com/treeseed-ai/api.git',
+		},
+		scripts: {
+			'verify:local': 'node -e "process.exit(0)"',
+		},
+	}, null, 2), 'utf8');
+}
+
 describe('release candidate verification', () => {
 	beforeEach(() => {
 		vi.stubEnv('TREESEED_RELEASE_CANDIDATE_REHEARSAL_MODE', 'skip');
@@ -211,6 +227,7 @@ describe('release candidate verification', () => {
 	it('adds package repository credentials to the environment registry', () => {
 		const root = makeWorkspace();
 		addTreeDxPackage(root);
+		addApiPackage(root);
 
 		const registry = resolveTreeseedEnvironmentRegistry({
 			deployConfig: {
@@ -226,6 +243,13 @@ describe('release candidate verification', () => {
 
 		const entry = registry.entries.find((candidate) => candidate.id === 'TREESEED_GITHUB_TOKEN_TREESEED_AI_TREEDX');
 		expect(entry).toMatchObject({
+			group: 'github',
+			sensitivity: 'secret',
+			targets: ['local-runtime'],
+			storage: 'shared',
+		});
+		const apiEntry = registry.entries.find((candidate) => candidate.id === 'TREESEED_GITHUB_TOKEN_TREESEED_AI_API');
+		expect(apiEntry).toMatchObject({
 			group: 'github',
 			sensitivity: 'secret',
 			targets: ['local-runtime'],

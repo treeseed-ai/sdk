@@ -2545,6 +2545,71 @@ async function runBounded<T>(
 	await Promise.all(workers);
 }
 
+function repositorySlugFromPackageJson(root: string) {
+	try {
+		const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as Record<string, unknown>;
+		const repository = packageJson.repository;
+		const raw = typeof repository === 'string'
+			? repository
+			: repository && typeof repository === 'object' && !Array.isArray(repository)
+				? (repository as Record<string, unknown>).url
+				: null;
+		if (typeof raw !== 'string') return null;
+		const normalized = raw
+			.trim()
+			.replace(/^git\+/u, '')
+			.replace(/^ssh:\/\/git@github\.com[:/]/u, '')
+			.replace(/^git@github\.com:/u, '')
+			.replace(/^https:\/\/github\.com\//u, '')
+			.replace(/\.git$/u, '')
+			.replace(/\/$/u, '');
+		return /^[^/\s]+\/[^/\s]+$/u.test(normalized) ? normalized : null;
+	} catch {
+		return null;
+	}
+}
+
+function resolveGitHubRepositorySlugForPath(root: string) {
+	try {
+		return maybeResolveGitHubRepositorySlug(root);
+	} catch {
+		return null;
+	}
+}
+
+function discoverGitHubEnvironmentSyncTargets(tenantRoot: string, explicitRepository?: string | null) {
+	const targets = new Map<string, { repository: string; managedHostMode: 'auto' | 'direct' | 'managed' }>();
+	const add = (repository: string | null | undefined, managedHostMode: 'auto' | 'direct' | 'managed') => {
+		if (!repository || !repository.trim()) return;
+		const normalized = repository.trim();
+		const existing = targets.get(normalized);
+		if (!existing || (existing.managedHostMode === 'managed' && managedHostMode === 'direct')) {
+			targets.set(normalized, { repository: normalized, managedHostMode });
+		}
+	};
+	add(explicitRepository ?? resolveGitHubRepositorySlugForPath(tenantRoot), 'auto');
+	for (const application of discoverTreeseedApplications(tenantRoot)) {
+		const repository = resolveGitHubRepositorySlugForPath(application.root) ?? repositorySlugFromPackageJson(application.root);
+		const managedHostMode = usesManagedHostOperationRequests(application.config) ? 'managed' : 'direct';
+		add(repository, managedHostMode);
+	}
+	return [...targets.values()];
+}
+
+function withGitHubEnvironmentCredentialContext(
+	error: unknown,
+	repository: string,
+	credential: ReturnType<typeof resolveGitHubCredentialForRepository>,
+) {
+	const message = error instanceof Error && error.message.trim()
+		? error.message.trim()
+		: String(error ?? 'GitHub environment sync failed.');
+	if (credential.fallbackUsed && /authentication failed|resource not accessible|403/iu.test(message)) {
+		return new Error(`${message} Configure ${credential.envName} with Actions environment secrets and variables permissions for ${repository}; the fallback GH_TOKEN is not sufficient for this repository.`);
+	}
+	return error;
+}
+
 export async function syncTreeseedGitHubEnvironment({
 	tenantRoot,
 	scope = 'prod',
@@ -2613,19 +2678,29 @@ export async function syncTreeseedGitHubEnvironment({
 	const progress = (message: string, stream: 'stdout' | 'stderr' = 'stdout') => onProgress?.(message, stream);
 	if (!dryRun) {
 		progress(`[${scope}][github][environment] Ensuring GitHub environment ${environment} exists...`);
-		await ensureGitHubActionsEnvironment(repository, environment, {
-			client: githubClient,
-			branchName: deploymentBranch,
-			tagName: deploymentTag,
-		});
+		try {
+			await ensureGitHubActionsEnvironment(repository, environment, {
+				client: githubClient,
+				branchName: deploymentBranch,
+				tagName: deploymentTag,
+			});
+		} catch (error) {
+			throw withGitHubEnvironmentCredentialContext(error, repository, credential);
+		}
 	}
 	progress(`[${scope}][github][sync] Loading existing GitHub secrets and variables...`);
 	const [secretNames, variableNames] = dryRun
 		? [new Set<string>(), new Set<string>()]
-		: await Promise.all([
-			listGitHubEnvironmentSecretNames(repository, environment, { client: githubClient }),
-			listGitHubEnvironmentVariableNames(repository, environment, { client: githubClient }),
-		]);
+		: await (async () => {
+			try {
+				return await Promise.all([
+					listGitHubEnvironmentSecretNames(repository, environment, { client: githubClient }),
+					listGitHubEnvironmentVariableNames(repository, environment, { client: githubClient }),
+				]);
+			} catch (error) {
+				throw withGitHubEnvironmentCredentialContext(error, repository, credential);
+			}
+		})();
 	const synced = {
 		secrets: [] as Array<{ name: string; existed: boolean }>,
 		variables: [] as Array<{ name: string; existed: boolean }>,
@@ -2650,10 +2725,14 @@ export async function syncTreeseedGitHubEnvironment({
 	const limit = execution === 'sequential' ? 1 : concurrency;
 	await runBounded(items, limit, async (item) => {
 		if (!dryRun) {
-			if (item.kind === 'secret') {
-				await upsertGitHubEnvironmentSecret(repository, environment, item.name, item.value, { client: githubClient });
-			} else {
-				await upsertGitHubEnvironmentVariable(repository, environment, item.name, item.value, { client: githubClient });
+			try {
+				if (item.kind === 'secret') {
+					await upsertGitHubEnvironmentSecret(repository, environment, item.name, item.value, { client: githubClient });
+				} else {
+					await upsertGitHubEnvironmentVariable(repository, environment, item.name, item.value, { client: githubClient });
+				}
+			} catch (error) {
+				throw withGitHubEnvironmentCredentialContext(error, repository, credential);
 			}
 		}
 		completed += 1;
@@ -3673,27 +3752,37 @@ export async function finalizeTreeseedConfig({
 
 	if (sync === 'github' || sync === 'all') {
 		const githubScopes = scopes.filter((scope) => scope !== 'local' && summary.bootstrapSystemsByScope[scope].runnable.includes('github'));
-		const syncScope = async (scope: TreeseedConfigScope) => {
-			progress(`[${scope}][github][sync] Syncing GitHub environment...`);
+		const githubTargets = discoverGitHubEnvironmentSyncTargets(tenantRoot, githubRepository);
+		if (githubTargets.length === 0 && githubScopes.length > 0) {
+			throw new Error('Unable to determine the GitHub repository from the origin remote.');
+		}
+		const syncScope = async (scope: TreeseedConfigScope, target: { repository: string; managedHostMode: 'auto' | 'direct' | 'managed' }) => {
+			progress(`[${scope}][github][sync] Syncing GitHub environment for ${target.repository}...`);
 			return await syncTreeseedGitHubEnvironment({
 				tenantRoot,
 				scope,
-				repository: githubRepository,
+				repository: target.repository,
+				managedHostMode: target.managedHostMode,
 				execution: bootstrapExecution,
 				onProgress: progress,
 			});
 		};
 		const githubResults: Array<Awaited<ReturnType<typeof syncTreeseedGitHubEnvironment>>> = [];
 		if (bootstrapExecution === 'sequential') {
-			for (const scope of githubScopes) {
-				githubResults.push(await syncScope(scope));
+			for (const target of githubTargets) {
+				for (const scope of githubScopes) {
+					githubResults.push(await syncScope(scope, target));
+				}
 			}
 		} else {
-			githubResults.push(...await Promise.all(githubScopes.map((scope) => syncScope(scope))));
+			githubResults.push(...await Promise.all(githubTargets.flatMap((target) =>
+				githubScopes.map((scope) => syncScope(scope, target)),
+			)));
 		}
 		summary.synced.github = {
 			scopes: githubResults,
 			repository: githubResults[0]?.repository ?? githubRepository ?? maybeResolveGitHubRepositorySlug(tenantRoot),
+			repositories: githubResults.map((entry) => entry.repository).filter((repository, index, all) => all.indexOf(repository) === index),
 			secrets: githubResults.flatMap((entry) => entry.secrets),
 			variables: githubResults.flatMap((entry) => entry.variables),
 		};
