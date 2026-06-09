@@ -162,8 +162,8 @@ function resolveReporterKind(options: ResolveControlPlaneReporterOptions): Contr
 	if (hostingKind === 'self_hosted_project' && registration === 'optional') {
 		return 'market_http';
 	}
-	if (hostingKind === 'market_control_plane') {
-		return normalizeUrl(options.baseUrl ?? process.env.TREESEED_MARKET_API_BASE_URL ?? options.deployConfig?.hosting?.marketBaseUrl) ? 'self_http' : 'noop';
+	if (hostingKind === 'treeseed_control_plane') {
+		return normalizeUrl(options.baseUrl ?? process.env.TREESEED_API_BASE_URL ?? options.deployConfig?.hosting?.marketBaseUrl) ? 'self_http' : 'noop';
 	}
 	return 'noop';
 }
@@ -335,7 +335,7 @@ export function createControlPlaneReporter(options: ResolveControlPlaneReporterO
 	).trim() || null;
 	const baseUrl = normalizeUrl(
 		options.baseUrl
-		?? process.env.TREESEED_MARKET_API_BASE_URL
+		?? process.env.TREESEED_API_BASE_URL
 		?? options.deployConfig?.hosting?.marketBaseUrl
 		?? null,
 	);

@@ -36,7 +36,7 @@ export const SDK_DISPATCH_EXECUTION_CLASSES = ['local_only', 'remote_inline', 'r
 export const SDK_DISPATCH_TARGETS = ['local', 'project_api', 'project_runner', 'market_catalog'] as const;
 export const SDK_DISPATCH_POLICIES = ['auto', 'prefer_local', 'prefer_remote', 'remote_only'] as const;
 export const SDK_DISPATCH_NAMESPACES = ['sdk', 'workflow'] as const;
-export const TREESEED_HOSTING_KINDS = ['market_control_plane', 'hosted_project', 'self_hosted_project'] as const;
+export const TREESEED_HOSTING_KINDS = ['treeseed_control_plane', 'hosted_project', 'self_hosted_project'] as const;
 export const TREESEED_HOSTING_REGISTRATIONS = ['optional', 'none'] as const;
 export const PROJECT_CONNECTION_MODES = ['hosted', 'self_hosted', 'hybrid'] as const;
 export const PROJECT_RUNNER_REGISTRATION_STATES = ['pending', 'registered', 'offline'] as const;
@@ -641,7 +641,7 @@ export interface ProjectDeploymentReadiness {
 export interface CreateProjectWebDeploymentRequest {
 	environment: ProjectDeploymentEnvironment;
 	action: ProjectWebDeploymentAction;
-	source?: 'market_ui' | 'market_api' | 'cli' | 'launch_flow';
+	source?: 'market_ui' | 'api' | 'cli' | 'launch_flow';
 	reason?: string;
 	idempotencyKey?: string;
 	previewId?: string | null;

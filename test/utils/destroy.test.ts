@@ -23,7 +23,7 @@ slug: destroy-test
 siteUrl: https://destroy.example.com
 contactEmail: test@example.com
 hosting:
-  kind: market_control_plane
+  kind: treeseed_control_plane
   teamId: acme
   projectId: market
 runtime:
@@ -57,7 +57,7 @@ surfaces:
       prod:
         domain: api.destroy.example.com
 services:
-  marketDatabase:
+  apiDatabase:
     enabled: true
     provider: railway
     railway:
@@ -69,7 +69,7 @@ services:
     railway:
       projectName: destroy-test
       serviceName: destroy-test-api
-  marketOperationsRunner:
+  operationsRunner:
     enabled: true
     provider: railway
     railway:

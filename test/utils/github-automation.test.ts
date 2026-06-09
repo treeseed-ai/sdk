@@ -87,7 +87,7 @@ describe('github automation workflow generation', () => {
 
 	it('creates both workflow files for the market control plane and only deploy for project repos', () => {
 		const marketRoot = createTenantRoot(`hosting:
-  kind: market_control_plane
+  kind: treeseed_control_plane
   registration: none`);
 	const hostedRoot = createTenantRoot(`hosting:
   kind: hosted_project

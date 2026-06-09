@@ -13,8 +13,8 @@ function railwayConcreteUnitTypeForServiceKey(serviceKey: string) {
 	switch (serviceKey) {
 		case 'api':
 			return 'railway-service:api' as const;
-		case 'marketOperationsRunner':
-			return 'railway-service:market-operations-runner' as const;
+		case 'operationsRunner':
+			return 'railway-service:operations-runner' as const;
 		case 'workdayManager':
 			return 'railway-service:workday-manager' as const;
 		case 'workerRunner':
@@ -222,7 +222,7 @@ export function deriveTreeseedDesiredUnits({
 	const scope = target.kind === 'persistent' ? target.scope : 'staging';
 	for (const configuredService of configuredRailwayServices(tenantRoot, scope)) {
 		const serviceKey = configuredService.key;
-		const service = deployConfig.services?.[serviceKey];
+		const service = configuredService.serviceConfig ?? deployConfig.services?.[serviceKey];
 		const serviceState = legacyState.services?.[serviceKey];
 		if (!service || service.enabled === false || service.provider !== 'railway') {
 			continue;
@@ -307,7 +307,7 @@ export function deriveTreeseedDesiredUnits({
 		const runtimeUnitType = (() => {
 			switch (serviceKey) {
 				case 'api': return 'api-runtime';
-				case 'marketOperationsRunner': return 'market-operations-runner-runtime';
+				case 'operationsRunner': return 'operations-runner-runtime';
 				case 'workdayManager': return 'workday-manager-runtime';
 				case 'workerRunner': return 'worker-runner-runtime';
 				default: return 'api-runtime';

@@ -1,5 +1,7 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { workspacePackages, workspaceRoot } from './workspace-tools.ts';
 
 export type TreeseedPackageKind = 'node-typescript' | 'beam-elixir-rust';
@@ -45,13 +47,60 @@ type TreeseedPackageManifest = {
 	kind?: unknown;
 	versionSource?: unknown;
 	image?: unknown;
+	repository?: unknown;
 	verify?: unknown;
 	releaseGate?: unknown;
+	developmentImages?: unknown;
+};
+
+export type TreeseedPackageDevelopmentImagePlan = {
+	package: {
+		id: string;
+		name: string;
+		path: string;
+		kind: TreeseedPackageKind;
+		version: string | null;
+		publishTarget: string | null;
+		metadata: Record<string, unknown>;
+	};
+	repository: string;
+	workflow: string;
+	branch: string;
+	refs: {
+		imageName: string;
+		branch: string;
+		branchSlug: string;
+		sha: string;
+		shortSha: string;
+		immutableTag: string;
+		movingTag: string | null;
+		imageRef: string;
+		movingImageRef: string | null;
+		archImageRefs: string[];
+	};
+	hosting: {
+		app: string;
+		environment: string;
+		overrideEnvVar: string;
+		override: Record<string, string>;
+		command: string;
+	} | null;
 };
 
 function readJsonFile(filePath: string) {
 	try {
 		return JSON.parse(readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+	} catch {
+		return null;
+	}
+}
+
+function readStructuredFile(filePath: string) {
+	try {
+		const raw = readFileSync(filePath, 'utf8');
+		return filePath.endsWith('.yaml') || filePath.endsWith('.yml')
+			? (parseYaml(raw) as Record<string, unknown>)
+			: JSON.parse(raw) as Record<string, unknown>;
 	} catch {
 		return null;
 	}
@@ -116,7 +165,7 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 }
 
 function treeseedPackageManifestPath(dir: string) {
-	for (const fileName of ['treeseed.package.json', '.treeseed-package.json']) {
+	for (const fileName of ['treeseed.package.yaml', 'treeseed.package.yml', 'treeseed.package.json', '.treeseed-package.json']) {
 		const filePath = resolve(dir, fileName);
 		if (existsSync(filePath)) return filePath;
 	}
@@ -125,7 +174,19 @@ function treeseedPackageManifestPath(dir: string) {
 
 function readTreeseedPackageManifest(dir: string): TreeseedPackageManifest | null {
 	const filePath = treeseedPackageManifestPath(dir);
-	return filePath ? readJsonFile(filePath) as TreeseedPackageManifest | null : null;
+	return filePath ? readStructuredFile(filePath) as TreeseedPackageManifest | null : null;
+}
+
+function stringRecord(value: unknown) {
+	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function stringValue(value: unknown) {
+	return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function stringArray(value: unknown) {
+	return Array.isArray(value) ? value.map((entry) => stringValue(entry)).filter((entry): entry is string => Boolean(entry)) : [];
 }
 
 function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter | null {
@@ -149,6 +210,16 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 		: id === 'treedx'
 			? 'treeseed/treedx'
 			: null;
+	const repository = stringValue(manifest?.repository) ?? (id === 'treedx' ? 'treeseed-ai/treedx' : null);
+	const developmentImages = stringRecord(manifest?.developmentImages);
+	const developmentImageHosting = stringRecord(developmentImages.hosting);
+	const developmentImageWorkflow = image
+		? stringValue(developmentImages.workflow) ?? (id === 'treedx' ? 'dev-image.yml' : null)
+		: null;
+	const developmentImageDefaultBranch = stringValue(developmentImages.defaultBranch) ?? 'staging';
+	const developmentImageTagPrefix = stringValue(developmentImages.tagPrefix) ?? 'dev';
+	const developmentImageMovingTag = developmentImages.movingTag === false ? false : true;
+	const developmentImageArchitectures = stringArray(developmentImages.architectures);
 	const verify = manifest?.verify && typeof manifest.verify === 'object' && !Array.isArray(manifest.verify)
 		? manifest.verify as Record<string, unknown>
 		: {};
@@ -179,8 +250,112 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 		metadata: {
 			hasCargo: existsSync(resolve(dir, 'Cargo.toml')),
 			hasDockerfile: existsSync(resolve(dir, 'Dockerfile')),
+			repository,
 			versionSource: versionSourceRel,
+			...(developmentImageWorkflow
+				? {
+					developmentImageWorkflow: developmentImageWorkflow.startsWith('.github/workflows/')
+						? developmentImageWorkflow
+						: `.github/workflows/${developmentImageWorkflow}`,
+					developmentImageDefaultBranch,
+					developmentImageTagPrefix,
+					developmentImageMovingTag,
+					developmentImageArchitectures,
+					developmentImageTagPattern: `${image}:${developmentImageTagPrefix}-<branch-slug>-<short-sha>`,
+					developmentImageMovingTagPattern: developmentImageMovingTag ? `${image}:${developmentImageTagPrefix}-<branch-slug>` : null,
+					developmentImageHosting: Object.keys(developmentImageHosting).length > 0 ? developmentImageHosting : null,
+				}
+				: {}),
 		},
+	};
+}
+
+function gitOutput(cwd: string, args: string[]) {
+	const result = spawnSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
+	if (result.status !== 0) {
+		const stderr = typeof result.stderr === 'string' ? result.stderr.trim() : '';
+		throw new Error(stderr || `git ${args.join(' ')} failed in ${cwd}.`);
+	}
+	return result.stdout.trim();
+}
+
+function branchSlug(value: string) {
+	const normalized = value.toLowerCase()
+		.replace(/[^a-z0-9]+/gu, '-')
+		.replace(/^-+|-+$/gu, '')
+		.slice(0, 40);
+	return normalized || 'branch';
+}
+
+export function planTreeseedPackageDevelopmentImage(
+	root = workspaceRoot(),
+	idOrName: string,
+	{ branch }: { branch?: string | null } = {},
+): TreeseedPackageDevelopmentImagePlan {
+	const adapter = findTreeseedPackageAdapter(root, idOrName);
+	if (!adapter) {
+		throw new Error(`Treeseed package adapter ${idOrName} was not discovered.`);
+	}
+	const imageName = typeof adapter.publishTarget === 'string' && adapter.publishTarget.trim()
+		? adapter.publishTarget.trim()
+		: null;
+	if (!imageName) {
+		throw new Error(`${adapter.id} does not declare a publish image target.`);
+	}
+	const metadata = adapter.metadata;
+	const workflow = stringValue(metadata.developmentImageWorkflow)?.replace(/^\.github\/workflows\//u, '') ?? null;
+	if (!workflow) {
+		throw new Error(`${adapter.id} does not declare a development image workflow.`);
+	}
+	const selectedBranch = branch ?? stringValue(metadata.developmentImageDefaultBranch) ?? 'staging';
+	const sha = gitOutput(adapter.dir, ['rev-parse', selectedBranch]);
+	const slug = branchSlug(selectedBranch);
+	const shortSha = sha.slice(0, 12);
+	const tagPrefix = stringValue(metadata.developmentImageTagPrefix) ?? 'dev';
+	const immutableTag = `${tagPrefix}-${slug}-${shortSha}`;
+	const movingTag = metadata.developmentImageMovingTag === false ? null : `${tagPrefix}-${slug}`;
+	const architectures = stringArray(metadata.developmentImageArchitectures);
+	const hosting = stringRecord(metadata.developmentImageHosting);
+	const app = stringValue(hosting.app);
+	const environment = stringValue(hosting.environment) ?? selectedBranch;
+	const overrideEnvVar = stringValue(hosting.envVar);
+	const imageRef = `${imageName}:${immutableTag}`;
+	const movingImageRef = movingTag ? `${imageName}:${movingTag}` : null;
+	const hostingImageRef = movingImageRef ?? imageRef;
+	return {
+		package: {
+			id: adapter.id,
+			name: adapter.name,
+			path: adapter.relativeDir,
+			kind: adapter.kind,
+			version: adapter.version,
+			publishTarget: adapter.publishTarget,
+			metadata: adapter.metadata,
+		},
+		repository: stringValue(metadata.repository) ?? `${adapter.id}`,
+		workflow,
+		branch: selectedBranch,
+		refs: {
+			imageName,
+			branch: selectedBranch,
+			branchSlug: slug,
+			sha,
+			shortSha,
+			immutableTag,
+			movingTag,
+			imageRef,
+			movingImageRef,
+			archImageRefs: architectures.map((arch) => `${imageName}:${immutableTag}-${arch}`),
+		},
+		hosting: app && overrideEnvVar
+			? {
+				app,
+				environment,
+				overrideEnvVar,
+				override: { [overrideEnvVar]: hostingImageRef },
+				command: `${overrideEnvVar}=${hostingImageRef} npx trsd hosting apply --environment ${environment} --app ${app} --execute --json`,
+			}
+			: null,
 	};
 }
 
@@ -222,5 +397,6 @@ export function packageAdapterPlanSummary(root = workspaceRoot()) {
 		])),
 		artifacts: adapter.artifacts,
 		releaseChecks: adapter.releaseChecks,
+		metadata: adapter.metadata,
 	}));
 }

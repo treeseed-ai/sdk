@@ -401,7 +401,7 @@ export function buildPublicVars(deployConfig, options = {}) {
 			TREESEED_RUNTIME_MODE: deployConfig.runtime?.mode ?? 'none',
 			TREESEED_RUNTIME_REGISTRATION: deployConfig.runtime?.registration ?? 'none',
 			TREESEED_CENTRAL_MARKET_API_BASE_URL: envOrNull('TREESEED_CENTRAL_MARKET_API_BASE_URL') ?? DEFAULT_TREESEED_MARKET_BASE_URL,
-			TREESEED_MARKET_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig),
+			TREESEED_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig),
 			TREESEED_CATALOG_MARKET_API_BASE_URLS: envOrNull('TREESEED_CATALOG_MARKET_API_BASE_URLS') ?? resolveConfiguredMarketBaseUrl(deployConfig),
 			TREESEED_HOSTING_TEAM_ID: contentDefaultTeamId,
 		TREESEED_PROJECT_ID: identity.projectId,
@@ -1026,7 +1026,7 @@ export function runWrangler(args, { cwd, allowFailure = false, json = false, cap
 				output || `Wrangler command failed: ${args.join(' ')}`,
 				'',
 				'Treeseed Cloudflare authentication failed. Check that CLOUDFLARE_API_TOKEN is an account-level token scoped to the target account and domain.',
-				'Required Cloudflare permissions: Account Cloudflare Pages edit, Account Workers Scripts edit, Account Workers KV Storage edit, Account D1 edit, Account Queues edit, Zone DNS edit.',
+				'Required Cloudflare permissions: account Pages Write, Workers Scripts Write, Workers KV Storage Write, Workers R2 Storage Write, D1 Write, Queues Write, Turnstile Sites Write, Account Rulesets Write, and Account Rule Lists Write; target zone Zone Read, DNS Write, Cache Settings Write, and SSL and Certificates Write.',
 			].join('\n'));
 		}
 		throw new Error(output || `Wrangler command failed: ${args.join(' ')}`);
@@ -1905,7 +1905,7 @@ export function resolveConfiguredCloudflareAccountId(deployConfig) {
 }
 
 function resolveConfiguredMarketBaseUrl(deployConfig) {
-	return envOrNull('TREESEED_MARKET_API_BASE_URL')
+	return envOrNull('TREESEED_API_BASE_URL')
 		?? envOrNull('TREESEED_CENTRAL_MARKET_API_BASE_URL')
 		?? deployConfig.runtime?.marketBaseUrl
 		?? deployConfig.hosting?.marketBaseUrl
@@ -2792,21 +2792,21 @@ function configuredRailwayDestroyTargets(tenantRoot, deployConfig, scope) {
 		identity = { deploymentKey: deployConfig.slug ?? deployConfig.name ?? 'treeseed' };
 	}
 	const services = [];
-	for (const serviceKey of ['api', 'marketOperationsRunner']) {
+	for (const serviceKey of ['api', 'operationsRunner']) {
 		const service = deployConfig.services?.[serviceKey];
 		if (!service || service.enabled === false || (service.provider ?? 'railway') !== 'railway') {
 			continue;
 		}
-		const baseServiceName = service.railway?.serviceName ?? `${identity.deploymentKey}-${serviceKey === 'marketOperationsRunner' ? 'market-operations-runner' : serviceKey}`;
-		const runnerPool = serviceKey === 'marketOperationsRunner' && service.railway?.runnerPool && typeof service.railway.runnerPool === 'object'
+		const baseServiceName = service.railway?.serviceName ?? `${identity.deploymentKey}-${serviceKey === 'operationsRunner' ? 'operations-runner' : serviceKey}`;
+		const runnerPool = serviceKey === 'operationsRunner' && service.railway?.runnerPool && typeof service.railway.runnerPool === 'object'
 			? service.railway.runnerPool
 			: null;
-		const count = serviceKey === 'marketOperationsRunner'
+		const count = serviceKey === 'operationsRunner'
 			? Math.max(1, Number.parseInt(String(runnerPool?.bootstrapCount ?? 1), 10) || 1)
 			: 1;
 		for (let index = 1; index <= count; index += 1) {
-			const serviceName = serviceKey === 'marketOperationsRunner'
-				? `${String(baseServiceName).replace(/-\d+$/u, '')}-${String(index).padStart(2, '0')}`
+			const serviceName = serviceKey === 'operationsRunner'
+				? `${String(baseServiceName).replace(/-\d+$/u, '').replace(/-\d{2}$/u, '')}-${String(index).padStart(2, '0')}`
 				: baseServiceName;
 			services.push({
 				key: serviceKey,
@@ -2814,17 +2814,17 @@ function configuredRailwayDestroyTargets(tenantRoot, deployConfig, scope) {
 				serviceName,
 				railwayEnvironment: normalizeRailwayEnvironmentName(service.environments?.[normalizedScope]?.railwayEnvironment ?? normalizedScope),
 				domain: service.environments?.[normalizedScope]?.domain ?? null,
-				volumeMountPath: serviceKey === 'marketOperationsRunner' ? (service.railway?.volumeMountPath ?? runnerPool?.volumeMountPath ?? '/data') : null,
+				volumeMountPath: serviceKey === 'operationsRunner' ? (service.railway?.volumeMountPath ?? runnerPool?.volumeMountPath ?? '/data') : null,
 			});
 		}
 	}
-	const marketDatabase = deployConfig.services?.marketDatabase;
-	if (marketDatabase?.enabled !== false && marketDatabase?.provider === 'railway' && marketDatabase?.railway?.resourceType === 'postgres') {
-		const baseName = typeof marketDatabase.railway?.serviceName === 'string' && marketDatabase.railway.serviceName.trim()
-			? marketDatabase.railway.serviceName.trim()
+	const treeseedDatabase = deployConfig.services?.treeseedDatabase;
+	if (treeseedDatabase?.enabled !== false && treeseedDatabase?.provider === 'railway' && treeseedDatabase?.railway?.resourceType === 'postgres') {
+		const baseName = typeof treeseedDatabase.railway?.serviceName === 'string' && treeseedDatabase.railway.serviceName.trim()
+			? treeseedDatabase.railway.serviceName.trim()
 			: `${deployConfig.slug ?? 'treeseed-market'}-postgres`;
 		services.push({
-			key: 'marketDatabase',
+			key: 'treeseedDatabase',
 			projectName: deployConfig.services?.api?.railway?.projectName ?? identity.deploymentKey,
 			serviceName: `${baseName.replace(/-(staging|prod|production)$/u, '')}-${normalizedScope === 'prod' ? 'prod' : normalizedScope}`,
 			railwayEnvironment: normalizeRailwayEnvironmentName(normalizedScope),
@@ -3106,7 +3106,7 @@ function destroyLocalRuntimeResources(tenantRoot, { dryRun = false, deleteData =
 		for (const relativePath of [
 			'.treeseed/generated/environments/local',
 			'.treeseed/generated/dev',
-			'.treeseed/market-operations-runner',
+			'.treeseed/operations-runner',
 			'.treeseed/local-capacity-provider/data',
 		]) {
 			const absolutePath = resolve(tenantRoot, relativePath);

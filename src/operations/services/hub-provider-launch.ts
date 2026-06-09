@@ -494,7 +494,7 @@ console.log(\`Treeseed project API listening on \${server.url}\`);
 
 function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubProviderLaunchInput) {
 	const slug = slugify(input.projectSlug, 'project');
-	const marketBaseUrl = normalizeBaseUrl(input.marketBaseUrl ?? envOrNull('TREESEED_MARKET_API_BASE_URL') ?? 'https://knowledge.coop');
+	const marketBaseUrl = normalizeBaseUrl(input.marketBaseUrl ?? envOrNull('TREESEED_API_BASE_URL') ?? 'https://knowledge.coop');
 	const productionDomain = String(input.domains?.productionDomain ?? '').trim() || null;
 	const stagingDomain = String(input.domains?.stagingDomain ?? '').trim() || null;
 	const productionSiteUrl = domainUrl(productionDomain) ?? resolveManagedWebUrl(slug);

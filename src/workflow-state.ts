@@ -702,7 +702,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 	const runnerHostId = typeof marketSettings?.runnerHostId === 'string' && marketSettings.runnerHostId.trim()
 		? marketSettings.runnerHostId.trim()
 		: (typeof marketSettings?.projectId === 'string' && marketSettings.projectId.trim()
-			? `market-runner:${marketSettings.projectId.trim()}`
+			? `operations-runner:${marketSettings.projectId.trim()}`
 			: null);
 	const runnerSession = runnerHostId ? safeResolveRemoteSession(effectiveCwd, runnerHostId) : null;
 	const workflowLock = inspectWorkflowLock(effectiveCwd);
@@ -918,7 +918,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			state.auth.railway = state.auth.railway || hasStatusConfigValue(statusConfigByScope, 'RAILWAY_API_TOKEN');
 			state.auth.copilot = state.auth.copilot || state.auth.gh;
 			state.marketConnection.baseUrl = state.marketConnection.baseUrl
-				?? sharedConfigValues.TREESEED_MARKET_API_BASE_URL
+				?? sharedConfigValues.TREESEED_API_BASE_URL
 				?? deployConfig.runtime?.marketBaseUrl
 				?? deployConfig.hosting?.marketBaseUrl
 				?? null;

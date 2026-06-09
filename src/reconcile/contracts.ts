@@ -1,13 +1,24 @@
 import type { TreeseedDeployConfig } from '../platform/contracts.ts';
 
 export type TreeseedReconcileProviderId = string;
-export type TreeseedReconcileActionKind = 'noop' | 'create' | 'update' | 'reuse' | 'drift_correct' | 'destroy';
+export type TreeseedReconcileActionKind =
+	| 'noop'
+	| 'create'
+	| 'update'
+	| 'replace'
+	| 'delete'
+	| 'adopt'
+	| 'rename'
+	| 'reattach'
+	| 'retain'
+	| 'taint'
+	| 'blocked';
 export type TreeseedReconcileStatusKind = 'pending' | 'ready' | 'drifted' | 'error';
 export type TreeseedReconcileVerificationSource = 'cli' | 'api' | 'sdk' | 'derived';
 export type TreeseedReconcileUnitType =
 	| 'web-ui'
 	| 'api-runtime'
-	| 'market-operations-runner-runtime'
+	| 'operations-runner-runtime'
 	| 'workday-manager-runtime'
 	| 'worker-runner-runtime'
 	| 'edge-worker'
@@ -21,7 +32,7 @@ export type TreeseedReconcileUnitType =
 	| 'custom-domain:api'
 	| 'dns-record'
 	| 'railway-service:api'
-	| 'railway-service:market-operations-runner'
+	| 'railway-service:operations-runner'
 	| 'railway-service:workday-manager'
 	| 'railway-service:worker-runner';
 
@@ -161,9 +172,9 @@ export interface TreeseedReconcileAdapter {
 	supports(unitType: TreeseedReconcileUnitType, providerId: TreeseedReconcileProviderId): boolean;
 	validate?(input: TreeseedReconcileAdapterInput): Promise<void> | void;
 	requiredPostconditions?(input: TreeseedReconcileAdapterInput): Promise<TreeseedUnitPostcondition[]> | TreeseedUnitPostcondition[];
-	observe(input: TreeseedReconcileAdapterInput): Promise<TreeseedObservedUnitState> | TreeseedObservedUnitState;
-	plan(input: TreeseedReconcileAdapterInput & { observed: TreeseedObservedUnitState }): Promise<TreeseedUnitDiff> | TreeseedUnitDiff;
-	reconcile(input: TreeseedReconcileAdapterInput & { observed: TreeseedObservedUnitState; diff: TreeseedUnitDiff }): Promise<TreeseedReconcileResult> | TreeseedReconcileResult;
+	refresh(input: TreeseedReconcileAdapterInput): Promise<TreeseedObservedUnitState> | TreeseedObservedUnitState;
+	diff(input: TreeseedReconcileAdapterInput & { observed: TreeseedObservedUnitState }): Promise<TreeseedUnitDiff> | TreeseedUnitDiff;
+	apply(input: TreeseedReconcileAdapterInput & { observed: TreeseedObservedUnitState; diff: TreeseedUnitDiff }): Promise<TreeseedReconcileResult> | TreeseedReconcileResult;
 	verify(input: TreeseedReconcileAdapterInput & {
 		observed: TreeseedObservedUnitState;
 		diff: TreeseedUnitDiff;
@@ -171,6 +182,7 @@ export interface TreeseedReconcileAdapter {
 		postconditions: TreeseedUnitPostcondition[];
 	}): Promise<TreeseedUnitVerificationResult> | TreeseedUnitVerificationResult;
 	destroy?(input: TreeseedReconcileAdapterInput & { observed: TreeseedObservedUnitState }): Promise<TreeseedReconcileResult> | TreeseedReconcileResult;
+	importOrAdopt?(input: TreeseedReconcileAdapterInput & { observed: TreeseedObservedUnitState }): Promise<TreeseedReconcileResult> | TreeseedReconcileResult;
 }
 
 export interface TreeseedReconcileStateRecord {

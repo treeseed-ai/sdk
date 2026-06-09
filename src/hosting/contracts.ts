@@ -1,4 +1,5 @@
 import type { TreeseedDeployConfig } from '../platform/contracts.ts';
+import type { TreeseedDiscoveredApplication } from './apps.ts';
 
 export type TreeseedHostingEnvironment = 'local' | 'staging' | 'prod';
 
@@ -37,7 +38,7 @@ export type TreeseedServicePlacement =
 	| 'operations'
 	| 'custom';
 
-export type TreeseedHostingAction = 'noop' | 'create' | 'update' | 'verify' | 'blocked';
+export type TreeseedHostingAction = 'noop' | 'create' | 'update' | 'verify' | 'rename' | 'adopt' | 'reattach' | 'retain' | 'delete' | 'blocked';
 export type TreeseedHostingStatus = 'unknown' | 'pending' | 'ready' | 'degraded' | 'blocked';
 
 export interface TreeseedHostCapabilityDescriptor {
@@ -63,8 +64,8 @@ export interface TreeseedHostAdapter {
 	id: string;
 	label: string;
 	capabilities: TreeseedHostCapabilityDescriptor[];
-	observe(input: TreeseedHostAdapterOperationInput): Promise<TreeseedHostAdapterOperationResult> | TreeseedHostAdapterOperationResult;
-	plan(input: TreeseedHostAdapterOperationInput & { observed: TreeseedHostAdapterOperationResult }): Promise<TreeseedHostingUnitPlan> | TreeseedHostingUnitPlan;
+	refresh(input: TreeseedHostAdapterOperationInput): Promise<TreeseedHostAdapterOperationResult> | TreeseedHostAdapterOperationResult;
+	diff(input: TreeseedHostAdapterOperationInput & { observed: TreeseedHostAdapterOperationResult }): Promise<TreeseedHostingUnitPlan> | TreeseedHostingUnitPlan;
 	apply(input: TreeseedHostAdapterOperationInput & { plan: TreeseedHostingUnitPlan }): Promise<TreeseedHostAdapterOperationResult> | TreeseedHostAdapterOperationResult;
 	verify(input: TreeseedHostAdapterOperationInput & { observed: TreeseedHostAdapterOperationResult }): Promise<TreeseedHostingVerification> | TreeseedHostingVerification;
 	status(input: TreeseedHostAdapterOperationInput): Promise<TreeseedHostAdapterOperationResult> | TreeseedHostAdapterOperationResult;
@@ -127,6 +128,7 @@ export interface TreeseedApplicationHostingProfile {
 export interface TreeseedHostingGraphInput {
 	tenantRoot: string;
 	environment: TreeseedHostingEnvironment;
+	appId?: string;
 	deployConfig?: TreeseedDeployConfig;
 	hostAdapters?: Record<string, TreeseedHostAdapter>;
 	serviceTypeAdapters?: Record<string, TreeseedServiceTypeAdapter>;
@@ -154,12 +156,14 @@ export interface TreeseedHostingUnit {
 	secretRefs: string[];
 	variableRefs: string[];
 	metadata: Record<string, unknown>;
+	application?: Pick<TreeseedDiscoveredApplication, 'id' | 'root' | 'relativeRoot' | 'configPath' | 'roles'>;
 }
 
 export interface TreeseedHostingGraph {
 	tenantRoot: string;
 	environment: TreeseedHostingEnvironment;
 	deployConfig: TreeseedDeployConfig;
+	applications?: TreeseedDiscoveredApplication[];
 	hosts: Record<string, TreeseedHostAdapter>;
 	serviceTypes: Record<string, TreeseedServiceTypeAdapter>;
 	profiles: TreeseedApplicationHostingProfile[];
@@ -176,6 +180,10 @@ export interface TreeseedHostingUnitPlan {
 	before: Record<string, unknown>;
 	after: Record<string, unknown>;
 	warnings: string[];
+	actions?: TreeseedHostingAction[];
+	retainedResources?: unknown[];
+	blockedDrift?: unknown[];
+	providerLimitations?: unknown[];
 }
 
 export interface TreeseedHostingVerificationCheck {
@@ -211,6 +219,10 @@ export interface TreeseedHostingPlan {
 export interface TreeseedHostingApplyResult {
 	environment: TreeseedHostingEnvironment;
 	dryRun: boolean;
+	selectedApps?: string[];
+	selectedSystems?: string[];
+	skippedSystems?: Array<{ system: string; reason: string }>;
+	transport?: Record<string, Record<string, string>>;
 	results: Array<{
 		unit: TreeseedHostingUnit;
 		plan: TreeseedHostingUnitPlan;

@@ -17,7 +17,7 @@ slug: treeseed-market
 siteUrl: https://treeseed.ai
 contactEmail: hello@treeseed.ai
 hosting:
-  kind: market_control_plane
+  kind: treeseed_control_plane
 runtime:
   mode: treeseed_managed
 surfaces:
@@ -31,19 +31,19 @@ services:
     provider: railway
     rootDir: packages/api
     railway:
-      projectName: treeseed-market
-      serviceName: treeseed-market-api
+      projectName: treeseed-api
+      serviceName: treeseed-api
       rootDir: packages/api
       buildCommand: npm run build
       startCommand: npm run start:api
       healthcheckPath: /healthz
-  marketOperationsRunner:
+  operationsRunner:
     enabled: true
     provider: railway
     rootDir: packages/api
     railway:
-      projectName: treeseed-market
-      serviceName: treeseed-market-operations-runner
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
       rootDir: packages/api
       buildCommand: npm run build
       startCommand: npm run start:runner
@@ -54,15 +54,15 @@ services:
         bootstrapCount: 1
         maxRunners: 4
         volumeMountPath: /data
-  marketDatabase:
+  apiDatabase:
     enabled: true
     provider: railway
     railway:
       resourceType: postgres
-      serviceName: treeseed-market-postgres
+      serviceName: treeseed-api-postgres
       serviceTargets:
         - api
-        - marketOperationsRunner
+        - operationsRunner
 ${overrides}`;
 }
 
@@ -81,11 +81,11 @@ function byId(report: ReturnType<typeof collectTreeseedDeploymentReadiness>, id:
 }
 
 describe('deployment readiness', () => {
-	it('passes current Market API package deployment shape', () => {
+	it('passes current API package deployment shape', () => {
 		const report = collectTreeseedDeploymentReadiness({ tenantRoot: rootWith(config()), environment: 'staging' });
 		expect(report.ok).toBe(true);
 		expect(byId(report, 'railway-config:api:rootDirectory')).toMatchObject({ status: 'passed' });
-		expect(byId(report, 'hosting:marketOperationsRunner:startCommand')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:operationsRunner:startCommand')).toMatchObject({ status: 'passed' });
 	});
 
 	it('fails when nested Railway rootDir overrides the package root', () => {
@@ -101,9 +101,9 @@ describe('deployment readiness', () => {
 
 	it('fails when database targets omit the runner', () => {
 		const report = collectTreeseedDeploymentReadiness({
-			tenantRoot: rootWith(config().replace('        - marketOperationsRunner', '')),
+			tenantRoot: rootWith(config().replace('        - operationsRunner', '')),
 			environment: 'staging',
 		});
-		expect(byId(report, 'hosting:marketDatabase:serviceTargets')).toMatchObject({ status: 'failed' });
+		expect(byId(report, 'hosting:apiDatabase:serviceTargets')).toMatchObject({ status: 'failed' });
 	});
 });

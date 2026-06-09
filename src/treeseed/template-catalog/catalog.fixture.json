@@ -664,7 +664,7 @@
               {
                 "target": "treeseed.site.yaml",
                 "path": "hosting.kind",
-                "valueFrom": "literal.market_control_plane"
+                "valueFrom": "literal.treeseed_control_plane"
               },
               {
                 "target": "treeseed.site.yaml",
@@ -710,8 +710,8 @@
             "compatibleProviders": [
               "railway-postgres"
             ],
-            "displayName": "Market database",
-            "purpose": "Provide the PostgreSQL database used by the Market API control plane.",
+            "displayName": "Treeseed database",
+            "purpose": "Provide the PostgreSQL database used by the API control plane.",
             "configWrites": [
               {
                 "target": "treeseed.site.yaml",
@@ -736,12 +736,12 @@
               {
                 "target": "treeseed.site.yaml",
                 "path": "services.marketDatabase.railway.environmentVariable",
-                "valueFrom": "literal.TREESEED_MARKET_DATABASE_URL"
+                "valueFrom": "literal.TREESEED_DATABASE_URL"
               }
             ],
             "environmentWrites": [
               {
-                "env": "TREESEED_MARKET_DATABASE_URL",
+                "env": "TREESEED_DATABASE_URL",
                 "valueFrom": "selectedResource.secretRefs.databaseUrl",
                 "targets": [
                   "github-secret",
@@ -763,8 +763,8 @@
             "compatibleProviders": [
               "railway"
             ],
-            "displayName": "Market API service",
-            "purpose": "Run the Market API service that serves the control-plane routes.",
+            "displayName": "API service",
+            "purpose": "Run the API service that serves the control-plane routes.",
             "configWrites": [
               {
                 "target": "treeseed.site.yaml",
@@ -794,7 +794,7 @@
             ],
             "environmentWrites": [
               {
-                "env": "TREESEED_MARKET_DATABASE_URL",
+                "env": "TREESEED_DATABASE_URL",
                 "valueFrom": "selectedResource.secretRefs.databaseUrl",
                 "targets": [
                   "railway-secret"
@@ -836,12 +836,12 @@
               {
                 "target": "treeseed.site.yaml",
                 "path": "services.marketOperationsRunner.railway.startCommand",
-                "valueFrom": "literal.node dist/market-operations-runner/runner.js"
+                "valueFrom": "literal.node dist/operations-runner/runner.js"
               }
             ],
             "environmentWrites": [
               {
-                "env": "TREESEED_MARKET_DATABASE_URL",
+                "env": "TREESEED_DATABASE_URL",
                 "valueFrom": "selectedResource.secretRefs.databaseUrl",
                 "targets": [
                   "railway-secret"

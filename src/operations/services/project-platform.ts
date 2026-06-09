@@ -989,8 +989,8 @@ function probeR2(
 function probeScaleConfiguration(siteConfig, state) {
 	const worker = state.services?.workerRunner ?? state.services?.worker ?? {};
 	const workerConfig = siteConfig.services?.workerRunner ?? siteConfig.services?.worker ?? {};
-	const marketRunner = state.services?.marketOperationsRunner ?? {};
-	const marketRunnerConfig = siteConfig.services?.marketOperationsRunner ?? {};
+	const marketRunner = state.services?.operationsRunner ?? {};
+	const marketRunnerConfig = siteConfig.services?.operationsRunner ?? {};
 	const scalerKind = String(process.env.TREESEED_WORKER_POOL_SCALER ?? '').trim();
 	if (marketRunnerConfig.provider === 'railway' && workerConfig.provider !== 'railway') {
 		const runnerServiceId = marketRunner.serviceId ?? null;
@@ -1304,11 +1304,15 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 		systems: bootstrapSystems,
 	}));
 	writeWorkflowStatus('provision:collect-reconcile-status:done');
-	writeWorkflowStatus('provision:ensure-wrangler-config:start');
-	await timedPhase(timings, 'provision:ensure-wrangler-config', () => {
-		ensureGeneratedWranglerConfig(options.tenantRoot, { target });
-	});
-	writeWorkflowStatus('provision:ensure-wrangler-config:done');
+	if (selectedSystems.has('data') || selectedSystems.has('web')) {
+		writeWorkflowStatus('provision:ensure-wrangler-config:start');
+		await timedPhase(timings, 'provision:ensure-wrangler-config', () => {
+			ensureGeneratedWranglerConfig(options.tenantRoot, { target });
+		});
+		writeWorkflowStatus('provision:ensure-wrangler-config:done');
+	} else {
+		writeWorkflowStatus('provision:ensure-wrangler-config:skipped');
+	}
 	const shouldValidateRailway = selectedSystems.has('api') || selectedSystems.has('agents');
 	const railwayValidation = shouldValidateRailway
 		? options.scope === 'local'

@@ -69,7 +69,7 @@ describe('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('GITHUB_TOKEN: ${{ secrets.TREESEED_HOSTED_HUBS_GITHUB_TOKEN }}');
 		expect(webSource).toContain('TREESEED_SITE_URL');
 		expect(webSource).toContain('BETTER_AUTH_URL');
-		expect(webSource).toContain('https://api-treeseed-market-staging-ca844c56.treeseed.ai');
+		expect(webSource).toContain('https://api-treeseed-staging.treeseed.ai');
 		expect(webSource).toContain('npm --prefix packages/sdk run build:dist');
 		expect(webSource).toContain('for dir in packages/core packages/cli packages/agent');
 		expect(webSource).toContain('pids["${dir}"]="$!"');
@@ -93,7 +93,7 @@ describe('root workflow bootstrap selection', () => {
 		expect(verifySource).not.toContain('delete pkg.workspaces');
 	});
 
-	it('uploads built packages for Market API starts', () => {
+	it('uploads built packages for API starts', () => {
 		if (!integratedWorkspaceAvailable) {
 			expect(existsSync(packageVerifyWorkflowPath), `${packageVerifyWorkflowPath} must exist in package-only verification`).toBe(true);
 			return;

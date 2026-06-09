@@ -493,7 +493,7 @@ export class PlatformRunnerClient {
 		this.marketUrl = normalizeBaseUrl(options.marketUrl);
 		this.marketId = options.marketId.trim();
 		this.runnerSecret = options.runnerSecret.trim();
-		if (!this.marketUrl) throw new Error('Market API URL is required.');
+		if (!this.marketUrl) throw new Error('API URL is required.');
 		if (!this.marketId) throw new Error('Market ID is required.');
 		if (!this.runnerSecret) throw new Error('Platform runner secret is required.');
 		this.fetchImpl = options.fetchImpl ?? fetch;

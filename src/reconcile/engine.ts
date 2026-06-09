@@ -25,7 +25,7 @@ function toErrorMessage(error: unknown) {
 }
 
 function wrapAdapterFailure(
-	stage: 'observe' | 'plan' | 'validate' | 'reconcile' | 'verify' | 'destroy',
+	stage: 'refresh' | 'diff' | 'validate' | 'apply' | 'verify' | 'destroy',
 	provider: string,
 	unitType: string,
 	unitId: string,
@@ -174,7 +174,7 @@ async function verifyPlanUnits({
 	return verificationResults;
 }
 
-export async function observeTreeseedUnits({
+export async function refreshTreeseedUnits({
 	tenantRoot,
 	target,
 	env = process.env,
@@ -195,18 +195,18 @@ export async function observeTreeseedUnits({
 	const context = createRunContext(tenantRoot, target, env, write);
 	const observations = new Map<string, TreeseedObservedUnitState>();
 	await runByDependencyLevel(topologicallySortDesiredUnits(units), async (unit) => {
-		write?.(`Observing ${unit.provider}:${unit.unitType}...`);
+		write?.(`Refreshing ${unit.provider}:${unit.unitType}...`);
 		const adapter = registry.get(unit.unitType, unit.provider);
 		const persisted = ensureTreeseedPersistedUnitState(reconcileState, unit);
 		let observed;
 		try {
-			observed = await Promise.resolve(adapter.observe({
+			observed = await Promise.resolve(adapter.refresh({
 				context,
 				unit,
 				persistedState: persisted,
 			}));
 		} catch (error) {
-			wrapAdapterFailure('observe', unit.provider, unit.unitType, unit.unitId, error);
+			wrapAdapterFailure('refresh', unit.provider, unit.unitType, unit.unitId, error);
 		}
 		observations.set(unit.unitId, observed as TreeseedObservedUnitState);
 	});
@@ -231,7 +231,7 @@ export async function planTreeseedReconciliation({
 	systems?: TreeseedRunnableBootstrapSystem[];
 	write?: (line: string) => void;
 }) {
-	const observed = await observeTreeseedUnits({ tenantRoot, target, env, systems, write });
+	const observed = await refreshTreeseedUnits({ tenantRoot, target, env, systems, write });
 	const registry = createTreeseedReconcileRegistry(observed.deployConfig);
 	const context = createRunContext(tenantRoot, target, env, write);
 	const plans: TreeseedReconcilePlan[] = [];
@@ -241,14 +241,14 @@ export async function planTreeseedReconciliation({
 		const observation = observed.observations.get(unit.unitId)!;
 		let diff;
 		try {
-			diff = await Promise.resolve(adapter.plan({
+			diff = await Promise.resolve(adapter.diff({
 				context,
 				unit,
 				persistedState: persisted,
 				observed: observation,
 			}));
 		} catch (error) {
-			wrapAdapterFailure('plan', unit.provider, unit.unitType, unit.unitId, error);
+			wrapAdapterFailure('diff', unit.provider, unit.unitType, unit.unitId, error);
 		}
 		plans.push({
 			unit,
@@ -298,7 +298,7 @@ export async function reconcileTreeseedTarget({
 	await runByDependencyLevel(topologicallySortDesiredUnits(planned.units), async (unit) => {
 		const plan = planByUnitId.get(unit.unitId)!;
 		const unitTiming: TreeseedTimingEntry = {
-			name: `reconcile:${plan.unit.provider}:${plan.unit.unitType}:${plan.unit.logicalName}`,
+			name: `apply:${plan.unit.provider}:${plan.unit.unitType}:${plan.unit.logicalName}`,
 			durationMs: 0,
 			status: 'running',
 			children: [],
@@ -306,7 +306,7 @@ export async function reconcileTreeseedTarget({
 		};
 		const unitStartMs = performance.now();
 		timingEntries.push(unitTiming);
-		write?.(`Reconciling ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName})...`);
+		write?.(`Applying ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName})...`);
 		const adapter = registry.get(plan.unit.unitType, plan.unit.provider);
 		const persisted = ensureTreeseedPersistedUnitState(planned.state, plan.unit);
 		try {
@@ -340,13 +340,13 @@ export async function reconcileTreeseedTarget({
 					observed: plan.observed,
 					diff: plan.diff,
 					action: plan.diff.action,
-					warnings: [...plan.observed.warnings, 'dry run: reconcile skipped'],
+					warnings: [...plan.observed.warnings, 'dry run: apply skipped'],
 					resourceLocators: plan.observed.locators,
 					state: plan.observed.live,
 					verification: null,
 				};
 			} else {
-				result = await Promise.resolve(adapter.reconcile({
+				result = await Promise.resolve(adapter.apply({
 					context,
 					unit: plan.unit,
 					persistedState: persisted,
@@ -355,19 +355,19 @@ export async function reconcileTreeseedTarget({
 				}));
 			}
 			unitTiming.children?.push({
-				name: `${unitTiming.name}:reconcile`,
+				name: `${unitTiming.name}:apply`,
 				durationMs: elapsedMs(stageStartMs),
 				status: dryRun ? 'skipped' : 'success',
 			});
 		} catch (error) {
 			unitTiming.children?.push({
-				name: `${unitTiming.name}:reconcile`,
+				name: `${unitTiming.name}:apply`,
 				durationMs: elapsedMs(unitStartMs),
 				status: 'failed',
 			});
 			unitTiming.durationMs = elapsedMs(unitStartMs);
 			unitTiming.status = 'failed';
-			wrapAdapterFailure('reconcile', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
+			wrapAdapterFailure('apply', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
 		}
 		write?.(`Verifying ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName})...`);
 		const postconditions = await Promise.resolve(adapter.requiredPostconditions?.({
@@ -463,13 +463,13 @@ export async function destroyTreeseedTargetUnits({
 		const persisted = ensureTreeseedPersistedUnitState(reconcileState, unit);
 		let observed;
 		try {
-			observed = await Promise.resolve(adapter.observe({
+			observed = await Promise.resolve(adapter.refresh({
 				context,
 				unit,
 				persistedState: persisted,
 			}));
 		} catch (error) {
-			wrapAdapterFailure('observe', unit.provider, unit.unitType, unit.unitId, error);
+			wrapAdapterFailure('refresh', unit.provider, unit.unitType, unit.unitId, error);
 		}
 		let result;
 		try {
@@ -498,14 +498,14 @@ export async function collectTreeseedReconcileStatus({
 	env?: NodeJS.ProcessEnv;
 	systems?: TreeseedRunnableBootstrapSystem[];
 }) {
-	const observed = await observeTreeseedUnits({ tenantRoot, target, env, systems });
+	const observed = await refreshTreeseedUnits({ tenantRoot, target, env, systems });
 	const registry = createTreeseedReconcileRegistry(observed.deployConfig);
 	const context = createRunContext(tenantRoot, target, env);
 	const plans = await Promise.all(observed.units.map(async (unit) => {
 		const adapter = registry.get(unit.unitType, unit.provider);
 		const persisted = ensureTreeseedPersistedUnitState(observed.state, unit);
 		const observation = observed.observations.get(unit.unitId)!;
-		const diff = await Promise.resolve(adapter.plan({
+		const diff = await Promise.resolve(adapter.diff({
 			context,
 			unit,
 			persistedState: persisted,

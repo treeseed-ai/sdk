@@ -134,7 +134,7 @@ describe('project platform workflow actions', () => {
 		expect(databaseSource).not.toContain('await ensureRailwayServiceVolume({');
 	});
 
-	it('uses the Railway CLI volume path for market operations runner reconciliation', () => {
+	it('uses the Railway API volume path for Treeseed operations runner reconciliation', () => {
 		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
 		const syncStart = source.indexOf('async function syncRailwayEnvironmentForScope');
 		const syncEnd = source.indexOf('async function ensureRailwayMarketDatabaseForScope', syncStart);
@@ -142,8 +142,11 @@ describe('project platform workflow actions', () => {
 
 		expect(syncStart).toBeGreaterThanOrEqual(0);
 		expect(syncEnd).toBeGreaterThan(syncStart);
-		expect(syncSource).toContain('ensureRailwayServiceVolumeWithCliFallback');
-		expect(syncSource).toContain("preferCli: entry.configuredService.key === 'marketOperationsRunner'");
+		expect(syncSource).toContain('await ensureRailwayServiceVolume({');
+		expect(syncSource).toContain("deriveRailwayOperationsRunnerVolumeName(entry.service.name, entry.environment.name)");
+		expect(syncSource).toContain('Railway API volume reconciliation did not mount');
+		expect(syncSource).not.toContain('ensureRailwayServiceVolumeWithCliFallback');
+		expect(syncSource).not.toContain('runRailway(');
 	});
 
 	it('verifies runner volume mounts through the Railway API view', () => {
@@ -159,7 +162,7 @@ describe('project platform workflow actions', () => {
 		expect(verifySource).toContain("source: 'api'");
 	});
 
-	it('falls back to Railway CLI environment creation for opaque API failures', () => {
+	it('blocks on opaque Railway API environment creation failures without CLI fallback', () => {
 		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
 		const fallbackStart = source.indexOf('async function ensureRailwayEnvironmentForService');
 		const fallbackEnd = source.indexOf('async function resolveRailwayTopologyForScope', fallbackStart);
@@ -171,9 +174,10 @@ describe('project platform workflow actions', () => {
 		expect(fallbackStart).toBeGreaterThanOrEqual(0);
 		expect(fallbackEnd).toBeGreaterThan(fallbackStart);
 		expect(fallbackSource).toContain('Problem processing request');
-		expect(fallbackSource).toContain('ensureRailwayProjectContext');
-		expect(fallbackSource).toContain('allowFailure: true');
 		expect(fallbackSource).toContain('listRailwayEnvironments');
+		expect(fallbackSource).toContain('Railway API environment provisioning failed');
+		expect(fallbackSource).not.toContain('ensureRailwayProjectContext');
+		expect(fallbackSource).not.toContain('runRailway(');
 		expect(topologySource).toContain('ensureRailwayEnvironmentForService');
 	});
 
@@ -194,27 +198,15 @@ describe('project platform workflow actions', () => {
 		expect(verifySource).toContain('refresh: true');
 	});
 
-	it('waits for Railway CLI-created runner volumes to become API-visible mounts', () => {
+	it('does not expose a Railway CLI volume reconciliation fallback', () => {
 		const source = readFileSync(new URL('../../src/operations/services/railway-deploy.ts', import.meta.url), 'utf8');
-		const fallbackStart = source.indexOf('export async function ensureRailwayServiceVolumeWithCliFallback');
-		const fallbackEnd = source.indexOf('export async function deployRailwayService', fallbackStart);
-		const fallbackSource = source.slice(fallbackStart, fallbackEnd);
-
-		expect(fallbackStart).toBeGreaterThanOrEqual(0);
-		expect(fallbackEnd).toBeGreaterThan(fallbackStart);
-		expect(fallbackSource).toContain("'attach', '--volume'");
-		expect(fallbackSource.indexOf('ensureRailwayProjectContext')).toBeLessThan(fallbackSource.indexOf("'volume', '--service'"));
-		expect(fallbackSource).toContain('allowFailure: true');
-		expect(fallbackSource).toContain('already mounted');
-		expect(fallbackSource).toContain('looksLikeRailwaySingleVolumeConflict');
-		expect(fallbackSource).toContain('findExistingRailwayServiceVolumeMount');
-		expect(fallbackSource).toContain('waitForRailwayServiceVolumeMount');
-		expect(fallbackSource).toContain('listRailwayVolumes({ projectId, env })');
-		expect(fallbackSource.indexOf('const mounted = volumes.find')).toBeLessThan(fallbackSource.indexOf('entry.name === volumeName'));
-		expect(fallbackSource).not.toContain("'update', '--volume'");
+		expect(source).not.toContain('ensureRailwayServiceVolumeWithCliFallback');
+		expect(source).not.toContain('listRailwayServiceVolumesWithCli');
+		expect(source).not.toContain("'volume', '--service'");
+		expect(source).not.toContain("'attach', '--volume'");
 	});
 
-	it('treats Railway one-volume service conflicts as existing volume adoption during reconciliation', () => {
+	it('does not adopt Railway one-volume service conflicts through CLI reconciliation', () => {
 		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
 		const syncStart = source.indexOf('async function syncRailwayEnvironmentForScope');
 		const syncEnd = source.indexOf('async function ensureRailwayMarketDatabaseForScope', syncStart);
@@ -222,10 +214,9 @@ describe('project platform workflow actions', () => {
 
 		expect(syncStart).toBeGreaterThanOrEqual(0);
 		expect(syncEnd).toBeGreaterThan(syncStart);
-		expect(syncSource).toContain('looksLikeRailwaySingleVolumeConflict');
-		expect(syncSource).toContain('findRailwayVolumeMountedForService');
-		expect(syncSource).toContain('already has a volume attached');
-		expect(syncSource).toContain('can only have one volume');
+		expect(syncSource).not.toContain('looksLikeRailwaySingleVolumeConflict');
+		expect(syncSource).not.toContain('findRailwayVolumeMountedForService');
+		expect(syncSource).toContain('Railway API volume reconciliation did not mount');
 	});
 
 	it('allows Railway CLI project context linking from a project id alone', () => {
@@ -241,18 +232,10 @@ describe('project platform workflow actions', () => {
 		expect(helperSource).toContain("return { id: projectId, name: '' }");
 	});
 
-	it('exposes a safe Railway CLI volume lister for verification fallback', () => {
+	it('does not expose a Railway CLI volume lister for verification fallback', () => {
 		const source = readFileSync(new URL('../../src/operations/services/railway-deploy.ts', import.meta.url), 'utf8');
-		const helperStart = source.indexOf('export function listRailwayServiceVolumesWithCli');
-		const helperEnd = source.indexOf('export function isUsableRailwayToken', helperStart);
-		const helperSource = source.slice(helperStart, helperEnd);
-
-		expect(helperStart).toBeGreaterThanOrEqual(0);
-		expect(helperEnd).toBeGreaterThan(helperStart);
-		expect(helperSource).toContain("'volume', '--service'");
-		expect(helperSource).toContain('allowFailure: true');
-		expect(helperSource).toContain('normalizeRailwayCliVolumeList');
-		expect(helperSource).toContain('serviceName');
+		expect(source).not.toContain('export function listRailwayServiceVolumesWithCli');
+		expect(source).not.toContain('normalizeRailwayCliVolumeList');
 	});
 
 
@@ -375,7 +358,7 @@ services:
 		expect(fetched.every((url) => !url.startsWith('https://api.example.com'))).toBe(true);
 	});
 
-	it('uses Market API health endpoints for api services', async () => {
+	it('uses API health endpoints for api services', async () => {
 		const tenantRoot = await createTenantFixture(`surfaces:
   api:
     enabled: true
@@ -440,14 +423,14 @@ services:
 		});
 	});
 
-	it('uses market operations runner readiness instead of old worker-runner scale readiness', async () => {
+	it('uses Treeseed operations runner readiness instead of old worker-runner scale readiness', async () => {
 		const tenantRoot = await createTenantFixture(`services:
-  marketOperationsRunner:
+  operationsRunner:
     enabled: true
     provider: railway
     railway:
-      projectName: treeseed-market
-      serviceName: treeseed-market-operations-runner
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
 `);
 		vi.stubGlobal('fetch', vi.fn(async () => new Response('ok', { status: 200 })));
 
@@ -462,7 +445,7 @@ services:
 		expect(result.checks.scaleProbe).toMatchObject({
 			ok: true,
 			mocked: true,
-			serviceName: 'treeseed-market-operations-runner',
+			serviceName: 'treeseed-api-operations-runner-01',
 			runnerKind: 'market_operations_runner',
 		});
 	});

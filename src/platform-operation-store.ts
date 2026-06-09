@@ -262,8 +262,8 @@ export async function createRelationalAdapterFromUrl(databaseUrl: string): Promi
 }
 
 export async function createPlatformOperationStoreFromEnv(options: CreatePlatformOperationStoreFromEnvOptions = {}) {
-	const databaseUrl = options.databaseUrl ?? globalThis.process?.env?.TREESEED_MARKET_DATABASE_URL ?? null;
-	if (!databaseUrl?.trim()) throw new Error('TREESEED_MARKET_DATABASE_URL is required for direct database platform operations.');
+	const databaseUrl = options.databaseUrl ?? globalThis.process?.env?.TREESEED_DATABASE_URL ?? null;
+	if (!databaseUrl?.trim()) throw new Error('TREESEED_DATABASE_URL is required for direct database platform operations.');
 	const database = await createRelationalAdapterFromUrl(databaseUrl);
 	return new PlatformOperationStore({ database, initializeSchema: options.initializeSchema ?? true });
 }

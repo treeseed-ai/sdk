@@ -29,6 +29,7 @@ export interface TreeseedDeploymentReadinessReport {
 export interface TreeseedDeploymentReadinessOptions {
 	tenantRoot: string;
 	environment: TreeseedHostingEnvironment;
+	appId?: string;
 	now?: Date;
 }
 
@@ -89,49 +90,74 @@ function railwayServiceByKey(services: any[], key: string) {
 export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentReadinessOptions): TreeseedDeploymentReadinessReport {
 	const tenantRoot = resolve(options.tenantRoot);
 	const environment = options.environment;
-	const graph = compileTreeseedHostingGraph({ tenantRoot, environment });
+	const graph = compileTreeseedHostingGraph({ tenantRoot, environment, appId: options.appId });
 	const units = graph.units.map((unit) => serializeHostingUnit(unit));
-	const railwayServices = configuredRailwayServices(tenantRoot, environment);
+	const railwayServices = configuredRailwayServices(tenantRoot, environment)
+		.filter((service) => !options.appId || service.application?.id === options.appId);
 	const checks: TreeseedDeploymentReadinessCheck[] = [];
-	const isMarketControlPlane = graph.deployConfig.hosting?.kind === 'market_control_plane' || graph.deployConfig.slug === 'treeseed-market';
 	const web = unitById(units, 'web');
 	const api = unitById(units, 'api');
-	const runner = unitById(units, 'marketOperationsRunner');
-	const database = unitById(units, 'marketDatabase');
+	const runner = unitById(units, 'operationsRunner');
+	const database = unitById(units, 'treeseedDatabase');
+	const hasApiPlane = Boolean(api || runner || database);
+	const hasWorkspaceMarketControlPlane = graph.applications?.some((app) => app.config.hosting?.kind === 'treeseed_control_plane') === true
+		|| graph.deployConfig.hosting?.kind === 'treeseed_control_plane';
 	const railwayApi = railwayServiceByKey(railwayServices, 'api');
-	const railwayRunner = railwayServiceByKey(railwayServices, 'marketOperationsRunner');
+	const railwayRunner = railwayServiceByKey(railwayServices, 'operationsRunner');
 
-	if (!isMarketControlPlane) {
+	if (!web) {
+		if (!hasApiPlane) {
+			checks.push({
+				id: 'hosting:web:present',
+				status: 'failed',
+				message: 'Web hosting unit is missing from the effective hosting graph.',
+				remediation: 'Restore surfaces.web in treeseed.site.yaml.',
+			});
+		}
+	} else {
+		checks.push(check('hosting:web:host', web.hostId, environment === 'local' ? 'local-process' : 'cloudflare', 'Web host matches the expected environment host.', 'Set surfaces.web.provider to cloudflare for hosted environments.', 'hostId'));
+		checks.push(check('hosting:web:rootDir', web.config?.rootDir, '.', 'Web rootDir is the top-level UI application.', 'Set surfaces.web.rootDir to ".".', 'rootDir'));
+		const apiConnection = graph.deployConfig.connections?.api;
+		const configuredBaseUrl = environment === 'local'
+			? apiConnection?.localBaseUrl
+			: apiConnection?.environments?.[environment]?.baseUrl ?? apiConnection?.environments?.[environment]?.domain;
 		checks.push({
-			id: 'hosting:market-control-plane:scope',
-			status: 'skipped',
+			id: 'connection:api',
+			status: hasApiPlane || configuredBaseUrl ? 'passed' : 'failed',
+			expected: { apiConnection: true },
 			observed: {
-				hostingKind: graph.deployConfig.hosting?.kind ?? null,
-				slug: graph.deployConfig.slug ?? null,
+				localApiAppPresent: hasApiPlane,
+				baseUrl: configuredBaseUrl ?? null,
+				proxyPrefix: apiConnection?.proxyPrefix ?? null,
 			},
-			message: 'Market API and operations runner readiness checks only apply to Market control-plane deployments.',
+			message: hasApiPlane || configuredBaseUrl
+				? 'Web app has an API app or configured API connection.'
+				: 'Web app requires an API connection when no local API app manifest is present.',
+			remediation: hasApiPlane || configuredBaseUrl ? undefined : 'Add connections.api to treeseed.site.yaml or include packages/api/treeseed.site.yaml in the workspace.',
 		});
+	}
+
+	if (!hasApiPlane && !hasWorkspaceMarketControlPlane) {
 		const counts = summary(checks);
 		return {
 			environment,
-			ok: true,
+			ok: counts.failed === 0,
 			generatedAt: (options.now ?? new Date()).toISOString(),
 			checks,
 			summary: counts,
 		};
 	}
 
-	if (!web) {
-		checks.push({
-			id: 'hosting:web:present',
-			status: 'failed',
-			message: 'Web hosting unit is missing from the effective hosting graph.',
-			remediation: 'Restore surfaces.web in treeseed.site.yaml.',
-		});
-	} else {
-		checks.push(check('hosting:web:host', web.hostId, environment === 'local' ? 'local-process' : 'cloudflare', 'Web host matches the expected environment host.', 'Set surfaces.web.provider to cloudflare for hosted environments.', 'hostId'));
-		checks.push(check('hosting:web:rootDir', web.config?.rootDir, '.', 'Web rootDir is the top-level UI application.', 'Set surfaces.web.rootDir to ".".', 'rootDir'));
-	}
+	const apiIsNestedApp = Boolean(api?.application?.relativeRoot && api.application.relativeRoot !== '.');
+	const runnerIsNestedApp = Boolean(runner?.application?.relativeRoot && runner.application.relativeRoot !== '.');
+	const expectedApiUnitRoot = apiIsNestedApp ? '.' : 'packages/api';
+	const expectedRunnerUnitRoot = runnerIsNestedApp ? '.' : 'packages/api';
+	const expectedApiRailwayRoot = api?.application?.relativeRoot && api.application.relativeRoot !== '.'
+		? api.application.relativeRoot
+		: expectedApiUnitRoot;
+	const expectedRunnerRailwayRoot = runner?.application?.relativeRoot && runner.application.relativeRoot !== '.'
+		? runner.application.relativeRoot
+		: expectedRunnerUnitRoot;
 
 	if (!api) {
 		checks.push({
@@ -142,50 +168,50 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 		});
 	} else {
 		checks.push(check('hosting:api:host', api.hostId, environment === 'local' ? 'local-process' : 'railway', 'API host matches the expected environment host.', 'Set services.api.provider to railway for hosted environments.', 'hostId'));
-		checks.push(check('hosting:api:projectGroup', api.projectGroupId, 'market-control-plane', 'API project group targets the Market control plane.', 'Bind services.api to the market-control-plane project group.', 'projectGroupId'));
-		checks.push(check('hosting:api:rootDir', api.config?.rootDir, 'packages/api', 'API effective rootDir points at the API package.', 'Set both services.api.rootDir and services.api.railway.rootDir to packages/api.', 'rootDir'));
+		checks.push(check('hosting:api:projectGroup', api.projectGroupId, 'treeseed-control-plane', 'API project group targets the Treeseed control plane.', 'Bind services.api to the treeseed-control-plane project group.', 'projectGroupId'));
+		checks.push(check('hosting:api:rootDir', api.config?.rootDir, expectedApiUnitRoot, 'API effective rootDir points at the API package.', 'Set services.api.rootDir and services.api.railway.rootDir relative to the owning API manifest.', 'rootDir'));
 		checks.push(check('hosting:api:buildCommand', api.config?.buildCommand, 'npm run build', 'API build command is package-local.', 'Set services.api.railway.buildCommand to "npm run build".', 'buildCommand'));
 		checks.push(check('hosting:api:startCommand', api.config?.startCommand, 'npm run start:api', 'API start command is package-local.', 'Set services.api.railway.startCommand to "npm run start:api".', 'startCommand'));
 		checks.push(check('hosting:api:healthcheckPath', api.config?.healthcheckPath, '/healthz', 'API healthcheck path is /healthz.', 'Set services.api.railway.healthcheckPath to /healthz.', 'healthcheckPath'));
 	}
 
 	if (railwayApi) {
-		checks.push(check('railway-config:api:serviceName', railwayApi.serviceName, 'treeseed-market-api', 'Railway API service name is stable.', 'Do not rename the existing Railway API service.', 'serviceName'));
-		checks.push(check('railway-config:api:rootDirectory', relRoot(tenantRoot, railwayApi.rootDir), 'packages/api', 'Railway API effective rootDirectory points at packages/api.', 'Set services.api.railway.rootDir to packages/api.', 'rootDirectory'));
+		checks.push(check('railway-config:api:serviceName', railwayApi.serviceName, 'treeseed-api', 'Railway API service uses the canonical name.', 'Set services.api.railway.serviceName to treeseed-api.', 'serviceName'));
+		checks.push(check('railway-config:api:rootDirectory', relRoot(tenantRoot, railwayApi.rootDir), expectedApiRailwayRoot, 'Railway API effective rootDirectory points at the API app.', 'Set services.api.railway.rootDir relative to the owning API manifest.', 'rootDirectory'));
 	}
 
 	if (!runner) {
 		checks.push({
-			id: 'hosting:marketOperationsRunner:present',
+			id: 'hosting:operationsRunner:present',
 			status: 'failed',
-			message: 'Market operations runner hosting unit is missing from the effective hosting graph.',
-			remediation: 'Restore services.marketOperationsRunner in treeseed.site.yaml.',
+			message: 'Treeseed operations runner hosting unit is missing from the effective hosting graph.',
+			remediation: 'Restore services.operationsRunner in treeseed.site.yaml.',
 		});
 	} else {
-		checks.push(check('hosting:marketOperationsRunner:host', runner.hostId, environment === 'local' ? 'local-docker' : 'railway', 'Runner host matches the expected environment host.', 'Set services.marketOperationsRunner.provider to railway for hosted environments.', 'hostId'));
-		checks.push(check('hosting:marketOperationsRunner:projectGroup', runner.projectGroupId, 'market-control-plane', 'Runner project group targets the Market control plane.', 'Bind services.marketOperationsRunner to the market-control-plane project group.', 'projectGroupId'));
-		checks.push(check('hosting:marketOperationsRunner:rootDir', runner.config?.rootDir, 'packages/api', 'Runner effective rootDir points at the API package.', 'Set both services.marketOperationsRunner.rootDir and services.marketOperationsRunner.railway.rootDir to packages/api.', 'rootDir'));
-		checks.push(check('hosting:marketOperationsRunner:buildCommand', runner.config?.buildCommand, 'npm run build', 'Runner build command is package-local.', 'Set services.marketOperationsRunner.railway.buildCommand to "npm run build".', 'buildCommand'));
-		checks.push(check('hosting:marketOperationsRunner:startCommand', runner.config?.startCommand, 'npm run start:runner', 'Runner start command is package-local.', 'Set services.marketOperationsRunner.railway.startCommand to "npm run start:runner".', 'startCommand'));
-		checks.push(check('hosting:marketOperationsRunner:healthcheckPath', runner.config?.healthcheckPath, '/healthz', 'Runner healthcheck path is /healthz.', 'Set services.marketOperationsRunner.railway.healthcheckPath to /healthz.', 'healthcheckPath'));
-		checks.push(check('hosting:marketOperationsRunner:runtimeMode', runner.config?.runtimeMode, 'service', 'Runner runtime mode is a long-running service.', 'Set services.marketOperationsRunner.railway.runtimeMode to service.', 'runtimeMode'));
-		checks.push(check('hosting:marketOperationsRunner:volumeMountPath', runner.config?.volumeMountPath, '/data', 'Runner volume mount path is stable.', 'Set services.marketOperationsRunner.railway.volumeMountPath to /data.', 'volumeMountPath'));
+		checks.push(check('hosting:operationsRunner:host', runner.hostId, environment === 'local' ? 'local-docker' : 'railway', 'Runner host matches the expected environment host.', 'Set services.operationsRunner.provider to railway for hosted environments.', 'hostId'));
+		checks.push(check('hosting:operationsRunner:projectGroup', runner.projectGroupId, 'treeseed-control-plane', 'Runner project group targets the Treeseed control plane.', 'Bind services.operationsRunner to the treeseed-control-plane project group.', 'projectGroupId'));
+		checks.push(check('hosting:operationsRunner:rootDir', runner.config?.rootDir, expectedRunnerUnitRoot, 'Runner effective rootDir points at the API package.', 'Set services.operationsRunner.rootDir and services.operationsRunner.railway.rootDir relative to the owning API manifest.', 'rootDir'));
+		checks.push(check('hosting:operationsRunner:buildCommand', runner.config?.buildCommand, 'npm run build', 'Runner build command is package-local.', 'Set services.operationsRunner.railway.buildCommand to "npm run build".', 'buildCommand'));
+		checks.push(check('hosting:operationsRunner:startCommand', runner.config?.startCommand, 'npm run start:runner', 'Runner start command is package-local.', 'Set services.operationsRunner.railway.startCommand to "npm run start:runner".', 'startCommand'));
+		checks.push(check('hosting:operationsRunner:healthcheckPath', runner.config?.healthcheckPath, '/healthz', 'Runner healthcheck path is /healthz.', 'Set services.operationsRunner.railway.healthcheckPath to /healthz.', 'healthcheckPath'));
+		checks.push(check('hosting:operationsRunner:runtimeMode', runner.config?.runtimeMode, 'service', 'Runner runtime mode is a long-running service.', 'Set services.operationsRunner.railway.runtimeMode to service.', 'runtimeMode'));
+		checks.push(check('hosting:operationsRunner:volumeMountPath', runner.config?.volumeMountPath, '/data', 'Runner volume mount path is stable.', 'Set services.operationsRunner.railway.volumeMountPath to /data.', 'volumeMountPath'));
 	}
 
 	if (railwayRunner) {
-		checks.push(check('railway-config:marketOperationsRunner:serviceName', railwayRunner.serviceName, 'treeseed-market-operations-runner-01', 'Railway runner service instance name is stable.', 'Do not rename the existing Railway runner service instance.', 'serviceName'));
-		checks.push(check('railway-config:marketOperationsRunner:rootDirectory', relRoot(tenantRoot, railwayRunner.rootDir), 'packages/api', 'Railway runner effective rootDirectory points at packages/api.', 'Set services.marketOperationsRunner.railway.rootDir to packages/api.', 'rootDirectory'));
+		checks.push(check('railway-config:operationsRunner:serviceName', railwayRunner.serviceName, 'treeseed-api-operations-runner-01', 'Railway runner service instance uses the canonical name.', 'Set the runner service instance name to treeseed-api-operations-runner-01.', 'serviceName'));
+		checks.push(check('railway-config:operationsRunner:rootDirectory', relRoot(tenantRoot, railwayRunner.rootDir), expectedRunnerRailwayRoot, 'Railway runner effective rootDirectory points at the API app.', 'Set services.operationsRunner.railway.rootDir relative to the owning API manifest.', 'rootDirectory'));
 	}
 
 	if (!database) {
 		checks.push({
-			id: 'hosting:marketDatabase:present',
+			id: 'hosting:treeseedDatabase:present',
 			status: 'failed',
-			message: 'Market database hosting unit is missing from the effective hosting graph.',
-			remediation: 'Restore services.marketDatabase in treeseed.site.yaml.',
+			message: 'Treeseed database hosting unit is missing from the effective hosting graph.',
+			remediation: 'Restore services.treeseedDatabase in treeseed.site.yaml.',
 		});
 	} else {
-		checks.push(checkIncludes('hosting:marketDatabase:serviceTargets', database.config?.serviceTargets, ['api', 'marketOperationsRunner'], 'Market database targets API and runner services.', 'Set services.marketDatabase.railway.serviceTargets to include api and marketOperationsRunner.'));
+		checks.push(checkIncludes('hosting:treeseedDatabase:serviceTargets', database.config?.serviceTargets, ['api', 'operationsRunner'], 'Treeseed database targets API and runner services.', 'Set services.treeseedDatabase.railway.serviceTargets to include api and operationsRunner.'));
 	}
 
 	const counts = summary(checks);

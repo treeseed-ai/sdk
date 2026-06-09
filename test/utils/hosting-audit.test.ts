@@ -92,7 +92,7 @@ describe('hosting audit', () => {
 			valuesOverlay: {
 				TREESEED_HOSTING_KIND: 'hosted_project',
 				TREESEED_HOSTING_REGISTRATION: 'optional',
-				TREESEED_MARKET_API_BASE_URL: 'https://api.example.com',
+				TREESEED_API_BASE_URL: 'https://api.example.com',
 				TREESEED_HOSTING_TEAM_ID: 'team_123',
 				TREESEED_PROJECT_ID: 'project_123',
 			},

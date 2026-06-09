@@ -468,7 +468,7 @@ export function ensureStandardizedGitHubWorkflows(tenantRoot) {
 	const deployConfig = loadCliDeployConfig(tenantRoot);
 	const deploy = ensureDeployWorkflow(tenantRoot);
 	const workflows = [deploy, ...(deploy.additionalWorkflows ?? [])];
-	if ((deployConfig.hosting?.kind ?? 'self_hosted_project') === 'market_control_plane') {
+	if ((deployConfig.hosting?.kind ?? 'self_hosted_project') === 'treeseed_control_plane') {
 		workflows.push(ensureHostedProjectWorkflow(tenantRoot));
 	}
 	return workflows;

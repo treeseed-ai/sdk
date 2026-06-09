@@ -1,6 +1,9 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { loadTreeseedDeployConfigFromPath } from '../../platform/deploy-config.ts';
 import { resolveTreeseedMachineEnvironmentValues } from './config-runtime.ts';
 
-export interface TreeseedMarketRunnerSmokeReport {
+export interface TreeseedOperationsRunnerSmokeReport {
 	environment: 'staging' | 'prod';
 	ok: boolean;
 	baseUrl: string;
@@ -13,7 +16,7 @@ export interface TreeseedMarketRunnerSmokeReport {
 	remediation?: string;
 }
 
-export interface TreeseedMarketRunnerSmokeOptions {
+export interface TreeseedOperationsRunnerSmokeOptions {
 	tenantRoot: string;
 	environment: 'staging' | 'prod';
 	baseUrl?: string | null;
@@ -38,7 +41,29 @@ function value(name: string, values: Record<string, string | undefined>, env: No
 	return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
 }
 
-async function timed<T>(timings: TreeseedMarketRunnerSmokeReport['timings'], phase: string, action: () => Promise<T>) {
+function manifestApiBaseUrl(tenantRoot: string, environment: 'staging' | 'prod') {
+	const candidates = [
+		resolve(tenantRoot, 'treeseed.site.yaml'),
+		resolve(tenantRoot, '..', '..', 'treeseed.site.yaml'),
+	];
+	for (const candidate of candidates) {
+		if (!existsSync(candidate)) continue;
+		try {
+			const config = loadTreeseedDeployConfigFromPath(candidate);
+			const connectionUrl = config.connections?.api?.environments?.[environment]?.baseUrl;
+			const serviceUrl = config.services?.api?.environments?.[environment]?.baseUrl;
+			const baseUrl = connectionUrl ?? serviceUrl;
+			if (typeof baseUrl === 'string' && baseUrl.trim()) {
+				return baseUrl.trim();
+			}
+		} catch {
+			// Ignore malformed or unrelated manifests; machine config remains the fallback.
+		}
+	}
+	return null;
+}
+
+async function timed<T>(timings: TreeseedOperationsRunnerSmokeReport['timings'], phase: string, action: () => Promise<T>) {
 	const started = Date.now();
 	try {
 		return await action();
@@ -83,7 +108,11 @@ function eventsFrom(payload: any) {
 	}));
 }
 
-function failure(baseUrl: string, environment: 'staging' | 'prod', issues: string[], timings: TreeseedMarketRunnerSmokeReport['timings'], extra: Partial<TreeseedMarketRunnerSmokeReport> = {}): TreeseedMarketRunnerSmokeReport {
+function isSuccessfulOperationStatus(status: unknown) {
+	return ['completed', 'succeeded'].includes(String(status ?? '').toLowerCase());
+}
+
+function failure(baseUrl: string, environment: 'staging' | 'prod', issues: string[], timings: TreeseedOperationsRunnerSmokeReport['timings'], extra: Partial<TreeseedOperationsRunnerSmokeReport> = {}): TreeseedOperationsRunnerSmokeReport {
 	return {
 		environment,
 		ok: false,
@@ -91,12 +120,12 @@ function failure(baseUrl: string, environment: 'staging' | 'prod', issues: strin
 		timings,
 		events: [],
 		issues,
-		remediation: 'Verify the API service, Market database, and marketOperationsRunner Railway service, then run `npx trsd hosting verify --service marketOperationsRunner --live --json`.',
+		remediation: 'Verify the API service, Treeseed database, and operationsRunner Railway service, then run `npx trsd hosting verify --service operationsRunner --live --json`.',
 		...extra,
 	};
 }
 
-export async function runTreeseedMarketRunnerSmoke(options: TreeseedMarketRunnerSmokeOptions): Promise<TreeseedMarketRunnerSmokeReport> {
+export async function runTreeseedOperationsRunnerSmoke(options: TreeseedOperationsRunnerSmokeOptions): Promise<TreeseedOperationsRunnerSmokeReport> {
 	const env = options.env ?? process.env;
 	let values: Record<string, string | undefined> = {};
 	try {
@@ -106,18 +135,19 @@ export async function runTreeseedMarketRunnerSmoke(options: TreeseedMarketRunner
 	}
 	const baseUrl = normalizedBaseUrl(
 		options.baseUrl
-		?? value('TREESEED_MARKET_API_BASE_URL', values, env)
+		?? manifestApiBaseUrl(options.tenantRoot, options.environment)
+		?? value('TREESEED_API_BASE_URL', values, env)
 		?? value('TREESEED_CENTRAL_MARKET_API_BASE_URL', values, env)
-		?? (options.environment === 'prod' ? 'https://api.treeseed.ai' : 'https://api-treeseed-market-staging-ca844c56.treeseed.ai'),
+		?? (options.environment === 'prod' ? 'https://api.treeseed.ai' : 'https://api-treeseed-staging.treeseed.ai'),
 	);
 	const serviceId = options.serviceId ?? value('TREESEED_ACCEPTANCE_SERVICE_ID', values, env) ?? value('TREESEED_API_WEB_SERVICE_ID', values, env) ?? value('TREESEED_WEB_SERVICE_ID', values, env) ?? 'web';
 	const serviceSecret = options.serviceSecret ?? value('TREESEED_ACCEPTANCE_SERVICE_SECRET', values, env) ?? value('TREESEED_API_WEB_SERVICE_SECRET', values, env) ?? value('TREESEED_WEB_SERVICE_SECRET', values, env);
-	const timings: TreeseedMarketRunnerSmokeReport['timings'] = [];
+	const timings: TreeseedOperationsRunnerSmokeReport['timings'] = [];
 	const fetchImpl = options.fetchImpl ?? fetch;
 	const timeoutMs = Math.max(1000, Math.floor(options.timeoutMs ?? (options.environment === 'prod' ? 120000 : 90000)));
 	const pollMs = Math.max(1000, Math.floor(options.pollMs ?? 3000));
 	if (!serviceSecret) {
-		return failure(baseUrl, options.environment, ['Missing Market API service credential for runner smoke.'], timings);
+		return failure(baseUrl, options.environment, ['Missing API service credential for runner smoke.'], timings);
 	}
 	const headers = {
 		'x-treeseed-service-id': serviceId,
@@ -144,20 +174,20 @@ export async function runTreeseedMarketRunnerSmoke(options: TreeseedMarketRunner
 		const operation = operationFrom(created);
 		const operationId = typeof operation?.id === 'string' ? operation.id : null;
 		if (!operationId) {
-			return failure(baseUrl, options.environment, ['Market API did not return a diagnostic operation id.'], timings);
+			return failure(baseUrl, options.environment, ['API did not return a diagnostic operation id.'], timings);
 		}
 		const deadline = Date.now() + timeoutMs;
 		let current = operation;
 		while (Date.now() < deadline) {
 			current = operationFrom(await timed(timings, 'operation-poll', () => requestJson(fetchImpl, `${baseUrl}/v1/platform/operations/${encodeURIComponent(operationId)}`, { headers }))) ?? current;
-			if (current?.status === 'completed') {
+			if (isSuccessfulOperationStatus(current?.status)) {
 				const eventPayload = await timed(timings, 'operation-events', () => requestJson(fetchImpl, `${baseUrl}/v1/platform/operations/${encodeURIComponent(operationId)}/events`, { headers }));
 				const events = eventsFrom(eventPayload);
 				const sawRunnerEvent = events.some((event) => /checkpoint|complete|runner|market\.noop/iu.test(event.kind));
 				if (!sawRunnerEvent) {
 					return failure(baseUrl, options.environment, ['Diagnostic operation completed but no runner checkpoint/completion event was recorded.'], timings, {
 						operationId,
-						finalStatus: 'completed',
+						finalStatus: String(current?.status ?? 'completed'),
 						runnerId: current?.assignedRunnerId ?? null,
 						events,
 					});
@@ -167,7 +197,7 @@ export async function runTreeseedMarketRunnerSmoke(options: TreeseedMarketRunner
 					ok: true,
 					baseUrl,
 					operationId,
-					finalStatus: 'completed',
+					finalStatus: String(current?.status ?? 'completed'),
 					runnerId: current?.assignedRunnerId ?? null,
 					timings,
 					events,

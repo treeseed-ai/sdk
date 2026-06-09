@@ -89,8 +89,8 @@ function createSyntheticHostAdapter(
 		id,
 		label,
 		capabilities: capabilities(capabilityIds, environments),
-		observe: syntheticStatus,
-		plan: defaultPlan,
+		refresh: syntheticStatus,
+		diff: defaultPlan,
 		apply(input) {
 			return {
 				...syntheticStatus(input),
@@ -253,7 +253,7 @@ export function createDefaultServiceTypeAdapters(): Record<string, TreeseedServi
 			staging: 'railway',
 			prod: 'railway',
 		}, ['treedx-node']),
-		'market-control-plane': serviceType('market-control-plane', 'Market control plane', 'operations', [], {
+		'treeseed-control-plane': serviceType('treeseed-control-plane', 'Treeseed control plane', 'operations', [], {
 			local: 'local-process',
 			staging: 'railway',
 			prod: 'railway',
@@ -318,6 +318,13 @@ export function sanitizedUnitConfig(unit: TreeseedHostingUnit) {
 		requiredCapabilities: unit.requiredCapabilities,
 		secretRefs: unit.secretRefs,
 		variableRefs: unit.variableRefs,
+		application: unit.application
+			? {
+				id: unit.application.id,
+				relativeRoot: unit.application.relativeRoot,
+				roles: unit.application.roles,
+			}
+			: null,
 		config: redactSensitiveConfig(unit.config),
 		metadata: redactSensitiveConfig(unit.metadata),
 	};

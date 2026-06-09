@@ -37,7 +37,7 @@ export const CAPACITY_PROVIDER_SCOPES = [
 
 export const CAPACITY_PROVIDER_ENV_KEYS = [
 	'TREESEED_MARKET_URL',
-	'TREESEED_MARKET_ID',
+	'TREESEED_MANAGER_ID',
 	'TREESEED_CAPACITY_PROVIDER_API_KEY',
 	'TREESEED_PROVIDER_HOST_DATA_DIR',
 	'TREESEED_PROVIDER_DATA_DIR',
@@ -631,13 +631,13 @@ export function assertCapacityProviderPortfolioManifest(value: unknown): asserts
 export function resolveCapacityProviderEnvironment(input: CapacityProviderEnvironmentInput): Record<string, string> {
 	const env: Record<string, string> = {
 		TREESEED_MARKET_URL: normalizeBaseUrl(input.marketUrl),
-		TREESEED_MARKET_ID: input.marketId.trim(),
+		TREESEED_MANAGER_ID: input.marketId.trim(),
 		TREESEED_CAPACITY_PROVIDER_API_KEY: input.apiKey.trim(),
 		TREESEED_PROVIDER_DATA_DIR: input.providerDataDir ?? '/data',
 		TREESEED_PROVIDER_API_PORT: stringValue(input.providerApiPort, '3100'),
 		TREESEED_PROVIDER_ENVIRONMENT: input.providerEnvironment ?? 'local',
 	};
-	if (!env.TREESEED_MARKET_ID) throw new Error('Capacity provider Market ID is required.');
+	if (!env.TREESEED_MANAGER_ID) throw new Error('Capacity provider Market ID is required.');
 	if (!env.TREESEED_CAPACITY_PROVIDER_API_KEY) throw new Error('Capacity provider API key is required.');
 	if (input.providerHostDataDir) env.TREESEED_PROVIDER_HOST_DATA_DIR = input.providerHostDataDir;
 	if (input.capabilitiesFile) env.TREESEED_PROVIDER_CAPABILITIES_FILE = input.capabilitiesFile;
@@ -697,7 +697,7 @@ export function resolveCapacityProviderLaunchEnvironment(input: CapacityProvider
 	}
 	const required = [
 		'TREESEED_MARKET_URL',
-		'TREESEED_MARKET_ID',
+		'TREESEED_MANAGER_ID',
 		...(diagnostic ? [] : ['TREESEED_CAPACITY_PROVIDER_API_KEY']),
 		'TREESEED_PROVIDER_HOST_DATA_DIR',
 	];
@@ -730,7 +730,7 @@ export function persistCapacityProviderConnectionToTreeseedConfig(input: Capacit
 	const entryById = new Map(registryEntries.map((entry) => [entry.id, entry]));
 	const keys = [
 		'TREESEED_MARKET_URL',
-		'TREESEED_MARKET_ID',
+		'TREESEED_MANAGER_ID',
 		'TREESEED_CAPACITY_PROVIDER_API_KEY',
 		'TREESEED_PROVIDER_HOST_DATA_DIR',
 		'TREESEED_PROVIDER_ENVIRONMENT',

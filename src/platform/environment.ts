@@ -4,6 +4,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
+import { discoverTreeseedApplications } from '../hosting/apps.ts';
+import { githubRepositoryCredentialEnvName } from '../operations/services/github-credentials.ts';
+import { discoverTreeseedPackageAdapters } from '../operations/services/package-adapters.ts';
 import type { TreeseedDeployConfig, TreeseedTenantConfig } from './contracts.ts';
 import { loadTreeseedDeployConfig } from './deploy-config.ts';
 import { loadTreeseedPlugins, type LoadedTreeseedPluginEntry } from './plugins.ts';
@@ -101,6 +104,7 @@ export type TreeseedEnvironmentEntry = {
 	howToGet: string;
 	sensitivity: TreeseedEnvironmentSensitivity;
 	targets: TreeseedEnvironmentTarget[];
+	appTargets?: string[];
 	serviceTargets?: string[];
 	scopes: TreeseedEnvironmentScope[];
 	requirement: TreeseedEnvironmentRequirement;
@@ -191,6 +195,7 @@ function resolveSiblingPackageEnvironmentPath(packageDir: string) {
 
 const SDK_ENVIRONMENT_PATH = resolveSdkEnvironmentPath();
 const CORE_ENVIRONMENT_PATH = resolveSiblingPackageEnvironmentPath('core');
+const API_ENVIRONMENT_PATH = resolveSiblingPackageEnvironmentPath('api');
 const AGENT_ENVIRONMENT_PATH = resolveSiblingPackageEnvironmentPath('agent');
 const TENANT_ENVIRONMENT_OVERLAY_PATH = 'src/env.yaml';
 const DEFAULT_TREESEED_MARKET_BASE_URL = 'https://api.treeseed.ai';
@@ -311,7 +316,7 @@ function resolveHostingRegistration(context: TreeseedEnvironmentContext) {
 }
 
 function marketControlPlaneEnabled(context: TreeseedEnvironmentContext) {
-	return resolveHostingKind(context) === 'market_control_plane';
+	return resolveHostingKind(context) === 'treeseed_control_plane';
 }
 
 function hostedProjectEnabled(context: TreeseedEnvironmentContext) {
@@ -460,9 +465,9 @@ function resolveMarketBaseUrl(
 	_scope: TreeseedEnvironmentScope,
 	values: Record<string, string | undefined> = {},
 ) {
-	return values.TREESEED_MARKET_API_BASE_URL?.trim()
+	return values.TREESEED_API_BASE_URL?.trim()
 		|| values.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
-		|| process.env.TREESEED_MARKET_API_BASE_URL?.trim()
+		|| process.env.TREESEED_API_BASE_URL?.trim()
 		|| process.env.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
 		|| context.deployConfig.runtime?.marketBaseUrl?.trim()
 		|| context.deployConfig.hosting?.marketBaseUrl?.trim()
@@ -486,7 +491,7 @@ function resolveCatalogMarketBaseUrls(
 	values: Record<string, string | undefined> = {},
 ) {
 	return values.TREESEED_CATALOG_MARKET_API_BASE_URLS?.trim()
-		|| values.TREESEED_MARKET_API_BASE_URL?.trim()
+		|| values.TREESEED_API_BASE_URL?.trim()
 		|| values.TREESEED_CENTRAL_MARKET_API_BASE_URL?.trim()
 		|| process.env.TREESEED_CATALOG_MARKET_API_BASE_URLS?.trim()
 		|| resolveCentralMarketBaseUrl(context, scope, values);
@@ -505,7 +510,7 @@ function resolveRailwayWorkspaceDefault() {
 }
 
 function resolvePlatformRunnerIdDefault(_context: TreeseedEnvironmentContext, scope: TreeseedEnvironmentScope) {
-	return scope === 'prod' ? 'market-ops-prod-1' : scope === 'staging' ? 'market-ops-staging-1' : 'market-ops-local-1';
+	return scope === 'prod' ? 'treeseed-ops-prod-1' : scope === 'staging' ? 'treeseed-ops-staging-1' : 'treeseed-ops-local-1';
 }
 
 function resolvePlatformRunnerEnvironmentDefault(_context: TreeseedEnvironmentContext, scope: TreeseedEnvironmentScope) {
@@ -575,6 +580,7 @@ const VALUE_RESOLVERS: NamedResolverMap = {
 	platformRunnerIdDefault: (context, scope) => resolvePlatformRunnerIdDefault(context, scope),
 	platformRunnerEnvironmentDefault: (context, scope) => resolvePlatformRunnerEnvironmentDefault(context, scope),
 	platformRunnerDataDirDefault: () => '/data',
+	treedxDockerImageDefault: () => 'treeseed/treedx:latest',
 	githubOwnerDefault: (context) => resolveGitHubOwnerDefault(context),
 	githubRepositoryNameDefault: (context) => resolveGitHubRepositoryNameDefault(context),
 	githubRepositoryVisibilityDefault: () => 'private',
@@ -680,6 +686,47 @@ function readPluginEnvironmentOverlay(baseDir: string) {
 	return null;
 }
 
+function packageRepositoryCredentialOverlay(tenantRoot: string): TreeseedEnvironmentRegistryOverlay {
+	const entries: Record<string, TreeseedEnvironmentEntryOverride> = {};
+	let packages: ReturnType<typeof discoverTreeseedPackageAdapters> = [];
+	try {
+		packages = discoverTreeseedPackageAdapters(tenantRoot);
+	} catch {
+		packages = [];
+	}
+	for (const pkg of packages) {
+		const repository = typeof pkg.metadata.repository === 'string' && pkg.metadata.repository.trim()
+			? pkg.metadata.repository.trim()
+			: null;
+		if (!repository) continue;
+		let id = '';
+		try {
+			id = githubRepositoryCredentialEnvName(repository);
+		} catch {
+			continue;
+		}
+		entries[id] = {
+			label: `${pkg.name} GitHub token`,
+			group: 'github',
+			cluster: `github:${repository}`,
+			description: `GitHub token used by Treeseed package workflows for ${pkg.name} in ${repository}.`,
+			howToGet: `Create a GitHub token with Actions workflow and environment secret permissions for ${repository}, then store it as ${id}.`,
+			sensitivity: 'secret',
+			targets: ['local-runtime'],
+			scopes: ['staging', 'prod'],
+			storage: 'shared',
+			requirement: 'optional',
+			purposes: ['deploy', 'config'],
+			validation: {
+				kind: 'nonempty',
+				minLength: 8,
+			},
+			sourcePriority: ['machine-config', 'process-env'],
+		};
+	}
+	return { entries };
+}
+
 export function loadTreeseedEnvironmentOverlay(tenantRoot: string) {
 	const overlayPath = resolve(tenantRoot, TENANT_ENVIRONMENT_OVERLAY_PATH);
 	return {
@@ -773,10 +820,40 @@ function collectOverlaySources(context: TreeseedEnvironmentContext) {
 	}
 
 	if (apiSurfaceEnabled(context) || processingPlaneEnabled(context)) {
+		const apiOverlay = readYamlOverlayIfPresent(API_ENVIRONMENT_PATH);
+		if (apiOverlay) {
+			sources.push({ label: API_ENVIRONMENT_PATH, overlay: apiOverlay });
+		}
 		const agentOverlay = readYamlOverlayIfPresent(AGENT_ENVIRONMENT_PATH);
 		if (agentOverlay) {
 			sources.push({ label: AGENT_ENVIRONMENT_PATH, overlay: agentOverlay });
 		}
+	}
+
+	let discoveredApiApps: ReturnType<typeof discoverTreeseedApplications> = [];
+	try {
+		discoveredApiApps = discoverTreeseedApplications(context.tenantRoot)
+			.filter((application) => application.root !== context.tenantRoot && application.roles.some((role) => role === 'api' || role === 'operations-runner' || role === 'treeseed-control-plane'));
+	} catch {
+		discoveredApiApps = [];
+	}
+	if (discoveredApiApps.length > 0 && !sources.some((source) => source.label === API_ENVIRONMENT_PATH)) {
+		const apiOverlay = readYamlOverlayIfPresent(API_ENVIRONMENT_PATH);
+		if (apiOverlay) {
+			sources.push({ label: API_ENVIRONMENT_PATH, overlay: apiOverlay });
+		}
+	}
+
+	for (const application of discoveredApiApps) {
+		const overlay = readYamlOverlayIfPresent(resolve(application.root, 'src/env.yaml'));
+		if (overlay) {
+			sources.push({ label: resolve(application.root, 'src/env.yaml'), overlay });
+		}
+	}
+
+	const packageCredentialOverlay = packageRepositoryCredentialOverlay(context.tenantRoot);
+	if (Object.keys(packageCredentialOverlay.entries ?? {}).length > 0) {
+		sources.push({ label: 'discovered package repository credentials', overlay: packageCredentialOverlay });
 	}
 
 	for (const pluginEntry of context.plugins) {

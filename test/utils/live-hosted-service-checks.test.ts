@@ -20,7 +20,7 @@ slug: treeseed-market
 siteUrl: https://web.example.test
 contactEmail: hello@treeseed.ai
 hosting:
-  kind: market_control_plane
+  kind: treeseed_control_plane
 runtime:
   mode: treeseed_managed
 surfaces:
@@ -38,17 +38,17 @@ services:
     provider: railway
     rootDir: packages/api
     railway:
-      projectName: treeseed-market
-      serviceName: treeseed-market-api
+      projectName: treeseed-api
+      serviceName: treeseed-api
       rootDir: packages/api
       buildCommand: npm run build
       startCommand: npm run start:api
       healthcheckPath: /healthz
-  marketDatabase:
+  apiDatabase:
     enabled: true
     provider: railway
     railway:
-      serviceTargets: [api, marketOperationsRunner]
+      serviceTargets: [api, operationsRunner]
 `);
 	return path;
 }

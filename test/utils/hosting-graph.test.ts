@@ -7,6 +7,7 @@ import {
 	compileTreeseedHostingGraph,
 	createDefaultHostAdapters,
 	createDefaultServiceTypeAdapters,
+	discoverTreeseedApplications,
 	planTreeseedHostingGraph,
 	serializeHostingApplyResult,
 	serializeHostingPlan,
@@ -22,13 +23,95 @@ function createTenant(configBody: string) {
 	return tenantRoot;
 }
 
+function createSplitWorkspace() {
+	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-hosting-split-'));
+	mkdirSync(resolve(tenantRoot, 'packages', 'api'), { recursive: true });
+	writeFileSync(resolve(tenantRoot, 'package.json'), JSON.stringify({
+		name: '@treeseed/market',
+		type: 'module',
+		workspaces: ['packages/*'],
+	}, null, 2));
+	writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: TreeSeed Market
+slug: treeseed-market
+siteUrl: https://treeseed.ai
+contactEmail: hello@treeseed.email
+hosting:
+  kind: self_hosted_project
+surfaces:
+  web:
+    enabled: true
+    provider: cloudflare
+    rootDir: .
+connections:
+  api:
+    proxyPrefix: /v1
+    localBaseUrl: http://127.0.0.1:3000
+    environments:
+      staging:
+        baseUrl: https://api-staging.example.test
+      prod:
+        baseUrl: https://api.example.test
+`);
+	writeFileSync(resolve(tenantRoot, 'packages', 'api', 'package.json'), JSON.stringify({
+		name: '@treeseed/api',
+		type: 'module',
+	}, null, 2));
+	writeFileSync(resolve(tenantRoot, 'packages', 'api', 'treeseed.site.yaml'), `name: TreeSeed API
+slug: treeseed-api
+siteUrl: https://api.treeseed.ai
+contactEmail: hello@treeseed.email
+hosting:
+  kind: treeseed_control_plane
+runtime:
+  mode: treeseed_managed
+surfaces:
+  api:
+    enabled: true
+    provider: railway
+    rootDir: .
+services:
+  api:
+    enabled: true
+    provider: railway
+    rootDir: .
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api
+      rootDir: .
+      buildCommand: npm run build
+      startCommand: npm run start:api
+      healthcheckPath: /healthz
+  operationsRunner:
+    enabled: true
+    provider: railway
+    rootDir: .
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
+      rootDir: .
+      buildCommand: npm run build
+      startCommand: npm run start:runner
+      volumeMountPath: /data
+      runnerPool:
+        bootstrapCount: 1
+  apiDatabase:
+    enabled: true
+    provider: railway
+    railway:
+      serviceTargets:
+        - api
+        - operationsRunner
+`);
+	return tenantRoot;
+}
+
 function marketConfig(extra = '') {
 	return `name: TreeSeed Market
 slug: treeseed-market
 siteUrl: https://treeseed.ai
 contactEmail: hello@treeseed.email
 hosting:
-  kind: market_control_plane
+  kind: treeseed_control_plane
   teamId: treeseed
   projectId: market
 hub:
@@ -51,34 +134,34 @@ surfaces:
       prod:
         domain: treeseed.ai
 services:
-  marketDatabase:
+  apiDatabase:
     enabled: true
     provider: railway
     railway:
       resourceType: postgres
-      serviceName: treeseed-market-postgres
-      environmentVariable: TREESEED_MARKET_DATABASE_URL
+      serviceName: treeseed-api-postgres
+      environmentVariable: TREESEED_DATABASE_URL
       serviceTargets:
         - api
-        - marketOperationsRunner
+        - operationsRunner
   api:
     enabled: true
     provider: railway
     rootDir: packages/api
     railway:
-      projectName: treeseed-market
-      serviceName: treeseed-market-api
+      projectName: treeseed-api
+      serviceName: treeseed-api
       rootDir: packages/api
       buildCommand: npm run build
       startCommand: npm run start:api
       healthcheckPath: /healthz
-  marketOperationsRunner:
+  operationsRunner:
     enabled: true
     provider: railway
     rootDir: packages/api
     railway:
-      projectName: treeseed-market
-      serviceName: treeseed-market-operations-runner
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
       rootDir: packages/api
       buildCommand: npm run build
       startCommand: npm run start:runner
@@ -92,6 +175,43 @@ ${extra}`;
 }
 
 describe('hosting graph', () => {
+	it('discovers split web and API applications from workspace manifests', () => {
+		const tenantRoot = createSplitWorkspace();
+		const applications = discoverTreeseedApplications(tenantRoot);
+		expect(applications.map((app) => [app.id, app.relativeRoot])).toEqual([
+			['web', '.'],
+			['api', 'packages/api'],
+		]);
+	});
+
+	it('merges split workspace app graphs and preserves app-relative API roots', () => {
+		const tenantRoot = createSplitWorkspace();
+		const graph = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging' });
+		expect(graph.units.map((unit) => unit.id)).toEqual(expect.arrayContaining([
+			'web',
+			'api',
+			'operationsRunner',
+			'apiDatabase',
+			'public-treedx-node-01',
+		]));
+		expect(graph.units.find((unit) => unit.id === 'api')).toMatchObject({
+			application: { id: 'api', relativeRoot: 'packages/api' },
+			config: { rootDir: '.' },
+		});
+		expect(graph.units.find((unit) => unit.id === 'web')).toMatchObject({
+			application: { id: 'web', relativeRoot: '.' },
+		});
+	});
+
+	it('can compile only the selected discovered application', () => {
+		const tenantRoot = createSplitWorkspace();
+		const web = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging', appId: 'web' });
+		const api = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging', appId: 'api' });
+		expect(web.units.map((unit) => unit.id)).toEqual(['web']);
+		expect(api.units.map((unit) => unit.id)).toEqual(expect.arrayContaining(['api', 'operationsRunner', 'apiDatabase']));
+		expect(api.units.find((unit) => unit.id === 'api')?.config.rootDir).toBe('.');
+	});
+
 	it('compiles current Market config into user-facing service placements', () => {
 		const graph = compileTreeseedHostingGraph({
 			tenantRoot: createTenant(marketConfig()),
@@ -110,7 +230,7 @@ describe('hosting graph', () => {
 		expect(graph.units.find((unit) => unit.id === 'api')).toMatchObject({
 			placement: 'api',
 			host: { id: 'railway' },
-			projectGroup: { id: 'market-control-plane' },
+			projectGroup: { id: 'treeseed-control-plane' },
 		});
 		expect(graph.units.find((unit) => unit.id === 'web')).toMatchObject({
 			placement: 'web',
@@ -126,9 +246,9 @@ describe('hosting graph', () => {
 
 		expect(graph.units.find((unit) => unit.id === 'web')?.host.id).toBe('local-process');
 		expect(graph.units.find((unit) => unit.id === 'api')?.host.id).toBe('local-process');
-		expect(graph.units.find((unit) => unit.id === 'marketDatabase')?.host.id).toBe('local-docker');
-		expect(graph.units.find((unit) => unit.id === 'marketOperationsRunner')?.host.id).toBe('local-docker');
-		expect(graph.units.find((unit) => unit.id === 'public-treedx-node')?.host.id).toBe('local-docker');
+		expect(graph.units.find((unit) => unit.id === 'apiDatabase')?.host.id).toBe('local-docker');
+		expect(graph.units.find((unit) => unit.id === 'operationsRunner')?.host.id).toBe('local-docker');
+		expect(graph.units.find((unit) => unit.id === 'public-treedx-node-01')?.host.id).toBe('local-docker');
 	});
 
 	it('filters hosting graph units by service id', async () => {
@@ -150,22 +270,27 @@ describe('hosting graph', () => {
 		})).toThrow(/Unknown hosting service id/u);
 	});
 
-	it('keeps public TreeDX in one Railway project while isolating staging and production by environment', () => {
+	it('keeps public TreeDX in the API-owned Railway project while isolating staging and production by environment', () => {
 		const tenantRoot = createTenant(marketConfig());
 		const staging = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging' });
 		const prod = compileTreeseedHostingGraph({ tenantRoot, environment: 'prod' });
 
 		const stagingGroup = staging.projectGroups['public-treedx-federation'];
 		const prodGroup = prod.projectGroups['public-treedx-federation'];
-		expect(stagingGroup.environments.staging?.projectName).toBe('treeseed-public-treedx');
-		expect(prodGroup.environments.prod?.projectName).toBe('treeseed-public-treedx');
+		expect(stagingGroup.environments.staging?.projectName).toBe('treeseed-api');
+		expect(prodGroup.environments.prod?.projectName).toBe('treeseed-api');
 		expect(stagingGroup.environments.staging?.environmentName).toBe('staging');
 		expect(prodGroup.environments.prod?.environmentName).toBe('production');
-		expect(staging.units.find((unit) => unit.id === 'public-treedx-node')).toMatchObject({
+		expect(staging.units.find((unit) => unit.id === 'public-treedx-node-01')).toMatchObject({
 			host: { id: 'railway' },
 			projectGroup: { id: 'public-treedx-federation' },
 			config: {
+				serviceName: 'public-treedx-node-01',
+				volumeName: 'public-treedx-node-01-volume',
 				volumeMountPath: '/data',
+				environmentVariables: {
+					TREEDX_FEDERATION_MODE: 'connected_library',
+				},
 			},
 		});
 	});
@@ -246,7 +371,7 @@ describe('hosting graph', () => {
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'staging',
 		});
-		const nodeIndex = graph.units.findIndex((unit) => unit.id === 'public-treedx-node');
+		const nodeIndex = graph.units.findIndex((unit) => unit.id === 'public-treedx-node-01');
 		const federationIndex = graph.units.findIndex((unit) => unit.id === 'public-treedx-federation');
 		expect(nodeIndex).toBeGreaterThanOrEqual(0);
 		expect(federationIndex).toBeGreaterThan(nodeIndex);
@@ -336,8 +461,8 @@ plugins:
             { id: 'deployment', environments: ['staging'] },
             { id: 'health', environments: ['staging'] }
           ],
-          observe(input) { return { status: 'pending', locators: {}, state: { id: input.unit.id }, warnings: [] }; },
-          plan(input) { return { unitId: input.unit.id, action: 'create', reasons: ['custom'], before: {}, after: {}, warnings: [] }; },
+          refresh(input) { return { status: 'pending', locators: {}, state: { id: input.unit.id }, warnings: [] }; },
+          diff(input) { return { unitId: input.unit.id, action: 'create', reasons: ['custom'], before: {}, after: {}, warnings: [] }; },
           apply(input) { return { status: 'ready', locators: {}, state: { id: input.unit.id }, warnings: [] }; },
           verify(input) { return { unitId: input.unit.id, status: 'ready', verified: true, checks: [], warnings: [] }; },
           status(input) { return { status: 'ready', locators: {}, state: { id: input.unit.id }, warnings: [] }; }
@@ -386,10 +511,19 @@ plugins:
 			label: 'Knowledge Library',
 			hostIds: ['railway'],
 		});
-		expect(plan.units.find((entry) => entry.unit.id === 'public-treedx-node')?.unit).toMatchObject({
+		const treeDxEntry = plan.units.find((entry) => entry.unit.id === 'public-treedx-node-01');
+		expect(treeDxEntry?.unit).toMatchObject({
 			serviceType: 'treedx-node',
 			hostId: 'railway',
 			projectGroupId: 'public-treedx-federation',
+		});
+		expect(treeDxEntry).toMatchObject({
+			desired: { id: 'public-treedx-node-01' },
+			diff: { unitId: 'public-treedx-node-01' },
+			actions: expect.any(Array),
+			retainedResources: [],
+			blockedDrift: [],
+			providerLimitations: [],
 		});
 	});
 
@@ -404,12 +538,12 @@ plugins:
 				{ id: 'deployment', environments: ['staging'] },
 				{ id: 'health', environments: ['staging'] },
 			],
-			observe({ unit }) {
-				observed.push(`observe:${unit.id}`);
+			refresh({ unit }) {
+				observed.push(`refresh:${unit.id}`);
 				return { status: 'ready', locators: {}, state: {}, warnings: [] };
 			},
-			plan({ unit }) {
-				observed.push(`plan:${unit.id}`);
+			diff({ unit }) {
+				observed.push(`diff:${unit.id}`);
 				return { unitId: unit.id, action: 'noop', reasons: [], before: {}, after: {}, warnings: [] };
 			},
 			apply({ unit }) {
@@ -444,8 +578,8 @@ plugins:
 		});
 
 		expect(observed).toEqual(expect.arrayContaining([
-			'observe:strict-api',
-			'plan:strict-api',
+			'refresh:strict-api',
+			'diff:strict-api',
 			'apply:strict-api',
 			'verify:strict-api',
 		]));

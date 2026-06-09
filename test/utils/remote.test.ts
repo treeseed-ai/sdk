@@ -178,7 +178,7 @@ describe('remote Treeseed support', () => {
 	it('stores market profiles and calls market-owned v1 endpoints as a client', async () => {
 		const calls: Array<{ url: string; headers: Record<string, string> }> = [];
 		expect(resolveDefaultCentralMarketBaseUrl({})).toBe('https://api.treeseed.ai');
-		expect(resolveDefaultCentralMarketBaseUrl({ TREESEED_MARKET_API_BASE_URL: 'http://127.0.0.1:3000' }))
+		expect(resolveDefaultCentralMarketBaseUrl({ TREESEED_API_BASE_URL: 'http://127.0.0.1:3000' }))
 			.toBe('https://api.treeseed.ai');
 		expect(resolveDefaultCentralMarketBaseUrl({ TREESEED_CENTRAL_MARKET_API_BASE_URL: 'https://central.example.com/' }))
 			.toBe('https://central.example.com');
@@ -263,7 +263,7 @@ describe('remote Treeseed support', () => {
 			]);
 		});
 
-	it('tracks the managed Market API service state in deploy state', () => {
+	it('tracks the managed API service state in deploy state', () => {
 		const tenantRoot = createTenantFixture();
 		const deployConfig = loadCliDeployConfig(tenantRoot);
 		const state = loadDeployState(tenantRoot, deployConfig, { scope: 'staging' });

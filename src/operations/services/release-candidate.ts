@@ -6,6 +6,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { isTreeseedEnvironmentEntryRelevant, isTreeseedEnvironmentEntryRequired } from '../../platform/environment.ts';
 import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
 import { createGitHubApiClient, listGitHubEnvironmentSecretNames, listGitHubEnvironmentVariableNames } from './github-api.ts';
+import { resolveGitHubCredentialForRepository } from './github-credentials.ts';
 import { collectInternalDevReferenceIssues, normalizeGitRemoteForManifest } from './package-reference-policy.ts';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, validateTreeseedCommandEnvironment } from './config-runtime.ts';
 import { loadDeployState } from './deploy.ts';
@@ -257,6 +258,14 @@ function checkPackageAdapterReadiness(pkg: TreeseedPackageAdapter, failures: Rel
 			scope: pkg.id,
 			message: `${pkg.id} is missing a readable BEAM package version.`,
 			details: { versionSource: pkg.versionSource },
+		});
+	}
+	if (pkg.id === 'treedx' && !existsSync(resolve(pkg.dir, '.github', 'workflows', 'dev-image.yml'))) {
+		addFailure(failures, {
+			code: 'missing_development_image_workflow',
+			scope: pkg.id,
+			provider: 'github',
+			message: `${pkg.id} is missing .github/workflows/dev-image.yml for staging-safe development image publication.`,
 		});
 	}
 	if (!pkg.verifyCommands.local) {
@@ -589,7 +598,13 @@ async function githubRemoteConfigCheck(root: string, scope: 'staging' | 'prod', 
 	try {
 		const environment = scope === 'prod' ? 'production' : scope;
 		const expected = expectedGitHubDeployEnvironment(root, scope);
-		const client = createGitHubApiClient();
+		const values = resolveTreeseedMachineEnvironmentValues(root, scope);
+		const credential = resolveGitHubCredentialForRepository(repository, { values, env: process.env });
+		const client = createGitHubApiClient({
+			env: credential.token
+				? { GH_TOKEN: credential.token, GITHUB_TOKEN: credential.token }
+				: process.env,
+		});
 		const [secretNames, variableNames] = await Promise.all([
 			listGitHubEnvironmentSecretNames(repository, environment, { client }),
 			listGitHubEnvironmentVariableNames(repository, environment, { client }),
@@ -716,7 +731,7 @@ function migrationCompatibilityChecks(root: string, failures: ReleaseCandidateFa
 	}
 	const requiredArtifacts = [
 		'packages/sdk/drizzle/d1/0000_treeseed_d1.sql',
-		'packages/sdk/drizzle/market/0000_market_control_plane.sql',
+		'packages/sdk/drizzle/market/0000_treeseed_control_plane.sql',
 	];
 	const missing = requiredArtifacts.filter((path) => !existsSync(resolve(root, path)));
 	for (const path of missing) {
@@ -730,7 +745,7 @@ function migrationCompatibilityChecks(root: string, failures: ReleaseCandidateFa
 	return {
 		name: 'migration-compatibility',
 		status: missing.length > 0 ? 'failed' : 'passed',
-		detail: 'Checked required Drizzle migration artifacts for Market PostgreSQL and SDK D1.',
+		detail: 'Checked required Drizzle migration artifacts for Treeseed PostgreSQL and SDK D1.',
 	};
 }
 

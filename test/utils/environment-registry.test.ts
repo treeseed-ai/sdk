@@ -782,17 +782,17 @@ describe('environment registry overlays', () => {
 			plugins: [],
 		});
 
-		const centralMarketApiBaseUrl = findRegistryEntry(registry, 'TREESEED_CENTRAL_MARKET_API_BASE_URL');
-		if (!centralMarketApiBaseUrl) {
-			expect(findRegistryEntry(registry, 'TREESEED_MARKET_API_BASE_URL')).toBeUndefined();
+		const centralApiBaseUrl = findRegistryEntry(registry, 'TREESEED_CENTRAL_MARKET_API_BASE_URL');
+		if (!centralApiBaseUrl) {
+			expect(findRegistryEntry(registry, 'TREESEED_API_BASE_URL')).toBeUndefined();
 			return;
 		}
 
-		expect(centralMarketApiBaseUrl).toMatchObject({
+		expect(centralApiBaseUrl).toMatchObject({
 			scopes: ['staging', 'prod'],
 			requirement: 'optional',
 		});
-		expect(findRegistryEntry(registry, 'TREESEED_MARKET_API_BASE_URL')?.scopes).toEqual(['staging', 'prod']);
+		expect(findRegistryEntry(registry, 'TREESEED_API_BASE_URL')?.scopes).toEqual(['staging', 'prod']);
 		expect(findRegistryEntry(registry, 'TREESEED_CATALOG_MARKET_API_BASE_URLS')).toMatchObject({
 			scopes: ['staging', 'prod'],
 			requirement: 'optional',
@@ -1246,7 +1246,7 @@ describe('environment registry overlays', () => {
 		if (railwayApiToken) {
 			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['github-secret']));
 			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['railway-secret']));
-			expect(railwayApiToken.serviceTargets).toEqual(expect.arrayContaining(['marketOperationsRunner']));
+			expect(railwayApiToken.serviceTargets).toEqual(expect.arrayContaining(['operationsRunner']));
 		}
 		const railwayProjectToken = findRegistryEntry(registry, 'RAILWAY_TOKEN');
 		if (railwayProjectToken) {

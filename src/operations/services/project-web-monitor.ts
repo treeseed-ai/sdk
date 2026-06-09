@@ -142,7 +142,7 @@ async function workflowFileCheck(input: {
 			label: 'Workflow file',
 			status: 'skipped',
 			source: 'treedx',
-			summary: 'TreeDX content publish uses the Market operations runner and Cloudflare R2 directly.',
+			summary: 'TreeDX content publish uses the Treeseed operations runner and Cloudflare R2 directly.',
 		});
 	}
 	if (!input.repository) {

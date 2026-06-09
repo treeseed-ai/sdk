@@ -9,9 +9,12 @@ import {
 	buildRailwayCommandEnv,
 	buildRailwayDeployCommandEnv,
 	buildRailwayLinkCommandEnv,
+	deriveRailwayOperationsRunnerServiceName,
+	deriveRailwayOperationsRunnerVolumeName,
 	deriveRailwayWorkerRunnerServiceName,
 	deriveRailwayWorkerRunnerVolumeName,
 	ensureRailwayScheduledJobs,
+	findStaleTreeseedOperationsRunnerResources,
 	isRailwayTransientFailure,
 	planRailwayServiceDeploy,
 	planRailwayServiceLink,
@@ -165,8 +168,8 @@ describe('railway scheduled jobs', () => {
 		const runner = services.find((service) => service.key === 'workerRunner');
 
 		expect(deriveRailwayWorkerRunnerServiceName('acme-docs')).toBe('acme-docs-worker-runner-01');
-		expect(deriveRailwayWorkerRunnerVolumeName('acme-docs-worker-runner-01')).toBe('acme-docs-worker-runner-01-data');
-		expect(deriveRailwayWorkerRunnerVolumeName('acme-docs-worker-runner-01', 'staging')).toBe('acme-docs-worker-runner-01-staging-data');
+		expect(deriveRailwayWorkerRunnerVolumeName('acme-docs-worker-runner-01')).toBe('acme-docs-worker-runner-01-volume');
+		expect(deriveRailwayWorkerRunnerVolumeName('acme-docs-worker-runner-01', 'staging')).toBe('acme-docs-worker-runner-01-volume');
 		expect(runner).toBeUndefined();
 	});
 
@@ -188,7 +191,7 @@ describe('railway scheduled jobs', () => {
 		expect(railwayServiceRuntimeStartCommand(services[0])).toBeNull();
 	});
 
-	it('includes the market operations runner when the deploy config declares it', async () => {
+	it('includes the Treeseed operations runner when the deploy config declares it', async () => {
 		const tenantRoot = await createTenantFixture();
 		await writeFile(
 			join(tenantRoot, 'treeseed.site.yaml'),
@@ -208,16 +211,16 @@ services:
     enabled: true
     rootDir: packages/api
     railway:
-      projectName: treeseed-market
-      serviceName: treeseed-market-api
+      projectName: treeseed-api
+      serviceName: treeseed-api
       rootDir: packages/api
-  marketOperationsRunner:
+  operationsRunner:
     provider: railway
     enabled: true
     rootDir: packages/api
     railway:
-      projectName: treeseed-market
-      serviceName: treeseed-market-operations-runner
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
       rootDir: packages/api
       buildCommand: npm run build
       startCommand: npm run start:runner
@@ -231,15 +234,17 @@ services:
 `,
 		);
 		const services = configuredRailwayServices(tenantRoot, 'staging');
-		const runners = services.filter((service) => service.key === 'marketOperationsRunner');
+		const runners = services.filter((service) => service.key === 'operationsRunner');
 
-		expect(services.map((service) => service.key)).toEqual(['api', 'marketOperationsRunner']);
+		expect(services.map((service) => service.key)).toEqual(['api', 'operationsRunner']);
+		expect(deriveRailwayOperationsRunnerServiceName('treeseed-api-operations-runner-01', 1)).toBe('treeseed-api-operations-runner-01');
+		expect(deriveRailwayOperationsRunnerVolumeName('treeseed-api-operations-runner-01')).toBe('treeseed-api-operations-runner-01-volume');
 		expect(runners.map((service) => service.serviceName)).toEqual([
-			'treeseed-market-operations-runner-01',
+			'treeseed-api-operations-runner-01',
 		]);
 		expect(runners[0]).toMatchObject({
-			instanceKey: 'marketOperationsRunner:1',
-			runnerId: 'treeseed-market-operations-runner-01',
+			instanceKey: 'operationsRunner:1',
+			runnerId: 'treeseed-api-operations-runner-01',
 			buildCommand: 'npm run build',
 			startCommand: 'npm run start:runner',
 			healthcheckPath: '/healthz',
@@ -247,6 +252,76 @@ services:
 			volumeMountPath: '/data',
 		});
 		expect(runners[0]?.runnerPool).toMatchObject({ bootstrapCount: 1, maxRunners: 4, volumeMountPath: '/data' });
+	});
+
+	it('classifies old operations runner services and volumes as stale resources', () => {
+		const desiredServices = new Set(['treeseed-api-operations-runner-01']);
+		const desiredVolumes = new Set(['treeseed-api-operations-runner-01-volume']);
+
+		expect(findStaleTreeseedOperationsRunnerResources([
+			{ name: 'treeseed-api-operations-runner-01' },
+			{ name: 'treeseed-api-operations-runner' },
+			{ name: 'treeseed-operations-runner' },
+			{ name: 'market-ops-staging-1' },
+			{ name: 'public-treedx-node-01' },
+		], desiredServices).map((entry) => entry.name)).toEqual([
+			'treeseed-api-operations-runner',
+			'treeseed-operations-runner',
+			'market-ops-staging-1',
+		]);
+		expect(findStaleTreeseedOperationsRunnerResources([
+			{ name: 'treeseed-api-operations-runner-01-volume' },
+			{ name: 'operations-runner-volume' },
+		], desiredVolumes).map((entry) => entry.name)).toEqual(['operations-runner-volume']);
+	});
+
+	it('preserves operations runner bootstrap scaling capacity', async () => {
+		const tenantRoot = await createTenantFixture();
+		await writeFile(
+			join(tenantRoot, 'treeseed.site.yaml'),
+			`name: Test Site
+slug: test-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+hosting:
+  kind: hosted_project
+  teamId: acme
+  projectId: docs
+cloudflare:
+  accountId: account-123
+services:
+  operationsRunner:
+    provider: railway
+    enabled: true
+    rootDir: packages/api
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
+      rootDir: packages/api
+      buildCommand: npm run build
+      startCommand: npm run start:runner
+      volumeMountPath: /data
+      runnerPool:
+        bootstrapCount: 3
+        maxRunners: 4
+        volumeMountPath: /data
+`,
+		);
+		const runners = configuredRailwayServices(tenantRoot, 'staging')
+			.filter((service) => service.key === 'operationsRunner');
+
+		expect(runners.map((service) => service.serviceName)).toEqual([
+			'treeseed-api-operations-runner-01',
+			'treeseed-api-operations-runner-02',
+			'treeseed-api-operations-runner-03',
+		]);
+		expect(runners.map((service) => service.instanceKey)).toEqual([
+			'operationsRunner:1',
+			'operationsRunner:2',
+			'operationsRunner:3',
+		]);
+		expect(runners.every((service) => service.runnerPool?.maxRunners === 4)).toBe(true);
+		expect(runners.every((service) => service.volumeMountPath === '/data')).toBe(true);
 	});
 
 	it('keeps provider runtime commands out of root Market Railway services', async () => {
@@ -537,6 +612,8 @@ services:
 			mountPath: '/data',
 			env: { RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
+			settleAttempts: 1,
+			settleDelayMs: 0,
 		});
 
 		expect(result).toMatchObject({
@@ -599,6 +676,8 @@ services:
 			mountPath: '/data',
 			env: { RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
+			settleAttempts: 1,
+			settleDelayMs: 0,
 		});
 
 		expect(result.created).toBe(false);
@@ -658,6 +737,8 @@ services:
 			mountPath: '/data',
 			env: { RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
+			settleAttempts: 1,
+			settleDelayMs: 0,
 		});
 
 		expect(result.created).toBe(false);
@@ -803,7 +884,7 @@ services:
 		expect(result.instance?.serviceId).toBe('svc-postgres');
 	});
 
-	it('adopts the sole active environment volume after Railway reports a one-volume service conflict', async () => {
+	it('creates a service-specific volume instead of adopting an unrelated environment volume', async () => {
 		const fetchMock = vi.fn(async (_input, init) => {
 			const body = JSON.parse(String(init?.body ?? '{}'));
 			if (String(body.query).includes('TreeseedRailwayVolumeList')) {
@@ -833,17 +914,24 @@ services:
 					},
 				}), { status: 200, headers: { 'content-type': 'application/json' } });
 			}
-			if (String(body.query).includes('TreeseedRailwayVolumeUpdate')) {
+			if (String(body.query).includes('TreeseedRailwayVolumeCreate')) {
+				expect(body.variables.input).toMatchObject({
+					projectId: 'project-1',
+					environmentId: 'env-staging',
+					serviceId: 'svc-treedx',
+					mountPath: '/data',
+				});
 				return new Response(JSON.stringify({
 					data: {
-						volumeUpdate: {
-							id: 'existing-env-volume',
-							name: 'public-treedx-data',
+						volumeCreate: {
+							id: 'service-volume',
+							name: 'public-treedx-node-01-volume',
 							projectId: 'project-1',
 							volumeInstances: {
 								edges: [{
 									node: {
-										id: 'vi-existing',
+										id: 'vi-service',
+										serviceId: 'svc-treedx',
 										environmentId: 'env-staging',
 										mountPath: '/data',
 										state: 'READY',
@@ -854,16 +942,6 @@ services:
 					},
 				}), { status: 200, headers: { 'content-type': 'application/json' } });
 			}
-			if (String(body.query).includes('TreeseedRailwayVolumeInstanceUpdate')) {
-				expect(body.variables).toEqual({
-					volumeId: 'existing-env-volume',
-					input: {
-						serviceId: 'svc-treedx',
-						mountPath: '/data',
-					},
-				});
-				return new Response(JSON.stringify({ data: { volumeInstanceUpdate: true } }), { status: 200, headers: { 'content-type': 'application/json' } });
-			}
 			throw new Error(`Unexpected Railway API call: ${body.query}`);
 		});
 
@@ -871,15 +949,17 @@ services:
 			projectId: 'project-1',
 			environmentId: 'env-staging',
 			serviceId: 'svc-treedx',
-			name: 'public-treedx-data',
+			name: 'public-treedx-node-01-volume',
 			mountPath: '/data',
 			env: { RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
+			settleAttempts: 1,
+			settleDelayMs: 0,
 		});
 
-		expect(result.created).toBe(false);
-		expect(result.volume.id).toBe('existing-env-volume');
-		expect(fetchMock.mock.calls.some(([, init]) => String(init?.body ?? '').includes('TreeseedRailwayVolumeCreate'))).toBe(false);
+		expect(result.created).toBe(true);
+		expect(result.volume.id).toBe('service-volume');
+		expect(result.instance?.serviceId).toBe('svc-treedx');
 	});
 
 	it('recreates a named volume when Railway reports the listed volume as missing', async () => {
@@ -1078,7 +1158,7 @@ services:
 		expect(verified.checks).toEqual([]);
 	});
 
-	it('verifies only the managed Market API Railway service', async () => {
+	it('verifies only the managed API Railway service', async () => {
 		const tenantRoot = await createTenantFixture();
 		const fetchMock = vi.fn(async (_input, init) => {
 			const body = JSON.parse(String(init?.body ?? '{}'));

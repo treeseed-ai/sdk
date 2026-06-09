@@ -316,9 +316,9 @@ beforeEach(() => {
 		};
 		vi.stubEnv('TREESEED_PUBLIC_TURNSTILE_SITE_KEY', 'manual-site-key');
 
-		const observed = adapter!.observe({ unit, context } as never);
-		const diff = adapter!.plan({ unit, context, observed } as never);
-		await adapter!.reconcile({ unit, context, observed, diff } as never);
+		const observed = adapter!.refresh({ unit, context } as never);
+		const diff = adapter!.diff({ unit, context, observed } as never);
+		await adapter!.apply({ unit, context, observed, diff } as never);
 
 		expect(runWranglerMock).toHaveBeenCalledWith(['kv', 'namespace', 'create', 'acme-docs-form-guard-staging']);
 		expect(
@@ -413,12 +413,12 @@ beforeEach(() => {
 			session: new Map(),
 		};
 
-		const observed = adapter!.observe({ unit, context } as never);
-		const diff = adapter!.plan({ unit, context, observed } as never);
+		const observed = adapter!.refresh({ unit, context } as never);
+		const diff = adapter!.diff({ unit, context, observed } as never);
 		expect(diff.action).toBe('update');
 		expect(diff.reasons.some((reason) => reason.includes('TREESEED_PROJECT_ID'))).toBe(true);
 
-		await adapter!.reconcile({ unit, context, observed, diff } as never);
+		await adapter!.apply({ unit, context, observed, diff } as never);
 		const patchCall = cloudflareApiRequestMock.mock.calls.find(([, options]) => options?.method === 'PATCH');
 		expect(patchCall?.[1]?.body).toMatchObject({
 			deployment_configs: {
@@ -494,9 +494,9 @@ beforeEach(() => {
 			session: new Map(),
 		};
 
-		const observed = adapter!.observe({ unit, context } as never);
-		const diff = adapter!.plan({ unit, context, observed } as never);
-		const result = await adapter!.reconcile({ unit, context, observed, diff } as never);
+		const observed = adapter!.refresh({ unit, context } as never);
+		const diff = adapter!.diff({ unit, context, observed } as never);
+		const result = await adapter!.apply({ unit, context, observed, diff } as never);
 		const verification = await adapter!.verify({ unit, context, observed: result.observed, diff, result, postconditions: [] } as never);
 
 		expect(turnstileWidgets[0]?.domains).toEqual(['acme-docs.pages.dev', 'example.com']);
@@ -544,9 +544,9 @@ beforeEach(() => {
 			session: new Map(),
 		};
 
-		const observed = await adapter!.observe({ unit, context } as never);
-		const diff = adapter!.plan({ unit, context, observed } as never);
-		await adapter!.reconcile({ unit, context, observed, diff } as never);
+		const observed = await adapter!.refresh({ unit, context } as never);
+		const diff = adapter!.diff({ unit, context, observed } as never);
+		await adapter!.apply({ unit, context, observed, diff } as never);
 
 		expect(resolveTreeseedMachineEnvironmentValuesMock).not.toHaveBeenCalled();
 		expect(railwayEnvMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -629,9 +629,9 @@ beforeEach(() => {
 			session: new Map(),
 		};
 
-		const observed = adapter!.observe({ unit, context } as never);
-		const diff = adapter!.plan({ unit, context, observed } as never);
-		const result = await adapter!.reconcile({ unit, context, observed, diff } as never);
+		const observed = adapter!.refresh({ unit, context } as never);
+		const diff = adapter!.diff({ unit, context, observed } as never);
+		const result = await adapter!.apply({ unit, context, observed, diff } as never);
 		const verification = await adapter!.verify({ unit, context, observed: result.observed, diff, result, postconditions: [] } as never);
 
 		expect(verification.verified).toBe(true);

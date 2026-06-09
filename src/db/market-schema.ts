@@ -1,6 +1,6 @@
 import { bigint, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from 'drizzle-orm/pg-core';
 
-// Source of truth for the Treeseed Market PostgreSQL control-plane schema.
+// Source of truth for the Treeseed Treeseed PostgreSQL control-plane schema.
 // Regenerate the checked-in Market Drizzle SQL with npm run db:generate:market.
 
 export const subscribers = pgTable('subscribers', {

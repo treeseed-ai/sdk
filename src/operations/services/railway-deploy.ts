@@ -3,6 +3,7 @@ import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { loadCliDeployConfig } from './runtime-tools.ts';
 import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from './deploy.ts';
+import { discoverTreeseedApplications } from '../../hosting/apps.ts';
 import { runPrefixedCommand, sleep, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from './bootstrap-runner.ts';
 import { resolveTreeseedToolCommand } from '../../managed-dependencies.ts';
 import {
@@ -11,6 +12,7 @@ import {
 	ensureRailwayService,
 	ensureRailwayServiceInstanceConfiguration,
 	ensureRailwayServiceVolume,
+	deployRailwayServiceInstance,
 	getRailwayServiceInstance,
 	listRailwayEnvironments,
 	listRailwayProjects,
@@ -33,11 +35,30 @@ function normalizeScope(scope) {
 function resolveRailwayEnvironmentForScope(scope, configuredEnvironment) {
 	return normalizeRailwayEnvironmentName(configuredEnvironment || normalizeScope(scope));
 }
-const RAILWAY_SERVICE_KEYS = ['api', 'marketOperationsRunner'];
+const RAILWAY_SERVICE_KEYS = ['api', 'operationsRunner'];
 const HOSTED_PROJECT_SERVICE_KEYS = ['api'];
 const WORKER_RUNNER_BOOTSTRAP_INDEX = 1;
 const WORKER_RUNNER_VOLUME_MOUNT_PATH = '/data';
-const MARKET_OPERATIONS_RUNNER_BOOTSTRAP_COUNT = 2;
+const OPERATIONS_RUNNER_BOOTSTRAP_COUNT = 2;
+
+export function isTreeseedOperationsRunnerResourceName(value) {
+	const normalized = String(value ?? '').trim().toLowerCase();
+	if (!normalized) {
+		return false;
+	}
+	if (normalized.startsWith('market-ops')) {
+		return true;
+	}
+	return normalized.includes('operations-runner');
+}
+
+export function findStaleTreeseedOperationsRunnerResources(resources, desiredNames) {
+	const desired = new Set([...desiredNames].map((value) => String(value ?? '').trim()).filter(Boolean));
+	return resources.filter((resource) => {
+		const name = String(resource?.name ?? '').trim();
+		return name && isTreeseedOperationsRunnerResourceName(name) && !desired.has(name);
+	});
+}
 
 function shouldManageRailwaySchedules(scope, phase = 'deploy') {
 	const environment = normalizeRailwayEnvironmentName(scope);
@@ -49,8 +70,8 @@ function railwayServiceNameSuffix(serviceKey) {
 		? 'workday-manager'
 		: serviceKey === 'workerRunner'
 			? 'worker-runner'
-			: serviceKey === 'marketOperationsRunner'
-				? 'market-operations-runner'
+			: serviceKey === 'operationsRunner'
+				? 'operations-runner'
 				: serviceKey;
 }
 
@@ -59,23 +80,18 @@ export function deriveRailwayWorkerRunnerServiceName(projectSlug, index = WORKER
 	return `${projectSlug}-worker-runner-${String(normalizedIndex).padStart(2, '0')}`;
 }
 
-export function deriveRailwayMarketOperationsRunnerServiceName(baseServiceName, index = WORKER_RUNNER_BOOTSTRAP_INDEX) {
+export function deriveRailwayOperationsRunnerServiceName(baseServiceName, index = WORKER_RUNNER_BOOTSTRAP_INDEX) {
 	const normalizedIndex = Math.max(1, Number.parseInt(String(index), 10) || WORKER_RUNNER_BOOTSTRAP_INDEX);
-	const base = String(baseServiceName ?? '').trim().replace(/-\d+$/u, '') || 'treeseed-market-operations-runner';
+	const base = String(baseServiceName ?? '').trim().replace(/-\d+$/u, '').replace(/-\d{2}$/u, '') || 'treeseed-api-operations-runner';
 	return `${base}-${String(normalizedIndex).padStart(2, '0')}`;
 }
 
 export function deriveRailwayWorkerRunnerVolumeName(serviceName, environmentName = '') {
-	const environment = normalizeRailwayEnvironmentName(environmentName);
-	const environmentSuffix = environment === 'production' ? '-prod' : environment ? `-${environment}` : '';
-	return `${serviceName}${environmentSuffix}-data`;
+	return `${serviceName}-volume`;
 }
 
-export function deriveRailwayMarketOperationsRunnerVolumeName(serviceName, environmentName = '') {
-	const environment = normalizeRailwayEnvironmentName(environmentName);
-	const environmentSuffix = environment === 'production' ? '-prod' : environment ? `-${environment}` : '';
-	const index = String(serviceName ?? '').match(/-(\d+)$/u)?.[1] ?? '01';
-	return `market-ops-runner-${index}${environmentSuffix}-data`;
+export function deriveRailwayOperationsRunnerVolumeName(serviceName, environmentName = '') {
+	return `${serviceName}-volume`;
 }
 
 export function railwayServiceRuntimeStartCommand(service) {
@@ -107,6 +123,11 @@ function relativeRailwayRootDir(tenantRoot, serviceRoot) {
 function configuredEnvValue(env, name) {
 	const value = env?.[name];
 	return typeof value === 'string' && value.trim() ? value.trim() : '';
+}
+
+function railwayDeployTransport(env) {
+	const configured = configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_TRANSPORT').toLowerCase();
+	return configured === 'cli-fallback' ? 'cli-fallback' : 'api';
 }
 
 async function timedRailwayPhase<T>(
@@ -185,6 +206,11 @@ function railwayStatusDeploymentSettled(status) {
 	return normalized === 'SUCCESS' || normalized === 'SLEEPING';
 }
 
+function railwayStatusDeploymentTerminalFailure(status) {
+	const normalized = String(status ?? '').trim().toUpperCase();
+	return ['FAILED', 'CRASHED', 'REMOVED'].includes(normalized);
+}
+
 function formatRailwayDeploymentStatusSummary(scope, checks) {
 	const aliases = {
 		api: 'api',
@@ -261,12 +287,14 @@ export function collectRailwayDeploymentStatusChecks(statusPayload, scope, servi
 			? deployment.instances.map((entry) => String(entry?.status ?? '').trim()).filter(Boolean)
 			: [];
 		const ok = railwayStatusDeploymentSettled(status);
+		const terminalFailure = railwayStatusDeploymentTerminalFailure(status);
 		return {
 			type: 'deployment-status',
 			service: service.key,
 			serviceName: service.serviceName,
 			environment: normalizeRailwayEnvironmentName(environment.name),
 			ok,
+			terminalFailure,
 			status: status || 'missing_deployment',
 			observed: {
 				status: status || null,
@@ -278,77 +306,10 @@ export function collectRailwayDeploymentStatusChecks(statusPayload, scope, servi
 			},
 			message: ok
 				? undefined
-				: `Railway deployment for ${service.serviceName} is not settled yet; observed ${status || 'missing deployment status'}.`,
+				: terminalFailure
+					? `Railway deployment for ${service.serviceName} failed with terminal status ${status}.`
+					: `Railway deployment for ${service.serviceName} is not settled yet; observed ${status || 'missing deployment status'}.`,
 		};
-	});
-}
-
-function normalizeRailwayCliVolume(value, { serviceId, serviceName, environmentId, fallbackName, fallbackMountPath }) {
-	if (!value || typeof value !== 'object') {
-		return null;
-	}
-	const record = value;
-	const id = typeof record.id === 'string' && record.id.trim() ? record.id.trim() : '';
-	if (!id) {
-		return null;
-	}
-	const listedServiceName = typeof record.serviceName === 'string' && record.serviceName.trim() ? record.serviceName.trim() : '';
-	if (listedServiceName && serviceName && listedServiceName !== serviceName) {
-		return null;
-	}
-	const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : fallbackName;
-	const mountPath = typeof record.mountPath === 'string' && record.mountPath.trim() ? record.mountPath.trim() : fallbackMountPath;
-	const sizeMb = typeof record.sizeMB === 'number' ? record.sizeMB : null;
-	const currentSizeMb = typeof record.currentSizeMB === 'number' ? record.currentSizeMB : null;
-	return {
-		id,
-		name,
-		projectId: null,
-		instances: [{
-			id,
-			serviceId,
-			environmentId,
-			mountPath,
-			state: 'READY',
-			sizeGb: sizeMb === null ? null : sizeMb / 1000,
-			usedGb: currentSizeMb === null ? null : currentSizeMb / 1000,
-		}],
-	};
-}
-
-function normalizeRailwayCliVolumeList(value, options) {
-	if (!value || typeof value !== 'object' || !Array.isArray(value.volumes)) {
-		return [];
-	}
-	return value.volumes
-		.map((entry) => normalizeRailwayCliVolume(entry, options))
-		.filter(Boolean);
-}
-
-export function listRailwayServiceVolumesWithCli({
-	cwd,
-	serviceId,
-	serviceName,
-	environmentId,
-	name,
-	mountPath,
-	env = process.env,
-}) {
-	const listResult = runRailway(['volume', '--service', serviceId, '--environment', environmentId, 'list', '--json'], {
-		cwd,
-		capture: true,
-		allowFailure: true,
-		env,
-	});
-	if ((listResult.status ?? 1) !== 0) {
-		return [];
-	}
-	return normalizeRailwayCliVolumeList(parseRailwayJsonOutput(listResult.stdout ?? ''), {
-		serviceId,
-		serviceName,
-		environmentId,
-		fallbackName: name,
-		fallbackMountPath: mountPath,
 	});
 }
 
@@ -705,6 +666,26 @@ export async function waitForRailwayManagedDeploymentsSettled(
 					pollCount,
 					status: checks.every((entry) => entry.skipped === true) ? 'skipped' : 'settled',
 				},
+			};
+		}
+		if (checks.some((entry) => entry.terminalFailure === true)) {
+			return {
+				ok: false,
+				checks: checks.map((check) => ({
+					...check,
+					settle: {
+						durationMs: elapsedMs(startMs),
+						pollCount,
+						finalStatus: check.status,
+						terminalFailure: check.terminalFailure === true,
+					},
+				})),
+				settle: {
+					durationMs: elapsedMs(startMs),
+					pollCount,
+					status: 'failed',
+				},
+				message: 'Railway deployment reached a terminal failed state.',
 			};
 		}
 		if (Date.now() >= deadline) {
@@ -1064,8 +1045,7 @@ export function ensureRailwayProjectContext(
 	return null;
 }
 
-export function configuredRailwayServices(tenantRoot, scope) {
-	const deployConfig = loadCliDeployConfig(tenantRoot);
+function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, application = null) {
 	const normalizedScope = normalizeScope(scope);
 	let identity;
 	try {
@@ -1091,7 +1071,7 @@ export function configuredRailwayServices(tenantRoot, scope) {
 				return [];
 			}
 
-			const defaultRootDir = ['api', 'marketOperationsRunner'].includes(serviceKey) ? '.' : 'packages/core';
+			const defaultRootDir = ['api', 'operationsRunner'].includes(serviceKey) ? '.' : 'packages/core';
 			const serviceRoot = resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? defaultRootDir);
 			const railwayEnvironment = resolveRailwayEnvironmentForScope(
 				normalizedScope,
@@ -1105,10 +1085,10 @@ export function configuredRailwayServices(tenantRoot, scope) {
 			const configuredRunnerPool = service.railway?.runnerPool && typeof service.railway.runnerPool === 'object'
 				? service.railway.runnerPool
 				: null;
-			const runnerPool = serviceKey === 'marketOperationsRunner'
+			const runnerPool = serviceKey === 'operationsRunner'
 				? {
-					bootstrapCount: Math.max(1, Number.parseInt(String(configuredRunnerPool?.bootstrapCount ?? MARKET_OPERATIONS_RUNNER_BOOTSTRAP_COUNT), 10) || MARKET_OPERATIONS_RUNNER_BOOTSTRAP_COUNT),
-					maxRunners: Math.max(1, Number.parseInt(String(configuredRunnerPool?.maxRunners ?? configuredRunnerPool?.bootstrapCount ?? MARKET_OPERATIONS_RUNNER_BOOTSTRAP_COUNT), 10) || MARKET_OPERATIONS_RUNNER_BOOTSTRAP_COUNT),
+					bootstrapCount: Math.max(1, Number.parseInt(String(configuredRunnerPool?.bootstrapCount ?? OPERATIONS_RUNNER_BOOTSTRAP_COUNT), 10) || OPERATIONS_RUNNER_BOOTSTRAP_COUNT),
+					maxRunners: Math.max(1, Number.parseInt(String(configuredRunnerPool?.maxRunners ?? configuredRunnerPool?.bootstrapCount ?? OPERATIONS_RUNNER_BOOTSTRAP_COUNT), 10) || OPERATIONS_RUNNER_BOOTSTRAP_COUNT),
 					volumeMountPath: service.railway?.volumeMountPath ?? configuredRunnerPool?.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH,
 				}
 				: serviceKey === 'workerRunner'
@@ -1117,22 +1097,23 @@ export function configuredRailwayServices(tenantRoot, scope) {
 						volumeMountPath: WORKER_RUNNER_VOLUME_MOUNT_PATH,
 					}
 					: null;
-			const instanceCount = serviceKey === 'marketOperationsRunner' ? runnerPool.bootstrapCount : 1;
+			const instanceCount = serviceKey === 'operationsRunner' ? runnerPool.bootstrapCount : 1;
 			return Array.from({ length: instanceCount }, (_, offset) => {
 				const runnerIndex = offset + 1;
-				const serviceName = serviceKey === 'marketOperationsRunner'
-					? deriveRailwayMarketOperationsRunnerServiceName(configuredServiceName, runnerIndex)
+				const serviceName = serviceKey === 'operationsRunner'
+					? deriveRailwayOperationsRunnerServiceName(configuredServiceName, runnerIndex)
 					: configuredServiceName;
 				return {
 				key: serviceKey,
-				instanceKey: serviceKey === 'marketOperationsRunner' ? `${serviceKey}:${runnerIndex}` : serviceKey,
-				runnerIndex: serviceKey === 'marketOperationsRunner' ? runnerIndex : null,
+				instanceKey: serviceKey === 'operationsRunner' ? `${serviceKey}:${runnerIndex}` : serviceKey,
+				runnerIndex: serviceKey === 'operationsRunner' ? runnerIndex : null,
+				serviceConfig: service,
 				scope: normalizedScope,
 				projectId: service.railway?.projectId ?? null,
 				projectName: service.railway?.projectName ?? identity.deploymentKey,
 				serviceId: service.railway?.serviceId ?? null,
 				serviceName,
-				runnerId: serviceKey === 'marketOperationsRunner' ? serviceName : null,
+				runnerId: serviceKey === 'operationsRunner' ? serviceName : null,
 				rootDir: serviceRoot,
 				publicBaseUrl,
 				railwayEnvironment,
@@ -1143,14 +1124,33 @@ export function configuredRailwayServices(tenantRoot, scope) {
 				healthcheckIntervalSeconds: service.railway?.healthcheckIntervalSeconds ?? null,
 				restartPolicy: service.railway?.restartPolicy ?? null,
 				runtimeMode: service.railway?.runtimeMode ?? null,
-				volumeMountPath: serviceKey === 'marketOperationsRunner' ? runnerPool.volumeMountPath : service.railway?.volumeMountPath ?? null,
+				volumeMountPath: serviceKey === 'operationsRunner' ? runnerPool.volumeMountPath : service.railway?.volumeMountPath ?? null,
 				schedule: normalizeScheduleExpressions(service.railway?.schedule),
 				hostingKind,
 				runnerPool,
+				application,
 			};
 			});
 		})
 		.filter(Boolean);
+}
+
+export function configuredRailwayServices(tenantRoot, scope) {
+	const deployConfig = loadCliDeployConfig(tenantRoot);
+	const direct = configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig);
+	const nested = discoverTreeseedApplications(tenantRoot)
+		.filter((application) => application.root !== resolve(tenantRoot))
+		.flatMap((application) => configuredRailwayServicesForConfig(
+			application.root,
+			scope,
+			application.config,
+			{
+				id: application.id,
+				root: application.root,
+				relativeRoot: application.relativeRoot,
+			},
+		));
+	return [...direct, ...nested];
 }
 
 export function configuredRailwayScheduledJobs(tenantRoot, scope, { phase = 'deploy' } = {}) {
@@ -2074,12 +2074,15 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			buildCommand: service.buildCommand,
 			startCommand: railwayServiceRuntimeStartCommand(service),
 			cronSchedule: service.schedule?.[0] ?? null,
-			rootDirectory: relativeRailwayRootDir(tenantRoot, service.rootDir),
+			rootDirectory: '.',
 			healthcheckPath: service.healthcheckPath,
 			healthcheckTimeoutSeconds: service.healthcheckTimeoutSeconds,
 			healthcheckIntervalSeconds: service.healthcheckIntervalSeconds,
 			restartPolicy: service.restartPolicy,
 			runtimeMode: service.runtimeMode,
+			deploymentRegion: wantsRunnerVolume
+				? configuredEnvValue(env, 'TREESEED_RAILWAY_STATEFUL_REGION') || 'us-west2'
+				: null,
 			env,
 		})
 		: null;
@@ -2090,18 +2093,18 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		serviceId: railwayService.id,
 		variables: {
 			TREESEED_SKIP_PACKAGE_PREPARE: '1',
-			...(service.key === 'marketOperationsRunner' ? {
+			...(service.key === 'operationsRunner' ? {
 				NIXPACKS_APT_PKGS: 'git',
 				NIXPACKS_PKGS: 'git',
 				TREESEED_PLATFORM_RUNNER_ID: service.runnerId ?? railwayService.name,
 				TREESEED_PLATFORM_RUNNER_DATA_DIR: service.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH,
 				TREESEED_PLATFORM_RUNNER_ENVIRONMENT: normalizeScope(service.scope) === 'prod' ? 'production' : normalizeScope(service.scope),
-				TREESEED_MARKET_ID: normalizeScope(service.scope),
+				TREESEED_MANAGER_ID: normalizeScope(service.scope),
 				...(configuredEnvValue(env, 'RAILWAY_API_TOKEN') ? { RAILWAY_API_TOKEN: configuredEnvValue(env, 'RAILWAY_API_TOKEN') } : {}),
 				...(configuredEnvValue(env, 'TREESEED_RAILWAY_WORKSPACE') ? { TREESEED_RAILWAY_WORKSPACE: configuredEnvValue(env, 'TREESEED_RAILWAY_WORKSPACE') } : {}),
 				...(configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET') ? { TREESEED_PLATFORM_RUNNER_SECRET: configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET') } : {}),
-				...(configuredEnvValue(env, 'TREESEED_MARKET_API_BASE_URL') || configuredEnvValue(env, 'TREESEED_MARKET_URL') ? {
-					TREESEED_MARKET_API_BASE_URL: configuredEnvValue(env, 'TREESEED_MARKET_API_BASE_URL') || configuredEnvValue(env, 'TREESEED_MARKET_URL'),
+				...(configuredEnvValue(env, 'TREESEED_API_BASE_URL') || configuredEnvValue(env, 'TREESEED_URL') ? {
+					TREESEED_API_BASE_URL: configuredEnvValue(env, 'TREESEED_API_BASE_URL') || configuredEnvValue(env, 'TREESEED_URL'),
 				} : {}),
 			} : {}),
 		},
@@ -2112,18 +2115,14 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		writeSyncPhase('volume', `Ensuring Railway volume mounted at ${volumeMountPath}.`);
 	}
 	const volumeConfiguration = wantsRunnerVolume
-		? await ensureRailwayServiceVolumeWithCliFallback({
-			tenantRoot,
+		? await ensureRailwayServiceVolume({
 			projectId: project.id,
 			environmentId: environment.id,
-			environmentName: environment.name,
 			serviceId: railwayService.id,
-			serviceName: railwayService.name,
-			name: service.key === 'marketOperationsRunner'
-				? deriveRailwayMarketOperationsRunnerVolumeName(railwayService.name, environment.name)
+			name: service.key === 'operationsRunner'
+				? deriveRailwayOperationsRunnerVolumeName(railwayService.name, environment.name)
 				: deriveRailwayWorkerRunnerVolumeName(railwayService.name, environment.name),
 			mountPath: volumeMountPath,
-			preferCli: service.key === 'marketOperationsRunner',
 			env,
 		})
 		: null;
@@ -2167,263 +2166,6 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 	};
 }
 
-export async function ensureRailwayServiceVolumeWithCliFallback({
-	tenantRoot,
-	projectId,
-	environmentId,
-	environmentName,
-	serviceId,
-	serviceName,
-	name,
-	mountPath,
-	preferCli = false,
-	env = process.env,
-}) {
-	if (!preferCli) {
-		try {
-			return await ensureRailwayServiceVolume({
-				projectId,
-				environmentId,
-				serviceId,
-				name,
-				mountPath,
-				env,
-			});
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			if (!message.includes('Problem processing request')) {
-				throw error;
-			}
-		}
-	}
-
-	const cliOptions = {
-		cwd: tenantRoot,
-		capture: true,
-		env,
-	};
-	ensureRailwayProjectContext({
-		key: serviceName,
-		projectId,
-		serviceName,
-		rootDir: tenantRoot,
-		railwayEnvironment: environmentName,
-	}, {
-		env,
-		capture: true,
-	});
-	const volumeArgs = ['volume', '--service', serviceId, '--environment', environmentId];
-	const listResult = runRailway([...volumeArgs, 'list', '--json'], cliOptions);
-	const existingVolumes = normalizeRailwayCliVolumeList(parseRailwayJsonOutput(listResult.stdout ?? ''), {
-		serviceId,
-		serviceName,
-		environmentId,
-		fallbackName: name,
-		fallbackMountPath: mountPath,
-	});
-	let volume = existingVolumes.find((entry) => entry.name === name)
-		?? existingVolumes.find((entry) => entry.instances.some((instance) => instance.mountPath === mountPath))
-		?? existingVolumes[0]
-		?? null;
-	let created = false;
-	let updated = false;
-
-	if (!volume) {
-		const createResult = runRailway([...volumeArgs, 'add', '--mount-path', mountPath, '--json'], {
-			...cliOptions,
-			allowFailure: true,
-		});
-		if ((createResult.status ?? 0) === 0) {
-			volume = normalizeRailwayCliVolume(parseRailwayJsonOutput(createResult.stdout ?? ''), {
-				serviceId,
-				serviceName,
-				environmentId,
-				fallbackName: name,
-				fallbackMountPath: mountPath,
-			});
-			if (!volume) {
-				throw new Error(`Railway CLI volume add did not return a usable volume for ${serviceName} in ${environmentName}.`);
-			}
-			created = true;
-		} else {
-			const createMessage = createResult.stderr?.trim() || createResult.stdout?.trim() || '';
-			if (!looksLikeRailwaySingleVolumeConflict(createMessage)) {
-				throw new Error(createMessage || `Railway volume add failed for ${serviceName} in ${environmentName}.`);
-			}
-			volume = await findExistingRailwayServiceVolumeMount({
-				projectId,
-				serviceId,
-				environmentId,
-				mountPath,
-				env,
-			});
-			if (!volume) {
-				throw new Error(createMessage || `Railway volume add failed for ${serviceName} in ${environmentName}.`);
-			}
-			updated = true;
-		}
-	}
-
-	let instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null;
-	if (!instance || instance.mountPath !== mountPath) {
-		const attachResult = runRailway([...volumeArgs, 'attach', '--volume', volume.id, '--yes', '--json'], {
-			...cliOptions,
-			allowFailure: true,
-		});
-		if ((attachResult.status ?? 1) !== 0) {
-			const attachMessage = attachResult.stderr?.trim() || attachResult.stdout?.trim() || '';
-			if (looksLikeRailwaySingleVolumeConflict(attachMessage)) {
-				const existing = await findExistingRailwayServiceVolumeMount({
-					projectId,
-					serviceId,
-					environmentId,
-					mountPath,
-					env,
-				});
-				if (existing) {
-					volume = existing;
-					instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null;
-					updated = true;
-				} else {
-					throw new Error(attachMessage || `Railway volume attach failed for ${serviceName} in ${environmentName}.`);
-				}
-			} else if (!/already mounted/iu.test(attachMessage)) {
-				throw new Error(attachMessage || `Railway volume attach failed for ${serviceName} in ${environmentName}.`);
-			}
-		}
-		const attachedVolume = (attachResult.status ?? 1) === 0
-			? normalizeRailwayCliVolume(parseRailwayJsonOutput(attachResult.stdout ?? ''), {
-				serviceId,
-				serviceName,
-				environmentId,
-				fallbackName: name,
-				fallbackMountPath: mountPath,
-			})
-			: null;
-		volume = attachedVolume ?? volume ?? {
-			...volume,
-			instances: [{
-				...(instance ?? {
-					id: volume.id,
-					serviceId,
-					environmentId,
-					state: 'READY',
-					sizeGb: null,
-					usedGb: null,
-				}),
-				serviceId,
-				environmentId,
-				mountPath,
-			}],
-		};
-		instance = volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null;
-		updated = true;
-	}
-	const apiVolume = await waitForRailwayServiceVolumeMount({
-		projectId,
-		volumeId: volume.id,
-		volumeName: name,
-		serviceId,
-		environmentId,
-		mountPath,
-		env,
-	});
-	if (apiVolume) {
-		volume = apiVolume;
-	} else {
-		throw new Error(`Railway volume ${name} was not attached to ${serviceName} at ${mountPath}.`);
-	}
-
-	return {
-		volume,
-		instance: volume.instances.find((entry) => entry.serviceId === serviceId && entry.environmentId === environmentId) ?? volume.instances[0] ?? null,
-		created,
-		updated,
-	};
-}
-
-function looksLikeRailwaySingleVolumeConflict(message) {
-	return /already has a volume attached|would have \d+ volumes attached|can only have one volume/iu.test(String(message ?? ''));
-}
-
-function isActiveRailwayDeployVolumeInstance(instance) {
-	const state = String(instance?.state ?? 'READY').toUpperCase();
-	return state !== 'DELETING' && state !== 'DELETED';
-}
-
-async function findExistingRailwayServiceVolumeMount({
-	projectId,
-	serviceId,
-	environmentId,
-	mountPath,
-	env,
-}) {
-	const volumes = await listRailwayVolumes({ projectId, env });
-	const serviceVolume = volumes.find((entry) =>
-		entry.instances.some((instance) =>
-			instance.serviceId === serviceId
-			&& instance.environmentId === environmentId
-			&& isActiveRailwayDeployVolumeInstance(instance),
-		),
-	) ?? null;
-	if (serviceVolume) {
-		return serviceVolume;
-	}
-	const mounted = volumes.find((entry) =>
-		entry.instances.some((instance) =>
-			instance.environmentId === environmentId
-			&& instance.mountPath === mountPath
-			&& isActiveRailwayDeployVolumeInstance(instance),
-		),
-	) ?? null;
-	if (mounted) {
-		return mounted;
-	}
-	const environmentVolumes = volumes.filter((entry) =>
-		entry.instances.some((instance) =>
-			instance.environmentId === environmentId
-			&& isActiveRailwayDeployVolumeInstance(instance),
-		),
-	);
-	return environmentVolumes.length === 1 ? environmentVolumes[0] : null;
-}
-
-async function waitForRailwayServiceVolumeMount({
-	projectId,
-	volumeId,
-	volumeName,
-	serviceId,
-	environmentId,
-	mountPath,
-	env,
-}) {
-	for (let attempt = 0; attempt <= 24; attempt += 1) {
-		const volumes = await listRailwayVolumes({ projectId, env });
-		const mounted = volumes.find((entry) =>
-			entry.instances.some((instance) =>
-				instance.serviceId === serviceId
-				&& instance.environmentId === environmentId
-				&& instance.mountPath === mountPath,
-			),
-		) ?? null;
-		const match = mounted
-			?? volumes.find((entry) => entry.id === volumeId)
-			?? volumes.find((entry) => entry.name === volumeName)
-			?? null;
-		if (match?.instances.some((instance) =>
-			instance.serviceId === serviceId
-			&& instance.environmentId === environmentId
-			&& instance.mountPath === mountPath,
-		)) {
-			return match;
-		}
-		if (attempt < 24) {
-			await sleep(5_000);
-		}
-	}
-	return null;
-}
-
 export async function deployRailwayService(
 	tenantRoot,
 	service,
@@ -2449,6 +2191,12 @@ export async function deployRailwayService(
 			cwd: plan.cwd,
 			publicBaseUrl: service.publicBaseUrl,
 			timings,
+			transport: {
+				railway: {
+					reconcile: 'api',
+					deploy: railwayDeployTransport(env),
+				},
+			},
 		};
 	}
 	const deployService = await timedRailwayPhase(timings, 'railway:resolve-context', () => resolveRailwayDeployProjectContext(service, { env }), {
@@ -2456,10 +2204,7 @@ export async function deployRailwayService(
 	});
 	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
 	let railwayDeployEnv = buildRailwayDeployCommandEnv(commandEnv);
-	const railway = resolveTreeseedToolCommand('railway', { env: commandEnv });
-	if (!railway) {
-		throw new Error('Railway CLI is unavailable.');
-	}
+	const deployTransport = railwayDeployTransport(commandEnv);
 
 	const taskPrefix = prefix ?? {
 		scope: normalizeScope(deployService.scope ?? deployService.railwayEnvironment ?? 'railway'),
@@ -2494,6 +2239,57 @@ export async function deployRailwayService(
 	), {
 		service: cliDeployService.key,
 	});
+	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
+		const buildResult = await timedRailwayPhase(timings, 'railway:predeploy-build', () => runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
+			cwd: deployService.rootDir,
+			env: commandEnv,
+			write,
+			prefix: { ...taskPrefix, stage: 'build' },
+		}), { service: deployService.key });
+		if (buildResult.status !== 0) {
+			throw new Error(`Railway ${deployService.key} build command failed.`);
+		}
+	}
+	if (deployTransport !== 'cli-fallback') {
+		writePhase('deploy', `Deploying Railway service ${cliDeployService.serviceName ?? cliDeployService.serviceId ?? cliDeployService.key} through the Railway API.`);
+		const apiDeploy = await timedRailwayPhase(timings, 'railway:api-deploy', () => withRailwayPhaseTimeout(
+			() => deployRailwayServiceInstance({
+				serviceId: cliDeployService.serviceId,
+				environmentId: cliDeployService.environmentId,
+				env: commandEnv,
+			}),
+			railwayPhaseTimeoutMs(commandEnv, 'deploy'),
+			`Railway API deploy phase timed out for ${cliDeployService.serviceName ?? cliDeployService.key}.`,
+		), { service: cliDeployService.key });
+		return {
+			service: deployService.key,
+			status: 'deployed',
+			command: 'railway-api serviceInstanceDeployV2',
+			cwd: deployService.rootDir,
+			publicBaseUrl: deployService.publicBaseUrl,
+			timings,
+			deploymentId: apiDeploy.deploymentId,
+			transport: {
+				railway: {
+					reconcile: 'api',
+					deploy: 'api',
+				},
+			},
+			runtimeConfiguration: runtimeConfiguration
+				? {
+					updated: runtimeConfiguration.updated,
+					healthcheckPath: runtimeConfiguration.instance?.healthcheckPath ?? null,
+					healthcheckTimeoutSeconds: runtimeConfiguration.instance?.healthcheckTimeoutSeconds ?? null,
+					runtimeMode: runtimeConfiguration.instance?.runtimeMode ?? null,
+					volume: runtimeConfiguration.volume ?? null,
+				}
+				: null,
+		};
+	}
+	const railway = resolveTreeseedToolCommand('railway', { env: commandEnv });
+	if (!railway) {
+		throw new Error('Railway CLI deploy fallback requested, but Railway CLI is unavailable.');
+	}
 	railwayDeployEnv = buildRailwayCliContextEnv(railwayDeployEnv, cliDeployService);
 	const hasCommandApiToken = Boolean(configuredEnvValue(commandEnv, 'RAILWAY_API_TOKEN'));
 	let usesProjectToken = Boolean(configuredEnvValue(railwayDeployEnv, 'RAILWAY_TOKEN'));
@@ -2516,18 +2312,6 @@ export async function deployRailwayService(
 	}, railwayPhaseTimeoutMs(commandEnv, 'project_token'), `Railway project-token phase timed out for ${cliDeployService.serviceName ?? cliDeployService.key}.`), { service: cliDeployService.key });
 	const linkPlan = planRailwayServiceLink(cliDeployService, { env: commandEnv });
 	const plan = planRailwayServiceDeploy(cliDeployService, { env, projectTokenMode: usesProjectToken });
-	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
-		const buildResult = await timedRailwayPhase(timings, 'railway:predeploy-build', () => runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
-			cwd: deployService.rootDir,
-			env: commandEnv,
-			write,
-			prefix: { ...taskPrefix, stage: 'build' },
-		}), { service: deployService.key });
-		if (buildResult.status !== 0) {
-			throw new Error(`Railway ${deployService.key} build command failed.`);
-		}
-	}
-
 	const hasRailwayApiToken = Boolean(configuredEnvValue(commandEnv, 'RAILWAY_API_TOKEN'));
 	const cliConfig = configuredEnvValue(commandEnv, 'CI') === 'true'
 		? writeRailwayCliProjectConfig(cliDeployService, { env: railwayDeployEnv, cwd: plan.cwd })
@@ -2594,6 +2378,12 @@ export async function deployRailwayService(
 		cwd: plan.cwd,
 		publicBaseUrl: deployService.publicBaseUrl,
 		timings,
+		transport: {
+			railway: {
+				reconcile: 'api',
+				deploy: 'cli-fallback',
+			},
+		},
 		runtimeConfiguration: runtimeConfiguration
 			? {
 				updated: runtimeConfiguration.updated,

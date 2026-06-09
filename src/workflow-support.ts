@@ -6,6 +6,7 @@ export {
 	checkTreeseedProviderConnections,
 	clearTreeseedRemoteSession,
 	collectTreeseedConfigContext,
+	collectTreeseedConfigSeedValues,
 	collectTreeseedPrintEnvReport,
 	createDefaultTreeseedMachineConfig,
 	ensureTreeseedActVerificationTooling,
@@ -69,10 +70,10 @@ export {
 	type TreeseedLiveHostedServiceCheckReport,
 } from './operations/services/live-hosted-service-checks.ts';
 export {
-	runTreeseedMarketRunnerSmoke,
-	type TreeseedMarketRunnerSmokeOptions,
-	type TreeseedMarketRunnerSmokeReport,
-} from './operations/services/market-runner-smoke.ts';
+	runTreeseedOperationsRunnerSmoke,
+	type TreeseedOperationsRunnerSmokeOptions,
+	type TreeseedOperationsRunnerSmokeReport,
+} from './operations/services/operations-runner-smoke.ts';
 export {
 	readTreeseedVerificationCache,
 	treeseedVerificationCacheKey,
@@ -136,6 +137,7 @@ export {
 	validateRailwayDeployPrerequisites,
 } from './operations/services/railway-deploy.ts';
 export {
+	deleteRailwayProject,
 	ensureRailwayEnvironment,
 	ensureRailwayProject,
 	ensureRailwayService,
@@ -151,6 +153,31 @@ export {
 	resolveRailwayWorkspaceContext,
 	upsertRailwayVariables,
 } from './operations/services/railway-api.ts';
+export {
+	githubRepositoryCredentialEnvName,
+	resolveGitHubCredentialForRepository,
+	type TreeseedGitHubCredentialResolution,
+} from './operations/services/github-credentials.ts';
+export {
+	createGitHubApiClient,
+	dispatchGitHubWorkflowRun,
+	ensureGitHubActionsEnvironment,
+	getLatestGitHubWorkflowRun,
+	listGitHubEnvironmentSecretNames,
+	listGitHubEnvironmentVariableNames,
+	type GitHubWorkflowDispatchResult,
+	type GitHubWorkflowRunSummary,
+	upsertGitHubEnvironmentSecret,
+	upsertGitHubEnvironmentVariable,
+} from './operations/services/github-api.ts';
+export {
+	discoverTreeseedPackageAdapters,
+	findTreeseedPackageAdapter,
+	packageAdapterPlanSummary,
+	planTreeseedPackageDevelopmentImage,
+	type TreeseedPackageAdapter,
+	type TreeseedPackageDevelopmentImagePlan,
+} from './operations/services/package-adapters.ts';
 export {
 	runTenantDeployPreflight,
 	runWorkspaceReleasePreflight,
@@ -208,7 +235,7 @@ export {
 	createTreeseedReconcileRegistry,
 	deriveTreeseedDesiredUnits,
 	destroyTreeseedTargetUnits,
-	observeTreeseedUnits,
 	planTreeseedReconciliation,
+	refreshTreeseedUnits,
 	reconcileTreeseedTarget,
 } from './reconcile/index.ts';

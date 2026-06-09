@@ -25,7 +25,7 @@ slug: treeseed-market
 siteUrl: https://treeseed.ai
 contactEmail: hello@treeseed.email
 hosting:
-  kind: market_control_plane
+  kind: treeseed_control_plane
 runtime:
   mode: treeseed_managed
 surfaces:
@@ -45,27 +45,27 @@ surfaces:
     rootDir: packages/api
     environments:
       staging:
-        domain: api-treeseed-market-staging-ca844c56.treeseed.ai
+        domain: api-treeseed-staging.treeseed.ai
       prod:
         domain: api.treeseed.ai
 services:
-  marketDatabase:
+  apiDatabase:
     enabled: true
     provider: railway
     railway:
       resourceType: postgres
-      serviceName: treeseed-market-postgres
-      environmentVariable: TREESEED_MARKET_DATABASE_URL
+      serviceName: treeseed-api-postgres
+      environmentVariable: TREESEED_DATABASE_URL
       serviceTargets:
         - api
-        - marketOperationsRunner
+        - operationsRunner
   api:
     enabled: true
     provider: railway
     rootDir: packages/api
     railway:
-      projectName: treeseed-market
-      serviceName: treeseed-market-api
+      projectName: treeseed-api
+      serviceName: treeseed-api
       rootDir: packages/api
       buildCommand: npm run build
       startCommand: npm run start:api
@@ -77,13 +77,13 @@ services:
         railwayEnvironment: staging
       prod:
         railwayEnvironment: prod
-  marketOperationsRunner:
+  operationsRunner:
     enabled: true
     provider: railway
     rootDir: packages/api
     railway:
-      projectName: treeseed-market
-      serviceName: treeseed-market-operations-runner
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
       rootDir: packages/api
       buildCommand: npm run build
       startCommand: npm run start:runner
@@ -117,14 +117,14 @@ describe('hosted service checks', () => {
 			target: 'staging',
 			now: new Date('2026-06-07T00:00:00.000Z'),
 			valuesOverlay: {
-				TREESEED_MARKET_DATABASE_URL: 'postgres://redacted',
+				TREESEED_DATABASE_URL: 'postgres://redacted',
 				TREESEED_PLATFORM_RUNNER_SECRET: 'runner-secret',
-				TREESEED_MARKET_CREDENTIAL_SESSION_SECRET: 'credential-secret',
+				TREESEED_CREDENTIAL_SESSION_SECRET: 'credential-secret',
 			},
 			observedRailwayServices: {
-				'treeseed-market-api': {
-					serviceName: 'treeseed-market-api',
-					projectName: 'treeseed-market',
+				'treeseed-api': {
+					serviceName: 'treeseed-api',
+					projectName: 'treeseed-api',
 					environmentName: 'staging',
 					rootDirectory: 'packages/api',
 					buildCommand: 'npm run build',
@@ -133,9 +133,9 @@ describe('hosted service checks', () => {
 					healthcheckTimeoutSeconds: 120,
 					runtimeMode: 'serverless',
 				},
-				'treeseed-market-operations-runner-01': {
-					serviceName: 'treeseed-market-operations-runner-01',
-					projectName: 'treeseed-market',
+				'treeseed-api-operations-runner-01': {
+					serviceName: 'treeseed-api-operations-runner-01',
+					projectName: 'treeseed-api',
 					environmentName: 'staging',
 					rootDirectory: 'packages/api',
 					buildCommand: 'npm run build',
@@ -151,9 +151,9 @@ describe('hosted service checks', () => {
 		expect(byId(report, 'railway:api:rootDirectory')).toMatchObject({ status: 'passed', expected: { rootDirectory: 'packages/api' } });
 		expect(byId(report, 'railway:api:buildCommand')).toMatchObject({ status: 'passed', expected: { buildCommand: 'npm run build' } });
 		expect(byId(report, 'railway:api:startCommand')).toMatchObject({ status: 'passed', expected: { startCommand: 'npm run start:api' } });
-		expect(byId(report, 'railway:marketOperationsRunner:1:startCommand')).toMatchObject({ status: 'passed', expected: { startCommand: 'npm run start:runner' } });
-		expect(byId(report, 'railway:marketOperationsRunner:1:volume')).toMatchObject({ status: 'passed', expected: { volumeMountPath: '/data' } });
-		expect(byId(report, 'railway:marketDatabase:targets')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'railway:operationsRunner:1:startCommand')).toMatchObject({ status: 'passed', expected: { startCommand: 'npm run start:runner' } });
+		expect(byId(report, 'railway:operationsRunner:1:volume')).toMatchObject({ status: 'passed', expected: { volumeMountPath: '/data' } });
+		expect(byId(report, 'railway:apiDatabase:targets')).toMatchObject({ status: 'passed' });
 	});
 
 	it('detects Railway drift and missing required service values without leaking secret values', () => {
@@ -162,11 +162,11 @@ describe('hosted service checks', () => {
 			tenantRoot: root,
 			target: 'staging',
 			valuesOverlay: {
-				TREESEED_MARKET_DATABASE_URL: 'postgres://do-not-print',
+				TREESEED_DATABASE_URL: 'postgres://do-not-print',
 			},
 			observedRailwayServices: {
-				'treeseed-market-api': {
-					serviceName: 'treeseed-market-api',
+				'treeseed-api': {
+					serviceName: 'treeseed-api',
 					rootDirectory: '.',
 					buildCommand: 'npm run build:api',
 					startCommand: 'node ./src/api/server.js',
@@ -181,10 +181,10 @@ describe('hosted service checks', () => {
 
 	it('skips disabled services and warns for unsupported providers', () => {
 		const root = fixtureRoot(siteConfig()
-			.replace('  marketOperationsRunner:\n    enabled: true', '  marketOperationsRunner:\n    enabled: false')
+			.replace('  operationsRunner:\n    enabled: true', '  operationsRunner:\n    enabled: false')
 			.replace('  api:\n    enabled: true\n    provider: railway', '  api:\n    enabled: true\n    provider: custom-host'));
 		const report = collectTreeseedHostedServiceChecks({ tenantRoot: root, target: 'prod' });
-		expect(report.checks.some((check) => check.serviceKey === 'marketOperationsRunner')).toBe(false);
+		expect(report.checks.some((check) => check.serviceKey === 'operationsRunner')).toBe(false);
 		expect(report.checks.some((check) => check.status === 'warning' && check.issues.some((issue) => issue.includes('custom-host')))).toBe(true);
 	});
 });

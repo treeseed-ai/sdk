@@ -115,7 +115,7 @@ slug: test-market
 siteUrl: https://market.example.com
 contactEmail: hello@example.com
 hosting:
-  kind: market_control_plane
+  kind: treeseed_control_plane
   registration: optional
   teamId: treeseed
   projectId: market
@@ -132,7 +132,7 @@ cloudflare:
 		expect(config.hub).toMatchObject({ mode: 'treeseed_hosted' });
 		expect(config.runtime).toMatchObject({ mode: 'treeseed_managed', registration: 'none' });
 		expect(config.hosting).toMatchObject({
-			kind: 'market_control_plane',
+			kind: 'treeseed_control_plane',
 			registration: 'none',
 			teamId: 'treeseed',
 			projectId: 'market',

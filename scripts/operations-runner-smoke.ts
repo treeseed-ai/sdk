@@ -1,4 +1,4 @@
-import { runTreeseedMarketRunnerSmoke } from '../src/operations/services/market-runner-smoke.ts';
+import { runTreeseedOperationsRunnerSmoke } from '../src/operations/services/operations-runner-smoke.ts';
 
 function arg(name: string) {
 	const index = process.argv.indexOf(name);
@@ -6,7 +6,7 @@ function arg(name: string) {
 }
 
 const environment = (arg('--environment') ?? 'staging') === 'prod' ? 'prod' : 'staging';
-const report = await runTreeseedMarketRunnerSmoke({
+const report = await runTreeseedOperationsRunnerSmoke({
 	tenantRoot: process.cwd(),
 	environment,
 	baseUrl: arg('--base-url'),

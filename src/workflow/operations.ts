@@ -149,6 +149,7 @@ import { runTreeseedHostingAudit, type TreeseedHostingAuditEnvironment } from '.
 import { collectTreeseedHostedServiceChecks } from '../operations/services/hosted-service-checks.ts';
 import { collectTreeseedDeploymentReadiness } from '../operations/services/deployment-readiness.ts';
 import { collectTreeseedLiveHostedServiceChecks } from '../operations/services/live-hosted-service-checks.ts';
+import { discoverTreeseedApplications } from '../hosting/apps.ts';
 import { resolveTreeseedWorkflowState, type TreeseedWorkflowStatusOptions } from '../workflow-state.ts';
 import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, filterTreeseedDesiredUnitsByBootstrapSystems, planTreeseedReconciliation, resolveTreeseedBootstrapSelection, reconcileTreeseedTarget } from '../reconcile/index.ts';
 import {
@@ -843,18 +844,112 @@ function buildWorkflowResult<TPayload>(
 	};
 }
 
+type WorkflowApplicationSelection = {
+	selected: string[];
+	skipped: Array<{ appId: string; reason: string }>;
+	reasons: Array<{ appId: string; reason: string }>;
+	source: 'changed-paths' | 'package-selection' | 'default';
+};
+
+function parseGitStatusChangedPaths(status: string) {
+	return status
+		.split('\n')
+		.map((line) => line.trimEnd())
+		.filter(Boolean)
+		.map((line) => {
+			const value = line.slice(3).trim();
+			return value.includes(' -> ') ? value.split(' -> ').at(-1)!.trim() : value;
+		})
+		.filter(Boolean);
+}
+
+function availableWorkflowAppIds(root: string) {
+	try {
+		const ids = discoverTreeseedApplications(root).map((app) => app.id);
+		return ids.length > 0 ? ids : ['web'];
+	} catch {
+		return ['web'];
+	}
+}
+
+function selectWorkflowApplications(root: string, input: {
+	packageSelection?: { selected?: string[]; changed?: string[]; dependents?: string[] };
+	changedPaths?: string[];
+} = {}): WorkflowApplicationSelection {
+	const available = availableWorkflowAppIds(root);
+	const availableSet = new Set(available);
+	const selected = new Set<string>();
+	const reasons: Array<{ appId: string; reason: string }> = [];
+	const add = (appId: string, reason: string) => {
+		if (!availableSet.has(appId)) return;
+		selected.add(appId);
+		reasons.push({ appId, reason });
+	};
+	const packages = [
+		...(input.packageSelection?.selected ?? []),
+		...(input.packageSelection?.changed ?? []),
+		...(input.packageSelection?.dependents ?? []),
+	];
+	for (const packageName of packages) {
+		if (packageName === '@treeseed/api' || packageName === '@treeseed/treedx' || packageName === '@treeseed/agent') {
+			add('api', `${packageName} changed`);
+		} else if (packageName === '@treeseed/core') {
+			add('web', `${packageName} changed`);
+		} else if (packageName === '@treeseed/sdk' || packageName === '@treeseed/cli') {
+			add('web', `${packageName} is shared`);
+			add('api', `${packageName} is shared`);
+		}
+	}
+
+	const changedPaths = input.changedPaths ?? parseGitStatusChangedPaths(gitStatusPorcelain(root));
+	for (const file of changedPaths) {
+		if (file.startsWith('packages/api/') || file === 'packages/api') {
+			add('api', `${file} is API-owned`);
+		} else if (file.startsWith('packages/treedx/') || file === 'packages/treedx') {
+			add('api', `${file} is TreeDX implementation`);
+		} else if (file.startsWith('packages/core/') || file.startsWith('src/') || file.startsWith('content/') || file.startsWith('public/') || file === 'treeseed.site.yaml') {
+			add('web', `${file} is web-owned`);
+		} else if (file.startsWith('packages/sdk/') || file.startsWith('packages/cli/') || file === 'package.json' || file === 'package-lock.json' || file.startsWith('.github/')) {
+			add('web', `${file} is shared workflow/config`);
+			add('api', `${file} is shared workflow/config`);
+		}
+	}
+
+	const source: WorkflowApplicationSelection['source'] = packages.length > 0
+		? 'package-selection'
+		: changedPaths.length > 0
+			? 'changed-paths'
+			: 'default';
+	const finalSelected = selected.size > 0
+		? available.filter((appId) => selected.has(appId))
+		: available;
+	return {
+		selected: finalSelected,
+		skipped: available
+			.filter((appId) => !finalSelected.includes(appId))
+			.map((appId) => ({ appId, reason: 'No changed files or selected packages target this application.' })),
+		reasons,
+		source,
+	};
+}
+
+function singleSelectedWorkflowAppId(selection: WorkflowApplicationSelection) {
+	return selection.selected.length === 1 ? selection.selected[0] : undefined;
+}
+
 async function runWorkflowHostedResourceVerification(
 	operation: TreeseedWorkflowOperationId,
 	root: string,
 	helpers: WorkflowOperationHelpers,
 	environment: TreeseedHostingAuditEnvironment,
-	options: { enabled: boolean; strict?: boolean; live?: boolean } = { enabled: true },
+	options: { enabled: boolean; strict?: boolean; live?: boolean; appId?: string } = { enabled: true },
 ) {
 	if (!options.enabled) return null;
 	const target = environment === 'prod' ? 'prod' : environment === 'local' ? 'local' : 'staging';
 	const readiness = collectTreeseedDeploymentReadiness({
 		tenantRoot: root,
 		environment: target,
+		appId: options.appId,
 	});
 	if (options.strict && !readiness.ok) {
 		const failures = readiness.checks
@@ -868,6 +963,7 @@ async function runWorkflowHostedResourceVerification(
 		tenantRoot: root,
 		environment,
 		repair: false,
+		hostKinds: options.appId === 'api' ? ['repository'] : undefined,
 		env: helpers.context.env,
 		write: (line) => helpers.write(line),
 	});
@@ -878,11 +974,13 @@ async function runWorkflowHostedResourceVerification(
 			strict: options.strict === true,
 			requireLiveRailway: options.strict === true,
 			requireLiveHttp: options.strict === true,
+			appId: options.appId,
 			env: helpers.context.env,
 		})
 		: collectTreeseedHostedServiceChecks({
 			tenantRoot: root,
 			target,
+			appId: options.appId,
 		});
 	if (options.strict && !hostingAudit.ok) {
 		workflowError(operation, 'validation_failed', `Hosting audit failed for ${hostingAudit.environment}: ${hostingAudit.blockers.join('\n')}`, {
@@ -1413,7 +1511,7 @@ async function connectTreeseedMarketProject(
 		});
 	}
 
-	const runnerHostId = `market-runner:${projectId}`;
+	const runnerHostId = `operations-runner:${projectId}`;
 	if (connectionResult.runnerToken) {
 		setTreeseedRemoteSession(tenantRoot, {
 			hostId: runnerHostId,
@@ -2312,6 +2410,7 @@ function buildReleasePlanSnapshot(input: {
 	blockers: string[];
 }) {
 	const selectedPackageNames = new Set(input.packageSelection.selected);
+	const applicationSelection = selectWorkflowApplications(input.root, { packageSelection: input.packageSelection });
 	const versionPlan = planWorkspaceReleaseBump(input.level, input.root, input.mode === 'recursive-workspace'
 		? { selectedPackageNames, repairVersionLine: input.repairVersionLine === true, targetVersionLine: input.targetVersionLine }
 		: {});
@@ -2353,6 +2452,7 @@ function buildReleasePlanSnapshot(input: {
 		packageSelection: plannedPackageSelection,
 		plannedVersions,
 		stableDependencyVersions,
+		applicationSelection,
 		plannedDevReferenceRewrites,
 		plannedPublishWaits: plannedPackageSelection.selected.map((name) => ({
 			name,
@@ -3194,6 +3294,7 @@ export async function workflowConfig(helpers: WorkflowOperationHelpers, input: T
 				sync,
 				env: helpers.context.env,
 				checkConnections: bootstrapOnly || sync !== 'none' || scopes.some((scope) => scope !== 'local'),
+				initializePersistent: bootstrapOnly,
 				systems: bootstrapSystemsInput,
 				skipUnavailable,
 				bootstrapExecution,
@@ -3607,6 +3708,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					verifyMode: normalizeSaveVerifyMode(effectiveInput.verify === false ? 'skip' : effectiveInput.verifyMode),
 					commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
 				});
+				const applicationSelection = selectWorkflowApplications(root);
 				const workspaceLinks = inspectWorkspaceDependencyMode(root, { mode: effectiveInput.workspaceLinks ?? 'auto', env: helpers.context.env });
 				return buildWorkflowResult(
 					'save',
@@ -3630,6 +3732,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						workspaceLinks,
 						ciMode: normalizeSaveCiMode(effectiveInput.ciMode, branch),
 						verifyMode: effectiveInput.verifyMode ?? 'fast',
+						applicationSelection,
 						...worktreePayload(root, effectiveInput.worktreeMode),
 						repositoryPlan,
 						waves: repositoryPlan.waves,
@@ -3924,6 +4027,11 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						};
 					}
 				}
+				const applicationSelection = selectWorkflowApplications(root, {
+					packageSelection: {
+						selected: savedPackageReports.map((report) => report.name),
+					},
+				});
 				const hostingAudit = await runWorkflowHostedResourceVerification(
 					'save',
 					root,
@@ -3933,6 +4041,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						enabled: effectiveInput.verifyDeployedResources === true,
 						strict: true,
 						live: effectiveInput.verifyDeployedResources === true,
+						appId: singleSelectedWorkflowAppId(applicationSelection),
 					},
 				);
 
@@ -3961,6 +4070,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					lockfileValidation,
 					ciMode: normalizeSaveCiMode(effectiveInput.ciMode, branch),
 					verifyMode: effectiveInput.verifyMode ?? 'fast',
+					applicationSelection,
 					workflowGates: saveWorkflowGates?.workflowGates ?? [],
 					releaseCandidate,
 					hostingAudit,
@@ -4285,7 +4395,12 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					} catch (error) {
 					blockers.push(error instanceof Error ? error.message : String(error));
 				}
-				const readiness = collectTreeseedDeploymentReadiness({ tenantRoot: root, environment: 'staging' });
+				const applicationSelection = selectWorkflowApplications(root, { packageSelection: initialSession.packageSelection });
+				const readiness = collectTreeseedDeploymentReadiness({
+					tenantRoot: root,
+					environment: 'staging',
+					appId: singleSelectedWorkflowAppId(applicationSelection),
+				});
 				blockers.push(...readiness.checks
 					.filter((check) => check.status === 'failed')
 					.map((check) => `${check.id}: ${check.message}${check.remediation ? ` Remediation: ${check.remediation}` : ''}`));
@@ -4299,6 +4414,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						mergeStrategy: 'squash',
 						message,
 						ciMode,
+						applicationSelection,
 						autoResumeCandidate: planAutoResumeRun
 							? {
 								runId: planAutoResumeRun.runId,
@@ -4549,6 +4665,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				});
 				const releaseCandidate = await executeJournalStep(root, workflowRun.runId, 'release-candidate', () =>
 					runReleaseCandidateForPlan('stage', root, stageReleasePlan));
+				const applicationSelection = selectWorkflowApplications(root, { packageSelection: session.packageSelection });
 				const hostingAudit = await runWorkflowHostedResourceVerification(
 					'stage',
 					root,
@@ -4558,6 +4675,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						enabled: effectiveInput.verifyDeployedResources === true,
 						strict: true,
 						live: effectiveInput.verifyDeployedResources === true,
+						appId: singleSelectedWorkflowAppId(applicationSelection),
 					},
 				);
 				const previewCleanup = effectiveInput.deletePreview === false
@@ -4615,6 +4733,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					rootRepo,
 					stagingWait,
 					releaseCandidate,
+					applicationSelection,
 					previewCleanup,
 					lockfileValidation: rootMerge?.lockfileValidation ?? null,
 					lockfileInstall: rootMerge?.lockfileInstall ?? null,
@@ -4739,7 +4858,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					level,
 					repairVersionLine: effectiveInput.repairVersionLine === true,
 				});
-			const plannedReadiness = collectTreeseedDeploymentReadiness({ tenantRoot: root, environment: 'prod' });
+			const plannedReadiness = collectTreeseedDeploymentReadiness({
+				tenantRoot: root,
+				environment: 'prod',
+				appId: singleSelectedWorkflowAppId(plannedRelease.applicationSelection),
+			});
 			if (!isResume) {
 				blockers.push(...plannedReadiness.checks
 					.filter((check) => check.status === 'failed')
@@ -4977,10 +5100,12 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						}).then((workflowGates) => ({ workflowGates })));
 					const hostedDeploymentState = recordHostedDeploymentStatesFromRootGates(root, rootRelease, rootWorkflowGateResult?.workflowGates);
 					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
+					const applicationSelection = selectWorkflowApplications(root, { changedPaths: ['treeseed.site.yaml'] });
 					const hostingAudit = await runWorkflowHostedResourceVerification('release', root, helpers, 'prod', {
 						enabled: true,
 						strict: effectiveInput.verifyDeployedResources === true,
 						live: effectiveInput.verifyDeployedResources === true,
+						appId: singleSelectedWorkflowAppId(applicationSelection),
 					});
 					const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
 						backMergeRootProductionIntoStaging(root, false, {
@@ -5004,6 +5129,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						productionBranch: PRODUCTION_BRANCH,
 						touchedPackages: [],
 						packageSelection: { changed: [], dependents: [], selected: [] },
+						applicationSelection,
 						publishWait: [],
 						repos: [],
 						rootRepo,
@@ -5298,10 +5424,12 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					}).then((workflowGates) => ({ workflowGates })));
 				const hostedDeploymentState = recordHostedDeploymentStatesFromRootGates(root, rootRelease, rootWorkflowGateResult?.workflowGates);
 				ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
+				const applicationSelection = releasePlan.applicationSelection as WorkflowApplicationSelection;
 				const hostingAudit = await runWorkflowHostedResourceVerification('release', root, helpers, 'prod', {
 					enabled: true,
 					strict: effectiveInput.verifyDeployedResources === true,
 					live: effectiveInput.verifyDeployedResources === true,
+					appId: singleSelectedWorkflowAppId(applicationSelection),
 				});
 				const releaseBackMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () =>
 					backMergeRootProductionIntoStaging(root, true, {
@@ -5337,6 +5465,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					productionBranch: PRODUCTION_BRANCH,
 					touchedPackages: effectivePackageSelection.selected,
 					packageSelection: effectivePackageSelection,
+					applicationSelection,
 					replacedDevReferences,
 					releaseInstalls,
 					devTagCleanup,

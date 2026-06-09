@@ -132,9 +132,11 @@ export {
 	discoverTreeseedPackageAdapters,
 	findTreeseedPackageAdapter,
 	packageAdapterPlanSummary,
+	planTreeseedPackageDevelopmentImage,
 	readMixProjectVersion,
 	type TreeseedPackageAdapter,
 	type TreeseedPackageCommand,
+	type TreeseedPackageDevelopmentImagePlan,
 	type TreeseedPackageKind,
 } from './operations/services/package-adapters.ts';
 export {
@@ -186,6 +188,11 @@ export {
 	summarizeTeamCapacityPlan,
 	validateTaskPlanProposal,
 } from './capacity.ts';
+export {
+	githubRepositoryCredentialEnvName,
+	resolveGitHubCredentialForRepository,
+	type TreeseedGitHubCredentialResolution,
+} from './operations/services/github-credentials.ts';
 export {
 	executeKnowledgeHubProviderLaunch,
 	validateKnowledgeHubProviderLaunchPrerequisites,
@@ -447,11 +454,11 @@ export type {
 } from './operations/services/project-host-operations.ts';
 export {
 	MarketClient,
-	MarketApiError,
+	MarketClientError,
 	DEFAULT_TREESEED_MARKET_BASE_URL,
 	TREESEED_CATALOG_MARKET_API_BASE_URLS_ENV,
 	TREESEED_CENTRAL_MARKET_API_BASE_URL_ENV,
-	TREESEED_MARKET_API_BASE_URL_ENV,
+	TREESEED_API_BASE_URL_ENV,
 	addMarketProfile,
 	clearMarketSession,
 	listIntegratedMarketCatalog,
@@ -493,8 +500,8 @@ export {
 	createTreeseedReconcileRegistry,
 	deriveTreeseedDesiredUnits,
 	destroyTreeseedTargetUnits,
-	observeTreeseedUnits,
 	planTreeseedReconciliation,
+	refreshTreeseedUnits,
 	reconcileTreeseedTarget,
 } from './reconcile/index.ts';
 export { getTreeseedVerifyDriverStatus, runTreeseedVerifyDriver } from './verification.ts';

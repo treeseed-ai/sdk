@@ -14,7 +14,7 @@ describe('control-plane reporter', () => {
 	it('resolves a market http reporter for hosted projects', () => {
 		vi.stubEnv('TREESEED_PROJECT_ID', 'project-1');
 		vi.stubEnv('TREESEED_PROJECT_RUNNER_TOKEN', 'runner-secret');
-		vi.stubEnv('TREESEED_MARKET_API_BASE_URL', 'https://market.example.com');
+		vi.stubEnv('TREESEED_API_BASE_URL', 'https://market.example.com');
 
 		const reporter = createControlPlaneReporter({
 			hostingKind: 'hosted_project',

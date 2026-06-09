@@ -18,9 +18,9 @@ function createTenantFixture(withPlugin = false) {
         providerId: 'cloudflare',
         unitTypes: ['queue'],
         supports(unitType, providerId) { return unitType === 'queue' && providerId === 'cloudflare'; },
-        observe() { return { exists: true, status: 'ready', live: {}, locators: {}, warnings: [] }; },
-        plan() { return { action: 'noop', reasons: ['duplicate'], before: {}, after: {} }; },
-        reconcile(input) { return { unit: input.unit, observed: input.observed, diff: input.diff, action: 'noop', warnings: [], resourceLocators: {}, state: {}, verification: null }; },
+        refresh() { return { exists: true, status: 'ready', live: {}, locators: {}, warnings: [] }; },
+        diff() { return { action: 'noop', reasons: ['duplicate'], before: {}, after: {} }; },
+        apply(input) { return { unit: input.unit, observed: input.observed, diff: input.diff, action: 'noop', warnings: [], resourceLocators: {}, state: {}, verification: null }; },
         verify(input) { return { unitId: input.unit.unitId, supported: true, exists: true, configured: true, ready: true, verified: true, checks: [], missing: [], drifted: [], warnings: [] }; }
       };
     }

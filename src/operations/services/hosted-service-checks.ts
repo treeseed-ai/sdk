@@ -2,6 +2,7 @@ import { relative, resolve } from 'node:path';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues } from './config-runtime.ts';
 import { configuredRailwayServices } from './railway-deploy.ts';
 import { loadCliDeployConfig } from './runtime-tools.ts';
+import { discoverTreeseedApplications } from '../../hosting/apps.ts';
 
 export type TreeseedHostedServiceCheckStatus = 'passed' | 'failed' | 'skipped' | 'warning';
 export type TreeseedHostedServiceTarget = 'local' | 'staging' | 'prod';
@@ -9,8 +10,8 @@ export type TreeseedHostedServiceProvider = 'cloudflare' | 'railway' | 'http' | 
 export type TreeseedHostedServiceType =
 	| 'web'
 	| 'api'
-	| 'marketOperationsRunner'
-	| 'marketDatabase'
+	| 'operationsRunner'
+	| 'treeseedDatabase'
 	| 'customDomain'
 	| 'dnsRecord'
 	| 'githubWorkflow'
@@ -62,6 +63,7 @@ export interface TreeseedObservedRailwayServiceState {
 export interface TreeseedHostedServiceCheckOptions {
 	tenantRoot: string;
 	target?: TreeseedHostedServiceTarget;
+	appId?: string;
 	now?: Date;
 	valuesOverlay?: Record<string, string | undefined>;
 	observedRailwayServices?: Record<string, TreeseedObservedRailwayServiceState | undefined>;
@@ -70,23 +72,24 @@ export interface TreeseedHostedServiceCheckOptions {
 
 const RAILWAY_SECRET_KEYS_BY_SERVICE: Record<string, string[]> = {
 	api: [
-		'TREESEED_MARKET_DATABASE_URL',
+		'TREESEED_DATABASE_URL',
+		'TREESEED_WEB_SERVICE_SECRET',
 		'TREESEED_PLATFORM_RUNNER_SECRET',
-		'TREESEED_MARKET_CREDENTIAL_SESSION_SECRET',
+		'TREESEED_CREDENTIAL_SESSION_SECRET',
 	],
-	marketOperationsRunner: [
-		'TREESEED_MARKET_DATABASE_URL',
+	operationsRunner: [
+		'TREESEED_DATABASE_URL',
 		'TREESEED_PLATFORM_RUNNER_SECRET',
-		'TREESEED_MARKET_CREDENTIAL_SESSION_SECRET',
+		'TREESEED_CREDENTIAL_SESSION_SECRET',
 	],
 };
 
 const RAILWAY_VARIABLE_KEYS_BY_SERVICE: Record<string, string[]> = {
-	marketOperationsRunner: [
+	operationsRunner: [
 		'TREESEED_PLATFORM_RUNNER_ID',
 		'TREESEED_PLATFORM_RUNNER_DATA_DIR',
 		'TREESEED_PLATFORM_RUNNER_ENVIRONMENT',
-		'TREESEED_MARKET_ID',
+		'TREESEED_MANAGER_ID',
 	],
 };
 
@@ -104,6 +107,10 @@ function statusForMatch(observed: unknown, expected: unknown) {
 function rootDirectory(tenantRoot: string, rootDir: string) {
 	const rel = relative(tenantRoot, rootDir).split('\\').join('/');
 	return rel || '.';
+}
+
+function railwayServiceRootDirectory(tenantRoot: string, service: ReturnType<typeof configuredRailwayServices>[number]) {
+	return rootDirectory(service.application?.root ?? tenantRoot, service.rootDir);
 }
 
 function hasConfiguredValue(values: Record<string, string | undefined>, key: string) {
@@ -134,8 +141,8 @@ function valuePresence(values: Record<string, string | undefined>, observed: Tre
 
 function serviceTypeFor(key: string): TreeseedHostedServiceType {
 	if (key === 'api') return 'api';
-	if (key === 'marketOperationsRunner') return 'marketOperationsRunner';
-	if (key === 'marketDatabase') return 'marketDatabase';
+	if (key === 'operationsRunner') return 'operationsRunner';
+	if (key === 'treeseedDatabase') return 'treeseedDatabase';
 	return 'unknown';
 }
 
@@ -185,9 +192,12 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 	}
 	const values = { ...machineValues, ...(options.valuesOverlay ?? {}) };
 	const checks: TreeseedHostedServiceCheck[] = [];
+	const selectedAppId = options.appId?.trim() || null;
+	const includeWeb = !selectedAppId || selectedAppId === 'web';
+	const includeApi = !selectedAppId || selectedAppId === 'api';
 
 	const web = deployConfig.surfaces?.web;
-	if (web?.enabled !== false && web?.provider === 'cloudflare') {
+	if (includeWeb && web?.enabled !== false && web?.provider === 'cloudflare') {
 		const domain = web.environments?.[target]?.domain ?? web.publicBaseUrl ?? deployConfig.siteUrl ?? null;
 		checks.push(check({
 			id: 'cloudflare:web:surface',
@@ -203,10 +213,11 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		if (domain) {
 			const url = String(domain).startsWith('http') ? String(domain) : `https://${domain}`;
 			checks.push({ ...httpStatus(url, options), id: 'http:web', serviceKey: 'web', serviceType: 'web', description: 'Web public URL responds.' });
-			checks.push({ ...httpStatus(`${url.replace(/\/+$/u, '')}/v1/healthz`, options), id: 'http:web:v1-healthz', serviceKey: 'web', serviceType: 'web', description: 'Web proxy reaches Market API health.' });
+			checks.push({ ...httpStatus(`${url.replace(/\/+$/u, '')}/v1/healthz`, options), id: 'http:web:v1-healthz', serviceKey: 'web', serviceType: 'web', description: 'Web proxy reaches API health.' });
 		}
 	}
 	for (const [surfaceKey, surface] of Object.entries(deployConfig.surfaces ?? {})) {
+		if (selectedAppId === 'api' && surfaceKey === 'web') continue;
 		if (surface && typeof surface === 'object' && surface.enabled !== false && surface.provider && !['cloudflare', 'railway'].includes(surface.provider)) {
 			checks.push(check({
 				id: `surface-provider:${surfaceKey}:${surface.provider}`,
@@ -223,11 +234,12 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		}
 	}
 
-	const configuredServices = configuredRailwayServices(tenantRoot, target);
+	const configuredServices = configuredRailwayServices(tenantRoot, target)
+		.filter((service) => !selectedAppId || service.application?.id === selectedAppId);
 	for (const service of configuredServices) {
 		const serviceType = serviceTypeFor(service.key);
 		const observed = observedFor(options, service.serviceName);
-		const expectedRootDirectory = rootDirectory(tenantRoot, service.rootDir);
+		const expectedRootDirectory = railwayServiceRootDirectory(tenantRoot, service);
 		checks.push(check({
 			id: `railway:${service.instanceKey}:service`,
 			provider: 'railway',
@@ -267,7 +279,7 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 			}));
 		}
 
-		if (service.key === 'marketOperationsRunner' && service.volumeMountPath) {
+		if (service.key === 'operationsRunner' && service.volumeMountPath) {
 			checks.push(check({
 				id: `railway:${service.instanceKey}:volume`,
 				provider: 'railway',
@@ -308,24 +320,33 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		}
 	}
 
-	const marketDatabaseService = deployConfig.services?.marketDatabase;
-	if (marketDatabaseService?.enabled !== false && marketDatabaseService?.provider === 'railway') {
-		const targets = marketDatabaseService.railway?.serviceTargets ?? [];
+	const applicationConfigs = [
+		...(includeWeb ? [deployConfig] : []),
+		...discoverTreeseedApplications(tenantRoot)
+			.filter((application) => application.root !== resolve(tenantRoot))
+			.filter((application) => !selectedAppId || application.id === selectedAppId)
+			.map((application) => application.config),
+	];
+	const treeseedDatabaseService = applicationConfigs
+		.map((config) => config.services?.treeseedDatabase)
+		.find((service) => service?.enabled !== false);
+	if (includeApi && treeseedDatabaseService?.enabled !== false && treeseedDatabaseService?.provider === 'railway') {
+		const targets = treeseedDatabaseService.railway?.serviceTargets ?? [];
 		checks.push(check({
-			id: 'railway:marketDatabase:targets',
+			id: 'railway:treeseedDatabase:targets',
 			provider: 'railway',
-			serviceKey: 'marketDatabase',
-			serviceType: 'marketDatabase',
+			serviceKey: 'treeseedDatabase',
+			serviceType: 'treeseedDatabase',
 			target,
-			description: 'Market database targets API and runner services.',
-			expected: { serviceTargets: ['api', 'marketOperationsRunner'] },
+			description: 'Treeseed database targets API and runner services.',
+			expected: { serviceTargets: ['api', 'operationsRunner'] },
 			observed: { serviceTargets: targets },
-			status: targets.includes('api') && targets.includes('marketOperationsRunner') ? 'passed' : 'failed',
-			issues: targets.includes('api') && targets.includes('marketOperationsRunner') ? [] : ['Market database must target api and marketOperationsRunner.'],
+			status: targets.includes('api') && targets.includes('operationsRunner') ? 'passed' : 'failed',
+			issues: targets.includes('api') && targets.includes('operationsRunner') ? [] : ['Treeseed database must target api and operationsRunner.'],
 		}));
 	}
 
-	for (const service of Object.values(deployConfig.services ?? {})) {
+	for (const service of Object.values(selectedAppId ? {} : deployConfig.services ?? {})) {
 		if (service && typeof service === 'object' && service.enabled !== false && service.provider && !['railway'].includes(service.provider)) {
 			checks.push(check({
 				id: `provider:${service.provider}`,
@@ -342,7 +363,7 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 	}
 
 	const entryIds = new Set(registry.entries.map((entry: { id: string }) => entry.id));
-	for (const key of ['TREESEED_MARKET_DATABASE_URL', 'TREESEED_PLATFORM_RUNNER_SECRET']) {
+	for (const key of includeApi ? ['TREESEED_DATABASE_URL', 'TREESEED_WEB_SERVICE_SECRET', 'TREESEED_PLATFORM_RUNNER_SECRET'] : []) {
 		if (!entryIds.has(key)) {
 			checks.push(check({
 				id: `registry:${key}`,

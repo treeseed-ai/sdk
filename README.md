@@ -24,13 +24,14 @@ If you are unsure, use `AgentSdk`.
 - operational runtime state such as messages, runs, cursors, and leases
 - control-plane orchestration for work days, tasks, task events, graph runs, and reports
 - provider-neutral capacity scheduling contracts for task classification, admission, execution profiles, routing, estimates, planning proposals, attention load, utility, predictive reserve, hybrid execution, checkpoints, and usage actuals
-- hosting graph compilation, deployment readiness, live hosted-service checks, Market runner smoke helpers, and verification cache support for Treeseed workflows
+- hosting graph compilation, deployment readiness, live hosted-service checks, Treeseed runner smoke helpers, and verification cache support for Treeseed workflows
 - graph-first context retrieval through `parseGraphDsl()`, `resolveSeeds()`, `queryGraph()`, and `buildContextPack()`
 - agent scoping through `scopeForAgent()`
 
 ## Workflow And Hosting Support
 
 The SDK owns the shared implementation behind the fail-fast `trsd` deployment workflow.
+It also owns the canonical reconciliation platform for desired-state infrastructure. See the root workspace `docs/reconciliation-platform.md` for the full contract.
 
 Current workflow-support exports include:
 
@@ -39,7 +40,7 @@ import {
   collectTreeseedDeploymentReadiness,
   collectTreeseedLiveHostedServiceChecks,
   formatTreeseedReadinessReport,
-  runTreeseedMarketRunnerSmoke,
+  runTreeseedOperationsRunnerSmoke,
 } from '@treeseed/sdk/workflow-support';
 ```
 
@@ -49,10 +50,17 @@ These helpers are used by:
 - `trsd hosting plan|apply|verify --environment <env> --service <id>`
 - `trsd audit hosting --environment <env> --live`
 - `trsd doctor --live --hosted-services`
-- `trsd operations smoke --environment <env> --service marketOperationsRunner`
+- `trsd operations smoke --environment <env> --service operationsRunner`
 - `trsd stage|release --verify-deployed-resources`
 
-For the Market control plane, the expected hosted backend services are `api` and `marketOperationsRunner`, both built from `packages/api`, plus the `marketDatabase` service targeted only to those backend services. The root Market app remains a web UI and `/v1/*` proxy/client surface.
+For the API app, the expected hosted backend services are the API service, indexed Treeseed operations runner, PostgreSQL, and public TreeDX federation nodes owned by `packages/api`. The root web app remains a web UI and `/v1/*` proxy/client surface.
+
+Reconciliation guarantees:
+
+- command surfaces compile desired resources before provider mutation
+- cached state can locate resources but live observation proves readiness
+- hosted apply cannot report `ok: true` when live postconditions fail
+- adapter reports use `desiredGraph`, `observedGraph`, `stateGraph`, `diff`, `actions`, `postconditions`, `blockedDrift`, `providerLimitations`, `liveVerification`, and `ok`
 
 ## Install
 
