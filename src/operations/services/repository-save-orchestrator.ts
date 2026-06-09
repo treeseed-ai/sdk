@@ -518,6 +518,14 @@ function isGitRepo(repoDir: string) {
 	}
 }
 
+function isIndependentGitRepo(repoDir: string) {
+	try {
+		return resolve(repoRoot(repoDir)) === resolve(repoDir);
+	} catch {
+		return false;
+	}
+}
+
 function originRemoteUrlSafe(repoDir: string) {
 	try {
 		return originRemoteUrl(repoDir);
@@ -676,20 +684,20 @@ export function discoverRepositorySaveNodes(
 
 	if (hasCompleteTreeseedPackageCheckout(root)) {
 		for (const pkg of workspacePackages(root)) {
-			if (isGitRepo(pkg.dir)) {
+			if (isIndependentGitRepo(pkg.dir)) {
 				repoDirs.set(pkg.relativeDir, pkg.dir);
 			}
 		}
 	}
 	for (const adapter of packageAdaptersByDir.values()) {
-		if (isGitRepo(adapter.dir)) {
+		if (isIndependentGitRepo(adapter.dir)) {
 			repoDirs.set(adapter.relativeDir, adapter.dir);
 		}
 	}
 
 	for (const submodulePath of parseGitmodules(root)) {
 		const dir = resolve(root, submodulePath);
-		if (existsSync(dir) && isGitRepo(dir)) {
+		if (existsSync(dir) && isIndependentGitRepo(dir)) {
 			repoDirs.set(submodulePath, dir);
 		}
 	}
@@ -1908,6 +1916,10 @@ async function saveOneRepository(
 	refreshRepositoryNodePackageMetadata(node);
 	ensureWritableRemote(node, options);
 
+	if (node.kind === 'project' && hasNpmLockfile(node.path)) {
+		report.lockfileValidation = await validateRepositoryLockfile(node, options);
+	}
+
 	const dependencyUpdates = updateDependencyReferences(node, state.finalizedReferences);
 	const dependencyChanged = dependencyUpdates.length > 0;
 	const gitDependencyRefreshSpecs = dependencyUpdates
@@ -1916,13 +1928,13 @@ async function saveOneRepository(
 		.map((reference) => `${reference.packageName}@${reference.installSpec ?? reference.spec}`);
 	const submodulePointers = collectSubmodulePointerChanges(node, state.finalizedCommits);
 	const submodulesChanged = submodulePointers.length > 0;
-		const packageHasMeaningfulChanges = hasMeaningfulChanges(node.path);
-		const packageNeedsVersion = canManagePackageJsonVersion(node) && (
-			packageHasMeaningfulChanges
-			|| dependencyChanged
-			|| submodulesChanged
-			|| packageVersionTagConflictsWithHead(node, options)
-		);
+	const packageHasMeaningfulChanges = hasMeaningfulChanges(node.path);
+	const packageNeedsVersion = canManagePackageJsonVersion(node) && (
+		packageHasMeaningfulChanges
+		|| dependencyChanged
+		|| submodulesChanged
+		|| packageVersionTagConflictsWithHead(node, options)
+	);
 	let plannedVersion: string | null = null;
 
 	if (packageNeedsVersion) {
