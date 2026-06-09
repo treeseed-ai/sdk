@@ -110,6 +110,8 @@ export type TreeseedWorkflowState = {
 			nextStep: string | null;
 			reasons: string[];
 		}>;
+		staleRunsTotal: number;
+		staleRunsOmitted: number;
 		obsoleteRuns: Array<{
 			runId: string;
 			command: string;
@@ -569,29 +571,42 @@ function safeReleaseHistory(repoDir: string | null): TreeseedWorkflowState['rele
 	}
 }
 
-const DEFAULT_OBSOLETE_RUN_HISTORY_LIMIT = 20;
+const DEFAULT_WORKFLOW_RUN_HISTORY_LIMIT = 20;
+
+export function capWorkflowRunHistory<T>(
+	runs: T[],
+	options: { history?: 'recent' | 'all'; limit?: number } = {},
+) {
+	const historyMode = options.history === 'all' ? 'all' : 'recent';
+	const limit = options.limit ?? DEFAULT_WORKFLOW_RUN_HISTORY_LIMIT;
+	const total = runs.length;
+	if (historyMode === 'all') {
+		return {
+			historyMode,
+			runs,
+			total,
+			omitted: 0,
+		};
+	}
+	const cappedRuns = runs.slice(0, limit);
+	return {
+		historyMode,
+		runs: cappedRuns,
+		total,
+		omitted: Math.max(0, total - cappedRuns.length),
+	};
+}
 
 export function capObsoleteWorkflowRuns<T>(
 	obsoleteRuns: T[],
 	options: { history?: 'recent' | 'all'; limit?: number } = {},
 ) {
-	const historyMode = options.history === 'all' ? 'all' : 'recent';
-	const limit = options.limit ?? DEFAULT_OBSOLETE_RUN_HISTORY_LIMIT;
-	const obsoleteRunsTotal = obsoleteRuns.length;
-	if (historyMode === 'all') {
-		return {
-			historyMode,
-			obsoleteRuns,
-			obsoleteRunsTotal,
-			obsoleteRunsOmitted: 0,
-		};
-	}
-	const cappedRuns = obsoleteRuns.slice(0, limit);
+	const capped = capWorkflowRunHistory(obsoleteRuns, options);
 	return {
-		historyMode,
-		obsoleteRuns: cappedRuns,
-		obsoleteRunsTotal,
-		obsoleteRunsOmitted: Math.max(0, obsoleteRunsTotal - cappedRuns.length),
+		historyMode: capped.historyMode,
+		obsoleteRuns: capped.runs,
+		obsoleteRunsTotal: capped.total,
+		obsoleteRunsOmitted: capped.omitted,
 	};
 }
 
@@ -734,6 +749,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			nextStep: journal.steps.find((step) => step.status === 'pending')?.description ?? null,
 			reasons: classification.reasons,
 		}));
+	const staleHistory = capWorkflowRunHistory(staleRuns, { history: options.history });
 	const obsoleteRuns = classifiedRuns
 		.filter((entry) => entry.classification.state === 'obsolete')
 		.map(({ journal, classification }) => ({
@@ -777,7 +793,9 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 				staleReason: workflowLock.staleReason,
 			},
 			interruptedRuns,
-			staleRuns,
+			staleRuns: staleHistory.runs,
+			staleRunsTotal: staleHistory.total,
+			staleRunsOmitted: staleHistory.omitted,
 			obsoleteRuns: obsoleteHistory.obsoleteRuns,
 			historyMode: obsoleteHistory.historyMode,
 			obsoleteRunsTotal: obsoleteHistory.obsoleteRunsTotal,
