@@ -1884,7 +1884,7 @@ async function saveOneRepository(
 				return report;
 			}
 		}
-		if (node.id === '.') {
+		if (node.kind === 'project') {
 			const rebase = pullRebaseFromOrigin(node, options, branch);
 			const push = pushCurrentBranch(node, options, branch);
 			report.pushed = push.pushed;
@@ -1910,7 +1910,7 @@ async function saveOneRepository(
 				return report;
 			}
 		}
-		if (node.id === '.') {
+		if (node.kind === 'project') {
 			const rebase = pullRebaseFromOrigin(node, options, branch);
 			const push = pushCurrentBranch(node, options, branch);
 			report.pushed = push.pushed;
@@ -1959,7 +1959,7 @@ async function saveOneRepository(
 				return report;
 			}
 		}
-		if (node.id === '.') {
+		if (node.kind === 'project') {
 			const rebase = pullRebaseFromOrigin(node, options, branch);
 			const push = pushCurrentBranch(node, options, branch);
 			report.pushed = push.pushed;
