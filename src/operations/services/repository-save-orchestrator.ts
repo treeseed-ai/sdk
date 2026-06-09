@@ -1026,8 +1026,8 @@ async function runProjectVerificationInstallWithRetry(
 	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
 	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
 	const args = rootWorkspaceInstall
-		? ['ci', '--ignore-scripts']
-		: ['ci', '--ignore-scripts', '--workspaces=false'];
+		? ['ci']
+		: ['ci', '--workspaces=false'];
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
 		emitProgress(options, node, 'install', `npm ${args.join(' ')} for project verification attempt ${attempt}/5.`);
 		try {
