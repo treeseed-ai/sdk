@@ -882,7 +882,11 @@ function commitSubject(message: string | null | undefined) {
 
 function gitDiffSummary(repoDir: string) {
 	const changedFiles = run('git', ['status', '--porcelain'], { cwd: repoDir, capture: true });
-	const diff = run('git', ['diff', '--cached'], { cwd: repoDir, capture: true });
+	const rawDiff = run('git', ['diff', '--cached'], { cwd: repoDir, capture: true, maxBuffer: 1024 * 1024 * 32 });
+	const maxDiffChars = 120_000;
+	const diff = rawDiff.length > maxDiffChars
+		? `${rawDiff.slice(0, maxDiffChars)}\n\n[treeseed-save: diff truncated from ${rawDiff.length} characters for commit-message generation]\n`
+		: rawDiff;
 	return { changedFiles, diff };
 }
 
