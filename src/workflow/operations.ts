@@ -1671,14 +1671,27 @@ function findAutoResumableSaveRun(root: string, branch: string | null) {
 		&& journal.session.branchName === branch) ?? null;
 }
 
-function gatesForSavedPackageReports(root: string, reports: RepositorySaveReport[]) {
+function workflowFileExists(repoPath: string, workflow: string) {
+	return existsSync(resolve(repoPath, '.github', 'workflows', workflow));
+}
+
+function hostedWorkflowForSavedRepository(root: string, repo: RepositorySaveReport) {
 	const adapterByPath = new Map(discoverTreeseedPackageAdapters(root).map((adapter) => [resolve(adapter.dir), adapter]));
+	const adapterWorkflow = packageHostedVerifyWorkflow(adapterByPath.get(resolve(repo.path)));
+	if (adapterWorkflow) return adapterWorkflow;
+	if (repo.branch === STAGING_BRANCH && existsSync(resolve(repo.path, 'treeseed.site.yaml')) && workflowFileExists(repo.path, 'deploy.yml')) {
+		return 'deploy.yml';
+	}
+	return 'verify.yml';
+}
+
+function gatesForSavedRepositoryReports(root: string, reports: RepositorySaveReport[]) {
 	return reports
 		.filter((repo) => repo.pushed && repo.commitSha && repo.branch && (repo.committed || repo.tagName))
 		.map((repo) => ({
 			name: repo.name,
 			repoPath: repo.path,
-			workflow: packageHostedVerifyWorkflow(adapterByPath.get(resolve(repo.path))) ?? 'verify.yml',
+			workflow: hostedWorkflowForSavedRepository(root, repo),
 			branch: String(repo.branch),
 			headSha: String(repo.commitSha),
 		}));
@@ -3898,20 +3911,20 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 								onProgress: (line, stream) => helpers.write(line, stream),
 								onWaveSaved: branch === STAGING_BRANCH && shouldUseHostedSaveCi(effectiveInput, branch)
 									? async ({ nodes, reports, rootRepo: waveRootRepo }) => {
-										const packageReportsForWave = reports.filter((repo, index) => nodes[index]?.kind === 'package');
-										const rootReportForWave = nodes.some((node) => node.kind === 'project')
+										const nonRootReportsForWave = reports.filter((repo, index) => nodes[index]?.id !== '.');
+										const rootReportForWave = nodes.some((node) => node.id === '.')
 											? waveRootRepo
 											: null;
 										const gates = [
-											...gatesForSavedPackageReports(root, packageReportsForWave),
+											...gatesForSavedRepositoryReports(root, nonRootReportsForWave),
 											...(rootReportForWave ? gateForSavedRootReport(rootReportForWave, branch, scope) : []),
 										];
 										if (gates.length === 0) {
 											return [];
 										}
-										const packageNames = packageReportsForWave.map((repo) => repo.name).join(', ');
-										if (packageNames) {
-											helpers.write(`[save][workflow] Waiting for hosted package gates before saving dependents: ${packageNames}.`);
+										const repositoryNames = gates.map((gate) => gate.name).join(', ');
+										if (nonRootReportsForWave.length > 0) {
+											helpers.write(`[save][workflow] Waiting for hosted repository gates before saving dependents: ${repositoryNames}.`);
 										} else if (rootReportForWave) {
 											helpers.write('[save][workflow] Waiting for hosted market deploy gate.');
 										}

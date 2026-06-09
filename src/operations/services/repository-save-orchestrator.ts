@@ -1916,10 +1916,6 @@ async function saveOneRepository(
 	refreshRepositoryNodePackageMetadata(node);
 	ensureWritableRemote(node, options);
 
-	if (node.kind === 'project' && hasNpmLockfile(node.path)) {
-		report.lockfileValidation = await validateRepositoryLockfile(node, options);
-	}
-
 	const dependencyUpdates = updateDependencyReferences(node, state.finalizedReferences);
 	const dependencyChanged = dependencyUpdates.length > 0;
 	const gitDependencyRefreshSpecs = dependencyUpdates
