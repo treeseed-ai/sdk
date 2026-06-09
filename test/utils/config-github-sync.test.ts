@@ -385,6 +385,7 @@ describe('config GitHub environment sync', () => {
 	});
 
 	it('explains repository-scoped credential requirements when fallback GitHub tokens cannot manage environments', async () => {
+		vi.stubEnv('TREESEED_GITHUB_TOKEN_TREESEED_AI_API', '');
 		const tenantRoot = createTenantFixture();
 		writeDefaultMachineConfig(tenantRoot);
 		unlockSecrets(tenantRoot);
