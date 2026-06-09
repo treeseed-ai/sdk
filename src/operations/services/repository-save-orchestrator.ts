@@ -1011,6 +1011,37 @@ async function runNpmInstallWithRetry(
 	throw new RepositorySaveError(`npm install failed after 5 attempts.\n${lastError ?? ''}`);
 }
 
+async function runProjectVerificationInstallWithRetry(
+	node: RepositorySaveNode,
+	options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>,
+) {
+	if (node.kind === 'package' || !hasNpmLockfile(node.path)) return;
+	if (shouldSkipNetworkInstall()) {
+		emitProgress(options, node, 'install', 'Skipped project verification dependency install because network install mode is disabled.');
+		return;
+	}
+	let lastError: string | null = null;
+	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
+	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
+	const args = rootWorkspaceInstall
+		? ['ci', '--ignore-scripts']
+		: ['ci', '--ignore-scripts', '--workspaces=false'];
+	for (let attempt = 1; attempt <= 5; attempt += 1) {
+		emitProgress(options, node, 'install', `npm ${args.join(' ')} for project verification attempt ${attempt}/5.`);
+		try {
+			await runStreamingCommand(node, options, 'install', 'npm', args);
+			return;
+		} catch (error) {
+			lastError = error instanceof Error ? error.message : String(error);
+		}
+		if (attempt < 5) {
+			emitProgress(options, node, 'install', 'npm ci for project verification failed; retrying in 60 seconds.', 'stderr');
+			spawnSync('sleep', ['60'], { stdio: 'ignore' });
+		}
+	}
+	throw new RepositorySaveError(`Project verification dependency install failed after 5 attempts.\n${lastError ?? ''}`);
+}
+
 function lockfileValidationCommand(node: Pick<RepositorySaveNode, 'path' | 'packageJson'>, options: Pick<RepositorySaveOptions, 'root'>) {
 	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
 	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
@@ -1109,6 +1140,7 @@ async function runRepoVerification(node: RepositorySaveNode, options: Repository
 		emitProgress(options, node, 'verify', 'Skipped verification because project repository does not declare a Treeseed verify script.');
 		return { mode: verifyMode, status: 'skipped', primary: null, fallbackUsed: false, error: null };
 	}
+	await runProjectVerificationInstallWithRetry(node, options);
 	if (verifyMode === 'local-only') {
 		if (!hasScript(node, 'verify:local')) {
 			throw new RepositorySaveError(`${node.kind === 'package' ? 'Package' : 'Project'} ${node.name} is missing required verify:local script.`);
