@@ -610,11 +610,12 @@ export async function waitForGitHubWorkflowCompletion(
 		dispatchAfterSeconds,
 		dispatchInputs,
 		onProgress,
+		env,
 	} = {},
 ) {
 	const repo = repository ?? resolveGitHubRepositorySlug(tenantRoot);
 	return await waitForGitHubWorkflowRunCompletion(repo, {
-		client: createGitHubApiClient(),
+		client: createGitHubApiClient({ env }),
 		workflow,
 		headSha,
 		branch,

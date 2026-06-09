@@ -71,6 +71,7 @@ import {
 	syncBranchWithOrigin,
 } from '../operations/services/git-workflow.ts';
 import { resolveGitHubRepositorySlug } from '../operations/services/github-automation.ts';
+import { resolveGitHubCredentialForRepository } from '../operations/services/github-credentials.ts';
 import { dispatchGitHubWorkflowRun } from '../operations/services/github-api.ts';
 import {
 	formatGitHubActionsGateFailure,
@@ -527,6 +528,7 @@ async function waitForWorkflowGates(
 		}
 		const result = await waitForGitHubActionsGate(gate, {
 			operation,
+			env: githubWorkflowGateEnv(options.root, gate),
 			onProgress: options.onProgress,
 		});
 		const normalized = {
@@ -549,6 +551,24 @@ async function waitForWorkflowGates(
 		results.push(normalized);
 	}
 	return results;
+}
+
+function githubWorkflowGateEnv(root: string | undefined, gate: GitHubActionsWorkflowGate) {
+	if (!root) return process.env;
+	try {
+		const repository = gate.repository ?? resolveGitHubRepositorySlug(gate.repoPath);
+		const scope = gate.branch === PRODUCTION_BRANCH ? 'prod' : 'staging';
+		const values = resolveTreeseedMachineEnvironmentValues(root, scope);
+		const credential = resolveGitHubCredentialForRepository(repository, { values, env: process.env });
+		if (!credential.token) return process.env;
+		return {
+			...process.env,
+			GH_TOKEN: credential.token,
+			GITHUB_TOKEN: credential.token,
+		};
+	} catch {
+		return process.env;
+	}
 }
 
 const HOSTED_DEPLOY_GATE_TIMEOUT_SECONDS = 45 * 60;
