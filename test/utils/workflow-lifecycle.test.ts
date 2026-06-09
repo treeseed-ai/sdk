@@ -60,11 +60,61 @@ slug: demo
 siteUrl: https://demo.example.com
 contactEmail: demo@example.com
 hosting:
-  kind: hosted_project
+  kind: treeseed_control_plane
   teamId: demo-team
   projectId: demo-project
+runtime:
+  mode: treeseed_managed
 cloudflare:
   accountId: replace-with-cloudflare-account-id
+surfaces:
+  web:
+    enabled: true
+    provider: cloudflare
+    rootDir: .
+    environments:
+      staging:
+        domain: staging.demo.example.com
+      prod:
+        domain: demo.example.com
+services:
+  api:
+    enabled: true
+    provider: railway
+    rootDir: packages/api
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api
+      rootDir: packages/api
+      buildCommand: npm run build
+      startCommand: npm run start:api
+      healthcheckPath: /healthz
+  operationsRunner:
+    enabled: true
+    provider: railway
+    rootDir: packages/api
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
+      rootDir: packages/api
+      buildCommand: npm run build
+      startCommand: npm run start:runner
+      healthcheckPath: /healthz
+      runtimeMode: service
+      volumeMountPath: /data
+      runnerPool:
+        bootstrapCount: 1
+        maxRunners: 4
+        volumeMountPath: /data
+  treeseedDatabase:
+    enabled: true
+    provider: railway
+    railway:
+      resourceType: postgres
+      serviceName: treeseed-api-postgres
+      serviceTargets:
+        - api
+        - operationsRunner
 providers:
   deploy: cloudflare
 `, 'utf8');
@@ -123,11 +173,67 @@ function createMachineConfigForWorkflowRepo(root: string) {
 			siteUrl: 'https://demo.example.com',
 			contactEmail: 'demo@example.com',
 			hosting: {
-				kind: 'hosted_project',
+				kind: 'treeseed_control_plane',
 				teamId: 'demo-team',
 				projectId: 'demo-project',
 			},
+			runtime: { mode: 'treeseed_managed' },
 			cloudflare: { accountId: 'replace-with-cloudflare-account-id' },
+			surfaces: {
+				web: {
+					enabled: true,
+					provider: 'cloudflare',
+					rootDir: '.',
+					environments: {
+						staging: { domain: 'staging.demo.example.com' },
+						prod: { domain: 'demo.example.com' },
+					},
+				},
+			},
+			services: {
+				api: {
+					enabled: true,
+					provider: 'railway',
+					rootDir: 'packages/api',
+					railway: {
+						projectName: 'treeseed-api',
+						serviceName: 'treeseed-api',
+						rootDir: 'packages/api',
+						buildCommand: 'npm run build',
+						startCommand: 'npm run start:api',
+						healthcheckPath: '/healthz',
+					},
+				},
+				operationsRunner: {
+					enabled: true,
+					provider: 'railway',
+					rootDir: 'packages/api',
+					railway: {
+						projectName: 'treeseed-api',
+						serviceName: 'treeseed-api-operations-runner-01',
+						rootDir: 'packages/api',
+						buildCommand: 'npm run build',
+						startCommand: 'npm run start:runner',
+						healthcheckPath: '/healthz',
+						runtimeMode: 'service',
+						volumeMountPath: '/data',
+						runnerPool: {
+							bootstrapCount: 1,
+							maxRunners: 4,
+							volumeMountPath: '/data',
+						},
+					},
+				},
+				treeseedDatabase: {
+					enabled: true,
+					provider: 'railway',
+					railway: {
+						resourceType: 'postgres',
+						serviceName: 'treeseed-api-postgres',
+						serviceTargets: ['api', 'operationsRunner'],
+					},
+				},
+			},
 			providers: { deploy: 'cloudflare' },
 		} as any,
 		tenantConfig: { id: 'demo' } as any,
