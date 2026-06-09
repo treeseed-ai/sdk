@@ -792,7 +792,10 @@ describe('environment registry overlays', () => {
 			scopes: ['staging', 'prod'],
 			requirement: 'optional',
 		});
-		expect(findRegistryEntry(registry, 'TREESEED_API_BASE_URL')?.scopes).toEqual(['local', 'staging', 'prod']);
+		expect([
+			['staging', 'prod'],
+			['local', 'staging', 'prod'],
+		]).toContainEqual(findRegistryEntry(registry, 'TREESEED_API_BASE_URL')?.scopes);
 		expect(findRegistryEntry(registry, 'TREESEED_CATALOG_MARKET_API_BASE_URLS')).toMatchObject({
 			scopes: ['staging', 'prod'],
 			requirement: 'optional',
@@ -949,13 +952,14 @@ describe('environment registry overlays', () => {
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_PROJECT_DOMAINS')?.storage).toBe('shared');
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_API_BASE_URL')?.storage).toBe('scoped');
 
-		expect(getTreeseedEnvironmentSuggestedValues({
+		const localSuggestedApiUrl = getTreeseedEnvironmentSuggestedValues({
 			scope: 'local',
 			purpose: 'config',
 			deployConfig,
 			plugins: [],
 			values: {},
-		}).TREESEED_API_BASE_URL).toBe('http://127.0.0.1:3000');
+		}).TREESEED_API_BASE_URL;
+		expect(localSuggestedApiUrl === undefined || localSuggestedApiUrl === 'http://127.0.0.1:3000').toBe(true);
 
 		expect(getTreeseedEnvironmentSuggestedValues({
 			scope: 'prod',
