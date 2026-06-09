@@ -989,7 +989,9 @@ async function runNpmInstallWithRetry(
 	let lastError: string | null = null;
 	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
 	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
-	const installFlags = ['--package-lock-only', '--ignore-scripts'];
+	const installFlags = node.branchMode === 'project-save'
+		? ['--ignore-scripts']
+		: ['--package-lock-only', '--ignore-scripts'];
 	const args = rootWorkspaceInstall
 		? (gitDependencyRefreshSpecs.length > 0 ? ['install', ...gitDependencyRefreshSpecs, ...installFlags, '--force'] : ['install', ...installFlags])
 		: (gitDependencyRefreshSpecs.length > 0
@@ -1015,7 +1017,7 @@ async function runProjectVerificationInstallWithRetry(
 	node: RepositorySaveNode,
 	options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>,
 ) {
-	if (node.kind === 'package' || !hasNpmLockfile(node.path)) return;
+	if (node.branchMode !== 'project-save' || !hasNpmLockfile(node.path)) return;
 	if (shouldSkipNetworkInstall()) {
 		emitProgress(options, node, 'install', 'Skipped project verification dependency install because network install mode is disabled.');
 		return;
