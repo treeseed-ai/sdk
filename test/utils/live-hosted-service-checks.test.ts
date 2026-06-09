@@ -44,7 +44,7 @@ services:
       buildCommand: npm run build
       startCommand: npm run start:api
       healthcheckPath: /healthz
-  apiDatabase:
+  treeseedDatabase:
     enabled: true
     provider: railway
     railway:

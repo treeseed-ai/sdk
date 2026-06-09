@@ -57,7 +57,7 @@ surfaces:
       prod:
         domain: api.destroy.example.com
 services:
-  apiDatabase:
+  treeseedDatabase:
     enabled: true
     provider: railway
     railway:

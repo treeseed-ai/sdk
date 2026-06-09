@@ -122,7 +122,7 @@ describe('project platform workflow actions', () => {
 		}
 	});
 
-	it('does not manually create replacement volumes for Railway Postgres plugin services', () => {
+	it('reconciles Railway Postgres volume naming through the API and reports provider limitations', () => {
 		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
 		const databaseStart = source.indexOf('async function ensureRailwayMarketDatabaseForScope');
 		const databaseEnd = source.indexOf('async function observeRailwayUnit', databaseStart);
@@ -130,8 +130,9 @@ describe('project platform workflow actions', () => {
 
 		expect(databaseStart).toBeGreaterThanOrEqual(0);
 		expect(databaseEnd).toBeGreaterThan(databaseStart);
-		expect(databaseSource).toContain('Railway Postgres creates and owns its backing volume asynchronously');
-		expect(databaseSource).not.toContain('await ensureRailwayServiceVolume({');
+		expect(databaseSource).toContain('await ensureRailwayServiceVolume({');
+		expect(databaseSource).toContain("mountPath: '/var/lib/postgresql/data'");
+		expect(databaseSource).toContain('Railway provider limitation while reconciling PostgreSQL volume name');
 	});
 
 	it('uses the Railway API volume path for Treeseed operations runner reconciliation', () => {
@@ -143,7 +144,7 @@ describe('project platform workflow actions', () => {
 		expect(syncStart).toBeGreaterThanOrEqual(0);
 		expect(syncEnd).toBeGreaterThan(syncStart);
 		expect(syncSource).toContain('await ensureRailwayServiceVolume({');
-		expect(syncSource).toContain("deriveRailwayOperationsRunnerVolumeName(entry.service.name, entry.environment.name)");
+		expect(syncSource).toContain('const volumeName = `${entry.service.name}-volume`;');
 		expect(syncSource).toContain('Railway API volume reconciliation did not mount');
 		expect(syncSource).not.toContain('ensureRailwayServiceVolumeWithCliFallback');
 		expect(syncSource).not.toContain('runRailway(');

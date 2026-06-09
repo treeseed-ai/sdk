@@ -54,7 +54,7 @@ services:
         bootstrapCount: 1
         maxRunners: 4
         volumeMountPath: /data
-  apiDatabase:
+  treeseedDatabase:
     enabled: true
     provider: railway
     railway:
@@ -104,6 +104,6 @@ describe('deployment readiness', () => {
 			tenantRoot: rootWith(config().replace('        - operationsRunner', '')),
 			environment: 'staging',
 		});
-		expect(byId(report, 'hosting:apiDatabase:serviceTargets')).toMatchObject({ status: 'failed' });
+		expect(byId(report, 'hosting:treeseedDatabase:serviceTargets')).toMatchObject({ status: 'failed' });
 	});
 });

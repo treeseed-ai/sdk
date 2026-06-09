@@ -94,7 +94,7 @@ services:
       volumeMountPath: /data
       runnerPool:
         bootstrapCount: 1
-  apiDatabase:
+  treeseedDatabase:
     enabled: true
     provider: railway
     railway:
@@ -134,7 +134,7 @@ surfaces:
       prod:
         domain: treeseed.ai
 services:
-  apiDatabase:
+  treeseedDatabase:
     enabled: true
     provider: railway
     railway:
@@ -191,7 +191,7 @@ describe('hosting graph', () => {
 			'web',
 			'api',
 			'operationsRunner',
-			'apiDatabase',
+			'treeseedDatabase',
 			'public-treedx-node-01',
 		]));
 		expect(graph.units.find((unit) => unit.id === 'api')).toMatchObject({
@@ -208,7 +208,7 @@ describe('hosting graph', () => {
 		const web = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging', appId: 'web' });
 		const api = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging', appId: 'api' });
 		expect(web.units.map((unit) => unit.id)).toEqual(['web']);
-		expect(api.units.map((unit) => unit.id)).toEqual(expect.arrayContaining(['api', 'operationsRunner', 'apiDatabase']));
+		expect(api.units.map((unit) => unit.id)).toEqual(expect.arrayContaining(['api', 'operationsRunner', 'treeseedDatabase']));
 		expect(api.units.find((unit) => unit.id === 'api')?.config.rootDir).toBe('.');
 	});
 
@@ -246,7 +246,7 @@ describe('hosting graph', () => {
 
 		expect(graph.units.find((unit) => unit.id === 'web')?.host.id).toBe('local-process');
 		expect(graph.units.find((unit) => unit.id === 'api')?.host.id).toBe('local-process');
-		expect(graph.units.find((unit) => unit.id === 'apiDatabase')?.host.id).toBe('local-docker');
+		expect(graph.units.find((unit) => unit.id === 'treeseedDatabase')?.host.id).toBe('local-docker');
 		expect(graph.units.find((unit) => unit.id === 'operationsRunner')?.host.id).toBe('local-docker');
 		expect(graph.units.find((unit) => unit.id === 'public-treedx-node-01')?.host.id).toBe('local-docker');
 	});
@@ -422,8 +422,8 @@ describe('hosting graph', () => {
 
 	it('exposes built-in adapter contract methods for every default host', () => {
 		for (const adapter of Object.values(createDefaultHostAdapters())) {
-			expect(typeof adapter.observe).toBe('function');
-			expect(typeof adapter.plan).toBe('function');
+			expect(typeof adapter.refresh).toBe('function');
+			expect(typeof adapter.diff).toBe('function');
 			expect(typeof adapter.apply).toBe('function');
 			expect(typeof adapter.verify).toBe('function');
 			expect(typeof adapter.status).toBe('function');

@@ -49,7 +49,7 @@ surfaces:
       prod:
         domain: api.treeseed.ai
 services:
-  apiDatabase:
+  treeseedDatabase:
     enabled: true
     provider: railway
     railway:
@@ -153,7 +153,7 @@ describe('hosted service checks', () => {
 		expect(byId(report, 'railway:api:startCommand')).toMatchObject({ status: 'passed', expected: { startCommand: 'npm run start:api' } });
 		expect(byId(report, 'railway:operationsRunner:1:startCommand')).toMatchObject({ status: 'passed', expected: { startCommand: 'npm run start:runner' } });
 		expect(byId(report, 'railway:operationsRunner:1:volume')).toMatchObject({ status: 'passed', expected: { volumeMountPath: '/data' } });
-		expect(byId(report, 'railway:apiDatabase:targets')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'railway:treeseedDatabase:targets')).toMatchObject({ status: 'passed' });
 	});
 
 	it('detects Railway drift and missing required service values without leaking secret values', () => {

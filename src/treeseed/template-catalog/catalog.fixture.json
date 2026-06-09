@@ -704,7 +704,7 @@
         "resources": [
           {
             "kind": "resource",
-            "key": "marketDatabase",
+            "key": "treeseedDatabase",
             "type": "database",
             "required": true,
             "compatibleProviders": [
@@ -715,27 +715,27 @@
             "configWrites": [
               {
                 "target": "treeseed.site.yaml",
-                "path": "services.marketDatabase.enabled",
+                "path": "services.treeseedDatabase.enabled",
                 "valueFrom": "literal.true"
               },
               {
                 "target": "treeseed.site.yaml",
-                "path": "services.marketDatabase.provider",
+                "path": "services.treeseedDatabase.provider",
                 "valueFrom": "literal.railway"
               },
               {
                 "target": "treeseed.site.yaml",
-                "path": "services.marketDatabase.railway.resourceType",
+                "path": "services.treeseedDatabase.railway.resourceType",
                 "valueFrom": "literal.postgres"
               },
               {
                 "target": "treeseed.site.yaml",
-                "path": "services.marketDatabase.railway.serviceName",
+                "path": "services.treeseedDatabase.railway.serviceName",
                 "valueFrom": "selectedResource.configValues.serviceName"
               },
               {
                 "target": "treeseed.site.yaml",
-                "path": "services.marketDatabase.railway.environmentVariable",
+                "path": "services.treeseedDatabase.railway.environmentVariable",
                 "valueFrom": "literal.TREESEED_DATABASE_URL"
               }
             ],
@@ -809,33 +809,33 @@
           },
           {
             "kind": "resource",
-            "key": "marketOperationsRunner",
+            "key": "operationsRunner",
             "type": "service",
             "required": true,
             "compatibleProviders": [
               "railway"
             ],
-            "displayName": "Market operations runner",
-            "purpose": "Run the governed Market operations runner for queued control-plane operations.",
+            "displayName": "Treeseed operations runner",
+            "purpose": "Run the governed Treeseed operations runner for queued control-plane operations.",
             "configWrites": [
               {
                 "target": "treeseed.site.yaml",
-                "path": "services.marketOperationsRunner.enabled",
+                "path": "services.operationsRunner.enabled",
                 "valueFrom": "literal.true"
               },
               {
                 "target": "treeseed.site.yaml",
-                "path": "services.marketOperationsRunner.provider",
+                "path": "services.operationsRunner.provider",
                 "valueFrom": "literal.railway"
               },
               {
                 "target": "treeseed.site.yaml",
-                "path": "services.marketOperationsRunner.railway.serviceName",
+                "path": "services.operationsRunner.railway.serviceName",
                 "valueFrom": "selectedResource.configValues.serviceName"
               },
               {
                 "target": "treeseed.site.yaml",
-                "path": "services.marketOperationsRunner.railway.startCommand",
+                "path": "services.operationsRunner.railway.startCommand",
                 "valueFrom": "literal.node dist/operations-runner/runner.js"
               }
             ],

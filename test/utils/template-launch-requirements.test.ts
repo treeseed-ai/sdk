@@ -36,7 +36,7 @@ describe('template launch requirements', () => {
 		expect(marketTemplate.status).toBe('draft');
 		expect(launchRequirements?.hosts?.map((host) => host.key)).toEqual(['sourceRepository', 'publicWeb']);
 		expect(launchRequirements?.resources?.map((resource) => resource.key)).toEqual([
-			'apiDatabase',
+			'treeseedDatabase',
 			'api',
 			'operationsRunner',
 		]);
@@ -76,7 +76,7 @@ describe('template launch requirements', () => {
 		expect(() => normalizeTemplateLaunchRequirements({
 			resources: [{
 				kind: 'resource',
-				key: 'apiDatabase',
+				key: 'treeseedDatabase',
 				type: 'database',
 				required: true,
 				compatibleProviders: ['railway-postgres'],
@@ -461,13 +461,13 @@ describe('template launch requirements', () => {
 					managedHostKey: 'treeseed-managed-web',
 					mode: 'treeseed_managed',
 				},
-				apiDatabase: {
-					requirementKey: 'apiDatabase',
+				treeseedDatabase: {
+					requirementKey: 'treeseedDatabase',
 					requirementKind: 'resource',
 					type: 'database',
 					provider: 'railway-postgres',
 					hostId: 'railway-postgres-main',
-					displayName: 'Market Postgres',
+					displayName: 'Treeseed Postgres',
 					configValues: { serviceName: 'treeseed-api-postgres' },
 					secretRefs: { databaseUrl: 'railway.database-url' },
 				},
@@ -490,7 +490,7 @@ describe('template launch requirements', () => {
 					displayName: 'Treeseed Operations Runner',
 					configValues: { serviceName: 'treeseed-api-operations-runner-01' },
 					environmentValues: { runnerId: 'runner-staging' },
-					secretRefs: { databaseUrl: 'railway.database-url', runnerToken: 'market.runner-token' },
+					secretRefs: { databaseUrl: 'railway.database-url', runnerToken: 'treeseed.runner-token' },
 				},
 			},
 			repositoryHosts: [{
@@ -514,13 +514,13 @@ describe('template launch requirements', () => {
 			selectedAt: '2026-06-02T00:00:00.000Z',
 		});
 
-		expect(result.hostBindings.apiDatabase).toMatchObject({
+		expect(result.hostBindings.treeseedDatabase).toMatchObject({
 			requirementKind: 'resource',
 			type: 'database',
 			provider: 'railway-postgres',
 		});
 		expect(result.configWritePlan.map((write) => write.path)).toEqual(expect.arrayContaining([
-			'services.apiDatabase.provider',
+			'services.treeseedDatabase.provider',
 			'services.api.railway.serviceName',
 			'services.operationsRunner.railway.serviceName',
 		]));
@@ -536,7 +536,7 @@ describe('template launch requirements', () => {
 			launchRequirements: normalizeTemplateLaunchRequirements({
 				resources: [{
 					kind: 'resource',
-					key: 'apiDatabase',
+					key: 'treeseedDatabase',
 					type: 'database',
 					required: true,
 					compatibleProviders: ['railway-postgres'],
@@ -547,8 +547,8 @@ describe('template launch requirements', () => {
 			}),
 			standardProjectLaunch: false,
 			hostBindings: {
-				apiDatabase: {
-					requirementKey: 'apiDatabase',
+				treeseedDatabase: {
+					requirementKey: 'treeseedDatabase',
 					requirementKind: 'resource',
 					type: 'service',
 					provider: 'railway',

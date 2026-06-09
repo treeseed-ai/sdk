@@ -792,7 +792,7 @@ describe('environment registry overlays', () => {
 			scopes: ['staging', 'prod'],
 			requirement: 'optional',
 		});
-		expect(findRegistryEntry(registry, 'TREESEED_API_BASE_URL')?.scopes).toEqual(['staging', 'prod']);
+		expect(findRegistryEntry(registry, 'TREESEED_API_BASE_URL')?.scopes).toEqual(['local', 'staging', 'prod']);
 		expect(findRegistryEntry(registry, 'TREESEED_CATALOG_MARKET_API_BASE_URLS')).toMatchObject({
 			scopes: ['staging', 'prod'],
 			requirement: 'optional',
@@ -812,7 +812,7 @@ describe('environment registry overlays', () => {
 			values: {
 				TREESEED_CENTRAL_MARKET_API_BASE_URL: 'https://staging-market.example.com',
 			},
-		}).TREESEED_CATALOG_MARKET_API_BASE_URLS).toBe('https://staging-market.example.com');
+		}).TREESEED_CATALOG_MARKET_API_BASE_URLS).toBe('https://api.example.com');
 	});
 
 	it('suggests local GitHub repository metadata from origin when present', async () => {

@@ -196,13 +196,13 @@ describe('template host binding config writer', () => {
 		const result = applyProjectLaunchHostBindingConfig({
 			projectRoot: root,
 			hostBindings: {
-				apiDatabase: resolvedHost({
-					requirementKey: 'apiDatabase',
+				treeseedDatabase: resolvedHost({
+					requirementKey: 'treeseedDatabase',
 					requirementKind: 'resource',
 					type: 'database',
 					provider: 'railway-postgres',
 					hostId: 'railway-postgres-main',
-					displayName: 'Market Postgres',
+					displayName: 'Treeseed Postgres',
 					configValues: { serviceName: 'treeseed-api-postgres' },
 					secretRefs: { databaseUrl: 'railway.database-url-ref' },
 				}),
@@ -231,27 +231,27 @@ describe('template host binding config writer', () => {
 				configWrites: [
 					{
 						target: 'treeseed.site.yaml',
-						path: 'services.apiDatabase.enabled',
+						path: 'services.treeseedDatabase.enabled',
 						valueFrom: 'literal.true',
-						requirementKey: 'apiDatabase',
+						requirementKey: 'treeseedDatabase',
 						requirementKind: 'resource',
 						requirementType: 'database',
 						provider: 'railway-postgres',
 					},
 					{
 						target: 'treeseed.site.yaml',
-						path: 'services.apiDatabase.provider',
+						path: 'services.treeseedDatabase.provider',
 						valueFrom: 'literal.railway',
-						requirementKey: 'apiDatabase',
+						requirementKey: 'treeseedDatabase',
 						requirementKind: 'resource',
 						requirementType: 'database',
 						provider: 'railway-postgres',
 					},
 					{
 						target: 'treeseed.site.yaml',
-						path: 'services.apiDatabase.railway.serviceName',
+						path: 'services.treeseedDatabase.railway.serviceName',
 						valueFrom: 'selectedResource.configValues.serviceName',
-						requirementKey: 'apiDatabase',
+						requirementKey: 'treeseedDatabase',
 						requirementKind: 'resource',
 						requirementType: 'database',
 						provider: 'railway-postgres',
@@ -278,7 +278,7 @@ describe('template host binding config writer', () => {
 				secretDeployment: {
 					items: [
 						{
-							requirementKey: 'apiDatabase',
+							requirementKey: 'treeseedDatabase',
 							requirementKind: 'resource',
 							env: 'TREESEED_DATABASE_URL',
 							sensitivity: 'secret',
@@ -304,7 +304,7 @@ describe('template host binding config writer', () => {
 
 		const config = parseYaml(readFileSync(resolve(root, 'treeseed.site.yaml'), 'utf8')) as any;
 		const overlay = parseYaml(readFileSync(resolve(root, 'src/env.yaml'), 'utf8')) as any;
-		expect(config.services.apiDatabase).toMatchObject({
+		expect(config.services.treeseedDatabase).toMatchObject({
 			enabled: true,
 			provider: 'railway',
 			railway: { serviceName: 'treeseed-api-postgres' },
@@ -313,7 +313,7 @@ describe('template host binding config writer', () => {
 		expect(config.services.operationsRunner.railway.serviceName).toBe('treeseed-api-operations-runner-01');
 		expect(overlay.entries.TREESEED_DATABASE_URL).toMatchObject({
 			sensitivity: 'secret',
-			sourceRequirement: 'apiDatabase',
+			sourceRequirement: 'treeseedDatabase',
 			sourceHostType: 'database',
 			sourceProvider: 'railway-postgres',
 		});
@@ -322,7 +322,7 @@ describe('template host binding config writer', () => {
 			sourceHostType: 'service',
 			sourceProvider: 'railway',
 		});
-		expect(result.configWrites.map((write) => write.path)).toContain('services.apiDatabase.railway.serviceName');
+		expect(result.configWrites.map((write) => write.path)).toContain('services.treeseedDatabase.railway.serviceName');
 		expect(JSON.stringify({ config, overlay, result })).not.toContain('postgres://');
 		expect(JSON.stringify({ config, overlay, result })).not.toContain('runner-secret');
 	});
