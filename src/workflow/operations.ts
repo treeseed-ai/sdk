@@ -120,6 +120,7 @@ import {
 	type SaveVerifyMode,
 	type ReleaseBumpLevel,
 } from '../operations/services/repository-save-orchestrator.ts';
+import { discoverTreeseedPackageAdapters } from '../operations/services/package-adapters.ts';
 import {
 	assertNoInternalDevReferences,
 	cleanupStaleTreeseedDevTags,
@@ -1670,16 +1671,24 @@ function findAutoResumableSaveRun(root: string, branch: string | null) {
 		&& journal.session.branchName === branch) ?? null;
 }
 
-function gatesForSavedPackageReports(reports: RepositorySaveReport[]) {
+function gatesForSavedPackageReports(root: string, reports: RepositorySaveReport[]) {
+	const adapterByPath = new Map(discoverTreeseedPackageAdapters(root).map((adapter) => [resolve(adapter.dir), adapter]));
 	return reports
-		.filter((repo) => repo.pushed && repo.commitSha && repo.branch)
+		.filter((repo) => repo.pushed && repo.commitSha && repo.branch && (repo.committed || repo.tagName))
 		.map((repo) => ({
 			name: repo.name,
 			repoPath: repo.path,
-			workflow: 'verify.yml',
+			workflow: packageHostedVerifyWorkflow(adapterByPath.get(resolve(repo.path))) ?? 'verify.yml',
 			branch: String(repo.branch),
 			headSha: String(repo.commitSha),
 		}));
+}
+
+function packageHostedVerifyWorkflow(adapter: ReturnType<typeof discoverTreeseedPackageAdapters>[number] | undefined) {
+	const workflow = adapter?.metadata?.hostedVerifyWorkflow;
+	return typeof workflow === 'string' && workflow.trim()
+		? workflow.trim().replace(/^\.github\/workflows\//u, '')
+		: null;
 }
 
 function gateForSavedRootReport(report: RepositorySaveReport, branch: string | null, scope: string) {
@@ -3894,7 +3903,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 											? waveRootRepo
 											: null;
 										const gates = [
-											...gatesForSavedPackageReports(packageReportsForWave),
+											...gatesForSavedPackageReports(root, packageReportsForWave),
 											...(rootReportForWave ? gateForSavedRootReport(rootReportForWave, branch, scope) : []),
 										];
 										if (gates.length === 0) {

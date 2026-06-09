@@ -216,6 +216,8 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 	const developmentImageWorkflow = image
 		? stringValue(developmentImages.workflow) ?? (id === 'treedx' ? 'dev-image.yml' : null)
 		: null;
+	const hostedVerifyWorkflow = stringValue(stringRecord(manifest?.releaseGate).workflow)
+		?? (existsSync(resolve(dir, '.github/workflows/release-gate.yml')) ? 'release-gate.yml' : null);
 	const developmentImageDefaultBranch = stringValue(developmentImages.defaultBranch) ?? 'staging';
 	const developmentImageTagPrefix = stringValue(developmentImages.tagPrefix) ?? 'dev';
 	const developmentImageMovingTag = developmentImages.movingTag === false ? false : true;
@@ -264,6 +266,13 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 					developmentImageTagPattern: `${image}:${developmentImageTagPrefix}-<branch-slug>-<short-sha>`,
 					developmentImageMovingTagPattern: developmentImageMovingTag ? `${image}:${developmentImageTagPrefix}-<branch-slug>` : null,
 					developmentImageHosting: Object.keys(developmentImageHosting).length > 0 ? developmentImageHosting : null,
+				}
+				: {}),
+			...(hostedVerifyWorkflow
+				? {
+					hostedVerifyWorkflow: hostedVerifyWorkflow.startsWith('.github/workflows/')
+						? hostedVerifyWorkflow
+						: `.github/workflows/${hostedVerifyWorkflow}`,
 				}
 				: {}),
 		},
