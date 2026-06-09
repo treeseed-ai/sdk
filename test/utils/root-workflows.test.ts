@@ -63,7 +63,6 @@ describe('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('TREESEED_BETTER_AUTH_SECRET');
 		expect(webSource).toContain('TREESEED_WEB_SERVICE_SECRET');
 		expect(webSource).toContain('TREESEED_API_WEB_SERVICE_SECRET');
-		expect(webSource).toContain('TREESEED_PLATFORM_RUNNER_SECRET');
 		expect(webSource).toContain('TREESEED_HOSTED_HUBS_GITHUB_TOKEN');
 		expect(webSource).toContain('GH_TOKEN: ${{ secrets.TREESEED_HOSTED_HUBS_GITHUB_TOKEN }}');
 		expect(webSource).toContain('GITHUB_TOKEN: ${{ secrets.TREESEED_HOSTED_HUBS_GITHUB_TOKEN }}');
@@ -75,8 +74,10 @@ describe('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('pids["${dir}"]="$!"');
 		expect(webSource).toContain('npm ci --ignore-scripts');
 		expect(webSource).toContain('node ./packages/sdk/scripts/run-ts.mjs ./packages/sdk/scripts/install-managed-dependencies.ts');
-		expect(webSource).toContain('RAILWAY_API_TOKEN');
-		expect(webSource).toContain('TREESEED_RAILWAY_PROJECT_ID');
+			expect(webSource).not.toContain('RAILWAY_API_TOKEN');
+			expect(webSource).not.toContain('TREESEED_RAILWAY_PROJECT_ID');
+			expect(webSource).not.toContain('TREESEED_PLATFORM_RUNNER_SECRET');
+			expect(webSource).not.toContain('TREESEED_CREDENTIAL_SESSION_SECRET');
 		expect(webSource).not.toContain('TREESEED_WORKER_POOL_SCALER');
 		expect(source).not.toContain('migrations/*');
 		expect(source).toContain('packages/api');

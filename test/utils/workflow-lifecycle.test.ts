@@ -155,7 +155,7 @@ function writePackageFiles(root: string, dirName: string, dependencies: Record<s
 		mkdirSync(resolve(root, 'drizzle', 'd1'), { recursive: true });
 		mkdirSync(resolve(root, 'drizzle', 'market'), { recursive: true });
 		writeFileSync(resolve(root, 'drizzle', 'd1', '0000_treeseed_d1.sql'), '-- d1 schema\n', 'utf8');
-		writeFileSync(resolve(root, 'drizzle', 'market', '0000_treeseed_control_plane.sql'), '-- market pg schema\n', 'utf8');
+			writeFileSync(resolve(root, 'drizzle', 'market', '0000_market_control_plane.sql'), '-- market pg schema\n', 'utf8');
 	} else if (dirName === 'core') {
 		mkdirSync(resolve(root, 'dist'), { recursive: true });
 		writeFileSync(resolve(root, 'dist', 'api.js'), 'export {};\n', 'utf8');

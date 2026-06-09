@@ -51,7 +51,7 @@ function makeWorkspace() {
 	}, null, 2), 'utf8');
 	writeFileSync(resolve(root, 'packages', 'sdk', '.github', 'workflows', 'publish.yml'), 'name: Publish\n', 'utf8');
 	writeFileSync(resolve(root, 'packages', 'sdk', 'drizzle', 'd1', '0000_treeseed_d1.sql'), '-- d1 schema\n', 'utf8');
-	writeFileSync(resolve(root, 'packages', 'sdk', 'drizzle', 'market', '0000_treeseed_control_plane.sql'), '-- market pg schema\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'sdk', 'drizzle', 'market', '0000_market_control_plane.sql'), '-- market pg schema\n', 'utf8');
 	return root;
 }
 

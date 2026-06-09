@@ -731,7 +731,7 @@ function migrationCompatibilityChecks(root: string, failures: ReleaseCandidateFa
 	}
 	const requiredArtifacts = [
 		'packages/sdk/drizzle/d1/0000_treeseed_d1.sql',
-		'packages/sdk/drizzle/market/0000_treeseed_control_plane.sql',
+		'packages/sdk/drizzle/market/0000_market_control_plane.sql',
 	];
 	const missing = requiredArtifacts.filter((path) => !existsSync(resolve(root, path)));
 	for (const path of missing) {
