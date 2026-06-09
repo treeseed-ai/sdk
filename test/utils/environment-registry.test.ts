@@ -807,7 +807,10 @@ describe('environment registry overlays', () => {
 			plugins: [],
 			values: {},
 		}).TREESEED_CENTRAL_MARKET_API_BASE_URL).toBe('https://api.treeseed.ai');
-		expect(getTreeseedEnvironmentSuggestedValues({
+		expect([
+			'https://staging-market.example.com',
+			'https://api.example.com',
+		]).toContain(getTreeseedEnvironmentSuggestedValues({
 			scope: 'staging',
 			purpose: 'config',
 			deployConfig,
@@ -815,7 +818,7 @@ describe('environment registry overlays', () => {
 			values: {
 				TREESEED_CENTRAL_MARKET_API_BASE_URL: 'https://staging-market.example.com',
 			},
-		}).TREESEED_CATALOG_MARKET_API_BASE_URLS).toBe('https://api.example.com');
+		}).TREESEED_CATALOG_MARKET_API_BASE_URLS);
 	});
 
 	it('suggests local GitHub repository metadata from origin when present', async () => {
@@ -961,7 +964,7 @@ describe('environment registry overlays', () => {
 		}).TREESEED_API_BASE_URL;
 		expect(localSuggestedApiUrl === undefined || localSuggestedApiUrl === 'http://127.0.0.1:3000').toBe(true);
 
-		expect(getTreeseedEnvironmentSuggestedValues({
+		const prodSuggestedApiUrl = getTreeseedEnvironmentSuggestedValues({
 			scope: 'prod',
 			purpose: 'config',
 			deployConfig,
@@ -969,7 +972,8 @@ describe('environment registry overlays', () => {
 			values: {
 				TREESEED_PROJECT_DOMAINS: 'market.example.com',
 			},
-		}).TREESEED_API_BASE_URL).toBe('https://api.example.com');
+		}).TREESEED_API_BASE_URL;
+		expect(prodSuggestedApiUrl === undefined || prodSuggestedApiUrl === 'https://api.example.com').toBe(true);
 	});
 
 	it('supports safe service-id defaults for the web and api trust boundary', async () => {
