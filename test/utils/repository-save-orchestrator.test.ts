@@ -256,6 +256,52 @@ describe('repository save orchestrator helpers', () => {
 		expect(progress.some((line) => line.startsWith('[@treeseed/demo][push] $ git push'))).toBe(true);
 	});
 
+	it('runs verification for hosted project repositories that declare verify scripts', async () => {
+		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
+		try {
+			const root = mkdtempSync(join(tmpdir(), 'treeseed-save-hosted-project-'));
+			const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-hosted-project-origin-'));
+			git(origin, ['init', '--bare']);
+			git(root, ['init', '-b', 'staging']);
+			git(root, ['config', 'user.email', 'test@example.com']);
+			git(root, ['config', 'user.name', 'Test User']);
+			git(root, ['remote', 'add', 'origin', origin]);
+			writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+				name: '@treeseed/api',
+				version: '0.4.1',
+				private: true,
+				scripts: {
+					'verify:local': 'node -e "process.exit(0)"',
+				},
+			}, null, 2), 'utf8');
+			writeFileSync(resolve(root, 'README.md'), 'initial\n', 'utf8');
+			git(root, ['add', '-A']);
+			git(root, ['commit', '-m', 'chore: initial']);
+			git(root, ['push', '-u', 'origin', 'staging']);
+
+			writeFileSync(resolve(root, 'README.md'), 'initial\nupdated\n', 'utf8');
+			const progress: string[] = [];
+			const result = await runRepositorySaveOrchestrator({
+				root,
+				gitRoot: root,
+				branch: 'staging',
+				commitMessageMode: 'fallback',
+				verifyMode: 'local-only',
+				onProgress: (line) => progress.push(line),
+			});
+
+			expect(result.rootRepo.branchMode).toBe('project-save');
+			expect(result.rootRepo.verification).toMatchObject({
+				status: 'passed',
+				primary: 'verify:local',
+			});
+			expect(progress).toContain('[@treeseed/api][verify] $ npm run verify:local');
+			expect(progress).not.toContain('[@treeseed/api][verify] Skipped package verification for project repository.');
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it('injects package summaries and submodule pointers into the root commit context', async () => {
 		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
 		try {

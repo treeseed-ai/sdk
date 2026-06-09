@@ -1105,19 +1105,19 @@ async function runRepoVerification(node: RepositorySaveNode, options: Repository
 		emitProgress(options, node, 'verify', 'Skipped verification by request.');
 		return { mode: verifyMode, status: 'skipped', primary: null, fallbackUsed: false, error: null };
 	}
-	if (node.kind !== 'package') {
-		emitProgress(options, node, 'verify', 'Skipped package verification for project repository.');
+	if (node.kind !== 'package' && !hasScript(node, 'verify:action') && !hasScript(node, 'verify:local') && !hasScript(node, 'verify')) {
+		emitProgress(options, node, 'verify', 'Skipped verification because project repository does not declare a Treeseed verify script.');
 		return { mode: verifyMode, status: 'skipped', primary: null, fallbackUsed: false, error: null };
 	}
 	if (verifyMode === 'local-only') {
 		if (!hasScript(node, 'verify:local')) {
-			throw new RepositorySaveError(`Package ${node.name} is missing required verify:local script.`);
+			throw new RepositorySaveError(`${node.kind === 'package' ? 'Package' : 'Project'} ${node.name} is missing required verify:local script.`);
 		}
 		await runCachedScript(node, options, verifyMode, 'verify:local');
 		return { mode: verifyMode, status: 'passed', primary: 'verify:local', fallbackUsed: false, error: null };
 	}
-	if (!hasScript(node, 'verify:action') && !hasScript(node, 'verify:local')) {
-		throw new RepositorySaveError(`Package ${node.name} is missing required verify:action or verify:local script.`);
+	if (!hasScript(node, 'verify:action') && !hasScript(node, 'verify:local') && !hasScript(node, 'verify')) {
+		throw new RepositorySaveError(`${node.kind === 'package' ? 'Package' : 'Project'} ${node.name} is missing required verify:action, verify:local, or verify script.`);
 	}
 	if (hasScript(node, 'verify:action')) {
 		try {
@@ -1138,7 +1138,11 @@ async function runRepoVerification(node: RepositorySaveNode, options: Repository
 			};
 		}
 	}
-	await runCachedScript(node, options, verifyMode, 'verify:local');
+	if (hasScript(node, 'verify:local')) {
+		await runCachedScript(node, options, verifyMode, 'verify:local');
+		return { mode: verifyMode, status: 'passed', primary: 'verify:local', fallbackUsed: true, error: null };
+	}
+	await runCachedScript(node, options, verifyMode, 'verify');
 	return { mode: verifyMode, status: 'passed', primary: 'verify:local', fallbackUsed: true, error: null };
 }
 
@@ -1580,15 +1584,23 @@ function repoPlanCommands(
 			? `git pull --rebase --recurse-submodules=no origin ${branch}`
 			: `skip pull --rebase # origin/${branch} does not exist yet`,
 	);
-	if (node.kind === 'package') {
-		const verifyMode = options.verifyMode ?? 'action-first';
-		if (verifyMode === 'skip') {
-			commands.push('skip package verification');
-		} else if (verifyMode === 'local-only') {
+	const verifyMode = options.verifyMode ?? 'action-first';
+	if (verifyMode === 'skip') {
+		commands.push(node.kind === 'package' ? 'skip package verification' : 'skip project verification');
+	} else if (hasScript(node, 'verify:action') || hasScript(node, 'verify:local') || hasScript(node, 'verify')) {
+		if (verifyMode === 'local-only') {
+			commands.push('npm run verify:local');
+		} else if (hasScript(node, 'verify:action')) {
+			commands.push('npm run verify:action # fallback to npm run verify:local on failure');
+		} else if (hasScript(node, 'verify:local')) {
 			commands.push('npm run verify:local');
 		} else {
-			commands.push('npm run verify:action # fallback to npm run verify:local on failure');
+			commands.push('npm run verify');
 		}
+	} else if (node.kind !== 'package') {
+		commands.push('skip verification # project repository has no Treeseed verify script');
+	}
+	if (node.kind === 'package') {
 		if (plannedVersion) {
 			commands.push(`git tag -a ${plannedVersion} -m <${plannedVersion.includes('-dev.') ? 'dev metadata' : 'release'}>`);
 			commands.push(remoteExists ? `git push origin ${branch} ${plannedVersion}` : `git push -u origin ${branch} ${plannedVersion}`);
@@ -1597,7 +1609,6 @@ function repoPlanCommands(
 			}
 		}
 	} else {
-		commands.push('skip package verification # project repository');
 		commands.push(remoteExists ? `git push origin ${branch}` : `git push -u origin ${branch}`);
 	}
 	return commands;

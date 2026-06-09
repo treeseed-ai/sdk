@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	buildReleaseCandidateFingerprint,
 	collectReleaseCandidateOutputFailures,
+	isRootWebReleaseCandidateEntry,
 	runReleaseCandidateGate,
 } from '../../src/operations/services/release-candidate.ts';
 import {
@@ -230,6 +231,27 @@ describe('release candidate verification', () => {
 			targets: ['local-runtime'],
 			storage: 'shared',
 		});
+	});
+
+	it('scopes root web release-candidate config away from API and TreeDX package secrets', () => {
+		expect(isRootWebReleaseCandidateEntry({
+			id: 'TREESEED_EDITORIAL_PREVIEW_SECRET',
+			group: 'cloudflare',
+		})).toBe(true);
+		expect(isRootWebReleaseCandidateEntry({
+			id: 'TREESEED_CREDENTIAL_SESSION_SECRET',
+			group: 'hosting',
+			serviceTargets: ['api', 'operationsRunner'],
+		})).toBe(false);
+		expect(isRootWebReleaseCandidateEntry({
+			id: 'TREEDX_JWT_HS256_SECRET',
+			group: 'railway',
+			serviceTargets: ['publicTreeDxNode'],
+		})).toBe(false);
+		expect(isRootWebReleaseCandidateEntry({
+			id: 'DOCKERHUB_TOKEN',
+			group: 'docker',
+		})).toBe(false);
 	});
 
 	it('checks BEAM package readiness without npm pack', async () => {

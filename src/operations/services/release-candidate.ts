@@ -69,6 +69,22 @@ const REHEARSAL_IGNORED_SEGMENTS = new Set([
 	'dist',
 	'node_modules',
 ]);
+const ROOT_WEB_EXCLUDED_DEPLOY_CONFIG_IDS = new Set([
+	'DOCKERHUB_TOKEN',
+	'SECRET_KEY_BASE',
+	'TREEDX_JWT_HS256_SECRET',
+	'TREESEED_CREDENTIAL_SESSION_SECRET',
+	'TREESEED_PLATFORM_RUNNER_SECRET',
+]);
+const API_APP_SERVICE_TARGETS = new Set([
+	'api',
+	'operationsRunner',
+	'marketOperationsRunner',
+	'publicTreeDxFederation',
+	'publicTreeDxNode',
+	'treedx',
+	'treeDx',
+]);
 
 function nowIso() {
 	return new Date().toISOString();
@@ -560,11 +576,28 @@ function dependencyRehearsalChecks(
 	};
 }
 
+function entryServiceTargets(entry: { serviceTargets?: unknown }) {
+	return Array.isArray(entry.serviceTargets)
+		? entry.serviceTargets.filter((target): target is string => typeof target === 'string')
+		: [];
+}
+
+export function isRootWebReleaseCandidateEntry(entry: { id: string; group?: string | null; serviceTargets?: unknown }) {
+	if (ROOT_WEB_EXCLUDED_DEPLOY_CONFIG_IDS.has(entry.id)) return false;
+	const serviceTargets = entryServiceTargets(entry);
+	if (serviceTargets.length > 0 && serviceTargets.every((target) => API_APP_SERVICE_TARGETS.has(target))) {
+		return false;
+	}
+	if (entry.group === 'docker') return false;
+	return true;
+}
+
 function localConfigCheck(root: string, scope: 'staging' | 'prod', failures: ReleaseCandidateFailure[]) {
 	try {
 		const report = validateTreeseedCommandEnvironment({ tenantRoot: root, scope, purpose: 'deploy' });
 		const problems = [...report.validation.missing, ...report.validation.invalid];
 		for (const problem of problems) {
+			if (!isRootWebReleaseCandidateEntry(problem.entry)) continue;
 			addFailure(failures, {
 				code: 'missing_local_config',
 				scope,
@@ -644,6 +677,7 @@ function expectedGitHubDeployEnvironment(root: string, scope: 'staging' | 'prod'
 	const registry = collectTreeseedEnvironmentContext(root);
 	const values = resolveTreeseedMachineEnvironmentValues(root, scope);
 	const expectedEntries = registry.entries.filter((entry) => {
+		if (!isRootWebReleaseCandidateEntry(entry)) return false;
 		if (!isTreeseedEnvironmentEntryRelevant(entry, registry.context, scope, 'deploy')) return false;
 		if (isTreeseedEnvironmentEntryRequired(entry, registry.context, scope, 'deploy')) return true;
 		return typeof values[entry.id] === 'string' && values[entry.id].trim().length > 0;
