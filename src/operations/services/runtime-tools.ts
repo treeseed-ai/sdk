@@ -618,7 +618,10 @@ function parseFallbackDeployConfig(configPath) {
 				? undefined
 				: {
 					projectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME) ?? optionalString(cloudflarePages.projectName),
-					previewProjectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME) ?? optionalString(cloudflarePages.previewProjectName),
+					previewProjectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME)
+						?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME)
+						?? optionalString(cloudflarePages.previewProjectName)
+						?? optionalString(cloudflarePages.projectName),
 					productionBranch: optionalString(cloudflarePages.productionBranch) ?? 'main',
 					stagingBranch: optionalString(cloudflarePages.stagingBranch) ?? 'staging',
 					buildOutputDir: optionalString(cloudflarePages.buildOutputDir),

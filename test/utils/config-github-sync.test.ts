@@ -52,7 +52,7 @@ cloudflare:
   accountId: account-123
   pages:
     projectName: test-site
-    previewProjectName: test-site-staging
+    previewProjectName: test-site
   r2:
     bucketName: test-site-content
     binding: TREESEED_CONTENT_BUCKET
@@ -78,7 +78,7 @@ cloudflare:
   accountId: replace-with-cloudflare-account-id
   pages:
     projectName: test-site
-    previewProjectName: test-site-staging
+    previewProjectName: test-site
   r2:
     bucketName: test-site-content
     binding: TREESEED_CONTENT_BUCKET
@@ -110,7 +110,7 @@ cloudflare:
   accountId: account-123
   pages:
     projectName: test-site
-    previewProjectName: test-site-staging
+    previewProjectName: test-site
   r2:
     bucketName: test-site-content
     binding: TREESEED_CONTENT_BUCKET
@@ -138,7 +138,7 @@ function writeDefaultMachineConfig(tenantRoot: string) {
 			hosting: { kind: 'self_hosted_project', teamId: 'acme', projectId: 'docs' },
 			cloudflare: {
 				accountId: 'account-123',
-				pages: { projectName: 'test-site', previewProjectName: 'test-site-staging' },
+				pages: { projectName: 'test-site', previewProjectName: 'test-site' },
 				r2: { bucketName: 'test-site-content', binding: 'TREESEED_CONTENT_BUCKET' },
 			},
 			services: { api: { provider: 'railway', enabled: true } },
@@ -171,7 +171,7 @@ function seedHostedValues(tenantRoot: string) {
 		setConfigValue(tenantRoot, scope, 'TREESEED_RAILWAY_WORKSPACE', 'acme-workspace');
 		setConfigValue(tenantRoot, scope, 'CLOUDFLARE_ACCOUNT_ID', 'account-123');
 		setConfigValue(tenantRoot, scope, 'TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME', 'test-site');
-		setConfigValue(tenantRoot, scope, 'TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME', 'test-site-staging');
+		setConfigValue(tenantRoot, scope, 'TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME', 'test-site');
 		setConfigValue(tenantRoot, scope, 'TREESEED_CONTENT_BUCKET_NAME', 'test-site-content');
 		setConfigValue(tenantRoot, scope, 'TREESEED_CONTENT_BUCKET_BINDING', 'TREESEED_CONTENT_BUCKET');
 		setConfigValue(tenantRoot, scope, 'TREESEED_FORM_TOKEN_SECRET', 'form-secret-value', 'secret');
@@ -243,6 +243,13 @@ describe('config GitHub environment sync', () => {
 			'staging',
 			'CLOUDFLARE_ACCOUNT_ID',
 			'account-123',
+			expect.any(Object),
+		);
+		expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
+			'owner/repo',
+			'staging',
+			'TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME',
+			'test-site',
 			expect.any(Object),
 		);
 		if (hasConfigEntry(tenantRoot, 'TREESEED_RAILWAY_WORKSPACE')) {

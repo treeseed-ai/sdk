@@ -30,7 +30,7 @@ cloudflare:
   accountId: account-123
   pages:
     projectName: audit-site
-    previewProjectName: audit-site-staging
+    previewProjectName: audit-site
   r2:
     bucketName: audit-site-content
     binding: TREESEED_CONTENT_BUCKET

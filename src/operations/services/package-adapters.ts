@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { workspacePackages, workspaceRoot } from './workspace-tools.ts';
@@ -367,8 +367,12 @@ export function discoverTreeseedPackageAdapters(root = workspaceRoot()): Treesee
 		}
 	}
 	const packagesDir = resolve(root, 'packages');
-	for (const name of ['treedx']) {
-		const dir = resolve(packagesDir, name);
+	const packageDirs = existsSync(packagesDir)
+		? readdirSync(packagesDir, { withFileTypes: true })
+			.filter((entry) => entry.isDirectory())
+			.map((entry) => resolve(packagesDir, entry.name))
+		: [];
+	for (const dir of packageDirs) {
 		if (!existsSync(dir)) continue;
 		const adapter = beamPackageAdapter(root, dir);
 		if (adapter) adapters.set(adapter.id, adapter);

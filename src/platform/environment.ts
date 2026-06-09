@@ -449,7 +449,8 @@ function resolvePagesPreviewProjectName(
 	values: Record<string, string | undefined> = {},
 ) {
 	return values.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME?.trim()
-		|| `${context.deployConfig.slug}-staging`;
+		|| context.deployConfig.cloudflare.pages?.projectName?.trim()
+		|| context.deployConfig.slug;
 }
 
 function resolveContentBucketName(context: TreeseedEnvironmentContext) {

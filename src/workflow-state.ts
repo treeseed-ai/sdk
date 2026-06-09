@@ -22,7 +22,7 @@ import {
 import { loadCliDeployConfig } from './operations/services/runtime-tools.ts';
 import { collectCliPreflight } from './operations/services/workspace-preflight.ts';
 import { collectPublicPackageReleaseLineState, currentBranch, gitStatusPorcelain } from './operations/services/workspace-save.ts';
-import { hasCompleteTreeseedPackageCheckout, isWorkspaceRoot, run, workspacePackages } from './operations/services/workspace-tools.ts';
+import { hasCompleteTreeseedPackageCheckout, isWorkspaceRoot, run } from './operations/services/workspace-tools.ts';
 import { packageAdapterPlanSummary } from './operations/services/package-adapters.ts';
 import { inspectWorkspaceDependencyMode } from './operations/services/workspace-dependency-mode.ts';
 import { inspectDetachedHeadRepair, PRODUCTION_BRANCH, STAGING_BRANCH } from './operations/services/git-workflow.ts';
@@ -616,33 +616,34 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 	const dirtyWorktree = root ? gitStatusPorcelain(root).length > 0 : false;
 	const completePackageCheckout = hasCompleteTreeseedPackageCheckout(effectiveCwd);
 	const workspaceDependencyMode = inspectWorkspaceDependencyMode(effectiveCwd);
-	const packageSyncRepos = completePackageCheckout
-		? workspacePackages(effectiveCwd)
-			.filter((pkg) => pkg.name?.startsWith('@treeseed/'))
+	const packageAdapters = workspaceRoot ? packageAdapterPlanSummary(effectiveCwd) : [];
+	const packageSyncRepos = workspaceRoot
+		? packageAdapters
 			.map((pkg) => {
-				const repoBranch = currentBranch(pkg.dir) || null;
-				const dirty = gitStatusPorcelain(pkg.dir).length > 0;
+				const packageDir = resolve(effectiveCwd, pkg.path);
+				const repoBranch = currentBranch(packageDir) || null;
+				const dirty = gitStatusPorcelain(packageDir).length > 0;
 				const expectedBranch = branchName;
 				const detachedRepair = repoBranch
 					? null
-					: inspectDetachedHeadRepair(pkg.dir, [expectedBranch, STAGING_BRANCH, PRODUCTION_BRANCH].filter((branch): branch is string => Boolean(branch)));
+					: inspectDetachedHeadRepair(packageDir, [expectedBranch, STAGING_BRANCH, PRODUCTION_BRANCH].filter((branch): branch is string => Boolean(branch)));
 				let localBranch = false;
 				if (expectedBranch) {
 					if (repoBranch === expectedBranch) {
 						localBranch = true;
 					} else {
 						try {
-							run('git', ['show-ref', '--verify', '--quiet', `refs/heads/${expectedBranch}`], { cwd: pkg.dir, capture: true });
+							run('git', ['show-ref', '--verify', '--quiet', `refs/heads/${expectedBranch}`], { cwd: packageDir, capture: true });
 							localBranch = true;
 						} catch {
 							localBranch = false;
 						}
 					}
 				}
-				const remoteBranch = Boolean(expectedBranch) ? knownRemoteTrackingBranchExists(pkg.dir, expectedBranch) : false;
+				const remoteBranch = Boolean(expectedBranch) ? knownRemoteTrackingBranchExists(packageDir, expectedBranch) : false;
 				return {
-					name: pkg.name,
-					path: pkg.relativeDir,
+					name: pkg.id,
+					path: pkg.path,
 					branchName: repoBranch,
 					dirty,
 					aligned: expectedBranch ? repoBranch === expectedBranch : true,
@@ -665,7 +666,6 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 	const packageSyncBlockers: string[] = [];
 	const packageSyncWarnings: string[] = [];
 	const packageReleaseLine = completePackageCheckout ? collectPublicPackageReleaseLineState(effectiveCwd) : null;
-	const packageAdapters = workspaceRoot ? packageAdapterPlanSummary(effectiveCwd) : [];
 	if (packageReleaseLine?.drifted) {
 		packageSyncWarnings.push(`Public package release lines are drifted: ${packageReleaseLine.packages.map((pkg) => `${pkg.name}@${pkg.version}`).join(', ')}.`);
 	}
@@ -710,8 +710,8 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 	if (root) {
 		workflowRunHeads['@treeseed/market'] = safeHeadCommit(root);
 	}
-	for (const pkg of completePackageCheckout ? workspacePackages(effectiveCwd).filter((entry) => entry.name?.startsWith('@treeseed/')) : []) {
-		workflowRunHeads[pkg.name] = safeHeadCommit(pkg.dir);
+	for (const pkg of packageAdapters) {
+		workflowRunHeads[pkg.id] = safeHeadCommit(resolve(effectiveCwd, pkg.path));
 	}
 	const classifiedRuns = classifyWorkflowRunJournals(effectiveCwd, {
 		currentBranch: branchName,

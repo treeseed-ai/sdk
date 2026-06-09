@@ -562,7 +562,14 @@ function reportForProvider({
 	};
 }
 
-async function cloudflareRequest(path: string, env: LiveEnv, fetchImpl: typeof fetch, init: RequestInit = {}) {
+interface CloudflareApiPayload {
+	success?: boolean;
+	errors?: Array<{ message?: string }>;
+	result?: unknown;
+	result_info?: { page?: number; per_page?: number; count?: number; total_count?: number; total_pages?: number };
+}
+
+async function cloudflareRequestPayload(path: string, env: LiveEnv, fetchImpl: typeof fetch, init: RequestInit = {}) {
 	const token = configuredValue(env, ['CLOUDFLARE_API_TOKEN']);
 	if (!token) throw new Error('Missing CLOUDFLARE_API_TOKEN.');
 	const response = await fetchImpl(`https://api.cloudflare.com/client/v4${path}`, {
@@ -574,13 +581,18 @@ async function cloudflareRequest(path: string, env: LiveEnv, fetchImpl: typeof f
 			...(init.headers ?? {}),
 		},
 	});
-	const payload = await response.json().catch(() => ({})) as { success?: boolean; errors?: Array<{ message?: string }>; result?: unknown };
+	const payload = await response.json().catch(() => ({})) as CloudflareApiPayload;
 	if (!response.ok || payload.success === false) {
 		const errors = Array.isArray(payload.errors)
 			? payload.errors.map((entry) => entry.message).filter(Boolean).join('; ')
 			: '';
 		throw new Error(`${response.status} ${response.statusText}${errors ? `: ${errors}` : ''}`);
 	}
+	return payload;
+}
+
+async function cloudflareRequest(path: string, env: LiveEnv, fetchImpl: typeof fetch, init: RequestInit = {}) {
+	const payload = await cloudflareRequestPayload(path, env, fetchImpl, init);
 	return payload.result;
 }
 
@@ -1101,6 +1113,17 @@ function cloudflareId(value: unknown) {
 	return '';
 }
 
+function cloudflareListItems(value: unknown, keys: string[] = []) {
+	if (Array.isArray(value)) return value;
+	if (!value || typeof value !== 'object') return [];
+	const record = value as Record<string, unknown>;
+	for (const key of [...keys, 'items', 'buckets', 'databases', 'queues', 'widgets', 'namespaces']) {
+		const candidate = record[key];
+		if (Array.isArray(candidate)) return candidate;
+	}
+	return [];
+}
+
 async function runCloudflareCleanup(cwd: string, environment: TreeseedLiveReconcileEnvironment, prefix: string, mode: TreeseedLiveReconcileMode, env: LiveEnv, fetchImpl: typeof fetch) {
 	const accountId = configuredValue(env, ['CLOUDFLARE_ACCOUNT_ID']);
 	const domain = resolveLiveTestDomain(cwd, env);
@@ -1116,6 +1139,37 @@ async function runCloudflareCleanup(cwd: string, environment: TreeseedLiveReconc
 			cleanupDrift.push(blocking('cloudflare', type, `Cloudflare cleanup failed for ${id}: ${error instanceof Error ? error.message : String(error)}`));
 		}
 	};
+	const list = async (type: string, path: string, keys: string[] = []) => {
+		try {
+			return cloudflareListItems(await cloudflareRequest(path, env, fetchImpl), keys);
+		} catch (error) {
+			cleanupDrift.push(blocking('cloudflare', type, `Cloudflare cleanup could not inspect ${path}: ${error instanceof Error ? error.message : String(error)}`));
+			return [];
+		}
+	};
+	const listPaginated = async (type: string, path: string, keys: string[] = [], perPage = 10) => {
+		const items: unknown[] = [];
+		let totalPages = 1;
+		for (let page = 1; page <= totalPages; page += 1) {
+			const separator = path.includes('?') ? '&' : '?';
+			const pagePath = `${path}${separator}page=${page}&per_page=${perPage}`;
+			try {
+				const payload = await cloudflareRequestPayload(pagePath, env, fetchImpl);
+				items.push(...cloudflareListItems(payload.result, keys));
+				const reportedTotalPages = payload.result_info?.total_pages;
+				if (typeof reportedTotalPages === 'number' && Number.isFinite(reportedTotalPages) && reportedTotalPages > totalPages) {
+					totalPages = Math.min(Math.ceil(reportedTotalPages), 100);
+				}
+			} catch (error) {
+				cleanupDrift.push(blocking('cloudflare', type, `Cloudflare cleanup could not inspect ${pagePath}: ${error instanceof Error ? error.message : String(error)}`));
+				break;
+			}
+		}
+		return items;
+	};
+	if (!configuredValue(env, ['CLOUDFLARE_API_TOKEN']) || !accountId) {
+		cleanupDrift.push(blocking('cloudflare', 'account', 'Cloudflare cleanup requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.'));
+	}
 	if (accountId && configuredValue(env, ['CLOUDFLARE_API_TOKEN'])) {
 		if (mode === 'acceptance') {
 			await attempt('worker', prefix, () => cloudflareRequest(`/accounts/${accountId}/workers/scripts/${prefix}`, env, fetchImpl, { method: 'DELETE' }).catch((error) => {
@@ -1124,49 +1178,41 @@ async function runCloudflareCleanup(cwd: string, environment: TreeseedLiveReconc
 				throw error;
 			}));
 		}
-		const workers = await cloudflareRequest(`/accounts/${accountId}/workers/services?per_page=100`, env, fetchImpl).catch(() => []) as unknown[];
-		for (const worker of Array.isArray(workers) ? workers : []) {
+		for (const worker of await list('worker', `/accounts/${accountId}/workers/services?per_page=100`)) {
 			const name = cloudflareName(worker);
 			if (name.startsWith(prefixRoot)) await attempt('worker', name, () => cloudflareRequest(`/accounts/${accountId}/workers/scripts/${name}`, env, fetchImpl, { method: 'DELETE' }));
 		}
-		const pages = await cloudflareRequest(`/accounts/${accountId}/pages/projects?per_page=100`, env, fetchImpl).catch(() => []) as unknown[];
-		for (const project of Array.isArray(pages) ? pages : []) {
+		for (const project of await listPaginated('pages', `/accounts/${accountId}/pages/projects`)) {
 			const name = cloudflareName(project);
 			if (name.startsWith(prefixRoot)) await attempt('pages', name, () => cloudflareRequest(`/accounts/${accountId}/pages/projects/${name}`, env, fetchImpl, { method: 'DELETE' }));
 		}
-		const r2Buckets = await cloudflareRequest(`/accounts/${accountId}/r2/buckets?per_page=100`, env, fetchImpl).catch(() => []) as unknown[];
-		for (const bucket of Array.isArray(r2Buckets) ? r2Buckets : []) {
+		for (const bucket of await list('r2', `/accounts/${accountId}/r2/buckets?per_page=100`, ['buckets'])) {
 			const name = cloudflareName(bucket);
 			if (name.startsWith(prefixRoot)) await attempt('r2', name, () => cloudflareRequest(`/accounts/${accountId}/r2/buckets/${name}`, env, fetchImpl, { method: 'DELETE' }));
 		}
-		const kvNamespaces = await cloudflareRequest(`/accounts/${accountId}/storage/kv/namespaces?per_page=100`, env, fetchImpl).catch(() => []) as unknown[];
-		for (const namespace of Array.isArray(kvNamespaces) ? kvNamespaces : []) {
+		for (const namespace of await list('kv', `/accounts/${accountId}/storage/kv/namespaces?per_page=100`)) {
 			const name = cloudflareName(namespace);
 			const id = cloudflareId(namespace);
 			if (name.startsWith(prefixRoot) && id) await attempt('kv', id, () => cloudflareRequest(`/accounts/${accountId}/storage/kv/namespaces/${id}`, env, fetchImpl, { method: 'DELETE' }));
 		}
-		const d1Databases = await cloudflareRequest(`/accounts/${accountId}/d1/database?per_page=100`, env, fetchImpl).catch(() => []) as unknown[];
-		for (const database of Array.isArray(d1Databases) ? d1Databases : []) {
+		for (const database of await list('d1', `/accounts/${accountId}/d1/database?per_page=100`)) {
 			const name = cloudflareName(database);
 			const id = cloudflareId(database);
 			if (name.startsWith(prefixRoot) && id) await attempt('d1', id, () => cloudflareRequest(`/accounts/${accountId}/d1/database/${id}`, env, fetchImpl, { method: 'DELETE' }));
 		}
-		const queues = await cloudflareRequest(`/accounts/${accountId}/queues?per_page=100`, env, fetchImpl).catch(() => []) as unknown[];
-		for (const queue of Array.isArray(queues) ? queues : []) {
+		for (const queue of await list('queue', `/accounts/${accountId}/queues?per_page=100`, ['queues'])) {
 			const name = cloudflareName(queue);
 			const id = cloudflareId(queue);
 			if (name.startsWith(prefixRoot) && id) await attempt('queue', id, () => cloudflareRequest(`/accounts/${accountId}/queues/${id}`, env, fetchImpl, { method: 'DELETE' }));
 		}
-		const widgets = await cloudflareRequest(`/accounts/${accountId}/challenges/widgets?per_page=100`, env, fetchImpl).catch(() => []) as unknown[];
-		for (const widget of Array.isArray(widgets) ? widgets : []) {
+		for (const widget of await list('turnstile', `/accounts/${accountId}/challenges/widgets?per_page=100`)) {
 			const name = cloudflareName(widget);
 			const id = cloudflareId(widget);
 			if (name.startsWith(prefixRoot) && id) await attempt('turnstile', id, () => cloudflareRequest(`/accounts/${accountId}/challenges/widgets/${id}`, env, fetchImpl, { method: 'DELETE' }));
 		}
 	}
 	if (zoneId && configuredValue(env, ['CLOUDFLARE_API_TOKEN'])) {
-		const records = await cloudflareRequest(`/zones/${zoneId}/dns_records?per_page=100`, env, fetchImpl).catch(() => []) as unknown[];
-		for (const record of Array.isArray(records) ? records : []) {
+		for (const record of await list('dns', `/zones/${zoneId}/dns_records?per_page=100`)) {
 			const name = cloudflareName(record);
 			const id = cloudflareId(record);
 			if (name.startsWith(prefixRoot) && id) await attempt('dns', id, () => cloudflareRequest(`/zones/${zoneId}/dns_records/${id}`, env, fetchImpl, { method: 'DELETE' }));
@@ -1179,9 +1225,11 @@ async function runCloudflareCleanup(cwd: string, environment: TreeseedLiveReconc
 		capability,
 		ok: cleanupDrift.length === 0,
 		phase: 'cleanup',
-		action: destroyed.length ? 'delete' : 'noop',
-		reason: cleanupDrift.length === 0 ? `Cloudflare cleanup removed ${destroyed.length} tracked resource(s).` : 'Cloudflare cleanup left blocking drift.',
-		destroyedResources: destroyed,
+		action: destroyed.some((resource) => resource.type === capability) ? 'delete' : 'noop',
+		reason: cleanupDrift.length === 0
+			? `Cloudflare cleanup removed ${destroyed.filter((resource) => resource.type === capability).length} ${capability} resource(s).`
+			: 'Cloudflare cleanup left blocking drift.',
+		destroyedResources: destroyed.filter((resource) => resource.type === capability),
 	}));
 	return { results, cleanupDrift };
 }
