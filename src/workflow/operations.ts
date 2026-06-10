@@ -911,6 +911,9 @@ function selectWorkflowApplications(root: string, input: {
 		...(input.packageSelection?.changed ?? []),
 		...(input.packageSelection?.dependents ?? []),
 	];
+	const appByPackage = new Map(discoverTreeseedApplications(root)
+		.filter((app) => app.relativeRoot.startsWith('packages/'))
+		.map((app) => [`@treeseed/${app.relativeRoot.slice('packages/'.length).split('/')[0]}`, app.id]));
 	for (const packageName of packages) {
 		if (packageName === '@treeseed/api' || packageName === '@treeseed/treedx' || packageName === '@treeseed/agent') {
 			add('api', `${packageName} changed`);
@@ -920,9 +923,14 @@ function selectWorkflowApplications(root: string, input: {
 			add('web', `${packageName} is shared`);
 			add('api', `${packageName} is shared`);
 		}
+		const packageAppId = appByPackage.get(packageName);
+		if (packageAppId) add(packageAppId, `${packageName} owns ${packageAppId}`);
 	}
 
 	const changedPaths = input.changedPaths ?? parseGitStatusChangedPaths(gitStatusPorcelain(root));
+	const appByPackagePath = new Map(discoverTreeseedApplications(root)
+		.filter((app) => app.relativeRoot.startsWith('packages/'))
+		.map((app) => [app.relativeRoot, app.id]));
 	for (const file of changedPaths) {
 		if (file.startsWith('packages/api/') || file === 'packages/api') {
 			add('api', `${file} is API-owned`);
@@ -933,6 +941,11 @@ function selectWorkflowApplications(root: string, input: {
 		} else if (file.startsWith('packages/sdk/') || file.startsWith('packages/cli/') || file === 'package.json' || file === 'package-lock.json' || file.startsWith('.github/')) {
 			add('web', `${file} is shared workflow/config`);
 			add('api', `${file} is shared workflow/config`);
+		}
+		for (const [packageRoot, appId] of appByPackagePath) {
+			if (file === packageRoot || file.startsWith(`${packageRoot}/`)) {
+				add(appId, `${file} is ${appId}-owned`);
+			}
 		}
 	}
 

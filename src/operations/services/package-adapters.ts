@@ -146,10 +146,19 @@ function commandFromScript(dir: string, script: unknown, label: string): Treesee
 }
 
 function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]): TreeseedPackageAdapter {
+	const manifest = readTreeseedPackageManifest(pkg.dir);
 	const scripts = pkg.packageJson?.scripts && typeof pkg.packageJson.scripts === 'object' && !Array.isArray(pkg.packageJson.scripts)
 		? pkg.packageJson.scripts as Record<string, unknown>
 		: {};
-	const repository = normalizeGitHubRepositorySlug(pkg.packageJson?.repository);
+	const manifestVerify = manifest?.verify && typeof manifest.verify === 'object' && !Array.isArray(manifest.verify)
+		? manifest.verify as Record<string, unknown>
+		: {};
+	const repository = stringValue(manifest?.repository) ?? normalizeGitHubRepositorySlug(pkg.packageJson?.repository);
+	const id = stringValue(manifest?.id) ?? String(pkg.name);
+	const name = stringValue(manifest?.name) ?? String(pkg.name);
+	const publishTarget = stringValue((manifest as Record<string, unknown> | null)?.publishTarget) ?? 'npm';
+	const hostedVerifyWorkflow = stringValue(stringRecord(manifest?.releaseGate).workflow)
+		?? (existsSync(resolve(pkg.dir, '.github/workflows/deploy.yml')) ? 'deploy.yml' : null);
 	const verifyLocal = typeof scripts['verify:local'] === 'string'
 		? 'verify:local'
 		: typeof scripts.verify === 'string'
@@ -158,19 +167,22 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 				? 'verify:action'
 				: null;
 	return {
-		id: String(pkg.name),
-		name: String(pkg.name),
+		id,
+		name,
 		kind: 'node-typescript',
 		dir: pkg.dir,
 		relativeDir: pkg.relativeDir,
 		version: typeof pkg.packageJson?.version === 'string' ? pkg.packageJson.version : null,
-		publishTarget: 'npm',
-		manifestPath: resolve(pkg.dir, 'package.json'),
+		publishTarget,
+		manifestPath: treeseedPackageManifestPath(pkg.dir) ?? resolve(pkg.dir, 'package.json'),
 		versionSource: resolve(pkg.dir, 'package.json'),
 		verifyCommands: {
-			fast: typeof scripts.verify === 'string' ? { label: 'verify', command: 'npm', args: ['run', 'verify'], cwd: pkg.dir } : null,
-			local: verifyLocal ? { label: verifyLocal, command: 'npm', args: ['run', verifyLocal], cwd: pkg.dir } : null,
-			release: typeof scripts['release:publish'] === 'string' ? { label: 'release:publish', command: 'npm', args: ['run', 'release:publish'], cwd: pkg.dir } : null,
+			fast: commandFromScript(pkg.dir, manifestVerify.fast, 'fast')
+				?? (typeof scripts.verify === 'string' ? { label: 'verify', command: 'npm', args: ['run', 'verify'], cwd: pkg.dir } : null),
+			local: commandFromScript(pkg.dir, manifestVerify.local, 'local')
+				?? (verifyLocal ? { label: verifyLocal, command: 'npm', args: ['run', verifyLocal], cwd: pkg.dir } : null),
+			release: commandFromScript(pkg.dir, manifestVerify.release, 'release')
+				?? (typeof scripts['release:publish'] === 'string' ? { label: 'release:publish', command: 'npm', args: ['run', 'release:publish'], cwd: pkg.dir } : null),
 		},
 		artifacts: [{ provider: 'npm', name: String(pkg.name) }],
 		releaseChecks: [
@@ -179,6 +191,13 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 		],
 		metadata: {
 			...(repository ? { repository } : {}),
+			...(hostedVerifyWorkflow
+				? {
+					hostedVerifyWorkflow: hostedVerifyWorkflow.startsWith('.github/workflows/')
+						? hostedVerifyWorkflow
+						: `.github/workflows/${hostedVerifyWorkflow}`,
+				}
+				: {}),
 			scripts,
 		},
 	};

@@ -225,6 +225,12 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 				publicBaseUrl: config.surfaces?.web?.environments?.[environment]?.baseUrl ?? config.surfaces?.web?.publicBaseUrl ?? null,
 				domain: config.surfaces?.web?.environments?.[environment]?.domain ?? null,
 				cache: config.surfaces?.web?.cache ?? null,
+				cloudflare: config.cloudflare
+					? {
+						workerName: config.cloudflare.workerName ?? null,
+						pages: config.cloudflare.pages ?? null,
+					}
+					: null,
 			},
 			environments: {
 				local: { hostId: 'local-process', config: { hotReload: true, baseUrl: config.surfaces?.web?.localBaseUrl ?? 'http://127.0.0.1:4321' } },
@@ -466,8 +472,11 @@ function createUnit(
 	}
 	const projectGroupId = binding?.projectGroupId ?? service.projectGroupId;
 	const projectGroup = projectGroupId ? projectGroups[projectGroupId] ?? null : null;
+	const unitId = application && application.relativeRoot !== '.' && service.id === 'web'
+		? application.id
+		: service.id;
 	const unit: TreeseedHostingUnit = {
-		id: service.id,
+		id: unitId,
 		label: service.label,
 		serviceType,
 		placement: service.placement ?? serviceType.placement,

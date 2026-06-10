@@ -26,6 +26,7 @@ function createTenant(configBody: string) {
 function createSplitWorkspace() {
 	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-hosting-split-'));
 	mkdirSync(resolve(tenantRoot, 'packages', 'api'), { recursive: true });
+	mkdirSync(resolve(tenantRoot, 'packages', 'ui', 'sandbox'), { recursive: true });
 	writeFileSync(resolve(tenantRoot, 'package.json'), JSON.stringify({
 		name: '@treeseed/market',
 		type: 'module',
@@ -56,6 +57,35 @@ connections:
 		name: '@treeseed/api',
 		type: 'module',
 	}, null, 2));
+	writeFileSync(resolve(tenantRoot, 'packages', 'ui', 'package.json'), JSON.stringify({
+		name: '@treeseed/ui',
+		type: 'module',
+	}, null, 2));
+writeFileSync(resolve(tenantRoot, 'packages', 'ui', 'treeseed.site.yaml'), `name: TreeSeed UI Sandbox
+slug: treeseed-ui
+siteUrl: https://ui.treeseed.ai
+contactEmail: hello@treeseed.email
+hosting:
+  kind: self_hosted_project
+  projectId: ui
+cloudflare:
+  workerName: treeseed-ui
+  pages:
+    projectName: treeseed-ui
+    productionBranch: main
+    stagingBranch: staging
+    buildOutputDir: sandbox/dist
+surfaces:
+  web:
+    enabled: true
+    provider: cloudflare
+    rootDir: sandbox
+    environments:
+      staging:
+        domain: ui-staging.treeseed.ai
+      prod:
+        domain: ui.treeseed.ai
+`);
 	writeFileSync(resolve(tenantRoot, 'packages', 'api', 'treeseed.site.yaml'), `name: TreeSeed API
 slug: treeseed-api
 siteUrl: https://api.treeseed.ai
@@ -181,6 +211,7 @@ describe('hosting graph', () => {
 		expect(applications.map((app) => [app.id, app.relativeRoot])).toEqual([
 			['web', '.'],
 			['api', 'packages/api'],
+			['ui', 'packages/ui'],
 		]);
 	});
 
@@ -189,6 +220,7 @@ describe('hosting graph', () => {
 		const graph = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging' });
 		expect(graph.units.map((unit) => unit.id)).toEqual(expect.arrayContaining([
 			'web',
+			'ui',
 			'api',
 			'operationsRunner',
 			'treeseedDatabase',
@@ -201,15 +233,34 @@ describe('hosting graph', () => {
 		expect(graph.units.find((unit) => unit.id === 'web')).toMatchObject({
 			application: { id: 'web', relativeRoot: '.' },
 		});
+		expect(graph.units.find((unit) => unit.id === 'ui')).toMatchObject({
+			application: { id: 'ui', relativeRoot: 'packages/ui' },
+			config: { rootDir: 'sandbox', domain: 'ui-staging.treeseed.ai' },
+		});
 	});
 
 	it('can compile only the selected discovered application', () => {
 		const tenantRoot = createSplitWorkspace();
 		const web = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging', appId: 'web' });
 		const api = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging', appId: 'api' });
+		const ui = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging', appId: 'ui' });
 		expect(web.units.map((unit) => unit.id)).toEqual(['web']);
 		expect(api.units.map((unit) => unit.id)).toEqual(expect.arrayContaining(['api', 'operationsRunner', 'treeseedDatabase']));
 		expect(api.units.find((unit) => unit.id === 'api')?.config.rootDir).toBe('.');
+		expect(ui.units.map((unit) => unit.id)).toEqual(['ui']);
+		expect(ui.units[0]).toMatchObject({
+			application: { id: 'ui', relativeRoot: 'packages/ui' },
+			config: {
+				rootDir: 'sandbox',
+				domain: 'ui-staging.treeseed.ai',
+				cloudflare: {
+					pages: {
+						projectName: 'treeseed-ui',
+						buildOutputDir: 'sandbox/dist',
+					},
+				},
+			},
+		});
 	});
 
 	it('compiles current Market config into user-facing service placements', () => {

@@ -73,9 +73,10 @@ function inferApplicationId(config: TreeseedDeployConfig, root: string, workspac
 	) {
 		return 'api';
 	}
-	if (roles.includes('web') && !hasBackendServices) return 'web';
+	if (roles.includes('web') && !hasBackendServices && root === workspaceRoot) return 'web';
 	const relative = root === workspaceRoot ? '.' : root.slice(workspaceRoot.length + 1).replaceAll('\\', '/');
-	return (config.slug || relative || 'app').replace(/^treeseed-/u, '').replace(/[^a-z0-9-]+/giu, '-').replace(/^-|-$/gu, '') || 'app';
+	const configuredId = config.hosting?.projectId ?? config.runtime?.projectId ?? config.slug ?? relative;
+	return (configuredId || 'app').replace(/^treeseed-/u, '').replace(/[^a-z0-9-]+/giu, '-').replace(/^-|-$/gu, '') || 'app';
 }
 
 function appFromConfigPath(configPath: string, workspaceRoot: string): TreeseedDiscoveredApplication {
