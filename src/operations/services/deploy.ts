@@ -1407,6 +1407,14 @@ function shouldManageCloudflareWebCacheRules(deployConfig, target) {
 }
 
 export function cloudflareApiRequest(path, { method = 'GET', body, env, allowFailure = false } = {}) {
+	const token = env?.CLOUDFLARE_API_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN ?? '';
+	if (!token) {
+		if (allowFailure) {
+			return null;
+		}
+		throw new Error(`Cloudflare API token is required: ${method} ${path}`);
+	}
+
 	const requestScript = `import { readFileSync } from 'node:fs';
 import { request } from 'node:https';
 const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
@@ -1470,7 +1478,7 @@ try {
 		method,
 		body,
 		timeoutMs: 12_000,
-		token: env?.CLOUDFLARE_API_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN ?? '',
+		token,
 	});
 	const isTransient = (text) => /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted|rate limit|too many requests|throttl|please wait/iu.test(text || '');
 	const retryDelay = (text, currentAttempt) => {
