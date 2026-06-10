@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -14,7 +14,7 @@ afterEach(() => {
 function root() {
 	const path = mkdtempSync(resolve(tmpdir(), 'treeseed-live-hosted-'));
 	roots.push(path);
-	writeFileSync(resolve(path, 'package.json'), '{"name":"@treeseed/market","type":"module"}\n');
+	writeFileSync(resolve(path, 'package.json'), '{"name":"@treeseed/market","type":"module","workspaces":["packages/*"]}\n');
 	writeFileSync(resolve(path, 'treeseed.site.yaml'), `name: TreeSeed Market
 slug: treeseed-market
 siteUrl: https://web.example.test
@@ -53,6 +53,13 @@ services:
 	return path;
 }
 
+function writePackageApp(rootPath: string, relativeRoot: string, config: string) {
+	const appRoot = resolve(rootPath, relativeRoot);
+	mkdirSync(appRoot, { recursive: true });
+	writeFileSync(resolve(appRoot, 'package.json'), '{"name":"@treeseed/ui","type":"module"}\n');
+	writeFileSync(resolve(appRoot, 'treeseed.site.yaml'), config);
+}
+
 describe('live hosted service checks', () => {
 	it('marks required missing live observations as failed in strict mode', async () => {
 		const report = await collectTreeseedLiveHostedServiceChecks({
@@ -84,5 +91,58 @@ describe('live hosted service checks', () => {
 			}) as typeof fetch,
 		});
 		expect(report.checks.find((check) => check.id === 'http:web')?.status).toBe('passed');
+	});
+
+	it('observes selected package-local web app URL with branch alias fallback', async () => {
+		const tenantRoot = root();
+		writePackageApp(tenantRoot, 'packages/ui', `name: TreeSeed UI
+slug: treeseed-ui
+siteUrl: https://ui.treeseed.ai
+contactEmail: hello@treeseed.ai
+hosting:
+  kind: self_hosted_project
+  projectId: ui
+runtime:
+  mode: none
+cloudflare:
+  pages:
+    projectName: treeseed-ui
+    stagingBranch: staging
+surfaces:
+  web:
+    enabled: true
+    provider: cloudflare
+    rootDir: sandbox
+    publicBaseUrl: https://ui.treeseed.ai
+    environments:
+      staging:
+        domain: ui-staging.treeseed.ai
+`);
+		const urls: string[] = [];
+		const report = await collectTreeseedLiveHostedServiceChecks({
+			tenantRoot,
+			target: 'staging',
+			appId: 'ui',
+			requireLiveRailway: false,
+			requireLiveHttp: true,
+			retry: { attempts: 1, intervalMs: 1 },
+			fetchImpl: (async (input) => {
+				const url = String(input);
+				urls.push(url);
+				if (url === 'https://ui-staging.treeseed.ai') throw new Error('temporary dns miss');
+				return new Response('{}', { status: 200 });
+			}) as typeof fetch,
+		});
+
+		expect(urls).toEqual(['https://ui-staging.treeseed.ai', 'https://staging.treeseed-ui.pages.dev']);
+		expect(report.checks.find((check) => check.id === 'http:ui')).toMatchObject({
+			status: 'warning',
+			observed: {
+				fallbackUrl: 'https://staging.treeseed-ui.pages.dev',
+				fallbackStatus: 200,
+				fallbackOk: true,
+			},
+		});
+		expect(report.checks.some((check) => check.id === 'http:web')).toBe(false);
 	});
 });

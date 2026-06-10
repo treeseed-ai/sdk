@@ -150,6 +150,15 @@ function observedFor(options: TreeseedHostedServiceCheckOptions, serviceName: st
 	return serviceName ? options.observedRailwayServices?.[serviceName] : undefined;
 }
 
+function webCheckConfig(deployConfig: Record<string, any>, selectedApplication: ReturnType<typeof discoverTreeseedApplications>[number] | null) {
+	const selectedConfig = selectedApplication?.roles.includes('web') ? selectedApplication.config : deployConfig;
+	return {
+		appId: selectedApplication?.roles.includes('web') ? selectedApplication.id : 'web',
+		config: selectedConfig,
+		web: selectedConfig.surfaces?.web,
+	};
+}
+
 function httpStatus(url: string, options: TreeseedHostedServiceCheckOptions) {
 	const observed = options.httpChecks?.[url];
 	if (!observed) {
@@ -216,25 +225,30 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		|| selectedApplication?.config.services?.api?.enabled !== false && selectedApplication?.config.services?.api,
 	);
 
-	const web = deployConfig.surfaces?.web;
+	const selectedWeb = webCheckConfig(deployConfig, selectedApplication);
+	const web = selectedWeb.web;
 	if (includeWeb && web?.enabled !== false && web?.provider === 'cloudflare') {
-		const domain = web.environments?.[target]?.domain ?? web.publicBaseUrl ?? deployConfig.siteUrl ?? null;
+		const domain = web.environments?.[target]?.domain ?? web.publicBaseUrl ?? selectedWeb.config.siteUrl ?? null;
 		checks.push(check({
-			id: 'cloudflare:web:surface',
+			id: `cloudflare:${selectedWeb.appId}:surface`,
 			provider: 'cloudflare',
-			serviceKey: 'web',
+			serviceKey: selectedWeb.appId,
 			serviceType: 'web',
 			target,
 			description: 'Cloudflare web surface is configured.',
-			expected: { provider: 'cloudflare', domain },
+			expected: {
+				provider: 'cloudflare',
+				domain,
+				pagesProjectName: selectedWeb.config.cloudflare?.pages?.projectName ?? null,
+			},
 			observed: { configured: true },
 			status: 'passed',
 		}));
 		if (domain) {
 			const url = String(domain).startsWith('http') ? String(domain) : `https://${domain}`;
-			checks.push({ ...httpStatus(url, options), id: 'http:web', serviceKey: 'web', serviceType: 'web', description: 'Web public URL responds.' });
+			checks.push({ ...httpStatus(url, options), id: `http:${selectedWeb.appId}`, serviceKey: selectedWeb.appId, serviceType: 'web', description: 'Web public URL responds.' });
 			if (!selectedAppId || selectedAppHasApi) {
-				checks.push({ ...httpStatus(`${url.replace(/\/+$/u, '')}/v1/healthz`, options), id: 'http:web:v1-healthz', serviceKey: 'web', serviceType: 'web', description: 'Web proxy reaches API health.' });
+				checks.push({ ...httpStatus(`${url.replace(/\/+$/u, '')}/v1/healthz`, options), id: `http:${selectedWeb.appId}:v1-healthz`, serviceKey: selectedWeb.appId, serviceType: 'web', description: 'Web proxy reaches API health.' });
 			}
 		}
 	}

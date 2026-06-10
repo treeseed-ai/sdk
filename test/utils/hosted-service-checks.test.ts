@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -9,7 +9,7 @@ let roots: string[] = [];
 function fixtureRoot(config = siteConfig()) {
 	const root = mkdtempSync(resolve(tmpdir(), 'treeseed-hosted-checks-'));
 	roots.push(root);
-	writeFileSync(resolve(root, 'package.json'), JSON.stringify({ name: '@treeseed/market', type: 'module' }, null, 2));
+	writeFileSync(resolve(root, 'package.json'), JSON.stringify({ name: '@treeseed/market', type: 'module', workspaces: ['packages/*'] }, null, 2));
 	writeFileSync(resolve(root, 'treeseed.site.yaml'), config);
 	return root;
 }
@@ -109,6 +109,13 @@ function byId(report: ReturnType<typeof collectTreeseedHostedServiceChecks>, id:
 	return found;
 }
 
+function writePackageApp(root: string, relativeRoot: string, config: string) {
+	const appRoot = resolve(root, relativeRoot);
+	mkdirSync(appRoot, { recursive: true });
+	writeFileSync(resolve(appRoot, 'package.json'), JSON.stringify({ name: '@treeseed/ui', type: 'module' }, null, 2));
+	writeFileSync(resolve(appRoot, 'treeseed.site.yaml'), config);
+}
+
 describe('hosted service checks', () => {
 	it('does not require API proxy health for web-only apps', () => {
 		const root = fixtureRoot(`name: TreeSeed UI
@@ -141,6 +148,53 @@ surfaces:
 
 		expect(byId(report, 'http:web')).toMatchObject({ status: 'passed' });
 		expect(report.checks.some((check) => check.id === 'http:web:v1-healthz')).toBe(false);
+	});
+
+	it('checks selected package-local web app domains instead of the root web app', () => {
+		const root = fixtureRoot();
+		writePackageApp(root, 'packages/ui', `name: TreeSeed UI
+slug: treeseed-ui
+siteUrl: https://ui.treeseed.ai
+contactEmail: hello@treeseed.email
+hosting:
+  kind: self_hosted_project
+  projectId: ui
+runtime:
+  mode: none
+cloudflare:
+  pages:
+    projectName: treeseed-ui
+    productionBranch: main
+    stagingBranch: staging
+surfaces:
+  web:
+    enabled: true
+    provider: cloudflare
+    rootDir: sandbox
+    publicBaseUrl: https://ui.treeseed.ai
+    environments:
+      staging:
+        domain: ui-staging.treeseed.ai
+`);
+		const report = collectTreeseedHostedServiceChecks({
+			tenantRoot: root,
+			target: 'staging',
+			appId: 'ui',
+			httpChecks: {
+				'https://ui-staging.treeseed.ai': { status: 200, ok: true },
+			},
+		});
+
+		expect(byId(report, 'cloudflare:ui:surface')).toMatchObject({
+			serviceKey: 'ui',
+			expected: {
+				domain: 'ui-staging.treeseed.ai',
+				pagesProjectName: 'treeseed-ui',
+			},
+		});
+		expect(byId(report, 'http:ui')).toMatchObject({ status: 'passed', serviceKey: 'ui' });
+		expect(report.checks.some((check) => check.id === 'http:web')).toBe(false);
+		expect(report.checks.some((check) => check.id === 'http:ui:v1-healthz')).toBe(false);
 	});
 
 	it('generates config-driven checks for API, runner, web, and database services', () => {

@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { resolveTreeseedLaunchEnvironment } from '../operations/services/config-runtime.ts';
-import { cloudflareApiRequest, resolveConfiguredCloudflareAccountId, runWrangler } from '../operations/services/deploy.ts';
+import { cloudflareApiRequest, resolveCloudflareZoneIdForHost, resolveConfiguredCloudflareAccountId, runWrangler } from '../operations/services/deploy.ts';
 import type {
 	TreeseedApplicationHostingProfile,
 	TreeseedHostAdapter,
@@ -196,6 +196,110 @@ function cloudflarePagesDomain(input: TreeseedHostAdapterOperationInput) {
 		: null;
 }
 
+function cloudflarePagesDeploymentUrl(projectName: string, branchName: string, environment: TreeseedHostingEnvironment) {
+	return environment === 'prod'
+		? `https://${projectName}.pages.dev`
+		: `https://${branchName}.${projectName}.pages.dev`;
+}
+
+function cloudflarePagesDnsTarget(projectName: string, branchName: string, environment: TreeseedHostingEnvironment) {
+	return environment === 'prod'
+		? `${projectName}.pages.dev`
+		: `${branchName}.${projectName}.pages.dev`;
+}
+
+function cloudflarePagesDomainName(domain: any) {
+	return typeof domain?.name === 'string' ? domain.name
+		: typeof domain?.domain === 'string' ? domain.domain
+			: typeof domain?.hostname === 'string' ? domain.hostname
+				: '';
+}
+
+function listCloudflarePagesDomains(input: TreeseedHostAdapterOperationInput, projectName: string) {
+	const env = cloudflarePagesEnv(input);
+	const accountId = String(env.CLOUDFLARE_ACCOUNT_ID ?? '').trim();
+	const token = String(env.CLOUDFLARE_API_TOKEN ?? '').trim();
+	if (!projectName || !accountId || !token) return [];
+	const domains: any[] = [];
+	let page = 1;
+	let totalPages = 1;
+	while (page <= totalPages && page <= 50) {
+		const payload = cloudflareApiRequest(
+			`/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/domains?per_page=25&page=${page}`,
+			{ env, allowFailure: true },
+		);
+		if (payload?.success === false) break;
+		if (Array.isArray(payload?.result)) domains.push(...payload.result);
+		const reportedTotal = Number(payload?.result_info?.total_pages);
+		totalPages = Number.isFinite(reportedTotal) && reportedTotal > 0 ? reportedTotal : page;
+		page += 1;
+	}
+	return domains;
+}
+
+function findCloudflarePagesDomain(input: TreeseedHostAdapterOperationInput, projectName: string, domain: string | null) {
+	if (!domain) return null;
+	const env = cloudflarePagesEnv(input);
+	const accountId = String(env.CLOUDFLARE_ACCOUNT_ID ?? '').trim();
+	const token = String(env.CLOUDFLARE_API_TOKEN ?? '').trim();
+	if (accountId && token) {
+		const direct = cloudflareApiRequest(
+			`/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/domains/${encodeURIComponent(domain)}`,
+			{ env, allowFailure: true },
+		)?.result ?? null;
+		if (cloudflarePagesDomainName(direct) === domain) return direct;
+	}
+	return listCloudflarePagesDomains(input, projectName)
+		.find((entry) => cloudflarePagesDomainName(entry) === domain) ?? null;
+}
+
+function cloudflareDnsRecordName(record: any) {
+	return typeof record?.name === 'string' ? record.name : '';
+}
+
+function listCloudflareDnsRecords(input: TreeseedHostAdapterOperationInput, recordName: string | null) {
+	const env = cloudflarePagesEnv(input);
+	const zoneId = recordName ? resolveCloudflareZoneIdForHost(input.graph.deployConfig, recordName, env) : null;
+	if (!zoneId || !recordName) return { zoneId, records: [] as any[] };
+	const payload = cloudflareApiRequest(
+		`/zones/${encodeURIComponent(zoneId)}/dns_records?name=${encodeURIComponent(recordName)}&per_page=100`,
+		{ env, allowFailure: true },
+	);
+	return {
+		zoneId,
+		records: Array.isArray(payload?.result) ? payload.result : [],
+	};
+}
+
+function ensureCloudflarePagesDns(input: TreeseedHostAdapterOperationInput, projectName: string, branchName: string, domain: string | null) {
+	if (!domain || input.dryRun) return null;
+	const env = cloudflarePagesEnv(input);
+	const { zoneId, records } = listCloudflareDnsRecords(input, domain);
+	if (!zoneId) {
+		throw new Error(`Cloudflare DNS zone could not be resolved for Pages domain ${domain}.`);
+	}
+	const desired = {
+		type: 'CNAME',
+		name: domain,
+		content: cloudflarePagesDnsTarget(projectName, branchName, input.environment),
+		proxied: true,
+		ttl: 1,
+	};
+	const existing = records.find((entry) => cloudflareDnsRecordName(entry) === domain && String(entry?.type ?? '').toUpperCase() === 'CNAME');
+	if (existing?.id) {
+		const unchanged = existing.content === desired.content && Boolean(existing.proxied) === desired.proxied;
+		if (unchanged) return existing;
+		return cloudflareApiRequest(
+			`/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(existing.id)}`,
+			{ method: 'PATCH', body: desired, env },
+		)?.result ?? existing;
+	}
+	return cloudflareApiRequest(
+		`/zones/${encodeURIComponent(zoneId)}/dns_records`,
+		{ method: 'POST', body: desired, env },
+	)?.result ?? null;
+}
+
 function runCloudflarePagesBuild(input: TreeseedHostAdapterOperationInput) {
 	const command = cloudflarePagesBuildCommand(input);
 	if (!command || input.dryRun) {
@@ -240,9 +344,8 @@ function ensureCloudflarePagesDomain(input: TreeseedHostAdapterOperationInput, p
 	const env = cloudflarePagesEnv(input);
 	const accountId = String(env.CLOUDFLARE_ACCOUNT_ID ?? '').trim();
 	if (!domain || !accountId || input.dryRun) return;
-	const domainPath = `/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/domains/${encodeURIComponent(domain)}`;
-	const existing = cloudflareApiRequest(domainPath, { env, allowFailure: true });
-	if (existing?.result?.name === domain || existing?.result?.domain === domain) {
+	const existing = findCloudflarePagesDomain(input, projectName, domain);
+	if (existing) {
 		return;
 	}
 	const created = cloudflareApiRequest(
@@ -255,8 +358,12 @@ function ensureCloudflarePagesDomain(input: TreeseedHostAdapterOperationInput, p
 		},
 	);
 	const errors = Array.isArray(created?.errors) ? created.errors.map((entry: any) => String(entry?.message ?? entry)).join('; ') : '';
-	if (errors && !/already exists|already been taken|conflict/iu.test(errors)) {
+	if (errors && !/already exists|already added|already been taken|conflict/iu.test(errors)) {
 		throw new Error(`Failed to attach Cloudflare Pages custom domain ${domain}: ${errors}`);
+	}
+	const observed = findCloudflarePagesDomain(input, projectName, domain);
+	if (!observed) {
+		throw new Error(`Cloudflare Pages custom domain ${domain} was not attached to project ${projectName}.`);
 	}
 }
 
@@ -272,26 +379,57 @@ function observeCloudflarePagesProject(input: TreeseedHostAdapterOperationInput,
 }
 
 function observeCloudflarePagesDomain(input: TreeseedHostAdapterOperationInput, projectName: string, domain: string | null) {
-	const env = cloudflarePagesEnv(input);
-	const accountId = String(env.CLOUDFLARE_ACCOUNT_ID ?? '').trim();
-	const token = String(env.CLOUDFLARE_API_TOKEN ?? '').trim();
-	if (!domain || !accountId || !token) return null;
-	return cloudflareApiRequest(
-		`/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/domains/${encodeURIComponent(domain)}`,
-		{ env, allowFailure: true },
-	)?.result ?? null;
+	return findCloudflarePagesDomain(input, projectName, domain);
+}
+
+function observeCloudflarePagesDeployment(input: TreeseedHostAdapterOperationInput, projectName: string, branchName: string) {
+	const result = runWrangler(['pages', 'deployment', 'list', '--project-name', projectName, '--json'], {
+		cwd: input.graph.tenantRoot,
+		capture: true,
+		allowFailure: true,
+		env: cloudflarePagesEnv(input),
+	});
+	if (result.status !== 0) return null;
+	try {
+		const deployments = JSON.parse(result.stdout || '[]');
+		return (Array.isArray(deployments) ? deployments : [])
+			.find((entry) => entry?.Branch === branchName || entry?.branch === branchName) ?? null;
+	} catch {
+		return null;
+	}
+}
+
+function observeCloudflarePagesDns(input: TreeseedHostAdapterOperationInput, projectName: string, branchName: string, domain: string | null) {
+	if (!domain) return null;
+	const expectedContent = cloudflarePagesDnsTarget(projectName, branchName, input.environment);
+	const { zoneId, records } = listCloudflareDnsRecords(input, domain);
+	const record = records.find((entry) =>
+		cloudflareDnsRecordName(entry) === domain
+		&& String(entry?.type ?? '').toUpperCase() === 'CNAME'
+		&& entry?.content === expectedContent
+	) ?? null;
+	return record ? { ...record, zoneId } : null;
 }
 
 function verifyCloudflarePagesPostconditions(input: TreeseedHostAdapterOperationInput, projectName: string, domain: string | null) {
+	const branchName = cloudflarePagesBranchName(input);
 	const project = observeCloudflarePagesProject(input, projectName);
 	if (project?.name !== projectName) {
 		throw new Error(`Cloudflare Pages project ${projectName} was not observed after deploy.`);
 	}
+	const deployment = observeCloudflarePagesDeployment(input, projectName, branchName);
+	if (!deployment) {
+		throw new Error(`Cloudflare Pages project ${projectName} has no observed deployment for branch ${branchName}.`);
+	}
 	if (domain) {
 		const observedDomain = observeCloudflarePagesDomain(input, projectName, domain);
-		const observedName = observedDomain?.name ?? observedDomain?.domain ?? null;
+		const observedName = cloudflarePagesDomainName(observedDomain);
 		if (observedName !== domain) {
 			throw new Error(`Cloudflare Pages custom domain ${domain} was not observed on project ${projectName} after deploy.`);
+		}
+		const dns = observeCloudflarePagesDns(input, projectName, branchName, domain);
+		if (!dns) {
+			throw new Error(`Cloudflare DNS record ${domain} -> ${cloudflarePagesDnsTarget(projectName, branchName, input.environment)} was not observed after deploy.`);
 		}
 	}
 }
@@ -308,6 +446,10 @@ function deployCloudflarePages(input: TreeseedHostAdapterOperationInput & { plan
 	const branchName = cloudflarePagesBranchName(input);
 	const buildOutputDir = cloudflarePagesBuildOutputDir(input);
 	const outputPath = resolve(input.graph.tenantRoot, buildOutputDir);
+	let observedProject: any = null;
+	let observedDomain: any = null;
+	let observedDns: any = null;
+	let observedDeployment: any = null;
 	if (!input.dryRun) {
 		runCloudflarePagesBuild(input);
 		if (!existsSync(outputPath)) {
@@ -315,6 +457,7 @@ function deployCloudflarePages(input: TreeseedHostAdapterOperationInput & { plan
 		}
 		ensureCloudflarePagesProject(input, projectName);
 		ensureCloudflarePagesDomain(input, projectName, cloudflarePagesDomain(input));
+		ensureCloudflarePagesDns(input, projectName, branchName, cloudflarePagesDomain(input));
 		runWrangler([
 			'pages',
 			'deploy',
@@ -329,6 +472,10 @@ function deployCloudflarePages(input: TreeseedHostAdapterOperationInput & { plan
 			env: cloudflarePagesEnv(input),
 		});
 		verifyCloudflarePagesPostconditions(input, projectName, cloudflarePagesDomain(input));
+		observedProject = observeCloudflarePagesProject(input, projectName);
+		observedDomain = observeCloudflarePagesDomain(input, projectName, cloudflarePagesDomain(input));
+		observedDns = observeCloudflarePagesDns(input, projectName, branchName, cloudflarePagesDomain(input));
+		observedDeployment = observeCloudflarePagesDeployment(input, projectName, branchName);
 	}
 	return {
 		status: input.dryRun ? 'pending' : 'ready',
@@ -338,7 +485,7 @@ function deployCloudflarePages(input: TreeseedHostAdapterOperationInput & { plan
 			projectName,
 			branchName,
 			domain: cloudflarePagesDomain(input),
-			pagesDevUrl: `https://${branchName}.${projectName}.pages.dev`,
+			pagesDevUrl: cloudflarePagesDeploymentUrl(projectName, branchName, input.environment),
 		},
 		state: {
 			unitId: input.unit.id,
@@ -348,6 +495,19 @@ function deployCloudflarePages(input: TreeseedHostAdapterOperationInput & { plan
 			branchName,
 			buildOutputDir,
 			buildCommand: cloudflarePagesBuildCommand(input),
+			observedProjectName: observedProject?.name ?? (input.dryRun ? null : projectName),
+			observedDomain: cloudflarePagesDomainName(observedDomain),
+			observedDnsRecord: observedDns ? {
+				name: observedDns.name ?? null,
+				type: observedDns.type ?? null,
+				content: observedDns.content ?? null,
+				proxied: observedDns.proxied ?? null,
+			} : null,
+			observedDeployment: observedDeployment ? {
+				id: observedDeployment.Id ?? observedDeployment.id ?? null,
+				branch: observedDeployment.Branch ?? observedDeployment.branch ?? null,
+				deployment: observedDeployment.Deployment ?? observedDeployment.url ?? null,
+			} : null,
 			dryRun: input.dryRun === true,
 			applied: input.dryRun !== true,
 		},
@@ -375,22 +535,40 @@ function createCloudflareHostAdapter(): TreeseedHostAdapter {
 			const projectName = cloudflarePagesProjectName(input);
 			const project = projectName ? observeCloudflarePagesProject(input, projectName) : null;
 			const domain = cloudflarePagesDomain(input);
+			const branchName = cloudflarePagesBranchName(input);
 			const observedDomain = projectName ? observeCloudflarePagesDomain(input, projectName, domain) : null;
+			const observedDns = projectName ? observeCloudflarePagesDns(input, projectName, branchName, domain) : null;
+			const observedDeployment = projectName ? observeCloudflarePagesDeployment(input, projectName, branchName) : null;
+			const domainReady = !domain || Boolean(observedDomain && observedDns);
+			const deploymentReady = Boolean(observedDeployment);
 			return {
-				status: projectName && project?.name === projectName ? 'ready' : (projectName ? 'pending' : 'blocked'),
+				status: projectName && project?.name === projectName && domainReady && deploymentReady ? 'ready' : (projectName ? 'pending' : 'blocked'),
 				locators: {
 					hostId: input.unit.host.id,
 					projectGroupId: input.unit.projectGroup?.id ?? null,
 					projectName,
 					domain,
+					pagesDevUrl: projectName ? cloudflarePagesDeploymentUrl(projectName, branchName, input.environment) : null,
 				},
 				state: {
 					unitId: input.unit.id,
 					serviceType: input.unit.serviceType.id,
 					placement: input.unit.placement,
 					projectName,
+					branchName,
 					observedProjectName: project?.name ?? null,
-					observedDomain: observedDomain?.name ?? observedDomain?.domain ?? null,
+					observedDomain: cloudflarePagesDomainName(observedDomain),
+					observedDnsRecord: observedDns ? {
+						name: observedDns.name ?? null,
+						type: observedDns.type ?? null,
+						content: observedDns.content ?? null,
+						proxied: observedDns.proxied ?? null,
+					} : null,
+					observedDeployment: observedDeployment ? {
+						id: observedDeployment.Id ?? observedDeployment.id ?? null,
+						branch: observedDeployment.Branch ?? observedDeployment.branch ?? null,
+						deployment: observedDeployment.Deployment ?? observedDeployment.url ?? null,
+					} : null,
 					buildOutputDir: cloudflarePagesBuildOutputDir(input),
 					buildCommand: cloudflarePagesBuildCommand(input),
 				},
@@ -400,6 +578,65 @@ function createCloudflareHostAdapter(): TreeseedHostAdapter {
 		apply(input) {
 			if (!isPagesSite(input)) return base.apply(input);
 			return deployCloudflarePages(input);
+		},
+		verify(input) {
+			if (!isPagesSite(input)) return base.verify(input);
+			if (input.dryRun) return base.verify(input);
+			const projectName = cloudflarePagesProjectName(input);
+			const branchName = projectName ? cloudflarePagesBranchName(input) : null;
+			const domain = cloudflarePagesDomain(input);
+			const observed = input.observed;
+			const observedState = observed.state && typeof observed.state === 'object' ? observed.state as Record<string, any> : {};
+			const observedProjectName = observedState.observedProjectName ?? observedState.projectName ?? null;
+			const observedDomain = observedState.observedDomain ?? null;
+			const observedDnsRecord = observedState.observedDnsRecord ?? null;
+			const observedDeployment = observedState.observedDeployment ?? null;
+			const checks = [
+				{
+					key: 'pages-project.exists',
+					label: 'Cloudflare Pages project exists',
+					ok: Boolean(projectName && observedProjectName === projectName),
+					expected: projectName,
+					observed: observedProjectName,
+					issues: projectName && observedProjectName === projectName ? [] : [`Cloudflare Pages project ${projectName ?? '(unset)'} was not observed.`],
+				},
+				{
+					key: 'pages-deployment.exists',
+					label: 'Cloudflare Pages branch deployment exists',
+					ok: Boolean(observedDeployment),
+					expected: branchName,
+					observed: observedDeployment,
+					issues: observedDeployment ? [] : [`Cloudflare Pages project ${projectName ?? '(unset)'} has no deployment for branch ${branchName ?? '(unset)'}.`],
+				},
+				{
+					key: 'pages-domain.exists',
+					label: 'Cloudflare Pages custom domain is attached',
+					ok: !domain || observedDomain === domain,
+					expected: domain,
+					observed: observedDomain,
+					issues: !domain || observedDomain === domain ? [] : [`Cloudflare Pages custom domain ${domain} is not attached to project ${projectName ?? '(unset)'}.`],
+				},
+				{
+					key: 'pages-dns.exists',
+					label: 'Cloudflare DNS record points to the Pages branch',
+					ok: !domain || Boolean(observedDnsRecord),
+					expected: domain && projectName && branchName ? {
+						name: domain,
+						type: 'CNAME',
+						content: cloudflarePagesDnsTarget(projectName, branchName, input.environment),
+						proxied: true,
+					} : null,
+					observed: observedDnsRecord,
+					issues: !domain || observedDnsRecord ? [] : [`Cloudflare DNS record ${domain} -> ${projectName && branchName ? cloudflarePagesDnsTarget(projectName, branchName, input.environment) : '(unset)'} is missing.`],
+				},
+			];
+			return {
+				unitId: input.unit.id,
+				status: checks.every((check) => check.ok) ? 'ready' : 'pending',
+				verified: checks.every((check) => check.ok),
+				checks,
+				warnings: [],
+			};
 		},
 		status(input) {
 			return isPagesSite(input) ? this.refresh(input) : base.status(input);

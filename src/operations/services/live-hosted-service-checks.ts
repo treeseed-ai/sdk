@@ -60,6 +60,19 @@ function urlForDomain(value: unknown) {
 	return /^https?:\/\//iu.test(normalized) ? normalized : `https://${normalized}`;
 }
 
+function selectedWebConfig(deployConfig: Record<string, any>, selectedApplication: ReturnType<typeof discoverTreeseedApplications>[number] | null) {
+	return selectedApplication?.roles.includes('web') ? selectedApplication.config : deployConfig;
+}
+
+function pagesBranchName(config: Record<string, any>, target: TreeseedHostedServiceTarget) {
+	const pages = config.cloudflare?.pages && typeof config.cloudflare.pages === 'object'
+		? config.cloudflare.pages
+		: {};
+	const key = target === 'prod' ? 'productionBranch' : 'stagingBranch';
+	const fallback = target === 'prod' ? 'main' : 'staging';
+	return typeof pages[key] === 'string' && pages[key].trim() ? pages[key].trim() : fallback;
+}
+
 async function observeHttp(url: string, options: TreeseedLiveHostedServiceCheckOptions) {
 	const attempts = Math.max(1, Math.floor(options.retry?.attempts ?? 3));
 	const intervalMs = Math.max(0, Math.floor(options.retry?.intervalMs ?? 1500));
@@ -296,18 +309,22 @@ async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOp
 		? discoverTreeseedApplications(options.tenantRoot).find((application) => application.id === options.appId || application.relativeRoot === options.appId)
 		: null;
 	if (!options.appId || options.appId === 'web' || selectedApplication?.roles.includes('web')) {
-		const webDomain = deployConfig.surfaces?.web?.environments?.[options.target]?.domain
-			?? deployConfig.surfaces?.web?.publicBaseUrl
-			?? deployConfig.siteUrl;
+		const webConfig = selectedWebConfig(deployConfig, selectedApplication);
+		const webDomain = webConfig.surfaces?.web?.environments?.[options.target]?.domain
+			?? webConfig.surfaces?.web?.publicBaseUrl
+			?? webConfig.siteUrl;
 		const webUrl = urlForDomain(webDomain);
 		if (webUrl) {
 			urls.add(webUrl);
-			urls.add(`${webUrl}/v1/healthz`);
-			const pagesProjectName = deployConfig.cloudflare.pages?.projectName;
+			if (!options.appId || options.appId === 'web' || selectedApplication?.roles.includes('api')) {
+				urls.add(`${webUrl}/v1/healthz`);
+			}
+			const pagesProjectName = webConfig.cloudflare?.pages?.projectName;
 			if (pagesProjectName) {
+				const branchName = pagesBranchName(webConfig, options.target);
 				const pagesUrl = options.target === 'prod'
 					? `https://${pagesProjectName}.pages.dev`
-					: `https://${options.target}.${pagesProjectName}.pages.dev`;
+					: `https://${branchName}.${pagesProjectName}.pages.dev`;
 				fallbacks.set(webUrl, pagesUrl);
 			}
 		}
