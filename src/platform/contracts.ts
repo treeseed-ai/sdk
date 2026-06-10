@@ -229,6 +229,7 @@ export interface TreeseedCloudflarePagesConfig {
 	previewProjectName?: string;
 	productionBranch?: string;
 	stagingBranch?: string;
+	buildCommand?: string;
 	buildOutputDir?: string;
 }
 

@@ -758,6 +758,7 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 						?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME),
 					productionBranch: optionalString(cloudflarePages.productionBranch) ?? 'main',
 					stagingBranch: optionalString(cloudflarePages.stagingBranch) ?? 'staging',
+					buildCommand: optionalString(cloudflarePages.buildCommand),
 					buildOutputDir: optionalString(cloudflarePages.buildOutputDir),
 				},
 			r2: cloudflare.r2 === undefined
