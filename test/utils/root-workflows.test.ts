@@ -72,7 +72,9 @@ describe('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('npm --prefix packages/sdk run build:dist');
 		expect(webSource).toContain('for dir in packages/core packages/cli packages/agent');
 		expect(webSource).toContain('pids["${dir}"]="$!"');
+		expect(webSource).toContain('node ./.github/scripts/prepare-workspace-install.mjs');
 		expect(webSource).toContain('npm ci --ignore-scripts');
+		expect(source).toContain('node ./.github/scripts/prepare-workspace-install.mjs');
 		expect(webSource).toContain('node ./packages/sdk/scripts/run-ts.mjs ./packages/sdk/scripts/install-managed-dependencies.ts');
 			expect(webSource).not.toContain('RAILWAY_API_TOKEN');
 			expect(webSource).not.toContain('TREESEED_RAILWAY_PROJECT_ID');
@@ -92,6 +94,8 @@ describe('root workflow bootstrap selection', () => {
 		expect(source).not.toContain('sparse-checkout: |');
 		expect(source).not.toContain('delete pkg.workspaces');
 		expect(verifySource).not.toContain('delete pkg.workspaces');
+		expect(verifySource).toContain('node ./.github/scripts/prepare-workspace-install.mjs');
+		expect(verifySource).toContain('packages/api packages/ui');
 	});
 
 	it('uploads built packages for API starts', () => {
