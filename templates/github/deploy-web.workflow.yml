@@ -108,8 +108,15 @@ __WORKING_DIRECTORY_BLOCK__  web:
           const fs = require('fs');
           const path = require('path');
           const packageRoot = 'packages';
-          const hasLocalUiPackage = fs.existsSync(path.join(packageRoot, 'ui', 'package.json'));
           if (fs.existsSync(packageRoot)) {
+            const localPackageNames = new Set();
+            for (const entry of fs.readdirSync(packageRoot, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue;
+              const file = path.join(packageRoot, entry.name, 'package.json');
+              if (!fs.existsSync(file)) continue;
+              const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+              if (typeof manifest.name === 'string') localPackageNames.add(manifest.name);
+            }
             for (const entry of fs.readdirSync(packageRoot, { withFileTypes: true })) {
               if (!entry.isDirectory()) continue;
               const file = path.join(packageRoot, entry.name, 'package.json');
@@ -120,10 +127,10 @@ __WORKING_DIRECTORY_BLOCK__  web:
                 delete manifest.scripts.prepare;
                 changed = true;
               }
-              if (hasLocalUiPackage && entry.name !== 'ui') {
-                for (const section of ['dependencies', 'devDependencies', 'optionalDependencies']) {
-                  if (manifest[section]?.['@treeseed/ui']) {
-                    delete manifest[section]['@treeseed/ui'];
+              for (const section of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+                for (const dependencyName of Object.keys(manifest[section] ?? {})) {
+                  if (dependencyName !== manifest.name && localPackageNames.has(dependencyName)) {
+                    delete manifest[section][dependencyName];
                     changed = true;
                   }
                 }

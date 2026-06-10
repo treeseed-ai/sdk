@@ -8,10 +8,12 @@ const workspaceRoot = resolve(sdkRoot, '..', '..');
 const rootVerifyWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'verify.yml');
 const rootDeployWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'deploy.yml');
 const rootDeployWebWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'deploy-web.yml');
+const rootPrepareWorkspaceInstallPath = resolve(workspaceRoot, '.github', 'scripts', 'prepare-workspace-install.mjs');
 const packageVerifyWorkflowPath = resolve(sdkRoot, '.github', 'workflows', 'verify.yml');
 const integratedWorkspaceAvailable = existsSync(rootVerifyWorkflowPath)
 	&& existsSync(rootDeployWorkflowPath)
 	&& existsSync(rootDeployWebWorkflowPath)
+	&& existsSync(rootPrepareWorkspaceInstallPath)
 	&& existsSync(resolve(workspaceRoot, '.railwayignore'));
 
 function packageRootFor(packageName: string) {
@@ -46,6 +48,7 @@ describe('root workflow bootstrap selection', () => {
 		const source = readFileSync(rootDeployWorkflowPath, 'utf8');
 		const webSource = readFileSync(rootDeployWebWorkflowPath, 'utf8');
 		const verifySource = readFileSync(rootVerifyWorkflowPath, 'utf8');
+		const prepareInstallSource = readFileSync(rootPrepareWorkspaceInstallPath, 'utf8');
 
 		expect(source).toContain("branches:\n      - staging");
 		expect(source).not.toContain('      - main');
@@ -96,6 +99,10 @@ describe('root workflow bootstrap selection', () => {
 		expect(verifySource).not.toContain('delete pkg.workspaces');
 		expect(verifySource).toContain('node ./.github/scripts/prepare-workspace-install.mjs');
 		expect(verifySource).toContain('packages/api packages/ui');
+		expect(prepareInstallSource).toContain('localPackageNames');
+		expect(prepareInstallSource).toContain('dependencyName !== manifest.name');
+		expect(prepareInstallSource).toContain('localPackageNames.has(dependencyName)');
+		expect(prepareInstallSource).not.toContain("['@treeseed/ui']");
 	});
 
 	it('uploads built packages for API starts', () => {
