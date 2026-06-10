@@ -113,7 +113,7 @@ runtime:
 		const hostedDeploy = readFileSync(resolve(hostedRoot, '.github', 'workflows', 'deploy-web.yml'), 'utf8');
 		expect(hostedDeploy).toContain('Treeseed Web Deploy');
 		expect(hostedDeploy).toContain('default: deploy_web');
-		expect(hostedDeploy).toContain('packages/sdk packages/agent packages/core packages/cli');
+		expect(hostedDeploy).toContain('packages/sdk packages/ui packages/agent packages/core packages/cli');
 		expect(hostedDeploy).toContain('CLOUDFLARE_API_TOKEN');
 		expect(hostedDeploy).not.toContain('RAILWAY_API_TOKEN');
 	});
