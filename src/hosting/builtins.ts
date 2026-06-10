@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { cloudflareApiRequest, runWrangler } from '../operations/services/deploy.ts';
+import { resolveTreeseedLaunchEnvironment } from '../operations/services/config-runtime.ts';
+import { cloudflareApiRequest, resolveConfiguredCloudflareAccountId, runWrangler } from '../operations/services/deploy.ts';
 import type {
 	TreeseedApplicationHostingProfile,
 	TreeseedHostAdapter,
@@ -150,6 +151,44 @@ function cloudflarePagesBuildCommand(input: TreeseedHostAdapterOperationInput) {
 		: null;
 }
 
+function cloudflarePagesConfigRoot(input: TreeseedHostAdapterOperationInput): string {
+	let current = resolve(input.graph.tenantRoot);
+	while (true) {
+		if (existsSync(resolve(current, '.treeseed', 'config', 'machine.yaml'))) {
+			return current;
+		}
+		const parent = dirname(current);
+		if (parent === current) {
+			return resolve(input.graph.tenantRoot);
+		}
+		current = parent;
+	}
+}
+
+function cloudflarePagesEnv(input: TreeseedHostAdapterOperationInput): Record<string, string> {
+	const configRoot = cloudflarePagesConfigRoot(input);
+	const resolvedValues = input.environment === 'local'
+		? {}
+		: resolveTreeseedLaunchEnvironment({
+			tenantRoot: configRoot,
+			scope: input.environment,
+		});
+	const accountId = [
+		process.env.CLOUDFLARE_ACCOUNT_ID,
+		resolvedValues.CLOUDFLARE_ACCOUNT_ID,
+		resolveConfiguredCloudflareAccountId(input.graph.deployConfig),
+	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
+	const token = [
+		process.env.CLOUDFLARE_API_TOKEN,
+		resolvedValues.CLOUDFLARE_API_TOKEN,
+	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
+	return {
+		...resolvedValues,
+		CLOUDFLARE_ACCOUNT_ID: accountId,
+		CLOUDFLARE_API_TOKEN: token,
+	};
+}
+
 function cloudflarePagesDomain(input: TreeseedHostAdapterOperationInput) {
 	const config = unitConfig(input);
 	return typeof config.domain === 'string' && config.domain.trim()
@@ -165,7 +204,7 @@ function runCloudflarePagesBuild(input: TreeseedHostAdapterOperationInput) {
 	const result = spawnSync('bash', ['-lc', command], {
 		cwd: input.graph.tenantRoot,
 		stdio: 'inherit',
-		env: process.env,
+		env: { ...process.env, ...cloudflarePagesEnv(input) },
 		encoding: 'utf8',
 	});
 	if (result.status !== 0) {
@@ -187,6 +226,7 @@ function ensureCloudflarePagesProject(input: TreeseedHostAdapterOperationInput, 
 		cwd: input.graph.tenantRoot,
 		capture: true,
 		allowFailure: true,
+		env: cloudflarePagesEnv(input),
 	});
 	if (result.status !== 0) {
 		const output = [result.stderr?.trim(), result.stdout?.trim()].filter(Boolean).join('\n');
@@ -197,10 +237,11 @@ function ensureCloudflarePagesProject(input: TreeseedHostAdapterOperationInput, 
 }
 
 function ensureCloudflarePagesDomain(input: TreeseedHostAdapterOperationInput, projectName: string, domain: string | null) {
-	const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID ?? '').trim();
+	const env = cloudflarePagesEnv(input);
+	const accountId = String(env.CLOUDFLARE_ACCOUNT_ID ?? '').trim();
 	if (!domain || !accountId || input.dryRun) return;
 	const domainPath = `/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/domains/${encodeURIComponent(domain)}`;
-	const existing = cloudflareApiRequest(domainPath, { allowFailure: true });
+	const existing = cloudflareApiRequest(domainPath, { env, allowFailure: true });
 	if (existing?.result?.name === domain || existing?.result?.domain === domain) {
 		return;
 	}
@@ -210,6 +251,7 @@ function ensureCloudflarePagesDomain(input: TreeseedHostAdapterOperationInput, p
 			method: 'POST',
 			body: { name: domain },
 			allowFailure: true,
+			env,
 		},
 	);
 	const errors = Array.isArray(created?.errors) ? created.errors.map((entry: any) => String(entry?.message ?? entry)).join('; ') : '';
@@ -218,33 +260,35 @@ function ensureCloudflarePagesDomain(input: TreeseedHostAdapterOperationInput, p
 	}
 }
 
-function observeCloudflarePagesProject(projectName: string) {
-	const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID ?? '').trim();
-	const token = String(process.env.CLOUDFLARE_API_TOKEN ?? '').trim();
+function observeCloudflarePagesProject(input: TreeseedHostAdapterOperationInput, projectName: string) {
+	const env = cloudflarePagesEnv(input);
+	const accountId = String(env.CLOUDFLARE_ACCOUNT_ID ?? '').trim();
+	const token = String(env.CLOUDFLARE_API_TOKEN ?? '').trim();
 	if (!accountId || !token) return null;
 	return cloudflareApiRequest(
 		`/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}`,
-		{ allowFailure: true },
+		{ env, allowFailure: true },
 	)?.result ?? null;
 }
 
-function observeCloudflarePagesDomain(projectName: string, domain: string | null) {
-	const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID ?? '').trim();
-	const token = String(process.env.CLOUDFLARE_API_TOKEN ?? '').trim();
+function observeCloudflarePagesDomain(input: TreeseedHostAdapterOperationInput, projectName: string, domain: string | null) {
+	const env = cloudflarePagesEnv(input);
+	const accountId = String(env.CLOUDFLARE_ACCOUNT_ID ?? '').trim();
+	const token = String(env.CLOUDFLARE_API_TOKEN ?? '').trim();
 	if (!domain || !accountId || !token) return null;
 	return cloudflareApiRequest(
 		`/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/domains/${encodeURIComponent(domain)}`,
-		{ allowFailure: true },
+		{ env, allowFailure: true },
 	)?.result ?? null;
 }
 
-function verifyCloudflarePagesPostconditions(projectName: string, domain: string | null) {
-	const project = observeCloudflarePagesProject(projectName);
+function verifyCloudflarePagesPostconditions(input: TreeseedHostAdapterOperationInput, projectName: string, domain: string | null) {
+	const project = observeCloudflarePagesProject(input, projectName);
 	if (project?.name !== projectName) {
 		throw new Error(`Cloudflare Pages project ${projectName} was not observed after deploy.`);
 	}
 	if (domain) {
-		const observedDomain = observeCloudflarePagesDomain(projectName, domain);
+		const observedDomain = observeCloudflarePagesDomain(input, projectName, domain);
 		const observedName = observedDomain?.name ?? observedDomain?.domain ?? null;
 		if (observedName !== domain) {
 			throw new Error(`Cloudflare Pages custom domain ${domain} was not observed on project ${projectName} after deploy.`);
@@ -282,8 +326,9 @@ function deployCloudflarePages(input: TreeseedHostAdapterOperationInput & { plan
 		], {
 			cwd: input.graph.tenantRoot,
 			capture: true,
+			env: cloudflarePagesEnv(input),
 		});
-		verifyCloudflarePagesPostconditions(projectName, cloudflarePagesDomain(input));
+		verifyCloudflarePagesPostconditions(input, projectName, cloudflarePagesDomain(input));
 	}
 	return {
 		status: input.dryRun ? 'pending' : 'ready',
@@ -328,9 +373,9 @@ function createCloudflareHostAdapter(): TreeseedHostAdapter {
 		refresh(input) {
 			if (!isPagesSite(input)) return base.refresh(input);
 			const projectName = cloudflarePagesProjectName(input);
-			const project = projectName ? observeCloudflarePagesProject(projectName) : null;
+			const project = projectName ? observeCloudflarePagesProject(input, projectName) : null;
 			const domain = cloudflarePagesDomain(input);
-			const observedDomain = projectName ? observeCloudflarePagesDomain(projectName, domain) : null;
+			const observedDomain = projectName ? observeCloudflarePagesDomain(input, projectName, domain) : null;
 			return {
 				status: projectName && project?.name === projectName ? 'ready' : (projectName ? 'pending' : 'blocked'),
 				locators: {
