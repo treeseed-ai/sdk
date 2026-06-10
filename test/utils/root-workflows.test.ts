@@ -73,7 +73,8 @@ describe('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('BETTER_AUTH_URL');
 		expect(webSource).toContain('https://api-treeseed-staging.treeseed.ai');
 		expect(webSource).toContain('npm --prefix packages/sdk run build:dist');
-		expect(webSource).toContain('for dir in packages/core packages/cli packages/agent');
+		expect(webSource).toContain('packages/ui/dist/astro/layouts/MainLayout.astro');
+		expect(webSource).toContain('for dir in packages/ui packages/core packages/cli packages/agent');
 		expect(webSource).toContain('pids["${dir}"]="$!"');
 		expect(webSource).toContain('node ./.github/scripts/prepare-workspace-install.mjs');
 		expect(webSource).toContain('npm ci --ignore-scripts');
