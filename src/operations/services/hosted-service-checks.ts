@@ -195,6 +195,14 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 	const selectedAppId = options.appId?.trim() || null;
 	const includeWeb = !selectedAppId || selectedAppId === 'web';
 	const includeApi = !selectedAppId || selectedAppId === 'api';
+	const selectedApplication = selectedAppId
+		? discoverTreeseedApplications(tenantRoot).find((application) => application.id === selectedAppId || application.relativeRoot === selectedAppId)
+		: null;
+	const selectedAppHasApi = Boolean(
+		selectedApplication?.roles.includes('api')
+		|| selectedApplication?.config.surfaces?.api?.enabled === true
+		|| selectedApplication?.config.services?.api?.enabled !== false && selectedApplication?.config.services?.api,
+	);
 
 	const web = deployConfig.surfaces?.web;
 	if (includeWeb && web?.enabled !== false && web?.provider === 'cloudflare') {
@@ -213,7 +221,9 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		if (domain) {
 			const url = String(domain).startsWith('http') ? String(domain) : `https://${domain}`;
 			checks.push({ ...httpStatus(url, options), id: 'http:web', serviceKey: 'web', serviceType: 'web', description: 'Web public URL responds.' });
-			checks.push({ ...httpStatus(`${url.replace(/\/+$/u, '')}/v1/healthz`, options), id: 'http:web:v1-healthz', serviceKey: 'web', serviceType: 'web', description: 'Web proxy reaches API health.' });
+			if (!selectedAppId || selectedAppHasApi) {
+				checks.push({ ...httpStatus(`${url.replace(/\/+$/u, '')}/v1/healthz`, options), id: 'http:web:v1-healthz', serviceKey: 'web', serviceType: 'web', description: 'Web proxy reaches API health.' });
+			}
 		}
 	}
 	for (const [surfaceKey, surface] of Object.entries(deployConfig.surfaces ?? {})) {

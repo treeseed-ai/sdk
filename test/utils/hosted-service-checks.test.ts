@@ -110,6 +110,39 @@ function byId(report: ReturnType<typeof collectTreeseedHostedServiceChecks>, id:
 }
 
 describe('hosted service checks', () => {
+	it('does not require API proxy health for web-only apps', () => {
+		const root = fixtureRoot(`name: TreeSeed UI
+slug: treeseed-ui
+siteUrl: https://ui.treeseed.ai
+contactEmail: hello@treeseed.email
+hosting:
+  kind: self_hosted_project
+  projectId: ui
+runtime:
+  mode: none
+surfaces:
+  web:
+    enabled: true
+    provider: cloudflare
+    rootDir: sandbox
+    publicBaseUrl: https://ui.treeseed.ai
+    environments:
+      staging:
+        domain: ui-staging.treeseed.ai
+`);
+		const report = collectTreeseedHostedServiceChecks({
+			tenantRoot: root,
+			target: 'staging',
+			appId: 'web',
+			httpChecks: {
+				'https://ui-staging.treeseed.ai': { status: 200, ok: true },
+			},
+		});
+
+		expect(byId(report, 'http:web')).toMatchObject({ status: 'passed' });
+		expect(report.checks.some((check) => check.id === 'http:web:v1-healthz')).toBe(false);
+	});
+
 	it('generates config-driven checks for API, runner, web, and database services', () => {
 		const root = fixtureRoot();
 		const report = collectTreeseedHostedServiceChecks({
