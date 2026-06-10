@@ -73,7 +73,13 @@ function inferApplicationId(config: TreeseedDeployConfig, root: string, workspac
 	) {
 		return 'api';
 	}
-	if (roles.includes('web') && !hasBackendServices && root === workspaceRoot) return 'web';
+	if (roles.includes('web') && !hasBackendServices && root === workspaceRoot) {
+		const configuredRootId = config.hosting?.projectId ?? config.runtime?.projectId ?? null;
+		if (configuredRootId && configuredRootId !== 'market') {
+			return configuredRootId.replace(/^treeseed-/u, '').replace(/[^a-z0-9-]+/giu, '-').replace(/^-|-$/gu, '') || 'web';
+		}
+		return 'web';
+	}
 	const relative = root === workspaceRoot ? '.' : root.slice(workspaceRoot.length + 1).replaceAll('\\', '/');
 	const configuredId = config.hosting?.projectId ?? config.runtime?.projectId ?? config.slug ?? relative;
 	return (configuredId || 'app').replace(/^treeseed-/u, '').replace(/[^a-z0-9-]+/giu, '-').replace(/^-|-$/gu, '') || 'app';

@@ -67,7 +67,7 @@ export interface TreeseedHostedServiceCheckOptions {
 	now?: Date;
 	valuesOverlay?: Record<string, string | undefined>;
 	observedRailwayServices?: Record<string, TreeseedObservedRailwayServiceState | undefined>;
-	httpChecks?: Record<string, { status?: number; ok?: boolean; skipped?: boolean; error?: string } | undefined>;
+	httpChecks?: Record<string, { status?: number; ok?: boolean; skipped?: boolean; error?: string; fallbackUrl?: string; fallbackStatus?: number; fallbackOk?: boolean; fallbackError?: string } | undefined>;
 }
 
 const RAILWAY_SECRET_KEYS_BY_SERVICE: Record<string, string[]> = {
@@ -166,6 +166,7 @@ function httpStatus(url: string, options: TreeseedHostedServiceCheckOptions) {
 		});
 	}
 	const ok = observed.ok === true || (typeof observed.status === 'number' && observed.status >= 200 && observed.status < 400);
+	const fallbackOk = observed.fallbackOk === true || (typeof observed.fallbackStatus === 'number' && observed.fallbackStatus >= 200 && observed.fallbackStatus < 400);
 	return check({
 		id: `http:${url}`,
 		provider: 'http',
@@ -173,9 +174,20 @@ function httpStatus(url: string, options: TreeseedHostedServiceCheckOptions) {
 		target: options.target ?? 'prod',
 		description: `HTTP check ${url}`,
 		expected: { ok: true },
-		observed: { status: observed.status ?? null, ok, skipped: observed.skipped === true },
-		status: observed.skipped ? 'skipped' : ok ? 'passed' : 'failed',
-		issues: ok ? [] : [observed.error ?? `HTTP check ${url} did not return a successful status.`],
+		observed: {
+			status: observed.status ?? null,
+			ok,
+			skipped: observed.skipped === true,
+			fallbackUrl: observed.fallbackUrl,
+			fallbackStatus: observed.fallbackStatus,
+			fallbackOk,
+		},
+		status: observed.skipped ? 'skipped' : ok ? 'passed' : fallbackOk ? 'warning' : 'failed',
+		issues: ok
+			? []
+			: fallbackOk
+				? [observed.error ?? `HTTP check ${url} did not return a successful status yet; fallback ${observed.fallbackUrl} responded.`]
+				: [observed.error ?? `HTTP check ${url} did not return a successful status.`],
 	});
 }
 
@@ -193,11 +205,11 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 	const values = { ...machineValues, ...(options.valuesOverlay ?? {}) };
 	const checks: TreeseedHostedServiceCheck[] = [];
 	const selectedAppId = options.appId?.trim() || null;
-	const includeWeb = !selectedAppId || selectedAppId === 'web';
-	const includeApi = !selectedAppId || selectedAppId === 'api';
 	const selectedApplication = selectedAppId
 		? discoverTreeseedApplications(tenantRoot).find((application) => application.id === selectedAppId || application.relativeRoot === selectedAppId)
 		: null;
+	const includeWeb = !selectedAppId || selectedAppId === 'web' || selectedApplication?.roles.includes('web') === true;
+	const includeApi = !selectedAppId || selectedAppId === 'api' || selectedApplication?.roles.includes('api') === true;
 	const selectedAppHasApi = Boolean(
 		selectedApplication?.roles.includes('api')
 		|| selectedApplication?.config.surfaces?.api?.enabled === true

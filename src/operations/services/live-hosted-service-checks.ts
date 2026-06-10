@@ -291,7 +291,11 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOptions) {
 	const deployConfig = loadCliDeployConfig(options.tenantRoot);
 	const urls = new Set<string>();
-	if (!options.appId || options.appId === 'web') {
+	const fallbacks = new Map<string, string>();
+	const selectedApplication = options.appId
+		? discoverTreeseedApplications(options.tenantRoot).find((application) => application.id === options.appId || application.relativeRoot === options.appId)
+		: null;
+	if (!options.appId || options.appId === 'web' || selectedApplication?.roles.includes('web')) {
 		const webDomain = deployConfig.surfaces?.web?.environments?.[options.target]?.domain
 			?? deployConfig.surfaces?.web?.publicBaseUrl
 			?? deployConfig.siteUrl;
@@ -299,6 +303,13 @@ async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOp
 		if (webUrl) {
 			urls.add(webUrl);
 			urls.add(`${webUrl}/v1/healthz`);
+			const pagesProjectName = deployConfig.cloudflare.pages?.projectName;
+			if (pagesProjectName) {
+				const pagesUrl = options.target === 'prod'
+					? `https://${pagesProjectName}.pages.dev`
+					: `https://${options.target}.${pagesProjectName}.pages.dev`;
+				fallbacks.set(webUrl, pagesUrl);
+			}
 		}
 	}
 	for (const service of configuredRailwayServices(options.tenantRoot, options.target).filter((entry) => !options.appId || entry.application?.id === options.appId)) {
@@ -312,7 +323,21 @@ async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOp
 		urls.add(`${baseUrl}${service.healthcheckPath ?? '/healthz'}`);
 		if (service.key === 'api') urls.add(`${baseUrl}/healthz/deep`);
 	}
-	const entries = await Promise.all([...urls].map(async (url) => [url, await observeHttp(url, options)] as const));
+	const entries = await Promise.all([...urls].map(async (url) => {
+		const observed = await observeHttp(url, options);
+		const fallbackUrl = fallbacks.get(url);
+		if ((observed.ok !== true && !observed.status) && fallbackUrl) {
+			const fallback = await observeHttp(fallbackUrl, options);
+			return [url, {
+				...observed,
+				fallbackUrl,
+				fallbackStatus: fallback.status,
+				fallbackOk: fallback.ok,
+				fallbackError: fallback.error,
+			}] as const;
+		}
+		return [url, observed] as const;
+	}));
 	return Object.fromEntries(entries);
 }
 
