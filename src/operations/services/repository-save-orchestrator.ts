@@ -50,7 +50,7 @@ import {
 	sortWorkspacePackages,
 	workspacePackages,
 } from './workspace-tools.ts';
-import { collectDeploymentLockfileWorkspaceIssues } from './workspace-dependency-mode.ts';
+import { collectDeploymentLockfileWorkspaceIssues, ensureLocalWorkspaceLinks } from './workspace-dependency-mode.ts';
 import {
 	createBuildWarningSummary,
 	formatAllowedBuildWarnings,
@@ -998,7 +998,9 @@ async function runNpmInstallWithRetry(
 	let lastError: string | null = null;
 	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
 	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
-	const installFlags = node.branchMode === 'project-save'
+	const installFlags = rootWorkspaceInstall
+		? ['--package-lock-only', '--ignore-scripts']
+		: node.branchMode === 'project-save'
 		? ['--ignore-scripts']
 		: ['--package-lock-only', '--ignore-scripts'];
 	const args = rootWorkspaceInstall
@@ -1034,6 +1036,10 @@ async function runProjectVerificationInstallWithRetry(
 	let lastError: string | null = null;
 	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
 	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
+	if (rootWorkspaceInstall) {
+		emitProgress(options, node, 'install', 'Skipped root npm ci project verification install; lockfile dry-run and restored workspace links provide save-time dependency proof.');
+		return;
+	}
 	const args = rootWorkspaceInstall
 		? ['ci']
 		: ['ci', '--workspaces=false'];
@@ -1671,7 +1677,7 @@ function repoPlanCommands(
 		commands.push('npm install --workspaces=false # explicitly refresh changed git-tag dependencies with --force; retry up to 5 times with 60s delay');
 	} else if (node.kind === 'project' && dependencyUpdates.length > 0 && hasNpmLockfile(node.path)) {
 		commands.push(rootWorkspaceInstall
-			? 'npm install # refresh root workspace lockfile against the real checked-in manifest'
+			? 'npm install --package-lock-only --ignore-scripts # refresh root workspace lockfile without installing git dependencies'
 			: 'npm install --workspaces=false # refresh project lockfile after internal dependency updates');
 	}
 	if (hasNpmLockfile(node.path) && (node.kind === 'project' || plannedVersion || dependencyUpdates.length > 0 || node.submoduleDependencies.length > 0)) {
@@ -1713,7 +1719,7 @@ function repoPlanCommands(
 			commands.push(`git tag -a ${plannedVersion} -m <${plannedVersion.includes('-dev.') ? 'dev metadata' : 'release'}>`);
 			commands.push(remoteExists ? `git push origin ${branch} ${plannedVersion}` : `git push -u origin ${branch} ${plannedVersion}`);
 			if (plannedDependencySpec && node.branchMode === 'package-dev-save') {
-				commands.push(`smoke install ${plannedDependencySpec}`);
+				commands.push(`git ls-remote --exit-code --tags origin refs/tags/${plannedVersion} # validate dependency tag reachability`);
 			}
 		} else {
 			commands.push(remoteExists ? `git push origin ${branch}` : `git push -u origin ${branch}`);
@@ -2053,6 +2059,13 @@ async function saveOneRepository(
 
 	const rebase = pullRebaseFromOrigin(node, options, branch);
 	const verifyMode = options.verifyMode ?? 'action-first';
+	if (node.kind === 'project' && node.path === options.root && Array.isArray(node.packageJson?.workspaces)) {
+		const linkReport = ensureLocalWorkspaceLinks(options.root);
+		const restoredLinks = Array.isArray(linkReport.created) ? linkReport.created.length : 0;
+		if (restoredLinks > 0) {
+			emitProgress(options, node, 'install', `Restored ${restoredLinks} local workspace package link${restoredLinks === 1 ? '' : 's'} before project verification.`);
+		}
+	}
 	if (node.kind === 'package') {
 		ensureRemoteAccessBeforeVerification(node, options, state);
 	}

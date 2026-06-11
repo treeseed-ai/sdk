@@ -84,6 +84,7 @@ import {
 } from '../operations/services/github-actions-verification.ts';
 import {
 	runReleaseCandidateGate,
+	type ReleaseCandidateMode,
 	type ReleaseCandidateReport,
 } from '../operations/services/release-candidate.ts';
 import {
@@ -430,6 +431,14 @@ function normalizeSaveVerifyMode(mode: TreeseedSaveInput['verifyMode'] | undefin
 		default:
 			return 'skip';
 	}
+}
+
+function normalizeReleaseCandidateMode(mode: TreeseedSaveInput['releaseCandidate'] | undefined, operation: Extract<TreeseedWorkflowOperationId, 'save' | 'stage' | 'release'>): ReleaseCandidateMode {
+	const value = mode ?? process.env.TREESEED_RELEASE_CANDIDATE_MODE;
+	if (value === 'hybrid' || value === 'strict' || value === 'skip') {
+		return value;
+	}
+	return operation === 'save' ? 'hybrid' : 'strict';
 }
 
 function shouldUseHostedSaveCi(input: TreeseedSaveInput, branch: string | null | undefined) {
@@ -2434,7 +2443,7 @@ async function runReleaseCandidateForPlan(
 	operation: Extract<TreeseedWorkflowOperationId, 'save' | 'stage' | 'release'>,
 	root: string,
 	plannedRelease: { plannedVersions?: unknown; packageSelection?: unknown },
-	options: { allowReuse?: boolean } = {},
+	options: { allowReuse?: boolean; mode?: ReleaseCandidateMode } = {},
 ) {
 	const plannedVersions = plannedRelease.plannedVersions && typeof plannedRelease.plannedVersions === 'object' && !Array.isArray(plannedRelease.plannedVersions)
 		? plannedRelease.plannedVersions as Record<string, unknown>
@@ -2448,6 +2457,7 @@ async function runReleaseCandidateForPlan(
 		plannedVersions: { ...stableDependencyVersions, ...plannedVersions },
 		selectedPackageNames: packageSelection.selected,
 		allowReuse: options.allowReuse,
+		mode: options.mode ?? normalizeReleaseCandidateMode(undefined, operation),
 	});
 	assertReleaseCandidatePassed(operation, report);
 	return report;
@@ -3727,6 +3737,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				? (autoResumeRun.input as unknown as TreeseedSaveInput)
 				: input;
 			const message = String(effectiveInput.message ?? '').trim();
+			const releaseCandidateMode = normalizeReleaseCandidateMode(effectiveInput.releaseCandidate, 'save');
 			const optionsHotfix = effectiveInput.hotfix === true;
 			const previewInitialized = branchPreviewInitialized(root, branch);
 
@@ -3787,6 +3798,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						workspaceLinks,
 						ciMode: normalizeSaveCiMode(effectiveInput.ciMode, branch),
 						verifyMode: effectiveInput.verifyMode ?? 'fast',
+						releaseCandidateMode,
 						applicationSelection,
 						...worktreePayload(root, effectiveInput.worktreeMode),
 						repositoryPlan,
@@ -3800,7 +3812,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 								? [{ id: 'hosted-ci', description: `Wait for hosted save workflows on ${branch}` }]
 								: []),
 							...(branch === STAGING_BRANCH
-								? [{ id: 'release-candidate', description: 'Run release-candidate readiness checks for the saved staging state' }]
+								? [{ id: 'release-candidate', description: `Run ${releaseCandidateMode} release-candidate readiness checks for the saved staging state` }]
 								: []),
 							{ id: 'workspace-link', description: 'Restore local workspace links after save' },
 							...((beforeState.branchRole === 'feature' && (effectiveInput.preview === true || previewInitialized))
@@ -3845,6 +3857,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					worktreeMode: effectiveInput.worktreeMode ?? 'auto',
 					commitMessageMode: effectiveInput.commitMessageMode ?? 'auto',
 					workspaceLinks: effectiveInput.workspaceLinks ?? 'auto',
+					releaseCandidate: releaseCandidateMode,
 					verifyDeployedResources: effectiveInput.verifyDeployedResources === true,
 				},
 				[
@@ -4051,7 +4064,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					: { workflowGates: [] };
 				const releaseCandidate = branch === STAGING_BRANCH
 					? await executeJournalStep(root, workflowRun.runId, 'release-candidate', () => {
-						helpers.write('[save][workflow] Running staging release-candidate readiness checks.');
+						helpers.write(`[save][workflow] Running staging release-candidate readiness checks (${releaseCandidateMode}).`);
 						const releaseSession = resolveTreeseedWorkflowSession(root);
 						const stagingReleasePlan = buildReleasePlanSnapshot({
 							root,
@@ -4062,7 +4075,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							rootRepo: savedRootRepo,
 							blockers: [],
 						});
-						return runReleaseCandidateForPlan('save', root, stagingReleasePlan);
+						return runReleaseCandidateForPlan('save', root, stagingReleasePlan, { mode: releaseCandidateMode });
 					})
 					: null;
 
@@ -4125,6 +4138,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					lockfileValidation,
 					ciMode: normalizeSaveCiMode(effectiveInput.ciMode, branch),
 					verifyMode: effectiveInput.verifyMode ?? 'fast',
+					releaseCandidateMode,
 					applicationSelection,
 					workflowGates: saveWorkflowGates?.workflowGates ?? [],
 					releaseCandidate,

@@ -71,6 +71,7 @@ export type TreeseedWorkflowExecutionMode = 'execute' | 'plan';
 export type TreeseedWorkflowWorktreeMode = 'auto' | 'on' | 'off';
 export type TreeseedWorkflowCiMode = 'auto' | 'hosted' | 'off';
 export type TreeseedWorkflowVerifyMode = 'fast' | 'local' | 'hosted' | 'both' | 'skip';
+export type TreeseedReleaseCandidateMode = 'hybrid' | 'strict' | 'skip';
 
 export type TreeseedWorkflowContext = {
 	cwd?: string;
@@ -153,6 +154,7 @@ export type TreeseedSaveInput = {
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	commitMessageMode?: 'auto' | 'cloudflare' | 'generated' | 'fallback';
 	workspaceLinks?: 'auto' | 'off';
+	releaseCandidate?: TreeseedReleaseCandidateMode;
 	verifyDeployedResources?: boolean;
 	plan?: boolean;
 	dryRun?: boolean;

@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	discoverRepositorySaveNodes,
@@ -13,6 +14,8 @@ import {
 	runStreamingCommand,
 	type RepositorySaveNode,
 } from '../../src/operations/services/repository-save-orchestrator.ts';
+
+const testDir = dirname(fileURLToPath(import.meta.url));
 
 function git(cwd: string, args: string[]) {
 	const result = spawnSync('git', args, { cwd, stdio: 'pipe', encoding: 'utf8' });
@@ -137,6 +140,13 @@ describe('repository save orchestrator helpers', () => {
 
 		expect(plan.rootRepo.commands).toContain('npm ci --ignore-scripts --dry-run # validate root manifest, workspaces, and lockfile before commit');
 		expect(plan.rootRepo.commands).not.toContain('npm install --workspaces=false # refresh project lockfile after internal dependency updates');
+	});
+
+	it('keeps root workspace project verification off script-enabled npm ci', () => {
+		const source = readFileSync(resolve(testDir, '../../src/operations/services/repository-save-orchestrator.ts'), 'utf8');
+
+		expect(source).toContain('Skipped root npm ci project verification install');
+		expect(source).toContain('ensureLocalWorkspaceLinks(options.root)');
 	});
 
 	it('plans package branch and tag publication in one push command', () => {

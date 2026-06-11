@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	buildReleaseCandidateFingerprint,
+	buildReleaseCandidateTopologyFingerprint,
 	collectReleaseCandidateOutputFailures,
 	isRootWebReleaseCandidateEntry,
 	runReleaseCandidateGate,
@@ -157,7 +158,85 @@ describe('release candidate verification', () => {
 		expect(first.key).not.toBe(changedVersion.key);
 		expect(first.key).not.toBe(changedLockfile.key);
 		expect(first.key).not.toBe(changedSelection.key);
-		expect(first.policyVersion).toBe('package-adapters-v1');
+		expect(first.policyVersion).toBe('package-adapters-v2-hybrid');
+	});
+
+	it('does not change topology for internal version and git tag churn', () => {
+		const root = makeWorkspace();
+		const first = buildReleaseCandidateTopologyFingerprint({
+			root,
+			selectedPackageNames: ['@treeseed/sdk'],
+			plannedVersions: { '@treeseed/market': '1.0.1', '@treeseed/sdk': '0.4.13' },
+		});
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: '@treeseed/market',
+			version: '1.0.7',
+			private: true,
+			workspaces: ['packages/*'],
+			dependencies: {
+				'@treeseed/sdk': 'git+https://github.com/treeseed/sdk.git#0.4.14-dev.staging.2',
+			},
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(root, 'packages', 'sdk', 'package.json'), JSON.stringify({
+			name: '@treeseed/sdk',
+			version: '0.4.14-dev.staging.2',
+			scripts: {
+				'verify:local': 'node -e "process.exit(0)"',
+				'release:publish': 'node -e "process.exit(0)"',
+			},
+		}, null, 2), 'utf8');
+		const second = buildReleaseCandidateTopologyFingerprint({
+			root,
+			selectedPackageNames: ['@treeseed/sdk'],
+			plannedVersions: { '@treeseed/market': '1.0.2', '@treeseed/sdk': '0.4.14' },
+		});
+
+		expect(second.key).toBe(first.key);
+	});
+
+	it('changes topology for external dependencies and release scripts', () => {
+		const root = makeWorkspace();
+		const first = buildReleaseCandidateTopologyFingerprint({
+			root,
+			selectedPackageNames: ['@treeseed/sdk'],
+			plannedVersions: {},
+		});
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: '@treeseed/market',
+			version: '1.0.0',
+			private: true,
+			workspaces: ['packages/*'],
+			dependencies: {
+				'@treeseed/sdk': 'git+https://github.com/treeseed/sdk.git#0.4.13-dev.feature-demo.1',
+				astro: '^5.1.0',
+			},
+		}, null, 2), 'utf8');
+		const changedDependency = buildReleaseCandidateTopologyFingerprint({
+			root,
+			selectedPackageNames: ['@treeseed/sdk'],
+			plannedVersions: {},
+		});
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: '@treeseed/market',
+			version: '1.0.0',
+			private: true,
+			workspaces: ['packages/*'],
+			dependencies: {
+				'@treeseed/sdk': 'git+https://github.com/treeseed/sdk.git#0.4.13-dev.feature-demo.1',
+				astro: '^5.1.0',
+			},
+			scripts: {
+				'verify:local': 'node verify.mjs',
+			},
+		}, null, 2), 'utf8');
+		const changedScript = buildReleaseCandidateTopologyFingerprint({
+			root,
+			selectedPackageNames: ['@treeseed/sdk'],
+			plannedVersions: {},
+		});
+
+		expect(changedDependency.key).not.toBe(first.key);
+		expect(changedScript.key).not.toBe(changedDependency.key);
 	});
 
 	it('discovers TreeDX as a BEAM package adapter', () => {
