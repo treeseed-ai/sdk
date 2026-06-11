@@ -4,6 +4,21 @@
 
 For most consumers, the right entrypoint is `AgentSdk`.
 
+Use the SDK when you are writing automation, services, scripts, agents, or package internals that need Treeseed data, graph, workflow, config, reconciliation, hosting, package, or TreeDX integration primitives. Use the CLI when you want an operator command. Use Admin when you want a browser UI. Use API when you need the deployed backend service. Use UI when you need reusable components.
+
+## How SDK Fits With Treeseed
+
+The SDK is the shared platform substrate used by:
+
+- `@treeseed/core` for site runtime, content, plugin, and hosting integration
+- `@treeseed/admin` for admin contracts, view models, API facades, and platform primitives
+- `@treeseed/api` for backend contracts, reconciliation, operation state, and shared data models
+- `@treeseed/cli` for workflow, config, hosting, release, and reconciliation commands
+- `@treeseed/agent` for provider contracts and runtime coordination
+- root `@treeseed/market` for tenant config, content, and hosted workflow integration
+
+The SDK is not a UI package, admin portal, backend server, CLI parser, capacity-provider runtime, or ecommerce implementation. See the root [Package Ownership](../../docs/package-ownership.md) guide for the full system map.
+
 ## Which Surface Should I Use?
 
 Treeseed exposes three public SDK surfaces, but they are not peers:
@@ -53,7 +68,7 @@ These helpers are used by:
 - `trsd operations smoke --environment <env> --service operationsRunner`
 - `trsd stage|release --verify-deployed-resources`
 
-For the API app, the expected hosted backend services are the API service, indexed Treeseed operations runner, PostgreSQL, and public TreeDX federation nodes owned by `packages/api`. The root web app remains a web UI and `/v1/*` proxy/client surface.
+For the API app, the expected hosted backend services are the API service, indexed Treeseed operations runner, PostgreSQL, and public TreeDX federation nodes owned by `packages/api`. The root web app remains a web UI and `/v1/*` proxy/client surface, with admin routes contributed by `@treeseed/admin` and visual primitives contributed by `@treeseed/ui`.
 
 Reconciliation guarantees:
 
@@ -98,10 +113,7 @@ const sdk = AgentSdk.createLocal({
 
 ## TreeDX Content Repository
 
-TreeDX is the default adapter for the TreeSeed project content repository when
-TreeDX service configuration is available. The SDK configures the TreeDX
-portfolio, not a single repository id; repository ids are discovered internally
-when repo-scoped TreeDX endpoints require them.
+TreeDX is the generic repository service used by Treeseed when TreeDX service configuration is available. The SDK is the Treeseed integration and client layer: it configures the TreeDX portfolio, maps Treeseed model registry behavior onto generic repository/ref/path/frontmatter/body/query requests, and keeps product semantics outside TreeDX. The API package may host public TreeDX federation nodes as part of backend reconciliation.
 
 Project site code and optional project repositories remain local filesystem/git
 workspace concerns by default. Use `contentRepository: { adapter: 'local' }` or
@@ -354,10 +366,10 @@ const scoped = sdk.scopeForAgent({
 
 ## Reference Docs
 
-- [SDK Interface Reference](/home/adrian/Projects/treeseed/market/src/content/knowledge/sdk/interface-reference.mdx)
-- [Graph API Guide](/home/adrian/Projects/treeseed/market/src/content/knowledge/sdk/graph-api-guide.mdx)
-- [ctx Query Language](/home/adrian/Projects/treeseed/market/src/content/knowledge/sdk/ctx-query-language.mdx)
-- [How ctx Works](/home/adrian/Projects/treeseed/market/src/content/knowledge/sdk/ctx-query-engine.mdx)
+- [SDK Interface Reference](../../src/content/knowledge/sdk/interface-reference.mdx)
+- [Graph API Guide](../../src/content/knowledge/sdk/graph-api-guide.mdx)
+- [ctx Query Language](../../src/content/knowledge/sdk/ctx-query-language.mdx)
+- [How ctx Works](../../src/content/knowledge/sdk/ctx-query-engine.mdx)
 
 ## Other Public Capabilities
 

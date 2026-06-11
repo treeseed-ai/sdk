@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { changedWorkspacePackages, publishableWorkspacePackages, run, sortWorkspacePackages, workspacePackages, workspaceRoot } from './workspace-tools.ts';
 
 export const MERGE_CONFLICT_EXIT_CODE = 12;
-export const TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES = ['@treeseed/sdk', '@treeseed/core', '@treeseed/cli', '@treeseed/agent', '@treeseed/ui'];
+export const TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES = ['@treeseed/sdk', '@treeseed/ui', '@treeseed/core', '@treeseed/admin', '@treeseed/cli', '@treeseed/agent'];
 
 function parseSemver(version) {
 	const match = String(version).trim().match(/^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/);

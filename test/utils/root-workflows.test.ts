@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES } from '../../src/operations/services/workspace-save.ts';
 
 const sdkRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const workspaceRoot = resolve(sdkRoot, '..', '..');
@@ -20,6 +21,14 @@ function packageRootFor(packageName: string) {
 	const integratedPackageRoot = resolve(workspaceRoot, 'packages', packageName);
 	if (existsSync(resolve(integratedPackageRoot, 'package.json'))) return integratedPackageRoot;
 	if (packageName === 'sdk') return sdkRoot;
+	return null;
+}
+
+function firstExistingFile(root: string, paths: string[]) {
+	for (const path of paths) {
+		const resolved = resolve(root, path);
+		if (existsSync(resolved)) return resolved;
+	}
 	return null;
 }
 
@@ -74,7 +83,8 @@ describe('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('https://api-treeseed-staging.treeseed.ai');
 		expect(webSource).toContain('npm --prefix packages/sdk run build:dist');
 		expect(webSource).toContain('packages/ui/dist/astro/layouts/MainLayout.astro');
-		expect(webSource).toContain('for dir in packages/ui packages/core packages/cli packages/agent');
+		expect(webSource).toContain('packages/admin/dist/plugin.js');
+		expect(webSource).toContain('for dir in packages/ui packages/core packages/admin packages/cli packages/agent');
 		expect(webSource).toContain('pids["${dir}"]="$!"');
 		expect(webSource).toContain('node ./.github/scripts/prepare-workspace-install.mjs');
 		expect(webSource).toContain('npm ci --ignore-scripts');
@@ -119,8 +129,38 @@ describe('root workflow bootstrap selection', () => {
 	});
 });
 
+describe('admin package workflow integration', () => {
+	it('keeps admin in public release order and web app staging selection', () => {
+		const operationsSource = readFileSync(resolve(sdkRoot, 'src', 'workflow', 'operations.ts'), 'utf8');
+		const workspaceBootstrapSource = readFileSync(resolve(workspaceRoot, 'packages', 'core', 'scripts', 'workspace-bootstrap.ts'), 'utf8');
+		const adminManifestPath = resolve(workspaceRoot, 'packages', 'admin', 'treeseed.package.yaml');
+		const adminPackagePath = resolve(workspaceRoot, 'packages', 'admin', 'package.json');
+
+		if (!integratedWorkspaceAvailable) {
+			expect(TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES).toContain('@treeseed/admin');
+			return;
+		}
+
+		expect(TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES).toEqual([
+			'@treeseed/sdk',
+			'@treeseed/ui',
+			'@treeseed/core',
+			'@treeseed/admin',
+			'@treeseed/cli',
+			'@treeseed/agent',
+		]);
+		expect(existsSync(adminManifestPath), `${adminManifestPath} must exist`).toBe(true);
+		expect(existsSync(adminPackagePath), `${adminPackagePath} must exist`).toBe(true);
+		expect(readFileSync(adminManifestPath, 'utf8')).toContain('workflow: deploy.yml');
+		expect(workspaceBootstrapSource).toContain("{ name: '@treeseed/admin', dir: 'packages/admin', build: true }");
+		expect(operationsSource).toContain("{ name: '@treeseed/admin', dir: 'packages/admin', artifacts: ['dist/plugin.js'] }");
+		expect(operationsSource).toContain("packageName === '@treeseed/core' || packageName === '@treeseed/ui' || packageName === '@treeseed/admin'");
+		expect(operationsSource).toContain("file.startsWith('packages/core/') || file.startsWith('packages/ui/') || file.startsWith('packages/admin/')");
+	});
+});
+
 describe('package publish safeguards', () => {
-	for (const packageName of ['sdk', 'agent', 'core', 'cli']) {
+	for (const packageName of ['sdk', 'agent', 'core', 'cli', 'admin']) {
 		it(`guards ${packageName} publishing to stable semver tags`, () => {
 			const packageRoot = packageRootFor(packageName);
 			if (!packageRoot) {
@@ -131,8 +171,18 @@ describe('package publish safeguards', () => {
 			expect(existsSync(publishWorkflowPath), `${publishWorkflowPath} must exist`).toBe(true);
 			const workflowSource = readFileSync(publishWorkflowPath, 'utf8');
 			const verifyWorkflowSource = readFileSync(resolve(packageRoot, '.github', 'workflows', 'verify.yml'), 'utf8');
-			const checkTagSource = readFileSync(resolve(packageRoot, 'scripts', 'assert-release-tag-version.ts'), 'utf8');
-			const publishSource = readFileSync(resolve(packageRoot, 'scripts', 'publish-package.ts'), 'utf8');
+			const checkTagPath = firstExistingFile(packageRoot, [
+				'scripts/assert-release-tag-version.ts',
+				'scripts/assert-release-tag-version.mjs',
+			]);
+			const publishPath = firstExistingFile(packageRoot, [
+				'scripts/publish-package.ts',
+				'scripts/publish-package.mjs',
+			]);
+			expect(checkTagPath, `${packageName} release tag script must exist`).toBeTruthy();
+			expect(publishPath, `${packageName} publish script must exist`).toBeTruthy();
+			const checkTagSource = readFileSync(checkTagPath!, 'utf8');
+			const publishSource = readFileSync(publishPath!, 'utf8');
 
 			expect(workflowSource).toContain("startsWith(github.ref, 'refs/tags/')");
 			expect(workflowSource).toContain("!contains(github.ref_name, '-')");

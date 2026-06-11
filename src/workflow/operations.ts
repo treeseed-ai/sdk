@@ -305,8 +305,10 @@ function readPackageScript(root: string, packageDir: string, scriptName: string)
 function ensureWorkflowWorkspacePackageArtifacts(root: string, helpers: WorkflowOperationHelpers) {
 	const packages = [
 		{ name: '@treeseed/sdk', dir: 'packages/sdk', artifacts: ['dist/workflow-support.js', 'dist/plugin-default.js', 'dist/platform/env.yaml'] },
+		{ name: '@treeseed/ui', dir: 'packages/ui', artifacts: ['dist/index.js'] },
 		{ name: '@treeseed/agent', dir: 'packages/agent', artifacts: ['dist/api/index.js', 'dist/services/worker.js'] },
 		{ name: '@treeseed/core', dir: 'packages/core', artifacts: ['dist/plugin-default.js'] },
+		{ name: '@treeseed/admin', dir: 'packages/admin', artifacts: ['dist/plugin.js'] },
 		{ name: '@treeseed/cli', dir: 'packages/cli', artifacts: ['dist/cli/main.js'] },
 	];
 	for (const entry of packages) {
@@ -937,7 +939,7 @@ function selectWorkflowApplications(root: string, input: {
 	for (const packageName of packages) {
 		if (packageName === '@treeseed/api' || packageName === '@treeseed/treedx' || packageName === '@treeseed/agent') {
 			add('api', `${packageName} changed`);
-		} else if (packageName === '@treeseed/core') {
+		} else if (packageName === '@treeseed/core' || packageName === '@treeseed/ui' || packageName === '@treeseed/admin') {
 			add('web', `${packageName} changed`);
 		} else if (packageName === '@treeseed/sdk' || packageName === '@treeseed/cli') {
 			add('web', `${packageName} is shared`);
@@ -956,7 +958,7 @@ function selectWorkflowApplications(root: string, input: {
 			add('api', `${file} is API-owned`);
 		} else if (file.startsWith('packages/treedx/') || file === 'packages/treedx') {
 			add('api', `${file} is TreeDX implementation`);
-		} else if (file.startsWith('packages/core/') || file.startsWith('src/') || file.startsWith('content/') || file.startsWith('public/') || file === 'treeseed.site.yaml') {
+		} else if (file.startsWith('packages/core/') || file.startsWith('packages/ui/') || file.startsWith('packages/admin/') || file.startsWith('src/') || file.startsWith('content/') || file.startsWith('public/') || file === 'treeseed.site.yaml') {
 			add('web', `${file} is web-owned`);
 		} else if (file.startsWith('packages/sdk/') || file.startsWith('packages/cli/') || file === 'package.json' || file === 'package-lock.json' || file.startsWith('.github/')) {
 			add('web', `${file} is shared workflow/config`);
