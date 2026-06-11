@@ -132,14 +132,16 @@ describe('root workflow bootstrap selection', () => {
 describe('admin package workflow integration', () => {
 	it('keeps admin in public release order and web app staging selection', () => {
 		const operationsSource = readFileSync(resolve(sdkRoot, 'src', 'workflow', 'operations.ts'), 'utf8');
-		const workspaceBootstrapSource = readFileSync(resolve(workspaceRoot, 'packages', 'core', 'scripts', 'workspace-bootstrap.ts'), 'utf8');
-		const adminManifestPath = resolve(workspaceRoot, 'packages', 'admin', 'treeseed.package.yaml');
-		const adminPackagePath = resolve(workspaceRoot, 'packages', 'admin', 'package.json');
 
 		if (!integratedWorkspaceAvailable) {
 			expect(TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES).toContain('@treeseed/admin');
+			expect(operationsSource).toContain("{ name: '@treeseed/admin', dir: 'packages/admin', artifacts: ['dist/plugin.js'] }");
 			return;
 		}
+
+		const workspaceBootstrapSource = readFileSync(resolve(workspaceRoot, 'packages', 'core', 'scripts', 'workspace-bootstrap.ts'), 'utf8');
+		const adminManifestPath = resolve(workspaceRoot, 'packages', 'admin', 'treeseed.package.yaml');
+		const adminPackagePath = resolve(workspaceRoot, 'packages', 'admin', 'package.json');
 
 		expect(TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES).toEqual([
 			'@treeseed/sdk',
