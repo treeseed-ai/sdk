@@ -1711,13 +1711,17 @@ function hostedWorkflowForSavedRepository(root: string, repo: RepositorySaveRepo
 function gatesForSavedRepositoryReports(root: string, reports: RepositorySaveReport[]) {
 	return reports
 		.filter((repo) => repo.pushed && repo.commitSha && repo.branch && (repo.committed || repo.tagName))
-		.map((repo) => ({
-			name: repo.name,
-			repoPath: repo.path,
-			workflow: hostedWorkflowForSavedRepository(root, repo),
-			branch: String(repo.branch),
-			headSha: String(repo.commitSha),
-		}));
+		.map((repo) => {
+			const workflow = hostedWorkflowForSavedRepository(root, repo);
+			const gate = {
+				name: repo.name,
+				repoPath: repo.path,
+				workflow,
+				branch: String(repo.branch),
+				headSha: String(repo.commitSha),
+			};
+			return /^deploy(?:[-.]|$)/u.test(workflow) ? hostedDeployGate(gate) : gate;
+		});
 }
 
 function packageHostedVerifyWorkflow(adapter: ReturnType<typeof discoverTreeseedPackageAdapters>[number] | undefined) {

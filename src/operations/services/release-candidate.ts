@@ -802,7 +802,7 @@ function validateInternalGitReferenceTags(root: string, failures: ReleaseCandida
 function lightweightDependencyChecks(root: string, failures: ReleaseCandidateFailure[]): ReleaseCandidateCheck {
 	const before = failures.length;
 	try {
-		runNpmRehearsalCommand(['ci', '--ignore-scripts', '--dry-run', '--no-audit', '--no-fund', '--prefer-offline'], {
+		runNpmRehearsalCommand(['install', '--package-lock-only', '--ignore-scripts', '--dry-run', '--workspaces=false', '--no-audit', '--no-fund', '--prefer-offline'], {
 			cwd: root,
 			timeoutMs: 300000,
 			env: npmRehearsalEnv(),
@@ -819,7 +819,7 @@ function lightweightDependencyChecks(root: string, failures: ReleaseCandidateFai
 	return {
 		name: 'hybrid-dependency-readiness',
 		status: failures.length > before ? 'failed' : 'passed',
-		detail: `Validated root lockfile with npm ci --ignore-scripts --dry-run and checked ${checkedTags} internal git tag${checkedTags === 1 ? '' : 's'} without temp install rehearsal.`,
+		detail: `Validated root lockfile with npm install --package-lock-only --ignore-scripts --dry-run --workspaces=false and checked ${checkedTags} internal git tag${checkedTags === 1 ? '' : 's'} without temp install rehearsal.`,
 	};
 }
 

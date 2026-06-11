@@ -965,6 +965,74 @@ function hasNpmLockfile(repoDir: string) {
 	return existsSync(resolve(repoDir, 'package-lock.json')) || existsSync(resolve(repoDir, 'npm-shrinkwrap.json'));
 }
 
+function syncRootWorkspaceLockfileMetadata(node: RepositorySaveNode, options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>) {
+	if (node.path !== options.root || !Array.isArray(node.packageJson?.workspaces)) return false;
+	const lockfilePath = resolve(node.path, 'package-lock.json');
+	if (!existsSync(lockfilePath)) return false;
+	const lockfile = readJson(lockfilePath);
+	const packages = lockfile.packages;
+	if (!packages || typeof packages !== 'object' || Array.isArray(packages)) return false;
+	let changed = false;
+	const packageEntries = packages as Record<string, Record<string, unknown>>;
+	const rootEntry = packageEntries[''] ?? {};
+	if (JSON.stringify(rootEntry.workspaces ?? []) !== JSON.stringify(node.packageJson.workspaces)) {
+		rootEntry.workspaces = node.packageJson.workspaces;
+		packageEntries[''] = rootEntry;
+		changed = true;
+	}
+	for (const field of dependencyFields(node.packageJson)) {
+		const nextValue = node.packageJson[field];
+		if (nextValue && typeof nextValue === 'object' && !Array.isArray(nextValue)) {
+			if (JSON.stringify(rootEntry[field] ?? {}) !== JSON.stringify(nextValue)) {
+				rootEntry[field] = nextValue;
+				packageEntries[''] = rootEntry;
+				changed = true;
+			}
+		}
+	}
+	for (const workspacePackage of workspacePackages(node.path)) {
+		const relativeDir = workspacePackage.relativeDir.replace(/\\/gu, '/');
+		const packageJson = workspacePackage.packageJson;
+		const packageName = String(packageJson.name ?? '');
+		if (!packageName) continue;
+		const packageEntry = packageEntries[relativeDir] ?? {};
+		if (packageEntry.name !== packageName) {
+			packageEntry.name = packageName;
+			changed = true;
+		}
+		if (typeof packageJson.version === 'string' && packageEntry.version !== packageJson.version) {
+			packageEntry.version = packageJson.version;
+			changed = true;
+		}
+		for (const field of dependencyFields(packageJson)) {
+			const nextValue = packageJson[field];
+			if (nextValue && typeof nextValue === 'object' && !Array.isArray(nextValue)) {
+				if (JSON.stringify(packageEntry[field] ?? {}) !== JSON.stringify(nextValue)) {
+					packageEntry[field] = nextValue;
+					changed = true;
+				}
+			}
+		}
+		packageEntries[relativeDir] = packageEntry;
+		const linkKey = `node_modules/${packageName}`;
+		const linkEntry = packageEntries[linkKey] ?? {};
+		if (linkEntry.resolved !== relativeDir) {
+			linkEntry.resolved = relativeDir;
+			changed = true;
+		}
+		if (linkEntry.link !== true) {
+			linkEntry.link = true;
+			changed = true;
+		}
+		packageEntries[linkKey] = linkEntry;
+	}
+	if (!changed) return false;
+	lockfile.packages = packageEntries;
+	writeJson(lockfilePath, lockfile);
+	emitProgress(options, node, 'lockfile', 'Synchronized root workspace lockfile metadata before validation.');
+	return true;
+}
+
 async function runGitDependencySmoke(node: RepositorySaveNode, options: RepositorySaveOptions, reference: PackageDependencyReference) {
 	if (reference.mode !== 'dev-git-tag' || shouldSkipGitDependencySmoke(options)) return;
 	const tagName = reference.tagName ?? reference.version;
@@ -1075,6 +1143,7 @@ async function validateRepositoryLockfile(
 	if (!hasNpmLockfile(node.path)) {
 		return { status: 'skipped', command: null, issues: [], error: 'no npm lockfile' };
 	}
+	syncRootWorkspaceLockfileMetadata(node, options);
 	const issues = collectDeploymentLockfileWorkspaceIssues(node.path)
 		.map((issue) => `${issue.filePath}: ${issue.packageName} ${issue.reason}`);
 	if (issues.length > 0) {

@@ -178,7 +178,7 @@ describe('repository save orchestrator helpers', () => {
 		expect(plan.rootRepo.commands).not.toContain(`git push origin ${version}`);
 	});
 
-	it('fails stale root workspace lockfiles before committing', async () => {
+	it('repairs stale root workspace lockfile metadata before committing', async () => {
 		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
 		try {
 			const root = mkdtempSync(join(tmpdir(), 'treeseed-save-lockfile-fail-'));
@@ -214,19 +214,29 @@ describe('repository save orchestrator helpers', () => {
 			git(root, ['add', '-A']);
 			git(root, ['commit', '-m', 'chore: initial']);
 			git(root, ['push', '-u', 'origin', 'staging']);
-			const before = git(root, ['rev-parse', 'HEAD']);
 			writeFileSync(resolve(root, 'README.md'), 'initial\nupdated\n', 'utf8');
 
-			await expect(runRepositorySaveOrchestrator({
+			const result = await runRepositorySaveOrchestrator({
 				root,
 				gitRoot: root,
 				branch: 'staging',
 				commitMessageMode: 'fallback',
 				verifyMode: 'skip',
-			})).rejects.toThrow(/Lockfile validation failed/u);
+			});
 
-			expect(git(root, ['rev-parse', 'HEAD'])).toBe(before);
-			expect(git(root, ['status', '--porcelain'])).toContain('README.md');
+			expect(result.rootRepo.committed).toBe(true);
+			expect(result.rootRepo.lockfileValidation?.issues).toEqual([]);
+			const lockfile = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'utf8'));
+			expect(lockfile.packages[''].workspaces).toEqual(['packages/*']);
+			expect(lockfile.packages[''].dependencies).toEqual({
+				'@treeseed/sdk': 'github:treeseed-ai/sdk#0.1.0-dev.staging.20260427T000000Z',
+			});
+			expect(lockfile.packages['packages/sdk'].version).toBe('0.1.0');
+			expect(lockfile.packages['node_modules/@treeseed/sdk']).toEqual({
+				resolved: 'packages/sdk',
+				link: true,
+			});
+			expect(git(root, ['status', '--porcelain'])).toBe('');
 		} finally {
 			vi.unstubAllEnvs();
 		}

@@ -55,6 +55,18 @@ function writeTenantFiles(root: string) {
 		private: true,
 		workspaces: [],
 	}, null, 2), 'utf8');
+	writeFileSync(resolve(root, 'package-lock.json'), JSON.stringify({
+		name: 'workflow-demo',
+		version: '1.0.0',
+		lockfileVersion: 3,
+		packages: {
+			'': {
+				name: 'workflow-demo',
+				version: '1.0.0',
+				workspaces: [],
+			},
+		},
+	}, null, 2), 'utf8');
 	writeFileSync(resolve(root, 'treeseed.site.yaml'), `name: Demo
 slug: demo
 siteUrl: https://demo.example.com
@@ -119,6 +131,40 @@ providers:
   deploy: cloudflare
 `, 'utf8');
 	writeFileSync(resolve(root, 'README.md'), '# Demo\n', 'utf8');
+}
+
+function writeRootWorkspaceManifests(root: string, packageDirNames: string[]) {
+	const rootPackage = {
+		name: 'workflow-demo',
+		version: '1.0.0',
+		private: true,
+		workspaces: packageDirNames.length > 0 ? ['packages/*'] : [],
+	};
+	writeFileSync(resolve(root, 'package.json'), JSON.stringify(rootPackage, null, 2), 'utf8');
+	const packageEntries: Record<string, unknown> = {
+		'': {
+			name: rootPackage.name,
+			version: rootPackage.version,
+			workspaces: rootPackage.workspaces,
+		},
+	};
+	for (const dirName of packageDirNames) {
+		const packageJson = JSON.parse(readFileSync(resolve(root, 'packages', dirName, 'package.json'), 'utf8'));
+		packageEntries[`packages/${dirName}`] = {
+			name: packageJson.name,
+			version: packageJson.version,
+		};
+		packageEntries[`node_modules/${packageJson.name}`] = {
+			resolved: `packages/${dirName}`,
+			link: true,
+		};
+	}
+	writeFileSync(resolve(root, 'package-lock.json'), JSON.stringify({
+		name: rootPackage.name,
+		version: rootPackage.version,
+		lockfileVersion: 3,
+		packages: packageEntries,
+	}, null, 2), 'utf8');
 }
 
 function writeStatusConfigEntry(root: string) {
@@ -322,6 +368,7 @@ function createWorkflowRepo(options: { withWorkspacePackages?: boolean } = {}) {
 			git(packageRoot, ['config', 'user.name', 'Treeseed Test']);
 			git(packageRoot, ['config', 'user.email', 'treeseed@example.com']);
 		}
+		writeRootWorkspaceManifests(work, ['sdk', 'core', 'cli', 'agent']);
 	}
 	git(work, ['add', '-A']);
 	git(work, ['commit', '-m', 'init']);
@@ -391,6 +438,17 @@ describe('treeseed workflow lifecycle', () => {
 		expect(hostedCiSource).toContain("action_kind: 'deploy_web'");
 		expect(hostedCiSource).toContain('waitForWorkflowGates');
 		expect(hostedCiSource).toContain("workflowGates.filter((gate) => !(gate.repository === repository && gate.workflow === 'deploy.yml'))");
+	});
+
+	it('uses deploy-gate timeouts for package-local deploy workflows', () => {
+		const source = readFileSync(new URL('../../src/workflow/operations.ts', import.meta.url), 'utf8');
+		const start = source.indexOf('function gatesForSavedRepositoryReports');
+		const end = source.indexOf('function packageHostedVerifyWorkflow', start);
+		const gateSource = source.slice(start, end);
+
+		expect(gateSource).toContain('hostedWorkflowForSavedRepository');
+		expect(gateSource).toContain('hostedDeployGate(gate)');
+		expect(gateSource).toContain('/^deploy(?:[-.]|$)/u.test(workflow)');
 	});
 
 	it('resolves status from nested directories against the tenant root', async () => {
