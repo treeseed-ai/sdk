@@ -983,8 +983,19 @@ function syncRootWorkspaceLockfileMetadata(node: RepositorySaveNode, options: Pi
 	for (const field of dependencyFields(node.packageJson)) {
 		const nextValue = node.packageJson[field];
 		if (nextValue && typeof nextValue === 'object' && !Array.isArray(nextValue)) {
-			if (JSON.stringify(rootEntry[field] ?? {}) !== JSON.stringify(nextValue)) {
-				rootEntry[field] = nextValue;
+			const currentValue = rootEntry[field];
+			const currentDeps = currentValue && typeof currentValue === 'object' && !Array.isArray(currentValue)
+				? currentValue as Record<string, unknown>
+				: {};
+			const mergedDeps = { ...currentDeps };
+			let fieldChanged = false;
+			for (const [dependencyName, dependencySpec] of Object.entries(nextValue)) {
+				if (mergedDeps[dependencyName] != null) continue;
+				mergedDeps[dependencyName] = dependencySpec;
+				fieldChanged = true;
+			}
+			if (fieldChanged) {
+				rootEntry[field] = mergedDeps;
 				packageEntries[''] = rootEntry;
 				changed = true;
 			}

@@ -175,6 +175,18 @@ function dependencySpec(packageJson: Record<string, unknown>, field: string, pac
 	return typeof value === 'string' ? value : null;
 }
 
+function dependencySpecsMatch(manifestSpec: string, lockSpec: string) {
+	if (lockSpec === manifestSpec) return true;
+	const manifestVersion = manifestSpec.replace(/^[~^]/u, '');
+	const lockRef = lockSpec.includes('#') ? lockSpec.slice(lockSpec.lastIndexOf('#') + 1) : null;
+	return Boolean(
+		lockRef
+		&& manifestVersion.includes('-dev.')
+		&& lockRef === manifestVersion
+		&& /^(?:github:|git\+https:\/\/github\.com\/|git\+ssh:\/\/git@github\.com[:/])/u.test(lockSpec),
+	);
+}
+
 function normalizedPathValue(value: string) {
 	return value.replaceAll('\\', '/').replace(/^\.\//u, '').replace(/\/$/u, '');
 }
@@ -239,7 +251,7 @@ function collectPackageLockConsistencyIssues(
 			const manifestSpec = dependencySpec(packageJson, field, packageName);
 			if (!manifestSpec) continue;
 			const lockSpec = dependencySpec(rootLockEntry ?? {}, field, packageName);
-			if (lockSpec !== manifestSpec) {
+			if (!lockSpec || !dependencySpecsMatch(manifestSpec, lockSpec)) {
 				issues.push({
 					filePath,
 					packageName,
