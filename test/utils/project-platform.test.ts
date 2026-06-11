@@ -359,6 +359,44 @@ services:
 		expect(fetched.every((url) => !url.startsWith('https://api.example.com'))).toBe(true);
 	});
 
+	it('probes the configured staging web domain instead of the Pages preview alias', async () => {
+		const tenantRoot = await createTenantFixture(`surfaces:
+  web:
+    enabled: true
+    provider: cloudflare
+    publicBaseUrl: https://example.com
+    environments:
+      staging:
+        domain: staging.example.com
+`);
+		await mkdir(join(tenantRoot, '.treeseed/state/environments/staging'), { recursive: true });
+		await writeFile(
+			join(tenantRoot, '.treeseed/state/environments/staging/deploy.json'),
+			`${JSON.stringify({
+				pages: {
+					projectName: 'test-site',
+					stagingBranch: 'staging',
+				},
+			}, null, 2)}\n`,
+		);
+		const fetched: string[] = [];
+		vi.stubGlobal('fetch', vi.fn(async (input) => {
+			fetched.push(String(input));
+			return new Response('ok', { status: 200 });
+		}));
+
+		await monitorProjectPlatform({
+			tenantRoot,
+			scope: 'staging',
+			dryRun: true,
+			reporter: noopReporter(),
+			bootstrapSystems: ['web'],
+		});
+
+		expect(fetched).toContain('https://staging.example.com');
+		expect(fetched).not.toContain('https://staging.test-site.pages.dev');
+	});
+
 	it('uses API health endpoints for api services', async () => {
 		const tenantRoot = await createTenantFixture(`surfaces:
   api:

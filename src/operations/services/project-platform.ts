@@ -822,10 +822,14 @@ function findFirstMatchingString(value, matcher, seen = new Set()) {
 }
 
 function resolveImmediatePagesProbeUrl(siteConfig, state, target) {
+	const configuredUrl = resolveConfiguredSurfaceBaseUrl(siteConfig, target, 'web');
+	if (configuredUrl) {
+		return configuredUrl;
+	}
 	if (target.kind === 'persistent' && target.scope === 'staging' && state.pages?.projectName) {
 		return `https://${state.pages?.stagingBranch ?? 'staging'}.${state.pages.projectName}.pages.dev`;
 	}
-	return state.pages?.url ?? resolveConfiguredSurfaceBaseUrl(siteConfig, target, 'web') ?? siteConfig.siteUrl;
+	return state.pages?.url ?? siteConfig.siteUrl;
 }
 
 function resolveImmediateApiProbeUrl(siteConfig, state, target) {
