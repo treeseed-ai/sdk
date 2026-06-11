@@ -151,6 +151,7 @@ export type TreeseedSaveInput = {
 	gitRemoteWriteMode?: 'ssh-pushurl' | 'off';
 	verifyMode?: 'action-first' | 'local-only' | 'skip' | TreeseedWorkflowVerifyMode;
 	ciMode?: TreeseedWorkflowCiMode;
+	lane?: 'fast' | 'promotion';
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	commitMessageMode?: 'auto' | 'cloudflare' | 'generated' | 'fallback';
 	workspaceLinks?: 'auto' | 'off';

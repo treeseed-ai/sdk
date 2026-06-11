@@ -57,6 +57,35 @@ function makeWorkspace() {
 	return root;
 }
 
+function writeValidWorkspaceLockfile(root: string) {
+	const sdkSpec = spawnSync(process.execPath, ['-e', 'process.stdout.write(require(process.argv[1]).dependencies["@treeseed/sdk"])', resolve(root, 'package.json')], {
+		encoding: 'utf8',
+	}).stdout.trim();
+	writeFileSync(resolve(root, 'package-lock.json'), JSON.stringify({
+		name: '@treeseed/market',
+		version: '1.0.0',
+		lockfileVersion: 3,
+		packages: {
+			'': {
+				name: '@treeseed/market',
+				version: '1.0.0',
+				workspaces: ['packages/*'],
+				dependencies: {
+					'@treeseed/sdk': sdkSpec,
+				},
+			},
+			'node_modules/@treeseed/sdk': {
+				resolved: 'packages/sdk',
+				link: true,
+			},
+			'packages/sdk': {
+				name: '@treeseed/sdk',
+				version: '0.4.13-dev.feature-demo.1',
+			},
+		},
+	}, null, 2), 'utf8');
+}
+
 function addTreeDxPackage(root: string) {
 	mkdirSync(resolve(root, 'packages', 'treedx', 'apps', 'api'), { recursive: true });
 	mkdirSync(resolve(root, 'packages', 'treedx', '.github', 'workflows'), { recursive: true });
@@ -237,6 +266,48 @@ describe('release candidate verification', () => {
 
 		expect(changedDependency.key).not.toBe(first.key);
 		expect(changedScript.key).not.toBe(changedDependency.key);
+	});
+
+	it('keeps hybrid release-candidate checks lightweight without strict topology proof', async () => {
+		const root = makeWorkspace();
+		const remote = resolve(root, 'sdk.git');
+		const work = resolve(root, 'sdk-work');
+		spawnSync('git', ['init', '--bare', remote]);
+		spawnSync('git', ['clone', remote, work]);
+		spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: work });
+		spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: work });
+		writeFileSync(resolve(work, 'README.md'), 'sdk\n', 'utf8');
+		spawnSync('git', ['add', 'README.md'], { cwd: work });
+		spawnSync('git', ['commit', '-m', 'init'], { cwd: work });
+		spawnSync('git', ['tag', '0.4.13-dev.feature-demo.1'], { cwd: work });
+		spawnSync('git', ['push', 'origin', 'HEAD', '--tags'], { cwd: work });
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: '@treeseed/market',
+			version: '1.0.0',
+			private: true,
+			workspaces: ['packages/*'],
+			dependencies: {
+				'@treeseed/sdk': `git+file://${remote}#0.4.13-dev.feature-demo.1`,
+			},
+		}, null, 2), 'utf8');
+		writeValidWorkspaceLockfile(root);
+
+		const report = await runReleaseCandidateGate({
+			root,
+			mode: 'hybrid',
+			selectedPackageNames: ['@treeseed/sdk'],
+			plannedVersions: {
+				'@treeseed/market': '1.0.0',
+				'@treeseed/sdk': '0.4.13-dev.feature-demo.1',
+			},
+			allowReuse: false,
+		});
+
+		expect(report.status).toBe('passed');
+		expect(report.mode).toBe('hybrid');
+		expect(report.reason).toContain('lightweight checks');
+		expect(report.checks.map((check) => check.name)).toContain('hybrid-dependency-readiness');
+		expect(report.checks.map((check) => check.name)).not.toContain('production-dependency-rehearsal');
 	});
 
 	it('discovers TreeDX as a BEAM package adapter', () => {

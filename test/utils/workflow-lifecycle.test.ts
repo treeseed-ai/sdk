@@ -451,6 +451,24 @@ describe('treeseed workflow lifecycle', () => {
 		expect(gateSource).toContain('/^deploy(?:[-.]|$)/u.test(workflow)');
 	});
 
+	it('defaults staging save plans to the fast lane', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		git(work, ['checkout', 'staging']);
+		const workflow = workflowFor(work);
+
+		const result = await workflow.save({
+			plan: true,
+			refreshPreview: false,
+		});
+
+		expect(result.payload.lane).toBe('fast');
+		expect(result.payload.ciMode).toBe('off');
+		expect(result.payload.releaseCandidateMode).toBe('hybrid');
+		expect(result.payload.plannedSteps).not.toEqual(expect.arrayContaining([
+			expect.objectContaining({ id: 'hosted-ci' }),
+		]));
+	}, 15000);
+
 	it('resolves status from nested directories against the tenant root', async () => {
 		const { work } = createWorkflowRepo();
 		const nested = resolve(work, 'src', 'content');
@@ -663,6 +681,7 @@ describe('treeseed workflow lifecycle', () => {
 		const result = await workflow.save({
 			verify: false,
 			refreshPreview: false,
+			lane: 'promotion',
 		});
 
 		expect(result.ok).toBe(true);
@@ -670,6 +689,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(sdkReport?.branch).toBe('staging');
 		expect(sdkReport?.branchMode).toBe('package-dev-save');
 		expect(sdkReport?.tagName).toMatch(/^0\.4\.13-dev\.staging\./);
+		expect(result.payload.lane).toBe('promotion');
 		expect(result.payload.ciMode).toBe('hosted');
 		expect(result.payload.workflowGates).toEqual(expect.arrayContaining([
 			expect.objectContaining({ name: result.payload.rootRepo.name, workflow: 'deploy.yml', branch: 'staging', timeoutSeconds: 2700 }),

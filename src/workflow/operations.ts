@@ -409,9 +409,15 @@ function normalizeCiMode(mode: TreeseedWorkflowCiMode | undefined, operation: 's
 	return operation === 'save' ? 'off' : 'hosted';
 }
 
-function normalizeSaveCiMode(mode: TreeseedWorkflowCiMode | undefined, branch: string | null | undefined) {
+function normalizeSaveLane(lane: TreeseedSaveInput['lane'] | undefined) {
+	const value = lane ?? process.env.TREESEED_SAVE_LANE;
+	return value === 'promotion' ? 'promotion' : 'fast';
+}
+
+function normalizeSaveCiMode(mode: TreeseedWorkflowCiMode | undefined, branch: string | null | undefined, lane: 'fast' | 'promotion' = 'fast') {
 	if (mode === 'hosted' || mode === 'off') return mode;
-	return branch === STAGING_BRANCH ? 'hosted' : 'off';
+	if (lane === 'promotion') return branch === STAGING_BRANCH ? 'hosted' : 'off';
+	return 'off';
 }
 
 function normalizeSaveVerifyMode(mode: TreeseedSaveInput['verifyMode'] | undefined): SaveVerifyMode {
@@ -433,16 +439,21 @@ function normalizeSaveVerifyMode(mode: TreeseedSaveInput['verifyMode'] | undefin
 	}
 }
 
-function normalizeReleaseCandidateMode(mode: TreeseedSaveInput['releaseCandidate'] | undefined, operation: Extract<TreeseedWorkflowOperationId, 'save' | 'stage' | 'release'>): ReleaseCandidateMode {
+function normalizeReleaseCandidateMode(
+	mode: TreeseedSaveInput['releaseCandidate'] | undefined,
+	operation: Extract<TreeseedWorkflowOperationId, 'save' | 'stage' | 'release'>,
+	lane: 'fast' | 'promotion' = 'fast',
+): ReleaseCandidateMode {
 	const value = mode ?? process.env.TREESEED_RELEASE_CANDIDATE_MODE;
 	if (value === 'hybrid' || value === 'strict' || value === 'skip') {
 		return value;
 	}
+	if (operation === 'save' && lane === 'promotion') return 'strict';
 	return operation === 'save' ? 'hybrid' : 'strict';
 }
 
-function shouldUseHostedSaveCi(input: TreeseedSaveInput, branch: string | null | undefined) {
-	return normalizeSaveCiMode(input.ciMode, branch) === 'hosted'
+function shouldUseHostedSaveCi(input: TreeseedSaveInput, branch: string | null | undefined, lane: 'fast' | 'promotion' = normalizeSaveLane(input.lane)) {
+	return normalizeSaveCiMode(input.ciMode, branch, lane) === 'hosted'
 		|| input.verifyMode === 'hosted'
 		|| input.verifyMode === 'both'
 		|| input.verifyDeployedResources === true;
@@ -3742,7 +3753,9 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				? (autoResumeRun.input as unknown as TreeseedSaveInput)
 				: input;
 			const message = String(effectiveInput.message ?? '').trim();
-			const releaseCandidateMode = normalizeReleaseCandidateMode(effectiveInput.releaseCandidate, 'save');
+			const saveLane = normalizeSaveLane(effectiveInput.lane);
+			const saveCiMode = normalizeSaveCiMode(effectiveInput.ciMode, branch, saveLane);
+			const releaseCandidateMode = normalizeReleaseCandidateMode(effectiveInput.releaseCandidate, 'save', saveLane);
 			const optionsHotfix = effectiveInput.hotfix === true;
 			const previewInitialized = branchPreviewInitialized(root, branch);
 
@@ -3801,7 +3814,8 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							}
 							: null,
 						workspaceLinks,
-						ciMode: normalizeSaveCiMode(effectiveInput.ciMode, branch),
+						ciMode: saveCiMode,
+						lane: saveLane,
 						verifyMode: effectiveInput.verifyMode ?? 'fast',
 						releaseCandidateMode,
 						applicationSelection,
@@ -3813,7 +3827,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							{ id: 'workspace-unlink', description: 'Remove local workspace links before deployment install and lockfile updates' },
 							...repositoryPlan.plannedSteps,
 							{ id: 'lockfile-validation', description: 'Validate refreshed package-lock.json files before any save commit is pushed' },
-							...(shouldUseHostedSaveCi(effectiveInput, branch)
+							...(shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 								? [{ id: 'hosted-ci', description: `Wait for hosted save workflows on ${branch}` }]
 								: []),
 							...(branch === STAGING_BRANCH
@@ -3858,7 +3872,8 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
 					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
 						verifyMode: effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'fast'),
-					ciMode: effectiveInput.ciMode ?? (branch === STAGING_BRANCH ? 'hosted' : 'auto'),
+					ciMode: saveCiMode,
+					lane: saveLane,
 					worktreeMode: effectiveInput.worktreeMode ?? 'auto',
 					commitMessageMode: effectiveInput.commitMessageMode ?? 'auto',
 					workspaceLinks: effectiveInput.workspaceLinks ?? 'auto',
@@ -3874,7 +3889,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						branch,
 						resumable: true,
 					},
-					...(shouldUseHostedSaveCi(effectiveInput, branch)
+					...(shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 						? [{
 							id: 'hosted-ci',
 							description: `Wait for hosted save workflows on ${branch}`,
@@ -3940,7 +3955,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 								commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
 								workflowRunId: workflowRun.runId,
 								onProgress: (line, stream) => helpers.write(line, stream),
-								onWaveSaved: branch === STAGING_BRANCH && shouldUseHostedSaveCi(effectiveInput, branch)
+								onWaveSaved: branch === STAGING_BRANCH && shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 									? async ({ nodes, reports, rootRepo: waveRootRepo }) => {
 										const nonRootReportsForWave = reports.filter((repo, index) => nodes[index]?.id !== '.');
 										const rootReportForWave = nodes.some((node) => node.id === '.')
@@ -3990,7 +4005,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						lockfileValidation: repo.lockfileValidation,
 					})),
 				};
-				const saveWorkflowGates = shouldUseHostedSaveCi(effectiveInput, branch)
+				const saveWorkflowGates = shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 					? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', async () =>
 						{
 							if (branch === STAGING_BRANCH) {
@@ -4141,7 +4156,8 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					workspaceLinks,
 					commandReadiness,
 					lockfileValidation,
-					ciMode: normalizeSaveCiMode(effectiveInput.ciMode, branch),
+					ciMode: saveCiMode,
+					lane: saveLane,
 					verifyMode: effectiveInput.verifyMode ?? 'fast',
 					releaseCandidateMode,
 					applicationSelection,

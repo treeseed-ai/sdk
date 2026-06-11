@@ -1072,11 +1072,11 @@ export async function runReleaseCandidateGate(input: ReleaseCandidateInput): Pro
 		Object.entries(input.plannedVersions).map(([name, version]) => [name, String(version)]),
 	);
 	const strictTopologyProof = readStrictTopologyProof(input.root, topology.key);
-	const effectiveMode: ReleaseCandidateMode = requestedMode === 'hybrid' && strictTopologyProof ? 'hybrid' : 'strict';
+	const effectiveMode: ReleaseCandidateMode = requestedMode;
 	const reason = requestedMode === 'hybrid'
 		? strictTopologyProof
 			? `Hybrid release-candidate selected; strict rehearsal skipped because topology ${topology.key.slice(0, 12)} was already proven.`
-			: `Hybrid release-candidate selected; strict rehearsal forced because topology ${topology.key.slice(0, 12)} has no prior strict proof.`
+			: `Hybrid release-candidate selected; lightweight checks used because strict topology proof is reserved for promotion lanes.`
 		: 'Strict release-candidate selected.';
 	const failures: ReleaseCandidateFailure[] = [];
 	const checks: ReleaseCandidateCheck[] = [];
