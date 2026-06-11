@@ -1018,6 +1018,7 @@ async function runWorkflowHostedResourceVerification(
 			requireLiveRailway: options.strict === true,
 			requireLiveHttp: options.strict === true,
 			appId: options.appId,
+			retry: { attempts: 12, intervalMs: 10000 },
 			env: helpers.context.env,
 		})
 		: collectTreeseedHostedServiceChecks({

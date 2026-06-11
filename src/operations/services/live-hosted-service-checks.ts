@@ -98,6 +98,37 @@ async function observeHttp(url: string, options: TreeseedLiveHostedServiceCheckO
 	return { ok: false, error: lastError || 'HTTP request failed.' };
 }
 
+async function inspectRailwayServiceDeploymentHealthWithRetry(input: {
+	serviceId: string;
+	environmentId: string;
+	options: TreeseedLiveHostedServiceCheckOptions;
+}) {
+	const attempts = Math.max(1, Math.floor(input.options.retry?.attempts ?? 3));
+	const intervalMs = Math.max(0, Math.floor(input.options.retry?.intervalMs ?? 1500));
+	let lastDeployment: Awaited<ReturnType<typeof inspectRailwayServiceDeploymentHealth>> | null = null;
+	let lastError: unknown = null;
+	for (let attempt = 0; attempt < attempts; attempt += 1) {
+		try {
+			const deployment = await inspectRailwayServiceDeploymentHealth({
+				serviceId: input.serviceId,
+				environmentId: input.environmentId,
+				env: input.options.env,
+				fetchImpl: input.options.fetchImpl,
+			});
+			lastDeployment = deployment;
+			if (deployment.ok) return deployment;
+		} catch (error) {
+			lastError = error;
+		}
+		if (attempt + 1 < attempts) await sleep(intervalMs);
+	}
+	return lastDeployment ?? {
+		ok: false,
+		status: null,
+		message: lastError instanceof Error ? lastError.message : String(lastError ?? 'Unable to inspect deployment health.'),
+	};
+}
+
 function findByName<T extends { name?: string | null; id?: string | null }>(items: T[], nameOrId: string | null | undefined) {
 	if (!nameOrId) return null;
 	return items.find((item) => item.name === nameOrId || item.id === nameOrId) ?? null;
@@ -264,11 +295,10 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 					issues.push(`${serviceName}: public TreeDX Railway service was not found.`);
 					continue;
 				}
-				const deployment = await inspectRailwayServiceDeploymentHealth({
+				const deployment = await inspectRailwayServiceDeploymentHealthWithRetry({
 					serviceId: service.id,
 					environmentId: environment.id,
-					env: options.env,
-					fetchImpl: options.fetchImpl,
+					options,
 				}).catch((error) => ({
 					ok: false,
 					status: null,
