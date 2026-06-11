@@ -1,5 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, resolve, relative } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import {
@@ -968,41 +967,22 @@ function hasNpmLockfile(repoDir: string) {
 
 async function runGitDependencySmoke(node: RepositorySaveNode, options: RepositorySaveOptions, reference: PackageDependencyReference) {
 	if (reference.mode !== 'dev-git-tag' || shouldSkipGitDependencySmoke(options)) return;
-	const installSpec = reference.installSpec ?? reference.spec;
-	const tempRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-git-dep-smoke-'));
-	const npmCacheRoot = resolve(tempRoot, '.npm-cache');
+	const tagName = reference.tagName ?? reference.version;
+	if (!reference.remoteUrl || !tagName) {
+		throw new RepositorySaveError(`Git dependency smoke cannot verify ${reference.packageName}; remote URL or tag is missing.`);
+	}
+	const tagRef = `refs/tags/${tagName}`;
+	emitProgress(options, node, 'smoke', `Verifying ${reference.packageName} tag ${tagName} exists on ${reference.remoteUrl}.`);
 	try {
-		emitProgress(options, node, 'smoke', `Installing ${installSpec} in a temporary project.`);
-		writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
-			name: 'treeseed-git-dependency-smoke',
-			version: '0.0.0',
-			private: true,
-			type: 'module',
-			dependencies: {
-				[reference.packageName]: installSpec,
-			},
-		}, null, 2), 'utf8');
-		let lastError: string | null = null;
-		for (let attempt = 1; attempt <= 5; attempt += 1) {
-			emitProgress(options, node, 'smoke', `npm install --cache ${npmCacheRoot} attempt ${attempt}/5.`);
-			try {
-				await runStreamingCommand(node, options, 'smoke', 'npm', ['install', '--cache', npmCacheRoot], { cwd: tempRoot });
-				return;
-			} catch (error) {
-				lastError = error instanceof Error ? error.message : String(error);
-			}
-			if (attempt < 5) {
-				emitProgress(options, node, 'smoke', 'npm install failed; retrying in 60 seconds.', 'stderr');
-				spawnSync('sleep', ['60'], { stdio: 'ignore' });
-			}
-		}
+		await runStreamingCommand(node, options, 'smoke', 'git', ['ls-remote', '--exit-code', '--tags', reference.remoteUrl, tagRef]);
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : String(error);
 		throw new RepositorySaveError([
-			`Git dependency smoke install failed for ${reference.packageName} after 5 attempts.`,
-			`Spec: ${installSpec}`,
-			lastError ?? '',
+			`Git dependency smoke failed for ${reference.packageName}; tag is not reachable on the remote.`,
+			`Remote: ${reference.remoteUrl}`,
+			`Tag: ${tagName}`,
+			detail,
 		].join('\n'));
-	} finally {
-		rmSync(tempRoot, { recursive: true, force: true });
 	}
 }
 
