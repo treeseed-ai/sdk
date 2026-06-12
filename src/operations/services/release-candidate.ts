@@ -7,7 +7,7 @@ import { isTreeseedEnvironmentEntryRelevant, isTreeseedEnvironmentEntryRequired 
 import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
 import { createGitHubApiClient, listGitHubEnvironmentSecretNames, listGitHubEnvironmentVariableNames } from './github-api.ts';
 import { resolveGitHubCredentialForRepository } from './github-credentials.ts';
-import { collectInternalDevReferenceIssues, normalizeGitRemoteForManifest } from './package-reference-policy.ts';
+import { collectInternalDevReferenceIssues, installableInternalDependencyVersions, normalizeGitRemoteForManifest } from './package-reference-policy.ts';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, validateTreeseedCommandEnvironment } from './config-runtime.ts';
 import { loadDeployState } from './deploy.ts';
 import { loadCliDeployConfig } from './runtime-tools.ts';
@@ -516,7 +516,8 @@ function applyPlannedStableMetadata(root: string, plannedVersions: Record<string
 	const stableVersions = new Map(
 		Object.entries(plannedVersions).filter(([, version]) => STABLE_SEMVER.test(version)),
 	);
-	const stableGitReferences = stablePackageGitReferences(root, stableVersions);
+	const dependencyVersions = installableInternalDependencyVersions(root, stableVersions);
+	const stableGitReferences = stablePackageGitReferences(root, dependencyVersions);
 	const targets = [
 		{ name: '@treeseed/market', dir: root },
 		...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir })),
@@ -534,7 +535,7 @@ function applyPlannedStableMetadata(root: string, plannedVersions: Record<string
 		for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
 			const values = packageJson[field];
 			if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
-			for (const [dependencyName, version] of stableVersions.entries()) {
+			for (const [dependencyName, version] of dependencyVersions.entries()) {
 				if (!(dependencyName in values)) continue;
 				const dependencySpec = stableGitReferences.get(dependencyName) ?? version;
 				if (String((values as Record<string, unknown>)[dependencyName]) === dependencySpec) continue;

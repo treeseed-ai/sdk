@@ -128,6 +128,7 @@ import {
 	collectTreeseedDevTagCleanupPlan,
 	collectInternalDevReferenceIssues,
 	devTagFromDependencySpec,
+	installableInternalDependencyVersions,
 	normalizeGitRemoteForManifest,
 	rewriteProjectInternalDependenciesToStableVersions,
 	type DevTagBranchScope,
@@ -1113,7 +1114,8 @@ function writeJsonFile(path: string, value: Record<string, unknown>) {
 }
 
 function applyStableWorkspaceVersionChanges(root: string, versions: Map<string, string>) {
-	const stableGitReferences = stablePackageGitReferences(root, versions);
+	const dependencyVersions = installableInternalDependencyVersions(root, versions);
+	const stableGitReferences = stablePackageGitReferences(root, dependencyVersions);
 	for (const target of [{ name: '@treeseed/market', dir: root }, ...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir }))]) {
 		const packageJsonPath = resolve(target.dir, 'package.json');
 		if (!existsSync(packageJsonPath)) continue;
@@ -1127,7 +1129,7 @@ function applyStableWorkspaceVersionChanges(root: string, versions: Map<string, 
 		for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
 			const values = packageJson[field];
 			if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
-			for (const [dependencyName, version] of versions.entries()) {
+			for (const [dependencyName, version] of dependencyVersions.entries()) {
 				if (!(dependencyName in values)) continue;
 				const dependencySpec = stableGitReferences.get(dependencyName) ?? version;
 				if (String((values as Record<string, unknown>)[dependencyName]) === dependencySpec) continue;

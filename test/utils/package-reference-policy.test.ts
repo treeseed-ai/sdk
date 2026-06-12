@@ -8,9 +8,11 @@ import {
 	createDevTagMessage,
 	createPackageDependencyReference,
 	devTagFromDependencySpec,
+	installableInternalDependencyVersions,
 	normalizeGitRemoteForDependency,
 	normalizeGitRemoteForManifest,
 	rewriteInternalDependenciesToStableVersions,
+	rewriteProjectInternalDependenciesToStableVersions,
 } from '../../src/operations/services/package-reference-policy.ts';
 
 describe('package reference policy', () => {
@@ -77,6 +79,60 @@ describe('package reference policy', () => {
 		expect(rewrites[0]?.tagName).toBe('0.6.8-dev.feature-demo.20260426T153000Z');
 		expect(JSON.parse(readFileSync(resolve(coreDir, 'package.json'), 'utf8')).dependencies['@treeseed/sdk']).toBe('0.6.8');
 		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).not.toThrow();
+	});
+
+	it('does not rewrite Docker-only packages as installable release dependencies', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-package-policy-'));
+		const sdkDir = resolve(root, 'packages', 'sdk');
+		const adminDir = resolve(root, 'packages', 'admin');
+		const apiDir = resolve(root, 'packages', 'api');
+		mkdirSync(sdkDir, { recursive: true });
+		mkdirSync(adminDir, { recursive: true });
+		mkdirSync(apiDir, { recursive: true });
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: '@treeseed/market',
+			version: '1.0.0',
+			workspaces: ['packages/*'],
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(sdkDir, 'package.json'), JSON.stringify({
+			name: '@treeseed/sdk',
+			version: '0.11.0-dev.staging.1',
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(apiDir, 'package.json'), JSON.stringify({
+			name: '@treeseed/api',
+			version: '0.5.0-dev.staging.1',
+			private: true,
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(apiDir, 'treeseed.package.yaml'), 'id: "@treeseed/api"\nkind: node-typescript\npublishTarget: docker\n', 'utf8');
+		writeFileSync(resolve(adminDir, 'package.json'), JSON.stringify({
+			name: '@treeseed/admin',
+			version: '0.11.0-dev.staging.1',
+			dependencies: {
+				'@treeseed/sdk': '0.11.0-dev.staging.1',
+			},
+			peerDependencies: {
+				'@treeseed/api': '^0.4.1',
+			},
+			peerDependenciesMeta: {
+				'@treeseed/api': {
+					optional: true,
+				},
+			},
+		}, null, 2), 'utf8');
+
+		const versions = new Map([
+			['@treeseed/sdk', '0.11.0'],
+			['@treeseed/api', '0.5.0'],
+		]);
+		const installableVersions = installableInternalDependencyVersions(root, versions);
+		const rewrites = rewriteProjectInternalDependenciesToStableVersions(root, versions);
+
+		expect(installableVersions.has('@treeseed/sdk')).toBe(true);
+		expect(installableVersions.has('@treeseed/api')).toBe(false);
+		expect(rewrites.map((rewrite) => rewrite.packageName)).toEqual(['@treeseed/sdk']);
+		const adminPackageJson = JSON.parse(readFileSync(resolve(adminDir, 'package.json'), 'utf8'));
+		expect(adminPackageJson.dependencies['@treeseed/sdk']).toBe('0.11.0');
+		expect(adminPackageJson.peerDependencies['@treeseed/api']).toBe('^0.4.1');
 	});
 
 	it('allows stable release tag Git refs while rejecting dev Git refs', () => {
