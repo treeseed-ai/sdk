@@ -1588,7 +1588,18 @@ function listCloudflareZoneRulesets(zoneId, env) {
 	return Array.isArray(result?.result) ? result.result : [];
 }
 
-function buildTreeseedManagedCloudflareCacheRules(deployConfig, cacheTarget, kind) {
+function joinCloudflareAndExpression(clauses) {
+	const parts = clauses
+		.map((clause) => typeof clause === 'string' ? clause.trim() : '')
+		.filter((clause) => clause.length > 0)
+		.map((clause) => clause.startsWith('(') && clause.endsWith(')') ? clause : `(${clause})`);
+	if (parts.length === 0) {
+		throw new Error('Cannot build a Cloudflare expression without predicates.');
+	}
+	return `(${parts.join(' and ')})`;
+}
+
+export function buildTreeseedManagedCloudflareCacheRules(deployConfig, cacheTarget, kind) {
 	if (!cacheTarget?.host) {
 		return [];
 	}
@@ -1597,13 +1608,17 @@ function buildTreeseedManagedCloudflareCacheRules(deployConfig, cacheTarget, kin
 	const hostExpression = `(http.host eq "${cacheTarget.host}")`;
 	const pathExpression = cacheTarget.pathPrefix
 		? `(starts_with(http.request.uri.path, "${cacheTarget.pathPrefix}/") or (http.request.uri.path eq "${cacheTarget.pathPrefix}"))`
-		: 'true';
+		: null;
 
 	if (kind === 'content') {
 		return [
 			{
 				description: 'treeseed-managed: cache public r2 objects',
-				expression: `((${hostExpression}) and (${pathExpression}) and (http.request.method in {"GET" "HEAD"}))`,
+				expression: joinCloudflareAndExpression([
+					hostExpression,
+					pathExpression,
+					'(http.request.method in {"GET" "HEAD"})',
+				]),
 				action: 'set_cache_settings',
 				action_parameters: {
 					cache: true,
@@ -1624,24 +1639,35 @@ function buildTreeseedManagedCloudflareCacheRules(deployConfig, cacheTarget, kin
 	const sourcePaths = policy.sourcePages.paths.map((path) => path === '/' ? '/' : path.replace(/\/+$/u, ''));
 	const sourcePathExpression = sourcePaths.length > 0
 		? `(${sourcePaths.map((path) => `(http.request.uri.path eq "${path}")`).join(' or ')})`
-		: 'false';
+		: null;
 	const notSourcePathExpression = sourcePaths.length > 0
 		? `not ${sourcePathExpression}`
-		: 'true';
+		: null;
 
-	return [
+	const rules = [
 		{
 			description: 'treeseed-managed: bypass preview and dynamic routes',
-			expression: `((${hostExpression}) and ((starts_with(http.request.uri.path, "/api/")) or (http.request.uri.path eq "/api") or (starts_with(http.request.uri.path, "/auth")) or (starts_with(http.request.uri.path, "/admin")) or (starts_with(http.request.uri.path, "/app")) or (starts_with(http.request.uri.path, "/internal")) or (http.request.uri.query contains "preview=") or (http.cookie contains "treeseed-content-preview=")))`,
+			expression: joinCloudflareAndExpression([
+				hostExpression,
+				'((starts_with(http.request.uri.path, "/api/")) or (http.request.uri.path eq "/api") or (starts_with(http.request.uri.path, "/auth")) or (starts_with(http.request.uri.path, "/admin")) or (starts_with(http.request.uri.path, "/app")) or (starts_with(http.request.uri.path, "/internal")) or (http.request.uri.query contains "preview=") or (http.cookie contains "treeseed-content-preview="))',
+			]),
 			action: 'set_cache_settings',
 			action_parameters: {
 				cache: false,
 			},
 			enabled: true,
-		},
-		{
+		}
+	];
+
+	if (sourcePathExpression) {
+		rules.push({
 			description: 'treeseed-managed: cache source html routes',
-			expression: `((${hostExpression}) and (${pathExpression}) and (${sourcePathExpression}) and (http.request.method in {"GET" "HEAD"}))`,
+			expression: joinCloudflareAndExpression([
+				hostExpression,
+				pathExpression,
+				sourcePathExpression,
+				'(http.request.method in {"GET" "HEAD"})',
+			]),
 			action: 'set_cache_settings',
 			action_parameters: {
 				cache: true,
@@ -1655,10 +1681,27 @@ function buildTreeseedManagedCloudflareCacheRules(deployConfig, cacheTarget, kin
 				},
 			},
 			enabled: true,
-		},
+		});
+	}
+
+	rules.push(
 		{
 			description: 'treeseed-managed: cache content html routes',
-			expression: `((${hostExpression}) and (${pathExpression}) and (${notSourcePathExpression}) and (http.request.method in {"GET" "HEAD"}) and (http.request.uri.path.extension eq "") and not (starts_with(http.request.uri.path, "/api/")) and not (http.request.uri.path eq "/api") and not (starts_with(http.request.uri.path, "/auth")) and not (starts_with(http.request.uri.path, "/admin")) and not (starts_with(http.request.uri.path, "/app")) and not (starts_with(http.request.uri.path, "/internal")) and not (http.request.uri.query contains "preview=") and not (http.cookie contains "treeseed-content-preview="))`,
+			expression: joinCloudflareAndExpression([
+				hostExpression,
+				pathExpression,
+				notSourcePathExpression,
+				'(http.request.method in {"GET" "HEAD"})',
+				'(http.request.uri.path.extension eq "")',
+				'not (starts_with(http.request.uri.path, "/api/"))',
+				'not (http.request.uri.path eq "/api")',
+				'not (starts_with(http.request.uri.path, "/auth"))',
+				'not (starts_with(http.request.uri.path, "/admin"))',
+				'not (starts_with(http.request.uri.path, "/app"))',
+				'not (starts_with(http.request.uri.path, "/internal"))',
+				'not (http.request.uri.query contains "preview=")',
+				'not (http.cookie contains "treeseed-content-preview=")',
+			]),
 			action: 'set_cache_settings',
 			action_parameters: {
 				cache: true,
@@ -1673,7 +1716,9 @@ function buildTreeseedManagedCloudflareCacheRules(deployConfig, cacheTarget, kin
 			},
 			enabled: true,
 		},
-	];
+	);
+
+	return rules;
 }
 
 function reconcileCloudflareCacheRulesForTarget(role, deployConfig, state, cacheTarget, env, { dryRun = false } = {}) {
