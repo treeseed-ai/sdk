@@ -1,5 +1,85 @@
 # Changelog
 
+## [0.11.0] - 2026-06-12
+
+### Added
+
+- feat(hosting): carry pages build command (b28d275e737f)
+- feat(hosting): deploy cloudflare pages sites (3bfea9afe583)
+- feat(config): integrate treeseed ui (b9265d2bae04)
+- feat(workflow): fix hosting architecture and integrated package workflow (66fbac3cf1d4)
+- feat(sdk): implement reconciliation platform and live acceptance (d035caea2db9)
+- feat(release-candidate): add parallel market verification toggle (2a8e1d219d80)
+- feat(sdk): add control plane request timeout and enhance workflow (2e667efcd5a5)
+- feat(railway): add phase-specific timeouts for deployment (370930aae3f0)
+- feat(railway): handle single volume attachment conflicts (07d4ef7a3b8e)
+- feat(hosting): add default host adapters and service types (70576db30a7a)
+- feat(railway): add support for API token and workspace environment (6b032523806e)
+
+### Changed
+
+- Renaming the TreeDB project to TreeDX. (e9d1fb8ff6c2)
+- Adding initial TreeDB SDK integration. (499da8aa47f6)
+
+### Fixed
+
+- fix: match package ids for release dependency policy (fbdd3d6dba60)
+- fix: keep docker packages out of release dependency rewrites (5f3eece50a16)
+- fix: support initial package production release adoption (f7e97b4ccc21)
+- build(build): fix package deploy gate timeout and hybrid save validation (bc5fef4051d3)
+- build(build): fix package deploy gate timeout and hybrid save validation (74705ee69088)
+- build(build): fix railway live deploy readiness retry (68ed891c6a0a)
+- build(build): fix staging web monitor and ui edge theme runtime (3c309e826fb7)
+- fix(source): fix workspace deployment install readiness (28dc88196378)
+- build(build): fix workspace deployment install readiness (53eda4b5f1f3)
+- build(source): fix ui pages staging reconciliation (9e08d20c635f)
+- build(build): fix package app cloudflare auth (d511376ec158)
+- fix(hosting): identify package web apps (43fca9567ca7)
+- build(build): fix package hosted config sync and api deploy environment (4da002c61e23)
+- build(build): fix hosted repository gates and root lockfile refresh (61e825639ca9)
+- build(build): fix manifest package save gates (61522f923117)
+- build(build): fix hosted package gate credentials (d0fa395522cf)
+- build(source): fix hosting architecture and integrated package workflow (1ea15e5ab775)
+- fix(sdk): deploy web workflow without runtime services (41b80e4e308a)
+- fix(sdk): keep web deploy workflow UI-only (6b752e4d9d18)
+- fix(sdk): expose market credential secret to web deploy (63ea633df5f6)
+- 3 additional changes omitted from this summary.
+
+### Tests
+
+- test: align workflow release assertions (1c8bc039570c)
+- build(build): stage package submodule restructuring (7d9bdfd5c3a5)
+- build(build): stage package submodule restructuring (f6cd9662863c)
+- build(build): add fast and promotion save lanes (bc828bdf70a7)
+- build(workflow): update save workflow behavior (784799976eb0)
+- test(tests): build ui artifacts for hosted deploy (7908412e49a9)
+- build(build): build ui artifacts for hosted deploy (3757d554ffd8)
+- build(build): migrate reusable ui components to treeseed ui (435c210464ac)
+- build(build): integrate treeseed ui (2bbc9111a4b9)
+- build(source): integrate treeseed ui (533925bfccc2)
+- test(tests): stabilize github credential test for configured scoped (8ae821d0e14c)
+- build(build): cap workflow status history for valid json output (b7885b3dba5c)
+- test(workflow-lifecycle): update test configurations (5030155c8877)
+- build(build): Treat API as a hosted project with verification gates (581666537a7f)
+- test(tests): Move API deployment acceptance into API package (7d9e09d026ea)
+- build(tests): Move API deployment acceptance into API package (93cf046e5050)
+- build(build): Save reconciliation platform and live acceptance updates (4a4bd4e08cec)
+- build(build): Save reconciliation platform and live acceptance updates (3be69b215c63)
+- build(build): Save reconciliation platform and live acceptance updates (07d1a3fe3720)
+- build(tests): Save reconciliation platform and live acceptance updates (cd13d1ec2ccf)
+- 17 additional changes omitted from this summary.
+
+### Dependencies
+
+- build(build): bound git dependency smoke checks (49adecba24ce)
+- build(build): Push clean hosted project repositories during save (2da578ce30d7)
+- build(build): Install project dependencies before hosted project (636863f5867e)
+- build(build): Install project dependencies before hosted project (f5f6b5249a49)
+- build(build): Install project dependencies before hosted project (26343bfc7c46)
+- build(build): Save reconciliation platform and live acceptance updates (d65f757259f1)
+- build(build): update package metadata (cccfe838c287)
+- Release @treeseed/sdk 0.11.0.
+
 ## [0.10.28] - 2026-06-05
 
 ### Added
