@@ -975,6 +975,28 @@ function syncRootWorkspaceLockfileMetadata(node: RepositorySaveNode, options: Pi
 	let changed = false;
 	const packageEntries = packages as Record<string, Record<string, unknown>>;
 	const rootEntry = packageEntries[''] ?? {};
+	const workspacePackageList = workspacePackages(node.path);
+	const workspaceVersionByName = new Map(workspacePackageList
+		.map((workspacePackage) => [String(workspacePackage.packageJson.name ?? ''), String(workspacePackage.packageJson.version ?? '')] as const)
+		.filter(([name, version]) => name.length > 0 && version.length > 0));
+	const rootDependencySpecs = new Map<string, string>();
+	for (const field of dependencyFields(node.packageJson)) {
+		const rootDeps = node.packageJson[field];
+		if (!rootDeps || typeof rootDeps !== 'object' || Array.isArray(rootDeps)) continue;
+		for (const [dependencyName, dependencySpec] of Object.entries(rootDeps)) {
+			if (typeof dependencySpec === 'string') {
+				rootDependencySpecs.set(dependencyName, dependencySpec);
+			}
+		}
+	}
+	const stableWorkspaceDependencySpec = (dependencyName: string) =>
+		rootDependencySpecs.get(dependencyName) ?? workspaceVersionByName.get(dependencyName) ?? null;
+	const normalizeWorkspaceDependencySpecs = (value: Record<string, unknown>) => Object.fromEntries(
+		Object.entries(value).map(([dependencyName, dependencySpec]) => [
+			dependencyName,
+			workspaceVersionByName.has(dependencyName) ? stableWorkspaceDependencySpec(dependencyName) : dependencySpec,
+		]),
+	);
 	if (JSON.stringify(rootEntry.workspaces ?? []) !== JSON.stringify(node.packageJson.workspaces)) {
 		rootEntry.workspaces = node.packageJson.workspaces;
 		packageEntries[''] = rootEntry;
@@ -1001,7 +1023,7 @@ function syncRootWorkspaceLockfileMetadata(node: RepositorySaveNode, options: Pi
 			}
 		}
 	}
-	for (const workspacePackage of workspacePackages(node.path)) {
+	for (const workspacePackage of workspacePackageList) {
 		const relativeDir = workspacePackage.relativeDir.replace(/\\/gu, '/');
 		const packageJson = workspacePackage.packageJson;
 		const packageName = String(packageJson.name ?? '');
@@ -1018,8 +1040,9 @@ function syncRootWorkspaceLockfileMetadata(node: RepositorySaveNode, options: Pi
 		for (const field of dependencyFields(packageJson)) {
 			const nextValue = packageJson[field];
 			if (nextValue && typeof nextValue === 'object' && !Array.isArray(nextValue)) {
-				if (JSON.stringify(packageEntry[field] ?? {}) !== JSON.stringify(nextValue)) {
-					packageEntry[field] = nextValue;
+				const normalizedValue = normalizeWorkspaceDependencySpecs(nextValue as Record<string, unknown>);
+				if (JSON.stringify(packageEntry[field] ?? {}) !== JSON.stringify(normalizedValue)) {
+					packageEntry[field] = normalizedValue;
 					changed = true;
 				}
 			}
