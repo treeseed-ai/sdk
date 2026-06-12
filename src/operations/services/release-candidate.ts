@@ -6,14 +6,17 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { isTreeseedEnvironmentEntryRelevant, isTreeseedEnvironmentEntryRequired } from '../../platform/environment.ts';
 import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
 import { createGitHubApiClient, listGitHubEnvironmentSecretNames, listGitHubEnvironmentVariableNames } from './github-api.ts';
-import { collectInternalDevReferenceIssues, normalizeGitRemoteForManifest } from './package-reference-policy.ts';
+import { resolveGitHubCredentialForRepository } from './github-credentials.ts';
+import { collectInternalDevReferenceIssues, installableInternalDependencyVersions, normalizeGitRemoteForManifest } from './package-reference-policy.ts';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, validateTreeseedCommandEnvironment } from './config-runtime.ts';
 import { loadDeployState } from './deploy.ts';
 import { loadCliDeployConfig } from './runtime-tools.ts';
 import { packagesWithScript, run, workspacePackages } from './workspace-tools.ts';
 import { createBuildWarningSummary, formatAllowedBuildWarnings } from './build-warning-policy.js';
+import { discoverTreeseedPackageAdapters, type TreeseedPackageAdapter } from './package-adapters.ts';
 
 export type ReleaseCandidateStatus = 'passed' | 'failed';
+export type ReleaseCandidateMode = 'hybrid' | 'strict' | 'skip';
 
 export type ReleaseCandidateFailure = {
 	code: string;
@@ -33,6 +36,15 @@ export type ReleaseCandidateFingerprint = {
 	selectedPackages: string[];
 };
 
+export type ReleaseCandidateTopologyFingerprint = {
+	key: string;
+	policyVersion: string;
+	packageManifests: Record<string, string | null>;
+	lockfiles: Record<string, string | null>;
+	treeseedManifests: Record<string, string | null>;
+	selectedPackages: string[];
+};
+
 export type ReleaseCandidateCheck = {
 	name: string;
 	status: 'passed' | 'skipped' | 'failed';
@@ -42,6 +54,9 @@ export type ReleaseCandidateCheck = {
 export type ReleaseCandidateReport = {
 	status: ReleaseCandidateStatus;
 	fingerprint: ReleaseCandidateFingerprint;
+	mode: ReleaseCandidateMode;
+	reason: string;
+	topology: ReleaseCandidateTopologyFingerprint;
 	reused: boolean;
 	checkedAt: string;
 	failures: ReleaseCandidateFailure[];
@@ -53,11 +68,15 @@ export type ReleaseCandidateInput = {
 	plannedVersions: Record<string, unknown>;
 	selectedPackageNames?: string[];
 	allowReuse?: boolean;
+	mode?: ReleaseCandidateMode;
 };
 
 const RELEASE_CANDIDATE_CACHE_DIR = '.treeseed/workflow/release-candidates';
-const RELEASE_CANDIDATE_POLICY_VERSION = 'strict-output-v1';
+const RELEASE_CANDIDATE_POLICY_VERSION = 'package-adapters-v2-hybrid';
+const RELEASE_CANDIDATE_TOPOLOGY_POLICY_VERSION = 'topology-v1';
 const STABLE_SEMVER = /^\d+\.\d+\.\d+$/u;
+const INTERNAL_DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies'];
+const TOPOLOGY_SCRIPT_PREFIXES = ['build', 'check', 'prepare', 'prepack', 'postpack', 'release:', 'verify', 'sandbox:'];
 const REHEARSAL_IGNORED_SEGMENTS = new Set([
 	'.git',
 	'.treeseed',
@@ -66,6 +85,22 @@ const REHEARSAL_IGNORED_SEGMENTS = new Set([
 	'coverage',
 	'dist',
 	'node_modules',
+]);
+const ROOT_WEB_EXCLUDED_DEPLOY_CONFIG_IDS = new Set([
+	'DOCKERHUB_TOKEN',
+	'SECRET_KEY_BASE',
+	'TREEDX_JWT_HS256_SECRET',
+	'TREESEED_CREDENTIAL_SESSION_SECRET',
+	'TREESEED_PLATFORM_RUNNER_SECRET',
+]);
+const API_APP_SERVICE_TARGETS = new Set([
+	'api',
+	'operationsRunner',
+	'marketOperationsRunner',
+	'publicTreeDxFederation',
+	'publicTreeDxNode',
+	'treedx',
+	'treeDx',
 ]);
 
 function nowIso() {
@@ -101,6 +136,10 @@ function safePackageJson(filePath: string) {
 	}
 }
 
+function dockerManifestCheckMode() {
+	return process.env.TREESEED_RELEASE_CANDIDATE_DOCKER_MANIFEST_MODE === 'check' ? 'check' : 'skip';
+}
+
 function writeJsonFile(filePath: string, value: Record<string, unknown>) {
 	writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
@@ -114,6 +153,10 @@ function packageScripts(filePath: string) {
 
 function releaseCandidateCachePath(root: string, key: string) {
 	return resolve(root, RELEASE_CANDIDATE_CACHE_DIR, `${key}.json`);
+}
+
+function releaseCandidateTopologyCachePath(root: string, key: string) {
+	return resolve(root, RELEASE_CANDIDATE_CACHE_DIR, `topology-${key}.json`);
 }
 
 function ensureReleaseCandidateCacheDir(root: string) {
@@ -130,10 +173,10 @@ function ensureReleaseCandidateCacheDir(root: string) {
 export function buildReleaseCandidateFingerprint(input: ReleaseCandidateInput): ReleaseCandidateFingerprint {
 	const selectedPackages = [...new Set((input.selectedPackageNames ?? []).map(String))].sort();
 	const selectedPackageSet = new Set(selectedPackages);
-	const packages = workspacePackages(input.root)
-		.filter((pkg) => typeof pkg.name === 'string' && pkg.name.startsWith('@treeseed/'));
+	const packages = discoverTreeseedPackageAdapters(input.root)
+		.filter((pkg) => selectedPackageSet.size === 0 || selectedPackageSet.has(pkg.id) || selectedPackageSet.has(pkg.name));
 	const packageShas = sortedRecord(Object.fromEntries(
-		packages.map((pkg) => [pkg.name, safeGitHead(pkg.dir)]),
+		packages.map((pkg) => [pkg.id, safeGitHead(pkg.dir)]),
 	));
 	const plannedVersions = sortedRecord(Object.fromEntries(
 		Object.entries(input.plannedVersions)
@@ -142,7 +185,12 @@ export function buildReleaseCandidateFingerprint(input: ReleaseCandidateInput): 
 	));
 	const lockfiles = sortedRecord({
 		'@treeseed/market': fileSha256(resolve(input.root, 'package-lock.json')),
-		...Object.fromEntries(packages.map((pkg) => [pkg.name, fileSha256(resolve(pkg.dir, 'package-lock.json'))])),
+		...Object.fromEntries(packages.map((pkg) => [
+			pkg.id,
+			pkg.kind === 'node-typescript'
+				? fileSha256(resolve(pkg.dir, 'package-lock.json'))
+				: (fileSha256(resolve(pkg.dir, 'Cargo.lock')) ?? fileSha256(resolve(pkg.dir, 'mix.lock'))),
+		])),
 	});
 	const base = {
 		policyVersion: RELEASE_CANDIDATE_POLICY_VERSION,
@@ -150,6 +198,144 @@ export function buildReleaseCandidateFingerprint(input: ReleaseCandidateInput): 
 		packageShas,
 		plannedVersions,
 		lockfiles,
+		selectedPackages,
+	};
+	return {
+		...base,
+		key: sha256(JSON.stringify(base)),
+	};
+}
+
+function isInternalTreeseedPackageName(name: string, internalPackageNames: Set<string>) {
+	return internalPackageNames.has(name) || name.startsWith('@treeseed/');
+}
+
+function normalizeDependencySpecForTopology(name: string, spec: unknown, internalPackageNames: Set<string>) {
+	if (!isInternalTreeseedPackageName(name, internalPackageNames)) return spec;
+	const value = String(spec ?? '').trim();
+	if (!value) return value;
+	if (/^(?:git\+|github:|gitlab:|bitbucket:|ssh:\/\/|https:\/\/|file:)/u.test(value)
+		|| /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(value)
+		|| /^workspace:/u.test(value)) {
+		return '<internal-treeseed-reference>';
+	}
+	return value;
+}
+
+function normalizePackageJsonForTopology(packageJson: Record<string, unknown>, internalPackageNames: Set<string>) {
+	const normalized: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(packageJson)) {
+		if (key === 'version') continue;
+		if (INTERNAL_DEPENDENCY_FIELDS.includes(key) && value && typeof value === 'object' && !Array.isArray(value)) {
+			normalized[key] = sortedRecord(Object.fromEntries(Object.entries(value as Record<string, unknown>)
+				.map(([dependencyName, spec]) => [dependencyName, normalizeDependencySpecForTopology(dependencyName, spec, internalPackageNames)])));
+			continue;
+		}
+		if (key === 'scripts' && value && typeof value === 'object' && !Array.isArray(value)) {
+			normalized[key] = sortedRecord(Object.fromEntries(Object.entries(value as Record<string, unknown>)
+				.filter(([scriptName]) => TOPOLOGY_SCRIPT_PREFIXES.some((prefix) => scriptName === prefix || scriptName.startsWith(prefix)))
+				.map(([scriptName, command]) => [scriptName, command])));
+			continue;
+		}
+		if (['name', 'type', 'private', 'workspaces', 'main', 'module', 'exports', 'files', 'bin', 'publishConfig', 'repository', 'engines', 'packageManager'].includes(key)) {
+			normalized[key] = value;
+		}
+	}
+	return sortedRecord(normalized);
+}
+
+function normalizePackageLockForTopology(lockfile: Record<string, unknown>, internalPackageNames: Set<string>) {
+	const packages = lockfile.packages && typeof lockfile.packages === 'object' && !Array.isArray(lockfile.packages)
+		? lockfile.packages as Record<string, unknown>
+		: {};
+	const normalizedPackages: Record<string, unknown> = {};
+	for (const [path, entry] of Object.entries(packages)) {
+		if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+		const record = entry as Record<string, unknown>;
+		const packageName = typeof record.name === 'string'
+			? record.name
+			: path.startsWith('node_modules/') ? path.replace(/^node_modules\//u, '') : null;
+		const normalized: Record<string, unknown> = {};
+		for (const key of ['name', 'link', 'dev', 'optional', 'peer']) {
+			if (key in record) normalized[key] = record[key];
+		}
+		for (const field of INTERNAL_DEPENDENCY_FIELDS) {
+			const values = record[field];
+			if (values && typeof values === 'object' && !Array.isArray(values)) {
+				normalized[field] = sortedRecord(Object.fromEntries(Object.entries(values as Record<string, unknown>)
+					.map(([dependencyName, spec]) => [dependencyName, normalizeDependencySpecForTopology(dependencyName, spec, internalPackageNames)])));
+			}
+		}
+		if (packageName && isInternalTreeseedPackageName(packageName, internalPackageNames)) {
+			normalized.version = '<internal-treeseed-reference>';
+			normalized.resolved = '<internal-treeseed-reference>';
+			normalized.integrity = '<internal-treeseed-reference>';
+		} else {
+			for (const key of ['version', 'resolved', 'integrity', 'license']) {
+				if (key in record) normalized[key] = record[key];
+			}
+		}
+		normalizedPackages[path] = sortedRecord(normalized);
+	}
+	return sortedRecord({
+		name: lockfile.name,
+		lockfileVersion: lockfile.lockfileVersion,
+		requires: lockfile.requires,
+		packages: sortedRecord(normalizedPackages),
+	});
+}
+
+function topologyJsonHash(value: unknown) {
+	return sha256(JSON.stringify(value));
+}
+
+function topologyPackageHash(packageJsonPath: string, internalPackageNames: Set<string>) {
+	const packageJson = safePackageJson(packageJsonPath);
+	if (!packageJson) return null;
+	return topologyJsonHash(normalizePackageJsonForTopology(packageJson, internalPackageNames));
+}
+
+function topologyLockfileHash(lockfilePath: string, internalPackageNames: Set<string>) {
+	const lockfile = safePackageJson(lockfilePath);
+	if (!lockfile) return null;
+	return topologyJsonHash(normalizePackageLockForTopology(lockfile, internalPackageNames));
+}
+
+export function buildReleaseCandidateTopologyFingerprint(input: ReleaseCandidateInput): ReleaseCandidateTopologyFingerprint {
+	const selectedPackages = [...new Set((input.selectedPackageNames ?? []).map(String))].sort();
+	const selectedPackageSet = new Set(selectedPackages);
+	const packages = discoverTreeseedPackageAdapters(input.root)
+		.filter((pkg) => selectedPackageSet.size === 0 || selectedPackageSet.has(pkg.id) || selectedPackageSet.has(pkg.name));
+	const internalPackageNames = new Set([
+		'@treeseed/market',
+		...discoverTreeseedPackageAdapters(input.root).map((pkg) => pkg.name),
+	]);
+	const packageManifests = sortedRecord({
+		'@treeseed/market': topologyPackageHash(resolve(input.root, 'package.json'), internalPackageNames),
+		...Object.fromEntries(packages.map((pkg) => [pkg.id, topologyPackageHash(resolve(pkg.dir, 'package.json'), internalPackageNames)])),
+	});
+	const lockfiles = sortedRecord({
+		'@treeseed/market': topologyLockfileHash(resolve(input.root, 'package-lock.json'), internalPackageNames),
+		...Object.fromEntries(packages.map((pkg) => [
+			pkg.id,
+			pkg.kind === 'node-typescript'
+				? topologyLockfileHash(resolve(pkg.dir, 'package-lock.json'), internalPackageNames)
+				: (fileSha256(resolve(pkg.dir, 'Cargo.lock')) ?? fileSha256(resolve(pkg.dir, 'mix.lock'))),
+		])),
+	});
+	const manifestEntries: Record<string, string | null> = {
+		'treeseed.site.yaml': fileSha256(resolve(input.root, 'treeseed.site.yaml')),
+		'treeseed.package.yaml': fileSha256(resolve(input.root, 'treeseed.package.yaml')),
+	};
+	for (const pkg of packages) {
+		manifestEntries[`${pkg.id}:treeseed.package.yaml`] = fileSha256(resolve(pkg.dir, 'treeseed.package.yaml'));
+		manifestEntries[`${pkg.id}:treeseed.site.yaml`] = fileSha256(resolve(pkg.dir, 'treeseed.site.yaml'));
+	}
+	const base = {
+		policyVersion: RELEASE_CANDIDATE_TOPOLOGY_POLICY_VERSION,
+		packageManifests,
+		lockfiles,
+		treeseedManifests: sortedRecord(manifestEntries),
 		selectedPackages,
 	};
 	return {
@@ -171,7 +357,26 @@ export function readCachedReleaseCandidateReport(root: string, key: string) {
 export function writeReleaseCandidateReport(root: string, report: ReleaseCandidateReport) {
 	ensureReleaseCandidateCacheDir(root);
 	writeFileSync(releaseCandidateCachePath(root, report.fingerprint.key), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+	if (report.status === 'passed' && report.mode === 'strict') {
+		writeFileSync(releaseCandidateTopologyCachePath(root, report.topology.key), `${JSON.stringify({
+			key: report.topology.key,
+			checkedAt: report.checkedAt,
+			fingerprintKey: report.fingerprint.key,
+			mode: report.mode,
+			reason: report.reason,
+		}, null, 2)}\n`, 'utf8');
+	}
 	return report;
+}
+
+function readStrictTopologyProof(root: string, key: string) {
+	const cachePath = releaseCandidateTopologyCachePath(root, key);
+	if (!existsSync(cachePath)) return null;
+	try {
+		return JSON.parse(readFileSync(cachePath, 'utf8')) as Record<string, unknown>;
+	} catch {
+		return null;
+	}
 }
 
 function addFailure(failures: ReleaseCandidateFailure[], failure: ReleaseCandidateFailure) {
@@ -182,13 +387,27 @@ function addFailure(failures: ReleaseCandidateFailure[], failure: ReleaseCandida
 	});
 }
 
-function packageReadinessChecks(root: string, selectedPackageNames: string[], failures: ReleaseCandidateFailure[]): ReleaseCandidateCheck {
+function packageReadinessChecks(root: string, selectedPackageNames: string[], failures: ReleaseCandidateFailure[], options: { skipNpmPack?: boolean } = {}): ReleaseCandidateCheck {
 	if (selectedPackageNames.length === 0) {
 		return { name: 'package-release-readiness', status: 'skipped', detail: 'No packages are selected for this release.' };
 	}
 	const selected = new Set(selectedPackageNames);
-	const packages = workspacePackages(root).filter((pkg) => selected.has(pkg.name));
+	const packages = discoverTreeseedPackageAdapters(root).filter((pkg) => selected.has(pkg.id) || selected.has(pkg.name));
 	for (const pkg of packages) {
+		checkPackageAdapterReadiness(pkg, failures, options);
+	}
+	return {
+		name: 'package-release-readiness',
+		status: failures.some((failure) =>
+			failure.code.startsWith('missing_')
+			|| failure.code === 'npm_pack_dry_run_failed'
+			|| failure.code === 'docker_manifest_check_failed') ? 'failed' : 'passed',
+		detail: `Checked ${packages.length} selected package adapter${packages.length === 1 ? '' : 's'}${options.skipNpmPack ? ' without npm pack rehearsal' : ''}: ${packages.map((pkg) => `${pkg.id} (${pkg.kind})`).join(', ') || 'none'}.`,
+	};
+}
+
+function checkPackageAdapterReadiness(pkg: TreeseedPackageAdapter, failures: ReleaseCandidateFailure[], options: { skipNpmPack?: boolean } = {}) {
+	if (pkg.kind === 'node-typescript') {
 		const packageJson = safePackageJson(resolve(pkg.dir, 'package.json'));
 		const scripts = packageJson?.scripts && typeof packageJson.scripts === 'object' && !Array.isArray(packageJson.scripts)
 			? packageJson.scripts as Record<string, unknown>
@@ -196,41 +415,86 @@ function packageReadinessChecks(root: string, selectedPackageNames: string[], fa
 		if (!existsSync(resolve(pkg.dir, '.github', 'workflows', 'publish.yml'))) {
 			addFailure(failures, {
 				code: 'missing_publish_workflow',
-				scope: pkg.name,
+				scope: pkg.id,
 				provider: 'github',
-				message: `${pkg.name} is missing .github/workflows/publish.yml.`,
+				message: `${pkg.id} is missing .github/workflows/publish.yml.`,
 			});
 		}
 		if (typeof scripts['release:publish'] !== 'string') {
 			addFailure(failures, {
 				code: 'missing_publish_script',
-				scope: pkg.name,
-				message: `${pkg.name} is missing a release:publish script.`,
+				scope: pkg.id,
+				message: `${pkg.id} is missing a release:publish script.`,
 			});
 		}
-		if (typeof scripts['verify:local'] !== 'string' && typeof scripts['verify'] !== 'string' && typeof scripts['verify:action'] !== 'string') {
+		if (typeof scripts['verify:local'] !== 'string' && typeof scripts.verify !== 'string' && typeof scripts['verify:action'] !== 'string') {
 			addFailure(failures, {
 				code: 'missing_verify_script',
-				scope: pkg.name,
-				message: `${pkg.name} is missing a release-ready verify script.`,
+				scope: pkg.id,
+				message: `${pkg.id} is missing a release-ready verify script.`,
 			});
 		}
-		try {
-			run('npm', ['pack', '--dry-run'], { cwd: pkg.dir, capture: true, timeoutMs: 120000 });
-		} catch (error) {
-			addFailure(failures, {
-				code: 'npm_pack_dry_run_failed',
-				scope: pkg.name,
-				message: `${pkg.name} failed npm pack --dry-run.`,
-				details: { error: error instanceof Error ? error.message : String(error) },
-			});
+		if (!options.skipNpmPack) {
+			try {
+				run('npm', ['pack', '--dry-run'], { cwd: pkg.dir, capture: true, timeoutMs: 120000 });
+			} catch (error) {
+				addFailure(failures, {
+					code: 'npm_pack_dry_run_failed',
+					scope: pkg.id,
+					message: `${pkg.id} failed npm pack --dry-run.`,
+					details: { error: error instanceof Error ? error.message : String(error) },
+				});
+			}
+		}
+		return;
+	}
+	if (!pkg.version) {
+		addFailure(failures, {
+			code: 'missing_package_version',
+			scope: pkg.id,
+			message: `${pkg.id} is missing a readable BEAM package version.`,
+			details: { versionSource: pkg.versionSource },
+		});
+	}
+	if (pkg.id === 'treedx' && !existsSync(resolve(pkg.dir, '.github', 'workflows', 'dev-image.yml'))) {
+		addFailure(failures, {
+			code: 'missing_development_image_workflow',
+			scope: pkg.id,
+			provider: 'github',
+			message: `${pkg.id} is missing .github/workflows/dev-image.yml for staging-safe development image publication.`,
+		});
+	}
+	if (!pkg.verifyCommands.local) {
+		addFailure(failures, {
+			code: 'missing_verify_script',
+			scope: pkg.id,
+			message: `${pkg.id} is missing a BEAM package local verification command.`,
+		});
+	}
+	if (!pkg.verifyCommands.release) {
+		addFailure(failures, {
+			code: 'missing_release_gate',
+			scope: pkg.id,
+			message: `${pkg.id} is missing a BEAM package release gate command.`,
+		});
+	}
+	if (dockerManifestCheckMode() !== 'check') return;
+	for (const artifact of pkg.artifacts.filter((entry) => entry.provider === 'docker')) {
+		for (const tag of artifact.tags ?? []) {
+			if (tag.includes('<')) continue;
+			try {
+				run('docker', ['manifest', 'inspect', `${artifact.name}:${tag}`], { cwd: pkg.dir, capture: true, timeoutMs: 120000 });
+			} catch (error) {
+				addFailure(failures, {
+					code: 'docker_manifest_check_failed',
+					scope: pkg.id,
+					provider: 'docker',
+					message: `${pkg.id} Docker artifact is not published: ${artifact.name}:${tag}.`,
+					details: { error: error instanceof Error ? error.message : String(error) },
+				});
+			}
 		}
 	}
-	return {
-		name: 'package-release-readiness',
-		status: failures.some((failure) => failure.code.startsWith('missing_') || failure.code === 'npm_pack_dry_run_failed') ? 'failed' : 'passed',
-		detail: `Checked ${packages.length} selected package${packages.length === 1 ? '' : 's'}.`,
-	};
 }
 
 function copyWorkspaceForProductionRehearsal(root: string) {
@@ -252,7 +516,8 @@ function applyPlannedStableMetadata(root: string, plannedVersions: Record<string
 	const stableVersions = new Map(
 		Object.entries(plannedVersions).filter(([, version]) => STABLE_SEMVER.test(version)),
 	);
-	const stableGitReferences = stablePackageGitReferences(root, stableVersions);
+	const dependencyVersions = installableInternalDependencyVersions(root, stableVersions);
+	const stableGitReferences = stablePackageGitReferences(root, dependencyVersions);
 	const targets = [
 		{ name: '@treeseed/market', dir: root },
 		...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir })),
@@ -270,7 +535,7 @@ function applyPlannedStableMetadata(root: string, plannedVersions: Record<string
 		for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
 			const values = packageJson[field];
 			if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
-			for (const [dependencyName, version] of stableVersions.entries()) {
+			for (const [dependencyName, version] of dependencyVersions.entries()) {
 				if (!(dependencyName in values)) continue;
 				const dependencySpec = stableGitReferences.get(dependencyName) ?? version;
 				if (String((values as Record<string, unknown>)[dependencyName]) === dependencySpec) continue;
@@ -355,6 +620,16 @@ function runNpmRehearsalCommand(args: string[], options: { cwd: string; timeoutM
 	}
 }
 
+function npmRehearsalEnv(extra: NodeJS.ProcessEnv = {}) {
+	return {
+		...process.env,
+		npm_config_jobs: process.env.npm_config_jobs ?? '2',
+		npm_config_audit: process.env.npm_config_audit ?? 'false',
+		npm_config_fund: process.env.npm_config_fund ?? 'false',
+		...extra,
+	};
+}
+
 export function collectReleaseCandidateOutputFailures(line: string) {
 	const value = String(line ?? '').trim();
 	if (!value) return [];
@@ -392,18 +667,20 @@ function runProductionDependencyRehearsal(
 		const copied = copyWorkspaceForProductionRehearsal(root);
 		tempParent = copied.tempParent;
 		applyPlannedStableMetadata(copied.tempRoot, plannedVersions);
-		runNpmRehearsalCommand(['install', '--package-lock-only', '--ignore-scripts'], { cwd: copied.tempRoot, timeoutMs: 300000 });
-		runNpmRehearsalCommand(['ci', '--ignore-scripts'], { cwd: copied.tempRoot, timeoutMs: 600000 });
+		const npmEnv = npmRehearsalEnv();
+		runNpmRehearsalCommand(['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund', '--prefer-offline'], { cwd: copied.tempRoot, timeoutMs: 300000, env: npmEnv });
+		runNpmRehearsalCommand(['ci', '--ignore-scripts', '--no-audit', '--no-fund', '--prefer-offline'], { cwd: copied.tempRoot, timeoutMs: 600000, env: npmEnv });
 		buildRehearsalWorkspacePackageArtifacts(copied.tempRoot);
 		const scriptName = rehearsalVerifyScript(copied.tempRoot);
 		if (scriptName) {
 			const packageJson = safePackageJson(resolve(copied.tempRoot, 'package.json'));
-			const parallelMarketVerify = packageJson?.name === '@treeseed/market'
+			const parallelMarketVerify = process.env.TREESEED_RELEASE_CANDIDATE_MARKET_VERIFY_PARALLEL === '1'
+				&& packageJson?.name === '@treeseed/market'
 				&& (scriptName === 'verify:direct' || scriptName === 'verify:local' || scriptName === 'verify');
 			runNpmRehearsalCommand(['run', scriptName], {
 				cwd: copied.tempRoot,
 				timeoutMs: 900000,
-				env: parallelMarketVerify ? { ...process.env, TREESEED_VERIFY_PARALLEL: '1' } : process.env,
+				env: parallelMarketVerify ? npmRehearsalEnv({ TREESEED_VERIFY_PARALLEL: '1' }) : npmEnv,
 			});
 		}
 		const postInstallIssues = collectInternalDevReferenceIssues(copied.tempRoot, selectedPackageSet);
@@ -491,11 +768,102 @@ function dependencyRehearsalChecks(
 	};
 }
 
+function validateInternalGitReferenceTags(root: string, failures: ReleaseCandidateFailure[]): number {
+	const issues = collectInternalDevReferenceIssues(root);
+	let checked = 0;
+	const seen = new Set<string>();
+	for (const issue of issues) {
+		const spec = issue.spec;
+		const hashIndex = spec.lastIndexOf('#');
+		if (hashIndex === -1 || !/^(?:git\+|github:|gitlab:|bitbucket:|ssh:\/\/|https:\/\/|file:)/u.test(spec)) continue;
+		const rawRemote = spec.slice(0, hashIndex).replace(/^git\+/u, '');
+		const githubMatch = rawRemote.match(/^github:([^/]+\/[^/]+?)(?:\.git)?$/u);
+		const remote = githubMatch ? `https://github.com/${githubMatch[1]}.git` : rawRemote;
+		const tagName = decodeURIComponent(spec.slice(hashIndex + 1));
+		if (!remote || !tagName) continue;
+		const key = `${remote}#${tagName}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		checked += 1;
+		try {
+			run('git', ['ls-remote', '--exit-code', '--tags', remote, `refs/tags/${tagName}`], { cwd: root, capture: true, timeoutMs: 120000 });
+		} catch (error) {
+			addFailure(failures, {
+				code: 'internal_git_tag_missing',
+				scope: issue.dependencyName ?? issue.repoName,
+				provider: 'git',
+				message: `Internal git dependency tag is not reachable: ${issue.dependencyName ?? issue.repoName}#${tagName}.`,
+				details: { spec, remote, tagName, filePath: issue.filePath, error: error instanceof Error ? error.message : String(error) },
+			});
+		}
+	}
+	return checked;
+}
+
+function lightweightDependencyChecks(root: string, failures: ReleaseCandidateFailure[]): ReleaseCandidateCheck {
+	const before = failures.length;
+	try {
+		runNpmRehearsalCommand(['install', '--package-lock-only', '--ignore-scripts', '--dry-run', '--workspaces=false', '--no-audit', '--no-fund', '--prefer-offline'], {
+			cwd: root,
+			timeoutMs: 300000,
+			env: npmRehearsalEnv(),
+		});
+	} catch (error) {
+		addFailure(failures, {
+			code: 'lockfile_dry_run_failed',
+			scope: '@treeseed/market',
+			message: 'Root lockfile dry-run validation failed.',
+			details: { error: error instanceof Error ? error.message : String(error) },
+		});
+	}
+	const checkedTags = validateInternalGitReferenceTags(root, failures);
+	return {
+		name: 'hybrid-dependency-readiness',
+		status: failures.length > before ? 'failed' : 'passed',
+		detail: `Validated root lockfile with npm install --package-lock-only --ignore-scripts --dry-run --workspaces=false and checked ${checkedTags} internal git tag${checkedTags === 1 ? '' : 's'} without temp install rehearsal.`,
+	};
+}
+
+function skippedReleaseCandidateReport(fingerprint: ReleaseCandidateFingerprint, topology: ReleaseCandidateTopologyFingerprint): ReleaseCandidateReport {
+	return {
+		status: 'passed',
+		fingerprint,
+		mode: 'skip',
+		reason: 'Release-candidate checks skipped by explicit request.',
+		topology,
+		reused: false,
+		checkedAt: nowIso(),
+		failures: [],
+		checks: [{
+			name: 'release-candidate',
+			status: 'skipped',
+			detail: 'Skipped by --release-candidate skip or TREESEED_RELEASE_CANDIDATE_MODE=skip.',
+		}],
+	};
+}
+
+function entryServiceTargets(entry: { serviceTargets?: unknown }) {
+	return Array.isArray(entry.serviceTargets)
+		? entry.serviceTargets.filter((target): target is string => typeof target === 'string')
+		: [];
+}
+
+export function isRootWebReleaseCandidateEntry(entry: { id: string; group?: string | null; serviceTargets?: unknown }) {
+	if (ROOT_WEB_EXCLUDED_DEPLOY_CONFIG_IDS.has(entry.id)) return false;
+	const serviceTargets = entryServiceTargets(entry);
+	if (serviceTargets.length > 0 && serviceTargets.every((target) => API_APP_SERVICE_TARGETS.has(target))) {
+		return false;
+	}
+	if (entry.group === 'docker') return false;
+	return true;
+}
+
 function localConfigCheck(root: string, scope: 'staging' | 'prod', failures: ReleaseCandidateFailure[]) {
 	try {
 		const report = validateTreeseedCommandEnvironment({ tenantRoot: root, scope, purpose: 'deploy' });
 		const problems = [...report.validation.missing, ...report.validation.invalid];
 		for (const problem of problems) {
+			if (!isRootWebReleaseCandidateEntry(problem.entry)) continue;
 			addFailure(failures, {
 				code: 'missing_local_config',
 				scope,
@@ -529,7 +897,13 @@ async function githubRemoteConfigCheck(root: string, scope: 'staging' | 'prod', 
 	try {
 		const environment = scope === 'prod' ? 'production' : scope;
 		const expected = expectedGitHubDeployEnvironment(root, scope);
-		const client = createGitHubApiClient();
+		const values = resolveTreeseedMachineEnvironmentValues(root, scope);
+		const credential = resolveGitHubCredentialForRepository(repository, { values, env: process.env });
+		const client = createGitHubApiClient({
+			env: credential.token
+				? { GH_TOKEN: credential.token, GITHUB_TOKEN: credential.token }
+				: process.env,
+		});
 		const [secretNames, variableNames] = await Promise.all([
 			listGitHubEnvironmentSecretNames(repository, environment, { client }),
 			listGitHubEnvironmentVariableNames(repository, environment, { client }),
@@ -569,6 +943,7 @@ function expectedGitHubDeployEnvironment(root: string, scope: 'staging' | 'prod'
 	const registry = collectTreeseedEnvironmentContext(root);
 	const values = resolveTreeseedMachineEnvironmentValues(root, scope);
 	const expectedEntries = registry.entries.filter((entry) => {
+		if (!isRootWebReleaseCandidateEntry(entry)) return false;
 		if (!isTreeseedEnvironmentEntryRelevant(entry, registry.context, scope, 'deploy')) return false;
 		if (isTreeseedEnvironmentEntryRequired(entry, registry.context, scope, 'deploy')) return true;
 		return typeof values[entry.id] === 'string' && values[entry.id].trim().length > 0;
@@ -670,34 +1045,54 @@ function migrationCompatibilityChecks(root: string, failures: ReleaseCandidateFa
 	return {
 		name: 'migration-compatibility',
 		status: missing.length > 0 ? 'failed' : 'passed',
-		detail: 'Checked required Drizzle migration artifacts for Market PostgreSQL and SDK D1.',
+		detail: 'Checked required Drizzle migration artifacts for Treeseed PostgreSQL and SDK D1.',
 	};
 }
 
 export async function runReleaseCandidateGate(input: ReleaseCandidateInput): Promise<ReleaseCandidateReport> {
 	const fingerprint = buildReleaseCandidateFingerprint(input);
+	const topology = buildReleaseCandidateTopologyFingerprint(input);
+	const requestedMode = input.mode ?? 'strict';
 	if (input.allowReuse !== false) {
 		const cached = readCachedReleaseCandidateReport(input.root, fingerprint.key);
 		if (cached?.status === 'passed') {
 			return {
 				...cached,
+				mode: cached.mode ?? 'strict',
+				reason: cached.reason ?? 'Reused cached release-candidate report.',
+				topology: cached.topology ?? topology,
 				reused: true,
 			};
 		}
+	}
+	if (requestedMode === 'skip') {
+		return skippedReleaseCandidateReport(fingerprint, topology);
 	}
 	const selectedPackageNames = [...new Set((input.selectedPackageNames ?? []).map(String))].sort();
 	const plannedVersions = Object.fromEntries(
 		Object.entries(input.plannedVersions).map(([name, version]) => [name, String(version)]),
 	);
+	const strictTopologyProof = readStrictTopologyProof(input.root, topology.key);
+	const effectiveMode: ReleaseCandidateMode = requestedMode;
+	const reason = requestedMode === 'hybrid'
+		? strictTopologyProof
+			? `Hybrid release-candidate selected; strict rehearsal skipped because topology ${topology.key.slice(0, 12)} was already proven.`
+			: `Hybrid release-candidate selected; lightweight checks used because strict topology proof is reserved for promotion lanes.`
+		: 'Strict release-candidate selected.';
 	const failures: ReleaseCandidateFailure[] = [];
 	const checks: ReleaseCandidateCheck[] = [];
-	checks.push(dependencyRehearsalChecks(input.root, plannedVersions, selectedPackageNames, failures));
-	checks.push(packageReadinessChecks(input.root, selectedPackageNames, failures));
+	checks.push(effectiveMode === 'hybrid'
+		? lightweightDependencyChecks(input.root, failures)
+		: dependencyRehearsalChecks(input.root, plannedVersions, selectedPackageNames, failures));
+	checks.push(packageReadinessChecks(input.root, selectedPackageNames, failures, { skipNpmPack: effectiveMode === 'hybrid' }));
 	checks.push(await configParityChecks(input.root, failures));
 	checks.push(migrationCompatibilityChecks(input.root, failures));
 	const report: ReleaseCandidateReport = {
 		status: failures.length === 0 ? 'passed' : 'failed',
 		fingerprint,
+		mode: effectiveMode,
+		reason,
+		topology,
 		reused: false,
 		checkedAt: nowIso(),
 		failures,

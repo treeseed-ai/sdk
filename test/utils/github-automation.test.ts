@@ -65,12 +65,13 @@ describe('github automation workflow generation', () => {
 		expect(web).toContain('default: deploy_web');
 		expect(web).toContain('publish_content');
 		expect(web).toContain('TREESEED_CONTENT_BUCKET_NAME');
-		expect(web).toContain('TREESEED_WORKFLOW_PLANE: all');
+		expect(web).toContain('TREESEED_WORKFLOW_PLANE: web');
 		expect(web).toContain('TREESEED_SMTP_PASSWORD: ${{ secrets.TREESEED_SMTP_PASSWORD }}');
 		expect(web).toContain('TREESEED_BETTER_AUTH_SECRET: ${{ secrets.TREESEED_BETTER_AUTH_SECRET }}');
 		expect(web).toContain('TREESEED_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_WEB_SERVICE_SECRET }}');
 		expect(web).toContain('TREESEED_API_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_API_WEB_SERVICE_SECRET || secrets.TREESEED_WEB_SERVICE_SECRET }}');
-		expect(web).toContain('TREESEED_PLATFORM_RUNNER_SECRET: ${{ secrets.TREESEED_PLATFORM_RUNNER_SECRET }}');
+			expect(web).not.toContain('TREESEED_PLATFORM_RUNNER_SECRET');
+			expect(web).not.toContain('TREESEED_CREDENTIAL_SESSION_SECRET');
 		expect(web).toContain('TREESEED_HOSTED_HUBS_GITHUB_TOKEN: ${{ secrets.TREESEED_HOSTED_HUBS_GITHUB_TOKEN }}');
 		expect(web).toContain('TREESEED_API_AUTH_SECRET: ${{ secrets.TREESEED_API_AUTH_SECRET || secrets.TREESEED_BETTER_AUTH_SECRET }}');
 		expect(web).toContain("TREESEED_CENTRAL_MARKET_API_BASE_URL: ${{ vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}");
@@ -87,7 +88,7 @@ describe('github automation workflow generation', () => {
 
 	it('creates both workflow files for the market control plane and only deploy for project repos', () => {
 		const marketRoot = createTenantRoot(`hosting:
-  kind: market_control_plane
+  kind: treeseed_control_plane
   registration: none`);
 	const hostedRoot = createTenantRoot(`hosting:
   kind: hosted_project
@@ -112,7 +113,7 @@ runtime:
 		const hostedDeploy = readFileSync(resolve(hostedRoot, '.github', 'workflows', 'deploy-web.yml'), 'utf8');
 		expect(hostedDeploy).toContain('Treeseed Web Deploy');
 		expect(hostedDeploy).toContain('default: deploy_web');
-		expect(hostedDeploy).toContain('packages/sdk packages/agent packages/core packages/cli');
+		expect(hostedDeploy).toContain('packages/sdk packages/ui packages/agent packages/core packages/cli');
 		expect(hostedDeploy).toContain('CLOUDFLARE_API_TOKEN');
 		expect(hostedDeploy).not.toContain('RAILWAY_API_TOKEN');
 	});

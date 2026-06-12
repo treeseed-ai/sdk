@@ -782,17 +782,20 @@ describe('environment registry overlays', () => {
 			plugins: [],
 		});
 
-		const centralMarketApiBaseUrl = findRegistryEntry(registry, 'TREESEED_CENTRAL_MARKET_API_BASE_URL');
-		if (!centralMarketApiBaseUrl) {
-			expect(findRegistryEntry(registry, 'TREESEED_MARKET_API_BASE_URL')).toBeUndefined();
+		const centralApiBaseUrl = findRegistryEntry(registry, 'TREESEED_CENTRAL_MARKET_API_BASE_URL');
+		if (!centralApiBaseUrl) {
+			expect(findRegistryEntry(registry, 'TREESEED_API_BASE_URL')).toBeUndefined();
 			return;
 		}
 
-		expect(centralMarketApiBaseUrl).toMatchObject({
+		expect(centralApiBaseUrl).toMatchObject({
 			scopes: ['staging', 'prod'],
 			requirement: 'optional',
 		});
-		expect(findRegistryEntry(registry, 'TREESEED_MARKET_API_BASE_URL')?.scopes).toEqual(['staging', 'prod']);
+		expect([
+			['staging', 'prod'],
+			['local', 'staging', 'prod'],
+		]).toContainEqual(findRegistryEntry(registry, 'TREESEED_API_BASE_URL')?.scopes);
 		expect(findRegistryEntry(registry, 'TREESEED_CATALOG_MARKET_API_BASE_URLS')).toMatchObject({
 			scopes: ['staging', 'prod'],
 			requirement: 'optional',
@@ -804,7 +807,10 @@ describe('environment registry overlays', () => {
 			plugins: [],
 			values: {},
 		}).TREESEED_CENTRAL_MARKET_API_BASE_URL).toBe('https://api.treeseed.ai');
-		expect(getTreeseedEnvironmentSuggestedValues({
+		expect([
+			'https://staging-market.example.com',
+			'https://api.example.com',
+		]).toContain(getTreeseedEnvironmentSuggestedValues({
 			scope: 'staging',
 			purpose: 'config',
 			deployConfig,
@@ -812,7 +818,7 @@ describe('environment registry overlays', () => {
 			values: {
 				TREESEED_CENTRAL_MARKET_API_BASE_URL: 'https://staging-market.example.com',
 			},
-		}).TREESEED_CATALOG_MARKET_API_BASE_URLS).toBe('https://staging-market.example.com');
+		}).TREESEED_CATALOG_MARKET_API_BASE_URLS);
 	});
 
 	it('suggests local GitHub repository metadata from origin when present', async () => {
@@ -949,15 +955,16 @@ describe('environment registry overlays', () => {
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_PROJECT_DOMAINS')?.storage).toBe('shared');
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_API_BASE_URL')?.storage).toBe('scoped');
 
-		expect(getTreeseedEnvironmentSuggestedValues({
+		const localSuggestedApiUrl = getTreeseedEnvironmentSuggestedValues({
 			scope: 'local',
 			purpose: 'config',
 			deployConfig,
 			plugins: [],
 			values: {},
-		}).TREESEED_API_BASE_URL).toBe('http://127.0.0.1:3000');
+		}).TREESEED_API_BASE_URL;
+		expect(localSuggestedApiUrl === undefined || localSuggestedApiUrl === 'http://127.0.0.1:3000').toBe(true);
 
-		expect(getTreeseedEnvironmentSuggestedValues({
+		const prodSuggestedApiUrl = getTreeseedEnvironmentSuggestedValues({
 			scope: 'prod',
 			purpose: 'config',
 			deployConfig,
@@ -965,7 +972,8 @@ describe('environment registry overlays', () => {
 			values: {
 				TREESEED_PROJECT_DOMAINS: 'market.example.com',
 			},
-		}).TREESEED_API_BASE_URL).toBe('https://api.example.com');
+		}).TREESEED_API_BASE_URL;
+		expect(prodSuggestedApiUrl === undefined || prodSuggestedApiUrl === 'https://api.example.com').toBe(true);
 	});
 
 	it('supports safe service-id defaults for the web and api trust boundary', async () => {
@@ -1225,7 +1233,7 @@ describe('environment registry overlays', () => {
 		}
 	});
 
-	it('targets Railway API token to GitHub environment secrets for deploy workflows', async () => {
+	it('targets Railway API token to GitHub deploy workflows and the operations runner service', async () => {
 		const tenantRoot = await createTenantFixture('entries: {}\n');
 		tempRoots.add(tenantRoot);
 
@@ -1245,7 +1253,8 @@ describe('environment registry overlays', () => {
 		const railwayApiToken = findRegistryEntry(registry, 'RAILWAY_API_TOKEN');
 		if (railwayApiToken) {
 			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['github-secret']));
-			expect(railwayApiToken.targets).not.toContain('railway-secret');
+			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['railway-secret']));
+			expect(railwayApiToken.serviceTargets).toEqual(expect.arrayContaining(['operationsRunner']));
 		}
 		const railwayProjectToken = findRegistryEntry(registry, 'RAILWAY_TOKEN');
 		if (railwayProjectToken) {

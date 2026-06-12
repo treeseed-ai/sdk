@@ -215,6 +215,7 @@ function createSdk(repoRoot: string) {
 
 function createSdkWithProvider(repoRoot: string, graphRankingProvider?: SdkGraphRankingProvider) {
 	return new AgentSdk({
+			contentRepository: { adapter: 'local' },
 		repoRoot,
 		database: new MemoryAgentDatabase(),
 		graphRankingProvider,

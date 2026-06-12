@@ -140,15 +140,17 @@ export async function runPrefixedCommand(
 		input,
 		write,
 		prefix,
+		timeoutMs,
 	}: {
 		cwd: string;
 		env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 		input?: string;
 		write?: TreeseedBootstrapWriter;
 		prefix: TreeseedBootstrapTaskPrefix;
+		timeoutMs?: number;
 	},
 ) {
-	return await new Promise<{ status: number | null; stdout: string; stderr: string }>((resolvePromise, reject) => {
+	return await new Promise<{ status: number | null; stdout: string; stderr: string; timedOut?: boolean }>((resolvePromise, reject) => {
 		const childEnv: Record<string, string> = {};
 		for (const [key, value] of Object.entries({ ...process.env, ...env })) {
 			if (value !== undefined) {
@@ -164,6 +166,19 @@ export async function runPrefixedCommand(
 		let stderr = '';
 		let stdoutBuffer = '';
 		let stderrBuffer = '';
+		let timedOut = false;
+		let forceKillTimer: NodeJS.Timeout | null = null;
+		const timeoutTimer = Number.isFinite(timeoutMs) && Number(timeoutMs) > 0
+			? setTimeout(() => {
+				timedOut = true;
+				const message = `Command timed out after ${Math.round(Number(timeoutMs) / 1000)}s: ${command} ${args.join(' ')}`;
+				stderr += `${stderr.endsWith('\n') || stderr.length === 0 ? '' : '\n'}${message}\n`;
+				stderrBuffer += `${stderrBuffer.endsWith('\n') || stderrBuffer.length === 0 ? '' : '\n'}${message}\n`;
+				flush('stderr');
+				child.kill('SIGTERM');
+				forceKillTimer = setTimeout(() => child.kill('SIGKILL'), 5_000);
+			}, Number(timeoutMs))
+			: null;
 		const flush = (stream: TreeseedBootstrapStream, force = false) => {
 			let buffer = stream === 'stdout' ? stdoutBuffer : stderrBuffer;
 			let newlineIndex = buffer.search(/\r?\n/u);
@@ -198,9 +213,15 @@ export async function runPrefixedCommand(
 		});
 		child.on('error', reject);
 		child.on('close', (status) => {
+			if (timeoutTimer) {
+				clearTimeout(timeoutTimer);
+			}
+			if (forceKillTimer) {
+				clearTimeout(forceKillTimer);
+			}
 			flush('stdout', true);
 			flush('stderr', true);
-			resolvePromise({ status, stdout, stderr });
+			resolvePromise({ status, stdout, stderr, ...(timedOut ? { timedOut: true } : {}) });
 		});
 		if (input !== undefined) {
 			child.stdin.end(input);

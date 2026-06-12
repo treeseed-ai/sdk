@@ -9,8 +9,8 @@ function stableHash(value: unknown) {
 }
 
 function railwayUnitTypeForServiceKey(serviceKey: string) {
-	if (serviceKey === 'marketOperationsRunner') {
-		return 'railway-service:market-operations-runner' as const;
+	if (serviceKey === 'operationsRunner') {
+		return 'railway-service:operations-runner' as const;
 	}
 	if (serviceKey === 'workdayManager') {
 		return 'railway-service:workday-manager' as const;
@@ -279,7 +279,7 @@ export function loadTreeseedReconcileState(tenantRoot: string, target: TreeseedR
 	return {
 		version: 1,
 		target,
-		dependencyGraphVersion: legacyState.reconcile?.dependencyGraphVersion ?? 1,
+		dependencyGraphVersion: legacyState.reconciliation?.dependencyGraphVersion ?? 1,
 		units: { ...persistedUnits },
 	};
 }
@@ -289,7 +289,7 @@ export function writeTreeseedReconcileState(tenantRoot: string, reconcileState: 
 	const legacyState = loadDeployState(tenantRoot, deployConfig, { target: reconcileState.target });
 	writeDeployState(tenantRoot, {
 		...legacyState,
-		reconcile: {
+		reconciliation: {
 			version: reconcileState.version,
 			dependencyGraphVersion: reconcileState.dependencyGraphVersion,
 			targetKey: targetKey(reconcileState.target),

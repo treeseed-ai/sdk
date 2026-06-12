@@ -545,19 +545,25 @@ export function mergeStagingIntoMain(cwd = workspaceRoot()) {
 		targetBranch: PRODUCTION_BRANCH,
 		message: `release: ${STAGING_BRANCH} -> ${PRODUCTION_BRANCH}`,
 		pushTarget: true,
+		allowUnrelatedHistories: false,
 	});
 }
 
 export function mergeBranchIntoTarget(
 	cwd = workspaceRoot(),
-	{ sourceBranch, targetBranch, message, pushTarget = true, quietMerge = false } = {},
+	{ sourceBranch, targetBranch, message, pushTarget = true, quietMerge = false, allowUnrelatedHistories = false } = {},
 ) {
 	const repoDir = prepareReleaseBranches(cwd);
 	checkoutBranch(repoDir, targetBranch);
 	if (remoteBranchExists(repoDir, targetBranch)) {
 		runGit(['merge', '--ff-only', `origin/${targetBranch}`], { cwd: repoDir });
 	}
-	runGit(['merge', '--no-ff', sourceBranch, '-m', message], { cwd: repoDir, capture: quietMerge });
+	const mergeArgs = ['merge', '--no-ff'];
+	if (allowUnrelatedHistories) {
+		mergeArgs.push('--allow-unrelated-histories');
+	}
+	mergeArgs.push(sourceBranch, '-m', message);
+	runGit(mergeArgs, { cwd: repoDir, capture: quietMerge });
 	pushBranch(repoDir, STAGING_BRANCH);
 	if (pushTarget) {
 		pushBranch(repoDir, targetBranch);

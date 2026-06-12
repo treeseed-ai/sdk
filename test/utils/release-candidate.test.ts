@@ -1,12 +1,24 @@
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	buildReleaseCandidateFingerprint,
+	buildReleaseCandidateTopologyFingerprint,
 	collectReleaseCandidateOutputFailures,
+	isRootWebReleaseCandidateEntry,
 	runReleaseCandidateGate,
 } from '../../src/operations/services/release-candidate.ts';
+import {
+	discoverTreeseedPackageAdapters,
+	planTreeseedPackageDevelopmentImage,
+} from '../../src/operations/services/package-adapters.ts';
+import {
+	githubRepositoryCredentialEnvName,
+	resolveGitHubCredentialForRepository,
+} from '../../src/operations/services/github-credentials.ts';
+import { resolveTreeseedEnvironmentRegistry } from '../../src/platform/environment.ts';
 
 const roots: string[] = [];
 
@@ -43,6 +55,96 @@ function makeWorkspace() {
 	writeFileSync(resolve(root, 'packages', 'sdk', 'drizzle', 'd1', '0000_treeseed_d1.sql'), '-- d1 schema\n', 'utf8');
 	writeFileSync(resolve(root, 'packages', 'sdk', 'drizzle', 'market', '0000_market_control_plane.sql'), '-- market pg schema\n', 'utf8');
 	return root;
+}
+
+function writeValidWorkspaceLockfile(root: string) {
+	const sdkSpec = spawnSync(process.execPath, ['-e', 'process.stdout.write(require(process.argv[1]).dependencies["@treeseed/sdk"])', resolve(root, 'package.json')], {
+		encoding: 'utf8',
+	}).stdout.trim();
+	writeFileSync(resolve(root, 'package-lock.json'), JSON.stringify({
+		name: '@treeseed/market',
+		version: '1.0.0',
+		lockfileVersion: 3,
+		packages: {
+			'': {
+				name: '@treeseed/market',
+				version: '1.0.0',
+				workspaces: ['packages/*'],
+				dependencies: {
+					'@treeseed/sdk': sdkSpec,
+				},
+			},
+			'node_modules/@treeseed/sdk': {
+				resolved: 'packages/sdk',
+				link: true,
+			},
+			'packages/sdk': {
+				name: '@treeseed/sdk',
+				version: '0.4.13-dev.feature-demo.1',
+			},
+		},
+	}, null, 2), 'utf8');
+}
+
+function addTreeDxPackage(root: string) {
+	mkdirSync(resolve(root, 'packages', 'treedx', 'apps', 'api'), { recursive: true });
+	mkdirSync(resolve(root, 'packages', 'treedx', '.github', 'workflows'), { recursive: true });
+	mkdirSync(resolve(root, 'packages', 'treedx', 'scripts'), { recursive: true });
+	writeFileSync(resolve(root, 'packages', 'treedx', 'apps', 'api', 'mix.exs'), `
+defmodule TreeDx.MixProject do
+  use Mix.Project
+  def project do
+    [app: :treedx, version: "0.1.0"]
+  end
+end
+`, 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', 'Cargo.toml'), '[workspace]\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', 'Cargo.lock'), '# lock\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', 'Dockerfile'), 'FROM scratch\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', 'scripts', 'test-treedx-fast.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', 'scripts', 'test-all.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', 'scripts', 'release-gate.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', '.github', 'workflows', 'dev-image.yml'), 'name: Dev Image\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', '.github', 'workflows', 'release-gate.yml'), 'name: Release Gate\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', 'treeseed.package.yaml'), `id: treedx
+name: TreeDX
+kind: beam-elixir-rust
+repository: treeseed-ai/treedx
+versionSource: apps/api/mix.exs
+image: treeseed/treedx
+verify:
+  fast: scripts/test-treedx-fast.sh
+  local: scripts/test-all.sh
+  release: scripts/release-gate.sh
+developmentImages:
+  workflow: dev-image.yml
+  defaultBranch: staging
+  tagPrefix: dev
+  movingTag: true
+  architectures:
+    - amd64
+    - arm64
+  hosting:
+    app: api
+    environment: staging
+    envVar: TREESEED_PUBLIC_TREEDX_IMAGE_REF
+`, 'utf8');
+}
+
+function addApiPackage(root: string) {
+	mkdirSync(resolve(root, 'packages', 'api'), { recursive: true });
+	writeFileSync(resolve(root, 'packages', 'api', 'package.json'), JSON.stringify({
+		name: '@treeseed/api',
+		version: '0.1.0',
+		private: true,
+		repository: {
+			type: 'git',
+			url: 'git+ssh://git@github.com/treeseed-ai/api.git',
+		},
+		scripts: {
+			'verify:local': 'node -e "process.exit(0)"',
+		},
+	}, null, 2), 'utf8');
 }
 
 describe('release candidate verification', () => {
@@ -85,7 +187,261 @@ describe('release candidate verification', () => {
 		expect(first.key).not.toBe(changedVersion.key);
 		expect(first.key).not.toBe(changedLockfile.key);
 		expect(first.key).not.toBe(changedSelection.key);
-		expect(first.policyVersion).toBe('strict-output-v1');
+		expect(first.policyVersion).toBe('package-adapters-v2-hybrid');
+	});
+
+	it('does not change topology for internal version and git tag churn', () => {
+		const root = makeWorkspace();
+		const first = buildReleaseCandidateTopologyFingerprint({
+			root,
+			selectedPackageNames: ['@treeseed/sdk'],
+			plannedVersions: { '@treeseed/market': '1.0.1', '@treeseed/sdk': '0.4.13' },
+		});
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: '@treeseed/market',
+			version: '1.0.7',
+			private: true,
+			workspaces: ['packages/*'],
+			dependencies: {
+				'@treeseed/sdk': 'git+https://github.com/treeseed/sdk.git#0.4.14-dev.staging.2',
+			},
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(root, 'packages', 'sdk', 'package.json'), JSON.stringify({
+			name: '@treeseed/sdk',
+			version: '0.4.14-dev.staging.2',
+			scripts: {
+				'verify:local': 'node -e "process.exit(0)"',
+				'release:publish': 'node -e "process.exit(0)"',
+			},
+		}, null, 2), 'utf8');
+		const second = buildReleaseCandidateTopologyFingerprint({
+			root,
+			selectedPackageNames: ['@treeseed/sdk'],
+			plannedVersions: { '@treeseed/market': '1.0.2', '@treeseed/sdk': '0.4.14' },
+		});
+
+		expect(second.key).toBe(first.key);
+	});
+
+	it('changes topology for external dependencies and release scripts', () => {
+		const root = makeWorkspace();
+		const first = buildReleaseCandidateTopologyFingerprint({
+			root,
+			selectedPackageNames: ['@treeseed/sdk'],
+			plannedVersions: {},
+		});
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: '@treeseed/market',
+			version: '1.0.0',
+			private: true,
+			workspaces: ['packages/*'],
+			dependencies: {
+				'@treeseed/sdk': 'git+https://github.com/treeseed/sdk.git#0.4.13-dev.feature-demo.1',
+				astro: '^5.1.0',
+			},
+		}, null, 2), 'utf8');
+		const changedDependency = buildReleaseCandidateTopologyFingerprint({
+			root,
+			selectedPackageNames: ['@treeseed/sdk'],
+			plannedVersions: {},
+		});
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: '@treeseed/market',
+			version: '1.0.0',
+			private: true,
+			workspaces: ['packages/*'],
+			dependencies: {
+				'@treeseed/sdk': 'git+https://github.com/treeseed/sdk.git#0.4.13-dev.feature-demo.1',
+				astro: '^5.1.0',
+			},
+			scripts: {
+				'verify:local': 'node verify.mjs',
+			},
+		}, null, 2), 'utf8');
+		const changedScript = buildReleaseCandidateTopologyFingerprint({
+			root,
+			selectedPackageNames: ['@treeseed/sdk'],
+			plannedVersions: {},
+		});
+
+		expect(changedDependency.key).not.toBe(first.key);
+		expect(changedScript.key).not.toBe(changedDependency.key);
+	});
+
+	it('keeps hybrid release-candidate checks lightweight without strict topology proof', async () => {
+		const root = makeWorkspace();
+		const remote = resolve(root, 'sdk.git');
+		const work = resolve(root, 'sdk-work');
+		spawnSync('git', ['init', '--bare', remote]);
+		spawnSync('git', ['clone', remote, work]);
+		spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: work });
+		spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: work });
+		writeFileSync(resolve(work, 'README.md'), 'sdk\n', 'utf8');
+		spawnSync('git', ['add', 'README.md'], { cwd: work });
+		spawnSync('git', ['commit', '-m', 'init'], { cwd: work });
+		spawnSync('git', ['tag', '0.4.13-dev.feature-demo.1'], { cwd: work });
+		spawnSync('git', ['push', 'origin', 'HEAD', '--tags'], { cwd: work });
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: '@treeseed/market',
+			version: '1.0.0',
+			private: true,
+			workspaces: ['packages/*'],
+			dependencies: {
+				'@treeseed/sdk': `git+file://${remote}#0.4.13-dev.feature-demo.1`,
+			},
+		}, null, 2), 'utf8');
+		writeValidWorkspaceLockfile(root);
+
+		const report = await runReleaseCandidateGate({
+			root,
+			mode: 'hybrid',
+			selectedPackageNames: ['@treeseed/sdk'],
+			plannedVersions: {
+				'@treeseed/market': '1.0.0',
+				'@treeseed/sdk': '0.4.13-dev.feature-demo.1',
+			},
+			allowReuse: false,
+		});
+
+		expect(report.status).toBe('passed');
+		expect(report.mode).toBe('hybrid');
+		expect(report.reason).toContain('lightweight checks');
+		expect(report.checks.map((check) => check.name)).toContain('hybrid-dependency-readiness');
+		expect(report.checks.map((check) => check.name)).not.toContain('production-dependency-rehearsal');
+	});
+
+	it('discovers TreeDX as a BEAM package adapter', () => {
+		const root = makeWorkspace();
+		addTreeDxPackage(root);
+
+		const adapters = discoverTreeseedPackageAdapters(root);
+		const treedx = adapters.find((adapter) => adapter.id === 'treedx');
+
+		expect(treedx?.kind).toBe('beam-elixir-rust');
+		expect(treedx?.version).toBe('0.1.0');
+		expect(treedx?.publishTarget).toBe('treeseed/treedx');
+		expect(treedx?.metadata.repository).toBe('treeseed-ai/treedx');
+		expect(treedx?.verifyCommands.local?.args).toEqual(['scripts/test-all.sh']);
+		expect(treedx?.releaseChecks.some((check) => check.kind === 'docker-manifest')).toBe(true);
+	});
+
+	it('plans TreeDX development images from package metadata', () => {
+		const root = makeWorkspace();
+		addTreeDxPackage(root);
+		spawnSync('git', ['init'], { cwd: resolve(root, 'packages', 'treedx') });
+		spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: resolve(root, 'packages', 'treedx') });
+		spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: resolve(root, 'packages', 'treedx') });
+		spawnSync('git', ['add', '.'], { cwd: resolve(root, 'packages', 'treedx') });
+		spawnSync('git', ['commit', '-m', 'init'], { cwd: resolve(root, 'packages', 'treedx') });
+
+		const plan = planTreeseedPackageDevelopmentImage(root, 'treedx', { branch: 'HEAD' });
+
+		expect(plan.repository).toBe('treeseed-ai/treedx');
+		expect(plan.workflow).toBe('dev-image.yml');
+		expect(plan.refs.imageRef).toMatch(/^treeseed\/treedx:dev-head-[a-f0-9]{12}$/u);
+		expect(plan.hosting?.overrideEnvVar).toBe('TREESEED_PUBLIC_TREEDX_IMAGE_REF');
+	});
+
+	it('normalizes and resolves repository-scoped GitHub credentials', () => {
+		expect(githubRepositoryCredentialEnvName('treeseed-ai/treedx')).toBe('TREESEED_GITHUB_TOKEN_TREESEED_AI_TREEDX');
+		expect(githubRepositoryCredentialEnvName('https://github.com/treeseed-ai/treedx.git')).toBe('TREESEED_GITHUB_TOKEN_TREESEED_AI_TREEDX');
+
+		const repositoryCredential = resolveGitHubCredentialForRepository('treeseed-ai/treedx', {
+			values: {
+				GH_TOKEN: 'root-token',
+				TREESEED_GITHUB_TOKEN_TREESEED_AI_TREEDX: 'repo-token',
+			},
+			env: {},
+		});
+		expect(repositoryCredential).toMatchObject({
+			envName: 'TREESEED_GITHUB_TOKEN_TREESEED_AI_TREEDX',
+			source: 'repository',
+			fallbackUsed: false,
+			configured: true,
+		});
+		expect(repositoryCredential.token).toBe('repo-token');
+
+		const fallbackCredential = resolveGitHubCredentialForRepository('treeseed-ai/treedx', {
+			values: { GH_TOKEN: 'root-token' },
+			env: {},
+		});
+		expect(fallbackCredential).toMatchObject({
+			envName: 'TREESEED_GITHUB_TOKEN_TREESEED_AI_TREEDX',
+			source: 'fallback',
+			fallbackUsed: true,
+			configured: true,
+		});
+		expect(fallbackCredential.token).toBe('root-token');
+	});
+
+	it('adds package repository credentials to the environment registry', () => {
+		const root = makeWorkspace();
+		addTreeDxPackage(root);
+		addApiPackage(root);
+
+		const registry = resolveTreeseedEnvironmentRegistry({
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				__tenantRoot: root,
+			} as any,
+			plugins: [],
+		});
+
+		const entry = registry.entries.find((candidate) => candidate.id === 'TREESEED_GITHUB_TOKEN_TREESEED_AI_TREEDX');
+		expect(entry).toMatchObject({
+			group: 'github',
+			sensitivity: 'secret',
+			targets: ['local-runtime'],
+			storage: 'shared',
+		});
+		const apiEntry = registry.entries.find((candidate) => candidate.id === 'TREESEED_GITHUB_TOKEN_TREESEED_AI_API');
+		expect(apiEntry).toMatchObject({
+			group: 'github',
+			sensitivity: 'secret',
+			targets: ['local-runtime'],
+			storage: 'shared',
+		});
+	});
+
+	it('scopes root web release-candidate config away from API and TreeDX package secrets', () => {
+		expect(isRootWebReleaseCandidateEntry({
+			id: 'TREESEED_EDITORIAL_PREVIEW_SECRET',
+			group: 'cloudflare',
+		})).toBe(true);
+		expect(isRootWebReleaseCandidateEntry({
+			id: 'TREESEED_CREDENTIAL_SESSION_SECRET',
+			group: 'hosting',
+			serviceTargets: ['api', 'operationsRunner'],
+		})).toBe(false);
+		expect(isRootWebReleaseCandidateEntry({
+			id: 'TREEDX_JWT_HS256_SECRET',
+			group: 'railway',
+			serviceTargets: ['publicTreeDxNode'],
+		})).toBe(false);
+		expect(isRootWebReleaseCandidateEntry({
+			id: 'DOCKERHUB_TOKEN',
+			group: 'docker',
+		})).toBe(false);
+	});
+
+	it('checks BEAM package readiness without npm pack', async () => {
+		const root = makeWorkspace();
+		addTreeDxPackage(root);
+
+		const report = await runReleaseCandidateGate({
+			root,
+			selectedPackageNames: ['@treeseed/sdk', 'treedx'],
+			plannedVersions: { '@treeseed/market': '1.0.1', '@treeseed/sdk': '0.4.13', treedx: '0.1.0' },
+			allowReuse: false,
+		});
+
+		expect(report.status).toBe('passed');
+		expect(report.checks.find((check) => check.name === 'package-release-readiness')?.detail).toContain('treedx (beam-elixir-rust)');
+		expect(report.failures.some((failure) => failure.code === 'npm_pack_dry_run_failed')).toBe(false);
 	});
 
 	it('classifies error-grade rehearsal output even when a command exits cleanly', () => {

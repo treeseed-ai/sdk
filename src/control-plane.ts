@@ -119,6 +119,7 @@ export interface ControlPlaneReporterOptions {
 	baseUrl?: string | null;
 	runnerToken?: string | null;
 	fetchImpl?: typeof fetch;
+	requestTimeoutMs?: number | null;
 }
 
 export interface ResolveControlPlaneReporterOptions extends ControlPlaneReporterOptions {
@@ -161,8 +162,8 @@ function resolveReporterKind(options: ResolveControlPlaneReporterOptions): Contr
 	if (hostingKind === 'self_hosted_project' && registration === 'optional') {
 		return 'market_http';
 	}
-	if (hostingKind === 'market_control_plane') {
-		return normalizeUrl(options.baseUrl ?? process.env.TREESEED_MARKET_API_BASE_URL ?? options.deployConfig?.hosting?.marketBaseUrl) ? 'self_http' : 'noop';
+	if (hostingKind === 'treeseed_control_plane') {
+		return normalizeUrl(options.baseUrl ?? process.env.TREESEED_API_BASE_URL ?? options.deployConfig?.hosting?.marketBaseUrl) ? 'self_http' : 'noop';
 	}
 	return 'noop';
 }
@@ -187,6 +188,7 @@ class NoopControlPlaneReporter implements ControlPlaneReporter {
 
 class HttpControlPlaneReporter implements ControlPlaneReporter {
 	readonly enabled: boolean;
+	private readonly requestTimeoutMs: number;
 
 	constructor(
 		readonly kind: 'market_http' | 'self_http',
@@ -194,23 +196,38 @@ class HttpControlPlaneReporter implements ControlPlaneReporter {
 		private readonly baseUrl: string | null,
 		private readonly runnerToken: string | null,
 		private readonly fetchImpl: typeof fetch = fetch,
+		requestTimeoutMs?: number | null,
 	) {
 		this.enabled = Boolean(this.projectId && this.baseUrl && this.runnerToken);
+		this.requestTimeoutMs = normalizeRequestTimeoutMs(requestTimeoutMs);
 	}
 
 	private async request<TPayload = unknown>(method: 'GET' | 'POST' | 'PUT', pathname: string, body?: Record<string, unknown>) {
 		if (!this.enabled || !this.baseUrl || !this.runnerToken) {
 			return null;
 		}
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
 
-		const response = await this.fetchImpl(new URL(pathname, this.baseUrl), {
-			method,
-			headers: {
-				authorization: `Bearer ${this.runnerToken}`,
-				'content-type': 'application/json',
-			},
-			body: body === undefined ? undefined : JSON.stringify(body),
-		});
+		let response: Response;
+		try {
+			response = await this.fetchImpl(new URL(pathname, this.baseUrl), {
+				method,
+				headers: {
+					authorization: `Bearer ${this.runnerToken}`,
+					'content-type': 'application/json',
+				},
+				body: body === undefined ? undefined : JSON.stringify(body),
+				signal: controller.signal,
+			});
+		} catch (error) {
+			if (controller.signal.aborted) {
+				throw new Error(`Control-plane request timed out for ${pathname} after ${this.requestTimeoutMs}ms.`);
+			}
+			throw error;
+		} finally {
+			clearTimeout(timeout);
+		}
 
 		if (!response.ok) {
 			throw new Error(`Control-plane request failed for ${pathname}: ${response.status} ${response.statusText}`);
@@ -293,6 +310,17 @@ class HttpControlPlaneReporter implements ControlPlaneReporter {
 	}
 }
 
+function normalizeRequestTimeoutMs(value: number | null | undefined) {
+	if (Number.isFinite(value) && Number(value) > 0) {
+		return Number(value);
+	}
+	const fromEnv = Number.parseInt(String(process.env.TREESEED_CONTROL_PLANE_REQUEST_TIMEOUT_MS ?? ''), 10);
+	if (Number.isFinite(fromEnv) && fromEnv > 0) {
+		return fromEnv;
+	}
+	return 15_000;
+}
+
 export function createControlPlaneReporter(options: ResolveControlPlaneReporterOptions = {}): ControlPlaneReporter {
 	const kind = resolveReporterKind(options);
 	if (kind === 'noop') {
@@ -307,7 +335,7 @@ export function createControlPlaneReporter(options: ResolveControlPlaneReporterO
 	).trim() || null;
 	const baseUrl = normalizeUrl(
 		options.baseUrl
-		?? process.env.TREESEED_MARKET_API_BASE_URL
+		?? process.env.TREESEED_API_BASE_URL
 		?? options.deployConfig?.hosting?.marketBaseUrl
 		?? null,
 	);
@@ -317,5 +345,5 @@ export function createControlPlaneReporter(options: ResolveControlPlaneReporterO
 		return new NoopControlPlaneReporter();
 	}
 
-	return new HttpControlPlaneReporter(kind, projectId, baseUrl, runnerToken, options.fetchImpl);
+	return new HttpControlPlaneReporter(kind, projectId, baseUrl, runnerToken, options.fetchImpl, options.requestTimeoutMs);
 }

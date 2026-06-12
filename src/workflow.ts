@@ -71,6 +71,7 @@ export type TreeseedWorkflowExecutionMode = 'execute' | 'plan';
 export type TreeseedWorkflowWorktreeMode = 'auto' | 'on' | 'off';
 export type TreeseedWorkflowCiMode = 'auto' | 'hosted' | 'off';
 export type TreeseedWorkflowVerifyMode = 'fast' | 'local' | 'hosted' | 'both' | 'skip';
+export type TreeseedReleaseCandidateMode = 'hybrid' | 'strict' | 'skip';
 
 export type TreeseedWorkflowContext = {
 	cwd?: string;
@@ -150,9 +151,11 @@ export type TreeseedSaveInput = {
 	gitRemoteWriteMode?: 'ssh-pushurl' | 'off';
 	verifyMode?: 'action-first' | 'local-only' | 'skip' | TreeseedWorkflowVerifyMode;
 	ciMode?: TreeseedWorkflowCiMode;
+	lane?: 'fast' | 'promotion';
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	commitMessageMode?: 'auto' | 'cloudflare' | 'generated' | 'fallback';
 	workspaceLinks?: 'auto' | 'off';
+	releaseCandidate?: TreeseedReleaseCandidateMode;
 	verifyDeployedResources?: boolean;
 	plan?: boolean;
 	dryRun?: boolean;
@@ -265,6 +268,7 @@ export type TreeseedReleaseInput = {
 	ciMode?: TreeseedWorkflowCiMode;
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
+	verifyDeployedResources?: boolean;
 	fresh?: boolean;
 	plan?: boolean;
 	dryRun?: boolean;
@@ -298,6 +302,7 @@ export type TreeseedDestroyInput = {
 	destroyLocal?: boolean;
 	force?: boolean;
 	deleteData?: boolean;
+	sweepTreeseed?: boolean;
 	removeBuildArtifacts?: boolean;
 };
 

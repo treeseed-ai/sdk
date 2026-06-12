@@ -116,5 +116,8 @@ assertNoLocalDependencyLinks();
 run('npm', ['run', 'lint']);
 scanDirectory(resolve(packageRoot, 'dist'));
 assertCleanDistArtifacts();
-run('npm', ['run', 'test:unit']);
+run('npm', ['run', 'test:release']);
+if (process.env.TREESEED_SDK_VERIFY_WORKFLOW_LIFECYCLE === '1') {
+	run('npm', ['run', 'test:workflow:lifecycle']);
+}
 run('npm', ['run', 'test:smoke']);

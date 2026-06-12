@@ -94,8 +94,8 @@ function agentsSystemDisabled(config: TreeseedDeployConfig) {
 	if (config.runtime?.mode === 'none') {
 		return 'runtime.mode is none.';
 	}
-	const enabled = ['marketOperationsRunner', 'workdayManager', 'workerRunner'].some((serviceKey) => serviceEnabled(config, serviceKey));
-	return enabled ? null : 'No agent or market operations runner Railway services are enabled.';
+	const enabled = ['operationsRunner', 'workdayManager', 'workerRunner'].some((serviceKey) => serviceEnabled(config, serviceKey));
+	return enabled ? null : 'No agent or Treeseed operations runner Railway services are enabled.';
 }
 
 function hasValue(env: NodeJS.ProcessEnv | Record<string, string | undefined>, key: string) {

@@ -9,8 +9,13 @@ function isDirectoryLike(path: string) {
 	return !/\.(sqlite|sqlite3|db)$/iu.test(path);
 }
 
+function isInMemorySqlitePath(path: string) {
+	return path === ':memory:';
+}
+
 export function resolveTreeseedSqlitePath(input?: string | null) {
 	const base = input?.trim() || '.treeseed/generated/environments/local/site-data.sqlite';
+	if (isInMemorySqlitePath(base)) return base;
 	if (!isDirectoryLike(base)) return resolve(base);
 	const miniflareRoot = resolve(base, 'miniflare-D1DatabaseObject');
 	if (existsSync(miniflareRoot)) {
@@ -88,10 +93,11 @@ export class NodeSqliteD1Database implements D1DatabaseLike {
 
 	constructor(path?: string | null) {
 		this.path = resolveTreeseedSqlitePath(path);
-		mkdirSync(dirname(this.path), { recursive: true });
+		const inMemory = isInMemorySqlitePath(this.path);
+		if (!inMemory) mkdirSync(dirname(this.path), { recursive: true });
 		this.client = new DatabaseSync(this.path);
 		this.client.exec('PRAGMA foreign_keys = ON;');
-		this.client.exec('PRAGMA journal_mode = WAL;');
+		if (!inMemory) this.client.exec('PRAGMA journal_mode = WAL;');
 	}
 
 	prepare(query: string) {

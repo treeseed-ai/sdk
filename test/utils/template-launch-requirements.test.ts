@@ -36,9 +36,9 @@ describe('template launch requirements', () => {
 		expect(marketTemplate.status).toBe('draft');
 		expect(launchRequirements?.hosts?.map((host) => host.key)).toEqual(['sourceRepository', 'publicWeb']);
 		expect(launchRequirements?.resources?.map((resource) => resource.key)).toEqual([
-			'marketDatabase',
+			'treeseedDatabase',
 			'api',
-			'marketOperationsRunner',
+			'operationsRunner',
 		]);
 		expect(JSON.stringify(launchRequirements)).not.toContain('postgres://');
 		expect(JSON.stringify(launchRequirements)).not.toContain('runner-secret');
@@ -76,11 +76,11 @@ describe('template launch requirements', () => {
 		expect(() => normalizeTemplateLaunchRequirements({
 			resources: [{
 				kind: 'resource',
-				key: 'marketDatabase',
+				key: 'treeseedDatabase',
 				type: 'database',
 				required: true,
 				compatibleProviders: ['railway-postgres'],
-				displayName: 'Market database',
+				displayName: 'Treeseed database',
 				purpose: 'Store Market state.',
 				configWrites: [{
 					target: 'treeseed.site.yaml',
@@ -461,14 +461,14 @@ describe('template launch requirements', () => {
 					managedHostKey: 'treeseed-managed-web',
 					mode: 'treeseed_managed',
 				},
-				marketDatabase: {
-					requirementKey: 'marketDatabase',
+				treeseedDatabase: {
+					requirementKey: 'treeseedDatabase',
 					requirementKind: 'resource',
 					type: 'database',
 					provider: 'railway-postgres',
 					hostId: 'railway-postgres-main',
-					displayName: 'Market Postgres',
-					configValues: { serviceName: 'treeseed-market-postgres' },
+					displayName: 'Treeseed Postgres',
+					configValues: { serviceName: 'treeseed-api-postgres' },
 					secretRefs: { databaseUrl: 'railway.database-url' },
 				},
 				api: {
@@ -477,20 +477,20 @@ describe('template launch requirements', () => {
 					type: 'service',
 					provider: 'railway',
 					hostId: 'railway-api-service',
-					displayName: 'Market API',
-					configValues: { serviceName: 'treeseed-market-api' },
+					displayName: 'API',
+					configValues: { serviceName: 'treeseed-api' },
 					secretRefs: { databaseUrl: 'railway.database-url' },
 				},
-				marketOperationsRunner: {
-					requirementKey: 'marketOperationsRunner',
+				operationsRunner: {
+					requirementKey: 'operationsRunner',
 					requirementKind: 'resource',
 					type: 'service',
 					provider: 'railway',
 					hostId: 'railway-runner-service',
-					displayName: 'Market Operations Runner',
-					configValues: { serviceName: 'treeseed-market-operations-runner' },
+					displayName: 'Treeseed Operations Runner',
+					configValues: { serviceName: 'treeseed-api-operations-runner-01' },
 					environmentValues: { runnerId: 'runner-staging' },
-					secretRefs: { databaseUrl: 'railway.database-url', runnerToken: 'market.runner-token' },
+					secretRefs: { databaseUrl: 'railway.database-url', runnerToken: 'treeseed.runner-token' },
 				},
 			},
 			repositoryHosts: [{
@@ -514,18 +514,18 @@ describe('template launch requirements', () => {
 			selectedAt: '2026-06-02T00:00:00.000Z',
 		});
 
-		expect(result.hostBindings.marketDatabase).toMatchObject({
+		expect(result.hostBindings.treeseedDatabase).toMatchObject({
 			requirementKind: 'resource',
 			type: 'database',
 			provider: 'railway-postgres',
 		});
 		expect(result.configWritePlan.map((write) => write.path)).toEqual(expect.arrayContaining([
-			'services.marketDatabase.provider',
+			'services.treeseedDatabase.provider',
 			'services.api.railway.serviceName',
-			'services.marketOperationsRunner.railway.serviceName',
+			'services.operationsRunner.railway.serviceName',
 		]));
 		expect(result.secretDeploymentPlan.items.map((item) => item.env)).toEqual(expect.arrayContaining([
-			'TREESEED_MARKET_DATABASE_URL',
+			'TREESEED_DATABASE_URL',
 			'TREESEED_PLATFORM_RUNNER_TOKEN',
 			'TREESEED_PLATFORM_RUNNER_ID',
 		]));
@@ -536,19 +536,19 @@ describe('template launch requirements', () => {
 			launchRequirements: normalizeTemplateLaunchRequirements({
 				resources: [{
 					kind: 'resource',
-					key: 'marketDatabase',
+					key: 'treeseedDatabase',
 					type: 'database',
 					required: true,
 					compatibleProviders: ['railway-postgres'],
-					displayName: 'Market database',
+					displayName: 'Treeseed database',
 					purpose: 'Store Market state.',
 					configWrites: [],
 				}],
 			}),
 			standardProjectLaunch: false,
 			hostBindings: {
-				marketDatabase: {
-					requirementKey: 'marketDatabase',
+				treeseedDatabase: {
+					requirementKey: 'treeseedDatabase',
 					requirementKind: 'resource',
 					type: 'service',
 					provider: 'railway',

@@ -30,7 +30,7 @@ cloudflare:
   accountId: account-123
   pages:
     projectName: audit-site
-    previewProjectName: audit-site-staging
+    previewProjectName: audit-site
   r2:
     bucketName: audit-site-content
     binding: TREESEED_CONTENT_BUCKET
@@ -92,7 +92,7 @@ describe('hosting audit', () => {
 			valuesOverlay: {
 				TREESEED_HOSTING_KIND: 'hosted_project',
 				TREESEED_HOSTING_REGISTRATION: 'optional',
-				TREESEED_MARKET_API_BASE_URL: 'https://api.example.com',
+				TREESEED_API_BASE_URL: 'https://api.example.com',
 				TREESEED_HOSTING_TEAM_ID: 'team_123',
 				TREESEED_PROJECT_ID: 'project_123',
 			},

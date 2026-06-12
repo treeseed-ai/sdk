@@ -6,6 +6,7 @@ export {
 	checkTreeseedProviderConnections,
 	clearTreeseedRemoteSession,
 	collectTreeseedConfigContext,
+	collectTreeseedConfigSeedValues,
 	collectTreeseedPrintEnvReport,
 	createDefaultTreeseedMachineConfig,
 	ensureTreeseedActVerificationTooling,
@@ -48,6 +49,37 @@ export {
 	type TreeseedHostingAuditHostKind,
 	type TreeseedHostingAuditReport,
 } from './operations/services/hosting-audit.ts';
+export {
+	collectTreeseedHostedServiceChecks,
+	type TreeseedHostedServiceCheck,
+	type TreeseedHostedServiceCheckReport,
+	type TreeseedHostedServiceCheckStatus,
+	type TreeseedHostedServiceType,
+	type TreeseedObservedRailwayServiceState,
+} from './operations/services/hosted-service-checks.ts';
+export {
+	collectTreeseedDeploymentReadiness,
+	formatTreeseedReadinessReport,
+	type TreeseedDeploymentReadinessCheck,
+	type TreeseedDeploymentReadinessReport,
+	type TreeseedDeploymentReadinessStatus,
+} from './operations/services/deployment-readiness.ts';
+export {
+	collectTreeseedLiveHostedServiceChecks,
+	type TreeseedLiveHostedServiceCheckOptions,
+	type TreeseedLiveHostedServiceCheckReport,
+} from './operations/services/live-hosted-service-checks.ts';
+export {
+	runTreeseedOperationsRunnerSmoke,
+	type TreeseedOperationsRunnerSmokeOptions,
+	type TreeseedOperationsRunnerSmokeReport,
+} from './operations/services/operations-runner-smoke.ts';
+export {
+	readTreeseedVerificationCache,
+	treeseedVerificationCacheKey,
+	writeTreeseedVerificationCache,
+	type TreeseedVerificationCacheEntry,
+} from './operations/services/verification-cache.ts';
 export {
 	assertDeploymentInitialized,
 	cleanupDestroyedState,
@@ -105,6 +137,7 @@ export {
 	validateRailwayDeployPrerequisites,
 } from './operations/services/railway-deploy.ts';
 export {
+	deleteRailwayProject,
 	ensureRailwayEnvironment,
 	ensureRailwayProject,
 	ensureRailwayService,
@@ -120,6 +153,31 @@ export {
 	resolveRailwayWorkspaceContext,
 	upsertRailwayVariables,
 } from './operations/services/railway-api.ts';
+export {
+	githubRepositoryCredentialEnvName,
+	resolveGitHubCredentialForRepository,
+	type TreeseedGitHubCredentialResolution,
+} from './operations/services/github-credentials.ts';
+export {
+	createGitHubApiClient,
+	dispatchGitHubWorkflowRun,
+	ensureGitHubActionsEnvironment,
+	getLatestGitHubWorkflowRun,
+	listGitHubEnvironmentSecretNames,
+	listGitHubEnvironmentVariableNames,
+	type GitHubWorkflowDispatchResult,
+	type GitHubWorkflowRunSummary,
+	upsertGitHubEnvironmentSecret,
+	upsertGitHubEnvironmentVariable,
+} from './operations/services/github-api.ts';
+export {
+	discoverTreeseedPackageAdapters,
+	findTreeseedPackageAdapter,
+	packageAdapterPlanSummary,
+	planTreeseedPackageDevelopmentImage,
+	type TreeseedPackageAdapter,
+	type TreeseedPackageDevelopmentImagePlan,
+} from './operations/services/package-adapters.ts';
 export {
 	runTenantDeployPreflight,
 	runWorkspaceReleasePreflight,
@@ -177,7 +235,7 @@ export {
 	createTreeseedReconcileRegistry,
 	deriveTreeseedDesiredUnits,
 	destroyTreeseedTargetUnits,
-	observeTreeseedUnits,
 	planTreeseedReconciliation,
+	refreshTreeseedUnits,
 	reconcileTreeseedTarget,
 } from './reconcile/index.ts';

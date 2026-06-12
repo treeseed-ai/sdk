@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from 'node:url';
-import {
-	resolveScope,
-	runProjectPlatformAction,
-	type ProjectPlatformAction,
-} from '../src/operations/services/project-platform.ts';
 
 const tenantRoot = process.cwd();
+type ProjectPlatformAction = 'deploy_web' | 'publish_content' | 'monitor';
+
+function writeStatus(message: string) {
+	process.stderr.write(`[tenant-workflow-action] ${message}\n`);
+}
 
 function parseArgs(argv: string[]) {
 	const parsed = {
@@ -75,18 +75,25 @@ async function main() {
 	const options = parseArgs(process.argv.slice(2));
 	process.env.TREESEED_WORKFLOW_ACTION = options.action;
 	process.env.TREESEED_WORKFLOW_PLANE ||= 'web';
+	writeStatus(`start action=${options.action} environment=${options.environment ?? '(auto)'}`);
+	writeStatus('loading project platform module...');
+	const { resolveScope, runProjectPlatformAction } = await import('../src/operations/services/project-platform.ts');
+	writeStatus('project platform module loaded.');
 	const scope = resolveScope(options.environment);
+	writeStatus(`resolved scope=${scope}; running action...`);
 	const result = await runProjectPlatformAction(options.action, {
 		tenantRoot,
 		scope,
 		projectId: options.projectId ?? process.env.TREESEED_PROJECT_ID ?? null,
 		previewId: options.previewId,
 		dryRun: options.dryRun,
+		write: (line) => writeStatus(line),
 	});
 
 	if (result !== undefined) {
 		process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 	}
+	writeStatus('complete.');
 }
 
 function isCliEntrypoint() {

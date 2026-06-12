@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { discoverTreeseedPackageAdapters } from './package-adapters.ts';
 import { run, workspacePackages, workspaceRoot } from './workspace-tools.ts';
 
 export type DevDependencyReferenceMode = 'git-tag' | 'registry-prerelease';
@@ -224,14 +225,25 @@ export function updateInternalDependencySpecs(
 	return changed;
 }
 
+export function installableInternalDependencyVersions(root = workspaceRoot(), versions: Map<string, string>) {
+	const publishTargets = new Map<string, string>();
+	for (const adapter of discoverTreeseedPackageAdapters(root)) {
+		const publishTarget = adapter.publishTarget ?? 'npm';
+		publishTargets.set(adapter.id, publishTarget);
+		publishTargets.set(adapter.name, publishTarget);
+	}
+	return new Map([...versions.entries()].filter(([packageName]) => (publishTargets.get(packageName) ?? 'npm') === 'npm'));
+}
+
 export function rewriteInternalDependenciesToStableVersions(root = workspaceRoot(), versions: Map<string, string>) {
 	const rewrites: Array<RewrittenDevReference & { repoName: string; packageJsonPath: string }> = [];
+	const installableVersions = installableInternalDependencyVersions(root, versions);
 	for (const pkg of workspacePackages(root)) {
 		const packageJsonPath = resolve(pkg.dir, 'package.json');
 		const packageJson = readJson(packageJsonPath);
 		const changed = updateInternalDependencySpecs(
 			packageJson,
-			new Map([...versions.entries()].map(([packageName, version]) => [packageName, {
+			new Map([...installableVersions.entries()].map(([packageName, version]) => [packageName, {
 				packageName,
 				version,
 				spec: version,
@@ -255,6 +267,7 @@ export function rewriteInternalDependenciesToStableVersions(root = workspaceRoot
 
 export function rewriteProjectInternalDependenciesToStableVersions(root = workspaceRoot(), versions: Map<string, string>) {
 	const rewrites: Array<RewrittenDevReference & { repoName: string; packageJsonPath: string }> = [];
+	const installableVersions = installableInternalDependencyVersions(root, versions);
 	const targets = [
 		{ name: '@treeseed/market', dir: root },
 		...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir })),
@@ -265,7 +278,7 @@ export function rewriteProjectInternalDependenciesToStableVersions(root = worksp
 		const packageJson = readJson(packageJsonPath);
 		const changed = updateInternalDependencySpecs(
 			packageJson,
-			new Map([...versions.entries()].map(([packageName, version]) => [packageName, {
+			new Map([...installableVersions.entries()].map(([packageName, version]) => [packageName, {
 				packageName,
 				version,
 				spec: version,

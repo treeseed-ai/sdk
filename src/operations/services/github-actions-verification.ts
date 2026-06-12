@@ -774,6 +774,7 @@ export async function waitForGitHubActionsGate(
 		timeoutSeconds?: number;
 		pollSeconds?: number;
 		operation?: string;
+		env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 		onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
 	} = {},
 ) {
@@ -792,6 +793,7 @@ export async function waitForGitHubActionsGate(
 		dispatchIfMissing: gate.dispatchIfMissing ?? gate.workflow === 'verify.yml',
 		dispatchAfterSeconds: gate.dispatchAfterSeconds ?? 75,
 		dispatchInputs: gate.dispatchInputs,
+		env: options.env,
 		onProgress: reportProgress,
 	}) as Record<string, unknown>;
 }

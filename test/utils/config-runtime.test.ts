@@ -316,7 +316,7 @@ slug: test-market
 siteUrl: https://market.example.com
 contactEmail: hello@example.com
 hosting:
-  kind: market_control_plane
+  kind: treeseed_control_plane
   teamId: treeseed
   projectId: market
 hub:
@@ -392,7 +392,7 @@ slug: test-market
 siteUrl: https://market.example.com
 contactEmail: hello@example.com
 hosting:
-  kind: market_control_plane
+  kind: treeseed_control_plane
   teamId: treeseed
   projectId: market
 hub:
@@ -425,7 +425,7 @@ cloudflare:
 		]));
 	});
 
-	it('includes Codex auth bootstrap secrets and policy variables in Railway sync plans', () => {
+		it('includes Codex auth bootstrap secrets and policy variables in Railway sync plans', async () => {
 		const tenantRoot = createTenantFixture(codexRegistryFixtureEntries);
 		writeTreeseedMachineConfig(tenantRoot, createDefaultTreeseedMachineConfig({
 			tenantRoot,
@@ -457,7 +457,7 @@ cloudflare:
 			storage: 'scoped',
 		} as any, '0');
 
-		const plan = syncTreeseedRailwayEnvironment({ tenantRoot, scope: 'staging', dryRun: true });
+		const plan = await syncTreeseedRailwayEnvironment({ tenantRoot, scope: 'staging', dryRun: true });
 		const apiService = plan.services.find((service) => service.service === 'api');
 		const context = collectTreeseedConfigContext({ tenantRoot, scopes: ['staging'], env: {} });
 		const configEntryIds = context.entriesByScope.staging.map((entry) => entry.id);
@@ -474,7 +474,7 @@ cloudflare:
 		]));
 	});
 
-	it('syncs platform runner environment only to the market operations runner Railway service', () => {
+		it('syncs platform runner environment only to the Treeseed operations runner Railway service', async () => {
 		const tenantRoot = createTenantFixture();
 		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test Site
 slug: test-site
@@ -486,19 +486,21 @@ services:
   api:
     provider: railway
     enabled: true
+    rootDir: packages/api
     railway:
-      projectName: treeseed-market
-      serviceName: treeseed-market-api
-      rootDir: .
-  marketOperationsRunner:
+      projectName: treeseed-api
+      serviceName: treeseed-api
+      rootDir: packages/api
+  operationsRunner:
     provider: railway
     enabled: true
+    rootDir: packages/api
     railway:
-      projectName: treeseed-market
-      serviceName: treeseed-market-operations-runner
-      rootDir: .
-      buildCommand: npm run build:market-operations-runner
-      startCommand: node ./dist/market-operations-runner/entrypoint.js run
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
+      rootDir: packages/api
+      buildCommand: npm run build
+      startCommand: npm run start:runner
       volumeMountPath: /data
       runnerPool:
         bootstrapCount: 1
@@ -515,7 +517,7 @@ services:
 				cloudflare: { accountId: 'account-123' },
 				services: {
 					api: { provider: 'railway', enabled: true },
-					marketOperationsRunner: { provider: 'railway', enabled: true },
+					operationsRunner: { provider: 'railway', enabled: true },
 				},
 			} as any,
 			tenantConfig: { id: 'test-site' } as any,
@@ -528,30 +530,30 @@ services:
 			return found as any;
 		};
 		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_PLATFORM_RUNNER_SECRET'), 'platform-secret-value');
-		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_PLATFORM_RUNNER_ID'), 'market-ops-staging-1');
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_PLATFORM_RUNNER_ID'), 'treeseed-ops-staging-1');
 		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_PLATFORM_RUNNER_DATA_DIR'), '/data');
 		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_PLATFORM_RUNNER_ENVIRONMENT'), 'staging');
-		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_MARKET_API_BASE_URL'), 'https://api-staging.example.com');
-		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_MARKET_DATABASE_URL'), 'postgres://market-db-secret');
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_API_BASE_URL'), 'https://api-staging.example.com');
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_DATABASE_URL'), 'postgres://market-db-secret');
 
-		const plan = syncTreeseedRailwayEnvironment({ tenantRoot, scope: 'staging', dryRun: true });
+		const plan = await syncTreeseedRailwayEnvironment({ tenantRoot, scope: 'staging', dryRun: true });
 		const apiService = plan.services.find((service) => service.service === 'api');
-		const runnerServices = plan.services.filter((service) => service.service === 'marketOperationsRunner');
+		const runnerServices = plan.services.filter((service) => service.service === 'operationsRunner');
 
-		expect(plan.services.map((service) => service.service)).toEqual(['api', 'marketOperationsRunner']);
-		expect(apiService?.secrets).toEqual(expect.arrayContaining(['TREESEED_PLATFORM_RUNNER_SECRET', 'TREESEED_MARKET_DATABASE_URL']));
+		expect(plan.services.map((service) => service.service)).toEqual(['api', 'operationsRunner']);
+		expect(apiService?.secrets).toEqual(expect.arrayContaining(['TREESEED_PLATFORM_RUNNER_SECRET', 'TREESEED_DATABASE_URL']));
 		expect(apiService?.variables).not.toEqual(expect.arrayContaining([
 			'TREESEED_PLATFORM_RUNNER_ID',
 			'TREESEED_PLATFORM_RUNNER_DATA_DIR',
 			'TREESEED_PLATFORM_RUNNER_ENVIRONMENT',
 		]));
 		expect(runnerServices.map((service) => service.serviceName)).toEqual([
-			'treeseed-market-operations-runner-01',
+			'treeseed-api-operations-runner-01',
 		]);
 		expect(runnerServices[0]).toMatchObject({
-			secrets: expect.arrayContaining(['TREESEED_PLATFORM_RUNNER_SECRET', 'TREESEED_MARKET_DATABASE_URL']),
+			secrets: expect.arrayContaining(['TREESEED_PLATFORM_RUNNER_SECRET', 'TREESEED_DATABASE_URL']),
 			variables: expect.arrayContaining([
-				'TREESEED_MARKET_API_BASE_URL',
+				'TREESEED_API_BASE_URL',
 				'TREESEED_PLATFORM_RUNNER_ID',
 				'TREESEED_PLATFORM_RUNNER_DATA_DIR',
 				'TREESEED_PLATFORM_RUNNER_ENVIRONMENT',

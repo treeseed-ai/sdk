@@ -229,10 +229,11 @@ export interface TreeseedCloudflarePagesConfig {
 	previewProjectName?: string;
 	productionBranch?: string;
 	stagingBranch?: string;
+	buildCommand?: string;
 	buildOutputDir?: string;
 }
 
-export type TreeseedHostingKind = 'market_control_plane' | 'hosted_project' | 'self_hosted_project';
+export type TreeseedHostingKind = 'treeseed_control_plane' | 'hosted_project' | 'self_hosted_project';
 export type TreeseedHostingRegistration = 'optional' | 'none';
 export type TreeseedHubMode = 'treeseed_hosted' | 'customer_hosted';
 export type TreeseedRuntimeMode = 'none' | 'byo_attached' | 'treeseed_managed';
@@ -294,6 +295,15 @@ export interface TreeseedManagedServiceRailwayConfig {
 	healthcheckIntervalSeconds?: number;
 	restartPolicy?: string;
 	runtimeMode?: string;
+	resourceType?: string;
+	environmentVariable?: string;
+	serviceTargets?: string[];
+	volumeMountPath?: string;
+	runnerPool?: {
+		bootstrapCount?: number;
+		maxRunners?: number;
+		volumeMountPath?: string;
+	};
 	schedule?: string | string[];
 }
 
@@ -311,6 +321,15 @@ export interface TreeseedManagedServiceConfig {
 export interface TreeseedManagedServicesConfig {
 	api?: TreeseedManagedServiceConfig;
 	[key: string]: TreeseedManagedServiceConfig | undefined;
+}
+
+export interface TreeseedPublicTreeDxFederationConfig {
+	railway?: {
+		nodePool?: {
+			bootstrapCount?: number;
+			maxNodes?: number;
+		};
+	};
 }
 
 export interface TreeseedPlatformSurfacesConfig {
@@ -346,6 +365,15 @@ export interface TreeseedExportConfig {
 	bundledPaths?: string[];
 }
 
+export interface TreeseedApiConnectionConfig {
+	proxyPrefix?: string;
+	localBaseUrl?: string;
+	environments?: Partial<Record<'local' | 'staging' | 'prod', {
+		baseUrl?: string;
+		domain?: string;
+	}>>;
+}
+
 export interface TreeseedDeployConfig {
 	name: string;
 	slug: string;
@@ -370,6 +398,11 @@ export interface TreeseedDeployConfig {
 	providers: TreeseedProviderSelections;
 	surfaces?: TreeseedPlatformSurfacesConfig;
 	services?: TreeseedManagedServicesConfig;
+	publicTreeDxFederation?: TreeseedPublicTreeDxFederationConfig;
+	connections?: {
+		api?: TreeseedApiConnectionConfig;
+		[key: string]: unknown;
+	};
 	processing?: TreeseedProcessingConfig;
 	capacityProviders?: Record<string, CapacityProviderRegistrationRequest>;
 	smtp?: {

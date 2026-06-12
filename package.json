@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.10.28",
+  "version": "0.11.0",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -35,8 +35,8 @@
     "setup:ci": "npm ci",
     "build": "npm run build:dist",
     "build:dist": "node ./scripts/run-ts.mjs ./scripts/build-dist.ts",
-    "db:generate:d1": "node ../../node_modules/drizzle-kit/bin.cjs export --config drizzle.config.ts > drizzle/d1/0000_treeseed_d1.sql",
-    "db:generate:market": "node ../../node_modules/drizzle-kit/bin.cjs export --config drizzle.market.config.ts > drizzle/market/0000_market_control_plane.sql",
+    "db:generate:d1": "drizzle-kit export --config drizzle.config.ts > drizzle/d1/0000_treeseed_d1.sql",
+    "db:generate:market": "drizzle-kit export --config drizzle.market.config.ts > drizzle/market/0000_market_control_plane.sql",
     "prepare": "node ./scripts/prepare.mjs",
     "prepack": "npm run build:dist",
     "test": "npm run test:unit",
@@ -45,6 +45,9 @@
     "test:workflow:lifecycle": "vitest run --config ./vitest.config.ts test/utils/workflow-lifecycle.test.ts",
     "test:release": "npm run test:unit:fast",
     "test:smoke": "node ./scripts/run-ts.mjs ./scripts/test-smoke.ts",
+    "treedx:generate-types": "node ./scripts/run-ts.mjs ./scripts/generate-treedx-openapi-types.ts",
+    "treedx:check-types": "node ./scripts/run-ts.mjs ./scripts/generate-treedx-openapi-types.ts --check",
+    "treedx:contract": "vitest run --config ./vitest.config.ts test/utils/treedx-openapi-contract.test.ts test/utils/treedx-sdk-request-contract.test.ts test/utils/treedx-generated-types.test.ts",
     "fixtures:resolve": "node ./scripts/run-ts.mjs ./scripts/fixture-tools.ts resolve",
     "fixtures:check": "node ./scripts/run-ts.mjs ./scripts/fixture-tools.ts check",
     "lint": "npm run fixtures:check && npm run build:dist",
@@ -142,6 +145,10 @@
       "types": "./dist/reconcile/index.d.ts",
       "default": "./dist/reconcile/index.js"
     },
+    "./hosting": {
+      "types": "./dist/hosting/index.d.ts",
+      "default": "./dist/hosting/index.js"
+    },
     "./platform/contracts": {
       "types": "./dist/platform/contracts.d.ts",
       "default": "./dist/platform/contracts.js"
@@ -194,6 +201,10 @@
       "types": "./dist/content-store.d.ts",
       "default": "./dist/content-store.js"
     },
+    "./treedx-backends": {
+      "types": "./dist/treedx-backends.d.ts",
+      "default": "./dist/treedx-backends.js"
+    },
     "./template-catalog": {
       "types": "./dist/template-catalog.d.ts",
       "default": "./dist/template-catalog.js"
@@ -233,6 +244,26 @@
     "./graph/context-query-contracts": {
       "types": "./dist/graph/context-query-contracts.d.ts",
       "default": "./dist/graph/context-query-contracts.js"
+    },
+    "./treedx": {
+      "types": "./dist/treedx/index.d.ts",
+      "import": "./dist/treedx/index.js",
+      "default": "./dist/treedx/index.js"
+    },
+    "./treedx/client": {
+      "types": "./dist/treedx/client.d.ts",
+      "import": "./dist/treedx/client.js",
+      "default": "./dist/treedx/client.js"
+    },
+    "./treedx/types": {
+      "types": "./dist/treedx/types.d.ts",
+      "import": "./dist/treedx/types.js",
+      "default": "./dist/treedx/types.js"
+    },
+    "./treedx/adapters": {
+      "types": "./dist/treedx/adapters.d.ts",
+      "import": "./dist/treedx/adapters.js",
+      "default": "./dist/treedx/adapters.js"
     },
     "./sdk-filters": {
       "types": "./dist/sdk-filters.d.ts",

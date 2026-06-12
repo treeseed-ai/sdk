@@ -4,6 +4,37 @@ import { normalizeAgentCliOptions } from './cli-tools.ts';
 import { ContentStore } from './content-store.ts';
 import { CloudflareD1AgentDatabase, MemoryAgentDatabase, type AgentDatabase } from './d1-store.ts';
 import { ContentGraphRuntime } from './graph.ts';
+import {
+	createTreeDxClientFromAgentOptions,
+	LocalContentBackend,
+	LocalGraphBackend,
+	MissingTreeDxContentBackend,
+	resolveTreeDxOptions,
+	TreeDxContentBackend,
+	TreeDxGraphBackend,
+	TreeDxPortfolioResolver,
+	type AgentSdkContentRepositoryOptions,
+	type AgentSdkTreeDxOptions,
+	type ContentBackend,
+	type GraphBackend,
+} from './treedx-backends.ts';
+import {
+	LocalGraphPort,
+	LocalRepositoryPort,
+	LocalRepositoryQueryPort,
+	TreeDxArtifactPort,
+	TreeDxExecPort,
+	TreeDxFederatedClient,
+	TreeDxFederatedPort,
+	TreeDxGraphAdapter,
+	TreeDxGraphPort,
+	TreeDxRegistryClient,
+	TreeDxRegistryPort,
+	TreeDxRepositoryPort,
+	TreeDxRepositoryQueryPort,
+	TreeDxClient as PublicTreeDxClient,
+	type TreeDxClientOptions as PublicTreeDxClientOptions,
+} from './treedx/index.ts';
 import { loadTreeseedPlugins, type LoadedTreeseedPluginEntry } from './platform/plugins.ts';
 import { buildScopedModelRegistry, resolveModelDefinition } from './model-registry.ts';
 import { findDispatchCapability } from './dispatch.ts';
@@ -92,7 +123,16 @@ export interface AgentSdkOptions {
 	graphRankingProvider?: SdkGraphRankingProvider;
 	plugins?: LoadedTreeseedPluginEntry[];
 	dispatch?: SdkDispatchConfig;
+	treeDx?: AgentSdkTreeDxOptions;
+	contentRepository?: AgentSdkContentRepositoryOptions;
 }
+
+export type {
+	AgentSdkContentRepositoryOptions,
+	AgentSdkTreeDxOptions,
+	TreeSeedTreeDxContentPathRule,
+	TreeSeedTreeDxRepositoryHint,
+} from './treedx-backends.ts';
 
 function normalizeAgentSpec(entry: Record<string, unknown> | null): AgentRuntimeSpec | null {
 	if (!entry) {
@@ -127,17 +167,48 @@ function operationAllowed(
 export class AgentSdk {
 	readonly repoRoot: string;
 	readonly database: AgentDatabase;
-	readonly content: ContentStore;
+	readonly content: ContentBackend;
 	readonly models: SdkModelRegistry;
-	private readonly graph: ContentGraphRuntime;
+	readonly ports: {
+		repository: LocalRepositoryPort | TreeDxRepositoryPort;
+		query: LocalRepositoryQueryPort | TreeDxRepositoryQueryPort;
+		graph: LocalGraphPort | TreeDxGraphPort;
+		registry?: TreeDxRegistryPort;
+		federated?: TreeDxFederatedPort;
+		exec?: TreeDxExecPort;
+		artifact?: TreeDxArtifactPort;
+	};
+	readonly treeDx?: {
+		client: PublicTreeDxClient;
+		graph: TreeDxGraphAdapter;
+		registry?: TreeDxRegistryClient;
+		federated?: TreeDxFederatedClient;
+		exec?: TreeDxExecPort;
+		artifact?: TreeDxArtifactPort;
+	};
+	private readonly localContentStore: ContentStore;
+	private readonly localGraphRuntime: ContentGraphRuntime;
+	private readonly graph: GraphBackend;
 	private readonly dispatchConfig?: SdkDispatchConfig;
 
 	constructor(options: AgentSdkOptions = {}) {
-		const repoRoot = resolveSdkRepoRoot(options.repoRoot);
+		const rawTreeDxOptions = options.treeDx as AgentSdkTreeDxOptions & {
+			client?: PublicTreeDxClient | PublicTreeDxClientOptions;
+			repoId?: string;
+			registryRouting?: boolean;
+		} | undefined;
+		if (rawTreeDxOptions && !options.repoRoot && !options.models && !options.modelRegistry) {
+			throw new Error('AgentSdk TreeDX mode requires explicit models or modelRegistry.');
+		}
+		const repoRoot = options.repoRoot
+			? resolveSdkRepoRoot(options.repoRoot)
+			: rawTreeDxOptions
+				? process.cwd()
+				: resolveSdkRepoRoot();
 		this.repoRoot = repoRoot;
 		this.models = options.modelRegistry ?? buildScopedModelRegistry(repoRoot, options.models);
 		this.database = options.database ?? new MemoryAgentDatabase();
-		this.content = new ContentStore(repoRoot, this.database, this.models);
+		this.localContentStore = new ContentStore(repoRoot, this.database, this.models);
 		let plugins = options.plugins;
 		if (!plugins) {
 			try {
@@ -146,10 +217,133 @@ export class AgentSdk {
 				plugins = [];
 			}
 		}
-		this.graph = new ContentGraphRuntime(repoRoot, this.models, {
+		this.localGraphRuntime = new ContentGraphRuntime(repoRoot, this.models, {
 			rankingProvider: options.graphRankingProvider,
 			plugins,
 		});
+		const treeDxOptions = resolveTreeDxOptions(options.treeDx);
+		if (options.contentRepository?.adapter === 'local') {
+			this.content = new LocalContentBackend(this.localContentStore);
+			this.graph = new LocalGraphBackend(this.localGraphRuntime);
+			this.ports = {
+				repository: new LocalRepositoryPort(this.localContentStore),
+				query: new LocalRepositoryQueryPort(this.localContentStore),
+				graph: new LocalGraphPort(this.localGraphRuntime),
+			};
+		} else if (treeDxOptions) {
+			const publicClient = rawTreeDxOptions?.client instanceof PublicTreeDxClient
+				? rawTreeDxOptions.client
+				: new PublicTreeDxClient({
+					baseUrl: treeDxOptions.baseUrl,
+					token: treeDxOptions.token,
+					repoId: treeDxOptions.repoId,
+					fetch: treeDxOptions.fetchImpl,
+				});
+			const publicFetch = (input: RequestInfo | URL, init?: RequestInit) => {
+				const headers = init?.headers instanceof Headers
+					? Object.fromEntries(init.headers.entries())
+					: init?.headers;
+				return ((publicClient as unknown as { fetchImpl?: typeof fetch }).fetchImpl ?? fetch)(input, {
+					...init,
+					headers,
+				});
+			};
+			const client = createTreeDxClientFromAgentOptions({
+				...treeDxOptions,
+				fetchImpl: treeDxOptions.fetchImpl ?? publicFetch,
+			});
+			const resolver = new TreeDxPortfolioResolver({
+				client,
+				repoId: treeDxOptions.repoId,
+				ref: treeDxOptions.ref,
+				repositoryHints: treeDxOptions.repositoryHints,
+			});
+			const publicGraph = new TreeDxGraphAdapter({
+				client: publicClient,
+				repoId: treeDxOptions.repoId,
+				defaultRef: treeDxOptions.ref,
+			});
+			const publicRegistry = rawTreeDxOptions?.registryRouting
+				? new TreeDxRegistryClient(publicClient)
+				: undefined;
+			const publicFederated = publicRegistry
+				? new TreeDxFederatedClient({
+					registry: publicRegistry,
+					token: treeDxOptions.token,
+					fetch: treeDxOptions.fetchImpl,
+				})
+				: undefined;
+			const publicExec = new TreeDxExecPort(publicClient);
+			const publicArtifact = new TreeDxArtifactPort(publicClient);
+			this.content = new TreeDxContentBackend({
+				client,
+				repoRoot,
+				models: this.models,
+				resolver,
+				directRepoId: treeDxOptions.repoId,
+				ref: treeDxOptions.ref,
+				workspaceId: treeDxOptions.workspaceId,
+				contentPathMap: treeDxOptions.contentPathMap,
+				localLeaseStore: this.localContentStore,
+			});
+			this.graph = new TreeDxGraphBackend({
+				client,
+				resolver,
+				localRuntime: this.localGraphRuntime,
+				ref: treeDxOptions.ref,
+			});
+			this.treeDx = {
+				client: publicClient,
+				graph: publicGraph,
+				registry: publicRegistry,
+				federated: publicFederated,
+				exec: publicExec,
+				artifact: publicArtifact,
+			};
+			this.ports = {
+				repository: new TreeDxRepositoryPort(publicClient),
+				query: new TreeDxRepositoryQueryPort(publicClient),
+				graph: new TreeDxGraphPort(publicGraph),
+				registry: publicRegistry ? new TreeDxRegistryPort(publicRegistry) : undefined,
+				federated: publicFederated ? new TreeDxFederatedPort(publicFederated) : undefined,
+				exec: publicExec,
+				artifact: publicArtifact,
+			};
+		} else if (rawTreeDxOptions?.client) {
+			const publicClient = rawTreeDxOptions.client instanceof PublicTreeDxClient
+				? rawTreeDxOptions.client
+				: new PublicTreeDxClient(rawTreeDxOptions.client);
+			const publicGraph = new TreeDxGraphAdapter({
+				client: publicClient,
+				repoId: rawTreeDxOptions.repoId,
+				defaultRef: rawTreeDxOptions.ref,
+			});
+			const publicExec = new TreeDxExecPort(publicClient);
+			const publicArtifact = new TreeDxArtifactPort(publicClient);
+			this.content = new LocalContentBackend(this.localContentStore);
+			this.graph = new LocalGraphBackend(this.localGraphRuntime);
+			this.treeDx = {
+				client: publicClient,
+				graph: publicGraph,
+				exec: publicExec,
+				artifact: publicArtifact,
+			};
+			this.ports = {
+				repository: new TreeDxRepositoryPort(publicClient),
+				query: new TreeDxRepositoryQueryPort(publicClient),
+				graph: new TreeDxGraphPort(publicGraph),
+				exec: publicExec,
+				artifact: publicArtifact,
+			};
+		} else {
+			this.content = new MissingTreeDxContentBackend();
+			this.graph = new LocalGraphBackend(this.localGraphRuntime);
+			this.ports = {
+				repository: new LocalRepositoryPort(this.localContentStore),
+				query: new LocalRepositoryQueryPort(this.localContentStore),
+				graph: new LocalGraphPort(this.localGraphRuntime),
+			};
+		}
 		this.dispatchConfig = options.dispatch;
 	}
 
@@ -167,6 +361,7 @@ export class AgentSdk {
 			database: new CloudflareD1AgentDatabase(d1),
 			models: options.models,
 			modelRegistry: options.modelRegistry,
+			contentRepository: { adapter: 'local' },
 		});
 	}
 
@@ -192,6 +387,27 @@ export class AgentSdk {
 				env: process.env,
 				transport: 'sdk',
 			});
+		}
+		if (this.content instanceof MissingTreeDxContentBackend) {
+			const input = (request.input ?? {}) as SdkGetRequest & SdkSearchRequest;
+			if (request.operation === 'read' || request.operation === 'get') {
+				const definition = resolveModelDefinition(input.model, this.models);
+				const payload = await this.localContentStore.get({
+					...input,
+					model: definition.name,
+				});
+				return this.envelope(definition.name, request.operation === 'read' ? 'read' : 'get', payload);
+			}
+			if (request.operation === 'search') {
+				const definition = resolveModelDefinition(input.model, this.models);
+				const payload = await this.localContentStore.search({
+					...input,
+					model: definition.name,
+				});
+				return this.envelope(definition.name, 'search', payload, {
+					count: payload.length,
+				});
+			}
 		}
 		return executeSdkOperation(this, request.operation, request.input ?? {});
 	}
@@ -298,7 +514,7 @@ export class AgentSdk {
 		const definition = resolveModelDefinition(request.model, this.models);
 		const payload =
 			definition.storage === 'content'
-				? await this.content.pick({ ...request, model: definition.name })
+				? await this.localContentStore.pick({ ...request, model: definition.name })
 				: await this.database.pick({ ...request, model: definition.name });
 		return this.envelope(definition.name, 'pick', payload, {
 			claimed: Boolean(payload.item),
@@ -636,52 +852,52 @@ export class AgentSdk {
 
 	/** Advanced lexical graph primitive for file nodes. Prefer queryGraph() or buildContextPack() for AI-context retrieval. */
 	searchFiles(query: string, options?: SdkGraphSearchOptions) {
-		return this.graph.searchFiles(query, options);
+		return this.localGraphRuntime.searchFiles(query, options);
 	}
 
 	/** Advanced lexical graph primitive for section nodes. Prefer queryGraph() or buildContextPack() for AI-context retrieval. */
 	searchSections(query: string, options?: SdkGraphSearchOptions) {
-		return this.graph.searchSections(query, options);
+		return this.localGraphRuntime.searchSections(query, options);
 	}
 
 	/** Advanced lexical graph primitive for entity nodes. Prefer queryGraph() or buildContextPack() for AI-context retrieval. */
 	searchEntities(query: string, options?: SdkGraphSearchOptions) {
-		return this.graph.searchEntities(query, options);
+		return this.localGraphRuntime.searchEntities(query, options);
 	}
 
 	/** Advanced graph primitive that returns one raw graph node by id. */
 	getGraphNode(id: string) {
-		return this.graph.getNode(id);
+		return this.localGraphRuntime.getNode(id);
 	}
 
 	/** Advanced graph primitive for direct neighborhood inspection. Prefer queryGraph() for ranked retrieval. */
 	getNeighbors(id: string, options?: SdkGraphQueryOptions) {
-		return this.graph.getNeighbors(id, options);
+		return this.localGraphRuntime.getNeighbors(id, options);
 	}
 
 	/** Advanced traversal primitive for direct reference walking. Prefer queryGraph() when you need ranking and ctx-aware behavior. */
 	followReferences(id: string, options?: SdkGraphQueryOptions) {
-		return this.graph.followReferences(id, options);
+		return this.localGraphRuntime.followReferences(id, options);
 	}
 
 	/** Advanced graph primitive for incoming-link inspection. */
 	getBacklinks(id: string, options?: SdkGraphQueryOptions) {
-		return this.graph.getBacklinks(id, options);
+		return this.localGraphRuntime.getBacklinks(id, options);
 	}
 
 	/** Advanced graph primitive for local relatedness. Prefer queryGraph() for the primary ranked graph workflow. */
 	getRelated(id: string, options?: SdkGraphQueryOptions) {
-		return this.graph.getRelated(id, options);
+		return this.localGraphRuntime.getRelated(id, options);
 	}
 
 	/** Advanced traversal primitive for raw subgraph extraction. Prefer buildContextPack() when you need prompt-ready output. */
 	getSubgraph(seedIds: string[], options?: SdkGraphQueryOptions) {
-		return this.graph.getSubgraph(seedIds, options);
+		return this.localGraphRuntime.getSubgraph(seedIds, options);
 	}
 
 	/** Primary graph workflow helper. Resolves roots before ranking and traversal. */
 	resolveSeeds(request: SdkGraphQueryRequest) {
-		return this.graph.resolveSeeds(request);
+		return this.localGraphRuntime.resolveSeeds(request);
 	}
 
 	/** Primary graph workflow entrypoint for ranked graph retrieval. */
@@ -701,12 +917,12 @@ export class AgentSdk {
 
 	/** Primary graph workflow helper for resolving ids, paths, and anchors into graph nodes. */
 	resolveReference(reference: string, options?: { fromNodeId?: string; fromPath?: string; models?: string[] }) {
-		return this.graph.resolveReference(reference, options);
+		return this.localGraphRuntime.resolveReference(reference, options);
 	}
 
 	/** Primary graph workflow helper for explaining why two nodes are connected. */
 	explainReferenceChain(fromId: string, toId: string) {
-		return this.graph.explainReferenceChain(fromId, toId);
+		return this.localGraphRuntime.explainReferenceChain(fromId, toId);
 	}
 }
 

@@ -5,6 +5,6 @@ export default defineConfig({
 	out: './drizzle/market',
 	dialect: 'postgresql',
 	dbCredentials: {
-		url: process.env.TREESEED_MARKET_DATABASE_URL ?? '',
+		url: process.env.TREESEED_DATABASE_URL ?? '',
 	},
 });

@@ -73,21 +73,20 @@ __WORKING_DIRECTORY_BLOCK__  web:
       TREESEED_API_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_API_WEB_SERVICE_SECRET || secrets.TREESEED_WEB_SERVICE_SECRET }}
       TREESEED_API_WEB_ASSERTION_SECRET: ${{ secrets.TREESEED_API_WEB_ASSERTION_SECRET || secrets.TREESEED_WEB_ASSERTION_SECRET }}
       TREESEED_API_AUTH_SECRET: ${{ secrets.TREESEED_API_AUTH_SECRET || secrets.TREESEED_BETTER_AUTH_SECRET }}
-      TREESEED_PLATFORM_RUNNER_SECRET: ${{ secrets.TREESEED_PLATFORM_RUNNER_SECRET }}
       TREESEED_HOSTED_HUBS_GITHUB_OWNER: ${{ vars.TREESEED_HOSTED_HUBS_GITHUB_OWNER }}
       TREESEED_HOSTED_HUBS_GITHUB_TOKEN: ${{ secrets.TREESEED_HOSTED_HUBS_GITHUB_TOKEN }}
       TREESEED_SITE_URL: ${{ vars.TREESEED_SITE_URL }}
       BETTER_AUTH_URL: ${{ vars.BETTER_AUTH_URL || vars.TREESEED_SITE_URL }}
       TREESEED_CENTRAL_MARKET_API_BASE_URL: ${{ vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}
-      TREESEED_MARKET_API_BASE_URL: ${{ vars.TREESEED_MARKET_API_BASE_URL || vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}
-      TREESEED_CATALOG_MARKET_API_BASE_URLS: ${{ vars.TREESEED_CATALOG_MARKET_API_BASE_URLS || vars.TREESEED_MARKET_API_BASE_URL || vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}
+      TREESEED_API_BASE_URL: ${{ vars.TREESEED_API_BASE_URL || vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}
+      TREESEED_CATALOG_MARKET_API_BASE_URLS: ${{ vars.TREESEED_CATALOG_MARKET_API_BASE_URLS || vars.TREESEED_API_BASE_URL || vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}
       TREESEED_HOSTING_KIND: ${{ vars.TREESEED_HOSTING_KIND }}
       TREESEED_HOSTING_REGISTRATION: ${{ vars.TREESEED_HOSTING_REGISTRATION }}
       TREESEED_HOSTING_TEAM_ID: ${{ vars.TREESEED_HOSTING_TEAM_ID }}
       TREESEED_PROJECT_ID: ${{ inputs.project_id || vars.TREESEED_PROJECT_ID }}
       TREESEED_WORKFLOW_ACTION: ${{ inputs.action_kind }}
       TREESEED_WORKFLOW_ENVIRONMENT: ${{ inputs.environment }}
-      TREESEED_WORKFLOW_PLANE: all
+      TREESEED_WORKFLOW_PLANE: web
       TREESEED_WORKFLOW_PROJECT: ${{ inputs.project_id || vars.TREESEED_PROJECT_ID }}
       TREESEED_WORKFLOW_PREVIEW_ID: ${{ inputs.preview_id }}
     steps:
@@ -105,14 +104,48 @@ __WORKING_DIRECTORY_BLOCK__  web:
         shell: bash
         run: |
           set -euo pipefail
-          node -e "const fs = require('fs'); for (const file of ['packages/sdk/package.json', 'packages/agent/package.json', 'packages/core/package.json', 'packages/cli/package.json']) { if (!fs.existsSync(file)) continue; const p = JSON.parse(fs.readFileSync(file, 'utf8')); if (p.scripts) delete p.scripts.prepare; fs.writeFileSync(file, JSON.stringify(p, null, '\t') + '\n'); }"
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const packageRoot = 'packages';
+          if (fs.existsSync(packageRoot)) {
+            const localPackageNames = new Set();
+            for (const entry of fs.readdirSync(packageRoot, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue;
+              const file = path.join(packageRoot, entry.name, 'package.json');
+              if (!fs.existsSync(file)) continue;
+              const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+              if (typeof manifest.name === 'string') localPackageNames.add(manifest.name);
+            }
+            for (const entry of fs.readdirSync(packageRoot, { withFileTypes: true })) {
+              if (!entry.isDirectory()) continue;
+              const file = path.join(packageRoot, entry.name, 'package.json');
+              if (!fs.existsSync(file)) continue;
+              const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+              let changed = false;
+              if (manifest.scripts?.prepare) {
+                delete manifest.scripts.prepare;
+                changed = true;
+              }
+              for (const section of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+                for (const dependencyName of Object.keys(manifest[section] ?? {})) {
+                  if (dependencyName !== manifest.name && localPackageNames.has(dependencyName)) {
+                    delete manifest[section][dependencyName];
+                    changed = true;
+                  }
+                }
+              }
+              if (changed) fs.writeFileSync(file, `${JSON.stringify(manifest, null, '\t')}\n`);
+            }
+          }
+          NODE
           npm ci --ignore-scripts
 
       - name: Build package artifacts
         shell: bash
         run: |
           set -euo pipefail
-          for dir in packages/sdk packages/agent packages/core packages/cli; do
+          for dir in packages/sdk packages/ui packages/agent packages/core packages/cli; do
             if test -f "${dir}/package.json"; then npm --prefix "${dir}" run build:dist; fi
           done
 

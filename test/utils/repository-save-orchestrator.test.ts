@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	discoverRepositorySaveNodes,
@@ -13,6 +14,8 @@ import {
 	runStreamingCommand,
 	type RepositorySaveNode,
 } from '../../src/operations/services/repository-save-orchestrator.ts';
+
+const testDir = dirname(fileURLToPath(import.meta.url));
 
 function git(cwd: string, args: string[]) {
 	const result = spawnSync('git', args, { cwd, stdio: 'pipe', encoding: 'utf8' });
@@ -139,6 +142,13 @@ describe('repository save orchestrator helpers', () => {
 		expect(plan.rootRepo.commands).not.toContain('npm install --workspaces=false # refresh project lockfile after internal dependency updates');
 	});
 
+	it('keeps root workspace project verification off script-enabled npm ci', () => {
+		const source = readFileSync(resolve(testDir, '../../src/operations/services/repository-save-orchestrator.ts'), 'utf8');
+
+		expect(source).toContain('Skipped root npm ci project verification install');
+		expect(source).toContain('ensureLocalWorkspaceLinks(options.root)');
+	});
+
 	it('plans package branch and tag publication in one push command', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-plan-package-push-'));
 		const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-plan-package-push-origin-'));
@@ -168,7 +178,7 @@ describe('repository save orchestrator helpers', () => {
 		expect(plan.rootRepo.commands).not.toContain(`git push origin ${version}`);
 	});
 
-	it('fails stale root workspace lockfiles before committing', async () => {
+	it('repairs stale root workspace lockfile metadata before committing', async () => {
 		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
 		try {
 			const root = mkdtempSync(join(tmpdir(), 'treeseed-save-lockfile-fail-'));
@@ -204,19 +214,29 @@ describe('repository save orchestrator helpers', () => {
 			git(root, ['add', '-A']);
 			git(root, ['commit', '-m', 'chore: initial']);
 			git(root, ['push', '-u', 'origin', 'staging']);
-			const before = git(root, ['rev-parse', 'HEAD']);
 			writeFileSync(resolve(root, 'README.md'), 'initial\nupdated\n', 'utf8');
 
-			await expect(runRepositorySaveOrchestrator({
+			const result = await runRepositorySaveOrchestrator({
 				root,
 				gitRoot: root,
 				branch: 'staging',
 				commitMessageMode: 'fallback',
 				verifyMode: 'skip',
-			})).rejects.toThrow(/Lockfile validation failed/u);
+			});
 
-			expect(git(root, ['rev-parse', 'HEAD'])).toBe(before);
-			expect(git(root, ['status', '--porcelain'])).toContain('README.md');
+			expect(result.rootRepo.committed).toBe(true);
+			expect(result.rootRepo.lockfileValidation?.issues).toEqual([]);
+			const lockfile = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'utf8'));
+			expect(lockfile.packages[''].workspaces).toEqual(['packages/*']);
+			expect(lockfile.packages[''].dependencies).toEqual({
+				'@treeseed/sdk': 'github:treeseed-ai/sdk#0.1.0-dev.staging.20260427T000000Z',
+			});
+			expect(lockfile.packages['packages/sdk'].version).toBe('0.1.0');
+			expect(lockfile.packages['node_modules/@treeseed/sdk']).toEqual({
+				resolved: 'packages/sdk',
+				link: true,
+			});
+			expect(git(root, ['status', '--porcelain'])).toBe('');
 		} finally {
 			vi.unstubAllEnvs();
 		}
@@ -254,6 +274,52 @@ describe('repository save orchestrator helpers', () => {
 		expect(progress).toContain('[@treeseed/demo][start] Starting project-save on staging.');
 		expect(progress.some((line) => line.startsWith('[@treeseed/demo][commit] $ git commit'))).toBe(true);
 		expect(progress.some((line) => line.startsWith('[@treeseed/demo][push] $ git push'))).toBe(true);
+	});
+
+	it('runs verification for hosted project repositories that declare verify scripts', async () => {
+		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
+		try {
+			const root = mkdtempSync(join(tmpdir(), 'treeseed-save-hosted-project-'));
+			const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-hosted-project-origin-'));
+			git(origin, ['init', '--bare']);
+			git(root, ['init', '-b', 'staging']);
+			git(root, ['config', 'user.email', 'test@example.com']);
+			git(root, ['config', 'user.name', 'Test User']);
+			git(root, ['remote', 'add', 'origin', origin]);
+			writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+				name: '@treeseed/api',
+				version: '0.4.1',
+				private: true,
+				scripts: {
+					'verify:local': 'node -e "process.exit(0)"',
+				},
+			}, null, 2), 'utf8');
+			writeFileSync(resolve(root, 'README.md'), 'initial\n', 'utf8');
+			git(root, ['add', '-A']);
+			git(root, ['commit', '-m', 'chore: initial']);
+			git(root, ['push', '-u', 'origin', 'staging']);
+
+			writeFileSync(resolve(root, 'README.md'), 'initial\nupdated\n', 'utf8');
+			const progress: string[] = [];
+			const result = await runRepositorySaveOrchestrator({
+				root,
+				gitRoot: root,
+				branch: 'staging',
+				commitMessageMode: 'fallback',
+				verifyMode: 'local-only',
+				onProgress: (line) => progress.push(line),
+			});
+
+			expect(result.rootRepo.branchMode).toBe('project-save');
+			expect(result.rootRepo.verification).toMatchObject({
+				status: 'passed',
+				primary: 'verify:local',
+			});
+			expect(progress).toContain('[@treeseed/api][verify] $ npm run verify:local');
+			expect(progress).not.toContain('[@treeseed/api][verify] Skipped package verification for project repository.');
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it('injects package summaries and submodule pointers into the root commit context', async () => {

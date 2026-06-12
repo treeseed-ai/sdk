@@ -494,7 +494,7 @@ console.log(\`Treeseed project API listening on \${server.url}\`);
 
 function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubProviderLaunchInput) {
 	const slug = slugify(input.projectSlug, 'project');
-	const marketBaseUrl = normalizeBaseUrl(input.marketBaseUrl ?? envOrNull('TREESEED_MARKET_API_BASE_URL') ?? 'https://knowledge.coop');
+	const marketBaseUrl = normalizeBaseUrl(input.marketBaseUrl ?? envOrNull('TREESEED_API_BASE_URL') ?? 'https://knowledge.coop');
 	const productionDomain = String(input.domains?.productionDomain ?? '').trim() || null;
 	const stagingDomain = String(input.domains?.stagingDomain ?? '').trim() || null;
 	const productionSiteUrl = domainUrl(productionDomain) ?? resolveManagedWebUrl(slug);
@@ -539,7 +539,7 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubPro
 			dlqName: `${slug}-agent-work-dlq`,
 			pages: {
 				projectName: slug,
-				previewProjectName: `${slug}-staging`,
+				previewProjectName: slug,
 				productionBranch: 'main',
 				stagingBranch: 'staging',
 				buildOutputDir: 'dist',
@@ -822,7 +822,7 @@ function buildCloudflareHostEnvironmentOverlay(input: KnowledgeHubProviderLaunch
 
 	overlay.CLOUDFLARE_ACCOUNT_ID = overlay.CLOUDFLARE_ACCOUNT_ID || '';
 	overlayValue(overlay, 'TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME', overlay.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME || projectSlug);
-	overlayValue(overlay, 'TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME', overlay.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME || `${projectSlug}-staging`);
+	overlayValue(overlay, 'TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME', overlay.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME || overlay.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME || projectSlug);
 	overlayValue(overlay, 'TREESEED_CONTENT_BUCKET_NAME', overlay.TREESEED_CONTENT_BUCKET_NAME || `${projectSlug}-content`);
 	overlayValue(overlay, 'TREESEED_CONTENT_BUCKET_BINDING', overlay.TREESEED_CONTENT_BUCKET_BINDING || 'TREESEED_CONTENT_BUCKET');
 

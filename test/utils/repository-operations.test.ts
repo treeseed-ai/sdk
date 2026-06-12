@@ -79,7 +79,7 @@ describe('platform repository operations', () => {
 		try {
 			const normalized = normalizePlatformContentInput('notes', {
 				title: 'Runner note',
-				summary: 'Created by the Market operations runner.',
+				summary: 'Created by the Treeseed operations runner.',
 			});
 			if ('error' in normalized) throw new Error(normalized.error);
 			const result = await executePlatformRepositoryOperation('write_content_record', {

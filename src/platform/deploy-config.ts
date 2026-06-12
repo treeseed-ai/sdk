@@ -240,12 +240,12 @@ function parseHostingConfig(value: unknown) {
 
 	return {
 		kind: optionalEnum(record.kind, 'hosting.kind', [
-			'market_control_plane',
+			'treeseed_control_plane',
 			'hosted_project',
 			'self_hosted_project',
 		] as const) ?? 'self_hosted_project',
 		registration: optionalEnum(record.registration, 'hosting.registration', ['optional', 'none'] as const) ?? 'none',
-		marketBaseUrl: optionalString(process.env.TREESEED_MARKET_API_BASE_URL) ?? optionalString(record.marketBaseUrl),
+		marketBaseUrl: optionalString(process.env.TREESEED_API_BASE_URL) ?? optionalString(record.marketBaseUrl),
 		teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID) ?? optionalString(record.teamId),
 		projectId: optionalString(process.env.TREESEED_PROJECT_ID) ?? optionalString(record.projectId),
 	};
@@ -261,12 +261,12 @@ function normalizePlanesFromLegacyHosting(
 		};
 	}
 
-	if (hosting.kind === 'market_control_plane' || hosting.kind === 'hosted_project') {
+	if (hosting.kind === 'treeseed_control_plane' || hosting.kind === 'hosted_project') {
 		return {
 			hub: { mode: 'treeseed_hosted' },
 			runtime: {
 				mode: 'treeseed_managed',
-				registration: hosting.kind === 'market_control_plane' ? 'none' : (hosting.registration ?? 'none'),
+				registration: hosting.kind === 'treeseed_control_plane' ? 'none' : (hosting.registration ?? 'none'),
 				marketBaseUrl: hosting.marketBaseUrl,
 				teamId: hosting.teamId,
 				projectId: hosting.projectId,
@@ -334,7 +334,7 @@ function parseRuntimeConfig(value: unknown, fallback: TreeseedRuntimeConfig): Tr
 		registration: optionalEnum(record.registration, 'runtime.registration', ['optional', 'required', 'none'] as const)
 			?? fallback.registration
 			?? 'none',
-		marketBaseUrl: optionalString(process.env.TREESEED_MARKET_API_BASE_URL) ?? fallback.marketBaseUrl,
+		marketBaseUrl: optionalString(process.env.TREESEED_API_BASE_URL) ?? fallback.marketBaseUrl,
 		teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID) ?? fallback.teamId,
 		projectId: optionalString(process.env.TREESEED_PROJECT_ID) ?? fallback.projectId,
 	};
@@ -464,6 +464,23 @@ function parseManagedServiceConfig(value: unknown, label: string): TreeseedManag
 			),
 			restartPolicy: optionalString(railway.restartPolicy),
 			runtimeMode: optionalString(railway.runtimeMode),
+			resourceType: optionalString(railway.resourceType),
+			environmentVariable: optionalString(railway.environmentVariable),
+			serviceTargets: optionalStringArray(railway.serviceTargets, `${label}.railway.serviceTargets`),
+			volumeMountPath: optionalString(railway.volumeMountPath),
+			runnerPool: optionalRecord(railway.runnerPool, `${label}.railway.runnerPool`)
+				? {
+					bootstrapCount: optionalPositiveNumber(
+						optionalRecord(railway.runnerPool, `${label}.railway.runnerPool`)?.bootstrapCount,
+						`${label}.railway.runnerPool.bootstrapCount`,
+					),
+					maxRunners: optionalPositiveNumber(
+						optionalRecord(railway.runnerPool, `${label}.railway.runnerPool`)?.maxRunners,
+						`${label}.railway.runnerPool.maxRunners`,
+					),
+					volumeMountPath: optionalString(optionalRecord(railway.runnerPool, `${label}.railway.runnerPool`)?.volumeMountPath),
+				}
+				: undefined,
 			schedule: Array.isArray(railway.schedule)
 				? railway.schedule.map((entry) => optionalString(entry)).filter(Boolean)
 				: optionalString(railway.schedule),
@@ -473,6 +490,29 @@ function parseManagedServiceConfig(value: unknown, label: string): TreeseedManag
 			local: parseServiceEnvironmentConfig(environments.local, `${label}.environments.local`),
 			staging: parseServiceEnvironmentConfig(environments.staging, `${label}.environments.staging`),
 			prod: parseServiceEnvironmentConfig(environments.prod, `${label}.environments.prod`),
+		},
+	};
+}
+
+function parsePublicTreeDxFederationConfig(value: unknown) {
+	const record = optionalRecord(value, 'publicTreeDxFederation');
+	if (!record) {
+		return undefined;
+	}
+	const railway = optionalRecord(record.railway, 'publicTreeDxFederation.railway') ?? {};
+	const nodePool = optionalRecord(railway.nodePool, 'publicTreeDxFederation.railway.nodePool') ?? {};
+	return {
+		railway: {
+			nodePool: {
+				bootstrapCount: optionalPositiveNumber(
+					nodePool.bootstrapCount,
+					'publicTreeDxFederation.railway.nodePool.bootstrapCount',
+				),
+				maxNodes: optionalPositiveNumber(
+					nodePool.maxNodes,
+					'publicTreeDxFederation.railway.nodePool.maxNodes',
+				),
+			},
 		},
 	};
 }
@@ -510,6 +550,32 @@ function parseProcessingConfig(value: unknown, services: TreeseedManagedServices
 		] as const) ?? (hasProcessingServices ? 'project-owned' : 'market-assigned'),
 		providerRef: optionalString(record.providerRef),
 		requiredCapabilities: optionalStringArray(record.requiredCapabilities, 'processing.requiredCapabilities'),
+	};
+}
+
+function parseConnectionsConfig(value: unknown) {
+	const record = optionalRecord(value, 'connections') ?? {};
+	const api = optionalRecord(record.api, 'connections.api');
+	if (!api) {
+		return Object.keys(record).length > 0 ? record as Record<string, unknown> : undefined;
+	}
+	const environmentsRaw = optionalRecord(api.environments, 'connections.api.environments') ?? {};
+	const environments = Object.fromEntries(
+		(['local', 'staging', 'prod'] as const).map((scope) => {
+			const environment = optionalRecord(environmentsRaw[scope], `connections.api.environments.${scope}`);
+			return [scope, environment ? {
+				baseUrl: optionalString(environment.baseUrl),
+				domain: optionalString(environment.domain),
+			} : undefined];
+		}).filter(([, environment]) => environment),
+	);
+	return {
+		...record,
+		api: {
+			proxyPrefix: optionalString(api.proxyPrefix),
+			localBaseUrl: optionalString(api.localBaseUrl),
+			environments,
+		},
 	};
 }
 
@@ -657,7 +723,7 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 	const turnstile = optionalRecord(parsed.turnstile, 'turnstile') ?? {};
 	optionalBoolean(turnstile.enabled, 'turnstile.enabled');
 	const normalizedHosting = normalizeLegacyHostingFromPlanes(hub, runtime);
-	const compatibilityHosting = hosting?.kind === 'market_control_plane'
+	const compatibilityHosting = hosting?.kind === 'treeseed_control_plane'
 		? { ...hosting, registration: 'none' as const }
 		: hosting && !parsed.hub && !parsed.runtime
 		? hosting
@@ -685,10 +751,14 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 			pages: cloudflare.pages === undefined
 				? undefined
 				: {
-					projectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME) ?? optionalString(cloudflarePages.projectName),
-					previewProjectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME) ?? optionalString(cloudflarePages.previewProjectName),
+					projectName: optionalString(cloudflarePages.projectName) ?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME),
+					previewProjectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME)
+						?? optionalString(cloudflarePages.previewProjectName)
+						?? optionalString(cloudflarePages.projectName)
+						?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME),
 					productionBranch: optionalString(cloudflarePages.productionBranch) ?? 'main',
 					stagingBranch: optionalString(cloudflarePages.stagingBranch) ?? 'staging',
+					buildCommand: optionalString(cloudflarePages.buildCommand),
 					buildOutputDir: optionalString(cloudflarePages.buildOutputDir),
 				},
 			r2: cloudflare.r2 === undefined
@@ -706,6 +776,8 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 		providers: parseProviderSelections(parsed.providers),
 		surfaces: parsePlatformSurfacesConfig(parsed.surfaces),
 		services,
+		publicTreeDxFederation: parsePublicTreeDxFederationConfig(parsed.publicTreeDxFederation),
+		connections: parseConnectionsConfig(parsed.connections),
 		processing,
 		capacityProviders: optionalRecord(parsed.capacityProviders, 'capacityProviders') as any,
 		smtp: {

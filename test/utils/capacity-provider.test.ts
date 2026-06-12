@@ -316,7 +316,7 @@ describe('capacity provider SDK contracts', () => {
 		});
 		expect(env).toMatchObject({
 			TREESEED_MARKET_URL: 'https://api.treeseed.ai',
-			TREESEED_MARKET_ID: 'prod',
+			TREESEED_MANAGER_ID: 'prod',
 			TREESEED_CAPACITY_PROVIDER_API_KEY: apiKey,
 			TREESEED_PROVIDER_DATA_DIR: '/data',
 			TREESEED_PROVIDER_API_PORT: '3100',
@@ -352,13 +352,13 @@ describe('capacity provider SDK contracts', () => {
 		const launch = resolveCapacityProviderLaunchEnvironment({
 			env: {
 				TREESEED_MARKET_URL: 'https://stored.example.com',
-				TREESEED_MARKET_ID: 'stored',
+				TREESEED_MANAGER_ID: 'stored',
 				TREESEED_CAPACITY_PROVIDER_API_KEY: 'stored-secret-key',
 				TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/stored/data',
 			},
 			overrides: {
 				TREESEED_MARKET_URL: 'http://127.0.0.1:3000',
-				TREESEED_MARKET_ID: 'local',
+				TREESEED_MANAGER_ID: 'local',
 				TREESEED_CAPACITY_PROVIDER_API_KEY: apiKey,
 				TREESEED_PROVIDER_STARTUP_MODE: 'diagnostic',
 			},
@@ -371,7 +371,7 @@ describe('capacity provider SDK contracts', () => {
 		expect(launch.diagnostic).toBe(true);
 		expect(launch.env).toMatchObject({
 			TREESEED_MARKET_URL: 'http://127.0.0.1:3000',
-			TREESEED_MARKET_ID: 'local',
+			TREESEED_MANAGER_ID: 'local',
 			TREESEED_CAPACITY_PROVIDER_API_KEY: apiKey,
 			TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/stored/data',
 			TREESEED_PROVIDER_DATA_DIR: '/data',
@@ -401,8 +401,8 @@ describe('capacity provider SDK contracts', () => {
 			intent,
 			env,
 			redactedEnv: redactCapacityProviderEnv(env),
-			imageRef: 'ghcr.io/treeseed-ai/agent:phase9',
-			serviceNamePrefix: 'provider-phase9',
+			imageRef: 'ghcr.io/treeseed-ai/agent:verified',
+			serviceNamePrefix: 'provider-verified',
 			adapter: {
 				async provisionService(spec) {
 					seen.push({ role: spec.role, command: spec.startCommand, env: spec.env, redactedEnv: spec.redactedEnv });
@@ -493,14 +493,14 @@ describe('capacity provider SDK contracts', () => {
 
 			expect(persisted.writtenKeys).toEqual([
 				'TREESEED_MARKET_URL',
-				'TREESEED_MARKET_ID',
+				'TREESEED_MANAGER_ID',
 				'TREESEED_CAPACITY_PROVIDER_API_KEY',
 				'TREESEED_PROVIDER_HOST_DATA_DIR',
 				'TREESEED_PROVIDER_ENVIRONMENT',
 			]);
 			expect(launch.env).toMatchObject({
 				TREESEED_MARKET_URL: 'http://127.0.0.1:3000',
-				TREESEED_MARKET_ID: 'local',
+				TREESEED_MANAGER_ID: 'local',
 				TREESEED_CAPACITY_PROVIDER_API_KEY: apiKey,
 				TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/local-capacity-provider/data',
 				TREESEED_PROVIDER_ENVIRONMENT: 'local',

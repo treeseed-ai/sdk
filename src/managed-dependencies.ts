@@ -120,7 +120,6 @@ const NPM_TOOLS: Array<{
 		packageName: '@railway/cli',
 		binName: 'railway',
 		version: '4.44.0',
-		runtimeBinary: (packageRoot) => resolve(packageRoot, 'bin', process.platform === 'win32' ? 'railway.exe' : 'railway'),
 	},
 	{ name: 'copilot', packageName: '@github/copilot', binName: 'copilot', version: '1.0.39' },
 	{ name: 'copilot-language-server', packageName: '@github/copilot-language-server', binName: 'copilot-language-server', version: '1.480.0' },

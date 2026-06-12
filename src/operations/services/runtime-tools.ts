@@ -57,7 +57,7 @@ const TREESEED_DEFAULT_PROVIDER_SELECTIONS = {
 	},
 	site: 'default',
 };
-const TRESEED_MANAGED_SERVICE_KEYS = ['marketDatabase', 'api', 'marketOperationsRunner'];
+const TRESEED_MANAGED_SERVICE_KEYS = ['treeseedDatabase', 'api', 'operationsRunner'];
 const TRESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli'];
 const CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER = 'replace-with-cloudflare-account-id';
 
@@ -69,12 +69,12 @@ function normalizePlanesFromLegacyHosting(hosting) {
 		};
 	}
 
-	if (hosting.kind === 'market_control_plane' || hosting.kind === 'hosted_project') {
+	if (hosting.kind === 'treeseed_control_plane' || hosting.kind === 'hosted_project') {
 		return {
 			hub: { mode: 'treeseed_hosted' },
 			runtime: {
 				mode: 'treeseed_managed',
-				registration: hosting.kind === 'market_control_plane' ? 'none' : (hosting.registration ?? 'none'),
+				registration: hosting.kind === 'treeseed_control_plane' ? 'none' : (hosting.registration ?? 'none'),
 				marketBaseUrl: hosting.marketBaseUrl,
 				teamId: hosting.teamId,
 				projectId: hosting.projectId,
@@ -556,12 +556,12 @@ function parseFallbackDeployConfig(configPath) {
 			? undefined
 			: {
 				kind: optionalEnum(hosting.kind, 'hosting.kind', [
-					'market_control_plane',
+					'treeseed_control_plane',
 					'hosted_project',
 					'self_hosted_project',
 				]) ?? 'self_hosted_project',
 				registration: optionalEnum(hosting.registration, 'hosting.registration', ['optional', 'none']) ?? 'none',
-				marketBaseUrl: optionalString(process.env.TREESEED_MARKET_API_BASE_URL) ?? optionalString(hosting.marketBaseUrl),
+				marketBaseUrl: optionalString(process.env.TREESEED_API_BASE_URL) ?? optionalString(hosting.marketBaseUrl),
 				teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID) ?? optionalString(hosting.teamId),
 				projectId: optionalString(process.env.TREESEED_PROJECT_ID) ?? optionalString(hosting.projectId),
 			};
@@ -583,7 +583,7 @@ function parseFallbackDeployConfig(configPath) {
 		registration: optionalEnum(runtimeRecord.registration, 'runtime.registration', ['optional', 'required', 'none'])
 			?? inferredPlanes.runtime.registration
 			?? 'none',
-		marketBaseUrl: optionalString(process.env.TREESEED_MARKET_API_BASE_URL) ?? optionalString(runtimeRecord.marketBaseUrl) ?? inferredPlanes.runtime.marketBaseUrl,
+		marketBaseUrl: optionalString(process.env.TREESEED_API_BASE_URL) ?? optionalString(runtimeRecord.marketBaseUrl) ?? inferredPlanes.runtime.marketBaseUrl,
 		teamId: optionalString(process.env.TREESEED_HOSTING_TEAM_ID) ?? optionalString(runtimeRecord.teamId) ?? inferredPlanes.runtime.teamId,
 		projectId: optionalString(process.env.TREESEED_PROJECT_ID) ?? optionalString(runtimeRecord.projectId) ?? inferredPlanes.runtime.projectId,
 	};
@@ -597,7 +597,7 @@ function parseFallbackDeployConfig(configPath) {
 		slug: expectString(record.slug, 'slug'),
 		siteUrl: expectString(record.siteUrl, 'siteUrl'),
 		contactEmail: expectString(record.contactEmail, 'contactEmail'),
-		hosting: parsedHosting?.kind === 'market_control_plane'
+		hosting: parsedHosting?.kind === 'treeseed_control_plane'
 			? { ...parsedHosting, registration: 'none' }
 			: parsedHosting && record.hub === undefined && record.runtime === undefined
 			? parsedHosting
@@ -617,10 +617,14 @@ function parseFallbackDeployConfig(configPath) {
 			pages: cloudflare.pages === undefined
 				? undefined
 				: {
-					projectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME) ?? optionalString(cloudflarePages.projectName),
-					previewProjectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME) ?? optionalString(cloudflarePages.previewProjectName),
+					projectName: optionalString(cloudflarePages.projectName) ?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME),
+					previewProjectName: optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME)
+						?? optionalString(cloudflarePages.previewProjectName)
+						?? optionalString(cloudflarePages.projectName)
+						?? optionalString(process.env.TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME),
 					productionBranch: optionalString(cloudflarePages.productionBranch) ?? 'main',
 					stagingBranch: optionalString(cloudflarePages.stagingBranch) ?? 'staging',
+					buildCommand: optionalString(cloudflarePages.buildCommand),
 					buildOutputDir: optionalString(cloudflarePages.buildOutputDir),
 				},
 			r2: cloudflare.r2 === undefined

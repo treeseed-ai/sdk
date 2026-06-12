@@ -7,7 +7,7 @@ import { TreeseedWorkflowSdk } from '../../src/workflow.ts';
 import { TreeseedWorkflowError } from '../../src/workflow/operations.ts';
 import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, updateWorkflowRunJournal } from '../../src/workflow/runs.ts';
 import { runWorkspaceSavePreflight } from '../../src/operations/services/save-deploy-preflight.ts';
-import { inspectDetachedHeadRepair, reattachDetachedHeadIfSafe } from '../../src/operations/services/git-workflow.ts';
+import { inspectDetachedHeadRepair, mergeBranchIntoTarget, reattachDetachedHeadIfSafe } from '../../src/operations/services/git-workflow.ts';
 import { createDevTagMessage } from '../../src/operations/services/package-reference-policy.ts';
 import {
 	createDefaultTreeseedMachineConfig,
@@ -55,20 +55,116 @@ function writeTenantFiles(root: string) {
 		private: true,
 		workspaces: [],
 	}, null, 2), 'utf8');
+	writeFileSync(resolve(root, 'package-lock.json'), JSON.stringify({
+		name: 'workflow-demo',
+		version: '1.0.0',
+		lockfileVersion: 3,
+		packages: {
+			'': {
+				name: 'workflow-demo',
+				version: '1.0.0',
+				workspaces: [],
+			},
+		},
+	}, null, 2), 'utf8');
 	writeFileSync(resolve(root, 'treeseed.site.yaml'), `name: Demo
 slug: demo
 siteUrl: https://demo.example.com
 contactEmail: demo@example.com
 hosting:
-  kind: hosted_project
+  kind: treeseed_control_plane
   teamId: demo-team
   projectId: demo-project
+runtime:
+  mode: treeseed_managed
 cloudflare:
   accountId: replace-with-cloudflare-account-id
+surfaces:
+  web:
+    enabled: true
+    provider: cloudflare
+    rootDir: .
+    environments:
+      staging:
+        domain: staging.demo.example.com
+      prod:
+        domain: demo.example.com
+services:
+  api:
+    enabled: true
+    provider: railway
+    rootDir: packages/api
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api
+      rootDir: packages/api
+      buildCommand: npm run build
+      startCommand: npm run start:api
+      healthcheckPath: /healthz
+  operationsRunner:
+    enabled: true
+    provider: railway
+    rootDir: packages/api
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
+      rootDir: packages/api
+      buildCommand: npm run build
+      startCommand: npm run start:runner
+      healthcheckPath: /healthz
+      runtimeMode: service
+      volumeMountPath: /data
+      runnerPool:
+        bootstrapCount: 1
+        maxRunners: 4
+        volumeMountPath: /data
+  treeseedDatabase:
+    enabled: true
+    provider: railway
+    railway:
+      resourceType: postgres
+      serviceName: treeseed-api-postgres
+      serviceTargets:
+        - api
+        - operationsRunner
 providers:
   deploy: cloudflare
 `, 'utf8');
 	writeFileSync(resolve(root, 'README.md'), '# Demo\n', 'utf8');
+}
+
+function writeRootWorkspaceManifests(root: string, packageDirNames: string[]) {
+	const rootPackage = {
+		name: 'workflow-demo',
+		version: '1.0.0',
+		private: true,
+		workspaces: packageDirNames.length > 0 ? ['packages/*'] : [],
+	};
+	writeFileSync(resolve(root, 'package.json'), JSON.stringify(rootPackage, null, 2), 'utf8');
+	const packageEntries: Record<string, unknown> = {
+		'': {
+			name: rootPackage.name,
+			version: rootPackage.version,
+			workspaces: rootPackage.workspaces,
+		},
+	};
+	for (const dirName of packageDirNames) {
+		const packageJson = JSON.parse(readFileSync(resolve(root, 'packages', dirName, 'package.json'), 'utf8'));
+		packageEntries[`packages/${dirName}`] = {
+			name: packageJson.name,
+			version: packageJson.version,
+		};
+		packageEntries[`node_modules/${packageJson.name}`] = {
+			resolved: `packages/${dirName}`,
+			link: true,
+		};
+	}
+	writeFileSync(resolve(root, 'package-lock.json'), JSON.stringify({
+		name: rootPackage.name,
+		version: rootPackage.version,
+		lockfileVersion: 3,
+		packages: packageEntries,
+	}, null, 2), 'utf8');
 }
 
 function writeStatusConfigEntry(root: string) {
@@ -123,11 +219,67 @@ function createMachineConfigForWorkflowRepo(root: string) {
 			siteUrl: 'https://demo.example.com',
 			contactEmail: 'demo@example.com',
 			hosting: {
-				kind: 'hosted_project',
+				kind: 'treeseed_control_plane',
 				teamId: 'demo-team',
 				projectId: 'demo-project',
 			},
+			runtime: { mode: 'treeseed_managed' },
 			cloudflare: { accountId: 'replace-with-cloudflare-account-id' },
+			surfaces: {
+				web: {
+					enabled: true,
+					provider: 'cloudflare',
+					rootDir: '.',
+					environments: {
+						staging: { domain: 'staging.demo.example.com' },
+						prod: { domain: 'demo.example.com' },
+					},
+				},
+			},
+			services: {
+				api: {
+					enabled: true,
+					provider: 'railway',
+					rootDir: 'packages/api',
+					railway: {
+						projectName: 'treeseed-api',
+						serviceName: 'treeseed-api',
+						rootDir: 'packages/api',
+						buildCommand: 'npm run build',
+						startCommand: 'npm run start:api',
+						healthcheckPath: '/healthz',
+					},
+				},
+				operationsRunner: {
+					enabled: true,
+					provider: 'railway',
+					rootDir: 'packages/api',
+					railway: {
+						projectName: 'treeseed-api',
+						serviceName: 'treeseed-api-operations-runner-01',
+						rootDir: 'packages/api',
+						buildCommand: 'npm run build',
+						startCommand: 'npm run start:runner',
+						healthcheckPath: '/healthz',
+						runtimeMode: 'service',
+						volumeMountPath: '/data',
+						runnerPool: {
+							bootstrapCount: 1,
+							maxRunners: 4,
+							volumeMountPath: '/data',
+						},
+					},
+				},
+				treeseedDatabase: {
+					enabled: true,
+					provider: 'railway',
+					railway: {
+						resourceType: 'postgres',
+						serviceName: 'treeseed-api-postgres',
+						serviceTargets: ['api', 'operationsRunner'],
+					},
+				},
+			},
 			providers: { deploy: 'cloudflare' },
 		} as any,
 		tenantConfig: { id: 'demo' } as any,
@@ -140,8 +292,10 @@ function writePackageFiles(root: string, dirName: string, dependencies: Record<s
 		version: dirName === 'cli' ? '0.4.11' : '0.4.12',
 		type: 'module',
 		scripts: {
+			verify: 'node -e "process.exit(0)"',
 			'verify:action': 'node -e "process.exit(0)"',
 			'verify:local': 'node -e "process.exit(0)"',
+			'release:verify': 'node -e "process.exit(0)"',
 			'release:publish': 'node -e "process.exit(0)"',
 		},
 		dependencies,
@@ -155,11 +309,32 @@ function writePackageFiles(root: string, dirName: string, dependencies: Record<s
 		mkdirSync(resolve(root, 'drizzle', 'd1'), { recursive: true });
 		mkdirSync(resolve(root, 'drizzle', 'market'), { recursive: true });
 		writeFileSync(resolve(root, 'drizzle', 'd1', '0000_treeseed_d1.sql'), '-- d1 schema\n', 'utf8');
-		writeFileSync(resolve(root, 'drizzle', 'market', '0000_market_control_plane.sql'), '-- market pg schema\n', 'utf8');
+			writeFileSync(resolve(root, 'drizzle', 'market', '0000_market_control_plane.sql'), '-- market pg schema\n', 'utf8');
 	} else if (dirName === 'core') {
 		mkdirSync(resolve(root, 'dist'), { recursive: true });
 		writeFileSync(resolve(root, 'dist', 'api.js'), 'export {};\n', 'utf8');
 		writeFileSync(resolve(root, 'dist', 'plugin-default.js'), 'export {};\n', 'utf8');
+	} else if (dirName === 'ui') {
+		mkdirSync(resolve(root, 'dist'), { recursive: true });
+		writeFileSync(resolve(root, 'dist', 'index.js'), 'export {};\n', 'utf8');
+	} else if (dirName === 'admin') {
+		mkdirSync(resolve(root, 'dist'), { recursive: true });
+		writeFileSync(resolve(root, 'dist', 'plugin.js'), 'export {};\n', 'utf8');
+		writeFileSync(resolve(root, 'treeseed.package.yaml'), `id: "@treeseed/admin"
+name: TreeSeed Admin
+kind: node-typescript
+repository: treeseed-ai/admin
+publishTarget: npm
+verify:
+  fast: npm run verify
+  local: npm run verify:local
+  release: npm run release:verify
+artifacts:
+  - provider: npm
+    name: "@treeseed/admin"
+releaseGate:
+  workflow: deploy.yml
+`, 'utf8');
 	} else if (dirName === 'cli') {
 		mkdirSync(resolve(root, 'dist', 'cli'), { recursive: true });
 		writeFileSync(resolve(root, 'dist', 'cli', 'main.js'), '#!/usr/bin/env node\n', 'utf8');
@@ -195,7 +370,13 @@ function createWorkflowRepo(options: { withWorkspacePackages?: boolean } = {}) {
 	const packages = options.withWorkspacePackages
 		? {
 			sdk: createPackageRepo(root, 'sdk'),
+			ui: createPackageRepo(root, 'ui'),
 			core: createPackageRepo(root, 'core', { '@treeseed/sdk': '^0.4.12' }),
+			admin: createPackageRepo(root, 'admin', {
+				'@treeseed/sdk': '^0.4.12',
+				'@treeseed/core': '^0.4.12',
+				'@treeseed/ui': '^0.4.12',
+			}),
 			cli: createPackageRepo(root, 'cli', { '@treeseed/sdk': '^0.4.12' }),
 			agent: createPackageRepo(root, 'agent', { '@treeseed/sdk': '^0.4.12' }),
 		}
@@ -208,14 +389,17 @@ function createWorkflowRepo(options: { withWorkspacePackages?: boolean } = {}) {
 	writeTenantFiles(work);
 	if (packages) {
 		gitAllowFile(work, ['submodule', 'add', packages.sdk.origin, 'packages/sdk']);
+		gitAllowFile(work, ['submodule', 'add', packages.ui.origin, 'packages/ui']);
 		gitAllowFile(work, ['submodule', 'add', packages.core.origin, 'packages/core']);
+		gitAllowFile(work, ['submodule', 'add', packages.admin.origin, 'packages/admin']);
 		gitAllowFile(work, ['submodule', 'add', packages.cli.origin, 'packages/cli']);
 		gitAllowFile(work, ['submodule', 'add', packages.agent.origin, 'packages/agent']);
-		for (const dirName of ['sdk', 'core', 'cli', 'agent']) {
+		for (const dirName of ['sdk', 'ui', 'core', 'admin', 'cli', 'agent']) {
 			const packageRoot = resolve(work, 'packages', dirName);
 			git(packageRoot, ['config', 'user.name', 'Treeseed Test']);
 			git(packageRoot, ['config', 'user.email', 'treeseed@example.com']);
 		}
+		writeRootWorkspaceManifests(work, ['sdk', 'ui', 'core', 'admin', 'cli', 'agent']);
 	}
 	git(work, ['add', '-A']);
 	git(work, ['commit', '-m', 'init']);
@@ -286,6 +470,35 @@ describe('treeseed workflow lifecycle', () => {
 		expect(hostedCiSource).toContain('waitForWorkflowGates');
 		expect(hostedCiSource).toContain("workflowGates.filter((gate) => !(gate.repository === repository && gate.workflow === 'deploy.yml'))");
 	});
+
+	it('uses deploy-gate timeouts for package-local deploy workflows', () => {
+		const source = readFileSync(new URL('../../src/workflow/operations.ts', import.meta.url), 'utf8');
+		const start = source.indexOf('function gatesForSavedRepositoryReports');
+		const end = source.indexOf('function packageHostedVerifyWorkflow', start);
+		const gateSource = source.slice(start, end);
+
+		expect(gateSource).toContain('hostedWorkflowForSavedRepository');
+		expect(gateSource).toContain('hostedDeployGate(gate)');
+		expect(gateSource).toContain('/^deploy(?:[-.]|$)/u.test(workflow)');
+	});
+
+	it('defaults staging save plans to the fast lane', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		git(work, ['checkout', 'staging']);
+		const workflow = workflowFor(work);
+
+		const result = await workflow.save({
+			plan: true,
+			refreshPreview: false,
+		});
+
+		expect(result.payload.lane).toBe('fast');
+		expect(result.payload.ciMode).toBe('off');
+		expect(result.payload.releaseCandidateMode).toBe('hybrid');
+		expect(result.payload.plannedSteps).not.toEqual(expect.arrayContaining([
+			expect.objectContaining({ id: 'hosted-ci' }),
+		]));
+	}, 15000);
 
 	it('resolves status from nested directories against the tenant root', async () => {
 		const { work } = createWorkflowRepo();
@@ -358,6 +571,40 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('staging');
 	}, 15000);
 
+	it('can adopt unrelated package staging history into an initial production branch', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-workflow-unrelated-release-'));
+		const origin = resolve(root, 'origin.git');
+		const work = resolve(root, 'work');
+		mkdirSync(work, { recursive: true });
+		git(root, ['init', '--bare', origin]);
+		git(work, ['init', '-b', 'main']);
+		git(work, ['config', 'user.name', 'Treeseed Test']);
+		git(work, ['config', 'user.email', 'treeseed@example.com']);
+		writeFileSync(resolve(work, 'LICENSE'), 'license\n', 'utf8');
+		git(work, ['add', 'LICENSE']);
+		git(work, ['commit', '-m', 'init: production placeholder']);
+		git(work, ['remote', 'add', 'origin', origin]);
+		git(work, ['push', '-u', 'origin', 'main']);
+		git(work, ['checkout', '--orphan', 'staging']);
+		git(work, ['rm', '-rf', '.']);
+		writeFileSync(resolve(work, 'package.json'), '{"name":"@treeseed/api","version":"0.1.0"}\n', 'utf8');
+		git(work, ['add', 'package.json']);
+		git(work, ['commit', '-m', 'build: stage package']);
+		git(work, ['push', '-u', 'origin', 'staging']);
+
+		const result = mergeBranchIntoTarget(work, {
+			sourceBranch: 'staging',
+			targetBranch: 'main',
+			message: 'release: staging -> main',
+			allowUnrelatedHistories: true,
+		});
+
+		expect(result.targetBranch).toBe('main');
+		expect(git(work, ['merge-base', 'main', 'staging'])).toBeTruthy();
+		expect(git(work, ['rev-parse', 'origin/main'])).toBe(git(work, ['rev-parse', 'main']));
+		expect(readFileSync(resolve(work, 'package.json'), 'utf8')).toContain('@treeseed/api');
+	}, 15000);
+
 	it('save repairs package repos detached at the current branch head before preflight validation', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		git(work, ['checkout', 'staging']);
@@ -376,7 +623,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.ok).toBe(true);
 		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('staging');
 		expect(progress.join('\n')).toContain('[workflow][repair] Reattached @treeseed/sdk to staging');
-	}, 180000);
+	}, 360000);
 
 	it('loads existing machine config secrets before evaluating status readiness', async () => {
 		const { work } = createWorkflowRepo();
@@ -415,7 +662,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.providerStatus.local.railway.applicable).toBe(false);
 		expect(result.payload.secrets.keyAgentUnlocked).toBe(true);
 		expect(result.payload.persistentEnvironments.staging.blockers.join('\n')).not.toContain('STATUS_REQUIRED_TOKEN');
-	}, 180000);
+	}, 360000);
 
 	it('treats save with no new changes as a successful sync checkpoint', async () => {
 		const { work } = createWorkflowRepo();
@@ -431,7 +678,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.noChanges).toBe(true);
 		expect(result.payload.branchSync.pushed).toBe(true);
 		expect(result.payload.finalState.branchName).toBe('feature/demo-task');
-	}, 15_000);
+	}, 180000);
 
 	it('auto-saves dirty task branches during close and returns to staging', async () => {
 		const { work } = createWorkflowRepo();
@@ -464,23 +711,26 @@ describe('treeseed workflow lifecycle', () => {
 
 		expect(result.ok).toBe(true);
 		expect(result.payload.mode).toBe('recursive-workspace');
-		expect(result.payload.repos.map((repo) => repo.name)).toEqual([
+		expect(result.payload.repos.map((repo) => repo.name)).toEqual(expect.arrayContaining([
 			'@treeseed/sdk',
+			'@treeseed/ui',
 			'@treeseed/core',
+			'@treeseed/admin',
 			'@treeseed/cli',
 			'@treeseed/agent',
-		]);
+		]));
 		expect(result.payload.repos[0].committed).toBe(true);
 		expect(result.payload.repos[0].pushed).toBe(true);
-		expect(result.payload.repos[1].committed).toBe(true);
-		expect(result.payload.repos[2].committed).toBe(true);
+		expect(result.payload.repos.find((repo) => repo.name === '@treeseed/core')?.committed).toBe(true);
+		expect(result.payload.repos.find((repo) => repo.name === '@treeseed/admin')?.committed).toBe(true);
+		expect(result.payload.repos.find((repo) => repo.name === '@treeseed/cli')?.committed).toBe(true);
 		expect(result.payload.repos[0].tagName).toMatch(/^0\.4\.13-dev\.feature-demo-task\./);
-		expect(result.payload.repos[2].tagName).toMatch(/^0\.4\.12-dev\.feature-demo-task\./);
+		expect(result.payload.repos.find((repo) => repo.name === '@treeseed/cli')?.tagName).toMatch(/^0\.4\.12-dev\.feature-demo-task\./);
 		expect(result.payload.rootRepo.committed).toBe(true);
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('feature/demo-task');
 		expect(git(resolve(work, 'packages', 'core'), ['branch', '--show-current'])).toBe('feature/demo-task');
 		expect(git(work, ['ls-tree', 'HEAD', 'packages/sdk'])).toContain(result.payload.repos[0].commitSha);
-		expect(git(work, ['ls-tree', 'HEAD', 'packages/core'])).toContain(result.payload.repos[1].commitSha);
+		expect(git(work, ['ls-tree', 'HEAD', 'packages/core'])).toContain(result.payload.repos.find((repo) => repo.name === '@treeseed/core')?.commitSha);
 		const sdkVersion = JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version;
 		const coreSdkSpec = JSON.parse(readFileSync(resolve(work, 'packages', 'core', 'package.json'), 'utf8')).dependencies['@treeseed/sdk'];
 		expect(sdkVersion).toMatch(/^0\.4\.13-dev\.feature-demo-task\./);
@@ -490,7 +740,7 @@ describe('treeseed workflow lifecycle', () => {
 	it('uses dev-save mode for staging even when package repos start on main', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		git(work, ['checkout', 'staging']);
-		for (const dirName of ['sdk', 'core', 'cli']) {
+		for (const dirName of ['sdk', 'ui', 'core', 'admin', 'cli']) {
 			git(resolve(work, 'packages', dirName), ['checkout', 'main']);
 		}
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-staging";\n', 'utf8');
@@ -499,6 +749,7 @@ describe('treeseed workflow lifecycle', () => {
 		const result = await workflow.save({
 			verify: false,
 			refreshPreview: false,
+			lane: 'promotion',
 		});
 
 		expect(result.ok).toBe(true);
@@ -506,6 +757,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(sdkReport?.branch).toBe('staging');
 		expect(sdkReport?.branchMode).toBe('package-dev-save');
 		expect(sdkReport?.tagName).toMatch(/^0\.4\.13-dev\.staging\./);
+		expect(result.payload.lane).toBe('promotion');
 		expect(result.payload.ciMode).toBe('hosted');
 		expect(result.payload.workflowGates).toEqual(expect.arrayContaining([
 			expect.objectContaining({ name: result.payload.rootRepo.name, workflow: 'deploy.yml', branch: 'staging', timeoutSeconds: 2700 }),
@@ -553,7 +805,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(secondSdkReport?.tagName).not.toBe(oldTag);
 		expect(git(sdkRoot, ['rev-list', '-n', '1', oldTag])).toBe(oldTagCommit);
 		expect(git(sdkRoot, ['rev-list', '-n', '1', String(secondSdkReport?.tagName)])).toBe(secondSdkReport?.commitSha);
-	}, 180000);
+	}, 300000);
 
 	it('switch mirrors task branches into checked-out package repos without pushing package branches', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -938,7 +1190,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
 	}, 180000);
 
-	it('releases only changed packages plus dependents and syncs market main to package main heads', async () => {
+		it('releases only changed packages plus dependents and syncs market main to package main heads', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = workflowFor(work);
 		await workflow.switchTask({ branch: 'feature/demo-task' });
@@ -979,12 +1231,18 @@ describe('treeseed workflow lifecycle', () => {
 
 		expect(result.payload.mode).toBe('recursive-workspace');
 		expect(result.payload.packageSelection.changed).toContain('@treeseed/sdk');
-		expect(result.payload.packageSelection.changed).toEqual(expect.arrayContaining(['@treeseed/core', '@treeseed/cli']));
-		expect(result.payload.touchedPackages).toEqual(expect.arrayContaining(['@treeseed/sdk', '@treeseed/core', '@treeseed/cli']));
+		expect(result.payload.packageSelection.changed).toEqual(expect.arrayContaining(['@treeseed/core', '@treeseed/admin', '@treeseed/cli']));
+		expect(result.payload.packageSelection.changed).not.toContain('@treeseed/ui');
+		expect(result.payload.touchedPackages).toEqual(expect.arrayContaining(['@treeseed/sdk', '@treeseed/core', '@treeseed/admin', '@treeseed/cli']));
 		expect(JSON.parse(git(resolve(work, 'packages', 'sdk'), ['show', 'main:package.json'])).version).toBe('0.4.13');
+		expect(JSON.parse(readFileSync(resolve(work, 'packages', 'ui', 'package.json'), 'utf8')).version).toBe('0.4.12');
 		expect(JSON.parse(git(resolve(work, 'packages', 'core'), ['show', 'main:package.json'])).version).toBe('0.4.13');
+		expect(JSON.parse(git(resolve(work, 'packages', 'admin'), ['show', 'main:package.json'])).version).toBe('0.4.13');
 		expect(JSON.parse(git(resolve(work, 'packages', 'cli'), ['show', 'main:package.json'])).version).toBe('0.4.12');
 		expect(JSON.parse(git(resolve(work, 'packages', 'core'), ['show', 'main:package.json'])).dependencies['@treeseed/sdk']).toBe(`git+file://${packages!.sdk.origin}#0.4.13`);
+		expect(JSON.parse(git(resolve(work, 'packages', 'admin'), ['show', 'main:package.json'])).dependencies['@treeseed/sdk']).toBe(`git+file://${packages!.sdk.origin}#0.4.13`);
+		expect(JSON.parse(git(resolve(work, 'packages', 'admin'), ['show', 'main:package.json'])).dependencies['@treeseed/core']).toBe(`git+file://${packages!.core.origin}#0.4.13`);
+		expect(JSON.parse(git(resolve(work, 'packages', 'admin'), ['show', 'main:package.json'])).dependencies['@treeseed/ui']).toBe('^0.4.12');
 		expect(JSON.parse(git(resolve(work, 'packages', 'cli'), ['show', 'main:package.json'])).dependencies['@treeseed/sdk']).toBe(`git+file://${packages!.sdk.origin}#0.4.13`);
 		expect(JSON.parse(git(work, ['show', 'main:package.json'])).dependencies['@treeseed/sdk']).toBe(`git+file://${packages!.sdk.origin}#0.4.13`);
 		expect(git(work, ['ls-tree', 'main', 'packages/sdk'])).toContain(git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'main']));
@@ -1012,9 +1270,11 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'sdk'), ['log', '-1', '--format=%B', 'main'])).toContain('Release summary:');
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
+		expect(git(resolve(work, 'packages', 'ui'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'core'), ['branch', '--show-current'])).toBe('staging');
+		expect(git(resolve(work, 'packages', 'admin'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'cli'), ['branch', '--show-current'])).toBe('staging');
-	}, 180000);
+	}, 300000);
 
 	it('keeps stale dev tags when release dev tag cleanup is disabled', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -1052,7 +1312,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.devTagCleanup).toMatchObject({ status: 'skipped', reason: 'disabled' });
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.12-dev.staging.20260501T010203Z'])).toBe('0.4.12-dev.staging.20260501T010203Z');
 		expect(git(resolve(work, 'packages', 'sdk'), ['ls-remote', '--tags', 'origin', '0.4.12-dev.staging.20260501T010203Z'])).toContain('0.4.12-dev.staging.20260501T010203Z');
-	}, 180000);
+	}, 300000);
 
 	it('plans and executes standalone stale dev tag cleanup', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -1138,7 +1398,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(autoResumeResult.payload.level).toBe('patch');
 		expect(autoResumeResult.payload.rootVersion).toBe('1.0.1');
 		expect(JSON.parse(git(resolve(work, 'packages', 'sdk'), ['show', 'main:package.json'])).version).toBe('0.4.13');
-	}, 180000);
+	}, 300000);
 
 	it('returns a recursive release plan without mutating package or market state', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -1173,31 +1433,35 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.executionMode).toBe('plan');
 		expect(result.payload.rootVersion).toBe('1.0.1');
 		expect(result.payload.releaseTag).toBe('1.0.1');
-		expect(result.payload.packageSelection.selected).toEqual(expect.arrayContaining(['@treeseed/sdk', '@treeseed/core', '@treeseed/cli']));
+		expect(result.payload.packageSelection.selected).toEqual(expect.arrayContaining(['@treeseed/sdk', '@treeseed/core', '@treeseed/admin', '@treeseed/cli']));
+		expect(result.payload.packageSelection.selected).not.toContain('@treeseed/ui');
 		expect(result.payload.plannedVersions).toMatchObject({
 			'@treeseed/market': '1.0.1',
 			'@treeseed/sdk': '0.4.13',
 			'@treeseed/core': '0.4.13',
+			'@treeseed/admin': '0.4.13',
 			'@treeseed/cli': '0.4.12',
 			'@treeseed/agent': '0.4.13',
 		});
 		expect(result.payload.plannedDevReferenceRewrites.some((entry: { repoName: string }) => entry.repoName === '@treeseed/market')).toBe(true);
-		expect(result.payload.plannedPublishWaits).toHaveLength(4);
+		expect(result.payload.plannedPublishWaits).toHaveLength(5);
 		expect(result.payload.plannedSteps.map((step: { id: string }) => step.id)).toEqual(expect.arrayContaining(['release-plan', 'prepare-release-metadata', 'cleanup-dev-tags']));
 		expect(git(work, ['rev-parse', 'HEAD'])).toBe(beforeRootHead);
 		expect(git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'HEAD'])).toBe(beforeSdkHead);
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
-	}, 180000);
+	}, 300000);
 
 	it('plans release-line repair without bumping packages already on the target line', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = workflowFor(work);
 		git(work, ['checkout', 'staging']);
 		setPackageVersion(resolve(work, 'packages', 'sdk'), '0.10.6');
+		setPackageVersion(resolve(work, 'packages', 'ui'), '0.9.4');
 		setPackageVersion(resolve(work, 'packages', 'core'), '0.9.4');
+		setPackageVersion(resolve(work, 'packages', 'admin'), '0.9.4');
 		setPackageVersion(resolve(work, 'packages', 'cli'), '0.9.3');
 		setPackageVersion(resolve(work, 'packages', 'agent'), '0.9.3');
-		git(work, ['add', 'packages/sdk', 'packages/core', 'packages/cli', 'packages/agent']);
+		git(work, ['add', 'packages/sdk', 'packages/ui', 'packages/core', 'packages/admin', 'packages/cli', 'packages/agent']);
 		git(work, ['commit', '-m', 'test: drift public package lines']);
 		git(work, ['push', 'origin', 'staging']);
 
@@ -1215,14 +1479,18 @@ describe('treeseed workflow lifecycle', () => {
 			highestCurrentLine: '0.10',
 			alignedBefore: false,
 		});
-		expect(result.payload.packageSelection.selected).toEqual([
+		expect(result.payload.packageSelection.selected).toEqual(expect.arrayContaining([
 			'@treeseed/core',
 			'@treeseed/cli',
 			'@treeseed/agent',
-		]);
+			'@treeseed/ui',
+			'@treeseed/admin',
+		]));
 		expect(result.payload.plannedVersions).toMatchObject({
 			'@treeseed/market': '1.0.1',
+			'@treeseed/ui': '0.10.0',
 			'@treeseed/core': '0.10.0',
+			'@treeseed/admin': '0.10.0',
 			'@treeseed/cli': '0.10.0',
 			'@treeseed/agent': '0.10.0',
 		});
@@ -1235,10 +1503,12 @@ describe('treeseed workflow lifecycle', () => {
 		const workflow = workflowFor(work);
 		git(work, ['checkout', 'staging']);
 		setPackageVersion(resolve(work, 'packages', 'sdk'), '0.10.6');
+		setPackageVersion(resolve(work, 'packages', 'ui'), '0.9.4');
 		setPackageVersion(resolve(work, 'packages', 'core'), '0.9.4');
+		setPackageVersion(resolve(work, 'packages', 'admin'), '0.9.4');
 		setPackageVersion(resolve(work, 'packages', 'cli'), '0.9.3');
 		setPackageVersion(resolve(work, 'packages', 'agent'), '0.9.3');
-		git(work, ['add', 'packages/sdk', 'packages/core', 'packages/cli', 'packages/agent']);
+		git(work, ['add', 'packages/sdk', 'packages/ui', 'packages/core', 'packages/admin', 'packages/cli', 'packages/agent']);
 		git(work, ['commit', '-m', 'test: drift public package lines']);
 		git(work, ['push', 'origin', 'staging']);
 

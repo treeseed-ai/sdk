@@ -45,9 +45,9 @@ describe('railwayGraphqlRequest', () => {
 			data: {
 				serviceInstance: {
 					id: 'svc-inst-1',
-					buildCommand: 'npm run build:api',
-					startCommand: 'node ./src/api/server.js',
-					rootDirectory: '.',
+					buildCommand: 'npm run build',
+					startCommand: 'npm run start:api',
+					rootDirectory: 'packages/api',
 					healthcheckPath: '/healthz',
 					healthcheckTimeout: 10,
 					sleepApplication: true,
@@ -81,9 +81,9 @@ describe('railwayGraphqlRequest', () => {
 				data: {
 					serviceInstance: {
 						id: 'svc-inst-1',
-						buildCommand: 'npm run build:api',
-						startCommand: 'node ./src/api/server.js',
-						rootDirectory: '.',
+						buildCommand: 'npm run build',
+						startCommand: 'npm run start:api',
+						rootDirectory: 'packages/api',
 						healthcheckPath: '/readyz',
 						healthcheckTimeout: 5,
 						sleepApplication: false,
@@ -99,9 +99,9 @@ describe('railwayGraphqlRequest', () => {
 				data: {
 					serviceInstance: {
 						id: 'svc-inst-1',
-						buildCommand: 'npm run build:api',
-						startCommand: 'node ./src/api/server.js',
-						rootDirectory: '.',
+						buildCommand: 'npm run build',
+						startCommand: 'npm run start:api',
+						rootDirectory: 'packages/api',
 						healthcheckPath: '/healthz',
 						healthcheckTimeout: 10,
 						sleepApplication: true,
@@ -112,8 +112,8 @@ describe('railwayGraphqlRequest', () => {
 		const result = await ensureRailwayServiceInstanceConfiguration({
 			serviceId: 'svc-api',
 			environmentId: 'env-production',
-			startCommand: 'node ./src/api/server.js',
-			rootDirectory: '.',
+			startCommand: 'npm run start:api',
+			rootDirectory: 'packages/api',
 			healthcheckPath: '/healthz',
 			healthcheckTimeoutSeconds: 10,
 			runtimeMode: 'serverless',
@@ -129,8 +129,8 @@ describe('railwayGraphqlRequest', () => {
 				serviceId: 'svc-api',
 				environmentId: 'env-production',
 				input: {
-					startCommand: 'node ./src/api/server.js',
-					rootDirectory: '.',
+					startCommand: 'npm run start:api',
+					rootDirectory: 'packages/api',
 					healthcheckPath: '/healthz',
 					healthcheckTimeout: 10,
 					sleepApplication: true,
@@ -181,8 +181,8 @@ describe('railwayGraphqlRequest', () => {
 					serviceInstance: {
 						id: 'svc-inst-1',
 						buildCommand: null,
-						startCommand: 'node ./src/api/server.js',
-						rootDirectory: '.',
+						startCommand: 'npm run start:api',
+						rootDirectory: 'packages/api',
 						healthcheckPath: '/healthz',
 						healthcheckTimeout: 10,
 						sleepApplication: true,
@@ -193,8 +193,8 @@ describe('railwayGraphqlRequest', () => {
 		const result = await ensureRailwayServiceInstanceConfiguration({
 			serviceId: 'svc-api',
 			environmentId: 'env-production',
-			startCommand: 'node ./src/api/server.js',
-			rootDirectory: '.',
+			startCommand: 'npm run start:api',
+			rootDirectory: 'packages/api',
 			healthcheckPath: '/healthz',
 			healthcheckTimeoutSeconds: 10,
 			runtimeMode: 'serverless',
@@ -205,8 +205,8 @@ describe('railwayGraphqlRequest', () => {
 
 		expect(fetchMock).toHaveBeenCalledTimes(5);
 		expect(result.instance).toMatchObject({
-			startCommand: 'node ./src/api/server.js',
-			rootDirectory: '.',
+			startCommand: 'npm run start:api',
+			rootDirectory: 'packages/api',
 			healthcheckPath: '/healthz',
 			healthcheckTimeoutSeconds: 10,
 			runtimeMode: 'serverless',
@@ -243,8 +243,8 @@ describe('railwayGraphqlRequest', () => {
 					serviceInstance: {
 						id: 'svc-inst-1',
 						buildCommand: null,
-						startCommand: 'node ./src/api/server.js',
-						rootDirectory: '.',
+						startCommand: 'npm run start:api',
+						rootDirectory: 'packages/api',
 						healthcheckPath: '/healthz',
 						healthcheckTimeout: 10,
 						sleepApplication: true,
@@ -255,8 +255,8 @@ describe('railwayGraphqlRequest', () => {
 		const result = await ensureRailwayServiceInstanceConfiguration({
 			serviceId: 'svc-api',
 			environmentId: 'env-production',
-			startCommand: 'node ./src/api/server.js',
-			rootDirectory: '.',
+			startCommand: 'npm run start:api',
+			rootDirectory: 'packages/api',
 			healthcheckPath: '/healthz',
 			healthcheckTimeoutSeconds: 10,
 			runtimeMode: 'serverless',
@@ -274,8 +274,8 @@ describe('railwayGraphqlRequest', () => {
 				serviceId: 'svc-api',
 				environmentId: 'env-production',
 				input: {
-					startCommand: 'node ./src/api/server.js',
-					rootDirectory: '.',
+					startCommand: 'npm run start:api',
+					rootDirectory: 'packages/api',
 					healthcheckPath: '/healthz',
 					healthcheckTimeout: 10,
 					sleepApplication: true,
@@ -283,8 +283,8 @@ describe('railwayGraphqlRequest', () => {
 			},
 		});
 		expect(result.instance).toMatchObject({
-			startCommand: 'node ./src/api/server.js',
-			rootDirectory: '.',
+			startCommand: 'npm run start:api',
+			rootDirectory: 'packages/api',
 			healthcheckPath: '/healthz',
 			healthcheckTimeoutSeconds: 10,
 			runtimeMode: 'serverless',
@@ -324,8 +324,8 @@ describe('railwayGraphqlRequest', () => {
 					serviceInstance: {
 						id: 'svc-inst-1',
 						buildCommand: null,
-						startCommand: 'node ./src/api/server.js',
-						rootDirectory: '.',
+						startCommand: 'npm run start:api',
+						rootDirectory: 'packages/api',
 						healthcheckPath: '/healthz',
 						healthcheckTimeout: 10,
 						sleepApplication: true,
@@ -336,8 +336,8 @@ describe('railwayGraphqlRequest', () => {
 		const result = await ensureRailwayServiceInstanceConfiguration({
 			serviceId: 'svc-api',
 			environmentId: 'env-production',
-			startCommand: 'node ./src/api/server.js',
-			rootDirectory: '.',
+			startCommand: 'npm run start:api',
+			rootDirectory: 'packages/api',
 			healthcheckPath: '/healthz',
 			healthcheckTimeoutSeconds: 10,
 			runtimeMode: 'serverless',
@@ -350,8 +350,8 @@ describe('railwayGraphqlRequest', () => {
 		expect(fetchMock).toHaveBeenCalledTimes(13);
 		expect(result.updated).toBe(true);
 		expect(result.instance).toMatchObject({
-			startCommand: 'node ./src/api/server.js',
-			rootDirectory: '.',
+			startCommand: 'npm run start:api',
+			rootDirectory: 'packages/api',
 			healthcheckPath: '/healthz',
 			healthcheckTimeoutSeconds: 10,
 			runtimeMode: 'serverless',

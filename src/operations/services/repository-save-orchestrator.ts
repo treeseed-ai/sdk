@@ -1,5 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, resolve, relative } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import {
@@ -51,12 +50,20 @@ import {
 	sortWorkspacePackages,
 	workspacePackages,
 } from './workspace-tools.ts';
-import { collectDeploymentLockfileWorkspaceIssues } from './workspace-dependency-mode.ts';
+import { collectDeploymentLockfileWorkspaceIssues, ensureLocalWorkspaceLinks } from './workspace-dependency-mode.ts';
 import {
 	createBuildWarningSummary,
 	formatAllowedBuildWarnings,
 	type BuildWarningPolicyOptions,
 } from './build-warning-policy.js';
+import {
+	readTreeseedVerificationCache,
+	writeTreeseedVerificationCache,
+} from './verification-cache.ts';
+import {
+	discoverTreeseedPackageAdapters,
+	type TreeseedPackageCommand,
+} from './package-adapters.ts';
 
 export type RepoKind = 'package' | 'project';
 export type RepoBranchMode = 'package-release-main' | 'package-dev-save' | 'project-save';
@@ -76,6 +83,7 @@ export type RepositorySaveNode = {
 	packageJsonPath: string | null;
 	packageJson: Record<string, unknown> | null;
 	scripts: Record<string, string>;
+	manifestVerifyCommands: Record<'fast' | 'local' | 'release', TreeseedPackageCommand | null>;
 	remoteUrl: string | null;
 	dependencies: string[];
 	dependents: string[];
@@ -119,7 +127,7 @@ export type RepositorySaveReport = {
 export type RepositoryVerificationResult = {
 	mode: SaveVerifyMode;
 	status: 'passed' | 'failed' | 'skipped';
-	primary: 'verify:action' | 'verify:local' | null;
+	primary: 'verify:action' | 'verify:local' | 'manifest:fast' | 'manifest:local' | 'manifest:release' | null;
 	fallbackUsed: boolean;
 	error: string | null;
 };
@@ -509,6 +517,14 @@ function isGitRepo(repoDir: string) {
 	}
 }
 
+function isIndependentGitRepo(repoDir: string) {
+	try {
+		return resolve(repoRoot(repoDir)) === resolve(repoDir);
+	} catch {
+		return false;
+	}
+}
+
 function originRemoteUrlSafe(repoDir: string) {
 	try {
 		return originRemoteUrl(repoDir);
@@ -529,6 +545,10 @@ function repoDisplayName(repoDir: string, packageJson: Record<string, unknown> |
 	return typeof packageJson?.name === 'string' && packageJson.name.length > 0
 		? packageJson.name
 		: basename(repoDir);
+}
+
+function emptyManifestVerifyCommands(): RepositorySaveNode['manifestVerifyCommands'] {
+	return { fast: null, local: null, release: null };
 }
 
 function parseGitmodules(root: string) {
@@ -582,6 +602,10 @@ function packageVersionAtHead(node: RepositorySaveNode) {
 	} catch {
 		return null;
 	}
+}
+
+function canManagePackageJsonVersion(node: RepositorySaveNode) {
+	return node.kind === 'package' && Boolean(node.packageJsonPath) && typeof node.packageJson?.version === 'string';
 }
 
 function packageVersionEligibleForBranch(node: RepositorySaveNode, version: string, options: RepositorySaveOptions) {
@@ -655,18 +679,24 @@ export function discoverRepositorySaveNodes(
 ): RepositorySaveNode[] {
 	const repoDirs = new Map<string, string>();
 	repoDirs.set('.', gitRoot);
+	const packageAdaptersByDir = new Map(discoverTreeseedPackageAdapters(root).map((adapter) => [resolve(adapter.dir), adapter]));
 
 	if (hasCompleteTreeseedPackageCheckout(root)) {
 		for (const pkg of workspacePackages(root)) {
-			if (isGitRepo(pkg.dir)) {
+			if (isIndependentGitRepo(pkg.dir)) {
 				repoDirs.set(pkg.relativeDir, pkg.dir);
 			}
+		}
+	}
+	for (const adapter of packageAdaptersByDir.values()) {
+		if (isIndependentGitRepo(adapter.dir)) {
+			repoDirs.set(adapter.relativeDir, adapter.dir);
 		}
 	}
 
 	for (const submodulePath of parseGitmodules(root)) {
 		const dir = resolve(root, submodulePath);
-		if (existsSync(dir) && isGitRepo(dir)) {
+		if (existsSync(dir) && isIndependentGitRepo(dir)) {
 			repoDirs.set(submodulePath, dir);
 		}
 	}
@@ -674,7 +704,8 @@ export function discoverRepositorySaveNodes(
 	const nodes = [...repoDirs.entries()].map(([relativePath, repoDir]) => {
 		const packageJsonPath = resolve(repoDir, 'package.json');
 		const packageJson = existsSync(packageJsonPath) ? readJson(packageJsonPath) : null;
-		const kind = classifyRepoKind(packageJson);
+		const adapter = packageAdaptersByDir.get(resolve(repoDir)) ?? null;
+		const kind = adapter && !packageJson ? 'package' : classifyRepoKind(packageJson);
 		const repoBranch = relativePath === '.'
 			? (currentBranch(repoDir) || branch || null)
 			: (branch || currentBranch(repoDir) || null);
@@ -685,7 +716,7 @@ export function discoverRepositorySaveNodes(
 				: 'package-dev-save';
 		return {
 			id: relativePath,
-			name: repoDisplayName(repoDir, packageJson),
+			name: adapter?.id ?? repoDisplayName(repoDir, packageJson),
 			path: repoDir,
 			relativePath,
 			kind,
@@ -694,6 +725,7 @@ export function discoverRepositorySaveNodes(
 			packageJsonPath: packageJson ? packageJsonPath : null,
 			packageJson,
 			scripts: packageScripts(packageJson),
+			manifestVerifyCommands: adapter?.verifyCommands ?? emptyManifestVerifyCommands(),
 			remoteUrl: originRemoteUrlSafe(repoDir),
 			dependencies: [],
 			dependents: [],
@@ -878,7 +910,11 @@ function commitSubject(message: string | null | undefined) {
 
 function gitDiffSummary(repoDir: string) {
 	const changedFiles = run('git', ['status', '--porcelain'], { cwd: repoDir, capture: true });
-	const diff = run('git', ['diff', '--cached'], { cwd: repoDir, capture: true });
+	const rawDiff = run('git', ['diff', '--cached'], { cwd: repoDir, capture: true, maxBuffer: 1024 * 1024 * 32 });
+	const maxDiffChars = 120_000;
+	const diff = rawDiff.length > maxDiffChars
+		? `${rawDiff.slice(0, maxDiffChars)}\n\n[treeseed-save: diff truncated from ${rawDiff.length} characters for commit-message generation]\n`
+		: rawDiff;
 	return { changedFiles, diff };
 }
 
@@ -929,43 +965,103 @@ function hasNpmLockfile(repoDir: string) {
 	return existsSync(resolve(repoDir, 'package-lock.json')) || existsSync(resolve(repoDir, 'npm-shrinkwrap.json'));
 }
 
-async function runGitDependencySmoke(node: RepositorySaveNode, options: RepositorySaveOptions, reference: PackageDependencyReference) {
-	if (reference.mode !== 'dev-git-tag' || shouldSkipGitDependencySmoke(options)) return;
-	const installSpec = reference.installSpec ?? reference.spec;
-	const tempRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-git-dep-smoke-'));
-	const npmCacheRoot = resolve(tempRoot, '.npm-cache');
-	try {
-		emitProgress(options, node, 'smoke', `Installing ${installSpec} in a temporary project.`);
-		writeFileSync(resolve(tempRoot, 'package.json'), JSON.stringify({
-			name: 'treeseed-git-dependency-smoke',
-			version: '0.0.0',
-			private: true,
-			type: 'module',
-			dependencies: {
-				[reference.packageName]: installSpec,
-			},
-		}, null, 2), 'utf8');
-		let lastError: string | null = null;
-		for (let attempt = 1; attempt <= 5; attempt += 1) {
-			emitProgress(options, node, 'smoke', `npm install --cache ${npmCacheRoot} attempt ${attempt}/5.`);
-			try {
-				await runStreamingCommand(node, options, 'smoke', 'npm', ['install', '--cache', npmCacheRoot], { cwd: tempRoot });
-				return;
-			} catch (error) {
-				lastError = error instanceof Error ? error.message : String(error);
+function syncRootWorkspaceLockfileMetadata(node: RepositorySaveNode, options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>) {
+	if (node.path !== options.root || !Array.isArray(node.packageJson?.workspaces)) return false;
+	const lockfilePath = resolve(node.path, 'package-lock.json');
+	if (!existsSync(lockfilePath)) return false;
+	const lockfile = readJson(lockfilePath);
+	const packages = lockfile.packages;
+	if (!packages || typeof packages !== 'object' || Array.isArray(packages)) return false;
+	let changed = false;
+	const packageEntries = packages as Record<string, Record<string, unknown>>;
+	const rootEntry = packageEntries[''] ?? {};
+	if (JSON.stringify(rootEntry.workspaces ?? []) !== JSON.stringify(node.packageJson.workspaces)) {
+		rootEntry.workspaces = node.packageJson.workspaces;
+		packageEntries[''] = rootEntry;
+		changed = true;
+	}
+	for (const field of dependencyFields(node.packageJson)) {
+		const nextValue = node.packageJson[field];
+		if (nextValue && typeof nextValue === 'object' && !Array.isArray(nextValue)) {
+			const currentValue = rootEntry[field];
+			const currentDeps = currentValue && typeof currentValue === 'object' && !Array.isArray(currentValue)
+				? currentValue as Record<string, unknown>
+				: {};
+			const mergedDeps = { ...currentDeps };
+			let fieldChanged = false;
+			for (const [dependencyName, dependencySpec] of Object.entries(nextValue)) {
+				if (mergedDeps[dependencyName] != null) continue;
+				mergedDeps[dependencyName] = dependencySpec;
+				fieldChanged = true;
 			}
-			if (attempt < 5) {
-				emitProgress(options, node, 'smoke', 'npm install failed; retrying in 60 seconds.', 'stderr');
-				spawnSync('sleep', ['60'], { stdio: 'ignore' });
+			if (fieldChanged) {
+				rootEntry[field] = mergedDeps;
+				packageEntries[''] = rootEntry;
+				changed = true;
 			}
 		}
+	}
+	for (const workspacePackage of workspacePackages(node.path)) {
+		const relativeDir = workspacePackage.relativeDir.replace(/\\/gu, '/');
+		const packageJson = workspacePackage.packageJson;
+		const packageName = String(packageJson.name ?? '');
+		if (!packageName) continue;
+		const packageEntry = packageEntries[relativeDir] ?? {};
+		if (packageEntry.name !== packageName) {
+			packageEntry.name = packageName;
+			changed = true;
+		}
+		if (typeof packageJson.version === 'string' && packageEntry.version !== packageJson.version) {
+			packageEntry.version = packageJson.version;
+			changed = true;
+		}
+		for (const field of dependencyFields(packageJson)) {
+			const nextValue = packageJson[field];
+			if (nextValue && typeof nextValue === 'object' && !Array.isArray(nextValue)) {
+				if (JSON.stringify(packageEntry[field] ?? {}) !== JSON.stringify(nextValue)) {
+					packageEntry[field] = nextValue;
+					changed = true;
+				}
+			}
+		}
+		packageEntries[relativeDir] = packageEntry;
+		const linkKey = `node_modules/${packageName}`;
+		const linkEntry = packageEntries[linkKey] ?? {};
+		if (linkEntry.resolved !== relativeDir) {
+			linkEntry.resolved = relativeDir;
+			changed = true;
+		}
+		if (linkEntry.link !== true) {
+			linkEntry.link = true;
+			changed = true;
+		}
+		packageEntries[linkKey] = linkEntry;
+	}
+	if (!changed) return false;
+	lockfile.packages = packageEntries;
+	writeJson(lockfilePath, lockfile);
+	emitProgress(options, node, 'lockfile', 'Synchronized root workspace lockfile metadata before validation.');
+	return true;
+}
+
+async function runGitDependencySmoke(node: RepositorySaveNode, options: RepositorySaveOptions, reference: PackageDependencyReference) {
+	if (reference.mode !== 'dev-git-tag' || shouldSkipGitDependencySmoke(options)) return;
+	const tagName = reference.tagName ?? reference.version;
+	if (!reference.remoteUrl || !tagName) {
+		throw new RepositorySaveError(`Git dependency smoke cannot verify ${reference.packageName}; remote URL or tag is missing.`);
+	}
+	const tagRef = `refs/tags/${tagName}`;
+	emitProgress(options, node, 'smoke', `Verifying ${reference.packageName} tag ${tagName} exists on ${reference.remoteUrl}.`);
+	try {
+		await runStreamingCommand(node, options, 'smoke', 'git', ['ls-remote', '--exit-code', '--tags', reference.remoteUrl, tagRef]);
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : String(error);
 		throw new RepositorySaveError([
-			`Git dependency smoke install failed for ${reference.packageName} after 5 attempts.`,
-			`Spec: ${installSpec}`,
-			lastError ?? '',
+			`Git dependency smoke failed for ${reference.packageName}; tag is not reachable on the remote.`,
+			`Remote: ${reference.remoteUrl}`,
+			`Tag: ${tagName}`,
+			detail,
 		].join('\n'));
-	} finally {
-		rmSync(tempRoot, { recursive: true, force: true });
 	}
 }
 
@@ -981,7 +1077,11 @@ async function runNpmInstallWithRetry(
 	let lastError: string | null = null;
 	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
 	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
-	const installFlags = ['--package-lock-only', '--ignore-scripts'];
+	const installFlags = rootWorkspaceInstall
+		? ['--package-lock-only', '--ignore-scripts']
+		: node.branchMode === 'project-save'
+		? ['--ignore-scripts']
+		: ['--package-lock-only', '--ignore-scripts'];
 	const args = rootWorkspaceInstall
 		? (gitDependencyRefreshSpecs.length > 0 ? ['install', ...gitDependencyRefreshSpecs, ...installFlags, '--force'] : ['install', ...installFlags])
 		: (gitDependencyRefreshSpecs.length > 0
@@ -1003,6 +1103,41 @@ async function runNpmInstallWithRetry(
 	throw new RepositorySaveError(`npm install failed after 5 attempts.\n${lastError ?? ''}`);
 }
 
+async function runProjectVerificationInstallWithRetry(
+	node: RepositorySaveNode,
+	options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>,
+) {
+	if (node.branchMode !== 'project-save' || !hasNpmLockfile(node.path)) return;
+	if (shouldSkipNetworkInstall()) {
+		emitProgress(options, node, 'install', 'Skipped project verification dependency install because network install mode is disabled.');
+		return;
+	}
+	let lastError: string | null = null;
+	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
+	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
+	if (rootWorkspaceInstall) {
+		emitProgress(options, node, 'install', 'Skipped root npm ci project verification install; lockfile dry-run and restored workspace links provide save-time dependency proof.');
+		return;
+	}
+	const args = rootWorkspaceInstall
+		? ['ci']
+		: ['ci', '--workspaces=false'];
+	for (let attempt = 1; attempt <= 5; attempt += 1) {
+		emitProgress(options, node, 'install', `npm ${args.join(' ')} for project verification attempt ${attempt}/5.`);
+		try {
+			await runStreamingCommand(node, options, 'install', 'npm', args);
+			return;
+		} catch (error) {
+			lastError = error instanceof Error ? error.message : String(error);
+		}
+		if (attempt < 5) {
+			emitProgress(options, node, 'install', 'npm ci for project verification failed; retrying in 60 seconds.', 'stderr');
+			spawnSync('sleep', ['60'], { stdio: 'ignore' });
+		}
+	}
+	throw new RepositorySaveError(`Project verification dependency install failed after 5 attempts.\n${lastError ?? ''}`);
+}
+
 function lockfileValidationCommand(node: Pick<RepositorySaveNode, 'path' | 'packageJson'>, options: Pick<RepositorySaveOptions, 'root'>) {
 	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
 	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
@@ -1019,6 +1154,7 @@ async function validateRepositoryLockfile(
 	if (!hasNpmLockfile(node.path)) {
 		return { status: 'skipped', command: null, issues: [], error: 'no npm lockfile' };
 	}
+	syncRootWorkspaceLockfileMetadata(node, options);
 	const issues = collectDeploymentLockfileWorkspaceIssues(node.path)
 		.map((issue) => `${issue.filePath}: ${issue.packageName} ${issue.reason}`);
 	if (issues.length > 0) {
@@ -1067,8 +1203,71 @@ function hasScript(node: RepositorySaveNode, scriptName: string) {
 	return typeof node.scripts[scriptName] === 'string' && node.scripts[scriptName].length > 0;
 }
 
+function manifestVerifyCommand(node: RepositorySaveNode, key: 'fast' | 'local' | 'release') {
+	return node.manifestVerifyCommands[key] ?? null;
+}
+
+function hasAnyVerificationCommand(node: RepositorySaveNode) {
+	return hasScript(node, 'verify:action')
+		|| hasScript(node, 'verify:local')
+		|| hasScript(node, 'verify')
+		|| Boolean(manifestVerifyCommand(node, 'local'))
+		|| Boolean(manifestVerifyCommand(node, 'fast'));
+}
+
 async function runScript(node: RepositorySaveNode, options: RepositorySaveOptions, scriptName: string) {
 	await runStreamingCommand(node, options, 'verify', 'npm', ['run', scriptName]);
+}
+
+async function runManifestVerifyCommand(
+	node: RepositorySaveNode,
+	options: RepositorySaveOptions,
+	verifyMode: SaveVerifyMode,
+	key: 'fast' | 'local' | 'release',
+) {
+	const manifestCommand = manifestVerifyCommand(node, key);
+	if (!manifestCommand) {
+		throw new RepositorySaveError(`${node.name} is missing a ${key} verification command in treeseed.package.yaml.`);
+	}
+	const command = `${manifestCommand.command} ${manifestCommand.args.join(' ')}`;
+	const cacheInput = {
+		workspaceRoot: options.root,
+		repoName: node.name,
+		repoPath: node.path,
+		command,
+		verifyMode,
+		env: process.env,
+	};
+	const cached = readTreeseedVerificationCache(cacheInput);
+	if (cached) {
+		emitProgress(options, node, 'verify', `[verify][cache] Reused ${node.name} ${manifestCommand.label} for ${cached.headSha.slice(0, 12)}.`);
+		return { cached: true };
+	}
+	const started = Date.now();
+	await runStreamingCommand(node, options, 'verify', manifestCommand.command, manifestCommand.args, { cwd: manifestCommand.cwd });
+	writeTreeseedVerificationCache(cacheInput, Date.now() - started);
+	return { cached: false };
+}
+
+async function runCachedScript(node: RepositorySaveNode, options: RepositorySaveOptions, verifyMode: SaveVerifyMode, scriptName: string) {
+	const command = `npm run ${scriptName}`;
+	const cacheInput = {
+		workspaceRoot: options.root,
+		repoName: node.name,
+		repoPath: node.path,
+		command,
+		verifyMode,
+		env: process.env,
+	};
+	const cached = readTreeseedVerificationCache(cacheInput);
+	if (cached) {
+		emitProgress(options, node, 'verify', `[verify][cache] Reused ${node.name} ${scriptName} for ${cached.headSha.slice(0, 12)}.`);
+		return { cached: true };
+	}
+	const started = Date.now();
+	await runScript(node, options, scriptName);
+	writeTreeseedVerificationCache(cacheInput, Date.now() - started);
+	return { cached: false };
 }
 
 async function runRepoVerification(node: RepositorySaveNode, options: RepositorySaveOptions, verifyMode: SaveVerifyMode): Promise<RepositoryVerificationResult> {
@@ -1076,30 +1275,41 @@ async function runRepoVerification(node: RepositorySaveNode, options: Repository
 		emitProgress(options, node, 'verify', 'Skipped verification by request.');
 		return { mode: verifyMode, status: 'skipped', primary: null, fallbackUsed: false, error: null };
 	}
-	if (node.kind !== 'package') {
-		emitProgress(options, node, 'verify', 'Skipped package verification for project repository.');
+	if (node.kind !== 'package' && !hasAnyVerificationCommand(node)) {
+		emitProgress(options, node, 'verify', 'Skipped verification because project repository does not declare a Treeseed verify script.');
 		return { mode: verifyMode, status: 'skipped', primary: null, fallbackUsed: false, error: null };
 	}
+	await runProjectVerificationInstallWithRetry(node, options);
 	if (verifyMode === 'local-only') {
-		if (!hasScript(node, 'verify:local')) {
-			throw new RepositorySaveError(`Package ${node.name} is missing required verify:local script.`);
+		if (hasScript(node, 'verify:local')) {
+			await runCachedScript(node, options, verifyMode, 'verify:local');
+			return { mode: verifyMode, status: 'passed', primary: 'verify:local', fallbackUsed: false, error: null };
 		}
-		await runScript(node, options, 'verify:local');
-		return { mode: verifyMode, status: 'passed', primary: 'verify:local', fallbackUsed: false, error: null };
+		if (manifestVerifyCommand(node, 'local')) {
+			await runManifestVerifyCommand(node, options, verifyMode, 'local');
+			return { mode: verifyMode, status: 'passed', primary: 'manifest:local', fallbackUsed: false, error: null };
+		}
+		if (manifestVerifyCommand(node, 'fast')) {
+			await runManifestVerifyCommand(node, options, verifyMode, 'fast');
+			return { mode: verifyMode, status: 'passed', primary: 'manifest:fast', fallbackUsed: false, error: null };
+		}
+		if (!hasScript(node, 'verify:local')) {
+			throw new RepositorySaveError(`${node.kind === 'package' ? 'Package' : 'Project'} ${node.name} is missing required verify:local script.`);
+		}
 	}
-	if (!hasScript(node, 'verify:action') && !hasScript(node, 'verify:local')) {
-		throw new RepositorySaveError(`Package ${node.name} is missing required verify:action or verify:local script.`);
+	if (!hasAnyVerificationCommand(node)) {
+		throw new RepositorySaveError(`${node.kind === 'package' ? 'Package' : 'Project'} ${node.name} is missing required verify:action, verify:local, or verify script.`);
 	}
 	if (hasScript(node, 'verify:action')) {
 		try {
-			await runScript(node, options, 'verify:action');
+			await runCachedScript(node, options, verifyMode, 'verify:action');
 			return { mode: verifyMode, status: 'passed', primary: 'verify:action', fallbackUsed: false, error: null };
 		} catch (error) {
 			if (!hasScript(node, 'verify:local')) {
 				throw error;
 			}
 			emitProgress(options, node, 'verify', 'verify:action failed; falling back to verify:local.', 'stderr');
-			await runScript(node, options, 'verify:local');
+			await runCachedScript(node, options, verifyMode, 'verify:local');
 			return {
 				mode: verifyMode,
 				status: 'passed',
@@ -1109,7 +1319,19 @@ async function runRepoVerification(node: RepositorySaveNode, options: Repository
 			};
 		}
 	}
-	await runScript(node, options, 'verify:local');
+	if (hasScript(node, 'verify:local')) {
+		await runCachedScript(node, options, verifyMode, 'verify:local');
+		return { mode: verifyMode, status: 'passed', primary: 'verify:local', fallbackUsed: true, error: null };
+	}
+	if (manifestVerifyCommand(node, 'local')) {
+		await runManifestVerifyCommand(node, options, verifyMode, 'local');
+		return { mode: verifyMode, status: 'passed', primary: 'manifest:local', fallbackUsed: true, error: null };
+	}
+	if (manifestVerifyCommand(node, 'fast')) {
+		await runManifestVerifyCommand(node, options, verifyMode, 'fast');
+		return { mode: verifyMode, status: 'passed', primary: 'manifest:fast', fallbackUsed: true, error: null };
+	}
+	await runCachedScript(node, options, verifyMode, 'verify');
 	return { mode: verifyMode, status: 'passed', primary: 'verify:local', fallbackUsed: true, error: null };
 }
 
@@ -1400,7 +1622,7 @@ function refreshRepositoryNodePackageMetadata(node: RepositorySaveNode) {
 	node.packageJson = packageJson;
 	node.scripts = packageScripts(packageJson);
 	node.remoteUrl = originRemoteUrlSafe(node.path);
-	if (node.kind === 'package') {
+	if (node.kind === 'package' && packageJson) {
 		node.name = repoDisplayName(node.path, packageJson);
 	}
 }
@@ -1535,7 +1757,7 @@ function repoPlanCommands(
 		commands.push('npm install --workspaces=false # explicitly refresh changed git-tag dependencies with --force; retry up to 5 times with 60s delay');
 	} else if (node.kind === 'project' && dependencyUpdates.length > 0 && hasNpmLockfile(node.path)) {
 		commands.push(rootWorkspaceInstall
-			? 'npm install # refresh root workspace lockfile against the real checked-in manifest'
+			? 'npm install --package-lock-only --ignore-scripts # refresh root workspace lockfile without installing git dependencies'
 			: 'npm install --workspaces=false # refresh project lockfile after internal dependency updates');
 	}
 	if (hasNpmLockfile(node.path) && (node.kind === 'project' || plannedVersion || dependencyUpdates.length > 0 || node.submoduleDependencies.length > 0)) {
@@ -1551,24 +1773,38 @@ function repoPlanCommands(
 			? `git pull --rebase --recurse-submodules=no origin ${branch}`
 			: `skip pull --rebase # origin/${branch} does not exist yet`,
 	);
-	if (node.kind === 'package') {
-		const verifyMode = options.verifyMode ?? 'action-first';
-		if (verifyMode === 'skip') {
-			commands.push('skip package verification');
-		} else if (verifyMode === 'local-only') {
+	const verifyMode = options.verifyMode ?? 'action-first';
+	if (verifyMode === 'skip') {
+		commands.push(node.kind === 'package' ? 'skip package verification' : 'skip project verification');
+	} else if (hasScript(node, 'verify:action') || hasScript(node, 'verify:local') || hasScript(node, 'verify')) {
+		if (verifyMode === 'local-only') {
+			commands.push('npm run verify:local');
+		} else if (hasScript(node, 'verify:action')) {
+			commands.push('npm run verify:action # fallback to npm run verify:local on failure');
+		} else if (hasScript(node, 'verify:local')) {
 			commands.push('npm run verify:local');
 		} else {
-			commands.push('npm run verify:action # fallback to npm run verify:local on failure');
+			commands.push('npm run verify');
 		}
+	} else if (manifestVerifyCommand(node, 'local') || manifestVerifyCommand(node, 'fast')) {
+		const command = verifyMode === 'local-only'
+			? manifestVerifyCommand(node, 'local') ?? manifestVerifyCommand(node, 'fast')
+			: manifestVerifyCommand(node, 'local') ?? manifestVerifyCommand(node, 'fast');
+		if (command) commands.push(`${command.command} ${command.args.join(' ')} # treeseed.package.yaml verification`);
+	} else if (node.kind !== 'package') {
+		commands.push('skip verification # project repository has no Treeseed verify script');
+	}
+	if (node.kind === 'package') {
 		if (plannedVersion) {
 			commands.push(`git tag -a ${plannedVersion} -m <${plannedVersion.includes('-dev.') ? 'dev metadata' : 'release'}>`);
 			commands.push(remoteExists ? `git push origin ${branch} ${plannedVersion}` : `git push -u origin ${branch} ${plannedVersion}`);
 			if (plannedDependencySpec && node.branchMode === 'package-dev-save') {
-				commands.push(`smoke install ${plannedDependencySpec}`);
+				commands.push(`git ls-remote --exit-code --tags origin refs/tags/${plannedVersion} # validate dependency tag reachability`);
 			}
+		} else {
+			commands.push(remoteExists ? `git push origin ${branch}` : `git push -u origin ${branch}`);
 		}
 	} else {
-		commands.push('skip package verification # project repository');
 		commands.push(remoteExists ? `git push origin ${branch}` : `git push -u origin ${branch}`);
 	}
 	return commands;
@@ -1602,7 +1838,7 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 				return dependency?.dirty || Boolean(dependency?.plannedVersion);
 			});
 			const dirty = hasMeaningfulChanges(node.path);
-			const packageNeedsVersion = node.kind === 'package' && (dirty || dependencyChanged || submoduleChanged);
+			const packageNeedsVersion = canManagePackageJsonVersion(node) && (dirty || dependencyChanged || submoduleChanged);
 			const currentVersion = typeof node.packageJson?.version === 'string' ? node.packageJson.version : null;
 			const plannedVersion = packageNeedsVersion ? selectPackageVersion(node, options).version : null;
 			let plannedDependencySpec: string | null = null;
@@ -1711,6 +1947,7 @@ export async function refreshAndValidateRootWorkspaceLockfileForSave(options: {
 		packageJsonPath: packageJson ? packageJsonPath : null,
 		packageJson,
 		scripts: packageScripts(packageJson),
+		manifestVerifyCommands: emptyManifestVerifyCommands(),
 		remoteUrl: originRemoteUrlSafe(repoDir),
 		dependencies: [],
 		dependents: [],
@@ -1753,13 +1990,13 @@ async function saveOneRepository(
 		.map((reference) => `${reference.packageName}@${reference.installSpec ?? reference.spec}`);
 	const submodulePointers = collectSubmodulePointerChanges(node, state.finalizedCommits);
 	const submodulesChanged = submodulePointers.length > 0;
-		const packageHasMeaningfulChanges = hasMeaningfulChanges(node.path);
-		const packageNeedsVersion = node.kind === 'package' && (
-			packageHasMeaningfulChanges
-			|| dependencyChanged
-			|| submodulesChanged
-			|| packageVersionTagConflictsWithHead(node, options)
-		);
+	const packageHasMeaningfulChanges = hasMeaningfulChanges(node.path);
+	const packageNeedsVersion = canManagePackageJsonVersion(node) && (
+		packageHasMeaningfulChanges
+		|| dependencyChanged
+		|| submodulesChanged
+		|| packageVersionTagConflictsWithHead(node, options)
+	);
 	let plannedVersion: string | null = null;
 
 	if (packageNeedsVersion) {
@@ -1810,7 +2047,7 @@ async function saveOneRepository(
 				return report;
 			}
 		}
-		if (node.id === '.') {
+		if (node.kind === 'project' || (node.kind === 'package' && !canManagePackageJsonVersion(node))) {
 			const rebase = pullRebaseFromOrigin(node, options, branch);
 			const push = pushCurrentBranch(node, options, branch);
 			report.pushed = push.pushed;
@@ -1836,7 +2073,7 @@ async function saveOneRepository(
 				return report;
 			}
 		}
-		if (node.id === '.') {
+		if (node.kind === 'project' || (node.kind === 'package' && !canManagePackageJsonVersion(node))) {
 			const rebase = pullRebaseFromOrigin(node, options, branch);
 			const push = pushCurrentBranch(node, options, branch);
 			report.pushed = push.pushed;
@@ -1885,7 +2122,7 @@ async function saveOneRepository(
 				return report;
 			}
 		}
-		if (node.id === '.') {
+		if (node.kind === 'project' || (node.kind === 'package' && !canManagePackageJsonVersion(node))) {
 			const rebase = pullRebaseFromOrigin(node, options, branch);
 			const push = pushCurrentBranch(node, options, branch);
 			report.pushed = push.pushed;
@@ -1902,13 +2139,20 @@ async function saveOneRepository(
 
 	const rebase = pullRebaseFromOrigin(node, options, branch);
 	const verifyMode = options.verifyMode ?? 'action-first';
+	if (node.kind === 'project' && node.path === options.root && Array.isArray(node.packageJson?.workspaces)) {
+		const linkReport = ensureLocalWorkspaceLinks(options.root);
+		const restoredLinks = Array.isArray(linkReport.created) ? linkReport.created.length : 0;
+		if (restoredLinks > 0) {
+			emitProgress(options, node, 'install', `Restored ${restoredLinks} local workspace package link${restoredLinks === 1 ? '' : 's'} before project verification.`);
+		}
+	}
 	if (node.kind === 'package') {
 		ensureRemoteAccessBeforeVerification(node, options, state);
 	}
 	report.verification = await runRepoVerification(node, options, verifyMode);
 	report.verified = report.verification.status === 'passed';
 
-	if (node.kind === 'package') {
+	if (canManagePackageJsonVersion(node)) {
 		const version = plannedVersion ?? String((readJson(resolve(node.path, 'package.json')).version ?? report.version ?? ''));
 		const tagMessage = ensurePackageTagReady(node, options, version, branch, options.workflowRunId);
 		report.tagName = version;

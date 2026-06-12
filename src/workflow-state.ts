@@ -22,7 +22,8 @@ import {
 import { loadCliDeployConfig } from './operations/services/runtime-tools.ts';
 import { collectCliPreflight } from './operations/services/workspace-preflight.ts';
 import { collectPublicPackageReleaseLineState, currentBranch, gitStatusPorcelain } from './operations/services/workspace-save.ts';
-import { hasCompleteTreeseedPackageCheckout, isWorkspaceRoot, run, workspacePackages } from './operations/services/workspace-tools.ts';
+import { hasCompleteTreeseedPackageCheckout, isWorkspaceRoot, run } from './operations/services/workspace-tools.ts';
+import { packageAdapterPlanSummary } from './operations/services/package-adapters.ts';
 import { inspectWorkspaceDependencyMode } from './operations/services/workspace-dependency-mode.ts';
 import { inspectDetachedHeadRepair, PRODUCTION_BRANCH, STAGING_BRANCH } from './operations/services/git-workflow.ts';
 import { classifyWorkflowRunJournals, inspectWorkflowLock } from './workflow/runs.ts';
@@ -109,6 +110,8 @@ export type TreeseedWorkflowState = {
 			nextStep: string | null;
 			reasons: string[];
 		}>;
+		staleRunsTotal: number;
+		staleRunsOmitted: number;
 		obsoleteRuns: Array<{
 			runId: string;
 			command: string;
@@ -142,6 +145,7 @@ export type TreeseedWorkflowState = {
 		blockers: string[];
 		warnings: string[];
 		releaseLine: ReturnType<typeof collectPublicPackageReleaseLineState> | null;
+		packages: ReturnType<typeof packageAdapterPlanSummary>;
 	};
 	preview: {
 		enabled: boolean;
@@ -567,29 +571,42 @@ function safeReleaseHistory(repoDir: string | null): TreeseedWorkflowState['rele
 	}
 }
 
-const DEFAULT_OBSOLETE_RUN_HISTORY_LIMIT = 20;
+const DEFAULT_WORKFLOW_RUN_HISTORY_LIMIT = 20;
+
+export function capWorkflowRunHistory<T>(
+	runs: T[],
+	options: { history?: 'recent' | 'all'; limit?: number } = {},
+) {
+	const historyMode = options.history === 'all' ? 'all' : 'recent';
+	const limit = options.limit ?? DEFAULT_WORKFLOW_RUN_HISTORY_LIMIT;
+	const total = runs.length;
+	if (historyMode === 'all') {
+		return {
+			historyMode,
+			runs,
+			total,
+			omitted: 0,
+		};
+	}
+	const cappedRuns = runs.slice(0, limit);
+	return {
+		historyMode,
+		runs: cappedRuns,
+		total,
+		omitted: Math.max(0, total - cappedRuns.length),
+	};
+}
 
 export function capObsoleteWorkflowRuns<T>(
 	obsoleteRuns: T[],
 	options: { history?: 'recent' | 'all'; limit?: number } = {},
 ) {
-	const historyMode = options.history === 'all' ? 'all' : 'recent';
-	const limit = options.limit ?? DEFAULT_OBSOLETE_RUN_HISTORY_LIMIT;
-	const obsoleteRunsTotal = obsoleteRuns.length;
-	if (historyMode === 'all') {
-		return {
-			historyMode,
-			obsoleteRuns,
-			obsoleteRunsTotal,
-			obsoleteRunsOmitted: 0,
-		};
-	}
-	const cappedRuns = obsoleteRuns.slice(0, limit);
+	const capped = capWorkflowRunHistory(obsoleteRuns, options);
 	return {
-		historyMode,
-		obsoleteRuns: cappedRuns,
-		obsoleteRunsTotal,
-		obsoleteRunsOmitted: Math.max(0, obsoleteRunsTotal - cappedRuns.length),
+		historyMode: capped.historyMode,
+		obsoleteRuns: capped.runs,
+		obsoleteRunsTotal: capped.total,
+		obsoleteRunsOmitted: capped.omitted,
 	};
 }
 
@@ -614,33 +631,34 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 	const dirtyWorktree = root ? gitStatusPorcelain(root).length > 0 : false;
 	const completePackageCheckout = hasCompleteTreeseedPackageCheckout(effectiveCwd);
 	const workspaceDependencyMode = inspectWorkspaceDependencyMode(effectiveCwd);
-	const packageSyncRepos = completePackageCheckout
-		? workspacePackages(effectiveCwd)
-			.filter((pkg) => pkg.name?.startsWith('@treeseed/'))
+	const packageAdapters = workspaceRoot ? packageAdapterPlanSummary(effectiveCwd) : [];
+	const packageSyncRepos = workspaceRoot
+		? packageAdapters
 			.map((pkg) => {
-				const repoBranch = currentBranch(pkg.dir) || null;
-				const dirty = gitStatusPorcelain(pkg.dir).length > 0;
+				const packageDir = resolve(effectiveCwd, pkg.path);
+				const repoBranch = currentBranch(packageDir) || null;
+				const dirty = gitStatusPorcelain(packageDir).length > 0;
 				const expectedBranch = branchName;
 				const detachedRepair = repoBranch
 					? null
-					: inspectDetachedHeadRepair(pkg.dir, [expectedBranch, STAGING_BRANCH, PRODUCTION_BRANCH].filter((branch): branch is string => Boolean(branch)));
+					: inspectDetachedHeadRepair(packageDir, [expectedBranch, STAGING_BRANCH, PRODUCTION_BRANCH].filter((branch): branch is string => Boolean(branch)));
 				let localBranch = false;
 				if (expectedBranch) {
 					if (repoBranch === expectedBranch) {
 						localBranch = true;
 					} else {
 						try {
-							run('git', ['show-ref', '--verify', '--quiet', `refs/heads/${expectedBranch}`], { cwd: pkg.dir, capture: true });
+							run('git', ['show-ref', '--verify', '--quiet', `refs/heads/${expectedBranch}`], { cwd: packageDir, capture: true });
 							localBranch = true;
 						} catch {
 							localBranch = false;
 						}
 					}
 				}
-				const remoteBranch = Boolean(expectedBranch) ? knownRemoteTrackingBranchExists(pkg.dir, expectedBranch) : false;
+				const remoteBranch = Boolean(expectedBranch) ? knownRemoteTrackingBranchExists(packageDir, expectedBranch) : false;
 				return {
-					name: pkg.name,
-					path: pkg.relativeDir,
+					name: pkg.id,
+					path: pkg.path,
 					branchName: repoBranch,
 					dirty,
 					aligned: expectedBranch ? repoBranch === expectedBranch : true,
@@ -699,7 +717,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 	const runnerHostId = typeof marketSettings?.runnerHostId === 'string' && marketSettings.runnerHostId.trim()
 		? marketSettings.runnerHostId.trim()
 		: (typeof marketSettings?.projectId === 'string' && marketSettings.projectId.trim()
-			? `market-runner:${marketSettings.projectId.trim()}`
+			? `operations-runner:${marketSettings.projectId.trim()}`
 			: null);
 	const runnerSession = runnerHostId ? safeResolveRemoteSession(effectiveCwd, runnerHostId) : null;
 	const workflowLock = inspectWorkflowLock(effectiveCwd);
@@ -707,8 +725,8 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 	if (root) {
 		workflowRunHeads['@treeseed/market'] = safeHeadCommit(root);
 	}
-	for (const pkg of completePackageCheckout ? workspacePackages(effectiveCwd).filter((entry) => entry.name?.startsWith('@treeseed/')) : []) {
-		workflowRunHeads[pkg.name] = safeHeadCommit(pkg.dir);
+	for (const pkg of packageAdapters) {
+		workflowRunHeads[pkg.id] = safeHeadCommit(resolve(effectiveCwd, pkg.path));
 	}
 	const classifiedRuns = classifyWorkflowRunJournals(effectiveCwd, {
 		currentBranch: branchName,
@@ -731,6 +749,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			nextStep: journal.steps.find((step) => step.status === 'pending')?.description ?? null,
 			reasons: classification.reasons,
 		}));
+	const staleHistory = capWorkflowRunHistory(staleRuns, { history: options.history });
 	const obsoleteRuns = classifiedRuns
 		.filter((entry) => entry.classification.state === 'obsolete')
 		.map(({ journal, classification }) => ({
@@ -774,7 +793,9 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 				staleReason: workflowLock.staleReason,
 			},
 			interruptedRuns,
-			staleRuns,
+			staleRuns: staleHistory.runs,
+			staleRunsTotal: staleHistory.total,
+			staleRunsOmitted: staleHistory.omitted,
 			obsoleteRuns: obsoleteHistory.obsoleteRuns,
 			historyMode: obsoleteHistory.historyMode,
 			obsoleteRunsTotal: obsoleteHistory.obsoleteRunsTotal,
@@ -793,6 +814,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			blockers: packageSyncBlockers,
 			warnings: packageSyncWarnings,
 			releaseLine: packageReleaseLine,
+			packages: packageAdapters,
 		},
 		preview: {
 			enabled: false,
@@ -914,7 +936,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			state.auth.railway = state.auth.railway || hasStatusConfigValue(statusConfigByScope, 'RAILWAY_API_TOKEN');
 			state.auth.copilot = state.auth.copilot || state.auth.gh;
 			state.marketConnection.baseUrl = state.marketConnection.baseUrl
-				?? sharedConfigValues.TREESEED_MARKET_API_BASE_URL
+				?? sharedConfigValues.TREESEED_API_BASE_URL
 				?? deployConfig.runtime?.marketBaseUrl
 				?? deployConfig.hosting?.marketBaseUrl
 				?? null;

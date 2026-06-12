@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { CloudflareD1AgentDatabase, MemoryAgentDatabase } from '../../src/d1-store.ts';
@@ -66,6 +66,17 @@ Fixture template body
 }
 
 describe('Node SQLite D1 path resolution', () => {
+	it('preserves SQLite in-memory database paths without creating a repository directory', () => {
+		const database = new NodeSqliteD1Database(':memory:');
+		try {
+			expect(database.path).toBe(':memory:');
+			expect(resolveTreeseedSqlitePath(':memory:')).toBe(':memory:');
+			expect(existsSync(resolve(process.cwd(), ':memory:'))).toBe(false);
+		} finally {
+			database.close();
+		}
+	});
+
 	it('prefers Wrangler Miniflare SQLite files when a D1 state directory is provided', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-sdk-d1-state-'));
 		const d1Root = resolve(root, 'v3', 'd1');
@@ -82,6 +93,7 @@ describe('Node SQLite D1 path resolution', () => {
 describe('agent sdk', () => {
 	it('reads content-backed models through the public knowledge alias', async () => {
 		const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 			repoRoot: sdkFixtureRoot,
 			database: new MemoryAgentDatabase(),
 		});
@@ -99,6 +111,7 @@ describe('agent sdk', () => {
 
 	it('supports read as a public alias for get', async () => {
 		const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 			repoRoot: sdkFixtureRoot,
 			database: new MemoryAgentDatabase(),
 		});
@@ -135,6 +148,7 @@ describe('agent sdk', () => {
 			],
 		});
 		const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 			repoRoot: sdkFixtureRoot,
 			database,
 		});
@@ -157,6 +171,7 @@ describe('agent sdk', () => {
 
 	it('resolves the expanded public model set', async () => {
 		const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 			repoRoot: sdkFixtureRoot,
 			database: new MemoryAgentDatabase(),
 		});
@@ -172,6 +187,7 @@ describe('agent sdk', () => {
 
 	it('searches representative page and note content from the fixture site', async () => {
 		const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 			repoRoot: sdkFixtureRoot,
 			database: new MemoryAgentDatabase(),
 		});
@@ -195,6 +211,7 @@ describe('agent sdk', () => {
 
 	it('finds at least one generic agent entry in the fixture site', async () => {
 		const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 			repoRoot: sdkFixtureRoot,
 			database: new MemoryAgentDatabase(),
 		});
@@ -213,6 +230,7 @@ describe('agent sdk', () => {
 	it('supports site-registered content models like template', async () => {
 		const repoRoot = createTempContentSite();
 		const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 			repoRoot,
 			database: new MemoryAgentDatabase(),
 			models: [
@@ -257,6 +275,7 @@ describe('agent sdk', () => {
 		process.env.TREESEED_AGENT_DISABLE_GIT = 'true';
 		try {
 			const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 				repoRoot,
 				database: new MemoryAgentDatabase(),
 			});
@@ -294,6 +313,7 @@ describe('agent sdk', () => {
 	it('supports latest and oldest content pick strategies', async () => {
 		const repoRoot = createTempContentSite();
 		const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 			repoRoot,
 			database: new MemoryAgentDatabase(),
 		});
@@ -318,6 +338,7 @@ describe('agent sdk', () => {
 	it('resolves legacy content field aliases during search', async () => {
 		const repoRoot = createTempContentSite();
 		const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 			repoRoot,
 			database: new MemoryAgentDatabase(),
 		});
@@ -341,6 +362,7 @@ describe('agent sdk', () => {
 		process.env.TREESEED_AGENT_DISABLE_GIT = 'true';
 		try {
 			const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 				repoRoot,
 				database: new MemoryAgentDatabase(),
 			});
@@ -376,6 +398,7 @@ describe('agent sdk', () => {
 			],
 		});
 		const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 			repoRoot: sdkFixtureRoot,
 			database,
 		});
@@ -458,6 +481,7 @@ describe('agent sdk', () => {
 			],
 		});
 		const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 			repoRoot: sdkFixtureRoot,
 			database,
 		});
@@ -488,6 +512,7 @@ describe('agent sdk', () => {
 
 	it('persists agent runtime state through the in-memory runtime store', async () => {
 		const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 			repoRoot: sdkFixtureRoot,
 			database: new MemoryAgentDatabase(),
 		});
@@ -583,6 +608,7 @@ describe('agent sdk', () => {
 		];
 		for (const database of databases) {
 			const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 				repoRoot: sdkFixtureRoot,
 				database,
 			});
@@ -688,6 +714,7 @@ describe('agent sdk', () => {
 		];
 		for (const database of databases) {
 			const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 				repoRoot: sdkFixtureRoot,
 				database,
 			});
@@ -757,6 +784,7 @@ describe('agent sdk', () => {
 		try {
 			for (const database of databases) {
 				const sdk = new AgentSdk({
+			contentRepository: { adapter: 'local' },
 					repoRoot: sdkFixtureRoot,
 					database,
 				});

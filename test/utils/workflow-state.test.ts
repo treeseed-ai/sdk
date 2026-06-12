@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { capObsoleteWorkflowRuns, recommendTreeseedNextSteps, type TreeseedWorkflowState } from '../../src/workflow-state.ts';
+import { capObsoleteWorkflowRuns, capWorkflowRunHistory, recommendTreeseedNextSteps, type TreeseedWorkflowState } from '../../src/workflow-state.ts';
 import { classifyWorkflowRunJournal, type TreeseedWorkflowRunJournal } from '../../src/workflow/runs.ts';
 
 function stagingState(unreleasedStagingCommits: number): TreeseedWorkflowState {
@@ -68,6 +68,17 @@ describe('workflow state recommendations', () => {
 		expect(capped.obsoleteRuns).toHaveLength(20);
 		expect(capped.obsoleteRunsTotal).toBe(25);
 		expect(capped.obsoleteRunsOmitted).toBe(5);
+	});
+
+	it('caps generic workflow run history by default', () => {
+		const runs = Array.from({ length: 25 }, (_, index) => ({ runId: `run-${index}` }));
+
+		const capped = capWorkflowRunHistory(runs);
+
+		expect(capped.historyMode).toBe('recent');
+		expect(capped.runs).toHaveLength(20);
+		expect(capped.total).toBe(25);
+		expect(capped.omitted).toBe(5);
 	});
 
 	it('keeps all obsolete workflow history when requested', () => {

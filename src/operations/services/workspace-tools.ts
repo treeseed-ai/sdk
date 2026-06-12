@@ -219,6 +219,7 @@ export function run(command, args, options = {}) {
 		stdio: options.capture ? 'pipe' : 'inherit',
 		encoding: 'utf8',
 		timeout: options.timeoutMs,
+		maxBuffer: options.maxBuffer ?? 1024 * 1024 * 32,
 	});
 
 	if (result.status !== 0) {

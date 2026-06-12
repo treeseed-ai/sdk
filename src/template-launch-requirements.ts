@@ -441,9 +441,11 @@ function hostMetadataType(host: ProjectLaunchHostInventoryRecord) {
 	if (metadataType === 'web_host' || metadataType === 'cloudflare' || metadataType === 'web') return 'web';
 	if (metadataType === 'email_host' || metadataType === 'smtp' || metadataType === 'email') return 'email';
 	if (metadataType === 'ai_host' || metadataType === 'ai') return 'ai';
+	if (metadataType === 'knowledge_library' || metadataType === 'knowledge-library' || metadataType === 'treedx') return 'knowledge-library';
 	if (host.provider === 'smtp') return 'email';
 	if (host.provider === 'cloudflare') return 'web';
 	if (host.provider === 'github') return 'repository';
+	if (host.provider === 'treedx') return 'knowledge-library';
 	return metadataType ?? '';
 }
 
@@ -487,6 +489,13 @@ function portableHostConfigValues(requirement: TemplateHostRequirement, provider
 	}
 	if (requirement.type === 'email' && provider === 'smtp') {
 		values.smtp = { profile: alias };
+		return values;
+	}
+	if (requirement.type === 'knowledge-library' && provider === 'treedx') {
+		values.treeDx = {
+			instance: alias,
+			contentAccessMode: 'treedx',
+		};
 		return values;
 	}
 	return values;

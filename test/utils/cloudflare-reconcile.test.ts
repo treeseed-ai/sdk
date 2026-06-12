@@ -316,9 +316,9 @@ beforeEach(() => {
 		};
 		vi.stubEnv('TREESEED_PUBLIC_TURNSTILE_SITE_KEY', 'manual-site-key');
 
-		const observed = adapter!.observe({ unit, context } as never);
-		const diff = adapter!.plan({ unit, context, observed } as never);
-		await adapter!.reconcile({ unit, context, observed, diff } as never);
+		const observed = adapter!.refresh({ unit, context } as never);
+		const diff = adapter!.diff({ unit, context, observed } as never);
+		await adapter!.apply({ unit, context, observed, diff } as never);
 
 		expect(runWranglerMock).toHaveBeenCalledWith(['kv', 'namespace', 'create', 'acme-docs-form-guard-staging']);
 		expect(
@@ -361,6 +361,76 @@ beforeEach(() => {
 			},
 		});
 		expect(resolveTreeseedMachineEnvironmentValuesMock).not.toHaveBeenCalled();
+	});
+
+	it('plans existing Pages projects for update when preview environment variables drift', async () => {
+		const { createCloudflareReconcileAdapters } = await import('../../src/reconcile/builtin-adapters.ts');
+		const adapter = createCloudflareReconcileAdapters().find((entry) => entry.unitTypes.includes('pages-project'));
+		expect(adapter).toBeTruthy();
+
+		const unit = {
+			unitId: 'pages-project:acme-docs',
+			unitType: 'pages-project',
+			provider: 'cloudflare',
+			target: { kind: 'persistent', scope: 'staging' },
+			logicalName: 'acme-docs',
+			dependencies: [],
+			spec: {
+				projectName: 'acme-docs',
+				productionBranch: 'main',
+				stagingBranch: 'staging',
+				buildOutputDir: 'dist',
+			},
+			secrets: {},
+			metadata: {},
+			identity: deployState.identity,
+		};
+		const context = {
+			tenantRoot: '/tmp/tenant',
+			target: { kind: 'persistent', scope: 'staging' },
+			deployConfig: {
+				name: 'Test',
+				slug: 'test',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				hosting: { kind: 'hosted_project', teamId: 'acme', projectId: 'docs' },
+				runtime: { mode: 'treeseed_managed', registration: 'none', teamId: 'acme', projectId: 'docs' },
+				providers: { content: { runtime: 'team_scoped_r2_overlay', publish: 'team_scoped_r2_overlay' } },
+				cloudflare: {
+					accountId: 'account-123',
+					queueName: 'agent-work',
+					dlqName: 'agent-work-dlq',
+					queueBinding: 'AGENT_WORK_QUEUE',
+					pages: { productionBranch: 'main', stagingBranch: 'staging' },
+					r2: {},
+				},
+				turnstile: { enabled: true },
+			},
+			launchEnv: {
+				CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				CLOUDFLARE_API_TOKEN: 'cf-token',
+			},
+			session: new Map(),
+		};
+
+		const observed = adapter!.refresh({ unit, context } as never);
+		const diff = adapter!.diff({ unit, context, observed } as never);
+		expect(diff.action).toBe('update');
+		expect(diff.reasons.some((reason) => reason.includes('TREESEED_PROJECT_ID'))).toBe(true);
+
+		await adapter!.apply({ unit, context, observed, diff } as never);
+		const patchCall = cloudflareApiRequestMock.mock.calls.find(([, options]) => options?.method === 'PATCH');
+		expect(patchCall?.[1]?.body).toMatchObject({
+			deployment_configs: {
+				preview: {
+					env_vars: {
+						EXISTING_VAR: { type: 'plain_text', value: 'keep' },
+						TREESEED_PROJECT_ID: { type: 'plain_text', value: 'docs' },
+						TREESEED_HOSTING_TEAM_ID: { type: 'plain_text', value: 'acme' },
+					},
+				},
+			},
+		});
 	});
 
 	it('verifies Turnstile widgets against a fresh lookup after reconcile updates domains', async () => {
@@ -424,9 +494,9 @@ beforeEach(() => {
 			session: new Map(),
 		};
 
-		const observed = adapter!.observe({ unit, context } as never);
-		const diff = adapter!.plan({ unit, context, observed } as never);
-		const result = await adapter!.reconcile({ unit, context, observed, diff } as never);
+		const observed = adapter!.refresh({ unit, context } as never);
+		const diff = adapter!.diff({ unit, context, observed } as never);
+		const result = await adapter!.apply({ unit, context, observed, diff } as never);
 		const verification = await adapter!.verify({ unit, context, observed: result.observed, diff, result, postconditions: [] } as never);
 
 		expect(turnstileWidgets[0]?.domains).toEqual(['acme-docs.pages.dev', 'example.com']);
@@ -474,9 +544,9 @@ beforeEach(() => {
 			session: new Map(),
 		};
 
-		const observed = await adapter!.observe({ unit, context } as never);
-		const diff = adapter!.plan({ unit, context, observed } as never);
-		await adapter!.reconcile({ unit, context, observed, diff } as never);
+		const observed = await adapter!.refresh({ unit, context } as never);
+		const diff = adapter!.diff({ unit, context, observed } as never);
+		await adapter!.apply({ unit, context, observed, diff } as never);
 
 		expect(resolveTreeseedMachineEnvironmentValuesMock).not.toHaveBeenCalled();
 		expect(railwayEnvMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -559,9 +629,9 @@ beforeEach(() => {
 			session: new Map(),
 		};
 
-		const observed = adapter!.observe({ unit, context } as never);
-		const diff = adapter!.plan({ unit, context, observed } as never);
-		const result = await adapter!.reconcile({ unit, context, observed, diff } as never);
+		const observed = adapter!.refresh({ unit, context } as never);
+		const diff = adapter!.diff({ unit, context, observed } as never);
+		const result = await adapter!.apply({ unit, context, observed, diff } as never);
 		const verification = await adapter!.verify({ unit, context, observed: result.observed, diff, result, postconditions: [] } as never);
 
 		expect(verification.verified).toBe(true);

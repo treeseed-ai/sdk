@@ -9,6 +9,7 @@ import {
 	setTreeseedMachineEnvironmentValue,
 } from './operations/services/config-runtime.ts';
 import type { NativeUsageObservation } from './sdk-types.ts';
+import type { ProjectRepositoryTopology } from './sdk-types.ts';
 
 export const CAPACITY_PROVIDER_ENDPOINTS = {
 	register: '/v1/provider/register',
@@ -36,7 +37,7 @@ export const CAPACITY_PROVIDER_SCOPES = [
 
 export const CAPACITY_PROVIDER_ENV_KEYS = [
 	'TREESEED_MARKET_URL',
-	'TREESEED_MARKET_ID',
+	'TREESEED_MANAGER_ID',
 	'TREESEED_CAPACITY_PROVIDER_API_KEY',
 	'TREESEED_PROVIDER_HOST_DATA_DIR',
 	'TREESEED_PROVIDER_DATA_DIR',
@@ -212,6 +213,7 @@ export interface CapacityProviderPortfolioProject {
 		submodulePath?: string | null;
 		webUrl?: string | null;
 	};
+	repositoryTopology?: ProjectRepositoryTopology;
 	agentSpecs: {
 		root: string;
 		testsRoot: string;
@@ -597,6 +599,30 @@ export function assertCapacityProviderPortfolioManifest(value: unknown): asserts
 		requireString(project, 'slug', `Capacity provider portfolio project ${index}`);
 		requireString(project, 'name', `Capacity provider portfolio project ${index}`);
 		if (!isRecord(project.repository)) throw new Error(`Capacity provider portfolio project ${index} is missing repository.`);
+		if (project.repositoryTopology !== undefined) {
+			if (!isRecord(project.repositoryTopology)) {
+				throw new Error(`Capacity provider portfolio project ${index} repositoryTopology must be an object.`);
+			}
+			if (!isRecord(project.repositoryTopology.contentRepository)) {
+				throw new Error(`Capacity provider portfolio project ${index} repositoryTopology is missing contentRepository.`);
+			}
+			if (project.repositoryTopology.contentRepository.accessMode !== 'treedx') {
+				throw new Error(`Capacity provider portfolio project ${index} contentRepository must use treedx access.`);
+			}
+			if (!isRecord(project.repositoryTopology.siteRepository)) {
+				throw new Error(`Capacity provider portfolio project ${index} repositoryTopology is missing siteRepository.`);
+			}
+			if (project.repositoryTopology.siteRepository.accessMode !== 'filesystem') {
+				throw new Error(`Capacity provider portfolio project ${index} siteRepository must use filesystem access.`);
+			}
+			if (
+				project.repositoryTopology.projectRepository !== undefined
+				&& project.repositoryTopology.projectRepository !== null
+				&& (!isRecord(project.repositoryTopology.projectRepository) || project.repositoryTopology.projectRepository.accessMode !== 'filesystem')
+			) {
+				throw new Error(`Capacity provider portfolio project ${index} projectRepository must use filesystem access.`);
+			}
+		}
 		if (!isRecord(project.agentSpecs)) throw new Error(`Capacity provider portfolio project ${index} is missing agentSpecs.`);
 		if (!isRecord(project.workPolicy)) throw new Error(`Capacity provider portfolio project ${index} is missing workPolicy.`);
 	}
@@ -605,13 +631,13 @@ export function assertCapacityProviderPortfolioManifest(value: unknown): asserts
 export function resolveCapacityProviderEnvironment(input: CapacityProviderEnvironmentInput): Record<string, string> {
 	const env: Record<string, string> = {
 		TREESEED_MARKET_URL: normalizeBaseUrl(input.marketUrl),
-		TREESEED_MARKET_ID: input.marketId.trim(),
+		TREESEED_MANAGER_ID: input.marketId.trim(),
 		TREESEED_CAPACITY_PROVIDER_API_KEY: input.apiKey.trim(),
 		TREESEED_PROVIDER_DATA_DIR: input.providerDataDir ?? '/data',
 		TREESEED_PROVIDER_API_PORT: stringValue(input.providerApiPort, '3100'),
 		TREESEED_PROVIDER_ENVIRONMENT: input.providerEnvironment ?? 'local',
 	};
-	if (!env.TREESEED_MARKET_ID) throw new Error('Capacity provider Market ID is required.');
+	if (!env.TREESEED_MANAGER_ID) throw new Error('Capacity provider Market ID is required.');
 	if (!env.TREESEED_CAPACITY_PROVIDER_API_KEY) throw new Error('Capacity provider API key is required.');
 	if (input.providerHostDataDir) env.TREESEED_PROVIDER_HOST_DATA_DIR = input.providerHostDataDir;
 	if (input.capabilitiesFile) env.TREESEED_PROVIDER_CAPABILITIES_FILE = input.capabilitiesFile;
@@ -671,7 +697,7 @@ export function resolveCapacityProviderLaunchEnvironment(input: CapacityProvider
 	}
 	const required = [
 		'TREESEED_MARKET_URL',
-		'TREESEED_MARKET_ID',
+		'TREESEED_MANAGER_ID',
 		...(diagnostic ? [] : ['TREESEED_CAPACITY_PROVIDER_API_KEY']),
 		'TREESEED_PROVIDER_HOST_DATA_DIR',
 	];
@@ -704,7 +730,7 @@ export function persistCapacityProviderConnectionToTreeseedConfig(input: Capacit
 	const entryById = new Map(registryEntries.map((entry) => [entry.id, entry]));
 	const keys = [
 		'TREESEED_MARKET_URL',
-		'TREESEED_MARKET_ID',
+		'TREESEED_MANAGER_ID',
 		'TREESEED_CAPACITY_PROVIDER_API_KEY',
 		'TREESEED_PROVIDER_HOST_DATA_DIR',
 		'TREESEED_PROVIDER_ENVIRONMENT',

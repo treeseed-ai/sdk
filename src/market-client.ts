@@ -19,7 +19,12 @@ import type {
 	ProjectDeploymentEnvironment,
 	ProjectDeploymentEvent,
 	ProjectDeploymentReadiness,
+	ProjectRepositoryTopology,
 	ProjectWebDeploymentAction,
+	TreeDxInstance,
+	TreeDxMirror,
+	TreeDxProjectLibraryBinding,
+	TreeDxShareLink,
 } from './sdk-types.ts';
 import {
 	TREESEED_REMOTE_CONTRACT_HEADER,
@@ -33,7 +38,7 @@ import {
 
 export const DEFAULT_TREESEED_MARKET_BASE_URL = 'https://api.treeseed.ai';
 export const TREESEED_CENTRAL_MARKET_API_BASE_URL_ENV = 'TREESEED_CENTRAL_MARKET_API_BASE_URL';
-export const TREESEED_MARKET_API_BASE_URL_ENV = 'TREESEED_MARKET_API_BASE_URL';
+export const TREESEED_API_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
 export const TREESEED_CATALOG_MARKET_API_BASE_URLS_ENV = 'TREESEED_CATALOG_MARKET_API_BASE_URLS';
 
 export type MarketProfileKind = 'central' | 'specialized';
@@ -204,7 +209,7 @@ function defaultLocalMarket(env: Record<string, string | undefined> = process.en
 		id: 'local',
 		label: 'Local TreeSeed Market',
 		baseUrl: normalizeBaseUrl(
-			envValue(TREESEED_MARKET_API_BASE_URL_ENV, env)
+			envValue(TREESEED_API_BASE_URL_ENV, env)
 			?? 'http://127.0.0.1:3000',
 		),
 		kind: 'specialized',
@@ -422,14 +427,14 @@ export function resolveCatalogMarketProfiles(selector?: string | null, env: Reco
 	});
 }
 
-export class MarketApiError extends Error {
+export class MarketClientError extends Error {
 	constructor(
 		message: string,
 		readonly status: number,
 		readonly payload: unknown,
 	) {
 		super(message);
-		this.name = 'MarketApiError';
+		this.name = 'MarketClientError';
 	}
 }
 
@@ -474,7 +479,7 @@ export class MarketClient {
 				: payloadError && typeof payloadError === 'object' && typeof (payloadError as { message?: unknown }).message === 'string'
 					? String((payloadError as { message: string }).message)
 					: `Market request failed with ${response.status}.`;
-			throw new MarketApiError(error, response.status, payload);
+			throw new MarketClientError(error, response.status, payload);
 		}
 		return payload as T;
 	}
@@ -484,19 +489,19 @@ export class MarketClient {
 	}
 
 	private async requestFirst<T>(paths: string[], options: { method?: string; body?: unknown; requireAuth?: boolean } = {}): Promise<T> {
-		let notFound: MarketApiError | null = null;
+		let notFound: MarketClientError | null = null;
 		for (const path of paths) {
 			try {
 				return await this.request<T>(path, options);
 			} catch (error) {
-				if (error instanceof MarketApiError && error.status === 404) {
+				if (error instanceof MarketClientError && error.status === 404) {
 					notFound = error;
 					continue;
 				}
 				throw error;
 			}
 		}
-		throw notFound ?? new MarketApiError('Market request failed with 404.', 404, {});
+		throw notFound ?? new MarketClientError('Market request failed with 404.', 404, {});
 	}
 
 	startDeviceLogin(request: DeviceCodeStartRequest) {
@@ -707,6 +712,90 @@ export class MarketClient {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/hosts`,
 			{ requireAuth: true },
+		);
+	}
+
+	teamTreeDx(teamId: string) {
+		return this.request<{ ok: true; payload: { instance: TreeDxInstance | null; mirrors: TreeDxMirror[]; shares: TreeDxShareLink[]; deployments: unknown[] } }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedx`,
+			{ requireAuth: true },
+		);
+	}
+
+	updateTeamTreeDx(teamId: string, body: Partial<TreeDxInstance> & Record<string, unknown>) {
+		return this.request<{ ok: true; payload: { instance: TreeDxInstance } }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedx`,
+			{ method: 'PUT', body, requireAuth: true },
+		);
+	}
+
+	provisionTeamTreeDx(teamId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: { instance: TreeDxInstance | null; mirrors: TreeDxMirror[]; shares: TreeDxShareLink[]; deployments: unknown[] } }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedx/provision`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	treeDxMirrors(teamId: string) {
+		return this.request<{ ok: true; payload: TreeDxMirror[] }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedx/mirrors`,
+			{ requireAuth: true },
+		);
+	}
+
+	createTreeDxMirror(teamId: string, body: Partial<TreeDxMirror> & Record<string, unknown>) {
+		return this.request<{ ok: true; payload: TreeDxMirror }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedx/mirrors`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	syncTreeDxMirror(teamId: string, mirrorId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: TreeDxMirror }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedx/mirrors/${encodeURIComponent(mirrorId)}/sync`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	treeDxShares(teamId: string) {
+		return this.request<{ ok: true; payload: TreeDxShareLink[] }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedx/shares`,
+			{ requireAuth: true },
+		);
+	}
+
+	createTreeDxShare(teamId: string, body: Partial<TreeDxShareLink> & Record<string, unknown>) {
+		return this.request<{ ok: true; payload: TreeDxShareLink }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/treedx/shares`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	projectTreeDxLibrary(projectId: string) {
+		return this.request<{ ok: true; payload: TreeDxProjectLibraryBinding | null }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/treedx-library`,
+			{ requireAuth: true },
+		);
+	}
+
+	upsertProjectTreeDxLibrary(projectId: string, body: Partial<TreeDxProjectLibraryBinding> & Record<string, unknown>) {
+		return this.request<{ ok: true; payload: TreeDxProjectLibraryBinding }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/treedx-library`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	projectRepositoryTopology(projectId: string) {
+		return this.request<{ ok: true; payload: ProjectRepositoryTopology }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/repository-topology`,
+			{ requireAuth: true },
+		);
+	}
+
+	updateProjectRepositoryTopology(projectId: string, body: ProjectRepositoryTopology | Record<string, unknown>) {
+		return this.request<{ ok: true; payload: ProjectRepositoryTopology }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/repository-topology`,
+			{ method: 'PUT', body, requireAuth: true },
 		);
 	}
 
@@ -980,7 +1069,7 @@ export async function listIntegratedMarketCatalog<T extends Record<string, unkno
 		} catch (error) {
 			errors.push({
 				market: profileToSource(profile),
-				status: error instanceof MarketApiError ? error.status : undefined,
+				status: error instanceof MarketClientError ? error.status : undefined,
 				error: error instanceof Error ? error.message : String(error),
 			});
 		}
@@ -1022,7 +1111,7 @@ export async function resolveIntegratedCatalogArtifactDownload({
 				},
 			};
 		} catch (error) {
-			if (error instanceof MarketApiError && error.status === 404) {
+			if (error instanceof MarketClientError && error.status === 404) {
 				continue;
 			}
 			errors.push(`${profile.id}: ${error instanceof Error ? error.message : String(error)}`);

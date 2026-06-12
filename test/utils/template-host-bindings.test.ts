@@ -196,14 +196,14 @@ describe('template host binding config writer', () => {
 		const result = applyProjectLaunchHostBindingConfig({
 			projectRoot: root,
 			hostBindings: {
-				marketDatabase: resolvedHost({
-					requirementKey: 'marketDatabase',
+				treeseedDatabase: resolvedHost({
+					requirementKey: 'treeseedDatabase',
 					requirementKind: 'resource',
 					type: 'database',
 					provider: 'railway-postgres',
 					hostId: 'railway-postgres-main',
-					displayName: 'Market Postgres',
-					configValues: { serviceName: 'treeseed-market-postgres' },
+					displayName: 'Treeseed Postgres',
+					configValues: { serviceName: 'treeseed-api-postgres' },
 					secretRefs: { databaseUrl: 'railway.database-url-ref' },
 				}),
 				api: resolvedHost({
@@ -212,17 +212,17 @@ describe('template host binding config writer', () => {
 					type: 'service',
 					provider: 'railway',
 					hostId: 'railway-api-service',
-					displayName: 'Market API',
-					configValues: { serviceName: 'treeseed-market-api' },
+					displayName: 'API',
+					configValues: { serviceName: 'treeseed-api' },
 				}),
-				marketOperationsRunner: resolvedHost({
-					requirementKey: 'marketOperationsRunner',
+				operationsRunner: resolvedHost({
+					requirementKey: 'operationsRunner',
 					requirementKind: 'resource',
 					type: 'service',
 					provider: 'railway',
 					hostId: 'railway-runner-service',
-					displayName: 'Market Operations Runner',
-					configValues: { serviceName: 'treeseed-market-operations-runner' },
+					displayName: 'Treeseed Operations Runner',
+					configValues: { serviceName: 'treeseed-api-operations-runner-01' },
 					environmentValues: { runnerId: 'runner-staging' },
 					secretRefs: { runnerToken: 'runner-token-ref' },
 				}),
@@ -231,27 +231,27 @@ describe('template host binding config writer', () => {
 				configWrites: [
 					{
 						target: 'treeseed.site.yaml',
-						path: 'services.marketDatabase.enabled',
+						path: 'services.treeseedDatabase.enabled',
 						valueFrom: 'literal.true',
-						requirementKey: 'marketDatabase',
+						requirementKey: 'treeseedDatabase',
 						requirementKind: 'resource',
 						requirementType: 'database',
 						provider: 'railway-postgres',
 					},
 					{
 						target: 'treeseed.site.yaml',
-						path: 'services.marketDatabase.provider',
+						path: 'services.treeseedDatabase.provider',
 						valueFrom: 'literal.railway',
-						requirementKey: 'marketDatabase',
+						requirementKey: 'treeseedDatabase',
 						requirementKind: 'resource',
 						requirementType: 'database',
 						provider: 'railway-postgres',
 					},
 					{
 						target: 'treeseed.site.yaml',
-						path: 'services.marketDatabase.railway.serviceName',
+						path: 'services.treeseedDatabase.railway.serviceName',
 						valueFrom: 'selectedResource.configValues.serviceName',
-						requirementKey: 'marketDatabase',
+						requirementKey: 'treeseedDatabase',
 						requirementKind: 'resource',
 						requirementType: 'database',
 						provider: 'railway-postgres',
@@ -267,9 +267,9 @@ describe('template host binding config writer', () => {
 					},
 					{
 						target: 'treeseed.site.yaml',
-						path: 'services.marketOperationsRunner.railway.serviceName',
+						path: 'services.operationsRunner.railway.serviceName',
 						valueFrom: 'selectedResource.configValues.serviceName',
-						requirementKey: 'marketOperationsRunner',
+						requirementKey: 'operationsRunner',
 						requirementKind: 'resource',
 						requirementType: 'service',
 						provider: 'railway',
@@ -278,9 +278,9 @@ describe('template host binding config writer', () => {
 				secretDeployment: {
 					items: [
 						{
-							requirementKey: 'marketDatabase',
+							requirementKey: 'treeseedDatabase',
 							requirementKind: 'resource',
-							env: 'TREESEED_MARKET_DATABASE_URL',
+							env: 'TREESEED_DATABASE_URL',
 							sensitivity: 'secret',
 							source: 'selectedResource.secretRefs.databaseUrl',
 							targets: ['github-secret', 'railway-secret'],
@@ -288,7 +288,7 @@ describe('template host binding config writer', () => {
 							sourceHostId: 'railway-postgres-main',
 						},
 						{
-							requirementKey: 'marketOperationsRunner',
+							requirementKey: 'operationsRunner',
 							requirementKind: 'resource',
 							env: 'TREESEED_PLATFORM_RUNNER_TOKEN',
 							sensitivity: 'secret',
@@ -304,25 +304,25 @@ describe('template host binding config writer', () => {
 
 		const config = parseYaml(readFileSync(resolve(root, 'treeseed.site.yaml'), 'utf8')) as any;
 		const overlay = parseYaml(readFileSync(resolve(root, 'src/env.yaml'), 'utf8')) as any;
-		expect(config.services.marketDatabase).toMatchObject({
+		expect(config.services.treeseedDatabase).toMatchObject({
 			enabled: true,
 			provider: 'railway',
-			railway: { serviceName: 'treeseed-market-postgres' },
+			railway: { serviceName: 'treeseed-api-postgres' },
 		});
-		expect(config.services.api.railway.serviceName).toBe('treeseed-market-api');
-		expect(config.services.marketOperationsRunner.railway.serviceName).toBe('treeseed-market-operations-runner');
-		expect(overlay.entries.TREESEED_MARKET_DATABASE_URL).toMatchObject({
+		expect(config.services.api.railway.serviceName).toBe('treeseed-api');
+		expect(config.services.operationsRunner.railway.serviceName).toBe('treeseed-api-operations-runner-01');
+		expect(overlay.entries.TREESEED_DATABASE_URL).toMatchObject({
 			sensitivity: 'secret',
-			sourceRequirement: 'marketDatabase',
+			sourceRequirement: 'treeseedDatabase',
 			sourceHostType: 'database',
 			sourceProvider: 'railway-postgres',
 		});
 		expect(overlay.entries.TREESEED_PLATFORM_RUNNER_TOKEN).toMatchObject({
-			sourceRequirement: 'marketOperationsRunner',
+			sourceRequirement: 'operationsRunner',
 			sourceHostType: 'service',
 			sourceProvider: 'railway',
 		});
-		expect(result.configWrites.map((write) => write.path)).toContain('services.marketDatabase.railway.serviceName');
+		expect(result.configWrites.map((write) => write.path)).toContain('services.treeseedDatabase.railway.serviceName');
 		expect(JSON.stringify({ config, overlay, result })).not.toContain('postgres://');
 		expect(JSON.stringify({ config, overlay, result })).not.toContain('runner-secret');
 	});

@@ -58,6 +58,8 @@ cloudflare:
 	});
 
 	it('normalizes legacy hosted_project configs into a treeseed-managed runtime plane', async () => {
+		const previousApiBaseUrl = process.env.TREESEED_API_BASE_URL;
+		delete process.env.TREESEED_API_BASE_URL;
 		const configPath = await writeDeployConfig(`name: Test Site
 slug: test-site
 siteUrl: https://example.com
@@ -72,15 +74,20 @@ cloudflare:
   accountId: account-123
 `);
 
-		const config = loadTreeseedDeployConfigFromPath(configPath);
-		expect(config.hub).toMatchObject({ mode: 'treeseed_hosted' });
-		expect(config.runtime).toMatchObject({
-			mode: 'treeseed_managed',
-			registration: 'optional',
-			marketBaseUrl: 'https://market.example.com',
-			teamId: 'team-1',
-			projectId: 'project-1',
-		});
+		try {
+			const config = loadTreeseedDeployConfigFromPath(configPath);
+			expect(config.hub).toMatchObject({ mode: 'treeseed_hosted' });
+			expect(config.runtime).toMatchObject({
+				mode: 'treeseed_managed',
+				registration: 'optional',
+				marketBaseUrl: 'https://market.example.com',
+				teamId: 'team-1',
+				projectId: 'project-1',
+			});
+		} finally {
+			if (previousApiBaseUrl === undefined) delete process.env.TREESEED_API_BASE_URL;
+			else process.env.TREESEED_API_BASE_URL = previousApiBaseUrl;
+		}
 	});
 
 	it('honors explicit plane config over legacy hosting defaults', async () => {
@@ -115,7 +122,7 @@ slug: test-market
 siteUrl: https://market.example.com
 contactEmail: hello@example.com
 hosting:
-  kind: market_control_plane
+  kind: treeseed_control_plane
   registration: optional
   teamId: treeseed
   projectId: market
@@ -132,7 +139,7 @@ cloudflare:
 		expect(config.hub).toMatchObject({ mode: 'treeseed_hosted' });
 		expect(config.runtime).toMatchObject({ mode: 'treeseed_managed', registration: 'none' });
 		expect(config.hosting).toMatchObject({
-			kind: 'market_control_plane',
+			kind: 'treeseed_control_plane',
 			registration: 'none',
 			teamId: 'treeseed',
 			projectId: 'market',

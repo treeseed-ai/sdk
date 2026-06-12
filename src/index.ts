@@ -1,5 +1,31 @@
 export { AgentSdk, ScopedAgentSdk } from './sdk.ts';
+export type {
+	AgentSdkContentRepositoryOptions,
+	AgentSdkTreeDxOptions,
+	TreeSeedTreeDxContentPathRule,
+	TreeSeedTreeDxRepositoryHint,
+} from './sdk.ts';
 export { ContentGraphRuntime } from './graph.ts';
+export * from './treedx/index.ts';
+export {
+	createTreeDxClientFromAgentOptions,
+	LocalContentBackend,
+	LocalExecBackend,
+	LocalGraphBackend,
+	TreeDxApiError,
+	TreeDxContentBackend,
+	TreeDxContentRepositoryConfigError,
+	TreeDxExecBackend,
+	TreeDxGraphBackend,
+	TreeDxPortfolioResolver,
+} from './treedx-backends.ts';
+export type {
+	ContentBackend,
+	ExecBackend,
+	GraphBackend,
+	ResolvedTreeDxOptions,
+	TreeDxRepositoryCandidate,
+} from './treedx-backends.ts';
 export {
 	TREESEED_DEFAULT_STARTER_TEMPLATE_ID,
 	TREESEED_TEMPLATE_ID_ALIASES,
@@ -92,8 +118,27 @@ export {
 	type GitHubWorkflowProgressEvent,
 } from './operations/services/github-api.ts';
 export {
+	collectTreeseedHostedServiceChecks,
+	type TreeseedHostedServiceCheck,
+	type TreeseedHostedServiceCheckReport,
+	type TreeseedHostedServiceCheckStatus,
+	type TreeseedHostedServiceType,
+	type TreeseedObservedRailwayServiceState,
+} from './operations/services/hosted-service-checks.ts';
+export {
 	buildProjectWebMonitorResult,
 } from './operations/services/project-web-monitor.ts';
+export {
+	discoverTreeseedPackageAdapters,
+	findTreeseedPackageAdapter,
+	packageAdapterPlanSummary,
+	planTreeseedPackageDevelopmentImage,
+	readMixProjectVersion,
+	type TreeseedPackageAdapter,
+	type TreeseedPackageCommand,
+	type TreeseedPackageDevelopmentImagePlan,
+	type TreeseedPackageKind,
+} from './operations/services/package-adapters.ts';
 export {
 	DEFAULT_EXECUTION_PROFILE_ID,
 	DEFAULT_EXECUTION_PROFILES,
@@ -144,6 +189,11 @@ export {
 	validateTaskPlanProposal,
 } from './capacity.ts';
 export {
+	githubRepositoryCredentialEnvName,
+	resolveGitHubCredentialForRepository,
+	type TreeseedGitHubCredentialResolution,
+} from './operations/services/github-credentials.ts';
+export {
 	executeKnowledgeHubProviderLaunch,
 	validateKnowledgeHubProviderLaunchPrerequisites,
 } from './operations/services/hub-provider-launch.ts';
@@ -164,14 +214,20 @@ export {
 	type RepositoryHost,
 } from './operations/services/hub-launch.ts';
 export {
+	deployRailwayServiceInstance,
 	ensureRailwayEnvironment,
+	ensureRailwayGeneratedServiceDomain,
 	ensureRailwayProject,
 	ensureRailwayService,
+	ensureRailwayServiceInstanceConfiguration,
+	ensureRailwayServiceVolume,
 	getRailwayAuthProfile,
 	listRailwayEnvironments,
 	listRailwayProjects,
+	listRailwayServiceDomains,
 	listRailwayServices,
 	listRailwayVariables,
+	normalizeRailwayEnvironmentName,
 	railwayGraphqlRequest,
 	resolveRailwayApiToken,
 	resolveRailwayApiUrl,
@@ -398,11 +454,11 @@ export type {
 } from './operations/services/project-host-operations.ts';
 export {
 	MarketClient,
-	MarketApiError,
+	MarketClientError,
 	DEFAULT_TREESEED_MARKET_BASE_URL,
 	TREESEED_CATALOG_MARKET_API_BASE_URLS_ENV,
 	TREESEED_CENTRAL_MARKET_API_BASE_URL_ENV,
-	TREESEED_MARKET_API_BASE_URL_ENV,
+	TREESEED_API_BASE_URL_ENV,
 	addMarketProfile,
 	clearMarketSession,
 	listIntegratedMarketCatalog,
@@ -444,8 +500,8 @@ export {
 	createTreeseedReconcileRegistry,
 	deriveTreeseedDesiredUnits,
 	destroyTreeseedTargetUnits,
-	observeTreeseedUnits,
 	planTreeseedReconciliation,
+	refreshTreeseedUnits,
 	reconcileTreeseedTarget,
 } from './reconcile/index.ts';
 export { getTreeseedVerifyDriverStatus, runTreeseedVerifyDriver } from './verification.ts';

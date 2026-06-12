@@ -76,7 +76,7 @@ describe('platform operation SDK contracts', () => {
 		})).not.toThrow();
 	});
 
-	it('maps runner client requests to Market API service-auth endpoints', async () => {
+	it('maps runner client requests to API service-auth endpoints', async () => {
 		const calls: Array<{ url: string; init: RequestInit }> = [];
 		const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
 			calls.push({ url, init });

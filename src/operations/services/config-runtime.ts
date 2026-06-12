@@ -42,10 +42,15 @@ import {
 	validateRailwayDeployPrerequisites,
 } from './railway-deploy.ts';
 import {
+	ensureRailwayEnvironment,
+	ensureRailwayProject,
+	ensureRailwayService,
 	normalizeRailwayEnvironmentName,
 	resolveRailwayWorkspace,
 	resolveRailwayWorkspaceContext,
+	upsertRailwayVariables,
 } from './railway-api.ts';
+import { discoverTreeseedApplications } from '../../hosting/apps.ts';
 import {
 	createGitHubApiClient,
 	ensureGitHubActionsEnvironment,
@@ -55,6 +60,7 @@ import {
 	upsertGitHubEnvironmentSecret,
 	upsertGitHubEnvironmentVariable,
 } from './github-api.ts';
+import { resolveGitHubCredentialForRepository } from './github-credentials.ts';
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin, withProcessCwd } from './runtime-tools.ts';
 import { PRODUCTION_BRANCH, STAGING_BRANCH } from './git-workflow.ts';
 import {
@@ -97,6 +103,15 @@ export const TREESEED_TEMPLATE_CATALOG_URL_ENV = 'TREESEED_TEMPLATE_CATALOG_URL'
 export const TREESEED_API_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
 const CLI_CHECK_TIMEOUT_MS = 5000;
 const DEPRECATED_LOCAL_ENV_FILES = ['.env.local', '.dev.vars'] as const;
+const PROVIDER_CONTROL_ENV_KEYS = [
+	'GH_TOKEN',
+	'GITHUB_TOKEN',
+	'CLOUDFLARE_API_TOKEN',
+	'CLOUDFLARE_ACCOUNT_ID',
+	'CLOUDFLARE_ZONE_ID',
+	'RAILWAY_API_TOKEN',
+	'TREESEED_RAILWAY_WORKSPACE',
+];
 const warnedDeprecatedLocalEnvRoots = new Set<string>();
 const inlineTreeseedSecretSessions = new Map<string, { machineKey: Buffer | null; lastTouchedAt: number; idleTimeoutMs: number }>();
 const railwayConnectionCheckCache = new Map<string, Promise<ReturnType<typeof providerConnectionResult>>>();
@@ -1802,18 +1817,82 @@ export function collectTreeseedConfigSeedValues(tenantRoot, scope, env = process
 	warnDeprecatedTreeseedLocalEnvFiles(tenantRoot);
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
 	let machineValues = {};
+	let localMachineValues = {};
 	try {
 		machineValues = resolveTreeseedMachineEnvironmentValues(tenantRoot, scope);
+		if (scope !== 'local') {
+			localMachineValues = resolveTreeseedMachineEnvironmentValues(tenantRoot, 'local');
+		}
 	} catch (error) {
 		if (!(error instanceof TreeseedKeyAgentError)) {
 			throw error;
 		}
 	}
-	return filterEnvironmentValuesByRegistry({
+	const providerCredentialFallbacks = Object.fromEntries(
+		PROVIDER_CONTROL_ENV_KEYS
+			.map((key) => [key, localMachineValues[key]])
+			.filter(([, value]) => typeof value === 'string' && value.length > 0),
+	);
+	const values = {
+		...providerCredentialFallbacks,
 		...machineValues,
 		...nonEmptyEnvironmentValues(env),
 		...nonEmptyEnvironmentValues(valuesOverlay),
-	}, registry, scope);
+	};
+	const providerControlValues = Object.fromEntries(
+		PROVIDER_CONTROL_ENV_KEYS
+			.map((key) => [key, values[key]])
+			.filter(([, value]) => typeof value === 'string' && value.length > 0),
+	);
+	return {
+		...providerControlValues,
+		...filterEnvironmentValuesByRegistry(values, registry, scope),
+	};
+}
+
+function workspaceBootstrapDeployConfig(tenantRoot, deployConfig) {
+	const appConfigs = discoverTreeseedApplications(tenantRoot)
+		.map((application) => application.config)
+		.filter((config) => config && config !== deployConfig);
+	if (appConfigs.length === 0) {
+		return deployConfig;
+	}
+	const merged = {
+		...deployConfig,
+		runtime: { ...(deployConfig.runtime ?? {}) },
+		surfaces: { ...(deployConfig.surfaces ?? {}) },
+		services: { ...(deployConfig.services ?? {}) },
+	};
+	for (const config of appConfigs) {
+		if (config.runtime?.mode && merged.runtime?.mode !== 'treeseed_managed') {
+			merged.runtime = { ...merged.runtime, ...config.runtime };
+		}
+		merged.surfaces = { ...merged.surfaces, ...(config.surfaces ?? {}) };
+		merged.services = { ...merged.services, ...(config.services ?? {}) };
+	}
+	return merged;
+}
+
+function configuredMarketDatabaseService(tenantRoot, deployConfig) {
+	if (deployConfig.services?.treeseedDatabase) {
+		return treeseedDatabaseDescriptor(deployConfig.services.treeseedDatabase, deployConfig.slug);
+	}
+	for (const application of discoverTreeseedApplications(tenantRoot)) {
+		const service = application.config.services?.treeseedDatabase;
+		if (service) {
+			return treeseedDatabaseDescriptor(service, application.config.slug);
+		}
+	}
+	return null;
+}
+
+function treeseedDatabaseDescriptor(service, slug) {
+	return {
+		service,
+		serviceName: typeof service.railway?.serviceName === 'string' && service.railway.serviceName.trim()
+			? service.railway.serviceName.trim()
+			: `${slug ?? 'treeseed-api'}-postgres`,
+	};
 }
 
 function nonEmptyEnvironmentValues(env = process.env) {
@@ -1897,7 +1976,7 @@ export function resolveTreeseedLaunchEnvironment({
 	const systemSecretSuggestedValues = Object.fromEntries(
 		registry.entries
 			.filter((entry) =>
-				entry.id === 'TREESEED_PLATFORM_RUNNER_SECRET'
+				['TREESEED_PLATFORM_RUNNER_SECRET', 'TREESEED_CREDENTIAL_SESSION_SECRET'].includes(entry.id)
 				&& typeof suggestedValues[entry.id] === 'string'
 				&& suggestedValues[entry.id].length > 0
 			)
@@ -2047,26 +2126,6 @@ function runGh(args, { cwd, dryRun = false, input, env } = {}) {
 	}
 	if (result.status !== 0) {
 		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `gh ${args.join(' ')} failed`);
-	}
-	return result;
-}
-
-function runRailway(args, { cwd, dryRun = false, input } = {}) {
-	if (dryRun) {
-		return { status: 0, stdout: '', stderr: '' };
-	}
-	const railway = resolveTreeseedToolCommand('railway');
-	if (!railway) {
-		throw new Error('Railway CLI is unavailable.');
-	}
-	const result = spawnSync(railway.command, [...railway.argsPrefix, ...args], {
-		cwd,
-		stdio: input !== undefined ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
-		encoding: 'utf8',
-		input,
-	});
-	if (result.status !== 0) {
-		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `railway ${args.join(' ')} failed`);
 	}
 	return result;
 }
@@ -2486,6 +2545,71 @@ async function runBounded<T>(
 	await Promise.all(workers);
 }
 
+function repositorySlugFromPackageJson(root: string) {
+	try {
+		const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as Record<string, unknown>;
+		const repository = packageJson.repository;
+		const raw = typeof repository === 'string'
+			? repository
+			: repository && typeof repository === 'object' && !Array.isArray(repository)
+				? (repository as Record<string, unknown>).url
+				: null;
+		if (typeof raw !== 'string') return null;
+		const normalized = raw
+			.trim()
+			.replace(/^git\+/u, '')
+			.replace(/^ssh:\/\/git@github\.com[:/]/u, '')
+			.replace(/^git@github\.com:/u, '')
+			.replace(/^https:\/\/github\.com\//u, '')
+			.replace(/\.git$/u, '')
+			.replace(/\/$/u, '');
+		return /^[^/\s]+\/[^/\s]+$/u.test(normalized) ? normalized : null;
+	} catch {
+		return null;
+	}
+}
+
+function resolveGitHubRepositorySlugForPath(root: string) {
+	try {
+		return maybeResolveGitHubRepositorySlug(root);
+	} catch {
+		return null;
+	}
+}
+
+function discoverGitHubEnvironmentSyncTargets(tenantRoot: string, explicitRepository?: string | null) {
+	const targets = new Map<string, { repository: string; managedHostMode: 'auto' | 'direct' | 'managed' }>();
+	const add = (repository: string | null | undefined, managedHostMode: 'auto' | 'direct' | 'managed') => {
+		if (!repository || !repository.trim()) return;
+		const normalized = repository.trim();
+		const existing = targets.get(normalized);
+		if (!existing || (existing.managedHostMode === 'managed' && managedHostMode === 'direct')) {
+			targets.set(normalized, { repository: normalized, managedHostMode });
+		}
+	};
+	add(explicitRepository ?? resolveGitHubRepositorySlugForPath(tenantRoot), 'auto');
+	for (const application of discoverTreeseedApplications(tenantRoot)) {
+		const repository = resolveGitHubRepositorySlugForPath(application.root) ?? repositorySlugFromPackageJson(application.root);
+		const managedHostMode = usesManagedHostOperationRequests(application.config) ? 'managed' : 'direct';
+		add(repository, managedHostMode);
+	}
+	return [...targets.values()];
+}
+
+function withGitHubEnvironmentCredentialContext(
+	error: unknown,
+	repository: string,
+	credential: ReturnType<typeof resolveGitHubCredentialForRepository>,
+) {
+	const message = error instanceof Error && error.message.trim()
+		? error.message.trim()
+		: String(error ?? 'GitHub environment sync failed.');
+	if (credential.fallbackUsed && /authentication failed|resource not accessible|403/iu.test(message)) {
+		return new Error(`${message} Configure ${credential.envName} with Actions environment secrets and variables permissions for ${repository}; the fallback GH_TOKEN is not sufficient for this repository.`);
+	}
+	return error;
+}
+
 export async function syncTreeseedGitHubEnvironment({
 	tenantRoot,
 	scope = 'prod',
@@ -2540,11 +2664,11 @@ export async function syncTreeseedGitHubEnvironment({
 		}
 		return Boolean(entry.targets.includes('github-variable') && allowedVariables?.has(entry.id));
 	});
-	const ghToken = values.GH_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
-	const ghEnv = ghToken
+	const credential = resolveGitHubCredentialForRepository(repository, { values, env: process.env });
+	const ghEnv = credential.token
 		? {
-			GH_TOKEN: ghToken,
-			GITHUB_TOKEN: ghToken,
+			GH_TOKEN: credential.token,
+			GITHUB_TOKEN: credential.token,
 		}
 		: {};
 	const githubClient = createGitHubApiClient({ env: ghEnv });
@@ -2554,19 +2678,29 @@ export async function syncTreeseedGitHubEnvironment({
 	const progress = (message: string, stream: 'stdout' | 'stderr' = 'stdout') => onProgress?.(message, stream);
 	if (!dryRun) {
 		progress(`[${scope}][github][environment] Ensuring GitHub environment ${environment} exists...`);
-		await ensureGitHubActionsEnvironment(repository, environment, {
-			client: githubClient,
-			branchName: deploymentBranch,
-			tagName: deploymentTag,
-		});
+		try {
+			await ensureGitHubActionsEnvironment(repository, environment, {
+				client: githubClient,
+				branchName: deploymentBranch,
+				tagName: deploymentTag,
+			});
+		} catch (error) {
+			throw withGitHubEnvironmentCredentialContext(error, repository, credential);
+		}
 	}
 	progress(`[${scope}][github][sync] Loading existing GitHub secrets and variables...`);
 	const [secretNames, variableNames] = dryRun
 		? [new Set<string>(), new Set<string>()]
-		: await Promise.all([
-			listGitHubEnvironmentSecretNames(repository, environment, { client: githubClient }),
-			listGitHubEnvironmentVariableNames(repository, environment, { client: githubClient }),
-		]);
+		: await (async () => {
+			try {
+				return await Promise.all([
+					listGitHubEnvironmentSecretNames(repository, environment, { client: githubClient }),
+					listGitHubEnvironmentVariableNames(repository, environment, { client: githubClient }),
+				]);
+			} catch (error) {
+				throw withGitHubEnvironmentCredentialContext(error, repository, credential);
+			}
+		})();
 	const synced = {
 		secrets: [] as Array<{ name: string; existed: boolean }>,
 		variables: [] as Array<{ name: string; existed: boolean }>,
@@ -2591,10 +2725,14 @@ export async function syncTreeseedGitHubEnvironment({
 	const limit = execution === 'sequential' ? 1 : concurrency;
 	await runBounded(items, limit, async (item) => {
 		if (!dryRun) {
-			if (item.kind === 'secret') {
-				await upsertGitHubEnvironmentSecret(repository, environment, item.name, item.value, { client: githubClient });
-			} else {
-				await upsertGitHubEnvironmentVariable(repository, environment, item.name, item.value, { client: githubClient });
+			try {
+				if (item.kind === 'secret') {
+					await upsertGitHubEnvironmentSecret(repository, environment, item.name, item.value, { client: githubClient });
+				} else {
+					await upsertGitHubEnvironmentVariable(repository, environment, item.name, item.value, { client: githubClient });
+				}
+			} catch (error) {
+				throw withGitHubEnvironmentCredentialContext(error, repository, credential);
 			}
 		}
 		completed += 1;
@@ -2612,6 +2750,13 @@ export async function syncTreeseedGitHubEnvironment({
 		repository,
 		scope,
 		environment,
+		credential: {
+			repository: credential.repository,
+			envName: credential.envName,
+			configured: credential.configured,
+			source: credential.source,
+			fallbackUsed: credential.fallbackUsed,
+		},
 		entryIds: entryFilter ? [...entryFilter] : undefined,
 		...synced,
 	};
@@ -2699,7 +2844,7 @@ function railwayEnvironmentEntryIdsForService(registry, values, scope, target, s
 		.filter((key) => typeof values[key] === 'string' && values[key].length > 0);
 }
 
-export function syncTreeseedRailwayEnvironment({
+export async function syncTreeseedRailwayEnvironment({
 	tenantRoot,
 	scope = 'prod',
 	dryRun = false,
@@ -2720,15 +2865,13 @@ export function syncTreeseedRailwayEnvironment({
 		...nonEmptyEnvironmentValues(valuesOverlay),
 	};
 	const deployConfig = loadCliDeployConfig(tenantRoot);
-	const marketDatabaseService = deployConfig.services?.marketDatabase;
-	const marketDatabaseBaseName = typeof marketDatabaseService?.railway?.serviceName === 'string' && marketDatabaseService.railway.serviceName.trim()
-		? marketDatabaseService.railway.serviceName.trim()
-		: `${deployConfig.slug ?? 'treeseed-market'}-postgres`;
-	const marketDatabaseServiceName = `${marketDatabaseBaseName.replace(/-(staging|prod|production)$/u, '')}-${scope === 'prod' ? 'prod' : scope}`;
-	const marketDatabaseUrl = typeof values.TREESEED_MARKET_DATABASE_URL === 'string' && values.TREESEED_MARKET_DATABASE_URL.length > 0
-		? values.TREESEED_MARKET_DATABASE_URL
-		: marketDatabaseService?.enabled !== false && marketDatabaseService?.provider === 'railway'
-			? `\${{${marketDatabaseServiceName}.DATABASE_URL}}`
+	const treeseedDatabase = configuredMarketDatabaseService(tenantRoot, deployConfig);
+	const treeseedDatabaseService = treeseedDatabase?.service;
+	const treeseedDatabaseServiceName = treeseedDatabase?.serviceName ?? '';
+	const treeseedDatabaseUrl = typeof values.TREESEED_DATABASE_URL === 'string' && values.TREESEED_DATABASE_URL.length > 0
+		? values.TREESEED_DATABASE_URL
+		: treeseedDatabaseService?.enabled !== false && treeseedDatabaseService?.provider === 'railway'
+			? `\${{${treeseedDatabaseServiceName}.DATABASE_URL}}`
 			: '';
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
 	const entryFilter = Array.isArray(entryIds) && entryIds.length > 0 ? new Set(entryIds) : null;
@@ -2742,13 +2885,13 @@ export function syncTreeseedRailwayEnvironment({
 			const environmentName = normalizeRailwayEnvironmentName(service.railwayEnvironment ?? scope);
 			const serviceValues = {
 				...values,
-				...(service.key === 'marketOperationsRunner' ? {
+				...(service.key === 'operationsRunner' ? {
 					TREESEED_PLATFORM_RUNNER_ID: service.runnerId ?? service.serviceName,
 					TREESEED_PLATFORM_RUNNER_DATA_DIR: service.volumeMountPath ?? values.TREESEED_PLATFORM_RUNNER_DATA_DIR,
 					TREESEED_PLATFORM_RUNNER_ENVIRONMENT: scope === 'prod' ? 'production' : scope,
 				} : {}),
-				...(marketDatabaseUrl && ['api', 'marketOperationsRunner'].includes(service.key)
-					? { TREESEED_MARKET_DATABASE_URL: marketDatabaseUrl }
+				...(treeseedDatabaseUrl && ['api', 'operationsRunner'].includes(service.key)
+					? { TREESEED_DATABASE_URL: treeseedDatabaseUrl }
 					: {}),
 			};
 			const serviceName = service.serviceName ?? fallbackServiceName;
@@ -2772,17 +2915,38 @@ export function syncTreeseedRailwayEnvironment({
 	for (const service of services) {
 		const serviceValues = serviceValuesByName.get(service.serviceName || service.serviceId || service.instanceKey || service.service) ?? values;
 		progress(`[${scope}][railway][${service.service}] Syncing ${service.secrets.length} secrets and ${service.variables.length} variables...`);
-		for (const key of service.secrets) {
-			runRailway(
-				['variable', 'set', '--service', service.serviceName || service.serviceId, '--environment', service.environmentName, '--stdin', '--skip-deploys', key],
-				{ cwd: service.rootDir, dryRun, input: serviceValues[key] },
+		if (!dryRun) {
+			const railwayEnv = { ...process.env, ...values };
+			const project = (await ensureRailwayProject({
+				projectId: '',
+				projectName: service.projectName,
+				env: railwayEnv,
+			})).project;
+			const environment = (await ensureRailwayEnvironment({
+				projectId: project.id,
+				environmentName: service.environmentName,
+				env: railwayEnv,
+			})).environment;
+			const railwayService = (await ensureRailwayService({
+				projectId: project.id,
+				serviceId: service.serviceId,
+				serviceName: service.serviceName,
+				env: railwayEnv,
+			})).service;
+			const variableValues = Object.fromEntries(
+				[...service.secrets, ...service.variables]
+					.map((key) => [key, serviceValues[key]])
+					.filter(([, value]) => typeof value === 'string' && value.length > 0),
 			);
-		}
-		for (const key of service.variables) {
-			runRailway(
-				['variable', 'set', '--service', service.serviceName || service.serviceId, '--environment', service.environmentName, '--stdin', '--skip-deploys', key],
-				{ cwd: service.rootDir, dryRun, input: serviceValues[key] },
-			);
+			if (Object.keys(variableValues).length > 0) {
+				await upsertRailwayVariables({
+					projectId: project.id,
+					environmentId: environment.id,
+					serviceId: railwayService.id,
+					variables: variableValues,
+					env: railwayEnv,
+				});
+			}
 		}
 		progress(`[${scope}][railway][${service.service}] Complete.`);
 	}
@@ -3130,7 +3294,7 @@ function buildConfigEntrySnapshot(scope: TreeseedConfigScope, entry, currentValu
 				return true;
 		}
 	})();
-	const allowGeneratedSecretDefault = entry.id === 'TREESEED_PLATFORM_RUNNER_SECRET';
+	const allowGeneratedSecretDefault = ['TREESEED_PLATFORM_RUNNER_SECRET', 'TREESEED_WEB_SERVICE_SECRET', 'TREESEED_API_WEB_SERVICE_SECRET', 'TREESEED_CREDENTIAL_SESSION_SECRET'].includes(entry.id);
 	const allowSuggestedDefault = allowGeneratedSecretDefault || !(entry.sensitivity === 'secret' && entry.requirement !== 'optional');
 	const effectiveValue = currentValueValid
 		? (currentValue || (allowSuggestedDefault ? suggestedValue : '') || '')
@@ -3370,7 +3534,7 @@ export async function finalizeTreeseedConfig({
 
 	for (const scope of scopes) {
 		const selection = resolveTreeseedBootstrapSelection({
-			deployConfig: registry.context.deployConfig,
+			deployConfig: workspaceBootstrapDeployConfig(tenantRoot, registry.context.deployConfig),
 			env: scopeSeedValues[scope],
 			systems: scope === 'local' ? ['github'] : systems,
 			skipUnavailable: scope === 'local' ? true : skipUnavailable,
@@ -3527,7 +3691,7 @@ export async function finalizeTreeseedConfig({
 					result: {},
 				});
 			}
-			const deploySystems = selection.runnable.filter((system) => system === 'data' || system === 'web');
+			const deploySystems = selection.runnable.filter((system) => system === 'data' || system === 'web' || system === 'api' || system === 'agents');
 			if (deploySystems.length > 0) {
 				progress(`[${scope}][bootstrap][deploy] Deploying ${deploySystems.join(', ')}...`);
 				applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override: true });
@@ -3588,27 +3752,37 @@ export async function finalizeTreeseedConfig({
 
 	if (sync === 'github' || sync === 'all') {
 		const githubScopes = scopes.filter((scope) => scope !== 'local' && summary.bootstrapSystemsByScope[scope].runnable.includes('github'));
-		const syncScope = async (scope: TreeseedConfigScope) => {
-			progress(`[${scope}][github][sync] Syncing GitHub environment...`);
+		const githubTargets = discoverGitHubEnvironmentSyncTargets(tenantRoot, githubRepository);
+		if (githubTargets.length === 0 && githubScopes.length > 0) {
+			throw new Error('Unable to determine the GitHub repository from the origin remote.');
+		}
+		const syncScope = async (scope: TreeseedConfigScope, target: { repository: string; managedHostMode: 'auto' | 'direct' | 'managed' }) => {
+			progress(`[${scope}][github][sync] Syncing GitHub environment for ${target.repository}...`);
 			return await syncTreeseedGitHubEnvironment({
 				tenantRoot,
 				scope,
-				repository: githubRepository,
+				repository: target.repository,
+				managedHostMode: target.managedHostMode,
 				execution: bootstrapExecution,
 				onProgress: progress,
 			});
 		};
 		const githubResults: Array<Awaited<ReturnType<typeof syncTreeseedGitHubEnvironment>>> = [];
 		if (bootstrapExecution === 'sequential') {
-			for (const scope of githubScopes) {
-				githubResults.push(await syncScope(scope));
+			for (const target of githubTargets) {
+				for (const scope of githubScopes) {
+					githubResults.push(await syncScope(scope, target));
+				}
 			}
 		} else {
-			githubResults.push(...await Promise.all(githubScopes.map((scope) => syncScope(scope))));
+			githubResults.push(...await Promise.all(githubTargets.flatMap((target) =>
+				githubScopes.map((scope) => syncScope(scope, target)),
+			)));
 		}
 		summary.synced.github = {
 			scopes: githubResults,
 			repository: githubResults[0]?.repository ?? githubRepository ?? maybeResolveGitHubRepositorySlug(tenantRoot),
+			repositories: githubResults.map((entry) => entry.repository).filter((repository, index, all) => all.indexOf(repository) === index),
 			secrets: githubResults.flatMap((entry) => entry.secrets),
 			variables: githubResults.flatMap((entry) => entry.variables),
 		};
