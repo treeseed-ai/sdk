@@ -1778,7 +1778,7 @@ function repoPlanCommands(
 	if (node.kind === 'package' && plannedVersion) {
 		commands.push(`update package.json version to ${plannedVersion}`);
 		commands.push('npm install --workspaces=false # explicitly refresh changed git-tag dependencies with --force; retry up to 5 times with 60s delay');
-	} else if (node.kind === 'project' && dependencyUpdates.length > 0 && hasNpmLockfile(node.path)) {
+	} else if (node.kind === 'project' && (dependencyUpdates.length > 0 || (rootWorkspaceInstall && node.submoduleDependencies.length > 0)) && hasNpmLockfile(node.path)) {
 		commands.push(rootWorkspaceInstall
 			? 'npm install --package-lock-only --ignore-scripts # refresh root workspace lockfile without installing git dependencies'
 			: 'npm install --workspaces=false # refresh project lockfile after internal dependency updates');
@@ -2045,7 +2045,7 @@ async function saveOneRepository(
 		report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
 	} else if (node.kind === 'package') {
 		report.version = String(node.packageJson?.version ?? report.version ?? '');
-	} else if (node.kind === 'project' && dependencyChanged && hasNpmLockfile(node.path)) {
+	} else if (node.kind === 'project' && (dependencyChanged || (node.path === options.root && submodulesChanged)) && hasNpmLockfile(node.path)) {
 		report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
 	}
 
