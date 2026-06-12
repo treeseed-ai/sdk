@@ -5312,14 +5312,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					const replacedDevReferences = rewriteProjectInternalDependenciesToStableVersions(root, effectiveDependencyReplacementVersions);
 					applyStableWorkspaceVersionChanges(root, effectiveVersions);
 					setRootPackageJsonVersion(root, rootVersion);
-					const releaseInstalls: Array<Record<string, unknown>> = [
-						{ name: '@treeseed/market', ...runReleaseNpmInstall(root, { workspaceRoot: root }) },
-					];
 					assertNoInternalDevReferencesForRepo(root, root, effectiveSelectedPackageNames);
 					return {
 						releasedPackageDevTags,
 						replacedDevReferences,
-						releaseInstalls,
+						releaseInstalls: [],
 					};
 				}, { rerunCompleted: workflowRun.resumed && !resumeAtRootGates });
 				const replacedDevReferences = Array.isArray(metadata?.replacedDevReferences) ? metadata.replacedDevReferences : [];
@@ -5446,6 +5443,10 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
 					setRootPackageJsonVersion(root, rootVersion);
 					run('git', ['checkout', STAGING_BRANCH], { cwd: gitRoot });
+					releaseInstalls.push({
+						name: '@treeseed/market',
+						...runReleaseNpmInstall(root, { workspaceRoot: root }),
+					});
 					const rootCommitsBeforeChangelog = releaseHistoryCommits(gitRoot);
 					const changelog = updateReleaseChangelog(gitRoot, {
 						version: rootVersion,
