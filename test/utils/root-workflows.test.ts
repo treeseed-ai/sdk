@@ -84,7 +84,10 @@ describe('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('npm --prefix packages/sdk run build:dist');
 		expect(webSource).toContain('packages/ui/dist/astro/layouts/MainLayout.astro');
 		expect(webSource).toContain('packages/admin/dist/plugin.js');
-		expect(webSource).toContain('for dir in packages/ui packages/core packages/admin packages/cli packages/agent');
+		expect(webSource).toContain('npm --prefix packages/ui run build:dist');
+		expect(webSource).toContain('npm --prefix packages/core run build:dist');
+		expect(webSource).toContain('npm --prefix packages/admin run build:dist');
+		expect(webSource).toContain('for dir in packages/cli packages/agent');
 		expect(webSource).toContain('pids["${dir}"]="$!"');
 		expect(webSource).toContain('node ./.github/scripts/prepare-workspace-install.mjs');
 		expect(webSource).toContain('npm ci --ignore-scripts');
@@ -189,7 +192,7 @@ describe('package publish safeguards', () => {
 			expect(workflowSource).toContain("startsWith(github.ref, 'refs/tags/')");
 			expect(workflowSource).toContain("!contains(github.ref_name, '-')");
 			expect(workflowSource).toContain('contents: write');
-			expect(workflowSource).toContain('npm ci failed; retrying');
+			expect(workflowSource).toMatch(/(?:npm ci|dependency install) failed; retrying/);
 			expect(workflowSource).toContain('Create GitHub release');
 			expect(workflowSource).toContain('gh release create "${GITHUB_REF_NAME}"');
 			expect(workflowSource).toContain('--generate-notes');
