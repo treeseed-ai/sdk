@@ -85,7 +85,8 @@ describe('deployment readiness', () => {
 		const report = collectTreeseedDeploymentReadiness({ tenantRoot: rootWith(config()), environment: 'staging' });
 		expect(report.ok).toBe(true);
 		expect(byId(report, 'railway-config:api:rootDirectory')).toMatchObject({ status: 'passed' });
-		expect(byId(report, 'hosting:operationsRunner:startCommand')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:api:imageRefEnv')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:operationsRunner:imageRefEnv')).toMatchObject({ status: 'passed' });
 	});
 
 	it('fails when nested Railway rootDir overrides the package root', () => {

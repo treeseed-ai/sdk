@@ -448,10 +448,11 @@ function parseManagedServiceConfig(value: unknown, label: string): TreeseedManag
 		railway: {
 			projectId: optionalString(railway.projectId),
 			projectName: optionalString(railway.projectName),
-			serviceId: optionalString(railway.serviceId),
-			serviceName: optionalString(railway.serviceName),
-			rootDir: optionalString(railway.rootDir),
-			buildCommand: optionalString(railway.buildCommand),
+				serviceId: optionalString(railway.serviceId),
+				serviceName: optionalString(railway.serviceName),
+				rootDir: optionalString(railway.rootDir),
+				imageRef: optionalString(railway.imageRef),
+				buildCommand: optionalString(railway.buildCommand),
 			startCommand: optionalString(railway.startCommand),
 			healthcheckPath: optionalString(railway.healthcheckPath),
 			healthcheckTimeoutSeconds: optionalPositiveNumber(

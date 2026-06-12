@@ -161,6 +161,7 @@ function parseManagedServiceConfig(value, label) {
 				? railway.serviceTargets.map((entry) => optionalString(entry)).filter(Boolean)
 				: undefined,
 			rootDir: optionalString(railway.rootDir),
+			imageRef: optionalString(railway.imageRef),
 			buildCommand: optionalString(railway.buildCommand),
 			startCommand: optionalString(railway.startCommand),
 			healthcheckPath: optionalString(railway.healthcheckPath),

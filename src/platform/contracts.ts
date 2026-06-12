@@ -288,6 +288,7 @@ export interface TreeseedManagedServiceRailwayConfig {
 	serviceId?: string;
 	serviceName?: string;
 	rootDir?: string;
+	imageRef?: string;
 	buildCommand?: string;
 	startCommand?: string;
 	healthcheckPath?: string;

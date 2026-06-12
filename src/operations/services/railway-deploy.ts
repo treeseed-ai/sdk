@@ -86,6 +86,16 @@ export function deriveRailwayOperationsRunnerServiceName(baseServiceName, index 
 	return `${base}-${String(normalizedIndex).padStart(2, '0')}`;
 }
 
+function defaultRailwayImageRef(serviceKey, env = process.env) {
+	if (serviceKey === 'api') {
+		return envValue('TREESEED_API_IMAGE_REF', env) || null;
+	}
+	if (serviceKey === 'operationsRunner') {
+		return envValue('TREESEED_OPERATIONS_RUNNER_IMAGE_REF', env) || null;
+	}
+	return null;
+}
+
 export function deriveRailwayWorkerRunnerVolumeName(serviceName, environmentName = '') {
 	return `${serviceName}-volume`;
 }
@@ -110,8 +120,8 @@ function normalizeScheduleExpressions(value) {
 	return [];
 }
 
-function envValue(name) {
-	const value = process.env[name];
+function envValue(name, env = process.env) {
+	const value = env?.[name];
 	return typeof value === 'string' && value.trim() ? value.trim() : '';
 }
 
@@ -1103,33 +1113,35 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 				const serviceName = serviceKey === 'operationsRunner'
 					? deriveRailwayOperationsRunnerServiceName(configuredServiceName, runnerIndex)
 					: configuredServiceName;
+				const imageRef = service.railway?.imageRef ?? defaultRailwayImageRef(serviceKey);
 				return {
-				key: serviceKey,
-				instanceKey: serviceKey === 'operationsRunner' ? `${serviceKey}:${runnerIndex}` : serviceKey,
-				runnerIndex: serviceKey === 'operationsRunner' ? runnerIndex : null,
-				serviceConfig: service,
-				scope: normalizedScope,
-				projectId: service.railway?.projectId ?? null,
-				projectName: service.railway?.projectName ?? identity.deploymentKey,
-				serviceId: service.railway?.serviceId ?? null,
-				serviceName,
-				runnerId: serviceKey === 'operationsRunner' ? serviceName : null,
-				rootDir: serviceRoot,
-				publicBaseUrl,
-				railwayEnvironment,
-				buildCommand: service.railway?.buildCommand ?? null,
-				startCommand: service.railway?.startCommand ?? null,
-				healthcheckPath: service.railway?.healthcheckPath ?? null,
-				healthcheckTimeoutSeconds: service.railway?.healthcheckTimeoutSeconds ?? null,
-				healthcheckIntervalSeconds: service.railway?.healthcheckIntervalSeconds ?? null,
-				restartPolicy: service.railway?.restartPolicy ?? null,
-				runtimeMode: service.railway?.runtimeMode ?? null,
-				volumeMountPath: serviceKey === 'operationsRunner' ? runnerPool.volumeMountPath : service.railway?.volumeMountPath ?? null,
-				schedule: normalizeScheduleExpressions(service.railway?.schedule),
-				hostingKind,
-				runnerPool,
-				application,
-			};
+					key: serviceKey,
+					instanceKey: serviceKey === 'operationsRunner' ? `${serviceKey}:${runnerIndex}` : serviceKey,
+					runnerIndex: serviceKey === 'operationsRunner' ? runnerIndex : null,
+					serviceConfig: service,
+					scope: normalizedScope,
+					projectId: service.railway?.projectId ?? null,
+					projectName: service.railway?.projectName ?? identity.deploymentKey,
+					serviceId: service.railway?.serviceId ?? null,
+					serviceName,
+					runnerId: serviceKey === 'operationsRunner' ? serviceName : null,
+					rootDir: serviceRoot,
+					publicBaseUrl,
+					railwayEnvironment,
+					buildCommand: imageRef ? null : service.railway?.buildCommand ?? null,
+					startCommand: imageRef ? null : service.railway?.startCommand ?? null,
+					imageRef,
+					healthcheckPath: service.railway?.healthcheckPath ?? null,
+					healthcheckTimeoutSeconds: service.railway?.healthcheckTimeoutSeconds ?? null,
+					healthcheckIntervalSeconds: service.railway?.healthcheckIntervalSeconds ?? null,
+					restartPolicy: service.railway?.restartPolicy ?? null,
+					runtimeMode: service.railway?.runtimeMode ?? null,
+					volumeMountPath: serviceKey === 'operationsRunner' ? runnerPool.volumeMountPath : service.railway?.volumeMountPath ?? null,
+					schedule: normalizeScheduleExpressions(service.railway?.schedule),
+					hostingKind,
+					runnerPool,
+					application,
+				};
 			});
 		})
 		.filter(Boolean);
@@ -2060,6 +2072,17 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			projectId: project.id,
 			serviceId: service.serviceId,
 			serviceName: service.serviceName,
+			environmentId: environment.id,
+			imageRef: service.imageRef,
+			env,
+		}).then((result) => result.service);
+	} else if (service.imageRef) {
+		railwayService = await ensureRailwayService({
+			projectId: project.id,
+			serviceId: service.serviceId,
+			serviceName: service.serviceName,
+			environmentId: environment.id,
+			imageRef: service.imageRef,
 			env,
 		}).then((result) => result.service);
 	}
@@ -2239,7 +2262,7 @@ export async function deployRailwayService(
 	), {
 		service: cliDeployService.key,
 	});
-	if (deployService.buildCommand && shouldRunRailwayPredeployBuild(commandEnv)) {
+		if (deployService.buildCommand && !deployService.imageRef && shouldRunRailwayPredeployBuild(commandEnv)) {
 		const buildResult = await timedRailwayPhase(timings, 'railway:predeploy-build', () => runPrefixedCommand('bash', ['-lc', deployService.buildCommand], {
 			cwd: deployService.rootDir,
 			env: commandEnv,

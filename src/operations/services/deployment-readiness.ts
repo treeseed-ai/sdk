@@ -170,8 +170,12 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 		checks.push(check('hosting:api:host', api.hostId, environment === 'local' ? 'local-process' : 'railway', 'API host matches the expected environment host.', 'Set services.api.provider to railway for hosted environments.', 'hostId'));
 		checks.push(check('hosting:api:projectGroup', api.projectGroupId, 'treeseed-control-plane', 'API project group targets the Treeseed control plane.', 'Bind services.api to the treeseed-control-plane project group.', 'projectGroupId'));
 		checks.push(check('hosting:api:rootDir', api.config?.rootDir, expectedApiUnitRoot, 'API effective rootDir points at the API package.', 'Set services.api.rootDir and services.api.railway.rootDir relative to the owning API manifest.', 'rootDir'));
-		checks.push(check('hosting:api:buildCommand', api.config?.buildCommand, 'npm run build', 'API build command is package-local.', 'Set services.api.railway.buildCommand to "npm run build".', 'buildCommand'));
-		checks.push(check('hosting:api:startCommand', api.config?.startCommand, 'npm run start:api', 'API start command is package-local.', 'Set services.api.railway.startCommand to "npm run start:api".', 'startCommand'));
+		if (environment === 'local') {
+			checks.push(check('hosting:api:buildCommand', api.config?.buildCommand, 'npm run build', 'API build command is package-local.', 'Set services.api.railway.buildCommand to "npm run build".', 'buildCommand'));
+			checks.push(check('hosting:api:startCommand', api.config?.startCommand, 'npm run start:api', 'API start command is package-local.', 'Set services.api.railway.startCommand to "npm run start:api".', 'startCommand'));
+		} else {
+			checks.push(check('hosting:api:imageRefEnv', api.config?.imageRefEnv, 'TREESEED_API_IMAGE_REF', 'API Railway deploy uses a Docker image reference.', 'Set services.api.railway.imageRef or inject TREESEED_API_IMAGE_REF.', 'imageRefEnv'));
+		}
 		checks.push(check('hosting:api:healthcheckPath', api.config?.healthcheckPath, '/healthz', 'API healthcheck path is /healthz.', 'Set services.api.railway.healthcheckPath to /healthz.', 'healthcheckPath'));
 	}
 
@@ -191,8 +195,12 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 		checks.push(check('hosting:operationsRunner:host', runner.hostId, environment === 'local' ? 'local-docker' : 'railway', 'Runner host matches the expected environment host.', 'Set services.operationsRunner.provider to railway for hosted environments.', 'hostId'));
 		checks.push(check('hosting:operationsRunner:projectGroup', runner.projectGroupId, 'treeseed-control-plane', 'Runner project group targets the Treeseed control plane.', 'Bind services.operationsRunner to the treeseed-control-plane project group.', 'projectGroupId'));
 		checks.push(check('hosting:operationsRunner:rootDir', runner.config?.rootDir, expectedRunnerUnitRoot, 'Runner effective rootDir points at the API package.', 'Set services.operationsRunner.rootDir and services.operationsRunner.railway.rootDir relative to the owning API manifest.', 'rootDir'));
-		checks.push(check('hosting:operationsRunner:buildCommand', runner.config?.buildCommand, 'npm run build', 'Runner build command is package-local.', 'Set services.operationsRunner.railway.buildCommand to "npm run build".', 'buildCommand'));
-		checks.push(check('hosting:operationsRunner:startCommand', runner.config?.startCommand, 'npm run start:runner', 'Runner start command is package-local.', 'Set services.operationsRunner.railway.startCommand to "npm run start:runner".', 'startCommand'));
+		if (environment === 'local') {
+			checks.push(check('hosting:operationsRunner:buildCommand', runner.config?.buildCommand, 'npm run build', 'Runner build command is package-local.', 'Set services.operationsRunner.railway.buildCommand to "npm run build".', 'buildCommand'));
+			checks.push(check('hosting:operationsRunner:startCommand', runner.config?.startCommand, 'npm run start:runner', 'Runner start command is package-local.', 'Set services.operationsRunner.railway.startCommand to "npm run start:runner".', 'startCommand'));
+		} else {
+			checks.push(check('hosting:operationsRunner:imageRefEnv', runner.config?.imageRefEnv, 'TREESEED_OPERATIONS_RUNNER_IMAGE_REF', 'Runner Railway deploy uses a Docker image reference.', 'Set services.operationsRunner.railway.imageRef or inject TREESEED_OPERATIONS_RUNNER_IMAGE_REF.', 'imageRefEnv'));
+		}
 		checks.push(check('hosting:operationsRunner:healthcheckPath', runner.config?.healthcheckPath, '/healthz', 'Runner healthcheck path is /healthz.', 'Set services.operationsRunner.railway.healthcheckPath to /healthz.', 'healthcheckPath'));
 		checks.push(check('hosting:operationsRunner:runtimeMode', runner.config?.runtimeMode, 'service', 'Runner runtime mode is a long-running service.', 'Set services.operationsRunner.railway.runtimeMode to service.', 'runtimeMode'));
 		checks.push(check('hosting:operationsRunner:volumeMountPath', runner.config?.volumeMountPath, '/data', 'Runner volume mount path is stable.', 'Set services.operationsRunner.railway.volumeMountPath to /data.', 'volumeMountPath'));

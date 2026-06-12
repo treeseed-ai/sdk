@@ -2169,9 +2169,16 @@ function failWorkflowRun(
 }
 
 function validatePackageReleaseWorkflows(root: string, packageNames: string[]) {
+	const adapterById = new Map(discoverTreeseedPackageAdapters(root).map((adapter) => [adapter.id, adapter]));
 	const missing = checkedOutWorkspacePackageRepos(root)
 		.filter((pkg) => packageNames.includes(pkg.name))
-		.filter((pkg) => !existsSync(resolve(pkg.dir, '.github', 'workflows', 'publish.yml')))
+		.filter((pkg) => {
+			const adapter = adapterById.get(pkg.name);
+			const workflow = adapter?.kind === 'beam-elixir-rust' && typeof adapter.metadata.hostedVerifyWorkflow === 'string'
+				? String(adapter.metadata.hostedVerifyWorkflow)
+				: '.github/workflows/publish.yml';
+			return !existsSync(resolve(pkg.dir, workflow));
+		})
 		.map((pkg) => pkg.name);
 	if (missing.length > 0) {
 		workflowError('release', 'workflow_contract_missing', `Treeseed release requires .github/workflows/publish.yml in: ${missing.join(', ')}.`, {
@@ -2180,6 +2187,30 @@ function validatePackageReleaseWorkflows(root: string, packageNames: string[]) {
 			},
 		});
 	}
+}
+
+function releaseWorkflowForPackage(root: string, packageName: string) {
+	const adapter = discoverTreeseedPackageAdapters(root).find((entry) => entry.id === packageName || entry.name === packageName);
+	const workflow = adapter?.kind === 'beam-elixir-rust' && typeof adapter.metadata.hostedVerifyWorkflow === 'string'
+		? String(adapter.metadata.hostedVerifyWorkflow)
+		: '.github/workflows/publish.yml';
+	return workflow.split('/').at(-1) || 'publish.yml';
+}
+
+function prepareAdapterReleaseMetadata(root: string, pkg: { name: string; dir: string }, version: string) {
+	const adapter = discoverTreeseedPackageAdapters(root).find((entry) => entry.id === pkg.name || entry.name === pkg.name);
+	if (adapter?.kind === 'beam-elixir-rust' && existsSync(resolve(pkg.dir, 'scripts', 'bump-release-version.mjs'))) {
+		run('node', ['scripts/bump-release-version.mjs', version], { cwd: pkg.dir });
+		return { status: 'updated', adapter: adapter.id, command: 'node scripts/bump-release-version.mjs' };
+	}
+	if (existsSync(resolve(pkg.dir, 'package.json'))) {
+		return {
+			status: 'npm-install',
+			adapter: adapter?.id ?? pkg.name,
+			...runReleaseNpmInstall(pkg.dir, { workspaceRoot: root }),
+		};
+	}
+	return { status: 'skipped', adapter: adapter?.id ?? pkg.name, reason: 'no package metadata updater' };
 }
 
 function validateStagingWorkflowContracts(root: string) {
@@ -2499,6 +2530,13 @@ function buildReleasePlanSnapshot(input: {
 	const versionPlan = planWorkspaceReleaseBump(input.level, input.root, input.mode === 'recursive-workspace'
 		? { selectedPackageNames, repairVersionLine: input.repairVersionLine === true, targetVersionLine: input.targetVersionLine }
 		: {});
+	if (input.repairVersionLine !== true) {
+		for (const adapter of discoverTreeseedPackageAdapters(input.root)) {
+			if (!selectedPackageNames.has(adapter.id) || versionPlan.versions.has(adapter.id) || !adapter.version) continue;
+			versionPlan.selected.add(adapter.id);
+			versionPlan.versions.set(adapter.id, incrementVersion(adapter.version, input.level));
+		}
+	}
 	const plannedSelected = [...versionPlan.selected].filter((name) => versionPlan.versions.has(name));
 	const plannedChanged = input.repairVersionLine === true
 		? plannedSelected
@@ -2541,7 +2579,7 @@ function buildReleasePlanSnapshot(input: {
 		plannedDevReferenceRewrites,
 		plannedPublishWaits: plannedPackageSelection.selected.map((name) => ({
 			name,
-			workflow: 'publish.yml',
+			workflow: releaseWorkflowForPackage(input.root, name),
 			branch: String(plannedVersions[name] ?? PRODUCTION_BRANCH),
 			status: 'planned',
 		})),
@@ -5302,7 +5340,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						const tagName = String(effectiveVersions.get(pkg.name));
 						releaseInstalls.push({
 							name: pkg.name,
-							...runReleaseNpmInstall(pkg.dir, { workspaceRoot: root }),
+							...prepareAdapterReleaseMetadata(root, pkg, tagName),
 						});
 						assertNoInternalDevReferencesForRepo(root, pkg.dir, effectiveSelectedPackageNames);
 						const packageCommitsBeforeChangelog = releaseHistoryCommits(pkg.dir);
@@ -5350,7 +5388,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							{
 								name: pkg.name,
 								repoPath: pkg.dir,
-								workflow: 'publish.yml',
+								workflow: releaseWorkflowForPackage(root, pkg.name),
 								headSha: mergeResult.commitSha,
 								branch: tagName,
 							},
@@ -5359,7 +5397,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							runId: workflowRun.runId,
 							onProgress: (line, stream) => helpers.write(line, stream),
 						});
-						const publish = workflowGates.find((gate) => gate.workflow === 'publish.yml') ?? workflowGates[0] ?? null;
+						const publishWorkflow = releaseWorkflowForPackage(root, pkg.name);
+						const publish = workflowGates.find((gate) => gate.workflow === publishWorkflow) ?? workflowGates[0] ?? null;
 						assertReleaseGitHubWorkflowSucceeded(pkg.name, publish);
 						const backMerge = backMergeProductionIntoStaging(pkg.dir, pkg.name, releaseAdminMessage({
 							subject: `release: back-merge ${PRODUCTION_BRANCH} into ${STAGING_BRANCH}`,

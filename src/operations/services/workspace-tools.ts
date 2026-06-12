@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 
-export const TREESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'core', 'cli', 'agent'];
+export const TREESEED_WORKSPACE_PACKAGE_DIRS = ['sdk', 'ui', 'core', 'admin', 'cli', 'agent', 'api', 'treedx'];
 
 function packageSortWeight(pkg) {
 	const relativeDir = String(pkg.relativeDir ?? '');
@@ -94,7 +94,10 @@ export function isWorkspaceRoot(root = process.cwd()) {
 }
 
 export function hasCompleteTreeseedPackageCheckout(root = process.cwd()) {
-	return TREESEED_WORKSPACE_PACKAGE_DIRS.every((dirName) => existsSync(resolve(root, 'packages', dirName, 'package.json')));
+	return TREESEED_WORKSPACE_PACKAGE_DIRS.every((dirName) => {
+		const packageDir = resolve(root, 'packages', dirName);
+		return existsSync(resolve(packageDir, 'package.json')) || existsSync(resolve(packageDir, 'treeseed.package.yaml'));
+	});
 }
 
 export function findNearestTreeseedWorkspaceRoot(startCwd = process.cwd()) {

@@ -246,6 +246,13 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 		const serviceType = serviceKeyType(serviceKey, service);
 		const placement = serviceKeyPlacement(serviceKey);
 		const defaultProjectGroup = service.provider === 'railway' || service.railway ? 'treeseed-control-plane' : undefined;
+		const imageRef = service.railway?.imageRef
+			?? (serviceKey === 'api'
+				? process.env.TREESEED_API_IMAGE_REF
+				: serviceKey === 'operationsRunner'
+					? process.env.TREESEED_OPERATIONS_RUNNER_IMAGE_REF
+					: null)
+			?? null;
 		services.push({
 			id: serviceKey,
 			label: placement === 'runner-capacity' ? 'Runner Capacity' : serviceKey === 'api' ? 'API Runtime' : serviceKey,
@@ -254,8 +261,14 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 			projectGroupId: defaultProjectGroup,
 			config: {
 				rootDir: service.railway?.rootDir ?? service.rootDir ?? '.',
-				buildCommand: service.railway?.buildCommand ?? null,
-				startCommand: service.railway?.startCommand ?? null,
+				imageRef,
+				imageRefEnv: serviceKey === 'api'
+					? 'TREESEED_API_IMAGE_REF'
+					: serviceKey === 'operationsRunner'
+						? 'TREESEED_OPERATIONS_RUNNER_IMAGE_REF'
+						: null,
+				buildCommand: imageRef ? null : service.railway?.buildCommand ?? null,
+				startCommand: imageRef ? null : service.railway?.startCommand ?? null,
 				healthcheckPath: service.railway?.healthcheckPath ?? null,
 				runtimeMode: service.railway?.runtimeMode ?? null,
 				volumeMountPath: service.railway?.volumeMountPath ?? null,

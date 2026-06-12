@@ -13,6 +13,7 @@ import {
 	workspacePackages,
 	workspaceRoot,
 } from '../operations/services/workspace-tools.ts';
+import { discoverTreeseedPackageAdapters } from '../operations/services/package-adapters.ts';
 import {
 	classifyTreeseedBranchRole,
 	type TreeseedWorkflowBranchRole,
@@ -76,9 +77,21 @@ export function checkedOutWorkspacePackageRepos(root: string) {
 	if (!hasCompleteTreeseedPackageCheckout(root)) {
 		return [];
 	}
-	return sortWorkspacePackages(
-		workspacePackages(root).filter((pkg) => pkg.name?.startsWith('@treeseed/')),
-	);
+	const repos = new Map<string, ReturnType<typeof workspacePackages>[number]>();
+	for (const pkg of workspacePackages(root).filter((pkg) => pkg.name?.startsWith('@treeseed/'))) {
+		repos.set(pkg.name, pkg);
+	}
+	for (const adapter of discoverTreeseedPackageAdapters(root)) {
+		if (!adapter.publishTarget && adapter.artifacts.length === 0) continue;
+		if (repos.has(adapter.id)) continue;
+		repos.set(adapter.id, {
+			dir: adapter.dir,
+			name: adapter.id,
+			packageJson: {},
+			relativeDir: adapter.relativeDir,
+		});
+	}
+	return sortWorkspacePackages([...repos.values()]);
 }
 
 export function workflowModeForRoot(root: string): TreeseedWorkflowMode {
@@ -86,9 +99,21 @@ export function workflowModeForRoot(root: string): TreeseedWorkflowMode {
 }
 
 export function collectReleasePackageSelection(root: string): TreeseedWorkflowPackageSelection {
-	const publishable = sortWorkspacePackages(
-		publishableWorkspacePackages(root).filter((pkg) => pkg.name?.startsWith('@treeseed/')),
-	);
+	const publishableByName = new Map<string, ReturnType<typeof workspacePackages>[number]>();
+	for (const pkg of publishableWorkspacePackages(root).filter((pkg) => pkg.name?.startsWith('@treeseed/'))) {
+		publishableByName.set(pkg.name, pkg);
+	}
+	for (const adapter of discoverTreeseedPackageAdapters(root)) {
+		if (!adapter.publishTarget && adapter.artifacts.length === 0) continue;
+		if (publishableByName.has(adapter.id)) continue;
+		publishableByName.set(adapter.id, {
+			dir: adapter.dir,
+			name: adapter.id,
+			packageJson: {},
+			relativeDir: adapter.relativeDir,
+		});
+	}
+	const publishable = sortWorkspacePackages([...publishableByName.values()]);
 	const changed = changedWorkspacePackages({
 		root,
 		baseRef: 'main',
