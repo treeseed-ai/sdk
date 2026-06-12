@@ -103,7 +103,7 @@ describe('package reference policy', () => {
 			version: '0.5.0-dev.staging.1',
 			private: true,
 		}, null, 2), 'utf8');
-		writeFileSync(resolve(apiDir, 'treeseed.package.yaml'), 'id: "@treeseed/api"\nkind: node-typescript\npublishTarget: docker\n', 'utf8');
+		writeFileSync(resolve(apiDir, 'treeseed.package.yaml'), 'id: "@treeseed/api"\nname: TreeSeed API\nkind: node-typescript\npublishTarget: docker\n', 'utf8');
 		writeFileSync(resolve(adminDir, 'package.json'), JSON.stringify({
 			name: '@treeseed/admin',
 			version: '0.11.0-dev.staging.1',

@@ -226,7 +226,12 @@ export function updateInternalDependencySpecs(
 }
 
 export function installableInternalDependencyVersions(root = workspaceRoot(), versions: Map<string, string>) {
-	const publishTargets = new Map(discoverTreeseedPackageAdapters(root).map((adapter) => [adapter.name, adapter.publishTarget ?? 'npm'] as const));
+	const publishTargets = new Map<string, string>();
+	for (const adapter of discoverTreeseedPackageAdapters(root)) {
+		const publishTarget = adapter.publishTarget ?? 'npm';
+		publishTargets.set(adapter.id, publishTarget);
+		publishTargets.set(adapter.name, publishTarget);
+	}
 	return new Map([...versions.entries()].filter(([packageName]) => (publishTargets.get(packageName) ?? 'npm') === 'npm'));
 }
 
