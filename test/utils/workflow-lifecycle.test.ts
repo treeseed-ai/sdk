@@ -7,7 +7,7 @@ import { TreeseedWorkflowSdk } from '../../src/workflow.ts';
 import { TreeseedWorkflowError } from '../../src/workflow/operations.ts';
 import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, updateWorkflowRunJournal } from '../../src/workflow/runs.ts';
 import { runWorkspaceSavePreflight } from '../../src/operations/services/save-deploy-preflight.ts';
-import { inspectDetachedHeadRepair, reattachDetachedHeadIfSafe } from '../../src/operations/services/git-workflow.ts';
+import { inspectDetachedHeadRepair, mergeBranchIntoTarget, reattachDetachedHeadIfSafe } from '../../src/operations/services/git-workflow.ts';
 import { createDevTagMessage } from '../../src/operations/services/package-reference-policy.ts';
 import {
 	createDefaultTreeseedMachineConfig,
@@ -569,6 +569,40 @@ describe('treeseed workflow lifecycle', () => {
 		expect(report.detached).toBe(false);
 		expect(report.repairable).toBe(false);
 		expect(git(sdkRoot, ['branch', '--show-current'])).toBe('staging');
+	}, 15000);
+
+	it('can adopt unrelated package staging history into an initial production branch', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-workflow-unrelated-release-'));
+		const origin = resolve(root, 'origin.git');
+		const work = resolve(root, 'work');
+		mkdirSync(work, { recursive: true });
+		git(root, ['init', '--bare', origin]);
+		git(work, ['init', '-b', 'main']);
+		git(work, ['config', 'user.name', 'Treeseed Test']);
+		git(work, ['config', 'user.email', 'treeseed@example.com']);
+		writeFileSync(resolve(work, 'LICENSE'), 'license\n', 'utf8');
+		git(work, ['add', 'LICENSE']);
+		git(work, ['commit', '-m', 'init: production placeholder']);
+		git(work, ['remote', 'add', 'origin', origin]);
+		git(work, ['push', '-u', 'origin', 'main']);
+		git(work, ['checkout', '--orphan', 'staging']);
+		git(work, ['rm', '-rf', '.']);
+		writeFileSync(resolve(work, 'package.json'), '{"name":"@treeseed/api","version":"0.1.0"}\n', 'utf8');
+		git(work, ['add', 'package.json']);
+		git(work, ['commit', '-m', 'build: stage package']);
+		git(work, ['push', '-u', 'origin', 'staging']);
+
+		const result = mergeBranchIntoTarget(work, {
+			sourceBranch: 'staging',
+			targetBranch: 'main',
+			message: 'release: staging -> main',
+			allowUnrelatedHistories: true,
+		});
+
+		expect(result.targetBranch).toBe('main');
+		expect(git(work, ['merge-base', 'main', 'staging'])).toBeTruthy();
+		expect(git(work, ['rev-parse', 'origin/main'])).toBe(git(work, ['rev-parse', 'main']));
+		expect(readFileSync(resolve(work, 'package.json'), 'utf8')).toContain('@treeseed/api');
 	}, 15000);
 
 	it('save repairs package repos detached at the current branch head before preflight validation', async () => {

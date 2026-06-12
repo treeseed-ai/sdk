@@ -5334,6 +5334,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 								extraLines: [`Package: ${pkg.name}`],
 							}),
 							pushTarget: true,
+							allowUnrelatedHistories: true,
 						});
 						const tag = ensureReleaseTag(pkg.dir, tagName, mergeResult.commitSha, releaseAdminMessage({
 							subject: `release: ${tagName}`,
