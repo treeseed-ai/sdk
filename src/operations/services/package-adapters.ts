@@ -788,6 +788,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -830,6 +832,8 @@ jobs:
 ${dockerArtifacts.map((artifact) => `          - image: ${artifact.name}`).join('\n') || '          - image: treeseed/unknown'}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - run: npm ci || (echo "dependency install failed; retrying" && npm ci)
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -867,6 +871,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-node@v4
         with:
           node-version: 22
