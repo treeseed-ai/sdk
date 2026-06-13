@@ -9,6 +9,8 @@ import {
 	buildRailwayCommandEnv,
 	buildRailwayDeployCommandEnv,
 	buildRailwayLinkCommandEnv,
+	deriveRailwayCapacityProviderRunnerServiceName,
+	deriveRailwayCapacityProviderRunnerVolumeName,
 	deriveRailwayOperationsRunnerServiceName,
 	deriveRailwayOperationsRunnerVolumeName,
 	deriveRailwayWorkerRunnerServiceName,
@@ -321,6 +323,78 @@ services:
 			'operationsRunner:3',
 		]);
 		expect(runners.every((service) => service.runnerPool?.maxRunners === 4)).toBe(true);
+		expect(runners.every((service) => service.volumeMountPath === '/data')).toBe(true);
+	});
+
+	it('plans capacity provider role images with runner-only Railway volumes', async () => {
+		const tenantRoot = await createTenantFixture();
+		await writeFile(
+			join(tenantRoot, 'treeseed.site.yaml'),
+			`name: Test Site
+slug: test-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+hosting:
+  kind: hosted_project
+  teamId: acme
+  projectId: docs
+runtime:
+  mode: treeseed_managed
+services:
+  capacityProviderApi:
+    provider: railway
+    enabled: true
+    rootDir: packages/agent
+    railway:
+      projectName: treeseed-capacity
+      serviceName: treeseed-capacity-provider-api
+      imageRef: treeseed/agent-api:dev-staging
+      healthcheckPath: /healthz
+  capacityProviderManager:
+    provider: railway
+    enabled: true
+    rootDir: packages/agent
+    railway:
+      projectName: treeseed-capacity
+      serviceName: treeseed-capacity-provider-manager
+      imageRef: treeseed/agent-manager:dev-staging
+  capacityProviderRunner:
+    provider: railway
+    enabled: true
+    rootDir: packages/agent
+    railway:
+      projectName: treeseed-capacity
+      serviceName: treeseed-capacity-provider-runner-01
+      imageRef: treeseed/agent-runner:dev-staging
+      volumeMountPath: /data
+      runnerPool:
+        bootstrapCount: 2
+        maxRunners: 4
+        volumeMountPath: /data
+`,
+		);
+		const services = configuredRailwayServices(tenantRoot, 'staging');
+		const api = services.find((service) => service.key === 'capacityProviderApi');
+		const manager = services.find((service) => service.key === 'capacityProviderManager');
+		const runners = services.filter((service) => service.key === 'capacityProviderRunner');
+
+		expect(api).toMatchObject({
+			serviceName: 'treeseed-capacity-provider-api',
+			imageRef: 'treeseed/agent-api:dev-staging',
+			volumeMountPath: null,
+		});
+		expect(manager).toMatchObject({
+			serviceName: 'treeseed-capacity-provider-manager',
+			imageRef: 'treeseed/agent-manager:dev-staging',
+			volumeMountPath: null,
+		});
+		expect(deriveRailwayCapacityProviderRunnerServiceName('treeseed-capacity-provider-runner-01', 2)).toBe('treeseed-capacity-provider-runner-02');
+		expect(deriveRailwayCapacityProviderRunnerVolumeName('treeseed-capacity-provider-runner-02')).toBe('treeseed-capacity-provider-runner-02-volume');
+		expect(runners.map((service) => service.serviceName)).toEqual([
+			'treeseed-capacity-provider-runner-01',
+			'treeseed-capacity-provider-runner-02',
+		]);
+		expect(runners.every((service) => service.imageRef === 'treeseed/agent-runner:dev-staging')).toBe(true);
 		expect(runners.every((service) => service.volumeMountPath === '/data')).toBe(true);
 	});
 

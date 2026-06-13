@@ -1,93 +1,17 @@
-name: TreeDX Release Gate
+name: Verify TreeSeed SDK
 
 on:
-  pull_request:
   push:
-    branches:
-      - '**'
+  pull_request:
+  workflow_dispatch:
 
 jobs:
-  release-gate:
+  verify:
     runs-on: ubuntu-latest
-    env:
-      CARGO_TARGET_DIR: /tmp/treedx-target
-      RUSTLER_TARGET_DIR: /tmp/treedx-target
-      MIX_ENV: test
-      TREEDX_LIVE_URL: ${{ secrets.TREEDX_LIVE_URL }}
-      TREEDX_LIVE_TOKEN: ${{ secrets.TREEDX_LIVE_TOKEN }}
-      TREEDX_LIVE_REPO_ID: ${{ secrets.TREEDX_LIVE_REPO_ID }}
-      TREEDX_LIVE_NODE_A_URL: ${{ secrets.TREEDX_LIVE_NODE_A_URL }}
-      TREEDX_LIVE_NODE_A_TOKEN: ${{ secrets.TREEDX_LIVE_NODE_A_TOKEN }}
-      TREEDX_LIVE_NODE_A_REPO_ID: ${{ secrets.TREEDX_LIVE_NODE_A_REPO_ID }}
-      TREEDX_LIVE_NODE_B_URL: ${{ secrets.TREEDX_LIVE_NODE_B_URL }}
-      TREEDX_LIVE_NODE_B_TOKEN: ${{ secrets.TREEDX_LIVE_NODE_B_TOKEN }}
-      TREEDX_LIVE_NODE_B_REPO_ID: ${{ secrets.TREEDX_LIVE_NODE_B_REPO_ID }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          submodules: recursive
-
-      - name: Detect repository layout
-        id: layout
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -f packages/ts-sdk/package.json ]]; then
-            echo "monorepo=true" >> "$GITHUB_OUTPUT"
-            echo "sdk-dir=packages/ts-sdk" >> "$GITHUB_OUTPUT"
-            echo "sdk-lock=packages/ts-sdk/package-lock.json" >> "$GITHUB_OUTPUT"
-          elif [[ -f package.json ]]; then
-            echo "monorepo=false" >> "$GITHUB_OUTPUT"
-            echo "sdk-dir=." >> "$GITHUB_OUTPUT"
-            echo "sdk-lock=package-lock.json" >> "$GITHUB_OUTPUT"
-          else
-            echo "Unable to find TreeDX monorepo or SDK package layout." >&2
-            exit 1
-          fi
-
-      - name: Setup Rust
-        if: steps.layout.outputs.monorepo == 'true'
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust target
-        if: steps.layout.outputs.monorepo == 'true'
-        uses: actions/cache@v4
-        with:
-          path: /tmp/treedx-target
-          key: ${{ runner.os }}-treedx-rust-${{ hashFiles('Cargo.lock', 'apps/api/native/**/Cargo.lock') }}
-
-      - name: Setup Elixir
-        if: steps.layout.outputs.monorepo == 'true'
-        uses: erlef/setup-beam@v1
-        with:
-          otp-version: '27'
-          elixir-version: '1.17'
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: ${{ steps.layout.outputs.sdk-lock }}
-
-      - name: Install scanner tools
-        if: steps.layout.outputs.monorepo == 'true'
-        run: |
-          cargo install cargo-audit --locked
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-
-      - name: Run release gate
-        if: steps.layout.outputs.monorepo == 'true'
-        run: ./scripts/release-gate.sh
-
-      - name: Install SDK dependencies
-        if: steps.layout.outputs.monorepo != 'true'
-        working-directory: ${{ steps.layout.outputs.sdk-dir }}
-        run: npm ci
-
-      - name: Verify SDK package
-        if: steps.layout.outputs.monorepo != 'true'
-        working-directory: ${{ steps.layout.outputs.sdk-dir }}
-        run: npm run verify
+          node-version: 22
+      - run: npm ci || (echo "dependency install failed; retrying" && npm ci)
+      - run: bash -lc npm run verify:local

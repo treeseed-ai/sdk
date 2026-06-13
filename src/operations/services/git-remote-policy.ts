@@ -1,4 +1,13 @@
-import { run } from './workspace-tools.ts';
+import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
+
+function runGit(args: string[], options: { cwd: string; capture?: boolean; timeoutMs?: number; maxBuffer?: number }) {
+	return runTreeseedGitText(args, {
+		cwd: options.cwd,
+		mode: classifyTreeseedGitMode(args),
+		timeoutMs: options.timeoutMs,
+		maxBuffer: options.maxBuffer,
+	});
+}
 
 export type GitRemoteWriteMode = 'ssh-pushurl' | 'off';
 
@@ -23,7 +32,7 @@ export function sshPushUrlForRemote(remoteUrl: string | null | undefined) {
 
 export function configuredPushUrl(repoDir: string, remoteName = 'origin') {
 	try {
-		return run('git', ['config', '--get', `remote.${remoteName}.pushurl`], { cwd: repoDir, capture: true }).trim() || null;
+		return runGit(['config', '--get', `remote.${remoteName}.pushurl`], { cwd: repoDir, capture: true }).trim() || null;
 	} catch {
 		return null;
 	}
@@ -33,7 +42,7 @@ export function remoteWriteUrl(repoDir: string, remoteName = 'origin') {
 	const pushUrl = configuredPushUrl(repoDir, remoteName);
 	if (pushUrl) return pushUrl;
 	try {
-		return run('git', ['remote', 'get-url', remoteName], { cwd: repoDir, capture: true }).trim() || null;
+		return runGit(['remote', 'get-url', remoteName], { cwd: repoDir, capture: true }).trim() || null;
 	} catch {
 		return null;
 	}
@@ -51,6 +60,6 @@ export function ensureSshPushUrlForOrigin(repoDir: string, remoteUrl: string | n
 	if (currentPushUrl === nextPushUrl) {
 		return { changed: false, pushUrl: currentPushUrl, reason: 'already-configured' };
 	}
-	run('git', ['remote', 'set-url', '--push', 'origin', nextPushUrl], { cwd: repoDir });
+	runGit(['remote', 'set-url', '--push', 'origin', nextPushUrl], { cwd: repoDir });
 	return { changed: true, pushUrl: nextPushUrl, reason: currentPushUrl ? 'updated' : 'configured' };
 }

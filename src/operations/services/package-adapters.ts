@@ -1,8 +1,14 @@
-import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { dirname, relative, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { workspacePackages, workspaceRoot } from './workspace-tools.ts';
+import { runTreeseedGit } from './git-runner.ts';
+import { resolveTreeseedLaunchEnvironment } from './config-runtime.ts';
+import { resolveGitHubCredentialForRepository } from './github-credentials.ts';
+import {
+	createGitHubApiClient,
+	getLatestGitHubWorkflowRun,
+} from './github-api.ts';
 
 export type TreeseedPackageKind = 'node-typescript' | 'beam-elixir-rust';
 
@@ -32,6 +38,11 @@ export type TreeseedPackageAdapter = {
 		provider: 'npm' | 'docker';
 		name: string;
 		tags?: string[];
+		dockerfile?: string | null;
+		context?: string | null;
+		target?: string | null;
+		role?: string | null;
+		architectures?: string[];
 	}>;
 	releaseChecks: Array<{
 		kind: 'npm-pack-dry-run' | 'github-workflow' | 'docker-manifest';
@@ -41,16 +52,33 @@ export type TreeseedPackageAdapter = {
 	metadata: Record<string, unknown>;
 };
 
+export type TreeseedPackageManifestValidation = {
+	packageId: string;
+	path: string;
+	manifestPath: string | null;
+	ok: boolean;
+	errors: string[];
+	warnings: string[];
+};
+
 type TreeseedPackageManifest = {
 	id?: unknown;
 	name?: unknown;
 	kind?: unknown;
+	type?: unknown;
 	versionSource?: unknown;
 	image?: unknown;
 	repository?: unknown;
 	verify?: unknown;
 	releaseGate?: unknown;
 	developmentImages?: unknown;
+	artifacts?: unknown;
+	dockerImages?: unknown;
+	capacityProvider?: unknown;
+	publishTarget?: unknown;
+	githubEnvironments?: unknown;
+	requiredSecrets?: unknown;
+	workflowTemplateVersion?: unknown;
 };
 
 export type TreeseedPackageDevelopmentImagePlan = {
@@ -74,10 +102,18 @@ export type TreeseedPackageDevelopmentImagePlan = {
 		shortSha: string;
 		immutableTag: string;
 		movingTag: string | null;
-		imageRef: string;
-		movingImageRef: string | null;
-		archImageRefs: string[];
-	};
+			imageRef: string;
+			movingImageRef: string | null;
+			archImageRefs: string[];
+			roleImages?: Array<{
+				role: string;
+				imageName: string;
+				target: string | null;
+				immutableRef: string;
+				movingRef: string | null;
+				archImageRefs: string[];
+			}>;
+		};
 	hosting: {
 		app: string;
 		environment: string;
@@ -85,6 +121,28 @@ export type TreeseedPackageDevelopmentImagePlan = {
 		override: Record<string, string>;
 		command: string;
 	} | null;
+};
+
+export type TreeseedPackageImageWorkflowOptions = {
+	root?: string;
+	packageId: string;
+	branch?: string | null;
+	workflow?: string | null;
+	execute?: boolean;
+	syncConfig?: boolean;
+	env?: NodeJS.ProcessEnv;
+};
+
+export type TreeseedPackageWorkflowTemplateKind = 'npm-publish' | 'docker-image' | 'dev-image' | 'release-gate';
+
+export type TreeseedPackageWorkflowSyncResult = {
+	packageId: string;
+	path: string;
+	workflow: string;
+	template: TreeseedPackageWorkflowTemplateKind;
+	exists: boolean;
+	changed: boolean;
+	written: boolean;
 };
 
 function readJsonFile(filePath: string) {
@@ -156,7 +214,16 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 	const repository = stringValue(manifest?.repository) ?? normalizeGitHubRepositorySlug(pkg.packageJson?.repository);
 	const id = stringValue(manifest?.id) ?? String(pkg.name);
 	const name = stringValue(manifest?.name) ?? String(pkg.name);
-	const publishTarget = stringValue((manifest as Record<string, unknown> | null)?.publishTarget) ?? 'npm';
+	const dockerArtifacts = manifestDockerArtifacts(manifest?.artifacts);
+	const dockerImages = stringRecord(manifest?.dockerImages);
+	const dockerImageReleaseWorkflow = stringValue(dockerImages.releaseWorkflow);
+	const dockerImageDevelopmentWorkflow = stringValue(dockerImages.developmentWorkflow);
+	const dockerImageArchitectures = stringArray(dockerImages.architectures);
+	const dockerImageTags = stringRecord(dockerImages.tags);
+	const publishTargetRaw = stringValue(manifest?.publishTarget);
+	const publishTarget = dockerArtifacts.length > 0 && publishTargetRaw === 'docker'
+		? dockerArtifacts[0]!.name
+		: publishTargetRaw ?? 'npm';
 	const hostedVerifyWorkflow = stringValue(stringRecord(manifest?.releaseGate).workflow)
 		?? (existsSync(resolve(pkg.dir, '.github/workflows/deploy.yml')) ? 'deploy.yml' : null);
 	const verifyLocal = typeof scripts['verify:local'] === 'string'
@@ -184,13 +251,41 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 			release: commandFromScript(pkg.dir, manifestVerify.release, 'release')
 				?? (typeof scripts['release:publish'] === 'string' ? { label: 'release:publish', command: 'npm', args: ['run', 'release:publish'], cwd: pkg.dir } : null),
 		},
-		artifacts: [{ provider: 'npm', name: String(pkg.name) }],
+		artifacts: dockerArtifacts.length > 0
+			? dockerArtifacts.map((artifact) => ({
+				provider: 'docker' as const,
+				name: artifact.name,
+				dockerfile: artifact.dockerfile,
+				context: artifact.context,
+				target: artifact.target,
+				role: artifact.role,
+				architectures: artifact.architectures,
+			}))
+			: [{ provider: 'npm', name: String(pkg.name) }],
 		releaseChecks: [
-			{ kind: 'github-workflow', name: 'publish workflow', detail: '.github/workflows/publish.yml' },
-			{ kind: 'npm-pack-dry-run', name: 'npm pack', detail: 'npm pack --dry-run' },
+			{ kind: 'github-workflow', name: 'publish workflow', detail: dockerImageReleaseWorkflow ? `.github/workflows/${dockerImageReleaseWorkflow}` : '.github/workflows/publish.yml' },
+			...(dockerArtifacts.length > 0
+				? dockerArtifacts.map((artifact) => ({ kind: 'docker-manifest' as const, name: `${artifact.name} Docker image manifest`, detail: `${artifact.name}:<version>` }))
+				: [{ kind: 'npm-pack-dry-run' as const, name: 'npm pack', detail: 'npm pack --dry-run' }]),
 		],
 		metadata: {
 			...(repository ? { repository } : {}),
+			...(dockerArtifacts.length > 0
+				? {
+					dockerArtifacts,
+					developmentImageWorkflow: dockerImageDevelopmentWorkflow ? `.github/workflows/${dockerImageDevelopmentWorkflow}` : null,
+					developmentImageDefaultBranch: 'staging',
+					developmentImageTagPrefix: 'dev',
+					developmentImageMovingTag: true,
+					developmentImageArchitectures: dockerImageArchitectures,
+					developmentImageStagingTags: stringArray(dockerImageTags.staging),
+				}
+				: {}),
+			type: stringValue(manifest?.type) ?? null,
+			githubEnvironments: stringArray(manifest?.githubEnvironments),
+			requiredSecrets: stringArray(manifest?.requiredSecrets),
+			workflowTemplateVersion: stringValue(manifest?.workflowTemplateVersion) ?? null,
+			capacityProvider: stringRecord(manifest?.capacityProvider),
 			...(hostedVerifyWorkflow
 				? {
 					hostedVerifyWorkflow: hostedVerifyWorkflow.startsWith('.github/workflows/')
@@ -226,6 +321,35 @@ function stringValue(value: unknown) {
 
 function stringArray(value: unknown) {
 	return Array.isArray(value) ? value.map((entry) => stringValue(entry)).filter((entry): entry is string => Boolean(entry)) : [];
+}
+
+function manifestDockerArtifacts(value: unknown) {
+	if (!Array.isArray(value)) return [];
+	return value
+		.map((entry) => {
+			const record = stringRecord(entry);
+			if (stringValue(record.provider) !== 'docker') return null;
+			const name = stringValue(record.name);
+			if (!name) return null;
+			return {
+				provider: 'docker' as const,
+				name,
+				dockerfile: stringValue(record.dockerfile),
+				context: stringValue(record.context),
+				target: stringValue(record.target),
+				role: stringValue(record.role),
+				architectures: stringArray(record.architectures),
+			};
+		})
+		.filter((entry): entry is {
+			provider: 'docker';
+			name: string;
+			dockerfile: string | null;
+			context: string | null;
+			target: string | null;
+			role: string | null;
+			architectures: string[];
+		} => Boolean(entry));
 }
 
 function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter | null {
@@ -284,7 +408,16 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 			local: commandFromScript(dir, local, 'local'),
 			release: commandFromScript(dir, releaseGate, 'release'),
 		},
-		artifacts: image ? [{ provider: 'docker', name: image, tags: version ? [version, shaTag] : [shaTag] }] : [],
+		artifacts: image ? [{
+			provider: 'docker',
+			name: image,
+			tags: version ? [version, shaTag] : [shaTag],
+			dockerfile: 'Dockerfile',
+			context: '.',
+			target: null,
+			role: id,
+			architectures: developmentImageArchitectures,
+		}] : [],
 		releaseChecks: image
 			? [{ kind: 'docker-manifest', name: 'Docker image manifest', detail: `${image}:${version ?? '<version>'}` }]
 			: [],
@@ -314,16 +447,16 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 						: `.github/workflows/${hostedVerifyWorkflow}`,
 				}
 				: {}),
+			type: stringValue(manifest?.type) ?? null,
+			githubEnvironments: stringArray(manifest?.githubEnvironments),
+			requiredSecrets: stringArray(manifest?.requiredSecrets),
+			workflowTemplateVersion: stringValue(manifest?.workflowTemplateVersion) ?? null,
 		},
 	};
 }
 
 function gitOutput(cwd: string, args: string[]) {
-	const result = spawnSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
-	if (result.status !== 0) {
-		const stderr = typeof result.stderr === 'string' ? result.stderr.trim() : '';
-		throw new Error(stderr || `git ${args.join(' ')} failed in ${cwd}.`);
-	}
+	const result = runTreeseedGit(args, { cwd, mode: 'read' });
 	return result.stdout.trim();
 }
 
@@ -363,6 +496,26 @@ export function planTreeseedPackageDevelopmentImage(
 	const immutableTag = `${tagPrefix}-${slug}-${shortSha}`;
 	const movingTag = metadata.developmentImageMovingTag === false ? null : `${tagPrefix}-${slug}`;
 	const architectures = stringArray(metadata.developmentImageArchitectures);
+	const dockerArtifacts = Array.isArray(metadata.dockerArtifacts)
+		? metadata.dockerArtifacts
+			.map((entry) => {
+				const record = stringRecord(entry);
+				const artifactImageName = stringValue(record.name);
+				if (!artifactImageName) return null;
+				return {
+					role: stringValue(record.role) ?? artifactImageName.split('/').at(-1)?.replace(/^agent-/u, '') ?? artifactImageName,
+					imageName: artifactImageName,
+					target: stringValue(record.target),
+					architectures: stringArray(record.architectures),
+				};
+			})
+			.filter((entry): entry is {
+				role: string;
+				imageName: string;
+				target: string | null;
+				architectures: string[];
+			} => Boolean(entry))
+		: [];
 	const hosting = stringRecord(metadata.developmentImageHosting);
 	const app = stringValue(hosting.app);
 	const environment = stringValue(hosting.environment) ?? selectedBranch;
@@ -370,6 +523,19 @@ export function planTreeseedPackageDevelopmentImage(
 	const imageRef = `${imageName}:${immutableTag}`;
 	const movingImageRef = movingTag ? `${imageName}:${movingTag}` : null;
 	const hostingImageRef = movingImageRef ?? imageRef;
+	const roleImages = dockerArtifacts.length > 0
+		? dockerArtifacts.map((artifact) => {
+			const artifactArchitectures = artifact.architectures.length > 0 ? artifact.architectures : architectures;
+			return {
+				role: artifact.role,
+				imageName: artifact.imageName,
+				target: artifact.target,
+				immutableRef: `${artifact.imageName}:${immutableTag}`,
+				movingRef: movingTag ? `${artifact.imageName}:${movingTag}` : null,
+				archImageRefs: artifactArchitectures.map((arch) => `${artifact.imageName}:${immutableTag}-${arch}`),
+			};
+		})
+		: undefined;
 	return {
 		package: {
 			id: adapter.id,
@@ -391,10 +557,11 @@ export function planTreeseedPackageDevelopmentImage(
 			shortSha,
 			immutableTag,
 			movingTag,
-			imageRef,
-			movingImageRef,
-			archImageRefs: architectures.map((arch) => `${imageName}:${immutableTag}-${arch}`),
-		},
+				imageRef,
+				movingImageRef,
+				archImageRefs: architectures.map((arch) => `${imageName}:${immutableTag}-${arch}`),
+				...(roleImages ? { roleImages } : {}),
+			},
 		hosting: app && overrideEnvVar
 			? {
 				app,
@@ -432,7 +599,17 @@ export function discoverTreeseedPackageAdapters(root = workspaceRoot()): Treesee
 }
 
 export function findTreeseedPackageAdapter(root: string, idOrName: string) {
-	return discoverTreeseedPackageAdapters(root).find((adapter) => adapter.id === idOrName || adapter.name === idOrName) ?? null;
+	const normalized = idOrName.trim();
+	return discoverTreeseedPackageAdapters(root).find((adapter) => {
+		const scopedId = adapter.id.startsWith('@treeseed/') ? adapter.id.slice('@treeseed/'.length) : null;
+		const scopedName = adapter.name.startsWith('@treeseed/') ? adapter.name.slice('@treeseed/'.length) : null;
+		const directoryName = adapter.relativeDir.split('/').at(-1);
+		return adapter.id === normalized
+			|| adapter.name === normalized
+			|| scopedId === normalized
+			|| scopedName === normalized
+			|| directoryName === normalized;
+	}) ?? null;
 }
 
 export function packageAdapterPlanSummary(root = workspaceRoot()) {
@@ -451,4 +628,297 @@ export function packageAdapterPlanSummary(root = workspaceRoot()) {
 		releaseChecks: adapter.releaseChecks,
 		metadata: adapter.metadata,
 	}));
+}
+
+export async function runTreeseedPackageImageWorkflow(options: TreeseedPackageImageWorkflowOptions) {
+	const root = options.root ?? workspaceRoot();
+	const branch = options.branch ?? 'staging';
+	const imagePlan = planTreeseedPackageDevelopmentImage(root, options.packageId, { branch });
+	const selectedWorkflow = options.workflow ?? imagePlan.workflow;
+	const execute = options.execute === true;
+	const syncConfig = options.syncConfig === true;
+	const configEnv = resolveTreeseedLaunchEnvironment({
+		tenantRoot: root,
+		scope: 'staging',
+		baseEnv: options.env ?? process.env,
+	});
+	const dockerHub = {
+		usernameConfigured: Boolean(String(configEnv.DOCKERHUB_USERNAME ?? '').trim()),
+		tokenConfigured: Boolean(String(configEnv.DOCKERHUB_TOKEN ?? '').trim()),
+		requiredSecrets: ['DOCKERHUB_TOKEN'],
+		requiredVariables: ['DOCKERHUB_USERNAME'],
+	};
+	const credential = resolveGitHubCredentialForRepository(imagePlan.repository, { values: configEnv, env: options.env ?? process.env });
+	const githubClientEnv = credential.token
+		? { ...configEnv, GH_TOKEN: credential.token, GITHUB_TOKEN: credential.token }
+		: configEnv;
+	const report: Record<string, unknown> = {
+		ok: true,
+		action: execute ? 'dispatch' : 'plan',
+		package: imagePlan.package,
+		repository: imagePlan.repository,
+		workflow: selectedWorkflow,
+		branch: imagePlan.branch,
+		refs: imagePlan.refs,
+		credential: {
+			repository: credential.repository,
+			envName: credential.envName,
+			configured: credential.configured,
+			source: credential.source,
+			fallbackUsed: credential.fallbackUsed,
+		},
+		dockerHub,
+		hosting: imagePlan.hosting,
+		reconcile: {
+			lifecycle: syncConfig || execute
+				? ['refresh', 'diff', 'plan', 'validate', 'apply', 'refresh', 'verify', 'persist']
+				: ['refresh', 'diff', 'plan'],
+			resources: [
+				`package-workflow:${imagePlan.package.id}`,
+				...(imagePlan.refs.roleImages
+					? imagePlan.refs.roleImages.map((entry) => `package-image:${entry.imageName}`)
+					: [`package-image:${imagePlan.refs.imageName}`]),
+			],
+		},
+	};
+	if (syncConfig) {
+		const environment = imagePlan.hosting?.environment ?? 'staging';
+		report.syncedConfig = {
+			environment,
+			blocked: true,
+			reason: 'Package image config sync is reconciler-owned. Use trsd package image --sync-config so github-secret-binding and github-variable-binding resources apply through adapters.',
+			secrets: configEnv.DOCKERHUB_TOKEN ? [{ name: 'DOCKERHUB_TOKEN', existed: null }] : [],
+			variables: configEnv.DOCKERHUB_USERNAME ? [{ name: 'DOCKERHUB_USERNAME', existed: null }] : [],
+		};
+	}
+	if (execute) {
+		const client = createGitHubApiClient({ env: githubClientEnv });
+		report.dispatch = {
+			blocked: true,
+			reason: 'Package image workflow dispatch is reconciler-owned. Use trsd package image --execute so github-workflow-dispatch/package-image resources apply through adapters.',
+		};
+		report.latestWorkflowRun = await getLatestGitHubWorkflowRun(imagePlan.repository, {
+			client,
+			workflow: selectedWorkflow,
+			branch: imagePlan.branch,
+		});
+	}
+	return { imagePlan, selectedWorkflow, dockerHub, credential, report };
+}
+
+export function validateTreeseedPackageManifests(root = workspaceRoot()): TreeseedPackageManifestValidation[] {
+	return discoverTreeseedPackageAdapters(root).map((adapter) => {
+		const errors: string[] = [];
+		const warnings: string[] = [];
+		if (!adapter.manifestPath || adapter.manifestPath.endsWith('package.json')) {
+			errors.push('missing treeseed.package.yaml');
+		}
+		if (!adapter.id.trim()) errors.push('missing package id');
+		if (!adapter.name.trim()) errors.push('missing package name');
+		if (!['node-typescript', 'beam-elixir-rust'].includes(adapter.kind)) {
+			errors.push(`unsupported package kind ${adapter.kind}`);
+		}
+		if (adapter.verifyCommands.local == null) {
+			errors.push('missing local verification command');
+		}
+		if (adapter.releaseChecks.length === 0) {
+			warnings.push('package declares no release checks');
+		}
+		const hasDockerArtifact = adapter.artifacts.some((artifact) => artifact.provider === 'docker');
+		if (hasDockerArtifact) {
+			const workflow = stringValue(adapter.metadata.developmentImageWorkflow);
+			if (!workflow) errors.push('docker package missing development image workflow');
+			const architectures = stringArray(adapter.metadata.developmentImageArchitectures);
+			if (!architectures.includes('amd64') || !architectures.includes('arm64')) {
+				errors.push('docker package must declare amd64 and arm64 architectures');
+			}
+		}
+		for (const artifact of adapter.artifacts) {
+			if (artifact.provider === 'docker' && !artifact.name.startsWith('treeseed/')) {
+				errors.push(`docker artifact ${artifact.name} must publish under treeseed/*`);
+			}
+		}
+		return {
+			packageId: adapter.id,
+			path: adapter.relativeDir,
+			manifestPath: adapter.manifestPath,
+			ok: errors.length === 0,
+			errors,
+			warnings,
+		};
+	});
+}
+
+function workflowNameForTemplate(adapter: TreeseedPackageAdapter, template: TreeseedPackageWorkflowTemplateKind) {
+	const publishWorkflow = 'publish.yml';
+	const configuredDevImage = stringValue(adapter.metadata.developmentImageWorkflow)?.replace(/^\.github\/workflows\//u, '') ?? 'dev-image.yml';
+	const configuredReleaseGate = stringValue(adapter.metadata.hostedVerifyWorkflow)?.replace(/^\.github\/workflows\//u, '') ?? 'verify.yml';
+	if (template === 'dev-image') {
+		return configuredDevImage === configuredReleaseGate ? 'dev-image.yml' : configuredDevImage;
+	}
+	if (template === 'docker-image') return publishWorkflow;
+	if (template === 'release-gate') {
+		return configuredReleaseGate === publishWorkflow || configuredReleaseGate === configuredDevImage
+			? 'release-gate.yml'
+			: configuredReleaseGate;
+	}
+	return publishWorkflow;
+}
+
+export function renderTreeseedPackageWorkflow(adapter: TreeseedPackageAdapter, template: TreeseedPackageWorkflowTemplateKind) {
+	const verify = adapter.verifyCommands.local
+		? `${adapter.verifyCommands.local.command} ${adapter.verifyCommands.local.args.join(' ')}`.trim()
+		: 'npm run verify:local';
+	const dockerArtifacts = adapter.artifacts.filter((artifact) => artifact.provider === 'docker');
+	if (template === 'npm-publish') {
+		return `name: Publish ${adapter.name}
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm ci || (echo "dependency install failed; retrying" && npm ci)
+      - run: ${verify}
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: \${{ secrets.NPM_TOKEN }}
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "\${GITHUB_REF_NAME}" --generate-notes --verify-tag
+`;
+	}
+	if (template === 'docker-image' || template === 'dev-image') {
+		const tags = template === 'dev-image'
+			? 'type=raw,value=dev-${{ github.ref_name }}-${{ github.sha }}'
+			: 'type=semver,pattern={{version}}';
+		return `name: ${template === 'dev-image' ? 'Development Image' : 'Publish Image'} ${adapter.name}
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - staging
+    tags:
+      - "v*"
+
+jobs:
+  image:
+    if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    strategy:
+      matrix:
+        include:
+${dockerArtifacts.map((artifact) => `          - image: ${artifact.name}`).join('\n') || '          - image: treeseed/unknown'}
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci || (echo "dependency install failed; retrying" && npm ci)
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: \${{ vars.DOCKERHUB_USERNAME }}
+          password: \${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: \${{ matrix.image }}
+          tags: ${tags}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: \${{ steps.meta.outputs.tags }}
+          labels: \${{ steps.meta.outputs.labels }}
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "\${GITHUB_REF_NAME}" --generate-notes --verify-tag
+`;
+	}
+	return `name: Verify ${adapter.name}
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci || (echo "dependency install failed; retrying" && npm ci)
+      - run: ${verify}
+`;
+}
+
+function workflowTemplatesForAdapter(adapter: TreeseedPackageAdapter): TreeseedPackageWorkflowTemplateKind[] {
+	const hasDocker = adapter.artifacts.some((artifact) => artifact.provider === 'docker');
+	const hasNpm = adapter.artifacts.some((artifact) => artifact.provider === 'npm');
+	return [
+		...(hasNpm ? ['npm-publish' as const] : []),
+		...(hasDocker ? ['docker-image' as const, 'dev-image' as const] : []),
+		'release-gate' as const,
+	];
+}
+
+export function syncTreeseedPackageWorkflows({
+	root = workspaceRoot(),
+	packageId,
+	execute = false,
+}: {
+	root?: string;
+	packageId?: string | null;
+	execute?: boolean;
+} = {}): TreeseedPackageWorkflowSyncResult[] {
+	const adapters = packageId && packageId !== 'all'
+		? [findTreeseedPackageAdapter(root, packageId)].filter((entry): entry is TreeseedPackageAdapter => Boolean(entry))
+		: discoverTreeseedPackageAdapters(root);
+	const results: TreeseedPackageWorkflowSyncResult[] = [];
+	for (const adapter of adapters) {
+		for (const template of workflowTemplatesForAdapter(adapter)) {
+			const workflow = workflowNameForTemplate(adapter, template);
+			const path = resolve(adapter.dir, '.github', 'workflows', workflow);
+			const rendered = renderTreeseedPackageWorkflow(adapter, template);
+			const current = existsSync(path) ? readFileSync(path, 'utf8') : null;
+			const changed = current !== rendered;
+			if (execute && changed) {
+				mkdirSync(dirname(path), { recursive: true });
+				writeFileSync(path, rendered, 'utf8');
+			}
+			results.push({
+				packageId: adapter.id,
+				path,
+				workflow,
+				template,
+				exists: current != null,
+				changed,
+				written: execute && changed,
+			});
+		}
+	}
+	return results;
 }

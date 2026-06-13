@@ -231,7 +231,7 @@ function hasConfigEntry(tenantRoot: string, id: string) {
 		.registry.entries.some((entry) => entry.id === id);
 }
 
-describe('config GitHub environment sync', () => {
+describe('config GitHub environment sync hard cut', () => {
 	beforeEach(() => {
 		vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'treeseed-config-github-home-')));
 		maybeResolveGitHubRepositorySlugMock.mockClear();
@@ -247,320 +247,53 @@ describe('config GitHub environment sync', () => {
 		vi.unstubAllEnvs();
 	});
 
-	it('syncs a Treeseed scope into the matching GitHub Actions environment', async () => {
+	it('blocks direct GitHub environment mutation and points operators at reconciliation', async () => {
 		const tenantRoot = createTenantFixture();
 		writeDefaultMachineConfig(tenantRoot);
 		unlockSecrets(tenantRoot);
 		seedHostedValues(tenantRoot);
-		setConfigValue(tenantRoot, 'staging', 'TREESEED_RAILWAY_PROJECT_ID', 'railway-project-id', 'plain', 'scoped');
 
-		const result = await syncTreeseedGitHubEnvironment({ tenantRoot, scope: 'staging' });
+		await expect(syncTreeseedGitHubEnvironment({ tenantRoot, scope: 'staging' }))
+			.rejects.toThrow(/GitHub environment sync .* is reconciler-owned/u);
+		expect(ensureGitHubActionsEnvironmentMock).not.toHaveBeenCalled();
+		expect(upsertGitHubEnvironmentSecretMock).not.toHaveBeenCalled();
+		expect(upsertGitHubEnvironmentVariableMock).not.toHaveBeenCalled();
+	});
+
+	it('keeps GitHub environment dry-run reporting non-mutating', async () => {
+		const tenantRoot = createTenantFixture();
+		writeDefaultMachineConfig(tenantRoot);
+		unlockSecrets(tenantRoot);
+		seedHostedValues(tenantRoot);
+
+		const result = await syncTreeseedGitHubEnvironment({ tenantRoot, scope: 'staging', dryRun: true });
 
 		expect(result).toMatchObject({
 			repository: 'owner/repo',
 			scope: 'staging',
 			environment: 'staging',
 		});
-		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'staging', expect.objectContaining({
-			branchName: 'staging',
-		}));
-		if (hasConfigEntry(tenantRoot, 'RAILWAY_API_TOKEN')) {
-			expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
-				'owner/repo',
-				'staging',
-				'RAILWAY_API_TOKEN',
-				'railway-token-value',
-				expect.any(Object),
-			);
-		}
-		expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
-			'owner/repo',
-			'staging',
-			'CLOUDFLARE_ACCOUNT_ID',
-			'account-123',
-			expect.any(Object),
-		);
-		expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
-			'owner/repo',
-			'staging',
-			'TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME',
-			'test-site',
-			expect.any(Object),
-		);
-		if (hasConfigEntry(tenantRoot, 'TREESEED_RAILWAY_WORKSPACE')) {
-			expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
-				'owner/repo',
-				'staging',
-				'TREESEED_RAILWAY_WORKSPACE',
-				'acme-workspace',
-				expect.any(Object),
-			);
-		}
-		if (hasConfigEntry(tenantRoot, 'TREESEED_RAILWAY_PROJECT_ID')) {
-			expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
-				'owner/repo',
-				'staging',
-				'TREESEED_RAILWAY_PROJECT_ID',
-				'railway-project-id',
-				expect.any(Object),
-			);
-		}
-		expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
-			'owner/repo',
-			'staging',
-			'GH_TOKEN',
-			'github-token-value',
-			expect.any(Object),
-		);
+		expect(result.secrets.length + result.variables.length).toBeGreaterThan(0);
+		expect(ensureGitHubActionsEnvironmentMock).not.toHaveBeenCalled();
+		expect(upsertGitHubEnvironmentSecretMock).not.toHaveBeenCalled();
+		expect(upsertGitHubEnvironmentVariableMock).not.toHaveBeenCalled();
 	});
 
-	it('uses transient values overlays for GitHub environment sync without machine config writes', async () => {
-		const tenantRoot = createTenantFixture();
-		writeDefaultMachineConfig(tenantRoot);
-		unlockSecrets(tenantRoot);
-		seedHostedValues(tenantRoot);
-
-		const result = await syncTreeseedGitHubEnvironment({
-			tenantRoot,
-			scope: 'staging',
-			valuesOverlay: {
-				CLOUDFLARE_API_TOKEN: 'unlocked-cloudflare-token',
-				CLOUDFLARE_ACCOUNT_ID: 'unlocked-account',
-				TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME: 'unlocked-pages',
-			},
-		});
-
-		expect(result.scope).toBe('staging');
-		expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
-			'owner/repo',
-			'staging',
-			'CLOUDFLARE_API_TOKEN',
-			'unlocked-cloudflare-token',
-			expect.any(Object),
-		);
-		expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
-			'owner/repo',
-			'staging',
-			'CLOUDFLARE_ACCOUNT_ID',
-			'unlocked-account',
-			expect.any(Object),
-		);
-		expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
-			'owner/repo',
-			'staging',
-			'TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME',
-			'unlocked-pages',
-			expect.any(Object),
-		);
-	});
-
-	it('does not sync TreeSeed-managed provider secrets into hosted project GitHub environments', async () => {
-		const tenantRoot = createManagedHostedTenantFixture();
-		writeDefaultMachineConfig(tenantRoot);
-		unlockSecrets(tenantRoot);
-		seedHostedValues(tenantRoot);
-		setConfigValue(tenantRoot, 'staging', 'TREESEED_PROJECT_ID', 'docs');
-
-		const result = await syncTreeseedGitHubEnvironment({
-			tenantRoot,
-			scope: 'staging',
-			valuesOverlay: {
-				CLOUDFLARE_API_TOKEN: 'unlocked-cloudflare-token',
-				RAILWAY_API_TOKEN: 'unlocked-railway-token',
-				TREESEED_SMTP_PASSWORD: 'unlocked-smtp-password',
-				TREESEED_PROJECT_ID: 'docs',
-			},
-		});
-
-		expect(result.scope).toBe('staging');
-		const secretNames = upsertGitHubEnvironmentSecretMock.mock.calls.map((call) => call[2]);
-		const variableNames = upsertGitHubEnvironmentVariableMock.mock.calls.map((call) => call[2]);
-		expect(secretNames).not.toContain('GH_TOKEN');
-		expect(secretNames).not.toContain('CLOUDFLARE_API_TOKEN');
-		expect(secretNames).not.toContain('RAILWAY_API_TOKEN');
-		expect(secretNames).not.toContain('TREESEED_SMTP_PASSWORD');
-		expect(variableNames).not.toContain('CLOUDFLARE_ACCOUNT_ID');
-		expect(variableNames).not.toContain('TREESEED_RAILWAY_WORKSPACE');
-		expect(variableNames).toContain('TREESEED_PROJECT_ID');
-	});
-
-	it('explains repository-scoped credential requirements when fallback GitHub tokens cannot manage environments', async () => {
-		vi.stubEnv('TREESEED_GITHUB_TOKEN_TREESEED_AI_API', '');
-		const tenantRoot = createTenantFixture();
-		writeDefaultMachineConfig(tenantRoot);
-		unlockSecrets(tenantRoot);
-		seedHostedValues(tenantRoot);
-		listGitHubEnvironmentSecretNamesMock.mockRejectedValueOnce(new Error('Unable to list GitHub environment secrets: GitHub authentication failed.'));
-
-		await expect(syncTreeseedGitHubEnvironment({
-			tenantRoot,
-			scope: 'staging',
-			repository: 'treeseed-ai/api',
-		})).rejects.toThrow(/Configure TREESEED_GITHUB_TOKEN_TREESEED_AI_API/u);
-	});
-
-	it('reports GitHub environment sync progress while syncing items', async () => {
-		const tenantRoot = createTenantFixture();
-		writeDefaultMachineConfig(tenantRoot);
-		unlockSecrets(tenantRoot);
-		seedHostedValues(tenantRoot);
-		const progress = vi.fn();
-
-		await syncTreeseedGitHubEnvironment({ tenantRoot, scope: 'staging', onProgress: progress, execution: 'sequential' });
-
-		expect(progress).toHaveBeenCalledWith(expect.stringContaining('[staging][github][sync] Syncing GitHub environment staging: 0/'), 'stdout');
-		if (hasConfigEntry(tenantRoot, 'RAILWAY_API_TOKEN')) {
-			expect(progress).toHaveBeenCalledWith(expect.stringContaining('[staging][github][secret] created RAILWAY_API_TOKEN'), 'stdout');
-		}
-		expect(progress).toHaveBeenCalledWith(expect.stringContaining('[staging][github][variable] created CLOUDFLARE_ACCOUNT_ID'), 'stdout');
-		expect(progress).toHaveBeenCalledWith(expect.stringContaining('[staging][github][sync] Complete:'), 'stdout');
-	});
-
-	it('finalizes GitHub sync for every non-local scope', async () => {
-		const tenantRoot = createTenantFixture();
-		writeDefaultMachineConfig(tenantRoot);
-		unlockSecrets(tenantRoot);
-		seedHostedValues(tenantRoot);
-
-		const result = await finalizeTreeseedConfig({
-			tenantRoot,
-			scopes: ['staging', 'prod'],
-			sync: 'github',
-			checkConnections: false,
-			initializePersistent: false,
-		});
-
-		expect(result.synced.github).toMatchObject({
-			repository: 'owner/repo',
-			scopes: [
-				expect.objectContaining({ scope: 'staging', environment: 'staging' }),
-				expect.objectContaining({ scope: 'prod', environment: 'production' }),
-			],
-		});
-		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'staging', expect.objectContaining({
-			branchName: 'staging',
-		}));
-		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'production', expect.objectContaining({
-			branchName: 'main',
-			tagName: '*.*.*',
-		}));
-		if (hasConfigEntry(tenantRoot, 'RAILWAY_API_TOKEN')) {
-			expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
-				'owner/repo',
-				'production',
-				'RAILWAY_API_TOKEN',
-				'railway-token-value',
-				expect.any(Object),
-			);
-		}
-	});
-
-	it('syncs GitHub environments for package-owned hosted app repositories', async () => {
-		const tenantRoot = createTenantFixture();
-		addPackageApiApplication(tenantRoot);
-		writeDefaultMachineConfig(tenantRoot);
-		unlockSecrets(tenantRoot);
-		seedHostedValues(tenantRoot);
-		setConfigValue(tenantRoot, 'staging', 'TREESEED_RAILWAY_PROJECT_ID', 'railway-project-id', 'plain', 'scoped');
-
-		const result = await finalizeTreeseedConfig({
-			tenantRoot,
-			scopes: ['staging'],
-			sync: 'github',
-			checkConnections: false,
-			initializePersistent: false,
-		});
-
-		expect(result.synced.github).toMatchObject({
-			repositories: ['owner/repo', 'treeseed-ai/api'],
-			scopes: [
-				expect.objectContaining({ repository: 'owner/repo', scope: 'staging', environment: 'staging' }),
-				expect.objectContaining({ repository: 'treeseed-ai/api', scope: 'staging', environment: 'staging' }),
-			],
-		});
-		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'staging', expect.objectContaining({
-			branchName: 'staging',
-		}));
-		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('treeseed-ai/api', 'staging', expect.objectContaining({
-			branchName: 'staging',
-		}));
-		if (hasConfigEntry(tenantRoot, 'RAILWAY_API_TOKEN')) {
-			expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalledWith(
-				'treeseed-ai/api',
-				'staging',
-				'RAILWAY_API_TOKEN',
-				'railway-token-value',
-				expect.any(Object),
-			);
-		}
-		if (hasConfigEntry(tenantRoot, 'TREESEED_RAILWAY_WORKSPACE')) {
-			expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
-				'treeseed-ai/api',
-				'staging',
-				'TREESEED_RAILWAY_WORKSPACE',
-				'acme-workspace',
-				expect.any(Object),
-			);
-		}
-		if (hasConfigEntry(tenantRoot, 'TREESEED_RAILWAY_PROJECT_ID')) {
-			expect(upsertGitHubEnvironmentVariableMock).toHaveBeenCalledWith(
-				'treeseed-ai/api',
-				'staging',
-				'TREESEED_RAILWAY_PROJECT_ID',
-				'railway-project-id',
-				expect.any(Object),
-			);
-		}
-	});
-
-	it('runs hosted GitHub environment sync scopes concurrently in parallel bootstrap mode', async () => {
-		const tenantRoot = createTenantFixture();
-		writeDefaultMachineConfig(tenantRoot);
-		unlockSecrets(tenantRoot);
-		seedHostedValues(tenantRoot);
-		let active = 0;
-		let maxActive = 0;
-		ensureGitHubActionsEnvironmentMock.mockImplementation(async () => {
-			active += 1;
-			maxActive = Math.max(maxActive, active);
-			await new Promise((resolve) => setTimeout(resolve, 10));
-			active -= 1;
-		});
-
-		await finalizeTreeseedConfig({
-			tenantRoot,
-			scopes: ['staging', 'prod'],
-			sync: 'github',
-			checkConnections: false,
-			initializePersistent: false,
-			bootstrapExecution: 'parallel',
-		});
-
-		expect(maxActive).toBe(2);
-	});
-
-	it('does not require Cloudflare readiness for GitHub-only bootstrap', async () => {
+	it('blocks finalize github sync before provider mutation and preserves readiness facts', async () => {
 		const tenantRoot = createTenantFixtureWithPlaceholderCloudflareAccount();
 		writeDefaultMachineConfig(tenantRoot);
 		unlockSecrets(tenantRoot);
 		setConfigValue(tenantRoot, 'staging', 'CODEX_API_KEY', 'codex-test-key-1234567890', 'secret', 'scoped');
 		setConfigValue(tenantRoot, 'staging', 'GH_TOKEN', 'github-token-value', 'secret');
 
-		const result = await finalizeTreeseedConfig({
+		await expect(finalizeTreeseedConfig({
 			tenantRoot,
 			scopes: ['staging'],
 			sync: 'github',
 			checkConnections: false,
 			initializePersistent: true,
 			systems: ['github'],
-		});
-
-		expect(result.reconciled).toEqual([]);
-		expect(result.bootstrapSystemsByScope.staging.runnable).toEqual(['github']);
-		expect(result.readinessByScope.staging.checks.reconcile).toBe('deferred');
-		expect(result.validationByScope.staging.ok).toBe(true);
-		expect(ensureGitHubActionsEnvironmentMock).toHaveBeenCalledWith('owner/repo', 'staging', expect.objectContaining({
-			branchName: 'staging',
-		}));
+		})).rejects.toThrow(/GitHub environment sync .* is reconciler-owned/u);
+		expect(ensureGitHubActionsEnvironmentMock).not.toHaveBeenCalled();
 	});
 });

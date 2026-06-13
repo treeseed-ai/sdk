@@ -2230,6 +2230,12 @@ export async function ensureRailwayServiceVolume({
 		?? activeVolumes.find((candidate) =>
 		candidate.name === name
 		&& candidate.instances.some((instance) => instance.environmentId === environmentId),
+	) ?? volumes.find((candidate) =>
+		candidate.name === name
+		&& (
+			candidate.instances.length === 0
+			|| candidate.instances.some((instance) => instance.environmentId === environmentId)
+		),
 	) ?? null;
 	let created = false;
 	let updated = false;
@@ -2254,6 +2260,13 @@ export async function ensureRailwayServiceVolume({
 				const refreshed = await listRailwayVolumes({ projectId, env, fetchImpl });
 				const existing = findRailwayVolumeForService(refreshed, serviceId, environmentId)
 					?? findRailwayVolumeForService(refreshed, serviceId)
+					?? refreshed.find((candidate) =>
+						candidate.name === name
+						&& (
+							candidate.instances.length === 0
+							|| candidate.instances.some((instance) => instance.environmentId === environmentId)
+						),
+					)
 					?? findSoleActiveRailwayVolumeForEnvironment(refreshed, environmentId);
 				if (existing) {
 					return existing;

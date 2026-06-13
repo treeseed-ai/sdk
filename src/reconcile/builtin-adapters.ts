@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
+import { resolveCapacityProviderLaunchPlan } from '../capacity-provider.ts';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues } from '../operations/services/config-runtime.ts';
 import {
 	buildPublicVars,
@@ -75,6 +76,24 @@ import type {
 import { loadTreeseedReconcileState } from './state.ts';
 import { createTreeseedReconcileUnitId } from './units.ts';
 import { discoverTreeseedApplications } from '../hosting/apps.ts';
+import { findTreeseedPackageAdapter, syncTreeseedPackageWorkflows } from '../operations/services/package-adapters.ts';
+import {
+	dispatchReconcileGitHubWorkflow,
+	ensureReconcileGitHubEnvironment,
+	observeGitHubEnvironment,
+	observeGitHubWorkflowRun,
+	upsertReconcileGitHubSecret,
+	upsertReconcileGitHubVariable,
+} from './providers/github-private.ts';
+import {
+	buildDockerImage,
+	inspectDockerAvailability,
+	inspectDockerImage,
+	inspectDockerManifest,
+	runDockerCompose,
+} from './providers/docker-private.ts';
+import { checkHttpHealth, runManagedDevAction } from './providers/local-private.ts';
+import { runHostedReconcileGate, runHostedVerifyGate, runReleaseVerifyCommand, writeReleaseRecord } from './providers/release-private.ts';
 
 function toDeployTarget(target: TreeseedReconcileTarget) {
 	return target.kind === 'persistent'
@@ -137,7 +156,7 @@ function buildCompositeAdapter(unitType: TreeseedReconcileUnitType): TreeseedRec
 		supports(candidateUnitType, providerId) {
 			return candidateUnitType === unitType && providerId === 'treeseed';
 		},
-		refresh(input) {
+		async refresh(input) {
 			return noopObservedState(input);
 		},
 		diff() {
@@ -183,6 +202,1008 @@ function buildCompositeAdapter(unitType: TreeseedReconcileUnitType): TreeseedRec
 				};
 			});
 			return summarizeVerification(unit.unitId, checks);
+		},
+	};
+}
+
+function genericObservedState(input: TreeseedReconcileAdapterInput, exists = true, warnings: string[] = []): TreeseedObservedUnitState {
+	return {
+		exists,
+		status: exists ? 'ready' : 'pending',
+		live: {
+			unitId: input.unit.unitId,
+			unitType: input.unit.unitType,
+			provider: input.unit.provider,
+			spec: input.unit.spec,
+		},
+		locators: { unitId: input.unit.unitId },
+		warnings,
+	};
+}
+
+function genericResult(input: TreeseedReconcileAdapterInput & { observed: TreeseedObservedUnitState; diff: TreeseedReconcileUnitDiff }, state: Record<string, unknown> = input.observed.live): TreeseedReconcileResult {
+	return {
+		unit: input.unit,
+		observed: input.observed,
+		diff: input.diff,
+		action: input.diff.action,
+		warnings: input.observed.warnings,
+		resourceLocators: input.observed.locators,
+		state: {
+			...state,
+			reconciledAt: nowIso(),
+		},
+		verification: null,
+	};
+}
+
+function genericVerification(input: TreeseedReconcileAdapterInput, observed: TreeseedObservedUnitState, description = 'Desired resource is represented in the canonical graph') {
+	return summarizeVerification(input.unit.unitId, [
+		verificationCheck('desired-resource', description, 'derived', {
+			exists: observed.exists,
+			configured: true,
+			ready: observed.status !== 'error',
+			verified: observed.exists && observed.status !== 'error',
+			observed: observed.live,
+		}),
+	], observed.warnings);
+}
+
+function buildManifestAdapter(): TreeseedReconcileAdapter {
+	return {
+		providerId: 'treeseed',
+		unitTypes: ['package-manifest'],
+		supports(unitType, providerId) {
+			return unitType === 'package-manifest' && providerId === 'treeseed';
+		},
+		async refresh(input) {
+			const manifestPath = typeof input.unit.spec.manifestPath === 'string' ? input.unit.spec.manifestPath : null;
+			return genericObservedState(input, manifestPath ? existsSync(manifestPath) : true, manifestPath ? [] : ['package manifest path is not available']);
+		},
+		diff(input) {
+			return input.observed.exists ? noopDiff() : { action: 'blocked', reasons: ['package manifest is missing'], before: input.observed.live, after: input.unit.spec };
+		},
+		apply(input) {
+			return genericResult(input);
+		},
+		verify(input) {
+			return genericVerification(input, input.observed, 'Package manifest exists and is readable');
+		},
+	};
+}
+
+function buildPackageWorkflowAdapter(): TreeseedReconcileAdapter {
+	return {
+		providerId: 'github',
+		unitTypes: ['package-workflow'],
+		supports(unitType, providerId) {
+			return unitType === 'package-workflow' && providerId === 'github';
+		},
+		refresh(input) {
+			const packageId = typeof input.unit.spec.packageId === 'string'
+				? input.unit.spec.packageId
+				: typeof input.unit.metadata.packageId === 'string'
+					? input.unit.metadata.packageId
+					: null;
+			const adapter = packageId ? findTreeseedPackageAdapter(input.context.tenantRoot, packageId) : null;
+			const sync = packageId
+				? syncTreeseedPackageWorkflows({ root: input.context.tenantRoot, packageId, execute: false })
+				: [];
+			return {
+				...genericObservedState(input, Boolean(adapter), adapter ? [] : [`Package ${packageId ?? '(unknown)'} was not discovered.`]),
+				status: sync.some((entry) => entry.changed || !entry.exists) ? 'drifted' : adapter ? 'ready' : 'error',
+				live: {
+					...input.unit.spec,
+					packageId,
+					workflows: sync,
+				},
+			};
+		},
+		diff(input) {
+			if (!input.observed.exists) {
+				return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
+			}
+			const workflows = Array.isArray(input.observed.live.workflows) ? input.observed.live.workflows as Array<{ changed?: boolean; exists?: boolean }> : [];
+			if (workflows.some((entry) => entry.changed || !entry.exists)) {
+				return { action: 'update', reasons: ['package workflow files differ from rendered templates'], before: input.observed.live, after: input.unit.spec };
+			}
+			return noopDiff();
+		},
+		apply(input) {
+			const packageId = typeof input.unit.spec.packageId === 'string'
+				? input.unit.spec.packageId
+				: typeof input.unit.metadata.packageId === 'string'
+					? input.unit.metadata.packageId
+					: null;
+			if (packageId && input.context.dryRun !== true && input.diff.action !== 'noop') {
+				const sync = syncTreeseedPackageWorkflows({
+					root: input.context.tenantRoot,
+					packageId,
+					execute: true,
+				});
+				return genericResult(input, { ...input.observed.live, workflowSync: sync });
+			}
+			return genericResult(input);
+		},
+		verify(input) {
+			const workflows = Array.isArray(input.observed.live.workflows) ? input.observed.live.workflows as Array<{ changed?: boolean; exists?: boolean; workflow?: string }> : [];
+			const checks = workflows.map((workflow) => verificationCheck(
+				`workflow:${workflow.workflow ?? 'unknown'}`,
+				`Workflow ${workflow.workflow ?? 'unknown'} matches the rendered template`,
+				'sdk',
+				{
+					exists: workflow.exists === true,
+					configured: workflow.changed !== true,
+					ready: workflow.exists === true && workflow.changed !== true,
+					verified: workflow.exists === true && workflow.changed !== true,
+					expected: 'rendered-template',
+					observed: workflow,
+					issues: [
+						...(workflow.exists ? [] : ['workflow file is missing']),
+						...(workflow.changed ? ['workflow file has template drift'] : []),
+					],
+				},
+			));
+			return summarizeVerification(input.unit.unitId, checks.length > 0 ? checks : [
+				verificationCheck('package-workflow', 'Package workflow resource is observable', 'sdk', {
+					exists: input.observed.exists,
+					configured: input.observed.exists,
+					ready: input.observed.exists,
+					verified: input.observed.exists,
+				}),
+			], input.observed.warnings);
+		},
+	};
+}
+
+function buildGraphOnlyAdapter(providerId: string, unitTypes: TreeseedReconcileUnitType[], description: string): TreeseedReconcileAdapter {
+	return {
+		providerId,
+		unitTypes,
+		supports(unitType, candidateProviderId) {
+			return candidateProviderId === providerId && unitTypes.includes(unitType);
+		},
+		refresh(input) {
+			return genericObservedState(input);
+		},
+		diff() {
+			return noopDiff();
+		},
+		apply(input) {
+			return genericResult(input);
+		},
+		verify(input) {
+			return genericVerification(input, input.observed, description);
+		},
+		destroy(input) {
+			return genericResult({
+				...input,
+				diff: { action: 'delete', reasons: ['selected for destroy'], before: input.observed.live, after: {} },
+			});
+		},
+	};
+}
+
+function buildGitHubEnv(input: TreeseedReconcileAdapterInput) {
+	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
+	return resolveReconcileEnvironmentValues(input, scope === 'local' ? 'staging' : scope);
+}
+
+function repositoryFromUnit(input: TreeseedReconcileAdapterInput) {
+	const repository = input.unit.spec.repository;
+	if (typeof repository !== 'string' || !repository.trim()) {
+		throw new Error(`${input.unit.unitId} requires a GitHub repository.`);
+	}
+	return repository.trim();
+}
+
+function workflowName(value: unknown, fallback: string) {
+	return (typeof value === 'string' && value.trim() ? value.trim() : fallback).replace(/^\.github\/workflows\//u, '');
+}
+
+function environmentFromUnit(input: TreeseedReconcileAdapterInput) {
+	const environment = input.unit.spec.environment;
+	if (typeof environment !== 'string' || !environment.trim()) {
+		throw new Error(`${input.unit.unitId} requires a GitHub environment.`);
+	}
+	return environment.trim();
+}
+
+function buildGitHubEnvironmentAdapter(): TreeseedReconcileAdapter {
+	return {
+		providerId: 'github',
+		unitTypes: ['github-environment'],
+		supports(unitType, providerId) {
+			return unitType === 'github-environment' && providerId === 'github';
+		},
+		async refresh(input) {
+			const repository = repositoryFromUnit(input);
+			const environment = environmentFromUnit(input);
+			const observed = await observeGitHubEnvironment(repository, environment, buildGitHubEnv(input));
+			const warnings = observed.exists
+				? []
+				: [String(observed.error ?? 'GitHub environment is missing')];
+			return {
+				...genericObservedState(input, observed.exists, warnings),
+				status: observed.exists ? 'ready' : 'pending',
+				live: observed,
+			};
+		},
+		diff(input) {
+			if (input.observed.live?.authAvailable === false) {
+				return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
+			}
+			return input.observed.exists ? noopDiff() : { action: 'create', reasons: ['GitHub environment is missing'], before: input.observed.live, after: input.unit.spec };
+		},
+		async apply(input) {
+			if (input.diff.action !== 'noop') {
+				const result = await ensureReconcileGitHubEnvironment(repositoryFromUnit(input), environmentFromUnit(input), typeof input.unit.spec.branch === 'string' ? input.unit.spec.branch : null, buildGitHubEnv(input));
+				return genericResult(input, { ...input.observed.live, result });
+			}
+			return genericResult(input);
+		},
+		verify(input) {
+			return genericVerification(input, input.observed, 'GitHub environment exists');
+		},
+	};
+}
+
+function buildGitHubBindingAdapter(unitType: 'github-secret-binding' | 'github-variable-binding'): TreeseedReconcileAdapter {
+	return {
+		providerId: 'github',
+		unitTypes: [unitType],
+		supports(candidateUnitType, providerId) {
+			return candidateUnitType === unitType && providerId === 'github';
+		},
+		async refresh(input) {
+			const repository = repositoryFromUnit(input);
+			const environment = environmentFromUnit(input);
+			const nameKey = unitType === 'github-secret-binding' ? 'secretName' : 'variableName';
+			const name = String(input.unit.spec[nameKey] ?? input.unit.spec.envName ?? '');
+			const observed = await observeGitHubEnvironment(repository, environment, buildGitHubEnv(input));
+			const names = unitType === 'github-secret-binding' ? observed.secretNames : observed.variableNames;
+			const exists = observed.exists && names.includes(name);
+			const warnings = observed.authAvailable === false
+				? [String(observed.error ?? 'GitHub authentication is unavailable')]
+				: observed.exists ? [] : [`GitHub environment ${environment} is missing`];
+			return {
+				...genericObservedState(input, exists, warnings),
+				status: exists ? 'ready' : 'pending',
+				live: { repository, environment, name, exists, observed },
+			};
+		},
+		diff(input) {
+			const name = String(input.observed.live.name ?? '');
+			if (input.observed.live?.observed?.authAvailable === false) {
+				return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
+			}
+			const value = buildGitHubEnv(input)[name];
+			if (!value) {
+				return { action: 'blocked', reasons: [`Missing local value for ${name}`], before: input.observed.live, after: input.unit.spec };
+			}
+			return input.observed.exists ? noopDiff() : { action: 'update', reasons: [`GitHub ${unitType === 'github-secret-binding' ? 'secret' : 'variable'} ${name} is missing`], before: input.observed.live, after: input.unit.spec };
+		},
+		async apply(input) {
+			if (input.diff.action === 'noop' || input.diff.action === 'blocked') return genericResult(input);
+			const name = String(input.observed.live.name ?? input.unit.spec.envName ?? '');
+			const value = buildGitHubEnv(input)[name];
+			if (!value) throw new Error(`Missing local value for ${name}`);
+			const result = unitType === 'github-secret-binding'
+				? await upsertReconcileGitHubSecret(repositoryFromUnit(input), environmentFromUnit(input), name, value, buildGitHubEnv(input))
+				: await upsertReconcileGitHubVariable(repositoryFromUnit(input), environmentFromUnit(input), name, value, buildGitHubEnv(input));
+			return genericResult(input, { ...input.observed.live, result });
+		},
+		verify(input) {
+			return genericVerification(input, input.observed, `GitHub ${unitType === 'github-secret-binding' ? 'secret' : 'variable'} binding exists`);
+		},
+	};
+}
+
+function buildGitHubWorkflowDispatchAdapter(): TreeseedReconcileAdapter {
+	return {
+		providerId: 'github',
+		unitTypes: ['github-workflow-dispatch'],
+		supports(unitType, providerId) {
+			return unitType === 'github-workflow-dispatch' && providerId === 'github';
+		},
+		async refresh(input) {
+			const repository = repositoryFromUnit(input);
+			const workflow = workflowName(input.unit.spec.workflow, 'publish.yml');
+			const branch = typeof input.unit.spec.branch === 'string' ? input.unit.spec.branch : null;
+			const latest = await observeGitHubWorkflowRun({ repository, workflow, branch, env: buildGitHubEnv(input) });
+			const authBlocked = Boolean(latest && typeof latest === 'object' && 'authAvailable' in latest && latest.authAvailable === false);
+			return {
+				...genericObservedState(input, Boolean(latest) && !authBlocked, authBlocked ? [String((latest as any).error ?? 'GitHub authentication is unavailable')] : []),
+				status: latest && !authBlocked ? 'ready' : 'pending',
+				live: { repository, workflow, branch, latest },
+			};
+		},
+		diff(input) {
+			if (input.observed.live?.latest?.authAvailable === false) {
+				return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
+			}
+			return input.observed.exists ? noopDiff() : { action: 'create', reasons: ['workflow dispatch has no observed run'], before: input.observed.live, after: input.unit.spec };
+		},
+		async apply(input) {
+			if (input.diff.action === 'noop') return genericResult(input);
+			const result = await dispatchReconcileGitHubWorkflow({
+				repository: repositoryFromUnit(input),
+				workflow: workflowName(input.unit.spec.workflow, 'publish.yml'),
+				branch: String(input.unit.spec.branch ?? 'staging'),
+				inputs: typeof input.unit.spec.inputs === 'object' && input.unit.spec.inputs ? input.unit.spec.inputs as Record<string, string> : {},
+				wait: input.unit.spec.wait === true,
+				timeoutMs: typeof input.unit.spec.timeoutMs === 'number' ? input.unit.spec.timeoutMs : undefined,
+				env: buildGitHubEnv(input),
+			});
+			return genericResult(input, { ...input.observed.live, result });
+		},
+		verify(input) {
+			return genericVerification(input, input.observed, 'GitHub workflow dispatch has an observed run');
+		},
+	};
+}
+
+function buildPackageImageAdapter(): TreeseedReconcileAdapter {
+	return {
+		providerId: 'dockerhub',
+		unitTypes: ['package-image'],
+		supports(unitType, providerId) {
+			return unitType === 'package-image' && providerId === 'dockerhub';
+		},
+		refresh(input) {
+			const env = buildGitHubEnv(input);
+			const usernameConfigured = Boolean(env.DOCKERHUB_USERNAME);
+			const tokenConfigured = Boolean(env.DOCKERHUB_TOKEN);
+			return {
+				...genericObservedState(input, usernameConfigured && tokenConfigured, [
+					...(usernameConfigured ? [] : ['DOCKERHUB_USERNAME is not configured']),
+					...(tokenConfigured ? [] : ['DOCKERHUB_TOKEN is not configured']),
+				]),
+				status: usernameConfigured && tokenConfigured ? 'ready' : 'pending',
+				live: {
+					...input.unit.spec,
+					dockerHub: {
+						usernameConfigured,
+						tokenConfigured,
+					},
+				},
+			};
+		},
+		diff(input) {
+			return input.observed.exists ? noopDiff() : { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
+		},
+		apply(input) {
+			return genericResult(input);
+		},
+		verify(input) {
+			return genericVerification(input, input.observed, 'Docker Hub credentials for package image publication are configured');
+		},
+	};
+}
+
+function buildDockerImageBuildAdapter(): TreeseedReconcileAdapter {
+	return {
+		providerId: 'docker',
+		unitTypes: ['docker-image-build'],
+		supports(unitType, providerId) {
+			return unitType === 'docker-image-build' && providerId === 'docker';
+		},
+		refresh(input) {
+			const availability = inspectDockerAvailability();
+			const tags = Array.isArray(input.unit.spec.tags) ? input.unit.spec.tags.filter((entry): entry is string => typeof entry === 'string') : [];
+			const inspectedImages = Object.fromEntries(tags.map((tag) => [tag, inspectDockerImage(tag)]));
+			const inspectedManifests = Object.fromEntries(tags.map((tag) => [tag, inspectDockerManifest(tag)]));
+			const exists = availability.available && availability.buildxAvailable;
+			return {
+				...genericObservedState(input, exists, availability.warnings),
+				status: !exists ? 'error' : tags.some((tag) => inspectedImages[tag] || inspectedManifests[tag]) ? 'ready' : 'pending',
+				live: {
+					...input.unit.spec,
+					docker: availability,
+					tags,
+					inspectedImages,
+					inspectedManifests,
+				},
+			};
+		},
+		diff(input) {
+			if (!input.observed.exists) {
+				return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
+			}
+			const tags = Array.isArray(input.unit.spec.tags) ? input.unit.spec.tags.filter((entry): entry is string => typeof entry === 'string') : [];
+			const inspectedImages = input.observed.live.inspectedImages as Record<string, unknown> | undefined;
+			const inspectedManifests = input.observed.live.inspectedManifests as Record<string, unknown> | undefined;
+			const missing = tags.filter((tag) => !inspectedImages?.[tag] && !inspectedManifests?.[tag]);
+			return missing.length > 0
+				? { action: 'create', reasons: [`missing docker image tags: ${missing.join(', ')}`], before: input.observed.live, after: input.unit.spec }
+				: noopDiff();
+		},
+		apply(input) {
+			if (input.diff.action === 'blocked' || input.diff.action === 'noop') return genericResult(input);
+			const platforms = Array.isArray(input.unit.spec.platforms) ? input.unit.spec.platforms.filter((entry): entry is string => typeof entry === 'string') : ['linux/amd64'];
+			const tags = Array.isArray(input.unit.spec.tags) ? input.unit.spec.tags.filter((entry): entry is string => typeof entry === 'string') : [];
+			const result = buildDockerImage({
+				tenantRoot: input.context.tenantRoot,
+				packageRoot: String(input.unit.spec.packageRoot ?? input.context.tenantRoot),
+				context: String(input.unit.spec.context ?? '.'),
+				dockerfile: String(input.unit.spec.dockerfile ?? 'Dockerfile'),
+				target: typeof input.unit.spec.target === 'string' ? input.unit.spec.target : null,
+				platforms,
+				tags,
+				labels: typeof input.unit.spec.labels === 'object' && input.unit.spec.labels ? input.unit.spec.labels as Record<string, string> : {},
+				buildArgs: typeof input.unit.spec.buildArgs === 'object' && input.unit.spec.buildArgs ? input.unit.spec.buildArgs as Record<string, string> : {},
+				push: input.unit.spec.push === true,
+				load: input.unit.spec.load !== false,
+				provenance: input.unit.spec.provenance === false ? false : undefined,
+				env: input.context.launchEnv,
+			});
+			return genericResult(input, { ...input.observed.live, build: result });
+		},
+		verify(input) {
+			const tags = Array.isArray(input.unit.spec.tags) ? input.unit.spec.tags.filter((entry): entry is string => typeof entry === 'string') : [];
+			const checks = tags.map((tag) => {
+				const image = inspectDockerImage(tag);
+				const manifest = inspectDockerManifest(tag);
+				const ok = Boolean(image || manifest);
+				return verificationCheck(`docker-image:${tag}`, `Docker image ${tag} exists locally or as an inspectable manifest`, 'cli', {
+					exists: ok,
+					configured: input.observed.exists,
+					ready: ok,
+					verified: ok,
+					observed: image ?? manifest,
+					issues: ok ? [] : [`Docker image ${tag} was not found after build.`],
+				});
+			});
+			return summarizeVerification(input.unit.unitId, checks.length > 0 ? checks : [
+				verificationCheck('docker', 'Docker daemon and Buildx are available', 'cli', {
+					exists: input.observed.exists,
+					configured: input.observed.exists,
+					ready: input.observed.exists,
+					verified: input.observed.exists,
+				}),
+			], input.observed.warnings);
+		},
+	};
+}
+
+function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
+	return {
+		providerId: 'local',
+		unitTypes: ['local-docker-compose'],
+		supports(unitType, providerId) {
+			return unitType === 'local-docker-compose' && providerId === 'local';
+		},
+		refresh(input) {
+			const composeFile = typeof input.unit.spec.composeFile === 'string' ? resolve(input.context.tenantRoot, input.unit.spec.composeFile) : null;
+			const cwd = resolve(input.context.tenantRoot, String(input.unit.spec.cwd ?? '.'));
+			const docker = inspectDockerAvailability();
+			const projectName = String(input.unit.spec.projectName ?? 'treeseed-capacity-provider');
+			const env = buildLocalComposeLaunchEnv(input);
+			const ps = composeFile && existsSync(composeFile) && docker.available
+				? runDockerCompose({ composeFile, projectName, cwd, env, action: 'ps' })
+				: null;
+			const config = composeFile && existsSync(composeFile) && docker.available
+				? runDockerCompose({ composeFile, projectName, cwd, env, action: 'config' })
+				: null;
+			return {
+				...genericObservedState(input, Boolean(composeFile && existsSync(composeFile) && docker.available), [
+				...(composeFile && existsSync(composeFile) ? [] : [`Compose file is missing: ${composeFile ?? '(unset)'}`]),
+				...docker.warnings,
+			]),
+				status: ps?.ok ? 'ready' : composeFile && existsSync(composeFile) && docker.available ? 'pending' : 'error',
+				live: {
+					...input.unit.spec,
+					composeFile,
+					projectName,
+					cwd,
+					docker,
+					ps,
+					configHash: config?.stdout?.trim() || null,
+				},
+			};
+		},
+		diff(input) {
+			if (!input.observed.exists) return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
+			return input.observed.status === 'ready'
+				? noopDiff()
+				: { action: 'create', reasons: ['compose services are not running'], before: input.observed.live, after: input.unit.spec };
+		},
+		apply(input) {
+			if (input.diff.action === 'blocked' || input.diff.action === 'noop') return genericResult(input);
+			const composeFile = String(input.observed.live.composeFile ?? resolve(input.context.tenantRoot, String(input.unit.spec.composeFile ?? '')));
+			const cwd = String(input.observed.live.cwd ?? input.context.tenantRoot);
+			const projectName = String(input.unit.spec.projectName ?? 'treeseed-capacity-provider');
+			const env = buildLocalComposeLaunchEnv(input);
+			const result = runDockerCompose({ composeFile, projectName, cwd, env, action: 'up' });
+			if (!result.ok) {
+				throw new Error(result.stderr.trim() || result.stdout.trim() || 'docker compose up failed');
+			}
+			return genericResult(input, { ...input.observed.live, compose: result });
+		},
+		async verify(input) {
+			const healthChecks = Array.isArray(input.unit.spec.healthChecks) ? input.unit.spec.healthChecks as Array<Record<string, unknown>> : [];
+			const checks: TreeseedUnitVerificationCheck[] = [];
+			for (const healthCheck of healthChecks) {
+				if (healthCheck.kind === 'http' && typeof healthCheck.url === 'string') {
+					const health = await checkHttpHealth(healthCheck.url);
+					checks.push(verificationCheck(String(healthCheck.id ?? healthCheck.url), `HTTP health ${healthCheck.url}`, 'api', {
+						exists: health.ok,
+						configured: true,
+						ready: health.ok,
+						verified: health.ok,
+						observed: health,
+						issues: health.ok ? [] : [`Health endpoint ${healthCheck.url} did not respond successfully.`],
+					}));
+				}
+			}
+			if (checks.length === 0) {
+				checks.push(verificationCheck('compose', 'Docker Compose project is observable', 'cli', {
+					exists: input.observed.exists,
+					configured: input.observed.exists,
+					ready: input.observed.status === 'ready',
+					verified: input.observed.exists && input.observed.status !== 'error',
+					observed: input.observed.live,
+				}));
+			}
+			return summarizeVerification(input.unit.unitId, checks, input.observed.warnings);
+		},
+		destroy(input) {
+			const composeFile = String(input.observed.live.composeFile ?? resolve(input.context.tenantRoot, String(input.unit.spec.composeFile ?? '')));
+			const cwd = String(input.observed.live.cwd ?? input.context.tenantRoot);
+			const projectName = String(input.unit.spec.projectName ?? 'treeseed-capacity-provider');
+			if (input.context.dryRun !== true && composeFile && existsSync(composeFile)) {
+				const result = runDockerCompose({ composeFile, projectName, cwd, env: input.context.launchEnv, action: 'down' });
+				if (!result.ok) {
+					throw new Error(result.stderr.trim() || result.stdout.trim() || 'docker compose down failed');
+				}
+			}
+			return genericResult({
+				...input,
+				diff: { action: 'delete', reasons: ['selected local compose project for destroy'], before: input.observed.live, after: {} },
+			});
+		},
+	};
+}
+
+function buildLocalComposeLaunchEnv(input: TreeseedReconcileAdapterInput) {
+	const fallback = resolveCapacityProviderLaunchPlan({
+		schemaVersion: 1,
+		provider: {
+			dataDir: '.treeseed/local-capacity-provider/data',
+			environment: 'local',
+		},
+		runtime: {
+			images: {
+				roles: {
+					api: { image: 'treeseed/agent-api', tag: 'latest' },
+					manager: { image: 'treeseed/agent-manager', tag: 'latest' },
+					runner: { image: 'treeseed/agent-runner', tag: 'latest' },
+				},
+			},
+			api: {
+				hostPort: 4783,
+			},
+		},
+	}).composeEnv;
+	return {
+		...input.context.launchEnv,
+		...fallback,
+		...(typeof input.unit.spec.env === 'object' && input.unit.spec.env ? input.unit.spec.env as Record<string, string> : {}),
+	};
+}
+
+function buildLocalProcessAdapter(): TreeseedReconcileAdapter {
+	return {
+		providerId: 'local',
+		unitTypes: ['local-process'],
+		supports(unitType, providerId) {
+			return unitType === 'local-process' && providerId === 'local';
+		},
+		async refresh(input) {
+			const surfaces = Array.isArray(input.unit.spec.surfaces)
+				? input.unit.spec.surfaces.filter((entry): entry is string => typeof entry === 'string')
+				: [String(input.unit.spec.processId ?? input.unit.logicalName)];
+			const status = await runManagedDevAction({
+				tenantRoot: input.context.tenantRoot,
+				action: 'status',
+				surfaces,
+				options: typeof input.unit.spec.options === 'object' && input.unit.spec.options ? input.unit.spec.options as Record<string, unknown> : {},
+				env: input.context.launchEnv,
+			});
+			const safeStatus = sanitizeManagedDevObservation(status);
+			return {
+				...genericObservedState(input, true, safeStatus.ok ? [] : [safeStatus.output || 'managed dev status failed']),
+				status: safeStatus.ok ? 'ready' : 'pending',
+				live: {
+					...input.unit.spec,
+					status: safeStatus,
+				},
+			};
+		},
+		diff(input) {
+			return input.observed.status === 'ready'
+				? noopDiff()
+				: { action: 'create', reasons: ['local process is not reported ready'], before: input.observed.live, after: input.unit.spec };
+		},
+		async apply(input) {
+			if (input.diff.action === 'noop') return genericResult(input);
+			const surfaces = Array.isArray(input.unit.spec.surfaces)
+				? input.unit.spec.surfaces.filter((entry): entry is string => typeof entry === 'string')
+				: [String(input.unit.spec.processId ?? input.unit.logicalName)];
+			const result = await runManagedDevAction({
+				tenantRoot: input.context.tenantRoot,
+				action: input.unit.spec.action === 'restart' ? 'restart' : 'start',
+				surfaces,
+				options: typeof input.unit.spec.options === 'object' && input.unit.spec.options ? input.unit.spec.options as Record<string, unknown> : {},
+				env: input.context.launchEnv,
+			});
+			return genericResult(input, { ...input.observed.live, managedDev: result });
+		},
+		async verify(input) {
+			const status = await runManagedDevAction({
+				tenantRoot: input.context.tenantRoot,
+				action: 'status',
+				surfaces: Array.isArray(input.unit.spec.surfaces) ? input.unit.spec.surfaces.filter((entry): entry is string => typeof entry === 'string') : [],
+				options: typeof input.unit.spec.options === 'object' && input.unit.spec.options ? input.unit.spec.options as Record<string, unknown> : {},
+				env: input.context.launchEnv,
+			});
+			const safeStatus = sanitizeManagedDevObservation(status);
+			return summarizeVerification(input.unit.unitId, [
+				verificationCheck('managed-dev-status', 'Managed dev status is observable', 'sdk', {
+					exists: safeStatus.ok,
+					configured: true,
+					ready: safeStatus.ok,
+					verified: safeStatus.ok,
+					observed: safeStatus.parsed ?? safeStatus.output,
+					issues: safeStatus.ok ? [] : [safeStatus.output || 'managed dev status failed'],
+				}),
+			], input.observed.warnings);
+		},
+		async destroy(input) {
+			const surfaces = Array.isArray(input.unit.spec.surfaces)
+				? input.unit.spec.surfaces.filter((entry): entry is string => typeof entry === 'string')
+				: [String(input.unit.spec.processId ?? input.unit.logicalName)];
+			if (input.context.dryRun !== true) {
+				await runManagedDevAction({
+					tenantRoot: input.context.tenantRoot,
+					action: 'stop',
+					surfaces,
+					options: typeof input.unit.spec.options === 'object' && input.unit.spec.options ? input.unit.spec.options as Record<string, unknown> : {},
+					env: input.context.launchEnv,
+				});
+			}
+			return genericResult({
+				...input,
+				diff: { action: 'delete', reasons: ['selected local process for stop'], before: input.observed.live, after: {} },
+			});
+		},
+	};
+}
+
+function sanitizeManagedDevObservation<T>(value: T): T {
+	if (Array.isArray(value)) {
+		return value.map((entry) => sanitizeManagedDevObservation(entry)) as T;
+	}
+	if (!value || typeof value !== 'object') {
+		return value;
+	}
+	const result: Record<string, unknown> = {};
+	for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+		if (key === 'env') {
+			result.redactedEnv = redactEnvironmentRecord(entry);
+			continue;
+		}
+		result[key] = sanitizeManagedDevObservation(entry);
+	}
+	return result as T;
+}
+
+function redactEnvironmentRecord(value: unknown) {
+	if (!value || typeof value !== 'object') {
+		return {};
+	}
+	return Object.fromEntries(
+		Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+			key,
+			key === 'PATH' || key === 'NODE_ENV' ? String(entry ?? '') : '<redacted>',
+		]),
+	);
+}
+
+function buildCapacityProviderAdapter(providerId: 'local' | 'railway'): TreeseedReconcileAdapter {
+	return {
+		providerId,
+		unitTypes: ['capacity-provider'],
+		supports(unitType, candidateProviderId) {
+			return unitType === 'capacity-provider' && candidateProviderId === providerId;
+		},
+		refresh(input) {
+			const dependencies = input.unit.dependencies;
+			return {
+				...genericObservedState(input),
+				live: {
+					...input.unit.spec,
+					dependencies,
+				},
+			};
+		},
+		diff() {
+			return noopDiff();
+		},
+		apply(input) {
+			return genericResult(input);
+		},
+		verify(input) {
+			const dependencyResults = input.context.session.get('treeseed:verification-results') as Map<string, TreeseedUnitVerificationResult> | undefined;
+			const checks = input.unit.dependencies.map((dependency) => {
+				const verification = dependencyResults?.get(dependency);
+				const ok = verification?.verified === true;
+				return verificationCheck(`dependency:${dependency}`, `Capacity provider dependency ${dependency} is verified`, 'derived', {
+					exists: ok,
+					configured: ok,
+					ready: ok,
+					verified: ok,
+					observed: verification ?? null,
+					issues: ok ? [] : [`Dependency ${dependency} is not verified.`],
+				});
+			});
+			return summarizeVerification(input.unit.unitId, checks.length > 0 ? checks : [
+				verificationCheck('capacity-provider', 'Capacity provider desired topology is observable', 'derived', {
+					exists: input.observed.exists,
+					configured: input.observed.exists,
+					ready: input.observed.status !== 'error',
+					verified: input.observed.exists && input.observed.status !== 'error',
+					observed: input.observed.live,
+				}),
+			], input.observed.warnings);
+		},
+		destroy(input) {
+			return genericResult({
+				...input,
+				diff: { action: 'delete', reasons: ['selected capacity provider for destroy'], before: input.observed.live, after: {} },
+			});
+		},
+	};
+}
+
+function buildReleaseGateAdapter(): TreeseedReconcileAdapter {
+	const unitTypes: TreeseedReconcileUnitType[] = [
+		'release-gate:verify',
+		'release-gate:npm-publish',
+		'release-gate:image-publish',
+		'release-gate:hosted-reconcile',
+		'release-gate:live-verify',
+		'release-gate:candidate-record',
+		'release-gate:production-record',
+	];
+	return {
+		providerId: 'treeseed',
+		unitTypes,
+		supports(unitType, providerId) {
+			return providerId === 'treeseed' && unitTypes.includes(unitType);
+		},
+		refresh(input) {
+			const fingerprint = typeof input.unit.spec.fingerprint === 'string' ? input.unit.spec.fingerprint : null;
+			const previousFingerprint = typeof input.persistedState?.lastReconciledState?.fingerprint === 'string'
+				? input.persistedState.lastReconciledState.fingerprint
+				: null;
+			return {
+				...genericObservedState(input),
+				status: fingerprint && previousFingerprint === fingerprint ? 'ready' : 'pending',
+				live: {
+					...input.unit.spec,
+					previousFingerprint,
+					fingerprint,
+				},
+			};
+		},
+		diff(input) {
+			return input.observed.status === 'ready'
+				? noopDiff()
+				: { action: 'update', reasons: ['release gate fingerprint has not been reconciled'], before: input.observed.live, after: input.unit.spec };
+		},
+		async apply(input) {
+			if (input.diff.action === 'noop') return genericResult(input);
+			const gateKind = String(input.unit.spec.gateKind ?? input.unit.unitType);
+			const packageId = typeof input.unit.spec.packageId === 'string' ? input.unit.spec.packageId : null;
+			if (gateKind === 'release-gate:verify' && packageId) {
+				const verify = runReleaseVerifyCommand({ tenantRoot: input.context.tenantRoot, packageId, env: input.context.launchEnv });
+				if (verify.ok !== true) {
+					throw new Error([verify.stderr, verify.stdout].filter(Boolean).join('\n').trim() || `${packageId} release verification failed`);
+				}
+				return genericResult(input, { ...input.observed.live, verify, fingerprint: input.unit.spec.fingerprint });
+			}
+			if ((gateKind === 'release-gate:npm-publish' || gateKind === 'release-gate:image-publish') && packageId) {
+				const adapter = findTreeseedPackageAdapter(input.context.tenantRoot, packageId);
+				const repository = typeof adapter?.metadata.repository === 'string' ? adapter.metadata.repository : null;
+				if (!repository) {
+					throw new Error(`${packageId} does not declare a GitHub repository.`);
+				}
+				const workflow = gateKind === 'release-gate:image-publish'
+					? workflowName(adapter?.metadata.developmentImageWorkflow, 'publish.yml')
+					: workflowName(adapter?.metadata.hostedVerifyWorkflow, 'publish.yml');
+				const dispatch = await dispatchReconcileGitHubWorkflow({
+					repository,
+					workflow,
+					branch: input.context.target.kind === 'persistent' && input.context.target.scope === 'prod' ? 'main' : 'staging',
+					inputs: {},
+					wait: input.context.target.kind === 'persistent' && input.context.target.scope === 'prod',
+					env: buildGitHubEnv(input),
+				});
+				return genericResult(input, { ...input.observed.live, dispatch, fingerprint: input.unit.spec.fingerprint });
+			}
+			if (gateKind === 'release-gate:hosted-reconcile') {
+				const environment = input.unit.spec.environment === 'prod' ? 'prod' : 'staging';
+				const selector = typeof input.unit.spec.hostedSelector === 'object' && input.unit.spec.hostedSelector
+					? input.unit.spec.hostedSelector as any
+					: { environment, provider: ['cloudflare', 'railway', 'github', 'dockerhub'] };
+				const nested = await runHostedReconcileGate({
+					parentContext: input.context,
+					selector,
+					target: { kind: 'persistent', scope: environment },
+					dryRun: input.context.dryRun === true,
+				});
+				return genericResult(input, { ...input.observed.live, nested, fingerprint: input.unit.spec.fingerprint });
+			}
+			if (gateKind === 'release-gate:live-verify') {
+				const environment = input.unit.spec.environment === 'prod' ? 'prod' : 'staging';
+				const selector = typeof input.unit.spec.hostedSelector === 'object' && input.unit.spec.hostedSelector
+					? input.unit.spec.hostedSelector as any
+					: { environment, provider: ['cloudflare', 'railway', 'github', 'dockerhub'] };
+				const status = await runHostedVerifyGate({
+					parentContext: input.context,
+					selector,
+					target: { kind: 'persistent', scope: environment },
+				});
+				if (!status.ready) {
+					throw new Error(`Hosted live verification failed for ${environment}: ${status.blockers.join('\n')}`);
+				}
+				return genericResult(input, { ...input.observed.live, status, fingerprint: input.unit.spec.fingerprint });
+			}
+			if (gateKind === 'release-gate:candidate-record' || gateKind === 'release-gate:production-record') {
+				const recordPath = typeof input.unit.spec.recordPath === 'string'
+					? input.unit.spec.recordPath
+					: gateKind === 'release-gate:production-record'
+						? '.treeseed/workflow/releases/latest-production.json'
+						: '.treeseed/workflow/release-candidates/latest-staging.json';
+				const record = writeReleaseRecord({
+					tenantRoot: input.context.tenantRoot,
+					recordPath,
+					record: {
+						schemaVersion: 1,
+						kind: gateKind,
+						unitId: input.unit.unitId,
+						fingerprint: input.unit.spec.fingerprint ?? null,
+						environment: input.unit.spec.environment ?? null,
+						recordedAt: nowIso(),
+					},
+				});
+				return genericResult(input, { ...input.observed.live, record, fingerprint: input.unit.spec.fingerprint });
+			}
+			return genericResult(input, { ...input.observed.live, fingerprint: input.unit.spec.fingerprint });
+		},
+		verify(input) {
+			const dependencyResults = input.context.session.get('treeseed:verification-results') as Map<string, TreeseedUnitVerificationResult> | undefined;
+			const dependencyChecks = input.unit.dependencies.map((dependency) => {
+				const verification = dependencyResults?.get(dependency);
+				const ok = verification?.verified === true;
+				return verificationCheck(`dependency:${dependency}`, `Release gate dependency ${dependency} passed`, 'derived', {
+					exists: ok,
+					configured: ok,
+					ready: ok,
+					verified: ok,
+					observed: verification ?? null,
+					issues: ok ? [] : [`Dependency ${dependency} is not verified.`],
+				});
+			});
+			const ownCheck = verificationCheck('release-gate', 'Release gate reconciled its fingerprint', 'sdk', {
+				exists: true,
+				configured: true,
+				ready: input.result?.state?.fingerprint === input.unit.spec.fingerprint || input.diff.action === 'noop',
+				verified: input.result?.state?.fingerprint === input.unit.spec.fingerprint || input.diff.action === 'noop',
+				expected: input.unit.spec.fingerprint ?? null,
+				observed: input.result?.state?.fingerprint ?? input.observed.live.previousFingerprint ?? null,
+			});
+			return summarizeVerification(input.unit.unitId, [...dependencyChecks, ownCheck], input.observed.warnings);
+		},
+	};
+}
+
+function workflowFingerprint(input: TreeseedReconcileAdapterInput) {
+	return JSON.stringify({
+		unitId: input.unit.unitId,
+		unitType: input.unit.unitType,
+		spec: input.unit.spec,
+		dependencies: input.unit.dependencies,
+	});
+}
+
+function buildWorkflowMetaAdapter(): TreeseedReconcileAdapter {
+	const unitTypes: TreeseedReconcileUnitType[] = [
+		'branch-preview',
+		'branch-preview-cleanup',
+		'workflow-gate',
+		'save-gate:local-verify',
+		'save-gate:promotion-readiness',
+		'save-gate:hosted-verify',
+	];
+	return {
+		providerId: 'treeseed',
+		unitTypes,
+		supports(unitType, providerId) {
+			return providerId === 'treeseed' && unitTypes.includes(unitType);
+		},
+		refresh(input) {
+			const fingerprint = workflowFingerprint(input);
+			const previousFingerprint = typeof input.persistedState?.lastReconciledState?.fingerprint === 'string'
+				? input.persistedState.lastReconciledState.fingerprint
+				: null;
+			return {
+				...genericObservedState(input),
+				status: previousFingerprint === fingerprint ? 'ready' : 'pending',
+				live: {
+					...input.unit.spec,
+					fingerprint,
+					previousFingerprint,
+				},
+			};
+		},
+		diff(input) {
+			return input.observed.status === 'ready'
+				? noopDiff()
+				: { action: input.unit.unitType === 'branch-preview-cleanup' ? 'delete' : 'update', reasons: [`${input.unit.unitType} fingerprint has not been reconciled`], before: input.observed.live, after: input.unit.spec };
+		},
+		async apply(input) {
+			if (input.diff.action === 'noop') return genericResult(input);
+			const fingerprint = workflowFingerprint(input);
+			if (input.unit.unitType === 'branch-preview') {
+				const selector = typeof input.unit.spec.resources === 'object' && input.unit.spec.resources
+					? input.unit.spec.resources as any
+					: { environment: 'staging', appId: [String(input.unit.spec.appId ?? 'web')] };
+				const nested = await runHostedReconcileGate({
+					parentContext: input.context,
+					selector,
+					target: input.context.target,
+					dryRun: input.context.dryRun === true,
+				});
+				return genericResult(input, { ...input.observed.live, nested, fingerprint });
+			}
+			if (input.unit.unitType === 'save-gate:hosted-verify') {
+				const selector = typeof input.unit.spec.selector === 'object' && input.unit.spec.selector
+					? input.unit.spec.selector as any
+					: { environment: input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging' };
+				const status = await runHostedVerifyGate({
+					parentContext: input.context,
+					selector,
+					target: input.context.target,
+				});
+				if (!status.ready) {
+					throw new Error(`Save hosted verification failed: ${status.blockers.join('\n')}`);
+				}
+				return genericResult(input, { ...input.observed.live, status, fingerprint });
+			}
+			return genericResult(input, { ...input.observed.live, fingerprint });
+		},
+		verify(input) {
+			const fingerprint = workflowFingerprint(input);
+			const observedFingerprint = typeof input.observed.live.fingerprint === 'string' ? input.observed.live.fingerprint : null;
+			return summarizeVerification(input.unit.unitId, [
+				verificationCheck('workflow-meta-fingerprint', `${input.unit.unitType} fingerprint is reconciled`, 'derived', {
+					exists: true,
+					configured: observedFingerprint === fingerprint,
+					ready: observedFingerprint === fingerprint,
+					verified: observedFingerprint === fingerprint,
+					expected: fingerprint,
+					observed: observedFingerprint,
+					issues: observedFingerprint === fingerprint ? [] : [`Expected fingerprint ${fingerprint}, observed ${observedFingerprint ?? 'none'}.`],
+				}),
+			], input.observed.warnings);
+		},
+		destroy(input) {
+			return genericResult({
+				...input,
+				diff: { action: 'delete', reasons: [`selected ${input.unit.unitType} for destroy`], before: input.observed.live, after: {} },
+			}, { ...input.observed.live, destroyedAt: nowIso(), fingerprint: workflowFingerprint(input) });
 		},
 	};
 }
@@ -3259,5 +4280,49 @@ export function createRailwayReconcileAdapters() {
 		buildCompositeAdapter('operations-runner-runtime'),
 		buildCompositeAdapter('workday-manager-runtime'),
 		buildCompositeAdapter('worker-runner-runtime'),
+	];
+}
+
+export function createPackageReconcileAdapters() {
+	return [
+		buildManifestAdapter(),
+		buildPackageWorkflowAdapter(),
+		buildPackageImageAdapter(),
+	];
+}
+
+export function createGitHubReconcileAdapters() {
+	return [
+		buildGitHubEnvironmentAdapter(),
+		buildGitHubBindingAdapter('github-secret-binding'),
+		buildGitHubBindingAdapter('github-variable-binding'),
+		buildGitHubWorkflowDispatchAdapter(),
+	];
+}
+
+export function createDockerReconcileAdapters() {
+	return [
+		buildDockerImageBuildAdapter(),
+	];
+}
+
+export function createLocalProcessReconcileAdapters() {
+	return [
+		buildLocalProcessAdapter(),
+	];
+}
+
+export function createCapacityProviderReconcileAdapters() {
+	return [
+		buildCapacityProviderAdapter('local'),
+		buildCapacityProviderAdapter('railway'),
+		buildLocalDockerComposeAdapter(),
+	];
+}
+
+export function createReleaseGateReconcileAdapters() {
+	return [
+		buildWorkflowMetaAdapter(),
+		buildReleaseGateAdapter(),
 	];
 }

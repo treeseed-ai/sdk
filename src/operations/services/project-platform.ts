@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { runTreeseedGit } from './git-runner.ts';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, extname, join, resolve } from 'node:path';
@@ -148,19 +149,19 @@ export function resolveScope(environment: string | null) {
 }
 
 function currentCommit(tenantRoot: string) {
-	const result = spawnSync('git', ['rev-parse', 'HEAD'], {
+	const result = runTreeseedGit(['rev-parse', 'HEAD'], {
 		cwd: tenantRoot,
-		stdio: 'pipe',
-		encoding: 'utf8',
+		mode: 'read',
+		allowFailure: true,
 	});
 	return result.status === 0 ? result.stdout.trim() : null;
 }
 
 function currentRef(tenantRoot: string) {
-	const result = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+	const result = runTreeseedGit(['rev-parse', '--abbrev-ref', 'HEAD'], {
 		cwd: tenantRoot,
-		stdio: 'pipe',
-		encoding: 'utf8',
+		mode: 'read',
+		allowFailure: true,
 	});
 	return result.status === 0 ? result.stdout.trim() : null;
 }
@@ -991,12 +992,10 @@ function probeR2(
 }
 
 function probeScaleConfiguration(siteConfig, state) {
-	const worker = state.services?.workerRunner ?? state.services?.worker ?? {};
-	const workerConfig = siteConfig.services?.workerRunner ?? siteConfig.services?.worker ?? {};
 	const marketRunner = state.services?.operationsRunner ?? {};
 	const marketRunnerConfig = siteConfig.services?.operationsRunner ?? {};
 	const scalerKind = String(process.env.TREESEED_WORKER_POOL_SCALER ?? '').trim();
-	if (marketRunnerConfig.provider === 'railway' && workerConfig.provider !== 'railway') {
+	if (marketRunnerConfig.provider === 'railway') {
 		const runnerServiceId = marketRunner.serviceId ?? null;
 		const runnerServiceName = marketRunner.serviceName ?? marketRunnerConfig.railway?.serviceName ?? null;
 		return {
@@ -1007,19 +1006,19 @@ function probeScaleConfiguration(siteConfig, state) {
 			runnerKind: 'market_operations_runner',
 		};
 	}
-	if (scalerKind !== 'railway' && workerConfig.provider !== 'railway') {
+	if (scalerKind !== 'railway') {
 		return {
 			ok: true,
 			skipped: true,
 			reason: 'scaler_unconfigured',
 			mocked: true,
-			serviceId: worker.serviceId ?? null,
+			serviceId: null,
 		};
 	}
 
-	const serviceIdentifier = worker.serviceId || process.env.TREESEED_RAILWAY_WORKER_SERVICE_ID || worker.serviceName;
-	const environmentIdentifier = process.env.TREESEED_RAILWAY_ENVIRONMENT_ID || worker.environment;
-	const projectIdentifier = process.env.TREESEED_RAILWAY_PROJECT_ID || worker.projectId || worker.projectName;
+	const serviceIdentifier = process.env.TREESEED_RAILWAY_WORKER_SERVICE_ID;
+	const environmentIdentifier = process.env.TREESEED_RAILWAY_ENVIRONMENT_ID;
+	const projectIdentifier = process.env.TREESEED_RAILWAY_PROJECT_ID;
 	return {
 		ok: Boolean(serviceIdentifier && (environmentIdentifier || projectIdentifier)),
 		mocked: true,

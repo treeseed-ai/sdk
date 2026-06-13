@@ -1,9 +1,11 @@
 import { createTreeseedReconcileRegistry } from './registry.ts';
 import type {
+	TreeseedDesiredUnit,
 	TreeseedObservedUnitState,
 	TreeseedReconcilePlan,
 	TreeseedReconcileResult,
 	TreeseedReconcileRunContext,
+	TreeseedReconcileSelector,
 	TreeseedReconcileStateRecord,
 	TreeseedReconcileTarget,
 	TreeseedUnitPostcondition,
@@ -56,6 +58,7 @@ function createRunContext(
 	launchEnv: NodeJS.ProcessEnv,
 	write?: (line: string) => void,
 	dryRun = false,
+	session?: Map<string, unknown>,
 ): TreeseedReconcileRunContext {
 	const { deployConfig } = deriveTreeseedDesiredUnits({ tenantRoot, target });
 	return {
@@ -65,8 +68,96 @@ function createRunContext(
 		launchEnv,
 		dryRun,
 		write,
-		session: new Map<string, unknown>(),
+		session: session ?? new Map<string, unknown>(),
 	};
+}
+
+function normalizeSelectorValues(values: string[] | undefined) {
+	return new Set((values ?? []).map((value) => value.trim()).filter(Boolean));
+}
+
+function unitSelectorValues(unit: TreeseedDesiredUnit) {
+	const metadata = unit.metadata ?? {};
+	const spec = unit.spec ?? {};
+	const serviceKey = typeof metadata.serviceKey === 'string' ? metadata.serviceKey : null;
+	const placement = typeof metadata.placement === 'string' ? metadata.placement : null;
+	const appId = typeof metadata.applicationId === 'string'
+		? metadata.applicationId
+		: typeof metadata.appId === 'string'
+			? metadata.appId
+			: typeof (spec as Record<string, unknown>).applicationId === 'string'
+				? (spec as Record<string, string>).applicationId
+				: null;
+	const packageId = typeof metadata.packageId === 'string' ? metadata.packageId : appId;
+	const serviceName = typeof spec.serviceName === 'string' ? spec.serviceName : null;
+	const serviceId = typeof metadata.serviceId === 'string'
+		? metadata.serviceId
+		: typeof (spec as Record<string, unknown>).serviceId === 'string'
+			? (spec as Record<string, string>).serviceId
+			: null;
+	return {
+		provider: unit.provider,
+		unitType: unit.unitType,
+		unitId: unit.unitId,
+		serviceIds: [
+			unit.logicalName,
+			serviceId,
+			serviceKey,
+			serviceName,
+			unit.unitType.startsWith('railway-service:') ? unit.unitType.slice('railway-service:'.length) : null,
+			unit.unitType.endsWith('-runtime') ? unit.logicalName : null,
+		].filter((value): value is string => Boolean(value)),
+		serviceTypes: [unit.unitType],
+		placements: [placement].filter((value): value is string => Boolean(value)),
+		appIds: [appId].filter((value): value is string => Boolean(value)),
+		packageIds: [packageId].filter((value): value is string => Boolean(value)),
+	};
+}
+
+function unitMatchesSelector(unit: TreeseedDesiredUnit, selector?: TreeseedReconcileSelector) {
+	if (!selector) return true;
+	const values = unitSelectorValues(unit);
+	const provider = normalizeSelectorValues(selector.provider ?? selector.host);
+	const unitIds = normalizeSelectorValues(selector.unitId);
+	const unitTypes = normalizeSelectorValues([
+		...(selector.unitType ?? []),
+		...(selector.resourceKind ?? []),
+	]);
+	const serviceIds = normalizeSelectorValues(selector.serviceId);
+	const serviceTypes = normalizeSelectorValues(selector.serviceType);
+	const placements = normalizeSelectorValues(selector.placement);
+	const appIds = normalizeSelectorValues(selector.appId);
+	const packageIds = normalizeSelectorValues(selector.packageId);
+	const has = (needle: Set<string>, haystack: string[]) => needle.size === 0 || haystack.some((entry) => needle.has(entry));
+	return has(provider, [values.provider])
+		&& has(unitIds, [values.unitId])
+		&& has(unitTypes, [values.unitType])
+		&& has(serviceIds, values.serviceIds)
+		&& has(serviceTypes, values.serviceTypes)
+		&& has(placements, values.placements)
+		&& has(appIds, values.appIds)
+		&& has(packageIds, values.packageIds);
+}
+
+function includeDependencies(units: TreeseedDesiredUnit[], selected: TreeseedDesiredUnit[]) {
+	const byId = new Map(units.map((unit) => [unit.unitId, unit]));
+	const included = new Map(selected.map((unit) => [unit.unitId, unit]));
+	const visit = (unit: TreeseedDesiredUnit) => {
+		for (const dependencyId of unit.dependencies) {
+			const dependency = byId.get(dependencyId);
+			if (!dependency || included.has(dependency.unitId)) continue;
+			included.set(dependency.unitId, dependency);
+			visit(dependency);
+		}
+	};
+	for (const unit of selected) visit(unit);
+	return units.filter((unit) => included.has(unit.unitId));
+}
+
+function filterUnitsBySelector(units: TreeseedDesiredUnit[], selector?: TreeseedReconcileSelector) {
+	if (!selector) return units;
+	const selected = units.filter((unit) => unitMatchesSelector(unit, selector));
+	return includeDependencies(units, selected);
 }
 
 function dependencyLevels(units: ReturnType<typeof topologicallySortDesiredUnits>) {
@@ -179,16 +270,21 @@ export async function refreshTreeseedUnits({
 	target,
 	env = process.env,
 	systems,
+	selector,
+	units: explicitUnits,
 	write,
 }: {
 	tenantRoot: string;
 	target: TreeseedReconcileTarget;
 	env?: NodeJS.ProcessEnv;
 	systems?: TreeseedRunnableBootstrapSystem[];
+	selector?: TreeseedReconcileSelector;
+	units?: TreeseedDesiredUnit[];
 	write?: (line: string) => void;
 }) {
 	const derived = deriveTreeseedDesiredUnits({ tenantRoot, target });
-	const units = filterTreeseedDesiredUnitsByBootstrapSystems(derived.units, systems);
+	const baseUnits = explicitUnits ?? filterTreeseedDesiredUnitsByBootstrapSystems(derived.units, systems);
+	const units = filterUnitsBySelector(baseUnits, selector);
 	const deployConfig = derived.deployConfig;
 	const registry = createTreeseedReconcileRegistry(deployConfig);
 	const reconcileState = loadTreeseedReconcileState(tenantRoot, target);
@@ -223,15 +319,19 @@ export async function planTreeseedReconciliation({
 	target,
 	env = process.env,
 	systems,
+	selector,
+	units,
 	write,
 }: {
 	tenantRoot: string;
 	target: TreeseedReconcileTarget;
 	env?: NodeJS.ProcessEnv;
 	systems?: TreeseedRunnableBootstrapSystem[];
+	selector?: TreeseedReconcileSelector;
+	units?: TreeseedDesiredUnit[];
 	write?: (line: string) => void;
 }) {
-	const observed = await refreshTreeseedUnits({ tenantRoot, target, env, systems, write });
+	const observed = await refreshTreeseedUnits({ tenantRoot, target, env, systems, selector, units, write });
 	const registry = createTreeseedReconcileRegistry(observed.deployConfig);
 	const context = createRunContext(tenantRoot, target, env, write);
 	const plans: TreeseedReconcilePlan[] = [];
@@ -268,19 +368,25 @@ export async function reconcileTreeseedTarget({
 	target,
 	env = process.env,
 	systems,
+	selector,
+	units,
 	write,
 	dryRun = false,
+	session,
 }: {
 	tenantRoot: string;
 	target: TreeseedReconcileTarget;
 	env?: NodeJS.ProcessEnv;
 	systems?: TreeseedRunnableBootstrapSystem[];
+	selector?: TreeseedReconcileSelector;
+	units?: TreeseedDesiredUnit[];
 	write?: (line: string) => void;
 	dryRun?: boolean;
+	session?: Map<string, unknown>;
 }) {
-	const planned = await planTreeseedReconciliation({ tenantRoot, target, env, systems, write });
+	const planned = await planTreeseedReconciliation({ tenantRoot, target, env, systems, selector, units, write });
 	const registry = createTreeseedReconcileRegistry(planned.deployConfig);
-	const context = createRunContext(tenantRoot, target, env, write, dryRun);
+	const context = createRunContext(tenantRoot, target, env, write, dryRun, session);
 	const results: TreeseedReconcileResult[] = [];
 	const verificationMap = new Map<string, TreeseedUnitVerificationResult>();
 	const timingEntries: TreeseedTimingEntry[] = [];
@@ -369,6 +475,35 @@ export async function reconcileTreeseedTarget({
 			unitTiming.status = 'failed';
 			wrapAdapterFailure('apply', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
 		}
+		let refreshedObserved = (result as TreeseedReconcileResult).observed;
+		if (!dryRun) {
+			try {
+				const stageStartMs = performance.now();
+				refreshedObserved = await Promise.resolve(adapter.refresh({
+					context,
+					unit: plan.unit,
+					persistedState: persisted,
+				}));
+				result = {
+					...(result as TreeseedReconcileResult),
+					observed: refreshedObserved,
+				};
+				unitTiming.children?.push({
+					name: `${unitTiming.name}:refresh-after-apply`,
+					durationMs: elapsedMs(stageStartMs),
+					status: 'success',
+				});
+			} catch (error) {
+				unitTiming.children?.push({
+					name: `${unitTiming.name}:refresh-after-apply`,
+					durationMs: elapsedMs(unitStartMs),
+					status: 'failed',
+				});
+				unitTiming.durationMs = elapsedMs(unitStartMs);
+				unitTiming.status = 'failed';
+				wrapAdapterFailure('refresh', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
+			}
+		}
 		write?.(`Verifying ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName})...`);
 		const postconditions = await Promise.resolve(adapter.requiredPostconditions?.({
 			context,
@@ -382,7 +517,7 @@ export async function reconcileTreeseedTarget({
 				context,
 				unit: plan.unit,
 				persistedState: persisted,
-				observed: (result as TreeseedReconcileResult).observed,
+				observed: refreshedObserved,
 				diff: plan.diff,
 				result: result as TreeseedReconcileResult,
 				postconditions,
@@ -442,14 +577,19 @@ export async function destroyTreeseedTargetUnits({
 	tenantRoot,
 	target,
 	env = process.env,
+	selector,
+	units: explicitUnits,
 	write,
 }: {
 	tenantRoot: string;
 	target: TreeseedReconcileTarget;
 	env?: NodeJS.ProcessEnv;
+	selector?: TreeseedReconcileSelector;
+	units?: TreeseedDesiredUnit[];
 	write?: (line: string) => void;
 }) {
-	const { units, deployConfig } = deriveTreeseedDesiredUnits({ tenantRoot, target });
+	const { units: allUnits, deployConfig } = deriveTreeseedDesiredUnits({ tenantRoot, target });
+	const units = filterUnitsBySelector(explicitUnits ?? allUnits, selector);
 	const registry = createTreeseedReconcileRegistry(deployConfig);
 	const reconcileState = loadTreeseedReconcileState(tenantRoot, target);
 	const context = createRunContext(tenantRoot, target, env, write);
@@ -492,15 +632,21 @@ export async function collectTreeseedReconcileStatus({
 	target,
 	env = process.env,
 	systems,
+	selector,
+	units,
+	session,
 }: {
 	tenantRoot: string;
 	target: TreeseedReconcileTarget;
 	env?: NodeJS.ProcessEnv;
 	systems?: TreeseedRunnableBootstrapSystem[];
+	selector?: TreeseedReconcileSelector;
+	units?: TreeseedDesiredUnit[];
+	session?: Map<string, unknown>;
 }) {
-	const observed = await refreshTreeseedUnits({ tenantRoot, target, env, systems });
+	const observed = await refreshTreeseedUnits({ tenantRoot, target, env, systems, selector, units });
 	const registry = createTreeseedReconcileRegistry(observed.deployConfig);
-	const context = createRunContext(tenantRoot, target, env);
+	const context = createRunContext(tenantRoot, target, env, undefined, false, session);
 	const plans = await Promise.all(observed.units.map(async (unit) => {
 		const adapter = registry.get(unit.unitType, unit.provider);
 		const persisted = ensureTreeseedPersistedUnitState(observed.state, unit);
@@ -524,7 +670,7 @@ export async function collectTreeseedReconcileStatus({
 		context,
 		state: observed.state,
 	});
-	const units = observed.units.map((unit) => {
+	const unitStatuses = observed.units.map((unit) => {
 		const observation = observed.observations.get(unit.unitId)!;
 		const verification = verificationResults.get(unit.unitId)?.verification ?? null;
 		return {
@@ -538,16 +684,56 @@ export async function collectTreeseedReconcileStatus({
 			verification,
 		};
 	});
-	const ready = units.every((unit) => unit.verification?.verified === true);
-	const blockers = units
+	const ready = unitStatuses.every((unit) => unit.verification?.verified === true);
+	const blockers = unitStatuses
 		.filter((unit) => unit.verification?.verified !== true)
 		.map((unit) => `Reconcile unit ${unit.provider}:${unit.unitType} is unverified: ${formatVerificationFailure(unit.verification as TreeseedUnitVerificationResult)}.`);
-	const warnings = units.flatMap((unit) => unit.warnings);
+	const warnings = unitStatuses.flatMap((unit) => unit.warnings);
 	return {
 		target,
 		ready,
 		blockers,
 		warnings,
-		units,
+		units: unitStatuses,
 	};
+}
+
+export async function reconcileTreeseedNestedTarget({
+	parentContext,
+	selector,
+	target,
+	dryRun,
+}: {
+	parentContext: TreeseedReconcileRunContext;
+	selector: TreeseedReconcileSelector;
+	target: TreeseedReconcileTarget;
+	dryRun: boolean;
+}) {
+	return reconcileTreeseedTarget({
+		tenantRoot: parentContext.tenantRoot,
+		target,
+		env: parentContext.launchEnv,
+		selector,
+		write: parentContext.write,
+		dryRun,
+		session: parentContext.session,
+	});
+}
+
+export async function verifyTreeseedNestedTarget({
+	parentContext,
+	selector,
+	target,
+}: {
+	parentContext: TreeseedReconcileRunContext;
+	selector: TreeseedReconcileSelector;
+	target: TreeseedReconcileTarget;
+}) {
+	return collectTreeseedReconcileStatus({
+		tenantRoot: parentContext.tenantRoot,
+		target,
+		env: parentContext.launchEnv,
+		selector,
+		session: parentContext.session,
+	});
 }

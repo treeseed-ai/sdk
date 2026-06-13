@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { runTreeseedGit } from '../operations/services/git-runner.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -534,10 +535,10 @@ function parseGitHubRepositorySlugFromRemote(remoteUrl: string | undefined) {
 }
 
 function resolveGitHubOriginRepository(context: TreeseedEnvironmentContext) {
-	const result = spawnSync('git', ['remote', 'get-url', 'origin'], {
+	const result = runTreeseedGit(['remote', 'get-url', 'origin'], {
 		cwd: context.tenantRoot,
-		stdio: 'pipe',
-		encoding: 'utf8',
+		mode: 'read',
+		allowFailure: true,
 	});
 	if (result.status !== 0) {
 		return null;

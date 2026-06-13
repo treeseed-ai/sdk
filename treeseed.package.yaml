@@ -1,0 +1,20 @@
+id: "@treeseed/sdk"
+name: TreeSeed SDK
+kind: node-typescript
+type: node-library
+repository: treeseed-ai/sdk
+publishTarget: npm
+workflowTemplateVersion: "1"
+githubEnvironments:
+  - production
+requiredSecrets:
+  - NPM_TOKEN
+verify:
+  fast: npm run verify
+  local: npm run verify:local
+  release: npm run release:verify
+artifacts:
+  - provider: npm
+    name: "@treeseed/sdk"
+releaseGate:
+  workflow: release-gate.yml

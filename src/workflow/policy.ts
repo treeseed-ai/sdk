@@ -1,6 +1,7 @@
-import { findNearestTreeseedRoot, run } from '../operations/services/workspace-tools.ts';
+import { findNearestTreeseedRoot } from '../operations/services/workspace-tools.ts';
 import { currentBranch, repoRoot } from '../operations/services/workspace-save.ts';
 import { PRODUCTION_BRANCH, STAGING_BRANCH } from '../operations/services/git-workflow.ts';
+import { runTreeseedGitOk } from '../operations/services/git-runner.ts';
 
 export type TreeseedWorkflowBranchRole = 'feature' | 'staging' | 'main' | 'detached' | 'none';
 
@@ -22,12 +23,7 @@ function safeRepoRoot(cwd: string) {
 }
 
 function repoHasHead(repoDir: string) {
-	try {
-		run('git', ['rev-parse', '--verify', 'HEAD'], { cwd: repoDir, capture: true });
-		return true;
-	} catch {
-		return false;
-	}
+	return runTreeseedGitOk(['rev-parse', '--verify', 'HEAD'], { cwd: repoDir, mode: 'read' });
 }
 
 export function classifyTreeseedBranchRole(branchName: string | null, repoDir: string | null): TreeseedWorkflowBranchRole {

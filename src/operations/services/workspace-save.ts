@@ -1,6 +1,16 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { changedWorkspacePackages, publishableWorkspacePackages, run, sortWorkspacePackages, workspacePackages, workspaceRoot } from './workspace-tools.ts';
+import { changedWorkspacePackages, publishableWorkspacePackages, sortWorkspacePackages, workspacePackages, workspaceRoot } from './workspace-tools.ts';
+import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
+
+function runGit(args, options) {
+	return runTreeseedGitText(args, {
+		cwd: options.cwd,
+		mode: classifyTreeseedGitMode(args),
+		timeoutMs: options.timeoutMs,
+		maxBuffer: options.maxBuffer,
+	});
+}
 
 export const MERGE_CONFLICT_EXIT_CODE = 12;
 export const TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES = ['@treeseed/sdk', '@treeseed/ui', '@treeseed/core', '@treeseed/admin', '@treeseed/cli', '@treeseed/agent'];
@@ -68,7 +78,7 @@ function versionForLine(line, patch = 0) {
 
 function localGitTagExists(repoDir, tagName) {
 	try {
-		return run('git', ['tag', '--list', tagName], { cwd: repoDir, capture: true }).trim() === tagName;
+		return runGit(['tag', '--list', tagName], { cwd: repoDir, capture: true }).trim() === tagName;
 	} catch {
 		return false;
 	}
@@ -77,7 +87,7 @@ function localGitTagExists(repoDir, tagName) {
 export function highestStableGitTagOnLine(repoDir, lineLabel) {
 	const line = parseVersionLine(lineLabel);
 	try {
-		const tags = run('git', ['tag', '--list', `${line.label}.*`], { cwd: repoDir, capture: true })
+		const tags = runGit(['tag', '--list', `${line.label}.*`], { cwd: repoDir, capture: true })
 			.split(/\r?\n/u)
 			.map((tag) => tag.trim())
 			.filter(Boolean)
@@ -397,19 +407,19 @@ export function assertWorkspaceVersionConsistency(root = workspaceRoot()) {
 }
 
 export function repoRoot(cwd = workspaceRoot()) {
-	return run('git', ['rev-parse', '--show-toplevel'], { cwd, capture: true }).trim();
+	return runGit(['rev-parse', '--show-toplevel'], { cwd, capture: true }).trim();
 }
 
 export function currentBranch(repoDir) {
-	return run('git', ['branch', '--show-current'], { cwd: repoDir, capture: true }).trim();
+	return runGit(['branch', '--show-current'], { cwd: repoDir, capture: true }).trim();
 }
 
 export function originRemoteUrl(repoDir) {
-	return run('git', ['remote', 'get-url', 'origin'], { cwd: repoDir, capture: true }).trim();
+	return runGit(['remote', 'get-url', 'origin'], { cwd: repoDir, capture: true }).trim();
 }
 
 export function gitStatusPorcelain(repoDir) {
-	return run('git', ['status', '--porcelain'], { cwd: repoDir, capture: true }).trim();
+	return runGit(['status', '--porcelain'], { cwd: repoDir, capture: true }).trim();
 }
 
 export function hasMeaningfulChanges(repoDir) {
@@ -426,21 +436,21 @@ export function countConflictMarkers(source) {
 
 export function collectMergeConflictReport(repoDir) {
 	const branch = currentBranch(repoDir);
-	const conflictedFiles = run('git', ['diff', '--name-only', '--diff-filter=U'], {
+	const conflictedFiles = runGit(['diff', '--name-only', '--diff-filter=U'], {
 		cwd: repoDir,
 		capture: true,
 	})
 		.split('\n')
 		.map((line) => line.trim())
 		.filter(Boolean);
-	const status = run('git', ['status', '--short'], { cwd: repoDir, capture: true });
+	const status = runGit(['status', '--short'], { cwd: repoDir, capture: true });
 	const perFile = conflictedFiles.map((filePath) => {
 		const fullPath = resolve(repoDir, filePath);
 		const source = existsSync(fullPath) ? readFileSync(fullPath, 'utf8') : '';
 		return {
 			filePath,
 			markers: countConflictMarkers(source),
-			diff: run('git', ['diff', '--', filePath], { cwd: repoDir, capture: true }),
+			diff: runGit(['diff', '--', filePath], { cwd: repoDir, capture: true }),
 		};
 	});
 

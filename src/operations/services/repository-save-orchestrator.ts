@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, resolve, relative } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
 import {
 	ensureSshPushUrlForOrigin,
 	remoteWriteUrl,
@@ -68,6 +69,21 @@ import {
 export type RepoKind = 'package' | 'project';
 export type RepoBranchMode = 'package-release-main' | 'package-dev-save' | 'project-save';
 export type SaveVerifyMode = 'action-first' | 'local-only' | 'skip';
+
+function runGit(args: string[], options: { cwd: string; capture?: boolean; timeoutMs?: number; maxBuffer?: number }) {
+	return runTreeseedGitText(args, {
+		cwd: options.cwd,
+		mode: classifyTreeseedGitMode(args),
+		timeoutMs: options.timeoutMs,
+		maxBuffer: options.maxBuffer,
+	});
+}
+
+function sleepMs(durationMs: number) {
+	return new Promise((resolvePromise) => {
+		setTimeout(resolvePromise, durationMs);
+	});
+}
 export type SaveCommitMessageMode = CommitMessageProviderMode;
 export type SaveDevVersionStrategy = 'prerelease';
 export type ReleaseBumpLevel = 'major' | 'minor' | 'patch';
@@ -510,7 +526,7 @@ function repoIdForPath(root: string, repoDir: string) {
 
 function isGitRepo(repoDir: string) {
 	try {
-		run('git', ['rev-parse', '--is-inside-work-tree'], { cwd: repoDir, capture: true });
+		runGit(['rev-parse', '--is-inside-work-tree'], { cwd: repoDir, capture: true });
 		return true;
 	} catch {
 		return false;
@@ -596,7 +612,7 @@ function isDevVersionForBranch(version: string, branch: string) {
 function packageVersionAtHead(node: RepositorySaveNode) {
 	if (!node.packageJsonPath) return null;
 	try {
-		const source = run('git', ['show', 'HEAD:package.json'], { cwd: node.path, capture: true });
+		const source = runGit(['show', 'HEAD:package.json'], { cwd: node.path, capture: true });
 		const packageJson = JSON.parse(source) as Record<string, unknown>;
 		return typeof packageJson.version === 'string' ? packageJson.version : null;
 	} catch {
@@ -841,7 +857,7 @@ function runLimited<T>(items: T[], limit: number, action: (item: T) => Promise<v
 
 function remoteBranchExistsSafe(repoDir: string, branch: string) {
 	try {
-		run('git', ['rev-parse', '--verify', `refs/remotes/origin/${branch}`], { cwd: repoDir, capture: true });
+		runGit(['rev-parse', '--verify', `refs/remotes/origin/${branch}`], { cwd: repoDir, capture: true });
 		return true;
 	} catch {
 		// Fall through to live remote discovery below.
@@ -909,8 +925,8 @@ function commitSubject(message: string | null | undefined) {
 }
 
 function gitDiffSummary(repoDir: string) {
-	const changedFiles = run('git', ['status', '--porcelain'], { cwd: repoDir, capture: true });
-	const rawDiff = run('git', ['diff', '--cached'], { cwd: repoDir, capture: true, maxBuffer: 1024 * 1024 * 32 });
+	const changedFiles = runGit(['status', '--porcelain'], { cwd: repoDir, capture: true });
+	const rawDiff = runGit(['diff', '--cached'], { cwd: repoDir, capture: true, maxBuffer: 1024 * 1024 * 32 });
 	const maxDiffChars = 120_000;
 	const diff = rawDiff.length > maxDiffChars
 		? `${rawDiff.slice(0, maxDiffChars)}\n\n[treeseed-save: diff truncated from ${rawDiff.length} characters for commit-message generation]\n`
@@ -920,7 +936,7 @@ function gitDiffSummary(repoDir: string) {
 
 function hasStagedChanges(repoDir: string) {
 	try {
-		return run('git', ['diff', '--cached', '--name-only'], { cwd: repoDir, capture: true }).trim().length > 0;
+		return runGit(['diff', '--cached', '--name-only'], { cwd: repoDir, capture: true }).trim().length > 0;
 	} catch {
 		return false;
 	}
@@ -1120,7 +1136,7 @@ async function runNpmInstallWithRetry(
 		}
 		if (attempt < 5) {
 			emitProgress(options, node, 'install', 'npm install failed; retrying in 60 seconds.', 'stderr');
-			spawnSync('sleep', ['60'], { stdio: 'ignore' });
+			await sleepMs(60_000);
 		}
 	}
 	throw new RepositorySaveError(`npm install failed after 5 attempts.\n${lastError ?? ''}`);
@@ -1155,7 +1171,7 @@ async function runProjectVerificationInstallWithRetry(
 		}
 		if (attempt < 5) {
 			emitProgress(options, node, 'install', 'npm ci for project verification failed; retrying in 60 seconds.', 'stderr');
-			spawnSync('sleep', ['60'], { stdio: 'ignore' });
+			await sleepMs(60_000);
 		}
 	}
 	throw new RepositorySaveError(`Project verification dependency install failed after 5 attempts.\n${lastError ?? ''}`);
@@ -1407,7 +1423,7 @@ function pushCurrentBranch(node: RepositorySaveNode, options: RepositorySaveOpti
 
 function tagExists(repoDir: string, tagName: string) {
 	try {
-		run('git', ['rev-parse', '--verify', `refs/tags/${tagName}`], { cwd: repoDir, capture: true });
+		runGit(['rev-parse', '--verify', `refs/tags/${tagName}`], { cwd: repoDir, capture: true });
 		return true;
 	} catch {
 		return false;
@@ -1416,7 +1432,7 @@ function tagExists(repoDir: string, tagName: string) {
 
 function localTagCommit(repoDir: string, tagName: string) {
 	try {
-		return run('git', ['rev-list', '-n', '1', tagName], { cwd: repoDir, capture: true }).trim();
+		return runGit(['rev-list', '-n', '1', tagName], { cwd: repoDir, capture: true }).trim();
 	} catch {
 		return null;
 	}
@@ -1424,7 +1440,7 @@ function localTagCommit(repoDir: string, tagName: string) {
 
 function remoteTagCommit(repoDir: string, tagName: string) {
 	try {
-		const output = run('git', ['ls-remote', '--tags', 'origin', `refs/tags/${tagName}*`], { cwd: repoDir, capture: true });
+		const output = runGit(['ls-remote', '--tags', 'origin', `refs/tags/${tagName}*`], { cwd: repoDir, capture: true });
 		const lines = output.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
 		const dereferenced = lines.find((line) => line.endsWith(`refs/tags/${tagName}^{}`));
 		const exact = lines.find((line) => line.endsWith(`refs/tags/${tagName}`));
@@ -1437,7 +1453,7 @@ function remoteTagCommit(repoDir: string, tagName: string) {
 
 function localTagMessage(repoDir: string, tagName: string) {
 	try {
-		return run('git', ['tag', '-l', tagName, '--format=%(contents)'], { cwd: repoDir, capture: true }).trim();
+		return runGit(['tag', '-l', tagName, '--format=%(contents)'], { cwd: repoDir, capture: true }).trim();
 	} catch {
 		return null;
 	}
@@ -1557,7 +1573,7 @@ function ensurePackageTagReady(node: RepositorySaveNode, options: RepositorySave
 
 function treeCommitForPath(repoDir: string, ref: string, path: string) {
 	try {
-		const output = run('git', ['ls-tree', ref, '--', path], { cwd: repoDir, capture: true }).trim();
+		const output = runGit(['ls-tree', ref, '--', path], { cwd: repoDir, capture: true }).trim();
 		const match = output.match(/^\d+\s+commit\s+([0-9a-f]{40})\t/u);
 		return match?.[1] ?? null;
 	} catch {
@@ -1576,7 +1592,7 @@ function collectSubmodulePointerChanges(node: RepositorySaveNode, finalizedCommi
 		if (!childRelativePath) continue;
 		const childPath = resolve(node.path, childRelativePath);
 		if (!existsSync(childPath) || !isGitRepo(childPath)) continue;
-		const status = run('git', ['status', '--porcelain', '--', childRelativePath], { cwd: node.path, capture: true });
+		const status = runGit(['status', '--porcelain', '--', childRelativePath], { cwd: node.path, capture: true });
 		const oldSha = treeCommitForPath(node.path, 'HEAD', childRelativePath);
 		const newSha = finalizedCommit || headCommit(childPath);
 		if (status.trim().length > 0 || (oldSha && newSha && oldSha !== newSha)) {

@@ -1,4 +1,4 @@
-import { loadCliDeployConfig } from '../operations/services/runtime-tools.ts';
+import { loadTreeseedPlatformConfig } from '../platform/config.ts';
 import {
 	loadDeployState,
 	resolveConfiguredSurfaceDomain,
@@ -31,7 +31,7 @@ export function deriveTreeseedDesiredUnits({
 	tenantRoot: string;
 	target: TreeseedReconcileTarget;
 }) {
-	const deployConfig = loadCliDeployConfig(tenantRoot);
+	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: target.kind === 'persistent' ? target.scope : 'staging', env: process.env }).deployConfig;
 	const legacyState = loadDeployState(tenantRoot, deployConfig, { target });
 	const identity = legacyState.identity ?? resolveTreeseedResourceIdentity(deployConfig, target);
 	const units: TreeseedDesiredUnit[] = [];

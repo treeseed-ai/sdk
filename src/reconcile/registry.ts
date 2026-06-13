@@ -2,7 +2,16 @@ import { loadTreeseedPlugins } from '../platform/plugins/runtime.ts';
 import type { TreeseedDeployConfig } from '../platform/contracts.ts';
 import type { TreeseedPlugin, TreeseedPluginEnvironmentContext } from '../platform/plugin.ts';
 import type { TreeseedReconcileAdapter, TreeseedReconcileProviderId, TreeseedReconcileUnitType } from './contracts.ts';
-import { createCloudflareReconcileAdapters, createRailwayReconcileAdapters } from './builtin-adapters.ts';
+import {
+	createCapacityProviderReconcileAdapters,
+	createCloudflareReconcileAdapters,
+	createDockerReconcileAdapters,
+	createGitHubReconcileAdapters,
+	createLocalProcessReconcileAdapters,
+	createPackageReconcileAdapters,
+	createRailwayReconcileAdapters,
+	createReleaseGateReconcileAdapters,
+} from './builtin-adapters.ts';
 
 export type TreeseedReconcileRegistry = {
 	adapters: TreeseedReconcileAdapter[];
@@ -47,6 +56,12 @@ function loadPluginReconcileAdapters(config: TreeseedDeployConfig) {
 
 export function createTreeseedReconcileRegistry(config: TreeseedDeployConfig): TreeseedReconcileRegistry {
 	const adapters = [
+		...createReleaseGateReconcileAdapters(),
+		...createPackageReconcileAdapters(),
+		...createGitHubReconcileAdapters(),
+		...createDockerReconcileAdapters(),
+		...createLocalProcessReconcileAdapters(),
+		...createCapacityProviderReconcileAdapters(),
 		...createCloudflareReconcileAdapters(),
 		...createRailwayReconcileAdapters(),
 		...loadPluginReconcileAdapters(config),

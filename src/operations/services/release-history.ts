@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { runTreeseedGit } from './git-runner.ts';
 
 export type ReleaseHistoryCommit = {
 	sha: string;
@@ -39,10 +39,9 @@ const SECTION_ORDER: ReleaseHistorySection[] = [
 ];
 
 function runGit(repoDir: string, args: string[]) {
-	const result = spawnSync('git', args, {
+	const result = runTreeseedGit(args, {
 		cwd: repoDir,
-		stdio: 'pipe',
-		encoding: 'utf8',
+		mode: 'read',
 	});
 	if (result.status !== 0) {
 		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `git ${args.join(' ')} failed`);

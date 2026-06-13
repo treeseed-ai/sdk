@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { loadCliDeployConfig } from '../operations/services/runtime-tools.ts';
+import { loadTreeseedPlatformConfig } from '../platform/config.ts';
 import { loadDeployState, resolveTreeseedResourceIdentity, writeDeployState } from '../operations/services/deploy.ts';
 import type { TreeseedDesiredUnit, TreeseedReconcileStateRecord, TreeseedReconcileTarget, TreeseedUnitPersistedState } from './contracts.ts';
 import { targetKey } from './units.ts';
@@ -271,7 +271,7 @@ export function migrateLegacyDeployStateUnits(legacyState: Record<string, any>, 
 }
 
 export function loadTreeseedReconcileState(tenantRoot: string, target: TreeseedReconcileTarget): TreeseedReconcileStateRecord {
-	const deployConfig = loadCliDeployConfig(tenantRoot);
+	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: target.kind === 'persistent' ? target.scope : 'staging', env: process.env }).deployConfig;
 	const legacyState = loadDeployState(tenantRoot, deployConfig, { target });
 	const persistedUnits = legacyState.units && typeof legacyState.units === 'object'
 		? legacyState.units as Record<string, TreeseedUnitPersistedState>
@@ -285,7 +285,7 @@ export function loadTreeseedReconcileState(tenantRoot: string, target: TreeseedR
 }
 
 export function writeTreeseedReconcileState(tenantRoot: string, reconcileState: TreeseedReconcileStateRecord) {
-	const deployConfig = loadCliDeployConfig(tenantRoot);
+	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: reconcileState.target.kind === 'persistent' ? reconcileState.target.scope : 'staging', env: process.env }).deployConfig;
 	const legacyState = loadDeployState(tenantRoot, deployConfig, { target: reconcileState.target });
 	writeDeployState(tenantRoot, {
 		...legacyState,

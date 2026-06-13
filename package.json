@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.11.0",
+  "version": "0.11.1-dev.staging.20260613T072600Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -164,6 +164,10 @@
     "./platform/deploy-runtime": {
       "types": "./dist/platform/deploy-runtime.d.ts",
       "default": "./dist/platform/deploy-runtime.js"
+    },
+    "./platform/desired-state": {
+      "types": "./dist/platform/desired-state.d.ts",
+      "default": "./dist/platform/desired-state.js"
     },
     "./platform/environment": {
       "types": "./dist/platform/environment.d.ts",

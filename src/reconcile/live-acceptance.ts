@@ -13,6 +13,9 @@ import {
 	type TreeseedCanonicalPostcondition,
 	type TreeseedCanonicalReconcileReport,
 } from './platform.ts';
+import type { TreeseedDesiredResource } from '../platform/desired-state.ts';
+import type { TreeseedReconcileSelector } from './contracts.ts';
+import { runTreeseedGit } from '../operations/services/git-runner.ts';
 import {
 	deleteRailwayProject,
 	deleteRailwayService,
@@ -91,6 +94,19 @@ export interface TreeseedLiveReconcileRunResult {
 	ok: boolean;
 }
 
+export interface TreeseedLiveAcceptanceScenario {
+	id: string;
+	provider: TreeseedLiveReconcileProvider;
+	capability: string;
+	desiredResources: TreeseedDesiredResource[];
+	selector: TreeseedReconcileSelector;
+	expectedActions: TreeseedCanonicalAction['kind'][];
+	cleanupSelector: TreeseedReconcileSelector;
+	required: boolean;
+	probeOnly?: boolean;
+	cleanupRequired: boolean;
+}
+
 export interface TreeseedLiveReconcileProgressEvent {
 	provider: TreeseedLiveReconcileProvider;
 	mode: TreeseedLiveReconcileMode;
@@ -124,6 +140,106 @@ const PROVIDER_CAPABILITIES: Record<TreeseedLiveReconcileProvider, string[]> = {
 	github: ['environment', 'secret', 'variable', 'workflow-dispatch', 'workflow-observation', 'repository-scoped-token'],
 	local: ['process', 'port', 'local-db', 'local-runner', 'docker-compose-capacity-provider'],
 };
+
+function scenarioResourceKind(provider: TreeseedLiveReconcileProvider, capability: string): TreeseedDesiredResource['kind'] {
+	if (provider === 'railway') return capability === 'volume' ? 'railway-volume' : 'railway-service';
+	if (provider === 'cloudflare') return 'cloudflare-resource';
+	if (provider === 'github') {
+		if (capability === 'environment') return 'github-environment';
+		if (capability === 'secret') return 'github-secret-binding';
+		if (capability === 'variable') return 'github-secret-binding';
+		return 'package-workflow';
+	}
+	if (capability === 'docker-compose-capacity-provider') return 'local-docker-compose';
+	if (capability === 'process') return 'local-process';
+	if (capability === 'local-runner') return 'capacity-provider';
+	return 'local-process';
+}
+
+function scenarioResourceProvider(provider: TreeseedLiveReconcileProvider, capability: string) {
+	if (provider === 'cloudflare') return 'cloudflare';
+	if (provider === 'github') return 'github';
+	if (provider === 'local') return 'local';
+	return 'railway';
+}
+
+function liveAcceptanceDesiredResource(input: {
+	tenantRoot: string;
+	environment: TreeseedLiveReconcileEnvironment;
+	provider: TreeseedLiveReconcileProvider;
+	capability: string;
+	runId: string;
+}): TreeseedDesiredResource {
+	const id = `live-acceptance:${input.environment}:${input.provider}:${input.capability}:${input.runId}`;
+	const kind = scenarioResourceKind(input.provider, input.capability);
+	return {
+		id,
+		kind,
+		provider: scenarioResourceProvider(input.provider, input.capability),
+		environment: input.environment,
+		packageId: null,
+		serviceId: input.capability,
+		logicalName: input.capability,
+		spec: {
+			liveAcceptance: true,
+			provider: input.provider,
+			capability: input.capability,
+			runId: input.runId,
+			prefix: providerPrefix(input.environment, input.provider, input.runId),
+			tenantRoot: input.tenantRoot,
+		},
+		dependencies: [],
+		source: { type: 'package-adapter', id },
+	};
+}
+
+export function compileTreeseedLiveAcceptanceScenarios(input: {
+	tenantRoot: string;
+	environment: TreeseedLiveReconcileEnvironment;
+	provider: TreeseedLiveReconcileProvider | 'all';
+	mode: TreeseedLiveReconcileMode;
+	runId: string;
+}): TreeseedLiveAcceptanceScenario[] {
+	const providers: TreeseedLiveReconcileProvider[] = input.provider === 'all'
+		? ['railway', 'cloudflare', 'github', 'local']
+		: [input.provider];
+	return providers.flatMap((provider) => PROVIDER_CAPABILITIES[provider].map((capability) => {
+		const probeOnly = input.mode === 'smoke'
+			|| (provider === 'github' && ['workflow-observation', 'repository-scoped-token'].includes(capability))
+			|| (provider === 'cloudflare' && capability === 'cache-rules');
+		const desiredResources = probeOnly
+			? []
+			: [liveAcceptanceDesiredResource({
+				tenantRoot: input.tenantRoot,
+				environment: input.environment,
+				provider,
+				capability,
+				runId: input.runId,
+			})];
+		const selector: TreeseedReconcileSelector = {
+			environment: input.environment,
+			host: [provider],
+			resourceKind: desiredResources.map((resource) => resource.kind),
+			serviceType: [capability],
+		};
+		return {
+			id: `live-acceptance:${input.environment}:${provider}:${capability}:${input.runId}`,
+			provider,
+			capability,
+			desiredResources,
+			selector,
+			expectedActions: input.mode === 'cleanup'
+				? ['delete', 'noop']
+				: probeOnly
+					? ['noop']
+					: ['create', 'update', 'replace', 'reattach', 'noop'],
+			cleanupSelector: selector,
+			required: true,
+			probeOnly,
+			cleanupRequired: input.mode !== 'smoke' && !probeOnly,
+		} satisfies TreeseedLiveAcceptanceScenario;
+	}));
+}
 
 function configuredValue(env: LiveEnv, keys: string[]) {
 	for (const key of keys) {
@@ -208,11 +324,10 @@ function parseGitHubRepository(value: string) {
 function resolveCurrentGitHubRepository(cwd: string, env: LiveEnv) {
 	const configured = configuredValue(env, ['TREESEED_REPOSITORY', 'GITHUB_REPOSITORY']);
 	if (configured) return parseGitHubRepository(configured);
-	const remote = execFileSync('git', ['config', '--get', 'remote.origin.url'], {
+	const remote = runTreeseedGit(['config', '--get', 'remote.origin.url'], {
 		cwd,
-		encoding: 'utf8',
-		stdio: ['ignore', 'pipe', 'pipe'],
-	}).trim();
+		mode: 'read',
+	}).stdout.trim();
 	return parseGitHubRepository(remote);
 }
 
@@ -594,6 +709,27 @@ async function cloudflareRequestPayload(path: string, env: LiveEnv, fetchImpl: t
 async function cloudflareRequest(path: string, env: LiveEnv, fetchImpl: typeof fetch, init: RequestInit = {}) {
 	const payload = await cloudflareRequestPayload(path, env, fetchImpl, init);
 	return payload.result;
+}
+
+function isTransientCloudflareError(error: unknown) {
+	const message = error instanceof Error ? error.message : String(error);
+	return /\b(500|502|503|504|520|521|522|523|524)\b|internal server error|unknown error occurred|temporar(?:y|ily)|timeout|rate limit/iu.test(message);
+}
+
+async function withCloudflareTransientRetry<T>(operation: () => Promise<T>, options: { attempts?: number; delayMs?: number } = {}) {
+	const attempts = Math.max(1, options.attempts ?? 4);
+	const delayMs = Math.max(0, options.delayMs ?? 1500);
+	let lastError: unknown;
+	for (let attempt = 1; attempt <= attempts; attempt += 1) {
+		try {
+			return await operation();
+		} catch (error) {
+			lastError = error;
+			if (!isTransientCloudflareError(error) || attempt >= attempts) break;
+			await sleep(delayMs * attempt);
+		}
+	}
+	throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 async function cloudflareRawRequest(path: string, env: LiveEnv, fetchImpl: typeof fetch, init: RequestInit = {}) {
@@ -1318,10 +1454,10 @@ async function runCloudflareAcceptance(cwd: string, environment: TreeseedLiveRec
 		() => cloudflareRawRequest(`/accounts/${accountId}/workers/scripts/${prefix}`, env, fetchImpl),
 		(value) => typeof value === 'string' && value.includes('treeseed-live-test-worker'),
 	));
-	await attempt('pages', 'pages', () => cloudflareRequest(`/accounts/${accountId}/pages/projects`, env, fetchImpl, {
+	await attempt('pages', 'pages', () => withCloudflareTransientRetry(() => cloudflareRequest(`/accounts/${accountId}/pages/projects`, env, fetchImpl, {
 		method: 'POST',
 		body: JSON.stringify({ name: prefix, production_branch: 'main' }),
-	}), () => waitForLiveObservation(
+	})), () => waitForLiveObservation(
 		`Cloudflare Pages project ${prefix}`,
 		() => cloudflareRequest(`/accounts/${accountId}/pages/projects/${prefix}`, env, fetchImpl),
 		(value) => Boolean(value && typeof value === 'object'),

@@ -137,7 +137,6 @@ export {
 	validateRailwayDeployPrerequisites,
 } from './operations/services/railway-deploy.ts';
 export {
-	deleteRailwayProject,
 	ensureRailwayEnvironment,
 	ensureRailwayProject,
 	ensureRailwayService,
@@ -160,23 +159,39 @@ export {
 } from './operations/services/github-credentials.ts';
 export {
 	createGitHubApiClient,
-	dispatchGitHubWorkflowRun,
 	ensureGitHubActionsEnvironment,
 	getLatestGitHubWorkflowRun,
 	listGitHubEnvironmentSecretNames,
 	listGitHubEnvironmentVariableNames,
 	type GitHubWorkflowDispatchResult,
 	type GitHubWorkflowRunSummary,
-	upsertGitHubEnvironmentSecret,
-	upsertGitHubEnvironmentVariable,
 } from './operations/services/github-api.ts';
+export {
+	inspectTreeseedGitLocks,
+	inspectTreeseedWorkspaceGitLocks,
+	recoverTreeseedGitLocks,
+	runTreeseedGitBatch,
+	runTreeseedGit,
+	type TreeseedGitLockDiagnostic,
+	type TreeseedGitBatchOperation,
+	type TreeseedGitRunnerMode,
+	type TreeseedGitRunnerResult,
+	type TreeseedGitWorkspaceLockDiagnostics,
+} from './operations/services/git-runner.ts';
 export {
 	discoverTreeseedPackageAdapters,
 	findTreeseedPackageAdapter,
 	packageAdapterPlanSummary,
 	planTreeseedPackageDevelopmentImage,
+	runTreeseedPackageImageWorkflow,
+	syncTreeseedPackageWorkflows,
+	validateTreeseedPackageManifests,
 	type TreeseedPackageAdapter,
 	type TreeseedPackageDevelopmentImagePlan,
+	type TreeseedPackageImageWorkflowOptions,
+	type TreeseedPackageManifestValidation,
+	type TreeseedPackageWorkflowSyncResult,
+	type TreeseedPackageWorkflowTemplateKind,
 } from './operations/services/package-adapters.ts';
 export {
 	runTenantDeployPreflight,

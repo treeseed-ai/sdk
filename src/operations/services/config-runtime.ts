@@ -53,12 +53,9 @@ import {
 import { discoverTreeseedApplications } from '../../hosting/apps.ts';
 import {
 	createGitHubApiClient,
-	ensureGitHubActionsEnvironment,
 	ensureGitHubBranchFromBase,
 	listGitHubEnvironmentSecretNames,
 	listGitHubEnvironmentVariableNames,
-	upsertGitHubEnvironmentSecret,
-	upsertGitHubEnvironmentVariable,
 } from './github-api.ts';
 import { resolveGitHubCredentialForRepository } from './github-credentials.ts';
 import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin, withProcessCwd } from './runtime-tools.ts';
@@ -2665,42 +2662,16 @@ export async function syncTreeseedGitHubEnvironment({
 		return Boolean(entry.targets.includes('github-variable') && allowedVariables?.has(entry.id));
 	});
 	const credential = resolveGitHubCredentialForRepository(repository, { values, env: process.env });
-	const ghEnv = credential.token
-		? {
-			GH_TOKEN: credential.token,
-			GITHUB_TOKEN: credential.token,
-		}
-		: {};
-	const githubClient = createGitHubApiClient({ env: ghEnv });
 	const environment = scope === 'prod' ? 'production' : scope;
-	const deploymentBranch = scope === 'prod' ? PRODUCTION_BRANCH : scope === 'staging' ? STAGING_BRANCH : null;
-	const deploymentTag = scope === 'prod' ? '*.*.*' : null;
 	const progress = (message: string, stream: 'stdout' | 'stderr' = 'stdout') => onProgress?.(message, stream);
 	if (!dryRun) {
-		progress(`[${scope}][github][environment] Ensuring GitHub environment ${environment} exists...`);
-		try {
-			await ensureGitHubActionsEnvironment(repository, environment, {
-				client: githubClient,
-				branchName: deploymentBranch,
-				tagName: deploymentTag,
-			});
-		} catch (error) {
-			throw withGitHubEnvironmentCredentialContext(error, repository, credential);
-		}
+		throw new Error(
+			`GitHub environment sync for ${repository}:${environment} is reconciler-owned. `
+			+ 'Run trsd package image --sync-config --execute or trsd reconcile apply with github-secret-binding/github-variable-binding selectors.',
+		);
 	}
 	progress(`[${scope}][github][sync] Loading existing GitHub secrets and variables...`);
-	const [secretNames, variableNames] = dryRun
-		? [new Set<string>(), new Set<string>()]
-		: await (async () => {
-			try {
-				return await Promise.all([
-					listGitHubEnvironmentSecretNames(repository, environment, { client: githubClient }),
-					listGitHubEnvironmentVariableNames(repository, environment, { client: githubClient }),
-				]);
-			} catch (error) {
-				throw withGitHubEnvironmentCredentialContext(error, repository, credential);
-			}
-		})();
+	const [secretNames, variableNames] = [new Set<string>(), new Set<string>()];
 	const synced = {
 		secrets: [] as Array<{ name: string; existed: boolean }>,
 		variables: [] as Array<{ name: string; existed: boolean }>,
@@ -2724,19 +2695,8 @@ export async function syncTreeseedGitHubEnvironment({
 	progress(`[${scope}][github][sync] Syncing GitHub environment ${environment}: 0/${total} items...`);
 	const limit = execution === 'sequential' ? 1 : concurrency;
 	await runBounded(items, limit, async (item) => {
-		if (!dryRun) {
-			try {
-				if (item.kind === 'secret') {
-					await upsertGitHubEnvironmentSecret(repository, environment, item.name, item.value, { client: githubClient });
-				} else {
-					await upsertGitHubEnvironmentVariable(repository, environment, item.name, item.value, { client: githubClient });
-				}
-			} catch (error) {
-				throw withGitHubEnvironmentCredentialContext(error, repository, credential);
-			}
-		}
 		completed += 1;
-		const action = item.existed ? 'updated' : 'created';
+		const action = item.existed ? 'would update' : 'would create';
 		progress(`[${scope}][github][${item.kind}] ${action} ${item.name} (${completed}/${total})`);
 		if (item.kind === 'secret') {
 			synced.secrets.push({ name: item.name, existed: item.existed });

@@ -1,4 +1,4 @@
-import { loadCliDeployConfig } from './runtime-tools.ts';
+import { loadTreeseedPlatformConfig } from '../../platform/config.ts';
 import {
 	getRailwayServiceInstance,
 	inspectRailwayServiceDeploymentHealth,
@@ -253,7 +253,7 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 				health: 'unknown',
 			};
 		}
-		const deployConfig = loadCliDeployConfig(options.tenantRoot);
+		const deployConfig = loadTreeseedPlatformConfig({ tenantRoot: options.tenantRoot, environment: options.target, env: process.env }).deployConfig;
 		const appConfigs = [
 			...(!options.appId || options.appId === 'web' ? [deployConfig] : []),
 			...discoverTreeseedApplications(options.tenantRoot)
@@ -332,7 +332,7 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 }
 
 async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOptions) {
-	const deployConfig = loadCliDeployConfig(options.tenantRoot);
+	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot: options.tenantRoot, environment: options.target, env: process.env }).deployConfig;
 	const urls = new Set<string>();
 	const fallbacks = new Map<string, string>();
 	const selectedApplication = options.appId

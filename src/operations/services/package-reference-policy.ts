@@ -2,7 +2,17 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { discoverTreeseedPackageAdapters } from './package-adapters.ts';
-import { run, workspacePackages, workspaceRoot } from './workspace-tools.ts';
+import { workspacePackages, workspaceRoot } from './workspace-tools.ts';
+import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
+
+function runGit(args: string[], options: { cwd: string; capture?: boolean; timeoutMs?: number; maxBuffer?: number }) {
+	return runTreeseedGitText(args, {
+		cwd: options.cwd,
+		mode: classifyTreeseedGitMode(args),
+		timeoutMs: options.timeoutMs,
+		maxBuffer: options.maxBuffer,
+	});
+}
 
 export type DevDependencyReferenceMode = 'git-tag' | 'registry-prerelease';
 export type DevTagCleanupMode = 'safe-after-release' | 'off';
@@ -396,7 +406,7 @@ export function createDevTagMessage(input: {
 
 export function gitTagMessage(repoDir: string, tagName: string) {
 	try {
-		return run('git', ['tag', '-l', tagName, '--format=%(contents)'], { cwd: repoDir, capture: true });
+		return runGit(['tag', '-l', tagName, '--format=%(contents)'], { cwd: repoDir, capture: true });
 	} catch {
 		return '';
 	}
@@ -404,8 +414,8 @@ export function gitTagMessage(repoDir: string, tagName: string) {
 
 function gitRemoteTagMessage(repoDir: string, tagName: string) {
 	try {
-		run('git', ['fetch', '--no-tags', 'origin', `refs/tags/${tagName}`], { cwd: repoDir, capture: true });
-		return run('git', ['cat-file', '-p', 'FETCH_HEAD'], { cwd: repoDir, capture: true });
+		runGit(['fetch', '--no-tags', 'origin', `refs/tags/${tagName}`], { cwd: repoDir, capture: true });
+		return runGit(['cat-file', '-p', 'FETCH_HEAD'], { cwd: repoDir, capture: true });
 	} catch {
 		return '';
 	}
@@ -499,8 +509,8 @@ export function cleanupDevTags(repoDir: string, tagNames: string[], activeRefere
 			continue;
 		}
 		try {
-			run('git', ['tag', '-d', tagName], { cwd: repoDir });
-			run('git', ['push', 'origin', `:refs/tags/${tagName}`], { cwd: repoDir });
+			runGit(['tag', '-d', tagName], { cwd: repoDir });
+			runGit(['push', 'origin', `:refs/tags/${tagName}`], { cwd: repoDir });
 			cleaned.push(tagName);
 		} catch (error) {
 			skipped.push({ tagName, reason: error instanceof Error ? error.message : String(error) });
@@ -510,7 +520,7 @@ export function cleanupDevTags(repoDir: string, tagNames: string[], activeRefere
 }
 
 function localDevTags(repoDir: string) {
-	return run('git', ['tag', '-l', '*-dev.*'], { cwd: repoDir, capture: true })
+	return runGit(['tag', '-l', '*-dev.*'], { cwd: repoDir, capture: true })
 		.split(/\r?\n/u)
 		.map((line) => line.trim())
 		.filter(Boolean);
@@ -518,7 +528,7 @@ function localDevTags(repoDir: string) {
 
 function remoteDevTags(repoDir: string) {
 	try {
-		return run('git', ['ls-remote', '--tags', 'origin', '*-dev.*'], { cwd: repoDir, capture: true })
+		return runGit(['ls-remote', '--tags', 'origin', '*-dev.*'], { cwd: repoDir, capture: true })
 			.split(/\r?\n/u)
 			.map((line) => line.trim())
 			.filter(Boolean)
@@ -572,12 +582,12 @@ export function cleanupStaleTreeseedDevTags(input: {
 	for (const candidate of plan.candidates) {
 		if (input.dryRun) continue;
 		try {
-			run('git', ['tag', '-d', candidate.tagName], { cwd: input.repoDir });
+			runGit(['tag', '-d', candidate.tagName], { cwd: input.repoDir });
 		} catch {
 			// Missing local tags can still have a stale remote counterpart.
 		}
 		try {
-			run('git', ['push', 'origin', `:refs/tags/${candidate.tagName}`], { cwd: input.repoDir });
+			runGit(['push', 'origin', `:refs/tags/${candidate.tagName}`], { cwd: input.repoDir });
 			cleaned.push(candidate.tagName);
 		} catch (error) {
 			skipped.push({ tagName: candidate.tagName, reason: error instanceof Error ? error.message : String(error) });

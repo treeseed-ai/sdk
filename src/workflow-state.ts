@@ -19,10 +19,12 @@ import {
 	createPersistentDeployTarget,
 	loadDeployState,
 } from './operations/services/deploy.ts';
-import { loadCliDeployConfig } from './operations/services/runtime-tools.ts';
+import { loadTreeseedPlatformConfig } from './platform/config.ts';
+import type { TreeseedDeployConfig } from './platform/contracts.ts';
 import { collectCliPreflight } from './operations/services/workspace-preflight.ts';
 import { collectPublicPackageReleaseLineState, currentBranch, gitStatusPorcelain } from './operations/services/workspace-save.ts';
 import { hasCompleteTreeseedPackageCheckout, isWorkspaceRoot, run } from './operations/services/workspace-tools.ts';
+import { classifyTreeseedGitMode, runTreeseedGitText } from './operations/services/git-runner.ts';
 import { packageAdapterPlanSummary } from './operations/services/package-adapters.ts';
 import { inspectWorkspaceDependencyMode } from './operations/services/workspace-dependency-mode.ts';
 import { inspectDetachedHeadRepair, PRODUCTION_BRANCH, STAGING_BRANCH } from './operations/services/git-workflow.ts';
@@ -36,6 +38,15 @@ import {
 } from './workflow/policy.ts';
 
 export type TreeseedBranchRole = TreeseedWorkflowBranchRole;
+
+function runGit(args: string[], options: { cwd: string; capture?: boolean; timeoutMs?: number; maxBuffer?: number }) {
+	return runTreeseedGitText(args, {
+		cwd: options.cwd,
+		mode: classifyTreeseedGitMode(args),
+		timeoutMs: options.timeoutMs,
+		maxBuffer: options.maxBuffer,
+	});
+}
 
 export type TreeseedWorkflowRecommendation = TreeseedWorkflowNextStep;
 
@@ -504,7 +515,7 @@ function hasStatusConfigValue(
 
 function knownRemoteTrackingBranchExists(repoDir: string, branchName: string) {
 	try {
-		run('git', ['show-ref', '--verify', '--quiet', `refs/remotes/origin/${branchName}`], { cwd: repoDir, capture: true });
+		runGit(['show-ref', '--verify', '--quiet', `refs/remotes/origin/${branchName}`], { cwd: repoDir, capture: true });
 		return true;
 	} catch {
 		return false;
@@ -513,7 +524,7 @@ function knownRemoteTrackingBranchExists(repoDir: string, branchName: string) {
 
 function safeHeadCommit(repoDir: string) {
 	try {
-		return run('git', ['rev-parse', 'HEAD'], { cwd: repoDir, capture: true }).trim();
+		return runGit(['rev-parse', 'HEAD'], { cwd: repoDir, capture: true }).trim();
 	} catch {
 		return null;
 	}
@@ -530,14 +541,14 @@ function safeReleaseHistory(repoDir: string | null): TreeseedWorkflowState['rele
 		};
 	}
 	try {
-		const output = run('git', ['rev-list', '--left-right', '--count', 'staging...main'], { cwd: repoDir, capture: true }).trim();
+		const output = runGit(['rev-list', '--left-right', '--count', 'staging...main'], { cwd: repoDir, capture: true }).trim();
 		const [aheadRaw, behindRaw] = output.split(/\s+/u);
 		const stagingAheadMain = Number.parseInt(aheadRaw ?? '', 10);
 		const stagingBehindMain = Number.parseInt(behindRaw ?? '', 10);
 		if (!Number.isFinite(stagingAheadMain) || !Number.isFinite(stagingBehindMain)) {
 			throw new Error('invalid rev-list output');
 		}
-		const stagingOnlySubjects = run('git', ['log', '--format=%s', 'main..staging'], { cwd: repoDir, capture: true })
+		const stagingOnlySubjects = runGit(['log', '--format=%s', 'main..staging'], { cwd: repoDir, capture: true })
 			.split('\n')
 			.map((line) => line.trim())
 			.filter(Boolean);
@@ -610,7 +621,7 @@ export function capObsoleteWorkflowRuns<T>(
 	};
 }
 
-function resolveLocalStatusUrl(deployConfig: ReturnType<typeof loadCliDeployConfig>) {
+function resolveLocalStatusUrl(deployConfig: TreeseedDeployConfig) {
 	return deployConfig.surfaces?.web?.localBaseUrl
 		?? deployConfig.surfaces?.api?.localBaseUrl
 		?? Object.values(deployConfig.services ?? {})
@@ -648,7 +659,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 						localBranch = true;
 					} else {
 						try {
-							run('git', ['show-ref', '--verify', '--quiet', `refs/heads/${expectedBranch}`], { cwd: packageDir, capture: true });
+							runGit(['show-ref', '--verify', '--quiet', `refs/heads/${expectedBranch}`], { cwd: packageDir, capture: true });
 							localBranch = true;
 						} catch {
 							localBranch = false;
@@ -907,7 +918,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 
 	if (tenantRoot) {
 		try {
-			const deployConfig = loadCliDeployConfig(effectiveCwd);
+			const deployConfig = loadTreeseedPlatformConfig({ tenantRoot: effectiveCwd, environment: workflowEnvironmentForBranchRole(branchRole), env: options.env ?? process.env }).deployConfig;
 			const environmentContext = collectTreeseedEnvironmentContext(effectiveCwd);
 			const statusConfigByScope = Object.fromEntries(
 				(['local', 'staging', 'prod'] as const).map((scope) => [

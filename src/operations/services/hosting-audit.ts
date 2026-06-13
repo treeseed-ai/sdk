@@ -21,7 +21,7 @@ import {
 	PRODUCTION_BRANCH,
 	STAGING_BRANCH,
 } from './git-workflow.ts';
-import { loadCliDeployConfig } from './runtime-tools.ts';
+import { loadTreeseedPlatformConfig } from '../../platform/config.ts';
 import {
 	collectTreeseedReconcileStatus,
 	reconcileTreeseedTarget,
@@ -194,7 +194,7 @@ export function resolveTreeseedHostingAuditTarget({
 	}
 	if (branchName) {
 		try {
-			const deployConfig = loadCliDeployConfig(tenantRoot);
+			const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: 'staging', env: process.env }).deployConfig;
 			const previewTarget = createBranchPreviewDeployTarget(branchName);
 			const previewState = loadDeployState(tenantRoot, deployConfig, { target: previewTarget });
 			if (
@@ -621,7 +621,7 @@ export async function runTreeseedHostingAudit({
 }: TreeseedHostingAuditOptions): Promise<TreeseedHostingAuditReport> {
 	const resolved = resolveTreeseedHostingAuditTarget({ tenantRoot, environment });
 	const hostKinds = normalizeHostKinds(requestedHostKinds);
-	const deployConfig = loadCliDeployConfig(tenantRoot);
+	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: resolved.scope, env }).deployConfig;
 	const seedValues = collectTreeseedConfigSeedValues(tenantRoot, resolved.scope, env, valuesOverlay);
 	const suggestedValues = getTreeseedEnvironmentSuggestedValues({
 		scope: resolved.scope,

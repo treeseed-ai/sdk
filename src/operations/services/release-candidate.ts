@@ -10,10 +10,20 @@ import { resolveGitHubCredentialForRepository } from './github-credentials.ts';
 import { collectInternalDevReferenceIssues, installableInternalDependencyVersions, normalizeGitRemoteForManifest } from './package-reference-policy.ts';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, validateTreeseedCommandEnvironment } from './config-runtime.ts';
 import { loadDeployState } from './deploy.ts';
-import { loadCliDeployConfig } from './runtime-tools.ts';
+import { loadTreeseedPlatformConfig } from '../../platform/config.ts';
 import { packagesWithScript, run, workspacePackages } from './workspace-tools.ts';
+import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
 import { createBuildWarningSummary, formatAllowedBuildWarnings } from './build-warning-policy.js';
 import { discoverTreeseedPackageAdapters, type TreeseedPackageAdapter } from './package-adapters.ts';
+
+function runGit(args: string[], options: { cwd: string; capture?: boolean; timeoutMs?: number; maxBuffer?: number }) {
+	return runTreeseedGitText(args, {
+		cwd: options.cwd,
+		mode: classifyTreeseedGitMode(args),
+		timeoutMs: options.timeoutMs,
+		maxBuffer: options.maxBuffer,
+	});
+}
 
 export type ReleaseCandidateStatus = 'passed' | 'failed';
 export type ReleaseCandidateMode = 'hybrid' | 'strict' | 'skip';
@@ -122,7 +132,7 @@ function fileSha256(filePath: string) {
 
 function safeGitHead(repoDir: string) {
 	try {
-		return run('git', ['rev-parse', 'HEAD'], { cwd: repoDir, capture: true }).trim();
+		return runGit(['rev-parse', 'HEAD'], { cwd: repoDir, capture: true }).trim();
 	} catch {
 		return null;
 	}
@@ -556,7 +566,7 @@ function stablePackageGitReferences(root: string, versions: Map<string, string>)
 			if (!version) return null;
 			let remote: string | null = null;
 			try {
-				remote = run('git', ['remote', 'get-url', 'origin'], { cwd: pkg.dir, capture: true }).trim();
+				remote = runGit(['remote', 'get-url', 'origin'], { cwd: pkg.dir, capture: true }).trim();
 			} catch {
 				remote = null;
 			}
@@ -786,7 +796,7 @@ function validateInternalGitReferenceTags(root: string, failures: ReleaseCandida
 		seen.add(key);
 		checked += 1;
 		try {
-			run('git', ['ls-remote', '--exit-code', '--tags', remote, `refs/tags/${tagName}`], { cwd: root, capture: true, timeoutMs: 120000 });
+			runGit(['ls-remote', '--exit-code', '--tags', remote, `refs/tags/${tagName}`], { cwd: root, capture: true, timeoutMs: 120000 });
 		} catch (error) {
 			addFailure(failures, {
 				code: 'internal_git_tag_missing',
@@ -956,7 +966,7 @@ function expectedGitHubDeployEnvironment(root: string, scope: 'staging' | 'prod'
 
 function providerResourceIdentifierCheck(root: string, scope: 'staging' | 'prod', failures: ReleaseCandidateFailure[]) {
 	try {
-		const deployConfig = loadCliDeployConfig(root);
+		const deployConfig = loadTreeseedPlatformConfig({ tenantRoot: root, environment: scope, env: process.env }).deployConfig;
 		const state = loadDeployState(root, deployConfig, { scope });
 		const siteDataDb = state.d1Databases?.SITE_DATA_DB;
 		if (!siteDataDb?.databaseName || !siteDataDb?.databaseId) {

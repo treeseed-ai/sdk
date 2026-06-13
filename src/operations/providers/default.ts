@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { RemoteTreeseedAuthClient, RemoteTreeseedClient } from '../../remote.ts';
+import { classifyTreeseedGitMode, runTreeseedGitText } from '../../operations/services/git-runner.ts';
 import {
 	findTreeseedOperation,
 	TRESEED_OPERATION_SPECS,
@@ -89,6 +90,15 @@ import {
 	formatTreeseedDependencyReport,
 	installTreeseedDependencies,
 } from '../../managed-dependencies.ts';
+
+function runGit(args: string[], options: { cwd: string; capture?: boolean; timeoutMs?: number; maxBuffer?: number }) {
+	return runTreeseedGitText(args, {
+		cwd: options.cwd,
+		mode: classifyTreeseedGitMode(args),
+		timeoutMs: options.timeoutMs,
+		maxBuffer: options.maxBuffer,
+	});
+}
 
 function operationResult<TPayload>(
 	metadata: TreeseedOperationMetadata,
@@ -1204,7 +1214,7 @@ class RollbackOperation extends BaseOperation {
 		const currentNodeModules = resolve(tenantRoot, 'node_modules');
 		let finalizedState: Record<string, unknown> | null = null;
 		try {
-			run('git', ['worktree', 'add', '--detach', tempRoot, rollbackCommit], { cwd: gitRoot, capture: true });
+			runGit(['worktree', 'add', '--detach', tempRoot, rollbackCommit], { cwd: gitRoot, capture: true });
 			copyTreeseedOperationalState(tenantRoot, tempTenantRoot);
 			if (existsSync(currentNodeModules) && !existsSync(resolve(tempTenantRoot, 'node_modules'))) {
 				symlinkSync(currentNodeModules, resolve(tempTenantRoot, 'node_modules'), 'dir');
@@ -1236,7 +1246,7 @@ class RollbackOperation extends BaseOperation {
 			}
 		} finally {
 			try {
-				run('git', ['worktree', 'remove', '--force', tempRoot], { cwd: gitRoot, capture: true });
+				runGit(['worktree', 'remove', '--force', tempRoot], { cwd: gitRoot, capture: true });
 			} catch {
 				// best effort
 			}

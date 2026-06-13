@@ -578,7 +578,7 @@ plugins:
 		});
 	});
 
-	it('lets tests provide a strict host adapter implementation through the public contract', async () => {
+	it('lets tests provide a strict host adapter implementation for read-only planning', async () => {
 		const observed: string[] = [];
 		const strictHost: TreeseedHostAdapter = {
 			id: 'strict-host',
@@ -611,7 +611,7 @@ plugins:
 			},
 		};
 
-		await applyTreeseedHostingGraph({
+		await planTreeseedHostingGraph({
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'staging',
 			hostAdapters: { 'strict-host': strictHost },
@@ -625,14 +625,13 @@ plugins:
 					environments: { staging: { hostId: 'strict-host' } },
 				}],
 			}],
-			dryRun: false,
 		});
 
 		expect(observed).toEqual(expect.arrayContaining([
 			'refresh:strict-api',
 			'diff:strict-api',
-			'apply:strict-api',
 			'verify:strict-api',
 		]));
+		expect(observed).not.toContain('apply:strict-api');
 	});
 });

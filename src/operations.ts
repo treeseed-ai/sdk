@@ -16,15 +16,28 @@ export {
 export { TreeseedOperationsSdk } from './operations/runtime.ts';
 export {
 	cancelGitHubWorkflowRun,
-	dispatchGitHubWorkflowRun,
 	formatGitHubWorkflowFailure,
 	waitForGitHubWorkflowRunCompletion,
 	type GitHubWorkflowCancellationResult,
-	type GitHubWorkflowDispatchResult,
 	type GitHubWorkflowFailureSummary,
 	type GitHubWorkflowFailureSummaryInput,
 	type GitHubWorkflowProgressEvent,
 } from './operations/services/github-api.ts';
+export {
+	classifyTreeseedGitMode,
+	inspectTreeseedGitLocks,
+	inspectTreeseedWorkspaceGitLocks,
+	recoverTreeseedGitLocks,
+	runTreeseedGit,
+	runTreeseedGitBatch,
+	runTreeseedGitOk,
+	runTreeseedGitText,
+	type TreeseedGitBatchOperation,
+	type TreeseedGitLockDiagnostic,
+	type TreeseedGitRunnerMode,
+	type TreeseedGitRunnerResult,
+	type TreeseedGitWorkspaceLockDiagnostics,
+} from './operations/services/git-runner.ts';
 export type {
 	HubContentResolutionPolicy,
 	KnowledgeHubLaunchIntent,

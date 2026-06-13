@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { runTreeseedGit } from './git-runner.ts';
 import { resolveTreeseedEnvironmentRegistry } from '../../platform/environment.ts';
 import { packageRoot, loadCliDeployConfig } from './runtime-tools.ts';
 import {
@@ -84,20 +84,25 @@ export function parseGitHubRepositoryFromRemote(remoteUrl) {
 }
 
 function runGit(args, { cwd, allowFailure = false, capture = true } = {}) {
-	const result = spawnSync('git', args, {
+	const mutating = /^(add|commit|checkout|switch|merge|tag|push|fetch|worktree|submodule|reset|clean|restore|branch)$/u.test(args[0] ?? '');
+	const result = runTreeseedGit(args, {
 		cwd,
-		stdio: capture ? 'pipe' : 'inherit',
-		encoding: 'utf8',
+		mode: mutating ? 'mutate' : 'read',
+		allowFailure,
 	});
+	if (!capture && result.stdout.trim()) process.stdout.write(result.stdout);
+	if (!capture && result.stderr.trim()) process.stderr.write(result.stderr);
 
 	if (result.status !== 0 && !allowFailure) {
 		if (args[0] === 'push' && !args.includes('--force')) {
 			const retryArgs = ['push', '--force', ...args.slice(1)];
-			const retry = spawnSync('git', retryArgs, {
+			const retry = runTreeseedGit(retryArgs, {
 				cwd,
-				stdio: capture ? 'pipe' : 'inherit',
-				encoding: 'utf8',
+				mode: 'mutate',
+				allowFailure: true,
 			});
+			if (!capture && retry.stdout.trim()) process.stdout.write(retry.stdout);
+			if (!capture && retry.stderr.trim()) process.stderr.write(retry.stderr);
 			if (retry.status === 0) return retry;
 			const retryDetail = retry.stderr?.trim() || retry.stdout?.trim();
 			throw new Error(`git ${retryArgs.join(' ')} failed${retryDetail ? `: ${retryDetail}` : ''}`);
@@ -107,15 +112,6 @@ function runGit(args, { cwd, allowFailure = false, capture = true } = {}) {
 	}
 
 	return result;
-}
-
-function sleepSeconds(seconds) {
-	if (!Number.isFinite(seconds) || seconds <= 0) {
-		return;
-	}
-	spawnSync('sleep', [String(seconds)], {
-		stdio: 'ignore',
-	});
 }
 
 export function resolveGitHubRemoteUrls(owner, name) {

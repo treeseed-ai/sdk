@@ -1,14 +1,38 @@
 import { run, workspaceRoot } from './workspace-tools.ts';
 import { currentBranch, gitStatusPorcelain, repoRoot } from './workspace-save.ts';
 import { ensureSshPushUrlForOrigin } from './git-remote-policy.ts';
+import { runTreeseedGit, type TreeseedGitRunnerMode } from './git-runner.ts';
 import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../../managed-dependencies.ts';
 
 export const STAGING_BRANCH = 'staging';
 export const PRODUCTION_BRANCH = 'main';
 const RESERVED_BRANCHES = new Set([STAGING_BRANCH, PRODUCTION_BRANCH]);
 
-function runGit(args, { cwd, capture = false } = {}) {
-	return run('git', args, { cwd, capture });
+function gitMode(args: string[]): TreeseedGitRunnerMode {
+	const command = args[0] ?? '';
+	return new Set([
+		'add',
+		'checkout',
+		'commit',
+		'merge',
+		'pull',
+		'push',
+		'rebase',
+		'reset',
+		'restore',
+		'switch',
+		'tag',
+		'worktree',
+	]).has(command) ? 'mutate' : 'read';
+}
+
+function runGit(args: string[], { cwd, capture = false }: { cwd?: string; capture?: boolean } = {}) {
+	const result = runTreeseedGit(args, {
+		cwd: cwd ?? workspaceRoot(),
+		mode: gitMode(args),
+		allowFailure: false,
+	});
+	return capture ? result.stdout : result.stdout;
 }
 
 function ensureWritableOrigin(repoDir) {

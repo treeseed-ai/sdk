@@ -1,7 +1,7 @@
 import { relative, resolve } from 'node:path';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues } from './config-runtime.ts';
 import { configuredRailwayServices } from './railway-deploy.ts';
-import { loadCliDeployConfig } from './runtime-tools.ts';
+import { loadTreeseedPlatformConfig } from '../../platform/config.ts';
 import { discoverTreeseedApplications } from '../../hosting/apps.ts';
 
 export type TreeseedHostedServiceCheckStatus = 'passed' | 'failed' | 'skipped' | 'warning';
@@ -11,6 +11,9 @@ export type TreeseedHostedServiceType =
 	| 'web'
 	| 'api'
 	| 'operationsRunner'
+	| 'capacityProviderApi'
+	| 'capacityProviderManager'
+	| 'capacityProviderRunner'
 	| 'treeseedDatabase'
 	| 'customDomain'
 	| 'dnsRecord'
@@ -82,6 +85,15 @@ const RAILWAY_SECRET_KEYS_BY_SERVICE: Record<string, string[]> = {
 		'TREESEED_PLATFORM_RUNNER_SECRET',
 		'TREESEED_CREDENTIAL_SESSION_SECRET',
 	],
+	capacityProviderApi: [
+		'TREESEED_CAPACITY_PROVIDER_API_KEY',
+	],
+	capacityProviderManager: [
+		'TREESEED_CAPACITY_PROVIDER_API_KEY',
+	],
+	capacityProviderRunner: [
+		'TREESEED_CAPACITY_PROVIDER_API_KEY',
+	],
 };
 
 const RAILWAY_VARIABLE_KEYS_BY_SERVICE: Record<string, string[]> = {
@@ -90,6 +102,23 @@ const RAILWAY_VARIABLE_KEYS_BY_SERVICE: Record<string, string[]> = {
 		'TREESEED_PLATFORM_RUNNER_DATA_DIR',
 		'TREESEED_PLATFORM_RUNNER_ENVIRONMENT',
 		'TREESEED_MANAGER_ID',
+	],
+	capacityProviderApi: [
+		'TREESEED_PROVIDER_ENVIRONMENT',
+		'TREESEED_PROVIDER_ROLE',
+		'TREESEED_MARKET_URL',
+	],
+	capacityProviderManager: [
+		'TREESEED_PROVIDER_ENVIRONMENT',
+		'TREESEED_PROVIDER_ROLE',
+		'TREESEED_MARKET_URL',
+	],
+	capacityProviderRunner: [
+		'TREESEED_PROVIDER_ENVIRONMENT',
+		'TREESEED_PROVIDER_ROLE',
+		'TREESEED_MARKET_URL',
+		'TREESEED_PROVIDER_RUNNER_ID',
+		'TREESEED_PROVIDER_DATA_DIR',
 	],
 };
 
@@ -142,6 +171,9 @@ function valuePresence(values: Record<string, string | undefined>, observed: Tre
 function serviceTypeFor(key: string): TreeseedHostedServiceType {
 	if (key === 'api') return 'api';
 	if (key === 'operationsRunner') return 'operationsRunner';
+	if (key === 'capacityProviderApi') return 'capacityProviderApi';
+	if (key === 'capacityProviderManager') return 'capacityProviderManager';
+	if (key === 'capacityProviderRunner') return 'capacityProviderRunner';
 	if (key === 'treeseedDatabase') return 'treeseedDatabase';
 	return 'unknown';
 }
@@ -203,7 +235,7 @@ function httpStatus(url: string, options: TreeseedHostedServiceCheckOptions) {
 export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServiceCheckOptions): TreeseedHostedServiceCheckReport {
 	const target = options.target ?? 'prod';
 	const tenantRoot = options.tenantRoot;
-	const deployConfig = loadCliDeployConfig(tenantRoot);
+	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: target, env: process.env }).deployConfig;
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
 	let machineValues: Record<string, string | undefined> = {};
 	try {
@@ -315,7 +347,7 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 			}));
 		}
 
-		if (service.key === 'operationsRunner' && service.volumeMountPath) {
+		if ((service.key === 'operationsRunner' || service.key === 'capacityProviderRunner') && service.volumeMountPath) {
 			checks.push(check({
 				id: `railway:${service.instanceKey}:volume`,
 				provider: 'railway',

@@ -35,7 +35,7 @@ function normalizeScope(scope) {
 function resolveRailwayEnvironmentForScope(scope, configuredEnvironment) {
 	return normalizeRailwayEnvironmentName(configuredEnvironment || normalizeScope(scope));
 }
-const RAILWAY_SERVICE_KEYS = ['api', 'operationsRunner'];
+const RAILWAY_SERVICE_KEYS = ['api', 'operationsRunner', 'capacityProviderApi', 'capacityProviderManager', 'capacityProviderRunner'];
 const HOSTED_PROJECT_SERVICE_KEYS = ['api'];
 const WORKER_RUNNER_BOOTSTRAP_INDEX = 1;
 const WORKER_RUNNER_VOLUME_MOUNT_PATH = '/data';
@@ -66,8 +66,14 @@ function shouldManageRailwaySchedules(scope, phase = 'deploy') {
 }
 
 function railwayServiceNameSuffix(serviceKey) {
-	return serviceKey === 'workdayManager'
-		? 'workday-manager'
+	return serviceKey === 'capacityProviderApi'
+		? 'capacity-provider-api'
+		: serviceKey === 'capacityProviderManager'
+			? 'capacity-provider-manager'
+			: serviceKey === 'capacityProviderRunner'
+				? 'capacity-provider-runner'
+				: serviceKey === 'workdayManager'
+			? 'workday-manager'
 		: serviceKey === 'workerRunner'
 			? 'worker-runner'
 			: serviceKey === 'operationsRunner'
@@ -93,6 +99,15 @@ function defaultRailwayImageRef(serviceKey, env = process.env) {
 	if (serviceKey === 'operationsRunner') {
 		return envValue('TREESEED_OPERATIONS_RUNNER_IMAGE_REF', env) || null;
 	}
+	if (serviceKey === 'capacityProviderApi') {
+		return envValue('TREESEED_AGENT_API_IMAGE_REF', env) || 'treeseed/agent-api:latest';
+	}
+	if (serviceKey === 'capacityProviderManager') {
+		return envValue('TREESEED_AGENT_MANAGER_IMAGE_REF', env) || 'treeseed/agent-manager:latest';
+	}
+	if (serviceKey === 'capacityProviderRunner') {
+		return envValue('TREESEED_AGENT_RUNNER_IMAGE_REF', env) || 'treeseed/agent-runner:latest';
+	}
 	return null;
 }
 
@@ -101,6 +116,16 @@ export function deriveRailwayWorkerRunnerVolumeName(serviceName, environmentName
 }
 
 export function deriveRailwayOperationsRunnerVolumeName(serviceName, environmentName = '') {
+	return `${serviceName}-volume`;
+}
+
+export function deriveRailwayCapacityProviderRunnerServiceName(baseServiceName, index = WORKER_RUNNER_BOOTSTRAP_INDEX) {
+	const normalizedIndex = Math.max(1, Number.parseInt(String(index), 10) || WORKER_RUNNER_BOOTSTRAP_INDEX);
+	const base = String(baseServiceName ?? '').trim().replace(/-\d+$/u, '').replace(/-\d{2}$/u, '') || 'treeseed-capacity-provider-runner';
+	return `${base}-${String(normalizedIndex).padStart(2, '0')}`;
+}
+
+export function deriveRailwayCapacityProviderRunnerVolumeName(serviceName, environmentName = '') {
 	return `${serviceName}-volume`;
 }
 
@@ -1081,7 +1106,11 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 				return [];
 			}
 
-			const defaultRootDir = ['api', 'operationsRunner'].includes(serviceKey) ? '.' : 'packages/core';
+			const defaultRootDir = ['api', 'operationsRunner'].includes(serviceKey)
+				? '.'
+				: String(serviceKey).startsWith('capacityProvider')
+					? 'packages/agent'
+					: 'packages/core';
 			const serviceRoot = resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? defaultRootDir);
 			const railwayEnvironment = resolveRailwayEnvironmentForScope(
 				normalizedScope,
@@ -1095,10 +1124,10 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 			const configuredRunnerPool = service.railway?.runnerPool && typeof service.railway.runnerPool === 'object'
 				? service.railway.runnerPool
 				: null;
-			const runnerPool = serviceKey === 'operationsRunner'
+			const runnerPool = serviceKey === 'operationsRunner' || serviceKey === 'capacityProviderRunner'
 				? {
-					bootstrapCount: Math.max(1, Number.parseInt(String(configuredRunnerPool?.bootstrapCount ?? OPERATIONS_RUNNER_BOOTSTRAP_COUNT), 10) || OPERATIONS_RUNNER_BOOTSTRAP_COUNT),
-					maxRunners: Math.max(1, Number.parseInt(String(configuredRunnerPool?.maxRunners ?? configuredRunnerPool?.bootstrapCount ?? OPERATIONS_RUNNER_BOOTSTRAP_COUNT), 10) || OPERATIONS_RUNNER_BOOTSTRAP_COUNT),
+					bootstrapCount: Math.max(1, Number.parseInt(String(configuredRunnerPool?.bootstrapCount ?? (serviceKey === 'capacityProviderRunner' ? 1 : OPERATIONS_RUNNER_BOOTSTRAP_COUNT)), 10) || (serviceKey === 'capacityProviderRunner' ? 1 : OPERATIONS_RUNNER_BOOTSTRAP_COUNT)),
+					maxRunners: Math.max(1, Number.parseInt(String(configuredRunnerPool?.maxRunners ?? configuredRunnerPool?.bootstrapCount ?? (serviceKey === 'capacityProviderRunner' ? 1 : OPERATIONS_RUNNER_BOOTSTRAP_COUNT)), 10) || (serviceKey === 'capacityProviderRunner' ? 1 : OPERATIONS_RUNNER_BOOTSTRAP_COUNT)),
 					volumeMountPath: service.railway?.volumeMountPath ?? configuredRunnerPool?.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH,
 				}
 				: serviceKey === 'workerRunner'
@@ -1107,24 +1136,26 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 						volumeMountPath: WORKER_RUNNER_VOLUME_MOUNT_PATH,
 					}
 					: null;
-			const instanceCount = serviceKey === 'operationsRunner' ? runnerPool.bootstrapCount : 1;
+			const instanceCount = serviceKey === 'operationsRunner' || serviceKey === 'capacityProviderRunner' ? runnerPool.bootstrapCount : 1;
 			return Array.from({ length: instanceCount }, (_, offset) => {
 				const runnerIndex = offset + 1;
 				const serviceName = serviceKey === 'operationsRunner'
 					? deriveRailwayOperationsRunnerServiceName(configuredServiceName, runnerIndex)
-					: configuredServiceName;
+					: serviceKey === 'capacityProviderRunner'
+						? deriveRailwayCapacityProviderRunnerServiceName(configuredServiceName, runnerIndex)
+						: configuredServiceName;
 				const imageRef = service.railway?.imageRef ?? defaultRailwayImageRef(serviceKey);
 				return {
 					key: serviceKey,
-					instanceKey: serviceKey === 'operationsRunner' ? `${serviceKey}:${runnerIndex}` : serviceKey,
-					runnerIndex: serviceKey === 'operationsRunner' ? runnerIndex : null,
+					instanceKey: serviceKey === 'operationsRunner' || serviceKey === 'capacityProviderRunner' ? `${serviceKey}:${runnerIndex}` : serviceKey,
+					runnerIndex: serviceKey === 'operationsRunner' || serviceKey === 'capacityProviderRunner' ? runnerIndex : null,
 					serviceConfig: service,
 					scope: normalizedScope,
 					projectId: service.railway?.projectId ?? null,
 					projectName: service.railway?.projectName ?? identity.deploymentKey,
 					serviceId: service.railway?.serviceId ?? null,
 					serviceName,
-					runnerId: serviceKey === 'operationsRunner' ? serviceName : null,
+					runnerId: serviceKey === 'operationsRunner' || serviceKey === 'capacityProviderRunner' ? serviceName : null,
 					rootDir: serviceRoot,
 					publicBaseUrl,
 					railwayEnvironment,
@@ -1136,7 +1167,7 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 					healthcheckIntervalSeconds: service.railway?.healthcheckIntervalSeconds ?? null,
 					restartPolicy: service.railway?.restartPolicy ?? null,
 					runtimeMode: service.railway?.runtimeMode ?? null,
-					volumeMountPath: serviceKey === 'operationsRunner' ? runnerPool.volumeMountPath : service.railway?.volumeMountPath ?? null,
+					volumeMountPath: serviceKey === 'operationsRunner' || serviceKey === 'capacityProviderRunner' ? runnerPool.volumeMountPath : service.railway?.volumeMountPath ?? null,
 					schedule: normalizeScheduleExpressions(service.railway?.schedule),
 					hostingKind,
 					runnerPool,
@@ -2021,7 +2052,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		|| service.healthcheckIntervalSeconds !== undefined
 		|| service.restartPolicy
 		|| service.runtimeMode;
-	const wantsRunnerVolume = service.key === 'workerRunner' || Boolean(service.volumeMountPath);
+	const wantsRunnerVolume = service.key === 'workerRunner' || service.key === 'operationsRunner' || service.key === 'capacityProviderRunner';
 	if (!wantsInstanceConfig && !wantsRunnerVolume) {
 		writeSyncPhase('skip', 'No runtime configuration changes requested.');
 		return null;
@@ -2130,6 +2161,23 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 					TREESEED_API_BASE_URL: configuredEnvValue(env, 'TREESEED_API_BASE_URL') || configuredEnvValue(env, 'TREESEED_URL'),
 				} : {}),
 			} : {}),
+			...(String(service.key).startsWith('capacityProvider') ? {
+				TREESEED_PROVIDER_ENVIRONMENT: normalizeScope(service.scope) === 'prod' ? 'production' : normalizeScope(service.scope),
+				TREESEED_MANAGER_ID: normalizeScope(service.scope),
+				TREESEED_MARKET_ID: normalizeScope(service.scope),
+				TREESEED_PROVIDER_ROLE: service.key === 'capacityProviderApi'
+					? 'api'
+					: service.key === 'capacityProviderManager'
+						? 'manager'
+						: 'runner',
+				...(service.key === 'capacityProviderRunner' ? {
+					TREESEED_PROVIDER_DATA_DIR: service.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH,
+					TREESEED_PROVIDER_RUNNER_ID: service.runnerId ?? railwayService.name,
+				} : {}),
+				...(configuredEnvValue(env, 'TREESEED_MARKET_URL') ? { TREESEED_MARKET_URL: configuredEnvValue(env, 'TREESEED_MARKET_URL') } : {}),
+				...(configuredEnvValue(env, 'TREESEED_CAPACITY_PROVIDER_API_KEY') ? { TREESEED_CAPACITY_PROVIDER_API_KEY: configuredEnvValue(env, 'TREESEED_CAPACITY_PROVIDER_API_KEY') } : {}),
+				...(configuredEnvValue(env, 'TREESEED_CODEX_AUTH_JSON_B64') ? { TREESEED_CODEX_AUTH_JSON_B64: configuredEnvValue(env, 'TREESEED_CODEX_AUTH_JSON_B64') } : {}),
+			} : {}),
 		},
 		env,
 	});
@@ -2144,6 +2192,8 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			serviceId: railwayService.id,
 			name: service.key === 'operationsRunner'
 				? deriveRailwayOperationsRunnerVolumeName(railwayService.name, environment.name)
+				: service.key === 'capacityProviderRunner'
+					? deriveRailwayCapacityProviderRunnerVolumeName(railwayService.name, environment.name)
 				: deriveRailwayWorkerRunnerVolumeName(railwayService.name, environment.name),
 			mountPath: volumeMountPath,
 			env,

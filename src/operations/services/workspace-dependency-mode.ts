@@ -1,6 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { runTreeseedGit } from './git-runner.ts';
 import { workspacePackages, workspaceRoot } from './workspace-tools.ts';
 
 export type DependencyResolutionMode = 'local-workspace' | 'git-dev' | 'stable-registry';
@@ -108,10 +109,10 @@ function writeMetadata(root: string, links: WorkspaceLink[]) {
 }
 
 function gitInfoExcludePath(repoPath: string) {
-	const result = spawnSync('git', ['rev-parse', '--git-common-dir'], {
+	const result = runTreeseedGit(['rev-parse', '--git-common-dir'], {
 		cwd: repoPath,
-		stdio: 'pipe',
-		encoding: 'utf8',
+		mode: 'read',
+		allowFailure: true,
 	});
 	if (result.status !== 0) return null;
 	const gitDir = result.stdout.trim();

@@ -7,6 +7,7 @@ import {
 	CAPACITY_PROVIDER_DEPLOYMENT_SERVICE_ROLES,
 	CAPACITY_PROVIDER_ENV_KEYS,
 	CAPACITY_PROVIDER_SCOPES,
+	DEFAULT_CAPACITY_PROVIDER_ROLE_IMAGES,
 	CapacityProviderApiError,
 	MarketProviderClient,
 	TREESEED_REMOTE_CONTRACT_HEADER,
@@ -15,11 +16,13 @@ import {
 	buildCapacityProviderAuthHeaders,
 	deployCapacityProviderToManagedMarketHost,
 	deployCapacityProviderToRailway,
+	parseCapacityProviderLaunchManifest,
 	redactCapacityProviderEnv,
 	renderCapacityProviderSelfHostInstructions,
 	persistCapacityProviderConnectionToTreeseedConfig,
 	resolveCapacityProviderEnvironment,
 	resolveCapacityProviderLaunchEnvironment,
+	resolveCapacityProviderLaunchPlan,
 	type CapacityProviderDeploymentIntent,
 	type CapacityProviderDeploymentResult,
 	type CapacityProviderPortfolioManifest,
@@ -316,6 +319,7 @@ describe('capacity provider SDK contracts', () => {
 		});
 		expect(env).toMatchObject({
 			TREESEED_MARKET_URL: 'https://api.treeseed.ai',
+			TREESEED_MARKET_ID: 'prod',
 			TREESEED_MANAGER_ID: 'prod',
 			TREESEED_CAPACITY_PROVIDER_API_KEY: apiKey,
 			TREESEED_PROVIDER_DATA_DIR: '/data',
@@ -381,6 +385,58 @@ describe('capacity provider SDK contracts', () => {
 		});
 		expect(JSON.stringify(launch.redactedEnv)).not.toContain(apiKey);
 		expect(() => resolveCapacityProviderLaunchEnvironment({ env: {}, requireConnection: true })).toThrow(/TREESEED_MARKET_URL/u);
+	});
+
+	it('parses launch manifests, resolves role images, and rejects secret-looking extension build args', () => {
+		const manifest = parseCapacityProviderLaunchManifest(`
+schemaVersion: 1
+provider:
+  environment: local
+  dataDir: .treeseed/local-capacity-provider/data
+  market:
+    url: http://127.0.0.1:3000
+    id: local
+runtime:
+  images:
+    tag: dev-staging
+  api:
+    port: 3100
+    hostPort: 3199
+  runners:
+    maxConcurrent: 2
+extensions:
+  runner:
+    enabled: true
+    baseImage: treeseed/agent-runner:dev-staging
+    image: example/team-agent-runner
+    tag: local
+    buildArgs:
+      SAFE_FLAG: "1"
+`);
+		const plan = resolveCapacityProviderLaunchPlan(manifest);
+		expect(DEFAULT_CAPACITY_PROVIDER_ROLE_IMAGES.api).toBe('treeseed/agent-api');
+		expect(plan.roleImages).toEqual({
+			api: 'treeseed/agent-api:dev-staging',
+			manager: 'treeseed/agent-manager:dev-staging',
+			runner: 'example/team-agent-runner:local',
+		});
+		expect(plan.composeEnv).toMatchObject({
+			TREESEED_AGENT_API_IMAGE: 'treeseed/agent-api:dev-staging',
+			TREESEED_AGENT_MANAGER_IMAGE: 'treeseed/agent-manager:dev-staging',
+			TREESEED_AGENT_RUNNER_IMAGE: 'example/team-agent-runner:local',
+			TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/local-capacity-provider/data',
+			TREESEED_PROVIDER_MAX_CONCURRENT_RUNNERS: '2',
+		});
+		expect(JSON.stringify(plan.redactedEnv)).not.toContain('secret');
+		expect(() => parseCapacityProviderLaunchManifest(`
+schemaVersion: 1
+extensions:
+  runner:
+    enabled: true
+    image: example/team-agent-runner
+    buildArgs:
+      API_TOKEN: tscp_secret_local_provider_key
+`)).toThrow(/looks secret-like/u);
 	});
 
 	it('deploys provider roles through SDK primitives with host-secret env refs and redacted output', async () => {
@@ -493,6 +549,7 @@ describe('capacity provider SDK contracts', () => {
 
 			expect(persisted.writtenKeys).toEqual([
 				'TREESEED_MARKET_URL',
+				'TREESEED_MARKET_ID',
 				'TREESEED_MANAGER_ID',
 				'TREESEED_CAPACITY_PROVIDER_API_KEY',
 				'TREESEED_PROVIDER_HOST_DATA_DIR',
@@ -500,6 +557,7 @@ describe('capacity provider SDK contracts', () => {
 			]);
 			expect(launch.env).toMatchObject({
 				TREESEED_MARKET_URL: 'http://127.0.0.1:3000',
+				TREESEED_MARKET_ID: 'local',
 				TREESEED_MANAGER_ID: 'local',
 				TREESEED_CAPACITY_PROVIDER_API_KEY: apiKey,
 				TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/local-capacity-provider/data',

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { classifyTreeseedGitMode, runTreeseedGit, runTreeseedGitText } from './git-runner.ts';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 
@@ -23,6 +24,15 @@ function compareWorkspacePackages(left, right) {
 
 function escapeRegex(source) {
 	return source.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
+}
+
+function runGit(args, options) {
+	return runTreeseedGitText(args, {
+		cwd: options.cwd,
+		mode: classifyTreeseedGitMode(args),
+		timeoutMs: options.timeoutMs,
+		maxBuffer: options.maxBuffer,
+	});
 }
 
 function segmentPatternToRegex(pattern) {
@@ -216,6 +226,22 @@ export function packagesWithScript(scriptName, root = workspaceRoot()) {
 }
 
 export function run(command, args, options = {}) {
+	if (command === 'git') {
+		const result = runTreeseedGit(args, {
+			cwd: options.cwd ?? workspaceRoot(),
+			mode: classifyTreeseedGitMode(args),
+			allowFailure: false,
+			timeoutMs: options.timeoutMs,
+			maxBuffer: options.maxBuffer,
+		});
+		if (!options.capture && result.stdout) {
+			process.stdout.write(result.stdout);
+		}
+		if (!options.capture && result.stderr) {
+			process.stderr.write(result.stderr);
+		}
+		return (result.stdout ?? '').trim();
+	}
 	const result = spawnSync(command, args, {
 		cwd: options.cwd ?? workspaceRoot(),
 		env: { ...process.env, ...(options.env ?? {}) },
@@ -240,10 +266,10 @@ export function run(command, args, options = {}) {
 }
 
 function canResolveGitRef(baseRef, cwd = workspaceRoot()) {
-	const result = spawnSync('git', ['rev-parse', '--verify', baseRef], {
+	const result = runTreeseedGit(['rev-parse', '--verify', baseRef], {
 		cwd,
-		stdio: 'pipe',
-		encoding: 'utf8',
+		mode: 'read',
+		allowFailure: true,
 	});
 	return result.status === 0;
 }
@@ -270,7 +296,7 @@ function changedWorkspaceFiles(baseRef, cwd = workspaceRoot()) {
 	}
 
 	for (const args of diffCommands) {
-		const output = run('git', args, { cwd, capture: true });
+		const output = runGit( args, { cwd, capture: true });
 		for (const line of output.split('\n').map((entry) => entry.trim()).filter(Boolean)) {
 			changedFiles.add(line);
 		}

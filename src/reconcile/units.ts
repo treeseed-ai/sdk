@@ -20,6 +20,12 @@ export const TRESEED_RECONCILE_UNIT_TYPES: TreeseedReconcileUnitType[] = [
 	'railway-service:operations-runner',
 	'railway-service:workday-manager',
 	'railway-service:worker-runner',
+	'branch-preview',
+	'branch-preview-cleanup',
+	'workflow-gate',
+	'save-gate:local-verify',
+	'save-gate:promotion-readiness',
+	'save-gate:hosted-verify',
 ];
 
 export function targetKey(target: TreeseedReconcileTarget) {

@@ -2,6 +2,7 @@ import {
 	TREESEED_REMOTE_CONTRACT_HEADER,
 	TREESEED_REMOTE_CONTRACT_VERSION,
 } from './remote.ts';
+import { parse as parseYaml } from 'yaml';
 import {
 	collectTreeseedConfigSeedValues,
 	collectTreeseedEnvironmentContext,
@@ -37,6 +38,7 @@ export const CAPACITY_PROVIDER_SCOPES = [
 
 export const CAPACITY_PROVIDER_ENV_KEYS = [
 	'TREESEED_MARKET_URL',
+	'TREESEED_MARKET_ID',
 	'TREESEED_MANAGER_ID',
 	'TREESEED_CAPACITY_PROVIDER_API_KEY',
 	'TREESEED_PROVIDER_HOST_DATA_DIR',
@@ -65,6 +67,12 @@ export type CapacityProviderDeploymentStatus = 'not_deployed' | 'deploying' | 'd
 export type CapacityProviderDeploymentServiceRole = 'api' | 'manager' | 'runner';
 
 export const CAPACITY_PROVIDER_DEPLOYMENT_SERVICE_ROLES = ['api', 'manager', 'runner'] as const;
+
+export const DEFAULT_CAPACITY_PROVIDER_ROLE_IMAGES = {
+	api: 'treeseed/agent-api',
+	manager: 'treeseed/agent-manager',
+	runner: 'treeseed/agent-runner',
+} as const satisfies Record<CapacityProviderDeploymentServiceRole, string>;
 
 export interface CapacityProviderRuntimeInfo {
 	package: '@treeseed/agent' | string;
@@ -396,6 +404,7 @@ export interface CapacityProviderDeploymentPrimitiveInput {
 	env: Record<string, string>;
 	redactedEnv?: Record<string, string>;
 	imageRef?: string | null;
+	roleImageRefs?: Partial<Record<CapacityProviderDeploymentServiceRole, string>>;
 	serviceNamePrefix?: string | null;
 	adapter?: CapacityProviderDeploymentAdapter;
 	now?: Date;
@@ -431,6 +440,65 @@ export interface CapacityProviderEnvironmentInput {
 	codexAuthFile?: string;
 	codexAuthJsonB64?: string;
 	codexAuthOverwrite?: boolean | number | string;
+}
+
+export interface CapacityProviderRoleImageConfig {
+	image?: string;
+	tag?: string;
+}
+
+export interface CapacityProviderImageExtensionConfig {
+	enabled?: boolean;
+	baseImage?: string;
+	dockerfile?: string;
+	context?: string;
+	image?: string;
+	tag?: string;
+	buildArgs?: Record<string, string | number | boolean | null | undefined>;
+}
+
+export interface CapacityProviderLaunchManifest {
+	schemaVersion: 1;
+	provider?: {
+		id?: string;
+		environment?: string;
+		dataDir?: string;
+		market?: {
+			profile?: string;
+			url?: string;
+			id?: string;
+		};
+	};
+	runtime?: {
+		images?: {
+			tag?: string;
+			architecture?: 'auto' | 'amd64' | 'arm64' | string;
+			pullPolicy?: string;
+			roles?: Partial<Record<CapacityProviderDeploymentServiceRole, CapacityProviderRoleImageConfig>>;
+		};
+		api?: {
+			port?: number | string;
+			hostPort?: number | string;
+		};
+		manager?: {
+			pollSeconds?: number | string;
+		};
+		runners?: {
+			count?: number | string;
+			maxConcurrent?: number | string;
+			dataDir?: string;
+		};
+	};
+	extensions?: Partial<Record<CapacityProviderDeploymentServiceRole, CapacityProviderImageExtensionConfig>>;
+	executionProviders?: unknown[];
+	capabilities?: unknown[];
+}
+
+export interface CapacityProviderLaunchPlan {
+	manifest: CapacityProviderLaunchManifest;
+	roleImages: Record<CapacityProviderDeploymentServiceRole, string>;
+	composeEnv: Record<string, string>;
+	redactedEnv: Record<string, string>;
 }
 
 export interface CapacityProviderSelfHostInstructions {
@@ -631,13 +699,14 @@ export function assertCapacityProviderPortfolioManifest(value: unknown): asserts
 export function resolveCapacityProviderEnvironment(input: CapacityProviderEnvironmentInput): Record<string, string> {
 	const env: Record<string, string> = {
 		TREESEED_MARKET_URL: normalizeBaseUrl(input.marketUrl),
+		TREESEED_MARKET_ID: input.marketId.trim(),
 		TREESEED_MANAGER_ID: input.marketId.trim(),
 		TREESEED_CAPACITY_PROVIDER_API_KEY: input.apiKey.trim(),
 		TREESEED_PROVIDER_DATA_DIR: input.providerDataDir ?? '/data',
 		TREESEED_PROVIDER_API_PORT: stringValue(input.providerApiPort, '3100'),
 		TREESEED_PROVIDER_ENVIRONMENT: input.providerEnvironment ?? 'local',
 	};
-	if (!env.TREESEED_MANAGER_ID) throw new Error('Capacity provider Market ID is required.');
+	if (!env.TREESEED_MARKET_ID) throw new Error('Capacity provider Market ID is required.');
 	if (!env.TREESEED_CAPACITY_PROVIDER_API_KEY) throw new Error('Capacity provider API key is required.');
 	if (input.providerHostDataDir) env.TREESEED_PROVIDER_HOST_DATA_DIR = input.providerHostDataDir;
 	if (input.capabilitiesFile) env.TREESEED_PROVIDER_CAPABILITIES_FILE = input.capabilitiesFile;
@@ -686,6 +755,12 @@ export function resolveCapacityProviderLaunchEnvironment(input: CapacityProvider
 		TREESEED_PROVIDER_ENVIRONMENT: scope,
 		...values,
 	};
+	if (!resolved.TREESEED_MARKET_ID && resolved.TREESEED_MANAGER_ID) {
+		resolved.TREESEED_MARKET_ID = resolved.TREESEED_MANAGER_ID;
+	}
+	if (!resolved.TREESEED_MANAGER_ID && resolved.TREESEED_MARKET_ID) {
+		resolved.TREESEED_MANAGER_ID = resolved.TREESEED_MARKET_ID;
+	}
 	if (!resolved.TREESEED_PROVIDER_HOST_API_PORT) {
 		resolved.TREESEED_PROVIDER_HOST_API_PORT = resolved.TREESEED_PROVIDER_API_PORT;
 	}
@@ -697,6 +772,7 @@ export function resolveCapacityProviderLaunchEnvironment(input: CapacityProvider
 	}
 	const required = [
 		'TREESEED_MARKET_URL',
+		'TREESEED_MARKET_ID',
 		'TREESEED_MANAGER_ID',
 		...(diagnostic ? [] : ['TREESEED_CAPACITY_PROVIDER_API_KEY']),
 		'TREESEED_PROVIDER_HOST_DATA_DIR',
@@ -730,6 +806,7 @@ export function persistCapacityProviderConnectionToTreeseedConfig(input: Capacit
 	const entryById = new Map(registryEntries.map((entry) => [entry.id, entry]));
 	const keys = [
 		'TREESEED_MARKET_URL',
+		'TREESEED_MARKET_ID',
 		'TREESEED_MANAGER_ID',
 		'TREESEED_CAPACITY_PROVIDER_API_KEY',
 		'TREESEED_PROVIDER_HOST_DATA_DIR',
@@ -762,6 +839,72 @@ export function redactCapacityProviderEnv(env: Record<string, string>) {
 		redacted[key] = isCapacityProviderSecretEnvKey(key) ? redactCapacityProviderSecret(value) : value;
 	}
 	return redacted;
+}
+
+function manifestRecord(value: unknown): Record<string, unknown> {
+	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function manifestRoleImage(role: CapacityProviderDeploymentServiceRole, manifest: CapacityProviderLaunchManifest) {
+	const tag = manifest.runtime?.images?.tag ?? 'latest';
+	const roleConfig = manifest.runtime?.images?.roles?.[role] ?? {};
+	const extension = manifest.extensions?.[role];
+	if (extension?.enabled && extension.image) {
+		return `${extension.image}:${extension.tag ?? tag}`;
+	}
+	return `${roleConfig.image ?? DEFAULT_CAPACITY_PROVIDER_ROLE_IMAGES[role]}:${roleConfig.tag ?? tag}`;
+}
+
+function assertSafeCapacityProviderManifest(value: CapacityProviderLaunchManifest) {
+	for (const [role, extension] of Object.entries(value.extensions ?? {})) {
+		if (!extension) continue;
+		for (const [key, entryValue] of Object.entries(extension.buildArgs ?? {})) {
+			if (entryValue === undefined || entryValue === null || entryValue === '') continue;
+			if (isCapacityProviderSecretEnvKey(key) || /(?:tscp_|tsp_|sk-|ghp_|gho_|github_pat_)/u.test(String(entryValue))) {
+				throw new Error(`Capacity provider ${role} extension build arg ${key} looks secret-like. Store secrets in Treeseed config or the host secret manager instead.`);
+			}
+		}
+	}
+}
+
+export function parseCapacityProviderLaunchManifest(source: string | Record<string, unknown>): CapacityProviderLaunchManifest {
+	const parsed = typeof source === 'string'
+		? parseYaml(source) as unknown
+		: source;
+	const record = manifestRecord(parsed);
+	if (record.schemaVersion !== 1) {
+		throw new Error('Capacity provider launch manifest schemaVersion must be 1.');
+	}
+	const manifest = record as unknown as CapacityProviderLaunchManifest;
+	assertSafeCapacityProviderManifest(manifest);
+	return manifest;
+}
+
+export function resolveCapacityProviderLaunchPlan(manifest: CapacityProviderLaunchManifest): CapacityProviderLaunchPlan {
+	assertSafeCapacityProviderManifest(manifest);
+	const roleImages = {
+		api: manifestRoleImage('api', manifest),
+		manager: manifestRoleImage('manager', manifest),
+		runner: manifestRoleImage('runner', manifest),
+	};
+	const composeEnv = {
+		...(manifest.provider?.dataDir ? { TREESEED_PROVIDER_HOST_DATA_DIR: manifest.provider.dataDir } : {}),
+		...(manifest.provider?.environment ? { TREESEED_PROVIDER_ENVIRONMENT: manifest.provider.environment } : {}),
+		...(manifest.provider?.market?.url ? { TREESEED_MARKET_URL: manifest.provider.market.url } : {}),
+		...(manifest.provider?.market?.id ? { TREESEED_MANAGER_ID: manifest.provider.market.id, TREESEED_MARKET_ID: manifest.provider.market.id } : {}),
+		...(manifest.runtime?.api?.port ? { TREESEED_PROVIDER_API_PORT: String(manifest.runtime.api.port) } : {}),
+		...(manifest.runtime?.api?.hostPort ? { TREESEED_PROVIDER_HOST_API_PORT: String(manifest.runtime.api.hostPort) } : {}),
+		...(manifest.runtime?.runners?.maxConcurrent ? { TREESEED_PROVIDER_MAX_CONCURRENT_RUNNERS: String(manifest.runtime.runners.maxConcurrent) } : {}),
+		TREESEED_AGENT_API_IMAGE: roleImages.api,
+		TREESEED_AGENT_MANAGER_IMAGE: roleImages.manager,
+		TREESEED_AGENT_RUNNER_IMAGE: roleImages.runner,
+	};
+	return {
+		manifest,
+		roleImages,
+		composeEnv,
+		redactedEnv: redactCapacityProviderEnv(composeEnv),
+	};
 }
 
 export function renderCapacityProviderSelfHostInstructions(input: CapacityProviderEnvironmentInput): CapacityProviderSelfHostInstructions {
@@ -808,7 +951,12 @@ async function deployCapacityProviderWithAdapter(
 	launchMode: CapacityProviderLaunchMode,
 	hostKind: string,
 ): Promise<CapacityProviderDeploymentPrimitiveResult> {
-	const imageRef = input.imageRef ?? input.intent.imageRef ?? 'ghcr.io/treeseed-ai/agent:capacity-provider';
+	const imageRef = input.imageRef ?? input.intent.imageRef ?? 'treeseed/agent-api:latest';
+	const roleImageRefs = {
+		api: input.roleImageRefs?.api ?? imageRef,
+		manager: input.roleImageRefs?.manager ?? input.imageRef ?? input.intent.imageRef ?? 'treeseed/agent-manager:latest',
+		runner: input.roleImageRefs?.runner ?? input.imageRef ?? input.intent.imageRef ?? 'treeseed/agent-runner:latest',
+	};
 	const serviceNamePrefix = input.serviceNamePrefix
 		?? `${input.intent.capacityProviderId || 'capacity-provider'}`
 			.replace(/^cp[_-]?/u, 'capacity-provider-')
@@ -823,7 +971,7 @@ async function deployCapacityProviderWithAdapter(
 			const result = await adapter.provisionService({
 				role,
 				serviceName: providerDeploymentServiceName(serviceNamePrefix, role),
-				imageRef,
+				imageRef: roleImageRefs[role],
 				startCommand: providerDeploymentStartCommand(role),
 				env,
 				redactedEnv,

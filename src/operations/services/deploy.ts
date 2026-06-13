@@ -7,7 +7,6 @@ import { resolveTreeseedWebCachePolicy } from '../../platform/deploy-config.ts';
 import {
 	deleteRailwayCustomDomain,
 	deleteRailwayEnvironment,
-	deleteRailwayProject,
 	deleteRailwayVolume,
 	getRailwayServiceInstance,
 	listRailwayCustomDomains,
@@ -2985,11 +2984,7 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { dryRu
 					reason: scope === 'prod' ? 'prod_delete_data_cleanup' : 'no_managed_persistent_environments',
 				}));
 			} else {
-				const result = await deleteRailwayProject({ projectId: project.id, env });
-				operations.push(resourceOperation('railway', 'project', project.name, result.status, {
-					id: project.id,
-					reason: scope === 'prod' ? 'prod_delete_data_cleanup' : 'no_managed_persistent_environments',
-				}));
+				throw new Error('Railway project deletion is reconciler-owned. Use trsd reconcile destroy or live acceptance cleanup for project-scoped deletion.');
 			}
 		} else if (environment) {
 			if (dryRun) {
@@ -3429,12 +3424,7 @@ async function sweepTreeSeedRailwayResources(deployConfig, state, { env, dryRun 
 				sweep: true,
 			}));
 		} else {
-			const deleted = await deleteRailwayProject({ projectId: project.id, env });
-			operations.push(resourceOperation('railway', 'project', project.name, deleted.status, {
-				id: project.id,
-				workspaceId: workspace.id,
-				sweep: true,
-			}));
+			throw new Error('Railway project sweep deletion is reconciler-owned. Use trsd reconcile test-live --mode cleanup for isolated cleanup.');
 		}
 	}
 	return operations.length > 0

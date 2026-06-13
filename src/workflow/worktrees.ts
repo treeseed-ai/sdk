@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { runTreeseedGit } from '../operations/services/git-runner.ts';
 import { sortWorkspacePackages, workspacePackages, workspaceRoot } from '../operations/services/workspace-tools.ts';
 import { repoRoot } from '../operations/services/workspace-save.ts';
 import type { TreeseedWorkflowWorktreeMode } from '../workflow.ts';
@@ -30,14 +30,14 @@ function nowIso() {
 }
 
 function runGit(args: string[], { cwd, capture = true, allowFailure = false }: { cwd: string; capture?: boolean; allowFailure?: boolean }) {
-	const result = spawnSync('git', args, {
+	const mutating = /^(add|commit|checkout|switch|merge|tag|push|fetch|worktree|submodule|reset|clean|restore|branch)$/u.test(args[0] ?? '');
+	const result = runTreeseedGit(args, {
 		cwd,
-		stdio: capture ? 'pipe' : 'inherit',
-		encoding: 'utf8',
+		mode: mutating ? 'mutate' : 'read',
+		allowFailure,
 	});
-	if (result.status !== 0 && !allowFailure) {
-		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `git ${args.join(' ')} failed`);
-	}
+	if (!capture && result.stdout.trim()) process.stdout.write(result.stdout);
+	if (!capture && result.stderr.trim()) process.stderr.write(result.stderr);
 	return result;
 }
 

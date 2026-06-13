@@ -1,6 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, relative, resolve } from 'node:path';
+import { runTreeseedGit } from './git-runner.ts';
 import {
 	normalizeTreeseedTemplateId,
 	type SdkTemplateCatalogEntry,
@@ -292,10 +293,10 @@ function resolveTemplateSourceCacheRoot(product: TemplateProductDefinition, opti
 }
 
 function runGit(commandArgs: string[], cwd?: string) {
-	const result = spawnSync('git', commandArgs, {
+	const mutating = /^(add|commit|checkout|switch|merge|tag|push|fetch|worktree|submodule|reset|clean|restore|branch|clone)$/u.test(commandArgs[0] ?? '');
+	const result = runTreeseedGit(commandArgs, {
 		cwd,
-		stdio: 'pipe',
-		encoding: 'utf8',
+		mode: mutating ? 'mutate' : 'read',
 	});
 	if (result.status !== 0) {
 		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `git ${commandArgs.join(' ')} failed`);
@@ -303,10 +304,10 @@ function runGit(commandArgs: string[], cwd?: string) {
 }
 
 function readGitOutput(commandArgs: string[], cwd?: string) {
-	const result = spawnSync('git', commandArgs, {
+	const result = runTreeseedGit(commandArgs, {
 		cwd,
-		stdio: 'pipe',
-		encoding: 'utf8',
+		mode: 'read',
+		allowFailure: true,
 	});
 	return result.status === 0 ? result.stdout.trim() : null;
 }

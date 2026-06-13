@@ -34,7 +34,31 @@ export type TreeseedReconcileUnitType =
 	| 'railway-service:api'
 	| 'railway-service:operations-runner'
 	| 'railway-service:workday-manager'
-	| 'railway-service:worker-runner';
+	| 'railway-service:worker-runner'
+	| 'package-manifest'
+	| 'package-workflow'
+	| 'package-image'
+	| 'github-environment'
+	| 'github-secret-binding'
+	| 'github-variable-binding'
+	| 'github-workflow-dispatch'
+	| 'docker-image-build'
+	| 'local-docker-compose'
+	| 'local-process'
+	| 'capacity-provider'
+	| 'branch-preview'
+	| 'branch-preview-cleanup'
+	| 'workflow-gate'
+	| 'save-gate:local-verify'
+	| 'save-gate:promotion-readiness'
+	| 'save-gate:hosted-verify'
+	| 'release-gate:verify'
+	| 'release-gate:npm-publish'
+	| 'release-gate:image-publish'
+	| 'release-gate:hosted-reconcile'
+	| 'release-gate:live-verify'
+	| 'release-gate:candidate-record'
+	| 'release-gate:production-record';
 
 export type TreeseedReconcileTarget =
 	| { kind: 'persistent'; scope: 'local' | 'staging' | 'prod' }
@@ -62,6 +86,20 @@ export interface TreeseedDesiredUnit {
 	spec: Record<string, unknown>;
 	secrets: Record<string, string | null | undefined>;
 	metadata: Record<string, unknown>;
+}
+
+export interface TreeseedReconcileSelector {
+	environment?: 'local' | 'staging' | 'prod';
+	host?: string[];
+	packageId?: string[];
+	appId?: string[];
+	serviceId?: string[];
+	serviceType?: string[];
+	placement?: string[];
+	resourceKind?: string[];
+	unitId?: string[];
+	unitType?: TreeseedReconcileUnitType[];
+	provider?: string[];
 }
 
 export interface TreeseedObservedUnitState {
