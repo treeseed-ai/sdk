@@ -885,7 +885,7 @@ jobs:
 function resolveWorkflowSetupCommand(adapter: TreeseedPackageAdapter) {
 	const scripts = adapter.metadata.scripts;
 	if (isRecord(scripts) && typeof scripts['release:setup'] === 'string') {
-		return 'npm run release:setup';
+		return 'npm run release:setup || (echo "dependency install failed; retrying" && npm run release:setup)';
 	}
 	return 'npm ci || (echo "dependency install failed; retrying" && npm ci)';
 }
