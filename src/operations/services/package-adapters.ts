@@ -769,6 +769,7 @@ export function renderTreeseedPackageWorkflow(adapter: TreeseedPackageAdapter, t
 	const verify = adapter.verifyCommands.local
 		? formatWorkflowRunCommand(adapter.verifyCommands.local.command, adapter.verifyCommands.local.args)
 		: 'npm run verify:local';
+	const setup = resolveWorkflowSetupCommand(adapter);
 	const dockerArtifacts = adapter.artifacts.filter((artifact) => artifact.provider === 'docker');
 	if (template === 'npm-publish') {
 		return `name: Publish ${adapter.name}
@@ -794,7 +795,7 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - run: npm ci || (echo "dependency install failed; retrying" && npm ci)
+      - run: ${setup}
       - run: ${verify}
       - run: npm publish --access public
         env:
@@ -834,7 +835,7 @@ ${dockerArtifacts.map((artifact) => `          - image: ${artifact.name}`).join(
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - run: npm ci || (echo "dependency install failed; retrying" && npm ci)
+      - run: ${setup}
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -876,9 +877,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci || (echo "dependency install failed; retrying" && npm ci)
+      - run: ${setup}
       - run: ${verify}
 `;
+}
+
+function resolveWorkflowSetupCommand(adapter: TreeseedPackageAdapter) {
+	const scripts = adapter.metadata.scripts;
+	if (isRecord(scripts) && typeof scripts['release:setup'] === 'string') {
+		return 'npm run release:setup';
+	}
+	return 'npm ci || (echo "dependency install failed; retrying" && npm ci)';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value != null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function formatWorkflowRunCommand(command: string, args: string[]) {
