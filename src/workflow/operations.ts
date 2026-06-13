@@ -4137,9 +4137,10 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 										const rootReportForWave = nodes.some((node) => node.id === '.')
 											? waveRootRepo
 											: null;
+										const hostedEnvironment = saveHostedEnvironmentForBranch(branch);
 										const gates = [
 											...gatesForSavedRepositoryReports(root, nonRootReportsForWave),
-											...(rootReportForWave ? gateForSavedRootReport(rootReportForWave, branch, scope) : []),
+											...(rootReportForWave && !hostedEnvironment ? gateForSavedRootReport(rootReportForWave, branch, scope) : []),
 										];
 										if (gates.length === 0) {
 											return [];
@@ -4147,7 +4148,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 										const repositoryNames = gates.map((gate) => gate.name).join(', ');
 										if (nonRootReportsForWave.length > 0) {
 											helpers.write(`[save][workflow] Waiting for hosted repository gates before saving dependents: ${repositoryNames}.`);
-										} else if (rootReportForWave) {
+										} else if (rootReportForWave && !hostedEnvironment) {
 											helpers.write('[save][workflow] Waiting for hosted market deploy gate.');
 										}
 										return waitForWorkflowGates('save', gates, 'hosted', {

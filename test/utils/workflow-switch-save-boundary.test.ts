@@ -44,6 +44,7 @@ describe('switch/dev/save hard-cut boundaries', () => {
 		expect(operations).toMatch(/reconcileTreeseedTarget/u);
 		expect(operations).toMatch(/collectTreeseedReconcileStatus/u);
 		expect(operations).toMatch(/collectTreeseedLiveHostedServiceChecks/u);
+		expect(operations).toMatch(/rootReportForWave && !hostedEnvironment/u);
 		expect(operations).not.toMatch(/Hosted deploy workflow dispatch is reconciler-owned/u);
 	});
 });
