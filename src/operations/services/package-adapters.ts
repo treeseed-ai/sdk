@@ -767,7 +767,7 @@ function workflowNameForTemplate(adapter: TreeseedPackageAdapter, template: Tree
 
 export function renderTreeseedPackageWorkflow(adapter: TreeseedPackageAdapter, template: TreeseedPackageWorkflowTemplateKind) {
 	const verify = adapter.verifyCommands.local
-		? `${adapter.verifyCommands.local.command} ${adapter.verifyCommands.local.args.join(' ')}`.trim()
+		? formatWorkflowRunCommand(adapter.verifyCommands.local.command, adapter.verifyCommands.local.args)
 		: 'npm run verify:local';
 	const dockerArtifacts = adapter.artifacts.filter((artifact) => artifact.provider === 'docker');
 	if (template === 'npm-publish') {
@@ -873,6 +873,15 @@ jobs:
       - run: npm ci || (echo "dependency install failed; retrying" && npm ci)
       - run: ${verify}
 `;
+}
+
+function formatWorkflowRunCommand(command: string, args: string[]) {
+	return [command, ...args].map(shellQuoteWorkflowArg).join(' ');
+}
+
+function shellQuoteWorkflowArg(value: string) {
+	if (/^[A-Za-z0-9_./:@%+=,-]+$/u.test(value)) return value;
+	return `'${value.replace(/'/gu, `'\\''`)}'`;
 }
 
 function workflowTemplatesForAdapter(adapter: TreeseedPackageAdapter): TreeseedPackageWorkflowTemplateKind[] {
