@@ -812,11 +812,6 @@ jobs:
 			? 'npm run capacity-provider:build -- --prepare-only'
 			: null;
 		const environment = template === 'dev-image' ? 'staging' : 'production';
-		const tags = template === 'dev-image'
-			? `|
-            type=sha,prefix=dev-staging-,format=short
-            type=raw,value=dev-staging`
-			: 'type=semver,pattern={{version}}';
 		const trigger = template === 'dev-image'
 			? `    branches:
       - staging`
@@ -825,8 +820,35 @@ jobs:
 		const jobCondition = template === 'dev-image'
 			? "github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/staging'"
 			: "startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')";
+		const computeTagsStep = template === 'dev-image'
+			? `      - name: Compute image tags
+        id: tags
+        run: |
+          short_sha="\${GITHUB_SHA::12}"
+          echo "base=dev-staging-\${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "moving=dev-staging" >> "$GITHUB_OUTPUT"
+`
+			: `      - name: Compute image tags
+        id: tags
+        run: |
+          version="\${GITHUB_REF_NAME#v}"
+          echo "base=\${version}" >> "$GITHUB_OUTPUT"
+          echo "moving=" >> "$GITHUB_OUTPUT"
+`;
+		const manifestMovingTag = template === 'dev-image'
+			? ` \\
+            -t "\${{ matrix.image }}:\${{ steps.tags.outputs.moving }}"`
+			: '';
 		const releaseStep = template === 'docker-image'
-			? `      - name: Create GitHub release
+			? `  release:
+    needs: manifest
+    if: ${jobCondition}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create GitHub release
         env:
           GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
         run: gh release create "\${GITHUB_REF_NAME}" --generate-notes --verify-tag
@@ -840,9 +862,9 @@ on:
 ${trigger}
 
 jobs:
-  image:
+  build:
     if: ${jobCondition}
-    runs-on: ubuntu-latest
+    runs-on: \${{ matrix.runner }}
     permissions:
       contents: write
       packages: write
@@ -850,30 +872,60 @@ jobs:
     strategy:
       matrix:
         include:
-${dockerArtifacts.map((artifact) => `          - image: ${artifact.name}${anyTarget ? `\n            target: ${artifact.target ?? ''}` : ''}`).join('\n') || '          - image: treeseed/unknown'}
+${dockerArtifacts.flatMap((artifact) => [
+	`          - image: ${artifact.name}${anyTarget ? `\n            target: ${artifact.target ?? ''}` : ''}
+            arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04`,
+	`          - image: ${artifact.name}${anyTarget ? `\n            target: ${artifact.target ?? ''}` : ''}
+            arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm`,
+]).join('\n') || `          - image: treeseed/unknown
+            arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04`}
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
       - run: ${setup}
-${dockerContextPrepareCommand ? `      - run: ${dockerContextPrepareCommand}\n` : ''}      - uses: docker/setup-qemu-action@v3
+${dockerContextPrepareCommand ? `      - run: ${dockerContextPrepareCommand}\n` : ''}${computeTagsStep}      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: \${{ vars.DOCKERHUB_USERNAME }}
+          password: \${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+${anyTarget ? '          target: ${{ matrix.target }}\n' : ''}          platforms: \${{ matrix.platform }}
+          push: true
+          tags: \${{ matrix.image }}:\${{ steps.tags.outputs.base }}-\${{ matrix.arch }}
+
+  manifest:
+    needs: build
+    if: ${jobCondition}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    environment: ${environment}
+    strategy:
+      matrix:
+        include:
+${dockerArtifacts.map((artifact) => `          - image: ${artifact.name}`).join('\n') || '          - image: treeseed/unknown'}
+    steps:
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           username: \${{ vars.DOCKERHUB_USERNAME }}
           password: \${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: \${{ matrix.image }}
-          tags: ${tags}
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-${anyTarget ? '          target: ${{ matrix.target }}\n' : ''}          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: \${{ steps.meta.outputs.tags }}
-          labels: \${{ steps.meta.outputs.labels }}
+${computeTagsStep}      - name: Publish multi-architecture manifest
+        run: |
+          docker buildx imagetools create \\
+            -t "\${{ matrix.image }}:\${{ steps.tags.outputs.base }}"${manifestMovingTag} \\
+            "\${{ matrix.image }}:\${{ steps.tags.outputs.base }}-amd64" \\
+            "\${{ matrix.image }}:\${{ steps.tags.outputs.base }}-arm64"
 ${releaseStep}`;
 	}
 	return `name: Verify ${adapter.name}
