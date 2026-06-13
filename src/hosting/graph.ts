@@ -106,9 +106,9 @@ function railwayImageRefEnvForService(serviceKey: string) {
 }
 
 function defaultRailwayImageRefForService(serviceKey: string) {
-	if (serviceKey === 'capacityProviderApi') return 'treeseed/agent-api:latest';
-	if (serviceKey === 'capacityProviderManager') return 'treeseed/agent-manager:latest';
-	if (serviceKey === 'capacityProviderRunner') return 'treeseed/agent-runner:latest';
+	if (serviceKey === 'capacityProviderApi') return 'treeseed/agent-api:dev-staging';
+	if (serviceKey === 'capacityProviderManager') return 'treeseed/agent-manager:dev-staging';
+	if (serviceKey === 'capacityProviderRunner') return 'treeseed/agent-runner:dev-staging';
 	return null;
 }
 

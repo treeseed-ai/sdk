@@ -807,36 +807,56 @@ jobs:
 `;
 	}
 	if (template === 'docker-image' || template === 'dev-image') {
+		const anyTarget = dockerArtifacts.some((artifact) => typeof artifact.target === 'string' && artifact.target.trim().length > 0);
+		const dockerContextPrepareCommand = isRecord(adapter.metadata.scripts) && typeof adapter.metadata.scripts['capacity-provider:build'] === 'string'
+			? 'npm run capacity-provider:build -- --prepare-only'
+			: null;
+		const environment = template === 'dev-image' ? 'staging' : 'production';
 		const tags = template === 'dev-image'
-			? 'type=raw,value=dev-${{ github.ref_name }}-${{ github.sha }}'
+			? `|
+            type=sha,prefix=dev-staging-,format=short
+            type=raw,value=dev-staging`
 			: 'type=semver,pattern={{version}}';
+		const trigger = template === 'dev-image'
+			? `    branches:
+      - staging`
+			: `    tags:
+      - "v*"`;
+		const jobCondition = template === 'dev-image'
+			? "github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/staging'"
+			: "startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')";
+		const releaseStep = template === 'docker-image'
+			? `      - name: Create GitHub release
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "\${GITHUB_REF_NAME}" --generate-notes --verify-tag
+`
+			: '';
 		return `name: ${template === 'dev-image' ? 'Development Image' : 'Publish Image'} ${adapter.name}
 
 on:
   workflow_dispatch:
   push:
-    branches:
-      - staging
-    tags:
-      - "v*"
+${trigger}
 
 jobs:
   image:
-    if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')
+    if: ${jobCondition}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write
+    environment: ${environment}
     strategy:
       matrix:
         include:
-${dockerArtifacts.map((artifact) => `          - image: ${artifact.name}`).join('\n') || '          - image: treeseed/unknown'}
+${dockerArtifacts.map((artifact) => `          - image: ${artifact.name}${anyTarget ? `\n            target: ${artifact.target ?? ''}` : ''}`).join('\n') || '          - image: treeseed/unknown'}
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
       - run: ${setup}
-      - uses: docker/setup-qemu-action@v3
+${dockerContextPrepareCommand ? `      - run: ${dockerContextPrepareCommand}\n` : ''}      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -850,15 +870,11 @@ ${dockerArtifacts.map((artifact) => `          - image: ${artifact.name}`).join(
       - uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+${anyTarget ? '          target: ${{ matrix.target }}\n' : ''}          platforms: linux/amd64,linux/arm64
           push: true
           tags: \${{ steps.meta.outputs.tags }}
           labels: \${{ steps.meta.outputs.labels }}
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "\${GITHUB_REF_NAME}" --generate-notes --verify-tag
-`;
+${releaseStep}`;
 	}
 	return `name: Verify ${adapter.name}
 

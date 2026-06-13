@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { loadCliDeployConfig } from './runtime-tools.ts';
+import { resolveTreeseedMachineEnvironmentValues } from './config-runtime.ts';
 import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from './deploy.ts';
 import { discoverTreeseedApplications } from '../../hosting/apps.ts';
 import { runPrefixedCommand, sleep, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from './bootstrap-runner.ts';
@@ -92,21 +93,31 @@ export function deriveRailwayOperationsRunnerServiceName(baseServiceName, index 
 	return `${base}-${String(normalizedIndex).padStart(2, '0')}`;
 }
 
-function defaultRailwayImageRef(serviceKey, env = process.env) {
+function railwayImageRefEnvForService(serviceKey) {
+	if (serviceKey === 'api') return 'TREESEED_API_IMAGE_REF';
+	if (serviceKey === 'operationsRunner') return 'TREESEED_OPERATIONS_RUNNER_IMAGE_REF';
+	if (serviceKey === 'capacityProviderApi') return 'TREESEED_AGENT_API_IMAGE_REF';
+	if (serviceKey === 'capacityProviderManager') return 'TREESEED_AGENT_MANAGER_IMAGE_REF';
+	if (serviceKey === 'capacityProviderRunner') return 'TREESEED_AGENT_RUNNER_IMAGE_REF';
+	return null;
+}
+
+function defaultRailwayImageRef(serviceKey, scope = 'staging', env = process.env) {
 	if (serviceKey === 'api') {
 		return envValue('TREESEED_API_IMAGE_REF', env) || null;
 	}
 	if (serviceKey === 'operationsRunner') {
 		return envValue('TREESEED_OPERATIONS_RUNNER_IMAGE_REF', env) || null;
 	}
+	const environment = normalizeScope(scope);
 	if (serviceKey === 'capacityProviderApi') {
-		return envValue('TREESEED_AGENT_API_IMAGE_REF', env) || 'treeseed/agent-api:latest';
+		return envValue('TREESEED_AGENT_API_IMAGE_REF', env) || (environment === 'staging' ? 'treeseed/agent-api:dev-staging' : null);
 	}
 	if (serviceKey === 'capacityProviderManager') {
-		return envValue('TREESEED_AGENT_MANAGER_IMAGE_REF', env) || 'treeseed/agent-manager:latest';
+		return envValue('TREESEED_AGENT_MANAGER_IMAGE_REF', env) || (environment === 'staging' ? 'treeseed/agent-manager:dev-staging' : null);
 	}
 	if (serviceKey === 'capacityProviderRunner') {
-		return envValue('TREESEED_AGENT_RUNNER_IMAGE_REF', env) || 'treeseed/agent-runner:latest';
+		return envValue('TREESEED_AGENT_RUNNER_IMAGE_REF', env) || (environment === 'staging' ? 'treeseed/agent-runner:dev-staging' : null);
 	}
 	return null;
 }
@@ -1082,6 +1093,20 @@ export function ensureRailwayProjectContext(
 
 function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, application = null) {
 	const normalizedScope = normalizeScope(scope);
+	const imageRefKeys = [
+		'TREESEED_API_IMAGE_REF',
+		'TREESEED_OPERATIONS_RUNNER_IMAGE_REF',
+		'TREESEED_AGENT_API_IMAGE_REF',
+		'TREESEED_AGENT_MANAGER_IMAGE_REF',
+		'TREESEED_AGENT_RUNNER_IMAGE_REF',
+	];
+	let machineEnv = {};
+	try {
+		machineEnv = resolveTreeseedMachineEnvironmentValues(tenantRoot, normalizedScope, imageRefKeys);
+	} catch {
+		machineEnv = {};
+	}
+	const imageRefEnv = { ...process.env, ...machineEnv };
 	let identity;
 	try {
 		identity = resolveTreeseedResourceIdentity(deployConfig, createPersistentDeployTarget(normalizedScope));
@@ -1106,12 +1131,15 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 				return [];
 			}
 
+			const isCapacityProviderService = String(serviceKey).startsWith('capacityProvider');
 			const defaultRootDir = ['api', 'operationsRunner'].includes(serviceKey)
 				? '.'
-				: String(serviceKey).startsWith('capacityProvider')
+				: isCapacityProviderService
 					? 'packages/agent'
 					: 'packages/core';
-			const serviceRoot = resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? defaultRootDir);
+			const serviceRoot = isCapacityProviderService
+				? resolveRailwayCapacityProviderRoot(tenantRoot, service)
+				: resolve(tenantRoot, service.railway?.rootDir ?? service.rootDir ?? defaultRootDir);
 			const railwayEnvironment = resolveRailwayEnvironmentForScope(
 				normalizedScope,
 				service.environments?.[normalizedScope]?.railwayEnvironment,
@@ -1144,7 +1172,10 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 					: serviceKey === 'capacityProviderRunner'
 						? deriveRailwayCapacityProviderRunnerServiceName(configuredServiceName, runnerIndex)
 						: configuredServiceName;
-				const imageRef = service.railway?.imageRef ?? defaultRailwayImageRef(serviceKey);
+				const configuredImageRefEnv = service.railway?.imageRefEnv ?? railwayImageRefEnvForService(serviceKey);
+				const imageRef = service.railway?.imageRef
+					?? (configuredImageRefEnv ? envValue(configuredImageRefEnv, imageRefEnv) || null : null)
+					?? defaultRailwayImageRef(serviceKey, normalizedScope, imageRefEnv);
 				return {
 					key: serviceKey,
 					instanceKey: serviceKey === 'operationsRunner' || serviceKey === 'capacityProviderRunner' ? `${serviceKey}:${runnerIndex}` : serviceKey,
@@ -1176,6 +1207,22 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 			});
 		})
 		.filter(Boolean);
+}
+
+function resolveRailwayCapacityProviderRoot(tenantRoot, service) {
+	if (service.railway?.rootDir) {
+		return resolve(tenantRoot, service.railway.rootDir);
+	}
+	const candidates = [
+		resolve(tenantRoot, '..', 'agent'),
+		resolve(tenantRoot, 'packages', 'agent'),
+		resolve(tenantRoot, '..', '..', 'packages', 'agent'),
+	];
+	const found = candidates.find((candidate) =>
+		existsSync(resolve(candidate, 'treeseed.package.yaml'))
+		|| existsSync(resolve(candidate, 'package.json')),
+	);
+	return found ?? resolve(tenantRoot, 'packages', 'agent');
 }
 
 export function configuredRailwayServices(tenantRoot, scope) {

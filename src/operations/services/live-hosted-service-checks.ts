@@ -153,6 +153,10 @@ function railwayVolumeInstanceStates(volume: { instances?: Array<{ state?: strin
 	return states.length > 0 ? [...new Set(states)].join(',') : 'none';
 }
 
+function isRetainedDetachedRailwayVolume(value: unknown) {
+	return String(value ?? '').trim().startsWith('retained-');
+}
+
 async function collectRailwayObservations(options: TreeseedLiveHostedServiceCheckOptions) {
 	const observed: Record<string, TreeseedObservedRailwayServiceState> = {};
 	const issues: string[] = [];
@@ -181,6 +185,9 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 				inspectedVolumeScopes.add(volumeScope);
 				const volumes = await listRailwayVolumes({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => []);
 				for (const volume of volumes) {
+					if (isRetainedDetachedRailwayVolume(volume.name)) {
+						continue;
+					}
 					const detachedPostgresInstances = activeRailwayVolumeInstances(volume).filter((instance) =>
 						instance.environmentId === environment.id
 						&& instance.mountPath === '/var/lib/postgresql/data'
@@ -237,6 +244,20 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 					.find((entry: any) => entry?.serviceId === railwayService.id && entry?.environmentId === environment.id)
 				: null;
 			const variableKeys = Object.keys(variables ?? {});
+			if (service.imageRef || service.publicBaseUrl) {
+				const deployment = await inspectRailwayServiceDeploymentHealthWithRetry({
+					serviceId: railwayService.id,
+					environmentId: environment.id,
+					options,
+				}).catch((error) => ({
+					ok: false,
+					status: null,
+					message: error instanceof Error ? error.message : String(error ?? 'Unable to inspect Railway deployment health.'),
+				}));
+				if (!deployment.ok) {
+					issues.push(`${service.serviceName}: latest Railway deployment is not healthy. ${deployment.message}`);
+				}
+			}
 			observed[service.serviceName] = {
 				projectName: project.name,
 				environmentName: environment.name,

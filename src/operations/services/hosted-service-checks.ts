@@ -324,7 +324,7 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		}));
 
 		for (const [key, expected] of Object.entries({
-			rootDirectory: expectedRootDirectory,
+			rootDirectory: service.imageRef ? null : expectedRootDirectory,
 			buildCommand: service.buildCommand,
 			startCommand: service.startCommand,
 			healthcheckPath: service.healthcheckPath,
