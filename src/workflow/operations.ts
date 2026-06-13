@@ -6,6 +6,7 @@ import {
 	compileTreeseedDesiredUnitsFromGraph,
 } from '../platform/desired-state.ts';
 import {
+	collectTreeseedReconcileStatus,
 	planTreeseedReconciliation,
 	reconcileTreeseedTarget,
 	type TreeseedReconcileSelector,
@@ -18,6 +19,7 @@ import {
 	assertTreeseedCommandEnvironment,
 	checkTreeseedProviderConnections,
 	collectTreeseedConfigContext,
+	collectTreeseedConfigSeedValues,
 	collectTreeseedPrintEnvReport,
 	createDefaultTreeseedMachineConfig,
 	ensureTreeseedSecretSessionForConfig,
@@ -165,6 +167,7 @@ import { collectTreeseedHostedServiceChecks } from '../operations/services/hoste
 import { collectTreeseedDeploymentReadiness } from '../operations/services/deployment-readiness.ts';
 import { collectTreeseedLiveHostedServiceChecks } from '../operations/services/live-hosted-service-checks.ts';
 import { discoverTreeseedApplications } from '../hosting/apps.ts';
+import { compileTreeseedHostingGraph } from '../hosting/graph.ts';
 import { resolveTreeseedWorkflowState, type TreeseedWorkflowStatusOptions } from '../workflow-state.ts';
 import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, destroyTreeseedTargetUnits, filterTreeseedDesiredUnitsByBootstrapSystems, resolveTreeseedBootstrapSelection, type TreeseedReconcileResult } from '../reconcile/index.ts';
 import {
@@ -439,7 +442,8 @@ function normalizeSaveLane(lane: TreeseedSaveInput['lane'] | undefined) {
 
 function normalizeSaveCiMode(mode: TreeseedWorkflowCiMode | undefined, branch: string | null | undefined, lane: 'fast' | 'promotion' = 'fast') {
 	if (mode === 'hosted' || mode === 'off') return mode;
-	if (lane === 'promotion') return branch === STAGING_BRANCH ? 'hosted' : 'off';
+	if (branch === STAGING_BRANCH) return 'hosted';
+	if (lane === 'promotion') return branch === PRODUCTION_BRANCH ? 'hosted' : 'off';
 	return 'off';
 }
 
@@ -621,6 +625,97 @@ function hostedDeployGate(gate: GitHubActionsWorkflowGate): GitHubActionsWorkflo
 	return {
 		...gate,
 		timeoutSeconds: gate.timeoutSeconds ?? HOSTED_DEPLOY_GATE_TIMEOUT_SECONDS,
+	};
+}
+
+function saveHostedEnvironmentForBranch(branch: string | null | undefined) {
+	if (branch === STAGING_BRANCH) return 'staging' as const;
+	if (branch === PRODUCTION_BRANCH) return 'prod' as const;
+	return null;
+}
+
+function selectorFromWorkflowHostingGraph(graph: ReturnType<typeof compileTreeseedHostingGraph>): TreeseedReconcileSelector {
+	return {
+		host: [...new Set(graph.units.map((unit) => unit.host.id).filter((hostId) => hostId !== 'smtp' && hostId !== 'local-process' && hostId !== 'local-docker'))],
+		serviceId: [...new Set(graph.units.flatMap((unit) => [
+			unit.id,
+			typeof unit.config.serviceName === 'string' ? unit.config.serviceName : null,
+		]).filter((value): value is string => Boolean(value)))],
+		serviceType: [...new Set(graph.units.flatMap((unit) => {
+			if (unit.id === 'api') return ['api-runtime', 'railway-service:api'];
+			if (unit.id === 'operationsRunner') return ['operations-runner-runtime', 'railway-service:operations-runner'];
+			if (unit.placement === 'runner-capacity') return ['api-runtime', 'operations-runner-runtime', 'railway-service:api', 'railway-service:operations-runner'];
+			if (unit.host.id === 'cloudflare') return ['web-ui', 'edge-worker', 'content-store', 'queue', 'database', 'kv-form-guard', 'turnstile-widget', 'pages-project', 'custom-domain:web', 'dns-record'];
+			return [];
+		}))],
+	};
+}
+
+async function reconcileSaveHostedEnvironment(
+	root: string,
+	environment: 'staging' | 'prod',
+	helpers: WorkflowOperationHelpers,
+	workflowRunId: string,
+) {
+	const graph = compileTreeseedHostingGraph({ tenantRoot: root, environment });
+	const selector = selectorFromWorkflowHostingGraph(graph);
+	const target = createPersistentDeployTarget(environment);
+	const env = {
+		...helpers.context.env,
+		...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
+	};
+	helpers.write(`[save][workflow] Reconciling ${environment} hosted deployments for ${graph.units.length} selected resources.`);
+	const reconcile = await reconcileTreeseedTarget({
+		tenantRoot: root,
+		target,
+		env,
+		selector,
+		dryRun: false,
+		write: (line) => helpers.write(`[save][reconcile] ${line}`, 'stderr'),
+		session: new Map([['workflowRunId', workflowRunId]]),
+	});
+	const status = await collectTreeseedReconcileStatus({
+		tenantRoot: root,
+		target,
+		env,
+		selector,
+	});
+	if (!status.ready) {
+		workflowError('save', 'hosted_reconcile_failed', `Hosted reconciliation for ${environment} did not verify:\n${status.blockers.join('\n')}`, {
+			details: { environment, selector, status, reconcile },
+		});
+	}
+	const live = await collectTreeseedLiveHostedServiceChecks({
+		tenantRoot: root,
+		target: environment,
+		strict: true,
+		requireLiveRailway: true,
+		requireLiveHttp: true,
+		env,
+	});
+	const liveFailures = [
+		...live.checks.filter((check) => check.status === 'failed').map((check) => `${check.id}: ${check.issues.join('; ') || 'failed'}`),
+		...live.liveObservation.issues,
+	];
+	if (liveFailures.length > 0) {
+		workflowError('save', 'hosted_live_verification_failed', `Hosted live verification for ${environment} failed:\n${liveFailures.join('\n')}`, {
+			details: { environment, selector, live, reconcile },
+		});
+	}
+	return {
+		status: 'reconciled' as const,
+		environment,
+		selectedApps: [...new Set(graph.units.map((unit) => unit.application?.id).filter((value): value is string => Boolean(value)))],
+		selectedResources: graph.units.map((unit) => ({
+			id: unit.id,
+			host: unit.host.id,
+			serviceType: unit.serviceType.id,
+			placement: unit.placement,
+			serviceName: typeof unit.config.serviceName === 'string' ? unit.config.serviceName : null,
+		})),
+		reconcile,
+		postApplyStatus: status,
+		liveVerification: live,
 	};
 }
 
@@ -3909,7 +4004,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							...repositoryPlan.plannedSteps,
 							{ id: 'lockfile-validation', description: 'Validate refreshed package-lock.json files before any save commit is pushed' },
 							...(shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
-								? [{ id: 'hosted-ci', description: `Wait for hosted save workflows on ${branch}` }]
+								? [{ id: 'hosted-ci', description: saveHostedEnvironmentForBranch(branch) ? `Reconcile and verify hosted deployments for ${saveHostedEnvironmentForBranch(branch)}` : `Wait for hosted save workflows on ${branch}` }]
 								: []),
 							...(branch === STAGING_BRANCH
 								? [{ id: 'release-candidate', description: `Run ${releaseCandidateMode} release-candidate readiness checks for the saved staging state` }]
@@ -3973,7 +4068,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					...(shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 						? [{
 							id: 'hosted-ci',
-							description: `Wait for hosted save workflows on ${branch}`,
+							description: saveHostedEnvironmentForBranch(branch) ? `Reconcile and verify hosted deployments for ${saveHostedEnvironmentForBranch(branch)}` : `Wait for hosted save workflows on ${branch}`,
 							repoName: rootRepo.name,
 							repoPath: rootRepo.path,
 							branch,
@@ -4089,33 +4184,12 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				const saveWorkflowGates = shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 					? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', async () =>
 						{
-							if (branch === STAGING_BRANCH) {
+							const hostedEnvironment = saveHostedEnvironmentForBranch(branch);
+							if (hostedEnvironment) {
 								const workflowGates = saveResult?.workflowGates ?? [];
-								if (effectiveInput.verifyDeployedResources !== true || scope === 'local' || !savedRootRepo.commitSha) {
-									return { workflowGates };
-								}
-								throw new Error('Hosted deploy workflow dispatch is reconciler-owned. Use trsd stage or trsd reconcile apply with release-gate:hosted-reconcile and release-gate:live-verify selectors for deployed resource verification.');
-								const repository = resolveGitHubRepositorySlug(savedRootRepo.path);
-								helpers.write('[save][workflow] Waiting for hosted market deploy gate.');
-								const dispatchedGates = await waitForWorkflowGates('save', [
-									hostedDeployGate({
-										name: savedRootRepo.name,
-										repoPath: savedRootRepo.path,
-										repository,
-										workflow: 'deploy.yml',
-										branch,
-										headSha: savedRootRepo.commitSha,
-									}),
-								], 'hosted', {
-									root,
-									runId: workflowRun.runId,
-									onProgress: (line, stream) => helpers.write(line, stream),
-								});
 								return {
-									workflowGates: [
-										...workflowGates.filter((gate) => !(gate.repository === repository && gate.workflow === 'deploy.yml')),
-										...dispatchedGates,
-									],
+									workflowGates,
+									hostedReconcile: await reconcileSaveHostedEnvironment(root, hostedEnvironment, helpers, workflowRun.runId),
 								};
 							}
 							helpers.write('[save][workflow] Waiting for hosted save workflow gates.');
@@ -4234,6 +4308,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					releaseCandidateMode,
 					applicationSelection,
 					workflowGates: saveWorkflowGates?.workflowGates ?? [],
+					hostedReconcile: saveWorkflowGates?.hostedReconcile ?? null,
 					releaseCandidate,
 					hostingAudit,
 					...worktreePayload(root, effectiveInput.worktreeMode),

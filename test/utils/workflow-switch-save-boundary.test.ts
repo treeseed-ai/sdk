@@ -35,4 +35,15 @@ describe('switch/dev/save hard-cut boundaries', () => {
 		expect(save).toMatch(/selectTreeseedDesiredResources/u);
 		expect(save).not.toMatch(/resolveWorkflowHostingGraph|hostingGraphSections/u);
 	});
+
+	it('requires save hosted phases to reconcile branch environments explicitly', () => {
+		const operations = source('packages/sdk/src/workflow/operations.ts');
+		expect(operations).toMatch(/function saveHostedEnvironmentForBranch/u);
+		expect(operations).toMatch(/async function reconcileSaveHostedEnvironment/u);
+		expect(operations).toMatch(/compileTreeseedHostingGraph/u);
+		expect(operations).toMatch(/reconcileTreeseedTarget/u);
+		expect(operations).toMatch(/collectTreeseedReconcileStatus/u);
+		expect(operations).toMatch(/collectTreeseedLiveHostedServiceChecks/u);
+		expect(operations).not.toMatch(/Hosted deploy workflow dispatch is reconciler-owned/u);
+	});
 });
