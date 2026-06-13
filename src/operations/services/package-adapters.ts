@@ -807,6 +807,7 @@ jobs:
 `;
 	}
 	if (template === 'docker-image' || template === 'dev-image') {
+		const imageSetup = resolveDockerImageWorkflowSetupCommand();
 		const anyTarget = dockerArtifacts.some((artifact) => typeof artifact.target === 'string' && artifact.target.trim().length > 0);
 		const dockerContextPrepareCommand = isRecord(adapter.metadata.scripts) && typeof adapter.metadata.scripts['capacity-provider:build'] === 'string'
 			? 'npm run capacity-provider:build -- --prepare-only'
@@ -889,7 +890,7 @@ ${dockerArtifacts.flatMap((artifact) => [
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - run: ${setup}
+      - run: ${imageSetup}
 ${dockerContextPrepareCommand ? `      - run: ${dockerContextPrepareCommand}\n` : ''}${computeTagsStep}      - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -956,6 +957,10 @@ function resolveWorkflowSetupCommand(adapter: TreeseedPackageAdapter) {
 		return 'npm run release:setup || (echo "dependency install failed; retrying" && npm run release:setup)';
 	}
 	return 'npm ci || (echo "dependency install failed; retrying" && npm ci)';
+}
+
+function resolveDockerImageWorkflowSetupCommand() {
+	return 'npm ci --ignore-scripts || (echo "dependency install failed; retrying" && npm ci --ignore-scripts)';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
