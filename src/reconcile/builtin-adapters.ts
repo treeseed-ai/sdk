@@ -52,6 +52,7 @@ import {
 	deployRailwayServiceInstance,
 	deleteRailwayService,
 	deleteRailwayVolume,
+	listRailwayEnvironmentServices,
 	getRailwayServiceInstance,
 	getRailwayProject,
 	listRailwayCustomDomains,
@@ -2907,17 +2908,23 @@ async function resolveRailwayTopologyForScope(
 			.filter((value) => typeof value === 'string' && value.trim().length > 0)
 			.map((value) => value.trim()))];
 		for (const projectId of knownProjectIds) {
+			traceRailwayReconcile(env, 'topology:known-project:get', projectId);
 			const project = await getRailwayProject({ projectId, env });
+			traceRailwayReconcile(env, 'topology:known-project:done', `${projectId}:${project?.name ?? '(missing)'}`);
 			if (project) {
 				knownProjects.push(project);
 			}
 		}
 		if (knownProjects.length === 0 || services.some((service) => !(service.projectId || deployState.services?.[service.key]?.projectId))) {
+			traceRailwayReconcile(env, 'topology:workspace:get', 'start');
 			workspace = await resolveRailwayWorkspaceContext({ env });
+			traceRailwayReconcile(env, 'topology:workspace:done', workspace.name);
+			traceRailwayReconcile(env, 'topology:projects:list', workspace.name);
 			const listedProjects = await listRailwayProjects({
 				env,
 				workspaceId: workspace.id,
 			});
+			traceRailwayReconcile(env, 'topology:projects:list:done', String(listedProjects.length));
 			for (const project of listedProjects) {
 				if (!knownProjects.find((entry) => entry?.id === project.id)) {
 					knownProjects.push(project);
@@ -2954,6 +2961,17 @@ async function resolveRailwayTopologyForScope(
 			let project = projectsByKey.get(resolvedProjectId)
 				?? projectsByKey.get(resolvedProjectName)
 				?? null;
+			if (project && (!Array.isArray(project.services) || project.services.length === 0 || !Array.isArray(project.environments) || project.environments.length === 0)) {
+				const hydratedProject = await getRailwayProject({ projectId: project.id, env });
+				if (hydratedProject) {
+					project = hydratedProject;
+					projectsByKey.set(project.id, project);
+					projectsByKey.set(project.name, project);
+				}
+			}
+			if (project) {
+				traceRailwayReconcile(env, 'topology:project:resolved', `${service.key}:${project.name}:services=${project.services.map((entry) => entry.name).join(',') || '(none)'}:envs=${project.environments.map((entry) => entry.name).join(',') || '(none)'}`);
+			}
 			if (!project && ensure) {
 				if (!workspace) {
 					traceRailwayReconcile(env, 'topology:workspace', 'resolving workspace');
@@ -2973,6 +2991,9 @@ async function resolveRailwayTopologyForScope(
 			}
 
 			let environment = project?.environments.find((entry) => entry.name === service.railwayEnvironment || entry.id === service.railwayEnvironment) ?? null;
+			if (project) {
+				traceRailwayReconcile(env, 'topology:environment:resolved', `${service.key}:${environment?.name ?? '(none)'}:${service.railwayEnvironment}`);
+			}
 			if (project && !environment && ensure) {
 				traceRailwayReconcile(env, 'topology:environment:ensure', `${service.key}:${service.railwayEnvironment}`);
 				environment = await ensureRailwayEnvironmentForService({
@@ -2987,6 +3008,20 @@ async function resolveRailwayTopologyForScope(
 				};
 				projectsByKey.set(project.id, project);
 				projectsByKey.set(project.name, project);
+			}
+
+			if (project && environment && (!Array.isArray(project.services) || project.services.length === 0 || !project.services.some((entry) => entry.id === resolvedServiceId || entry.name === resolvedServiceName))) {
+				const environmentServices = await listRailwayEnvironmentServices({ environmentId: environment.id, env }).catch(() => []);
+				traceRailwayReconcile(env, 'topology:environment-services:lookup', `${service.key}:${environment.name}:${environmentServices.map((entry) => entry.name).join(',') || '(none)'}`);
+				if (environmentServices.length > 0) {
+					project = {
+						...project,
+						services: [...new Map([...project.services, ...environmentServices].map((entry) => [entry.id, entry])).values()],
+					};
+					projectsByKey.set(project.id, project);
+					projectsByKey.set(project.name, project);
+					traceRailwayReconcile(env, 'topology:environment-services:resolved', `${service.key}:${environmentServices.map((entry) => entry.name).join(',')}`);
+				}
 			}
 
 			let resolvedService = project?.services.find((entry) => entry.id === resolvedServiceId || entry.name === resolvedServiceName) ?? null;
@@ -3268,15 +3303,45 @@ async function reconcileStaleOperationsRunnerResourcesForProject(
 	}
 }
 
-async function syncRailwayEnvironmentForScope(input: TreeseedReconcileAdapterInput, { dryRun = false } = {}) {
+async function syncRailwayEnvironmentForScope(
+	input: TreeseedReconcileAdapterInput,
+	{ dryRun = false, serviceKeys }: { dryRun?: boolean; serviceKeys?: string[] } = {},
+) {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
 	const generatedCapacityProviderApiKey = dryRun ? null : ensureCapacityProviderApiKeyForRailwaySync(input, scope);
 	const sync = collectRailwayEnvironmentSync(input, generatedCapacityProviderApiKey
 		? { TREESEED_CAPACITY_PROVIDER_API_KEY: generatedCapacityProviderApiKey }
 		: {});
+	const selectedServiceKeys = Array.isArray(serviceKeys) && serviceKeys.length > 0
+		? [...new Set(serviceKeys.map((value) => String(value).trim()).filter(Boolean))]
+		: undefined;
 	traceRailwayReconcile(input.context.env, 'sync:start', `scope=${scope} dryRun=${dryRun ? 'yes' : 'no'}`);
+	if (!dryRun) {
+		const existingTopology = await resolveRailwayTopologyForScope(input, scope, {
+			ensure: false,
+			serviceKeys: selectedServiceKeys,
+			includeInstances: false,
+			includeVariables: false,
+		});
+		for (const entry of existingTopology.services.values()) {
+			if (!entry.project || !entry.environment || !entry.service) continue;
+			traceRailwayReconcile(existingTopology.env, 'sync:variables-existing', `${entry.configuredService.key}:${entry.service.name}`);
+			const serviceSync = sync.forService(entry.configuredService.key, entry.configuredService);
+			await upsertRailwayVariables({
+				projectId: entry.project.id,
+				environmentId: entry.environment.id,
+				serviceId: entry.service.id,
+				variables: {
+					...serviceSync.variables,
+					...serviceSync.secrets,
+				},
+				env: existingTopology.env,
+			});
+		}
+	}
 	const topology = await resolveRailwayTopologyForScope(input, scope, {
 		ensure: !dryRun,
+		serviceKeys: selectedServiceKeys,
 		includeInstances: !dryRun,
 		includeVariables: false,
 	});
@@ -4389,9 +4454,11 @@ function buildRailwayDiff(input: TreeseedReconcileAdapterInput, observed: Treese
 
 async function reconcileRailwayUnit(input: TreeseedReconcileAdapterInput, diff: TreeseedReconcileUnitDiff): Promise<TreeseedReconcileResult> {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
-	const cacheKey = `railway:sync:${scope}`;
+	const serviceKey = String(input.unit.metadata.serviceKey ?? '').trim();
+	const serviceKeys = serviceKey ? [serviceKey] : undefined;
+	const cacheKey = `railway:sync:${scope}:${serviceKey || 'all'}`;
 	await providerCache(input, cacheKey, async () => {
-		const synced = await syncRailwayEnvironmentForScope(input);
+		const synced = await syncRailwayEnvironmentForScope(input, { serviceKeys });
 		return synced;
 	});
 	for (const key of input.context.session.keys()) {

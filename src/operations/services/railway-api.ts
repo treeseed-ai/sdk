@@ -229,14 +229,36 @@ function normalizeProject(node: Record<string, unknown>): RailwayProjectSummary 
 	if (!id || !name) {
 		return null;
 	}
+	const services = new Map<string, RailwayServiceSummary>();
+	for (const service of normalizeConnectionNodes(node.services, normalizeService)) {
+		services.set(service.id, service);
+	}
+	for (const environment of normalizeConnectionNodes(node.environments, (entry) => entry as Record<string, unknown>)) {
+		for (const instance of normalizeConnectionNodes(environment.serviceInstances, (entry) => entry as Record<string, unknown>)) {
+			const serviceId = railwayConnectionLabel(instance.serviceId);
+			const serviceName = railwayConnectionLabel(instance.serviceName);
+			if (serviceId && serviceName) {
+				services.set(serviceId, { id: serviceId, name: serviceName });
+			}
+		}
+	}
 	return {
 		id,
 		name,
 		workspaceId: railwayConnectionLabel(node.workspaceId) || null,
 		deletedAt: railwayConnectionLabel(node.deletedAt) || null,
 		environments: normalizeConnectionNodes(node.environments, normalizeEnvironment),
-		services: normalizeConnectionNodes(node.services, normalizeService),
+		services: [...services.values()],
 	};
+}
+
+function normalizeServiceInstanceService(node: Record<string, unknown>): RailwayServiceSummary | null {
+	const id = railwayConnectionLabel(node.serviceId);
+	const name = railwayConnectionLabel(node.serviceName);
+	if (!id || !name) {
+		return null;
+	}
+	return { id, name };
 }
 
 function normalizeVariableMap(value: unknown): Record<string, string | null> {
@@ -450,8 +472,8 @@ export async function railwayGraphqlRequest<TData = unknown>({
 	apiToken,
 	apiUrl,
 	fetchImpl = fetch,
-	timeoutMs = 30_000,
-	retries = 8,
+	timeoutMs = 10_000,
+	retries = 2,
 }: {
 	query: string;
 	variables?: Record<string, unknown>;
@@ -539,7 +561,24 @@ async function railwayGraphqlHttpsRequest(
 ): Promise<{ ok: boolean; status: number; payload: unknown; retryAfter: string | null }> {
 	const rawBody = JSON.stringify(body);
 	return new Promise((resolve, reject) => {
-		const req = httpsRequest(url, {
+		let settled = false;
+		let req: ReturnType<typeof httpsRequest> | null = null;
+		const hardTimeout = setTimeout(() => {
+			if (settled) return;
+			settled = true;
+			const error = markRailwayTransientError(new Error(`Railway API request timed out after ${timeoutMs}ms.`));
+			if (req) {
+				req.destroy(error);
+			}
+			reject(error);
+		}, timeoutMs);
+		const finish = (callback: () => void) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(hardTimeout);
+			callback();
+		};
+		req = httpsRequest(url, {
 			method: 'POST',
 			headers: {
 				authorization: `Bearer ${token}`,
@@ -561,18 +600,21 @@ async function railwayGraphqlHttpsRequest(
 				}
 				const status = res.statusCode ?? 0;
 				const retryAfterHeader = res.headers['retry-after'];
-				resolve({
+				finish(() => resolve({
 					ok: status >= 200 && status < 300,
 					status,
 					payload,
 					retryAfter: Array.isArray(retryAfterHeader) ? retryAfterHeader[0] ?? null : retryAfterHeader ?? null,
-				});
+				}));
 			});
 		});
 		req.on('timeout', () => {
-			req.destroy(markRailwayTransientError(new Error(`Railway API request timed out after ${timeoutMs}ms.`)));
+			const error = markRailwayTransientError(new Error(`Railway API request timed out after ${timeoutMs}ms.`));
+			if (!settled) {
+				req?.destroy(error);
+			}
 		});
-		req.on('error', reject);
+		req.on('error', (error) => finish(() => reject(error)));
 		req.write(rawBody);
 		req.end();
 	});
@@ -890,6 +932,46 @@ query TreeseedRailwayProjectEnvironments($projectId: String!) {
 	return normalizeConnectionNodes(payload.data?.project ? (payload.data.project as Record<string, unknown>).environments : null, normalizeEnvironment);
 }
 
+export async function listRailwayEnvironmentServices({
+	environmentId,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	environmentId: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const payload = await railwayGraphqlRequest<{
+		environment?: Record<string, unknown> | null;
+	}>({
+		query: `
+query TreeseedRailwayEnvironmentServices($environmentId: String!) {
+	environment(id: $environmentId) {
+		id
+		name
+		serviceInstances(first: 100) {
+			edges {
+				node {
+					id
+					serviceId
+					serviceName
+					environmentId
+				}
+			}
+		}
+	}
+}
+`.trim(),
+		variables: { environmentId },
+		env,
+		fetchImpl,
+	});
+	return normalizeConnectionNodes(
+		payload.data?.environment ? (payload.data.environment as Record<string, unknown>).serviceInstances : null,
+		normalizeServiceInstanceService,
+	);
+}
+
 export async function ensureRailwayService({
 	projectId,
 	serviceName,
@@ -910,10 +992,17 @@ export async function ensureRailwayService({
 	const services = await listRailwayServices({ projectId, env, fetchImpl });
 	const desiredServiceName = railwayConnectionLabel(serviceName);
 	const desiredServiceId = railwayConnectionLabel(serviceId);
-	const existing = services.find((service) =>
+	let existing = services.find((service) =>
 		(desiredServiceId && service.id === desiredServiceId)
 		|| (desiredServiceName && service.name === desiredServiceName),
 	) ?? null;
+	if (!existing && environmentId) {
+		const environmentServices = await listRailwayEnvironmentServices({ environmentId, env, fetchImpl }).catch(() => []);
+		existing = environmentServices.find((service) =>
+			(desiredServiceId && service.id === desiredServiceId)
+			|| (desiredServiceName && service.name === desiredServiceName),
+		) ?? null;
+	}
 	if (existing) {
 		const desiredImageRef = railwayConnectionLabel(imageRef);
 		if (desiredImageRef) {
