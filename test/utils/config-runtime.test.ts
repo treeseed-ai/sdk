@@ -12,6 +12,7 @@ import {
 	loadTreeseedMachineConfig,
 	applyTreeseedEnvironmentToProcess,
 	collectTreeseedEnvironmentContext,
+	collectTreeseedPrintEnvReport,
 	resolveTreeseedLaunchEnvironment,
 	resolveTreeseedMachineEnvironmentValues,
 	applyTreeseedConfigValues,
@@ -267,6 +268,40 @@ describe('config runtime shared environment values', () => {
 
 		expect(resolveTreeseedMachineEnvironmentValues(tenantRoot, 'local').SHARED_VALUE).toBe('shared-value');
 		expect(resolveTreeseedMachineEnvironmentValues(tenantRoot, 'prod').SHARED_VALUE).toBe('shared-value');
+	});
+
+	it('redacts raw secret values from print-env JSON unless secrets are revealed', () => {
+		const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
+		const config = createDefaultTreeseedMachineConfig({
+			tenantRoot,
+			deployConfig: {
+				name: 'Test Site',
+				slug: 'test-site',
+				siteUrl: 'https://market.example.com',
+				contactEmail: 'hello@example.com',
+				cloudflare: { accountId: 'account-123' },
+				services: { api: { provider: 'railway', enabled: true } },
+			} as any,
+			tenantConfig: { id: 'test-site' } as any,
+		});
+		writeTreeseedMachineConfig(tenantRoot, config);
+		unlockSecrets(tenantRoot);
+
+		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
+			id: 'RAILWAY_API_TOKEN',
+			sensitivity: 'secret',
+			storage: 'shared',
+		} as any, 'railway-secret-token');
+
+		const redacted = collectTreeseedPrintEnvReport({ tenantRoot, scope: 'staging', revealSecrets: false });
+		const redactedEntry = redacted.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN');
+		expect(redactedEntry?.value).toBe('');
+		expect(redactedEntry?.displayValue).not.toContain('railway-secret-token');
+
+		const revealed = collectTreeseedPrintEnvReport({ tenantRoot, scope: 'staging', revealSecrets: true });
+		const revealedEntry = revealed.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN');
+		expect(revealedEntry?.value).toBe('railway-secret-token');
+		expect(revealedEntry?.displayValue).toBe('railway-secret-token');
 	});
 
 	it('includes market control plane hosted repository entries when hub and runtime planes are explicit', () => {

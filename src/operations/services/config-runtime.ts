@@ -3791,11 +3791,12 @@ export function collectTreeseedPrintEnvReport({
 		revealSecrets,
 		entries: listRelevantTreeseedConfigEntries(registry, scope).map((entry) => {
 			const rawValue = values[entry.id] ?? '';
+			const canRevealValue = entry.sensitivity !== 'secret' || revealSecrets;
 			return {
 				id: entry.id,
 				label: entry.label,
 				sensitivity: entry.sensitivity,
-				value: rawValue,
+				value: canRevealValue ? rawValue : '',
 				displayValue: rawValue
 					? (entry.sensitivity === 'secret' && !revealSecrets ? maskValue(rawValue) : rawValue)
 					: '(unset)',
