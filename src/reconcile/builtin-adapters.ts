@@ -1307,16 +1307,10 @@ function resolveReconcileEnvironmentValues(
 		...normalizeEnvironmentValues(process.env),
 		...normalizeEnvironmentValues(input.context.launchEnv),
 	};
-	if (
-		hostedRuntimeValues.CLOUDFLARE_API_TOKEN
-		|| hostedRuntimeValues.RAILWAY_API_TOKEN
-		|| hostedRuntimeValues.GH_TOKEN
-	) {
-		return hostedRuntimeValues;
-	}
+	const scopedMachineValues = resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
 	const values = {
-		...resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope),
 		...hostedRuntimeValues,
+		...scopedMachineValues,
 	};
 	return values;
 }
@@ -3002,6 +2996,25 @@ async function resolveRailwayTopologyForScope(
 					projectId: project.id,
 					serviceId: resolvedServiceId,
 					serviceName: resolvedServiceName,
+					environmentId: environment?.id,
+					imageRef: service.imageRef,
+					env,
+				})).service;
+				project = {
+					...project,
+					services: [...project.services.filter((entry) => entry.id !== resolvedService?.id), resolvedService],
+				};
+				projectsByKey.set(project.id, project);
+				projectsByKey.set(project.name, project);
+			}
+			if (project && resolvedService && ensure && service.imageRef) {
+				traceRailwayReconcile(env, 'topology:railway-service:image', `${service.key}:${resolvedService.name}:${service.imageRef}`);
+				resolvedService = (await ensureRailwayService({
+					projectId: project.id,
+					serviceId: resolvedService.id,
+					serviceName: resolvedService.name,
+					environmentId: environment?.id,
+					imageRef: service.imageRef,
 					env,
 				})).service;
 				project = {
@@ -3775,7 +3788,7 @@ function resolveCapacityProviderMarketUrl(
 	scope: string,
 	values: Record<string, string | undefined>,
 ) {
-	for (const key of ['TREESEED_MARKET_URL', 'TREESEED_CENTRAL_MARKET_API_BASE_URL', 'TREESEED_PUBLIC_MARKET_URL', 'TREESEED_SITE_URL']) {
+	for (const key of ['TREESEED_MARKET_URL', 'TREESEED_MARKET_API_BASE_URL', 'TREESEED_STAGING_MARKET_API_BASE_URL', 'TREESEED_CENTRAL_MARKET_API_BASE_URL', 'TREESEED_PUBLIC_MARKET_URL', 'TREESEED_SITE_URL']) {
 		const value = String(values[key] ?? '').trim();
 		if (value) return value.replace(/\/+$/u, '');
 	}
