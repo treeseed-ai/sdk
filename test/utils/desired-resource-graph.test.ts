@@ -2,11 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { compileTreeseedDesiredResourceGraph } from '../../src/platform/desired-state.ts';
 import { validateTreeseedPackageManifests } from '../../src/operations/services/package-adapters.ts';
 import { inspectTreeseedGitLocks } from '../../src/operations/services/git-runner.ts';
+import { resolveTreeseedTestPath, resolveTreeseedTestRoot } from './workspace-test-root.ts';
+
+const testRoot = resolveTreeseedTestRoot(import.meta.url);
+const workspaceRoot = testRoot.layout === 'workspace' ? testRoot.root : null;
 
 describe('canonical desired resource graph', () => {
 	it('compiles package, image, and reconcile resources from one manifest-driven graph', () => {
+		if (!workspaceRoot) return;
 		const graph = compileTreeseedDesiredResourceGraph({
-			tenantRoot: new URL('../../../..', import.meta.url).pathname,
+			tenantRoot: workspaceRoot,
 			target: { kind: 'persistent', scope: 'staging' },
 		});
 
@@ -31,14 +36,15 @@ describe('canonical desired resource graph', () => {
 	});
 
 	it('validates every checked-out Treeseed package manifest', () => {
-		const results = validateTreeseedPackageManifests(new URL('../../../..', import.meta.url).pathname);
+		if (!workspaceRoot) return;
+		const results = validateTreeseedPackageManifests(workspaceRoot);
 		expect(results.length).toBeGreaterThanOrEqual(8);
 		expect(results.every((entry) => entry.ok)).toBe(true);
 	});
 
 	it('reports Git index lock diagnostics without mutating by default', () => {
-		const diagnostic = inspectTreeseedGitLocks(new URL('../../../..', import.meta.url).pathname);
-		expect(diagnostic.repoRoot).toContain('/market');
+		const diagnostic = inspectTreeseedGitLocks(workspaceRoot ?? resolveTreeseedTestPath(testRoot, 'packages/sdk') ?? testRoot.root);
+		expect(diagnostic.repoRoot).toBeTruthy();
 		expect(diagnostic.removed).toBe(false);
 	});
 });

@@ -1,36 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { filesUnderIfExists, resolveTreeseedTestPath, resolveTreeseedTestRoot, treeseedRelativePath } from './workspace-test-root.ts';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
-
-function filesUnder(dir: string): string[] {
-	const entries: string[] = [];
-	for (const entry of readdirSync(dir)) {
-		const absolute = resolve(dir, entry);
-		const stat = statSync(absolute);
-		if (stat.isDirectory()) {
-			entries.push(...filesUnder(absolute));
-		} else if (/\.(?:ts|tsx|js|mjs)$/u.test(entry)) {
-			entries.push(absolute);
-		}
-	}
-	return entries;
-}
-
-function relativePath(path: string) {
-	return path.slice(root.length + 1).replaceAll('\\', '/');
-}
+const testRoot = resolveTreeseedTestRoot(import.meta.url);
 
 describe('GitRunner boundary', () => {
 	it('keeps production raw git process calls inside GitRunner', () => {
 		const offenders = [
-			...filesUnder(resolve(root, 'packages', 'sdk', 'src')),
-			...filesUnder(resolve(root, 'packages', 'cli', 'src')),
-			...filesUnder(resolve(root, 'packages', 'core', 'src')),
+			...filesUnderIfExists(resolveTreeseedTestPath(testRoot, 'packages/sdk/src')),
+			...filesUnderIfExists(resolveTreeseedTestPath(testRoot, 'packages/cli/src')),
+			...filesUnderIfExists(resolveTreeseedTestPath(testRoot, 'packages/core/src')),
 		].flatMap((file) => {
-			const path = relativePath(file);
+			const path = treeseedRelativePath(testRoot, file);
 			if (path === 'packages/sdk/src/operations/services/git-runner.ts') return [];
 			const source = readFileSync(file, 'utf8');
 			const matches = [

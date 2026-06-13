@@ -295,7 +295,7 @@ function resolveTemplateSourceCacheRoot(product: TemplateProductDefinition, opti
 function runGit(commandArgs: string[], cwd?: string) {
 	const mutating = /^(add|commit|checkout|switch|merge|tag|push|fetch|worktree|submodule|reset|clean|restore|branch|clone)$/u.test(commandArgs[0] ?? '');
 	const result = runTreeseedGit(commandArgs, {
-		cwd,
+		cwd: cwd ?? process.cwd(),
 		mode: mutating ? 'mutate' : 'read',
 	});
 	if (result.status !== 0) {
@@ -305,7 +305,7 @@ function runGit(commandArgs: string[], cwd?: string) {
 
 function readGitOutput(commandArgs: string[], cwd?: string) {
 	const result = runTreeseedGit(commandArgs, {
-		cwd,
+		cwd: cwd ?? process.cwd(),
 		mode: 'read',
 		allowFailure: true,
 	});

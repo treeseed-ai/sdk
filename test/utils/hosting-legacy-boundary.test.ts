@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readTreeseedTestSource, resolveTreeseedTestRoot } from './workspace-test-root.ts';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+const testRoot = resolveTreeseedTestRoot(import.meta.url);
 
 function source(path: string) {
-	return readFileSync(resolve(root, path), 'utf8');
+	const result = readTreeseedTestSource(testRoot, path);
+	expect(result, `${path} exists`).not.toBeNull();
+	return result ?? '';
 }
 
 function functionBody(fileSource: string, functionName: string) {

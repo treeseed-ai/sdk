@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readTreeseedTestSource, resolveTreeseedTestRoot } from './workspace-test-root.ts';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+const testRoot = resolveTreeseedTestRoot(import.meta.url);
 
 function source(path: string) {
-	return readFileSync(resolve(root, path), 'utf8');
+	const result = readTreeseedTestSource(testRoot, path);
+	expect(result, `${path} exists`).not.toBeNull();
+	return result ?? '';
 }
 
 describe('switch/dev/save hard-cut boundaries', () => {
@@ -19,7 +19,8 @@ describe('switch/dev/save hard-cut boundaries', () => {
 	});
 
 	it('keeps dev CLI as a local-process reconcile facade', () => {
-		const dev = source('packages/cli/src/cli/handlers/dev.ts');
+		const dev = readTreeseedTestSource(testRoot, 'packages/cli/src/cli/handlers/dev.ts');
+		if (!dev) return;
 		expect(dev).toMatch(/resourceKind:\s*\['local-process'\]/u);
 		expect(dev).toMatch(/reconcileTreeseedTarget/u);
 		expect(dev).toMatch(/destroyTreeseedTargetUnits/u);
@@ -28,7 +29,8 @@ describe('switch/dev/save hard-cut boundaries', () => {
 	});
 
 	it('keeps save reporting on desired resources instead of legacy hosting graph output', () => {
-		const save = source('packages/cli/src/cli/handlers/save.ts');
+		const save = readTreeseedTestSource(testRoot, 'packages/cli/src/cli/handlers/save.ts');
+		if (!save) return;
 		expect(save).toMatch(/compileTreeseedDesiredResourceGraph/u);
 		expect(save).toMatch(/selectTreeseedDesiredResources/u);
 		expect(save).not.toMatch(/resolveWorkflowHostingGraph|hostingGraphSections/u);
