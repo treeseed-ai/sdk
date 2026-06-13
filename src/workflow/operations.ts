@@ -166,7 +166,7 @@ import { collectTreeseedDeploymentReadiness } from '../operations/services/deplo
 import { collectTreeseedLiveHostedServiceChecks } from '../operations/services/live-hosted-service-checks.ts';
 import { discoverTreeseedApplications } from '../hosting/apps.ts';
 import { resolveTreeseedWorkflowState, type TreeseedWorkflowStatusOptions } from '../workflow-state.ts';
-import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, destroyTreeseedTargetUnits, filterTreeseedDesiredUnitsByBootstrapSystems, planTreeseedReconciliation, resolveTreeseedBootstrapSelection, reconcileTreeseedTarget, type TreeseedReconcileResult } from '../reconcile/index.ts';
+import { createTreeseedReconcileRegistry, deriveTreeseedDesiredUnits, destroyTreeseedTargetUnits, filterTreeseedDesiredUnitsByBootstrapSystems, resolveTreeseedBootstrapSelection, type TreeseedReconcileResult } from '../reconcile/index.ts';
 import {
 	acquireWorkflowLock,
 	archiveWorkflowRun,
