@@ -442,8 +442,7 @@ function normalizeSaveLane(lane: TreeseedSaveInput['lane'] | undefined) {
 
 function normalizeSaveCiMode(mode: TreeseedWorkflowCiMode | undefined, branch: string | null | undefined, lane: 'fast' | 'promotion' = 'fast') {
 	if (mode === 'hosted' || mode === 'off') return mode;
-	if (branch === STAGING_BRANCH) return 'hosted';
-	if (lane === 'promotion') return branch === PRODUCTION_BRANCH ? 'hosted' : 'off';
+	if (lane === 'promotion') return branch === STAGING_BRANCH || branch === PRODUCTION_BRANCH ? 'hosted' : 'off';
 	return 'off';
 }
 
