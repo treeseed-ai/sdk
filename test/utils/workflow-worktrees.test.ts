@@ -123,6 +123,58 @@ describe('workflow managed worktrees', () => {
 		expect(git(resolve(created.worktreePath, 'packages/sdk'), ['branch', '--show-current'])).toBe('feature/submodule-worktree');
 	});
 
+	it('creates task branches for manifest-only TreeDX package worktrees', () => {
+		const { root, work } = createRepo();
+		const treedx = createPackageRepo(root, 'treedx');
+		writeFileSync(resolve(treedx.work, 'package.json'), '{}\n', 'utf8');
+		writeFileSync(resolve(treedx.work, 'treeseed.package.yaml'), `id: treedx
+name: TreeDX
+kind: beam-elixir-rust
+repository: treeseed-ai/treedx
+publishTarget: treeseed/treedx
+artifacts:
+  - provider: docker
+    name: treeseed/treedx
+    dockerfile: Dockerfile
+    context: .
+    architectures:
+      - amd64
+      - arm64
+`, 'utf8');
+		git(treedx.work, ['add', '-A']);
+		git(treedx.work, ['commit', '-m', 'add manifest']);
+		git(treedx.work, ['push', 'origin', 'staging']);
+		writeFileSync(
+			resolve(work, 'package.json'),
+			JSON.stringify({ name: 'demo', version: '1.0.0', workspaces: ['packages/*'] }, null, 2),
+			'utf8',
+		);
+		git(work, ['-c', 'protocol.file.allow=always', 'submodule', 'add', treedx.origin, 'packages/treedx']);
+		git(work, ['config', 'protocol.file.allow', 'always']);
+		git(work, ['add', '-A']);
+		git(work, ['commit', '-m', 'add treedx submodule']);
+		git(work, ['push', 'origin', 'staging']);
+
+		const previousProtocol = process.env.GIT_ALLOW_PROTOCOL;
+		process.env.GIT_ALLOW_PROTOCOL = 'file:git:ssh:https';
+		let created: ReturnType<typeof ensureManagedWorkflowWorktree>;
+		try {
+			created = ensureManagedWorkflowWorktree({
+				root: work,
+				branchName: 'feature/treedx-worktree',
+				mode: 'on',
+			});
+		} finally {
+			if (previousProtocol == null) {
+				delete process.env.GIT_ALLOW_PROTOCOL;
+			} else {
+				process.env.GIT_ALLOW_PROTOCOL = previousProtocol;
+			}
+		}
+
+		expect(git(resolve(created.worktreePath, 'packages/treedx'), ['branch', '--show-current'])).toBe('feature/treedx-worktree');
+	});
+
 	it('rejects duplicate same-branch ownership in another active worktree', () => {
 		const { work } = createRepo();
 		git(work, ['branch', 'feature/duplicate', 'origin/staging']);

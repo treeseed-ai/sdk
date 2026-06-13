@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { runTreeseedGit } from '../operations/services/git-runner.ts';
 import { sortWorkspacePackages, workspacePackages, workspaceRoot } from '../operations/services/workspace-tools.ts';
 import { repoRoot } from '../operations/services/workspace-save.ts';
+import { discoverTreeseedPackageAdapters } from '../operations/services/package-adapters.ts';
 import type { TreeseedWorkflowWorktreeMode } from '../workflow.ts';
 
 export type ManagedWorkflowWorktreeMetadata = {
@@ -110,8 +111,23 @@ function checkoutManagedPackageBranch(repoDir: string, branchName: string) {
 }
 
 function checkoutManagedPackageBranches(worktreePath: string, branchName: string) {
-	for (const pkg of sortWorkspacePackages(workspacePackages(worktreePath))) {
-		if (!pkg.name?.startsWith('@treeseed/')) continue;
+	const packages = new Map<string, ReturnType<typeof workspacePackages>[number]>();
+	for (const pkg of workspacePackages(worktreePath)) {
+		if (pkg.name?.startsWith('@treeseed/')) {
+			packages.set(pkg.name, pkg);
+		}
+	}
+	for (const adapter of discoverTreeseedPackageAdapters(worktreePath)) {
+		if (!adapter.publishTarget && adapter.artifacts.length === 0) continue;
+		if (packages.has(adapter.id)) continue;
+		packages.set(adapter.id, {
+			dir: adapter.dir,
+			name: adapter.id,
+			packageJson: {},
+			relativeDir: adapter.relativeDir,
+		});
+	}
+	for (const pkg of sortWorkspacePackages([...packages.values()])) {
 		if (!existsSync(resolve(pkg.dir, '.git'))) continue;
 		checkoutManagedPackageBranch(pkg.dir, branchName);
 	}
