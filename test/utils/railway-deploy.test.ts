@@ -7,8 +7,6 @@ import {
 	configuredRailwayServices,
 	collectRailwayDeploymentStatusChecks,
 	buildRailwayCommandEnv,
-	buildRailwayDeployCommandEnv,
-	buildRailwayLinkCommandEnv,
 	deriveRailwayCapacityProviderRunnerServiceName,
 	deriveRailwayCapacityProviderRunnerVolumeName,
 	deriveRailwayOperationsRunnerServiceName,
@@ -17,9 +15,6 @@ import {
 	deriveRailwayWorkerRunnerVolumeName,
 	ensureRailwayScheduledJobs,
 	findStaleTreeseedOperationsRunnerResources,
-	isRailwayTransientFailure,
-	planRailwayServiceDeploy,
-	planRailwayServiceLink,
 	railwayServiceRuntimeStartCommand,
 	resolveRailwayAuthToken,
 	shouldRunRailwayPredeployBuild,
@@ -27,7 +22,6 @@ import {
 	waitForRailwayManagedDeploymentsSettled,
 	verifyRailwayManagedResources,
 	verifyRailwayScheduledJobs,
-	writeRailwayCliProjectConfig,
 } from '../../src/operations/services/railway-deploy.ts';
 import { ensureRailwayServiceVolume } from '../../src/operations/services/railway-api.ts';
 
@@ -405,219 +399,11 @@ services:
 		expect(services.map((service) => service.startCommand).filter(Boolean).join('\n')).not.toContain('provider/entrypoint.js');
 	});
 
-	it('detaches Railway deploys from build log streaming by default outside CI', () => {
-		const plan = planRailwayServiceDeploy({
-			projectId: 'railway-project-1',
-			serviceName: 'acme-docs-api',
-			railwayEnvironment: 'staging',
-			rootDir: '.',
-		}, { env: {} });
-
-		expect(plan).toMatchObject({
-			command: 'railway',
-			args: [
-				'up',
-				'--service',
-				'acme-docs-api',
-				'--detach',
-				'--project',
-				'railway-project-1',
-				'--environment',
-				'staging',
-			],
-			cwd: '.',
-		});
-	});
-
-	it('uses Railway service names for CLI deploys even when IDs are available', () => {
-		const plan = planRailwayServiceDeploy({
-			projectId: 'railway-project-1',
-			serviceId: 'service-id-1',
-			serviceName: 'acme-docs-api',
-			railwayEnvironment: 'staging',
-			rootDir: '.',
-		}, { env: {} });
-
-		expect(plan.args).toEqual(expect.arrayContaining([
-			'--service',
-			'acme-docs-api',
-		]));
-		expect(plan.args).not.toContain('service-id-1');
-	});
-
-	it('keeps explicit Railway project, service, and environment selectors for CI deploys', () => {
-		const plan = planRailwayServiceDeploy({
-			projectId: 'railway-project-1',
-			serviceId: 'service-id-1',
-			serviceName: 'acme-docs-api',
-			railwayEnvironment: 'staging',
-			rootDir: '.',
-		}, { env: { CI: 'true' } });
-
-		expect(plan.args).toEqual(expect.arrayContaining([
-			'--project',
-			'railway-project-1',
-			'--service',
-			'acme-docs-api',
-			'--environment',
-			'staging',
-		]));
-		expect(plan.args).not.toContain('service-id-1');
-	});
-
-	it('uses environment-provided Railway context for project-token deploys', () => {
-		const plan = planRailwayServiceDeploy({
-			projectId: 'railway-project-1',
-			serviceId: 'service-id-1',
-			serviceName: 'acme-docs-api',
-			railwayEnvironment: 'staging',
-			rootDir: '.',
-		}, { env: { CI: 'true' }, projectTokenMode: true });
-
-		expect(plan.args).toEqual([
-			'up',
-			'--service',
-			'acme-docs-api',
-			'--detach',
-		]);
-		expect(plan.args).not.toContain('--project');
-		expect(plan.args).not.toContain('--environment');
-	});
-
-	it('links Railway project context before CLI deploys', () => {
-		const plan = planRailwayServiceLink({
-			projectId: 'railway-project-1',
-			serviceId: 'service-id-1',
-			serviceName: 'acme-docs-api',
-			railwayEnvironment: 'staging',
-			rootDir: '.',
-		}, {
-			env: { TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop' },
-		});
-
-		expect(plan).toMatchObject({
-			command: 'railway',
-			args: [
-				'link',
-				'--project',
-				'railway-project-1',
-				'--workspace',
-				'knowledge-coop',
-				'--environment',
-				'staging',
-				'--service',
-				'acme-docs-api',
-				'--json',
-			],
-			cwd: '.',
-		});
-	});
-
-	it('supports attached Railway build logs when explicitly requested', () => {
-		const plan = planRailwayServiceDeploy({
-			serviceName: 'acme-docs-api',
-			railwayEnvironment: 'staging',
-			rootDir: '.',
-		}, { env: { TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS: '1' } });
-
-		expect(plan.args).toContain('--ci');
-		expect(plan.args).not.toContain('--detach');
-	});
-
-	it('keeps Railway deploys detached in hosted CI by default', () => {
-		const plan = planRailwayServiceDeploy({
-			serviceName: 'acme-docs-api',
-			railwayEnvironment: 'staging',
-			rootDir: '.',
-		}, { env: { CI: 'true' } });
-
-		expect(plan.args).toContain('--detach');
-		expect(plan.args).not.toContain('--no-gitignore');
-		expect(plan.args).not.toContain('--ci');
-		expect(plan.args).not.toContain('--verbose');
-	});
-
-	it('can include ignored files for Railway deploys when explicitly requested', () => {
-		const plan = planRailwayServiceDeploy({
-			serviceName: 'acme-docs-api',
-			railwayEnvironment: 'staging',
-			rootDir: '.',
-		}, { env: { TREESEED_RAILWAY_DEPLOY_INCLUDE_IGNORED: '1' } });
-
-		expect(plan.args).toContain('--no-gitignore');
-	});
-
-	it('clears hosted CI mode when detached Railway deploys are selected by arguments', () => {
-		expect(buildRailwayDeployCommandEnv({
-			CI: 'true',
-			RAILWAY_API_TOKEN: 'railway-api-token',
-			RAILWAY_TOKEN: 'railway-project-token',
-		})).toMatchObject({
-			CI: undefined,
-			RAILWAY_API_TOKEN: 'railway-api-token',
-			RAILWAY_TOKEN: 'railway-project-token',
-		});
-		expect(buildRailwayDeployCommandEnv({
-			CI: 'true',
-			RAILWAY_API_TOKEN: 'railway-api-token',
-			RAILWAY_TOKEN: 'railway-project-token',
-			TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS: '1',
-		})).toMatchObject({
-			CI: 'true',
-			RAILWAY_API_TOKEN: 'railway-api-token',
-			RAILWAY_TOKEN: 'railway-project-token',
-		});
-		expect(buildRailwayDeployCommandEnv({
-			CI: 'true',
-			RAILWAY_API_TOKEN: 'railway-api-token',
-			TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS: '1',
-		})).toMatchObject({
-			CI: 'true',
-			RAILWAY_API_TOKEN: 'railway-api-token',
-		});
-	});
-
-	it('allows Railway deploy log attachment to be disabled explicitly in CI', () => {
-		const plan = planRailwayServiceDeploy({
-			serviceName: 'acme-docs-api',
-			railwayEnvironment: 'staging',
-			rootDir: '.',
-		}, { env: { CI: 'true', TREESEED_RAILWAY_DEPLOY_ATTACH_LOGS: '0' } });
-
-		expect(plan.args).toContain('--detach');
-		expect(plan.args).not.toContain('--ci');
-		expect(plan.args).not.toContain('--verbose');
-	});
-
 	it('lets Railway run service build commands from a clean upload in hosted CI', () => {
 		expect(shouldRunRailwayPredeployBuild({ CI: 'true' })).toBe(false);
 		expect(shouldRunRailwayPredeployBuild({ CI: 'true', TREESEED_RAILWAY_PREDEPLOY_BUILD: '1' })).toBe(true);
 		expect(shouldRunRailwayPredeployBuild({ CI: 'true', TREESEED_RAILWAY_PREDEPLOY_BUILD: '0' })).toBe(false);
 		expect(shouldRunRailwayPredeployBuild({})).toBe(true);
-	});
-
-	it('treats Railway build log retrieval failures as transient deploy failures', () => {
-		expect(isRailwayTransientFailure({
-			status: 1,
-			stdout: 'Build Logs: https://railway.com/project/example',
-			stderr: 'Failed to stream build logs: Failed to retrieve build log',
-		})).toBe(true);
-	});
-
-	it('treats Railway CLI response decoding failures as transient', () => {
-		expect(isRailwayTransientFailure({
-			status: 1,
-			stdout: '',
-			stderr: 'Failed to fetch: error decoding response body\nCaused by:\n    expected value at line 1 column 1',
-		})).toBe(true);
-	});
-
-	it('retries blank Railway CLI exits from detached upload mode', () => {
-		expect(isRailwayTransientFailure({
-			status: 1,
-			stdout: '',
-			stderr: '',
-		})).toBe(true);
 	});
 
 	it('creates a missing worker-runner volume at the standard repository mount path', async () => {
@@ -1536,61 +1322,4 @@ services:
 		});
 	});
 
-	it('uses API auth without hosted CI mode when linking Railway CLI context', () => {
-		const env = buildRailwayLinkCommandEnv({
-			CI: 'true',
-			RAILWAY_API_TOKEN: 'railway-api-token',
-			RAILWAY_TOKEN: 'railway-project-token',
-		}, {
-			projectId: 'railway-project-1',
-			environmentId: 'env-staging',
-			serviceId: 'svc-api',
-		});
-
-		expect(env).toMatchObject({
-			CI: undefined,
-			RAILWAY_API_TOKEN: 'railway-api-token',
-			RAILWAY_PROJECT_ID: 'railway-project-1',
-			RAILWAY_ENVIRONMENT_ID: 'env-staging',
-			RAILWAY_SERVICE_ID: 'svc-api',
-		});
-		expect(env.RAILWAY_TOKEN).toBeUndefined();
-	});
-
-	it('writes Railway CLI project context directly for hosted CI deploys', async () => {
-		const railwayHome = await mkdtemp(join(tmpdir(), 'treeseed-railway-home-'));
-		tempRoots.add(railwayHome);
-		const projectRoot = await mkdtemp(join(tmpdir(), 'treeseed-railway-project-'));
-		tempRoots.add(projectRoot);
-
-		const result = writeRailwayCliProjectConfig({
-			projectId: 'railway-project-1',
-			projectName: 'acme-docs',
-			environmentId: 'env-staging',
-			railwayEnvironment: 'staging',
-			serviceId: 'svc-api',
-			serviceName: 'acme-docs-api',
-			rootDir: projectRoot,
-		}, {
-			env: { RAILWAY_HOME: railwayHome },
-			cwd: projectRoot,
-		});
-
-		expect(result).toMatchObject({
-			configPath: join(railwayHome, 'config.json'),
-			projectPath: projectRoot,
-			projectId: 'railway-project-1',
-			environmentId: 'env-staging',
-			serviceId: 'svc-api',
-		});
-		const config = JSON.parse(await readFile(join(railwayHome, 'config.json'), 'utf8'));
-		expect(config.projects[projectRoot]).toMatchObject({
-			projectPath: projectRoot,
-			name: 'acme-docs',
-			project: 'railway-project-1',
-			environment: 'env-staging',
-			environmentName: 'staging',
-			service: 'svc-api',
-		});
-	});
 });

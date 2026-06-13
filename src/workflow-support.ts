@@ -133,24 +133,18 @@ export {
 } from './operations/services/runtime-tools.ts';
 export {
 	configuredRailwayServices,
-	deployRailwayService,
 	validateRailwayDeployPrerequisites,
 } from './operations/services/railway-deploy.ts';
 export {
-	ensureRailwayEnvironment,
-	ensureRailwayProject,
-	ensureRailwayService,
 	getRailwayAuthProfile,
 	listRailwayEnvironments,
 	listRailwayProjects,
 	listRailwayServices,
 	listRailwayVariables,
-	railwayGraphqlRequest,
 	resolveRailwayApiToken,
 	resolveRailwayApiUrl,
 	resolveRailwayWorkspace,
 	resolveRailwayWorkspaceContext,
-	upsertRailwayVariables,
 } from './operations/services/railway-api.ts';
 export {
 	githubRepositoryCredentialEnvName,

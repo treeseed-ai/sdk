@@ -564,7 +564,48 @@ function buildGitHubWorkflowDispatchAdapter(): TreeseedReconcileAdapter {
 			return genericResult(input, { ...input.observed.live, result });
 		},
 		verify(input) {
-			return genericVerification(input, input.observed, 'GitHub workflow dispatch has an observed run');
+			const latest = input.observed.live?.latest;
+			const result = input.result?.state?.result && typeof input.result.state.result === 'object'
+				? input.result.state.result as Record<string, unknown>
+				: null;
+			const observedRun = result?.runId ? result : latest;
+			const expectedHeadSha = typeof input.unit.spec.expectedHeadSha === 'string' ? input.unit.spec.expectedHeadSha : null;
+			const observedHeadSha = typeof observedRun?.headSha === 'string'
+				? observedRun.headSha
+				: typeof observedRun?.head_sha === 'string'
+					? observedRun.head_sha
+					: null;
+			const status = typeof observedRun?.status === 'string' ? observedRun.status : null;
+			const conclusion = typeof observedRun?.conclusion === 'string' ? observedRun.conclusion : null;
+			const wait = input.unit.spec.wait === true;
+			const issues = [
+				...(expectedHeadSha && observedHeadSha && observedHeadSha !== expectedHeadSha
+					? [`latest workflow run is for ${observedHeadSha}, expected ${expectedHeadSha}`]
+					: []),
+				...(wait && status && status !== 'completed'
+					? [`workflow run is still ${status}`]
+					: []),
+				...(wait && status === 'completed' && conclusion !== 'success'
+					? [`workflow run concluded ${conclusion ?? 'unknown'}`]
+					: []),
+			];
+			return summarizeVerification(input.unit.unitId, [
+				verificationCheck('github.workflow-run', 'GitHub workflow dispatch produced a successful observed run', 'api', {
+					exists: Boolean(observedRun),
+					configured: !expectedHeadSha || !observedHeadSha || observedHeadSha === expectedHeadSha,
+					ready: !wait || status === 'completed',
+					verified: Boolean(observedRun) && issues.length === 0,
+					expected: {
+						workflow: input.unit.spec.workflow,
+						branch: input.unit.spec.branch,
+						headSha: expectedHeadSha,
+						wait,
+						conclusion: wait ? 'success' : undefined,
+					},
+					observed: observedRun,
+					issues,
+				}),
+			], input.observed.warnings);
 		},
 	};
 }
