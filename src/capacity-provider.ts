@@ -159,7 +159,7 @@ export interface CapacityProviderHealthState {
 }
 
 export interface CapacityProviderRegistrationRequest {
-	marketId: string;
+	marketId?: string;
 	runtime: CapacityProviderRuntimeInfo;
 	capabilities: CapacityProviderCapability[];
 	budgets: CapacityProviderBudgetCapacity;
@@ -180,7 +180,7 @@ export interface CapacityProviderRegistrationResponse {
 }
 
 export interface CapacityProviderHeartbeatRequest {
-	marketId: string;
+	marketId?: string;
 	providerId?: string | null;
 	runtime?: CapacityProviderRuntimeInfo;
 	capabilities?: CapacityProviderCapability[];
@@ -706,7 +706,6 @@ export function resolveCapacityProviderEnvironment(input: CapacityProviderEnviro
 		TREESEED_PROVIDER_API_PORT: stringValue(input.providerApiPort, '3100'),
 		TREESEED_PROVIDER_ENVIRONMENT: input.providerEnvironment ?? 'local',
 	};
-	if (!env.TREESEED_MARKET_ID) throw new Error('Capacity provider Market ID is required.');
 	if (!env.TREESEED_CAPACITY_PROVIDER_API_KEY) throw new Error('Capacity provider API key is required.');
 	if (input.providerHostDataDir) env.TREESEED_PROVIDER_HOST_DATA_DIR = input.providerHostDataDir;
 	if (input.capabilitiesFile) env.TREESEED_PROVIDER_CAPABILITIES_FILE = input.capabilitiesFile;
@@ -771,9 +770,6 @@ export function resolveCapacityProviderLaunchEnvironment(input: CapacityProvider
 		resolved.TREESEED_PROVIDER_STARTUP_MODE = 'diagnostic';
 	}
 	const required = [
-		'TREESEED_MARKET_URL',
-		'TREESEED_MARKET_ID',
-		'TREESEED_MANAGER_ID',
 		...(diagnostic ? [] : ['TREESEED_CAPACITY_PROVIDER_API_KEY']),
 		'TREESEED_PROVIDER_HOST_DATA_DIR',
 	];
@@ -1033,7 +1029,6 @@ export class MarketProviderClient {
 		this.marketUrl = normalizeBaseUrl(options.marketUrl);
 		this.marketId = options.marketId.trim();
 		this.apiKey = options.apiKey.trim();
-		if (!this.marketId) throw new Error('Capacity provider Market ID is required.');
 		if (!this.apiKey) throw new Error('Capacity provider API key is required.');
 		this.fetchImpl = options.fetchImpl ?? fetch;
 		this.userAgent = options.userAgent;
@@ -1063,9 +1058,11 @@ export class MarketProviderClient {
 	}
 
 	register(request: Omit<CapacityProviderRegistrationRequest, 'marketId'> & { marketId?: string }) {
+		const marketId = request.marketId ?? this.marketId;
+		const body = marketId ? { ...request, marketId } : request;
 		return this.requestJson<CapacityProviderRegistrationResponse>(CAPACITY_PROVIDER_ENDPOINTS.register, {
 			method: 'POST',
-			body: { ...request, marketId: request.marketId ?? this.marketId },
+			body,
 		}).then((response) => {
 			assertCapacityProviderRegistrationResponse(response);
 			return response;
@@ -1073,9 +1070,11 @@ export class MarketProviderClient {
 	}
 
 	heartbeat(request: Omit<CapacityProviderHeartbeatRequest, 'marketId'> & { marketId?: string } = {}) {
+		const marketId = request.marketId ?? this.marketId;
+		const body = marketId ? { ...request, marketId } : request;
 		return this.requestJson<CapacityProviderHeartbeatResponse>(CAPACITY_PROVIDER_ENDPOINTS.heartbeat, {
 			method: 'POST',
-			body: { ...request, marketId: request.marketId ?? this.marketId },
+			body,
 		}).then((response) => {
 			assertCapacityProviderOkEnvelope(response, 'Capacity provider heartbeat response');
 			return response;

@@ -384,7 +384,7 @@ describe('capacity provider SDK contracts', () => {
 			TREESEED_PROVIDER_STARTUP_MODE: 'diagnostic',
 		});
 		expect(JSON.stringify(launch.redactedEnv)).not.toContain(apiKey);
-		expect(() => resolveCapacityProviderLaunchEnvironment({ env: {}, requireConnection: true })).toThrow(/TREESEED_MARKET_URL/u);
+			expect(() => resolveCapacityProviderLaunchEnvironment({ env: {}, requireConnection: true })).toThrow(/TREESEED_CAPACITY_PROVIDER_API_KEY/u);
 	});
 
 	it('parses launch manifests, resolves role images, and rejects secret-looking extension build args', () => {

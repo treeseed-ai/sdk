@@ -2,7 +2,7 @@ import { loadTreeseedDeployConfig } from '../platform/deploy-config.ts';
 import { loadTreeseedPlugins } from '../platform/plugins/runtime.ts';
 import { resolve } from 'node:path';
 import { createPersistentDeployTarget } from '../operations/services/deploy.ts';
-import { collectTreeseedConfigSeedValues } from '../operations/services/config-runtime.ts';
+import { collectTreeseedConfigSeedValues, resolveTreeseedMachineEnvironmentValues } from '../operations/services/config-runtime.ts';
 import { createTreeseedCanonicalReconcileReport, type TreeseedCanonicalAction, type TreeseedCanonicalDrift, type TreeseedCanonicalGraphNode, type TreeseedCanonicalPostcondition } from '../reconcile/index.ts';
 import { reconcileTreeseedTarget } from '../reconcile/index.ts';
 import type { TreeseedRunnableBootstrapSystem } from '../reconcile/bootstrap-systems.ts';
@@ -143,9 +143,12 @@ function collectPluginHostingContributions(input: TreeseedHostingGraphInput) {
 }
 
 function marketProjectGroup(environment: TreeseedHostingEnvironment, config: Record<string, any>): TreeseedHostProjectGroup {
-	const railwayProjectName = Object.values(config.services ?? {})
-		.map((service) => (service && typeof service === 'object' ? (service as Record<string, any>).railway?.projectName : null))
-		.find((value) => typeof value === 'string' && value.trim()) as string | undefined;
+	const apiService = config.services?.api && typeof config.services.api === 'object'
+		? config.services.api as Record<string, any>
+		: null;
+	const railwayProjectName = typeof apiService?.railway?.projectName === 'string' && apiService.railway.projectName.trim()
+		? apiService.railway.projectName.trim()
+		: undefined;
 	const projectName = railwayProjectName ?? config.slug ?? 'treeseed-api';
 	return {
 		id: 'treeseed-control-plane',
@@ -158,6 +161,45 @@ function marketProjectGroup(environment: TreeseedHostingEnvironment, config: Rec
 		},
 		metadata: { stableProjectName: projectName },
 	};
+}
+
+function railwayProjectGroupIdForProjectName(prefix: string, projectName: string) {
+	const slug = projectName
+		.toLowerCase()
+		.replace(/[^a-z0-9-]+/gu, '-')
+		.replace(/^-+|-+$/gu, '')
+		|| 'railway-project';
+	return `${prefix}:${slug}`;
+}
+
+function capacityProviderProjectGroupId(projectName: string) {
+	return railwayProjectGroupIdForProjectName('capacity-provider', projectName);
+}
+
+function capacityProviderProjectGroups(environment: TreeseedHostingEnvironment, config: Record<string, any>): TreeseedHostProjectGroup[] {
+	const projectNames = new Set<string>();
+	for (const [serviceKey, service] of Object.entries(config.services ?? {})) {
+		if (!String(serviceKey).startsWith('capacityProvider')) continue;
+		if (!service || typeof service !== 'object') continue;
+		const projectName = (service as Record<string, any>).railway?.projectName;
+		if (typeof projectName === 'string' && projectName.trim()) {
+			projectNames.add(projectName.trim());
+		}
+	}
+	return [...projectNames].map((projectName) => ({
+		id: capacityProviderProjectGroupId(projectName),
+		label: 'Capacity provider',
+		hostId: environment === 'local' ? 'local-docker' : 'railway',
+		environments: {
+			local: { projectName: `${projectName}-local`, environmentName: 'local' },
+			staging: { projectName, environmentName: 'staging' },
+			prod: { projectName, environmentName: 'production' },
+		},
+		metadata: {
+			stableProjectName: projectName,
+			isolation: 'capacity-provider',
+		},
+	}));
 }
 
 function publicTreeDxProjectGroup(environment: TreeseedHostingEnvironment, config: Record<string, any>): TreeseedHostProjectGroup {
@@ -198,9 +240,19 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 	const services: TreeseedServiceInstanceSpec[] = [];
 	const projectGroups = [
 		marketProjectGroup(environment, config),
+		...capacityProviderProjectGroups(environment, config),
 		publicTreeDxProjectGroup(environment, config),
 		privateTreeDxProjectGroup(),
 	];
+	const railwayImageRefEnvKeys = [...new Set(Object.keys(config.services ?? {})
+		.map((serviceKey) => railwayImageRefEnvForService(serviceKey))
+		.filter((value): value is string => Boolean(value)))];
+	let railwayImageRefEnv: Record<string, string> = {};
+	try {
+		railwayImageRefEnv = resolveTreeseedMachineEnvironmentValues(input.tenantRoot, environment, railwayImageRefEnvKeys) as Record<string, string>;
+	} catch {
+		railwayImageRefEnv = {};
+	}
 
 	if (config.surfaces?.web && config.surfaces.web.enabled !== false) {
 		services.push({
@@ -234,10 +286,17 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 		if (!service || service.enabled === false) continue;
 		const serviceType = serviceKeyType(serviceKey, service);
 		const placement = serviceKeyPlacement(serviceKey);
-		const defaultProjectGroup = service.provider === 'railway' || service.railway ? 'treeseed-control-plane' : undefined;
+		const configuredRailwayProjectName = typeof service.railway?.projectName === 'string' && service.railway.projectName.trim()
+			? service.railway.projectName.trim()
+			: null;
+		const defaultProjectGroup = service.provider === 'railway' || service.railway
+			? String(serviceKey).startsWith('capacityProvider') && configuredRailwayProjectName
+				? capacityProviderProjectGroupId(configuredRailwayProjectName)
+				: 'treeseed-control-plane'
+			: undefined;
 		const imageRefEnv = railwayImageRefEnvForService(serviceKey);
 		const imageRef = service.railway?.imageRef
-			?? (imageRefEnv ? process.env[imageRefEnv] : null)
+			?? (imageRefEnv ? railwayImageRefEnv[imageRefEnv] ?? process.env[imageRefEnv] : null)
 			?? defaultRailwayImageRefForService(serviceKey)
 			?? null;
 		services.push({
