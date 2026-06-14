@@ -64,7 +64,6 @@ import {
 	checkoutBranch,
 	checkoutDetachedOriginBranch,
 	checkoutTaskBranchFromStaging,
-	createDeprecatedTaskTag,
 	deleteLocalBranch,
 	deleteRemoteBranch,
 	ensureLocalBranchTracking,
@@ -3115,7 +3114,7 @@ function ensureLocalTaskBranch(repoDir: string, branchName: string) {
 function cleanupTaskBranchReport(
 	report: WorkflowRepoReport,
 	branchName: string,
-	message: string,
+	_message: string,
 	{ deleteBranch = true, targetBranch = STAGING_BRANCH } = {},
 ) {
 	if (!ensureLocalTaskBranch(report.path, branchName)) {
@@ -3123,9 +3122,8 @@ function cleanupTaskBranchReport(
 		return report;
 	}
 
-	const deprecatedTag = createDeprecatedTaskTag(report.path, branchName, message);
-	report.tagName = deprecatedTag.tagName;
-	report.commitSha = deprecatedTag.head;
+	report.tagName = null;
+	report.commitSha = updateHead(report.path);
 	report.deletedRemote = deleteBranch ? deleteRemoteBranch(report.path, branchName) : false;
 	syncBranchWithOrigin(report.path, targetBranch);
 	if (deleteBranch) {
@@ -4952,22 +4950,22 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 					? (skipJournalStep(root, workflowRun.runId, 'preview-cleanup', { performed: false }), { performed: false })
 					: await executeJournalStep(root, workflowRun.runId, 'preview-cleanup', () => destroyWorkflowBranchPreviewIfPresent(root, featureBranch, helpers.context));
 				const rootCleanup = await executeJournalStep(root, workflowRun.runId, 'cleanup-root', () => {
-					const deprecatedTag = createDeprecatedTaskTag(repoDir, featureBranch, `close: ${message}`);
+					const head = updateHead(repoDir);
 					const deletedRemote = effectiveInput.deleteBranch === false ? false : deleteRemoteBranch(repoDir, featureBranch);
 					syncBranchWithOrigin(repoDir, STAGING_BRANCH);
 					if (effectiveInput.deleteBranch !== false) {
 						deleteLocalBranch(repoDir, featureBranch);
 					}
 					return {
-						deprecatedTag,
+						head,
 						deletedRemote,
 						deletedLocal: effectiveInput.deleteBranch !== false,
 						branch: currentBranch(repoDir) || STAGING_BRANCH,
 						dirty: hasMeaningfulChanges(repoDir),
 					};
 				});
-				rootRepo.tagName = String(rootCleanup?.deprecatedTag?.tagName ?? null);
-				rootRepo.commitSha = String(rootCleanup?.deprecatedTag?.head ?? rootRepo.commitSha ?? '');
+				rootRepo.tagName = null;
+				rootRepo.commitSha = String(rootCleanup?.head ?? rootRepo.commitSha ?? '');
 				rootRepo.deletedRemote = rootCleanup?.deletedRemote === true;
 				rootRepo.deletedLocal = rootCleanup?.deletedLocal === true;
 				rootRepo.branch = typeof rootCleanup?.branch === 'string' ? rootCleanup.branch : (currentBranch(repoDir) || STAGING_BRANCH);
@@ -4999,7 +4997,6 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 					message,
 					autoSaved: autoSave.performed,
 					autoSaveResult: autoSave.save,
-					deprecatedTag: rootCleanup?.deprecatedTag ?? null,
 					repos: packageReports,
 					rootRepo,
 					previewCleanup,

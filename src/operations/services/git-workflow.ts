@@ -508,26 +508,6 @@ export function listTaskBranches(repoDir) {
 	});
 }
 
-export function taskTagSlug(branchName) {
-	return String(branchName)
-		.trim()
-		.replaceAll('\\', '/')
-		.replace(/[^A-Za-z0-9._/-]+/g, '-')
-		.replace(/\/+/g, '-')
-		.replace(/^-+|-+$/g, '')
-		|| 'task';
-}
-
-export function createDeprecatedTaskTag(repoDir, branchName, message) {
-	const head = runGit(['rev-parse', branchName], { cwd: repoDir, capture: true }).trim();
-	const shortSha = head.slice(0, 12);
-	const tagName = `deprecated/${taskTagSlug(branchName)}/${shortSha}`;
-	runGit(['tag', '-a', tagName, head, '-m', message], { cwd: repoDir });
-	ensureWritableOrigin(repoDir);
-	runGit(['push', 'origin', tagName], { cwd: repoDir, capture: true });
-	return { tagName, head };
-}
-
 export function waitForStagingAutomation(repoDir) {
 	if (process.env.TREESEED_STAGE_WAIT_MODE === 'skip') {
 		return { status: 'skipped', reason: 'disabled' };

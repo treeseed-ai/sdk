@@ -103,7 +103,6 @@ export {
 	assertFeatureBranch,
 	branchExists,
 	checkoutBranch,
-	createDeprecatedTaskTag,
 	createFeatureBranchFromStaging,
 	currentManagedBranch,
 	deleteLocalBranch,
