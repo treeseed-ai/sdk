@@ -20,6 +20,7 @@ import {
 	workflowSwitch,
 	workflowTagsCleanup,
 	workflowTasks,
+	workflowUpdate,
 } from './workflow/operations.ts';
 
 export type TreeseedWorkflowOperationId =
@@ -30,6 +31,7 @@ export type TreeseedWorkflowOperationId =
 	| 'switch'
 	| 'dev'
 	| 'save'
+	| 'update'
 	| 'close'
 	| 'stage'
 	| 'release'
@@ -157,6 +159,16 @@ export type TreeseedSaveInput = {
 	workspaceLinks?: 'auto' | 'off';
 	releaseCandidate?: TreeseedReleaseCandidateMode;
 	verifyDeployedResources?: boolean;
+	plan?: boolean;
+	dryRun?: boolean;
+};
+
+export type TreeseedUpdateInput = {
+	from?: string;
+	strategy?: 'merge' | 'ff-only';
+	push?: boolean;
+	worktreeMode?: TreeseedWorkflowWorktreeMode;
+	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -355,6 +367,8 @@ export class TreeseedWorkflowSdk {
 				return this.dev(input as TreeseedWorkflowDevInput);
 			case 'save':
 				return this.save(input as TreeseedSaveInput);
+			case 'update':
+				return this.update(input as TreeseedUpdateInput);
 			case 'close':
 				return this.close(input as TreeseedCloseInput);
 			case 'stage':
@@ -402,6 +416,10 @@ export class TreeseedWorkflowSdk {
 
 	async save(input: TreeseedSaveInput): Promise<TreeseedWorkflowResult> {
 		return workflowSave(this.helpers(), input);
+	}
+
+	async update(input: TreeseedUpdateInput = {}): Promise<TreeseedWorkflowResult> {
+		return workflowUpdate(this.helpers(), input);
 	}
 
 	async close(input: TreeseedCloseInput): Promise<TreeseedWorkflowResult> {

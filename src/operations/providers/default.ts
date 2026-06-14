@@ -1298,6 +1298,7 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 			new WorkflowOperation('tasks'),
 			new WorkflowOperation('switch', 'switch'),
 			new WorkflowOperation('save'),
+			new WorkflowOperation('update'),
 			new WorkflowOperation('close'),
 			new WorkflowOperation('stage'),
 			new WorkflowOperation('resume'),

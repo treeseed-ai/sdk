@@ -6,6 +6,7 @@ import type { TreeseedWorkflowMode } from './session.ts';
 export type TreeseedWorkflowRunCommand =
 	| 'switch'
 	| 'save'
+	| 'update'
 	| 'close'
 	| 'stage'
 	| 'release'

@@ -1,4 +1,5 @@
-import { relative } from 'node:path';
+import { existsSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
 import {
 	currentBranch,
 	gitStatusPorcelain,
@@ -74,16 +75,18 @@ function repoState(root: string, name: string, repoDir: string): TreeseedWorkflo
 }
 
 export function checkedOutWorkspacePackageRepos(root: string) {
-	if (!hasCompleteTreeseedPackageCheckout(root)) {
+	if (!hasCompleteTreeseedPackageCheckout(root) && workspacePackages(root).length === 0) {
 		return [];
 	}
 	const repos = new Map<string, ReturnType<typeof workspacePackages>[number]>();
 	for (const pkg of workspacePackages(root).filter((pkg) => pkg.name?.startsWith('@treeseed/'))) {
+		if (!existsSync(resolve(pkg.dir, '.git'))) continue;
 		repos.set(pkg.name, pkg);
 	}
 	for (const adapter of discoverTreeseedPackageAdapters(root)) {
 		if (!adapter.publishTarget && adapter.artifacts.length === 0) continue;
 		if (repos.has(adapter.id)) continue;
+		if (!existsSync(resolve(adapter.dir, '.git'))) continue;
 		repos.set(adapter.id, {
 			dir: adapter.dir,
 			name: adapter.id,

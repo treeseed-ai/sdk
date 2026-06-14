@@ -161,7 +161,7 @@ import {
 	workspacePackages,
 	workspaceRoot,
 } from '../operations/services/workspace-tools.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from '../operations/services/git-runner.ts';
+import { classifyTreeseedGitMode, runTreeseedGit, runTreeseedGitOk, runTreeseedGitText } from '../operations/services/git-runner.ts';
 import { runTreeseedHostingAudit, type TreeseedHostingAuditEnvironment } from '../operations/services/hosting-audit.ts';
 import { collectTreeseedHostedServiceChecks } from '../operations/services/hosted-service-checks.ts';
 import { collectTreeseedDeploymentReadiness } from '../operations/services/deployment-readiness.ts';
@@ -222,6 +222,7 @@ import type {
 	TreeseedSwitchInput,
 	TreeseedTagsCleanupInput,
 	TreeseedTaskBranchMetadata,
+	TreeseedUpdateInput,
 	TreeseedWorkflowContext,
 	TreeseedWorkflowCiMode,
 	TreeseedWorkflowDevInput,
@@ -3823,6 +3824,446 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 	}
 }
 
+type TreeseedUpdateStrategy = 'merge' | 'ff-only';
+type TreeseedUpdateRepoAction = 'planned' | 'up-to-date' | 'merged' | 'fast-forwarded' | 'pushed' | 'blocked';
+
+type TreeseedUpdateRepoResult = {
+	name: string;
+	path: string;
+	branch: string;
+	sourceRef: string;
+	action: TreeseedUpdateRepoAction;
+	beforeHead: string | null;
+	afterHead: string | null;
+	pushed: boolean;
+	changedFiles: string[];
+	blockers: string[];
+	ahead?: number | null;
+	behind?: number | null;
+	status?: 'up-to-date' | 'merge-needed' | 'fast-forward' | 'blocked';
+};
+
+type TreeseedUpdateConflict = {
+	repo: string;
+	path: string;
+	files: string[];
+};
+
+function normalizeUpdateStrategy(strategy: TreeseedUpdateInput['strategy']): TreeseedUpdateStrategy {
+	return strategy === 'ff-only' ? 'ff-only' : 'merge';
+}
+
+function normalizeUpdateSource(source: string | undefined) {
+	const normalized = String(source ?? STAGING_BRANCH).trim();
+	return normalized || STAGING_BRANCH;
+}
+
+function gitOutput(args: string[], cwd: string, allowFailure = false) {
+	return runTreeseedGit(args, {
+		cwd,
+		mode: classifyTreeseedGitMode(args),
+		allowFailure,
+	}).stdout.trim();
+}
+
+function updateHead(repoDir: string) {
+	return gitOutput(['rev-parse', 'HEAD'], repoDir, true) || null;
+}
+
+function updateStatusLines(repoDir: string) {
+	const output = gitOutput(['status', '--porcelain'], repoDir, true);
+	return output ? output.split(/\r?\n/u).filter(Boolean) : [];
+}
+
+function updateChangedFiles(repoDir: string) {
+	return updateStatusLines(repoDir)
+		.map((line) => line.slice(3).trim())
+		.filter(Boolean);
+}
+
+function updateConflictedFiles(repoDir: string) {
+	return updateStatusLines(repoDir)
+		.filter((line) => {
+			const status = line.slice(0, 2);
+			return status.includes('U') || ['AA', 'DD'].includes(status);
+		})
+		.map((line) => line.slice(3).trim())
+		.filter(Boolean);
+}
+
+function sourceBranchExists(repoDir: string, sourceBranch: string) {
+	return runTreeseedGit(['ls-remote', '--exit-code', '--heads', 'origin', sourceBranch], {
+		cwd: repoDir,
+		mode: 'read',
+		allowFailure: true,
+	}).status === 0;
+}
+
+function localRemoteRefExists(repoDir: string, sourceBranch: string) {
+	return runTreeseedGitOk(['show-ref', '--verify', `refs/remotes/origin/${sourceBranch}`], {
+		cwd: repoDir,
+		mode: 'read',
+	});
+}
+
+function updateAheadBehind(repoDir: string, branch: string, sourceRef: string) {
+	if (!localRemoteRefExists(repoDir, sourceRef.replace(/^origin\//u, ''))) {
+		return { ahead: null, behind: null };
+	}
+	const output = gitOutput(['rev-list', '--left-right', '--count', `${branch}...${sourceRef}`], repoDir, true);
+	const [aheadRaw, behindRaw] = output.split(/\s+/u);
+	const ahead = Number.parseInt(aheadRaw ?? '', 10);
+	const behind = Number.parseInt(behindRaw ?? '', 10);
+	return {
+		ahead: Number.isFinite(ahead) ? ahead : null,
+		behind: Number.isFinite(behind) ? behind : null,
+	};
+}
+
+function updatePlanChangedFiles(repoDir: string, sourceRef: string) {
+	if (!runTreeseedGitOk(['show-ref', '--verify', `refs/remotes/${sourceRef}`], { cwd: repoDir, mode: 'read' })) {
+		return [];
+	}
+	const output = gitOutput(['diff', '--name-only', `HEAD...${sourceRef}`], repoDir, true);
+	return output ? output.split(/\r?\n/u).filter(Boolean).slice(0, 50) : [];
+}
+
+function planUpdateRepo(name: string, repoDir: string, branch: string, sourceBranch: string, strategy: TreeseedUpdateStrategy): TreeseedUpdateRepoResult {
+	const sourceRef = `origin/${sourceBranch}`;
+	const blockers: string[] = [];
+	if (!sourceBranchExists(repoDir, sourceBranch)) {
+		blockers.push(`origin/${sourceBranch} does not exist`);
+	}
+	const { ahead, behind } = blockers.length === 0 ? updateAheadBehind(repoDir, branch, sourceRef) : { ahead: null, behind: null };
+	const status: TreeseedUpdateRepoResult['status'] = blockers.length > 0
+		? 'blocked'
+		: behind === 0
+			? 'up-to-date'
+			: strategy === 'ff-only' && ahead === 0
+				? 'fast-forward'
+				: 'merge-needed';
+	return {
+		name,
+		path: repoDir,
+		branch,
+		sourceRef,
+		action: blockers.length > 0 ? 'blocked' : 'planned',
+		beforeHead: updateHead(repoDir),
+		afterHead: null,
+		pushed: false,
+		changedFiles: updatePlanChangedFiles(repoDir, sourceRef),
+		blockers,
+		ahead,
+		behind,
+		status,
+	};
+}
+
+function ensureUpdateRepoReady(operation: 'update', repo: TreeseedWorkflowSession['rootRepo'] | TreeseedWorkflowSession['packageRepos'][number], expectedBranch?: string) {
+	if (repo.detached || !repo.branchName) {
+		workflowError(operation, 'validation_failed', `${repo.name} is detached; update requires attached branches.`, {
+			details: { repo },
+		});
+	}
+	if (expectedBranch && repo.branchName !== expectedBranch) {
+		workflowError(operation, 'validation_failed', `${repo.name} is on ${repo.branchName}, expected ${expectedBranch}.`, {
+			details: { repo, expectedBranch },
+		});
+	}
+	if (repo.dirty) {
+		workflowError(operation, 'validation_failed', `${repo.name} has local changes. Run \`npx trsd save --json "checkpoint before update"\` first.`, {
+			details: { repo },
+		});
+	}
+	if (!repo.hasOriginRemote) {
+		workflowError(operation, 'validation_failed', `${repo.name} is missing an origin remote.`, {
+			details: { repo },
+		});
+	}
+}
+
+function formatUpdateConflict(repoName: string, repoDir: string, sourceBranch: string, targetBranch: string) {
+	const files = updateConflictedFiles(repoDir);
+	const status = updateStatusLines(repoDir);
+	return {
+		message: [
+			`Treeseed update hit a merge conflict in ${repoName}.`,
+			`Repository: ${repoDir}`,
+			`Target branch: ${targetBranch}`,
+			`Source branch: origin/${sourceBranch}`,
+			files.length > 0 ? `Conflicted files:\n${files.map((file) => `- ${file}`).join('\n')}` : 'Conflicted files: inspect git status.',
+			'Resolve the conflicts in that repository, then run `npx trsd save --json "resolve update conflict"` or abort manually and rerun `npx trsd update --from staging --json`.',
+		].join('\n'),
+		files,
+		status,
+	};
+}
+
+function mergeUpdateRepo(input: {
+	name: string;
+	repoDir: string;
+	branch: string;
+	sourceBranch: string;
+	strategy: TreeseedUpdateStrategy;
+	push: boolean;
+}) {
+	const sourceRef = `origin/${input.sourceBranch}`;
+	const beforeHead = updateHead(input.repoDir);
+	runTreeseedGit(['fetch', 'origin'], { cwd: input.repoDir, mode: 'mutate' });
+	if (!sourceBranchExists(input.repoDir, input.sourceBranch)) {
+		return {
+			name: input.name,
+			path: input.repoDir,
+			branch: input.branch,
+			sourceRef,
+			action: 'blocked' as const,
+			beforeHead,
+			afterHead: beforeHead,
+			pushed: false,
+			changedFiles: [],
+			blockers: [`origin/${input.sourceBranch} does not exist`],
+		};
+	}
+	const mergeArgs = input.strategy === 'ff-only'
+		? ['merge', '--ff-only', sourceRef]
+		: ['merge', '--no-edit', sourceRef];
+	const merge = runTreeseedGit(mergeArgs, {
+		cwd: input.repoDir,
+		mode: 'mutate',
+		allowFailure: true,
+	});
+	if (merge.status !== 0) {
+		const conflict = formatUpdateConflict(input.name, input.repoDir, input.sourceBranch, input.branch);
+		throw new TreeseedWorkflowError('update', 'merge_conflict', conflict.message, {
+			details: {
+				repo: input.name,
+				path: input.repoDir,
+				files: conflict.files,
+				status: conflict.status,
+				sourceBranch: input.sourceBranch,
+				targetBranch: input.branch,
+			},
+			exitCode: 12,
+		});
+	}
+	const afterHead = updateHead(input.repoDir);
+	const changed = beforeHead !== afterHead;
+	let pushed = false;
+	if (changed && input.push) {
+		runTreeseedGit(['push', 'origin', input.branch], { cwd: input.repoDir, mode: 'mutate' });
+		pushed = true;
+	}
+	return {
+		name: input.name,
+		path: input.repoDir,
+		branch: input.branch,
+		sourceRef,
+		action: changed ? (input.strategy === 'ff-only' ? 'fast-forwarded' as const : 'merged' as const) : 'up-to-date' as const,
+		beforeHead,
+		afterHead,
+		pushed,
+		changedFiles: [],
+		blockers: [],
+	};
+}
+
+function commitRootUpdateIfNeeded(root: string, branch: string, push: boolean) {
+	const changedFiles = updateChangedFiles(repoRoot(root));
+	if (changedFiles.length === 0) {
+		let pushed = false;
+		if (push) {
+			runTreeseedGit(['push', 'origin', branch], { cwd: repoRoot(root), mode: 'mutate' });
+			pushed = true;
+		}
+		return {
+			committed: false,
+			pushed,
+			commitSha: updateHead(repoRoot(root)),
+			changedFiles,
+		};
+	}
+	runTreeseedGit(['add', '-A'], { cwd: repoRoot(root), mode: 'mutate' });
+	runTreeseedGit(['commit', '-m', `chore(workflow): update ${branch} from staging`], { cwd: repoRoot(root), mode: 'mutate' });
+	const commitSha = updateHead(repoRoot(root));
+	let pushed = false;
+	if (push) {
+		runTreeseedGit(['push', 'origin', branch], { cwd: repoRoot(root), mode: 'mutate' });
+		pushed = true;
+	}
+	return {
+		committed: true,
+		pushed,
+		commitSha,
+		changedFiles,
+	};
+}
+
+export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: TreeseedUpdateInput = {}) {
+	try {
+		return await withContextEnv(helpers.context.env, async () => {
+			const tenantRoot = resolveProjectRootOrThrow('update', helpers.cwd());
+			const root = workspaceRoot(tenantRoot);
+			const session = resolveTreeseedWorkflowSession(root);
+			const sourceBranch = normalizeUpdateSource(input.from);
+			const strategy = normalizeUpdateStrategy(input.strategy);
+			const push = input.push !== false;
+			const executionMode = normalizeExecutionMode(input);
+			const branch = session.branchName;
+			if (!branch) {
+				workflowError('update', 'validation_failed', 'Treeseed update requires an attached current branch.');
+			}
+			if (branch === STAGING_BRANCH || branch === PRODUCTION_BRANCH) {
+				workflowError('update', 'validation_failed', `Treeseed update must run from a task branch, not ${branch}.`, {
+					details: { branch },
+				});
+			}
+			if (sourceBranch === branch) {
+				workflowError('update', 'validation_failed', 'Treeseed update source branch cannot match the current branch.', {
+					details: { branch, sourceBranch },
+				});
+			}
+			ensureUpdateRepoReady('update', session.rootRepo);
+			for (const repo of session.packageRepos) {
+				ensureUpdateRepoReady('update', repo, branch);
+			}
+
+			const repoPlans = session.packageRepos.map((repo) =>
+				planUpdateRepo(repo.name, repo.path, branch, sourceBranch, strategy));
+			const rootPlan = planUpdateRepo('@treeseed/market', session.gitRoot, branch, sourceBranch, strategy);
+			const blockers = [...repoPlans, rootPlan].flatMap((repo) => repo.blockers.map((blocker) => `${repo.name}: ${blocker}`));
+
+			if (executionMode === 'plan') {
+				return buildWorkflowResult('update', root, {
+					mode: session.mode,
+					branch,
+					sourceBranch,
+					sourceRef: `origin/${sourceBranch}`,
+					strategy,
+					pushed: false,
+					plan: true,
+					repos: repoPlans,
+					rootRepo: rootPlan,
+					conflicts: [],
+					blockers,
+					...worktreePayload(root, input.worktreeMode),
+				}, {
+					executionMode,
+					includeFinalState: false,
+					nextSteps: createNextSteps([
+						{ operation: 'update', reason: 'Run without --plan to merge staging into the current branch.', input: { from: sourceBranch } },
+					]),
+				});
+			}
+
+			if (blockers.length > 0) {
+				workflowError('update', 'validation_failed', `Treeseed update is blocked:\n${blockers.join('\n')}`, {
+					details: { blockers, repos: repoPlans, rootRepo: rootPlan },
+				});
+			}
+
+			const workflowRun = acquireWorkflowRun(
+				'update',
+				session,
+				{ from: sourceBranch, strategy, push, workspaceLinks: input.workspaceLinks ?? 'auto' },
+				[
+					{ id: 'validate-update', description: `Validate update from ${sourceBranch}`, repoName: session.rootRepo.name, repoPath: session.rootRepo.path, branch, resumable: true },
+					...session.packageRepos.map((repo) => ({
+						id: `update-${repo.name}`,
+						description: `Merge origin/${sourceBranch} into ${repo.name}`,
+						repoName: repo.name,
+						repoPath: repo.path,
+						branch,
+						resumable: true,
+					})),
+					{ id: 'update-root', description: `Merge origin/${sourceBranch} into market`, repoName: session.rootRepo.name, repoPath: session.rootRepo.path, branch, resumable: true },
+					{ id: 'refresh-root-pointers', description: 'Commit updated root pointers if package heads changed', repoName: session.rootRepo.name, repoPath: session.rootRepo.path, branch, resumable: true },
+					{ id: 'restore-workspace-links', description: 'Restore local workspace links', repoName: session.rootRepo.name, repoPath: session.rootRepo.path, branch, resumable: true },
+				],
+				helpers.context,
+			);
+
+			try {
+				await executeJournalStep(root, workflowRun.runId, 'validate-update', () => ({
+					branch,
+					sourceBranch,
+					strategy,
+					push,
+				}));
+				const repos: TreeseedUpdateRepoResult[] = [];
+				for (const repo of session.packageRepos) {
+					const result = await executeJournalStep(root, workflowRun.runId, `update-${repo.name}`, () =>
+						mergeUpdateRepo({
+							name: repo.name,
+							repoDir: repo.path,
+							branch,
+							sourceBranch,
+							strategy,
+							push,
+						}));
+					if (result) repos.push(result);
+				}
+				const rootMerge = await executeJournalStep(root, workflowRun.runId, 'update-root', () =>
+					mergeUpdateRepo({
+						name: '@treeseed/market',
+						repoDir: session.gitRoot,
+						branch,
+						sourceBranch,
+						strategy,
+						push: false,
+					}));
+				const rootCommit = await executeJournalStep(root, workflowRun.runId, 'refresh-root-pointers', () =>
+					commitRootUpdateIfNeeded(root, branch, push));
+				const workspaceLinks = await executeJournalStep(root, workflowRun.runId, 'restore-workspace-links', () =>
+					ensureWorkflowWorkspaceLinks(root, helpers, input.workspaceLinks ?? 'auto'));
+
+				const rootRepo = {
+					...rootMerge!,
+					action: rootCommit?.committed ? 'committed' as const : rootMerge!.action,
+					commitSha: rootCommit?.commitSha ?? rootMerge!.afterHead,
+					pushed: rootCommit?.pushed ?? false,
+					changedFiles: rootCommit?.changedFiles ?? rootMerge!.changedFiles,
+				};
+				const payload = {
+					mode: session.mode,
+					branch,
+					sourceBranch,
+					sourceRef: `origin/${sourceBranch}`,
+					strategy,
+					pushed: push,
+					plan: false,
+					repos,
+					rootRepo,
+					conflicts: [] as TreeseedUpdateConflict[],
+					workspaceLinks,
+					...worktreePayload(root, input.worktreeMode),
+				};
+				completeWorkflowRun(root, workflowRun.runId, payload);
+				return buildWorkflowResult('update', root, payload, {
+					runId: workflowRun.runId,
+					summary: `Treeseed update merged ${sourceBranch} into ${branch}.`,
+					includeFinalState: false,
+					nextSteps: createNextSteps([
+						{ operation: 'save', reason: 'Checkpoint any follow-up conflict resolutions or generated pointer changes.', input: { message: 'sync with staging' } },
+						{ operation: 'stage', reason: 'Merge the updated task branch into staging when it is ready.', input: { message: 'describe the resolution' } },
+					]),
+				});
+			} catch (error) {
+				failWorkflowRun(root, workflowRun.runId, error, {
+					resumable: true,
+					runId: workflowRun.runId,
+					command: 'update',
+					message: `Resume the interrupted update for ${branch}.`,
+					recoverCommand: 'treeseed recover',
+					resumeCommand: `treeseed resume ${workflowRun.runId}`,
+				});
+				throw error;
+			}
+		});
+	} catch (error) {
+		toError('update', error);
+	}
+}
+
 export async function workflowDev(helpers: WorkflowOperationHelpers, input: TreeseedWorkflowDevInput = {}) {
 	try {
 		return withContextEnv(helpers.context.env, async () => {
@@ -4902,6 +5343,8 @@ export async function workflowResume(helpers: WorkflowOperationHelpers, input: T
 					return workflowSwitch(resumedHelpers, journal.input as unknown as TreeseedSwitchInput);
 				case 'save':
 					return workflowSave(resumedHelpers, journal.input as unknown as TreeseedSaveInput);
+				case 'update':
+					return workflowUpdate(resumedHelpers, journal.input as unknown as TreeseedUpdateInput);
 				case 'close':
 					return workflowClose(resumedHelpers, journal.input as unknown as TreeseedCloseInput);
 				case 'stage':

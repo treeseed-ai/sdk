@@ -3,6 +3,7 @@ export const AGENT_OPERATION_NAMES = [
 	'dev',
 	'verify',
 	'save',
+	'update',
 	'stage',
 	'merge_to_staging',
 	'close',
