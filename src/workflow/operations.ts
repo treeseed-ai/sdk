@@ -4894,6 +4894,7 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 			const featureBranch = assertFeatureBranch(root);
 			const mode = activeSession.mode;
 			const repoDir = activeSession.gitRoot;
+			const managedWorktreeForClose = isManagedWorkflowWorktree(root);
 			assertSessionBranchSafety('close', activeSession);
 			if (mode === 'recursive-workspace') {
 				assertWorkspaceClean(root);
@@ -4952,15 +4953,17 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 				const rootCleanup = await executeJournalStep(root, workflowRun.runId, 'cleanup-root', () => {
 					const head = updateHead(repoDir);
 					const deletedRemote = effectiveInput.deleteBranch === false ? false : deleteRemoteBranch(repoDir, featureBranch);
-					syncBranchWithOrigin(repoDir, STAGING_BRANCH);
-					if (effectiveInput.deleteBranch !== false) {
+					if (!managedWorktreeForClose) {
+						syncBranchWithOrigin(repoDir, STAGING_BRANCH);
+					}
+					if (effectiveInput.deleteBranch !== false && !managedWorktreeForClose) {
 						deleteLocalBranch(repoDir, featureBranch);
 					}
 					return {
 						head,
 						deletedRemote,
-						deletedLocal: effectiveInput.deleteBranch !== false,
-						branch: currentBranch(repoDir) || STAGING_BRANCH,
+						deletedLocal: effectiveInput.deleteBranch !== false && !managedWorktreeForClose,
+						branch: managedWorktreeForClose ? featureBranch : (currentBranch(repoDir) || STAGING_BRANCH),
 						dirty: hasMeaningfulChanges(repoDir),
 					};
 				});
@@ -4985,11 +4988,17 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 				}
 				const workspaceLinks = await executeJournalStep(root, workflowRun.runId, 'workspace-link', () =>
 					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
-				const finalBranch = currentBranch(repoDir) || STAGING_BRANCH;
+				const finalBranch = managedWorktreeForClose ? STAGING_BRANCH : (currentBranch(repoDir) || STAGING_BRANCH);
 				const managedWorktree = managedWorkflowWorktreeMetadata(root);
-				const worktreeCleanup = isManagedWorkflowWorktree(root)
-					? await executeJournalStep(root, workflowRun.runId, 'worktree-cleanup', () => removeManagedWorkflowWorktree(root))
+				const worktreeCleanup = managedWorktreeForClose
+					? await executeJournalStep(root, workflowRun.runId, 'worktree-cleanup', () => removeManagedWorkflowWorktree(root, {
+						deleteBranch: effectiveInput.deleteBranch !== false,
+					}))
 					: { removed: false, reason: 'not-managed' };
+				if ((worktreeCleanup as { deletedLocalBranch?: boolean }).deletedLocalBranch === true) {
+					rootRepo.deletedLocal = true;
+					rootRepo.branch = STAGING_BRANCH;
+				}
 
 				const payload = {
 					mode,

@@ -270,7 +270,7 @@ export function ensureManagedWorkflowWorktree({
 	};
 }
 
-export function removeManagedWorkflowWorktree(root: string) {
+export function removeManagedWorkflowWorktree(root: string, options: { deleteBranch?: boolean } = {}) {
 	const metadata = readMetadata(root);
 	if (!metadata) {
 		return { removed: false, reason: 'not-managed' };
@@ -280,10 +280,16 @@ export function removeManagedWorkflowWorktree(root: string) {
 	process.chdir(primaryRoot);
 	runGit(['worktree', 'remove', '--force', metadata.worktreePath], { cwd: primaryGitRoot });
 	rmSync(metadata.worktreePath, { recursive: true, force: true });
+	let deletedLocalBranch = false;
+	if (options.deleteBranch === true && metadata.branch) {
+		const deleted = runGit(['branch', '-D', metadata.branch], { cwd: primaryGitRoot, allowFailure: true });
+		deletedLocalBranch = deleted.status === 0;
+	}
 	return {
 		removed: true,
 		worktreePath: metadata.worktreePath,
 		primaryRoot,
 		branch: metadata.branch,
+		deletedLocalBranch,
 	};
 }
