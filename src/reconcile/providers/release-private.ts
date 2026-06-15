@@ -1,13 +1,14 @@
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { findTreeseedPackageAdapter } from '../../operations/services/package-adapters.ts';
 import type { TreeseedReconcileRunContext, TreeseedReconcileSelector, TreeseedReconcileTarget } from '../contracts.ts';
 
-export function runReleaseVerifyCommand(input: {
+export async function runReleaseVerifyCommand(input: {
 	tenantRoot: string;
 	packageId: string;
 	env?: NodeJS.ProcessEnv;
+	onProgress?: (message: string) => void;
 }) {
 	const adapter = findTreeseedPackageAdapter(input.tenantRoot, input.packageId);
 	if (!adapter) {
@@ -21,17 +22,44 @@ export function runReleaseVerifyCommand(input: {
 			reason: `${input.packageId} has no release verify command.`,
 		};
 	}
-	const result = spawnSync(command.command, command.args, {
-		cwd: command.cwd,
-		env: { ...process.env, ...(input.env ?? {}) },
-		encoding: 'utf8',
+	const renderedCommand = [command.command, ...command.args].join(' ');
+	input.onProgress?.(`Running ${input.packageId} release verification: ${renderedCommand}`);
+	const started = Date.now();
+	let stdout = '';
+	let stderr = '';
+	const result = await new Promise<{ status: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+		const child = spawn(command.command, command.args, {
+			cwd: command.cwd,
+			env: { ...process.env, ...(input.env ?? {}) },
+			stdio: ['ignore', 'pipe', 'pipe'],
+		});
+		const heartbeat = setInterval(() => {
+			input.onProgress?.(`Still running ${input.packageId} release verification after ${Math.round((Date.now() - started) / 1000)}s.`);
+		}, 30_000);
+		child.stdout?.on('data', (chunk) => {
+			stdout += String(chunk);
+		});
+		child.stderr?.on('data', (chunk) => {
+			stderr += String(chunk);
+		});
+		child.on('error', (error) => {
+			clearInterval(heartbeat);
+			reject(error);
+		});
+		child.on('close', (status, signal) => {
+			clearInterval(heartbeat);
+			resolve({ status, signal });
+		});
 	});
+	const elapsedSeconds = Math.round((Date.now() - started) / 1000);
+	input.onProgress?.(`${input.packageId} release verification ${result.status === 0 ? 'passed' : 'failed'} in ${elapsedSeconds}s.`);
 	return {
 		ok: (result.status ?? 1) === 0,
 		status: result.status,
+		signal: result.signal,
 		command,
-		stdout: result.stdout ?? '',
-		stderr: result.stderr ?? '',
+		stdout,
+		stderr,
 	};
 }
 
