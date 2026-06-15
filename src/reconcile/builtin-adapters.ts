@@ -388,12 +388,16 @@ function buildGraphOnlyAdapter(providerId: string, unitTypes: TreeseedReconcileU
 	};
 }
 
-function buildGitHubEnv(input: TreeseedReconcileAdapterInput) {
+function buildGitHubEnv(input: TreeseedReconcileAdapterInput, repositoryOverride?: string | null) {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
 	const values = resolveReconcileEnvironmentValues(input, scope === 'local' ? 'staging' : scope);
-	const repository = typeof input.unit.spec.repository === 'string' ? input.unit.spec.repository : null;
+	const repository = typeof repositoryOverride === 'string' && repositoryOverride.trim()
+		? repositoryOverride
+		: typeof input.unit.spec.repository === 'string'
+			? input.unit.spec.repository
+			: null;
 	if (!repository) return values;
-	const credential = resolveGitHubCredentialForRepository(repository, { values, env: values });
+	const credential = resolveGitHubCredentialForRepository(repository, { values, env: { ...process.env, ...values } });
 	return credential.token
 		? { ...values, GH_TOKEN: credential.token, GITHUB_TOKEN: credential.token }
 		: values;
@@ -1101,7 +1105,7 @@ function buildReleaseGateAdapter(): TreeseedReconcileAdapter {
 					branch: input.context.target.kind === 'persistent' && input.context.target.scope === 'prod' ? 'main' : 'staging',
 					inputs: {},
 					wait: input.context.target.kind === 'persistent' && input.context.target.scope === 'prod',
-					env: buildGitHubEnv(input),
+					env: buildGitHubEnv(input, repository),
 				});
 				return genericResult(input, { ...input.observed.live, dispatch, fingerprint: input.unit.spec.fingerprint });
 			}
