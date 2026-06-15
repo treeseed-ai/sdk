@@ -220,17 +220,17 @@ describe('project platform workflow actions', () => {
 		expect(syncSource).toContain('Railway API volume reconciliation did not mount');
 	});
 
-	it('allows Railway CLI project context linking from a project id alone', () => {
+	it('allows Railway API project context resolution from a project id alone', () => {
 		const source = readFileSync(new URL('../../src/operations/services/railway-deploy.ts', import.meta.url), 'utf8');
-		const helperStart = source.indexOf('export function ensureRailwayProjectExists');
-		const helperEnd = source.indexOf('export function ensureRailwayEnvironmentExists', helperStart);
+		const helperStart = source.indexOf('async function resolveRailwayDeployProjectContext');
+		const helperEnd = source.indexOf('async function syncRailwayServiceRuntimeConfigurationAfterDeploy', helperStart);
 		const helperSource = source.slice(helperStart, helperEnd);
 
 		expect(helperStart).toBeGreaterThanOrEqual(0);
 		expect(helperEnd).toBeGreaterThan(helperStart);
-		expect(helperSource).toContain('const projectId');
-		expect(helperSource).toContain('entry.id === projectId');
-		expect(helperSource).toContain("return { id: projectId, name: '' }");
+		expect(helperSource).toContain('if (service.projectId)');
+		expect(helperSource).toContain('projectId: service.projectId');
+		expect(helperSource).toContain('return service');
 	});
 
 	it('does not expose a Railway CLI volume lister for verification fallback', () => {
@@ -279,10 +279,8 @@ describe('project platform workflow actions', () => {
 		expect(source).toContain("if (phase === 'sync_runtime_config')");
 		expect(source).toContain("writePhase(`sync-runtime-config:${stage}`, message)");
 		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:device-login-vars'");
-		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:project-token'");
 		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:predeploy-build'");
-		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:link'");
-		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:deploy'");
+		expect(deploySource).toContain("timedRailwayPhase(timings, 'railway:api-deploy'");
 		expect(deploySource).not.toContain('metadata: { env');
 		expect(deploySource).toContain('service: cliDeployService.key');
 	});

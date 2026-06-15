@@ -195,6 +195,7 @@ import {
 	type TreeseedWorkflowMode,
 	type TreeseedWorkflowSession,
 } from './session.ts';
+import { checkedOutManagedWorkflowRepos } from '../operations/services/managed-repositories.ts';
 import {
 	classifyTreeseedBranchRole,
 	resolveTreeseedWorkflowPaths,
@@ -949,6 +950,11 @@ function createWorkspacePackageReports(root: string) {
 		createRepoReport(pkg.name, pkg.dir, currentBranch(pkg.dir) || null, hasMeaningfulChanges(pkg.dir)));
 }
 
+function createManagedWorkflowRepoReports(root: string) {
+	return checkedOutManagedWorkflowRepos(root).map((repo) =>
+		createRepoReport(repo.name, repo.dir, currentBranch(repo.dir) || null, hasMeaningfulChanges(repo.dir)));
+}
+
 function findReportByName(reports: WorkflowRepoReport[], name: string) {
 	return reports.find((report) => report.name === name) ?? null;
 }
@@ -958,7 +964,7 @@ function findReportByPath(reports: WorkflowRepoReport[], path: string) {
 }
 
 function assertWorkspaceClean(root: string) {
-	const repoDirs = [repoRoot(root), ...checkedOutWorkspacePackageRepos(root).map((pkg) => pkg.dir)];
+	const repoDirs = [repoRoot(root), ...checkedOutManagedWorkflowRepos(root).map((repo) => repo.dir)];
 	assertCleanWorktrees(repoDirs);
 	return repoDirs;
 }
@@ -2763,33 +2769,34 @@ function assertSessionBranchSafety(
 		allowPackageReposWithoutOrigin?: boolean;
 	} = {},
 ) {
-	const detached = session.packageRepos.filter((repo) => repo.detached).map((repo) => repo.name);
+	const detached = session.managedRepos.filter((repo) => repo.kind !== 'fixture' && repo.detached).map((repo) => repo.name);
 	if (detached.length > 0) {
-		workflowError(operation, 'validation_failed', `Detached package heads detected: ${detached.join(', ')}.`, {
+		workflowError(operation, 'validation_failed', `Detached managed repository heads detected: ${detached.join(', ')}.`, {
 			details: { detached },
 		});
 	}
 	if (requireCleanPackages) {
-		const dirty = session.packageRepos.filter((repo) => repo.dirty).map((repo) => repo.name);
+		const dirty = session.managedRepos.filter((repo) => repo.dirty).map((repo) => repo.name);
 		if (dirty.length > 0) {
-			workflowError(operation, 'validation_failed', `Dirty package repos block ${operation}: ${dirty.join(', ')}.`, {
+			workflowError(operation, 'validation_failed', `Dirty managed repos block ${operation}: ${dirty.join(', ')}.`, {
 				details: { dirty },
 			});
 		}
 	}
 	if (requireCurrentBranch && session.branchName) {
-		const missing = session.packageRepos
+		const missing = session.managedRepos
+			.filter((repo) => repo.kind !== 'fixture')
 			.filter((repo) => repo.branchName !== session.branchName)
 			.map((repo) => ({ name: repo.name, branchName: repo.branchName }));
 		if (missing.length > 0) {
-			workflowError(operation, 'validation_failed', `Package branch alignment is required for ${operation}.`, {
+			workflowError(operation, 'validation_failed', `Managed repository branch alignment is required for ${operation}.`, {
 				details: { expectedBranch: session.branchName, repos: missing },
 			});
 		}
 	}
 	const missingOriginRepos = [
 		session.rootRepo,
-		...(allowPackageReposWithoutOrigin ? [] : session.packageRepos),
+		...(allowPackageReposWithoutOrigin ? [] : session.managedRepos),
 	]
 		.filter((repo) => !repo.hasOriginRemote)
 		.map((repo) => repo.name);
@@ -3650,7 +3657,7 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 			const mode = session.mode;
 			const repoDir = session.gitRoot;
 			const rootRepo = createWorkspaceRootRepoReport(root);
-			const packageReports = createWorkspacePackageReports(root);
+			const packageReports = createManagedWorkflowRepoReports(root);
 			let previewResult: Record<string, unknown> | null = null;
 			const dirtyRepos = [rootRepo, ...packageReports].filter((repo) => repo.dirty).map((repo) => repo.name);
 
@@ -3741,22 +3748,22 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 				rootRepo.commitSha = headCommit(repoDir);
 				rootRepo.pushed = rootSwitch.created;
 
-				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
-					const report = findReportByName(packageReports, pkg.name);
+				for (const managedRepo of checkedOutManagedWorkflowRepos(root)) {
+					const report = findReportByName(packageReports, managedRepo.name);
 					if (!report) {
 						continue;
 					}
 					const packageSwitch = await executeJournalStep(root, workflowRun.runId, `switch-${report.name}`, () =>
-						checkoutTaskBranchFromStaging(pkg.dir, branchName, {
+						checkoutTaskBranchFromStaging(managedRepo.dir, branchName, {
 							createIfMissing: input.createIfMissing !== false,
 							pushIfCreated: false,
 						}),
 					);
-					report.branch = currentBranch(pkg.dir) || branchName;
+					report.branch = currentBranch(managedRepo.dir) || branchName;
 					report.created = packageSwitch.created;
 					report.resumed = packageSwitch.resumed;
-					report.commitSha = headCommit(pkg.dir);
-					report.dirty = hasMeaningfulChanges(pkg.dir);
+					report.commitSha = headCommit(managedRepo.dir);
+					report.dirty = hasMeaningfulChanges(managedRepo.dir);
 				}
 
 				const workspaceLinks = await executeJournalStep(root, workflowRun.runId, 'workspace-link', () =>
@@ -3957,7 +3964,7 @@ function planUpdateRepo(name: string, repoDir: string, branch: string, sourceBra
 	};
 }
 
-function ensureUpdateRepoReady(operation: 'update', repo: TreeseedWorkflowSession['rootRepo'] | TreeseedWorkflowSession['packageRepos'][number], expectedBranch?: string) {
+function ensureUpdateRepoReady(operation: 'update', repo: TreeseedWorkflowSession['rootRepo'] | TreeseedWorkflowSession['managedRepos'][number], expectedBranch?: string) {
 	if (repo.detached || !repo.branchName) {
 		workflowError(operation, 'validation_failed', `${repo.name} is detached; update requires attached branches.`, {
 			details: { repo },
@@ -4121,11 +4128,11 @@ export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: T
 				});
 			}
 			ensureUpdateRepoReady('update', session.rootRepo);
-			for (const repo of session.packageRepos) {
+			for (const repo of session.managedRepos) {
 				ensureUpdateRepoReady('update', repo, branch);
 			}
 
-			const repoPlans = session.packageRepos.map((repo) =>
+			const repoPlans = session.managedRepos.map((repo) =>
 				planUpdateRepo(repo.name, repo.path, branch, sourceBranch, strategy));
 			const rootPlan = planUpdateRepo('@treeseed/market', session.gitRoot, branch, sourceBranch, strategy);
 			const blockers = [...repoPlans, rootPlan].flatMap((repo) => repo.blockers.map((blocker) => `${repo.name}: ${blocker}`));
@@ -4165,7 +4172,7 @@ export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: T
 				{ from: sourceBranch, strategy, push, workspaceLinks: input.workspaceLinks ?? 'auto' },
 				[
 					{ id: 'validate-update', description: `Validate update from ${sourceBranch}`, repoName: session.rootRepo.name, repoPath: session.rootRepo.path, branch, resumable: true },
-					...session.packageRepos.map((repo) => ({
+					...session.managedRepos.map((repo) => ({
 						id: `update-${repo.name}`,
 						description: `Merge origin/${sourceBranch} into ${repo.name}`,
 						repoName: repo.name,
@@ -4188,7 +4195,7 @@ export async function workflowUpdate(helpers: WorkflowOperationHelpers, input: T
 					push,
 				}));
 				const repos: TreeseedUpdateRepoResult[] = [];
-				for (const repo of session.packageRepos) {
+				for (const repo of session.managedRepos) {
 					const result = await executeJournalStep(root, workflowRun.runId, `update-${repo.name}`, () =>
 						mergeUpdateRepo({
 							name: repo.name,
@@ -4382,7 +4389,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 				workflowError('save', 'unsupported_state', 'Treeseed save is blocked on main unless --hotfix is explicitly set.');
 			}
 
-			const packageReports = createWorkspacePackageReports(root);
+			const packageReports = createManagedWorkflowRepoReports(root);
 			const rootRepo = createRepoReport('@treeseed/market', gitRoot, branch, hasMeaningfulChanges(gitRoot));
 			const blockers: string[] = [];
 
@@ -4860,17 +4867,17 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 							}
 							: null,
 						...worktreePayload(root, effectiveInput.worktreeMode),
-						autoSaveRequired: session.rootRepo.dirty || session.packageRepos.some((repo) => repo.dirty),
-						repos: createWorkspacePackageReports(root),
+						autoSaveRequired: session.rootRepo.dirty || session.managedRepos.some((repo) => repo.dirty),
+						repos: createManagedWorkflowRepoReports(root),
 						rootRepo: createWorkspaceRootRepoReport(root),
 						blockers,
 						plannedSteps: [
 							{ id: 'workspace-unlink', description: 'Remove local workspace links before task cleanup' },
 							{ id: 'preview-cleanup', description: `Destroy preview resources for ${branchName ?? '(current task)'}` },
 							{ id: 'cleanup-root', description: `Archive and delete ${branchName ?? '(current task)'} in market` },
-							...checkedOutWorkspacePackageRepos(root).map((pkg) => ({
-								id: `cleanup-${pkg.name}`,
-								description: `Archive and delete ${branchName ?? '(current task)'} in ${pkg.name}`,
+							...checkedOutManagedWorkflowRepos(root).map((repo) => ({
+								id: `cleanup-${repo.name}`,
+								description: `Archive and delete ${branchName ?? '(current task)'} in ${repo.name}`,
 							})),
 							{ id: 'workspace-link', description: 'Restore local workspace links on the final branch' },
 							...(isManagedWorkflowWorktree(root)
@@ -4903,7 +4910,7 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 			}
 
 			const rootRepo = createWorkspaceRootRepoReport(root);
-			const packageReports = createWorkspacePackageReports(root);
+			const packageReports = createManagedWorkflowRepoReports(root);
 			const workflowRun = acquireWorkflowRun(
 				'close',
 				activeSession,
@@ -4974,8 +4981,8 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 				rootRepo.branch = typeof rootCleanup?.branch === 'string' ? rootCleanup.branch : (currentBranch(repoDir) || STAGING_BRANCH);
 				rootRepo.dirty = rootCleanup?.dirty === true;
 
-				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
-					const report = findReportByName(packageReports, pkg.name);
+				for (const managedRepo of checkedOutManagedWorkflowRepos(root)) {
+					const report = findReportByName(packageReports, managedRepo.name);
 					if (!report) {
 						continue;
 					}

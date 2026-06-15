@@ -457,6 +457,30 @@ export function isTaskBranch(branchName) {
 		&& !branchName.startsWith('deprecated/');
 }
 
+export function taskTagSlug(branchName) {
+	return String(branchName ?? '')
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/gu, '-')
+		.replace(/^-+|-+$/gu, '')
+		.slice(0, 80) || 'task';
+}
+
+export function createDeprecatedTaskTag(repoDir, branchName, message = 'deprecated task branch') {
+	const head = headCommit(repoDir, branchName);
+	const tagName = `deprecated/${taskTagSlug(branchName)}/${head.slice(0, 12)}`;
+	try {
+		runGit(['rev-parse', `${tagName}^{}`], { cwd: repoDir, capture: true });
+	} catch {
+		runGit(['tag', '-a', tagName, head, '-m', message], { cwd: repoDir });
+	}
+	try {
+		runGit(['push', 'origin', tagName], { cwd: repoDir });
+	} catch {
+		// Local-only repositories still keep the resurrection tag locally.
+	}
+	return { tagName, head };
+}
+
 export function assertFeatureBranch(cwd = workspaceRoot()) {
 	const branchName = currentManagedBranch(cwd);
 	if (!branchName) {

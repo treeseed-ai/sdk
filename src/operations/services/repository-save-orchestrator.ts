@@ -65,8 +65,14 @@ import {
 	discoverTreeseedPackageAdapters,
 	type TreeseedPackageCommand,
 } from './package-adapters.ts';
+import {
+	discoverTreeseedManagedRepositories,
+	parseGitmodulesPaths,
+	readTreeseedTemplateRepositoryManifest,
+	type TreeseedManagedRepositoryKind,
+} from './managed-repositories.ts';
 
-export type RepoKind = 'package' | 'project';
+export type RepoKind = 'package' | 'project' | 'template' | 'fixture';
 export type RepoBranchMode = 'package-release-main' | 'package-dev-save' | 'project-save';
 export type SaveVerifyMode = 'action-first' | 'local-only' | 'skip';
 
@@ -499,7 +505,9 @@ function packageScripts(packageJson: Record<string, unknown> | null) {
 		: {};
 }
 
-function classifyRepoKind(packageJson: Record<string, unknown> | null): RepoKind {
+function classifyRepoKind(packageJson: Record<string, unknown> | null, managedKind?: TreeseedManagedRepositoryKind): RepoKind {
+	if (managedKind === 'template') return 'template';
+	if (managedKind === 'fixture') return 'fixture';
 	if (typeof packageJson?.name !== 'string' || typeof packageJson?.version !== 'string') {
 		return 'project';
 	}
@@ -567,17 +575,22 @@ function emptyManifestVerifyCommands(): RepositorySaveNode['manifestVerifyComman
 	return { fast: null, local: null, release: null };
 }
 
+function verifyCommandFromString(repoDir: string, label: 'fast' | 'local' | 'release', command: string | null): TreeseedPackageCommand | null {
+	return command ? { label, command: 'bash', args: ['-lc', command], cwd: repoDir } : null;
+}
+
+function templateVerifyCommands(repoDir: string): RepositorySaveNode['manifestVerifyCommands'] | null {
+	const manifest = readTreeseedTemplateRepositoryManifest(repoDir);
+	if (!manifest) return null;
+	return {
+		fast: verifyCommandFromString(repoDir, 'fast', manifest.verify.fast),
+		local: verifyCommandFromString(repoDir, 'local', manifest.verify.local),
+		release: verifyCommandFromString(repoDir, 'release', manifest.verify.release),
+	};
+}
+
 function parseGitmodules(root: string) {
-	const gitmodulesPath = resolve(root, '.gitmodules');
-	if (!existsSync(gitmodulesPath)) {
-		return [] as string[];
-	}
-	const source = readFileSync(gitmodulesPath, 'utf8');
-	const paths: string[] = [];
-	for (const match of source.matchAll(/^\s*path\s*=\s*(.+?)\s*$/gmu)) {
-		paths.push(match[1].replaceAll('\\', '/'));
-	}
-	return paths;
+	return parseGitmodulesPaths(root);
 }
 
 function slugBranch(branch: string) {
@@ -694,8 +707,14 @@ export function discoverRepositorySaveNodes(
 	options: { stablePackageRelease?: boolean } = {},
 ): RepositorySaveNode[] {
 	const repoDirs = new Map<string, string>();
-	repoDirs.set('.', gitRoot);
 	const packageAdaptersByDir = new Map(discoverTreeseedPackageAdapters(root).map((adapter) => [resolve(adapter.dir), adapter]));
+	const managedRepositoriesByDir = new Map(discoverTreeseedManagedRepositories(root).map((repo) => [resolve(repo.dir), repo]));
+	for (const repo of managedRepositoriesByDir.values()) {
+		repoDirs.set(repo.relativeDir, repo.dir);
+	}
+	if (!repoDirs.has('.')) {
+		repoDirs.set('.', gitRoot);
+	}
 
 	if (hasCompleteTreeseedPackageCheckout(root)) {
 		for (const pkg of workspacePackages(root)) {
@@ -721,7 +740,8 @@ export function discoverRepositorySaveNodes(
 		const packageJsonPath = resolve(repoDir, 'package.json');
 		const packageJson = existsSync(packageJsonPath) ? readJson(packageJsonPath) : null;
 		const adapter = packageAdaptersByDir.get(resolve(repoDir)) ?? null;
-		const kind = adapter && !packageJson ? 'package' : classifyRepoKind(packageJson);
+		const managed = managedRepositoriesByDir.get(resolve(repoDir)) ?? null;
+		const kind = adapter && !packageJson ? 'package' : classifyRepoKind(packageJson, managed?.kind);
 		const repoBranch = relativePath === '.'
 			? (currentBranch(repoDir) || branch || null)
 			: (branch || currentBranch(repoDir) || null);
@@ -732,7 +752,9 @@ export function discoverRepositorySaveNodes(
 				: 'package-dev-save';
 		return {
 			id: relativePath,
-			name: adapter?.id ?? repoDisplayName(repoDir, packageJson),
+			name: managed?.kind === 'template' || managed?.kind === 'fixture'
+				? managed.name
+				: adapter?.id ?? repoDisplayName(repoDir, packageJson),
 			path: repoDir,
 			relativePath,
 			kind,
@@ -741,7 +763,9 @@ export function discoverRepositorySaveNodes(
 			packageJsonPath: packageJson ? packageJsonPath : null,
 			packageJson,
 			scripts: packageScripts(packageJson),
-			manifestVerifyCommands: adapter?.verifyCommands ?? emptyManifestVerifyCommands(),
+			manifestVerifyCommands: adapter?.verifyCommands
+				?? templateVerifyCommands(repoDir)
+				?? emptyManifestVerifyCommands(),
 			remoteUrl: originRemoteUrlSafe(repoDir),
 			dependencies: [],
 			dependents: [],

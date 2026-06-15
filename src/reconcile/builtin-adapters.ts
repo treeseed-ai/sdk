@@ -98,7 +98,15 @@ import {
 	runDockerCompose,
 } from './providers/docker-private.ts';
 import { checkHttpHealth, runManagedDevAction } from './providers/local-private.ts';
-import { runHostedReconcileGate, runHostedVerifyGate, runReleaseVerifyCommand, writeReleaseRecord } from './providers/release-private.ts';
+import {
+	ensureTemplateReleaseTag,
+	runHostedReconcileGate,
+	runHostedVerifyGate,
+	runReleaseVerifyCommand,
+	runTemplateReleaseVerifyCommand,
+	writeReleaseRecord,
+} from './providers/release-private.ts';
+import { checkedOutTemplateRepositories } from '../operations/services/managed-repositories.ts';
 
 function toDeployTarget(target: TreeseedReconcileTarget) {
 	return target.kind === 'persistent'
@@ -257,22 +265,26 @@ function genericVerification(input: TreeseedReconcileAdapterInput, observed: Tre
 function buildManifestAdapter(): TreeseedReconcileAdapter {
 	return {
 		providerId: 'treeseed',
-		unitTypes: ['package-manifest'],
+		unitTypes: ['package-manifest', 'template-manifest'],
 		supports(unitType, providerId) {
-			return unitType === 'package-manifest' && providerId === 'treeseed';
+			return (unitType === 'package-manifest' || unitType === 'template-manifest') && providerId === 'treeseed';
 		},
 		async refresh(input) {
 			const manifestPath = typeof input.unit.spec.manifestPath === 'string' ? input.unit.spec.manifestPath : null;
-			return genericObservedState(input, manifestPath ? existsSync(manifestPath) : true, manifestPath ? [] : ['package manifest path is not available']);
+			const warningLabel = input.unit.unitType === 'template-manifest' ? 'template manifest path is not available' : 'package manifest path is not available';
+			return genericObservedState(input, manifestPath ? existsSync(manifestPath) : true, manifestPath ? [] : [warningLabel]);
 		},
 		diff(input) {
-			return input.observed.exists ? noopDiff() : { action: 'blocked', reasons: ['package manifest is missing'], before: input.observed.live, after: input.unit.spec };
+			const label = input.unit.unitType === 'template-manifest' ? 'template manifest' : 'package manifest';
+			return input.observed.exists ? noopDiff() : { action: 'blocked', reasons: [`${label} is missing`], before: input.observed.live, after: input.unit.spec };
 		},
 		apply(input) {
 			return genericResult(input);
 		},
 		verify(input) {
-			return genericVerification(input, input.observed, 'Package manifest exists and is readable');
+			return genericVerification(input, input.observed, input.unit.unitType === 'template-manifest'
+				? 'Template manifest exists and is readable'
+				: 'Package manifest exists and is readable');
 		},
 	};
 }
@@ -1173,6 +1185,8 @@ function buildLocalTreeDxAdapter(): TreeseedReconcileAdapter {
 function buildReleaseGateAdapter(): TreeseedReconcileAdapter {
 	const unitTypes: TreeseedReconcileUnitType[] = [
 		'release-gate:verify',
+		'release-gate:template-verify',
+		'release-gate:template-release-record',
 		'release-gate:npm-publish',
 		'release-gate:image-publish',
 		'release-gate:hosted-reconcile',
@@ -1210,12 +1224,46 @@ function buildReleaseGateAdapter(): TreeseedReconcileAdapter {
 			if (input.diff.action === 'noop') return genericResult(input);
 			const gateKind = String(input.unit.spec.gateKind ?? input.unit.unitType);
 			const packageId = typeof input.unit.spec.packageId === 'string' ? input.unit.spec.packageId : null;
+			const templateId = typeof input.unit.spec.templateId === 'string' ? input.unit.spec.templateId : null;
 			if (gateKind === 'release-gate:verify' && packageId) {
 				const verify = runReleaseVerifyCommand({ tenantRoot: input.context.tenantRoot, packageId, env: input.context.launchEnv });
 				if (verify.ok !== true) {
 					throw new Error([verify.stderr, verify.stdout].filter(Boolean).join('\n').trim() || `${packageId} release verification failed`);
 				}
 				return genericResult(input, { ...input.observed.live, verify, fingerprint: input.unit.spec.fingerprint });
+			}
+			if (gateKind === 'release-gate:template-verify' && templateId) {
+				const verify = runTemplateReleaseVerifyCommand({ tenantRoot: input.context.tenantRoot, templateId, env: input.context.launchEnv });
+				if (verify.ok !== true) {
+					throw new Error([verify.stderr, verify.stdout].filter(Boolean).join('\n').trim() || `${templateId} template release verification failed`);
+				}
+				return genericResult(input, { ...input.observed.live, verify, fingerprint: input.unit.spec.fingerprint });
+			}
+			if (gateKind === 'release-gate:template-release-record' && templateId) {
+				const releaseTag = typeof input.unit.spec.releaseTag === 'string' ? input.unit.spec.releaseTag : null;
+				const tag = releaseTag && input.context.target.kind === 'persistent' && input.context.target.scope === 'prod'
+					? ensureTemplateReleaseTag({ tenantRoot: input.context.tenantRoot, templateId, tagName: releaseTag })
+					: null;
+				const recordPath = typeof input.unit.spec.recordPath === 'string'
+					? input.unit.spec.recordPath
+					: `.treeseed/templates/${templateId}/latest-release.json`;
+				const template = checkedOutTemplateRepositories(input.context.tenantRoot)
+					.find((candidate) => candidate.templateManifest?.id === templateId);
+				const record = writeReleaseRecord({
+					tenantRoot: input.context.tenantRoot,
+					recordPath,
+					record: {
+						schemaVersion: 1,
+						kind: gateKind,
+						templateId,
+						releaseTag,
+						tag,
+						environment: input.unit.spec.environment ?? null,
+						version: template?.templateManifest?.version ?? null,
+						recordedAt: nowIso(),
+					},
+				});
+				return genericResult(input, { ...input.observed.live, record, tag, fingerprint: input.unit.spec.fingerprint });
 			}
 			if ((gateKind === 'release-gate:npm-publish' || gateKind === 'release-gate:image-publish') && packageId) {
 				const adapter = findTreeseedPackageAdapter(input.context.tenantRoot, packageId);
@@ -1444,12 +1492,7 @@ function resolveReconcileEnvironmentValues(
 		...normalizeEnvironmentValues(process.env),
 		...normalizeEnvironmentValues(input.context.launchEnv),
 	};
-	const scopedMachineValues = resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
-	const values = {
-		...hostedRuntimeValues,
-		...scopedMachineValues,
-	};
-	return values;
+	return hostedRuntimeValues;
 }
 
 function buildCloudflareEnv(input: TreeseedReconcileAdapterInput) {
@@ -3666,7 +3709,7 @@ async function ensureRailwayMarketDatabaseForScope(
 		}
 	} catch (error) {
 		const detail = error instanceof Error ? error.message : String(error ?? '');
-		throw new Error(`Railway provider limitation while reconciling PostgreSQL storage for ${serviceName}: ${detail}`);
+		throw new Error(`Railway provider limitation while reconciling PostgreSQL volume name for ${serviceName}: ${detail}`);
 	}
 	const services = await listRailwayServices({ projectId: firstService.project.id, env: topology.env });
 	for (const service of services) {

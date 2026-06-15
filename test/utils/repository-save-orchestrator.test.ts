@@ -108,6 +108,75 @@ describe('repository save orchestrator helpers', () => {
 		expect(repo.branchMode).toBe('project-save');
 	});
 
+	it('discovers starter templates and nested fixture submodules as managed save nodes', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-managed-repos-'));
+		git(root, ['init', '-b', 'demo']);
+		writeJson(resolve(root, 'package.json'), {
+			name: '@treeseed/market',
+			version: '1.0.0',
+			private: true,
+			workspaces: ['packages/*'],
+		});
+		writeFileSync(resolve(root, '.gitmodules'), [
+			'[submodule "packages/core"]',
+			'\tpath = packages/core',
+			'\turl = ../core.git',
+			'[submodule "starters/research"]',
+			'\tpath = starters/research',
+			'\turl = ../research.git',
+			'',
+		].join('\n'), 'utf8');
+		const coreDir = resolve(root, 'packages/core');
+		const fixtureDir = resolve(coreDir, '.fixtures/treeseed-fixtures');
+		const researchDir = resolve(root, 'starters/research');
+		for (const dir of [coreDir, fixtureDir, researchDir]) {
+			mkdirSync(dir, { recursive: true });
+			git(dir, ['init', '-b', 'demo']);
+		}
+		writeJson(resolve(coreDir, 'package.json'), {
+			name: '@treeseed/core',
+			version: '1.0.0',
+			private: true,
+		});
+		writeFileSync(resolve(coreDir, '.gitmodules'), [
+			'[submodule ".fixtures/treeseed-fixtures"]',
+			'\tpath = .fixtures/treeseed-fixtures',
+			'\turl = ../treeseed-fixtures.git',
+			'',
+		].join('\n'), 'utf8');
+		writeJson(resolve(researchDir, 'template.config.json'), {
+			id: 'research',
+			displayName: 'TreeSeed Research',
+			category: 'starter',
+			templateVersion: '1.0.0',
+		});
+		writeFileSync(resolve(researchDir, 'treeseed.template.yaml'), [
+			'id: research',
+			'name: TreeSeed Research',
+			'category: starter',
+			'versionSource: template.config.json',
+			'verify:',
+			'  local: echo verify',
+			'  release: echo release',
+			'',
+		].join('\n'), 'utf8');
+
+		const nodes = discoverRepositorySaveNodes(root, root, 'demo');
+		expect(nodes.map((entry) => [entry.id, entry.kind, entry.name])).toEqual(expect.arrayContaining([
+			['.', 'project', '@treeseed/market'],
+			['packages/core', 'project', '@treeseed/core'],
+			['packages/core/.fixtures/treeseed-fixtures', 'fixture', 'fixture:packages/core/.fixtures/treeseed-fixtures'],
+			['starters/research', 'template', 'template:research'],
+		]));
+		expect(nodes.find((entry) => entry.id === 'packages/core')?.submoduleDependencies).toEqual([
+			'packages/core/.fixtures/treeseed-fixtures',
+		]);
+		expect(nodes.find((entry) => entry.id === '.')?.submoduleDependencies).toEqual(expect.arrayContaining([
+			'packages/core',
+			'starters/research',
+		]));
+	});
+
 	it('plans root workspace lockfile refresh against the real manifest', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-plan-lockfile-'));
 		git(root, ['init', '-b', 'staging']);

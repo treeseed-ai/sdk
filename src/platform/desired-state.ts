@@ -5,6 +5,10 @@ import {
 } from '../operations/services/package-adapters.ts';
 import { resolveCapacityProviderLaunchPlan } from '../capacity-provider.ts';
 import { workspaceRoot } from '../operations/services/workspace-tools.ts';
+import {
+	checkedOutTemplateRepositories,
+	type TreeseedTemplateRepositoryManifest,
+} from '../operations/services/managed-repositories.ts';
 import { deriveTreeseedDesiredUnits } from '../reconcile/desired-state.ts';
 import type { TreeseedDesiredUnit, TreeseedReconcileSelector, TreeseedReconcileTarget } from '../reconcile/contracts.ts';
 
@@ -21,8 +25,21 @@ export type TreeseedPackageUnit = {
 	releaseCapability: 'npm' | 'image' | 'deploy-only' | 'none';
 };
 
+export type TreeseedTemplateUnit = {
+	id: string;
+	name: string;
+	category: string;
+	path: string;
+	version: string | null;
+	repository: string | null;
+	manifestPath: string | null;
+	releaseTag: string | null;
+	recordPath: string;
+};
+
 export type TreeseedDesiredResourceKind =
 	| 'package-manifest'
+	| 'template-manifest'
 	| 'package-workflow'
 	| 'package-image'
 	| 'github-environment'
@@ -70,6 +87,7 @@ export type TreeseedDesiredResourceGraph = {
 	workspaceId: string;
 	environment: TreeseedDesiredEnvironment;
 	packages: TreeseedPackageUnit[];
+	templates: TreeseedTemplateUnit[];
 	resources: TreeseedDesiredResource[];
 	edges: TreeseedDesiredResourceEdge[];
 	fingerprints: Record<string, string>;
@@ -112,6 +130,25 @@ function packageUnitFromAdapter(adapter: TreeseedPackageAdapter): TreeseedPackag
 		publishTarget: adapter.publishTarget,
 		manifestPath: adapter.manifestPath,
 		releaseCapability: packageReleaseCapability(adapter),
+	};
+}
+
+function templateReleaseTag(manifest: TreeseedTemplateRepositoryManifest) {
+	return manifest.version ? `${manifest.release.tagPrefix}${manifest.id}/v${manifest.version}` : null;
+}
+
+function templateUnitFromRepository(repo: ReturnType<typeof checkedOutTemplateRepositories>[number]): TreeseedTemplateUnit {
+	const manifest = repo.templateManifest!;
+	return {
+		id: manifest.id,
+		name: manifest.name,
+		category: manifest.category,
+		path: repo.relativeDir,
+		version: manifest.version,
+		repository: manifest.repository,
+		manifestPath: manifest.manifestPath,
+		releaseTag: templateReleaseTag(manifest),
+		recordPath: manifest.release.recordPath,
 	};
 }
 
@@ -366,6 +403,31 @@ function packageResources(adapter: TreeseedPackageAdapter, environment: Treeseed
 	return resources;
 }
 
+function templateResources(templates: TreeseedTemplateUnit[], environment: TreeseedDesiredEnvironment): TreeseedDesiredResource[] {
+	return templates.map((template) => ({
+		id: `template-manifest:${template.id}`,
+		kind: 'template-manifest' as const,
+		provider: 'treeseed',
+		environment,
+		packageId: template.id,
+		serviceId: null,
+		logicalName: `${template.name} template manifest`,
+		dependencies: [],
+		spec: {
+			templateId: template.id,
+			templateName: template.name,
+			category: template.category,
+			templateRoot: template.path,
+			manifestPath: template.manifestPath,
+			version: template.version,
+			repository: template.repository,
+			releaseTag: template.releaseTag,
+			recordPath: template.recordPath,
+		},
+		source: { type: 'package-adapter' as const, id: `template:${template.id}` },
+	}));
+}
+
 function localDevelopmentResources(environment: TreeseedDesiredEnvironment): TreeseedDesiredResource[] {
 	if (environment !== 'local') return [];
 	const composeId = 'local-docker-compose:agent-capacity-provider';
@@ -558,7 +620,7 @@ function localDevelopmentResources(environment: TreeseedDesiredEnvironment): Tre
 	];
 }
 
-function releaseGateResources(packages: TreeseedPackageUnit[], environment: TreeseedDesiredEnvironment): TreeseedDesiredResource[] {
+function releaseGateResources(packages: TreeseedPackageUnit[], templates: TreeseedTemplateUnit[], environment: TreeseedDesiredEnvironment): TreeseedDesiredResource[] {
 	const phase = releasePhaseForEnvironment(environment);
 	const hostedEnvironment = environment === 'prod' ? 'prod' : 'staging';
 	const packageGates = packages.flatMap((pkg) => {
@@ -611,8 +673,55 @@ function releaseGateResources(packages: TreeseedPackageUnit[], environment: Tree
 			}] : []),
 		];
 	});
+	const templateGates = templates.flatMap((template) => {
+		const verifyGate: TreeseedDesiredResource = {
+			id: `release-gate:template-verify:${template.id}`,
+			kind: 'release-gate',
+			provider: 'treeseed',
+			environment,
+			packageId: template.id,
+			serviceId: null,
+			logicalName: `${template.name} template verify gate`,
+			dependencies: [`template-manifest:${template.id}`],
+			spec: {
+				gateKind: 'release-gate:template-verify',
+				phase,
+				templateId: template.id,
+				environment: hostedEnvironment,
+				fingerprint: hashJson({ templateId: template.id, version: template.version, repository: template.repository, environment, phase }),
+				releaseTag: template.releaseTag,
+				recordPath: template.recordPath,
+			},
+			source: { type: 'package-adapter' as const, id: `template:${template.id}` },
+		};
+		return [
+			verifyGate,
+			{
+				id: `release-gate:template-release-record:${template.id}`,
+				kind: 'release-gate' as const,
+				provider: 'treeseed',
+				environment,
+				packageId: template.id,
+				serviceId: null,
+				logicalName: `${template.name} template release record`,
+				dependencies: [verifyGate.id],
+				spec: {
+					gateKind: 'release-gate:template-release-record',
+					phase,
+					templateId: template.id,
+					environment: hostedEnvironment,
+					fingerprint: hashJson({ gate: 'template-release-record', templateId: template.id, version: template.version, releaseTag: template.releaseTag, environment, phase }),
+					releaseTag: template.releaseTag,
+					recordPath: template.recordPath,
+				},
+				source: { type: 'package-adapter' as const, id: `template:${template.id}` },
+			},
+		];
+	});
+	const releaseDependencies = [...packageGates.map((gate) => gate.id), ...templateGates.map((gate) => gate.id)];
 	return [
 		...packageGates,
+		...templateGates,
 		{
 			id: `release-gate:hosted-reconcile:${hostedEnvironment}:all`,
 			kind: 'release-gate',
@@ -621,13 +730,13 @@ function releaseGateResources(packages: TreeseedPackageUnit[], environment: Tree
 			packageId: null,
 			serviceId: 'hosted-reconcile',
 			logicalName: `${hostedEnvironment} hosted reconciliation gate`,
-			dependencies: packageGates.map((gate) => gate.id),
+			dependencies: releaseDependencies,
 			spec: {
 				gateKind: 'release-gate:hosted-reconcile',
 				phase,
 				environment: hostedEnvironment,
 				appId: 'all',
-				fingerprint: hashJson({ gate: 'hosted-reconcile', environment: hostedEnvironment, packages }),
+				fingerprint: hashJson({ gate: 'hosted-reconcile', environment: hostedEnvironment, packages, templates }),
 				hostedSelector: {
 					environment: hostedEnvironment,
 					provider: ['cloudflare', 'cloudflare-dns', 'railway'],
@@ -649,7 +758,7 @@ function releaseGateResources(packages: TreeseedPackageUnit[], environment: Tree
 				phase,
 				environment: hostedEnvironment,
 				appId: 'all',
-				fingerprint: hashJson({ gate: 'live-verify', environment: hostedEnvironment, packages }),
+				fingerprint: hashJson({ gate: 'live-verify', environment: hostedEnvironment, packages, templates }),
 				hostedSelector: {
 					environment: hostedEnvironment,
 					provider: ['cloudflare', 'cloudflare-dns', 'railway'],
@@ -670,7 +779,7 @@ function releaseGateResources(packages: TreeseedPackageUnit[], environment: Tree
 				gateKind: environment === 'prod' ? 'release-gate:production-record' : 'release-gate:candidate-record',
 				phase,
 				environment,
-				fingerprint: hashJson({ gate: environment === 'prod' ? 'production-record' : 'candidate-record', packages }),
+				fingerprint: hashJson({ gate: environment === 'prod' ? 'production-record' : 'candidate-record', packages, templates }),
 				recordPath: environment === 'prod'
 					? '.treeseed/workflow/releases/latest-production.json'
 					: '.treeseed/workflow/release-candidates/latest-staging.json',
@@ -766,12 +875,14 @@ export function compileTreeseedDesiredResourceGraph({
 	const derived = deriveTreeseedDesiredUnits({ tenantRoot, target });
 	const packageAdapters = discoverTreeseedPackageAdapters(tenantRoot);
 	const packages = packageAdapters.map(packageUnitFromAdapter);
+	const templates = checkedOutTemplateRepositories(tenantRoot).map(templateUnitFromRepository);
 	const resources = [
 		...derived.units.map((unit) => resourceFromUnit(unit, environment)),
 		...packageAdapters.flatMap((adapter) => packageResources(adapter, environment)),
+		...templateResources(templates, environment),
 		...localDevelopmentResources(environment),
 		...branchPreviewResources(target, environment),
-		...releaseGateResources(packages, environment),
+		...releaseGateResources(packages, templates, environment),
 	];
 	const edges: TreeseedDesiredResourceEdge[] = resources.flatMap((resource) =>
 		resource.dependencies.map((dependency) => ({
@@ -784,6 +895,7 @@ export function compileTreeseedDesiredResourceGraph({
 		workspaceId: derived.deployConfig.slug,
 		environment,
 		packages,
+		templates,
 		resources,
 		edges,
 		fingerprints,
@@ -817,6 +929,8 @@ export function selectTreeseedDesiredResources(
 		fingerprints: Object.fromEntries(Object.entries(graph.fingerprints).filter(([id]) => resourceIds.has(id))),
 		packages: graph.packages.filter((pkg) =>
 			resources.some((resource) => resource.packageId === pkg.id) || selectedIds.size === 0),
+		templates: graph.templates.filter((template) =>
+			resources.some((resource) => resource.packageId === template.id) || selectedIds.size === 0),
 	};
 }
 

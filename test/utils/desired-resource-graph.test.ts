@@ -67,6 +67,33 @@ describe('canonical desired resource graph', () => {
 		]));
 	});
 
+	it('includes first-party starter templates in release gate planning', () => {
+		if (!workspaceRoot) return;
+		const graph = compileTreeseedDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'prod' },
+		});
+
+		expect(graph.templates.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+			'engineering',
+			'information-hub',
+			'research',
+		]));
+		expect(graph.resources.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+			'template-manifest:engineering',
+			'template-manifest:information-hub',
+			'template-manifest:research',
+			'release-gate:template-verify:engineering',
+			'release-gate:template-release-record:engineering',
+		]));
+		expect(graph.resources.find((entry) => entry.id === 'release-gate:hosted-reconcile:prod:all')?.dependencies)
+			.toEqual(expect.arrayContaining([
+				'release-gate:template-release-record:engineering',
+				'release-gate:template-release-record:information-hub',
+				'release-gate:template-release-record:research',
+			]));
+	});
+
 	it('reports Git index lock diagnostics without mutating by default', () => {
 		const diagnostic = inspectTreeseedGitLocks(workspaceRoot ?? resolveTreeseedTestPath(testRoot, 'packages/sdk') ?? testRoot.root);
 		expect(diagnostic.repoRoot).toBeTruthy();

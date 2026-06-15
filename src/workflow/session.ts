@@ -20,6 +20,10 @@ import {
 	type TreeseedWorkflowBranchRole,
 	resolveTreeseedWorkflowPaths,
 } from './policy.ts';
+import {
+	checkedOutManagedWorkflowRepos,
+	type TreeseedManagedRepositoryKind,
+} from '../operations/services/managed-repositories.ts';
 
 export type TreeseedWorkflowMode = 'root-only' | 'recursive-workspace';
 
@@ -27,6 +31,7 @@ export type TreeseedWorkflowSessionRepo = {
 	name: string;
 	path: string;
 	relativePath: string;
+	kind: TreeseedManagedRepositoryKind | 'package';
 	branchName: string | null;
 	branchRole: TreeseedWorkflowBranchRole;
 	dirty: boolean;
@@ -47,6 +52,7 @@ export type TreeseedWorkflowSession = {
 	branchName: string | null;
 	branchRole: TreeseedWorkflowBranchRole;
 	rootRepo: TreeseedWorkflowSessionRepo;
+	managedRepos: TreeseedWorkflowSessionRepo[];
 	packageRepos: TreeseedWorkflowSessionRepo[];
 	packageSelection: TreeseedWorkflowPackageSelection;
 };
@@ -60,12 +66,13 @@ function hasOriginRemote(repoDir: string) {
 	}
 }
 
-function repoState(root: string, name: string, repoDir: string): TreeseedWorkflowSessionRepo {
+function repoState(root: string, name: string, repoDir: string, kind: TreeseedWorkflowSessionRepo['kind'] = 'package'): TreeseedWorkflowSessionRepo {
 	const branchName = currentBranch(repoDir) || null;
 	return {
 		name,
 		path: repoDir,
 		relativePath: relative(root, repoDir).replaceAll('\\', '/') || '.',
+		kind,
 		branchName,
 		branchRole: classifyTreeseedBranchRole(branchName, repoDir),
 		dirty: gitStatusPorcelain(repoDir).length > 0,
@@ -75,11 +82,17 @@ function repoState(root: string, name: string, repoDir: string): TreeseedWorkflo
 }
 
 export function checkedOutWorkspacePackageRepos(root: string) {
-	if (!hasCompleteTreeseedPackageCheckout(root) && workspacePackages(root).length === 0) {
+	let packages: ReturnType<typeof workspacePackages> = [];
+	try {
+		packages = workspacePackages(root);
+	} catch {
+		packages = [];
+	}
+	if (!hasCompleteTreeseedPackageCheckout(root) && packages.length === 0) {
 		return [];
 	}
 	const repos = new Map<string, ReturnType<typeof workspacePackages>[number]>();
-	for (const pkg of workspacePackages(root).filter((pkg) => pkg.name?.startsWith('@treeseed/'))) {
+	for (const pkg of packages.filter((pkg) => pkg.name?.startsWith('@treeseed/'))) {
 		if (!existsSync(resolve(pkg.dir, '.git'))) continue;
 		repos.set(pkg.name, pkg);
 	}
@@ -143,13 +156,15 @@ export function resolveTreeseedWorkflowSession(cwd: string): TreeseedWorkflowSes
 	const gitRoot = repoRoot(root);
 	const mode = workflowModeForRoot(root);
 	const packageRepos = checkedOutWorkspacePackageRepos(root).map((pkg) => repoState(root, pkg.name, pkg.dir));
+	const managedRepos = checkedOutManagedWorkflowRepos(root).map((repo) => repoState(root, repo.name, repo.dir, repo.kind));
 	return {
 		root,
 		gitRoot,
 		mode,
 		branchName: currentBranch(gitRoot) || null,
 		branchRole: classifyTreeseedBranchRole(currentBranch(gitRoot) || null, gitRoot),
-		rootRepo: repoState(root, '@treeseed/market', gitRoot),
+		rootRepo: repoState(root, '@treeseed/market', gitRoot, 'root'),
+		managedRepos,
 		packageRepos,
 		packageSelection: collectReleasePackageSelection(root),
 	};
