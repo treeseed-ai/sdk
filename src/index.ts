@@ -259,7 +259,13 @@ export {
 	type RepositoryHost,
 } from './operations/services/hub-launch.ts';
 export {
+	deployRailwayServiceInstance,
 	ensureRailwayGeneratedServiceDomain,
+	ensureRailwayEnvironment,
+	ensureRailwayProject,
+	ensureRailwayService,
+	ensureRailwayServiceInstanceConfiguration,
+	ensureRailwayServiceVolume,
 	getRailwayAuthProfile,
 	listRailwayEnvironments,
 	listRailwayProjects,
@@ -271,6 +277,7 @@ export {
 	resolveRailwayApiUrl,
 	resolveRailwayWorkspace,
 	resolveRailwayWorkspaceContext,
+	upsertRailwayVariables,
 } from './operations/services/railway-api.ts';
 export {
 	buildKnowledgePackMarketPackage,

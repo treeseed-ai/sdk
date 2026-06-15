@@ -36,6 +36,7 @@ export type TreeseedDesiredResourceKind =
 	| 'railway-domain'
 	| 'local-process'
 	| 'local-docker-compose'
+	| 'local-treedx'
 	| 'capacity-provider'
 	| 'branch-preview'
 	| 'branch-preview-cleanup'
@@ -368,12 +369,18 @@ function packageResources(adapter: TreeseedPackageAdapter, environment: Treeseed
 function localDevelopmentResources(environment: TreeseedDesiredEnvironment): TreeseedDesiredResource[] {
 	if (environment !== 'local') return [];
 	const composeId = 'local-docker-compose:agent-capacity-provider';
+	const treeDxComposeId = 'local-docker-compose:treedx';
+	const apiPostgresComposeId = 'local-docker-compose:api-postgres';
 	const capacityPlan = resolveCapacityProviderLaunchPlan({
 		schemaVersion: 1,
-		provider: {
-			dataDir: '.treeseed/local-capacity-provider/data',
-			environment: 'local',
-		},
+			provider: {
+				dataDir: '.treeseed/local-capacity-provider/data',
+				environment: 'local',
+				market: {
+					url: 'http://host.docker.internal:3000',
+					id: 'local',
+				},
+			},
 		runtime: {
 			images: {
 				roles: {
@@ -389,6 +396,82 @@ function localDevelopmentResources(environment: TreeseedDesiredEnvironment): Tre
 	} as any);
 	return [
 		{
+			id: apiPostgresComposeId,
+			kind: 'local-docker-compose',
+			provider: 'local',
+			environment,
+			packageId: '@treeseed/api',
+			serviceId: 'api-postgres',
+			logicalName: 'local API PostgreSQL compose',
+			dependencies: [],
+			spec: {
+				composeFile: 'packages/api/compose.postgres.yml',
+				projectName: 'treeseed-local-api-postgres',
+				cwd: '.',
+				dataDir: '.treeseed/local-api-postgres/data',
+				env: {
+					TREESEED_LOCAL_POSTGRES_PASSWORD: 'treeseed-local-dev',
+					TREESEED_LOCAL_POSTGRES_PORT: '54329',
+				},
+				ports: [{ host: 54329, container: 5432 }],
+				volumes: [{ name: 'treeseed-api-postgres-volume', mountPath: '/var/lib/postgresql/data', sharedLocalOnly: true }],
+				healthChecks: [
+					{ id: 'api-postgres-compose', kind: 'container', service: 'treeseed-api-postgres' },
+				],
+			},
+			source: { type: 'package-adapter', id: '@treeseed/api' },
+		},
+		{
+			id: 'local-treedx:team-primary',
+			kind: 'local-treedx',
+			provider: 'local',
+			environment,
+			packageId: 'treedx',
+			serviceId: 'treedx',
+			logicalName: 'local TreeDX team content repository plane',
+			dependencies: [treeDxComposeId],
+			spec: {
+				mode: 'private-team',
+				contentRepositoryAccessMode: 'treedx',
+				siteRepositoryAccessMode: 'filesystem',
+				projectRepositoryAccessMode: 'filesystem',
+				baseUrl: 'http://127.0.0.1:4000',
+				dataDir: '.treeseed/local-treedx/data',
+				healthEndpoint: 'http://127.0.0.1:4000/api/v1/health',
+			},
+			source: { type: 'package-adapter', id: 'treedx' },
+		},
+		{
+			id: treeDxComposeId,
+			kind: 'local-docker-compose',
+			provider: 'local',
+			environment,
+			packageId: 'treedx',
+			serviceId: 'treedx',
+			logicalName: 'local TreeDX compose',
+			dependencies: [],
+			spec: {
+				composeFile: 'packages/treedx/compose.yaml',
+				projectName: 'treeseed-local-treedx',
+				cwd: 'packages/treedx',
+				dataDir: '.treeseed/local-treedx/data',
+				ports: [{ host: 4000, container: 4000 }],
+				env: {
+					TREEDX_ALLOW_DEV_VERIFIER_IN_PROD: 'true',
+					TREESEED_TREEDX_JWT_ISSUER: 'https://api.treeseed.local/treedx',
+					TREESEED_TREEDX_JWT_AUDIENCE: 'treedx-local',
+					TREESEED_TREEDX_JWT_HS256_SECRET: 'treeseed-local-treedx-jwt-secret',
+					TREESEED_TREEDX_PROXY_ACTOR_ID: 'treeseed-api',
+					TREESEED_TREEDX_PROXY_TENANT_ID: 'treeseed-control-plane',
+				},
+				volumes: [{ name: 'treeseed-local-treedx-data', mountPath: '/data', sharedLocalOnly: true }],
+				healthChecks: [
+					{ id: 'treedx-api', kind: 'http', url: 'http://127.0.0.1:4000/api/v1/health' },
+				],
+			},
+			source: { type: 'package-adapter', id: 'treedx' },
+		},
+		{
 			id: 'capacity-provider:local',
 			kind: 'capacity-provider',
 			provider: 'local',
@@ -401,7 +484,7 @@ function localDevelopmentResources(environment: TreeseedDesiredEnvironment): Tre
 				mode: 'local',
 				roles: ['api', 'manager', 'runner'],
 				volumePolicy: 'shared-local',
-				healthEndpoint: 'http://127.0.0.1:4783/health',
+				healthEndpoint: 'http://127.0.0.1:4783/healthz',
 			},
 			source: { type: 'package-adapter', id: '@treeseed/agent' },
 		},
@@ -413,18 +496,29 @@ function localDevelopmentResources(environment: TreeseedDesiredEnvironment): Tre
 			packageId: '@treeseed/agent',
 			serviceId: 'agent-capacity-provider',
 			logicalName: 'agent capacity provider compose',
-			dependencies: [],
+			dependencies: ['local-process:api'],
 			spec: {
 				composeFile: 'packages/agent/compose.capacity-provider.yml',
 				projectName: 'treeseed-capacity-provider',
 				cwd: '.',
 				dataDir: '.treeseed/local-capacity-provider/data',
+				prepareCommand: {
+					command: 'bash',
+					args: ['-lc', 'ulimit -n 65535 2>/dev/null || true; npm -w packages/agent run capacity-provider:build -- --prepare-only'],
+				},
 				redactedEnv: capacityPlan.redactedEnv,
 				envKeys: Object.keys(capacityPlan.composeEnv).sort(),
+				env: {
+					...capacityPlan.composeEnv,
+					TREESEED_CAPACITY_PROVIDER_API_KEY: 'tsp_local_treeseed_demo_capacity_provider',
+					TREESEED_CAPACITY_PROVIDER_ID: 'treeseed-local-dev',
+					TREESEED_CAPACITY_PROVIDER_TEAM_ID: 'treeseed',
+					TREESEED_MANAGEMENT_API_URL: 'http://host.docker.internal:3000',
+				},
 				services: ['agent-api', 'agent-manager', 'agent-runner'],
 				volumes: [{ name: 'treeseed-capacity-provider-data', mountPath: '/data', sharedLocalOnly: true }],
 				healthChecks: [
-					{ id: 'provider-api', kind: 'http', url: 'http://127.0.0.1:4783/health' },
+					{ id: 'provider-api', kind: 'http', url: 'http://127.0.0.1:4783/healthz' },
 					{ id: 'compose-services', kind: 'container', service: 'agent-api' },
 				],
 			},
@@ -442,13 +536,19 @@ function localDevelopmentResources(environment: TreeseedDesiredEnvironment): Tre
 			packageId: id === 'market-web' ? '@treeseed/market' : '@treeseed/api',
 			serviceId: id,
 			logicalName: label,
-			dependencies: [],
+			dependencies: id === 'market-web'
+				? ['local-process:api']
+				: id === 'api'
+					? [apiPostgresComposeId]
+					: ['local-process:api'],
 			spec: {
 				processId: id,
 				surfaces: id === 'market-web' ? ['web'] : id === 'api' ? ['api'] : ['operations-runner'],
 				supervisor: 'sdk-managed-dev',
 				action: 'start',
-				options: {},
+				options: {
+					apiPort: 3000,
+				},
 				stateDir: '.treeseed/dev',
 				logDir: '.treeseed/logs',
 				cwd: id === 'market-web' ? '.' : 'packages/api',

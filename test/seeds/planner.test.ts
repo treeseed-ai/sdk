@@ -77,6 +77,7 @@ const manifest: SeedManifest = {
 		workPolicies: [],
 		agentPools: [],
 	},
+	operationRecipes: [],
 };
 
 describe('seed planner current-state diffing', () => {
@@ -250,6 +251,143 @@ describe('seed planner current-state diffing', () => {
 			'catalogArtifact',
 		]);
 		expect(plan.summary.create).toBe(6);
+	});
+
+	it('accepts operation recipes and includes ordered DAG steps in the seed plan', () => {
+		const diagnostics = [];
+		const parsed = parseSeedManifest({
+			name: 'demo',
+			version: 1,
+			defaultEnvironments: ['local'],
+			environments: ['local'],
+			resources: {
+				teams: [{ key: 'team:demo', slug: 'demo' }],
+				repositoryHosts: [],
+				projects: [{
+					key: 'project:demo/site',
+					team: 'team:demo',
+					slug: 'site',
+					name: 'Demo Site',
+					repository: {
+						role: 'primary',
+						provider: 'github',
+						owner: 'demo',
+						name: 'site',
+						gitUrl: 'https://github.com/demo/site.git',
+					},
+				}],
+				hubRepositories: [],
+				products: [],
+				catalogArtifacts: [],
+				capacityProviders: [],
+				capacityGrants: [],
+				workPolicies: [],
+				agentPools: [],
+			},
+			operationRecipes: [{
+				id: 'full-private-team-demo',
+				title: 'Full private team demo',
+				environments: ['local'],
+				entrypoints: ['homepage-story'],
+				steps: [
+					{
+						id: 'verify-project',
+						title: 'Verify project',
+						channel: 'ui',
+						operation: 'navigate',
+						dependsOn: ['homepage-story'],
+						uses: ['project:demo/site'],
+						target: '/app/projects',
+						artifacts: [{ screenshot: 'projects.png' }],
+					},
+					{
+						id: 'homepage-story',
+						title: 'Show homepage',
+						channel: 'ui',
+						operation: 'navigate',
+						target: '/',
+						assertions: [{ text: 'Direction' }],
+					},
+				],
+			}],
+		}, diagnostics);
+
+		expect(diagnostics).toHaveLength(0);
+		const plan = createSeedPlan({
+			manifest: parsed!,
+			manifestPath: 'seeds/demo.yaml',
+			environments: ['local'],
+			mode: 'plan',
+		});
+		expect(plan.recipes).toHaveLength(1);
+		expect(plan.recipes[0]?.selected).toBe(true);
+		expect(plan.recipes[0]?.orderedSteps.map((step) => step.id)).toEqual(['homepage-story', 'verify-project']);
+	});
+
+	it('rejects invalid operation recipe DAGs and references', () => {
+		const diagnostics = [];
+		parseSeedManifest({
+			name: 'demo',
+			version: 1,
+			environments: ['local'],
+			resources: {
+				teams: [{ key: 'team:demo', slug: 'demo' }],
+				repositoryHosts: [],
+				projects: [],
+				hubRepositories: [],
+				products: [],
+				catalogArtifacts: [],
+				capacityProviders: [],
+				capacityGrants: [],
+				workPolicies: [],
+				agentPools: [],
+			},
+			operationRecipes: [{
+				id: 'broken-demo',
+				title: 'Broken demo',
+				environments: ['local'],
+				entrypoints: ['missing-entrypoint'],
+				steps: [
+					{
+						id: 'cycle-a',
+						title: 'Cycle A',
+						channel: 'browser',
+						operation: 'unknown.operation',
+						dependsOn: ['cycle-b', 'missing-dependency'],
+						uses: ['project:missing'],
+					},
+					{
+						id: 'cycle-b',
+						title: 'Cycle B',
+						channel: 'ui',
+						operation: 'navigate',
+						dependsOn: ['cycle-a'],
+					},
+					{
+						id: 'duplicate-step',
+						title: 'Duplicate Step',
+						channel: 'ui',
+						operation: 'navigate',
+					},
+					{
+						id: 'duplicate-step',
+						title: 'Duplicate Step Again',
+						channel: 'ui',
+						operation: 'navigate',
+					},
+				],
+			}],
+		}, diagnostics);
+
+		expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(expect.arrayContaining([
+			'seed.recipe_unknown_channel',
+			'seed.recipe_unknown_operation',
+			'seed.recipe_invalid_resource_reference',
+			'seed.recipe_invalid_entrypoint',
+			'seed.recipe_invalid_dependency',
+			'seed.recipe_duplicate_step_id',
+			'seed.recipe_cycle',
+		]));
 	});
 
 	it('rejects invalid productized references and inline artifact content', () => {

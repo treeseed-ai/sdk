@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { resolveCapacityProviderLaunchPlan } from '../capacity-provider.ts';
@@ -750,6 +751,7 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 			const ps = composeFile && existsSync(composeFile) && docker.available
 				? runDockerCompose({ composeFile, projectName, cwd, env, action: 'ps' })
 				: null;
+			const hasContainers = Boolean(ps?.ok && ps.stdout.trim());
 			const config = composeFile && existsSync(composeFile) && docker.available
 				? runDockerCompose({ composeFile, projectName, cwd, env, action: 'config' })
 				: null;
@@ -758,7 +760,7 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 				...(composeFile && existsSync(composeFile) ? [] : [`Compose file is missing: ${composeFile ?? '(unset)'}`]),
 				...docker.warnings,
 			]),
-				status: ps?.ok ? 'ready' : composeFile && existsSync(composeFile) && docker.available ? 'pending' : 'error',
+				status: hasContainers ? 'ready' : composeFile && existsSync(composeFile) && docker.available ? 'pending' : 'error',
 				live: {
 					...input.unit.spec,
 					composeFile,
@@ -766,6 +768,7 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 					cwd,
 					docker,
 					ps,
+					hasContainers,
 					configHash: config?.stdout?.trim() || null,
 				},
 			};
@@ -778,6 +781,7 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 		},
 		apply(input) {
 			if (input.diff.action === 'blocked' || input.diff.action === 'noop') return genericResult(input);
+			runLocalComposePrepareCommand(input);
 			const composeFile = String(input.observed.live.composeFile ?? resolve(input.context.tenantRoot, String(input.unit.spec.composeFile ?? '')));
 			const cwd = String(input.observed.live.cwd ?? input.context.tenantRoot);
 			const projectName = String(input.unit.spec.projectName ?? 'treeseed-capacity-provider');
@@ -793,7 +797,7 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 			const checks: TreeseedUnitVerificationCheck[] = [];
 			for (const healthCheck of healthChecks) {
 				if (healthCheck.kind === 'http' && typeof healthCheck.url === 'string') {
-					const health = await checkHttpHealth(healthCheck.url);
+					const health = await checkHttpHealthWithRetry(healthCheck.url);
 					checks.push(verificationCheck(String(healthCheck.id ?? healthCheck.url), `HTTP health ${healthCheck.url}`, 'api', {
 						exists: health.ok,
 						configured: true,
@@ -820,7 +824,7 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 			const cwd = String(input.observed.live.cwd ?? input.context.tenantRoot);
 			const projectName = String(input.unit.spec.projectName ?? 'treeseed-capacity-provider');
 			if (input.context.dryRun !== true && composeFile && existsSync(composeFile)) {
-				const result = runDockerCompose({ composeFile, projectName, cwd, env: input.context.launchEnv, action: 'down' });
+				const result = runDockerCompose({ composeFile, projectName, cwd, env: buildLocalComposeLaunchEnv(input), action: 'down' });
 				if (!result.ok) {
 					throw new Error(result.stderr.trim() || result.stdout.trim() || 'docker compose down failed');
 				}
@@ -831,6 +835,37 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 			});
 		},
 	};
+}
+
+function runLocalComposePrepareCommand(input: TreeseedReconcileAdapterInput) {
+	const prepareCommand = input.unit.spec.prepareCommand;
+	if (!prepareCommand || typeof prepareCommand !== 'object') return;
+	const command = typeof (prepareCommand as Record<string, unknown>).command === 'string'
+		? String((prepareCommand as Record<string, unknown>).command)
+		: null;
+	const rawArgs = (prepareCommand as Record<string, unknown>).args;
+	const args = Array.isArray(rawArgs)
+		? rawArgs.filter((entry): entry is string => typeof entry === 'string')
+		: [];
+	if (!command) return;
+	const result = spawnSync(command, args, {
+		cwd: input.context.tenantRoot,
+		env: buildLocalComposeLaunchEnv(input),
+		encoding: 'utf8',
+		stdio: 'pipe',
+	});
+	if (result.status !== 0) {
+		throw new Error(result.stderr?.trim() || result.stdout?.trim() || `${command} ${args.join(' ')} failed`);
+	}
+}
+
+async function checkHttpHealthWithRetry(url: string, attempts = 90, intervalMs = 2_000) {
+	let last = await checkHttpHealth(url);
+	for (let attempt = 1; attempt < attempts && !last.ok; attempt += 1) {
+		await new Promise((resolve) => setTimeout(resolve, intervalMs));
+		last = await checkHttpHealth(url);
+	}
+	return last;
 }
 
 function buildLocalComposeLaunchEnv(input: TreeseedReconcileAdapterInput) {
@@ -1001,11 +1036,11 @@ function buildCapacityProviderAdapter(providerId: 'local' | 'railway'): Treeseed
 		apply(input) {
 			return genericResult(input);
 		},
-		verify(input) {
+		async verify(input) {
 			const dependencyResults = input.context.session.get('treeseed:verification-results') as Map<string, TreeseedUnitVerificationResult> | undefined;
 			const checks = input.unit.dependencies.map((dependency) => {
 				const verification = dependencyResults?.get(dependency);
-				const ok = verification?.verified === true;
+				const ok = verification ? verification.verified === true : true;
 				return verificationCheck(`dependency:${dependency}`, `Capacity provider dependency ${dependency} is verified`, 'derived', {
 					exists: ok,
 					configured: ok,
@@ -1015,20 +1050,121 @@ function buildCapacityProviderAdapter(providerId: 'local' | 'railway'): Treeseed
 					issues: ok ? [] : [`Dependency ${dependency} is not verified.`],
 				});
 			});
-			return summarizeVerification(input.unit.unitId, checks.length > 0 ? checks : [
-				verificationCheck('capacity-provider', 'Capacity provider desired topology is observable', 'derived', {
+			const healthEndpoint = typeof input.unit.spec.healthEndpoint === 'string' ? input.unit.spec.healthEndpoint : null;
+			if (healthEndpoint) {
+				const health = await checkHttpHealth(healthEndpoint);
+				checks.push(verificationCheck('capacity-provider-health', `Capacity provider health endpoint ${healthEndpoint} responds`, 'api', {
+					exists: health.ok,
+					configured: true,
+					ready: health.ok,
+					verified: health.ok,
+					observed: health,
+					issues: health.ok ? [] : [`Capacity provider health endpoint ${healthEndpoint} did not respond successfully.`],
+				}));
+			}
+			if (checks.length === 0) {
+				checks.push(verificationCheck('capacity-provider', 'Capacity provider desired topology is observable', 'derived', {
 					exists: input.observed.exists,
 					configured: input.observed.exists,
 					ready: input.observed.status !== 'error',
 					verified: input.observed.exists && input.observed.status !== 'error',
 					observed: input.observed.live,
-				}),
-			], input.observed.warnings);
+				}));
+			}
+			return summarizeVerification(input.unit.unitId, checks, input.observed.warnings);
 		},
 		destroy(input) {
 			return genericResult({
 				...input,
 				diff: { action: 'delete', reasons: ['selected capacity provider for destroy'], before: input.observed.live, after: {} },
+			});
+		},
+	};
+}
+
+function buildLocalTreeDxAdapter(): TreeseedReconcileAdapter {
+	return {
+		providerId: 'local',
+		unitTypes: ['local-treedx'],
+		supports(unitType, providerId) {
+			return unitType === 'local-treedx' && providerId === 'local';
+		},
+		refresh(input) {
+			return {
+				...genericObservedState(input),
+				live: {
+					...input.unit.spec,
+					dependencies: input.unit.dependencies,
+				},
+			};
+		},
+		diff() {
+			return noopDiff();
+		},
+		apply(input) {
+			return genericResult(input);
+		},
+		async verify(input) {
+			const dependencyResults = input.context.session.get('treeseed:verification-results') as Map<string, TreeseedUnitVerificationResult> | undefined;
+			const dependencyChecks = input.unit.dependencies.map((dependency) => {
+				const verification = dependencyResults?.get(dependency);
+				const ok = verification ? verification.verified === true : true;
+				return verificationCheck(`dependency:${dependency}`, `TreeDX dependency ${dependency} is verified`, 'derived', {
+					exists: ok,
+					configured: ok,
+					ready: ok,
+					verified: ok,
+					observed: verification ?? null,
+					issues: ok ? [] : [`Dependency ${dependency} is not verified.`],
+				});
+			});
+			const healthEndpoint = typeof input.unit.spec.healthEndpoint === 'string' ? input.unit.spec.healthEndpoint : null;
+			if (healthEndpoint) {
+				const health = await checkHttpHealth(healthEndpoint);
+				dependencyChecks.push(verificationCheck('treedx-health', `TreeDX health endpoint ${healthEndpoint} responds`, 'api', {
+					exists: health.ok,
+					configured: true,
+					ready: health.ok,
+					verified: health.ok,
+					observed: health,
+					issues: health.ok ? [] : [`TreeDX health endpoint ${healthEndpoint} did not respond successfully.`],
+				}));
+			}
+			const contentIsTreeDx = input.unit.spec.contentRepositoryAccessMode === 'treedx';
+			const siteIsFilesystem = input.unit.spec.siteRepositoryAccessMode === 'filesystem';
+			const projectIsFilesystem = input.unit.spec.projectRepositoryAccessMode === 'filesystem';
+			const topologyChecks = [
+				verificationCheck('content-repository-plane', 'Content repositories use TreeDX by default', 'derived', {
+					exists: true,
+					configured: contentIsTreeDx,
+					ready: contentIsTreeDx,
+					verified: contentIsTreeDx,
+					observed: input.unit.spec.contentRepositoryAccessMode,
+					issues: contentIsTreeDx ? [] : ['Content repository access mode is not treedx.'],
+				}),
+				verificationCheck('site-repository-plane', 'Project site repositories use local filesystem/worktrees by default', 'derived', {
+					exists: true,
+					configured: siteIsFilesystem,
+					ready: siteIsFilesystem,
+					verified: siteIsFilesystem,
+					observed: input.unit.spec.siteRepositoryAccessMode,
+					issues: siteIsFilesystem ? [] : ['Site repository access mode is not filesystem.'],
+				}),
+				verificationCheck('project-repository-plane', 'Super-project repositories use local filesystem/worktrees by default', 'derived', {
+					exists: true,
+					configured: projectIsFilesystem,
+					ready: projectIsFilesystem,
+					verified: projectIsFilesystem,
+					observed: input.unit.spec.projectRepositoryAccessMode,
+					issues: projectIsFilesystem ? [] : ['Project repository access mode is not filesystem.'],
+				}),
+			];
+			return summarizeVerification(input.unit.unitId, [...dependencyChecks, ...topologyChecks], input.observed.warnings);
+		},
+		destroy(input) {
+			return genericResult({
+				...input,
+				diff: { action: 'delete', reasons: ['selected local TreeDX topology for destroy'], before: input.observed.live, after: {} },
 			});
 		},
 	};
@@ -4644,6 +4780,7 @@ export function createCapacityProviderReconcileAdapters() {
 		buildCapacityProviderAdapter('local'),
 		buildCapacityProviderAdapter('railway'),
 		buildLocalDockerComposeAdapter(),
+		buildLocalTreeDxAdapter(),
 	];
 }
 

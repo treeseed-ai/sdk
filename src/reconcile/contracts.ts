@@ -44,6 +44,7 @@ export type TreeseedReconcileUnitType =
 	| 'github-workflow-dispatch'
 	| 'docker-image-build'
 	| 'local-docker-compose'
+	| 'local-treedx'
 	| 'local-process'
 	| 'capacity-provider'
 	| 'branch-preview'

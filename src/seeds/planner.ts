@@ -1,4 +1,4 @@
-import type { NormalizedSeedResource, SeedCurrentResource, SeedDiagnostic, SeedEnvironment, SeedManifest, SeedPlan, SeedPlanAction, SeedPlanActionType, SeedPlanSummary } from './types.js';
+import type { NormalizedSeedResource, SeedCurrentResource, SeedDiagnostic, SeedEnvironment, SeedManifest, SeedOperationRecipe, SeedOperationRecipePlan, SeedOperationRecipeStep, SeedPlan, SeedPlanAction, SeedPlanActionType, SeedPlanSummary } from './types.js';
 import { normalizeSeedResources } from './normalize.js';
 
 const ACTION_TYPES: SeedPlanActionType[] = ['create', 'update', 'unchanged', 'skip', 'delete', 'error'];
@@ -50,6 +50,36 @@ function toAction(resource: NormalizedSeedResource, currentByKey: Map<string, Se
 	};
 }
 
+function orderRecipeSteps(recipe: SeedOperationRecipe): SeedOperationRecipeStep[] {
+	const byId = new Map(recipe.steps.map((step) => [step.id, step]));
+	const ordered: SeedOperationRecipeStep[] = [];
+	const visited = new Set<string>();
+	const visit = (step: SeedOperationRecipeStep) => {
+		if (visited.has(step.id)) return;
+		for (const dependency of step.dependsOn) {
+			const dependencyStep = byId.get(dependency);
+			if (dependencyStep) visit(dependencyStep);
+		}
+		visited.add(step.id);
+		ordered.push(step);
+	};
+	for (const step of recipe.steps) {
+		visit(step);
+	}
+	return ordered;
+}
+
+function planRecipes(manifest: SeedManifest, environments: SeedEnvironment[]): SeedOperationRecipePlan[] {
+	return manifest.operationRecipes.map((recipe) => {
+		const selected = recipe.environments.some((environment) => environments.includes(environment));
+		return {
+			...recipe,
+			selected,
+			orderedSteps: selected ? orderRecipeSteps(recipe) : [],
+		};
+	});
+}
+
 export function createSeedPlan(input: {
 	manifest: SeedManifest;
 	manifestPath: string;
@@ -60,6 +90,7 @@ export function createSeedPlan(input: {
 }): SeedPlan {
 	const currentByKey = new Map((input.currentResources ?? []).map((resource) => [resource.key, resource]));
 	const actions = normalizeSeedResources(input.manifest, input.environments).map((resource) => toAction(resource, currentByKey));
+	const recipes = planRecipes(input.manifest, input.environments);
 	const summary = emptySummary();
 	for (const action of actions) {
 		summary[action.action] += 1;
@@ -75,6 +106,7 @@ export function createSeedPlan(input: {
 		environments: input.environments,
 		summary,
 		actions,
+		recipes,
 		diagnostics: input.diagnostics ?? [],
 		manifestPath: input.manifestPath,
 	};
@@ -112,6 +144,14 @@ export function formatSeedPlan(plan: SeedPlan) {
 		lines.push(`${action.action.toUpperCase()} ${actionKindLabel(action)} ${action.label}`);
 	}
 	if (lines[lines.length - 1] !== '') {
+		lines.push('');
+	}
+	const selectedRecipes = plan.recipes.filter((recipe) => recipe.selected);
+	if (selectedRecipes.length > 0) {
+		lines.push('Recipes:');
+		for (const recipe of selectedRecipes) {
+			lines.push(`  ${recipe.id}: ${recipe.orderedSteps.length} step${recipe.orderedSteps.length === 1 ? '' : 's'}`);
+		}
 		lines.push('');
 	}
 	lines.push(

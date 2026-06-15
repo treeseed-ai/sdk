@@ -212,6 +212,8 @@ describe('capacity provider SDK contracts', () => {
 					provider: { id: 'cp_123', teamId: 'team_123', name: 'Local provider', status: 'online' },
 					portfolioManifestUrl: '/v1/provider/portfolio',
 					heartbeatIntervalSeconds: 30,
+					sessionToken: 'tsp_session_plaintext_secret_123456789',
+					sessionExpiresAt: '2026-01-01T01:00:00.000Z',
 				});
 			}
 			if (path === CAPACITY_PROVIDER_ENDPOINTS.heartbeat) return jsonResponse({ ok: true, heartbeatIntervalSeconds: 30 });
@@ -273,8 +275,9 @@ describe('capacity provider SDK contracts', () => {
 			'POST /v1/provider/usage',
 			'POST /v1/provider/reports',
 		]);
-		for (const call of calls) {
-			expect(call.headers.authorization).toBe(`Bearer ${apiKey}`);
+		expect(calls[0]?.headers.authorization).toBe(`Bearer ${apiKey}`);
+		for (const call of calls.slice(1)) {
+			expect(call.headers.authorization).toBe('Bearer tsp_session_plaintext_secret_123456789');
 			expect(call.headers[TREESEED_REMOTE_CONTRACT_HEADER]).toBe(String(TREESEED_REMOTE_CONTRACT_VERSION));
 			expect(call.headers.accept).toBe('application/json');
 		}
@@ -548,14 +551,18 @@ extensions:
 			});
 
 			expect(persisted.writtenKeys).toEqual([
+				'TREESEED_MANAGEMENT_API_URL',
 				'TREESEED_MARKET_URL',
 				'TREESEED_MARKET_ID',
 				'TREESEED_MANAGER_ID',
+				'TREESEED_CAPACITY_PROVIDER_ID',
+				'TREESEED_CAPACITY_PROVIDER_TEAM_ID',
 				'TREESEED_CAPACITY_PROVIDER_API_KEY',
 				'TREESEED_PROVIDER_HOST_DATA_DIR',
 				'TREESEED_PROVIDER_ENVIRONMENT',
 			]);
 			expect(launch.env).toMatchObject({
+				TREESEED_MANAGEMENT_API_URL: 'http://127.0.0.1:3000',
 				TREESEED_MARKET_URL: 'http://127.0.0.1:3000',
 				TREESEED_MARKET_ID: 'local',
 				TREESEED_MANAGER_ID: 'local',

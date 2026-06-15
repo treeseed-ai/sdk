@@ -15,6 +15,8 @@ export type SeedResourceKind =
 	| 'product'
 	| 'catalogArtifact';
 
+export type SeedOperationRecipeChannel = 'cli' | 'ui' | 'api' | 'provider-runtime' | 'system-check';
+
 export type SeedDiagnostic = {
 	severity: SeedDiagnosticSeverity;
 	code: string;
@@ -34,6 +36,7 @@ export type SeedManifest = {
 	defaultEnvironments?: SeedEnvironment[];
 	environments: SeedEnvironment[];
 	resources: SeedManifestResources;
+	operationRecipes: SeedOperationRecipe[];
 };
 
 export type SeedManifestResources = {
@@ -157,6 +160,7 @@ export type SeedCapacityLaneResource = SeedResourceBase & {
 export type SeedCapacityProviderRegistrationApiKey = {
 	createIfMissing?: boolean;
 	name?: string;
+	plaintextKey?: string;
 	scopes?: string[];
 	expiresAt?: string;
 };
@@ -250,6 +254,41 @@ export type SeedWorkPolicyResource = SeedResourceBase & {
 	metadata?: Record<string, unknown>;
 };
 
+export type SeedOperationRecipeCommand = {
+	argv: string[];
+};
+
+export type SeedOperationRecipeAssertion = Record<string, unknown>;
+
+export type SeedOperationRecipeArtifact = Record<string, unknown>;
+
+export type SeedOperationRecipeStep = {
+	id: string;
+	title: string;
+	actor?: string;
+	channel: SeedOperationRecipeChannel;
+	operation: string;
+	dependsOn: string[];
+	uses: string[];
+	target?: string;
+	command?: SeedOperationRecipeCommand;
+	assertions: SeedOperationRecipeAssertion[];
+	artifacts: SeedOperationRecipeArtifact[];
+};
+
+export type SeedOperationRecipe = {
+	id: string;
+	title: string;
+	environments: SeedEnvironment[];
+	entrypoints: string[];
+	steps: SeedOperationRecipeStep[];
+};
+
+export type SeedOperationRecipePlan = SeedOperationRecipe & {
+	selected: boolean;
+	orderedSteps: SeedOperationRecipeStep[];
+};
+
 export type NormalizedSeedResource = {
 	kind: SeedResourceKind;
 	key: string;
@@ -282,6 +321,7 @@ export type SeedPlan = {
 	environments: SeedEnvironment[];
 	summary: SeedPlanSummary;
 	actions: SeedPlanAction[];
+	recipes: SeedOperationRecipePlan[];
 	diagnostics: SeedDiagnostic[];
 	manifestPath: string;
 };

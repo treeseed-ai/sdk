@@ -37,9 +37,12 @@ export const CAPACITY_PROVIDER_SCOPES = [
 ] as const;
 
 export const CAPACITY_PROVIDER_ENV_KEYS = [
+	'TREESEED_MANAGEMENT_API_URL',
 	'TREESEED_MARKET_URL',
 	'TREESEED_MARKET_ID',
 	'TREESEED_MANAGER_ID',
+	'TREESEED_CAPACITY_PROVIDER_ID',
+	'TREESEED_CAPACITY_PROVIDER_TEAM_ID',
 	'TREESEED_CAPACITY_PROVIDER_API_KEY',
 	'TREESEED_PROVIDER_HOST_DATA_DIR',
 	'TREESEED_PROVIDER_DATA_DIR',
@@ -177,6 +180,8 @@ export interface CapacityProviderRegistrationResponse {
 	};
 	portfolioManifestUrl: string;
 	heartbeatIntervalSeconds: number;
+	sessionToken?: string | null;
+	sessionExpiresAt?: string | null;
 }
 
 export interface CapacityProviderHeartbeatRequest {
@@ -427,6 +432,8 @@ export interface CapacityProviderEnvironmentInput {
 	marketUrl: string;
 	marketId: string;
 	apiKey: string;
+	providerId?: string;
+	teamId?: string;
 	providerDataDir?: string;
 	providerApiPort?: number | string;
 	providerEnvironment?: CapacityProviderEnvironmentName;
@@ -706,7 +713,10 @@ export function resolveCapacityProviderEnvironment(input: CapacityProviderEnviro
 		TREESEED_PROVIDER_API_PORT: stringValue(input.providerApiPort, '3100'),
 		TREESEED_PROVIDER_ENVIRONMENT: input.providerEnvironment ?? 'local',
 	};
+	env.TREESEED_MANAGEMENT_API_URL = env.TREESEED_MARKET_URL || 'https://api.treeseed.ai';
 	if (!env.TREESEED_CAPACITY_PROVIDER_API_KEY) throw new Error('Capacity provider API key is required.');
+	if (input.providerId) env.TREESEED_CAPACITY_PROVIDER_ID = input.providerId;
+	if (input.teamId) env.TREESEED_CAPACITY_PROVIDER_TEAM_ID = input.teamId;
 	if (input.providerHostDataDir) env.TREESEED_PROVIDER_HOST_DATA_DIR = input.providerHostDataDir;
 	if (input.capabilitiesFile) env.TREESEED_PROVIDER_CAPABILITIES_FILE = input.capabilitiesFile;
 	if (input.budgetFile) env.TREESEED_PROVIDER_BUDGET_FILE = input.budgetFile;
@@ -801,9 +811,12 @@ export function persistCapacityProviderConnectionToTreeseedConfig(input: Capacit
 	}
 	const entryById = new Map(registryEntries.map((entry) => [entry.id, entry]));
 	const keys = [
+		'TREESEED_MANAGEMENT_API_URL',
 		'TREESEED_MARKET_URL',
 		'TREESEED_MARKET_ID',
 		'TREESEED_MANAGER_ID',
+		'TREESEED_CAPACITY_PROVIDER_ID',
+		'TREESEED_CAPACITY_PROVIDER_TEAM_ID',
 		'TREESEED_CAPACITY_PROVIDER_API_KEY',
 		'TREESEED_PROVIDER_HOST_DATA_DIR',
 		'TREESEED_PROVIDER_ENVIRONMENT',
@@ -1021,7 +1034,7 @@ export function deployCapacityProviderToManagedMarketHost(input: CapacityProvide
 export class MarketProviderClient {
 	private readonly marketUrl: string;
 	private readonly marketId: string;
-	private readonly apiKey: string;
+	private apiKey: string;
 	private readonly fetchImpl: typeof fetch;
 	private readonly userAgent?: string;
 
@@ -1065,6 +1078,9 @@ export class MarketProviderClient {
 			body,
 		}).then((response) => {
 			assertCapacityProviderRegistrationResponse(response);
+			if (typeof response.sessionToken === 'string' && response.sessionToken.trim()) {
+				this.apiKey = response.sessionToken.trim();
+			}
 			return response;
 		});
 	}

@@ -12,6 +12,12 @@ import {
 	type SeedHubRepositoryResource,
 	type SeedManifest,
 	type SeedManifestResources,
+	type SeedOperationRecipe,
+	type SeedOperationRecipeArtifact,
+	type SeedOperationRecipeAssertion,
+	type SeedOperationRecipeChannel,
+	type SeedOperationRecipeCommand,
+	type SeedOperationRecipeStep,
 	type SeedProductResource,
 	type SeedProjectRepository,
 	type SeedProjectResource,
@@ -36,6 +42,25 @@ const RESOURCE_BUCKETS = [
 
 const SUPPORTED_BUCKETS = new Set(['teams', 'repositoryHosts', 'projects', 'hubRepositories', 'products', 'catalogArtifacts', 'capacityProviders', 'capacityGrants', 'workPolicies']);
 const ALLOWED_ENVIRONMENTS = new Set<string>(SEED_ENVIRONMENTS);
+const ALLOWED_RECIPE_CHANNELS = new Set<string>(['cli', 'ui', 'api', 'provider-runtime', 'system-check']);
+const ALLOWED_RECIPE_OPERATIONS = new Set<string>([
+	'navigate',
+	'seed.apply',
+	'seed.plan',
+	'verify.treedx',
+	'capacity-provider.create',
+	'capacity.up',
+	'capacity.status',
+	'capacity.allocate.portfolio',
+	'capacity.allocate.project',
+	'project.create',
+	'provider-runtime.launch',
+	'work.start',
+	'work.review-decision',
+	'knowledge.inspect-artifacts',
+	'knowledge.publish',
+	'system.health',
+]);
 const CREDENTIAL_REF_PATTERN = /^(?:env|secret|provider-session):[A-Za-z0-9_./:-]+$/u;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -111,6 +136,24 @@ function stringArrayField(record: Record<string, unknown>, field: string, path: 
 		return undefined;
 	}
 	return value.map((entry) => asString(entry)).filter(Boolean);
+}
+
+function recordArrayField<T extends Record<string, unknown>>(record: Record<string, unknown>, field: string, path: string, diagnostics: SeedDiagnostic[]): T[] {
+	const value = record[field];
+	if (value === undefined) return [];
+	if (!Array.isArray(value)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_array', `Expected ${field} to be an array.`, `${path}.${field}`));
+		return [];
+	}
+	const result: T[] = [];
+	value.forEach((entry, index) => {
+		if (!isRecord(entry)) {
+			diagnostics.push(errorDiagnostic('seed.invalid_object', `Expected ${field} entry to be an object.`, `${path}.${field}[${index}]`));
+			return;
+		}
+		result.push(entry as T);
+	});
+	return result;
 }
 
 function keyBase(record: Record<string, unknown>, path: string, diagnostics: SeedDiagnostic[]): SeedResourceBase {
@@ -317,6 +360,7 @@ function parseProviderRegistration(value: unknown, path: string, diagnostics: Se
 		apiKey: {
 			createIfMissing: typeof apiKeyValue.createIfMissing === 'boolean' ? apiKeyValue.createIfMissing : undefined,
 			name: asString(apiKeyValue.name) || undefined,
+			plaintextKey: asString(apiKeyValue.plaintextKey) || undefined,
 			scopes: stringArrayField(apiKeyValue, 'scopes', `${path}.apiKey`, diagnostics),
 			expiresAt: asString(apiKeyValue.expiresAt) || undefined,
 		},
@@ -471,6 +515,68 @@ function parseWorkPolicy(value: unknown, path: string, diagnostics: SeedDiagnost
 	};
 }
 
+function parseRecipeCommand(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedOperationRecipeCommand | undefined {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_object', 'Expected command to be an object.', path));
+		return undefined;
+	}
+	const argv = stringArrayField(value, 'argv', path, diagnostics);
+	if (argv.length === 0) {
+		diagnostics.push(errorDiagnostic('seed.recipe_command_missing_argv', 'Recipe command must include argv.', `${path}.argv`));
+	}
+	return { argv };
+}
+
+function parseRecipeStep(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedOperationRecipeStep | null {
+	if (!isRecord(value)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_recipe_step', 'Expected operation recipe step to be an object.', path));
+		return null;
+	}
+	const channel = requireString(value, 'channel', path, diagnostics);
+	if (channel && !ALLOWED_RECIPE_CHANNELS.has(channel)) {
+		diagnostics.push(errorDiagnostic('seed.recipe_unknown_channel', `Unsupported operation recipe channel: ${channel}.`, `${path}.channel`));
+	}
+	const operation = requireString(value, 'operation', path, diagnostics);
+	if (operation && !ALLOWED_RECIPE_OPERATIONS.has(operation)) {
+		diagnostics.push(errorDiagnostic('seed.recipe_unknown_operation', `Unsupported operation recipe operation: ${operation}.`, `${path}.operation`));
+	}
+	return {
+		id: requireString(value, 'id', path, diagnostics),
+		title: requireString(value, 'title', path, diagnostics),
+		actor: asString(value.actor) || undefined,
+		channel: ALLOWED_RECIPE_CHANNELS.has(channel) ? channel as SeedOperationRecipeChannel : 'system-check',
+		operation,
+		dependsOn: stringArrayField(value, 'dependsOn', path, diagnostics) ?? [],
+		uses: stringArrayField(value, 'uses', path, diagnostics) ?? [],
+		target: asString(value.target) || undefined,
+		command: parseRecipeCommand(value.command, `${path}.command`, diagnostics),
+		assertions: recordArrayField<SeedOperationRecipeAssertion>(value, 'assertions', path, diagnostics),
+		artifacts: recordArrayField<SeedOperationRecipeArtifact>(value, 'artifacts', path, diagnostics),
+	};
+}
+
+function parseOperationRecipe(value: unknown, path: string, diagnostics: SeedDiagnostic[], manifestEnvironments: SeedEnvironment[]): SeedOperationRecipe | null {
+	if (!isRecord(value)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_recipe', 'Expected operation recipe to be an object.', path));
+		return null;
+	}
+	const environments = parseEnvironments(value.environments, `${path}.environments`, diagnostics) ?? manifestEnvironments;
+	const recipe: SeedOperationRecipe = {
+		id: requireString(value, 'id', path, diagnostics),
+		title: requireString(value, 'title', path, diagnostics),
+		environments,
+		entrypoints: stringArrayField(value, 'entrypoints', path, diagnostics) ?? [],
+		steps: Array.isArray(value.steps)
+			? value.steps.map((step, index) => parseRecipeStep(step, `${path}.steps[${index}]`, diagnostics)).filter((step): step is SeedOperationRecipeStep => Boolean(step))
+			: [],
+	};
+	if (!Array.isArray(value.steps)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_recipe_steps', 'Operation recipe steps must be an array.', `${path}.steps`));
+	}
+	return recipe;
+}
+
 function validateRepository(repository: SeedProjectRepository, path: string, diagnostics: SeedDiagnostic[]) {
 	if (!repository.gitUrl) return;
 	if (/^(?:\.{1,2}\/?|packages\/|\/)/u.test(repository.gitUrl) || !/(?:^[a-z][a-z0-9+.-]*:\/\/|^git@)/iu.test(repository.gitUrl)) {
@@ -605,6 +711,87 @@ function validateReferences(manifest: SeedManifest, diagnostics: SeedDiagnostic[
 	});
 }
 
+function allResourceKeys(manifest: SeedManifest) {
+	return new Set([
+		...manifest.resources.teams.map((team) => team.key),
+		...manifest.resources.repositoryHosts.map((host) => host.key),
+		...manifest.resources.projects.map((project) => project.key),
+		...manifest.resources.hubRepositories.map((repository) => repository.key),
+		...manifest.resources.products.map((product) => product.key),
+		...manifest.resources.catalogArtifacts.map((artifact) => artifact.key),
+		...manifest.resources.capacityProviders.flatMap((provider) => [provider.key, ...(provider.lanes ?? []).map((lane) => lane.key)]),
+		...manifest.resources.capacityGrants.map((grant) => grant.key),
+		...manifest.resources.workPolicies.map((policy) => policy.key),
+	]);
+}
+
+function validateOperationRecipes(manifest: SeedManifest, diagnostics: SeedDiagnostic[]) {
+	const recipeIds = new Map<string, string>();
+	const resourceKeys = allResourceKeys(manifest);
+	manifest.operationRecipes.forEach((recipe, recipeIndex) => {
+		const recipePath = `operationRecipes[${recipeIndex}]`;
+		const existingRecipePath = recipeIds.get(recipe.id);
+		if (recipe.id && existingRecipePath) {
+			diagnostics.push(errorDiagnostic('seed.recipe_duplicate_id', `Duplicate operation recipe id ${recipe.id}; first seen at ${existingRecipePath}.`, `${recipePath}.id`));
+		}
+		if (recipe.id) recipeIds.set(recipe.id, `${recipePath}.id`);
+		if (recipe.environments.length === 0) {
+			diagnostics.push(errorDiagnostic('seed.recipe_missing_environments', 'Operation recipe must target at least one environment.', `${recipePath}.environments`));
+		}
+		for (const environment of recipe.environments) {
+			if (!manifest.environments.includes(environment)) {
+				diagnostics.push(errorDiagnostic('seed.recipe_environment_not_declared', `Recipe environment ${environment} is not declared in environments.`, `${recipePath}.environments`));
+			}
+		}
+		const steps = new Map<string, SeedOperationRecipeStep>();
+		recipe.steps.forEach((step, stepIndex) => {
+			const stepPath = `${recipePath}.steps[${stepIndex}]`;
+			const existingStep = steps.get(step.id);
+			if (step.id && existingStep) {
+				diagnostics.push(errorDiagnostic('seed.recipe_duplicate_step_id', `Duplicate operation recipe step id ${step.id}.`, `${stepPath}.id`));
+			}
+			if (step.id) steps.set(step.id, step);
+			step.uses.forEach((resourceKey, useIndex) => {
+				if (!resourceKeys.has(resourceKey)) {
+					diagnostics.push(errorDiagnostic('seed.recipe_invalid_resource_reference', `Unknown recipe resource reference: ${resourceKey}.`, `${stepPath}.uses[${useIndex}]`));
+				}
+			});
+		});
+		recipe.entrypoints.forEach((entrypoint, entrypointIndex) => {
+			if (!steps.has(entrypoint)) {
+				diagnostics.push(errorDiagnostic('seed.recipe_invalid_entrypoint', `Unknown recipe entrypoint step: ${entrypoint}.`, `${recipePath}.entrypoints[${entrypointIndex}]`));
+			}
+		});
+		recipe.steps.forEach((step, stepIndex) => {
+			step.dependsOn.forEach((dependency, dependencyIndex) => {
+				if (!steps.has(dependency)) {
+					diagnostics.push(errorDiagnostic('seed.recipe_invalid_dependency', `Unknown recipe dependency step: ${dependency}.`, `${recipePath}.steps[${stepIndex}].dependsOn[${dependencyIndex}]`));
+				}
+			});
+		});
+		const visiting = new Set<string>();
+		const visited = new Set<string>();
+		const visit = (stepId: string, chain: string[]) => {
+			if (visited.has(stepId)) return;
+			if (visiting.has(stepId)) {
+				diagnostics.push(errorDiagnostic('seed.recipe_cycle', `Recipe dependency cycle detected: ${[...chain, stepId].join(' -> ')}.`, recipePath));
+				return;
+			}
+			const step = steps.get(stepId);
+			if (!step) return;
+			visiting.add(stepId);
+			for (const dependency of step.dependsOn) {
+				visit(dependency, [...chain, stepId]);
+			}
+			visiting.delete(stepId);
+			visited.add(stepId);
+		};
+		for (const step of recipe.steps) {
+			visit(step.id, []);
+		}
+	});
+}
+
 export function parseSeedManifest(value: unknown, diagnostics: SeedDiagnostic[]): SeedManifest | null {
 	walkForSecrets(value, '', diagnostics);
 	if (!isRecord(value)) {
@@ -657,9 +844,16 @@ export function parseSeedManifest(value: unknown, diagnostics: SeedDiagnostic[])
 		defaultEnvironments,
 		environments,
 		resources,
+		operationRecipes: Array.isArray(value.operationRecipes)
+			? value.operationRecipes.map((recipe, index) => parseOperationRecipe(recipe, `operationRecipes[${index}]`, diagnostics, environments)).filter((recipe): recipe is SeedOperationRecipe => Boolean(recipe))
+			: [],
 	};
+	if (value.operationRecipes !== undefined && !Array.isArray(value.operationRecipes)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_operation_recipes', 'operationRecipes must be an array.', 'operationRecipes'));
+	}
 	validateResourceKeys(manifest, diagnostics);
 	validateReferences(manifest, diagnostics);
+	validateOperationRecipes(manifest, diagnostics);
 	if (diagnostics.length === 0 && manifest.resources.projects.length === 0) {
 		diagnostics.push(warningDiagnostic('seed.empty_projects', 'Seed manifest does not define projects.', 'resources.projects'));
 	}

@@ -42,6 +42,31 @@ describe('canonical desired resource graph', () => {
 		expect(results.every((entry) => entry.ok)).toBe(true);
 	});
 
+	it('includes local TreeDX as the default content repository plane for local dev', () => {
+		if (!workspaceRoot) return;
+		const graph = compileTreeseedDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'local' },
+		});
+
+		const localTreeDx = graph.resources.find((entry) => entry.id === 'local-treedx:team-primary');
+		expect(localTreeDx).toMatchObject({
+			kind: 'local-treedx',
+			provider: 'local',
+			packageId: 'treedx',
+			spec: expect.objectContaining({
+				contentRepositoryAccessMode: 'treedx',
+				siteRepositoryAccessMode: 'filesystem',
+				projectRepositoryAccessMode: 'filesystem',
+				baseUrl: 'http://127.0.0.1:4000',
+			}),
+		});
+		expect(graph.resources.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+			'local-docker-compose:treedx',
+			'capacity-provider:local',
+		]));
+	});
+
 	it('reports Git index lock diagnostics without mutating by default', () => {
 		const diagnostic = inspectTreeseedGitLocks(workspaceRoot ?? resolveTreeseedTestPath(testRoot, 'packages/sdk') ?? testRoot.root);
 		expect(diagnostic.repoRoot).toBeTruthy();
