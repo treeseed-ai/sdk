@@ -390,7 +390,11 @@ function buildGraphOnlyAdapter(providerId: string, unitTypes: TreeseedReconcileU
 
 function buildGitHubEnv(input: TreeseedReconcileAdapterInput, repositoryOverride?: string | null) {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
-	const values = resolveReconcileEnvironmentValues(input, scope === 'local' ? 'staging' : scope);
+	const credentialScope = scope === 'local' ? 'staging' : scope;
+	const values = {
+		...resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, credentialScope),
+		...resolveReconcileEnvironmentValues(input, credentialScope),
+	};
 	const repository = typeof repositoryOverride === 'string' && repositoryOverride.trim()
 		? repositoryOverride
 		: typeof input.unit.spec.repository === 'string'
