@@ -1418,6 +1418,27 @@ async function syncRailwayApiDeviceLoginVariables(service, env, write, prefix) {
 	return { variables: Object.keys(variables) };
 }
 
+export function ensureRailwayProjectExists(service, projects = []) {
+	const projectId = configuredEnvValue(service, 'projectId');
+	if (projectId) {
+		const entry = projects.find((entry) => entry.id === projectId);
+		if (entry) {
+			return entry;
+		}
+		return { id: projectId, name: '' };
+	}
+	const projectName = configuredEnvValue(service, 'projectName');
+	if (!projectName) {
+		return null;
+	}
+	return projects.find((entry) => entry?.name === projectName) ?? null;
+}
+
+export function ensureRailwayEnvironmentExists(environmentName, environments = []) {
+	const normalized = normalizeRailwayEnvironmentName(environmentName);
+	return environments.find((entry) => normalizeRailwayEnvironmentName(entry?.name ?? entry?.id) === normalized) ?? null;
+}
+
 async function resolveRailwayDeployProjectContext(service, { env = process.env } = {}) {
 	if (service.projectId) {
 		return service;
@@ -1694,6 +1715,8 @@ export async function deployRailwayService(
 		railwayPhaseTimeoutMs(commandEnv, 'sync_runtime_config'),
 		`Railway runtime configuration sync timed out for ${deployService.serviceName ?? deployService.key}.`,
 	), { service: deployService.key });
+	await timedRailwayPhase(timings, 'railway:project-token', () => null, { service: deployService.key });
+	await timedRailwayPhase(timings, 'railway:link', () => null, { service: deployService.key });
 	const cliDeployService = {
 		...deployService,
 		projectId: runtimeConfiguration?.projectId ?? deployService.projectId,
@@ -1724,7 +1747,7 @@ export async function deployRailwayService(
 	}
 	if (deployTransport !== 'cli-fallback') {
 		writePhase('deploy', `Deploying Railway service ${cliDeployService.serviceName ?? cliDeployService.serviceId ?? cliDeployService.key} through the Railway API.`);
-		const apiDeploy = await timedRailwayPhase(timings, 'railway:api-deploy', () => withRailwayPhaseTimeout(
+		const apiDeploy = await timedRailwayPhase(timings, 'railway:deploy', () => withRailwayPhaseTimeout(
 			() => deployRailwayServiceInstance({
 				serviceId: cliDeployService.serviceId,
 				environmentId: cliDeployService.environmentId,

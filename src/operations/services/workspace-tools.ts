@@ -128,6 +128,9 @@ export function workspacePackageJson(root = workspaceRoot()) {
 }
 
 export function workspacePatterns(root = workspaceRoot()) {
+	if (!existsSync(resolve(root, 'package.json'))) {
+		return hasCompleteTreeseedPackageCheckout(root) ? ['packages/*'] : [];
+	}
 	const packageJson = workspacePackageJson(root);
 	const workspaces = Array.isArray(packageJson.workspaces)
 		? packageJson.workspaces

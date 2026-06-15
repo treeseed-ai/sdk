@@ -411,13 +411,1332 @@ export interface ProjectConnection {
 	metadata?: Record<string, unknown>;
 }
 
-export type CatalogItemOfferMode =
-	| 'free'
-	| 'paid'
-	| 'contact'
-	| 'one_time_current_version'
-	| 'subscription_updates'
-	| 'private';
+export const COMMERCE_PRODUCT_KINDS = [
+	'template',
+	'knowledge_pack',
+	'ui_library',
+	'admin_interface',
+	'api_platform',
+	'hosted_project',
+	'professional_hosting',
+	'scoped_service',
+	'capacity_listing',
+] as const;
+
+export type CommerceProductKind = typeof COMMERCE_PRODUCT_KINDS[number];
+
+export const COMMERCE_OFFER_MODES = [
+	'free',
+	'private',
+	'contact',
+	'one_time',
+	'one_time_current_version',
+	'subscription',
+	'subscription_updates',
+	'professional_hosting',
+	'scoped_contract',
+	'external',
+] as const;
+
+export type CommerceOfferMode = typeof COMMERCE_OFFER_MODES[number];
+
+export type CatalogItemOfferMode = CommerceOfferMode;
+
+export const COMMERCE_VENDOR_TRUST_LEVELS = [
+	'public_publisher',
+	'verified_seller',
+	'trusted_service_vendor',
+	'trusted_capacity_vendor',
+	'integration_partner',
+] as const;
+
+export type CommerceVendorTrustLevel = typeof COMMERCE_VENDOR_TRUST_LEVELS[number];
+
+export const COMMERCE_GOVERNANCE_STATES = [
+	'draft',
+	'submitted',
+	'approved',
+	'rejected',
+	'suspended',
+	'archived',
+] as const;
+
+export type CommerceGovernanceState = typeof COMMERCE_GOVERNANCE_STATES[number];
+
+export const COMMERCE_ENTITLEMENT_STATUSES = [
+	'pending',
+	'active',
+	'past_due',
+	'expired',
+	'revoked',
+	'refunded',
+	'canceled',
+] as const;
+
+export type CommerceEntitlementStatus = typeof COMMERCE_ENTITLEMENT_STATUSES[number];
+
+export const COMMERCE_OWNERSHIP_MODELS = [
+	'team_owned',
+	'individual_contributor_owned',
+	'multi_contributor_attributed',
+	'steward_maintained',
+	'cooperative_owned',
+	'community_governed',
+	'foundation_or_trust_held',
+	'transferred_or_succeeded',
+] as const;
+
+export type CommerceOwnershipModel = typeof COMMERCE_OWNERSHIP_MODELS[number];
+
+export const COMMERCE_STEWARDSHIP_ROLES = [
+	'owner',
+	'seller',
+	'maintainer',
+	'governance_steward',
+	'support_steward',
+	'security_steward',
+	'community_steward',
+	'successor',
+] as const;
+
+export type CommerceStewardshipRole = typeof COMMERCE_STEWARDSHIP_ROLES[number];
+
+export const COMMERCE_OWNERSHIP_TRANSFER_STATUSES = [
+	'draft',
+	'submitted',
+	'approved',
+	'rejected',
+	'canceled',
+	'superseded',
+] as const;
+
+export type CommerceOwnershipTransferStatus = typeof COMMERCE_OWNERSHIP_TRANSFER_STATUSES[number];
+
+export const COMMERCE_SUCCESSION_EVENT_TYPES = [
+	'successor_named',
+	'successor_accepted',
+	'succession_triggered',
+	'succession_completed',
+	'succession_canceled',
+] as const;
+
+export type CommerceSuccessionEventType = typeof COMMERCE_SUCCESSION_EVENT_TYPES[number];
+
+export const COMMERCE_GOVERNANCE_DECISION_TYPES = [
+	'ownership_record',
+	'stewardship_assignment',
+	'contribution',
+	'governance_policy',
+	'ownership_transfer',
+	'succession',
+] as const;
+
+export type CommerceGovernanceDecisionType = typeof COMMERCE_GOVERNANCE_DECISION_TYPES[number];
+
+export const COMMERCE_STRIPE_ACCOUNT_STATUSES = [
+	'not_started',
+	'pending',
+	'restricted',
+	'enabled',
+	'disabled',
+] as const;
+
+export type CommerceStripeAccountStatus = typeof COMMERCE_STRIPE_ACCOUNT_STATUSES[number];
+
+export const COMMERCE_STRIPE_ONBOARDING_STATUSES = [
+	'not_started',
+	'started',
+	'returned',
+	'completed',
+	'expired',
+] as const;
+
+export type CommerceStripeOnboardingStatus = typeof COMMERCE_STRIPE_ONBOARDING_STATUSES[number];
+
+export const COMMERCE_STRIPE_ENVIRONMENTS = ['test', 'live'] as const;
+
+export type CommerceStripeEnvironment = typeof COMMERCE_STRIPE_ENVIRONMENTS[number];
+
+export const COMMERCE_STRIPE_SYNC_STATUSES = [
+	'not_synced',
+	'pending',
+	'synced',
+	'blocked',
+	'drifted',
+	'failed',
+] as const;
+
+export type CommerceStripeSyncStatus = typeof COMMERCE_STRIPE_SYNC_STATUSES[number];
+
+export const COMMERCE_CART_STATUSES = [
+	'active',
+	'checkout_pending',
+	'converted',
+	'abandoned',
+] as const;
+
+export type CommerceCartStatus = typeof COMMERCE_CART_STATUSES[number];
+
+export const COMMERCE_CHECKOUT_STATUSES = [
+	'draft',
+	'requires_confirmation',
+	'processing',
+	'partially_confirmed',
+	'confirmed',
+	'completed',
+	'canceled',
+	'failed',
+] as const;
+
+export type CommerceCheckoutStatus = typeof COMMERCE_CHECKOUT_STATUSES[number];
+
+export const COMMERCE_ORDER_STATUSES = [
+	'draft',
+	'pending_payment',
+	'requires_action',
+	'processing',
+	'paid',
+	'partially_refunded',
+	'refunded',
+	'canceled',
+	'failed',
+] as const;
+
+export type CommerceOrderStatus = typeof COMMERCE_ORDER_STATUSES[number];
+
+export const COMMERCE_ORDER_ITEM_STATUSES = [
+	'pending',
+	'paid',
+	'fulfilled',
+	'refunded',
+	'revoked',
+	'canceled',
+] as const;
+
+export type CommerceOrderItemStatus = typeof COMMERCE_ORDER_ITEM_STATUSES[number];
+
+export const COMMERCE_SUBSCRIPTION_STATUSES = [
+	'incomplete',
+	'trialing',
+	'active',
+	'past_due',
+	'canceled',
+	'unpaid',
+	'paused',
+] as const;
+
+export type CommerceSubscriptionStatus = typeof COMMERCE_SUBSCRIPTION_STATUSES[number];
+
+export const COMMERCE_PAYMENT_GROUP_STATUSES = [
+	'pending',
+	'requires_confirmation',
+	'requires_action',
+	'processing',
+	'succeeded',
+	'failed',
+	'canceled',
+] as const;
+
+export type CommercePaymentGroupStatus = typeof COMMERCE_PAYMENT_GROUP_STATUSES[number];
+
+export const COMMERCE_WEBHOOK_EVENT_STATUSES = [
+	'received',
+	'processing',
+	'processed',
+	'ignored',
+	'failed',
+] as const;
+
+export type CommerceWebhookEventStatus = typeof COMMERCE_WEBHOOK_EVENT_STATUSES[number];
+
+export const COMMERCE_REFUND_STATUSES = [
+	'processing',
+	'succeeded',
+	'failed',
+	'canceled',
+] as const;
+
+export type CommerceRefundStatus = typeof COMMERCE_REFUND_STATUSES[number];
+
+export const COMMERCE_FULFILLMENT_STATUSES = [
+	'pending',
+	'ready',
+	'delivered',
+	'failed',
+	'revoked',
+] as const;
+
+export type CommerceFulfillmentStatus = typeof COMMERCE_FULFILLMENT_STATUSES[number];
+
+export const COMMERCE_FULFILLMENT_EVENT_TYPES = [
+	'artifact_released',
+	'artifact_delivered',
+	'manual_status',
+	'revoked',
+] as const;
+
+export type CommerceFulfillmentEventType = typeof COMMERCE_FULFILLMENT_EVENT_TYPES[number];
+
+export const COMMERCE_SERVICE_REQUEST_STATUSES = [
+	'requested',
+	'scoping',
+	'quoted',
+	'buyer_approved',
+	'vendor_approved',
+	'checkout_pending',
+	'active',
+	'fulfilled',
+	'declined',
+	'canceled',
+	'expired',
+] as const;
+
+export type CommerceServiceRequestStatus = typeof COMMERCE_SERVICE_REQUEST_STATUSES[number];
+
+export const COMMERCE_SERVICE_QUOTE_STATUSES = [
+	'draft',
+	'submitted',
+	'buyer_approved',
+	'vendor_approved',
+	'accepted',
+	'rejected',
+	'expired',
+	'superseded',
+	'canceled',
+] as const;
+
+export type CommerceServiceQuoteStatus = typeof COMMERCE_SERVICE_QUOTE_STATUSES[number];
+
+export const COMMERCE_SERVICE_CONTRACT_STATUSES = [
+	'pending_checkout',
+	'active',
+	'fulfilled',
+	'canceled',
+	'disputed',
+] as const;
+
+export type CommerceServiceContractStatus = typeof COMMERCE_SERVICE_CONTRACT_STATUSES[number];
+
+export const COMMERCE_SERVICE_EVENT_TYPES = [
+	'requested',
+	'scoping_started',
+	'scope_updated',
+	'quote_created',
+	'quote_submitted',
+	'quote_buyer_approved',
+	'quote_vendor_approved',
+	'quote_rejected',
+	'quote_expired',
+	'checkout_created',
+	'contract_activated',
+	'work_linked',
+	'manual_update',
+	'fulfilled',
+	'declined',
+	'canceled',
+] as const;
+
+export type CommerceServiceEventType = typeof COMMERCE_SERVICE_EVENT_TYPES[number];
+
+export const COMMERCE_CAPACITY_LISTING_STATUSES = [
+	'draft',
+	'submitted',
+	'approved',
+	'rejected',
+	'suspended',
+	'archived',
+] as const;
+
+export type CommerceCapacityListingStatus = typeof COMMERCE_CAPACITY_LISTING_STATUSES[number];
+
+export const COMMERCE_CAPACITY_INQUIRY_STATUSES = [
+	'requested',
+	'reviewing',
+	'approved_for_scoping',
+	'declined',
+	'canceled',
+] as const;
+
+export type CommerceCapacityInquiryStatus = typeof COMMERCE_CAPACITY_INQUIRY_STATUSES[number];
+
+export const COMMERCE_CAPACITY_ACCESS_LEVELS = [
+	'public_summary',
+	'buyer_gated',
+	'governance_required',
+	'private_invite',
+] as const;
+
+export type CommerceCapacityAccessLevel = typeof COMMERCE_CAPACITY_ACCESS_LEVELS[number];
+
+export const COMMERCE_CAPACITY_RUNTIME_ISOLATION_LEVELS = [
+	'none',
+	'project_scoped',
+	'tenant_isolated',
+	'dedicated_runtime',
+	'external_only',
+] as const;
+
+export type CommerceCapacityRuntimeIsolationLevel = typeof COMMERCE_CAPACITY_RUNTIME_ISOLATION_LEVELS[number];
+
+export const COMMERCE_CAPACITY_HUMAN_INVOLVEMENT_LEVELS = [
+	'none',
+	'review_only',
+	'operator_assisted',
+	'human_delivered',
+] as const;
+
+export type CommerceCapacityHumanInvolvementLevel = typeof COMMERCE_CAPACITY_HUMAN_INVOLVEMENT_LEVELS[number];
+
+export const COMMERCE_CAPACITY_AI_INVOLVEMENT_LEVELS = [
+	'none',
+	'assistive',
+	'agentic',
+	'model_hosted',
+] as const;
+
+export type CommerceCapacityAiInvolvementLevel = typeof COMMERCE_CAPACITY_AI_INVOLVEMENT_LEVELS[number];
+
+export const COMMERCE_CAPACITY_DATA_ACCESS_LEVELS = [
+	'none',
+	'public_only',
+	'buyer_provided',
+	'project_scoped',
+	'sensitive_review_required',
+] as const;
+
+export type CommerceCapacityDataAccessLevel = typeof COMMERCE_CAPACITY_DATA_ACCESS_LEVELS[number];
+
+export const COMMERCE_CAPACITY_SECRET_ACCESS_LEVELS = [
+	'none',
+	'buyer_managed',
+	'delegated_scoped',
+	'market_admin_review_required',
+] as const;
+
+export type CommerceCapacitySecretAccessLevel = typeof COMMERCE_CAPACITY_SECRET_ACCESS_LEVELS[number];
+
+export interface CommerceVendor {
+	id: string;
+	teamId: string;
+	displayName: string;
+	slug: string;
+	status: CommerceGovernanceState;
+	trustLevel: CommerceVendorTrustLevel;
+	professionalEntitlementId: string | null;
+	stripeAccountId: string | null;
+	salesEnabled: boolean;
+	serviceSalesEnabled: boolean;
+	capacityListingsEnabled: boolean;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface StripeConnectedAccount {
+	id: string;
+	vendorId: string;
+	teamId: string;
+	environment: CommerceStripeEnvironment;
+	stripeAccountId: string;
+	accountStatus: CommerceStripeAccountStatus;
+	onboardingStatus: CommerceStripeOnboardingStatus;
+	chargesEnabled: boolean;
+	payoutsEnabled: boolean;
+	detailsSubmitted: boolean;
+	requirementsCurrentlyDue: string[];
+	requirementsEventuallyDue: string[];
+	requirementsPastDue: string[];
+	requirementsDisabledReason: string | null;
+	capabilities: Record<string, string>;
+	onboardingStartedAt: string | null;
+	onboardingCompletedAt: string | null;
+	lastSyncedAt: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceStripeOnboardingRequestInput {
+	returnUrl?: string | null;
+	refreshUrl?: string | null;
+}
+
+export interface CommerceStripeOnboardingResponse {
+	account: StripeConnectedAccount;
+	onboardingUrl: string;
+}
+
+export interface CommerceStripeLoginLinkResponse {
+	account: StripeConnectedAccount;
+	loginUrl: string;
+}
+
+export interface CommerceProduct {
+	id: string;
+	vendorId: string;
+	sellerTeamId: string;
+	kind: CommerceProductKind;
+	slug: string;
+	title: string;
+	summary: string | null;
+	description: string | null;
+	status: CommerceGovernanceState;
+	visibility: 'public' | 'authenticated' | 'team' | 'private';
+	catalogItemId: string | null;
+	currentVersionId: string | null;
+	ownershipModel: CommerceOwnershipModel;
+	ownershipRecordId: string | null;
+	supportPolicy: string | null;
+	license: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceOwnershipRecord {
+	id: string;
+	productId: string;
+	model: CommerceOwnershipModel;
+	canonicalOwnerType: 'user' | 'team' | 'organization' | 'cooperative' | 'community' | 'foundation' | 'external';
+	canonicalOwnerId: string | null;
+	sellerTeamId: string;
+	stewardTeamId: string | null;
+	governancePolicyId: string | null;
+	publicSummary: string | null;
+	buyerVisible: boolean;
+	effectiveAt: string;
+	supersededAt: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceStewardshipAssignment {
+	id: string;
+	ownershipRecordId: string;
+	productId: string;
+	role: CommerceStewardshipRole;
+	assigneeType: 'user' | 'team' | 'organization' | 'community' | 'external';
+	assigneeId: string | null;
+	displayName: string | null;
+	responsibilities: string[];
+	visibleToBuyers: boolean;
+	startsAt: string;
+	endsAt: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceContribution {
+	id: string;
+	productId: string;
+	productVersionId: string | null;
+	contributorType: 'user' | 'team' | 'organization' | 'external';
+	contributorId: string | null;
+	displayName: string | null;
+	role: string;
+	summary: string | null;
+	attributionVisibility: 'public' | 'buyer' | 'vendor' | 'private';
+	agreementRef: string | null;
+	benefitWeight: number | null;
+	effectiveAt: string;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceGovernancePolicy {
+	id: string;
+	productId: string | null;
+	teamId: string | null;
+	policyKind: 'product' | 'vendor' | 'cooperative' | 'community';
+	title: string;
+	approvalRules: Record<string, unknown>;
+	quorumRules: Record<string, unknown>;
+	buyerVisibleSummary: string | null;
+	status: 'draft' | 'active' | 'superseded' | 'archived';
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceOwnershipTransfer {
+	id: string;
+	productId: string;
+	fromOwnershipRecordId: string;
+	toOwnershipRecordId: string;
+	status: CommerceOwnershipTransferStatus;
+	reason: string;
+	approvalEvidence: Record<string, unknown>;
+	buyerVisibleImpact: string | null;
+	effectiveAt: string;
+	requestedByType: string;
+	requestedById: string;
+	approvedByType: string | null;
+	approvedById: string | null;
+	approvedAt: string | null;
+	rejectedAt: string | null;
+	supersededAt: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface CommerceSuccessionEvent {
+	id: string;
+	productId: string;
+	ownershipRecordId: string | null;
+	stewardshipAssignmentId: string | null;
+	successorType: string;
+	successorId: string;
+	eventType: CommerceSuccessionEventType;
+	status: CommerceOwnershipTransferStatus;
+	reason: string | null;
+	evidence?: Record<string, unknown>;
+	effectiveAt: string | null;
+	createdByType: string;
+	createdById: string;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface CommerceOwnershipWorkflowSummary {
+	productId: string;
+	currentOwnershipRecord: CommerceOwnershipRecord | null;
+	buyerVisibleOwnershipRecords: CommerceOwnershipRecord[];
+	stewardshipAssignments: CommerceStewardshipAssignment[];
+	contributions: CommerceContribution[];
+	governancePolicies: CommerceGovernancePolicy[];
+	pendingTransfers: CommerceOwnershipTransfer[];
+	successionEvents: CommerceSuccessionEvent[];
+}
+
+export interface CommerceOwnershipRecordUpdateInput {
+	publicSummary?: string | null;
+	buyerVisible?: boolean;
+	metadata?: Record<string, unknown>;
+}
+
+export interface CommerceStewardshipAssignmentUpdateInput {
+	displayName?: string | null;
+	responsibilities?: Record<string, unknown>;
+	visibleToBuyers?: boolean;
+	endsAt?: string | null;
+	metadata?: Record<string, unknown>;
+}
+
+export interface CommerceContributionUpdateInput {
+	summary?: string | null;
+	attributionVisibility?: string;
+	benefitWeight?: number | null;
+	metadata?: Record<string, unknown>;
+}
+
+export interface CommerceGovernancePolicyUpdateInput {
+	title?: string;
+	approvalRules?: Record<string, unknown>;
+	quorumRules?: Record<string, unknown>;
+	buyerVisibleSummary?: string | null;
+	status?: CommerceGovernanceState;
+}
+
+export interface CommerceOwnershipTransferDecisionInput {
+	reason?: string | null;
+	evidence?: Record<string, unknown>;
+}
+
+export interface CommerceSuccessionEventInput {
+	ownershipRecordId?: string | null;
+	stewardshipAssignmentId?: string | null;
+	successorType: string;
+	successorId: string;
+	eventType: CommerceSuccessionEventType;
+	reason?: string | null;
+	evidence?: Record<string, unknown>;
+	effectiveAt?: string | null;
+	metadata?: Record<string, unknown>;
+}
+
+export interface CommerceCapacityListing {
+	id: string;
+	productId: string;
+	vendorId: string;
+	sellerTeamId: string;
+	capacityProviderId: string | null;
+	capacityProviderLaneId: string | null;
+	status: CommerceCapacityListingStatus;
+	accessLevel: CommerceCapacityAccessLevel;
+	runtimeIsolationLevel: CommerceCapacityRuntimeIsolationLevel;
+	humanInvolvementLevel: CommerceCapacityHumanInvolvementLevel;
+	aiInvolvementLevel: CommerceCapacityAiInvolvementLevel;
+	dataAccessLevel: CommerceCapacityDataAccessLevel;
+	secretAccessLevel: CommerceCapacitySecretAccessLevel;
+	supportedServiceTypes: string[];
+	supportedRegions: string[];
+	runtimeRequirements: Record<string, unknown>;
+	dataHandlingSummary: string | null;
+	buyerVisibleRiskSummary: string | null;
+	governanceRequirements: Record<string, unknown>;
+	supportPolicy: string | null;
+	availabilitySummary: string | null;
+	ownershipSnapshot?: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceCapacityListingInquiry {
+	id: string;
+	listingId: string;
+	productId: string;
+	vendorId: string;
+	sellerTeamId: string;
+	buyerTeamId: string | null;
+	buyerUserId: string | null;
+	status: CommerceCapacityInquiryStatus;
+	requestedServiceType: string | null;
+	requestedScope: string;
+	dataAccessRequested: Record<string, unknown>;
+	secretAccessRequested: Record<string, unknown>;
+	relatedProjectId: string | null;
+	relatedWorkdayId: string | null;
+	governanceEvidence?: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceCapacityListingInput {
+	capacityProviderId?: string | null;
+	capacityProviderLaneId?: string | null;
+	accessLevel?: CommerceCapacityAccessLevel;
+	runtimeIsolationLevel?: CommerceCapacityRuntimeIsolationLevel;
+	humanInvolvementLevel?: CommerceCapacityHumanInvolvementLevel;
+	aiInvolvementLevel?: CommerceCapacityAiInvolvementLevel;
+	dataAccessLevel?: CommerceCapacityDataAccessLevel;
+	secretAccessLevel?: CommerceCapacitySecretAccessLevel;
+	supportedServiceTypes?: string[];
+	supportedRegions?: string[];
+	runtimeRequirements?: Record<string, unknown>;
+	dataHandlingSummary?: string | null;
+	buyerVisibleRiskSummary?: string | null;
+	governanceRequirements?: Record<string, unknown>;
+	supportPolicy?: string | null;
+	availabilitySummary?: string | null;
+	metadata?: Record<string, unknown>;
+}
+
+export interface CommerceCapacityListingInquiryInput {
+	requestedServiceType?: string | null;
+	requestedScope: string;
+	dataAccessRequested?: Record<string, unknown>;
+	secretAccessRequested?: Record<string, unknown>;
+	relatedProjectId?: string | null;
+	relatedWorkdayId?: string | null;
+	metadata?: Record<string, unknown>;
+}
+
+export interface CommerceCapacityInquiryDecisionInput {
+	reason?: string | null;
+	evidence?: Record<string, unknown>;
+}
+
+export interface CommerceProductVersion {
+	id: string;
+	productId: string;
+	version: string;
+	status: CommerceGovernanceState;
+	catalogArtifactVersionId: string | null;
+	manifestKey: string | null;
+	artifactKey: string | null;
+	integrity: string | null;
+	releaseNotes: string | null;
+	compatibility: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	publishedAt: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceOffer {
+	id: string;
+	productId: string;
+	productVersionId: string | null;
+	vendorId: string;
+	sellerTeamId: string;
+	mode: CommerceOfferMode;
+	status: CommerceGovernanceState;
+	title: string;
+	termsSummary: string | null;
+	accessScope: Record<string, unknown>;
+	supportScope: Record<string, unknown>;
+	fulfillmentMode: 'automatic' | 'manual' | 'scoped' | 'external';
+	activePriceId: string | null;
+	stripeProductId: string | null;
+	stripeProductStatus: CommerceStripeSyncStatus;
+	stripeProductSyncedAt: string | null;
+	stripeProductSyncError: string | null;
+	stripeProductMetadata?: Record<string, unknown>;
+	startsAt: string | null;
+	endsAt: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommercePrice {
+	id: string;
+	offerId: string;
+	amount: number;
+	currency: string;
+	billingInterval: 'one_time' | 'month' | 'year' | 'custom';
+	status: 'draft' | 'active' | 'archived';
+	stripeProductId: string | null;
+	stripePriceId: string | null;
+	stripeLookupKey: string | null;
+	stripeSyncStatus: CommerceStripeSyncStatus;
+	stripeSyncedAt: string | null;
+	stripeSyncError: string | null;
+	stripeMetadata?: Record<string, unknown>;
+	priceVersion: number;
+	taxBehavior: 'exclusive' | 'inclusive' | 'unspecified';
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceStripeProductSyncResult {
+	offer: CommerceOffer;
+	product: CommerceProduct;
+	vendor: CommerceVendor;
+	connectedAccount: StripeConnectedAccount;
+	stripeProductId: string;
+	status: CommerceStripeSyncStatus;
+	reconciled: boolean;
+}
+
+export interface CommerceStripePriceSyncResult {
+	offer: CommerceOffer;
+	price: CommercePrice;
+	connectedAccount: StripeConnectedAccount;
+	stripeProductId: string;
+	stripePriceId: string;
+	stripeLookupKey: string;
+	status: CommerceStripeSyncStatus;
+	reconciled: boolean;
+}
+
+export interface CommerceCart {
+	id: string;
+	buyerTeamId: string | null;
+	buyerUserId: string | null;
+	status: CommerceCartStatus;
+	currency: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceCartItem {
+	id: string;
+	cartId: string;
+	vendorId: string;
+	sellerTeamId: string;
+	productId: string;
+	productVersionId: string | null;
+	offerId: string;
+	priceId: string | null;
+	quantity: number;
+	unitAmount: number;
+	currency: string;
+	mode: CommerceOfferMode;
+	status: 'active' | 'removed' | 'converted';
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceCheckout {
+	id: string;
+	cartId: string;
+	buyerTeamId: string | null;
+	buyerUserId: string | null;
+	status: CommerceCheckoutStatus;
+	checkoutMode: 'stripe_elements_grouped_vendor';
+	groupCount: number;
+	completedGroupCount: number;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceOrder {
+	id: string;
+	checkoutId: string | null;
+	cartId: string | null;
+	buyerTeamId: string | null;
+	buyerUserId: string | null;
+	vendorId: string | null;
+	sellerTeamId: string | null;
+	status: CommerceOrderStatus;
+	currency: string;
+	subtotalAmount: number;
+	totalAmount: number;
+	refundedAmount: number;
+	refundStatus: 'none' | 'partial' | 'full';
+	stripeCheckoutSessionId: string | null;
+	stripePaymentIntentId: string | null;
+	stripeSubscriptionId: string | null;
+	stripeCustomerId: string | null;
+	stripeConnectedAccountId: string | null;
+	ownershipSnapshot?: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceOrderItem {
+	id: string;
+	orderId: string;
+	vendorId: string;
+	sellerTeamId: string;
+	productId: string;
+	productVersionId: string | null;
+	offerId: string;
+	priceId: string;
+	mode: CommerceOfferMode;
+	quantity: number;
+	unitAmount: number;
+	totalAmount: number;
+	refundedAmount: number;
+	refundStatus: 'none' | 'partial' | 'full';
+	currency: string;
+	status: CommerceOrderItemStatus;
+	entitlementId: string | null;
+	ownershipSnapshot?: Record<string, unknown>;
+	accessScope: Record<string, unknown>;
+	supportScope: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommercePaymentGroup {
+	id: string;
+	checkoutId: string;
+	orderId: string;
+	vendorId: string;
+	sellerTeamId: string;
+	connectedAccountId: string | null;
+	groupKind: 'free' | 'one_time' | 'subscription';
+	billingInterval: 'one_time' | 'month' | 'year' | null;
+	status: CommercePaymentGroupStatus;
+	currency: string;
+	subtotalAmount: number;
+	totalAmount: number;
+	stripePaymentIntentId: string | null;
+	stripeSubscriptionId: string | null;
+	stripeCustomerId: string | null;
+	clientSecret: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceSubscription {
+	id: string;
+	orderId: string;
+	vendorId: string;
+	sellerTeamId: string;
+	buyerTeamId: string | null;
+	buyerUserId: string | null;
+	offerId: string;
+	priceId: string;
+	status: CommerceSubscriptionStatus;
+	renewalState: CommerceEntitlement['renewalState'];
+	stripeSubscriptionId: string;
+	stripeCustomerId: string | null;
+	stripeConnectedAccountId: string;
+	currentPeriodStart: string | null;
+	currentPeriodEnd: string | null;
+	cancelAtPeriodEnd: boolean;
+	canceledAt: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceEntitlement {
+	id: string;
+	buyerTeamId: string | null;
+	buyerUserId: string | null;
+	sellerTeamId: string;
+	productId: string;
+	productVersionId: string | null;
+	offerId: string;
+	orderId: string | null;
+	orderItemId: string | null;
+	subscriptionId: string | null;
+	status: CommerceEntitlementStatus;
+	accessScope: Record<string, unknown>;
+	startsAt: string | null;
+	endsAt: string | null;
+	renewalState: 'none' | 'active' | 'past_due' | 'canceling' | 'canceled';
+	fulfillmentArtifactRefs: string[];
+	projectId: string | null;
+	catalogItemId: string | null;
+	ownershipSnapshot?: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceBuyerStripeCustomer {
+	id: string;
+	buyerTeamId: string | null;
+	buyerUserId: string | null;
+	vendorId: string;
+	connectedAccountId: string;
+	environment: CommerceStripeEnvironment;
+	stripeCustomerId: string;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceWebhookEvent {
+	id: string;
+	provider: 'stripe';
+	environment: CommerceStripeEnvironment;
+	eventId: string;
+	eventType: string;
+	connectedAccountId: string | null;
+	status: CommerceWebhookEventStatus;
+	objectType: string | null;
+	objectId: string | null;
+	relatedOrderId: string | null;
+	relatedSubscriptionId: string | null;
+	payloadHash: string;
+	processingError: string | null;
+	receivedAt: string;
+	processedAt: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceCheckoutCreateInput {
+	buyerTeamId?: string | null;
+	items: Array<{
+		offerId: string;
+		priceId?: string | null;
+		quantity?: number;
+	}>;
+}
+
+export interface CommerceCheckoutResponse {
+	checkout: CommerceCheckout;
+	orders: CommerceOrder[];
+	paymentGroups: CommercePaymentGroup[];
+	entitlements: CommerceEntitlement[];
+}
+
+export interface CommercePaymentGroupRefreshResponse {
+	paymentGroup: CommercePaymentGroup;
+	clientSecret: string | null;
+}
+
+export interface CommerceMarketplaceOfferSummary {
+	id: string;
+	mode: CommerceOfferMode;
+	title: string;
+	status: CommerceGovernanceState;
+	priceId: string | null;
+	unitAmount: number | null;
+	currency: string | null;
+	billingInterval: string | null;
+	checkoutEligible: boolean;
+	serviceEligible: boolean;
+	capacityInquiryEligible: boolean;
+	stripeSyncStatus: CommerceStripeSyncStatus | null;
+}
+
+export interface CommerceMarketplaceProductSummary {
+	id: string;
+	kind: CommerceProductKind;
+	title: string;
+	slug: string | null;
+	summary: string | null;
+	status: CommerceGovernanceState;
+	vendorId: string;
+	sellerTeamId: string;
+	vendorDisplayName: string | null;
+	ownershipModel: CommerceOwnershipModel | null;
+	buyerVisibleOwnershipSummary: string | null;
+	stewardshipSummary: Record<string, unknown>[];
+	offers: CommerceMarketplaceOfferSummary[];
+	capacityListingId: string | null;
+	serviceRequestEligible: boolean;
+	checkoutEligible: boolean;
+	updatedAt: string;
+}
+
+export interface CommerceMarketplaceCatalogResponse {
+	products: CommerceMarketplaceProductSummary[];
+}
+
+export interface CommerceRefund {
+	id: string;
+	orderId: string;
+	orderItemId: string | null;
+	paymentGroupId: string | null;
+	vendorId: string;
+	sellerTeamId: string;
+	buyerTeamId: string | null;
+	buyerUserId: string | null;
+	amount: number;
+	currency: string;
+	status: CommerceRefundStatus;
+	reason: string | null;
+	stripeRefundId: string | null;
+	stripePaymentIntentId: string | null;
+	stripeConnectedAccountId: string | null;
+	idempotencyKey: string;
+	requestedByType: string;
+	requestedById: string;
+	failureReason: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceVendorSalesSummary {
+	vendorId: string;
+	sellerTeamId: string;
+	currency: string | null;
+	grossPaidAmount: number;
+	refundedAmount: number;
+	netPaidAmount: number;
+	paidOrderCount: number;
+	refundedOrderCount: number;
+	activeSubscriptionCount: number;
+	activeEntitlementCount: number;
+	pendingFulfillmentCount: number;
+}
+
+export interface CommerceCommerceMonitor {
+	vendorId: string | null;
+	sellerTeamId: string;
+	stripeReady: boolean;
+	blockedStripeSyncCount: number;
+	driftedStripeSyncCount: number;
+	pendingFulfillmentCount: number;
+	failedRefundCount: number;
+	failedWebhookCount: number;
+	pendingServiceRequestCount: number;
+	pendingCapacityInquiryCount: number;
+	pendingGovernanceTransferCount: number;
+	recentGovernanceEvents: CommerceGovernanceEvent[];
+	updatedAt: string;
+}
+
+export interface CommerceVendorOrderSummary {
+	id: string;
+	checkoutId: string | null;
+	status: CommerceOrderStatus;
+	currency: string;
+	totalAmount: number;
+	refundedAmount: number;
+	buyerTeamId: string | null;
+	buyerDisplayName: string | null;
+	buyerUserIdRedacted: string | null;
+	itemCount: number;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceRefundCreateInput {
+	orderItemId?: string | null;
+	amount?: number | null;
+	reason?: string | null;
+	idempotencyKey?: string | null;
+	metadata?: Record<string, unknown>;
+}
+
+export interface CommerceArtifactDeliveryInput {
+	catalogArtifactVersionId?: string | null;
+	artifactRefs?: Record<string, unknown>[];
+	message?: string | null;
+}
+
+export interface CommerceServiceRequest {
+	id: string;
+	buyerTeamId: string | null;
+	buyerUserId: string | null;
+	vendorId: string;
+	sellerTeamId: string;
+	productId: string;
+	offerId: string;
+	status: CommerceServiceRequestStatus;
+	requestedScope: string;
+	approvedScope: string | null;
+	accessNeeds: Record<string, unknown>;
+	buyerVisibleSummary: string | null;
+	vendorPrivateNotes: string | null;
+	activeQuoteId: string | null;
+	approvedQuoteId: string | null;
+	contractId: string | null;
+	relatedProjectId: string | null;
+	relatedWorkdayId: string | null;
+	orderId: string | null;
+	entitlementId: string | null;
+	ownershipSnapshot?: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceServiceQuote {
+	id: string;
+	requestId: string;
+	vendorId: string;
+	sellerTeamId: string;
+	buyerTeamId: string | null;
+	buyerUserId: string | null;
+	quoteVersion: number;
+	status: CommerceServiceQuoteStatus;
+	title: string;
+	scopeSummary: string;
+	deliverables: Record<string, unknown>[];
+	assumptions: Record<string, unknown>[];
+	accessRequirements: Record<string, unknown>;
+	governanceRequirements: Record<string, unknown>;
+	amount: number;
+	currency: string;
+	expiresAt: string | null;
+	buyerApprovedAt: string | null;
+	vendorApprovedAt: string | null;
+	acceptedAt: string | null;
+	rejectedAt: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceServiceContract {
+	id: string;
+	requestId: string;
+	quoteId: string;
+	vendorId: string;
+	sellerTeamId: string;
+	buyerTeamId: string | null;
+	buyerUserId: string | null;
+	productId: string;
+	offerId: string;
+	status: CommerceServiceContractStatus;
+	amount: number;
+	currency: string;
+	orderId: string | null;
+	orderItemId: string | null;
+	paymentGroupId: string | null;
+	entitlementId: string | null;
+	relatedProjectId: string | null;
+	relatedWorkdayId: string | null;
+	ownershipSnapshot?: Record<string, unknown>;
+	accessApprovalSnapshot?: Record<string, unknown>;
+	fulfillmentSummary: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommerceServiceEvent {
+	id: string;
+	requestId: string;
+	quoteId: string | null;
+	contractId: string | null;
+	eventType: CommerceServiceEventType;
+	actorType: string;
+	actorId: string | null;
+	priorState: string | null;
+	nextState: string | null;
+	message: string | null;
+	evidence?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface CommerceServiceRequestInput {
+	buyerTeamId?: string | null;
+	offerId: string;
+	requestedScope: string;
+	accessNeeds?: Record<string, unknown>;
+	relatedProjectId?: string | null;
+	relatedWorkdayId?: string | null;
+	metadata?: Record<string, unknown>;
+}
+
+export interface CommerceServiceQuoteInput {
+	title: string;
+	scopeSummary: string;
+	deliverables?: Record<string, unknown>[];
+	assumptions?: Record<string, unknown>[];
+	accessRequirements?: Record<string, unknown>;
+	governanceRequirements?: Record<string, unknown>;
+	amount: number;
+	currency: string;
+	expiresAt?: string | null;
+	metadata?: Record<string, unknown>;
+}
+
+export interface CommerceServiceDecisionInput {
+	reason?: string | null;
+	evidence?: Record<string, unknown>;
+}
+
+export interface CommerceServiceFulfillmentInput {
+	summary?: string | null;
+	artifactRefs?: Record<string, unknown>[];
+	deliveryRefs?: Record<string, unknown>[];
+	metadata?: Record<string, unknown>;
+}
+
+export interface CommerceFulfillmentEvent {
+	id: string;
+	orderId: string;
+	orderItemId: string | null;
+	entitlementId: string | null;
+	vendorId: string;
+	sellerTeamId: string;
+	productId: string;
+	productVersionId: string | null;
+	catalogItemId: string | null;
+	catalogArtifactVersionId: string | null;
+	eventType: CommerceFulfillmentEventType;
+	status: CommerceFulfillmentStatus;
+	artifactRefs: Record<string, unknown>[];
+	deliveryRefs: Record<string, unknown>[];
+	message: string | null;
+	actorType: string;
+	actorId: string;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface CommerceGovernanceEvent {
+	id: string;
+	actorType: 'system' | 'user' | 'team' | 'operator';
+	actorId: string | null;
+	action: string;
+	objectType: string;
+	objectId: string;
+	priorState: string | null;
+	nextState: string | null;
+	reason: string | null;
+	evidence: Record<string, unknown>;
+	relatedOrderId: string | null;
+	relatedOfferId: string | null;
+	relatedProductId: string | null;
+	relatedTeamId: string | null;
+	createdAt: string;
+}
 
 export interface TeamStorageLocator {
 	id: string;
@@ -3247,7 +4566,7 @@ export interface SdkTemplateCatalogEntry {
 		supportsReconcile: boolean;
 	};
 	offer?: {
-		priceModel?: 'free' | 'paid' | 'contact' | 'one_time_current_version' | 'subscription_updates' | 'private';
+		priceModel?: CommerceOfferMode;
 		license?: string;
 		support?: string;
 	};
