@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+	COMMONS_DECISION_STATUSES,
+	COMMONS_GOVERNANCE_EVENT_TYPES,
+	COMMONS_PARTICIPANT_STATUSES,
+	COMMONS_PROPOSAL_STATUSES,
+	COMMONS_QUESTION_STATUSES,
+	COMMONS_VOTE_VALUES,
 	COMMERCE_CART_STATUSES,
 	COMMERCE_CAPACITY_ACCESS_LEVELS,
 	COMMERCE_CAPACITY_AI_INVOLVEMENT_LEVELS,
@@ -57,6 +63,12 @@ import {
 	type CommerceSuccessionEvent,
 	type CommerceVendorSalesSummary,
 	type CommerceWebhookEvent,
+	type CommonsDecision,
+	type CommonsGovernanceEvent,
+	type CommonsParticipant,
+	type CommonsProposal,
+	type CommonsProposalVote,
+	type CommonsQuestion,
 	type StripeConnectedAccount,
 } from '../../src/sdk-types.ts';
 
@@ -94,6 +106,137 @@ describe('commerce contracts', () => {
 			'verified_seller',
 			'trusted_capacity_vendor',
 		]));
+	});
+
+	it('defines TreeSeed Commons governance vocabulary', () => {
+		expect(COMMONS_PARTICIPANT_STATUSES).toEqual(['active', 'limited', 'suspended', 'archived']);
+		expect(COMMONS_PROPOSAL_STATUSES).toEqual([
+			'draft',
+			'submitted',
+			'backing',
+			'qualified',
+			'under_review',
+			'voting',
+			'accepted',
+			'rejected',
+			'deferred',
+			'implemented',
+			'archived',
+		]);
+		expect(COMMONS_QUESTION_STATUSES).toEqual(['open', 'answered', 'converted_to_proposal', 'archived']);
+		expect(COMMONS_VOTE_VALUES).toEqual(['support', 'object', 'abstain']);
+		expect(COMMONS_DECISION_STATUSES).toEqual(['proposed', 'accepted', 'rejected', 'scheduled', 'implemented', 'archived']);
+		expect(COMMONS_GOVERNANCE_EVENT_TYPES).toEqual(expect.arrayContaining([
+			'participant.joined',
+			'proposal.backed',
+			'proposal.voted',
+			'proposal.steward_decision',
+			'decision.created',
+		]));
+	});
+
+	it('typechecks representative TreeSeed Commons governance records', () => {
+		const participant = {
+			id: 'commons_participant_1',
+			userId: 'user_1',
+			teamId: 'treeseed',
+			status: 'active',
+			displayName: 'Ada Steward',
+			verifiedEmail: true,
+			baseWeight: 1,
+			trustWeight: 0.5,
+			contributionWeight: 0.5,
+			stakeholderWeight: 0,
+			delegatedWeight: 0,
+			totalWeight: 2,
+			metadata: {},
+			createdAt: '2026-06-15T00:00:00.000Z',
+			updatedAt: '2026-06-15T00:00:00.000Z',
+		} satisfies CommonsParticipant;
+		const question = {
+			id: 'commons_question_1',
+			participantId: participant.id,
+			userId: participant.userId,
+			teamId: participant.teamId,
+			status: 'open',
+			title: 'What should TreeSeed prioritize?',
+			body: 'How should the cooperative roadmap be shaped?',
+			answer: null,
+			convertedProposalId: null,
+			metadata: {},
+			createdAt: participant.createdAt,
+			updatedAt: participant.updatedAt,
+		} satisfies CommonsQuestion;
+		const proposal = {
+			id: 'commons_proposal_1',
+			participantId: participant.id,
+			userId: participant.userId,
+			teamId: participant.teamId,
+			status: 'voting',
+			title: 'Create a Commons governance lane',
+			summary: 'Use a bounded proposal and decision process.',
+			body: 'Members can ask, propose, back, vote, and steward decisions.',
+			scope: 'treeseed_commons',
+			decisionType: 'advisory',
+			contentProposalSlug: null,
+			contentDecisionSlug: null,
+			backingCount: 3,
+			voteSupportWeight: 5,
+			voteObjectWeight: 1,
+			voteAbstainWeight: 0,
+			qualifiedAt: participant.createdAt,
+			votingStartsAt: participant.createdAt,
+			votingEndsAt: null,
+			stewardDecisionAt: null,
+			stewardDecisionBy: null,
+			metadata: {},
+			createdAt: participant.createdAt,
+			updatedAt: participant.updatedAt,
+		} satisfies CommonsProposal;
+		const vote = {
+			id: 'commons_vote_1',
+			proposalId: proposal.id,
+			participantId: participant.id,
+			userId: participant.userId,
+			vote: 'support',
+			weightSnapshotId: 'commons_weight_1',
+			weight: 2,
+			reason: 'This matches the cooperative governance and ownership model.',
+			createdAt: participant.createdAt,
+			updatedAt: participant.updatedAt,
+		} satisfies CommonsProposalVote;
+		const decision = {
+			id: 'commons_decision_1',
+			proposalId: proposal.id,
+			status: 'accepted',
+			decisionRecordId: null,
+			decisionRecordSlug: null,
+			title: proposal.title,
+			summary: proposal.summary,
+			stewardReason: 'Accepted within a bounded capacity allocation.',
+			capacityBudget: 'commons',
+			scheduledFor: null,
+			implementedAt: null,
+			metadata: {},
+			createdAt: participant.createdAt,
+			updatedAt: participant.updatedAt,
+		} satisfies CommonsDecision;
+		const event = {
+			id: 'commons_event_1',
+			eventType: 'proposal.steward_decision',
+			actorType: 'user',
+			actorId: participant.userId,
+			participantId: participant.id,
+			proposalId: proposal.id,
+			questionId: question.id,
+			decisionId: decision.id,
+			priorState: 'voting',
+			nextState: 'accepted',
+			message: 'Accepted by steward review.',
+			evidence: { proposalId: proposal.id },
+			createdAt: participant.createdAt,
+		} satisfies CommonsGovernanceEvent;
+		expect([participant, question, proposal, vote, decision, event].map((entry) => entry.id)).toHaveLength(6);
 	});
 
 	it('defines Stripe Connect readiness vocabulary without payment behavior', () => {

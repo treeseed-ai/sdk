@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+	commonsDecisions,
+	commonsDelegations,
+	commonsGovernanceEvents,
+	commonsParticipants,
+	commonsProposalBackings,
+	commonsProposals,
+	commonsProposalVotes,
+	commonsQuestions,
+	commonsWeightSnapshots,
 	commerceBuyerStripeCustomers,
 	commerceCapacityListingInquiries,
 	commerceCapacityListings,
@@ -38,6 +47,33 @@ function tableName(table: unknown) {
 }
 
 describe('commerce market schema', () => {
+	it('exports TreeSeed Commons governance tables without legal membership or payout ledgers', () => {
+		expect(tableName(commonsParticipants)).toBe('commons_participants');
+		expect(tableName(commonsQuestions)).toBe('commons_questions');
+		expect(tableName(commonsProposals)).toBe('commons_proposals');
+		expect(tableName(commonsWeightSnapshots)).toBe('commons_weight_snapshots');
+		expect(tableName(commonsProposalBackings)).toBe('commons_proposal_backings');
+		expect(tableName(commonsProposalVotes)).toBe('commons_proposal_votes');
+		expect(tableName(commonsDelegations)).toBe('commons_delegations');
+		expect(tableName(commonsDecisions)).toBe('commons_decisions');
+		expect(tableName(commonsGovernanceEvents)).toBe('commons_governance_events');
+		expect(commonsParticipants).toHaveProperty('totalWeight');
+		expect(commonsProposals).toHaveProperty('voteSupportWeight');
+		expect(commonsGovernanceEvents).toHaveProperty('evidenceJson');
+		expect([
+			tableName(commonsParticipants),
+			tableName(commonsProposals),
+			tableName(commonsDecisions),
+		]).not.toEqual(expect.arrayContaining([
+			'commons_legal_memberships',
+			'commons_patronage_ledgers',
+			'commons_dividend_allocations',
+			'commons_token_credits',
+			'commons_payouts',
+			'commons_revenue_splits',
+		]));
+	});
+
 	it('exports the phase 2 commerce registry tables with stable database names', () => {
 		expect(tableName(commerceVendors)).toBe('commerce_vendors');
 		expect(tableName(commerceProducts)).toBe('commerce_products');

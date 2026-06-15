@@ -533,6 +533,81 @@ export const COMMERCE_GOVERNANCE_DECISION_TYPES = [
 
 export type CommerceGovernanceDecisionType = typeof COMMERCE_GOVERNANCE_DECISION_TYPES[number];
 
+export const COMMONS_PARTICIPANT_STATUSES = [
+	'active',
+	'limited',
+	'suspended',
+	'archived',
+] as const;
+
+export type CommonsParticipantStatus = typeof COMMONS_PARTICIPANT_STATUSES[number];
+
+export const COMMONS_PROPOSAL_STATUSES = [
+	'draft',
+	'submitted',
+	'backing',
+	'qualified',
+	'under_review',
+	'voting',
+	'accepted',
+	'rejected',
+	'deferred',
+	'implemented',
+	'archived',
+] as const;
+
+export type CommonsProposalStatus = typeof COMMONS_PROPOSAL_STATUSES[number];
+
+export const COMMONS_QUESTION_STATUSES = [
+	'open',
+	'answered',
+	'converted_to_proposal',
+	'archived',
+] as const;
+
+export type CommonsQuestionStatus = typeof COMMONS_QUESTION_STATUSES[number];
+
+export const COMMONS_VOTE_VALUES = [
+	'support',
+	'object',
+	'abstain',
+] as const;
+
+export type CommonsVoteValue = typeof COMMONS_VOTE_VALUES[number];
+
+export const COMMONS_DECISION_STATUSES = [
+	'proposed',
+	'accepted',
+	'rejected',
+	'scheduled',
+	'implemented',
+	'archived',
+] as const;
+
+export type CommonsDecisionStatus = typeof COMMONS_DECISION_STATUSES[number];
+
+export const COMMONS_GOVERNANCE_EVENT_TYPES = [
+	'participant.joined',
+	'question.created',
+	'question.answered',
+	'question.converted_to_proposal',
+	'proposal.created',
+	'proposal.submitted',
+	'proposal.backed',
+	'proposal.qualified',
+	'proposal.review_started',
+	'proposal.voting_started',
+	'proposal.voted',
+	'proposal.steward_decision',
+	'proposal.archived',
+	'delegation.created',
+	'delegation.revoked',
+	'decision.created',
+	'decision.updated',
+] as const;
+
+export type CommonsGovernanceEventType = typeof COMMONS_GOVERNANCE_EVENT_TYPES[number];
+
 export const COMMERCE_STRIPE_ACCOUNT_STATUSES = [
 	'not_started',
 	'pending',
@@ -1736,6 +1811,173 @@ export interface CommerceGovernanceEvent {
 	relatedProductId: string | null;
 	relatedTeamId: string | null;
 	createdAt: string;
+}
+
+export interface CommonsParticipant {
+	id: string;
+	userId: string;
+	teamId: string;
+	status: CommonsParticipantStatus;
+	displayName: string | null;
+	verifiedEmail: boolean;
+	baseWeight: number;
+	trustWeight: number;
+	contributionWeight: number;
+	stakeholderWeight: number;
+	delegatedWeight: number;
+	totalWeight: number;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommonsQuestion {
+	id: string;
+	participantId: string;
+	userId: string;
+	teamId: string;
+	status: CommonsQuestionStatus;
+	title: string;
+	body: string;
+	answer: string | null;
+	convertedProposalId: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommonsProposal {
+	id: string;
+	participantId: string;
+	userId: string;
+	teamId: string;
+	status: CommonsProposalStatus;
+	title: string;
+	summary: string;
+	body: string;
+	scope: string;
+	decisionType: string;
+	contentProposalSlug: string | null;
+	contentDecisionSlug: string | null;
+	backingCount: number;
+	voteSupportWeight: number;
+	voteObjectWeight: number;
+	voteAbstainWeight: number;
+	qualifiedAt: string | null;
+	votingStartsAt: string | null;
+	votingEndsAt: string | null;
+	stewardDecisionAt: string | null;
+	stewardDecisionBy: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommonsProposalBacking {
+	id: string;
+	proposalId: string;
+	participantId: string;
+	userId: string;
+	weightSnapshotId: string;
+	weight: number;
+	reason: string | null;
+	createdAt: string;
+}
+
+export interface CommonsProposalVote {
+	id: string;
+	proposalId: string;
+	participantId: string;
+	userId: string;
+	vote: CommonsVoteValue;
+	weightSnapshotId: string;
+	weight: number;
+	reason: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommonsDelegation {
+	id: string;
+	fromParticipantId: string;
+	toParticipantId: string;
+	scope: string;
+	status: 'active' | 'revoked';
+	weightLimit: number | null;
+	reason: string | null;
+	createdAt: string;
+	revokedAt: string | null;
+}
+
+export interface CommonsWeightSnapshot {
+	id: string;
+	participantId: string;
+	policyVersion: string;
+	baseWeight: number;
+	verifiedEmailWeight: number;
+	accountAgeWeight: number;
+	contributionWeight: number;
+	stakeholderWeight: number;
+	trustRoleWeight: number;
+	delegatedWeight: number;
+	totalWeight: number;
+	evidence?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface CommonsDecision {
+	id: string;
+	proposalId: string;
+	status: CommonsDecisionStatus;
+	decisionRecordId: string | null;
+	decisionRecordSlug: string | null;
+	title: string;
+	summary: string;
+	stewardReason: string | null;
+	capacityBudget: string | null;
+	scheduledFor: string | null;
+	implementedAt: string | null;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CommonsGovernanceEvent {
+	id: string;
+	eventType: CommonsGovernanceEventType;
+	actorType: string;
+	actorId: string | null;
+	participantId: string | null;
+	proposalId: string | null;
+	questionId: string | null;
+	decisionId: string | null;
+	priorState: string | null;
+	nextState: string | null;
+	message: string | null;
+	evidence?: Record<string, unknown>;
+	createdAt: string;
+}
+
+export interface CommonsQuestionInput {
+	title: string;
+	body: string;
+	metadata?: Record<string, unknown>;
+}
+
+export interface CommonsProposalInput {
+	title: string;
+	summary: string;
+	body: string;
+	scope?: string;
+	decisionType?: string;
+	metadata?: Record<string, unknown>;
+}
+
+export interface CommonsDecisionInput {
+	reason?: string | null;
+	evidence?: Record<string, unknown>;
+	capacityBudget?: string | null;
+	scheduledFor?: string | null;
 }
 
 export interface TeamStorageLocator {
