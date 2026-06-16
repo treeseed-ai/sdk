@@ -18,6 +18,7 @@ import {
 	railwayServiceRuntimeStartCommand,
 	resolveRailwayAuthToken,
 	shouldRunRailwayPredeployBuild,
+	validateRailwayServiceConfiguration,
 	validateRailwayDeployPrerequisites,
 	waitForRailwayManagedDeploymentsSettled,
 	verifyRailwayManagedResources,
@@ -397,6 +398,39 @@ services:
 		const services = configuredRailwayServices(tenantRoot, 'staging');
 		expect(services.map((service) => service.startCommand).filter(Boolean).join('\n')).not.toContain('npm run build &&');
 		expect(services.map((service) => service.startCommand).filter(Boolean).join('\n')).not.toContain('provider/entrypoint.js');
+	});
+
+	it('does not require local source roots for image-backed Railway services', async () => {
+		const tenantRoot = await createTenantFixture();
+		await writeFile(
+			join(tenantRoot, 'treeseed.site.yaml'),
+			`name: Test Site
+slug: test-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+hosting:
+  kind: treeseed_control_plane
+runtime:
+  mode: treeseed_managed
+services:
+  api:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api
+      imageRef: treeseed/api:dev-staging
+  capacityProviderApi:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-agent-capacity-provider
+      serviceName: treeseed-agent-api
+      imageRef: treeseed/agent-api:dev-staging
+`,
+		);
+
+		expect(() => validateRailwayServiceConfiguration(tenantRoot, 'staging')).not.toThrow();
 	});
 
 	it('lets Railway run service build commands from a clean upload in hosted CI', () => {

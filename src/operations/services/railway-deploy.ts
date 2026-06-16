@@ -976,7 +976,7 @@ export function validateRailwayServiceConfiguration(tenantRoot, scope) {
 		if (!service.projectName && !service.projectId) {
 			issues.push(`${service.key}: set railway.projectName or railway.projectId in treeseed.site.yaml.`);
 		}
-		if (!existsSync(service.rootDir)) {
+		if (!service.imageRef && !existsSync(service.rootDir)) {
 			issues.push(`${service.key}: service root ${service.rootDir} does not exist.`);
 		}
 		if (service.schedule?.length && !service.startCommand) {
