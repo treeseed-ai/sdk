@@ -3143,6 +3143,35 @@ function syncAllCheckedOutPackageRepos(root: string, branchName: string) {
 	}
 }
 
+function resolveRootStageGeneratedMetadataAndPackageConflicts(root: string, targetBranch: string) {
+	const conflictedPaths = runGit(['diff', '--name-only', '--diff-filter=U'], {
+		cwd: root,
+		capture: true,
+	})
+		.split('\n')
+		.map((line) => line.trim())
+		.filter(Boolean);
+	if (conflictedPaths.length === 0) {
+		return { resolved: false, conflictedPaths, generatedPaths: [], packagePaths: [] };
+	}
+	const generatedPaths = conflictedPaths.filter((filePath) => filePath === 'package.json' || filePath === 'package-lock.json');
+	const packagePathSet = new Set(checkedOutWorkspacePackageRepos(root).map((pkg) => relative(root, pkg.dir).replaceAll('\\', '/')));
+	const packagePaths = conflictedPaths.filter((filePath) => packagePathSet.has(filePath));
+	const unresolvedPaths = conflictedPaths.filter((filePath) => !generatedPaths.includes(filePath) && !packagePaths.includes(filePath));
+	if (unresolvedPaths.length > 0) {
+		return { resolved: false, conflictedPaths, generatedPaths, packagePaths, unresolvedPaths };
+	}
+	if (generatedPaths.length > 0) {
+		runGit(['checkout', '--ours', '--', ...generatedPaths], { cwd: root });
+		runGit(['add', '--', ...generatedPaths], { cwd: root });
+	}
+	if (packagePaths.length > 0) {
+		syncAllCheckedOutPackageRepos(root, targetBranch);
+		runGit(['add', '--', ...packagePaths], { cwd: root });
+	}
+	return { resolved: true, conflictedPaths, generatedPaths, packagePaths };
+}
+
 function reattachRepairablePackageRepos(
 	root: string,
 	expectedBranches: string[] = [STAGING_BRANCH, PRODUCTION_BRANCH],
@@ -5277,7 +5306,15 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						} else {
 							syncBranchWithOrigin(repoDir, STAGING_BRANCH);
 						}
-						runGit(['merge', '--squash', featureBranch], { cwd: repoDir });
+						try {
+							runGit(['merge', '--squash', featureBranch], { cwd: repoDir });
+						} catch (error) {
+							const reconciliation = resolveRootStageGeneratedMetadataAndPackageConflicts(root, STAGING_BRANCH);
+							if (!reconciliation.resolved) {
+								throw error;
+							}
+							helpers.write(`[workflow][stage] Resolved root generated metadata/package pointer conflicts: ${reconciliation.conflictedPaths.join(', ')}.`);
+						}
 						if (stageMode === 'recursive-workspace') {
 							syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
 						}

@@ -388,23 +388,53 @@ function buildGraphOnlyAdapter(providerId: string, unitTypes: TreeseedReconcileU
 	};
 }
 
-function buildGitHubEnv(input: TreeseedReconcileAdapterInput, repositoryOverride?: string | null) {
+function resolveGitHubEnvironmentValues(input: TreeseedReconcileAdapterInput) {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
 	const credentialScope = scope === 'local' ? 'staging' : scope;
-	const values = {
-		...resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, credentialScope),
+	return {
+		...resolveOptionalReconcileMachineEnvironmentValues(input, credentialScope),
 		...resolveReconcileEnvironmentValues(input, credentialScope),
 	};
+}
+
+function resolveGitHubCredentialForInput(input: TreeseedReconcileAdapterInput, repository: string) {
+	const values = resolveGitHubEnvironmentValues(input);
+	return resolveGitHubCredentialForRepository(repository, { values, env: { ...process.env, ...values } });
+}
+
+function githubCredentialSummary(input: TreeseedReconcileAdapterInput, repository: string) {
+	const credential = resolveGitHubCredentialForInput(input, repository);
+	if (credential.source === 'repository') {
+		return `${credential.envName} repo-scoped token`;
+	}
+	if (credential.source === 'fallback') {
+		return `fallback GH_TOKEN/GITHUB_TOKEN token; configure ${credential.envName} for repo-scoped dispatch`;
+	}
+	return `missing GitHub token; configure ${credential.envName} or GH_TOKEN/GITHUB_TOKEN`;
+}
+
+function buildGitHubEnv(input: TreeseedReconcileAdapterInput, repositoryOverride?: string | null) {
+	const values = resolveGitHubEnvironmentValues(input);
 	const repository = typeof repositoryOverride === 'string' && repositoryOverride.trim()
 		? repositoryOverride
 		: typeof input.unit.spec.repository === 'string'
 			? input.unit.spec.repository
 			: null;
 	if (!repository) return values;
-	const credential = resolveGitHubCredentialForRepository(repository, { values, env: { ...process.env, ...values } });
+	const credential = resolveGitHubCredentialForInput(input, repository);
 	return credential.token
 		? { ...values, GH_TOKEN: credential.token, GITHUB_TOKEN: credential.token }
 		: values;
+}
+
+function dispatchPermissionHint(repository: string, workflow: string, branch: string, input: TreeseedReconcileAdapterInput, error: unknown) {
+	const message = error instanceof Error ? error.message : String(error);
+	return [
+		`Unable to dispatch GitHub workflow ${workflow} in ${repository} on ${branch}.`,
+		`Credential source: ${githubCredentialSummary(input, repository)}.`,
+		'The token must be able to create workflow_dispatch events for this repository (fine-grained PAT: Actions read/write for the repo; classic PAT: repo + workflow).',
+		message,
+	].join(' ');
 }
 
 function repositoryFromUnit(input: TreeseedReconcileAdapterInput) {
@@ -561,15 +591,23 @@ function buildGitHubWorkflowDispatchAdapter(): TreeseedReconcileAdapter {
 		},
 		async apply(input) {
 			if (input.diff.action === 'noop') return genericResult(input);
-			const result = await dispatchReconcileGitHubWorkflow({
-				repository: repositoryFromUnit(input),
-				workflow: workflowName(input.unit.spec.workflow, 'publish.yml'),
-				branch: String(input.unit.spec.branch ?? 'staging'),
-				inputs: typeof input.unit.spec.inputs === 'object' && input.unit.spec.inputs ? input.unit.spec.inputs as Record<string, string> : {},
-				wait: input.unit.spec.wait === true,
-				timeoutMs: typeof input.unit.spec.timeoutMs === 'number' ? input.unit.spec.timeoutMs : undefined,
-				env: buildGitHubEnv(input),
-			});
+			const repository = repositoryFromUnit(input);
+			const workflow = workflowName(input.unit.spec.workflow, 'publish.yml');
+			const branch = String(input.unit.spec.branch ?? 'staging');
+			let result: Awaited<ReturnType<typeof dispatchReconcileGitHubWorkflow>>;
+			try {
+				result = await dispatchReconcileGitHubWorkflow({
+					repository,
+					workflow,
+					branch,
+					inputs: typeof input.unit.spec.inputs === 'object' && input.unit.spec.inputs ? input.unit.spec.inputs as Record<string, string> : {},
+					wait: input.unit.spec.wait === true,
+					timeoutMs: typeof input.unit.spec.timeoutMs === 'number' ? Math.ceil(input.unit.spec.timeoutMs) : undefined,
+					env: buildGitHubEnv(input),
+				});
+			} catch (error) {
+				throw new Error(dispatchPermissionHint(repository, workflow, branch, input, error));
+			}
 			return genericResult(input, { ...input.observed.live, result });
 		},
 		verify(input) {
@@ -1103,14 +1141,20 @@ function buildReleaseGateAdapter(): TreeseedReconcileAdapter {
 				const workflow = gateKind === 'release-gate:image-publish'
 					? workflowName(adapter?.metadata.developmentImageWorkflow, 'publish.yml')
 					: workflowName(adapter?.metadata.hostedVerifyWorkflow, 'publish.yml');
-				const dispatch = await dispatchReconcileGitHubWorkflow({
-					repository,
-					workflow,
-					branch: input.context.target.kind === 'persistent' && input.context.target.scope === 'prod' ? 'main' : 'staging',
-					inputs: {},
-					wait: input.context.target.kind === 'persistent' && input.context.target.scope === 'prod',
-					env: buildGitHubEnv(input, repository),
-				});
+				const branch = input.context.target.kind === 'persistent' && input.context.target.scope === 'prod' ? 'main' : 'staging';
+				let dispatch: Awaited<ReturnType<typeof dispatchReconcileGitHubWorkflow>>;
+				try {
+					dispatch = await dispatchReconcileGitHubWorkflow({
+						repository,
+						workflow,
+						branch,
+						inputs: {},
+						wait: input.context.target.kind === 'persistent' && input.context.target.scope === 'prod',
+						env: buildGitHubEnv(input, repository),
+					});
+				} catch (error) {
+					throw new Error(dispatchPermissionHint(repository, workflow, branch, input, error));
+				}
 				return genericResult(input, { ...input.observed.live, dispatch, fingerprint: input.unit.spec.fingerprint });
 			}
 			if (gateKind === 'release-gate:hosted-reconcile') {
@@ -1324,6 +1368,20 @@ function resolveReconcileEnvironmentValues(
 	return hostedRuntimeValues;
 }
 
+function resolveOptionalReconcileMachineEnvironmentValues(
+	input: TreeseedReconcileAdapterInput,
+	scope: 'local' | 'staging' | 'prod',
+) {
+	if (scope === 'local') {
+		return resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+	}
+	try {
+		return resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+	} catch {
+		return {};
+	}
+}
+
 function liveCloudflareAccountId(value: unknown) {
 	const accountId = typeof value === 'string' ? value.trim() : '';
 	if (!accountId || accountId === 'replace-with-cloudflare-account-id') {
@@ -1348,7 +1406,7 @@ function buildCloudflareEnv(input: TreeseedReconcileAdapterInput) {
 	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? null;
 	const machineValues = runtimeAccountId && runtimeToken
 		? {}
-		: resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+		: resolveOptionalReconcileMachineEnvironmentValues(input, scope);
 	const accountId = [
 		runtimeAccountId,
 		machineValues.CLOUDFLARE_ACCOUNT_ID,
@@ -1382,7 +1440,7 @@ function buildRailwayEnv(input: TreeseedReconcileAdapterInput, scope: 'local' | 
 	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? null;
 	const machineValues = runtimeToken
 		? {}
-		: resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+		: resolveOptionalReconcileMachineEnvironmentValues(input, scope);
 	const token = runtimeToken ?? (
 		typeof machineValues.RAILWAY_API_TOKEN === 'string'
 			? machineValues.RAILWAY_API_TOKEN.trim()
