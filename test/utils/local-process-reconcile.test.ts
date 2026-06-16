@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { runManagedDevAction } from '../../src/reconcile/providers/local-private.ts';
 
 describe('local process reconcile provider', () => {
-	it('redacts inherited process environment from managed dev observations', async () => {
+	it('omits inherited process environment from managed dev observations', async () => {
 		const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-local-process-redaction-'));
 		const result = await runManagedDevAction({
 			tenantRoot,
@@ -19,8 +19,9 @@ describe('local process reconcile provider', () => {
 
 		const serialized = JSON.stringify(result);
 		expect(serialized).not.toContain('do-not-serialize');
+		expect(serialized).not.toContain('PUBLIC_SAFE_VALUE');
+		expect(serialized).not.toContain('TREESEED_KEY_PASSPHRASE');
 		expect(serialized).not.toContain('"env"');
-		expect(serialized).toContain('"TREESEED_KEY_PASSPHRASE":"<redacted>"');
-		expect(serialized).toContain('"PUBLIC_SAFE_VALUE":"<redacted>"');
+		expect(result.parsed?.processes?.[0]?.logPath).toContain('.treeseed/logs/dev/web.log');
 	});
 });

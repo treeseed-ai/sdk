@@ -1,5 +1,6 @@
 import { relative, resolve } from 'node:path';
 import { compileTreeseedHostingGraph, serializeHostingUnit, type TreeseedHostingEnvironment } from '../../hosting/index.ts';
+import { discoverTreeseedPackageAdapters, type TreeseedPackageAdapter } from './package-adapters.ts';
 import { configuredRailwayServices } from './railway-deploy.ts';
 
 export type TreeseedDeploymentReadinessStatus = 'passed' | 'failed' | 'warning' | 'skipped';
@@ -87,6 +88,25 @@ function railwayServiceByKey(services: any[], key: string) {
 	return services.find((service) => service.key === key) ?? null;
 }
 
+function recordValue(value: unknown) {
+	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function hasLocalDevService(adapter: TreeseedPackageAdapter, serviceId: string) {
+	const localDev = recordValue(adapter.metadata.localDev);
+	const services = recordValue(localDev.services);
+	return Object.keys(recordValue(services[serviceId])).length > 0;
+}
+
+function discoveredApiPackageRoot(tenantRoot: string) {
+	const adapters = discoverTreeseedPackageAdapters(tenantRoot);
+	const matches = adapters.filter((adapter) => hasLocalDevService(adapter, 'api') || hasLocalDevService(adapter, 'operationsRunner'));
+	return matches.find((adapter) => adapter.id === '@treeseed/api')?.relativeDir
+		?? matches.find((adapter) => hasLocalDevService(adapter, 'api'))?.relativeDir
+		?? matches[0]?.relativeDir
+		?? null;
+}
+
 export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentReadinessOptions): TreeseedDeploymentReadinessReport {
 	const tenantRoot = resolve(options.tenantRoot);
 	const environment = options.environment;
@@ -133,7 +153,7 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 			message: hasApiPlane || configuredBaseUrl
 				? 'Web app has an API app or configured API connection.'
 				: 'Web app requires an API connection when no local API app manifest is present.',
-			remediation: hasApiPlane || configuredBaseUrl ? undefined : 'Add connections.api to treeseed.site.yaml or include packages/api/treeseed.site.yaml in the workspace.',
+			remediation: hasApiPlane || configuredBaseUrl ? undefined : 'Add connections.api to treeseed.site.yaml or include an API package with treeseed.package.yaml localDev metadata.',
 		});
 	}
 
@@ -150,8 +170,9 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 
 	const apiIsNestedApp = Boolean(api?.application?.relativeRoot && api.application.relativeRoot !== '.');
 	const runnerIsNestedApp = Boolean(runner?.application?.relativeRoot && runner.application.relativeRoot !== '.');
-	const expectedApiUnitRoot = apiIsNestedApp ? '.' : 'packages/api';
-	const expectedRunnerUnitRoot = runnerIsNestedApp ? '.' : 'packages/api';
+	const apiPackageRoot = discoveredApiPackageRoot(tenantRoot) ?? 'packages/api';
+	const expectedApiUnitRoot = apiIsNestedApp ? '.' : apiPackageRoot;
+	const expectedRunnerUnitRoot = runnerIsNestedApp ? '.' : apiPackageRoot;
 	const expectedApiRailwayRoot = api?.application?.relativeRoot && api.application.relativeRoot !== '.'
 		? api.application.relativeRoot
 		: expectedApiUnitRoot;

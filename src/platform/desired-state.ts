@@ -378,8 +378,58 @@ function packageResources(adapter: TreeseedPackageAdapter, environment: Treeseed
 	return resources;
 }
 
-function localDevelopmentResources(environment: TreeseedDesiredEnvironment): TreeseedDesiredResource[] {
+function hasLocalDevService(adapter: TreeseedPackageAdapter, service: string) {
+	const localDev = stringRecord(adapter.metadata.localDev);
+	const services = stringRecord(localDev.services);
+	return Object.keys(stringRecord(services[service])).length > 0;
+}
+
+function localProcessResource(input: {
+	environment: TreeseedDesiredEnvironment;
+	id: string;
+	label: string;
+	packageId: string;
+	serviceId: string;
+	surfaces: string[];
+	cwd: string;
+	sourceId: string;
+}) {
+	return {
+		id: `local-process:${input.id}`,
+		kind: 'local-process' as const,
+		provider: 'local',
+		environment: input.environment,
+		packageId: input.packageId,
+		serviceId: input.serviceId,
+		logicalName: input.label,
+		dependencies: [],
+		spec: {
+			processId: input.id,
+			surfaces: input.surfaces,
+			supervisor: 'sdk-managed-dev',
+			action: 'start',
+			options: {},
+			stateDir: '.treeseed/dev',
+			logDir: '.treeseed/logs',
+			cwd: input.cwd,
+		},
+		source: { type: 'package-adapter' as const, id: input.sourceId },
+	};
+}
+
+function localDevelopmentResources(
+	environment: TreeseedDesiredEnvironment,
+	packages: TreeseedPackageUnit[],
+	adapters: TreeseedPackageAdapter[],
+): TreeseedDesiredResource[] {
 	if (environment !== 'local') return [];
+	const packageIds = new Set(packages.map((pkg) => pkg.id));
+	const apiAdapter = adapters.find((adapter) =>
+		adapter.id === '@treeseed/api'
+		|| hasLocalDevService(adapter, 'api')
+		|| hasLocalDevService(adapter, 'operationsRunner'));
+	const hasApiService = apiAdapter ? hasLocalDevService(apiAdapter, 'api') : false;
+	const hasRunnerService = apiAdapter ? hasLocalDevService(apiAdapter, 'operationsRunner') : false;
 	const composeId = 'local-docker-compose:agent-capacity-provider';
 	const capacityPlan = resolveCapacityProviderLaunchPlan({
 		schemaVersion: 1,
@@ -443,31 +493,36 @@ function localDevelopmentResources(environment: TreeseedDesiredEnvironment): Tre
 			},
 			source: { type: 'package-adapter', id: '@treeseed/agent' },
 		},
-		...[
-			['market-web', 'Market web dev process'],
-			['api', 'API dev process'],
-			['operations-runner', 'Operations runner dev process'],
-		].map(([id, label]) => ({
-			id: `local-process:${id}`,
-			kind: 'local-process' as const,
-			provider: 'local',
+		localProcessResource({
 			environment,
-			packageId: id === 'market-web' ? '@treeseed/market' : '@treeseed/api',
-			serviceId: id,
-			logicalName: label,
-			dependencies: [],
-			spec: {
-				processId: id,
-				surfaces: id === 'market-web' ? ['web'] : id === 'api' ? ['api'] : ['operations-runner'],
-				supervisor: 'sdk-managed-dev',
-				action: 'start',
-				options: {},
-				stateDir: '.treeseed/dev',
-				logDir: '.treeseed/logs',
-				cwd: id === 'market-web' ? '.' : 'packages/api',
-			},
-			source: { type: 'package-adapter' as const, id },
-		})),
+			id: 'market-web',
+			label: 'Market web dev process',
+			packageId: packageIds.has('@treeseed/market') ? '@treeseed/market' : '@treeseed/web',
+			serviceId: 'market-web',
+			surfaces: ['web'],
+			cwd: '.',
+			sourceId: 'market-web',
+		}),
+		...(apiAdapter && hasApiService ? [localProcessResource({
+			environment,
+			id: 'api',
+			label: 'API dev process',
+			packageId: apiAdapter.id,
+			serviceId: 'api',
+			surfaces: ['api'],
+			cwd: apiAdapter.relativeDir,
+			sourceId: apiAdapter.id,
+		})] : []),
+		...(apiAdapter && hasRunnerService ? [localProcessResource({
+			environment,
+			id: 'operations-runner',
+			label: 'Operations runner dev process',
+			packageId: apiAdapter.id,
+			serviceId: 'operations-runner',
+			surfaces: ['operations-runner'],
+			cwd: apiAdapter.relativeDir,
+			sourceId: apiAdapter.id,
+		})] : []),
 	];
 }
 
@@ -687,7 +742,7 @@ export function compileTreeseedDesiredResourceGraph({
 	const resources = [
 		...derived.units.map((unit) => resourceFromUnit(unit, environment)),
 		...packageAdapters.flatMap((adapter) => packageResources(adapter, environment)),
-		...localDevelopmentResources(environment),
+		...localDevelopmentResources(environment, packages, packageAdapters),
 		...branchPreviewResources(target, environment),
 		...releaseGateResources(packages, environment),
 	];

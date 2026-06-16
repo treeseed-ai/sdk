@@ -2,6 +2,7 @@ import {
 	runTreeseedManagedDev,
 	type TreeseedManagedDevAction,
 	type TreeseedManagedDevOptions,
+	type TreeseedManagedDevResult,
 } from '../../local-dev/managed-dev.ts';
 
 export function runManagedDevAction(input: {
@@ -22,11 +23,12 @@ export function runManagedDevAction(input: {
 		apiPort: typeof input.options?.apiPort === 'number' ? input.options.apiPort : undefined,
 		force: input.options?.force === true,
 		forceConflicts: input.options?.forceConflicts === true,
+		reset: input.options?.reset === true,
 		all: input.options?.all === true,
 		follow: input.options?.follow === true,
 		env: input.env,
 	}).then((result) => {
-		const safeResult = sanitizeManagedDevResult(result);
+		const safeResult = summarizeManagedDevResult(result);
 		return {
 		ok: safeResult.ok,
 		status: safeResult.ok ? 0 : 1,
@@ -39,34 +41,59 @@ export function runManagedDevAction(input: {
 	});
 }
 
-function sanitizeManagedDevResult<T>(value: T): T {
-	if (Array.isArray(value)) {
-		return value.map((entry) => sanitizeManagedDevResult(entry)) as T;
-	}
-	if (!value || typeof value !== 'object') {
-		return value;
-	}
-	const result: Record<string, unknown> = {};
-	for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-		if (key === 'env') {
-			result.redactedEnv = redactEnvironment(entry);
-			continue;
-		}
-		result[key] = sanitizeManagedDevResult(entry);
-	}
-	return result as T;
-}
-
-function redactEnvironment(value: unknown) {
-	if (!value || typeof value !== 'object') {
-		return {};
-	}
-	return Object.fromEntries(
-		Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-			key,
-			key === 'PATH' || key === 'NODE_ENV' ? String(entry ?? '') : '<redacted>',
-		]),
-	);
+function summarizeManagedDevResult(result: TreeseedManagedDevResult) {
+	return {
+		ok: result.ok,
+		action: result.action,
+		scopeId: result.plan.scopeId,
+		tenantRoot: result.plan.tenantRoot,
+		setup: {
+			apiPackageRoot: result.plan.setup.apiPackageRoot,
+			apiPackageRelativeDir: result.plan.setup.apiPackageRelativeDir,
+			apiPackageId: result.plan.setup.apiPackageId,
+			database: result.plan.setup.database
+				? {
+					managed: result.plan.setup.database.managed,
+					host: result.plan.setup.database.host,
+					port: result.plan.setup.database.port,
+					containerName: result.plan.setup.database.containerName,
+					volumeName: result.plan.setup.database.volumeName,
+					urlEnv: result.plan.setup.database.urlEnv,
+					compatibilityUrlEnv: result.plan.setup.database.compatibilityUrlEnv,
+				}
+				: null,
+			migrations: result.plan.setup.migrations
+				? {
+					command: result.plan.setup.migrations.command,
+					args: result.plan.setup.migrations.args,
+					cwd: result.plan.setup.migrations.cwd,
+				}
+				: null,
+		},
+		processes: result.plan.processes.map((process) => ({
+			id: process.id,
+			surface: process.surface,
+			cwd: process.cwd,
+			command: process.command,
+			args: process.args,
+			port: process.port ?? null,
+			health: process.health ?? [],
+			logPath: process.logPath,
+			pidPath: process.pidPath,
+			instancePath: process.instancePath,
+		})),
+		instances: result.instances.map((instance) => ({
+			id: instance.id,
+			surface: instance.surface,
+			pid: instance.pid,
+			running: instance.running,
+			port: instance.port ?? null,
+			health: instance.health ?? [],
+			logPath: instance.logPath,
+			startedAt: instance.startedAt ?? null,
+		})),
+		output: result.output ?? null,
+	};
 }
 
 export async function checkHttpHealth(url: string, timeoutMs = 2_000) {

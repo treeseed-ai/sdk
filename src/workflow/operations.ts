@@ -5199,20 +5199,6 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
 			applyTreeseedEnvironmentToProcess({ tenantRoot: root, scope: 'staging', override: true });
 			validateStagingWorkflowContracts(root);
-			runWorkspaceSavePreflight({ cwd: root });
-			const stagingReadiness = collectTreeseedDeploymentReadiness({ tenantRoot: root, environment: 'staging' });
-			if (!stagingReadiness.ok) {
-				workflowError(
-					'stage',
-					'validation_failed',
-					`Deployment readiness failed for staging:\n${stagingReadiness.checks
-						.filter((check) => check.status === 'failed')
-						.map((check) => `${check.id}: ${check.message}${check.remediation ? ` Remediation: ${check.remediation}` : ''}`)
-						.join('\n')}`,
-					{ details: { readiness: stagingReadiness } },
-				);
-			}
-			const applicationSelection = selectWorkflowApplications(root, { packageSelection: session.packageSelection });
 
 			const repoDir = session.gitRoot;
 			const rootRepo = createWorkspaceRootRepoReport(root);
@@ -5271,6 +5257,20 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			if (autoResumeRun) {
 				helpers.write(`[workflow][resume] Resuming interrupted stage ${autoResumeRun.runId} on ${featureBranch}.`);
 			}
+			runWorkspaceSavePreflight({ cwd: root });
+			const stagingReadiness = collectTreeseedDeploymentReadiness({ tenantRoot: root, environment: 'staging' });
+			if (!stagingReadiness.ok) {
+				workflowError(
+					'stage',
+					'validation_failed',
+					`Deployment readiness failed for staging:\n${stagingReadiness.checks
+						.filter((check) => check.status === 'failed')
+						.map((check) => `${check.id}: ${check.message}${check.remediation ? ` Remediation: ${check.remediation}` : ''}`)
+						.join('\n')}`,
+					{ details: { readiness: stagingReadiness } },
+				);
+			}
+			const applicationSelection = selectWorkflowApplications(root, { packageSelection: session.packageSelection });
 
 			try {
 				await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>

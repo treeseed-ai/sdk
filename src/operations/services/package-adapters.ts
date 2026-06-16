@@ -79,6 +79,7 @@ type TreeseedPackageManifest = {
 	githubEnvironments?: unknown;
 	requiredSecrets?: unknown;
 	workflowTemplateVersion?: unknown;
+	localDev?: unknown;
 };
 
 export type TreeseedPackageDevelopmentImagePlan = {
@@ -285,6 +286,7 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 			githubEnvironments: stringArray(manifest?.githubEnvironments),
 			requiredSecrets: stringArray(manifest?.requiredSecrets),
 			workflowTemplateVersion: stringValue(manifest?.workflowTemplateVersion) ?? null,
+			localDev: stringRecord(manifest?.localDev),
 			capacityProvider: stringRecord(manifest?.capacityProvider),
 			...(hostedVerifyWorkflow
 				? {

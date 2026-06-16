@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -74,6 +74,26 @@ function rootWith(body: string) {
 	return root;
 }
 
+function writeApiPackage(root: string, relativeDir = 'packages/api') {
+	const dir = resolve(root, relativeDir);
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+		name: '@treeseed/market',
+		type: 'module',
+		workspaces: [relativeDir],
+	}, null, 2));
+	writeFileSync(resolve(dir, 'package.json'), JSON.stringify({ name: '@treeseed/custom-api', type: 'module' }, null, 2));
+	writeFileSync(resolve(dir, 'treeseed.package.yaml'), `id: "@treeseed/custom-api"
+name: Custom API
+localDev:
+  services:
+    api:
+      script: dev:api
+    operationsRunner:
+      script: dev:runner
+`);
+}
+
 function byId(report: ReturnType<typeof collectTreeseedDeploymentReadiness>, id: string) {
 	const found = report.checks.find((check) => check.id === id);
 	if (!found) throw new Error(`Missing check ${id}`);
@@ -81,6 +101,46 @@ function byId(report: ReturnType<typeof collectTreeseedDeploymentReadiness>, id:
 }
 
 describe('deployment readiness', () => {
+	it('passes UI-only projects that use a configured API connection', () => {
+		const report = collectTreeseedDeploymentReadiness({
+			tenantRoot: rootWith(`name: UI Only
+slug: ui-only
+siteUrl: https://ui.example.test
+contactEmail: ui@example.test
+hosting:
+  kind: self_hosted_project
+surfaces:
+  web:
+    enabled: true
+    provider: cloudflare
+    rootDir: .
+connections:
+  api:
+    proxyPrefix: /v1
+    localBaseUrl: http://127.0.0.1:3100
+    environments:
+      staging:
+        baseUrl: https://api-staging.example.test
+`),
+			environment: 'staging',
+		});
+		expect(report.ok).toBe(true);
+		expect(byId(report, 'connection:api')).toMatchObject({
+			status: 'passed',
+			observed: expect.objectContaining({ baseUrl: 'https://api-staging.example.test' }),
+		});
+		expect(report.checks.map((check) => check.id)).not.toContain('hosting:api:present');
+	});
+
+	it('uses a discovered embedded API package root when validating hosting readiness', () => {
+		const root = rootWith(config().replaceAll('packages/api', 'services/backend'));
+		writeApiPackage(root, 'services/backend');
+		const report = collectTreeseedDeploymentReadiness({ tenantRoot: root, environment: 'staging' });
+		expect(report.ok).toBe(true);
+		expect(byId(report, 'hosting:api:rootDir')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'railway-config:api:rootDirectory')).toMatchObject({ status: 'passed' });
+	});
+
 	it('passes current API package deployment shape', () => {
 		const report = collectTreeseedDeploymentReadiness({ tenantRoot: rootWith(config()), environment: 'staging' });
 		expect(report.ok).toBe(true);
