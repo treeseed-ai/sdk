@@ -271,6 +271,7 @@ describe('config runtime shared environment values', () => {
 	});
 
 	it('redacts raw secret values from print-env JSON unless secrets are revealed', () => {
+		vi.stubEnv('RAILWAY_API_TOKEN', '');
 		const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		const config = createDefaultTreeseedMachineConfig({
 			tenantRoot,
