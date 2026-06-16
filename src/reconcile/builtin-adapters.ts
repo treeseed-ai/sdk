@@ -392,8 +392,8 @@ function resolveGitHubEnvironmentValues(input: TreeseedReconcileAdapterInput) {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
 	const credentialScope = scope === 'local' ? 'staging' : scope;
 	return {
-		...resolveOptionalReconcileMachineEnvironmentValues(input, credentialScope),
 		...resolveReconcileEnvironmentValues(input, credentialScope),
+		...resolveOptionalReconcileMachineEnvironmentValues(input, credentialScope),
 	};
 }
 
