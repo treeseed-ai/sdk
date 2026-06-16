@@ -443,6 +443,17 @@ function setPackageVersion(repoDir: string, version: string) {
 describe('treeseed workflow lifecycle', () => {
 	beforeEach(() => {
 		vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'treeseed-workflow-home-')));
+		vi.stubEnv('GH_TOKEN', '');
+		vi.stubEnv('GITHUB_TOKEN', '');
+		vi.stubEnv('RAILWAY_API_TOKEN', '');
+		vi.stubEnv('TREESEED_GITHUB_TOKEN_TREESEED_AI_SDK', '');
+		vi.stubEnv('TREESEED_GITHUB_TOKEN_TREESEED_AI_UI', '');
+		vi.stubEnv('TREESEED_GITHUB_TOKEN_TREESEED_AI_CORE', '');
+		vi.stubEnv('TREESEED_GITHUB_TOKEN_TREESEED_AI_ADMIN', '');
+		vi.stubEnv('TREESEED_GITHUB_TOKEN_TREESEED_AI_CLI', '');
+		vi.stubEnv('TREESEED_GITHUB_TOKEN_TREESEED_AI_AGENT', '');
+		vi.stubEnv('TREESEED_GITHUB_TOKEN_TREESEED_AI_API', '');
+		vi.stubEnv('TREESEED_GITHUB_TOKEN_TREESEED_AI_TREEDX', '');
 		vi.stubEnv('TREESEED_STAGE_WAIT_MODE', 'skip');
 		vi.stubEnv('TREESEED_COMMIT_MESSAGE_PROVIDER', 'fallback');
 		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
