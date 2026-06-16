@@ -11,12 +11,28 @@ import {
 } from './operations/services/config-runtime.ts';
 import type { NativeUsageObservation } from './sdk-types.ts';
 import type { ProjectRepositoryTopology } from './sdk-types.ts';
+import type {
+	ProviderAssignmentLifecycleRequest,
+	ProviderAssignmentLifecycleResult,
+	ProviderCheckInRequest,
+	ProviderNextAssignmentRequest,
+} from './agent-capacity.ts';
 
 export const CAPACITY_PROVIDER_ENDPOINTS = {
 	register: '/v1/provider/register',
 	heartbeat: '/v1/provider/heartbeat',
+	checkIn: '/v1/provider/check-in',
+	sessions: '/v1/provider/sessions',
 	portfolio: '/v1/provider/portfolio',
 	workdays: '/v1/provider/workdays',
+	nextAssignment: '/v1/provider/assignments/next',
+	assignment: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}`,
+	assignmentRenew: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/renew`,
+	assignmentReturn: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/return`,
+	assignmentComplete: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/complete`,
+	assignmentFail: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/fail`,
+	assignmentModeRuns: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/mode-runs`,
+	assignmentExplanation: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/explanation`,
 	claimTask: '/v1/provider/tasks/claim',
 	taskEvents: (taskId: string) => `/v1/provider/tasks/${encodeURIComponent(taskId)}/events`,
 	completeTask: (taskId: string) => `/v1/provider/tasks/${encodeURIComponent(taskId)}/complete`,
@@ -1097,6 +1113,26 @@ export class MarketProviderClient {
 		});
 	}
 
+	createAvailabilitySession(request: Record<string, unknown> = {}) {
+		return this.requestJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.sessions, {
+			method: 'POST',
+			body: request,
+		}).then((response) => {
+			assertCapacityProviderOkEnvelope(response, 'Capacity provider availability session response');
+			return response;
+		});
+	}
+
+	checkIn(request: ProviderCheckInRequest = {}) {
+		return this.requestJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.checkIn, {
+			method: 'POST',
+			body: request,
+		}).then((response) => {
+			assertCapacityProviderOkEnvelope(response, 'Capacity provider check-in response');
+			return response;
+		});
+	}
+
 	portfolio() {
 		return this.requestJson<CapacityProviderPortfolioManifest>(CAPACITY_PROVIDER_ENDPOINTS.portfolio).then((response) => {
 			assertCapacityProviderPortfolioManifest(response);
@@ -1110,6 +1146,80 @@ export class MarketProviderClient {
 			body: request,
 		}).then((response) => {
 			assertCapacityProviderOkEnvelope(response, 'Capacity provider workday response');
+			return response;
+		});
+	}
+
+	assignment(assignmentId: string) {
+		return this.requestJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignment(assignmentId)).then((response) => {
+			assertCapacityProviderOkEnvelope(response, 'Capacity provider assignment response');
+			return response;
+		});
+	}
+
+	assignmentExplanation(assignmentId: string) {
+		return this.requestJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignmentExplanation(assignmentId)).then((response) => {
+			assertCapacityProviderOkEnvelope(response, 'Capacity provider assignment explanation response');
+			return response;
+		});
+	}
+
+	nextAssignment(request: ProviderNextAssignmentRequest = {}) {
+		return this.requestJson<ProviderAssignmentLifecycleResult>(CAPACITY_PROVIDER_ENDPOINTS.nextAssignment, {
+			method: 'POST',
+			body: request,
+		}).then((response) => {
+			assertCapacityProviderOkEnvelope(response, 'Capacity provider next assignment response');
+			return response;
+		});
+	}
+
+	renewAssignment(assignmentId: string, request: ProviderAssignmentLifecycleRequest = {}) {
+		return this.requestJson<ProviderAssignmentLifecycleResult>(CAPACITY_PROVIDER_ENDPOINTS.assignmentRenew(assignmentId), {
+			method: 'POST',
+			body: request,
+		}).then((response) => {
+			assertCapacityProviderOkEnvelope(response, 'Capacity provider assignment renew response');
+			return response;
+		});
+	}
+
+	returnAssignment(assignmentId: string, request: ProviderAssignmentLifecycleRequest = {}) {
+		return this.requestJson<ProviderAssignmentLifecycleResult>(CAPACITY_PROVIDER_ENDPOINTS.assignmentReturn(assignmentId), {
+			method: 'POST',
+			body: request,
+		}).then((response) => {
+			assertCapacityProviderOkEnvelope(response, 'Capacity provider assignment return response');
+			return response;
+		});
+	}
+
+	completeAssignment(assignmentId: string, request: ProviderAssignmentLifecycleRequest = {}) {
+		return this.requestJson<ProviderAssignmentLifecycleResult>(CAPACITY_PROVIDER_ENDPOINTS.assignmentComplete(assignmentId), {
+			method: 'POST',
+			body: request,
+		}).then((response) => {
+			assertCapacityProviderOkEnvelope(response, 'Capacity provider assignment complete response');
+			return response;
+		});
+	}
+
+	failAssignment(assignmentId: string, request: ProviderAssignmentLifecycleRequest = {}) {
+		return this.requestJson<ProviderAssignmentLifecycleResult>(CAPACITY_PROVIDER_ENDPOINTS.assignmentFail(assignmentId), {
+			method: 'POST',
+			body: request,
+		}).then((response) => {
+			assertCapacityProviderOkEnvelope(response, 'Capacity provider assignment fail response');
+			return response;
+		});
+	}
+
+	createAssignmentModeRun(assignmentId: string, request: Record<string, unknown>) {
+		return this.requestJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignmentModeRuns(assignmentId), {
+			method: 'POST',
+			body: request,
+		}).then((response) => {
+			assertCapacityProviderOkEnvelope(response, 'Capacity provider mode run response');
 			return response;
 		});
 	}

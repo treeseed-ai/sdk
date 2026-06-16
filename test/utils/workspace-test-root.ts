@@ -56,11 +56,18 @@ export function filesUnderIfExists(dir: string | null): string[] {
 		const stat = statSync(absolute);
 		if (stat.isDirectory()) {
 			entries.push(...filesUnderIfExists(absolute));
-		} else if (/\.(?:ts|tsx|js|mjs)$/u.test(entry)) {
+		} else if (/\.(?:ts|tsx|js|mjs)$/u.test(entry) && !isSideBySideBuildArtifact(absolute)) {
 			entries.push(absolute);
 		}
 	}
 	return entries;
+}
+
+function isSideBySideBuildArtifact(path: string): boolean {
+	if (path.endsWith('.d.ts')) return true;
+	if (!path.endsWith('.js')) return false;
+	const sourcePath = path.replace(/\.js$/u, '.ts');
+	return existsSync(sourcePath);
 }
 
 export function treeseedRelativePath(testRoot: TreeseedTestRoot, path: string): string {

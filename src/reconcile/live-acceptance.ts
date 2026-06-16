@@ -36,6 +36,8 @@ import {
 	upsertRailwayVariables,
 } from '../operations/services/railway-api.ts';
 import { resolveGitHubCredentialForRepository } from '../operations/services/github-credentials.ts';
+import { MarketClient } from '../market-client.ts';
+import { MarketProviderClient } from '../capacity-provider.ts';
 
 export type TreeseedLiveReconcileProvider = 'railway' | 'cloudflare' | 'github' | 'local';
 export type TreeseedLiveReconcileMode = 'smoke' | 'acceptance' | 'cleanup';
@@ -135,11 +137,16 @@ type LiveEnv = NodeJS.ProcessEnv | Record<string, string | undefined>;
 type LiveProgress = RunTreeseedLiveReconcileTestsOptions['onProgress'];
 
 const PROVIDER_CAPABILITIES: Record<TreeseedLiveReconcileProvider, string[]> = {
-	railway: ['project', 'environment', 'service', 'image-service', 'postgres', 'volume', 'domain', 'variables', 'deployment-health'],
+	railway: ['project', 'environment', 'service', 'image-service', 'postgres', 'volume', 'domain', 'variables', 'deployment-health', 'capacity-provider-runtime-assignment-proof'],
 	cloudflare: ['pages', 'worker', 'd1', 'r2', 'kv', 'queue', 'dns', 'turnstile', 'secrets', 'cache-rules'],
 	github: ['environment', 'secret', 'variable', 'workflow-dispatch', 'workflow-observation', 'repository-scoped-token'],
-	local: ['process', 'port', 'local-db', 'local-runner', 'docker-compose-capacity-provider'],
+	local: ['process', 'port', 'local-db', 'local-runner', 'docker-compose-capacity-provider', 'capacity-provider-assignment-proof'],
 };
+
+function isCapacityRuntimeProofCapability(capability: string) {
+	return capability === 'capacity-provider-assignment-proof'
+		|| capability === 'capacity-provider-runtime-assignment-proof';
+}
 
 function scenarioResourceKind(provider: TreeseedLiveReconcileProvider, capability: string): TreeseedDesiredResource['kind'] {
 	if (provider === 'railway') return capability === 'volume' ? 'railway-volume' : 'railway-service';
@@ -150,6 +157,7 @@ function scenarioResourceKind(provider: TreeseedLiveReconcileProvider, capabilit
 		if (capability === 'variable') return 'github-secret-binding';
 		return 'package-workflow';
 	}
+	if (isCapacityRuntimeProofCapability(capability)) return 'capacity-provider';
 	if (capability === 'docker-compose-capacity-provider') return 'local-docker-compose';
 	if (capability === 'process') return 'local-process';
 	if (capability === 'local-runner') return 'capacity-provider';
@@ -206,7 +214,8 @@ export function compileTreeseedLiveAcceptanceScenarios(input: {
 	return providers.flatMap((provider) => PROVIDER_CAPABILITIES[provider].map((capability) => {
 		const probeOnly = input.mode === 'smoke'
 			|| (provider === 'github' && ['workflow-observation', 'repository-scoped-token'].includes(capability))
-			|| (provider === 'cloudflare' && capability === 'cache-rules');
+			|| (provider === 'cloudflare' && capability === 'cache-rules')
+			|| isCapacityRuntimeProofCapability(capability);
 		const desiredResources = probeOnly
 			? []
 			: [liveAcceptanceDesiredResource({
@@ -247,6 +256,183 @@ function configuredValue(env: LiveEnv, keys: string[]) {
 		if (typeof value === 'string' && value.trim()) return value.trim();
 	}
 	return '';
+}
+
+function capacityAcceptanceConfig(env: LiveEnv) {
+	const apiUrl = configuredValue(env, [
+		'TREESEED_CAPACITY_ACCEPTANCE_API_URL',
+		'TREESEED_MARKET_URL',
+		'TREESEED_MANAGEMENT_API_URL',
+		'TREESEED_API_BASE_URL',
+	]);
+	const adminToken = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN']);
+	const teamId = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_TEAM_ID']);
+	const projectId = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_PROJECT_ID']);
+	const providerId = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_PROVIDER_ID', 'TREESEED_CAPACITY_PROVIDER_ID']);
+	const agentClassId = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_AGENT_CLASS_ID']);
+	const providerApiKey = configuredValue(env, ['TREESEED_CAPACITY_PROVIDER_API_KEY']);
+	const missing = [
+		['TREESEED_CAPACITY_ACCEPTANCE_API_URL or TREESEED_MARKET_URL', apiUrl],
+		['TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN', adminToken],
+		['TREESEED_CAPACITY_ACCEPTANCE_TEAM_ID', teamId],
+		['TREESEED_CAPACITY_ACCEPTANCE_PROJECT_ID', projectId],
+		['TREESEED_CAPACITY_ACCEPTANCE_PROVIDER_ID or TREESEED_CAPACITY_PROVIDER_ID', providerId],
+		['TREESEED_CAPACITY_ACCEPTANCE_AGENT_CLASS_ID', agentClassId],
+		['TREESEED_CAPACITY_PROVIDER_API_KEY', providerApiKey],
+	].filter(([, value]) => !value).map(([key]) => String(key));
+	return {
+		apiUrl,
+		adminToken,
+		teamId,
+		projectId,
+		providerId,
+		agentClassId,
+		providerApiKey,
+		missing,
+	};
+}
+
+interface CapacityAcceptanceProof {
+	sessionId: string;
+	assignmentId: string;
+	modeRunId: string;
+	finalStatus: string;
+	mode: string;
+	runnerId: string;
+	modeRunCount: number;
+}
+
+async function runCapacityProviderAssignmentProof(input: {
+	provider: TreeseedLiveReconcileProvider;
+	environment: TreeseedLiveReconcileEnvironment;
+	runId: string;
+	prefix: string;
+	env: LiveEnv;
+	fetchImpl: typeof fetch;
+}): Promise<CapacityAcceptanceProof> {
+	const config = capacityAcceptanceConfig(input.env);
+	if (config.missing.length > 0) {
+		throw new Error(`Missing capacity acceptance configuration: ${config.missing.join(', ')}.`);
+	}
+	const runnerId = `${input.prefix}-runner`;
+	const assignmentId = `${input.prefix}-assignment`;
+	const mode = configuredValue(input.env, ['TREESEED_CAPACITY_ACCEPTANCE_MODE']) || 'planning';
+	const metadata = {
+		liveAcceptance: true,
+		runId: input.runId,
+		prefix: input.prefix,
+		provider: input.provider,
+		capability: input.provider === 'railway' ? 'capacity-provider-runtime-assignment-proof' : 'capacity-provider-assignment-proof',
+		priority: 1_000_000,
+	};
+	const adminClient = new MarketClient({
+		profile: {
+			id: 'capacity-acceptance',
+			label: 'Capacity Acceptance',
+			baseUrl: config.apiUrl,
+			kind: 'specialized',
+			teamId: config.teamId,
+		},
+		accessToken: config.adminToken,
+		fetchImpl: input.fetchImpl,
+		userAgent: `treeseed-live-acceptance/${input.runId}`,
+	});
+	const providerClient = new MarketProviderClient({
+		marketUrl: config.apiUrl,
+		marketId: input.environment,
+		apiKey: config.providerApiKey,
+		fetchImpl: input.fetchImpl,
+		userAgent: `treeseed-live-acceptance/${input.runId}`,
+	});
+	const checkIn = await providerClient.checkIn({
+		id: `${input.prefix}-session`,
+		environment: input.environment,
+		status: 'open',
+		capabilities: ['repo_read', 'agent_mode_run', 'usage_report'],
+		nativeLimits: { wallMinutes: { session: 30 } },
+		runnerPressure: { activeRunners: 0, maxConcurrentRunners: 1 },
+		constraints: { liveAcceptance: true, outboundOnly: true },
+		metadata,
+	});
+	const sessionId = String(checkIn.payload.id ?? '');
+	if (!sessionId) throw new Error('Capacity acceptance check-in did not return a session id.');
+	await adminClient.createProviderAssignment(config.teamId, {
+		id: assignmentId,
+		projectId: config.projectId,
+		capacityProviderId: config.providerId,
+		providerSessionId: sessionId,
+		projectAgentClassId: config.agentClassId,
+		mode,
+		capacityEnvelope: {
+			teamId: config.teamId,
+			projectId: config.projectId,
+			providerId: config.providerId,
+			mode,
+			limits: { wallMinutes: 5 },
+			metadata,
+		},
+		decisionInput: {
+			kind: 'capacity_acceptance_diagnostic',
+			runId: input.runId,
+			mode,
+			instructions: 'Execute the isolated capacity acceptance diagnostic without widening project or provider scope.',
+		},
+		workspaceContext: {
+			liveAcceptance: true,
+			runId: input.runId,
+		},
+		metadata,
+	});
+	const leased = await providerClient.nextAssignment({
+		sessionId,
+		runnerId,
+		leaseSeconds: 120,
+		metadata,
+	});
+	if (!leased.payload?.id) throw new Error('Capacity acceptance did not lease an assignment.');
+	if (leased.payload.id !== assignmentId) {
+		throw new Error(`Capacity acceptance leased ${leased.payload.id} instead of diagnostic assignment ${assignmentId}.`);
+	}
+	const leaseToken = leased.leaseToken ?? leased.payload.leaseToken ?? null;
+	if (!leaseToken) throw new Error('Capacity acceptance lease did not include a lease token.');
+	const modeRun = await providerClient.createAssignmentModeRun(assignmentId, {
+		status: 'succeeded',
+		selectedInput: { kind: 'capacity_acceptance_diagnostic', runId: input.runId, mode },
+		outputs: { summary: 'Capacity acceptance diagnostic completed.', runId: input.runId },
+		usageActual: {
+			actualCredits: 0,
+			nativeUsage: { nativeUnit: 'request', amount: 1, source: 'capacity_acceptance' },
+			metadata,
+		},
+		traceRefs: { liveAcceptanceRunId: input.runId },
+		metadata,
+	});
+	const modeRunId = String(modeRun.payload.id ?? '');
+	if (!modeRunId) throw new Error('Capacity acceptance mode-run creation did not return an id.');
+	const completed = await providerClient.completeAssignment(assignmentId, {
+		runnerId,
+		leaseToken,
+		modeRunId,
+		output: { summary: 'Capacity acceptance diagnostic completed.', runId: input.runId },
+		summary: { runId: input.runId, modeRunId },
+		metadata,
+	});
+	const finalStatus = String(completed.payload?.status ?? '');
+	if (finalStatus !== 'completed') {
+		throw new Error(`Capacity acceptance assignment finished with status "${finalStatus || 'unknown'}".`);
+	}
+	const modeRuns = await adminClient.projectAgentModeRuns(config.projectId, { assignmentId });
+	const modeRunCount = Array.isArray(modeRuns.payload) ? modeRuns.payload.length : 0;
+	if (!modeRunCount) throw new Error('Capacity acceptance mode-run was not visible through project mode-run inspection.');
+	return {
+		sessionId,
+		assignmentId,
+		modeRunId,
+		finalStatus,
+		mode,
+		runnerId,
+		modeRunCount,
+	};
 }
 
 function shortRunId(now = new Date()) {
@@ -822,6 +1008,7 @@ async function runSmokeProvider({
 				scenario({ provider, mode, prefix, capability: 'domain', ok: true, phase: 'smoke', action: 'noop', reason: 'Railway domain API uses authenticated provider surface.', locators: base }),
 				scenario({ provider, mode, prefix, capability: 'variables', ok: Boolean(selectedEnvironment), phase: 'smoke', action: 'noop', reason: `Railway variables API observed ${Object.keys(variables).length} variables.`, locators: base }),
 				scenario({ provider, mode, prefix, capability: 'deployment-health', ok: services.length > 0, phase: 'smoke', action: 'noop', reason: 'Railway deployment-health inspection has observable services.', locators: base }),
+				scenario({ provider, mode, prefix, capability: 'capacity-provider-runtime-assignment-proof', ok: true, phase: 'smoke', action: 'noop', reason: 'Railway capacity runtime proof is available through explicit acceptance mode.', locators: base }),
 			];
 		} catch (error) {
 			const reason = error instanceof Error ? error.message : String(error);
@@ -899,6 +1086,7 @@ async function requireAcceptanceConfig(provider: TreeseedLiveReconcileProvider, 
 	if (provider === 'railway') {
 		if (!configuredValue(env, ['RAILWAY_API_TOKEN'])) missing.push('RAILWAY_API_TOKEN');
 		if (!resolveLiveTestDomain(cwd, env)) missing.push('TREESEED_LIVE_TEST_DOMAIN or treeseed.site.yaml siteUrl');
+		missing.push(...capacityAcceptanceConfig(env).missing);
 	}
 	if (provider === 'cloudflare') {
 		if (!configuredValue(env, ['CLOUDFLARE_API_TOKEN'])) missing.push('CLOUDFLARE_API_TOKEN');
@@ -1196,8 +1384,25 @@ mutation TreeseedLiveRailwayCustomDomainCreate($input: CustomDomainCreateInput!)
 		}, async () => waitForLiveObservation(
 			`Railway deployment service ${serviceName}`,
 			() => listRailwayServices({ projectId, env, fetchImpl }),
-			(services) => services.some((candidate) => candidate.id === serviceId),
-		)));
+				(services) => services.some((candidate) => candidate.id === serviceId),
+			)));
+		results.push(await measuredScenario({
+			provider: 'railway', mode, environment, runId, prefix, capability: 'capacity-provider-runtime-assignment-proof', phase: 'verify', action: 'noop',
+			startMessage: 'railway:capacity-provider-runtime-assignment-proof: running assignment lifecycle proof',
+			successReason: 'Railway capacity acceptance created a diagnostic assignment, leased it through the provider protocol, emitted mode-run telemetry, and completed it.',
+			locators: { projectId, environmentId },
+			retainedResources: (value) => {
+				const proof = value as CapacityAcceptanceProof;
+				return [providerNode('railway', environment, 'capacity-runtime-proof', proof.assignmentId, {
+					sessionId: proof.sessionId,
+					modeRunId: proof.modeRunId,
+					finalStatus: proof.finalStatus,
+					mode: proof.mode,
+					modeRunCount: proof.modeRunCount,
+				})];
+			},
+			onProgress,
+		}, async () => runCapacityProviderAssignmentProof({ provider: 'railway', environment, runId, prefix, env, fetchImpl })));
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
 		for (const capability of PROVIDER_CAPABILITIES.railway) {
@@ -1681,7 +1886,7 @@ async function closeServer(server: Server) {
 	});
 }
 
-async function runLocalAcceptance(environment: TreeseedLiveReconcileEnvironment, prefix: string, mode: TreeseedLiveReconcileMode, runId: string, onProgress?: LiveProgress) {
+async function runLocalAcceptance(environment: TreeseedLiveReconcileEnvironment, prefix: string, mode: TreeseedLiveReconcileMode, runId: string, env: LiveEnv, fetchImpl: typeof fetch, onProgress?: LiveProgress) {
 	const created: TreeseedCanonicalGraphNode[] = [];
 	const destroyed: TreeseedCanonicalGraphNode[] = [];
 	const dir = await mkdtemp(join(tmpdir(), `${prefix}-`));
@@ -1746,6 +1951,22 @@ async function runLocalAcceptance(environment: TreeseedLiveReconcileEnvironment,
 				return { docker: error instanceof Error ? error.message : String(error), available: false };
 			}
 		}));
+		results.push(await measuredScenario({
+			provider: 'local', mode, environment, runId, prefix, capability: 'capacity-provider-assignment-proof', phase: 'verify', action: 'noop',
+			startMessage: 'local:capacity-provider-assignment-proof: running assignment lifecycle proof',
+			successReason: 'Local capacity acceptance created a diagnostic assignment, leased it through the provider protocol, emitted mode-run telemetry, and completed it.',
+			retainedResources: (value) => {
+				const proof = value as CapacityAcceptanceProof;
+				return [providerNode('local', environment, 'capacity-runtime-proof', proof.assignmentId, {
+					sessionId: proof.sessionId,
+					modeRunId: proof.modeRunId,
+					finalStatus: proof.finalStatus,
+					mode: proof.mode,
+					modeRunCount: proof.modeRunCount,
+				})];
+			},
+			onProgress,
+		}, async () => runCapacityProviderAssignmentProof({ provider: 'local', environment, runId, prefix, env, fetchImpl })));
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
 		for (const capability of PROVIDER_CAPABILITIES.local) {
@@ -1813,7 +2034,7 @@ async function runProvider({
 		emitProgress(onProgress, { provider, mode, environment, runId, resourcePrefix: prefix, phase: report.ok ? 'complete' : 'blocked', elapsedMs: Date.now() - started, message: `${provider}: ${report.ok ? 'passed' : 'blocked'} in ${Date.now() - started}ms` });
 		return report;
 	}
-	const { results, cleanupDrift } = await runLocalAcceptance(environment, prefix, mode, runId, onProgress);
+	const { results, cleanupDrift } = await runLocalAcceptance(environment, prefix, mode, runId, env, fetchImpl, onProgress);
 	const report = reportForProvider({ provider, mode, runId, prefix, environment, results, cleanupDrift });
 	emitProgress(onProgress, { provider, mode, environment, runId, resourcePrefix: prefix, phase: report.ok ? 'complete' : 'blocked', elapsedMs: Date.now() - started, message: `${provider}: ${report.ok ? 'passed' : 'blocked'} in ${Date.now() - started}ms` });
 	return report;

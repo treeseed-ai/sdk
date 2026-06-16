@@ -43,4 +43,25 @@ describe('live acceptance scenario contract', () => {
 			}
 		}
 	});
+
+	it('treats capacity runtime proof records as control-plane probes instead of reconciled resources', () => {
+		const scenarios = compileTreeseedLiveAcceptanceScenarios({
+			tenantRoot: process.cwd(),
+			environment: 'staging',
+			provider: 'all',
+			mode: 'acceptance',
+			runId: '20260613120000',
+		});
+		const proofScenarios = scenarios.filter((scenario) => scenario.capability.includes('assignment-proof'));
+		expect(proofScenarios.map((scenario) => scenario.capability).sort()).toEqual([
+			'capacity-provider-assignment-proof',
+			'capacity-provider-runtime-assignment-proof',
+		]);
+		for (const scenario of proofScenarios) {
+			expect(scenario.probeOnly, scenario.id).toBe(true);
+			expect(scenario.desiredResources, scenario.id).toEqual([]);
+			expect(scenario.expectedActions, scenario.id).toEqual(['noop']);
+			expect(scenario.cleanupRequired, scenario.id).toBe(false);
+		}
+	});
 });

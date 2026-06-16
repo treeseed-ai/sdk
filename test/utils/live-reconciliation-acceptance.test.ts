@@ -61,6 +61,72 @@ describe('live reconciliation acceptance harness', () => {
 		expect(railway?.scenarioResults.map((entry) => entry.capability)).toContain('project');
 	});
 
+	it('runs local capacity assignment proof through the public market clients when configured', async () => {
+		const runId = '20260608120000';
+		const prefix = treeseedLiveReconcileResourcePrefix('local', 'local', runId);
+		const assignmentId = `${prefix}-assignment`;
+		const calls: Array<{ method: string; path: string; body: Record<string, unknown> }> = [];
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = new URL(String(input));
+			const method = init?.method ?? 'GET';
+			const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {};
+			calls.push({ method, path: url.pathname, body });
+			if (method === 'POST' && url.pathname === '/v1/provider/check-in') {
+				return Response.json({ ok: true, payload: { id: `${prefix}-session`, capacityProviderId: 'provider_123', status: 'open' } });
+			}
+			if (method === 'POST' && url.pathname === '/v1/teams/team_123/capacity/assignments') {
+				return Response.json({ ok: true, payload: { id: assignmentId, status: 'pending' } }, { status: 201 });
+			}
+			if (method === 'POST' && url.pathname === '/v1/provider/assignments/next') {
+				return Response.json({ ok: true, payload: { id: assignmentId, status: 'leased', leaseState: 'leased' }, leaseToken: 'lease_123' });
+			}
+			if (method === 'POST' && url.pathname === `/v1/provider/assignments/${assignmentId}/mode-runs`) {
+				return Response.json({ ok: true, payload: { id: 'mode_run_123', providerAssignmentId: assignmentId, status: 'succeeded' } }, { status: 201 });
+			}
+			if (method === 'POST' && url.pathname === `/v1/provider/assignments/${assignmentId}/complete`) {
+				return Response.json({ ok: true, payload: { id: assignmentId, status: 'completed', leaseState: 'released' } });
+			}
+			if (method === 'GET' && url.pathname === '/v1/projects/project_123/agent-mode-runs') {
+				expect(url.searchParams.get('assignmentId')).toBe(assignmentId);
+				return Response.json({ ok: true, payload: [{ id: 'mode_run_123', providerAssignmentId: assignmentId }] });
+			}
+			return Response.json({ error: `Unexpected request: ${method} ${url.pathname}` }, { status: 404 });
+		}) as unknown as typeof fetch;
+
+		const result = await runTreeseedLiveReconcileTests({
+			cwd: process.cwd(),
+			environment: 'local',
+			mode: 'acceptance',
+			providers: ['local'],
+			env: {
+				TREESEED_CAPACITY_ACCEPTANCE_API_URL: 'https://market.example.test',
+				TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN: 'admin-token',
+				TREESEED_CAPACITY_ACCEPTANCE_TEAM_ID: 'team_123',
+				TREESEED_CAPACITY_ACCEPTANCE_PROJECT_ID: 'project_123',
+				TREESEED_CAPACITY_ACCEPTANCE_PROVIDER_ID: 'provider_123',
+				TREESEED_CAPACITY_ACCEPTANCE_AGENT_CLASS_ID: 'agent_class_123',
+				TREESEED_CAPACITY_PROVIDER_API_KEY: 'provider-key',
+			},
+			runId,
+			fetchImpl,
+		});
+		const local = result.providers[0];
+		const proof = local?.scenarioResults.find((entry) => entry.capability === 'capacity-provider-assignment-proof');
+
+		expect(proof?.ok).toBe(true);
+		expect(proof?.retainedResources[0]).toMatchObject({
+			id: assignmentId,
+			type: 'capacity-runtime-proof',
+			state: {
+				sessionId: `${prefix}-session`,
+				modeRunId: 'mode_run_123',
+				finalStatus: 'completed',
+			},
+		});
+		expect(calls.map((call) => `${call.method} ${call.path}`)).toContain('POST /v1/provider/assignments/next');
+		expect(result.ok).toBe(true);
+	});
+
 	it('cleans stale Cloudflare live-test Pages projects without deleting the static project', async () => {
 		const deleted: string[] = [];
 		const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

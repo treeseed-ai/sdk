@@ -34,6 +34,7 @@ export {
 } from './sdk-types.ts';
 export { createControlPlaneReporter } from './control-plane.ts';
 export { ControlPlaneClient } from './control-plane-client.ts';
+export * from './agent-capacity.ts';
 export * from './seeds/index.ts';
 export {
 		CAPACITY_PROVIDER_ENDPOINTS,

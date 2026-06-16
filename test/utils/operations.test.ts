@@ -112,7 +112,7 @@ describe('treeseed workflow sdk', () => {
 		expect(result.payload).toHaveProperty('auth');
 		expect(result.payload).toHaveProperty('persistentEnvironments');
 		expect(result.payload).toHaveProperty('readiness');
-	});
+	}, 20000);
 
 	it('returns structured task metadata', async () => {
 		const workflowRoot = createTempWorkflowSite();

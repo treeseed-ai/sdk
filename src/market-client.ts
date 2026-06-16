@@ -981,10 +981,242 @@ export class MarketClient {
 		);
 	}
 
+	capacityAllocationSets(teamId: string) {
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/allocation-sets`,
+			{ requireAuth: true },
+		);
+	}
+
+	createCapacityAllocationSet(teamId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/allocation-sets`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	capacityAllocationSet(teamId: string, allocationSetId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/allocation-sets/${encodeURIComponent(allocationSetId)}`,
+			{ requireAuth: true },
+		);
+	}
+
+	activateCapacityAllocationSet(teamId: string, allocationSetId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/allocation-sets/${encodeURIComponent(allocationSetId)}/activate`,
+			{ method: 'POST', requireAuth: true },
+		);
+	}
+
+	providerAvailabilitySessions(teamId: string, options: { providerId?: string | null; status?: string | null } = {}) {
+		const params = new URLSearchParams();
+		if (options.providerId) params.set('providerId', options.providerId);
+		if (options.status) params.set('status', options.status);
+		const query = params.toString() ? `?${params.toString()}` : '';
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/provider-sessions${query}`,
+			{ requireAuth: true },
+		);
+	}
+
+	providerAssignments(teamId: string, options: { projectId?: string | null; providerId?: string | null; status?: string | null } = {}) {
+		const params = new URLSearchParams();
+		if (options.projectId) params.set('projectId', options.projectId);
+		if (options.providerId) params.set('providerId', options.providerId);
+		if (options.status) params.set('status', options.status);
+		const query = params.toString() ? `?${params.toString()}` : '';
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/assignments${query}`,
+			{ requireAuth: true },
+		);
+	}
+
+	createProviderAssignment(teamId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/assignments`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	providerAssignmentExplanation(teamId: string, assignmentId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/capacity/assignments/${encodeURIComponent(assignmentId)}/explanation`,
+			{ requireAuth: true },
+		);
+	}
+
 	projectCapacityPlan(projectId: string, environment?: string | null) {
 		const query = environment ? `?environment=${encodeURIComponent(environment)}` : '';
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/capacity-plan${query}`,
+			{ requireAuth: true },
+		);
+	}
+
+	projectAgentClasses(projectId: string) {
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/agent-classes`,
+			{ requireAuth: true },
+		);
+	}
+
+	createProjectAgentClass(projectId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/agent-classes`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	projectAgentClass(projectId: string, classId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/agent-classes/${encodeURIComponent(classId)}`,
+			{ requireAuth: true },
+		);
+	}
+
+	updateProjectAgentClass(projectId: string, classId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/agent-classes/${encodeURIComponent(classId)}`,
+			{ method: 'PATCH', body, requireAuth: true },
+		);
+	}
+
+	projectAgentModeRuns(projectId: string, options: { mode?: string | null; assignmentId?: string | null } = {}) {
+		const params = new URLSearchParams();
+		if (options.mode) params.set('mode', options.mode);
+		if (options.assignmentId) params.set('assignmentId', options.assignmentId);
+		const query = params.toString() ? `?${params.toString()}` : '';
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/agent-mode-runs${query}`,
+			{ requireAuth: true },
+		);
+	}
+
+	decisionPlanningStatus(decisionId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/decisions/${encodeURIComponent(decisionId)}/planning-status`,
+			{ requireAuth: true },
+		);
+	}
+
+	createPlanningInputRequest(decisionId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/decisions/${encodeURIComponent(decisionId)}/planning-input-requests`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	decisionExecutionInputs(decisionId: string, options: { status?: string | null } = {}) {
+		const query = options.status ? `?status=${encodeURIComponent(options.status)}` : '';
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/decisions/${encodeURIComponent(decisionId)}/execution-inputs${query}`,
+			{ requireAuth: true },
+		);
+	}
+
+	createDecisionExecutionInput(decisionId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/decisions/${encodeURIComponent(decisionId)}/execution-inputs`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	acceptDecisionExecutionInput(inputId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/decision-execution-inputs/${encodeURIComponent(inputId)}/accept`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	requestDecisionExecutionInputRevision(inputId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/decision-execution-inputs/${encodeURIComponent(inputId)}/request-revision`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	decisionCapacityPlans(decisionId: string, options: { status?: string | null } = {}) {
+		const query = options.status ? `?status=${encodeURIComponent(options.status)}` : '';
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/decisions/${encodeURIComponent(decisionId)}/capacity-plans${query}`,
+			{ requireAuth: true },
+		);
+	}
+
+	createDecisionCapacityPlan(decisionId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/decisions/${encodeURIComponent(decisionId)}/capacity-plans`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	capacityPlan(capacityPlanId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/capacity-plans/${encodeURIComponent(capacityPlanId)}`,
+			{ requireAuth: true },
+		);
+	}
+
+	acceptCapacityPlan(capacityPlanId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/capacity-plans/${encodeURIComponent(capacityPlanId)}/accept`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	requestCapacityPlanRevision(capacityPlanId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/capacity-plans/${encodeURIComponent(capacityPlanId)}/request-revision`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	scheduleCapacityPlan(capacityPlanId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/capacity-plans/${encodeURIComponent(capacityPlanId)}/schedule`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	createWorkday(body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			'/v1/workdays',
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	workday(workdayId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/workdays/${encodeURIComponent(workdayId)}`,
+			{ requireAuth: true },
+		);
+	}
+
+	startWorkday(workdayId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/workdays/${encodeURIComponent(workdayId)}/start`,
+			{ method: 'POST', requireAuth: true },
+		);
+	}
+
+	pauseWorkday(workdayId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/workdays/${encodeURIComponent(workdayId)}/pause`,
+			{ method: 'POST', requireAuth: true },
+		);
+	}
+
+	completeWorkday(workdayId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/workdays/${encodeURIComponent(workdayId)}/complete`,
+			{ method: 'POST', requireAuth: true },
+		);
+	}
+
+	workdaySummary(workdayId: string) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/workdays/${encodeURIComponent(workdayId)}/summary`,
 			{ requireAuth: true },
 		);
 	}

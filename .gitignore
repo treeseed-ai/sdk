@@ -26,3 +26,13 @@ temp/
 scripts/.ts-run-*.mjs
 src/.ts-run-*.mjs
 npm-debug.log*
+
+# Local release verification can emit compiled artifacts beside TypeScript sources.
+/scripts/**/*.js
+/scripts/**/*.d.ts
+/src/**/*.js
+/src/**/*.d.ts
+/test/**/*.js
+/test/**/*.d.ts
+/vitest.config.js
+/vitest.config.d.ts
