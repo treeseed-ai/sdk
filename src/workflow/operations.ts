@@ -3162,14 +3162,21 @@ function resolveRootStageGeneratedMetadataAndPackageConflicts(root: string, targ
 		return { resolved: false, conflictedPaths, generatedPaths, packagePaths, unresolvedPaths };
 	}
 	if (generatedPaths.length > 0) {
-		runGit(['checkout', '--ours', '--', ...generatedPaths], { cwd: root });
+		runGit(['checkout', '--theirs', '--', ...generatedPaths], { cwd: root });
 		runGit(['add', '--', ...generatedPaths], { cwd: root });
 	}
 	if (packagePaths.length > 0) {
 		syncAllCheckedOutPackageRepos(root, targetBranch);
 		runGit(['add', '--', ...packagePaths], { cwd: root });
 	}
-	return { resolved: true, conflictedPaths, generatedPaths, packagePaths };
+	const remainingConflicts = runGit(['diff', '--name-only', '--diff-filter=U'], {
+		cwd: root,
+		capture: true,
+	})
+		.split('\n')
+		.map((line) => line.trim())
+		.filter(Boolean);
+	return { resolved: remainingConflicts.length === 0, conflictedPaths, generatedPaths, packagePaths, remainingConflicts };
 }
 
 function reattachRepairablePackageRepos(
