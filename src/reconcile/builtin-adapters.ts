@@ -3535,7 +3535,11 @@ async function ensureRailwayMarketDatabaseForScope(
 	) {
 		return;
 	}
-	const firstService = [...topology.services.values()].find((entry) => entry.project && entry.environment);
+	const firstService = [...topology.services.values()].find((entry) =>
+		(entry.configuredService.key === 'api' || entry.configuredService.key === 'operationsRunner')
+		&& entry.project
+		&& entry.environment
+	);
 	if (!firstService?.project || !firstService.environment) {
 		return;
 	}
