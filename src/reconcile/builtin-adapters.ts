@@ -1313,19 +1313,15 @@ function resolveReconcileEnvironmentValues(
 	input: TreeseedReconcileAdapterInput,
 	scope: 'local' | 'staging' | 'prod',
 ) {
-	const machineValues = resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
 	if (scope === 'local') {
-		return machineValues;
+		return resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
 	}
 
 	const hostedRuntimeValues = {
 		...normalizeEnvironmentValues(process.env),
 		...normalizeEnvironmentValues(input.context.launchEnv),
 	};
-	return {
-		...machineValues,
-		...hostedRuntimeValues,
-	};
+	return hostedRuntimeValues;
 }
 
 function liveCloudflareAccountId(value: unknown) {
@@ -1339,17 +1335,29 @@ function liveCloudflareAccountId(value: unknown) {
 function buildCloudflareEnv(input: TreeseedReconcileAdapterInput) {
 	const scope = scopeFromTarget(toDeployTarget(input.context.target));
 	const values = resolveReconcileEnvironmentValues(input, scope);
-	const accountId = [
+	const runtimeAccountId = [
 		values.CLOUDFLARE_ACCOUNT_ID,
 		input.context.launchEnv.CLOUDFLARE_ACCOUNT_ID,
 		process.env.CLOUDFLARE_ACCOUNT_ID,
 		resolveConfiguredCloudflareAccountId(input.context.deployConfig),
-	].map(liveCloudflareAccountId).find(Boolean) ?? '';
-	const token = [
+	].map(liveCloudflareAccountId).find(Boolean) ?? null;
+	const runtimeToken = [
 		values.CLOUDFLARE_API_TOKEN,
 		input.context.launchEnv.CLOUDFLARE_API_TOKEN,
 		process.env.CLOUDFLARE_API_TOKEN,
-	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
+	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? null;
+	const machineValues = runtimeAccountId && runtimeToken
+		? {}
+		: resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+	const accountId = [
+		runtimeAccountId,
+		machineValues.CLOUDFLARE_ACCOUNT_ID,
+	].map(liveCloudflareAccountId).find(Boolean) ?? '';
+	const token = runtimeToken ?? (
+		typeof machineValues.CLOUDFLARE_API_TOKEN === 'string'
+			? machineValues.CLOUDFLARE_API_TOKEN.trim()
+			: ''
+	);
 	return {
 		CLOUDFLARE_ACCOUNT_ID: accountId,
 		CLOUDFLARE_API_TOKEN: token,
