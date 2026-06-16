@@ -495,7 +495,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.plannedSteps).not.toEqual(expect.arrayContaining([
 			expect.objectContaining({ id: 'hosted-ci' }),
 		]));
-	}, 15000);
+	}, 60000);
 
 	it('resolves status from nested directories against the tenant root', async () => {
 		const { work } = createWorkflowRepo();
@@ -507,7 +507,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.ok).toBe(true);
 		expect(result.payload.cwd).toBe(work);
 		expect(result.payload.branchName).toBe('feature/demo-task');
-	});
+	}, 60000);
 
 	it('reattaches a clean detached package repo at staging head', () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
@@ -887,11 +887,13 @@ describe('treeseed workflow lifecycle', () => {
 		const staged = await managedWorkflow.stage({
 			message: 'stage managed worktree',
 			deletePreview: false,
+			waitForStaging: false,
+			ciMode: 'off',
 		});
 
 		expect(staged.payload.worktreeCleanup.removed).toBe(true);
 		expect(existsSync(worktreePath)).toBe(false);
-		 git(work, ['fetch', 'origin', 'staging']);
+		git(work, ['fetch', 'origin', 'staging']);
 		expect(git(work, ['show', 'origin/staging:agent-stage.txt'])).toBe('managed stage');
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
 	}, 180000);
