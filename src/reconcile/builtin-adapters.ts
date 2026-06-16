@@ -1375,18 +1375,28 @@ function hasLiveResourceId(value: unknown) {
 
 function buildRailwayEnv(input: TreeseedReconcileAdapterInput, scope: 'local' | 'staging' | 'prod') {
 	const values = resolveReconcileEnvironmentValues(input, scope);
-	const token = [
+	const runtimeToken = [
 		values.RAILWAY_API_TOKEN,
 		input.context.launchEnv.RAILWAY_API_TOKEN,
 		process.env.RAILWAY_API_TOKEN,
-	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
+	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? null;
+	const machineValues = runtimeToken
+		? {}
+		: resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+	const token = runtimeToken ?? (
+		typeof machineValues.RAILWAY_API_TOKEN === 'string'
+			? machineValues.RAILWAY_API_TOKEN.trim()
+			: ''
+	);
 	return {
 		RAILWAY_API_TOKEN: token,
 		TREESEED_RAILWAY_API_URL: values.TREESEED_RAILWAY_API_URL
+			?? machineValues.TREESEED_RAILWAY_API_URL
 			?? input.context.launchEnv.TREESEED_RAILWAY_API_URL
 			?? process.env.TREESEED_RAILWAY_API_URL
 			?? '',
 		TREESEED_RAILWAY_WORKSPACE: values.TREESEED_RAILWAY_WORKSPACE
+			?? machineValues.TREESEED_RAILWAY_WORKSPACE
 			?? input.context.launchEnv.TREESEED_RAILWAY_WORKSPACE
 			?? process.env.TREESEED_RAILWAY_WORKSPACE
 			?? '',
