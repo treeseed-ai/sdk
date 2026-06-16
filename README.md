@@ -14,10 +14,10 @@ The SDK is the shared platform substrate used by:
 - `@treeseed/admin` for admin contracts, view models, API facades, and platform primitives
 - `@treeseed/api` for backend contracts, reconciliation, operation state, and shared data models
 - `@treeseed/cli` for workflow, config, hosting, release, and reconciliation commands
-- `@treeseed/agent` for provider contracts and runtime coordination
+- `@treeseed/agent` for provider runtime consumption of shared contracts
 - root `@treeseed/market` for tenant config, content, and hosted workflow integration
 
-The SDK is not a UI package, admin portal, backend server, CLI parser, capacity-provider runtime, or ecommerce implementation. See the root [Package Ownership](../../docs/package-ownership.md) guide for the full system map.
+The SDK is not a UI package, admin portal, backend server, CLI parser, capacity-provider runtime, AgentKernel runtime, or ecommerce implementation. See the root [Package Ownership](../../docs/package-ownership.md) guide for the full system map.
 
 ## Which Surface Should I Use?
 
@@ -38,7 +38,7 @@ If you are unsure, use `AgentSdk`.
 - generic model reads and mutations across content-backed models and the static-hub D1 form store
 - operational runtime state such as messages, runs, cursors, and leases
 - control-plane orchestration for work days, tasks, task events, graph runs, and reports
-- provider-neutral capacity scheduling contracts for task classification, admission, execution profiles, routing, estimates, planning proposals, attention load, utility, predictive reserve, hybrid execution, checkpoints, and usage actuals
+- provider-neutral capacity and assignment contracts for allocation sets, project agent classes, kernel policy/profile, capacity envelopes, provider sessions, assignments, mode runs, reservations, estimates, checkpoints, and usage actuals
 - hosting graph compilation, deployment readiness, live hosted-service checks, Treeseed runner smoke helpers, and verification cache support for Treeseed workflows
 - graph-first context retrieval through `parseGraphDsl()`, `resolveSeeds()`, `queryGraph()`, and `buildContextPack()`
 - agent scoping through `scopeForAgent()`
@@ -76,6 +76,8 @@ Reconciliation guarantees:
 - cached state can locate resources but live observation proves readiness
 - hosted apply cannot report `ok: true` when live postconditions fail
 - adapter reports use `desiredGraph`, `observedGraph`, `stateGraph`, `diff`, `actions`, `postconditions`, `blockedDrift`, `providerLimitations`, `liveVerification`, and `ok`
+
+Agent capacity architecture is documented in the root workspace [Agent Capacity Implementation Roadmap](../../docs/agent-capacity-implementation-roadmap.md) and [Agent Capacity Domain Model](../../docs/agent-capacity-domain-model.md). SDK owns the portable contracts only; API owns durable coordination records and `@treeseed/agent` owns runtime execution.
 
 ## Install
 
