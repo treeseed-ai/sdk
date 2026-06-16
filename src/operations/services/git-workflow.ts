@@ -344,6 +344,36 @@ export function pushBranch(repoDir, branchName, { setUpstream = false } = {}) {
 	runGit(args, { cwd: repoDir });
 }
 
+export function taskTagSlug(branchName) {
+	return String(branchName ?? '')
+		.normalize('NFKD')
+		.replace(/[\u0300-\u036f]/gu, '')
+		.replace(/[^a-z0-9._-]+/giu, '-')
+		.toLowerCase()
+		.replace(/-+/gu, '-')
+		.replace(/^-|-$/gu, '')
+		|| 'task';
+}
+
+export function createDeprecatedTaskTag(repoDir, branchName, reason = '') {
+	const head = headCommit(repoDir, branchName);
+	const tagName = `deprecated/${taskTagSlug(branchName)}/${head.slice(0, 12)}`;
+	const message = [
+		`Deprecated task branch ${branchName}`,
+		String(reason ?? '').trim(),
+	].filter(Boolean).join('\n\n');
+	runGit(['tag', '-a', tagName, head, '-m', message], { cwd: repoDir });
+	ensureWritableOrigin(repoDir);
+	runGit(['push', 'origin', tagName], { cwd: repoDir });
+	return {
+		repoDir,
+		branchName,
+		tagName,
+		head,
+		pushed: true,
+	};
+}
+
 export function ensureRemoteBranchFromBase(
 	repoDir,
 	branchName,

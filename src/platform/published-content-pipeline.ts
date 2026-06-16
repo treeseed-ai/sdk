@@ -8,6 +8,7 @@ import { parseFrontmatterDocument } from '../frontmatter.ts';
 import type { TreeseedDeployConfig, TreeseedTenantConfig } from './contracts.ts';
 import { buildTenantBookRuntime } from './books-data.ts';
 import { exportBookLibrary, exportBookPackage } from './book-export.ts';
+import { COMMERCE_OFFER_MODES, type CommerceOfferMode } from '../sdk-types.ts';
 import {
 	PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION,
 	resolvePublishedContentPreviewTtlHours,
@@ -24,6 +25,12 @@ import {
 	type PublishedContentVisibility,
 } from './published-content.ts';
 import type { CatalogIndexEntry } from './published-content.ts';
+
+function resolveCommerceOfferMode(value: unknown): CommerceOfferMode {
+	return typeof value === 'string' && (COMMERCE_OFFER_MODES as readonly string[]).includes(value)
+		? value as CommerceOfferMode
+		: 'free';
+}
 
 export interface ContentSourceEntry {
 	model: string;
@@ -519,9 +526,7 @@ class DefaultArtifactBuilder implements ArtifactBuilder {
 				summary: entry.summary,
 				visibility: entry.visibility,
 				listingEnabled: entry.metadata?.listingEnabled !== false,
-				offerMode: typeof entry.metadata?.offer?.priceModel === 'string'
-					? entry.metadata.offer.priceModel as CatalogIndexEntry['offerMode']
-					: 'free',
+					offerMode: resolveCommerceOfferMode(entry.metadata?.offer?.priceModel),
 				manifestKey: resolveTeamScopedContentLocator(context.siteConfig, context.teamId).manifestKey,
 				artifactKey: undefined,
 				updatedAt: context.generatedAt,

@@ -18,22 +18,27 @@ function functionBody(fileSource: string, functionName: string) {
 }
 
 describe('reconciliation hard-cut source boundaries', () => {
-	it('keeps stage and release as release-gate facades', () => {
+	it('keeps stage as a recursive branch promotion and release as a release-gate facade', () => {
 		const operations = source('packages/sdk/src/workflow/operations.ts');
-		for (const name of ['workflowStage', 'workflowRelease']) {
-			const body = functionBody(operations, name);
-			expect(body).toContain('runReleaseGateReconcileFacade');
-			expect(body).toContain('legacyMutationPathDisabled');
-			for (const blocked of [
-				'executeJournalStep',
-				'waitForWorkflowGates',
-				'runWorkflowHostedResourceVerification',
-				'destroyPreviewIfPresent',
-				'squashMergeBranchIntoStaging',
-				'runReleaseCandidateForPlan',
-			]) {
-				expect(body, `${name} must not use ${blocked}`).not.toContain(blocked);
-			}
+		const stageBody = functionBody(operations, 'workflowStage');
+		expect(stageBody).toContain('squashMergeBranchIntoStaging');
+		expect(stageBody).toContain('waitForWorkflowGates');
+		expect(stageBody).toContain('destroyWorkflowBranchPreviewIfPresent');
+		expect(stageBody).not.toContain('runReleaseGateReconcileFacade');
+		expect(stageBody).not.toContain('legacyMutationPathDisabled');
+
+		const releaseBody = functionBody(operations, 'workflowRelease');
+		expect(releaseBody).toContain('runReleaseGateReconcileFacade');
+		expect(releaseBody).toContain('legacyMutationPathDisabled');
+		for (const blocked of [
+			'executeJournalStep',
+			'waitForWorkflowGates',
+			'runWorkflowHostedResourceVerification',
+			'destroyWorkflowBranchPreviewIfPresent',
+			'squashMergeBranchIntoStaging',
+			'runReleaseCandidateForPlan',
+		]) {
+			expect(releaseBody, `workflowRelease must not use ${blocked}`).not.toContain(blocked);
 		}
 	});
 
