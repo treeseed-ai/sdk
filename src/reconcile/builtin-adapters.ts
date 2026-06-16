@@ -392,7 +392,7 @@ function buildGitHubEnv(input: TreeseedReconcileAdapterInput, repositoryOverride
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
 	const credentialScope = scope === 'local' ? 'staging' : scope;
 	const values = {
-		...resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, credentialScope),
+		...resolveOptionalReconcileMachineEnvironmentValues(input, credentialScope),
 		...resolveReconcileEnvironmentValues(input, credentialScope),
 	};
 	const repository = typeof repositoryOverride === 'string' && repositoryOverride.trim()
@@ -1324,6 +1324,20 @@ function resolveReconcileEnvironmentValues(
 	return hostedRuntimeValues;
 }
 
+function resolveOptionalReconcileMachineEnvironmentValues(
+	input: TreeseedReconcileAdapterInput,
+	scope: 'local' | 'staging' | 'prod',
+) {
+	if (scope === 'local') {
+		return resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+	}
+	try {
+		return resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+	} catch {
+		return {};
+	}
+}
+
 function liveCloudflareAccountId(value: unknown) {
 	const accountId = typeof value === 'string' ? value.trim() : '';
 	if (!accountId || accountId === 'replace-with-cloudflare-account-id') {
@@ -1348,7 +1362,7 @@ function buildCloudflareEnv(input: TreeseedReconcileAdapterInput) {
 	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? null;
 	const machineValues = runtimeAccountId && runtimeToken
 		? {}
-		: resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+		: resolveOptionalReconcileMachineEnvironmentValues(input, scope);
 	const accountId = [
 		runtimeAccountId,
 		machineValues.CLOUDFLARE_ACCOUNT_ID,
@@ -1382,7 +1396,7 @@ function buildRailwayEnv(input: TreeseedReconcileAdapterInput, scope: 'local' | 
 	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? null;
 	const machineValues = runtimeToken
 		? {}
-		: resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+		: resolveOptionalReconcileMachineEnvironmentValues(input, scope);
 	const token = runtimeToken ?? (
 		typeof machineValues.RAILWAY_API_TOKEN === 'string'
 			? machineValues.RAILWAY_API_TOKEN.trim()
