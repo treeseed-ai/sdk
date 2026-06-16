@@ -98,7 +98,9 @@ export function checkedOutWorkspacePackageRepos(root: string) {
 }
 
 export function workflowModeForRoot(root: string): TreeseedWorkflowMode {
-	return hasCompleteTreeseedPackageCheckout(root) ? 'recursive-workspace' : 'root-only';
+	return hasCompleteTreeseedPackageCheckout(root) || checkedOutWorkspacePackageRepos(root).length > 0
+		? 'recursive-workspace'
+		: 'root-only';
 }
 
 export function collectReleasePackageSelection(root: string): TreeseedWorkflowPackageSelection {

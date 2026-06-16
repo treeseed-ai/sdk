@@ -3115,7 +3115,7 @@ function ensureLocalTaskBranch(repoDir: string, branchName: string) {
 function cleanupTaskBranchReport(
 	report: WorkflowRepoReport,
 	branchName: string,
-	_message: string,
+	message: string,
 	{ deleteBranch = true, targetBranch = STAGING_BRANCH } = {},
 ) {
 	if (!ensureLocalTaskBranch(report.path, branchName)) {
@@ -3123,8 +3123,9 @@ function cleanupTaskBranchReport(
 		return report;
 	}
 
-	report.tagName = null;
-	report.commitSha = updateHead(report.path);
+	const deprecatedTag = createDeprecatedTaskTag(report.path, branchName, message);
+	report.tagName = deprecatedTag.tagName;
+	report.commitSha = deprecatedTag.head;
 	report.deletedRemote = deleteBranch ? deleteRemoteBranch(report.path, branchName) : false;
 	syncBranchWithOrigin(report.path, targetBranch);
 	if (deleteBranch) {
@@ -4846,11 +4847,13 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 				const blockers = session.branchRole !== 'feature'
 					? ['Close only applies to task branches.']
 					: [];
+				const planPackageReports = createWorkspacePackageReports(root);
+				const closePlanMode = planPackageReports.length > 0 ? 'recursive-workspace' : session.mode;
 				return buildWorkflowResult(
 					'close',
 					root,
 					{
-						mode: session.mode,
+						mode: closePlanMode,
 						branchName,
 						message,
 						autoResumeCandidate: planAutoResumeRun
@@ -4862,7 +4865,7 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 							: null,
 						...worktreePayload(root, effectiveInput.worktreeMode),
 						autoSaveRequired: session.rootRepo.dirty || session.packageRepos.some((repo) => repo.dirty),
-						repos: createWorkspacePackageReports(root),
+						repos: planPackageReports,
 						rootRepo: createWorkspaceRootRepoReport(root),
 						blockers,
 						plannedSteps: [
@@ -4893,18 +4896,18 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 				});
 				const activeSession = resolveTreeseedWorkflowSession(root);
 			const featureBranch = assertFeatureBranch(root);
-			const mode = activeSession.mode;
 			const repoDir = activeSession.gitRoot;
 			const managedWorktreeForClose = isManagedWorkflowWorktree(root);
 			assertSessionBranchSafety('close', activeSession);
-			if (mode === 'recursive-workspace') {
+			const rootRepo = createWorkspaceRootRepoReport(root);
+			const packageReports = createWorkspacePackageReports(root);
+			const closeMode = packageReports.length > 0 ? 'recursive-workspace' : activeSession.mode;
+			if (closeMode === 'recursive-workspace') {
 				assertWorkspaceClean(root);
 			} else {
 				assertCleanWorktree(root);
 			}
 
-			const rootRepo = createWorkspaceRootRepoReport(root);
-			const packageReports = createWorkspacePackageReports(root);
 			const workflowRun = acquireWorkflowRun(
 				'close',
 				activeSession,
@@ -4953,6 +4956,7 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 					: await executeJournalStep(root, workflowRun.runId, 'preview-cleanup', () => destroyWorkflowBranchPreviewIfPresent(root, featureBranch, helpers.context));
 				const rootCleanup = await executeJournalStep(root, workflowRun.runId, 'cleanup-root', () => {
 					const head = updateHead(repoDir);
+					const deprecatedTag = createDeprecatedTaskTag(repoDir, featureBranch, `close: ${message}`);
 					const deletedRemote = effectiveInput.deleteBranch === false ? false : deleteRemoteBranch(repoDir, featureBranch);
 					if (!managedWorktreeForClose) {
 						syncBranchWithOrigin(repoDir, STAGING_BRANCH);
@@ -4962,14 +4966,15 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 					}
 					return {
 						head,
+						deprecatedTag,
 						deletedRemote,
 						deletedLocal: effectiveInput.deleteBranch !== false && !managedWorktreeForClose,
 						branch: managedWorktreeForClose ? featureBranch : (currentBranch(repoDir) || STAGING_BRANCH),
 						dirty: hasMeaningfulChanges(repoDir),
 					};
 				});
-				rootRepo.tagName = null;
-				rootRepo.commitSha = String(rootCleanup?.head ?? rootRepo.commitSha ?? '');
+				rootRepo.tagName = String(rootCleanup?.deprecatedTag?.tagName ?? rootRepo.tagName ?? '');
+				rootRepo.commitSha = String(rootCleanup?.deprecatedTag?.head ?? rootCleanup?.head ?? rootRepo.commitSha ?? '');
 				rootRepo.deletedRemote = rootCleanup?.deletedRemote === true;
 				rootRepo.deletedLocal = rootCleanup?.deletedLocal === true;
 				rootRepo.branch = typeof rootCleanup?.branch === 'string' ? rootCleanup.branch : (currentBranch(repoDir) || STAGING_BRANCH);
@@ -5002,7 +5007,7 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 				}
 
 				const payload = {
-					mode,
+					mode: closeMode,
 					branchName: featureBranch,
 					message,
 					autoSaved: autoSave.performed,
@@ -5272,7 +5277,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						} else {
 							syncBranchWithOrigin(repoDir, STAGING_BRANCH);
 						}
-						run('git', ['merge', '--squash', featureBranch], { cwd: repoDir });
+						runGit(['merge', '--squash', featureBranch], { cwd: repoDir });
 						if (stageMode === 'recursive-workspace') {
 							syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
 						}
@@ -5283,8 +5288,8 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 							onProgress: (line, stream) => helpers.write(line, stream),
 						});
 						if (hasStagedChanges(repoDir) || hasMeaningfulChanges(repoDir)) {
-							run('git', ['add', '-A'], { cwd: repoDir });
-							run('git', ['commit', '-m', message], { cwd: repoDir });
+							runGit(['add', '-A'], { cwd: repoDir });
+							runGit(['commit', '-m', message], { cwd: repoDir });
 						}
 						if (isManagedWorkflowWorktree(root)) {
 							pushHeadToBranch(repoDir, STAGING_BRANCH);
@@ -5623,6 +5628,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				.filter((check) => check.status === 'failed')
 				.map((check) => `${check.id}: ${check.message}${check.remediation ? ` Remediation: ${check.remediation}` : ''}`));
 			plannedRelease.blockers = blockers;
+			if (executionMode === 'execute' && blockers.length > 0) {
+				workflowError('release', 'validation_failed', `Treeseed release cannot continue until blockers are resolved:\n${blockers.join('\n')}`, {
+					details: { blockers, releasePlan: plannedRelease },
+				});
+			}
 			return runReleaseGateReconcileFacade(
 				'release',
 				helpers,
