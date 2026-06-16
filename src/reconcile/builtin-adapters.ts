@@ -1313,29 +1313,46 @@ function resolveReconcileEnvironmentValues(
 	input: TreeseedReconcileAdapterInput,
 	scope: 'local' | 'staging' | 'prod',
 ) {
+	const machineValues = resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
 	if (scope === 'local') {
-		return resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+		return machineValues;
 	}
 
 	const hostedRuntimeValues = {
 		...normalizeEnvironmentValues(process.env),
 		...normalizeEnvironmentValues(input.context.launchEnv),
 	};
-	return hostedRuntimeValues;
+	return {
+		...machineValues,
+		...hostedRuntimeValues,
+	};
+}
+
+function liveCloudflareAccountId(value: unknown) {
+	const accountId = typeof value === 'string' ? value.trim() : '';
+	if (!accountId || accountId === 'replace-with-cloudflare-account-id') {
+		return null;
+	}
+	return accountId;
 }
 
 function buildCloudflareEnv(input: TreeseedReconcileAdapterInput) {
 	const scope = scopeFromTarget(toDeployTarget(input.context.target));
 	const values = resolveReconcileEnvironmentValues(input, scope);
+	const accountId = [
+		values.CLOUDFLARE_ACCOUNT_ID,
+		input.context.launchEnv.CLOUDFLARE_ACCOUNT_ID,
+		process.env.CLOUDFLARE_ACCOUNT_ID,
+		resolveConfiguredCloudflareAccountId(input.context.deployConfig),
+	].map(liveCloudflareAccountId).find(Boolean) ?? '';
+	const token = [
+		values.CLOUDFLARE_API_TOKEN,
+		input.context.launchEnv.CLOUDFLARE_API_TOKEN,
+		process.env.CLOUDFLARE_API_TOKEN,
+	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
 	return {
-		CLOUDFLARE_ACCOUNT_ID: values.CLOUDFLARE_ACCOUNT_ID
-			?? input.context.launchEnv.CLOUDFLARE_ACCOUNT_ID
-			?? process.env.CLOUDFLARE_ACCOUNT_ID
-			?? resolveConfiguredCloudflareAccountId(input.context.deployConfig),
-		CLOUDFLARE_API_TOKEN: values.CLOUDFLARE_API_TOKEN
-			?? input.context.launchEnv.CLOUDFLARE_API_TOKEN
-			?? process.env.CLOUDFLARE_API_TOKEN
-			?? '',
+		CLOUDFLARE_ACCOUNT_ID: accountId,
+		CLOUDFLARE_API_TOKEN: token,
 	};
 }
 
