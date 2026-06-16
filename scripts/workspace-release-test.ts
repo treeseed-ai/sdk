@@ -13,6 +13,9 @@ for (const pkg of packages) {
 				: null;
 
 	if (scriptName) {
+		const startedAt = Date.now();
+		process.stderr.write(`[workspace-release-test] ${pkg.name ?? pkg.dir} ${scriptName} start\n`);
 		run('npm', ['run', scriptName], { cwd: pkg.dir });
+		process.stderr.write(`[workspace-release-test] ${pkg.name ?? pkg.dir} ${scriptName} complete after ${((Date.now() - startedAt) / 1000).toFixed(1)}s\n`);
 	}
 }

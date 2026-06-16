@@ -64,7 +64,7 @@ export function validateSaveAutomationPrerequisites({ cwd }) {
 
 export function runWorkspaceSavePreflight({ cwd }) {
 	runStep('lint', 'workspace-lint', { cwd });
-	runStep('test', 'workspace-test', { cwd });
+	runStep('test', 'workspace-release-test', { cwd });
 	runStep('build', 'tenant-build', { cwd });
 }
 
