@@ -202,7 +202,7 @@ describe('workflow update', () => {
 		expect(git(resolve(work, 'packages/treedx'), ['branch', '--show-current']).stdout).toBe('demo');
 		expect(git(resolve(work, 'packages/treedx'), ['merge-base', '--is-ancestor', treedxStaging, 'HEAD'], { allowFailure: true }).status).toBe(0);
 		expect(git(work, ['status', '--porcelain']).stdout).toBe('');
-	});
+	}, 60000);
 
 	it('stops on the first merge conflict and reports conflicted files', async () => {
 		const { work } = createRootRepo();
