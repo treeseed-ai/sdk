@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { changedWorkspacePackages, publishableWorkspacePackages, sortWorkspacePackages, workspacePackages, workspaceRoot } from './workspace-tools.ts';
 import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
@@ -446,7 +446,9 @@ export function collectMergeConflictReport(repoDir) {
 	const status = runGit(['status', '--short'], { cwd: repoDir, capture: true });
 	const perFile = conflictedFiles.map((filePath) => {
 		const fullPath = resolve(repoDir, filePath);
-		const source = existsSync(fullPath) ? readFileSync(fullPath, 'utf8') : '';
+		const source = existsSync(fullPath) && !lstatSync(fullPath).isDirectory()
+			? readFileSync(fullPath, 'utf8')
+			: '';
 		return {
 			filePath,
 			markers: countConflictMarkers(source),
