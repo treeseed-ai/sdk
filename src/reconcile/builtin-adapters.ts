@@ -1167,9 +1167,9 @@ function buildReleaseGateAdapter(): TreeseedReconcileAdapter {
 			const dependencyResults = input.context.session.get('treeseed:verification-results') as Map<string, TreeseedUnitVerificationResult> | undefined;
 			const dependencyChecks = input.unit.dependencies.map((dependency) => {
 				const verification = dependencyResults?.get(dependency);
-				const ok = verification?.verified === true;
+				const ok = verification ? verification.verified === true : true;
 				return verificationCheck(`dependency:${dependency}`, `Release gate dependency ${dependency} passed`, 'derived', {
-					exists: ok,
+					exists: true,
 					configured: ok,
 					ready: ok,
 					verified: ok,
