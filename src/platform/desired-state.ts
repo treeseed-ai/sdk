@@ -475,6 +475,7 @@ function releaseGateResources(packages: TreeseedPackageUnit[], environment: Tree
 	const phase = releasePhaseForEnvironment(environment);
 	const hostedEnvironment = environment === 'prod' ? 'prod' : 'staging';
 	const packageIds = new Set(packages.map((pkg) => pkg.id));
+	const allVerifyGateIds = packages.map((pkg) => `release-gate:verify:${pkg.id}`);
 	const packageGates = packages.flatMap((pkg) => {
 		const fingerprint = hashJson({ packageId: pkg.id, version: pkg.version, capability: pkg.releaseCapability, environment, phase });
 		const dependencyVerifyGateIds = pkg.treeseedDependencies
@@ -515,7 +516,7 @@ function releaseGateResources(packages: TreeseedPackageUnit[], environment: Tree
 				packageId: pkg.id,
 				serviceId: null,
 				logicalName: `${pkg.id} publish gate`,
-				dependencies: [verifyGate.id],
+				dependencies: allVerifyGateIds,
 				spec: {
 					gateKind: publishGateKind,
 					phase,
