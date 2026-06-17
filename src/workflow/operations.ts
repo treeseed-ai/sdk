@@ -133,7 +133,7 @@ import {
 	type SaveVerifyMode,
 	type ReleaseBumpLevel,
 } from '../operations/services/repository-save-orchestrator.ts';
-import { discoverTreeseedPackageAdapters } from '../operations/services/package-adapters.ts';
+import { discoverTreeseedPackageAdapters, type TreeseedPackageAdapter } from '../operations/services/package-adapters.ts';
 import {
 	assertNoInternalDevReferences,
 	cleanupStaleTreeseedDevTags,
@@ -1394,6 +1394,19 @@ function defaultCiWorkflows(kind: 'root' | 'package', branch: string | null) {
 	return ['verify.yml'];
 }
 
+function workflowBasename(value: unknown) {
+	if (typeof value !== 'string' || !value.trim()) return null;
+	return value.trim().replace(/^\.github\/workflows\//u, '');
+}
+
+function packageDefaultCiWorkflows(repoPath: string, adapter: TreeseedPackageAdapter | null) {
+	if (existsSync(resolve(repoPath, '.github', 'workflows', 'verify.yml'))) {
+		return ['verify.yml'];
+	}
+	const hostedWorkflow = workflowBasename(adapter?.metadata.hostedVerifyWorkflow);
+	return hostedWorkflow ? [hostedWorkflow] : ['verify.yml'];
+}
+
 function githubRepositoryForRepo(repoDir: string) {
 	try {
 		return resolveGitHubRepositorySlug(repoDir);
@@ -1407,9 +1420,11 @@ function ciTargetForRepo(
 	kind: 'root' | 'package',
 	input: TreeseedCiInput,
 	workflowOverrides: string[],
+	defaultWorkflows?: string[],
 ): GitHubActionsVerificationTarget {
 	const branch = typeof input.branch === 'string' && input.branch.trim() ? input.branch.trim() : repo.branchName;
-	const workflows = workflowOverrides.length > 0 ? workflowOverrides : defaultCiWorkflows(kind, branch);
+	const explicitWorkflows = workflowOverrides.length > 0;
+	const workflows = explicitWorkflows ? workflowOverrides : defaultWorkflows ?? defaultCiWorkflows(kind, branch);
 	return {
 		name: repo.name,
 		repoPath: repo.path,
@@ -1418,6 +1433,7 @@ function ciTargetForRepo(
 		headSha: branch ? headCommit(repo.path) : null,
 		workflows,
 		kind,
+		missingIsFailure: explicitWorkflows,
 	};
 }
 
@@ -1429,7 +1445,16 @@ function ciTargetsForSession(session: TreeseedWorkflowSession, input: TreeseedCi
 		targets.push(ciTargetForRepo(session.rootRepo, 'root', input, workflows));
 	}
 	if (scope === 'workspace' || scope === 'packages') {
-		targets.push(...session.packageRepos.map((repo) => ciTargetForRepo(repo, 'package', input, workflows)));
+		const adaptersByPath = new Map(discoverTreeseedPackageAdapters(session.rootRepo.path)
+			.map((adapter) => [resolve(adapter.dir), adapter]));
+		targets.push(...session.packageRepos.map((repo) =>
+			ciTargetForRepo(
+				repo,
+				'package',
+				input,
+				workflows,
+				packageDefaultCiWorkflows(repo.path, adaptersByPath.get(resolve(repo.path)) ?? null),
+			)));
 	}
 	return { scope, targets };
 }
@@ -1445,7 +1470,7 @@ async function createCiResult(cwd: string, input: TreeseedCiInput): Promise<Tree
 	});
 	const hasFailures = report.failures.length > 0;
 	const hasPending = report.summary.pending > 0;
-	const exitCode = hasFailures || (strict && hasPending) ? 1 : 0;
+	const exitCode = hasFailures || (strict && (hasPending || report.summary.missing > 0)) ? 1 : 0;
 	const payload: TreeseedCiResult = {
 		...report,
 		mode: session.mode,

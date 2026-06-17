@@ -768,8 +768,11 @@ function workflowNameForTemplate(adapter: TreeseedPackageAdapter, template: Tree
 }
 
 export function renderTreeseedPackageWorkflow(adapter: TreeseedPackageAdapter, template: TreeseedPackageWorkflowTemplateKind) {
-	const verify = adapter.verifyCommands.local
-		? formatWorkflowRunCommand(adapter.verifyCommands.local.command, adapter.verifyCommands.local.args)
+	const verifyCommand = template === 'release-gate' && adapter.verifyCommands.release
+		? adapter.verifyCommands.release
+		: adapter.verifyCommands.local;
+	const verify = verifyCommand
+		? formatWorkflowRunCommand(verifyCommand.command, verifyCommand.args)
 		: 'npm run verify:local';
 	const setup = resolveWorkflowSetupCommand(adapter);
 	const dockerArtifacts = adapter.artifacts.filter((artifact) => artifact.provider === 'docker');
@@ -809,7 +812,7 @@ jobs:
 `;
 	}
 	if (template === 'docker-image' || template === 'dev-image') {
-		const imageSetup = resolveDockerImageWorkflowSetupCommand();
+		const imageSetup = resolveDockerImageWorkflowSetupCommand(adapter);
 		const anyTarget = dockerArtifacts.some((artifact) => typeof artifact.target === 'string' && artifact.target.trim().length > 0);
 		const dockerContextPrepareCommand = isRecord(adapter.metadata.scripts) && typeof adapter.metadata.scripts['capacity-provider:build'] === 'string'
 			? 'npm run capacity-provider:build -- --prepare-only'
@@ -945,15 +948,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: actions/setup-node@v4
+${adapter.kind === 'node-typescript' ? `      - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: ${setup}
+` : ''}      - run: ${setup}
       - run: ${verify}
 `;
 }
 
 function resolveWorkflowSetupCommand(adapter: TreeseedPackageAdapter) {
+	if (adapter.kind !== 'node-typescript') {
+		return 'true';
+	}
 	const scripts = adapter.metadata.scripts;
 	if (isRecord(scripts) && typeof scripts['release:setup'] === 'string') {
 		return 'npm run release:setup || (echo "dependency install failed; retrying" && npm run release:setup)';
@@ -961,7 +967,10 @@ function resolveWorkflowSetupCommand(adapter: TreeseedPackageAdapter) {
 	return 'npm ci || (echo "dependency install failed; retrying" && npm ci)';
 }
 
-function resolveDockerImageWorkflowSetupCommand() {
+function resolveDockerImageWorkflowSetupCommand(adapter: TreeseedPackageAdapter) {
+	if (adapter.kind !== 'node-typescript') {
+		return 'true';
+	}
 	return 'npm ci --ignore-scripts || (echo "dependency install failed; retrying" && npm ci --ignore-scripts)';
 }
 

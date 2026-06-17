@@ -2,6 +2,10 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import {
+  findTreeseedPackageAdapter,
+  renderTreeseedPackageWorkflow,
+} from "../../src/operations/services/package-adapters.ts";
 
 const sdkRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const workspaceRoot = resolve(sdkRoot, "..", "..");
@@ -68,6 +72,21 @@ describe("TreeDX release gate integration", () => {
 
     for (const script of scripts) {
       expect(existsSync(resolve(workspaceRoot, script)), script).toBe(true);
+    }
+  });
+
+  it("renders TreeDX workflows without Node package install assumptions", () => {
+    const adapter = findTreeseedPackageAdapter(workspaceRoot, "treedx");
+    expect(adapter).toBeTruthy();
+
+    const releaseGate = renderTreeseedPackageWorkflow(adapter!, "release-gate");
+    const devImage = renderTreeseedPackageWorkflow(adapter!, "dev-image");
+    const publish = renderTreeseedPackageWorkflow(adapter!, "docker-image");
+
+    expect(releaseGate).toContain("bash scripts/release-gate.sh");
+    for (const source of [releaseGate, devImage, publish]) {
+      expect(source).not.toContain("actions/setup-node");
+      expect(source).not.toContain("npm ci");
     }
   });
 });
