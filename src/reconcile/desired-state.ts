@@ -229,21 +229,25 @@ export function deriveTreeseedDesiredUnits({
 		}
 		const concreteType = railwayConcreteUnitTypeForServiceKey(serviceKey);
 		const serviceBootstrapSystem = serviceKey === 'api' ? 'api' : 'agents';
+		const desiredServiceName = configuredService.serviceName ?? serviceState?.serviceName ?? serviceKey;
+		const desiredProjectName = configuredService.projectName ?? serviceState?.projectName;
+		const persistedServiceMatchesDesired = (!serviceState?.serviceName || serviceState.serviceName === desiredServiceName)
+			&& (!serviceState?.projectName || serviceState.projectName === desiredProjectName);
 		const concreteId = add({
-			unitId: createTreeseedReconcileUnitId(concreteType, serviceState?.serviceName ?? configuredService.serviceName ?? serviceKey),
+			unitId: createTreeseedReconcileUnitId(concreteType, desiredServiceName),
 			unitType: concreteType,
 			provider: 'railway',
 			identity,
 			target,
-			logicalName: serviceState?.serviceName ?? configuredService.serviceName ?? serviceKey,
+			logicalName: desiredServiceName,
 			dependencies: [],
 			spec: {
-				projectId: serviceState?.projectId ?? configuredService.projectId,
-				projectName: serviceState?.projectName ?? configuredService.projectName,
-				serviceId: serviceState?.serviceId ?? configuredService.serviceId,
-				serviceName: serviceState?.serviceName ?? configuredService.serviceName,
-				rootDir: serviceState?.rootDir ?? configuredService.rootDir,
-				environment: normalizeRailwayEnvironmentName(serviceState?.environment ?? configuredService.railwayEnvironment),
+				projectId: persistedServiceMatchesDesired ? serviceState?.projectId ?? configuredService.projectId : configuredService.projectId,
+				projectName: desiredProjectName,
+				serviceId: persistedServiceMatchesDesired ? serviceState?.serviceId ?? configuredService.serviceId : configuredService.serviceId,
+				serviceName: desiredServiceName,
+				rootDir: configuredService.rootDir ?? serviceState?.rootDir,
+				environment: normalizeRailwayEnvironmentName(configuredService.railwayEnvironment ?? serviceState?.environment),
 				buildCommand: configuredService.buildCommand,
 				startCommand: configuredService.startCommand,
 				healthcheckPath: configuredService.healthcheckPath,
@@ -277,9 +281,9 @@ export function deriveTreeseedDesiredUnits({
 				dependencies: [concreteId],
 				spec: {
 					domain: apiDomain,
-					serviceName: serviceState?.serviceName ?? configuredService.serviceName,
-					projectName: serviceState?.projectName ?? configuredService.projectName,
-					environment: normalizeRailwayEnvironmentName(serviceState?.environment ?? configuredService.railwayEnvironment),
+					serviceName: desiredServiceName,
+					projectName: desiredProjectName,
+					environment: normalizeRailwayEnvironmentName(configuredService.railwayEnvironment ?? serviceState?.environment),
 				},
 				secrets: {},
 				metadata: { surface: 'api', serviceKey, bootstrapSystem: 'api' },

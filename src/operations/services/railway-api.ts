@@ -472,8 +472,8 @@ export async function railwayGraphqlRequest<TData = unknown>({
 	apiToken,
 	apiUrl,
 	fetchImpl = fetch,
-	timeoutMs = 10_000,
-	retries = 2,
+	timeoutMs = 30_000,
+	retries = 4,
 }: {
 	query: string;
 	variables?: Record<string, unknown>;

@@ -282,6 +282,42 @@ describe('remote Treeseed support', () => {
 		expect(state.content.previewRootTemplate).toBe('teams/{teamId}/previews');
 	});
 
+	it('prefers configured API connections over stale service URLs', () => {
+		const baseConfig = loadCliDeployConfig(createTenantFixture());
+		const deployConfig = {
+			...baseConfig,
+			connections: {
+				...(baseConfig.connections ?? {}),
+				api: {
+					...(baseConfig.connections?.api ?? {}),
+					environments: {
+						...(baseConfig.connections?.api?.environments ?? {}),
+						staging: { baseUrl: 'https://connected-api.example.com' },
+					},
+				},
+			},
+			services: {
+				...(baseConfig.services ?? {}),
+				api: {
+					...baseConfig.services?.api,
+					environments: {
+						...(baseConfig.services?.api?.environments ?? {}),
+						staging: {
+							...(baseConfig.services?.api?.environments?.staging ?? {}),
+							baseUrl: 'https://stale-service-api.example.com',
+						},
+					},
+				},
+			},
+		};
+
+		expect(resolveConfiguredSurfaceBaseUrl(
+			deployConfig,
+			createPersistentDeployTarget('staging'),
+			'api',
+		)).toBe('https://connected-api.example.com');
+	});
+
 	it('loads persistent deploy state from the primary checkout inside managed worktrees', () => {
 		const tenantRoot = createTenantFixture();
 		const worktreeRoot = mkdtempSync(join(tmpdir(), 'treeseed-managed-worktree-'));

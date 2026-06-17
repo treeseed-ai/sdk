@@ -210,6 +210,15 @@ export function resolveConfiguredSurfaceDomain(deployConfig, target, surface) {
 }
 
 export function resolveConfiguredSurfaceBaseUrl(deployConfig, target, surface) {
+	if (surface === 'api') {
+		const scope = scopeFromTarget(target);
+		const apiConnection = deployConfig.connections?.api?.environments?.[scope];
+		const connectionBaseUrl = apiConnection?.baseUrl
+			?? (apiConnection?.domain ? `https://${apiConnection.domain}` : null);
+		if (connectionBaseUrl) {
+			return connectionBaseUrl;
+		}
+	}
 	const configuredDomain = resolveConfiguredSurfaceDomain(deployConfig, target, surface);
 	if (configuredDomain) {
 		return `https://${configuredDomain}`;

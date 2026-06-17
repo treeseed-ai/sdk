@@ -1973,7 +1973,9 @@ export function resolveTreeseedLaunchEnvironment({
 	const systemSecretSuggestedValues = Object.fromEntries(
 		registry.entries
 			.filter((entry) =>
-				['TREESEED_PLATFORM_RUNNER_SECRET', 'TREESEED_CREDENTIAL_SESSION_SECRET'].includes(entry.id)
+				entry.sensitivity === 'secret'
+				&& entry.visibility === 'system'
+				&& typeof entry.defaultValue === 'function'
 				&& typeof suggestedValues[entry.id] === 'string'
 				&& suggestedValues[entry.id].length > 0
 			)
@@ -3488,8 +3490,24 @@ export async function finalizeTreeseedConfig({
 	};
 
 	progress(`Validating configuration for ${scopes.join(', ')}...`);
-	const scopeSeedValues = Object.fromEntries(
+	const rawScopeSeedValues = Object.fromEntries(
 		scopes.map((scope) => [scope, collectTreeseedConfigSeedValues(tenantRoot, scope, env)]),
+	) as Record<TreeseedConfigScope, Record<string, string>>;
+	const scopeSeedValues = Object.fromEntries(
+		scopes.map((scope) => {
+			const suggestedValues = getTreeseedEnvironmentSuggestedValues({
+				scope,
+				purpose: 'config',
+				deployConfig: registry.context.deployConfig,
+				tenantConfig: registry.context.tenantConfig,
+				plugins: registry.context.plugins,
+				values: rawScopeSeedValues[scope],
+			});
+			return [scope, {
+				...suggestedValues,
+				...rawScopeSeedValues[scope],
+			}];
+		}),
 	) as Record<TreeseedConfigScope, Record<string, string>>;
 
 	for (const scope of scopes) {
