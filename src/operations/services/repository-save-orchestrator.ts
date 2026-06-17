@@ -855,6 +855,17 @@ function runLimited<T>(items: T[], limit: number, action: (item: T) => Promise<v
 	return Promise.all(workers);
 }
 
+function repositorySaveConcurrency(options: RepositorySaveOptions) {
+	if (options.verifyMode && options.verifyMode !== 'skip') {
+		return 1;
+	}
+	const configured = Number.parseInt(process.env.TREESEED_SAVE_REPOSITORY_CONCURRENCY ?? '', 10);
+	if (Number.isFinite(configured) && configured > 0) {
+		return Math.min(configured, 3);
+	}
+	return 3;
+}
+
 function remoteBranchExistsSafe(repoDir: string, branch: string) {
 	try {
 		runGit(['rev-parse', '--verify', `refs/remotes/origin/${branch}`], { cwd: repoDir, capture: true });
@@ -2243,8 +2254,9 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 		workflowGates: [],
 	};
 
+	const concurrency = repositorySaveConcurrency(options);
 	for (const [index, wave] of waves.entries()) {
-		await runLimited(wave, 3, async (node) => {
+		await runLimited(wave, concurrency, async (node) => {
 			try {
 				await saveOneRepository(node, options, state);
 			} catch (error) {
