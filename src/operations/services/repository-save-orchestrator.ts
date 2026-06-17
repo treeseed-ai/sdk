@@ -1146,9 +1146,9 @@ async function runProjectVerificationInstallWithRetry(
 	node: RepositorySaveNode,
 	options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>,
 ) {
-	if (node.branchMode !== 'project-save' || !hasNpmLockfile(node.path)) return;
+	if (!hasNpmLockfile(node.path)) return;
 	if (shouldSkipNetworkInstall()) {
-		emitProgress(options, node, 'install', 'Skipped project verification dependency install because network install mode is disabled.');
+		emitProgress(options, node, 'install', 'Skipped verification dependency install because network install mode is disabled.');
 		return;
 	}
 	let lastError: string | null = null;
@@ -1162,7 +1162,7 @@ async function runProjectVerificationInstallWithRetry(
 		? ['ci']
 		: ['ci', '--workspaces=false'];
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
-		emitProgress(options, node, 'install', `npm ${args.join(' ')} for project verification attempt ${attempt}/5.`);
+		emitProgress(options, node, 'install', `npm ${args.join(' ')} for verification attempt ${attempt}/5.`);
 		try {
 			await runStreamingCommand(node, options, 'install', 'npm', args);
 			return;
@@ -1170,11 +1170,11 @@ async function runProjectVerificationInstallWithRetry(
 			lastError = error instanceof Error ? error.message : String(error);
 		}
 		if (attempt < 5) {
-			emitProgress(options, node, 'install', 'npm ci for project verification failed; retrying in 60 seconds.', 'stderr');
+			emitProgress(options, node, 'install', 'npm ci for verification failed; retrying in 60 seconds.', 'stderr');
 			await sleepMs(60_000);
 		}
 	}
-	throw new RepositorySaveError(`Project verification dependency install failed after 5 attempts.\n${lastError ?? ''}`);
+	throw new RepositorySaveError(`Verification dependency install failed after 5 attempts.\n${lastError ?? ''}`);
 }
 
 function lockfileValidationCommand(node: Pick<RepositorySaveNode, 'path' | 'packageJson'>, options: Pick<RepositorySaveOptions, 'root'>) {
