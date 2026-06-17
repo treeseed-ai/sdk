@@ -1,5 +1,5 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadTreeseedPluginRuntime, loadTreeseedPlugins } from '../../src/platform/plugins/runtime.ts';
@@ -64,6 +64,7 @@ ${pluginsYaml}
       handlers: ['planner']
     },
     deploy: ['cloudflare'],
+    dns: ['cloudflare-dns'],
     content: {
       runtime: ['team_scoped_r2_overlay'],
       publish: ['team_scoped_r2_overlay'],
@@ -75,6 +76,7 @@ ${pluginsYaml}
 	);
 
 	for (const [relativePath, content] of Object.entries(pluginFiles)) {
+		await mkdir(dirname(join(tenantRoot, relativePath)), { recursive: true });
 		await writeFile(join(tenantRoot, relativePath), content);
 	}
 
@@ -178,6 +180,66 @@ providers:
 			process.chdir(tenantRoot);
 			const runtime = loadTreeseedPluginRuntime();
 			expect(runtime.plugins[0]?.package).toBe('@treeseed/sdk/plugin-default');
+		} finally {
+			await rm(tenantRoot, { recursive: true, force: true });
+		}
+	});
+
+	it('resolves Treeseed package plugin subpaths from a local package checkout before installed modules', async () => {
+		const tenantRoot = await createTenantFixture({
+			pluginsYaml: `plugins:
+  - package: '@treeseed/core/plugin-default'
+providers:
+  forms: store_only
+  operations: default
+  agents:
+    execution: stub
+    mutation: local_branch
+    repository: stub
+    verification: stub
+    notification: stub
+    research: stub
+  deploy: cloudflare
+  content:
+    docs: default
+  site: default`,
+			pluginFiles: {
+				'packages/core/package.json': JSON.stringify({
+					name: '@treeseed/core',
+					type: 'module',
+				}, null, 2),
+				'packages/core/dist/plugin-default.js': `export default {
+  id: 'local-core-default',
+  provides: {
+    forms: ['store_only'],
+    operations: ['default'],
+    agents: {
+      execution: ['stub'],
+      mutation: ['local_branch'],
+      repository: ['stub'],
+      verification: ['stub'],
+      notification: ['stub'],
+      research: ['stub'],
+      handlers: ['planner']
+    },
+    deploy: ['cloudflare'],
+    dns: ['cloudflare-dns'],
+    content: {
+      runtime: ['team_scoped_r2_overlay'],
+      publish: ['team_scoped_r2_overlay'],
+      docs: ['default']
+    },
+    site: ['default']
+  }
+};`,
+			},
+		});
+
+		try {
+			process.chdir(tenantRoot);
+			const runtime = loadTreeseedPluginRuntime();
+			expect(runtime.plugins[0]?.package).toBe('@treeseed/core/plugin-default');
+			expect(runtime.plugins[0]?.plugin.id).toBe('local-core-default');
 		} finally {
 			await rm(tenantRoot, { recursive: true, force: true });
 		}
