@@ -239,6 +239,9 @@ export {
 	workspaceRoot,
 } from './operations/services/workspace-tools.ts';
 export {
+	resolveTreeseedWorkflowPaths,
+} from './workflow/policy.ts';
+export {
 	collectTreeseedReconcileStatus,
 	createTreeseedReconcileRegistry,
 	deriveTreeseedDesiredUnits,
