@@ -67,6 +67,7 @@ export interface TreeseedHostedServiceCheckOptions {
 	tenantRoot: string;
 	target?: TreeseedHostedServiceTarget;
 	appId?: string;
+	serviceKeys?: string[];
 	now?: Date;
 	valuesOverlay?: Record<string, string | undefined>;
 	observedRailwayServices?: Record<string, TreeseedObservedRailwayServiceState | undefined>;
@@ -251,6 +252,8 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		: null;
 	const includeWeb = !selectedAppId || selectedAppId === 'web' || selectedApplication?.roles.includes('web') === true;
 	const includeApi = !selectedAppId || selectedAppId === 'api' || selectedApplication?.roles.includes('api') === true;
+	const selectedServiceKeys = new Set((options.serviceKeys ?? []).map((key) => key.trim()).filter(Boolean));
+	const serviceIsSelected = (serviceKey: string) => selectedServiceKeys.size === 0 || selectedServiceKeys.has(serviceKey);
 	const selectedAppHasApi = Boolean(
 		selectedApplication?.roles.includes('api')
 		|| selectedApplication?.config.surfaces?.api?.enabled === true
@@ -303,7 +306,8 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 	}
 
 	const configuredServices = configuredRailwayServices(tenantRoot, target)
-		.filter((service) => !selectedAppId || service.application?.id === selectedAppId);
+		.filter((service) => !selectedAppId || service.application?.id === selectedAppId)
+		.filter((service) => serviceIsSelected(service.key));
 	for (const service of configuredServices) {
 		const serviceType = serviceTypeFor(service.key);
 		const observed = observedFor(options, service.serviceName);
@@ -398,7 +402,7 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 	const treeseedDatabaseService = applicationConfigs
 		.map((config) => config.services?.treeseedDatabase)
 		.find((service) => service?.enabled !== false);
-	if (includeApi && treeseedDatabaseService?.enabled !== false && treeseedDatabaseService?.provider === 'railway') {
+	if (includeApi && selectedServiceKeys.size === 0 && treeseedDatabaseService?.enabled !== false && treeseedDatabaseService?.provider === 'railway') {
 		const targets = treeseedDatabaseService.railway?.serviceTargets ?? [];
 		checks.push(check({
 			id: 'railway:treeseedDatabase:targets',
@@ -431,7 +435,13 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 	}
 
 	const entryIds = new Set(registry.entries.map((entry: { id: string }) => entry.id));
-	for (const key of includeApi ? ['TREESEED_DATABASE_URL', 'TREESEED_WEB_SERVICE_SECRET', 'TREESEED_PLATFORM_RUNNER_SECRET'] : []) {
+	const registryKeys = includeApi
+		? [
+			...(serviceIsSelected('api') ? ['TREESEED_DATABASE_URL', 'TREESEED_WEB_SERVICE_SECRET', 'TREESEED_PLATFORM_RUNNER_SECRET'] : []),
+			...(serviceIsSelected('operationsRunner') ? ['TREESEED_DATABASE_URL', 'TREESEED_PLATFORM_RUNNER_SECRET'] : []),
+		]
+		: [];
+	for (const key of [...new Set(registryKeys)]) {
 		if (!entryIds.has(key)) {
 			checks.push(check({
 				id: `registry:${key}`,

@@ -243,6 +243,32 @@ surfaces:
 		expect(byId(report, 'railway:treeseedDatabase:targets')).toMatchObject({ status: 'passed' });
 	});
 
+	it('scopes checks to selected service keys', () => {
+		const root = fixtureRoot();
+		const report = collectTreeseedHostedServiceChecks({
+			tenantRoot: root,
+			target: 'staging',
+			serviceKeys: ['api'],
+			observedRailwayServices: {
+				'treeseed-api': {
+					serviceName: 'treeseed-api',
+					projectName: 'treeseed-api',
+					environmentName: 'staging',
+					rootDirectory: 'packages/api',
+					buildCommand: 'npm run build',
+					startCommand: 'npm run start:api',
+					healthcheckPath: '/healthz',
+					healthcheckTimeoutSeconds: 120,
+					runtimeMode: 'serverless',
+				},
+			},
+		});
+
+		expect(byId(report, 'railway:api:service')).toMatchObject({ status: 'passed' });
+		expect(report.checks.some((check) => check.serviceKey === 'operationsRunner')).toBe(false);
+		expect(report.checks.some((check) => check.id === 'railway:treeseedDatabase:targets')).toBe(false);
+	});
+
 	it('detects Railway drift and missing required service values without leaking secret values', () => {
 		const root = fixtureRoot();
 		const report = collectTreeseedHostedServiceChecks({
