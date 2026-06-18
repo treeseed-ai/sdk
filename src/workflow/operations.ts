@@ -3195,6 +3195,23 @@ function stageRootPackagePointerFromFeature(root: string, filePath: string, feat
 	return featureSha;
 }
 
+function rootPackagePointerPathsFromFeature(root: string, featureBranch: string) {
+	let treeOutput = '';
+	try {
+		treeOutput = runGit(['ls-tree', `${featureBranch}:packages`], { cwd: root, capture: true });
+	} catch {
+		return [];
+	}
+	return treeOutput
+		.split('\n')
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.flatMap((line) => {
+			const match = /^160000\s+commit\s+[0-9a-f]{40}\t(.+)$/u.exec(line);
+			return match ? [`packages/${match[1]}`] : [];
+		});
+}
+
 function hasTextConflictMarkers(root: string, filePath: string) {
 	const fullPath = resolve(root, filePath);
 	if (!existsSync(fullPath)) {
@@ -3214,8 +3231,7 @@ function materializeRootStageGeneratedMetadataAndPackagePointers(root: string, f
 		materializedGeneratedPaths.push(filePath);
 	}
 	const packagePaths: string[] = [];
-	for (const pkg of checkedOutWorkspacePackageRepos(root)) {
-		const filePath = relative(root, pkg.dir).replaceAll('\\', '/');
+	for (const filePath of rootPackagePointerPathsFromFeature(root, featureBranch)) {
 		stageRootPackagePointerFromFeature(root, filePath, featureBranch);
 		packagePaths.push(filePath);
 	}
@@ -3301,7 +3317,7 @@ function resolveRootStageGeneratedMetadataAndPackageConflicts(root: string, feat
 		return { resolved: false, conflictedPaths, generatedPaths: [], packagePaths: [] };
 	}
 	const generatedPaths = conflictedPaths.filter((filePath) => filePath === 'package.json' || filePath === 'package-lock.json');
-	const packagePathSet = new Set(checkedOutWorkspacePackageRepos(root).map((pkg) => relative(root, pkg.dir).replaceAll('\\', '/')));
+	const packagePathSet = new Set(rootPackagePointerPathsFromFeature(root, featureBranch));
 	const packagePaths = conflictedPaths.filter((filePath) => packagePathSet.has(filePath));
 	const unresolvedPaths = conflictedPaths.filter((filePath) => !generatedPaths.includes(filePath) && !packagePaths.includes(filePath));
 	if (unresolvedPaths.length > 0) {
