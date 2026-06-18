@@ -1,4 +1,12 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -20,6 +28,39 @@ function listTests(dir: string): string[] {
     if (entry.isDirectory()) return listTests(path);
     return entry.name.endsWith(".test.ts") ? [path] : [];
   });
+}
+
+function createTreeDxAdapterFixture() {
+  const root = mkdtempSync(join(tmpdir(), "treeseed-sdk-treedx-adapter-"));
+  const packageRoot = resolve(root, "packages/treedx");
+  mkdirSync(resolve(packageRoot, "scripts"), { recursive: true });
+  writeFileSync(
+    resolve(packageRoot, "treeseed.package.yaml"),
+    [
+      "id: treedx",
+      "name: TreeDX",
+      "kind: beam-elixir-rust",
+      "type: image-service",
+      "image: treeseed/treedx",
+      "repository: treeseed-ai/treedx",
+      "verify:",
+      "  fast: scripts/test-treedx-fast.sh",
+      "  local: scripts/test-all.sh",
+      "  release: scripts/release-gate.sh",
+      "releaseGate:",
+      "  workflow: .github/workflows/release-gate.yml",
+      "developmentImages:",
+      "  workflow: .github/workflows/dev-image.yml",
+      "  defaultBranch: staging",
+      "githubEnvironments:",
+      "  - staging",
+      "  - production",
+      "requiredSecrets:",
+      "  - DOCKERHUB_TOKEN",
+      "",
+    ].join("\n"),
+  );
+  return findTreeseedPackageAdapter(root, "treedx");
 }
 
 describe("TreeDX release gate integration", () => {
@@ -76,7 +117,9 @@ describe("TreeDX release gate integration", () => {
   });
 
   it("renders TreeDX workflows without Node package install assumptions", () => {
-    const adapter = findTreeseedPackageAdapter(workspaceRoot, "treedx");
+    const adapter =
+      findTreeseedPackageAdapter(workspaceRoot, "treedx") ??
+      createTreeDxAdapterFixture();
     expect(adapter).toBeTruthy();
 
     const releaseGate = renderTreeseedPackageWorkflow(adapter!, "release-gate");
