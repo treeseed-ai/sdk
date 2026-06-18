@@ -85,6 +85,21 @@ function conflictedFiles(repoDir) {
 		.filter(Boolean);
 }
 
+function isGeneratedPackageMetadataFile(filePath: string) {
+	return filePath === 'package.json' || filePath === 'package-lock.json';
+}
+
+function isPackagePointerConflict(repoDir: string, filePath: string) {
+	if (!/^packages\/[^/]+$/u.test(filePath)) {
+		return false;
+	}
+	const stagedEntries = runGit(['ls-files', '-u', '--', filePath], { cwd: repoDir, capture: true })
+		.split('\n')
+		.map((line) => line.trim())
+		.filter(Boolean);
+	return stagedEntries.length > 0 && stagedEntries.every((line) => line.startsWith('160000 '));
+}
+
 function resolveGeneratedPackageMetadataConflicts(repoDir) {
 	const files = conflictedFiles(repoDir);
 	if (files.length === 0) {
@@ -96,8 +111,11 @@ function resolveGeneratedPackageMetadataConflicts(repoDir) {
 			allConflictsWereGeneratedMetadata: false,
 		};
 	}
-	const generatedMetadataFiles = new Set(['package.json', 'package-lock.json']);
-	if (files.some((file) => !generatedMetadataFiles.has(file))) {
+	const allConflictsWereGeneratedMetadata = files.every((file) => (
+		isGeneratedPackageMetadataFile(file)
+		|| isPackagePointerConflict(repoDir, file)
+	));
+	if (!allConflictsWereGeneratedMetadata) {
 		return {
 			resolved: false,
 			repoDir,
@@ -113,7 +131,7 @@ function resolveGeneratedPackageMetadataConflicts(repoDir) {
 		repoDir,
 		targetBranch: STAGING_BRANCH,
 		reconciledFiles: files,
-		allConflictsWereGeneratedMetadata: true,
+		allConflictsWereGeneratedMetadata,
 	};
 }
 
