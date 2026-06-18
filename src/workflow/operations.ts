@@ -5677,6 +5677,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				const previewCleanup = effectiveInput.deletePreview === false
 					? (skipJournalStep(root, workflowRun.runId, 'preview-cleanup', { performed: false }), { performed: false })
 					: await executeJournalStep(root, workflowRun.runId, 'preview-cleanup', () => destroyWorkflowBranchPreviewIfPresent(root, featureBranch, helpers.context));
+				const managedWorktreeForStage = isManagedWorkflowWorktree(root);
 				const rootCleanup = await executeJournalStep(root, workflowRun.runId, 'cleanup-root', () => {
 					const deprecatedTag = createDeprecatedTaskTag(repoDir, featureBranch, `stage: ${message}`);
 					const deletedRemote = effectiveInput.deleteBranch === false ? false : deleteRemoteBranch(repoDir, featureBranch);
@@ -5710,9 +5711,9 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				}
 				const workspaceLinks = await executeJournalStep(root, workflowRun.runId, 'workspace-link', () =>
 					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
-				const finalBranch = currentBranch(repoDir) || STAGING_BRANCH;
+				const finalBranch = managedWorktreeForStage ? STAGING_BRANCH : (currentBranch(repoDir) || STAGING_BRANCH);
 				const managedWorktree = managedWorkflowWorktreeMetadata(root);
-				const worktreeCleanup = isManagedWorkflowWorktree(root)
+				const worktreeCleanup = managedWorktreeForStage
 					? await executeJournalStep(root, workflowRun.runId, 'worktree-cleanup', () => removeManagedWorkflowWorktree(root, {
 						deleteBranch: effectiveInput.deleteBranch !== false,
 					}))
@@ -5721,6 +5722,9 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					rootRepo.deletedLocal = true;
 					rootRepo.branch = STAGING_BRANCH;
 				}
+				const finalResultRoot = managedWorktreeForStage && managedWorktree?.primaryRoot
+					? managedWorktree.primaryRoot
+					: root;
 
 				const payload = {
 					mode: stageMode,
@@ -5755,7 +5759,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				completeWorkflowRun(root, workflowRun.runId, payload);
 				return buildWorkflowResult(
 					'stage',
-					managedWorktree?.primaryRoot ?? root,
+					finalResultRoot,
 					payload,
 					{
 						runId: workflowRun.runId,
