@@ -3170,6 +3170,44 @@ function syncAllCheckedOutPackageRepos(root: string, branchName: string) {
 	}
 }
 
+function releaseSideRootConflictContent(root: string, filePath: string) {
+	return runGit(['show', `:3:${filePath}`], { cwd: root, capture: true });
+}
+
+function releaseSideRootPackagePointerSha(root: string, filePath: string) {
+	const stagedEntries = runGit(['ls-files', '-u', '--', filePath], {
+		cwd: root,
+		capture: true,
+	})
+		.split('\n')
+		.map((line) => line.trim())
+		.filter(Boolean);
+	for (const entry of stagedEntries) {
+		const match = /^(\d+)\s+([0-9a-f]{40})\s+3\t(.+)$/u.exec(entry);
+		if (match && match[1] === '160000' && match[3] === filePath) {
+			return match[2];
+		}
+	}
+	return null;
+}
+
+function stageRootPackagePointer(root: string, filePath: string, branchName: string) {
+	const packageRepo = checkedOutWorkspacePackageRepos(root)
+		.find((pkg) => relative(root, pkg.dir).replaceAll('\\', '/') === filePath);
+	if (!packageRepo) {
+		const releaseSha = releaseSideRootPackagePointerSha(root, filePath);
+		if (!releaseSha) {
+			throw new Error(`Unable to resolve package pointer for ${filePath}.`);
+		}
+		runGit(['update-index', '--cacheinfo', '160000', releaseSha, filePath], { cwd: root });
+		return releaseSha;
+	}
+	syncBranchWithOrigin(packageRepo.dir, branchName);
+	const packageSha = headCommit(packageRepo.dir);
+	runGit(['update-index', '--cacheinfo', '160000', packageSha, filePath], { cwd: root });
+	return packageSha;
+}
+
 function resolveRootStageGeneratedMetadataAndPackageConflicts(root: string, targetBranch: string) {
 	const conflictedPaths = runGit(['diff', '--name-only', '--diff-filter=U'], {
 		cwd: root,
@@ -3189,12 +3227,15 @@ function resolveRootStageGeneratedMetadataAndPackageConflicts(root: string, targ
 		return { resolved: false, conflictedPaths, generatedPaths, packagePaths, unresolvedPaths };
 	}
 	if (generatedPaths.length > 0) {
-		runGit(['checkout', '--theirs', '--', ...generatedPaths], { cwd: root });
-		runGit(['add', '--', ...generatedPaths], { cwd: root });
+		for (const filePath of generatedPaths) {
+			writeFileSync(resolve(root, filePath), releaseSideRootConflictContent(root, filePath), 'utf8');
+			runGit(['add', '--', filePath], { cwd: root });
+		}
 	}
 	if (packagePaths.length > 0) {
-		syncAllCheckedOutPackageRepos(root, targetBranch);
-		runGit(['add', '--', ...packagePaths], { cwd: root });
+		for (const filePath of packagePaths) {
+			stageRootPackagePointer(root, filePath, targetBranch);
+		}
 	}
 	const remainingConflicts = runGit(['diff', '--name-only', '--diff-filter=U'], {
 		cwd: root,
