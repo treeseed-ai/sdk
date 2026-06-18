@@ -3249,6 +3249,59 @@ function materializeRootStageGeneratedMetadataAndPackagePointers(root: string, f
 	};
 }
 
+async function finalizeRootStageMerge(
+	root: string,
+	repoDir: string,
+	featureBranch: string,
+	message: string,
+	options: {
+		helpers: WorkflowOperationHelpers;
+		operation: 'stage';
+		workflowRunId?: string | null;
+	},
+) {
+	const deterministicReconciliation = materializeRootStageGeneratedMetadataAndPackagePointers(root, featureBranch, STAGING_BRANCH);
+	if (!deterministicReconciliation.resolved) {
+		throw new Error(`Unresolved root generated metadata/package pointer state before lockfile validation: ${[
+			...deterministicReconciliation.remainingConflicts,
+			...deterministicReconciliation.markerPaths.map((filePath) => `${filePath} contains conflict markers`),
+		].join(', ')}`);
+	}
+	options.helpers.write(`[workflow][stage] Reconciled root generated metadata and package pointers before lockfile validation: ${[
+		...deterministicReconciliation.generatedPaths,
+		...deterministicReconciliation.packagePaths,
+	].join(', ')}.`);
+	const preLockfileReconciliation = resolveRootStageGeneratedMetadataAndPackageConflicts(root, STAGING_BRANCH);
+	if (preLockfileReconciliation.conflictedPaths.length > 0) {
+		if (!preLockfileReconciliation.resolved) {
+			throw new Error(`Unresolved root generated metadata/package pointer conflicts before lockfile validation: ${preLockfileReconciliation.conflictedPaths.join(', ')}`);
+		}
+		options.helpers.write(`[workflow][stage] Resolved root generated metadata/package pointer conflicts before lockfile validation: ${preLockfileReconciliation.conflictedPaths.join(', ')}.`);
+	}
+	const lockfileSafety = await refreshAndValidateRootWorkspaceLockfileForSave({
+		root,
+		gitRoot: repoDir,
+		branch: STAGING_BRANCH,
+		onProgress: (line, stream) => options.helpers.write(line, stream),
+	});
+	if (hasStagedChanges(repoDir) || hasMeaningfulChanges(repoDir)) {
+		runGit(['add', '-A'], { cwd: repoDir });
+		runGit(['commit', '-m', message], { cwd: repoDir });
+	}
+	if (isManagedWorkflowWorktree(root)) {
+		pushHeadToBranch(repoDir, STAGING_BRANCH);
+	} else {
+		pushBranch(repoDir, STAGING_BRANCH);
+	}
+	return {
+		commitSha: headCommit(repoDir),
+		branch: STAGING_BRANCH,
+		committed: hasMeaningfulChanges(repoDir) ? false : true,
+		lockfileValidation: lockfileSafety.lockfileValidation,
+		lockfileInstall: lockfileSafety.install,
+	};
+}
+
 function resolveRootStageGeneratedMetadataAndPackageConflicts(root: string, targetBranch: string) {
 	const conflictedPaths = runGit(['diff', '--name-only', '--diff-filter=U'], {
 		cwd: root,
@@ -5495,46 +5548,11 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						if (stageMode === 'recursive-workspace') {
 							syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
 						}
-						const deterministicReconciliation = materializeRootStageGeneratedMetadataAndPackagePointers(root, featureBranch, STAGING_BRANCH);
-						if (!deterministicReconciliation.resolved) {
-							throw new Error(`Unresolved root generated metadata/package pointer state before lockfile validation: ${[
-								...deterministicReconciliation.remainingConflicts,
-								...deterministicReconciliation.markerPaths.map((filePath) => `${filePath} contains conflict markers`),
-							].join(', ')}`);
-						}
-						helpers.write(`[workflow][stage] Reconciled root generated metadata and package pointers before lockfile validation: ${[
-							...deterministicReconciliation.generatedPaths,
-							...deterministicReconciliation.packagePaths,
-						].join(', ')}.`);
-						const preLockfileReconciliation = resolveRootStageGeneratedMetadataAndPackageConflicts(root, STAGING_BRANCH);
-						if (preLockfileReconciliation.conflictedPaths.length > 0) {
-							if (!preLockfileReconciliation.resolved) {
-								throw new Error(`Unresolved root generated metadata/package pointer conflicts before lockfile validation: ${preLockfileReconciliation.conflictedPaths.join(', ')}`);
-							}
-							helpers.write(`[workflow][stage] Resolved root generated metadata/package pointer conflicts before lockfile validation: ${preLockfileReconciliation.conflictedPaths.join(', ')}.`);
-						}
-						const lockfileSafety = await refreshAndValidateRootWorkspaceLockfileForSave({
-							root,
-							gitRoot: repoDir,
-							branch: STAGING_BRANCH,
-							onProgress: (line, stream) => helpers.write(line, stream),
+						return finalizeRootStageMerge(root, repoDir, featureBranch, message, {
+							helpers,
+							operation: 'stage',
+							workflowRunId: workflowRun.runId,
 						});
-						if (hasStagedChanges(repoDir) || hasMeaningfulChanges(repoDir)) {
-							runGit(['add', '-A'], { cwd: repoDir });
-							runGit(['commit', '-m', message], { cwd: repoDir });
-						}
-						if (isManagedWorkflowWorktree(root)) {
-							pushHeadToBranch(repoDir, STAGING_BRANCH);
-						} else {
-							pushBranch(repoDir, STAGING_BRANCH);
-						}
-						return {
-							commitSha: headCommit(repoDir),
-							branch: STAGING_BRANCH,
-							committed: hasMeaningfulChanges(repoDir) ? false : true,
-							lockfileValidation: lockfileSafety.lockfileValidation,
-							lockfileInstall: lockfileSafety.install,
-						};
 					});
 					rootRepo.merged = true;
 					rootRepo.committed = true;
@@ -5542,12 +5560,52 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					rootRepo.pushed = true;
 					rootRepo.branch = typeof rootMerge?.branch === 'string' ? rootMerge.branch : (currentBranch(repoDir) || STAGING_BRANCH);
 				} catch (error) {
-					const report = mergeConflictReportFromError(error, repoDir);
-					const mergeAborted = mergeAbortedFromError(error, repoDir);
-					throw new TreeseedWorkflowError('stage', 'merge_conflict', formatMergeConflictReport(report, repoDir, STAGING_BRANCH), {
-						details: { branch: featureBranch, report, mergeAborted, originalError: error instanceof Error ? error.message : String(error) },
-						exitCode: 12,
-					});
+					let recoveredRootMerge: Record<string, unknown> | null = null;
+					try {
+						const needsGeneratedMetadataRecovery = unresolvedMergePaths(repoDir).length > 0
+							|| ['package.json', 'package-lock.json'].some((filePath) => hasTextConflictMarkers(repoDir, filePath));
+						if (needsGeneratedMetadataRecovery) {
+							helpers.write('[workflow][stage] Attempting root generated metadata/package pointer recovery after merge-root failure.');
+							if (stageMode === 'recursive-workspace') {
+								syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
+							}
+							recoveredRootMerge = await finalizeRootStageMerge(root, repoDir, featureBranch, message, {
+								helpers,
+								operation: 'stage',
+								workflowRunId: workflowRun.runId,
+							});
+							updateWorkflowRunJournal(root, workflowRun.runId, (journal) => ({
+								...journal,
+								steps: journal.steps.map((entry) =>
+									entry.id === 'merge-root'
+										? {
+											...entry,
+											status: 'completed',
+											completedAt: new Date().toISOString(),
+											data: recoveredRootMerge,
+										}
+										: entry),
+							}));
+							refreshWorkflowLock(root, workflowRun.runId);
+						}
+					} catch {
+						recoveredRootMerge = null;
+					}
+					if (recoveredRootMerge) {
+						rootMerge = recoveredRootMerge;
+						rootRepo.merged = true;
+						rootRepo.committed = true;
+						rootRepo.commitSha = String(rootMerge?.commitSha ?? headCommit(repoDir));
+						rootRepo.pushed = true;
+						rootRepo.branch = typeof rootMerge?.branch === 'string' ? rootMerge.branch : (currentBranch(repoDir) || STAGING_BRANCH);
+					} else {
+						const report = mergeConflictReportFromError(error, repoDir);
+						const mergeAborted = mergeAbortedFromError(error, repoDir);
+						throw new TreeseedWorkflowError('stage', 'merge_conflict', formatMergeConflictReport(report, repoDir, STAGING_BRANCH), {
+							details: { branch: featureBranch, report, mergeAborted, originalError: error instanceof Error ? error.message : String(error) },
+							exitCode: 12,
+						});
+					}
 				}
 
 				const stageWorkflowGateResult = !waitForStaging

@@ -148,6 +148,13 @@ function isReleaseSideOnlyTextConflict(repoDir: string, filePath: string) {
 	});
 }
 
+function isReleaseSidePreferredWorkflowConflict(filePath: string) {
+	return [
+		'src/operations/services/git-workflow.ts',
+		'src/workflow/operations.ts',
+	].includes(filePath);
+}
+
 function resolveGeneratedPackageMetadataConflicts(repoDir) {
 	const files = conflictedFiles(repoDir);
 	if (files.length === 0) {
@@ -163,6 +170,7 @@ function resolveGeneratedPackageMetadataConflicts(repoDir) {
 		isGeneratedPackageMetadataFile(file)
 		|| isPackagePointerConflict(repoDir, file)
 		|| isReleaseSideOnlyTextConflict(repoDir, file)
+		|| isReleaseSidePreferredWorkflowConflict(file)
 	));
 	if (!allConflictsWereGeneratedMetadata) {
 		return {
@@ -179,6 +187,10 @@ function resolveGeneratedPackageMetadataConflicts(repoDir) {
 			continue;
 		}
 		if (isReleaseSideOnlyTextConflict(repoDir, file)) {
+			materializeReleaseSideFile(repoDir, file);
+			continue;
+		}
+		if (isReleaseSidePreferredWorkflowConflict(file)) {
 			materializeReleaseSideFile(repoDir, file);
 			continue;
 		}
