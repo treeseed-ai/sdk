@@ -192,6 +192,21 @@ function inspectIndexLock(cwd: string): TreeseedGitLockDiagnostic {
 	};
 }
 
+function waitForIndexLockToClear(cwd: string) {
+	let diagnostic = inspectIndexLock(cwd);
+	if (!diagnostic.indexLockExists) {
+		return diagnostic;
+	}
+	for (let attempt = 0; attempt < 40; attempt += 1) {
+		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 125);
+		diagnostic = inspectIndexLock(cwd);
+		if (!diagnostic.indexLockExists) {
+			return diagnostic;
+		}
+	}
+	return diagnostic;
+}
+
 export function inspectTreeseedGitLocks(cwd: string): TreeseedGitLockDiagnostic {
 	return inspectIndexLock(cwd);
 }
@@ -249,10 +264,10 @@ export function runTreeseedGit(args: string[], options: RunOptions): TreeseedGit
 	const commonGitDir = resolveCommonGitDir(options.cwd);
 	const release = acquireMutationLock(commonGitDir);
 	try {
-		const indexLock = inspectIndexLock(options.cwd);
+		const indexLock = waitForIndexLockToClear(options.cwd);
 		if (indexLock.indexLockExists) {
 			if (!indexLock.safeToRepair || !indexLock.indexLockPath) {
-				throw new Error(`Git index is locked for ${indexLock.repoRoot}: ${indexLock.reason}. Run trsd recover --git-locks --plan for diagnostics.`);
+				throw new Error(`Git index is locked for ${indexLock.repoRoot}: ${indexLock.reason}. Run trsd recover --git-locks --json for diagnostics.`);
 			}
 			rmSync(indexLock.indexLockPath, { force: true });
 		}
