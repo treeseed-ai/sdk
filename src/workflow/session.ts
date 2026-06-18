@@ -74,18 +74,25 @@ function repoState(root: string, name: string, repoDir: string): TreeseedWorkflo
 	};
 }
 
+function isWorkflowPackageRepo(root: string, repoDir: string) {
+	const relativeDir = relative(root, repoDir).replaceAll('\\', '/');
+	return !relativeDir.split('/').includes('.fixtures');
+}
+
 export function checkedOutWorkspacePackageRepos(root: string) {
 	if (!hasCompleteTreeseedPackageCheckout(root) && workspacePackages(root).length === 0) {
 		return [];
 	}
 	const repos = new Map<string, ReturnType<typeof workspacePackages>[number]>();
 	for (const pkg of workspacePackages(root).filter((pkg) => pkg.name?.startsWith('@treeseed/'))) {
+		if (!isWorkflowPackageRepo(root, pkg.dir)) continue;
 		if (!existsSync(resolve(pkg.dir, '.git'))) continue;
 		repos.set(pkg.name, pkg);
 	}
 	for (const adapter of discoverTreeseedPackageAdapters(root)) {
 		if (!adapter.publishTarget && adapter.artifacts.length === 0) continue;
 		if (repos.has(adapter.id)) continue;
+		if (!isWorkflowPackageRepo(root, adapter.dir)) continue;
 		if (!existsSync(resolve(adapter.dir, '.git'))) continue;
 		repos.set(adapter.id, {
 			dir: adapter.dir,
