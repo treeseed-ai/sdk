@@ -11,7 +11,7 @@ import { collectInternalDevReferenceIssues, installableInternalDependencyVersion
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, validateTreeseedCommandEnvironment } from './config-runtime.ts';
 import { loadDeployState } from './deploy.ts';
 import { loadTreeseedPlatformConfig } from '../../platform/config.ts';
-import { packagesWithScript, run, workspacePackages } from './workspace-tools.ts';
+import { packagesWithScript, run, sortWorkspacePackages, workspacePackages } from './workspace-tools.ts';
 import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
 import { createBuildWarningSummary, formatAllowedBuildWarnings } from './build-warning-policy.js';
 import { discoverTreeseedPackageAdapters, type TreeseedPackageAdapter } from './package-adapters.ts';
@@ -397,12 +397,29 @@ function addFailure(failures: ReleaseCandidateFailure[], failure: ReleaseCandida
 	});
 }
 
+function sortPackageAdaptersForReadiness(root: string, packages: TreeseedPackageAdapter[]) {
+	const workspaceOrder = new Map(
+		sortWorkspacePackages(workspacePackages(root))
+			.map((pkg, index) => [pkg.name, index]),
+	);
+	return [...packages].sort((left, right) => {
+		const leftOrder = workspaceOrder.get(left.name) ?? workspaceOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+		const rightOrder = workspaceOrder.get(right.name) ?? workspaceOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+		if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+		if (left.kind !== right.kind) return left.kind === 'node-typescript' ? -1 : 1;
+		return left.id.localeCompare(right.id);
+	});
+}
+
 function packageReadinessChecks(root: string, selectedPackageNames: string[], failures: ReleaseCandidateFailure[], options: { skipNpmPack?: boolean } = {}): ReleaseCandidateCheck {
 	if (selectedPackageNames.length === 0) {
 		return { name: 'package-release-readiness', status: 'skipped', detail: 'No packages are selected for this release.' };
 	}
 	const selected = new Set(selectedPackageNames);
-	const packages = discoverTreeseedPackageAdapters(root).filter((pkg) => selected.has(pkg.id) || selected.has(pkg.name));
+	const packages = sortPackageAdaptersForReadiness(
+		root,
+		discoverTreeseedPackageAdapters(root).filter((pkg) => selected.has(pkg.id) || selected.has(pkg.name)),
+	);
 	for (const pkg of packages) {
 		checkPackageAdapterReadiness(pkg, failures, options);
 	}
