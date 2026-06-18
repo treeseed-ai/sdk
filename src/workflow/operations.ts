@@ -5437,6 +5437,13 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						}
 						try {
 							runGit(['merge', '--squash', featureBranch], { cwd: repoDir });
+							const reconciliation = resolveRootStageGeneratedMetadataAndPackageConflicts(root, STAGING_BRANCH);
+							if (reconciliation.conflictedPaths.length > 0) {
+								if (!reconciliation.resolved) {
+									throw new Error(`Unresolved root generated metadata/package pointer conflicts: ${reconciliation.conflictedPaths.join(', ')}`);
+								}
+								helpers.write(`[workflow][stage] Resolved root generated metadata/package pointer conflicts: ${reconciliation.conflictedPaths.join(', ')}.`);
+							}
 						} catch (error) {
 							const reconciliation = resolveRootStageGeneratedMetadataAndPackageConflicts(root, STAGING_BRANCH);
 							if (!reconciliation.resolved) {
