@@ -3208,6 +3208,47 @@ function stageRootPackagePointer(root: string, filePath: string, branchName: str
 	return packageSha;
 }
 
+function hasTextConflictMarkers(root: string, filePath: string) {
+	const fullPath = resolve(root, filePath);
+	if (!existsSync(fullPath)) {
+		return false;
+	}
+	const content = readFileSync(fullPath, 'utf8');
+	return /^(<<<<<<<|=======|>>>>>>>) /mu.test(content) || /^(<<<<<<<|=======|>>>>>>>)$/mu.test(content);
+}
+
+function materializeRootStageGeneratedMetadataAndPackagePointers(root: string, featureBranch: string, targetBranch: string) {
+	const generatedPaths = ['package.json', 'package-lock.json'];
+	const materializedGeneratedPaths: string[] = [];
+	for (const filePath of generatedPaths) {
+		const branchContent = runGit(['show', `${featureBranch}:${filePath}`], { cwd: root, capture: true });
+		writeFileSync(resolve(root, filePath), branchContent, 'utf8');
+		runGit(['add', '--', filePath], { cwd: root });
+		materializedGeneratedPaths.push(filePath);
+	}
+	const packagePaths: string[] = [];
+	for (const pkg of checkedOutWorkspacePackageRepos(root)) {
+		const filePath = relative(root, pkg.dir).replaceAll('\\', '/');
+		stageRootPackagePointer(root, filePath, targetBranch);
+		packagePaths.push(filePath);
+	}
+	const markerPaths = generatedPaths.filter((filePath) => hasTextConflictMarkers(root, filePath));
+	const remainingConflicts = runGit(['diff', '--name-only', '--diff-filter=U'], {
+		cwd: root,
+		capture: true,
+	})
+		.split('\n')
+		.map((line) => line.trim())
+		.filter(Boolean);
+	return {
+		resolved: markerPaths.length === 0 && remainingConflicts.length === 0,
+		generatedPaths: materializedGeneratedPaths,
+		packagePaths,
+		markerPaths,
+		remainingConflicts,
+	};
+}
+
 function resolveRootStageGeneratedMetadataAndPackageConflicts(root: string, targetBranch: string) {
 	const conflictedPaths = runGit(['diff', '--name-only', '--diff-filter=U'], {
 		cwd: root,
@@ -5454,6 +5495,17 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						if (stageMode === 'recursive-workspace') {
 							syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
 						}
+						const deterministicReconciliation = materializeRootStageGeneratedMetadataAndPackagePointers(root, featureBranch, STAGING_BRANCH);
+						if (!deterministicReconciliation.resolved) {
+							throw new Error(`Unresolved root generated metadata/package pointer state before lockfile validation: ${[
+								...deterministicReconciliation.remainingConflicts,
+								...deterministicReconciliation.markerPaths.map((filePath) => `${filePath} contains conflict markers`),
+							].join(', ')}`);
+						}
+						helpers.write(`[workflow][stage] Reconciled root generated metadata and package pointers before lockfile validation: ${[
+							...deterministicReconciliation.generatedPaths,
+							...deterministicReconciliation.packagePaths,
+						].join(', ')}.`);
 						const preLockfileReconciliation = resolveRootStageGeneratedMetadataAndPackageConflicts(root, STAGING_BRANCH);
 						if (preLockfileReconciliation.conflictedPaths.length > 0) {
 							if (!preLockfileReconciliation.resolved) {
