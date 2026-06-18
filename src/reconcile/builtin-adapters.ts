@@ -1499,13 +1499,13 @@ function buildCloudflareEnv(input: TreeseedReconcileAdapterInput) {
 	const scope = scopeFromTarget(toDeployTarget(input.context.target));
 	const values = resolveReconcileEnvironmentValues(input, scope);
 	return {
-		CLOUDFLARE_ACCOUNT_ID: values.CLOUDFLARE_ACCOUNT_ID
-			?? input.context.launchEnv.CLOUDFLARE_ACCOUNT_ID
-			?? process.env.CLOUDFLARE_ACCOUNT_ID
+		CLOUDFLARE_ACCOUNT_ID: values.TREESEED_CLOUDFLARE_ACCOUNT_ID
+			?? input.context.launchEnv.TREESEED_CLOUDFLARE_ACCOUNT_ID
+			?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID
 			?? resolveConfiguredCloudflareAccountId(input.context.deployConfig),
-		CLOUDFLARE_API_TOKEN: values.CLOUDFLARE_API_TOKEN
-			?? input.context.launchEnv.CLOUDFLARE_API_TOKEN
-			?? process.env.CLOUDFLARE_API_TOKEN
+		CLOUDFLARE_API_TOKEN: values.TREESEED_CLOUDFLARE_API_TOKEN
+			?? input.context.launchEnv.TREESEED_CLOUDFLARE_API_TOKEN
+			?? process.env.TREESEED_CLOUDFLARE_API_TOKEN
 			?? '',
 	};
 }
@@ -1522,9 +1522,9 @@ function hasLiveResourceId(value: unknown) {
 function buildRailwayEnv(input: TreeseedReconcileAdapterInput, scope: 'local' | 'staging' | 'prod') {
 	const values = resolveReconcileEnvironmentValues(input, scope);
 	const token = [
-		values.RAILWAY_API_TOKEN,
-		input.context.launchEnv.RAILWAY_API_TOKEN,
-		process.env.RAILWAY_API_TOKEN,
+		values.TREESEED_RAILWAY_API_TOKEN,
+		input.context.launchEnv.TREESEED_RAILWAY_API_TOKEN,
+		process.env.TREESEED_RAILWAY_API_TOKEN,
 	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
 	return {
 		RAILWAY_API_TOKEN: token,
@@ -3910,16 +3910,16 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput, val
 			: '';
 
 	if (
-		typeof values.CLOUDFLARE_API_TOKEN === 'string'
-		&& values.CLOUDFLARE_API_TOKEN.length > 0
-		&& shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, 'CLOUDFLARE_API_TOKEN')
+		typeof values.TREESEED_CLOUDFLARE_API_TOKEN === 'string'
+		&& values.TREESEED_CLOUDFLARE_API_TOKEN.length > 0
+		&& shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, 'TREESEED_CLOUDFLARE_API_TOKEN')
 	) {
-		secrets.CLOUDFLARE_API_TOKEN = values.CLOUDFLARE_API_TOKEN;
-		apiOnlySecrets.CLOUDFLARE_API_TOKEN = values.CLOUDFLARE_API_TOKEN;
+		secrets.TREESEED_CLOUDFLARE_API_TOKEN = values.TREESEED_CLOUDFLARE_API_TOKEN;
+		apiOnlySecrets.TREESEED_CLOUDFLARE_API_TOKEN = values.TREESEED_CLOUDFLARE_API_TOKEN;
 	}
-	if (typeof values.CLOUDFLARE_ACCOUNT_ID === 'string' && values.CLOUDFLARE_ACCOUNT_ID.length > 0) {
-		variables.CLOUDFLARE_ACCOUNT_ID = values.CLOUDFLARE_ACCOUNT_ID;
-		apiOnlyVariables.CLOUDFLARE_ACCOUNT_ID = values.CLOUDFLARE_ACCOUNT_ID;
+	if (typeof values.TREESEED_CLOUDFLARE_ACCOUNT_ID === 'string' && values.TREESEED_CLOUDFLARE_ACCOUNT_ID.length > 0) {
+		variables.TREESEED_CLOUDFLARE_ACCOUNT_ID = values.TREESEED_CLOUDFLARE_ACCOUNT_ID;
+		apiOnlyVariables.TREESEED_CLOUDFLARE_ACCOUNT_ID = values.TREESEED_CLOUDFLARE_ACCOUNT_ID;
 	}
 	const siteDataDb = state.d1Databases?.SITE_DATA_DB;
 	let apiD1DatabaseId = siteDataDb?.databaseId;

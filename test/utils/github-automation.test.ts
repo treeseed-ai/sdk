@@ -75,7 +75,7 @@ describe('github automation workflow generation', () => {
 		expect(web).toContain('TREESEED_HOSTED_HUBS_GITHUB_TOKEN: ${{ secrets.TREESEED_HOSTED_HUBS_GITHUB_TOKEN }}');
 		expect(web).toContain('TREESEED_API_AUTH_SECRET: ${{ secrets.TREESEED_API_AUTH_SECRET || secrets.TREESEED_BETTER_AUTH_SECRET }}');
 		expect(web).toContain("TREESEED_CENTRAL_MARKET_API_BASE_URL: ${{ vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}");
-		expect(web).not.toContain('RAILWAY_API_TOKEN');
+		expect(web).not.toContain('TREESEED_RAILWAY_API_TOKEN');
 		expect(web).not.toContain('TREESEED_AGENT_POOL_MAX_WORKERS');
 	});
 
@@ -114,8 +114,8 @@ runtime:
 		expect(hostedDeploy).toContain('Treeseed Web Deploy');
 		expect(hostedDeploy).toContain('default: deploy_web');
 		expect(hostedDeploy).toContain('packages/sdk packages/ui packages/agent packages/core packages/cli');
-		expect(hostedDeploy).toContain('CLOUDFLARE_API_TOKEN');
-		expect(hostedDeploy).not.toContain('RAILWAY_API_TOKEN');
+		expect(hostedDeploy).toContain('TREESEED_CLOUDFLARE_API_TOKEN');
+		expect(hostedDeploy).not.toContain('TREESEED_RAILWAY_API_TOKEN');
 	});
 
 	it('uses configured GitHub repository metadata over a mismatched origin', () => {

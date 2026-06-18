@@ -24,7 +24,7 @@ describe('github environment api helpers', () => {
 		}));
 		vi.stubGlobal('fetch', fetchMock);
 		try {
-			const client = createGitHubApiClient({ env: { GH_TOKEN: 'github-token' }, timeoutMs: 60_000 });
+			const client = createGitHubApiClient({ env: { TREESEED_GITHUB_TOKEN: 'github-token' }, timeoutMs: 60_000 });
 
 			await client.request('GET /rate_limit');
 			await client.request('GET /rate_limit');
@@ -161,13 +161,13 @@ describe('github environment api helpers', () => {
 	it('lists environment secret and variable names', async () => {
 		const client = createMockClient();
 		client.paginate
-			.mockResolvedValueOnce([{ name: 'CLOUDFLARE_API_TOKEN' }])
-			.mockResolvedValueOnce([{ name: 'CLOUDFLARE_ACCOUNT_ID' }]);
+			.mockResolvedValueOnce([{ name: 'TREESEED_CLOUDFLARE_API_TOKEN' }])
+			.mockResolvedValueOnce([{ name: 'TREESEED_CLOUDFLARE_ACCOUNT_ID' }]);
 
 		await expect(listGitHubEnvironmentSecretNames('owner/repo', 'production', { client }))
-			.resolves.toEqual(new Set(['CLOUDFLARE_API_TOKEN']));
+			.resolves.toEqual(new Set(['TREESEED_CLOUDFLARE_API_TOKEN']));
 		await expect(listGitHubEnvironmentVariableNames('owner/repo', 'production', { client }))
-			.resolves.toEqual(new Set(['CLOUDFLARE_ACCOUNT_ID']));
+			.resolves.toEqual(new Set(['TREESEED_CLOUDFLARE_ACCOUNT_ID']));
 
 		expect(client.paginate).toHaveBeenNthCalledWith(
 			1,
@@ -185,10 +185,10 @@ describe('github environment api helpers', () => {
 		const client = createMockClient();
 		client.paginate
 			.mockRejectedValueOnce(new Error('Connect Timeout Error'))
-			.mockResolvedValueOnce([{ name: 'CLOUDFLARE_ACCOUNT_ID' }]);
+			.mockResolvedValueOnce([{ name: 'TREESEED_CLOUDFLARE_ACCOUNT_ID' }]);
 
 		await expect(listGitHubEnvironmentVariableNames('owner/repo', 'production', { client }))
-			.resolves.toEqual(new Set(['CLOUDFLARE_ACCOUNT_ID']));
+			.resolves.toEqual(new Set(['TREESEED_CLOUDFLARE_ACCOUNT_ID']));
 
 		expect(client.paginate).toHaveBeenCalledTimes(2);
 	});
@@ -204,7 +204,7 @@ describe('github environment api helpers', () => {
 			})
 			.mockResolvedValueOnce({ data: {} });
 
-		await upsertGitHubEnvironmentSecret('owner/repo', 'staging', 'RAILWAY_API_TOKEN', 'railway-token', { client });
+		await upsertGitHubEnvironmentSecret('owner/repo', 'staging', 'TREESEED_RAILWAY_API_TOKEN', 'railway-token', { client });
 
 		expect(client.request).toHaveBeenNthCalledWith(
 			1,
@@ -218,7 +218,7 @@ describe('github environment api helpers', () => {
 				owner: 'owner',
 				repo: 'repo',
 				environment_name: 'staging',
-				secret_name: 'RAILWAY_API_TOKEN',
+				secret_name: 'TREESEED_RAILWAY_API_TOKEN',
 				key_id: 'key-1',
 			}),
 		);
@@ -233,7 +233,7 @@ describe('github environment api helpers', () => {
 			.mockRejectedValueOnce(alreadyExists)
 			.mockResolvedValueOnce({ data: {} });
 
-		await upsertGitHubEnvironmentVariable('owner/repo', 'production', 'CLOUDFLARE_ACCOUNT_ID', 'account-1', { client });
+		await upsertGitHubEnvironmentVariable('owner/repo', 'production', 'TREESEED_CLOUDFLARE_ACCOUNT_ID', 'account-1', { client });
 
 		expect(client.request).toHaveBeenNthCalledWith(
 			1,
@@ -242,7 +242,7 @@ describe('github environment api helpers', () => {
 				owner: 'owner',
 				repo: 'repo',
 				environment_name: 'production',
-				name: 'CLOUDFLARE_ACCOUNT_ID',
+				name: 'TREESEED_CLOUDFLARE_ACCOUNT_ID',
 				value: 'account-1',
 			},
 		);
@@ -253,7 +253,7 @@ describe('github environment api helpers', () => {
 				owner: 'owner',
 				repo: 'repo',
 				environment_name: 'production',
-				name: 'CLOUDFLARE_ACCOUNT_ID',
+				name: 'TREESEED_CLOUDFLARE_ACCOUNT_ID',
 				value: 'account-1',
 			},
 		);

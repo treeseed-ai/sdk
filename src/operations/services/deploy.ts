@@ -1048,7 +1048,7 @@ export function isWranglerAlreadyExistsError(error, matchers: RegExp[]) {
 }
 
 export function listKvNamespaces(tenantRoot, env) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId) {
 		return [];
 	}
@@ -1060,7 +1060,7 @@ export function listKvNamespaces(tenantRoot, env) {
 }
 
 export function listD1Databases(tenantRoot, env) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId) {
 		return [];
 	}
@@ -1072,7 +1072,7 @@ export function listD1Databases(tenantRoot, env) {
 }
 
 export function listQueues(tenantRoot, env) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId) {
 		return [];
 	}
@@ -1084,7 +1084,7 @@ export function listQueues(tenantRoot, env) {
 }
 
 export function listR2Buckets(tenantRoot, env) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId) {
 		return [];
 	}
@@ -1096,7 +1096,7 @@ export function listR2Buckets(tenantRoot, env) {
 }
 
 export function listPagesProjects(tenantRoot, env) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId) {
 		return [];
 	}
@@ -1108,7 +1108,7 @@ export function listPagesProjects(tenantRoot, env) {
 }
 
 export function listTurnstileWidgets(tenantRoot, env) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId) {
 		return [];
 	}
@@ -1120,7 +1120,7 @@ export function listTurnstileWidgets(tenantRoot, env) {
 }
 
 export function listWorkers(tenantRoot, env) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId) {
 		return [];
 	}
@@ -1165,7 +1165,7 @@ export function listDnsRecords(zoneId, env) {
 }
 
 export function getTurnstileWidget(env, sitekey) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId || !sitekey) {
 		return null;
 	}
@@ -1177,7 +1177,7 @@ export function getTurnstileWidget(env, sitekey) {
 }
 
 export function createTurnstileWidget(env, input) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId) {
 		throw new Error('Configure CLOUDFLARE_ACCOUNT_ID before creating Turnstile widgets.');
 	}
@@ -1198,7 +1198,7 @@ export function createTurnstileWidget(env, input) {
 }
 
 export function updateTurnstileWidget(env, sitekey, input) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId || !sitekey) {
 		throw new Error('Configure CLOUDFLARE_ACCOUNT_ID and sitekey before updating Turnstile widgets.');
 	}
@@ -1406,7 +1406,7 @@ function shouldManageCloudflareWebCacheRules(deployConfig, target) {
 }
 
 export function cloudflareApiRequest(path, { method = 'GET', body, env, allowFailure = false } = {}) {
-	const token = env?.CLOUDFLARE_API_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN ?? '';
+	const token = env?.TREESEED_CLOUDFLARE_API_TOKEN ?? env?.CLOUDFLARE_API_TOKEN ?? process.env.TREESEED_CLOUDFLARE_API_TOKEN ?? '';
 	if (!token) {
 		if (allowFailure) {
 			return null;
@@ -1781,7 +1781,7 @@ export function reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state
 	}
 
 	const env = {
-		CLOUDFLARE_API_TOKEN: providedEnv?.CLOUDFLARE_API_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN ?? '',
+		CLOUDFLARE_API_TOKEN: providedEnv?.CLOUDFLARE_API_TOKEN ?? process.env.TREESEED_CLOUDFLARE_API_TOKEN ?? '',
 	};
 	if (!env.CLOUDFLARE_API_TOKEN) {
 		state.webCache.webHost = resolvePublicWebCacheTarget(deployConfig)?.host ?? null;
@@ -1900,7 +1900,7 @@ export function purgeSourcePageCaches(tenantRoot, options = {}) {
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
 	const state = loadDeployState(tenantRoot, deployConfig, { target });
 	const urls = resolveSourcePagePurgeUrls(deployConfig);
-	if ((options.dryRun ?? false) || urls.length === 0 || !process.env.CLOUDFLARE_API_TOKEN) {
+	if ((options.dryRun ?? false) || urls.length === 0 || !process.env.TREESEED_CLOUDFLARE_API_TOKEN) {
 		recordCachePurgeResult(state.webCache.deployPurge, urls.map((url) => ({ count: url ? 1 : 0 })));
 		writeDeployState(tenantRoot, state, { target });
 		return { skipped: options.dryRun ?? false, urls, results: [] };
@@ -1908,7 +1908,7 @@ export function purgeSourcePageCaches(tenantRoot, options = {}) {
 
 	try {
 		const results = purgeCloudflareCacheByUrls(urls, deployConfig, {
-			env: { CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN },
+			env: { CLOUDFLARE_API_TOKEN: process.env.TREESEED_CLOUDFLARE_API_TOKEN },
 		});
 		recordCachePurgeResult(state.webCache.deployPurge, results);
 		writeDeployState(tenantRoot, state, { target });
@@ -1924,7 +1924,7 @@ export function purgePublishedContentCaches(tenantRoot, urls, options = {}) {
 	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
 	const state = loadDeployState(tenantRoot, deployConfig, { target });
-	if ((options.dryRun ?? false) || !urls?.length || !process.env.CLOUDFLARE_API_TOKEN) {
+	if ((options.dryRun ?? false) || !urls?.length || !process.env.TREESEED_CLOUDFLARE_API_TOKEN) {
 		recordCachePurgeResult(state.webCache.contentPurge, (urls ?? []).map((url) => ({ count: url ? 1 : 0 })));
 		writeDeployState(tenantRoot, state, { target });
 		return { skipped: options.dryRun ?? false, urls: urls ?? [], results: [] };
@@ -1932,7 +1932,7 @@ export function purgePublishedContentCaches(tenantRoot, urls, options = {}) {
 
 	try {
 		const results = purgeCloudflareCacheByUrls(urls, deployConfig, {
-			env: { CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN },
+			env: { CLOUDFLARE_API_TOKEN: process.env.TREESEED_CLOUDFLARE_API_TOKEN },
 		});
 		recordCachePurgeResult(state.webCache.contentPurge, results);
 		writeDeployState(tenantRoot, state, { target });
@@ -2176,7 +2176,7 @@ function deleteKvNamespace(tenantRoot, namespaceId, { env, dryRun, preview = fal
 		return { status: 'planned', id: namespaceId, preview };
 	}
 
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	const path = accountId
 		? `/accounts/${encodeURIComponent(accountId)}/storage/kv/namespaces/${encodeURIComponent(namespaceId)}`
 		: null;
@@ -2193,7 +2193,7 @@ function deleteTurnstileWidget(sitekey, { env, dryRun, name = null }) {
 		return { status: 'planned', sitekey, name };
 	}
 
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	const path = accountId
 		? `/accounts/${encodeURIComponent(accountId)}/challenges/widgets/${encodeURIComponent(sitekey)}`
 		: null;
@@ -2216,7 +2216,7 @@ function deleteD1Database(tenantRoot, databaseName, { env, dryRun }) {
 		return { status: 'planned', name: databaseName };
 	}
 
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	const database = accountId
 		? listD1Databases(tenantRoot, env).find((entry) => entry?.name === databaseName)
 		: null;
@@ -2237,7 +2237,7 @@ function deleteWorker(tenantRoot, workerName, { env, dryRun, force = false }) {
 		return { status: 'planned', name: workerName };
 	}
 
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	const path = accountId
 		? `/accounts/${encodeURIComponent(accountId)}/workers/services/${encodeURIComponent(workerName)}`
 		: null;
@@ -2284,7 +2284,7 @@ function deleteQueueByName(tenantRoot, queue, { env, dryRun }) {
 	if (dryRun) {
 		return resourceOperation('cloudflare', 'queue', name, 'planned', { id });
 	}
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!id && accountId) {
 		const live = listQueues(tenantRoot, env).find((entry) => queueName(entry) === name);
 		id = queueId(live);
@@ -2338,7 +2338,7 @@ function deleteR2Bucket(tenantRoot, bucketName, { env, dryRun, deleteData }) {
 		return resourceOperation('cloudflare', 'r2-bucket', bucketName, 'planned');
 	}
 	const drained = drainR2Bucket(bucketName, { env });
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	const path = accountId
 		? `/accounts/${encodeURIComponent(accountId)}/r2/buckets/${encodeURIComponent(bucketName)}`
 		: null;
@@ -2353,7 +2353,7 @@ function r2ObjectKey(entry) {
 }
 
 function listR2Objects(bucketName, { env }) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId || !bucketName) {
 		return [];
 	}
@@ -2388,7 +2388,7 @@ function listR2Objects(bucketName, { env }) {
 }
 
 function drainR2Bucket(bucketName, { env }) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId || !bucketName) {
 		return { objectsDeleted: 0, objectsMissing: 0, objectsDeferred: 0 };
 	}
@@ -2421,8 +2421,8 @@ function drainR2Bucket(bucketName, { env }) {
 }
 
 function deleteR2ObjectsBatch(bucketName, keys, { env }) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
-	const token = env?.CLOUDFLARE_API_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
+	const token = env?.CLOUDFLARE_API_TOKEN ?? process.env.TREESEED_CLOUDFLARE_API_TOKEN ?? '';
 	const uniqueKeys = [...new Set((keys ?? []).filter(Boolean))];
 	if (!accountId || !bucketName || uniqueKeys.length === 0) {
 		return { objectsDeleted: 0, objectsMissing: 0, objectsDeferred: 0 };
@@ -2550,7 +2550,7 @@ function pagesDomainName(domain) {
 }
 
 function listPagesCustomDomains(projectName, { env }) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!projectName || !accountId) {
 		return [];
 	}
@@ -2610,7 +2610,7 @@ function deletePagesCustomDomains(tenantRoot, projectName, knownNames, { env, dr
 			? desiredNames.map((name) => resourceOperation('cloudflare', 'pages-custom-domain', name, 'planned', { projectName, knownOnly }))
 			: [resourceOperation('cloudflare', 'pages-custom-domain', projectName, knownOnly ? 'skipped' : 'planned', { reason: knownOnly ? 'no_target_scoped_domain' : 'project_delete_prerequisite' })];
 	}
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId) {
 		return desiredNames.length > 0
 			? desiredNames.map((name) => resourceOperation('cloudflare', 'pages-custom-domain', name, 'blocked', { projectName, reason: 'missing_cloudflare_account_id' }))
@@ -2646,7 +2646,7 @@ function pagesDeploymentEnvironments(environment = 'all') {
 }
 
 function listPagesDeploymentsWithApi(projectName, { env, environment = 'all' }) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!projectName || !accountId) {
 		return [];
 	}
@@ -2703,7 +2703,7 @@ function deletePagesDeployments(tenantRoot, projectName, { env, dryRun, environm
 	if (dryRun) {
 		return resourceOperation('cloudflare', 'pages-deployments', projectName, 'planned', { reason: 'project_delete_prerequisite', environment });
 	}
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!accountId) {
 		return resourceOperation('cloudflare', 'pages-deployments', projectName, 'blocked', { reason: 'missing_cloudflare_account_id' });
 	}
@@ -2758,7 +2758,7 @@ function deletePagesDeployments(tenantRoot, projectName, { env, dryRun, environm
 }
 
 function deletePagesProject(projectName, { env, dryRun }) {
-	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!projectName || !accountId) {
 		return resourceOperation('cloudflare', 'pages-project', projectName, 'missing');
 	}
@@ -3882,7 +3882,7 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 		const exists = pagesProjects.find((entry) => entry?.name === current.projectName);
 		if (exists) {
 			current.url = exists.subdomain ? `https://${exists.subdomain}` : current.url ?? `https://${current.projectName}.pages.dev`;
-			ensurePagesProjectCompatibility(env.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '', current.projectName, env, exists, { state, target });
+			ensurePagesProjectCompatibility(env.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '', current.projectName, env, exists, { state, target });
 			return;
 		}
 		if (dryRun) {
@@ -3903,7 +3903,7 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 			capture: true,
 			env,
 		});
-		ensurePagesProjectCompatibility(env.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? '', current.projectName, env, null, { state, target });
+		ensurePagesProjectCompatibility(env.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '', current.projectName, env, null, { state, target });
 		current.url = `https://${current.projectName}.pages.dev`;
 	};
 

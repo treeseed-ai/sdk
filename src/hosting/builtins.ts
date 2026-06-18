@@ -173,12 +173,12 @@ function cloudflarePagesEnv(input: TreeseedHostAdapterOperationInput): Record<st
 			scope: input.environment,
 		});
 	const accountId = [
-		process.env.CLOUDFLARE_ACCOUNT_ID,
+		process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID,
 		resolvedValues.CLOUDFLARE_ACCOUNT_ID,
 		resolveConfiguredCloudflareAccountId(input.graph.deployConfig),
 	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
 	const token = [
-		process.env.CLOUDFLARE_API_TOKEN,
+		process.env.TREESEED_CLOUDFLARE_API_TOKEN,
 		resolvedValues.CLOUDFLARE_API_TOKEN,
 	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
 	return {

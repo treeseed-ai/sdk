@@ -26,6 +26,10 @@ import type {
 	TreeDxProjectLibraryBinding,
 	TreeDxShareLink,
 } from './sdk-types.ts';
+import type {
+	TreeseedGitHubActionsEncryptedSecretDeployment,
+	TreeseedGitHubActionsSecretPublicKeyMetadata,
+} from './secrets-capability.ts';
 import {
 	TREESEED_REMOTE_CONTRACT_HEADER,
 	TREESEED_REMOTE_CONTRACT_VERSION,
@@ -451,10 +455,11 @@ export class MarketClient {
 		this.userAgent = options.userAgent;
 	}
 
-	private async request<T>(path: string, options: { method?: string; body?: unknown; requireAuth?: boolean } = {}): Promise<T> {
+	private async request<T>(path: string, options: { method?: string; body?: unknown; requireAuth?: boolean; headers?: Record<string, string> } = {}): Promise<T> {
 		const headers: Record<string, string> = {
 			accept: 'application/json',
 			[TREESEED_REMOTE_CONTRACT_HEADER]: String(TREESEED_REMOTE_CONTRACT_VERSION),
+			...(options.headers ?? {}),
 		};
 		if (this.userAgent) {
 			headers['user-agent'] = this.userAgent;
@@ -488,7 +493,7 @@ export class MarketClient {
 		return this.options.profile.id === 'local' ? [legacyPath, v1Path] : [v1Path];
 	}
 
-	private async requestFirst<T>(paths: string[], options: { method?: string; body?: unknown; requireAuth?: boolean } = {}): Promise<T> {
+	private async requestFirst<T>(paths: string[], options: { method?: string; body?: unknown; requireAuth?: boolean; headers?: Record<string, string> } = {}): Promise<T> {
 		let notFound: MarketClientError | null = null;
 		for (const path of paths) {
 			try {
@@ -715,6 +720,83 @@ export class MarketClient {
 		);
 	}
 
+	projectSecretEscrowRecords(projectId: string, filters: { secretId?: string | null; status?: string | null; limit?: number | null } = {}) {
+		const query = new URLSearchParams();
+		if (filters.secretId) query.set('secretId', String(filters.secretId));
+		if (filters.status) query.set('status', String(filters.status));
+		if (filters.limit) query.set('limit', String(filters.limit));
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/secrets/escrow${query.toString() ? `?${query}` : ''}`,
+			{ requireAuth: true },
+		);
+	}
+
+	createProjectSecretEscrow(projectId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: unknown }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/secrets/escrow`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	projectSecretEscrow(projectId: string, escrowId: string) {
+		return this.request<{ ok: true; payload: unknown }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/secrets/escrow/${encodeURIComponent(escrowId)}`,
+			{ requireAuth: true },
+		);
+	}
+
+	updateProjectSecretEscrow(projectId: string, escrowId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: unknown }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/secrets/escrow/${encodeURIComponent(escrowId)}`,
+			{ method: 'PATCH', body, requireAuth: true },
+		);
+	}
+
+	migrateProjectSecretEscrow(projectId: string, escrowId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: unknown }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/secrets/escrow/${encodeURIComponent(escrowId)}/migrate`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	tombstoneProjectSecretEscrow(projectId: string, escrowId: string) {
+		return this.request<{ ok: true; payload: unknown }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/secrets/escrow/${encodeURIComponent(escrowId)}`,
+			{ method: 'DELETE', requireAuth: true },
+		);
+	}
+
+	projectGitHubActionsSecretPublicKey(projectId: string, input: {
+		installationId?: string | null;
+		repository: string;
+		scope?: string | null;
+		environment?: string | null;
+	}) {
+		const query = new URLSearchParams();
+		if (input.installationId) query.set('installationId', String(input.installationId));
+		query.set('repository', input.repository);
+		if (input.scope) query.set('scope', String(input.scope));
+		if (input.environment) query.set('environment', String(input.environment));
+		return this.request<{ ok: true; payload: TreeseedGitHubActionsSecretPublicKeyMetadata }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/secrets/github-actions/public-key?${query}`,
+			{ requireAuth: true },
+		);
+	}
+
+	deployProjectGitHubActionsSecret(projectId: string, body: TreeseedGitHubActionsEncryptedSecretDeployment & Record<string, unknown>) {
+		return this.request<{ ok: true; payload: unknown }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/secrets/github-actions/deploy`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	dispatchProjectWorkflowOperation(projectId: string, operationId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: unknown }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/workflow-operations/${encodeURIComponent(operationId)}/dispatch`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
 	teamTreeDx(teamId: string) {
 		return this.request<{ ok: true; payload: { instance: TreeDxInstance | null; mirrors: TreeDxMirror[]; shares: TreeDxShareLink[]; deployments: unknown[] } }>(
 			`/v1/teams/${encodeURIComponent(teamId)}/treedx`,
@@ -789,6 +871,41 @@ export class MarketClient {
 		return this.request<{ ok: true; payload: ProjectRepositoryTopology }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/repository-topology`,
 			{ requireAuth: true },
+		);
+	}
+
+	projectTreeDxProxyAudit(projectId: string, options: { assignmentId?: string | null; actorType?: string | null } = {}) {
+		const query = new URLSearchParams();
+		if (options.assignmentId) query.set('assignmentId', options.assignmentId);
+		if (options.actorType) query.set('actorType', options.actorType);
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/treedx-proxy-audit${query.toString() ? `?${query}` : ''}`,
+			{ requireAuth: true },
+		);
+	}
+
+	projectAgentFallbackOutputs(projectId: string, options: { assignmentId?: string | null; mode?: string | null; status?: string | null } = {}) {
+		const query = new URLSearchParams();
+		if (options.assignmentId) query.set('assignmentId', options.assignmentId);
+		if (options.mode) query.set('mode', options.mode);
+		if (options.status) query.set('status', options.status);
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/agent-fallback-outputs${query.toString() ? `?${query}` : ''}`,
+			{ requireAuth: true },
+		);
+	}
+
+	treeDxBuildContext(projectId: string, repoId: string, body: Record<string, unknown>, headers: Record<string, string> = {}) {
+		return this.request<{ ok: true; payload: unknown }>(
+			`/v1/dx/projects/${encodeURIComponent(projectId)}/repos/${encodeURIComponent(repoId)}/context/build`,
+			{ method: 'POST', body, headers, requireAuth: true },
+		);
+	}
+
+	treeDxReadRepositoryFiles(projectId: string, repoId: string, body: Record<string, unknown>, headers: Record<string, string> = {}) {
+		return this.request<{ ok: true; payload: unknown }>(
+			`/v1/dx/projects/${encodeURIComponent(projectId)}/repos/${encodeURIComponent(repoId)}/files/read`,
+			{ method: 'POST', body, headers, requireAuth: true },
 		);
 	}
 
@@ -1175,6 +1292,13 @@ export class MarketClient {
 	scheduleCapacityPlan(capacityPlanId: string, body: Record<string, unknown> = {}) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/capacity-plans/${encodeURIComponent(capacityPlanId)}/schedule`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	supersedeCapacityPlan(capacityPlanId: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/capacity-plans/${encodeURIComponent(capacityPlanId)}/supersede`,
 			{ method: 'POST', body, requireAuth: true },
 		);
 	}

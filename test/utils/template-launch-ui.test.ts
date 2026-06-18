@@ -26,7 +26,7 @@ describe('template launch requirement UI view model', () => {
 				displayName: 'Public web',
 				purpose: 'Deploy the public site.',
 				defaultSelection: 'managed',
-				environmentWrites: [{ env: 'CLOUDFLARE_API_TOKEN', valueFrom: 'selectedHost.secret:CLOUDFLARE_API_TOKEN', targets: ['cloudflare-secret'], sensitivity: 'secret' }],
+				environmentWrites: [{ env: 'TREESEED_CLOUDFLARE_API_TOKEN', valueFrom: 'selectedHost.secret:TREESEED_CLOUDFLARE_API_TOKEN', targets: ['cloudflare-secret'], sensitivity: 'secret' }],
 			},
 			{
 				kind: 'host',
@@ -90,6 +90,6 @@ describe('template launch requirement UI view model', () => {
 			valueFrom: 'selectedHost.provider',
 			writeWhen: undefined,
 		}]);
-		expect(JSON.stringify(view)).not.toContain('CLOUDFLARE_API_TOKEN_VALUE');
+		expect(JSON.stringify(view)).not.toContain('TREESEED_CLOUDFLARE_API_TOKEN_VALUE');
 	});
 });

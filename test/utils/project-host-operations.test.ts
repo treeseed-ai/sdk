@@ -42,7 +42,7 @@ function launchRequirements() {
 					{ target: 'treeseed.site.yaml', path: 'hosting.hostBindings.publicWeb.provider', valueFrom: 'selectedHost.provider' },
 				],
 				environmentWrites: [
-					{ env: 'CLOUDFLARE_API_TOKEN', valueFrom: 'selectedHost.config:CLOUDFLARE_API_TOKEN', targets: ['github-secret'], scopes: ['staging', 'prod'], sensitivity: 'secret' },
+					{ env: 'TREESEED_CLOUDFLARE_API_TOKEN', valueFrom: 'selectedHost.config:TREESEED_CLOUDFLARE_API_TOKEN', targets: ['github-secret'], scopes: ['staging', 'prod'], sensitivity: 'secret' },
 				],
 			},
 		],
@@ -115,7 +115,7 @@ describe('project host binding operations', () => {
 		expect(view.summary).toMatchObject({ status: 'ok', total: 2 });
 		expect(view.requirements.map((entry) => entry.requirementKey)).toEqual(['sourceRepository', 'publicWeb']);
 		expect(view.requirements.find((entry) => entry.requirementKey === 'publicWeb')?.secretTargets[0]).toMatchObject({
-			env: 'CLOUDFLARE_API_TOKEN',
+			env: 'TREESEED_CLOUDFLARE_API_TOKEN',
 			targets: ['github-secret'],
 			sensitivity: 'secret',
 		});
@@ -153,7 +153,7 @@ describe('project host binding operations', () => {
 		expect(plan.operationSummary.changedRequirementKeys).toEqual(['publicWeb']);
 		expect(plan.operationSummary.requiresRepositoryConfigWrite).toBe(true);
 		expect(plan.operationSummary.requiresSecretSync).toBe(true);
-		expect(JSON.stringify(plan)).not.toContain('CLOUDFLARE_API_TOKEN=');
+		expect(JSON.stringify(plan)).not.toContain('TREESEED_CLOUDFLARE_API_TOKEN=');
 	});
 
 	it('rejects incompatible replacement bindings and capacity-provider requirements', () => {
@@ -312,7 +312,7 @@ describe('project host binding operations', () => {
 			expect(missingSecret.secretSync?.diagnostics[0]).toMatchObject({
 				code: 'missing_value',
 				requirementKey: 'publicWeb',
-				env: 'CLOUDFLARE_API_TOKEN',
+				env: 'TREESEED_CLOUDFLARE_API_TOKEN',
 			});
 			expect(JSON.stringify(missingSecret)).not.toContain('secret-token');
 		} finally {

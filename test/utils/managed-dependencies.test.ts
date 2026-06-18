@@ -56,7 +56,7 @@ function spawnMock(options: { docker?: boolean; actInstalled?: boolean; npmStatu
 			return { status: 0, stdout: 'gh version 2.90.0\n', stderr: '' };
 		}
 			if (args[0] === 'auth' && args[1] === 'status') {
-				return spawnOptions?.env?.GH_TOKEN
+				return spawnOptions?.env?.TREESEED_GITHUB_TOKEN
 					? { status: 0, stdout: 'Logged in to github.com\n  - Token: github_pat_example123********************************\n', stderr: '' }
 					: { status: 1, stdout: '', stderr: 'You are not logged into any GitHub hosts.' };
 			}
@@ -109,7 +109,7 @@ describe('managed dependencies', () => {
 		const toolsHome = await createTempToolsHome();
 		const gh = await createManagedGh(toolsHome);
 		const result = collectTreeseedToolStatus({
-			env: { ...process.env, TREESEED_TOOLS_HOME: toolsHome, GH_TOKEN: '' },
+			env: { ...process.env, TREESEED_TOOLS_HOME: toolsHome, TREESEED_GITHUB_TOKEN: '' },
 			spawn: spawnMock(),
 		});
 
@@ -119,14 +119,14 @@ describe('managed dependencies', () => {
 			binaryPath: gh,
 		});
 		expect(result.auth.github.authenticated).toBe(false);
-		expect(result.auth.github.remediation.join('\n')).toContain('GH_TOKEN');
+		expect(result.auth.github.remediation.join('\n')).toContain('TREESEED_GITHUB_TOKEN');
 	});
 
-	it('authenticates managed GitHub CLI through GH_TOKEN for hosted workflow gates', async () => {
+	it('authenticates managed GitHub CLI through TREESEED_GITHUB_TOKEN for hosted workflow gates', async () => {
 		const toolsHome = await createTempToolsHome();
 		await createManagedGh(toolsHome);
 		const result = collectTreeseedToolStatus({
-			env: { ...process.env, TREESEED_TOOLS_HOME: toolsHome, GH_TOKEN: 'secret-token' },
+			env: { ...process.env, TREESEED_TOOLS_HOME: toolsHome, TREESEED_GITHUB_TOKEN: 'secret-token' },
 			spawn: spawnMock(),
 		});
 

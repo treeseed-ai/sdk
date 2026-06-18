@@ -185,8 +185,8 @@ services:
 		const selection = resolveTreeseedBootstrapSelection({
 			deployConfig,
 			env: {
-				GH_TOKEN: 'github-token',
-				CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+				TREESEED_GITHUB_TOKEN: 'github-token',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cloudflare-token',
 			},
 			systems: ['web'],
 		});
@@ -199,7 +199,7 @@ services:
 		expect(unitTypes).not.toContain('api-runtime');
 	});
 
-	it('skips optional Railway runtime systems for all when RAILWAY_API_TOKEN is missing', () => {
+	it('skips optional Railway runtime systems for all when TREESEED_RAILWAY_API_TOKEN is missing', () => {
 		const tenantRoot = createTenantFixture();
 		const { deployConfig } = deriveTreeseedDesiredUnits({
 			tenantRoot,
@@ -208,15 +208,15 @@ services:
 		const selection = resolveTreeseedBootstrapSelection({
 			deployConfig,
 			env: {
-				GH_TOKEN: 'github-token',
-				CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+				TREESEED_GITHUB_TOKEN: 'github-token',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cloudflare-token',
 			},
 			systems: 'all',
 		});
 
 		expect(selection.runnable).toEqual(['github', 'data', 'web']);
 		expect(selection.skipped.map((entry) => entry.system)).toEqual(['api', 'agents']);
-		expect(selection.skipped.find((entry) => entry.system === 'api')?.missing).toEqual(['RAILWAY_API_TOKEN']);
+		expect(selection.skipped.find((entry) => entry.system === 'api')?.missing).toEqual(['TREESEED_RAILWAY_API_TOKEN']);
 	});
 
 	it('keeps explicitly selected API strict unless skipUnavailable is requested', () => {
@@ -228,14 +228,14 @@ services:
 		const strict = resolveTreeseedBootstrapSelection({
 			deployConfig,
 			env: {
-				CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cloudflare-token',
 			},
 			systems: 'api',
 		});
 		const lenient = resolveTreeseedBootstrapSelection({
 			deployConfig,
 			env: {
-				CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cloudflare-token',
 			},
 			systems: 'api',
 			skipUnavailable: true,
@@ -276,9 +276,9 @@ services:
 		const selection = resolveTreeseedBootstrapSelection({
 			deployConfig,
 			env: {
-				GH_TOKEN: 'github-token',
-				CLOUDFLARE_API_TOKEN: 'cloudflare-token',
-				RAILWAY_API_TOKEN: 'railway-token',
+				TREESEED_GITHUB_TOKEN: 'github-token',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cloudflare-token',
+				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
 			},
 			systems: 'all',
 		});

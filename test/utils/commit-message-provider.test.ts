@@ -109,8 +109,8 @@ describe('commit message provider', () => {
 		}, {
 			mode: 'cloudflare',
 			env: {
-				CLOUDFLARE_API_TOKEN: 'token',
-				CLOUDFLARE_ACCOUNT_ID: 'account',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account',
 			},
 			fetchImpl,
 		});
@@ -154,8 +154,8 @@ describe('commit message provider', () => {
 			await generateRepositoryCommitMessage(baseContext, {
 				mode: 'cloudflare',
 				env: {
-					CLOUDFLARE_API_TOKEN: 'token',
-					CLOUDFLARE_ACCOUNT_ID: 'account',
+					TREESEED_CLOUDFLARE_API_TOKEN: 'token',
+					TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account',
 				},
 				fetchImpl,
 			});
@@ -177,8 +177,8 @@ describe('commit message provider', () => {
 		const result = await generateRepositoryCommitMessage(baseContext, {
 			mode: 'cloudflare',
 			env: {
-				CLOUDFLARE_API_TOKEN: 'token',
-				CLOUDFLARE_ACCOUNT_ID: 'account',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account',
 			},
 			fetchImpl,
 		});
@@ -206,8 +206,8 @@ describe('commit message provider', () => {
 		const result = await generateRepositoryCommitMessage(baseContext, {
 			mode: 'cloudflare',
 			env: {
-				CLOUDFLARE_API_TOKEN: 'token',
-				CLOUDFLARE_ACCOUNT_ID: 'account',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account',
 			},
 			fetchImpl,
 		});
@@ -239,8 +239,8 @@ describe('commit message provider', () => {
 		const result = await generateRepositoryCommitMessage(baseContext, {
 			mode: 'cloudflare',
 			env: {
-				CLOUDFLARE_API_TOKEN: 'token',
-				CLOUDFLARE_ACCOUNT_ID: 'account',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account',
 			},
 			fetchImpl,
 		});
@@ -272,8 +272,8 @@ describe('commit message provider', () => {
 		const result = await generateRepositoryCommitMessage(baseContext, {
 			mode: 'cloudflare',
 			env: {
-				CLOUDFLARE_API_TOKEN: 'token',
-				CLOUDFLARE_ACCOUNT_ID: 'account',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account',
 			},
 			fetchImpl,
 		});
@@ -313,8 +313,8 @@ describe('commit message provider', () => {
 		const result = await generateRepositoryCommitMessage(baseContext, {
 			mode: 'cloudflare',
 			env: {
-				CLOUDFLARE_API_TOKEN: 'token',
-				CLOUDFLARE_ACCOUNT_ID: 'account',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account',
 			},
 			fetchImpl,
 		});

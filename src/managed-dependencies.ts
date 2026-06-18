@@ -6,6 +6,7 @@ import { homedir, platform as osPlatform, arch as osArch } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { withTreeseedServiceCredentialEnv } from './service-credentials.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -160,7 +161,7 @@ export function createTreeseedManagedToolEnv(env: NodeJS.ProcessEnv = process.en
 	const pathKey = process.platform === 'win32' ? 'Path' : 'PATH';
 	const existingPath = env[pathKey] ?? env.PATH ?? '';
 	return {
-		...env,
+		...withTreeseedServiceCredentialEnv(env),
 		GH_CONFIG_DIR: env.TREESEED_GH_CONFIG_DIR ?? resolve(toolsHome, 'gh-config'),
 		GH_PROMPT_DISABLED: '1',
 		GH_NO_UPDATE_NOTIFIER: '1',
@@ -189,14 +190,15 @@ function managedGhBin(env: NodeJS.ProcessEnv = process.env) {
 }
 
 function tokenEnv(env: NodeJS.ProcessEnv = process.env) {
-	const ghToken = env.GH_TOKEN?.trim() || env.GITHUB_TOKEN?.trim() || '';
+	const translated = withTreeseedServiceCredentialEnv(env);
+	const ghToken = translated.GH_TOKEN?.trim() || translated.GITHUB_TOKEN?.trim() || '';
 	return ghToken
 		? {
-			...env,
+			...translated,
 			GH_TOKEN: ghToken,
 			GITHUB_TOKEN: ghToken,
 		}
-		: env;
+		: translated;
 }
 
 function cleanCommandPathOutput(output: string) {
@@ -618,7 +620,7 @@ function checkGitHubAuth(options: DependencyInstallerOptions): TreeseedToolStatu
 	const remediation = [
 		'Run `npx trsd install --json` to install or inspect managed tools.',
 		'Run `npx trsd secrets:unlock` or provide TREESEED_KEY_PASSPHRASE so machine secrets can be decrypted.',
-		'Verify GH_TOKEN is configured in machine.yaml or the environment.',
+		'Verify TREESEED_GITHUB_TOKEN is configured in machine.yaml or the environment.',
 	];
 	if (!gh) {
 		return {

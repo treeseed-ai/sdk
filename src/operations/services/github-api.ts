@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { Octokit } from 'octokit';
 import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../../managed-dependencies.ts';
+import { resolveTreeseedGitHubToken } from '../../service-credentials.ts';
 
 const require = createRequire(import.meta.url);
 const sodium = require('libsodium-wrappers');
@@ -146,7 +147,7 @@ function configuredEnvValue(env: NodeJS.ProcessEnv | Record<string, string | und
 }
 
 export function resolveGitHubApiToken(env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env) {
-	return configuredEnvValue(env, 'GH_TOKEN') || configuredEnvValue(env, 'GITHUB_TOKEN');
+	return resolveTreeseedGitHubToken(env);
 }
 
 export function parseGitHubRepositorySlug(value: string) {

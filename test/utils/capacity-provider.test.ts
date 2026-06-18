@@ -29,10 +29,6 @@ import {
 	type CapacityProviderRegistrationRequest,
 	type CapacityProviderRegistrationResponse,
 	type ProviderReportRequest,
-	type ProviderTaskClaimRequest,
-	type ProviderTaskCompleteRequest,
-	type ProviderTaskEventRequest,
-	type ProviderTaskFailRequest,
 	type ProviderUsageReport,
 	type ProviderWorkdayRequest,
 } from '../../src/index.ts';
@@ -55,7 +51,7 @@ function jsonResponse(payload: unknown, status = 200) {
 }
 
 describe('capacity provider SDK contracts', () => {
-	it('serializes provider registration, heartbeat, portfolio, task, usage, report, and deployment shapes', () => {
+	it('serializes provider registration, heartbeat, portfolio, assignment, usage, report, and deployment shapes', () => {
 		const registration: CapacityProviderRegistrationRequest = {
 			marketId: 'prod',
 			runtime: {
@@ -132,30 +128,13 @@ describe('capacity provider SDK contracts', () => {
 			environment: 'local',
 			idempotencyKey: 'workday:proj_123:local:today',
 		};
-		const claim: ProviderTaskClaimRequest = {
-			runnerId: 'runner-1',
-			limit: 1,
-			capabilities: ['codex-docs-work'],
-		};
-		const event: ProviderTaskEventRequest = {
-			kind: 'runner.progress',
-			data: { message: 'started' },
-		};
 		const usage: ProviderUsageReport = {
-			taskId: 'task-1',
+			assignmentId: 'assignment-1',
 			workDayId: 'wd-1',
 			projectId: 'proj_123',
 			taskSignature: 'docs.update',
 			executionProfileId: 'codex',
 			actualCredits: 12,
-		};
-		const complete: ProviderTaskCompleteRequest = {
-			output: { ok: true },
-			usage,
-		};
-		const fail: ProviderTaskFailRequest = {
-			errorMessage: 'verification failed',
-			retryable: true,
 		};
 		const report: ProviderReportRequest = {
 			workDayId: 'wd-1',
@@ -184,10 +163,8 @@ describe('capacity provider SDK contracts', () => {
 		expect(registrationResponse.provider.status).toBe('online');
 		expect(portfolio.projects[0]?.agentSpecs.testsRoot).toBe('src/content/agent-tests');
 		expect(workday.environment).toBe('local');
-		expect(claim.capabilities).toEqual(['codex-docs-work']);
-		expect(event.kind).toBe('runner.progress');
-		expect(complete.usage?.actualCredits).toBe(12);
-		expect(fail.retryable).toBe(true);
+		expect(usage.assignmentId).toBe('assignment-1');
+		expect(usage.actualCredits).toBe(12);
 		expect(report.body.summary).toBe('ready');
 		expect(deployment.launchMode).toBe('self_hosted');
 		expect(deploymentResult.status).toBe('not_deployed');
@@ -231,10 +208,12 @@ describe('capacity provider SDK contracts', () => {
 				});
 			}
 			if (path === CAPACITY_PROVIDER_ENDPOINTS.workdays) return jsonResponse({ ok: true, workDay: { id: 'wd-1' } });
-			if (path === CAPACITY_PROVIDER_ENDPOINTS.claimTask) return jsonResponse({ ok: true, tasks: [{ id: 'task-1' }] });
-			if (path.endsWith('/events')) return jsonResponse({ ok: true, event: { id: 'event-1' } });
-			if (path.endsWith('/complete')) return jsonResponse({ ok: true, task: { id: 'task-1', state: 'completed' } });
-			if (path.endsWith('/fail')) return jsonResponse({ ok: true, task: { id: 'task-2', state: 'failed' } });
+			if (path === CAPACITY_PROVIDER_ENDPOINTS.nextAssignment) return jsonResponse({ ok: true, payload: { id: 'assignment-1' }, assignment: { id: 'assignment-1' }, leaseToken: 'lease-1', leaseSeconds: 300 });
+			if (path.endsWith('/renew')) return jsonResponse({ ok: true, payload: { id: 'assignment-1', status: 'leased' }, assignment: { id: 'assignment-1', status: 'leased' }, leaseToken: 'lease-1', leaseSeconds: 300 });
+			if (path.endsWith('/mode-runs')) return jsonResponse({ ok: true, payload: { id: 'mode-run-1' } });
+			if (path.endsWith('/complete')) return jsonResponse({ ok: true, payload: { id: 'assignment-1', status: 'completed' }, assignment: { id: 'assignment-1', status: 'completed' } });
+			if (path.endsWith('/return')) return jsonResponse({ ok: true, payload: { id: 'assignment-1', status: 'returned' }, assignment: { id: 'assignment-1', status: 'returned' } });
+			if (path.endsWith('/fail')) return jsonResponse({ ok: true, payload: { id: 'assignment-2', status: 'failed' }, assignment: { id: 'assignment-2', status: 'failed' } });
 			if (path === CAPACITY_PROVIDER_ENDPOINTS.usage) return jsonResponse({ ok: true, usage: { id: 'usage-1' } });
 			if (path === CAPACITY_PROVIDER_ENDPOINTS.reports) return jsonResponse({ ok: true, report: { id: 'report-1' } });
 			return jsonResponse({ error: 'not found' }, 404);
@@ -256,11 +235,13 @@ describe('capacity provider SDK contracts', () => {
 		await client.heartbeat();
 		await client.portfolio();
 		await client.createWorkday({ projectId: 'proj_123', environment: 'local' });
-		await client.claimTask({ limit: 1 });
-		await client.appendTaskEvent('task-1', { kind: 'runner.progress' });
-		await client.completeTask('task-1', { output: { ok: true } });
-		await client.failTask('task-2', { errorMessage: 'failed' });
-		await client.reportUsage({ taskId: 'task-1', actualCredits: 1 });
+		await client.nextAssignment({ runnerId: 'runner-1', capabilities: ['codex-docs-work'] });
+		await client.renewAssignment('assignment-1', { leaseToken: 'lease-1' });
+		await client.createAssignmentModeRun('assignment-1', { status: 'running' });
+		await client.completeAssignment('assignment-1', { leaseToken: 'lease-1', output: { ok: true } });
+		await client.returnAssignment('assignment-1', { leaseToken: 'lease-1', reason: 'retry later' });
+		await client.failAssignment('assignment-2', { leaseToken: 'lease-2', reason: 'failed' });
+		await client.reportUsage({ assignmentId: 'assignment-1', actualCredits: 1 });
 		await client.writeReport({ workDayId: 'wd-1', kind: 'summary', body: {} });
 
 		expect(calls.map((call) => `${call.method} ${new URL(call.url).pathname}`)).toEqual([
@@ -268,10 +249,12 @@ describe('capacity provider SDK contracts', () => {
 			'POST /v1/provider/heartbeat',
 			'GET /v1/provider/portfolio',
 			'POST /v1/provider/workdays',
-			'POST /v1/provider/tasks/claim',
-			'POST /v1/provider/tasks/task-1/events',
-			'POST /v1/provider/tasks/task-1/complete',
-			'POST /v1/provider/tasks/task-2/fail',
+			'POST /v1/provider/assignments/next',
+			'POST /v1/provider/assignments/assignment-1/renew',
+			'POST /v1/provider/assignments/assignment-1/mode-runs',
+			'POST /v1/provider/assignments/assignment-1/complete',
+			'POST /v1/provider/assignments/assignment-1/return',
+			'POST /v1/provider/assignments/assignment-2/fail',
 			'POST /v1/provider/usage',
 			'POST /v1/provider/reports',
 		]);

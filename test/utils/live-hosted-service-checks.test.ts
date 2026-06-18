@@ -252,7 +252,7 @@ services:
 			requireLiveRailway: true,
 			requireLiveHttp: false,
 			retry: { attempts: 2, intervalMs: 1 },
-			env: { RAILWAY_API_TOKEN: 'test-token', TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'test-token', TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop' },
 			fetchImpl,
 		});
 

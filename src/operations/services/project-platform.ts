@@ -776,11 +776,11 @@ async function probeHttp(url: string, { attempts = 1, delayMs = 2000 }: { attemp
 }
 
 function queueClientConfig(siteConfig, state) {
-	const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim();
+	const accountId = String(process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim();
 	const queueId = state.queues?.agentWork?.queueId;
 	const token = process.env.TREESEED_QUEUE_PUSH_TOKEN?.trim()
 		|| process.env.TREESEED_QUEUE_PULL_TOKEN?.trim()
-		|| process.env.CLOUDFLARE_API_TOKEN?.trim()
+		|| process.env.TREESEED_CLOUDFLARE_API_TOKEN?.trim()
 		|| '';
 	if (!accountId || !queueId || !token) {
 		return null;
@@ -955,7 +955,7 @@ function probeR2(
 	target,
 ) {
 	const bucketName = state.content?.bucketName;
-	const cloudflareAccountId = String(process.env.CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim();
+	const cloudflareAccountId = String(process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim();
 	if (!bucketName) {
 		return { ok: false, skipped: true, reason: 'r2_unconfigured' };
 	}
@@ -1043,7 +1043,7 @@ async function publishContent(
 		?? `staging-${sanitizeSegment(branchName, 'preview')}-${sanitizeSegment(commitSha?.slice(0, 12), 'latest')}`;
 	const locator = resolveTeamScopedContentLocator(siteConfig, teamId);
 	const { wranglerPath } = ensureGeneratedWranglerConfig(options.tenantRoot, { target });
-	const wranglerEnv = { CLOUDFLARE_ACCOUNT_ID: String(process.env.CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim() };
+	const wranglerEnv = { CLOUDFLARE_ACCOUNT_ID: String(process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim() };
 	const bucketName = String(process.env.TREESEED_CONTENT_BUCKET_NAME ?? siteConfig.cloudflare.r2?.bucketName ?? '').trim();
 	if (!bucketName) {
 		throw new Error('Treeseed content publish requires TREESEED_CONTENT_BUCKET_NAME to be configured.');
@@ -1335,7 +1335,7 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 		environment: options.scope,
 		deploymentProfile: siteConfig.hosting?.kind ?? 'self_hosted_project',
 		baseUrl: state.lastDeployedUrl,
-		cloudflareAccountId: String(process.env.CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim() || null,
+		cloudflareAccountId: String(process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim() || null,
 		pagesProjectName: state.pages?.projectName ?? null,
 		workerName: state.workerName,
 		r2BucketName: state.content?.bucketName ?? null,
@@ -1836,7 +1836,7 @@ export async function syncControlPlaneState(options: ProjectPlatformActionOption
 		environment: options.scope,
 		deploymentProfile: siteConfig.hosting?.kind ?? 'self_hosted_project',
 		baseUrl: state.lastDeployedUrl,
-		cloudflareAccountId: String(process.env.CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim() || null,
+		cloudflareAccountId: String(process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim() || null,
 		pagesProjectName: state.pages?.projectName ?? null,
 		workerName: state.workerName,
 		r2BucketName: state.content?.bucketName ?? null,

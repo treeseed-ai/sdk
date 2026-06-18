@@ -65,6 +65,7 @@ import {
 	resolveTreeseedToolBinary,
 	resolveTreeseedToolCommand,
 } from '../../managed-dependencies.ts';
+import { withTreeseedServiceCredentialEnv } from '../../service-credentials.ts';
 import {
 	filterManagedHostGitHubEnvironment,
 	usesManagedHostOperationRequests,
@@ -101,12 +102,11 @@ export const TREESEED_API_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
 const CLI_CHECK_TIMEOUT_MS = 5000;
 const DEPRECATED_LOCAL_ENV_FILES = ['.env.local', '.dev.vars'] as const;
 const PROVIDER_CONTROL_ENV_KEYS = [
-	'GH_TOKEN',
-	'GITHUB_TOKEN',
-	'CLOUDFLARE_API_TOKEN',
-	'CLOUDFLARE_ACCOUNT_ID',
+	'TREESEED_GITHUB_TOKEN',
+	'TREESEED_CLOUDFLARE_API_TOKEN',
+	'TREESEED_CLOUDFLARE_ACCOUNT_ID',
 	'CLOUDFLARE_ZONE_ID',
-	'RAILWAY_API_TOKEN',
+	'TREESEED_RAILWAY_API_TOKEN',
 	'TREESEED_RAILWAY_WORKSPACE',
 ];
 const warnedDeprecatedLocalEnvRoots = new Set<string>();
@@ -1982,10 +1982,10 @@ export function resolveTreeseedLaunchEnvironment({
 	const scopedValues = scope === 'local'
 		? { ...nonSecretSuggestedValues, ...systemSecretSuggestedValues, ...baseValues, ...machineValues }
 		: { ...nonSecretSuggestedValues, ...systemSecretSuggestedValues, ...machineValues, ...baseValues };
-	return {
+	return withTreeseedServiceCredentialEnv({
 		...scopedValues,
 		...overrides,
-	};
+	});
 }
 
 export function formatTreeseedConfigEnvironmentReport({ tenantRoot, scope, env = process.env, revealSecrets = false }) {
@@ -2305,8 +2305,8 @@ function isTransientProviderConnectionError(detail) {
 }
 
 function checkGitHubConnection({ tenantRoot, env }) {
-	if (!env.GH_TOKEN) {
-		return providerConnectionResult('github', false, 'GH_TOKEN is not configured.', { skipped: true });
+	if (!env.TREESEED_GITHUB_TOKEN) {
+		return providerConnectionResult('github', false, 'TREESEED_GITHUB_TOKEN is not configured.', { skipped: true });
 	}
 	const gh = resolveTreeseedToolBinary('gh', { env });
 	if (!gh) {
@@ -2368,8 +2368,8 @@ function checkGitHubConnection({ tenantRoot, env }) {
 }
 
 function checkCloudflareConnection({ tenantRoot, env }) {
-	if (!env.CLOUDFLARE_API_TOKEN) {
-		return providerConnectionResult('cloudflare', false, 'CLOUDFLARE_API_TOKEN is not configured.', { skipped: true });
+	if (!env.TREESEED_CLOUDFLARE_API_TOKEN) {
+		return providerConnectionResult('cloudflare', false, 'TREESEED_CLOUDFLARE_API_TOKEN is not configured.', { skipped: true });
 	}
 	for (let attempt = 0; attempt < 3; attempt += 1) {
 		try {
@@ -2377,11 +2377,11 @@ function checkCloudflareConnection({ tenantRoot, env }) {
 				cwd: tenantRoot,
 				stdio: 'pipe',
 				encoding: 'utf8',
-				env: { ...process.env, ...env },
+				env: createTreeseedManagedToolEnv({ ...process.env, ...env }),
 				timeout: CLI_CHECK_TIMEOUT_MS,
 			});
 			if (result.status === 0) {
-				return providerConnectionResult('cloudflare', true, 'Wrangler authenticated with CLOUDFLARE_API_TOKEN.');
+				return providerConnectionResult('cloudflare', true, 'Wrangler authenticated with TREESEED_CLOUDFLARE_API_TOKEN.');
 			}
 			const detail = formatCheckOutput(result) || 'Cloudflare Wrangler check failed.';
 			if (attempt >= 2 || !isTransientProviderConnectionError(detail)) {
@@ -2403,13 +2403,13 @@ function checkCloudflareConnection({ tenantRoot, env }) {
 }
 
 async function checkRailwayConnection({ tenantRoot, env }) {
-	if (!env.RAILWAY_API_TOKEN) {
-		return providerConnectionResult('railway', false, 'RAILWAY_API_TOKEN is not configured.', { skipped: true });
+	if (!env.TREESEED_RAILWAY_API_TOKEN) {
+		return providerConnectionResult('railway', false, 'TREESEED_RAILWAY_API_TOKEN is not configured.', { skipped: true });
 	}
 	const workspaceName = env.TREESEED_RAILWAY_WORKSPACE || resolveRailwayWorkspace(env);
 	const cacheKey = JSON.stringify({
 		tenantRoot,
-		token: env.RAILWAY_API_TOKEN,
+		token: env.TREESEED_RAILWAY_API_TOKEN,
 		workspaceName,
 	});
 	const cached = railwayConnectionCheckCache.get(cacheKey);
@@ -2470,15 +2470,15 @@ export async function checkTreeseedProviderConnections({ tenantRoot, scope = 'pr
 		return typeof resolvedValue === 'string' && resolvedValue.trim() ? resolvedValue.trim() : undefined;
 	};
 	const rawCommandEnv = {
-		GH_TOKEN: values.GH_TOKEN,
+		TREESEED_GITHUB_TOKEN: values.TREESEED_GITHUB_TOKEN,
 		TREESEED_GITHUB_IDENTITY_MODE: passthroughValue('TREESEED_GITHUB_IDENTITY_MODE'),
 		TREESEED_HOSTED_HUBS_GITHUB_OWNER: passthroughValue('TREESEED_HOSTED_HUBS_GITHUB_OWNER'),
-		CLOUDFLARE_API_TOKEN: values.CLOUDFLARE_API_TOKEN,
-		CLOUDFLARE_ACCOUNT_ID: values.CLOUDFLARE_ACCOUNT_ID,
-		RAILWAY_API_TOKEN: values.RAILWAY_API_TOKEN,
+		TREESEED_CLOUDFLARE_API_TOKEN: values.TREESEED_CLOUDFLARE_API_TOKEN,
+		TREESEED_CLOUDFLARE_ACCOUNT_ID: values.TREESEED_CLOUDFLARE_ACCOUNT_ID,
+		TREESEED_RAILWAY_API_TOKEN: values.TREESEED_RAILWAY_API_TOKEN,
 		TREESEED_RAILWAY_WORKSPACE: values.TREESEED_RAILWAY_WORKSPACE || resolveRailwayWorkspace(values),
 	};
-	const commandEnv = buildRailwayCommandEnv(rawCommandEnv);
+	const commandEnv = buildRailwayCommandEnv(createTreeseedManagedToolEnv(rawCommandEnv));
 	const checks = [
 		checkGitHubConnection({ tenantRoot, env: commandEnv }),
 		checkCloudflareConnection({ tenantRoot, env: commandEnv }),
@@ -3160,27 +3160,27 @@ function createConfigReadiness(values, validation) {
 	const providerIssues = (provider: 'github' | 'cloudflare' | 'railway') =>
 		configProblems.filter((problem) => {
 			if (provider === 'github') {
-				return problem.id === 'GH_TOKEN' || problem.id === 'GITHUB_TOKEN' || problem.entry.group === 'github';
+				return problem.id === 'TREESEED_GITHUB_TOKEN' || problem.entry.group === 'github';
 			}
 			if (provider === 'cloudflare') {
-				return problem.id.startsWith('CLOUDFLARE_')
+				return problem.id.startsWith('TREESEED_CLOUDFLARE_') || problem.id.startsWith('CLOUDFLARE_')
 					|| problem.id.includes('TURNSTILE')
 					|| problem.entry.group === 'cloudflare';
 			}
-			return problem.id.startsWith('RAILWAY_') || problem.entry.group === 'railway';
+			return problem.id.startsWith('TREESEED_RAILWAY_') || problem.entry.group === 'railway';
 		});
 	const localDevelopmentIssues = [
 		...configProblems,
 	].filter((problem) => problem.entry.group === 'local-development');
 	return {
 		github: {
-			configured: validConfigValue('GH_TOKEN'),
+			configured: validConfigValue('TREESEED_GITHUB_TOKEN'),
 		},
 		cloudflare: {
 			configured: providerIssues('cloudflare').length === 0,
 		},
 		railway: {
-			configured: validConfigValue('RAILWAY_API_TOKEN') && providerIssues('railway').length === 0,
+			configured: validConfigValue('TREESEED_RAILWAY_API_TOKEN') && providerIssues('railway').length === 0,
 		},
 		localDevelopment: {
 			configured: localDevelopmentIssues.length === 0,
@@ -3405,14 +3405,13 @@ export function applyTreeseedConfigValues({
 
 function configProblemBootstrapSystems(problem) {
 	switch (problem?.id) {
-		case 'GH_TOKEN':
-		case 'GITHUB_TOKEN':
+		case 'TREESEED_GITHUB_TOKEN':
 			return ['github'];
-		case 'CLOUDFLARE_API_TOKEN':
-		case 'CLOUDFLARE_ACCOUNT_ID':
+		case 'TREESEED_CLOUDFLARE_API_TOKEN':
+		case 'TREESEED_CLOUDFLARE_ACCOUNT_ID':
 		case 'CLOUDFLARE_ZONE_ID':
 			return ['data', 'web'];
-		case 'RAILWAY_API_TOKEN':
+		case 'TREESEED_RAILWAY_API_TOKEN':
 		case 'TREESEED_RAILWAY_WORKSPACE':
 			return ['api', 'agents'];
 		default:

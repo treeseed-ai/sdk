@@ -32,11 +32,8 @@ export const CAPACITY_PROVIDER_ENDPOINTS = {
 	assignmentComplete: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/complete`,
 	assignmentFail: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/fail`,
 	assignmentModeRuns: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/mode-runs`,
+	assignmentWorkflowOperationDispatch: (assignmentId: string, operationId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/workflow-operations/${encodeURIComponent(operationId)}/dispatch`,
 	assignmentExplanation: (assignmentId: string) => `/v1/provider/assignments/${encodeURIComponent(assignmentId)}/explanation`,
-	claimTask: '/v1/provider/tasks/claim',
-	taskEvents: (taskId: string) => `/v1/provider/tasks/${encodeURIComponent(taskId)}/events`,
-	completeTask: (taskId: string) => `/v1/provider/tasks/${encodeURIComponent(taskId)}/complete`,
-	failTask: (taskId: string) => `/v1/provider/tasks/${encodeURIComponent(taskId)}/fail`,
 	usage: '/v1/provider/usage',
 	reports: '/v1/provider/reports',
 } as const;
@@ -45,8 +42,8 @@ export const CAPACITY_PROVIDER_SCOPES = [
 	'provider:register',
 	'provider:heartbeat',
 	'provider:portfolio:read',
-	'provider:tasks:claim',
-	'provider:tasks:update',
+	'provider:assignments:read',
+	'provider:assignments:write',
 	'provider:usage:report',
 	'provider:reports:write',
 	'provider:capabilities:write',
@@ -271,57 +268,6 @@ export interface ProviderWorkdayRequest {
 export interface ProviderWorkdayResponse {
 	ok: true;
 	workDay: Record<string, unknown>;
-}
-
-export interface ProviderTaskClaimRequest {
-	providerId?: string | null;
-	runnerId?: string | null;
-	projectId?: string | null;
-	environment?: CapacityProviderEnvironmentName | null;
-	limit?: number;
-	capabilities?: string[];
-}
-
-export interface ProviderTaskClaimResponse {
-	ok: true;
-	tasks: Record<string, unknown>[];
-	leaseSeconds?: number;
-}
-
-export interface ProviderTaskEventRequest {
-	kind: string;
-	data?: Record<string, unknown>;
-	runnerId?: string | null;
-}
-
-export interface ProviderTaskEventResponse {
-	ok: true;
-	event?: Record<string, unknown>;
-}
-
-export interface ProviderTaskCompleteRequest {
-	output?: Record<string, unknown> | null;
-	outputRef?: string | null;
-	summary?: Record<string, unknown> | null;
-	usage?: ProviderUsageReport | null;
-}
-
-export interface ProviderTaskCompleteResponse {
-	ok: true;
-	task: Record<string, unknown>;
-}
-
-export interface ProviderTaskFailRequest {
-	errorCode?: string | null;
-	errorMessage: string;
-	retryable?: boolean;
-	nextVisibleAt?: string | null;
-	usage?: ProviderUsageReport | null;
-}
-
-export interface ProviderTaskFailResponse {
-	ok: true;
-	task: Record<string, unknown>;
 }
 
 export interface ProviderUsageReport {
@@ -1224,43 +1170,12 @@ export class MarketProviderClient {
 		});
 	}
 
-	claimTask(request: ProviderTaskClaimRequest = {}) {
-		return this.requestJson<ProviderTaskClaimResponse>(CAPACITY_PROVIDER_ENDPOINTS.claimTask, {
+	dispatchAssignmentWorkflowOperation(assignmentId: string, operationId: string, request: Record<string, unknown>) {
+		return this.requestJson<{ ok: true; payload: Record<string, unknown> }>(CAPACITY_PROVIDER_ENDPOINTS.assignmentWorkflowOperationDispatch(assignmentId, operationId), {
 			method: 'POST',
 			body: request,
 		}).then((response) => {
-			assertCapacityProviderOkEnvelope(response, 'Capacity provider task claim response');
-			if (!Array.isArray(response.tasks)) throw new Error('Capacity provider task claim response is missing tasks.');
-			return response;
-		});
-	}
-
-	appendTaskEvent(taskId: string, request: ProviderTaskEventRequest) {
-		return this.requestJson<ProviderTaskEventResponse>(CAPACITY_PROVIDER_ENDPOINTS.taskEvents(taskId), {
-			method: 'POST',
-			body: request,
-		}).then((response) => {
-			assertCapacityProviderOkEnvelope(response, 'Capacity provider task event response');
-			return response;
-		});
-	}
-
-	completeTask(taskId: string, request: ProviderTaskCompleteRequest = {}) {
-		return this.requestJson<ProviderTaskCompleteResponse>(CAPACITY_PROVIDER_ENDPOINTS.completeTask(taskId), {
-			method: 'POST',
-			body: request,
-		}).then((response) => {
-			assertCapacityProviderOkEnvelope(response, 'Capacity provider task completion response');
-			return response;
-		});
-	}
-
-	failTask(taskId: string, request: ProviderTaskFailRequest) {
-		return this.requestJson<ProviderTaskFailResponse>(CAPACITY_PROVIDER_ENDPOINTS.failTask(taskId), {
-			method: 'POST',
-			body: request,
-		}).then((response) => {
-			assertCapacityProviderOkEnvelope(response, 'Capacity provider task failure response');
+			assertCapacityProviderOkEnvelope(response, 'Capacity provider workflow operation dispatch response');
 			return response;
 		});
 	}

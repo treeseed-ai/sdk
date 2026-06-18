@@ -1,3 +1,5 @@
+import { TREESEED_GITHUB_TOKEN_ENV } from '../../service-credentials.ts';
+
 export type TreeseedGitHubCredentialResolution = {
 	repository: string;
 	envName: string;
@@ -59,10 +61,8 @@ export function resolveGitHubCredentialForRepository(
 			token: repositoryToken,
 		};
 	}
-	const fallbackToken = configuredValue(values, 'GH_TOKEN')
-		|| configuredValue(values, 'GITHUB_TOKEN')
-		|| configuredValue(env, 'GH_TOKEN')
-		|| configuredValue(env, 'GITHUB_TOKEN');
+	const fallbackToken = configuredValue(values, TREESEED_GITHUB_TOKEN_ENV)
+		|| configuredValue(env, TREESEED_GITHUB_TOKEN_ENV);
 	if (fallbackToken) {
 		return {
 			repository: normalizedRepository,

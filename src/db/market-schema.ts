@@ -1397,15 +1397,248 @@ export const agentCapacityPlans = pgTable('agent_capacity_plans', {
 	reservesJson: text('reserves_json').notNull().default('{}'),
 	blockersJson: text('blockers_json').notNull().default('[]'),
 	priorityRationale: text('priority_rationale'),
+	reviewJson: text('review_json').notNull().default('{}'),
 	metadataJson: text('metadata_json').notNull().default('{}'),
 	acceptedAt: text('accepted_at'),
 	scheduledAt: text('scheduled_at'),
+	supersededAt: text('superseded_at'),
 	createdAt: text('created_at').notNull(),
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
 	index('idx_agent_capacity_plans_decision').on(table.decisionId, table.status, table.createdAt),
 	index('idx_agent_capacity_plans_project').on(table.projectId, table.status, table.createdAt),
 	index('idx_agent_capacity_plans_workday').on(table.workDayId, table.status, table.createdAt)
+]);
+
+export const treeDxProxyHandles = pgTable('treedx_proxy_handles', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id').notNull(),
+	assignmentId: text('assignment_id'),
+	repositoryId: text('repository_id'),
+	workspaceId: text('workspace_id'),
+	status: text('status').notNull().default('issued'),
+	scopesJson: text('scopes_json').notNull().default('[]'),
+	allowedOperationsJson: text('allowed_operations_json').notNull().default('[]'),
+	allowedPathsJson: text('allowed_paths_json').notNull().default('[]'),
+	tokenHash: text('token_hash'),
+	expiresAt: text('expires_at'),
+	issuedAt: text('issued_at').notNull(),
+	revokedAt: text('revoked_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_treedx_proxy_handles_assignment').on(table.assignmentId, table.status, table.expiresAt),
+	index('idx_treedx_proxy_handles_project').on(table.projectId, table.status, table.updatedAt)
+]);
+
+export const treeDxProjectProxyAudit = pgTable('treedx_project_proxy_audit', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id').notNull(),
+	assignmentId: text('assignment_id'),
+	actorType: text('actor_type').notNull(),
+	actorId: text('actor_id'),
+	method: text('method').notNull(),
+	path: text('path').notNull(),
+	handleJson: text('handle_json').notNull().default('{}'),
+	resultStatus: text('result_status').notNull().default('observed'),
+	reasonCode: text('reason_code'),
+	reason: text('reason'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_treedx_project_proxy_audit_project').on(table.projectId, table.createdAt),
+	index('idx_treedx_project_proxy_audit_assignment').on(table.assignmentId, table.createdAt),
+	index('idx_treedx_project_proxy_audit_result').on(table.projectId, table.resultStatus, table.createdAt)
+]);
+
+export const secretMetadataRecords = pgTable('secret_metadata_records', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id'),
+	name: text('name').notNull(),
+	secretClass: text('secret_class').notNull(),
+	custodyMode: text('custody_mode').notNull(),
+	ownerKind: text('owner_kind').notNull(),
+	status: text('status').notNull().default('active'),
+	githubSecretTargetJson: text('github_secret_target_json').notNull().default('{}'),
+	escrowRecordId: text('escrow_record_id'),
+	apiDecryptable: integer('api_decryptable').notNull().default(0),
+	plaintextAllowed: integer('plaintext_allowed').notNull().default(0),
+	failClosedCode: text('fail_closed_code'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+	tombstonedAt: text('tombstoned_at'),
+}, (table) => [
+	index('idx_secret_metadata_team_project').on(table.teamId, table.projectId, table.status),
+	index('idx_secret_metadata_custody').on(table.custodyMode, table.status),
+	uniqueIndex('idx_secret_metadata_team_name').on(table.teamId, table.projectId, table.name)
+]);
+
+export const clientEncryptedEscrowRecords = pgTable('client_encrypted_escrow_records', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id'),
+	secretId: text('secret_id').notNull(),
+	status: text('status').notNull().default('active'),
+	ciphertextRef: text('ciphertext_ref').notNull(),
+	algorithm: text('algorithm').notNull(),
+	wrappingKeyId: text('wrapping_key_id').notNull(),
+	createdByClientId: text('created_by_client_id'),
+	expiresAt: text('expires_at'),
+	migratedTo: text('migrated_to'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+	tombstonedAt: text('tombstoned_at'),
+}, (table) => [
+	index('idx_client_encrypted_escrow_secret').on(table.secretId, table.status),
+	index('idx_client_encrypted_escrow_project').on(table.teamId, table.projectId, table.status)
+]);
+
+export const githubRepositoryGrants = pgTable('github_repository_grants', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id'),
+	repository: text('repository').notNull(),
+	installationId: text('installation_id'),
+	accountLogin: text('account_login'),
+	accountId: text('account_id'),
+	status: text('status').notNull().default('active'),
+	permissionsJson: text('permissions_json').notNull().default('{}'),
+	environmentsJson: text('environments_json').notNull().default('[]'),
+	driftCode: text('drift_code'),
+	observedAt: text('observed_at'),
+	revokedAt: text('revoked_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_github_repository_grants_project').on(table.teamId, table.projectId, table.status),
+	uniqueIndex('idx_github_repository_grants_repository').on(table.teamId, table.repository)
+]);
+
+export const githubAppInstallationRecords = pgTable('github_app_installation_records', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	installationId: text('installation_id').notNull(),
+	accountLogin: text('account_login'),
+	accountId: text('account_id'),
+	accountType: text('account_type'),
+	status: text('status').notNull().default('active'),
+	permissionsJson: text('permissions_json').notNull().default('{}'),
+	repositorySelection: text('repository_selection'),
+	driftCode: text('drift_code'),
+	observedAt: text('observed_at'),
+	revokedAt: text('revoked_at'),
+	suspendedAt: text('suspended_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_github_app_installations_team_status').on(table.teamId, table.status, table.updatedAt),
+	uniqueIndex('idx_github_app_installations_team_installation').on(table.teamId, table.installationId)
+]);
+
+export const githubAppTokenIssuanceRecords = pgTable('github_app_token_issuance_records', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id'),
+	assignmentId: text('assignment_id'),
+	providerId: text('provider_id'),
+	workdayId: text('workday_id'),
+	operationId: text('operation_id'),
+	repository: text('repository').notNull(),
+	installationId: text('installation_id').notNull(),
+	status: text('status').notNull().default('issued'),
+	tokenPrefix: text('token_prefix'),
+	tokenHash: text('token_hash'),
+	permissionsJson: text('permissions_json').notNull().default('{}'),
+	allowedOperationsJson: text('allowed_operations_json').notNull().default('[]'),
+	expiresAt: text('expires_at'),
+	issuedAt: text('issued_at'),
+	revokedAt: text('revoked_at'),
+	failClosedCode: text('fail_closed_code'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_github_app_token_issuance_project').on(table.teamId, table.projectId, table.status, table.updatedAt),
+	index('idx_github_app_token_issuance_operation').on(table.operationId, table.status, table.expiresAt),
+	index('idx_github_app_token_issuance_assignment').on(table.assignmentId, table.status, table.expiresAt)
+]);
+
+export const workflowOperationRecords = pgTable('workflow_operation_records', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id'),
+	name: text('name').notNull(),
+	repository: text('repository').notNull(),
+	workflowFile: text('workflow_file').notNull(),
+	secretBearing: integer('secret_bearing').notNull().default(0),
+	trustedExecutionSetId: text('trusted_execution_set_id').notNull(),
+	dispatchJson: text('dispatch_json').notNull().default('{}'),
+	inputsJson: text('inputs_json').notNull().default('[]'),
+	secretClassesJson: text('secret_classes_json').notNull().default('[]'),
+	status: text('status').notNull().default('active'),
+	failClosedCode: text('fail_closed_code'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+	blockedAt: text('blocked_at'),
+}, (table) => [
+	index('idx_workflow_operation_records_project').on(table.teamId, table.projectId, table.status),
+	uniqueIndex('idx_workflow_operation_records_operation').on(table.teamId, table.id)
+]);
+
+export const workflowDispatchRecords = pgTable('workflow_dispatch_records', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id'),
+	workflowOperationId: text('workflow_operation_id').notNull(),
+	platformOperationId: text('platform_operation_id'),
+	repository: text('repository').notNull(),
+	workflowFile: text('workflow_file').notNull(),
+	ref: text('ref'),
+	status: text('status').notNull().default('queued'),
+	inputsJson: text('inputs_json').notNull().default('{}'),
+	resultJson: text('result_json').notNull().default('{}'),
+	failClosedCode: text('fail_closed_code'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+	dispatchedAt: text('dispatched_at'),
+	completedAt: text('completed_at'),
+}, (table) => [
+	index('idx_workflow_dispatch_records_operation').on(table.workflowOperationId, table.status, table.createdAt),
+	index('idx_workflow_dispatch_records_platform').on(table.platformOperationId)
+]);
+
+export const treeDxCredentialIssuanceRecords = pgTable('treedx_credential_issuance_records', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id').notNull(),
+	assignmentId: text('assignment_id'),
+	repository: text('repository'),
+	credentialProvider: text('credential_provider').notNull(),
+	status: text('status').notNull().default('issued'),
+	tokenPrefix: text('token_prefix'),
+	tokenHash: text('token_hash'),
+	scopesJson: text('scopes_json').notNull().default('[]'),
+	allowedOperationsJson: text('allowed_operations_json').notNull().default('[]'),
+	expiresAt: text('expires_at'),
+	issuedAt: text('issued_at'),
+	revokedAt: text('revoked_at'),
+	failClosedCode: text('fail_closed_code'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_treedx_credential_issuance_assignment').on(table.assignmentId, table.status, table.expiresAt),
+	index('idx_treedx_credential_issuance_project').on(table.projectId, table.status, table.updatedAt)
 ]);
 
 export const approvalRequests = pgTable('approval_requests', {
@@ -2232,6 +2465,12 @@ export const treeseedMarketSchema = {
 	treeDxMirrors,
 	treeDxShares,
 	treeDxDeployments,
+	secretMetadataRecords,
+	clientEncryptedEscrowRecords,
+	githubRepositoryGrants,
+	workflowOperationRecords,
+	workflowDispatchRecords,
+	treeDxCredentialIssuanceRecords,
 	hubLaunches,
 	hubLaunchEvents,
 	hubWorkspaceLinks,

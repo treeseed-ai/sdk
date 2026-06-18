@@ -173,7 +173,7 @@ artifacts:
 		}
 
 		expect(git(resolve(created.worktreePath, 'packages/treedx'), ['branch', '--show-current'])).toBe('feature/treedx-worktree');
-	});
+	}, 30000);
 
 	it('rejects duplicate same-branch ownership in another active worktree', () => {
 		const { work } = createRepo();

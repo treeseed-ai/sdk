@@ -1,4 +1,5 @@
 import { request as httpsRequest } from 'node:https';
+import { resolveTreeseedRailwayApiToken } from '../../service-credentials.ts';
 
 const DEFAULT_RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
 const DEFAULT_RAILWAY_WORKSPACE = 'knowledge-coop';
@@ -117,7 +118,7 @@ export function isUsableRailwayToken(value: string | undefined | null) {
 }
 
 export function resolveRailwayApiToken(env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env) {
-	const token = configuredEnvValue(env, 'RAILWAY_API_TOKEN');
+	const token = resolveTreeseedRailwayApiToken(env);
 	return isUsableRailwayToken(token) ? token : '';
 }
 

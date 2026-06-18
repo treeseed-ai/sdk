@@ -102,8 +102,8 @@ describe('destroy planning', () => {
 
 	it('preserves data repositories unless deleteData is set', async () => {
 		const tenantRoot = createDestroyFixture();
-		vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'account-123');
-		vi.stubEnv('RAILWAY_API_TOKEN', '');
+		vi.stubEnv('TREESEED_CLOUDFLARE_ACCOUNT_ID', 'account-123');
+		vi.stubEnv('TREESEED_RAILWAY_API_TOKEN', '');
 
 		const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
 			target: createPersistentDeployTarget('staging'),
@@ -119,8 +119,8 @@ describe('destroy planning', () => {
 
 	it('plans data repository deletion when deleteData is set', async () => {
 		const tenantRoot = createDestroyFixture();
-		vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'account-123');
-		vi.stubEnv('RAILWAY_API_TOKEN', '');
+		vi.stubEnv('TREESEED_CLOUDFLARE_ACCOUNT_ID', 'account-123');
+		vi.stubEnv('TREESEED_RAILWAY_API_TOKEN', '');
 
 		const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
 			target: createPersistentDeployTarget('staging'),
@@ -141,8 +141,8 @@ describe('destroy planning', () => {
 
 	it('plans shared Pages project deletion only for production delete-data destroys', async () => {
 		const tenantRoot = createDestroyFixture();
-		vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'account-123');
-		vi.stubEnv('RAILWAY_API_TOKEN', '');
+		vi.stubEnv('TREESEED_CLOUDFLARE_ACCOUNT_ID', 'account-123');
+		vi.stubEnv('TREESEED_RAILWAY_API_TOKEN', '');
 
 		const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
 			target: createPersistentDeployTarget('prod'),
@@ -185,8 +185,8 @@ describe('destroy planning', () => {
 
 	it('plans local Docker cleanup when local delete-data destroy sees matching resources', async () => {
 		const tenantRoot = createDestroyFixture();
-		vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'account-123');
-		vi.stubEnv('RAILWAY_API_TOKEN', '');
+		vi.stubEnv('TREESEED_CLOUDFLARE_ACCOUNT_ID', 'account-123');
+		vi.stubEnv('TREESEED_RAILWAY_API_TOKEN', '');
 		setDestroyDockerRunnerForTests((args: string[]) => {
 			if (args[0] === 'info') return { status: 0, stdout: '', stderr: '' };
 			if (args[0] === 'ps') return {
@@ -238,8 +238,8 @@ describe('destroy planning', () => {
 	it('deletes local Docker containers before volumes and networks during local delete-data destroy', async () => {
 		const tenantRoot = createDestroyFixture();
 		const calls: string[][] = [];
-		vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'account-123');
-		vi.stubEnv('RAILWAY_API_TOKEN', '');
+		vi.stubEnv('TREESEED_CLOUDFLARE_ACCOUNT_ID', 'account-123');
+		vi.stubEnv('TREESEED_RAILWAY_API_TOKEN', '');
 		setDestroyDockerRunnerForTests((args: string[]) => {
 			calls.push(args);
 			if (args[0] === 'info') return { status: 0, stdout: '', stderr: '' };
@@ -269,14 +269,14 @@ describe('destroy planning', () => {
 
 	it('collects Cloudflare API verification counts without Wrangler list output', async () => {
 		const tenantRoot = createDestroyFixture();
-		vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'account-123');
-		vi.stubEnv('RAILWAY_API_TOKEN', '');
+		vi.stubEnv('TREESEED_CLOUDFLARE_ACCOUNT_ID', 'account-123');
+		vi.stubEnv('TREESEED_RAILWAY_API_TOKEN', '');
 		const target = createPersistentDeployTarget('staging');
 		const deployConfig = loadCliDeployConfig(tenantRoot);
 		const state = loadDeployState(tenantRoot, deployConfig, { target });
 		const verification = cloudflareDestroyVerification(tenantRoot, deployConfig, state, {
-			CLOUDFLARE_ACCOUNT_ID: 'account-123',
-			CLOUDFLARE_API_TOKEN: '',
+			TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
+			TREESEED_CLOUDFLARE_API_TOKEN: '',
 		});
 
 		expect(verification).toMatchObject({

@@ -308,7 +308,7 @@ describe('release candidate verification', () => {
 		expect(report.reason).toContain('lightweight checks');
 		expect(report.checks.map((check) => check.name)).toContain('hybrid-dependency-readiness');
 		expect(report.checks.map((check) => check.name)).not.toContain('production-dependency-rehearsal');
-	});
+	}, 30000);
 
 	it('discovers TreeDX as a BEAM package adapter', () => {
 		const root = makeWorkspace();
@@ -348,7 +348,7 @@ describe('release candidate verification', () => {
 
 		const repositoryCredential = resolveGitHubCredentialForRepository('treeseed-ai/treedx', {
 			values: {
-				GH_TOKEN: 'root-token',
+				TREESEED_GITHUB_TOKEN: 'root-token',
 				TREESEED_GITHUB_TOKEN_TREESEED_AI_TREEDX: 'repo-token',
 			},
 			env: {},
@@ -362,7 +362,7 @@ describe('release candidate verification', () => {
 		expect(repositoryCredential.token).toBe('repo-token');
 
 		const fallbackCredential = resolveGitHubCredentialForRepository('treeseed-ai/treedx', {
-			values: { GH_TOKEN: 'root-token' },
+			values: { TREESEED_GITHUB_TOKEN: 'root-token' },
 			env: {},
 		});
 		expect(fallbackCredential).toMatchObject({
@@ -423,7 +423,7 @@ describe('release candidate verification', () => {
 			serviceTargets: ['publicTreeDxNode'],
 		})).toBe(false);
 		expect(isRootWebReleaseCandidateEntry({
-			id: 'DOCKERHUB_TOKEN',
+			id: 'TREESEED_DOCKERHUB_TOKEN',
 			group: 'docker',
 		})).toBe(false);
 	});

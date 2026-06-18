@@ -470,7 +470,7 @@ services:
 			serviceId: 'svc-runner-01',
 			name: 'acme-docs-worker-runner-01-data',
 			mountPath: '/data',
-			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
 			settleAttempts: 1,
 			settleDelayMs: 0,
@@ -534,7 +534,7 @@ services:
 			serviceId: 'svc-runner-01',
 			name: 'acme-docs-worker-runner-01-data',
 			mountPath: '/data',
-			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
 			settleAttempts: 1,
 			settleDelayMs: 0,
@@ -595,7 +595,7 @@ services:
 			serviceId: 'svc-runner-01',
 			name: 'acme-docs-worker-runner-01-data',
 			mountPath: '/data',
-			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
 			settleAttempts: 1,
 			settleDelayMs: 0,
@@ -654,7 +654,7 @@ services:
 			serviceId: 'svc-postgres',
 			name: 'postgres-staging-data',
 			mountPath: '/var/lib/postgresql/data',
-			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
 		});
 
@@ -733,7 +733,7 @@ services:
 			serviceId: 'svc-postgres',
 			name: 'postgres-staging-data',
 			mountPath: '/var/lib/postgresql/data',
-			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
 		});
 
@@ -811,7 +811,7 @@ services:
 			serviceId: 'svc-treedx',
 			name: 'public-treedx-node-01-volume',
 			mountPath: '/data',
-			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
 			settleAttempts: 1,
 			settleDelayMs: 0,
@@ -893,7 +893,7 @@ services:
 			serviceId: 'svc-runner-01',
 			name: 'acme-docs-worker-runner-01-data',
 			mountPath: '/data',
-			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
 		});
 
@@ -905,7 +905,7 @@ services:
 
 	it('does not create schedules for deleted root Market processing roles', async () => {
 		const tenantRoot = await createTenantFixture();
-		vi.stubEnv('RAILWAY_API_TOKEN', 'railway-token');
+		vi.stubEnv('TREESEED_RAILWAY_API_TOKEN', 'railway-token');
 		vi.stubEnv('TREESEED_RAILWAY_ENVIRONMENT_ID', 'env-production');
 
 		const fetchMock = vi.fn(async (_input, init) => {
@@ -950,7 +950,7 @@ services:
 
 	it('verifies no Railway schedules for deleted root Market processing roles', async () => {
 		const tenantRoot = await createTenantFixture();
-		vi.stubEnv('RAILWAY_API_TOKEN', 'railway-token');
+		vi.stubEnv('TREESEED_RAILWAY_API_TOKEN', 'railway-token');
 		vi.stubEnv('TREESEED_RAILWAY_ENVIRONMENT_ID', 'env-production');
 
 		const fetchMock = vi.fn(async (_input, init) => {
@@ -1076,7 +1076,7 @@ services:
 		});
 
 		const result = await verifyRailwayManagedResources(tenantRoot, 'staging', {
-			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
 		});
 
@@ -1172,7 +1172,7 @@ services:
 
 		const result = await waitForRailwayManagedDeploymentsSettled(tenantRoot, 'staging', {
 			services: services.map((service) => ({ ...service, projectId: 'railway-project-1' })),
-			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
 			pollMs: 0,
 			onProgress(line) {
@@ -1233,7 +1233,7 @@ services:
 
 		const result = await waitForRailwayManagedDeploymentsSettled(tenantRoot, 'staging', {
 			services: services.map((service) => ({ ...service, projectId: 'railway-project-1' })),
-			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
 			timeoutMs: 0,
 			pollMs: 0,
@@ -1257,7 +1257,7 @@ services:
 
 		expect(() =>
 			validateRailwayDeployPrerequisites(tenantRoot, 'prod', {
-				env: { RAILWAY_API_TOKEN: 'railway-token' },
+				env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
 			}),
 		).not.toThrow();
 
@@ -1295,7 +1295,7 @@ services:
 		});
 
 		const result = await ensureRailwayScheduledJobs(tenantRoot, 'prod', {
-			env: { RAILWAY_API_TOKEN: 'railway-token' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
 		});
 
@@ -1303,21 +1303,21 @@ services:
 		expect(result).toEqual([]);
 	});
 
-	it('uses RAILWAY_API_TOKEN as the Treeseed-owned Railway API auth source', async () => {
+	it('uses TREESEED_RAILWAY_API_TOKEN as the Treeseed-owned Railway API auth source', async () => {
 		expect(resolveRailwayAuthToken({
-			RAILWAY_API_TOKEN: 'railway-api-token',
+			TREESEED_RAILWAY_API_TOKEN: 'railway-api-token',
 		})).toBe('railway-api-token');
 		expect(resolveRailwayAuthToken({ RAILWAY_TOKEN: 'railway-cli-token' })).toBe('');
 		expect(resolveRailwayAuthToken({})).toBe('');
-		expect(buildRailwayCommandEnv({ RAILWAY_API_TOKEN: 'railway-api-token' })).toMatchObject({
-			RAILWAY_API_TOKEN: 'railway-api-token',
+		expect(buildRailwayCommandEnv({ TREESEED_RAILWAY_API_TOKEN: 'railway-api-token' })).toMatchObject({
+			TREESEED_RAILWAY_API_TOKEN: 'railway-api-token',
 		});
-		expect(buildRailwayCommandEnv({ RAILWAY_API_TOKEN: 'railway-api-token' }).RAILWAY_TOKEN).toBeUndefined();
+		expect(buildRailwayCommandEnv({ TREESEED_RAILWAY_API_TOKEN: 'railway-api-token' }).RAILWAY_TOKEN).toBeUndefined();
 		expect(buildRailwayCommandEnv({
-			RAILWAY_API_TOKEN: 'railway-api-token',
+			TREESEED_RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_TOKEN: 'railway-project-token',
 		})).toMatchObject({
-			RAILWAY_API_TOKEN: 'railway-api-token',
+			TREESEED_RAILWAY_API_TOKEN: 'railway-api-token',
 			RAILWAY_TOKEN: 'railway-project-token',
 		});
 	});

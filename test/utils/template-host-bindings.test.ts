@@ -350,7 +350,7 @@ describe('template host binding config writer', () => {
 			projectRoot: root,
 			hostBindings: { sourceRepository: resolvedHost() },
 			hostBindingPlans: {
-				configWrites: [{ ...baseWrite, valueFrom: 'machineConfig.GITHUB_TOKEN' }],
+				configWrites: [{ ...baseWrite, valueFrom: 'machineConfig.TREESEED_GITHUB_TOKEN' }],
 			},
 		})).toThrow(/Unsupported host binding config value source/u);
 	});

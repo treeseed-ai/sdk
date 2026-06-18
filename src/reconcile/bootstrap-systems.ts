@@ -105,13 +105,13 @@ function hasValue(env: NodeJS.ProcessEnv | Record<string, string | undefined>, k
 function missingForSystem(system: TreeseedRunnableBootstrapSystem, env: NodeJS.ProcessEnv | Record<string, string | undefined>) {
 	switch (system) {
 		case 'github':
-			return hasValue(env, 'GH_TOKEN') || hasValue(env, 'GITHUB_TOKEN') ? [] : ['GH_TOKEN'];
+			return hasValue(env, 'TREESEED_GITHUB_TOKEN') ? [] : ['TREESEED_GITHUB_TOKEN'];
 		case 'data':
 		case 'web':
-			return hasValue(env, 'CLOUDFLARE_API_TOKEN') ? [] : ['CLOUDFLARE_API_TOKEN'];
+			return hasValue(env, 'TREESEED_CLOUDFLARE_API_TOKEN') ? [] : ['TREESEED_CLOUDFLARE_API_TOKEN'];
 		case 'api':
 		case 'agents':
-			return hasValue(env, 'RAILWAY_API_TOKEN') ? [] : ['RAILWAY_API_TOKEN'];
+			return hasValue(env, 'TREESEED_RAILWAY_API_TOKEN') ? [] : ['TREESEED_RAILWAY_API_TOKEN'];
 		default:
 			return [];
 	}

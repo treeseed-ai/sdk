@@ -198,12 +198,12 @@ function setConfigValue(
 
 function seedHostedValues(tenantRoot: string) {
 	for (const scope of ['staging', 'prod'] as const) {
-		setConfigValue(tenantRoot, scope, 'GH_TOKEN', 'github-token-value', 'secret');
-		setConfigValue(tenantRoot, scope, 'CODEX_API_KEY', 'codex-test-key-1234567890', 'secret', 'scoped');
-		setConfigValue(tenantRoot, scope, 'CLOUDFLARE_API_TOKEN', 'cloudflare-token-value', 'secret');
-		setConfigValue(tenantRoot, scope, 'RAILWAY_API_TOKEN', 'railway-token-value', 'secret');
+		setConfigValue(tenantRoot, scope, 'TREESEED_GITHUB_TOKEN', 'github-token-value', 'secret');
+		setConfigValue(tenantRoot, scope, 'TREESEED_CODEX_API_KEY', 'codex-test-key-1234567890', 'secret', 'scoped');
+		setConfigValue(tenantRoot, scope, 'TREESEED_CLOUDFLARE_API_TOKEN', 'cloudflare-token-value', 'secret');
+		setConfigValue(tenantRoot, scope, 'TREESEED_RAILWAY_API_TOKEN', 'railway-token-value', 'secret');
 		setConfigValue(tenantRoot, scope, 'TREESEED_RAILWAY_WORKSPACE', 'acme-workspace');
-		setConfigValue(tenantRoot, scope, 'CLOUDFLARE_ACCOUNT_ID', 'account-123');
+		setConfigValue(tenantRoot, scope, 'TREESEED_CLOUDFLARE_ACCOUNT_ID', 'account-123');
 		setConfigValue(tenantRoot, scope, 'TREESEED_CLOUDFLARE_PAGES_PROJECT_NAME', 'test-site');
 		setConfigValue(tenantRoot, scope, 'TREESEED_CLOUDFLARE_PAGES_PREVIEW_PROJECT_NAME', 'test-site');
 		setConfigValue(tenantRoot, scope, 'TREESEED_CONTENT_BUCKET_NAME', 'test-site-content');
@@ -283,8 +283,8 @@ describe('config GitHub environment sync hard cut', () => {
 		const tenantRoot = createTenantFixtureWithPlaceholderCloudflareAccount();
 		writeDefaultMachineConfig(tenantRoot);
 		unlockSecrets(tenantRoot);
-		setConfigValue(tenantRoot, 'staging', 'CODEX_API_KEY', 'codex-test-key-1234567890', 'secret', 'scoped');
-		setConfigValue(tenantRoot, 'staging', 'GH_TOKEN', 'github-token-value', 'secret');
+		setConfigValue(tenantRoot, 'staging', 'TREESEED_CODEX_API_KEY', 'codex-test-key-1234567890', 'secret', 'scoped');
+		setConfigValue(tenantRoot, 'staging', 'TREESEED_GITHUB_TOKEN', 'github-token-value', 'secret');
 
 		await expect(finalizeTreeseedConfig({
 			tenantRoot,

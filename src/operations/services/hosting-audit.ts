@@ -340,17 +340,17 @@ function appendManualConfigChecks(
 			id: 'web.cloudflare.token',
 			hostType: 'web',
 			provider: 'cloudflare',
-			keys: ['CLOUDFLARE_API_TOKEN'],
+			keys: ['TREESEED_CLOUDFLARE_API_TOKEN'],
 			label: 'Web provider token',
-			remediation: 'Set CLOUDFLARE_API_TOKEN for TreeSeed-managed Web hosting.',
+			remediation: 'Set TREESEED_CLOUDFLARE_API_TOKEN for TreeSeed-managed Web hosting.',
 		});
 		requiredKeyCheck(checks, values, {
 			id: 'web.cloudflare.account',
 			hostType: 'web',
 			provider: 'cloudflare',
-			keys: ['CLOUDFLARE_ACCOUNT_ID'],
+			keys: ['TREESEED_CLOUDFLARE_ACCOUNT_ID'],
 			label: 'Web provider account',
-			remediation: 'Set CLOUDFLARE_ACCOUNT_ID for TreeSeed-managed Web hosting.',
+			remediation: 'Set TREESEED_CLOUDFLARE_ACCOUNT_ID for TreeSeed-managed Web hosting.',
 		});
 	}
 	if (hostKinds.includes('email')) {

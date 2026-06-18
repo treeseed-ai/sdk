@@ -42,6 +42,7 @@ const RESOURCE_BUCKETS = [
 
 const SUPPORTED_BUCKETS = new Set(['teams', 'repositoryHosts', 'projects', 'hubRepositories', 'products', 'catalogArtifacts', 'capacityProviders', 'capacityGrants', 'workPolicies']);
 const ALLOWED_ENVIRONMENTS = new Set<string>(SEED_ENVIRONMENTS);
+const LEGACY_PROVIDER_TASK_SCOPE_PREFIX = 'provider:tasks:';
 const ALLOWED_RECIPE_CHANNELS = new Set<string>(['cli', 'ui', 'api', 'provider-runtime', 'system-check']);
 const ALLOWED_RECIPE_OPERATIONS = new Set<string>([
 	'navigate',
@@ -356,12 +357,22 @@ function parseProviderRegistration(value: unknown, path: string, diagnostics: Se
 	if (apiKeyValue.createIfMissing !== undefined && typeof apiKeyValue.createIfMissing !== 'boolean') {
 		diagnostics.push(errorDiagnostic('seed.invalid_boolean', 'Expected registration.apiKey.createIfMissing to be a boolean.', `${path}.apiKey.createIfMissing`));
 	}
+	const scopes = stringArrayField(apiKeyValue, 'scopes', `${path}.apiKey`, diagnostics);
+	scopes?.forEach((scope, index) => {
+		if (scope.startsWith(LEGACY_PROVIDER_TASK_SCOPE_PREFIX)) {
+			diagnostics.push(errorDiagnostic(
+				'seed.legacy_provider_task_scope',
+				`Legacy provider task scope ${scope} is not supported; use provider assignment scopes instead.`,
+				`${path}.apiKey.scopes[${index}]`,
+			));
+		}
+	});
 	return {
 		apiKey: {
 			createIfMissing: typeof apiKeyValue.createIfMissing === 'boolean' ? apiKeyValue.createIfMissing : undefined,
 			name: asString(apiKeyValue.name) || undefined,
 			plaintextKey: asString(apiKeyValue.plaintextKey) || undefined,
-			scopes: stringArrayField(apiKeyValue, 'scopes', `${path}.apiKey`, diagnostics),
+			scopes,
 			expiresAt: asString(apiKeyValue.expiresAt) || undefined,
 		},
 	};

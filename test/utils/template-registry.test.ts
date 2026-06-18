@@ -206,7 +206,7 @@ describe('template registry fulfillment', () => {
 					{
 						requirementKey: 'sourceRepository',
 						requirementKind: 'host' as const,
-						env: 'GITHUB_TOKEN',
+						env: 'TREESEED_GITHUB_TOKEN',
 						sensitivity: 'secret',
 						source: 'selected-host',
 						targets: ['github-secret'],
@@ -246,7 +246,7 @@ describe('template registry fulfillment', () => {
 		})).resolves.toEqual([]);
 		expect(parseYaml(readFileSync(resolve(targetRoot, 'src/env.yaml'), 'utf8'))).toMatchObject({
 			entries: {
-				GITHUB_TOKEN: {
+				TREESEED_GITHUB_TOKEN: {
 					sourceRequirement: 'sourceRepository',
 					sourceProvider: 'github',
 				},

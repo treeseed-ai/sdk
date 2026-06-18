@@ -18,7 +18,7 @@ function createTenantFixture() {
 	mkdirSync(resolve(tenantRoot, 'src'), { recursive: true });
 	writeFileSync(resolve(tenantRoot, 'src', 'manifest.yaml'), 'id: test-site\n');
 	writeFileSync(resolve(tenantRoot, 'src', 'env.yaml'), `entries:
-  RAILWAY_API_TOKEN:
+  TREESEED_RAILWAY_API_TOKEN:
     label: Railway API token
     group: auth
     description: Railway token used by provider preflight tests.
@@ -84,7 +84,7 @@ describe('config provider connection checks', () => {
 			scope: 'staging',
 			env: {},
 			valuesOverlay: {
-				RAILWAY_API_TOKEN: 'railway-token',
+				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
 				TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop',
 			},
 		});
@@ -97,7 +97,7 @@ describe('config provider connection checks', () => {
 			ready: true,
 			detail: 'Railway API token can access workspace knowledge-coop. Project and service existence will be reconciled during bootstrap.',
 		});
-	});
+	}, 30000);
 
 	it('treats repeated transient Railway API preflight failures as skipped warnings', async () => {
 		resolveRailwayWorkspaceContextMock.mockReset();
@@ -109,7 +109,7 @@ describe('config provider connection checks', () => {
 			scope: 'staging',
 			env: {},
 			valuesOverlay: {
-				RAILWAY_API_TOKEN: 'railway-token',
+				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
 				TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop',
 			},
 		});

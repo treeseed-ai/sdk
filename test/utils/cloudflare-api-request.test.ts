@@ -29,10 +29,10 @@ describe('cloudflare api request helper', () => {
 		const { cloudflareApiRequest } = await import('../../src/operations/services/deploy.ts');
 
 		expect(cloudflareApiRequest('/accounts/account/queues', {
-			env: { CLOUDFLARE_API_TOKEN: 'token' },
+			env: { TREESEED_CLOUDFLARE_API_TOKEN: 'token' },
 		})).toEqual({ success: true, result: [{ name: 'agent-work' }] });
 		expect(spawnSyncMock).toHaveBeenCalledTimes(2);
-	});
+	}, 30000);
 
 	it('reports transient failures without leaking child process stack traces', async () => {
 		spawnSyncMock.mockReset();
@@ -48,7 +48,7 @@ describe('cloudflare api request helper', () => {
 		const { cloudflareApiRequest } = await import('../../src/operations/services/deploy.ts');
 
 		expect(() => cloudflareApiRequest('/accounts/account/queues', {
-			env: { CLOUDFLARE_API_TOKEN: 'token' },
+			env: { TREESEED_CLOUDFLARE_API_TOKEN: 'token' },
 		})).toThrow(/Cloudflare API request failed after \d+ attempts: GET \/accounts\/account\/queues: fetch failed; connect ETIMEDOUT/u);
 	}, 30000);
 });

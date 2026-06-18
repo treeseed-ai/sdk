@@ -26,7 +26,7 @@ import {
 } from '../../src/operations/services/config-runtime.ts';
 
 const railwayRegistryFixtureEntries = `
-  RAILWAY_API_TOKEN:
+  TREESEED_RAILWAY_API_TOKEN:
     label: Railway API token
     group: auth
     description: Railway API token.
@@ -288,18 +288,18 @@ describe('config runtime shared environment values', () => {
 		unlockSecrets(tenantRoot);
 
 		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
-			id: 'RAILWAY_API_TOKEN',
+			id: 'TREESEED_RAILWAY_API_TOKEN',
 			sensitivity: 'secret',
 			storage: 'shared',
 		} as any, 'railway-secret-token');
 
 		const redacted = collectTreeseedPrintEnvReport({ tenantRoot, scope: 'staging', revealSecrets: false });
-		const redactedEntry = redacted.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN');
+		const redactedEntry = redacted.entries.find((entry) => entry.id === 'TREESEED_RAILWAY_API_TOKEN');
 		expect(redactedEntry?.value).toBe('');
 		expect(redactedEntry?.displayValue).not.toContain('railway-secret-token');
 
 		const revealed = collectTreeseedPrintEnvReport({ tenantRoot, scope: 'staging', revealSecrets: true });
-		const revealedEntry = revealed.entries.find((entry) => entry.id === 'RAILWAY_API_TOKEN');
+		const revealedEntry = revealed.entries.find((entry) => entry.id === 'TREESEED_RAILWAY_API_TOKEN');
 		expect(revealedEntry?.value).toBe('railway-secret-token');
 		expect(revealedEntry?.displayValue).toBe('railway-secret-token');
 	});
@@ -708,7 +708,7 @@ services:
 		writeTreeseedMachineConfig(tenantRoot, config);
 		unlockSecrets(tenantRoot);
 		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
-			id: 'GH_TOKEN',
+			id: 'TREESEED_GITHUB_TOKEN',
 			sensitivity: 'secret',
 			storage: 'shared',
 		} as any, 'from-machine');
@@ -717,8 +717,8 @@ services:
 			resolveTreeseedLaunchEnvironment({
 				tenantRoot,
 				scope: 'staging',
-				baseEnv: { GH_TOKEN: '' } as any,
-			}).GH_TOKEN,
+				baseEnv: { TREESEED_GITHUB_TOKEN: '' } as any,
+			}).TREESEED_GITHUB_TOKEN,
 		).toBe('from-machine');
 	});
 
@@ -742,15 +742,15 @@ services:
 				tenantRoot,
 				scope: 'staging',
 				baseEnv: {
-					CLOUDFLARE_API_TOKEN: 'cf-token',
-					CLOUDFLARE_ACCOUNT_ID: 'account-123',
-					RAILWAY_API_TOKEN: 'railway-token',
+					TREESEED_CLOUDFLARE_API_TOKEN: 'cf-token',
+					TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
+					TREESEED_RAILWAY_API_TOKEN: 'railway-token',
 				} as any,
 			}),
 		).toMatchObject({
-			CLOUDFLARE_API_TOKEN: 'cf-token',
-			CLOUDFLARE_ACCOUNT_ID: 'account-123',
-			RAILWAY_API_TOKEN: 'railway-token',
+			TREESEED_CLOUDFLARE_API_TOKEN: 'cf-token',
+			TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
+			TREESEED_RAILWAY_API_TOKEN: 'railway-token',
 		});
 	});
 
@@ -773,9 +773,9 @@ services:
 			tenantRoot,
 			scope: 'staging',
 			baseEnv: {
-				CLOUDFLARE_API_TOKEN: 'cf-token',
-				CLOUDFLARE_ACCOUNT_ID: 'account-123',
-				RAILWAY_API_TOKEN: 'railway-token',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cf-token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
 			} as any,
 		});
 
@@ -909,17 +909,17 @@ services:
 		writeTreeseedMachineConfig(tenantRoot, config);
 		unlockSecrets(tenantRoot);
 		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
-			id: 'GH_TOKEN',
+			id: 'TREESEED_GITHUB_TOKEN',
 			sensitivity: 'secret',
 			storage: 'shared',
 		} as any, 'gh_test_value');
 		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
-			id: 'CLOUDFLARE_API_TOKEN',
+			id: 'TREESEED_CLOUDFLARE_API_TOKEN',
 			sensitivity: 'secret',
 			storage: 'shared',
 		} as any, 'cf_test_value');
 		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
-			id: 'CLOUDFLARE_ACCOUNT_ID',
+			id: 'TREESEED_CLOUDFLARE_ACCOUNT_ID',
 			sensitivity: 'plain',
 			storage: 'shared',
 		} as any, 'account-123');
@@ -958,7 +958,7 @@ services:
 			env: { RAILWAY_API_KEY: 'legacy-railway-key' } as any,
 		});
 
-		expect(context.valuesByScope.staging.RAILWAY_API_TOKEN).toBeUndefined();
+		expect(context.valuesByScope.staging.TREESEED_RAILWAY_API_TOKEN).toBeUndefined();
 		expect(context.configReadinessByScope.staging.railway.configured).toBe(false);
 	});
 
@@ -1022,7 +1022,7 @@ services:
 		writeTreeseedMachineConfig(tenantRoot, config);
 		unlockSecrets(tenantRoot);
 		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', {
-			id: 'RAILWAY_API_TOKEN',
+			id: 'TREESEED_RAILWAY_API_TOKEN',
 			sensitivity: 'secret',
 			storage: 'shared',
 		} as any, '0');
@@ -1033,10 +1033,10 @@ services:
 			env: {},
 		});
 
-		expect(context.valuesByScope.staging.RAILWAY_API_TOKEN).toBe('0');
+		expect(context.valuesByScope.staging.TREESEED_RAILWAY_API_TOKEN).toBe('0');
 		expect(context.validationByScope.staging.invalid).toEqual(
 			expect.arrayContaining([
-				expect.objectContaining({ id: 'RAILWAY_API_TOKEN' }),
+				expect.objectContaining({ id: 'TREESEED_RAILWAY_API_TOKEN' }),
 			]),
 		);
 		expect(context.configReadinessByScope.staging.railway.configured).toBe(false);

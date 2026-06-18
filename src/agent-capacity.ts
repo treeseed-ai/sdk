@@ -38,8 +38,29 @@ export type AgentKernelModeFallbackCode =
 	| 'assignment_agent_not_found'
 	| 'assignment_insufficient_capability'
 	| 'assignment_decision_not_ready'
+	| 'assignment_capacity_plan_not_accepted'
+	| 'assignment_capacity_not_reserved'
+	| 'assignment_capability_handle_invalid'
+	| 'assignment_capability_handle_secret_material'
+	| 'assignment_capability_handle_write_not_ready'
+	| 'assignment_capability_handle_workspace_denied'
+	| 'assignment_workflow_operation_denied'
+	| 'assignment_eligibility_capability_mismatch'
+	| 'assignment_retry_policy_exceeded'
 	| 'assignment_treedx_proxy_scope_invalid'
-	| 'assignment_fallback_quota_exceeded';
+	| 'assignment_fallback_quota_exceeded'
+	| 'assignment_output_invalid';
+
+export const AGENT_ASSIGNMENT_WORKSPACE_ACCESS_MODES = [
+	'context_only',
+	'brokered_workspace',
+	'full_workspace_no_credentials',
+	'trusted_direct',
+] as const;
+
+export type AgentAssignmentWorkspaceAccessMode = (typeof AGENT_ASSIGNMENT_WORKSPACE_ACCESS_MODES)[number];
+export type AgentAssignmentCapabilityHandleKind = 'repository_access' | 'treedx_workspace' | 'workflow_operation' | 'secret_use';
+export type AgentAssignmentCapabilityOperation = 'read' | 'write' | 'test' | 'release' | 'dispatch_workflow' | 'commit' | 'push' | string;
 
 export interface AllocationSetSlice {
 	projectId: string | null;
@@ -232,6 +253,7 @@ export interface ProviderAssignment {
 	proposalId?: string | null;
 	fallbackOutputId?: string | null;
 	treedxProxyHandle?: TreeDxProxyHandle | Record<string, unknown> | null;
+	capabilityHandles?: ProviderAssignmentCapabilityHandles | Record<string, unknown> | null;
 	metadata?: Record<string, unknown>;
 	createdAt?: string;
 	updatedAt?: string;
@@ -247,6 +269,7 @@ export interface ProviderAssignmentLifecycleRequest {
 	retryable?: boolean | null;
 	output?: Record<string, unknown> | null;
 	summary?: Record<string, unknown> | null;
+	fallbackOutput?: Record<string, unknown> | null;
 	usageActualId?: string | null;
 	modeRunId?: string | null;
 	metadata?: Record<string, unknown>;
@@ -357,6 +380,29 @@ export interface AgentKernelModeExecutionResult {
 	traceRefs?: Record<string, unknown>;
 	usageActual?: AgentModeRunUsageSettlement | Record<string, unknown> | null;
 	fallback?: AgentKernelModeFallback | null;
+	metadata?: Record<string, unknown>;
+}
+
+export interface AgentKernelQueueObservation {
+	planningReady?: number | null;
+	actingReady?: number | null;
+	fallbackReady?: number | null;
+	planningBudgetCredits?: number | null;
+	actingBudgetCredits?: number | null;
+	modePreference?: AgentExecutionMode | 'fallback' | null;
+	metadata?: Record<string, unknown>;
+}
+
+export interface AgentKernelModeDecision {
+	kind: 'mode' | 'fallback' | 'idle';
+	mode?: AgentExecutionMode | null;
+	reason: string;
+	metadata?: Record<string, unknown>;
+}
+
+export interface AgentKernelOutputValidationResult {
+	ok: boolean;
+	reason?: string | null;
 	metadata?: Record<string, unknown>;
 }
 
@@ -471,9 +517,11 @@ export interface AgentCapacityPlanRecord {
 	reserves: Record<string, unknown>;
 	blockers: string[];
 	priorityRationale?: string | null;
+	review?: Record<string, unknown>;
 	metadata?: Record<string, unknown>;
 	acceptedAt?: string | null;
 	scheduledAt?: string | null;
+	supersededAt?: string | null;
 	createdAt?: string;
 	updatedAt?: string;
 }
@@ -520,10 +568,119 @@ export interface TreeDxProxyHandle {
 	assignmentId?: string | null;
 	repositoryId?: string | null;
 	workspaceId?: string | null;
+	status?: 'issued' | 'active' | 'revoked' | 'expired' | string;
 	scopes: string[];
 	expiresAt?: string | null;
+	issuedAt?: string | null;
+	revokedAt?: string | null;
 	auditId?: string | null;
+	token?: string | null;
+	tokenHash?: string | null;
+	allowedOperations?: string[];
+	allowedPaths?: string[];
 	metadata?: Record<string, unknown>;
+}
+
+export interface ProviderAssignmentCapabilityHandleBase {
+	id: string;
+	kind: AgentAssignmentCapabilityHandleKind;
+	teamId: string;
+	projectId: string;
+	assignmentId: string;
+	status?: 'active' | 'issued' | 'revoked' | 'expired' | 'blocked' | string;
+	workspaceAccessMode?: AgentAssignmentWorkspaceAccessMode | string | null;
+	operations?: AgentAssignmentCapabilityOperation[];
+	expiresAt?: string | null;
+	issuedAt?: string | null;
+	metadata?: Record<string, unknown>;
+}
+
+export interface ProviderRepositoryAccessHandle extends ProviderAssignmentCapabilityHandleBase {
+	kind: 'repository_access';
+	repositoryId?: string | null;
+	repository?: string | null;
+	provider?: 'github_app' | 'treedx_proxy' | 'local_workspace' | 'workflow_operation' | string;
+	allowedRefs?: string[];
+	allowedPaths?: string[];
+	credentialMode?: 'none' | 'brokered' | 'ephemeral_trusted_direct' | string;
+}
+
+export interface ProviderTreeDxWorkspaceHandle extends ProviderAssignmentCapabilityHandleBase {
+	kind: 'treedx_workspace';
+	proxyHandleId: string;
+	repositoryId?: string | null;
+	workspaceId?: string | null;
+	allowedOperations?: string[];
+	allowedPaths?: string[];
+}
+
+export interface ProviderWorkflowOperationHandle extends ProviderAssignmentCapabilityHandleBase {
+	kind: 'workflow_operation';
+	operationId: string;
+	repository: string;
+	workflowFile: string;
+	ref?: string | null;
+	environment?: string | null;
+	secretBearing?: boolean;
+	trustedExecutionSetId?: string | null;
+	allowedInputs?: Record<string, unknown>;
+}
+
+export interface ProviderSecretUseHandle extends ProviderAssignmentCapabilityHandleBase {
+	kind: 'secret_use';
+	secretIds?: string[];
+	secretClasses?: string[];
+	custodyMode?: string | null;
+	revealAllowed?: false;
+}
+
+export type ProviderAssignmentCapabilityHandle =
+	| ProviderRepositoryAccessHandle
+	| ProviderTreeDxWorkspaceHandle
+	| ProviderWorkflowOperationHandle
+	| ProviderSecretUseHandle;
+
+export interface ProviderAssignmentCapabilityHandles {
+	workspaceAccessMode: AgentAssignmentWorkspaceAccessMode;
+	repository?: ProviderRepositoryAccessHandle[];
+	treeDx?: ProviderTreeDxWorkspaceHandle[];
+	workflowOperations?: ProviderWorkflowOperationHandle[];
+	secrets?: ProviderSecretUseHandle[];
+	metadata?: Record<string, unknown>;
+}
+
+export interface TreeDxProxyAccessRequest {
+	teamId?: string | null;
+	projectId: string;
+	assignmentId?: string | null;
+	repositoryId?: string | null;
+	workspaceId?: string | null;
+	operation?: string | null;
+	path?: string | null;
+	token?: string | null;
+	now?: Date;
+}
+
+export interface TreeDxProxyAccessResult {
+	ok: boolean;
+	code?: string;
+	reason?: string;
+	metadata?: Record<string, unknown>;
+}
+
+export interface TreeDxProjectProxyAuditRecord {
+	id: string;
+	teamId: string;
+	projectId: string;
+	assignmentId?: string | null;
+	actorType: 'user' | 'capacity_provider' | string;
+	actorId?: string | null;
+	method: string;
+	path: string;
+	handle?: TreeDxProxyHandle | Record<string, unknown> | null;
+	resultStatus: string;
+	metadata?: Record<string, unknown>;
+	createdAt?: string;
 }
 
 export interface AgentFallbackOutput {
@@ -561,6 +718,22 @@ export interface CapacitySettlementSummary {
 
 function record(value: unknown): Record<string, unknown> {
 	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function stringList(value: unknown): string[] {
+	return Array.isArray(value) ? value.map((entry) => String(entry ?? '').trim()).filter(Boolean) : [];
+}
+
+function arrayValue(value: unknown): unknown[] {
+	return Array.isArray(value) ? value : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function uniqueStrings(values: string[]): string[] {
+	return [...new Set(values.filter(Boolean))].sort((left, right) => left.localeCompare(right));
 }
 
 function numberOrNull(value: unknown): number | null {
@@ -727,6 +900,7 @@ export function buildAgentCapacityPlanDraft(input: {
 		reserves: { highCredits: workUnits.reduce((sum, unit) => sum + unit.highCredits, 0) },
 		blockers: unique(workUnits.flatMap((unit) => unit.blockers)),
 		priorityRationale: typeof input.metadata?.priorityRationale === 'string' ? input.metadata.priorityRationale : null,
+		review: {},
 		metadata: input.metadata ?? {},
 		acceptedAt: null,
 		scheduledAt: null,
@@ -744,28 +918,224 @@ export function isProviderAssignmentCandidateEligible(candidate: ProviderAssignm
 export function validateTreeDxProxyHandle(handle: TreeDxProxyHandle | null | undefined, expected: { teamId?: string | null; projectId: string; assignmentId?: string | null }): AgentKernelModeFallback | null {
 	if (!handle) return null;
 	if (!handle.id && !handle.projectId) return null;
-	if (handle.projectId !== expected.projectId || (expected.teamId && handle.teamId !== expected.teamId)) {
+	const access = evaluateTreeDxProxyHandleAccess(handle, {
+		teamId: expected.teamId ?? null,
+		projectId: expected.projectId,
+		assignmentId: expected.assignmentId ?? null,
+	});
+	if (!access.ok) {
 		return createAgentKernelModeFallback(
 			'assignment_treedx_proxy_scope_invalid',
-			'TreeDX proxy handle scope does not match the assignment project.',
-			{ retryable: false },
-		);
-	}
-	if (expected.assignmentId && handle.assignmentId && handle.assignmentId !== expected.assignmentId) {
-		return createAgentKernelModeFallback(
-			'assignment_treedx_proxy_scope_invalid',
-			'TreeDX proxy handle is bound to a different assignment.',
-			{ retryable: false },
-		);
-	}
-	if (handle.expiresAt && Date.parse(handle.expiresAt) <= Date.now()) {
-		return createAgentKernelModeFallback(
-			'assignment_treedx_proxy_scope_invalid',
-			'TreeDX proxy handle expired before assignment execution.',
-			{ retryable: true },
+			access.reason ?? 'TreeDX proxy handle scope does not match the assignment.',
+			{ retryable: access.code === 'treedx_proxy_handle_expired', metadata: access.metadata },
 		);
 	}
 	return null;
+}
+
+function hasSecretLikeKey(key: string): boolean {
+	return /(^|[_-])(plaintext|token|passphrase|password|private[_-]?key|deploy[_-]?key|raw[_-]?secret|unencrypted|credential)([_-]|$)/iu.test(key)
+		|| ['secretValue', 'rawSecret', 'githubInstallationToken', 'deployKey', 'privateKey'].includes(key);
+}
+
+function findSecretLikePath(value: unknown, path = '$'): string | null {
+	if (Array.isArray(value)) {
+		for (let index = 0; index < value.length; index += 1) {
+			const found = findSecretLikePath(value[index], `${path}[${index}]`);
+			if (found) return found;
+		}
+		return null;
+	}
+	if (!isRecord(value)) return null;
+	for (const [key, entry] of Object.entries(value)) {
+		const nextPath = `${path}.${key}`;
+		if (hasSecretLikeKey(key)) return nextPath;
+		const found = findSecretLikePath(entry, nextPath);
+		if (found) return found;
+	}
+	return null;
+}
+
+function normalizeWorkspaceAccessMode(value: unknown): AgentAssignmentWorkspaceAccessMode {
+	return AGENT_ASSIGNMENT_WORKSPACE_ACCESS_MODES.includes(value as AgentAssignmentWorkspaceAccessMode)
+		? value as AgentAssignmentWorkspaceAccessMode
+		: 'context_only';
+}
+
+function capabilityHandleArrays(handles: ProviderAssignmentCapabilityHandles | Record<string, unknown> | null | undefined): ProviderAssignmentCapabilityHandle[] {
+	const source = record(handles);
+	return [
+		...arrayValue(source.repository),
+		...arrayValue(source.treeDx),
+		...arrayValue(source.workflowOperations),
+		...arrayValue(source.secrets),
+	].filter(isRecord) as ProviderAssignmentCapabilityHandle[];
+}
+
+export function redactedProviderAssignmentCapabilityHandles(
+	handles: ProviderAssignmentCapabilityHandles | Record<string, unknown> | null | undefined,
+): ProviderAssignmentCapabilityHandles {
+	const source = record(handles);
+	const redact = (handle: unknown) => {
+		const next = { ...record(handle) };
+		for (const key of Object.keys(next)) {
+			if (hasSecretLikeKey(key)) delete next[key];
+		}
+		return next as ProviderAssignmentCapabilityHandle;
+	};
+	return {
+		workspaceAccessMode: normalizeWorkspaceAccessMode(source.workspaceAccessMode),
+		repository: arrayValue(source.repository).map(redact) as ProviderRepositoryAccessHandle[],
+		treeDx: arrayValue(source.treeDx).map(redact) as ProviderTreeDxWorkspaceHandle[],
+		workflowOperations: arrayValue(source.workflowOperations).map(redact) as ProviderWorkflowOperationHandle[],
+		secrets: arrayValue(source.secrets).map(redact) as ProviderSecretUseHandle[],
+		metadata: record(source.metadata),
+	};
+}
+
+export function providerAssignmentCapabilityHandlesContainSecretMaterial(value: unknown): boolean {
+	return Boolean(findSecretLikePath(value));
+}
+
+export function validateProviderAssignmentCapabilityHandles(input: {
+	assignment: Pick<ProviderAssignment, 'id' | 'teamId' | 'projectId' | 'mode' | 'metadata' | 'decisionInput' | 'capacityEnvelope' | 'synthesizedFrom'> & {
+		capabilityHandles?: ProviderAssignmentCapabilityHandles | Record<string, unknown> | null;
+	};
+	capabilityHandles?: ProviderAssignmentCapabilityHandles | Record<string, unknown> | null;
+	decisionInput?: DecisionExecutionInput | null;
+	capacityEnvelope?: AgentCapacityEnvelope | null;
+	now?: Date;
+}): AgentKernelModeFallback | null {
+	const assignment = input.assignment;
+	const handles = input.capabilityHandles ?? assignment.capabilityHandles ?? null;
+	if (!handles) return null;
+	const leakedPath = findSecretLikePath(handles);
+	if (leakedPath) {
+		return createAgentKernelModeFallback(
+			'assignment_capability_handle_secret_material',
+			`Assignment ${assignment.id} capability handles include secret-like material at ${leakedPath}.`,
+			{ retryable: false, metadata: { path: leakedPath } },
+		);
+	}
+	const workspaceAccessMode = normalizeWorkspaceAccessMode(record(handles).workspaceAccessMode);
+	const allHandles = capabilityHandleArrays(handles);
+	for (const handle of allHandles) {
+		if (!handle.id || !handle.kind) {
+			return createAgentKernelModeFallback(
+				'assignment_capability_handle_invalid',
+				`Assignment ${assignment.id} has an invalid capability handle.`,
+				{ retryable: false },
+			);
+		}
+		if ((handle.teamId && handle.teamId !== assignment.teamId) || (handle.projectId && handle.projectId !== assignment.projectId) || (handle.assignmentId && handle.assignmentId !== assignment.id)) {
+			return createAgentKernelModeFallback(
+				'assignment_capability_handle_invalid',
+				`Assignment ${assignment.id} capability handle ${handle.id} is scoped to a different assignment.`,
+				{ retryable: false, metadata: { handleId: handle.id, kind: handle.kind } },
+			);
+		}
+		if (handle.expiresAt && Date.parse(handle.expiresAt) <= (input.now ?? new Date()).getTime()) {
+			return createAgentKernelModeFallback(
+				'assignment_capability_handle_invalid',
+				`Assignment ${assignment.id} capability handle ${handle.id} has expired.`,
+				{ retryable: true, metadata: { handleId: handle.id, kind: handle.kind } },
+			);
+		}
+		const operations = stringList(handle.operations);
+		const writeCapable = operations.some((operation) => ['write', 'commit', 'push', 'release', 'dispatch_workflow', 'files:write', 'git:commit'].includes(operation));
+		if (writeCapable && assignment.mode !== 'acting') {
+			return createAgentKernelModeFallback(
+				'assignment_capability_handle_write_not_ready',
+				`Assignment ${assignment.id} cannot receive write-capable capability handles outside acting mode.`,
+				{ retryable: false, metadata: { handleId: handle.id, kind: handle.kind, operations } },
+			);
+		}
+		if (writeCapable && !hasAcceptedCapacityPlanProvenance({
+			assignment,
+			decisionInput: input.decisionInput ?? null,
+			capacityEnvelope: input.capacityEnvelope ?? null,
+		})) {
+			return createAgentKernelModeFallback(
+				'assignment_capability_handle_write_not_ready',
+				`Assignment ${assignment.id} write-capable capability handles require accepted capacity-plan provenance.`,
+				{ retryable: true, metadata: { handleId: handle.id, kind: handle.kind } },
+			);
+		}
+		if (workspaceAccessMode === 'context_only' && writeCapable) {
+			return createAgentKernelModeFallback(
+				'assignment_capability_handle_workspace_denied',
+				`Assignment ${assignment.id} context-only workspace mode cannot receive write-capable handles.`,
+				{ retryable: false, metadata: { handleId: handle.id, kind: handle.kind } },
+			);
+		}
+		if (handle.kind === 'workflow_operation') {
+			const workflow = handle as ProviderWorkflowOperationHandle;
+			if (!workflow.operationId || !workflow.repository || !workflow.workflowFile) {
+				return createAgentKernelModeFallback(
+					'assignment_workflow_operation_denied',
+					`Assignment ${assignment.id} workflow operation handle ${handle.id} is missing operation scope.`,
+					{ retryable: false, metadata: { handleId: handle.id } },
+				);
+			}
+			if (!operations.includes('dispatch_workflow')) {
+				return createAgentKernelModeFallback(
+					'assignment_workflow_operation_denied',
+					`Assignment ${assignment.id} workflow operation handle ${handle.id} is not dispatch-capable.`,
+					{ retryable: false, metadata: { handleId: handle.id } },
+				);
+			}
+		}
+	}
+	return null;
+}
+
+function globLikePathMatches(pattern: string, candidate: string): boolean {
+	const normalizedPattern = pattern.replace(/^\/+/, '');
+	const normalizedCandidate = candidate.replace(/^\/+/, '');
+	if (!normalizedPattern || normalizedPattern === '**' || normalizedPattern === '*') return true;
+	if (normalizedPattern.endsWith('/**')) {
+		const prefix = normalizedPattern.slice(0, -3);
+		return normalizedCandidate === prefix || normalizedCandidate.startsWith(`${prefix}/`);
+	}
+	if (normalizedPattern.endsWith('*')) {
+		return normalizedCandidate.startsWith(normalizedPattern.slice(0, -1));
+	}
+	return normalizedCandidate === normalizedPattern || normalizedCandidate.startsWith(`${normalizedPattern}/`);
+}
+
+export function evaluateTreeDxProxyHandleAccess(handle: TreeDxProxyHandle | null | undefined, request: TreeDxProxyAccessRequest): TreeDxProxyAccessResult {
+	if (!handle?.id) return { ok: false, code: 'treedx_proxy_handle_missing', reason: 'TreeDX proxy handle is required.' };
+	if (handle.status === 'revoked' || handle.revokedAt) return { ok: false, code: 'treedx_proxy_handle_revoked', reason: 'TreeDX proxy handle has been revoked.' };
+	if (handle.status === 'expired') return { ok: false, code: 'treedx_proxy_handle_expired', reason: 'TreeDX proxy handle has expired.' };
+	if (handle.projectId !== request.projectId || (request.teamId && handle.teamId !== request.teamId)) {
+		return { ok: false, code: 'treedx_proxy_scope_mismatch', reason: 'TreeDX proxy handle scope does not match the project.', metadata: { projectId: request.projectId, handleProjectId: handle.projectId } };
+	}
+	if (request.assignmentId && handle.assignmentId && handle.assignmentId !== request.assignmentId) {
+		return { ok: false, code: 'treedx_proxy_assignment_mismatch', reason: 'TreeDX proxy handle is bound to a different assignment.', metadata: { assignmentId: request.assignmentId, handleAssignmentId: handle.assignmentId } };
+	}
+	if (request.repositoryId && handle.repositoryId && handle.repositoryId !== request.repositoryId) {
+		return { ok: false, code: 'treedx_proxy_repository_mismatch', reason: 'TreeDX proxy handle is bound to a different repository.', metadata: { repositoryId: request.repositoryId, handleRepositoryId: handle.repositoryId } };
+	}
+	if (request.workspaceId && handle.workspaceId && handle.workspaceId !== request.workspaceId) {
+		return { ok: false, code: 'treedx_proxy_workspace_mismatch', reason: 'TreeDX proxy handle is bound to a different workspace.', metadata: { workspaceId: request.workspaceId, handleWorkspaceId: handle.workspaceId } };
+	}
+	if (handle.expiresAt && Date.parse(handle.expiresAt) <= (request.now ?? new Date()).getTime()) {
+		return { ok: false, code: 'treedx_proxy_handle_expired', reason: 'TreeDX proxy handle has expired.' };
+	}
+	if (handle.token && request.token && handle.token !== request.token) {
+		return { ok: false, code: 'treedx_proxy_token_mismatch', reason: 'TreeDX proxy handle token does not match.' };
+	}
+	const operation = request.operation ? String(request.operation) : null;
+	const allowedOperations = Array.isArray(handle.allowedOperations) ? handle.allowedOperations.map(String) : [];
+	if (operation && allowedOperations.length && !allowedOperations.includes(operation) && !allowedOperations.includes('*')) {
+		return { ok: false, code: 'treedx_proxy_operation_denied', reason: 'TreeDX proxy handle does not allow this operation.', metadata: { operation, allowedOperations } };
+	}
+	const path = request.path ? String(request.path).replace(/^\/+/, '') : null;
+	const allowedPaths = Array.isArray(handle.allowedPaths) ? handle.allowedPaths.map(String).filter(Boolean) : [];
+	if (path && allowedPaths.length && !allowedPaths.some((pattern) => globLikePathMatches(pattern, path))) {
+		return { ok: false, code: 'treedx_proxy_path_denied', reason: 'TreeDX proxy handle does not allow this path.', metadata: { path, allowedPaths } };
+	}
+	return { ok: true };
 }
 
 export function buildProviderAssignmentExplanation(input: {
@@ -1099,6 +1469,65 @@ export function validateAgentKernelModeExecutionInput(input: AgentKernelModeExec
 			{ retryable: true, metadata: { readiness: input.readiness } },
 		);
 	}
+	if (mode === 'acting' && !input.readiness) {
+		return createAgentKernelModeFallback(
+			'assignment_decision_not_ready',
+			`Assignment ${assignment.id} is missing decision readiness for acting execution.`,
+			{ retryable: true },
+		);
+	}
+	if (mode === 'acting' && (!capacity.reservationId || Number(capacity.reservedCredits ?? 0) <= 0)) {
+		return createAgentKernelModeFallback(
+			'assignment_capacity_not_reserved',
+			`Assignment ${assignment.id} is missing reserved capacity for acting execution.`,
+			{ retryable: true, metadata: { reservationId: capacity.reservationId ?? null, reservedCredits: capacity.reservedCredits ?? null } },
+		);
+	}
+	if (mode === 'acting' && !hasAcceptedCapacityPlanProvenance({ assignment, decisionInput: decision, capacityEnvelope: capacity })) {
+		return createAgentKernelModeFallback(
+			'assignment_capacity_plan_not_accepted',
+			`Assignment ${assignment.id} is missing accepted capacity-plan provenance for acting execution.`,
+			{ retryable: true },
+		);
+	}
+	const policyMaxAttempts = numberOrNull(record(input.kernelPolicy?.fallback).maxAttempts)
+		?? numberOrNull(record(input.projectAgentClass?.kernelPolicy?.fallback).maxAttempts)
+		?? numberOrNull(record(input.kernelProfile?.metadata).maxAttempts);
+	if (policyMaxAttempts !== null && Number(assignment.attemptCount ?? 0) >= policyMaxAttempts) {
+		return createAgentKernelModeFallback(
+			'assignment_retry_policy_exceeded',
+			`Assignment ${assignment.id} has exceeded kernel retry policy.`,
+			{ retryable: false, metadata: { attemptCount: assignment.attemptCount ?? 0, maxAttempts: policyMaxAttempts } },
+		);
+	}
+	const assignmentMetadata = record(assignment.metadata);
+	const eligibility = record(assignmentMetadata.eligibility);
+	const eligibilityGates = record(eligibility.gates);
+	const requiredCapabilities = uniqueStrings([
+		...stringList(input.projectAgentClass?.requiredCapabilities),
+		...stringList(assignmentMetadata.requiredCapabilities),
+		...stringList(record(decision.metadata).requiredCapabilities),
+		...stringList(record(capacity.metadata).requiredCapabilities),
+	]);
+	const availableCapabilities = uniqueStrings([
+		...stringList(eligibilityGates.availableCapabilities),
+		...stringList(assignmentMetadata.availableCapabilities),
+	]);
+	const missingCapabilities = requiredCapabilities.filter((capability) => !availableCapabilities.includes(capability));
+	if (requiredCapabilities.length && (!availableCapabilities.length || missingCapabilities.length)) {
+		return createAgentKernelModeFallback(
+			'assignment_eligibility_capability_mismatch',
+			`Assignment ${assignment.id} required capabilities were not covered by eligibility metadata.`,
+			{ retryable: true, metadata: { requiredCapabilities, availableCapabilities, missingCapabilities } },
+		);
+	}
+	const capabilityHandleFallback = validateProviderAssignmentCapabilityHandles({
+		assignment,
+		decisionInput: decision,
+		capacityEnvelope: capacity,
+		now,
+	});
+	if (capabilityHandleFallback) return capabilityHandleFallback;
 	const proxyFallback = validateTreeDxProxyHandle(input.treedxProxyHandle ?? record(assignment.treedxProxyHandle) as TreeDxProxyHandle, {
 		teamId: assignment.teamId,
 		projectId: assignment.projectId,
@@ -1106,6 +1535,91 @@ export function validateAgentKernelModeExecutionInput(input: AgentKernelModeExec
 	});
 	if (proxyFallback) return proxyFallback;
 	return null;
+}
+
+export function selectAgentKernelModeDecision(observation: AgentKernelQueueObservation): AgentKernelModeDecision {
+	const planningReady = Math.max(0, Number(observation.planningReady ?? 0));
+	const actingReady = Math.max(0, Number(observation.actingReady ?? 0));
+	const fallbackReady = Math.max(0, Number(observation.fallbackReady ?? 0));
+	const planningBudget = Number(observation.planningBudgetCredits ?? 0);
+	const actingBudget = Number(observation.actingBudgetCredits ?? 0);
+	const hasPlanningBudget = !Number.isFinite(planningBudget) || planningBudget > 0;
+	const hasActingBudget = !Number.isFinite(actingBudget) || actingBudget > 0;
+	if (observation.modePreference === 'planning' && planningReady > 0 && hasPlanningBudget) {
+		return { kind: 'mode', mode: 'planning', reason: 'preferred_planning_ready', metadata: observation.metadata ?? {} };
+	}
+	if (observation.modePreference === 'acting' && actingReady > 0 && hasActingBudget) {
+		return { kind: 'mode', mode: 'acting', reason: 'preferred_acting_ready', metadata: observation.metadata ?? {} };
+	}
+	if (actingReady > 0 && hasActingBudget) {
+		return { kind: 'mode', mode: 'acting', reason: 'acting_queue_ready', metadata: observation.metadata ?? {} };
+	}
+	if (planningReady > 0 && hasPlanningBudget) {
+		return { kind: 'mode', mode: 'planning', reason: 'planning_queue_ready', metadata: observation.metadata ?? {} };
+	}
+	if (fallbackReady > 0) {
+		return { kind: 'fallback', mode: null, reason: 'fallback_queue_ready', metadata: observation.metadata ?? {} };
+	}
+	return { kind: 'idle', mode: null, reason: 'no_eligible_work', metadata: observation.metadata ?? {} };
+}
+
+export function validateAgentKernelOutputs(input: {
+	mode: AgentExecutionMode;
+	outputs?: Record<string, unknown> | null;
+	allowedOutputs?: Record<string, unknown> | null;
+}): AgentKernelOutputValidationResult {
+	const allowed = record(input.allowedOutputs);
+	if (!Object.keys(allowed).length) return { ok: true };
+	const outputs = record(input.outputs);
+	const allowedStatuses = Array.isArray(allowed.statuses) ? allowed.statuses.map(String) : [];
+	const status = typeof outputs.status === 'string' ? outputs.status : null;
+	if (allowedStatuses.length && (!status || !allowedStatuses.includes(status))) {
+		return { ok: false, reason: `Output status ${status ?? '<missing>'} is not allowed for ${input.mode}.`, metadata: { status, allowedStatuses } };
+	}
+	const allowedTypes = Array.isArray(allowed.types) ? allowed.types.map(String) : [];
+	const metadata = record(outputs.metadata);
+	const outputType = typeof metadata.type === 'string'
+		? metadata.type
+		: typeof metadata.kind === 'string'
+			? metadata.kind
+			: null;
+	if (allowedTypes.length && (!outputType || !allowedTypes.includes(outputType))) {
+		return { ok: false, reason: `Output type ${outputType ?? '<missing>'} is not allowed for ${input.mode}.`, metadata: { outputType, allowedTypes } };
+	}
+	return { ok: true };
+}
+
+export function treeDxProxyHeaders(handle: TreeDxProxyHandle): Record<string, string> {
+	const headers: Record<string, string> = {
+		'x-treeseed-assignment-id': String(handle.assignmentId ?? ''),
+		'x-treeseed-treedx-proxy-handle-id': String(handle.id ?? ''),
+	};
+	if (handle.token) headers['x-treeseed-treedx-proxy-handle'] = handle.token;
+	return Object.fromEntries(Object.entries(headers).filter(([, value]) => value));
+}
+
+export function isAgentCapacityPlanStaleOrSuperseded(plan: Pick<AgentCapacityPlanRecord, 'status'> & { scopeHash?: string | null }, currentScopeHash?: string | null): boolean {
+	if (plan.status === 'superseded') return true;
+	return Boolean(currentScopeHash && plan.scopeHash && currentScopeHash !== plan.scopeHash);
+}
+
+export function hasAcceptedCapacityPlanProvenance(input: {
+	assignment?: Pick<ProviderAssignment, 'metadata' | 'decisionInput' | 'capacityEnvelope' | 'synthesizedFrom'> | null;
+	decisionInput?: DecisionExecutionInput | null;
+	capacityEnvelope?: AgentCapacityEnvelope | null;
+}): boolean {
+	const assignmentMetadata = record(input.assignment?.metadata);
+	const decisionMetadata = record(input.decisionInput?.metadata ?? record(input.assignment?.decisionInput).metadata);
+	const capacityMetadata = record(input.capacityEnvelope?.metadata ?? record(input.assignment?.capacityEnvelope).metadata);
+	const status = String(
+		assignmentMetadata.capacityPlanStatus
+		?? decisionMetadata.capacityPlanStatus
+		?? capacityMetadata.capacityPlanStatus
+		?? '',
+	);
+	const capacityPlanId = assignmentMetadata.capacityPlanId ?? decisionMetadata.capacityPlanId ?? capacityMetadata.capacityPlanId;
+	const synthesizedFrom = input.assignment?.synthesizedFrom ?? assignmentMetadata.synthesizedFrom ?? capacityMetadata.synthesizedFrom;
+	return Boolean(capacityPlanId && (['accepted', 'scheduled', 'active'].includes(status) || synthesizedFrom === 'capacity_plan'));
 }
 
 export function isProviderAssignmentLeaseExpired(assignment: Pick<ProviderAssignment, 'leaseExpiresAt'>, now = new Date()): boolean {

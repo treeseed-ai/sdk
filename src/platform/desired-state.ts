@@ -363,8 +363,8 @@ function packageResources(adapter: TreeseedPackageAdapter, environment: Treeseed
 				architectures: platforms,
 				workflow: dockerWorkflow,
 				workflowDispatch: workflowSpec,
-				requiredSecrets: ['DOCKERHUB_TOKEN'],
-				requiredVariables: ['DOCKERHUB_USERNAME'],
+				requiredSecrets: ['TREESEED_DOCKERHUB_TOKEN'],
+				requiredVariables: ['TREESEED_DOCKERHUB_USERNAME'],
 			},
 			source: { type: 'package-adapter', id: packageId },
 		});

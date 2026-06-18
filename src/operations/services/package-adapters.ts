@@ -643,10 +643,10 @@ export async function runTreeseedPackageImageWorkflow(options: TreeseedPackageIm
 		baseEnv: options.env ?? process.env,
 	});
 	const dockerHub = {
-		usernameConfigured: Boolean(String(configEnv.DOCKERHUB_USERNAME ?? '').trim()),
-		tokenConfigured: Boolean(String(configEnv.DOCKERHUB_TOKEN ?? '').trim()),
-		requiredSecrets: ['DOCKERHUB_TOKEN'],
-		requiredVariables: ['DOCKERHUB_USERNAME'],
+		usernameConfigured: Boolean(String(configEnv.TREESEED_DOCKERHUB_USERNAME ?? '').trim()),
+		tokenConfigured: Boolean(String(configEnv.TREESEED_DOCKERHUB_TOKEN ?? '').trim()),
+		requiredSecrets: ['TREESEED_DOCKERHUB_TOKEN'],
+		requiredVariables: ['TREESEED_DOCKERHUB_USERNAME'],
 	};
 	const credential = resolveGitHubCredentialForRepository(imagePlan.repository, { values: configEnv, env: options.env ?? process.env });
 	const githubClientEnv = credential.token
@@ -687,8 +687,8 @@ export async function runTreeseedPackageImageWorkflow(options: TreeseedPackageIm
 			environment,
 			blocked: true,
 			reason: 'Package image config sync is reconciler-owned. Use trsd package image --sync-config so github-secret-binding and github-variable-binding resources apply through adapters.',
-			secrets: configEnv.DOCKERHUB_TOKEN ? [{ name: 'DOCKERHUB_TOKEN', existed: null }] : [],
-			variables: configEnv.DOCKERHUB_USERNAME ? [{ name: 'DOCKERHUB_USERNAME', existed: null }] : [],
+			secrets: configEnv.TREESEED_DOCKERHUB_TOKEN ? [{ name: 'TREESEED_DOCKERHUB_TOKEN', existed: null }] : [],
+			variables: configEnv.TREESEED_DOCKERHUB_USERNAME ? [{ name: 'TREESEED_DOCKERHUB_USERNAME', existed: null }] : [],
 		};
 	}
 	if (execute) {
@@ -894,8 +894,8 @@ ${dockerArtifacts.flatMap((artifact) => [
 ${dockerContextPrepareCommand ? `      - run: ${dockerContextPrepareCommand}\n` : ''}${computeTagsStep}      - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
-          username: \${{ vars.DOCKERHUB_USERNAME }}
-          password: \${{ secrets.DOCKERHUB_TOKEN }}
+          username: \${{ vars.TREESEED_DOCKERHUB_USERNAME }}
+          password: \${{ secrets.TREESEED_DOCKERHUB_TOKEN }}
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -919,8 +919,8 @@ ${dockerArtifacts.map((artifact) => `          - image: ${artifact.name}`).join(
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
-          username: \${{ vars.DOCKERHUB_USERNAME }}
-          password: \${{ secrets.DOCKERHUB_TOKEN }}
+          username: \${{ vars.TREESEED_DOCKERHUB_USERNAME }}
+          password: \${{ secrets.TREESEED_DOCKERHUB_TOKEN }}
 ${computeTagsStep}      - name: Publish multi-architecture manifest
         run: |
           docker buildx imagetools create \\

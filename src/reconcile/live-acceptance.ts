@@ -871,8 +871,8 @@ interface CloudflareApiPayload {
 }
 
 async function cloudflareRequestPayload(path: string, env: LiveEnv, fetchImpl: typeof fetch, init: RequestInit = {}) {
-	const token = configuredValue(env, ['CLOUDFLARE_API_TOKEN']);
-	if (!token) throw new Error('Missing CLOUDFLARE_API_TOKEN.');
+	const token = configuredValue(env, ['TREESEED_CLOUDFLARE_API_TOKEN']);
+	if (!token) throw new Error('Missing TREESEED_CLOUDFLARE_API_TOKEN.');
 	const response = await fetchImpl(`https://api.cloudflare.com/client/v4${path}`, {
 		...init,
 		headers: {
@@ -919,8 +919,8 @@ async function withCloudflareTransientRetry<T>(operation: () => Promise<T>, opti
 }
 
 async function cloudflareRawRequest(path: string, env: LiveEnv, fetchImpl: typeof fetch, init: RequestInit = {}) {
-	const token = configuredValue(env, ['CLOUDFLARE_API_TOKEN']);
-	if (!token) throw new Error('Missing CLOUDFLARE_API_TOKEN.');
+	const token = configuredValue(env, ['TREESEED_CLOUDFLARE_API_TOKEN']);
+	if (!token) throw new Error('Missing TREESEED_CLOUDFLARE_API_TOKEN.');
 	const response = await fetchImpl(`https://api.cloudflare.com/client/v4${path}`, {
 		...init,
 		headers: {
@@ -972,10 +972,10 @@ async function runSmokeProvider({
 	fetchImpl: typeof fetch;
 }) {
 	if (provider === 'railway') {
-		if (!configuredValue(env, ['RAILWAY_API_TOKEN'])) {
+		if (!configuredValue(env, ['TREESEED_RAILWAY_API_TOKEN'])) {
 			return PROVIDER_CAPABILITIES.railway.map((capability) => scenario({
 				provider, mode, prefix, capability, ok: false, phase: 'blocked', action: 'blocked',
-				reason: 'Missing RAILWAY_API_TOKEN for Railway live reconciliation tests.',
+				reason: 'Missing TREESEED_RAILWAY_API_TOKEN for Railway live reconciliation tests.',
 			}));
 		}
 		try {
@@ -1016,11 +1016,11 @@ async function runSmokeProvider({
 		}
 	}
 	if (provider === 'cloudflare') {
-		const accountId = configuredValue(env, ['CLOUDFLARE_ACCOUNT_ID']);
-		if (!configuredValue(env, ['CLOUDFLARE_API_TOKEN']) || !accountId) {
+		const accountId = configuredValue(env, ['TREESEED_CLOUDFLARE_ACCOUNT_ID']);
+		if (!configuredValue(env, ['TREESEED_CLOUDFLARE_API_TOKEN']) || !accountId) {
 			return PROVIDER_CAPABILITIES.cloudflare.map((capability) => scenario({
 				provider, mode, prefix, capability, ok: false, phase: 'blocked', action: 'blocked',
-				reason: 'Missing CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID for Cloudflare live reconciliation tests.',
+				reason: 'Missing TREESEED_CLOUDFLARE_API_TOKEN or TREESEED_CLOUDFLARE_ACCOUNT_ID for Cloudflare live reconciliation tests.',
 			}));
 		}
 		const checks: Array<[string, string]> = [
@@ -1050,7 +1050,7 @@ async function runSmokeProvider({
 			repository = resolveCurrentGitHubRepository(cwd, env);
 			const credential = resolveGitHubCredentialForRepository(repository, { values: env, env });
 			if (!credential.token) {
-				throw new Error(`Missing GitHub credential for ${repository}; expected ${credential.envName} or GH_TOKEN fallback.`);
+				throw new Error(`Missing GitHub credential for ${repository}; expected ${credential.envName} or TREESEED_GITHUB_TOKEN fallback.`);
 			}
 			const [owner, repo] = credential.repository.split('/');
 			const checks: Array<[string, string]> = [
@@ -1084,28 +1084,28 @@ async function runSmokeProvider({
 async function requireAcceptanceConfig(provider: TreeseedLiveReconcileProvider, cwd: string, env: LiveEnv, fetchImpl: typeof fetch) {
 	const missing: string[] = [];
 	if (provider === 'railway') {
-		if (!configuredValue(env, ['RAILWAY_API_TOKEN'])) missing.push('RAILWAY_API_TOKEN');
+		if (!configuredValue(env, ['TREESEED_RAILWAY_API_TOKEN'])) missing.push('TREESEED_RAILWAY_API_TOKEN');
 		if (!resolveLiveTestDomain(cwd, env)) missing.push('TREESEED_LIVE_TEST_DOMAIN or treeseed.site.yaml siteUrl');
 		missing.push(...capacityAcceptanceConfig(env).missing);
 	}
 	if (provider === 'cloudflare') {
-		if (!configuredValue(env, ['CLOUDFLARE_API_TOKEN'])) missing.push('CLOUDFLARE_API_TOKEN');
-		if (!configuredValue(env, ['CLOUDFLARE_ACCOUNT_ID'])) missing.push('CLOUDFLARE_ACCOUNT_ID');
+		if (!configuredValue(env, ['TREESEED_CLOUDFLARE_API_TOKEN'])) missing.push('TREESEED_CLOUDFLARE_API_TOKEN');
+		if (!configuredValue(env, ['TREESEED_CLOUDFLARE_ACCOUNT_ID'])) missing.push('TREESEED_CLOUDFLARE_ACCOUNT_ID');
 		const domain = resolveLiveTestDomain(cwd, env);
 		if (!domain) {
 			missing.push('TREESEED_LIVE_TEST_DOMAIN or treeseed.site.yaml siteUrl');
-		} else if (configuredValue(env, ['CLOUDFLARE_API_TOKEN']) && !await resolveCloudflareZoneId(domain, env, fetchImpl)) {
+		} else if (configuredValue(env, ['TREESEED_CLOUDFLARE_API_TOKEN']) && !await resolveCloudflareZoneId(domain, env, fetchImpl)) {
 			missing.push('TREESEED_LIVE_TEST_CLOUDFLARE_ZONE_ID or visible Cloudflare zone for live-test domain');
 		}
 	}
 	if (provider === 'github') {
-		if (!configuredValue(env, ['GH_TOKEN', 'GITHUB_TOKEN'])) {
+		if (!configuredValue(env, ['TREESEED_GITHUB_TOKEN'])) {
 			try {
 				const repository = configuredValue(env, ['TREESEED_REPOSITORY', 'GITHUB_REPOSITORY']);
 				const credential = repository ? resolveGitHubCredentialForRepository(repository, { values: env, env }) : null;
-				if (!credential?.token) missing.push('GH_TOKEN or repository-scoped TREESEED_GITHUB_TOKEN_*');
+				if (!credential?.token) missing.push('TREESEED_GITHUB_TOKEN or repository-scoped TREESEED_GITHUB_TOKEN_*');
 			} catch {
-				missing.push('GH_TOKEN or repository-scoped TREESEED_GITHUB_TOKEN_*');
+				missing.push('TREESEED_GITHUB_TOKEN or repository-scoped TREESEED_GITHUB_TOKEN_*');
 			}
 		}
 	}
@@ -1466,7 +1466,7 @@ function cloudflareListItems(value: unknown, keys: string[] = []) {
 }
 
 async function runCloudflareCleanup(cwd: string, environment: TreeseedLiveReconcileEnvironment, prefix: string, mode: TreeseedLiveReconcileMode, env: LiveEnv, fetchImpl: typeof fetch) {
-	const accountId = configuredValue(env, ['CLOUDFLARE_ACCOUNT_ID']);
+	const accountId = configuredValue(env, ['TREESEED_CLOUDFLARE_ACCOUNT_ID']);
 	const domain = resolveLiveTestDomain(cwd, env);
 	const zoneId = domain ? await resolveCloudflareZoneId(domain, env, fetchImpl) : configuredValue(env, ['TREESEED_LIVE_TEST_CLOUDFLARE_ZONE_ID', 'CLOUDFLARE_ZONE_ID']);
 	const destroyed: TreeseedCanonicalGraphNode[] = [];
@@ -1508,10 +1508,10 @@ async function runCloudflareCleanup(cwd: string, environment: TreeseedLiveReconc
 		}
 		return items;
 	};
-	if (!configuredValue(env, ['CLOUDFLARE_API_TOKEN']) || !accountId) {
-		cleanupDrift.push(blocking('cloudflare', 'account', 'Cloudflare cleanup requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.'));
+	if (!configuredValue(env, ['TREESEED_CLOUDFLARE_API_TOKEN']) || !accountId) {
+		cleanupDrift.push(blocking('cloudflare', 'account', 'Cloudflare cleanup requires TREESEED_CLOUDFLARE_API_TOKEN and TREESEED_CLOUDFLARE_ACCOUNT_ID.'));
 	}
-	if (accountId && configuredValue(env, ['CLOUDFLARE_API_TOKEN'])) {
+	if (accountId && configuredValue(env, ['TREESEED_CLOUDFLARE_API_TOKEN'])) {
 		if (mode === 'acceptance') {
 			await attempt('worker', prefix, () => cloudflareRequest(`/accounts/${accountId}/workers/scripts/${prefix}`, env, fetchImpl, { method: 'DELETE' }).catch((error) => {
 				const message = error instanceof Error ? error.message : String(error);
@@ -1552,7 +1552,7 @@ async function runCloudflareCleanup(cwd: string, environment: TreeseedLiveReconc
 			if (name.startsWith(prefixRoot) && id) await attempt('turnstile', id, () => cloudflareRequest(`/accounts/${accountId}/challenges/widgets/${id}`, env, fetchImpl, { method: 'DELETE' }));
 		}
 	}
-	if (zoneId && configuredValue(env, ['CLOUDFLARE_API_TOKEN'])) {
+	if (zoneId && configuredValue(env, ['TREESEED_CLOUDFLARE_API_TOKEN'])) {
 		for (const record of await list('dns', `/zones/${zoneId}/dns_records?per_page=100`)) {
 			const name = cloudflareName(record);
 			const id = cloudflareId(record);
@@ -1586,7 +1586,7 @@ async function runCloudflareAcceptance(cwd: string, environment: TreeseedLiveRec
 	}
 	emitProgress(onProgress, { provider: 'cloudflare', mode, environment, runId, resourcePrefix: prefix, phase: 'cleanup', message: `cloudflare: removing old live-test resources for ${prefix}` });
 	await runCloudflareCleanup(cwd, environment, prefix, mode, env, fetchImpl);
-	const accountId = configuredValue(env, ['CLOUDFLARE_ACCOUNT_ID']);
+	const accountId = configuredValue(env, ['TREESEED_CLOUDFLARE_ACCOUNT_ID']);
 	const domain = resolveLiveTestDomain(cwd, env);
 	const zoneId = await resolveCloudflareZoneId(domain, env, fetchImpl);
 	const results: TreeseedLiveReconcileScenarioResult[] = [];
@@ -1783,7 +1783,7 @@ async function runGitHubAcceptance(cwd: string, environment: TreeseedLiveReconci
 	try {
 		repository = resolveCurrentGitHubRepository(cwd, env);
 		const credential = resolveGitHubCredentialForRepository(repository, { values: env, env });
-		if (!credential.token) throw new Error(`Missing GitHub credential for ${repository}; expected ${credential.envName} or GH_TOKEN fallback.`);
+		if (!credential.token) throw new Error(`Missing GitHub credential for ${repository}; expected ${credential.envName} or TREESEED_GITHUB_TOKEN fallback.`);
 		const [owner, repo] = credential.repository.split('/');
 		const environmentName = prefix;
 		const variableName = `TREESEED_LIVE_TEST_${prefix.toUpperCase().replace(/[^A-Z0-9]/gu, '_')}`;

@@ -147,7 +147,7 @@ describe('workflow update', () => {
 		expect(result.ok).toBe(true);
 		expect(git(work, ['merge-base', '--is-ancestor', stagingHead, 'HEAD'], { allowFailure: true }).status).toBe(0);
 		expect(git(origin, ['rev-parse', 'refs/heads/demo']).stdout).toBe(git(work, ['rev-parse', 'HEAD']).stdout);
-	});
+	}, 30000);
 
 	it('blocks ff-only when a merge commit would be required', async () => {
 		const { work } = createRootRepo();

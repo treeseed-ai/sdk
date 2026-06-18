@@ -30,7 +30,7 @@ describe('railwayGraphqlRequest', () => {
 		const result = await railwayGraphqlRequest<{ ok: boolean }>({
 			query: 'query TreeseedTest { ok }',
 			env: {
-				RAILWAY_API_TOKEN: 'railway-token-value',
+				TREESEED_RAILWAY_API_TOKEN: 'railway-token-value',
 			},
 			retries: 1,
 			fetchImpl: fetchMock,
@@ -61,7 +61,7 @@ describe('railwayGraphqlRequest', () => {
 		const result = await getRailwayServiceInstance({
 			serviceId: 'svc-api',
 			environmentId: 'env-production',
-			env: { RAILWAY_API_TOKEN: 'railway-token-value' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token-value' },
 			fetchImpl: fetchMock,
 		});
 
@@ -117,7 +117,7 @@ describe('railwayGraphqlRequest', () => {
 			healthcheckPath: '/healthz',
 			healthcheckTimeoutSeconds: 10,
 			runtimeMode: 'serverless',
-			env: { RAILWAY_API_TOKEN: 'railway-token-value' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token-value' },
 			fetchImpl: fetchMock,
 			settleDelayMs: 0,
 		});
@@ -198,7 +198,7 @@ describe('railwayGraphqlRequest', () => {
 			healthcheckPath: '/healthz',
 			healthcheckTimeoutSeconds: 10,
 			runtimeMode: 'serverless',
-			env: { RAILWAY_API_TOKEN: 'railway-token-value' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token-value' },
 			fetchImpl: fetchMock,
 			settleDelayMs: 0,
 		});
@@ -260,7 +260,7 @@ describe('railwayGraphqlRequest', () => {
 			healthcheckPath: '/healthz',
 			healthcheckTimeoutSeconds: 10,
 			runtimeMode: 'serverless',
-			env: { RAILWAY_API_TOKEN: 'railway-token-value' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token-value' },
 			fetchImpl: fetchMock,
 			settleDelayMs: 0,
 		});
@@ -341,7 +341,7 @@ describe('railwayGraphqlRequest', () => {
 			healthcheckPath: '/healthz',
 			healthcheckTimeoutSeconds: 10,
 			runtimeMode: 'serverless',
-			env: { RAILWAY_API_TOKEN: 'railway-token-value' },
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token-value' },
 			fetchImpl: fetchMock,
 			settleAttempts: 12,
 			settleDelayMs: 0,

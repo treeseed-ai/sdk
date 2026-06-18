@@ -872,7 +872,7 @@ function scaffoldLaunchSource(projectRoot: string, input: KnowledgeHubProviderLa
 }
 
 function repositoryHostGitHubEnvOverlay() {
-	const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || process.env.TREESEED_HOSTED_HUBS_GITHUB_TOKEN || '';
+	const token = process.env.TREESEED_GITHUB_TOKEN || process.env.TREESEED_HOSTED_HUBS_GITHUB_TOKEN || '';
 	return token
 		? { ...process.env, GH_TOKEN: token, GITHUB_TOKEN: token }
 		: process.env;

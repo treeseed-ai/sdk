@@ -81,7 +81,7 @@ vi.mock('../../src/operations/services/config-runtime.ts', () => ({
 			{ id: 'TREESEED_PUBLIC_TURNSTILE_SITE_KEY', scopes: ['staging'], targets: ['cloudflare-var'] },
 			{ id: 'TREESEED_TURNSTILE_SECRET_KEY', scopes: ['staging'], targets: ['cloudflare-secret'] },
 			{ id: 'TREESEED_RAILWAY_WORKSPACE', scopes: ['staging'], targets: ['railway-var'] },
-			{ id: 'GH_TOKEN', scopes: ['staging'], targets: ['railway-secret'] },
+			{ id: 'TREESEED_GITHUB_TOKEN', scopes: ['staging'], targets: ['railway-secret'] },
 		],
 	}),
 	resolveTreeseedMachineEnvironmentValues: resolveTreeseedMachineEnvironmentValuesMock,
@@ -311,8 +311,8 @@ beforeEach(() => {
 			session: new Map(),
 		};
 		context.launchEnv = {
-			CLOUDFLARE_ACCOUNT_ID: 'account-123',
-			CLOUDFLARE_API_TOKEN: 'cf-token',
+			TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
+			TREESEED_CLOUDFLARE_API_TOKEN: 'cf-token',
 		};
 		vi.stubEnv('TREESEED_PUBLIC_TURNSTILE_SITE_KEY', 'manual-site-key');
 
@@ -407,8 +407,8 @@ beforeEach(() => {
 				turnstile: { enabled: true },
 			},
 			launchEnv: {
-				CLOUDFLARE_ACCOUNT_ID: 'account-123',
-				CLOUDFLARE_API_TOKEN: 'cf-token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cf-token',
 			},
 			session: new Map(),
 		};
@@ -488,8 +488,8 @@ beforeEach(() => {
 				turnstile: { enabled: true },
 			},
 			launchEnv: {
-				CLOUDFLARE_ACCOUNT_ID: 'account-123',
-				CLOUDFLARE_API_TOKEN: 'cf-token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cf-token',
 			},
 			session: new Map(),
 		};
@@ -535,11 +535,11 @@ beforeEach(() => {
 				cloudflare: { accountId: 'account-123' },
 			},
 			launchEnv: {
-				RAILWAY_API_TOKEN: 'railway-token',
+				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
 				TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
-				GH_TOKEN: 'github-token',
-				CLOUDFLARE_API_TOKEN: 'cf-token',
-				CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				TREESEED_GITHUB_TOKEN: 'github-token',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cf-token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
 			},
 			session: new Map(),
 		};
@@ -548,20 +548,20 @@ beforeEach(() => {
 		const diff = adapter!.diff({ unit, context, observed } as never);
 		await adapter!.apply({ unit, context, observed, diff } as never);
 
-		expect(resolveTreeseedMachineEnvironmentValuesMock).not.toHaveBeenCalled();
-		expect(railwayEnvMock).toHaveBeenCalledWith(expect.objectContaining({
-			RAILWAY_API_TOKEN: 'railway-token',
-			TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
-		}));
+	expect(resolveTreeseedMachineEnvironmentValuesMock).not.toHaveBeenCalled();
+	expect(railwayEnvMock).toHaveBeenCalledWith(expect.objectContaining({
+		RAILWAY_API_TOKEN: 'railway-token',
+		TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
+	}));
 		expect(upsertRailwayVariablesMock).toHaveBeenCalledWith(expect.objectContaining({
 			projectId: 'project-1',
 			environmentId: 'env-1',
 			serviceId: 'service-1',
 			variables: expect.objectContaining({
 				TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
-				GH_TOKEN: 'github-token',
-				CLOUDFLARE_API_TOKEN: 'cf-token',
-				CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				TREESEED_GITHUB_TOKEN: 'github-token',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cf-token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
 				TREESEED_API_D1_DATABASE_ID: 'd1-1',
 			}),
 		}));
@@ -623,8 +623,8 @@ beforeEach(() => {
 				cloudflare: { accountId: 'account-123', zoneId: 'zone-1' },
 			},
 			launchEnv: {
-				CLOUDFLARE_ACCOUNT_ID: 'account-123',
-				CLOUDFLARE_API_TOKEN: 'cf-token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cf-token',
 			},
 			session: new Map(),
 		};

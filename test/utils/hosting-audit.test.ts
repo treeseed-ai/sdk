@@ -87,7 +87,7 @@ describe('hosting audit', () => {
 			hostKinds: ['web', 'email'],
 			providerConnectionChecks: false,
 			env: {
-				CLOUDFLARE_ACCOUNT_ID: 'account-123',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
 			},
 			valuesOverlay: {
 				TREESEED_HOSTING_KIND: 'hosted_project',
@@ -100,6 +100,6 @@ describe('hosting audit', () => {
 
 		expect(report.hostKinds).toEqual(['web', 'email']);
 		expect(report.checks.some((check) => check.provider === 'github')).toBe(false);
-		expect(report.checks.some((check) => check.id === 'config.GH_TOKEN')).toBe(false);
+		expect(report.checks.some((check) => check.id === 'config.TREESEED_GITHUB_TOKEN')).toBe(false);
 	}, 20_000);
 });

@@ -5381,7 +5381,7 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 	try {
 		return await withContextEnv(helpers.context.env, async () => {
 			const root = resolveProjectRootOrThrow('recover', helpers.cwd());
-			const lock = inspectWorkflowLock(root);
+			const lock = inspectWorkflowLock(root, { scope: 'worktree' });
 			const journals = listWorkflowRunJournals(root);
 			const session = resolveTreeseedWorkflowSession(root);
 			const currentHeads = Object.fromEntries(

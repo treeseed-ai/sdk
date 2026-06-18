@@ -35,6 +35,7 @@ export {
 export { createControlPlaneReporter } from './control-plane.ts';
 export { ControlPlaneClient } from './control-plane-client.ts';
 export * from './agent-capacity.ts';
+export * from './secrets-capability.ts';
 export * from './seeds/index.ts';
 export {
 		CAPACITY_PROVIDER_ENDPOINTS,
@@ -364,6 +365,7 @@ export {
 	resolveTreeseedToolCommand,
 	type TreeseedToolStatusResult,
 } from './managed-dependencies.ts';
+export * from './service-credentials.ts';
 export {
 	runTreeseedCopilotTask,
 	type TreeseedCopilotTaskInput,
@@ -861,14 +863,6 @@ export type {
 	ProviderQuotaVisibility,
 	ProviderReportRequest,
 	ProviderReportResponse,
-	ProviderTaskClaimRequest,
-	ProviderTaskClaimResponse,
-	ProviderTaskCompleteRequest,
-	ProviderTaskCompleteResponse,
-	ProviderTaskEventRequest,
-	ProviderTaskEventResponse,
-	ProviderTaskFailRequest,
-	ProviderTaskFailResponse,
 	ProviderUsageReport,
 	ProviderUsageReportResponse,
 	ProviderWorkdayRequest,

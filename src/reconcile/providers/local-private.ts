@@ -1,16 +1,6 @@
-import {
-	runTreeseedManagedDev,
-	type TreeseedManagedDevAction,
-	type TreeseedManagedDevOptions,
-} from '../../local-dev/managed-dev.ts';
+import { runTreeseedManagedDev, type TreeseedManagedDevAction, type TreeseedManagedDevOptions } from '../../local-dev/managed-dev.ts';
 
-export function runManagedDevAction(input: {
-	tenantRoot: string;
-	action: TreeseedManagedDevAction;
-	surfaces: string[];
-	options?: Record<string, unknown>;
-	env?: NodeJS.ProcessEnv;
-}) {
+export function runManagedDevAction(input: { tenantRoot: string; action: TreeseedManagedDevAction; surfaces: string[]; options?: Record<string, unknown>; env?: NodeJS.ProcessEnv }) {
 	return runTreeseedManagedDev({
 		action: input.action,
 		cwd: input.tenantRoot,
@@ -28,14 +18,15 @@ export function runManagedDevAction(input: {
 	}).then((result) => {
 		const safeResult = sanitizeManagedDevResult(result);
 		return {
-		ok: safeResult.ok,
-		status: safeResult.ok ? 0 : 1,
-		stdout: `${JSON.stringify(safeResult)}\n`,
-		stderr: '',
-		output: JSON.stringify(safeResult),
-		parsed: safeResult,
-		args: [input.action, '--surfaces', input.surfaces.join(',')],
-	};
+			ok: safeResult.ok,
+			status: safeResult.ok ? 0 : 1,
+			stdout: `${JSON.stringify(safeResult)}\n`,
+			stderr: '',
+			output: JSON.stringify(safeResult),
+			parsed: safeResult,
+			args: [input.action],
+			surfaces: input.surfaces,
+		};
 	});
 }
 
@@ -61,12 +52,7 @@ function redactEnvironment(value: unknown) {
 	if (!value || typeof value !== 'object') {
 		return {};
 	}
-	return Object.fromEntries(
-		Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-			key,
-			key === 'PATH' || key === 'NODE_ENV' ? String(entry ?? '') : '<redacted>',
-		]),
-	);
+	return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, key === 'PATH' || key === 'NODE_ENV' ? String(entry ?? '') : '<redacted>']));
 }
 
 export async function checkHttpHealth(url: string, timeoutMs = 2_000) {

@@ -60,32 +60,32 @@ function envTokenStatus(keys, label, values = process.env) {
 
 export function parseGitHubAuthStatus(values = process.env) {
 	return {
-		authenticated: envTokenStatus(['GH_TOKEN'], 'GitHub', values).ready,
-		detail: envTokenStatus(['GH_TOKEN'], 'GitHub', values).detail,
+		authenticated: envTokenStatus(['TREESEED_GITHUB_TOKEN'], 'GitHub', values).ready,
+		detail: envTokenStatus(['TREESEED_GITHUB_TOKEN'], 'GitHub', values).detail,
 	};
 }
 
 export function parseWranglerWhoAmI(values = process.env) {
 	return {
-		authenticated: envTokenStatus(['CLOUDFLARE_API_TOKEN'], 'Cloudflare', values).ready,
-		detail: envTokenStatus(['CLOUDFLARE_API_TOKEN'], 'Cloudflare', values).detail,
+		authenticated: envTokenStatus(['TREESEED_CLOUDFLARE_API_TOKEN'], 'Cloudflare', values).ready,
+		detail: envTokenStatus(['TREESEED_CLOUDFLARE_API_TOKEN'], 'Cloudflare', values).detail,
 	};
 }
 
 export function parseRailwayWhoAmI(values = process.env) {
 	return {
-		authenticated: envTokenStatus(['RAILWAY_API_TOKEN'], 'Railway', values).ready,
-		detail: envTokenStatus(['RAILWAY_API_TOKEN'], 'Railway', values).detail,
+		authenticated: envTokenStatus(['TREESEED_RAILWAY_API_TOKEN'], 'Railway', values).ready,
+		detail: envTokenStatus(['TREESEED_RAILWAY_API_TOKEN'], 'Railway', values).detail,
 	};
 }
 
 export function parseCopilotSessionStatus(values = process.env) {
-	const status = envTokenStatus(['GH_TOKEN'], 'GitHub', values);
+	const status = envTokenStatus(['TREESEED_GITHUB_TOKEN'], 'GitHub', values);
 	return {
 		configured: status.ready,
 		detail: status.ready
 			? 'GitHub token detected from configured Treeseed environment for Copilot-backed workflows.'
-			: 'GitHub token is not configured. Set GH_TOKEN for Copilot-backed workflows.',
+			: 'GitHub token is not configured. Set TREESEED_GITHUB_TOKEN for Copilot-backed workflows.',
 	};
 }
 

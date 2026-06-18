@@ -258,8 +258,7 @@ export async function ensureGitHubBootstrapRepository(
 
 	const client = createGitHubApiClient({
 		env: {
-			GH_TOKEN: configuredValue(values, 'GH_TOKEN') || configuredValue(values, 'GITHUB_TOKEN'),
-			GITHUB_TOKEN: configuredValue(values, 'GH_TOKEN') || configuredValue(values, 'GITHUB_TOKEN'),
+			TREESEED_GITHUB_TOKEN: configuredValue(values, 'TREESEED_GITHUB_TOKEN'),
 		},
 	});
 	const existing = await maybeGetGitHubRepository({ owner: target.owner, name: target.name }, { client });

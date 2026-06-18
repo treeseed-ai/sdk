@@ -298,10 +298,11 @@ async function instanceFromSpecWithHealth(spec: TreeseedManagedDevProcessSpec): 
 	const instance = instanceFromSpec(spec);
 	const healthStatus = await checkHealth(spec);
 	const healthy = healthStatus.length === 0 || healthStatus.every((entry) => entry.ok);
+	const running = healthStatus.length > 0 ? healthy : instance.running;
 	return {
 		...instance,
 		healthStatus,
-		running: instance.running && healthy,
+		running,
 	};
 }
 

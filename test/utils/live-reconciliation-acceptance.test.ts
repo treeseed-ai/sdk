@@ -27,7 +27,7 @@ describe('live reconciliation acceptance harness', () => {
 			mode: 'acceptance',
 			providers: ['railway'],
 			env: {
-				RAILWAY_API_TOKEN: 'token',
+				TREESEED_RAILWAY_API_TOKEN: 'token',
 			},
 			now: new Date('2026-06-08T12:00:00Z'),
 		});
@@ -48,7 +48,7 @@ describe('live reconciliation acceptance harness', () => {
 			mode: 'acceptance',
 			providers: ['railway'],
 			env: {
-				RAILWAY_API_TOKEN: 'token',
+				TREESEED_RAILWAY_API_TOKEN: 'token',
 			},
 			runId,
 		});
@@ -162,8 +162,8 @@ describe('live reconciliation acceptance harness', () => {
 			mode: 'cleanup',
 			providers: ['cloudflare'],
 			env: {
-				CLOUDFLARE_ACCOUNT_ID: 'account-id',
-				CLOUDFLARE_API_TOKEN: 'token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-id',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'token',
 				CLOUDFLARE_ZONE_ID: 'zone-id',
 				TREESEED_LIVE_TEST_DOMAIN: 'example.com',
 			},

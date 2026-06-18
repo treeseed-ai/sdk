@@ -13,6 +13,7 @@ export type TreeseedWorkflowRunCommand =
 	| 'destroy';
 
 export type TreeseedWorkflowExecutionMode = 'execute' | 'plan';
+export type TreeseedWorkflowLockScope = 'worktree' | 'shared';
 
 export type TreeseedWorkflowRunStatus = 'running' | 'failed' | 'completed';
 
@@ -86,6 +87,7 @@ export type TreeseedWorkflowRunJournal = {
 export type TreeseedWorkflowLockRecord = {
 	schemaVersion: 1;
 	kind: 'treeseed.workflow.lock';
+	scope?: TreeseedWorkflowLockScope;
 	runId: string;
 	command: TreeseedWorkflowRunCommand;
 	root: string;
@@ -109,6 +111,7 @@ const WORKFLOW_RUNS_DIR = `${WORKFLOW_CONTROL_DIR}/runs`;
 const WORKTREE_METADATA_PATH = '.treeseed/worktree.json';
 const LOCK_STALE_AFTER_MS = 4 * 60 * 60 * 1000;
 const WORKFLOW_RUN_STORAGE_ROOTS = new Map<string, string>();
+const SHARED_LOCK_COMMANDS = new Set<TreeseedWorkflowRunCommand>(['stage', 'release']);
 
 function nowIso() {
 	return new Date().toISOString();
@@ -127,27 +130,49 @@ function managedWorktreePrimaryRoot(root: string) {
 	}
 }
 
-function workflowStorageRoot(root: string, runId?: string | null) {
+export function workflowLockScopeForCommand(command: TreeseedWorkflowRunCommand): TreeseedWorkflowLockScope {
+	return SHARED_LOCK_COMMANDS.has(command) ? 'shared' : 'worktree';
+}
+
+export function isSharedWorkflowCommand(command?: string | null): command is TreeseedWorkflowRunCommand {
+	return command === 'stage' || command === 'release';
+}
+
+function workflowCommandFromRunId(runId?: string | null): TreeseedWorkflowRunCommand | null {
+	if (!runId) return null;
+	const prefix = runId.split('-', 1)[0];
+	return ['switch', 'save', 'update', 'close', 'stage', 'release', 'destroy'].includes(prefix)
+		? prefix as TreeseedWorkflowRunCommand
+		: null;
+}
+
+function workflowStorageRootForScope(root: string, scope: TreeseedWorkflowLockScope) {
+	return scope === 'shared' ? managedWorktreePrimaryRoot(root) ?? root : root;
+}
+
+function workflowStorageRoot(root: string, runId?: string | null, scope?: TreeseedWorkflowLockScope) {
 	if (runId && WORKFLOW_RUN_STORAGE_ROOTS.has(runId)) {
 		return WORKFLOW_RUN_STORAGE_ROOTS.get(runId) as string;
 	}
-	const storageRoot = managedWorktreePrimaryRoot(root) ?? root;
+	const command = workflowCommandFromRunId(runId);
+	const resolvedScope = scope ?? (command ? workflowLockScopeForCommand(command) : 'worktree');
+	const storageRoot = workflowStorageRootForScope(root, resolvedScope);
 	if (runId) {
 		WORKFLOW_RUN_STORAGE_ROOTS.set(runId, storageRoot);
 	}
 	return storageRoot;
 }
 
-function workflowControlRoot(root: string, runId?: string | null) {
-	return resolve(workflowStorageRoot(root, runId), WORKFLOW_CONTROL_DIR);
+function workflowControlRoot(root: string, runId?: string | null, scope?: TreeseedWorkflowLockScope) {
+	return resolve(workflowStorageRoot(root, runId, scope), WORKFLOW_CONTROL_DIR);
 }
 
-function workflowRunsRoot(root: string, runId?: string | null) {
-	return resolve(workflowStorageRoot(root, runId), WORKFLOW_RUNS_DIR);
+function workflowRunsRoot(root: string, runId?: string | null, scope?: TreeseedWorkflowLockScope) {
+	return resolve(workflowStorageRoot(root, runId, scope), WORKFLOW_RUNS_DIR);
 }
 
-function workflowLockPath(root: string, runId?: string | null) {
-	return resolve(workflowStorageRoot(root, runId), WORKFLOW_CONTROL_DIR, 'lock.json');
+function workflowLockPath(root: string, runId?: string | null, scope?: TreeseedWorkflowLockScope) {
+	return resolve(workflowStorageRoot(root, runId, scope), WORKFLOW_CONTROL_DIR, 'lock.json');
 }
 
 function workflowRunPath(root: string, runId: string) {
@@ -186,9 +211,9 @@ function ensureWorkflowExcludeRule(root: string) {
 	writeFileSync(excludePath, `${current}${current.endsWith('\n') || current.length === 0 ? '' : '\n'}${pattern}\n`, 'utf8');
 }
 
-function ensureWorkflowControlDirs(root: string, runId?: string | null) {
-	const controlDir = workflowControlRoot(root, runId);
-	const runsDir = workflowRunsRoot(root, runId);
+function ensureWorkflowControlDirs(root: string, runId?: string | null, scope?: TreeseedWorkflowLockScope) {
+	const controlDir = workflowControlRoot(root, runId, scope);
+	const runsDir = workflowRunsRoot(root, runId, scope);
 	mkdirSync(runsDir, { recursive: true });
 	ensureWorkflowExcludeRule(root);
 	writeFileSync(resolve(controlDir, '.gitignore'), '*\n!.gitignore\n!runs/\nruns/*\n!runs/.gitignore\n', 'utf8');
@@ -196,7 +221,7 @@ function ensureWorkflowControlDirs(root: string, runId?: string | null) {
 	return {
 		controlDir,
 		runsDir,
-		lockPath: workflowLockPath(root),
+		lockPath: workflowLockPath(root, runId, scope),
 	};
 }
 
@@ -227,8 +252,9 @@ export function generateWorkflowRunId(command: TreeseedWorkflowRunCommand) {
 	return `${command}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function inspectWorkflowLock(root: string): TreeseedWorkflowLockInspection {
-	const lock = safeJsonParse<TreeseedWorkflowLockRecord>(workflowLockPath(root));
+export function inspectWorkflowLock(root: string, options: { scope?: TreeseedWorkflowLockScope } = {}): TreeseedWorkflowLockInspection {
+	const scope = options.scope ?? 'worktree';
+	const lock = safeJsonParse<TreeseedWorkflowLockRecord>(workflowLockPath(root, null, scope));
 	if (!lock) {
 		return {
 			lock: null,
@@ -248,6 +274,7 @@ export function inspectWorkflowLock(root: string): TreeseedWorkflowLockInspectio
 	return {
 		lock: {
 			...lock,
+			scope: lock.scope ?? scope,
 			stale: staleReason != null,
 			staleReason,
 		},
@@ -258,8 +285,9 @@ export function inspectWorkflowLock(root: string): TreeseedWorkflowLockInspectio
 }
 
 export function acquireWorkflowLock(root: string, command: TreeseedWorkflowRunCommand, runId: string) {
-	const dirs = ensureWorkflowControlDirs(root, runId);
-	const inspection = inspectWorkflowLock(root);
+	const scope = workflowLockScopeForCommand(command);
+	const dirs = ensureWorkflowControlDirs(root, runId, scope);
+	const inspection = inspectWorkflowLock(root, { scope });
 	if (inspection.active && inspection.lock && inspection.lock.runId !== runId) {
 		return {
 			acquired: false,
@@ -273,6 +301,7 @@ export function acquireWorkflowLock(root: string, command: TreeseedWorkflowRunCo
 	const lock: TreeseedWorkflowLockRecord = {
 		schemaVersion: 1,
 		kind: 'treeseed.workflow.lock',
+		scope,
 		runId,
 		command,
 		root,
@@ -639,8 +668,8 @@ export function createWorkflowRunJournal(
 	});
 }
 
-export function listWorkflowRunJournals(root: string) {
-	const runsDir = workflowRunsRoot(root);
+function listWorkflowRunJournalsForScope(root: string, scope: TreeseedWorkflowLockScope) {
+	const runsDir = workflowRunsRoot(root, null, scope);
 	if (!existsSync(runsDir)) {
 		return [] as TreeseedWorkflowRunJournal[];
 	}
@@ -649,6 +678,16 @@ export function listWorkflowRunJournals(root: string) {
 		.map((entry) => safeJsonParse<TreeseedWorkflowRunJournal>(resolve(runsDir, entry)))
 		.filter((entry): entry is TreeseedWorkflowRunJournal => entry != null)
 		.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
+export function listWorkflowRunJournals(root: string) {
+	const local = listWorkflowRunJournalsForScope(root, 'worktree');
+	const shared = listWorkflowRunJournalsForScope(root, 'shared');
+	const byId = new Map<string, TreeseedWorkflowRunJournal>();
+	for (const journal of [...local, ...shared]) {
+		byId.set(journal.runId, journal);
+	}
+	return [...byId.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
 export function listInterruptedWorkflowRuns(root: string) {

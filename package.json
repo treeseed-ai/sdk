@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.11.1-dev.demo.20260616T162035Z",
+  "version": "0.11.1-dev.demo.20260618T214811Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -145,6 +145,10 @@
       "types": "./dist/agent-capacity.d.ts",
       "default": "./dist/agent-capacity.js"
     },
+    "./secrets-capability": {
+      "types": "./dist/secrets-capability.d.ts",
+      "default": "./dist/secrets-capability.js"
+    },
     "./reconcile": {
       "types": "./dist/reconcile/index.d.ts",
       "default": "./dist/reconcile/index.js"
@@ -284,6 +288,10 @@
     "./managed-dependencies": {
       "types": "./dist/managed-dependencies.d.ts",
       "default": "./dist/managed-dependencies.js"
+    },
+    "./service-credentials": {
+      "types": "./dist/service-credentials.d.ts",
+      "default": "./dist/service-credentials.js"
     },
     "./copilot": {
       "types": "./dist/copilot.d.ts",

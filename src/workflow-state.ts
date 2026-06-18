@@ -468,9 +468,9 @@ function providerStatusForScope(
 	options: TreeseedWorkflowStatusOptions,
 ) {
 	const values = statusConfig.values;
-	const githubConfigured = typeof values.GH_TOKEN === 'string' && values.GH_TOKEN.trim().length > 0;
-	const cloudflareConfigured = typeof values.CLOUDFLARE_API_TOKEN === 'string' && values.CLOUDFLARE_API_TOKEN.trim().length > 0;
-	const railwayConfigured = typeof values.RAILWAY_API_TOKEN === 'string' && values.RAILWAY_API_TOKEN.trim().length > 0;
+	const githubConfigured = typeof values.TREESEED_GITHUB_TOKEN === 'string' && values.TREESEED_GITHUB_TOKEN.trim().length > 0;
+	const cloudflareConfigured = typeof values.TREESEED_CLOUDFLARE_API_TOKEN === 'string' && values.TREESEED_CLOUDFLARE_API_TOKEN.trim().length > 0;
+	const railwayConfigured = typeof values.TREESEED_RAILWAY_API_TOKEN === 'string' && values.TREESEED_RAILWAY_API_TOKEN.trim().length > 0;
 	const localDevelopmentConfigured = providerProblems(statusConfig.validation, 'localDevelopment').length === 0;
 	const live = options.live === true;
 	const env = statusConfig.resolvedValues as NodeJS.ProcessEnv;
@@ -731,7 +731,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			? `operations-runner:${marketSettings.projectId.trim()}`
 			: null);
 	const runnerSession = runnerHostId ? safeResolveRemoteSession(effectiveCwd, runnerHostId) : null;
-	const workflowLock = inspectWorkflowLock(effectiveCwd);
+	const workflowLock = inspectWorkflowLock(effectiveCwd, { scope: 'worktree' });
 	const workflowRunHeads: Record<string, string | null> = {};
 	if (root) {
 		workflowRunHeads['@treeseed/market'] = safeHeadCommit(root);
@@ -942,9 +942,9 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 				marketSettings?.runnerReady === true
 				|| (typeof runnerSession?.accessToken === 'string' && runnerSession.accessToken.length > 0),
 			);
-			state.auth.gh = state.auth.gh || hasStatusConfigValue(statusConfigByScope, 'GH_TOKEN');
-			state.auth.wrangler = state.auth.wrangler || hasStatusConfigValue(statusConfigByScope, 'CLOUDFLARE_API_TOKEN');
-			state.auth.railway = state.auth.railway || hasStatusConfigValue(statusConfigByScope, 'RAILWAY_API_TOKEN');
+			state.auth.gh = state.auth.gh || hasStatusConfigValue(statusConfigByScope, 'TREESEED_GITHUB_TOKEN');
+			state.auth.wrangler = state.auth.wrangler || hasStatusConfigValue(statusConfigByScope, 'TREESEED_CLOUDFLARE_API_TOKEN');
+			state.auth.railway = state.auth.railway || hasStatusConfigValue(statusConfigByScope, 'TREESEED_RAILWAY_API_TOKEN');
 			state.auth.copilot = state.auth.copilot || state.auth.gh;
 			state.marketConnection.baseUrl = state.marketConnection.baseUrl
 				?? sharedConfigValues.TREESEED_API_BASE_URL

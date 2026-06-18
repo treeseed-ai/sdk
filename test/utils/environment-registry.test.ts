@@ -636,7 +636,7 @@ describe('environment registry overlays', () => {
 				plugins: [],
 			});
 
-			const railwayApiToken = findRegistryEntry(registry, 'RAILWAY_API_TOKEN');
+			const railwayApiToken = findRegistryEntry(registry, 'TREESEED_RAILWAY_API_TOKEN');
 			if (railwayApiToken) {
 				expect(isTreeseedEnvironmentEntryRelevant(railwayApiToken, registry.context, 'staging', 'config')).toBe(false);
 			}
@@ -668,7 +668,7 @@ describe('environment registry overlays', () => {
 			plugins: [],
 		});
 
-		for (const id of ['RAILWAY_API_TOKEN', 'TREESEED_API_WEB_SERVICE_SECRET', 'TREESEED_CAPACITY_PROVIDER_ID']) {
+		for (const id of ['TREESEED_RAILWAY_API_TOKEN', 'TREESEED_API_WEB_SERVICE_SECRET', 'TREESEED_CAPACITY_PROVIDER_ID']) {
 			const entry = findRegistryEntry(registry, id);
 			if (entry) {
 				expect(isTreeseedEnvironmentEntryRelevant(entry, registry.context, 'staging', 'config')).toBe(false);
@@ -693,7 +693,7 @@ describe('environment registry overlays', () => {
 			deployConfig,
 			plugins: [],
 		});
-		const entry = registry.entries.find((candidate) => candidate.id === 'CLOUDFLARE_ACCOUNT_ID');
+		const entry = registry.entries.find((candidate) => candidate.id === 'TREESEED_CLOUDFLARE_ACCOUNT_ID');
 
 		expect(entry).toMatchObject({
 			requirement: 'required',
@@ -711,7 +711,7 @@ describe('environment registry overlays', () => {
 			deployConfig,
 			plugins: [],
 			values: {},
-		}).CLOUDFLARE_ACCOUNT_ID).toBeUndefined();
+		}).TREESEED_CLOUDFLARE_ACCOUNT_ID).toBeUndefined();
 		expect(getTreeseedEnvironmentSuggestedValues({
 			scope: 'prod',
 			purpose: 'config',
@@ -721,9 +721,9 @@ describe('environment registry overlays', () => {
 			},
 			plugins: [],
 			values: {
-				CLOUDFLARE_ACCOUNT_ID: 'account-from-machine-config',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-from-machine-config',
 			},
-		}).CLOUDFLARE_ACCOUNT_ID).toBeUndefined();
+		}).TREESEED_CLOUDFLARE_ACCOUNT_ID).toBeUndefined();
 	});
 
 	it('scopes Cloudflare AI credentials to local, staging, and prod config', async () => {
@@ -742,15 +742,15 @@ describe('environment registry overlays', () => {
 			} as any,
 			plugins: [],
 		});
-		const cloudflareToken = registry.entries.find((entry) => entry.id === 'CLOUDFLARE_API_TOKEN');
+		const cloudflareToken = registry.entries.find((entry) => entry.id === 'TREESEED_CLOUDFLARE_API_TOKEN');
 
 		expect(cloudflareToken?.scopes).toEqual(['local', 'staging', 'prod']);
 		expect(isTreeseedEnvironmentEntryRelevant(cloudflareToken!, registry.context, 'local', 'config')).toBe(true);
 		expect(isTreeseedEnvironmentEntryRequired(cloudflareToken!, registry.context, 'local', 'config')).toBe(true);
-		expect(findRegistryEntry(registry, 'RAILWAY_API_TOKEN')?.scopes).toEqual(
-			findRegistryEntry(registry, 'RAILWAY_API_TOKEN') ? ['local', 'staging', 'prod'] : undefined,
+		expect(findRegistryEntry(registry, 'TREESEED_RAILWAY_API_TOKEN')?.scopes).toEqual(
+			findRegistryEntry(registry, 'TREESEED_RAILWAY_API_TOKEN') ? ['local', 'staging', 'prod'] : undefined,
 		);
-		expect(registry.entries.find((entry) => entry.id === 'CLOUDFLARE_ACCOUNT_ID')?.scopes).toEqual(['local', 'staging', 'prod']);
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_CLOUDFLARE_ACCOUNT_ID')?.scopes).toEqual(['local', 'staging', 'prod']);
 		expect(findRegistryEntry(registry, 'TREESEED_RAILWAY_WORKSPACE')?.scopes).toEqual(
 			findRegistryEntry(registry, 'TREESEED_RAILWAY_WORKSPACE') ? ['staging', 'prod'] : undefined,
 		);
@@ -762,7 +762,7 @@ describe('environment registry overlays', () => {
 		expect(findRegistryEntry(registry, 'TREESEED_WORKER_POOL_SCALER')?.scopes).toEqual(
 			findRegistryEntry(registry, 'TREESEED_WORKER_POOL_SCALER') ? ['staging', 'prod'] : undefined,
 		);
-		expect(registry.entries.find((entry) => entry.id === 'GH_TOKEN')?.scopes).toEqual(['local', 'staging', 'prod']);
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_GITHUB_TOKEN')?.scopes).toEqual(['local', 'staging', 'prod']);
 	});
 
 	it('registers staging and production market defaults for primary and integrated catalog markets', async () => {
@@ -879,7 +879,7 @@ describe('environment registry overlays', () => {
 		});
 		expect(registry.entries.find((entry) => entry.id === `TREESEED_${'KNOWLEDGE'}_${'COOP'}_GITHUB_OWNER`)).toBeUndefined();
 		expect(registry.entries.find((entry) => entry.id === 'RAILWAY_API_KEY')).toBeUndefined();
-		const railwayApiToken = findRegistryEntry(registry, 'RAILWAY_API_TOKEN');
+		const railwayApiToken = findRegistryEntry(registry, 'TREESEED_RAILWAY_API_TOKEN');
 		if (railwayApiToken) {
 			expect(railwayApiToken.howToGet).not.toMatch(/legacy alias|RAILWAY_API_KEY/u);
 		}
@@ -1250,7 +1250,7 @@ describe('environment registry overlays', () => {
 			plugins: [],
 		});
 
-		const railwayApiToken = findRegistryEntry(registry, 'RAILWAY_API_TOKEN');
+		const railwayApiToken = findRegistryEntry(registry, 'TREESEED_RAILWAY_API_TOKEN');
 		if (railwayApiToken) {
 			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['github-secret']));
 			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['railway-secret']));

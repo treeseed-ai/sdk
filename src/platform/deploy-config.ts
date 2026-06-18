@@ -741,7 +741,7 @@ function parseDeployConfig(raw: string): TreeseedDeployConfig {
 		runtime,
 		cloudflare: {
 			accountId:
-				optionalCloudflareAccountId(process.env.CLOUDFLARE_ACCOUNT_ID)
+				optionalCloudflareAccountId(process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID)
 				?? CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER,
 			zoneId: optionalString(cloudflare.zoneId),
 			workerName: optionalString(cloudflare.workerName),

@@ -185,7 +185,7 @@ function writeStatusConfigEntry(root: string) {
       - config
     validation:
       kind: nonempty
-  RAILWAY_API_TOKEN:
+  TREESEED_RAILWAY_API_TOKEN:
     label: Railway API token
     group: auth
     description: Railway API token for status configuration tests.
@@ -646,7 +646,7 @@ describe('treeseed workflow lifecycle', () => {
 			storage: 'scoped',
 		} as any, 'from-machine-config');
 		setTreeseedMachineEnvironmentValue(work, 'staging', {
-			id: 'RAILWAY_API_TOKEN',
+			id: 'TREESEED_RAILWAY_API_TOKEN',
 			sensitivity: 'secret',
 			storage: 'shared',
 		} as any, 'railway-token-from-machine-config');
@@ -1382,8 +1382,8 @@ describe('treeseed workflow lifecycle', () => {
 		git(work, ['commit', '-m', 'stage: root package dependency']);
 		git(work, ['push', 'origin', 'staging']);
 
-		vi.stubEnv('GH_TOKEN', '');
-		vi.stubEnv('GITHUB_TOKEN', '');
+		vi.stubEnv('TREESEED_GITHUB_TOKEN', '');
+		vi.stubEnv('TREESEED_GITHUB_TOKEN', '');
 		await expect(workflow.release({ bump: 'patch' })).rejects.toThrow('authenticated managed GitHub CLI');
 		const recoverResult = await workflow.recover();
 		const runId = recoverResult.payload.interruptedRuns[0]?.runId;

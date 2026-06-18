@@ -565,11 +565,11 @@ function extractCloudflareText(payload: unknown) {
 }
 
 async function generateCloudflareCommitMessage(context: CommitMessageContext, env: NodeJS.ProcessEnv, fetchImpl: typeof fetch) {
-	const token = envValue(env, 'CLOUDFLARE_API_TOKEN');
-	const accountId = envValue(env, 'CLOUDFLARE_ACCOUNT_ID');
+	const token = envValue(env, 'TREESEED_CLOUDFLARE_API_TOKEN');
+	const accountId = envValue(env, 'TREESEED_CLOUDFLARE_ACCOUNT_ID');
 	const model = envValue(env, 'TREESEED_COMMIT_AI_MODEL') ?? DEFAULT_COMMIT_AI_MODEL;
 	if (!token || !accountId) {
-		throw new Error('Cloudflare commit AI requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.');
+		throw new Error('Cloudflare commit AI requires TREESEED_CLOUDFLARE_API_TOKEN and TREESEED_CLOUDFLARE_ACCOUNT_ID.');
 	}
 	const timeoutMs = parseNumber(envValue(env, 'TREESEED_COMMIT_AI_TIMEOUT_MS'), defaultTimeoutMs);
 	const maxDiffChars = parseNumber(envValue(env, 'TREESEED_COMMIT_AI_MAX_DIFF_CHARS'), defaultMaxDiffChars);
@@ -626,7 +626,7 @@ export async function generateRepositoryCommitMessage(
 			return { message: fallback(), provider: 'fallback', fallbackUsed: true, error: error instanceof Error ? error.message : String(error) };
 		}
 	}
-	const hasCloudflareConfig = Boolean(envValue(env, 'CLOUDFLARE_API_TOKEN') && envValue(env, 'CLOUDFLARE_ACCOUNT_ID'));
+	const hasCloudflareConfig = Boolean(envValue(env, 'TREESEED_CLOUDFLARE_API_TOKEN') && envValue(env, 'TREESEED_CLOUDFLARE_ACCOUNT_ID'));
 	if ((mode === 'auto' || mode === 'generated') && !hasCloudflareConfig) {
 		return { message: fallback(), provider: 'fallback', fallbackUsed: false, error: null };
 	}

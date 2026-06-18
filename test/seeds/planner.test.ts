@@ -52,7 +52,7 @@ const manifest: SeedManifest = {
 					apiKey: {
 						createIfMissing: true,
 						name: 'Demo local provider security code',
-						scopes: ['provider:register', 'provider:heartbeat', 'provider:portfolio:read', 'provider:tasks:claim', 'provider:tasks:update', 'provider:usage:report', 'provider:reports:write', 'provider:capabilities:write'],
+						scopes: ['provider:register', 'provider:heartbeat', 'provider:portfolio:read', 'provider:assignments:read', 'provider:assignments:write', 'provider:usage:report', 'provider:reports:write', 'provider:capabilities:write'],
 					},
 				},
 				lanes: [
@@ -99,7 +99,7 @@ describe('seed planner current-state diffing', () => {
 			apiKey: {
 				createIfMissing: true,
 				name: 'Demo local provider security code',
-				scopes: ['provider:register', 'provider:heartbeat', 'provider:portfolio:read', 'provider:tasks:claim', 'provider:tasks:update', 'provider:usage:report', 'provider:reports:write', 'provider:capabilities:write'],
+				scopes: ['provider:register', 'provider:heartbeat', 'provider:portfolio:read', 'provider:assignments:read', 'provider:assignments:write', 'provider:usage:report', 'provider:reports:write', 'provider:capabilities:write'],
 				expiresAt: undefined,
 			},
 		});
@@ -471,6 +471,40 @@ describe('seed planner current-state diffing', () => {
 		}, diagnostics);
 
 		expect(diagnostics.map((diagnostic) => diagnostic.code)).toContain('seed.secret_field');
+	});
+
+	it('rejects legacy provider task scopes in seed registrations', () => {
+		const diagnostics = [];
+		parseSeedManifest({
+			name: 'demo',
+			version: 1,
+			environments: ['local'],
+			resources: {
+				teams: [{ key: 'team:demo', slug: 'demo' }],
+				repositoryHosts: [],
+				projects: [],
+				hubRepositories: [],
+				products: [],
+				catalogArtifacts: [],
+				capacityProviders: [{
+					key: 'capacity-provider:demo/local',
+					team: 'team:demo',
+					name: 'demo-local',
+					provider: 'local',
+					registration: {
+						apiKey: {
+							createIfMissing: true,
+							scopes: [['provider', 'tasks', 'claim'].join(':')],
+						},
+					},
+				}],
+				capacityGrants: [],
+				workPolicies: [],
+				agentPools: [],
+			},
+		}, diagnostics);
+
+		expect(diagnostics.map((diagnostic) => diagnostic.code)).toContain('seed.legacy_provider_task_scope');
 	});
 
 	it('rejects invalid native execution-provider limits', () => {
