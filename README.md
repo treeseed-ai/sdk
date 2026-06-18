@@ -39,7 +39,8 @@ If you are unsure, use `AgentSdk`.
 - operational runtime state such as messages, runs, cursors, and leases
 - control-plane orchestration for work days, tasks, task events, graph runs, and reports
 - provider-neutral capacity scheduling contracts for task classification, admission, execution profiles, routing, estimates, planning proposals, attention load, utility, predictive reserve, hybrid execution, checkpoints, and usage actuals
-- hosting graph compilation, deployment readiness, live hosted-service checks, Treeseed runner smoke helpers, and verification cache support for Treeseed workflows
+- hosting graph compilation, deployment readiness, live hosted-service checks, Treeseed runner smoke helpers, managed worktree/workflow support, and verification cache support for Treeseed workflows
+- shared ecommerce, cooperative ownership, scoped service, capacity listing, marketplace aggregation, monitoring, and Commons governance contracts
 - graph-first context retrieval through `parseGraphDsl()`, `resolveSeeds()`, `queryGraph()`, and `buildContextPack()`
 - agent scoping through `scopeForAgent()`
 
@@ -69,6 +70,8 @@ These helpers are used by:
 - `trsd stage|release --verify-deployed-resources`
 
 For the API app, the expected hosted backend services are the API service, indexed Treeseed operations runner, PostgreSQL, and public TreeDX federation nodes owned by `packages/api`. The root web app remains a web UI and `/v1/*` proxy/client surface, with admin routes contributed by `@treeseed/admin` and visual primitives contributed by `@treeseed/ui`.
+
+Workflow worktrees are branch-aligned under `.treeseed/worktrees/<branch-slug>`. The SDK owns stale-worktree detection, duplicate branch/worktree prevention, merge conflict reports, local dev process supervision, and exact-state reconciliation primitives used by `trsd save`, `trsd update`, `trsd stage`, and `trsd release`.
 
 Reconciliation guarantees:
 
