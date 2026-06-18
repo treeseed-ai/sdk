@@ -9,6 +9,7 @@ import {
 	publishProjectContent,
 	resolveRailwayServiceDeployDependencies,
 } from '../../src/operations/services/project-platform.ts';
+import { buildPublicVars, createPersistentDeployTarget } from '../../src/operations/services/deploy.ts';
 
 const tempRoots = new Set<string>();
 
@@ -80,6 +81,8 @@ afterEach(async () => {
 	}
 	tempRoots.clear();
 	delete process.env.TREESEED_API_BASE_URL;
+	delete process.env.TREESEED_CENTRAL_MARKET_API_BASE_URL;
+	delete process.env.TREESEED_CATALOG_MARKET_API_BASE_URLS;
 	delete process.env.TREESEED_WORKER_POOL_SCALER;
 	delete process.env.TREESEED_RAILWAY_DEPLOY_SEQUENTIAL;
 });
@@ -120,6 +123,31 @@ describe('project platform workflow actions', () => {
 			expect(source).toContain('treeseed-provider-timing.md');
 			expect(source).toContain('GITHUB_STEP_SUMMARY');
 		}
+	});
+
+	it('uses the site API connection for hosted web API variables before ambient env fallbacks', async () => {
+		const tenantRoot = await createTenantFixture(`connections:
+  api:
+    proxyPrefix: /v1
+    localBaseUrl: http://127.0.0.1:3000
+    environments:
+      staging:
+        baseUrl: https://api-staging.example.com
+      prod:
+        baseUrl: https://api.example.com
+`);
+		const { loadCliDeployConfig } = await import('../../src/operations/services/runtime-tools.ts');
+		process.env.TREESEED_API_BASE_URL = 'https://stale-machine-config.example.com';
+		process.env.TREESEED_CENTRAL_MARKET_API_BASE_URL = 'https://stale-central.example.com';
+		process.env.TREESEED_CATALOG_MARKET_API_BASE_URLS = 'https://stale-catalog.example.com';
+
+		const vars = buildPublicVars(loadCliDeployConfig(tenantRoot), {
+			target: createPersistentDeployTarget('staging'),
+		});
+
+		expect(vars.TREESEED_API_BASE_URL).toBe('https://api-staging.example.com');
+		expect(vars.TREESEED_CENTRAL_MARKET_API_BASE_URL).toBe('https://api-staging.example.com');
+		expect(vars.TREESEED_CATALOG_MARKET_API_BASE_URLS).toBe('https://api-staging.example.com');
 	});
 
 	it('reconciles Railway Postgres volume naming through the API and reports provider limitations', () => {

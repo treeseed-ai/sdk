@@ -2027,6 +2027,16 @@ function unsupportedVerification(unitId: string, message: string): TreeseedUnitV
 	};
 }
 
+function hasCloudflarePagesDrift(verification: TreeseedUnitVerificationResult) {
+	return verification.drifted.some((entry) =>
+		entry.startsWith('pages.var:')
+		|| entry.startsWith('pages.secret:')
+		|| entry.startsWith('pages.kv:')
+		|| entry.startsWith('pages.d1:')
+		|| entry.startsWith('pages.r2:'),
+	);
+}
+
 function syncPagesEnvironmentVariablesForTarget(input: TreeseedReconcileAdapterInput, { dryRun = false } = {}) {
 	const target = toDeployTarget(input.context.target);
 	if (target.kind !== 'persistent') {
@@ -2664,82 +2674,88 @@ function verifyCloudflareUnitOnce(input: TreeseedReconcileAdapterInput, postcond
 			if (!env.CLOUDFLARE_ACCOUNT_ID || !current?.projectName) {
 				return unsupportedVerification(input.unit.unitId, 'Cloudflare Pages verification requires CLOUDFLARE_ACCOUNT_ID and a configured project name.');
 			}
-			const project = cloudflareApiRequest(
-				`/accounts/${encodeURIComponent(env.CLOUDFLARE_ACCOUNT_ID)}/pages/projects/${encodeURIComponent(current.projectName)}`,
-				{ env, allowFailure: true },
-			)?.result;
-			const branchKey = input.context.target.kind === 'persistent' && input.context.target.scope === 'prod' ? 'production' : 'preview';
-			const branchConfig = project?.deployment_configs?.[branchKey] ?? {};
-			const envVars = branchConfig?.env_vars && typeof branchConfig.env_vars === 'object' ? branchConfig.env_vars : {};
-			const pageBindings = buildCloudflarePagesFunctionBindings(state);
-			const pageBindingConfigured = (configKey: string, binding: string, expected: Record<string, unknown>) => {
-				const observed = branchConfig?.[configKey]?.[binding];
-				return Boolean(observed && Object.entries(expected).every(([key, value]) => observed?.[key] === value));
+			const projectPath = `/accounts/${encodeURIComponent(env.CLOUDFLARE_ACCOUNT_ID)}/pages/projects/${encodeURIComponent(current.projectName)}`;
+			const buildVerification = () => {
+				const project = cloudflareApiRequest(projectPath, { env, allowFailure: true })?.result;
+				const branchKey = input.context.target.kind === 'persistent' && input.context.target.scope === 'prod' ? 'production' : 'preview';
+				const branchConfig = project?.deployment_configs?.[branchKey] ?? {};
+				const envVars = branchConfig?.env_vars && typeof branchConfig.env_vars === 'object' ? branchConfig.env_vars : {};
+				const pageBindings = buildCloudflarePagesFunctionBindings(state);
+				const pageBindingConfigured = (configKey: string, binding: string, expected: Record<string, unknown>) => {
+					const observed = branchConfig?.[configKey]?.[binding];
+					return Boolean(observed && Object.entries(expected).every(([key, value]) => observed?.[key] === value));
+				};
+				const sync = collectCloudflareEnvironmentSync(input);
+				const expectedVars = Object.entries(sync.vars).filter(([, value]) => typeof value === 'string' && value.length > 0);
+				const checks: TreeseedUnitVerificationCheck[] = [
+					verificationCheck('pages.exists', 'Pages project exists', 'cli', {
+						exists: Boolean(liveProject?.name || project?.name),
+						expected: current.projectName,
+						observed: liveProject?.name ?? project?.name ?? null,
+						issues: liveProject?.name || project?.name ? [] : [`Cloudflare Pages project ${current.projectName} was not found after reconcile.`],
+					}),
+				];
+				if (input.context.target.kind === 'persistent' && input.context.target.scope === 'prod') {
+					checks.push(verificationCheck('pages.production-branch', 'Pages production branch matches desired config', 'api', {
+						exists: typeof project?.production_branch === 'string' && project.production_branch.length > 0,
+						configured: (project?.production_branch ?? current.productionBranch ?? 'main') === (current.productionBranch ?? 'main'),
+						expected: current.productionBranch ?? 'main',
+						observed: project?.production_branch ?? null,
+						issues: (project?.production_branch ?? current.productionBranch ?? 'main') === (current.productionBranch ?? 'main') ? [] : ['Pages production branch does not match the desired value.'],
+					}));
+				}
+				for (const [name, expectedValue] of expectedVars) {
+					checks.push(verificationCheck(`pages.var:${name}`, `Pages variable ${name} exists with the expected value`, 'api', {
+						exists: Boolean(envVars[name]),
+						configured: envVars[name]?.value === expectedValue,
+						expected: expectedValue,
+						observed: envVars[name]?.value ?? null,
+						issues: envVars[name]?.value === expectedValue ? [] : [`Pages variable ${name} does not match the expected value for ${branchKey}.`],
+					}));
+				}
+				for (const name of sync.secretNames) {
+					checks.push(verificationCheck(`pages.secret:${name}`, `Pages secret ${name} exists`, 'api', {
+						exists: Boolean(envVars[name]),
+						expected: true,
+						observed: Boolean(envVars[name]),
+						issues: envVars[name] ? [] : [`Pages secret ${name} is missing from the ${branchKey} deployment config.`],
+					}));
+				}
+				for (const [binding, expected] of Object.entries(pageBindings.kv_namespaces ?? {})) {
+					checks.push(verificationCheck(`pages.kv:${binding}`, `Pages KV binding ${binding} points at the expected namespace`, 'api', {
+						exists: Boolean(branchConfig?.kv_namespaces?.[binding]),
+						configured: pageBindingConfigured('kv_namespaces', binding, expected),
+						expected,
+						observed: branchConfig?.kv_namespaces?.[binding] ?? null,
+						issues: pageBindingConfigured('kv_namespaces', binding, expected) ? [] : [`Pages KV binding ${binding} is missing or points at the wrong namespace for ${branchKey}.`],
+					}));
+				}
+				for (const [binding, expected] of Object.entries(pageBindings.d1_databases ?? {})) {
+					checks.push(verificationCheck(`pages.d1:${binding}`, `Pages D1 binding ${binding} points at the expected database`, 'api', {
+						exists: Boolean(branchConfig?.d1_databases?.[binding]),
+						configured: pageBindingConfigured('d1_databases', binding, expected),
+						expected,
+						observed: branchConfig?.d1_databases?.[binding] ?? null,
+						issues: pageBindingConfigured('d1_databases', binding, expected) ? [] : [`Pages D1 binding ${binding} is missing or points at the wrong database for ${branchKey}.`],
+					}));
+				}
+				for (const [binding, expected] of Object.entries(pageBindings.r2_buckets ?? {})) {
+					checks.push(verificationCheck(`pages.r2:${binding}`, `Pages R2 binding ${binding} points at the expected bucket`, 'api', {
+						exists: Boolean(branchConfig?.r2_buckets?.[binding]),
+						configured: pageBindingConfigured('r2_buckets', binding, expected),
+						expected,
+						observed: branchConfig?.r2_buckets?.[binding] ?? null,
+						issues: pageBindingConfigured('r2_buckets', binding, expected) ? [] : [`Pages R2 binding ${binding} is missing or points at the wrong bucket for ${branchKey}.`],
+					}));
+				}
+				return summarizeVerification(input.unit.unitId, checks);
 			};
-			const sync = collectCloudflareEnvironmentSync(input);
-			const expectedVars = Object.entries(sync.vars).filter(([, value]) => typeof value === 'string' && value.length > 0);
-			const checks: TreeseedUnitVerificationCheck[] = [
-				verificationCheck('pages.exists', 'Pages project exists', 'cli', {
-					exists: Boolean(liveProject?.name || project?.name),
-					expected: current.projectName,
-					observed: liveProject?.name ?? project?.name ?? null,
-					issues: liveProject?.name || project?.name ? [] : [`Cloudflare Pages project ${current.projectName} was not found after reconcile.`],
-				}),
-			];
-			if (input.context.target.kind === 'persistent' && input.context.target.scope === 'prod') {
-				checks.push(verificationCheck('pages.production-branch', 'Pages production branch matches desired config', 'api', {
-					exists: typeof project?.production_branch === 'string' && project.production_branch.length > 0,
-					configured: (project?.production_branch ?? current.productionBranch ?? 'main') === (current.productionBranch ?? 'main'),
-					expected: current.productionBranch ?? 'main',
-					observed: project?.production_branch ?? null,
-					issues: (project?.production_branch ?? current.productionBranch ?? 'main') === (current.productionBranch ?? 'main') ? [] : ['Pages production branch does not match the desired value.'],
-				}));
+			let verification = buildVerification();
+			for (let attempt = 1; attempt <= 3 && hasCloudflarePagesDrift(verification); attempt += 1) {
+				sleepMs(2500);
+				verification = buildVerification();
 			}
-			for (const [name, expectedValue] of expectedVars) {
-				checks.push(verificationCheck(`pages.var:${name}`, `Pages variable ${name} exists with the expected value`, 'api', {
-					exists: Boolean(envVars[name]),
-					configured: envVars[name]?.value === expectedValue,
-					expected: expectedValue,
-					observed: envVars[name]?.value ?? null,
-					issues: envVars[name]?.value === expectedValue ? [] : [`Pages variable ${name} does not match the expected value for ${branchKey}.`],
-				}));
-			}
-			for (const name of sync.secretNames) {
-				checks.push(verificationCheck(`pages.secret:${name}`, `Pages secret ${name} exists`, 'api', {
-					exists: Boolean(envVars[name]),
-					expected: true,
-					observed: Boolean(envVars[name]),
-					issues: envVars[name] ? [] : [`Pages secret ${name} is missing from the ${branchKey} deployment config.`],
-				}));
-			}
-			for (const [binding, expected] of Object.entries(pageBindings.kv_namespaces ?? {})) {
-				checks.push(verificationCheck(`pages.kv:${binding}`, `Pages KV binding ${binding} points at the expected namespace`, 'api', {
-					exists: Boolean(branchConfig?.kv_namespaces?.[binding]),
-					configured: pageBindingConfigured('kv_namespaces', binding, expected),
-					expected,
-					observed: branchConfig?.kv_namespaces?.[binding] ?? null,
-					issues: pageBindingConfigured('kv_namespaces', binding, expected) ? [] : [`Pages KV binding ${binding} is missing or points at the wrong namespace for ${branchKey}.`],
-				}));
-			}
-			for (const [binding, expected] of Object.entries(pageBindings.d1_databases ?? {})) {
-				checks.push(verificationCheck(`pages.d1:${binding}`, `Pages D1 binding ${binding} points at the expected database`, 'api', {
-					exists: Boolean(branchConfig?.d1_databases?.[binding]),
-					configured: pageBindingConfigured('d1_databases', binding, expected),
-					expected,
-					observed: branchConfig?.d1_databases?.[binding] ?? null,
-					issues: pageBindingConfigured('d1_databases', binding, expected) ? [] : [`Pages D1 binding ${binding} is missing or points at the wrong database for ${branchKey}.`],
-				}));
-			}
-			for (const [binding, expected] of Object.entries(pageBindings.r2_buckets ?? {})) {
-				checks.push(verificationCheck(`pages.r2:${binding}`, `Pages R2 binding ${binding} points at the expected bucket`, 'api', {
-					exists: Boolean(branchConfig?.r2_buckets?.[binding]),
-					configured: pageBindingConfigured('r2_buckets', binding, expected),
-					expected,
-					observed: branchConfig?.r2_buckets?.[binding] ?? null,
-					issues: pageBindingConfigured('r2_buckets', binding, expected) ? [] : [`Pages R2 binding ${binding} is missing or points at the wrong bucket for ${branchKey}.`],
-				}));
-			}
-			return summarizeVerification(input.unit.unitId, checks);
+			return verification;
 		}
 		default:
 			return unsupportedVerification(input.unit.unitId, `Cloudflare unit type ${input.unit.unitType} does not declare verification logic.`);

@@ -785,14 +785,6 @@ export class ControlPlaneClient {
 		);
 	}
 
-	createRunnerApprovalRequest(projectId: string, input: CreateApprovalRequestRequest) {
-		return this.requestJson<ApprovalRequest>(
-			'POST',
-			`/v1/projects/${encodeURIComponent(projectId)}/runner/approval-requests`,
-			{ body: input as Record<string, unknown> },
-		);
-	}
-
 	decideApprovalRequest(approvalRequestId: string, input: { state?: 'approved' | 'rejected'; optionId?: string | null; note?: string | null; decision?: Record<string, unknown> }) {
 		return this.requestJson<ApprovalRequest>(
 			'POST',

@@ -391,6 +391,7 @@ function resolveContentServingMode(deployConfig, options = {}) {
 }
 
 export function buildPublicVars(deployConfig, options = {}) {
+	const target = options.target ? normalizeTarget(options.target) : createPersistentDeployTarget('prod');
 	const identity = resolveTreeseedResourceIdentity(deployConfig, createPersistentDeployTarget('prod'));
 	const contentRuntimeProvider = deployConfig.providers?.content?.runtime ?? 'team_scoped_r2_overlay';
 	const contentPublishProvider = deployConfig.providers?.content?.publish ?? contentRuntimeProvider;
@@ -408,9 +409,9 @@ export function buildPublicVars(deployConfig, options = {}) {
 			TREESEED_HUB_MODE: deployConfig.hub?.mode ?? 'treeseed_hosted',
 			TREESEED_RUNTIME_MODE: deployConfig.runtime?.mode ?? 'none',
 			TREESEED_RUNTIME_REGISTRATION: deployConfig.runtime?.registration ?? 'none',
-			TREESEED_CENTRAL_MARKET_API_BASE_URL: envOrNull('TREESEED_CENTRAL_MARKET_API_BASE_URL') ?? DEFAULT_TREESEED_MARKET_BASE_URL,
-			TREESEED_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig),
-			TREESEED_CATALOG_MARKET_API_BASE_URLS: envOrNull('TREESEED_CATALOG_MARKET_API_BASE_URLS') ?? resolveConfiguredMarketBaseUrl(deployConfig),
+			TREESEED_CENTRAL_MARKET_API_BASE_URL: resolveConfiguredCentralMarketBaseUrl(deployConfig, target),
+			TREESEED_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig, target),
+			TREESEED_CATALOG_MARKET_API_BASE_URLS: resolveConfiguredMarketBaseUrl(deployConfig, target) ?? envOrNull('TREESEED_CATALOG_MARKET_API_BASE_URLS'),
 			TREESEED_HOSTING_TEAM_ID: contentDefaultTeamId,
 		TREESEED_PROJECT_ID: identity.projectId,
 		TREESEED_AGENT_EXECUTION_PROVIDER: deployConfig.providers?.agents?.execution ?? 'stub',
@@ -1965,11 +1966,55 @@ export function resolveConfiguredCloudflareAccountId(deployConfig) {
 	return envOrNull('CLOUDFLARE_ACCOUNT_ID') ?? deployConfig.cloudflare.accountId;
 }
 
-function resolveConfiguredMarketBaseUrl(deployConfig) {
-	return envOrNull('TREESEED_API_BASE_URL')
-		?? envOrNull('TREESEED_CENTRAL_MARKET_API_BASE_URL')
+function normalizeConfiguredBaseUrl(value) {
+	const raw = typeof value === 'string' ? value.trim() : '';
+	if (!raw) {
+		return null;
+	}
+	return raw.replace(/\/+$/u, '');
+}
+
+function domainBaseUrl(domain) {
+	const raw = typeof domain === 'string' ? domain.trim() : '';
+	if (!raw) {
+		return null;
+	}
+	if (/^https?:\/\//iu.test(raw)) {
+		return normalizeConfiguredBaseUrl(raw);
+	}
+	return `https://${raw.replace(/^\/+|\/+$/gu, '')}`;
+}
+
+function targetEnvironmentKey(target) {
+	if (target?.kind === 'persistent') {
+		return target.scope;
+	}
+	return 'staging';
+}
+
+function resolveConfiguredApiConnectionBaseUrl(deployConfig, target) {
+	const scope = targetEnvironmentKey(target);
+	if (scope === 'local') {
+		return normalizeConfiguredBaseUrl(deployConfig.connections?.api?.localBaseUrl)
+			?? normalizeConfiguredBaseUrl(deployConfig.connections?.api?.environments?.local?.baseUrl)
+			?? domainBaseUrl(deployConfig.connections?.api?.environments?.local?.domain);
+	}
+	return normalizeConfiguredBaseUrl(deployConfig.connections?.api?.environments?.[scope]?.baseUrl)
+		?? domainBaseUrl(deployConfig.connections?.api?.environments?.[scope]?.domain);
+}
+
+function resolveConfiguredMarketBaseUrl(deployConfig, target) {
+	return resolveConfiguredApiConnectionBaseUrl(deployConfig, target)
+		?? envOrNull('TREESEED_API_BASE_URL')
 		?? deployConfig.runtime?.marketBaseUrl
 		?? deployConfig.hosting?.marketBaseUrl
+		?? envOrNull('TREESEED_CENTRAL_MARKET_API_BASE_URL')
+		?? DEFAULT_TREESEED_MARKET_BASE_URL;
+}
+
+function resolveConfiguredCentralMarketBaseUrl(deployConfig, target) {
+	return resolveConfiguredApiConnectionBaseUrl(deployConfig, target)
+		?? envOrNull('TREESEED_CENTRAL_MARKET_API_BASE_URL')
 		?? DEFAULT_TREESEED_MARKET_BASE_URL;
 }
 
