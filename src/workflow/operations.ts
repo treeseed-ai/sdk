@@ -5454,7 +5454,14 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						if (stageMode === 'recursive-workspace') {
 							syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
 						}
-					const lockfileSafety = await refreshAndValidateRootWorkspaceLockfileForSave({
+						const preLockfileReconciliation = resolveRootStageGeneratedMetadataAndPackageConflicts(root, STAGING_BRANCH);
+						if (preLockfileReconciliation.conflictedPaths.length > 0) {
+							if (!preLockfileReconciliation.resolved) {
+								throw new Error(`Unresolved root generated metadata/package pointer conflicts before lockfile validation: ${preLockfileReconciliation.conflictedPaths.join(', ')}`);
+							}
+							helpers.write(`[workflow][stage] Resolved root generated metadata/package pointer conflicts before lockfile validation: ${preLockfileReconciliation.conflictedPaths.join(', ')}.`);
+						}
+						const lockfileSafety = await refreshAndValidateRootWorkspaceLockfileForSave({
 							root,
 							gitRoot: repoDir,
 							branch: STAGING_BRANCH,
