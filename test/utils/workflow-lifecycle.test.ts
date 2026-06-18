@@ -903,10 +903,17 @@ describe('treeseed workflow lifecycle', () => {
 		});
 
 		expect(staged.payload.worktreeCleanup.removed).toBe(true);
+		expect(staged.payload.worktreeCleanup.deletedLocalBranch).toBe(true);
+		expect(staged.payload.localDeleted).toBe(true);
+		expect(staged.payload.rootRepo.deletedLocal).toBe(true);
+		expect(staged.payload.remoteDeleted).toBe(true);
+		expect(staged.payload.finalBranch).toBe('staging');
 		expect(existsSync(worktreePath)).toBe(false);
 		git(work, ['fetch', 'origin', 'staging']);
 		expect(git(work, ['show', 'origin/staging:agent-stage.txt'])).toBe('managed stage');
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
+		expect(git(work, ['branch', '--list', 'feature/agent-stage'])).toBe('');
+		expect(git(work, ['ls-remote', '--heads', 'origin', 'feature/agent-stage'])).toBe('');
 	}, 180000);
 
 	it('fails switch when a checked-out package repo is dirty', async () => {

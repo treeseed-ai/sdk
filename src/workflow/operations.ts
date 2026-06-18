@@ -1886,6 +1886,12 @@ function stringRecord(value: unknown): Record<string, unknown> | null {
 		: null;
 }
 
+function journalRecoveryAllowsResume(journal: TreeseedWorkflowRunJournal) {
+	const details = stringRecord(journal.failure?.details);
+	const recovery = stringRecord(details?.recovery);
+	return recovery?.resumable === true;
+}
+
 function releasePlanHead(plan: Record<string, unknown>, repoName: string) {
 	if (repoName === '@treeseed/market') {
 		const rootRepo = stringRecord(plan.rootRepo);
@@ -2262,6 +2268,7 @@ function failWorkflowRun(
 	updateWorkflowRunJournal(root, runId, (journal) => ({
 		...journal,
 		status: 'failed',
+		resumable: recovery?.resumable === true ? true : journal.resumable,
 		failure: {
 			code,
 			message,
@@ -5185,7 +5192,7 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 					})),
 					{ id: 'workspace-link', description: 'Restore local workspace links', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					...(isManagedWorkflowWorktree(root)
-						? [{ id: 'worktree-cleanup', description: 'Remove managed workflow worktree', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: false }]
+						? [{ id: 'worktree-cleanup', description: 'Remove managed workflow worktree', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true }]
 						: []),
 				],
 				autoResumeRun
@@ -5282,7 +5289,7 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 				completeWorkflowRun(root, workflowRun.runId, payload);
 				return buildWorkflowResult(
 					'close',
-					root,
+					managedWorktree?.primaryRoot ?? root,
 					payload,
 					{
 						runId: workflowRun.runId,
@@ -5408,6 +5415,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			const session = resolveTreeseedWorkflowSession(root);
 			const featureBranch = assertFeatureBranch(root);
 			const mode = initialSession.mode;
+			const managedWorktreeForStage = isManagedWorkflowWorktree(root);
 			assertSessionBranchSafety('stage', session);
 			if (mode === 'recursive-workspace') {
 				assertWorkspaceClean(root);
@@ -5459,7 +5467,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					})),
 					{ id: 'workspace-link', description: 'Restore local workspace links', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					...(isManagedWorkflowWorktree(root)
-						? [{ id: 'worktree-cleanup', description: 'Remove managed workflow worktree', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: false }]
+						? [{ id: 'worktree-cleanup', description: 'Remove managed workflow worktree', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true }]
 						: []),
 				],
 				autoResumeRun
@@ -5672,14 +5680,14 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				const rootCleanup = await executeJournalStep(root, workflowRun.runId, 'cleanup-root', () => {
 					const deprecatedTag = createDeprecatedTaskTag(repoDir, featureBranch, `stage: ${message}`);
 					const deletedRemote = effectiveInput.deleteBranch === false ? false : deleteRemoteBranch(repoDir, featureBranch);
-					if (effectiveInput.deleteBranch !== false) {
+					if (effectiveInput.deleteBranch !== false && !managedWorktreeForStage) {
 						deleteLocalBranch(repoDir, featureBranch);
 					}
 					return {
 						deprecatedTag,
 						deletedRemote,
-						deletedLocal: effectiveInput.deleteBranch !== false,
-						branch: currentBranch(repoDir) || STAGING_BRANCH,
+						deletedLocal: effectiveInput.deleteBranch !== false && !managedWorktreeForStage,
+						branch: managedWorktreeForStage ? featureBranch : (currentBranch(repoDir) || STAGING_BRANCH),
 					};
 				});
 				rootRepo.tagName = String(rootCleanup?.deprecatedTag?.tagName ?? rootRepo.tagName ?? '');
@@ -5705,8 +5713,14 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				const finalBranch = currentBranch(repoDir) || STAGING_BRANCH;
 				const managedWorktree = managedWorkflowWorktreeMetadata(root);
 				const worktreeCleanup = isManagedWorkflowWorktree(root)
-					? await executeJournalStep(root, workflowRun.runId, 'worktree-cleanup', () => removeManagedWorkflowWorktree(root))
+					? await executeJournalStep(root, workflowRun.runId, 'worktree-cleanup', () => removeManagedWorkflowWorktree(root, {
+						deleteBranch: effectiveInput.deleteBranch !== false,
+					}))
 					: { removed: false, reason: 'not-managed' };
+				if ((worktreeCleanup as { deletedLocalBranch?: boolean }).deletedLocalBranch === true) {
+					rootRepo.deletedLocal = true;
+					rootRepo.branch = STAGING_BRANCH;
+				}
 
 				const payload = {
 					mode: stageMode,
@@ -5741,7 +5755,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				completeWorkflowRun(root, workflowRun.runId, payload);
 				return buildWorkflowResult(
 					'stage',
-					root,
+					managedWorktree?.primaryRoot ?? root,
 					payload,
 					{
 						runId: workflowRun.runId,
@@ -5980,7 +5994,7 @@ export async function workflowResume(helpers: WorkflowOperationHelpers, input: T
 					details: { runId, status: journal.status },
 				});
 			}
-			if (!journal.resumable) {
+			if (!journal.resumable && !journalRecoveryAllowsResume(journal)) {
 				workflowError('resume', 'resume_unavailable', `Run ${runId} is not resumable.`, {
 					details: { runId, status: journal.status },
 				});

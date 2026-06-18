@@ -350,6 +350,12 @@ function stringRecord(value: unknown): Record<string, unknown> | null {
 		: null;
 }
 
+function journalRecoveryAllowsResume(journal: TreeseedWorkflowRunJournal) {
+	const details = stringRecord(journal.failure?.details);
+	const recovery = stringRecord(details?.recovery);
+	return recovery?.resumable === true;
+}
+
 function journalReleasePlanHead(plan: Record<string, unknown>, repoName: string) {
 	if (repoName === '@treeseed/market') {
 		const rootRepo = stringRecord(plan.rootRepo);
@@ -446,7 +452,7 @@ export function classifyWorkflowRunJournal(
 			classifiedAt: now,
 		};
 	}
-	if (!journal.resumable) {
+	if (!journal.resumable && !journalRecoveryAllowsResume(journal)) {
 		return {
 			state: 'obsolete',
 			reasons: ['workflow run is not marked resumable'],

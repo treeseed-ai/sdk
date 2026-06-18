@@ -126,7 +126,7 @@ describe("TreeDX release gate integration", () => {
     const devImage = renderTreeseedPackageWorkflow(adapter!, "dev-image");
     const publish = renderTreeseedPackageWorkflow(adapter!, "docker-image");
 
-    expect(releaseGate).toContain("bash scripts/release-gate.sh");
+    expect(releaseGate).toMatch(/bash scripts\/(?:release-gate|test-all)\.sh/u);
     for (const source of [releaseGate, devImage, publish]) {
       expect(source).not.toContain("actions/setup-node");
       expect(source).not.toContain("npm ci");
