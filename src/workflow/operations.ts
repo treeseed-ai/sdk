@@ -3170,42 +3170,29 @@ function syncAllCheckedOutPackageRepos(root: string, branchName: string) {
 	}
 }
 
-function releaseSideRootConflictContent(root: string, filePath: string) {
-	return runGit(['show', `:3:${filePath}`], { cwd: root, capture: true });
+function featureBranchRootContent(root: string, featureBranch: string, filePath: string) {
+	return runGit(['show', `${featureBranch}:${filePath}`], { cwd: root, capture: true });
 }
 
-function releaseSideRootPackagePointerSha(root: string, filePath: string) {
-	const stagedEntries = runGit(['ls-files', '-u', '--', filePath], {
+function featureBranchRootPackagePointerSha(root: string, featureBranch: string, filePath: string) {
+	const treeEntry = runGit(['ls-tree', featureBranch, '--', filePath], {
 		cwd: root,
 		capture: true,
-	})
-		.split('\n')
-		.map((line) => line.trim())
-		.filter(Boolean);
-	for (const entry of stagedEntries) {
-		const match = /^(\d+)\s+([0-9a-f]{40})\s+3\t(.+)$/u.exec(entry);
-		if (match && match[1] === '160000' && match[3] === filePath) {
-			return match[2];
-		}
+	}).trim();
+	const match = /^160000\s+commit\s+([0-9a-f]{40})\t.+$/u.exec(treeEntry);
+	if (match) {
+		return match[1];
 	}
 	return null;
 }
 
-function stageRootPackagePointer(root: string, filePath: string, branchName: string) {
-	const packageRepo = checkedOutWorkspacePackageRepos(root)
-		.find((pkg) => relative(root, pkg.dir).replaceAll('\\', '/') === filePath);
-	if (!packageRepo) {
-		const releaseSha = releaseSideRootPackagePointerSha(root, filePath);
-		if (!releaseSha) {
-			throw new Error(`Unable to resolve package pointer for ${filePath}.`);
-		}
-		runGit(['update-index', '--cacheinfo', '160000', releaseSha, filePath], { cwd: root });
-		return releaseSha;
+function stageRootPackagePointerFromFeature(root: string, filePath: string, featureBranch: string) {
+	const featureSha = featureBranchRootPackagePointerSha(root, featureBranch, filePath);
+	if (!featureSha) {
+		throw new Error(`Unable to resolve package pointer for ${filePath} from ${featureBranch}.`);
 	}
-	syncBranchWithOrigin(packageRepo.dir, branchName);
-	const packageSha = headCommit(packageRepo.dir);
-	runGit(['update-index', '--cacheinfo', '160000', packageSha, filePath], { cwd: root });
-	return packageSha;
+	runGit(['update-index', '--cacheinfo', '160000', featureSha, filePath], { cwd: root });
+	return featureSha;
 }
 
 function hasTextConflictMarkers(root: string, filePath: string) {
@@ -3217,11 +3204,11 @@ function hasTextConflictMarkers(root: string, filePath: string) {
 	return /^(<<<<<<<|=======|>>>>>>>) /mu.test(content) || /^(<<<<<<<|=======|>>>>>>>)$/mu.test(content);
 }
 
-function materializeRootStageGeneratedMetadataAndPackagePointers(root: string, featureBranch: string, targetBranch: string) {
+function materializeRootStageGeneratedMetadataAndPackagePointers(root: string, featureBranch: string) {
 	const generatedPaths = ['package.json', 'package-lock.json'];
 	const materializedGeneratedPaths: string[] = [];
 	for (const filePath of generatedPaths) {
-		const branchContent = runGit(['show', `${featureBranch}:${filePath}`], { cwd: root, capture: true });
+		const branchContent = featureBranchRootContent(root, featureBranch, filePath);
 		writeFileSync(resolve(root, filePath), branchContent, 'utf8');
 		runGit(['add', '--', filePath], { cwd: root });
 		materializedGeneratedPaths.push(filePath);
@@ -3229,7 +3216,7 @@ function materializeRootStageGeneratedMetadataAndPackagePointers(root: string, f
 	const packagePaths: string[] = [];
 	for (const pkg of checkedOutWorkspacePackageRepos(root)) {
 		const filePath = relative(root, pkg.dir).replaceAll('\\', '/');
-		stageRootPackagePointer(root, filePath, targetBranch);
+		stageRootPackagePointerFromFeature(root, filePath, featureBranch);
 		packagePaths.push(filePath);
 	}
 	const markerPaths = generatedPaths.filter((filePath) => hasTextConflictMarkers(root, filePath));
@@ -3260,7 +3247,7 @@ async function finalizeRootStageMerge(
 		workflowRunId?: string | null;
 	},
 ) {
-	const deterministicReconciliation = materializeRootStageGeneratedMetadataAndPackagePointers(root, featureBranch, STAGING_BRANCH);
+	const deterministicReconciliation = materializeRootStageGeneratedMetadataAndPackagePointers(root, featureBranch);
 	if (!deterministicReconciliation.resolved) {
 		throw new Error(`Unresolved root generated metadata/package pointer state before lockfile validation: ${[
 			...deterministicReconciliation.remainingConflicts,
@@ -3271,7 +3258,7 @@ async function finalizeRootStageMerge(
 		...deterministicReconciliation.generatedPaths,
 		...deterministicReconciliation.packagePaths,
 	].join(', ')}.`);
-	const preLockfileReconciliation = resolveRootStageGeneratedMetadataAndPackageConflicts(root, STAGING_BRANCH);
+	const preLockfileReconciliation = resolveRootStageGeneratedMetadataAndPackageConflicts(root, featureBranch);
 	if (preLockfileReconciliation.conflictedPaths.length > 0) {
 		if (!preLockfileReconciliation.resolved) {
 			throw new Error(`Unresolved root generated metadata/package pointer conflicts before lockfile validation: ${preLockfileReconciliation.conflictedPaths.join(', ')}`);
@@ -3302,7 +3289,7 @@ async function finalizeRootStageMerge(
 	};
 }
 
-function resolveRootStageGeneratedMetadataAndPackageConflicts(root: string, targetBranch: string) {
+function resolveRootStageGeneratedMetadataAndPackageConflicts(root: string, featureBranch: string) {
 	const conflictedPaths = runGit(['diff', '--name-only', '--diff-filter=U'], {
 		cwd: root,
 		capture: true,
@@ -3322,13 +3309,13 @@ function resolveRootStageGeneratedMetadataAndPackageConflicts(root: string, targ
 	}
 	if (generatedPaths.length > 0) {
 		for (const filePath of generatedPaths) {
-			writeFileSync(resolve(root, filePath), releaseSideRootConflictContent(root, filePath), 'utf8');
+			writeFileSync(resolve(root, filePath), featureBranchRootContent(root, featureBranch, filePath), 'utf8');
 			runGit(['add', '--', filePath], { cwd: root });
 		}
 	}
 	if (packagePaths.length > 0) {
 		for (const filePath of packagePaths) {
-			stageRootPackagePointer(root, filePath, targetBranch);
+			stageRootPackagePointerFromFeature(root, filePath, featureBranch);
 		}
 	}
 	const remainingConflicts = runGit(['diff', '--name-only', '--diff-filter=U'], {
@@ -5531,7 +5518,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						}
 						try {
 							runGit(['merge', '--squash', featureBranch], { cwd: repoDir });
-							const reconciliation = resolveRootStageGeneratedMetadataAndPackageConflicts(root, STAGING_BRANCH);
+							const reconciliation = resolveRootStageGeneratedMetadataAndPackageConflicts(root, featureBranch);
 							if (reconciliation.conflictedPaths.length > 0) {
 								if (!reconciliation.resolved) {
 									throw new Error(`Unresolved root generated metadata/package pointer conflicts: ${reconciliation.conflictedPaths.join(', ')}`);
@@ -5539,7 +5526,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 								helpers.write(`[workflow][stage] Resolved root generated metadata/package pointer conflicts: ${reconciliation.conflictedPaths.join(', ')}.`);
 							}
 						} catch (error) {
-							const reconciliation = resolveRootStageGeneratedMetadataAndPackageConflicts(root, STAGING_BRANCH);
+							const reconciliation = resolveRootStageGeneratedMetadataAndPackageConflicts(root, featureBranch);
 							if (!reconciliation.resolved) {
 								throw error;
 							}
