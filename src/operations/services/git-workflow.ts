@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { run, workspaceRoot } from './workspace-tools.ts';
 import { collectMergeConflictReport, currentBranch, formatMergeConflictReport, gitStatusPorcelain, repoRoot } from './workspace-save.ts';
@@ -24,6 +24,7 @@ function gitMode(args: string[]): TreeseedGitRunnerMode {
 		'restore',
 		'switch',
 		'tag',
+		'update-index',
 		'worktree',
 	]).has(command) ? 'mutate' : 'read';
 }
@@ -100,6 +101,53 @@ function isPackagePointerConflict(repoDir: string, filePath: string) {
 	return stagedEntries.length > 0 && stagedEntries.every((line) => line.startsWith('160000 '));
 }
 
+function releaseSideConflictSha(repoDir: string, filePath: string) {
+	const stagedEntries = runGit(['ls-files', '-u', '--', filePath], { cwd: repoDir, capture: true })
+		.split('\n')
+		.map((line) => line.trim())
+		.filter(Boolean);
+	for (const entry of stagedEntries) {
+		const match = /^(\d+)\s+([0-9a-f]{40})\s+3\t(.+)$/u.exec(entry);
+		if (match && match[1] === '160000' && match[3] === filePath) {
+			return match[2];
+		}
+	}
+	return null;
+}
+
+function materializeReleaseSideFile(repoDir: string, filePath: string) {
+	const content = runGit(['show', `:3:${filePath}`], { cwd: repoDir, capture: true });
+	writeFileSync(resolve(repoDir, filePath), content);
+	runGit(['add', '--', filePath], { cwd: repoDir });
+}
+
+function stageReleaseSidePackagePointer(repoDir: string, filePath: string) {
+	const sha = releaseSideConflictSha(repoDir, filePath);
+	if (!sha) {
+		throw new Error(`Unable to resolve release-side package pointer for ${filePath}.`);
+	}
+	runGit(['update-index', '--cacheinfo', '160000', sha, filePath], { cwd: repoDir });
+}
+
+function isReleaseSideOnlyTextConflict(repoDir: string, filePath: string) {
+	if (isGeneratedPackageMetadataFile(filePath) || isPackagePointerConflict(repoDir, filePath)) {
+		return false;
+	}
+	const content = readFileSync(resolve(repoDir, filePath), 'utf8');
+	const conflictBlocks = content.match(/<<<<<<< [\s\S]*?>>>>>>> .+/gu) ?? [];
+	if (conflictBlocks.length === 0) {
+		return false;
+	}
+	return conflictBlocks.every((block) => {
+		const middle = block.indexOf('=======');
+		if (middle === -1) {
+			return false;
+		}
+		const ours = block.slice(block.indexOf('\n') + 1, middle).trim();
+		return ours.length === 0;
+	});
+}
+
 function resolveGeneratedPackageMetadataConflicts(repoDir) {
 	const files = conflictedFiles(repoDir);
 	if (files.length === 0) {
@@ -114,6 +162,7 @@ function resolveGeneratedPackageMetadataConflicts(repoDir) {
 	const allConflictsWereGeneratedMetadata = files.every((file) => (
 		isGeneratedPackageMetadataFile(file)
 		|| isPackagePointerConflict(repoDir, file)
+		|| isReleaseSideOnlyTextConflict(repoDir, file)
 	));
 	if (!allConflictsWereGeneratedMetadata) {
 		return {
@@ -124,8 +173,17 @@ function resolveGeneratedPackageMetadataConflicts(repoDir) {
 			allConflictsWereGeneratedMetadata: false,
 		};
 	}
-	runGit(['checkout', '--theirs', '--', ...files], { cwd: repoDir });
-	runGit(['add', '--', ...files], { cwd: repoDir });
+	for (const file of files) {
+		if (isGeneratedPackageMetadataFile(file)) {
+			materializeReleaseSideFile(repoDir, file);
+			continue;
+		}
+		if (isReleaseSideOnlyTextConflict(repoDir, file)) {
+			materializeReleaseSideFile(repoDir, file);
+			continue;
+		}
+		stageReleaseSidePackagePointer(repoDir, file);
+	}
 	return {
 		resolved: true,
 		repoDir,
