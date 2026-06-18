@@ -7,8 +7,13 @@ import {
 } from '../operations/services/package-adapters.ts';
 import { resolveCapacityProviderLaunchPlan } from '../capacity-provider.ts';
 import { workspaceRoot } from '../operations/services/workspace-tools.ts';
+import { maybeResolveGitHubRepositorySlug } from '../operations/services/github-automation.ts';
 import { deriveTreeseedDesiredUnits } from '../reconcile/desired-state.ts';
 import type { TreeseedDesiredUnit, TreeseedReconcileSelector, TreeseedReconcileTarget } from '../reconcile/contracts.ts';
+import {
+	isTreeseedEnvironmentEntryRelevant,
+	resolveTreeseedEnvironmentRegistry,
+} from './environment.ts';
 
 export type TreeseedDesiredEnvironment = 'local' | 'staging' | 'prod';
 
@@ -30,6 +35,7 @@ export type TreeseedDesiredResourceKind =
 	| 'package-image'
 	| 'github-environment'
 	| 'github-secret-binding'
+	| 'github-variable-binding'
 	| 'docker-image-build'
 	| 'cloudflare-resource'
 	| 'railway-project'
@@ -373,6 +379,63 @@ function packageResources(adapter: TreeseedPackageAdapter, environment: Treeseed
 				workflow: dockerWorkflow,
 			},
 			source: { type: 'package-adapter', id: packageId },
+		});
+	}
+	return resources;
+}
+
+function githubEnvironmentName(environment: TreeseedDesiredEnvironment) {
+	return environment === 'prod' ? 'production' : environment;
+}
+
+function rootGitHubEnvironmentResources(tenantRoot: string, environment: TreeseedDesiredEnvironment): TreeseedDesiredResource[] {
+	if (environment === 'local') return [];
+	const repository = maybeResolveGitHubRepositorySlug(tenantRoot);
+	if (!repository) return [];
+	const registry = resolveTreeseedEnvironmentRegistry();
+	const environmentName = githubEnvironmentName(environment);
+	const resources: TreeseedDesiredResource[] = [{
+		id: `github-environment:root:${environmentName}`,
+		kind: 'github-environment',
+		provider: 'github',
+		environment,
+		packageId: null,
+		serviceId: null,
+		logicalName: `root ${environmentName}`,
+		dependencies: [],
+		spec: {
+			repository,
+			environment: environmentName,
+		},
+		source: { type: 'package-adapter', id: 'root' },
+	}];
+	for (const entry of registry.entries) {
+		if (!isTreeseedEnvironmentEntryRelevant(entry, registry.context, environment, 'deploy')) continue;
+		const hasSecretTarget = entry.targets.includes('github-secret');
+		const hasVariableTarget = entry.targets.includes('github-variable');
+		if (!hasSecretTarget && !hasVariableTarget) continue;
+		const kind = hasSecretTarget ? 'github-secret-binding' : 'github-variable-binding';
+		const nameKey = hasSecretTarget ? 'secretName' : 'variableName';
+		resources.push({
+			id: `${kind}:root:${environmentName}:${entry.id}`,
+			kind,
+			provider: 'github',
+			environment,
+			packageId: null,
+			serviceId: null,
+			logicalName: `root ${environmentName} ${entry.id}`,
+			dependencies: [`github-environment:root:${environmentName}`],
+			spec: {
+				repository,
+				environment: environmentName,
+				[nameKey]: entry.id,
+				envName: entry.id,
+				sensitivity: entry.sensitivity,
+				targets: entry.targets,
+				serviceTargets: entry.serviceTargets ?? [],
+				appTargets: entry.appTargets ?? [],
+			},
+			source: { type: 'package-adapter', id: 'root' },
 		});
 	}
 	return resources;
@@ -741,6 +804,7 @@ export function compileTreeseedDesiredResourceGraph({
 	const packages = packageAdapters.map(packageUnitFromAdapter);
 	const resources = [
 		...derived.units.map((unit) => resourceFromUnit(unit, environment)),
+		...rootGitHubEnvironmentResources(tenantRoot, environment),
 		...packageAdapters.flatMap((adapter) => packageResources(adapter, environment)),
 		...localDevelopmentResources(environment, packages, packageAdapters),
 		...branchPreviewResources(target, environment),

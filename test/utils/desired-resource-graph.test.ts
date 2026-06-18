@@ -27,11 +27,24 @@ describe('canonical desired resource graph', () => {
 		expect(graph.resources.some((entry) => entry.kind === 'railway-service')).toBe(true);
 		expect(graph.resources.some((entry) => entry.kind === 'cloudflare-resource')).toBe(true);
 		expect(graph.resources.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+			'github-environment:root:staging',
+			'github-secret-binding:root:staging:TREESEED_CREDENTIAL_SESSION_SECRET',
 			'package-image:treeseed/agent-api',
 			'package-image:treeseed/agent-manager',
 			'package-image:treeseed/agent-runner',
 			'package-image:treeseed/treedx',
 		]));
+		const credentialSecret = graph.resources.find((entry) =>
+			entry.id === 'github-secret-binding:root:staging:TREESEED_CREDENTIAL_SESSION_SECRET');
+		expect(credentialSecret?.kind).toBe('github-secret-binding');
+		expect(credentialSecret?.provider).toBe('github');
+		expect(credentialSecret?.packageId).toBeNull();
+		expect(credentialSecret?.spec).toMatchObject({
+			repository: 'knowledge-coop/market',
+			environment: 'staging',
+			secretName: 'TREESEED_CREDENTIAL_SESSION_SECRET',
+			envName: 'TREESEED_CREDENTIAL_SESSION_SECRET',
+		});
 		expect(Object.keys(graph.fingerprints).length).toBe(graph.resources.length);
 	});
 
