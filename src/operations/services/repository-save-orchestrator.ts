@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, resolve, relative } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
+import { classifyTreeseedGitMode, runTreeseedGit, runTreeseedGitText } from './git-runner.ts';
 import {
 	ensureSshPushUrlForOrigin,
 	remoteWriteUrl,
@@ -306,13 +306,28 @@ function runCapturedCommand(
 	commandOptions: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; emitOutputOnSuccess?: boolean } = {},
 ) {
 	emitProgress(options, node, phase, `$ ${command} ${args.join(' ')}`);
-	const result = spawnSync(command, args, {
-		cwd: commandOptions.cwd ?? node.path,
-		env: { ...process.env, ...(commandOptions.env ?? {}) },
-		stdio: 'pipe',
-		encoding: 'utf8',
-		timeout: commandOptions.timeoutMs,
-	});
+	const cwd = commandOptions.cwd ?? node.path;
+	const result = command === 'git'
+		? runTreeseedGit(args, {
+			cwd,
+			mode: classifyTreeseedGitMode(args),
+			allowFailure: true,
+			timeoutMs: commandOptions.timeoutMs,
+		})
+		: (() => {
+			const spawned = spawnSync(command, args, {
+				cwd,
+				env: { ...process.env, ...(commandOptions.env ?? {}) },
+				stdio: 'pipe',
+				encoding: 'utf8',
+				timeout: commandOptions.timeoutMs,
+			});
+			return {
+				status: spawned.status,
+				stdout: spawned.stdout ?? '',
+				stderr: `${spawned.error?.message ? `${spawned.error.message}\n` : ''}${spawned.stderr ?? ''}`,
+			};
+		})();
 	const stdout = result.stdout?.trim() ?? '';
 	const stderr = result.stderr?.trim() ?? '';
 	if (commandOptions.emitOutputOnSuccess !== false) {
@@ -321,12 +336,9 @@ function runCapturedCommand(
 	}
 	if (result.status !== 0) {
 		const message =
-			(result.error?.message ? `${result.error.message}\n` : '')
-			+ (
-				prefixedOutput(node, phase, stderr)
-				|| prefixedOutput(node, phase, stdout)
-				|| `${progressPrefix(node, phase)} ${command} ${args.join(' ')} failed`
-			);
+			prefixedOutput(node, phase, stderr)
+			|| prefixedOutput(node, phase, stdout)
+			|| `${progressPrefix(node, phase)} ${command} ${args.join(' ')} failed`;
 		throw new RepositorySaveError(message, {
 			details: {
 				failingRepo: node.name,
