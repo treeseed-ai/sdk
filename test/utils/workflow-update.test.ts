@@ -223,6 +223,9 @@ describe('workflow update', () => {
 		expect(error).toBeInstanceOf(TreeseedWorkflowError);
 		expect((error as TreeseedWorkflowError).code).toBe('merge_conflict');
 		expect((error as TreeseedWorkflowError).details?.files).toContain('conflict.txt');
+		expect((error as TreeseedWorkflowError).details?.mergeAborted).toBe(true);
 		expect(existsSync(resolve(work, 'conflict.txt'))).toBe(true);
+		expect(git(work, ['diff', '--name-only', '--diff-filter=U']).stdout).toBe('');
+		expect(git(work, ['status', '--porcelain']).stdout).toBe('');
 	});
 });

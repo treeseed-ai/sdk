@@ -1,5 +1,7 @@
+import { existsSync } from 'node:fs';
+import { isAbsolute, resolve } from 'node:path';
 import { run, workspaceRoot } from './workspace-tools.ts';
-import { currentBranch, gitStatusPorcelain, repoRoot } from './workspace-save.ts';
+import { collectMergeConflictReport, currentBranch, formatMergeConflictReport, gitStatusPorcelain, repoRoot } from './workspace-save.ts';
 import { ensureSshPushUrlForOrigin } from './git-remote-policy.ts';
 import { runTreeseedGit, type TreeseedGitRunnerMode } from './git-runner.ts';
 import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../../managed-dependencies.ts';
@@ -33,6 +35,29 @@ function runGit(args: string[], { cwd, capture = false }: { cwd?: string; captur
 		allowFailure: false,
 	});
 	return capture ? result.stdout : result.stdout;
+}
+
+function runGitAllowFailure(args: string[], { cwd }: { cwd: string }) {
+	return runTreeseedGit(args, {
+		cwd,
+		mode: gitMode(args),
+		allowFailure: true,
+	});
+}
+
+function abortInProgressMerge(repoDir: string) {
+	const mergeHead = runGitAllowFailure(['rev-parse', '--git-path', 'MERGE_HEAD'], { cwd: repoDir })
+		.stdout
+		.trim();
+	const mergeHeadPath = mergeHead && (isAbsolute(mergeHead) ? mergeHead : resolve(repoDir, mergeHead));
+	if (!mergeHeadPath || (!existsSync(mergeHeadPath) && conflictedFiles(repoDir).length === 0)) {
+		return false;
+	}
+	const abort = runGitAllowFailure(['merge', '--abort'], { cwd: repoDir });
+	if (abort.status === 0) {
+		return true;
+	}
+	return runGitAllowFailure(['reset', '--merge'], { cwd: repoDir }).status === 0;
 }
 
 function ensureWritableOrigin(repoDir) {
@@ -445,7 +470,15 @@ export function squashMergeBranchIntoStaging(cwd, featureBranch, message, { push
 	} catch (error) {
 		const reconciliation = resolveGeneratedPackageMetadataConflicts(repoDir);
 		if (!reconciliation.resolved) {
-			throw error;
+			const report = collectMergeConflictReport(repoDir);
+			const mergeAborted = abortInProgressMerge(repoDir);
+			const conflictError = new Error(formatMergeConflictReport(report, repoDir, STAGING_BRANCH));
+			Object.assign(conflictError, {
+				cause: error,
+				mergeAborted,
+				mergeConflictReport: report,
+			});
+			throw conflictError;
 		}
 		if (reportGeneratedMetadataReconciliation) {
 			console.log(`Resolving generated package metadata reconciliation for ${reconciliation.reconciledFiles.join(', ')}.`);

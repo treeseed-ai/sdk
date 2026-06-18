@@ -132,6 +132,7 @@ describe('git workflow task helpers', () => {
 
 		expect(() => squashMergeBranchIntoStaging(work, 'feature/readme-conflict', 'stage readme conflict', { pushTarget: false }))
 			.toThrow(/README\.md|CONFLICT/u);
-		expect(git(work, ['diff', '--name-only', '--diff-filter=U'])).toBe('README.md');
+		expect(git(work, ['diff', '--name-only', '--diff-filter=U'])).toBe('');
+		expect(git(work, ['status', '--porcelain'])).toBe('');
 	});
 });

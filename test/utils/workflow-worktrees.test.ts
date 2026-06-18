@@ -72,7 +72,7 @@ describe('workflow managed worktrees', () => {
 		});
 
 		expect(created.created).toBe(true);
-		expect(created.worktreePath).toContain('.treeseed/worktrees/');
+		expect(created.worktreePath).toBe(resolve(work, '.treeseed', 'worktrees', 'feature-search-filters'));
 		expect(existsSync(resolve(created.worktreePath, 'treeseed.site.yaml'))).toBe(true);
 		expect(readFileSync(resolve(created.worktreePath, '.treeseed', 'worktree.json'), 'utf8')).toContain('feature/search filters');
 
@@ -186,6 +186,19 @@ artifacts:
 			branchName: 'feature/duplicate',
 			mode: 'on',
 		})).toThrow(/already checked out/u);
+	});
+
+	it('rejects stale branch-named directories that are not registered git worktrees', () => {
+		const { work } = createRepo();
+		const stalePath = plannedManagedWorkflowWorktreePath(work, 'feature/stale');
+		mkdirSync(stalePath, { recursive: true });
+		writeFileSync(resolve(stalePath, 'treeseed.site.yaml'), 'name: Stale\nslug: stale\n', 'utf8');
+
+		expect(() => ensureManagedWorkflowWorktree({
+			root: work,
+			branchName: 'feature/stale',
+			mode: 'on',
+		})).toThrow(/exists but is not registered as a Git worktree/u);
 	});
 
 	it('removes a managed worktree after successful cleanup', () => {

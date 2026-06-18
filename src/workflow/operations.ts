@@ -2405,9 +2405,10 @@ function backMergeProductionIntoStaging(repoDir: string, repoName: string, messa
 	try {
 		runGit(['merge', '--no-ff', `origin/${PRODUCTION_BRANCH}`, '-m', message ?? `release: back-merge ${PRODUCTION_BRANCH} into ${STAGING_BRANCH}`], { cwd: repoDir });
 	} catch (error) {
-		const report = collectMergeConflictReport(repoDir);
+		const report = mergeConflictReportFromError(error, repoDir);
+		const mergeAborted = mergeAbortedFromError(error, repoDir);
 		throw new TreeseedWorkflowError('release', 'merge_conflict', formatMergeConflictReport(report, repoDir, STAGING_BRANCH), {
-			details: { repoName, branch: STAGING_BRANCH, sourceBranch: PRODUCTION_BRANCH, report, originalError: error instanceof Error ? error.message : String(error) },
+			details: { repoName, branch: STAGING_BRANCH, sourceBranch: PRODUCTION_BRANCH, report, mergeAborted, originalError: error instanceof Error ? error.message : String(error) },
 			exitCode: 12,
 		});
 	}
@@ -2998,8 +2999,9 @@ function syncCurrentBranchToOrigin(operation: TreeseedWorkflowOperationId, repoD
 		};
 	} catch {
 		const report = collectMergeConflictReport(repoDir);
+		const mergeAborted = abortInProgressGitIntegration(repoDir);
 		throw new TreeseedWorkflowError(operation, 'merge_conflict', formatMergeConflictReport(report, repoDir, branch), {
-			details: { branch, report },
+			details: { branch, report, mergeAborted },
 			exitCode: 12,
 		});
 	}
@@ -3952,6 +3954,56 @@ function updateConflictedFiles(repoDir: string) {
 		.filter(Boolean);
 }
 
+function abortInProgressGitMerge(repoDir: string) {
+	const mergeHead = gitOutput(['rev-parse', '--git-path', 'MERGE_HEAD'], repoDir, true);
+	const mergeHeadPath = mergeHead && (isAbsolute(mergeHead) ? mergeHead : resolve(repoDir, mergeHead));
+	if (!mergeHeadPath || (!existsSync(mergeHeadPath) && updateConflictedFiles(repoDir).length === 0)) {
+		return false;
+	}
+	const abort = runTreeseedGit(['merge', '--abort'], {
+		cwd: repoDir,
+		mode: 'mutate',
+		allowFailure: true,
+	});
+	if (abort.status === 0) {
+		return true;
+	}
+	return runTreeseedGit(['reset', '--merge'], {
+		cwd: repoDir,
+		mode: 'mutate',
+		allowFailure: true,
+	}).status === 0;
+}
+
+function abortInProgressGitRebase(repoDir: string) {
+	const rebaseStatePaths = ['rebase-merge', 'rebase-apply']
+		.map((path) => gitOutput(['rev-parse', '--git-path', path], repoDir, true))
+		.map((path) => path && (isAbsolute(path) ? path : resolve(repoDir, path)))
+		.filter(Boolean);
+	if (!rebaseStatePaths.some((path) => existsSync(path))) {
+		return false;
+	}
+	return runTreeseedGit(['rebase', '--abort'], {
+		cwd: repoDir,
+		mode: 'mutate',
+		allowFailure: true,
+	}).status === 0;
+}
+
+function abortInProgressGitIntegration(repoDir: string) {
+	return abortInProgressGitMerge(repoDir) || abortInProgressGitRebase(repoDir);
+}
+
+function mergeConflictReportFromError(error: unknown, repoDir: string) {
+	const embedded = (error as { mergeConflictReport?: ReturnType<typeof collectMergeConflictReport> } | null)?.mergeConflictReport;
+	return embedded ?? collectMergeConflictReport(repoDir);
+}
+
+function mergeAbortedFromError(error: unknown, repoDir: string) {
+	const embedded = (error as { mergeAborted?: unknown } | null)?.mergeAborted;
+	return typeof embedded === 'boolean' ? embedded : abortInProgressGitIntegration(repoDir);
+}
+
 function sourceBranchExists(repoDir: string, sourceBranch: string) {
 	return runTreeseedGit(['ls-remote', '--exit-code', '--heads', 'origin', sourceBranch], {
 		cwd: repoDir,
@@ -4053,7 +4105,7 @@ function formatUpdateConflict(repoName: string, repoDir: string, sourceBranch: s
 			`Target branch: ${targetBranch}`,
 			`Source branch: origin/${sourceBranch}`,
 			files.length > 0 ? `Conflicted files:\n${files.map((file) => `- ${file}`).join('\n')}` : 'Conflicted files: inspect git status.',
-			'Resolve the conflicts in that repository, then run `npx trsd save --json "resolve update conflict"` or abort manually and rerun `npx trsd update --from staging --json`.',
+			'Treeseed will abort the in-progress merge and leave the repository clean so you can resolve the reported files on a normal task branch before retrying.',
 		].join('\n'),
 		files,
 		status,
@@ -4095,6 +4147,7 @@ function mergeUpdateRepo(input: {
 	});
 	if (merge.status !== 0) {
 		const conflict = formatUpdateConflict(input.name, input.repoDir, input.sourceBranch, input.branch);
+		const aborted = abortInProgressGitIntegration(input.repoDir);
 		throw new TreeseedWorkflowError('update', 'merge_conflict', conflict.message, {
 			details: {
 				repo: input.name,
@@ -4103,6 +4156,8 @@ function mergeUpdateRepo(input: {
 				status: conflict.status,
 				sourceBranch: input.sourceBranch,
 				targetBranch: input.branch,
+				mergeAborted: aborted,
+				retry: `npx trsd update --from ${input.sourceBranch} --json`,
 			},
 			exitCode: 12,
 		});
@@ -5321,9 +5376,10 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						checkoutBranch(pkg.dir, featureBranch);
 						report.branch = featureBranch;
 					} catch (error) {
-						const reportData = collectMergeConflictReport(pkg.dir);
+						const reportData = mergeConflictReportFromError(error, pkg.dir);
+						const mergeAborted = mergeAbortedFromError(error, pkg.dir);
 						throw new TreeseedWorkflowError('stage', 'merge_conflict', formatMergeConflictReport(reportData, pkg.dir, STAGING_BRANCH), {
-							details: { branch: featureBranch, packageName: pkg.name, report: reportData, originalError: error instanceof Error ? error.message : String(error) },
+							details: { branch: featureBranch, packageName: pkg.name, report: reportData, mergeAborted, originalError: error instanceof Error ? error.message : String(error) },
 							exitCode: 12,
 						});
 					}
@@ -5379,9 +5435,10 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					rootRepo.pushed = true;
 					rootRepo.branch = typeof rootMerge?.branch === 'string' ? rootMerge.branch : (currentBranch(repoDir) || STAGING_BRANCH);
 				} catch (error) {
-					const report = collectMergeConflictReport(repoDir);
+					const report = mergeConflictReportFromError(error, repoDir);
+					const mergeAborted = mergeAbortedFromError(error, repoDir);
 					throw new TreeseedWorkflowError('stage', 'merge_conflict', formatMergeConflictReport(report, repoDir, STAGING_BRANCH), {
-						details: { branch: featureBranch, report, originalError: error instanceof Error ? error.message : String(error) },
+						details: { branch: featureBranch, report, mergeAborted, originalError: error instanceof Error ? error.message : String(error) },
 						exitCode: 12,
 					});
 				}

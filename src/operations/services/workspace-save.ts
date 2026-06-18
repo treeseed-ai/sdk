@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import { changedWorkspacePackages, publishableWorkspacePackages, sortWorkspacePackages, workspacePackages, workspaceRoot } from './workspace-tools.ts';
 import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
 
@@ -434,6 +434,19 @@ export function countConflictMarkers(source) {
 	};
 }
 
+function gitPathExists(repoDir, gitPath) {
+	try {
+		const resolved = runGit(['rev-parse', '--git-path', gitPath], {
+			cwd: repoDir,
+			capture: true,
+		}).trim();
+		const fullPath = resolved && (isAbsolute(resolved) ? resolved : resolve(repoDir, resolved));
+		return Boolean(fullPath) && existsSync(fullPath);
+	} catch {
+		return false;
+	}
+}
+
 export function collectMergeConflictReport(repoDir) {
 	const branch = currentBranch(repoDir);
 	const conflictedFiles = runGit(['diff', '--name-only', '--diff-filter=U'], {
@@ -458,7 +471,8 @@ export function collectMergeConflictReport(repoDir) {
 
 	return {
 		branch,
-		rebaseInProgress: true,
+		mergeInProgress: gitPathExists(repoDir, 'MERGE_HEAD'),
+		rebaseInProgress: gitPathExists(repoDir, 'rebase-merge') || gitPathExists(repoDir, 'rebase-apply'),
 		conflictedFiles,
 		status,
 		perFile,
@@ -467,9 +481,10 @@ export function collectMergeConflictReport(repoDir) {
 
 export function formatMergeConflictReport(report, repoDir, targetBranch = 'main') {
 	const lines = [
-		`Treeseed save failed due to merge conflicts during \`git pull --rebase --recurse-submodules=no origin ${targetBranch}\`.`,
+		`Treeseed workflow failed due to Git integration conflicts while updating ${targetBranch}.`,
 		`Repository root: ${repoDir}`,
 		`Branch: ${report.branch}`,
+		`Merge in progress: ${report.mergeInProgress ? 'yes' : 'no'}`,
 		`Rebase in progress: ${report.rebaseInProgress ? 'yes' : 'no'}`,
 		'Git status:',
 		report.status || '(no git status output)',
@@ -484,9 +499,9 @@ export function formatMergeConflictReport(report, repoDir, targetBranch = 'main'
 	}
 
 	lines.push('Next steps:');
-	lines.push('- Inspect conflicted files and reconcile local vs remote changes.');
-	lines.push('- After resolving files, run `git add <files>` and `git rebase --continue`.');
-	lines.push('- Or abort with `git rebase --abort` if you need to restart the save flow.');
+	lines.push('- Inspect conflicted files and reconcile local vs target-branch changes on your task branch.');
+	lines.push('- Save the resolved task branch, then retry the interrupted Treeseed workflow.');
+	lines.push('- If a Git merge or rebase is still active, abort it before retrying.');
 
 	return lines.join('\n');
 }

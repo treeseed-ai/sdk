@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { runTreeseedGit } from '../operations/services/git-runner.ts';
@@ -52,8 +51,7 @@ function slugifyBranch(branchName: string) {
 }
 
 function worktreeDirectoryName(branchName: string) {
-	const hash = createHash('sha256').update(branchName).digest('hex').slice(0, 10);
-	return `${slugifyBranch(branchName)}-${hash}`;
+	return slugifyBranch(branchName);
 }
 
 function parseWorktreeList(output: string) {
@@ -231,6 +229,16 @@ export function ensureManagedWorkflowWorktree({
 	const duplicate = entries.find((entry) => entry.branch === branchName && entry.worktree !== worktreePath);
 	if (duplicate) {
 		throw new Error(`Branch ${branchName} is already checked out in ${duplicate.worktree}.`);
+	}
+	if (existingEntry && existingEntry.branch && existingEntry.branch !== branchName) {
+		throw new Error(`Managed worktree path ${worktreePath} is already checked out for branch ${existingEntry.branch}; expected ${branchName}.`);
+	}
+	if (!existingEntry && existsSync(worktreePath)) {
+		const staleMetadata = readMetadata(worktreePath);
+		const detail = staleMetadata?.branch
+			? ` It contains metadata for branch ${staleMetadata.branch}.`
+			: '';
+		throw new Error(`Managed worktree path ${worktreePath} exists but is not registered as a Git worktree.${detail} Run \`treeseed recover --prune-stale --json\` or remove the stale directory before switching to ${branchName}.`);
 	}
 
 	const created = !existingEntry && !existsSync(worktreePath);
