@@ -10,7 +10,7 @@ function source(relativePath: string) {
 }
 
 function functionBody(fileSource: string, functionName: string) {
-	const marker = `export async function ${functionName}`;
+	const marker = `export async function ${functionName}(`;
 	const start = fileSource.indexOf(marker);
 	expect(start, `${functionName} exists`).toBeGreaterThanOrEqual(0);
 	const next = fileSource.indexOf('\nexport async function ', start + marker.length);
