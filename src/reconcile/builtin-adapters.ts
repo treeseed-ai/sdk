@@ -615,7 +615,13 @@ function buildGitHubWorkflowDispatchAdapter(): TreeseedReconcileAdapter {
 			const result = input.result?.state?.result && typeof input.result.state.result === 'object'
 				? input.result.state.result as Record<string, unknown>
 				: null;
-			const observedRun = result?.runId ? result : latest;
+			const completedRun = result?.completed && typeof result.completed === 'object'
+				? result.completed as Record<string, unknown>
+				: null;
+			const latestAfterDispatch = result?.latest && typeof result.latest === 'object'
+				? result.latest as Record<string, unknown>
+				: null;
+			const observedRun = completedRun ?? latestAfterDispatch ?? latest;
 			const expectedHeadSha = typeof input.unit.spec.expectedHeadSha === 'string' ? input.unit.spec.expectedHeadSha : null;
 			const observedHeadSha = typeof observedRun?.headSha === 'string'
 				? observedRun.headSha
