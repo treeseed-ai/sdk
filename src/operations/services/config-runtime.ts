@@ -1628,6 +1628,9 @@ function decryptMachineEnvironmentBucket(tenantRoot, config, key, bucket) {
 	};
 
 	for (const [entryId, payload] of Object.entries(bucket?.secrets ?? {})) {
+		if (!key) {
+			continue;
+		}
 		values[entryId] = decryptValueWithMachineKey(tenantRoot, payload, key);
 	}
 
@@ -1740,9 +1743,14 @@ function resolveEntryValueFromBuckets(entry, entryId, scope, bucketValuesByScope
 }
 
 export function resolveTreeseedMachineEnvironmentValues(tenantRoot, scope, additionalKeys = []) {
-	const key = loadMachineKey(tenantRoot);
 	const config = loadTreeseedMachineConfig(tenantRoot);
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
+	let key = null;
+	try {
+		key = loadMachineKey(tenantRoot);
+	} catch {
+		key = null;
+	}
 	const bucketValuesByScope = {
 		shared: decryptMachineEnvironmentBucket(tenantRoot, config, key, config.shared),
 		...Object.fromEntries(
