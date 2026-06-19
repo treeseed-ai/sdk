@@ -703,7 +703,7 @@ query TreeseedRailwayDeploymentStatus($projectId: String!) {
 	return payload.data?.project ?? null;
 }
 
-function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, application = null) {
+function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, application = null, { configRoot = tenantRoot } = {}) {
 	const normalizedScope = normalizeScope(scope);
 	const imageRefKeys = [
 		'TREESEED_API_IMAGE_REF',
@@ -714,7 +714,7 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 	];
 	let machineEnv = {};
 	try {
-		machineEnv = resolveTreeseedMachineEnvironmentValues(tenantRoot, normalizedScope, imageRefKeys);
+		machineEnv = resolveTreeseedMachineEnvironmentValues(configRoot, normalizedScope, imageRefKeys);
 	} catch {
 		machineEnv = {};
 	}
@@ -839,7 +839,7 @@ function resolveRailwayCapacityProviderRoot(tenantRoot, service) {
 
 export function configuredRailwayServices(tenantRoot, scope) {
 	const deployConfig = loadCliDeployConfig(tenantRoot);
-	const direct = configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig);
+	const direct = configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, null, { configRoot: tenantRoot });
 	const nested = discoverTreeseedApplications(tenantRoot)
 		.filter((application) => application.root !== resolve(tenantRoot))
 		.flatMap((application) => configuredRailwayServicesForConfig(
@@ -851,6 +851,7 @@ export function configuredRailwayServices(tenantRoot, scope) {
 				root: application.root,
 				relativeRoot: application.relativeRoot,
 			},
+			{ configRoot: tenantRoot },
 		));
 	return [...direct, ...nested];
 }
@@ -1592,6 +1593,10 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 					: service.key === 'capacityProviderManager'
 						? 'manager'
 						: 'runner',
+				...(service.key === 'capacityProviderApi' ? {
+					PORT: '3100',
+					TREESEED_PROVIDER_API_PORT: '3100',
+				} : {}),
 				...(service.key === 'capacityProviderRunner' ? {
 					TREESEED_PROVIDER_DATA_DIR: service.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH,
 					TREESEED_PROVIDER_RUNNER_ID: service.runnerId ?? railwayService.name,

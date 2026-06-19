@@ -45,7 +45,7 @@ surfaces:
     rootDir: packages/api
     environments:
       staging:
-        domain: api-treeseed-staging.treeseed.ai
+        domain: api-treeseed-market-staging-ca844c56.treeseed.ai
       prod:
         domain: api.treeseed.ai
 services:

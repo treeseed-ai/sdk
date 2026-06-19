@@ -138,7 +138,7 @@ export async function runTreeseedOperationsRunnerSmoke(options: TreeseedOperatio
 		?? manifestApiBaseUrl(options.tenantRoot, options.environment)
 		?? value('TREESEED_API_BASE_URL', values, env)
 		?? value('TREESEED_CENTRAL_MARKET_API_BASE_URL', values, env)
-		?? (options.environment === 'prod' ? 'https://api.treeseed.ai' : 'https://api-treeseed-staging.treeseed.ai'),
+		?? (options.environment === 'prod' ? 'https://api.treeseed.ai' : 'https://api-treeseed-market-staging-ca844c56.treeseed.ai'),
 	);
 	const serviceId = options.serviceId ?? value('TREESEED_ACCEPTANCE_SERVICE_ID', values, env) ?? value('TREESEED_API_WEB_SERVICE_ID', values, env) ?? value('TREESEED_WEB_SERVICE_ID', values, env) ?? 'web';
 	const serviceSecret = options.serviceSecret ?? value('TREESEED_ACCEPTANCE_SERVICE_SECRET', values, env) ?? value('TREESEED_API_WEB_SERVICE_SECRET', values, env) ?? value('TREESEED_WEB_SERVICE_SECRET', values, env);

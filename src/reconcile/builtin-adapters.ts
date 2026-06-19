@@ -3557,6 +3557,13 @@ async function syncRailwayEnvironmentForScope(
 						env: topology.env,
 					});
 				}
+			} else if (entry.configuredService.buildCommand || entry.configuredService.startCommand) {
+				traceRailwayReconcile(topology.env, 'sync:deploy', `${entry.configuredService.key}:${entry.service.name}:source`);
+				await deployRailwayServiceInstance({
+					serviceId: entry.service.id,
+					environmentId: entry.environment.id,
+					env: topology.env,
+				});
 			}
 			if (entry.configuredService.key === 'operationsRunner') {
 				const desiredServiceNames = new Set(configuredRailwayServices(input.context.tenantRoot, scope)
@@ -3961,6 +3968,10 @@ function capacityProviderVariablesForService(
 	const marketUrl = resolveCapacityProviderMarketUrl(input, scope, values);
 	if (marketUrl) {
 		variables.TREESEED_MARKET_URL = marketUrl;
+	}
+	if (role === 'api') {
+		variables.PORT = '3100';
+		variables.TREESEED_PROVIDER_API_PORT = '3100';
 	}
 	if (role === 'runner') {
 		variables.TREESEED_PROVIDER_RUNNER_ID = String(configuredService?.runnerId ?? configuredService?.serviceName ?? 'treeseed-agent-runner-01');

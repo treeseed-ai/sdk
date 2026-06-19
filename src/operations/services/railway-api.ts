@@ -465,6 +465,14 @@ function collectRailwayVolumes(value: unknown, seen = new Set<object>()): Railwa
 	return [...byId.values()];
 }
 
+function railwayApiTimeoutMs(env: NodeJS.ProcessEnv | Record<string, string | undefined>, explicitTimeoutMs?: number) {
+	if (typeof explicitTimeoutMs === 'number' && Number.isFinite(explicitTimeoutMs) && explicitTimeoutMs > 0) {
+		return explicitTimeoutMs;
+	}
+	const configured = Number.parseInt(String(env.TREESEED_RAILWAY_API_TIMEOUT_MS ?? '').trim(), 10);
+	return Number.isFinite(configured) && configured > 0 ? configured : 120_000;
+}
+
 export async function railwayGraphqlRequest<TData = unknown>({
 	query,
 	variables,
@@ -472,7 +480,7 @@ export async function railwayGraphqlRequest<TData = unknown>({
 	apiToken,
 	apiUrl,
 	fetchImpl = fetch,
-	timeoutMs = 30_000,
+	timeoutMs,
 	retries = 4,
 }: {
 	query: string;
@@ -488,13 +496,14 @@ export async function railwayGraphqlRequest<TData = unknown>({
 	if (!token) {
 		throw new Error('Configure RAILWAY_API_TOKEN before invoking Railway APIs.');
 	}
+	const requestTimeoutMs = railwayApiTimeoutMs(env, timeoutMs);
 	let attempt = 0;
 	for (;;) {
 		const controller = new AbortController();
 		let timer: ReturnType<typeof setTimeout> | null = null;
 		try {
 			const response = fetchImpl === fetch
-				? await railwayGraphqlHttpsRequest(apiUrl || resolveRailwayApiUrl(env), token, { query, variables }, timeoutMs)
+				? await railwayGraphqlHttpsRequest(apiUrl || resolveRailwayApiUrl(env), token, { query, variables }, requestTimeoutMs)
 				: await Promise.race([
 					fetchImpl(apiUrl || resolveRailwayApiUrl(env), {
 						method: 'POST',
@@ -518,8 +527,8 @@ export async function railwayGraphqlRequest<TData = unknown>({
 					}>((_, reject) => {
 						timer = setTimeout(() => {
 							controller.abort();
-							reject(markRailwayTransientError(new Error(`Railway API request timed out after ${timeoutMs}ms.`)));
-						}, timeoutMs);
+							reject(markRailwayTransientError(new Error(`Railway API request timed out after ${requestTimeoutMs}ms.`)));
+						}, requestTimeoutMs);
 					}),
 				]);
 			const payload = response.payload;
@@ -2035,6 +2044,21 @@ mutation TreeseedRailwayVariableCollectionUpsert($input: VariableCollectionUpser
 		replace: false,
 		skipDeploys: true,
 	};
+	const upsertOne = (key: string, value: string) => railwayGraphqlRequest({
+		query,
+		variables: {
+			input: {
+				projectId,
+				environmentId,
+				serviceId: serviceId || null,
+				variables: { [key]: value },
+				replace: false,
+				skipDeploys: true,
+			},
+		},
+		env,
+		fetchImpl,
+	});
 	try {
 		await railwayGraphqlRequest({
 			query,
@@ -2048,22 +2072,20 @@ mutation TreeseedRailwayVariableCollectionUpsert($input: VariableCollectionUpser
 			throw error;
 		}
 		for (const [key, value] of Object.entries(variables)) {
-			await railwayGraphqlRequest({
-				query,
-				variables: {
-					input: {
-						projectId,
-						environmentId,
-						serviceId: serviceId || null,
-						variables: { [key]: value },
-						replace: false,
-						skipDeploys: true,
-					},
-				},
-				env,
-				fetchImpl,
-			});
+			await upsertOne(key, value);
 		}
+	}
+	const observed = await listRailwayVariables({ projectId, environmentId, serviceId, env, fetchImpl }).catch(() => ({}));
+	const missing = Object.keys(variables).filter((key) => observed[key] == null);
+	for (const key of missing) {
+		await upsertOne(key, variables[key]);
+	}
+	const retried = missing.length > 0
+		? await listRailwayVariables({ projectId, environmentId, serviceId, env, fetchImpl }).catch(() => ({}))
+		: observed;
+	const stillMissing = Object.keys(variables).filter((key) => retried[key] == null);
+	if (stillMissing.length > 0) {
+		throw new Error(`Railway variable upsert did not persist: ${stillMissing.join(', ')}.`);
 	}
 }
 
