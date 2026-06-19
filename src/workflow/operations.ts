@@ -99,6 +99,10 @@ import {
 	type ReleaseCandidateReport,
 } from '../operations/services/release-candidate.ts';
 import {
+	runReleaseGraphRehearsal,
+	type ReleaseGraphVerifyDriver,
+} from '../operations/services/release-graph-rehearsal.ts';
+import {
 	collectReleaseHistoryCommits,
 	renderAdministrativeCommitMessage,
 	upsertReleaseChangelog,
@@ -214,6 +218,7 @@ import type {
 	TreeseedConfigInput,
 	TreeseedDestroyInput,
 	TreeseedExportInput,
+	TreeseedReleaseCandidateInput,
 	TreeseedReleaseInput,
 	TreeseedRecoverInput,
 	TreeseedResumeInput,
@@ -2606,7 +2611,7 @@ async function runReleaseCandidateForPlan(
 	operation: Extract<TreeseedWorkflowOperationId, 'save' | 'stage' | 'release'>,
 	root: string,
 	plannedRelease: { plannedVersions?: unknown; packageSelection?: unknown },
-	options: { allowReuse?: boolean; mode?: ReleaseCandidateMode } = {},
+	options: { allowReuse?: boolean; mode?: ReleaseCandidateMode; write?: (line: string, stream?: 'stdout' | 'stderr') => void } = {},
 ) {
 	const plannedVersions = plannedRelease.plannedVersions && typeof plannedRelease.plannedVersions === 'object' && !Array.isArray(plannedRelease.plannedVersions)
 		? plannedRelease.plannedVersions as Record<string, unknown>
@@ -2621,9 +2626,80 @@ async function runReleaseCandidateForPlan(
 		selectedPackageNames: packageSelection.selected,
 		allowReuse: options.allowReuse,
 		mode: options.mode ?? normalizeReleaseCandidateMode(undefined, operation),
+		write: options.write,
 	});
 	assertReleaseCandidatePassed(operation, report);
 	return report;
+}
+
+function normalizeReleaseCandidatePackages(value: TreeseedReleaseCandidateInput['package']) {
+	if (Array.isArray(value)) return value.map(String).filter(Boolean);
+	if (typeof value === 'string' && value.trim()) return [value.trim()];
+	return [];
+}
+
+export async function workflowReleaseCandidate(helpers: WorkflowOperationHelpers, input: TreeseedReleaseCandidateInput = {}) {
+	try {
+		return await withContextEnv(helpers.context.env, async () => {
+			const tenantRoot = resolveProjectRootOrThrow('release-candidate', helpers.cwd());
+			const root = workspaceRoot(tenantRoot);
+			const executionMode = normalizeExecutionMode(input);
+			const selectedPackageNames = normalizeReleaseCandidatePackages(input.package);
+			const verifyDriver = (input.verifyDriver ?? 'auto') as ReleaseGraphVerifyDriver;
+			const payload = {
+				mode: input.mode ?? 'strict',
+				verifyDriver,
+				selectedPackageNames,
+				keepWorkspace: input.keepWorkspace === true,
+				plannedSteps: [
+					{ id: 'build-release-graph', description: 'Discover all treeseed.package.yaml package adapters and graph dependencies.' },
+					{ id: 'local-release-graph-rehearsal', description: 'Run local tarball/image-service rehearsal without hosted GitHub Actions.' },
+				],
+			};
+			if (executionMode === 'plan') {
+				return buildWorkflowResult('release-candidate', root, payload, {
+					executionMode,
+					summary: 'Treeseed release-candidate rehearsal plan ready.',
+					nextSteps: createNextSteps([
+						{ operation: 'release-candidate', reason: 'Run the local release graph rehearsal before stage or release.' },
+					]),
+				});
+			}
+			const proof = runReleaseGraphRehearsal({
+				root,
+				selectedPackageNames,
+				verifyDriver,
+				strict: payload.mode === 'strict',
+				keepWorkspace: input.keepWorkspace === true,
+				write: (line, stream) => helpers.write(line, stream),
+				env: helpers.context.env,
+			});
+			const resultPayload = {
+				...payload,
+				proof,
+				graph: proof.graph,
+				artifacts: proof.artifacts,
+				actionChecks: proof.actionChecks,
+				failures: proof.failures,
+			};
+			if (proof.status !== 'passed') {
+				workflowError('release-candidate', 'validation_failed', [
+					'Treeseed local release graph rehearsal failed.',
+					...proof.failures.map((failure) => `- ${failure.scope}: ${failure.message}`),
+				].join('\n'), {
+					details: { releaseCandidate: resultPayload },
+				});
+			}
+			return buildWorkflowResult('release-candidate', root, resultPayload, {
+				summary: 'Treeseed local release graph rehearsal passed.',
+				nextSteps: createNextSteps([
+					{ operation: 'stage', reason: 'Run stage after the matching local release graph proof passes.' },
+				]),
+			});
+		});
+	} catch (error) {
+		toError('release-candidate', error);
+	}
 }
 
 function buildReleasePlanSnapshot(input: {
@@ -5388,8 +5464,8 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 							{ id: 'workspace-unlink', description: 'Remove local workspace links before staging promotion' },
 							{ id: 'merge-root', description: `Squash-merge ${initialSession.branchName ?? '(current task)'} into market staging` },
 							{ id: 'lockfile-validation', description: 'Refresh and validate the merged root workspace lockfile before pushing staging' },
-							{ id: 'wait-staging', description: 'Wait for exact-SHA staging GitHub Actions gates' },
 							{ id: 'release-candidate', description: 'Run release-candidate readiness checks for the exact staging state' },
+							{ id: 'wait-staging', description: 'Wait for exact-SHA staging GitHub Actions gates' },
 							{ id: 'preview-cleanup', description: 'Destroy preview resources' },
 							{ id: 'cleanup-root', description: 'Archive and delete the task branch from market' },
 							...checkedOutWorkspacePackageRepos(root).map((pkg) => ({
@@ -5453,8 +5529,8 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						resumable: true,
 					})),
 					{ id: 'merge-root', description: `Merge ${featureBranch} into market staging`, repoName: rootRepo.name, repoPath: repoDir, branch: featureBranch, resumable: true },
-					{ id: 'wait-staging', description: 'Wait for exact-SHA staging GitHub Actions gates', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'release-candidate', description: 'Run release-candidate readiness checks', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					{ id: 'wait-staging', description: 'Wait for exact-SHA staging GitHub Actions gates', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'preview-cleanup', description: 'Destroy preview resources', repoName: rootRepo.name, repoPath: rootRepo.path, branch: featureBranch, resumable: true },
 					{ id: 'cleanup-root', description: `Archive ${featureBranch} in market`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: featureBranch, resumable: true },
 					...packageReports.map((report) => ({
@@ -5619,6 +5695,18 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					}
 				}
 
+				const stageReleasePlan = buildReleasePlanSnapshot({
+					root,
+					mode: stageMode,
+					level: 'patch',
+					packageSelection: session.packageSelection,
+					packageReports,
+					rootRepo,
+					blockers: [],
+				});
+				const releaseCandidate = await executeJournalStep(root, workflowRun.runId, 'release-candidate', () =>
+					runReleaseCandidateForPlan('stage', root, stageReleasePlan, { allowReuse: false, write: (line, stream) => helpers.write(line, stream) }));
+
 				const stageWorkflowGateResult = !waitForStaging
 					? (skipJournalStep(root, workflowRun.runId, 'wait-staging', { status: 'skipped', reason: 'disabled' }), { status: 'skipped', reason: 'disabled' })
 					: await executeJournalStep(root, workflowRun.runId, 'wait-staging', () =>
@@ -5651,17 +5739,6 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					status: String(stageWorkflowGateResult?.status ?? 'completed'),
 					workflowGates: Array.isArray(stageWorkflowGateResult?.workflowGates) ? stageWorkflowGateResult.workflowGates : [],
 				};
-				const stageReleasePlan = buildReleasePlanSnapshot({
-					root,
-					mode: stageMode,
-					level: 'patch',
-					packageSelection: session.packageSelection,
-					packageReports,
-					rootRepo,
-					blockers: [],
-				});
-				const releaseCandidate = await executeJournalStep(root, workflowRun.runId, 'release-candidate', () =>
-					runReleaseCandidateForPlan('stage', root, stageReleasePlan));
 				const hostingAudit = await workflowHostedVerificationGateRequired(
 					'stage',
 					root,

@@ -12,6 +12,7 @@ import {
 	workflowDev,
 	workflowExport,
 	workflowRecover,
+	workflowReleaseCandidate,
 	workflowRelease,
 	workflowResume,
 	workflowSave,
@@ -34,6 +35,7 @@ export type TreeseedWorkflowOperationId =
 	| 'update'
 	| 'close'
 	| 'stage'
+	| 'release-candidate'
 	| 'release'
 	| 'tags:cleanup'
 	| 'resume'
@@ -74,6 +76,7 @@ export type TreeseedWorkflowWorktreeMode = 'auto' | 'on' | 'off';
 export type TreeseedWorkflowCiMode = 'auto' | 'hosted' | 'off';
 export type TreeseedWorkflowVerifyMode = 'fast' | 'local' | 'hosted' | 'both' | 'skip';
 export type TreeseedReleaseCandidateMode = 'hybrid' | 'strict' | 'skip';
+export type TreeseedReleaseCandidateVerifyDriver = 'auto' | 'local' | 'action';
 
 export type TreeseedWorkflowContext = {
 	cwd?: string;
@@ -216,6 +219,15 @@ export type TreeseedStageInput = {
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
 	verifyDeployedResources?: boolean;
+	plan?: boolean;
+	dryRun?: boolean;
+};
+
+export type TreeseedReleaseCandidateInput = {
+	mode?: TreeseedReleaseCandidateMode;
+	verifyDriver?: TreeseedReleaseCandidateVerifyDriver;
+	package?: string | string[];
+	keepWorkspace?: boolean;
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -373,6 +385,8 @@ export class TreeseedWorkflowSdk {
 				return this.close(input as TreeseedCloseInput);
 			case 'stage':
 				return this.stage(input as TreeseedStageInput);
+			case 'release-candidate':
+				return this.releaseCandidate(input as TreeseedReleaseCandidateInput);
 			case 'release':
 				return this.release(input as TreeseedReleaseInput);
 			case 'tags:cleanup':
@@ -428,6 +442,10 @@ export class TreeseedWorkflowSdk {
 
 	async stage(input: TreeseedStageInput): Promise<TreeseedWorkflowResult> {
 		return workflowStage(this.helpers(), input);
+	}
+
+	async releaseCandidate(input: TreeseedReleaseCandidateInput = {}): Promise<TreeseedWorkflowResult> {
+		return workflowReleaseCandidate(this.helpers(), input);
 	}
 
 	async release(input: TreeseedReleaseInput): Promise<TreeseedWorkflowResult> {

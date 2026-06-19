@@ -14,6 +14,7 @@ import {
 	discoverTreeseedPackageAdapters,
 	planTreeseedPackageDevelopmentImage,
 } from '../../src/operations/services/package-adapters.ts';
+import { buildReleaseGraph } from '../../src/operations/services/release-graph-rehearsal.ts';
 import {
 	githubRepositoryCredentialEnvName,
 	resolveGitHubCredentialForRepository,
@@ -342,6 +343,33 @@ describe('release candidate verification', () => {
 		expect(plan.hosting?.overrideEnvVar).toBe('TREESEED_PUBLIC_TREEDX_IMAGE_REF');
 	});
 
+	it('expands selected release graph packages to upstream dependencies and TreeDX image producers', () => {
+		const root = makeWorkspace();
+		addTreeDxPackage(root);
+		addApiPackage(root);
+		writeFileSync(resolve(root, 'packages', 'api', 'package.json'), JSON.stringify({
+			name: '@treeseed/api',
+			version: '0.1.0',
+			private: true,
+			dependencies: {
+				'@treeseed/sdk': 'workspace:*',
+			},
+			scripts: {
+				'verify:local': 'node -e "process.exit(0)"',
+			},
+		}, null, 2), 'utf8');
+
+		const graph = buildReleaseGraph(root, ['@treeseed/api']);
+
+		expect(graph.order).toContain('@treeseed/sdk');
+		expect(graph.order).toContain('treedx');
+		expect(graph.order.at(-1)).toBe('@treeseed/api');
+		expect(graph.edges).toEqual(expect.arrayContaining([
+			expect.objectContaining({ from: '@treeseed/sdk', to: '@treeseed/api', kind: 'npm-dependency' }),
+			expect.objectContaining({ from: 'treedx', to: '@treeseed/api', kind: 'hosting-image-consumer' }),
+		]));
+	});
+
 	it('normalizes and resolves repository-scoped GitHub credentials', () => {
 		expect(githubRepositoryCredentialEnvName('treeseed-ai/treedx')).toBe('TREESEED_GITHUB_TOKEN_TREESEED_AI_TREEDX');
 		expect(githubRepositoryCredentialEnvName('https://github.com/treeseed-ai/treedx.git')).toBe('TREESEED_GITHUB_TOKEN_TREESEED_AI_TREEDX');
@@ -440,7 +468,10 @@ describe('release candidate verification', () => {
 		});
 
 		expect(report.status).toBe('passed');
-		expect(report.checks.find((check) => check.name === 'package-release-readiness')?.detail).toContain('treedx (beam-elixir-rust)');
+		expect(report.localProof?.graph.order).toContain('treedx');
+		expect(report.localProof?.artifacts).toEqual(expect.arrayContaining([
+			expect.objectContaining({ packageId: 'treedx', proofType: 'verify-script', status: 'passed' }),
+		]));
 		expect(report.failures.some((failure) => failure.code === 'npm_pack_dry_run_failed')).toBe(false);
 	});
 

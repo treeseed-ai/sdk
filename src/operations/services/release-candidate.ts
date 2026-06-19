@@ -15,6 +15,7 @@ import { packagesWithScript, run, sortWorkspacePackages, workspacePackages } fro
 import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
 import { createBuildWarningSummary, formatAllowedBuildWarnings } from './build-warning-policy.js';
 import { discoverTreeseedPackageAdapters, type TreeseedPackageAdapter } from './package-adapters.ts';
+import { runReleaseGraphRehearsal, type ReleaseGraphProof, type ReleaseGraphVerifyDriver } from './release-graph-rehearsal.ts';
 
 function runGit(args: string[], options: { cwd: string; capture?: boolean; timeoutMs?: number; maxBuffer?: number }) {
 	return runTreeseedGitText(args, {
@@ -67,6 +68,7 @@ export type ReleaseCandidateReport = {
 	mode: ReleaseCandidateMode;
 	reason: string;
 	topology: ReleaseCandidateTopologyFingerprint;
+	localProof?: ReleaseGraphProof | null;
 	reused: boolean;
 	checkedAt: string;
 	failures: ReleaseCandidateFailure[];
@@ -79,6 +81,9 @@ export type ReleaseCandidateInput = {
 	selectedPackageNames?: string[];
 	allowReuse?: boolean;
 	mode?: ReleaseCandidateMode;
+	verifyDriver?: ReleaseGraphVerifyDriver;
+	keepWorkspace?: boolean;
+	write?: (line: string, stream?: 'stdout' | 'stderr') => void;
 };
 
 const RELEASE_CANDIDATE_CACHE_DIR = '.treeseed/workflow/release-candidates';
@@ -795,6 +800,43 @@ function dependencyRehearsalChecks(
 	};
 }
 
+function localReleaseGraphRehearsalChecks(
+	root: string,
+	selectedPackageNames: string[],
+	failures: ReleaseCandidateFailure[],
+	options: {
+		verifyDriver?: ReleaseGraphVerifyDriver;
+		keepWorkspace?: boolean;
+		write?: (line: string, stream?: 'stdout' | 'stderr') => void;
+	} = {},
+): { check: ReleaseCandidateCheck; proof: ReleaseGraphProof } {
+	const before = failures.length;
+	const proof = runReleaseGraphRehearsal({
+		root,
+		selectedPackageNames,
+		verifyDriver: options.verifyDriver ?? 'auto',
+		keepWorkspace: options.keepWorkspace,
+		strict: true,
+		write: options.write,
+	});
+	for (const failure of proof.failures) {
+		addFailure(failures, {
+			code: failure.code,
+			scope: failure.scope,
+			message: failure.message,
+			details: failure.details,
+		});
+	}
+	return {
+		proof,
+		check: {
+			name: 'local-release-graph-rehearsal',
+			status: failures.length > before ? 'failed' : 'passed',
+			detail: `Rehearsed ${proof.graph.order.length} package graph node${proof.graph.order.length === 1 ? '' : 's'} locally before hosted gates. Order: ${proof.graph.order.join(', ') || 'none'}.`,
+		},
+	};
+}
+
 function validateInternalGitReferenceTags(root: string, failures: ReleaseCandidateFailure[]): number {
 	const issues = collectInternalDevReferenceIssues(root);
 	let checked = 0;
@@ -858,6 +900,7 @@ function skippedReleaseCandidateReport(fingerprint: ReleaseCandidateFingerprint,
 		mode: 'skip',
 		reason: 'Release-candidate checks skipped by explicit request.',
 		topology,
+		localProof: null,
 		reused: false,
 		checkedAt: nowIso(),
 		failures: [],
@@ -1108,10 +1151,20 @@ export async function runReleaseCandidateGate(input: ReleaseCandidateInput): Pro
 		: 'Strict release-candidate selected.';
 	const failures: ReleaseCandidateFailure[] = [];
 	const checks: ReleaseCandidateCheck[] = [];
-	checks.push(effectiveMode === 'hybrid'
-		? lightweightDependencyChecks(input.root, failures)
-		: dependencyRehearsalChecks(input.root, plannedVersions, selectedPackageNames, failures));
-	checks.push(packageReadinessChecks(input.root, selectedPackageNames, failures, { skipNpmPack: effectiveMode === 'hybrid' }));
+	let localProof: ReleaseGraphProof | null = null;
+	if (effectiveMode === 'hybrid') {
+		checks.push(lightweightDependencyChecks(input.root, failures));
+		checks.push(packageReadinessChecks(input.root, selectedPackageNames, failures, { skipNpmPack: true }));
+	} else {
+		checks.push(dependencyRehearsalChecks(input.root, plannedVersions, selectedPackageNames, failures));
+		const rehearsal = localReleaseGraphRehearsalChecks(input.root, selectedPackageNames, failures, {
+			verifyDriver: input.verifyDriver,
+			keepWorkspace: input.keepWorkspace,
+			write: input.write,
+		});
+		localProof = rehearsal.proof;
+		checks.push(rehearsal.check);
+	}
 	checks.push(await configParityChecks(input.root, failures));
 	checks.push(migrationCompatibilityChecks(input.root, failures));
 	const report: ReleaseCandidateReport = {
@@ -1120,6 +1173,7 @@ export async function runReleaseCandidateGate(input: ReleaseCandidateInput): Pro
 		mode: effectiveMode,
 		reason,
 		topology,
+		localProof,
 		reused: false,
 		checkedAt: nowIso(),
 		failures,
