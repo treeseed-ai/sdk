@@ -99,6 +99,7 @@ import {
 	type ReleaseCandidateReport,
 } from '../operations/services/release-candidate.ts';
 import {
+	buildReleaseGraph,
 	runReleaseGraphRehearsal,
 	type ReleaseGraphVerifyDriver,
 } from '../operations/services/release-graph-rehearsal.ts';
@@ -2646,11 +2647,13 @@ export async function workflowReleaseCandidate(helpers: WorkflowOperationHelpers
 			const executionMode = normalizeExecutionMode(input);
 			const selectedPackageNames = normalizeReleaseCandidatePackages(input.package);
 			const verifyDriver = (input.verifyDriver ?? 'auto') as ReleaseGraphVerifyDriver;
+			const plannedGraph = buildReleaseGraph(root, selectedPackageNames);
 			const payload = {
 				mode: input.mode ?? 'strict',
 				verifyDriver,
 				selectedPackageNames,
 				keepWorkspace: input.keepWorkspace === true,
+				graph: { nodes: plannedGraph.nodes, edges: plannedGraph.edges, order: plannedGraph.order },
 				plannedSteps: [
 					{ id: 'build-release-graph', description: 'Discover all treeseed.package.yaml package adapters and graph dependencies.' },
 					{ id: 'local-release-graph-rehearsal', description: 'Run local tarball/image-service rehearsal without hosted GitHub Actions.' },

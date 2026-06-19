@@ -218,7 +218,7 @@ function internalDependencyEdges(root: string, adapters: TreeseedPackageAdapter[
 			}
 		}
 	}
-	if (byId.has('treedx') && byName.has('@treeseed/api')) {
+	if (byId.has('treedx') && byId.has('@treeseed/api')) {
 		edges.push({
 			from: 'treedx',
 			to: '@treeseed/api',
@@ -344,11 +344,13 @@ function packNodePackage(adapter: TreeseedPackageAdapter, tempRoot: string, tarb
 	if (typeof scripts['build:dist'] === 'string') {
 		runCommand('npm', ['run', 'build:dist'], { cwd: packageDir, env, timeoutMs: 600000 });
 	}
-	const output = runCommand('npm', ['pack', '--json'], { cwd: packageDir, env, timeoutMs: 300000, capture: true });
+	const output = runCommand('npm', ['pack', '--json', '--ignore-scripts'], { cwd: packageDir, env, timeoutMs: 300000, capture: true });
 	const parsed = parseNpmPackJson(output, adapter.id);
 	const filename = parsed[0]?.filename;
 	if (!filename) throw new Error(`${adapter.id} npm pack did not report a tarball filename.`);
-	return resolve(packageDir, filename);
+	const tarball = resolve(packageDir, filename);
+	rmSync(resolve(packageDir, 'node_modules'), { recursive: true, force: true });
+	return tarball;
 }
 
 function parseNpmPackJson(output: string, packageId: string) {
