@@ -3148,6 +3148,19 @@ async function resolveRailwayTopologyForScope(
 			}
 
 			let resolvedService = project?.services.find((entry) => entry.id === resolvedServiceId || entry.name === resolvedServiceName) ?? null;
+			if (project && !resolvedService) {
+				const projectServices = await listRailwayServices({ projectId: project.id, env }).catch(() => []);
+				traceRailwayReconcile(env, 'topology:project-services:lookup', `${service.key}:${project.name}:${projectServices.map((entry) => entry.name).join(',') || '(none)'}`);
+				if (projectServices.length > 0) {
+					project = {
+						...project,
+						services: [...new Map([...project.services, ...projectServices].map((entry) => [entry.id, entry])).values()],
+					};
+					projectsByKey.set(project.id, project);
+					projectsByKey.set(project.name, project);
+					resolvedService = project.services.find((entry) => entry.id === resolvedServiceId || entry.name === resolvedServiceName) ?? null;
+				}
+			}
 			if (project && !resolvedService && ensure) {
 				traceRailwayReconcile(env, 'topology:railway-service:ensure', `${service.key}:${resolvedServiceName || resolvedServiceId}`);
 				resolvedService = (await ensureRailwayService({
@@ -3790,7 +3803,6 @@ async function observeRailwayUnit(input: TreeseedReconcileAdapterInput, { refres
 				entry?.configuredService
 				&& (entry.configuredService.serviceName || entry.configuredService.serviceId)
 				&& (entry.configuredService.projectName || entry.configuredService.projectId)
-				&& existsSync(resolve(entry.configuredService.rootDir)),
 			);
 			return {
 				exists: Boolean(entry?.configuredService),

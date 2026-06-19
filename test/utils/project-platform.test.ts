@@ -227,6 +227,26 @@ describe('project platform workflow actions', () => {
 		expect(verifySource).toContain('refresh: true');
 	});
 
+	it('adopts existing Railway services before creating and does not depend on local source roots for hosted readiness', () => {
+		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
+		const topologyStart = source.indexOf('async function resolveRailwayTopologyForScope');
+		const topologyEnd = source.indexOf('async function syncRailwayEnvironmentForScope', topologyStart);
+		const observeStart = source.indexOf('async function observeRailwayUnit');
+		const observeEnd = source.indexOf('function collectRailwayEnvironmentSync', observeStart);
+		const topologySource = source.slice(topologyStart, topologyEnd);
+		const observeSource = source.slice(observeStart, observeEnd);
+		const projectLookupIndex = topologySource.indexOf('listRailwayServices({ projectId: project.id, env })');
+		const createIndex = topologySource.indexOf('ensureRailwayService({');
+
+		expect(topologyStart).toBeGreaterThanOrEqual(0);
+		expect(topologyEnd).toBeGreaterThan(topologyStart);
+		expect(observeStart).toBeGreaterThanOrEqual(0);
+		expect(observeEnd).toBeGreaterThan(observeStart);
+		expect(projectLookupIndex).toBeGreaterThanOrEqual(0);
+		expect(createIndex).toBeGreaterThan(projectLookupIndex);
+		expect(observeSource).not.toContain('existsSync(resolve(entry.configuredService.rootDir))');
+	});
+
 	it('does not expose a Railway CLI volume reconciliation fallback', () => {
 		const source = readFileSync(new URL('../../src/operations/services/railway-deploy.ts', import.meta.url), 'utf8');
 		expect(source).not.toContain('ensureRailwayServiceVolumeWithCliFallback');
