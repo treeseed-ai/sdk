@@ -249,7 +249,7 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 		.filter((value): value is string => Boolean(value)))];
 	let railwayImageRefEnv: Record<string, string> = {};
 	try {
-		railwayImageRefEnv = resolveTreeseedMachineEnvironmentValues(input.tenantRoot, environment, railwayImageRefEnvKeys) as Record<string, string>;
+		railwayImageRefEnv = resolveTreeseedMachineEnvironmentValues(input.configRoot ?? input.tenantRoot, environment, railwayImageRefEnvKeys) as Record<string, string>;
 	} catch {
 		railwayImageRefEnv = {};
 	}
@@ -641,6 +641,7 @@ function mergeTreeseedHostingGraphs(input: TreeseedHostingGraphInput, applicatio
 	const graphs = applications.map((application) => compileSingleTreeseedHostingGraph({
 		...input,
 		tenantRoot: application.root,
+		configRoot: resolve(input.tenantRoot),
 		deployConfig: application.config,
 		filter: undefined,
 	}, application));
@@ -678,6 +679,7 @@ export function compileTreeseedHostingGraph(input: TreeseedHostingGraphInput): T
 		return compileSingleTreeseedHostingGraph({
 			...input,
 			tenantRoot: application.root,
+			configRoot: tenantRoot,
 			deployConfig: application.config,
 		}, application);
 	}
