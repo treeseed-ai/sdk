@@ -1,13 +1,15 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
 	archiveWorkflowRun,
+	acquireWorkflowLock,
 	cacheWorkflowGateResult,
 	classifyWorkflowRunJournal,
 	createWorkflowRunJournal,
 	getCachedSuccessfulWorkflowGate,
+	inspectWorkflowLock,
 	readWorkflowRunJournal,
 } from '../../src/workflow/runs.ts';
 
@@ -92,6 +94,40 @@ describe('workflow run journals', () => {
 
 		expect(classification.state).toBe('stale');
 		expect(classification.reasons.join('\n')).toContain('market head changed');
+	});
+
+	it('keeps managed worktree workflow control scoped to the worktree', () => {
+		const primaryRoot = makeRoot();
+		const worktreeRoot = join(primaryRoot, '.treeseed', 'worktrees', 'feature-scenes');
+		mkdirSync(join(worktreeRoot, '.treeseed'), { recursive: true });
+		writeFileSync(join(worktreeRoot, '.treeseed', 'worktree.json'), `${JSON.stringify({
+			kind: 'treeseed.workflow.worktree',
+			branch: 'feature/scenes',
+			primaryRoot,
+			worktreePath: worktreeRoot,
+		}, null, 2)}\n`, 'utf8');
+
+		const lock = acquireWorkflowLock(worktreeRoot, 'save', 'save-worktree-test');
+		expect(lock.acquired).toBe(true);
+
+		createWorkflowRunJournal(worktreeRoot, {
+			runId: 'save-worktree-test',
+			command: 'save',
+			input: { message: 'worktree save' },
+			session: {
+				root: worktreeRoot,
+				mode: 'recursive-workspace',
+				branchName: 'feature/scenes',
+				repos: [{ name: '@treeseed/market', path: worktreeRoot, branchName: 'feature/scenes' }],
+			},
+			steps: [],
+		});
+
+		expect(inspectWorkflowLock(worktreeRoot).lock?.runId).toBe('save-worktree-test');
+		expect(inspectWorkflowLock(primaryRoot).active).toBe(false);
+		expect(readWorkflowRunJournal(worktreeRoot, 'save-worktree-test')?.runId).toBe('save-worktree-test');
+		expect(readWorkflowRunJournal(primaryRoot, 'save-worktree-test')).toBeNull();
+		expect(existsSync(join(primaryRoot, '.treeseed', 'workflow', 'lock.json'))).toBe(false);
 	});
 
 	it('classifies recovery-marked legacy stage failures as resumable', () => {

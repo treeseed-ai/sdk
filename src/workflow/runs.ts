@@ -106,36 +106,14 @@ export type TreeseedWorkflowLockInspection = {
 
 const WORKFLOW_CONTROL_DIR = '.treeseed/workflow';
 const WORKFLOW_RUNS_DIR = `${WORKFLOW_CONTROL_DIR}/runs`;
-const WORKTREE_METADATA_PATH = '.treeseed/worktree.json';
 const LOCK_STALE_AFTER_MS = 4 * 60 * 60 * 1000;
-const WORKFLOW_RUN_STORAGE_ROOTS = new Map<string, string>();
 
 function nowIso() {
 	return new Date().toISOString();
 }
 
-function managedWorktreePrimaryRoot(root: string) {
-	const metadataPath = resolve(root, WORKTREE_METADATA_PATH);
-	if (!existsSync(metadataPath)) return null;
-	try {
-		const metadata = JSON.parse(readFileSync(metadataPath, 'utf8')) as Record<string, unknown>;
-		return metadata.kind === 'treeseed.workflow.worktree' && typeof metadata.primaryRoot === 'string'
-			? metadata.primaryRoot
-			: null;
-	} catch {
-		return null;
-	}
-}
-
-function workflowStorageRoot(root: string, runId?: string | null) {
-	if (runId && WORKFLOW_RUN_STORAGE_ROOTS.has(runId)) {
-		return WORKFLOW_RUN_STORAGE_ROOTS.get(runId) as string;
-	}
-	const storageRoot = managedWorktreePrimaryRoot(root) ?? root;
-	if (runId) {
-		WORKFLOW_RUN_STORAGE_ROOTS.set(runId, storageRoot);
-	}
-	return storageRoot;
+function workflowStorageRoot(root: string, _runId?: string | null) {
+	return root;
 }
 
 function workflowControlRoot(root: string, runId?: string | null) {
