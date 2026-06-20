@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { isTreeseedEnvironmentEntryRelevant, isTreeseedEnvironmentEntryRequired } from '../../platform/environment.ts';
 import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
@@ -530,7 +529,9 @@ function checkPackageAdapterReadiness(pkg: TreeseedPackageAdapter, failures: Rel
 }
 
 function copyWorkspaceForProductionRehearsal(root: string) {
-	const tempParent = mkdtempSync(join(tmpdir(), 'treeseed-release-candidate-'));
+	const tempBase = resolve(dirname(root), '.treeseed-release-candidate-tmp');
+	mkdirSync(tempBase, { recursive: true });
+	const tempParent = mkdtempSync(join(tempBase, 'treeseed-release-candidate-'));
 	const tempRoot = join(tempParent, 'workspace');
 	cpSync(root, tempRoot, {
 		recursive: true,

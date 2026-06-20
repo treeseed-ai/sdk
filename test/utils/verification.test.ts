@@ -137,7 +137,7 @@ describe('verify driver', () => {
 					'act',
 					'workflow_dispatch',
 					'-W',
-					expect.stringMatching(/treeseed-verify-act-.*\/verify\.yml$/),
+					expect.stringMatching(/\.treeseed\/verify-tmp\/treeseed-verify-act-.*\/verify\.yml$/),
 					'--concurrent-jobs',
 					'1',
 					'--artifact-server-path',
@@ -156,6 +156,11 @@ describe('verify driver', () => {
 			const workflow = await readFile(calls[0].args[3], 'utf8');
 			expect(workflow).toContain('npm --prefix packages/sdk ci --workspaces=false');
 			expect(workflow).toContain('npm ci --workspaces=false');
+			const source = await readFile(new URL('../../src/verification.ts', import.meta.url), 'utf8');
+			expect(source).toContain('TREESEED_VERIFY_TMPDIR');
+			expect(source).toContain("'.treeseed', 'verify-tmp'");
+			expect(source).toContain('TMPDIR: tempRoot');
+			expect(source).not.toContain('npm_config_tmp');
 		} finally {
 			await rm(fixture.root, { recursive: true, force: true });
 		}

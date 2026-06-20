@@ -1,7 +1,6 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import * as childProcess from 'node:child_process';
 import { basename, relative, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from './managed-dependencies.ts';
 
@@ -69,10 +68,27 @@ function defaultWrite(message: string, stream: 'stdout' | 'stderr' = 'stdout') {
 	(stream === 'stderr' ? process.stderr : process.stdout).write(`${message}\n`);
 }
 
+function verifyTempRoot(root: string) {
+	const configured = process.env.TREESEED_VERIFY_TMPDIR?.trim();
+	const base = configured ? resolve(configured) : resolve(root, '.treeseed', 'verify-tmp');
+	mkdirSync(base, { recursive: true });
+	return base;
+}
+
+function verifyProcessEnv(cwd: string) {
+	const tempRoot = verifyTempRoot(cwd);
+	return {
+		...createTreeseedManagedToolEnv(process.env),
+		TMPDIR: tempRoot,
+		TMP: tempRoot,
+		TEMP: tempRoot,
+	};
+}
+
 function run(command: string, args: string[], cwd: string) {
 	const result = childProcess.spawnSync(command, args, {
 		cwd,
-		env: createTreeseedManagedToolEnv(process.env),
+		env: verifyProcessEnv(cwd),
 		stdio: 'inherit',
 	});
 	return result.status ?? 1;
@@ -81,7 +97,7 @@ function run(command: string, args: string[], cwd: string) {
 function check(command: string, args: string[], cwd: string) {
 	const result = childProcess.spawnSync(command, args, {
 		cwd,
-		env: createTreeseedManagedToolEnv(process.env),
+		env: verifyProcessEnv(cwd),
 		stdio: 'pipe',
 		encoding: 'utf8',
 	});
@@ -227,7 +243,7 @@ function createWorkspaceActWorkflow(options: {
 		})
 		.filter((command): command is string => Boolean(command))
 		.join('\n');
-	const workflowRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-verify-act-'));
+	const workflowRoot = mkdtempSync(resolve(verifyTempRoot(options.workspaceRoot), 'treeseed-verify-act-'));
 	const workflowPath = resolve(workflowRoot, 'verify.yml');
 	writeFileSync(
 		workflowPath,

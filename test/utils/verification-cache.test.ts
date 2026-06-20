@@ -1,6 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
 	readTreeseedVerificationCache,
@@ -11,13 +10,19 @@ import { run } from '../../src/operations/services/workspace-tools.ts';
 
 let roots: string[] = [];
 
+function testTempBase() {
+	const base = resolve('.treeseed', 'test-tmp');
+	mkdirSync(base, { recursive: true });
+	return base;
+}
+
 afterEach(() => {
 	for (const root of roots) rmSync(root, { recursive: true, force: true });
 	roots = [];
 });
 
 function repo() {
-	const root = mkdtempSync(resolve(tmpdir(), 'treeseed-verify-cache-'));
+	const root = mkdtempSync(join(testTempBase(), 'treeseed-verify-cache-'));
 	roots.push(root);
 	mkdirSync(resolve(root, 'pkg'), { recursive: true });
 	run('git', ['init'], { cwd: root });

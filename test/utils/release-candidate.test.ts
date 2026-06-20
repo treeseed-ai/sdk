@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -23,8 +22,14 @@ import { resolveTreeseedEnvironmentRegistry } from '../../src/platform/environme
 
 const roots: string[] = [];
 
+function testTempBase() {
+	const base = resolve('.treeseed', 'test-tmp');
+	mkdirSync(base, { recursive: true });
+	return base;
+}
+
 function makeWorkspace() {
-	const root = mkdtempSync(join(tmpdir(), 'treeseed-release-candidate-'));
+	const root = mkdtempSync(join(testTempBase(), 'treeseed-release-candidate-'));
 	roots.push(root);
 	mkdirSync(resolve(root, 'packages', 'sdk'), { recursive: true });
 	mkdirSync(resolve(root, 'packages', 'sdk', '.github', 'workflows'), { recursive: true });
@@ -368,6 +373,26 @@ describe('release candidate verification', () => {
 			expect.objectContaining({ from: '@treeseed/sdk', to: '@treeseed/api', kind: 'npm-dependency' }),
 			expect.objectContaining({ from: 'treedx', to: '@treeseed/api', kind: 'hosting-image-consumer' }),
 		]));
+	});
+
+	it('does not delete installed package dependencies before release graph verification', () => {
+		const source = readFileSync(resolve('src/operations/services/release-graph-rehearsal.ts'), 'utf8');
+		expect(source).not.toContain("rmSync(resolve(packageDir, 'node_modules')");
+		expect(source).toContain("TREESEED_VERIFY_PACKAGE_ISOLATED: '1'");
+		expect(source).toContain('treeseed-release-tarballs');
+		expect(source).toContain('file:${STAGED_TARBALL_DIR}/${stagedTarballName}');
+		expect(source).toContain("mode: 'file' | 'version'");
+		expect(source).toContain('releaseGraphTarballVersion(tarballPath)');
+		expect(source).toContain("rewriteInternalDependencies(packageDir, tarballs, 'version')");
+		expect(source).toContain("rewriteInternalDependencies(packageDir, tarballs, 'file')");
+		expect(source).toContain('ensureIgnoreFilesIncludeStagedTarballs(packageDir)');
+		expect(source).toContain("resolve(packageDir, '.npmignore')");
+		expect(source).toContain('!${STAGED_TARBALL_DIR}/*.tgz');
+		expect(source).toContain("'.treeseed-release-graph-tmp'");
+		expect(source).toContain('TREESEED_RELEASE_GRAPH_TMPDIR');
+		expect(source).toContain("'.treeseed-action-tmp'");
+		expect(source).toContain('TMPDIR: actionTemp');
+		expect(source).not.toContain('npm_config_tmp');
 	});
 
 	it('normalizes and resolves repository-scoped GitHub credentials', () => {

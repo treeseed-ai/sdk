@@ -5403,6 +5403,10 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			const executionMode = normalizeExecutionMode(input);
 			const initialSession = resolveTreeseedWorkflowSession(root);
 			const explicitResumeRunId = helpers.context.workflow?.resumeRunId ?? null;
+			const explicitResumeJournal = explicitResumeRunId ? readWorkflowRunJournal(root, explicitResumeRunId) : null;
+			const explicitResumeFeatureBranch = explicitResumeJournal?.command === 'stage'
+				? explicitResumeJournal.session.branchName
+				: null;
 			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId
 				? findAutoResumableTaskRun(root, 'stage', initialSession.branchName)
 				: null;
@@ -5411,6 +5415,8 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				: null;
 			const effectiveInput = autoResumeRun
 				? (autoResumeRun.input as unknown as TreeseedStageInput)
+				: explicitResumeJournal?.command === 'stage'
+					? (explicitResumeJournal.input as unknown as TreeseedStageInput)
 				: input;
 			const message = ensureMessage('stage', effectiveInput.message, 'a resolution message');
 			const ciMode = normalizeCiMode(effectiveInput.ciMode, 'stage');
@@ -5487,12 +5493,14 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				);
 			}
 
-			const autoSave = await maybeAutoSaveCurrentTaskBranch(helpers, 'stage', {
-				message,
-				autoSave: effectiveInput.autoSave,
-			});
+			const autoSave = explicitResumeRunId && !initialSession.branchName
+				? { performed: false, save: null }
+				: await maybeAutoSaveCurrentTaskBranch(helpers, 'stage', {
+					message,
+					autoSave: effectiveInput.autoSave,
+				});
 			const session = resolveTreeseedWorkflowSession(root);
-			const featureBranch = assertFeatureBranch(root);
+			const featureBranch = explicitResumeFeatureBranch ?? assertFeatureBranch(root);
 			const mode = initialSession.mode;
 			const managedWorktreeForStage = isManagedWorkflowWorktree(root);
 			assertSessionBranchSafety('stage', session);

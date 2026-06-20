@@ -1,9 +1,7 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { createTreeseedManagedToolEnv, resolveTreeseedToolBinary } from '../../managed-dependencies.ts';
 import { discoverTreeseedPackageAdapters, type TreeseedPackageAdapter } from './package-adapters.ts';
 import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
@@ -87,6 +85,7 @@ export type ReleaseGraphRehearsalOptions = {
 const POLICY_VERSION = 'release-graph-rehearsal-v1';
 const INTERNAL_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies'] as const;
 const IGNORED_COPY_SEGMENTS = new Set(['.git', '.treeseed', '.wrangler', '.astro', 'coverage', 'dist', 'node_modules']);
+const STAGED_TARBALL_DIR = 'treeseed-release-tarballs';
 
 function runGit(args: string[], cwd: string) {
 	return runTreeseedGitText(args, {
@@ -157,8 +156,40 @@ function npmEnv(env: NodeJS.ProcessEnv) {
 	};
 }
 
+function releaseGraphTempBase(root: string) {
+	const configured = process.env.TREESEED_RELEASE_GRAPH_TMPDIR;
+	const base = configured && configured.trim()
+		? resolve(configured)
+		: resolve(dirname(root), '.treeseed-release-graph-tmp');
+	mkdirSync(base, { recursive: true });
+	return base;
+}
+
+function packageActionTempBase(packageDir: string) {
+	const base = resolve(dirname(packageDir), '.treeseed-action-tmp');
+	mkdirSync(base, { recursive: true });
+	return base;
+}
+
+function ensureIgnoreFileIncludesStagedTarballs(filePath: string) {
+	const existing = existsSync(filePath) ? readFileSync(filePath, 'utf8') : '';
+	const entries = [
+		`!${STAGED_TARBALL_DIR}/`,
+		`!${STAGED_TARBALL_DIR}/*.tgz`,
+	];
+	const missing = entries.filter((entry) => !existing.split(/\r?\n/u).includes(entry));
+	if (missing.length === 0) return;
+	const suffix = existing.endsWith('\n') || existing.length === 0 ? '' : '\n';
+	writeFileSync(filePath, `${existing}${suffix}${missing.join('\n')}\n`, 'utf8');
+}
+
+function ensureIgnoreFilesIncludeStagedTarballs(packageDir: string) {
+	ensureIgnoreFileIncludesStagedTarballs(resolve(packageDir, '.gitignore'));
+	ensureIgnoreFileIncludesStagedTarballs(resolve(packageDir, '.npmignore'));
+}
+
 function copyWorkspace(root: string) {
-	const tempParent = mkdtempSync(join(tmpdir(), 'treeseed-release-graph-'));
+	const tempParent = mkdtempSync(join(releaseGraphTempBase(root), 'treeseed-release-graph-'));
 	const tempRoot = join(tempParent, 'workspace');
 	cpSync(root, tempRoot, {
 		recursive: true,
@@ -310,17 +341,34 @@ export function buildReleaseGraph(root: string, selectedPackageNames: string[] =
 	};
 }
 
-function rewriteInternalDependencies(packageDir: string, tarballs: Map<string, string>) {
+function releaseGraphTarballVersion(tarballPath: string) {
+	const packageJson = readJson(resolve(dirname(tarballPath), 'package.json'));
+	const version = typeof packageJson.version === 'string' ? packageJson.version : null;
+	if (!version) throw new Error(`Could not determine package version for ${tarballPath}.`);
+	return version;
+}
+
+function rewriteInternalDependencies(packageDir: string, tarballs: Map<string, string>, mode: 'file' | 'version') {
 	const packageJsonPath = resolve(packageDir, 'package.json');
 	if (!existsSync(packageJsonPath)) return;
 	const packageJson = readJson(packageJsonPath);
 	let changed = false;
+	const stagedTarballDir = resolve(packageDir, STAGED_TARBALL_DIR);
 	for (const field of INTERNAL_FIELDS) {
 		const values = packageJson[field];
 		if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
 		for (const [dependencyName, tarballPath] of tarballs.entries()) {
 			if (!(dependencyName in values)) continue;
-			(values as Record<string, unknown>)[dependencyName] = pathToFileURL(tarballPath).href;
+			if (mode === 'file') {
+				mkdirSync(stagedTarballDir, { recursive: true });
+				const stagedTarballName = basename(tarballPath);
+				const stagedTarballPath = resolve(stagedTarballDir, stagedTarballName);
+				cpSync(tarballPath, stagedTarballPath);
+				ensureIgnoreFilesIncludeStagedTarballs(packageDir);
+				(values as Record<string, unknown>)[dependencyName] = `file:${STAGED_TARBALL_DIR}/${stagedTarballName}`;
+			} else {
+				(values as Record<string, unknown>)[dependencyName] = releaseGraphTarballVersion(tarballPath);
+			}
 			changed = true;
 		}
 	}
@@ -329,7 +377,7 @@ function rewriteInternalDependencies(packageDir: string, tarballs: Map<string, s
 
 function packNodePackage(adapter: TreeseedPackageAdapter, tempRoot: string, tarballs: Map<string, string>, env: NodeJS.ProcessEnv) {
 	const packageDir = resolve(tempRoot, adapter.relativeDir);
-	rewriteInternalDependencies(packageDir, tarballs);
+	rewriteInternalDependencies(packageDir, tarballs, 'file');
 	runCommand('npm', ['install', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund'], {
 		cwd: packageDir,
 		env,
@@ -344,13 +392,17 @@ function packNodePackage(adapter: TreeseedPackageAdapter, tempRoot: string, tarb
 	if (typeof scripts['build:dist'] === 'string') {
 		runCommand('npm', ['run', 'build:dist'], { cwd: packageDir, env, timeoutMs: 600000 });
 	}
-	const output = runCommand('npm', ['pack', '--json', '--ignore-scripts'], { cwd: packageDir, env, timeoutMs: 300000, capture: true });
-	const parsed = parseNpmPackJson(output, adapter.id);
-	const filename = parsed[0]?.filename;
-	if (!filename) throw new Error(`${adapter.id} npm pack did not report a tarball filename.`);
-	const tarball = resolve(packageDir, filename);
-	rmSync(resolve(packageDir, 'node_modules'), { recursive: true, force: true });
-	return tarball;
+	try {
+		rewriteInternalDependencies(packageDir, tarballs, 'version');
+		const output = runCommand('npm', ['pack', '--json', '--ignore-scripts'], { cwd: packageDir, env, timeoutMs: 300000, capture: true });
+		const parsed = parseNpmPackJson(output, adapter.id);
+		const filename = parsed[0]?.filename;
+		if (!filename) throw new Error(`${adapter.id} npm pack did not report a tarball filename.`);
+		const tarball = resolve(packageDir, filename);
+		return tarball;
+	} finally {
+		rewriteInternalDependencies(packageDir, tarballs, 'file');
+	}
 }
 
 function parseNpmPackJson(output: string, packageId: string) {
@@ -379,7 +431,15 @@ function verifyNodePackageAction(adapter: TreeseedPackageAdapter, packageDir: st
 		return { packageId: adapter.id, workflow: '.github/workflows/verify.yml', driver: 'gh-act', status: 'skipped', detail: 'verify driver is local.' };
 	}
 	const gh = resolveTreeseedToolBinary('gh') ?? 'gh';
-	const managedEnv = createTreeseedManagedToolEnv(env);
+	const actionTemp = packageActionTempBase(packageDir);
+	const managedEnv = {
+		...createTreeseedManagedToolEnv(env),
+		TMPDIR: actionTemp,
+		TMP: actionTemp,
+		TEMP: actionTemp,
+		TREESEED_VERIFY_ACTION_SCOPE: 'single',
+		TREESEED_VERIFY_PACKAGE_ISOLATED: '1',
+	};
 	const version = spawnSync(gh, ['act', '--version'], { cwd: packageDir, env: managedEnv, stdio: 'pipe', encoding: 'utf8' });
 	const docker = spawnSync('docker', ['info'], { cwd: packageDir, env: managedEnv, stdio: 'pipe', encoding: 'utf8' });
 	if (version.status !== 0 || docker.status !== 0) {
