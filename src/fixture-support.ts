@@ -151,6 +151,19 @@ function resolveWorkspacePackageRoot(packageRoot: string, workspaceDirName?: str
 	return existsSync(resolve(candidate, 'package.json')) ? candidate : null;
 }
 
+function packageProvidesEntry(packageRoot: string, entrySpecifier?: string) {
+	if (!entrySpecifier) {
+		return true;
+	}
+	try {
+		const packageRequire = createRequire(resolve(packageRoot, 'package.json'));
+		packageRequire.resolve(entrySpecifier);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 function exportKeyForEntry(packageName: string, entrySpecifier?: string) {
 	if (!entrySpecifier || entrySpecifier === packageName) {
 		return '.';
@@ -400,10 +413,7 @@ export function prepareFixturePackages(options: PrepareFixturePackagesOptions) {
 		for (const mode of declaration.modes) {
 			if (mode === 'workspace-link') {
 				const workspaceRoot = resolveWorkspacePackageRoot(packageRoot, declaration.workspaceDirName);
-				if (!workspaceRoot) {
-					continue;
-				}
-				if (!workspacePackageProvidesEntry(workspaceRoot, declaration.packageName, declaration.entrySpecifier)) {
+				if (!workspaceRoot || !workspacePackageProvidesEntry(workspaceRoot, declaration.packageName, declaration.entrySpecifier)) {
 					continue;
 				}
 				ensureFixtureLinkedPackage(options.fixtureRoot, declaration.packageName, workspaceRoot);
@@ -413,7 +423,7 @@ export function prepareFixturePackages(options: PrepareFixturePackagesOptions) {
 
 			if (mode === 'installed-link') {
 				const installedRoot = resolveInstalledPackageRoot(declaration.packageName, declaration.entrySpecifier);
-				if (!installedRoot) {
+				if (!installedRoot || !packageProvidesEntry(installedRoot, declaration.entrySpecifier)) {
 					continue;
 				}
 				ensureFixtureLinkedPackage(options.fixtureRoot, declaration.packageName, installedRoot);

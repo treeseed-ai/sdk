@@ -6,7 +6,7 @@ import { isTreeseedEnvironmentEntryRelevant, isTreeseedEnvironmentEntryRequired 
 import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
 import { createGitHubApiClient, listGitHubEnvironmentSecretNames, listGitHubEnvironmentVariableNames } from './github-api.ts';
 import { resolveGitHubCredentialForRepository } from './github-credentials.ts';
-import { collectInternalDevReferenceIssues, installableInternalDependencyVersions, normalizeGitRemoteForManifest } from './package-reference-policy.ts';
+import { collectInternalDevReferenceIssues, installableInternalDependencyVersions } from './package-reference-policy.ts';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, validateTreeseedCommandEnvironment } from './config-runtime.ts';
 import { loadDeployState } from './deploy.ts';
 import { loadTreeseedPlatformConfig } from '../../platform/config.ts';
@@ -528,10 +528,15 @@ function checkPackageAdapterReadiness(pkg: TreeseedPackageAdapter, failures: Rel
 	}
 }
 
+function releaseCandidateTempBase(root: string) {
+	const configured = process.env.TREESEED_RELEASE_CANDIDATE_TMPDIR;
+	const base = configured ? resolve(configured) : resolve(dirname(root), '.treeseed-release-candidate-tmp');
+	mkdirSync(base, { recursive: true });
+	return base;
+}
+
 function copyWorkspaceForProductionRehearsal(root: string) {
-	const tempBase = resolve(dirname(root), '.treeseed-release-candidate-tmp');
-	mkdirSync(tempBase, { recursive: true });
-	const tempParent = mkdtempSync(join(tempBase, 'treeseed-release-candidate-'));
+	const tempParent = mkdtempSync(join(releaseCandidateTempBase(root), 'treeseed-release-candidate-'));
 	const tempRoot = join(tempParent, 'workspace');
 	cpSync(root, tempRoot, {
 		recursive: true,
@@ -550,7 +555,6 @@ function applyPlannedStableMetadata(root: string, plannedVersions: Record<string
 		Object.entries(plannedVersions).filter(([, version]) => STABLE_SEMVER.test(version)),
 	);
 	const dependencyVersions = installableInternalDependencyVersions(root, stableVersions);
-	const stableGitReferences = stablePackageGitReferences(root, dependencyVersions);
 	const targets = [
 		{ name: '@treeseed/market', dir: root },
 		...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir })),
@@ -570,7 +574,7 @@ function applyPlannedStableMetadata(root: string, plannedVersions: Record<string
 			if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
 			for (const [dependencyName, version] of dependencyVersions.entries()) {
 				if (!(dependencyName in values)) continue;
-				const dependencySpec = stableGitReferences.get(dependencyName) ?? version;
+				const dependencySpec = version;
 				if (String((values as Record<string, unknown>)[dependencyName]) === dependencySpec) continue;
 				(values as Record<string, unknown>)[dependencyName] = dependencySpec;
 				changed = true;
@@ -580,23 +584,6 @@ function applyPlannedStableMetadata(root: string, plannedVersions: Record<string
 			writeJsonFile(packageJsonPath, packageJson);
 		}
 	}
-}
-
-function stablePackageGitReferences(root: string, versions: Map<string, string>) {
-	return new Map(workspacePackages(root)
-		.map((pkg) => {
-			const version = versions.get(pkg.name);
-			if (!version) return null;
-			let remote: string | null = null;
-			try {
-				remote = runGit(['remote', 'get-url', 'origin'], { cwd: pkg.dir, capture: true }).trim();
-			} catch {
-				remote = null;
-			}
-			const manifestRemote = normalizeGitRemoteForManifest(remote ?? '', 'preserve-origin');
-			return manifestRemote ? [pkg.name, `${manifestRemote}#${version}`] as const : null;
-		})
-		.filter((entry): entry is readonly [string, string] => Boolean(entry)));
 }
 
 function rehearsalVerifyScript(root: string) {
@@ -656,7 +643,6 @@ function runNpmRehearsalCommand(args: string[], options: { cwd: string; timeoutM
 function npmRehearsalEnv(extra: NodeJS.ProcessEnv = {}) {
 	return {
 		...process.env,
-		npm_config_jobs: process.env.npm_config_jobs ?? '2',
 		npm_config_audit: process.env.npm_config_audit ?? 'false',
 		npm_config_fund: process.env.npm_config_fund ?? 'false',
 		...extra,

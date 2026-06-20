@@ -147,20 +147,68 @@ function runCommand(command: string, args: string[], options: { cwd: string; env
 	return `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
 }
 
-function npmEnv(env: NodeJS.ProcessEnv) {
+function positiveIntegerEnv(env: NodeJS.ProcessEnv, name: string) {
+	const raw = env[name] ?? process.env[name];
+	if (raw == null || raw === '') return null;
+	const value = Number(raw);
+	return Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
+}
+
+function releaseGraphNpmEnv(root: string, env: NodeJS.ProcessEnv) {
+	const cacheHome = resolve(root, '.treeseed', 'cache');
+	const npmCache = resolve(cacheHome, 'npm');
+	const toolsHome = resolve(root, '.treeseed', 'tools');
+	const ghConfigDir = resolve(toolsHome, 'gh-config');
+	mkdirSync(npmCache, { recursive: true });
+	mkdirSync(ghConfigDir, { recursive: true });
 	return {
 		...process.env,
 		...env,
+		XDG_CACHE_HOME: env.XDG_CACHE_HOME ?? process.env.XDG_CACHE_HOME ?? cacheHome,
+		npm_config_cache: env.npm_config_cache ?? env.NPM_CONFIG_CACHE ?? process.env.npm_config_cache ?? process.env.NPM_CONFIG_CACHE ?? npmCache,
+		NPM_CONFIG_CACHE: env.NPM_CONFIG_CACHE ?? env.npm_config_cache ?? process.env.NPM_CONFIG_CACHE ?? process.env.npm_config_cache ?? npmCache,
+		TREESEED_TOOLS_HOME: env.TREESEED_TOOLS_HOME ?? process.env.TREESEED_TOOLS_HOME ?? toolsHome,
+		TREESEED_GH_CONFIG_DIR: env.TREESEED_GH_CONFIG_DIR ?? process.env.TREESEED_GH_CONFIG_DIR ?? ghConfigDir,
 		npm_config_audit: env.npm_config_audit ?? process.env.npm_config_audit ?? 'false',
 		npm_config_fund: env.npm_config_fund ?? process.env.npm_config_fund ?? 'false',
 	};
 }
 
+function safeEnvSegment(value: string) {
+	return value.replaceAll(/[^A-Za-z0-9._-]/gu, '_');
+}
+
+function releaseGraphManifestPackageEnv(root: string, adapter: TreeseedPackageAdapter, env: NodeJS.ProcessEnv) {
+	const stateRoot = resolve(root, '.treeseed', 'tmp', 'release-graph', safeEnvSegment(adapter.id));
+	const cacheRoot = resolve(root, '.treeseed', 'cache', 'release-graph', safeEnvSegment(adapter.id));
+	const tempDir = resolve(stateRoot, 'tmp');
+	const cargoTargetDir = resolve(stateRoot, 'cargo-target');
+	const rustlerTargetDir = resolve(stateRoot, 'rustler-target');
+	const cargoHome = resolve(cacheRoot, 'cargo');
+	const mixHome = resolve(cacheRoot, 'mix');
+	const hexHome = resolve(cacheRoot, 'hex');
+	const trivyCacheDir = resolve(cacheRoot, 'trivy');
+	for (const dir of [tempDir, cargoTargetDir, rustlerTargetDir, cargoHome, mixHome, hexHome, trivyCacheDir]) {
+		mkdirSync(dir, { recursive: true });
+	}
+	return {
+		...env,
+		TMPDIR: env.TMPDIR ?? tempDir,
+		TMP: env.TMP ?? tempDir,
+		TEMP: env.TEMP ?? tempDir,
+		CARGO_HOME: env.CARGO_HOME ?? cargoHome,
+		CARGO_TARGET_DIR: env.CARGO_TARGET_DIR ?? cargoTargetDir,
+		RUSTLER_TARGET_DIR: env.RUSTLER_TARGET_DIR ?? rustlerTargetDir,
+		TREEDX_BUILD_TMP_DIR: env.TREEDX_BUILD_TMP_DIR ?? tempDir,
+		MIX_HOME: env.MIX_HOME ?? mixHome,
+		HEX_HOME: env.HEX_HOME ?? hexHome,
+		TRIVY_CACHE_DIR: env.TRIVY_CACHE_DIR ?? trivyCacheDir,
+	};
+}
+
 function releaseGraphTempBase(root: string) {
 	const configured = process.env.TREESEED_RELEASE_GRAPH_TMPDIR;
-	const base = configured && configured.trim()
-		? resolve(configured)
-		: resolve(dirname(root), '.treeseed-release-graph-tmp');
+	const base = configured ? resolve(configured) : resolve(dirname(root), '.treeseed-release-graph-tmp');
 	mkdirSync(base, { recursive: true });
 	return base;
 }
@@ -430,7 +478,6 @@ function verifyNodePackageAction(adapter: TreeseedPackageAdapter, packageDir: st
 	if (driver === 'local') {
 		return { packageId: adapter.id, workflow: '.github/workflows/verify.yml', driver: 'gh-act', status: 'skipped', detail: 'verify driver is local.' };
 	}
-	const gh = resolveTreeseedToolBinary('gh') ?? 'gh';
 	const actionTemp = packageActionTempBase(packageDir);
 	const managedEnv = {
 		...createTreeseedManagedToolEnv(env),
@@ -440,6 +487,7 @@ function verifyNodePackageAction(adapter: TreeseedPackageAdapter, packageDir: st
 		TREESEED_VERIFY_ACTION_SCOPE: 'single',
 		TREESEED_VERIFY_PACKAGE_ISOLATED: '1',
 	};
+	const gh = resolveTreeseedToolBinary('gh', { env: managedEnv }) ?? 'gh';
 	const version = spawnSync(gh, ['act', '--version'], { cwd: packageDir, env: managedEnv, stdio: 'pipe', encoding: 'utf8' });
 	const docker = spawnSync('docker', ['info'], { cwd: packageDir, env: managedEnv, stdio: 'pipe', encoding: 'utf8' });
 	if (version.status !== 0 || docker.status !== 0) {
@@ -452,13 +500,29 @@ function verifyNodePackageAction(adapter: TreeseedPackageAdapter, packageDir: st
 	return { packageId: adapter.id, workflow: '.github/workflows/verify.yml', driver: 'gh-act', status: 'passed' };
 }
 
+function manifestPackageTimeoutMs(adapter: TreeseedPackageAdapter, strict: boolean, env: NodeJS.ProcessEnv) {
+	const configured = positiveIntegerEnv(env, 'TREESEED_RELEASE_GRAPH_MANIFEST_TIMEOUT_MS');
+	if (configured != null) return configured;
+	const packageSpecific = positiveIntegerEnv(
+		env,
+		`TREESEED_RELEASE_GRAPH_${adapter.id.replaceAll(/[^A-Za-z0-9]/gu, '_').toUpperCase()}_TIMEOUT_MS`,
+	);
+	if (packageSpecific != null) return packageSpecific;
+	const packageType = typeof adapter.metadata.type === 'string' ? adapter.metadata.type : null;
+	const hasDockerArtifact = adapter.artifacts.some((artifact) => artifact.provider === 'docker');
+	const imageService = adapter.kind === 'beam-elixir-rust' || packageType === 'image-service' || hasDockerArtifact;
+	if (imageService && strict) return 60 * 60 * 1000;
+	if (imageService) return 30 * 60 * 1000;
+	return 15 * 60 * 1000;
+}
+
 function verifyManifestPackage(adapter: TreeseedPackageAdapter, tempRoot: string, strict: boolean, env: NodeJS.ProcessEnv) {
 	const packageDir = resolve(tempRoot, adapter.relativeDir);
 	const command = strict ? adapter.verifyCommands.release ?? adapter.verifyCommands.local : adapter.verifyCommands.local ?? adapter.verifyCommands.fast;
 	if (!command) {
 		throw new Error(`${adapter.id} is missing a manifest verification command.`);
 	}
-	runCommand(command.command, command.args, { cwd: packageDir, env, timeoutMs: 900000 });
+	runCommand(command.command, command.args, { cwd: packageDir, env, timeoutMs: manifestPackageTimeoutMs(adapter, strict, env) });
 	return commandToString(command.command, command.args);
 }
 
@@ -474,7 +538,7 @@ function proofKey(value: unknown) {
 
 export function runReleaseGraphRehearsal(options: ReleaseGraphRehearsalOptions): ReleaseGraphProof {
 	const root = resolve(options.root);
-	const env = npmEnv(options.env ?? process.env);
+	const env = releaseGraphNpmEnv(root, options.env ?? process.env);
 	const verifyDriver = options.verifyDriver ?? 'auto';
 	const strict = options.strict !== false;
 	const graph = buildReleaseGraph(root, options.selectedPackageNames ?? []);
@@ -500,7 +564,7 @@ export function runReleaseGraphRehearsal(options: ReleaseGraphRehearsalOptions):
 					artifacts.push({ packageId: adapter.id, provider: 'npm', proofType: 'tarball', path: tarball, status: 'passed' });
 					actionChecks.push(verifyNodePackageAction(adapter, resolve(copied.tempRoot, adapter.relativeDir), verifyDriver, env));
 				} else {
-					const command = verifyManifestPackage(adapter, copied.tempRoot, strict, env);
+					const command = verifyManifestPackage(adapter, copied.tempRoot, strict, releaseGraphManifestPackageEnv(root, adapter, env));
 					artifacts.push({ packageId: adapter.id, provider: adapter.id === 'treedx' ? 'docker' : 'beam', proofType: 'verify-script', command, imageRef: imageRefFor(adapter) ?? undefined, status: 'passed' });
 				}
 			} catch (error) {

@@ -33,7 +33,7 @@ function walkSourceFiles(root: string): string[] {
 		const fullPath = resolve(root, entry);
 		const stats = statSync(fullPath);
 		if (stats.isDirectory()) {
-			if (entry === 'node_modules' || entry === 'dist' || entry === '.git') {
+			if (entry === 'node_modules' || entry === 'dist' || entry === '.git' || entry === '.treeseed') {
 				return [];
 			}
 			return walkSourceFiles(fullPath);

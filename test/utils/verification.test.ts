@@ -39,6 +39,32 @@ async function createWorkspaceFixture(
 	return { root, currentPackageRoot };
 }
 
+function expectedActStorageArgs(root: string) {
+	const stateRoot = join(root, '.treeseed', 'act');
+	return [
+		'--artifact-server-path',
+		join(stateRoot, 'artifacts'),
+		'--cache-server-path',
+		join(stateRoot, 'cache'),
+		'--action-cache-path',
+		join(stateRoot, 'actions'),
+		'--container-options',
+		[
+			`--mount type=bind,source=${join(stateRoot, 'npm-cache')},target=/root/.npm`,
+			`--mount type=bind,source=${join(stateRoot, 'xdg-cache')},target=/root/.cache`,
+			`--mount type=bind,source=${join(stateRoot, 'tmp')},target=/tmp`,
+		].join(' '),
+		'--env',
+		'NPM_CONFIG_CACHE=/root/.npm',
+		'--env',
+		'npm_config_cache=/root/.npm',
+		'--env',
+		'XDG_CACHE_HOME=/root/.cache',
+		'--env',
+		'TMPDIR=/tmp',
+	];
+}
+
 describe('verify driver', () => {
 	afterEach(() => {
 		delete process.env.GITHUB_ACTIONS;
@@ -137,15 +163,10 @@ describe('verify driver', () => {
 					'act',
 					'workflow_dispatch',
 					'-W',
-					expect.stringMatching(/\.treeseed\/verify-tmp\/treeseed-verify-act-.*\/verify\.yml$/),
+					expect.stringMatching(/treeseed-verify-act-.*\/verify\.yml$/),
 					'--concurrent-jobs',
 					'1',
-					'--artifact-server-path',
-					'.treeseed/act/artifacts',
-					'--cache-server-path',
-					'.treeseed/act/cache',
-					'--action-cache-path',
-					'.treeseed/act/actions',
+					...expectedActStorageArgs(fixture.root),
 					'-j',
 					'verify',
 					'-P',
@@ -196,12 +217,7 @@ describe('verify driver', () => {
 						'.github/workflows/verify.yml',
 						'--concurrent-jobs',
 						'1',
-						'--artifact-server-path',
-						'.treeseed/act/artifacts',
-						'--cache-server-path',
-						'.treeseed/act/cache',
-						'--action-cache-path',
-						'.treeseed/act/actions',
+						...expectedActStorageArgs(fixture.currentPackageRoot),
 						'-j',
 						'verify',
 						'-P',
@@ -293,12 +309,7 @@ describe('verify driver', () => {
 						'.github/workflows/verify.yml',
 						'--concurrent-jobs',
 						'1',
-						'--artifact-server-path',
-						'.treeseed/act/artifacts',
-						'--cache-server-path',
-						'.treeseed/act/cache',
-						'--action-cache-path',
-						'.treeseed/act/actions',
+						...expectedActStorageArgs(fixture.currentPackageRoot),
 						'-j',
 						'verify',
 						'-P',

@@ -68,17 +68,26 @@ function defaultWrite(message: string, stream: 'stdout' | 'stderr' = 'stdout') {
 	(stream === 'stderr' ? process.stderr : process.stdout).write(`${message}\n`);
 }
 
-function verifyTempRoot(root: string) {
-	const configured = process.env.TREESEED_VERIFY_TMPDIR?.trim();
-	const base = configured ? resolve(configured) : resolve(root, '.treeseed', 'verify-tmp');
-	mkdirSync(base, { recursive: true });
-	return base;
-}
-
-function verifyProcessEnv(cwd: string) {
-	const tempRoot = verifyTempRoot(cwd);
+function projectLocalToolEnv(cwd: string, env: NodeJS.ProcessEnv = process.env) {
+	const workspace = findWorkspaceRoot(resolve(cwd));
+	const root = workspace?.workspaceRoot ?? resolve(cwd);
+	const cacheHome = resolve(root, '.treeseed', 'cache');
+	const npmCache = resolve(cacheHome, 'npm');
+	const toolsHome = resolve(root, '.treeseed', 'tools');
+	const ghConfigDir = resolve(toolsHome, 'gh-config');
+	const configuredTempRoot = env.TREESEED_VERIFY_TMPDIR ?? process.env.TREESEED_VERIFY_TMPDIR;
+	const tempRoot = configuredTempRoot ? resolve(configuredTempRoot) : resolve(root, '.treeseed', 'verify-tmp');
+	for (const dir of [npmCache, ghConfigDir, tempRoot]) {
+		mkdirSync(dir, { recursive: true });
+	}
 	return {
-		...createTreeseedManagedToolEnv(process.env),
+		...env,
+		XDG_CACHE_HOME: env.XDG_CACHE_HOME ?? cacheHome,
+		npm_config_cache: env.npm_config_cache ?? env.NPM_CONFIG_CACHE ?? npmCache,
+		NPM_CONFIG_CACHE: env.NPM_CONFIG_CACHE ?? env.npm_config_cache ?? npmCache,
+		TREESEED_TOOLS_HOME: env.TREESEED_TOOLS_HOME ?? toolsHome,
+		TREESEED_GH_CONFIG_DIR: env.TREESEED_GH_CONFIG_DIR ?? ghConfigDir,
+		TREESEED_VERIFY_TMPDIR: tempRoot,
 		TMPDIR: tempRoot,
 		TMP: tempRoot,
 		TEMP: tempRoot,
@@ -88,7 +97,7 @@ function verifyProcessEnv(cwd: string) {
 function run(command: string, args: string[], cwd: string) {
 	const result = childProcess.spawnSync(command, args, {
 		cwd,
-		env: verifyProcessEnv(cwd),
+		env: createTreeseedManagedToolEnv(projectLocalToolEnv(cwd)),
 		stdio: 'inherit',
 	});
 	return result.status ?? 1;
@@ -97,7 +106,7 @@ function run(command: string, args: string[], cwd: string) {
 function check(command: string, args: string[], cwd: string) {
 	const result = childProcess.spawnSync(command, args, {
 		cwd,
-		env: verifyProcessEnv(cwd),
+		env: createTreeseedManagedToolEnv(projectLocalToolEnv(cwd)),
 		stdio: 'pipe',
 		encoding: 'utf8',
 	});
@@ -105,6 +114,51 @@ function check(command: string, args: string[], cwd: string) {
 		ok: result.status === 0,
 		detail: `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim(),
 	};
+}
+
+function resolveActStateRootPath(stateCwd: string) {
+	const actStateRoot = process.env.TREESEED_VERIFY_ACT_STATE_ROOT?.trim() || '.treeseed/act';
+	return resolve(stateCwd, actStateRoot);
+}
+
+function repairActStateOwnership(stateCwd: string) {
+	const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+	const gid = typeof process.getgid === 'function' ? process.getgid() : null;
+	if (uid == null || gid == null || process.platform === 'win32') return;
+
+	const root = resolveActStateRootPath(stateCwd);
+	if (!existsSync(root)) return;
+
+	const image = process.env.TREESEED_VERIFY_ACT_UBUNTU_LATEST_IMAGE?.trim() || defaultActUbuntuLatestImage;
+	childProcess.spawnSync('docker', [
+		'run',
+		'--rm',
+		'-v',
+		`${root}:/target`,
+		image,
+		'bash',
+		'-lc',
+		`chown -R ${uid}:${gid} /target && chmod -R u+rwX /target`,
+	], {
+		cwd: stateCwd,
+		env: createTreeseedManagedToolEnv(projectLocalToolEnv(stateCwd)),
+		stdio: 'ignore',
+	});
+}
+
+function runActCommand(input: {
+	command: string;
+	args: string[];
+	cwd: string;
+	stateCwd: string;
+	repairOwnership?: boolean;
+	runCommand: (command: string, args: string[], cwd: string) => number;
+}) {
+	const status = input.runCommand(input.command, input.args, input.cwd);
+	if (input.repairOwnership === true) {
+		repairActStateOwnership(input.stateCwd);
+	}
+	return status;
 }
 
 function readPackageManifest(packageJsonPath: string): PackageManifest | null {
@@ -171,9 +225,15 @@ function readWorkflowJobNames(workflowPath: string): string[] {
 	return names;
 }
 
-function createActArgs(eventName: string, workflowPath: string) {
+function createActArgs(eventName: string, workflowPath: string, stateCwd = process.cwd()) {
 	const image = process.env.TREESEED_VERIFY_ACT_UBUNTU_LATEST_IMAGE?.trim() || defaultActUbuntuLatestImage;
-	const actStateRoot = process.env.TREESEED_VERIFY_ACT_STATE_ROOT?.trim() || '.treeseed/act';
+	const actStateRootPath = resolveActStateRootPath(stateCwd);
+	const actNpmCache = resolve(actStateRootPath, 'npm-cache');
+	const actXdgCache = resolve(actStateRootPath, 'xdg-cache');
+	const actTmp = resolve(actStateRootPath, 'tmp');
+	mkdirSync(actNpmCache, { recursive: true });
+	mkdirSync(actXdgCache, { recursive: true });
+	mkdirSync(actTmp, { recursive: true });
 	const args = [
 		'act',
 		eventName,
@@ -182,11 +242,25 @@ function createActArgs(eventName: string, workflowPath: string) {
 		'--concurrent-jobs',
 		'1',
 		'--artifact-server-path',
-		`${actStateRoot}/artifacts`,
+		resolve(actStateRootPath, 'artifacts'),
 		'--cache-server-path',
-		`${actStateRoot}/cache`,
+		resolve(actStateRootPath, 'cache'),
 		'--action-cache-path',
-		`${actStateRoot}/actions`,
+		resolve(actStateRootPath, 'actions'),
+		'--container-options',
+		[
+			`--mount type=bind,source=${actNpmCache},target=/root/.npm`,
+			`--mount type=bind,source=${actXdgCache},target=/root/.cache`,
+			`--mount type=bind,source=${actTmp},target=/tmp`,
+		].join(' '),
+		'--env',
+		'NPM_CONFIG_CACHE=/root/.npm',
+		'--env',
+		'npm_config_cache=/root/.npm',
+		'--env',
+		'XDG_CACHE_HOME=/root/.cache',
+		'--env',
+		'TMPDIR=/tmp',
 	];
 	if (readWorkflowJobNames(resolve(workflowPath)).includes('verify')) {
 		args.push('-j', 'verify');
@@ -243,7 +317,9 @@ function createWorkspaceActWorkflow(options: {
 		})
 		.filter((command): command is string => Boolean(command))
 		.join('\n');
-	const workflowRoot = mkdtempSync(resolve(verifyTempRoot(options.workspaceRoot), 'treeseed-verify-act-'));
+	const workflowTempRoot = resolve(options.workspaceRoot, '.treeseed', 'act', 'workflows');
+	mkdirSync(workflowTempRoot, { recursive: true });
+	const workflowRoot = mkdtempSync(resolve(workflowTempRoot, 'treeseed-verify-act-'));
 	const workflowPath = resolve(workflowRoot, 'verify.yml');
 	writeFileSync(
 		workflowPath,
@@ -304,7 +380,7 @@ ${siblingLinkCommands.split('\n').map((line) => `          ${line}`).join('\n')}
 
 	return {
 		cwd: options.workspaceRoot,
-		args: createActArgs(options.eventName, workflowPath),
+		args: createActArgs(options.eventName, workflowPath, options.workspaceRoot),
 	};
 }
 
@@ -396,7 +472,8 @@ export function getTreeseedVerifyDriverStatus(options: TreeseedVerifyDriverOptio
 	const workflowPresent = existsSync(workflowPath);
 	const workspace = resolveLocalWorkspaceContext(packageRoot);
 	const checkCommand = options.checkCommand ?? check;
-	const gh = options.checkCommand ? 'gh' : (resolveTreeseedToolBinary('gh') ?? 'gh');
+	const managedEnv = createTreeseedManagedToolEnv(projectLocalToolEnv(packageRoot));
+	const gh = options.checkCommand ? 'gh' : (resolveTreeseedToolBinary('gh', { env: managedEnv }) ?? 'gh');
 	const ghAct = checkCommand(gh, ['act', '--version'], packageRoot);
 	const docker = checkCommand('docker', ['info'], packageRoot);
 	const prefersDirectForLocalWorkspace =
@@ -452,11 +529,14 @@ function runWorkspaceActionVerification(input: {
 	write: (message: string, stream?: 'stdout' | 'stderr') => void;
 }) {
 	input.write('Treeseed verify: running root GitHub Actions workflow with gh act.');
-	const rootStatus = input.runCommand(
-		input.gh,
-		createActArgs(input.status.eventName, '.github/workflows/verify.yml'),
-		input.status.packageRoot,
-	);
+	const rootStatus = runActCommand({
+		command: input.gh,
+		args: createActArgs(input.status.eventName, '.github/workflows/verify.yml', input.status.packageRoot),
+		cwd: input.status.packageRoot,
+		stateCwd: input.status.packageRoot,
+		repairOwnership: input.runCommand === run,
+		runCommand: input.runCommand,
+	});
 	if (rootStatus !== 0) {
 		return rootStatus;
 	}
@@ -488,7 +568,8 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 	const status = getTreeseedVerifyDriverStatus(options);
 	const runCommand = options.runCommand ?? run;
 	const checkCommand = options.checkCommand ?? check;
-	const gh = options.runCommand || options.checkCommand ? 'gh' : (resolveTreeseedToolBinary('gh') ?? 'gh');
+	const managedEnv = createTreeseedManagedToolEnv(projectLocalToolEnv(status.packageRoot));
+	const gh = options.runCommand || options.checkCommand ? 'gh' : (resolveTreeseedToolBinary('gh', { env: managedEnv }) ?? 'gh');
 
 	if (status.driver === 'direct' || status.inGitHubActions) {
 		return runCommand('npm', ['run', 'verify:direct'], status.packageRoot);
@@ -527,9 +608,23 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 				eventName: status.eventName,
 				localTreeseedSiblingDependencies: status.localTreeseedSiblingDependencies,
 			});
-			return runCommand(gh, workspaceAct.args, workspaceAct.cwd);
+			return runActCommand({
+				command: gh,
+				args: workspaceAct.args,
+				cwd: workspaceAct.cwd,
+				stateCwd: status.workspaceRoot,
+				repairOwnership: runCommand === run,
+				runCommand,
+			});
 		}
-		return runCommand(gh, createActArgs(status.eventName, '.github/workflows/verify.yml'), status.packageRoot);
+		return runActCommand({
+			command: gh,
+			args: createActArgs(status.eventName, '.github/workflows/verify.yml', status.packageRoot),
+			cwd: status.packageRoot,
+			stateCwd: status.packageRoot,
+			repairOwnership: runCommand === run,
+			runCommand,
+		});
 	}
 
 	if (status.prefersDirectForLocalWorkspace) {
@@ -537,7 +632,14 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 	}
 
 	if (status.canUseAct) {
-		return runCommand(gh, createActArgs(status.eventName, '.github/workflows/verify.yml'), status.packageRoot);
+		return runActCommand({
+			command: gh,
+			args: createActArgs(status.eventName, '.github/workflows/verify.yml', status.packageRoot),
+			cwd: status.packageRoot,
+			stateCwd: status.packageRoot,
+			repairOwnership: runCommand === run,
+			runCommand,
+		});
 	}
 
 	if (!status.workflowPresent) {

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, resolve, relative } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { classifyTreeseedGitMode, runTreeseedGit, runTreeseedGitText } from './git-runner.ts';
@@ -288,6 +288,23 @@ function emitProgress(options: Pick<RepositorySaveOptions, 'onProgress'>, node: 
 	}
 }
 
+function projectLocalToolEnv(root: string, env: NodeJS.ProcessEnv = process.env) {
+	const cacheHome = resolve(root, '.treeseed', 'cache');
+	const npmCache = resolve(cacheHome, 'npm');
+	const toolsHome = resolve(root, '.treeseed', 'tools');
+	const ghConfigDir = resolve(toolsHome, 'gh-config');
+	mkdirSync(npmCache, { recursive: true });
+	mkdirSync(ghConfigDir, { recursive: true });
+	return {
+		...env,
+		XDG_CACHE_HOME: env.XDG_CACHE_HOME ?? cacheHome,
+		npm_config_cache: env.npm_config_cache ?? env.NPM_CONFIG_CACHE ?? npmCache,
+		NPM_CONFIG_CACHE: env.NPM_CONFIG_CACHE ?? env.npm_config_cache ?? npmCache,
+		TREESEED_TOOLS_HOME: env.TREESEED_TOOLS_HOME ?? toolsHome,
+		TREESEED_GH_CONFIG_DIR: env.TREESEED_GH_CONFIG_DIR ?? ghConfigDir,
+	};
+}
+
 function prefixedOutput(node: Pick<RepositorySaveNode, 'name'>, phase: string, output: string) {
 	return String(output ?? '')
 		.split(/\r?\n/u)
@@ -317,7 +334,7 @@ function runCapturedCommand(
 		: (() => {
 			const spawned = spawnSync(command, args, {
 				cwd,
-				env: { ...process.env, ...(commandOptions.env ?? {}) },
+				env: { ...projectLocalToolEnv(cwd), ...(commandOptions.env ?? {}) },
 				stdio: 'pipe',
 				encoding: 'utf8',
 				timeout: commandOptions.timeoutMs,
@@ -381,9 +398,10 @@ function runQuietCommand(
 	args: string[],
 	commandOptions: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
 ) {
+	const cwd = commandOptions.cwd ?? node.path;
 	const result = spawnSync(command, args, {
-		cwd: commandOptions.cwd ?? node.path,
-		env: { ...process.env, ...(commandOptions.env ?? {}) },
+		cwd,
+		env: { ...projectLocalToolEnv(cwd), ...(commandOptions.env ?? {}) },
 		stdio: 'pipe',
 		encoding: 'utf8',
 		timeout: commandOptions.timeoutMs,
@@ -418,9 +436,10 @@ export async function runStreamingCommand(
 ) {
 	emitProgress(options, node, phase, `$ ${command} ${args.join(' ')}`);
 	return await new Promise<{ stdout: string; stderr: string }>((resolvePromise, reject) => {
+		const cwd = commandOptions.cwd ?? node.path;
 		const child = spawn(command, args, {
-			cwd: commandOptions.cwd ?? node.path,
-			env: { ...process.env, ...(commandOptions.env ?? {}) },
+			cwd,
+			env: { ...projectLocalToolEnv(cwd), ...(commandOptions.env ?? {}) },
 			stdio: ['ignore', 'pipe', 'pipe'],
 		});
 		let stdout = '';
@@ -1152,7 +1171,7 @@ async function runNpmInstallWithRetry(
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
 		emitProgress(options, node, 'install', `npm ${args.join(' ')} attempt ${attempt}/5.`);
 		try {
-			await runStreamingCommand(node, options, 'install', 'npm', args);
+			await runStreamingCommand(node, options, 'install', 'npm', args, { env: projectLocalToolEnv(options.root) });
 			return { status: 'completed', attempts: attempt, reason: null };
 		} catch (error) {
 			lastError = error instanceof Error ? error.message : String(error);
@@ -1187,7 +1206,7 @@ async function runProjectVerificationInstallWithRetry(
 	for (let attempt = 1; attempt <= 5; attempt += 1) {
 		emitProgress(options, node, 'install', `npm ${args.join(' ')} for verification attempt ${attempt}/5.`);
 		try {
-			await runStreamingCommand(node, options, 'install', 'npm', args);
+			await runStreamingCommand(node, options, 'install', 'npm', args, { env: projectLocalToolEnv(options.root) });
 			return;
 		} catch (error) {
 			lastError = error instanceof Error ? error.message : String(error);
@@ -1238,7 +1257,7 @@ async function validateRepositoryLockfile(
 		return { status: 'skipped', command: commandText, issues: [], error: 'disabled' };
 	}
 	try {
-		runCapturedCommand(node, options, 'lockfile', command, args, { timeoutMs: 120_000, emitOutputOnSuccess: false });
+		runCapturedCommand(node, options, 'lockfile', command, args, { timeoutMs: 120_000, emitOutputOnSuccess: false, env: projectLocalToolEnv(options.root) });
 		const packageCount = npmLockfilePackageCount(node.path);
 		const countText = packageCount === null ? 'package-lock entries' : `${packageCount} package${packageCount === 1 ? '' : 's'}`;
 		emitProgress(options, node, 'lockfile', `Lockfile validation passed: ${countText} checked, 0 issues.`);

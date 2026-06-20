@@ -2176,6 +2176,50 @@ function skipJournalStep(root: string, runId: string, stepId: string, data: Reco
 	refreshWorkflowLock(root, runId);
 }
 
+function gitRefShaOrNull(cwd: string, ref: string) {
+	try {
+		const value = runGit(['rev-parse', '--verify', ref], { cwd, capture: true }).trim();
+		return value || null;
+	} catch {
+		return null;
+	}
+}
+
+function gitCommitTimestampMsOrNull(cwd: string, sha: string | null) {
+	if (!sha) return null;
+	try {
+		const value = runGit(['show', '-s', '--format=%cI', sha], { cwd, capture: true }).trim();
+		const timestamp = Date.parse(value);
+		return Number.isFinite(timestamp) ? timestamp : null;
+	} catch {
+		return null;
+	}
+}
+
+function completedStageMergeStepIsStale(input: {
+	root: string;
+	runId: string;
+	stepId: string;
+	repoPath: string;
+	sourceBranch: string;
+}) {
+	const journal = readWorkflowRunJournal(input.root, input.runId);
+	const step = journal?.steps.find((entry) => entry.id === input.stepId) ?? null;
+	if (step?.status !== 'completed') return false;
+	const data = stringRecord(step.data);
+	const sourceHeadSha = gitRefShaOrNull(input.repoPath, input.sourceBranch);
+	if (!sourceHeadSha) return false;
+	if (typeof data?.sourceHeadSha === 'string' && data.sourceHeadSha !== sourceHeadSha) {
+		return true;
+	}
+	const completedAtMs = typeof step.completedAt === 'string' ? Date.parse(step.completedAt) : NaN;
+	const sourceHeadCommittedAtMs = gitCommitTimestampMsOrNull(input.repoPath, sourceHeadSha);
+	if (Number.isFinite(completedAtMs) && sourceHeadCommittedAtMs != null && sourceHeadCommittedAtMs > completedAtMs + 1000) {
+		return true;
+	}
+	return false;
+}
+
 function acquireWorkflowRun(
 	operation: TreeseedWorkflowRunCommand,
 	session: TreeseedWorkflowSession,
@@ -5588,6 +5632,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			try {
 				await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
 					unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'), { rerunCompleted: true });
+				let stageMergeReplayed = false;
 				for (const pkg of checkedOutWorkspacePackageRepos(root)) {
 					const report = findReportByName(packageReports, pkg.name);
 					if (!report) {
@@ -5599,8 +5644,23 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						continue;
 					}
 					try {
-						const mergeResult = await executeJournalStep(root, workflowRun.runId, `merge-${report.name}`, () =>
-							squashMergeBranchIntoStaging(pkg.dir, featureBranch, message, { pushTarget: true }));
+						const mergeStepId = `merge-${report.name}`;
+						const replayPackageMerge = completedStageMergeStepIsStale({
+							root,
+							runId: workflowRun.runId,
+							stepId: mergeStepId,
+							repoPath: pkg.dir,
+							sourceBranch: featureBranch,
+						});
+						if (replayPackageMerge) {
+							stageMergeReplayed = true;
+							helpers.write(`[workflow][stage] Replaying stale ${report.name} staging merge because ${featureBranch} advanced since the previous stage attempt.`);
+						}
+						const mergeResult = await executeJournalStep(root, workflowRun.runId, mergeStepId, () => {
+							const sourceHeadSha = gitRefShaOrNull(pkg.dir, featureBranch);
+							const result = squashMergeBranchIntoStaging(pkg.dir, featureBranch, message, { pushTarget: true });
+							return { ...result, sourceHeadSha };
+						}, { rerunCompleted: replayPackageMerge });
 						report.merged = mergeResult.committed;
 						report.committed = mergeResult.committed;
 						report.pushed = mergeResult.pushed;
@@ -5620,6 +5680,17 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 
 				let rootMerge: Record<string, unknown> | null = null;
 				try {
+					const replayRootMerge = completedStageMergeStepIsStale({
+						root,
+						runId: workflowRun.runId,
+						stepId: 'merge-root',
+						repoPath: repoDir,
+						sourceBranch: featureBranch,
+					});
+					if (replayRootMerge) {
+						stageMergeReplayed = true;
+						helpers.write(`[workflow][stage] Replaying stale market staging merge because ${featureBranch} advanced since the previous stage attempt.`);
+					}
 					rootMerge = await executeJournalStep(root, workflowRun.runId, 'merge-root', async () => {
 						assertCleanWorktree(root);
 						if (isManagedWorkflowWorktree(root)) {
@@ -5646,12 +5717,14 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						if (stageMode === 'recursive-workspace') {
 							syncAllCheckedOutPackageRepos(root, STAGING_BRANCH);
 						}
-						return finalizeRootStageMerge(root, repoDir, featureBranch, message, {
+						const sourceHeadSha = gitRefShaOrNull(repoDir, featureBranch);
+						const result = finalizeRootStageMerge(root, repoDir, featureBranch, message, {
 							helpers,
 							operation: 'stage',
 							workflowRunId: workflowRun.runId,
 						});
-					});
+						return { ...result, sourceHeadSha };
+					}, { rerunCompleted: replayRootMerge });
 					rootRepo.merged = true;
 					rootRepo.committed = true;
 					rootRepo.commitSha = String(rootMerge?.commitSha ?? headCommit(repoDir));
@@ -5715,8 +5788,11 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					rootRepo,
 					blockers: [],
 				});
+				if (stageMergeReplayed) {
+					helpers.write('[workflow][stage] Re-running release-candidate checks because staged merge outputs were refreshed.');
+				}
 				const releaseCandidate = await executeJournalStep(root, workflowRun.runId, 'release-candidate', () =>
-					runReleaseCandidateForPlan('stage', root, stageReleasePlan, { allowReuse: false, write: (line, stream) => helpers.write(line, stream) }));
+					runReleaseCandidateForPlan('stage', root, stageReleasePlan, { allowReuse: false, write: (line, stream) => helpers.write(line, stream) }), { rerunCompleted: stageMergeReplayed });
 
 				const stageWorkflowGateResult = !waitForStaging
 					? (skipJournalStep(root, workflowRun.runId, 'wait-staging', { status: 'skipped', reason: 'disabled' }), { status: 'skipped', reason: 'disabled' })
