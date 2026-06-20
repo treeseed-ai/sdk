@@ -4,10 +4,8 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
 import {
-	createDeprecatedTaskTag,
 	listTaskBranches,
 	squashMergeBranchIntoStaging,
-	taskTagSlug,
 } from '../../src/operations/services/git-workflow.ts';
 
 function git(cwd: string, args: string[]) {
@@ -88,13 +86,13 @@ describe('git workflow task helpers', () => {
 		expect(tasks[0].head).toMatch(/^[0-9a-f]{40}$/);
 	});
 
-	it('creates and pushes a deprecated resurrection tag for a task branch', () => {
+	it('excludes deprecated branches from task branch listings', () => {
 		const { work } = makeRepo();
-		const result = createDeprecatedTaskTag(work, 'feature/search-filters', 'close: no longer needed');
+		git(work, ['checkout', '-b', 'deprecated/feature-search-filters']);
+		git(work, ['push', '-u', 'origin', 'deprecated/feature-search-filters']);
 
-		expect(result.tagName).toBe(`deprecated/${taskTagSlug('feature/search-filters')}/${result.head.slice(0, 12)}`);
-		expect(git(work, ['rev-parse', `${result.tagName}^{}`])).toBe(result.head);
-		expect(git(work, ['ls-remote', '--tags', 'origin', result.tagName])).toContain(result.tagName);
+		const tasks = listTaskBranches(work);
+		expect(tasks.map((task) => task.name)).toEqual(['feature/search-filters']);
 	});
 
 	it('resolves generated package metadata conflicts during repeated staging attempts', () => {

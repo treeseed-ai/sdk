@@ -54,7 +54,15 @@ type LocalWorkspaceContext = {
 	localTreeseedSiblingDependencies: string[];
 };
 
+type WorkspacePackage = {
+	name: string;
+	dir: string;
+	relativeDir: string;
+	manifest: PackageManifest;
+};
+
 const defaultActUbuntuLatestImage = 'catthehacker/ubuntu:act-latest';
+const workspacePackageOrder = ['sdk', 'ui', 'core', 'admin', 'cli', 'agent', 'api', 'treedx'];
 
 function defaultWrite(message: string, stream: 'stdout' | 'stderr' = 'stdout') {
 	if (!message) return;
@@ -95,9 +103,78 @@ function readPackageManifest(packageJsonPath: string): PackageManifest | null {
 	}
 }
 
+function isTreeseedWorkspaceRoot(root: string) {
+	return existsSync(resolve(root, 'package.json')) && existsSync(resolve(root, 'packages'));
+}
+
+function workspacePackageSortWeight(pkg: WorkspacePackage) {
+	const index = workspacePackageOrder.indexOf(pkg.relativeDir.split('/').pop() ?? '');
+	return index >= 0 ? index : Number.MAX_SAFE_INTEGER;
+}
+
+function discoverWorkspaceVerifyActionPackages(root: string) {
+	if (!isTreeseedWorkspaceRoot(root)) return [];
+	const packagesRoot = resolve(root, 'packages');
+	if (!existsSync(packagesRoot)) return [];
+	return readdirSync(packagesRoot, { withFileTypes: true })
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => {
+			const dir = resolve(packagesRoot, entry.name);
+			const manifest = readPackageManifest(resolve(dir, 'package.json'));
+			if (!manifest?.name || typeof manifest.scripts?.['verify:action'] !== 'string') {
+				return null;
+			}
+			return {
+				name: manifest.name,
+				dir,
+				relativeDir: `packages/${entry.name}`,
+				manifest,
+			};
+		})
+		.filter((entry): entry is WorkspacePackage => Boolean(entry))
+		.sort((left, right) => {
+			const leftWeight = workspacePackageSortWeight(left);
+			const rightWeight = workspacePackageSortWeight(right);
+			if (leftWeight !== rightWeight) return leftWeight - rightWeight;
+			return left.name.localeCompare(right.name);
+		});
+}
+
+function readWorkflowJobNames(workflowPath: string): string[] {
+	if (!existsSync(workflowPath)) return [];
+	const source = readFileSync(workflowPath, 'utf8');
+	const lines = source.split(/\r?\n/u);
+	const jobsLine = lines.findIndex((line) => /^jobs:\s*$/u.test(line));
+	if (jobsLine < 0) return [];
+	const names: string[] = [];
+	for (const line of lines.slice(jobsLine + 1)) {
+		if (/^\S/u.test(line)) break;
+		const match = /^  ([A-Za-z0-9_-]+):\s*$/u.exec(line);
+		if (match) names.push(match[1]);
+	}
+	return names;
+}
+
 function createActArgs(eventName: string, workflowPath: string) {
 	const image = process.env.TREESEED_VERIFY_ACT_UBUNTU_LATEST_IMAGE?.trim() || defaultActUbuntuLatestImage;
-	const args = ['act', eventName, '-W', workflowPath, '-j', 'verify'];
+	const actStateRoot = process.env.TREESEED_VERIFY_ACT_STATE_ROOT?.trim() || '.treeseed/act';
+	const args = [
+		'act',
+		eventName,
+		'-W',
+		workflowPath,
+		'--concurrent-jobs',
+		'1',
+		'--artifact-server-path',
+		`${actStateRoot}/artifacts`,
+		'--cache-server-path',
+		`${actStateRoot}/cache`,
+		'--action-cache-path',
+		`${actStateRoot}/actions`,
+	];
+	if (readWorkflowJobNames(resolve(workflowPath)).includes('verify')) {
+		args.push('-j', 'verify');
+	}
 	if (image) {
 		args.push('-P', `ubuntu-latest=${image}`);
 	}
@@ -329,6 +406,67 @@ export function getTreeseedVerifyDriverStatus(options: TreeseedVerifyDriverOptio
 	};
 }
 
+function runWithTemporaryEnv<T>(env: Record<string, string | undefined>, action: () => T) {
+	const previous = new Map<string, string | undefined>();
+	for (const [key, value] of Object.entries(env)) {
+		previous.set(key, process.env[key]);
+		if (typeof value === 'undefined') {
+			delete process.env[key];
+		} else {
+			process.env[key] = value;
+		}
+	}
+	try {
+		return action();
+	} finally {
+		for (const [key, value] of previous) {
+			if (typeof value === 'undefined') {
+				delete process.env[key];
+			} else {
+				process.env[key] = value;
+			}
+		}
+	}
+}
+
+function runWorkspaceActionVerification(input: {
+	status: TreeseedVerifyDriverStatus;
+	runCommand: (command: string, args: string[], cwd: string) => number;
+	gh: string;
+	write: (message: string, stream?: 'stdout' | 'stderr') => void;
+}) {
+	input.write('Treeseed verify: running root GitHub Actions workflow with gh act.');
+	const rootStatus = input.runCommand(
+		input.gh,
+		createActArgs(input.status.eventName, '.github/workflows/verify.yml'),
+		input.status.packageRoot,
+	);
+	if (rootStatus !== 0) {
+		return rootStatus;
+	}
+
+	const packages = discoverWorkspaceVerifyActionPackages(input.status.packageRoot);
+	if (packages.length === 0) {
+		input.write('Treeseed verify: no package verify:action scripts found in workspace graph.');
+		return 0;
+	}
+
+	input.write(`Treeseed verify: running package graph action verification for ${packages.map((pkg) => pkg.name).join(', ')}.`);
+	for (const pkg of packages) {
+		input.write(`Treeseed verify: ${pkg.name} package GitHub Actions workflow.`);
+		const status = runWithTemporaryEnv({
+			TREESEED_VERIFY_ACTION_SCOPE: 'single',
+			TREESEED_VERIFY_PACKAGE_ISOLATED: '1',
+		}, () => input.runCommand('npm', ['run', 'verify:action'], pkg.dir));
+		if (status !== 0) {
+			input.write(`Treeseed verify: ${pkg.name} package action verification failed.`, 'stderr');
+			return status;
+		}
+	}
+
+	return 0;
+}
+
 export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {}) {
 	const write = options.write ?? defaultWrite;
 	const status = getTreeseedVerifyDriverStatus(options);
@@ -355,7 +493,18 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 			write(detail || 'Treeseed verify requires a running Docker daemon when TREESEED_VERIFY_DRIVER=act.', 'stderr');
 			return 1;
 		}
-		if (status.workspaceRoot && status.localTreeseedSiblingDependencies.length > 0) {
+		const actionScope = process.env.TREESEED_VERIFY_ACTION_SCOPE?.trim();
+		if (
+			actionScope !== 'single' &&
+			isTreeseedWorkspaceRoot(status.packageRoot)
+		) {
+			return runWorkspaceActionVerification({ status, runCommand, gh, write });
+		}
+		if (
+			process.env.TREESEED_VERIFY_PACKAGE_ISOLATED !== '1' &&
+			status.workspaceRoot &&
+			status.localTreeseedSiblingDependencies.length > 0
+		) {
 			const workspaceAct = createWorkspaceActWorkflow({
 				workspaceRoot: status.workspaceRoot,
 				packageRoot: status.packageRoot,

@@ -1752,7 +1752,7 @@ export async function deployRailwayService(
 	}
 	if (deployTransport !== 'cli-fallback') {
 		writePhase('deploy', `Deploying Railway service ${cliDeployService.serviceName ?? cliDeployService.serviceId ?? cliDeployService.key} through the Railway API.`);
-		const apiDeploy = await timedRailwayPhase(timings, 'railway:deploy', () => withRailwayPhaseTimeout(
+		const apiDeploy = await timedRailwayPhase(timings, 'railway:api-deploy', () => withRailwayPhaseTimeout(
 			() => deployRailwayServiceInstance({
 				serviceId: cliDeployService.serviceId,
 				environmentId: cliDeployService.environmentId,

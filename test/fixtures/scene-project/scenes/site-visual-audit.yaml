@@ -1,0 +1,38 @@
+schemaVersion: treeseed.scene/v1
+id: site-visual-audit
+title: Site Visual Audit
+description: Screenshot review matrix for user-facing TreeSeed pages.
+audience: [operator]
+target:
+  app: market
+visualAudit:
+  enabled: true
+  roles: [anonymous, owner, admin, member]
+  includeFullPage: false
+devices:
+  defaultProfile: desktop
+  profiles:
+    - id: desktop
+      viewport: { width: 1600, height: 900 }
+      video: { width: 1600, height: 900 }
+      output: { width: 1920, height: 1080 }
+    - id: tablet
+      viewport: { width: 1024, height: 768 }
+      video: { width: 1024, height: 768 }
+      output: { width: 1440, height: 1080 }
+    - id: mobile
+      viewport: { width: 390, height: 844 }
+      video: { width: 390, height: 844 }
+      output: { width: 1080, height: 1920 }
+workflow:
+  - id: audit
+    title: Audit
+    demoOnly: true
+    action:
+      pause:
+        mode: timed
+        durationSeconds: 1
+chapters:
+  - id: audit
+    title: Audit
+    startsAt: audit

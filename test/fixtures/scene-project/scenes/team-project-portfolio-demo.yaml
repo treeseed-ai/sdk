@@ -1,0 +1,148 @@
+schemaVersion: treeseed.scene/v1
+id: team-project-portfolio-demo
+title: Team Project Portfolio Demo
+description: Register a user, create the TreeSeed team, and prepare portfolio projects for research and engineering work.
+audience: [evaluator, operator, trainee]
+mode:
+  test: false
+  demo: true
+  training: true
+runtime:
+  mode: training
+  checkpoints:
+    enabled: true
+    defaultResumable: true
+target:
+  app: market
+  environment: local
+  baseUrl: auto
+  browser: chromium
+  viewport:
+    width: 1600
+    height: 900
+devices:
+  defaultProfile: desktop
+  profiles:
+    - id: desktop
+      viewport: { width: 1600, height: 900 }
+      video: { width: 1600, height: 900 }
+      output: { width: 1920, height: 1080 }
+    - id: tablet
+      viewport: { width: 1024, height: 768 }
+      video: { width: 1024, height: 768 }
+      output: { width: 1440, height: 1080 }
+      isMobile: true
+      hasTouch: true
+    - id: mobile
+      orientation: portrait
+      viewport: { width: 390, height: 844 }
+      video: { width: 390, height: 844 }
+      output: { width: 1080, height: 1920 }
+      deviceScaleFactor: 2
+      isMobile: true
+      hasTouch: true
+render:
+  remotion:
+    output:
+      width: 1920
+      height: 1080
+    capture:
+      viewport: { width: 1600, height: 900 }
+      video: { width: 1600, height: 900 }
+      evidenceFit: fixed-browser
+    browserFrame:
+      enabled: false
+training:
+  enabled: true
+workflow:
+  - id: open-register
+    title: Open registration
+    action:
+      goto: /auth/register
+    expect:
+      urlIncludes: /auth/register
+  - id: submit-registration
+    title: Submit registration
+    demoOnly: true
+    action:
+      click:
+        role: button
+        name: Create account
+  - id: mailpit-confirm
+    title: Mailpit confirmation
+    demoOnly: true
+    action:
+      mailpitConfirmLatest:
+        mailpitUrl: __PORTFOLIO_MAILPIT_URL__
+        email: __PORTFOLIO_EMAIL__
+  - id: capture-sdk-linking-gap
+    title: Capture SDK linked-project gap
+    demoOnly: true
+    action:
+      pause:
+        mode: timed
+        durationSeconds: 1
+chapters:
+  - id: registration
+    title: Registration
+    startsAt: open-register
+overlays:
+  - id: sdk-gap
+    at: capture-sdk-linking-gap
+    renderer: remotion
+    type: panel
+    text: "Current gap: this linked-project operation is not exposed for github.com/treeseed-ai/sdk."
+    variant: panel
+    region: top-right
+    motion:
+      keyframes:
+        - at: 0
+          unit: progress
+          opacity: 0
+        - at: 0.25
+          unit: progress
+          opacity: 1
+    objects:
+      - id: gap-badge
+        type: badge
+        text: Product gap
+        region: top-right
+diagrams:
+  - id: topology
+    renderer: remotion
+    at: open-register
+    component: DevRuntimeTopologyDiagram
+    placement: overlay
+    props:
+      surfaces:
+        - id: browser
+        - id: web
+      links:
+        - from: browser
+          to: web
+    motion:
+      keyframes:
+        - at: 0
+          unit: progress
+          opacity: 0.8
+    objects:
+      - id: topology-dot
+        type: circle
+        position: { x: 10, y: 10, unit: percent }
+  - id: operation
+    renderer: remotion
+    at: submit-registration
+    component: OperationLifecycleDiagram
+    placement: interstitial
+    props:
+      states: [queued, running, completed]
+      activeState: running
+  - id: timeline
+    renderer: remotion
+    at: capture-sdk-linking-gap
+    component: SceneExecutionTimelineDiagram
+    placement: standalone
+    props:
+      showCheckpoints: true
+xScenario:
+  sdkLinkedRepositoryGap: "SDK linked software project requirement requires GitHub repository linking and docs repository creation."

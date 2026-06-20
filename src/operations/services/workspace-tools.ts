@@ -124,6 +124,9 @@ export function readJson(filePath) {
 }
 
 export function workspacePackageJson(root = workspaceRoot()) {
+	if (!existsSync(resolve(root, 'package.json'))) {
+		return {};
+	}
 	return readJson(resolve(root, 'package.json'));
 }
 

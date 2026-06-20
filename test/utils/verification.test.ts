@@ -20,6 +20,7 @@ async function createPackage(
 			type: 'module',
 			scripts: {
 				'verify:direct': 'echo direct',
+				'verify:action': 'echo action',
 			},
 			...(dependencies ? { dependencies } : {}),
 		}, null, 2),
@@ -44,6 +45,8 @@ describe('verify driver', () => {
 		delete process.env.TREESEED_VERIFY_DRIVER;
 		delete process.env.TREESEED_VERIFY_EVENT;
 		delete process.env.TREESEED_VERIFY_ACT_UBUNTU_LATEST_IMAGE;
+		delete process.env.TREESEED_VERIFY_ACTION_SCOPE;
+		delete process.env.TREESEED_VERIFY_PACKAGE_ISOLATED;
 	});
 
 	it('detects local sibling treeseed dependencies in a packages workspace', async () => {
@@ -135,6 +138,14 @@ describe('verify driver', () => {
 					'workflow_dispatch',
 					'-W',
 					expect.stringMatching(/treeseed-verify-act-.*\/verify\.yml$/),
+					'--concurrent-jobs',
+					'1',
+					'--artifact-server-path',
+					'.treeseed/act/artifacts',
+					'--cache-server-path',
+					'.treeseed/act/cache',
+					'--action-cache-path',
+					'.treeseed/act/actions',
 					'-j',
 					'verify',
 					'-P',
@@ -147,6 +158,106 @@ describe('verify driver', () => {
 			expect(workflow).toContain('npm ci --workspaces=false');
 		} finally {
 			await rm(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	it('can force isolated package action mode for package graph verification', async () => {
+		const fixture = await createWorkspaceFixture('@treeseed/admin', {
+			'@treeseed/ui': '^0.3.1',
+		});
+		await createPackage(fixture.root, '@treeseed/ui');
+		const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+		process.env.TREESEED_VERIFY_PACKAGE_ISOLATED = '1';
+
+		try {
+			expect(runTreeseedVerifyDriver({
+				packageRoot: fixture.currentPackageRoot,
+				driver: 'act',
+				checkCommand() {
+					return { ok: true, detail: '' };
+				},
+				runCommand(command, args, cwd) {
+					calls.push({ command, args, cwd });
+					return 0;
+				},
+			})).toBe(0);
+			expect(calls).toEqual([
+				{
+					command: 'gh',
+					args: [
+						'act',
+						'workflow_dispatch',
+						'-W',
+						'.github/workflows/verify.yml',
+						'--concurrent-jobs',
+						'1',
+						'--artifact-server-path',
+						'.treeseed/act/artifacts',
+						'--cache-server-path',
+						'.treeseed/act/cache',
+						'--action-cache-path',
+						'.treeseed/act/actions',
+						'-j',
+						'verify',
+						'-P',
+						'ubuntu-latest=catthehacker/ubuntu:act-latest',
+					],
+					cwd: fixture.currentPackageRoot,
+				},
+			]);
+		} finally {
+			await rm(fixture.root, { recursive: true, force: true });
+		}
+	});
+
+	it('runs root action verification and then package graph action verification from the workspace root', async () => {
+		const root = await mkdtemp(join(tmpdir(), 'treeseed-sdk-verification-root-'));
+		await writeFile(
+			join(root, 'package.json'),
+			JSON.stringify({
+				name: '@treeseed/market',
+				version: '0.0.0',
+				type: 'module',
+				workspaces: ['packages/*'],
+				scripts: {
+					'verify:direct': 'echo root',
+				},
+			}, null, 2),
+		);
+		await mkdir(join(root, '.github', 'workflows'), { recursive: true });
+		await writeFile(join(root, '.github', 'workflows', 'verify.yml'), 'name: Verify\njobs:\n  build:\n    runs-on: ubuntu-latest\n');
+		await createPackage(root, '@treeseed/sdk');
+		await createPackage(root, '@treeseed/admin', { '@treeseed/ui': '^0.3.1' });
+		await createPackage(root, '@treeseed/ui');
+		const calls: Array<{ command: string; args: string[]; cwd: string; isolated: string | undefined; scope: string | undefined }> = [];
+
+		try {
+			expect(runTreeseedVerifyDriver({
+				packageRoot: root,
+				driver: 'act',
+				checkCommand() {
+					return { ok: true, detail: '' };
+				},
+				runCommand(command, args, cwd) {
+					calls.push({
+						command,
+						args,
+						cwd,
+						isolated: process.env.TREESEED_VERIFY_PACKAGE_ISOLATED,
+						scope: process.env.TREESEED_VERIFY_ACTION_SCOPE,
+					});
+					return 0;
+				},
+			})).toBe(0);
+			expect(calls.map((call) => ({ command: call.command, args: call.args.slice(0, 4), cwd: call.cwd }))).toEqual([
+				{ command: 'gh', args: ['act', 'workflow_dispatch', '-W', '.github/workflows/verify.yml'], cwd: root },
+				{ command: 'npm', args: ['run', 'verify:action'], cwd: join(root, 'packages', 'sdk') },
+				{ command: 'npm', args: ['run', 'verify:action'], cwd: join(root, 'packages', 'ui') },
+				{ command: 'npm', args: ['run', 'verify:action'], cwd: join(root, 'packages', 'admin') },
+			]);
+			expect(calls.slice(1).every((call) => call.isolated === '1' && call.scope === 'single')).toBe(true);
+		} finally {
+			await rm(root, { recursive: true, force: true });
 		}
 	});
 
@@ -170,7 +281,24 @@ describe('verify driver', () => {
 			expect(calls).toEqual([
 				{
 					command: 'gh',
-					args: ['act', 'workflow_dispatch', '-W', '.github/workflows/verify.yml', '-j', 'verify', '-P', 'ubuntu-latest=example.local/ubuntu:verify'],
+					args: [
+						'act',
+						'workflow_dispatch',
+						'-W',
+						'.github/workflows/verify.yml',
+						'--concurrent-jobs',
+						'1',
+						'--artifact-server-path',
+						'.treeseed/act/artifacts',
+						'--cache-server-path',
+						'.treeseed/act/cache',
+						'--action-cache-path',
+						'.treeseed/act/actions',
+						'-j',
+						'verify',
+						'-P',
+						'ubuntu-latest=example.local/ubuntu:verify',
+					],
 					cwd: fixture.currentPackageRoot,
 				},
 			]);

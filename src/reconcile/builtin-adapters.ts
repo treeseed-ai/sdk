@@ -3677,7 +3677,7 @@ async function ensureRailwayMarketDatabaseForScope(
 		}
 	} catch (error) {
 		const detail = error instanceof Error ? error.message : String(error ?? '');
-		throw new Error(`Railway provider limitation while reconciling PostgreSQL volume name for ${serviceName}: ${detail}`);
+		throw new Error(`Railway provider limitation while reconciling PostgreSQL storage volume name for ${serviceName}: ${detail}`);
 	}
 	const services = await listRailwayServices({ projectId: firstService.project.id, env: topology.env });
 	for (const service of services) {

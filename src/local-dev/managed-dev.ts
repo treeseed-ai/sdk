@@ -1,4 +1,5 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { discoverTreeseedPackageAdapters, type TreeseedPackageAdapter } from '../operations/services/package-adapters.ts';
@@ -277,10 +278,20 @@ function prepareManagedDevSetup(plan: TreeseedIntegratedDevPlan, options: Treese
 	const needsApi = plan.processes.some((process) => process.surface === 'api' || process.surface === 'operations-runner');
 	const ownsApiRuntime = plan.processes.some((process) => process.surface === 'api');
 	if (!needsApi || !plan.setup.database) return;
+	const ownsApiPackagePostgres = plan.setup.apiPackageId === '@treeseed/api'
+		&& existsSync(resolve(plan.tenantRoot, 'packages', 'api', 'compose.postgres.yml'));
 	if (options.reset && ownsApiRuntime) {
-		resetManagedPostgres(plan.setup.database);
+		if (ownsApiPackagePostgres) {
+			resetApiPostgres(plan);
+		} else {
+			resetManagedPostgres(plan.setup.database);
+		}
 	}
-	ensureManagedPostgres(plan.setup.database);
+	if (ownsApiPackagePostgres) {
+		ensureApiPostgres(plan);
+	} else {
+		ensureManagedPostgres(plan.setup.database);
+	}
 	runMigrations(plan.setup);
 }
 
@@ -340,23 +351,42 @@ function hasLocalDevService(adapter: TreeseedPackageAdapter, serviceId: string) 
 function discoverApiLocalDevPackage(tenantRoot: string) {
 	const adapters = discoverTreeseedPackageAdapters(tenantRoot);
 	const matches = adapters.filter((adapter) => hasLocalDevService(adapter, 'api') || hasLocalDevService(adapter, 'operationsRunner'));
+	const apiAdapter = adapters.find((entry) => entry.id === '@treeseed/api') ?? null;
 	const adapter = matches.find((entry) => entry.id === '@treeseed/api')
 		?? matches.find((entry) => hasLocalDevService(entry, 'api'))
 		?? matches[0]
+		?? apiAdapter
 		?? null;
-	if (!adapter) return null;
+	if (!adapter) {
+		return {
+			packageId: '@treeseed/api',
+			packageRoot: resolve(tenantRoot, 'packages', 'api'),
+			packageRelativeDir: 'packages/api',
+			localDev: {},
+			services: {
+				api: { script: 'dev:api', healthPath: '/healthz' },
+				operationsRunner: { script: 'dev:runner' },
+			},
+		};
+	}
+	const services = localDevServices(adapter);
 	return {
-		adapter,
+		packageId: adapter.id,
 		packageRoot: adapter.dir,
 		packageRelativeDir: adapter.relativeDir,
 		localDev: localDevMetadata(adapter),
-		services: localDevServices(adapter),
+		services: Object.keys(services).length > 0
+			? services
+			: {
+				api: { script: 'dev:api', healthPath: '/healthz' },
+				operationsRunner: { script: 'dev:runner' },
+			},
 	};
 }
 
 function apiLocalDevSetup(tenantRoot: string, options: TreeseedManagedDevOptions): TreeseedManagedDevSetup {
 	const apiPackage = discoverApiLocalDevPackage(tenantRoot);
-	if (!apiPackage || !existsSync(apiPackage.packageRoot)) {
+	if (!apiPackage) {
 		return {
 			apiPackageRoot: null,
 			apiPackageRelativeDir: null,
@@ -388,7 +418,7 @@ function apiLocalDevSetup(tenantRoot: string, options: TreeseedManagedDevOptions
 	return {
 		apiPackageRoot: apiPackage.packageRoot,
 		apiPackageRelativeDir: apiPackage.packageRelativeDir,
-		apiPackageId: apiPackage.adapter.id,
+		apiPackageId: apiPackage.packageId,
 		localDev: apiPackage.localDev,
 		services: apiPackage.services,
 		database: {
@@ -433,6 +463,83 @@ function persistedInstanceRecord(spec: TreeseedManagedDevProcessSpec, pid: numbe
 		pid,
 		startedAt: new Date().toISOString(),
 	};
+}
+
+function postgresManaged(env: Record<string, string>) {
+	return env.TREESEED_MARKET_LOCAL_POSTGRES_MANAGED !== 'false';
+}
+
+function worktreeInstanceSuffix(tenantRoot: string) {
+	return createHash('sha256').update(resolve(tenantRoot)).digest('hex').slice(0, 10);
+}
+
+function postgresComposeEnv(env: Record<string, string>, tenantRoot: string) {
+	const suffix = worktreeInstanceSuffix(tenantRoot);
+	return {
+		...process.env,
+		...env,
+		TREESEED_LOCAL_POSTGRES_DB: env.TREESEED_LOCAL_POSTGRES_DB ?? 'market_local',
+		TREESEED_LOCAL_POSTGRES_USER: env.TREESEED_LOCAL_POSTGRES_USER ?? 'treeseed',
+		TREESEED_LOCAL_POSTGRES_PASSWORD: env.TREESEED_LOCAL_POSTGRES_PASSWORD ?? 'treeseed',
+		TREESEED_MARKET_LOCAL_POSTGRES_PORT: env.TREESEED_MARKET_LOCAL_POSTGRES_PORT ?? '55432',
+		TREESEED_MARKET_LOCAL_POSTGRES_CONTAINER:
+			env.TREESEED_MARKET_LOCAL_POSTGRES_CONTAINER ?? `treeseed-market-local-postgres-${suffix}`,
+		TREESEED_MARKET_LOCAL_POSTGRES_VOLUME:
+			env.TREESEED_MARKET_LOCAL_POSTGRES_VOLUME ?? `treeseed-market-local-postgres-data-${suffix}`,
+	};
+}
+
+function resetApiPostgres(plan: TreeseedIntegratedDevPlan) {
+	const apiSpec = plan.processes.find((process) => process.surface === 'api' || process.surface === 'operations-runner');
+	const composeFile = resolve(plan.tenantRoot, 'packages', 'api', 'compose.postgres.yml');
+	if (!apiSpec || !existsSync(composeFile)) return;
+	const env = postgresComposeEnv(apiSpec.env, plan.tenantRoot);
+	const projectName = 'treeseed-local-api-postgres';
+	spawnSync('docker', ['compose', '-f', composeFile, '-p', projectName, 'down', '-v'], {
+		cwd: resolve(plan.tenantRoot, 'packages', 'api'),
+		env,
+		encoding: 'utf8',
+		timeout: 60_000,
+	});
+}
+
+function ensureApiPostgres(plan: TreeseedIntegratedDevPlan) {
+	const needsApiDatabase = plan.processes.some((process) => process.surface === 'api' || process.surface === 'operations-runner');
+	if (!needsApiDatabase) return;
+	const apiSpec = plan.processes.find((process) => process.surface === 'api' || process.surface === 'operations-runner');
+	if (!apiSpec || !postgresManaged(apiSpec.env)) return;
+	const composeFile = resolve(plan.tenantRoot, 'packages', 'api', 'compose.postgres.yml');
+	if (!existsSync(composeFile)) {
+		throw new Error(`API-owned local PostgreSQL compose file is missing: ${composeFile}`);
+	}
+	const env = postgresComposeEnv(apiSpec.env, plan.tenantRoot);
+	const projectName = 'treeseed-local-api-postgres';
+	const baseArgs = ['compose', '-f', composeFile, '-p', projectName];
+	const up = spawnSync('docker', [...baseArgs, 'up', '-d'], {
+		cwd: resolve(plan.tenantRoot, 'packages', 'api'),
+		env,
+		encoding: 'utf8',
+		timeout: 60_000,
+	});
+	if ((up.status ?? 1) !== 0) {
+		throw new Error([up.stdout, up.stderr].filter(Boolean).join('\n').trim() || 'Unable to start API-owned local PostgreSQL.');
+	}
+	const user = env.TREESEED_LOCAL_POSTGRES_USER ?? 'treeseed';
+	const database = env.TREESEED_LOCAL_POSTGRES_DB ?? 'market_local';
+	let last = '';
+	const startedAt = Date.now();
+	while (Date.now() - startedAt < 45_000) {
+		const ready = spawnSync('docker', [...baseArgs, 'exec', '-T', 'treeseed-api-postgres', 'pg_isready', '-U', user, '-d', database], {
+			cwd: resolve(plan.tenantRoot, 'packages', 'api'),
+			env,
+			encoding: 'utf8',
+			timeout: 5_000,
+		});
+		last = [ready.stdout, ready.stderr].filter(Boolean).join('\n').trim();
+		if ((ready.status ?? 1) === 0) return;
+		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+	}
+	throw new Error(last || 'Timed out waiting for API-owned local PostgreSQL.');
 }
 
 function scriptCommand(tenantRoot: string, script: string, args: string[] = []) {
@@ -492,6 +599,37 @@ function processSpec(input: {
 			TREESEED_MARKET_LOCAL_POSTGRES_PORT: input.setup.database.port,
 		}
 		: {};
+	const localDatabaseUrl = databaseEnv.TREESEED_DATABASE_URL
+		?? env.TREESEED_DATABASE_URL
+		?? env.TREESEED_MARKET_DATABASE_URL
+		?? 'postgres://treeseed:treeseed@127.0.0.1:55432/market_local';
+	const localSharedEnv = {
+		...env,
+		...databaseEnv,
+		TREESEED_SITE_URL: env.TREESEED_SITE_URL ?? `http://${host}:${webPort}`,
+		BETTER_AUTH_URL: env.BETTER_AUTH_URL ?? `http://${host}:${webPort}`,
+		TREESEED_API_BASE_URL: env.TREESEED_API_BASE_URL ?? `http://${apiHost}:${apiPort}`,
+		TREESEED_MARKET_API_BASE_URL: env.TREESEED_MARKET_API_BASE_URL ?? `http://${apiHost}:${apiPort}`,
+		TREESEED_DATABASE_URL: localDatabaseUrl,
+		TREESEED_MARKET_DATABASE_URL: env.TREESEED_MARKET_DATABASE_URL ?? localDatabaseUrl,
+		TREESEED_MARKET_LOCAL_POSTGRES_PORT: env.TREESEED_MARKET_LOCAL_POSTGRES_PORT ?? databaseEnv.TREESEED_MARKET_LOCAL_POSTGRES_PORT ?? '55432',
+		TREESEED_MARKET_LOCAL_POSTGRES_MANAGED: env.TREESEED_MARKET_LOCAL_POSTGRES_MANAGED ?? (input.setup.database?.managed === false ? 'false' : 'true'),
+		TREESEED_WEB_SERVICE_ID: env.TREESEED_WEB_SERVICE_ID ?? env.TREESEED_API_WEB_SERVICE_ID ?? 'web',
+		TREESEED_WEB_SERVICE_SECRET: env.TREESEED_WEB_SERVICE_SECRET ?? env.TREESEED_API_WEB_SERVICE_SECRET ?? 'treeseed-web-service-dev-secret',
+		TREESEED_API_WEB_SERVICE_ID: env.TREESEED_API_WEB_SERVICE_ID ?? env.TREESEED_WEB_SERVICE_ID ?? 'web',
+		TREESEED_API_WEB_SERVICE_SECRET: env.TREESEED_API_WEB_SERVICE_SECRET ?? env.TREESEED_WEB_SERVICE_SECRET ?? 'treeseed-web-service-dev-secret',
+		TREESEED_PLATFORM_RUNNER_SECRET: env.TREESEED_PLATFORM_RUNNER_SECRET ?? 'treeseed-platform-runner-dev-secret',
+		TREESEED_BETTER_AUTH_SECRET: env.TREESEED_BETTER_AUTH_SECRET ?? 'treeseed-local-better-auth-secret-minimum-32-characters',
+		TREESEED_ACCEPTANCE_EXPOSE_AUTH_TOKENS: env.TREESEED_ACCEPTANCE_EXPOSE_AUTH_TOKENS ?? '1',
+		TREESEED_FORM_TOKEN_SECRET: env.TREESEED_FORM_TOKEN_SECRET ?? 'treeseed-local-form-token-secret',
+		TREESEED_SMTP_HOST: env.TREESEED_SMTP_HOST ?? '127.0.0.1',
+		TREESEED_SMTP_PORT: env.TREESEED_SMTP_PORT ?? '1025',
+		TREESEED_SMTP_USERNAME: env.TREESEED_SMTP_USERNAME ?? '',
+		TREESEED_SMTP_PASSWORD: env.TREESEED_SMTP_PASSWORD ?? '',
+		TREESEED_MAILPIT_SMTP_HOST: env.TREESEED_MAILPIT_SMTP_HOST ?? '127.0.0.1',
+		TREESEED_MAILPIT_SMTP_PORT: env.TREESEED_MAILPIT_SMTP_PORT ?? '1025',
+		TREESEED_MAILPIT_UI_PORT: env.TREESEED_MAILPIT_UI_PORT ?? '8025',
+	};
 	if (input.surface === 'api') {
 		const command = packageCommand({ tenantRoot: input.tenantRoot, setup: input.setup, script: stringValue(apiService.script) ?? 'dev:api' });
 		const healthPath = stringValue(apiService.healthPath) ?? '/healthz';
@@ -499,7 +637,7 @@ function processSpec(input: {
 			id,
 			surface: input.surface,
 			...command,
-			env: { ...env, ...databaseEnv, HOST: apiHost, PORT: String(apiPort) },
+			env: { ...localSharedEnv, HOST: apiHost, PORT: String(apiPort), TREESEED_API_ENVIRONMENT: localSharedEnv.TREESEED_API_ENVIRONMENT ?? 'local' },
 			port: apiPort,
 			health: [{ id: 'api', kind: 'http', url: `http://${apiHost}:${apiPort}${healthPath.startsWith('/') ? healthPath : `/${healthPath}`}` }],
 			logPath,
@@ -513,7 +651,7 @@ function processSpec(input: {
 			id,
 			surface: input.surface,
 			...command,
-			env: { ...env, ...databaseEnv },
+			env: { ...localSharedEnv, TREESEED_PLATFORM_RUNNER_ENVIRONMENT: localSharedEnv.TREESEED_PLATFORM_RUNNER_ENVIRONMENT ?? 'local' },
 			port: null,
 			health: [],
 			logPath,
@@ -536,7 +674,7 @@ function processSpec(input: {
 		id: 'web',
 		surface: 'web',
 		...command,
-		env,
+		env: localSharedEnv,
 		port: webPort,
 		health: [{ id: 'web', kind: 'http', url: `http://${host}:${webPort}` }],
 		logPath,
@@ -644,6 +782,8 @@ async function startSpec(spec: TreeseedManagedDevProcessSpec, force = false) {
 		detached: true,
 		stdio: ['ignore', stdoutFd, stderrFd],
 	});
+	child.on('error', (error) => appendFileSync(spec.logPath, `[treeseed-dev] ${spec.id} spawn failed: ${error.message}\n`, 'utf8'));
+	child.on('exit', (code, signal) => appendFileSync(spec.logPath, `[treeseed-dev] ${spec.id} exited code=${code ?? 'null'} signal=${signal ?? 'null'} ${new Date().toISOString()}\n`, 'utf8'));
 	closeSync(stdoutFd);
 	closeSync(stderrFd);
 	child.unref();
