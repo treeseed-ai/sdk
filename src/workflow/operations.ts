@@ -4692,13 +4692,17 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 								: []),
 							...savedPackageReports
 								.filter((repo) => repo.pushed && repo.commitSha && repo.branch)
-								.map((repo) => ({
-									name: repo.name,
-									repoPath: repo.path,
-									workflow: 'verify.yml',
-									branch: String(repo.branch),
-									headSha: String(repo.commitSha),
-								})),
+								.map((repo) => {
+									const workflow = hostedWorkflowForSavedRepository(root, repo);
+									const gate = {
+										name: repo.name,
+										repoPath: repo.path,
+										workflow,
+										branch: String(repo.branch),
+										headSha: String(repo.commitSha),
+									};
+									return /^deploy(?:[-.]|$)/u.test(workflow) ? hostedDeployGate(gate) : gate;
+								}),
 						], 'hosted', {
 							root,
 							runId: workflowRun.runId,
