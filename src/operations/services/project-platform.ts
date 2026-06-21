@@ -50,7 +50,6 @@ import {
 } from './railway-deploy.ts';
 import { loadCliDeployConfig, packageScriptPath } from './runtime-tools.ts';
 import { resolveTreeseedToolCommand } from '../../managed-dependencies.ts';
-import { CloudflareQueuePullClient, CloudflareQueuePushClient } from '../../remote.ts';
 import type { TreeseedRunnableBootstrapSystem } from '../../reconcile/index.ts';
 import { runPrefixedCommand, runTreeseedBootstrapDag, sleep, writeTreeseedBootstrapLine, type TreeseedBootstrapDagNode, type TreeseedBootstrapExecution, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from './bootstrap-runner.ts';
 import { runTenantDeployPreflight } from './save-deploy-preflight.ts';
@@ -775,24 +774,6 @@ async function probeHttp(url: string, { attempts = 1, delayMs = 2000 }: { attemp
 	return result;
 }
 
-function queueClientConfig(siteConfig, state) {
-	const accountId = String(process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? siteConfig.cloudflare.accountId ?? '').trim();
-	const queueId = state.queues?.agentWork?.queueId;
-	const token = process.env.TREESEED_QUEUE_PUSH_TOKEN?.trim()
-		|| process.env.TREESEED_QUEUE_PULL_TOKEN?.trim()
-		|| process.env.TREESEED_CLOUDFLARE_API_TOKEN?.trim()
-		|| '';
-	if (!accountId || !queueId || !token) {
-		return null;
-	}
-	return {
-		accountId,
-		queueId,
-		token,
-		apiBaseUrl: process.env.TREESEED_QUEUE_API_BASE_URL?.trim() || undefined,
-	};
-}
-
 function findFirstMatchingString(value, matcher, seen = new Set()) {
 	if (typeof value === 'string') {
 		return matcher(value) ? value : null;
@@ -870,59 +851,6 @@ function resolveApiMonitorEndpoints(siteConfig, apiBaseUrl: string | null) {
 		d1Health: `${baseUrl}/healthz/deep`,
 		agentHealth: null,
 		processingAgentApi: false,
-	};
-}
-
-async function probeQueue(siteConfig, state) {
-	const config = queueClientConfig(siteConfig, state);
-	if (!config) {
-		return { ok: false, skipped: true, reason: 'queue_probe_unconfigured' };
-	}
-
-	const pushClient = new CloudflareQueuePushClient(config);
-	const pullClient = new CloudflareQueuePullClient(config);
-	const messageId = `health-${Date.now()}`;
-	await pushClient.enqueue({
-		message: {
-			messageId,
-			taskId: messageId,
-			workDayId: 'health-check',
-			agentId: 'health-check',
-			taskType: 'health_check',
-			idempotencyKey: messageId,
-			payloadRef: 'health',
-			graphVersion: null,
-			budgetHint: 0,
-		},
-	});
-	let pulled;
-	try {
-		pulled = await pullClient.pull({
-			batchSize: 1,
-			visibilityTimeoutMs: 10000,
-		});
-	} catch (error) {
-		const detail = error instanceof Error ? error.message : String(error);
-		if (/http_pull mode is enabled/iu.test(detail)) {
-			return {
-				ok: true,
-				skipped: true,
-				reason: 'queue_push_only',
-				messageId,
-				detail,
-			};
-		}
-		throw error;
-	}
-	const message = pulled.messages.find((entry) => entry.body?.messageId === messageId) ?? pulled.messages[0] ?? null;
-	if (!message) {
-		return { ok: false, reason: 'queue_pull_empty' };
-	}
-	await pullClient.ack([message.leaseId]);
-	return {
-		ok: true,
-		messageId,
-		attempts: message.attempts,
 	};
 }
 
@@ -1340,7 +1268,6 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 		workerName: state.workerName,
 		r2BucketName: state.content?.bucketName ?? null,
 		d1DatabaseName: state.d1Databases?.SITE_DATA_DB?.databaseName ?? null,
-		queueName: state.queues?.agentWork?.name ?? null,
 		railwayProjectName: railwayValidation.services[0]?.projectName ?? null,
 		metadata: {
 			target: deployTargetLabel(target),
@@ -1397,14 +1324,6 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 			logicalName: state.d1Databases?.SITE_DATA_DB?.databaseName ?? 'site-data',
 			locator: state.d1Databases?.SITE_DATA_DB?.databaseId ?? null,
 			metadata: state.d1Databases?.SITE_DATA_DB ?? {},
-		},
-		{
-			environment: options.scope,
-			provider: 'cloudflare' as const,
-			resourceKind: 'queue' as const,
-			logicalName: state.queues?.agentWork?.name ?? 'agent-work',
-			locator: state.queues?.agentWork?.binding ?? null,
-			metadata: state.queues?.agentWork ?? {},
 		},
 	];
 
@@ -1765,7 +1684,6 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		d1Health: apiSelected && apiMonitorEndpoints.d1Health ? timedPhase(timings, 'monitor:probe-d1-health', () => probeHttp(apiMonitorEndpoints.d1Health, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedD1Check),
 		agentHealth: agentsSelected && apiMonitorEndpoints.agentHealth ? timedPhase(timings, 'monitor:probe-agent-health', () => probeHttp(apiMonitorEndpoints.agentHealth, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedAgentCheck),
 		r2: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : timedPhase(timings, 'monitor:probe-r2', () => probeR2(options.tenantRoot, siteConfig, state, target)),
-		queue: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : timedPhase(timings, 'monitor:probe-queue', () => probeQueue(siteConfig, state)),
 		scaleProbe: timedPhase(timings, 'monitor:probe-scale', () => probeScaleConfiguration(siteConfig, state)),
 		railwayResources: Promise.resolve(railwayResourcesPromise),
 		readiness: state.readiness,
@@ -1783,7 +1701,6 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		d1Health: await checks.d1Health,
 		agentHealth: await checks.agentHealth,
 		r2: await checks.r2,
-		queue: await checks.queue,
 		scaleProbe: await checks.scaleProbe,
 		railwayResources: await checks.railwayResources,
 	};
@@ -1841,7 +1758,6 @@ export async function syncControlPlaneState(options: ProjectPlatformActionOption
 		workerName: state.workerName,
 		r2BucketName: state.content?.bucketName ?? null,
 		d1DatabaseName: state.d1Databases?.SITE_DATA_DB?.databaseName ?? null,
-		queueName: state.queues?.agentWork?.name ?? null,
 		railwayProjectName: state.services.api?.provider === 'railway' ? state.services.api?.lastDeployedUrl ?? null : null,
 		metadata: { target: deployTargetLabel(target) },
 	});

@@ -9,6 +9,21 @@ import {
 	createGitHubApiClient,
 	getLatestGitHubWorkflowRun,
 } from './github-api.ts';
+import { inspectTreeseedContentStructure } from '../../platform/content-runtime-source.ts';
+import type {
+	SeedContentPublishTargetKind,
+	SeedContentRuntimeSource,
+	SeedLocalContentMaterialization,
+	SeedProjectArchitecture,
+	SeedProjectResource,
+	SeedProjectTopology,
+} from '../../seeds/types.ts';
+import {
+	SEED_CONTENT_PUBLISH_TARGETS,
+	SEED_CONTENT_RUNTIME_SOURCES,
+	SEED_LOCAL_CONTENT_MATERIALIZATIONS,
+	SEED_PROJECT_TOPOLOGIES,
+} from '../../seeds/types.ts';
 
 export type TreeseedPackageKind = 'node-typescript' | 'beam-elixir-rust';
 
@@ -79,6 +94,7 @@ type TreeseedPackageManifest = {
 	githubEnvironments?: unknown;
 	requiredSecrets?: unknown;
 	workflowTemplateVersion?: unknown;
+	projectArchitecture?: unknown;
 };
 
 export type TreeseedPackageDevelopmentImagePlan = {
@@ -203,6 +219,54 @@ function commandFromScript(dir: string, script: unknown, label: string): Treesee
 	return { label, command: 'bash', args: ['-lc', trimmed], cwd: dir };
 }
 
+function normalizePackageSlug(id: string) {
+	const raw = id.startsWith('@treeseed/') ? id.slice('@treeseed/'.length) : id;
+	return raw.toLowerCase()
+		.replace(/^treeseed-/u, '')
+		.replace(/[^a-z0-9]+/gu, '-')
+		.replace(/^-+|-+$/gu, '') || 'package';
+}
+
+function enumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+	return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? value as T : fallback;
+}
+
+function normalizeTreeseedPackageProjectArchitecture(value: unknown, packageId: string): SeedProjectArchitecture | null {
+	const record = stringRecord(value);
+	if (Object.keys(record).length === 0) return null;
+	const publishTarget = stringRecord(record.contentPublishTarget);
+	const packageSlug = normalizePackageSlug(packageId);
+	const targetKind = enumValue<SeedContentPublishTargetKind>(publishTarget.kind, SEED_CONTENT_PUBLISH_TARGETS, 'cloudflare_r2');
+	return {
+		topology: enumValue<SeedProjectTopology>(record.topology, SEED_PROJECT_TOPOLOGIES, 'single_repository_site'),
+		rootPath: stringValue(record.rootPath) ?? '.',
+		sitePath: stringValue(record.sitePath) ?? 'docs',
+		contentPath: stringValue(record.contentPath) ?? 'docs',
+		contentRuntimeSource: enumValue<SeedContentRuntimeSource>(record.contentRuntimeSource, SEED_CONTENT_RUNTIME_SOURCES, 'r2_published_manifest'),
+		localContentMaterialization: enumValue<SeedLocalContentMaterialization>(record.localContentMaterialization, SEED_LOCAL_CONTENT_MATERIALIZATIONS, 'none'),
+		contentPublishTarget: {
+			kind: targetKind,
+			...(stringValue(publishTarget.bucket) ? { bucket: stringValue(publishTarget.bucket)! } : {}),
+			prefix: stringValue(publishTarget.prefix) ?? `packages/${packageSlug}`,
+			...(stringValue(publishTarget.manifestPath) ? { manifestPath: stringValue(publishTarget.manifestPath)! } : {}),
+		},
+	};
+}
+
+function docsSiteReadiness(dir: string, architecture: SeedProjectArchitecture | null) {
+	if (!architecture) return null;
+	const diagnostic = inspectTreeseedContentStructure({ projectRoot: dir, architecture });
+	const readiness = diagnostic.status === 'ready'
+		? 'ready'
+		: diagnostic.status === 'unsupported_structure'
+			? 'unsupported_structure'
+			: 'site_not_prepared';
+	return {
+		status: readiness,
+		diagnostic,
+	};
+}
+
 function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]): TreeseedPackageAdapter {
 	const manifest = readTreeseedPackageManifest(pkg.dir);
 	const scripts = pkg.packageJson?.scripts && typeof pkg.packageJson.scripts === 'object' && !Array.isArray(pkg.packageJson.scripts)
@@ -226,6 +290,8 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 		: publishTargetRaw ?? 'npm';
 	const hostedVerifyWorkflow = stringValue(stringRecord(manifest?.releaseGate).workflow)
 		?? (existsSync(resolve(pkg.dir, '.github/workflows/deploy.yml')) ? 'deploy.yml' : null);
+	const projectArchitecture = normalizeTreeseedPackageProjectArchitecture(manifest?.projectArchitecture, id);
+	const docsReadiness = docsSiteReadiness(pkg.dir, projectArchitecture);
 	const verifyLocal = typeof scripts['verify:local'] === 'string'
 		? 'verify:local'
 		: typeof scripts.verify === 'string'
@@ -286,6 +352,13 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 			requiredSecrets: stringArray(manifest?.requiredSecrets),
 			workflowTemplateVersion: stringValue(manifest?.workflowTemplateVersion) ?? null,
 			capacityProvider: stringRecord(manifest?.capacityProvider),
+			...(projectArchitecture
+				? {
+					projectArchitecture,
+					docsSiteReadiness: docsReadiness?.status ?? 'site_not_prepared',
+					docsSiteDiagnostic: docsReadiness?.diagnostic ?? null,
+				}
+				: {}),
 			...(hostedVerifyWorkflow
 				? {
 					hostedVerifyWorkflow: hostedVerifyWorkflow.startsWith('.github/workflows/')
@@ -381,6 +454,8 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 		: null;
 	const hostedVerifyWorkflow = stringValue(stringRecord(manifest?.releaseGate).workflow)
 		?? (existsSync(resolve(dir, '.github/workflows/release-gate.yml')) ? 'release-gate.yml' : null);
+	const projectArchitecture = normalizeTreeseedPackageProjectArchitecture(manifest?.projectArchitecture, id);
+	const docsReadiness = docsSiteReadiness(dir, projectArchitecture);
 	const developmentImageDefaultBranch = stringValue(developmentImages.defaultBranch) ?? 'staging';
 	const developmentImageTagPrefix = stringValue(developmentImages.tagPrefix) ?? 'dev';
 	const developmentImageMovingTag = developmentImages.movingTag === false ? false : true;
@@ -451,6 +526,13 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 			githubEnvironments: stringArray(manifest?.githubEnvironments),
 			requiredSecrets: stringArray(manifest?.requiredSecrets),
 			workflowTemplateVersion: stringValue(manifest?.workflowTemplateVersion) ?? null,
+			...(projectArchitecture
+				? {
+					projectArchitecture,
+					docsSiteReadiness: docsReadiness?.status ?? 'site_not_prepared',
+					docsSiteDiagnostic: docsReadiness?.diagnostic ?? null,
+				}
+				: {}),
 		},
 	};
 }
@@ -721,6 +803,9 @@ export function validateTreeseedPackageManifests(root = workspaceRoot()): Treese
 		if (adapter.verifyCommands.local == null) {
 			errors.push('missing local verification command');
 		}
+		if (!adapter.metadata.projectArchitecture) {
+			warnings.push('package does not declare projectArchitecture metadata');
+		}
 		if (adapter.releaseChecks.length === 0) {
 			warnings.push('package declares no release checks');
 		}
@@ -747,6 +832,48 @@ export function validateTreeseedPackageManifests(root = workspaceRoot()): Treese
 			warnings,
 		};
 	});
+}
+
+export function deriveTreeseedPackageProjectResources(
+	root = workspaceRoot(),
+	options: { team?: string } = {},
+): SeedProjectResource[] {
+	const team = options.team ?? 'team:treeseed';
+	return discoverTreeseedPackageAdapters(root)
+		.map((adapter): SeedProjectResource | null => {
+			const architecture = adapter.metadata.projectArchitecture as SeedProjectArchitecture | undefined;
+			const repository = stringValue(adapter.metadata.repository);
+			if (!architecture || !repository) return null;
+			const [owner, name] = repository.split('/');
+			if (!owner || !name) return null;
+			const slug = normalizePackageSlug(adapter.id);
+			return {
+				key: `project:treeseed/${slug}`,
+				team,
+				slug,
+				name: adapter.name,
+				description: `${adapter.name} first-party package project.`,
+				kind: 'package',
+				repository: {
+					role: 'primary',
+					provider: 'github',
+					owner,
+					name,
+					gitUrl: `https://github.com/${owner}/${name}.git`,
+					defaultBranch: 'main',
+					checkoutPath: adapter.relativeDir,
+				},
+				architecture,
+				metadata: {
+					packageId: adapter.id,
+					packagePath: adapter.relativeDir,
+					visibility: 'public',
+					docsSiteReadiness: stringValue(adapter.metadata.docsSiteReadiness) ?? 'site_not_prepared',
+					releaseOwnership: 'treeseed.package.yaml',
+				},
+			};
+		})
+		.filter((entry): entry is SeedProjectResource => Boolean(entry));
 }
 
 function workflowNameForTemplate(adapter: TreeseedPackageAdapter, template: TreeseedPackageWorkflowTemplateKind) {

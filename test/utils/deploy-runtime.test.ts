@@ -86,7 +86,7 @@ providers:
   forms: mailer
   operations: default
   agents:
-    execution: manual
+    execution: github_issues
     mutation: local_branch
     repository: git
     verification: local
@@ -110,7 +110,7 @@ turnstile:
 			expect(getTreeseedFormsProvider()).toBe('mailer');
 			expect(getTreeseedOperationsProvider()).toBe('default');
 			expect(getTreeseedAgentProviderSelections()).toMatchObject({
-				execution: 'manual',
+				execution: 'github_issues',
 				repository: 'git',
 				verification: 'local',
 			});
@@ -138,7 +138,7 @@ plugins:
 providers:
   forms: store_only
   agents:
-    execution: stub
+    execution: codex
     mutation: local_branch
     repository: stub
     verification: stub
@@ -169,7 +169,7 @@ plugins:
 providers:
   forms: mailer
   agents:
-    execution: manual
+    execution: workflow
     mutation: local_branch
     repository: git
     verification: local

@@ -29,6 +29,36 @@ export type SeedResourceBase = {
 	environments?: SeedEnvironment[];
 };
 
+export const SEED_PROJECT_TOPOLOGIES = ['single_repository_site', 'split_site_content', 'parent_workspace'] as const;
+export const SEED_CONTENT_RUNTIME_SOURCES = ['local_directory', 'treedx_snapshot', 'r2_published_manifest', 'r2_preview_overlay'] as const;
+export const SEED_LOCAL_CONTENT_MATERIALIZATIONS = ['none', 'existing_path', 'managed_clone', 'submodule'] as const;
+export const SEED_CONTENT_PUBLISH_TARGETS = ['none', 'cloudflare_r2'] as const;
+
+export type SeedProjectTopology = typeof SEED_PROJECT_TOPOLOGIES[number];
+export type SeedContentRuntimeSource = typeof SEED_CONTENT_RUNTIME_SOURCES[number];
+export type SeedLocalContentMaterialization = typeof SEED_LOCAL_CONTENT_MATERIALIZATIONS[number];
+export type SeedContentPublishTargetKind = typeof SEED_CONTENT_PUBLISH_TARGETS[number];
+
+export type SeedProjectContentPublishTarget = {
+	kind: SeedContentPublishTargetKind;
+	bucket?: string;
+	prefix?: string;
+	manifestPath?: string;
+	metadata?: Record<string, unknown>;
+};
+
+export type SeedProjectArchitecture = {
+	topology: SeedProjectTopology;
+	rootPath: string;
+	sitePath: string;
+	contentPath?: string;
+	contentRuntimeSource: SeedContentRuntimeSource;
+	localContentMaterialization: SeedLocalContentMaterialization;
+	contentPublishTarget?: SeedProjectContentPublishTarget;
+	requiresLocalContentForCi?: boolean;
+	requiresLocalContentForDeploy?: boolean;
+};
+
 export type SeedManifest = {
 	name: string;
 	version: 1;
@@ -80,6 +110,7 @@ export type SeedProjectResource = SeedResourceBase & {
 	description?: string;
 	kind?: string;
 	repository: SeedProjectRepository;
+	architecture: SeedProjectArchitecture;
 	metadata?: Record<string, unknown>;
 };
 

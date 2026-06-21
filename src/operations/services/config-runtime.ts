@@ -382,6 +382,9 @@ export function getTreeseedMachineConfigPaths(tenantRoot) {
 }
 
 function resolveManagedWorktreeMachineConfigRoot(tenantRoot) {
+	if (existsSync(resolve(tenantRoot, MACHINE_CONFIG_RELATIVE_PATH))) {
+		return tenantRoot;
+	}
 	const metadataPath = resolve(tenantRoot, WORKTREE_METADATA_RELATIVE_PATH);
 	if (!existsSync(metadataPath)) return tenantRoot;
 	try {

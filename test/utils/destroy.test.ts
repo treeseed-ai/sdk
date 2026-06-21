@@ -31,8 +31,6 @@ runtime:
 cloudflare:
   accountId: account-123
   workerName: destroy-test
-  queueName: agent-work
-  dlqName: agent-work-dlq
   pages:
     productionBranch: main
     stagingBranch: staging

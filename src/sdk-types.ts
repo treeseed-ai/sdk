@@ -119,7 +119,7 @@ export type ProjectDeploymentEnvironment = (typeof PROJECT_DEPLOYMENT_ENVIRONMEN
 export type ProjectDeploymentStatus = (typeof PROJECT_DEPLOYMENT_STATUSES)[number];
 export type ProjectWebMonitorStatus = 'healthy' | 'degraded' | 'failed' | 'unknown';
 export type ProjectWebMonitorCheckStatus = 'passed' | 'warning' | 'failed' | 'skipped';
-export type ProjectWebMonitorCheckSource = 'market' | 'github' | 'cloudflare' | 'http' | 'sdk' | 'treedx';
+export type ProjectWebMonitorCheckSource = 'market' | 'github' | 'cloudflare' | 'http' | 'sdk' | 'treedx' | 'r2';
 export type ProjectInfrastructureResourceProvider = (typeof PROJECT_INFRA_RESOURCE_PROVIDERS)[number];
 export type ProjectInfrastructureResourceKind = (typeof PROJECT_INFRA_RESOURCE_KINDS)[number];
 export type AgentPoolStatus = (typeof AGENT_POOL_STATUSES)[number];
@@ -604,6 +604,20 @@ export interface ProjectWebMonitorResult {
 	checks: ProjectWebMonitorCheck[];
 	urls: string[];
 	warnings: string[];
+	contentRuntime?: {
+		contentRuntimeSource: string;
+		effectiveContentSource: string;
+		manifestKey: string | null;
+		overlayKey?: string | null;
+		revision?: string | null;
+		snapshotId?: string | null;
+		diagnostics: Array<{
+			code: string;
+			status: string;
+			summary: string;
+			source: string;
+		}>;
+	};
 }
 
 export interface ProjectDeploymentEvent {

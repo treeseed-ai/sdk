@@ -53,43 +53,6 @@ export function migrateLegacyDeployStateUnits(legacyState: Record<string, any>, 
 		cloudflare: {},
 	} as any, target);
 	const units: Record<string, TreeseedUnitPersistedState> = {};
-	const queue = legacyState.queues?.agentWork;
-	if (queue?.name) {
-		units[`queue:${queue.name}`] = {
-			unitId: `queue:${queue.name}`,
-			unitType: 'queue',
-			provider: 'cloudflare',
-			identity,
-			target,
-			logicalName: queue.name,
-			desiredSpecHash: '',
-			lastObservedAt: legacyState.readiness?.lastValidatedAt ?? null,
-			lastReconciledAt: legacyState.lastDeploymentTimestamp ?? null,
-			lastVerifiedAt: legacyState.readiness?.lastValidatedAt ?? null,
-			lastStatus: queue.queueId ? 'ready' : 'pending',
-			lastObservedState: {
-				name: queue.name,
-				dlqName: queue.dlqName ?? null,
-				queueId: queue.queueId ?? null,
-				dlqId: queue.dlqId ?? null,
-			},
-			lastReconciledState: {
-				name: queue.name,
-				dlqName: queue.dlqName ?? null,
-				queueId: queue.queueId ?? null,
-				dlqId: queue.dlqId ?? null,
-			},
-			lastDiff: null,
-			lastVerification: null,
-			lastAction: null,
-			resourceLocators: {
-				queueId: queue.queueId ?? null,
-				dlqId: queue.dlqId ?? null,
-			},
-			warnings: [],
-			error: null,
-		};
-	}
 	const db = legacyState.d1Databases?.SITE_DATA_DB;
 	if (db?.databaseName) {
 		units[`database:${db.databaseName}`] = {

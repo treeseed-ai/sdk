@@ -1,15 +1,22 @@
 import { errorDiagnostic, warningDiagnostic } from './errors.js';
 import {
+	SEED_CONTENT_PUBLISH_TARGETS,
+	SEED_CONTENT_RUNTIME_SOURCES,
 	SEED_ENVIRONMENTS,
+	SEED_LOCAL_CONTENT_MATERIALIZATIONS,
+	SEED_PROJECT_TOPOLOGIES,
 	type SeedCatalogArtifactResource,
 	type SeedCapacityGrantResource,
 	type SeedCapacityLaneResource,
 	type SeedCapacityProviderResource,
+	type SeedContentPublishTargetKind,
+	type SeedContentRuntimeSource,
 	type SeedDiagnostic,
 	type SeedEnvironment,
 	type SeedExecutionProviderNativeLimitResource,
 	type SeedExecutionProviderResource,
 	type SeedHubRepositoryResource,
+	type SeedLocalContentMaterialization,
 	type SeedManifest,
 	type SeedManifestResources,
 	type SeedOperationRecipe,
@@ -19,8 +26,11 @@ import {
 	type SeedOperationRecipeCommand,
 	type SeedOperationRecipeStep,
 	type SeedProductResource,
+	type SeedProjectArchitecture,
+	type SeedProjectContentPublishTarget,
 	type SeedProjectRepository,
 	type SeedProjectResource,
+	type SeedProjectTopology,
 	type SeedRepositoryHostResource,
 	type SeedResourceBase,
 	type SeedTeamResource,
@@ -42,6 +52,10 @@ const RESOURCE_BUCKETS = [
 
 const SUPPORTED_BUCKETS = new Set(['teams', 'repositoryHosts', 'projects', 'hubRepositories', 'products', 'catalogArtifacts', 'capacityProviders', 'capacityGrants', 'workPolicies']);
 const ALLOWED_ENVIRONMENTS = new Set<string>(SEED_ENVIRONMENTS);
+const ALLOWED_PROJECT_TOPOLOGIES = new Set<string>(SEED_PROJECT_TOPOLOGIES);
+const ALLOWED_CONTENT_RUNTIME_SOURCES = new Set<string>(SEED_CONTENT_RUNTIME_SOURCES);
+const ALLOWED_LOCAL_CONTENT_MATERIALIZATIONS = new Set<string>(SEED_LOCAL_CONTENT_MATERIALIZATIONS);
+const ALLOWED_CONTENT_PUBLISH_TARGETS = new Set<string>(SEED_CONTENT_PUBLISH_TARGETS);
 const LEGACY_PROVIDER_TASK_SCOPE_PREFIX = 'provider:tasks:';
 const ALLOWED_RECIPE_CHANNELS = new Set<string>(['cli', 'ui', 'api', 'provider-runtime', 'system-check']);
 const ALLOWED_RECIPE_OPERATIONS = new Set<string>([
@@ -129,6 +143,16 @@ function objectField(record: Record<string, unknown>, field: string, path: strin
 	return value;
 }
 
+function booleanField(record: Record<string, unknown>, field: string, path: string, diagnostics: SeedDiagnostic[]) {
+	const value = record[field];
+	if (value === undefined) return undefined;
+	if (typeof value !== 'boolean') {
+		diagnostics.push(errorDiagnostic('seed.invalid_boolean', `Expected ${field} to be a boolean.`, `${path}.${field}`));
+		return undefined;
+	}
+	return value;
+}
+
 function stringArrayField(record: Record<string, unknown>, field: string, path: string, diagnostics: SeedDiagnostic[]) {
 	const value = record[field];
 	if (value === undefined) return undefined;
@@ -199,10 +223,94 @@ function parseRepository(value: unknown, path: string, diagnostics: SeedDiagnost
 	return repository;
 }
 
+function parseProjectContentPublishTarget(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedProjectContentPublishTarget | undefined {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_project_architecture', 'Expected contentPublishTarget to be an object.', path));
+		return undefined;
+	}
+	const kind = requireString(value, 'kind', path, diagnostics);
+	if (kind && !ALLOWED_CONTENT_PUBLISH_TARGETS.has(kind)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_project_architecture', `Unsupported content publish target: ${kind}.`, `${path}.kind`));
+	}
+	return {
+		kind: ALLOWED_CONTENT_PUBLISH_TARGETS.has(kind) ? kind as SeedContentPublishTargetKind : 'none',
+		bucket: asString(value.bucket) || undefined,
+		prefix: asString(value.prefix) || undefined,
+		manifestPath: asString(value.manifestPath) || undefined,
+		metadata: objectField(value, 'metadata', path, diagnostics),
+	};
+}
+
+function parseProjectArchitecture(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedProjectArchitecture | null {
+	if (!isRecord(value)) {
+		diagnostics.push(errorDiagnostic('seed.missing_project_architecture', 'Project resources must declare canonical architecture.', path));
+		return null;
+	}
+	const topology = requireString(value, 'topology', path, diagnostics);
+	const contentRuntimeSource = requireString(value, 'contentRuntimeSource', path, diagnostics);
+	const localContentMaterialization = requireString(value, 'localContentMaterialization', path, diagnostics);
+	if (topology && !ALLOWED_PROJECT_TOPOLOGIES.has(topology)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_project_architecture', `Unsupported project topology: ${topology}.`, `${path}.topology`));
+	}
+	if (contentRuntimeSource && !ALLOWED_CONTENT_RUNTIME_SOURCES.has(contentRuntimeSource)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_project_architecture', `Unsupported content runtime source: ${contentRuntimeSource}.`, `${path}.contentRuntimeSource`));
+	}
+	if (localContentMaterialization && !ALLOWED_LOCAL_CONTENT_MATERIALIZATIONS.has(localContentMaterialization)) {
+		diagnostics.push(errorDiagnostic('seed.invalid_project_architecture', `Unsupported local content materialization: ${localContentMaterialization}.`, `${path}.localContentMaterialization`));
+	}
+	const architecture: SeedProjectArchitecture = {
+		topology: ALLOWED_PROJECT_TOPOLOGIES.has(topology) ? topology as SeedProjectTopology : 'single_repository_site',
+		rootPath: asString(value.rootPath) || '.',
+		sitePath: requireString(value, 'sitePath', path, diagnostics),
+		contentPath: asString(value.contentPath) || undefined,
+		contentRuntimeSource: ALLOWED_CONTENT_RUNTIME_SOURCES.has(contentRuntimeSource) ? contentRuntimeSource as SeedContentRuntimeSource : 'r2_published_manifest',
+		localContentMaterialization: ALLOWED_LOCAL_CONTENT_MATERIALIZATIONS.has(localContentMaterialization) ? localContentMaterialization as SeedLocalContentMaterialization : 'none',
+		contentPublishTarget: parseProjectContentPublishTarget(value.contentPublishTarget, `${path}.contentPublishTarget`, diagnostics),
+		requiresLocalContentForCi: booleanField(value, 'requiresLocalContentForCi', path, diagnostics),
+		requiresLocalContentForDeploy: booleanField(value, 'requiresLocalContentForDeploy', path, diagnostics),
+	};
+	validateProjectArchitecture(architecture, path, diagnostics);
+	return architecture;
+}
+
+function validateProjectArchitecture(architecture: SeedProjectArchitecture, path: string, diagnostics: SeedDiagnostic[]) {
+	if (!architecture.sitePath) return;
+	if (architecture.topology === 'single_repository_site' && architecture.rootPath === '' && architecture.sitePath === '') {
+		diagnostics.push(errorDiagnostic('seed.invalid_project_architecture', 'single_repository_site projects must have repository-relative rootPath and sitePath values.', path));
+	}
+	if (architecture.topology === 'split_site_content' && !architecture.contentPath && architecture.contentRuntimeSource === 'local_directory') {
+		diagnostics.push(errorDiagnostic('seed.invalid_project_architecture', 'split_site_content projects using local_directory content must declare contentPath.', `${path}.contentPath`));
+	}
+	if (
+		!architecture.requiresLocalContentForCi
+		&& !architecture.requiresLocalContentForDeploy
+		&& architecture.contentRuntimeSource !== 'local_directory'
+		&& ['managed_clone', 'submodule'].includes(architecture.localContentMaterialization)
+	) {
+		diagnostics.push(errorDiagnostic(
+			'seed.local_content_required_by_default',
+			'CI/deploy defaults must not require managed_clone or submodule content unless requiresLocalContentForCi or requiresLocalContentForDeploy is explicit.',
+			`${path}.localContentMaterialization`,
+		));
+	}
+	if (architecture.contentPublishTarget?.kind === 'cloudflare_r2' && architecture.contentRuntimeSource === 'local_directory' && !architecture.contentPath) {
+		diagnostics.push(errorDiagnostic('seed.invalid_project_architecture', 'Cloudflare R2 content publish targets need a contentPath when runtime source is local_directory.', `${path}.contentPath`));
+	}
+}
+
 function parseProject(value: unknown, path: string, diagnostics: SeedDiagnostic[]): SeedProjectResource | null {
 	if (!isRecord(value)) {
 		diagnostics.push(errorDiagnostic('seed.invalid_resource', 'Expected project resource to be an object.', path));
 		return null;
+	}
+	const metadata = objectField(value, 'metadata', path, diagnostics);
+	if (metadata?.repositoryTopology !== undefined || metadata?.contentRoot !== undefined || metadata?.sitePath !== undefined || metadata?.contentPath !== undefined) {
+		diagnostics.push(errorDiagnostic(
+			'seed.legacy_project_topology_metadata',
+			'Project topology must be declared in project.architecture, not metadata.',
+			`${path}.metadata`,
+		));
 	}
 	return {
 		...keyBase(value, path, diagnostics),
@@ -212,7 +320,14 @@ function parseProject(value: unknown, path: string, diagnostics: SeedDiagnostic[
 		description: asString(value.description) || undefined,
 		kind: asString(value.kind) || undefined,
 		repository: parseRepository(value.repository, `${path}.repository`, diagnostics),
-		metadata: objectField(value, 'metadata', path, diagnostics),
+		architecture: parseProjectArchitecture(value.architecture, `${path}.architecture`, diagnostics) ?? {
+			topology: 'single_repository_site',
+			rootPath: '.',
+			sitePath: '',
+			contentRuntimeSource: 'r2_published_manifest',
+			localContentMaterialization: 'none',
+		},
+		metadata,
 	};
 }
 

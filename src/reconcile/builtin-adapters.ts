@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { dirname, relative, resolve } from 'node:path';
 import { resolveCapacityProviderLaunchPlan } from '../capacity-provider.ts';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, setTreeseedMachineEnvironmentValue } from '../operations/services/config-runtime.ts';
 import {
@@ -107,6 +107,7 @@ import {
 	writeReleaseRecord,
 } from './providers/release-private.ts';
 import { checkedOutTemplateRepositories } from '../operations/services/managed-repositories.ts';
+import { runTreeseedGit } from '../operations/services/git-runner.ts';
 
 function toDeployTarget(target: TreeseedReconcileTarget) {
 	return target.kind === 'persistent'
@@ -904,6 +905,313 @@ function buildLocalComposeLaunchEnv(input: TreeseedReconcileAdapterInput) {
 		...input.context.launchEnv,
 		...fallback,
 		...(typeof input.unit.spec.env === 'object' && input.unit.spec.env ? input.unit.spec.env as Record<string, string> : {}),
+	};
+}
+
+function localContentSpecString(input: TreeseedReconcileAdapterInput, key: string) {
+	const value = input.unit.spec[key];
+	return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function localContentSpecRecord(input: TreeseedReconcileAdapterInput, key: string) {
+	const value = input.unit.spec[key];
+	return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function localContentGitEnvironment(input: TreeseedReconcileAdapterInput) {
+	const repo = localContentSpecRecord(input, 'contentRepository');
+	const owner = typeof repo.owner === 'string' ? repo.owner : '';
+	const name = typeof repo.name === 'string' ? repo.name : '';
+	if (!owner || !name) return { env: input.context.launchEnv, credential: null as ReturnType<typeof resolveGitHubCredentialForRepository> | null };
+	const credential = resolveGitHubCredentialForRepository(`${owner}/${name}`, { env: input.context.launchEnv });
+	const env = credential.token
+		? {
+				...input.context.launchEnv,
+				GH_TOKEN: credential.token,
+				GITHUB_TOKEN: credential.token,
+			}
+		: input.context.launchEnv;
+	return { env, credential };
+}
+
+function localContentPathInsideTenant(input: TreeseedReconcileAdapterInput, targetPath: string | null) {
+	if (!targetPath) return true;
+	const resolvedTarget = resolve(targetPath);
+	const resolvedTenant = resolve(input.context.tenantRoot);
+	return resolvedTarget === resolvedTenant || resolvedTarget.startsWith(`${resolvedTenant}/`);
+}
+
+function inspectLocalContentGit(targetPath: string) {
+	const origin = runTreeseedGit(['remote', 'get-url', 'origin'], { cwd: targetPath, mode: 'read', allowFailure: true }).stdout.trim();
+	const branch = runTreeseedGit(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: targetPath, mode: 'read', allowFailure: true }).stdout.trim();
+	const status = runTreeseedGit(['status', '--porcelain'], { cwd: targetPath, mode: 'read', allowFailure: true }).stdout.trim();
+	return {
+		isGit: Boolean(runTreeseedGit(['rev-parse', '--is-inside-work-tree'], { cwd: targetPath, mode: 'read', allowFailure: true }).stdout.trim()),
+		origin: origin || null,
+		branch: branch || null,
+		dirty: status.length > 0,
+	};
+}
+
+function localContentObservedState(input: TreeseedReconcileAdapterInput): TreeseedObservedUnitState {
+	const targetPath = localContentSpecString(input, 'effectiveLocalPath');
+	const materialization = localContentSpecString(input, 'localContentMaterialization') ?? 'none';
+	const executeRequested = input.unit.spec.executeRequested === true;
+	const warnings: string[] = [];
+	if (!localContentPathInsideTenant(input, targetPath)) {
+		warnings.push('local content target path is outside the Treeseed workspace');
+		return {
+			...genericObservedState(input, false, warnings),
+			status: 'error',
+			live: {
+				...input.unit.spec,
+				targetPath,
+				materializationStatus: 'blocked',
+			},
+		};
+	}
+	if (materialization === 'none' || !targetPath) {
+		return {
+			...genericObservedState(input, true, warnings),
+			live: {
+				...input.unit.spec,
+				materializationStatus: 'not_requested',
+			},
+		};
+	}
+	const exists = existsSync(targetPath);
+	const stat = exists ? statSync(targetPath) : null;
+	if (exists && !stat?.isDirectory()) {
+		warnings.push('local content target path exists but is not a directory');
+		return {
+			...genericObservedState(input, false, warnings),
+			status: 'error',
+			live: {
+				...input.unit.spec,
+				targetPath,
+				materializationStatus: 'blocked',
+			},
+		};
+	}
+	const git = exists ? inspectLocalContentGit(targetPath) : null;
+	if (exists && materialization === 'managed_clone' && !git?.isGit) {
+		warnings.push('managed local content target exists but is not a Git worktree');
+		return {
+			...genericObservedState(input, false, warnings),
+			status: 'error',
+			live: {
+				...input.unit.spec,
+				targetPath,
+				materializationStatus: 'blocked',
+				git,
+			},
+		};
+	}
+	const status = exists
+		? materialization === 'managed_clone'
+			? 'managed_clone_ready'
+			: materialization === 'submodule'
+				? 'submodule_ready'
+				: 'existing_path_ready'
+		: materialization === 'managed_clone'
+			? 'managed_clone_missing'
+			: materialization === 'submodule'
+				? 'submodule_missing'
+				: 'existing_path_missing';
+	if (git?.dirty) {
+		warnings.push('local content Git worktree has uncommitted changes; Treeseed will not reset or overwrite it');
+	}
+	return {
+		...genericObservedState(input, exists || !executeRequested, warnings),
+		status: exists || !executeRequested ? 'ready' : 'pending',
+		live: {
+			...input.unit.spec,
+			targetPath,
+			materializationStatus: status,
+			git,
+		},
+		locators: {
+			unitId: input.unit.unitId,
+			targetPath,
+			origin: git?.origin ?? null,
+		},
+	};
+}
+
+function expectedLocalContentOrigin(input: TreeseedReconcileAdapterInput) {
+	const repo = localContentSpecRecord(input, 'contentRepository');
+	return typeof repo.gitUrl === 'string' ? repo.gitUrl : null;
+}
+
+function originMatches(observed: TreeseedObservedUnitState, expected: string | null) {
+	const liveGit = observed.live.git && typeof observed.live.git === 'object' ? observed.live.git as Record<string, unknown> : null;
+	const origin = typeof liveGit?.origin === 'string' ? liveGit.origin : null;
+	return !origin || !expected || origin === expected || origin.replace(/\.git$/u, '') === expected.replace(/\.git$/u, '');
+}
+
+function githubRepoSlugFromUrl(url: string | null) {
+	if (!url) return null;
+	if (!/^(https?:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)/iu.test(url)) return null;
+	const raw = url
+		.replace(/^https?:\/\/github\.com\//iu, '')
+		.replace(/^git@github\.com:/iu, '')
+		.replace(/^ssh:\/\/git@github\.com\//iu, '')
+		.replace(/\.git$/iu, '')
+		.replace(/^\/+|\/+$/gu, '');
+	const [owner, name, ...extra] = raw.split('/').filter(Boolean);
+	return owner && name && extra.length === 0 ? `${owner}/${name}` : null;
+}
+
+function runLocalContentClone(input: TreeseedReconcileAdapterInput, targetPath: string, gitUrl: string, branch: string | null) {
+	mkdirSync(dirname(targetPath), { recursive: true });
+	const { env, credential } = localContentGitEnvironment(input);
+	const repoSlug = githubRepoSlugFromUrl(gitUrl);
+	if (repoSlug && credential?.configured) {
+		const args = ['repo', 'clone', repoSlug, targetPath, '--'];
+		if (branch) args.push('--branch', branch);
+		const result = spawnSync('gh', args, {
+			cwd: input.context.tenantRoot,
+			env: env as NodeJS.ProcessEnv,
+			encoding: 'utf8',
+			stdio: 'pipe',
+			timeout: 120_000,
+			maxBuffer: 1024 * 1024 * 16,
+		});
+		if (result.status !== 0) {
+			throw new Error((result.stderr || result.stdout || 'GitHub CLI clone failed. Run `npx trsd install --json` and configure TREESEED_GITHUB_TOKEN if this repository is private.').trim());
+		}
+		return {
+			status: result.status,
+			stdout: result.stdout ?? '',
+			stderr: result.stderr ?? '',
+			tool: 'gh',
+			credentialEnvName: credential.envName,
+			fallbackUsed: credential.fallbackUsed,
+		};
+	}
+	const args = ['clone'];
+	if (branch) args.push('--branch', branch);
+	args.push(gitUrl, targetPath);
+	const result = runTreeseedGit(args, {
+		cwd: input.context.tenantRoot,
+		mode: 'mutate',
+		env,
+		timeoutMs: 120_000,
+		maxBuffer: 1024 * 1024 * 16,
+	});
+	return {
+		...result,
+		tool: 'git',
+		credentialEnvName: credential?.envName ?? null,
+		fallbackUsed: credential?.fallbackUsed ?? false,
+	};
+}
+
+function buildLocalContentMaterializationAdapter(): TreeseedReconcileAdapter {
+	return {
+		providerId: 'local',
+		unitTypes: ['local-content-materialization'],
+		supports(unitType, providerId) {
+			return unitType === 'local-content-materialization' && providerId === 'local';
+		},
+		refresh(input) {
+			return localContentObservedState(input);
+		},
+		diff(input) {
+			const materialization = localContentSpecString(input, 'localContentMaterialization') ?? 'none';
+			const executeRequested = input.unit.spec.executeRequested === true;
+			const expectedOrigin = expectedLocalContentOrigin(input);
+			if (input.observed.status === 'error') {
+				return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
+			}
+			if (materialization === 'existing_path' && !input.observed.exists) {
+				return { action: 'blocked', reasons: ['existing local content path is missing; choose preview/edit with managed_clone or configure the path'], before: input.observed.live, after: input.unit.spec };
+			}
+			if (input.observed.exists && !originMatches(input.observed, expectedOrigin)) {
+				return { action: 'blocked', reasons: ['managed local content origin does not match the configured content repository'], before: input.observed.live, after: input.unit.spec };
+			}
+			if (!executeRequested) {
+				return noopDiff();
+			}
+			if (!input.observed.exists && (materialization === 'managed_clone' || materialization === 'submodule')) {
+				return { action: 'create', reasons: [`${materialization} local content is requested but missing`], before: input.observed.live, after: input.unit.spec };
+			}
+			if (input.observed.exists && materialization === 'managed_clone') {
+				return { action: 'update', reasons: ['managed local content exists; fetch without resetting local work'], before: input.observed.live, after: input.unit.spec };
+			}
+			return noopDiff();
+		},
+		apply(input) {
+			if (input.diff.action === 'noop' || input.diff.action === 'blocked') return genericResult(input);
+			const materialization = localContentSpecString(input, 'localContentMaterialization') ?? 'none';
+			const targetPath = localContentSpecString(input, 'effectiveLocalPath');
+			const expectedOrigin = expectedLocalContentOrigin(input);
+			const repo = localContentSpecRecord(input, 'contentRepository');
+			const branch = typeof repo.defaultBranch === 'string' ? repo.defaultBranch : null;
+			if (!targetPath) return genericResult(input);
+			if (materialization === 'submodule') {
+				const submodulePath = typeof repo.submodulePath === 'string' ? repo.submodulePath : localContentSpecString(input, 'contentPath');
+				if (!submodulePath) return genericResult(input);
+				const { env } = localContentGitEnvironment(input);
+				const submodule = runTreeseedGit(['submodule', 'update', '--init', '--', submodulePath], {
+					cwd: input.context.tenantRoot,
+					mode: 'mutate',
+					env,
+					timeoutMs: 120_000,
+					maxBuffer: 1024 * 1024 * 16,
+				});
+				return genericResult(input, { ...input.observed.live, submodule: { status: submodule.status } });
+			}
+			if (materialization === 'managed_clone' && expectedOrigin) {
+				const result = input.observed.exists
+					? runTreeseedGit(['fetch', 'origin'], {
+							cwd: targetPath,
+							mode: 'mutate',
+							env: localContentGitEnvironment(input).env,
+							timeoutMs: 120_000,
+							maxBuffer: 1024 * 1024 * 16,
+						})
+					: runLocalContentClone(input, targetPath, expectedOrigin, branch);
+				return genericResult(input, {
+					...input.observed.live,
+					materializedAt: nowIso(),
+					gitOperation: {
+						status: result.status,
+						tool: 'tool' in result ? result.tool : 'git',
+						credentialEnvName: 'credentialEnvName' in result ? result.credentialEnvName : null,
+						fallbackUsed: 'fallbackUsed' in result ? result.fallbackUsed : false,
+					},
+				});
+			}
+			return genericResult(input);
+		},
+		verify(input) {
+			const targetPath = localContentSpecString(input, 'effectiveLocalPath');
+			const materialization = localContentSpecString(input, 'localContentMaterialization') ?? 'none';
+			const exists = !targetPath || existsSync(targetPath);
+			const expectedOrigin = expectedLocalContentOrigin(input);
+			const originOk = originMatches(input.observed, expectedOrigin);
+			const checks = [
+				verificationCheck('local-content.path', 'Local content path policy is satisfied', 'sdk', {
+					exists: materialization === 'none' ? true : exists,
+					configured: true,
+					ready: materialization === 'none' || exists,
+					verified: materialization === 'none' || exists,
+					observed: targetPath,
+					issues: materialization !== 'none' && !exists ? ['Local content path is missing.'] : [],
+				}),
+				verificationCheck('local-content.origin', 'Local content origin matches the configured repository when observable', 'sdk', {
+					exists: true,
+					configured: originOk,
+					ready: originOk,
+					verified: originOk,
+					expected: expectedOrigin,
+					observed: input.observed.live.git,
+					issues: originOk ? [] : ['Origin does not match configured content repository.'],
+				}),
+			];
+			return summarizeVerification(input.unit.unitId, checks, input.observed.warnings);
+		},
 	};
 }
 
@@ -2268,67 +2576,7 @@ function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRu
 		current.previewDatabaseId = created.previewDatabaseUuid ?? created.uuid;
 	};
 
-	const ensureQueue = () => {
-		const current = state.queues?.agentWork;
-		if (!current?.name) {
-			return;
-		}
-		const liveQueue = findCloudflareQueueByName(input, env, current.name, { attempts: 1, delayMs: 0 });
-		const liveDlq = current.dlqName
-			? findCloudflareQueueByName(input, env, current.dlqName, { attempts: 1, delayMs: 0 })
-			: null;
-		if (liveQueue) {
-			current.queueId = queueId(liveQueue);
-			current.dlqId = current.dlqName ? queueId(liveDlq) : null;
-			return;
-		}
-		let refreshedQueues = queues;
-		const existing = refreshedQueues.find((entry) => queueName(entry) === current.name);
-		if (existing) {
-			current.queueId = queueId(existing);
-			const existingDlq = current.dlqName ? refreshedQueues.find((entry) => queueName(entry) === current.dlqName) : null;
-			current.dlqId = queueId(existingDlq);
-			return;
-		}
-		if (dryRun) {
-			current.queueId = `dryrun-${current.name}`;
-			current.dlqId = current.dlqName ? `dryrun-${current.dlqName}` : null;
-			return;
-		}
-		try {
-			runWrangler(['queues', 'create', current.name], {
-				cwd: input.context.tenantRoot,
-				capture: true,
-				env,
-			});
-		} catch (error) {
-			if (!isWranglerAlreadyExistsError(error, [/Queue name .* is already taken/i, /\[code:\s*11009\]/i])) {
-				throw error;
-			}
-		}
-		refreshedQueues = listQueues(input.context.tenantRoot, env);
-		if (current.dlqName && !refreshedQueues.find((entry) => queueName(entry) === current.dlqName)) {
-			try {
-				runWrangler(['queues', 'create', current.dlqName], {
-					cwd: input.context.tenantRoot,
-					capture: true,
-					env,
-				});
-			} catch (error) {
-				if (!isWranglerAlreadyExistsError(error, [/Queue name .* is already taken/i, /\[code:\s*11009\]/i])) {
-					throw error;
-				}
-			}
-		}
-		const created = findCloudflareQueueByName(input, env, current.name);
-		current.queueId = created ? queueId(created) : syntheticQueueLocator(current.name);
-		const createdDlq = current.dlqName ? findCloudflareQueueByName(input, env, current.dlqName) : null;
-		current.dlqId = current.dlqName
-			? (createdDlq ? queueId(createdDlq) : syntheticQueueLocator(current.dlqName))
-			: null;
-	};
-
-	const ensureR2Bucket = () => {
+		const ensureR2Bucket = () => {
 		const bucketName = state.content?.bucketName;
 		if (!bucketName) {
 			return;
@@ -2501,20 +2749,19 @@ function observeCloudflareUnit(input: TreeseedReconcileAdapterInput): TreeseedOb
 	const { state, kvNamespaces, d1Databases, queues, buckets, pagesProjects, turnstileWidgets } = snapshot;
 	switch (input.unit.unitType) {
 		case 'queue': {
-			const liveQueue = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.name);
-			const liveDlq = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.dlqName);
+			const name = input.unit.spec.name;
+			const dlqName = input.unit.spec.dlqName;
+			const liveQueue = queues.find((entry) => queueName(entry) === name);
+			const liveDlq = dlqName ? queues.find((entry) => queueName(entry) === dlqName) : null;
 			return {
-				exists: Boolean(liveQueue || state.queues?.agentWork?.queueId),
+				exists: Boolean(liveQueue),
 				status: liveQueue ? 'ready' : 'pending',
-				live: { ...(state.queues?.agentWork ?? {}) },
+				live: { name, dlqName },
 				locators: {
-					queueId: queueId(liveQueue) ?? state.queues?.agentWork?.queueId ?? null,
-					dlqId: queueId(liveDlq) ?? state.queues?.agentWork?.dlqId ?? null,
+					queueId: queueId(liveQueue) ?? null,
+					dlqId: queueId(liveDlq) ?? null,
 				},
-				warnings: [
-					...(isSyntheticQueueLocator(state.queues?.agentWork?.queueId) ? ['Cloudflare queue id is pending propagation; using queue-name fallback.'] : []),
-					...(isSyntheticQueueLocator(state.queues?.agentWork?.dlqId) ? ['Cloudflare dead-letter queue id is pending propagation; using queue-name fallback.'] : []),
-				],
+				warnings: [],
 			};
 		}
 		case 'database': {
@@ -2605,7 +2852,7 @@ function verifyCloudflareUnitOnce(input: TreeseedReconcileAdapterInput, postcond
 	const { state, kvNamespaces, d1Databases, queues, buckets, pagesProjects, turnstileWidgets, env } = snapshot;
 	switch (input.unit.unitType) {
 		case 'queue': {
-			const queue = state.queues?.agentWork;
+			const queue = input.unit.spec;
 			const liveQueue = findCloudflareQueueByName(input, env, queue?.name, { attempts: 12, delayMs: 500 });
 			const liveDlq = queue?.dlqName
 				? findCloudflareQueueByName(input, env, queue.dlqName, { attempts: 12, delayMs: 500 })
@@ -4814,6 +5061,7 @@ export function createDockerReconcileAdapters() {
 
 export function createLocalProcessReconcileAdapters() {
 	return [
+		buildLocalContentMaterializationAdapter(),
 		buildLocalProcessAdapter(),
 	];
 }

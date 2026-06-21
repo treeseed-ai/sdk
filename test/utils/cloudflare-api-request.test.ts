@@ -22,7 +22,7 @@ describe('cloudflare api request helper', () => {
 				status: 0,
 				stdout: JSON.stringify({
 					ok: true,
-					payload: { success: true, result: [{ name: 'agent-work' }] },
+					payload: { success: true, result: [{ name: 'background-events' }] },
 				}),
 				stderr: '',
 			});
@@ -30,7 +30,7 @@ describe('cloudflare api request helper', () => {
 
 		expect(cloudflareApiRequest('/accounts/account/queues', {
 			env: { TREESEED_CLOUDFLARE_API_TOKEN: 'token' },
-		})).toEqual({ success: true, result: [{ name: 'agent-work' }] });
+		})).toEqual({ success: true, result: [{ name: 'background-events' }] });
 		expect(spawnSyncMock).toHaveBeenCalledTimes(2);
 	}, 30000);
 

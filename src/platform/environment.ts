@@ -356,6 +356,27 @@ function workdayWindowsDefault() {
 	return JSON.stringify([{ days: [1, 2, 3, 4, 5], startTime: '09:00', endTime: '17:00' }]);
 }
 
+function localApiDatabaseUrlDefault(
+	_context: TreeseedEnvironmentContext,
+	_scope: TreeseedEnvironmentScope,
+	values: Record<string, string | undefined> = {},
+) {
+	const port = values.TREESEED_MARKET_LOCAL_POSTGRES_PORT?.trim()
+		|| values.TREESEED_API_LOCAL_POSTGRES_PORT?.trim()
+		|| process.env.TREESEED_MARKET_LOCAL_POSTGRES_PORT?.trim()
+		|| '55432';
+	const database = values.TREESEED_MARKET_LOCAL_POSTGRES_DATABASE?.trim()
+		|| values.TREESEED_API_LOCAL_POSTGRES_DATABASE?.trim()
+		|| 'market_local';
+	const user = values.TREESEED_MARKET_LOCAL_POSTGRES_USER?.trim()
+		|| values.TREESEED_API_LOCAL_POSTGRES_USER?.trim()
+		|| 'treeseed';
+	const password = values.TREESEED_MARKET_LOCAL_POSTGRES_PASSWORD?.trim()
+		|| values.TREESEED_API_LOCAL_POSTGRES_PASSWORD?.trim()
+		|| 'treeseed';
+	return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(password)}@127.0.0.1:${port}/${encodeURIComponent(database)}`;
+}
+
 function normalizeUrl(value: string) {
 	return value.trim().replace(/\/$/u, '');
 }
@@ -559,6 +580,7 @@ const VALUE_RESOLVERS: NamedResolverMap = {
 	localFormsBypassDefault: () => 'true',
 	localSmtpHostDefault: () => localSmtpHostDefault(),
 	localSmtpPortDefault: () => localSmtpPortDefault(),
+	localApiDatabaseUrlDefault: (context, scope, values) => localApiDatabaseUrlDefault(context, scope, values),
 	contactEmailDefault: (context) => contactEmailDefault(context),
 	projectDomainsDefault: (context) => primaryHostFromUrl(context.deployConfig.siteUrl),
 	apiBaseUrlDefault: (context, scope, values) => resolveConfiguredApiBaseUrl(context, scope, values),

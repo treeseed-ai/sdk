@@ -101,6 +101,7 @@ export function normalizeSeedResources(manifest: SeedManifest, selected: SeedEnv
 				description: project.description ?? null,
 				kind: project.kind ?? null,
 				repository: project.repository,
+				architecture: project.architecture,
 				metadata: withMetadata(manifest, project.key, project.metadata),
 			},
 		});

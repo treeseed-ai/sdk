@@ -6,8 +6,13 @@ import {
 	deriveDecisionExecutionInputFromAssignment,
 	deriveModeRunUsageSettlement,
 	deriveProviderAvailabilitySession,
+	buildExecutionProviderAssignmentExplanation,
 	buildAgentCapacityPlanDraft,
+	compileExecutionCapabilityDemand,
+	compileExecutionCapabilitySupply,
 	computeDecisionScopeHash,
+	decorateExecutionProviderVisibility,
+	evaluateExecutionProviderEligibility,
 	evaluateFallbackQuota,
 	evaluateTreeDxProxyHandleAccess,
 	hasAcceptedCapacityPlanProvenance,
@@ -18,6 +23,7 @@ import {
 	isProviderAssignmentLeasable,
 	isProviderAssignmentLeaseExpired,
 	selectAgentKernelModeDecision,
+	summarizeExecutionProviderVisibility,
 	treeDxProxyHeaders,
 	redactedProviderAssignmentCapabilityHandles,
 	validateProviderAssignmentCapabilityHandles,
@@ -405,6 +411,357 @@ describe('agent capacity contracts', () => {
 		});
 	});
 
+	it('compiles execution capability demand from agent, class, decision, assignment, and work package', () => {
+		const demand = compileExecutionCapabilityDemand({
+			agent: {
+				execution: {
+					allowedPaths: ['docs/**'],
+					forbiddenPaths: ['.env*'],
+					maxConcurrency: 1,
+					timeoutSeconds: 60,
+					cooldownSeconds: 0,
+					leaseSeconds: 60,
+					retryLimit: 1,
+					branchPrefix: 'agent',
+					providerProfile: {
+						requiredCapabilities: ['planning', 'repo_read'],
+						preferredLanes: [{ provider: 'codex', weight: 80 }],
+						acceptableFallbacks: [],
+						fallbackPolicy: 'fail_if_unavailable',
+					},
+				},
+				outputs: {
+					messageTypes: ['task_complete'],
+					modelMutations: ['knowledge_update'],
+				},
+			},
+			projectAgentClass: { requiredCapabilities: ['human_review'] },
+			decisionInput: {
+				mode: 'acting',
+				input: { requiredCapabilities: ['repo_write'] },
+				metadata: { requiredCapabilities: ['qa_validation'] },
+			},
+			capacityEnvelope: {
+				mode: 'acting',
+				metadata: { requiredCapabilities: ['workflow_dispatch'] },
+			},
+			workUnit: {
+				requiredCapabilities: ['release_gate'],
+				metadata: { requiredCapabilities: ['verification'] },
+			},
+			assignment: {
+				mode: 'acting',
+				allowedOutputs: { types: ['assignment_summary'] },
+				workspaceContext: {
+					externalIssueKey: 'JIRA-123',
+					externalJobId: 'job-123',
+				},
+				metadata: { requiredCapabilities: ['project_context'] },
+				capabilityHandles: {
+					workspaceAccessMode: 'brokered_workspace',
+					repository: [{
+						id: 'repo-handle',
+						kind: 'repository_access',
+						teamId: 'team-1',
+						projectId: 'project-1',
+						assignmentId: 'assignment-1',
+						scopes: ['repo:read'],
+						operations: ['read'],
+						allowedPaths: ['docs/**'],
+					}],
+					workflowOperations: [{
+						id: 'workflow-handle',
+						kind: 'workflow_operation',
+						teamId: 'team-1',
+						projectId: 'project-1',
+						assignmentId: 'assignment-1',
+						scopes: ['workflow:dispatch'],
+						operations: ['dispatch_workflow'],
+						operationId: 'verify',
+						repository: 'treeseed/project',
+						workflowFile: '.github/workflows/verify.yml',
+					}],
+					secrets: [{
+						id: 'secret-handle',
+						kind: 'secret_use',
+						teamId: 'team-1',
+						projectId: 'project-1',
+						assignmentId: 'assignment-1',
+						scopes: ['secret:use'],
+						operations: ['use'],
+						secretClasses: ['github_actions'],
+					}],
+				},
+			},
+			workPackage: {
+				kind: 'implementation',
+				title: 'Implement docs',
+				summary: 'Implement docs.',
+				instructions: 'Update docs.',
+				context: {},
+				expectedOutputs: [{ type: 'pr_link', required: true }],
+				constraints: {
+					mode: 'acting',
+					requiredCapabilities: ['implementation'],
+					allowedPaths: ['src/**'],
+					forbiddenPaths: ['secrets/**'],
+				},
+			},
+		});
+
+		expect(demand.required).toEqual([
+			'human_review',
+			'implementation',
+			'planning',
+			'project_context',
+			'qa_validation',
+			'release_gate',
+			'repo_read',
+			'repo_write',
+			'verification',
+			'workflow_dispatch',
+		]);
+		expect(demand.outputTypes).toEqual(['assignment_summary', 'knowledge_update', 'pr_link', 'task_complete']);
+		expect(demand.resourceNeeds?.map((need) => need.kind)).toEqual(['repository', 'workflow', 'secret', 'external_issue', 'external_job']);
+		expect(demand.metadata).toMatchObject({
+			allowedPaths: ['docs/**', 'src/**'],
+			forbiddenPaths: ['.env*', 'secrets/**'],
+		});
+		expect(demand.required).not.toContain('docs/**');
+	});
+
+	it('compiles execution capability supply from descriptor, provider records, sessions, grants, and pressure', () => {
+		const supply = compileExecutionCapabilitySupply({
+			capacityProviderId: 'provider-1',
+			descriptor: {
+				id: 'codex',
+				kind: 'ai_model',
+				capabilities: ['planning', 'repo_read'],
+				capabilityAliases: ['codex_subscription'],
+				nativeUnit: 'token_or_wall_minute',
+				quotaVisibility: 'partial',
+				maxConcurrentAssignments: 2,
+				supportsAsync: false,
+				supportsCancel: false,
+				supportsResume: false,
+				supportsUsage: false,
+				supportsArtifacts: false,
+			},
+			executionProvider: {
+				id: 'execution-1',
+				kind: 'codex_subscription',
+				nativeUnit: 'wall_minute',
+				quotaVisibility: 'exact',
+				maxConcurrentWorkers: 4,
+				metadata: {
+					capabilities: ['repo_write'],
+					capabilityAliases: ['large_reasoning_model'],
+				},
+				config: {},
+			} as never,
+			availabilitySession: {
+				id: 'session-1',
+				status: 'open',
+				checkedInAt: '2026-01-01T00:00:00.000Z',
+				capabilities: ['verification'],
+				runnerPressure: { pressure: 'busy' },
+			} as never,
+			providerCapabilities: ['qa_validation'],
+			checkInCapabilities: ['human_review'],
+			grants: [{
+				id: 'grant-1',
+				state: 'active',
+				grantScope: 'project',
+			} as never],
+		});
+
+		expect(supply).toMatchObject({
+			capacityProviderId: 'provider-1',
+			executionProviderId: 'execution-1',
+			kind: 'ai_model',
+			aliases: ['codex_subscription', 'large_reasoning_model'],
+			grants: ['grant-1'],
+			pressure: 'busy',
+			maxConcurrentAssignments: 2,
+			nativeUnit: 'token_or_wall_minute',
+			quotaVisibility: 'partial',
+		});
+		expect(supply.capabilities).toEqual(['codex_subscription', 'human_review', 'planning', 'qa_validation', 'repo_read', 'repo_write', 'verification']);
+	});
+
+	it('evaluates execution provider eligibility with required capabilities, aliases, preferences, and gates', () => {
+		const demand = {
+			required: ['planning', 'repo_read'],
+			preferred: ['fast_start'],
+			mode: 'planning' as const,
+		};
+		const supply = {
+			capacityProviderId: 'provider-1',
+			executionProviderId: 'execution-1',
+			kind: 'ai_model',
+			capabilities: ['planning'],
+			aliases: ['repo_read'],
+			grants: [],
+		};
+
+		expect(evaluateExecutionProviderEligibility({ demand, supply })).toMatchObject({
+			eligible: true,
+			missingCapabilities: [],
+			preferredCapabilities: ['fast_start'],
+		});
+		expect(evaluateExecutionProviderEligibility({
+			demand: { ...demand, required: ['planning', 'repo_write'] },
+			supply,
+		})).toMatchObject({
+			eligible: false,
+			missingCapabilities: ['repo_write'],
+			reasonCodes: ['missing_capability:repo_write'],
+		});
+		expect(evaluateExecutionProviderEligibility({
+			demand,
+			supply: { ...supply, pressure: 'exhausted' },
+		})).toMatchObject({
+			eligible: false,
+			reasonCodes: ['runner_pressure_blocked'],
+		});
+		expect(evaluateExecutionProviderEligibility({
+			demand,
+			supply,
+			gates: { readinessAllows: false },
+		})).toMatchObject({
+			eligible: false,
+			reasonCodes: ['readiness_blocked'],
+		});
+	});
+
+	it('builds assignment explanations with capability demand supply and blocked candidate reasons', () => {
+		const demand = {
+			required: ['planning', 'repo_write'],
+			preferred: ['verification'],
+			mode: 'acting' as const,
+		};
+		const supply = {
+			capacityProviderId: 'provider-1',
+			executionProviderId: 'execution-1',
+			kind: 'human_issue_queue',
+			capabilities: ['planning'],
+			aliases: [],
+			grants: ['grant-1'],
+		};
+		const eligibility = evaluateExecutionProviderEligibility({
+			demand,
+			supply,
+			gates: { readinessAllows: false },
+		});
+		const explanation = buildExecutionProviderAssignmentExplanation({
+			source: 'approved_decision',
+			sourceId: 'input-1',
+			demand,
+			supply,
+			eligibility,
+			grantId: 'grant-1',
+			grantScope: 'project',
+			readinessGate: { status: 'blocked' },
+			allocationBudgetGate: { status: 'ok' },
+			capabilityHandleGate: { status: 'not_issued' },
+		});
+
+		expect(explanation).toMatchObject({
+			eligible: false,
+			reasons: ['missing_capability:repo_write', 'readiness_blocked'],
+			grantScope: 'project',
+			gates: {
+				requiredCapabilities: ['planning', 'repo_write'],
+				availableCapabilities: ['planning'],
+				missingCapabilities: ['repo_write'],
+				selectedProvider: 'provider-1',
+				selectedExecutionProvider: 'execution-1',
+				executionProviderKind: 'human_issue_queue',
+				grantId: 'grant-1',
+				readinessGate: { status: 'blocked' },
+			},
+		});
+	});
+
+	it('rejects assignments whose execution capability explanation does not cover demand', () => {
+		const baseAssignment = {
+			id: 'assignment-capabilities',
+			teamId: 'team-1',
+			projectId: 'project-1',
+			capacityProviderId: 'provider-1',
+			projectAgentClassId: 'class-1',
+			mode: 'planning',
+			status: 'leased',
+			leaseState: 'leased',
+			leaseExpiresAt: '2026-01-01T12:05:00.000Z',
+			agentId: 'planner',
+			capacityEnvelope: {
+				teamId: 'team-1',
+				projectId: 'project-1',
+				mode: 'planning',
+				capacityProviderId: 'provider-1',
+			},
+			decisionInput: {
+				teamId: 'team-1',
+				projectId: 'project-1',
+				projectAgentClassId: 'class-1',
+				mode: 'planning',
+				agentId: 'planner',
+				input: {},
+			},
+		} as const;
+		const projectAgentClass = {
+			id: 'class-1',
+			teamId: 'team-1',
+			projectId: 'project-1',
+			slug: 'planner',
+			name: 'Planner',
+			status: 'active',
+			allowedModes: ['planning'],
+			requiredCapabilities: ['repo_read'],
+			kernelProfile: { allowedModes: ['planning'] },
+			kernelPolicy: {},
+			handlerRefs: {},
+			outputContracts: {},
+		} as const;
+
+		expect(validateAgentKernelModeExecutionInput({
+			assignment: baseAssignment,
+			projectAgentClass,
+			now: '2026-01-01T12:00:00.000Z',
+		})).toMatchObject({
+			code: 'assignment_eligibility_capability_mismatch',
+			metadata: {
+				missingCapabilities: ['repo_read'],
+				source: 'execution_capability_eligibility',
+			},
+		});
+		expect(validateAgentKernelModeExecutionInput({
+			assignment: {
+				...baseAssignment,
+				explanation: {
+					gates: {
+						availableCapabilities: ['repo_read'],
+					},
+				},
+			},
+			projectAgentClass,
+			now: '2026-01-01T12:00:00.000Z',
+		})).toBeNull();
+		expect(validateAgentKernelModeExecutionInput({
+			assignment: {
+				...baseAssignment,
+				explanation: {
+					gates: {
+						aliasCapabilities: ['repo_read'],
+					},
+				},
+			},
+			projectAgentClass,
+			now: '2026-01-01T12:00:00.000Z',
+		})).toBeNull();
+	});
+
 	it('builds durable capacity-plan work units from accepted execution inputs', () => {
 		const capacity = {
 			teamId: 'team-1',
@@ -707,5 +1064,137 @@ describe('agent capacity contracts', () => {
 				},
 			},
 		})).toMatchObject({ code: 'assignment_capability_handle_write_not_ready' });
+	});
+
+	it('summarizes assignment execution visibility from lifecycle output', () => {
+		const summary = summarizeExecutionProviderVisibility({
+			assignment: {
+				id: 'assignment-visibility-1',
+				status: 'returned',
+				capacityProviderId: 'provider-1',
+				executionProviderId: 'jira',
+				lifecycleOutput: {
+					status: 'waiting',
+					externalRef: 'TS-12',
+					externalUrl: 'https://jira.example.test/browse/TS-12',
+					metadata: {
+						executionStatus: 'blocked',
+						blockerReason: 'Needs product clarification.',
+						usage: [{ kind: 'jira_time_spent', unit: 'second', amount: 120 }],
+						artifacts: [{ kind: 'external_issue', name: 'TS-12' }],
+					},
+				},
+			},
+		});
+
+		expect(summary).toMatchObject({
+			executionProviderId: 'jira',
+			adapterStatus: 'blocked',
+			externalRef: 'TS-12',
+			externalUrl: 'https://jira.example.test/browse/TS-12',
+			blockerReason: 'Needs product clarification.',
+			usage: [{ kind: 'jira_time_spent', unit: 'second', amount: 120 }],
+			artifacts: [{ kind: 'external_issue', name: 'TS-12' }],
+		});
+	});
+
+	it('summarizes mode-run execution visibility from outputs and trace refs', () => {
+		const summary = summarizeExecutionProviderVisibility({
+			modeRun: {
+				id: 'mode-run-1',
+				executionProviderId: 'workflow',
+				status: 'succeeded',
+				outputs: {
+					status: 'completed',
+					externalRef: 'run-123',
+					externalUrl: 'https://github.example.test/runs/123',
+					usage: [{ kind: 'runner_minutes', unit: 'minute', amount: 2 }],
+					artifacts: [{ kind: 'workflow_logs', name: 'logs' }],
+				},
+				traceRefs: {
+					externalRef: 'trace-fallback',
+					externalUrl: 'https://example.test/fallback',
+				},
+			},
+		});
+
+		expect(summary).toMatchObject({
+			executionProviderId: 'workflow',
+			adapterStatus: 'completed',
+			externalRef: 'run-123',
+			externalUrl: 'https://github.example.test/runs/123',
+			usage: [{ kind: 'runner_minutes', unit: 'minute', amount: 2 }],
+			artifacts: [{ kind: 'workflow_logs', name: 'logs' }],
+		});
+	});
+
+	it('summarizes capability match details from assignment explanation gates', () => {
+		const explanation = buildExecutionProviderAssignmentExplanation({
+			source: 'capacity_plan',
+			sourceId: 'plan-1',
+			demand: {
+				mode: 'acting',
+				required: ['planning', 'repo_read'],
+				preferred: ['verification'],
+			},
+			supply: {
+				capacityProviderId: 'provider-1',
+				executionProviderId: 'codex',
+				kind: 'ai_model',
+				capabilities: ['planning'],
+				aliases: ['repo_read'],
+				grants: ['grant-1'],
+			},
+			eligibility: evaluateExecutionProviderEligibility({
+				demand: {
+					mode: 'acting',
+					required: ['planning', 'repo_read'],
+					preferred: ['verification'],
+				},
+				supply: {
+					capacityProviderId: 'provider-1',
+					executionProviderId: 'codex',
+					kind: 'ai_model',
+					capabilities: ['planning'],
+					aliases: ['repo_read'],
+					grants: ['grant-1'],
+				},
+			}),
+			grantId: 'grant-1',
+			grantScope: 'project',
+		});
+		const summary = summarizeExecutionProviderVisibility({ explanation });
+
+		expect(summary).toMatchObject({
+			requiredCapabilities: ['planning', 'repo_read'],
+			preferredCapabilities: ['verification'],
+			availableCapabilities: ['planning'],
+			aliasCapabilities: ['repo_read'],
+			missingCapabilities: [],
+			selectedProvider: 'provider-1',
+			selectedExecutionProvider: 'codex',
+			executionProviderKind: 'ai_model',
+			capabilityEligible: true,
+			reasonCodes: [],
+		});
+	});
+
+	it('decorates old records with empty execution visibility instead of throwing', () => {
+		const decorated = decorateExecutionProviderVisibility({ id: 'old-assignment', status: 'queued' });
+
+		expect(decorated.executionVisibility).toMatchObject({
+			executionProviderId: null,
+			executionProviderKind: null,
+			adapterStatus: 'queued',
+			externalRef: null,
+			externalUrl: null,
+			usage: [],
+			artifacts: [],
+			requiredCapabilities: [],
+			availableCapabilities: [],
+			missingCapabilities: [],
+			capabilityEligible: null,
+			reasonCodes: [],
+		});
 	});
 });

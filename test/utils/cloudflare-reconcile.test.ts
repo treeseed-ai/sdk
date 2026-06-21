@@ -40,9 +40,9 @@ const deployState = {
 	},
 	queues: {
 		agentWork: {
-			name: 'acme-docs-agent-work-staging',
-			dlqName: 'acme-docs-agent-work-dlq-staging',
-			binding: 'AGENT_WORK_QUEUE',
+			name: 'acme-docs-background-events-staging',
+			dlqName: 'acme-docs-background-events-dlq-staging',
+			binding: 'BACKGROUND_EVENTS_QUEUE',
 			queueId: null,
 			dlqId: null,
 		},
@@ -111,8 +111,8 @@ vi.mock('../../src/operations/services/deploy.ts', async () => {
 			: [])),
 		listPagesProjects: vi.fn(() => [{ name: 'acme-docs', subdomain: 'acme-docs.pages.dev' }]),
 		listQueues: vi.fn(() => [
-			{ name: 'acme-docs-agent-work-staging', id: 'queue-1' },
-			{ name: 'acme-docs-agent-work-dlq-staging', id: 'queue-dlq-1' },
+			{ name: 'acme-docs-background-events-staging', id: 'queue-1' },
+			{ name: 'acme-docs-background-events-dlq-staging', id: 'queue-dlq-1' },
 		]),
 		listR2Buckets: vi.fn(() => [{ name: 'acme-docs-content' }]),
 		getTurnstileWidget: vi.fn((_env, sitekey) => {
@@ -275,11 +275,11 @@ beforeEach(() => {
 		expect(adapter).toBeTruthy();
 
 		const unit = {
-			unitId: 'queue:acme-docs-agent-work-staging',
+			unitId: 'queue:acme-docs-background-events-staging',
 			unitType: 'queue',
 			provider: 'cloudflare',
 			target: { kind: 'persistent', scope: 'staging' },
-			logicalName: 'acme-docs-agent-work-staging',
+			logicalName: 'acme-docs-background-events-staging',
 			dependencies: [],
 			spec: {},
 			secrets: {},
@@ -299,9 +299,9 @@ beforeEach(() => {
 				providers: { content: { runtime: 'team_scoped_r2_overlay', publish: 'team_scoped_r2_overlay' } },
 				cloudflare: {
 					accountId: 'account-123',
-					queueName: 'agent-work',
-					dlqName: 'agent-work-dlq',
-					queueBinding: 'AGENT_WORK_QUEUE',
+					queueName: 'background-events',
+					dlqName: 'background-events-dlq',
+					queueBinding: 'BACKGROUND_EVENTS_QUEUE',
 					pages: { productionBranch: 'main', stagingBranch: 'staging' },
 					r2: {},
 				},
@@ -398,9 +398,9 @@ beforeEach(() => {
 				providers: { content: { runtime: 'team_scoped_r2_overlay', publish: 'team_scoped_r2_overlay' } },
 				cloudflare: {
 					accountId: 'account-123',
-					queueName: 'agent-work',
-					dlqName: 'agent-work-dlq',
-					queueBinding: 'AGENT_WORK_QUEUE',
+					queueName: 'background-events',
+					dlqName: 'background-events-dlq',
+					queueBinding: 'BACKGROUND_EVENTS_QUEUE',
 					pages: { productionBranch: 'main', stagingBranch: 'staging' },
 					r2: {},
 				},
@@ -479,9 +479,9 @@ beforeEach(() => {
 				providers: { content: { runtime: 'team_scoped_r2_overlay', publish: 'team_scoped_r2_overlay' } },
 				cloudflare: {
 					accountId: 'account-123',
-					queueName: 'agent-work',
-					dlqName: 'agent-work-dlq',
-					queueBinding: 'AGENT_WORK_QUEUE',
+					queueName: 'background-events',
+					dlqName: 'background-events-dlq',
+					queueBinding: 'BACKGROUND_EVENTS_QUEUE',
 					pages: { productionBranch: 'main', stagingBranch: 'staging' },
 					r2: {},
 				},

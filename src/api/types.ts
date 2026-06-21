@@ -115,6 +115,7 @@ export interface ApiConfig {
 	projectApiPermissions: string[];
 	cloudflareAccountId?: string;
 	cloudflareApiToken?: string;
+	apiDatabaseUrl?: string;
 	d1DatabaseId?: string;
 	d1DatabaseName?: string;
 	d1LocalPersistTo?: string;

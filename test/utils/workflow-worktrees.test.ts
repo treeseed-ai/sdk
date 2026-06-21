@@ -85,8 +85,10 @@ describe('workflow managed worktrees', () => {
 		expect(resumed.resumed).toBe(true);
 		expect(resumed.worktreePath).toBe(created.worktreePath);
 		expect(managedWorkflowWorktreeMetadata(created.worktreePath)?.branch).toBe('feature/search filters');
+		const worktreeConfigPath = resolve(created.worktreePath, '.treeseed', 'config', 'machine.yaml');
+		expect(readFileSync(worktreeConfigPath, 'utf8')).toBe('project:\n  slug: demo\n');
 		expect(getTreeseedMachineConfigPaths(created.worktreePath).configPath)
-			.toBe(resolve(work, '.treeseed', 'config', 'machine.yaml'));
+			.toBe(worktreeConfigPath);
 	});
 
 	it('creates package task branches from staging before workflow switch runs', () => {

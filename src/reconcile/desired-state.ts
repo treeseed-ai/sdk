@@ -40,22 +40,6 @@ export function deriveTreeseedDesiredUnits({
 		return unit.unitId;
 	};
 
-	const queueId = add({
-		unitId: createTreeseedReconcileUnitId('queue', legacyState.queues.agentWork.name),
-		unitType: 'queue',
-		provider: 'cloudflare',
-		identity,
-		target,
-		logicalName: legacyState.queues.agentWork.name,
-		dependencies: [],
-		spec: {
-			name: legacyState.queues.agentWork.name,
-			dlqName: legacyState.queues.agentWork.dlqName,
-			binding: legacyState.queues.agentWork.binding,
-		},
-		secrets: {},
-		metadata: { bootstrapSystem: 'data' },
-	});
 	const databaseId = add({
 		unitId: createTreeseedReconcileUnitId('database', legacyState.d1Databases.SITE_DATA_DB.databaseName),
 		unitType: 'database',
@@ -143,7 +127,7 @@ export function deriveTreeseedDesiredUnits({
 		identity,
 		target,
 		logicalName: legacyState.workerName,
-		dependencies: [queueId, databaseId, formGuardKvId, ...(turnstileWidgetId ? [turnstileWidgetId] : []), contentStoreId, pagesProjectId],
+		dependencies: [databaseId, formGuardKvId, ...(turnstileWidgetId ? [turnstileWidgetId] : []), contentStoreId, pagesProjectId],
 		spec: {
 			workerName: legacyState.workerName,
 		},

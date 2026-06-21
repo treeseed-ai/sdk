@@ -115,6 +115,66 @@ describe('platform repository operations', () => {
 		}
 	});
 
+	it('initializes linked repositories by adopting existing repos or writing explicit template files only', async () => {
+		const fixture = createRepo();
+		try {
+			const adopted = await executePlatformRepositoryOperation('initialize_linked_repository', {
+				projectId: 'project-1',
+				teamId: 'team-1',
+				repository: fixture.descriptor,
+				architecture: {
+					topology: 'single_repository_site',
+					rootPath: '.',
+					sitePath: 'docs',
+					contentPath: 'docs',
+					contentRuntimeSource: 'r2_published_manifest',
+					localContentMaterialization: 'none',
+				},
+			}, { workspaceRoot: fixture.workspace });
+			expect(adopted.changedPaths).toEqual([]);
+			expect(adopted.output).toMatchObject({
+				kind: 'linked_repository_initialization',
+				projectId: 'project-1',
+				teamId: 'team-1',
+				mode: 'adopt_existing',
+				architecture: {
+					topology: 'single_repository_site',
+					rootPath: '.',
+					sitePath: 'docs',
+					contentPath: 'docs',
+				},
+				scaffoldedPaths: [],
+			});
+
+			const scaffolded = await executePlatformRepositoryOperation('initialize_linked_repository', {
+				projectId: 'project-1',
+				repository: fixture.descriptor,
+				scaffoldFiles: [{
+					path: 'docs/README.md',
+					content: '# Docs\n\nPrepared by a TreeSeed template.\n',
+				}],
+			}, { workspaceRoot: fixture.workspace });
+			expect(scaffolded.changedPaths).toEqual(['docs/README.md']);
+			expect(scaffolded.output).toMatchObject({
+				mode: 'template_scaffold',
+				scaffoldedPaths: ['docs/README.md'],
+			});
+			expect(readFileSync(resolve(scaffolded.repositoryPath, 'docs/README.md'), 'utf8')).toContain('Prepared by a TreeSeed template');
+			expect(existsSync(resolve(fixture.repo, 'docs/README.md'))).toBe(false);
+
+			await expect(executePlatformRepositoryOperation('initialize_linked_repository', {
+				repository: fixture.descriptor,
+				scaffoldFiles: [{ path: '../secret.txt', content: 'nope' }],
+			}, { workspaceRoot: fixture.workspace })).rejects.toThrow(/outside the repository|repository-relative/u);
+			await expect(executePlatformRepositoryOperation('initialize_linked_repository', {
+				repository: fixture.descriptor,
+				scaffoldFiles: [{ path: 'docs/token.md', content: 'GH token ghp_not_a_real_token' }],
+			}, { workspaceRoot: fixture.workspace })).rejects.toThrow(/secret material/u);
+		} finally {
+			rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+
 	it('rejects duplicate slugs and unsupported path targets', async () => {
 		const fixture = createRepo();
 		try {

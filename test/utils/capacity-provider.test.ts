@@ -109,6 +109,15 @@ describe('capacity provider SDK contracts', () => {
 					cloneUrl: 'git@github.com:treeseed-ai/market.git',
 					checkoutPath: '.',
 				},
+				architecture: {
+					topology: 'single_repository_site',
+					rootPath: '.',
+					sitePath: '.',
+					contentPath: 'src/content',
+					contentRuntimeSource: 'r2_published_manifest',
+					localContentMaterialization: 'existing_path',
+					contentPublishTarget: { kind: 'cloudflare_r2', prefix: 'projects/market' },
+				},
 				agentSpecs: {
 					root: 'src/content/agents',
 					testsRoot: 'src/content/agent-tests',
@@ -162,6 +171,11 @@ describe('capacity provider SDK contracts', () => {
 		expect(registration.runtime.entrypoint).toBe('packages/agent/dist/provider/entrypoint.js');
 		expect(registrationResponse.provider.status).toBe('online');
 		expect(portfolio.projects[0]?.agentSpecs.testsRoot).toBe('src/content/agent-tests');
+		expect(portfolio.projects[0]?.architecture).toMatchObject({
+			topology: 'single_repository_site',
+			sitePath: '.',
+			contentRuntimeSource: 'r2_published_manifest',
+		});
 		expect(workday.environment).toBe('local');
 		expect(usage.assignmentId).toBe('assignment-1');
 		expect(usage.actualCredits).toBe(12);
@@ -202,6 +216,7 @@ describe('capacity provider SDK contracts', () => {
 						slug: 'market',
 						name: 'TreeSeed Market',
 						repository: { provider: 'github', role: 'primary', owner: 'treeseed-ai', name: 'market', defaultBranch: 'staging', cloneUrl: 'git@github.com:treeseed-ai/market.git', checkoutPath: '.' },
+						architecture: { topology: 'single_repository_site', rootPath: '.', sitePath: '.', contentPath: 'src/content', contentRuntimeSource: 'r2_published_manifest', localContentMaterialization: 'existing_path', contentPublishTarget: { kind: 'cloudflare_r2', prefix: 'projects/market' } },
 						agentSpecs: { root: 'src/content/agents', testsRoot: 'src/content/agent-tests' },
 						workPolicy: { enabled: true },
 					}],
@@ -211,6 +226,7 @@ describe('capacity provider SDK contracts', () => {
 			if (path === CAPACITY_PROVIDER_ENDPOINTS.nextAssignment) return jsonResponse({ ok: true, payload: { id: 'assignment-1' }, assignment: { id: 'assignment-1' }, leaseToken: 'lease-1', leaseSeconds: 300 });
 			if (path.endsWith('/renew')) return jsonResponse({ ok: true, payload: { id: 'assignment-1', status: 'leased' }, assignment: { id: 'assignment-1', status: 'leased' }, leaseToken: 'lease-1', leaseSeconds: 300 });
 			if (path.endsWith('/mode-runs')) return jsonResponse({ ok: true, payload: { id: 'mode-run-1' } });
+			if (path.endsWith('/workflow-operations/verify-private-repo/dispatch')) return jsonResponse({ ok: true, payload: { dispatch: { id: 'workflow-run-1', status: 'dispatched' } } });
 			if (path.endsWith('/complete')) return jsonResponse({ ok: true, payload: { id: 'assignment-1', status: 'completed' }, assignment: { id: 'assignment-1', status: 'completed' } });
 			if (path.endsWith('/return')) return jsonResponse({ ok: true, payload: { id: 'assignment-1', status: 'returned' }, assignment: { id: 'assignment-1', status: 'returned' } });
 			if (path.endsWith('/fail')) return jsonResponse({ ok: true, payload: { id: 'assignment-2', status: 'failed' }, assignment: { id: 'assignment-2', status: 'failed' } });
@@ -238,6 +254,11 @@ describe('capacity provider SDK contracts', () => {
 		await client.nextAssignment({ runnerId: 'runner-1', capabilities: ['codex-docs-work'] });
 		await client.renewAssignment('assignment-1', { leaseToken: 'lease-1' });
 		await client.createAssignmentModeRun('assignment-1', { status: 'running' });
+		await client.dispatchAssignmentWorkflowOperation('assignment-1', 'verify-private-repo', {
+			leaseToken: 'lease-1',
+			handleId: 'workflow-handle-1',
+			inputs: { planId: 'plan-1' },
+		});
 		await client.completeAssignment('assignment-1', { leaseToken: 'lease-1', output: { ok: true } });
 		await client.returnAssignment('assignment-1', { leaseToken: 'lease-1', reason: 'retry later' });
 		await client.failAssignment('assignment-2', { leaseToken: 'lease-2', reason: 'failed' });
@@ -252,6 +273,7 @@ describe('capacity provider SDK contracts', () => {
 			'POST /v1/provider/assignments/next',
 			'POST /v1/provider/assignments/assignment-1/renew',
 			'POST /v1/provider/assignments/assignment-1/mode-runs',
+			'POST /v1/provider/assignments/assignment-1/workflow-operations/verify-private-repo/dispatch',
 			'POST /v1/provider/assignments/assignment-1/complete',
 			'POST /v1/provider/assignments/assignment-1/return',
 			'POST /v1/provider/assignments/assignment-2/fail',
@@ -265,6 +287,16 @@ describe('capacity provider SDK contracts', () => {
 			expect(call.headers.accept).toBe('application/json');
 		}
 		expect(calls[0]?.body).toMatchObject({ marketId: 'prod' });
+		const workflowDispatchCall = calls.find((call) => new URL(call.url).pathname.endsWith('/workflow-operations/verify-private-repo/dispatch'));
+		expect(workflowDispatchCall?.headers.authorization).toBe('Bearer tsp_session_plaintext_secret_123456789');
+		expect(workflowDispatchCall?.body).toEqual({
+			leaseToken: 'lease-1',
+			handleId: 'workflow-handle-1',
+			inputs: { planId: 'plan-1' },
+		});
+		expect(JSON.stringify(workflowDispatchCall)).not.toContain('installationId');
+		expect(JSON.stringify(workflowDispatchCall)).not.toContain('github');
+		expect(JSON.stringify(workflowDispatchCall)).not.toContain('workflowFile');
 	});
 
 	it('rejects malformed responses and converts non-ok responses into API errors', async () => {

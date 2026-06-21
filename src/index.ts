@@ -36,6 +36,7 @@ export { createControlPlaneReporter } from './control-plane.ts';
 export { ControlPlaneClient } from './control-plane-client.ts';
 export * from './agent-capacity.ts';
 export * from './secrets-capability.ts';
+export * from './project-import.ts';
 export * from './seeds/index.ts';
 export {
 		CAPACITY_PROVIDER_ENDPOINTS,
@@ -929,5 +930,20 @@ export type {
 	RuntimeBundleBuilderResult,
 	RenderedContentEntry,
 } from './platform/published-content-pipeline.ts';
+export {
+	contentRuntimeMetadataFromTarget,
+	inspectTreeseedContentStructure,
+	resolveTreeseedContentRuntimeSource,
+} from './platform/content-runtime-source.ts';
+export type {
+	TreeseedContentRuntimeDiagnostic,
+	TreeseedContentRuntimeDiagnosticStatus,
+	TreeseedContentRuntimeMode,
+	TreeseedContentRuntimeResolution,
+	TreeseedEffectiveContentSource,
+	TreeseedLocalContentRuntimeSummary,
+	TreeseedR2ContentRuntimeMetadata,
+	TreeseedTreeDxContentRuntimeMetadata,
+} from './platform/content-runtime-source.ts';
 export { CloudflareHttpD1Database } from './d1-http.ts';
 export type * from './remote.ts';

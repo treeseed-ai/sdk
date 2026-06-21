@@ -11,6 +11,7 @@ import {
 } from './operations/services/config-runtime.ts';
 import type { NativeUsageObservation } from './sdk-types.ts';
 import type { ProjectRepositoryTopology } from './sdk-types.ts';
+import type { SeedProjectArchitecture } from './seeds/types.ts';
 import type {
 	ProviderAssignmentLifecycleRequest,
 	ProviderAssignmentLifecycleResult,
@@ -240,6 +241,7 @@ export interface CapacityProviderPortfolioProject {
 		webUrl?: string | null;
 	};
 	repositoryTopology?: ProjectRepositoryTopology;
+	architecture?: SeedProjectArchitecture;
 	agentSpecs: {
 		root: string;
 		testsRoot: string;

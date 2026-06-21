@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { compileTreeseedDesiredResourceGraph } from '../../src/platform/desired-state.ts';
-import { validateTreeseedPackageManifests } from '../../src/operations/services/package-adapters.ts';
+import {
+	deriveTreeseedPackageProjectResources,
+	discoverTreeseedPackageAdapters,
+	validateTreeseedPackageManifests,
+} from '../../src/operations/services/package-adapters.ts';
 import { inspectTreeseedGitLocks } from '../../src/operations/services/git-runner.ts';
 import { resolveTreeseedTestPath, resolveTreeseedTestRoot } from './workspace-test-root.ts';
 
@@ -42,6 +46,81 @@ describe('canonical desired resource graph', () => {
 		expect(results.every((entry) => entry.ok)).toBe(true);
 	});
 
+	it('exposes first-party package project architecture and docs readiness from package manifests', () => {
+		if (!workspaceRoot) return;
+		const adapters = discoverTreeseedPackageAdapters(workspaceRoot);
+		const packageIds = adapters.map((entry) => entry.id);
+		expect(packageIds).toEqual(expect.arrayContaining([
+			'@treeseed/admin',
+			'@treeseed/agent',
+			'@treeseed/api',
+			'@treeseed/cli',
+			'@treeseed/core',
+			'@treeseed/sdk',
+			'@treeseed/ui',
+			'treedx',
+		]));
+		for (const adapter of adapters.filter((entry) =>
+			entry.id === 'treedx' || entry.id.startsWith('@treeseed/'))) {
+			expect(adapter.metadata.projectArchitecture).toMatchObject({
+				topology: 'single_repository_site',
+				rootPath: '.',
+				sitePath: 'docs',
+				contentPath: 'docs',
+				contentRuntimeSource: 'r2_published_manifest',
+			});
+			expect(adapter.metadata.projectArchitecture).toHaveProperty('contentPublishTarget');
+			expect(JSON.stringify(adapter.metadata)).not.toContain('TREESEED_GITHUB_TOKEN');
+			expect(JSON.stringify(adapter.metadata)).not.toContain('ghp_');
+		}
+		const readiness = Object.fromEntries(adapters.map((entry) => [entry.id, entry.metadata.docsSiteReadiness]));
+		expect(readiness).toMatchObject({
+			'@treeseed/agent': 'ready',
+			'@treeseed/sdk': 'ready',
+			treedx: 'ready',
+			'@treeseed/admin': 'site_not_prepared',
+			'@treeseed/api': 'site_not_prepared',
+			'@treeseed/cli': 'site_not_prepared',
+			'@treeseed/core': 'site_not_prepared',
+			'@treeseed/ui': 'site_not_prepared',
+		});
+	});
+
+	it('derives safe package project resources for later seed expansion', () => {
+		if (!workspaceRoot) return;
+		const projects = deriveTreeseedPackageProjectResources(workspaceRoot);
+		expect(projects.map((entry) => entry.slug)).toEqual(expect.arrayContaining([
+			'admin',
+			'agent',
+			'api',
+			'cli',
+			'core',
+			'sdk',
+			'ui',
+			'treedx',
+		]));
+		for (const project of projects) {
+			expect(project).toMatchObject({
+				team: 'team:treeseed',
+				kind: 'package',
+				architecture: {
+					topology: 'single_repository_site',
+					rootPath: '.',
+					sitePath: 'docs',
+					contentPath: 'docs',
+				},
+				metadata: {
+					visibility: 'public',
+					releaseOwnership: 'treeseed.package.yaml',
+				},
+			});
+			expect(project.repository.gitUrl).toMatch(/^https:\/\/github\.com\/treeseed-ai\/.+\.git$/u);
+			expect(JSON.stringify(project)).not.toContain('TREESEED_GITHUB_TOKEN');
+			expect(JSON.stringify(project)).not.toContain('ghp_');
+			expect(JSON.stringify(project)).not.toContain('secret-token');
+		}
+	});
+
 	it('includes local TreeDX as the default content repository plane for local dev', () => {
 		if (!workspaceRoot) return;
 		const graph = compileTreeseedDesiredResourceGraph({
@@ -65,6 +144,56 @@ describe('canonical desired resource graph', () => {
 			'local-docker-compose:treedx',
 			'capacity-provider:local',
 		]));
+	});
+
+	it('adds project architecture diagnostics to local dev without cloning content by default', () => {
+		if (!workspaceRoot) return;
+		const graph = compileTreeseedDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'local' },
+		});
+		const materialization = graph.resources.filter((entry) => entry.kind === 'local-content-materialization');
+
+		expect(materialization.length).toBeGreaterThanOrEqual(2);
+		expect(materialization.map((entry) => entry.spec.projectSlug)).toEqual(expect.arrayContaining(['market', 'karyon']));
+		expect(materialization.find((entry) => entry.spec.projectSlug === 'market')?.spec).toMatchObject({
+			topology: 'single_repository_site',
+			rootPath: '.',
+			sitePath: '.',
+			contentPath: 'src/content',
+			localContentMaterialization: 'existing_path',
+			requestedLocalContentMode: 'auto',
+			executeRequested: false,
+		});
+		expect(materialization.find((entry) => entry.spec.projectSlug === 'karyon')?.spec).toMatchObject({
+			topology: 'single_repository_site',
+			sitePath: 'docs',
+			contentRuntimeSource: 'treedx_snapshot',
+			localContentMaterialization: 'none',
+			contentSourceMode: 'treedx',
+			requestedLocalContentMode: 'auto',
+			executeRequested: false,
+		});
+	});
+
+	it('plans managed local content materialization only when preview or edit is requested', () => {
+		if (!workspaceRoot) return;
+		const graph = compileTreeseedDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'local' },
+			localContent: 'preview',
+		});
+		const karyon = graph.resources.find((entry) =>
+			entry.kind === 'local-content-materialization' && entry.spec.projectSlug === 'karyon');
+
+		expect(karyon?.spec).toMatchObject({
+			localContentMaterialization: 'managed_clone',
+			requestedLocalContentMode: 'preview',
+			executeRequested: true,
+			sourceRepoSlug: 'karyon-life/karyon',
+		});
+		expect(JSON.stringify(karyon)).not.toContain('TREESEED_GITHUB_TOKEN');
+		expect(JSON.stringify(karyon)).not.toContain('secret-token');
 	});
 
 	it('includes first-party starter templates in release gate planning', () => {

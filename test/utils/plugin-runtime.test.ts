@@ -55,7 +55,7 @@ ${pluginsYaml}
     forms: ['store_only'],
     operations: ['default'],
     agents: {
-      execution: ['stub'],
+      execution: ['codex'],
       mutation: ['local_branch'],
       repository: ['stub'],
       verification: ['stub'],
@@ -92,7 +92,7 @@ describe('sdk plugin runtime', () => {
 providers:
   forms: store_only
   agents:
-    execution: stub
+    execution: codex
     mutation: local_branch
     repository: stub
     verification: stub
@@ -134,7 +134,7 @@ providers:
 providers:
   forms: missing-provider
   agents:
-    execution: stub
+    execution: codex
     mutation: local_branch
     repository: stub
     verification: stub
@@ -162,7 +162,7 @@ providers:
   forms: store_only
   operations: default
   agents:
-    execution: stub
+    execution: codex
     mutation: local_branch
     repository: stub
     verification: stub

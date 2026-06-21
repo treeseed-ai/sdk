@@ -32,6 +32,7 @@ type RunOptions = {
 	allowFailure?: boolean;
 	timeoutMs?: number;
 	maxBuffer?: number;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 };
 
 export type TreeseedGitBatchOperation = RunOptions & {
@@ -50,6 +51,7 @@ function pidAlive(pid: number) {
 function gitSync(args: string[], options: RunOptions): TreeseedGitRunnerResult {
 	const spawnOptions: SpawnSyncOptionsWithStringEncoding = {
 		cwd: options.cwd,
+		env: options.env ? { ...process.env, ...options.env } : process.env,
 		encoding: 'utf8',
 		stdio: 'pipe',
 		timeout: options.timeoutMs,

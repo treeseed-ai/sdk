@@ -619,22 +619,6 @@ export class ControlPlaneClient {
 		);
 	}
 
-	reportRunnerCapacityUsage(projectId: string, input: RecordCapacityUsageRequest) {
-		return this.requestJson<{ entry: unknown; settlement?: unknown; usageActual?: unknown }>(
-			'POST',
-			`/v1/projects/${encodeURIComponent(projectId)}/runner/capacity/usage`,
-			{ body: input as Record<string, unknown> },
-		);
-	}
-
-	createRunnerApprovalRequest(projectId: string, input: Omit<CreateApprovalRequestRequest, 'projectId'> & Partial<Pick<CreateApprovalRequestRequest, 'projectId'>>) {
-		return this.requestJson<ApprovalRequest>(
-			'POST',
-			`/v1/projects/${encodeURIComponent(projectId)}/runner/approval-requests`,
-			{ body: input as Record<string, unknown> },
-		);
-	}
-
 	recordRunnerScaleDecisionV2(projectId: string, input: SdkRecordRunnerScaleDecisionRequest) {
 		return this.requestJson<RunnerScaleDecision>(
 			'POST',
@@ -769,12 +753,16 @@ export class ControlPlaneClient {
 		);
 	}
 
-	recordRunnerCapacityUsage(projectId: string, input: RecordCapacityUsageRequest & { usageActual?: CreateTaskUsageActualRequest }) {
-		return this.requestJson<{ entry: unknown; usageActual: unknown | null }>(
+	reportRunnerCapacityUsage(projectId: string, input: RecordCapacityUsageRequest & { usageActual?: CreateTaskUsageActualRequest }) {
+		return this.requestJson<{ entry: unknown; settlement?: unknown; usageActual?: unknown }>(
 			'POST',
 			`/v1/projects/${encodeURIComponent(projectId)}/runner/capacity/usage`,
 			{ body: input as unknown as Record<string, unknown> },
 		);
+	}
+
+	recordRunnerCapacityUsage(projectId: string, input: RecordCapacityUsageRequest & { usageActual?: CreateTaskUsageActualRequest }) {
+		return this.reportRunnerCapacityUsage(projectId, input);
 	}
 
 	recordRunnerCapacityRoutingDecision(projectId: string, input: CreateCapacityRoutingDecisionRequest) {
@@ -785,7 +773,7 @@ export class ControlPlaneClient {
 		);
 	}
 
-	createRunnerApprovalRequest(projectId: string, input: CreateApprovalRequestRequest) {
+	createRunnerApprovalRequest(projectId: string, input: Omit<CreateApprovalRequestRequest, 'projectId'> & Partial<Pick<CreateApprovalRequestRequest, 'projectId'>>) {
 		return this.requestJson<ApprovalRequest>(
 			'POST',
 			`/v1/projects/${encodeURIComponent(projectId)}/runner/approval-requests`,

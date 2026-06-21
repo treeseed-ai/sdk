@@ -28,7 +28,7 @@ plugins:
 providers:
   forms: store_only
   agents:
-    execution: stub
+    execution: codex
     mutation: local_branch
     repository: stub
     verification: stub

@@ -30,6 +30,7 @@ import type {
 	TreeseedGitHubActionsEncryptedSecretDeployment,
 	TreeseedGitHubActionsSecretPublicKeyMetadata,
 } from './secrets-capability.ts';
+import type { TreeseedRepositoryImportPlan } from './project-import.ts';
 import {
 	TREESEED_REMOTE_CONTRACT_HEADER,
 	TREESEED_REMOTE_CONTRACT_VERSION,
@@ -916,6 +917,20 @@ export class MarketClient {
 		);
 	}
 
+	initializeProjectRepository(projectId: string, role: string, body: Record<string, unknown> = {}) {
+		return this.request<{ ok: true; operation: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(role)}/initialize`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	importProjectRepository(teamId: string, plan: TreeseedRepositoryImportPlan | Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/projects/import`,
+			{ method: 'POST', body: { plan }, requireAuth: true },
+		);
+	}
+
 	auditProjectHosts(projectId: string, body: Record<string, unknown> = {}) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/hosts/audit`,
@@ -1367,13 +1382,6 @@ export class MarketClient {
 	exportSeed(teamId: string, body: Record<string, unknown>) {
 		return this.request<Record<string, unknown>>(
 			`/v1/teams/${encodeURIComponent(teamId)}/seeds/export`,
-			{ method: 'POST', body, requireAuth: true },
-		);
-	}
-
-	enqueueAgentTask(projectId: string, body: Record<string, unknown>) {
-		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/projects/${encodeURIComponent(projectId)}/agent-tasks`,
 			{ method: 'POST', body, requireAuth: true },
 		);
 	}

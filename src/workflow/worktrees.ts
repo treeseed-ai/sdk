@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { runTreeseedGit } from '../operations/services/git-runner.ts';
 import { sortWorkspacePackages, workspacePackages, workspaceRoot } from '../operations/services/workspace-tools.ts';
@@ -25,6 +25,7 @@ export type ManagedWorkflowWorktreeResult = ManagedWorkflowWorktreeMetadata & {
 
 const WORKTREE_METADATA_PATH = '.treeseed/worktree.json';
 const WORKTREE_ROOT = '.treeseed/worktrees';
+const MACHINE_CONFIG_PATH = '.treeseed/config/machine.yaml';
 
 function nowIso() {
 	return new Date().toISOString();
@@ -159,7 +160,7 @@ function ensureManagedWorktreeExclude(root: string) {
 	if (!commonGitDir) return;
 	const absolutePath = resolve(root, commonGitDir, 'info', 'exclude');
 	const current = existsSync(absolutePath) ? readFileSync(absolutePath, 'utf8') : '';
-	const patterns = ['/.treeseed/worktree.json', '/.treeseed/workflow/', '/.treeseed/worktrees/'];
+	const patterns = ['/.treeseed/worktree.json', '/.treeseed/config/', '/.treeseed/workflow/', '/.treeseed/worktrees/'];
 	const missing = patterns.filter((pattern) => !current.includes(pattern));
 	if (missing.length === 0) return;
 	mkdirSync(dirname(absolutePath), { recursive: true });
@@ -168,6 +169,14 @@ function ensureManagedWorktreeExclude(root: string) {
 		`${current}${current.endsWith('\n') || current.length === 0 ? '' : '\n'}${missing.join('\n')}\n`,
 		'utf8',
 	);
+}
+
+function ensureManagedWorktreeMachineConfig(primaryRoot: string, worktreePath: string) {
+	const sourcePath = resolve(primaryRoot, MACHINE_CONFIG_PATH);
+	const targetPath = resolve(worktreePath, MACHINE_CONFIG_PATH);
+	if (!existsSync(sourcePath) || existsSync(targetPath)) return;
+	mkdirSync(dirname(targetPath), { recursive: true });
+	copyFileSync(sourcePath, targetPath);
 }
 
 export function effectiveWorkflowWorktreeMode(
@@ -249,6 +258,7 @@ export function ensureManagedWorkflowWorktree({
 
 	runGit(['submodule', 'update', '--init', '--recursive'], { cwd: worktreePath });
 	checkoutManagedPackageBranches(worktreePath, branchName);
+	ensureManagedWorktreeMachineConfig(primaryRoot, worktreePath);
 	ensureManagedWorktreeExclude(worktreePath);
 	const timestamp = nowIso();
 	const previous = readMetadata(worktreePath);

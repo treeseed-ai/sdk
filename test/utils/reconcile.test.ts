@@ -140,16 +140,10 @@ services:
 			target: { kind: 'persistent', scope: 'staging' },
 		});
 
-		expect(units.find((unit) => unit.unitType === 'pages-project')?.logicalName).toBe('acme-docs');
-		expect(units.find((unit) => unit.unitType === 'content-store')?.logicalName).toBe('acme-docs-content');
-		expect(units.find((unit) => unit.unitType === 'queue')?.logicalName).toBe('acme-docs-agent-work-staging');
-		expect(units.find((unit) => unit.unitType === 'database')?.logicalName).toBe('acme-docs-site-data-staging');
-		expect(units.find((unit) => unit.unitType === 'queue')?.identity).toMatchObject({
-			teamId: 'acme',
-			projectId: 'docs',
-			deploymentKey: 'acme-docs',
-			environmentKey: 'acme-docs-staging',
-		});
+			expect(units.find((unit) => unit.unitType === 'pages-project')?.logicalName).toBe('acme-docs');
+			expect(units.find((unit) => unit.unitType === 'content-store')?.logicalName).toBe('acme-docs-content');
+			expect(units.find((unit) => unit.unitType === 'queue')).toBeUndefined();
+			expect(units.find((unit) => unit.unitType === 'database')?.logicalName).toBe('acme-docs-site-data-staging');
 	});
 
 	it('derives deterministic staging preview domains and DNS policies', () => {

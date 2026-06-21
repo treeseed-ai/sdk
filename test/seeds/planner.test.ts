@@ -1,7 +1,36 @@
 import { describe, expect, it } from 'vitest';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { loadSeedManifest } from '../../src/seeds/loader.js';
 import { createSeedPlan } from '../../src/seeds/planner.js';
 import { parseSeedManifest } from '../../src/seeds/schema.js';
 import type { SeedManifest } from '../../src/seeds/types.js';
+
+const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+const TREESEED_PROJECT_KEYS = [
+	'project:treeseed/admin',
+	'project:treeseed/agent',
+	'project:treeseed/api',
+	'project:treeseed/cli',
+	'project:treeseed/core',
+	'project:treeseed/market',
+	'project:treeseed/sdk',
+	'project:treeseed/treedx',
+	'project:treeseed/ui',
+];
+
+const singleRepositorySiteArchitecture = {
+	topology: 'single_repository_site',
+	rootPath: '.',
+	sitePath: 'docs',
+	contentPath: 'docs/src/content',
+	contentRuntimeSource: 'r2_published_manifest',
+	localContentMaterialization: 'none',
+	contentPublishTarget: {
+		kind: 'cloudflare_r2',
+		prefix: 'demo/site',
+	},
+} as const;
 
 const manifest: SeedManifest = {
 	name: 'demo',
@@ -81,6 +110,47 @@ const manifest: SeedManifest = {
 };
 
 describe('seed planner current-state diffing', () => {
+	it('plans the canonical Treeseed seed as an exact nine-project first-party portfolio', () => {
+		const loaded = loadSeedManifest(workspaceRoot, 'treeseed');
+		expect(loaded.diagnostics).toEqual([]);
+		const diagnostics = [];
+		const parsed = parseSeedManifest(loaded.value, diagnostics);
+		expect(diagnostics).toEqual([]);
+		expect(parsed).toBeTruthy();
+		const projects = parsed!.resources.projects;
+		expect(projects.map((project) => project.key).sort()).toEqual(TREESEED_PROJECT_KEYS);
+		expect(JSON.stringify(projects)).not.toContain('karyon');
+		expect(projects.find((project) => project.key === 'project:treeseed/market')?.metadata).toMatchObject({ visibility: 'private' });
+		for (const project of projects.filter((entry) => entry.key !== 'project:treeseed/market')) {
+			expect(project.kind).toBe('package');
+			expect(project.repository.owner).toBe('treeseed-ai');
+			expect(project.architecture).toMatchObject({
+				topology: 'single_repository_site',
+				rootPath: '.',
+				sitePath: 'docs',
+				contentPath: 'docs',
+				contentRuntimeSource: 'r2_published_manifest',
+				contentPublishTarget: {
+					kind: 'cloudflare_r2',
+					prefix: `packages/${project.slug}`,
+				},
+			});
+			expect(project.metadata).toMatchObject({
+				visibility: 'public',
+				releaseOwnership: 'treeseed.package.yaml',
+			});
+		}
+		const plan = createSeedPlan({
+			manifest: parsed!,
+			manifestPath: loaded.path,
+			environments: ['local'],
+			mode: 'plan',
+		});
+		expect(plan.summary).toMatchObject({ create: 39, update: 0, unchanged: 0, skip: 2 });
+		expect(plan.actions.filter((action) => action.kind === 'project').map((action) => action.key).sort()).toEqual(TREESEED_PROJECT_KEYS);
+		expect(JSON.stringify(plan)).not.toMatch(/project:karyon|repositoryTopology|contentRoot|ghp_/u);
+	});
+
 	it('plans creates, skips, unchanged resources, and updates deterministically', () => {
 		const empty = createSeedPlan({
 			manifest,
@@ -199,6 +269,7 @@ describe('seed planner current-state diffing', () => {
 						name: 'site',
 						gitUrl: 'https://github.com/demo/site.git',
 					},
+					architecture: singleRepositorySiteArchitecture,
 				}],
 				hubRepositories: [{
 					key: 'hub-repository:demo/site/content',
@@ -251,6 +322,212 @@ describe('seed planner current-state diffing', () => {
 			'catalogArtifact',
 		]);
 		expect(plan.summary.create).toBe(6);
+		expect(plan.actions.find((action) => action.key === 'project:demo/site')?.payload.architecture).toEqual(singleRepositorySiteArchitecture);
+	});
+
+	it('supports canonical project architecture modes without requiring repository restructuring', () => {
+		const diagnostics = [];
+		const parsed = parseSeedManifest({
+			name: 'demo',
+			version: 1,
+			defaultEnvironments: ['local'],
+			environments: ['local'],
+			resources: {
+				teams: [{ key: 'team:demo', slug: 'demo' }],
+				repositoryHosts: [],
+				projects: [
+					{
+						key: 'project:demo/package',
+						team: 'team:demo',
+						slug: 'package',
+						name: 'Demo Package',
+						kind: 'package',
+						repository: {
+							role: 'primary',
+							provider: 'github',
+							owner: 'demo',
+							name: 'package',
+							gitUrl: 'https://github.com/demo/package.git',
+						},
+						architecture: {
+							topology: 'single_repository_site',
+							rootPath: '.',
+							sitePath: 'docs',
+							contentRuntimeSource: 'r2_published_manifest',
+							localContentMaterialization: 'none',
+						},
+					},
+					{
+						key: 'project:demo/split',
+						team: 'team:demo',
+						slug: 'split',
+						name: 'Demo Split',
+						repository: {
+							role: 'site',
+							provider: 'github',
+							owner: 'demo',
+							name: 'split-site',
+							gitUrl: 'https://github.com/demo/split-site.git',
+						},
+						architecture: {
+							topology: 'split_site_content',
+							rootPath: '.',
+							sitePath: 'docs',
+							contentPath: 'docs/src/content',
+							contentRuntimeSource: 'treedx_snapshot',
+							localContentMaterialization: 'none',
+							contentPublishTarget: {
+								kind: 'cloudflare_r2',
+								prefix: 'demo/split',
+							},
+						},
+					},
+					{
+						key: 'project:demo/workspace',
+						team: 'team:demo',
+						slug: 'workspace',
+						name: 'Demo Workspace',
+						repository: {
+							role: 'primary',
+							provider: 'github',
+							owner: 'demo',
+							name: 'workspace',
+							gitUrl: 'https://github.com/demo/workspace.git',
+							submodulePath: 'packages/site',
+						},
+						architecture: {
+							topology: 'parent_workspace',
+							rootPath: 'packages/site',
+							sitePath: 'docs',
+							contentRuntimeSource: 'r2_preview_overlay',
+							localContentMaterialization: 'submodule',
+							requiresLocalContentForCi: true,
+						},
+					},
+				],
+				hubRepositories: [],
+				products: [],
+				catalogArtifacts: [],
+				capacityProviders: [],
+				capacityGrants: [],
+				workPolicies: [],
+				agentPools: [],
+			},
+		}, diagnostics);
+
+		expect(diagnostics).toHaveLength(0);
+		const plan = createSeedPlan({
+			manifest: parsed!,
+			manifestPath: 'seeds/demo.yaml',
+			environments: ['local'],
+			mode: 'plan',
+		});
+		expect(plan.actions.filter((action) => action.kind === 'project').map((action) => action.payload.architecture)).toEqual([
+			expect.objectContaining({ topology: 'single_repository_site', sitePath: 'docs' }),
+			expect.objectContaining({ topology: 'split_site_content', contentRuntimeSource: 'treedx_snapshot' }),
+			expect.objectContaining({ topology: 'parent_workspace', localContentMaterialization: 'submodule' }),
+		]);
+	});
+
+	it('rejects missing architecture, missing sitePath, legacy topology metadata, and implicit local content checkout requirements', () => {
+		const diagnostics = [];
+		parseSeedManifest({
+			name: 'demo',
+			version: 1,
+			environments: ['local'],
+			resources: {
+				teams: [{ key: 'team:demo', slug: 'demo' }],
+				repositoryHosts: [],
+				projects: [
+					{
+						key: 'project:demo/missing-architecture',
+						team: 'team:demo',
+						slug: 'missing-architecture',
+						name: 'Missing Architecture',
+						repository: {
+							role: 'primary',
+							provider: 'github',
+							owner: 'demo',
+							name: 'missing-architecture',
+							gitUrl: 'https://github.com/demo/missing-architecture.git',
+						},
+					},
+					{
+						key: 'project:demo/missing-site-path',
+						team: 'team:demo',
+						slug: 'missing-site-path',
+						name: 'Missing Site Path',
+						repository: {
+							role: 'primary',
+							provider: 'github',
+							owner: 'demo',
+							name: 'missing-site-path',
+							gitUrl: 'https://github.com/demo/missing-site-path.git',
+						},
+						architecture: {
+							topology: 'single_repository_site',
+							rootPath: '.',
+							contentRuntimeSource: 'r2_published_manifest',
+							localContentMaterialization: 'none',
+						},
+					},
+					{
+						key: 'project:demo/legacy-metadata',
+						team: 'team:demo',
+						slug: 'legacy-metadata',
+						name: 'Legacy Metadata',
+						repository: {
+							role: 'primary',
+							provider: 'github',
+							owner: 'demo',
+							name: 'legacy-metadata',
+							gitUrl: 'https://github.com/demo/legacy-metadata.git',
+						},
+						architecture: singleRepositorySiteArchitecture,
+						metadata: {
+							repositoryTopology: {
+								contentRepository: { accessMode: 'treedx' },
+							},
+						},
+					},
+					{
+						key: 'project:demo/implicit-local-checkout',
+						team: 'team:demo',
+						slug: 'implicit-local-checkout',
+						name: 'Implicit Local Checkout',
+						repository: {
+							role: 'primary',
+							provider: 'github',
+							owner: 'demo',
+							name: 'implicit-local-checkout',
+							gitUrl: 'https://github.com/demo/implicit-local-checkout.git',
+						},
+						architecture: {
+							topology: 'split_site_content',
+							rootPath: '.',
+							sitePath: 'docs',
+							contentPath: 'docs/src/content',
+							contentRuntimeSource: 'treedx_snapshot',
+							localContentMaterialization: 'managed_clone',
+						},
+					},
+				],
+				hubRepositories: [],
+				products: [],
+				catalogArtifacts: [],
+				capacityProviders: [],
+				capacityGrants: [],
+				workPolicies: [],
+				agentPools: [],
+			},
+		}, diagnostics);
+
+		expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(expect.arrayContaining([
+			'seed.missing_project_architecture',
+			'seed.missing_field',
+			'seed.legacy_project_topology_metadata',
+			'seed.local_content_required_by_default',
+		]));
 	});
 
 	it('accepts operation recipes and includes ordered DAG steps in the seed plan', () => {
@@ -275,6 +552,7 @@ describe('seed planner current-state diffing', () => {
 						name: 'site',
 						gitUrl: 'https://github.com/demo/site.git',
 					},
+					architecture: singleRepositorySiteArchitecture,
 				}],
 				hubRepositories: [],
 				products: [],

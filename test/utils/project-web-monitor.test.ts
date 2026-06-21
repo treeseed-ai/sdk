@@ -37,6 +37,7 @@ describe('project web monitor helper', () => {
 			['web_host', 'passed'],
 			['target_url', 'passed'],
 			['http_response', 'passed'],
+			['content_runtime', 'skipped'],
 			['content_publish', 'skipped'],
 			['d1_migration', 'skipped'],
 			['form_api_route', 'skipped'],
@@ -137,16 +138,96 @@ describe('project web monitor helper', () => {
 			environment: 'prod',
 			action: 'publish_content',
 			repository,
-			target,
+			target: {
+				...target,
+				architecture: {
+					contentRuntimeSource: 'r2_published_manifest',
+					contentPublishTarget: {
+						kind: 'cloudflare_r2',
+						manifestPath: 'teams/acme/published/common.json',
+					},
+				},
+				contentRuntime: {
+					r2: {
+						manifestKey: 'teams/acme/published/common.json',
+						revision: 'rev-1',
+					},
+				},
+			},
 			workflowResult: { runId: 789, status: 'completed', conclusion: 'success' },
 			mockExternal: true,
 		});
 
+		expect(result.contentRuntime).toMatchObject({
+			contentRuntimeSource: 'r2_published_manifest',
+			effectiveContentSource: 'r2_published_manifest',
+			manifestKey: 'teams/acme/published/common.json',
+			revision: 'rev-1',
+		});
+		expect(result.checks.find((check) => check.key === 'content_runtime')).toMatchObject({
+			status: 'passed',
+			source: 'r2',
+		});
 		expect(result.checks.find((check) => check.key === 'content_publish')).toMatchObject({
 			status: 'passed',
-			summary: 'Content publish workflow completed.',
+			summary: 'Content publish completed for R2 manifest teams/acme/published/common.json.',
 		});
 		expect(result.checks.find((check) => check.key === 'd1_migration')).toMatchObject({ status: 'skipped' });
 		expect(result.checks.find((check) => check.key === 'form_api_route')).toMatchObject({ status: 'skipped' });
+	});
+
+	it('marks TreeDX content publish as operations-runner to R2 rather than GitHub Actions', async () => {
+		const result = await buildProjectWebMonitorResult({
+			environment: 'staging',
+			action: 'publish_content',
+			repository: {
+				provider: 'treedx',
+				owner: 'acme',
+				name: 'content',
+			},
+			target: {
+				...target,
+				architecture: {
+					contentRuntimeSource: 'treedx_snapshot',
+					contentPublishTarget: {
+						kind: 'cloudflare_r2',
+						manifestPath: 'teams/acme/published/common.json',
+					},
+				},
+				contentPublish: {
+					provider: 'treedx',
+					snapshotId: 'snap_1',
+					r2: {
+						manifestKey: 'teams/acme/published/common.json',
+						revision: 'snap_1',
+						withoutGitHubActions: true,
+					},
+				},
+			},
+			mockExternal: true,
+		});
+
+		expect(result.contentRuntime).toMatchObject({
+			contentRuntimeSource: 'treedx_snapshot',
+			effectiveContentSource: 'treedx_snapshot',
+			snapshotId: 'snap_1',
+		});
+		expect(result.checks.find((check) => check.key === 'latest_workflow')).toMatchObject({
+			status: 'skipped',
+			source: 'treedx',
+		});
+		expect(result.checks.find((check) => check.key === 'workflow_file')).toMatchObject({
+			status: 'skipped',
+			source: 'treedx',
+		});
+		expect(result.checks.find((check) => check.key === 'content_runtime')).toMatchObject({
+			status: 'passed',
+			source: 'treedx',
+		});
+		expect(result.checks.find((check) => check.key === 'content_publish')).toMatchObject({
+			status: 'passed',
+			source: 'treedx',
+			summary: 'TreeDX content snapshot snap_1 was published to R2 without GitHub Actions.',
+		});
 	});
 });

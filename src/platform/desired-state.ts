@@ -11,6 +11,10 @@ import {
 } from '../operations/services/managed-repositories.ts';
 import { deriveTreeseedDesiredUnits } from '../reconcile/desired-state.ts';
 import type { TreeseedDesiredUnit, TreeseedReconcileSelector, TreeseedReconcileTarget } from '../reconcile/contracts.ts';
+import {
+	buildProjectLocalContentResources,
+	type TreeseedLocalContentMode,
+} from './local-content-materialization.ts';
 
 export type TreeseedDesiredEnvironment = 'local' | 'staging' | 'prod';
 
@@ -54,6 +58,7 @@ export type TreeseedDesiredResourceKind =
 	| 'local-process'
 	| 'local-docker-compose'
 	| 'local-treedx'
+	| 'local-content-materialization'
 	| 'capacity-provider'
 	| 'branch-preview'
 	| 'branch-preview-cleanup'
@@ -428,7 +433,7 @@ function templateResources(templates: TreeseedTemplateUnit[], environment: Trees
 	}));
 }
 
-function localDevelopmentResources(environment: TreeseedDesiredEnvironment): TreeseedDesiredResource[] {
+function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesiredEnvironment, localContent: TreeseedLocalContentMode): TreeseedDesiredResource[] {
 	if (environment !== 'local') return [];
 	const composeId = 'local-docker-compose:agent-capacity-provider';
 	const treeDxComposeId = 'local-docker-compose:treedx';
@@ -617,6 +622,7 @@ function localDevelopmentResources(environment: TreeseedDesiredEnvironment): Tre
 			},
 			source: { type: 'package-adapter' as const, id },
 		})),
+		...buildProjectLocalContentResources({ tenantRoot, environment, localContent }),
 	];
 }
 
@@ -867,9 +873,11 @@ function resourceMatchesSelector(resource: TreeseedDesiredResource, selector?: T
 export function compileTreeseedDesiredResourceGraph({
 	tenantRoot = workspaceRoot(),
 	target,
+	localContent = 'auto',
 }: {
 	tenantRoot?: string;
 	target: TreeseedReconcileTarget;
+	localContent?: TreeseedLocalContentMode;
 }): TreeseedDesiredResourceGraph {
 	const environment = environmentFromTarget(target);
 	const derived = deriveTreeseedDesiredUnits({ tenantRoot, target });
@@ -880,7 +888,7 @@ export function compileTreeseedDesiredResourceGraph({
 		...derived.units.map((unit) => resourceFromUnit(unit, environment)),
 		...packageAdapters.flatMap((adapter) => packageResources(adapter, environment)),
 		...templateResources(templates, environment),
-		...localDevelopmentResources(environment),
+		...localDevelopmentResources(tenantRoot, environment, localContent),
 		...branchPreviewResources(target, environment),
 		...releaseGateResources(packages, templates, environment),
 	];

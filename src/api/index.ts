@@ -1,5 +1,5 @@
 export { createTreeseedApiApp, createTreeseedApiRouter } from './app.ts';
-export { resolveApiConfig } from './config.ts';
+export { resolveApiConfig, resolveApiDatabaseUrl, resolveLocalApiDatabaseUrl } from './config.ts';
 export { createRailwayTreeseedApiServer, createTreeseedNodeServer } from './railway.ts';
 export { resolveApiRuntimeProviders } from './providers.ts';
 export { resolveApiD1Database } from './auth/d1-database.ts';

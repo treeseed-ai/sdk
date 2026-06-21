@@ -4,6 +4,11 @@ import {
 	type GitHubApiClient,
 	type GitHubWorkflowRunSummary,
 } from './github-api.ts';
+import {
+	contentRuntimeMetadataFromTarget,
+	resolveTreeseedContentRuntimeSource,
+	type TreeseedContentRuntimeResolution,
+} from '../../platform/content-runtime-source.ts';
 import type {
 	ProjectDeploymentEnvironment,
 	ProjectWebMonitorCheck,
@@ -76,6 +81,90 @@ function statusFromChecks(checks: ProjectWebMonitorCheck[]): ProjectWebMonitorSt
 	if (checks.some((entry) => entry.status === 'warning')) return 'degraded';
 	if (checks.some((entry) => entry.status === 'passed')) return 'healthy';
 	return 'unknown';
+}
+
+function architectureFromTarget(target: Record<string, any>) {
+	const architecture = objectValue(target.architecture);
+	const source = text(architecture.contentRuntimeSource);
+	if (!source) return null;
+	return {
+		contentRuntimeSource: source as any,
+		contentPublishTarget: objectValue(architecture.contentPublishTarget),
+	};
+}
+
+function fallbackPublishArchitecture(target: Record<string, any>, treeDxPublish: boolean) {
+	const metadata = contentRuntimeMetadataFromTarget(target);
+	if (treeDxPublish) {
+		return {
+			architecture: {
+				contentRuntimeSource: 'treedx_snapshot' as const,
+				contentPublishTarget: objectValue(target.contentPublishTarget),
+			},
+			metadata,
+		};
+	}
+	if (metadata.r2.manifestKey || metadata.r2.overlayKey) {
+		return {
+			architecture: {
+				contentRuntimeSource: metadata.r2.overlayKey ? 'r2_preview_overlay' as const : 'r2_published_manifest' as const,
+				contentPublishTarget: objectValue(target.contentPublishTarget),
+			},
+			metadata,
+		};
+	}
+	return null;
+}
+
+function contentRuntimeCheck(input: {
+	resolution: TreeseedContentRuntimeResolution | null;
+	hasRuntimeMetadata: boolean;
+}) {
+	if (!input.resolution) {
+		return check({
+			key: 'content_runtime',
+			label: 'Content runtime',
+			status: 'skipped',
+			source: 'sdk',
+			summary: 'No project content runtime metadata was reported.',
+		});
+	}
+	const status: ProjectWebMonitorCheckStatus = input.resolution.ready
+		? 'passed'
+		: input.hasRuntimeMetadata ? 'warning' : 'skipped';
+	const source = input.resolution.mode === 'r2'
+		? 'r2'
+		: input.resolution.mode === 'treedx' ? 'treedx' : 'sdk';
+	const locator = input.resolution.snapshotId
+		? `snapshot ${input.resolution.snapshotId}`
+		: input.resolution.manifestKey ? `manifest ${input.resolution.manifestKey}` : null;
+	return check({
+		key: 'content_runtime',
+		label: 'Content runtime',
+		status,
+		source,
+		summary: input.resolution.ready
+			? `Content runtime will use ${input.resolution.effectiveContentSource}${locator ? ` (${locator})` : ''}.`
+			: input.resolution.diagnostics[0]?.summary ?? 'Content runtime metadata is incomplete.',
+	});
+}
+
+function summarizeContentPublish(input: {
+	action?: string | null;
+	treeDxPublish: boolean;
+	contentRuntime: TreeseedContentRuntimeResolution | null;
+}) {
+	if (input.treeDxPublish) {
+		return input.contentRuntime?.snapshotId
+			? `TreeDX content snapshot ${input.contentRuntime.snapshotId} was published to R2 without GitHub Actions.`
+			: 'TreeDX content snapshot was published to R2 without GitHub Actions.';
+	}
+	if (input.action === 'publish_content') {
+		return input.contentRuntime?.manifestKey
+			? `Content publish completed for R2 manifest ${input.contentRuntime.manifestKey}.`
+			: 'Content publish workflow completed.';
+	}
+	return 'Content publish was not part of this action.';
 }
 
 function workflowRunCheck(input: {
@@ -268,6 +357,26 @@ export async function buildProjectWebMonitorResult(input: {
 	const target = objectValue(input.target);
 	const contentPublish = objectValue(target.contentPublish);
 	const treeDxPublish = input.action === 'publish_content' && contentPublish.provider === 'treedx';
+	const targetArchitecture = architectureFromTarget(target);
+	const fallbackArchitecture = fallbackPublishArchitecture(target, treeDxPublish);
+	const contentRuntimeMetadata = fallbackArchitecture?.metadata ?? contentRuntimeMetadataFromTarget(target);
+	const runtimeArchitecture = targetArchitecture ?? fallbackArchitecture?.architecture ?? null;
+	const contentRuntime = runtimeArchitecture
+		? resolveTreeseedContentRuntimeSource({
+			architecture: runtimeArchitecture,
+			r2: contentRuntimeMetadata.r2,
+			treeDx: contentRuntimeMetadata.treeDx,
+			includeLocalPath: false,
+		})
+		: null;
+	const hasRuntimeMetadata = Boolean(
+		targetArchitecture
+		|| contentRuntimeMetadata.r2.manifestKey
+		|| contentRuntimeMetadata.r2.overlayKey
+		|| contentRuntimeMetadata.treeDx.snapshotId
+		|| contentRuntimeMetadata.treeDx.libraryId
+		|| contentRuntimeMetadata.treeDx.repositoryId,
+	);
 	const targetUrl = externalUrl(target.url, target.baseUrl, target.previewUrl, target.lastDeploymentUrl);
 	const latestWorkflowRun = !input.workflowResult && repository && input.githubClient
 		? await getLatestGitHubWorkflowRun(repository, {
@@ -313,14 +422,13 @@ export async function buildProjectWebMonitorResult(input: {
 			mockExternal: input.mockExternal,
 			dryRun: input.dryRun,
 		}),
+		contentRuntimeCheck({ resolution: contentRuntime, hasRuntimeMetadata }),
 		check({
 			key: 'content_publish',
 			label: 'Content publish',
 			status: input.action === 'publish_content' ? 'passed' : 'skipped',
 			source: treeDxPublish ? 'treedx' : 'sdk',
-			summary: treeDxPublish
-				? 'TreeDX content snapshot was published without GitHub Actions.'
-				: input.action === 'publish_content' ? 'Content publish workflow completed.' : 'Content publish was not part of this action.',
+			summary: summarizeContentPublish({ action: input.action, treeDxPublish, contentRuntime }),
 		}),
 		check({
 			key: 'd1_migration',
@@ -349,6 +457,22 @@ export async function buildProjectWebMonitorResult(input: {
 		checks,
 		urls,
 		warnings,
+		...(contentRuntime ? {
+			contentRuntime: {
+				contentRuntimeSource: contentRuntime.contentRuntimeSource,
+				effectiveContentSource: contentRuntime.effectiveContentSource,
+				manifestKey: contentRuntime.manifestKey,
+				overlayKey: contentRuntime.overlayKey,
+				revision: contentRuntime.revision,
+				snapshotId: contentRuntime.snapshotId,
+				diagnostics: contentRuntime.diagnostics.map((entry) => ({
+					code: entry.code,
+					status: entry.status,
+					source: entry.source,
+					summary: entry.summary,
+				})),
+			},
+		} : {}),
 	};
 	return redact(result);
 }

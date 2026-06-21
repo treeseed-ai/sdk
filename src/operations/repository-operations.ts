@@ -163,6 +163,8 @@ export interface PlatformRepositoryOperationInput {
 	teamId?: string;
 	createdBy?: string;
 	repository: PlatformRepositoryDescriptor;
+	architecture?: Record<string, unknown>;
+	scaffoldFiles?: PlatformRepositoryScaffoldFile[];
 	collection?: string;
 	parentCollection?: string;
 	parentSlug?: string;
@@ -181,6 +183,12 @@ export interface PlatformRepositoryOperationInput {
 	hostBindingPlans?: ApplyProjectLaunchHostBindingConfigOptions['hostBindingPlans'];
 	launchInput?: ApplyProjectLaunchHostBindingConfigOptions['launchInput'];
 	derived?: ApplyProjectLaunchHostBindingConfigOptions['derived'];
+}
+
+export interface PlatformRepositoryScaffoldFile {
+	path: string;
+	content: string;
+	overwrite?: boolean;
 }
 
 export interface PlatformRepositoryOperationOptions {
@@ -450,6 +458,59 @@ function assertAllowedPath(repoPath: string, targetPath: string) {
 		throw new Error(`Repository operation path is outside src/content: ${relativePath}`);
 	}
 	return relativePath;
+}
+
+function safeRepositoryRelativePath(repoPath: string, rawPath: unknown) {
+	const value = typeof rawPath === 'string' ? rawPath.trim() : '';
+	if (!value || value.startsWith('/') || value.includes('\0')) {
+		throw new Error('Repository initialization scaffold path must be repository-relative.');
+	}
+	const target = resolve(repoPath, value);
+	const relativePath = relative(repoPath, target);
+	if (relativePath.startsWith('..') || relativePath.includes('..') || relativePath.startsWith('/')) {
+		throw new Error(`Repository initialization scaffold path is outside the repository: ${value}`);
+	}
+	return { target, relativePath };
+}
+
+function secretLookingText(value: string) {
+	return /(?:ghp_|github_pat_|sk-[A-Za-z0-9]|xox[baprs]-|BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY|TREESEED_GITHUB_TOKEN\s*=|password\s*=|passphrase\s*=|secretValue|rawSecret|unencrypted)/iu.test(value);
+}
+
+async function initializeLinkedRepository(repoPath: string, input: PlatformRepositoryOperationInput) {
+	const architecture = input.architecture && typeof input.architecture === 'object' && !Array.isArray(input.architecture)
+		? {
+			topology: input.architecture.topology ?? null,
+			rootPath: input.architecture.rootPath ?? '.',
+			sitePath: input.architecture.sitePath ?? null,
+			contentPath: input.architecture.contentPath ?? null,
+			contentRuntimeSource: input.architecture.contentRuntimeSource ?? null,
+			localContentMaterialization: input.architecture.localContentMaterialization ?? null,
+		}
+		: null;
+	const scaffoldFiles = Array.isArray(input.scaffoldFiles) ? input.scaffoldFiles : [];
+	const scaffoldedPaths: string[] = [];
+	for (const file of scaffoldFiles) {
+		if (!file || typeof file !== 'object') throw new Error('Repository initialization scaffold files must be objects.');
+		const content = typeof file.content === 'string' ? file.content : null;
+		if (content == null) throw new Error('Repository initialization scaffold file content must be a string.');
+		if (secretLookingText(content) || secretLookingText(file.path)) {
+			throw new Error('Repository initialization scaffold files must not contain token-like or plaintext secret material.');
+		}
+		const { target, relativePath } = safeRepositoryRelativePath(repoPath, file.path);
+		if (existsSync(target) && file.overwrite !== true) continue;
+		await mkdir(dirname(target), { recursive: true });
+		await writeFile(target, content, 'utf8');
+		scaffoldedPaths.push(relativePath);
+	}
+	return {
+		kind: 'linked_repository_initialization',
+		projectId: input.projectId ?? null,
+		teamId: input.teamId ?? null,
+		mode: scaffoldedPaths.length > 0 ? 'template_scaffold' : 'adopt_existing',
+		architecture,
+		scaffoldedPaths,
+	};
 }
 
 async function readContentRecord(repoPath: string, collection: string, slug: string) {
@@ -828,6 +889,8 @@ export async function executePlatformRepositoryOperation(
 			hostBindingAudit,
 			changedPaths: [],
 		};
+	} else if (operation === 'initialize_linked_repository') {
+		output = await initializeLinkedRepository(repoPath, input);
 	} else {
 		throw new Error(`Unsupported repository operation "${operation}".`);
 	}

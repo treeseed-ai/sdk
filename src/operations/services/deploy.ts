@@ -404,7 +404,7 @@ export function buildPublicVars(deployConfig, options = {}) {
 			TREESEED_CATALOG_MARKET_API_BASE_URLS: envOrNull('TREESEED_CATALOG_MARKET_API_BASE_URLS') ?? resolveConfiguredMarketBaseUrl(deployConfig),
 			TREESEED_HOSTING_TEAM_ID: contentDefaultTeamId,
 		TREESEED_PROJECT_ID: identity.projectId,
-		TREESEED_AGENT_EXECUTION_PROVIDER: deployConfig.providers?.agents?.execution ?? 'stub',
+		TREESEED_AGENT_EXECUTION_PROVIDER: deployConfig.providers?.agents?.execution ?? 'codex',
 		TREESEED_AGENT_REPOSITORY_PROVIDER: deployConfig.providers?.agents?.repository ?? 'stub',
 		TREESEED_AGENT_VERIFICATION_PROVIDER: deployConfig.providers?.agents?.verification ?? 'stub',
 		TREESEED_CONTENT_RUNTIME_PROVIDER: contentRuntimeProvider,
@@ -579,15 +579,7 @@ function defaultStateFromConfig(deployConfig, target) {
 				previewDatabaseId: `dryrun-${suffix}-site-data-preview`,
 			},
 		},
-		queues: {
-			agentWork: {
-				name: environmentScopedIdentityName(identity, deployConfig.cloudflare.queueName ?? 'agent-work', target),
-				dlqName: environmentScopedIdentityName(identity, deployConfig.cloudflare.dlqName ?? 'agent-work-dlq', target),
-				binding: deployConfig.cloudflare.queueBinding ?? 'AGENT_WORK_QUEUE',
-				queueId: null,
-				dlqId: null,
-			},
-		},
+		queues: {},
 		pages: {
 			projectName: resolveConfiguredPagesProjectName(deployConfig),
 			productionBranch: deployConfig.cloudflare.pages?.productionBranch ?? 'main',
@@ -762,19 +754,7 @@ export function loadDeployState(tenantRoot, deployConfig, options = {}) {
 				binding: defaults.d1Databases.SITE_DATA_DB.binding,
 			},
 		},
-		queues: {
-			...(defaults.queues ?? {}),
-			...(persisted.queues ?? {}),
-			agentWork: {
-				...(defaults.queues?.agentWork ?? {}),
-				...(persisted.queues?.agentWork ?? {}),
-				name: defaults.queues?.agentWork?.name ?? persisted.queues?.agentWork?.name ?? 'agent-work',
-				dlqName: defaults.queues?.agentWork?.dlqName ?? persisted.queues?.agentWork?.dlqName ?? 'agent-work-dlq',
-				binding: defaults.queues?.agentWork?.binding ?? persisted.queues?.agentWork?.binding ?? 'AGENT_WORK_QUEUE',
-				queueId: persisted.queues?.agentWork?.queueId ?? defaults.queues?.agentWork?.queueId ?? null,
-				dlqId: persisted.queues?.agentWork?.dlqId ?? defaults.queues?.agentWork?.dlqId ?? null,
-			},
-		},
+		queues: {},
 		generatedSecrets: {
 			...(defaults.generatedSecrets ?? {}),
 			...(persisted.generatedSecrets ?? {}),
@@ -1324,13 +1304,10 @@ export function buildProvisioningSummary(deployConfig, state, target) {
 		formGuardKv: state.kvNamespaces.FORM_GUARD_KV,
 		sessionKv: state.kvNamespaces.SESSION ?? null,
 		siteDataDb: state.d1Databases.SITE_DATA_DB,
-		queue: state.queues?.agentWork ?? null,
 		content: state.content ?? null,
 		resources: {
 			pagesProject: state.pages?.projectName ?? null,
 			contentBucket: state.content?.bucketName ?? null,
-			queue: state.queues?.agentWork?.name ?? null,
-			dlq: state.queues?.agentWork?.dlqName ?? null,
 			database: state.d1Databases?.SITE_DATA_DB?.databaseName ?? null,
 			turnstileWidget: state.turnstileWidgets?.formGuard?.name ?? null,
 			formGuardKv: state.kvNamespaces?.FORM_GUARD_KV?.name ?? null,
@@ -1865,7 +1842,6 @@ export function hasProvisionedCloudflareResources(state) {
 		&& state?.pages?.url
 		&& state?.d1Databases?.SITE_DATA_DB?.databaseId
 		&& state?.kvNamespaces?.FORM_GUARD_KV?.id
-		&& state?.queues?.agentWork?.name
 		&& state?.content?.bucketName,
 	);
 }
@@ -2302,29 +2278,6 @@ function deleteQueueByName(tenantRoot, queue, { env, dryRun }) {
 		return resourceOperation('cloudflare', 'queue', name, 'missing', { id });
 	}
 	throw new Error(`Failed to delete queue ${name}: CLOUDFLARE_ACCOUNT_ID is not configured.`);
-}
-
-function isLegacyTreeseedQueueName(name, scope) {
-	if (!name || !scope) {
-		return false;
-	}
-	const environmentNames = scope === 'prod' ? ['prod', 'production'] : [scope];
-	return environmentNames.some((environmentName) =>
-		name === `agent-work-${environmentName}` || name === `agent-work-dlq-${environmentName}`,
-	);
-}
-
-function legacyQueueDestroyOperations(tenantRoot, queues, target, knownNames, { env, dryRun }) {
-	const scope = target.kind === 'persistent' ? target.scope : target.branchName;
-	return queues
-		.filter((queue) => {
-			const name = queueName(queue);
-			return name && !knownNames.has(name) && isLegacyTreeseedQueueName(name, scope);
-		})
-		.map((queue) => {
-			const deleted = deleteQueueByName(tenantRoot, queue, { env, dryRun });
-			return { ...deleted, legacy: true };
-		});
 }
 
 function deleteR2Bucket(tenantRoot, bucketName, { env, dryRun, deleteData }) {
@@ -3196,8 +3149,6 @@ function treeSeedSweepTokens(deployConfig, state) {
 		state.pages?.projectName,
 		state.workerName,
 		state.content?.bucketName,
-		state.queues?.agentWork?.name,
-		state.queues?.agentWork?.dlqName,
 		state.kvNamespaces?.FORM_GUARD_KV?.name,
 		state.kvNamespaces?.SESSION?.name,
 		state.d1Databases?.SITE_DATA_DB?.databaseName,
@@ -3475,8 +3426,6 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 
 	const pagesProject = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
 	const bucket = buckets.find((entry) => entry?.name === state.content?.bucketName);
-	const queue = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.name);
-	const dlq = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.dlqName);
 
 	const workerResult = deleteWorker(tenantRoot, state.workerName, { env, dryRun, force });
 	const turnstileWidget = deleteTurnstileWidget(state.turnstileWidgets?.formGuard?.sitekey, {
@@ -3521,15 +3470,6 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 			return resourceOperation('cloudflare', 'kv-namespace', namespace.title, result.status, { ...result, legacy: true });
 		});
 	const database = deleteD1DatabaseForDestroy(tenantRoot, state.d1Databases.SITE_DATA_DB.databaseName, { env, dryRun, deleteData });
-	const deletedQueue = deleteQueueByName(tenantRoot, queue ?? { name: state.queues?.agentWork?.name }, { env, dryRun });
-	const deletedDlq = state.queues?.agentWork?.dlqName
-		? deleteQueueByName(tenantRoot, dlq ?? { name: state.queues.agentWork.dlqName }, { env, dryRun })
-		: null;
-	const knownQueueNames = new Set([
-		state.queues?.agentWork?.name,
-		state.queues?.agentWork?.dlqName,
-	].filter(Boolean));
-	const legacyQueues = legacyQueueDestroyOperations(tenantRoot, queues, target, knownQueueNames, { env, dryRun });
 	const r2Bucket = bucket || dryRun ? deleteR2Bucket(tenantRoot, state.content?.bucketName, { env, dryRun, deleteData }) : resourceOperation('cloudflare', 'r2-bucket', state.content?.bucketName, 'missing');
 	const pageDnsNames = [
 		state.pages?.customDomain,
@@ -3579,9 +3519,6 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 			...(sessionPreview ? [resourceOperation('cloudflare', 'kv-namespace-preview', state.kvNamespaces.SESSION.name, sessionPreview.status, sessionPreview)] : []),
 			...legacyKvNamespaces,
 			database,
-			deletedQueue,
-			...(deletedDlq ? [deletedDlq] : []),
-			...legacyQueues,
 			r2Bucket,
 			...pageCustomDomains,
 			pageDeployments,
@@ -3644,8 +3581,6 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 		state.d1Databases.SITE_DATA_DB,
 	);
 	state.turnstileWidgets.formGuard = resolveExistingTurnstileWidget(turnstileWidgets, state.turnstileWidgets?.formGuard);
-	const queue = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.name);
-	const dlq = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.dlqName);
 	const bucket = buckets.find((entry) => entry?.name === state.content?.bucketName);
 	const pagesProject = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
 	const worker = deleteWorker(tenantRoot, state.workerName, { env, dryRun, force });
@@ -3656,15 +3591,6 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 	});
 	const formGuard = deleteKvNamespace(tenantRoot, state.kvNamespaces.FORM_GUARD_KV.id, { env, dryRun });
 	const database = deleteD1DatabaseForDestroy(tenantRoot, state.d1Databases.SITE_DATA_DB.databaseName, { env, dryRun, deleteData });
-	const deletedQueue = deleteQueueByName(tenantRoot, queue ?? { name: state.queues?.agentWork?.name }, { env, dryRun });
-	const deletedDlq = state.queues?.agentWork?.dlqName
-		? deleteQueueByName(tenantRoot, dlq ?? { name: state.queues.agentWork.dlqName }, { env, dryRun })
-		: null;
-	const knownQueueNames = new Set([
-		state.queues?.agentWork?.name,
-		state.queues?.agentWork?.dlqName,
-	].filter(Boolean));
-	const legacyQueues = legacyQueueDestroyOperations(tenantRoot, queues, target, knownQueueNames, { env, dryRun });
 	const r2Bucket = bucket || dryRun
 		? deleteR2Bucket(tenantRoot, state.content?.bucketName, { env, dryRun, deleteData })
 		: resourceOperation('cloudflare', 'r2-bucket', state.content?.bucketName, 'missing');
@@ -3676,9 +3602,6 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 		turnstileWidget,
 		formGuard,
 		database,
-		queue: deletedQueue,
-		dlq: deletedDlq,
-		legacyQueues,
 		r2Bucket,
 		pages,
 	};
@@ -3788,62 +3711,6 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 		current.previewDatabaseId = created.previewDatabaseUuid ?? created.uuid;
 	};
 
-	const ensureQueue = () => {
-		const current = state.queues?.agentWork;
-		if (!current?.name) {
-			return;
-		}
-		let refreshedQueues = queues;
-		const exists = refreshedQueues.find((entry) => queueName(entry) === current.name);
-		if (exists) {
-			current.queueId = queueId(exists);
-			const currentDlq = current.dlqName ? refreshedQueues.find((entry) => queueName(entry) === current.dlqName) : null;
-			current.dlqId = queueId(currentDlq);
-			return;
-		}
-		if (dryRun) {
-			current.queueId = `dryrun-${current.name}`;
-			current.dlqId = current.dlqName ? `dryrun-${current.dlqName}` : null;
-			return;
-		}
-		try {
-			runWrangler(['queues', 'create', current.name], {
-				cwd: tenantRoot,
-				capture: true,
-				env,
-			});
-		} catch (error) {
-			if (!isWranglerAlreadyExistsError(error, [/Queue name .* is already taken/i, /\[code:\s*11009\]/i])) {
-				throw error;
-			}
-		}
-		refreshedQueues = listQueues(tenantRoot, env);
-		if (current.dlqName && !refreshedQueues.find((entry) => queueName(entry) === current.dlqName)) {
-			try {
-				runWrangler(['queues', 'create', current.dlqName], {
-					cwd: tenantRoot,
-					capture: true,
-					env,
-				});
-			} catch (error) {
-				if (!isWranglerAlreadyExistsError(error, [/Queue name .* is already taken/i, /\[code:\s*11009\]/i])) {
-					throw error;
-				}
-			}
-		}
-		refreshedQueues = listQueues(tenantRoot, env);
-		const created = refreshedQueues.find((entry) => queueName(entry) === current.name);
-		if (!created) {
-			throw new Error(`Unable to resolve Cloudflare queue ${current.name} after reconciliation.`);
-		}
-		current.queueId = queueId(created);
-		const createdDlq = current.dlqName ? refreshedQueues.find((entry) => queueName(entry) === current.dlqName) : null;
-		if (current.dlqName && !createdDlq) {
-			throw new Error(`Unable to resolve Cloudflare dead-letter queue ${current.dlqName} after reconciliation.`);
-		}
-		current.dlqId = queueId(createdDlq);
-	};
-
 	const ensureR2Bucket = () => {
 		const bucketName = state.content?.bucketName;
 		if (!bucketName) {
@@ -3909,7 +3776,6 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 
 	ensureKv('FORM_GUARD_KV');
 	ensureD1();
-	ensureQueue();
 	ensureR2Bucket();
 	ensurePagesProject();
 	reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, target, { dryRun });
@@ -4019,8 +3885,6 @@ export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
 		pages: Boolean(state.pages?.projectName && (livePages || pagesProject?.name === state.pages.projectName)),
 		formGuardKv: Boolean(state.kvNamespaces?.FORM_GUARD_KV?.name && kvNamespaces.find((entry) => entry?.title === state.kvNamespaces.FORM_GUARD_KV.name)),
 		d1: Boolean(state.d1Databases?.SITE_DATA_DB?.databaseName && d1Databases.find((entry) => entry?.name === state.d1Databases.SITE_DATA_DB.databaseName)),
-		queue: Boolean(state.queues?.agentWork?.name && queues.find((entry) => queueName(entry) === state.queues.agentWork.name)),
-		dlq: !state.queues?.agentWork?.dlqName || Boolean(queues.find((entry) => queueName(entry) === state.queues.agentWork.dlqName)),
 		r2: Boolean(state.content?.bucketName && buckets.find((entry) => entry?.name === state.content.bucketName)),
 		pagesFormGuardKvBinding: !pagesBindings.kv_namespaces?.FORM_GUARD_KV || pageBindingConfigured('kv_namespaces', 'FORM_GUARD_KV', pagesBindings.kv_namespaces.FORM_GUARD_KV),
 		pagesD1Binding: !pagesBindings.d1_databases?.SITE_DATA_DB || pageBindingConfigured('d1_databases', 'SITE_DATA_DB', pagesBindings.d1_databases.SITE_DATA_DB),
@@ -4038,12 +3902,6 @@ export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
 	state.readiness.warnings = [];
 	state.readiness.lastValidationSummary = checks;
 
-	const liveQueue = queues.find((entry) => queueName(entry) === state.queues?.agentWork?.name);
-	if (state.queues?.agentWork) {
-		state.queues.agentWork.queueId = queueId(liveQueue) ?? state.queues.agentWork.queueId ?? null;
-		const liveDlq = queues.find((entry) => queueName(entry) === state.queues.agentWork.dlqName);
-		state.queues.agentWork.dlqId = queueId(liveDlq) ?? state.queues.agentWork.dlqId ?? null;
-	}
 	if (state.pages) {
 		const configuredWebUrl = resolveConfiguredSurfaceBaseUrl(deployConfig, target, 'web');
 		if (configuredWebUrl) {

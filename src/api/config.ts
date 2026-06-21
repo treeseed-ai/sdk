@@ -5,6 +5,10 @@ import type { ApiConfig } from './types.ts';
 const LOCAL_DEV_AUTH_TTL_SECONDS = 365 * 24 * 60 * 60;
 const DEFAULT_AUTH_TTL_SECONDS = 15 * 60;
 const DEFAULT_REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;
+const DEFAULT_LOCAL_API_DATABASE_PORT = '55432';
+const DEFAULT_LOCAL_API_DATABASE_NAME = 'market_local';
+const DEFAULT_LOCAL_API_DATABASE_USER = 'treeseed';
+const DEFAULT_LOCAL_API_DATABASE_PASSWORD = 'treeseed';
 
 function parseInteger(value: string | undefined, fallback: number) {
 	if (!value) return fallback;
@@ -45,6 +49,33 @@ function firstEnvValue(env: NodeJS.ProcessEnv, ...keys: string[]) {
 		if (value) return value;
 	}
 	return undefined;
+}
+
+function encodeDatabaseUrlPart(value: string) {
+	return encodeURIComponent(value);
+}
+
+export function resolveLocalApiDatabaseUrl(env: NodeJS.ProcessEnv = process.env) {
+	const port = firstEnvValue(env, 'TREESEED_MARKET_LOCAL_POSTGRES_PORT', 'TREESEED_API_LOCAL_POSTGRES_PORT')
+		|| DEFAULT_LOCAL_API_DATABASE_PORT;
+	const database = firstEnvValue(env, 'TREESEED_MARKET_LOCAL_POSTGRES_DATABASE', 'TREESEED_API_LOCAL_POSTGRES_DATABASE')
+		|| DEFAULT_LOCAL_API_DATABASE_NAME;
+	const user = firstEnvValue(env, 'TREESEED_MARKET_LOCAL_POSTGRES_USER', 'TREESEED_API_LOCAL_POSTGRES_USER')
+		|| DEFAULT_LOCAL_API_DATABASE_USER;
+	const password = firstEnvValue(env, 'TREESEED_MARKET_LOCAL_POSTGRES_PASSWORD', 'TREESEED_API_LOCAL_POSTGRES_PASSWORD')
+		|| DEFAULT_LOCAL_API_DATABASE_PASSWORD;
+	return `postgres://${encodeDatabaseUrlPart(user)}:${encodeDatabaseUrlPart(password)}@127.0.0.1:${port}/${encodeDatabaseUrlPart(database)}`;
+}
+
+export function resolveApiDatabaseUrl(env: NodeJS.ProcessEnv = process.env, baseUrl?: string) {
+	const explicit = firstEnvValue(env, 'TREESEED_DATABASE_URL');
+	if (explicit) return explicit;
+
+	const environment = firstEnvValue(env, 'TREESEED_API_ENVIRONMENT', 'TREESEED_ENVIRONMENT');
+	const localMode = env.TREESEED_LOCAL_DEV_MODE !== undefined
+		|| environment === 'local'
+		|| (baseUrl ? isLoopbackUrl(baseUrl) : false);
+	return localMode ? resolveLocalApiDatabaseUrl(env) : undefined;
 }
 
 function resolveBaseUrl(env: NodeJS.ProcessEnv, host: string, port: number) {
@@ -116,6 +147,7 @@ export function resolveApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfi
 			: ['sdk:execute:global', 'agent:execute:global', 'operations:execute:global'],
 		cloudflareAccountId: env.TREESEED_CLOUDFLARE_ACCOUNT_ID?.trim() || undefined,
 		cloudflareApiToken: env.TREESEED_CLOUDFLARE_API_TOKEN?.trim() || undefined,
+		apiDatabaseUrl: resolveApiDatabaseUrl(env, baseUrl),
 		d1DatabaseId: env.TREESEED_API_D1_DATABASE_ID?.trim() || undefined,
 		d1DatabaseName: env.TREESEED_API_D1_DATABASE_NAME?.trim() || env.SITE_DATA_DB?.trim() || undefined,
 		d1LocalPersistTo: env.TREESEED_API_D1_LOCAL_PERSIST_TO?.trim() || resolve(repoRoot, '.wrangler/state/v3/d1'),
@@ -133,7 +165,7 @@ export function resolveApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfi
 		providers: {
 			auth: env.TREESEED_API_PROVIDER_AUTH?.trim() || 'd1',
 			agents: {
-				execution: env.TREESEED_API_PROVIDER_AGENT_EXECUTION?.trim() || 'stub',
+				execution: env.TREESEED_API_PROVIDER_AGENT_EXECUTION?.trim() || 'codex',
 				queue: env.TREESEED_API_PROVIDER_AGENT_QUEUE?.trim() || 'memory',
 				notification: env.TREESEED_API_PROVIDER_AGENT_NOTIFICATION?.trim() || 'stub',
 				repository: env.TREESEED_API_PROVIDER_AGENT_REPOSITORY?.trim() || 'stub',

@@ -541,8 +541,6 @@ function applyManagedProjectDefaults(projectRoot: string, input: KnowledgeHubPro
 			accountId: cloudflareAccountId,
 			...(input.domains?.zoneId ? { zoneId: input.domains.zoneId } : {}),
 			workerName: slug,
-			queueName: `${slug}-agent-work`,
-			dlqName: `${slug}-agent-work-dlq`,
 			pages: {
 				projectName: slug,
 				previewProjectName: slug,
