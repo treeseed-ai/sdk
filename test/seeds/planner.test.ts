@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { stringify } from 'yaml';
 import { loadSeedManifest } from '../../src/seeds/loader.js';
 import { createSeedPlan } from '../../src/seeds/planner.js';
 import { parseSeedManifest } from '../../src/seeds/schema.js';
 import type { SeedManifest } from '../../src/seeds/types.js';
 
-const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const TREESEED_PROJECT_KEYS = [
 	'project:treeseed/admin',
 	'project:treeseed/agent',
@@ -31,6 +32,271 @@ const singleRepositorySiteArchitecture = {
 		prefix: 'demo/site',
 	},
 } as const;
+
+const TRESEED_PACKAGES = [
+	['api', '@treeseed/api', 'site_not_prepared', 'none'],
+	['treedx', 'treedx', 'ready', 'existing_path'],
+	['sdk', '@treeseed/sdk', 'ready', 'existing_path'],
+	['ui', '@treeseed/ui', 'site_not_prepared', 'none'],
+	['cli', '@treeseed/cli', 'site_not_prepared', 'none'],
+	['core', '@treeseed/core', 'site_not_prepared', 'none'],
+	['admin', '@treeseed/admin', 'site_not_prepared', 'none'],
+	['agent', '@treeseed/agent', 'ready', 'existing_path'],
+] as const;
+
+function firstPartyProject(slug: typeof TRESEED_PACKAGES[number][0], packageId: string, docsSiteReadiness: string, localContentMaterialization: string) {
+	return {
+		key: `project:treeseed/${slug}`,
+		team: 'team:treeseed',
+		slug,
+		name: slug === 'treedx' ? 'TreeDX' : `TreeSeed ${slug[0]!.toUpperCase()}${slug.slice(1)}`,
+		description: `${slug} first-party package project.`,
+		kind: 'package',
+		repository: {
+			role: 'primary',
+			provider: 'github',
+			owner: 'treeseed-ai',
+			name: slug,
+			gitUrl: `https://github.com/treeseed-ai/${slug}.git`,
+			defaultBranch: 'main',
+			checkoutPath: `packages/${slug}`,
+			submodulePath: `packages/${slug}`,
+		},
+		architecture: {
+			topology: 'single_repository_site',
+			rootPath: '.',
+			sitePath: 'docs',
+			contentPath: 'docs',
+			contentRuntimeSource: 'r2_published_manifest',
+			localContentMaterialization,
+			contentPublishTarget: {
+				kind: 'cloudflare_r2',
+				prefix: `packages/${slug}`,
+			},
+		},
+		metadata: {
+			packageId,
+			packagePath: `packages/${slug}`,
+			visibility: 'public',
+			docsSiteReadiness,
+			releaseOwnership: 'treeseed.package.yaml',
+		},
+	};
+}
+
+function canonicalTreeseedSeed(): SeedManifest {
+	const projects = [
+		{
+			key: 'project:treeseed/market',
+			team: 'team:treeseed',
+			slug: 'market',
+			name: 'TreeSeed Market',
+			description: 'Top-level market application and control plane.',
+			kind: 'market_app',
+			repository: {
+				role: 'primary',
+				provider: 'github',
+				owner: 'knowledge-coop',
+				name: 'market',
+				gitUrl: 'https://github.com/knowledge-coop/market.git',
+				defaultBranch: 'main',
+				checkoutPath: '.',
+			},
+			architecture: {
+				topology: 'single_repository_site',
+				rootPath: '.',
+				sitePath: '.',
+				contentPath: 'src/content',
+				contentRuntimeSource: 'r2_published_manifest',
+				localContentMaterialization: 'existing_path',
+				contentPublishTarget: {
+					kind: 'cloudflare_r2',
+					prefix: 'market',
+				},
+			},
+			metadata: {
+				demoRole: 'market-control-plane',
+				visibility: 'private',
+			},
+		},
+		...TRESEED_PACKAGES.map(([slug, packageId, docsSiteReadiness, localContentMaterialization]) =>
+			firstPartyProject(slug, packageId, docsSiteReadiness, localContentMaterialization)),
+	];
+	const grantAllocations: Record<string, number> = {
+		market: 50,
+		api: 6,
+		treedx: 10,
+		sdk: 6,
+		ui: 6,
+		cli: 6,
+		core: 6,
+		admin: 6,
+		agent: 4,
+	};
+	const projectSlugs = ['market', ...TRESEED_PACKAGES.map(([slug]) => slug)];
+	return {
+		name: 'treeseed',
+		version: 1,
+		description: 'TreeSeed platform development and operations portfolio',
+		defaultEnvironments: ['local'],
+		environments: ['local', 'staging', 'prod'],
+		resources: {
+			teams: [{
+				key: 'team:treeseed',
+				slug: 'treeseed',
+				name: 'treeseed',
+				displayName: 'TreeSeed',
+				profileSummary: 'TreeSeed platform market, integrated package, and agent operations.',
+				metadata: { visibility: 'private' },
+			}],
+			projects,
+			capacityProviders: [{
+				key: 'capacity-provider:treeseed/local-dev',
+				environments: ['local'],
+				team: 'team:treeseed',
+				name: 'treeseed-local-dev',
+				kind: 'local',
+				provider: 'local',
+				billingScope: 'team',
+				creditBudgetMode: 'derived',
+				maxConcurrentWorkdays: 2,
+				maxConcurrentWorkers: 4,
+				executionProviders: [{
+					id: 'treeseed-local-codex',
+					name: 'Local Codex capacity',
+					kind: 'codex_subscription',
+					nativeUnit: 'wall_minute',
+					quotaVisibility: 'opaque',
+					maxConcurrentWorkers: 4,
+					resetCadence: 'daily',
+					nativeLimits: [{
+						scope: 'daily',
+						nativeUnit: 'wall_minute',
+						limitAmount: 600,
+						reserveBufferPercent: 20,
+						resetCadence: 'daily',
+						confidence: 'estimated',
+						source: 'configured',
+					}],
+				}],
+				registration: {
+					apiKey: {
+						createIfMissing: true,
+						name: 'TreeSeed local provider security code',
+						scopes: ['provider:register', 'provider:heartbeat', 'provider:portfolio:read', 'provider:assignments:read', 'provider:assignments:write', 'provider:usage:report', 'provider:reports:write', 'provider:capabilities:write'],
+					},
+				},
+			}],
+			capacityGrants: projectSlugs.map((slug) => ({
+				key: `capacity-grant:treeseed/local/${slug}`,
+				environments: ['local'],
+				provider: 'capacity-provider:treeseed/local-dev',
+				team: 'team:treeseed',
+				project: `project:treeseed/${slug}`,
+				environment: 'local',
+				grantScope: 'project',
+				portfolioAllocationPercent: grantAllocations[slug] ?? 1,
+				reservePoolPercent: 10,
+				priorityWeight: 1,
+				overflowPolicy: 'soft_grant',
+			})),
+			workPolicies: [
+				...projectSlugs.map((slug) => ({
+					key: `work-policy:treeseed/local/${slug}`,
+					environments: ['local'],
+					project: `project:treeseed/${slug}`,
+					environment: 'local',
+					enabled: true,
+					startCron: '0 9 * * 1-5',
+					durationMinutes: 480,
+					maxRunners: 1,
+					maxWorkersPerRunner: 4,
+					dailyCreditBudget: 5000,
+					maxQueuedTasks: 100,
+					maxQueuedCredits: 10000,
+				})),
+				...['staging', 'prod'].map((environment) => ({
+					key: `work-policy:treeseed/${environment}/market`,
+					environments: [environment],
+					project: 'project:treeseed/market',
+					environment,
+					enabled: true,
+					startCron: '0 9 * * 1-5',
+					durationMinutes: 480,
+					maxRunners: 1,
+					maxWorkersPerRunner: 4,
+					dailyCreditBudget: 2500,
+					maxQueuedTasks: 50,
+					maxQueuedCredits: 5000,
+				})),
+			],
+			repositoryHosts: [
+				{
+					key: 'repository-host:treeseed/knowledge-coop-github',
+					team: 'team:treeseed',
+					provider: 'github',
+					name: 'knowledge-coop',
+					ownership: 'treeseed_managed',
+					accountLabel: 'Knowledge Coop GitHub organization',
+					organizationOrOwner: 'knowledge-coop',
+					defaultVisibility: 'private',
+					softwareRepositoryNameTemplate: '{project}',
+					contentRepositoryNameTemplate: '{project}-content',
+					allowedProjectKinds: ['market_app', 'package', 'knowledge_hub'],
+					status: 'active',
+					credentialRef: 'env:TREESEED_GITHUB_TOKEN',
+				},
+				{
+					key: 'repository-host:treeseed/treeseed-ai-github',
+					team: 'team:treeseed',
+					provider: 'github',
+					name: 'treeseed-ai',
+					ownership: 'treeseed_managed',
+					accountLabel: 'TreeSeed AI GitHub organization',
+					organizationOrOwner: 'treeseed-ai',
+					defaultVisibility: 'public',
+					softwareRepositoryNameTemplate: '{project}',
+					contentRepositoryNameTemplate: '{project}-content',
+					allowedProjectKinds: ['market_app', 'package', 'knowledge_hub'],
+					status: 'active',
+					credentialRef: 'env:TREESEED_GITHUB_TOKEN',
+				},
+			],
+			hubRepositories: [],
+			products: ['market-template', 'engineering-template', 'research-template', 'information-hub-template'].map((slug) => ({
+				key: `product:treeseed/${slug}`,
+				team: 'team:treeseed',
+				kind: 'template',
+				slug,
+				title: slug,
+				summary: `${slug} template`,
+				visibility: 'public',
+				listingEnabled: true,
+				offerMode: 'free',
+				manifestKey: slug === 'market-template' ? 'seeds/treeseed.yaml' : `src/content/templates/${slug}.mdx`,
+				artifactKey: `catalog/${slug}/1.0.0/template`,
+				searchText: slug,
+			})),
+			catalogArtifacts: ['market-template', 'engineering-template', 'research-template', 'information-hub-template'].map((slug) => ({
+				key: `catalog-artifact:treeseed/${slug}/1.0.0`,
+				product: `product:treeseed/${slug}`,
+				version: '1.0.0',
+				kind: 'template',
+				contentKey: `catalog/${slug}/1.0.0/template`,
+				manifestKey: slug === 'market-template' ? 'seeds/treeseed.yaml' : `src/content/templates/${slug}.mdx`,
+			})),
+			agentPools: [],
+		},
+		operationRecipes: [],
+	} as SeedManifest;
+}
+
+function writeSeedWorkspace(seed: SeedManifest) {
+	const root = mkdtempSync(join(tmpdir(), 'treeseed-sdk-seed-test-'));
+	mkdirSync(join(root, 'seeds'), { recursive: true });
+	writeFileSync(join(root, 'seeds', 'treeseed.yaml'), stringify(seed), 'utf8');
+	return root;
+}
 
 const manifest: SeedManifest = {
 	name: 'demo',
@@ -111,44 +377,49 @@ const manifest: SeedManifest = {
 
 describe('seed planner current-state diffing', () => {
 	it('plans the canonical Treeseed seed as an exact nine-project first-party portfolio', () => {
-		const loaded = loadSeedManifest(workspaceRoot, 'treeseed');
-		expect(loaded.diagnostics).toEqual([]);
-		const diagnostics = [];
-		const parsed = parseSeedManifest(loaded.value, diagnostics);
-		expect(diagnostics).toEqual([]);
-		expect(parsed).toBeTruthy();
-		const projects = parsed!.resources.projects;
-		expect(projects.map((project) => project.key).sort()).toEqual(TREESEED_PROJECT_KEYS);
-		expect(JSON.stringify(projects)).not.toContain('karyon');
-		expect(projects.find((project) => project.key === 'project:treeseed/market')?.metadata).toMatchObject({ visibility: 'private' });
-		for (const project of projects.filter((entry) => entry.key !== 'project:treeseed/market')) {
-			expect(project.kind).toBe('package');
-			expect(project.repository.owner).toBe('treeseed-ai');
-			expect(project.architecture).toMatchObject({
-				topology: 'single_repository_site',
-				rootPath: '.',
-				sitePath: 'docs',
-				contentPath: 'docs',
-				contentRuntimeSource: 'r2_published_manifest',
-				contentPublishTarget: {
-					kind: 'cloudflare_r2',
-					prefix: `packages/${project.slug}`,
-				},
+		const workspaceRoot = writeSeedWorkspace(canonicalTreeseedSeed());
+		try {
+			const loaded = loadSeedManifest(workspaceRoot, 'treeseed');
+			expect(loaded.diagnostics).toEqual([]);
+			const diagnostics = [];
+			const parsed = parseSeedManifest(loaded.value, diagnostics);
+			expect(diagnostics).toEqual([]);
+			expect(parsed).toBeTruthy();
+			const projects = parsed!.resources.projects;
+			expect(projects.map((project) => project.key).sort()).toEqual(TREESEED_PROJECT_KEYS);
+			expect(JSON.stringify(projects)).not.toContain('karyon');
+			expect(projects.find((project) => project.key === 'project:treeseed/market')?.metadata).toMatchObject({ visibility: 'private' });
+			for (const project of projects.filter((entry) => entry.key !== 'project:treeseed/market')) {
+				expect(project.kind).toBe('package');
+				expect(project.repository.owner).toBe('treeseed-ai');
+				expect(project.architecture).toMatchObject({
+					topology: 'single_repository_site',
+					rootPath: '.',
+					sitePath: 'docs',
+					contentPath: 'docs',
+					contentRuntimeSource: 'r2_published_manifest',
+					contentPublishTarget: {
+						kind: 'cloudflare_r2',
+						prefix: `packages/${project.slug}`,
+					},
+				});
+				expect(project.metadata).toMatchObject({
+					visibility: 'public',
+					releaseOwnership: 'treeseed.package.yaml',
+				});
+			}
+			const plan = createSeedPlan({
+				manifest: parsed!,
+				manifestPath: loaded.path,
+				environments: ['local'],
+				mode: 'plan',
 			});
-			expect(project.metadata).toMatchObject({
-				visibility: 'public',
-				releaseOwnership: 'treeseed.package.yaml',
-			});
+			expect(plan.summary).toMatchObject({ create: 39, update: 0, unchanged: 0, skip: 2 });
+			expect(plan.actions.filter((action) => action.kind === 'project').map((action) => action.key).sort()).toEqual(TREESEED_PROJECT_KEYS);
+			expect(JSON.stringify(plan)).not.toMatch(/project:karyon|repositoryTopology|contentRoot|ghp_/u);
+		} finally {
+			rmSync(workspaceRoot, { recursive: true, force: true });
 		}
-		const plan = createSeedPlan({
-			manifest: parsed!,
-			manifestPath: loaded.path,
-			environments: ['local'],
-			mode: 'plan',
-		});
-		expect(plan.summary).toMatchObject({ create: 39, update: 0, unchanged: 0, skip: 2 });
-		expect(plan.actions.filter((action) => action.kind === 'project').map((action) => action.key).sort()).toEqual(TREESEED_PROJECT_KEYS);
-		expect(JSON.stringify(plan)).not.toMatch(/project:karyon|repositoryTopology|contentRoot|ghp_/u);
 	});
 
 	it('plans creates, skips, unchanged resources, and updates deterministically', () => {
