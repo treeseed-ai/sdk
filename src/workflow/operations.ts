@@ -64,6 +64,7 @@ import {
 	checkoutBranch,
 	checkoutDetachedOriginBranch,
 	checkoutTaskBranchFromStaging,
+	createDeprecatedTaskTag,
 	deleteLocalBranch,
 	deleteRemoteBranch,
 	ensureLocalBranchTracking,
@@ -645,7 +646,7 @@ function selectorFromWorkflowHostingGraph(graph: ReturnType<typeof compileTreese
 			if (unit.id === 'api') return ['api-runtime', 'railway-service:api'];
 			if (unit.id === 'operationsRunner') return ['operations-runner-runtime', 'railway-service:operations-runner'];
 			if (unit.placement === 'runner-capacity') return ['api-runtime', 'operations-runner-runtime', 'railway-service:api', 'railway-service:operations-runner'];
-			if (unit.host.id === 'cloudflare') return ['web-ui', 'edge-worker', 'content-store', 'queue', 'database', 'kv-form-guard', 'turnstile-widget', 'pages-project', 'custom-domain:web', 'dns-record'];
+			if (unit.host.id === 'cloudflare') return ['web-ui', 'edge-worker', 'content-store', 'database', 'kv-form-guard', 'turnstile-widget', 'pages-project', 'custom-domain:web', 'dns-record'];
 			return [];
 		}))],
 	};
@@ -659,6 +660,21 @@ async function reconcileSaveHostedEnvironment(
 ) {
 	const graph = compileTreeseedHostingGraph({ tenantRoot: root, environment });
 	const selector = selectorFromWorkflowHostingGraph(graph);
+	if (process.env.TREESEED_WORKFLOW_HOSTED_RECONCILE_MODE === 'skip') {
+		return {
+			status: 'skipped' as const,
+			reason: 'disabled',
+			environment,
+			selectedApps: [...new Set(graph.units.map((unit) => unit.application?.id).filter((value): value is string => Boolean(value)))],
+			selectedResources: graph.units.map((unit) => ({
+				id: unit.id,
+				host: unit.host.id,
+				serviceType: unit.serviceType.id,
+				placement: unit.placement,
+				serviceName: typeof unit.config.serviceName === 'string' ? unit.config.serviceName : null,
+			})),
+		};
+	}
 	const target = createPersistentDeployTarget(environment);
 	const env = {
 		...helpers.context.env,
@@ -3129,7 +3145,8 @@ function cleanupTaskBranchReport(
 		return report;
 	}
 
-	report.tagName = null;
+	const tag = createDeprecatedTaskTag(report.path, branchName, _message);
+	report.tagName = tag.tagName;
 	report.commitSha = updateHead(report.path);
 	report.deletedRemote = deleteBranch ? deleteRemoteBranch(report.path, branchName) : false;
 	syncBranchWithOrigin(report.path, targetBranch);
@@ -4959,6 +4976,7 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 					: await executeJournalStep(root, workflowRun.runId, 'preview-cleanup', () => destroyWorkflowBranchPreviewIfPresent(root, featureBranch, helpers.context));
 				const rootCleanup = await executeJournalStep(root, workflowRun.runId, 'cleanup-root', () => {
 					const head = updateHead(repoDir);
+					const tag = createDeprecatedTaskTag(repoDir, featureBranch, `close: ${message}`);
 					const deletedRemote = effectiveInput.deleteBranch === false ? false : deleteRemoteBranch(repoDir, featureBranch);
 					if (!managedWorktreeForClose) {
 						syncBranchWithOrigin(repoDir, STAGING_BRANCH);
@@ -4968,13 +4986,14 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 					}
 					return {
 						head,
+						tagName: tag.tagName,
 						deletedRemote,
 						deletedLocal: effectiveInput.deleteBranch !== false && !managedWorktreeForClose,
 						branch: managedWorktreeForClose ? featureBranch : (currentBranch(repoDir) || STAGING_BRANCH),
 						dirty: hasMeaningfulChanges(repoDir),
 					};
 				});
-				rootRepo.tagName = null;
+				rootRepo.tagName = typeof rootCleanup?.tagName === 'string' ? rootCleanup.tagName : null;
 				rootRepo.commitSha = String(rootCleanup?.head ?? rootRepo.commitSha ?? '');
 				rootRepo.deletedRemote = rootCleanup?.deletedRemote === true;
 				rootRepo.deletedLocal = rootCleanup?.deletedLocal === true;
@@ -5170,6 +5189,22 @@ async function runReleaseGateReconcileFacade(
 		selector: unitSelector,
 		write: (line) => helpers.write(`[${operation}][reconcile] ${line}`, 'stderr'),
 	});
+	const blockers = Array.isArray(extraPayload.blockers)
+		? extraPayload.blockers.map((blocker) => String(blocker)).filter(Boolean)
+		: [];
+	if (executionMode === 'execute' && blockers.length > 0) {
+		workflowError(operation, 'validation_failed', `${operation} is blocked:\n${blockers.join('\n')}`, {
+			details: {
+				blockers,
+				target,
+				plannedSteps: plan.plans.map((entry) => ({
+					id: entry.unit.unitId,
+					action: entry.diff.action,
+					reasons: entry.diff.reasons,
+				})),
+			},
+		});
+	}
 	const result = executionMode === 'execute'
 		? await reconcileTreeseedTarget({
 			tenantRoot: root,

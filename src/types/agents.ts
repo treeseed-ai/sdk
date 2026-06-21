@@ -204,8 +204,62 @@ export interface AgentWorkPackageConstraints {
 	metadata?: Record<string, unknown>;
 }
 
+export type AgentHandlerAlgorithmKind = 'plan' | 'research' | 'act' | 'review' | 'report';
+export type AgentWorkPackageKind = AgentHandlerAlgorithmKind | string;
+
+export interface AgentInputSelector {
+	source: string;
+	path?: string;
+	required?: boolean;
+	metadata?: Record<string, unknown>;
+}
+
+export interface AgentOutputTemplate {
+	type: string;
+	template?: string;
+	required?: boolean;
+	metadata?: Record<string, unknown>;
+}
+
+export interface AgentReviewCriterion {
+	id: string;
+	description: string;
+	required?: boolean;
+	metadata?: Record<string, unknown>;
+}
+
+export interface AgentPlanningPolicy {
+	prioritization?: string;
+	maxCandidates?: number;
+	metadata?: Record<string, unknown>;
+}
+
+export interface AgentReportTemplate {
+	kind: string;
+	title?: string;
+	sections?: string[];
+	metadata?: Record<string, unknown>;
+}
+
+export interface AgentHandlerConfig {
+	workPackageKind?: AgentWorkPackageKind;
+	domain?: string;
+	inputSelectors?: AgentInputSelector[];
+	outputTemplates?: AgentOutputTemplate[];
+	reviewCriteria?: AgentReviewCriterion[];
+	planningPolicy?: AgentPlanningPolicy;
+	reportTemplate?: AgentReportTemplate;
+	delegation?: {
+		required?: boolean;
+		allowedProviderKinds?: string[];
+		reason?: string;
+	};
+	resourceNeeds?: ExecutionResourceNeed[];
+	metadata?: Record<string, unknown>;
+}
+
 export interface AgentWorkPackage {
-	kind: 'planning' | 'implementation' | 'review' | 'test' | 'release' | 'research' | 'report' | string;
+	kind: AgentWorkPackageKind;
 	title: string;
 	summary: string;
 	instructions: string;
@@ -325,6 +379,9 @@ export interface AgentCliOptions {
 export interface AgentRuntimeSpec {
 	slug: string;
 	handler: AgentHandlerKind;
+	projectAgentClassId?: string;
+	projectAgentClassSlug?: string;
+	handlerConfig?: AgentHandlerConfig;
 	enabled: boolean;
 	systemPrompt: string;
 	persona: string;
@@ -332,6 +389,9 @@ export interface AgentRuntimeSpec {
 	triggers: AgentTriggerConfig[];
 	triggerPolicy?: AgentTriggerPolicy;
 	permissions: AgentPermissionConfig[];
+	context?: {
+		queries?: import('../graph/context-query-contracts.ts').DeclarativeContextQuery[];
+	};
 	execution: AgentExecutionConfig;
 	outputs: AgentOutputContract;
 }

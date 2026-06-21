@@ -22,6 +22,28 @@ function response(payload: unknown, status = 200) {
 }
 
 describe('operations runner smoke', () => {
+	it('uses managed local dev defaults for local smoke', async () => {
+		const headers: string[] = [];
+		const report = await runTreeseedOperationsRunnerSmoke({
+			tenantRoot: root(),
+			environment: 'local',
+			fetchImpl: (async (url: URL | RequestInfo, init?: RequestInit) => {
+				const value = String(url);
+				headers.push(String(new Headers(init?.headers).get('x-treeseed-service-secret') ?? ''));
+				if (value.endsWith('/healthz') || value.endsWith('/healthz/deep')) return response({ ok: true });
+				if (value.endsWith('/v1/platform/operations')) return response({ ok: true, operation: { id: 'op-local', status: 'queued' } }, 202);
+				if (value.endsWith('/v1/platform/operations/op-local')) return response({ ok: true, operation: { id: 'op-local', status: 'completed', assignedRunnerId: 'runner-local' } });
+				if (value.endsWith('/v1/platform/operations/op-local/events')) return response({ ok: true, events: [{ kind: 'runner.completed', createdAt: '2026-06-07T00:00:00.000Z' }] });
+				return response({ error: 'not found' }, 404);
+			}) as typeof fetch,
+		});
+		expect(report.ok).toBe(true);
+		expect(report.environment).toBe('local');
+		expect(report.baseUrl).toBe('http://127.0.0.1:3000');
+		expect(headers).toContain('treeseed-web-service-dev-secret');
+		expect(JSON.stringify(report)).not.toContain('treeseed-web-service-dev-secret');
+	});
+
 	it('creates and observes a completed diagnostic operation', async () => {
 		const calls: string[] = [];
 		const report = await runTreeseedOperationsRunnerSmoke({

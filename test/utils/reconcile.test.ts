@@ -188,7 +188,8 @@ services:
 		const unitTypes = selected.map((unit) => unit.unitType);
 
 		expect(selection.runnable).toEqual(['data', 'web']);
-		expect(unitTypes).toEqual(expect.arrayContaining(['queue', 'database', 'content-store', 'pages-project', 'web-ui']));
+		expect(unitTypes).toEqual(expect.arrayContaining(['database', 'content-store', 'pages-project', 'web-ui']));
+		expect(unitTypes).not.toContain('queue');
 		expect(unitTypes).not.toContain('railway-service:api');
 		expect(unitTypes).not.toContain('api-runtime');
 	});

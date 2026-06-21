@@ -320,7 +320,7 @@ export class AgentSdk {
 			});
 			const publicExec = new TreeDxExecPort(publicClient);
 			const publicArtifact = new TreeDxArtifactPort(publicClient);
-			this.content = new LocalContentBackend(this.localContentStore);
+			this.content = new MissingTreeDxContentBackend();
 			this.graph = new LocalGraphBackend(this.localGraphRuntime);
 			this.treeDx = {
 				client: publicClient,
@@ -353,7 +353,9 @@ export class AgentSdk {
 		persistTo?: string;
 		models?: SdkModelDefinition[];
 		modelRegistry?: SdkModelRegistry;
-	}) {
+		contentRepository?: AgentSdkContentRepositoryOptions;
+		treeDx?: AgentSdkTreeDxOptions;
+	} = {}) {
 		const repoRoot = resolveSdkRepoRoot(options.repoRoot);
 		const d1 = new NodeSqliteD1Database(options.persistTo ?? options.databaseName ?? '.treeseed/generated/environments/local/site-data.sqlite');
 		return new AgentSdk({
@@ -361,7 +363,8 @@ export class AgentSdk {
 			database: new CloudflareD1AgentDatabase(d1),
 			models: options.models,
 			modelRegistry: options.modelRegistry,
-			contentRepository: { adapter: 'local' },
+			contentRepository: options.contentRepository,
+			treeDx: options.treeDx,
 		});
 	}
 

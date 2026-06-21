@@ -5,10 +5,10 @@ import type { ApiConfig } from './types.ts';
 const LOCAL_DEV_AUTH_TTL_SECONDS = 365 * 24 * 60 * 60;
 const DEFAULT_AUTH_TTL_SECONDS = 15 * 60;
 const DEFAULT_REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;
-const DEFAULT_LOCAL_API_DATABASE_PORT = '55432';
-const DEFAULT_LOCAL_API_DATABASE_NAME = 'market_local';
+const DEFAULT_LOCAL_API_DATABASE_PORT = '54329';
+const DEFAULT_LOCAL_API_DATABASE_NAME = 'treeseed_api';
 const DEFAULT_LOCAL_API_DATABASE_USER = 'treeseed';
-const DEFAULT_LOCAL_API_DATABASE_PASSWORD = 'treeseed';
+const DEFAULT_LOCAL_API_DATABASE_PASSWORD = 'treeseed-local-dev';
 
 function parseInteger(value: string | undefined, fallback: number) {
 	if (!value) return fallback;

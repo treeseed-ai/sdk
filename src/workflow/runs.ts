@@ -436,14 +436,21 @@ function collectSaveExpectedHeads(journal: TreeseedWorkflowRunJournal) {
 	const saveData = stringRecord(journal.steps.find((step) => step.id === 'save-repositories')?.data);
 	const partialFailure = savePartialFailureData(journal);
 	const source = saveData ?? partialFailure;
+	const partial = saveData == null && partialFailure != null;
+	const failingRepo = partial && typeof partialFailure?.failingRepo === 'string' ? partialFailure.failingRepo : null;
 	const rootRepo = stringRecord(source?.rootRepo);
-	if (typeof rootRepo?.commitSha === 'string') {
+	const rootCompletionUnknown = rootRepo?.pushed == null && rootRepo?.committed == null;
+	if (typeof rootRepo?.commitSha === 'string'
+		&& (!partial || rootRepo.pushed === true || rootRepo.committed === true || (rootCompletionUnknown && rootRepo.dirty !== true))) {
 		heads['@treeseed/market'] = rootRepo.commitSha;
 	}
 	const repos = Array.isArray(source?.repos) ? source.repos : [];
 	for (const entry of repos) {
 		const repo = stringRecord(entry);
-		if (typeof repo?.name === 'string' && typeof repo.commitSha === 'string') {
+		const completionUnknown = repo?.pushed == null && repo?.committed == null;
+		if (typeof repo?.name === 'string'
+			&& typeof repo.commitSha === 'string'
+			&& (!partial || repo.pushed === true || repo.committed === true || (completionUnknown && repo.name !== failingRepo && repo.dirty !== true))) {
 			heads[repo.name] = repo.commitSha;
 		}
 	}

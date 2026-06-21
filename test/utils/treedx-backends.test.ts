@@ -14,6 +14,7 @@ import {
 	TreeDxExecBackend,
 	TreeDxGraphBackend,
 	TreeDxPortfolioResolver,
+	resolveTreeDxOptions,
 } from '../../src/treedx-backends.ts';
 import { buildScopedModelRegistry } from '../../src/model-registry.ts';
 import { sdkFixtureRoot } from '../test-fixture.ts';
@@ -124,10 +125,24 @@ describe('TreeDX-backed TreeSeed content repository', () => {
 			.toBeInstanceOf(TreeDxContentRepositoryConfigError);
 	});
 
-	it('keeps AgentSdk.createLocal on local content', () => {
+	it('keeps AgentSdk.createLocal TreeDX-required by default', async () => {
 		const repoRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-sdk-local-'));
 		mkdirSync(resolve(repoRoot, 'src', 'content'), { recursive: true });
 		const sdk = AgentSdk.createLocal({ repoRoot, persistTo: ':memory:' });
+
+		await expect(sdk.search({ model: 'knowledge', limit: 1 }))
+			.rejects
+			.toBeInstanceOf(TreeDxContentRepositoryConfigError);
+	});
+
+	it('keeps explicit AgentSdk.createLocal filesystem content selection local', () => {
+		const repoRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-sdk-local-'));
+		mkdirSync(resolve(repoRoot, 'src', 'content'), { recursive: true });
+		const sdk = AgentSdk.createLocal({
+			repoRoot,
+			persistTo: ':memory:',
+			contentRepository: { adapter: 'local' },
+		});
 
 		expect(sdk.content).toBeInstanceOf(LocalContentBackend);
 	});
@@ -139,6 +154,38 @@ describe('TreeDX-backed TreeSeed content repository', () => {
 		});
 
 		expect(sdk.content).toBeInstanceOf(LocalContentBackend);
+	});
+
+	it('accepts TREESEED_TREEDX_URL as a local TreeDX base URL', () => {
+		const previousBaseUrl = process.env.TREESEED_TREEDX_BASE_URL;
+		const previousUrl = process.env.TREESEED_TREEDX_URL;
+		try {
+			delete process.env.TREESEED_TREEDX_BASE_URL;
+			process.env.TREESEED_TREEDX_URL = 'http://local-treedx.test';
+
+			expect(resolveTreeDxOptions()?.baseUrl).toBe('http://local-treedx.test');
+		} finally {
+			if (previousBaseUrl === undefined) delete process.env.TREESEED_TREEDX_BASE_URL;
+			else process.env.TREESEED_TREEDX_BASE_URL = previousBaseUrl;
+			if (previousUrl === undefined) delete process.env.TREESEED_TREEDX_URL;
+			else process.env.TREESEED_TREEDX_URL = previousUrl;
+		}
+	});
+
+	it('prefers TREESEED_TREEDX_BASE_URL over TREESEED_TREEDX_URL', () => {
+		const previousBaseUrl = process.env.TREESEED_TREEDX_BASE_URL;
+		const previousUrl = process.env.TREESEED_TREEDX_URL;
+		try {
+			process.env.TREESEED_TREEDX_BASE_URL = 'http://base-treedx.test';
+			process.env.TREESEED_TREEDX_URL = 'http://local-treedx.test';
+
+			expect(resolveTreeDxOptions()?.baseUrl).toBe('http://base-treedx.test');
+		} finally {
+			if (previousBaseUrl === undefined) delete process.env.TREESEED_TREEDX_BASE_URL;
+			else process.env.TREESEED_TREEDX_BASE_URL = previousBaseUrl;
+			if (previousUrl === undefined) delete process.env.TREESEED_TREEDX_URL;
+			else process.env.TREESEED_TREEDX_URL = previousUrl;
+		}
 	});
 
 	it('does not require a repo id in TreeDX config', () => {

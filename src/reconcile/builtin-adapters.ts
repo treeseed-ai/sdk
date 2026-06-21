@@ -1533,6 +1533,17 @@ function buildReleaseGateAdapter(): TreeseedReconcileAdapter {
 			const gateKind = String(input.unit.spec.gateKind ?? input.unit.unitType);
 			const packageId = typeof input.unit.spec.packageId === 'string' ? input.unit.spec.packageId : null;
 			const templateId = typeof input.unit.spec.templateId === 'string' ? input.unit.spec.templateId : null;
+			if (process.env.TREESEED_WORKFLOW_RELEASE_GATES_MODE === 'skip') {
+				return genericResult(input, {
+					...input.observed.live,
+					gateKind,
+					packageId,
+					templateId,
+					skipped: true,
+					reason: 'disabled',
+					fingerprint: input.unit.spec.fingerprint,
+				});
+			}
 			if (gateKind === 'release-gate:verify' && packageId) {
 				const verify = runReleaseVerifyCommand({ tenantRoot: input.context.tenantRoot, packageId, env: input.context.launchEnv });
 				if (verify.ok !== true) {
@@ -2701,7 +2712,6 @@ function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRu
 
 	runStep('kv-form-guard', () => ensureKv('FORM_GUARD_KV'));
 	runStep('d1', ensureD1);
-	runStep('queue', ensureQueue);
 	runStep('r2', ensureR2Bucket);
 	runStep('pages', ensurePagesProject);
 	runStep('turnstile-widget', ensureTurnstileWidget);

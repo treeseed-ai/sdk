@@ -62,7 +62,7 @@ const CONTENT_DEFAULTS: Record<string, {
 		extension: 'mdx',
 		fields: {
 			name: '',
-			handler: 'planner',
+			handler: 'plan',
 			enabled: true,
 			operator: 'TreeSeed platform',
 			runtimeStatus: 'active',

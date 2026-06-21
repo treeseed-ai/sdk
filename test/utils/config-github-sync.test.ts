@@ -41,6 +41,30 @@ function createTenantFixture() {
 	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-config-github-sync-'));
 	mkdirSync(resolve(tenantRoot, 'src'), { recursive: true });
 	writeFileSync(resolve(tenantRoot, 'src', 'manifest.yaml'), 'id: test-site\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n');
+	writeFileSync(resolve(tenantRoot, 'src', 'env.yaml'), `entries:
+  TREESEED_GITHUB_TOKEN:
+    label: GitHub token
+    group: github
+    description: GitHub token.
+    howToGet: Set a GitHub token.
+    sensitivity: secret
+    targets:
+      - github-secret
+    scopes:
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+      minLength: 8
+    sourcePriority:
+      - machine-config
+      - process-env
+`);
 	writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test Site
 slug: test-site
 siteUrl: https://example.com

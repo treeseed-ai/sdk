@@ -30,11 +30,11 @@ describe('API config', () => {
 	});
 
 	it('derives the local API database URL from managed local Postgres settings', () => {
-		expect(resolveLocalApiDatabaseUrl({})).toBe('postgres://treeseed:treeseed@127.0.0.1:55432/market_local');
+		expect(resolveLocalApiDatabaseUrl({})).toBe('postgres://treeseed:treeseed-local-dev@127.0.0.1:54329/treeseed_api');
 		expect(resolveLocalApiDatabaseUrl({
 			TREESEED_MARKET_LOCAL_POSTGRES_PORT: '55444',
 			TREESEED_MARKET_LOCAL_POSTGRES_DATABASE: 'custom_local',
-		})).toBe('postgres://treeseed:treeseed@127.0.0.1:55444/custom_local');
+		})).toBe('postgres://treeseed:treeseed-local-dev@127.0.0.1:55444/custom_local');
 	});
 
 	it('uses TREESEED_DATABASE_URL as the canonical explicit database override', () => {
@@ -49,7 +49,7 @@ describe('API config', () => {
 			TREESEED_API_ENVIRONMENT: 'local',
 			TREESEED_MARKET_LOCAL_POSTGRES_PORT: '55433',
 		});
-		expect(local.apiDatabaseUrl).toBe('postgres://treeseed:treeseed@127.0.0.1:55433/market_local');
+		expect(local.apiDatabaseUrl).toBe('postgres://treeseed:treeseed-local-dev@127.0.0.1:55433/treeseed_api');
 
 		const hosted = resolveApiConfig({
 			TREESEED_API_BASE_URL: 'https://api.example.com',

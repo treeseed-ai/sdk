@@ -3,8 +3,10 @@ import { resolve } from 'node:path';
 import { loadTreeseedDeployConfigFromPath } from '../../platform/deploy-config.ts';
 import { resolveTreeseedMachineEnvironmentValues } from './config-runtime.ts';
 
+export type TreeseedOperationsRunnerSmokeEnvironment = 'local' | 'staging' | 'prod';
+
 export interface TreeseedOperationsRunnerSmokeReport {
-	environment: 'staging' | 'prod';
+	environment: TreeseedOperationsRunnerSmokeEnvironment;
 	ok: boolean;
 	baseUrl: string;
 	operationId?: string;
@@ -18,7 +20,7 @@ export interface TreeseedOperationsRunnerSmokeReport {
 
 export interface TreeseedOperationsRunnerSmokeOptions {
 	tenantRoot: string;
-	environment: 'staging' | 'prod';
+	environment: TreeseedOperationsRunnerSmokeEnvironment;
 	baseUrl?: string | null;
 	serviceId?: string | null;
 	serviceSecret?: string | null;
@@ -41,7 +43,12 @@ function value(name: string, values: Record<string, string | undefined>, env: No
 	return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
 }
 
-function manifestApiBaseUrl(tenantRoot: string, environment: 'staging' | 'prod') {
+function envValue(name: string, env: NodeJS.ProcessEnv | Record<string, string | undefined>) {
+	const candidate = env[name];
+	return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
+}
+
+function manifestApiBaseUrl(tenantRoot: string, environment: TreeseedOperationsRunnerSmokeEnvironment) {
 	const candidates = [
 		resolve(tenantRoot, 'treeseed.site.yaml'),
 		resolve(tenantRoot, '..', '..', 'treeseed.site.yaml'),
@@ -61,6 +68,15 @@ function manifestApiBaseUrl(tenantRoot: string, environment: 'staging' | 'prod')
 		}
 	}
 	return null;
+}
+
+function defaultBaseUrl(environment: TreeseedOperationsRunnerSmokeEnvironment) {
+	if (environment === 'local') return 'http://127.0.0.1:3000';
+	return environment === 'prod' ? 'https://api.treeseed.ai' : 'https://api-treeseed-staging.treeseed.ai';
+}
+
+function localManagedDevServiceSecret(environment: TreeseedOperationsRunnerSmokeEnvironment) {
+	return environment === 'local' ? 'treeseed-web-service-dev-secret' : null;
 }
 
 async function timed<T>(timings: TreeseedOperationsRunnerSmokeReport['timings'], phase: string, action: () => Promise<T>) {
@@ -112,7 +128,14 @@ function isSuccessfulOperationStatus(status: unknown) {
 	return ['completed', 'succeeded'].includes(String(status ?? '').toLowerCase());
 }
 
-function failure(baseUrl: string, environment: 'staging' | 'prod', issues: string[], timings: TreeseedOperationsRunnerSmokeReport['timings'], extra: Partial<TreeseedOperationsRunnerSmokeReport> = {}): TreeseedOperationsRunnerSmokeReport {
+function remediationFor(environment: TreeseedOperationsRunnerSmokeEnvironment) {
+	if (environment === 'local') {
+		return 'Verify managed local dev is running with `npx trsd dev start --web-runtime local --json`, then check API and runner readiness with `npx trsd dev status --json`.';
+	}
+	return 'Verify the API service, Treeseed database, and operationsRunner Railway service, then run `npx trsd hosting verify --service operationsRunner --live --json`.';
+}
+
+function failure(baseUrl: string, environment: TreeseedOperationsRunnerSmokeEnvironment, issues: string[], timings: TreeseedOperationsRunnerSmokeReport['timings'], extra: Partial<TreeseedOperationsRunnerSmokeReport> = {}): TreeseedOperationsRunnerSmokeReport {
 	return {
 		environment,
 		ok: false,
@@ -120,7 +143,7 @@ function failure(baseUrl: string, environment: 'staging' | 'prod', issues: strin
 		timings,
 		events: [],
 		issues,
-		remediation: 'Verify the API service, Treeseed database, and operationsRunner Railway service, then run `npx trsd hosting verify --service operationsRunner --live --json`.',
+		remediation: remediationFor(environment),
 		...extra,
 	};
 }
@@ -138,10 +161,13 @@ export async function runTreeseedOperationsRunnerSmoke(options: TreeseedOperatio
 		?? manifestApiBaseUrl(options.tenantRoot, options.environment)
 		?? value('TREESEED_API_BASE_URL', values, env)
 		?? value('TREESEED_CENTRAL_MARKET_API_BASE_URL', values, env)
-		?? (options.environment === 'prod' ? 'https://api.treeseed.ai' : 'https://api-treeseed-staging.treeseed.ai'),
+		?? defaultBaseUrl(options.environment),
 	);
 	const serviceId = options.serviceId ?? value('TREESEED_ACCEPTANCE_SERVICE_ID', values, env) ?? value('TREESEED_API_WEB_SERVICE_ID', values, env) ?? value('TREESEED_WEB_SERVICE_ID', values, env) ?? 'web';
-	const serviceSecret = options.serviceSecret ?? value('TREESEED_ACCEPTANCE_SERVICE_SECRET', values, env) ?? value('TREESEED_API_WEB_SERVICE_SECRET', values, env) ?? value('TREESEED_WEB_SERVICE_SECRET', values, env);
+	const localServiceSecret = options.environment === 'local'
+		? envValue('TREESEED_ACCEPTANCE_SERVICE_SECRET', env) ?? envValue('TREESEED_API_WEB_SERVICE_SECRET', env) ?? envValue('TREESEED_WEB_SERVICE_SECRET', env) ?? localManagedDevServiceSecret(options.environment)
+		: null;
+	const serviceSecret = options.serviceSecret ?? localServiceSecret ?? value('TREESEED_ACCEPTANCE_SERVICE_SECRET', values, env) ?? value('TREESEED_API_WEB_SERVICE_SECRET', values, env) ?? value('TREESEED_WEB_SERVICE_SECRET', values, env);
 	const timings: TreeseedOperationsRunnerSmokeReport['timings'] = [];
 	const fetchImpl = options.fetchImpl ?? fetch;
 	const timeoutMs = Math.max(1000, Math.floor(options.timeoutMs ?? (options.environment === 'prod' ? 120000 : 90000)));

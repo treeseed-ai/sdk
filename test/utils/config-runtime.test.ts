@@ -26,6 +26,28 @@ import {
 } from '../../src/operations/services/config-runtime.ts';
 
 const railwayRegistryFixtureEntries = `
+  TREESEED_GITHUB_TOKEN:
+    label: GitHub token
+    group: github
+    description: GitHub token.
+    howToGet: Set a GitHub token.
+    sensitivity: secret
+    targets:
+      - github-secret
+    scopes:
+      - staging
+      - prod
+    storage: shared
+    requirement: conditional
+    purposes:
+      - deploy
+      - config
+    validation:
+      kind: nonempty
+      minLength: 8
+    sourcePriority:
+      - machine-config
+      - process-env
   TREESEED_RAILWAY_API_TOKEN:
     label: Railway API token
     group: auth
@@ -241,7 +263,7 @@ describe('config runtime shared environment values', () => {
 	});
 
 	it('resolves shared entries across scopes and persists them in shared storage', () => {
-		const tenantRoot = createTenantFixture();
+		const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		const config = createDefaultTreeseedMachineConfig({
 			tenantRoot,
 			deployConfig: {
@@ -510,7 +532,7 @@ cloudflare:
 	});
 
 		it('syncs platform runner environment only to the Treeseed operations runner Railway service', async () => {
-		const tenantRoot = createTenantFixture();
+			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test Site
 slug: test-site
 siteUrl: https://market.example.com
@@ -815,7 +837,7 @@ services:
 	});
 
 	it('creates a wrapped machine key and unlocks the in-memory secret session', () => {
-		const tenantRoot = createTenantFixture();
+			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		writeTreeseedMachineConfig(tenantRoot, createDefaultTreeseedMachineConfig({
 			tenantRoot,
 			deployConfig: {
@@ -892,8 +914,8 @@ services:
 		expect(bootstrap.unlockSource).toBe('interactive');
 	});
 
-	it('reports provider token readiness separately from tool availability', () => {
-		const tenantRoot = createTenantFixture();
+		it('reports provider token readiness separately from tool availability', () => {
+			const tenantRoot = createTenantFixture(railwayRegistryFixtureEntries);
 		const config = createDefaultTreeseedMachineConfig({
 			tenantRoot,
 			deployConfig: {

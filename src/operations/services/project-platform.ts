@@ -1711,7 +1711,6 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		resolvedChecks.d1Health,
 		resolvedChecks.agentHealth,
 		resolvedChecks.r2,
-		resolvedChecks.queue,
 		resolvedChecks.scaleProbe,
 		resolvedChecks.railwayResources,
 	].every((check) => check?.ok === true || check?.skipped === true);

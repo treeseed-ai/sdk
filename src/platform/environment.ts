@@ -364,16 +364,16 @@ function localApiDatabaseUrlDefault(
 	const port = values.TREESEED_MARKET_LOCAL_POSTGRES_PORT?.trim()
 		|| values.TREESEED_API_LOCAL_POSTGRES_PORT?.trim()
 		|| process.env.TREESEED_MARKET_LOCAL_POSTGRES_PORT?.trim()
-		|| '55432';
+		|| '54329';
 	const database = values.TREESEED_MARKET_LOCAL_POSTGRES_DATABASE?.trim()
 		|| values.TREESEED_API_LOCAL_POSTGRES_DATABASE?.trim()
-		|| 'market_local';
+		|| 'treeseed_api';
 	const user = values.TREESEED_MARKET_LOCAL_POSTGRES_USER?.trim()
 		|| values.TREESEED_API_LOCAL_POSTGRES_USER?.trim()
 		|| 'treeseed';
 	const password = values.TREESEED_MARKET_LOCAL_POSTGRES_PASSWORD?.trim()
 		|| values.TREESEED_API_LOCAL_POSTGRES_PASSWORD?.trim()
-		|| 'treeseed';
+		|| 'treeseed-local-dev';
 	return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(password)}@127.0.0.1:${port}/${encodeURIComponent(database)}`;
 }
 

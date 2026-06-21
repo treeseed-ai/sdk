@@ -258,19 +258,26 @@ function configuredValue(env: LiveEnv, keys: string[]) {
 	return '';
 }
 
-function capacityAcceptanceConfig(env: LiveEnv) {
+function capacityAcceptanceConfig(env: LiveEnv, environment: TreeseedLiveReconcileEnvironment) {
+	const local = environment === 'local';
 	const apiUrl = configuredValue(env, [
 		'TREESEED_CAPACITY_ACCEPTANCE_API_URL',
 		'TREESEED_MARKET_URL',
 		'TREESEED_MANAGEMENT_API_URL',
 		'TREESEED_API_BASE_URL',
-	]);
-	const adminToken = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN']);
-	const teamId = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_TEAM_ID']);
-	const projectId = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_PROJECT_ID']);
-	const providerId = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_PROVIDER_ID', 'TREESEED_CAPACITY_PROVIDER_ID']);
-	const agentClassId = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_AGENT_CLASS_ID']);
-	const providerApiKey = configuredValue(env, ['TREESEED_CAPACITY_PROVIDER_API_KEY']);
+	]) || (local ? 'http://127.0.0.1:3000' : '');
+	const adminToken = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN'])
+		|| (local ? 'tsk_local_treeseed_acceptance_admin' : '');
+	const teamId = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_TEAM_ID'])
+		|| (local ? 'd8a613c2-bbdb-4474-9c96-31e985beafd4' : '');
+	const projectId = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_PROJECT_ID'])
+		|| (local ? '90764af2-5a13-42b9-a2fa-fb3af5882323' : '');
+	const providerId = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_PROVIDER_ID', 'TREESEED_CAPACITY_PROVIDER_ID'])
+		|| (local ? 'ff48ce97-6959-46b5-be9f-9b7062161fe3' : '');
+	const agentClassId = configuredValue(env, ['TREESEED_CAPACITY_ACCEPTANCE_AGENT_CLASS_ID'])
+		|| (local ? 'planning' : '');
+	const providerApiKey = configuredValue(env, ['TREESEED_CAPACITY_PROVIDER_API_KEY'])
+		|| (local ? 'tsp_local_treeseed_demo_capacity_provider' : '');
 	const missing = [
 		['TREESEED_CAPACITY_ACCEPTANCE_API_URL or TREESEED_MARKET_URL', apiUrl],
 		['TREESEED_CAPACITY_ACCEPTANCE_ADMIN_TOKEN', adminToken],
@@ -302,6 +309,50 @@ interface CapacityAcceptanceProof {
 	modeRunCount: number;
 }
 
+function capacityGrantForAcceptance(grants: unknown[], config: ReturnType<typeof capacityAcceptanceConfig>, environment: TreeseedLiveReconcileEnvironment) {
+	return grants
+		.map((entry) => entry && typeof entry === 'object' ? entry as Record<string, unknown> : null)
+		.find((grant) =>
+			grant
+			&& grant.id
+			&& grant.capacityProviderId === config.providerId
+			&& grant.projectId === config.projectId
+			&& (grant.teamId === config.teamId || !grant.teamId)
+			&& (grant.state === 'active' || !grant.state)
+			&& (grant.environment === environment || !grant.environment)
+		) ?? null;
+}
+
+async function createTreeDxProxyAuditEvidence(input: {
+	fetchImpl: typeof fetch;
+	apiUrl: string;
+	providerApiKey: string;
+	projectId: string;
+	assignmentId: string;
+	runId: string;
+}) {
+	const response = await input.fetchImpl(
+		`${input.apiUrl.replace(/\/$/u, '')}/v1/dx/projects/${encodeURIComponent(input.projectId)}/repos/${encodeURIComponent(`capacity-proof-${input.runId}`)}/files/read`,
+		{
+			method: 'POST',
+			headers: {
+				accept: 'application/json',
+				authorization: `Bearer ${input.providerApiKey}`,
+				'content-type': 'application/json',
+				'x-treeseed-assignment-id': input.assignmentId,
+			},
+			body: JSON.stringify({
+				paths: [`src/content/agent-platform-proof/${input.runId}.mdx`],
+				ref: 'HEAD',
+			}),
+		},
+	);
+	if (response.status !== 403) {
+		const text = await response.text().catch(() => '');
+		throw new Error(`Capacity acceptance TreeDX proxy audit probe expected 403 but received ${response.status}${text ? `: ${text}` : ''}.`);
+	}
+}
+
 async function runCapacityProviderAssignmentProof(input: {
 	provider: TreeseedLiveReconcileProvider;
 	environment: TreeseedLiveReconcileEnvironment;
@@ -310,7 +361,7 @@ async function runCapacityProviderAssignmentProof(input: {
 	env: LiveEnv;
 	fetchImpl: typeof fetch;
 }): Promise<CapacityAcceptanceProof> {
-	const config = capacityAcceptanceConfig(input.env);
+	const config = capacityAcceptanceConfig(input.env, input.environment);
 	if (config.missing.length > 0) {
 		throw new Error(`Missing capacity acceptance configuration: ${config.missing.join(', ')}.`);
 	}
@@ -344,11 +395,53 @@ async function runCapacityProviderAssignmentProof(input: {
 		fetchImpl: input.fetchImpl,
 		userAgent: `treeseed-live-acceptance/${input.runId}`,
 	});
+	const existingClasses = await adminClient.projectAgentClasses(config.projectId).catch(() => ({ payload: [] }));
+	const hasAgentClass = Array.isArray(existingClasses.payload)
+		&& existingClasses.payload.some((entry) => {
+			const record = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+			return record.id === config.agentClassId || record.slug === config.agentClassId;
+		});
+	if (!hasAgentClass) {
+		await adminClient.createProjectAgentClass(config.projectId, {
+			id: config.agentClassId,
+			slug: config.agentClassId,
+			name: 'Planning',
+			status: 'active',
+			allowedModes: ['planning'],
+			requiredCapabilities: ['agent_mode_run'],
+			metadata,
+		});
+	}
+	const grants = await adminClient.capacityGrants(config.teamId).catch(() => ({ payload: [] }));
+	const acceptanceGrant = capacityGrantForAcceptance(Array.isArray(grants.payload) ? grants.payload : [], config, input.environment);
+	if (!acceptanceGrant) {
+		throw new Error(`Capacity acceptance did not find an active checked-in grant for project ${config.projectId} and provider ${config.providerId}.`);
+	}
+	const reservation = await adminClient.createCapacityReservation(config.projectId, {
+		id: `${input.prefix}-reservation`,
+		capacityProviderId: config.providerId,
+		laneId: typeof acceptanceGrant.laneId === 'string' && acceptanceGrant.laneId
+			? acceptanceGrant.laneId
+			: `${config.providerId}:agent-capacity`,
+		reservedCredits: 1,
+		nativeUnit: 'request',
+		reservedNativeAmount: 1,
+		mode,
+		metadata,
+	});
+	const reservationId = String(reservation.payload?.id ?? '');
+	if (!reservationId) throw new Error('Capacity acceptance reservation creation did not return an id.');
 	const checkIn = await providerClient.checkIn({
 		id: `${input.prefix}-session`,
 		environment: input.environment,
 		status: 'open',
 		capabilities: ['repo_read', 'agent_mode_run', 'usage_report'],
+		grants: [{
+			grantId: String(acceptanceGrant.id),
+			projectId: config.projectId,
+			teamId: config.teamId,
+			grantScope: typeof acceptanceGrant.grantScope === 'string' ? acceptanceGrant.grantScope : 'project',
+		}],
 		nativeLimits: { wallMinutes: { session: 30 } },
 		runnerPressure: { activeRunners: 0, maxConcurrentRunners: 1 },
 		constraints: { liveAcceptance: true, outboundOnly: true },
@@ -362,11 +455,16 @@ async function runCapacityProviderAssignmentProof(input: {
 		capacityProviderId: config.providerId,
 		providerSessionId: sessionId,
 		projectAgentClassId: config.agentClassId,
+		reservationId,
 		mode,
 		capacityEnvelope: {
 			teamId: config.teamId,
 			projectId: config.projectId,
 			providerId: config.providerId,
+			laneId: typeof acceptanceGrant.laneId === 'string' && acceptanceGrant.laneId
+				? acceptanceGrant.laneId
+				: `${config.providerId}:agent-capacity`,
+			reservationId,
 			mode,
 			limits: { wallMinutes: 5 },
 			metadata,
@@ -383,18 +481,52 @@ async function runCapacityProviderAssignmentProof(input: {
 		},
 		metadata,
 	});
-	const leased = await providerClient.nextAssignment({
-		sessionId,
-		runnerId,
-		leaseSeconds: 120,
-		metadata,
-	});
-	if (!leased.payload?.id) throw new Error('Capacity acceptance did not lease an assignment.');
+	let leased = null as Awaited<ReturnType<typeof providerClient.nextAssignment>> | null;
+	for (let attempt = 0; attempt < 10; attempt += 1) {
+		leased = await providerClient.nextAssignment({
+			sessionId,
+			runnerId,
+			leaseSeconds: 120,
+			metadata,
+		});
+		const leasedId = leased.payload?.id ? String(leased.payload.id) : '';
+		if (!leasedId) throw new Error('Capacity acceptance did not lease an assignment.');
+		if (leasedId === assignmentId) break;
+		const leasedMetadata = leased.payload?.metadata && typeof leased.payload.metadata === 'object'
+			? leased.payload.metadata as Record<string, unknown>
+			: {};
+		if (leasedMetadata.liveAcceptance !== true) {
+			throw new Error(`Capacity acceptance leased ${leasedId} instead of diagnostic assignment ${assignmentId}.`);
+		}
+		const staleLeaseToken = leased.leaseToken ?? leased.payload.leaseToken ?? null;
+		if (!staleLeaseToken) throw new Error(`Capacity acceptance leased stale diagnostic ${leasedId} without a lease token.`);
+		await providerClient.completeAssignment(leasedId, {
+			runnerId,
+			leaseToken: staleLeaseToken,
+			output: { summary: 'Retired stale capacity acceptance diagnostic.', runId: input.runId },
+			summary: { runId: input.runId, retiredAssignmentId: leasedId },
+			metadata: {
+				...metadata,
+				retiredStaleAcceptanceAssignment: true,
+				retiredAssignmentId: leasedId,
+			},
+		});
+		leased = null;
+	}
+	if (!leased?.payload?.id) throw new Error('Capacity acceptance did not lease an assignment.');
 	if (leased.payload.id !== assignmentId) {
-		throw new Error(`Capacity acceptance leased ${leased.payload.id} instead of diagnostic assignment ${assignmentId}.`);
+		throw new Error(`Capacity acceptance leased stale diagnostics but did not reach diagnostic assignment ${assignmentId}.`);
 	}
 	const leaseToken = leased.leaseToken ?? leased.payload.leaseToken ?? null;
 	if (!leaseToken) throw new Error('Capacity acceptance lease did not include a lease token.');
+	await createTreeDxProxyAuditEvidence({
+		fetchImpl: input.fetchImpl,
+		apiUrl: config.apiUrl,
+		providerApiKey: config.providerApiKey,
+		projectId: config.projectId,
+		assignmentId,
+		runId: input.runId,
+	});
 	const modeRun = await providerClient.createAssignmentModeRun(assignmentId, {
 		status: 'succeeded',
 		selectedInput: { kind: 'capacity_acceptance_diagnostic', runId: input.runId, mode },
@@ -413,6 +545,8 @@ async function runCapacityProviderAssignmentProof(input: {
 		runnerId,
 		leaseToken,
 		modeRunId,
+		actualCredits: 0.25,
+		nativeUsage: { nativeUnit: 'request', amount: 1, source: 'capacity_acceptance' },
 		output: { summary: 'Capacity acceptance diagnostic completed.', runId: input.runId },
 		summary: { runId: input.runId, modeRunId },
 		metadata,

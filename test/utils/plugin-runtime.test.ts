@@ -61,7 +61,7 @@ ${pluginsYaml}
       verification: ['stub'],
       notification: ['stub'],
       research: ['stub'],
-      handlers: ['planner']
+      handlers: ['plan', 'research', 'act', 'review', 'report']
     },
     deploy: ['cloudflare'],
     content: {

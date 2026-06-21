@@ -637,13 +637,13 @@ describe('agent sdk', () => {
 
 				const task = await sdk.createTask({
 					workDayId: String(workDay.payload?.id),
-					agentId: 'market-curator',
+					agentId: 'treeseed-docs-planner',
 					type: 'agent_root',
-					idempotencyKey: `${workDay.payload?.id}:market-curator`,
+					idempotencyKey: `${workDay.payload?.id}:treeseed-docs-planner`,
 					payload: { hello: 'world' },
 					actor: 'test',
 				});
-				expect(task.payload?.agentId).toBe('market-curator');
+				expect(task.payload?.agentId).toBe('treeseed-docs-planner');
 
 				const claimed = await sdk.claimTask({
 					id: String(task.payload?.id),

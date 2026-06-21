@@ -59,6 +59,7 @@ export interface AgentSdkTreeDxOptions {
 
 export interface AgentSdkContentRepositoryOptions {
 	adapter?: 'treedx' | 'local';
+	allowLocalFallback?: boolean;
 }
 
 export interface ResolvedTreeDxOptions {
@@ -108,7 +109,7 @@ export interface TreeDxPortfolioResolverOptions {
 }
 
 export class TreeDxContentRepositoryConfigError extends Error {
-	constructor(message = 'TreeDX content repository is not configured. Set TREESEED_TREEDX_BASE_URL or pass treeDx.baseUrl, or select contentRepository.adapter = "local".') {
+	constructor(message = 'TreeDX content repository is required by default. Configure TREESEED_TREEDX_BASE_URL or TREESEED_TREEDX_URL, or explicitly pass contentRepository: { adapter: "local" }.') {
 		super(message);
 		this.name = 'TreeDxContentRepositoryConfigError';
 	}
@@ -310,12 +311,14 @@ function mutationPath(definition: SdkModelDefinition, repoRoot: string, slug: st
 }
 
 export function resolveTreeDxOptions(input?: AgentSdkTreeDxOptions): ResolvedTreeDxOptions | null {
-	const baseUrl = stringValue(input?.baseUrl) ?? stringValue(process.env.TREESEED_TREEDX_BASE_URL);
+	const baseUrl = stringValue(input?.baseUrl)
+		?? stringValue(process.env.TREESEED_TREEDX_BASE_URL)
+		?? stringValue(process.env.TREESEED_TREEDX_URL);
 	if (!baseUrl) return null;
 	return {
 		baseUrl,
 		token: stringValue(input?.token) ?? stringValue(process.env.TREESEED_TREEDX_TOKEN),
-		repoId: stringValue(input?.repoId),
+		repoId: stringValue(input?.repoId) ?? stringValue(process.env.TREESEED_TREEDX_REPO_ID),
 		ref: stringValue(input?.ref) ?? stringValue(process.env.TREESEED_TREEDX_REF),
 		workspaceId: stringValue(input?.workspaceId) ?? stringValue(process.env.TREESEED_TREEDX_WORKSPACE_ID),
 		contentPathMap: input?.contentPathMap,

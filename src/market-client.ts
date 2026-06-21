@@ -885,6 +885,13 @@ export class MarketClient {
 		);
 	}
 
+	createCapacityReservation(projectId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/capacity/reservations`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
 	projectAgentFallbackOutputs(projectId: string, options: { assignmentId?: string | null; mode?: string | null; status?: string | null } = {}) {
 		const query = new URLSearchParams();
 		if (options.assignmentId) query.set('assignmentId', options.assignmentId);
@@ -1221,6 +1228,14 @@ export class MarketClient {
 		const query = params.toString() ? `?${params.toString()}` : '';
 		return this.request<{ ok: true; payload: unknown[] }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/agent-mode-runs${query}`,
+			{ requireAuth: true },
+		);
+	}
+
+	projectCapacityRuntimeDiagnostics(projectId: string, teamId: string) {
+		const query = new URLSearchParams({ teamId });
+		return this.request<{ ok: true; payload: unknown }>(
+			`/v1/projects/${encodeURIComponent(projectId)}/capacity-runtime-diagnostics?${query.toString()}`,
 			{ requireAuth: true },
 		);
 	}
