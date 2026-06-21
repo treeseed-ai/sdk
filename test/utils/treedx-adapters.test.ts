@@ -192,6 +192,7 @@ describe('TreeDX SDK adapters', () => {
 			repoRoot,
 			modelRegistry: registry(resolve(repoRoot, 'src/content')),
 			database: new MemoryAgentDatabase(),
+			contentRepository: { adapter: 'local' },
 		});
 		expect(local.treeDx).toBeUndefined();
 		expect(local.ports.repository).toBeInstanceOf(LocalRepositoryPort);
@@ -215,8 +216,8 @@ describe('TreeDX SDK adapters', () => {
 		expect(remote.ports.repository).toBeInstanceOf(TreeDxRepositoryPort);
 		expect(remote.ports.query).toBeInstanceOf(TreeDxRepositoryQueryPort);
 		expect(remote.ports.graph).toBeInstanceOf(TreeDxGraphPort);
-		const response = await remote.search({ model: 'knowledge', limit: 5 });
-		expect(response.payload).toEqual([]);
+		const response = await remote.ports.query.search({ repoId: 'repo_1', ref: 'refs/heads/main', query: { model: 'knowledge', limit: 5 } });
+		expect(response.results).toEqual([]);
 	});
 
 	it('rejects absolute contentDir without repoRoot or contentPathMap', () => {

@@ -38,6 +38,7 @@ import {
 	writeTreeseedMachineConfig,
 } from '../operations/services/config-runtime.ts';
 import { collectTreeseedToolStatus, formatTreeseedDependencyFailureDetails, installTreeseedDependencies } from '../managed-dependencies.ts';
+import { withTreeseedServiceCredentialEnv } from '../service-credentials.ts';
 import { ControlPlaneClient } from '../control-plane-client.ts';
 import { exportTreeseedCodebase } from '../operations/services/export-runtime.ts';
 import {
@@ -514,9 +515,23 @@ function shouldDispatchSwitchToManagedWorktree(root: string, input: TreeseedSwit
 }
 
 function assertHostedGitHubWorkflowAuthReady(operation: TreeseedWorkflowOperationId, root: string) {
+	const scope = operation === 'release' ? 'prod' : 'staging';
+	let env: NodeJS.ProcessEnv = process.env;
+	try {
+		const values = resolveTreeseedMachineEnvironmentValues(root, scope);
+		const repository = resolveGitHubRepositorySlug(root);
+		const credential = resolveGitHubCredentialForRepository(repository, { values, env: process.env });
+		env = withTreeseedServiceCredentialEnv({
+			...process.env,
+			...values,
+			...(credential.token ? { TREESEED_GITHUB_TOKEN: credential.token } : {}),
+		});
+	} catch {
+		env = withTreeseedServiceCredentialEnv(process.env);
+	}
 	const tools = collectTreeseedToolStatus({
 		tenantRoot: root,
-		env: process.env,
+		env,
 	});
 	const github = tools.auth.github;
 	if (!github.authenticated) {

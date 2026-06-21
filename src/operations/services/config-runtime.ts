@@ -65,7 +65,7 @@ import {
 	resolveTreeseedToolBinary,
 	resolveTreeseedToolCommand,
 } from '../../managed-dependencies.ts';
-import { withTreeseedServiceCredentialEnv } from '../../service-credentials.ts';
+import { TREESEED_GITHUB_TOKEN_ENV, resolveTreeseedGitHubToken, withTreeseedServiceCredentialEnv } from '../../service-credentials.ts';
 import {
 	filterManagedHostGitHubEnvironment,
 	usesManagedHostOperationRequests,
@@ -1922,7 +1922,6 @@ function collectTreeseedConfigSeedValueSources(tenantRoot, scope, env = process.
 			sources[key] = source;
 		}
 	};
-
 	try {
 		merge('machine-config', resolveTreeseedMachineEnvironmentValues(tenantRoot, scope));
 	} catch (error) {
@@ -1930,7 +1929,8 @@ function collectTreeseedConfigSeedValueSources(tenantRoot, scope, env = process.
 			throw error;
 		}
 	}
-	merge('process.env', Object.fromEntries(Object.entries(env).map(([key, value]) => [key, value ?? undefined])));
+	const processValues = Object.fromEntries(Object.entries(env).map(([key, value]) => [key, value ?? undefined]));
+	merge('process.env', processValues);
 
 	return { values, sources };
 }
@@ -2308,7 +2308,7 @@ function isTransientProviderConnectionError(detail) {
 }
 
 function checkGitHubConnection({ tenantRoot, env }) {
-	if (!env.TREESEED_GITHUB_TOKEN) {
+	if (!resolveTreeseedGitHubToken(env)) {
 		return providerConnectionResult('github', false, 'TREESEED_GITHUB_TOKEN is not configured.', { skipped: true });
 	}
 	const gh = resolveTreeseedToolBinary('gh', { env });
@@ -2473,7 +2473,7 @@ export async function checkTreeseedProviderConnections({ tenantRoot, scope = 'pr
 		return typeof resolvedValue === 'string' && resolvedValue.trim() ? resolvedValue.trim() : undefined;
 	};
 	const rawCommandEnv = {
-		TREESEED_GITHUB_TOKEN: values.TREESEED_GITHUB_TOKEN,
+		TREESEED_GITHUB_TOKEN: resolveTreeseedGitHubToken(values),
 		TREESEED_GITHUB_IDENTITY_MODE: passthroughValue('TREESEED_GITHUB_IDENTITY_MODE'),
 		TREESEED_HOSTED_HUBS_GITHUB_OWNER: passthroughValue('TREESEED_HOSTED_HUBS_GITHUB_OWNER'),
 		TREESEED_CLOUDFLARE_API_TOKEN: values.TREESEED_CLOUDFLARE_API_TOKEN,
@@ -2605,7 +2605,7 @@ function withGitHubEnvironmentCredentialContext(
 		? error.message.trim()
 		: String(error ?? 'GitHub environment sync failed.');
 	if (credential.fallbackUsed && /authentication failed|resource not accessible|403/iu.test(message)) {
-		return new Error(`${message} Configure ${credential.envName} with Actions environment secrets and variables permissions for ${repository}; the fallback GH_TOKEN is not sufficient for this repository.`);
+		return new Error(`${message} Configure ${credential.envName} with Actions environment secrets and variables permissions for ${repository}; the fallback TREESEED_GITHUB_TOKEN is not sufficient for this repository.`);
 	}
 	return error;
 }
@@ -3177,7 +3177,7 @@ function createConfigReadiness(values, validation) {
 	].filter((problem) => problem.entry.group === 'local-development');
 	return {
 		github: {
-			configured: validConfigValue('TREESEED_GITHUB_TOKEN'),
+			configured: Boolean(resolveTreeseedGitHubToken(values)) && providerIssues('github').length === 0,
 		},
 		cloudflare: {
 			configured: providerIssues('cloudflare').length === 0,

@@ -74,6 +74,26 @@ describe('live reconciliation acceptance harness', () => {
 			if (method === 'POST' && url.pathname === '/v1/provider/check-in') {
 				return Response.json({ ok: true, payload: { id: `${prefix}-session`, capacityProviderId: 'provider_123', status: 'open' } });
 			}
+			if (method === 'GET' && url.pathname === '/v1/projects/project_123/agent-classes') {
+				return Response.json({ ok: true, payload: [{ id: 'agent_class_123', slug: 'agent_class_123', status: 'active' }] });
+			}
+			if (method === 'GET' && url.pathname === '/v1/teams/team_123/capacity-grants') {
+				return Response.json({
+					ok: true,
+					payload: [{
+						id: 'grant_123',
+						teamId: 'team_123',
+						projectId: 'project_123',
+						capacityProviderId: 'provider_123',
+						laneId: 'provider_123:agent-capacity',
+						state: 'active',
+						environment: 'local',
+					}],
+				});
+			}
+			if (method === 'POST' && url.pathname === '/v1/projects/project_123/capacity/reservations') {
+				return Response.json({ ok: true, payload: { id: body.id ?? `${prefix}-reservation`, status: 'reserved' } }, { status: 201 });
+			}
 			if (method === 'POST' && url.pathname === '/v1/teams/team_123/capacity/assignments') {
 				return Response.json({ ok: true, payload: { id: assignmentId, status: 'pending' } }, { status: 201 });
 			}
@@ -89,6 +109,9 @@ describe('live reconciliation acceptance harness', () => {
 			if (method === 'GET' && url.pathname === '/v1/projects/project_123/agent-mode-runs') {
 				expect(url.searchParams.get('assignmentId')).toBe(assignmentId);
 				return Response.json({ ok: true, payload: [{ id: 'mode_run_123', providerAssignmentId: assignmentId }] });
+			}
+			if (method === 'POST' && url.pathname === `/v1/dx/projects/project_123/repos/capacity-proof-${runId}/files/read`) {
+				return Response.json({ error: 'forbidden' }, { status: 403 });
 			}
 			return Response.json({ error: `Unexpected request: ${method} ${url.pathname}` }, { status: 404 });
 		}) as unknown as typeof fetch;

@@ -10,6 +10,8 @@ import {
 describe('service credential translation', () => {
 	it('resolves only canonical Treeseed credential names as config input', () => {
 		expect(resolveTreeseedGitHubToken({ TREESEED_GITHUB_TOKEN: 'gh-canonical', GH_TOKEN: 'gh-native' })).toBe('gh-canonical');
+		expect(resolveTreeseedGitHubToken({ TREESEED_GH_TOKEN: 'gh-legacy' })).toBe('');
+		expect(resolveTreeseedGitHubToken({ GITHUB_TOKEN: 'github-native' })).toBe('');
 		expect(resolveTreeseedGitHubToken({ GH_TOKEN: 'gh-native' })).toBe('');
 		expect(resolveTreeseedCloudflareApiToken({ TREESEED_CLOUDFLARE_API_TOKEN: 'cf-canonical', CLOUDFLARE_API_TOKEN: 'cf-native' })).toBe('cf-canonical');
 		expect(resolveTreeseedRailwayApiToken({ TREESEED_RAILWAY_API_TOKEN: 'railway-canonical', RAILWAY_API_TOKEN: 'railway-native' })).toBe('railway-canonical');

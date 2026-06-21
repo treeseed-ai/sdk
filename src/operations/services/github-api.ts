@@ -259,7 +259,7 @@ export function createGitHubApiClient({
 } = {}): GitHubApiClient {
 	const token = resolveGitHubApiToken(env);
 	if (!token) {
-		throw new Error('Configure GH_TOKEN before using Treeseed GitHub automation.');
+		throw new Error('Configure TREESEED_GITHUB_TOKEN before using Treeseed GitHub automation.');
 	}
 	return new Octokit({
 		auth: token,
@@ -724,7 +724,7 @@ export function upsertGitHubRepositoryVariableWithGhCli(
 ) {
 	const token = resolveGitHubApiToken(env);
 	if (!token) {
-		throw new Error('Configure GH_TOKEN before using Treeseed GitHub automation.');
+		throw new Error('Configure TREESEED_GITHUB_TOKEN before using Treeseed GitHub automation.');
 	}
 	const { owner, name: repo } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
 	const ghEnv = {

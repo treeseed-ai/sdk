@@ -18,6 +18,7 @@ import {
 	upsertGitHubRepositoryVariable,
 	waitForGitHubWorkflowRunCompletion,
 } from './github-api.ts';
+import { resolveTreeseedGitHubToken } from '../../service-credentials.ts';
 
 export interface GitHubRepositoryProvisionInput {
 	owner: string;
@@ -258,7 +259,7 @@ export async function ensureGitHubBootstrapRepository(
 
 	const client = createGitHubApiClient({
 		env: {
-			TREESEED_GITHUB_TOKEN: configuredValue(values, 'TREESEED_GITHUB_TOKEN'),
+			TREESEED_GITHUB_TOKEN: resolveTreeseedGitHubToken(values),
 		},
 	});
 	const existing = await maybeGetGitHubRepository({ owner: target.owner, name: target.name }, { client });

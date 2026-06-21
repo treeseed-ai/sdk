@@ -11,6 +11,7 @@ import {
 	collectTreeseedEnvironmentContext,
 	withTreeseedKeyAgentAutopromptDisabled,
 } from './operations/services/config-runtime.ts';
+import { resolveTreeseedGitHubToken } from './service-credentials.ts';
 import { resolveWranglerBin } from './operations/services/runtime-tools.ts';
 import { getTreeseedEnvironmentSuggestedValues, validateTreeseedEnvironmentValues } from './platform/environment.ts';
 import { resolveTreeseedWebCachePolicy } from './platform/deploy-config.ts';
@@ -393,7 +394,7 @@ function providerProblems(
 		const id = problem.id.toUpperCase();
 		const group = problem.entry.group;
 		if (provider === 'github') {
-			return id === 'GH_TOKEN' || id === 'GITHUB_TOKEN' || group === 'github';
+			return id === 'TREESEED_GITHUB_TOKEN' || group === 'github';
 		}
 		if (provider === 'cloudflare') {
 			return id.startsWith('CLOUDFLARE_') || id.includes('TURNSTILE') || group === 'cloudflare';
@@ -468,7 +469,7 @@ function providerStatusForScope(
 	options: TreeseedWorkflowStatusOptions,
 ) {
 	const values = statusConfig.values;
-	const githubConfigured = typeof values.TREESEED_GITHUB_TOKEN === 'string' && values.TREESEED_GITHUB_TOKEN.trim().length > 0;
+	const githubConfigured = Boolean(resolveTreeseedGitHubToken(values));
 	const cloudflareConfigured = typeof values.TREESEED_CLOUDFLARE_API_TOKEN === 'string' && values.TREESEED_CLOUDFLARE_API_TOKEN.trim().length > 0;
 	const railwayConfigured = typeof values.TREESEED_RAILWAY_API_TOKEN === 'string' && values.TREESEED_RAILWAY_API_TOKEN.trim().length > 0;
 	const localDevelopmentConfigured = providerProblems(statusConfig.validation, 'localDevelopment').length === 0;
@@ -942,7 +943,9 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 				marketSettings?.runnerReady === true
 				|| (typeof runnerSession?.accessToken === 'string' && runnerSession.accessToken.length > 0),
 			);
-			state.auth.gh = state.auth.gh || hasStatusConfigValue(statusConfigByScope, 'TREESEED_GITHUB_TOKEN');
+			state.auth.gh = state.auth.gh || Boolean(resolveTreeseedGitHubToken(statusConfigByScope.local.values))
+				|| Boolean(resolveTreeseedGitHubToken(statusConfigByScope.staging.values))
+				|| Boolean(resolveTreeseedGitHubToken(statusConfigByScope.prod.values));
 			state.auth.wrangler = state.auth.wrangler || hasStatusConfigValue(statusConfigByScope, 'TREESEED_CLOUDFLARE_API_TOKEN');
 			state.auth.railway = state.auth.railway || hasStatusConfigValue(statusConfigByScope, 'TREESEED_RAILWAY_API_TOKEN');
 			state.auth.copilot = state.auth.copilot || state.auth.gh;
