@@ -502,9 +502,46 @@ describe('treeseed workflow lifecycle', () => {
 
 		expect(result.payload.lane).toBe('fast');
 		expect(result.payload.ciMode).toBe('off');
-		expect(result.payload.releaseCandidateMode).toBe('hybrid');
+		expect(result.payload.releaseCandidateMode).toBe('skip');
 		expect(result.payload.plannedSteps).not.toEqual(expect.arrayContaining([
 			expect.objectContaining({ id: 'hosted-ci' }),
+		]));
+	}, 60000);
+
+	it('defaults stage plans to skipping release-candidate proof', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = workflowFor(work);
+
+		const result = await workflow.stage({
+			message: 'stage: fast by default',
+			plan: true,
+		});
+
+		expect(result.payload.releaseCandidateMode).toBe('skip');
+		expect(result.payload.plannedSteps).toEqual(expect.arrayContaining([
+			expect.objectContaining({
+				id: 'release-candidate',
+				description: expect.stringContaining('skipped by default'),
+			}),
+		]));
+	}, 60000);
+
+	it('allows strict release-candidate proof to be requested for stage plans', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = workflowFor(work);
+
+		const result = await workflow.stage({
+			message: 'stage: strict proof',
+			releaseCandidate: 'strict',
+			plan: true,
+		});
+
+		expect(result.payload.releaseCandidateMode).toBe('strict');
+		expect(result.payload.plannedSteps).toEqual(expect.arrayContaining([
+			expect.objectContaining({
+				id: 'release-candidate',
+				description: expect.stringContaining('strict release-candidate'),
+			}),
 		]));
 	}, 60000);
 

@@ -166,7 +166,7 @@ import {
 	workspacePackages,
 	workspaceRoot,
 } from '../operations/services/workspace-tools.ts';
-import { classifyTreeseedGitMode, runTreeseedGit, runTreeseedGitOk, runTreeseedGitText } from '../operations/services/git-runner.ts';
+import { classifyTreeseedGitMode, recoverTreeseedGitLocks, runTreeseedGit, runTreeseedGitOk, runTreeseedGitText, type TreeseedGitLockDiagnostic } from '../operations/services/git-runner.ts';
 import { runTreeseedHostingAudit, type TreeseedHostingAuditEnvironment } from '../operations/services/hosting-audit.ts';
 import { collectTreeseedHostedServiceChecks } from '../operations/services/hosted-service-checks.ts';
 import { collectTreeseedDeploymentReadiness } from '../operations/services/deployment-readiness.ts';
@@ -246,6 +246,7 @@ type WorkflowStatePayload = ReturnType<typeof resolveTreeseedWorkflowState>;
 
 export type TreeseedWorkflowErrorCode =
 	| 'validation_failed'
+	| 'stage_exact_sha_not_pushed'
 	| 'merge_conflict'
 	| 'missing_runtime_auth'
 	| 'deployment_timeout'
@@ -253,6 +254,7 @@ export type TreeseedWorkflowErrorCode =
 	| 'unsupported_transport'
 	| 'unsupported_state'
 	| 'workflow_locked'
+	| 'git_lock_unsafe'
 	| 'resume_unavailable'
 	| 'workflow_contract_missing'
 	| 'github_workflow_failed'
@@ -473,7 +475,7 @@ function normalizeSaveVerifyMode(mode: TreeseedSaveInput['verifyMode'] | undefin
 }
 
 function normalizeReleaseCandidateMode(
-	mode: TreeseedSaveInput['releaseCandidate'] | undefined,
+	mode: TreeseedReleaseCandidateMode | undefined,
 	operation: Extract<TreeseedWorkflowOperationId, 'save' | 'stage' | 'release'>,
 	lane: 'fast' | 'promotion' = 'fast',
 ): ReleaseCandidateMode {
@@ -482,7 +484,8 @@ function normalizeReleaseCandidateMode(
 		return value;
 	}
 	if (operation === 'save' && lane === 'promotion') return 'strict';
-	return operation === 'save' ? 'hybrid' : 'strict';
+	if (operation === 'release') return 'strict';
+	return 'skip';
 }
 
 function shouldUseHostedSaveCi(input: TreeseedSaveInput, branch: string | null | undefined, lane: 'fast' | 'promotion' = normalizeSaveLane(input.lane)) {
@@ -2185,6 +2188,62 @@ function gitRefShaOrNull(cwd: string, ref: string) {
 	}
 }
 
+function gitRemoteBranchShaOrNull(cwd: string, branch: string) {
+	try {
+		const value = runGit(['ls-remote', 'origin', `refs/heads/${branch}`], { cwd, capture: true }).trim();
+		const [sha] = value.split(/\s+/u);
+		return sha || null;
+	} catch {
+		return null;
+	}
+}
+
+function assertStageRemoteHeadPushed(input: {
+	repoName: string;
+	repoPath: string;
+	branch: string;
+	expectedSha: string | null | undefined;
+}) {
+	if (!input.expectedSha) return;
+	const remoteSha = gitRemoteBranchShaOrNull(input.repoPath, input.branch);
+	if (remoteSha === input.expectedSha) return;
+	workflowError(
+		'stage',
+		'stage_exact_sha_not_pushed',
+		`Stage cannot wait for hosted gates because ${input.repoName} ${input.branch} remote is ${remoteSha ?? '(missing)'}, expected ${input.expectedSha}. Push or rerun stage from a clean state.`,
+		{
+			details: {
+				repoName: input.repoName,
+				repoPath: input.repoPath,
+				branch: input.branch,
+				remoteSha,
+				expectedSha: input.expectedSha,
+			},
+		},
+	);
+}
+
+function assertStageGateHeadsPushed(input: {
+	rootRepo: { name: string; path: string; commitSha?: string | null };
+	packageReports: Array<{ name: string; path: string; merged?: boolean; commitSha?: string | null }>;
+}) {
+	assertStageRemoteHeadPushed({
+		repoName: input.rootRepo.name,
+		repoPath: input.rootRepo.path,
+		branch: STAGING_BRANCH,
+		expectedSha: input.rootRepo.commitSha,
+	});
+	for (const report of input.packageReports) {
+		if (!report.merged || !report.commitSha) continue;
+		assertStageRemoteHeadPushed({
+			repoName: report.name,
+			repoPath: report.path,
+			branch: STAGING_BRANCH,
+			expectedSha: report.commitSha,
+		});
+	}
+}
+
 function gitCommitTimestampMsOrNull(cwd: string, sha: string | null) {
 	if (!sha) return null;
 	try {
@@ -2220,6 +2279,48 @@ function completedStageMergeStepIsStale(input: {
 	return false;
 }
 
+function flattenGitLockDiagnostics(diagnostic: ReturnType<typeof recoverTreeseedGitLocks>): TreeseedGitLockDiagnostic[] {
+	if (Array.isArray(diagnostic)) return diagnostic;
+	if (!('repositories' in diagnostic)) return [diagnostic];
+	return diagnostic.repositories.flatMap((entry) => {
+		if (typeof entry === 'object' && entry !== null && 'locks' in entry && Array.isArray(entry.locks)) {
+			return entry.locks;
+		}
+		return [entry as TreeseedGitLockDiagnostic];
+	});
+}
+
+function preflightRecoverSafeGitLocks(operation: TreeseedWorkflowRunCommand, root: string) {
+	const diagnostic = recoverTreeseedGitLocks(root, { execute: true, all: true });
+	const locks = flattenGitLockDiagnostics(diagnostic).filter((entry) => entry.exists);
+	const unsafe = locks.filter((entry) => !entry.safeToRepair);
+	if (unsafe.length > 0) {
+		workflowError(operation, 'git_lock_unsafe', `Treeseed ${operation} is blocked because Git lock files may belong to active Git processes.`, {
+			details: {
+				locks: unsafe.map((entry) => ({
+					repoRoot: entry.repoRoot,
+					kind: entry.kind,
+					lockPath: entry.lockPath,
+					relativeLockPath: entry.relativeLockPath,
+					reason: entry.reason,
+					activeGitProcessHints: entry.activeGitProcessHints,
+				})),
+				recoverCommand: 'npx trsd recover --git-locks --json',
+			},
+		});
+	}
+	return locks.filter((entry) => entry.removed);
+}
+
+function cleanupSafeGitLocksBestEffort(root: string) {
+	try {
+		return flattenGitLockDiagnostics(recoverTreeseedGitLocks(root, { execute: true, all: true }))
+			.filter((entry) => entry.removed);
+	} catch {
+		return [];
+	}
+}
+
 function acquireWorkflowRun(
 	operation: TreeseedWorkflowRunCommand,
 	session: TreeseedWorkflowSession,
@@ -2227,6 +2328,7 @@ function acquireWorkflowRun(
 	steps: Omit<TreeseedWorkflowRunStep, 'status' | 'completedAt' | 'data'>[],
 	context: TreeseedWorkflowContext,
 ) {
+	preflightRecoverSafeGitLocks(operation, session.root);
 	const resumeRunId = context.workflow?.resumeRunId;
 	if (resumeRunId) {
 		const existing = readWorkflowRunJournal(session.root, resumeRunId);
@@ -2290,10 +2392,23 @@ function acquireWorkflowRun(
 }
 
 function completeWorkflowRun(root: string, runId: string, result: Record<string, unknown>) {
+	const removedGitLocks = cleanupSafeGitLocksBestEffort(root);
 	updateWorkflowRunJournal(root, runId, (journal) => ({
 		...journal,
 		status: 'completed',
-		result,
+		result: removedGitLocks.length > 0
+			? {
+				...result,
+				finalizer: {
+					removedGitLocks: removedGitLocks.map((entry) => ({
+						repoRoot: entry.repoRoot,
+						kind: entry.kind,
+						lockPath: entry.lockPath,
+						relativeLockPath: entry.relativeLockPath,
+					})),
+				},
+			}
+			: result,
 		failure: null,
 	}));
 	releaseWorkflowLock(root, runId);
@@ -2305,15 +2420,38 @@ function failWorkflowRun(
 	error: unknown,
 	recovery?: TreeseedWorkflowRecovery | null,
 ) {
+	const removedGitLocks = cleanupSafeGitLocksBestEffort(root);
 	const message = error instanceof Error ? error.message : String(error);
 	const code = error instanceof TreeseedWorkflowError ? error.code : 'unsupported_state';
 	const details = error instanceof TreeseedWorkflowError
 		? {
 			...(error.details ?? {}),
 			recovery: recovery ?? error.details?.recovery ?? null,
+			finalizer: removedGitLocks.length > 0
+				? {
+					removedGitLocks: removedGitLocks.map((entry) => ({
+						repoRoot: entry.repoRoot,
+						kind: entry.kind,
+						lockPath: entry.lockPath,
+						relativeLockPath: entry.relativeLockPath,
+					})),
+				}
+				: undefined,
 		}
 		: recovery
-			? { recovery }
+			? {
+				recovery,
+				finalizer: removedGitLocks.length > 0
+					? {
+						removedGitLocks: removedGitLocks.map((entry) => ({
+							repoRoot: entry.repoRoot,
+							kind: entry.kind,
+							lockPath: entry.lockPath,
+							relativeLockPath: entry.relativeLockPath,
+						})),
+					}
+					: undefined,
+			}
 			: null;
 	updateWorkflowRunJournal(root, runId, (journal) => ({
 		...journal,
@@ -4831,7 +4969,12 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 								? [{ id: 'hosted-ci', description: saveHostedEnvironmentForBranch(branch) ? `Reconcile and verify hosted deployments for ${saveHostedEnvironmentForBranch(branch)}` : `Wait for hosted save workflows on ${branch}` }]
 								: []),
 							...(branch === STAGING_BRANCH
-								? [{ id: 'release-candidate', description: `Run ${releaseCandidateMode} release-candidate readiness checks for the saved staging state` }]
+								? [{
+									id: 'release-candidate',
+									description: releaseCandidateMode === 'skip'
+										? 'Release-candidate skipped by default; run trsd release-candidate --strict before production release'
+										: `Run ${releaseCandidateMode} release-candidate readiness checks for the saved staging state`,
+								}]
 								: []),
 							{ id: 'workspace-link', description: 'Restore local workspace links after save' },
 							...((beforeState.branchRole === 'feature' && (effectiveInput.preview === true || previewInitialized))
@@ -4899,7 +5042,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							resumable: true,
 						}]
 						: []),
-					...(branch === STAGING_BRANCH
+					...(branch === STAGING_BRANCH && releaseCandidateMode !== 'skip'
 						? [{
 							id: 'release-candidate',
 							description: 'Run release-candidate readiness checks',
@@ -5053,7 +5196,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						}).then((workflowGates) => ({ workflowGates }));
 						})
 					: { workflowGates: [] };
-				const releaseCandidate = branch === STAGING_BRANCH
+				const releaseCandidate = branch === STAGING_BRANCH && releaseCandidateMode !== 'skip'
 					? await executeJournalStep(root, workflowRun.runId, 'release-candidate', () => {
 						helpers.write(`[save][workflow] Running staging release-candidate readiness checks (${releaseCandidateMode}).`);
 						const releaseSession = resolveTreeseedWorkflowSession(root);
@@ -5464,6 +5607,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				: input;
 			const message = ensureMessage('stage', effectiveInput.message, 'a resolution message');
 			const ciMode = normalizeCiMode(effectiveInput.ciMode, 'stage');
+			const releaseCandidateMode = normalizeReleaseCandidateMode(effectiveInput.releaseCandidate, 'stage');
 			const waitForStaging = effectiveInput.verifyDeployedResources === true || effectiveInput.waitForStaging !== false;
 
 			if (executionMode === 'plan') {
@@ -5495,6 +5639,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						mergeStrategy: 'squash',
 						message,
 						ciMode,
+						releaseCandidateMode,
 						applicationSelection,
 						autoResumeCandidate: planAutoResumeRun
 							? {
@@ -5517,7 +5662,12 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 							{ id: 'workspace-unlink', description: 'Remove local workspace links before staging promotion' },
 							{ id: 'merge-root', description: `Squash-merge ${initialSession.branchName ?? '(current task)'} into market staging` },
 							{ id: 'lockfile-validation', description: 'Refresh and validate the merged root workspace lockfile before pushing staging' },
-							{ id: 'release-candidate', description: 'Run release-candidate readiness checks for the exact staging state' },
+							{
+								id: 'release-candidate',
+								description: releaseCandidateMode === 'skip'
+									? 'Release-candidate skipped by default; run trsd release-candidate --strict before production release'
+									: `Run ${releaseCandidateMode} release-candidate readiness checks for the exact staging state`,
+							},
 							{ id: 'wait-staging', description: 'Wait for exact-SHA staging GitHub Actions gates' },
 							{ id: 'preview-cleanup', description: 'Destroy preview resources' },
 							{ id: 'cleanup-root', description: 'Archive and delete the task branch from market' },
@@ -5570,6 +5720,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					deletePreview: effectiveInput.deletePreview !== false,
 					deleteBranch: effectiveInput.deleteBranch !== false,
 					ciMode,
+					releaseCandidate: releaseCandidateMode,
 					worktreeMode: effectiveInput.worktreeMode ?? 'auto',
 					verifyDeployedResources: effectiveInput.verifyDeployedResources === true,
 				},
@@ -5584,7 +5735,9 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						resumable: true,
 					})),
 					{ id: 'merge-root', description: `Merge ${featureBranch} into market staging`, repoName: rootRepo.name, repoPath: repoDir, branch: featureBranch, resumable: true },
-					{ id: 'release-candidate', description: 'Run release-candidate readiness checks', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					...(releaseCandidateMode !== 'skip'
+						? [{ id: 'release-candidate', description: 'Run release-candidate readiness checks', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true }]
+						: []),
 					{ id: 'wait-staging', description: 'Wait for exact-SHA staging GitHub Actions gates', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'preview-cleanup', description: 'Destroy preview resources', repoName: rootRepo.name, repoPath: rootRepo.path, branch: featureBranch, resumable: true },
 					{ id: 'cleanup-root', description: `Archive ${featureBranch} in market`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: featureBranch, resumable: true },
@@ -5788,16 +5941,19 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					rootRepo,
 					blockers: [],
 				});
-				if (stageMergeReplayed) {
+				if (stageMergeReplayed && releaseCandidateMode !== 'skip') {
 					helpers.write('[workflow][stage] Re-running release-candidate checks because staged merge outputs were refreshed.');
 				}
-				const releaseCandidate = await executeJournalStep(root, workflowRun.runId, 'release-candidate', () =>
-					runReleaseCandidateForPlan('stage', root, stageReleasePlan, { allowReuse: false, write: (line, stream) => helpers.write(line, stream) }), { rerunCompleted: stageMergeReplayed });
+				const releaseCandidate = releaseCandidateMode === 'skip'
+					? null
+					: await executeJournalStep(root, workflowRun.runId, 'release-candidate', () =>
+						runReleaseCandidateForPlan('stage', root, stageReleasePlan, { allowReuse: false, mode: releaseCandidateMode, write: (line, stream) => helpers.write(line, stream) }), { rerunCompleted: stageMergeReplayed });
 
 				const stageWorkflowGateResult = !waitForStaging
 					? (skipJournalStep(root, workflowRun.runId, 'wait-staging', { status: 'skipped', reason: 'disabled' }), { status: 'skipped', reason: 'disabled' })
-					: await executeJournalStep(root, workflowRun.runId, 'wait-staging', () =>
-						waitForWorkflowGates('stage', [
+					: await executeJournalStep(root, workflowRun.runId, 'wait-staging', () => {
+						assertStageGateHeadsPushed({ rootRepo, packageReports });
+						return waitForWorkflowGates('stage', [
 							hostedDeployGate({
 								name: rootRepo.name,
 								repoPath: rootRepo.path,
@@ -5821,7 +5977,8 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						}).then((workflowGates) => ({
 							status: 'completed',
 							workflowGates,
-						})));
+						}));
+					});
 				const stagingWait = {
 					status: String(stageWorkflowGateResult?.status ?? 'completed'),
 					workflowGates: Array.isArray(stageWorkflowGateResult?.workflowGates) ? stageWorkflowGateResult.workflowGates : [],
@@ -5902,6 +6059,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					repos: packageReports,
 					rootRepo,
 					stagingWait,
+					releaseCandidateMode,
 					releaseCandidate,
 					applicationSelection,
 					previewCleanup,
@@ -6248,6 +6406,10 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 						classifiedAt: new Date().toISOString(),
 					};
 					archiveWorkflowRun(root, entry.journal.runId, classification);
+					const lockInspection = inspectWorkflowLock(root);
+					if (lockInspection.stale && lockInspection.lock?.runId === entry.journal.runId) {
+						releaseWorkflowLock(root, entry.journal.runId);
+					}
 					return {
 						runId: entry.journal.runId,
 						command: entry.journal.command,

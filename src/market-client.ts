@@ -346,7 +346,12 @@ export function resolveMarketProfile(selector?: string | null): MarketProfile {
 }
 
 export function resolveMarketSession(tenantRoot: string, marketId: string): MarketSession | null {
-	const session = resolveTreeseedRemoteSession(tenantRoot, marketId);
+	let session;
+	try {
+		session = resolveTreeseedRemoteSession(tenantRoot, marketId);
+	} catch {
+		return null;
+	}
 	return session?.accessToken
 		? {
 			marketId,

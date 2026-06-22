@@ -216,6 +216,7 @@ export type TreeseedStageInput = {
 	deleteBranch?: boolean;
 	autoSave?: boolean;
 	ciMode?: TreeseedWorkflowCiMode;
+	releaseCandidate?: TreeseedReleaseCandidateMode;
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
 	verifyDeployedResources?: boolean;

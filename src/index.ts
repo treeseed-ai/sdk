@@ -173,12 +173,15 @@ export {
 } from './operations/services/project-web-monitor.ts';
 export {
 	inspectTreeseedGitLocks,
+	inspectTreeseedGitLockSet,
 	inspectTreeseedWorkspaceGitLocks,
 	recoverTreeseedGitLocks,
 	runTreeseedGitBatch,
 	runTreeseedGit,
 	type TreeseedGitBatchOperation,
 	type TreeseedGitLockDiagnostic,
+	type TreeseedGitLockKind,
+	type TreeseedGitLockProcessHint,
 	type TreeseedGitRunnerMode,
 	type TreeseedGitRunnerResult,
 	type TreeseedGitWorkspaceLockDiagnostics,

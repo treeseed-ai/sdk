@@ -1,7 +1,7 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { discoverTreeseedPackageAdapters, type TreeseedPackageAdapter } from '../operations/services/package-adapters.ts';
 
 export type TreeseedManagedDevSurface = 'web' | 'api' | 'operations-runner' | string;
@@ -186,6 +186,52 @@ function forceKillPidTree(pid: number) {
 		process.kill(pid, 'SIGKILL');
 	} catch {
 		// Process may already be gone.
+	}
+}
+
+function procCommandLine(pid: number) {
+	try {
+		return readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/gu, ' ').trim();
+	} catch {
+		return '';
+	}
+}
+
+function procCwdLink(pid: number) {
+	try {
+		return resolve(readlinkSync(`/proc/${pid}/cwd`));
+	} catch {
+		return null;
+	}
+}
+
+function ownedDevCommand(command: string) {
+	return /tenant-astro-command\.ts|astro\.js dev|npm .* (-w|--workspace) packages\/api .* dev:(api|runner)|npm .* run dev:(api|runner)/u.test(command);
+}
+
+function ownedDevProcessPids(tenantRoot: string) {
+	const root = resolve(tenantRoot);
+	const pids: number[] = [];
+	if (!existsSync('/proc')) return pids;
+	for (const entry of readdirSync('/proc')) {
+		if (!/^\d+$/u.test(entry)) continue;
+		const pid = Number(entry);
+		if (!Number.isFinite(pid) || pid === process.pid) continue;
+		const command = procCommandLine(pid);
+		const cwd = procCwdLink(pid);
+		if (!ownedDevCommand(command)) continue;
+		if (!command.includes(root) && (!cwd || !cwd.startsWith(root))) continue;
+		pids.push(pid);
+	}
+	return [...new Set(pids)].sort((a, b) => b - a);
+}
+
+async function stopOwnedDevProcesses(tenantRoot: string) {
+	for (const pid of ownedDevProcessPids(tenantRoot)) {
+		terminatePidTree(pid);
+		if (!await waitForPidTreeExit(pid)) {
+			forceKillPidTree(pid);
+		}
 	}
 }
 
@@ -710,12 +756,53 @@ export function createTreeseedIntegratedDevPlan(options: TreeseedManagedDevOptio
 function instanceFromSpec(spec: TreeseedManagedDevProcessSpec): TreeseedDevInstance {
 	const pid = existsSync(spec.pidPath) ? Number(readFileSync(spec.pidPath, 'utf8').trim()) : null;
 	const record = readJson(spec.instancePath);
+	const normalizedPid = Number.isFinite(pid) ? pid : null;
+	const running = pidAlive(normalizedPid);
+	if (normalizedPid !== null && !running) {
+		rmSync(spec.pidPath, { force: true });
+		rmSync(spec.instancePath, { force: true });
+	}
 	return {
 		...spec,
-		pid: Number.isFinite(pid) ? pid : null,
-		running: pidAlive(Number.isFinite(pid) ? pid : null),
+		pid: running ? normalizedPid : null,
+		running,
 		startedAt: typeof record?.startedAt === 'string' ? record.startedAt : null,
 	};
+}
+
+function candidateFamilyWorktreeRoots(cwd: string) {
+	const root = resolve(cwd);
+	const roots = new Set<string>([root]);
+	const parent = dirname(root);
+	if (parent.endsWith('/.treeseed/worktrees')) {
+		try {
+			for (const entry of readdirSync(parent, { withFileTypes: true })) {
+				if (!entry.isDirectory()) continue;
+				const candidate = resolve(parent, entry.name);
+				if (existsSync(resolve(candidate, '.treeseed', 'dev'))) {
+					roots.add(candidate);
+				}
+			}
+		} catch {
+			// Best-effort repository-family discovery; current worktree remains covered.
+		}
+	}
+	return [...roots].sort();
+}
+
+async function stopManagedDevForRoots(options: TreeseedManagedDevOptions, roots: string[]) {
+	const allInstances: TreeseedDevInstance[] = [];
+	let plan = createTreeseedIntegratedDevPlan(options);
+	for (const root of roots) {
+		const scopedOptions = { ...options, cwd: root, all: false };
+		const scopedPlan = createTreeseedIntegratedDevPlan(scopedOptions);
+		plan = root === resolve(options.cwd ?? process.cwd()) ? scopedPlan : plan;
+		for (const spec of scopedPlan.processes) {
+			allInstances.push(await stopSpec(spec));
+		}
+		await stopOwnedDevProcesses(root);
+	}
+	return { ok: true, action: 'stop' as const, plan, instances: allInstances };
 }
 
 export function readTreeseedDevInstance(input: { cwd?: string; surface?: string } = {}) {
@@ -844,6 +931,9 @@ export async function startTreeseedManagedDev(options: TreeseedManagedDevOptions
 }
 
 export async function stopTreeseedManagedDev(options: TreeseedManagedDevOptions = {}): Promise<TreeseedManagedDevResult> {
+	if (options.all === true) {
+		return stopManagedDevForRoots(options, candidateFamilyWorktreeRoots(options.cwd ?? process.cwd()));
+	}
 	const plan = createTreeseedIntegratedDevPlan(options);
 	const instances = [];
 	for (const spec of plan.processes) {

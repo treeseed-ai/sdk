@@ -161,11 +161,14 @@ export {
 } from './operations/services/github-api.ts';
 export {
 	inspectTreeseedGitLocks,
+	inspectTreeseedGitLockSet,
 	inspectTreeseedWorkspaceGitLocks,
 	recoverTreeseedGitLocks,
 	runTreeseedGitBatch,
 	runTreeseedGit,
 	type TreeseedGitLockDiagnostic,
+	type TreeseedGitLockKind,
+	type TreeseedGitLockProcessHint,
 	type TreeseedGitBatchOperation,
 	type TreeseedGitRunnerMode,
 	type TreeseedGitRunnerResult,

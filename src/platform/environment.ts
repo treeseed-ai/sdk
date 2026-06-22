@@ -533,6 +533,14 @@ function parseGitHubRepositorySlugFromRemote(remoteUrl: string | undefined) {
 }
 
 function resolveGitHubOriginRepository(context: TreeseedEnvironmentContext) {
+	const rootResult = runTreeseedGit(['rev-parse', '--show-toplevel'], {
+		cwd: context.tenantRoot,
+		mode: 'read',
+		allowFailure: true,
+	});
+	if (rootResult.status !== 0 || resolve(rootResult.stdout.trim()) !== resolve(context.tenantRoot)) {
+		return null;
+	}
 	const result = runTreeseedGit(['remote', 'get-url', 'origin'], {
 		cwd: context.tenantRoot,
 		mode: 'read',

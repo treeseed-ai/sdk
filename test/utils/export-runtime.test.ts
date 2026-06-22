@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -32,6 +33,13 @@ ${options.bundledPath ? `  bundledPaths:\n    - "${options.bundledPath}"\n` : ''
 		writeFileSync(resolve(bundleRoot, 'package.json'), JSON.stringify({ name: '@test/bundle', version: '0.0.1' }, null, 2));
 		writeFileSync(resolve(bundleRoot, 'index.ts'), 'export const bundled = true;\n');
 	}
+
+	execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+	execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: root, stdio: 'ignore' });
+	execFileSync('git', ['config', 'user.name', 'TreeSeed Test'], { cwd: root, stdio: 'ignore' });
+	execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+	execFileSync('git', ['commit', '-m', 'fixture'], { cwd: root, stdio: 'ignore' });
+	execFileSync('git', ['checkout', '--detach'], { cwd: root, stdio: 'ignore' });
 
 	return root;
 }

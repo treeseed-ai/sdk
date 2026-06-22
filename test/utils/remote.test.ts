@@ -39,7 +39,9 @@ import { sdkFixtureRoot } from '../test-fixture.ts';
 function createTenantFixture() {
 	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-remote-test-'));
 	mkdirSync(resolve(tenantRoot, 'src'), { recursive: true });
+	mkdirSync(resolve(tenantRoot, '.treeseed', 'config'), { recursive: true });
 	writeFileSync(resolve(tenantRoot, 'src', 'manifest.yaml'), 'id: test\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n  notes: ./src/content/notes\n  questions: ./src/content/questions\n  objectives: ./src/content/objectives\n  proposals: ./src/content/proposals\n  decisions: ./src/content/decisions\n  people: ./src/content/people\n  agents: ./src/content/agents\n  books: ./src/content/books\n  docs: ./src/content/knowledge\nfeatures:\n  docs: true\n  proposals: true\n  decisions: true\n');
+	writeFileSync(resolve(tenantRoot, '.treeseed', 'config', 'machine.yaml'), 'version: 1\n');
 	writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test
 slug: test
 siteUrl: https://example.com

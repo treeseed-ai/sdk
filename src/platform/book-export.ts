@@ -312,6 +312,8 @@ async function renderRepomixMarkdown(stageRoot: string, outputPath: string) {
 		output: outputPath,
 		style: 'markdown',
 		ignore: '',
+		gitignore: false,
+		dotIgnore: false,
 		quiet: true,
 		skipLocalConfig: true,
 		copy: false,
