@@ -208,13 +208,14 @@ function releaseGraphManifestPackageEnv(root: string, adapter: TreeseedPackageAd
 
 function releaseGraphTempBase(root: string) {
 	const configured = process.env.TREESEED_RELEASE_GRAPH_TMPDIR;
-	const base = configured ? resolve(configured) : resolve(dirname(root), '.treeseed-release-graph-tmp');
+	const base = configured ? resolve(configured) : resolve(root, '.treeseed', 'tmp', 'release-graph');
 	mkdirSync(base, { recursive: true });
 	return base;
 }
 
 function packageActionTempBase(packageDir: string) {
-	const base = resolve(dirname(packageDir), '.treeseed-action-tmp');
+	const workspaceRoot = workspacePackages(dirname(packageDir)).length > 0 ? dirname(packageDir) : dirname(dirname(packageDir));
+	const base = resolve(workspaceRoot, '.treeseed', 'tmp', 'actions', safeEnvSegment(basename(packageDir)));
 	mkdirSync(base, { recursive: true });
 	return base;
 }

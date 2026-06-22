@@ -530,7 +530,7 @@ function checkPackageAdapterReadiness(pkg: TreeseedPackageAdapter, failures: Rel
 
 function releaseCandidateTempBase(root: string) {
 	const configured = process.env.TREESEED_RELEASE_CANDIDATE_TMPDIR;
-	const base = configured ? resolve(configured) : resolve(dirname(root), '.treeseed-release-candidate-tmp');
+	const base = configured ? resolve(configured) : resolve(root, '.treeseed', 'tmp', 'release-candidate');
 	mkdirSync(base, { recursive: true });
 	return base;
 }

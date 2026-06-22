@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, rmSync, renameSync, chmodSync, copyFileSync, readFileSync, readdirSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { homedir, platform as osPlatform, arch as osArch } from 'node:os';
+import { platform as osPlatform, arch as osArch } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -151,7 +151,7 @@ function resolveToolsHome(env: NodeJS.ProcessEnv = process.env) {
 	if (env.XDG_CACHE_HOME?.trim()) {
 		return resolve(env.XDG_CACHE_HOME, 'treeseed', 'tools');
 	}
-	return resolve(homedir(), '.cache', 'treeseed', 'tools');
+	return resolve(process.cwd(), '.treeseed', 'tools');
 }
 
 export function createTreeseedManagedToolEnv(env: NodeJS.ProcessEnv = process.env) {
