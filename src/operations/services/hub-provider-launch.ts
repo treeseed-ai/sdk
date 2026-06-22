@@ -1,6 +1,5 @@
 import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { collectTreeseedReconcileStatus, reconcileTreeseedTarget } from '../../reconcile/index.ts';
@@ -962,7 +961,7 @@ export async function executeKnowledgeHubProviderLaunch(
 ): Promise<KnowledgeHubProviderLaunchResult> {
 	const phases: KnowledgeHubProviderLaunchPhaseRecord[] = [];
 	const reportPhase = options.onPhase;
-	const prodEnvOverlay = {
+const prodEnvOverlay = {
 		...buildCloudflareHostEnvironmentOverlay(input, 'prod'),
 	};
 	const stagingEnvOverlay = {
@@ -977,7 +976,9 @@ export async function executeKnowledgeHubProviderLaunch(
 		);
 	}
 
-	const workingRoot = mkdtempSync(join(tmpdir(), `hub-provider-launch-${slugify(input.projectSlug, 'project')}-`));
+	const launchTempBase = resolve(process.cwd(), '.treeseed', 'tmp', 'hub-provider-launch');
+	mkdirSync(launchTempBase, { recursive: true });
+	const workingRoot = mkdtempSync(join(launchTempBase, `hub-provider-launch-${slugify(input.projectSlug, 'project')}-`));
 	const repoOwner = slugify(input.repoOwner ?? resolveDefaultGitHubOwner(), 'treeseed-ai');
 	const repoName = slugify(input.repoName ?? input.projectSlug, 'project');
 	const githubEnv = repositoryHostGitHubEnvOverlay();
@@ -1030,7 +1031,7 @@ export async function executeKnowledgeHubProviderLaunch(
 			);
 		}
 		const seed = seedLaunchContent(workingRoot, input);
-		packageSourceRoot = mkdtempSync(join(tmpdir(), `market-package-${slugify(input.projectSlug, 'project')}-`));
+		packageSourceRoot = mkdtempSync(join(launchTempBase, `market-package-${slugify(input.projectSlug, 'project')}-`));
 		cpSync(workingRoot, packageSourceRoot, { recursive: true });
 		await appendPhase(phases, 'content_bootstrap', 'completed', 'Scaffolded the repo and seeded Direct content.', reportPhase);
 
@@ -1038,7 +1039,7 @@ export async function executeKnowledgeHubProviderLaunch(
 		let contentRepositoryWorkingRoot: string | null = null;
 		if (input.contentRepository?.name) {
 			await appendPhase(phases, 'content_repository', 'running', 'Creating content repository.', reportPhase);
-			contentRepositoryWorkingRoot = mkdtempSync(join(tmpdir(), `market-content-${slugify(input.projectSlug, 'project')}-`));
+			contentRepositoryWorkingRoot = mkdtempSync(join(launchTempBase, `market-content-${slugify(input.projectSlug, 'project')}-`));
 			prepareKnowledgeHubContentRepositoryRoot(workingRoot, contentRepositoryWorkingRoot, input);
 			const createdContentRepository = input.contentRepository.url
 				? {

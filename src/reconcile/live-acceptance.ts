@@ -1,10 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { createServer, type Server } from 'node:net';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { performance } from 'node:perf_hooks';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
 	createTreeseedCanonicalReconcileReport,
 	type TreeseedCanonicalAction,
@@ -1684,7 +1683,9 @@ async function closeServer(server: Server) {
 async function runLocalAcceptance(environment: TreeseedLiveReconcileEnvironment, prefix: string, mode: TreeseedLiveReconcileMode, runId: string, onProgress?: LiveProgress) {
 	const created: TreeseedCanonicalGraphNode[] = [];
 	const destroyed: TreeseedCanonicalGraphNode[] = [];
-	const dir = await mkdtemp(join(tmpdir(), `${prefix}-`));
+	const tempBase = resolve(process.cwd(), '.treeseed', 'tmp', 'live-acceptance');
+	await mkdir(tempBase, { recursive: true });
+	const dir = await mkdtemp(join(tempBase, `${prefix}-`));
 	const results: TreeseedLiveReconcileScenarioResult[] = [];
 	let server: Server | null = null;
 	try {

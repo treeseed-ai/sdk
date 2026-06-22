@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
@@ -1510,7 +1510,7 @@ export function resolveTreeseedTemplateCatalogCachePath(startRoot = process.cwd(
 		return resolve(dirname(dirname(machineConfigPath)), 'cache', 'template-catalog.json');
 	}
 
-	return resolve(tmpdir(), TEMPLATE_CATALOG_CACHE_RELATIVE_PATH);
+	return resolve(startRoot, '.treeseed', 'cache', TEMPLATE_CATALOG_CACHE_RELATIVE_PATH);
 }
 
 export function ensureTreeseedGitignoreEntries(tenantRoot) {

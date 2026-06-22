@@ -1,7 +1,6 @@
 import { spawnSync, type SpawnSyncOptionsWithStringEncoding } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
 
 export type TreeseedGitRunnerMode = 'read' | 'mutate';
 
@@ -163,7 +162,7 @@ function resolveGitRoot(cwd: string) {
 }
 
 function lockRoot(commonGitDir: string | null) {
-	return commonGitDir ? resolve(commonGitDir, 'treeseed', 'locks') : resolve(tmpdir(), 'treeseed-git-locks');
+	return commonGitDir ? resolve(commonGitDir, 'treeseed', 'locks') : resolve(process.cwd(), '.treeseed', 'locks');
 }
 
 function lockPathFor(commonGitDir: string | null) {
