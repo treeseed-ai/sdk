@@ -291,15 +291,18 @@ function emitProgress(options: Pick<RepositorySaveOptions, 'onProgress'>, node: 
 function projectLocalToolEnv(root: string, env: NodeJS.ProcessEnv = process.env) {
 	const cacheHome = resolve(root, '.treeseed', 'cache');
 	const npmCache = resolve(cacheHome, 'npm');
+	const tempHome = resolve(root, '.treeseed', 'tmp');
 	const toolsHome = resolve(root, '.treeseed', 'tools');
 	const ghConfigDir = resolve(toolsHome, 'gh-config');
 	mkdirSync(npmCache, { recursive: true });
+	mkdirSync(tempHome, { recursive: true });
 	mkdirSync(ghConfigDir, { recursive: true });
 	return {
 		...env,
 		XDG_CACHE_HOME: env.XDG_CACHE_HOME ?? cacheHome,
 		npm_config_cache: env.npm_config_cache ?? env.NPM_CONFIG_CACHE ?? npmCache,
 		NPM_CONFIG_CACHE: env.NPM_CONFIG_CACHE ?? env.npm_config_cache ?? npmCache,
+		TMPDIR: env.TMPDIR ?? tempHome,
 		TREESEED_TOOLS_HOME: env.TREESEED_TOOLS_HOME ?? toolsHome,
 		TREESEED_GH_CONFIG_DIR: env.TREESEED_GH_CONFIG_DIR ?? ghConfigDir,
 	};
