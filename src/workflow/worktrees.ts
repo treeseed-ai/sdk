@@ -286,8 +286,11 @@ export function removeManagedWorkflowWorktree(root: string, options: { deleteBra
 	const primaryRoot = metadata.primaryRoot;
 	const primaryGitRoot = repoRoot(primaryRoot);
 	process.chdir(primaryRoot);
-	runGit(['worktree', 'remove', '--force', metadata.worktreePath], { cwd: primaryGitRoot });
+	const gitRemove = runGit(['worktree', 'remove', '--force', metadata.worktreePath], { cwd: primaryGitRoot, allowFailure: true });
 	rmSync(metadata.worktreePath, { recursive: true, force: true });
+	if (gitRemove.status !== 0) {
+		runGit(['worktree', 'prune'], { cwd: primaryGitRoot, allowFailure: true });
+	}
 	let deletedLocalBranch = false;
 	if (options.deleteBranch === true && metadata.branch) {
 		const deleted = runGit(['branch', '-D', metadata.branch], { cwd: primaryGitRoot, allowFailure: true });
