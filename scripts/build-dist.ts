@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { build } from 'esbuild';
 import ts from 'typescript';
@@ -9,6 +9,7 @@ const scriptsRoot = resolve(packageRoot, 'scripts');
 const distRoot = resolve(packageRoot, 'dist');
 const treeseedTemplateCatalogSourceRoot = resolve(srcRoot, 'treeseed', 'template-catalog');
 const treeseedServicesSourceRoot = resolve(srcRoot, 'treeseed', 'services');
+const BIN_ENTRYPOINTS = new Set(['verification.ts']);
 
 const COPY_EXTENSIONS = new Set(['.json', '.md', '.js', '.d.ts', '.yaml', '.yml']);
 
@@ -62,7 +63,14 @@ async function compileModule(filePath, sourceRoot, outputRoot) {
 	});
 
 	const builtSource = readFileSync(outputFile, 'utf8');
-	writeFileSync(outputFile, rewriteRuntimeSpecifiers(builtSource), 'utf8');
+	const rewritten = rewriteRuntimeSpecifiers(builtSource);
+	const executableSource = BIN_ENTRYPOINTS.has(relativePath)
+		? `${rewritten.startsWith('#!') ? '' : '#!/usr/bin/env node\n'}${rewritten}`
+		: rewritten;
+	writeFileSync(outputFile, executableSource, 'utf8');
+	if (BIN_ENTRYPOINTS.has(relativePath)) {
+		chmodSync(outputFile, 0o755);
+	}
 }
 
 function copyAsset(filePath, sourceRoot, outputRoot) {

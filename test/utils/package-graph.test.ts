@@ -187,6 +187,7 @@ describe('sdk package graph', () => {
 
 			if (
 				verifyScript === 'tsx ./scripts/verify-driver.ts'
+				|| verifyScript === 'node --import tsx ./scripts/verify-driver.ts'
 			) {
 				expect(
 					existsSync(verifyDriverPath),

@@ -315,12 +315,12 @@ describe('config runtime shared environment values', () => {
 			storage: 'shared',
 		} as any, 'railway-secret-token');
 
-		const redacted = collectTreeseedPrintEnvReport({ tenantRoot, scope: 'staging', revealSecrets: false });
+		const redacted = collectTreeseedPrintEnvReport({ tenantRoot, scope: 'staging', env: {}, revealSecrets: false });
 		const redactedEntry = redacted.entries.find((entry) => entry.id === 'TREESEED_RAILWAY_API_TOKEN');
 		expect(redactedEntry?.value).toBe('');
 		expect(redactedEntry?.displayValue).not.toContain('railway-secret-token');
 
-		const revealed = collectTreeseedPrintEnvReport({ tenantRoot, scope: 'staging', revealSecrets: true });
+		const revealed = collectTreeseedPrintEnvReport({ tenantRoot, scope: 'staging', env: {}, revealSecrets: true });
 		const revealedEntry = revealed.entries.find((entry) => entry.id === 'TREESEED_RAILWAY_API_TOKEN');
 		expect(revealedEntry?.value).toBe('railway-secret-token');
 		expect(revealedEntry?.displayValue).toBe('railway-secret-token');

@@ -61,7 +61,7 @@ export function resolveGitHubCredentialForRepository(
 			token: repositoryToken,
 		};
 	}
-	const fallbackToken = resolveTreeseedGitHubToken(values)
+	const fallbackToken = resolveTreeseedGitHubToken(values ?? {})
 		|| resolveTreeseedGitHubToken(env);
 	if (fallbackToken) {
 		return {

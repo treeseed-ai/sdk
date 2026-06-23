@@ -27,6 +27,7 @@ describe('operations runner smoke', () => {
 		const report = await runTreeseedOperationsRunnerSmoke({
 			tenantRoot: root(),
 			environment: 'local',
+			env: {},
 			fetchImpl: (async (url: URL | RequestInfo, init?: RequestInit) => {
 				const value = String(url);
 				headers.push(String(new Headers(init?.headers).get('x-treeseed-service-secret') ?? ''));
