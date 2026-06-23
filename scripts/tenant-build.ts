@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { createBuildWarningSummary, formatAllowedBuildWarnings } from '../src/operations/services/build-warning-policy.js';
+import { createBuildWarningSummary, formatAllowedBuildWarnings } from '../src/operations/services/build-warning-policy.ts';
 import { resolveAstroBin, createProductionBuildEnv, packageScriptPath, runNodeBinary, runNodeScript } from '../src/operations/services/runtime-tools.ts';
 
 function runFilteredNodeBinary(binPath: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }) {
