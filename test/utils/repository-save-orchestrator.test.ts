@@ -740,4 +740,28 @@ describe('repository save orchestrator helpers', () => {
 			&& line.includes('[WARN]')
 			&& line.includes('Module "url" has been externalized'))).toBe(false);
 	});
+
+	it('uses a short temp directory for tsx subprocesses in long worktree paths', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-tsx-temp-'));
+		const packageRoot = resolve(testDir, '..', '..');
+		const longTemp = resolve(
+			root,
+			'very-long-managed-worktree-temp-directory-name',
+			'that-would-overflow-unix-socket-paths-for-tsx',
+			'when-the-worktree-itself-is-already-deep',
+		);
+		const progress: string[] = [];
+
+		await runStreamingCommand(
+			{ name: '@treeseed/demo-temp', path: packageRoot },
+			{ onProgress: (line) => progress.push(line) },
+			'verify',
+			process.execPath,
+			['--import', 'tsx', '-e', 'console.log(process.env.TMPDIR)'],
+			{ env: { TMPDIR: longTemp, TMP: longTemp, TEMP: longTemp } },
+		);
+
+		expect(progress).toContain(`[@treeseed/demo-temp][verify] ${tmpdir()}`);
+		expect(progress).not.toContain(`[@treeseed/demo-temp][verify] ${longTemp}`);
+	});
 });

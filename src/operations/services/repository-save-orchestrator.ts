@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, resolve, relative } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
 import {
 	ensureSshPushUrlForOrigin,
@@ -303,6 +304,22 @@ function prefixedOutput(node: Pick<RepositorySaveNode, 'name'>, phase: string, o
 		.join('\n');
 }
 
+function withShortProcessTempEnv(env: NodeJS.ProcessEnv = {}) {
+	const merged = { ...process.env, ...env };
+	if (process.platform === 'win32') {
+		return merged;
+	}
+	const shortTemp = tmpdir();
+	const tempKeys = ['TMPDIR', 'TMP', 'TEMP'] as const;
+	for (const key of tempKeys) {
+		const value = merged[key];
+		if (value && value.length > shortTemp.length) {
+			merged[key] = shortTemp;
+		}
+	}
+	return merged;
+}
+
 function runCapturedCommand(
 	node: Pick<RepositorySaveNode, 'name' | 'path'>,
 	options: Pick<RepositorySaveOptions, 'onProgress'>,
@@ -314,7 +331,7 @@ function runCapturedCommand(
 	emitProgress(options, node, phase, `$ ${command} ${args.join(' ')}`);
 	const result = spawnSync(command, args, {
 		cwd: commandOptions.cwd ?? node.path,
-		env: { ...process.env, ...(commandOptions.env ?? {}) },
+		env: withShortProcessTempEnv(commandOptions.env),
 		stdio: 'pipe',
 		encoding: 'utf8',
 		timeout: commandOptions.timeoutMs,
@@ -377,7 +394,7 @@ function runQuietCommand(
 ) {
 	const result = spawnSync(command, args, {
 		cwd: commandOptions.cwd ?? node.path,
-		env: { ...process.env, ...(commandOptions.env ?? {}) },
+		env: withShortProcessTempEnv(commandOptions.env),
 		stdio: 'pipe',
 		encoding: 'utf8',
 		timeout: commandOptions.timeoutMs,
@@ -414,7 +431,7 @@ export async function runStreamingCommand(
 	return await new Promise<{ stdout: string; stderr: string }>((resolvePromise, reject) => {
 		const child = spawn(command, args, {
 			cwd: commandOptions.cwd ?? node.path,
-			env: { ...process.env, ...(commandOptions.env ?? {}) },
+			env: withShortProcessTempEnv(commandOptions.env),
 			stdio: ['ignore', 'pipe', 'pipe'],
 		});
 		let stdout = '';

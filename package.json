@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.11.1-dev.demo.20260623T040145Z",
+  "version": "0.11.1-dev.demo.20260623T053254Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -52,9 +52,9 @@
     "fixtures:check": "node --import tsx ./scripts/fixture-tools.ts check",
     "lint": "npm run fixtures:check && npm run build:dist",
     "verify:direct": "npm run release:verify",
-    "verify:local": "TREESEED_VERIFY_DRIVER=direct node --import tsx ./scripts/verify-driver.ts",
-    "verify:action": "TREESEED_VERIFY_DRIVER=act node --import tsx ./scripts/verify-driver.ts",
-    "verify": "node --import tsx ./scripts/verify-driver.ts",
+    "verify:local": "TREESEED_VERIFY_DRIVER=direct TMPDIR=/tmp node --import tsx ./scripts/verify-driver.ts",
+    "verify:action": "TREESEED_VERIFY_DRIVER=act TMPDIR=/tmp node --import tsx ./scripts/verify-driver.ts",
+    "verify": "TMPDIR=/tmp node --import tsx ./scripts/verify-driver.ts",
     "release:setup": "npm run setup:ci",
     "release:check-tag": "node --import tsx ./scripts/assert-release-tag-version.ts",
     "release:verify": "node --import tsx ./scripts/release-verify.ts",
