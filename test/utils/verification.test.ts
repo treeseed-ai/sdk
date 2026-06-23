@@ -128,6 +128,11 @@ describe('verify driver', () => {
 				},
 			})).toBe(0);
 			expect(calls).toHaveLength(1);
+			const artifactServerPort = calls[0]?.args[7];
+			const cacheServerPort = calls[0]?.args[9];
+			expect(Number(artifactServerPort)).toBeGreaterThan(0);
+			expect(Number(cacheServerPort)).toBeGreaterThan(0);
+			expect(artifactServerPort).not.toBe(cacheServerPort);
 			expect(calls[0]).toMatchObject({
 				command: 'gh',
 				args: [
@@ -138,9 +143,9 @@ describe('verify driver', () => {
 					'-j',
 					'verify',
 					'--artifact-server-port',
-					'0',
+					artifactServerPort,
 					'--cache-server-port',
-					'0',
+					cacheServerPort,
 					'-P',
 					'ubuntu-latest=catthehacker/ubuntu:act-latest',
 				],
@@ -171,6 +176,11 @@ describe('verify driver', () => {
 					return 0;
 				},
 			})).toBe(0);
+			const artifactServerPort = calls[0]?.args[7];
+			const cacheServerPort = calls[0]?.args[9];
+			expect(Number(artifactServerPort)).toBeGreaterThan(0);
+			expect(Number(cacheServerPort)).toBeGreaterThan(0);
+			expect(artifactServerPort).not.toBe(cacheServerPort);
 			expect(calls).toEqual([
 				{
 					command: 'gh',
@@ -182,9 +192,9 @@ describe('verify driver', () => {
 						'-j',
 						'verify',
 						'--artifact-server-port',
-						'0',
+						artifactServerPort,
 						'--cache-server-port',
-						'0',
+						cacheServerPort,
 						'-P',
 						'ubuntu-latest=example.local/ubuntu:verify',
 					],

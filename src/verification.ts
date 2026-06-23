@@ -95,8 +95,59 @@ function readPackageManifest(packageJsonPath: string): PackageManifest | null {
 	}
 }
 
+function allocateActServerPorts() {
+	const result = childProcess.spawnSync(process.execPath, [
+		'-e',
+		`const net = require('node:net');
+const servers = [net.createServer(), net.createServer()];
+const ports = [];
+let remaining = servers.length;
+function fail(error) {
+	console.error(error && error.stack ? error.stack : String(error));
+	process.exit(1);
+}
+for (const server of servers) {
+	server.once('error', fail);
+	server.listen(0, '127.0.0.1', () => {
+		const address = server.address();
+		if (!address || typeof address === 'string') fail(new Error('Unable to allocate TCP port.'));
+		ports.push(address.port);
+		server.close(() => {
+			remaining -= 1;
+			if (remaining === 0) {
+				console.log(JSON.stringify(ports));
+			}
+		});
+	});
+}`,
+	], {
+		encoding: 'utf8',
+		stdio: ['ignore', 'pipe', 'pipe'],
+	});
+
+	if (result.status !== 0) {
+		const detail = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim();
+		throw new Error(`Unable to allocate local act server ports.${detail ? `\n${detail}` : ''}`);
+	}
+
+	const ports = JSON.parse(result.stdout.trim()) as unknown;
+	if (
+		!Array.isArray(ports)
+		|| ports.length !== 2
+		|| ports.some((port) => !Number.isInteger(port) || port <= 0)
+	) {
+		throw new Error(`Unable to allocate local act server ports: ${result.stdout.trim()}`);
+	}
+
+	return {
+		artifactServerPort: String(ports[0]),
+		cacheServerPort: String(ports[1]),
+	};
+}
+
 function createActArgs(eventName: string, workflowPath: string) {
 	const image = process.env.TREESEED_VERIFY_ACT_UBUNTU_LATEST_IMAGE?.trim() || defaultActUbuntuLatestImage;
+	const ports = allocateActServerPorts();
 	const args = [
 		'act',
 		eventName,
@@ -105,9 +156,9 @@ function createActArgs(eventName: string, workflowPath: string) {
 		'-j',
 		'verify',
 		'--artifact-server-port',
-		'0',
+		ports.artifactServerPort,
 		'--cache-server-port',
-		'0',
+		ports.cacheServerPort,
 	];
 	if (image) {
 		args.push('-P', `ubuntu-latest=${image}`);
