@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import * as childProcess from 'node:child_process';
 import { basename, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -55,6 +55,8 @@ type LocalWorkspaceContext = {
 };
 
 const defaultActUbuntuLatestImage = 'catthehacker/ubuntu:act-latest';
+const actLockStaleAfterMs = 2 * 60 * 60 * 1000;
+const actLockPollMs = 500;
 
 function defaultWrite(message: string, stream: 'stdout' | 'stderr' = 'stdout') {
 	if (!message) return;
@@ -164,6 +166,56 @@ function createActArgs(eventName: string, workflowPath: string) {
 		args.push('-P', `ubuntu-latest=${image}`);
 	}
 	return args;
+}
+
+function sleepSync(ms: number) {
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function acquireActLock() {
+	const lockDir = resolve(tmpdir(), 'treeseed-verify-act.lock');
+	const owner = `${process.pid}:${Date.now()}`;
+	while (true) {
+		try {
+			mkdirSync(lockDir);
+			writeFileSync(resolve(lockDir, 'owner'), owner, 'utf8');
+			return () => {
+				try {
+					const currentOwner = readFileSync(resolve(lockDir, 'owner'), 'utf8');
+					if (currentOwner === owner) {
+						rmSync(lockDir, { recursive: true, force: true });
+					}
+				} catch {
+					// Another process may have already removed a stale lock.
+				}
+			};
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code !== 'EEXIST') {
+				throw error;
+			}
+			try {
+				const ageMs = Date.now() - statSync(lockDir).mtimeMs;
+				if (ageMs > actLockStaleAfterMs) {
+					rmSync(lockDir, { recursive: true, force: true });
+					continue;
+				}
+			} catch {
+				rmSync(lockDir, { recursive: true, force: true });
+				continue;
+			}
+			sleepSync(actLockPollMs);
+		}
+	}
+}
+
+function runActCommand(runCommand: (command: string, args: string[], cwd: string) => number, command: string, args: string[], cwd: string) {
+	const releaseLock = acquireActLock();
+	try {
+		return runCommand(command, args, cwd);
+	} finally {
+		releaseLock();
+	}
 }
 
 function createWorkspaceActWorkflow(options: {
@@ -424,9 +476,9 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 				eventName: status.eventName,
 				localTreeseedSiblingDependencies: status.localTreeseedSiblingDependencies,
 			});
-			return runCommand(gh, workspaceAct.args, workspaceAct.cwd);
+			return runActCommand(runCommand, gh, workspaceAct.args, workspaceAct.cwd);
 		}
-		return runCommand(gh, createActArgs(status.eventName, '.github/workflows/verify.yml'), status.packageRoot);
+		return runActCommand(runCommand, gh, createActArgs(status.eventName, '.github/workflows/verify.yml'), status.packageRoot);
 	}
 
 	if (status.prefersDirectForLocalWorkspace) {
@@ -434,7 +486,7 @@ export function runTreeseedVerifyDriver(options: TreeseedVerifyDriverOptions = {
 	}
 
 	if (status.canUseAct) {
-		return runCommand(gh, createActArgs(status.eventName, '.github/workflows/verify.yml'), status.packageRoot);
+		return runActCommand(runCommand, gh, createActArgs(status.eventName, '.github/workflows/verify.yml'), status.packageRoot);
 	}
 
 	if (!status.workflowPresent) {
