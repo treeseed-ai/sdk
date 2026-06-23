@@ -66,6 +66,44 @@ describe('verify driver', () => {
 		}
 	}, 20_000);
 
+	it('includes fixture-only extra local sibling dependencies for action verification', async () => {
+		const fixture = await createWorkspaceFixture('@treeseed/core', {
+			'@treeseed/sdk': '^0.3.1',
+		});
+		await createPackage(fixture.root, '@treeseed/sdk');
+		await createPackage(fixture.root, '@treeseed/agent');
+		const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+
+		try {
+			const status = getTreeseedVerifyDriverStatus({
+				packageRoot: fixture.currentPackageRoot,
+				driver: 'act',
+				localTreeseedExtraSiblingDependencies: ['@treeseed/agent'],
+			});
+			expect(status.localTreeseedSiblingDependencies).toEqual(['@treeseed/sdk', '@treeseed/agent']);
+
+			expect(runTreeseedVerifyDriver({
+				packageRoot: fixture.currentPackageRoot,
+				driver: 'act',
+				localTreeseedExtraSiblingDependencies: ['@treeseed/agent'],
+				checkCommand() {
+					return { ok: true, detail: '' };
+				},
+				runCommand(command, args, cwd) {
+					calls.push({ command, args, cwd });
+					return 0;
+				},
+			})).toBe(0);
+
+			const workflow = await readFile(calls[0]?.args[3] ?? '', 'utf8');
+			expect(workflow).toContain('npm --prefix packages/sdk ci --workspaces=false');
+			expect(workflow).toContain('npm --prefix packages/agent ci --workspaces=false');
+			expect(workflow).toContain('ln -s ../../../agent node_modules/@treeseed/agent');
+		} finally {
+			await rm(fixture.root, { recursive: true, force: true });
+		}
+	});
+
 	it('does not prefer direct without local sibling treeseed dependencies', async () => {
 		const fixture = await createWorkspaceFixture('@treeseed/sdk');
 		await createPackage(fixture.root, '@treeseed/core', {
@@ -154,6 +192,8 @@ describe('verify driver', () => {
 			const workflow = await readFile(calls[0].args[3], 'utf8');
 			expect(workflow).toContain('npm --prefix packages/sdk ci --workspaces=false');
 			expect(workflow).toContain('npm ci --workspaces=false');
+			expect(workflow).toContain('git rev-parse --is-inside-work-tree >/dev/null 2>&1');
+			expect(workflow).not.toContain('git checkout -- package.json || true');
 		} finally {
 			await rm(fixture.root, { recursive: true, force: true });
 		}

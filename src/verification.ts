@@ -11,6 +11,7 @@ export type TreeseedVerifyDriverOptions = {
 	packageRoot?: string;
 	driver?: TreeseedVerifyDriver;
 	eventName?: string;
+	localTreeseedExtraSiblingDependencies?: string[];
 	write?: (message: string, stream?: 'stdout' | 'stderr') => void;
 	runCommand?: (command: string, args: string[], cwd: string) => number;
 	checkCommand?: (command: string, args: string[], cwd: string) => { ok: boolean; detail: string };
@@ -311,7 +312,9 @@ ${siblingPreparationCommands.split('\n').map((line) => `          ${line}`).join
           else
             npm install --workspaces=false --no-audit --no-fund
           fi
-          git checkout -- package.json || true
+          if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            git checkout -- package.json
+          fi
 
 ${siblingLinkCommands ? `      - name: Link local Treeseed dependencies
         run: |
@@ -354,7 +357,7 @@ function findWorkspaceRoot(packageRoot: string) {
 	}
 }
 
-function resolveLocalWorkspaceContext(packageRoot: string): LocalWorkspaceContext {
+function resolveLocalWorkspaceContext(packageRoot: string, extraSiblingDependencies: readonly string[] = []): LocalWorkspaceContext {
 	const currentManifest = readPackageManifest(resolve(packageRoot, 'package.json'));
 	const currentPackageName = typeof currentManifest?.name === 'string' ? currentManifest.name : null;
 	const workspace = findWorkspaceRoot(packageRoot);
@@ -395,10 +398,18 @@ function resolveLocalWorkspaceContext(packageRoot: string): LocalWorkspaceContex
 		...(currentPackage.manifest.devDependencies ?? {}),
 		...(currentPackage.manifest.peerDependencies ?? {}),
 	};
-	const localTreeseedSiblingDependencies = Object.keys(declaredDependencies)
+	const declaredLocalTreeseedSiblingDependencies = Object.keys(declaredDependencies)
 		.filter((name) => name.startsWith('@treeseed/'))
 		.filter((name) => localTreeseedPackageSet.has(name))
 		.sort();
+	const extraLocalTreeseedSiblingDependencies = extraSiblingDependencies
+		.filter((name) => name.startsWith('@treeseed/'))
+		.filter((name) => localTreeseedPackageSet.has(name))
+		.sort();
+	const localTreeseedSiblingDependencies = [
+		...declaredLocalTreeseedSiblingDependencies,
+		...extraLocalTreeseedSiblingDependencies.filter((name) => !declaredLocalTreeseedSiblingDependencies.includes(name)),
+	];
 
 	return {
 		workspaceRoot: workspace.workspaceRoot,
@@ -415,7 +426,7 @@ export function getTreeseedVerifyDriverStatus(options: TreeseedVerifyDriverOptio
 	const eventName = options.eventName ?? process.env.TREESEED_VERIFY_EVENT ?? 'workflow_dispatch';
 	const inGitHubActions = process.env.GITHUB_ACTIONS === 'true';
 	const workflowPresent = existsSync(workflowPath);
-	const workspace = resolveLocalWorkspaceContext(packageRoot);
+	const workspace = resolveLocalWorkspaceContext(packageRoot, options.localTreeseedExtraSiblingDependencies ?? []);
 	const checkCommand = options.checkCommand ?? check;
 	const gh = options.checkCommand ? 'gh' : (resolveTreeseedToolBinary('gh') ?? 'gh');
 	const ghAct = checkCommand(gh, ['act', '--version'], packageRoot);
