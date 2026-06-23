@@ -204,14 +204,14 @@ function selectSitePath(files: Set<string>, directories: Set<string>, override: 
 				|| hasFile('package.json', files)
 				|| hasAnyFileUnder('src/pages', files, /.+/u)
 				|| hasAnyFileUnder('src/routes', files, /.+/u)
-				|| hasFile('astro.config.mjs', files)
+				|| hasFile('astro.config.ts', files)
 				|| hasFile('astro.config.ts', files);
 		}
 		return pathExists(candidate, files, directories)
 			&& (
 				hasFile(`${candidate}/treeseed.site.yaml`, files)
 				|| hasFile(`${candidate}/package.json`, files)
-				|| hasFile(`${candidate}/astro.config.mjs`, files)
+				|| hasFile(`${candidate}/astro.config.ts`, files)
 				|| hasFile(`${candidate}/astro.config.ts`, files)
 				|| hasAnyFileUnder(`${candidate}/src/pages`, files, /.+/u)
 				|| hasAnyFileUnder(candidate, files, /\.(md|mdx)$/iu)

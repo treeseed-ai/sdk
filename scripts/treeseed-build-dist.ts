@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
-import { basename, dirname, extname, join, relative, resolve } from 'node:path';
+import { dirname, extname, join, relative, resolve } from 'node:path';
 import { build } from 'esbuild';
 import ts from 'typescript';
 import { packageRoot } from './package-tools.ts';
@@ -52,7 +52,7 @@ function isTypeScriptSource(filePath) {
 
 async function compileModule(filePath, sourceRoot, outputRoot) {
 	const relativePath = relative(sourceRoot, filePath);
-	const outputFile = resolve(outputRoot, relativePath.replace(/\.(mjs|ts)$/u, '.js'));
+	const outputFile = resolve(outputRoot, relativePath.replace(/\.ts$/u, '.js'));
 	ensureDir(outputFile);
 	await build({
 		entryPoints: [filePath],
@@ -82,12 +82,9 @@ function copyAssetTree(sourceRoot, outputRoot) {
 }
 
 function transpileScript(filePath) {
-	if (basename(filePath).startsWith('.ts-run-')) {
-		return;
-	}
 	const source = readFileSync(filePath, 'utf8');
 	const relativePath = relative(scriptsRoot, filePath);
-	const outputFile = resolve(distRoot, 'scripts', relativePath.replace(/\.(mjs|ts)$/u, '.js'));
+	const outputFile = resolve(distRoot, 'scripts', relativePath.replace(/\.ts$/u, '.js'));
 	const transformed = extname(filePath) === '.ts'
 		? ts.transpileModule(source, {
 				compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
@@ -139,7 +136,7 @@ if (existsSync(templateCatalogSourceRoot)) {
 
 for (const filePath of walkFiles(scriptsRoot)) {
 	const extension = extname(filePath);
-	if (extension === '.ts' || extension === '.mjs') transpileScript(filePath);
+	if (extension === '.ts') transpileScript(filePath);
 }
 
 emitDeclarations();

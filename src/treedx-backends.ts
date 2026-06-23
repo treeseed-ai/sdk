@@ -109,7 +109,7 @@ export interface TreeDxPortfolioResolverOptions {
 }
 
 export class TreeDxContentRepositoryConfigError extends Error {
-	constructor(message = 'TreeDX content repository is required by default. Configure TREESEED_TREEDX_BASE_URL or TREESEED_TREEDX_URL, or explicitly pass contentRepository: { adapter: "local" }.') {
+	constructor(message = 'TreeDX content repository is required. Configure TREESEED_TREEDX_BASE_URL or TREESEED_TREEDX_URL for content model access.') {
 		super(message);
 		this.name = 'TreeDxContentRepositoryConfigError';
 	}
@@ -185,6 +185,16 @@ function inferSlug(filePath: string, pathPattern: string) {
 	return withoutRoot.replace(/\.(md|mdx)$/i, '');
 }
 
+function pathMatchesPattern(filePath: string, pathPattern: string) {
+	const normalizedPath = normalizePathPattern(filePath);
+	const normalizedPattern = normalizePathPattern(pathPattern);
+	const wildcardIndex = normalizedPattern.indexOf('**');
+	const root = (wildcardIndex >= 0 ? normalizedPattern.slice(0, wildcardIndex) : normalizedPattern)
+		.replace(/\/+$/u, '');
+	if (!root) return true;
+	return normalizedPath === root || normalizedPath.startsWith(`${root}/`);
+}
+
 function normalizePathList(value: unknown): string[] {
 	if (Array.isArray(value)) {
 		return value.flatMap((entry) => {
@@ -199,7 +209,7 @@ function normalizePathList(value: unknown): string[] {
 	}
 	if (value && typeof value === 'object') {
 		const record = value as Record<string, unknown>;
-		for (const key of ['paths', 'items', 'files', 'results', 'data']) {
+		for (const key of ['paths', 'items', 'files', 'entries', 'results', 'data']) {
 			const normalized = normalizePathList(record[key]);
 			if (normalized.length > 0) return normalized;
 		}
@@ -211,7 +221,7 @@ function extractTextPayload(value: unknown) {
 	if (typeof value === 'string') return value;
 	if (value && typeof value === 'object') {
 		const record = value as Record<string, unknown>;
-		for (const key of ['content', 'body', 'text', 'source', 'data']) {
+		for (const key of ['content', 'body', 'text', 'source', 'file', 'data']) {
 			const candidate = record[key];
 			if (typeof candidate === 'string') return candidate;
 			if (candidate && typeof candidate === 'object') {
@@ -221,42 +231,6 @@ function extractTextPayload(value: unknown) {
 		}
 	}
 	return '';
-}
-
-function normalizeFilesPayload(value: unknown): Record<string, unknown>[] {
-	if (Array.isArray(value)) {
-		return value.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object' && !Array.isArray(entry)));
-	}
-	if (value && typeof value === 'object') {
-		const record = value as Record<string, unknown>;
-		for (const key of ['results', 'files', 'items', 'data']) {
-			const normalized = normalizeFilesPayload(record[key]);
-			if (normalized.length > 0) return normalized;
-		}
-	}
-	return [];
-}
-
-function entryFromTreeDxPayload(definition: SdkModelDefinition, file: Record<string, unknown>, contentRoot: string): SdkContentEntry {
-	const filePath = stringValue(file.path) ?? stringValue(file.file) ?? stringValue(file.key) ?? '';
-	const parsed = file.frontmatter && typeof file.frontmatter === 'object'
-		? {
-			frontmatter: file.frontmatter as Record<string, unknown>,
-			body: typeof file.body === 'string' ? file.body : extractTextPayload(file),
-		}
-		: parseFrontmatterDocument(extractTextPayload(file));
-	const slug = inferSlug(filePath, contentRoot);
-	return {
-		id: slug,
-		slug,
-		model: definition.name,
-		title: titleForEntry(definition, parsed.frontmatter),
-		path: filePath,
-		body: parsed.body,
-		frontmatter: parsed.frontmatter,
-		createdAt: dateForEntry(definition, parsed.frontmatter, 'created_at'),
-		updatedAt: dateForEntry(definition, parsed.frontmatter, 'updated_at'),
-	};
 }
 
 function entryMatchesIdentity(entry: SdkContentEntry, request: SdkGetRequest) {
@@ -458,9 +432,9 @@ export class TreeDxContentBackend implements ContentBackend {
 			ref: candidate.ref,
 			path: filePath,
 		}));
-		const parsed = parseFrontmatterDocument(extractTextPayload(payload));
 		const payloadRecord = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
 		const payloadFile = payloadRecord.file && typeof payloadRecord.file === 'object' ? payloadRecord.file as Record<string, unknown> : {};
+		const parsed = parseFrontmatterDocument(extractTextPayload(payloadFile) || extractTextPayload(payload));
 		const resolvedPath = stringValue(payloadFile.path) ?? stringValue(payloadRecord.path) ?? filePath;
 		const slug = inferSlug(resolvedPath, candidate.path);
 		return {
@@ -485,7 +459,9 @@ export class TreeDxContentBackend implements ContentBackend {
 				ref: candidate.ref,
 				path: candidate.path,
 			}));
-			const paths = normalizePathList(listPayload).filter(isMarkdownPath);
+			const paths = normalizePathList(listPayload)
+				.filter((filePath) => pathMatchesPattern(filePath, candidate.path))
+				.filter(isMarkdownPath);
 			return await Promise.all(paths.map((filePath) => this.readEntry(definition, candidate, filePath)));
 		}))).flat();
 		const deduped = new Map<string, SdkContentEntry>();
@@ -528,17 +504,10 @@ export class TreeDxContentBackend implements ContentBackend {
 	async search(request: SdkSearchRequest) {
 		const definition = this.definition(request.model);
 		if (this.options.directRepoId) {
-			const rule = this.pathRule(definition);
-			const payload = await this.options.client.query.searchFiles(this.options.directRepoId, compactObject({
-				ref: this.options.ref,
-				paths: rule.paths.map((path) => `${path.replace(/\/$/u, '')}/**`),
-				query: '',
-				limit: request.limit,
-				includeBody: true,
-				includeFrontmatter: true,
-			}));
-			const results = normalizeFilesPayload(payload);
-			return results.map((file) => entryFromTreeDxPayload(definition, file, rule.paths[0] ?? ''));
+			const items = await this.list(definition.name);
+			const filtered = applyFilters(items, normalizeFilterFields(definition, request.filters), definition);
+			const sorted = applySort(filtered, normalizeSortFields(definition, request.sort), definition);
+			return sorted.slice(0, request.limit ?? sorted.length);
 		}
 		const items = await this.list(definition.name);
 		const filtered = applyFilters(items, normalizeFilterFields(definition, request.filters), definition);

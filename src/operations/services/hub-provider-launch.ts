@@ -491,7 +491,7 @@ This hub is live and ready for the first team release cycle.
 
 function ensureHostedProjectFiles(projectRoot: string) {
 	const sdkApiPackage = ['@treeseed', 'sdk/api'].join('/');
-	writeText(resolve(projectRoot, 'src/api/server.js'), `import { createRailwayTreeseedApiServer } from '${sdkApiPackage}';
+	writeText(resolve(projectRoot, 'src/api/server.ts'), `import { createRailwayTreeseedApiServer } from '${sdkApiPackage}';
 
 const server = await createRailwayTreeseedApiServer();
 console.log(\`Treeseed project API listening on \${server.url}\`);

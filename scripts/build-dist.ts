@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, extname, join, relative, resolve } from 'node:path';
+import { dirname, extname, join, relative, resolve } from 'node:path';
 import { build } from 'esbuild';
 import ts from 'typescript';
 import { packageRoot } from './package-tools.ts';
@@ -49,7 +49,7 @@ function isDeclarationAsset(filePath) {
 
 async function compileModule(filePath, sourceRoot, outputRoot) {
 	const relativePath = relative(sourceRoot, filePath);
-	const outputFile = resolve(outputRoot, relativePath.replace(/\.(mjs|ts)$/u, '.js'));
+	const outputFile = resolve(outputRoot, relativePath.replace(/\.ts$/u, '.js'));
 	ensureDir(outputFile);
 
 	await build({
@@ -83,15 +83,12 @@ function copyAssetTree(sourceRoot, outputRoot) {
 }
 
 function transpileScript(filePath) {
-	if (basename(filePath).startsWith('.ts-run-')) {
-		return;
-	}
 	const source = readFileSync(filePath, 'utf8');
 	const relativePath = relative(scriptsRoot, filePath);
 	if (relativePath === 'fixture-tools.ts') {
 		return;
 	}
-	const outputFile = resolve(distRoot, 'scripts', relativePath.replace(/\.(mjs|ts)$/u, '.js'));
+	const outputFile = resolve(distRoot, 'scripts', relativePath.replace(/\.ts$/u, '.js'));
 	const transformed = extname(filePath) === '.ts'
 		? ts.transpileModule(source, {
 				compilerOptions: {
@@ -167,7 +164,7 @@ if (existsSync(treeseedServicesSourceRoot)) {
 
 for (const filePath of walkFiles(scriptsRoot)) {
 	const extension = extname(filePath);
-	if (extension === '.ts' || extension === '.mjs') {
+	if (extension === '.ts') {
 		transpileScript(filePath);
 	}
 }

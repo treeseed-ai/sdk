@@ -57,10 +57,10 @@ ${pluginsYaml}
     agents: {
       execution: ['codex'],
       mutation: ['local_branch'],
-      repository: ['stub'],
-      verification: ['stub'],
-      notification: ['stub'],
-      research: ['stub'],
+      repository: ['git'],
+      verification: ['local'],
+      notification: ['sdk_message'],
+      research: ['project_graph'],
       handlers: ['plan', 'research', 'act', 'review', 'report']
     },
     deploy: ['cloudflare'],
@@ -94,10 +94,10 @@ providers:
   agents:
     execution: codex
     mutation: local_branch
-    repository: stub
-    verification: stub
-    notification: stub
-    research: stub
+    repository: git
+    verification: local
+    notification: sdk_message
+    research: project_graph
   deploy: cloudflare
   content:
     docs: default
@@ -136,10 +136,10 @@ providers:
   agents:
     execution: codex
     mutation: local_branch
-    repository: stub
-    verification: stub
-    notification: stub
-    research: stub
+    repository: git
+    verification: local
+    notification: sdk_message
+    research: project_graph
   deploy: cloudflare
   content:
     docs: default
@@ -164,10 +164,10 @@ providers:
   agents:
     execution: codex
     mutation: local_branch
-    repository: stub
-    verification: stub
-    notification: stub
-    research: stub
+    repository: git
+    verification: local
+    notification: sdk_message
+    research: project_graph
   deploy: cloudflare
   content:
     docs: default

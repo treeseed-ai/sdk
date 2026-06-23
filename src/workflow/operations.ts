@@ -438,12 +438,12 @@ function normalizeCiMode(mode: TreeseedWorkflowCiMode | undefined, operation: 's
 	return operation === 'save' ? 'off' : 'hosted';
 }
 
-function normalizeSaveLane(lane: TreeseedSaveInput['lane'] | undefined) {
+export function normalizeSaveLane(lane: TreeseedSaveInput['lane'] | undefined) {
 	const value = lane ?? process.env.TREESEED_SAVE_LANE;
 	return value === 'promotion' ? 'promotion' : 'fast';
 }
 
-function normalizeSaveCiMode(mode: TreeseedWorkflowCiMode | undefined, branch: string | null | undefined, lane: 'fast' | 'promotion' = 'fast') {
+export function normalizeSaveCiMode(mode: TreeseedWorkflowCiMode | undefined, branch: string | null | undefined, lane: 'fast' | 'promotion' = 'fast') {
 	if (mode === 'hosted' || mode === 'off') return mode;
 	if (lane === 'promotion') return branch === STAGING_BRANCH || branch === PRODUCTION_BRANCH ? 'hosted' : 'off';
 	return 'off';
@@ -468,7 +468,7 @@ function normalizeSaveVerifyMode(mode: TreeseedSaveInput['verifyMode'] | undefin
 	}
 }
 
-function normalizeReleaseCandidateMode(
+export function normalizeReleaseCandidateMode(
 	mode: TreeseedSaveInput['releaseCandidate'] | undefined,
 	operation: Extract<TreeseedWorkflowOperationId, 'save' | 'stage' | 'release'>,
 	lane: 'fast' | 'promotion' = 'fast',
@@ -481,7 +481,7 @@ function normalizeReleaseCandidateMode(
 	return operation === 'save' ? 'hybrid' : 'strict';
 }
 
-function shouldUseHostedSaveCi(input: TreeseedSaveInput, branch: string | null | undefined, lane: 'fast' | 'promotion' = normalizeSaveLane(input.lane)) {
+export function shouldUseHostedSaveCi(input: TreeseedSaveInput, branch: string | null | undefined, lane: 'fast' | 'promotion' = normalizeSaveLane(input.lane)) {
 	return normalizeSaveCiMode(input.ciMode, branch, lane) === 'hosted'
 		|| input.verifyMode === 'hosted'
 		|| input.verifyMode === 'both'
@@ -2314,9 +2314,9 @@ function releaseWorkflowForPackage(root: string, packageName: string) {
 
 function prepareAdapterReleaseMetadata(root: string, pkg: { name: string; dir: string }, version: string) {
 	const adapter = discoverTreeseedPackageAdapters(root).find((entry) => entry.id === pkg.name || entry.name === pkg.name);
-	if (adapter?.kind === 'beam-elixir-rust' && existsSync(resolve(pkg.dir, 'scripts', 'bump-release-version.mjs'))) {
-		run('node', ['scripts/bump-release-version.mjs', version], { cwd: pkg.dir });
-		return { status: 'updated', adapter: adapter.id, command: 'node scripts/bump-release-version.mjs' };
+	if (adapter?.kind === 'beam-elixir-rust' && existsSync(resolve(pkg.dir, 'scripts', 'bump-release-version.ts'))) {
+		run('tsx', ['scripts/bump-release-version.ts', version], { cwd: pkg.dir });
+		return { status: 'updated', adapter: adapter.id, command: 'tsx scripts/bump-release-version.ts' };
 	}
 	if (existsSync(resolve(pkg.dir, 'package.json'))) {
 		return {

@@ -386,7 +386,7 @@ function renderTenantWorkflowActionCommand() {
 		'if [[ -n "${TREESEED_WORKFLOW_PROJECT:-}" ]]; then EXTRA_ARGS+=(--project-id "${TREESEED_WORKFLOW_PROJECT}"); fi',
 		'if [[ -n "${TREESEED_WORKFLOW_PREVIEW_ID:-}" ]]; then EXTRA_ARGS+=(--preview-id "${TREESEED_WORKFLOW_PREVIEW_ID}"); fi',
 		'if test -f ./packages/sdk/scripts/tenant-workflow-action.ts; then',
-		'  node ./packages/sdk/scripts/run-ts.mjs ./packages/sdk/scripts/tenant-workflow-action.ts --action "${TREESEED_WORKFLOW_ACTION}" --environment "${TREESEED_WORKFLOW_ENVIRONMENT}" "${EXTRA_ARGS[@]}"',
+		'  tsx ./packages/sdk/scripts/tenant-workflow-action.ts --action "${TREESEED_WORKFLOW_ACTION}" --environment "${TREESEED_WORKFLOW_ENVIRONMENT}" "${EXTRA_ARGS[@]}"',
 		'elif test -f ./node_modules/@treeseed/sdk/dist/scripts/tenant-workflow-action.js; then',
 		'  node ./node_modules/@treeseed/sdk/dist/scripts/tenant-workflow-action.js --action "${TREESEED_WORKFLOW_ACTION}" --environment "${TREESEED_WORKFLOW_ENVIRONMENT}" "${EXTRA_ARGS[@]}"',
 		'else',

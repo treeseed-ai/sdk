@@ -9,7 +9,7 @@ const workspaceRoot = resolve(sdkRoot, '..', '..');
 const rootVerifyWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'verify.yml');
 const rootDeployWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'deploy.yml');
 const rootDeployWebWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'deploy-web.yml');
-const rootPrepareWorkspaceInstallPath = resolve(workspaceRoot, '.github', 'scripts', 'prepare-workspace-install.mjs');
+const rootPrepareWorkspaceInstallPath = resolve(workspaceRoot, '.github', 'scripts', 'prepare-workspace-install.ts');
 const packageVerifyWorkflowPath = resolve(sdkRoot, '.github', 'workflows', 'verify.yml');
 const integratedWorkspaceAvailable = existsSync(rootVerifyWorkflowPath)
 	&& existsSync(rootDeployWorkflowPath)
@@ -89,10 +89,10 @@ describe('root workflow bootstrap selection', () => {
 		expect(webSource).toContain('npm --prefix packages/admin run build:dist');
 		expect(webSource).toContain('for dir in packages/cli packages/agent');
 		expect(webSource).toContain('pids["${dir}"]="$!"');
-		expect(webSource).toContain('node ./.github/scripts/prepare-workspace-install.mjs');
+		expect(webSource).toContain('npx --yes tsx ./.github/scripts/prepare-workspace-install.ts');
 		expect(webSource).toContain('npm ci --ignore-scripts');
-		expect(source).toContain('node ./.github/scripts/prepare-workspace-install.mjs');
-		expect(webSource).toContain('node ./packages/sdk/scripts/run-ts.mjs ./packages/sdk/scripts/install-managed-dependencies.ts');
+		expect(source).toContain('npx --yes tsx ./.github/scripts/prepare-workspace-install.ts');
+		expect(webSource).toContain('tsx ./packages/sdk/scripts/install-managed-dependencies.ts');
 			expect(webSource).not.toContain('TREESEED_RAILWAY_API_TOKEN');
 			expect(webSource).not.toContain('TREESEED_RAILWAY_PROJECT_ID');
 			expect(webSource).not.toContain('TREESEED_PLATFORM_RUNNER_SECRET');
@@ -111,7 +111,7 @@ describe('root workflow bootstrap selection', () => {
 		expect(source).not.toContain('sparse-checkout: |');
 		expect(source).not.toContain('delete pkg.workspaces');
 		expect(verifySource).not.toContain('delete pkg.workspaces');
-		expect(verifySource).toContain('node ./.github/scripts/prepare-workspace-install.mjs');
+		expect(verifySource).toContain('npx --yes tsx ./.github/scripts/prepare-workspace-install.ts');
 		expect(verifySource).toContain('packages/api packages/ui');
 		expect(prepareInstallSource).toContain('localPackageNames');
 		expect(prepareInstallSource).toContain('dependencyName !== manifest.name');
@@ -178,11 +178,11 @@ describe('package publish safeguards', () => {
 			const verifyWorkflowSource = readFileSync(resolve(packageRoot, '.github', 'workflows', 'verify.yml'), 'utf8');
 			const checkTagPath = firstExistingFile(packageRoot, [
 				'scripts/assert-release-tag-version.ts',
-				'scripts/assert-release-tag-version.mjs',
+				'scripts/assert-release-tag-version.ts',
 			]);
 			const publishPath = firstExistingFile(packageRoot, [
 				'scripts/publish-package.ts',
-				'scripts/publish-package.mjs',
+				'scripts/publish-package.ts',
 			]);
 			expect(checkTagPath, `${packageName} release tag script must exist`).toBeTruthy();
 			expect(publishPath, `${packageName} publish script must exist`).toBeTruthy();

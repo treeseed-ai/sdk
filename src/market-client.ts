@@ -1375,6 +1375,52 @@ export class MarketClient {
 		);
 	}
 
+	workdayTestRuns(teamId: string, options: { status?: string | null; providerId?: string | null } = {}) {
+		const params = new URLSearchParams();
+		if (options.status) params.set('status', options.status);
+		if (options.providerId) params.set('providerId', options.providerId);
+		const query = params.toString() ? `?${params.toString()}` : '';
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-tests${query}`,
+			{ requireAuth: true },
+		);
+	}
+
+	createWorkdayTestRun(teamId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-tests`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
+	workdayTestRun(teamId: string, runId: string) {
+		return this.request<{ ok: true; payload: { run: Record<string, unknown>; events: unknown[] } }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-tests/${encodeURIComponent(runId)}`,
+			{ requireAuth: true },
+		);
+	}
+
+	updateWorkdayTestRun(teamId: string, runId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-tests/${encodeURIComponent(runId)}`,
+			{ method: 'PATCH', body, requireAuth: true },
+		);
+	}
+
+	workdayTestEvents(teamId: string, runId: string) {
+		return this.request<{ ok: true; payload: unknown[] }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-tests/${encodeURIComponent(runId)}/events`,
+			{ requireAuth: true },
+		);
+	}
+
+	createWorkdayTestEvent(teamId: string, runId: string, body: Record<string, unknown>) {
+		return this.request<{ ok: true; payload: Record<string, unknown> }>(
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-tests/${encodeURIComponent(runId)}/events`,
+			{ method: 'POST', body, requireAuth: true },
+		);
+	}
+
 	planSeed(seedName: string, body: Record<string, unknown>) {
 		return this.request<Record<string, unknown>>(
 			`/v1/seeds/${encodeURIComponent(seedName)}/plan`,

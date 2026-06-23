@@ -8,7 +8,7 @@ import {
 } from '../dist/scripts/deploy-lib.js';
 import { renderDeployWebWorkflow } from '../dist/operations/services/github-automation.js';
 import { incrementVersion } from '../dist/scripts/workspace-save-lib.js';
-import { makeTenantRoot } from './cli-test-fixtures.mjs';
+import { makeTenantRoot } from './cli-test-fixtures.ts';
 
 test('persistent and branch targets produce distinct labels', () => {
 	assert.equal(deployTargetLabel(createPersistentDeployTarget('staging')), 'staging');

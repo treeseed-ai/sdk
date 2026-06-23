@@ -77,7 +77,8 @@ describe('AgentSdk TreeDX remote mode', () => {
 	it('runs no-clone read search write graph context snapshot artifact and federated calls', async () => {
 		const { sdk, calls } = remoteSdk([
 			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', file: { path: 'docs/knowledge/guide.md', frontmatter: { title: 'Guide', slug: 'guide' }, body: 'Read' } },
-			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', results: [{ path: 'docs/knowledge/guide.md', frontmatter: { title: 'Guide', slug: 'guide' }, body: 'Read' }] },
+			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', paths: ['docs/knowledge/guide.md'] },
+			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', file: { path: 'docs/knowledge/guide.md', content: '---\ntitle: Guide\nslug: guide\n---\n\nRead' } },
 			{ ok: true, workspaceId: 'ws_1', repoId: 'repo_1', baseRef: 'refs/heads/main', baseCommitSha: 'abc', mode: 'writable', status: 'ready', allowedPaths: ['docs/knowledge/**'] },
 			{ ok: true, file: { path: 'docs/knowledge/new.md', sha: 'blake3:new' } },
 			{ ok: true, repoId: 'repo_1', workspaceId: 'ws_1', branchName: 'refs/heads/agent/knowledge-new', commitSha: 'def', changedPaths: ['docs/knowledge/new.md'], status: 'committed' },

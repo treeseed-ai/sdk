@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { build } from 'esbuild';
 import { loadTreeseedDeployConfig } from '../src/platform/deploy-config.ts';
 import { loadTreeseedManifest } from '../src/platform/tenant-config.ts';
-import { parseSiteConfig } from '../src/platform/utils/site-config-schema.js';
+import { parseSiteConfig } from '../src/platform/utils/site-config-schema.ts';
 import { corePackageRoot } from '../src/operations/services/runtime-tools.ts';
 
 const tenantRoot = process.cwd();

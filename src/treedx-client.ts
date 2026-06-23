@@ -135,6 +135,10 @@ export class TreeDxClient {
 		this.federation = new FederationAdapter(this.transport);
 		this.exec = new ExecAdapter(this.transport);
 	}
+
+	request<T = unknown>(request: TreeDxRequest) {
+		return requestData<T>(this.transport, request);
+	}
 }
 
 class RepositoriesAdapter {
@@ -142,6 +146,14 @@ class RepositoriesAdapter {
 
 	list() {
 		return requestData(this.transport, { method: 'GET', path: '/api/v1/repos' });
+	}
+
+	get(repoId: string) {
+		return requestData(this.transport, { method: 'GET', path: `/api/v1/repos/${segment(repoId)}` });
+	}
+
+	register(body: unknown) {
+		return requestData(this.transport, { method: 'POST', path: '/api/v1/repos/register', body });
 	}
 }
 
@@ -157,7 +169,7 @@ class QueryAdapter {
 	}
 
 	searchFiles(repoId: string, body: unknown) {
-		return requestData(this.transport, { method: 'POST', path: `/api/v1/repos/${segment(repoId)}/search/files`, body });
+		return requestData(this.transport, { method: 'POST', path: `/api/v1/repos/${segment(repoId)}/files/search`, body });
 	}
 }
 

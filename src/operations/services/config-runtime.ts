@@ -404,12 +404,8 @@ function keyAgentScriptPath() {
 	return packageScriptPath('key-agent.ts');
 }
 
-function keyAgentRunTsPath() {
-	return packageScriptPath('run-ts.mjs');
-}
-
 function keyAgentScriptCwd() {
-	return dirname(dirname(keyAgentRunTsPath()));
+	return dirname(dirname(keyAgentScriptPath()));
 }
 
 function sleepMs(milliseconds) {
@@ -450,8 +446,7 @@ function startTreeseedKeyAgentDaemon(tenantRoot) {
 	const { keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
 	const { socketPath } = getTreeseedKeyAgentPaths();
 	const command = [
-		shellQuote(process.execPath),
-		shellQuote(keyAgentRunTsPath()),
+		'tsx',
 		shellQuote(keyAgentScriptPath()),
 		'serve',
 		'--key-path',
@@ -472,8 +467,7 @@ function startTreeseedKeyAgentDaemon(tenantRoot) {
 }
 
 function runTreeseedKeyAgentCommand(args, options = {}) {
-	const result = spawnSync(process.execPath, [
-		keyAgentRunTsPath(),
+	const result = spawnSync('tsx', [
 		keyAgentScriptPath(),
 		...args,
 	], {

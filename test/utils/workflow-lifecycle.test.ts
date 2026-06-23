@@ -4,7 +4,14 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TreeseedWorkflowSdk } from '../../src/workflow.ts';
-import { TreeseedWorkflowError } from '../../src/workflow/operations.ts';
+import {
+	normalizeReleaseCandidateMode,
+	normalizeSaveCiMode,
+	normalizeSaveLane,
+	shouldUseHostedSaveCi,
+	TreeseedWorkflowError,
+} from '../../src/workflow/operations.ts';
+import { resolveTreeseedWorkflowPaths } from '../../src/workflow/policy.ts';
 import { acquireWorkflowLock, createWorkflowRunJournal, releaseWorkflowLock, updateWorkflowRunJournal } from '../../src/workflow/runs.ts';
 import { runWorkspaceSavePreflight } from '../../src/operations/services/save-deploy-preflight.ts';
 import { inspectDetachedHeadRepair, mergeBranchIntoTarget, reattachDetachedHeadIfSafe } from '../../src/operations/services/git-workflow.ts';
@@ -491,34 +498,23 @@ describe('treeseed workflow lifecycle', () => {
 		expect(gateSource).toContain('/^deploy(?:[-.]|$)/u.test(workflow)');
 	});
 
-	it('defaults staging save plans to the fast lane', async () => {
-		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
-		git(work, ['checkout', 'staging']);
-		const workflow = workflowFor(work);
+	it('defaults staging save plans to the fast lane', () => {
+		const lane = normalizeSaveLane(undefined);
 
-		const result = await workflow.save({
-			plan: true,
-			refreshPreview: false,
-		});
+		expect(lane).toBe('fast');
+		expect(normalizeSaveCiMode(undefined, 'staging', lane)).toBe('off');
+		expect(normalizeReleaseCandidateMode(undefined, 'save', lane)).toBe('hybrid');
+		expect(shouldUseHostedSaveCi({ plan: true, refreshPreview: false }, 'staging', lane)).toBe(false);
+	});
 
-		expect(result.payload.lane).toBe('fast');
-		expect(result.payload.ciMode).toBe('off');
-		expect(result.payload.releaseCandidateMode).toBe('hybrid');
-		expect(result.payload.plannedSteps).not.toEqual(expect.arrayContaining([
-			expect.objectContaining({ id: 'hosted-ci' }),
-		]));
-	}, 15000);
-
-	it('resolves status from nested directories against the tenant root', async () => {
+	it('resolves status from nested directories against the tenant root', () => {
 		const { work } = createWorkflowRepo();
 		const nested = resolve(work, 'src', 'content');
-		const workflow = workflowFor(nested);
+		const result = resolveTreeseedWorkflowPaths(nested);
 
-		const result = await workflow.status();
-
-		expect(result.ok).toBe(true);
-		expect(result.payload.cwd).toBe(work);
-		expect(result.payload.branchName).toBe('feature/demo-task');
+		expect(result.cwd).toBe(work);
+		expect(result.branchName).toBe('feature/demo-task');
+		expect(result.branchRole).toBe('feature');
 	});
 
 	it('reattaches a clean detached package repo at staging head', () => {

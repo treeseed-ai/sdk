@@ -7,16 +7,15 @@ import { fileURLToPath } from 'node:url';
 
 const scriptRoot = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptRoot, '..');
-const sourceRunner = resolve(packageRoot, 'scripts', 'run-ts.mjs');
 const sourceEntry = resolve(packageRoot, 'src', 'verification.ts');
 const publishedEntry = resolve(packageRoot, 'dist', 'verification.js');
 const entrypointCheckOnly = process.env.TREESEED_VERIFY_ENTRYPOINT_CHECK === 'true';
 
-if (existsSync(sourceRunner) && existsSync(sourceEntry)) {
+if (existsSync(sourceEntry)) {
 	if (entrypointCheckOnly) {
 		process.exit(0);
 	}
-	const result = spawnSync(process.execPath, [sourceRunner, sourceEntry], {
+	const result = spawnSync('tsx', [sourceEntry], {
 		cwd: process.cwd(),
 		env: process.env,
 		stdio: 'inherit',

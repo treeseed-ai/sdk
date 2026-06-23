@@ -355,7 +355,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-	console.log(`Usage: node scripts/cleanup-markdown.mjs [--check|--write] [paths...]
+	console.log(`Usage: tsx scripts/cleanup-markdown.ts [--check|--write] [paths...]
 
 Normalizes Markdown/MDX files for public docs readability.
 

@@ -1,5 +1,5 @@
 import type { TreeseedTenantConfig } from '../contracts.ts';
-import { parseSiteConfig } from '../utils/site-config-schema.js';
+import { parseSiteConfig } from '../utils/site-config-schema.ts';
 
 declare const __TREESEED_TENANT_CONFIG__: TreeseedTenantConfig | undefined;
 declare const __TREESEED_PROJECT_ROOT__: string | undefined;

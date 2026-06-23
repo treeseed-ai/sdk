@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, extname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { corePackageRoot, packageRoot, sdkPackageRoot } from '../src/operations/services/runtime-tools.ts';
-const textExtensions = new Set(['.js', '.ts', '.mjs', '.cjs', '.d.ts', '.json', '.md']);
+const textExtensions = new Set(['.js', '.ts', '.d.ts', '.json', '.md']);
 const forbiddenPatterns = [
 	/['"`]workspace:[^'"`\n]+['"`]/,
 	/['"`](?:\.\.\/|\.\/)[^'"`\n]*src\/[^'"`\n]*\.(?:[cm]?js|ts|tsx|json|astro|css)['"`]/,

@@ -54,7 +54,7 @@ export function packageScriptPath(scriptName) {
 		return resolve(packageScriptRoot, scriptName);
 	}
 
-	for (const extension of ['.js', '.ts', '.mjs']) {
+	for (const extension of ['.ts', '.js']) {
 		const candidate = resolve(packageScriptRoot, `${scriptName}${extension}`);
 		if (existsSync(candidate)) {
 			return candidate;
@@ -77,6 +77,17 @@ export function runNodeBinary(binPath, args, options = {}) {
 }
 
 export function runNodeScript(scriptPath, args = [], options = {}) {
+	if (scriptPath.endsWith('.ts')) {
+		const result = spawnSync('tsx', [scriptPath, ...args], {
+			stdio: options.stdio ?? 'inherit',
+			cwd: options.cwd ?? process.cwd(),
+			env: { ...process.env, ...(options.env ?? {}) },
+		});
+		if (result.status !== 0) {
+			process.exit(result.status ?? 1);
+		}
+		return;
+	}
 	return runNodeBinary(scriptPath, args, options);
 }
 

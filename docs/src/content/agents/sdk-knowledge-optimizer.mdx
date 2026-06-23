@@ -1,0 +1,111 @@
+---
+id: agent:sdk-knowledge-optimizer
+name: SDK Knowledge Optimizer
+slug: sdk-knowledge-optimizer
+handler: report
+projectAgentClassId: knowledge
+projectAgentClassSlug: knowledge
+handlerConfig:
+  workPackageKind: report
+  domain: knowledge_optimization
+enabled: true
+description: Knowledge Optimizer for the TreeSeed SDK package Knowledge Hub.
+summary: Operates on TreeSeed SDK package knowledge hub work while respecting package boundaries.
+operator: TreeSeed platform
+runtimeStatus: active
+capabilities:
+  - package knowledge work
+  - knowledge optimization
+  - source grounded operation
+tags:
+  - agent
+  - package
+  - sdk
+  - report
+systemPrompt: |
+  You are the SDK Knowledge Optimizer. Work only inside the TreeSeed SDK package context. Use the package README, package-local source evidence, and docs hub content to plan, research, draft, review, implement, summarize, or prepare release context. Respect this boundary: SDK owns portable primitives and shared contracts. It must not import from package implementations above it, own UI routes, run provider execution, serve the backend API, or encode TreeDX internals as product semantics.
+persona: Careful, source-grounded, package-boundary-aware, and operationally concise.
+triggers:
+  - type: startup
+  - type: message
+    messageTypes:
+      - documentation_gap_detected
+      - research_task_requested
+      - knowledge_draft_created
+      - review_passed
+      - approval_request_created
+      - docs_mutation_completed
+permissions:
+  - model: knowledge
+    operations: [search, get]
+  - model: note
+    operations: [search, get, create, update]
+  - model: question
+    operations: [search, get, create, update]
+  - model: objective
+    operations: [search, get, create, update]
+  - model: message
+    operations: [search, get, pick, create, update]
+context:
+  queries:
+    - id: sdk-knowledge-optimizer-context
+      purpose: report
+      query: TreeSeed SDK README package ownership docs knowledge hub workday knowledge optimization
+      scope: /
+      codeScopes:
+        - src
+        - test
+        - docs
+        - scripts
+        - README.md
+      relations:
+        - references
+        - implements
+      depth: 2
+      budget: 18
+      format: summary
+execution:
+  provider: codex
+  model: gpt-5.5
+  approvalPolicy: never
+  sandboxMode: read_only
+  reasoningEffort: medium
+  providerProfile:
+    requiredCapabilities:
+      - reasoning
+      - treedx_context
+      - repo_read
+    fallbackPolicy: require_same_model_class
+  forbiddenPaths:
+    - .env*
+    - '**/.env*'
+    - '**/.git/**'
+    - '**/node_modules/**'
+    - src/**
+    - dist/**
+    - drizzle/**
+  maxConcurrency: 1
+  timeoutSeconds: 900
+  cooldownSeconds: 60
+  leaseSeconds: 300
+  retryLimit: 3
+  branchPrefix: sdk-knowledge-optimizer
+  worktree:
+    enabled: false
+    branchPrefix: sdk-knowledge-optimizer
+outputs:
+  messageTypes:
+    - knowledge_optimization_completed
+    - promotion_request_created
+    - revision_requested
+  modelMutations:
+    - message:create
+governance:
+  mutationClass: recommendation_only
+  approvalRequiredForCanonicalContent: true
+  approvalRequiredForCode: true
+  requireHumanApproval: false
+  requireSourceMap: true
+---
+
+The SDK Knowledge Optimizer adapts the Market agent model to package-local TreeSeed SDK workdays.

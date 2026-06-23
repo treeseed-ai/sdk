@@ -81,7 +81,7 @@ function isPreparedSitePath(path: string) {
 	if (!stat.isDirectory()) return false;
 	return [
 		'treeseed.site.yaml',
-		'astro.config.mjs',
+		'astro.config.ts',
 		'astro.config.ts',
 		'package.json',
 		'src',

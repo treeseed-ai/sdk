@@ -107,23 +107,39 @@ export function buildDockerImage(input: {
 }
 
 export function runDockerCompose(input: {
-	composeFile: string;
+	composeFile?: string;
+	composeFiles?: string[];
 	projectName: string;
 	cwd: string;
 	env?: NodeJS.ProcessEnv;
+	profiles?: string[];
+	buildPolicy?: 'never' | 'missing' | 'always';
 	action: 'config' | 'ps' | 'up' | 'down' | 'restart' | 'logs';
 }) {
-	const base = ['compose', '-f', input.composeFile, '-p', input.projectName];
+	const composeFiles = input.composeFiles?.length ? input.composeFiles : input.composeFile ? [input.composeFile] : [];
+	const profileArgs = (input.profiles ?? []).flatMap((profile) => ['--profile', profile]);
+	const buildArgs = input.buildPolicy === 'always'
+		? ['--build']
+		: input.buildPolicy === 'never'
+			? ['--no-build']
+			: [];
+	const base = [
+		'compose',
+		...profileArgs,
+		...composeFiles.flatMap((composeFile) => ['-f', composeFile]),
+		'-p',
+		input.projectName,
+	];
 	const args = input.action === 'config'
 		? [...base, 'config', '--hash']
 		: input.action === 'ps'
 			? [...base, 'ps', '--format', 'json']
 			: input.action === 'up'
-				? [...base, 'up', '-d']
+				? [...base, 'up', '-d', ...buildArgs]
 				: input.action === 'down'
 					? [...base, 'down']
 					: input.action === 'restart'
-						? [...base, 'up', '-d', '--force-recreate']
+						? [...base, 'up', '-d', ...buildArgs, '--force-recreate']
 						: [...base, 'logs', '--tail', '200'];
 	return runDocker(args, { cwd: input.cwd, env: input.env });
 }

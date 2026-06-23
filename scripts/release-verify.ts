@@ -1,12 +1,12 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
-import { basename, extname, join, resolve } from 'node:path';
+import { extname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { packageRoot } from './package-tools.ts';
 
 const npmCacheDir = mkdtempSync(join(tmpdir(), 'treeseed-sdk-npm-cache-'));
 
-const textExtensions = new Set(['.js', '.ts', '.mjs', '.cjs', '.d.ts', '.json', '.md']);
+const textExtensions = new Set(['.js', '.ts', '.d.ts', '.json', '.md']);
 const forbiddenPatterns = [
 	/['"`]workspace:[^'"`\n]+['"`]/,
 	/['"`](?:\.\.\/|\.\/)[^'"`\n]*src\/[^'"`\n]*\.(?:[cm]?js|ts|tsx|json|astro|css)['"`]/,
@@ -102,9 +102,6 @@ function assertCleanDistArtifacts() {
 	for (const filePath of walkFiles(resolve(packageRoot, 'dist'))) {
 		if (filePath.endsWith('.d.js')) {
 			throw new Error(`Unexpected generated declaration runtime artifact: ${filePath}`);
-		}
-		if (basename(filePath).startsWith('.ts-run-')) {
-			throw new Error(`Unexpected temporary runtime artifact: ${filePath}`);
 		}
 		if (filePath.includes('/dist/scripts/') && filePath.endsWith('.d.ts')) {
 			throw new Error(`Unexpected script declaration artifact: ${filePath}`);

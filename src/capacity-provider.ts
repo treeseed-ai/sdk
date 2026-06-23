@@ -9,7 +9,7 @@ import {
 	resolveTreeseedMachineEnvironmentValues,
 	setTreeseedMachineEnvironmentValue,
 } from './operations/services/config-runtime.ts';
-import type { NativeUsageObservation } from './sdk-types.ts';
+import type { CapacityGrant, NativeUsageObservation } from './sdk-types.ts';
 import type { ProjectRepositoryTopology } from './sdk-types.ts';
 import type { SeedProjectArchitecture } from './seeds/types.ts';
 import type {
@@ -59,6 +59,7 @@ export const CAPACITY_PROVIDER_ENV_KEYS = [
 	'TREESEED_CAPACITY_PROVIDER_TEAM_ID',
 	'TREESEED_CAPACITY_PROVIDER_API_KEY',
 	'TREESEED_PROVIDER_HOST_DATA_DIR',
+	'TREESEED_HOST_CODEX_AUTH_FILE',
 	'TREESEED_PROVIDER_DATA_DIR',
 	'TREESEED_PROVIDER_API_PORT',
 	'TREESEED_PROVIDER_HOST_API_PORT',
@@ -73,6 +74,17 @@ export const CAPACITY_PROVIDER_ENV_KEYS = [
 	'TREESEED_CODEX_AUTH_FILE',
 	'TREESEED_CODEX_AUTH_JSON_B64',
 	'TREESEED_CODEX_AUTH_OVERWRITE',
+	'TREESEED_TREEDX_BASE_URL',
+	'TREESEED_TREEDX_URL',
+	'TREESEED_TREEDX_TOKEN',
+	'TREESEED_TREEDX_REPO_ID',
+	'TREESEED_TREEDX_REF',
+	'TREESEED_TREEDX_WORKSPACE_ID',
+	'TREESEED_TREEDX_JWT_ISSUER',
+	'TREESEED_TREEDX_JWT_AUDIENCE',
+	'TREESEED_TREEDX_JWT_HS256_SECRET',
+	'TREESEED_TREEDX_PROXY_ACTOR_ID',
+	'TREESEED_TREEDX_PROXY_TENANT_ID',
 ] as const;
 
 export type CapacityProviderScope = (typeof CAPACITY_PROVIDER_SCOPES)[number];
@@ -221,6 +233,7 @@ export interface CapacityProviderPortfolioManifest {
 		slug: string;
 		name: string;
 	};
+	grants?: CapacityGrant[];
 	projects: CapacityProviderPortfolioProject[];
 }
 

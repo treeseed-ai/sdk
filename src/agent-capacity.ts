@@ -314,6 +314,8 @@ export interface ProviderAssignmentLifecycleResult {
 	assignment?: ProviderAssignment | null;
 	leaseToken?: string | null;
 	leaseSeconds?: number | null;
+	diagnostics?: Record<string, unknown> | null;
+	leaseDiagnostics?: Record<string, unknown> | null;
 }
 
 export interface AgentModeRunUsageSettlement {

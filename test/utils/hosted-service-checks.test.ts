@@ -256,7 +256,7 @@ surfaces:
 					serviceName: 'treeseed-api',
 					rootDirectory: '.',
 					buildCommand: 'npm run build:api',
-					startCommand: 'node ./src/api/server.js',
+					startCommand: 'node ./src/api/server.ts',
 				},
 			},
 		});

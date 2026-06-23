@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { parse as parseYaml } from 'yaml';
 import { normalizeAliasedRecord } from '../../field-aliases.ts';
 

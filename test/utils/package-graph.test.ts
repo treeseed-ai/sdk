@@ -13,10 +13,10 @@ const verifyConsumerPackageJsonPaths = [
 	resolve(workspaceRoot, '..', 'cli', 'package.json'),
 ];
 const verifyDriverPaths = [
-	resolve(workspaceRoot, '..', '..', 'scripts', 'verify-driver.mjs'),
-	resolve(workspaceRoot, '..', 'agent', 'scripts', 'verify-driver.mjs'),
-	resolve(workspaceRoot, '..', 'core', 'scripts', 'verify-driver.mjs'),
-	resolve(workspaceRoot, '..', 'cli', 'scripts', 'verify-driver.mjs'),
+	resolve(workspaceRoot, '..', '..', 'scripts', 'verify-driver.ts'),
+	resolve(workspaceRoot, '..', 'agent', 'scripts', 'verify-driver.ts'),
+	resolve(workspaceRoot, '..', 'core', 'scripts', 'verify-driver.ts'),
+	resolve(workspaceRoot, '..', 'cli', 'scripts', 'verify-driver.ts'),
 ];
 const packageVerifyWorkflowPaths = [
 	resolve(workspaceRoot, '.github', 'workflows', 'verify.yml'),
@@ -155,7 +155,7 @@ describe('sdk package graph', () => {
 
 	it('publishes the shared verify executable for package consumers', () => {
 		const packageJson = JSON.parse(readFileSync(sdkPackageJsonPath, 'utf8'));
-		expect(packageJson.bin?.['treeseed-sdk-verify']).toBe('./scripts/verify-driver.mjs');
+		expect(packageJson.bin?.['treeseed-sdk-verify']).toBe('./dist/verification.js');
 	});
 
 	it('keeps package verify workflows branch-push triggerable for staging saves', () => {
@@ -176,7 +176,7 @@ describe('sdk package graph', () => {
 			expect(
 				workspacePackageJson.scripts?.verify,
 				`${workspacePackageJsonPath} should keep using the published sdk verify script entrypoint`,
-			).toBe('node --input-type=module -e "await import(\'@treeseed/sdk/scripts/verify-driver\')"');
+			).toBe('treeseed-sdk-verify');
 		}
 
 		for (const [index, packageJsonPath] of packageRepoJsonPaths.entries()) {
@@ -186,8 +186,7 @@ describe('sdk package graph', () => {
 			const verifyScript = packageJson.scripts?.verify;
 
 			if (
-				verifyScript === 'node --input-type=module -e "await import(\'./scripts/verify-driver.mjs\')"'
-				|| verifyScript === 'node ./scripts/verify-driver.mjs'
+				verifyScript === 'tsx ./scripts/verify-driver.ts'
 			) {
 				expect(
 					existsSync(verifyDriverPath),
@@ -199,7 +198,7 @@ describe('sdk package graph', () => {
 			expect(
 				verifyScript,
 				`${packageJsonPath} should use either the package-local verify wrapper or the published sdk verify script entrypoint`,
-			).toBe('node --input-type=module -e "await import(\'@treeseed/sdk/scripts/verify-driver\')"');
+			).toBe('treeseed-sdk-verify');
 		}
 
 		const [workspaceVerifyDriverPath] = verifyDriverPaths;

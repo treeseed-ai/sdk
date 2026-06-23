@@ -90,8 +90,8 @@ providers:
     mutation: local_branch
     repository: git
     verification: local
-    notification: stub
-    research: stub
+    notification: sdk_message
+    research: project_graph
   deploy: railway
   content:
     runtime: team_scoped_r2_overlay
@@ -140,10 +140,10 @@ providers:
   agents:
     execution: codex
     mutation: local_branch
-    repository: stub
-    verification: stub
-    notification: stub
-    research: stub
+    repository: git
+    verification: local
+    notification: sdk_message
+    research: project_graph
   deploy: cloudflare
   content:
     runtime: team_scoped_r2_overlay
@@ -173,8 +173,8 @@ providers:
     mutation: local_branch
     repository: git
     verification: local
-    notification: stub
-    research: stub
+    notification: sdk_message
+    research: project_graph
   deploy: railway
   content:
     runtime: team_scoped_r2_overlay

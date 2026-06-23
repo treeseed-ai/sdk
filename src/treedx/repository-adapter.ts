@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { resolveModelDefinition } from '../model-registry.ts';
-import { serializeFrontmatterDocument } from '../frontmatter.ts';
+import { parseFrontmatterDocument, serializeFrontmatterDocument } from '../frontmatter.ts';
 import {
 	canonicalizeFrontmatter,
 	normalizeFilterFields,
@@ -142,6 +142,14 @@ function titleFrom(definition: SdkModelDefinition, frontmatter: Record<string, u
 			: undefined;
 }
 
+function textFromTreeDxFile(file: Record<string, unknown>, keys: string[]) {
+	for (const key of keys) {
+		const value = file[key];
+		if (typeof value === 'string' && value.trim()) return value;
+	}
+	return null;
+}
+
 export function entryFromTreeDxFile(
 	definition: SdkModelDefinition,
 	value: unknown,
@@ -156,12 +164,14 @@ export function entryFromTreeDxFile(
 		});
 	}
 	const filePath = String(file.path ?? '');
-	const frontmatter = isRecord(file.frontmatter) ? file.frontmatter : {};
-	const body = typeof file.body === 'string'
-		? file.body
-		: typeof file.content === 'string'
-			? file.content
-			: '';
+	const rawDocument = textFromTreeDxFile(file, ['content', 'source', 'text']);
+	const parsed = rawDocument
+		? parseFrontmatterDocument(rawDocument)
+		: {
+			frontmatter: isRecord(file.frontmatter) ? file.frontmatter : {},
+			body: textFromTreeDxFile(file, ['body']) ?? '',
+		};
+	const { frontmatter, body } = parsed;
 	const slug = stripExtension(normalizeRepoPath(path.posix.relative(contentDir, filePath)));
 	const created = frontmatter.created_at ?? frontmatter.createdAt ?? null;
 	const updated = frontmatter.updated_at ?? frontmatter.updatedAt ?? null;

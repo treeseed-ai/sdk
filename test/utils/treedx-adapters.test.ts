@@ -101,6 +101,26 @@ describe('TreeDX SDK adapters', () => {
 		});
 	});
 
+	it('parses raw TreeDX document content before typed frontmatter payloads', async () => {
+		const { client } = clientWith([
+			{
+				ok: true,
+				repoId: 'repo_1',
+				ref: 'refs/heads/main',
+				resolvedRef: 'abc',
+				file: {
+					path: 'src/content/knowledge/readme.md',
+					frontmatter: { title: 'Read Me', enabled: 'true' },
+					content: '---\ntitle: Read Me\nenabled: true\n---\n\nBody',
+				},
+			},
+		]);
+		const adapter = new TreeDxRepositoryAdapter({ client, models: registry() });
+		const entry = await adapter.get({ model: 'knowledge', slug: 'readme' });
+		expect(entry?.frontmatter.enabled).toBe(true);
+		expect(entry?.body.trim()).toBe('Body');
+	});
+
 	it('maps search filters and sorts to generic TreeDX fields', async () => {
 		const { client, calls } = clientWith([
 			{ ok: true, repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', results: [] },

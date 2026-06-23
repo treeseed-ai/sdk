@@ -196,7 +196,7 @@ function processSpec(input: {
 }): TreeseedManagedDevProcessSpec {
 	const host = input.options.webHost ?? '127.0.0.1';
 	const webPort = input.options.webPort ?? 4321;
-	const apiHost = input.options.apiHost ?? '127.0.0.1';
+	const apiHost = input.options.apiHost ?? '0.0.0.0';
 	const apiPort = input.options.apiPort ?? 3000;
 	const id = input.surface === 'operations-runner' ? 'operations-runner' : input.surface;
 	const logPath = resolve(input.logDir, `${id}.log`);

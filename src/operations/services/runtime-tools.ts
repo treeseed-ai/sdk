@@ -165,14 +165,14 @@ export function packageScriptPath(scriptName) {
 		return directScriptPath;
 	}
 
-	for (const extension of ['.js', '.ts', '.mjs']) {
+	for (const extension of ['.ts', '.js']) {
 		const candidate = resolve(packageScriptRoot, `${scriptName}${extension}`);
 		if (existsSync(candidate)) {
 			return candidate;
 		}
 	}
 
-	for (const extension of ['.js', '.mjs']) {
+	for (const extension of ['.js']) {
 		const candidate = resolve(packageDistScriptRoot, `${scriptName}${extension}`);
 		if (existsSync(candidate)) {
 			return candidate;
