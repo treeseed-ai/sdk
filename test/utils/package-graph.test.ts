@@ -185,10 +185,11 @@ describe('sdk package graph', () => {
 			const verifyDriverPath = verifyDriverPaths[index + 1];
 			const verifyScript = packageJson.scripts?.verify;
 
-			if (
-				verifyScript === 'tsx ./scripts/verify-driver.ts'
-				|| verifyScript === 'node --import tsx ./scripts/verify-driver.ts'
-			) {
+				if (
+					verifyScript === 'tsx ./scripts/verify-driver.ts'
+					|| verifyScript === 'node --import tsx ./scripts/verify-driver.ts'
+					|| verifyScript === 'TMPDIR=/tmp node --import tsx ./scripts/verify-driver.ts'
+				) {
 				expect(
 					existsSync(verifyDriverPath),
 					`${verifyDriverPath} should exist when ${packageJsonPath} uses a package-local verify wrapper`,

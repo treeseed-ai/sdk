@@ -137,6 +137,10 @@ describe('verify driver', () => {
 					expect.stringMatching(/treeseed-verify-act-.*\/verify\.yml$/),
 					'-j',
 					'verify',
+					'--artifact-server-port',
+					'0',
+					'--cache-server-port',
+					'0',
 					'-P',
 					'ubuntu-latest=catthehacker/ubuntu:act-latest',
 				],
@@ -170,7 +174,20 @@ describe('verify driver', () => {
 			expect(calls).toEqual([
 				{
 					command: 'gh',
-					args: ['act', 'workflow_dispatch', '-W', '.github/workflows/verify.yml', '-j', 'verify', '-P', 'ubuntu-latest=example.local/ubuntu:verify'],
+					args: [
+						'act',
+						'workflow_dispatch',
+						'-W',
+						'.github/workflows/verify.yml',
+						'-j',
+						'verify',
+						'--artifact-server-port',
+						'0',
+						'--cache-server-port',
+						'0',
+						'-P',
+						'ubuntu-latest=example.local/ubuntu:verify',
+					],
 					cwd: fixture.currentPackageRoot,
 				},
 			]);

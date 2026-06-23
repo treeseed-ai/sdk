@@ -97,7 +97,18 @@ function readPackageManifest(packageJsonPath: string): PackageManifest | null {
 
 function createActArgs(eventName: string, workflowPath: string) {
 	const image = process.env.TREESEED_VERIFY_ACT_UBUNTU_LATEST_IMAGE?.trim() || defaultActUbuntuLatestImage;
-	const args = ['act', eventName, '-W', workflowPath, '-j', 'verify'];
+	const args = [
+		'act',
+		eventName,
+		'-W',
+		workflowPath,
+		'-j',
+		'verify',
+		'--artifact-server-port',
+		'0',
+		'--cache-server-port',
+		'0',
+	];
 	if (image) {
 		args.push('-P', `ubuntu-latest=${image}`);
 	}
