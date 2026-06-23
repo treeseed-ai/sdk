@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -89,6 +89,35 @@ describe('template registry fulfillment', () => {
 			expect(existsSync(resolve(targetRoot, 'src/content/books'))).toBe(true);
 			expect(existsSync(resolve(targetRoot, 'src/content/knowledge'))).toBe(true);
 			expect(readFileSync(resolve(targetRoot, '.treeseed/template-state.json'), 'utf8')).toContain(id);
+		}
+	});
+
+	it('ignores generated starter verification output while validating and scaffolding templates', async () => {
+		const generatedWorkerPath = resolve(process.cwd(), '..', '..', 'starters', 'research', 'template', '.treeseed', 'generated', 'worker', 'index.js');
+		mkdirSync(resolve(generatedWorkerPath, '..'), { recursive: true });
+		writeFileSync(generatedWorkerPath, 'globalThis.__TREESEED_DEPLOY_CONFIG__ = {};\n', 'utf8');
+
+		try {
+			await expect(validateTemplateProduct({ id: 'research' }, {
+				cwd: process.cwd(),
+				env: fixtureCatalogEnv,
+			})).resolves.toMatchObject({ product: { id: 'research' } });
+
+			const root = mkdtempSync(join(tmpdir(), 'treeseed-research-generated-output-'));
+			const targetRoot = resolve(root, 'generated');
+			await scaffoldTemplateProject('research', targetRoot, {
+				target: 'generated',
+				name: 'Generated Research',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+			}, {
+				cwd: root,
+				env: fixtureCatalogEnv,
+			});
+
+			expect(existsSync(resolve(targetRoot, '.treeseed', 'generated', 'worker', 'index.js'))).toBe(false);
+		} finally {
+			rmSync(resolve(process.cwd(), '..', '..', 'starters', 'research', 'template', '.treeseed', 'generated'), { recursive: true, force: true });
 		}
 	});
 

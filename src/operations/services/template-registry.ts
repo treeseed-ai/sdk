@@ -144,16 +144,40 @@ function ensureDir(filePath: string) {
 	mkdirSync(dirname(filePath), { recursive: true });
 }
 
-function listFiles(root: string): string[] {
-	if (!existsSync(root)) {
+const templatePayloadIgnoredDirectoryNames = new Set([
+	'node_modules',
+	'dist',
+	'.astro',
+]);
+
+const templatePayloadIgnoredRelativePaths = new Set([
+	'.treeseed/generated',
+	'.treeseed/test-reports',
+	'public/books',
+]);
+
+function normalizeTemplateRelativePath(path: string) {
+	return path.split(/[\\/]+/u).join('/');
+}
+
+function isIgnoredTemplatePayloadDirectory(root: string, directoryPath: string) {
+	const relativePath = normalizeTemplateRelativePath(relative(root, directoryPath));
+	return templatePayloadIgnoredDirectoryNames.has(basename(directoryPath))
+		|| templatePayloadIgnoredRelativePaths.has(relativePath);
+}
+
+function listFiles(root: string, currentRoot = root): string[] {
+	if (!existsSync(currentRoot)) {
 		return [];
 	}
 
 	const files: string[] = [];
-	for (const entry of readdirSync(root, { withFileTypes: true })) {
-		const fullPath = resolve(root, entry.name);
+	for (const entry of readdirSync(currentRoot, { withFileTypes: true })) {
+		const fullPath = resolve(currentRoot, entry.name);
 		if (entry.isDirectory()) {
-			files.push(...listFiles(fullPath));
+			if (!isIgnoredTemplatePayloadDirectory(root, fullPath)) {
+				files.push(...listFiles(root, fullPath));
+			}
 			continue;
 		}
 		files.push(fullPath);
