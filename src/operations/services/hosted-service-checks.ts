@@ -11,7 +11,6 @@ export type TreeseedHostedServiceType =
 	| 'web'
 	| 'api'
 	| 'operationsRunner'
-	| 'capacityProviderApi'
 	| 'capacityProviderManager'
 	| 'capacityProviderRunner'
 	| 'treeseedDatabase'
@@ -85,9 +84,6 @@ const RAILWAY_SECRET_KEYS_BY_SERVICE: Record<string, string[]> = {
 		'TREESEED_PLATFORM_RUNNER_SECRET',
 		'TREESEED_CREDENTIAL_SESSION_SECRET',
 	],
-	capacityProviderApi: [
-		'TREESEED_CAPACITY_PROVIDER_API_KEY',
-	],
 	capacityProviderManager: [
 		'TREESEED_CAPACITY_PROVIDER_API_KEY',
 	],
@@ -102,11 +98,6 @@ const RAILWAY_VARIABLE_KEYS_BY_SERVICE: Record<string, string[]> = {
 		'TREESEED_PLATFORM_RUNNER_DATA_DIR',
 		'TREESEED_PLATFORM_RUNNER_ENVIRONMENT',
 		'TREESEED_MANAGER_ID',
-	],
-	capacityProviderApi: [
-		'TREESEED_PROVIDER_ENVIRONMENT',
-		'TREESEED_PROVIDER_ROLE',
-		'TREESEED_MARKET_URL',
 	],
 	capacityProviderManager: [
 		'TREESEED_PROVIDER_ENVIRONMENT',
@@ -171,7 +162,6 @@ function valuePresence(values: Record<string, string | undefined>, observed: Tre
 function serviceTypeFor(key: string): TreeseedHostedServiceType {
 	if (key === 'api') return 'api';
 	if (key === 'operationsRunner') return 'operationsRunner';
-	if (key === 'capacityProviderApi') return 'capacityProviderApi';
 	if (key === 'capacityProviderManager') return 'capacityProviderManager';
 	if (key === 'capacityProviderRunner') return 'capacityProviderRunner';
 	if (key === 'treeseedDatabase') return 'treeseedDatabase';

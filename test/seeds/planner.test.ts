@@ -172,7 +172,7 @@ function canonicalTreeseedSeed(): SeedManifest {
 					nativeLimits: [{
 						scope: 'daily',
 						nativeUnit: 'wall_minute',
-						limitAmount: 600,
+						limitAmount: 10,
 						reserveBufferPercent: 20,
 						resetCadence: 'daily',
 						confidence: 'estimated',

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve as resolvePath } from 'node:path';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { basename, dirname, resolve as resolvePath } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import {
 	discoverTreeseedPackageAdapters,
@@ -84,6 +84,31 @@ export type TreeseedDesiredResource = {
 		id: string;
 	};
 };
+
+function resolveLocalGitCommonDir(tenantRoot: string) {
+	const dotGitPath = resolvePath(tenantRoot, '.git');
+	if (!existsSync(dotGitPath)) return '';
+	try {
+		if (statSync(dotGitPath).isDirectory()) return dotGitPath;
+		const stat = readFileSync(dotGitPath, 'utf8');
+		const match = /^gitdir:\s*(.+)\s*$/imu.exec(stat);
+		if (!match?.[1]) return dotGitPath;
+		const gitDir = resolvePath(tenantRoot, match[1].trim());
+		const commonDirPath = resolvePath(gitDir, 'commondir');
+		if (existsSync(commonDirPath)) {
+			const commonDir = readFileSync(commonDirPath, 'utf8').trim();
+			if (commonDir) return resolvePath(gitDir, commonDir);
+		}
+		const marker = `${resolvePath('/').replace(/\/$/u, '')}.git/worktrees/`;
+		const normalized = gitDir.replace(/\\/gu, '/');
+		const markerIndex = normalized.indexOf('/.git/worktrees/');
+		if (markerIndex >= 0) return normalized.slice(0, markerIndex + '/.git'.length);
+		if (normalized.includes(marker)) return normalized.slice(0, normalized.indexOf(marker) + '/.git'.length);
+		return dirname(gitDir);
+	} catch {
+		return '';
+	}
+}
 
 export type TreeseedDesiredResourceEdge = {
 	from: string;
@@ -515,6 +540,7 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 	const treeDxComposeId = 'local-docker-compose:treedx';
 	const apiPostgresComposeId = 'local-docker-compose:api-postgres';
 	const capacityProviderDataDir = resolvePath(tenantRoot, '.treeseed/local-capacity-provider/data');
+	const localGitCommonDir = resolveLocalGitCommonDir(tenantRoot);
 	const hostCodexAuthFile = [
 		process.env.TREESEED_CODEX_AUTH_FILE,
 		process.env.CODEX_AUTH_FILE,
@@ -533,13 +559,9 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 		runtime: {
 			images: {
 				roles: {
-					api: { image: 'treeseed/agent-api', tag: 'latest' },
 					manager: { image: 'treeseed/agent-manager', tag: 'latest' },
 					runner: { image: 'treeseed/agent-runner', tag: 'latest' },
 				},
-			},
-			api: {
-				hostPort: 4783,
 			},
 		},
 	} as any);
@@ -562,6 +584,13 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 		...(hostCodexAuthFile ? {
 			TREESEED_HOST_CODEX_AUTH_FILE: hostCodexAuthFile,
 			TREESEED_CODEX_AUTH_FILE: '/data/codex/auth.json',
+		} : {}),
+		...(localGitCommonDir ? {
+			TREESEED_PROVIDER_WORKSPACE_ABSOLUTE_CONTAINER: tenantRoot,
+			TREESEED_PROVIDER_WORKSPACE_GITDIR_CONTAINER: `/.treeseed/worktrees/${basename(tenantRoot)}`,
+			TREESEED_MARKET_GIT_COMMON_DIR_HOST: localGitCommonDir,
+			TREESEED_MARKET_GIT_COMMON_DIR_ABSOLUTE_CONTAINER: localGitCommonDir,
+			TREESEED_MARKET_GIT_COMMON_DIR_ROOT_CONTAINER: '/.git',
 		} : {}),
 		TREESEED_PROVIDER_CONTAINER_UID: String(process.getuid?.() ?? 1000),
 		TREESEED_PROVIDER_CONTAINER_GID: String(process.getgid?.() ?? 1000),
@@ -685,11 +714,10 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 				redactedEnv: capacityPlan.redactedEnv,
 				envKeys: Object.keys(localCapacityProviderEnv).sort(),
 				env: localCapacityProviderEnv,
-				services: ['agent-api', 'agent-manager', 'agent-runner'],
+				services: ['agent-manager', 'agent-runner'],
 				volumes: [{ name: 'treeseed-capacity-provider-data', mountPath: '/data', sharedLocalOnly: true }],
 				healthChecks: [
-					{ id: 'provider-api', kind: 'http', url: 'http://127.0.0.1:4783/healthz' },
-					{ id: 'compose-services', kind: 'container', service: 'agent-api' },
+					{ id: 'compose-services', kind: 'container', service: 'agent-manager' },
 				],
 			},
 			source: { type: 'package-adapter', id: '@treeseed/agent' },

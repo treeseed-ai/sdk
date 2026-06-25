@@ -917,6 +917,13 @@ export class MarketClient {
 		);
 	}
 
+	createTreeDxWorkspace(projectId: string, repoId: string, body: Record<string, unknown>, headers: Record<string, string> = {}) {
+		return this.request<{ ok: true; payload: unknown }>(
+			`/v1/dx/projects/${encodeURIComponent(projectId)}/repos/${encodeURIComponent(repoId)}/workspaces`,
+			{ method: 'POST', body, headers, requireAuth: true },
+		);
+	}
+
 	updateProjectRepositoryTopology(projectId: string, body: ProjectRepositoryTopology | Record<string, unknown>) {
 		return this.request<{ ok: true; payload: ProjectRepositoryTopology }>(
 			`/v1/projects/${encodeURIComponent(projectId)}/repository-topology`,
@@ -1375,48 +1382,48 @@ export class MarketClient {
 		);
 	}
 
-	workdayTestRuns(teamId: string, options: { status?: string | null; providerId?: string | null } = {}) {
+	workdayRuns(teamId: string, options: { status?: string | null; providerId?: string | null } = {}) {
 		const params = new URLSearchParams();
 		if (options.status) params.set('status', options.status);
 		if (options.providerId) params.set('providerId', options.providerId);
 		const query = params.toString() ? `?${params.toString()}` : '';
 		return this.request<{ ok: true; payload: unknown[] }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/workday-tests${query}`,
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-runs${query}`,
 			{ requireAuth: true },
 		);
 	}
 
-	createWorkdayTestRun(teamId: string, body: Record<string, unknown>) {
+	createWorkdayRun(teamId: string, body: Record<string, unknown>) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/workday-tests`,
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-runs`,
 			{ method: 'POST', body, requireAuth: true },
 		);
 	}
 
-	workdayTestRun(teamId: string, runId: string) {
+	workdayRun(teamId: string, runId: string) {
 		return this.request<{ ok: true; payload: { run: Record<string, unknown>; events: unknown[] } }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/workday-tests/${encodeURIComponent(runId)}`,
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-runs/${encodeURIComponent(runId)}`,
 			{ requireAuth: true },
 		);
 	}
 
-	updateWorkdayTestRun(teamId: string, runId: string, body: Record<string, unknown>) {
+	updateWorkdayRun(teamId: string, runId: string, body: Record<string, unknown>) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/workday-tests/${encodeURIComponent(runId)}`,
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-runs/${encodeURIComponent(runId)}`,
 			{ method: 'PATCH', body, requireAuth: true },
 		);
 	}
 
-	workdayTestEvents(teamId: string, runId: string) {
+	workdayEvents(teamId: string, runId: string) {
 		return this.request<{ ok: true; payload: unknown[] }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/workday-tests/${encodeURIComponent(runId)}/events`,
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-runs/${encodeURIComponent(runId)}/events`,
 			{ requireAuth: true },
 		);
 	}
 
-	createWorkdayTestEvent(teamId: string, runId: string, body: Record<string, unknown>) {
+	createWorkdayEvent(teamId: string, runId: string, body: Record<string, unknown>) {
 		return this.request<{ ok: true; payload: Record<string, unknown> }>(
-			`/v1/teams/${encodeURIComponent(teamId)}/workday-tests/${encodeURIComponent(runId)}/events`,
+			`/v1/teams/${encodeURIComponent(teamId)}/workday-runs/${encodeURIComponent(runId)}/events`,
 			{ method: 'POST', body, requireAuth: true },
 		);
 	}

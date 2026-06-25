@@ -315,6 +315,71 @@ describe('TreeDX-backed TreeSeed content repository', () => {
 		expect(transport.requests.some((request) => request.path === '/api/v1/workspaces/workspace-1/exec')).toBe(true);
 	});
 
+	it('uses repo-scoped graph endpoints when TreeDX config binds a repository', async () => {
+		const transport = new RecordingTransport(() => ({}));
+		const client = makeTreeDxClient(transport);
+		const resolver = new TreeDxPortfolioResolver({ client, repoId: 'repo-scoped' });
+		const graph = new TreeDxGraphBackend({
+			client,
+			resolver,
+			directRepoId: 'repo-scoped',
+			ref: 'refs/heads/main',
+			localRuntime: new ContentGraphRuntime(sdkFixtureRoot, buildScopedModelRegistry(sdkFixtureRoot)),
+		});
+
+		await graph.queryGraph({ query: 'planning' });
+		await graph.buildContextPack({ query: 'planning' });
+
+		expect(transport.requests).toEqual([
+			expect.objectContaining({
+				method: 'POST',
+				path: '/api/v1/repos/repo-scoped/graph/query',
+				body: expect.objectContaining({ query: 'planning', ref: 'refs/heads/main' }),
+			}),
+			expect.objectContaining({
+				method: 'POST',
+				path: '/api/v1/repos/repo-scoped/context/build',
+				body: expect.objectContaining({ query: 'planning', ref: 'refs/heads/main' }),
+			}),
+		]);
+		expect(transport.requests.some((request) => request.path === '/api/v1/context/build')).toBe(false);
+		expect(transport.requests.some((request) => request.path === '/api/v1/graph/query')).toBe(false);
+	});
+
+	it('refreshes and retries a repo-scoped context build when the graph is not ready', async () => {
+		let contextAttempts = 0;
+		const transport = new RecordingTransport((request) => {
+			if (request.path === '/api/v1/repos/repo-scoped/context/build') {
+				contextAttempts += 1;
+				if (contextAttempts === 1) {
+					return new TreeDxApiError({
+						status: 404,
+						code: 'graph_not_ready',
+						message: 'Graph is not ready.',
+					});
+				}
+			}
+			return {};
+		});
+		const client = makeTreeDxClient(transport);
+		const resolver = new TreeDxPortfolioResolver({ client, repoId: 'repo-scoped' });
+		const graph = new TreeDxGraphBackend({
+			client,
+			resolver,
+			directRepoId: 'repo-scoped',
+			ref: 'refs/heads/main',
+			localRuntime: new ContentGraphRuntime(sdkFixtureRoot, buildScopedModelRegistry(sdkFixtureRoot)),
+		});
+
+		await graph.buildContextPack({ query: 'planning' });
+
+		expect(transport.requests.map((request) => request.path)).toEqual([
+			'/api/v1/repos/repo-scoped/context/build',
+			'/api/v1/repos/repo-scoped/graph/refresh',
+			'/api/v1/repos/repo-scoped/context/build',
+		]);
+	});
+
 	it('keeps site and optional repository operations free of TreeDX SDK imports', async () => {
 		const { readFileSync } = await import('node:fs');
 		const source = readFileSync(resolve(process.cwd(), 'src', 'operations', 'repository-operations.ts'), 'utf8');

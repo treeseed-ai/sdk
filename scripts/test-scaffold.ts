@@ -194,7 +194,6 @@ function linkTreeseedBins(siteRoot) {
 	for (const [name, relativeTarget] of [
 		['treeseed', '../@treeseed/cli/dist/cli/main.js'],
 		['treeseed-agents', '../@treeseed/agent/dist/agents/cli.js'],
-		['treeseed-agent-api', '../@treeseed/agent/dist/scripts/treeseed-agent-api.js'],
 		['treeseed-agent-service', '../@treeseed/agent/dist/scripts/treeseed-agent-service.js'],
 	]) {
 		symlinkSync(relativeTarget, resolve(binRoot, name));

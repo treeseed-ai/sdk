@@ -93,6 +93,47 @@ export interface AgentPermissionConfig {
 	operations: AgentPermissionOperation[];
 }
 
+export interface AgentContentPermission {
+	model: string;
+	operations: Array<'read' | 'create' | 'update' | 'link' | 'comment' | string>;
+	filters?: Record<string, unknown>;
+}
+
+export interface AgentModePermissionPolicy {
+	content?: {
+		read?: AgentContentPermission[];
+		write?: AgentContentPermission[];
+	};
+	repository?: {
+		readPaths?: string[];
+		writePaths?: string[];
+		allowCodeMutation?: boolean;
+	};
+	tools?: {
+		allowedToolIds?: string[];
+		deniedToolIds?: string[];
+	};
+	operations?: {
+		allowedOperations?: string[];
+	};
+	network?: {
+		allowWeb?: boolean;
+		allowedDomains?: string[];
+	};
+	shell?: {
+		allowCommands?: boolean;
+		allowedCommands?: string[];
+		deniedCommands?: string[];
+	};
+}
+
+export interface AgentPermissionPolicy {
+	modes?: {
+		planning?: AgentModePermissionPolicy;
+		acting?: AgentModePermissionPolicy;
+	};
+}
+
 export interface AgentOutputContract {
 	messageTypes: string[];
 	modelMutations: string[];
@@ -389,6 +430,7 @@ export interface AgentRuntimeSpec {
 	triggers: AgentTriggerConfig[];
 	triggerPolicy?: AgentTriggerPolicy;
 	permissions: AgentPermissionConfig[];
+	permissionPolicy?: AgentPermissionPolicy;
 	context?: {
 		queries?: import('../graph/context-query-contracts.ts').DeclarativeContextQuery[];
 	};

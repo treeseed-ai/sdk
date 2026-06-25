@@ -335,15 +335,6 @@ hosting:
 runtime:
   mode: treeseed_managed
 services:
-  capacityProviderApi:
-    provider: railway
-    enabled: true
-    rootDir: packages/agent
-    railway:
-      projectName: treeseed-capacity
-      serviceName: treeseed-capacity-provider-api
-      imageRef: treeseed/agent-api:dev-staging
-      healthcheckPath: /healthz
   capacityProviderManager:
     provider: railway
     enabled: true
@@ -368,15 +359,10 @@ services:
 `,
 		);
 		const services = configuredRailwayServices(tenantRoot, 'staging');
-		const api = services.find((service) => service.key === 'capacityProviderApi');
 		const manager = services.find((service) => service.key === 'capacityProviderManager');
 		const runners = services.filter((service) => service.key === 'capacityProviderRunner');
 
-		expect(api).toMatchObject({
-			serviceName: 'treeseed-capacity-provider-api',
-			imageRef: 'treeseed/agent-api:dev-staging',
-			volumeMountPath: null,
-		});
+		expect(services.find((service) => service.key === 'capacityProviderApi')).toBeUndefined();
 		expect(manager).toMatchObject({
 			serviceName: 'treeseed-capacity-provider-manager',
 			imageRef: 'treeseed/agent-manager:dev-staging',

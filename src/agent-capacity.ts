@@ -62,6 +62,7 @@ export type AgentKernelModeFallbackCode =
 
 export const AGENT_ASSIGNMENT_WORKSPACE_ACCESS_MODES = [
 	'context_only',
+	'workspace_write',
 	'brokered_workspace',
 	'full_workspace_no_credentials',
 	'trusted_direct',
@@ -1235,6 +1236,22 @@ function capabilityHandleArrays(handles: ProviderAssignmentCapabilityHandles | R
 	].filter(isRecord) as ProviderAssignmentCapabilityHandle[];
 }
 
+function planningContentArtifactWriteAllowed(input: {
+	assignment: Pick<ProviderAssignment, 'mode' | 'metadata' | 'synthesizedFrom'>;
+	handle: ProviderAssignmentCapabilityHandle;
+	operations: string[];
+}) {
+	if (input.assignment.mode !== 'planning') return false;
+	const metadata = record(input.assignment.metadata);
+	if (metadata.allowPlanningContentArtifacts !== true) return false;
+	const handle = record(input.handle);
+	const contentProxyHandle = input.handle.kind === 'treedx_workspace'
+		|| (input.handle.kind === 'repository_access' && handle.provider === 'treedx_proxy' && handle.credentialMode === 'brokered');
+	if (!contentProxyHandle) return false;
+	const allowed = new Set(['read', 'write', 'commit', 'test', 'files:read', 'files:search', 'files:write', 'git:commit']);
+	return input.operations.every((operation) => allowed.has(operation));
+}
+
 export function redactedProviderAssignmentCapabilityHandles(
 	handles: ProviderAssignmentCapabilityHandles | Record<string, unknown> | null | undefined,
 ): ProviderAssignmentCapabilityHandles {
@@ -1306,14 +1323,15 @@ export function validateProviderAssignmentCapabilityHandles(input: {
 		}
 		const operations = stringList(handle.operations);
 		const writeCapable = operations.some((operation) => ['write', 'commit', 'push', 'release', 'dispatch_workflow', 'files:write', 'git:commit'].includes(operation));
-		if (writeCapable && assignment.mode !== 'acting') {
+		const planningContentWrite = writeCapable && planningContentArtifactWriteAllowed({ assignment, handle, operations });
+		if (writeCapable && assignment.mode !== 'acting' && !planningContentWrite) {
 			return createAgentKernelModeFallback(
 				'assignment_capability_handle_write_not_ready',
 				`Assignment ${assignment.id} cannot receive write-capable capability handles outside acting mode.`,
 				{ retryable: false, metadata: { handleId: handle.id, kind: handle.kind, operations } },
 			);
 		}
-		if (writeCapable && !hasAcceptedCapacityPlanProvenance({
+		if (writeCapable && !planningContentWrite && !hasAcceptedCapacityPlanProvenance({
 			assignment,
 			decisionInput: input.decisionInput ?? null,
 			capacityEnvelope: input.capacityEnvelope ?? null,

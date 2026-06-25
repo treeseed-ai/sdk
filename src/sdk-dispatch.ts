@@ -38,22 +38,6 @@ const SDK_OPERATION_SPECS: SdkOperationSpec[] = [
 	},
 	{ name: 'startWorkDay', aliases: ['start-work-day'], handler: passthrough('startWorkDay') },
 	{ name: 'closeWorkDay', aliases: ['close-work-day'], handler: passthrough('closeWorkDay') },
-	{ name: 'createTask', aliases: ['create-task'], handler: passthrough('createTask') },
-	{ name: 'claimTask', aliases: ['claim-task'], handler: passthrough('claimTask') },
-	{
-		name: 'recordTaskProgress',
-		aliases: ['record-task-progress'],
-		handler: passthrough('recordTaskProgress'),
-	},
-	{ name: 'completeTask', aliases: ['complete-task'], handler: passthrough('completeTask') },
-	{ name: 'failTask', aliases: ['fail-task'], handler: passthrough('failTask') },
-	{ name: 'appendTaskEvent', aliases: ['append-task-event'], handler: passthrough('appendTaskEvent') },
-	{ name: 'searchTasks', aliases: ['search-tasks'], handler: passthrough('searchTasks') },
-	{
-		name: 'getManagerContext',
-		aliases: ['get-manager-context'],
-		handler: (sdk, input) => sdk.getManagerContext(String(input.taskId ?? input.id ?? '')),
-	},
 	{ name: 'createReport', aliases: ['create-report'], handler: passthrough('createReport') },
 	{
 		name: 'listAgentSpecs',
@@ -161,4 +145,3 @@ export async function executeSdkOperation(
 	}
 	return await spec.handler(sdk, input);
 }
-

@@ -99,14 +99,12 @@ function serviceKeyType(serviceKey: string, service: Record<string, any>): strin
 function railwayImageRefEnvForService(serviceKey: string) {
 	if (serviceKey === 'api') return 'TREESEED_API_IMAGE_REF';
 	if (serviceKey === 'operationsRunner') return 'TREESEED_OPERATIONS_RUNNER_IMAGE_REF';
-	if (serviceKey === 'capacityProviderApi') return 'TREESEED_AGENT_API_IMAGE_REF';
 	if (serviceKey === 'capacityProviderManager') return 'TREESEED_AGENT_MANAGER_IMAGE_REF';
 	if (serviceKey === 'capacityProviderRunner') return 'TREESEED_AGENT_RUNNER_IMAGE_REF';
 	return null;
 }
 
 function defaultRailwayImageRefForService(serviceKey: string) {
-	if (serviceKey === 'capacityProviderApi') return 'treeseed/agent-api:dev-staging';
 	if (serviceKey === 'capacityProviderManager') return 'treeseed/agent-manager:dev-staging';
 	if (serviceKey === 'capacityProviderRunner') return 'treeseed/agent-runner:dev-staging';
 	return null;

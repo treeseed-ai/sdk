@@ -34,7 +34,7 @@ function normalizeScope(scope) {
 function resolveRailwayEnvironmentForScope(scope, configuredEnvironment) {
 	return normalizeRailwayEnvironmentName(configuredEnvironment || normalizeScope(scope));
 }
-const RAILWAY_SERVICE_KEYS = ['api', 'operationsRunner', 'capacityProviderApi', 'capacityProviderManager', 'capacityProviderRunner'];
+const RAILWAY_SERVICE_KEYS = ['api', 'operationsRunner', 'capacityProviderManager', 'capacityProviderRunner'];
 const HOSTED_PROJECT_SERVICE_KEYS = ['api'];
 const WORKER_RUNNER_BOOTSTRAP_INDEX = 1;
 const WORKER_RUNNER_VOLUME_MOUNT_PATH = '/data';
@@ -65,12 +65,10 @@ function shouldManageRailwaySchedules(scope, phase = 'deploy') {
 }
 
 function railwayServiceNameSuffix(serviceKey) {
-	return serviceKey === 'capacityProviderApi'
-		? 'capacity-provider-api'
-		: serviceKey === 'capacityProviderManager'
-			? 'capacity-provider-manager'
-			: serviceKey === 'capacityProviderRunner'
-				? 'capacity-provider-runner'
+	return serviceKey === 'capacityProviderManager'
+				? 'capacity-provider-manager'
+				: serviceKey === 'capacityProviderRunner'
+					? 'capacity-provider-runner'
 				: serviceKey === 'workdayManager'
 			? 'workday-manager'
 		: serviceKey === 'workerRunner'
@@ -94,7 +92,6 @@ export function deriveRailwayOperationsRunnerServiceName(baseServiceName, index 
 function railwayImageRefEnvForService(serviceKey) {
 	if (serviceKey === 'api') return 'TREESEED_API_IMAGE_REF';
 	if (serviceKey === 'operationsRunner') return 'TREESEED_OPERATIONS_RUNNER_IMAGE_REF';
-	if (serviceKey === 'capacityProviderApi') return 'TREESEED_AGENT_API_IMAGE_REF';
 	if (serviceKey === 'capacityProviderManager') return 'TREESEED_AGENT_MANAGER_IMAGE_REF';
 	if (serviceKey === 'capacityProviderRunner') return 'TREESEED_AGENT_RUNNER_IMAGE_REF';
 	return null;
@@ -108,9 +105,6 @@ function defaultRailwayImageRef(serviceKey, scope = 'staging', env = process.env
 		return envValue('TREESEED_OPERATIONS_RUNNER_IMAGE_REF', env) || null;
 	}
 	const environment = normalizeScope(scope);
-	if (serviceKey === 'capacityProviderApi') {
-		return envValue('TREESEED_AGENT_API_IMAGE_REF', env) || (environment === 'staging' ? 'treeseed/agent-api:dev-staging' : null);
-	}
 	if (serviceKey === 'capacityProviderManager') {
 		return envValue('TREESEED_AGENT_MANAGER_IMAGE_REF', env) || (environment === 'staging' ? 'treeseed/agent-manager:dev-staging' : null);
 	}
@@ -708,7 +702,6 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 	const imageRefKeys = [
 		'TREESEED_API_IMAGE_REF',
 		'TREESEED_OPERATIONS_RUNNER_IMAGE_REF',
-		'TREESEED_AGENT_API_IMAGE_REF',
 		'TREESEED_AGENT_MANAGER_IMAGE_REF',
 		'TREESEED_AGENT_RUNNER_IMAGE_REF',
 	];
@@ -1566,11 +1559,9 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 				TREESEED_PROVIDER_ENVIRONMENT: normalizeScope(service.scope) === 'prod' ? 'production' : normalizeScope(service.scope),
 				TREESEED_MANAGER_ID: normalizeScope(service.scope),
 				TREESEED_MARKET_ID: normalizeScope(service.scope),
-				TREESEED_PROVIDER_ROLE: service.key === 'capacityProviderApi'
-					? 'api'
-					: service.key === 'capacityProviderManager'
-						? 'manager'
-						: 'runner',
+					TREESEED_PROVIDER_ROLE: service.key === 'capacityProviderManager'
+							? 'manager'
+							: 'runner',
 				...(service.key === 'capacityProviderRunner' ? {
 					TREESEED_PROVIDER_DATA_DIR: service.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH,
 					TREESEED_PROVIDER_RUNNER_ID: service.runnerId ?? railwayService.name,

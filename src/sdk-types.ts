@@ -17,9 +17,6 @@ export const SDK_MODEL_NAMES = [
 	'agent_cursor',
 	'content_lease',
 	'work_day',
-	'task',
-	'task_event',
-	'task_output',
 	'graph_run',
 	'report',
 	'approval_request',
@@ -1836,9 +1833,6 @@ export type TreeseedRuntimeRecordType =
 	| 'agent_cursor'
 	| 'content_lease'
 	| 'work_day'
-	| 'task'
-	| 'task_event'
-	| 'task_output'
 	| 'graph_run'
 	| 'report';
 
@@ -2049,51 +2043,6 @@ export interface SdkWorkDayEntity {
 	endedAt: string | null;
 	createdAt: string;
 	updatedAt: string;
-}
-
-export interface SdkTaskEntity {
-	[key: string]: unknown;
-	id: string;
-	workDayId: string;
-	agentId: string;
-	type: string;
-	state: string;
-	priority: number;
-	idempotencyKey: string;
-	payloadJson: string;
-	payloadHash: string | null;
-	attemptCount: number;
-	maxAttempts: number;
-	claimedBy: string | null;
-	leaseExpiresAt: string | null;
-	availableAt: string;
-	lastErrorCode: string | null;
-	lastErrorMessage: string | null;
-	graphVersion: string | null;
-	parentTaskId: string | null;
-	createdAt: string;
-	startedAt: string | null;
-	completedAt: string | null;
-	updatedAt: string;
-}
-
-export interface SdkTaskEventEntity {
-	[key: string]: unknown;
-	id: string;
-	taskId: string;
-	seq: number;
-	kind: string;
-	dataJson: string;
-	createdAt: string;
-}
-
-export interface SdkTaskOutputEntity {
-	[key: string]: unknown;
-	id: string;
-	taskId: string;
-	outputJson: string;
-	outputRef: string | null;
-	createdAt: string;
 }
 
 export interface SdkGraphRunEntity {
@@ -3054,73 +3003,6 @@ export interface SdkCloseWorkDayRequest {
 	actor: string;
 }
 
-export interface SdkCreateTaskRequest {
-	id?: string;
-	workDayId: string;
-	agentId: string;
-	type: string;
-	state?: string;
-	priority?: number;
-	idempotencyKey: string;
-	payload: Record<string, unknown>;
-	payloadHash?: string | null;
-	maxAttempts?: number;
-	availableAt?: string;
-	graphVersion?: string | null;
-	parentTaskId?: string | null;
-	actor: string;
-}
-
-export interface SdkClaimTaskRequest {
-	id: string;
-	workerId: string;
-	leaseSeconds: number;
-	actor: string;
-}
-
-export interface SdkTaskProgressRequest {
-	id: string;
-	workerId?: string | null;
-	state?: string;
-	appendEvent?: {
-		kind: string;
-		data?: Record<string, unknown>;
-	} | null;
-	patch?: Record<string, unknown>;
-	actor: string;
-}
-
-export interface SdkCompleteTaskRequest {
-	id: string;
-	output?: Record<string, unknown> | null;
-	outputRef?: string | null;
-	summary?: Record<string, unknown> | null;
-	actor: string;
-}
-
-export interface SdkFailTaskRequest {
-	id: string;
-	errorCode?: string | null;
-	errorMessage: string;
-	retryable?: boolean;
-	nextVisibleAt?: string | null;
-	actor: string;
-}
-
-export interface SdkAppendTaskEventRequest {
-	taskId: string;
-	kind: string;
-	data?: Record<string, unknown>;
-	actor: string;
-}
-
-export interface SdkEnqueueTaskRequest {
-	taskId: string;
-	queueName?: string;
-	deliveryDelaySeconds?: number;
-	actor: string;
-}
-
 export interface SdkCreateReportRequest {
 	id?: string;
 	workDayId: string;
@@ -3129,25 +3011,6 @@ export interface SdkCreateReportRequest {
 	renderedRef?: string | null;
 	sentAt?: string | null;
 	actor: string;
-}
-
-export interface SdkTaskSearchRequest {
-	workDayId?: string;
-	agentId?: string;
-	state?: string | string[];
-	limit?: number;
-}
-
-export interface SdkManagerContextRequest {
-	taskId: string;
-	includeGraph?: boolean;
-}
-
-export interface SdkManagerContextPayload {
-	task: SdkTaskEntity | null;
-	workDay: SdkWorkDayEntity | null;
-	agent: Record<string, unknown> | null;
-	graph: Record<string, unknown> | null;
 }
 
 export interface SdkQueuePullClientConfig {

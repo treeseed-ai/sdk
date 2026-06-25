@@ -50,53 +50,6 @@ export const workDays = pgTable('work_days', {
 	updatedAt: text('updated_at').notNull(),
 });
 
-export const tasks = pgTable('tasks', {
-	id: text('id').primaryKey(),
-	workDayId: text('work_day_id').notNull(),
-	agentId: text('agent_id').notNull(),
-	typeColumn: text('type').notNull(),
-	state: text('state').notNull(),
-	priority: integer('priority').notNull().default(0),
-	idempotencyKey: text('idempotency_key').notNull().unique(),
-	payloadJson: text('payload_json').notNull(),
-	payloadHash: text('payload_hash'),
-	attemptCount: integer('attempt_count').notNull().default(0),
-	maxAttempts: integer('max_attempts').notNull().default(3),
-	claimedBy: text('claimed_by'),
-	leaseExpiresAt: text('lease_expires_at'),
-	availableAt: text('available_at').notNull(),
-	lastErrorCode: text('last_error_code'),
-	lastErrorMessage: text('last_error_message'),
-	graphVersion: text('graph_version'),
-	parentTaskId: text('parent_task_id'),
-	createdAt: text('created_at').notNull(),
-	startedAt: text('started_at'),
-	completedAt: text('completed_at'),
-	updatedAt: text('updated_at').notNull(),
-}, (table) => [
-	index('idx_tasks_runnable').on(table.state, table.priority, table.availableAt),
-	index('idx_tasks_work_day_agent').on(table.workDayId, table.agentId, table.createdAt)
-]);
-
-export const taskEvents = pgTable('task_events', {
-	id: text('id').primaryKey(),
-	taskId: text('task_id').notNull(),
-	seq: integer('seq').notNull(),
-	kind: text('kind').notNull(),
-	dataJson: text('data_json').notNull(),
-	createdAt: text('created_at').notNull(),
-}, (table) => [
-	uniqueIndex('idx_task_events_seq').on(table.taskId, table.seq)
-]);
-
-export const taskOutputs = pgTable('task_outputs', {
-	id: text('id').primaryKey(),
-	taskId: text('task_id').notNull(),
-	outputJson: text('output_json').notNull(),
-	outputRef: text('output_ref'),
-	createdAt: text('created_at').notNull(),
-});
-
 export const graphRuns = pgTable('graph_runs', {
 	id: text('id').primaryKey(),
 	workDayId: text('work_day_id').notNull(),
@@ -2386,9 +2339,6 @@ export const treeseedMarketSchema = {
 	contactSubmissions,
 	runtimeEnvelopes,
 	workDays,
-	tasks,
-	taskEvents,
-	taskOutputs,
 	graphRuns,
 	reports,
 	users,

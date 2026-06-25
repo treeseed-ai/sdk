@@ -178,6 +178,10 @@ function isMarkdownPath(value: string) {
 	return /\.(md|mdx)$/i.test(value);
 }
 
+function isGraphNotReadyError(error: unknown) {
+	return error instanceof TreeDxApiError && error.code === 'graph_not_ready';
+}
+
 function inferSlug(filePath: string, pathPattern: string) {
 	const normalizedPath = normalizePathPattern(filePath);
 	const root = normalizePathPattern(pathPattern).replace(/\*\*.*$/u, '').replace(/\/?$/u, '/');
@@ -671,6 +675,7 @@ export class TreeDxGraphBackend implements GraphBackend {
 			client: TreeDxClient;
 			resolver: TreeDxPortfolioResolver;
 			localRuntime: ContentGraphRuntime;
+			directRepoId?: string;
 			ref?: string;
 		},
 	) {}
@@ -696,6 +701,16 @@ export class TreeDxGraphBackend implements GraphBackend {
 	}
 
 	async queryGraph(request: SdkGraphQueryRequest) {
+		if (this.options.directRepoId) {
+			return this.options.client.request({
+				method: 'POST',
+				path: `/api/v1/repos/${segment(this.options.directRepoId)}/graph/query`,
+				body: compactObject({
+					...request,
+					ref: this.options.ref,
+				}),
+			});
+		}
 		return this.options.client.federation.graphQuery({
 			...request,
 			repoIds: await this.repoIds(),
@@ -704,6 +719,27 @@ export class TreeDxGraphBackend implements GraphBackend {
 	}
 
 	async buildContextPack(request: SdkContextPackRequest) {
+		if (this.options.directRepoId) {
+			const build = () =>
+				this.options.client.request({
+					method: 'POST',
+					path: `/api/v1/repos/${segment(this.options.directRepoId!)}/context/build`,
+					body: compactObject({
+						...request,
+						ref: this.options.ref,
+					}),
+				});
+			try {
+				return await build();
+			} catch (error) {
+				if (!isGraphNotReadyError(error)) throw error;
+				await this.options.client.graph.refresh(this.options.directRepoId, compactObject({
+					ref: this.options.ref,
+					paths: ['**'],
+				}));
+				return await build();
+			}
+		}
 		return this.options.client.federation.contextBuild({
 			...request,
 			repoIds: await this.repoIds(),

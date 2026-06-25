@@ -36,13 +36,9 @@ function loadCapacityLaunchFromPackageManifest(tenantRoot: string) {
 		runtime: {
 			images: {
 				roles: {
-					api: { image: roles.api?.image ?? 'treeseed/agent-api', tag: roles.api?.tag ?? 'latest' },
 					manager: { image: roles.manager?.image ?? 'treeseed/agent-manager', tag: roles.manager?.tag ?? 'latest' },
 					runner: { image: roles.runner?.image ?? 'treeseed/agent-runner', tag: roles.runner?.tag ?? 'latest' },
 				},
-			},
-			api: {
-				hostPort: 4783,
 			},
 		},
 	};

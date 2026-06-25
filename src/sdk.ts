@@ -52,22 +52,17 @@ import type {
 import type {
 	SdkAckMessageRequest,
 	SdkClaimMessageRequest,
-	SdkClaimTaskRequest,
 	SdkCloseWorkDayRequest,
-	SdkCompleteTaskRequest,
 	CreateApprovalRequestRequest,
 	SdkCreateReportRequest,
 	SdkCreateMessageRequest,
 	SdkCreatePrioritySnapshotRequest,
-	SdkCreateTaskRequest,
 	SdkCursorRequest,
-	SdkFailTaskRequest,
 	SdkFollowRequest,
 	SdkGetRequest,
 	SdkGetCursorRequest,
 	SdkJsonEnvelope,
 	SdkLeaseReleaseRequest,
-	SdkManagerContextPayload,
 	SdkMutationRequest,
 	SdkGraphQueryOptions,
 	SdkGraphQueryRequest,
@@ -88,8 +83,6 @@ import type {
 	SdkReleaseWorkdayManagerLeaseRequest,
 	SdkSearchRequest,
 	SdkStartWorkDayRequest,
-	SdkTaskProgressRequest,
-	SdkTaskSearchRequest,
 	SdkUpsertWorkPolicyRequest,
 	SdkUpdateWorkDayGraphRequest,
 	SdkUpdateRequest,
@@ -290,6 +283,7 @@ export class AgentSdk {
 				client,
 				resolver,
 				localRuntime: this.localGraphRuntime,
+				directRepoId: treeDxOptions.repoId,
 				ref: treeDxOptions.ref,
 			});
 			this.treeDx = {
@@ -594,54 +588,9 @@ export class AgentSdk {
 		return this.envelope('work_day', 'update', payload);
 	}
 
-	async createTask(request: SdkCreateTaskRequest) {
-		const payload = await this.database.createTask(request);
-		return this.envelope('task', 'create', payload);
-	}
-
-	async claimTask(request: SdkClaimTaskRequest) {
-		const payload = await this.database.claimTask(request);
-		return this.envelope('task', 'update', payload);
-	}
-
-	async recordTaskProgress(request: SdkTaskProgressRequest) {
-		const payload = await this.database.recordTaskProgress(request);
-		return this.envelope('task', 'update', payload);
-	}
-
-	async completeTask(request: SdkCompleteTaskRequest) {
-		const payload = await this.database.completeTask(request);
-		return this.envelope('task', 'update', payload);
-	}
-
-	async failTask(request: SdkFailTaskRequest) {
-		const payload = await this.database.failTask(request);
-		return this.envelope('task', 'update', payload);
-	}
-
-	async appendTaskEvent(request: {
-		taskId: string;
-		kind: string;
-		data?: Record<string, unknown>;
-		actor: string;
-	}) {
-		const payload = await this.database.appendTaskEvent(request);
-		return this.envelope('task_event', 'create', payload);
-	}
-
-	async searchTasks(request: SdkTaskSearchRequest) {
-		const payload = await this.database.searchTasks(request);
-		return this.envelope('task', 'search', payload, { count: payload.length });
-	}
-
 	async createReport(request: SdkCreateReportRequest) {
 		const payload = await this.database.createReport(request);
 		return this.envelope('report', 'create', payload);
-	}
-
-	async getManagerContext(taskId: string) {
-		const payload = await this.database.getManagerContext(taskId);
-		return this.envelope<SdkManagerContextPayload>('task', 'get', payload);
 	}
 
 	async getWorkPolicy(projectId: string, environment: string = 'local') {
@@ -791,7 +740,7 @@ export class AgentSdk {
 
 	async appendWorkstreamEvent(input: Pick<WorkstreamEvent, 'projectId' | 'workstreamId' | 'kind'> & Partial<WorkstreamEvent>) {
 		const payload = await this.database.appendWorkstreamEvent(input);
-		return this.envelope<WorkstreamEvent>('task_event', 'create', payload);
+		return this.envelope<WorkstreamEvent>('workstream_event', 'create', payload);
 	}
 
 	async listReleases(projectId: string) {

@@ -1246,23 +1246,6 @@ CREATE TABLE IF NOT EXISTS "task_estimates" (
 	"execution_profile_id" text DEFAULT 'standard-code-model' NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "task_events" (
-	"id" text PRIMARY KEY NOT NULL,
-	"task_id" text NOT NULL,
-	"seq" integer NOT NULL,
-	"kind" text NOT NULL,
-	"data_json" text NOT NULL,
-	"created_at" text NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS "task_outputs" (
-	"id" text PRIMARY KEY NOT NULL,
-	"task_id" text NOT NULL,
-	"output_json" text NOT NULL,
-	"output_ref" text,
-	"created_at" text NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS "task_usage_actuals" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_id" text,
@@ -1293,32 +1276,6 @@ CREATE TABLE IF NOT EXISTS "task_usage_actuals" (
 	"metadata_json" text DEFAULT '{}' NOT NULL,
 	"created_at" text NOT NULL,
 	"execution_profile_id" text DEFAULT 'standard-code-model' NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS "tasks" (
-	"id" text PRIMARY KEY NOT NULL,
-	"work_day_id" text NOT NULL,
-	"agent_id" text NOT NULL,
-	"type" text NOT NULL,
-	"state" text NOT NULL,
-	"priority" integer DEFAULT 0 NOT NULL,
-	"idempotency_key" text NOT NULL,
-	"payload_json" text NOT NULL,
-	"payload_hash" text,
-	"attempt_count" integer DEFAULT 0 NOT NULL,
-	"max_attempts" integer DEFAULT 3 NOT NULL,
-	"claimed_by" text,
-	"lease_expires_at" text,
-	"available_at" text NOT NULL,
-	"last_error_code" text,
-	"last_error_message" text,
-	"graph_version" text,
-	"parent_task_id" text,
-	"created_at" text NOT NULL,
-	"started_at" text,
-	"completed_at" text,
-	"updated_at" text NOT NULL,
-	CONSTRAINT "tasks_idempotency_key_unique" UNIQUE("idempotency_key")
 );
 
 CREATE TABLE IF NOT EXISTS "team_api_keys" (
@@ -2542,17 +2499,6 @@ ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "estimated_quota_minutes_p
 ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "features_json" text DEFAULT '{}';
 ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "created_at" text;
 ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "execution_profile_id" text DEFAULT 'standard-code-model';
-ALTER TABLE "task_events" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "task_events" ADD COLUMN IF NOT EXISTS "task_id" text;
-ALTER TABLE "task_events" ADD COLUMN IF NOT EXISTS "seq" integer;
-ALTER TABLE "task_events" ADD COLUMN IF NOT EXISTS "kind" text;
-ALTER TABLE "task_events" ADD COLUMN IF NOT EXISTS "data_json" text;
-ALTER TABLE "task_events" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "task_outputs" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "task_outputs" ADD COLUMN IF NOT EXISTS "task_id" text;
-ALTER TABLE "task_outputs" ADD COLUMN IF NOT EXISTS "output_json" text;
-ALTER TABLE "task_outputs" ADD COLUMN IF NOT EXISTS "output_ref" text;
-ALTER TABLE "task_outputs" ADD COLUMN IF NOT EXISTS "created_at" text;
 ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "id" text;
 ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "task_id" text;
 ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "work_day_id" text;
@@ -2582,28 +2528,6 @@ ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "native_usage_json" te
 ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
 ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "created_at" text;
 ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "execution_profile_id" text DEFAULT 'standard-code-model';
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "agent_id" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "type" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "state" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "priority" integer DEFAULT 0;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "idempotency_key" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "payload_json" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "payload_hash" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "attempt_count" integer DEFAULT 0;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "max_attempts" integer DEFAULT 3;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "claimed_by" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "lease_expires_at" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "available_at" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "last_error_code" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "last_error_message" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "graph_version" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "parent_task_id" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "started_at" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "completed_at" text;
-ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "updated_at" text;
 ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "id" text;
 ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "team_id" text;
 ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "name" text;
@@ -2903,12 +2827,9 @@ CREATE INDEX IF NOT EXISTS "idx_seed_runs_state_created" ON "seed_runs" USING bt
 CREATE INDEX IF NOT EXISTS "idx_task_credit_ledger_work_day_created" ON "task_credit_ledger" USING btree ("work_day_id","created_at");
 CREATE INDEX IF NOT EXISTS "idx_task_estimates_project_signature" ON "task_estimates" USING btree ("project_id","task_signature","created_at");
 CREATE INDEX IF NOT EXISTS "idx_task_estimates_project_signature_profile" ON "task_estimates" USING btree ("project_id","task_signature","execution_profile_id","created_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_task_events_seq" ON "task_events" USING btree ("task_id","seq");
 CREATE INDEX IF NOT EXISTS "idx_task_usage_actuals_project_signature" ON "task_usage_actuals" USING btree ("project_id","task_signature","created_at");
 CREATE INDEX IF NOT EXISTS "idx_task_usage_actuals_project_signature_profile" ON "task_usage_actuals" USING btree ("project_id","task_signature","execution_profile_id","created_at");
 CREATE INDEX IF NOT EXISTS "idx_task_usage_actuals_execution_provider" ON "task_usage_actuals" USING btree ("execution_provider_id","created_at");
-CREATE INDEX IF NOT EXISTS "idx_tasks_runnable" ON "tasks" USING btree ("state","priority","available_at");
-CREATE INDEX IF NOT EXISTS "idx_tasks_work_day_agent" ON "tasks" USING btree ("work_day_id","agent_id","created_at");
 CREATE INDEX IF NOT EXISTS "idx_team_api_keys_prefix" ON "team_api_keys" USING btree ("key_prefix");
 CREATE INDEX IF NOT EXISTS "idx_team_inbox_items_team_created" ON "team_inbox_items" USING btree ("team_id","created_at");
 CREATE INDEX IF NOT EXISTS "idx_team_invites_team_status" ON "team_invites" USING btree ("team_id","status","created_at");

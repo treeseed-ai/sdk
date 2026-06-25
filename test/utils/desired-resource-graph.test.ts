@@ -31,11 +31,11 @@ describe('canonical desired resource graph', () => {
 		expect(graph.resources.some((entry) => entry.kind === 'railway-service')).toBe(true);
 		expect(graph.resources.some((entry) => entry.kind === 'cloudflare-resource')).toBe(true);
 		expect(graph.resources.map((entry) => entry.id)).toEqual(expect.arrayContaining([
-			'package-image:treeseed/agent-api',
 			'package-image:treeseed/agent-manager',
 			'package-image:treeseed/agent-runner',
 			'package-image:treeseed/treedx',
 		]));
+		expect(graph.resources.map((entry) => entry.id)).not.toContain('package-image:treeseed/agent-api');
 		expect(Object.keys(graph.fingerprints).length).toBe(graph.resources.length);
 	});
 

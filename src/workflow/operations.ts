@@ -333,7 +333,7 @@ function ensureWorkflowWorkspacePackageArtifacts(root: string, helpers: Workflow
 	const packages = [
 		{ name: '@treeseed/sdk', dir: 'packages/sdk', artifacts: ['dist/workflow-support.js', 'dist/plugin-default.js', 'dist/platform/env.yaml'] },
 		{ name: '@treeseed/ui', dir: 'packages/ui', artifacts: ['dist/index.js'] },
-		{ name: '@treeseed/agent', dir: 'packages/agent', artifacts: ['dist/api/index.js', 'dist/services/worker.js'] },
+		{ name: '@treeseed/agent', dir: 'packages/agent', artifacts: ['dist/api/index.js', 'dist/services/manager.js', 'dist/provider/runner.js'] },
 		{ name: '@treeseed/core', dir: 'packages/core', artifacts: ['dist/plugin-default.js'] },
 		{ name: '@treeseed/admin', dir: 'packages/admin', artifacts: ['dist/plugin.js'] },
 		{ name: '@treeseed/cli', dir: 'packages/cli', artifacts: ['dist/cli/main.js'] },

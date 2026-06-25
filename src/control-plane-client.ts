@@ -36,24 +36,13 @@ import type {
 	RepositoryClaim,
 	RunnerScaleDecision,
 	ScaleDecision,
-	SdkAppendTaskEventRequest,
-	SdkClaimTaskRequest,
 	SdkClaimWorkdayManagerLeaseRequest,
 	SdkCloseWorkDayRequest,
-	SdkCompleteTaskRequest,
-	SdkCreateTaskRequest,
-	SdkFailTaskRequest,
-	SdkManagerContextPayload,
 	SdkRecordRepositoryClaimRequest,
 	SdkRecordRunnerScaleDecisionRequest,
 	SdkRecordWorkerRunnerRequest,
 	SdkReleaseWorkdayManagerLeaseRequest,
 	SdkStartWorkDayRequest,
-	SdkTaskEntity,
-	SdkTaskEventEntity,
-	SdkTaskOutputEntity,
-	SdkTaskProgressRequest,
-	SdkTaskSearchRequest,
 	SdkCreateWorkdayRequest,
 	SdkWorkDayEntity,
 	TeamStorageLocator,
@@ -364,90 +353,6 @@ export class ControlPlaneClient {
 					limit: input.limit ? String(input.limit) : null,
 				},
 			},
-		);
-	}
-
-	createRunnerTask(projectId: string, input: SdkCreateTaskRequest) {
-		return this.requestJson<SdkTaskEntity>(
-			'POST',
-			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks`,
-			{ body: input as Record<string, unknown> },
-		);
-	}
-
-	listRunnerTasks(projectId: string, input: SdkTaskSearchRequest = {}) {
-		return this.requestJson<SdkTaskEntity[]>(
-			'GET',
-			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks`,
-			{
-				query: {
-					workDayId: input.workDayId ?? null,
-					agentId: input.agentId ?? null,
-					state: Array.isArray(input.state) ? input.state.join(',') : input.state ?? null,
-					limit: input.limit ? String(input.limit) : null,
-				},
-			},
-		);
-	}
-
-	claimRunnerTask(projectId: string, taskId: string, input: Omit<SdkClaimTaskRequest, 'id'>) {
-		return this.requestJson<SdkTaskEntity | null>(
-			'POST',
-			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/claim`,
-			{ body: input as Record<string, unknown> },
-		);
-	}
-
-	recordRunnerTaskProgress(projectId: string, taskId: string, input: Omit<SdkTaskProgressRequest, 'id'>) {
-		return this.requestJson<SdkTaskEntity | null>(
-			'POST',
-			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/progress`,
-			{ body: input as Record<string, unknown> },
-		);
-	}
-
-	appendRunnerTaskEvent(projectId: string, taskId: string, input: Omit<SdkAppendTaskEventRequest, 'taskId'>) {
-		return this.requestJson<SdkTaskEventEntity | null>(
-			'POST',
-			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/events`,
-			{ body: input as Record<string, unknown> },
-		);
-	}
-
-	completeRunnerTask(projectId: string, taskId: string, input: Omit<SdkCompleteTaskRequest, 'id'>) {
-		return this.requestJson<SdkTaskEntity | null>(
-			'POST',
-			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/complete`,
-			{ body: input as Record<string, unknown> },
-		);
-	}
-
-	failRunnerTask(projectId: string, taskId: string, input: Omit<SdkFailTaskRequest, 'id'>) {
-		return this.requestJson<SdkTaskEntity | null>(
-			'POST',
-			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/fail`,
-			{ body: input as Record<string, unknown> },
-		);
-	}
-
-	getRunnerTaskContext(projectId: string, taskId: string) {
-		return this.requestJson<SdkManagerContextPayload>(
-			'GET',
-			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/context`,
-		);
-	}
-
-	listRunnerTaskEvents(projectId: string, taskId: string) {
-		return this.requestJson<SdkTaskEventEntity[]>(
-			'GET',
-			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/events`,
-		);
-	}
-
-	listRunnerTaskOutputs(projectId: string, taskId: string) {
-		return this.requestJson<SdkTaskOutputEntity[]>(
-			'GET',
-			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks/${encodeURIComponent(taskId)}/outputs`,
 		);
 	}
 

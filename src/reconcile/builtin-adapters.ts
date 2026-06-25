@@ -979,7 +979,6 @@ function buildLocalComposeLaunchEnv(input: TreeseedReconcileAdapterInput) {
 		runtime: {
 			images: {
 				roles: {
-					api: { image: 'treeseed/agent-api', tag: 'latest' },
 					manager: { image: 'treeseed/agent-manager', tag: 'latest' },
 					runner: { image: 'treeseed/agent-runner', tag: 'latest' },
 				},
@@ -1618,7 +1617,7 @@ async function syncLocalTreeDxProjectContent(client: TreeDxClient, project: Loca
 		path: `/api/v1/repos/${encodeURIComponent(repository.repoId)}/workspaces`,
 		body: {
 			baseRef: project.defaultRef ?? 'refs/heads/main',
-			branchName: project.defaultRef ?? 'refs/heads/main',
+			branchName: `refs/heads/treeseed-local-sync/${project.slug}/${Date.now().toString(36)}`,
 			mode: 'writable',
 			allowedPaths: [`${project.contentPath.replace(/\/+$/u, '')}/**`],
 			ttlSeconds: 900,
@@ -1643,6 +1642,15 @@ async function syncLocalTreeDxProjectContent(client: TreeDxClient, project: Loca
 				author: { name: 'TreeSeed Reconciler', email: 'reconciler@treeseed.local' },
 			},
 		}));
+		const graphRefresh = recordValue(await client.request({
+			method: 'POST',
+			path: `/api/v1/repos/${encodeURIComponent(repository.repoId)}/graph/refresh`,
+			body: {
+				paths: project.seedPaths?.length ? project.seedPaths.map((seedPath) => `${seedPath.replace(/\/+$/u, '')}/**`) : [`${project.contentPath.replace(/\/+$/u, '')}/**`],
+			},
+		}).catch((error) => ({
+			error: error instanceof Error ? error.message : String(error),
+		})));
 		return {
 			project: project.slug,
 			repositoryId: repository.repoId,
@@ -1650,10 +1658,23 @@ async function syncLocalTreeDxProjectContent(client: TreeDxClient, project: Loca
 			files: files.length,
 			committed: true,
 			commitSha: nonEmptyString(commit.commitSha) || null,
+			graphRefresh,
 		};
 	} finally {
 		await client.request({ method: 'POST', path: `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/close`, body: {} }).catch(() => null);
 	}
+}
+
+async function ensureLocalTreeDxProjectRepositoryRef(client: TreeDxClient, project: LocalTreeDxContentProject) {
+	const repository = await ensureLocalTreeDxProjectRepository(client, project);
+	return {
+		project: project.slug,
+		repositoryId: repository.repoId,
+		repositoryName: project.repositoryName,
+		files: 0,
+		committed: false,
+		skippedContentSync: true,
+	};
 }
 
 function buildLocalTreeDxAdapter(): TreeseedReconcileAdapter {
@@ -1690,8 +1711,11 @@ function buildLocalTreeDxAdapter(): TreeseedReconcileAdapter {
 			if (!baseUrl || !token || projects.length === 0) return genericResult(input);
 			const client = new TreeDxClient({ baseUrl, token });
 			const syncedProjects = [];
+			const syncSeedContent = input.unit.spec.syncSeedContent !== false;
 			for (const project of projects) {
-				syncedProjects.push(await syncLocalTreeDxProjectContent(client, project));
+				syncedProjects.push(syncSeedContent
+					? await syncLocalTreeDxProjectContent(client, project)
+					: await ensureLocalTreeDxProjectRepositoryRef(client, project));
 			}
 			return genericResult(input, { ...input.observed.live, syncedProjects });
 		},
@@ -4530,7 +4554,6 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput, val
 }
 
 function capacityProviderRoleForService(serviceKey: string) {
-	if (serviceKey === 'capacityProviderApi') return 'api';
 	if (serviceKey === 'capacityProviderManager') return 'manager';
 	if (serviceKey === 'capacityProviderRunner') return 'runner';
 	return null;
