@@ -24,6 +24,7 @@ import type {
 	DecideApprovalRequestRequest,
 	SdkCreateMessageRequest,
 	SdkCreatePrioritySnapshotRequest,
+	SdkCreateTaskRequest,
 	SdkCursorEntity,
 	SdkCursorRequest,
 	SdkFilterCondition,
@@ -31,6 +32,7 @@ import type {
 	SdkGraphRunEntity,
 	SdkGetRequest,
 	SdkGetCursorRequest,
+	SdkClaimTaskRequest,
 	SdkLeaseEntity,
 	SdkLeaseReleaseRequest,
 	SdkMessageEntity,
@@ -42,6 +44,7 @@ import type {
 	SdkCreateWorkdayRequest,
 	SdkRecordRepositoryClaimRequest,
 	SdkRecordRunnerScaleDecisionRequest,
+	SdkRecordTaskProgressRequest,
 	SdkRecordWorkerRunnerRequest,
 	SdkRecordRunRequest,
 	SdkRecordScaleDecisionRequest,
@@ -50,6 +53,7 @@ import type {
 	SdkReportEntity,
 	SdkRunEntity,
 	SdkSearchRequest,
+	SdkCompleteTaskRequest,
 	SdkStartWorkDayRequest,
 	ListApprovalRequestsRequest,
 	SdkSubscriptionEntity,
@@ -57,6 +61,10 @@ import type {
 	SdkUpsertWorkPolicyRequest,
 	SdkUpdateWorkDayGraphRequest,
 	SdkUpdateRequest,
+	SdkTaskEntity,
+	SdkTaskEventEntity,
+	SdkTaskManagerContext,
+	SdkTaskOutputEntity,
 	SdkWorkDayEntity,
 	RepositoryClaim,
 	RunnerScaleDecision,
@@ -85,6 +93,9 @@ type D1Record =
 	| SdkCursorEntity
 	| SdkLeaseEntity
 	| SdkWorkDayEntity
+	| SdkTaskEntity
+	| SdkTaskEventEntity
+	| SdkTaskOutputEntity
 	| SdkGraphRunEntity
 	| SdkReportEntity;
 
@@ -111,6 +122,11 @@ export interface AgentDatabase {
 	upsertWorkPolicy(request: SdkUpsertWorkPolicyRequest): Promise<WorkdayPolicy | null>;
 	createWorkdayRequest(request: SdkCreateWorkdayRequest): Promise<WorkdayRequest | null>;
 	listWorkdayRequests(projectId: string, environment: string, state?: string | null): Promise<WorkdayRequest[]>;
+	createTask(request: SdkCreateTaskRequest): Promise<SdkTaskEntity | null>;
+	claimTask(request: SdkClaimTaskRequest): Promise<SdkTaskEntity | null>;
+	recordTaskProgress(request: SdkRecordTaskProgressRequest): Promise<SdkTaskEntity | null>;
+	completeTask(request: SdkCompleteTaskRequest): Promise<SdkTaskEntity | null>;
+	getManagerContext(taskId: string): Promise<SdkTaskManagerContext>;
 	claimWorkdayManagerLease(request: SdkClaimWorkdayManagerLeaseRequest): Promise<WorkdayManagerLease | null>;
 	releaseWorkdayManagerLease(request: SdkReleaseWorkdayManagerLeaseRequest): Promise<WorkdayManagerLease | null>;
 	listWorkdayManagerLeases(projectId: string, environment: string): Promise<WorkdayManagerLease[]>;
@@ -260,6 +276,9 @@ export class MemoryAgentDatabase implements AgentDatabase {
 	private readonly reports = new Map<string, SdkReportEntity>();
 	private readonly workPolicies = new Map<string, WorkdayPolicy>();
 	private readonly workdayRequests = new Map<string, WorkdayRequest>();
+	private readonly tasks = new Map<string, SdkTaskEntity>();
+	private readonly taskEvents = new Map<string, SdkTaskEventEntity>();
+	private readonly taskOutputs = new Map<string, SdkTaskOutputEntity>();
 	private readonly workdayManagerLeases = new Map<string, WorkdayManagerLease>();
 	private readonly workerRunners = new Map<string, WorkerRunner>();
 	private readonly repositoryClaims = new Map<string, RepositoryClaim>();
@@ -332,6 +351,15 @@ export class MemoryAgentDatabase implements AgentDatabase {
 		if (model === 'work_day') {
 			return [...this.workDays.values()];
 		}
+		if (model === 'task') {
+			return [...this.tasks.values()];
+		}
+		if (model === 'task_event') {
+			return [...this.taskEvents.values()];
+		}
+		if (model === 'task_output') {
+			return [...this.taskOutputs.values()];
+		}
 		if (model === 'graph_run') {
 			return [...this.graphRuns.values()];
 		}
@@ -373,6 +401,15 @@ export class MemoryAgentDatabase implements AgentDatabase {
 		}
 		if (request.model === 'work_day') {
 			return this.workDays.get(key) ?? null;
+		}
+		if (request.model === 'task') {
+			return this.tasks.get(key) ?? null;
+		}
+		if (request.model === 'task_event') {
+			return this.taskEvents.get(key) ?? null;
+		}
+		if (request.model === 'task_output') {
+			return this.taskOutputs.get(key) ?? null;
 		}
 		if (request.model === 'graph_run') {
 			return this.graphRuns.get(key) ?? null;
@@ -875,6 +912,102 @@ export class MemoryAgentDatabase implements AgentDatabase {
 			.filter((entry) => entry.projectId === projectId && entry.environment === environment)
 			.filter((entry) => !state || entry.state === state)
 			.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+	}
+
+	async createTask(request: SdkCreateTaskRequest) {
+		const timestamp = nowIso();
+		const existing = [...this.tasks.values()].find((entry) => entry.idempotencyKey === request.idempotencyKey);
+		if (existing) return existing;
+		const record: SdkTaskEntity = {
+			id: request.id ?? crypto.randomUUID(),
+			workDayId: request.workDayId,
+			agentId: request.agentId,
+			type: request.type,
+			idempotencyKey: request.idempotencyKey,
+			payloadJson: JSON.stringify(request.payload ?? {}),
+			state: 'pending',
+			claimedBy: null,
+			claimedAt: null,
+			leaseExpiresAt: null,
+			attempts: 0,
+			createdAt: timestamp,
+			updatedAt: timestamp,
+		};
+		this.tasks.set(record.id, record);
+		return record;
+	}
+
+	async claimTask(request: SdkClaimTaskRequest) {
+		const existing = this.tasks.get(request.id);
+		if (!existing) return null;
+		const timestamp = nowIso();
+		const next: SdkTaskEntity = {
+			...existing,
+			state: 'claimed',
+			claimedBy: request.workerId,
+			claimedAt: timestamp,
+			leaseExpiresAt: new Date(Date.now() + ((request.leaseSeconds ?? 300) * 1000)).toISOString(),
+			attempts: existing.attempts + 1,
+			updatedAt: timestamp,
+		};
+		this.tasks.set(next.id, next);
+		return next;
+	}
+
+	async recordTaskProgress(request: SdkRecordTaskProgressRequest) {
+		const existing = this.tasks.get(request.id);
+		if (!existing) return null;
+		const timestamp = nowIso();
+		const next: SdkTaskEntity = {
+			...existing,
+			state: request.state ?? existing.state,
+			updatedAt: timestamp,
+		};
+		this.tasks.set(next.id, next);
+		if (request.appendEvent) {
+			const event: SdkTaskEventEntity = {
+				id: crypto.randomUUID(),
+				taskId: next.id,
+				kind: request.appendEvent.kind,
+				dataJson: JSON.stringify(request.appendEvent.data ?? {}),
+				actor: request.actor ?? null,
+				createdAt: timestamp,
+			};
+			this.taskEvents.set(event.id, event);
+		}
+		return next;
+	}
+
+	async completeTask(request: SdkCompleteTaskRequest) {
+		const existing = this.tasks.get(request.id);
+		if (!existing) return null;
+		const timestamp = nowIso();
+		const next: SdkTaskEntity = {
+			...existing,
+			state: 'completed',
+			updatedAt: timestamp,
+		};
+		this.tasks.set(next.id, next);
+		const output: SdkTaskOutputEntity = {
+			id: crypto.randomUUID(),
+			taskId: next.id,
+			outputJson: JSON.stringify(request.output ?? {}),
+			outputRef: request.outputRef ?? null,
+			summaryJson: request.summary ? JSON.stringify(request.summary) : null,
+			actor: request.actor ?? null,
+			createdAt: timestamp,
+			updatedAt: timestamp,
+		};
+		this.taskOutputs.set(output.id, output);
+		return next;
+	}
+
+	async getManagerContext(taskId: string) {
+		const task = this.tasks.get(taskId) ?? null;
+		const workDay = task ? this.workDays.get(task.workDayId) ?? null : null;
+		const events = [...this.taskEvents.values()].filter((entry) => entry.taskId === taskId);
+		const outputs = [...this.taskOutputs.values()].filter((entry) => entry.taskId === taskId);
+		return { task, workDay, events, outputs };
 	}
 
 	async claimWorkdayManagerLease(request: SdkClaimWorkdayManagerLeaseRequest) {
@@ -1494,6 +1627,26 @@ export class CloudflareD1AgentDatabase implements AgentDatabase {
 
 	listWorkdayRequests(projectId: string, environment: string, state?: string | null) {
 		return this.operational.listWorkdayRequests(projectId, environment, state);
+	}
+
+	createTask(_request: SdkCreateTaskRequest): Promise<SdkTaskEntity | null> {
+		throw new Error('Project runner task lifecycle is not implemented by the SQLite SDK store.');
+	}
+
+	claimTask(_request: SdkClaimTaskRequest): Promise<SdkTaskEntity | null> {
+		throw new Error('Project runner task lifecycle is not implemented by the SQLite SDK store.');
+	}
+
+	recordTaskProgress(_request: SdkRecordTaskProgressRequest): Promise<SdkTaskEntity | null> {
+		throw new Error('Project runner task lifecycle is not implemented by the SQLite SDK store.');
+	}
+
+	completeTask(_request: SdkCompleteTaskRequest): Promise<SdkTaskEntity | null> {
+		throw new Error('Project runner task lifecycle is not implemented by the SQLite SDK store.');
+	}
+
+	getManagerContext(_taskId: string): Promise<SdkTaskManagerContext> {
+		throw new Error('Project runner task lifecycle is not implemented by the SQLite SDK store.');
 	}
 
 	claimWorkdayManagerLease(request: SdkClaimWorkdayManagerLeaseRequest) {

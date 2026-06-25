@@ -236,7 +236,6 @@ function processSpec(input: {
 		};
 	}
 	const webRuntime = input.options.webRuntime ?? 'local';
-	const runTsScript = `./packages/sdk/scripts/run-ts.${'mjs'}`;
 	const tenantAstroCommand = `./packages/sdk/scripts/tenant-astro-command.${'ts'}`;
 	const webArgs = webRuntime === 'provider'
 		? ['--host', host, '--port', String(webPort)]
@@ -245,7 +244,7 @@ function processSpec(input: {
 		? scriptCommand(input.tenantRoot, 'build:web', [])
 		: {
 			command: process.execPath,
-			args: [runTsScript, tenantAstroCommand, ...webArgs],
+			args: ['--import', 'tsx', tenantAstroCommand, ...webArgs],
 			cwd: input.tenantRoot,
 		};
 	return {

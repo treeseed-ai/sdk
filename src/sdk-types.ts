@@ -17,6 +17,9 @@ export const SDK_MODEL_NAMES = [
 	'agent_cursor',
 	'content_lease',
 	'work_day',
+	'task',
+	'task_event',
+	'task_output',
 	'graph_run',
 	'report',
 	'approval_request',
@@ -2068,6 +2071,89 @@ export interface SdkReportEntity {
 	renderedRef: string | null;
 	sentAt: string | null;
 	createdAt: string;
+}
+
+export type SdkTaskState = 'pending' | 'claimed' | 'running' | 'completed' | 'failed';
+
+export interface SdkTaskEntity {
+	[key: string]: unknown;
+	id: string;
+	workDayId: string;
+	agentId: string;
+	type: string;
+	idempotencyKey: string;
+	payloadJson: string;
+	state: SdkTaskState;
+	claimedBy: string | null;
+	claimedAt: string | null;
+	leaseExpiresAt: string | null;
+	attempts: number;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface SdkTaskEventEntity {
+	[key: string]: unknown;
+	id: string;
+	taskId: string;
+	kind: string;
+	dataJson: string;
+	actor: string | null;
+	createdAt: string;
+}
+
+export interface SdkTaskOutputEntity {
+	[key: string]: unknown;
+	id: string;
+	taskId: string;
+	outputJson: string;
+	outputRef: string | null;
+	summaryJson: string | null;
+	actor: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface SdkCreateTaskRequest {
+	id?: string;
+	workDayId: string;
+	agentId: string;
+	type: string;
+	idempotencyKey: string;
+	payload?: Record<string, unknown>;
+	actor?: string | null;
+}
+
+export interface SdkClaimTaskRequest {
+	id: string;
+	workerId: string;
+	leaseSeconds?: number;
+	actor?: string | null;
+}
+
+export interface SdkRecordTaskProgressRequest {
+	id: string;
+	state?: SdkTaskState;
+	appendEvent?: {
+		kind: string;
+		data?: Record<string, unknown>;
+	};
+	actor?: string | null;
+}
+
+export interface SdkCompleteTaskRequest {
+	id: string;
+	output?: Record<string, unknown>;
+	outputRef?: string | null;
+	summary?: Record<string, unknown>;
+	actor?: string | null;
+}
+
+export interface SdkTaskManagerContext {
+	task: SdkTaskEntity | null;
+	workDay: SdkWorkDayEntity | null;
+	events: SdkTaskEventEntity[];
+	outputs: SdkTaskOutputEntity[];
 }
 
 export interface SdkContentEntry {

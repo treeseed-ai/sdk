@@ -429,18 +429,19 @@ extensions:
       SAFE_FLAG: "1"
 `);
 		const plan = resolveCapacityProviderLaunchPlan(manifest);
-		expect(DEFAULT_CAPACITY_PROVIDER_ROLE_IMAGES).not.toHaveProperty('api');
+		expect(DEFAULT_CAPACITY_PROVIDER_ROLE_IMAGES).toHaveProperty('api');
 		expect(plan.roleImages).toEqual({
+			api: 'treeseed/agent-provider-api:dev-staging',
 			manager: 'treeseed/agent-manager:dev-staging',
 			runner: 'example/team-agent-runner:local',
 		});
 		expect(plan.composeEnv).toMatchObject({
+			TREESEED_AGENT_API_IMAGE: 'treeseed/agent-provider-api:dev-staging',
 			TREESEED_AGENT_MANAGER_IMAGE: 'treeseed/agent-manager:dev-staging',
 			TREESEED_AGENT_RUNNER_IMAGE: 'example/team-agent-runner:local',
 			TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/local-capacity-provider/data',
 			TREESEED_PROVIDER_MAX_CONCURRENT_RUNNERS: '2',
 		});
-		expect(plan.composeEnv).not.toHaveProperty('TREESEED_AGENT_API_IMAGE');
 		expect(JSON.stringify(plan.redactedEnv)).not.toContain('secret');
 		expect(() => parseCapacityProviderLaunchManifest(`
 schemaVersion: 1
@@ -488,15 +489,17 @@ extensions:
 				},
 			},
 		});
-		expect(CAPACITY_PROVIDER_DEPLOYMENT_SERVICE_ROLES).toEqual(['manager', 'runner']);
+		expect(CAPACITY_PROVIDER_DEPLOYMENT_SERVICE_ROLES).toEqual(['api', 'manager', 'runner']);
 		expect(railway.ok).toBe(true);
 		expect(railway.status).toBe('deployed');
-		expect(Object.keys(railway.serviceRefs)).toEqual(['manager', 'runner']);
+		expect(Object.keys(railway.serviceRefs)).toEqual(['api', 'manager', 'runner']);
 		expect(railway.roleImageRefs).toEqual({
+			api: 'ghcr.io/treeseed-ai/agent:verified',
 			manager: 'ghcr.io/treeseed-ai/agent:verified',
 			runner: 'ghcr.io/treeseed-ai/agent:verified',
 		});
 		expect(seen.map((entry) => entry.command)).toEqual([
+			'node ./dist/provider/entrypoint.js api',
 			'node ./dist/provider/entrypoint.js manager',
 			'node ./dist/provider/entrypoint.js runner',
 		]);

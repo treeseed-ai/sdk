@@ -38,11 +38,13 @@ import type {
 	ScaleDecision,
 	SdkClaimWorkdayManagerLeaseRequest,
 	SdkCloseWorkDayRequest,
+	SdkCreateTaskRequest,
 	SdkRecordRepositoryClaimRequest,
 	SdkRecordRunnerScaleDecisionRequest,
 	SdkRecordWorkerRunnerRequest,
 	SdkReleaseWorkdayManagerLeaseRequest,
 	SdkStartWorkDayRequest,
+	SdkTaskEntity,
 	SdkCreateWorkdayRequest,
 	SdkWorkDayEntity,
 	TeamStorageLocator,
@@ -378,6 +380,14 @@ export class ControlPlaneClient {
 			'POST',
 			`/v1/projects/${encodeURIComponent(projectId)}/runner/artifacts`,
 			{ body: input as Record<string, unknown> },
+		);
+	}
+
+	createRunnerTask(projectId: string, input: SdkCreateTaskRequest) {
+		return this.requestJson<SdkTaskEntity>(
+			'POST',
+			`/v1/projects/${encodeURIComponent(projectId)}/runner/tasks`,
+			{ body: input as unknown as Record<string, unknown> },
 		);
 	}
 

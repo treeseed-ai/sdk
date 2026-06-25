@@ -50,6 +50,49 @@ export const workDays = pgTable('work_days', {
 	updatedAt: text('updated_at').notNull(),
 });
 
+export const runtimeTasks = pgTable('runtime_tasks', {
+	id: text('id').primaryKey(),
+	projectId: text('project_id').notNull(),
+	workDayId: text('work_day_id').notNull(),
+	agentId: text('agent_id').notNull(),
+	type: text('type').notNull(),
+	idempotencyKey: text('idempotency_key').notNull().unique(),
+	payloadJson: text('payload_json').notNull(),
+	state: text('state').notNull(),
+	claimedBy: text('claimed_by'),
+	claimedAt: text('claimed_at'),
+	leaseExpiresAt: text('lease_expires_at'),
+	attempts: integer('attempts').notNull().default(0),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_runtime_tasks_project_workday_state').on(table.projectId, table.workDayId, table.state, table.createdAt)
+]);
+
+export const runtimeTaskEvents = pgTable('runtime_task_events', {
+	id: text('id').primaryKey(),
+	taskId: text('task_id').notNull(),
+	kind: text('kind').notNull(),
+	dataJson: text('data_json').notNull(),
+	actor: text('actor'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_runtime_task_events_task_created').on(table.taskId, table.createdAt)
+]);
+
+export const runtimeTaskOutputs = pgTable('runtime_task_outputs', {
+	id: text('id').primaryKey(),
+	taskId: text('task_id').notNull(),
+	outputJson: text('output_json').notNull(),
+	outputRef: text('output_ref'),
+	summaryJson: text('summary_json'),
+	actor: text('actor'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_runtime_task_outputs_task_created').on(table.taskId, table.createdAt)
+]);
+
 export const graphRuns = pgTable('graph_runs', {
 	id: text('id').primaryKey(),
 	workDayId: text('work_day_id').notNull(),

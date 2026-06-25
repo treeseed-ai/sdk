@@ -57,10 +57,12 @@ import type {
 	SdkCreateReportRequest,
 	SdkCreateMessageRequest,
 	SdkCreatePrioritySnapshotRequest,
+	SdkCreateTaskRequest,
 	SdkCursorRequest,
 	SdkFollowRequest,
 	SdkGetRequest,
 	SdkGetCursorRequest,
+	SdkClaimTaskRequest,
 	SdkJsonEnvelope,
 	SdkLeaseReleaseRequest,
 	SdkMutationRequest,
@@ -76,12 +78,14 @@ import type {
 	SdkCreateWorkdayRequest,
 	SdkRecordRepositoryClaimRequest,
 	SdkRecordRunnerScaleDecisionRequest,
+	SdkRecordTaskProgressRequest,
 	SdkRecordWorkerRunnerRequest,
 	SdkRecordRunRequest,
 	SdkRecordScaleDecisionRequest,
 	SdkRecordTaskCreditsRequest,
 	SdkReleaseWorkdayManagerLeaseRequest,
 	SdkSearchRequest,
+	SdkCompleteTaskRequest,
 	SdkStartWorkDayRequest,
 	SdkUpsertWorkPolicyRequest,
 	SdkUpdateWorkDayGraphRequest,
@@ -100,6 +104,8 @@ import type {
 	RunnerScaleDecision,
 	ScaleDecision,
 	TaskCreditLedgerEntry,
+	SdkTaskEntity,
+	SdkTaskManagerContext,
 	WorkdayManagerLease,
 	WorkdayPolicy,
 	WorkdayRequest,
@@ -611,6 +617,31 @@ export class AgentSdk {
 	async listWorkdayRequests(projectId: string, environment: string, state?: string | null) {
 		const payload = await this.database.listWorkdayRequests(projectId, environment, state);
 		return this.envelope<WorkdayRequest[]>('workday_request', 'search', payload, { count: payload.length });
+	}
+
+	async createTask(request: SdkCreateTaskRequest) {
+		const payload = await this.database.createTask(request);
+		return this.envelope<SdkTaskEntity>('task', 'create', payload);
+	}
+
+	async claimTask(request: SdkClaimTaskRequest) {
+		const payload = await this.database.claimTask(request);
+		return this.envelope<SdkTaskEntity>('task', 'pick', payload);
+	}
+
+	async recordTaskProgress(request: SdkRecordTaskProgressRequest) {
+		const payload = await this.database.recordTaskProgress(request);
+		return this.envelope<SdkTaskEntity>('task', 'update', payload);
+	}
+
+	async completeTask(request: SdkCompleteTaskRequest) {
+		const payload = await this.database.completeTask(request);
+		return this.envelope<SdkTaskEntity>('task', 'update', payload);
+	}
+
+	async getManagerContext(taskId: string) {
+		const payload = await this.database.getManagerContext(taskId);
+		return this.envelope<SdkTaskManagerContext>('task', 'get', payload);
 	}
 
 	async claimWorkdayManagerLease(request: SdkClaimWorkdayManagerLeaseRequest) {

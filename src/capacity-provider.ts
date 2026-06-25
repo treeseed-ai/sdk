@@ -91,11 +91,12 @@ export type CapacityProviderLaunchMode = 'self_hosted' | 'managed_market_host' |
 export type CapacityProviderStatus = 'pending' | 'online' | 'offline' | 'disabled' | 'rotation_required' | string;
 export type CapacityProviderConnectionState = 'waiting_for_provider' | 'connected' | 'auth_failed' | 'stale' | 'disabled' | string;
 export type CapacityProviderDeploymentStatus = 'not_deployed' | 'deploying' | 'deployed' | 'failed' | string;
-export type CapacityProviderDeploymentServiceRole = 'manager' | 'runner';
+export type CapacityProviderDeploymentServiceRole = 'api' | 'manager' | 'runner';
 
-export const CAPACITY_PROVIDER_DEPLOYMENT_SERVICE_ROLES = ['manager', 'runner'] as const;
+export const CAPACITY_PROVIDER_DEPLOYMENT_SERVICE_ROLES = ['api', 'manager', 'runner'] as const;
 
 export const DEFAULT_CAPACITY_PROVIDER_ROLE_IMAGES = {
+	api: 'treeseed/agent-provider-api',
 	manager: 'treeseed/agent-manager',
 	runner: 'treeseed/agent-runner',
 } as const satisfies Record<CapacityProviderDeploymentServiceRole, string>;
@@ -857,6 +858,7 @@ export function parseCapacityProviderLaunchManifest(source: string | Record<stri
 export function resolveCapacityProviderLaunchPlan(manifest: CapacityProviderLaunchManifest): CapacityProviderLaunchPlan {
 	assertSafeCapacityProviderManifest(manifest);
 	const roleImages = {
+		api: manifestRoleImage('api', manifest),
 		manager: manifestRoleImage('manager', manifest),
 		runner: manifestRoleImage('runner', manifest),
 	};
@@ -866,6 +868,7 @@ export function resolveCapacityProviderLaunchPlan(manifest: CapacityProviderLaun
 		...(manifest.provider?.market?.url ? { TREESEED_MARKET_URL: manifest.provider.market.url } : {}),
 		...(manifest.provider?.market?.id ? { TREESEED_MANAGER_ID: manifest.provider.market.id, TREESEED_MARKET_ID: manifest.provider.market.id } : {}),
 		...(manifest.runtime?.runners?.maxConcurrent ? { TREESEED_PROVIDER_MAX_CONCURRENT_RUNNERS: String(manifest.runtime.runners.maxConcurrent) } : {}),
+		TREESEED_AGENT_API_IMAGE: roleImages.api,
 		TREESEED_AGENT_MANAGER_IMAGE: roleImages.manager,
 		TREESEED_AGENT_RUNNER_IMAGE: roleImages.runner,
 	};
@@ -922,6 +925,7 @@ async function deployCapacityProviderWithAdapter(
 	hostKind: string,
 ): Promise<CapacityProviderDeploymentPrimitiveResult> {
 	const roleImageRefs = {
+		api: input.roleImageRefs?.api ?? input.imageRef ?? input.intent.imageRef ?? 'treeseed/agent-provider-api:latest',
 		manager: input.roleImageRefs?.manager ?? input.imageRef ?? input.intent.imageRef ?? 'treeseed/agent-manager:latest',
 		runner: input.roleImageRefs?.runner ?? input.imageRef ?? input.intent.imageRef ?? 'treeseed/agent-runner:latest',
 	};
