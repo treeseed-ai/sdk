@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.11.1-dev.demo.20260625T142822Z",
+  "version": "0.11.1-dev.demo.20260625T151401Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -65,6 +65,8 @@
     "@github/copilot-language-server": "1.480.0",
     "@github/copilot-sdk": "0.3.0",
     "@railway/cli": "4.44.0",
+    "@remotion/bundler": "4.0.477",
+    "@remotion/renderer": "4.0.477",
     "drizzle-orm": "^0.45.2",
     "esbuild": "^0.28.0",
     "extract-zip": "2.0.1",
@@ -76,9 +78,11 @@
     "minisearch": "^7.2.0",
     "octokit": "^5.0.3",
     "pg": "^8.21.0",
+    "playwright": "^1.60.0",
     "react": "^19.2.5",
     "remark-mdx": "^3.1.1",
     "remark-parse": "^11.0.0",
+    "remotion": "4.0.477",
     "repomix": "^1.13.1",
     "tar": "7.5.13",
     "typescript": "^5.9.3",
@@ -132,6 +136,10 @@
     "./seeds": {
       "types": "./dist/seeds/index.d.ts",
       "default": "./dist/seeds/index.js"
+    },
+    "./scenes": {
+      "types": "./dist/scenes/index.d.ts",
+      "default": "./dist/scenes/index.js"
     },
     "./scripts/verify-driver": {
       "types": "./dist/verification.d.ts",

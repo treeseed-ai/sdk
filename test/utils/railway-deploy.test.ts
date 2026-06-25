@@ -18,6 +18,7 @@ import {
 	railwayServiceRuntimeStartCommand,
 	resolveRailwayAuthToken,
 	shouldRunRailwayPredeployBuild,
+	validateRailwayServiceConfiguration,
 	validateRailwayDeployPrerequisites,
 	waitForRailwayManagedDeploymentsSettled,
 	verifyRailwayManagedResources,
@@ -378,11 +379,100 @@ services:
 		expect(runners.every((service) => service.volumeMountPath === '/data')).toBe(true);
 	});
 
+	it('uses workspace machine image refs for nested package Railway services', async () => {
+		const tenantRoot = await createTenantFixture();
+		await writeFile(
+			join(tenantRoot, 'package.json'),
+			JSON.stringify({ workspaces: ['packages/*'] }),
+		);
+		await mkdir(join(tenantRoot, 'packages/api/.treeseed/config'), { recursive: true });
+		await mkdir(join(tenantRoot, '.treeseed/config'), { recursive: true });
+		await writeFile(
+			join(tenantRoot, '.treeseed/config/machine.yaml'),
+			`environments:
+  staging:
+    values:
+      TREESEED_AGENT_MANAGER_IMAGE_REF: treeseed/agent-manager:dev-staging-current
+`,
+		);
+		await writeFile(
+			join(tenantRoot, 'packages/api/.treeseed/config/machine.yaml'),
+			`environments:
+  staging:
+    values:
+      TREESEED_AGENT_MANAGER_IMAGE_REF: treeseed/agent-manager:dev-staging-stale
+`,
+		);
+		await writeFile(
+			join(tenantRoot, 'packages/api/treeseed.site.yaml'),
+			`name: Test API
+slug: test-api
+siteUrl: https://api.example.com
+contactEmail: hello@example.com
+hosting:
+  kind: treeseed_control_plane
+runtime:
+  mode: treeseed_managed
+services:
+  capacityProviderManager:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-capacity
+      serviceName: treeseed-agent-manager
+      imageRefEnv: TREESEED_AGENT_MANAGER_IMAGE_REF
+      healthcheckPath: /healthz
+      runtimeMode: service
+`,
+		);
+
+		const services = configuredRailwayServices(tenantRoot, 'staging');
+		const api = services.find((service) => service.key === 'capacityProviderManager');
+
+		expect(api).toMatchObject({
+			serviceName: 'treeseed-agent-manager',
+			imageRef: 'treeseed/agent-manager:dev-staging-current',
+		});
+	});
+
 	it('keeps provider runtime commands out of root Market Railway services', async () => {
 		const tenantRoot = await createTenantFixture();
 		const services = configuredRailwayServices(tenantRoot, 'staging');
 		expect(services.map((service) => service.startCommand).filter(Boolean).join('\n')).not.toContain('npm run build &&');
 		expect(services.map((service) => service.startCommand).filter(Boolean).join('\n')).not.toContain('provider/entrypoint.js');
+	});
+
+	it('does not require local source roots for image-backed Railway services', async () => {
+		const tenantRoot = await createTenantFixture();
+		await writeFile(
+			join(tenantRoot, 'treeseed.site.yaml'),
+			`name: Test Site
+slug: test-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+hosting:
+  kind: treeseed_control_plane
+runtime:
+  mode: treeseed_managed
+services:
+  api:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api
+      imageRef: treeseed/api:dev-staging
+  capacityProviderApi:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-agent-capacity-provider
+      serviceName: treeseed-agent-api
+      imageRef: treeseed/agent-api:dev-staging
+`,
+		);
+
+		expect(() => validateRailwayServiceConfiguration(tenantRoot, 'staging')).not.toThrow();
 	});
 
 	it('lets Railway run service build commands from a clean upload in hosted CI', () => {

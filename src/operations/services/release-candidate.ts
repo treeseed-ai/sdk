@@ -1,20 +1,20 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { isTreeseedEnvironmentEntryRelevant, isTreeseedEnvironmentEntryRequired } from '../../platform/environment.ts';
 import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
 import { createGitHubApiClient, listGitHubEnvironmentSecretNames, listGitHubEnvironmentVariableNames } from './github-api.ts';
 import { resolveGitHubCredentialForRepository } from './github-credentials.ts';
-import { collectInternalDevReferenceIssues, installableInternalDependencyVersions, normalizeGitRemoteForManifest } from './package-reference-policy.ts';
+import { collectInternalDevReferenceIssues, installableInternalDependencyVersions } from './package-reference-policy.ts';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, validateTreeseedCommandEnvironment } from './config-runtime.ts';
 import { loadDeployState } from './deploy.ts';
 import { loadTreeseedPlatformConfig } from '../../platform/config.ts';
-import { packagesWithScript, run, workspacePackages } from './workspace-tools.ts';
+import { packagesWithScript, run, sortWorkspacePackages, workspacePackages } from './workspace-tools.ts';
 import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
 import { createBuildWarningSummary, formatAllowedBuildWarnings } from './build-warning-policy.js';
 import { discoverTreeseedPackageAdapters, type TreeseedPackageAdapter } from './package-adapters.ts';
+import { runReleaseGraphRehearsal, type ReleaseGraphProof, type ReleaseGraphVerifyDriver } from './release-graph-rehearsal.ts';
 
 function runGit(args: string[], options: { cwd: string; capture?: boolean; timeoutMs?: number; maxBuffer?: number }) {
 	return runTreeseedGitText(args, {
@@ -67,6 +67,7 @@ export type ReleaseCandidateReport = {
 	mode: ReleaseCandidateMode;
 	reason: string;
 	topology: ReleaseCandidateTopologyFingerprint;
+	localProof?: ReleaseGraphProof | null;
 	reused: boolean;
 	checkedAt: string;
 	failures: ReleaseCandidateFailure[];
@@ -79,6 +80,9 @@ export type ReleaseCandidateInput = {
 	selectedPackageNames?: string[];
 	allowReuse?: boolean;
 	mode?: ReleaseCandidateMode;
+	verifyDriver?: ReleaseGraphVerifyDriver;
+	keepWorkspace?: boolean;
+	write?: (line: string, stream?: 'stdout' | 'stderr') => void;
 };
 
 const RELEASE_CANDIDATE_CACHE_DIR = '.treeseed/workflow/release-candidates';
@@ -397,12 +401,29 @@ function addFailure(failures: ReleaseCandidateFailure[], failure: ReleaseCandida
 	});
 }
 
+function sortPackageAdaptersForReadiness(root: string, packages: TreeseedPackageAdapter[]) {
+	const workspaceOrder = new Map(
+		sortWorkspacePackages(workspacePackages(root))
+			.map((pkg, index) => [pkg.name, index]),
+	);
+	return [...packages].sort((left, right) => {
+		const leftOrder = workspaceOrder.get(left.name) ?? workspaceOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+		const rightOrder = workspaceOrder.get(right.name) ?? workspaceOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+		if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+		if (left.kind !== right.kind) return left.kind === 'node-typescript' ? -1 : 1;
+		return left.id.localeCompare(right.id);
+	});
+}
+
 function packageReadinessChecks(root: string, selectedPackageNames: string[], failures: ReleaseCandidateFailure[], options: { skipNpmPack?: boolean } = {}): ReleaseCandidateCheck {
 	if (selectedPackageNames.length === 0) {
 		return { name: 'package-release-readiness', status: 'skipped', detail: 'No packages are selected for this release.' };
 	}
 	const selected = new Set(selectedPackageNames);
-	const packages = discoverTreeseedPackageAdapters(root).filter((pkg) => selected.has(pkg.id) || selected.has(pkg.name));
+	const packages = sortPackageAdaptersForReadiness(
+		root,
+		discoverTreeseedPackageAdapters(root).filter((pkg) => selected.has(pkg.id) || selected.has(pkg.name)),
+	);
 	for (const pkg of packages) {
 		checkPackageAdapterReadiness(pkg, failures, options);
 	}
@@ -507,8 +528,15 @@ function checkPackageAdapterReadiness(pkg: TreeseedPackageAdapter, failures: Rel
 	}
 }
 
+function releaseCandidateTempBase(root: string) {
+	const configured = process.env.TREESEED_RELEASE_CANDIDATE_TMPDIR;
+	const base = configured ? resolve(configured) : resolve(root, '.treeseed', 'tmp', 'release-candidate');
+	mkdirSync(base, { recursive: true });
+	return base;
+}
+
 function copyWorkspaceForProductionRehearsal(root: string) {
-	const tempParent = mkdtempSync(join(tmpdir(), 'treeseed-release-candidate-'));
+	const tempParent = mkdtempSync(join(releaseCandidateTempBase(root), 'treeseed-release-candidate-'));
 	const tempRoot = join(tempParent, 'workspace');
 	cpSync(root, tempRoot, {
 		recursive: true,
@@ -527,7 +555,6 @@ function applyPlannedStableMetadata(root: string, plannedVersions: Record<string
 		Object.entries(plannedVersions).filter(([, version]) => STABLE_SEMVER.test(version)),
 	);
 	const dependencyVersions = installableInternalDependencyVersions(root, stableVersions);
-	const stableGitReferences = stablePackageGitReferences(root, dependencyVersions);
 	const targets = [
 		{ name: '@treeseed/market', dir: root },
 		...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir })),
@@ -547,7 +574,7 @@ function applyPlannedStableMetadata(root: string, plannedVersions: Record<string
 			if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
 			for (const [dependencyName, version] of dependencyVersions.entries()) {
 				if (!(dependencyName in values)) continue;
-				const dependencySpec = stableGitReferences.get(dependencyName) ?? version;
+				const dependencySpec = version;
 				if (String((values as Record<string, unknown>)[dependencyName]) === dependencySpec) continue;
 				(values as Record<string, unknown>)[dependencyName] = dependencySpec;
 				changed = true;
@@ -557,23 +584,6 @@ function applyPlannedStableMetadata(root: string, plannedVersions: Record<string
 			writeJsonFile(packageJsonPath, packageJson);
 		}
 	}
-}
-
-function stablePackageGitReferences(root: string, versions: Map<string, string>) {
-	return new Map(workspacePackages(root)
-		.map((pkg) => {
-			const version = versions.get(pkg.name);
-			if (!version) return null;
-			let remote: string | null = null;
-			try {
-				remote = runGit(['remote', 'get-url', 'origin'], { cwd: pkg.dir, capture: true }).trim();
-			} catch {
-				remote = null;
-			}
-			const manifestRemote = normalizeGitRemoteForManifest(remote ?? '', 'preserve-origin');
-			return manifestRemote ? [pkg.name, `${manifestRemote}#${version}`] as const : null;
-		})
-		.filter((entry): entry is readonly [string, string] => Boolean(entry)));
 }
 
 function rehearsalVerifyScript(root: string) {
@@ -633,7 +643,6 @@ function runNpmRehearsalCommand(args: string[], options: { cwd: string; timeoutM
 function npmRehearsalEnv(extra: NodeJS.ProcessEnv = {}) {
 	return {
 		...process.env,
-		npm_config_jobs: process.env.npm_config_jobs ?? '2',
 		npm_config_audit: process.env.npm_config_audit ?? 'false',
 		npm_config_fund: process.env.npm_config_fund ?? 'false',
 		...extra,
@@ -778,6 +787,43 @@ function dependencyRehearsalChecks(
 	};
 }
 
+function localReleaseGraphRehearsalChecks(
+	root: string,
+	selectedPackageNames: string[],
+	failures: ReleaseCandidateFailure[],
+	options: {
+		verifyDriver?: ReleaseGraphVerifyDriver;
+		keepWorkspace?: boolean;
+		write?: (line: string, stream?: 'stdout' | 'stderr') => void;
+	} = {},
+): { check: ReleaseCandidateCheck; proof: ReleaseGraphProof } {
+	const before = failures.length;
+	const proof = runReleaseGraphRehearsal({
+		root,
+		selectedPackageNames,
+		verifyDriver: options.verifyDriver ?? 'auto',
+		keepWorkspace: options.keepWorkspace,
+		strict: true,
+		write: options.write,
+	});
+	for (const failure of proof.failures) {
+		addFailure(failures, {
+			code: failure.code,
+			scope: failure.scope,
+			message: failure.message,
+			details: failure.details,
+		});
+	}
+	return {
+		proof,
+		check: {
+			name: 'local-release-graph-rehearsal',
+			status: failures.length > before ? 'failed' : 'passed',
+			detail: `Rehearsed ${proof.graph.order.length} package graph node${proof.graph.order.length === 1 ? '' : 's'} locally before hosted gates. Order: ${proof.graph.order.join(', ') || 'none'}.`,
+		},
+	};
+}
+
 function validateInternalGitReferenceTags(root: string, failures: ReleaseCandidateFailure[]): number {
 	const issues = collectInternalDevReferenceIssues(root);
 	let checked = 0;
@@ -841,6 +887,7 @@ function skippedReleaseCandidateReport(fingerprint: ReleaseCandidateFingerprint,
 		mode: 'skip',
 		reason: 'Release-candidate checks skipped by explicit request.',
 		topology,
+		localProof: null,
 		reused: false,
 		checkedAt: nowIso(),
 		failures: [],
@@ -1091,10 +1138,20 @@ export async function runReleaseCandidateGate(input: ReleaseCandidateInput): Pro
 		: 'Strict release-candidate selected.';
 	const failures: ReleaseCandidateFailure[] = [];
 	const checks: ReleaseCandidateCheck[] = [];
-	checks.push(effectiveMode === 'hybrid'
-		? lightweightDependencyChecks(input.root, failures)
-		: dependencyRehearsalChecks(input.root, plannedVersions, selectedPackageNames, failures));
-	checks.push(packageReadinessChecks(input.root, selectedPackageNames, failures, { skipNpmPack: effectiveMode === 'hybrid' }));
+	let localProof: ReleaseGraphProof | null = null;
+	if (effectiveMode === 'hybrid') {
+		checks.push(lightweightDependencyChecks(input.root, failures));
+		checks.push(packageReadinessChecks(input.root, selectedPackageNames, failures, { skipNpmPack: true }));
+	} else {
+		checks.push(dependencyRehearsalChecks(input.root, plannedVersions, selectedPackageNames, failures));
+		const rehearsal = localReleaseGraphRehearsalChecks(input.root, selectedPackageNames, failures, {
+			verifyDriver: input.verifyDriver,
+			keepWorkspace: input.keepWorkspace,
+			write: input.write,
+		});
+		localProof = rehearsal.proof;
+		checks.push(rehearsal.check);
+	}
 	checks.push(await configParityChecks(input.root, failures));
 	checks.push(migrationCompatibilityChecks(input.root, failures));
 	const report: ReleaseCandidateReport = {
@@ -1103,6 +1160,7 @@ export async function runReleaseCandidateGate(input: ReleaseCandidateInput): Pro
 		mode: effectiveMode,
 		reason,
 		topology,
+		localProof,
 		reused: false,
 		checkedAt: nowIso(),
 		failures,

@@ -148,6 +148,19 @@ describe('GitHub Actions verification', () => {
 		expect(report.failures.map((failure) => failure.state)).toEqual(['missing']);
 	});
 
+	it('reports non-fatal missing workflow runs for default CI discovery targets', async () => {
+		const report = await inspectGitHubActionsVerification([target({
+			missingIsFailure: false,
+			workflows: ['release-gate.yml'],
+		})], {
+			client: fakeClient({ remoteHead: 'abc123' }),
+		});
+
+		expect(report.summary.missing).toBe(1);
+		expect(report.repositories[0]?.state).toBe('missing');
+		expect(report.failures).toEqual([]);
+	});
+
 	it('formats gate failures with failed job names and inspect command', () => {
 		const message = formatGitHubActionsGateFailure({
 			name: '@treeseed/core',

@@ -23,6 +23,7 @@ export interface TreeseedLiveHostedServiceCheckOptions {
 	tenantRoot: string;
 	target: TreeseedHostedServiceTarget;
 	appId?: string;
+	serviceKeys?: string[];
 	strict?: boolean;
 	requireLiveRailway?: boolean;
 	requireLiveHttp?: boolean;
@@ -157,15 +158,26 @@ function isRetainedDetachedRailwayVolume(value: unknown) {
 	return String(value ?? '').trim().startsWith('retained-');
 }
 
+function selectedServiceKeySet(options: TreeseedLiveHostedServiceCheckOptions) {
+	return new Set((options.serviceKeys ?? []).map((key) => key.trim()).filter(Boolean));
+}
+
+function serviceIsSelected(selected: Set<string>, serviceKey: string) {
+	return selected.size === 0 || selected.has(serviceKey);
+}
+
 async function collectRailwayObservations(options: TreeseedLiveHostedServiceCheckOptions) {
 	const observed: Record<string, TreeseedObservedRailwayServiceState> = {};
 	const issues: string[] = [];
 	const inspectedVolumeScopes = new Set<string>();
 	const inspectedRunnerScopes = new Set<string>();
+	const selectedServiceKeys = selectedServiceKeySet(options);
 	try {
 		const workspace = await resolveRailwayWorkspaceContext({ env: options.env, fetchImpl: options.fetchImpl });
 		const projects = await listRailwayProjects({ workspaceId: workspace.id, env: options.env, fetchImpl: options.fetchImpl });
-		const configuredServices = configuredRailwayServices(options.tenantRoot, options.target).filter((entry) => !options.appId || entry.application?.id === options.appId);
+		const configuredServices = configuredRailwayServices(options.tenantRoot, options.target)
+			.filter((entry) => !options.appId || entry.application?.id === options.appId)
+			.filter((entry) => serviceIsSelected(selectedServiceKeys, entry.key));
 		for (const service of configuredServices) {
 			const project = service.projectId
 				? findByName(projects, service.projectId)
@@ -274,71 +286,73 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 				health: 'unknown',
 			};
 		}
-		const deployConfig = loadTreeseedPlatformConfig({ tenantRoot: options.tenantRoot, environment: options.target, env: process.env }).deployConfig;
-		const appConfigs = [
-			...(!options.appId || options.appId === 'web' ? [deployConfig] : []),
-			...discoverTreeseedApplications(options.tenantRoot)
-				.filter((application) => application.id === 'api' && (!options.appId || options.appId === 'api'))
-				.map((application) => application.config),
-		];
-		for (const config of appConfigs) {
-			const nodePool = config.publicTreeDxFederation?.railway?.nodePool;
-			if (!nodePool && config.hosting?.kind !== 'treeseed_control_plane') continue;
-			const bootstrapCount = Math.max(1, Number.parseInt(String(nodePool?.bootstrapCount ?? 1), 10) || 1);
-			const projectName = config.slug ?? 'treeseed-api';
-			const environmentName = normalizeRailwayEnvironmentName(options.target) || options.target;
-			const project = findByName(projects, projectName);
-			if (!project?.id) {
-				issues.push(`public-treedx: Railway project ${projectName} was not found.`);
-				continue;
-			}
-			const environments = await listRailwayEnvironments({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl });
-			const environment = findByName(environments, environmentName);
-			if (!environment?.id) {
-				issues.push(`public-treedx: Railway environment ${environmentName} was not found.`);
-				continue;
-			}
-			const [services, volumes] = await Promise.all([
-				listRailwayServices({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl }),
-				listRailwayVolumes({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => []),
-			]);
-			for (let index = 1; index <= bootstrapCount; index += 1) {
-				const serviceName = indexedName('public-treedx-node', index);
-				const volumeName = `${serviceName}-volume`;
-				const configuredNode = Array.isArray(config.services)
-					? config.services.find((service: any) => service?.id === serviceName || service?.name === serviceName)
-					: null;
-				const volumeMountPath = typeof configuredNode?.volumeMountPath === 'string' && configuredNode.volumeMountPath.trim()
-					? configuredNode.volumeMountPath.trim()
-					: '/data';
-				const service = findByName(services, serviceName);
-				if (!service?.id) {
-					issues.push(`${serviceName}: public TreeDX Railway service was not found.`);
+		if (selectedServiceKeys.size === 0) {
+			const deployConfig = loadTreeseedPlatformConfig({ tenantRoot: options.tenantRoot, environment: options.target, env: process.env }).deployConfig;
+			const appConfigs = [
+				...(!options.appId || options.appId === 'web' ? [deployConfig] : []),
+				...discoverTreeseedApplications(options.tenantRoot)
+					.filter((application) => application.id === 'api' && (!options.appId || options.appId === 'api'))
+					.map((application) => application.config),
+			];
+			for (const config of appConfigs) {
+				const nodePool = config.publicTreeDxFederation?.railway?.nodePool;
+				if (!nodePool && config.hosting?.kind !== 'treeseed_control_plane') continue;
+				const bootstrapCount = Math.max(1, Number.parseInt(String(nodePool?.bootstrapCount ?? 1), 10) || 1);
+				const projectName = config.slug ?? 'treeseed-api';
+				const environmentName = normalizeRailwayEnvironmentName(options.target) || options.target;
+				const project = findByName(projects, projectName);
+				if (!project?.id) {
+					issues.push(`public-treedx: Railway project ${projectName} was not found.`);
 					continue;
 				}
-				const deployment = await inspectRailwayServiceDeploymentHealthWithRetry({
-					serviceId: service.id,
-					environmentId: environment.id,
-					options,
-				}).catch((error) => ({
-					ok: false,
-					status: null,
-					message: error instanceof Error ? error.message : String(error ?? 'Unable to inspect TreeDX deployment health.'),
-				}));
-				if (!deployment.ok) {
-					issues.push(`${serviceName}: public TreeDX latest deployment is not healthy. ${deployment.message}`);
+				const environments = await listRailwayEnvironments({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl });
+				const environment = findByName(environments, environmentName);
+				if (!environment?.id) {
+					issues.push(`public-treedx: Railway environment ${environmentName} was not found.`);
+					continue;
 				}
-				const variables = await listRailwayVariables({ projectId: project.id, environmentId: environment.id, serviceId: service.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => ({}));
-				if (variables.TREEDX_FEDERATION_MODE !== 'connected_library') {
-					issues.push(`${serviceName}: TREEDX_FEDERATION_MODE is not connected_library.`);
-				}
-				const mountedVolume = volumes.find((volume) => volume.name === volumeName && volume.instances.some((instance) =>
-					instance.serviceId === service.id
-					&& instance.environmentId === environment.id
-					&& instance.mountPath === volumeMountPath
-				));
-				if (!mountedVolume) {
-					issues.push(`${serviceName}: public TreeDX volume ${volumeName} is not mounted at ${volumeMountPath}.`);
+				const [services, volumes] = await Promise.all([
+					listRailwayServices({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl }),
+					listRailwayVolumes({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => []),
+				]);
+				for (let index = 1; index <= bootstrapCount; index += 1) {
+					const serviceName = indexedName('public-treedx-node', index);
+					const volumeName = `${serviceName}-volume`;
+					const configuredNode = Array.isArray(config.services)
+						? config.services.find((service: any) => service?.id === serviceName || service?.name === serviceName)
+						: null;
+					const volumeMountPath = typeof configuredNode?.volumeMountPath === 'string' && configuredNode.volumeMountPath.trim()
+						? configuredNode.volumeMountPath.trim()
+						: '/data';
+					const service = findByName(services, serviceName);
+					if (!service?.id) {
+						issues.push(`${serviceName}: public TreeDX Railway service was not found.`);
+						continue;
+					}
+					const deployment = await inspectRailwayServiceDeploymentHealthWithRetry({
+						serviceId: service.id,
+						environmentId: environment.id,
+						options,
+					}).catch((error) => ({
+						ok: false,
+						status: null,
+						message: error instanceof Error ? error.message : String(error ?? 'Unable to inspect TreeDX deployment health.'),
+					}));
+					if (!deployment.ok) {
+						issues.push(`${serviceName}: public TreeDX latest deployment is not healthy. ${deployment.message}`);
+					}
+					const variables = await listRailwayVariables({ projectId: project.id, environmentId: environment.id, serviceId: service.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => ({}));
+					if (variables.TREEDX_FEDERATION_MODE !== 'connected_library') {
+						issues.push(`${serviceName}: TREEDX_FEDERATION_MODE is not connected_library.`);
+					}
+					const mountedVolume = volumes.find((volume) => volume.name === volumeName && volume.instances.some((instance) =>
+						instance.serviceId === service.id
+						&& instance.environmentId === environment.id
+						&& instance.mountPath === volumeMountPath
+					));
+					if (!mountedVolume) {
+						issues.push(`${serviceName}: public TreeDX volume ${volumeName} is not mounted at ${volumeMountPath}.`);
+					}
 				}
 			}
 		}
@@ -356,6 +370,7 @@ async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOp
 	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot: options.tenantRoot, environment: options.target, env: process.env }).deployConfig;
 	const urls = new Set<string>();
 	const fallbacks = new Map<string, string>();
+	const selectedServiceKeys = selectedServiceKeySet(options);
 	const selectedApplication = options.appId
 		? discoverTreeseedApplications(options.tenantRoot).find((application) => application.id === options.appId || application.relativeRoot === options.appId)
 		: null;
@@ -380,7 +395,9 @@ async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOp
 			}
 		}
 	}
-	for (const service of configuredRailwayServices(options.tenantRoot, options.target).filter((entry) => !options.appId || entry.application?.id === options.appId)) {
+	for (const service of configuredRailwayServices(options.tenantRoot, options.target)
+		.filter((entry) => !options.appId || entry.application?.id === options.appId)
+		.filter((entry) => serviceIsSelected(selectedServiceKeys, entry.key))) {
 		const serviceConfig = deployConfig.services?.[service.key];
 		const domain = service.publicBaseUrl
 			?? serviceConfig?.environments?.[options.target]?.baseUrl
@@ -445,6 +462,7 @@ export async function collectTreeseedLiveHostedServiceChecks(options: TreeseedLi
 		tenantRoot: options.tenantRoot,
 		target: options.target,
 		appId: options.appId,
+		serviceKeys: options.serviceKeys,
 		observedRailwayServices: railway.observed,
 		httpChecks,
 	});

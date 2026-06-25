@@ -1,5 +1,4 @@
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
@@ -423,7 +422,9 @@ export function auditProjectLaunchHostBindingConfig(options: ApplyProjectLaunchH
 		plannedTargets.add('src/env.yaml');
 	}
 	const checkedTargets = [...plannedTargets];
-	const tempRoot = mkdtempSync(join(tmpdir(), 'treeseed-host-binding-audit-'));
+	const tempBase = resolve(options.projectRoot, '.treeseed', 'tmp', 'host-binding-audit');
+	mkdirSync(tempBase, { recursive: true });
+	const tempRoot = mkdtempSync(join(tempBase, 'treeseed-host-binding-audit-'));
 	const before = new Map<TemplateConfigWriteTarget, string | null>();
 	try {
 		for (const target of checkedTargets) {

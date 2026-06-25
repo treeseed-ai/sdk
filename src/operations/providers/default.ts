@@ -1,7 +1,6 @@
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, relative, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
 import { RemoteTreeseedAuthClient, RemoteTreeseedClient } from '../../remote.ts';
 import { classifyTreeseedGitMode, runTreeseedGitText } from '../../operations/services/git-runner.ts';
 import {
@@ -233,11 +232,17 @@ function copyFileIfExists(sourceFile: string, targetFile: string) {
 	writeFileSync(targetFile, readFileSync(sourceFile));
 }
 
+function providerTempRoot(tenantRoot: string, scope: string) {
+	const base = resolve(tenantRoot, '.treeseed', 'tmp', scope);
+	mkdirSync(base, { recursive: true });
+	return base;
+}
+
 function prepareContentPublishRoot(tenantRoot: string, contentRepositoryRoot: string | null) {
 	if (!contentRepositoryRoot || resolve(contentRepositoryRoot) === resolve(tenantRoot)) {
 		return { root: tenantRoot, cleanup: () => {} };
 	}
-	const tempRoot = mkdtempSync(join(tmpdir(), 'treeseed-content-repo-publish-'));
+	const tempRoot = mkdtempSync(join(providerTempRoot(tenantRoot, 'content-repo-publish'), 'treeseed-content-repo-publish-'));
 	copyFileIfExists(resolve(tenantRoot, 'treeseed.site.yaml'), resolve(tempRoot, 'treeseed.site.yaml'));
 	copyFileIfExists(resolve(tenantRoot, 'package.json'), resolve(tempRoot, 'package.json'));
 	copyFileIfExists(resolve(tenantRoot, 'src', 'manifest.yaml'), resolve(tempRoot, 'src', 'manifest.yaml'));
@@ -1209,7 +1214,8 @@ class RollbackOperation extends BaseOperation {
 		}
 		const gitRoot = repoRoot(tenantRoot);
 		const tenantRelativePath = relative(gitRoot, tenantRoot);
-		const tempRoot = mkdtempSync(join(tmpdir(), 'treeseed-rollback-'));
+		const rollbackBase = providerTempRoot(tenantRoot, 'rollback');
+		const tempRoot = mkdtempSync(join(rollbackBase, 'treeseed-rollback-'));
 		const tempTenantRoot = resolve(tempRoot, tenantRelativePath);
 		const currentNodeModules = resolve(tenantRoot, 'node_modules');
 		let finalizedState: Record<string, unknown> | null = null;

@@ -39,7 +39,9 @@ import { sdkFixtureRoot } from '../test-fixture.ts';
 function createTenantFixture() {
 	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-remote-test-'));
 	mkdirSync(resolve(tenantRoot, 'src'), { recursive: true });
+	mkdirSync(resolve(tenantRoot, '.treeseed', 'config'), { recursive: true });
 	writeFileSync(resolve(tenantRoot, 'src', 'manifest.yaml'), 'id: test\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n  notes: ./src/content/notes\n  questions: ./src/content/questions\n  objectives: ./src/content/objectives\n  proposals: ./src/content/proposals\n  decisions: ./src/content/decisions\n  people: ./src/content/people\n  agents: ./src/content/agents\n  books: ./src/content/books\n  docs: ./src/content/knowledge\nfeatures:\n  docs: true\n  proposals: true\n  decisions: true\n');
+	writeFileSync(resolve(tenantRoot, '.treeseed', 'config', 'machine.yaml'), 'version: 1\n');
 	writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test
 slug: test
 siteUrl: https://example.com
@@ -276,6 +278,42 @@ describe('remote Treeseed support', () => {
 			expect(state.queues).toEqual({});
 		expect(state.content.manifestKey).toBe('teams/acme/published/common.json');
 		expect(state.content.previewRootTemplate).toBe('teams/{teamId}/previews');
+	});
+
+	it('prefers configured API connections over stale service URLs', () => {
+		const baseConfig = loadCliDeployConfig(createTenantFixture());
+		const deployConfig = {
+			...baseConfig,
+			connections: {
+				...(baseConfig.connections ?? {}),
+				api: {
+					...(baseConfig.connections?.api ?? {}),
+					environments: {
+						...(baseConfig.connections?.api?.environments ?? {}),
+						staging: { baseUrl: 'https://connected-api.example.com' },
+					},
+				},
+			},
+			services: {
+				...(baseConfig.services ?? {}),
+				api: {
+					...baseConfig.services?.api,
+					environments: {
+						...(baseConfig.services?.api?.environments ?? {}),
+						staging: {
+							...(baseConfig.services?.api?.environments?.staging ?? {}),
+							baseUrl: 'https://stale-service-api.example.com',
+						},
+					},
+				},
+			},
+		};
+
+		expect(resolveConfiguredSurfaceBaseUrl(
+			deployConfig,
+			createPersistentDeployTarget('staging'),
+			'api',
+		)).toBe('https://connected-api.example.com');
 	});
 
 	it('loads persistent deploy state from the primary checkout inside managed worktrees', () => {

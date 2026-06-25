@@ -815,7 +815,7 @@ export function resolveTreeseedWorkflowState(cwd: string, options: TreeseedWorkf
 			blockers: workflowBlockers,
 		},
 		packageSync: {
-			mode: completePackageCheckout ? 'recursive-workspace' : 'root-only',
+			mode: completePackageCheckout || packageSyncRepos.length > 0 ? 'recursive-workspace' : 'root-only',
 			completeCheckout: completePackageCheckout,
 			dependencyMode: workspaceDependencyMode.mode,
 			workspaceLinks: workspaceDependencyMode,

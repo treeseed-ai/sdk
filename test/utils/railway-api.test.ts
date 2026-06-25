@@ -40,6 +40,20 @@ describe('railwayGraphqlRequest', () => {
 		expect(result.data.ok).toBe(true);
 	});
 
+	it('uses the configured Railway API request timeout', async () => {
+		const fetchMock = vi.fn<typeof fetch>(() => new Promise<Response>(() => {}));
+
+		await expect(railwayGraphqlRequest({
+			query: 'query TreeseedTest { ok }',
+			env: {
+				RAILWAY_API_TOKEN: 'railway-token-value',
+				TREESEED_RAILWAY_API_TIMEOUT_MS: '1',
+			},
+			retries: 0,
+			fetchImpl: fetchMock,
+		})).rejects.toThrow(/timed out after 1ms/u);
+	});
+
 	it('reads Railway service instance runtime configuration when the schema supports it', async () => {
 		const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
 			data: {

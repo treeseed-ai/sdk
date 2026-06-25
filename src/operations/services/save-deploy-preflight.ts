@@ -5,18 +5,23 @@ import { collectCliPreflight } from './workspace-preflight.ts';
 import { requiredGitHubEnvironment } from './github-automation.ts';
 
 function runStep(label, scriptName, { cwd, env } = {}) {
+	const startedAt = Date.now();
+	process.stderr.write(`[preflight] ${label} start (${scriptName})\n`);
 	const result = spawnSync(process.execPath, [packageScriptPath(scriptName)], {
 		cwd,
 		env: { ...process.env, ...(env ?? {}) },
 		stdio: 'inherit',
 	});
+	const elapsedSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
 
 	if (result.status !== 0) {
+		process.stderr.write(`[preflight] ${label} failed after ${elapsedSeconds}s (${scriptName})\n`);
 		const error = new Error(`${label} failed.`);
 		error.kind = `${label}_failed`;
 		error.exitCode = result.status ?? 1;
 		throw error;
 	}
+	process.stderr.write(`[preflight] ${label} complete after ${elapsedSeconds}s (${scriptName})\n`);
 }
 
 function missingRequiredEnv(requiredKeys) {
@@ -59,7 +64,7 @@ export function validateSaveAutomationPrerequisites({ cwd }) {
 
 export function runWorkspaceSavePreflight({ cwd }) {
 	runStep('lint', 'workspace-lint', { cwd });
-	runStep('test', 'workspace-test', { cwd });
+	runStep('test', 'workspace-release-test', { cwd });
 	runStep('build', 'tenant-build', { cwd });
 }
 

@@ -124,10 +124,16 @@ export function readJson(filePath) {
 }
 
 export function workspacePackageJson(root = workspaceRoot()) {
+	if (!existsSync(resolve(root, 'package.json'))) {
+		return {};
+	}
 	return readJson(resolve(root, 'package.json'));
 }
 
 export function workspacePatterns(root = workspaceRoot()) {
+	if (!existsSync(resolve(root, 'package.json'))) {
+		return hasCompleteTreeseedPackageCheckout(root) ? ['packages/*'] : [];
+	}
 	const packageJson = workspacePackageJson(root);
 	const workspaces = Array.isArray(packageJson.workspaces)
 		? packageJson.workspaces

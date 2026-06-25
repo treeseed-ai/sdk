@@ -4208,6 +4208,13 @@ async function syncRailwayEnvironmentForScope(
 						env: topology.env,
 					});
 				}
+			} else {
+				traceRailwayReconcile(topology.env, 'sync:deploy', `${entry.configuredService.key}:${entry.service.name}:variables`);
+				await deployRailwayServiceInstance({
+					serviceId: entry.service.id,
+					environmentId: entry.environment.id,
+					env: topology.env,
+				});
 			}
 			if (entry.configuredService.key === 'operationsRunner') {
 				const desiredServiceNames = new Set(configuredRailwayServices(input.context.tenantRoot, scope)

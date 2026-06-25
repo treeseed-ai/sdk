@@ -151,6 +151,64 @@ function resolveWorkspacePackageRoot(packageRoot: string, workspaceDirName?: str
 	return existsSync(resolve(candidate, 'package.json')) ? candidate : null;
 }
 
+function packageProvidesEntry(packageRoot: string, entrySpecifier?: string) {
+	if (!entrySpecifier) {
+		return true;
+	}
+	try {
+		const packageRequire = createRequire(resolve(packageRoot, 'package.json'));
+		packageRequire.resolve(entrySpecifier);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function exportKeyForEntry(packageName: string, entrySpecifier?: string) {
+	if (!entrySpecifier || entrySpecifier === packageName) {
+		return '.';
+	}
+	if (!entrySpecifier.startsWith(`${packageName}/`)) {
+		return null;
+	}
+	return `.${entrySpecifier.slice(packageName.length)}`;
+}
+
+function exportTargets(value: unknown): string[] {
+	if (typeof value === 'string') {
+		return [value];
+	}
+	if (!value || typeof value !== 'object') {
+		return [];
+	}
+	const record = value as Record<string, unknown>;
+	return ['types', 'import', 'default', 'require']
+		.flatMap((key) => exportTargets(record[key]));
+}
+
+function workspacePackageProvidesEntry(packageRoot: string, packageName: string, entrySpecifier?: string) {
+	const exportKey = exportKeyForEntry(packageName, entrySpecifier);
+	if (!exportKey) {
+		return false;
+	}
+	if (exportKey === '.' && !entrySpecifier) {
+		return true;
+	}
+
+	try {
+		const packageJson = JSON.parse(readFileSync(resolve(packageRoot, 'package.json'), 'utf8')) as {
+			exports?: Record<string, unknown> | string;
+		};
+		const entryExport = typeof packageJson.exports === 'string'
+			? (exportKey === '.' ? packageJson.exports : null)
+			: packageJson.exports?.[exportKey];
+		const targets = exportTargets(entryExport);
+		return targets.length > 0 && targets.every((target) => existsSync(resolve(packageRoot, target)));
+	} catch {
+		return false;
+	}
+}
+
 function ensureFixtureLinkedPackage(fixtureRoot: string, packageName: string, resolvedPackageRoot: string) {
 	const packageDir = resolve(fixtureRoot, 'node_modules', ...packageName.split('/'));
 	mkdirSync(dirname(packageDir), { recursive: true });
@@ -355,7 +413,7 @@ export function prepareFixturePackages(options: PrepareFixturePackagesOptions) {
 		for (const mode of declaration.modes) {
 			if (mode === 'workspace-link') {
 				const workspaceRoot = resolveWorkspacePackageRoot(packageRoot, declaration.workspaceDirName);
-				if (!workspaceRoot) {
+				if (!workspaceRoot || !workspacePackageProvidesEntry(workspaceRoot, declaration.packageName, declaration.entrySpecifier)) {
 					continue;
 				}
 				ensureFixtureLinkedPackage(options.fixtureRoot, declaration.packageName, workspaceRoot);
@@ -365,7 +423,7 @@ export function prepareFixturePackages(options: PrepareFixturePackagesOptions) {
 
 			if (mode === 'installed-link') {
 				const installedRoot = resolveInstalledPackageRoot(declaration.packageName, declaration.entrySpecifier);
-				if (!installedRoot) {
+				if (!installedRoot || !packageProvidesEntry(installedRoot, declaration.entrySpecifier)) {
 					continue;
 				}
 				ensureFixtureLinkedPackage(options.fixtureRoot, declaration.packageName, installedRoot);

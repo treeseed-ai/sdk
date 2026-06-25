@@ -251,6 +251,9 @@ export function ensureManagedWorkflowWorktree({
 		runGit(['worktree', 'add', '--detach', worktreePath, baseRef], { cwd: primaryGitRoot });
 	} else if (!existingEntry) {
 		runGit(['worktree', 'prune'], { cwd: primaryGitRoot, allowFailure: true });
+		if (existsSync(worktreePath)) {
+			throw new Error(`Managed worktree path ${worktreePath} exists but is not registered as a Git worktree.`);
+		}
 	} else if (!currentBranchName(worktreePath)) {
 		runGit(['fetch', 'origin'], { cwd: worktreePath, allowFailure: true });
 		runGit(['reset', '--hard', baseRef], { cwd: worktreePath });

@@ -16,6 +16,7 @@ export type GitHubActionsVerificationTarget = {
 	headSha: string | null;
 	workflows: string[];
 	kind?: 'root' | 'package';
+	missingIsFailure?: boolean;
 };
 
 export type GitHubActionsWorkflowGate = {
@@ -81,6 +82,7 @@ export type GitHubActionsRepositoryInspection = {
 	state: GitHubActionsWorkflowState;
 	message: string | null;
 	workflows: GitHubActionsWorkflowRunInspection[];
+	missingIsFailure: boolean;
 };
 
 export type GitHubActionsVerificationFailure = {
@@ -477,6 +479,9 @@ function collectFailures(repositories: GitHubActionsRepositoryInspection[]) {
 				failures.push(...workflow.failedJobs.map((job) => jobFailure(repo, workflow, job)));
 				continue;
 			}
+			if (workflow.state === 'missing' && !repo.missingIsFailure) {
+				continue;
+			}
 			if (workflow.state === 'failure' || workflow.state === 'missing' || workflow.state === 'error') {
 				failures.push(workflowFailure(repo, workflow));
 			}
@@ -518,8 +523,10 @@ async function inspectTarget(
 			state: 'error',
 			message: 'Repository, branch, or head SHA is unavailable.',
 			workflows: [],
+			missingIsFailure: target.missingIsFailure ?? true,
 		};
 	}
+	const missingIsFailure = target.missingIsFailure ?? true;
 	try {
 		const remoteHeadSha = await resolveRemoteBranchHead(client, target.repository, target.branch);
 		if (remoteHeadSha !== target.headSha) {
@@ -534,6 +541,7 @@ async function inspectTarget(
 				remoteSynced: false,
 				state: 'not_pushed',
 				message: `Local HEAD ${target.headSha.slice(0, 12)} does not match origin/${target.branch} ${remoteHeadSha.slice(0, 12)}.`,
+				missingIsFailure,
 				workflows: target.workflows.map((workflow) => ({
 					workflow,
 					state: 'not_pushed',
@@ -565,6 +573,7 @@ async function inspectTarget(
 			state: aggregateWorkflowState(workflows.map((workflow) => workflow.state)),
 			message: null,
 			workflows,
+			missingIsFailure,
 		};
 	} catch (error) {
 		return {
@@ -579,6 +588,7 @@ async function inspectTarget(
 			state: 'error',
 			message: error instanceof Error ? error.message : String(error),
 			workflows: [],
+			missingIsFailure,
 		};
 	}
 }

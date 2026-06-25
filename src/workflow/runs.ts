@@ -151,14 +151,15 @@ function workflowStorageRootForScope(root: string, scope: TreeseedWorkflowLockSc
 }
 
 function workflowStorageRoot(root: string, runId?: string | null, scope?: TreeseedWorkflowLockScope) {
-	if (runId && WORKFLOW_RUN_STORAGE_ROOTS.has(runId)) {
-		return WORKFLOW_RUN_STORAGE_ROOTS.get(runId) as string;
+	const storageKey = runId ? `${resolve(root)}\0${runId}` : null;
+	if (storageKey && WORKFLOW_RUN_STORAGE_ROOTS.has(storageKey)) {
+		return WORKFLOW_RUN_STORAGE_ROOTS.get(storageKey) as string;
 	}
 	const command = workflowCommandFromRunId(runId);
 	const resolvedScope = scope ?? (command ? workflowLockScopeForCommand(command) : 'worktree');
 	const storageRoot = workflowStorageRootForScope(root, resolvedScope);
-	if (runId) {
-		WORKFLOW_RUN_STORAGE_ROOTS.set(runId, storageRoot);
+	if (storageKey) {
+		WORKFLOW_RUN_STORAGE_ROOTS.set(storageKey, storageRoot);
 	}
 	return storageRoot;
 }
@@ -353,7 +354,7 @@ export function writeWorkflowRunJournal(root: string, journal: TreeseedWorkflowR
 }
 
 export function readWorkflowRunJournal(root: string, runId: string) {
-	return safeJsonParse<TreeseedWorkflowRunJournal>(workflowRunPath(root, runId));
+	return safeJsonParse<TreeseedWorkflowRunJournal>(resolve(root, WORKFLOW_RUNS_DIR, `${runId}.json`));
 }
 
 export function updateWorkflowRunJournal(
@@ -482,7 +483,10 @@ export function classifyWorkflowRunJournal(
 			classifiedAt: now,
 		};
 	}
-	if (!journal.resumable) {
+	const recovery = stringRecord(stringRecord(journal.failure)?.details)?.recovery;
+	const recoveryRecord = stringRecord(recovery);
+	const recoveryMarkedResumable = recoveryRecord?.resumable === true;
+	if (!journal.resumable && !recoveryMarkedResumable) {
 		return {
 			state: 'obsolete',
 			reasons: ['workflow run is not marked resumable'],

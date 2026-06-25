@@ -321,6 +321,179 @@ export const webSessions = pgTable('web_sessions', {
 	index('idx_web_sessions_user_id').on(table.userId)
 ]);
 
+export const commonsParticipants = pgTable('commons_participants', {
+	id: text('id').primaryKey(),
+	userId: text('user_id').notNull(),
+	teamId: text('team_id').notNull(),
+	status: text('status').notNull().default('active'),
+	displayName: text('display_name'),
+	verifiedEmail: integer('verified_email').notNull().default(0),
+	baseWeight: real('base_weight').notNull().default(1),
+	trustWeight: real('trust_weight').notNull().default(0),
+	contributionWeight: real('contribution_weight').notNull().default(0),
+	stakeholderWeight: real('stakeholder_weight').notNull().default(0),
+	delegatedWeight: real('delegated_weight').notNull().default(0),
+	totalWeight: real('total_weight').notNull().default(1),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commons_participants_user').on(table.userId),
+	index('idx_commons_participants_team_status').on(table.teamId, table.status, table.updatedAt)
+]);
+
+export const commonsQuestions = pgTable('commons_questions', {
+	id: text('id').primaryKey(),
+	participantId: text('participant_id').notNull(),
+	userId: text('user_id').notNull(),
+	teamId: text('team_id').notNull(),
+	status: text('status').notNull().default('open'),
+	title: text('title').notNull(),
+	body: text('body').notNull(),
+	answer: text('answer'),
+	convertedProposalId: text('converted_proposal_id'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commons_questions_status').on(table.status, table.updatedAt),
+	index('idx_commons_questions_participant').on(table.participantId, table.status, table.updatedAt)
+]);
+
+export const commonsProposals = pgTable('commons_proposals', {
+	id: text('id').primaryKey(),
+	participantId: text('participant_id').notNull(),
+	userId: text('user_id').notNull(),
+	teamId: text('team_id').notNull(),
+	status: text('status').notNull().default('draft'),
+	title: text('title').notNull(),
+	summary: text('summary').notNull(),
+	body: text('body').notNull(),
+	scope: text('scope').notNull().default('treeseed_commons'),
+	decisionType: text('decision_type').notNull().default('advisory'),
+	contentProposalSlug: text('content_proposal_slug'),
+	contentDecisionSlug: text('content_decision_slug'),
+	backingCount: integer('backing_count').notNull().default(0),
+	voteSupportWeight: real('vote_support_weight').notNull().default(0),
+	voteObjectWeight: real('vote_object_weight').notNull().default(0),
+	voteAbstainWeight: real('vote_abstain_weight').notNull().default(0),
+	qualifiedAt: text('qualified_at'),
+	votingStartsAt: text('voting_starts_at'),
+	votingEndsAt: text('voting_ends_at'),
+	stewardDecisionAt: text('steward_decision_at'),
+	stewardDecisionBy: text('steward_decision_by'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commons_proposals_status').on(table.status, table.updatedAt),
+	index('idx_commons_proposals_participant').on(table.participantId, table.status, table.updatedAt),
+	index('idx_commons_proposals_scope').on(table.scope, table.status, table.updatedAt)
+]);
+
+export const commonsWeightSnapshots = pgTable('commons_weight_snapshots', {
+	id: text('id').primaryKey(),
+	participantId: text('participant_id').notNull(),
+	policyVersion: text('policy_version').notNull(),
+	baseWeight: real('base_weight').notNull().default(1),
+	verifiedEmailWeight: real('verified_email_weight').notNull().default(0),
+	accountAgeWeight: real('account_age_weight').notNull().default(0),
+	contributionWeight: real('contribution_weight').notNull().default(0),
+	stakeholderWeight: real('stakeholder_weight').notNull().default(0),
+	trustRoleWeight: real('trust_role_weight').notNull().default(0),
+	delegatedWeight: real('delegated_weight').notNull().default(0),
+	totalWeight: real('total_weight').notNull().default(1),
+	evidenceJson: text('evidence_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_commons_weight_snapshots_participant').on(table.participantId, table.createdAt)
+]);
+
+export const commonsProposalBackings = pgTable('commons_proposal_backings', {
+	id: text('id').primaryKey(),
+	proposalId: text('proposal_id').notNull(),
+	participantId: text('participant_id').notNull(),
+	userId: text('user_id').notNull(),
+	weightSnapshotId: text('weight_snapshot_id').notNull(),
+	weight: real('weight').notNull(),
+	reason: text('reason'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commons_proposal_backings_once').on(table.proposalId, table.participantId),
+	index('idx_commons_proposal_backings_proposal').on(table.proposalId, table.createdAt)
+]);
+
+export const commonsProposalVotes = pgTable('commons_proposal_votes', {
+	id: text('id').primaryKey(),
+	proposalId: text('proposal_id').notNull(),
+	participantId: text('participant_id').notNull(),
+	userId: text('user_id').notNull(),
+	vote: text('vote').notNull(),
+	weightSnapshotId: text('weight_snapshot_id').notNull(),
+	weight: real('weight').notNull(),
+	reason: text('reason'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commons_proposal_votes_once').on(table.proposalId, table.participantId),
+	index('idx_commons_proposal_votes_proposal').on(table.proposalId, table.vote, table.updatedAt)
+]);
+
+export const commonsDelegations = pgTable('commons_delegations', {
+	id: text('id').primaryKey(),
+	fromParticipantId: text('from_participant_id').notNull(),
+	toParticipantId: text('to_participant_id').notNull(),
+	scope: text('scope').notNull().default('treeseed_commons'),
+	status: text('status').notNull().default('active'),
+	weightLimit: real('weight_limit'),
+	reason: text('reason'),
+	createdAt: text('created_at').notNull(),
+	revokedAt: text('revoked_at'),
+}, (table) => [
+	uniqueIndex('idx_commons_delegations_active').on(table.fromParticipantId, table.toParticipantId, table.scope, table.status),
+	index('idx_commons_delegations_to').on(table.toParticipantId, table.status)
+]);
+
+export const commonsDecisions = pgTable('commons_decisions', {
+	id: text('id').primaryKey(),
+	proposalId: text('proposal_id').notNull(),
+	status: text('status').notNull().default('proposed'),
+	decisionRecordId: text('decision_record_id'),
+	decisionRecordSlug: text('decision_record_slug'),
+	title: text('title').notNull(),
+	summary: text('summary').notNull(),
+	stewardReason: text('steward_reason'),
+	capacityBudget: text('capacity_budget'),
+	scheduledFor: text('scheduled_for'),
+	implementedAt: text('implemented_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commons_decisions_proposal').on(table.proposalId),
+	index('idx_commons_decisions_status').on(table.status, table.updatedAt)
+]);
+
+export const commonsGovernanceEvents = pgTable('commons_governance_events', {
+	id: text('id').primaryKey(),
+	eventType: text('event_type').notNull(),
+	actorType: text('actor_type').notNull().default('system'),
+	actorId: text('actor_id'),
+	participantId: text('participant_id'),
+	proposalId: text('proposal_id'),
+	questionId: text('question_id'),
+	decisionId: text('decision_id'),
+	priorState: text('prior_state'),
+	nextState: text('next_state'),
+	message: text('message'),
+	evidenceJson: text('evidence_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_commons_governance_events_proposal').on(table.proposalId, table.createdAt),
+	index('idx_commons_governance_events_participant').on(table.participantId, table.createdAt),
+	index('idx_commons_governance_events_type').on(table.eventType, table.createdAt)
+]);
+
 export const projects = pgTable('projects', {
 	id: text('id').primaryKey(),
 	teamId: text('team_id').notNull(),
@@ -515,6 +688,814 @@ export const catalogItemCollaborators = pgTable('catalog_item_collaborators', {
 	updatedAt: text('updated_at').notNull(),
 }, (table) => [
 	uniqueIndex('idx_catalog_item_collaborators_subject_role').on(table.itemId, table.subjectType, table.subjectId, table.role)
+]);
+
+export const commerceVendors = pgTable('commerce_vendors', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	displayName: text('display_name').notNull(),
+	slug: text('slug').notNull(),
+	status: text('status').notNull().default('submitted'),
+	trustLevel: text('trust_level').notNull().default('public_publisher'),
+	professionalEntitlementId: text('professional_entitlement_id'),
+	stripeAccountId: text('stripe_account_id'),
+	salesEnabled: integer('sales_enabled').notNull().default(0),
+	serviceSalesEnabled: integer('service_sales_enabled').notNull().default(0),
+	capacityListingsEnabled: integer('capacity_listings_enabled').notNull().default(0),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commerce_vendors_team_id').on(table.teamId),
+	uniqueIndex('idx_commerce_vendors_slug').on(table.slug),
+	index('idx_commerce_vendors_status').on(table.status, table.updatedAt),
+	index('idx_commerce_vendors_trust_level').on(table.trustLevel, table.updatedAt)
+]);
+
+export const commerceVendorStripeAccounts = pgTable('commerce_vendor_stripe_accounts', {
+	id: text('id').primaryKey(),
+	vendorId: text('vendor_id').notNull(),
+	teamId: text('team_id').notNull(),
+	environment: text('environment').notNull().default('test'),
+	stripeAccountId: text('stripe_account_id').notNull(),
+	accountStatus: text('account_status').notNull().default('pending'),
+	onboardingStatus: text('onboarding_status').notNull().default('not_started'),
+	chargesEnabled: integer('charges_enabled').notNull().default(0),
+	payoutsEnabled: integer('payouts_enabled').notNull().default(0),
+	detailsSubmitted: integer('details_submitted').notNull().default(0),
+	requirementsCurrentlyDueJson: text('requirements_currently_due_json').notNull().default('[]'),
+	requirementsEventuallyDueJson: text('requirements_eventually_due_json').notNull().default('[]'),
+	requirementsPastDueJson: text('requirements_past_due_json').notNull().default('[]'),
+	requirementsDisabledReason: text('requirements_disabled_reason'),
+	capabilitiesJson: text('capabilities_json').notNull().default('{}'),
+	onboardingStartedAt: text('onboarding_started_at'),
+	onboardingCompletedAt: text('onboarding_completed_at'),
+	lastSyncedAt: text('last_synced_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commerce_vendor_stripe_accounts_vendor_env').on(table.vendorId, table.environment),
+	uniqueIndex('idx_commerce_vendor_stripe_accounts_stripe_env').on(table.stripeAccountId, table.environment),
+	index('idx_commerce_vendor_stripe_accounts_team_env').on(table.teamId, table.environment),
+	index('idx_commerce_vendor_stripe_accounts_status').on(table.accountStatus, table.updatedAt)
+]);
+
+export const commerceProducts = pgTable('commerce_products', {
+	id: text('id').primaryKey(),
+	vendorId: text('vendor_id').notNull(),
+	sellerTeamId: text('seller_team_id').notNull(),
+	kind: text('kind').notNull(),
+	slug: text('slug').notNull(),
+	title: text('title').notNull(),
+	summary: text('summary'),
+	description: text('description'),
+	status: text('status').notNull().default('draft'),
+	visibility: text('visibility').notNull().default('private'),
+	catalogItemId: text('catalog_item_id'),
+	currentVersionId: text('current_version_id'),
+	ownershipModel: text('ownership_model').notNull().default('team_owned'),
+	ownershipRecordId: text('ownership_record_id'),
+	supportPolicy: text('support_policy'),
+	license: text('license'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commerce_products_team_kind_slug').on(table.sellerTeamId, table.kind, table.slug),
+	index('idx_commerce_products_vendor_status').on(table.vendorId, table.status, table.updatedAt),
+	index('idx_commerce_products_catalog_item').on(table.catalogItemId),
+	index('idx_commerce_products_ownership_model').on(table.ownershipModel, table.updatedAt)
+]);
+
+export const commerceOwnershipRecords = pgTable('commerce_ownership_records', {
+	id: text('id').primaryKey(),
+	productId: text('product_id').notNull(),
+	model: text('model').notNull(),
+	canonicalOwnerType: text('canonical_owner_type').notNull(),
+	canonicalOwnerId: text('canonical_owner_id'),
+	sellerTeamId: text('seller_team_id').notNull(),
+	stewardTeamId: text('steward_team_id'),
+	governancePolicyId: text('governance_policy_id'),
+	publicSummary: text('public_summary'),
+	buyerVisible: integer('buyer_visible').notNull().default(1),
+	effectiveAt: text('effective_at').notNull(),
+	supersededAt: text('superseded_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_ownership_product_effective').on(table.productId, table.effectiveAt),
+	index('idx_commerce_ownership_seller_effective').on(table.sellerTeamId, table.effectiveAt),
+	index('idx_commerce_ownership_model_effective').on(table.model, table.effectiveAt)
+]);
+
+export const commerceStewardshipAssignments = pgTable('commerce_stewardship_assignments', {
+	id: text('id').primaryKey(),
+	ownershipRecordId: text('ownership_record_id').notNull(),
+	productId: text('product_id').notNull(),
+	role: text('role').notNull(),
+	assigneeType: text('assignee_type').notNull(),
+	assigneeId: text('assignee_id'),
+	displayName: text('display_name'),
+	responsibilitiesJson: text('responsibilities_json').notNull().default('[]'),
+	visibleToBuyers: integer('visible_to_buyers').notNull().default(1),
+	startsAt: text('starts_at').notNull(),
+	endsAt: text('ends_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_stewards_product_role').on(table.productId, table.role),
+	index('idx_commerce_stewards_ownership_role').on(table.ownershipRecordId, table.role),
+	index('idx_commerce_stewards_assignee').on(table.assigneeType, table.assigneeId)
+]);
+
+export const commerceContributions = pgTable('commerce_contributions', {
+	id: text('id').primaryKey(),
+	productId: text('product_id').notNull(),
+	productVersionId: text('product_version_id'),
+	contributorType: text('contributor_type').notNull(),
+	contributorId: text('contributor_id'),
+	displayName: text('display_name'),
+	role: text('role').notNull(),
+	summary: text('summary'),
+	attributionVisibility: text('attribution_visibility').notNull().default('public'),
+	agreementRef: text('agreement_ref'),
+	benefitWeight: real('benefit_weight'),
+	effectiveAt: text('effective_at').notNull(),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_contributions_product_effective').on(table.productId, table.effectiveAt),
+	index('idx_commerce_contributions_version_effective').on(table.productVersionId, table.effectiveAt),
+	index('idx_commerce_contributions_contributor').on(table.contributorType, table.contributorId)
+]);
+
+export const commerceGovernancePolicies = pgTable('commerce_governance_policies', {
+	id: text('id').primaryKey(),
+	productId: text('product_id'),
+	teamId: text('team_id'),
+	policyKind: text('policy_kind').notNull(),
+	title: text('title').notNull(),
+	approvalRulesJson: text('approval_rules_json').notNull().default('{}'),
+	quorumRulesJson: text('quorum_rules_json').notNull().default('{}'),
+	buyerVisibleSummary: text('buyer_visible_summary'),
+	status: text('status').notNull().default('draft'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_governance_policies_product').on(table.productId, table.status),
+	index('idx_commerce_governance_policies_team').on(table.teamId, table.policyKind, table.status)
+]);
+
+export const commerceOwnershipTransfers = pgTable('commerce_ownership_transfers', {
+	id: text('id').primaryKey(),
+	productId: text('product_id').notNull(),
+	fromOwnershipRecordId: text('from_ownership_record_id').notNull(),
+	toOwnershipRecordId: text('to_ownership_record_id').notNull(),
+	status: text('status').notNull().default('draft'),
+	reason: text('reason').notNull(),
+	approvalEvidenceJson: text('approval_evidence_json').notNull().default('{}'),
+	buyerVisibleImpact: text('buyer_visible_impact'),
+	effectiveAt: text('effective_at').notNull(),
+	requestedByType: text('requested_by_type').notNull().default('user'),
+	requestedById: text('requested_by_id').notNull().default('system'),
+	approvedByType: text('approved_by_type'),
+	approvedById: text('approved_by_id'),
+	approvedAt: text('approved_at'),
+	rejectedAt: text('rejected_at'),
+	supersededAt: text('superseded_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_commerce_ownership_transfers_product').on(table.productId, table.effectiveAt),
+	index('idx_commerce_ownership_transfers_product_status').on(table.productId, table.status, table.effectiveAt),
+	index('idx_commerce_ownership_transfers_from_status').on(table.fromOwnershipRecordId, table.status),
+	index('idx_commerce_ownership_transfers_to_status').on(table.toOwnershipRecordId, table.status)
+]);
+
+export const commerceSuccessionEvents = pgTable('commerce_succession_events', {
+	id: text('id').primaryKey(),
+	productId: text('product_id').notNull(),
+	ownershipRecordId: text('ownership_record_id'),
+	stewardshipAssignmentId: text('stewardship_assignment_id'),
+	successorType: text('successor_type').notNull(),
+	successorId: text('successor_id').notNull(),
+	eventType: text('event_type').notNull(),
+	status: text('status').notNull().default('submitted'),
+	reason: text('reason'),
+	evidenceJson: text('evidence_json').notNull().default('{}'),
+	effectiveAt: text('effective_at'),
+	createdByType: text('created_by_type').notNull(),
+	createdById: text('created_by_id').notNull(),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_commerce_succession_events_product').on(table.productId, table.eventType, table.createdAt),
+	index('idx_commerce_succession_events_ownership').on(table.ownershipRecordId, table.eventType),
+	index('idx_commerce_succession_events_successor').on(table.successorType, table.successorId)
+]);
+
+export const commerceProductVersions = pgTable('commerce_product_versions', {
+	id: text('id').primaryKey(),
+	productId: text('product_id').notNull(),
+	version: text('version').notNull(),
+	status: text('status').notNull().default('draft'),
+	catalogArtifactVersionId: text('catalog_artifact_version_id'),
+	manifestKey: text('manifest_key'),
+	artifactKey: text('artifact_key'),
+	integrity: text('integrity'),
+	releaseNotes: text('release_notes'),
+	compatibilityJson: text('compatibility_json').notNull().default('{}'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	publishedAt: text('published_at'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commerce_product_versions_product_version').on(table.productId, table.version),
+	index('idx_commerce_product_versions_product_status').on(table.productId, table.status, table.createdAt),
+	index('idx_commerce_product_versions_catalog_artifact').on(table.catalogArtifactVersionId)
+]);
+
+export const commerceOffers = pgTable('commerce_offers', {
+	id: text('id').primaryKey(),
+	productId: text('product_id').notNull(),
+	productVersionId: text('product_version_id'),
+	vendorId: text('vendor_id').notNull(),
+	sellerTeamId: text('seller_team_id').notNull(),
+	mode: text('mode').notNull(),
+	status: text('status').notNull().default('draft'),
+	title: text('title').notNull(),
+	termsSummary: text('terms_summary'),
+	accessScopeJson: text('access_scope_json').notNull().default('{}'),
+	supportScopeJson: text('support_scope_json').notNull().default('{}'),
+	fulfillmentMode: text('fulfillment_mode').notNull().default('automatic'),
+	activePriceId: text('active_price_id'),
+	stripeProductId: text('stripe_product_id'),
+	stripeProductStatus: text('stripe_product_status').notNull().default('not_synced'),
+	stripeProductSyncedAt: text('stripe_product_synced_at'),
+	stripeProductSyncError: text('stripe_product_sync_error'),
+	stripeProductMetadataJson: text('stripe_product_metadata_json').notNull().default('{}'),
+	startsAt: text('starts_at'),
+	endsAt: text('ends_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_offers_product_status').on(table.productId, table.status, table.updatedAt),
+	index('idx_commerce_offers_vendor_status').on(table.vendorId, table.status, table.updatedAt),
+	index('idx_commerce_offers_seller_status').on(table.sellerTeamId, table.status, table.updatedAt),
+	index('idx_commerce_offers_active_price').on(table.activePriceId),
+	index('idx_commerce_offers_stripe_product').on(table.stripeProductId),
+	index('idx_commerce_offers_stripe_status').on(table.stripeProductStatus, table.updatedAt)
+]);
+
+export const commercePrices = pgTable('commerce_prices', {
+	id: text('id').primaryKey(),
+	offerId: text('offer_id').notNull(),
+	amount: integer('amount').notNull(),
+	currency: text('currency').notNull(),
+	billingInterval: text('billing_interval').notNull(),
+	status: text('status').notNull().default('draft'),
+	stripeProductId: text('stripe_product_id'),
+	stripePriceId: text('stripe_price_id'),
+	stripeLookupKey: text('stripe_lookup_key'),
+	stripeSyncStatus: text('stripe_sync_status').notNull().default('not_synced'),
+	stripeSyncedAt: text('stripe_synced_at'),
+	stripeSyncError: text('stripe_sync_error'),
+	stripeMetadataJson: text('stripe_metadata_json').notNull().default('{}'),
+	priceVersion: integer('price_version').notNull().default(1),
+	taxBehavior: text('tax_behavior').notNull().default('unspecified'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commerce_prices_offer_version').on(table.offerId, table.priceVersion),
+	index('idx_commerce_prices_offer_status').on(table.offerId, table.status),
+	index('idx_commerce_prices_stripe_price').on(table.stripePriceId),
+	index('idx_commerce_prices_stripe_sync_status').on(table.stripeSyncStatus, table.updatedAt)
+]);
+
+export const commerceGovernanceEvents = pgTable('commerce_governance_events', {
+	id: text('id').primaryKey(),
+	actorType: text('actor_type').notNull(),
+	actorId: text('actor_id'),
+	action: text('action').notNull(),
+	objectType: text('object_type').notNull(),
+	objectId: text('object_id').notNull(),
+	priorState: text('prior_state'),
+	nextState: text('next_state'),
+	reason: text('reason'),
+	evidenceJson: text('evidence_json').notNull().default('{}'),
+	relatedOrderId: text('related_order_id'),
+	relatedOfferId: text('related_offer_id'),
+	relatedProductId: text('related_product_id'),
+	relatedTeamId: text('related_team_id'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_commerce_governance_events_object').on(table.objectType, table.objectId, table.createdAt),
+	index('idx_commerce_governance_events_product').on(table.relatedProductId, table.createdAt),
+	index('idx_commerce_governance_events_offer').on(table.relatedOfferId, table.createdAt),
+	index('idx_commerce_governance_events_team').on(table.relatedTeamId, table.createdAt)
+]);
+
+export const commerceCarts = pgTable('commerce_carts', {
+	id: text('id').primaryKey(),
+	buyerTeamId: text('buyer_team_id'),
+	buyerUserId: text('buyer_user_id'),
+	status: text('status').notNull().default('active'),
+	currency: text('currency'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_carts_buyer_team_status').on(table.buyerTeamId, table.status, table.updatedAt),
+	index('idx_commerce_carts_buyer_user_status').on(table.buyerUserId, table.status, table.updatedAt)
+]);
+
+export const commerceCartItems = pgTable('commerce_cart_items', {
+	id: text('id').primaryKey(),
+	cartId: text('cart_id').notNull(),
+	vendorId: text('vendor_id').notNull(),
+	sellerTeamId: text('seller_team_id').notNull(),
+	productId: text('product_id').notNull(),
+	productVersionId: text('product_version_id'),
+	offerId: text('offer_id').notNull(),
+	priceId: text('price_id'),
+	quantity: integer('quantity').notNull().default(1),
+	unitAmount: integer('unit_amount').notNull().default(0),
+	currency: text('currency').notNull(),
+	mode: text('mode').notNull(),
+	status: text('status').notNull().default('active'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_cart_items_cart_status').on(table.cartId, table.status),
+	index('idx_commerce_cart_items_vendor_status').on(table.vendorId, table.status, table.updatedAt),
+	index('idx_commerce_cart_items_offer').on(table.offerId),
+	index('idx_commerce_cart_items_price').on(table.priceId)
+]);
+
+export const commerceCheckouts = pgTable('commerce_checkouts', {
+	id: text('id').primaryKey(),
+	cartId: text('cart_id').notNull(),
+	buyerTeamId: text('buyer_team_id'),
+	buyerUserId: text('buyer_user_id'),
+	status: text('status').notNull().default('draft'),
+	checkoutMode: text('checkout_mode').notNull().default('stripe_elements_grouped_vendor'),
+	groupCount: integer('group_count').notNull().default(0),
+	completedGroupCount: integer('completed_group_count').notNull().default(0),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_checkouts_cart').on(table.cartId),
+	index('idx_commerce_checkouts_buyer_team_status').on(table.buyerTeamId, table.status, table.updatedAt),
+	index('idx_commerce_checkouts_buyer_user_status').on(table.buyerUserId, table.status, table.updatedAt)
+]);
+
+export const commerceOrders = pgTable('commerce_orders', {
+	id: text('id').primaryKey(),
+	checkoutId: text('checkout_id'),
+	cartId: text('cart_id'),
+	buyerTeamId: text('buyer_team_id'),
+	buyerUserId: text('buyer_user_id'),
+	vendorId: text('vendor_id'),
+	sellerTeamId: text('seller_team_id'),
+	status: text('status').notNull().default('draft'),
+	currency: text('currency').notNull(),
+	subtotalAmount: integer('subtotal_amount').notNull().default(0),
+	totalAmount: integer('total_amount').notNull().default(0),
+	refundedAmount: integer('refunded_amount').notNull().default(0),
+	refundStatus: text('refund_status').notNull().default('none'),
+	stripeCheckoutSessionId: text('stripe_checkout_session_id'),
+	stripePaymentIntentId: text('stripe_payment_intent_id'),
+	stripeSubscriptionId: text('stripe_subscription_id'),
+	stripeCustomerId: text('stripe_customer_id'),
+	stripeConnectedAccountId: text('stripe_connected_account_id'),
+	ownershipSnapshotJson: text('ownership_snapshot_json').notNull().default('{}'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_orders_checkout').on(table.checkoutId),
+	index('idx_commerce_orders_buyer_team_status').on(table.buyerTeamId, table.status, table.updatedAt),
+	index('idx_commerce_orders_buyer_user_status').on(table.buyerUserId, table.status, table.updatedAt),
+	index('idx_commerce_orders_vendor_status').on(table.vendorId, table.status, table.updatedAt),
+	index('idx_commerce_orders_stripe_payment_intent').on(table.stripePaymentIntentId),
+	index('idx_commerce_orders_stripe_subscription').on(table.stripeSubscriptionId)
+]);
+
+export const commerceOrderItems = pgTable('commerce_order_items', {
+	id: text('id').primaryKey(),
+	orderId: text('order_id').notNull(),
+	vendorId: text('vendor_id').notNull(),
+	sellerTeamId: text('seller_team_id').notNull(),
+	productId: text('product_id').notNull(),
+	productVersionId: text('product_version_id'),
+	offerId: text('offer_id').notNull(),
+	priceId: text('price_id'),
+	mode: text('mode').notNull(),
+	quantity: integer('quantity').notNull().default(1),
+	unitAmount: integer('unit_amount').notNull().default(0),
+	totalAmount: integer('total_amount').notNull().default(0),
+	refundedAmount: integer('refunded_amount').notNull().default(0),
+	refundStatus: text('refund_status').notNull().default('none'),
+	currency: text('currency').notNull(),
+	status: text('status').notNull().default('pending'),
+	entitlementId: text('entitlement_id'),
+	ownershipSnapshotJson: text('ownership_snapshot_json').notNull().default('{}'),
+	accessScopeJson: text('access_scope_json').notNull().default('{}'),
+	supportScopeJson: text('support_scope_json').notNull().default('{}'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_order_items_order').on(table.orderId),
+	index('idx_commerce_order_items_product_status').on(table.productId, table.status),
+	index('idx_commerce_order_items_offer_status').on(table.offerId, table.status),
+	index('idx_commerce_order_items_entitlement').on(table.entitlementId)
+]);
+
+export const commercePaymentGroups = pgTable('commerce_payment_groups', {
+	id: text('id').primaryKey(),
+	checkoutId: text('checkout_id').notNull(),
+	orderId: text('order_id').notNull(),
+	vendorId: text('vendor_id').notNull(),
+	sellerTeamId: text('seller_team_id').notNull(),
+	connectedAccountId: text('connected_account_id'),
+	groupKind: text('group_kind').notNull(),
+	billingInterval: text('billing_interval'),
+	status: text('status').notNull().default('pending'),
+	currency: text('currency').notNull(),
+	subtotalAmount: integer('subtotal_amount').notNull().default(0),
+	totalAmount: integer('total_amount').notNull().default(0),
+	stripePaymentIntentId: text('stripe_payment_intent_id'),
+	stripeSubscriptionId: text('stripe_subscription_id'),
+	stripeCustomerId: text('stripe_customer_id'),
+	clientSecretLast4: text('client_secret_last4'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_payment_groups_checkout').on(table.checkoutId),
+	index('idx_commerce_payment_groups_order').on(table.orderId),
+	index('idx_commerce_payment_groups_vendor_status').on(table.vendorId, table.status, table.updatedAt),
+	index('idx_commerce_payment_groups_payment_intent').on(table.stripePaymentIntentId),
+	index('idx_commerce_payment_groups_subscription').on(table.stripeSubscriptionId)
+]);
+
+export const commerceSubscriptions = pgTable('commerce_subscriptions', {
+	id: text('id').primaryKey(),
+	orderId: text('order_id').notNull(),
+	vendorId: text('vendor_id').notNull(),
+	sellerTeamId: text('seller_team_id').notNull(),
+	buyerTeamId: text('buyer_team_id'),
+	buyerUserId: text('buyer_user_id'),
+	offerId: text('offer_id').notNull(),
+	priceId: text('price_id').notNull(),
+	status: text('status').notNull(),
+	renewalState: text('renewal_state').notNull().default('active'),
+	stripeSubscriptionId: text('stripe_subscription_id').notNull(),
+	stripeCustomerId: text('stripe_customer_id'),
+	stripeConnectedAccountId: text('stripe_connected_account_id').notNull(),
+	currentPeriodStart: text('current_period_start'),
+	currentPeriodEnd: text('current_period_end'),
+	cancelAtPeriodEnd: integer('cancel_at_period_end').notNull().default(0),
+	canceledAt: text('canceled_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commerce_subscriptions_stripe').on(table.stripeSubscriptionId, table.stripeConnectedAccountId),
+	index('idx_commerce_subscriptions_buyer_team_status').on(table.buyerTeamId, table.status, table.updatedAt),
+	index('idx_commerce_subscriptions_vendor_status').on(table.vendorId, table.status, table.updatedAt),
+	index('idx_commerce_subscriptions_offer_status').on(table.offerId, table.status)
+]);
+
+export const commerceEntitlements = pgTable('commerce_entitlements', {
+	id: text('id').primaryKey(),
+	buyerTeamId: text('buyer_team_id'),
+	buyerUserId: text('buyer_user_id'),
+	sellerTeamId: text('seller_team_id').notNull(),
+	productId: text('product_id').notNull(),
+	productVersionId: text('product_version_id'),
+	offerId: text('offer_id').notNull(),
+	orderId: text('order_id'),
+	orderItemId: text('order_item_id'),
+	subscriptionId: text('subscription_id'),
+	status: text('status').notNull().default('pending'),
+	accessScopeJson: text('access_scope_json').notNull().default('{}'),
+	startsAt: text('starts_at'),
+	endsAt: text('ends_at'),
+	renewalState: text('renewal_state').notNull().default('none'),
+	fulfillmentArtifactRefsJson: text('fulfillment_artifact_refs_json').notNull().default('[]'),
+	projectId: text('project_id'),
+	catalogItemId: text('catalog_item_id'),
+	ownershipSnapshotJson: text('ownership_snapshot_json').notNull().default('{}'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_entitlements_buyer_team_status').on(table.buyerTeamId, table.status, table.updatedAt),
+	index('idx_commerce_entitlements_buyer_user_status').on(table.buyerUserId, table.status, table.updatedAt),
+	index('idx_commerce_entitlements_product_status').on(table.productId, table.status),
+	index('idx_commerce_entitlements_offer_status').on(table.offerId, table.status),
+	index('idx_commerce_entitlements_order').on(table.orderId),
+	index('idx_commerce_entitlements_subscription').on(table.subscriptionId),
+	index('idx_commerce_entitlements_catalog_item').on(table.catalogItemId)
+]);
+
+export const commerceBuyerStripeCustomers = pgTable('commerce_buyer_stripe_customers', {
+	id: text('id').primaryKey(),
+	buyerTeamId: text('buyer_team_id'),
+	buyerUserId: text('buyer_user_id'),
+	vendorId: text('vendor_id').notNull(),
+	connectedAccountId: text('connected_account_id').notNull(),
+	environment: text('environment').notNull().default('test'),
+	stripeCustomerId: text('stripe_customer_id').notNull(),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commerce_buyer_stripe_customers_team').on(table.vendorId, table.environment, table.buyerTeamId),
+	uniqueIndex('idx_commerce_buyer_stripe_customers_user').on(table.vendorId, table.environment, table.buyerUserId),
+	uniqueIndex('idx_commerce_buyer_stripe_customers_stripe').on(table.connectedAccountId, table.stripeCustomerId)
+]);
+
+export const commerceRefunds = pgTable('commerce_refunds', {
+	id: text('id').primaryKey(),
+	orderId: text('order_id').notNull(),
+	orderItemId: text('order_item_id'),
+	paymentGroupId: text('payment_group_id'),
+	vendorId: text('vendor_id').notNull(),
+	sellerTeamId: text('seller_team_id').notNull(),
+	buyerTeamId: text('buyer_team_id'),
+	buyerUserId: text('buyer_user_id'),
+	amount: integer('amount').notNull(),
+	currency: text('currency').notNull(),
+	status: text('status').notNull().default('processing'),
+	reason: text('reason'),
+	stripeRefundId: text('stripe_refund_id'),
+	stripePaymentIntentId: text('stripe_payment_intent_id'),
+	stripeConnectedAccountId: text('stripe_connected_account_id'),
+	idempotencyKey: text('idempotency_key').notNull(),
+	requestedByType: text('requested_by_type').notNull(),
+	requestedById: text('requested_by_id').notNull(),
+	failureReason: text('failure_reason'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commerce_refunds_stripe').on(table.stripeRefundId, table.stripeConnectedAccountId),
+	uniqueIndex('idx_commerce_refunds_idempotency').on(table.idempotencyKey),
+	index('idx_commerce_refunds_order').on(table.orderId, table.createdAt),
+	index('idx_commerce_refunds_vendor_status').on(table.vendorId, table.status, table.updatedAt),
+	index('idx_commerce_refunds_seller_status').on(table.sellerTeamId, table.status, table.updatedAt)
+]);
+
+export const commerceFulfillmentEvents = pgTable('commerce_fulfillment_events', {
+	id: text('id').primaryKey(),
+	orderId: text('order_id').notNull(),
+	orderItemId: text('order_item_id'),
+	entitlementId: text('entitlement_id'),
+	vendorId: text('vendor_id').notNull(),
+	sellerTeamId: text('seller_team_id').notNull(),
+	productId: text('product_id').notNull(),
+	productVersionId: text('product_version_id'),
+	catalogItemId: text('catalog_item_id'),
+	catalogArtifactVersionId: text('catalog_artifact_version_id'),
+	eventType: text('event_type').notNull(),
+	status: text('status').notNull().default('pending'),
+	artifactRefsJson: text('artifact_refs_json').notNull().default('[]'),
+	deliveryRefsJson: text('delivery_refs_json').notNull().default('[]'),
+	message: text('message'),
+	actorType: text('actor_type').notNull(),
+	actorId: text('actor_id').notNull(),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_commerce_fulfillment_events_order').on(table.orderId, table.createdAt),
+	index('idx_commerce_fulfillment_events_entitlement').on(table.entitlementId, table.createdAt),
+	index('idx_commerce_fulfillment_events_vendor_status').on(table.vendorId, table.status, table.createdAt),
+	index('idx_commerce_fulfillment_events_product').on(table.productId, table.createdAt)
+]);
+
+export const commerceServiceRequests = pgTable('commerce_service_requests', {
+	id: text('id').primaryKey(),
+	buyerTeamId: text('buyer_team_id'),
+	buyerUserId: text('buyer_user_id'),
+	vendorId: text('vendor_id').notNull(),
+	sellerTeamId: text('seller_team_id').notNull(),
+	productId: text('product_id').notNull(),
+	offerId: text('offer_id').notNull(),
+	status: text('status').notNull().default('requested'),
+	requestedScope: text('requested_scope').notNull(),
+	approvedScope: text('approved_scope'),
+	accessNeedsJson: text('access_needs_json').notNull().default('{}'),
+	buyerVisibleSummary: text('buyer_visible_summary'),
+	vendorPrivateNotes: text('vendor_private_notes'),
+	activeQuoteId: text('active_quote_id'),
+	approvedQuoteId: text('approved_quote_id'),
+	contractId: text('contract_id'),
+	relatedProjectId: text('related_project_id'),
+	relatedWorkdayId: text('related_workday_id'),
+	orderId: text('order_id'),
+	entitlementId: text('entitlement_id'),
+	ownershipSnapshotJson: text('ownership_snapshot_json').notNull().default('{}'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_service_requests_buyer_team').on(table.buyerTeamId, table.status, table.updatedAt),
+	index('idx_commerce_service_requests_buyer_user').on(table.buyerUserId, table.status, table.updatedAt),
+	index('idx_commerce_service_requests_vendor').on(table.vendorId, table.status, table.updatedAt),
+	index('idx_commerce_service_requests_seller').on(table.sellerTeamId, table.status, table.updatedAt),
+	index('idx_commerce_service_requests_offer').on(table.offerId, table.status),
+	index('idx_commerce_service_requests_project').on(table.relatedProjectId, table.status),
+	index('idx_commerce_service_requests_workday').on(table.relatedWorkdayId, table.status)
+]);
+
+export const commerceServiceQuotes = pgTable('commerce_service_quotes', {
+	id: text('id').primaryKey(),
+	requestId: text('request_id').notNull(),
+	vendorId: text('vendor_id').notNull(),
+	sellerTeamId: text('seller_team_id').notNull(),
+	buyerTeamId: text('buyer_team_id'),
+	buyerUserId: text('buyer_user_id'),
+	quoteVersion: integer('quote_version').notNull().default(1),
+	status: text('status').notNull().default('draft'),
+	title: text('title').notNull(),
+	scopeSummary: text('scope_summary').notNull(),
+	deliverablesJson: text('deliverables_json').notNull().default('[]'),
+	assumptionsJson: text('assumptions_json').notNull().default('[]'),
+	accessRequirementsJson: text('access_requirements_json').notNull().default('{}'),
+	governanceRequirementsJson: text('governance_requirements_json').notNull().default('{}'),
+	amount: integer('amount').notNull(),
+	currency: text('currency').notNull(),
+	expiresAt: text('expires_at'),
+	buyerApprovedAt: text('buyer_approved_at'),
+	vendorApprovedAt: text('vendor_approved_at'),
+	acceptedAt: text('accepted_at'),
+	rejectedAt: text('rejected_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commerce_service_quotes_request_version').on(table.requestId, table.quoteVersion),
+	index('idx_commerce_service_quotes_request').on(table.requestId, table.status, table.updatedAt),
+	index('idx_commerce_service_quotes_vendor').on(table.vendorId, table.status, table.updatedAt),
+	index('idx_commerce_service_quotes_seller').on(table.sellerTeamId, table.status, table.updatedAt)
+]);
+
+export const commerceServiceContracts = pgTable('commerce_service_contracts', {
+	id: text('id').primaryKey(),
+	requestId: text('request_id').notNull(),
+	quoteId: text('quote_id').notNull(),
+	vendorId: text('vendor_id').notNull(),
+	sellerTeamId: text('seller_team_id').notNull(),
+	buyerTeamId: text('buyer_team_id'),
+	buyerUserId: text('buyer_user_id'),
+	productId: text('product_id').notNull(),
+	offerId: text('offer_id').notNull(),
+	status: text('status').notNull().default('pending_checkout'),
+	amount: integer('amount').notNull(),
+	currency: text('currency').notNull(),
+	orderId: text('order_id'),
+	orderItemId: text('order_item_id'),
+	paymentGroupId: text('payment_group_id'),
+	entitlementId: text('entitlement_id'),
+	relatedProjectId: text('related_project_id'),
+	relatedWorkdayId: text('related_workday_id'),
+	ownershipSnapshotJson: text('ownership_snapshot_json').notNull().default('{}'),
+	accessApprovalSnapshotJson: text('access_approval_snapshot_json').notNull().default('{}'),
+	fulfillmentSummary: text('fulfillment_summary'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commerce_service_contracts_request_quote').on(table.requestId, table.quoteId),
+	index('idx_commerce_service_contracts_vendor').on(table.vendorId, table.status, table.updatedAt),
+	index('idx_commerce_service_contracts_seller').on(table.sellerTeamId, table.status, table.updatedAt),
+	index('idx_commerce_service_contracts_buyer_team').on(table.buyerTeamId, table.status, table.updatedAt),
+	index('idx_commerce_service_contracts_buyer_user').on(table.buyerUserId, table.status, table.updatedAt),
+	index('idx_commerce_service_contracts_order').on(table.orderId),
+	index('idx_commerce_service_contracts_entitlement').on(table.entitlementId),
+	index('idx_commerce_service_contracts_project').on(table.relatedProjectId),
+	index('idx_commerce_service_contracts_workday').on(table.relatedWorkdayId)
+]);
+
+export const commerceServiceEvents = pgTable('commerce_service_events', {
+	id: text('id').primaryKey(),
+	requestId: text('request_id').notNull(),
+	quoteId: text('quote_id'),
+	contractId: text('contract_id'),
+	eventType: text('event_type').notNull(),
+	actorType: text('actor_type').notNull(),
+	actorId: text('actor_id'),
+	priorState: text('prior_state'),
+	nextState: text('next_state'),
+	message: text('message'),
+	evidenceJson: text('evidence_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_commerce_service_events_request').on(table.requestId, table.createdAt),
+	index('idx_commerce_service_events_quote').on(table.quoteId, table.createdAt),
+	index('idx_commerce_service_events_contract').on(table.contractId, table.createdAt),
+	index('idx_commerce_service_events_type').on(table.eventType, table.createdAt)
+]);
+
+export const commerceCapacityListings = pgTable('commerce_capacity_listings', {
+	id: text('id').primaryKey(),
+	productId: text('product_id').notNull(),
+	vendorId: text('vendor_id').notNull(),
+	sellerTeamId: text('seller_team_id').notNull(),
+	capacityProviderId: text('capacity_provider_id'),
+	capacityProviderLaneId: text('capacity_provider_lane_id'),
+	status: text('status').notNull().default('draft'),
+	accessLevel: text('access_level').notNull().default('public_summary'),
+	runtimeIsolationLevel: text('runtime_isolation_level').notNull().default('none'),
+	humanInvolvementLevel: text('human_involvement_level').notNull().default('none'),
+	aiInvolvementLevel: text('ai_involvement_level').notNull().default('none'),
+	dataAccessLevel: text('data_access_level').notNull().default('none'),
+	secretAccessLevel: text('secret_access_level').notNull().default('none'),
+	supportedServiceTypesJson: text('supported_service_types_json').notNull().default('[]'),
+	supportedRegionsJson: text('supported_regions_json').notNull().default('[]'),
+	runtimeRequirementsJson: text('runtime_requirements_json').notNull().default('{}'),
+	dataHandlingSummary: text('data_handling_summary'),
+	buyerVisibleRiskSummary: text('buyer_visible_risk_summary'),
+	governanceRequirementsJson: text('governance_requirements_json').notNull().default('{}'),
+	supportPolicy: text('support_policy'),
+	availabilitySummary: text('availability_summary'),
+	ownershipSnapshotJson: text('ownership_snapshot_json').notNull().default('{}'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commerce_capacity_listings_product').on(table.productId),
+	index('idx_commerce_capacity_listings_vendor_status').on(table.vendorId, table.status, table.updatedAt),
+	index('idx_commerce_capacity_listings_seller_status').on(table.sellerTeamId, table.status, table.updatedAt),
+	index('idx_commerce_capacity_listings_provider_status').on(table.capacityProviderId, table.status),
+	index('idx_commerce_capacity_listings_lane_status').on(table.capacityProviderLaneId, table.status),
+	index('idx_commerce_capacity_listings_access_status').on(table.accessLevel, table.status, table.updatedAt)
+]);
+
+export const commerceCapacityListingInquiries = pgTable('commerce_capacity_listing_inquiries', {
+	id: text('id').primaryKey(),
+	listingId: text('listing_id').notNull(),
+	productId: text('product_id').notNull(),
+	vendorId: text('vendor_id').notNull(),
+	sellerTeamId: text('seller_team_id').notNull(),
+	buyerTeamId: text('buyer_team_id'),
+	buyerUserId: text('buyer_user_id'),
+	status: text('status').notNull().default('requested'),
+	requestedServiceType: text('requested_service_type'),
+	requestedScope: text('requested_scope').notNull(),
+	dataAccessRequestedJson: text('data_access_requested_json').notNull().default('{}'),
+	secretAccessRequestedJson: text('secret_access_requested_json').notNull().default('{}'),
+	relatedProjectId: text('related_project_id'),
+	relatedWorkdayId: text('related_workday_id'),
+	governanceEvidenceJson: text('governance_evidence_json').notNull().default('{}'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_commerce_capacity_inquiries_listing_status').on(table.listingId, table.status, table.updatedAt),
+	index('idx_commerce_capacity_inquiries_buyer_team').on(table.buyerTeamId, table.status, table.updatedAt),
+	index('idx_commerce_capacity_inquiries_buyer_user').on(table.buyerUserId, table.status, table.updatedAt),
+	index('idx_commerce_capacity_inquiries_vendor_status').on(table.vendorId, table.status, table.updatedAt),
+	index('idx_commerce_capacity_inquiries_seller_status').on(table.sellerTeamId, table.status, table.updatedAt),
+	index('idx_commerce_capacity_inquiries_project').on(table.relatedProjectId, table.status),
+	index('idx_commerce_capacity_inquiries_workday').on(table.relatedWorkdayId, table.status)
+]);
+
+export const commerceWebhookEvents = pgTable('commerce_webhook_events', {
+	id: text('id').primaryKey(),
+	provider: text('provider').notNull().default('stripe'),
+	environment: text('environment').notNull().default('test'),
+	eventId: text('event_id').notNull(),
+	eventType: text('event_type').notNull(),
+	connectedAccountId: text('connected_account_id'),
+	status: text('status').notNull().default('received'),
+	objectType: text('object_type'),
+	objectId: text('object_id'),
+	relatedOrderId: text('related_order_id'),
+	relatedSubscriptionId: text('related_subscription_id'),
+	payloadHash: text('payload_hash').notNull(),
+	processingError: text('processing_error'),
+	receivedAt: text('received_at').notNull(),
+	processedAt: text('processed_at'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_commerce_webhook_events_provider_event').on(table.provider, table.environment, table.eventId),
+	index('idx_commerce_webhook_events_status_received').on(table.status, table.receivedAt),
+	index('idx_commerce_webhook_events_connected_type').on(table.connectedAccountId, table.eventType, table.receivedAt),
+	index('idx_commerce_webhook_events_order').on(table.relatedOrderId),
+	index('idx_commerce_webhook_events_subscription').on(table.relatedSubscriptionId)
 ]);
 
 export const projectHosting = pgTable('project_hosting', {
@@ -2400,6 +3381,15 @@ export const treeseedMarketSchema = {
 	teamMemberships,
 	teamRoleBindings,
 	webSessions,
+	commonsParticipants,
+	commonsQuestions,
+	commonsProposals,
+	commonsWeightSnapshots,
+	commonsProposalBackings,
+	commonsProposalVotes,
+	commonsDelegations,
+	commonsDecisions,
+	commonsGovernanceEvents,
 	projects,
 	projectConnections,
 	projectCapabilityGrants,
@@ -2412,6 +3402,35 @@ export const treeseedMarketSchema = {
 	catalogItems,
 	catalogArtifactVersions,
 	catalogItemCollaborators,
+	commerceVendors,
+	commerceProducts,
+	commerceOwnershipRecords,
+	commerceStewardshipAssignments,
+	commerceContributions,
+	commerceGovernancePolicies,
+	commerceOwnershipTransfers,
+	commerceProductVersions,
+	commerceOffers,
+	commercePrices,
+	commerceGovernanceEvents,
+	commerceCarts,
+	commerceCartItems,
+	commerceCheckouts,
+	commerceOrders,
+	commerceOrderItems,
+	commercePaymentGroups,
+	commerceSubscriptions,
+	commerceEntitlements,
+	commerceBuyerStripeCustomers,
+	commerceRefunds,
+	commerceFulfillmentEvents,
+	commerceServiceRequests,
+	commerceServiceQuotes,
+	commerceServiceContracts,
+	commerceServiceEvents,
+	commerceCapacityListings,
+	commerceCapacityListingInquiries,
+	commerceWebhookEvents,
 	projectHosting,
 	projectEnvironments,
 	projectInfrastructureResources,

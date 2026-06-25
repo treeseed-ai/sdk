@@ -4,10 +4,8 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
 import {
-	createDeprecatedTaskTag,
 	listTaskBranches,
 	squashMergeBranchIntoStaging,
-	taskTagSlug,
 } from '../../src/operations/services/git-workflow.ts';
 
 function git(cwd: string, args: string[]) {
@@ -47,6 +45,31 @@ function makeRepo() {
 	return { work };
 }
 
+function makePackageRepo() {
+	const packageRepo = mkdtempSync(join(tmpdir(), 'treeseed-git-workflow-package-'));
+	git(packageRepo, ['init', '-b', 'main']);
+	git(packageRepo, ['config', 'user.name', 'Treeseed Test']);
+	git(packageRepo, ['config', 'user.email', 'treeseed@example.com']);
+	writeFileSync(resolve(packageRepo, 'package.txt'), 'base\n', 'utf8');
+	git(packageRepo, ['add', 'package.txt']);
+	git(packageRepo, ['commit', '-m', 'base']);
+	const base = git(packageRepo, ['rev-parse', 'HEAD']);
+
+	writeFileSync(resolve(packageRepo, 'package.txt'), 'old\n', 'utf8');
+	git(packageRepo, ['add', 'package.txt']);
+	git(packageRepo, ['commit', '-m', 'old']);
+	const old = git(packageRepo, ['rev-parse', 'HEAD']);
+
+	git(packageRepo, ['checkout', '-b', 'new', base]);
+	writeFileSync(resolve(packageRepo, 'package.txt'), 'new\n', 'utf8');
+	git(packageRepo, ['add', 'package.txt']);
+	git(packageRepo, ['commit', '-m', 'new']);
+	const next = git(packageRepo, ['rev-parse', 'HEAD']);
+
+	git(packageRepo, ['checkout', base]);
+	return { packageRepo, base, old, next };
+}
+
 describe('git workflow task helpers', () => {
 	it('lists task branches while excluding staging, main, and deprecated tags', () => {
 		const { work } = makeRepo();
@@ -63,19 +86,21 @@ describe('git workflow task helpers', () => {
 		expect(tasks[0].head).toMatch(/^[0-9a-f]{40}$/);
 	});
 
-	it('creates and pushes a deprecated resurrection tag for a task branch', () => {
+	it('excludes deprecated branches from task branch listings', () => {
 		const { work } = makeRepo();
-		const result = createDeprecatedTaskTag(work, 'feature/search-filters', 'close: no longer needed');
+		git(work, ['checkout', '-b', 'deprecated/feature-search-filters']);
+		git(work, ['push', '-u', 'origin', 'deprecated/feature-search-filters']);
 
-		expect(result.tagName).toBe(`deprecated/${taskTagSlug('feature/search-filters')}/${result.head.slice(0, 12)}`);
-		expect(git(work, ['rev-parse', `${result.tagName}^{}`])).toBe(result.head);
-		expect(git(work, ['ls-remote', '--tags', 'origin', result.tagName])).toContain(result.tagName);
+		const tasks = listTaskBranches(work);
+		expect(tasks.map((task) => task.name)).toEqual(['feature/search-filters']);
 	});
 
 	it('resolves generated package metadata conflicts during repeated staging attempts', () => {
 		const { work } = makeRepo();
+		const packageRepo = makePackageRepo();
 		const packageJsonPath = resolve(work, 'package.json');
 		const lockfilePath = resolve(work, 'package-lock.json');
+		const packagePointerPath = 'packages/sdk';
 		const writeVersion = (version: string) => {
 			writeFileSync(packageJsonPath, `${JSON.stringify({ name: '@treeseed/sdk', version }, null, 2)}\n`, 'utf8');
 			writeFileSync(lockfilePath, `${JSON.stringify({
@@ -86,18 +111,30 @@ describe('git workflow task helpers', () => {
 				packages: {
 					'': { name: '@treeseed/sdk', version },
 				},
-			}, null, 2)}\n`, 'utf8');
+				}, null, 2)}\n`, 'utf8');
+		};
+		const writePackagePointer = (sha: string) => {
+			git(resolve(work, packagePointerPath), ['checkout', sha]);
+			git(work, ['add', packagePointerPath]);
 		};
 
 		git(work, ['checkout', 'staging']);
+		writeVersion('0.1.0-dev.base');
+		mkdirSync(resolve(work, 'packages'), { recursive: true });
+		git(work, ['-c', 'protocol.file.allow=always', 'submodule', 'add', packageRepo.packageRepo, packagePointerPath]);
+		git(work, ['add', 'package.json', 'package-lock.json', '.gitmodules', packagePointerPath]);
+		git(work, ['commit', '-m', 'stage: base generated metadata']);
+
 		writeVersion('0.1.0-dev.old');
-		git(work, ['add', 'package.json', 'package-lock.json']);
+		writePackagePointer(packageRepo.old);
+		git(work, ['add', 'package.json', 'package-lock.json', packagePointerPath]);
 		git(work, ['commit', '-m', 'stage: old generated metadata']);
 		git(work, ['push', 'origin', 'staging']);
 
 		git(work, ['checkout', '-b', 'feature/generated-metadata', 'HEAD~1']);
 		writeVersion('0.1.0-dev.new');
-		git(work, ['add', 'package.json', 'package-lock.json']);
+		writePackagePointer(packageRepo.next);
+		git(work, ['add', 'package.json', 'package-lock.json', packagePointerPath]);
 		git(work, ['commit', '-m', 'feat: new generated metadata']);
 		git(work, ['push', '-u', 'origin', 'feature/generated-metadata']);
 
@@ -105,15 +142,16 @@ describe('git workflow task helpers', () => {
 		const result = squashMergeBranchIntoStaging(work, 'feature/generated-metadata', 'stage generated metadata', { pushTarget: false });
 
 		expect(result.committed).toBe(true);
-		expect(log).toHaveBeenCalledWith('Resolving generated package metadata reconciliation for package-lock.json, package.json.');
+		expect(log).toHaveBeenCalledWith('Resolving generated package metadata reconciliation for package-lock.json, package.json, packages/sdk.');
 		log.mockRestore();
 		expect(result.generatedMetadataReconciliation).toMatchObject({
 			targetBranch: 'staging',
-			reconciledFiles: ['package-lock.json', 'package.json'],
+			reconciledFiles: ['package-lock.json', 'package.json', packagePointerPath],
 			allConflictsWereGeneratedMetadata: true,
 			commitSha: result.commitSha,
 		});
 		expect(JSON.parse(git(work, ['show', 'HEAD:package.json'])).version).toBe('0.1.0-dev.new');
+		expect(git(work, ['ls-tree', 'HEAD', packagePointerPath])).toContain(packageRepo.next);
 		expect(git(work, ['diff', '--name-only', '--diff-filter=U'])).toBe('');
 	});
 
@@ -132,6 +170,7 @@ describe('git workflow task helpers', () => {
 
 		expect(() => squashMergeBranchIntoStaging(work, 'feature/readme-conflict', 'stage readme conflict', { pushTarget: false }))
 			.toThrow(/README\.md|CONFLICT/u);
-		expect(git(work, ['diff', '--name-only', '--diff-filter=U'])).toBe('README.md');
+		expect(git(work, ['diff', '--name-only', '--diff-filter=U'])).toBe('');
+		expect(git(work, ['status', '--porcelain'])).toBe('');
 	});
 });

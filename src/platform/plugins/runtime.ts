@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -74,6 +74,38 @@ function resolveInstalledPluginPath(packageName: string, tenantRoot: string) {
 	});
 }
 
+function parseTreeseedPackageReference(packageName: string) {
+	const match = packageName.match(/^@treeseed\/([^/]+)(?:\/(.+))?$/u);
+	if (!match) return null;
+	return {
+		packageId: match[1],
+		subpath: match[2] ?? 'index',
+	};
+}
+
+function resolveLocalWorkspacePluginPath(packageName: string, tenantRoot: string) {
+	const parsed = parseTreeseedPackageReference(packageName);
+	if (!parsed) return null;
+
+	const packageDir = path.resolve(tenantRoot, 'packages', parsed.packageId);
+	const packageJsonPath = path.resolve(packageDir, 'package.json');
+	if (!existsSync(packageJsonPath)) return null;
+
+	try {
+		const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+		if (packageJson?.name !== `@treeseed/${parsed.packageId}`) return null;
+	} catch {
+		return null;
+	}
+
+	const normalizedSubpath = parsed.subpath.replace(/^\.\//u, '').replace(/\.js$/u, '');
+	const candidates = [
+		path.resolve(packageDir, 'dist', `${normalizedSubpath}.js`),
+		path.resolve(packageDir, `${normalizedSubpath}.js`),
+	];
+	return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
 function loadPluginModule(packageName: string, tenantRoot: string) {
 	if (packageName === TREESEED_DEFAULT_PLUGIN_PACKAGE) {
 		const localDefaultPluginPath = resolveLocalDefaultPluginPath();
@@ -91,6 +123,14 @@ function loadPluginModule(packageName: string, tenantRoot: string) {
 		return {
 			moduleExports: require(resolvedPath),
 			baseDir: path.dirname(resolvedPath),
+		};
+	}
+
+	const localWorkspacePluginPath = resolveLocalWorkspacePluginPath(packageName, tenantRoot);
+	if (localWorkspacePluginPath) {
+		return {
+			moduleExports: require(localWorkspacePluginPath),
+			baseDir: path.dirname(localWorkspacePluginPath),
 		};
 	}
 

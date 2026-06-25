@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { runTreeseedGit } from './git-runner.ts';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
 import { elapsedMs, formatTimingMarkdown, formatTimingSummary, type TreeseedTimingEntry } from '../../timing.ts';
 import {
@@ -471,6 +470,12 @@ function writeTempFile(root: string, name: string, body: Buffer | string) {
 	return filePath;
 }
 
+function projectPlatformTempRoot(tenantRoot: string, scope: string) {
+	const base = resolve(tenantRoot, '.treeseed', 'tmp', scope);
+	mkdirSync(base, { recursive: true });
+	return base;
+}
+
 function toBuffer(body: string | ArrayBuffer | ArrayBufferView) {
 	if (typeof body === 'string') {
 		return Buffer.from(body);
@@ -488,7 +493,7 @@ function readR2JsonObject(
 	wranglerPath: string,
 	wranglerEnv: Record<string, string | undefined>,
 ) {
-	const tempRoot = mkdtempSync(join(tmpdir(), 'treeseed-r2-read-'));
+	const tempRoot = mkdtempSync(join(projectPlatformTempRoot(tenantRoot, 'r2-read'), 'treeseed-r2-read-'));
 	const filePath = resolve(tempRoot, basename(objectKey) || 'payload.json');
 	try {
 		const result = runWrangler(tenantRoot, [
@@ -889,7 +894,7 @@ function probeR2(
 	}
 	const { wranglerPath } = ensureGeneratedWranglerConfig(tenantRoot, { target });
 	const wranglerEnv = { CLOUDFLARE_ACCOUNT_ID: cloudflareAccountId };
-	const tempRoot = mkdtempSync(join(tmpdir(), 'treeseed-r2-health-'));
+	const tempRoot = mkdtempSync(join(projectPlatformTempRoot(tenantRoot, 'r2-health'), 'treeseed-r2-health-'));
 	const objectKey = r2HealthKey(state);
 	try {
 		const payload = JSON.stringify({ ok: true, createdAt: new Date().toISOString() });
@@ -1083,7 +1088,7 @@ async function publishContent(
 		}
 	}
 
-	const tempRoot = mkdtempSync(join(tmpdir(), 'treeseed-content-publish-'));
+	const tempRoot = mkdtempSync(join(projectPlatformTempRoot(tenantRoot, 'content-publish'), 'treeseed-content-publish-'));
 	try {
 		if (!options.dryRun) {
 			const uploadOptions = {

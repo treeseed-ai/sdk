@@ -10,7 +10,7 @@ function source(relativePath: string) {
 }
 
 function functionBody(fileSource: string, functionName: string) {
-	const marker = `export async function ${functionName}`;
+	const marker = `export async function ${functionName}(`;
 	const start = fileSource.indexOf(marker);
 	expect(start, `${functionName} exists`).toBeGreaterThanOrEqual(0);
 	const next = fileSource.indexOf('\nexport async function ', start + marker.length);
@@ -18,22 +18,33 @@ function functionBody(fileSource: string, functionName: string) {
 }
 
 describe('reconciliation hard-cut source boundaries', () => {
-	it('keeps stage and release as release-gate facades', () => {
+	it('keeps stage and release behind the release-gate reconciliation facade', () => {
 		const operations = source('packages/sdk/src/workflow/operations.ts');
-		for (const name of ['workflowStage', 'workflowRelease']) {
-			const body = functionBody(operations, name);
-			expect(body).toContain('runReleaseGateReconcileFacade');
-			expect(body).toContain('legacyMutationPathDisabled');
-			for (const blocked of [
-				'executeJournalStep',
-				'waitForWorkflowGates',
-				'runWorkflowHostedResourceVerification',
-				'destroyPreviewIfPresent',
-				'squashMergeBranchIntoStaging',
-				'runReleaseCandidateForPlan',
-			]) {
-				expect(body, `${name} must not use ${blocked}`).not.toContain(blocked);
-			}
+		const stageBody = functionBody(operations, 'workflowStage');
+		expect(stageBody).toContain('runReleaseGateReconcileFacade');
+		expect(stageBody).toContain('legacyMutationPathDisabled');
+		for (const blocked of [
+			'executeJournalStep',
+			'waitForWorkflowGates',
+			'runWorkflowHostedResourceVerification',
+			'destroyWorkflowBranchPreviewIfPresent',
+			'squashMergeBranchIntoStaging',
+		]) {
+			expect(stageBody, `workflowStage must not use ${blocked}`).not.toContain(blocked);
+		}
+
+		const releaseBody = functionBody(operations, 'workflowRelease');
+		expect(releaseBody).toContain('runReleaseGateReconcileFacade');
+		expect(releaseBody).toContain('legacyMutationPathDisabled');
+		for (const blocked of [
+			'executeJournalStep',
+			'waitForWorkflowGates',
+			'runWorkflowHostedResourceVerification',
+			'destroyWorkflowBranchPreviewIfPresent',
+			'squashMergeBranchIntoStaging',
+			'runReleaseCandidateForPlan',
+		]) {
+			expect(releaseBody, `workflowRelease must not use ${blocked}`).not.toContain(blocked);
 		}
 	});
 

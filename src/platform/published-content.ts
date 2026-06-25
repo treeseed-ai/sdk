@@ -1,4 +1,5 @@
 import type { TreeseedDeployConfig } from './contracts.ts';
+import type { CommerceOfferMode } from '../sdk-types.ts';
 import type { CloudflareRuntime, R2BucketLike } from '../types/cloudflare.ts';
 
 export const PUBLISHED_CONTENT_MANIFEST_SCHEMA_VERSION = 2;
@@ -76,7 +77,7 @@ export interface CatalogIndexEntry {
 	summary?: string;
 	visibility?: PublishedContentVisibility;
 	listingEnabled?: boolean;
-	offerMode?: 'free' | 'paid' | 'contact' | 'one_time_current_version' | 'subscription_updates' | 'private';
+	offerMode?: CommerceOfferMode;
 	manifestKey?: string;
 	artifactKey?: string;
 	updatedAt: string;

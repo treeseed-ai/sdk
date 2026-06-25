@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -14,6 +13,7 @@ import {
 	discoverTreeseedPackageAdapters,
 	planTreeseedPackageDevelopmentImage,
 } from '../../src/operations/services/package-adapters.ts';
+import { buildReleaseGraph } from '../../src/operations/services/release-graph-rehearsal.ts';
 import {
 	githubRepositoryCredentialEnvName,
 	resolveGitHubCredentialForRepository,
@@ -22,8 +22,14 @@ import { resolveTreeseedEnvironmentRegistry } from '../../src/platform/environme
 
 const roots: string[] = [];
 
+function testTempBase() {
+	const base = resolve('.treeseed', 'test-tmp');
+	mkdirSync(base, { recursive: true });
+	return base;
+}
+
 function makeWorkspace() {
-	const root = mkdtempSync(join(tmpdir(), 'treeseed-release-candidate-'));
+	const root = mkdtempSync(join(testTempBase(), 'treeseed-release-candidate-'));
 	roots.push(root);
 	mkdirSync(resolve(root, 'packages', 'sdk'), { recursive: true });
 	mkdirSync(resolve(root, 'packages', 'sdk', '.github', 'workflows'), { recursive: true });
@@ -342,6 +348,53 @@ describe('release candidate verification', () => {
 		expect(plan.hosting?.overrideEnvVar).toBe('TREESEED_PUBLIC_TREEDX_IMAGE_REF');
 	});
 
+	it('expands selected release graph packages to upstream dependencies and TreeDX image producers', () => {
+		const root = makeWorkspace();
+		addTreeDxPackage(root);
+		addApiPackage(root);
+		writeFileSync(resolve(root, 'packages', 'api', 'package.json'), JSON.stringify({
+			name: '@treeseed/api',
+			version: '0.1.0',
+			private: true,
+			dependencies: {
+				'@treeseed/sdk': 'workspace:*',
+			},
+			scripts: {
+				'verify:local': 'node -e "process.exit(0)"',
+			},
+		}, null, 2), 'utf8');
+
+		const graph = buildReleaseGraph(root, ['@treeseed/api']);
+
+		expect(graph.order).toContain('@treeseed/sdk');
+		expect(graph.order).toContain('treedx');
+		expect(graph.order.at(-1)).toBe('@treeseed/api');
+		expect(graph.edges).toEqual(expect.arrayContaining([
+			expect.objectContaining({ from: '@treeseed/sdk', to: '@treeseed/api', kind: 'npm-dependency' }),
+			expect.objectContaining({ from: 'treedx', to: '@treeseed/api', kind: 'hosting-image-consumer' }),
+		]));
+	});
+
+	it('does not delete installed package dependencies before release graph verification', () => {
+		const source = readFileSync(resolve('src/operations/services/release-graph-rehearsal.ts'), 'utf8');
+		expect(source).not.toContain("rmSync(resolve(packageDir, 'node_modules')");
+		expect(source).toContain("TREESEED_VERIFY_PACKAGE_ISOLATED: '1'");
+		expect(source).toContain('treeseed-release-tarballs');
+		expect(source).toContain('file:${STAGED_TARBALL_DIR}/${stagedTarballName}');
+		expect(source).toContain("mode: 'file' | 'version'");
+		expect(source).toContain('releaseGraphTarballVersion(tarballPath)');
+		expect(source).toContain("rewriteInternalDependencies(packageDir, tarballs, 'version')");
+		expect(source).toContain("rewriteInternalDependencies(packageDir, tarballs, 'file')");
+		expect(source).toContain('ensureIgnoreFilesIncludeStagedTarballs(packageDir)');
+		expect(source).toContain("resolve(packageDir, '.npmignore')");
+		expect(source).toContain('!${STAGED_TARBALL_DIR}/*.tgz');
+		expect(source).toContain("'.treeseed', 'tmp', 'release-graph'");
+		expect(source).toContain('TREESEED_RELEASE_GRAPH_TMPDIR');
+		expect(source).toContain("'.treeseed', 'tmp', 'actions'");
+		expect(source).toContain('TMPDIR: env.TMPDIR ?? tempDir');
+		expect(source).not.toContain('npm_config_tmp');
+	});
+
 	it('normalizes and resolves repository-scoped GitHub credentials', () => {
 		expect(githubRepositoryCredentialEnvName('treeseed-ai/treedx')).toBe('TREESEED_GITHUB_TOKEN_TREESEED_AI_TREEDX');
 		expect(githubRepositoryCredentialEnvName('https://github.com/treeseed-ai/treedx.git')).toBe('TREESEED_GITHUB_TOKEN_TREESEED_AI_TREEDX');
@@ -440,7 +493,10 @@ describe('release candidate verification', () => {
 		});
 
 		expect(report.status).toBe('passed');
-		expect(report.checks.find((check) => check.name === 'package-release-readiness')?.detail).toContain('treedx (beam-elixir-rust)');
+		expect(report.localProof?.graph.order).toContain('treedx');
+		expect(report.localProof?.artifacts).toEqual(expect.arrayContaining([
+			expect.objectContaining({ packageId: 'treedx', proofType: 'verify-script', status: 'passed' }),
+		]));
 		expect(report.failures.some((failure) => failure.code === 'npm_pack_dry_run_failed')).toBe(false);
 	});
 

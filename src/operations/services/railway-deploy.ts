@@ -697,7 +697,7 @@ query TreeseedRailwayDeploymentStatus($projectId: String!) {
 	return payload.data?.project ?? null;
 }
 
-function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, application = null) {
+function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, application = null, machineConfigRoot = tenantRoot) {
 	const normalizedScope = normalizeScope(scope);
 	const imageRefKeys = [
 		'TREESEED_API_IMAGE_REF',
@@ -707,7 +707,7 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 	];
 	let machineEnv = {};
 	try {
-		machineEnv = resolveTreeseedMachineEnvironmentValues(tenantRoot, normalizedScope, imageRefKeys);
+		machineEnv = resolveTreeseedMachineEnvironmentValues(machineConfigRoot, normalizedScope, imageRefKeys);
 	} catch {
 		machineEnv = {};
 	}
@@ -844,6 +844,7 @@ export function configuredRailwayServices(tenantRoot, scope) {
 				root: application.root,
 				relativeRoot: application.relativeRoot,
 			},
+			tenantRoot,
 		));
 	return [...direct, ...nested];
 }

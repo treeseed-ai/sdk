@@ -100,6 +100,11 @@ import {
 	type ReleaseCandidateReport,
 } from '../operations/services/release-candidate.ts';
 import {
+	buildReleaseGraph,
+	runReleaseGraphRehearsal,
+	type ReleaseGraphVerifyDriver,
+} from '../operations/services/release-graph-rehearsal.ts';
+import {
 	collectReleaseHistoryCommits,
 	renderAdministrativeCommitMessage,
 	upsertReleaseChangelog,
@@ -216,6 +221,7 @@ import type {
 	TreeseedConfigInput,
 	TreeseedDestroyInput,
 	TreeseedExportInput,
+	TreeseedReleaseCandidateInput,
 	TreeseedReleaseInput,
 	TreeseedRecoverInput,
 	TreeseedResumeInput,
@@ -235,6 +241,7 @@ import type {
 	TreeseedWorkflowRecovery,
 	TreeseedWorkflowResult,
 	TreeseedWorkflowWorktreeMode,
+	TreeseedReleaseCandidateMode,
 } from '../workflow.ts';
 
 type WorkflowWrite = NonNullable<TreeseedWorkflowContext['write']>;
@@ -2627,6 +2634,79 @@ async function runReleaseCandidateForPlan(
 	});
 	assertReleaseCandidatePassed(operation, report);
 	return report;
+}
+
+function normalizeReleaseCandidatePackages(value: TreeseedReleaseCandidateInput['package']) {
+	if (Array.isArray(value)) return value.map(String).filter(Boolean);
+	if (typeof value === 'string' && value.trim()) return [value.trim()];
+	return [];
+}
+
+export async function workflowReleaseCandidate(helpers: WorkflowOperationHelpers, input: TreeseedReleaseCandidateInput = {}) {
+	try {
+		return await withContextEnv(helpers.context.env, async () => {
+			const tenantRoot = resolveProjectRootOrThrow('release-candidate', helpers.cwd());
+			const root = workspaceRoot(tenantRoot);
+			const executionMode = normalizeExecutionMode(input);
+			const selectedPackageNames = normalizeReleaseCandidatePackages(input.package);
+			const verifyDriver = (input.verifyDriver ?? 'auto') as ReleaseGraphVerifyDriver;
+			const mode = (input.mode ?? 'strict') as TreeseedReleaseCandidateMode;
+			const plannedGraph = buildReleaseGraph(root, selectedPackageNames);
+			const payload = {
+				mode,
+				verifyDriver,
+				selectedPackageNames,
+				keepWorkspace: input.keepWorkspace === true,
+				graph: { nodes: plannedGraph.nodes, edges: plannedGraph.edges, order: plannedGraph.order },
+				plannedSteps: [
+					{ id: 'build-release-graph', description: 'Discover all treeseed.package.yaml package adapters and graph dependencies.' },
+					{ id: 'local-release-graph-rehearsal', description: 'Run local tarball/image-service rehearsal without hosted GitHub Actions.' },
+				],
+			};
+			if (executionMode === 'plan') {
+				return buildWorkflowResult('release-candidate', root, payload, {
+					executionMode,
+					summary: 'Treeseed release-candidate rehearsal plan ready.',
+					nextSteps: createNextSteps([
+						{ operation: 'release-candidate', reason: 'Run the local release graph rehearsal before stage or release.' },
+					]),
+				});
+			}
+			const proof = runReleaseGraphRehearsal({
+				root,
+				selectedPackageNames,
+				verifyDriver,
+				strict: mode === 'strict',
+				keepWorkspace: input.keepWorkspace === true,
+				write: (line, stream) => helpers.write(line, stream),
+				env: helpers.context.env,
+			});
+			const resultPayload = {
+				...payload,
+				proof,
+				graph: proof.graph,
+				artifacts: proof.artifacts,
+				actionChecks: proof.actionChecks,
+				failures: proof.failures,
+			};
+			if (proof.status !== 'passed') {
+				workflowError('release-candidate', 'validation_failed', [
+					'Treeseed local release graph rehearsal failed.',
+					...proof.failures.map((failure) => `- ${failure.scope}: ${failure.message}`),
+				].join('\n'), {
+					details: { releaseCandidate: resultPayload },
+				});
+			}
+			return buildWorkflowResult('release-candidate', root, resultPayload, {
+				summary: 'Treeseed local release graph rehearsal passed.',
+				nextSteps: createNextSteps([
+					{ operation: 'stage', reason: 'Run stage after the matching local release graph proof passes.' },
+				]),
+			});
+		});
+	} catch (error) {
+		toError('release-candidate', error);
+	}
 }
 
 function buildReleasePlanSnapshot(input: {

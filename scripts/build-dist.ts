@@ -141,6 +141,14 @@ function emitDeclarations() {
 	}
 }
 
+function rewriteDeclarations() {
+	for (const filePath of walkFiles(distRoot)) {
+		if (!filePath.endsWith('.d.ts')) continue;
+		const contents = readFileSync(filePath, 'utf8');
+		writeFileSync(filePath, rewriteRuntimeSpecifiers(contents), 'utf8');
+	}
+}
+
 rmSync(distRoot, { recursive: true, force: true });
 
 for (const filePath of walkFiles(srcRoot)) {
@@ -178,6 +186,7 @@ for (const filePath of walkFiles(scriptsRoot)) {
 }
 
 emitDeclarations();
+rewriteDeclarations();
 
 for (const filePath of walkFiles(distRoot)) {
 	if (filePath.endsWith('.d.js')) {

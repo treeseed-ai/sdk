@@ -93,6 +93,20 @@ describe('live hosted service checks', () => {
 		expect(report.checks.find((check) => check.id === 'http:web')?.status).toBe('passed');
 	});
 
+	it('scopes live reports to selected service keys', async () => {
+		const report = await collectTreeseedLiveHostedServiceChecks({
+			tenantRoot: root(),
+			target: 'staging',
+			serviceKeys: ['api'],
+			requireLiveRailway: false,
+			requireLiveHttp: false,
+		});
+
+		expect(report.checks.some((check) => check.serviceKey === 'api')).toBe(true);
+		expect(report.checks.some((check) => check.serviceKey === 'operationsRunner')).toBe(false);
+		expect(report.checks.some((check) => check.id === 'railway:treeseedDatabase:targets')).toBe(false);
+	});
+
 	it('observes selected package-local web app URL with branch alias fallback', async () => {
 		const tenantRoot = root();
 		writePackageApp(tenantRoot, 'packages/ui', `name: TreeSeed UI

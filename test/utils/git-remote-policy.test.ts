@@ -1,7 +1,6 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
 	configuredPushUrl,
 	ensureSshPushUrlForOrigin,
@@ -9,6 +8,20 @@ import {
 	sshPushUrlForRemote,
 } from '../../src/operations/services/git-remote-policy.ts';
 import { run } from '../../src/operations/services/workspace-tools.ts';
+
+const roots: string[] = [];
+
+function testTempBase() {
+	const base = join(process.cwd(), '.treeseed', 'test-tmp');
+	mkdirSync(base, { recursive: true });
+	return base;
+}
+
+afterEach(() => {
+	for (const root of roots.splice(0)) {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
 
 describe('git remote policy', () => {
 	it('derives SSH push URLs from public HTTPS remotes', () => {
@@ -19,7 +32,8 @@ describe('git remote policy', () => {
 	});
 
 	it('keeps the read URL and configures only the push URL', () => {
-		const repo = mkdtempSync(join(tmpdir(), 'treeseed-remote-policy-'));
+		const repo = mkdtempSync(join(testTempBase(), 'treeseed-remote-policy-'));
+		roots.push(repo);
 		run('git', ['init'], { cwd: repo });
 		run('git', ['remote', 'add', 'origin', 'https://github.com/treeseed-ai/sdk.git'], { cwd: repo });
 

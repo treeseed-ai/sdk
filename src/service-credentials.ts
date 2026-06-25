@@ -18,15 +18,15 @@ export function resolveTreeseedGitHubToken(env: EnvLike = process.env) {
 }
 
 export function resolveTreeseedCloudflareApiToken(env: EnvLike = process.env) {
-	return configuredValue(env, TREESEED_CLOUDFLARE_API_TOKEN_ENV);
+	return configuredValue(env, TREESEED_CLOUDFLARE_API_TOKEN_ENV) || configuredValue(env, 'CLOUDFLARE_API_TOKEN');
 }
 
 export function resolveTreeseedCloudflareAccountId(env: EnvLike = process.env) {
-	return configuredValue(env, TREESEED_CLOUDFLARE_ACCOUNT_ID_ENV);
+	return configuredValue(env, TREESEED_CLOUDFLARE_ACCOUNT_ID_ENV) || configuredValue(env, 'CLOUDFLARE_ACCOUNT_ID');
 }
 
 export function resolveTreeseedRailwayApiToken(env: EnvLike = process.env) {
-	return configuredValue(env, TREESEED_RAILWAY_API_TOKEN_ENV);
+	return configuredValue(env, TREESEED_RAILWAY_API_TOKEN_ENV) || configuredValue(env, 'RAILWAY_API_TOKEN');
 }
 
 export function resolveTreeseedDockerhubToken(env: EnvLike = process.env) {

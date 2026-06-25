@@ -45,7 +45,7 @@ surfaces:
     rootDir: packages/api
     environments:
       staging:
-        domain: api-treeseed-staging.treeseed.ai
+        domain: api-treeseed-market-staging-ca844c56.treeseed.ai
       prod:
         domain: api.treeseed.ai
 services:
@@ -241,6 +241,32 @@ surfaces:
 		expect(byId(report, 'railway:operationsRunner:1:startCommand')).toMatchObject({ status: 'passed', expected: { startCommand: 'npm run start:runner' } });
 		expect(byId(report, 'railway:operationsRunner:1:volume')).toMatchObject({ status: 'passed', expected: { volumeMountPath: '/data' } });
 		expect(byId(report, 'railway:treeseedDatabase:targets')).toMatchObject({ status: 'passed' });
+	});
+
+	it('scopes checks to selected service keys', () => {
+		const root = fixtureRoot();
+		const report = collectTreeseedHostedServiceChecks({
+			tenantRoot: root,
+			target: 'staging',
+			serviceKeys: ['api'],
+			observedRailwayServices: {
+				'treeseed-api': {
+					serviceName: 'treeseed-api',
+					projectName: 'treeseed-api',
+					environmentName: 'staging',
+					rootDirectory: 'packages/api',
+					buildCommand: 'npm run build',
+					startCommand: 'npm run start:api',
+					healthcheckPath: '/healthz',
+					healthcheckTimeoutSeconds: 120,
+					runtimeMode: 'serverless',
+				},
+			},
+		});
+
+		expect(byId(report, 'railway:api:service')).toMatchObject({ status: 'passed' });
+		expect(report.checks.some((check) => check.serviceKey === 'operationsRunner')).toBe(false);
+		expect(report.checks.some((check) => check.id === 'railway:treeseedDatabase:targets')).toBe(false);
 	});
 
 	it('detects Railway drift and missing required service values without leaking secret values', () => {

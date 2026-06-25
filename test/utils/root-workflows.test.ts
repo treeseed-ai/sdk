@@ -96,7 +96,7 @@ describe('root workflow bootstrap selection', () => {
 			expect(webSource).not.toContain('TREESEED_RAILWAY_API_TOKEN');
 			expect(webSource).not.toContain('TREESEED_RAILWAY_PROJECT_ID');
 			expect(webSource).not.toContain('TREESEED_PLATFORM_RUNNER_SECRET');
-			expect(webSource).not.toContain('TREESEED_CREDENTIAL_SESSION_SECRET');
+			expect(webSource).toContain('TREESEED_CREDENTIAL_SESSION_SECRET: ${{ secrets.TREESEED_CREDENTIAL_SESSION_SECRET }}');
 		expect(webSource).not.toContain('TREESEED_WORKER_POOL_SCALER');
 		expect(source).not.toContain('migrations/*');
 		expect(source).toContain('packages/api');

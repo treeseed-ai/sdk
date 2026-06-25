@@ -351,6 +351,7 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 			githubEnvironments: stringArray(manifest?.githubEnvironments),
 			requiredSecrets: stringArray(manifest?.requiredSecrets),
 			workflowTemplateVersion: stringValue(manifest?.workflowTemplateVersion) ?? null,
+			localDev: stringRecord(manifest?.localDev),
 			capacityProvider: stringRecord(manifest?.capacityProvider),
 			...(projectArchitecture
 				? {
@@ -934,7 +935,7 @@ jobs:
 `;
 	}
 	if (template === 'docker-image' || template === 'dev-image') {
-		const imageSetup = resolveDockerImageWorkflowSetupCommand();
+		const imageSetup = adapter.kind === 'node-typescript' ? resolveDockerImageWorkflowSetupCommand() : null;
 		const anyTarget = dockerArtifacts.some((artifact) => typeof artifact.target === 'string' && artifact.target.trim().length > 0);
 		const dockerContextPrepareCommand = isRecord(adapter.metadata.scripts) && typeof adapter.metadata.scripts['capacity-provider:build'] === 'string'
 			? 'npm run capacity-provider:build -- --prepare-only'
@@ -1017,8 +1018,7 @@ ${dockerArtifacts.flatMap((artifact) => [
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - run: ${imageSetup}
-${dockerContextPrepareCommand ? `      - run: ${dockerContextPrepareCommand}\n` : ''}${computeTagsStep}      - uses: docker/setup-buildx-action@v3
+${imageSetup ? `      - run: ${imageSetup}\n` : ''}${dockerContextPrepareCommand ? `      - run: ${dockerContextPrepareCommand}\n` : ''}${computeTagsStep}      - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           username: \${{ vars.TREESEED_DOCKERHUB_USERNAME }}
@@ -1056,6 +1056,7 @@ ${computeTagsStep}      - name: Publish multi-architecture manifest
             "\${{ matrix.image }}:\${{ steps.tags.outputs.base }}-arm64"
 ${releaseStep}`;
 	}
+	const needsNodeSetup = adapter.kind === 'node-typescript';
 	return `name: Verify ${adapter.name}
 
 on:
@@ -1070,11 +1071,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: actions/setup-node@v4
+${needsNodeSetup ? `      - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: ${setup}
-      - run: ${verify}
+` : ''}      - run: ${verify}
 `;
 }
 

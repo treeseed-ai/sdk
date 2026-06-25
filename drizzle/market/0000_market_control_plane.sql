@@ -1,11 +1,64 @@
-CREATE TABLE IF NOT EXISTS "agent_messages" (
+CREATE TABLE "agent_capacity_plans" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"decision_id" text NOT NULL,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"scope_hash" text NOT NULL,
+	"allocation_set_id" text,
+	"work_day_id" text,
+	"expected_credits" real DEFAULT 0 NOT NULL,
+	"high_credits" real DEFAULT 0 NOT NULL,
+	"work_units_json" text DEFAULT '[]' NOT NULL,
+	"capability_needs_json" text DEFAULT '[]' NOT NULL,
+	"environment_needs_json" text DEFAULT '[]' NOT NULL,
+	"reserves_json" text DEFAULT '{}' NOT NULL,
+	"blockers_json" text DEFAULT '[]' NOT NULL,
+	"priority_rationale" text,
+	"review_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"accepted_at" text,
+	"scheduled_at" text,
+	"superseded_at" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "agent_messages" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"type" text NOT NULL,
 	"payload_json" text NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "agent_pool_registrations" (
+CREATE TABLE "agent_mode_runs" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"provider_assignment_id" text NOT NULL,
+	"capacity_provider_id" text NOT NULL,
+	"execution_provider_id" text,
+	"project_agent_class_id" text NOT NULL,
+	"agent_id" text,
+	"handler_id" text,
+	"mode" text NOT NULL,
+	"status" text DEFAULT 'queued' NOT NULL,
+	"selected_input_json" text DEFAULT '{}' NOT NULL,
+	"capacity_envelope_json" text DEFAULT '{}' NOT NULL,
+	"outputs_json" text DEFAULT '{}' NOT NULL,
+	"trace_refs_json" text DEFAULT '{}' NOT NULL,
+	"usage_actual_json" text DEFAULT '{}' NOT NULL,
+	"validation_json" text DEFAULT '{}' NOT NULL,
+	"fallback_reason" text,
+	"started_at" text,
+	"completed_at" text,
+	"failed_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "agent_pool_registrations" (
 	"id" text PRIMARY KEY NOT NULL,
 	"pool_id" text NOT NULL,
 	"project_id" text NOT NULL,
@@ -21,7 +74,7 @@ CREATE TABLE IF NOT EXISTS "agent_pool_registrations" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "agent_pool_scale_decisions" (
+CREATE TABLE "agent_pool_scale_decisions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"pool_id" text NOT NULL,
 	"project_id" text NOT NULL,
@@ -36,7 +89,7 @@ CREATE TABLE IF NOT EXISTS "agent_pool_scale_decisions" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "agent_pools" (
+CREATE TABLE "agent_pools" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -54,14 +107,14 @@ CREATE TABLE IF NOT EXISTS "agent_pools" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "agent_runs" (
+CREATE TABLE "agent_runs" (
 	"run_id" text PRIMARY KEY NOT NULL,
 	"agent_slug" text NOT NULL,
 	"status" text NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "api_tokens" (
+CREATE TABLE "api_tokens" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"kind" text NOT NULL,
@@ -77,7 +130,7 @@ CREATE TABLE IF NOT EXISTS "api_tokens" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "approval_requests" (
+CREATE TABLE "approval_requests" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"project_id" text NOT NULL,
@@ -103,7 +156,7 @@ CREATE TABLE IF NOT EXISTS "approval_requests" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "audit_events" (
+CREATE TABLE "audit_events" (
 	"id" text PRIMARY KEY NOT NULL,
 	"actor_type" text NOT NULL,
 	"actor_id" text,
@@ -114,7 +167,7 @@ CREATE TABLE IF NOT EXISTS "audit_events" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "auth_sessions" (
+CREATE TABLE "auth_sessions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"session_type" text NOT NULL,
@@ -127,7 +180,7 @@ CREATE TABLE IF NOT EXISTS "auth_sessions" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "better_auth_account" (
+CREATE TABLE "better_auth_account" (
 	"id" text PRIMARY KEY NOT NULL,
 	"accountId" text NOT NULL,
 	"providerId" text NOT NULL,
@@ -143,7 +196,7 @@ CREATE TABLE IF NOT EXISTS "better_auth_account" (
 	"updatedAt" bigint NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "better_auth_session" (
+CREATE TABLE "better_auth_session" (
 	"id" text PRIMARY KEY NOT NULL,
 	"expiresAt" bigint NOT NULL,
 	"token" text NOT NULL,
@@ -155,7 +208,7 @@ CREATE TABLE IF NOT EXISTS "better_auth_session" (
 	CONSTRAINT "better_auth_session_token_unique" UNIQUE("token")
 );
 
-CREATE TABLE IF NOT EXISTS "better_auth_user" (
+CREATE TABLE "better_auth_user" (
 	"id" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"email" text NOT NULL,
@@ -169,7 +222,7 @@ CREATE TABLE IF NOT EXISTS "better_auth_user" (
 	CONSTRAINT "better_auth_user_email_unique" UNIQUE("email")
 );
 
-CREATE TABLE IF NOT EXISTS "better_auth_verification" (
+CREATE TABLE "better_auth_verification" (
 	"id" text PRIMARY KEY NOT NULL,
 	"identifier" text NOT NULL,
 	"value" text NOT NULL,
@@ -178,7 +231,24 @@ CREATE TABLE IF NOT EXISTS "better_auth_verification" (
 	"updatedAt" bigint NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "capacity_grants" (
+CREATE TABLE "capacity_allocation_sets" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"version" text NOT NULL,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"effective_from" text,
+	"effective_until" text,
+	"policy_json" text DEFAULT '{}' NOT NULL,
+	"slices_json" text DEFAULT '[]' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_by_id" text,
+	"activated_at" text,
+	"superseded_by_id" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "capacity_grants" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"lane_id" text,
@@ -200,11 +270,14 @@ CREATE TABLE IF NOT EXISTS "capacity_grants" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "capacity_ledger_entries" (
+CREATE TABLE "capacity_ledger_entries" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"lane_id" text,
 	"reservation_id" text,
+	"assignment_id" text,
+	"mode_run_id" text,
+	"mode" text,
 	"team_id" text NOT NULL,
 	"project_id" text,
 	"work_day_id" text,
@@ -218,7 +291,7 @@ CREATE TABLE IF NOT EXISTS "capacity_ledger_entries" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "capacity_provider_api_keys" (
+CREATE TABLE "capacity_provider_api_keys" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -236,7 +309,7 @@ CREATE TABLE IF NOT EXISTS "capacity_provider_api_keys" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "capacity_provider_deployments" (
+CREATE TABLE "capacity_provider_deployments" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"capacity_provider_id" text NOT NULL,
@@ -255,7 +328,7 @@ CREATE TABLE IF NOT EXISTS "capacity_provider_deployments" (
 	"completed_at" text
 );
 
-CREATE TABLE IF NOT EXISTS "capacity_provider_hosts" (
+CREATE TABLE "capacity_provider_hosts" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"host_id" text NOT NULL,
@@ -266,7 +339,7 @@ CREATE TABLE IF NOT EXISTS "capacity_provider_hosts" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "capacity_provider_lanes" (
+CREATE TABLE "capacity_provider_lanes" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"name" text NOT NULL,
@@ -283,7 +356,7 @@ CREATE TABLE IF NOT EXISTS "capacity_provider_lanes" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "capacity_provider_registrations" (
+CREATE TABLE "capacity_provider_registrations" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -300,7 +373,7 @@ CREATE TABLE IF NOT EXISTS "capacity_provider_registrations" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "capacity_providers" (
+CREATE TABLE "capacity_providers" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text,
 	"owner_team_id" text,
@@ -320,11 +393,15 @@ CREATE TABLE IF NOT EXISTS "capacity_providers" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "capacity_reservations" (
+CREATE TABLE "capacity_reservations" (
 	"id" text PRIMARY KEY NOT NULL,
 	"capacity_provider_id" text NOT NULL,
 	"execution_provider_id" text,
 	"lane_id" text NOT NULL,
+	"allocation_set_id" text,
+	"project_agent_class_id" text,
+	"assignment_id" text,
+	"mode" text,
 	"team_id" text NOT NULL,
 	"project_id" text NOT NULL,
 	"work_day_id" text,
@@ -345,7 +422,7 @@ CREATE TABLE IF NOT EXISTS "capacity_reservations" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "capacity_routing_decisions" (
+CREATE TABLE "capacity_routing_decisions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_id" text,
 	"work_day_id" text,
@@ -361,7 +438,7 @@ CREATE TABLE IF NOT EXISTS "capacity_routing_decisions" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "catalog_artifact_versions" (
+CREATE TABLE "catalog_artifact_versions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"item_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -375,7 +452,7 @@ CREATE TABLE IF NOT EXISTS "catalog_artifact_versions" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "catalog_item_collaborators" (
+CREATE TABLE "catalog_item_collaborators" (
 	"id" text PRIMARY KEY NOT NULL,
 	"item_id" text NOT NULL,
 	"subject_type" text NOT NULL,
@@ -386,7 +463,7 @@ CREATE TABLE IF NOT EXISTS "catalog_item_collaborators" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "catalog_items" (
+CREATE TABLE "catalog_items" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"kind" text NOT NULL,
@@ -404,14 +481,818 @@ CREATE TABLE IF NOT EXISTS "catalog_items" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "contact_submissions" (
+CREATE TABLE "client_encrypted_escrow_records" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text,
+	"secret_id" text NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"ciphertext_ref" text NOT NULL,
+	"algorithm" text NOT NULL,
+	"wrapping_key_id" text NOT NULL,
+	"created_by_client_id" text,
+	"expires_at" text,
+	"migrated_to" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	"tombstoned_at" text
+);
+
+CREATE TABLE "commerce_buyer_stripe_customers" (
+	"id" text PRIMARY KEY NOT NULL,
+	"buyer_team_id" text,
+	"buyer_user_id" text,
+	"vendor_id" text NOT NULL,
+	"connected_account_id" text NOT NULL,
+	"environment" text DEFAULT 'test' NOT NULL,
+	"stripe_customer_id" text NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_capacity_listing_inquiries" (
+	"id" text PRIMARY KEY NOT NULL,
+	"listing_id" text NOT NULL,
+	"product_id" text NOT NULL,
+	"vendor_id" text NOT NULL,
+	"seller_team_id" text NOT NULL,
+	"buyer_team_id" text,
+	"buyer_user_id" text,
+	"status" text DEFAULT 'requested' NOT NULL,
+	"requested_service_type" text,
+	"requested_scope" text NOT NULL,
+	"data_access_requested_json" text DEFAULT '{}' NOT NULL,
+	"secret_access_requested_json" text DEFAULT '{}' NOT NULL,
+	"related_project_id" text,
+	"related_workday_id" text,
+	"governance_evidence_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_capacity_listings" (
+	"id" text PRIMARY KEY NOT NULL,
+	"product_id" text NOT NULL,
+	"vendor_id" text NOT NULL,
+	"seller_team_id" text NOT NULL,
+	"capacity_provider_id" text,
+	"capacity_provider_lane_id" text,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"access_level" text DEFAULT 'public_summary' NOT NULL,
+	"runtime_isolation_level" text DEFAULT 'none' NOT NULL,
+	"human_involvement_level" text DEFAULT 'none' NOT NULL,
+	"ai_involvement_level" text DEFAULT 'none' NOT NULL,
+	"data_access_level" text DEFAULT 'none' NOT NULL,
+	"secret_access_level" text DEFAULT 'none' NOT NULL,
+	"supported_service_types_json" text DEFAULT '[]' NOT NULL,
+	"supported_regions_json" text DEFAULT '[]' NOT NULL,
+	"runtime_requirements_json" text DEFAULT '{}' NOT NULL,
+	"data_handling_summary" text,
+	"buyer_visible_risk_summary" text,
+	"governance_requirements_json" text DEFAULT '{}' NOT NULL,
+	"support_policy" text,
+	"availability_summary" text,
+	"ownership_snapshot_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_cart_items" (
+	"id" text PRIMARY KEY NOT NULL,
+	"cart_id" text NOT NULL,
+	"vendor_id" text NOT NULL,
+	"seller_team_id" text NOT NULL,
+	"product_id" text NOT NULL,
+	"product_version_id" text,
+	"offer_id" text NOT NULL,
+	"price_id" text,
+	"quantity" integer DEFAULT 1 NOT NULL,
+	"unit_amount" integer DEFAULT 0 NOT NULL,
+	"currency" text NOT NULL,
+	"mode" text NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_carts" (
+	"id" text PRIMARY KEY NOT NULL,
+	"buyer_team_id" text,
+	"buyer_user_id" text,
+	"status" text DEFAULT 'active' NOT NULL,
+	"currency" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_checkouts" (
+	"id" text PRIMARY KEY NOT NULL,
+	"cart_id" text NOT NULL,
+	"buyer_team_id" text,
+	"buyer_user_id" text,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"checkout_mode" text DEFAULT 'stripe_elements_grouped_vendor' NOT NULL,
+	"group_count" integer DEFAULT 0 NOT NULL,
+	"completed_group_count" integer DEFAULT 0 NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_contributions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"product_id" text NOT NULL,
+	"product_version_id" text,
+	"contributor_type" text NOT NULL,
+	"contributor_id" text,
+	"display_name" text,
+	"role" text NOT NULL,
+	"summary" text,
+	"attribution_visibility" text DEFAULT 'public' NOT NULL,
+	"agreement_ref" text,
+	"benefit_weight" real,
+	"effective_at" text NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_entitlements" (
+	"id" text PRIMARY KEY NOT NULL,
+	"buyer_team_id" text,
+	"buyer_user_id" text,
+	"seller_team_id" text NOT NULL,
+	"product_id" text NOT NULL,
+	"product_version_id" text,
+	"offer_id" text NOT NULL,
+	"order_id" text,
+	"order_item_id" text,
+	"subscription_id" text,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"access_scope_json" text DEFAULT '{}' NOT NULL,
+	"starts_at" text,
+	"ends_at" text,
+	"renewal_state" text DEFAULT 'none' NOT NULL,
+	"fulfillment_artifact_refs_json" text DEFAULT '[]' NOT NULL,
+	"project_id" text,
+	"catalog_item_id" text,
+	"ownership_snapshot_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_fulfillment_events" (
+	"id" text PRIMARY KEY NOT NULL,
+	"order_id" text NOT NULL,
+	"order_item_id" text,
+	"entitlement_id" text,
+	"vendor_id" text NOT NULL,
+	"seller_team_id" text NOT NULL,
+	"product_id" text NOT NULL,
+	"product_version_id" text,
+	"catalog_item_id" text,
+	"catalog_artifact_version_id" text,
+	"event_type" text NOT NULL,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"artifact_refs_json" text DEFAULT '[]' NOT NULL,
+	"delivery_refs_json" text DEFAULT '[]' NOT NULL,
+	"message" text,
+	"actor_type" text NOT NULL,
+	"actor_id" text NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_governance_events" (
+	"id" text PRIMARY KEY NOT NULL,
+	"actor_type" text NOT NULL,
+	"actor_id" text,
+	"action" text NOT NULL,
+	"object_type" text NOT NULL,
+	"object_id" text NOT NULL,
+	"prior_state" text,
+	"next_state" text,
+	"reason" text,
+	"evidence_json" text DEFAULT '{}' NOT NULL,
+	"related_order_id" text,
+	"related_offer_id" text,
+	"related_product_id" text,
+	"related_team_id" text,
+	"created_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_governance_policies" (
+	"id" text PRIMARY KEY NOT NULL,
+	"product_id" text,
+	"team_id" text,
+	"policy_kind" text NOT NULL,
+	"title" text NOT NULL,
+	"approval_rules_json" text DEFAULT '{}' NOT NULL,
+	"quorum_rules_json" text DEFAULT '{}' NOT NULL,
+	"buyer_visible_summary" text,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_offers" (
+	"id" text PRIMARY KEY NOT NULL,
+	"product_id" text NOT NULL,
+	"product_version_id" text,
+	"vendor_id" text NOT NULL,
+	"seller_team_id" text NOT NULL,
+	"mode" text NOT NULL,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"title" text NOT NULL,
+	"terms_summary" text,
+	"access_scope_json" text DEFAULT '{}' NOT NULL,
+	"support_scope_json" text DEFAULT '{}' NOT NULL,
+	"fulfillment_mode" text DEFAULT 'automatic' NOT NULL,
+	"active_price_id" text,
+	"stripe_product_id" text,
+	"stripe_product_status" text DEFAULT 'not_synced' NOT NULL,
+	"stripe_product_synced_at" text,
+	"stripe_product_sync_error" text,
+	"stripe_product_metadata_json" text DEFAULT '{}' NOT NULL,
+	"starts_at" text,
+	"ends_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_order_items" (
+	"id" text PRIMARY KEY NOT NULL,
+	"order_id" text NOT NULL,
+	"vendor_id" text NOT NULL,
+	"seller_team_id" text NOT NULL,
+	"product_id" text NOT NULL,
+	"product_version_id" text,
+	"offer_id" text NOT NULL,
+	"price_id" text,
+	"mode" text NOT NULL,
+	"quantity" integer DEFAULT 1 NOT NULL,
+	"unit_amount" integer DEFAULT 0 NOT NULL,
+	"total_amount" integer DEFAULT 0 NOT NULL,
+	"refunded_amount" integer DEFAULT 0 NOT NULL,
+	"refund_status" text DEFAULT 'none' NOT NULL,
+	"currency" text NOT NULL,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"entitlement_id" text,
+	"ownership_snapshot_json" text DEFAULT '{}' NOT NULL,
+	"access_scope_json" text DEFAULT '{}' NOT NULL,
+	"support_scope_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_orders" (
+	"id" text PRIMARY KEY NOT NULL,
+	"checkout_id" text,
+	"cart_id" text,
+	"buyer_team_id" text,
+	"buyer_user_id" text,
+	"vendor_id" text,
+	"seller_team_id" text,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"currency" text NOT NULL,
+	"subtotal_amount" integer DEFAULT 0 NOT NULL,
+	"total_amount" integer DEFAULT 0 NOT NULL,
+	"refunded_amount" integer DEFAULT 0 NOT NULL,
+	"refund_status" text DEFAULT 'none' NOT NULL,
+	"stripe_checkout_session_id" text,
+	"stripe_payment_intent_id" text,
+	"stripe_subscription_id" text,
+	"stripe_customer_id" text,
+	"stripe_connected_account_id" text,
+	"ownership_snapshot_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_ownership_records" (
+	"id" text PRIMARY KEY NOT NULL,
+	"product_id" text NOT NULL,
+	"model" text NOT NULL,
+	"canonical_owner_type" text NOT NULL,
+	"canonical_owner_id" text,
+	"seller_team_id" text NOT NULL,
+	"steward_team_id" text,
+	"governance_policy_id" text,
+	"public_summary" text,
+	"buyer_visible" integer DEFAULT 1 NOT NULL,
+	"effective_at" text NOT NULL,
+	"superseded_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_ownership_transfers" (
+	"id" text PRIMARY KEY NOT NULL,
+	"product_id" text NOT NULL,
+	"from_ownership_record_id" text NOT NULL,
+	"to_ownership_record_id" text NOT NULL,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"reason" text NOT NULL,
+	"approval_evidence_json" text DEFAULT '{}' NOT NULL,
+	"buyer_visible_impact" text,
+	"effective_at" text NOT NULL,
+	"requested_by_type" text DEFAULT 'user' NOT NULL,
+	"requested_by_id" text DEFAULT 'system' NOT NULL,
+	"approved_by_type" text,
+	"approved_by_id" text,
+	"approved_at" text,
+	"rejected_at" text,
+	"superseded_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_payment_groups" (
+	"id" text PRIMARY KEY NOT NULL,
+	"checkout_id" text NOT NULL,
+	"order_id" text NOT NULL,
+	"vendor_id" text NOT NULL,
+	"seller_team_id" text NOT NULL,
+	"connected_account_id" text,
+	"group_kind" text NOT NULL,
+	"billing_interval" text,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"currency" text NOT NULL,
+	"subtotal_amount" integer DEFAULT 0 NOT NULL,
+	"total_amount" integer DEFAULT 0 NOT NULL,
+	"stripe_payment_intent_id" text,
+	"stripe_subscription_id" text,
+	"stripe_customer_id" text,
+	"client_secret_last4" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_prices" (
+	"id" text PRIMARY KEY NOT NULL,
+	"offer_id" text NOT NULL,
+	"amount" integer NOT NULL,
+	"currency" text NOT NULL,
+	"billing_interval" text NOT NULL,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"stripe_product_id" text,
+	"stripe_price_id" text,
+	"stripe_lookup_key" text,
+	"stripe_sync_status" text DEFAULT 'not_synced' NOT NULL,
+	"stripe_synced_at" text,
+	"stripe_sync_error" text,
+	"stripe_metadata_json" text DEFAULT '{}' NOT NULL,
+	"price_version" integer DEFAULT 1 NOT NULL,
+	"tax_behavior" text DEFAULT 'unspecified' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_product_versions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"product_id" text NOT NULL,
+	"version" text NOT NULL,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"catalog_artifact_version_id" text,
+	"manifest_key" text,
+	"artifact_key" text,
+	"integrity" text,
+	"release_notes" text,
+	"compatibility_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"published_at" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_products" (
+	"id" text PRIMARY KEY NOT NULL,
+	"vendor_id" text NOT NULL,
+	"seller_team_id" text NOT NULL,
+	"kind" text NOT NULL,
+	"slug" text NOT NULL,
+	"title" text NOT NULL,
+	"summary" text,
+	"description" text,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"visibility" text DEFAULT 'private' NOT NULL,
+	"catalog_item_id" text,
+	"current_version_id" text,
+	"ownership_model" text DEFAULT 'team_owned' NOT NULL,
+	"ownership_record_id" text,
+	"support_policy" text,
+	"license" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_refunds" (
+	"id" text PRIMARY KEY NOT NULL,
+	"order_id" text NOT NULL,
+	"order_item_id" text,
+	"payment_group_id" text,
+	"vendor_id" text NOT NULL,
+	"seller_team_id" text NOT NULL,
+	"buyer_team_id" text,
+	"buyer_user_id" text,
+	"amount" integer NOT NULL,
+	"currency" text NOT NULL,
+	"status" text DEFAULT 'processing' NOT NULL,
+	"reason" text,
+	"stripe_refund_id" text,
+	"stripe_payment_intent_id" text,
+	"stripe_connected_account_id" text,
+	"idempotency_key" text NOT NULL,
+	"requested_by_type" text NOT NULL,
+	"requested_by_id" text NOT NULL,
+	"failure_reason" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_service_contracts" (
+	"id" text PRIMARY KEY NOT NULL,
+	"request_id" text NOT NULL,
+	"quote_id" text NOT NULL,
+	"vendor_id" text NOT NULL,
+	"seller_team_id" text NOT NULL,
+	"buyer_team_id" text,
+	"buyer_user_id" text,
+	"product_id" text NOT NULL,
+	"offer_id" text NOT NULL,
+	"status" text DEFAULT 'pending_checkout' NOT NULL,
+	"amount" integer NOT NULL,
+	"currency" text NOT NULL,
+	"order_id" text,
+	"order_item_id" text,
+	"payment_group_id" text,
+	"entitlement_id" text,
+	"related_project_id" text,
+	"related_workday_id" text,
+	"ownership_snapshot_json" text DEFAULT '{}' NOT NULL,
+	"access_approval_snapshot_json" text DEFAULT '{}' NOT NULL,
+	"fulfillment_summary" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_service_events" (
+	"id" text PRIMARY KEY NOT NULL,
+	"request_id" text NOT NULL,
+	"quote_id" text,
+	"contract_id" text,
+	"event_type" text NOT NULL,
+	"actor_type" text NOT NULL,
+	"actor_id" text,
+	"prior_state" text,
+	"next_state" text,
+	"message" text,
+	"evidence_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_service_quotes" (
+	"id" text PRIMARY KEY NOT NULL,
+	"request_id" text NOT NULL,
+	"vendor_id" text NOT NULL,
+	"seller_team_id" text NOT NULL,
+	"buyer_team_id" text,
+	"buyer_user_id" text,
+	"quote_version" integer DEFAULT 1 NOT NULL,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"title" text NOT NULL,
+	"scope_summary" text NOT NULL,
+	"deliverables_json" text DEFAULT '[]' NOT NULL,
+	"assumptions_json" text DEFAULT '[]' NOT NULL,
+	"access_requirements_json" text DEFAULT '{}' NOT NULL,
+	"governance_requirements_json" text DEFAULT '{}' NOT NULL,
+	"amount" integer NOT NULL,
+	"currency" text NOT NULL,
+	"expires_at" text,
+	"buyer_approved_at" text,
+	"vendor_approved_at" text,
+	"accepted_at" text,
+	"rejected_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_service_requests" (
+	"id" text PRIMARY KEY NOT NULL,
+	"buyer_team_id" text,
+	"buyer_user_id" text,
+	"vendor_id" text NOT NULL,
+	"seller_team_id" text NOT NULL,
+	"product_id" text NOT NULL,
+	"offer_id" text NOT NULL,
+	"status" text DEFAULT 'requested' NOT NULL,
+	"requested_scope" text NOT NULL,
+	"approved_scope" text,
+	"access_needs_json" text DEFAULT '{}' NOT NULL,
+	"buyer_visible_summary" text,
+	"vendor_private_notes" text,
+	"active_quote_id" text,
+	"approved_quote_id" text,
+	"contract_id" text,
+	"related_project_id" text,
+	"related_workday_id" text,
+	"order_id" text,
+	"entitlement_id" text,
+	"ownership_snapshot_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_stewardship_assignments" (
+	"id" text PRIMARY KEY NOT NULL,
+	"ownership_record_id" text NOT NULL,
+	"product_id" text NOT NULL,
+	"role" text NOT NULL,
+	"assignee_type" text NOT NULL,
+	"assignee_id" text,
+	"display_name" text,
+	"responsibilities_json" text DEFAULT '[]' NOT NULL,
+	"visible_to_buyers" integer DEFAULT 1 NOT NULL,
+	"starts_at" text NOT NULL,
+	"ends_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_subscriptions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"order_id" text NOT NULL,
+	"vendor_id" text NOT NULL,
+	"seller_team_id" text NOT NULL,
+	"buyer_team_id" text,
+	"buyer_user_id" text,
+	"offer_id" text NOT NULL,
+	"price_id" text NOT NULL,
+	"status" text NOT NULL,
+	"renewal_state" text DEFAULT 'active' NOT NULL,
+	"stripe_subscription_id" text NOT NULL,
+	"stripe_customer_id" text,
+	"stripe_connected_account_id" text NOT NULL,
+	"current_period_start" text,
+	"current_period_end" text,
+	"cancel_at_period_end" integer DEFAULT 0 NOT NULL,
+	"canceled_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_succession_events" (
+	"id" text PRIMARY KEY NOT NULL,
+	"product_id" text NOT NULL,
+	"ownership_record_id" text,
+	"stewardship_assignment_id" text,
+	"successor_type" text NOT NULL,
+	"successor_id" text NOT NULL,
+	"event_type" text NOT NULL,
+	"status" text DEFAULT 'submitted' NOT NULL,
+	"reason" text,
+	"evidence_json" text DEFAULT '{}' NOT NULL,
+	"effective_at" text,
+	"created_by_type" text NOT NULL,
+	"created_by_id" text NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_vendor_stripe_accounts" (
+	"id" text PRIMARY KEY NOT NULL,
+	"vendor_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"environment" text DEFAULT 'test' NOT NULL,
+	"stripe_account_id" text NOT NULL,
+	"account_status" text DEFAULT 'pending' NOT NULL,
+	"onboarding_status" text DEFAULT 'not_started' NOT NULL,
+	"charges_enabled" integer DEFAULT 0 NOT NULL,
+	"payouts_enabled" integer DEFAULT 0 NOT NULL,
+	"details_submitted" integer DEFAULT 0 NOT NULL,
+	"requirements_currently_due_json" text DEFAULT '[]' NOT NULL,
+	"requirements_eventually_due_json" text DEFAULT '[]' NOT NULL,
+	"requirements_past_due_json" text DEFAULT '[]' NOT NULL,
+	"requirements_disabled_reason" text,
+	"capabilities_json" text DEFAULT '{}' NOT NULL,
+	"onboarding_started_at" text,
+	"onboarding_completed_at" text,
+	"last_synced_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_vendors" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"display_name" text NOT NULL,
+	"slug" text NOT NULL,
+	"status" text DEFAULT 'submitted' NOT NULL,
+	"trust_level" text DEFAULT 'public_publisher' NOT NULL,
+	"professional_entitlement_id" text,
+	"stripe_account_id" text,
+	"sales_enabled" integer DEFAULT 0 NOT NULL,
+	"service_sales_enabled" integer DEFAULT 0 NOT NULL,
+	"capacity_listings_enabled" integer DEFAULT 0 NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commerce_webhook_events" (
+	"id" text PRIMARY KEY NOT NULL,
+	"provider" text DEFAULT 'stripe' NOT NULL,
+	"environment" text DEFAULT 'test' NOT NULL,
+	"event_id" text NOT NULL,
+	"event_type" text NOT NULL,
+	"connected_account_id" text,
+	"status" text DEFAULT 'received' NOT NULL,
+	"object_type" text,
+	"object_id" text,
+	"related_order_id" text,
+	"related_subscription_id" text,
+	"payload_hash" text NOT NULL,
+	"processing_error" text,
+	"received_at" text NOT NULL,
+	"processed_at" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commons_decisions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"proposal_id" text NOT NULL,
+	"status" text DEFAULT 'proposed' NOT NULL,
+	"decision_record_id" text,
+	"decision_record_slug" text,
+	"title" text NOT NULL,
+	"summary" text NOT NULL,
+	"steward_reason" text,
+	"capacity_budget" text,
+	"scheduled_for" text,
+	"implemented_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commons_delegations" (
+	"id" text PRIMARY KEY NOT NULL,
+	"from_participant_id" text NOT NULL,
+	"to_participant_id" text NOT NULL,
+	"scope" text DEFAULT 'treeseed_commons' NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"weight_limit" real,
+	"reason" text,
+	"created_at" text NOT NULL,
+	"revoked_at" text
+);
+
+CREATE TABLE "commons_governance_events" (
+	"id" text PRIMARY KEY NOT NULL,
+	"event_type" text NOT NULL,
+	"actor_type" text DEFAULT 'system' NOT NULL,
+	"actor_id" text,
+	"participant_id" text,
+	"proposal_id" text,
+	"question_id" text,
+	"decision_id" text,
+	"prior_state" text,
+	"next_state" text,
+	"message" text,
+	"evidence_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL
+);
+
+CREATE TABLE "commons_participants" (
+	"id" text PRIMARY KEY NOT NULL,
+	"user_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"display_name" text,
+	"verified_email" integer DEFAULT 0 NOT NULL,
+	"base_weight" real DEFAULT 1 NOT NULL,
+	"trust_weight" real DEFAULT 0 NOT NULL,
+	"contribution_weight" real DEFAULT 0 NOT NULL,
+	"stakeholder_weight" real DEFAULT 0 NOT NULL,
+	"delegated_weight" real DEFAULT 0 NOT NULL,
+	"total_weight" real DEFAULT 1 NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commons_proposal_backings" (
+	"id" text PRIMARY KEY NOT NULL,
+	"proposal_id" text NOT NULL,
+	"participant_id" text NOT NULL,
+	"user_id" text NOT NULL,
+	"weight_snapshot_id" text NOT NULL,
+	"weight" real NOT NULL,
+	"reason" text,
+	"created_at" text NOT NULL
+);
+
+CREATE TABLE "commons_proposal_votes" (
+	"id" text PRIMARY KEY NOT NULL,
+	"proposal_id" text NOT NULL,
+	"participant_id" text NOT NULL,
+	"user_id" text NOT NULL,
+	"vote" text NOT NULL,
+	"weight_snapshot_id" text NOT NULL,
+	"weight" real NOT NULL,
+	"reason" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commons_proposals" (
+	"id" text PRIMARY KEY NOT NULL,
+	"participant_id" text NOT NULL,
+	"user_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"title" text NOT NULL,
+	"summary" text NOT NULL,
+	"body" text NOT NULL,
+	"scope" text DEFAULT 'treeseed_commons' NOT NULL,
+	"decision_type" text DEFAULT 'advisory' NOT NULL,
+	"content_proposal_slug" text,
+	"content_decision_slug" text,
+	"backing_count" integer DEFAULT 0 NOT NULL,
+	"vote_support_weight" real DEFAULT 0 NOT NULL,
+	"vote_object_weight" real DEFAULT 0 NOT NULL,
+	"vote_abstain_weight" real DEFAULT 0 NOT NULL,
+	"qualified_at" text,
+	"voting_starts_at" text,
+	"voting_ends_at" text,
+	"steward_decision_at" text,
+	"steward_decision_by" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commons_questions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"participant_id" text NOT NULL,
+	"user_id" text NOT NULL,
+	"team_id" text NOT NULL,
+	"status" text DEFAULT 'open' NOT NULL,
+	"title" text NOT NULL,
+	"body" text NOT NULL,
+	"answer" text,
+	"converted_proposal_id" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "commons_weight_snapshots" (
+	"id" text PRIMARY KEY NOT NULL,
+	"participant_id" text NOT NULL,
+	"policy_version" text NOT NULL,
+	"base_weight" real DEFAULT 1 NOT NULL,
+	"verified_email_weight" real DEFAULT 0 NOT NULL,
+	"account_age_weight" real DEFAULT 0 NOT NULL,
+	"contribution_weight" real DEFAULT 0 NOT NULL,
+	"stakeholder_weight" real DEFAULT 0 NOT NULL,
+	"trust_role_weight" real DEFAULT 0 NOT NULL,
+	"delegated_weight" real DEFAULT 0 NOT NULL,
+	"total_weight" real DEFAULT 1 NOT NULL,
+	"evidence_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL
+);
+
+CREATE TABLE "contact_submissions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"email" text NOT NULL,
 	"message" text NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "credit_conversion_profiles" (
+CREATE TABLE "credit_conversion_profiles" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_signature" text NOT NULL,
 	"execution_profile_id" text DEFAULT 'standard-code-model' NOT NULL,
@@ -433,7 +1314,7 @@ CREATE TABLE IF NOT EXISTS "credit_conversion_profiles" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "cursor_state" (
+CREATE TABLE "cursor_state" (
 	"agent_slug" text,
 	"cursor_key" text,
 	"status" text NOT NULL,
@@ -444,7 +1325,42 @@ CREATE TABLE IF NOT EXISTS "cursor_state" (
 	CONSTRAINT "cursor_state_agent_slug_cursor_key_pk" PRIMARY KEY("agent_slug","cursor_key")
 );
 
-CREATE TABLE IF NOT EXISTS "device_codes" (
+CREATE TABLE "decision_execution_inputs" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"decision_id" text NOT NULL,
+	"project_agent_class_id" text NOT NULL,
+	"mode" text DEFAULT 'acting' NOT NULL,
+	"status" text DEFAULT 'proposed' NOT NULL,
+	"scope_hash" text NOT NULL,
+	"input_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"accepted_at" text,
+	"revision_requested_at" text,
+	"stale_at" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "decision_planning_statuses" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"decision_id" text NOT NULL,
+	"human_approval_state" text,
+	"execution_readiness" text DEFAULT 'draft' NOT NULL,
+	"planning_inputs_status" text DEFAULT 'requested' NOT NULL,
+	"scope_hash" text NOT NULL,
+	"stale_reason" text,
+	"ready_at" text,
+	"stale_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "device_codes" (
 	"id" text PRIMARY KEY NOT NULL,
 	"device_code" text NOT NULL,
 	"user_code" text NOT NULL,
@@ -459,7 +1375,7 @@ CREATE TABLE IF NOT EXISTS "device_codes" (
 	CONSTRAINT "device_codes_user_code_unique" UNIQUE("user_code")
 );
 
-CREATE TABLE IF NOT EXISTS "entitlements" (
+CREATE TABLE "entitlements" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text,
 	"project_id" text,
@@ -470,7 +1386,7 @@ CREATE TABLE IF NOT EXISTS "entitlements" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "execution_provider_native_limits" (
+CREATE TABLE "execution_provider_native_limits" (
 	"id" text PRIMARY KEY NOT NULL,
 	"execution_provider_id" text NOT NULL,
 	"scope" text NOT NULL,
@@ -486,7 +1402,7 @@ CREATE TABLE IF NOT EXISTS "execution_provider_native_limits" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "execution_provider_observations" (
+CREATE TABLE "execution_provider_observations" (
 	"id" text PRIMARY KEY NOT NULL,
 	"execution_provider_id" text NOT NULL,
 	"observed_at" text NOT NULL,
@@ -501,7 +1417,7 @@ CREATE TABLE IF NOT EXISTS "execution_provider_observations" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "execution_providers" (
+CREATE TABLE "execution_providers" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"capacity_provider_id" text,
@@ -518,7 +1434,69 @@ CREATE TABLE IF NOT EXISTS "execution_providers" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "graph_runs" (
+CREATE TABLE "github_app_installation_records" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"installation_id" text NOT NULL,
+	"account_login" text,
+	"account_id" text,
+	"account_type" text,
+	"status" text DEFAULT 'active' NOT NULL,
+	"permissions_json" text DEFAULT '{}' NOT NULL,
+	"repository_selection" text,
+	"drift_code" text,
+	"observed_at" text,
+	"revoked_at" text,
+	"suspended_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "github_app_token_issuance_records" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text,
+	"assignment_id" text,
+	"provider_id" text,
+	"workday_id" text,
+	"operation_id" text,
+	"repository" text NOT NULL,
+	"installation_id" text NOT NULL,
+	"status" text DEFAULT 'issued' NOT NULL,
+	"token_prefix" text,
+	"token_hash" text,
+	"permissions_json" text DEFAULT '{}' NOT NULL,
+	"allowed_operations_json" text DEFAULT '[]' NOT NULL,
+	"expires_at" text,
+	"issued_at" text,
+	"revoked_at" text,
+	"fail_closed_code" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "github_repository_grants" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text,
+	"repository" text NOT NULL,
+	"installation_id" text,
+	"account_login" text,
+	"account_id" text,
+	"status" text DEFAULT 'active' NOT NULL,
+	"permissions_json" text DEFAULT '{}' NOT NULL,
+	"environments_json" text DEFAULT '[]' NOT NULL,
+	"drift_code" text,
+	"observed_at" text,
+	"revoked_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "graph_runs" (
 	"id" text PRIMARY KEY NOT NULL,
 	"work_day_id" text NOT NULL,
 	"corpus_hash" text NOT NULL,
@@ -531,7 +1509,7 @@ CREATE TABLE IF NOT EXISTS "graph_runs" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "hub_content_sources" (
+CREATE TABLE "hub_content_sources" (
 	"id" text PRIMARY KEY NOT NULL,
 	"hub_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -549,7 +1527,7 @@ CREATE TABLE IF NOT EXISTS "hub_content_sources" (
 	CONSTRAINT "hub_content_sources_hub_id_unique" UNIQUE("hub_id")
 );
 
-CREATE TABLE IF NOT EXISTS "hub_launch_events" (
+CREATE TABLE "hub_launch_events" (
 	"id" text PRIMARY KEY NOT NULL,
 	"launch_id" text NOT NULL,
 	"seq" integer NOT NULL,
@@ -564,7 +1542,7 @@ CREATE TABLE IF NOT EXISTS "hub_launch_events" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "hub_launches" (
+CREATE TABLE "hub_launches" (
 	"id" text PRIMARY KEY NOT NULL,
 	"hub_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -581,7 +1559,7 @@ CREATE TABLE IF NOT EXISTS "hub_launches" (
 	"completed_at" text
 );
 
-CREATE TABLE IF NOT EXISTS "hub_repositories" (
+CREATE TABLE "hub_repositories" (
 	"id" text PRIMARY KEY NOT NULL,
 	"hub_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -603,7 +1581,7 @@ CREATE TABLE IF NOT EXISTS "hub_repositories" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "hub_workspace_links" (
+CREATE TABLE "hub_workspace_links" (
 	"id" text PRIMARY KEY NOT NULL,
 	"hub_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -622,7 +1600,7 @@ CREATE TABLE IF NOT EXISTS "hub_workspace_links" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "knowledge_packs" (
+CREATE TABLE "knowledge_packs" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"slug" text NOT NULL,
@@ -638,7 +1616,7 @@ CREATE TABLE IF NOT EXISTS "knowledge_packs" (
 	CONSTRAINT "knowledge_packs_slug_unique" UNIQUE("slug")
 );
 
-CREATE TABLE IF NOT EXISTS "lease_state" (
+CREATE TABLE "lease_state" (
 	"model" text,
 	"item_key" text,
 	"status" text NOT NULL,
@@ -653,7 +1631,7 @@ CREATE TABLE IF NOT EXISTS "lease_state" (
 	CONSTRAINT "lease_state_model_item_key_pk" PRIMARY KEY("model","item_key")
 );
 
-CREATE TABLE IF NOT EXISTS "market_auth_credentials" (
+CREATE TABLE "market_auth_credentials" (
 	"user_id" text PRIMARY KEY NOT NULL,
 	"email" text NOT NULL,
 	"username" text,
@@ -665,7 +1643,7 @@ CREATE TABLE IF NOT EXISTS "market_auth_credentials" (
 	CONSTRAINT "market_auth_credentials_username_unique" UNIQUE("username")
 );
 
-CREATE TABLE IF NOT EXISTS "market_auth_password_resets" (
+CREATE TABLE "market_auth_password_resets" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"token_hash" text NOT NULL,
@@ -675,7 +1653,7 @@ CREATE TABLE IF NOT EXISTS "market_auth_password_resets" (
 	CONSTRAINT "market_auth_password_resets_token_hash_unique" UNIQUE("token_hash")
 );
 
-CREATE TABLE IF NOT EXISTS "market_operation_runners" (
+CREATE TABLE "market_operation_runners" (
 	"id" text PRIMARY KEY NOT NULL,
 	"runner_key" text NOT NULL,
 	"name" text NOT NULL,
@@ -692,7 +1670,7 @@ CREATE TABLE IF NOT EXISTS "market_operation_runners" (
 	CONSTRAINT "market_operation_runners_runner_key_unique" UNIQUE("runner_key")
 );
 
-CREATE TABLE IF NOT EXISTS "message_queue" (
+CREATE TABLE "message_queue" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"message_type" text NOT NULL,
 	"status" text NOT NULL,
@@ -712,7 +1690,7 @@ CREATE TABLE IF NOT EXISTS "message_queue" (
 	"meta_json" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "native_usage_observations" (
+CREATE TABLE "native_usage_observations" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_usage_actual_id" text,
 	"task_id" text,
@@ -732,7 +1710,7 @@ CREATE TABLE IF NOT EXISTS "native_usage_observations" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "permissions" (
+CREATE TABLE "permissions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"key" text NOT NULL,
 	"resource" text NOT NULL,
@@ -743,7 +1721,24 @@ CREATE TABLE IF NOT EXISTS "permissions" (
 	CONSTRAINT "permissions_key_unique" UNIQUE("key")
 );
 
-CREATE TABLE IF NOT EXISTS "platform_operation_events" (
+CREATE TABLE "planning_input_requests" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"decision_id" text NOT NULL,
+	"project_agent_class_id" text,
+	"mode" text DEFAULT 'planning' NOT NULL,
+	"status" text DEFAULT 'requested' NOT NULL,
+	"scope_hash" text NOT NULL,
+	"prompt" text,
+	"response_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"requested_at" text NOT NULL,
+	"completed_at" text,
+	"stale_at" text
+);
+
+CREATE TABLE "platform_operation_events" (
 	"id" text PRIMARY KEY NOT NULL,
 	"operation_id" text NOT NULL,
 	"seq" integer NOT NULL,
@@ -752,7 +1747,7 @@ CREATE TABLE IF NOT EXISTS "platform_operation_events" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "platform_operations" (
+CREATE TABLE "platform_operations" (
 	"id" text PRIMARY KEY NOT NULL,
 	"namespace" text NOT NULL,
 	"operation" text NOT NULL,
@@ -773,7 +1768,7 @@ CREATE TABLE IF NOT EXISTS "platform_operations" (
 	"cancelled_at" text
 );
 
-CREATE TABLE IF NOT EXISTS "platform_repository_claims" (
+CREATE TABLE "platform_repository_claims" (
 	"id" text PRIMARY KEY NOT NULL,
 	"repository_key" text NOT NULL,
 	"runner_id" text NOT NULL,
@@ -787,7 +1782,7 @@ CREATE TABLE IF NOT EXISTS "platform_repository_claims" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "priority_overrides" (
+CREATE TABLE "priority_overrides" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"model" text NOT NULL,
@@ -799,7 +1794,7 @@ CREATE TABLE IF NOT EXISTS "priority_overrides" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "priority_snapshots" (
+CREATE TABLE "priority_snapshots" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"work_day_id" text,
@@ -810,7 +1805,25 @@ CREATE TABLE IF NOT EXISTS "priority_snapshots" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "project_capability_grants" (
+CREATE TABLE "project_agent_classes" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"slug" text NOT NULL,
+	"name" text NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"allowed_modes_json" text DEFAULT '[]' NOT NULL,
+	"required_capabilities_json" text DEFAULT '[]' NOT NULL,
+	"kernel_profile_json" text DEFAULT '{}' NOT NULL,
+	"kernel_policy_json" text DEFAULT '{}' NOT NULL,
+	"handler_refs_json" text DEFAULT '{}' NOT NULL,
+	"output_contracts_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "project_capability_grants" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"label" text,
@@ -827,7 +1840,7 @@ CREATE TABLE IF NOT EXISTS "project_capability_grants" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "project_connections" (
+CREATE TABLE "project_connections" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"mode" text NOT NULL,
@@ -844,7 +1857,7 @@ CREATE TABLE IF NOT EXISTS "project_connections" (
 	CONSTRAINT "project_connections_project_id_unique" UNIQUE("project_id")
 );
 
-CREATE TABLE IF NOT EXISTS "project_deployment_events" (
+CREATE TABLE "project_deployment_events" (
 	"id" text PRIMARY KEY NOT NULL,
 	"deployment_id" text NOT NULL,
 	"project_id" text NOT NULL,
@@ -859,7 +1872,7 @@ CREATE TABLE IF NOT EXISTS "project_deployment_events" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "project_deployments" (
+CREATE TABLE "project_deployments" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"project_id" text NOT NULL,
@@ -891,7 +1904,7 @@ CREATE TABLE IF NOT EXISTS "project_deployments" (
 	"completed_at" text
 );
 
-CREATE TABLE IF NOT EXISTS "project_environments" (
+CREATE TABLE "project_environments" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -909,7 +1922,7 @@ CREATE TABLE IF NOT EXISTS "project_environments" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "project_hosting" (
+CREATE TABLE "project_hosting" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"hosting_kind" text NOT NULL,
@@ -925,7 +1938,7 @@ CREATE TABLE IF NOT EXISTS "project_hosting" (
 	CONSTRAINT "project_hosting_project_id_unique" UNIQUE("project_id")
 );
 
-CREATE TABLE IF NOT EXISTS "project_infrastructure_resources" (
+CREATE TABLE "project_infrastructure_resources" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -938,7 +1951,7 @@ CREATE TABLE IF NOT EXISTS "project_infrastructure_resources" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "project_summary_snapshots" (
+CREATE TABLE "project_summary_snapshots" (
 	"project_id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"summary_json" text NOT NULL,
@@ -947,7 +1960,7 @@ CREATE TABLE IF NOT EXISTS "project_summary_snapshots" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "project_update_plans" (
+CREATE TABLE "project_update_plans" (
 	"id" text PRIMARY KEY NOT NULL,
 	"hub_id" text NOT NULL,
 	"team_id" text NOT NULL,
@@ -963,7 +1976,7 @@ CREATE TABLE IF NOT EXISTS "project_update_plans" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "project_workday_summaries" (
+CREATE TABLE "project_workday_summaries" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -978,7 +1991,7 @@ CREATE TABLE IF NOT EXISTS "project_workday_summaries" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "projects" (
+CREATE TABLE "projects" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"slug" text NOT NULL,
@@ -989,7 +2002,75 @@ CREATE TABLE IF NOT EXISTS "projects" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "provider_credential_sessions" (
+CREATE TABLE "provider_assignments" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"capacity_provider_id" text NOT NULL,
+	"provider_session_id" text,
+	"execution_provider_id" text,
+	"allocation_set_id" text,
+	"project_agent_class_id" text NOT NULL,
+	"reservation_id" text,
+	"work_day_id" text,
+	"task_id" text,
+	"mode" text NOT NULL,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"lease_state" text DEFAULT 'unleased' NOT NULL,
+	"lease_expires_at" text,
+	"lease_token" text,
+	"lease_renewed_at" text,
+	"runner_id" text,
+	"agent_id" text,
+	"handler_id" text,
+	"capacity_envelope_json" text DEFAULT '{}' NOT NULL,
+	"decision_input_json" text DEFAULT '{}' NOT NULL,
+	"workspace_context_json" text DEFAULT '{}' NOT NULL,
+	"allowed_outputs_json" text DEFAULT '{}' NOT NULL,
+	"explanation_json" text DEFAULT '{}' NOT NULL,
+	"attempt_count" integer DEFAULT 0 NOT NULL,
+	"assigned_at" text,
+	"claimed_at" text,
+	"completed_at" text,
+	"returned_at" text,
+	"failed_at" text,
+	"lifecycle_reason" text,
+	"lifecycle_code" text,
+	"lifecycle_output_json" text DEFAULT '{}' NOT NULL,
+	"synthesized_from" text,
+	"synthesis_key" text,
+	"decision_id" text,
+	"proposal_id" text,
+	"fallback_output_id" text,
+	"treedx_proxy_handle_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "provider_availability_sessions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"capacity_provider_id" text NOT NULL,
+	"registration_id" text,
+	"environment" text,
+	"status" text DEFAULT 'open' NOT NULL,
+	"checked_in_at" text NOT NULL,
+	"available_from" text,
+	"available_until" text,
+	"execution_providers_json" text DEFAULT '[]' NOT NULL,
+	"capabilities_json" text DEFAULT '[]' NOT NULL,
+	"grants_json" text DEFAULT '[]' NOT NULL,
+	"native_limits_json" text DEFAULT '{}' NOT NULL,
+	"runner_pressure_json" text DEFAULT '{}' NOT NULL,
+	"constraints_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	"closed_at" text
+);
+
+CREATE TABLE "provider_credential_sessions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"project_id" text,
@@ -1007,7 +2088,7 @@ CREATE TABLE IF NOT EXISTS "provider_credential_sessions" (
 	"metadata_json" text DEFAULT '{}' NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "remote_job_events" (
+CREATE TABLE "remote_job_events" (
 	"id" text PRIMARY KEY NOT NULL,
 	"job_id" text NOT NULL,
 	"seq" integer NOT NULL,
@@ -1016,7 +2097,7 @@ CREATE TABLE IF NOT EXISTS "remote_job_events" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "remote_jobs" (
+CREATE TABLE "remote_jobs" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"namespace" text NOT NULL,
@@ -1039,7 +2120,7 @@ CREATE TABLE IF NOT EXISTS "remote_jobs" (
 	"cancelled_at" text
 );
 
-CREATE TABLE IF NOT EXISTS "reports" (
+CREATE TABLE "reports" (
 	"id" text PRIMARY KEY NOT NULL,
 	"work_day_id" text NOT NULL,
 	"kind" text NOT NULL,
@@ -1049,7 +2130,7 @@ CREATE TABLE IF NOT EXISTS "reports" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "repository_claims" (
+CREATE TABLE "repository_claims" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"repository_id" text NOT NULL,
@@ -1064,7 +2145,7 @@ CREATE TABLE IF NOT EXISTS "repository_claims" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "repository_hosts" (
+CREATE TABLE "repository_hosts" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text,
 	"provider" text NOT NULL,
@@ -1087,14 +2168,14 @@ CREATE TABLE IF NOT EXISTS "repository_hosts" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "role_permissions" (
+CREATE TABLE "role_permissions" (
 	"role_id" text,
 	"permission_id" text,
 	"created_at" text NOT NULL,
 	CONSTRAINT "role_permissions_role_id_permission_id_pk" PRIMARY KEY("role_id","permission_id")
 );
 
-CREATE TABLE IF NOT EXISTS "roles" (
+CREATE TABLE "roles" (
 	"id" text PRIMARY KEY NOT NULL,
 	"key" text NOT NULL,
 	"description" text,
@@ -1102,7 +2183,7 @@ CREATE TABLE IF NOT EXISTS "roles" (
 	CONSTRAINT "roles_key_unique" UNIQUE("key")
 );
 
-CREATE TABLE IF NOT EXISTS "runner_scale_decisions" (
+CREATE TABLE "runner_scale_decisions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -1115,14 +2196,14 @@ CREATE TABLE IF NOT EXISTS "runner_scale_decisions" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "runtime_envelopes" (
+CREATE TABLE "runtime_envelopes" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"record_type" text NOT NULL,
 	"payload_json" text NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "runtime_records" (
+CREATE TABLE "runtime_records" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"record_type" text NOT NULL,
 	"record_key" text NOT NULL,
@@ -1136,7 +2217,45 @@ CREATE TABLE IF NOT EXISTS "runtime_records" (
 	"meta_json" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "scale_decisions" (
+CREATE TABLE "runtime_task_events" (
+	"id" text PRIMARY KEY NOT NULL,
+	"task_id" text NOT NULL,
+	"kind" text NOT NULL,
+	"data_json" text NOT NULL,
+	"actor" text,
+	"created_at" text NOT NULL
+);
+
+CREATE TABLE "runtime_task_outputs" (
+	"id" text PRIMARY KEY NOT NULL,
+	"task_id" text NOT NULL,
+	"output_json" text NOT NULL,
+	"output_ref" text,
+	"summary_json" text,
+	"actor" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "runtime_tasks" (
+	"id" text PRIMARY KEY NOT NULL,
+	"project_id" text NOT NULL,
+	"work_day_id" text NOT NULL,
+	"agent_id" text NOT NULL,
+	"type" text NOT NULL,
+	"idempotency_key" text NOT NULL,
+	"payload_json" text NOT NULL,
+	"state" text NOT NULL,
+	"claimed_by" text,
+	"claimed_at" text,
+	"lease_expires_at" text,
+	"attempts" integer DEFAULT 0 NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	CONSTRAINT "runtime_tasks_idempotency_key_unique" UNIQUE("idempotency_key")
+);
+
+CREATE TABLE "scale_decisions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -1150,7 +2269,27 @@ CREATE TABLE IF NOT EXISTS "scale_decisions" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "seed_runs" (
+CREATE TABLE "secret_metadata_records" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text,
+	"name" text NOT NULL,
+	"secret_class" text NOT NULL,
+	"custody_mode" text NOT NULL,
+	"owner_kind" text NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"github_secret_target_json" text DEFAULT '{}' NOT NULL,
+	"escrow_record_id" text,
+	"api_decryptable" integer DEFAULT 0 NOT NULL,
+	"plaintext_allowed" integer DEFAULT 0 NOT NULL,
+	"fail_closed_code" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	"tombstoned_at" text
+);
+
+CREATE TABLE "seed_runs" (
 	"id" text PRIMARY KEY NOT NULL,
 	"seed_name" text NOT NULL,
 	"seed_version" integer NOT NULL,
@@ -1168,7 +2307,7 @@ CREATE TABLE IF NOT EXISTS "seed_runs" (
 	"completed_at" text
 );
 
-CREATE TABLE IF NOT EXISTS "service_credentials" (
+CREATE TABLE "service_credentials" (
 	"id" text PRIMARY KEY NOT NULL,
 	"service_id" text NOT NULL,
 	"name" text NOT NULL,
@@ -1182,12 +2321,12 @@ CREATE TABLE IF NOT EXISTS "service_credentials" (
 	CONSTRAINT "service_credentials_service_id_unique" UNIQUE("service_id")
 );
 
-CREATE TABLE IF NOT EXISTS "subscribers" (
+CREATE TABLE "subscribers" (
 	"email" text PRIMARY KEY NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "task_credit_ledger" (
+CREATE TABLE "task_credit_ledger" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"work_day_id" text NOT NULL,
@@ -1198,7 +2337,7 @@ CREATE TABLE IF NOT EXISTS "task_credit_ledger" (
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "task_estimate_profiles" (
+CREATE TABLE "task_estimate_profiles" (
 	"task_signature" text,
 	"execution_profile_id" text DEFAULT 'standard-code-model',
 	"sample_count" integer DEFAULT 0 NOT NULL,
@@ -1224,7 +2363,7 @@ CREATE TABLE IF NOT EXISTS "task_estimate_profiles" (
 	CONSTRAINT "task_estimate_profiles_task_signature_execution_profile_id_pk" PRIMARY KEY("task_signature","execution_profile_id")
 );
 
-CREATE TABLE IF NOT EXISTS "task_estimates" (
+CREATE TABLE "task_estimates" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_id" text,
 	"work_day_id" text,
@@ -1246,12 +2385,15 @@ CREATE TABLE IF NOT EXISTS "task_estimates" (
 	"execution_profile_id" text DEFAULT 'standard-code-model' NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "task_usage_actuals" (
+CREATE TABLE "task_usage_actuals" (
 	"id" text PRIMARY KEY NOT NULL,
 	"task_id" text,
 	"work_day_id" text,
 	"project_id" text NOT NULL,
 	"task_signature" text NOT NULL,
+	"assignment_id" text,
+	"mode_run_id" text,
+	"mode" text,
 	"capacity_provider_id" text,
 	"execution_provider_id" text,
 	"lane_id" text,
@@ -1278,7 +2420,7 @@ CREATE TABLE IF NOT EXISTS "task_usage_actuals" (
 	"execution_profile_id" text DEFAULT 'standard-code-model' NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "team_api_keys" (
+CREATE TABLE "team_api_keys" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"name" text NOT NULL,
@@ -1292,7 +2434,7 @@ CREATE TABLE IF NOT EXISTS "team_api_keys" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "team_inbox_items" (
+CREATE TABLE "team_inbox_items" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"project_id" text,
@@ -1307,7 +2449,7 @@ CREATE TABLE IF NOT EXISTS "team_inbox_items" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "team_invites" (
+CREATE TABLE "team_invites" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"email" text NOT NULL,
@@ -1323,7 +2465,7 @@ CREATE TABLE IF NOT EXISTS "team_invites" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "team_memberships" (
+CREATE TABLE "team_memberships" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"user_id" text NOT NULL,
@@ -1332,14 +2474,14 @@ CREATE TABLE IF NOT EXISTS "team_memberships" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "team_role_bindings" (
+CREATE TABLE "team_role_bindings" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_membership_id" text NOT NULL,
 	"role_id" text NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "team_storage_locators" (
+CREATE TABLE "team_storage_locators" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"bucket_name" text NOT NULL,
@@ -1352,7 +2494,7 @@ CREATE TABLE IF NOT EXISTS "team_storage_locators" (
 	CONSTRAINT "team_storage_locators_team_id_unique" UNIQUE("team_id")
 );
 
-CREATE TABLE IF NOT EXISTS "team_web_hosts" (
+CREATE TABLE "team_web_hosts" (
 	"id" text PRIMARY KEY NOT NULL,
 	"team_id" text NOT NULL,
 	"provider" text NOT NULL,
@@ -1369,7 +2511,7 @@ CREATE TABLE IF NOT EXISTS "team_web_hosts" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "teams" (
+CREATE TABLE "teams" (
 	"id" text PRIMARY KEY NOT NULL,
 	"slug" text NOT NULL,
 	"name" text NOT NULL,
@@ -1382,7 +2524,157 @@ CREATE TABLE IF NOT EXISTS "teams" (
 	CONSTRAINT "teams_slug_unique" UNIQUE("slug")
 );
 
-CREATE TABLE IF NOT EXISTS "user_email_addresses" (
+CREATE TABLE "treedx_credential_issuance_records" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"assignment_id" text,
+	"repository" text,
+	"credential_provider" text NOT NULL,
+	"status" text DEFAULT 'issued' NOT NULL,
+	"token_prefix" text,
+	"token_hash" text,
+	"scopes_json" text DEFAULT '[]' NOT NULL,
+	"allowed_operations_json" text DEFAULT '[]' NOT NULL,
+	"expires_at" text,
+	"issued_at" text,
+	"revoked_at" text,
+	"fail_closed_code" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "treedx_deployments" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"instance_id" text,
+	"provider" text NOT NULL,
+	"status" text DEFAULT 'queued' NOT NULL,
+	"image_ref" text,
+	"volume_mount_path" text,
+	"service_refs_json" text DEFAULT '{}' NOT NULL,
+	"result_json" text DEFAULT '{}' NOT NULL,
+	"error_json" text,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	"completed_at" text
+);
+
+CREATE TABLE "treedx_instances" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"kind" text NOT NULL,
+	"provider" text NOT NULL,
+	"name" text NOT NULL,
+	"base_url" text,
+	"registry_url" text,
+	"public_read" integer DEFAULT 0 NOT NULL,
+	"primary" integer DEFAULT 1 NOT NULL,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"image_ref" text,
+	"railway_project_id" text,
+	"railway_service_id" text,
+	"railway_environment_id" text,
+	"volume_mount_path" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "treedx_mirrors" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"instance_id" text NOT NULL,
+	"name" text NOT NULL,
+	"direction" text DEFAULT 'bidirectional' NOT NULL,
+	"target_kind" text NOT NULL,
+	"target_url" text,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"instructions" text,
+	"last_sync_at" text,
+	"last_sync_status" text,
+	"last_sync_metadata_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "treedx_project_libraries" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"instance_id" text NOT NULL,
+	"library_id" text NOT NULL,
+	"repository_id" text,
+	"content_path" text DEFAULT 'src/content' NOT NULL,
+	"content_repository_url" text,
+	"content_repository_default_branch" text,
+	"content_repository_ref" text,
+	"r2_bucket_name" text,
+	"r2_manifest_key" text,
+	"topology_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "treedx_project_proxy_audit" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"assignment_id" text,
+	"actor_type" text NOT NULL,
+	"actor_id" text,
+	"method" text NOT NULL,
+	"path" text NOT NULL,
+	"handle_json" text DEFAULT '{}' NOT NULL,
+	"result_status" text DEFAULT 'observed' NOT NULL,
+	"reason_code" text,
+	"reason" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL
+);
+
+CREATE TABLE "treedx_proxy_handles" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"assignment_id" text,
+	"repository_id" text,
+	"workspace_id" text,
+	"status" text DEFAULT 'issued' NOT NULL,
+	"scopes_json" text DEFAULT '[]' NOT NULL,
+	"allowed_operations_json" text DEFAULT '[]' NOT NULL,
+	"allowed_paths_json" text DEFAULT '[]' NOT NULL,
+	"token_hash" text,
+	"expires_at" text,
+	"issued_at" text NOT NULL,
+	"revoked_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "treedx_shares" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"instance_id" text,
+	"project_id" text,
+	"library_id" text,
+	"scope" text NOT NULL,
+	"target_team_id" text,
+	"trust_grant_json" text DEFAULT '{}' NOT NULL,
+	"public_read" integer DEFAULT 0 NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"expires_at" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	"revoked_at" text
+);
+
+CREATE TABLE "user_email_addresses" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"email" text NOT NULL,
@@ -1396,7 +2688,7 @@ CREATE TABLE IF NOT EXISTS "user_email_addresses" (
 	CONSTRAINT "user_email_addresses_normalized_email_unique" UNIQUE("normalized_email")
 );
 
-CREATE TABLE IF NOT EXISTS "user_identities" (
+CREATE TABLE "user_identities" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"provider" text NOT NULL,
@@ -1408,7 +2700,7 @@ CREATE TABLE IF NOT EXISTS "user_identities" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "user_preferences" (
+CREATE TABLE "user_preferences" (
 	"user_id" text PRIMARY KEY NOT NULL,
 	"color_scheme" text DEFAULT 'fern' NOT NULL,
 	"theme_mode" text DEFAULT 'system' NOT NULL,
@@ -1416,14 +2708,14 @@ CREATE TABLE IF NOT EXISTS "user_preferences" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "user_role_bindings" (
+CREATE TABLE "user_role_bindings" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"role_id" text NOT NULL,
 	"created_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "users" (
+CREATE TABLE "users" (
 	"id" text PRIMARY KEY NOT NULL,
 	"email" text,
 	"display_name" text,
@@ -1434,7 +2726,7 @@ CREATE TABLE IF NOT EXISTS "users" (
 	"username" text
 );
 
-CREATE TABLE IF NOT EXISTS "web_sessions" (
+CREATE TABLE "web_sessions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"identity_id" text,
@@ -1455,7 +2747,7 @@ CREATE TABLE IF NOT EXISTS "web_sessions" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "work_days" (
+CREATE TABLE "work_days" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"state" text NOT NULL,
@@ -1469,7 +2761,7 @@ CREATE TABLE IF NOT EXISTS "work_days" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "work_policies" (
+CREATE TABLE "work_policies" (
 	"project_id" text,
 	"environment" text,
 	"schedule_json" text NOT NULL,
@@ -1491,7 +2783,26 @@ CREATE TABLE IF NOT EXISTS "work_policies" (
 	CONSTRAINT "work_policies_project_id_environment_pk" PRIMARY KEY("project_id","environment")
 );
 
-CREATE TABLE IF NOT EXISTS "workday_manager_leases" (
+CREATE TABLE "workday_capacity_envelopes" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text NOT NULL,
+	"allocation_set_id" text,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"started_at" text,
+	"paused_at" text,
+	"completed_at" text,
+	"envelope_json" text DEFAULT '{}' NOT NULL,
+	"mode_splits_json" text DEFAULT '{}' NOT NULL,
+	"caps_json" text DEFAULT '{}' NOT NULL,
+	"reserves_json" text DEFAULT '{}' NOT NULL,
+	"borrowing_rules_json" text DEFAULT '{}' NOT NULL,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL
+);
+
+CREATE TABLE "workday_manager_leases" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -1505,7 +2816,7 @@ CREATE TABLE IF NOT EXISTS "workday_manager_leases" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "workday_requests" (
+CREATE TABLE "workday_requests" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -1520,7 +2831,7 @@ CREATE TABLE IF NOT EXISTS "workday_requests" (
 	"updated_at" text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "worker_runners" (
+CREATE TABLE "worker_runners" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
 	"environment" text NOT NULL,
@@ -1538,1313 +2849,375 @@ CREATE TABLE IF NOT EXISTS "worker_runners" (
 	"updated_at" text NOT NULL
 );
 
--- Treeseed Market schema adoption columns
-ALTER TABLE "agent_messages" ADD COLUMN IF NOT EXISTS "id" integer;
-ALTER TABLE "agent_messages" ADD COLUMN IF NOT EXISTS "type" text;
-ALTER TABLE "agent_messages" ADD COLUMN IF NOT EXISTS "payload_json" text;
-ALTER TABLE "agent_messages" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "agent_pool_registrations" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "agent_pool_registrations" ADD COLUMN IF NOT EXISTS "pool_id" text;
-ALTER TABLE "agent_pool_registrations" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "agent_pool_registrations" ADD COLUMN IF NOT EXISTS "runner_id" text;
-ALTER TABLE "agent_pool_registrations" ADD COLUMN IF NOT EXISTS "manager_id" text;
-ALTER TABLE "agent_pool_registrations" ADD COLUMN IF NOT EXISTS "service_name" text;
-ALTER TABLE "agent_pool_registrations" ADD COLUMN IF NOT EXISTS "heartbeat_at" text;
-ALTER TABLE "agent_pool_registrations" ADD COLUMN IF NOT EXISTS "desired_workers" integer;
-ALTER TABLE "agent_pool_registrations" ADD COLUMN IF NOT EXISTS "observed_queue_depth" integer;
-ALTER TABLE "agent_pool_registrations" ADD COLUMN IF NOT EXISTS "observed_active_leases" integer;
-ALTER TABLE "agent_pool_registrations" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "agent_pool_registrations" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "agent_pool_registrations" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "agent_pool_scale_decisions" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "agent_pool_scale_decisions" ADD COLUMN IF NOT EXISTS "pool_id" text;
-ALTER TABLE "agent_pool_scale_decisions" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "agent_pool_scale_decisions" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "agent_pool_scale_decisions" ADD COLUMN IF NOT EXISTS "desired_workers" integer;
-ALTER TABLE "agent_pool_scale_decisions" ADD COLUMN IF NOT EXISTS "observed_queue_depth" integer DEFAULT 0;
-ALTER TABLE "agent_pool_scale_decisions" ADD COLUMN IF NOT EXISTS "observed_active_leases" integer DEFAULT 0;
-ALTER TABLE "agent_pool_scale_decisions" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "agent_pool_scale_decisions" ADD COLUMN IF NOT EXISTS "reason" text;
-ALTER TABLE "agent_pool_scale_decisions" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "agent_pool_scale_decisions" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "agent_pool_scale_decisions" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "registration_identity" text;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "service_base_url" text;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'pending';
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "min_workers" integer DEFAULT 0;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "max_workers" integer DEFAULT 1;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "target_queue_depth" integer DEFAULT 1;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "cooldown_seconds" integer DEFAULT 60;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "agent_pools" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "agent_runs" ADD COLUMN IF NOT EXISTS "run_id" text;
-ALTER TABLE "agent_runs" ADD COLUMN IF NOT EXISTS "agent_slug" text;
-ALTER TABLE "agent_runs" ADD COLUMN IF NOT EXISTS "status" text;
-ALTER TABLE "agent_runs" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "user_id" text;
-ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "kind" text;
-ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "token_prefix" text;
-ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "token_hash" text;
-ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "scopes_json" text;
-ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "expires_at" text;
-ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "last_used_at" text;
-ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "revoked_at" text;
-ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "task_id" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "kind" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "state" text DEFAULT 'pending';
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "severity" text DEFAULT 'medium';
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "requested_by_type" text DEFAULT 'worker';
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "requested_by_id" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "title" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "summary" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "options_json" text DEFAULT '[]';
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "recommendation_json" text DEFAULT '{}';
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "policy_snapshot_json" text DEFAULT '{}';
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "expires_at" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "decided_by_type" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "decided_by_id" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "decided_at" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "decision_json" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "approval_requests" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "actor_type" text;
-ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "actor_id" text;
-ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "event_type" text;
-ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "target_type" text;
-ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "target_id" text;
-ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "data_json" text;
-ALTER TABLE "audit_events" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "auth_sessions" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "auth_sessions" ADD COLUMN IF NOT EXISTS "user_id" text;
-ALTER TABLE "auth_sessions" ADD COLUMN IF NOT EXISTS "session_type" text;
-ALTER TABLE "auth_sessions" ADD COLUMN IF NOT EXISTS "refresh_token_hash" text;
-ALTER TABLE "auth_sessions" ADD COLUMN IF NOT EXISTS "scopes_json" text;
-ALTER TABLE "auth_sessions" ADD COLUMN IF NOT EXISTS "expires_at" text;
-ALTER TABLE "auth_sessions" ADD COLUMN IF NOT EXISTS "revoked_at" text;
-ALTER TABLE "auth_sessions" ADD COLUMN IF NOT EXISTS "data_json" text;
-ALTER TABLE "auth_sessions" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "auth_sessions" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "better_auth_account" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "better_auth_account" ADD COLUMN IF NOT EXISTS "accountId" text;
-ALTER TABLE "better_auth_account" ADD COLUMN IF NOT EXISTS "providerId" text;
-ALTER TABLE "better_auth_account" ADD COLUMN IF NOT EXISTS "userId" text;
-ALTER TABLE "better_auth_account" ADD COLUMN IF NOT EXISTS "accessToken" text;
-ALTER TABLE "better_auth_account" ADD COLUMN IF NOT EXISTS "refreshToken" text;
-ALTER TABLE "better_auth_account" ADD COLUMN IF NOT EXISTS "idToken" text;
-ALTER TABLE "better_auth_account" ADD COLUMN IF NOT EXISTS "accessTokenExpiresAt" integer;
-ALTER TABLE "better_auth_account" ADD COLUMN IF NOT EXISTS "refreshTokenExpiresAt" integer;
-ALTER TABLE "better_auth_account" ADD COLUMN IF NOT EXISTS "scope" text;
-ALTER TABLE "better_auth_account" ADD COLUMN IF NOT EXISTS "password" text;
-ALTER TABLE "better_auth_account" ADD COLUMN IF NOT EXISTS "createdAt" integer;
-ALTER TABLE "better_auth_account" ADD COLUMN IF NOT EXISTS "updatedAt" integer;
-ALTER TABLE "better_auth_session" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "better_auth_session" ADD COLUMN IF NOT EXISTS "expiresAt" integer;
-ALTER TABLE "better_auth_session" ADD COLUMN IF NOT EXISTS "token" text;
-ALTER TABLE "better_auth_session" ADD COLUMN IF NOT EXISTS "createdAt" integer;
-ALTER TABLE "better_auth_session" ADD COLUMN IF NOT EXISTS "updatedAt" integer;
-ALTER TABLE "better_auth_session" ADD COLUMN IF NOT EXISTS "ipAddress" text;
-ALTER TABLE "better_auth_session" ADD COLUMN IF NOT EXISTS "userAgent" text;
-ALTER TABLE "better_auth_session" ADD COLUMN IF NOT EXISTS "userId" text;
-ALTER TABLE "better_auth_user" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "better_auth_user" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "better_auth_user" ADD COLUMN IF NOT EXISTS "email" text;
-ALTER TABLE "better_auth_user" ADD COLUMN IF NOT EXISTS "emailVerified" integer DEFAULT 0;
-ALTER TABLE "better_auth_user" ADD COLUMN IF NOT EXISTS "image" text;
-ALTER TABLE "better_auth_user" ADD COLUMN IF NOT EXISTS "createdAt" integer;
-ALTER TABLE "better_auth_user" ADD COLUMN IF NOT EXISTS "updatedAt" integer;
-ALTER TABLE "better_auth_user" ADD COLUMN IF NOT EXISTS "username" text;
-ALTER TABLE "better_auth_user" ADD COLUMN IF NOT EXISTS "firstName" text;
-ALTER TABLE "better_auth_user" ADD COLUMN IF NOT EXISTS "lastName" text;
-ALTER TABLE "better_auth_verification" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "better_auth_verification" ADD COLUMN IF NOT EXISTS "identifier" text;
-ALTER TABLE "better_auth_verification" ADD COLUMN IF NOT EXISTS "value" text;
-ALTER TABLE "better_auth_verification" ADD COLUMN IF NOT EXISTS "expiresAt" integer;
-ALTER TABLE "better_auth_verification" ADD COLUMN IF NOT EXISTS "createdAt" integer;
-ALTER TABLE "better_auth_verification" ADD COLUMN IF NOT EXISTS "updatedAt" integer;
-ALTER TABLE "better_auth_verification" ALTER COLUMN "expiresAt" TYPE bigint;
-ALTER TABLE "better_auth_verification" ALTER COLUMN "createdAt" TYPE bigint;
-ALTER TABLE "better_auth_verification" ALTER COLUMN "updatedAt" TYPE bigint;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "capacity_provider_id" text;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "lane_id" text;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "grant_scope" text DEFAULT 'team';
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "state" text DEFAULT 'active';
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "daily_credit_limit" real;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "weekly_credit_limit" real;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "monthly_credit_limit" real;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "daily_usd_limit" real;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "weekly_quota_minutes" real;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "monthly_provider_units" real;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "priority_weight" real DEFAULT 1;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "overflow_policy" text DEFAULT 'soft_grant';
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "capacity_grants" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "capacity_provider_id" text;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "lane_id" text;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "reservation_id" text;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "task_id" text;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "phase" text;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "credits" real;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "provider_units" real;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "usd" real;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "source" text;
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "capacity_ledger_entries" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "capacity_provider_id" text;
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "key_prefix" text;
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "key_hash" text;
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "scopes_json" text DEFAULT '[]';
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'active';
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "last_used_at" text;
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "rotated_from_key_id" text;
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "expires_at" text;
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "revoked_at" text;
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "created_by_id" text;
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "capacity_provider_api_keys" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "capacity_provider_id" text;
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "launch_mode" text;
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "host_kind" text;
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "host_id" text;
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "status" text;
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "image_ref" text;
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "service_refs_json" text DEFAULT '{}';
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "env_refs_json" text DEFAULT '{}';
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "result_json" text DEFAULT '{}';
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "error_json" text;
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "created_by_id" text;
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "capacity_provider_deployments" ADD COLUMN IF NOT EXISTS "completed_at" text;
-ALTER TABLE "capacity_provider_hosts" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "capacity_provider_hosts" ADD COLUMN IF NOT EXISTS "capacity_provider_id" text;
-ALTER TABLE "capacity_provider_hosts" ADD COLUMN IF NOT EXISTS "host_id" text;
-ALTER TABLE "capacity_provider_hosts" ADD COLUMN IF NOT EXISTS "role" text;
-ALTER TABLE "capacity_provider_hosts" ADD COLUMN IF NOT EXISTS "required" integer DEFAULT 1;
-ALTER TABLE "capacity_provider_hosts" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "capacity_provider_hosts" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "capacity_provider_hosts" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "capacity_provider_id" text;
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "business_model" text DEFAULT 'custom';
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "model_family" text;
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "model_class" text;
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "region_policy" text;
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "unit" text DEFAULT 'treeseed_credit';
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "scarcity_level" text DEFAULT 'medium';
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "hard_limits_json" text DEFAULT '{}';
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "routing_policy_json" text DEFAULT '{}';
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "capacity_provider_lanes" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "capacity_provider_id" text;
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "runtime_version" text;
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "market_id" text;
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "capabilities_json" text DEFAULT '[]';
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "budgets_json" text DEFAULT '{}';
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "health_json" text DEFAULT '{}';
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'online';
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "registered_at" text;
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "last_seen_at" text;
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "disconnected_at" text;
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "capacity_provider_registrations" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "owner_team_id" text;
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "kind" text;
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'pending';
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "provider" text;
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "billing_scope" text DEFAULT 'team';
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "monthly_credit_budget" real DEFAULT 0;
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "daily_credit_budget" real DEFAULT 0;
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "credit_budget_mode" text DEFAULT 'derived';
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "max_concurrent_workdays" integer DEFAULT 1;
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "max_concurrent_workers" integer DEFAULT 1;
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "capacity_model_json" text DEFAULT '{}';
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "capacity_providers" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "capacity_provider_id" text;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "execution_provider_id" text;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "lane_id" text;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "task_id" text;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "state" text DEFAULT 'reserved';
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "reserved_credits" real;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "consumed_credits" real DEFAULT 0;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "native_unit" text;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "reserved_native_amount" real;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "consumed_native_amount" real;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "reserved_provider_units" real;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "consumed_provider_units" real;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "reserved_usd" real;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "consumed_usd" real;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "expires_at" text;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "capacity_reservations" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "capacity_routing_decisions" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "capacity_routing_decisions" ADD COLUMN IF NOT EXISTS "task_id" text;
-ALTER TABLE "capacity_routing_decisions" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "capacity_routing_decisions" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "capacity_routing_decisions" ADD COLUMN IF NOT EXISTS "selected_provider_id" text;
-ALTER TABLE "capacity_routing_decisions" ADD COLUMN IF NOT EXISTS "selected_lane_id" text;
-ALTER TABLE "capacity_routing_decisions" ADD COLUMN IF NOT EXISTS "selected_model" text;
-ALTER TABLE "capacity_routing_decisions" ADD COLUMN IF NOT EXISTS "decision" text DEFAULT 'selected';
-ALTER TABLE "capacity_routing_decisions" ADD COLUMN IF NOT EXISTS "reason" text;
-ALTER TABLE "capacity_routing_decisions" ADD COLUMN IF NOT EXISTS "candidate_json" text DEFAULT '[]';
-ALTER TABLE "capacity_routing_decisions" ADD COLUMN IF NOT EXISTS "score_json" text DEFAULT '{}';
-ALTER TABLE "capacity_routing_decisions" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "capacity_routing_decisions" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "catalog_artifact_versions" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "catalog_artifact_versions" ADD COLUMN IF NOT EXISTS "item_id" text;
-ALTER TABLE "catalog_artifact_versions" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "catalog_artifact_versions" ADD COLUMN IF NOT EXISTS "kind" text;
-ALTER TABLE "catalog_artifact_versions" ADD COLUMN IF NOT EXISTS "version" text;
-ALTER TABLE "catalog_artifact_versions" ADD COLUMN IF NOT EXISTS "content_key" text;
-ALTER TABLE "catalog_artifact_versions" ADD COLUMN IF NOT EXISTS "manifest_key" text;
-ALTER TABLE "catalog_artifact_versions" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "catalog_artifact_versions" ADD COLUMN IF NOT EXISTS "published_at" text;
-ALTER TABLE "catalog_artifact_versions" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "catalog_artifact_versions" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "catalog_item_collaborators" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "catalog_item_collaborators" ADD COLUMN IF NOT EXISTS "item_id" text;
-ALTER TABLE "catalog_item_collaborators" ADD COLUMN IF NOT EXISTS "subject_type" text;
-ALTER TABLE "catalog_item_collaborators" ADD COLUMN IF NOT EXISTS "subject_id" text;
-ALTER TABLE "catalog_item_collaborators" ADD COLUMN IF NOT EXISTS "role" text;
-ALTER TABLE "catalog_item_collaborators" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "catalog_item_collaborators" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "catalog_item_collaborators" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "kind" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "slug" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "title" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "summary" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "visibility" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "listing_enabled" integer DEFAULT 0;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "offer_mode" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "manifest_key" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "artifact_key" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "search_text" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "catalog_items" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "contact_submissions" ADD COLUMN IF NOT EXISTS "id" integer;
-ALTER TABLE "contact_submissions" ADD COLUMN IF NOT EXISTS "email" text;
-ALTER TABLE "contact_submissions" ADD COLUMN IF NOT EXISTS "message" text;
-ALTER TABLE "contact_submissions" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "task_signature" text;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "execution_profile_id" text DEFAULT 'standard-code-model';
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "execution_provider_kind" text;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "native_unit" text;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "sample_count" integer DEFAULT 0;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "completed_sample_count" integer DEFAULT 0;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "interrupted_sample_count" integer DEFAULT 0;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "native_units_per_credit_p50" real;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "native_units_per_credit_p90" real;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "credits_per_native_unit_p50" real;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "credits_per_native_unit_p90" real;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "actual_credits_p50" real;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "actual_credits_p90" real;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "confidence" text DEFAULT 'low';
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "formula_version" text;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "credit_conversion_profiles" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "cursor_state" ADD COLUMN IF NOT EXISTS "agent_slug" text;
-ALTER TABLE "cursor_state" ADD COLUMN IF NOT EXISTS "cursor_key" text;
-ALTER TABLE "cursor_state" ADD COLUMN IF NOT EXISTS "status" text;
-ALTER TABLE "cursor_state" ADD COLUMN IF NOT EXISTS "schema_version" integer DEFAULT 1;
-ALTER TABLE "cursor_state" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "cursor_state" ADD COLUMN IF NOT EXISTS "payload_json" text;
-ALTER TABLE "cursor_state" ADD COLUMN IF NOT EXISTS "meta_json" text;
-ALTER TABLE "device_codes" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "device_codes" ADD COLUMN IF NOT EXISTS "device_code" text;
-ALTER TABLE "device_codes" ADD COLUMN IF NOT EXISTS "user_code" text;
-ALTER TABLE "device_codes" ADD COLUMN IF NOT EXISTS "requested_scopes_json" text;
-ALTER TABLE "device_codes" ADD COLUMN IF NOT EXISTS "expires_at" text;
-ALTER TABLE "device_codes" ADD COLUMN IF NOT EXISTS "interval_seconds" integer;
-ALTER TABLE "device_codes" ADD COLUMN IF NOT EXISTS "status" text;
-ALTER TABLE "device_codes" ADD COLUMN IF NOT EXISTS "user_id" text;
-ALTER TABLE "device_codes" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "device_codes" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "entitlements" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "entitlements" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "entitlements" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "entitlements" ADD COLUMN IF NOT EXISTS "tier" text;
-ALTER TABLE "entitlements" ADD COLUMN IF NOT EXISTS "status" text;
-ALTER TABLE "entitlements" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "entitlements" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "entitlements" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "execution_provider_native_limits" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "execution_provider_native_limits" ADD COLUMN IF NOT EXISTS "execution_provider_id" text;
-ALTER TABLE "execution_provider_native_limits" ADD COLUMN IF NOT EXISTS "scope" text;
-ALTER TABLE "execution_provider_native_limits" ADD COLUMN IF NOT EXISTS "native_unit" text;
-ALTER TABLE "execution_provider_native_limits" ADD COLUMN IF NOT EXISTS "limit_amount" real;
-ALTER TABLE "execution_provider_native_limits" ADD COLUMN IF NOT EXISTS "reserve_buffer_percent" real DEFAULT 0;
-ALTER TABLE "execution_provider_native_limits" ADD COLUMN IF NOT EXISTS "reset_cadence" text;
-ALTER TABLE "execution_provider_native_limits" ADD COLUMN IF NOT EXISTS "reset_at" text;
-ALTER TABLE "execution_provider_native_limits" ADD COLUMN IF NOT EXISTS "confidence" text DEFAULT 'estimated';
-ALTER TABLE "execution_provider_native_limits" ADD COLUMN IF NOT EXISTS "source" text DEFAULT 'configured';
-ALTER TABLE "execution_provider_native_limits" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "execution_provider_native_limits" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "execution_provider_native_limits" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "execution_provider_observations" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "execution_provider_observations" ADD COLUMN IF NOT EXISTS "execution_provider_id" text;
-ALTER TABLE "execution_provider_observations" ADD COLUMN IF NOT EXISTS "observed_at" text;
-ALTER TABLE "execution_provider_observations" ADD COLUMN IF NOT EXISTS "health" text DEFAULT 'unknown';
-ALTER TABLE "execution_provider_observations" ADD COLUMN IF NOT EXISTS "active_workers" integer;
-ALTER TABLE "execution_provider_observations" ADD COLUMN IF NOT EXISTS "queued_tasks" integer;
-ALTER TABLE "execution_provider_observations" ADD COLUMN IF NOT EXISTS "throttle_state" text;
-ALTER TABLE "execution_provider_observations" ADD COLUMN IF NOT EXISTS "native_remaining_json" text DEFAULT '{}';
-ALTER TABLE "execution_provider_observations" ADD COLUMN IF NOT EXISTS "reset_at" text;
-ALTER TABLE "execution_provider_observations" ADD COLUMN IF NOT EXISTS "confidence" text DEFAULT 'estimated';
-ALTER TABLE "execution_provider_observations" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "execution_provider_observations" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "capacity_provider_id" text;
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "kind" text;
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'active';
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "native_unit" text;
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "quota_visibility" text DEFAULT 'opaque';
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "max_concurrent_workers" integer DEFAULT 1;
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "reset_cadence" text;
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "config_json" text DEFAULT '{}';
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "execution_providers" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "graph_runs" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "graph_runs" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "graph_runs" ADD COLUMN IF NOT EXISTS "corpus_hash" text;
-ALTER TABLE "graph_runs" ADD COLUMN IF NOT EXISTS "graph_version" text;
-ALTER TABLE "graph_runs" ADD COLUMN IF NOT EXISTS "query_json" text;
-ALTER TABLE "graph_runs" ADD COLUMN IF NOT EXISTS "seed_ids_json" text;
-ALTER TABLE "graph_runs" ADD COLUMN IF NOT EXISTS "selected_node_ids_json" text;
-ALTER TABLE "graph_runs" ADD COLUMN IF NOT EXISTS "stats_json" text;
-ALTER TABLE "graph_runs" ADD COLUMN IF NOT EXISTS "snapshot_ref" text;
-ALTER TABLE "graph_runs" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "hub_id" text;
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "content_repository_id" text;
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "production_source" text;
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "overlay_policy" text;
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "r2_bucket_name" text;
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "r2_manifest_key" text;
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "r2_public_base_url" text;
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "latest_publish_id" text;
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "latest_content_version" text;
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "hub_content_sources" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "hub_launch_events" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "hub_launch_events" ADD COLUMN IF NOT EXISTS "launch_id" text;
-ALTER TABLE "hub_launch_events" ADD COLUMN IF NOT EXISTS "seq" integer;
-ALTER TABLE "hub_launch_events" ADD COLUMN IF NOT EXISTS "phase" text;
-ALTER TABLE "hub_launch_events" ADD COLUMN IF NOT EXISTS "status" text;
-ALTER TABLE "hub_launch_events" ADD COLUMN IF NOT EXISTS "title" text;
-ALTER TABLE "hub_launch_events" ADD COLUMN IF NOT EXISTS "summary" text;
-ALTER TABLE "hub_launch_events" ADD COLUMN IF NOT EXISTS "started_at" text;
-ALTER TABLE "hub_launch_events" ADD COLUMN IF NOT EXISTS "finished_at" text;
-ALTER TABLE "hub_launch_events" ADD COLUMN IF NOT EXISTS "error_json" text;
-ALTER TABLE "hub_launch_events" ADD COLUMN IF NOT EXISTS "data_json" text DEFAULT '{}';
-ALTER TABLE "hub_launch_events" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "hub_id" text;
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "job_id" text;
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "intent_json" text;
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "plan_json" text DEFAULT '{}';
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "state" text;
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "current_phase" text;
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "last_successful_phase" text;
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "result_json" text;
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "error_json" text;
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "hub_launches" ADD COLUMN IF NOT EXISTS "completed_at" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "hub_id" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "role" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "repository_host_id" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "provider" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "owner" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "url" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "default_branch" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "current_branch" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'queued';
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "access_policy_json" text DEFAULT '{}';
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "release_policy_json" text DEFAULT '{}';
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "publish_policy_json" text DEFAULT '{}';
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "submodule_path" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "hub_repositories" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "hub_id" text;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "parent_repository_host_id" text;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "parent_owner" text;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "parent_name" text;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "parent_url" text;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "parent_branch" text;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "hub_mount_path" text;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "software_submodule_path" text;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "content_submodule_path" text;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "update_submodule_pointers_enabled" integer DEFAULT 0;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "access_policy_json" text DEFAULT '{}';
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "hub_workspace_links" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "knowledge_packs" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "knowledge_packs" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "knowledge_packs" ADD COLUMN IF NOT EXISTS "slug" text;
-ALTER TABLE "knowledge_packs" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "knowledge_packs" ADD COLUMN IF NOT EXISTS "summary" text;
-ALTER TABLE "knowledge_packs" ADD COLUMN IF NOT EXISTS "source_kind" text;
-ALTER TABLE "knowledge_packs" ADD COLUMN IF NOT EXISTS "source_ref" text;
-ALTER TABLE "knowledge_packs" ADD COLUMN IF NOT EXISTS "install_strategy" text;
-ALTER TABLE "knowledge_packs" ADD COLUMN IF NOT EXISTS "visibility" text;
-ALTER TABLE "knowledge_packs" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "knowledge_packs" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "knowledge_packs" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "lease_state" ADD COLUMN IF NOT EXISTS "model" text;
-ALTER TABLE "lease_state" ADD COLUMN IF NOT EXISTS "item_key" text;
-ALTER TABLE "lease_state" ADD COLUMN IF NOT EXISTS "status" text;
-ALTER TABLE "lease_state" ADD COLUMN IF NOT EXISTS "schema_version" integer DEFAULT 1;
-ALTER TABLE "lease_state" ADD COLUMN IF NOT EXISTS "claimed_by" text;
-ALTER TABLE "lease_state" ADD COLUMN IF NOT EXISTS "claimed_at" text;
-ALTER TABLE "lease_state" ADD COLUMN IF NOT EXISTS "lease_expires_at" text;
-ALTER TABLE "lease_state" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "lease_state" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "lease_state" ADD COLUMN IF NOT EXISTS "payload_json" text;
-ALTER TABLE "lease_state" ADD COLUMN IF NOT EXISTS "meta_json" text;
-ALTER TABLE "market_auth_credentials" ADD COLUMN IF NOT EXISTS "user_id" text;
-ALTER TABLE "market_auth_credentials" ADD COLUMN IF NOT EXISTS "email" text;
-ALTER TABLE "market_auth_credentials" ADD COLUMN IF NOT EXISTS "username" text;
-ALTER TABLE "market_auth_credentials" ADD COLUMN IF NOT EXISTS "password_hash" text;
-ALTER TABLE "market_auth_credentials" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'active';
-ALTER TABLE "market_auth_credentials" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "market_auth_credentials" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "market_auth_password_resets" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "market_auth_password_resets" ADD COLUMN IF NOT EXISTS "user_id" text;
-ALTER TABLE "market_auth_password_resets" ADD COLUMN IF NOT EXISTS "token_hash" text;
-ALTER TABLE "market_auth_password_resets" ADD COLUMN IF NOT EXISTS "expires_at" text;
-ALTER TABLE "market_auth_password_resets" ADD COLUMN IF NOT EXISTS "used_at" text;
-ALTER TABLE "market_auth_password_resets" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "market_operation_runners" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "market_operation_runners" ADD COLUMN IF NOT EXISTS "runner_key" text;
-ALTER TABLE "market_operation_runners" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "market_operation_runners" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "market_operation_runners" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'online';
-ALTER TABLE "market_operation_runners" ADD COLUMN IF NOT EXISTS "version" text;
-ALTER TABLE "market_operation_runners" ADD COLUMN IF NOT EXISTS "capabilities_json" text DEFAULT '[]';
-ALTER TABLE "market_operation_runners" ADD COLUMN IF NOT EXISTS "active_job_count" integer DEFAULT 0;
-ALTER TABLE "market_operation_runners" ADD COLUMN IF NOT EXISTS "max_concurrent_jobs" integer DEFAULT 1;
-ALTER TABLE "market_operation_runners" ADD COLUMN IF NOT EXISTS "heartbeat_at" text;
-ALTER TABLE "market_operation_runners" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "market_operation_runners" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "market_operation_runners" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "id" integer;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "message_type" text;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "status" text;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "schema_version" integer DEFAULT 1;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "related_model" text;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "related_id" text;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "priority" integer DEFAULT 0;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "available_at" text;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "claimed_by" text;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "claimed_at" text;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "lease_expires_at" text;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "attempts" integer DEFAULT 0;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "max_attempts" integer DEFAULT 3;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "payload_json" text;
-ALTER TABLE "message_queue" ADD COLUMN IF NOT EXISTS "meta_json" text;
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "task_usage_actual_id" text;
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "task_id" text;
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "task_signature" text;
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "execution_profile_id" text DEFAULT 'standard-code-model';
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "capacity_provider_id" text;
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "execution_provider_id" text;
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "native_unit" text;
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "native_usage_json" text DEFAULT '{}';
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "observed_at" text;
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "source" text DEFAULT 'provider_report';
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "formula_version" text DEFAULT 'treeseed.actual-credits.v1';
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "actual_credits" real;
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "native_usage_observations" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "permissions" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "permissions" ADD COLUMN IF NOT EXISTS "key" text;
-ALTER TABLE "permissions" ADD COLUMN IF NOT EXISTS "resource" text;
-ALTER TABLE "permissions" ADD COLUMN IF NOT EXISTS "action" text;
-ALTER TABLE "permissions" ADD COLUMN IF NOT EXISTS "scope" text;
-ALTER TABLE "permissions" ADD COLUMN IF NOT EXISTS "description" text;
-ALTER TABLE "permissions" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "platform_operation_events" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "platform_operation_events" ADD COLUMN IF NOT EXISTS "operation_id" text;
-ALTER TABLE "platform_operation_events" ADD COLUMN IF NOT EXISTS "seq" integer;
-ALTER TABLE "platform_operation_events" ADD COLUMN IF NOT EXISTS "kind" text;
-ALTER TABLE "platform_operation_events" ADD COLUMN IF NOT EXISTS "data_json" text DEFAULT '{}';
-ALTER TABLE "platform_operation_events" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "namespace" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "operation" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "status" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "target" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "idempotency_key" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "input_json" text DEFAULT '{}';
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "output_json" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "error_json" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "requested_by_type" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "requested_by_id" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "assigned_runner_id" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "lease_expires_at" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "started_at" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "finished_at" text;
-ALTER TABLE "platform_operations" ADD COLUMN IF NOT EXISTS "cancelled_at" text;
-ALTER TABLE "platform_repository_claims" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "platform_repository_claims" ADD COLUMN IF NOT EXISTS "repository_key" text;
-ALTER TABLE "platform_repository_claims" ADD COLUMN IF NOT EXISTS "runner_id" text;
-ALTER TABLE "platform_repository_claims" ADD COLUMN IF NOT EXISTS "workspace_path" text;
-ALTER TABLE "platform_repository_claims" ADD COLUMN IF NOT EXISTS "branch" text;
-ALTER TABLE "platform_repository_claims" ADD COLUMN IF NOT EXISTS "commit_sha" text;
-ALTER TABLE "platform_repository_claims" ADD COLUMN IF NOT EXISTS "claim_state" text DEFAULT 'active';
-ALTER TABLE "platform_repository_claims" ADD COLUMN IF NOT EXISTS "lease_expires_at" text;
-ALTER TABLE "platform_repository_claims" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "platform_repository_claims" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "platform_repository_claims" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "priority_overrides" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "priority_overrides" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "priority_overrides" ADD COLUMN IF NOT EXISTS "model" text;
-ALTER TABLE "priority_overrides" ADD COLUMN IF NOT EXISTS "subject_id" text;
-ALTER TABLE "priority_overrides" ADD COLUMN IF NOT EXISTS "priority" real DEFAULT 0;
-ALTER TABLE "priority_overrides" ADD COLUMN IF NOT EXISTS "estimated_credits" real;
-ALTER TABLE "priority_overrides" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "priority_overrides" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "priority_overrides" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "priority_snapshots" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "priority_snapshots" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "priority_snapshots" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "priority_snapshots" ADD COLUMN IF NOT EXISTS "snapshot_json" text;
-ALTER TABLE "priority_snapshots" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "priority_snapshots" ADD COLUMN IF NOT EXISTS "generated_at" text;
-ALTER TABLE "priority_snapshots" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "priority_snapshots" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "label" text;
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "namespace" text;
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "operation" text;
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "execution_class" text;
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "allowed_targets_json" text;
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "default_dispatch_mode" text;
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "approval_policy_json" text DEFAULT '{}';
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "resource_scope_json" text DEFAULT '{}';
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "enabled" integer DEFAULT 1;
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "project_capability_grants" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "project_connections" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "project_connections" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "project_connections" ADD COLUMN IF NOT EXISTS "mode" text;
-ALTER TABLE "project_connections" ADD COLUMN IF NOT EXISTS "project_api_base_url" text;
-ALTER TABLE "project_connections" ADD COLUMN IF NOT EXISTS "execution_owner" text;
-ALTER TABLE "project_connections" ADD COLUMN IF NOT EXISTS "runner_registration_state" text DEFAULT 'pending';
-ALTER TABLE "project_connections" ADD COLUMN IF NOT EXISTS "runner_key_prefix" text;
-ALTER TABLE "project_connections" ADD COLUMN IF NOT EXISTS "runner_key_hash" text;
-ALTER TABLE "project_connections" ADD COLUMN IF NOT EXISTS "runner_registered_at" text;
-ALTER TABLE "project_connections" ADD COLUMN IF NOT EXISTS "runner_last_seen_at" text;
-ALTER TABLE "project_connections" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "project_connections" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "project_connections" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "deployment_kind" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "status" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "source_ref" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "release_tag" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "commit_sha" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "triggered_by_type" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "triggered_by_id" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "started_at" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "finished_at" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "project_deployments" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "deployment_profile" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "base_url" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "cloudflare_account_id" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "pages_project_name" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "worker_name" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "r2_bucket_name" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "d1_database_name" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "queue_name" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "railway_project_name" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "project_environments" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "project_hosting" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "project_hosting" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "project_hosting" ADD COLUMN IF NOT EXISTS "hosting_kind" text;
-ALTER TABLE "project_hosting" ADD COLUMN IF NOT EXISTS "registration" text DEFAULT 'none';
-ALTER TABLE "project_hosting" ADD COLUMN IF NOT EXISTS "market_base_url" text;
-ALTER TABLE "project_hosting" ADD COLUMN IF NOT EXISTS "source_repo_owner" text;
-ALTER TABLE "project_hosting" ADD COLUMN IF NOT EXISTS "source_repo_name" text;
-ALTER TABLE "project_hosting" ADD COLUMN IF NOT EXISTS "source_repo_url" text;
-ALTER TABLE "project_hosting" ADD COLUMN IF NOT EXISTS "source_repo_workflow_path" text;
-ALTER TABLE "project_hosting" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "project_hosting" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "project_hosting" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "project_infrastructure_resources" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "project_infrastructure_resources" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "project_infrastructure_resources" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "project_infrastructure_resources" ADD COLUMN IF NOT EXISTS "provider" text;
-ALTER TABLE "project_infrastructure_resources" ADD COLUMN IF NOT EXISTS "resource_kind" text;
-ALTER TABLE "project_infrastructure_resources" ADD COLUMN IF NOT EXISTS "logical_name" text;
-ALTER TABLE "project_infrastructure_resources" ADD COLUMN IF NOT EXISTS "locator" text;
-ALTER TABLE "project_infrastructure_resources" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "project_infrastructure_resources" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "project_infrastructure_resources" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "project_summary_snapshots" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "project_summary_snapshots" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "project_summary_snapshots" ADD COLUMN IF NOT EXISTS "summary_json" text;
-ALTER TABLE "project_summary_snapshots" ADD COLUMN IF NOT EXISTS "generated_at" text;
-ALTER TABLE "project_summary_snapshots" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "project_summary_snapshots" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "project_update_plans" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "project_update_plans" ADD COLUMN IF NOT EXISTS "hub_id" text;
-ALTER TABLE "project_update_plans" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "project_update_plans" ADD COLUMN IF NOT EXISTS "source_kind" text;
-ALTER TABLE "project_update_plans" ADD COLUMN IF NOT EXISTS "source_ref" text;
-ALTER TABLE "project_update_plans" ADD COLUMN IF NOT EXISTS "source_version" text;
-ALTER TABLE "project_update_plans" ADD COLUMN IF NOT EXISTS "plan_json" text DEFAULT '{}';
-ALTER TABLE "project_update_plans" ADD COLUMN IF NOT EXISTS "state" text DEFAULT 'planned';
-ALTER TABLE "project_update_plans" ADD COLUMN IF NOT EXISTS "requires_decision" integer DEFAULT 0;
-ALTER TABLE "project_update_plans" ADD COLUMN IF NOT EXISTS "decision_id" text;
-ALTER TABLE "project_update_plans" ADD COLUMN IF NOT EXISTS "created_by" text;
-ALTER TABLE "project_update_plans" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "project_update_plans" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "project_workday_summaries" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "project_workday_summaries" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "project_workday_summaries" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "project_workday_summaries" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "project_workday_summaries" ADD COLUMN IF NOT EXISTS "kind" text;
-ALTER TABLE "project_workday_summaries" ADD COLUMN IF NOT EXISTS "state" text;
-ALTER TABLE "project_workday_summaries" ADD COLUMN IF NOT EXISTS "started_at" text;
-ALTER TABLE "project_workday_summaries" ADD COLUMN IF NOT EXISTS "ended_at" text;
-ALTER TABLE "project_workday_summaries" ADD COLUMN IF NOT EXISTS "summary_json" text;
-ALTER TABLE "project_workday_summaries" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "project_workday_summaries" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "project_workday_summaries" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "slug" text;
-ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "description" text;
-ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "job_id" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "host_kind" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "host_id" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "purpose" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "encrypted_payload_json" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'active';
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "expires_at" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "consumed_at" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "created_by_id" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "provider_credential_sessions" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "remote_job_events" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "remote_job_events" ADD COLUMN IF NOT EXISTS "job_id" text;
-ALTER TABLE "remote_job_events" ADD COLUMN IF NOT EXISTS "seq" integer;
-ALTER TABLE "remote_job_events" ADD COLUMN IF NOT EXISTS "kind" text;
-ALTER TABLE "remote_job_events" ADD COLUMN IF NOT EXISTS "data_json" text;
-ALTER TABLE "remote_job_events" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "namespace" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "operation" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "status" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "preferred_mode" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "selected_target" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "capability_json" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "input_json" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "output_json" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "error_json" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "requested_by_type" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "requested_by_id" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "assigned_runner_id" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "idempotency_key" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "started_at" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "finished_at" text;
-ALTER TABLE "remote_jobs" ADD COLUMN IF NOT EXISTS "cancelled_at" text;
-ALTER TABLE "reports" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "reports" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "reports" ADD COLUMN IF NOT EXISTS "kind" text;
-ALTER TABLE "reports" ADD COLUMN IF NOT EXISTS "body_json" text;
-ALTER TABLE "reports" ADD COLUMN IF NOT EXISTS "rendered_ref" text;
-ALTER TABLE "reports" ADD COLUMN IF NOT EXISTS "sent_at" text;
-ALTER TABLE "reports" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "repository_claims" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "repository_claims" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "repository_claims" ADD COLUMN IF NOT EXISTS "repository_id" text;
-ALTER TABLE "repository_claims" ADD COLUMN IF NOT EXISTS "runner_id" text;
-ALTER TABLE "repository_claims" ADD COLUMN IF NOT EXISTS "runner_service_name" text;
-ALTER TABLE "repository_claims" ADD COLUMN IF NOT EXISTS "volume_identity" text;
-ALTER TABLE "repository_claims" ADD COLUMN IF NOT EXISTS "last_seen_commit" text;
-ALTER TABLE "repository_claims" ADD COLUMN IF NOT EXISTS "last_task_at" text;
-ALTER TABLE "repository_claims" ADD COLUMN IF NOT EXISTS "claim_state" text DEFAULT 'active';
-ALTER TABLE "repository_claims" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "repository_claims" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "repository_claims" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "provider" text;
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "ownership" text;
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "account_label" text;
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "organization_or_owner" text;
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "default_visibility" text DEFAULT 'private';
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "software_repository_name_template" text DEFAULT '{hub}-site';
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "content_repository_name_template" text DEFAULT '{hub}-content';
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "branch_policy_json" text DEFAULT '{}';
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "workflow_policy_json" text DEFAULT '{}';
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "encrypted_payload_json" text;
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "allowed_project_kinds_json" text DEFAULT '["knowledge_hub"]';
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'active';
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "created_by_id" text;
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "updated_by_id" text;
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "repository_hosts" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "role_permissions" ADD COLUMN IF NOT EXISTS "role_id" text;
-ALTER TABLE "role_permissions" ADD COLUMN IF NOT EXISTS "permission_id" text;
-ALTER TABLE "role_permissions" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "roles" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "roles" ADD COLUMN IF NOT EXISTS "key" text;
-ALTER TABLE "roles" ADD COLUMN IF NOT EXISTS "description" text;
-ALTER TABLE "roles" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "runner_scale_decisions" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "runner_scale_decisions" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "runner_scale_decisions" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "runner_scale_decisions" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "runner_scale_decisions" ADD COLUMN IF NOT EXISTS "runner_id" text;
-ALTER TABLE "runner_scale_decisions" ADD COLUMN IF NOT EXISTS "runner_service_name" text;
-ALTER TABLE "runner_scale_decisions" ADD COLUMN IF NOT EXISTS "action" text;
-ALTER TABLE "runner_scale_decisions" ADD COLUMN IF NOT EXISTS "reason" text;
-ALTER TABLE "runner_scale_decisions" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "runner_scale_decisions" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "runtime_envelopes" ADD COLUMN IF NOT EXISTS "id" integer;
-ALTER TABLE "runtime_envelopes" ADD COLUMN IF NOT EXISTS "record_type" text;
-ALTER TABLE "runtime_envelopes" ADD COLUMN IF NOT EXISTS "payload_json" text;
-ALTER TABLE "runtime_envelopes" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "runtime_records" ADD COLUMN IF NOT EXISTS "id" integer;
-ALTER TABLE "runtime_records" ADD COLUMN IF NOT EXISTS "record_type" text;
-ALTER TABLE "runtime_records" ADD COLUMN IF NOT EXISTS "record_key" text;
-ALTER TABLE "runtime_records" ADD COLUMN IF NOT EXISTS "lookup_key" text;
-ALTER TABLE "runtime_records" ADD COLUMN IF NOT EXISTS "secondary_key" text;
-ALTER TABLE "runtime_records" ADD COLUMN IF NOT EXISTS "status" text;
-ALTER TABLE "runtime_records" ADD COLUMN IF NOT EXISTS "schema_version" integer DEFAULT 1;
-ALTER TABLE "runtime_records" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "runtime_records" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "runtime_records" ADD COLUMN IF NOT EXISTS "payload_json" text;
-ALTER TABLE "runtime_records" ADD COLUMN IF NOT EXISTS "meta_json" text;
-ALTER TABLE "scale_decisions" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "scale_decisions" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "scale_decisions" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "scale_decisions" ADD COLUMN IF NOT EXISTS "pool_name" text;
-ALTER TABLE "scale_decisions" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "scale_decisions" ADD COLUMN IF NOT EXISTS "desired_workers" integer;
-ALTER TABLE "scale_decisions" ADD COLUMN IF NOT EXISTS "observed_queue_depth" integer DEFAULT 0;
-ALTER TABLE "scale_decisions" ADD COLUMN IF NOT EXISTS "observed_active_leases" integer DEFAULT 0;
-ALTER TABLE "scale_decisions" ADD COLUMN IF NOT EXISTS "reason" text;
-ALTER TABLE "scale_decisions" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "scale_decisions" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "seed_name" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "seed_version" integer;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "environments_json" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "mode" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "state" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "actor_type" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "actor_id" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "manifest_hash" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "plan_json" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "result_json" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "error_json" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "seed_runs" ADD COLUMN IF NOT EXISTS "completed_at" text;
-ALTER TABLE "service_credentials" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "service_credentials" ADD COLUMN IF NOT EXISTS "service_id" text;
-ALTER TABLE "service_credentials" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "service_credentials" ADD COLUMN IF NOT EXISTS "secret_hash" text;
-ALTER TABLE "service_credentials" ADD COLUMN IF NOT EXISTS "roles_json" text;
-ALTER TABLE "service_credentials" ADD COLUMN IF NOT EXISTS "permissions_json" text;
-ALTER TABLE "service_credentials" ADD COLUMN IF NOT EXISTS "revoked_at" text;
-ALTER TABLE "service_credentials" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "service_credentials" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "service_credentials" ADD COLUMN IF NOT EXISTS "last_used_at" text;
-ALTER TABLE "subscribers" ADD COLUMN IF NOT EXISTS "email" text;
-ALTER TABLE "subscribers" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "task_credit_ledger" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "task_credit_ledger" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "task_credit_ledger" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "task_credit_ledger" ADD COLUMN IF NOT EXISTS "task_id" text;
-ALTER TABLE "task_credit_ledger" ADD COLUMN IF NOT EXISTS "phase" text;
-ALTER TABLE "task_credit_ledger" ADD COLUMN IF NOT EXISTS "credits" real;
-ALTER TABLE "task_credit_ledger" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "task_credit_ledger" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "task_signature" text;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "execution_profile_id" text DEFAULT 'standard-code-model';
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "sample_count" integer DEFAULT 0;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "completed_sample_count" integer DEFAULT 0;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "interrupted_sample_count" integer DEFAULT 0;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "input_tokens_p50" integer;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "input_tokens_p90" integer;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "output_tokens_p50" integer;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "output_tokens_p90" integer;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "quota_minutes_p50" real;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "quota_minutes_p90" real;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "files_changed_p50" real;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "files_changed_p90" real;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "credits_p50" real;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "credits_p90" real;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "credits_variance" real;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "confidence_score" real;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "outlier_count" integer DEFAULT 0;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "partial_credits" real;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "first_sample_at" text;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "last_sample_at" text;
-ALTER TABLE "task_estimate_profiles" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "task_id" text;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "estimate_phase" text;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "task_signature" text;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "confidence" text;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "estimated_credits_p50" real;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "estimated_credits_p90" real;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "reserved_credits" real;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "estimated_input_tokens_p50" integer;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "estimated_input_tokens_p90" integer;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "estimated_output_tokens_p50" integer;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "estimated_output_tokens_p90" integer;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "estimated_quota_minutes_p50" real;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "estimated_quota_minutes_p90" real;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "features_json" text DEFAULT '{}';
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "task_estimates" ADD COLUMN IF NOT EXISTS "execution_profile_id" text DEFAULT 'standard-code-model';
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "task_id" text;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "task_signature" text;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "capacity_provider_id" text;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "execution_provider_id" text;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "lane_id" text;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "business_model" text;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "model_name" text;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "input_tokens" integer;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "output_tokens" integer;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "cached_input_tokens" integer;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "quota_minutes" real;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "wall_minutes" real;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "files_opened" integer;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "files_changed" integer;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "diff_lines_added" integer;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "diff_lines_removed" integer;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "test_runs" integer;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "retry_count" integer;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "actual_credits" real;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "actual_usd" real;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "credit_formula_version" text DEFAULT 'treeseed.actual-credits.v1';
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "actual_credit_source" text DEFAULT 'central_calculator';
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "native_usage_json" text DEFAULT '{}';
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "task_usage_actuals" ADD COLUMN IF NOT EXISTS "execution_profile_id" text DEFAULT 'standard-code-model';
-ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "key_prefix" text;
-ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "key_hash" text;
-ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "permissions_json" text;
-ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "expires_at" text;
-ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "last_used_at" text;
-ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "revoked_at" text;
-ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "team_api_keys" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "team_inbox_items" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "team_inbox_items" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "team_inbox_items" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "team_inbox_items" ADD COLUMN IF NOT EXISTS "kind" text;
-ALTER TABLE "team_inbox_items" ADD COLUMN IF NOT EXISTS "state" text;
-ALTER TABLE "team_inbox_items" ADD COLUMN IF NOT EXISTS "title" text;
-ALTER TABLE "team_inbox_items" ADD COLUMN IF NOT EXISTS "summary" text;
-ALTER TABLE "team_inbox_items" ADD COLUMN IF NOT EXISTS "href" text;
-ALTER TABLE "team_inbox_items" ADD COLUMN IF NOT EXISTS "item_key" text;
-ALTER TABLE "team_inbox_items" ADD COLUMN IF NOT EXISTS "metadata_json" text DEFAULT '{}';
-ALTER TABLE "team_inbox_items" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "team_inbox_items" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "team_invites" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "team_invites" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "team_invites" ADD COLUMN IF NOT EXISTS "email" text;
-ALTER TABLE "team_invites" ADD COLUMN IF NOT EXISTS "role_key" text;
-ALTER TABLE "team_invites" ADD COLUMN IF NOT EXISTS "token_prefix" text;
-ALTER TABLE "team_invites" ADD COLUMN IF NOT EXISTS "token_hash" text;
-ALTER TABLE "team_invites" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'pending';
-ALTER TABLE "team_invites" ADD COLUMN IF NOT EXISTS "invited_by_user_id" text;
-ALTER TABLE "team_invites" ADD COLUMN IF NOT EXISTS "accepted_by_user_id" text;
-ALTER TABLE "team_invites" ADD COLUMN IF NOT EXISTS "accepted_at" text;
-ALTER TABLE "team_invites" ADD COLUMN IF NOT EXISTS "expires_at" text;
-ALTER TABLE "team_invites" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "team_invites" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "team_memberships" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "team_memberships" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "team_memberships" ADD COLUMN IF NOT EXISTS "user_id" text;
-ALTER TABLE "team_memberships" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'active';
-ALTER TABLE "team_memberships" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "team_memberships" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "team_role_bindings" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "team_role_bindings" ADD COLUMN IF NOT EXISTS "team_membership_id" text;
-ALTER TABLE "team_role_bindings" ADD COLUMN IF NOT EXISTS "role_id" text;
-ALTER TABLE "team_role_bindings" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "team_storage_locators" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "team_storage_locators" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "team_storage_locators" ADD COLUMN IF NOT EXISTS "bucket_name" text;
-ALTER TABLE "team_storage_locators" ADD COLUMN IF NOT EXISTS "manifest_key_template" text;
-ALTER TABLE "team_storage_locators" ADD COLUMN IF NOT EXISTS "preview_root_template" text;
-ALTER TABLE "team_storage_locators" ADD COLUMN IF NOT EXISTS "public_base_url" text;
-ALTER TABLE "team_storage_locators" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "team_storage_locators" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "team_storage_locators" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "team_id" text;
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "provider" text;
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "ownership" text;
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "account_label" text;
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "allowed_environments_json" text DEFAULT '[]';
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'active';
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "encrypted_payload_json" text;
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "created_by_id" text;
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "updated_by_id" text;
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "team_web_hosts" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "slug" text;
-ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "name" text;
-ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "display_name" text;
-ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "logo_url" text;
-ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "profile_summary" text;
-ALTER TABLE "user_identities" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "user_identities" ADD COLUMN IF NOT EXISTS "user_id" text;
-ALTER TABLE "user_identities" ADD COLUMN IF NOT EXISTS "provider" text;
-ALTER TABLE "user_identities" ADD COLUMN IF NOT EXISTS "provider_subject" text;
-ALTER TABLE "user_identities" ADD COLUMN IF NOT EXISTS "email" text;
-ALTER TABLE "user_identities" ADD COLUMN IF NOT EXISTS "email_verified" integer DEFAULT 0;
-ALTER TABLE "user_identities" ADD COLUMN IF NOT EXISTS "profile_json" text;
-ALTER TABLE "user_identities" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "user_identities" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "user_preferences" ADD COLUMN IF NOT EXISTS "user_id" text;
-ALTER TABLE "user_preferences" ADD COLUMN IF NOT EXISTS "color_scheme" text DEFAULT 'fern';
-ALTER TABLE "user_preferences" ADD COLUMN IF NOT EXISTS "theme_mode" text DEFAULT 'system';
-ALTER TABLE "user_preferences" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "user_preferences" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "user_role_bindings" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "user_role_bindings" ADD COLUMN IF NOT EXISTS "user_id" text;
-ALTER TABLE "user_role_bindings" ADD COLUMN IF NOT EXISTS "role_id" text;
-ALTER TABLE "user_role_bindings" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "email" text;
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "display_name" text;
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'active';
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "username" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "user_id" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "identity_id" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "better_auth_session_id" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "provider" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "provider_subject" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "email" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "display_name" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "principal_json" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "csrf_token" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "ip_address" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "user_agent" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "authenticated_at" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "last_seen_at" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "expires_at" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "revoked_at" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "web_sessions" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "work_days" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "work_days" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "work_days" ADD COLUMN IF NOT EXISTS "state" text;
-ALTER TABLE "work_days" ADD COLUMN IF NOT EXISTS "capacity_budget" integer DEFAULT 0;
-ALTER TABLE "work_days" ADD COLUMN IF NOT EXISTS "capacity_used" integer DEFAULT 0;
-ALTER TABLE "work_days" ADD COLUMN IF NOT EXISTS "graph_version" text;
-ALTER TABLE "work_days" ADD COLUMN IF NOT EXISTS "summary_json" text;
-ALTER TABLE "work_days" ADD COLUMN IF NOT EXISTS "started_at" text;
-ALTER TABLE "work_days" ADD COLUMN IF NOT EXISTS "ended_at" text;
-ALTER TABLE "work_days" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "work_days" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "schedule_json" text;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "daily_task_credit_budget" integer DEFAULT 0;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "max_queued_tasks" integer DEFAULT 0;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "max_queued_credits" integer DEFAULT 0;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "autoscale_json" text;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "credit_weights_json" text;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "enabled" integer DEFAULT 1;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "start_cron" text DEFAULT '0 9 * * 1-5';
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "duration_minutes" integer DEFAULT 480;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "max_runners" integer DEFAULT 1;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "max_workers_per_runner" integer DEFAULT 4;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "daily_credit_budget" integer DEFAULT 0;
-ALTER TABLE "work_policies" ADD COLUMN IF NOT EXISTS "closeout_grace_minutes" integer DEFAULT 15;
-ALTER TABLE "workday_manager_leases" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "workday_manager_leases" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "workday_manager_leases" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "workday_manager_leases" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "workday_manager_leases" ADD COLUMN IF NOT EXISTS "manager_id" text;
-ALTER TABLE "workday_manager_leases" ADD COLUMN IF NOT EXISTS "state" text DEFAULT 'active';
-ALTER TABLE "workday_manager_leases" ADD COLUMN IF NOT EXISTS "heartbeat_at" text;
-ALTER TABLE "workday_manager_leases" ADD COLUMN IF NOT EXISTS "expires_at" text;
-ALTER TABLE "workday_manager_leases" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "workday_manager_leases" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "workday_manager_leases" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "workday_requests" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "workday_requests" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "workday_requests" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "workday_requests" ADD COLUMN IF NOT EXISTS "type" text;
-ALTER TABLE "workday_requests" ADD COLUMN IF NOT EXISTS "state" text DEFAULT 'pending';
-ALTER TABLE "workday_requests" ADD COLUMN IF NOT EXISTS "work_day_id" text;
-ALTER TABLE "workday_requests" ADD COLUMN IF NOT EXISTS "requested_by" text;
-ALTER TABLE "workday_requests" ADD COLUMN IF NOT EXISTS "reason" text;
-ALTER TABLE "workday_requests" ADD COLUMN IF NOT EXISTS "payload_json" text;
-ALTER TABLE "workday_requests" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "workday_requests" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "workday_requests" ADD COLUMN IF NOT EXISTS "updated_at" text;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "id" text;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "project_id" text;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "environment" text;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "runner_id" text;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "runner_service_name" text;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "volume_identity" text;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "state" text DEFAULT 'active';
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "max_local_workers" integer DEFAULT 4;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "active_local_workers" integer DEFAULT 0;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "available_capacity" integer DEFAULT 4;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "last_heartbeat_at" text;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "claimed_repository_ids_json" text;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "metadata_json" text;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "created_at" text;
-ALTER TABLE "worker_runners" ADD COLUMN IF NOT EXISTS "updated_at" text;
--- End Treeseed Market schema adoption columns
+CREATE TABLE "workflow_dispatch_records" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text,
+	"workflow_operation_id" text NOT NULL,
+	"platform_operation_id" text,
+	"repository" text NOT NULL,
+	"workflow_file" text NOT NULL,
+	"ref" text,
+	"status" text DEFAULT 'queued' NOT NULL,
+	"inputs_json" text DEFAULT '{}' NOT NULL,
+	"result_json" text DEFAULT '{}' NOT NULL,
+	"fail_closed_code" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	"dispatched_at" text,
+	"completed_at" text
+);
 
--- Backfill verified account emails from existing active credential rows.
-INSERT INTO user_email_addresses (
-	id, user_id, email, normalized_email, status, is_primary, verification_requested_at, verified_at, created_at, updated_at
-)
-SELECT 'email_' || md5(user_id || ':' || LOWER(email)), user_id, email, LOWER(email), 'verified', 1, created_at, COALESCE(updated_at, created_at), created_at, updated_at
-  FROM market_auth_credentials
- WHERE email IS NOT NULL
-   AND email != ''
-   AND status = 'active'
-ON CONFLICT (normalized_email) DO NOTHING;
+CREATE TABLE "workflow_operation_records" (
+	"id" text PRIMARY KEY NOT NULL,
+	"team_id" text NOT NULL,
+	"project_id" text,
+	"name" text NOT NULL,
+	"repository" text NOT NULL,
+	"workflow_file" text NOT NULL,
+	"secret_bearing" integer DEFAULT 0 NOT NULL,
+	"trusted_execution_set_id" text NOT NULL,
+	"dispatch_json" text DEFAULT '{}' NOT NULL,
+	"inputs_json" text DEFAULT '[]' NOT NULL,
+	"secret_classes_json" text DEFAULT '[]' NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"fail_closed_code" text,
+	"metadata_json" text DEFAULT '{}' NOT NULL,
+	"created_at" text NOT NULL,
+	"updated_at" text NOT NULL,
+	"blocked_at" text
+);
 
-CREATE INDEX IF NOT EXISTS "idx_agent_pool_registrations_pool_heartbeat" ON "agent_pool_registrations" USING btree ("pool_id","heartbeat_at");
-CREATE INDEX IF NOT EXISTS "idx_agent_pool_scale_decisions_pool_created" ON "agent_pool_scale_decisions" USING btree ("pool_id","created_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_agent_pools_project_environment_name" ON "agent_pools" USING btree ("project_id","environment","name");
-CREATE INDEX IF NOT EXISTS "idx_api_tokens_user_id" ON "api_tokens" USING btree ("user_id");
-CREATE INDEX IF NOT EXISTS "idx_api_tokens_prefix" ON "api_tokens" USING btree ("token_prefix");
-CREATE INDEX IF NOT EXISTS "idx_approval_requests_team_state" ON "approval_requests" USING btree ("team_id","state","created_at");
-CREATE INDEX IF NOT EXISTS "idx_approval_requests_project_workday" ON "approval_requests" USING btree ("project_id","work_day_id","state","created_at");
-CREATE INDEX IF NOT EXISTS "idx_audit_events_target" ON "audit_events" USING btree ("target_type","target_id");
-CREATE INDEX IF NOT EXISTS "idx_auth_sessions_user_id" ON "auth_sessions" USING btree ("user_id");
-CREATE INDEX IF NOT EXISTS "idx_better_auth_account_userId" ON "better_auth_account" USING btree ("userId");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_better_auth_account_provider_account" ON "better_auth_account" USING btree ("providerId","accountId");
-CREATE INDEX IF NOT EXISTS "idx_better_auth_session_token" ON "better_auth_session" USING btree ("token");
-CREATE INDEX IF NOT EXISTS "idx_better_auth_session_userId" ON "better_auth_session" USING btree ("userId");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_better_auth_user_username" ON "better_auth_user" USING btree ("username");
-CREATE INDEX IF NOT EXISTS "idx_better_auth_verification_identifier" ON "better_auth_verification" USING btree ("identifier");
-CREATE INDEX IF NOT EXISTS "idx_capacity_grants_team_project" ON "capacity_grants" USING btree ("team_id","project_id","state");
-CREATE INDEX IF NOT EXISTS "idx_capacity_grants_provider_lane" ON "capacity_grants" USING btree ("capacity_provider_id","lane_id","state");
-CREATE INDEX IF NOT EXISTS "idx_capacity_ledger_project_workday_created" ON "capacity_ledger_entries" USING btree ("project_id","work_day_id","created_at");
-CREATE INDEX IF NOT EXISTS "idx_capacity_provider_api_keys_provider_status" ON "capacity_provider_api_keys" USING btree ("capacity_provider_id","status","created_at");
-CREATE INDEX IF NOT EXISTS "idx_capacity_provider_api_keys_prefix" ON "capacity_provider_api_keys" USING btree ("key_prefix");
-CREATE INDEX IF NOT EXISTS "idx_capacity_provider_deployments_provider_created" ON "capacity_provider_deployments" USING btree ("capacity_provider_id","created_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_capacity_provider_hosts_unique" ON "capacity_provider_hosts" USING btree ("capacity_provider_id","host_id","role");
-CREATE INDEX IF NOT EXISTS "idx_capacity_provider_lanes_provider" ON "capacity_provider_lanes" USING btree ("capacity_provider_id","business_model","scarcity_level");
-CREATE INDEX IF NOT EXISTS "idx_capacity_provider_registrations_provider_seen" ON "capacity_provider_registrations" USING btree ("capacity_provider_id","last_seen_at");
-CREATE INDEX IF NOT EXISTS "idx_capacity_providers_team_status" ON "capacity_providers" USING btree ("team_id","status","provider");
-CREATE INDEX IF NOT EXISTS "idx_capacity_reservations_project_workday_state" ON "capacity_reservations" USING btree ("project_id","work_day_id","state","created_at");
-CREATE INDEX IF NOT EXISTS "idx_capacity_reservations_provider_state" ON "capacity_reservations" USING btree ("capacity_provider_id","lane_id","state");
-CREATE INDEX IF NOT EXISTS "idx_capacity_reservations_execution_provider_state" ON "capacity_reservations" USING btree ("execution_provider_id","state","created_at");
-CREATE INDEX IF NOT EXISTS "idx_capacity_routing_decisions_project_workday" ON "capacity_routing_decisions" USING btree ("project_id","work_day_id","created_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_catalog_artifact_versions_item_version" ON "catalog_artifact_versions" USING btree ("item_id","version");
-CREATE INDEX IF NOT EXISTS "idx_catalog_artifact_versions_team_kind" ON "catalog_artifact_versions" USING btree ("team_id","kind","published_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_catalog_item_collaborators_subject_role" ON "catalog_item_collaborators" USING btree ("item_id","subject_type","subject_id","role");
-CREATE INDEX IF NOT EXISTS "idx_catalog_items_team_kind" ON "catalog_items" USING btree ("team_id","kind","updated_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_catalog_items_team_kind_slug" ON "catalog_items" USING btree ("team_id","kind","slug");
-CREATE INDEX IF NOT EXISTS "idx_catalog_items_visibility_listing" ON "catalog_items" USING btree ("visibility","listing_enabled","updated_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_credit_conversion_profiles_profile_key" ON "credit_conversion_profiles" USING btree ("task_signature","execution_profile_id","execution_provider_kind","native_unit");
-CREATE INDEX IF NOT EXISTS "idx_credit_conversion_profiles_kind_unit" ON "credit_conversion_profiles" USING btree ("execution_provider_kind","native_unit","updated_at");
-CREATE INDEX IF NOT EXISTS "idx_cursor_state_updated" ON "cursor_state" USING btree ("updated_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_entitlements_project" ON "entitlements" USING btree ("project_id");
-CREATE INDEX IF NOT EXISTS "idx_execution_provider_native_limits_provider_scope" ON "execution_provider_native_limits" USING btree ("execution_provider_id","scope","native_unit");
-CREATE INDEX IF NOT EXISTS "idx_execution_provider_observations_provider_observed" ON "execution_provider_observations" USING btree ("execution_provider_id","observed_at");
-CREATE INDEX IF NOT EXISTS "idx_execution_providers_team_status" ON "execution_providers" USING btree ("team_id","status","kind");
-CREATE INDEX IF NOT EXISTS "idx_execution_providers_capacity_provider" ON "execution_providers" USING btree ("capacity_provider_id","status");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_hub_launch_events_launch_seq" ON "hub_launch_events" USING btree ("launch_id","seq");
-CREATE INDEX IF NOT EXISTS "idx_hub_launches_hub_created" ON "hub_launches" USING btree ("hub_id","created_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_hub_repositories_hub_role" ON "hub_repositories" USING btree ("hub_id","role");
-CREATE INDEX IF NOT EXISTS "idx_hub_workspace_links_hub" ON "hub_workspace_links" USING btree ("hub_id");
-CREATE INDEX IF NOT EXISTS "idx_knowledge_packs_team_id" ON "knowledge_packs" USING btree ("team_id");
-CREATE INDEX IF NOT EXISTS "idx_lease_state_status_expires" ON "lease_state" USING btree ("status","lease_expires_at");
-CREATE INDEX IF NOT EXISTS "idx_lease_state_claimed_by" ON "lease_state" USING btree ("claimed_by","updated_at");
-CREATE INDEX IF NOT EXISTS "idx_message_queue_claimable" ON "message_queue" USING btree ("status","available_at","priority");
-CREATE INDEX IF NOT EXISTS "idx_message_queue_related" ON "message_queue" USING btree ("related_model","related_id","created_at");
-CREATE INDEX IF NOT EXISTS "idx_native_usage_observations_profile" ON "native_usage_observations" USING btree ("project_id","task_signature","execution_profile_id","created_at");
-CREATE INDEX IF NOT EXISTS "idx_native_usage_observations_provider" ON "native_usage_observations" USING btree ("execution_provider_id","created_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_platform_operation_events_seq" ON "platform_operation_events" USING btree ("operation_id","seq");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_platform_operations_idempotency" ON "platform_operations" USING btree ("namespace","operation","idempotency_key");
-CREATE INDEX IF NOT EXISTS "idx_platform_operations_runnable" ON "platform_operations" USING btree ("status","created_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_platform_repository_claims_active" ON "platform_repository_claims" USING btree ("repository_key","runner_id");
-CREATE INDEX IF NOT EXISTS "idx_platform_repository_claims_runner" ON "platform_repository_claims" USING btree ("runner_id","claim_state");
-CREATE INDEX IF NOT EXISTS "idx_priority_overrides_project_priority" ON "priority_overrides" USING btree ("project_id","priority","updated_at");
-CREATE INDEX IF NOT EXISTS "idx_priority_snapshots_project_generated" ON "priority_snapshots" USING btree ("project_id","generated_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_project_capability_grants_project_operation" ON "project_capability_grants" USING btree ("project_id","namespace","operation");
-CREATE INDEX IF NOT EXISTS "idx_project_deployment_events_deployment_sequence" ON "project_deployment_events" USING btree ("deployment_id","sequence");
-CREATE INDEX IF NOT EXISTS "idx_project_deployment_events_project_created" ON "project_deployment_events" USING btree ("project_id","created_at");
-CREATE INDEX IF NOT EXISTS "idx_project_deployment_events_operation" ON "project_deployment_events" USING btree ("operation_id");
-CREATE INDEX IF NOT EXISTS "idx_project_deployments_project_created" ON "project_deployments" USING btree ("project_id","created_at");
-CREATE INDEX IF NOT EXISTS "idx_project_deployments_project_environment" ON "project_deployments" USING btree ("project_id","environment","created_at");
-CREATE INDEX IF NOT EXISTS "idx_project_deployments_project_status" ON "project_deployments" USING btree ("project_id","status","updated_at");
-CREATE INDEX IF NOT EXISTS "idx_project_deployments_operation" ON "project_deployments" USING btree ("platform_operation_id");
-CREATE INDEX IF NOT EXISTS "idx_project_deployments_team_created" ON "project_deployments" USING btree ("team_id","created_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_project_deployments_idempotency" ON "project_deployments" USING btree ("project_id","idempotency_key");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_project_environments_project_environment" ON "project_environments" USING btree ("project_id","environment");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_project_infrastructure_resource_unique" ON "project_infrastructure_resources" USING btree ("project_id","environment","provider","resource_kind","logical_name");
-CREATE INDEX IF NOT EXISTS "idx_project_summary_snapshots_team_generated" ON "project_summary_snapshots" USING btree ("team_id","generated_at");
-CREATE INDEX IF NOT EXISTS "idx_project_update_plans_hub" ON "project_update_plans" USING btree ("hub_id","created_at");
-CREATE INDEX IF NOT EXISTS "idx_project_workday_summaries_project_environment_created" ON "project_workday_summaries" USING btree ("project_id","environment","created_at");
-CREATE INDEX IF NOT EXISTS "idx_projects_team_id" ON "projects" USING btree ("team_id");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_projects_team_slug" ON "projects" USING btree ("team_id","slug");
-CREATE INDEX IF NOT EXISTS "idx_provider_credential_sessions_team_host" ON "provider_credential_sessions" USING btree ("team_id","host_kind","host_id","status");
-CREATE INDEX IF NOT EXISTS "idx_provider_credential_sessions_job" ON "provider_credential_sessions" USING btree ("job_id","status");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_remote_job_events_job_seq" ON "remote_job_events" USING btree ("job_id","seq");
-CREATE INDEX IF NOT EXISTS "idx_remote_jobs_project_status" ON "remote_jobs" USING btree ("project_id","status","created_at");
-CREATE INDEX IF NOT EXISTS "idx_remote_jobs_project_idempotency" ON "remote_jobs" USING btree ("project_id","idempotency_key");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_repository_claims_runner_repo" ON "repository_claims" USING btree ("project_id","repository_id","runner_id");
-CREATE INDEX IF NOT EXISTS "idx_repository_claims_repo_state" ON "repository_claims" USING btree ("project_id","repository_id","claim_state","updated_at");
-CREATE INDEX IF NOT EXISTS "idx_repository_hosts_team_provider" ON "repository_hosts" USING btree ("team_id","provider","status");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_repository_hosts_team_provider_name" ON "repository_hosts" USING btree ("team_id","provider","name");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_repository_hosts_platform_provider_name" ON "repository_hosts" USING btree ("provider","name");
-CREATE INDEX IF NOT EXISTS "idx_runner_scale_decisions_project_workday" ON "runner_scale_decisions" USING btree ("project_id","environment","work_day_id","created_at");
-CREATE INDEX IF NOT EXISTS "idx_runtime_records_type_lookup_updated" ON "runtime_records" USING btree ("record_type","lookup_key","updated_at");
-CREATE INDEX IF NOT EXISTS "idx_runtime_records_type_status_updated" ON "runtime_records" USING btree ("record_type","status","updated_at");
-CREATE INDEX IF NOT EXISTS "idx_scale_decisions_project_environment_pool_created" ON "scale_decisions" USING btree ("project_id","environment","pool_name","created_at");
-CREATE INDEX IF NOT EXISTS "idx_seed_runs_seed_created" ON "seed_runs" USING btree ("seed_name","created_at");
-CREATE INDEX IF NOT EXISTS "idx_seed_runs_state_created" ON "seed_runs" USING btree ("state","created_at");
-CREATE INDEX IF NOT EXISTS "idx_task_credit_ledger_work_day_created" ON "task_credit_ledger" USING btree ("work_day_id","created_at");
-CREATE INDEX IF NOT EXISTS "idx_task_estimates_project_signature" ON "task_estimates" USING btree ("project_id","task_signature","created_at");
-CREATE INDEX IF NOT EXISTS "idx_task_estimates_project_signature_profile" ON "task_estimates" USING btree ("project_id","task_signature","execution_profile_id","created_at");
-CREATE INDEX IF NOT EXISTS "idx_task_usage_actuals_project_signature" ON "task_usage_actuals" USING btree ("project_id","task_signature","created_at");
-CREATE INDEX IF NOT EXISTS "idx_task_usage_actuals_project_signature_profile" ON "task_usage_actuals" USING btree ("project_id","task_signature","execution_profile_id","created_at");
-CREATE INDEX IF NOT EXISTS "idx_task_usage_actuals_execution_provider" ON "task_usage_actuals" USING btree ("execution_provider_id","created_at");
-CREATE INDEX IF NOT EXISTS "idx_team_api_keys_prefix" ON "team_api_keys" USING btree ("key_prefix");
-CREATE INDEX IF NOT EXISTS "idx_team_inbox_items_team_created" ON "team_inbox_items" USING btree ("team_id","created_at");
-CREATE INDEX IF NOT EXISTS "idx_team_invites_team_status" ON "team_invites" USING btree ("team_id","status","created_at");
-CREATE INDEX IF NOT EXISTS "idx_team_invites_token_prefix" ON "team_invites" USING btree ("token_prefix");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_team_memberships_team_user" ON "team_memberships" USING btree ("team_id","user_id");
-CREATE INDEX IF NOT EXISTS "idx_team_web_hosts_team_provider" ON "team_web_hosts" USING btree ("team_id","provider","status");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_team_web_hosts_team_provider_name" ON "team_web_hosts" USING btree ("team_id","provider","name");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_teams_name" ON "teams" USING btree ("name");
-CREATE INDEX IF NOT EXISTS "idx_user_email_addresses_user" ON "user_email_addresses" USING btree ("user_id","status","is_primary");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_email_addresses_normalized" ON "user_email_addresses" USING btree ("normalized_email");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_identities_provider_subject" ON "user_identities" USING btree ("provider","provider_subject");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_role_bindings_user_role" ON "user_role_bindings" USING btree ("user_id","role_id");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_users_username" ON "users" USING btree ("username");
-CREATE INDEX IF NOT EXISTS "idx_web_sessions_user_id" ON "web_sessions" USING btree ("user_id");
-CREATE INDEX IF NOT EXISTS "idx_workday_manager_leases_active" ON "workday_manager_leases" USING btree ("project_id","environment","state","heartbeat_at");
-CREATE INDEX IF NOT EXISTS "idx_workday_requests_project_environment_state" ON "workday_requests" USING btree ("project_id","environment","state","created_at");
-CREATE UNIQUE INDEX IF NOT EXISTS "idx_worker_runners_identity" ON "worker_runners" USING btree ("project_id","environment","runner_id");
-CREATE INDEX IF NOT EXISTS "idx_worker_runners_state_capacity" ON "worker_runners" USING btree ("project_id","environment","state","available_capacity");
+CREATE INDEX "idx_agent_capacity_plans_decision" ON "agent_capacity_plans" USING btree ("decision_id","status","created_at");
+CREATE INDEX "idx_agent_capacity_plans_project" ON "agent_capacity_plans" USING btree ("project_id","status","created_at");
+CREATE INDEX "idx_agent_capacity_plans_workday" ON "agent_capacity_plans" USING btree ("work_day_id","status","created_at");
+CREATE INDEX "idx_agent_mode_runs_assignment" ON "agent_mode_runs" USING btree ("provider_assignment_id","status");
+CREATE INDEX "idx_agent_mode_runs_project_mode" ON "agent_mode_runs" USING btree ("project_id","mode","created_at");
+CREATE INDEX "idx_agent_mode_runs_provider" ON "agent_mode_runs" USING btree ("capacity_provider_id","created_at");
+CREATE INDEX "idx_agent_pool_registrations_pool_heartbeat" ON "agent_pool_registrations" USING btree ("pool_id","heartbeat_at");
+CREATE INDEX "idx_agent_pool_scale_decisions_pool_created" ON "agent_pool_scale_decisions" USING btree ("pool_id","created_at");
+CREATE UNIQUE INDEX "idx_agent_pools_project_environment_name" ON "agent_pools" USING btree ("project_id","environment","name");
+CREATE INDEX "idx_api_tokens_user_id" ON "api_tokens" USING btree ("user_id");
+CREATE INDEX "idx_api_tokens_prefix" ON "api_tokens" USING btree ("token_prefix");
+CREATE INDEX "idx_approval_requests_team_state" ON "approval_requests" USING btree ("team_id","state","created_at");
+CREATE INDEX "idx_approval_requests_project_workday" ON "approval_requests" USING btree ("project_id","work_day_id","state","created_at");
+CREATE INDEX "idx_audit_events_target" ON "audit_events" USING btree ("target_type","target_id");
+CREATE INDEX "idx_auth_sessions_user_id" ON "auth_sessions" USING btree ("user_id");
+CREATE INDEX "idx_better_auth_account_userId" ON "better_auth_account" USING btree ("userId");
+CREATE UNIQUE INDEX "idx_better_auth_account_provider_account" ON "better_auth_account" USING btree ("providerId","accountId");
+CREATE INDEX "idx_better_auth_session_token" ON "better_auth_session" USING btree ("token");
+CREATE INDEX "idx_better_auth_session_userId" ON "better_auth_session" USING btree ("userId");
+CREATE UNIQUE INDEX "idx_better_auth_user_username" ON "better_auth_user" USING btree ("username");
+CREATE INDEX "idx_better_auth_verification_identifier" ON "better_auth_verification" USING btree ("identifier");
+CREATE INDEX "idx_capacity_allocation_sets_team_status" ON "capacity_allocation_sets" USING btree ("team_id","status","version");
+CREATE INDEX "idx_capacity_allocation_sets_team_created" ON "capacity_allocation_sets" USING btree ("team_id","created_at");
+CREATE INDEX "idx_capacity_grants_team_project" ON "capacity_grants" USING btree ("team_id","project_id","state");
+CREATE INDEX "idx_capacity_grants_provider_lane" ON "capacity_grants" USING btree ("capacity_provider_id","lane_id","state");
+CREATE INDEX "idx_capacity_ledger_project_workday_created" ON "capacity_ledger_entries" USING btree ("project_id","work_day_id","created_at");
+CREATE INDEX "idx_capacity_provider_api_keys_provider_status" ON "capacity_provider_api_keys" USING btree ("capacity_provider_id","status","created_at");
+CREATE INDEX "idx_capacity_provider_api_keys_prefix" ON "capacity_provider_api_keys" USING btree ("key_prefix");
+CREATE INDEX "idx_capacity_provider_deployments_provider_created" ON "capacity_provider_deployments" USING btree ("capacity_provider_id","created_at");
+CREATE UNIQUE INDEX "idx_capacity_provider_hosts_unique" ON "capacity_provider_hosts" USING btree ("capacity_provider_id","host_id","role");
+CREATE INDEX "idx_capacity_provider_lanes_provider" ON "capacity_provider_lanes" USING btree ("capacity_provider_id","business_model","scarcity_level");
+CREATE INDEX "idx_capacity_provider_registrations_provider_seen" ON "capacity_provider_registrations" USING btree ("capacity_provider_id","last_seen_at");
+CREATE INDEX "idx_capacity_providers_team_status" ON "capacity_providers" USING btree ("team_id","status","provider");
+CREATE INDEX "idx_capacity_reservations_project_workday_state" ON "capacity_reservations" USING btree ("project_id","work_day_id","state","created_at");
+CREATE INDEX "idx_capacity_reservations_provider_state" ON "capacity_reservations" USING btree ("capacity_provider_id","lane_id","state");
+CREATE INDEX "idx_capacity_reservations_execution_provider_state" ON "capacity_reservations" USING btree ("execution_provider_id","state","created_at");
+CREATE INDEX "idx_capacity_routing_decisions_project_workday" ON "capacity_routing_decisions" USING btree ("project_id","work_day_id","created_at");
+CREATE UNIQUE INDEX "idx_catalog_artifact_versions_item_version" ON "catalog_artifact_versions" USING btree ("item_id","version");
+CREATE INDEX "idx_catalog_artifact_versions_team_kind" ON "catalog_artifact_versions" USING btree ("team_id","kind","published_at");
+CREATE UNIQUE INDEX "idx_catalog_item_collaborators_subject_role" ON "catalog_item_collaborators" USING btree ("item_id","subject_type","subject_id","role");
+CREATE UNIQUE INDEX "idx_catalog_items_team_kind_slug" ON "catalog_items" USING btree ("team_id","kind","slug");
+CREATE INDEX "idx_catalog_items_team_kind" ON "catalog_items" USING btree ("team_id","kind","updated_at");
+CREATE INDEX "idx_catalog_items_visibility_listing" ON "catalog_items" USING btree ("visibility","listing_enabled","updated_at");
+CREATE INDEX "idx_client_encrypted_escrow_secret" ON "client_encrypted_escrow_records" USING btree ("secret_id","status");
+CREATE INDEX "idx_client_encrypted_escrow_project" ON "client_encrypted_escrow_records" USING btree ("team_id","project_id","status");
+CREATE UNIQUE INDEX "idx_commerce_buyer_stripe_customers_team" ON "commerce_buyer_stripe_customers" USING btree ("vendor_id","environment","buyer_team_id");
+CREATE UNIQUE INDEX "idx_commerce_buyer_stripe_customers_user" ON "commerce_buyer_stripe_customers" USING btree ("vendor_id","environment","buyer_user_id");
+CREATE UNIQUE INDEX "idx_commerce_buyer_stripe_customers_stripe" ON "commerce_buyer_stripe_customers" USING btree ("connected_account_id","stripe_customer_id");
+CREATE INDEX "idx_commerce_capacity_inquiries_listing_status" ON "commerce_capacity_listing_inquiries" USING btree ("listing_id","status","updated_at");
+CREATE INDEX "idx_commerce_capacity_inquiries_buyer_team" ON "commerce_capacity_listing_inquiries" USING btree ("buyer_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_capacity_inquiries_buyer_user" ON "commerce_capacity_listing_inquiries" USING btree ("buyer_user_id","status","updated_at");
+CREATE INDEX "idx_commerce_capacity_inquiries_vendor_status" ON "commerce_capacity_listing_inquiries" USING btree ("vendor_id","status","updated_at");
+CREATE INDEX "idx_commerce_capacity_inquiries_seller_status" ON "commerce_capacity_listing_inquiries" USING btree ("seller_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_capacity_inquiries_project" ON "commerce_capacity_listing_inquiries" USING btree ("related_project_id","status");
+CREATE INDEX "idx_commerce_capacity_inquiries_workday" ON "commerce_capacity_listing_inquiries" USING btree ("related_workday_id","status");
+CREATE UNIQUE INDEX "idx_commerce_capacity_listings_product" ON "commerce_capacity_listings" USING btree ("product_id");
+CREATE INDEX "idx_commerce_capacity_listings_vendor_status" ON "commerce_capacity_listings" USING btree ("vendor_id","status","updated_at");
+CREATE INDEX "idx_commerce_capacity_listings_seller_status" ON "commerce_capacity_listings" USING btree ("seller_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_capacity_listings_provider_status" ON "commerce_capacity_listings" USING btree ("capacity_provider_id","status");
+CREATE INDEX "idx_commerce_capacity_listings_lane_status" ON "commerce_capacity_listings" USING btree ("capacity_provider_lane_id","status");
+CREATE INDEX "idx_commerce_capacity_listings_access_status" ON "commerce_capacity_listings" USING btree ("access_level","status","updated_at");
+CREATE INDEX "idx_commerce_cart_items_cart_status" ON "commerce_cart_items" USING btree ("cart_id","status");
+CREATE INDEX "idx_commerce_cart_items_vendor_status" ON "commerce_cart_items" USING btree ("vendor_id","status","updated_at");
+CREATE INDEX "idx_commerce_cart_items_offer" ON "commerce_cart_items" USING btree ("offer_id");
+CREATE INDEX "idx_commerce_cart_items_price" ON "commerce_cart_items" USING btree ("price_id");
+CREATE INDEX "idx_commerce_carts_buyer_team_status" ON "commerce_carts" USING btree ("buyer_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_carts_buyer_user_status" ON "commerce_carts" USING btree ("buyer_user_id","status","updated_at");
+CREATE INDEX "idx_commerce_checkouts_cart" ON "commerce_checkouts" USING btree ("cart_id");
+CREATE INDEX "idx_commerce_checkouts_buyer_team_status" ON "commerce_checkouts" USING btree ("buyer_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_checkouts_buyer_user_status" ON "commerce_checkouts" USING btree ("buyer_user_id","status","updated_at");
+CREATE INDEX "idx_commerce_contributions_product_effective" ON "commerce_contributions" USING btree ("product_id","effective_at");
+CREATE INDEX "idx_commerce_contributions_version_effective" ON "commerce_contributions" USING btree ("product_version_id","effective_at");
+CREATE INDEX "idx_commerce_contributions_contributor" ON "commerce_contributions" USING btree ("contributor_type","contributor_id");
+CREATE INDEX "idx_commerce_entitlements_buyer_team_status" ON "commerce_entitlements" USING btree ("buyer_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_entitlements_buyer_user_status" ON "commerce_entitlements" USING btree ("buyer_user_id","status","updated_at");
+CREATE INDEX "idx_commerce_entitlements_product_status" ON "commerce_entitlements" USING btree ("product_id","status");
+CREATE INDEX "idx_commerce_entitlements_offer_status" ON "commerce_entitlements" USING btree ("offer_id","status");
+CREATE INDEX "idx_commerce_entitlements_order" ON "commerce_entitlements" USING btree ("order_id");
+CREATE INDEX "idx_commerce_entitlements_subscription" ON "commerce_entitlements" USING btree ("subscription_id");
+CREATE INDEX "idx_commerce_entitlements_catalog_item" ON "commerce_entitlements" USING btree ("catalog_item_id");
+CREATE INDEX "idx_commerce_fulfillment_events_order" ON "commerce_fulfillment_events" USING btree ("order_id","created_at");
+CREATE INDEX "idx_commerce_fulfillment_events_entitlement" ON "commerce_fulfillment_events" USING btree ("entitlement_id","created_at");
+CREATE INDEX "idx_commerce_fulfillment_events_vendor_status" ON "commerce_fulfillment_events" USING btree ("vendor_id","status","created_at");
+CREATE INDEX "idx_commerce_fulfillment_events_product" ON "commerce_fulfillment_events" USING btree ("product_id","created_at");
+CREATE INDEX "idx_commerce_governance_events_object" ON "commerce_governance_events" USING btree ("object_type","object_id","created_at");
+CREATE INDEX "idx_commerce_governance_events_product" ON "commerce_governance_events" USING btree ("related_product_id","created_at");
+CREATE INDEX "idx_commerce_governance_events_offer" ON "commerce_governance_events" USING btree ("related_offer_id","created_at");
+CREATE INDEX "idx_commerce_governance_events_team" ON "commerce_governance_events" USING btree ("related_team_id","created_at");
+CREATE INDEX "idx_commerce_governance_policies_product" ON "commerce_governance_policies" USING btree ("product_id","status");
+CREATE INDEX "idx_commerce_governance_policies_team" ON "commerce_governance_policies" USING btree ("team_id","policy_kind","status");
+CREATE INDEX "idx_commerce_offers_product_status" ON "commerce_offers" USING btree ("product_id","status","updated_at");
+CREATE INDEX "idx_commerce_offers_vendor_status" ON "commerce_offers" USING btree ("vendor_id","status","updated_at");
+CREATE INDEX "idx_commerce_offers_seller_status" ON "commerce_offers" USING btree ("seller_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_offers_active_price" ON "commerce_offers" USING btree ("active_price_id");
+CREATE INDEX "idx_commerce_offers_stripe_product" ON "commerce_offers" USING btree ("stripe_product_id");
+CREATE INDEX "idx_commerce_offers_stripe_status" ON "commerce_offers" USING btree ("stripe_product_status","updated_at");
+CREATE INDEX "idx_commerce_order_items_order" ON "commerce_order_items" USING btree ("order_id");
+CREATE INDEX "idx_commerce_order_items_product_status" ON "commerce_order_items" USING btree ("product_id","status");
+CREATE INDEX "idx_commerce_order_items_offer_status" ON "commerce_order_items" USING btree ("offer_id","status");
+CREATE INDEX "idx_commerce_order_items_entitlement" ON "commerce_order_items" USING btree ("entitlement_id");
+CREATE INDEX "idx_commerce_orders_checkout" ON "commerce_orders" USING btree ("checkout_id");
+CREATE INDEX "idx_commerce_orders_buyer_team_status" ON "commerce_orders" USING btree ("buyer_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_orders_buyer_user_status" ON "commerce_orders" USING btree ("buyer_user_id","status","updated_at");
+CREATE INDEX "idx_commerce_orders_vendor_status" ON "commerce_orders" USING btree ("vendor_id","status","updated_at");
+CREATE INDEX "idx_commerce_orders_stripe_payment_intent" ON "commerce_orders" USING btree ("stripe_payment_intent_id");
+CREATE INDEX "idx_commerce_orders_stripe_subscription" ON "commerce_orders" USING btree ("stripe_subscription_id");
+CREATE INDEX "idx_commerce_ownership_product_effective" ON "commerce_ownership_records" USING btree ("product_id","effective_at");
+CREATE INDEX "idx_commerce_ownership_seller_effective" ON "commerce_ownership_records" USING btree ("seller_team_id","effective_at");
+CREATE INDEX "idx_commerce_ownership_model_effective" ON "commerce_ownership_records" USING btree ("model","effective_at");
+CREATE INDEX "idx_commerce_ownership_transfers_product" ON "commerce_ownership_transfers" USING btree ("product_id","effective_at");
+CREATE INDEX "idx_commerce_ownership_transfers_product_status" ON "commerce_ownership_transfers" USING btree ("product_id","status","effective_at");
+CREATE INDEX "idx_commerce_ownership_transfers_from_status" ON "commerce_ownership_transfers" USING btree ("from_ownership_record_id","status");
+CREATE INDEX "idx_commerce_ownership_transfers_to_status" ON "commerce_ownership_transfers" USING btree ("to_ownership_record_id","status");
+CREATE INDEX "idx_commerce_payment_groups_checkout" ON "commerce_payment_groups" USING btree ("checkout_id");
+CREATE INDEX "idx_commerce_payment_groups_order" ON "commerce_payment_groups" USING btree ("order_id");
+CREATE INDEX "idx_commerce_payment_groups_vendor_status" ON "commerce_payment_groups" USING btree ("vendor_id","status","updated_at");
+CREATE INDEX "idx_commerce_payment_groups_payment_intent" ON "commerce_payment_groups" USING btree ("stripe_payment_intent_id");
+CREATE INDEX "idx_commerce_payment_groups_subscription" ON "commerce_payment_groups" USING btree ("stripe_subscription_id");
+CREATE UNIQUE INDEX "idx_commerce_prices_offer_version" ON "commerce_prices" USING btree ("offer_id","price_version");
+CREATE INDEX "idx_commerce_prices_offer_status" ON "commerce_prices" USING btree ("offer_id","status");
+CREATE INDEX "idx_commerce_prices_stripe_price" ON "commerce_prices" USING btree ("stripe_price_id");
+CREATE INDEX "idx_commerce_prices_stripe_sync_status" ON "commerce_prices" USING btree ("stripe_sync_status","updated_at");
+CREATE UNIQUE INDEX "idx_commerce_product_versions_product_version" ON "commerce_product_versions" USING btree ("product_id","version");
+CREATE INDEX "idx_commerce_product_versions_product_status" ON "commerce_product_versions" USING btree ("product_id","status","created_at");
+CREATE INDEX "idx_commerce_product_versions_catalog_artifact" ON "commerce_product_versions" USING btree ("catalog_artifact_version_id");
+CREATE UNIQUE INDEX "idx_commerce_products_team_kind_slug" ON "commerce_products" USING btree ("seller_team_id","kind","slug");
+CREATE INDEX "idx_commerce_products_vendor_status" ON "commerce_products" USING btree ("vendor_id","status","updated_at");
+CREATE INDEX "idx_commerce_products_catalog_item" ON "commerce_products" USING btree ("catalog_item_id");
+CREATE INDEX "idx_commerce_products_ownership_model" ON "commerce_products" USING btree ("ownership_model","updated_at");
+CREATE UNIQUE INDEX "idx_commerce_refunds_stripe" ON "commerce_refunds" USING btree ("stripe_refund_id","stripe_connected_account_id");
+CREATE UNIQUE INDEX "idx_commerce_refunds_idempotency" ON "commerce_refunds" USING btree ("idempotency_key");
+CREATE INDEX "idx_commerce_refunds_order" ON "commerce_refunds" USING btree ("order_id","created_at");
+CREATE INDEX "idx_commerce_refunds_vendor_status" ON "commerce_refunds" USING btree ("vendor_id","status","updated_at");
+CREATE INDEX "idx_commerce_refunds_seller_status" ON "commerce_refunds" USING btree ("seller_team_id","status","updated_at");
+CREATE UNIQUE INDEX "idx_commerce_service_contracts_request_quote" ON "commerce_service_contracts" USING btree ("request_id","quote_id");
+CREATE INDEX "idx_commerce_service_contracts_vendor" ON "commerce_service_contracts" USING btree ("vendor_id","status","updated_at");
+CREATE INDEX "idx_commerce_service_contracts_seller" ON "commerce_service_contracts" USING btree ("seller_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_service_contracts_buyer_team" ON "commerce_service_contracts" USING btree ("buyer_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_service_contracts_buyer_user" ON "commerce_service_contracts" USING btree ("buyer_user_id","status","updated_at");
+CREATE INDEX "idx_commerce_service_contracts_order" ON "commerce_service_contracts" USING btree ("order_id");
+CREATE INDEX "idx_commerce_service_contracts_entitlement" ON "commerce_service_contracts" USING btree ("entitlement_id");
+CREATE INDEX "idx_commerce_service_contracts_project" ON "commerce_service_contracts" USING btree ("related_project_id");
+CREATE INDEX "idx_commerce_service_contracts_workday" ON "commerce_service_contracts" USING btree ("related_workday_id");
+CREATE INDEX "idx_commerce_service_events_request" ON "commerce_service_events" USING btree ("request_id","created_at");
+CREATE INDEX "idx_commerce_service_events_quote" ON "commerce_service_events" USING btree ("quote_id","created_at");
+CREATE INDEX "idx_commerce_service_events_contract" ON "commerce_service_events" USING btree ("contract_id","created_at");
+CREATE INDEX "idx_commerce_service_events_type" ON "commerce_service_events" USING btree ("event_type","created_at");
+CREATE UNIQUE INDEX "idx_commerce_service_quotes_request_version" ON "commerce_service_quotes" USING btree ("request_id","quote_version");
+CREATE INDEX "idx_commerce_service_quotes_request" ON "commerce_service_quotes" USING btree ("request_id","status","updated_at");
+CREATE INDEX "idx_commerce_service_quotes_vendor" ON "commerce_service_quotes" USING btree ("vendor_id","status","updated_at");
+CREATE INDEX "idx_commerce_service_quotes_seller" ON "commerce_service_quotes" USING btree ("seller_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_service_requests_buyer_team" ON "commerce_service_requests" USING btree ("buyer_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_service_requests_buyer_user" ON "commerce_service_requests" USING btree ("buyer_user_id","status","updated_at");
+CREATE INDEX "idx_commerce_service_requests_vendor" ON "commerce_service_requests" USING btree ("vendor_id","status","updated_at");
+CREATE INDEX "idx_commerce_service_requests_seller" ON "commerce_service_requests" USING btree ("seller_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_service_requests_offer" ON "commerce_service_requests" USING btree ("offer_id","status");
+CREATE INDEX "idx_commerce_service_requests_project" ON "commerce_service_requests" USING btree ("related_project_id","status");
+CREATE INDEX "idx_commerce_service_requests_workday" ON "commerce_service_requests" USING btree ("related_workday_id","status");
+CREATE INDEX "idx_commerce_stewards_product_role" ON "commerce_stewardship_assignments" USING btree ("product_id","role");
+CREATE INDEX "idx_commerce_stewards_ownership_role" ON "commerce_stewardship_assignments" USING btree ("ownership_record_id","role");
+CREATE INDEX "idx_commerce_stewards_assignee" ON "commerce_stewardship_assignments" USING btree ("assignee_type","assignee_id");
+CREATE UNIQUE INDEX "idx_commerce_subscriptions_stripe" ON "commerce_subscriptions" USING btree ("stripe_subscription_id","stripe_connected_account_id");
+CREATE INDEX "idx_commerce_subscriptions_buyer_team_status" ON "commerce_subscriptions" USING btree ("buyer_team_id","status","updated_at");
+CREATE INDEX "idx_commerce_subscriptions_vendor_status" ON "commerce_subscriptions" USING btree ("vendor_id","status","updated_at");
+CREATE INDEX "idx_commerce_subscriptions_offer_status" ON "commerce_subscriptions" USING btree ("offer_id","status");
+CREATE INDEX "idx_commerce_succession_events_product" ON "commerce_succession_events" USING btree ("product_id","event_type","created_at");
+CREATE INDEX "idx_commerce_succession_events_ownership" ON "commerce_succession_events" USING btree ("ownership_record_id","event_type");
+CREATE INDEX "idx_commerce_succession_events_successor" ON "commerce_succession_events" USING btree ("successor_type","successor_id");
+CREATE UNIQUE INDEX "idx_commerce_vendor_stripe_accounts_vendor_env" ON "commerce_vendor_stripe_accounts" USING btree ("vendor_id","environment");
+CREATE UNIQUE INDEX "idx_commerce_vendor_stripe_accounts_stripe_env" ON "commerce_vendor_stripe_accounts" USING btree ("stripe_account_id","environment");
+CREATE INDEX "idx_commerce_vendor_stripe_accounts_team_env" ON "commerce_vendor_stripe_accounts" USING btree ("team_id","environment");
+CREATE INDEX "idx_commerce_vendor_stripe_accounts_status" ON "commerce_vendor_stripe_accounts" USING btree ("account_status","updated_at");
+CREATE UNIQUE INDEX "idx_commerce_vendors_team_id" ON "commerce_vendors" USING btree ("team_id");
+CREATE UNIQUE INDEX "idx_commerce_vendors_slug" ON "commerce_vendors" USING btree ("slug");
+CREATE INDEX "idx_commerce_vendors_status" ON "commerce_vendors" USING btree ("status","updated_at");
+CREATE INDEX "idx_commerce_vendors_trust_level" ON "commerce_vendors" USING btree ("trust_level","updated_at");
+CREATE UNIQUE INDEX "idx_commerce_webhook_events_provider_event" ON "commerce_webhook_events" USING btree ("provider","environment","event_id");
+CREATE INDEX "idx_commerce_webhook_events_status_received" ON "commerce_webhook_events" USING btree ("status","received_at");
+CREATE INDEX "idx_commerce_webhook_events_connected_type" ON "commerce_webhook_events" USING btree ("connected_account_id","event_type","received_at");
+CREATE INDEX "idx_commerce_webhook_events_order" ON "commerce_webhook_events" USING btree ("related_order_id");
+CREATE INDEX "idx_commerce_webhook_events_subscription" ON "commerce_webhook_events" USING btree ("related_subscription_id");
+CREATE UNIQUE INDEX "idx_commons_decisions_proposal" ON "commons_decisions" USING btree ("proposal_id");
+CREATE INDEX "idx_commons_decisions_status" ON "commons_decisions" USING btree ("status","updated_at");
+CREATE UNIQUE INDEX "idx_commons_delegations_active" ON "commons_delegations" USING btree ("from_participant_id","to_participant_id","scope","status");
+CREATE INDEX "idx_commons_delegations_to" ON "commons_delegations" USING btree ("to_participant_id","status");
+CREATE INDEX "idx_commons_governance_events_proposal" ON "commons_governance_events" USING btree ("proposal_id","created_at");
+CREATE INDEX "idx_commons_governance_events_participant" ON "commons_governance_events" USING btree ("participant_id","created_at");
+CREATE INDEX "idx_commons_governance_events_type" ON "commons_governance_events" USING btree ("event_type","created_at");
+CREATE UNIQUE INDEX "idx_commons_participants_user" ON "commons_participants" USING btree ("user_id");
+CREATE INDEX "idx_commons_participants_team_status" ON "commons_participants" USING btree ("team_id","status","updated_at");
+CREATE UNIQUE INDEX "idx_commons_proposal_backings_once" ON "commons_proposal_backings" USING btree ("proposal_id","participant_id");
+CREATE INDEX "idx_commons_proposal_backings_proposal" ON "commons_proposal_backings" USING btree ("proposal_id","created_at");
+CREATE UNIQUE INDEX "idx_commons_proposal_votes_once" ON "commons_proposal_votes" USING btree ("proposal_id","participant_id");
+CREATE INDEX "idx_commons_proposal_votes_proposal" ON "commons_proposal_votes" USING btree ("proposal_id","vote","updated_at");
+CREATE INDEX "idx_commons_proposals_status" ON "commons_proposals" USING btree ("status","updated_at");
+CREATE INDEX "idx_commons_proposals_participant" ON "commons_proposals" USING btree ("participant_id","status","updated_at");
+CREATE INDEX "idx_commons_proposals_scope" ON "commons_proposals" USING btree ("scope","status","updated_at");
+CREATE INDEX "idx_commons_questions_status" ON "commons_questions" USING btree ("status","updated_at");
+CREATE INDEX "idx_commons_questions_participant" ON "commons_questions" USING btree ("participant_id","status","updated_at");
+CREATE INDEX "idx_commons_weight_snapshots_participant" ON "commons_weight_snapshots" USING btree ("participant_id","created_at");
+CREATE UNIQUE INDEX "idx_credit_conversion_profiles_profile_key" ON "credit_conversion_profiles" USING btree ("task_signature","execution_profile_id","execution_provider_kind","native_unit");
+CREATE INDEX "idx_credit_conversion_profiles_kind_unit" ON "credit_conversion_profiles" USING btree ("execution_provider_kind","native_unit","updated_at");
+CREATE INDEX "idx_cursor_state_updated" ON "cursor_state" USING btree ("updated_at");
+CREATE INDEX "idx_decision_execution_inputs_decision" ON "decision_execution_inputs" USING btree ("decision_id","status","created_at");
+CREATE INDEX "idx_decision_execution_inputs_project" ON "decision_execution_inputs" USING btree ("project_id","status","mode","created_at");
+CREATE UNIQUE INDEX "idx_decision_planning_statuses_decision" ON "decision_planning_statuses" USING btree ("decision_id");
+CREATE INDEX "idx_decision_planning_statuses_project" ON "decision_planning_statuses" USING btree ("project_id","execution_readiness","updated_at");
+CREATE UNIQUE INDEX "idx_entitlements_project" ON "entitlements" USING btree ("project_id");
+CREATE INDEX "idx_execution_provider_native_limits_provider_scope" ON "execution_provider_native_limits" USING btree ("execution_provider_id","scope","native_unit");
+CREATE INDEX "idx_execution_provider_observations_provider_observed" ON "execution_provider_observations" USING btree ("execution_provider_id","observed_at");
+CREATE INDEX "idx_execution_providers_team_status" ON "execution_providers" USING btree ("team_id","status","kind");
+CREATE INDEX "idx_execution_providers_capacity_provider" ON "execution_providers" USING btree ("capacity_provider_id","status");
+CREATE INDEX "idx_github_app_installations_team_status" ON "github_app_installation_records" USING btree ("team_id","status","updated_at");
+CREATE UNIQUE INDEX "idx_github_app_installations_team_installation" ON "github_app_installation_records" USING btree ("team_id","installation_id");
+CREATE INDEX "idx_github_app_token_issuance_project" ON "github_app_token_issuance_records" USING btree ("team_id","project_id","status","updated_at");
+CREATE INDEX "idx_github_app_token_issuance_operation" ON "github_app_token_issuance_records" USING btree ("operation_id","status","expires_at");
+CREATE INDEX "idx_github_app_token_issuance_assignment" ON "github_app_token_issuance_records" USING btree ("assignment_id","status","expires_at");
+CREATE INDEX "idx_github_repository_grants_project" ON "github_repository_grants" USING btree ("team_id","project_id","status");
+CREATE UNIQUE INDEX "idx_github_repository_grants_repository" ON "github_repository_grants" USING btree ("team_id","repository");
+CREATE UNIQUE INDEX "idx_hub_launch_events_launch_seq" ON "hub_launch_events" USING btree ("launch_id","seq");
+CREATE INDEX "idx_hub_launches_hub_created" ON "hub_launches" USING btree ("hub_id","created_at");
+CREATE UNIQUE INDEX "idx_hub_repositories_hub_role" ON "hub_repositories" USING btree ("hub_id","role");
+CREATE INDEX "idx_hub_workspace_links_hub" ON "hub_workspace_links" USING btree ("hub_id");
+CREATE INDEX "idx_knowledge_packs_team_id" ON "knowledge_packs" USING btree ("team_id");
+CREATE INDEX "idx_lease_state_status_expires" ON "lease_state" USING btree ("status","lease_expires_at");
+CREATE INDEX "idx_lease_state_claimed_by" ON "lease_state" USING btree ("claimed_by","updated_at");
+CREATE INDEX "idx_message_queue_claimable" ON "message_queue" USING btree ("status","available_at","priority");
+CREATE INDEX "idx_message_queue_related" ON "message_queue" USING btree ("related_model","related_id","created_at");
+CREATE INDEX "idx_native_usage_observations_profile" ON "native_usage_observations" USING btree ("project_id","task_signature","execution_profile_id","created_at");
+CREATE INDEX "idx_native_usage_observations_provider" ON "native_usage_observations" USING btree ("execution_provider_id","created_at");
+CREATE INDEX "idx_planning_input_requests_decision" ON "planning_input_requests" USING btree ("decision_id","status","requested_at");
+CREATE INDEX "idx_planning_input_requests_project" ON "planning_input_requests" USING btree ("project_id","status","requested_at");
+CREATE UNIQUE INDEX "idx_platform_operation_events_seq" ON "platform_operation_events" USING btree ("operation_id","seq");
+CREATE UNIQUE INDEX "idx_platform_operations_idempotency" ON "platform_operations" USING btree ("namespace","operation","idempotency_key");
+CREATE INDEX "idx_platform_operations_runnable" ON "platform_operations" USING btree ("status","created_at");
+CREATE UNIQUE INDEX "idx_platform_repository_claims_active" ON "platform_repository_claims" USING btree ("repository_key","runner_id");
+CREATE INDEX "idx_platform_repository_claims_runner" ON "platform_repository_claims" USING btree ("runner_id","claim_state");
+CREATE INDEX "idx_priority_overrides_project_priority" ON "priority_overrides" USING btree ("project_id","priority","updated_at");
+CREATE INDEX "idx_priority_snapshots_project_generated" ON "priority_snapshots" USING btree ("project_id","generated_at");
+CREATE UNIQUE INDEX "idx_project_agent_classes_project_slug" ON "project_agent_classes" USING btree ("project_id","slug");
+CREATE INDEX "idx_project_agent_classes_team_project" ON "project_agent_classes" USING btree ("team_id","project_id","status");
+CREATE UNIQUE INDEX "idx_project_capability_grants_project_operation" ON "project_capability_grants" USING btree ("project_id","namespace","operation");
+CREATE INDEX "idx_project_deployment_events_deployment_sequence" ON "project_deployment_events" USING btree ("deployment_id","sequence");
+CREATE INDEX "idx_project_deployment_events_project_created" ON "project_deployment_events" USING btree ("project_id","created_at");
+CREATE INDEX "idx_project_deployment_events_operation" ON "project_deployment_events" USING btree ("operation_id");
+CREATE INDEX "idx_project_deployments_project_created" ON "project_deployments" USING btree ("project_id","created_at");
+CREATE INDEX "idx_project_deployments_project_environment" ON "project_deployments" USING btree ("project_id","environment","created_at");
+CREATE INDEX "idx_project_deployments_project_status" ON "project_deployments" USING btree ("project_id","status","updated_at");
+CREATE INDEX "idx_project_deployments_operation" ON "project_deployments" USING btree ("platform_operation_id");
+CREATE INDEX "idx_project_deployments_team_created" ON "project_deployments" USING btree ("team_id","created_at");
+CREATE UNIQUE INDEX "idx_project_deployments_idempotency" ON "project_deployments" USING btree ("project_id","idempotency_key");
+CREATE UNIQUE INDEX "idx_project_environments_project_environment" ON "project_environments" USING btree ("project_id","environment");
+CREATE UNIQUE INDEX "idx_project_infrastructure_resource_unique" ON "project_infrastructure_resources" USING btree ("project_id","environment","provider","resource_kind","logical_name");
+CREATE INDEX "idx_project_summary_snapshots_team_generated" ON "project_summary_snapshots" USING btree ("team_id","generated_at");
+CREATE INDEX "idx_project_update_plans_hub" ON "project_update_plans" USING btree ("hub_id","created_at");
+CREATE INDEX "idx_project_workday_summaries_project_environment_created" ON "project_workday_summaries" USING btree ("project_id","environment","created_at");
+CREATE UNIQUE INDEX "idx_projects_team_slug" ON "projects" USING btree ("team_id","slug");
+CREATE INDEX "idx_projects_team_id" ON "projects" USING btree ("team_id");
+CREATE INDEX "idx_provider_assignments_provider_status" ON "provider_assignments" USING btree ("capacity_provider_id","status","lease_expires_at");
+CREATE INDEX "idx_provider_assignments_project_mode" ON "provider_assignments" USING btree ("project_id","mode","status");
+CREATE INDEX "idx_provider_assignments_lease" ON "provider_assignments" USING btree ("capacity_provider_id","lease_state","lease_expires_at");
+CREATE INDEX "idx_provider_assignments_runner" ON "provider_assignments" USING btree ("runner_id","lease_state");
+CREATE UNIQUE INDEX "idx_provider_assignments_synthesis_key" ON "provider_assignments" USING btree ("team_id","synthesis_key");
+CREATE INDEX "idx_provider_assignments_decision" ON "provider_assignments" USING btree ("decision_id","status");
+CREATE INDEX "idx_provider_assignments_team_created" ON "provider_assignments" USING btree ("team_id","created_at");
+CREATE INDEX "idx_provider_availability_sessions_provider_status" ON "provider_availability_sessions" USING btree ("capacity_provider_id","status","checked_in_at");
+CREATE INDEX "idx_provider_availability_sessions_team_status" ON "provider_availability_sessions" USING btree ("team_id","status","checked_in_at");
+CREATE INDEX "idx_provider_credential_sessions_team_host" ON "provider_credential_sessions" USING btree ("team_id","host_kind","host_id","status");
+CREATE INDEX "idx_provider_credential_sessions_job" ON "provider_credential_sessions" USING btree ("job_id","status");
+CREATE UNIQUE INDEX "idx_remote_job_events_job_seq" ON "remote_job_events" USING btree ("job_id","seq");
+CREATE INDEX "idx_remote_jobs_project_status" ON "remote_jobs" USING btree ("project_id","status","created_at");
+CREATE INDEX "idx_remote_jobs_project_idempotency" ON "remote_jobs" USING btree ("project_id","idempotency_key");
+CREATE UNIQUE INDEX "idx_repository_claims_runner_repo" ON "repository_claims" USING btree ("project_id","repository_id","runner_id");
+CREATE INDEX "idx_repository_claims_repo_state" ON "repository_claims" USING btree ("project_id","repository_id","claim_state","updated_at");
+CREATE INDEX "idx_repository_hosts_team_provider" ON "repository_hosts" USING btree ("team_id","provider","status");
+CREATE UNIQUE INDEX "idx_repository_hosts_team_provider_name" ON "repository_hosts" USING btree ("team_id","provider","name");
+CREATE UNIQUE INDEX "idx_repository_hosts_platform_provider_name" ON "repository_hosts" USING btree ("provider","name");
+CREATE INDEX "idx_runner_scale_decisions_project_workday" ON "runner_scale_decisions" USING btree ("project_id","environment","work_day_id","created_at");
+CREATE INDEX "idx_runtime_records_type_lookup_updated" ON "runtime_records" USING btree ("record_type","lookup_key","updated_at");
+CREATE INDEX "idx_runtime_records_type_status_updated" ON "runtime_records" USING btree ("record_type","status","updated_at");
+CREATE INDEX "idx_runtime_task_events_task_created" ON "runtime_task_events" USING btree ("task_id","created_at");
+CREATE INDEX "idx_runtime_task_outputs_task_created" ON "runtime_task_outputs" USING btree ("task_id","created_at");
+CREATE INDEX "idx_runtime_tasks_project_workday_state" ON "runtime_tasks" USING btree ("project_id","work_day_id","state","created_at");
+CREATE INDEX "idx_scale_decisions_project_environment_pool_created" ON "scale_decisions" USING btree ("project_id","environment","pool_name","created_at");
+CREATE INDEX "idx_secret_metadata_team_project" ON "secret_metadata_records" USING btree ("team_id","project_id","status");
+CREATE INDEX "idx_secret_metadata_custody" ON "secret_metadata_records" USING btree ("custody_mode","status");
+CREATE UNIQUE INDEX "idx_secret_metadata_team_name" ON "secret_metadata_records" USING btree ("team_id","project_id","name");
+CREATE INDEX "idx_seed_runs_seed_created" ON "seed_runs" USING btree ("seed_name","created_at");
+CREATE INDEX "idx_seed_runs_state_created" ON "seed_runs" USING btree ("state","created_at");
+CREATE INDEX "idx_task_credit_ledger_work_day_created" ON "task_credit_ledger" USING btree ("work_day_id","created_at");
+CREATE INDEX "idx_task_estimates_project_signature" ON "task_estimates" USING btree ("project_id","task_signature","created_at");
+CREATE INDEX "idx_task_estimates_project_signature_profile" ON "task_estimates" USING btree ("project_id","task_signature","execution_profile_id","created_at");
+CREATE INDEX "idx_task_usage_actuals_project_signature" ON "task_usage_actuals" USING btree ("project_id","task_signature","created_at");
+CREATE INDEX "idx_task_usage_actuals_project_signature_profile" ON "task_usage_actuals" USING btree ("project_id","task_signature","execution_profile_id","created_at");
+CREATE INDEX "idx_task_usage_actuals_execution_provider" ON "task_usage_actuals" USING btree ("execution_provider_id","created_at");
+CREATE INDEX "idx_team_api_keys_prefix" ON "team_api_keys" USING btree ("key_prefix");
+CREATE INDEX "idx_team_inbox_items_team_created" ON "team_inbox_items" USING btree ("team_id","created_at");
+CREATE INDEX "idx_team_invites_team_status" ON "team_invites" USING btree ("team_id","status","created_at");
+CREATE INDEX "idx_team_invites_token_prefix" ON "team_invites" USING btree ("token_prefix");
+CREATE UNIQUE INDEX "idx_team_memberships_team_user" ON "team_memberships" USING btree ("team_id","user_id");
+CREATE INDEX "idx_team_web_hosts_team_provider" ON "team_web_hosts" USING btree ("team_id","provider","status");
+CREATE UNIQUE INDEX "idx_team_web_hosts_team_provider_name" ON "team_web_hosts" USING btree ("team_id","provider","name");
+CREATE UNIQUE INDEX "idx_teams_name" ON "teams" USING btree ("name");
+CREATE INDEX "idx_treedx_credential_issuance_assignment" ON "treedx_credential_issuance_records" USING btree ("assignment_id","status","expires_at");
+CREATE INDEX "idx_treedx_credential_issuance_project" ON "treedx_credential_issuance_records" USING btree ("project_id","status","updated_at");
+CREATE INDEX "idx_treedx_deployments_team_instance" ON "treedx_deployments" USING btree ("team_id","instance_id","created_at");
+CREATE INDEX "idx_treedx_instances_team_status" ON "treedx_instances" USING btree ("team_id","status");
+CREATE INDEX "idx_treedx_mirrors_team_instance" ON "treedx_mirrors" USING btree ("team_id","instance_id");
+CREATE UNIQUE INDEX "idx_treedx_project_libraries_project" ON "treedx_project_libraries" USING btree ("project_id");
+CREATE INDEX "idx_treedx_project_libraries_instance" ON "treedx_project_libraries" USING btree ("instance_id");
+CREATE INDEX "idx_treedx_project_proxy_audit_project" ON "treedx_project_proxy_audit" USING btree ("project_id","created_at");
+CREATE INDEX "idx_treedx_project_proxy_audit_assignment" ON "treedx_project_proxy_audit" USING btree ("assignment_id","created_at");
+CREATE INDEX "idx_treedx_project_proxy_audit_result" ON "treedx_project_proxy_audit" USING btree ("project_id","result_status","created_at");
+CREATE INDEX "idx_treedx_proxy_handles_assignment" ON "treedx_proxy_handles" USING btree ("assignment_id","status","expires_at");
+CREATE INDEX "idx_treedx_proxy_handles_project" ON "treedx_proxy_handles" USING btree ("project_id","status","updated_at");
+CREATE INDEX "idx_treedx_shares_team_scope" ON "treedx_shares" USING btree ("team_id","scope","status");
+CREATE INDEX "idx_user_email_addresses_user" ON "user_email_addresses" USING btree ("user_id","status","is_primary");
+CREATE UNIQUE INDEX "idx_user_email_addresses_normalized" ON "user_email_addresses" USING btree ("normalized_email");
+CREATE UNIQUE INDEX "idx_user_identities_provider_subject" ON "user_identities" USING btree ("provider","provider_subject");
+CREATE UNIQUE INDEX "idx_user_role_bindings_user_role" ON "user_role_bindings" USING btree ("user_id","role_id");
+CREATE UNIQUE INDEX "idx_users_username" ON "users" USING btree ("username");
+CREATE INDEX "idx_web_sessions_user_id" ON "web_sessions" USING btree ("user_id");
+CREATE INDEX "idx_workday_capacity_envelopes_project_status" ON "workday_capacity_envelopes" USING btree ("project_id","status","created_at");
+CREATE INDEX "idx_workday_capacity_envelopes_team_status" ON "workday_capacity_envelopes" USING btree ("team_id","status","created_at");
+CREATE INDEX "idx_workday_manager_leases_active" ON "workday_manager_leases" USING btree ("project_id","environment","state","heartbeat_at");
+CREATE INDEX "idx_workday_requests_project_environment_state" ON "workday_requests" USING btree ("project_id","environment","state","created_at");
+CREATE UNIQUE INDEX "idx_worker_runners_identity" ON "worker_runners" USING btree ("project_id","environment","runner_id");
+CREATE INDEX "idx_worker_runners_state_capacity" ON "worker_runners" USING btree ("project_id","environment","state","available_capacity");
+CREATE INDEX "idx_workflow_dispatch_records_operation" ON "workflow_dispatch_records" USING btree ("workflow_operation_id","status","created_at");
+CREATE INDEX "idx_workflow_dispatch_records_platform" ON "workflow_dispatch_records" USING btree ("platform_operation_id");
+CREATE INDEX "idx_workflow_operation_records_project" ON "workflow_operation_records" USING btree ("team_id","project_id","status");
+CREATE UNIQUE INDEX "idx_workflow_operation_records_operation" ON "workflow_operation_records" USING btree ("team_id","id");

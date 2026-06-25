@@ -218,6 +218,22 @@ describe('repository save orchestrator helpers', () => {
 		expect(source).toContain('ensureLocalWorkspaceLinks(options.root)');
 	});
 
+	it('installs package dependencies before unlinked local verification', () => {
+		const source = readFileSync(resolve(testDir, '../../src/operations/services/repository-save-orchestrator.ts'), 'utf8');
+
+		expect(source).toContain('npm ci for verification failed; retrying in 60 seconds.');
+		expect(source).not.toContain("if (node.branchMode !== 'project-save' || !hasNpmLockfile(node.path)) return;");
+	});
+
+	it('serializes verified repository saves to avoid package install resource exhaustion', () => {
+		const source = readFileSync(resolve(testDir, '../../src/operations/services/repository-save-orchestrator.ts'), 'utf8');
+
+		expect(source).toContain("options.verifyMode && options.verifyMode !== 'skip'");
+		expect(source).toContain('return 1;');
+		expect(source).toContain('TREESEED_SAVE_REPOSITORY_CONCURRENCY');
+		expect(source).toContain('await runLimited(wave, concurrency');
+	});
+
 	it('plans package branch and tag publication in one push command', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-plan-package-push-'));
 		const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-plan-package-push-origin-'));

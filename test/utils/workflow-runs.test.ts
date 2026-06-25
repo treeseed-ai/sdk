@@ -1,13 +1,15 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
 	archiveWorkflowRun,
+	acquireWorkflowLock,
 	cacheWorkflowGateResult,
 	classifyWorkflowRunJournal,
 	createWorkflowRunJournal,
 	getCachedSuccessfulWorkflowGate,
+	inspectWorkflowLock,
 	readWorkflowRunJournal,
 } from '../../src/workflow/runs.ts';
 
@@ -92,6 +94,143 @@ describe('workflow run journals', () => {
 
 		expect(classification.state).toBe('stale');
 		expect(classification.reasons.join('\n')).toContain('market head changed');
+	});
+
+	it('keeps managed worktree workflow control scoped to the worktree', () => {
+		const primaryRoot = makeRoot();
+		const worktreeRoot = join(primaryRoot, '.treeseed', 'worktrees', 'feature-scenes');
+		mkdirSync(join(worktreeRoot, '.treeseed'), { recursive: true });
+		writeFileSync(join(worktreeRoot, '.treeseed', 'worktree.json'), `${JSON.stringify({
+			kind: 'treeseed.workflow.worktree',
+			branch: 'feature/scenes',
+			primaryRoot,
+			worktreePath: worktreeRoot,
+		}, null, 2)}\n`, 'utf8');
+
+		const lock = acquireWorkflowLock(worktreeRoot, 'save', 'save-worktree-test');
+		expect(lock.acquired).toBe(true);
+
+		createWorkflowRunJournal(worktreeRoot, {
+			runId: 'save-worktree-test',
+			command: 'save',
+			input: { message: 'worktree save' },
+			session: {
+				root: worktreeRoot,
+				mode: 'recursive-workspace',
+				branchName: 'feature/scenes',
+				repos: [{ name: '@treeseed/market', path: worktreeRoot, branchName: 'feature/scenes' }],
+			},
+			steps: [],
+		});
+
+		expect(inspectWorkflowLock(worktreeRoot).lock?.runId).toBe('save-worktree-test');
+		expect(inspectWorkflowLock(primaryRoot).active).toBe(false);
+		expect(readWorkflowRunJournal(worktreeRoot, 'save-worktree-test')?.runId).toBe('save-worktree-test');
+		expect(readWorkflowRunJournal(primaryRoot, 'save-worktree-test')).toBeNull();
+		expect(existsSync(join(primaryRoot, '.treeseed', 'workflow', 'lock.json'))).toBe(false);
+	});
+
+	it('classifies recovery-marked legacy stage failures as resumable', () => {
+		const root = makeRoot();
+		const journal = createWorkflowRunJournal(root, {
+			runId: 'legacy-stage-test',
+			command: 'stage',
+			input: { message: 'stage legacy branch' },
+			session: {
+				root,
+				mode: 'recursive-workspace',
+				branchName: 'release',
+				repos: [{ name: '@treeseed/market', path: root, branchName: 'release' }],
+			},
+			steps: [
+				{
+					id: 'merge-root',
+					description: 'Merge release into market staging',
+					repoName: '@treeseed/market',
+					repoPath: root,
+					branch: 'release',
+					resumable: true,
+				},
+				{
+					id: 'wait-staging',
+					description: 'Wait for exact-SHA staging GitHub Actions gates',
+					repoName: '@treeseed/market',
+					repoPath: root,
+					branch: 'staging',
+					resumable: true,
+				},
+			],
+		});
+		const failed = {
+			...journal,
+			status: 'failed' as const,
+			resumable: false,
+			failure: {
+				code: 'github_workflow_failed',
+				message: 'staging gate failed',
+				details: {
+					recovery: {
+						resumable: true,
+						runId: 'legacy-stage-test',
+						command: 'stage',
+					},
+				},
+				at: new Date().toISOString(),
+			},
+			steps: journal.steps.map((step) => step.id === 'merge-root'
+				? {
+					...step,
+					status: 'completed' as const,
+					completedAt: new Date().toISOString(),
+					data: { commitSha: 'staging-head' },
+				}
+				: step),
+		};
+
+		const classification = classifyWorkflowRunJournal(failed, {
+			currentBranch: 'release',
+			currentHeads: { '@treeseed/market': 'staging-head' },
+		});
+
+		expect(classification.state).toBe('resumable');
+	});
+
+	it('keeps truly non-resumable failed journals obsolete', () => {
+		const root = makeRoot();
+		const journal = createWorkflowRunJournal(root, {
+			runId: 'non-resumable-test',
+			command: 'stage',
+			input: { message: 'stage branch' },
+			session: {
+				root,
+				mode: 'recursive-workspace',
+				branchName: 'release',
+				repos: [{ name: '@treeseed/market', path: root, branchName: 'release' }],
+			},
+			steps: [
+				{
+					id: 'worktree-cleanup',
+					description: 'Remove managed workflow worktree',
+					repoName: '@treeseed/market',
+					repoPath: root,
+					branch: 'staging',
+					resumable: false,
+				},
+			],
+		});
+		const failed = {
+			...journal,
+			status: 'failed' as const,
+			failure: { code: 'unsupported_state', message: 'failed', details: null, at: new Date().toISOString() },
+		};
+
+		const classification = classifyWorkflowRunJournal(failed, {
+			currentBranch: 'release',
+			currentHeads: { '@treeseed/market': 'staging-head' },
+		});
+
+		expect(classification.state).toBe('obsolete');
+		expect(classification.reasons.join('\n')).toContain('not marked resumable');
 	});
 
 	it('classifies release gate-only failures as stale after staging heads move', () => {

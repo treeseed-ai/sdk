@@ -40,19 +40,14 @@ function sanitizeManagedDevResult<T>(value: T): T {
 	const result: Record<string, unknown> = {};
 	for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
 		if (key === 'env') {
-			result.redactedEnv = redactEnvironment(entry);
+			continue;
+		}
+		if (key === 'redactedEnv' || key === 'envKeys') {
 			continue;
 		}
 		result[key] = sanitizeManagedDevResult(entry);
 	}
 	return result as T;
-}
-
-function redactEnvironment(value: unknown) {
-	if (!value || typeof value !== 'object') {
-		return {};
-	}
-	return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, key === 'PATH' || key === 'NODE_ENV' ? String(entry ?? '') : '<redacted>']));
 }
 
 export async function checkHttpHealth(url: string, timeoutMs = 2_000) {

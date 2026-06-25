@@ -4,6 +4,7 @@ const cloudflareApiRequestMock = vi.fn();
 const runWranglerMock = vi.fn();
 const resolveTreeseedMachineEnvironmentValuesMock = vi.fn();
 const upsertRailwayVariablesMock = vi.fn();
+const deployRailwayServiceInstanceMock = vi.fn();
 const railwayEnvMock = vi.fn();
 
 let kvCreated = false;
@@ -184,6 +185,11 @@ vi.mock('../../src/operations/services/railway-deploy.ts', () => ({
 }));
 
 vi.mock('../../src/operations/services/railway-api.ts', () => ({
+	deployRailwayServiceInstance: vi.fn(async (input: { env: Record<string, string> }) => {
+		railwayEnvMock(input.env);
+		deployRailwayServiceInstanceMock(input);
+		return { deploymentId: 'deployment-1' };
+	}),
 	ensureRailwayEnvironment: vi.fn(async () => ({ environment: { id: 'env-1', name: 'staging' } })),
 	ensureRailwayProject: vi.fn(async () => ({
 		project: {
@@ -240,6 +246,7 @@ beforeEach(() => {
 	cloudflareApiRequestMock.mockReset();
 		runWranglerMock.mockReset();
 		upsertRailwayVariablesMock.mockReset();
+		deployRailwayServiceInstanceMock.mockReset();
 		railwayEnvMock.mockReset();
 		resolveTreeseedMachineEnvironmentValuesMock.mockReset();
 		resolveTreeseedMachineEnvironmentValuesMock.mockImplementation(() => {
@@ -564,6 +571,10 @@ beforeEach(() => {
 				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
 				TREESEED_API_D1_DATABASE_ID: 'd1-1',
 			}),
+		}));
+		expect(deployRailwayServiceInstanceMock).toHaveBeenCalledWith(expect.objectContaining({
+			serviceId: 'service-1',
+			environmentId: 'env-1',
 		}));
 	});
 

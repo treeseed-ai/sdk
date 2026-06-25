@@ -1,0 +1,106 @@
+schemaVersion: treeseed.scene/v1
+id: user-team-management-demo
+title: User And Team Management Demo
+description: Register a small business owner, create TreeSeed, invite users, and verify team membership for the central TreeSeed acceptance test harness and demo / educational video generator.
+audience: [evaluator, operator, trainee]
+mode:
+  test: true
+  demo: true
+  training: true
+runtime:
+  mode: training
+  failure:
+    continueOnFailure: false
+target:
+  app: market
+  environment: local
+  baseUrl: auto
+  browser: chromium
+  viewport:
+    width: 1600
+    height: 900
+devices:
+  defaultProfile: desktop
+  profiles:
+    - id: desktop
+      viewport: { width: 1600, height: 900 }
+      video: { width: 1600, height: 900 }
+      output: { width: 1920, height: 1080 }
+    - id: tablet
+      viewport: { width: 1024, height: 768 }
+      video: { width: 1024, height: 768 }
+      output: { width: 1440, height: 1080 }
+      isMobile: true
+      hasTouch: true
+    - id: mobile
+      viewport: { width: 390, height: 844 }
+      video: { width: 390, height: 844 }
+      output: { width: 1080, height: 1920 }
+      isMobile: true
+      hasTouch: true
+training:
+  enabled: true
+workflow:
+  - id: owner-register
+    title: Register TreeSeed Admin
+    action:
+      goto: /auth/register
+    expect:
+      urlIncludes: /auth/register
+    props:
+      email: demo.admin@treeseed.io
+  - id: fill-owner-email
+    title: Fill owner email
+    demoOnly: true
+    action:
+      fill:
+        css: input[name="email"]
+        brittle: true
+        value: demo.admin@treeseed.io
+  - id: owner-confirm-email
+    title: Confirm owner email in Mailpit
+    demoOnly: true
+    action:
+      mailpitConfirmLatest:
+        mailpitUrl: __USER_TEAM_MAILPIT_URL__
+        email: demo.admin@treeseed.io
+  - id: owner-view-sessions-tab
+    title: View sessions tab
+    demoOnly: true
+    action:
+      click:
+        text: Sessions
+  - id: invite-team-role
+    title: Select project lead role
+    action:
+      select:
+        css: select[name="role"]
+        brittle: true
+        value: project_lead
+  - id: owner-final-roster
+    title: Final roster
+    demoOnly: true
+    action:
+      pause:
+        mode: timed
+        durationSeconds: 1
+chapters:
+  - id: owner
+    title: Owner setup
+    startsAt: owner-register
+overlays:
+  - id: closing
+    at: owner-final-roster
+    renderer: remotion
+    type: panel
+    text: TreeSeed teams give small businesses one place to coordinate admin, ownership, and project access.
+    variant: panel
+    region: right
+xScenario:
+  identities:
+    owner: demo.admin@treeseed.io
+    admin: avery.admin@treeseed.io
+    members:
+      - casey.member@treeseed.io
+      - jordan.member@treeseed.io
+      - riley.member@treeseed.io

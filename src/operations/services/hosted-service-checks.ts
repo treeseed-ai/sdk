@@ -66,6 +66,7 @@ export interface TreeseedHostedServiceCheckOptions {
 	tenantRoot: string;
 	target?: TreeseedHostedServiceTarget;
 	appId?: string;
+	serviceKeys?: string[];
 	now?: Date;
 	valuesOverlay?: Record<string, string | undefined>;
 	observedRailwayServices?: Record<string, TreeseedObservedRailwayServiceState | undefined>;
@@ -235,6 +236,7 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 	}
 	const values = { ...machineValues, ...(options.valuesOverlay ?? {}) };
 	const checks: TreeseedHostedServiceCheck[] = [];
+	const selectedServiceKeys = new Set((options.serviceKeys ?? []).map((key) => key.trim()).filter(Boolean));
 	const selectedAppId = options.appId?.trim() || null;
 	const selectedApplication = selectedAppId
 		? discoverTreeseedApplications(tenantRoot).find((application) => application.id === selectedAppId || application.relativeRoot === selectedAppId)
@@ -293,7 +295,8 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 	}
 
 	const configuredServices = configuredRailwayServices(tenantRoot, target)
-		.filter((service) => !selectedAppId || service.application?.id === selectedAppId);
+		.filter((service) => !selectedAppId || service.application?.id === selectedAppId)
+		.filter((service) => selectedServiceKeys.size === 0 || selectedServiceKeys.has(service.key));
 	for (const service of configuredServices) {
 		const serviceType = serviceTypeFor(service.key);
 		const observed = observedFor(options, service.serviceName);
@@ -388,7 +391,12 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 	const treeseedDatabaseService = applicationConfigs
 		.map((config) => config.services?.treeseedDatabase)
 		.find((service) => service?.enabled !== false);
-	if (includeApi && treeseedDatabaseService?.enabled !== false && treeseedDatabaseService?.provider === 'railway') {
+	if (
+		includeApi
+		&& (selectedServiceKeys.size === 0 || selectedServiceKeys.has('treeseedDatabase'))
+		&& treeseedDatabaseService?.enabled !== false
+		&& treeseedDatabaseService?.provider === 'railway'
+	) {
 		const targets = treeseedDatabaseService.railway?.serviceTargets ?? [];
 		checks.push(check({
 			id: 'railway:treeseedDatabase:targets',

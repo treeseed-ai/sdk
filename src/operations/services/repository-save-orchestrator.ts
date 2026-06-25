@@ -896,6 +896,14 @@ function runLimited<T>(items: T[], limit: number, action: (item: T) => Promise<v
 	return Promise.all(workers);
 }
 
+function repositorySaveConcurrency(options: Pick<RepositorySaveOptions, 'verifyMode'>) {
+	if (options.verifyMode && options.verifyMode !== 'skip') {
+		return 1;
+	}
+	const configured = Number.parseInt(process.env.TREESEED_SAVE_REPOSITORY_CONCURRENCY ?? '', 10);
+	return Number.isFinite(configured) && configured > 0 ? configured : 3;
+}
+
 function remoteBranchExistsSafe(repoDir: string, branch: string) {
 	try {
 		runGit(['rev-parse', '--verify', `refs/remotes/origin/${branch}`], { cwd: repoDir, capture: true });
@@ -1187,7 +1195,7 @@ async function runProjectVerificationInstallWithRetry(
 	node: RepositorySaveNode,
 	options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>,
 ) {
-	if (node.branchMode !== 'project-save' || !hasNpmLockfile(node.path)) return;
+	if (!hasNpmLockfile(node.path)) return;
 	if (shouldSkipNetworkInstall()) {
 		emitProgress(options, node, 'install', 'Skipped project verification dependency install because network install mode is disabled.');
 		return;
@@ -1211,7 +1219,7 @@ async function runProjectVerificationInstallWithRetry(
 			lastError = error instanceof Error ? error.message : String(error);
 		}
 		if (attempt < 5) {
-			emitProgress(options, node, 'install', 'npm ci for project verification failed; retrying in 60 seconds.', 'stderr');
+			emitProgress(options, node, 'install', 'npm ci for verification failed; retrying in 60 seconds.', 'stderr');
 			await sleepMs(60_000);
 		}
 	}
@@ -2283,9 +2291,10 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 		remoteAccessChecked: new Set(),
 		workflowGates: [],
 	};
+	const concurrency = repositorySaveConcurrency(options);
 
 	for (const [index, wave] of waves.entries()) {
-		await runLimited(wave, 3, async (node) => {
+		await runLimited(wave, concurrency, async (node) => {
 			try {
 				await saveOneRepository(node, options, state);
 			} catch (error) {
