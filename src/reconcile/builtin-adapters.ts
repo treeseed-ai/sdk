@@ -2154,15 +2154,32 @@ function resolveReconcileEnvironmentValues(
 function buildCloudflareEnv(input: TreeseedReconcileAdapterInput) {
 	const scope = scopeFromTarget(toDeployTarget(input.context.target));
 	const values = resolveReconcileEnvironmentValues(input, scope);
+	let accountId = [
+		values.TREESEED_CLOUDFLARE_ACCOUNT_ID,
+		input.context.launchEnv.TREESEED_CLOUDFLARE_ACCOUNT_ID,
+		process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID,
+		resolveConfiguredCloudflareAccountId(input.context.deployConfig),
+	].find((value) => typeof value === 'string'
+		&& value.trim().length > 0
+		&& value.trim() !== 'replace-with-cloudflare-account-id')?.trim() ?? '';
+	let token = [
+		values.TREESEED_CLOUDFLARE_API_TOKEN,
+		input.context.launchEnv.TREESEED_CLOUDFLARE_API_TOKEN,
+		process.env.TREESEED_CLOUDFLARE_API_TOKEN,
+	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
+	if (scope !== 'local' && (!accountId || !token)) {
+		const configuredValues = normalizeEnvironmentValues(resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope));
+		accountId = accountId || ([
+			configuredValues.TREESEED_CLOUDFLARE_ACCOUNT_ID,
+			resolveConfiguredCloudflareAccountId(input.context.deployConfig),
+		].find((value) => typeof value === 'string'
+			&& value.trim().length > 0
+			&& value.trim() !== 'replace-with-cloudflare-account-id')?.trim() ?? '');
+		token = token || (configuredValues.TREESEED_CLOUDFLARE_API_TOKEN ?? '');
+	}
 	return {
-		CLOUDFLARE_ACCOUNT_ID: values.TREESEED_CLOUDFLARE_ACCOUNT_ID
-			?? input.context.launchEnv.TREESEED_CLOUDFLARE_ACCOUNT_ID
-			?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID
-			?? resolveConfiguredCloudflareAccountId(input.context.deployConfig),
-		CLOUDFLARE_API_TOKEN: values.TREESEED_CLOUDFLARE_API_TOKEN
-			?? input.context.launchEnv.TREESEED_CLOUDFLARE_API_TOKEN
-			?? process.env.TREESEED_CLOUDFLARE_API_TOKEN
-			?? '',
+		CLOUDFLARE_ACCOUNT_ID: accountId,
+		CLOUDFLARE_API_TOKEN: token,
 	};
 }
 
@@ -2177,21 +2194,29 @@ function hasLiveResourceId(value: unknown) {
 
 function buildRailwayEnv(input: TreeseedReconcileAdapterInput, scope: 'local' | 'staging' | 'prod') {
 	const values = resolveReconcileEnvironmentValues(input, scope);
-	const token = [
+	let token = [
 		values.TREESEED_RAILWAY_API_TOKEN,
 		input.context.launchEnv.TREESEED_RAILWAY_API_TOKEN,
 		process.env.TREESEED_RAILWAY_API_TOKEN,
 	].find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
+	let railwayApiUrl = values.TREESEED_RAILWAY_API_URL
+		?? input.context.launchEnv.TREESEED_RAILWAY_API_URL
+		?? process.env.TREESEED_RAILWAY_API_URL
+		?? '';
+	let railwayWorkspace = values.TREESEED_RAILWAY_WORKSPACE
+		?? input.context.launchEnv.TREESEED_RAILWAY_WORKSPACE
+		?? process.env.TREESEED_RAILWAY_WORKSPACE
+		?? '';
+	if (scope !== 'local' && !token) {
+		const configuredValues = normalizeEnvironmentValues(resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope));
+		token = configuredValues.TREESEED_RAILWAY_API_TOKEN ?? '';
+		railwayApiUrl = railwayApiUrl || (configuredValues.TREESEED_RAILWAY_API_URL ?? '');
+		railwayWorkspace = railwayWorkspace || (configuredValues.TREESEED_RAILWAY_WORKSPACE ?? '');
+	}
 	return {
 		RAILWAY_API_TOKEN: token,
-		TREESEED_RAILWAY_API_URL: values.TREESEED_RAILWAY_API_URL
-			?? input.context.launchEnv.TREESEED_RAILWAY_API_URL
-			?? process.env.TREESEED_RAILWAY_API_URL
-			?? '',
-		TREESEED_RAILWAY_WORKSPACE: values.TREESEED_RAILWAY_WORKSPACE
-			?? input.context.launchEnv.TREESEED_RAILWAY_WORKSPACE
-			?? process.env.TREESEED_RAILWAY_WORKSPACE
-			?? '',
+		TREESEED_RAILWAY_API_URL: railwayApiUrl,
+		TREESEED_RAILWAY_WORKSPACE: railwayWorkspace,
 	};
 }
 
