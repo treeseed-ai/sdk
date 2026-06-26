@@ -1877,7 +1877,7 @@ function buildReleaseGateAdapter(): TreeseedReconcileAdapter {
 				});
 			}
 			if (gateKind === 'release-gate:verify' && packageId) {
-				const verify = runReleaseVerifyCommand({ tenantRoot: input.context.tenantRoot, packageId, env: input.context.launchEnv });
+				const verify = await runReleaseVerifyCommand({ tenantRoot: input.context.tenantRoot, packageId, env: input.context.launchEnv });
 				if (verify.ok !== true) {
 					throw new Error([verify.stderr, verify.stdout].filter(Boolean).join('\n').trim() || `${packageId} release verification failed`);
 				}
