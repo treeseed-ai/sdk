@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -83,6 +84,34 @@ function parseTreeseedPackageReference(packageName: string) {
 	};
 }
 
+function buildWorkspacePluginArtifacts(packageDir: string, packageName: string) {
+	const packageJsonPath = path.resolve(packageDir, 'package.json');
+	let packageJson: Record<string, any>;
+	try {
+		packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, any>;
+	} catch {
+		return false;
+	}
+	const scripts = packageJson.scripts && typeof packageJson.scripts === 'object' && !Array.isArray(packageJson.scripts)
+		? packageJson.scripts as Record<string, unknown>
+		: {};
+	const buildScript = typeof scripts['build:dist'] === 'string' && scripts['build:dist'].trim()
+		? 'build:dist'
+		: typeof scripts.build === 'string' && scripts.build.trim()
+			? 'build'
+			: null;
+	if (!buildScript) return false;
+	const result = spawnSync('npm', ['--prefix', packageDir, 'run', buildScript], {
+		cwd: path.resolve(packageDir, '..', '..'),
+		stdio: 'inherit',
+		env: process.env,
+	});
+	if (result.status !== 0) {
+		throw new Error(`Failed to build ${packageName} workspace plugin artifacts with npm run ${buildScript}.`);
+	}
+	return true;
+}
+
 function resolveLocalWorkspacePluginPath(packageName: string, tenantRoot: string) {
 	const parsed = parseTreeseedPackageReference(packageName);
 	if (!parsed) return null;
@@ -103,7 +132,14 @@ function resolveLocalWorkspacePluginPath(packageName: string, tenantRoot: string
 		path.resolve(packageDir, 'dist', `${normalizedSubpath}.js`),
 		path.resolve(packageDir, `${normalizedSubpath}.js`),
 	];
-	return candidates.find((candidate) => existsSync(candidate)) ?? null;
+	const existing = candidates.find((candidate) => existsSync(candidate));
+	if (existing) return existing;
+
+	if (buildWorkspacePluginArtifacts(packageDir, packageName)) {
+		return candidates.find((candidate) => existsSync(candidate)) ?? null;
+	}
+
+	return null;
 }
 
 function loadPluginModule(packageName: string, tenantRoot: string) {
