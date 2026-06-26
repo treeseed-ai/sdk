@@ -126,6 +126,13 @@ export type TreeseedDesiredResourceGraph = {
 	fingerprints: Record<string, string>;
 };
 
+const INTERNAL_PACKAGE_DEPENDENCY_FIELDS = [
+	'dependencies',
+	'optionalDependencies',
+	'peerDependencies',
+	'devDependencies',
+] as const;
+
 function hashJson(value: unknown) {
 	return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
@@ -271,6 +278,28 @@ function localTreeDxContentProjects(tenantRoot: string) {
 
 function releasePhaseForEnvironment(environment: TreeseedDesiredEnvironment) {
 	return environment === 'prod' ? 'release' : 'stage';
+}
+
+function internalPackageDependencies(packages: TreeseedPackageUnit[], pkg: TreeseedPackageUnit) {
+	const packageIds = new Set(packages.map((entry) => entry.id));
+	const packageJsonPath = resolvePath(pkg.path, 'package.json');
+	if (!existsSync(packageJsonPath)) return [];
+	try {
+		const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, unknown>;
+		const dependencies = new Set<string>();
+		for (const field of INTERNAL_PACKAGE_DEPENDENCY_FIELDS) {
+			const entries = packageJson[field];
+			if (!entries || typeof entries !== 'object' || Array.isArray(entries)) continue;
+			for (const dependencyName of Object.keys(entries)) {
+				if (dependencyName !== pkg.id && packageIds.has(dependencyName)) {
+					dependencies.add(dependencyName);
+				}
+			}
+		}
+		return [...dependencies].sort();
+	} catch {
+		return [];
+	}
 }
 
 function resourceKindForUnit(unit: TreeseedDesiredUnit): TreeseedDesiredResourceKind {
@@ -762,6 +791,10 @@ function releaseGateResources(packages: TreeseedPackageUnit[], templates: Treese
 	const hostedEnvironment = environment === 'prod' ? 'prod' : 'staging';
 	const packageGates = packages.flatMap((pkg) => {
 		const fingerprint = hashJson({ packageId: pkg.id, version: pkg.version, capability: pkg.releaseCapability, environment, phase });
+		const verifyDependencies = [
+			`package-manifest:${pkg.id}`,
+			...internalPackageDependencies(packages, pkg).map((dependencyId) => `release-gate:verify:${dependencyId}`),
+		];
 		const verifyGate: TreeseedDesiredResource = {
 			id: `release-gate:verify:${pkg.id}`,
 			kind: 'release-gate',
@@ -770,7 +803,7 @@ function releaseGateResources(packages: TreeseedPackageUnit[], templates: Treese
 			packageId: pkg.id,
 			serviceId: null,
 			logicalName: `${pkg.id} verify gate`,
-			dependencies: [`package-manifest:${pkg.id}`],
+			dependencies: verifyDependencies,
 			spec: {
 				gateKind: 'release-gate:verify',
 				phase,

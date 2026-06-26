@@ -223,6 +223,30 @@ describe('canonical desired resource graph', () => {
 			]));
 	});
 
+	it('orders package release verify gates by declared internal package dependencies', () => {
+		if (!workspaceRoot) return;
+		const graph = compileTreeseedDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+		const dependenciesFor = (id: string) =>
+			graph.resources.find((entry) => entry.id === id)?.dependencies ?? [];
+
+		expect(dependenciesFor('release-gate:verify:@treeseed/core')).toEqual(expect.arrayContaining([
+			'release-gate:verify:@treeseed/sdk',
+			'release-gate:verify:@treeseed/ui',
+		]));
+		expect(dependenciesFor('release-gate:verify:@treeseed/admin')).toEqual(expect.arrayContaining([
+			'release-gate:verify:@treeseed/core',
+			'release-gate:verify:@treeseed/sdk',
+			'release-gate:verify:@treeseed/ui',
+		]));
+		expect(dependenciesFor('release-gate:verify:@treeseed/api')).toEqual(expect.arrayContaining([
+			'release-gate:verify:@treeseed/cli',
+			'release-gate:verify:@treeseed/sdk',
+		]));
+	});
+
 	it('reports Git index lock diagnostics without mutating by default', () => {
 		const diagnostic = inspectTreeseedGitLocks(workspaceRoot ?? resolveTreeseedTestPath(testRoot, 'packages/sdk') ?? testRoot.root);
 		expect(diagnostic.repoRoot).toBeTruthy();
