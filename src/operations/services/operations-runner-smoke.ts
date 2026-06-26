@@ -72,7 +72,7 @@ function manifestApiBaseUrl(tenantRoot: string, environment: TreeseedOperationsR
 
 function defaultBaseUrl(environment: TreeseedOperationsRunnerSmokeEnvironment) {
 	if (environment === 'local') return 'http://127.0.0.1:3000';
-	return environment === 'prod' ? 'https://api.treeseed.ai' : 'https://api-treeseed-staging.treeseed.ai';
+	return environment === 'prod' ? 'https://api.treeseed.ai' : 'https://api-treeseed-market-staging-ca844c56.treeseed.ai';
 }
 
 function localManagedDevServiceSecret(environment: TreeseedOperationsRunnerSmokeEnvironment) {

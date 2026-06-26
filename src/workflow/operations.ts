@@ -833,6 +833,22 @@ function ensureTreeseedCommandReadiness(root: string) {
 	return report;
 }
 
+function ensureTreeseedLocalStateExcluded(root: string) {
+	const gitDir = runTreeseedGit(['rev-parse', '--git-dir'], { cwd: root, mode: 'read', allowFailure: true }).stdout.trim();
+	if (!gitDir) return;
+	const excludePath = resolve(root, gitDir, 'info', 'exclude');
+	const current = existsSync(excludePath) ? readFileSync(excludePath, 'utf8') : '';
+	const requiredEntries = ['/.treeseed/config/', '/.treeseed/workflow/', '/.treeseed/state/', '/.treeseed/workspace-links.json'];
+	const missing = requiredEntries.filter((entry) => !current.split(/\r?\n/u).includes(entry));
+	if (missing.length === 0) return;
+	mkdirSync(dirname(excludePath), { recursive: true });
+	writeFileSync(
+		excludePath,
+		`${current}${current.endsWith('\n') || current.length === 0 ? '' : '\n'}${missing.join('\n')}\n`,
+		'utf8',
+	);
+}
+
 function workflowError(
 	operation: TreeseedWorkflowOperationId,
 	code: TreeseedWorkflowErrorCode,
@@ -4461,6 +4477,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 		return await withContextEnv(helpers.context.env, async () => {
 			const tenantRoot = resolveProjectRootOrThrow('save', helpers.cwd());
 			const root = workspaceRoot(tenantRoot);
+			ensureTreeseedLocalStateExcluded(root);
 			const rootBranch = currentBranch(repoRoot(root)) || null;
 			reattachRepairablePackageRepos(root, [rootBranch, STAGING_BRANCH, PRODUCTION_BRANCH].filter((branch): branch is string => Boolean(branch)), {
 				operation: 'save',
@@ -5151,6 +5168,7 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 					payload,
 					{
 						runId: workflowRun.runId,
+						includeFinalState: !managedWorktreeForClose,
 						nextSteps: createNextSteps([
 							{ operation: 'tasks', reason: 'Inspect the remaining task branches after closing this one.' },
 						]),
