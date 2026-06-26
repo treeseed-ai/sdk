@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { build } from 'esbuild';
 import ts from 'typescript';
@@ -143,6 +143,55 @@ function copyAssetTree(sourceRoot, outputRoot) {
 	}
 }
 
+function listRelativeFiles(root) {
+	if (!existsSync(root)) {
+		return [];
+	}
+
+	return walkFiles(root).map((filePath) => relative(root, filePath));
+}
+
+function removeEmptyDirectories(root) {
+	if (!existsSync(root)) {
+		return;
+	}
+
+	const entries = readdirSync(root, { withFileTypes: true });
+	for (const entry of entries) {
+		if (!entry.isDirectory()) {
+			continue;
+		}
+		removeEmptyDirectories(resolve(root, entry.name));
+	}
+
+	if (root !== distRoot && readdirSync(root).length === 0) {
+		rmdirSync(root);
+	}
+}
+
+function publishDistBuild() {
+	if (!existsSync(distRoot)) {
+		renameSync(distBuildRoot, distRoot);
+		return;
+	}
+
+	const nextFiles = new Set(listRelativeFiles(distBuildRoot));
+	for (const relativeFile of nextFiles) {
+		const sourceFile = resolve(distBuildRoot, relativeFile);
+		const targetFile = resolve(distRoot, relativeFile);
+		ensureDir(targetFile);
+		renameSync(sourceFile, targetFile);
+	}
+
+	for (const relativeFile of listRelativeFiles(distRoot)) {
+		if (nextFiles.has(relativeFile)) {
+			continue;
+		}
+		rmSync(resolve(distRoot, relativeFile), { force: true });
+	}
+	removeEmptyDirectories(distRoot);
+}
+
 function transpileScript(filePath, outputRoot) {
 	const source = readFileSync(filePath, 'utf8');
 	const relativePath = relative(scriptsRoot, filePath);
@@ -253,8 +302,7 @@ try {
 		copyFileSync(resolve(packageRoot, 'README.md'), resolve(distBuildRoot, '..', 'README.md'));
 	}
 
-	rmSync(distRoot, { recursive: true, force: true });
-	renameSync(distBuildRoot, distRoot);
+	publishDistBuild();
 } finally {
 	rmSync(distBuildRoot, { recursive: true, force: true });
 	releaseBuildLock();
