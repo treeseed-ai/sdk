@@ -406,7 +406,12 @@ function buildGraphOnlyAdapter(providerId: string, unitTypes: TreeseedReconcileU
 
 function buildGitHubEnv(input: TreeseedReconcileAdapterInput) {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
-	const values = resolveReconcileEnvironmentValues(input, scope === 'local' ? 'staging' : scope);
+	const resolvedScope = scope === 'local' ? 'staging' : scope;
+	const configuredValues = resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, resolvedScope);
+	const values = {
+		...normalizeEnvironmentValues(configuredValues),
+		...resolveReconcileEnvironmentValues(input, resolvedScope),
+	};
 	const repository = typeof input.unit.spec.repository === 'string' ? input.unit.spec.repository : null;
 	if (!repository) return values;
 	const credential = resolveGitHubCredentialForRepository(repository, { values, env: values });
@@ -2139,9 +2144,7 @@ function resolveReconcileEnvironmentValues(
 		return resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
 	}
 
-	const configuredValues = resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
 	const hostedRuntimeValues = {
-		...normalizeEnvironmentValues(configuredValues),
 		...normalizeEnvironmentValues(process.env),
 		...normalizeEnvironmentValues(input.context.launchEnv),
 	};
