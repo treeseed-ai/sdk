@@ -1168,7 +1168,8 @@ describe('treeseed workflow lifecycle', () => {
 
 		expect(result.payload.mode).toBe('reconcile-release-gates');
 		expect(result.payload.target).toEqual({ kind: 'persistent', scope: 'staging' });
-		expect(result.payload.mergeStrategy).toBe('release-gate');
+		expect(result.payload.mergeStrategy).toBe('exact-sha-then-release-gate');
+		expect(result.payload.stageMerge.root.status).toBe('staged');
 		expect(result.payload.units.map((unit: { unitId: string }) => unit.unitId)).toEqual(expect.arrayContaining([
 			'release-gate:verify:@treeseed/sdk',
 			'release-gate:hosted-reconcile:staging:all',

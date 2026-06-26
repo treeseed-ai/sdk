@@ -80,7 +80,6 @@ import {
 	reattachDetachedHeadIfSafe,
 	remoteBranchExists,
 	STAGING_BRANCH,
-	squashMergeBranchIntoStaging,
 	syncBranchWithOrigin,
 } from '../operations/services/git-workflow.ts';
 import { resolveGitHubRepositorySlug } from '../operations/services/github-automation.ts';
@@ -1021,6 +1020,52 @@ function assertWorkspaceClean(root: string) {
 	const repoDirs = [repoRoot(root), ...checkedOutManagedWorkflowRepos(root).map((repo) => repo.dir)];
 	assertCleanWorktrees(repoDirs);
 	return repoDirs;
+}
+
+function stageWorkspaceBranches(root: string, featureBranch: string, message: string) {
+	assertWorkspaceClean(root);
+	const packageStages = checkedOutManagedWorkflowRepos(root).map((repo) => {
+		if (!ensureLocalTaskBranch(repo.dir, featureBranch)) {
+			return {
+				name: repo.name,
+				path: repo.dir,
+				status: 'skipped' as const,
+				reason: 'branch-missing',
+				targetBranch: STAGING_BRANCH,
+				commitSha: null,
+			};
+		}
+		const commitSha = headCommit(repo.dir);
+		pushHeadToBranch(repo.dir, STAGING_BRANCH);
+		return {
+			name: repo.name,
+			path: repo.dir,
+			status: 'staged' as const,
+			reason: null,
+			targetBranch: STAGING_BRANCH,
+			commitSha,
+			generatedMetadataReconciliation: null,
+		};
+	});
+	if (currentBranch(repoRoot(root)) !== featureBranch) {
+		checkoutBranch(repoRoot(root), featureBranch);
+	}
+	const rootCommitSha = headCommit(repoRoot(root));
+	pushHeadToBranch(repoRoot(root), STAGING_BRANCH);
+	return {
+		sourceBranch: featureBranch,
+		targetBranch: STAGING_BRANCH,
+		message,
+		packages: packageStages,
+		root: {
+			name: '@treeseed/market',
+			path: repoRoot(root),
+			status: 'staged' as const,
+			targetBranch: STAGING_BRANCH,
+			commitSha: rootCommitSha,
+			generatedMetadataReconciliation: null,
+		},
+	};
 }
 
 function buildWorkflowResult<TPayload>(
@@ -5213,6 +5258,23 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			const ciMode = normalizeCiMode(effectiveInput.ciMode, 'stage');
 			const waitForStaging = effectiveInput.verifyDeployedResources === true || effectiveInput.waitForStaging !== false;
 			const applicationSelection = selectWorkflowApplications(root, { packageSelection: session.packageSelection });
+			const autoSave = executionMode === 'execute'
+				? await maybeAutoSaveCurrentTaskBranch(helpers, 'stage', {
+					message,
+					autoSave: effectiveInput.autoSave,
+					verify: false,
+					preview: false,
+				})
+				: { performed: false, save: null };
+			const activeSession = executionMode === 'execute'
+				? resolveTreeseedWorkflowSession(root)
+				: session;
+			const activeFeatureBranch = executionMode === 'execute'
+				? assertFeatureBranch(root)
+				: activeSession.branchName;
+			const stageMerge = executionMode === 'execute'
+				? stageWorkspaceBranches(root, activeFeatureBranch, message)
+				: null;
 			return runReleaseGateReconcileFacade(
 				'stage',
 				helpers,
@@ -5227,11 +5289,14 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					branchName: session.branchName,
 					branchRole: session.branchRole,
 					mergeTarget: STAGING_BRANCH,
-					mergeStrategy: 'release-gate',
+					mergeStrategy: 'exact-sha-then-release-gate',
 					message,
 					ciMode,
 					waitForStaging,
 					applicationSelection,
+					stageMerge,
+					autoSaved: autoSave.performed,
+					autoSaveResult: autoSave.save,
 					autoResumeCandidate: planAutoResumeRun
 						? {
 							runId: planAutoResumeRun.runId,
