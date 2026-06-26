@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { build } from 'esbuild';
 import ts from 'typescript';
@@ -7,9 +7,40 @@ import { packageRoot } from './package-tools.ts';
 const srcRoot = resolve(packageRoot, 'src');
 const scriptsRoot = resolve(packageRoot, 'scripts');
 const distRoot = resolve(packageRoot, 'dist');
+const buildLockRoot = resolve(packageRoot, '.treeseed-build-dist.lock');
 const treeseedTemplateCatalogSourceRoot = resolve(srcRoot, 'treeseed', 'template-catalog');
 const treeseedServicesSourceRoot = resolve(srcRoot, 'treeseed', 'services');
 const BIN_ENTRYPOINTS = new Set(['verification.ts']);
+const BUILD_LOCK_TIMEOUT_MS = 15 * 60 * 1000;
+const BUILD_LOCK_STALE_MS = 20 * 60 * 1000;
+
+function sleep(ms: number) {
+	return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+}
+
+async function acquireBuildLock() {
+	const startedAt = Date.now();
+	while (true) {
+		try {
+			mkdirSync(buildLockRoot);
+			writeFileSync(resolve(buildLockRoot, 'owner.json'), JSON.stringify({
+				pid: process.pid,
+				startedAt: new Date().toISOString(),
+			}, null, 2));
+			return () => rmSync(buildLockRoot, { recursive: true, force: true });
+		} catch (error) {
+			const ageMs = existsSync(buildLockRoot) ? Date.now() - statSync(buildLockRoot).mtimeMs : 0;
+			if (ageMs > BUILD_LOCK_STALE_MS) {
+				rmSync(buildLockRoot, { recursive: true, force: true });
+				continue;
+			}
+			if (Date.now() - startedAt > BUILD_LOCK_TIMEOUT_MS) {
+				throw new Error(`Timed out waiting for SDK dist build lock at ${buildLockRoot}.`);
+			}
+			await sleep(250);
+		}
+	}
+}
 
 const COPY_EXTENSIONS = new Set(['.json', '.md', '.js', '.d.ts', '.yaml', '.yml']);
 
@@ -149,51 +180,56 @@ function rewriteDeclarations() {
 	}
 }
 
-rmSync(distRoot, { recursive: true, force: true });
+const releaseBuildLock = await acquireBuildLock();
+try {
+	rmSync(distRoot, { recursive: true, force: true });
 
-for (const filePath of walkFiles(srcRoot)) {
-	if (filePath.startsWith(`${treeseedTemplateCatalogSourceRoot}/`)) {
-		continue;
+	for (const filePath of walkFiles(srcRoot)) {
+		if (filePath.startsWith(`${treeseedTemplateCatalogSourceRoot}/`)) {
+			continue;
+		}
+		const extension = extname(filePath);
+		if (isDeclarationAsset(filePath)) {
+			copyAsset(filePath, srcRoot, distRoot);
+			continue;
+		}
+		if (isTypeScriptSource(filePath)) {
+			await compileModule(filePath, srcRoot, distRoot);
+			continue;
+		}
+
+		if (COPY_EXTENSIONS.has(extension)) {
+			copyAsset(filePath, srcRoot, distRoot);
+		}
 	}
-	const extension = extname(filePath);
-	if (isDeclarationAsset(filePath)) {
-		copyAsset(filePath, srcRoot, distRoot);
-		continue;
-	}
-	if (isTypeScriptSource(filePath)) {
-		await compileModule(filePath, srcRoot, distRoot);
-		continue;
+
+	if (existsSync(treeseedTemplateCatalogSourceRoot)) {
+		copyAssetTree(treeseedTemplateCatalogSourceRoot, resolve(distRoot, 'treeseed', 'template-catalog'));
 	}
 
-	if (COPY_EXTENSIONS.has(extension)) {
-		copyAsset(filePath, srcRoot, distRoot);
+	if (existsSync(treeseedServicesSourceRoot)) {
+		copyAssetTree(treeseedServicesSourceRoot, resolve(distRoot, 'treeseed', 'services'));
 	}
-}
 
-if (existsSync(treeseedTemplateCatalogSourceRoot)) {
-	copyAssetTree(treeseedTemplateCatalogSourceRoot, resolve(distRoot, 'treeseed', 'template-catalog'));
-}
-
-if (existsSync(treeseedServicesSourceRoot)) {
-	copyAssetTree(treeseedServicesSourceRoot, resolve(distRoot, 'treeseed', 'services'));
-}
-
-for (const filePath of walkFiles(scriptsRoot)) {
-	const extension = extname(filePath);
-	if (extension === '.ts') {
-		transpileScript(filePath);
+	for (const filePath of walkFiles(scriptsRoot)) {
+		const extension = extname(filePath);
+		if (extension === '.ts') {
+			transpileScript(filePath);
+		}
 	}
-}
 
-emitDeclarations();
-rewriteDeclarations();
+	emitDeclarations();
+	rewriteDeclarations();
 
-for (const filePath of walkFiles(distRoot)) {
-	if (filePath.endsWith('.d.js')) {
-		rmSync(filePath, { force: true });
+	for (const filePath of walkFiles(distRoot)) {
+		if (filePath.endsWith('.d.js')) {
+			rmSync(filePath, { force: true });
+		}
 	}
-}
 
-if (existsSync(resolve(packageRoot, 'README.md'))) {
-	copyFileSync(resolve(packageRoot, 'README.md'), resolve(distRoot, '..', 'README.md'));
+	if (existsSync(resolve(packageRoot, 'README.md'))) {
+		copyFileSync(resolve(packageRoot, 'README.md'), resolve(distRoot, '..', 'README.md'));
+	}
+} finally {
+	releaseBuildLock();
 }
