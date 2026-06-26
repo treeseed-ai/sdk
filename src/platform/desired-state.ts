@@ -29,6 +29,7 @@ export type TreeseedPackageUnit = {
 	version: string | null;
 	publishTarget: string | null;
 	manifestPath: string | null;
+	repository: string | null;
 	releaseCapability: 'npm' | 'image' | 'deploy-only' | 'none';
 };
 
@@ -169,6 +170,7 @@ function packageUnitFromAdapter(adapter: TreeseedPackageAdapter): TreeseedPackag
 		version: adapter.version,
 		publishTarget: adapter.publishTarget,
 		manifestPath: adapter.manifestPath,
+		repository: typeof adapter.metadata.repository === 'string' ? adapter.metadata.repository : null,
 		releaseCapability: packageReleaseCapability(adapter),
 	};
 }
@@ -836,6 +838,7 @@ function releaseGateResources(packages: TreeseedPackageUnit[], templates: Treese
 					phase,
 					packageId: pkg.id,
 					environment: hostedEnvironment,
+					repository: pkg.repository,
 					fingerprint: hashJson({ publishGateKind, packageId: pkg.id, version: pkg.version, environment, phase }),
 					capability: pkg.releaseCapability,
 				},

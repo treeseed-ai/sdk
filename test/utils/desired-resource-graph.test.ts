@@ -245,6 +245,10 @@ describe('canonical desired resource graph', () => {
 			'release-gate:verify:@treeseed/cli',
 			'release-gate:verify:@treeseed/sdk',
 		]));
+		expect(graph.resources.find((entry) => entry.id === 'release-gate:npm-publish:@treeseed/sdk')?.spec)
+			.toMatchObject({
+				repository: 'treeseed-ai/sdk',
+			});
 	});
 
 	it('reports Git index lock diagnostics without mutating by default', () => {
