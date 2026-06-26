@@ -102,6 +102,7 @@ describe('project platform workflow actions', () => {
 		expect(source.slice(contentPublish, railwayDeploy)).toContain("mode: 'production'");
 		expect(source.slice(contentPublish, railwayDeploy)).toContain("dependencies: ['web:build', contentNodeId");
 		expect(source.slice(source.indexOf('async function publishContent'), deployStart)).toContain('resolveTreeseedResourceIdentity(siteConfig, target).teamId');
+		expect(source.slice(source.indexOf('async function publishContent'), deployStart)).toContain("projectPlatformTempRoot(options.tenantRoot, 'content-publish')");
 	});
 
 	it('writes provider timing summaries into deploy workflow GitHub step summaries', () => {

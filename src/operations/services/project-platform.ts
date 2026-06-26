@@ -1088,7 +1088,7 @@ async function publishContent(
 		}
 	}
 
-	const tempRoot = mkdtempSync(join(projectPlatformTempRoot(tenantRoot, 'content-publish'), 'treeseed-content-publish-'));
+	const tempRoot = mkdtempSync(join(projectPlatformTempRoot(options.tenantRoot, 'content-publish'), 'treeseed-content-publish-'));
 	try {
 		if (!options.dryRun) {
 			const uploadOptions = {
