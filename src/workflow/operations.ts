@@ -76,8 +76,9 @@ import {
 	prepareReleaseBranches,
 	PRODUCTION_BRANCH,
 	pushBranch,
-	pushHeadToBranch,
+	pushCommitToBranch,
 	reattachDetachedHeadIfSafe,
+	remoteHeadCommit,
 	remoteBranchExists,
 	STAGING_BRANCH,
 	syncBranchWithOrigin,
@@ -1024,19 +1025,34 @@ function assertWorkspaceClean(root: string) {
 
 function stageWorkspaceBranches(root: string, featureBranch: string, message: string) {
 	assertWorkspaceClean(root);
+	const stagedRemoteTargets = new Set<string>();
 	const packageStages = checkedOutManagedWorkflowRepos(root).map((repo) => {
-		if (!ensureLocalTaskBranch(repo.dir, featureBranch)) {
+		if (!remoteBranchExists(repo.dir, featureBranch)) {
 			return {
 				name: repo.name,
 				path: repo.dir,
 				status: 'skipped' as const,
-				reason: 'branch-missing',
+				reason: 'remote-branch-missing',
 				targetBranch: STAGING_BRANCH,
 				commitSha: null,
 			};
 		}
-		const commitSha = headCommit(repo.dir);
-		pushHeadToBranch(repo.dir, STAGING_BRANCH);
+		ensureLocalTaskBranch(repo.dir, featureBranch);
+		const commitSha = remoteHeadCommit(repo.dir, featureBranch);
+		const targetKey = `${repo.remoteUrl ?? repo.dir}#${STAGING_BRANCH}`;
+		if (stagedRemoteTargets.has(targetKey)) {
+			return {
+				name: repo.name,
+				path: repo.dir,
+				status: 'skipped' as const,
+				reason: 'duplicate-remote-target',
+				targetBranch: STAGING_BRANCH,
+				commitSha,
+				generatedMetadataReconciliation: null,
+			};
+		}
+		stagedRemoteTargets.add(targetKey);
+		pushCommitToBranch(repo.dir, commitSha, STAGING_BRANCH, { forceWithLease: true });
 		return {
 			name: repo.name,
 			path: repo.dir,
@@ -1050,8 +1066,10 @@ function stageWorkspaceBranches(root: string, featureBranch: string, message: st
 	if (currentBranch(repoRoot(root)) !== featureBranch) {
 		checkoutBranch(repoRoot(root), featureBranch);
 	}
-	const rootCommitSha = headCommit(repoRoot(root));
-	pushHeadToBranch(repoRoot(root), STAGING_BRANCH);
+	const rootCommitSha = remoteBranchExists(repoRoot(root), featureBranch)
+		? remoteHeadCommit(repoRoot(root), featureBranch)
+		: headCommit(repoRoot(root));
+	pushCommitToBranch(repoRoot(root), rootCommitSha, STAGING_BRANCH, { forceWithLease: true });
 	return {
 		sourceBranch: featureBranch,
 		targetBranch: STAGING_BRANCH,

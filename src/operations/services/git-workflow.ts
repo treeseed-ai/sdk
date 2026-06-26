@@ -324,6 +324,19 @@ export function fetchOrigin(repoDir) {
 	runGit(['fetch', 'origin'], { cwd: repoDir, capture: true });
 }
 
+export function remoteHeadCommit(repoDir, branchName) {
+	fetchOrigin(repoDir);
+	return runGit(['rev-parse', `origin/${branchName}`], { cwd: repoDir, capture: true }).trim();
+}
+
+export function pushCommitToBranch(repoDir, commitSha, branchName, { forceWithLease = false } = {}) {
+	ensureWritableOrigin(repoDir);
+	const args = forceWithLease
+		? ['push', '--force-with-lease', 'origin', `${commitSha}:refs/heads/${branchName}`]
+		: ['push', 'origin', `${commitSha}:refs/heads/${branchName}`];
+	runGit(args, { cwd: repoDir });
+}
+
 export function ensureLocalBranchTracking(repoDir, branchName) {
 	if (branchExists(repoDir, branchName)) {
 		return;
