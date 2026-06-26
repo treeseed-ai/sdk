@@ -132,7 +132,7 @@ function isTransientCloudflareReconcileError(error: unknown) {
 
 function isTransientRailwayReconcileError(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error ?? '');
-	return /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted|connectivity issue|rate limit|too many requests|429|5\d\d/iu.test(message);
+	return /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted|connectivity issue|rate limit|too many requests|429|5\d\d|operation is already in progress/iu.test(message);
 }
 
 function syntheticQueueLocator(name: string) {
