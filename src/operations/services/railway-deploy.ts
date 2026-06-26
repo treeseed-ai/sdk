@@ -970,7 +970,7 @@ export function validateRailwayServiceConfiguration(tenantRoot, scope) {
 		if (!service.projectName && !service.projectId) {
 			issues.push(`${service.key}: set railway.projectName or railway.projectId in treeseed.site.yaml.`);
 		}
-		if (!existsSync(service.rootDir)) {
+		if (!service.imageRef && !existsSync(service.rootDir)) {
 			issues.push(`${service.key}: service root ${service.rootDir} does not exist.`);
 		}
 		if (service.schedule?.length && !service.startCommand) {
@@ -1439,7 +1439,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 	};
 	const wantsInstanceConfig = service.buildCommand
 		|| service.startCommand
-		|| service.rootDir
+		|| (!service.imageRef && service.rootDir)
 		|| service.healthcheckPath
 		|| service.healthcheckTimeoutSeconds !== null
 		|| service.healthcheckTimeoutSeconds !== undefined
@@ -1523,7 +1523,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			buildCommand: service.buildCommand,
 			startCommand: railwayServiceRuntimeStartCommand(service),
 			cronSchedule: service.schedule?.[0] ?? null,
-			rootDirectory: '.',
+			rootDirectory: service.imageRef ? null : '.',
 			healthcheckPath: service.healthcheckPath,
 			healthcheckTimeoutSeconds: service.healthcheckTimeoutSeconds,
 			healthcheckIntervalSeconds: service.healthcheckIntervalSeconds,

@@ -475,6 +475,42 @@ services:
 		expect(() => validateRailwayServiceConfiguration(tenantRoot, 'staging')).not.toThrow();
 	});
 
+	it('does not require an agent checkout for image-backed capacity provider services', async () => {
+		const tenantRoot = await createTenantFixture();
+		await writeFile(
+			join(tenantRoot, 'treeseed.site.yaml'),
+			`name: Test API
+slug: test-api
+siteUrl: https://api.example.com
+contactEmail: hello@example.com
+hosting:
+  kind: treeseed_control_plane
+runtime:
+  mode: treeseed_managed
+services:
+  capacityProviderManager:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-agent-capacity-provider
+      serviceName: treeseed-agent-manager
+      imageRef: treeseed/agent-manager:dev-staging
+      runtimeMode: service
+  capacityProviderRunner:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-agent-capacity-provider
+      serviceName: treeseed-agent-runner-01
+      imageRef: treeseed/agent-runner:dev-staging
+      runtimeMode: service
+      volumeMountPath: /data
+`,
+		);
+
+		expect(() => validateRailwayServiceConfiguration(tenantRoot, 'staging')).not.toThrow();
+	});
+
 	it('lets Railway run service build commands from a clean upload in hosted CI', () => {
 		expect(shouldRunRailwayPredeployBuild({ CI: 'true' })).toBe(false);
 		expect(shouldRunRailwayPredeployBuild({ CI: 'true', TREESEED_RAILWAY_PREDEPLOY_BUILD: '1' })).toBe(true);
