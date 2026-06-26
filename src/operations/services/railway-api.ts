@@ -1027,17 +1027,10 @@ export async function ensureRailwayService({
 				if (!looksLikeRailwayImageSourceUpdateUnsupported(error)) {
 					throw error;
 				}
-				await deleteRailwayService({ serviceId: existing.id, env, fetchImpl });
-				await waitForRailwayServiceMissing({ projectId, serviceId: existing.id, env, fetchImpl });
-				const replacement = await createRailwayImageService({
-					projectId,
-					environmentId,
-					serviceName: desiredServiceName || existing.name,
-					imageRef: desiredImageRef,
-					env,
-					fetchImpl,
-				});
-				return { service: replacement, created: true, replaced: true };
+				throw new Error(
+					`Railway image source update for existing service ${existing.name} (${existing.id}) is unsupported; `
+					+ 'refusing to delete and recreate an existing service. Repair the service in place or use a provider-supported image source update.',
+				);
 			}
 		}
 		return { service: existing, created: false };
@@ -1104,31 +1097,6 @@ mutation TreeseedRailwayServiceCreate($input: ServiceCreateInput!) {
 		throw new Error(`Railway service create did not return a usable service for ${serviceName}.`);
 	}
 	return service;
-}
-
-async function waitForRailwayServiceMissing({
-	projectId,
-	serviceId,
-	env = process.env,
-	fetchImpl = fetch,
-	attempts = 20,
-	delayMs = 1500,
-}: {
-	projectId: string;
-	serviceId: string;
-	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
-	fetchImpl?: typeof fetch;
-	attempts?: number;
-	delayMs?: number;
-}) {
-	for (let attempt = 0; attempt < attempts; attempt += 1) {
-		const services = await listRailwayServices({ projectId, env, fetchImpl }).catch(() => []);
-		if (!services.some((service) => service.id === serviceId)) {
-			return true;
-		}
-		await new Promise((resolve) => setTimeout(resolve, delayMs));
-	}
-	throw new Error(`Railway service ${serviceId} was not deleted before image source replacement.`);
 }
 
 function looksLikeRailwayImageSourceUpdateUnsupported(error: unknown) {
@@ -1398,7 +1366,10 @@ export async function ensureRailwayPostgresService({
 		if (proof.ok) {
 			return { service: existing, created: false, proof };
 		}
-		await deleteRailwayService({ serviceId: existing.id, env, fetchImpl });
+		throw new Error(
+			`Railway Postgres service ${existing.name} (${existing.id}) failed proof; `
+			+ 'refusing to delete and recreate an existing service. Repair the existing database service in place and rerun reconciliation.',
+		);
 	}
 	const template = await getRailwayTemplateByCode({ code: 'postgres', env, fetchImpl });
 	await deployRailwayTemplate({

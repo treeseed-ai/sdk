@@ -17,6 +17,31 @@ function functionBody(fileSource: string, functionName: string) {
 	return fileSource.slice(start, next === -1 ? undefined : next);
 }
 
+function anyFunctionBody(fileSource: string, functionName: string) {
+	const exportMarker = `export async function ${functionName}`;
+	const asyncMarker = `async function ${functionName}`;
+	const functionMarker = `function ${functionName}`;
+	const start = [exportMarker, asyncMarker, functionMarker]
+		.map((marker) => fileSource.indexOf(marker))
+		.filter((index) => index >= 0)
+		.sort((a, b) => a - b)[0] ?? -1;
+	expect(start, `${functionName} exists`).toBeGreaterThanOrEqual(0);
+	const open = fileSource.indexOf('{', start);
+	expect(open, `${functionName} has a body`).toBeGreaterThanOrEqual(0);
+	let depth = 0;
+	for (let index = open; index < fileSource.length; index += 1) {
+		const char = fileSource[index];
+		if (char === '{') depth += 1;
+		if (char === '}') {
+			depth -= 1;
+			if (depth === 0) {
+				return fileSource.slice(start, index + 1);
+			}
+		}
+	}
+	throw new Error(`Could not locate the end of ${functionName}.`);
+}
+
 describe('hosting legacy mutation boundary', () => {
 	it('does not keep old Railway and TreeDX mutation helpers in the hosting graph', () => {
 		const graph = source('packages/sdk/src/hosting/graph.ts');
@@ -62,5 +87,33 @@ describe('hosting legacy mutation boundary', () => {
 		const applyBody = builtins.slice(applyIndex, builtins.indexOf('\n\t\t\tverify(input)', applyIndex));
 		expect(applyBody).toContain('reconciler-owned');
 		expect(applyBody).not.toContain('deployCloudflarePages(input)');
+	});
+
+	it('refuses Railway service delete-and-recreate repair paths in normal reconciliation', () => {
+		const railwayApi = source('packages/sdk/src/operations/services/railway-api.ts');
+		const builtins = source('packages/sdk/src/reconcile/builtin-adapters.ts');
+
+		for (const [label, body] of [
+			['ensureRailwayService', functionBody(railwayApi, 'ensureRailwayService')],
+			['ensureRailwayPostgresService', functionBody(railwayApi, 'ensureRailwayPostgresService')],
+			['resolveRailwayTopologyForScope', anyFunctionBody(builtins, 'resolveRailwayTopologyForScope')],
+			['syncRailwayEnvironmentForScope', anyFunctionBody(builtins, 'syncRailwayEnvironmentForScope')],
+			['reconcileStaleOperationsRunnerResourcesForProject', anyFunctionBody(builtins, 'reconcileStaleOperationsRunnerResourcesForProject')],
+			['ensureRailwayMarketDatabaseForScope', anyFunctionBody(builtins, 'ensureRailwayMarketDatabaseForScope')],
+			['reconcileAccidentalMarketDatabaseServices', anyFunctionBody(builtins, 'reconcileAccidentalMarketDatabaseServices')],
+		] as const) {
+			for (const blocked of [
+				'deleteRailwayService',
+				'deleteRailwayVolume',
+				'waitForRailwayServiceDeleted',
+				'waitForRailwayVolumeDeleted',
+				'TREESEED_RAILWAY_ALLOW_SERVICE_REPLACEMENT',
+				'TREESEED_RAILWAY_FORCE_IMAGE_SOURCE_UPDATE',
+				'replace-image-service',
+				'replaced: true',
+			]) {
+				expect(body, `${label} must not contain ${blocked}`).not.toContain(blocked);
+			}
+		}
 	});
 });

@@ -53,8 +53,6 @@ import {
 	ensureRailwayServiceVolume,
 	ensureRailwayPostgresService,
 	deployRailwayServiceInstance,
-	deleteRailwayService,
-	deleteRailwayVolume,
 	listRailwayEnvironmentServices,
 	getRailwayServiceInstance,
 	getRailwayProject,
@@ -3866,31 +3864,6 @@ async function resolveRailwayTopologyForScope(
 				projectsByKey.set(project.id, project);
 				projectsByKey.set(project.name, project);
 			}
-			if (
-				project
-				&& resolvedService
-				&& ensure
-				&& includeInstances
-				&& service.imageRef
-				&& (env.TREESEED_RAILWAY_FORCE_IMAGE_SOURCE_UPDATE === '1' || process.env.TREESEED_RAILWAY_FORCE_IMAGE_SOURCE_UPDATE === '1')
-			) {
-				traceRailwayReconcile(env, 'topology:railway-service:image', `${service.key}:${resolvedService.name}:${service.imageRef}`);
-				resolvedService = (await ensureRailwayService({
-					projectId: project.id,
-					serviceId: resolvedService.id,
-					serviceName: resolvedService.name,
-					environmentId: environment?.id,
-					imageRef: service.imageRef,
-					env,
-				})).service;
-				project = {
-					...project,
-					services: [...project.services.filter((entry) => entry.id !== resolvedService?.id), resolvedService],
-				};
-				projectsByKey.set(project.id, project);
-				projectsByKey.set(project.name, project);
-			}
-
 			let instance = null;
 			if (includeInstances && resolvedService && environment) {
 				if (ensure) {
@@ -3981,44 +3954,6 @@ function activeRailwayVolumeInstances(volume: { instances?: Array<{ state?: stri
 	});
 }
 
-async function waitForRailwayServiceDeleted({
-	projectId,
-	serviceId,
-	env,
-}: {
-	projectId: string;
-	serviceId: string;
-	env: NodeJS.ProcessEnv | Record<string, string | undefined>;
-}) {
-	for (let attempt = 0; attempt < 10; attempt += 1) {
-		const services = await listRailwayServices({ projectId, env }).catch(() => []);
-		if (!services.some((service) => service.id === serviceId)) {
-			return true;
-		}
-		await new Promise((resolve) => setTimeout(resolve, 1500));
-	}
-	return false;
-}
-
-async function waitForRailwayVolumeDeleted({
-	projectId,
-	volumeId,
-	env,
-}: {
-	projectId: string;
-	volumeId: string;
-	env: NodeJS.ProcessEnv | Record<string, string | undefined>;
-}) {
-	for (let attempt = 0; attempt < 10; attempt += 1) {
-		const volumes = await listRailwayVolumes({ projectId, env }).catch(() => []);
-		if (!volumes.some((volume) => volume.id === volumeId)) {
-			return true;
-		}
-		await new Promise((resolve) => setTimeout(resolve, 1500));
-	}
-	return false;
-}
-
 async function reconcileStaleOperationsRunnerResourcesForScope(
 	input: TreeseedReconcileAdapterInput,
 	topology: Awaited<ReturnType<typeof resolveRailwayTopologyForScope>>,
@@ -4087,21 +4022,17 @@ async function reconcileStaleOperationsRunnerResourcesForProject(
 		`${project.name}: desired=${[...desiredServiceNames].join(',') || '(none)'} stale=${staleServices.map((service) => service.name).join(',') || '(none)'}`,
 	);
 	for (const service of staleServices) {
-		traceRailwayReconcile(env, 'sync:runner:delete-stale-service', `${service.name}:${service.id}`);
-		await deleteRailwayService({ serviceId: service.id, env });
-		const deleted = await waitForRailwayServiceDeleted({ projectId: project.id, serviceId: service.id, env });
-		if (!deleted) {
-			recordRailwayProviderDrift(input, scope, {
-				kind: 'railway.stale-operations-runner-service',
-				action: 'delete',
-				status: 'blocked',
-				projectId: project.id,
-				environmentId: environment.id,
-				serviceId: service.id,
-				serviceName: service.name,
-				reason: 'Railway still reports the stale operations runner service after delete reconciliation.',
-			});
-		}
+		traceRailwayReconcile(env, 'sync:runner:block-stale-service', `${service.name}:${service.id}`);
+		recordRailwayProviderDrift(input, scope, {
+			kind: 'railway.stale-operations-runner-service',
+			action: 'manual-repair-required',
+			status: 'blocked',
+			projectId: project.id,
+			environmentId: environment.id,
+			serviceId: service.id,
+			serviceName: service.name,
+			reason: 'Railway reports an undeclared operations runner service. Reconciliation refuses to delete existing services; adopt, rename, retain, or remove it through an explicit destroy workflow.',
+		});
 	}
 	const volumes = await listRailwayVolumes({ projectId: project.id, env }).catch(() => []);
 	const staleVolumes = findStaleTreeseedOperationsRunnerResources(volumes, desiredVolumeNames)
@@ -4116,21 +4047,17 @@ async function reconcileStaleOperationsRunnerResourcesForProject(
 		`${project.name}: desired=${[...desiredVolumeNames].join(',') || '(none)'} stale=${staleVolumes.map((volume) => volume.name ?? volume.id).join(',') || '(none)'}`,
 	);
 	for (const volume of staleVolumes) {
-		traceRailwayReconcile(env, 'sync:runner:delete-stale-volume', `${volume.name ?? volume.id}:${volume.id}`);
-		await deleteRailwayVolume({ volumeId: volume.id, env });
-		const deleted = await waitForRailwayVolumeDeleted({ projectId: project.id, volumeId: volume.id, env });
-		if (!deleted) {
-			recordRailwayProviderDrift(input, scope, {
-				kind: 'railway.stale-operations-runner-volume',
-				action: 'delete',
-				status: 'blocked',
-				projectId: project.id,
-				environmentId: environment.id,
-				volumeId: volume.id,
-				volumeName: volume.name ?? null,
-				reason: 'Railway still reports the stale operations runner volume after delete reconciliation.',
-			});
-		}
+		traceRailwayReconcile(env, 'sync:runner:block-stale-volume', `${volume.name ?? volume.id}:${volume.id}`);
+		recordRailwayProviderDrift(input, scope, {
+			kind: 'railway.stale-operations-runner-volume',
+			action: 'manual-repair-required',
+			status: 'blocked',
+			projectId: project.id,
+			environmentId: environment.id,
+			volumeId: volume.id,
+			volumeName: volume.name ?? null,
+			reason: 'Railway reports an undeclared operations runner volume. Reconciliation refuses destructive cleanup during repair; adopt, retain, or remove it through an explicit destroy workflow.',
+		});
 	}
 }
 
@@ -4229,66 +4156,10 @@ async function syncRailwayEnvironmentForScope(
 					if (!/Deployment not found/iu.test(message)) {
 						throw error;
 					}
-					if (topology.env.TREESEED_RAILWAY_ALLOW_SERVICE_REPLACEMENT !== '1' && process.env.TREESEED_RAILWAY_ALLOW_SERVICE_REPLACEMENT !== '1') {
-						throw new Error(
-							`Railway deployment for ${entry.service.name} was not found, but service replacement is disabled. `
-							+ 'Set TREESEED_RAILWAY_ALLOW_SERVICE_REPLACEMENT=1 only when provider service-create capacity is available.',
-						);
-					}
-					traceRailwayReconcile(topology.env, 'sync:deploy:replace-image-service', `${entry.configuredService.key}:${entry.service.name}:${entry.configuredService.imageRef}`);
-					await deleteRailwayService({ serviceId: entry.service.id, env: topology.env });
-					await waitForRailwayServiceDeleted({
-						projectId: entry.project.id,
-						serviceId: entry.service.id,
-						env: topology.env,
-					});
-					const replacement = await ensureRailwayService({
-						projectId: entry.project.id,
-						environmentId: entry.environment.id,
-						serviceName: entry.configuredService.serviceName ?? entry.service.name,
-						imageRef: entry.configuredService.imageRef,
-						env: topology.env,
-					});
-					entry.service = replacement.service;
-					entry.instance = (await ensureRailwayServiceInstanceConfiguration({
-						serviceId: entry.service.id,
-						environmentId: entry.environment.id,
-						buildCommand: entry.configuredService.buildCommand,
-						startCommand: entry.configuredService.startCommand,
-						rootDirectory: entry.configuredService.imageRef ? null : railwayServiceRootDirectory(input.context.tenantRoot, entry.configuredService),
-						healthcheckPath: entry.configuredService.healthcheckPath,
-						healthcheckTimeoutSeconds: entry.configuredService.healthcheckTimeoutSeconds,
-						healthcheckIntervalSeconds: entry.configuredService.healthcheckIntervalSeconds,
-						restartPolicy: entry.configuredService.restartPolicy,
-						runtimeMode: entry.configuredService.runtimeMode,
-						env: topology.env,
-					})).instance;
-					await upsertRailwayVariables({
-						projectId: entry.project.id,
-						environmentId: entry.environment.id,
-						serviceId: entry.service.id,
-						variables: {
-							...serviceSync.variables,
-							...serviceSync.secrets,
-						},
-						env: topology.env,
-					});
-					if (entry.configuredService.volumeMountPath) {
-						const volumeName = `${entry.service.name}-volume`;
-						await ensureRailwayServiceVolume({
-							projectId: entry.project.id,
-							environmentId: entry.environment.id,
-							serviceId: entry.service.id,
-							name: volumeName,
-							mountPath: entry.configuredService.volumeMountPath,
-							env: topology.env,
-						});
-					}
-					await deployRailwayServiceInstance({
-						serviceId: entry.service.id,
-						environmentId: entry.environment.id,
-						env: topology.env,
-					});
+					throw new Error(
+						`Railway deployment for existing service ${entry.service.name} (${entry.service.id}) was not found; `
+						+ 'refusing to delete and recreate an existing service. Repair the service in place or restore a deployable service source before rerunning reconciliation.',
+					);
 				}
 			} else {
 				traceRailwayReconcile(topology.env, 'sync:deploy', `${entry.configuredService.key}:${entry.service.name}:variables`);
@@ -4411,8 +4282,17 @@ async function ensureRailwayMarketDatabaseForScope(
 			&& typeof variables.PGUSER === 'string'
 			&& typeof variables.PGPASSWORD === 'string';
 		if (looksLikePostgres) {
-			traceRailwayReconcile(topology.env, 'sync:postgres:delete-duplicate', `${service.name}:${service.id}`);
-			await deleteRailwayService({ serviceId: service.id, env: topology.env });
+			traceRailwayReconcile(topology.env, 'sync:postgres:block-duplicate', `${service.name}:${service.id}`);
+			recordRailwayProviderDrift(input, scope, {
+				kind: 'railway.duplicate-postgres-service',
+				action: 'manual-repair-required',
+				status: 'blocked',
+				projectId: firstService.project.id,
+				environmentId: firstService.environment.id,
+				serviceId: service.id,
+				serviceName: service.name,
+				reason: `Railway reports an extra PostgreSQL service in ${firstService.project.name}. Reconciliation refuses to delete existing services; adopt, retain, or remove it through an explicit destroy workflow.`,
+			});
 		}
 	}
 	const detachedPostgresVolumes = await listRailwayVolumes({
@@ -4433,47 +4313,17 @@ async function ensureRailwayMarketDatabaseForScope(
 		const detached = postgresInstances.length > 0 && postgresInstances.every((instance) => !instance.serviceId);
 		const detachedCanonicalVolume = volume.name === `${serviceName}-volume` && activePostgresInstances.length === 0;
 		if ((detached || detachedCanonicalVolume) && !attachedToCanonical) {
-			traceRailwayReconcile(topology.env, 'sync:postgres:delete-detached-volume', `${volume.name ?? volume.id}:${volume.id}`);
-			await deleteRailwayVolume({ volumeId: volume.id, env: topology.env });
-			let deleted = false;
-			for (let attempt = 0; attempt < 10; attempt += 1) {
-				await new Promise((resolve) => setTimeout(resolve, 3000));
-				const refreshed = await listRailwayVolumes({
-					projectId: firstService.project.id,
-					env: topology.env,
-				});
-				deleted = !refreshed.some((candidate) => candidate.id === volume.id);
-				if (deleted) break;
-			}
-			if (!deleted && volume.name) {
-				traceRailwayReconcile(topology.env, 'sync:postgres:delete-detached-volume-by-name', `${volume.name}:${volume.id}`);
-				try {
-					await deleteRailwayVolume({ volumeId: volume.name, env: topology.env });
-					for (let attempt = 0; attempt < 10; attempt += 1) {
-						await new Promise((resolve) => setTimeout(resolve, 3000));
-						const refreshed = await listRailwayVolumes({
-							projectId: firstService.project.id,
-							env: topology.env,
-						});
-						deleted = !refreshed.some((candidate) => candidate.id === volume.id || candidate.name === volume.name);
-						if (deleted) break;
-					}
-				} catch (error) {
-					traceRailwayReconcile(topology.env, 'sync:postgres:delete-detached-volume-by-name-blocked', error instanceof Error ? error.message : String(error ?? 'unknown error'));
-				}
-			}
-			if (!deleted) {
-				recordRailwayProviderDrift(input, scope, {
-					kind: 'railway.detached-postgres-volume',
-					action: 'delete',
-					status: 'blocked',
-					projectId: firstService.project.id,
-					environmentId: firstService.environment.id,
-					volumeId: volume.id,
-					volumeName: volume.name ?? null,
-					reason: 'Railway still reports the detached PostgreSQL volume after delete reconciliation.',
-				});
-			}
+			traceRailwayReconcile(topology.env, 'sync:postgres:block-detached-volume', `${volume.name ?? volume.id}:${volume.id}`);
+			recordRailwayProviderDrift(input, scope, {
+				kind: 'railway.detached-postgres-volume',
+				action: 'manual-repair-required',
+				status: 'blocked',
+				projectId: firstService.project.id,
+				environmentId: firstService.environment.id,
+				volumeId: volume.id,
+				volumeName: volume.name ?? null,
+				reason: 'Railway reports a detached PostgreSQL volume. Reconciliation refuses destructive cleanup during repair; adopt, retain, or remove it through an explicit destroy workflow.',
+			});
 		}
 	}
 	for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -4513,21 +4363,17 @@ async function reconcileAccidentalMarketDatabaseServices(
 		}
 		const services = await listRailwayServices({ projectId: project.id, env: topology.env }).catch(() => []);
 		for (const service of services.filter((entry) => entry.name === serviceName)) {
-			traceRailwayReconcile(topology.env, 'sync:postgres:delete-accidental-service', `${project.name}:${service.name}:${service.id}`);
-			await deleteRailwayService({ serviceId: service.id, env: topology.env });
-			const deleted = await waitForRailwayServiceDeleted({ projectId: project.id, serviceId: service.id, env: topology.env });
-			if (!deleted) {
-				recordRailwayProviderDrift(input, scope, {
-					kind: 'railway.accidental-market-database-service',
-					action: 'delete',
-					status: 'blocked',
-					projectId: project.id,
-					environmentId: environment.id,
-					serviceId: service.id,
-					serviceName: service.name,
-					reason: `Railway still reports undeclared Market database service ${service.name} in non-owner project ${project.name}.`,
-				});
-			}
+			traceRailwayReconcile(topology.env, 'sync:postgres:block-accidental-service', `${project.name}:${service.name}:${service.id}`);
+			recordRailwayProviderDrift(input, scope, {
+				kind: 'railway.accidental-market-database-service',
+				action: 'manual-repair-required',
+				status: 'blocked',
+				projectId: project.id,
+				environmentId: environment.id,
+				serviceId: service.id,
+				serviceName: service.name,
+				reason: `Railway reports undeclared Market database service ${service.name} in non-owner project ${project.name}. Reconciliation refuses to delete existing services; adopt, retain, or remove it through an explicit destroy workflow.`,
+			});
 		}
 		const volumes = await listRailwayVolumes({ projectId: project.id, env: topology.env }).catch(() => []);
 		for (const volume of volumes) {
@@ -4546,21 +4392,17 @@ async function reconcileAccidentalMarketDatabaseServices(
 			if (stillAttached) {
 				continue;
 			}
-			traceRailwayReconcile(topology.env, 'sync:postgres:delete-accidental-volume', `${project.name}:${volume.name ?? volume.id}:${volume.id}`);
-			try {
-				await deleteRailwayVolume({ volumeId: volume.id, env: topology.env });
-			} catch (error) {
-				recordRailwayProviderDrift(input, scope, {
-					kind: 'railway.accidental-market-database-volume',
-					action: 'delete',
-					status: 'blocked',
-					projectId: project.id,
-					environmentId: environment.id,
-					volumeId: volume.id,
-					volumeName: volume.name ?? null,
-					reason: error instanceof Error ? error.message : String(error ?? 'Railway rejected volume deletion.'),
-				});
-			}
+			traceRailwayReconcile(topology.env, 'sync:postgres:block-accidental-volume', `${project.name}:${volume.name ?? volume.id}:${volume.id}`);
+			recordRailwayProviderDrift(input, scope, {
+				kind: 'railway.accidental-market-database-volume',
+				action: 'manual-repair-required',
+				status: 'blocked',
+				projectId: project.id,
+				environmentId: environment.id,
+				volumeId: volume.id,
+				volumeName: volume.name ?? null,
+				reason: `Railway reports undeclared Market database volume ${volume.name ?? volume.id} in non-owner project ${project.name}. Reconciliation refuses destructive cleanup during repair; adopt, retain, or remove it through an explicit destroy workflow.`,
+			});
 		}
 	}
 }
