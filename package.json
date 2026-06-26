@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.11.1-dev.demo.20260625T151401Z",
+  "version": "0.11.1-dev.demo.20260626T004922Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -336,6 +336,14 @@
     "./operations/github-credentials": {
       "types": "./dist/operations/services/github-credentials.d.ts",
       "default": "./dist/operations/services/github-credentials.js"
+    },
+    "./operations/hub-provider-launch": {
+      "types": "./dist/operations/services/hub-provider-launch.d.ts",
+      "default": "./dist/operations/services/hub-provider-launch.js"
+    },
+    "./operations/project-host-operations": {
+      "types": "./dist/operations/services/project-host-operations.d.ts",
+      "default": "./dist/operations/services/project-host-operations.js"
     },
     "./types": {
       "types": "./dist/sdk-types.d.ts",

@@ -940,5 +940,4 @@ export type {
 	TreeseedTreeDxContentRuntimeMetadata,
 } from './platform/content-runtime-source.ts';
 export { CloudflareHttpD1Database } from './d1-http.ts';
-export * from './scenes/index.ts';
 export type * from './remote.ts';

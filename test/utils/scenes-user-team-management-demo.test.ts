@@ -55,7 +55,7 @@ describe('user team management demo scene', () => {
 		const projectRoot = findWorkspaceRoot();
 		const scene = readFileSync(resolve(projectRoot, 'scenes/user-team-management-demo.yaml'), 'utf8');
 		const normalizedScene = scene.replace(/\s+/gu, ' ');
-		const generator = readFileSync(resolve(projectRoot, 'scenes/user-team-management-demo.generate.mjs'), 'utf8');
+		const generator = readFileSync(resolve(projectRoot, 'scenes/user-team-management-demo.generate.ts'), 'utf8');
 		const readme = readFileSync(resolve(projectRoot, 'scenes/user-team-management-demo.README.md'), 'utf8');
 
 		for (const text of [
