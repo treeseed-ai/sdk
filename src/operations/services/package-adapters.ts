@@ -9,6 +9,7 @@ import {
 	createGitHubApiClient,
 	getLatestGitHubWorkflowRun,
 } from './github-api.ts';
+import { resolveTreeseedDockerhubToken, resolveTreeseedDockerhubUsername } from '../../service-credentials.ts';
 import { inspectTreeseedContentStructure } from '../../platform/content-runtime-source.ts';
 import type {
 	SeedContentPublishTargetKind,
@@ -725,11 +726,13 @@ export async function runTreeseedPackageImageWorkflow(options: TreeseedPackageIm
 		scope: 'staging',
 		baseEnv: options.env ?? process.env,
 	});
+	const dockerHubUsername = resolveTreeseedDockerhubUsername(configEnv);
+	const dockerHubToken = resolveTreeseedDockerhubToken(configEnv);
 	const dockerHub = {
-		usernameConfigured: Boolean(String(configEnv.TREESEED_DOCKERHUB_USERNAME ?? '').trim()),
-		tokenConfigured: Boolean(String(configEnv.TREESEED_DOCKERHUB_TOKEN ?? '').trim()),
-		requiredSecrets: ['TREESEED_DOCKERHUB_TOKEN'],
-		requiredVariables: ['TREESEED_DOCKERHUB_USERNAME'],
+		usernameConfigured: Boolean(dockerHubUsername),
+		tokenConfigured: Boolean(dockerHubToken),
+		requiredSecrets: ['DOCKERHUB_TOKEN'],
+		requiredVariables: ['DOCKERHUB_USERNAME'],
 	};
 	const credential = resolveGitHubCredentialForRepository(imagePlan.repository, { values: configEnv, env: options.env ?? process.env });
 	const githubClientEnv = credential.token
@@ -770,8 +773,8 @@ export async function runTreeseedPackageImageWorkflow(options: TreeseedPackageIm
 			environment,
 			blocked: true,
 			reason: 'Package image config sync is reconciler-owned. Use trsd package image --sync-config so github-secret-binding and github-variable-binding resources apply through adapters.',
-			secrets: configEnv.TREESEED_DOCKERHUB_TOKEN ? [{ name: 'TREESEED_DOCKERHUB_TOKEN', existed: null }] : [],
-			variables: configEnv.TREESEED_DOCKERHUB_USERNAME ? [{ name: 'TREESEED_DOCKERHUB_USERNAME', existed: null }] : [],
+			secrets: dockerHubToken ? [{ name: 'DOCKERHUB_TOKEN', existed: null }] : [],
+			variables: dockerHubUsername ? [{ name: 'DOCKERHUB_USERNAME', existed: null }] : [],
 		};
 	}
 	if (execute) {

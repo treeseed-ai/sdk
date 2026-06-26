@@ -110,6 +110,7 @@ import {
 } from './providers/release-private.ts';
 import { checkedOutTemplateRepositories } from '../operations/services/managed-repositories.ts';
 import { runTreeseedGit } from '../operations/services/git-runner.ts';
+import { withDockerhubServiceCredentialEnv } from '../service-credentials.ts';
 
 function toDeployTarget(target: TreeseedReconcileTarget) {
 	return target.kind === 'persistent'
@@ -412,12 +413,13 @@ function buildGitHubEnv(input: TreeseedReconcileAdapterInput) {
 		...normalizeEnvironmentValues(configuredValues),
 		...resolveReconcileEnvironmentValues(input, resolvedScope),
 	};
+	const providerValues = withDockerhubServiceCredentialEnv(values);
 	const repository = typeof input.unit.spec.repository === 'string' ? input.unit.spec.repository : null;
-	if (!repository) return values;
-	const credential = resolveGitHubCredentialForRepository(repository, { values, env: values });
+	if (!repository) return providerValues;
+	const credential = resolveGitHubCredentialForRepository(repository, { values: providerValues, env: providerValues });
 	return credential.token
-		? { ...values, TREESEED_GITHUB_TOKEN: credential.token, GH_TOKEN: credential.token, GITHUB_TOKEN: credential.token }
-		: values;
+		? { ...providerValues, TREESEED_GITHUB_TOKEN: credential.token, GH_TOKEN: credential.token, GITHUB_TOKEN: credential.token }
+		: providerValues;
 }
 
 function repositoryFromUnit(input: TreeseedReconcileAdapterInput) {
@@ -508,11 +510,14 @@ function buildGitHubBindingAdapter(unitType: 'github-secret-binding' | 'github-v
 			if (input.observed.live?.observed?.authAvailable === false) {
 				return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
 			}
+			if (input.observed.exists) {
+				return noopDiff();
+			}
 			const value = buildGitHubEnv(input)[name];
 			if (!value) {
 				return { action: 'blocked', reasons: [`Missing local value for ${name}`], before: input.observed.live, after: input.unit.spec };
 			}
-			return input.observed.exists ? noopDiff() : { action: 'update', reasons: [`GitHub ${unitType === 'github-secret-binding' ? 'secret' : 'variable'} ${name} is missing`], before: input.observed.live, after: input.unit.spec };
+			return { action: 'update', reasons: [`GitHub ${unitType === 'github-secret-binding' ? 'secret' : 'variable'} ${name} is missing`], before: input.observed.live, after: input.unit.spec };
 		},
 		async apply(input) {
 			if (input.diff.action === 'noop' || input.diff.action === 'blocked') return genericResult(input);
@@ -639,14 +644,32 @@ function buildPackageImageAdapter(): TreeseedReconcileAdapter {
 		supports(unitType, providerId) {
 			return unitType === 'package-image' && providerId === 'dockerhub';
 		},
-		refresh(input) {
+		async refresh(input) {
 			const env = buildGitHubEnv(input);
-			const usernameConfigured = Boolean(env.DOCKERHUB_USERNAME);
-			const tokenConfigured = Boolean(env.DOCKERHUB_TOKEN);
+			const repository = typeof input.unit.spec.repository === 'string' ? input.unit.spec.repository : null;
+			const environment = typeof input.unit.spec.environment === 'string' ? input.unit.spec.environment : 'staging';
+			const requiredSecrets = Array.isArray(input.unit.spec.requiredSecrets)
+				? input.unit.spec.requiredSecrets.map((entry) => String(entry)).filter(Boolean)
+				: ['DOCKERHUB_TOKEN'];
+			const requiredVariables = Array.isArray(input.unit.spec.requiredVariables)
+				? input.unit.spec.requiredVariables.map((entry) => String(entry)).filter(Boolean)
+				: ['DOCKERHUB_USERNAME'];
+			const localMissingSecrets = requiredSecrets.filter((name) => !env[name]);
+			const localMissingVariables = requiredVariables.filter((name) => !env[name]);
+			let remote: Awaited<ReturnType<typeof observeGitHubEnvironment>> | null = null;
+			if ((localMissingSecrets.length > 0 || localMissingVariables.length > 0) && repository) {
+				remote = await observeGitHubEnvironment(repository, environment, env);
+			}
+			const remoteSecretNames = new Set(remote?.secretNames ?? []);
+			const remoteVariableNames = new Set(remote?.variableNames ?? []);
+			const missingSecrets = localMissingSecrets.filter((name) => !remoteSecretNames.has(name));
+			const missingVariables = localMissingVariables.filter((name) => !remoteVariableNames.has(name));
+			const usernameConfigured = missingVariables.length === 0;
+			const tokenConfigured = missingSecrets.length === 0;
 			return {
 				...genericObservedState(input, usernameConfigured && tokenConfigured, [
-					...(usernameConfigured ? [] : ['DOCKERHUB_USERNAME is not configured']),
-					...(tokenConfigured ? [] : ['DOCKERHUB_TOKEN is not configured']),
+					...missingVariables.map((name) => `${name} is not configured`),
+					...missingSecrets.map((name) => `${name} is not configured`),
 				]),
 				status: usernameConfigured && tokenConfigured ? 'ready' : 'pending',
 				live: {
@@ -654,6 +677,9 @@ function buildPackageImageAdapter(): TreeseedReconcileAdapter {
 					dockerHub: {
 						usernameConfigured,
 						tokenConfigured,
+						source: localMissingSecrets.length === 0 && localMissingVariables.length === 0 ? 'local-env' : 'github-environment',
+						environment,
+						repository,
 					},
 				},
 			};
@@ -3840,7 +3866,14 @@ async function resolveRailwayTopologyForScope(
 				projectsByKey.set(project.id, project);
 				projectsByKey.set(project.name, project);
 			}
-			if (project && resolvedService && ensure && service.imageRef) {
+			if (
+				project
+				&& resolvedService
+				&& ensure
+				&& includeInstances
+				&& service.imageRef
+				&& (env.TREESEED_RAILWAY_FORCE_IMAGE_SOURCE_UPDATE === '1' || process.env.TREESEED_RAILWAY_FORCE_IMAGE_SOURCE_UPDATE === '1')
+			) {
 				traceRailwayReconcile(env, 'topology:railway-service:image', `${service.key}:${resolvedService.name}:${service.imageRef}`);
 				resolvedService = (await ensureRailwayService({
 					projectId: project.id,
@@ -4196,6 +4229,12 @@ async function syncRailwayEnvironmentForScope(
 					if (!/Deployment not found/iu.test(message)) {
 						throw error;
 					}
+					if (topology.env.TREESEED_RAILWAY_ALLOW_SERVICE_REPLACEMENT !== '1' && process.env.TREESEED_RAILWAY_ALLOW_SERVICE_REPLACEMENT !== '1') {
+						throw new Error(
+							`Railway deployment for ${entry.service.name} was not found, but service replacement is disabled. `
+							+ 'Set TREESEED_RAILWAY_ALLOW_SERVICE_REPLACEMENT=1 only when provider service-create capacity is available.',
+						);
+					}
 					traceRailwayReconcile(topology.env, 'sync:deploy:replace-image-service', `${entry.configuredService.key}:${entry.service.name}:${entry.configuredService.imageRef}`);
 					await deleteRailwayService({ serviceId: entry.service.id, env: topology.env });
 					await waitForRailwayServiceDeleted({
@@ -4211,6 +4250,19 @@ async function syncRailwayEnvironmentForScope(
 						env: topology.env,
 					});
 					entry.service = replacement.service;
+					entry.instance = (await ensureRailwayServiceInstanceConfiguration({
+						serviceId: entry.service.id,
+						environmentId: entry.environment.id,
+						buildCommand: entry.configuredService.buildCommand,
+						startCommand: entry.configuredService.startCommand,
+						rootDirectory: entry.configuredService.imageRef ? null : railwayServiceRootDirectory(input.context.tenantRoot, entry.configuredService),
+						healthcheckPath: entry.configuredService.healthcheckPath,
+						healthcheckTimeoutSeconds: entry.configuredService.healthcheckTimeoutSeconds,
+						healthcheckIntervalSeconds: entry.configuredService.healthcheckIntervalSeconds,
+						restartPolicy: entry.configuredService.restartPolicy,
+						runtimeMode: entry.configuredService.runtimeMode,
+						env: topology.env,
+					})).instance;
 					await upsertRailwayVariables({
 						projectId: entry.project.id,
 						environmentId: entry.environment.id,
@@ -4297,11 +4349,17 @@ async function ensureRailwayMarketDatabaseForScope(
 	) {
 		return;
 	}
-	const firstService = [...topology.services.values()].find((entry) => entry.project && entry.environment);
+	const serviceName = treeseedDatabase.serviceName;
+	const firstService = [...topology.services.values()].find((entry) =>
+		entry.project
+		&& entry.environment
+		&& ['api', 'operationsRunner'].includes(entry.configuredService.key)
+	);
 	if (!firstService?.project || !firstService.environment) {
+		await reconcileAccidentalMarketDatabaseServices(input, topology, serviceName, null);
 		return;
 	}
-	const serviceName = treeseedDatabase.serviceName;
+	await reconcileAccidentalMarketDatabaseServices(input, topology, serviceName, firstService.project.id);
 	let postgresService;
 	try {
 		postgresService = (await ensureRailwayPostgresService({
@@ -4436,6 +4494,75 @@ async function ensureRailwayMarketDatabaseForScope(
 	// Railway Postgres creates and owns its backing volume asynchronously. Do not
 	// create a replacement volume for the plugin service when the managed volume
 	// is not visible yet; the database service itself is the desired resource.
+}
+
+async function reconcileAccidentalMarketDatabaseServices(
+	input: TreeseedReconcileAdapterInput,
+	topology: Awaited<ReturnType<typeof resolveRailwayTopologyForScope>>,
+	serviceName: string,
+	ownerProjectId: string | null,
+) {
+	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
+	const projectEntries = [...topology.services.values()]
+		.filter((entry) => entry.project?.id && entry.environment?.id)
+		.map((entry) => ({ project: entry.project!, environment: entry.environment! }));
+	const projects = new Map(projectEntries.map((entry) => [entry.project.id, entry]));
+	for (const { project, environment } of projects.values()) {
+		if (ownerProjectId && project.id === ownerProjectId) {
+			continue;
+		}
+		const services = await listRailwayServices({ projectId: project.id, env: topology.env }).catch(() => []);
+		for (const service of services.filter((entry) => entry.name === serviceName)) {
+			traceRailwayReconcile(topology.env, 'sync:postgres:delete-accidental-service', `${project.name}:${service.name}:${service.id}`);
+			await deleteRailwayService({ serviceId: service.id, env: topology.env });
+			const deleted = await waitForRailwayServiceDeleted({ projectId: project.id, serviceId: service.id, env: topology.env });
+			if (!deleted) {
+				recordRailwayProviderDrift(input, scope, {
+					kind: 'railway.accidental-market-database-service',
+					action: 'delete',
+					status: 'blocked',
+					projectId: project.id,
+					environmentId: environment.id,
+					serviceId: service.id,
+					serviceName: service.name,
+					reason: `Railway still reports undeclared Market database service ${service.name} in non-owner project ${project.name}.`,
+				});
+			}
+		}
+		const volumes = await listRailwayVolumes({ projectId: project.id, env: topology.env }).catch(() => []);
+		for (const volume of volumes) {
+			if (isRetainedRailwayDetachedPostgresVolume(volume.name)) {
+				continue;
+			}
+			const postgresInstances = volume.instances.filter((instance) =>
+				instance.environmentId === environment.id
+				&& instance.mountPath === '/var/lib/postgresql/data'
+			);
+			if (postgresInstances.length === 0) {
+				continue;
+			}
+			const activeServiceIds = new Set(services.map((service) => service.id));
+			const stillAttached = postgresInstances.some((instance) => instance.serviceId && activeServiceIds.has(instance.serviceId));
+			if (stillAttached) {
+				continue;
+			}
+			traceRailwayReconcile(topology.env, 'sync:postgres:delete-accidental-volume', `${project.name}:${volume.name ?? volume.id}:${volume.id}`);
+			try {
+				await deleteRailwayVolume({ volumeId: volume.id, env: topology.env });
+			} catch (error) {
+				recordRailwayProviderDrift(input, scope, {
+					kind: 'railway.accidental-market-database-volume',
+					action: 'delete',
+					status: 'blocked',
+					projectId: project.id,
+					environmentId: environment.id,
+					volumeId: volume.id,
+					volumeName: volume.name ?? null,
+					reason: error instanceof Error ? error.message : String(error ?? 'Railway rejected volume deletion.'),
+				});
+			}
+		}
+	}
 }
 
 function isRetainedRailwayDetachedPostgresVolume(value: unknown) {

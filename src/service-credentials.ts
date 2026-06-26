@@ -30,11 +30,11 @@ export function resolveTreeseedRailwayApiToken(env: EnvLike = process.env) {
 }
 
 export function resolveTreeseedDockerhubToken(env: EnvLike = process.env) {
-	return configuredValue(env, TREESEED_DOCKERHUB_TOKEN_ENV);
+	return configuredValue(env, TREESEED_DOCKERHUB_TOKEN_ENV) || configuredValue(env, 'DOCKERHUB_TOKEN');
 }
 
 export function resolveTreeseedDockerhubUsername(env: EnvLike = process.env) {
-	return configuredValue(env, TREESEED_DOCKERHUB_USERNAME_ENV);
+	return configuredValue(env, TREESEED_DOCKERHUB_USERNAME_ENV) || configuredValue(env, 'DOCKERHUB_USERNAME');
 }
 
 export function resolveTreeseedCodexApiKey(env: EnvLike = process.env) {
