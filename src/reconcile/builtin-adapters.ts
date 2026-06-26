@@ -411,7 +411,7 @@ function buildGitHubEnv(input: TreeseedReconcileAdapterInput) {
 	if (!repository) return values;
 	const credential = resolveGitHubCredentialForRepository(repository, { values, env: values });
 	return credential.token
-		? { ...values, GH_TOKEN: credential.token, GITHUB_TOKEN: credential.token }
+		? { ...values, TREESEED_GITHUB_TOKEN: credential.token, GH_TOKEN: credential.token, GITHUB_TOKEN: credential.token }
 		: values;
 }
 
