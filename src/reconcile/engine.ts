@@ -709,15 +709,30 @@ export async function reconcileTreeseedNestedTarget({
 	target: TreeseedReconcileTarget;
 	dryRun: boolean;
 }) {
-	return reconcileTreeseedTarget({
-		tenantRoot: parentContext.tenantRoot,
-		target,
-		env: parentContext.launchEnv,
-		selector,
-		write: parentContext.write,
-		dryRun,
-		session: parentContext.session,
-	});
+	const previousVerificationResults = parentContext.session.get('treeseed:verification-results');
+	const previousTimings = parentContext.session.get('treeseed:timings');
+	try {
+		return await reconcileTreeseedTarget({
+			tenantRoot: parentContext.tenantRoot,
+			target,
+			env: parentContext.launchEnv,
+			selector,
+			write: parentContext.write,
+			dryRun,
+			session: parentContext.session,
+		});
+	} finally {
+		if (previousVerificationResults === undefined) {
+			parentContext.session.delete('treeseed:verification-results');
+		} else {
+			parentContext.session.set('treeseed:verification-results', previousVerificationResults);
+		}
+		if (previousTimings === undefined) {
+			parentContext.session.delete('treeseed:timings');
+		} else {
+			parentContext.session.set('treeseed:timings', previousTimings);
+		}
+	}
 }
 
 export async function verifyTreeseedNestedTarget({
@@ -729,11 +744,20 @@ export async function verifyTreeseedNestedTarget({
 	selector: TreeseedReconcileSelector;
 	target: TreeseedReconcileTarget;
 }) {
-	return collectTreeseedReconcileStatus({
-		tenantRoot: parentContext.tenantRoot,
-		target,
-		env: parentContext.launchEnv,
-		selector,
-		session: parentContext.session,
-	});
+	const previousVerificationResults = parentContext.session.get('treeseed:verification-results');
+	try {
+		return await collectTreeseedReconcileStatus({
+			tenantRoot: parentContext.tenantRoot,
+			target,
+			env: parentContext.launchEnv,
+			selector,
+			session: parentContext.session,
+		});
+	} finally {
+		if (previousVerificationResults === undefined) {
+			parentContext.session.delete('treeseed:verification-results');
+		} else {
+			parentContext.session.set('treeseed:verification-results', previousVerificationResults);
+		}
+	}
 }
