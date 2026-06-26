@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { build } from 'esbuild';
 import ts from 'typescript';
@@ -7,6 +7,7 @@ import { packageRoot } from './package-tools.ts';
 const srcRoot = resolve(packageRoot, 'src');
 const scriptsRoot = resolve(packageRoot, 'scripts');
 const distRoot = resolve(packageRoot, 'dist');
+const distBuildRoot = resolve(packageRoot, `.treeseed-dist-build-${process.pid}`);
 const buildLockRoot = resolve(packageRoot, '.treeseed-build-dist.lock');
 const treeseedTemplateCatalogSourceRoot = resolve(srcRoot, 'treeseed', 'template-catalog');
 const treeseedServicesSourceRoot = resolve(srcRoot, 'treeseed', 'services');
@@ -16,6 +17,27 @@ const BUILD_LOCK_STALE_MS = 20 * 60 * 1000;
 
 function sleep(ms: number) {
 	return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+}
+
+function lockOwnerIsRunning() {
+	let owner: { pid?: unknown };
+	try {
+		owner = JSON.parse(readFileSync(resolve(buildLockRoot, 'owner.json'), 'utf8')) as { pid?: unknown };
+	} catch {
+		return false;
+	}
+
+	if (typeof owner.pid !== 'number') {
+		return false;
+	}
+
+	try {
+		process.kill(owner.pid, 0);
+		return true;
+	} catch (error) {
+		const code = typeof error === 'object' && error && 'code' in error ? (error as { code?: unknown }).code : null;
+		return code === 'EPERM';
+	}
 }
 
 async function acquireBuildLock() {
@@ -30,7 +52,7 @@ async function acquireBuildLock() {
 			return () => rmSync(buildLockRoot, { recursive: true, force: true });
 		} catch (error) {
 			const ageMs = existsSync(buildLockRoot) ? Date.now() - statSync(buildLockRoot).mtimeMs : 0;
-			if (ageMs > BUILD_LOCK_STALE_MS) {
+			if (!lockOwnerIsRunning() || ageMs > BUILD_LOCK_STALE_MS) {
 				rmSync(buildLockRoot, { recursive: true, force: true });
 				continue;
 			}
@@ -121,13 +143,13 @@ function copyAssetTree(sourceRoot, outputRoot) {
 	}
 }
 
-function transpileScript(filePath) {
+function transpileScript(filePath, outputRoot) {
 	const source = readFileSync(filePath, 'utf8');
 	const relativePath = relative(scriptsRoot, filePath);
 	if (relativePath === 'fixture-tools.ts') {
 		return;
 	}
-	const outputFile = resolve(distRoot, 'scripts', relativePath.replace(/\.ts$/u, '.js'));
+	const outputFile = resolve(outputRoot, 'scripts', relativePath.replace(/\.ts$/u, '.js'));
 	const transformed = extname(filePath) === '.ts'
 		? ts.transpileModule(source, {
 				compilerOptions: {
@@ -141,7 +163,7 @@ function transpileScript(filePath) {
 	writeFileSync(outputFile, rewriteScriptRuntimeSpecifiers(transformed), 'utf8');
 }
 
-function emitDeclarations() {
+function emitDeclarations(outputRoot) {
 	const rootNames = walkFiles(srcRoot).filter(isTypeScriptSource);
 	const program = ts.createProgram({
 		rootNames,
@@ -155,7 +177,7 @@ function emitDeclarations() {
 			types: ['node'],
 			declaration: true,
 			emitDeclarationOnly: true,
-			declarationDir: distRoot,
+			declarationDir: outputRoot,
 			rootDir: srcRoot,
 			noEmit: false,
 		},
@@ -172,8 +194,8 @@ function emitDeclarations() {
 	}
 }
 
-function rewriteDeclarations() {
-	for (const filePath of walkFiles(distRoot)) {
+function rewriteDeclarations(outputRoot) {
+	for (const filePath of walkFiles(outputRoot)) {
 		if (!filePath.endsWith('.d.ts')) continue;
 		const contents = readFileSync(filePath, 'utf8');
 		writeFileSync(filePath, rewriteRuntimeSpecifiers(contents), 'utf8');
@@ -182,7 +204,7 @@ function rewriteDeclarations() {
 
 const releaseBuildLock = await acquireBuildLock();
 try {
-	rmSync(distRoot, { recursive: true, force: true });
+	rmSync(distBuildRoot, { recursive: true, force: true });
 
 	for (const filePath of walkFiles(srcRoot)) {
 		if (filePath.startsWith(`${treeseedTemplateCatalogSourceRoot}/`)) {
@@ -190,46 +212,50 @@ try {
 		}
 		const extension = extname(filePath);
 		if (isDeclarationAsset(filePath)) {
-			copyAsset(filePath, srcRoot, distRoot);
+			copyAsset(filePath, srcRoot, distBuildRoot);
 			continue;
 		}
 		if (isTypeScriptSource(filePath)) {
-			await compileModule(filePath, srcRoot, distRoot);
+			await compileModule(filePath, srcRoot, distBuildRoot);
 			continue;
 		}
 
 		if (COPY_EXTENSIONS.has(extension)) {
-			copyAsset(filePath, srcRoot, distRoot);
+			copyAsset(filePath, srcRoot, distBuildRoot);
 		}
 	}
 
 	if (existsSync(treeseedTemplateCatalogSourceRoot)) {
-		copyAssetTree(treeseedTemplateCatalogSourceRoot, resolve(distRoot, 'treeseed', 'template-catalog'));
+		copyAssetTree(treeseedTemplateCatalogSourceRoot, resolve(distBuildRoot, 'treeseed', 'template-catalog'));
 	}
 
 	if (existsSync(treeseedServicesSourceRoot)) {
-		copyAssetTree(treeseedServicesSourceRoot, resolve(distRoot, 'treeseed', 'services'));
+		copyAssetTree(treeseedServicesSourceRoot, resolve(distBuildRoot, 'treeseed', 'services'));
 	}
 
 	for (const filePath of walkFiles(scriptsRoot)) {
 		const extension = extname(filePath);
 		if (extension === '.ts') {
-			transpileScript(filePath);
+			transpileScript(filePath, distBuildRoot);
 		}
 	}
 
-	emitDeclarations();
-	rewriteDeclarations();
+	emitDeclarations(distBuildRoot);
+	rewriteDeclarations(distBuildRoot);
 
-	for (const filePath of walkFiles(distRoot)) {
+	for (const filePath of walkFiles(distBuildRoot)) {
 		if (filePath.endsWith('.d.js')) {
 			rmSync(filePath, { force: true });
 		}
 	}
 
 	if (existsSync(resolve(packageRoot, 'README.md'))) {
-		copyFileSync(resolve(packageRoot, 'README.md'), resolve(distRoot, '..', 'README.md'));
+		copyFileSync(resolve(packageRoot, 'README.md'), resolve(distBuildRoot, '..', 'README.md'));
 	}
+
+	rmSync(distRoot, { recursive: true, force: true });
+	renameSync(distBuildRoot, distRoot);
 } finally {
+	rmSync(distBuildRoot, { recursive: true, force: true });
 	releaseBuildLock();
 }
