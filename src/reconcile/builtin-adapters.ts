@@ -2139,7 +2139,9 @@ function resolveReconcileEnvironmentValues(
 		return resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
 	}
 
+	const configuredValues = resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
 	const hostedRuntimeValues = {
+		...normalizeEnvironmentValues(configuredValues),
 		...normalizeEnvironmentValues(process.env),
 		...normalizeEnvironmentValues(input.context.launchEnv),
 	};
