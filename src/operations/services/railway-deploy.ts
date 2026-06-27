@@ -1064,7 +1064,8 @@ export function validateRailwayServiceConfiguration(tenantRoot, scope) {
 		if (service.sourceMode === 'git' && !service.sourceRepo) {
 			issues.push(`${service.key}: staging source builds require railway.source.repository or package repository metadata.`);
 		}
-		if (!service.imageRef && !existsSync(service.rootDir)) {
+		const usesExternalGitSource = service.sourceMode === 'git' && Boolean(service.sourceRepo);
+		if (!service.imageRef && !usesExternalGitSource && !existsSync(service.rootDir)) {
 			issues.push(`${service.key}: service root ${service.rootDir} does not exist.`);
 		}
 		if (service.schedule?.length && !service.startCommand) {
