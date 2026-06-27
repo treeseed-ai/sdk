@@ -304,7 +304,7 @@ function internalDependencyEdges(root: string, adapters: TreeseedPackageAdapter[
 			from: 'treedx',
 			to: '@treeseed/api',
 			kind: 'hosting-image-consumer',
-			reason: '@treeseed/api hosting consumes the TreeDX image through TREESEED_PUBLIC_TREEDX_IMAGE_REF.',
+			reason: '@treeseed/api production hosting consumes the released TreeDX image through TREESEED_PUBLIC_TREEDX_IMAGE_REF.',
 		});
 	}
 	return edges;
@@ -530,8 +530,7 @@ function verifyManifestPackage(adapter: TreeseedPackageAdapter, tempRoot: string
 
 function imageRefFor(adapter: TreeseedPackageAdapter) {
 	if (adapter.id !== 'treedx') return null;
-	const sha = safeGitHead(adapter.dir)?.slice(0, 12) ?? 'unknown';
-	return `treeseed/treedx:dev-staging-${sha}`;
+	return adapter.version && /^\d+\.\d+\.\d+$/u.test(adapter.version) ? `treeseed/treedx:${adapter.version}` : null;
 }
 
 function proofKey(value: unknown) {

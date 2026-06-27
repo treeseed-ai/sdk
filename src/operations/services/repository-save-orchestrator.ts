@@ -19,7 +19,6 @@ import {
 	type CommitMessageSubmodulePointer,
 } from './commit-message-provider.ts';
 import {
-	createDevTagMessage,
 	createPackageDependencyReference,
 	type DevDependencyReferenceMode,
 	type GitDependencyProtocol,
@@ -135,8 +134,6 @@ export type RepositorySaveReport = {
 	publishWait: Record<string, unknown> | null;
 	version: string | null;
 	dependencySpec: string | null;
-	devTagMetadata: string | null;
-	replacedDevTags: string[];
 	branchMode: RepoBranchMode;
 	verification: RepositoryVerificationResult | null;
 	install: RepositoryInstallResult | null;
@@ -650,6 +647,24 @@ function packageVersionAtHead(node: RepositorySaveNode) {
 	}
 }
 
+function headCommitOrPlanPlaceholder(cwd: string) {
+	try {
+		return headCommit(cwd);
+	} catch {
+		return 'HEAD';
+	}
+}
+
+function remoteBranchCommitSafe(cwd: string, branch: string) {
+	try {
+		const output = runGit(['ls-remote', 'origin', `refs/heads/${branch}`], { cwd, capture: true });
+		const [sha] = output.trim().split(/\s+/u);
+		return /^[a-f0-9]{40}$/u.test(sha ?? '') ? sha! : null;
+	} catch {
+		return null;
+	}
+}
+
 function canManagePackageJsonVersion(node: RepositorySaveNode) {
 	return node.kind === 'package' && Boolean(node.packageJsonPath) && typeof node.packageJson?.version === 'string';
 }
@@ -662,6 +677,7 @@ function packageVersionEligibleForBranch(node: RepositorySaveNode, version: stri
 
 function packageVersionTagConflictsWithHead(node: RepositorySaveNode, options: RepositorySaveOptions) {
 	if (node.kind !== 'package') return false;
+	if (node.branchMode === 'package-dev-save' && (options.devDependencyReferenceMode ?? 'git-commit') === 'git-commit') return false;
 	const version = typeof node.packageJson?.version === 'string' ? node.packageJson.version : null;
 	if (!version || !packageVersionEligibleForBranch(node, version, options)) return false;
 	const head = headCommit(node.path);
@@ -672,7 +688,11 @@ function packageVersionTagConflictsWithHead(node: RepositorySaveNode, options: R
 
 function selectPackageVersion(node: RepositorySaveNode, options: RepositorySaveOptions) {
 	const current = String(node.packageJson?.version ?? '0.0.0');
-	if (node.branchMode === 'package-dev-save' && isDevVersionForBranch(current, node.branch || options.branch) && !tagExists(node.path, current)) {
+	if (
+		node.branchMode === 'package-dev-save'
+		&& isDevVersionForBranch(current, node.branch || options.branch)
+		&& ((options.devDependencyReferenceMode ?? 'git-commit') === 'git-commit' || !tagExists(node.path, current))
+	) {
 		return { version: current, reused: true };
 	}
 	if (node.branchMode === 'package-release-main') {
@@ -704,8 +724,6 @@ function createReport(node: RepositorySaveNode): RepositorySaveReport {
 		publishWait: null,
 		version: typeof node.packageJson?.version === 'string' ? node.packageJson.version : null,
 		dependencySpec: node.plannedDependencySpec,
-		devTagMetadata: null,
-		replacedDevTags: [],
 		branchMode: node.branchMode,
 		verification: null,
 		install: null,
@@ -1133,24 +1151,9 @@ function syncRootWorkspaceLockfileMetadata(node: RepositorySaveNode, options: Pi
 }
 
 async function runGitDependencySmoke(node: RepositorySaveNode, options: RepositorySaveOptions, reference: PackageDependencyReference) {
-	if (reference.mode !== 'dev-git-tag' || shouldSkipGitDependencySmoke(options)) return;
-	const tagName = reference.tagName ?? reference.version;
-	if (!reference.remoteUrl || !tagName) {
-		throw new RepositorySaveError(`Git dependency smoke cannot verify ${reference.packageName}; remote URL or tag is missing.`);
-	}
-	const tagRef = `refs/tags/${tagName}`;
-	emitProgress(options, node, 'smoke', `Verifying ${reference.packageName} tag ${tagName} exists on ${reference.remoteUrl}.`);
-	try {
-		await runStreamingCommand(node, options, 'smoke', 'git', ['ls-remote', '--exit-code', '--tags', reference.remoteUrl, tagRef]);
-	} catch (error) {
-		const detail = error instanceof Error ? error.message : String(error);
-		throw new RepositorySaveError([
-			`Git dependency smoke failed for ${reference.packageName}; tag is not reachable on the remote.`,
-			`Remote: ${reference.remoteUrl}`,
-			`Tag: ${tagName}`,
-			detail,
-		].join('\n'));
-	}
+	void node;
+	void options;
+	void reference;
 }
 
 async function runNpmInstallWithRetry(
@@ -1546,15 +1549,9 @@ function assertTagStateMatchesHead(node: RepositorySaveNode, tagName: string, st
 }
 
 function createPackageTagMessage(node: RepositorySaveNode, tagName: string, branch: string, workflowRunId?: string | null) {
-	return tagName.includes('-dev.')
-		? createDevTagMessage({
-			packageName: node.name,
-			version: tagName,
-			branch,
-			commitSha: headCommit(node.path),
-			workflowRunId,
-		})
-		: `release: ${tagName}`;
+	void branch;
+	void workflowRunId;
+	return `release: ${tagName}`;
 }
 
 function ensureRemoteAccessBeforeVerification(node: RepositorySaveNode, options: RepositorySaveOptions, state: SaveState) {
@@ -1585,13 +1582,6 @@ function ensureRemoteAccessBeforeVerification(node: RepositorySaveNode, options:
 
 function shouldSkipRemoteAccessPreflight() {
 	return process.env.TREESEED_SAVE_REMOTE_PREFLIGHT === 'skip';
-}
-
-function localTreeseedTagWasCreatedByThisRun(node: RepositorySaveNode, tagName: string, workflowRunId?: string | null) {
-	const message = localTagMessage(node.path, tagName);
-	if (!message?.includes('treeseed-dev-tag: true')) return false;
-	if (!workflowRunId) return true;
-	return message.includes(`workflowRunId: ${workflowRunId}`);
 }
 
 function ensurePackageTagReady(node: RepositorySaveNode, options: RepositorySaveOptions, tagName: string, branch: string, workflowRunId?: string | null) {
@@ -1721,7 +1711,8 @@ function finalizePackageReference(node: RepositorySaveNode, version: string, opt
 		version,
 		branchMode: node.branchMode === 'package-release-main' ? 'package-release-main' : 'package-dev-save',
 		remoteUrl: node.remoteUrl,
-		devDependencyReferenceMode: options.devDependencyReferenceMode ?? 'git-tag',
+		commitSha: headCommit(node.path),
+		devDependencyReferenceMode: options.devDependencyReferenceMode ?? 'git-commit',
 		gitDependencyProtocol: options.gitDependencyProtocol ?? 'preserve-origin',
 	});
 	node.plannedDependencySpec = reference.spec;
@@ -1741,25 +1732,29 @@ async function finalizeCleanPackageVersion(
 	}
 
 	const head = headCommit(node.path);
-	const currentTagState = tagState(node.path, version);
-	assertTagStateMatchesHead(node, version, currentTagState, head);
+	const reference = finalizePackageReference(node, version, options);
+	const currentTagState = reference.tagName ? tagState(node.path, reference.tagName) : null;
+	if (reference.tagName && currentTagState) {
+		assertTagStateMatchesHead(node, reference.tagName, currentTagState, head);
+	}
 	const remoteBranchExists = remoteBranchExistsSafe(node.path, branch);
-	const finalizedRemotely = currentTagState.localCommit === head
-		&& currentTagState.remoteCommit === head
-		&& remoteBranchExists;
+	const remoteBranchCommit = remoteBranchCommitSafe(node.path, branch);
+	const finalizedRemotely = remoteBranchExists
+		&& remoteBranchCommit === head
+		&& (!reference.tagName || (currentTagState?.localCommit === head && currentTagState?.remoteCommit === head));
 
 	report.version = version;
-	report.tagName = version;
+	report.tagName = reference.tagName;
 	report.commitSha = head;
-	report.dependencySpec = finalizePackageReference(node, version, options).spec;
+	report.dependencySpec = reference.spec;
 	state.finalizedVersions.set(node.name, version);
-	state.finalizedReferences.set(node.name, finalizePackageReference(node, version, options));
+	state.finalizedReferences.set(node.name, reference);
 	state.finalizedCommits.set(node.relativePath, head);
 
 	if (finalizedRemotely) {
 		report.pushed = true;
 		report.skippedReason = 'already-finalized';
-		report.publishWait = { recoveredPartialSave: true, remoteBranchExisted: true, tagAlreadyPushed: true };
+		report.publishWait = { recoveredPartialSave: true, remoteBranchExisted: true, tagAlreadyPushed: Boolean(reference.tagName) };
 		emitProgress(options, node, 'finalize', `Using existing finalized package version ${version}.`);
 		return true;
 	}
@@ -1770,25 +1765,12 @@ async function finalizeCleanPackageVersion(
 		report.lockfileValidation = await validateRepositoryLockfile(node, options);
 	}
 	const rebase = pullRebaseFromOrigin(node, options, branch);
-	if (currentTagState.localCommit === head && localTreeseedTagWasCreatedByThisRun(node, version, options.workflowRunId)) {
-		emitProgress(options, node, 'verify', `Reusing verification from interrupted tag ${version}.`);
-		report.verification = {
-			mode: options.verifyMode ?? 'action-first',
-			status: 'skipped',
-			primary: null,
-			fallbackUsed: false,
-			error: 'verified-before-interruption',
-		};
-		report.verified = true;
-	} else {
-		ensureRemoteAccessBeforeVerification(node, options, state);
-		report.verification = await runRepoVerification(node, options, options.verifyMode ?? 'action-first');
-		report.verified = report.verification.status === 'passed';
-	}
-	const tagMessage = ensurePackageTagReady(node, options, version, branch, options.workflowRunId);
-	report.devTagMetadata = tagMessage?.includes('treeseed-dev-tag: true') ? tagMessage : null;
-	const reference = finalizePackageReference(node, version, options);
-	const push = pushCurrentBranch(node, options, branch, version);
+	ensureRemoteAccessBeforeVerification(node, options, state);
+	report.verification = await runRepoVerification(node, options, options.verifyMode ?? 'action-first');
+	report.verified = report.verification.status === 'passed';
+	const tagMessage = reference.tagName ? ensurePackageTagReady(node, options, reference.tagName, branch, options.workflowRunId) : null;
+	void tagMessage;
+	const push = pushCurrentBranch(node, options, branch, reference.tagName);
 	await runGitDependencySmoke(node, options, reference);
 	report.dependencySpec = reference.spec;
 	report.pushed = push.pushed;
@@ -1842,7 +1824,7 @@ function repoPlanCommands(
 	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
 	if (node.kind === 'package' && plannedVersion) {
 		commands.push(`update package.json version to ${plannedVersion}`);
-		commands.push('npm install --workspaces=false # explicitly refresh changed git-tag dependencies with --force; retry up to 5 times with 60s delay');
+		commands.push('npm install --workspaces=false # explicitly refresh changed git commit dependencies with --force; retry up to 5 times with 60s delay');
 	} else if (node.kind === 'project' && (dependencyUpdates.length > 0 || (rootWorkspaceInstall && node.submoduleDependencies.length > 0)) && hasNpmLockfile(node.path)) {
 		commands.push(rootWorkspaceInstall
 			? 'npm install --package-lock-only --ignore-scripts # refresh root workspace lockfile without installing git dependencies'
@@ -1883,11 +1865,14 @@ function repoPlanCommands(
 		commands.push('skip verification # project repository has no Treeseed verify script');
 	}
 	if (node.kind === 'package') {
-		if (plannedVersion) {
-			commands.push(`git tag -a ${plannedVersion} -m <${plannedVersion.includes('-dev.') ? 'dev metadata' : 'release'}>`);
+		const plansTag = plannedVersion && node.branchMode === 'package-release-main';
+		if (plannedVersion && plansTag) {
+			commands.push(`git tag -a ${plannedVersion} -m <release>`);
 			commands.push(remoteExists ? `git push origin ${branch} ${plannedVersion}` : `git push -u origin ${branch} ${plannedVersion}`);
+		} else if (plannedVersion) {
+			commands.push(remoteExists ? `git push origin ${branch}` : `git push -u origin ${branch}`);
 			if (plannedDependencySpec && node.branchMode === 'package-dev-save') {
-				commands.push(`git ls-remote --exit-code --tags origin refs/tags/${plannedVersion} # validate dependency tag reachability`);
+				commands.push(`npm install ${node.name}@${plannedDependencySpec} --package-lock-only --ignore-scripts --force # validate dependency commit reachability`);
 			}
 		} else {
 			commands.push(remoteExists ? `git push origin ${branch}` : `git push -u origin ${branch}`);
@@ -1936,7 +1921,8 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 					version: plannedVersion,
 					branchMode: node.branchMode === 'package-release-main' ? 'package-release-main' : 'package-dev-save',
 					remoteUrl: node.remoteUrl,
-					devDependencyReferenceMode: options.devDependencyReferenceMode ?? 'git-tag',
+					commitSha: headCommitOrPlanPlaceholder(node.path),
+					devDependencyReferenceMode: options.devDependencyReferenceMode ?? 'git-commit',
 					gitDependencyProtocol: options.gitDependencyProtocol ?? 'preserve-origin',
 				});
 				plannedDependencySpec = reference.spec;
@@ -1949,7 +1935,7 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 				`${branchModeLabel(node.branchMode)} on top-level ${options.branch}`,
 				...(current && current !== branch ? [`current branch ${current} will be switched to ${branch}`] : []),
 				...(node.kind === 'package' && plannedVersion?.includes('-dev.')
-					? ['dev Git tag only; publish workflows reject prerelease/dev tags']
+					? ['development and staging dependency refs use the package commit SHA; no Git tag is created']
 					: []),
 			];
 			const repoPlan: RepositorySavePlanRepo = {
@@ -1967,7 +1953,7 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 				submoduleDependencies: node.submoduleDependencies,
 				currentVersion,
 				plannedVersion,
-				plannedTag: plannedVersion,
+				plannedTag: plannedReferences.get(node.name)?.tagName ?? null,
 				plannedDependencySpec,
 				remoteUrl: node.remoteUrl,
 				commands: repoPlanCommands(node, options, plannedVersion, plannedDependencySpec, dependencyUpdates),
@@ -2000,7 +1986,7 @@ export function planRepositorySave(options: RepositorySaveOptions): RepositorySa
 		mode,
 		branch: options.branch,
 		scope,
-		devDependencyReferenceMode: options.devDependencyReferenceMode ?? 'git-tag',
+		devDependencyReferenceMode: options.devDependencyReferenceMode ?? 'git-commit',
 		gitDependencyProtocol: options.gitDependencyProtocol ?? 'preserve-origin',
 		verifyMode: options.verifyMode ?? 'action-first',
 		commitMessageMode: options.commitMessageMode ?? 'auto',
@@ -2074,7 +2060,7 @@ async function saveOneRepository(
 	const dependencyChanged = dependencyUpdates.length > 0;
 	const gitDependencyRefreshSpecs = dependencyUpdates
 		.map((update) => state.finalizedReferences.get(update.packageName))
-		.filter((reference): reference is PackageDependencyReference => Boolean(reference) && reference.mode === 'dev-git-tag')
+		.filter((reference): reference is PackageDependencyReference => Boolean(reference) && reference.mode === 'dev-git-commit')
 		.map((reference) => `${reference.packageName}@${reference.installSpec ?? reference.spec}`);
 	const submodulePointers = collectSubmodulePointerChanges(node, state.finalizedCommits);
 	const submodulesChanged = submodulePointers.length > 0;
@@ -2099,13 +2085,13 @@ async function saveOneRepository(
 			applyPackageVersion(node, plannedVersion);
 		}
 		node.plannedVersion = plannedVersion;
-		node.plannedTag = plannedVersion;
 		report.version = plannedVersion;
-		report.tagName = plannedVersion;
 		if (!selection.reused) {
 			emitProgress(options, node, 'version', `Planned ${plannedVersion}.`);
 		}
 		const reference = finalizePackageReference(node, plannedVersion, options);
+		node.plannedTag = reference.tagName;
+		report.tagName = reference.tagName;
 		report.dependencySpec = reference.spec;
 		report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
 	} else if (node.kind === 'package') {
@@ -2242,12 +2228,12 @@ async function saveOneRepository(
 
 	if (canManagePackageJsonVersion(node)) {
 		const version = plannedVersion ?? String((readJson(resolve(node.path, 'package.json')).version ?? report.version ?? ''));
-		const tagMessage = ensurePackageTagReady(node, options, version, branch, options.workflowRunId);
-		report.tagName = version;
-		report.version = version;
-		report.devTagMetadata = tagMessage?.includes('treeseed-dev-tag: true') ? tagMessage : null;
 		const reference = finalizePackageReference(node, version, options);
-		const push = pushCurrentBranch(node, options, branch, version);
+		const tagMessage = reference.tagName ? ensurePackageTagReady(node, options, reference.tagName, branch, options.workflowRunId) : null;
+		void tagMessage;
+		report.tagName = reference.tagName;
+		report.version = version;
+		const push = pushCurrentBranch(node, options, branch, reference.tagName);
 		await runGitDependencySmoke(node, options, reference);
 		report.dependencySpec = reference.spec;
 		state.finalizedVersions.set(node.name, version);

@@ -110,7 +110,7 @@ end
 	writeFileSync(resolve(root, 'packages', 'treedx', 'scripts', 'test-treedx-fast.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
 	writeFileSync(resolve(root, 'packages', 'treedx', 'scripts', 'test-all.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
 	writeFileSync(resolve(root, 'packages', 'treedx', 'scripts', 'release-gate.sh'), '#!/usr/bin/env bash\nexit 0\n', 'utf8');
-	writeFileSync(resolve(root, 'packages', 'treedx', '.github', 'workflows', 'dev-image.yml'), 'name: Dev Image\n', 'utf8');
+	writeFileSync(resolve(root, 'packages', 'treedx', '.github', 'workflows', 'publish.yml'), 'name: Publish Image\n', 'utf8');
 	writeFileSync(resolve(root, 'packages', 'treedx', '.github', 'workflows', 'release-gate.yml'), 'name: Release Gate\n', 'utf8');
 	writeFileSync(resolve(root, 'packages', 'treedx', 'treeseed.package.yaml'), `id: treedx
 name: TreeDX
@@ -118,21 +118,21 @@ kind: beam-elixir-rust
 repository: treeseed-ai/treedx
 versionSource: apps/api/mix.exs
 image: treeseed/treedx
+deploymentSource:
+  staging: git
+  prod: image
 verify:
   fast: scripts/test-treedx-fast.sh
   local: scripts/test-all.sh
   release: scripts/release-gate.sh
-developmentImages:
-  workflow: dev-image.yml
-  defaultBranch: staging
-  tagPrefix: dev
-  movingTag: true
+dockerImages:
+  releaseWorkflow: publish.yml
   architectures:
     - amd64
     - arm64
   hosting:
     app: api
-    environment: staging
+    environment: prod
     envVar: TREESEED_PUBLIC_TREEDX_IMAGE_REF
 `, 'utf8');
 }
@@ -331,7 +331,7 @@ describe('release candidate verification', () => {
 		expect(treedx?.releaseChecks.some((check) => check.kind === 'docker-manifest')).toBe(true);
 	});
 
-	it('plans TreeDX development images from package metadata', () => {
+	it('plans TreeDX staging source builds from package metadata', () => {
 		const root = makeWorkspace();
 		addTreeDxPackage(root);
 		spawnSync('git', ['init'], { cwd: resolve(root, 'packages', 'treedx') });
@@ -339,13 +339,47 @@ describe('release candidate verification', () => {
 		spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: resolve(root, 'packages', 'treedx') });
 		spawnSync('git', ['add', '.'], { cwd: resolve(root, 'packages', 'treedx') });
 		spawnSync('git', ['commit', '-m', 'init'], { cwd: resolve(root, 'packages', 'treedx') });
+		spawnSync('git', ['update-ref', 'refs/remotes/origin/staging', 'HEAD'], { cwd: resolve(root, 'packages', 'treedx') });
 
-		const plan = planTreeseedPackageDevelopmentImage(root, 'treedx', { branch: 'HEAD' });
+		const plan = planTreeseedPackageDevelopmentImage(root, 'treedx', { branch: 'staging' });
 
 		expect(plan.repository).toBe('treeseed-ai/treedx');
-		expect(plan.workflow).toBe('dev-image.yml');
-		expect(plan.refs.imageRef).toMatch(/^treeseed\/treedx:dev-head-[a-f0-9]{12}$/u);
+		expect(plan.workflow).toBe('source-build');
+		expect(plan.refs.imageRef).toBeNull();
+		expect(plan.deploymentSource).toMatchObject({
+			environment: 'staging',
+			mode: 'git',
+			repository: 'treeseed-ai/treedx',
+			imagePublicationRequired: false,
+		});
+		expect(plan.hosting).toBeNull();
+	});
+
+	it('plans TreeDX production images only from main as semantic image artifacts', () => {
+		const root = makeWorkspace();
+		addTreeDxPackage(root);
+		spawnSync('git', ['init'], { cwd: resolve(root, 'packages', 'treedx') });
+		spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: resolve(root, 'packages', 'treedx') });
+		spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: resolve(root, 'packages', 'treedx') });
+		spawnSync('git', ['add', '.'], { cwd: resolve(root, 'packages', 'treedx') });
+		spawnSync('git', ['commit', '-m', 'init'], { cwd: resolve(root, 'packages', 'treedx') });
+		spawnSync('git', ['branch', '-M', 'main'], { cwd: resolve(root, 'packages', 'treedx') });
+
+		const plan = planTreeseedPackageDevelopmentImage(root, 'treedx', { branch: 'main' });
+
+		expect(plan.deploymentSource).toMatchObject({
+			environment: 'prod',
+			mode: 'image',
+			repository: 'treeseed-ai/treedx',
+			imagePublicationRequired: true,
+		});
+		expect(plan.refs.imageRef).toBe('treeseed/treedx:0.1.0');
+		expect(plan.refs.movingImageRef).toBeNull();
 		expect(plan.hosting?.overrideEnvVar).toBe('TREESEED_PUBLIC_TREEDX_IMAGE_REF');
+		expect(plan.hosting?.override).toEqual({
+			TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.1.0',
+		});
+		expect(plan.hosting?.command).toContain('npx trsd hosting apply --environment prod --app api --execute --json');
 	});
 
 	it('expands selected release graph packages to upstream dependencies and TreeDX image producers', () => {

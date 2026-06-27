@@ -16,7 +16,7 @@ const baseContext = {
 		'M src/workflow/operations.ts',
 		'M src/operations/services/repository-save-orchestrator.ts',
 	].join('\n'),
-	diff: '+ commit message provider\n+ dev tag guard\n',
+	diff: '+ commit message provider\n+ release guard\n',
 	plannedVersion: '0.6.8-dev.staging.20260426T153000Z',
 	plannedTag: '0.6.8-dev.staging.20260426T153000Z',
 };

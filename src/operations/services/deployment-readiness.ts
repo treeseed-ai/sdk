@@ -194,6 +194,9 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 		if (environment === 'local') {
 			checks.push(check('hosting:api:buildCommand', api.config?.buildCommand, 'npm run build', 'API build command is package-local.', 'Set services.api.railway.buildCommand to "npm run build".', 'buildCommand'));
 			checks.push(check('hosting:api:startCommand', api.config?.startCommand, 'npm run start:api', 'API start command is package-local.', 'Set services.api.railway.startCommand to "npm run start:api".', 'startCommand'));
+		} else if (environment === 'staging') {
+			checks.push(check('hosting:api:sourceMode', api.config?.sourceMode, 'git', 'API staging deploy builds from GitHub source.', 'Set services.api.railway.sourceMode to git.', 'sourceMode'));
+			checks.push(check('hosting:api:sourceRepo', api.config?.sourceRepo, 'treeseed-ai/api', 'API staging source repo is canonical.', 'Set services.api.railway.sourceRepo to treeseed-ai/api.', 'sourceRepo'));
 		} else {
 			checks.push(check('hosting:api:imageRefEnv', api.config?.imageRefEnv, 'TREESEED_API_IMAGE_REF', 'API Railway deploy uses a Docker image reference.', 'Set services.api.railway.imageRef or inject TREESEED_API_IMAGE_REF.', 'imageRefEnv'));
 		}
@@ -219,6 +222,9 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 		if (environment === 'local') {
 			checks.push(check('hosting:operationsRunner:buildCommand', runner.config?.buildCommand, 'npm run build', 'Runner build command is package-local.', 'Set services.operationsRunner.railway.buildCommand to "npm run build".', 'buildCommand'));
 			checks.push(check('hosting:operationsRunner:startCommand', runner.config?.startCommand, 'npm run start:runner', 'Runner start command is package-local.', 'Set services.operationsRunner.railway.startCommand to "npm run start:runner".', 'startCommand'));
+		} else if (environment === 'staging') {
+			checks.push(check('hosting:operationsRunner:sourceMode', runner.config?.sourceMode, 'git', 'Runner staging deploy builds from GitHub source.', 'Set services.operationsRunner.railway.sourceMode to git.', 'sourceMode'));
+			checks.push(check('hosting:operationsRunner:sourceRepo', runner.config?.sourceRepo, 'treeseed-ai/api', 'Runner staging source repo is canonical.', 'Set services.operationsRunner.railway.sourceRepo to treeseed-ai/api.', 'sourceRepo'));
 		} else {
 			checks.push(check('hosting:operationsRunner:imageRefEnv', runner.config?.imageRefEnv, 'TREESEED_OPERATIONS_RUNNER_IMAGE_REF', 'Runner Railway deploy uses a Docker image reference.', 'Set services.operationsRunner.railway.imageRef or inject TREESEED_OPERATIONS_RUNNER_IMAGE_REF.', 'imageRefEnv'));
 		}

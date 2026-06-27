@@ -487,14 +487,6 @@ function checkPackageAdapterReadiness(pkg: TreeseedPackageAdapter, failures: Rel
 			details: { versionSource: pkg.versionSource },
 		});
 	}
-	if (pkg.id === 'treedx' && !existsSync(resolve(pkg.dir, '.github', 'workflows', 'dev-image.yml'))) {
-		addFailure(failures, {
-			code: 'missing_development_image_workflow',
-			scope: pkg.id,
-			provider: 'github',
-			message: `${pkg.id} is missing .github/workflows/dev-image.yml for staging-safe development image publication.`,
-		});
-	}
 	if (!pkg.verifyCommands.local) {
 		addFailure(failures, {
 			code: 'missing_verify_script',
@@ -835,21 +827,28 @@ function validateInternalGitReferenceTags(root: string, failures: ReleaseCandida
 		const rawRemote = spec.slice(0, hashIndex).replace(/^git\+/u, '');
 		const githubMatch = rawRemote.match(/^github:([^/]+\/[^/]+?)(?:\.git)?$/u);
 		const remote = githubMatch ? `https://github.com/${githubMatch[1]}.git` : rawRemote;
-		const tagName = decodeURIComponent(spec.slice(hashIndex + 1));
-		if (!remote || !tagName) continue;
-		const key = `${remote}#${tagName}`;
+		const ref = decodeURIComponent(spec.slice(hashIndex + 1));
+		if (!remote || !ref) continue;
+		const key = `${remote}#${ref}`;
 		if (seen.has(key)) continue;
 		seen.add(key);
 		checked += 1;
 		try {
-			runGit(['ls-remote', '--exit-code', '--tags', remote, `refs/tags/${tagName}`], { cwd: root, capture: true, timeoutMs: 120000 });
+			const output = /^[a-f0-9]{40}$/u.test(ref)
+				? runGit(['ls-remote', remote], { cwd: root, capture: true, timeoutMs: 120000 })
+				: runGit(['ls-remote', '--exit-code', '--tags', remote, `refs/tags/${ref}`], { cwd: root, capture: true, timeoutMs: 120000 });
+			if (/^[a-f0-9]{40}$/u.test(ref) && !output.includes(ref)) {
+				throw new Error(`Commit ${ref} is not advertised by the remote.`);
+			}
 		} catch (error) {
 			addFailure(failures, {
-				code: 'internal_git_tag_missing',
+				code: /^[a-f0-9]{40}$/u.test(ref) ? 'internal_git_commit_missing' : 'internal_git_tag_missing',
 				scope: issue.dependencyName ?? issue.repoName,
 				provider: 'git',
-				message: `Internal git dependency tag is not reachable: ${issue.dependencyName ?? issue.repoName}#${tagName}.`,
-				details: { spec, remote, tagName, filePath: issue.filePath, error: error instanceof Error ? error.message : String(error) },
+				message: /^[a-f0-9]{40}$/u.test(ref)
+					? `Internal git dependency commit is not reachable: ${issue.dependencyName ?? issue.repoName}#${ref}.`
+					: `Internal git dependency release tag is not reachable: ${issue.dependencyName ?? issue.repoName}#${ref}.`,
+				details: { spec, remote, ref, filePath: issue.filePath, error: error instanceof Error ? error.message : String(error) },
 			});
 		}
 	}

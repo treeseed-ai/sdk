@@ -343,7 +343,7 @@ services:
     railway:
       projectName: treeseed-capacity
       serviceName: treeseed-capacity-provider-manager
-      imageRef: treeseed/agent-manager:dev-staging
+      imageRef: treeseed/agent-manager:1.2.3
   capacityProviderRunner:
     provider: railway
     enabled: true
@@ -351,7 +351,7 @@ services:
     railway:
       projectName: treeseed-capacity
       serviceName: treeseed-capacity-provider-runner-01
-      imageRef: treeseed/agent-runner:dev-staging
+      imageRef: treeseed/agent-runner:1.2.3
       volumeMountPath: /data
       runnerPool:
         bootstrapCount: 2
@@ -366,7 +366,7 @@ services:
 		expect(services.find((service) => service.key === 'capacityProviderApi')).toBeUndefined();
 		expect(manager).toMatchObject({
 			serviceName: 'treeseed-capacity-provider-manager',
-			imageRef: 'treeseed/agent-manager:dev-staging',
+			imageRef: 'treeseed/agent-manager:1.2.3',
 			volumeMountPath: null,
 		});
 		expect(deriveRailwayCapacityProviderRunnerServiceName('treeseed-capacity-provider-runner-01', 2)).toBe('treeseed-capacity-provider-runner-02');
@@ -375,7 +375,7 @@ services:
 			'treeseed-capacity-provider-runner-01',
 			'treeseed-capacity-provider-runner-02',
 		]);
-		expect(runners.every((service) => service.imageRef === 'treeseed/agent-runner:dev-staging')).toBe(true);
+		expect(runners.every((service) => service.imageRef === 'treeseed/agent-runner:1.2.3')).toBe(true);
 		expect(runners.every((service) => service.volumeMountPath === '/data')).toBe(true);
 	});
 
@@ -392,7 +392,7 @@ services:
 			`environments:
   staging:
     values:
-      TREESEED_AGENT_MANAGER_IMAGE_REF: treeseed/agent-manager:dev-staging-current
+      TREESEED_AGENT_MANAGER_IMAGE_REF: treeseed/agent-manager:1.2.3
 `,
 		);
 		await writeFile(
@@ -400,7 +400,7 @@ services:
 			`environments:
   staging:
     values:
-      TREESEED_AGENT_MANAGER_IMAGE_REF: treeseed/agent-manager:dev-staging-stale
+      TREESEED_AGENT_MANAGER_IMAGE_REF: treeseed/agent-manager:1.2.2
 `,
 		);
 		await writeFile(
@@ -431,7 +431,74 @@ services:
 
 		expect(api).toMatchObject({
 			serviceName: 'treeseed-agent-manager',
-			imageRef: 'treeseed/agent-manager:dev-staging-current',
+			imageRef: 'treeseed/agent-manager:1.2.3',
+		});
+	});
+
+	it('uses GitHub source builds for staging API package services instead of image refs', async () => {
+		const tenantRoot = await createTenantFixture();
+		await writeFile(
+			join(tenantRoot, 'treeseed.package.yaml'),
+			`id: "@treeseed/api"
+name: TreeSeed API
+repository: treeseed-ai/api
+publishTarget: docker
+deploymentSource:
+  staging: git
+  prod: image
+`,
+		);
+		await writeFile(
+			join(tenantRoot, 'treeseed.site.yaml'),
+			`name: Test API
+slug: treeseed-api
+siteUrl: https://api.example.com
+contactEmail: hello@example.com
+hosting:
+  kind: treeseed_control_plane
+runtime:
+  mode: treeseed_managed
+services:
+  api:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api
+      imageRefEnv: TREESEED_API_IMAGE_REF
+      buildCommand: npm run build
+      startCommand: npm run start:api
+  operationsRunner:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
+      imageRefEnv: TREESEED_OPERATIONS_RUNNER_IMAGE_REF
+      buildCommand: npm run build
+      startCommand: npm run start:runner
+`,
+		);
+
+		const services = configuredRailwayServices(tenantRoot, 'staging');
+		const api = services.find((service) => service.key === 'api');
+		const runner = services.find((service) => service.key === 'operationsRunner');
+
+		expect(api).toMatchObject({
+			sourceMode: 'git',
+			sourceRepo: 'treeseed-ai/api',
+			sourceBranch: 'staging',
+			sourceRootDirectory: '.',
+			imageRef: null,
+			buildCommand: 'npm run build',
+			startCommand: 'npm run start:api',
+		});
+		expect(runner).toMatchObject({
+			sourceMode: 'git',
+			sourceRepo: 'treeseed-ai/api',
+			imageRef: null,
+			buildCommand: 'npm run build',
+			startCommand: 'npm run start:runner',
 		});
 	});
 
@@ -461,14 +528,14 @@ services:
     railway:
       projectName: treeseed-api
       serviceName: treeseed-api
-      imageRef: treeseed/api:dev-staging
+      imageRef: treeseed/api:1.2.3
   capacityProviderApi:
     provider: railway
     enabled: true
     railway:
       projectName: treeseed-agent-capacity-provider
       serviceName: treeseed-agent-api
-      imageRef: treeseed/agent-api:dev-staging
+      imageRef: treeseed/agent-api:1.2.3
 `,
 		);
 
@@ -494,7 +561,7 @@ services:
     railway:
       projectName: treeseed-agent-capacity-provider
       serviceName: treeseed-agent-manager
-      imageRef: treeseed/agent-manager:dev-staging
+      imageRef: treeseed/agent-manager:1.2.3
       runtimeMode: service
   capacityProviderRunner:
     provider: railway
@@ -502,7 +569,7 @@ services:
     railway:
       projectName: treeseed-agent-capacity-provider
       serviceName: treeseed-agent-runner-01
-      imageRef: treeseed/agent-runner:dev-staging
+      imageRef: treeseed/agent-runner:1.2.3
       runtimeMode: service
       volumeMountPath: /data
 `,

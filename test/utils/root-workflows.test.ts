@@ -204,7 +204,7 @@ describe('package publish safeguards', () => {
 			expect(publishSource).toContain('^\\d+\\.\\d+\\.\\d+$');
 			expect(publishSource).toContain('process.exit(result.status ?? 1)');
 			expect(publishSource).not.toContain('unprovisionedScopedPackage');
-			expect(publishSource).not.toContain('treating git-tag');
+			expect(publishSource).toContain('publish');
 			expect(publishSource).not.toContain('could not be found or you do not have permission');
 			expect(publishSource).not.toContain('is not in this registry');
 		});

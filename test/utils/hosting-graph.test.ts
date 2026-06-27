@@ -337,6 +337,10 @@ describe('hosting graph', () => {
 			projectGroup: { id: 'public-treedx-federation' },
 			config: {
 				serviceName: 'public-treedx-node-01',
+				sourceMode: 'git',
+				sourceRepo: 'treeseed-ai/treedx',
+				sourceBranch: 'staging',
+				sourceRootDirectory: '.',
 				volumeName: 'public-treedx-node-01-volume',
 				volumeMountPath: '/data',
 				environmentVariables: {
@@ -344,6 +348,20 @@ describe('hosting graph', () => {
 				},
 			},
 		});
+		expect(staging.units.find((unit) => unit.id === 'public-treedx-node-01')?.config).not.toHaveProperty('imageTagRef');
+		expect(prod.units.find((unit) => unit.id === 'public-treedx-node-01')?.config).toMatchObject({
+			sourceMode: 'image',
+			image: 'treeseed/treedx',
+			imageTagRef: 'TREESEED_PUBLIC_TREEDX_IMAGE_REF',
+		});
+		for (const serviceId of ['api', 'operationsRunner', 'capacityProviderManager', 'capacityProviderRunner']) {
+			const service = prod.units.find((unit) => unit.id === serviceId);
+			if (!service) continue;
+			expect(service.config).toMatchObject({
+				sourceMode: 'image',
+				sourceRepo: null,
+			});
+		}
 	});
 
 	it('models private TreeDX as a transferable per-team project group', () => {
@@ -567,6 +585,10 @@ plugins:
 			serviceType: 'treedx-node',
 			hostId: 'railway',
 			projectGroupId: 'public-treedx-federation',
+			config: {
+				sourceMode: 'git',
+				sourceRepo: 'treeseed-ai/treedx',
+			},
 		});
 		expect(treeDxEntry).toMatchObject({
 			desired: { id: 'public-treedx-node-01' },

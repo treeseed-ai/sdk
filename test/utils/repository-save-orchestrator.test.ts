@@ -234,7 +234,7 @@ describe('repository save orchestrator helpers', () => {
 		expect(source).toContain('await runLimited(wave, concurrency');
 	});
 
-	it('plans package branch and tag publication in one push command', () => {
+	it('plans package branch publication with commit dependency refs by default', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-plan-package-push-'));
 		const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-plan-package-push-origin-'));
 		git(origin, ['init', '--bare']);
@@ -259,8 +259,10 @@ describe('repository save orchestrator helpers', () => {
 
 		const version = plan.rootRepo.plannedVersion;
 		expect(version).toMatch(/^1\.0\.1-dev\.staging\./u);
-		expect(plan.rootRepo.commands).toContain(`git push -u origin staging ${version}`);
-		expect(plan.rootRepo.commands).not.toContain(`git push origin ${version}`);
+		expect(plan.rootRepo.plannedTag).toBeNull();
+		expect(plan.rootRepo.plannedDependencySpec).toMatch(/^git\+file:\/\/.*#HEAD$/u);
+		expect(plan.rootRepo.commands).toContain('git push -u origin staging');
+		expect(plan.rootRepo.commands).not.toContain(`git push -u origin staging ${version}`);
 	});
 
 	it('repairs stale root workspace lockfile metadata before committing', async () => {
@@ -516,7 +518,8 @@ describe('repository save orchestrator helpers', () => {
 				field: 'dependencies',
 			});
 			expect(rootContext?.dependencyUpdates?.[0]?.from).toContain('0.1.0-dev.old');
-			expect(rootContext?.dependencyUpdates?.[0]?.to).toContain(String(sdkReport?.tagName));
+			expect(sdkReport?.tagName).toBeNull();
+			expect(rootContext?.dependencyUpdates?.[0]?.to).toContain(String(sdkReport?.commitSha));
 			expect(rootContext?.submodulePointers?.[0]).toMatchObject({
 				path: 'packages/sdk',
 				oldSha: oldSdkHead,
@@ -628,7 +631,7 @@ describe('repository save orchestrator helpers', () => {
 		}
 	}, 20_000);
 
-	it('finalizes a clean package with an interrupted dev version and missing tag', async () => {
+	it('finalizes a clean package with an interrupted dev version as a commit ref without creating a tag', async () => {
 		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'skip');
 		try {
 			const root = mkdtempSync(join(tmpdir(), 'treeseed-save-partial-'));
@@ -679,11 +682,11 @@ describe('repository save orchestrator helpers', () => {
 			});
 
 			expect(result.rootRepo.version).toBe(version);
-			expect(result.rootRepo.tagName).toBe(version);
+			expect(result.rootRepo.tagName).toBeNull();
+			expect(result.rootRepo.dependencySpec).toContain(git(root, ['rev-parse', 'HEAD']));
 			expect(result.rootRepo.pushed).toBe(true);
-			expect(progress).toContain(`[@treeseed/demo][push] $ git push origin staging ${version}`);
-			expect(git(root, ['rev-list', '-n', '1', version])).toBe(git(root, ['rev-parse', 'HEAD']));
-			expect(git(root, ['ls-remote', '--tags', 'origin', `refs/tags/${version}`])).toContain(version);
+			expect(git(root, ['ls-remote', 'origin', 'refs/heads/staging'])).toContain(git(root, ['rev-parse', 'HEAD']));
+			expect(git(root, ['ls-remote', '--tags', 'origin', `refs/tags/${version}`])).toBe('');
 		} finally {
 			vi.unstubAllEnvs();
 		}

@@ -35,6 +35,9 @@ services:
       serviceName: treeseed-api
       rootDir: packages/api
       imageRefEnv: TREESEED_API_IMAGE_REF
+      sourceMode: git
+      sourceRepo: treeseed-ai/api
+      sourceBranch: staging
       buildCommand: npm run build
       startCommand: npm run start:api
       healthcheckPath: /healthz
@@ -47,6 +50,9 @@ services:
       serviceName: treeseed-api-operations-runner-01
       rootDir: packages/api
       imageRefEnv: TREESEED_OPERATIONS_RUNNER_IMAGE_REF
+      sourceMode: git
+      sourceRepo: treeseed-ai/api
+      sourceBranch: staging
       buildCommand: npm run build
       startCommand: npm run start:runner
       healthcheckPath: /healthz
@@ -85,8 +91,9 @@ function writeApiPackage(root: string, relativeDir = 'packages/api') {
 		workspaces: [relativeDir],
 	}, null, 2));
 	writeFileSync(resolve(dir, 'package.json'), JSON.stringify({ name: '@treeseed/custom-api', type: 'module' }, null, 2));
-	writeFileSync(resolve(dir, 'treeseed.package.yaml'), `id: "@treeseed/custom-api"
+writeFileSync(resolve(dir, 'treeseed.package.yaml'), `id: "@treeseed/custom-api"
 name: Custom API
+repository: treeseed-ai/api
 localDev:
   services:
     api:
@@ -147,8 +154,10 @@ connections:
 		const report = collectTreeseedDeploymentReadiness({ tenantRoot: rootWith(config()), environment: 'staging' });
 		expect(report.ok).toBe(true);
 		expect(byId(report, 'railway-config:api:rootDirectory')).toMatchObject({ status: 'passed' });
-		expect(byId(report, 'hosting:api:imageRefEnv')).toMatchObject({ status: 'passed' });
-		expect(byId(report, 'hosting:operationsRunner:imageRefEnv')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:api:sourceMode')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:api:sourceRepo')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:operationsRunner:sourceMode')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:operationsRunner:sourceRepo')).toMatchObject({ status: 'passed' });
 	});
 
 	it('fails when nested Railway rootDir overrides the package root', () => {

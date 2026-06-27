@@ -359,8 +359,8 @@ function packageResources(adapter: TreeseedPackageAdapter, environment: Treeseed
 	const dockerWorkflow = workflowName(
 		environment === 'prod'
 			? dockerImageConfig.releaseWorkflow
-			: adapter.metadata.developmentImageWorkflow,
-		environment === 'prod' ? 'publish.yml' : 'dev-image.yml',
+			: null,
+		environment === 'prod' ? 'publish.yml' : 'source-build',
 	);
 	resources.push({
 		id: `package-manifest:${packageId}`,
@@ -451,16 +451,13 @@ function packageResources(adapter: TreeseedPackageAdapter, environment: Treeseed
 		if (artifact.provider !== 'docker') continue;
 		const dockerfile = artifact.dockerfile ?? 'Dockerfile';
 		const context = artifact.context ?? '.';
-		const platforms = dockerPlatforms(artifact.architectures, adapter.metadata.developmentImageArchitectures);
+		const platforms = dockerPlatforms(artifact.architectures, adapter.metadata.dockerImageArchitectures);
 		const localBuildPlatforms = environment === 'local' ? [localDockerPlatform()] : platforms;
 		const branch = environment === 'prod' ? 'main' : 'staging';
 		const configuredTags = stringRecord(dockerImageConfig.tags);
 		const imageTagTemplates = environment === 'prod'
 			? stringArray(configuredTags.release).length > 0 ? stringArray(configuredTags.release) : ['<version>']
-			: stringArray(configuredTags.staging).length > 0 ? stringArray(configuredTags.staging) : [
-				`dev-${branch}-<short-sha>`,
-				`dev-${branch}`,
-			];
+			: [];
 		const imageTags = materializeDockerImageTags(imageTagTemplates, adapter, branch);
 		const workflowSpec = repository
 			? {

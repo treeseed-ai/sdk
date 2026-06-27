@@ -289,6 +289,10 @@ export interface TreeseedManagedServiceRailwayConfig {
 	serviceName?: string;
 	rootDir?: string;
 	imageRef?: string;
+	sourceMode?: 'git' | 'image';
+	sourceRepo?: string;
+	sourceBranch?: string;
+	sourceRootDirectory?: string;
 	buildCommand?: string;
 	startCommand?: string;
 	healthcheckPath?: string;

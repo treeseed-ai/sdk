@@ -1,11 +1,51 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+	ensureRailwayService,
 	ensureRailwayServiceInstanceConfiguration,
 	getRailwayServiceInstance,
 	railwayGraphqlRequest,
 } from '../../src/operations/services/railway-api.ts';
 
 describe('railwayGraphqlRequest', () => {
+	it('creates missing Railway services from GitHub source when requested', async () => {
+		const requests: unknown[] = [];
+		const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+			requests.push(JSON.parse(String(init?.body ?? '{}')));
+			const query = String((requests.at(-1) as { query?: string }).query ?? '');
+			if (query.includes('TreeseedRailwayServices') || query.includes('TreeseedRailwayEnvironmentServices')) {
+				return new Response(JSON.stringify({ data: { project: { services: { edges: [] } }, environment: { serviceInstances: { edges: [] } } } }), {
+					status: 200,
+					headers: { 'content-type': 'application/json' },
+				});
+			}
+			return new Response(JSON.stringify({ data: { serviceCreate: { id: 'svc-api', name: 'treeseed-api' } } }), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			});
+		});
+
+		const result = await ensureRailwayService({
+			projectId: 'project-1',
+			environmentId: 'env-staging',
+			serviceName: 'treeseed-api',
+			sourceRepo: 'treeseed-ai/api',
+			sourceBranch: 'staging',
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token-value' },
+			fetchImpl: fetchMock,
+		});
+
+		const createRequest = requests.find((entry) => String((entry as { query?: string }).query ?? '').includes('TreeseedRailwayServiceCreate')) as { variables?: { input?: Record<string, unknown> } };
+		expect(result.created).toBe(true);
+		expect(createRequest.variables?.input).toMatchObject({
+			projectId: 'project-1',
+			name: 'treeseed-api',
+			environmentId: 'env-staging',
+			source: { repo: 'treeseed-ai/api' },
+			branch: 'staging',
+		});
+		expect(JSON.stringify(createRequest.variables?.input)).not.toContain('image');
+	});
+
 	it('retries transient 429 responses and succeeds on a later attempt', async () => {
 		const fetchMock = vi
 			.fn<typeof fetch>()

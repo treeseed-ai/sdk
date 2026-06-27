@@ -49,9 +49,11 @@ function createTreeDxAdapterFixture() {
       "  release: scripts/release-gate.sh",
       "releaseGate:",
       "  workflow: .github/workflows/release-gate.yml",
-      "developmentImages:",
-      "  workflow: .github/workflows/dev-image.yml",
-      "  defaultBranch: staging",
+      "dockerImages:",
+      "  releaseWorkflow: publish.yml",
+      "  architectures:",
+      "    - amd64",
+      "    - arm64",
       "githubEnvironments:",
       "  - staging",
       "  - production",
@@ -123,11 +125,10 @@ describe("TreeDX release gate integration", () => {
     expect(adapter).toBeTruthy();
 
     const releaseGate = renderTreeseedPackageWorkflow(adapter!, "release-gate");
-    const devImage = renderTreeseedPackageWorkflow(adapter!, "dev-image");
     const publish = renderTreeseedPackageWorkflow(adapter!, "docker-image");
 
     expect(releaseGate).toMatch(/bash scripts\/(?:release-gate|test-all)\.sh/u);
-    for (const source of [releaseGate, devImage, publish]) {
+    for (const source of [releaseGate, publish]) {
       expect(source).not.toContain("actions/setup-node");
       expect(source).not.toContain("npm ci");
     }

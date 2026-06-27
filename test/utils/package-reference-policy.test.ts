@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+	assertDevelopmentInternalCommitReferences,
 	assertNoInternalDevReferences,
-	classifyStaleTreeseedDevTag,
-	createDevTagMessage,
+	collectDevelopmentCommitReferenceIssues,
 	createPackageDependencyReference,
 	devTagFromDependencySpec,
 	installableInternalDependencyVersions,
@@ -16,7 +16,7 @@ import {
 } from '../../src/operations/services/package-reference-policy.ts';
 
 describe('package reference policy', () => {
-	it('creates Git tag dependency specs for local, HTTPS, and SSH remotes', () => {
+	it('creates Git dependency specs for local, HTTPS, and SSH remotes', () => {
 		expect(normalizeGitRemoteForDependency('/tmp/sdk.git')).toBe('git+file:///tmp/sdk.git');
 		expect(normalizeGitRemoteForDependency('https://github.com/treeseed-ai/sdk.git')).toBe('git+https://github.com/treeseed-ai/sdk.git');
 		expect(normalizeGitRemoteForDependency('git@github.com:treeseed-ai/sdk.git')).toBe('git+ssh://git@github.com/treeseed-ai/sdk.git');
@@ -29,24 +29,29 @@ describe('package reference policy', () => {
 			version: '0.6.8-dev.feature-demo.20260426T153000Z',
 			branchMode: 'package-dev-save',
 			remoteUrl: '/tmp/sdk.git',
+			commitSha: '0123456789abcdef0123456789abcdef01234567',
 		});
 
-		expect(reference.spec).toBe('git+file:///tmp/sdk.git#0.6.8-dev.feature-demo.20260426T153000Z');
-		expect(devTagFromDependencySpec(reference.spec)).toBe('0.6.8-dev.feature-demo.20260426T153000Z');
+		expect(reference.spec).toBe('git+file:///tmp/sdk.git#0123456789abcdef0123456789abcdef01234567');
+		expect(reference.tagName).toBeNull();
+		expect(reference.mode).toBe('dev-git-commit');
+		expect(devTagFromDependencySpec(reference.spec)).toBeNull();
 	});
 
-	it('uses GitHub shorthand in manifests and smoke specs', () => {
+	it('uses GitHub shorthand and commit refs in manifests and smoke specs by default', () => {
 		const reference = createPackageDependencyReference({
 			packageName: '@treeseed/sdk',
 			version: '0.6.8-dev.staging.20260427T190628Z',
 			branchMode: 'package-dev-save',
 			remoteUrl: 'git@github.com:treeseed-ai/sdk.git',
+			commitSha: 'fedcba9876543210fedcba9876543210fedcba98',
 		});
 
-		expect(reference.spec).toBe('github:treeseed-ai/sdk#0.6.8-dev.staging.20260427T190628Z');
-		expect(reference.manifestSpec).toBe('github:treeseed-ai/sdk#0.6.8-dev.staging.20260427T190628Z');
-		expect(reference.installSpec).toBe('github:treeseed-ai/sdk#0.6.8-dev.staging.20260427T190628Z');
-		expect(devTagFromDependencySpec(reference.manifestSpec)).toBe('0.6.8-dev.staging.20260427T190628Z');
+		expect(reference.spec).toBe('github:treeseed-ai/sdk#fedcba9876543210fedcba9876543210fedcba98');
+		expect(reference.manifestSpec).toBe('github:treeseed-ai/sdk#fedcba9876543210fedcba9876543210fedcba98');
+		expect(reference.installSpec).toBe('github:treeseed-ai/sdk#fedcba9876543210fedcba9876543210fedcba98');
+		expect(reference.tagName).toBeNull();
+		expect(devTagFromDependencySpec(reference.manifestSpec)).toBeNull();
 	});
 
 	it('rewrites internal Git/dev refs to stable semver and validates the result', () => {
@@ -79,6 +84,58 @@ describe('package reference policy', () => {
 		expect(rewrites[0]?.tagName).toBe('0.6.8-dev.feature-demo.20260426T153000Z');
 		expect(JSON.parse(readFileSync(resolve(coreDir, 'package.json'), 'utf8')).dependencies['@treeseed/sdk']).toBe('0.6.8');
 		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).not.toThrow();
+	});
+
+	it('requires development and staging internal package refs to use commit SHAs', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-package-policy-'));
+		const sdkDir = resolve(root, 'packages', 'sdk');
+		const coreDir = resolve(root, 'packages', 'core');
+		mkdirSync(sdkDir, { recursive: true });
+		mkdirSync(coreDir, { recursive: true });
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: '@treeseed/market',
+			version: '1.0.0',
+			workspaces: ['packages/*'],
+			dependencies: {
+				'@treeseed/core': '^0.11.1-dev.demo.20260626T000000Z',
+			},
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(root, 'package-lock.json'), JSON.stringify({
+			name: '@treeseed/market',
+			lockfileVersion: 3,
+			packages: {
+				'': {
+					dependencies: {
+						'@treeseed/core': 'github:treeseed-ai/core#0.11.1-dev.demo.20260626T000000Z',
+					},
+				},
+			},
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(sdkDir, 'package.json'), JSON.stringify({
+			name: '@treeseed/sdk',
+			version: '0.11.1-dev.demo.20260626T000000Z',
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(coreDir, 'package.json'), JSON.stringify({
+			name: '@treeseed/core',
+			version: '0.11.1-dev.demo.20260626T000000Z',
+			dependencies: {
+				'@treeseed/sdk': 'github:treeseed-ai/sdk#0123456789abcdef0123456789abcdef01234567',
+			},
+		}, null, 2), 'utf8');
+
+		expect(collectDevelopmentCommitReferenceIssues(root).map((issue) => issue.reason)).toEqual([
+			'non-git-commit-ref',
+			'lockfile-git-ref-is-not-commit-sha',
+		]);
+		expect(() => assertDevelopmentInternalCommitReferences(root)).toThrow(/commit SHAs/u);
+
+		const rootPackageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
+		rootPackageJson.dependencies['@treeseed/core'] = 'github:treeseed-ai/core#fedcba9876543210fedcba9876543210fedcba98';
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify(rootPackageJson, null, 2), 'utf8');
+		const rootLockfile = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'utf8'));
+		rootLockfile.packages[''].dependencies['@treeseed/core'] = 'github:treeseed-ai/core#fedcba9876543210fedcba9876543210fedcba98';
+		writeFileSync(resolve(root, 'package-lock.json'), JSON.stringify(rootLockfile, null, 2), 'utf8');
+		expect(() => assertDevelopmentInternalCommitReferences(root)).not.toThrow();
 	});
 
 	it('does not rewrite Docker-only packages as installable release dependencies', () => {
@@ -135,7 +192,7 @@ describe('package reference policy', () => {
 		expect(adminPackageJson.peerDependencies['@treeseed/api']).toBe('^0.4.1');
 	});
 
-	it('allows stable release tag Git refs while rejecting dev Git refs', () => {
+	it('rejects internal Git refs in production package manifests, including stable release tags', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-package-policy-'));
 		const sdkDir = resolve(root, 'packages', 'sdk');
 		const coreDir = resolve(root, 'packages', 'core');
@@ -158,13 +215,17 @@ describe('package reference policy', () => {
 			},
 		}, null, 2), 'utf8');
 
-		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).not.toThrow();
+		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).toThrow(/plain semver npm versions/u);
 
 		const corePackageJson = JSON.parse(readFileSync(resolve(coreDir, 'package.json'), 'utf8'));
 		corePackageJson.dependencies['@treeseed/sdk'] = 'github:treeseed-ai/sdk#0.10.2-dev.staging.20260520T010203Z';
 		writeFileSync(resolve(coreDir, 'package.json'), JSON.stringify(corePackageJson, null, 2), 'utf8');
 
-		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).toThrow(/Stable release still contains internal Git\/dev dependency references/u);
+		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).toThrow(/plain semver npm versions/u);
+
+		corePackageJson.dependencies['@treeseed/sdk'] = '0.10.1';
+		writeFileSync(resolve(coreDir, 'package.json'), JSON.stringify(corePackageJson, null, 2), 'utf8');
+		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).not.toThrow();
 	});
 
 	it('does not treat a lockfile root package prerelease version as an internal dependency ref', () => {
@@ -195,87 +256,4 @@ describe('package reference policy', () => {
 		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).not.toThrow();
 	});
 
-	it('writes machine-readable metadata for dev tags', () => {
-		const message = createDevTagMessage({
-			packageName: '@treeseed/sdk',
-			version: '0.6.8-dev.feature-demo.20260426T153000Z',
-			branch: 'feature/demo',
-			commitSha: 'abc123',
-			workflowRunId: 'run-1',
-			createdAt: '2026-04-26T15:30:00.000Z',
-		});
-
-		expect(message).toContain('treeseed-dev-tag: true');
-		expect(message).toContain('package: @treeseed/sdk');
-		expect(message).toContain('branch: feature/demo');
-		expect(message).toContain('workflowRunId: run-1');
-	});
-
-	it('classifies old staging and preview Treeseed dev tags as cleanup candidates', () => {
-		const stagingTag = '0.6.39-dev.staging.20260507T010203Z';
-		const previewTag = '0.6.39-dev.feature-demo.20260507T010203Z';
-
-		expect(classifyStaleTreeseedDevTag({
-			tagName: stagingTag,
-			message: createDevTagMessage({
-				packageName: '@treeseed/sdk',
-				version: stagingTag,
-				branch: 'staging',
-				commitSha: 'abc123',
-			}),
-			currentVersion: '0.6.40-dev.staging.20260508T010203Z',
-		}).action).toBe('delete');
-		expect(classifyStaleTreeseedDevTag({
-			tagName: previewTag,
-			message: createDevTagMessage({
-				packageName: '@treeseed/sdk',
-				version: previewTag,
-				branch: 'feature/demo',
-				commitSha: 'abc123',
-			}),
-			currentVersion: '0.6.40-dev.staging.20260508T010203Z',
-		}).action).toBe('delete');
-	});
-
-	it('keeps current, stable, malformed, non-Treeseed, and referenced dev tags', () => {
-		const currentTag = '0.6.40-dev.staging.20260508T010203Z';
-		const currentMessage = createDevTagMessage({
-			packageName: '@treeseed/sdk',
-			version: currentTag,
-			branch: 'staging',
-			commitSha: 'abc123',
-		});
-
-		expect(classifyStaleTreeseedDevTag({
-			tagName: currentTag,
-			message: currentMessage,
-			currentVersion: '0.6.40-dev.staging.20260508T020304Z',
-		}).reason).toBe('current-version');
-		expect(classifyStaleTreeseedDevTag({
-			tagName: '0.6.39',
-			message: '',
-			currentVersion: '0.6.40',
-		}).reason).toBe('not-dev-tag');
-		expect(classifyStaleTreeseedDevTag({
-			tagName: '0.6.39-dev.staging.bad',
-			message: 'treeseed-dev-tag: true',
-			currentVersion: '0.6.40',
-		}).reason).toBe('malformed-dev-tag');
-		expect(classifyStaleTreeseedDevTag({
-			tagName: '0.6.39-dev.staging.20260508T010203Z',
-			message: 'save: old tag',
-			currentVersion: '0.6.40',
-		}).reason).toBe('missing-treeseed-metadata');
-		expect(classifyStaleTreeseedDevTag({
-			tagName: '0.6.39-dev.staging.20260508T010203Z',
-			message: createDevTagMessage({
-				packageName: '@treeseed/sdk',
-				version: '0.6.39-dev.staging.20260508T010203Z',
-				branch: 'staging',
-				commitSha: 'abc123',
-			}),
-			currentVersion: '0.6.40',
-			activeReferences: ['0.6.39-dev.staging.20260508T010203Z'],
-		}).reason).toBe('still-referenced');
-	});
 });

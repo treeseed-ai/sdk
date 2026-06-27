@@ -5,6 +5,7 @@ import {
 	discoverTreeseedPackageAdapters,
 	validateTreeseedPackageManifests,
 } from '../../src/operations/services/package-adapters.ts';
+import { assertDevelopmentInternalCommitReferences } from '../../src/operations/services/package-reference-policy.ts';
 import { inspectTreeseedGitLocks } from '../../src/operations/services/git-runner.ts';
 import { resolveTreeseedTestPath, resolveTreeseedTestRoot } from './workspace-test-root.ts';
 
@@ -44,6 +45,20 @@ describe('canonical desired resource graph', () => {
 		const results = validateTreeseedPackageManifests(workspaceRoot);
 		expect(results.length).toBeGreaterThanOrEqual(8);
 		expect(results.every((entry) => entry.ok)).toBe(true);
+		const adapters = discoverTreeseedPackageAdapters(workspaceRoot);
+		const dockerPackages = adapters.filter((adapter) => adapter.artifacts.some((artifact) => artifact.provider === 'docker'));
+		expect(dockerPackages.map((adapter) => adapter.id).sort()).toEqual(['@treeseed/agent', '@treeseed/api', 'treedx']);
+		for (const adapter of dockerPackages) {
+			expect(adapter.metadata.deploymentSource).toMatchObject({
+				staging: 'git',
+				prod: 'image',
+			});
+		}
+	});
+
+	it('keeps development package manifests pinned to internal Git commit refs', () => {
+		if (!workspaceRoot) return;
+		expect(() => assertDevelopmentInternalCommitReferences(workspaceRoot)).not.toThrow();
 	});
 
 	it('exposes first-party package project architecture and docs readiness from package manifests', () => {

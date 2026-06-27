@@ -1,8 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { loadCliDeployConfig } from './runtime-tools.ts';
 import { resolveTreeseedMachineEnvironmentValues } from './config-runtime.ts';
 import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from './deploy.ts';
+import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
 import { discoverTreeseedApplications } from '../../hosting/apps.ts';
 import { runPrefixedCommand, sleep, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from './bootstrap-runner.ts';
 import {
@@ -104,12 +106,11 @@ function defaultRailwayImageRef(serviceKey, scope = 'staging', env = process.env
 	if (serviceKey === 'operationsRunner') {
 		return envValue('TREESEED_OPERATIONS_RUNNER_IMAGE_REF', env) || null;
 	}
-	const environment = normalizeScope(scope);
 	if (serviceKey === 'capacityProviderManager') {
-		return envValue('TREESEED_AGENT_MANAGER_IMAGE_REF', env) || (environment === 'staging' ? 'treeseed/agent-manager:dev-staging' : null);
+		return envValue('TREESEED_AGENT_MANAGER_IMAGE_REF', env) || null;
 	}
 	if (serviceKey === 'capacityProviderRunner') {
-		return envValue('TREESEED_AGENT_RUNNER_IMAGE_REF', env) || (environment === 'staging' ? 'treeseed/agent-runner:dev-staging' : null);
+		return envValue('TREESEED_AGENT_RUNNER_IMAGE_REF', env) || null;
 	}
 	return null;
 }
@@ -781,6 +782,15 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 				const imageRef = service.railway?.imageRef
 					?? (configuredImageRefEnv ? envValue(configuredImageRefEnv, imageRefEnv) || null : null)
 					?? defaultRailwayImageRef(serviceKey, normalizedScope, imageRefEnv);
+				const sourcePolicy = resolveRailwayServiceSourcePolicy({
+					tenantRoot,
+					scope: normalizedScope,
+					serviceKey,
+					service,
+					serviceRoot,
+					imageRef,
+				});
+				const resolvedImageRef = sourcePolicy.sourceMode === 'image' ? imageRef : null;
 				return {
 					key: serviceKey,
 					instanceKey: serviceKey === 'operationsRunner' || serviceKey === 'capacityProviderRunner' ? `${serviceKey}:${runnerIndex}` : serviceKey,
@@ -795,9 +805,14 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 					rootDir: serviceRoot,
 					publicBaseUrl,
 					railwayEnvironment,
-					buildCommand: imageRef ? null : service.railway?.buildCommand ?? null,
-					startCommand: imageRef ? null : service.railway?.startCommand ?? null,
-					imageRef,
+					buildCommand: resolvedImageRef ? null : service.railway?.buildCommand ?? null,
+					startCommand: resolvedImageRef ? null : service.railway?.startCommand ?? null,
+					imageRef: resolvedImageRef,
+					sourceMode: sourcePolicy.sourceMode,
+					sourceRepo: sourcePolicy.sourceRepo,
+					sourceBranch: sourcePolicy.sourceBranch,
+					sourceCommit: sourcePolicy.sourceCommit,
+					sourceRootDirectory: sourcePolicy.sourceRootDirectory,
 					healthcheckPath: service.railway?.healthcheckPath ?? null,
 					healthcheckTimeoutSeconds: service.railway?.healthcheckTimeoutSeconds ?? null,
 					healthcheckIntervalSeconds: service.railway?.healthcheckIntervalSeconds ?? null,
@@ -812,6 +827,82 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 			});
 		})
 		.filter(Boolean);
+}
+
+function readTreeseedPackageRepository(packageRoot) {
+	const manifestPath = resolve(packageRoot, 'treeseed.package.yaml');
+	if (!existsSync(manifestPath)) return null;
+	try {
+		const manifest = parseYaml(readFileSync(manifestPath, 'utf8'));
+		const repository = manifest && typeof manifest === 'object' && !Array.isArray(manifest)
+			? (manifest as Record<string, unknown>).repository
+			: null;
+		return typeof repository === 'string' && /^[^/\s]+\/[^/\s]+$/u.test(repository.trim()) ? repository.trim() : null;
+	} catch {
+		return null;
+	}
+}
+
+function headCommitSafe(cwd) {
+	try {
+		return runTreeseedGitText(['rev-parse', 'HEAD'], {
+			cwd,
+			mode: classifyTreeseedGitMode(['rev-parse', 'HEAD']),
+		}).trim();
+	} catch {
+		return null;
+	}
+}
+
+function resolveRailwayServiceSourcePolicy({ tenantRoot, scope, serviceKey, service, serviceRoot, imageRef }) {
+	const configuredMode = typeof service.railway?.sourceMode === 'string' ? service.railway.sourceMode : null;
+	const configuredSource = service.railway?.source && typeof service.railway.source === 'object' && !Array.isArray(service.railway.source)
+		? service.railway.source
+		: {};
+	const configuredRepo = typeof service.railway?.sourceRepo === 'string'
+		? service.railway.sourceRepo
+		: typeof configuredSource.repository === 'string'
+			? configuredSource.repository
+			: typeof configuredSource.repo === 'string'
+				? configuredSource.repo
+				: null;
+	const packageRepository = configuredRepo ?? readTreeseedPackageRepository(serviceRoot) ?? readTreeseedPackageRepository(tenantRoot);
+	const sourceEligible = ['api', 'operationsRunner', 'capacityProviderManager', 'capacityProviderRunner'].includes(serviceKey);
+	const sourceMode = scope === 'prod'
+		? 'image'
+		: configuredMode === 'git' || configuredMode === 'image'
+			? configuredMode
+			: scope === 'staging' && sourceEligible && packageRepository
+				? 'git'
+				: imageRef
+					? 'image'
+					: 'git';
+	if (sourceMode !== 'git') {
+		return {
+			sourceMode: 'image',
+			sourceRepo: null,
+			sourceBranch: null,
+			sourceCommit: null,
+			sourceRootDirectory: null,
+		};
+	}
+	return {
+		sourceMode: 'git',
+		sourceRepo: packageRepository,
+		sourceBranch: typeof service.railway?.sourceBranch === 'string'
+			? service.railway.sourceBranch
+			: typeof configuredSource.branch === 'string'
+				? configuredSource.branch
+				: scope === 'staging'
+					? 'staging'
+					: null,
+		sourceCommit: headCommitSafe(serviceRoot),
+		sourceRootDirectory: typeof service.railway?.sourceRootDirectory === 'string'
+			? service.railway.sourceRootDirectory
+			: typeof configuredSource.rootDirectory === 'string'
+				? configuredSource.rootDirectory
+				: '.',
+	};
 }
 
 function resolveRailwayCapacityProviderRoot(tenantRoot, service) {
@@ -969,6 +1060,9 @@ export function validateRailwayServiceConfiguration(tenantRoot, scope) {
 		}
 		if (!service.projectName && !service.projectId) {
 			issues.push(`${service.key}: set railway.projectName or railway.projectId in treeseed.site.yaml.`);
+		}
+		if (service.sourceMode === 'git' && !service.sourceRepo) {
+			issues.push(`${service.key}: staging source builds require railway.source.repository or package repository metadata.`);
 		}
 		if (!service.imageRef && !existsSync(service.rootDir)) {
 			issues.push(`${service.key}: service root ${service.rootDir} does not exist.`);
@@ -1500,6 +1594,8 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			serviceName: service.serviceName,
 			environmentId: environment.id,
 			imageRef: service.imageRef,
+			sourceRepo: service.sourceRepo,
+			sourceBranch: service.sourceBranch,
 			env,
 		}).then((result) => result.service);
 	} else if (service.imageRef) {
@@ -1509,6 +1605,8 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			serviceName: service.serviceName,
 			environmentId: environment.id,
 			imageRef: service.imageRef,
+			sourceRepo: service.sourceRepo,
+			sourceBranch: service.sourceBranch,
 			env,
 		}).then((result) => result.service);
 	}
@@ -1523,7 +1621,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			buildCommand: service.buildCommand,
 			startCommand: railwayServiceRuntimeStartCommand(service),
 			cronSchedule: service.schedule?.[0] ?? null,
-			rootDirectory: service.imageRef ? null : '.',
+			rootDirectory: service.imageRef ? null : service.sourceRootDirectory ?? '.',
 			healthcheckPath: service.healthcheckPath,
 			healthcheckTimeoutSeconds: service.healthcheckTimeoutSeconds,
 			healthcheckIntervalSeconds: service.healthcheckIntervalSeconds,
@@ -1542,6 +1640,14 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		serviceId: railwayService.id,
 		variables: {
 			TREESEED_SKIP_PACKAGE_PREPARE: '1',
+			...(service.sourceMode === 'git' ? {
+				TREESEED_DEPLOY_SOURCE_MODE: 'git',
+				...(service.sourceRepo ? { TREESEED_DEPLOY_SOURCE_REPOSITORY: service.sourceRepo } : {}),
+				...(service.sourceBranch ? { TREESEED_DEPLOY_SOURCE_BRANCH: service.sourceBranch } : {}),
+				...(service.sourceCommit ? { TREESEED_DEPLOY_SOURCE_COMMIT: service.sourceCommit } : {}),
+			} : {
+				TREESEED_DEPLOY_SOURCE_MODE: 'image',
+			}),
 			...(service.key === 'operationsRunner' ? {
 				NIXPACKS_APT_PKGS: 'git',
 				NIXPACKS_PKGS: 'git',

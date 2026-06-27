@@ -416,13 +416,13 @@ provider:
     id: local
 runtime:
   images:
-    tag: dev-staging
+    tag: 1.2.3
   runners:
     maxConcurrent: 2
 extensions:
   runner:
     enabled: true
-    baseImage: treeseed/agent-runner:dev-staging
+    baseImage: treeseed/agent-runner:1.2.3
     image: example/team-agent-runner
     tag: local
     buildArgs:
@@ -431,13 +431,13 @@ extensions:
 		const plan = resolveCapacityProviderLaunchPlan(manifest);
 		expect(DEFAULT_CAPACITY_PROVIDER_ROLE_IMAGES).toHaveProperty('api');
 		expect(plan.roleImages).toEqual({
-			api: 'treeseed/agent-provider-api:dev-staging',
-			manager: 'treeseed/agent-manager:dev-staging',
+			api: 'treeseed/agent-provider-api:1.2.3',
+			manager: 'treeseed/agent-manager:1.2.3',
 			runner: 'example/team-agent-runner:local',
 		});
 		expect(plan.composeEnv).toMatchObject({
-			TREESEED_AGENT_API_IMAGE: 'treeseed/agent-provider-api:dev-staging',
-			TREESEED_AGENT_MANAGER_IMAGE: 'treeseed/agent-manager:dev-staging',
+			TREESEED_AGENT_API_IMAGE: 'treeseed/agent-provider-api:1.2.3',
+			TREESEED_AGENT_MANAGER_IMAGE: 'treeseed/agent-manager:1.2.3',
 			TREESEED_AGENT_RUNNER_IMAGE: 'example/team-agent-runner:local',
 			TREESEED_PROVIDER_HOST_DATA_DIR: '.treeseed/local-capacity-provider/data',
 			TREESEED_PROVIDER_MAX_CONCURRENT_RUNNERS: '2',

@@ -411,8 +411,7 @@ function isReleaseGateOnlyCompletion(journal: TreeseedWorkflowRunJournal) {
 	if (typeof releaseRootData?.releasedCommit !== 'string') return false;
 	const pendingStep = journal.steps.find((step) => step.status === 'pending');
 	return pendingStep?.id === 'release-root-gates'
-		|| pendingStep?.id === 'release-back-merge'
-		|| pendingStep?.id === 'cleanup-dev-tags';
+		|| pendingStep?.id === 'release-back-merge';
 }
 
 function releaseStepData(journal: TreeseedWorkflowRunJournal, stepId: string) {

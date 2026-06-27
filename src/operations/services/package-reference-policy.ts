@@ -3,21 +3,9 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { discoverTreeseedPackageAdapters } from './package-adapters.ts';
 import { workspacePackages, workspaceRoot } from './workspace-tools.ts';
-import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
 
-function runGit(args: string[], options: { cwd: string; capture?: boolean; timeoutMs?: number; maxBuffer?: number }) {
-	return runTreeseedGitText(args, {
-		cwd: options.cwd,
-		mode: classifyTreeseedGitMode(args),
-		timeoutMs: options.timeoutMs,
-		maxBuffer: options.maxBuffer,
-	});
-}
-
-export type DevDependencyReferenceMode = 'git-tag' | 'registry-prerelease';
-export type DevTagCleanupMode = 'safe-after-release' | 'off';
+export type DevDependencyReferenceMode = 'git-commit';
 export type GitDependencyProtocol = 'preserve-origin' | 'https' | 'ssh';
-export type DevTagBranchScope = 'staging' | 'preview' | 'all';
 
 export type PackageDependencyReference = {
 	packageName: string;
@@ -27,7 +15,7 @@ export type PackageDependencyReference = {
 	installSpec: string;
 	tagName: string | null;
 	remoteUrl: string | null;
-	mode: 'stable-semver' | 'dev-git-tag' | 'dev-registry-prerelease';
+	mode: 'stable-semver' | 'dev-git-commit';
 };
 
 export type RewrittenDevReference = {
@@ -36,24 +24,6 @@ export type RewrittenDevReference = {
 	from: string;
 	to: string;
 	tagName: string | null;
-};
-
-export type TreeseedDevTagInfo = {
-	tagName: string;
-	stableVersion: string;
-	branchSlug: string;
-	timestamp: string;
-	metadata: Record<string, string>;
-	branch: string | null;
-	packageName: string | null;
-	version: string | null;
-};
-
-export type StaleDevTagClassification = {
-	tagName: string;
-	action: 'delete' | 'skip';
-	reason: string;
-	info: TreeseedDevTagInfo | null;
 };
 
 const INTERNAL_DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies'];
@@ -78,21 +48,6 @@ export function isPrereleaseVersion(version: string) {
 
 export function isStableVersion(version: string) {
 	return /^\d+\.\d+\.\d+$/u.test(String(version).trim());
-}
-
-function stableVersionBase(version: string) {
-	const match = String(version).trim().match(/^(\d+\.\d+\.\d+)(?:-|$)/u);
-	return match?.[1] ?? null;
-}
-
-function compareStableVersions(left: string, right: string) {
-	const leftParts = left.split('.').map((part) => Number(part));
-	const rightParts = right.split('.').map((part) => Number(part));
-	for (let index = 0; index < 3; index += 1) {
-		const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
-		if (difference !== 0) return difference;
-	}
-	return 0;
 }
 
 export function isGitDependencySpec(spec: string) {
@@ -164,6 +119,7 @@ export function createPackageDependencyReference(input: {
 	version: string;
 	branchMode: 'package-release-main' | 'package-dev-save';
 	remoteUrl?: string | null;
+	commitSha?: string | null;
 	devDependencyReferenceMode?: DevDependencyReferenceMode;
 	gitDependencyProtocol?: GitDependencyProtocol;
 }): PackageDependencyReference {
@@ -179,33 +135,25 @@ export function createPackageDependencyReference(input: {
 			mode: 'stable-semver',
 		};
 	}
-	if ((input.devDependencyReferenceMode ?? 'git-tag') === 'registry-prerelease') {
-		return {
-			packageName: input.packageName,
-			version: input.version,
-			spec: input.version,
-			manifestSpec: input.version,
-			installSpec: input.version,
-			tagName: input.version,
-			remoteUrl: input.remoteUrl ?? null,
-			mode: 'dev-registry-prerelease',
-		};
-	}
 	const installRemote = normalizeGitRemoteForDependency(input.remoteUrl ?? '', input.gitDependencyProtocol ?? 'preserve-origin');
 	const manifestRemote = normalizeGitRemoteForManifest(input.remoteUrl ?? '', input.gitDependencyProtocol ?? 'preserve-origin');
 	if (!installRemote || !manifestRemote) {
-		throw new Error(`Unable to create Git-tag dependency for ${input.packageName}; origin remote is missing.`);
+		throw new Error(`Unable to create Git dependency for ${input.packageName}; origin remote is missing.`);
 	}
-	const manifestSpec = `${manifestRemote}#${input.version}`;
+	const ref = String(input.commitSha ?? '').trim();
+	if (!ref) {
+		throw new Error(`Unable to create commit dependency for ${input.packageName}; commit SHA is missing.`);
+	}
+	const manifestSpec = `${manifestRemote}#${ref}`;
 	return {
 		packageName: input.packageName,
 		version: input.version,
 		spec: manifestSpec,
 		manifestSpec,
 		installSpec: manifestSpec,
-		tagName: input.version,
+		tagName: null,
 		remoteUrl: input.remoteUrl ?? null,
-		mode: 'dev-git-tag',
+		mode: 'dev-git-commit',
 	};
 }
 
@@ -325,8 +273,8 @@ export function collectInternalDevReferenceIssues(root = workspaceRoot(), packag
 			for (const [depName, specValue] of Object.entries(values)) {
 				if (!packageNames.has(depName)) continue;
 				const spec = String(specValue);
-				if (isGitDependencySpec(spec) && !releaseTagFromDependencySpec(spec)) {
-					issues.push({ repoName: pkg.name, filePath: packageJsonPath, field, dependencyName: depName, spec, reason: 'git-dev-ref' });
+				if (isGitDependencySpec(spec)) {
+					issues.push({ repoName: pkg.name, filePath: packageJsonPath, field, dependencyName: depName, spec, reason: releaseTagFromDependencySpec(spec) ? 'git-release-ref' : 'git-dev-ref' });
 				} else if (isPrereleaseVersion(spec)) {
 					issues.push({ repoName: pkg.name, filePath: packageJsonPath, field, dependencyName: depName, spec, reason: 'prerelease-dev-ref' });
 				}
@@ -356,10 +304,10 @@ export function collectInternalDevReferenceIssues(root = workspaceRoot(), packag
 						record.resolved,
 						record.from,
 					].map((value) => typeof value === 'string' ? value : '').find((value) =>
-						(isGitDependencySpec(value) && !releaseTagFromDependencySpec(value)) || devTagFromDependencySpec(value) || isPrereleaseVersion(value),
+						isGitDependencySpec(value) || devTagFromDependencySpec(value) || isPrereleaseVersion(value),
 					);
 					if (spec) {
-						issues.push({ repoName: lockRoot.name, filePath: lockPath, spec, reason: 'lockfile-dev-ref', dependencyName: packageName });
+						issues.push({ repoName: lockRoot.name, filePath: lockPath, spec, reason: releaseTagFromDependencySpec(spec) ? 'lockfile-git-release-ref' : 'lockfile-dev-ref', dependencyName: packageName });
 					}
 				}
 			}
@@ -368,241 +316,85 @@ export function collectInternalDevReferenceIssues(root = workspaceRoot(), packag
 	return issues;
 }
 
+export function collectDevelopmentCommitReferenceIssues(root = workspaceRoot(), packageNames = new Set(workspacePackages(root).map((pkg) => pkg.name))) {
+	const issues: Array<{ repoName: string; filePath: string; field?: string; dependencyName?: string; spec: string; reason: string }> = [];
+	const manifestRoots = [
+		{ name: '@treeseed/market', dir: root },
+		...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir })),
+	];
+	for (const pkg of manifestRoots) {
+		const packageJsonPath = resolve(pkg.dir, 'package.json');
+		if (!existsSync(packageJsonPath)) continue;
+		const packageJson = readJson(packageJsonPath);
+		for (const field of internalDependencyFields(packageJson)) {
+			const values = packageJson[field] as Record<string, unknown>;
+			for (const [depName, specValue] of Object.entries(values)) {
+				if (!packageNames.has(depName)) continue;
+				const spec = String(specValue);
+				if (!/^github:treeseed-ai\/[a-z0-9._-]+#[a-f0-9]{40}$/u.test(spec)) {
+					issues.push({
+						repoName: pkg.name,
+						filePath: packageJsonPath,
+						field,
+						dependencyName: depName,
+						spec,
+						reason: isGitDependencySpec(spec)
+							? 'git-ref-is-not-commit-sha'
+							: isPrereleaseVersion(spec)
+								? 'prerelease-ref'
+								: 'non-git-commit-ref',
+					});
+				}
+			}
+		}
+	}
+	for (const lockRoot of manifestRoots) {
+		for (const lockName of ['package-lock.json', 'npm-shrinkwrap.json']) {
+			const lockPath = resolve(lockRoot.dir, lockName);
+			if (!existsSync(lockPath)) continue;
+			const lockfile = readJson(lockPath);
+			const packageEntries = lockfile.packages && typeof lockfile.packages === 'object'
+				? Object.entries(lockfile.packages as Record<string, unknown>)
+				: [];
+			for (const [entryPath, entry] of packageEntries) {
+				if (!entry || typeof entry !== 'object') continue;
+				for (const field of internalDependencyFields(entry as Record<string, unknown>)) {
+					const values = (entry as Record<string, unknown>)[field] as Record<string, unknown>;
+					for (const [depName, specValue] of Object.entries(values)) {
+						if (!packageNames.has(depName)) continue;
+						const spec = String(specValue);
+						if (!/^github:treeseed-ai\/[a-z0-9._-]+#[a-f0-9]{40}$/u.test(spec)) {
+							issues.push({
+								repoName: lockRoot.name,
+								filePath: lockPath,
+								field: entryPath ? `packages.${entryPath}.${field}` : field,
+								dependencyName: depName,
+								spec,
+								reason: isGitDependencySpec(spec) ? 'lockfile-git-ref-is-not-commit-sha' : 'lockfile-non-git-commit-ref',
+							});
+						}
+					}
+				}
+			}
+		}
+	}
+	return issues;
+}
+
+export function assertDevelopmentInternalCommitReferences(root = workspaceRoot(), packageNames?: Set<string>) {
+	const issues = collectDevelopmentCommitReferenceIssues(root, packageNames);
+	if (issues.length === 0) return;
+	const rendered = issues
+		.map((issue) => `${issue.filePath}${issue.field ? ` ${issue.field}.${issue.dependencyName}` : ''}: ${issue.reason} ${issue.spec}`)
+		.join('\n');
+	throw new Error(`Development and staging package references must use GitHub commit SHAs for internal Treeseed dependencies.\n${rendered}`);
+}
+
 export function assertNoInternalDevReferences(root = workspaceRoot(), packageNames?: Set<string>) {
 	const issues = collectInternalDevReferenceIssues(root, packageNames);
 	if (issues.length === 0) return;
 	const rendered = issues
 		.map((issue) => `${issue.filePath}${issue.field ? ` ${issue.field}.${issue.dependencyName}` : ''}: ${issue.reason} ${issue.spec}`)
 		.join('\n');
-	throw new Error(`Stable release still contains internal Git/dev dependency references.\n${rendered}`);
-}
-
-export function createDevTagMessage(input: {
-	packageName: string;
-	version: string;
-	branch: string;
-	commitSha: string;
-	workflowRunId?: string | null;
-	createdAt?: string;
-}) {
-	const branchSlug = input.branch
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '-')
-		.replace(/^-+|-+$/g, '')
-		.slice(0, 40) || 'dev';
-	return [
-		`save: ${input.packageName} ${input.version}`,
-		'',
-		'treeseed-dev-tag: true',
-		`package: ${input.packageName}`,
-		`version: ${input.version}`,
-		`branch: ${input.branch}`,
-		`branchSlug: ${branchSlug}`,
-		`createdAt: ${input.createdAt ?? new Date().toISOString()}`,
-		`workflowRunId: ${input.workflowRunId ?? ''}`,
-		`commitSha: ${input.commitSha}`,
-	].join('\n');
-}
-
-export function gitTagMessage(repoDir: string, tagName: string) {
-	try {
-		return runGit(['tag', '-l', tagName, '--format=%(contents)'], { cwd: repoDir, capture: true });
-	} catch {
-		return '';
-	}
-}
-
-function gitRemoteTagMessage(repoDir: string, tagName: string) {
-	try {
-		runGit(['fetch', '--no-tags', 'origin', `refs/tags/${tagName}`], { cwd: repoDir, capture: true });
-		return runGit(['cat-file', '-p', 'FETCH_HEAD'], { cwd: repoDir, capture: true });
-	} catch {
-		return '';
-	}
-}
-
-function gitDevTagMessage(repoDir: string, tagName: string) {
-	const local = gitTagMessage(repoDir, tagName);
-	if (local.trim()) return local;
-	return gitRemoteTagMessage(repoDir, tagName);
-}
-
-export function tagHasTreeseedDevMetadata(repoDir: string, tagName: string) {
-	return gitTagMessage(repoDir, tagName).includes('treeseed-dev-tag: true');
-}
-
-export function parseTreeseedDevTag(tagName: string, message: string): TreeseedDevTagInfo | null {
-	const match = String(tagName).match(/^(\d+\.\d+\.\d+)-dev\.([0-9A-Za-z.-]+)\.(\d{8}T\d{6}Z)$/u);
-	if (!match) return null;
-	const metadata = Object.fromEntries(
-		String(message)
-			.split(/\r?\n/u)
-			.map((line) => line.match(/^([^:]+):\s*(.*)$/u))
-			.filter((lineMatch): lineMatch is RegExpMatchArray => Boolean(lineMatch))
-			.map((lineMatch) => [String(lineMatch[1]).trim(), String(lineMatch[2] ?? '').trim()]),
-	);
-	if (metadata['treeseed-dev-tag'] !== 'true') return null;
-	return {
-		tagName,
-		stableVersion: match[1],
-		branchSlug: match[2],
-		timestamp: match[3],
-		metadata,
-		branch: metadata.branch || null,
-		packageName: metadata.package || null,
-		version: metadata.version || null,
-	};
-}
-
-function devTagScope(info: TreeseedDevTagInfo): 'staging' | 'preview' | 'main' {
-	const branch = info.branch ?? info.branchSlug;
-	if (branch === 'staging' || info.branchSlug === 'staging') return 'staging';
-	if (branch === 'main' || branch === 'prod' || branch === 'production' || info.branchSlug === 'main' || info.branchSlug === 'prod' || info.branchSlug === 'production') return 'main';
-	return 'preview';
-}
-
-export function classifyStaleTreeseedDevTag(input: {
-	tagName: string;
-	message: string;
-	currentVersion: string;
-	activeReferences?: string[];
-	branchScope?: DevTagBranchScope;
-	expectedPackageName?: string | null;
-}): StaleDevTagClassification {
-	const tagName = String(input.tagName).trim();
-	if (!tagName.includes('-dev.')) return { tagName, action: 'skip', reason: 'not-dev-tag', info: null };
-	if (tagName.startsWith('deprecated/')) return { tagName, action: 'skip', reason: 'deprecated-tag', info: null };
-	const info = parseTreeseedDevTag(tagName, input.message);
-	if (!info) return { tagName, action: 'skip', reason: input.message.includes('treeseed-dev-tag: true') ? 'malformed-dev-tag' : 'missing-treeseed-metadata', info: null };
-	if (input.expectedPackageName && info.packageName && info.packageName !== input.expectedPackageName) {
-		return { tagName, action: 'skip', reason: 'package-mismatch', info };
-	}
-	if ((input.activeReferences ?? []).includes(tagName)) return { tagName, action: 'skip', reason: 'still-referenced', info };
-	const scope = devTagScope(info);
-	if (scope === 'main') return { tagName, action: 'skip', reason: 'main-or-production-tag', info };
-	const branchScope = input.branchScope ?? 'all';
-	if (branchScope !== 'all' && branchScope !== scope) return { tagName, action: 'skip', reason: `scope-${scope}`, info };
-	const currentStableVersion = stableVersionBase(input.currentVersion);
-	if (!currentStableVersion) return { tagName, action: 'skip', reason: 'invalid-current-version', info };
-	const comparison = compareStableVersions(info.stableVersion, currentStableVersion);
-	if (comparison >= 0) {
-		return { tagName, action: 'skip', reason: comparison === 0 ? 'current-version' : 'newer-version', info };
-	}
-	return { tagName, action: 'delete', reason: 'stale-before-current-version', info };
-}
-
-export function cleanupDevTags(repoDir: string, tagNames: string[], activeReferences: string[] = []) {
-	const active = new Set(activeReferences.filter(Boolean));
-	const cleaned: string[] = [];
-	const skipped: Array<{ tagName: string; reason: string }> = [];
-	for (const tagName of [...new Set(tagNames.filter(Boolean))].sort()) {
-		if (!tagName.includes('-dev.')) {
-			skipped.push({ tagName, reason: 'not-dev-tag' });
-			continue;
-		}
-		if (active.has(tagName)) {
-			skipped.push({ tagName, reason: 'still-referenced' });
-			continue;
-		}
-		if (!tagHasTreeseedDevMetadata(repoDir, tagName)) {
-			skipped.push({ tagName, reason: 'missing-treeseed-metadata' });
-			continue;
-		}
-		try {
-			runGit(['tag', '-d', tagName], { cwd: repoDir });
-			runGit(['push', 'origin', `:refs/tags/${tagName}`], { cwd: repoDir });
-			cleaned.push(tagName);
-		} catch (error) {
-			skipped.push({ tagName, reason: error instanceof Error ? error.message : String(error) });
-		}
-	}
-	return { cleaned, skipped };
-}
-
-function localDevTags(repoDir: string) {
-	return runGit(['tag', '-l', '*-dev.*'], { cwd: repoDir, capture: true })
-		.split(/\r?\n/u)
-		.map((line) => line.trim())
-		.filter(Boolean);
-}
-
-function remoteDevTags(repoDir: string) {
-	try {
-		return runGit(['ls-remote', '--tags', 'origin', '*-dev.*'], { cwd: repoDir, capture: true })
-			.split(/\r?\n/u)
-			.map((line) => line.trim())
-			.filter(Boolean)
-			.filter((line) => !line.endsWith('^{}'))
-			.map((line) => line.split(/\s+/u)[1] ?? '')
-			.filter((ref) => ref.startsWith('refs/tags/'))
-			.map((ref) => ref.slice('refs/tags/'.length));
-	} catch {
-		return [];
-	}
-}
-
-export function collectTreeseedDevTagCleanupPlan(input: {
-	repoDir: string;
-	packageName: string;
-	currentVersion: string;
-	activeReferences?: string[];
-	branchScope?: DevTagBranchScope;
-}) {
-	const tagNames = [...new Set([...localDevTags(input.repoDir), ...remoteDevTags(input.repoDir)])].sort();
-	const classifications = tagNames.map((tagName) =>
-		classifyStaleTreeseedDevTag({
-			tagName,
-			message: gitDevTagMessage(input.repoDir, tagName),
-			currentVersion: input.currentVersion,
-			activeReferences: input.activeReferences ?? [],
-			branchScope: input.branchScope ?? 'all',
-			expectedPackageName: input.packageName,
-		}));
-	return {
-		packageName: input.packageName,
-		currentVersion: input.currentVersion,
-		branchScope: input.branchScope ?? 'all',
-		candidates: classifications.filter((classification) => classification.action === 'delete'),
-		skipped: classifications.filter((classification) => classification.action === 'skip'),
-		tags: classifications,
-	};
-}
-
-export function cleanupStaleTreeseedDevTags(input: {
-	repoDir: string;
-	packageName: string;
-	currentVersion: string;
-	activeReferences?: string[];
-	branchScope?: DevTagBranchScope;
-	dryRun?: boolean;
-}) {
-	const plan = collectTreeseedDevTagCleanupPlan(input);
-	const cleaned: string[] = [];
-	const skipped = [...plan.skipped.map((entry) => ({ tagName: entry.tagName, reason: entry.reason }))];
-	for (const candidate of plan.candidates) {
-		if (input.dryRun) continue;
-		try {
-			runGit(['tag', '-d', candidate.tagName], { cwd: input.repoDir });
-		} catch {
-			// Missing local tags can still have a stale remote counterpart.
-		}
-		try {
-			runGit(['push', 'origin', `:refs/tags/${candidate.tagName}`], { cwd: input.repoDir });
-			cleaned.push(candidate.tagName);
-		} catch (error) {
-			skipped.push({ tagName: candidate.tagName, reason: error instanceof Error ? error.message : String(error) });
-		}
-	}
-	return {
-		status: input.dryRun ? 'planned' : 'completed',
-		packageName: input.packageName,
-		currentVersion: input.currentVersion,
-		branchScope: input.branchScope ?? 'all',
-		candidates: plan.candidates.map((entry) => ({ tagName: entry.tagName, reason: entry.reason, branch: entry.info?.branch, branchSlug: entry.info?.branchSlug, version: entry.info?.version })),
-		candidateCount: plan.candidates.length,
-		cleaned,
-		cleanedCount: cleaned.length,
-		skipped,
-		skippedCount: skipped.length,
-	};
+	throw new Error(`Stable release still contains internal Git or dev dependency references; production package.json files must use plain semver npm versions.\n${rendered}`);
 }

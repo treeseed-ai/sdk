@@ -1,8 +1,11 @@
 import { loadTreeseedDeployConfig } from '../platform/deploy-config.ts';
 import { loadTreeseedPlugins } from '../platform/plugins/runtime.ts';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { createPersistentDeployTarget } from '../operations/services/deploy.ts';
 import { collectTreeseedConfigSeedValues, resolveTreeseedMachineEnvironmentValues } from '../operations/services/config-runtime.ts';
+import { classifyTreeseedGitMode, runTreeseedGitText } from '../operations/services/git-runner.ts';
 import { createTreeseedCanonicalReconcileReport, type TreeseedCanonicalAction, type TreeseedCanonicalDrift, type TreeseedCanonicalGraphNode, type TreeseedCanonicalPostcondition } from '../reconcile/index.ts';
 import { reconcileTreeseedTarget } from '../reconcile/index.ts';
 import type { TreeseedRunnableBootstrapSystem } from '../reconcile/bootstrap-systems.ts';
@@ -78,6 +81,55 @@ function publicTreeDxNodePool(config: Record<string, any>) {
 	return { bootstrapCount, maxNodes };
 }
 
+function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Record<string, any>) {
+	const railway = config.publicTreeDxFederation?.railway ?? {};
+	const configuredSource = railway.source && typeof railway.source === 'object' && !Array.isArray(railway.source)
+		? railway.source
+		: {};
+	const configuredMode = typeof railway.sourceMode === 'string' ? railway.sourceMode : null;
+	const treeDxRoot = resolve(input.tenantRoot, 'packages', 'treedx');
+	const repository = typeof railway.sourceRepo === 'string'
+		? railway.sourceRepo
+		: typeof configuredSource.repository === 'string'
+			? configuredSource.repository
+			: typeof configuredSource.repo === 'string'
+				? configuredSource.repo
+				: readPackageRepository(treeDxRoot) ?? 'treeseed-ai/treedx';
+	const sourceMode = configuredMode === 'git' || configuredMode === 'image'
+		? configuredMode
+		: input.environment === 'staging'
+			? 'git'
+			: 'image';
+	if (sourceMode !== 'git') {
+		return {
+			sourceMode: 'image',
+			sourceRepo: null,
+			sourceBranch: null,
+			sourceCommit: null,
+			sourceRootDirectory: null,
+			image: 'treeseed/treedx',
+			imageTagRef: 'TREESEED_PUBLIC_TREEDX_IMAGE_REF',
+		};
+	}
+	return {
+		sourceMode: 'git',
+		sourceRepo: repository,
+		sourceBranch: typeof railway.sourceBranch === 'string'
+			? railway.sourceBranch
+			: typeof configuredSource.branch === 'string'
+				? configuredSource.branch
+				: 'staging',
+		sourceCommit: headCommitSafe(treeDxRoot) ?? headCommitSafe(input.tenantRoot),
+		sourceRootDirectory: typeof railway.sourceRootDirectory === 'string'
+			? railway.sourceRootDirectory
+			: typeof configuredSource.rootDirectory === 'string'
+				? configuredSource.rootDirectory
+				: '.',
+		image: null,
+		imageTagRef: null,
+	};
+}
+
 function serviceKeyPlacement(serviceKey: string): TreeseedServicePlacement {
 	if (serviceKey === 'api') return 'api';
 	if (serviceKey === 'treeseedDatabase') return 'database';
@@ -104,10 +156,87 @@ function railwayImageRefEnvForService(serviceKey: string) {
 	return null;
 }
 
-function defaultRailwayImageRefForService(serviceKey: string) {
-	if (serviceKey === 'capacityProviderManager') return 'treeseed/agent-manager:dev-staging';
-	if (serviceKey === 'capacityProviderRunner') return 'treeseed/agent-runner:dev-staging';
+function defaultRailwayImageRefForService(serviceKey: string, environment: TreeseedHostingEnvironment) {
+	void serviceKey;
+	void environment;
 	return null;
+}
+
+function readPackageRepository(root: string) {
+	const manifestPath = resolve(root, 'treeseed.package.yaml');
+	if (!existsSync(manifestPath)) return null;
+	try {
+		const parsed = parseYaml(readFileSync(manifestPath, 'utf8'));
+		const repository = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+			? (parsed as Record<string, unknown>).repository
+			: null;
+		return typeof repository === 'string' && /^[^/\s]+\/[^/\s]+$/u.test(repository.trim()) ? repository.trim() : null;
+	} catch {
+		return null;
+	}
+}
+
+function headCommitSafe(root: string) {
+	try {
+		return runTreeseedGitText(['rev-parse', 'HEAD'], {
+			cwd: root,
+			mode: classifyTreeseedGitMode(['rev-parse', 'HEAD']),
+		}).trim();
+	} catch {
+		return null;
+	}
+}
+
+function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey: string, service: Record<string, any>, imageRef: string | null) {
+	const configuredSource = service.railway?.source && typeof service.railway.source === 'object' && !Array.isArray(service.railway.source)
+		? service.railway.source
+		: {};
+	const configuredMode = typeof service.railway?.sourceMode === 'string' ? service.railway.sourceMode : null;
+	const repository = typeof service.railway?.sourceRepo === 'string'
+		? service.railway.sourceRepo
+		: typeof configuredSource.repository === 'string'
+			? configuredSource.repository
+			: typeof configuredSource.repo === 'string'
+				? configuredSource.repo
+				: readPackageRepository(input.tenantRoot);
+	const sourceEligible = ['api', 'operationsRunner', 'capacityProviderManager', 'capacityProviderRunner'].includes(serviceKey);
+	const mode = input.environment === 'prod'
+		? 'image'
+		: configuredMode === 'git' || configuredMode === 'image'
+			? configuredMode
+			: input.environment === 'staging' && sourceEligible && repository
+				? 'git'
+				: imageRef
+					? 'image'
+					: 'git';
+	if (mode !== 'git') {
+		return {
+			sourceMode: 'image',
+			sourceRepo: null,
+			sourceBranch: null,
+			sourceCommit: null,
+			sourceRootDirectory: null,
+			imageRef,
+		};
+	}
+	return {
+		sourceMode: 'git',
+		sourceRepo: repository,
+		sourceBranch: typeof service.railway?.sourceBranch === 'string'
+			? service.railway.sourceBranch
+			: typeof configuredSource.branch === 'string'
+				? configuredSource.branch
+				: input.environment === 'staging'
+					? 'staging'
+					: null,
+		sourceCommit: headCommitSafe(input.tenantRoot),
+		sourceRootDirectory: typeof service.railway?.sourceRootDirectory === 'string'
+			? service.railway.sourceRootDirectory
+			: typeof configuredSource.rootDirectory === 'string'
+				? configuredSource.rootDirectory
+				: '.',
+		imageRef: null,
+	};
 }
 
 function collectPluginHostingContributions(input: TreeseedHostingGraphInput) {
@@ -293,10 +422,11 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 				: 'treeseed-control-plane'
 			: undefined;
 		const imageRefEnv = railwayImageRefEnvForService(serviceKey);
-		const imageRef = service.railway?.imageRef
-			?? (imageRefEnv ? railwayImageRefEnv[imageRefEnv] ?? process.env[imageRefEnv] : null)
-			?? defaultRailwayImageRefForService(serviceKey)
-			?? null;
+				const imageRef = service.railway?.imageRef
+					?? (imageRefEnv ? railwayImageRefEnv[imageRefEnv] ?? process.env[imageRefEnv] : null)
+					?? defaultRailwayImageRefForService(serviceKey, input.environment)
+					?? null;
+		const sourcePolicy = railwaySourcePolicy(input, serviceKey, service, imageRef);
 		services.push({
 			id: serviceKey,
 			label: placement === 'runner-capacity' ? 'Runner Capacity' : serviceKey === 'api' ? 'API Runtime' : serviceKey,
@@ -305,10 +435,15 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 			projectGroupId: defaultProjectGroup,
 			config: {
 				rootDir: service.railway?.rootDir ?? service.rootDir ?? '.',
-				imageRef,
-				imageRefEnv,
-				buildCommand: imageRef ? null : service.railway?.buildCommand ?? null,
-				startCommand: imageRef ? null : service.railway?.startCommand ?? null,
+				imageRef: sourcePolicy.imageRef,
+				imageRefEnv: sourcePolicy.sourceMode === 'image' ? imageRefEnv : null,
+				sourceMode: sourcePolicy.sourceMode,
+				sourceRepo: sourcePolicy.sourceRepo,
+				sourceBranch: sourcePolicy.sourceBranch,
+				sourceCommit: sourcePolicy.sourceCommit,
+				sourceRootDirectory: sourcePolicy.sourceRootDirectory,
+				buildCommand: sourcePolicy.imageRef ? null : service.railway?.buildCommand ?? null,
+				startCommand: sourcePolicy.imageRef ? null : service.railway?.startCommand ?? null,
 				healthcheckPath: service.railway?.healthcheckPath ?? null,
 				runtimeMode: service.railway?.runtimeMode ?? null,
 				volumeMountPath: service.railway?.volumeMountPath ?? null,
@@ -377,6 +512,7 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 
 	if (config.hosting?.kind === 'treeseed_control_plane') {
 		const treeDxNodePool = publicTreeDxNodePool(config);
+		const treeDxSourcePolicy = publicTreeDxSourcePolicy(input, config);
 		const treeDxNodeUnits = Array.from({ length: treeDxNodePool.bootstrapCount }, (_, offset) => {
 			const nodeIndex = offset + 1;
 			const serviceName = indexedName('public-treedx-node', nodeIndex);
@@ -387,8 +523,13 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 				placement: 'knowledge-library' as const,
 				projectGroupId: 'public-treedx-federation',
 				config: {
-					image: 'treeseed/treedx',
-					imageTagRef: 'TREESEED_PUBLIC_TREEDX_IMAGE_REF',
+					...(treeDxSourcePolicy.image ? { image: treeDxSourcePolicy.image } : {}),
+					...(treeDxSourcePolicy.imageTagRef ? { imageTagRef: treeDxSourcePolicy.imageTagRef } : {}),
+					sourceMode: treeDxSourcePolicy.sourceMode,
+					...(treeDxSourcePolicy.sourceRepo ? { sourceRepo: treeDxSourcePolicy.sourceRepo } : {}),
+					...(treeDxSourcePolicy.sourceBranch ? { sourceBranch: treeDxSourcePolicy.sourceBranch } : {}),
+					...(treeDxSourcePolicy.sourceCommit ? { sourceCommit: treeDxSourcePolicy.sourceCommit } : {}),
+					...(treeDxSourcePolicy.sourceRootDirectory ? { sourceRootDirectory: treeDxSourcePolicy.sourceRootDirectory } : {}),
 					serviceName,
 					volumeName: `${serviceName}-volume`,
 					volumeMountPath: '/data',
@@ -413,7 +554,7 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 					},
 				},
 				variableRefs: [
-					'TREESEED_PUBLIC_TREEDX_IMAGE_REF',
+					...(treeDxSourcePolicy.sourceMode === 'image' ? ['TREESEED_PUBLIC_TREEDX_IMAGE_REF'] : []),
 					'PHX_HOST',
 					'PHX_SERVER',
 					'PORT',

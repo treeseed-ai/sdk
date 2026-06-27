@@ -988,6 +988,8 @@ export async function ensureRailwayService({
 	serviceId,
 	environmentId,
 	imageRef,
+	sourceRepo,
+	sourceBranch,
 	env = process.env,
 	fetchImpl = fetch,
 }: {
@@ -996,6 +998,8 @@ export async function ensureRailwayService({
 	serviceId?: string | null;
 	environmentId?: string | null;
 	imageRef?: string | null;
+	sourceRepo?: string | null;
+	sourceBranch?: string | null;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
 }) {
@@ -1015,6 +1019,27 @@ export async function ensureRailwayService({
 	}
 	if (existing) {
 		const desiredImageRef = railwayConnectionLabel(imageRef);
+		const desiredSourceRepo = railwayConnectionLabel(sourceRepo);
+		if (desiredSourceRepo) {
+			try {
+				await updateRailwayServiceGitSource({
+					serviceId: existing.id,
+					sourceRepo: desiredSourceRepo,
+					sourceBranch,
+					env,
+					fetchImpl,
+				});
+			} catch (error) {
+				if (!looksLikeRailwayImageSourceUpdateUnsupported(error)) {
+					throw error;
+				}
+				throw new Error(
+					`Railway Git source update for existing service ${existing.name} (${existing.id}) is unsupported; `
+					+ 'refusing to delete and recreate an existing service. Repair the service in place or use a provider-supported source update.',
+				);
+			}
+			return { service: existing, created: false };
+		}
 		if (desiredImageRef) {
 			try {
 				await updateRailwayServiceImageSource({
@@ -1043,6 +1068,8 @@ export async function ensureRailwayService({
 		environmentId,
 		serviceName: desiredServiceName,
 		imageRef,
+		sourceRepo,
+		sourceBranch,
 		env,
 		fetchImpl,
 	});
@@ -1054,6 +1081,8 @@ async function createRailwayImageService({
 	serviceName,
 	environmentId,
 	imageRef,
+	sourceRepo,
+	sourceBranch,
 	env = process.env,
 	fetchImpl = fetch,
 }: {
@@ -1061,9 +1090,13 @@ async function createRailwayImageService({
 	serviceName: string;
 	environmentId?: string | null;
 	imageRef?: string | null;
+	sourceRepo?: string | null;
+	sourceBranch?: string | null;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
 }) {
+	const desiredSourceRepo = railwayConnectionLabel(sourceRepo);
+	const desiredImageRef = railwayConnectionLabel(imageRef);
 	const created = await railwayGraphqlRequest<{
 		serviceCreate?: Record<string, unknown> | null;
 	}>({
@@ -1080,10 +1113,17 @@ mutation TreeseedRailwayServiceCreate($input: ServiceCreateInput!) {
 					projectId,
 					name: serviceName,
 				...(railwayConnectionLabel(environmentId) ? { environmentId: railwayConnectionLabel(environmentId) } : {}),
-				...(railwayConnectionLabel(imageRef)
+				...(desiredSourceRepo
 					? {
 						source: {
-							image: railwayConnectionLabel(imageRef),
+							repo: desiredSourceRepo,
+						},
+						...(railwayConnectionLabel(sourceBranch) ? { branch: railwayConnectionLabel(sourceBranch) } : {}),
+					}
+					: desiredImageRef
+					? {
+						source: {
+							image: desiredImageRef,
 						},
 					}
 					: {}),
@@ -1144,6 +1184,53 @@ mutation TreeseedRailwayServiceImageSourceUpdate($id: String!, $input: ServiceUp
 	const service = payload.data?.serviceUpdate ? normalizeService(payload.data.serviceUpdate) : null;
 	if (!service) {
 		throw new Error(`Railway service image source update did not return a usable service for ${serviceId}.`);
+	}
+	return service;
+}
+
+export async function updateRailwayServiceGitSource({
+	serviceId,
+	sourceRepo,
+	sourceBranch,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	serviceId: string;
+	sourceRepo: string;
+	sourceBranch?: string | null;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const desiredRepo = railwayConnectionLabel(sourceRepo);
+	if (!serviceId || !desiredRepo) {
+		throw new Error('Railway service Git source update requires a service id and repository slug.');
+	}
+	const payload = await railwayGraphqlRequest<{
+		serviceUpdate?: Record<string, unknown> | null;
+	}>({
+		query: `
+mutation TreeseedRailwayServiceGitSourceUpdate($id: String!, $input: ServiceUpdateInput!) {
+	serviceUpdate(id: $id, input: $input) {
+		id
+		name
+	}
+}
+`.trim(),
+		variables: {
+			id: serviceId,
+			input: {
+				source: {
+					repo: desiredRepo,
+				},
+				...(railwayConnectionLabel(sourceBranch) ? { branch: railwayConnectionLabel(sourceBranch) } : {}),
+			},
+		},
+		env,
+		fetchImpl,
+	});
+	const service = payload.data?.serviceUpdate ? normalizeService(payload.data.serviceUpdate) : null;
+	if (!service) {
+		throw new Error(`Railway service Git source update did not return a usable service for ${serviceId}.`);
 	}
 	return service;
 }

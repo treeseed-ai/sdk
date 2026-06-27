@@ -142,15 +142,10 @@ import {
 import { discoverTreeseedPackageAdapters } from '../operations/services/package-adapters.ts';
 import {
 	assertNoInternalDevReferences,
-	cleanupStaleTreeseedDevTags,
-	collectTreeseedDevTagCleanupPlan,
 	collectInternalDevReferenceIssues,
-	devTagFromDependencySpec,
 	installableInternalDependencyVersions,
 	normalizeGitRemoteForManifest,
 	rewriteProjectInternalDependenciesToStableVersions,
-	type DevTagBranchScope,
-	type DevTagCleanupMode,
 } from '../operations/services/package-reference-policy.ts';
 import {
 	ensureLocalWorkspaceLinks,
@@ -228,7 +223,6 @@ import type {
 	TreeseedSaveInput,
 	TreeseedStageInput,
 	TreeseedSwitchInput,
-	TreeseedTagsCleanupInput,
 	TreeseedTaskBranchMetadata,
 	TreeseedUpdateInput,
 	TreeseedWorkflowContext,
@@ -2559,80 +2553,6 @@ function backMergeRootProductionIntoStaging(root: string, syncPackageStagingHead
 	};
 }
 
-function collectActiveDevTagReferences(root: string) {
-	return collectInternalDevReferenceIssues(root)
-		.map((issue) => devTagFromDependencySpec(issue.spec) ?? (issue.spec.includes('-dev.') ? issue.spec : null))
-		.filter((value): value is string => Boolean(value));
-}
-
-function normalizeIncludePackages(value: TreeseedTagsCleanupInput['includePackages']) {
-	if (!value) return null;
-	const values = Array.isArray(value) ? value : String(value).split(',');
-	const normalized = values.map((entry) => String(entry).trim()).filter(Boolean);
-	return normalized.length > 0 ? new Set(normalized) : null;
-}
-
-function normalizeDevTagBranchScope(value: TreeseedTagsCleanupInput['branchScope']): DevTagBranchScope {
-	return value === 'staging' || value === 'preview' || value === 'all' ? value : 'all';
-}
-
-function packageJsonVersion(repoDir: string) {
-	const packageJson = JSON.parse(readFileSync(resolve(repoDir, 'package.json'), 'utf8')) as Record<string, unknown>;
-	return String(packageJson.version ?? '');
-}
-
-function collectStaleDevTagCleanupReports(root: string, input: TreeseedTagsCleanupInput, options: { execute: boolean }) {
-	const includePackages = normalizeIncludePackages(input.includePackages);
-	const branchScope = normalizeDevTagBranchScope(input.branchScope);
-	const activeDevTags = collectActiveDevTagReferences(root);
-	const repos = checkedOutWorkspacePackageRepos(root)
-		.filter((pkg) => !includePackages || includePackages.has(pkg.name))
-		.map((pkg) => {
-			const currentVersion = packageJsonVersion(pkg.dir);
-			const report = options.execute
-				? cleanupStaleTreeseedDevTags({
-					repoDir: pkg.dir,
-					packageName: pkg.name,
-					currentVersion,
-					activeReferences: activeDevTags,
-					branchScope,
-				})
-				: {
-					...collectTreeseedDevTagCleanupPlan({
-						repoDir: pkg.dir,
-						packageName: pkg.name,
-						currentVersion,
-						activeReferences: activeDevTags,
-						branchScope,
-					}),
-					status: 'planned',
-					candidateCount: 0,
-					cleaned: [] as string[],
-					cleanedCount: 0,
-					skippedCount: 0,
-				};
-			if (!options.execute) {
-				const planned = report as ReturnType<typeof collectTreeseedDevTagCleanupPlan> & { status: string; candidateCount: number; cleaned: string[]; cleanedCount: number; skippedCount: number };
-				planned.candidateCount = planned.candidates.length;
-				planned.skippedCount = planned.skipped.length;
-			}
-			return {
-				name: pkg.name,
-				path: relative(root, pkg.dir),
-				...report,
-			};
-		});
-	return {
-		status: options.execute ? 'completed' : 'planned',
-		branchScope,
-		includePackages: includePackages ? [...includePackages].sort() : [],
-		repos,
-		candidateCount: repos.reduce((total, repo) => total + Number(repo.candidateCount ?? 0), 0),
-		cleanedCount: repos.reduce((total, repo) => total + Number(repo.cleanedCount ?? 0), 0),
-		skippedCount: repos.reduce((total, repo) => total + Number(repo.skippedCount ?? 0), 0),
-	};
-}
-
 function releasePlanVersionMap(plannedVersions: Record<string, unknown>) {
 	return new Map(
 		Object.entries(plannedVersions)
@@ -2872,7 +2792,6 @@ function buildReleasePlanSnapshot(input: {
 			})),
 			{ id: 'release-root', description: `Release market ${rootVersion}` },
 			{ id: 'release-back-merge', description: 'Back-merge production release history into staging' },
-			{ id: 'cleanup-dev-tags', description: 'Clean replaced Treeseed dev tags after stable release' },
 			{ id: 'workspace-link', description: 'Restore local workspace links after release syncs back to staging' },
 		],
 		blockers: input.blockers,
@@ -4599,7 +4518,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					message,
 					bump: (effectiveInput.bump ?? 'patch') as ReleaseBumpLevel,
 					devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
-					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-tag',
+					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-commit',
 					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
 					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
 					verifyMode: normalizeSaveVerifyMode(effectiveInput.verify === false ? 'skip' : effectiveInput.verifyMode),
@@ -4681,7 +4600,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					verify: effectiveInput.verify !== false,
 					bump: effectiveInput.bump ?? 'patch',
 					devVersionStrategy: effectiveInput.devVersionStrategy ?? 'prerelease',
-					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-tag',
+					devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-commit',
 					gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
 					gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
 						verifyMode: effectiveInput.verifyMode ?? (effectiveInput.verify === false ? 'skip' : 'fast'),
@@ -4761,7 +4680,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 								message,
 								bump: (effectiveInput.bump ?? 'patch') as ReleaseBumpLevel,
 								devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
-								devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-tag',
+								devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-commit',
 								gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
 								gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
 								verifyMode: normalizeSaveVerifyMode(effectiveInput.verify === false ? 'skip' : effectiveInput.verifyMode),
@@ -5329,28 +5248,6 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 		});
 	} catch (error) {
 		toError('stage', error);
-	}
-}
-
-export async function workflowTagsCleanup(helpers: WorkflowOperationHelpers, input: TreeseedTagsCleanupInput = {}) {
-	try {
-		return await withContextEnv(helpers.context.env, async () => {
-			const root = resolveProjectRootOrThrow('tags:cleanup', helpers.cwd());
-			const executionMode: TreeseedWorkflowExecutionMode = input.plan === true || input.dryRun === true ? 'plan' : 'execute';
-			const cleanup = collectStaleDevTagCleanupReports(root, input, { execute: executionMode === 'execute' });
-			return buildWorkflowResult('tags:cleanup', root, {
-				...cleanup,
-				mode: hasCompleteTreeseedPackageCheckout(root) ? 'recursive-workspace' : 'root-only',
-			}, {
-				executionMode,
-				summary: executionMode === 'plan' ? 'Treeseed dev tag cleanup plan ready.' : 'Treeseed dev tag cleanup completed.',
-				nextSteps: executionMode === 'plan'
-					? createNextSteps([{ operation: 'tags:cleanup', reason: 'Run without --plan to delete the stale Treeseed-managed dev tags.', input: { branchScope: cleanup.branchScope } }])
-					: createNextSteps([{ operation: 'status', reason: 'Inspect workspace state after tag cleanup.' }]),
-			});
-		});
-	} catch (error) {
-		toError('tags:cleanup', error);
 	}
 }
 
