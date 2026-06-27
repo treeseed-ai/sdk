@@ -237,13 +237,14 @@ describe('release candidate verification', () => {
 			selectedPackageNames: ['@treeseed/sdk'],
 			plannedVersions: {},
 		});
+		const nextCommitRef = '2222222222222222222222222222222222222222';
 		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
 			name: '@treeseed/market',
 			version: '1.0.0',
 			private: true,
 			workspaces: ['packages/*'],
 			dependencies: {
-				'@treeseed/sdk': 'git+https://github.com/treeseed/sdk.git#0.4.13-dev.feature-demo.1',
+				'@treeseed/sdk': `github:treeseed-ai/sdk#${nextCommitRef}`,
 				astro: '^5.1.0',
 			},
 		}, null, 2), 'utf8');
@@ -258,7 +259,7 @@ describe('release candidate verification', () => {
 			private: true,
 			workspaces: ['packages/*'],
 			dependencies: {
-				'@treeseed/sdk': 'git+https://github.com/treeseed/sdk.git#0.4.13-dev.feature-demo.1',
+				'@treeseed/sdk': `github:treeseed-ai/sdk#${nextCommitRef}`,
 				astro: '^5.1.0',
 			},
 			scripts: {

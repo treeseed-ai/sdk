@@ -635,6 +635,7 @@ function runNpmRehearsalCommand(args: string[], options: { cwd: string; timeoutM
 function npmRehearsalEnv(extra: NodeJS.ProcessEnv = {}) {
 	return {
 		...process.env,
+		GIT_ALLOW_PROTOCOL: process.env.GIT_ALLOW_PROTOCOL ?? 'file:git:ssh:https',
 		npm_config_audit: process.env.npm_config_audit ?? 'false',
 		npm_config_fund: process.env.npm_config_fund ?? 'false',
 		...extra,
