@@ -3869,16 +3869,23 @@ async function resolveRailwayTopologyForScope(
 					projectsByKey.set(project.name, project);
 				} else if (project && resolvedService && ensure && (service.imageRef || service.sourceRepo)) {
 					traceRailwayReconcile(env, 'topology:railway-service:repair-source', `${service.key}:${resolvedService.name}`);
-					resolvedService = (await ensureRailwayService({
-						projectId: project.id,
-						serviceId: resolvedService.id,
-						serviceName: resolvedServiceName || resolvedService.name,
-						environmentId: environment?.id,
-						imageRef: service.imageRef,
-						sourceRepo: service.sourceRepo,
-						sourceBranch: service.sourceBranch,
-						env,
-					})).service;
+					try {
+						resolvedService = (await ensureRailwayService({
+							projectId: project.id,
+							serviceId: resolvedService.id,
+							serviceName: resolvedServiceName || resolvedService.name,
+							environmentId: environment?.id,
+							imageRef: service.imageRef,
+							sourceRepo: service.sourceRepo,
+							sourceBranch: service.sourceBranch,
+							env,
+						})).service;
+					} catch (error) {
+						if (!looksLikeRailwayExistingSourceRepairUnsupported(error)) {
+							throw error;
+						}
+						traceRailwayReconcile(env, 'topology:railway-service:repair-source-skipped', `${service.key}:${resolvedService.name}`);
+					}
 				}
 			let instance = null;
 			if (includeInstances && resolvedService && environment) {
@@ -4268,6 +4275,11 @@ async function repairRailwayServiceSource(
 		return true;
 	}
 	return false;
+}
+
+function looksLikeRailwayExistingSourceRepairUnsupported(error: unknown) {
+	const message = error instanceof Error ? error.message : String(error ?? '');
+	return /source update .*existing service|existing service .*source update|provider-supported .*source update|ServiceUpdateInput|Problem processing request/iu.test(message);
 }
 
 async function ensureRailwayMarketDatabaseForScope(
