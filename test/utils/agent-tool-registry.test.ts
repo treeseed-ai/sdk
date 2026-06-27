@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -50,6 +50,9 @@ describe('agent tool registry', () => {
 		];
 		const ids: string[] = [];
 		for (const root of roots) {
+			if (!existsSync(root)) {
+				continue;
+			}
 			const output = execFileSync('find', [root, '-name', '*.mdx'], { encoding: 'utf8' });
 			for (const file of output.split('\n').filter(Boolean)) {
 				const source = readFileSync(file, 'utf8');
