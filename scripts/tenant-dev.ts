@@ -2,7 +2,6 @@ import { spawnSync } from 'node:child_process';
 import { corePackageRoot, packageScriptPath, spawnNodeBinary, resolveWranglerBin } from '../src/operations/services/runtime-tools.ts';
 import { applyTreeseedEnvironmentToProcess, assertTreeseedCommandEnvironment } from '../src/operations/services/config-runtime.ts';
 import { ensureGeneratedWranglerConfig } from '../src/operations/services/deploy.ts';
-import { loadTreeseedDeployConfig } from '../src/platform/deploy-config.ts';
 import {
 	createTenantWatchEntries,
 	isEditablePackageWorkspace,
@@ -21,14 +20,6 @@ let wranglerChild = null;
 let stopWatching = null;
 let isStoppingForRebuild = false;
 let shuttingDown = false;
-
-function shouldEnsureMailpit() {
-	if (process.env.TREESEED_DEV_FORCE_MAILPIT === '1') {
-		return true;
-	}
-
-	return loadTreeseedDeployConfig().smtp?.enabled === true;
-}
 
 function runStep(command, args, { cwd = tenantRoot, env = {}, fatal = true } = {}) {
 	const result = spawnSync(command, args, {
@@ -82,10 +73,6 @@ function runTenantBuildCycle({ includePackageBuild = false, includeSdkBuild = fa
 		['aggregate-book', []],
 		['tenant-d1-migrate-local', []],
 	];
-
-	if (shouldEnsureMailpit()) {
-		buildScripts.splice(2, 0, ['ensure-mailpit', []]);
-	}
 
 	for (const [scriptName, args] of buildScripts) {
 		const ok = runNodeScript(packageScriptPath(scriptName), args, { fatal });
