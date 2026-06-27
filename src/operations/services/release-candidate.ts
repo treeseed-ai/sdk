@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isTreeseedEnvironmentEntryRelevant, isTreeseedEnvironmentEntryRequired } from '../../platform/environment.ts';
 import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
 import { createGitHubApiClient, listGitHubEnvironmentSecretNames, listGitHubEnvironmentVariableNames } from './github-api.ts';
@@ -838,9 +839,10 @@ function validateInternalGitReferences(root: string, failures: ReleaseCandidateF
 		seen.add(key);
 		checked += 1;
 		try {
+			const commandCwd = remote.startsWith('file://') ? fileURLToPath(remote) : root;
 			const output = /^[a-f0-9]{40}$/u.test(ref)
-				? runGit(['ls-remote', remote], { cwd: root, capture: true, timeoutMs: 120000 })
-				: runGit(['ls-remote', '--exit-code', '--tags', remote, `refs/tags/${ref}`], { cwd: root, capture: true, timeoutMs: 120000 });
+				? runGit(['ls-remote', remote], { cwd: commandCwd, capture: true, timeoutMs: 120000 })
+				: runGit(['ls-remote', '--exit-code', '--tags', remote, `refs/tags/${ref}`], { cwd: commandCwd, capture: true, timeoutMs: 120000 });
 			if (/^[a-f0-9]{40}$/u.test(ref) && !output.includes(ref)) {
 				throw new Error(`Commit ${ref} is not advertised by the remote.`);
 			}

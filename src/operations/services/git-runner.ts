@@ -77,9 +77,25 @@ function pidAlive(pid: number) {
 }
 
 function gitSync(args: string[], options: RunOptions): TreeseedGitRunnerResult {
+	const env: NodeJS.ProcessEnv = {
+		...process.env,
+		...(options.env ?? {}),
+	};
+	for (const [key, value] of Object.entries(env)) {
+		if (value === undefined) {
+			delete env[key];
+		}
+	}
+	if (args[0] === 'ls-remote') {
+		for (const key of Object.keys(env)) {
+			if (key.startsWith('GIT_') && key !== 'GIT_ALLOW_PROTOCOL' && key !== 'GIT_TERMINAL_PROMPT') {
+				delete env[key];
+			}
+		}
+	}
 	const spawnOptions: SpawnSyncOptionsWithStringEncoding = {
 		cwd: options.cwd,
-		env: options.env ? { ...process.env, ...options.env } : process.env,
+		env,
 		encoding: 'utf8',
 		stdio: 'pipe',
 		timeout: options.timeoutMs,

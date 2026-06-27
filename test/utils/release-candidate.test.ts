@@ -22,6 +22,29 @@ import { resolveTreeseedEnvironmentRegistry } from '../../src/platform/environme
 
 const roots: string[] = [];
 
+function testGitEnv() {
+	const env = { ...process.env };
+	for (const key of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR'] as const) {
+		delete env[key];
+	}
+	env.GIT_ALLOW_PROTOCOL = env.GIT_ALLOW_PROTOCOL ?? 'file:git:ssh:https';
+	return env;
+}
+
+function runTestGit(args: string[], options: { cwd?: string; encoding?: BufferEncoding } = {}) {
+	const result = spawnSync('git', args, {
+		cwd: options.cwd,
+		encoding: options.encoding,
+		env: testGitEnv(),
+	});
+	if (result.status !== 0) {
+		const stderr = options.encoding ? result.stderr : result.stderr?.toString('utf8');
+		const stdout = options.encoding ? result.stdout : result.stdout?.toString('utf8');
+		throw new Error((stderr || stdout || `git ${args.join(' ')} failed`).trim());
+	}
+	return result;
+}
+
 function testTempBase() {
 	const base = resolve('.treeseed', 'test-tmp');
 	mkdirSync(base, { recursive: true });
@@ -280,20 +303,20 @@ describe('release candidate verification', () => {
 		const root = makeWorkspace();
 		const remote = resolve(root, 'sdk.git');
 		const work = resolve(root, 'sdk-work');
-		spawnSync('git', ['init', '--bare', remote]);
-		spawnSync('git', ['clone', remote, work]);
-		spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: work });
-		spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: work });
+		runTestGit(['init', '--bare', remote]);
+		runTestGit(['clone', remote, work]);
+		runTestGit(['config', 'user.email', 'test@example.com'], { cwd: work });
+		runTestGit(['config', 'user.name', 'Test User'], { cwd: work });
 		writeFileSync(resolve(work, 'README.md'), 'sdk\n', 'utf8');
 		writeFileSync(resolve(work, 'package.json'), JSON.stringify({
 			name: '@treeseed/sdk',
 			version: '0.4.13-dev.demo.1',
 		}, null, 2), 'utf8');
-		spawnSync('git', ['add', 'README.md'], { cwd: work });
-		spawnSync('git', ['add', 'package.json'], { cwd: work });
-		spawnSync('git', ['commit', '-m', 'init'], { cwd: work });
-		const commitSha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: work, encoding: 'utf8' }).stdout.trim();
-		spawnSync('git', ['push', 'origin', 'HEAD'], { cwd: work });
+		runTestGit(['add', 'README.md'], { cwd: work });
+		runTestGit(['add', 'package.json'], { cwd: work });
+		runTestGit(['commit', '-m', 'init'], { cwd: work });
+		const commitSha = runTestGit(['rev-parse', 'HEAD'], { cwd: work, encoding: 'utf8' }).stdout.trim();
+		runTestGit(['push', 'origin', 'HEAD'], { cwd: work });
 		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
 			name: '@treeseed/market',
 			version: '1.0.0',
@@ -316,7 +339,10 @@ describe('release candidate verification', () => {
 			allowReuse: false,
 		});
 
-		expect(report.status).toBe('passed');
+		expect(report.status, JSON.stringify({
+			failures: report.failures,
+			checks: report.checks,
+		}, null, 2)).toBe('passed');
 		expect(report.mode).toBe('hybrid');
 		expect(report.reason).toContain('lightweight checks');
 		expect(report.checks.map((check) => check.name)).toContain('hybrid-dependency-readiness');
@@ -341,12 +367,12 @@ describe('release candidate verification', () => {
 	it('plans TreeDX staging source builds from package metadata', () => {
 		const root = makeWorkspace();
 		addTreeDxPackage(root);
-		spawnSync('git', ['init'], { cwd: resolve(root, 'packages', 'treedx') });
-		spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: resolve(root, 'packages', 'treedx') });
-		spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: resolve(root, 'packages', 'treedx') });
-		spawnSync('git', ['add', '.'], { cwd: resolve(root, 'packages', 'treedx') });
-		spawnSync('git', ['commit', '-m', 'init'], { cwd: resolve(root, 'packages', 'treedx') });
-		spawnSync('git', ['update-ref', 'refs/remotes/origin/staging', 'HEAD'], { cwd: resolve(root, 'packages', 'treedx') });
+		runTestGit(['init'], { cwd: resolve(root, 'packages', 'treedx') });
+		runTestGit(['config', 'user.email', 'test@example.com'], { cwd: resolve(root, 'packages', 'treedx') });
+		runTestGit(['config', 'user.name', 'Test User'], { cwd: resolve(root, 'packages', 'treedx') });
+		runTestGit(['add', '.'], { cwd: resolve(root, 'packages', 'treedx') });
+		runTestGit(['commit', '-m', 'init'], { cwd: resolve(root, 'packages', 'treedx') });
+		runTestGit(['update-ref', 'refs/remotes/origin/staging', 'HEAD'], { cwd: resolve(root, 'packages', 'treedx') });
 
 		const plan = planTreeseedPackageDevelopmentImage(root, 'treedx', { branch: 'staging' });
 
@@ -365,12 +391,12 @@ describe('release candidate verification', () => {
 	it('plans TreeDX production images only from main as semantic image artifacts', () => {
 		const root = makeWorkspace();
 		addTreeDxPackage(root);
-		spawnSync('git', ['init'], { cwd: resolve(root, 'packages', 'treedx') });
-		spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: resolve(root, 'packages', 'treedx') });
-		spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: resolve(root, 'packages', 'treedx') });
-		spawnSync('git', ['add', '.'], { cwd: resolve(root, 'packages', 'treedx') });
-		spawnSync('git', ['commit', '-m', 'init'], { cwd: resolve(root, 'packages', 'treedx') });
-		spawnSync('git', ['branch', '-M', 'main'], { cwd: resolve(root, 'packages', 'treedx') });
+		runTestGit(['init'], { cwd: resolve(root, 'packages', 'treedx') });
+		runTestGit(['config', 'user.email', 'test@example.com'], { cwd: resolve(root, 'packages', 'treedx') });
+		runTestGit(['config', 'user.name', 'Test User'], { cwd: resolve(root, 'packages', 'treedx') });
+		runTestGit(['add', '.'], { cwd: resolve(root, 'packages', 'treedx') });
+		runTestGit(['commit', '-m', 'init'], { cwd: resolve(root, 'packages', 'treedx') });
+		runTestGit(['branch', '-M', 'main'], { cwd: resolve(root, 'packages', 'treedx') });
 
 		const plan = planTreeseedPackageDevelopmentImage(root, 'treedx', { branch: 'main' });
 
