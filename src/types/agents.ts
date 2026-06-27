@@ -109,13 +109,6 @@ export interface AgentModePermissionPolicy {
 		writePaths?: string[];
 		allowCodeMutation?: boolean;
 	};
-	tools?: {
-		allowedToolIds?: string[];
-		deniedToolIds?: string[];
-	};
-	operations?: {
-		allowedOperations?: string[];
-	};
 	network?: {
 		allowWeb?: boolean;
 		allowedDomains?: string[];
@@ -137,6 +130,26 @@ export interface AgentPermissionPolicy {
 export interface AgentOutputContract {
 	messageTypes: string[];
 	modelMutations: string[];
+}
+
+export interface AgentToolPolicy {
+	allowed: string[];
+}
+
+export interface AgentContentScope {
+	models: string[];
+	actions?: import('../content-operations.ts').TreeseedContentAction[];
+	books?: string[];
+	paths?: string[];
+	relations?: string[];
+}
+
+export interface AgentContentAccessPolicy {
+	read?: AgentContentScope;
+	write?: AgentContentScope;
+	commit?: {
+		allowed: boolean;
+	};
 }
 
 export interface AgentExecutionConfig {
@@ -431,6 +444,8 @@ export interface AgentRuntimeSpec {
 	triggerPolicy?: AgentTriggerPolicy;
 	permissions: AgentPermissionConfig[];
 	permissionPolicy?: AgentPermissionPolicy;
+	tools: AgentToolPolicy;
+	contentAccess?: AgentContentAccessPolicy;
 	context?: {
 		queries?: import('../graph/context-query-contracts.ts').DeclarativeContextQuery[];
 	};

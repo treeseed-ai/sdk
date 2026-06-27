@@ -1,14 +1,21 @@
-import { approveAll, CopilotClient } from '@github/copilot-sdk';
+import { approveAll, CopilotClient, type Tool } from '@github/copilot-sdk';
 import {
 	createTreeseedManagedToolEnv,
 	resolveTreeseedToolBinary,
 } from './managed-dependencies.ts';
+import {
+	resolveTreeseedGitHubCopilotToken,
+	resolveTreeseedGitHubToken,
+} from './service-credentials.ts';
+
+export type TreeseedCopilotTool = Tool;
 
 export type TreeseedCopilotTaskInput = {
 	prompt: string;
 	cwd?: string;
 	model?: string;
 	allowTools?: string[];
+	tools?: TreeseedCopilotTool[];
 	env?: NodeJS.ProcessEnv;
 	timeoutMs?: number;
 };
@@ -20,9 +27,26 @@ export type TreeseedCopilotTaskResult = {
 	stderr: string;
 };
 
+function configuredValue(env: NodeJS.ProcessEnv, key: string) {
+	const value = env[key];
+	return typeof value === 'string' && value.trim() ? value.trim() : '';
+}
+
+function resolveCopilotAuthToken(env: NodeJS.ProcessEnv) {
+	return resolveTreeseedGitHubCopilotToken(env)
+		|| resolveTreeseedGitHubToken(env)
+		|| configuredValue(env, 'COPILOT_GITHUB_TOKEN')
+		|| configuredValue(env, 'GH_TOKEN')
+		|| configuredValue(env, 'GITHUB_TOKEN');
+}
+
 export async function runTreeseedCopilotTask(input: TreeseedCopilotTaskInput): Promise<TreeseedCopilotTaskResult> {
 	const cwd = input.cwd ?? process.cwd();
-	const env = createTreeseedManagedToolEnv(input.env ?? process.env);
+	const baseEnv = createTreeseedManagedToolEnv(input.env ?? process.env);
+	const copilotAuthToken = resolveCopilotAuthToken(baseEnv);
+	const env = copilotAuthToken
+		? { ...baseEnv, COPILOT_GITHUB_TOKEN: copilotAuthToken }
+		: baseEnv;
 	const cliPath = resolveTreeseedToolBinary('copilot', { env });
 	if (!cliPath) {
 		return {
@@ -37,6 +61,7 @@ export async function runTreeseedCopilotTask(input: TreeseedCopilotTaskInput): P
 		cliPath,
 		cwd,
 		env,
+		gitHubToken: copilotAuthToken || undefined,
 		logLevel: 'error',
 		useStdio: true,
 	});
@@ -49,6 +74,7 @@ export async function runTreeseedCopilotTask(input: TreeseedCopilotTaskInput): P
 			clientName: 'treeseed',
 			model: input.model,
 			availableTools: input.allowTools && input.allowTools.length > 0 ? input.allowTools : undefined,
+			tools: input.tools,
 			onPermissionRequest: approveAll,
 			workingDirectory: cwd,
 			onEvent(event) {

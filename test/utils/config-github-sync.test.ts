@@ -255,33 +255,43 @@ function hasConfigEntry(tenantRoot: string, id: string) {
 		.registry.entries.some((entry) => entry.id === id);
 }
 
-describe('config GitHub environment sync hard cut', () => {
+describe('config GitHub environment sync reconciliation', () => {
 	beforeEach(() => {
 		vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'treeseed-config-github-home-')));
+		const secretNames = new Set<string>();
+		const variableNames = new Set<string>();
 		maybeResolveGitHubRepositorySlugMock.mockClear();
 		ensureGitHubBootstrapRepositoryMock.mockReset().mockResolvedValue({ repository: 'owner/repo', created: false });
 		ensureGitHubActionsEnvironmentMock.mockReset().mockResolvedValue({});
-		listGitHubEnvironmentSecretNamesMock.mockReset().mockResolvedValue(new Set());
-		listGitHubEnvironmentVariableNamesMock.mockReset().mockResolvedValue(new Set());
-		upsertGitHubEnvironmentSecretMock.mockReset().mockResolvedValue(undefined);
-		upsertGitHubEnvironmentVariableMock.mockReset().mockResolvedValue(undefined);
+		listGitHubEnvironmentSecretNamesMock.mockReset().mockImplementation(async () => new Set(secretNames));
+		listGitHubEnvironmentVariableNamesMock.mockReset().mockImplementation(async () => new Set(variableNames));
+		upsertGitHubEnvironmentSecretMock.mockReset().mockImplementation(async (_repository: string, _environment: string, name: string) => {
+			secretNames.add(name);
+		});
+		upsertGitHubEnvironmentVariableMock.mockReset().mockImplementation(async (_repository: string, _environment: string, name: string) => {
+			variableNames.add(name);
+		});
 	});
 
 	afterEach(() => {
 		vi.unstubAllEnvs();
 	});
 
-	it('blocks direct GitHub environment mutation and points operators at reconciliation', async () => {
+	it('syncs GitHub environment values through reconciler-owned binding units', async () => {
 		const tenantRoot = createTenantFixture();
 		writeDefaultMachineConfig(tenantRoot);
 		unlockSecrets(tenantRoot);
 		seedHostedValues(tenantRoot);
 
-		await expect(syncTreeseedGitHubEnvironment({ tenantRoot, scope: 'staging' }))
-			.rejects.toThrow(/GitHub environment sync .* is reconciler-owned/u);
-		expect(ensureGitHubActionsEnvironmentMock).not.toHaveBeenCalled();
-		expect(upsertGitHubEnvironmentSecretMock).not.toHaveBeenCalled();
-		expect(upsertGitHubEnvironmentVariableMock).not.toHaveBeenCalled();
+		const result = await syncTreeseedGitHubEnvironment({ tenantRoot, scope: 'staging', entryIds: ['TREESEED_GITHUB_TOKEN'] });
+
+		expect(result).toMatchObject({
+			repository: 'owner/repo',
+			scope: 'staging',
+			environment: 'staging',
+		});
+		expect(result.secrets.length + result.variables.length).toBeGreaterThan(0);
+		expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalled();
 	});
 
 	it('keeps GitHub environment dry-run reporting non-mutating', async () => {
@@ -303,21 +313,24 @@ describe('config GitHub environment sync hard cut', () => {
 		expect(upsertGitHubEnvironmentVariableMock).not.toHaveBeenCalled();
 	});
 
-	it('blocks finalize github sync before provider mutation and preserves readiness facts', async () => {
+	it('finalize github sync applies provider values through reconciliation', async () => {
 		const tenantRoot = createTenantFixtureWithPlaceholderCloudflareAccount();
 		writeDefaultMachineConfig(tenantRoot);
 		unlockSecrets(tenantRoot);
 		setConfigValue(tenantRoot, 'staging', 'TREESEED_CODEX_API_KEY', 'codex-test-key-1234567890', 'secret', 'scoped');
 		setConfigValue(tenantRoot, 'staging', 'TREESEED_GITHUB_TOKEN', 'github-token-value', 'secret');
 
-		await expect(finalizeTreeseedConfig({
+		const result = await finalizeTreeseedConfig({
 			tenantRoot,
 			scopes: ['staging'],
 			sync: 'github',
 			checkConnections: false,
 			initializePersistent: true,
 			systems: ['github'],
-		})).rejects.toThrow(/GitHub environment sync .* is reconciler-owned/u);
-		expect(ensureGitHubActionsEnvironmentMock).not.toHaveBeenCalled();
-	});
+		});
+
+		expect(result.synced.github).toBeTruthy();
+		expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalled();
+	}, 15_000);
+
 });

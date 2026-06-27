@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	createTreeseedManagedToolEnv,
+	resolveTreeseedGitHubCopilotToken,
 	resolveTreeseedGitHubToken,
 	resolveTreeseedRailwayApiToken,
 	resolveTreeseedCloudflareApiToken,
@@ -10,6 +11,8 @@ import {
 describe('service credential translation', () => {
 	it('resolves only canonical Treeseed credential names as config input', () => {
 		expect(resolveTreeseedGitHubToken({ TREESEED_GITHUB_TOKEN: 'gh-canonical', GH_TOKEN: 'gh-native' })).toBe('gh-canonical');
+		expect(resolveTreeseedGitHubCopilotToken({ TREESEED_GITHUB_COPILOT_TOKEN: 'copilot-canonical', TREESEED_GITHUB_TOKEN: 'gh-canonical' })).toBe('copilot-canonical');
+		expect(resolveTreeseedGitHubCopilotToken({ TREESEED_GITHUB_TOKEN: 'gh-canonical', COPILOT_GITHUB_TOKEN: 'copilot-native' })).toBe('');
 		expect(resolveTreeseedGitHubToken({ TREESEED_GH_TOKEN: 'gh-legacy' })).toBe('');
 		expect(resolveTreeseedGitHubToken({ GITHUB_TOKEN: 'github-native' })).toBe('');
 		expect(resolveTreeseedGitHubToken({ GH_TOKEN: 'gh-native' })).toBe('');
@@ -29,6 +32,7 @@ describe('service credential translation', () => {
 		});
 		expect(translated.GH_TOKEN).toBe('gh-canonical');
 		expect(translated.GITHUB_TOKEN).toBe('gh-canonical');
+		expect('COPILOT_GITHUB_TOKEN' in translated).toBe(false);
 		expect(translated.CLOUDFLARE_API_TOKEN).toBe('cf-canonical');
 		expect(translated.CLOUDFLARE_ACCOUNT_ID).toBe('cf-account');
 		expect(translated.RAILWAY_API_TOKEN).toBe('railway-canonical');

@@ -30,6 +30,7 @@ import {
 	reconcileTreeseedTarget,
 	resolveTreeseedBootstrapSelection,
 	type TreeseedBootstrapSystem,
+	type TreeseedDesiredUnit,
 	type TreeseedRunnableBootstrapSystem,
 } from '../../reconcile/index.ts';
 import {
@@ -2641,6 +2642,101 @@ function withGitHubEnvironmentCredentialContext(
 	return error;
 }
 
+function githubConfigSyncUnitId(value: string) {
+	return String(value || 'unknown').replace(/[^A-Za-z0-9:._/-]+/gu, '-');
+}
+
+function createGitHubConfigSyncUnits({
+	scope,
+	repository,
+	environment,
+	items,
+}: {
+	scope: TreeseedConfigScope;
+	repository: string;
+	environment: string;
+	items: Array<{ kind: 'secret' | 'variable'; name: string }>;
+}) {
+	const identity = {
+		teamId: 'config',
+		projectId: 'config',
+		slug: 'config',
+		environment: scope,
+		deploymentKey: `config:${scope}`,
+		environmentKey: scope,
+	};
+	const repositoryId = githubConfigSyncUnitId(repository);
+	const environmentId = githubConfigSyncUnitId(environment);
+	const environmentUnitId = `github-environment:config:${scope}:${repositoryId}:${environmentId}`;
+	const target = { kind: 'persistent', scope } as const;
+	const environmentUnit: TreeseedDesiredUnit = {
+		unitId: environmentUnitId,
+		unitType: 'github-environment',
+		provider: 'github',
+		identity,
+		target,
+		logicalName: `${repository} ${environment}`,
+		dependencies: [],
+		spec: {
+			repository,
+			environment,
+		},
+		secrets: {},
+		metadata: {
+			source: { type: 'config-sync' },
+			resourceKind: 'github-environment',
+		},
+	};
+	const bindingUnits = items.flatMap((item): TreeseedDesiredUnit[] => {
+		if (item.kind === 'secret') {
+			return [{
+				unitId: `github-secret-binding:config:${scope}:${repositoryId}:${environmentId}:${githubConfigSyncUnitId(item.name)}`,
+				unitType: 'github-secret-binding',
+				provider: 'github',
+				identity,
+				target,
+				logicalName: `${repository} ${environment} ${item.name}`,
+				dependencies: [environmentUnitId],
+				spec: {
+					repository,
+					environment,
+					secretName: item.name,
+					envName: item.name,
+				},
+				secrets: {},
+				metadata: {
+					source: { type: 'config-sync' },
+					resourceKind: 'github-secret-binding',
+				},
+			}];
+		}
+		if (item.kind === 'variable') {
+			return [{
+				unitId: `github-variable-binding:config:${scope}:${repositoryId}:${environmentId}:${githubConfigSyncUnitId(item.name)}`,
+				unitType: 'github-variable-binding',
+				provider: 'github',
+				identity,
+				target,
+				logicalName: `${repository} ${environment} ${item.name}`,
+				dependencies: [environmentUnitId],
+				spec: {
+					repository,
+					environment,
+					variableName: item.name,
+					envName: item.name,
+				},
+				secrets: {},
+				metadata: {
+					source: { type: 'config-sync' },
+					resourceKind: 'github-variable-binding',
+				},
+			}];
+		}
+		return [];
+	});
+	return bindingUnits.length > 0 ? [environmentUnit, ...bindingUnits] : [];
+}
+
 export async function syncTreeseedGitHubEnvironment({
 	tenantRoot,
 	scope = 'prod',
@@ -2698,12 +2794,6 @@ export async function syncTreeseedGitHubEnvironment({
 	const credential = resolveGitHubCredentialForRepository(repository, { values, env: process.env });
 	const environment = scope === 'prod' ? 'production' : scope;
 	const progress = (message: string, stream: 'stdout' | 'stderr' = 'stdout') => onProgress?.(message, stream);
-	if (!dryRun) {
-		throw new Error(
-			`GitHub environment sync for ${repository}:${environment} is reconciler-owned. `
-			+ 'Run trsd package image --sync-config --execute or trsd reconcile apply with github-secret-binding/github-variable-binding selectors.',
-		);
-	}
 	progress(`[${scope}][github][sync] Loading existing GitHub secrets and variables...`);
 	const [secretNames, variableNames] = [new Set<string>(), new Set<string>()];
 	const synced = {
@@ -2726,6 +2816,57 @@ export async function syncTreeseedGitHubEnvironment({
 	}
 	let completed = 0;
 	const total = items.length;
+	if (!dryRun) {
+		const units = createGitHubConfigSyncUnits({ scope, repository, environment, items });
+		if (units.length === 0) {
+			progress(`[${scope}][github][sync] Complete: 0 secrets, 0 variables, 0 total.`);
+			return {
+				repository,
+				scope,
+				environment,
+				secrets: synced.secrets,
+				variables: synced.variables,
+			};
+		}
+		try {
+			const result = await reconcileTreeseedTarget({
+				tenantRoot,
+				target: createPersistentDeployTarget(scope),
+				env: {
+					...process.env,
+					...values,
+					...valuesOverlay,
+				},
+				units,
+				write: (line) => progress(`[${scope}][github][reconcile] ${line}`),
+			});
+			const plansById = new Map(result.plans.map((entry) => [entry.unit.unitId, entry]));
+			for (const unit of units) {
+				if (unit.unitType !== 'github-secret-binding' && unit.unitType !== 'github-variable-binding') continue;
+				const planEntry = plansById.get(unit.unitId);
+				const name = String(unit.spec.secretName ?? unit.spec.variableName ?? unit.spec.envName ?? '');
+				if (!name) continue;
+				const existed = Boolean(planEntry?.observed.exists);
+				if (unit.unitType === 'github-secret-binding') {
+					synced.secrets.push({ name, existed });
+				} else {
+					synced.variables.push({ name, existed });
+				}
+				completed += 1;
+				progress(`[${scope}][github][${unit.unitType === 'github-secret-binding' ? 'secret' : 'variable'}] reconciled ${name} (${completed}/${total})`);
+			}
+		} catch (error) {
+			throw withGitHubEnvironmentCredentialContext(error, repository, credential);
+		}
+		progress(`[${scope}][github][sync] Complete: ${synced.secrets.length} secrets, ${synced.variables.length} variables, ${total} total.`);
+		return {
+			repository,
+			scope,
+			environment,
+			secrets: synced.secrets,
+			variables: synced.variables,
+		};
+	}
 	progress(`[${scope}][github][sync] Syncing GitHub environment ${environment}: 0/${total} items...`);
 	const limit = execution === 'sequential' ? 1 : concurrency;
 	await runBounded(items, limit, async (item) => {

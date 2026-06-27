@@ -1,4 +1,5 @@
 export { AgentSdk, ScopedAgentSdk } from './sdk.ts';
+export * from './content-operations.ts';
 export type {
 	AgentSdkContentRepositoryOptions,
 	AgentSdkTreeDxOptions,
@@ -391,7 +392,6 @@ export {
 	isAgentOperationName,
 	resolveAgentOperationGrant,
 	type AgentDeterministicOperationStep,
-	type AgentOperationApprovalRef,
 	type AgentOperationEvent,
 	type AgentOperationGrant,
 	type AgentOperationMergeFailure,
@@ -540,6 +540,17 @@ export {
 	findTreeseedOperation,
 	listTreeseedOperationNames,
 } from './operations-registry.ts';
+export {
+	TREESEED_AGENT_TOOL_DEFINITIONS,
+	assertKnownAgentToolIds,
+	findAgentToolDefinition,
+	listAgentToolIds,
+	type AgentToolDefinition,
+	type AgentToolDispatchMapping,
+	type AgentToolExecutionTarget,
+	type AgentToolMutability,
+	type AgentToolTelemetryCategory,
+} from './agent-tools.ts';
 export { TreeseedOperationsSdk } from './operations/runtime.ts';
 export { TreeseedWorkflowSdk } from './workflow.ts';
 export * from './db/index.ts';

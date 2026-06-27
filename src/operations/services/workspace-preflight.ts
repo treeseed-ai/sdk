@@ -80,12 +80,12 @@ export function parseRailwayWhoAmI(values = process.env) {
 }
 
 export function parseCopilotSessionStatus(values = process.env) {
-	const status = envTokenStatus(['TREESEED_GITHUB_TOKEN'], 'GitHub', values);
+	const status = envTokenStatus(['TREESEED_GITHUB_COPILOT_TOKEN', 'TREESEED_GITHUB_TOKEN'], 'GitHub Copilot', values);
 	return {
 		configured: status.ready,
 		detail: status.ready
-			? 'GitHub token detected from configured Treeseed environment for Copilot-backed workflows.'
-			: 'GitHub token is not configured. Set TREESEED_GITHUB_TOKEN for Copilot-backed workflows.',
+			? 'GitHub Copilot token detected from configured Treeseed environment for Copilot-backed workflows.'
+			: 'GitHub Copilot token is not configured. Set TREESEED_GITHUB_COPILOT_TOKEN for Copilot-backed workflows. TREESEED_GITHUB_TOKEN is accepted as a compatibility fallback.',
 	};
 }
 

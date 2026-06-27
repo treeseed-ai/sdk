@@ -113,6 +113,14 @@
       "types": "./dist/operations/agent-tools.d.ts",
       "default": "./dist/operations/agent-tools.js"
     },
+    "./agent-tools": {
+      "types": "./dist/agent-tools.d.ts",
+      "default": "./dist/agent-tools.js"
+    },
+    "./content-operations": {
+      "types": "./dist/content-operations.d.ts",
+      "default": "./dist/content-operations.js"
+    },
     "./api": {
       "types": "./dist/api/index.d.ts",
       "default": "./dist/api/index.js"

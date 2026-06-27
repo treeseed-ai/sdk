@@ -5,7 +5,6 @@ export const AGENT_OPERATION_NAMES = [
 	'save',
 	'update',
 	'stage',
-	'merge_to_staging',
 	'close',
 	'release',
 ] as const;
@@ -15,12 +14,6 @@ export const AGENT_OPERATION_MODES = ['dry_run', 'read_only', 'mutating'] as con
 export type AgentOperationName = (typeof AGENT_OPERATION_NAMES)[number];
 export type AgentOperationMode = (typeof AGENT_OPERATION_MODES)[number];
 export type AgentOperationStatus = 'completed' | 'waiting' | 'failed' | 'skipped' | 'retry_created';
-
-export interface AgentOperationApprovalRef {
-	id: string;
-	kind?: string;
-	state: 'pending' | 'approved' | 'rejected' | 'expired' | 'superseded';
-}
 
 export interface AgentOperationRequest {
 	operation: AgentOperationName;
@@ -36,8 +29,6 @@ export interface AgentOperationRequest {
 	worktreeRoot?: string;
 	featureBranch?: string;
 	stagingBranch?: string;
-	approvalId?: string;
-	approval?: AgentOperationApprovalRef;
 	permissionGrantId?: string;
 	allowedPaths?: string[];
 	forbiddenPaths?: string[];
@@ -72,8 +63,6 @@ export interface AgentOperationGrant {
 	environments?: string[];
 	allowedPaths?: string[];
 	forbiddenPaths?: string[];
-	requiresApproval?: boolean;
-	approvalIds?: string[];
 	expiresAt?: string;
 	metadata?: Record<string, unknown>;
 }
@@ -118,8 +107,6 @@ export type AgentOperationPermissionCode =
 	| 'operation_task_kind_not_granted'
 	| 'operation_project_not_granted'
 	| 'operation_environment_not_granted'
-	| 'operation_approval_required'
-	| 'operation_release_approval_required'
 	| 'operation_worktree_required'
 	| 'operation_allowed_paths_required'
 	| 'operation_path_not_allowed'
@@ -234,13 +221,6 @@ export function decideAgentOperationPermission(input: {
 		return deny('invalid_operation', `Unsupported agent operation "${String(request.operation)}".`, { status: 'failed' });
 	}
 
-	if (request.operation === 'release') {
-		const approval = request.approval;
-		if (!approval || approval.state !== 'approved' || (request.approvalId && approval.id !== request.approvalId)) {
-			return deny('operation_release_approval_required', 'Release requires an explicit approved release approval.');
-		}
-	}
-
 	const grant = resolveAgentOperationGrant(request, input.grants, now);
 	if (!grant) {
 		return deny('operation_permission_required', `No operation grant allows ${request.agentRole} to run ${request.operation}.`);
@@ -264,12 +244,6 @@ export function decideAgentOperationPermission(input: {
 	if (!listMatches(request.environment, grant.environments)) {
 		return deny('operation_environment_not_granted', `Operation grant ${grant.id} does not allow environment ${request.environment}.`, { grant });
 	}
-	if (grant.requiresApproval && (!request.approval || request.approval.state !== 'approved')) {
-		return deny('operation_approval_required', `Operation grant ${grant.id} requires approval.`, { grant });
-	}
-	if (grant.approvalIds?.length && (!request.approval || !grant.approvalIds.includes(request.approval.id) || request.approval.state !== 'approved')) {
-		return deny('operation_approval_required', `Operation grant ${grant.id} requires one of its approved approval ids.`, { grant });
-	}
 	if (request.mode === 'mutating' && !request.worktreeRoot && request.operation !== 'release') {
 		return deny('operation_worktree_required', `Mutating operation ${request.operation} requires an assigned worktree root.`, { grant });
 	}
@@ -277,7 +251,7 @@ export function decideAgentOperationPermission(input: {
 	const allowedPaths = request.allowedPaths?.length ? request.allowedPaths : grant.allowedPaths ?? [];
 	const forbiddenPaths = [...(grant.forbiddenPaths ?? []), ...(request.forbiddenPaths ?? [])];
 	const changedPaths = request.changedPaths ?? [];
-	if ((request.operation === 'stage' || request.operation === 'merge_to_staging') && allowedPaths.length === 0) {
+	if (request.operation === 'stage' && allowedPaths.length === 0) {
 		return deny('operation_allowed_paths_required', `${request.operation} requires allowed paths.`, { grant });
 	}
 	for (const changedPath of changedPaths) {

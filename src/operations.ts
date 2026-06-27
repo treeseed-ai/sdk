@@ -68,7 +68,6 @@ export {
 	isAgentOperationName,
 	resolveAgentOperationGrant,
 	type AgentDeterministicOperationStep,
-	type AgentOperationApprovalRef,
 	type AgentOperationEvent,
 	type AgentOperationGrant,
 	type AgentOperationMergeFailure,

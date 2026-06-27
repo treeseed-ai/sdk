@@ -355,6 +355,7 @@ export class AgentSdk {
 		modelRegistry?: SdkModelRegistry;
 		contentRepository?: AgentSdkContentRepositoryOptions;
 		treeDx?: AgentSdkTreeDxOptions;
+		dispatch?: SdkDispatchConfig;
 	} = {}) {
 		const repoRoot = resolveSdkRepoRoot(options.repoRoot);
 		const d1 = new NodeSqliteD1Database(options.persistTo ?? options.databaseName ?? '.treeseed/generated/environments/local/site-data.sqlite');
@@ -365,6 +366,7 @@ export class AgentSdk {
 			modelRegistry: options.modelRegistry,
 			contentRepository: options.contentRepository,
 			treeDx: options.treeDx,
+			dispatch: options.dispatch,
 		});
 	}
 

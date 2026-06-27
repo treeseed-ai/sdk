@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+	assertKnownAgentToolIds,
+	findAgentToolDefinition,
+	listAgentToolIds,
+} from '../../src/agent-tools.ts';
+import {
+	AGENT_OPERATION_NAMES,
 	createAgentOperationEvent,
 	decideAgentOperationPermission,
 	deniedAgentOperationResult,
@@ -28,7 +34,7 @@ const baseRequest: AgentOperationRequest = {
 
 const baseGrant: AgentOperationGrant = {
 	id: 'grant-1',
-	operations: ['switch', 'dev', 'verify', 'save', 'stage', 'merge_to_staging', 'close', 'release'],
+	operations: ['switch', 'dev', 'verify', 'save', 'stage', 'close', 'release'],
 	modes: ['dry_run', 'read_only', 'mutating'],
 	agentRoles: ['engineer'],
 	taskKinds: ['implementation'],
@@ -137,35 +143,11 @@ describe('agent operation tool policy', () => {
 		expect(decideAgentOperationPermission({
 			request: {
 				...baseRequest,
-				operation: 'merge_to_staging',
+				operation: 'stage',
 				changedPaths: ['src/content/secrets/hidden.mdx'],
 			},
 			grants: [baseGrant],
 		}).code).toBe('operation_path_forbidden');
-	});
-
-	it('always requires explicit approved release approval', () => {
-		expect(decideAgentOperationPermission({
-			request: {
-				...baseRequest,
-				operation: 'release',
-				worktreeRoot: undefined,
-				approvalId: undefined,
-				approval: undefined,
-			},
-			grants: [baseGrant],
-		}).code).toBe('operation_release_approval_required');
-
-		expect(decideAgentOperationPermission({
-			request: {
-				...baseRequest,
-				operation: 'release',
-				worktreeRoot: undefined,
-				approvalId: 'approval-1',
-				approval: { id: 'approval-1', kind: 'release', state: 'approved' },
-			},
-			grants: [baseGrant],
-		}).allowed).toBe(true);
 	});
 
 	it('creates denied result envelopes and operation events', () => {
@@ -190,6 +172,36 @@ describe('agent operation tool policy', () => {
 			mode: 'mutating',
 			taskId: 'task-1',
 			result: { status: 'waiting' },
+		});
+	});
+
+	it('exposes no separate staging merge agent operation', () => {
+		expect(AGENT_OPERATION_NAMES).toEqual([
+			'switch',
+			'dev',
+			'verify',
+			'save',
+			'update',
+			'stage',
+			'close',
+			'release',
+		]);
+	});
+
+	it('validates canonical agent tool ids', () => {
+		expect(listAgentToolIds()).toContain('treeseed.verify');
+		expect(findAgentToolDefinition('treedx.search_workspace')).toMatchObject({
+			id: 'treedx.search_workspace',
+			executionTarget: 'treedx_proxy',
+		});
+		expect(findAgentToolDefinition('treeseed.verify')?.dispatch).toMatchObject({
+			namespace: 'workflow',
+			operation: 'test',
+		});
+		expect(assertKnownAgentToolIds(['treeseed.verify', 'treeseed.verify', 'missing.tool'])).toEqual({
+			known: ['treeseed.verify'],
+			unknown: ['missing.tool'],
+			duplicates: ['treeseed.verify'],
 		});
 	});
 });

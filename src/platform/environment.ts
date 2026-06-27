@@ -276,6 +276,10 @@ function codexExecutionSelected(context: TreeseedEnvironmentContext) {
 	return execution === 'codex' || execution === 'codex_subscription';
 }
 
+function copilotExecutionSelected(context: TreeseedEnvironmentContext) {
+	return context.deployConfig.providers?.agents?.execution === 'github_copilot';
+}
+
 function railwayManagedEnabled(context: TreeseedEnvironmentContext) {
 	if (!workflowPlaneAllows('processing')) {
 		return false;
@@ -638,6 +642,7 @@ const PREDICATES: NamedPredicateMap = {
 	processingPlaneEnabled: (context) => processingPlaneEnabled(context),
 	formsEnabled: (context) => formsEnabled(context),
 	codexExecutionSelected: (context) => codexExecutionSelected(context),
+	copilotExecutionSelected: (context) => copilotExecutionSelected(context),
 	railwayManagedEnabled: (context) => railwayManagedEnabled(context),
 	hubTreeseedHosted: (context) => resolveHubMode(context) === 'treeseed_hosted',
 	hubCustomerHosted: (context) => resolveHubMode(context) === 'customer_hosted',

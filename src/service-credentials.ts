@@ -1,4 +1,5 @@
 export const TREESEED_GITHUB_TOKEN_ENV = 'TREESEED_GITHUB_TOKEN';
+export const TREESEED_GITHUB_COPILOT_TOKEN_ENV = 'TREESEED_GITHUB_COPILOT_TOKEN';
 export const TREESEED_CLOUDFLARE_API_TOKEN_ENV = 'TREESEED_CLOUDFLARE_API_TOKEN';
 export const TREESEED_CLOUDFLARE_ACCOUNT_ID_ENV = 'TREESEED_CLOUDFLARE_ACCOUNT_ID';
 export const TREESEED_RAILWAY_API_TOKEN_ENV = 'TREESEED_RAILWAY_API_TOKEN';
@@ -15,6 +16,10 @@ function configuredValue(env: EnvLike | undefined, key: string) {
 
 export function resolveTreeseedGitHubToken(env: EnvLike = process.env) {
 	return configuredValue(env, TREESEED_GITHUB_TOKEN_ENV);
+}
+
+export function resolveTreeseedGitHubCopilotToken(env: EnvLike = process.env) {
+	return configuredValue(env, TREESEED_GITHUB_COPILOT_TOKEN_ENV);
 }
 
 export function resolveTreeseedCloudflareApiToken(env: EnvLike = process.env) {
