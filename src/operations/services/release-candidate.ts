@@ -22,6 +22,9 @@ function runGit(args: string[], options: { cwd: string; capture?: boolean; timeo
 		mode: classifyTreeseedGitMode(args),
 		timeoutMs: options.timeoutMs,
 		maxBuffer: options.maxBuffer,
+		env: {
+			GIT_ALLOW_PROTOCOL: process.env.GIT_ALLOW_PROTOCOL ?? 'file:git:ssh:https',
+		},
 	});
 }
 
