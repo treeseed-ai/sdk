@@ -112,7 +112,13 @@ describe('destroy planning', () => {
 		expect(cloudflare.find((entry) => entry.type === 'd1-database')?.status).toBe('skipped');
 		expect(cloudflare.find((entry) => entry.type === 'd1-database')?.reason).toBe('data_preserved');
 		expect(cloudflare.find((entry) => entry.type === 'r2-bucket')?.status).toBe('skipped');
-		expect(result.operations.railway.some((entry) => entry.status === 'blocked')).toBe(true);
+		const railwayDataStore = result.operations.railway.find((entry) => entry.type === 'postgres-service');
+		if (railwayDataStore) {
+			expect(railwayDataStore.status).toBe('skipped');
+			expect(railwayDataStore.reason).toBe('data_preserved');
+		} else {
+			expect(result.operations.railway.some((entry) => entry.status === 'blocked' && entry.reason === 'missing_railway_api_token')).toBe(true);
+		}
 	});
 
 	it('plans data repository deletion when deleteData is set', async () => {
