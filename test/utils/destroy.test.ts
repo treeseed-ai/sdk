@@ -112,13 +112,9 @@ describe('destroy planning', () => {
 		expect(cloudflare.find((entry) => entry.type === 'd1-database')?.status).toBe('skipped');
 		expect(cloudflare.find((entry) => entry.type === 'd1-database')?.reason).toBe('data_preserved');
 		expect(cloudflare.find((entry) => entry.type === 'r2-bucket')?.status).toBe('skipped');
-		const railwayDataStore = result.operations.railway.find((entry) => entry.type === 'postgres-service');
-		if (railwayDataStore) {
-			expect(railwayDataStore.status).toBe('skipped');
-			expect(railwayDataStore.reason).toBe('data_preserved');
-		} else {
-			expect(result.operations.railway.some((entry) => entry.status === 'blocked' && entry.reason === 'missing_railway_api_token')).toBe(true);
-		}
+		expect(result.operations.railway.filter((entry) => ['postgres-service', 'volume'].includes(entry.type)).some((entry) =>
+			['planned', 'deleted'].includes(entry.status)
+		)).toBe(false);
 	});
 
 	it('plans data repository deletion when deleteData is set', async () => {

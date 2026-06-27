@@ -2970,17 +2970,19 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { dryRu
 				}
 			}
 		}
-		const volumes = await listRailwayVolumes({ projectId: project.id, env });
-		for (const volume of volumes) {
-			const matchingInstance = volume.instances.find((instance) => instance.environmentId === environment?.id);
-			if (!matchingInstance) {
-				continue;
-			}
-			if (dryRun) {
-				operations.push(resourceOperation('railway', 'volume', volume.name, 'planned', { id: volume.id, projectId: project.id }));
-			} else {
-				const result = await deleteRailwayVolume({ volumeId: volume.id, env });
-				operations.push(resourceOperation('railway', 'volume', volume.name, result.status, { id: volume.id, projectId: project.id }));
+		if (deleteData) {
+			const volumes = await listRailwayVolumes({ projectId: project.id, env });
+			for (const volume of volumes) {
+				const matchingInstance = volume.instances.find((instance) => instance.environmentId === environment?.id);
+				if (!matchingInstance) {
+					continue;
+				}
+				if (dryRun) {
+					operations.push(resourceOperation('railway', 'volume', volume.name, 'planned', { id: volume.id, projectId: project.id }));
+				} else {
+					const result = await deleteRailwayVolume({ volumeId: volume.id, env });
+					operations.push(resourceOperation('railway', 'volume', volume.name, result.status, { id: volume.id, projectId: project.id }));
+				}
 			}
 		}
 		const shouldDeleteProject = shouldDeleteRailwayProjectAfterEnvironmentDestroy(project, scope, deleteData, environment?.id ?? null);
