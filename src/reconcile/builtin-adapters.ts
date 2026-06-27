@@ -133,7 +133,7 @@ function isTransientCloudflareReconcileError(error: unknown) {
 
 function isTransientRailwayReconcileError(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error ?? '');
-	return /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted|connectivity issue|rate limit|too many requests|429|5\d\d|operation is already in progress/iu.test(message);
+	return /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted|connectivity issue|rate limit|too many requests|429|5\d\d|operation is already in progress|Problem processing request/iu.test(message);
 }
 
 function syntheticQueueLocator(name: string) {
@@ -5307,10 +5307,22 @@ async function reconcileRailwayUnit(input: TreeseedReconcileAdapterInput, diff: 
 	const serviceKey = String(input.unit.metadata.serviceKey ?? '').trim();
 	const serviceKeys = serviceKey ? [serviceKey] : undefined;
 	const cacheKey = `railway:sync:${scope}:${serviceKey || 'all'}`;
-	await providerCache(input, cacheKey, async () => {
-		const synced = await syncRailwayEnvironmentForScope(input, { serviceKeys });
-		return synced;
-	});
+	let attempt = 0;
+	for (;;) {
+		try {
+			await providerCache(input, cacheKey, async () => {
+				const synced = await syncRailwayEnvironmentForScope(input, { serviceKeys });
+				return synced;
+			});
+			break;
+		} catch (error) {
+			if (attempt >= 2 || !isTransientRailwayReconcileError(error)) {
+				throw error;
+			}
+			attempt += 1;
+			sleepMs(1000 * attempt);
+		}
+	}
 	for (const key of input.context.session.keys()) {
 		if (key.startsWith(`railway:topology:${scope}:`)) {
 			input.context.session.delete(key);
