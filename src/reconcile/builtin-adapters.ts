@@ -63,6 +63,8 @@ import {
 	listRailwayVolumes,
 	listRailwayVariables,
 	resolveRailwayWorkspaceContext,
+	updateRailwayServiceGitSource,
+	updateRailwayServiceImageSource,
 	upsertRailwayVariables,
 } from '../operations/services/railway-api.ts';
 import type {
@@ -3846,24 +3848,38 @@ async function resolveRailwayTopologyForScope(
 				}
 			}
 
-			let resolvedService = project?.services.find((entry) => entry.id === resolvedServiceId || entry.name === resolvedServiceName) ?? null;
-			if (project && !resolvedService && ensure) {
-				traceRailwayReconcile(env, 'topology:railway-service:ensure', `${service.key}:${resolvedServiceName || resolvedServiceId}`);
-				resolvedService = (await ensureRailwayService({
-					projectId: project.id,
-					serviceId: resolvedServiceId,
-					serviceName: resolvedServiceName,
-					environmentId: environment?.id,
-					imageRef: service.imageRef,
-					env,
-				})).service;
-				project = {
-					...project,
-					services: [...project.services.filter((entry) => entry.id !== resolvedService?.id), resolvedService],
-				};
-				projectsByKey.set(project.id, project);
-				projectsByKey.set(project.name, project);
-			}
+				let resolvedService = project?.services.find((entry) => entry.id === resolvedServiceId || entry.name === resolvedServiceName) ?? null;
+				if (project && !resolvedService && ensure) {
+					traceRailwayReconcile(env, 'topology:railway-service:ensure', `${service.key}:${resolvedServiceName || resolvedServiceId}`);
+					resolvedService = (await ensureRailwayService({
+						projectId: project.id,
+						serviceId: resolvedServiceId,
+						serviceName: resolvedServiceName,
+						environmentId: environment?.id,
+						imageRef: service.imageRef,
+						sourceRepo: service.sourceRepo,
+						sourceBranch: service.sourceBranch,
+						env,
+					})).service;
+					project = {
+						...project,
+						services: [...project.services.filter((entry) => entry.id !== resolvedService?.id), resolvedService],
+					};
+					projectsByKey.set(project.id, project);
+					projectsByKey.set(project.name, project);
+				} else if (project && resolvedService && ensure && (service.imageRef || service.sourceRepo)) {
+					traceRailwayReconcile(env, 'topology:railway-service:repair-source', `${service.key}:${resolvedService.name}`);
+					resolvedService = (await ensureRailwayService({
+						projectId: project.id,
+						serviceId: resolvedService.id,
+						serviceName: resolvedServiceName || resolvedService.name,
+						environmentId: environment?.id,
+						imageRef: service.imageRef,
+						sourceRepo: service.sourceRepo,
+						sourceBranch: service.sourceBranch,
+						env,
+					})).service;
+				}
 			let instance = null;
 			if (includeInstances && resolvedService && environment) {
 				if (ensure) {
@@ -4142,33 +4158,14 @@ async function syncRailwayEnvironmentForScope(
 				) {
 					throw new Error(`Railway API volume reconciliation did not mount ${volumeName} on ${entry.service.name} at ${entry.configuredService.volumeMountPath}.`);
 				}
-			}
-			if (entry.configuredService.imageRef) {
-				traceRailwayReconcile(topology.env, 'sync:deploy', `${entry.configuredService.key}:${entry.service.name}:${entry.configuredService.imageRef}`);
-				try {
-					await deployRailwayServiceInstance({
-						serviceId: entry.service.id,
-						environmentId: entry.environment.id,
-						env: topology.env,
-					});
-				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error ?? '');
-					if (!/Deployment not found/iu.test(message)) {
-						throw error;
-					}
-					throw new Error(
-						`Railway deployment for existing service ${entry.service.name} (${entry.service.id}) was not found; `
-						+ 'refusing to delete and recreate an existing service. Repair the service in place or restore a deployable service source before rerunning reconciliation.',
-					);
 				}
-			} else {
-				traceRailwayReconcile(topology.env, 'sync:deploy', `${entry.configuredService.key}:${entry.service.name}:variables`);
-				await deployRailwayServiceInstance({
-					serviceId: entry.service.id,
-					environmentId: entry.environment.id,
-					env: topology.env,
-				});
-			}
+				if (entry.configuredService.imageRef) {
+					traceRailwayReconcile(topology.env, 'sync:deploy', `${entry.configuredService.key}:${entry.service.name}:${entry.configuredService.imageRef}`);
+					await deployRailwayServiceInstanceWithSourceRepair(entry, topology.env);
+				} else {
+					traceRailwayReconcile(topology.env, 'sync:deploy', `${entry.configuredService.key}:${entry.service.name}:variables`);
+					await deployRailwayServiceInstanceWithSourceRepair(entry, topology.env);
+				}
 			if (entry.configuredService.key === 'operationsRunner') {
 				const desiredServiceNames = new Set(configuredRailwayServices(input.context.tenantRoot, scope)
 					.filter((service) => service.key === 'operationsRunner')
@@ -4202,7 +4199,75 @@ async function syncRailwayEnvironmentForScope(
 		variables: Object.keys(sync.variables),
 		dryRun,
 		workspace: topology.workspace.name,
-	};
+		};
+	}
+
+async function deployRailwayServiceInstanceWithSourceRepair(
+	entry: Awaited<ReturnType<typeof resolveRailwayTopologyForScope>>['services'] extends Map<string, infer T> ? T : never,
+	env: NodeJS.ProcessEnv | Record<string, string | undefined>,
+) {
+	if (!entry.environment || !entry.service) {
+		return;
+	}
+	const deploy = () => deployRailwayServiceInstance({
+		serviceId: entry.service!.id,
+		environmentId: entry.environment!.id,
+		env,
+	});
+	try {
+		await deploy();
+		return;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error ?? '');
+		if (!/Deployment not found/iu.test(message)) {
+			throw error;
+		}
+	}
+	const repaired = await repairRailwayServiceSource(entry, env);
+	if (repaired) {
+		try {
+			await deploy();
+			return;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error ?? '');
+			if (!/Deployment not found/iu.test(message)) {
+				throw error;
+			}
+		}
+	}
+	throw new Error(
+		`Railway deployment for existing service ${entry.service.name} (${entry.service.id}) was not found; `
+		+ 'refusing to delete and recreate an existing service. Repair the service in place or restore a deployable service source before rerunning reconciliation.',
+	);
+}
+
+async function repairRailwayServiceSource(
+	entry: Awaited<ReturnType<typeof resolveRailwayTopologyForScope>>['services'] extends Map<string, infer T> ? T : never,
+	env: NodeJS.ProcessEnv | Record<string, string | undefined>,
+) {
+	if (!entry.service) {
+		return false;
+	}
+	const sourceRepo = String(entry.configuredService.sourceRepo ?? '').trim();
+	if (sourceRepo) {
+		await updateRailwayServiceGitSource({
+			serviceId: entry.service.id,
+			sourceRepo,
+			sourceBranch: entry.configuredService.sourceBranch,
+			env,
+		});
+		return true;
+	}
+	const imageRef = String(entry.configuredService.imageRef ?? '').trim();
+	if (imageRef) {
+		await updateRailwayServiceImageSource({
+			serviceId: entry.service.id,
+			imageRef,
+			env,
+		});
+		return true;
+	}
+	return false;
 }
 
 async function ensureRailwayMarketDatabaseForScope(

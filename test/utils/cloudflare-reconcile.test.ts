@@ -5,6 +5,8 @@ const runWranglerMock = vi.fn();
 const resolveTreeseedMachineEnvironmentValuesMock = vi.fn();
 const upsertRailwayVariablesMock = vi.fn();
 const deployRailwayServiceInstanceMock = vi.fn();
+const updateRailwayServiceImageSourceMock = vi.fn();
+const updateRailwayServiceGitSourceMock = vi.fn();
 const railwayEnvMock = vi.fn();
 
 let kvCreated = false;
@@ -172,6 +174,9 @@ vi.mock('../../src/operations/services/railway-deploy.ts', () => ({
 			railwayEnvironment: 'staging',
 			buildCommand: null,
 			startCommand: 'npm start',
+			imageRef: 'treeseed/api:test',
+			sourceRepo: null,
+			sourceBranch: null,
 			healthcheckPath: null,
 			healthcheckTimeoutSeconds: null,
 			healthcheckIntervalSeconds: null,
@@ -228,6 +233,16 @@ vi.mock('../../src/operations/services/railway-api.ts', () => ({
 		railwayEnvMock(env);
 		return { id: 'workspace-1', name: env.TREESEED_RAILWAY_WORKSPACE ?? 'workspace' };
 	}),
+	updateRailwayServiceGitSource: vi.fn(async (input: { env: Record<string, string> }) => {
+		railwayEnvMock(input.env);
+		updateRailwayServiceGitSourceMock(input);
+		return { id: 'service-1', name: 'api' };
+	}),
+	updateRailwayServiceImageSource: vi.fn(async (input: { env: Record<string, string> }) => {
+		railwayEnvMock(input.env);
+		updateRailwayServiceImageSourceMock(input);
+		return { id: 'service-1', name: 'api' };
+	}),
 	upsertRailwayVariables: vi.fn(async (input: { env: Record<string, string> }) => {
 		railwayEnvMock(input.env);
 		upsertRailwayVariablesMock(input);
@@ -247,6 +262,8 @@ beforeEach(() => {
 		runWranglerMock.mockReset();
 		upsertRailwayVariablesMock.mockReset();
 		deployRailwayServiceInstanceMock.mockReset();
+		updateRailwayServiceGitSourceMock.mockReset();
+		updateRailwayServiceImageSourceMock.mockReset();
 		railwayEnvMock.mockReset();
 		resolveTreeseedMachineEnvironmentValuesMock.mockReset();
 		resolveTreeseedMachineEnvironmentValuesMock.mockImplementation(() => {
@@ -575,6 +592,63 @@ beforeEach(() => {
 		expect(deployRailwayServiceInstanceMock).toHaveBeenCalledWith(expect.objectContaining({
 			serviceId: 'service-1',
 			environmentId: 'env-1',
+		}));
+	});
+
+	it('repairs an existing Railway service source in place when deployment is missing', async () => {
+		d1Created = true;
+		deployRailwayServiceInstanceMock
+			.mockImplementationOnce(() => {
+				throw new Error('Deployment not found');
+			})
+			.mockImplementationOnce(() => undefined);
+		const { createRailwayReconcileAdapters } = await import('../../src/reconcile/builtin-adapters.ts');
+		const adapter = createRailwayReconcileAdapters().find((entry) => entry.unitTypes.includes('railway-service:api'));
+		expect(adapter).toBeTruthy();
+
+		const unit = {
+			unitId: 'railway-service:api:acme-docs',
+			unitType: 'railway-service:api',
+			provider: 'railway',
+			target: { kind: 'persistent', scope: 'staging' },
+			logicalName: 'api',
+			dependencies: [],
+			spec: {},
+			secrets: {},
+			metadata: { serviceKey: 'api' },
+			identity: deployState.identity,
+		};
+		const context = {
+			tenantRoot: '/tmp/tenant',
+			target: { kind: 'persistent', scope: 'staging' },
+			deployConfig: {
+				name: 'Test',
+				slug: 'test',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				hosting: { kind: 'hosted_project', teamId: 'acme', projectId: 'docs' },
+				runtime: { mode: 'treeseed_managed', registration: 'none', teamId: 'acme', projectId: 'docs' },
+				services: { api: { provider: 'railway', enabled: true } },
+				cloudflare: { accountId: 'account-123' },
+			},
+			launchEnv: {
+				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
+				TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
+				TREESEED_GITHUB_TOKEN: 'github-token',
+				TREESEED_CLOUDFLARE_API_TOKEN: 'cf-token',
+				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
+			},
+			session: new Map(),
+		};
+
+		const observed = await adapter!.refresh({ unit, context } as never);
+		const diff = adapter!.diff({ unit, context, observed } as never);
+		await adapter!.apply({ unit, context, observed, diff } as never);
+
+		expect(deployRailwayServiceInstanceMock).toHaveBeenCalledTimes(2);
+		expect(updateRailwayServiceImageSourceMock).toHaveBeenCalledWith(expect.objectContaining({
+			serviceId: 'service-1',
+			imageRef: 'treeseed/api:test',
 		}));
 	});
 
