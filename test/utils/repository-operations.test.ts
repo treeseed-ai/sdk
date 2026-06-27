@@ -307,6 +307,46 @@ describe('platform repository operations', () => {
 		}
 	});
 
+	it('creates immutable decisions from accepted governance proposal snapshots', async () => {
+		const fixture = createRepo();
+		try {
+			await executePlatformRepositoryOperation('write_content_record', {
+				repository: fixture.descriptor,
+				collection: 'proposals',
+				payload: {
+					title: 'Governance proposal one',
+					body: 'Approve the governance pipeline.',
+					governanceStatus: 'accepted',
+				},
+			}, { workspaceRoot: fixture.workspace });
+			const result = await executePlatformRepositoryOperation('create_decision_from_governance_proposal', {
+				repository: fixture.descriptor,
+				proposalSlug: 'governance-proposal-one',
+				proposalId: 'proposal-1',
+				proposalVersion: 2,
+				proposalContentHash: 'hash-accepted',
+				governanceDecisionId: 'decision-1',
+				governanceProviderId: 'admin_approval_v1',
+				title: 'Accept governance proposal one',
+				voteResult: { status: 'accepted', reasonCode: 'admin_approved' },
+				voterReasons: [{ userId: 'user-1', vote: 'support', reason: 'Ready.' }],
+			}, { workspaceRoot: fixture.workspace });
+			expect(result.changedPaths).toEqual(expect.arrayContaining([
+				'src/content/decisions/accept-governance-proposal-one.mdx',
+				'src/content/proposals/governance-proposal-one.mdx',
+			]));
+			const decisionSource = readFileSync(resolve(result.repositoryPath, 'src/content/decisions/accept-governance-proposal-one.mdx'), 'utf8');
+			expect(decisionSource).toContain('immutable: true');
+			expect(decisionSource).toContain('governanceDecisionId: decision-1');
+			expect(decisionSource).toContain('sourceProposalHash: hash-accepted');
+			const proposalSource = readFileSync(resolve(result.repositoryPath, 'src/content/proposals/governance-proposal-one.mdx'), 'utf8');
+			expect(proposalSource).toContain('decision: accept-governance-proposal-one');
+			expect(proposalSource).toContain('proposalContentHash: hash-accepted');
+		} finally {
+			rmSync(fixture.root, { recursive: true, force: true });
+		}
+	});
+
 	it('rejects unsupported and unapproved production repository write modes', async () => {
 		const fixture = createRepo();
 		try {

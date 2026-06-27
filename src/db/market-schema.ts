@@ -494,6 +494,206 @@ export const commonsGovernanceEvents = pgTable('commons_governance_events', {
 	index('idx_commons_governance_events_type').on(table.eventType, table.createdAt)
 ]);
 
+export const teamGovernancePolicies = pgTable('team_governance_policies', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	scope: text('scope').notNull().default('team'),
+	providerId: text('provider_id').notNull(),
+	providerVersion: text('provider_version').notNull().default('1'),
+	configJson: text('config_json').notNull().default('{}'),
+	active: integer('active').notNull().default(1),
+	createdBy: text('created_by'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+	supersededAt: text('superseded_at'),
+}, (table) => [
+	index('idx_team_governance_policies_team_scope').on(table.teamId, table.scope, table.active)
+]);
+
+export const projectGovernancePolicies = pgTable('project_governance_policies', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id').notNull(),
+	providerId: text('provider_id').notNull(),
+	providerVersion: text('provider_version').notNull().default('1'),
+	configJson: text('config_json').notNull().default('{}'),
+	active: integer('active').notNull().default(1),
+	createdBy: text('created_by'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+	supersededAt: text('superseded_at'),
+}, (table) => [
+	index('idx_project_governance_policies_project').on(table.projectId, table.active)
+]);
+
+export const governanceProposals = pgTable('governance_proposals', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id'),
+	scope: text('scope').notNull().default('project'),
+	status: text('status').notNull().default('draft'),
+	title: text('title').notNull(),
+	summary: text('summary').notNull(),
+	body: text('body').notNull(),
+	proposalType: text('proposal_type').notNull().default('implementation'),
+	contentProposalSlug: text('content_proposal_slug'),
+	contentDecisionSlug: text('content_decision_slug'),
+	activeVersion: integer('active_version').notNull().default(1),
+	activeContentHash: text('active_content_hash').notNull(),
+	governanceProviderId: text('governance_provider_id').notNull(),
+	governanceProviderVersion: text('governance_provider_version').notNull().default('1'),
+	governancePolicyId: text('governance_policy_id'),
+	decisionId: text('decision_id'),
+	votingStartsAt: text('voting_starts_at'),
+	votingEndsAt: text('voting_ends_at'),
+	closedAt: text('closed_at'),
+	closedReason: text('closed_reason'),
+	createdByType: text('created_by_type').notNull().default('user'),
+	createdById: text('created_by_id'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	index('idx_governance_proposals_team_status').on(table.teamId, table.status, table.updatedAt),
+	index('idx_governance_proposals_project_status').on(table.projectId, table.status, table.updatedAt),
+	index('idx_governance_proposals_scope_status').on(table.scope, table.status, table.updatedAt),
+	index('idx_governance_proposals_content_slug').on(table.contentProposalSlug)
+]);
+
+export const governanceProposalVersions = pgTable('governance_proposal_versions', {
+	id: text('id').primaryKey(),
+	proposalId: text('proposal_id').notNull(),
+	version: integer('version').notNull(),
+	title: text('title').notNull(),
+	summary: text('summary').notNull(),
+	body: text('body').notNull(),
+	contentHash: text('content_hash').notNull(),
+	changeReason: text('change_reason'),
+	createdByType: text('created_by_type').notNull().default('user'),
+	createdById: text('created_by_id'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_governance_proposal_versions_unique').on(table.proposalId, table.version),
+	index('idx_governance_proposal_versions_proposal').on(table.proposalId, table.createdAt)
+]);
+
+export const governanceElectorateSnapshots = pgTable('governance_electorate_snapshots', {
+	id: text('id').primaryKey(),
+	proposalId: text('proposal_id').notNull(),
+	proposalVersion: integer('proposal_version').notNull(),
+	providerId: text('provider_id').notNull(),
+	providerVersion: text('provider_version').notNull().default('1'),
+	ruleSnapshotJson: text('rule_snapshot_json').notNull().default('{}'),
+	chambersJson: text('chambers_json').notNull().default('[]'),
+	eligibleVotersJson: text('eligible_voters_json').notNull().default('[]'),
+	delegationsJson: text('delegations_json').notNull().default('[]'),
+	eligibleWeightTotal: real('eligible_weight_total').notNull().default(0),
+	activeWeightTotal: real('active_weight_total').notNull().default(0),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_governance_electorate_snapshots_proposal').on(table.proposalId, table.proposalVersion)
+]);
+
+export const governanceProposalVotes = pgTable('governance_proposal_votes', {
+	id: text('id').primaryKey(),
+	proposalId: text('proposal_id').notNull(),
+	proposalVersion: integer('proposal_version').notNull(),
+	userId: text('user_id').notNull(),
+	vote: text('vote').notNull(),
+	reason: text('reason'),
+	chamberVotesJson: text('chamber_votes_json').notNull().default('{}'),
+	effectiveWeightsJson: text('effective_weights_json').notNull().default('{}'),
+	delegatedFromJson: text('delegated_from_json').notNull().default('[]'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_governance_proposal_votes_once').on(table.proposalId, table.proposalVersion, table.userId),
+	index('idx_governance_proposal_votes_proposal').on(table.proposalId, table.proposalVersion, table.vote)
+]);
+
+export const governanceVoteEvents = pgTable('governance_vote_events', {
+	id: text('id').primaryKey(),
+	proposalId: text('proposal_id').notNull(),
+	proposalVersion: integer('proposal_version').notNull(),
+	userId: text('user_id').notNull(),
+	priorVote: text('prior_vote'),
+	nextVote: text('next_vote').notNull(),
+	reason: text('reason'),
+	effectiveWeightsJson: text('effective_weights_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_governance_vote_events_proposal').on(table.proposalId, table.proposalVersion, table.createdAt)
+]);
+
+export const governanceDelegations = pgTable('governance_delegations', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	scope: text('scope').notNull().default('team'),
+	fromUserId: text('from_user_id').notNull(),
+	toUserId: text('to_user_id').notNull(),
+	chambersJson: text('chambers_json').notNull().default('[]'),
+	status: text('status').notNull().default('active'),
+	reason: text('reason'),
+	createdAt: text('created_at').notNull(),
+	revokedAt: text('revoked_at'),
+	expiresAt: text('expires_at'),
+	metadataJson: text('metadata_json').notNull().default('{}'),
+}, (table) => [
+	index('idx_governance_delegations_team_status').on(table.teamId, table.status),
+	index('idx_governance_delegations_from').on(table.fromUserId, table.status),
+	index('idx_governance_delegations_to').on(table.toUserId, table.status)
+]);
+
+export const governanceDecisions = pgTable('governance_decisions', {
+	id: text('id').primaryKey(),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id'),
+	proposalId: text('proposal_id').notNull(),
+	proposalVersion: integer('proposal_version').notNull(),
+	proposalContentHash: text('proposal_content_hash').notNull(),
+	status: text('status').notNull().default('creating'),
+	title: text('title').notNull(),
+	summary: text('summary').notNull(),
+	contentDecisionSlug: text('content_decision_slug'),
+	governanceProviderId: text('governance_provider_id').notNull(),
+	governanceRuleJson: text('governance_rule_json').notNull().default('{}'),
+	electorateSnapshotId: text('electorate_snapshot_id'),
+	voteResultJson: text('vote_result_json').notNull().default('{}'),
+	voterReasonsJson: text('voter_reasons_json').notNull().default('[]'),
+	proposalSnapshotJson: text('proposal_snapshot_json').notNull().default('{}'),
+	decisionRecordJson: text('decision_record_json').notNull().default('{}'),
+	createdByType: text('created_by_type').notNull().default('system'),
+	createdById: text('created_by_id'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+	supersededAt: text('superseded_at'),
+}, (table) => [
+	uniqueIndex('idx_governance_decisions_proposal').on(table.proposalId),
+	index('idx_governance_decisions_project_status').on(table.projectId, table.status, table.updatedAt)
+]);
+
+export const governanceEvents = pgTable('governance_events', {
+	id: text('id').primaryKey(),
+	eventType: text('event_type').notNull(),
+	actorType: text('actor_type').notNull().default('system'),
+	actorId: text('actor_id'),
+	teamId: text('team_id').notNull(),
+	projectId: text('project_id'),
+	proposalId: text('proposal_id'),
+	decisionId: text('decision_id'),
+	proposalVersion: integer('proposal_version'),
+	priorState: text('prior_state'),
+	nextState: text('next_state'),
+	message: text('message'),
+	evidenceJson: text('evidence_json').notNull().default('{}'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	index('idx_governance_events_proposal').on(table.proposalId, table.createdAt),
+	index('idx_governance_events_decision').on(table.decisionId, table.createdAt),
+	index('idx_governance_events_team').on(table.teamId, table.createdAt),
+	index('idx_governance_events_project').on(table.projectId, table.createdAt)
+]);
+
 export const projects = pgTable('projects', {
 	id: text('id').primaryKey(),
 	teamId: text('team_id').notNull(),
@@ -3390,6 +3590,16 @@ export const treeseedMarketSchema = {
 	commonsDelegations,
 	commonsDecisions,
 	commonsGovernanceEvents,
+	teamGovernancePolicies,
+	projectGovernancePolicies,
+	governanceProposals,
+	governanceProposalVersions,
+	governanceElectorateSnapshots,
+	governanceProposalVotes,
+	governanceVoteEvents,
+	governanceDelegations,
+	governanceDecisions,
+	governanceEvents,
 	projects,
 	projectConnections,
 	projectCapabilityGrants,

@@ -36,6 +36,7 @@ export {
 export { createControlPlaneReporter } from './control-plane.ts';
 export { ControlPlaneClient } from './control-plane-client.ts';
 export * from './agent-capacity.ts';
+export * from './governance.ts';
 export * from './secrets-capability.ts';
 export * from './project-import.ts';
 export * from './seeds/index.ts';

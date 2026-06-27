@@ -170,6 +170,23 @@ export interface PlatformRepositoryOperationInput {
 	parentSlug?: string;
 	targetCollection?: string;
 	proposalSlugs?: string[];
+	proposalSlug?: string;
+	proposalId?: string;
+	proposalVersion?: number;
+	proposalContentHash?: string;
+	proposalSnapshot?: Record<string, unknown>;
+	contentProposalSlug?: string;
+	contentDecisionSlug?: string;
+	governanceDecision?: Record<string, unknown>;
+	governanceDecisionId?: string;
+	governanceProviderId?: string;
+	governanceRule?: Record<string, unknown>;
+	electorateSnapshot?: Record<string, unknown>;
+	voteResult?: Record<string, unknown>;
+	voterReasons?: Record<string, unknown>[];
+	decidedAt?: string;
+	decisionSnapshotHash?: string;
+	authority?: string;
 	decisionType?: string;
 	reason?: string;
 	title?: string;
@@ -344,6 +361,14 @@ export function normalizePlatformContentInput(collection: string, body: Record<s
 		frontmatter.relatedQuestions = normalizePlatformRelationArray(body.relatedQuestions);
 		frontmatter.relatedNotes = normalizePlatformRelationArray(body.relatedNotes);
 		frontmatter.decision = optionalTrimmedString(body.decision) ?? undefined;
+		frontmatter.governanceId = optionalTrimmedString(body.governanceId) ?? undefined;
+		frontmatter.governanceProviderId = optionalTrimmedString(body.governanceProviderId) ?? undefined;
+		frontmatter.governancePolicyId = optionalTrimmedString(body.governancePolicyId) ?? undefined;
+		frontmatter.governanceStatus = optionalTrimmedString(body.governanceStatus) ?? undefined;
+		frontmatter.proposalVersion = Number.isInteger(Number(body.proposalVersion)) ? Number(body.proposalVersion) : undefined;
+		frontmatter.proposalContentHash = optionalTrimmedString(body.proposalContentHash) ?? undefined;
+		frontmatter.votingStartsAt = optionalTrimmedString(body.votingStartsAt) ?? undefined;
+		frontmatter.votingEndsAt = optionalTrimmedString(body.votingEndsAt) ?? undefined;
 	} else if (collection === 'decisions') {
 		frontmatter.primaryContributor = optionalTrimmedString(body.primaryContributor) ?? frontmatter.primaryContributor;
 		frontmatter.decisionType = enumValue(body.decisionType, DECISION_TYPE_VALUES, String(frontmatter.decisionType));
@@ -353,6 +378,18 @@ export function normalizePlatformContentInput(collection: string, body: Record<s
 		frontmatter.relatedQuestions = normalizePlatformRelationArray(body.relatedQuestions);
 		frontmatter.relatedNotes = normalizePlatformRelationArray(body.relatedNotes);
 		frontmatter.relatedProposals = normalizePlatformRelationArray(body.relatedProposals);
+		frontmatter.immutable = body.immutable === true ? true : undefined;
+		frontmatter.governanceDecisionId = optionalTrimmedString(body.governanceDecisionId) ?? undefined;
+		frontmatter.governanceProviderId = optionalTrimmedString(body.governanceProviderId) ?? undefined;
+		frontmatter.sourceProposalGovernanceId = optionalTrimmedString(body.sourceProposalGovernanceId) ?? undefined;
+		frontmatter.sourceProposalVersion = Number.isInteger(Number(body.sourceProposalVersion)) ? Number(body.sourceProposalVersion) : undefined;
+		frontmatter.sourceProposalHash = optionalTrimmedString(body.sourceProposalHash) ?? undefined;
+		frontmatter.governanceRule = body.governanceRule && typeof body.governanceRule === 'object' && !Array.isArray(body.governanceRule) ? body.governanceRule : undefined;
+		frontmatter.electorateSnapshot = body.electorateSnapshot && typeof body.electorateSnapshot === 'object' && !Array.isArray(body.electorateSnapshot) ? body.electorateSnapshot : undefined;
+		frontmatter.voteResult = body.voteResult && typeof body.voteResult === 'object' && !Array.isArray(body.voteResult) ? body.voteResult : undefined;
+		frontmatter.voterReasons = Array.isArray(body.voterReasons) ? body.voterReasons : undefined;
+		frontmatter.decidedAt = optionalTrimmedString(body.decidedAt) ?? undefined;
+		frontmatter.decisionSnapshotHash = optionalTrimmedString(body.decisionSnapshotHash) ?? undefined;
 	}
 	return {
 		slug,
@@ -701,6 +738,105 @@ async function createDecisionFromProposals(repoPath: string, input: PlatformRepo
 	};
 }
 
+async function createDecisionFromGovernanceProposal(repoPath: string, input: PlatformRepositoryOperationInput) {
+	const proposalSnapshot = input.proposalSnapshot && typeof input.proposalSnapshot === 'object' ? input.proposalSnapshot as Record<string, unknown> : {};
+	const governanceDecision = input.governanceDecision && typeof input.governanceDecision === 'object' ? input.governanceDecision as Record<string, unknown> : {};
+	const proposalSlug = slugifyPlatformContent(
+		input.contentProposalSlug
+		?? input.proposalSlug
+		?? proposalSnapshot.slug
+		?? proposalSnapshot.contentProposalSlug
+		?? governanceDecision.contentProposalSlug
+		?? '',
+	);
+	if (!proposalSlug) throw new Error('A safe source proposal slug is required.');
+	const sourceHash = optionalTrimmedString(input.proposalContentHash)
+		?? optionalTrimmedString(proposalSnapshot.contentHash)
+		?? optionalTrimmedString(proposalSnapshot.proposalContentHash);
+	if (!sourceHash) throw new Error('Accepted proposal content hash is required.');
+	const proposalVersion = Number(input.proposalVersion ?? proposalSnapshot.version ?? proposalSnapshot.proposalVersion ?? 1);
+	if (!Number.isInteger(proposalVersion) || proposalVersion < 1) throw new Error('Accepted proposal version is invalid.');
+	const title = optionalTrimmedString(input.title)
+		?? optionalTrimmedString(governanceDecision.title)
+		?? optionalTrimmedString(proposalSnapshot.title)
+		?? `Decision for ${proposalSlug}`;
+	const summary = optionalTrimmedString(input.summary)
+		?? optionalTrimmedString(governanceDecision.summary)
+		?? optionalTrimmedString(proposalSnapshot.summary)
+		?? 'Accepted governance decision.';
+	const decisionSlug = slugifyPlatformContent(input.slug || input.contentDecisionSlug || governanceDecision.contentDecisionSlug || title);
+	if (!decisionSlug) throw new Error('A safe decision slug is required.');
+	const decisionTarget = safeContentPath(repoPath, 'decisions', decisionSlug, 'mdx');
+	if (existsSync(decisionTarget)) throw new Error('A decision with that slug already exists.');
+	let proposal = null;
+	try {
+		proposal = await readContentRecord(repoPath, 'proposals', proposalSlug);
+	} catch {
+		throw new Error(`Proposal ${proposalSlug} was not found.`);
+	}
+	const voteResult = input.voteResult && typeof input.voteResult === 'object' ? input.voteResult : governanceDecision.voteResult ?? {};
+	const voterReasons = Array.isArray(input.voterReasons) ? input.voterReasons : Array.isArray(governanceDecision.voterReasons) ? governanceDecision.voterReasons : [];
+	const decidedAt = optionalTrimmedString(input.decidedAt) ?? new Date().toISOString();
+	const body = optionalTrimmedString(input.payload?.body)
+		?? [
+			'## Accepted Proposal Snapshot',
+			optionalTrimmedString(proposalSnapshot.body) ?? proposal.body.trim(),
+			'',
+			'## Governance Result',
+			JSON.stringify(voteResult, null, 2),
+		].join('\n');
+	const decision = await writeContentRecord(repoPath, 'decisions', {
+		...(input.payload ?? {}),
+		projectId: input.projectId,
+		teamId: input.teamId,
+		slug: decisionSlug,
+		title,
+		status: 'live',
+		decisionType: 'approved',
+		description: optionalTrimmedString(input.payload?.description) ?? summary,
+		summary,
+		rationale: optionalTrimmedString(input.reason) ?? 'Accepted by governance.',
+		authority: optionalTrimmedString(input.authority) ?? 'governance',
+		relatedProposals: [proposalSlug],
+		immutable: true,
+		governanceDecisionId: optionalTrimmedString(input.governanceDecisionId) ?? optionalTrimmedString(governanceDecision.id),
+		governanceProviderId: optionalTrimmedString(input.governanceProviderId) ?? optionalTrimmedString(governanceDecision.governanceProviderId),
+		sourceProposalGovernanceId: optionalTrimmedString(input.proposalId) ?? optionalTrimmedString(governanceDecision.proposalId),
+		sourceProposalVersion: proposalVersion,
+		sourceProposalHash: sourceHash,
+		governanceRule: input.governanceRule ?? governanceDecision.governanceRule ?? {},
+		electorateSnapshot: input.electorateSnapshot ?? governanceDecision.electorateSnapshot ?? {},
+		voteResult,
+		voterReasons,
+		decidedAt,
+		decisionSnapshotHash: optionalTrimmedString(input.decisionSnapshotHash),
+		body,
+	});
+	const originalProposal = {
+		...proposal,
+		frontmatter: { ...proposal.frontmatter },
+		body: proposal.body,
+	};
+	const changedPaths = [decision.path];
+	try {
+		proposal.frontmatter.decision = decisionSlug;
+		proposal.frontmatter.governanceStatus = 'accepted';
+		proposal.frontmatter.proposalVersion = proposalVersion;
+		proposal.frontmatter.proposalContentHash = sourceHash;
+		changedPaths.push(await writeParsedRecord(repoPath, proposal));
+	} catch (error) {
+		await rm(decisionTarget, { force: true }).catch(() => {});
+		await writeParsedRecord(repoPath, originalProposal).catch(() => {});
+		throw error;
+	}
+	return {
+		decision,
+		proposal: { collection: 'proposals', slug: proposalSlug, href: `/app/work/proposals/${encodeURIComponent(proposalSlug)}` },
+		href: decision.href,
+		changedPaths,
+	};
+}
+
 async function changedPaths(repoPath: string) {
 	const output = await runGit(['status', '--porcelain', '--untracked-files=all'], repoPath).catch(() => '');
 	return output
@@ -842,7 +978,7 @@ function assertHostBindingChangedPaths(changed: string[]) {
 }
 
 export async function executePlatformRepositoryOperation(
-	operation: 'write_content_record' | 'create_related_content' | 'create_decision_from_proposals' | 'apply_host_binding_config' | 'audit_host_binding_config' | string,
+	operation: 'write_content_record' | 'create_related_content' | 'create_decision_from_proposals' | 'create_decision_from_governance_proposal' | 'apply_host_binding_config' | 'audit_host_binding_config' | string,
 	input: PlatformRepositoryOperationInput,
 	options: PlatformRepositoryOperationOptions,
 ): Promise<PlatformRepositoryOperationResult> {
@@ -865,6 +1001,8 @@ export async function executePlatformRepositoryOperation(
 		output = await createRelatedContent(repoPath, input);
 	} else if (operation === 'create_decision_from_proposals') {
 		output = await createDecisionFromProposals(repoPath, input);
+	} else if (operation === 'create_decision_from_governance_proposal') {
+		output = await createDecisionFromGovernanceProposal(repoPath, input);
 	} else if (operation === 'apply_host_binding_config') {
 		const hostBindingConfig = applyProjectLaunchHostBindingConfig({
 			projectRoot: repoPath,
