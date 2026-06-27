@@ -5324,6 +5324,11 @@ async function reconcileRailwayUnit(input: TreeseedReconcileAdapterInput, diff: 
 			});
 			break;
 		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error ?? '');
+			if (attempt >= 2 && /Problem processing request/iu.test(message)) {
+				traceRailwayReconcile(buildRailwayEnv(input, scope), 'sync:skipped-provider-error', `${serviceKey || 'all'}:problem-processing-request`);
+				break;
+			}
 			if (attempt >= 2 || !isTransientRailwayReconcileError(error)) {
 				throw error;
 			}
