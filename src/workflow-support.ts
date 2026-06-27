@@ -121,11 +121,6 @@ export {
 	waitForStagingAutomation,
 } from './operations/services/git-workflow.ts';
 export {
-	dockerIsAvailable,
-	stopKnownMailpitContainers,
-	type TreeseedMailpitContainer,
-} from './operations/services/mailpit-runtime.ts';
-export {
 	loadCliDeployConfig,
 	packageScriptPath,
 	resolveWranglerBin,

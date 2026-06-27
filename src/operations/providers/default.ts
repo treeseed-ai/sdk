@@ -40,11 +40,6 @@ import {
 	STAGING_BRANCH,
 } from '../../operations/services/git-workflow.ts';
 import {
-	dockerIsAvailable,
-	findRunningMailpitContainer,
-	stopKnownMailpitContainers,
-} from '../../operations/services/mailpit-runtime.ts';
-import {
 	loadCliDeployConfig,
 	packageScriptPath,
 	resolveWranglerBin,
@@ -1267,32 +1262,6 @@ class RollbackOperation extends BaseOperation {
 	}
 }
 
-class MailpitUpOperation extends BaseOperation {
-	async execute(_input: Record<string, unknown>, context: TreeseedOperationContext) {
-		if (!dockerIsAvailable()) {
-			return failureResult(this.metadata, 'Docker is required for Treeseed form email testing.');
-		}
-		const existing = findRunningMailpitContainer();
-		if (existing) {
-			return operationResult(this.metadata, { reused: true, container: existing });
-		}
-		return runNodeScript(this.metadata, 'ensure-mailpit', [], context);
-	}
-}
-
-class MailpitDownOperation extends BaseOperation {
-	async execute(_input: Record<string, unknown>, _context: TreeseedOperationContext) {
-		const stopped = stopKnownMailpitContainers();
-		return operationResult(this.metadata, { stopped }, { ok: stopped, exitCode: stopped ? 0 : 1 });
-	}
-}
-
-class MailpitLogsOperation extends BaseOperation {
-	async execute(_input: Record<string, unknown>, context: TreeseedOperationContext) {
-		return runNodeScript(this.metadata, 'logs-mailpit', [], context);
-	}
-}
-
 export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvider {
 	readonly id = 'default';
 	private readonly operations: TreeseedOperationImplementation[];
@@ -1361,9 +1330,6 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 			new ScriptOperation('test:release:full', 'workspace-release-verify', ['--full-smoke']),
 			new ScriptOperation('release:publish:changed', 'workspace-publish-changed-packages'),
 			new ScriptOperation('astro', 'tenant-astro-command'),
-			new MailpitUpOperation('mailpit:up'),
-			new MailpitDownOperation('mailpit:down'),
-			new MailpitLogsOperation('mailpit:logs'),
 			new ScriptOperation('d1:migrate:local', 'tenant-d1-migrate-local'),
 			new ScriptOperation('cleanup:markdown', 'cleanup-markdown', ['--write']),
 			new ScriptOperation('cleanup:markdown:check', 'cleanup-markdown', ['--check']),

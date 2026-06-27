@@ -61,7 +61,6 @@ export function prepareCloudflareLocalRuntime({ envOverrides = {}, persistTo, ou
 
 	runNodeScript('./scripts/patch-starlight-content-path.ts');
 	runNodeScript('./scripts/aggregate-book.ts');
-	runNodeScript('./scripts/ensure-mailpit.ts');
 	runLocalD1Migration(persistTo);
 	const astroArgs = ['astro', 'build', '--root', fixtureRoot];
 	if (outDir) {

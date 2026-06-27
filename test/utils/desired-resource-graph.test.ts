@@ -156,9 +156,21 @@ describe('canonical desired resource graph', () => {
 			}),
 		});
 		expect(graph.resources.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+			'local-docker-compose:mailpit',
 			'local-docker-compose:treedx',
 			'capacity-provider:local',
 		]));
+		const mailpit = graph.resources.find((entry) => entry.id === 'local-docker-compose:mailpit');
+		expect(mailpit).toMatchObject({
+			kind: 'local-docker-compose',
+			provider: 'local',
+			packageId: '@treeseed/sdk',
+			serviceId: 'mailpit',
+			spec: expect.objectContaining({
+				projectName: 'treeseed-local-mailpit',
+				composeFile: 'packages/sdk/src/treeseed/services/compose.yml',
+			}),
+		});
 	});
 
 	it('adds project architecture diagnostics to local dev without cloning content by default', () => {

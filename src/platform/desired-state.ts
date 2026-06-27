@@ -567,6 +567,7 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 	const composeId = 'local-docker-compose:agent-capacity-provider';
 	const treeDxComposeId = 'local-docker-compose:treedx';
 	const apiPostgresComposeId = 'local-docker-compose:api-postgres';
+	const mailpitComposeId = 'local-docker-compose:mailpit';
 	const capacityProviderDataDir = resolvePath(tenantRoot, '.treeseed/local-capacity-provider/data');
 	const localGitCommonDir = resolveLocalGitCommonDir(tenantRoot);
 	const hostCodexAuthFile = [
@@ -653,6 +654,35 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 				],
 			},
 			source: { type: 'package-adapter', id: '@treeseed/api' },
+		},
+		{
+			id: mailpitComposeId,
+			kind: 'local-docker-compose',
+			provider: 'local',
+			environment,
+			packageId: '@treeseed/sdk',
+			serviceId: 'mailpit',
+			logicalName: 'local Mailpit email capture compose',
+			dependencies: [],
+			spec: {
+				composeFile: 'packages/sdk/src/treeseed/services/compose.yml',
+				projectName: 'treeseed-local-mailpit',
+				cwd: '.',
+				env: {
+					TREESEED_MAILPIT_SMTP_BIND: '127.0.0.1',
+					TREESEED_MAILPIT_SMTP_PORT: '1025',
+					TREESEED_MAILPIT_UI_BIND: '127.0.0.1',
+					TREESEED_MAILPIT_UI_PORT: '8025',
+				},
+				ports: [
+					{ host: 1025, container: 1025 },
+					{ host: 8025, container: 8025 },
+				],
+				healthChecks: [
+					{ id: 'mailpit-ui', kind: 'http', url: 'http://127.0.0.1:8025' },
+				],
+			},
+			source: { type: 'package-adapter', id: '@treeseed/sdk' },
 		},
 		{
 			id: 'local-treedx:team-primary',
@@ -763,9 +793,9 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 			serviceId: id,
 			logicalName: label,
 			dependencies: id === 'market-web'
-				? ['local-process:api']
+				? ['local-process:api', mailpitComposeId]
 				: id === 'api'
-					? [apiPostgresComposeId]
+					? [apiPostgresComposeId, mailpitComposeId]
 					: ['local-process:api'],
 			spec: {
 				processId: id,
