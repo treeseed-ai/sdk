@@ -4226,6 +4226,10 @@ async function deployRailwayServiceInstanceWithSourceRepair(
 		return;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error ?? '');
+		if (/Problem processing request/iu.test(message)) {
+			traceRailwayReconcile(env, 'sync:deploy-skipped', `${entry.configuredService.key}:${entry.service.name}:problem-processing-request`);
+			return;
+		}
 		if (!/Deployment not found/iu.test(message)) {
 			throw error;
 		}
@@ -4237,6 +4241,10 @@ async function deployRailwayServiceInstanceWithSourceRepair(
 			return;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error ?? '');
+			if (/Problem processing request/iu.test(message)) {
+				traceRailwayReconcile(env, 'sync:deploy-skipped', `${entry.configuredService.key}:${entry.service.name}:problem-processing-request`);
+				return;
+			}
 			if (!/Deployment not found/iu.test(message)) {
 				throw error;
 			}
