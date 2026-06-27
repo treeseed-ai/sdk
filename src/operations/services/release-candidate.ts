@@ -816,7 +816,7 @@ function localReleaseGraphRehearsalChecks(
 	};
 }
 
-function validateInternalGitReferenceTags(root: string, failures: ReleaseCandidateFailure[]): number {
+function validateInternalGitReferences(root: string, failures: ReleaseCandidateFailure[]): number {
 	const issues = collectInternalDevReferenceIssues(root);
 	let checked = 0;
 	const seen = new Set<string>();
@@ -871,11 +871,11 @@ function lightweightDependencyChecks(root: string, failures: ReleaseCandidateFai
 			details: { error: error instanceof Error ? error.message : String(error) },
 		});
 	}
-	const checkedTags = validateInternalGitReferenceTags(root, failures);
+	const checkedRefs = validateInternalGitReferences(root, failures);
 	return {
 		name: 'hybrid-dependency-readiness',
 		status: failures.length > before ? 'failed' : 'passed',
-		detail: `Validated root lockfile with npm install --package-lock-only --ignore-scripts --dry-run --workspaces=false and checked ${checkedTags} internal git tag${checkedTags === 1 ? '' : 's'} without temp install rehearsal.`,
+		detail: `Validated root lockfile with npm install --package-lock-only --ignore-scripts --dry-run --workspaces=false and checked ${checkedRefs} internal git ref${checkedRefs === 1 ? '' : 's'} without temp install rehearsal.`,
 	};
 }
 

@@ -196,25 +196,26 @@ describe('release candidate verification', () => {
 		expect(first.policyVersion).toBe('package-adapters-v2-hybrid');
 	});
 
-	it('does not change topology for internal version and git tag churn', () => {
+	it('does not change topology for internal version and git commit churn', () => {
 		const root = makeWorkspace();
 		const first = buildReleaseCandidateTopologyFingerprint({
 			root,
 			selectedPackageNames: ['@treeseed/sdk'],
 			plannedVersions: { '@treeseed/market': '1.0.1', '@treeseed/sdk': '0.4.13' },
 		});
+		const nextCommitRef = '1111111111111111111111111111111111111111';
 		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
 			name: '@treeseed/market',
 			version: '1.0.7',
 			private: true,
 			workspaces: ['packages/*'],
 			dependencies: {
-				'@treeseed/sdk': 'git+https://github.com/treeseed/sdk.git#0.4.14-dev.staging.2',
+				'@treeseed/sdk': `github:treeseed-ai/sdk#${nextCommitRef}`,
 			},
 		}, null, 2), 'utf8');
 		writeFileSync(resolve(root, 'packages', 'sdk', 'package.json'), JSON.stringify({
 			name: '@treeseed/sdk',
-			version: '0.4.14-dev.staging.2',
+			version: '0.4.14-dev.demo.1',
 			scripts: {
 				'verify:local': 'node -e "process.exit(0)"',
 				'release:publish': 'node -e "process.exit(0)"',
@@ -283,17 +284,22 @@ describe('release candidate verification', () => {
 		spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: work });
 		spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: work });
 		writeFileSync(resolve(work, 'README.md'), 'sdk\n', 'utf8');
+		writeFileSync(resolve(work, 'package.json'), JSON.stringify({
+			name: '@treeseed/sdk',
+			version: '0.4.13-dev.demo.1',
+		}, null, 2), 'utf8');
 		spawnSync('git', ['add', 'README.md'], { cwd: work });
+		spawnSync('git', ['add', 'package.json'], { cwd: work });
 		spawnSync('git', ['commit', '-m', 'init'], { cwd: work });
-		spawnSync('git', ['tag', '0.4.13-dev.feature-demo.1'], { cwd: work });
-		spawnSync('git', ['push', 'origin', 'HEAD', '--tags'], { cwd: work });
+		const commitSha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: work, encoding: 'utf8' }).stdout.trim();
+		spawnSync('git', ['push', 'origin', 'HEAD'], { cwd: work });
 		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
 			name: '@treeseed/market',
 			version: '1.0.0',
 			private: true,
 			workspaces: ['packages/*'],
 			dependencies: {
-				'@treeseed/sdk': `git+file://${remote}#0.4.13-dev.feature-demo.1`,
+				'@treeseed/sdk': `git+file://${remote}#${commitSha}`,
 			},
 		}, null, 2), 'utf8');
 		writeValidWorkspaceLockfile(root);
