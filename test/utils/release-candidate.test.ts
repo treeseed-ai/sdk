@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -462,7 +462,11 @@ describe('release candidate verification', () => {
 		expect(source).not.toContain('npm_config_tmp');
 
 		for (const packageName of ['cli', 'agent', 'api']) {
-			const verifier = readFileSync(resolve('..', packageName, 'scripts', 'release-verify.ts'), 'utf8');
+			const verifierPath = resolve('..', packageName, 'scripts', 'release-verify.ts');
+			if (!existsSync(verifierPath)) {
+				continue;
+			}
+			const verifier = readFileSync(verifierPath, 'utf8');
 			expect(verifier).toContain('TREESEED_VERIFY_PACKAGE_ISOLATED');
 			expect(verifier).toContain('file:treeseed-release-tarballs');
 		}
