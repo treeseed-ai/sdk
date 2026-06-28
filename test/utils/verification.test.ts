@@ -44,6 +44,7 @@ describe('verify driver', () => {
 		delete process.env.TREESEED_VERIFY_DRIVER;
 		delete process.env.TREESEED_VERIFY_EVENT;
 		delete process.env.TREESEED_VERIFY_ACT_UBUNTU_LATEST_IMAGE;
+		delete process.env.TREESEED_VERIFY_PACKAGE_ISOLATED;
 	});
 
 	it('detects local sibling treeseed dependencies in a packages workspace', async () => {
@@ -152,6 +153,7 @@ describe('verify driver', () => {
 		});
 		await createPackage(fixture.root, '@treeseed/sdk');
 		const calls: Array<{ command: string; args: string[]; cwd: string }> = [];
+		process.env.TREESEED_VERIFY_PACKAGE_ISOLATED = '1';
 
 		try {
 			expect(runTreeseedVerifyDriver({
@@ -192,6 +194,7 @@ describe('verify driver', () => {
 			const workflow = await readFile(calls[0].args[3], 'utf8');
 			expect(workflow).toContain('npm --prefix packages/sdk ci --workspaces=false');
 			expect(workflow).toContain('npm ci --workspaces=false');
+			expect(workflow).toContain('TREESEED_VERIFY_PACKAGE_ISOLATED: "1"');
 			expect(workflow).toContain('git rev-parse --is-inside-work-tree >/dev/null 2>&1');
 			expect(workflow).not.toContain('git checkout -- package.json || true');
 		} finally {

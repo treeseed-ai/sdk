@@ -267,6 +267,9 @@ function createWorkspaceActWorkflow(options: {
 		.join('\n');
 	const workflowRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-verify-act-'));
 	const workflowPath = resolve(workflowRoot, 'verify.yml');
+	const isolatedPackageVerifyEnv = process.env.TREESEED_VERIFY_PACKAGE_ISOLATED === '1'
+		? '      TREESEED_VERIFY_PACKAGE_ISOLATED: "1"\n'
+		: '';
 	writeFileSync(
 		workflowPath,
 		`name: Treeseed Local Verify
@@ -285,7 +288,7 @@ jobs:
       TREESEED_STAGE_WAIT_MODE: skip
       TREESEED_AGENT_DISABLE_GIT: "true"
       TREESEED_FIXTURE_ID: treeseed-working-site
-    steps:
+${isolatedPackageVerifyEnv}    steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
