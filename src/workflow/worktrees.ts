@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -291,8 +292,11 @@ export function removeManagedWorkflowWorktree(root: string, options: { deleteBra
 	const primaryRoot = metadata.primaryRoot;
 	const primaryGitRoot = repoRoot(primaryRoot);
 	process.chdir(primaryRoot);
-	runGit(['worktree', 'remove', '--force', metadata.worktreePath], { cwd: primaryGitRoot });
-	rmSync(metadata.worktreePath, { recursive: true, force: true });
+	const gitRemove = runGit(['worktree', 'remove', '--force', metadata.worktreePath], { cwd: primaryGitRoot, allowFailure: true });
+	removeWorkflowWorktreeDirectory(metadata.worktreePath);
+	if (gitRemove.status !== 0) {
+		runGit(['worktree', 'prune'], { cwd: primaryGitRoot, allowFailure: true });
+	}
 	let deletedLocalBranch = false;
 	if (options.deleteBranch === true && metadata.branch) {
 		const deleted = runGit(['branch', '-D', metadata.branch], { cwd: primaryGitRoot, allowFailure: true });
@@ -304,5 +308,52 @@ export function removeManagedWorkflowWorktree(root: string, options: { deleteBra
 		primaryRoot,
 		branch: metadata.branch,
 		deletedLocalBranch,
+	};
+}
+
+function removeWorkflowWorktreeDirectory(worktreePath: string) {
+	try {
+		rmSync(worktreePath, { recursive: true, force: true });
+		return;
+	} catch (error) {
+		const repair = repairDockerOwnedWorktreeArtifacts(worktreePath);
+		if (!repair.repaired) {
+			throw error;
+		}
+		try {
+			rmSync(worktreePath, { recursive: true, force: true });
+			return;
+		} catch (retryError) {
+			const detail = repair.stderr ? ` Docker ownership repair stderr: ${repair.stderr}` : '';
+			const message = retryError instanceof Error ? retryError.message : String(retryError);
+			throw new Error(`${message}.${detail}`);
+		}
+	}
+}
+
+function repairDockerOwnedWorktreeArtifacts(worktreePath: string) {
+	if (!existsSync(worktreePath) || typeof process.getuid !== 'function' || typeof process.getgid !== 'function') {
+		return { repaired: false, stderr: '' };
+	}
+	const uid = String(process.getuid());
+	const gid = String(process.getgid());
+	const result = spawnSync('docker', [
+		'run',
+		'--rm',
+		'-v',
+		`${worktreePath}:/target`,
+		'debian:bookworm-slim',
+		'chown',
+		'-R',
+		`${uid}:${gid}`,
+		'/target',
+	], {
+		encoding: 'utf8',
+		stdio: ['ignore', 'pipe', 'pipe'],
+		timeout: 300000,
+	});
+	return {
+		repaired: result.status === 0,
+		stderr: String(result.stderr ?? '').trim(),
 	};
 }
