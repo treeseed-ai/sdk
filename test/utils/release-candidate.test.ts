@@ -460,6 +460,12 @@ describe('release candidate verification', () => {
 		expect(source).toContain("'.treeseed', 'tmp', 'actions'");
 		expect(source).toContain('TMPDIR: env.TMPDIR ?? tempDir');
 		expect(source).not.toContain('npm_config_tmp');
+
+		for (const packageName of ['cli', 'agent', 'api']) {
+			const verifier = readFileSync(resolve('..', packageName, 'scripts', 'release-verify.ts'), 'utf8');
+			expect(verifier).toContain('TREESEED_VERIFY_PACKAGE_ISOLATED');
+			expect(verifier).toContain('file:treeseed-release-tarballs');
+		}
 	});
 
 	it('normalizes and resolves repository-scoped GitHub credentials', () => {
