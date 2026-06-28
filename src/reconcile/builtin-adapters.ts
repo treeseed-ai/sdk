@@ -4511,18 +4511,23 @@ async function observeRailwayUnit(input: TreeseedReconcileAdapterInput, { refres
 				includeVariables: false,
 			});
 			const entry = topology.services.get(serviceKey) ?? null;
+			const configuredService = entry?.configuredService ?? null;
+			const usesPortableSource = Boolean(
+				configuredService?.imageRef
+				|| (configuredService?.sourceMode === 'git' && configuredService?.sourceRepo)
+			);
 			const configured = Boolean(
-				entry?.configuredService
-				&& (entry.configuredService.serviceName || entry.configuredService.serviceId)
-				&& (entry.configuredService.projectName || entry.configuredService.projectId)
-				&& existsSync(resolve(entry.configuredService.rootDir)),
+				configuredService
+				&& (configuredService.serviceName || configuredService.serviceId)
+				&& (configuredService.projectName || configuredService.projectId)
+				&& (usesPortableSource || existsSync(resolve(configuredService.rootDir))),
 			);
 			return {
-				exists: Boolean(entry?.configuredService),
+				exists: Boolean(entry?.project && entry?.environment && entry?.service),
 				status: entry?.project && entry?.environment && entry?.service && configured ? 'ready' : 'pending',
 				live: {
 					...(persisted ?? {}),
-					...(entry?.configuredService ?? {}),
+					...(configuredService ?? {}),
 					project: entry?.project ?? null,
 					environment: entry?.environment ?? null,
 					service: entry?.service ?? null,

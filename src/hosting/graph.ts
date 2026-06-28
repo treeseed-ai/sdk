@@ -157,8 +157,10 @@ function railwayImageRefEnvForService(serviceKey: string) {
 }
 
 function defaultRailwayImageRefForService(serviceKey: string, environment: TreeseedHostingEnvironment) {
-	void serviceKey;
-	void environment;
+	if (environment === 'staging') {
+		if (serviceKey === 'api') return 'treeseed/api:staging';
+		if (serviceKey === 'operationsRunner') return 'treeseed/op-runner:staging';
+	}
 	return null;
 }
 
@@ -204,10 +206,10 @@ function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey: strin
 		? 'image'
 		: configuredMode === 'git' || configuredMode === 'image'
 			? configuredMode
-			: input.environment === 'staging' && sourceEligible && repository
-				? 'git'
-				: imageRef
+			: imageRef
 					? 'image'
+				: input.environment === 'staging' && sourceEligible && repository
+					? 'git'
 					: 'git';
 	if (mode !== 'git') {
 		return {

@@ -101,10 +101,10 @@ function railwayImageRefEnvForService(serviceKey) {
 
 function defaultRailwayImageRef(serviceKey, scope = 'staging', env = process.env) {
 	if (serviceKey === 'api') {
-		return envValue('TREESEED_API_IMAGE_REF', env) || null;
+		return envValue('TREESEED_API_IMAGE_REF', env) || (normalizeScope(scope) === 'staging' ? 'treeseed/api:staging' : null);
 	}
 	if (serviceKey === 'operationsRunner') {
-		return envValue('TREESEED_OPERATIONS_RUNNER_IMAGE_REF', env) || null;
+		return envValue('TREESEED_OPERATIONS_RUNNER_IMAGE_REF', env) || (normalizeScope(scope) === 'staging' ? 'treeseed/op-runner:staging' : null);
 	}
 	if (serviceKey === 'capacityProviderManager') {
 		return envValue('TREESEED_AGENT_MANAGER_IMAGE_REF', env) || null;
@@ -872,10 +872,10 @@ function resolveRailwayServiceSourcePolicy({ tenantRoot, scope, serviceKey, serv
 		? 'image'
 		: configuredMode === 'git' || configuredMode === 'image'
 			? configuredMode
-			: scope === 'staging' && sourceEligible && packageRepository
-				? 'git'
-				: imageRef
+			: imageRef
 					? 'image'
+				: scope === 'staging' && sourceEligible && packageRepository
+					? 'git'
 					: 'git';
 	if (sourceMode !== 'git') {
 		return {

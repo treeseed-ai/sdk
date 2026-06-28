@@ -242,8 +242,10 @@ services:
 		expect(runners[0]).toMatchObject({
 			instanceKey: 'operationsRunner:1',
 			runnerId: 'treeseed-api-operations-runner-01',
-			buildCommand: 'npm run build',
-			startCommand: 'npm run start:runner',
+			sourceMode: 'image',
+			imageRef: 'treeseed/op-runner:staging',
+			buildCommand: null,
+			startCommand: null,
 			healthcheckPath: '/healthz',
 			runtimeMode: 'service',
 			volumeMountPath: '/data',
@@ -435,7 +437,7 @@ services:
 		});
 	});
 
-	it('uses GitHub source builds for staging API package services instead of image refs', async () => {
+	it('uses Docker image refs for staging API package services', async () => {
 		const tenantRoot = await createTenantFixture();
 		await writeFile(
 			join(tenantRoot, 'treeseed.package.yaml'),
@@ -485,20 +487,20 @@ services:
 		const runner = services.find((service) => service.key === 'operationsRunner');
 
 		expect(api).toMatchObject({
-			sourceMode: 'git',
-			sourceRepo: 'treeseed-ai/api',
-			sourceBranch: 'staging',
-			sourceRootDirectory: '.',
-			imageRef: null,
-			buildCommand: 'npm run build',
-			startCommand: 'npm run start:api',
+			sourceMode: 'image',
+			sourceRepo: null,
+			sourceBranch: null,
+			sourceRootDirectory: null,
+			imageRef: 'treeseed/api:staging',
+			buildCommand: null,
+			startCommand: null,
 		});
 		expect(runner).toMatchObject({
-			sourceMode: 'git',
-			sourceRepo: 'treeseed-ai/api',
-			imageRef: null,
-			buildCommand: 'npm run build',
-			startCommand: 'npm run start:runner',
+			sourceMode: 'image',
+			sourceRepo: null,
+			imageRef: 'treeseed/op-runner:staging',
+			buildCommand: null,
+			startCommand: null,
 		});
 	});
 
