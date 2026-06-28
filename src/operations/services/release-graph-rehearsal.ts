@@ -85,7 +85,18 @@ export type ReleaseGraphRehearsalOptions = {
 
 const POLICY_VERSION = 'release-graph-rehearsal-v1';
 const INTERNAL_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies'] as const;
-const IGNORED_COPY_SEGMENTS = new Set(['.git', '.treeseed', '.wrangler', '.astro', 'coverage', 'dist', 'node_modules']);
+const IGNORED_COPY_SEGMENTS = new Set([
+	'.git',
+	'.treeseed',
+	'.wrangler',
+	'.astro',
+	'_build',
+	'coverage',
+	'deps',
+	'dist',
+	'node_modules',
+	'target',
+]);
 const STAGED_TARBALL_DIR = 'treeseed-release-tarballs';
 
 function runGit(args: string[], cwd: string) {

@@ -100,9 +100,12 @@ const REHEARSAL_IGNORED_SEGMENTS = new Set([
 	'.treeseed',
 	'.wrangler',
 	'.astro',
+	'_build',
 	'coverage',
+	'deps',
 	'dist',
 	'node_modules',
+	'target',
 ]);
 const ROOT_WEB_EXCLUDED_DEPLOY_CONFIG_IDS = new Set([
 	'TREESEED_DOCKERHUB_TOKEN',
