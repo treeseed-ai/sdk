@@ -5390,7 +5390,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			const rawAutoResumeRun = executionMode === 'execute' && !explicitResumeRunId
 				? findAutoResumableTaskRun(root, 'stage', session.branchName)
 				: null;
-			const autoResumeRun = rawAutoResumeRun?.journal.steps.some((step) => step.id === 'preflight')
+			const autoResumeRun = rawAutoResumeRun?.steps.some((step) => step.id === 'preflight')
 				? rawAutoResumeRun
 				: null;
 			const planAutoResumeRun = executionMode === 'plan'

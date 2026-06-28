@@ -1148,14 +1148,36 @@ describe('treeseed workflow lifecycle', () => {
 		git(work, ['push', 'origin', 'feature/demo-task']);
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-staged";\n', 'utf8');
 		writeFileSync(resolve(work, 'feature.txt'), 'demo\nstage\n', 'utf8');
-		await workflow.save({
-			message: 'feat: prepare stage',
-			verify: false,
-			refreshPreview: false,
-		});
-		vi.mocked(runWorkspaceSavePreflight).mockImplementationOnce(({ cwd }) => {
-			expect(existsSync(resolve(cwd, 'node_modules', '@treeseed', 'core', 'package.json'))).toBe(true);
-		});
+			await workflow.save({
+				message: 'feat: prepare stage',
+				verify: false,
+				refreshPreview: false,
+			});
+			createWorkflowRunJournal(work, {
+				runId: 'stage-interrupted-without-preflight',
+				command: 'stage',
+				input: { message: 'stale interrupted stage' },
+				session: {
+					root: work,
+					mode: 'recursive-workspace',
+					branchName: 'feature/demo-task',
+					repos: [
+						{ name: '@treeseed/market', path: work, branchName: 'feature/demo-task' },
+						{ name: '@treeseed/sdk', path: resolve(work, 'packages', 'sdk'), branchName: 'feature/demo-task' },
+					],
+				},
+				steps: [
+					{ id: 'verify-integrated-feature', description: 'Run local proof before staging mutation', repoName: '@treeseed/market', repoPath: work, branch: 'feature/demo-task', resumable: true },
+				],
+			});
+			updateWorkflowRunJournal(work, 'stage-interrupted-without-preflight', (journal) => ({
+				...journal,
+				status: 'failed',
+				failure: { code: 'verification_failed', message: 'stale interrupted proof', details: null, at: new Date().toISOString() },
+			}));
+			vi.mocked(runWorkspaceSavePreflight).mockImplementationOnce(({ cwd }) => {
+				expect(existsSync(resolve(cwd, 'node_modules', '@treeseed', 'core', 'package.json'))).toBe(true);
+			});
 
 		const result = await workflow.stage({
 			message: 'stage: finish demo task',
