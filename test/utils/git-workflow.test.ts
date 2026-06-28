@@ -5,6 +5,8 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	listTaskBranches,
+	mergeBranchDownIntoFeature,
+	promoteCommitToBranchWithExpectedHead,
 	squashMergeBranchIntoStaging,
 } from '../../src/operations/services/git-workflow.ts';
 
@@ -172,5 +174,46 @@ describe('git workflow task helpers', () => {
 			.toThrow(/README\.md|CONFLICT/u);
 		expect(git(work, ['diff', '--name-only', '--diff-filter=U'])).toBe('');
 		expect(git(work, ['status', '--porcelain'])).toBe('');
+	});
+
+	it('merges staging down into the feature branch and pushes the integrated head', () => {
+		const { work } = makeRepo();
+
+		git(work, ['checkout', 'staging']);
+		writeFileSync(resolve(work, 'staging.txt'), 'staging change\n', 'utf8');
+		git(work, ['add', 'staging.txt']);
+		git(work, ['commit', '-m', 'stage: add staging file']);
+		git(work, ['push', 'origin', 'staging']);
+
+		const result = mergeBranchDownIntoFeature(work, {
+			featureBranch: 'feature/search-filters',
+			sourceBranch: 'staging',
+			message: 'integrate staging',
+			allowGeneratedMetadataAutoResolution: true,
+		});
+
+		expect(result.merged).toBe(true);
+		expect(git(work, ['branch', '--show-current'])).toBe('feature/search-filters');
+		expect(git(work, ['show', 'HEAD:staging.txt'])).toBe('staging change');
+		expect(git(work, ['rev-parse', 'origin/feature/search-filters'])).toBe(result.afterHead);
+	});
+
+	it('refuses exact staging promotion when the remote staging head moved', () => {
+		const { work } = makeRepo();
+		const before = git(work, ['rev-parse', 'origin/staging']);
+		const featureHead = git(work, ['rev-parse', 'feature/search-filters']);
+
+		git(work, ['checkout', 'staging']);
+		writeFileSync(resolve(work, 'staging-moved.txt'), 'moved\n', 'utf8');
+		git(work, ['add', 'staging-moved.txt']);
+		git(work, ['commit', '-m', 'stage: moved']);
+		git(work, ['push', 'origin', 'staging']);
+
+		expect(() => promoteCommitToBranchWithExpectedHead(work, {
+			commitSha: featureHead,
+			targetBranch: 'staging',
+			expectedBefore: before,
+		})).toThrow(/origin\/staging moved/u);
+		expect(git(work, ['rev-parse', 'origin/staging'])).not.toBe(featureHead);
 	});
 });

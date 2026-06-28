@@ -66,7 +66,10 @@ These helpers are used by:
 - `trsd audit hosting --environment <env> --live`
 - `trsd doctor --live --hosted-services`
 - `trsd operations smoke --environment <env> --service operationsRunner`
-- `trsd stage|release --verify-deployed-resources`
+- `trsd stage --verify action|local|none`
+- `trsd release --verify-deployed-resources`
+
+`trsd stage` is branch/ref promotion. It merges `staging` down into the feature branch, runs local proof by default, promotes exact verified refs to staging, and leaves hosted CI/CD/provider repair to the staging release workflow. Hosted reconciliation and live deployed-resource verification remain owned by hosting, release, and explicit verification commands.
 
 For the API app, the expected hosted backend services are the API service, indexed Treeseed operations runner, PostgreSQL, and public TreeDX federation nodes owned by `packages/api`. The root web app remains a web UI and `/v1/*` proxy/client surface, with admin routes contributed by `@treeseed/admin` and visual primitives contributed by `@treeseed/ui`.
 

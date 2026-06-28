@@ -75,6 +75,9 @@ export type TreeseedWorkflowCiMode = 'auto' | 'hosted' | 'off';
 export type TreeseedWorkflowVerifyMode = 'fast' | 'local' | 'hosted' | 'both' | 'skip';
 export type TreeseedReleaseCandidateMode = 'hybrid' | 'strict' | 'skip';
 export type TreeseedReleaseCandidateVerifyDriver = 'auto' | 'local' | 'action';
+export type TreeseedStageVerifyMode = 'action' | 'local' | 'none';
+export type TreeseedStageCiMode = 'off' | 'hosted';
+export type TreeseedStageCleanupMode = 'success' | 'manual';
 
 export type TreeseedWorkflowContext = {
 	cwd?: string;
@@ -209,11 +212,14 @@ export type TreeseedCloseInput = {
 
 export type TreeseedStageInput = {
 	message: string;
+	updateFrom?: string;
+	verifyMode?: TreeseedStageVerifyMode;
+	cleanupMode?: TreeseedStageCleanupMode;
 	waitForStaging?: boolean;
 	deletePreview?: boolean;
 	deleteBranch?: boolean;
 	autoSave?: boolean;
-	ciMode?: TreeseedWorkflowCiMode;
+	ciMode?: TreeseedStageCiMode | TreeseedWorkflowCiMode;
 	releaseCandidate?: TreeseedReleaseCandidateMode;
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';

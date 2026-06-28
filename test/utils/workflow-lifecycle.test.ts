@@ -837,7 +837,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(work, ['branch', '--show-current'])).toBe('feature/demo-task');
 	}, 180000);
 
-	it('stages from a managed worktree through release gates', async () => {
+	it('stages from a managed worktree after local promotion proof', async () => {
 		const { work } = createWorkflowRepo();
 		git(work, ['checkout', 'staging']);
 		const env = { ...process.env, CODEX_AGENT_ID: 'agent-1' };
@@ -848,16 +848,21 @@ describe('treeseed workflow lifecycle', () => {
 		const worktreePath = String(switched.payload.worktreePath);
 		writeFileSync(resolve(worktreePath, 'agent-stage.txt'), 'managed stage\n', 'utf8');
 		const managedWorkflow = new TreeseedWorkflowSdk({ cwd: worktreePath, env, write: () => {} });
+		await managedWorkflow.save({
+			message: 'save managed stage',
+			verify: false,
+			refreshPreview: false,
+		});
 
 		const staged = await managedWorkflow.stage({
 			message: 'stage managed worktree',
-			deletePreview: false,
+			verifyMode: 'none',
 		});
 
-		expect(staged.payload.mode).toBe('reconcile-release-gates');
-		expect(staged.payload.target).toEqual({ kind: 'persistent', scope: 'staging' });
+		expect(staged.payload.mode).toBe('stage-promotion');
+		expect(staged.payload.mergeStrategy).toBe('merge-staging-down-then-exact-sha');
 		expect(staged.payload.worktreePath).toBe(worktreePath);
-		expect(existsSync(worktreePath)).toBe(true);
+		expect(existsSync(worktreePath)).toBe(false);
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
 	}, 180000);
 
@@ -1098,7 +1103,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(obsolete.payload.interruptedRuns.map((run: { runId: string }) => run.runId)).not.toContain('release-obsolete-test');
 	}, 180000);
 
-	it('stages package feature branches through release gates', async () => {
+	it('stages package feature branches through local ref promotion', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = workflowFor(work);
 		await workflow.switchTask({ branch: 'feature/demo-task' });
@@ -1115,19 +1120,16 @@ describe('treeseed workflow lifecycle', () => {
 
 		const result = await workflow.stage({
 			message: 'stage: finish demo task',
-			waitForStaging: false,
+			verifyMode: 'none',
+			cleanupMode: 'manual',
 		});
 
-		expect(result.payload.mode).toBe('reconcile-release-gates');
-		expect(result.payload.target).toEqual({ kind: 'persistent', scope: 'staging' });
-		expect(result.payload.mergeStrategy).toBe('exact-sha-then-release-gate');
-		expect(result.payload.stageMerge.root.status).toBe('staged');
-		expect(result.payload.units.map((unit: { unitId: string }) => unit.unitId)).toEqual(expect.arrayContaining([
-			'release-gate:verify:@treeseed/sdk',
-			'release-gate:hosted-reconcile:staging:all',
-			'release-gate:live-verify:staging:all',
-			'release-gate:candidate-record:staging',
-		]));
+		expect(result.payload.mode).toBe('stage-promotion');
+		expect(result.payload.mergeStrategy).toBe('merge-staging-down-then-exact-sha');
+		expect(result.payload.verification.status).toBe('skipped');
+		expect(result.payload.promotion.status).toBe('completed');
+		expect(result.payload.stagingRefs.status).toBe('verified');
+		expect(result.payload.cleanup.status).toBe('skipped');
 		expect(git(work, ['branch', '--show-current'])).toBe('feature/demo-task');
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('feature/demo-task');
 	}, 180000);

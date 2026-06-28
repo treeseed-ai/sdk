@@ -354,7 +354,7 @@ export function writeWorkflowRunJournal(root: string, journal: TreeseedWorkflowR
 }
 
 export function readWorkflowRunJournal(root: string, runId: string) {
-	return safeJsonParse<TreeseedWorkflowRunJournal>(resolve(root, WORKFLOW_RUNS_DIR, `${runId}.json`));
+	return safeJsonParse<TreeseedWorkflowRunJournal>(workflowRunPath(root, runId));
 }
 
 export function updateWorkflowRunJournal(

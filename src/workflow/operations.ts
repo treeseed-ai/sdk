@@ -72,16 +72,18 @@ import {
 	gitWorkflowRoot,
 	headCommit,
 	listTaskBranches,
+	mergeBranchDownIntoFeature,
 	mergeBranchIntoTarget,
 	prepareReleaseBranches,
 	PRODUCTION_BRANCH,
+	promoteCommitToBranchWithExpectedHead,
 	pushBranch,
-	pushCommitToBranch,
 	reattachDetachedHeadIfSafe,
 	remoteHeadCommit,
 	remoteBranchExists,
 	STAGING_BRANCH,
 	syncBranchWithOrigin,
+	waitForStagingAutomation,
 } from '../operations/services/git-workflow.ts';
 import { resolveGitHubRepositorySlug } from '../operations/services/github-automation.ts';
 import { resolveGitHubCredentialForRepository } from '../operations/services/github-credentials.ts';
@@ -434,7 +436,7 @@ function unlinkWorkflowWorkspaceLinks(root: string, helpers: WorkflowOperationHe
 	return report;
 }
 
-function normalizeCiMode(mode: TreeseedWorkflowCiMode | undefined, operation: 'save' | 'stage' | 'release') {
+function normalizeCiMode(mode: TreeseedWorkflowCiMode | undefined, operation: 'save' | 'release') {
 	if (mode === 'hosted' || mode === 'off') return mode;
 	return operation === 'save' ? 'off' : 'hosted';
 }
@@ -1015,69 +1017,6 @@ function assertWorkspaceClean(root: string) {
 	const repoDirs = [repoRoot(root), ...checkedOutManagedWorkflowRepos(root).map((repo) => repo.dir)];
 	assertCleanWorktrees(repoDirs);
 	return repoDirs;
-}
-
-function stageWorkspaceBranches(root: string, featureBranch: string, message: string) {
-	assertWorkspaceClean(root);
-	const stagedRemoteTargets = new Set<string>();
-	const packageStages = checkedOutManagedWorkflowRepos(root).map((repo) => {
-		if (!remoteBranchExists(repo.dir, featureBranch)) {
-			return {
-				name: repo.name,
-				path: repo.dir,
-				status: 'skipped' as const,
-				reason: 'remote-branch-missing',
-				targetBranch: STAGING_BRANCH,
-				commitSha: null,
-			};
-		}
-		ensureLocalTaskBranch(repo.dir, featureBranch);
-		const commitSha = remoteHeadCommit(repo.dir, featureBranch);
-		const targetKey = `${repo.remoteUrl ?? repo.dir}#${STAGING_BRANCH}`;
-		if (stagedRemoteTargets.has(targetKey)) {
-			return {
-				name: repo.name,
-				path: repo.dir,
-				status: 'skipped' as const,
-				reason: 'duplicate-remote-target',
-				targetBranch: STAGING_BRANCH,
-				commitSha,
-				generatedMetadataReconciliation: null,
-			};
-		}
-		stagedRemoteTargets.add(targetKey);
-		pushCommitToBranch(repo.dir, commitSha, STAGING_BRANCH, { forceWithLease: true });
-		return {
-			name: repo.name,
-			path: repo.dir,
-			status: 'staged' as const,
-			reason: null,
-			targetBranch: STAGING_BRANCH,
-			commitSha,
-			generatedMetadataReconciliation: null,
-		};
-	});
-	if (currentBranch(repoRoot(root)) !== featureBranch) {
-		checkoutBranch(repoRoot(root), featureBranch);
-	}
-	const rootCommitSha = remoteBranchExists(repoRoot(root), featureBranch)
-		? remoteHeadCommit(repoRoot(root), featureBranch)
-		: headCommit(repoRoot(root));
-	pushCommitToBranch(repoRoot(root), rootCommitSha, STAGING_BRANCH, { forceWithLease: true });
-	return {
-		sourceBranch: featureBranch,
-		targetBranch: STAGING_BRANCH,
-		message,
-		packages: packageStages,
-		root: {
-			name: '@treeseed/market',
-			path: repoRoot(root),
-			status: 'staged' as const,
-			targetBranch: STAGING_BRANCH,
-			commitSha: rootCommitSha,
-			generatedMetadataReconciliation: null,
-		},
-	};
 }
 
 function buildWorkflowResult<TPayload>(
@@ -5174,6 +5113,268 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 	}
 }
 
+type StageVerifyMode = 'action' | 'local' | 'none';
+type StageCiMode = 'off' | 'hosted';
+type StageCleanupMode = 'success' | 'manual';
+
+type StageRepoPlan = {
+	name: string;
+	path: string;
+	kind: 'root' | 'managed';
+	sourceBranch: string;
+	targetBranch: typeof STAGING_BRANCH;
+	remoteSourceExists: boolean;
+	beforeHead: string | null;
+	stagingHeadBefore: string | null;
+	integratedHead?: string | null;
+	promotedHead?: string | null;
+	cleanup?: {
+		localDeleted: boolean;
+		remoteDeleted: boolean;
+		worktreeRemoved?: boolean;
+	};
+};
+
+type StageCandidateManifest = {
+	schemaVersion: 1;
+	kind: 'treeseed.stage-candidate';
+	runId: string;
+	branchName: string;
+	targetBranch: typeof STAGING_BRANCH;
+	createdAt: string;
+	root: {
+		repo: '@treeseed/market';
+		commit: string;
+		verified: boolean;
+	};
+	packages: Array<{
+		name: string;
+		path: string;
+		commit: string;
+		remote: string | null;
+		verified: boolean;
+	}>;
+	verification: {
+		mode: StageVerifyMode;
+		status: 'passed' | 'skipped';
+		completedAt: string | null;
+	};
+	stagingHeadsBefore: Record<string, string | null>;
+};
+
+function normalizeStageVerifyMode(value: unknown): StageVerifyMode {
+	return value === 'local' || value === 'none' ? value : 'action';
+}
+
+function normalizeStageCiMode(input: TreeseedStageInput): StageCiMode {
+	if (input.ciMode === 'hosted' || input.waitForStaging === true) return 'hosted';
+	return 'off';
+}
+
+function normalizeStageCleanupMode(input: TreeseedStageInput): StageCleanupMode {
+	if (input.cleanupMode === 'manual' || input.deleteBranch === false) return 'manual';
+	return 'success';
+}
+
+function stageCandidateManifestPath(root: string, runId: string) {
+	return {
+		latest: resolve(root, '.treeseed', 'workflow', 'stage-candidates', 'latest.json'),
+		run: resolve(root, '.treeseed', 'workflow', 'runs', runId, 'stage-candidate.json'),
+	};
+}
+
+function writeStageCandidateManifest(root: string, runId: string, manifest: StageCandidateManifest) {
+	const paths = stageCandidateManifestPath(root, runId);
+	for (const filePath of [paths.latest, paths.run]) {
+		mkdirSync(dirname(filePath), { recursive: true });
+		writeFileSync(filePath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+	}
+	return manifest;
+}
+
+function buildStagePromotionPlan(root: string, branchName: string, input: {
+	verifyMode: StageVerifyMode;
+	ciMode: StageCiMode;
+	cleanupMode: StageCleanupMode;
+	updateFrom: typeof STAGING_BRANCH;
+}): {
+	schemaVersion: 1;
+	branchName: string;
+	targetBranch: typeof STAGING_BRANCH;
+	updateFrom: typeof STAGING_BRANCH;
+	verifyMode: StageVerifyMode;
+	ciMode: StageCiMode;
+	cleanupMode: StageCleanupMode;
+	repos: StageRepoPlan[];
+	phases: string[];
+} {
+	const gitRoot = repoRoot(root);
+	const repos: StageRepoPlan[] = [
+		...checkedOutManagedWorkflowRepos(root).map((repo) => ({
+			name: repo.name,
+			path: repo.dir,
+			kind: 'managed' as const,
+			sourceBranch: branchName,
+			targetBranch: STAGING_BRANCH,
+			remoteSourceExists: remoteBranchExists(repo.dir, branchName),
+			beforeHead: branchExists(repo.dir, branchName) ? headCommit(repo.dir, branchName) : null,
+			stagingHeadBefore: remoteBranchExists(repo.dir, STAGING_BRANCH) ? remoteHeadCommit(repo.dir, STAGING_BRANCH) : null,
+		})),
+		{
+			name: '@treeseed/market',
+			path: gitRoot,
+			kind: 'root' as const,
+			sourceBranch: branchName,
+			targetBranch: STAGING_BRANCH,
+			remoteSourceExists: remoteBranchExists(gitRoot, branchName),
+			beforeHead: branchExists(gitRoot, branchName) ? headCommit(gitRoot, branchName) : null,
+			stagingHeadBefore: remoteBranchExists(gitRoot, STAGING_BRANCH) ? remoteHeadCommit(gitRoot, STAGING_BRANCH) : null,
+		},
+	];
+	return {
+		schemaVersion: 1,
+		branchName,
+		targetBranch: STAGING_BRANCH,
+		updateFrom: input.updateFrom,
+		verifyMode: input.verifyMode,
+		ciMode: input.ciMode,
+		cleanupMode: input.cleanupMode,
+		repos,
+		phases: [
+			'preflight',
+			'merge-staging-down',
+			'save-integrated-feature',
+			'verify-integrated-feature',
+			'promote-to-staging',
+			'verify-staging-refs',
+			'workspace-link-restore',
+			'cleanup-source',
+		],
+	};
+}
+
+function stagePreflightBlockers(root: string, branchName: string, plan: { repos: StageRepoPlan[] }) {
+	const blockers: string[] = [];
+	if (!branchName || branchName === STAGING_BRANCH || branchName === PRODUCTION_BRANCH) {
+		blockers.push(`stage requires a feature branch; current branch is ${branchName || '(none)'}.`);
+	}
+	for (const repo of plan.repos) {
+		const branch = currentBranch(repo.path) || null;
+		if (hasMeaningfulChanges(repo.path)) {
+			blockers.push(`${repo.name} has uncommitted changes.`);
+		}
+		if (branch !== branchName && repo.kind === 'managed' && repo.remoteSourceExists) {
+			blockers.push(`${repo.name} is on ${branch ?? '(detached)'} instead of ${branchName}.`);
+		}
+		if (repo.kind === 'root' && branch !== branchName) {
+			blockers.push(`${repo.name} is on ${branch ?? '(detached)'} instead of ${branchName}.`);
+		}
+		try {
+			originRemoteUrl(repo.path);
+		} catch {
+			blockers.push(`${repo.name} has no readable origin remote.`);
+		}
+		if (repo.kind === 'root' && !repo.remoteSourceExists) {
+			blockers.push(`${repo.name} feature branch ${branchName} has not been pushed to origin.`);
+		}
+		if (repo.kind === 'managed' && branchExists(repo.path, branchName) && repo.remoteSourceExists) {
+			const localHead = headCommit(repo.path, branchName);
+			const remoteHead = remoteHeadCommit(repo.path, branchName);
+			if (localHead !== remoteHead) {
+				blockers.push(`${repo.name} local ${branchName} (${localHead.slice(0, 12)}) does not match origin/${branchName} (${remoteHead.slice(0, 12)}). Run save first.`);
+			}
+		}
+	}
+	return blockers;
+}
+
+function stageConflictError(message: string, details: Record<string, unknown>) {
+	return new TreeseedWorkflowError('stage', 'merge_conflict', message, {
+		details,
+		exitCode: 12,
+	});
+}
+
+function createStageCandidateManifest(root: string, runId: string, branchName: string, plan: { repos: StageRepoPlan[] }, verification: StageCandidateManifest['verification']): StageCandidateManifest {
+	const gitRoot = repoRoot(root);
+	const packageRepos = plan.repos.filter((repo) => repo.kind === 'managed' && repo.remoteSourceExists);
+	return {
+		schemaVersion: 1,
+		kind: 'treeseed.stage-candidate',
+		runId,
+		branchName,
+		targetBranch: STAGING_BRANCH,
+		createdAt: new Date().toISOString(),
+		root: {
+			repo: '@treeseed/market',
+			commit: headCommit(gitRoot),
+			verified: verification.status === 'passed' || verification.status === 'skipped',
+		},
+		packages: packageRepos.map((repo) => ({
+			name: repo.name,
+			path: repo.path,
+			commit: headCommit(repo.path),
+			remote: (() => {
+				try {
+					return originRemoteUrl(repo.path);
+				} catch {
+					return null;
+				}
+			})(),
+			verified: verification.status === 'passed' || verification.status === 'skipped',
+		})),
+		verification,
+		stagingHeadsBefore: Object.fromEntries(plan.repos.map((repo) => [repo.name, repo.stagingHeadBefore])),
+	};
+}
+
+function cleanupStageSourceBranches(root: string, branchName: string, manifest: StageCandidateManifest) {
+	const results: Array<Record<string, unknown>> = [];
+	for (const repo of checkedOutManagedWorkflowRepos(root)) {
+		const manifestRepo = manifest.packages.find((entry) => entry.name === repo.name);
+		if (!manifestRepo) continue;
+		const remoteDeleted = deleteRemoteBranch(repo.dir, branchName);
+		if ((currentBranch(repo.dir) || null) === branchName) {
+			syncBranchWithOrigin(repo.dir, STAGING_BRANCH);
+		}
+		const localExists = branchExists(repo.dir, branchName);
+		if (localExists && (currentBranch(repo.dir) || null) !== branchName) {
+			deleteLocalBranch(repo.dir, branchName);
+		}
+		results.push({
+			name: repo.name,
+			path: repo.dir,
+			remoteDeleted,
+			localDeleted: localExists && !branchExists(repo.dir, branchName),
+		});
+	}
+	const gitRoot = repoRoot(root);
+	const rootRemoteDeleted = deleteRemoteBranch(gitRoot, branchName);
+	const managedWorktree = managedWorkflowWorktreeMetadata(root);
+	const worktreeCleanup = managedWorktree
+		? removeManagedWorkflowWorktree(root, { deleteBranch: false })
+		: { removed: false, reason: 'not-managed' };
+	const branchDeletionRoot = managedWorktree?.primaryRoot ? repoRoot(managedWorktree.primaryRoot) : gitRoot;
+	if (!managedWorktree && (currentBranch(gitRoot) || null) === branchName) {
+		syncBranchWithOrigin(gitRoot, STAGING_BRANCH);
+	}
+	const rootLocalExists = branchExists(branchDeletionRoot, branchName);
+	if (rootLocalExists && (currentBranch(branchDeletionRoot) || null) !== branchName) {
+		deleteLocalBranch(branchDeletionRoot, branchName);
+	}
+	results.push({
+		name: '@treeseed/market',
+		path: branchDeletionRoot,
+		remoteDeleted: rootRemoteDeleted,
+		localDeleted: rootLocalExists && !branchExists(branchDeletionRoot, branchName),
+	});
+	return {
+		status: 'completed',
+		repos: results,
+		worktreeCleanup,
+	};
+}
+
 export async function workflowStage(helpers: WorkflowOperationHelpers, input: TreeseedStageInput) {
 	try {
 		return await withContextEnv(helpers.context.env, async () => {
@@ -5182,8 +5383,11 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			const executionMode = normalizeExecutionMode(input);
 			const session = resolveTreeseedWorkflowSession(root);
 			const explicitResumeRunId = helpers.context.workflow?.resumeRunId ?? null;
-			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId
+			const rawAutoResumeRun = executionMode === 'execute' && !explicitResumeRunId
 				? findAutoResumableTaskRun(root, 'stage', session.branchName)
+				: null;
+			const autoResumeRun = rawAutoResumeRun?.journal.steps.some((step) => step.id === 'preflight')
+				? rawAutoResumeRun
 				: null;
 			const planAutoResumeRun = executionMode === 'plan'
 				? findAutoResumableTaskRun(root, 'stage', session.branchName)
@@ -5192,59 +5396,281 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				? (autoResumeRun.input as unknown as TreeseedStageInput)
 				: input;
 			const message = ensureMessage('stage', effectiveInput.message, 'a resolution message');
-			const ciMode = normalizeCiMode(effectiveInput.ciMode, 'stage');
-			const waitForStaging = effectiveInput.verifyDeployedResources === true || effectiveInput.waitForStaging !== false;
+			if (effectiveInput.verifyDeployedResources === true) {
+				workflowError('stage', 'validation_failed', 'Stage no longer verifies deployed resources. Promote refs with stage, then run staging release/hosting verification separately.');
+			}
+			const verifyMode = normalizeStageVerifyMode(effectiveInput.verifyMode);
+			const ciMode = normalizeStageCiMode(effectiveInput);
+			const cleanupMode = normalizeStageCleanupMode(effectiveInput);
+			const updateFrom = effectiveInput.updateFrom ?? STAGING_BRANCH;
+			if (updateFrom !== STAGING_BRANCH) {
+				workflowError('stage', 'validation_failed', `Stage currently supports only --update-from ${STAGING_BRANCH}. Received ${updateFrom}.`);
+			}
 			const applicationSelection = selectWorkflowApplications(root, { packageSelection: session.packageSelection });
-			const autoSave = executionMode === 'execute'
-				? await maybeAutoSaveCurrentTaskBranch(helpers, 'stage', {
+			const featureBranch = executionMode === 'execute' ? assertFeatureBranch(root) : session.branchName ?? '';
+			let plan = buildStagePromotionPlan(root, featureBranch, { verifyMode, ciMode, cleanupMode, updateFrom });
+			let blockers = stagePreflightBlockers(root, featureBranch, plan);
+			const basePayload = {
+				mode: 'stage-promotion',
+				branchName: featureBranch,
+				branchRole: session.branchRole,
+				mergeTarget: STAGING_BRANCH,
+				mergeStrategy: 'merge-staging-down-then-exact-sha',
+				message,
+				verifyMode,
+				ciMode,
+				cleanupMode,
+				updateFrom,
+				waitForStaging: ciMode === 'hosted',
+				applicationSelection,
+				plan,
+				phases: plan.phases,
+				blockers,
+				autoResumeCandidate: planAutoResumeRun
+					? {
+						runId: planAutoResumeRun.runId,
+						branch: planAutoResumeRun.session.branchName,
+						failure: planAutoResumeRun.failure,
+					}
+					: null,
+				legacyMutationPathDisabled: true,
+				...worktreePayload(root, effectiveInput.worktreeMode),
+			};
+			if (executionMode === 'plan') {
+				return buildWorkflowResult('stage', root, basePayload, {
+					executionMode,
+					summary: blockers.length > 0 ? 'Treeseed stage plan blocked.' : 'Treeseed stage promotion plan ready.',
+					includeFinalState: false,
+					nextSteps: createNextSteps([
+						blockers.length > 0
+							? { operation: 'status', reason: 'Resolve blockers before staging.' }
+							: { operation: 'stage', reason: 'Promote the verified feature branch to staging.', input: { message } },
+					]),
+				});
+			}
+			if (effectiveInput.autoSave === true) {
+				await maybeAutoSaveCurrentTaskBranch(helpers, 'stage', {
 					message,
-					autoSave: effectiveInput.autoSave,
+					autoSave: true,
 					verify: false,
 					preview: false,
-				})
-				: { performed: false, save: null };
-			const activeSession = executionMode === 'execute'
-				? resolveTreeseedWorkflowSession(root)
-				: session;
-			const activeFeatureBranch = executionMode === 'execute'
-				? assertFeatureBranch(root)
-				: activeSession.branchName;
-			const stageMerge = executionMode === 'execute'
-				? stageWorkspaceBranches(root, activeFeatureBranch, message)
-				: null;
-			return runReleaseGateReconcileFacade(
-				'stage',
-				helpers,
-				root,
-				{ kind: 'persistent', scope: 'staging' },
-				{
-					plan: executionMode === 'plan',
-					execute: executionMode === 'execute',
-					verifyDeployedResources: effectiveInput.verifyDeployedResources,
-				},
-				{
-					branchName: session.branchName,
-					branchRole: session.branchRole,
-					mergeTarget: STAGING_BRANCH,
-					mergeStrategy: 'exact-sha-then-release-gate',
-					message,
-					ciMode,
-					waitForStaging,
-					applicationSelection,
-					stageMerge,
-					autoSaved: autoSave.performed,
-					autoSaveResult: autoSave.save,
-					autoResumeCandidate: planAutoResumeRun
-						? {
-							runId: planAutoResumeRun.runId,
-							branch: planAutoResumeRun.session.branchName,
-							failure: planAutoResumeRun.failure,
+				});
+				plan = buildStagePromotionPlan(root, featureBranch, { verifyMode, ciMode, cleanupMode, updateFrom });
+				blockers = stagePreflightBlockers(root, featureBranch, plan);
+			}
+			if (blockers.length > 0) {
+				workflowError('stage', 'validation_failed', `stage is blocked:\n${blockers.map((entry) => `- ${entry}`).join('\n')}`, {
+					details: { blockers, plan },
+				});
+			}
+			const workflowRun = acquireWorkflowRun('stage', resolveTreeseedWorkflowSession(root), {
+				...effectiveInput,
+				verifyMode,
+				ciMode,
+				cleanupMode,
+				updateFrom,
+			} as Record<string, unknown>, [
+				{ id: 'preflight', description: 'Validate clean feature branch before staging', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: featureBranch, resumable: true },
+				{ id: 'merge-staging-down', description: 'Merge staging into feature branches', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: featureBranch, resumable: true },
+				{ id: 'save-integrated-feature', description: 'Save integrated feature state after staging merge-down', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: featureBranch, resumable: true },
+				{ id: 'verify-integrated-feature', description: 'Run local proof before staging mutation', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: featureBranch, resumable: true },
+				{ id: 'write-stage-candidate', description: 'Write exact stage candidate manifest', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: featureBranch, resumable: true },
+				{ id: 'promote-to-staging', description: 'Promote exact verified refs to staging', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: featureBranch, resumable: true },
+				{ id: 'verify-staging-refs', description: 'Verify remote staging refs match promoted commits', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: STAGING_BRANCH, resumable: true },
+				{ id: 'hosted-ci', description: 'Wait for hosted staging CI when explicitly requested', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: STAGING_BRANCH, resumable: true },
+				{ id: 'workspace-link-restore', description: 'Restore local workspace links after stage', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: STAGING_BRANCH, resumable: true },
+				{ id: 'cleanup-source', description: 'Clean up source branches and worktree after successful promotion', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: featureBranch, resumable: true },
+			], helpers.context);
+			try {
+				await executeJournalStep(root, workflowRun.runId, 'preflight', () => {
+					const currentPlan = buildStagePromotionPlan(root, featureBranch, { verifyMode, ciMode, cleanupMode, updateFrom });
+					const currentBlockers = stagePreflightBlockers(root, featureBranch, currentPlan);
+					if (currentBlockers.length > 0) {
+						workflowError('stage', 'validation_failed', `stage is blocked:\n${currentBlockers.map((entry) => `- ${entry}`).join('\n')}`, {
+							details: { blockers: currentBlockers, plan: currentPlan },
+						});
+					}
+					return { status: 'passed', checkedAt: new Date().toISOString() };
+				});
+				const mergeDown = await executeJournalStep(root, workflowRun.runId, 'merge-staging-down', () => {
+					const results: Array<Record<string, unknown>> = [];
+					try {
+						for (const repo of checkedOutManagedWorkflowRepos(root)) {
+							if (!remoteBranchExists(repo.dir, featureBranch)) {
+								results.push({ name: repo.name, path: repo.dir, skipped: true, reason: 'remote-branch-missing' });
+								continue;
+							}
+							results.push({
+								name: repo.name,
+								path: repo.dir,
+								...mergeBranchDownIntoFeature(repo.dir, {
+									featureBranch,
+									sourceBranch: STAGING_BRANCH,
+									message: `stage: merge ${STAGING_BRANCH} into ${featureBranch}`,
+									allowGeneratedMetadataAutoResolution: true,
+								}),
+							});
 						}
-						: null,
-					legacyMutationPathDisabled: true,
-					...worktreePayload(root, effectiveInput.worktreeMode),
-				},
-			);
+						results.push({
+							name: '@treeseed/market',
+							path: repoRoot(root),
+							...mergeBranchDownIntoFeature(repoRoot(root), {
+								featureBranch,
+								sourceBranch: STAGING_BRANCH,
+								message: `stage: merge ${STAGING_BRANCH} into ${featureBranch}`,
+								allowGeneratedMetadataAutoResolution: true,
+							}),
+						});
+					} catch (error) {
+						const details = error && typeof error === 'object' ? error as Record<string, unknown> : {};
+						throw stageConflictError(error instanceof Error ? error.message : String(error), {
+							...details,
+							results,
+							branchName: featureBranch,
+							targetBranch: STAGING_BRANCH,
+						});
+					}
+					return { status: 'completed', results };
+				});
+				const mergeChanged = Array.isArray(mergeDown?.results)
+					&& mergeDown.results.some((entry) => Boolean((entry as Record<string, unknown>).merged));
+				const saveResult = mergeChanged || hasMeaningfulChanges(repoRoot(root))
+					? await executeJournalStep(root, workflowRun.runId, 'save-integrated-feature', () =>
+						workflowSave(helpersForCwd(helpers, root), {
+							message: `integrate staging before stage: ${message}`,
+							verifyMode: 'skip',
+							ciMode: 'off',
+							refreshPreview: false,
+							preview: false,
+							workspaceLinks: effectiveInput.workspaceLinks ?? 'auto',
+						}))
+					: (skipJournalStep(root, workflowRun.runId, 'save-integrated-feature', { skippedReason: 'staging already integrated' }), null);
+				const verification = verifyMode === 'none'
+					? (skipJournalStep(root, workflowRun.runId, 'verify-integrated-feature', { mode: verifyMode, status: 'skipped' }), {
+						mode: verifyMode,
+						status: 'skipped' as const,
+						completedAt: null,
+					})
+					: await executeJournalStep(root, workflowRun.runId, 'verify-integrated-feature', () => {
+						const proof = runReleaseGraphRehearsal({
+							root,
+							selectedPackageNames: [],
+							verifyDriver: verifyMode === 'action' ? 'action' : 'local',
+							strict: true,
+							write: (line, stream) => helpers.write(`[stage][verify] ${line}`, stream),
+							env: helpers.context.env,
+						});
+						if (proof.status !== 'passed') {
+							workflowError('stage', 'validation_failed', [
+								'Treeseed stage local proof failed.',
+								...proof.failures.map((failure) => `- ${failure.scope}: ${failure.message}`),
+							].join('\n'), {
+								details: { proof },
+							});
+						}
+						return {
+							mode: verifyMode,
+							status: 'passed' as const,
+							completedAt: new Date().toISOString(),
+							proof,
+						};
+					});
+				const manifest = await executeJournalStep(root, workflowRun.runId, 'write-stage-candidate', () => {
+					const currentPlan = buildStagePromotionPlan(root, featureBranch, { verifyMode, ciMode, cleanupMode, updateFrom });
+					return writeStageCandidateManifest(root, workflowRun.runId, createStageCandidateManifest(root, workflowRun.runId, featureBranch, currentPlan, {
+						mode: verifyMode,
+						status: verification.status,
+						completedAt: verification.completedAt,
+					}));
+				});
+				const typedManifest = manifest as unknown as StageCandidateManifest;
+				const promotion = await executeJournalStep(root, workflowRun.runId, 'promote-to-staging', () => {
+					const results: Array<Record<string, unknown>> = [];
+					for (const pkg of typedManifest.packages) {
+						results.push({
+							name: pkg.name,
+							...promoteCommitToBranchWithExpectedHead(resolve(root, pkg.path), {
+								commitSha: pkg.commit,
+								targetBranch: STAGING_BRANCH,
+								expectedBefore: typedManifest.stagingHeadsBefore[pkg.name] ?? null,
+							}),
+						});
+					}
+					results.push({
+						name: '@treeseed/market',
+						...promoteCommitToBranchWithExpectedHead(repoRoot(root), {
+							commitSha: typedManifest.root.commit,
+							targetBranch: STAGING_BRANCH,
+							expectedBefore: typedManifest.stagingHeadsBefore['@treeseed/market'] ?? null,
+						}),
+					});
+					return { status: 'completed', results };
+				});
+				const stagingRefs = await executeJournalStep(root, workflowRun.runId, 'verify-staging-refs', () => {
+					const refs: Record<string, string> = {};
+					for (const pkg of typedManifest.packages) {
+						const observed = remoteHeadCommit(resolve(root, pkg.path), STAGING_BRANCH);
+						if (observed !== pkg.commit) {
+							throw new Error(`${pkg.name} staging ref mismatch: expected ${pkg.commit}, observed ${observed}.`);
+						}
+						refs[pkg.name] = observed;
+					}
+					const rootObserved = remoteHeadCommit(repoRoot(root), STAGING_BRANCH);
+					if (rootObserved !== typedManifest.root.commit) {
+						throw new Error(`@treeseed/market staging ref mismatch: expected ${typedManifest.root.commit}, observed ${rootObserved}.`);
+					}
+					refs['@treeseed/market'] = rootObserved;
+					return { status: 'verified', refs };
+				});
+				const hostedCi = ciMode === 'hosted'
+					? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', () => waitForStagingAutomation(repoRoot(root)))
+					: (skipJournalStep(root, workflowRun.runId, 'hosted-ci', { skippedReason: 'ci off' }), { status: 'skipped', reason: 'ci off' });
+				const workspaceLinks = await executeJournalStep(root, workflowRun.runId, 'workspace-link-restore', () =>
+					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
+				const cleanup = cleanupMode === 'success'
+					? await executeJournalStep(root, workflowRun.runId, 'cleanup-source', () => cleanupStageSourceBranches(root, featureBranch, typedManifest))
+					: (skipJournalStep(root, workflowRun.runId, 'cleanup-source', { skippedReason: 'manual cleanup selected' }), { status: 'skipped', reason: 'manual cleanup selected' });
+				const payload = {
+					...basePayload,
+					blockers: [],
+					runId: workflowRun.runId,
+					mergeDown,
+					saveResult,
+					verification,
+					manifest: typedManifest,
+					promotion,
+					stagingRefs,
+					hostedCi,
+					cleanup,
+					workspaceLinks,
+					finalBranch: cleanupMode === 'success' ? STAGING_BRANCH : (currentBranch(repoRoot(root)) || featureBranch),
+					summary: 'Stage promoted refs only. Hosted CI/CD was not waited on by default. Run `npx trsd ci --branch staging --json` or assign the staging release agent for CI/CD repair.',
+				};
+				completeWorkflowRun(root, workflowRun.runId, payload);
+				return buildWorkflowResult('stage', root, payload, {
+					runId: workflowRun.runId,
+					summary: 'Treeseed stage completed successfully.',
+					includeFinalState: false,
+					nextSteps: createNextSteps([
+						{ operation: 'ci', reason: 'Inspect staging CI/CD status after branch promotion.', input: { branch: STAGING_BRANCH, failed: true } },
+					]),
+				});
+			} catch (error) {
+				try {
+					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
+				} catch {
+					// Preserve the original stage failure.
+				}
+				failWorkflowRun(root, workflowRun.runId, error, {
+					resumable: true,
+					runId: workflowRun.runId,
+					command: 'stage',
+					message: `Resume the interrupted stage for ${featureBranch}.`,
+					recoverCommand: 'treeseed recover',
+					resumeCommand: `treeseed resume ${workflowRun.runId}`,
+				});
+				throw error;
+			}
 		});
 	} catch (error) {
 		toError('stage', error);
