@@ -13,18 +13,23 @@ function functionBody(fileSource: string, functionName: string) {
 	const marker = `export async function ${functionName}(`;
 	const start = fileSource.indexOf(marker);
 	expect(start, `${functionName} exists`).toBeGreaterThanOrEqual(0);
-	const next = fileSource.indexOf('\nexport async function ', start + marker.length);
+	const nextExport = fileSource.indexOf('\nexport async function ', start + marker.length);
+	const nextInternal = fileSource.indexOf('\nasync function ', start + marker.length);
+	const nextCandidates = [nextExport, nextInternal].filter((candidate) => candidate >= 0);
+	const next = nextCandidates.length > 0 ? Math.min(...nextCandidates) : -1;
 	return fileSource.slice(start, next === -1 ? undefined : next);
 }
 
 describe('reconciliation hard-cut source boundaries', () => {
-	it('keeps stage and release behind the release-gate reconciliation facade', () => {
+	it('keeps stage as local ref promotion and release behind the release-gate reconciliation facade', () => {
 		const operations = source('packages/sdk/src/workflow/operations.ts');
 		const stageBody = functionBody(operations, 'workflowStage');
-		expect(stageBody).toContain('runReleaseGateReconcileFacade');
+		expect(stageBody).toContain('mode: \'stage-promotion\'');
+		expect(stageBody).toContain('mergeBranchDownIntoFeature');
+		expect(stageBody).toContain('promoteCommitToBranchWithExpectedHead');
 		expect(stageBody).toContain('legacyMutationPathDisabled');
 		for (const blocked of [
-			'executeJournalStep',
+			'runReleaseGateReconcileFacade',
 			'waitForWorkflowGates',
 			'runWorkflowHostedResourceVerification',
 			'destroyWorkflowBranchPreviewIfPresent',
