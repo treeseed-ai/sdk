@@ -5192,6 +5192,10 @@ function writeStageCandidateManifest(root: string, runId: string, manifest: Stag
 	return manifest;
 }
 
+function checkedOutStagePackageRepos(root: string) {
+	return checkedOutManagedWorkflowRepos(root).filter((repo) => repo.kind === 'package');
+}
+
 function buildStagePromotionPlan(root: string, branchName: string, input: {
 	verifyMode: StageVerifyMode;
 	ciMode: StageCiMode;
@@ -5210,7 +5214,7 @@ function buildStagePromotionPlan(root: string, branchName: string, input: {
 } {
 	const gitRoot = repoRoot(root);
 	const repos: StageRepoPlan[] = [
-		...checkedOutManagedWorkflowRepos(root).map((repo) => ({
+		...checkedOutStagePackageRepos(root).map((repo) => ({
 			name: repo.name,
 			path: repo.dir,
 			kind: 'managed' as const,
@@ -5330,7 +5334,7 @@ function createStageCandidateManifest(root: string, runId: string, branchName: s
 
 function cleanupStageSourceBranches(root: string, branchName: string, manifest: StageCandidateManifest) {
 	const results: Array<Record<string, unknown>> = [];
-	for (const repo of checkedOutManagedWorkflowRepos(root)) {
+	for (const repo of checkedOutStagePackageRepos(root)) {
 		const manifestRepo = manifest.packages.find((entry) => entry.name === repo.name);
 		if (!manifestRepo) continue;
 		const remoteDeleted = deleteRemoteBranch(repo.dir, branchName);
@@ -5495,7 +5499,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				const mergeDown = await executeJournalStep(root, workflowRun.runId, 'merge-staging-down', () => {
 					const results: Array<Record<string, unknown>> = [];
 					try {
-						for (const repo of checkedOutManagedWorkflowRepos(root)) {
+						for (const repo of checkedOutStagePackageRepos(root)) {
 							if (!remoteBranchExists(repo.dir, featureBranch)) {
 								results.push({ name: repo.name, path: repo.dir, skipped: true, reason: 'remote-branch-missing' });
 								continue;

@@ -373,6 +373,36 @@ function createPackageRepo(root: string, dirName: string, dependencies: Record<s
 	return { origin, work };
 }
 
+function addStaleNestedSubmodule(parentRepo: string, relativePath: string, branch: string) {
+	const root = mkdtempSync(join(tmpdir(), 'treeseed-nested-workflow-repo-'));
+	const origin = resolve(root, 'origin.git');
+	const work = resolve(root, 'work');
+	mkdirSync(work, { recursive: true });
+	git(root, ['init', '--bare', origin]);
+	git(work, ['init', '-b', 'staging']);
+	git(work, ['config', 'user.name', 'Treeseed Test']);
+	git(work, ['config', 'user.email', 'treeseed@example.com']);
+	writeFileSync(resolve(work, 'README.md'), 'nested helper\n', 'utf8');
+	git(work, ['add', '-A']);
+	git(work, ['commit', '-m', 'init: nested helper']);
+	git(work, ['remote', 'add', 'origin', origin]);
+	git(work, ['push', '-u', 'origin', 'staging']);
+	git(work, ['checkout', '-b', branch]);
+	writeFileSync(resolve(work, 'feature.txt'), 'local helper head\n', 'utf8');
+	git(work, ['add', '-A']);
+	git(work, ['commit', '-m', 'feat: helper branch']);
+	git(work, ['push', '-u', 'origin', branch]);
+	gitAllowFile(parentRepo, ['submodule', 'add', '-b', branch, origin, relativePath]);
+	const nestedRepo = resolve(parentRepo, relativePath);
+	git(nestedRepo, ['config', 'user.name', 'Treeseed Test']);
+	git(nestedRepo, ['config', 'user.email', 'treeseed@example.com']);
+	writeFileSync(resolve(work, 'feature.txt'), 'remote helper head\n', 'utf8');
+	git(work, ['add', '-A']);
+	git(work, ['commit', '-m', 'feat: advance remote helper']);
+	git(work, ['push', 'origin', branch]);
+	return nestedRepo;
+}
+
 function createWorkflowRepo(options: { withWorkspacePackages?: boolean } = {}) {
 	const root = mkdtempSync(join(tmpdir(), 'treeseed-workflow-lifecycle-'));
 	const origin = resolve(root, 'origin.git');
@@ -1107,6 +1137,15 @@ describe('treeseed workflow lifecycle', () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = workflowFor(work);
 		await workflow.switchTask({ branch: 'feature/demo-task' });
+		addStaleNestedSubmodule(resolve(work, 'packages', 'sdk'), '.fixtures/treeseed-fixtures', 'feature/demo-task');
+		git(resolve(work, 'packages', 'sdk'), ['add', '-A']);
+		git(resolve(work, 'packages', 'sdk'), ['commit', '-m', 'test: add helper repos']);
+		git(resolve(work, 'packages', 'sdk'), ['push', 'origin', 'feature/demo-task']);
+		addStaleNestedSubmodule(work, 'starters/research', 'feature/demo-task');
+		git(work, ['add', 'packages/sdk']);
+		git(work, ['add', '.gitmodules', 'starters/research']);
+		git(work, ['commit', '-m', 'test: update sdk helper repos']);
+		git(work, ['push', 'origin', 'feature/demo-task']);
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-staged";\n', 'utf8');
 		writeFileSync(resolve(work, 'feature.txt'), 'demo\nstage\n', 'utf8');
 		await workflow.save({
@@ -1125,6 +1164,9 @@ describe('treeseed workflow lifecycle', () => {
 		});
 
 		expect(result.payload.mode).toBe('stage-promotion');
+		const promotedRepoNames = result.payload.plan.repos.map((repo: { name: string }) => repo.name);
+		expect(promotedRepoNames.some((name: string) => name.startsWith('fixture:'))).toBe(false);
+		expect(promotedRepoNames.some((name: string) => name.startsWith('template:'))).toBe(false);
 		expect(result.payload.mergeStrategy).toBe('merge-staging-down-then-exact-sha');
 		expect(result.payload.verification.status).toBe('skipped');
 		expect(result.payload.promotion.status).toBe('completed');
