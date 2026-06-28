@@ -243,6 +243,20 @@ function createWorkspaceActWorkflow(options: {
 			].join('\n');
 		})
 		.join('\n');
+	const npmRetryFunction = [
+		'treeseed_npm_retry() {',
+		'  attempt=1',
+		'  until npm "$@"; do',
+		'    status=$?',
+		'    if test "$attempt" -ge 3; then',
+		'      return "$status"',
+		'    fi',
+		'    echo "npm $* failed with $status; retrying in $((attempt * 5))s" >&2',
+		'    sleep $((attempt * 5))',
+		'    attempt=$((attempt + 1))',
+		'  done',
+		'}',
+	].join('\n');
 	const siblingPreparationCommands = options.localTreeseedSiblingDependencies
 		.map((packageName) => {
 			const packageDir = `packages/${packageName.split('/')[1]}`;
@@ -253,9 +267,9 @@ function createWorkspaceActWorkflow(options: {
 
 			const commands = [
 				`if test -f ${packageDir}/package-lock.json; then`,
-				`  npm --prefix ${packageDir} ci --workspaces=false`,
+				`  treeseed_npm_retry --prefix ${packageDir} ci --workspaces=false`,
 				'else',
-				`  npm --prefix ${packageDir} install --workspaces=false --no-audit --no-fund`,
+				`  treeseed_npm_retry --prefix ${packageDir} install --workspaces=false --no-audit --no-fund`,
 				'fi',
 			];
 			if (manifest.scripts?.['build:dist']) {
@@ -305,15 +319,17 @@ ${isolatedPackageVerifyEnv}    steps:
 ${siblingPreparationCommands ? `      - name: Prepare sibling packages
         working-directory: .
         run: |
+${npmRetryFunction.split('\n').map((line) => `          ${line}`).join('\n')}
 ${siblingPreparationCommands.split('\n').map((line) => `          ${line}`).join('\n')}
 
 ` : ''}      - name: Install dependencies
         run: |
+${npmRetryFunction.split('\n').map((line) => `          ${line}`).join('\n')}
           node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync('package.json', 'utf8')); if (p.scripts) delete p.scripts.prepare; fs.writeFileSync('package.json', JSON.stringify(p, null, '\\t') + '\\n');"
           if test -f package-lock.json; then
-            npm ci --workspaces=false
+            treeseed_npm_retry ci --workspaces=false
           else
-            npm install --workspaces=false --no-audit --no-fund
+            treeseed_npm_retry install --workspaces=false --no-audit --no-fund
           fi
           if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
             git checkout -- package.json

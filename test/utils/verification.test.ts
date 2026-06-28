@@ -97,8 +97,9 @@ describe('verify driver', () => {
 			})).toBe(0);
 
 			const workflow = await readFile(calls[0]?.args[3] ?? '', 'utf8');
-			expect(workflow).toContain('npm --prefix packages/sdk ci --workspaces=false');
-			expect(workflow).toContain('npm --prefix packages/agent ci --workspaces=false');
+			expect(workflow).toContain('treeseed_npm_retry()');
+			expect(workflow).toContain('treeseed_npm_retry --prefix packages/sdk ci --workspaces=false');
+			expect(workflow).toContain('treeseed_npm_retry --prefix packages/agent ci --workspaces=false');
 			expect(workflow).toContain('ln -s ../../../agent node_modules/@treeseed/agent');
 		} finally {
 			await rm(fixture.root, { recursive: true, force: true });
@@ -192,8 +193,8 @@ describe('verify driver', () => {
 				cwd: fixture.root,
 			});
 			const workflow = await readFile(calls[0].args[3], 'utf8');
-			expect(workflow).toContain('npm --prefix packages/sdk ci --workspaces=false');
-			expect(workflow).toContain('npm ci --workspaces=false');
+			expect(workflow).toContain('treeseed_npm_retry --prefix packages/sdk ci --workspaces=false');
+			expect(workflow).toContain('treeseed_npm_retry ci --workspaces=false');
 			expect(workflow).toContain('TREESEED_VERIFY_PACKAGE_ISOLATED: "1"');
 			expect(workflow).toContain('git rev-parse --is-inside-work-tree >/dev/null 2>&1');
 			expect(workflow).not.toContain('git checkout -- package.json || true');
