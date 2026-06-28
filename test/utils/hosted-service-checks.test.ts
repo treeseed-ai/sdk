@@ -235,10 +235,12 @@ surfaces:
 			},
 		});
 		expect(report.target).toBe('staging');
-		expect(byId(report, 'railway:api:rootDirectory')).toMatchObject({ status: 'passed', expected: { rootDirectory: 'packages/api' } });
-		expect(byId(report, 'railway:api:buildCommand')).toMatchObject({ status: 'passed', expected: { buildCommand: 'npm run build' } });
-		expect(byId(report, 'railway:api:startCommand')).toMatchObject({ status: 'passed', expected: { startCommand: 'npm run start:api' } });
-		expect(byId(report, 'railway:operationsRunner:1:startCommand')).toMatchObject({ status: 'passed', expected: { startCommand: 'npm run start:runner' } });
+		expect(byId(report, 'railway:api:service')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'railway:api:healthcheckPath')).toMatchObject({ status: 'passed', expected: { healthcheckPath: '/healthz' } });
+		expect(byId(report, 'railway:api:runtimeMode')).toMatchObject({ status: 'passed', expected: { runtimeMode: 'serverless' } });
+		expect(report.checks.some((check) => check.id === 'railway:api:rootDirectory')).toBe(false);
+		expect(report.checks.some((check) => check.id === 'railway:api:buildCommand')).toBe(false);
+		expect(report.checks.some((check) => check.id === 'railway:api:startCommand')).toBe(false);
 		expect(byId(report, 'railway:operationsRunner:1:volume')).toMatchObject({ status: 'passed', expected: { volumeMountPath: '/data' } });
 		expect(byId(report, 'railway:treeseedDatabase:targets')).toMatchObject({ status: 'passed' });
 	});
@@ -283,11 +285,13 @@ surfaces:
 					rootDirectory: '.',
 					buildCommand: 'npm run build:api',
 					startCommand: 'node ./src/api/server.ts',
+					healthcheckPath: '/bad-health',
 				},
 			},
 		});
-		expect(byId(report, 'railway:api:rootDirectory').status).toBe('failed');
-		expect(byId(report, 'railway:api:startCommand').issues[0]).toContain('npm run start:api');
+		expect(report.checks.some((check) => check.id === 'railway:api:rootDirectory')).toBe(false);
+		expect(byId(report, 'railway:api:healthcheckPath').status).toBe('failed');
+		expect(byId(report, 'railway:api:healthcheckPath').issues[0]).toContain('/healthz');
 		expect(byId(report, 'railway:api:env:TREESEED_PLATFORM_RUNNER_SECRET').status).toBe('failed');
 		expect(JSON.stringify(report)).not.toContain('postgres://do-not-print');
 	});
