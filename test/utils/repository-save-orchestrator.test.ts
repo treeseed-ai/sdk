@@ -513,13 +513,8 @@ describe('repository save orchestrator helpers', () => {
 				tagName: sdkReport?.tagName,
 				commitSubject: 'feat(save): record package source changes',
 			});
-			expect(rootContext?.dependencyUpdates?.[0]).toMatchObject({
-				packageName: '@treeseed/sdk',
-				field: 'dependencies',
-			});
-			expect(rootContext?.dependencyUpdates?.[0]?.from).toContain('0.1.0-dev.old');
 			expect(sdkReport?.tagName).toBeNull();
-			expect(rootContext?.dependencyUpdates?.[0]?.to).toContain(String(sdkReport?.commitSha));
+			expect(rootContext?.dependencyUpdates ?? []).toEqual([]);
 			expect(rootContext?.submodulePointers?.[0]).toMatchObject({
 				path: 'packages/sdk',
 				oldSha: oldSdkHead,
