@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, resolve, relative } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -328,15 +328,50 @@ function withShortProcessTempEnv(env: NodeJS.ProcessEnv = {}) {
 	return merged;
 }
 
-function npmWorkflowEnv(env: NodeJS.ProcessEnv = {}) {
+function npmCacheForCwd(cwd: string) {
+	const cacheDir = resolve(cwd, '.treeseed', 'cache', 'npm');
+	mkdirSync(cacheDir, { recursive: true });
+	return cacheDir;
+}
+
+function npmWorkflowEnv(env: NodeJS.ProcessEnv = {}, cwd = process.cwd()) {
+	const npmCache = env.npm_config_cache
+		?? env.NPM_CONFIG_CACHE
+		?? process.env.npm_config_cache
+		?? process.env.NPM_CONFIG_CACHE
+		?? npmCacheForCwd(cwd);
 	return withShortProcessTempEnv({
 		...env,
+		NPM_CONFIG_CACHE: npmCache,
 		npm_config_audit: env.npm_config_audit ?? process.env.npm_config_audit ?? 'false',
+		npm_config_cache: npmCache,
+		npm_config_fetch_retries: env.npm_config_fetch_retries ?? process.env.npm_config_fetch_retries ?? '2',
 		npm_config_fund: env.npm_config_fund ?? process.env.npm_config_fund ?? 'false',
 		npm_config_foreground_scripts: env.npm_config_foreground_scripts ?? process.env.npm_config_foreground_scripts ?? 'true',
-		npm_config_maxsockets: env.npm_config_maxsockets ?? process.env.npm_config_maxsockets ?? '8',
+		npm_config_loglevel: env.npm_config_loglevel ?? process.env.npm_config_loglevel ?? 'warn',
+		npm_config_maxsockets: env.npm_config_maxsockets ?? process.env.npm_config_maxsockets ?? '4',
+		npm_config_prefer_offline: env.npm_config_prefer_offline ?? process.env.npm_config_prefer_offline ?? 'true',
 		npm_config_progress: env.npm_config_progress ?? process.env.npm_config_progress ?? 'false',
 	});
+}
+
+function npmCommandForSpawn(args: string[]) {
+	if (process.platform === 'win32') {
+		return { command: 'npm', args };
+	}
+	return {
+		command: 'bash',
+		args: [
+			'-lc',
+			'ulimit -n 65535 2>/dev/null || ulimit -n 32768 2>/dev/null || ulimit -n 16384 2>/dev/null || true; exec npm "$@"',
+			'npm-fd-guard',
+			...args,
+		],
+	};
+}
+
+function displayCommand(command: string, args: string[]) {
+	return command === 'npm' ? `npm ${args.join(' ')}` : `${command} ${args.join(' ')}`;
 }
 
 function runCapturedCommand(
@@ -347,10 +382,12 @@ function runCapturedCommand(
 	args: string[],
 	commandOptions: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; emitOutputOnSuccess?: boolean } = {},
 ) {
-	emitProgress(options, node, phase, `$ ${command} ${args.join(' ')}`);
-	const result = spawnSync(command, args, {
-		cwd: commandOptions.cwd ?? node.path,
-		env: withShortProcessTempEnv(commandOptions.env),
+	const cwd = commandOptions.cwd ?? node.path;
+	const spawnCommand = command === 'npm' ? npmCommandForSpawn(args) : { command, args };
+	emitProgress(options, node, phase, `$ ${displayCommand(command, args)}`);
+	const result = spawnSync(spawnCommand.command, spawnCommand.args, {
+		cwd,
+		env: command === 'npm' ? npmWorkflowEnv(commandOptions.env, cwd) : withShortProcessTempEnv(commandOptions.env),
 		stdio: 'pipe',
 		encoding: 'utf8',
 		timeout: commandOptions.timeoutMs,
@@ -367,13 +404,13 @@ function runCapturedCommand(
 			+ (
 				prefixedOutput(node, phase, stderr)
 				|| prefixedOutput(node, phase, stdout)
-				|| `${progressPrefix(node, phase)} ${command} ${args.join(' ')} failed`
+				|| `${progressPrefix(node, phase)} ${displayCommand(command, args)} failed`
 			);
 		throw new RepositorySaveError(message, {
 			details: {
 				failingRepo: node.name,
 				phase,
-				command: `${command} ${args.join(' ')}`,
+				command: displayCommand(command, args),
 			},
 		});
 	}
@@ -411,9 +448,11 @@ function runQuietCommand(
 	args: string[],
 	commandOptions: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
 ) {
-	const result = spawnSync(command, args, {
-		cwd: commandOptions.cwd ?? node.path,
-		env: withShortProcessTempEnv(commandOptions.env),
+	const cwd = commandOptions.cwd ?? node.path;
+	const spawnCommand = command === 'npm' ? npmCommandForSpawn(args) : { command, args };
+	const result = spawnSync(spawnCommand.command, spawnCommand.args, {
+		cwd,
+		env: command === 'npm' ? npmWorkflowEnv(commandOptions.env, cwd) : withShortProcessTempEnv(commandOptions.env),
 		stdio: 'pipe',
 		encoding: 'utf8',
 		timeout: commandOptions.timeoutMs,
@@ -423,14 +462,14 @@ function runQuietCommand(
 	if (result.status !== 0) {
 		throw new RepositorySaveError(
 			[
-				`${progressPrefix(node, phase)} ${command} ${args.join(' ')} failed`,
+				`${progressPrefix(node, phase)} ${displayCommand(command, args)} failed`,
 				stderr || stdout,
 			].filter(Boolean).join('\n'),
 			{
 				details: {
 					failingRepo: node.name,
 					phase,
-					command: `${command} ${args.join(' ')}`,
+					command: displayCommand(command, args),
 				},
 			},
 		);
@@ -446,11 +485,13 @@ export async function runStreamingCommand(
 	args: string[],
 	commandOptions: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; buildWarningPolicy?: BuildWarningPolicyOptions | false } = {},
 ) {
-	emitProgress(options, node, phase, `$ ${command} ${args.join(' ')}`);
+	const cwd = commandOptions.cwd ?? node.path;
+	const spawnCommand = command === 'npm' ? npmCommandForSpawn(args) : { command, args };
+	emitProgress(options, node, phase, `$ ${displayCommand(command, args)}`);
 	return await new Promise<{ stdout: string; stderr: string }>((resolvePromise, reject) => {
-		const child = spawn(command, args, {
-			cwd: commandOptions.cwd ?? node.path,
-			env: command === 'npm' ? npmWorkflowEnv(commandOptions.env) : withShortProcessTempEnv(commandOptions.env),
+		const child = spawn(spawnCommand.command, spawnCommand.args, {
+			cwd,
+			env: command === 'npm' ? npmWorkflowEnv(commandOptions.env, cwd) : withShortProcessTempEnv(commandOptions.env),
 			stdio: ['ignore', 'pipe', 'pipe'],
 		});
 		let stdout = '';
@@ -478,7 +519,7 @@ export async function runStreamingCommand(
 				if (settled) return;
 				settled = true;
 				child.kill('SIGTERM');
-				reject(new Error(`${progressPrefix(node, phase)} ${command} ${args.join(' ')} timed out after ${commandOptions.timeoutMs}ms`));
+				reject(new Error(`${progressPrefix(node, phase)} ${displayCommand(command, args)} timed out after ${commandOptions.timeoutMs}ms`));
 			}, commandOptions.timeoutMs)
 			: null;
 		child.stdout?.on('data', (chunk: Buffer) => {
@@ -521,12 +562,12 @@ export async function runStreamingCommand(
 			reject(new RepositorySaveError(
 				prefixedOutput(node, phase, stderr)
 				|| prefixedOutput(node, phase, stdout)
-				|| `${progressPrefix(node, phase)} ${command} ${args.join(' ')} failed with exit code ${code ?? 'unknown'}`,
+				|| `${progressPrefix(node, phase)} ${displayCommand(command, args)} failed with exit code ${code ?? 'unknown'}`,
 				{
 					details: {
 						failingRepo: node.name,
 						phase,
-						command: `${command} ${args.join(' ')}`,
+						command: displayCommand(command, args),
 					},
 				},
 			));

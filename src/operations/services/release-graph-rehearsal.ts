@@ -139,8 +139,24 @@ function commandToString(command: string, args: string[]) {
 	return [command, ...args].join(' ');
 }
 
+function npmCommandForSpawn(args: string[]) {
+	if (process.platform === 'win32') {
+		return { command: 'npm', args };
+	}
+	return {
+		command: 'bash',
+		args: [
+			'-lc',
+			'ulimit -n 65535 2>/dev/null || ulimit -n 32768 2>/dev/null || ulimit -n 16384 2>/dev/null || true; exec npm "$@"',
+			'npm-fd-guard',
+			...args,
+		],
+	};
+}
+
 function runCommand(command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; capture?: boolean }) {
-	const result = spawnSync(command, args, {
+	const spawnCommand = command === 'npm' ? npmCommandForSpawn(args) : { command, args };
+	const result = spawnSync(spawnCommand.command, spawnCommand.args, {
 		cwd: options.cwd,
 		env: options.env,
 		stdio: options.capture ? 'pipe' : 'inherit',
@@ -182,7 +198,13 @@ function releaseGraphNpmEnv(root: string, env: NodeJS.ProcessEnv) {
 		TREESEED_TOOLS_HOME: env.TREESEED_TOOLS_HOME ?? process.env.TREESEED_TOOLS_HOME ?? toolsHome,
 		TREESEED_GH_CONFIG_DIR: env.TREESEED_GH_CONFIG_DIR ?? process.env.TREESEED_GH_CONFIG_DIR ?? ghConfigDir,
 		npm_config_audit: env.npm_config_audit ?? process.env.npm_config_audit ?? 'false',
+		npm_config_fetch_retries: env.npm_config_fetch_retries ?? process.env.npm_config_fetch_retries ?? '2',
 		npm_config_fund: env.npm_config_fund ?? process.env.npm_config_fund ?? 'false',
+		npm_config_foreground_scripts: env.npm_config_foreground_scripts ?? process.env.npm_config_foreground_scripts ?? 'true',
+		npm_config_loglevel: env.npm_config_loglevel ?? process.env.npm_config_loglevel ?? 'warn',
+		npm_config_maxsockets: env.npm_config_maxsockets ?? process.env.npm_config_maxsockets ?? '4',
+		npm_config_prefer_offline: env.npm_config_prefer_offline ?? process.env.npm_config_prefer_offline ?? 'true',
+		npm_config_progress: env.npm_config_progress ?? process.env.npm_config_progress ?? 'false',
 	};
 }
 

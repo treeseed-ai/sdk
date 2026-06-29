@@ -2368,6 +2368,21 @@ function shouldSkipReleaseInstall() {
 	return process.env.TREESEED_SAVE_NPM_INSTALL_MODE === 'skip';
 }
 
+function npmCommandForWorkflowSpawn(args: string[]) {
+	if (process.platform === 'win32') {
+		return { command: 'npm', args };
+	}
+	return {
+		command: 'bash',
+		args: [
+			'-lc',
+			'ulimit -n 65535 2>/dev/null || ulimit -n 32768 2>/dev/null || ulimit -n 16384 2>/dev/null || true; exec npm "$@"',
+			'npm-fd-guard',
+			...args,
+		],
+	};
+}
+
 function runReleaseNpmInstall(repoDir: string, options: { workspaceRoot?: string } = {}) {
 	if (shouldSkipReleaseInstall()) {
 		return { status: 'skipped', reason: 'disabled' };
@@ -2375,12 +2390,19 @@ function runReleaseNpmInstall(repoDir: string, options: { workspaceRoot?: string
 	const args = repoDir === options.workspaceRoot
 		? ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund']
 		: ['install', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund'];
-	const result = spawnSync('npm', args, {
+	const spawnCommand = npmCommandForWorkflowSpawn(args);
+	const result = spawnSync(spawnCommand.command, spawnCommand.args, {
 		cwd: repoDir,
 		env: {
 			...process.env,
 			npm_config_audit: 'false',
+			npm_config_fetch_retries: '2',
 			npm_config_fund: 'false',
+			npm_config_foreground_scripts: 'true',
+			npm_config_loglevel: 'warn',
+			npm_config_maxsockets: '4',
+			npm_config_prefer_offline: 'true',
+			npm_config_progress: 'false',
 		},
 		stdio: 'pipe',
 		encoding: 'utf8',

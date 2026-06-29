@@ -644,7 +644,13 @@ function npmRehearsalEnv(extra: NodeJS.ProcessEnv = {}) {
 		...process.env,
 		GIT_ALLOW_PROTOCOL: process.env.GIT_ALLOW_PROTOCOL ?? 'file:git:ssh:https',
 		npm_config_audit: process.env.npm_config_audit ?? 'false',
+		npm_config_fetch_retries: process.env.npm_config_fetch_retries ?? '2',
 		npm_config_fund: process.env.npm_config_fund ?? 'false',
+		npm_config_foreground_scripts: process.env.npm_config_foreground_scripts ?? 'true',
+		npm_config_loglevel: process.env.npm_config_loglevel ?? 'warn',
+		npm_config_maxsockets: process.env.npm_config_maxsockets ?? '4',
+		npm_config_prefer_offline: process.env.npm_config_prefer_offline ?? 'true',
+		npm_config_progress: process.env.npm_config_progress ?? 'false',
 		...extra,
 	};
 }
