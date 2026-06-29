@@ -344,7 +344,7 @@ describe('hosting graph', () => {
 				volumeName: 'public-treedx-node-01-volume',
 				volumeMountPath: '/data',
 				environmentVariables: {
-					TREEDX_FEDERATION_MODE: 'connected_library',
+					TREESEED_TREEDX_FEDERATION_MODE: 'connected_library',
 				},
 			},
 		});

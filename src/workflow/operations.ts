@@ -37,8 +37,7 @@ import {
 	setTreeseedRemoteSession,
 	writeTreeseedMachineConfig,
 } from '../operations/services/config-runtime.ts';
-import { collectTreeseedToolStatus, formatTreeseedDependencyFailureDetails, installTreeseedDependencies } from '../managed-dependencies.ts';
-import { withTreeseedServiceCredentialEnv } from '../service-credentials.ts';
+import { formatTreeseedDependencyFailureDetails, installTreeseedDependencies } from '../managed-dependencies.ts';
 import { ControlPlaneClient } from '../control-plane-client.ts';
 import { exportTreeseedCodebase } from '../operations/services/export-runtime.ts';
 import {
@@ -517,49 +516,31 @@ function shouldDispatchSwitchToManagedWorktree(root: string, input: TreeseedSwit
 		&& effectiveWorkflowWorktreeMode(input.worktreeMode, env) === 'on';
 }
 
-function assertHostedGitHubWorkflowAuthReady(operation: TreeseedWorkflowOperationId, root: string) {
-	const scope = operation === 'release' ? 'prod' : 'staging';
-	let env: NodeJS.ProcessEnv = process.env;
-	try {
+function assertHostedGitHubWorkflowCredentialsReady(
+	operation: TreeseedWorkflowOperationId,
+	root: string,
+	gates: GitHubActionsWorkflowGate[],
+) {
+	const missing: Array<{ name: string; repository: string; envName: string }> = [];
+	for (const gate of gates) {
+		const repository = gate.repository ?? resolveGitHubRepositorySlug(gate.repoPath);
+		const scope = gate.branch === PRODUCTION_BRANCH ? 'prod' : 'staging';
 		const values = resolveTreeseedMachineEnvironmentValues(root, scope);
-		const repository = resolveGitHubRepositorySlug(root);
 		const credential = resolveGitHubCredentialForRepository(repository, { values, env: process.env });
-		env = withTreeseedServiceCredentialEnv({
-			...process.env,
-			...values,
-			...(credential.token ? { TREESEED_GITHUB_TOKEN: credential.token } : {}),
-		});
-	} catch {
-		env = withTreeseedServiceCredentialEnv(process.env);
+		if (!credential.token) {
+			missing.push({ name: gate.name, repository: credential.repository, envName: credential.envName });
+		}
 	}
-	const tools = collectTreeseedToolStatus({
-		tenantRoot: root,
-		env,
-	});
-	const github = tools.auth.github;
-	if (!github.authenticated) {
-		const command = github.command.length > 0 ? github.command.join(' ') : 'npx trsd tools --json';
-		workflowError(
-			operation,
-			'github_auth_unavailable',
-			[
-				'Treeseed hosted GitHub workflow gates require an authenticated managed GitHub CLI.',
-				github.detail,
-				`Managed gh check: ${command}`,
-				'Remediation:',
-				...github.remediation.map((item) => `- ${item}`),
-			].join('\n'),
-			{
-				details: {
-					toolsHome: tools.toolsHome,
-					ghConfigDir: tools.ghConfigDir,
-					github,
-					tools: tools.tools,
-				},
-			},
-		);
-	}
-	return tools;
+	if (missing.length === 0) return;
+	workflowError(
+		operation,
+		'github_auth_unavailable',
+		[
+			'Treeseed hosted GitHub workflow gates require Treeseed-prefixed GitHub credentials.',
+			...missing.map((gate) => `- ${gate.name}: configure ${gate.envName} for ${gate.repository}, or TREESEED_GITHUB_TOKEN as a fallback.`),
+		].join('\n'),
+		{ details: { missing } },
+	);
 }
 
 async function waitForWorkflowGates(
@@ -574,7 +555,7 @@ async function waitForWorkflowGates(
 	if (gates.length === 0) {
 		return [];
 	}
-	assertHostedGitHubWorkflowAuthReady(operation, options.root ?? gates[0]!.repoPath);
+	assertHostedGitHubWorkflowCredentialsReady(operation, options.root ?? gates[0]!.repoPath, gates);
 	const results: Array<Record<string, unknown>> = [];
 	for (const gate of gates) {
 		if (options.root && options.runId) {
@@ -630,6 +611,7 @@ function githubWorkflowGateEnv(root: string | undefined, gate: GitHubActionsWork
 		if (!credential.token) return process.env;
 		return {
 			...process.env,
+			TREESEED_GITHUB_TOKEN: credential.token,
 			GH_TOKEN: credential.token,
 			GITHUB_TOKEN: credential.token,
 		};
@@ -2822,10 +2804,26 @@ function assertReleaseGitHubAutomationReady(root: string, selectedPackageNames: 
 	if (ciMode === 'off') {
 		return;
 	}
-	assertHostedGitHubWorkflowAuthReady('release', root);
+	const values = resolveTreeseedMachineEnvironmentValues(root, 'prod');
+	const missing: Array<{ packageName: string; repository: string; envName: string }> = [];
 	for (const pkg of checkedOutWorkspacePackageRepos(root)) {
 		if (!selectedPackageNames.has(pkg.name)) continue;
-		resolveGitHubRepositorySlug(pkg.dir);
+		const repository = resolveGitHubRepositorySlug(pkg.dir);
+		const credential = resolveGitHubCredentialForRepository(repository, { values, env: process.env });
+		if (!credential.token) {
+			missing.push({ packageName: pkg.name, repository: credential.repository, envName: credential.envName });
+		}
+	}
+	if (missing.length > 0) {
+		workflowError(
+			'release',
+			'github_auth_unavailable',
+			[
+				'Treeseed release automation requires Treeseed-prefixed GitHub credentials.',
+				...missing.map((pkg) => `- ${pkg.packageName}: configure ${pkg.envName} for ${pkg.repository}, or TREESEED_GITHUB_TOKEN as a fallback.`),
+			].join('\n'),
+			{ details: { missing } },
+		);
 	}
 }
 

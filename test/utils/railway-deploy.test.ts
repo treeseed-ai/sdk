@@ -1553,9 +1553,10 @@ services:
 		expect(buildRailwayCommandEnv({ TREESEED_RAILWAY_API_TOKEN: 'railway-api-token' }).RAILWAY_TOKEN).toBeUndefined();
 		expect(buildRailwayCommandEnv({
 			TREESEED_RAILWAY_API_TOKEN: 'railway-api-token',
-			RAILWAY_TOKEN: 'railway-project-token',
+			TREESEED_RAILWAY_TOKEN: 'railway-project-token',
 		})).toMatchObject({
 			TREESEED_RAILWAY_API_TOKEN: 'railway-api-token',
+			TREESEED_RAILWAY_TOKEN: 'railway-project-token',
 			RAILWAY_TOKEN: 'railway-project-token',
 		});
 	});

@@ -109,8 +109,8 @@ const REHEARSAL_IGNORED_SEGMENTS = new Set([
 ]);
 const ROOT_WEB_EXCLUDED_DEPLOY_CONFIG_IDS = new Set([
 	'TREESEED_DOCKERHUB_TOKEN',
-	'SECRET_KEY_BASE',
-	'TREEDX_JWT_HS256_SECRET',
+	'TREESEED_TREEDX_SECRET_KEY_BASE',
+	'TREESEED_TREEDX_JWT_HS256_SECRET',
 	'TREESEED_CREDENTIAL_SESSION_SECRET',
 	'TREESEED_PLATFORM_RUNNER_SECRET',
 ]);
@@ -972,7 +972,7 @@ async function githubRemoteConfigCheck(root: string, scope: 'staging' | 'prod', 
 		const credential = resolveGitHubCredentialForRepository(repository, { values, env: process.env });
 		const client = createGitHubApiClient({
 			env: credential.token
-				? { GH_TOKEN: credential.token, GITHUB_TOKEN: credential.token }
+				? { TREESEED_GITHUB_TOKEN: credential.token, GH_TOKEN: credential.token, GITHUB_TOKEN: credential.token }
 				: process.env,
 		});
 		const [secretNames, variableNames] = await Promise.all([

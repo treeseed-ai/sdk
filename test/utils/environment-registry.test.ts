@@ -1256,7 +1256,7 @@ describe('environment registry overlays', () => {
 			expect(railwayApiToken.targets).toEqual(expect.arrayContaining(['railway-secret']));
 			expect(railwayApiToken.serviceTargets).toEqual(expect.arrayContaining(['operationsRunner']));
 		}
-		const railwayProjectToken = findRegistryEntry(registry, 'RAILWAY_TOKEN');
+		const railwayProjectToken = findRegistryEntry(registry, 'TREESEED_RAILWAY_TOKEN');
 		if (railwayProjectToken) {
 			expect(railwayProjectToken.targets).toEqual(expect.arrayContaining(['github-secret']));
 			expect(railwayProjectToken.requirement).toBe('optional');

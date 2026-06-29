@@ -2340,18 +2340,30 @@ function isTransientProviderConnectionError(detail) {
 }
 
 function checkGitHubConnection({ tenantRoot, env }) {
-	if (!resolveTreeseedGitHubToken(env)) {
-		return providerConnectionResult('github', false, 'TREESEED_GITHUB_TOKEN is not configured.', { skipped: true });
-	}
 	const gh = resolveTreeseedToolBinary('gh', { env });
 	if (!gh) {
 		return providerConnectionResult('github', false, 'GitHub CLI `gh` is not installed.');
 	}
 	const identityMode = env.TREESEED_GITHUB_IDENTITY_MODE === 'account' ? 'account' : 'repository';
 	const repository = identityMode === 'repository' ? maybeResolveGitHubRepositorySlug(tenantRoot) : null;
+	const credential = repository
+		? resolveGitHubCredentialForRepository(repository, { values: env, env })
+		: null;
+	const token = credential?.token ?? resolveTreeseedGitHubToken(env);
+	if (!token) {
+		return providerConnectionResult(
+			'github',
+			false,
+			credential
+				? `${credential.envName} or TREESEED_GITHUB_TOKEN is not configured.`
+				: 'TREESEED_GITHUB_TOKEN is not configured.',
+			{ skipped: true },
+		);
+	}
 	const owner = typeof env.TREESEED_HOSTED_HUBS_GITHUB_OWNER === 'string'
 		? env.TREESEED_HOSTED_HUBS_GITHUB_OWNER.trim()
 		: '';
+	const toolEnv = createTreeseedManagedToolEnv({ ...process.env, ...env, TREESEED_GITHUB_TOKEN: token });
 	const commandCandidates = repository
 		? [{
 			args: ['repo', 'view', repository, '--json', 'nameWithOwner', '--jq', '.nameWithOwner'],
@@ -2383,7 +2395,7 @@ function checkGitHubConnection({ tenantRoot, env }) {
 				cwd: tenantRoot,
 				stdio: 'pipe',
 				encoding: 'utf8',
-				env: createTreeseedManagedToolEnv({ ...process.env, ...env }),
+				env: toolEnv,
 				timeout: CLI_CHECK_TIMEOUT_MS,
 			});
 			if (result.status === 0) {
@@ -2504,7 +2516,11 @@ export async function checkTreeseedProviderConnections({ tenantRoot, scope = 'pr
 		const resolvedValue = values?.[key];
 		return typeof resolvedValue === 'string' && resolvedValue.trim() ? resolvedValue.trim() : undefined;
 	};
+	const githubCredentialValues = Object.fromEntries(
+		Object.entries(values).filter(([key, value]) => key.startsWith('TREESEED_GITHUB_TOKEN_') && typeof value === 'string' && value.trim()),
+	);
 	const rawCommandEnv = {
+		...githubCredentialValues,
 		TREESEED_GITHUB_TOKEN: resolveTreeseedGitHubToken(values),
 		TREESEED_GITHUB_IDENTITY_MODE: passthroughValue('TREESEED_GITHUB_IDENTITY_MODE'),
 		TREESEED_HOSTED_HUBS_GITHUB_OWNER: passthroughValue('TREESEED_HOSTED_HUBS_GITHUB_OWNER'),

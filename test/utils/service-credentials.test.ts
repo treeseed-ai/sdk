@@ -18,6 +18,8 @@ describe('service credential translation', () => {
 		expect(resolveTreeseedGitHubToken({ GH_TOKEN: 'gh-native' })).toBe('');
 		expect(resolveTreeseedCloudflareApiToken({ TREESEED_CLOUDFLARE_API_TOKEN: 'cf-canonical', CLOUDFLARE_API_TOKEN: 'cf-native' })).toBe('cf-canonical');
 		expect(resolveTreeseedRailwayApiToken({ TREESEED_RAILWAY_API_TOKEN: 'railway-canonical', RAILWAY_API_TOKEN: 'railway-native' })).toBe('railway-canonical');
+		expect(resolveTreeseedCloudflareApiToken({ CLOUDFLARE_API_TOKEN: 'cf-native' })).toBe('');
+		expect(resolveTreeseedRailwayApiToken({ RAILWAY_API_TOKEN: 'railway-native' })).toBe('');
 	});
 
 	it('emits service-native names only in translated execution env', () => {

@@ -763,7 +763,7 @@ export async function runTreeseedPackageImageWorkflow(options: TreeseedPackageIm
 	};
 	const credential = resolveGitHubCredentialForRepository(imagePlan.repository, { values: configEnv, env: options.env ?? process.env });
 	const githubClientEnv = credential.token
-		? { ...configEnv, GH_TOKEN: credential.token, GITHUB_TOKEN: credential.token }
+		? { ...configEnv, TREESEED_GITHUB_TOKEN: credential.token, GH_TOKEN: credential.token, GITHUB_TOKEN: credential.token }
 		: configEnv;
 	const report: Record<string, unknown> = {
 		ok: true,

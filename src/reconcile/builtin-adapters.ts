@@ -1045,6 +1045,7 @@ function localContentGitEnvironment(input: TreeseedReconcileAdapterInput) {
 	const env = credential.token
 		? {
 				...input.context.launchEnv,
+				TREESEED_GITHUB_TOKEN: credential.token,
 				GH_TOKEN: credential.token,
 				GITHUB_TOKEN: credential.token,
 			}

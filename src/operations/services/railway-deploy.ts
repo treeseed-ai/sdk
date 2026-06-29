@@ -363,7 +363,7 @@ export function resolveRailwayAuthToken(env = process.env) {
 export function buildRailwayCommandEnv(env = process.env) {
 	const merged = { ...env };
 	const token = resolveRailwayAuthToken(merged);
-	const projectToken = configuredEnvValue(merged, 'RAILWAY_TOKEN');
+	const projectToken = configuredEnvValue(merged, 'TREESEED_RAILWAY_TOKEN');
 	if (token) {
 		merged.RAILWAY_API_TOKEN = token;
 	} else {
@@ -1488,7 +1488,7 @@ async function syncRailwayApiDeviceLoginVariables(service, env, write, prefix) {
 		[
 			'TREESEED_API_AUTH_APPROVAL_BASE_URL',
 			'TREESEED_SITE_URL',
-			'BETTER_AUTH_URL',
+			'TREESEED_BETTER_AUTH_URL',
 		]
 			.map((key) => [key, configuredEnvValue(env, key)])
 			.filter(([, value]) => value),

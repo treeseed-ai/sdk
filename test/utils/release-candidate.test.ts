@@ -548,7 +548,7 @@ describe('release candidate verification', () => {
 			serviceTargets: ['api', 'operationsRunner'],
 		})).toBe(false);
 		expect(isRootWebReleaseCandidateEntry({
-			id: 'TREEDX_JWT_HS256_SECRET',
+			id: 'TREESEED_TREEDX_JWT_HS256_SECRET',
 			group: 'railway',
 			serviceTargets: ['publicTreeDxNode'],
 		})).toBe(false);

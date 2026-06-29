@@ -3,6 +3,7 @@ export const TREESEED_GITHUB_COPILOT_TOKEN_ENV = 'TREESEED_GITHUB_COPILOT_TOKEN'
 export const TREESEED_CLOUDFLARE_API_TOKEN_ENV = 'TREESEED_CLOUDFLARE_API_TOKEN';
 export const TREESEED_CLOUDFLARE_ACCOUNT_ID_ENV = 'TREESEED_CLOUDFLARE_ACCOUNT_ID';
 export const TREESEED_RAILWAY_API_TOKEN_ENV = 'TREESEED_RAILWAY_API_TOKEN';
+export const TREESEED_RAILWAY_TOKEN_ENV = 'TREESEED_RAILWAY_TOKEN';
 export const TREESEED_DOCKERHUB_TOKEN_ENV = 'TREESEED_DOCKERHUB_TOKEN';
 export const TREESEED_DOCKERHUB_USERNAME_ENV = 'TREESEED_DOCKERHUB_USERNAME';
 export const TREESEED_CODEX_API_KEY_ENV = 'TREESEED_CODEX_API_KEY';
@@ -23,23 +24,27 @@ export function resolveTreeseedGitHubCopilotToken(env: EnvLike = process.env) {
 }
 
 export function resolveTreeseedCloudflareApiToken(env: EnvLike = process.env) {
-	return configuredValue(env, TREESEED_CLOUDFLARE_API_TOKEN_ENV) || configuredValue(env, 'CLOUDFLARE_API_TOKEN');
+	return configuredValue(env, TREESEED_CLOUDFLARE_API_TOKEN_ENV);
 }
 
 export function resolveTreeseedCloudflareAccountId(env: EnvLike = process.env) {
-	return configuredValue(env, TREESEED_CLOUDFLARE_ACCOUNT_ID_ENV) || configuredValue(env, 'CLOUDFLARE_ACCOUNT_ID');
+	return configuredValue(env, TREESEED_CLOUDFLARE_ACCOUNT_ID_ENV);
 }
 
 export function resolveTreeseedRailwayApiToken(env: EnvLike = process.env) {
-	return configuredValue(env, TREESEED_RAILWAY_API_TOKEN_ENV) || configuredValue(env, 'RAILWAY_API_TOKEN');
+	return configuredValue(env, TREESEED_RAILWAY_API_TOKEN_ENV);
+}
+
+export function resolveTreeseedRailwayProjectToken(env: EnvLike = process.env) {
+	return configuredValue(env, TREESEED_RAILWAY_TOKEN_ENV);
 }
 
 export function resolveTreeseedDockerhubToken(env: EnvLike = process.env) {
-	return configuredValue(env, TREESEED_DOCKERHUB_TOKEN_ENV) || configuredValue(env, 'DOCKERHUB_TOKEN');
+	return configuredValue(env, TREESEED_DOCKERHUB_TOKEN_ENV);
 }
 
 export function resolveTreeseedDockerhubUsername(env: EnvLike = process.env) {
-	return configuredValue(env, TREESEED_DOCKERHUB_USERNAME_ENV) || configuredValue(env, 'DOCKERHUB_USERNAME');
+	return configuredValue(env, TREESEED_DOCKERHUB_USERNAME_ENV);
 }
 
 export function resolveTreeseedCodexApiKey(env: EnvLike = process.env) {
@@ -63,9 +68,14 @@ export function withCloudflareServiceCredentialEnv<TEnv extends EnvLike>(env: TE
 	};
 }
 
-export function withRailwayServiceCredentialEnv<TEnv extends EnvLike>(env: TEnv): TEnv & { RAILWAY_API_TOKEN?: string } {
+export function withRailwayServiceCredentialEnv<TEnv extends EnvLike>(env: TEnv): TEnv & { RAILWAY_API_TOKEN?: string; RAILWAY_TOKEN?: string } {
 	const token = resolveTreeseedRailwayApiToken(env);
-	return token ? { ...env, RAILWAY_API_TOKEN: token } : { ...env };
+	const projectToken = resolveTreeseedRailwayProjectToken(env);
+	return {
+		...env,
+		...(token ? { RAILWAY_API_TOKEN: token } : {}),
+		...(projectToken ? { RAILWAY_TOKEN: projectToken } : {}),
+	};
 }
 
 export function withDockerhubServiceCredentialEnv<TEnv extends EnvLike>(env: TEnv): TEnv & { DOCKERHUB_TOKEN?: string; DOCKERHUB_USERNAME?: string } {
