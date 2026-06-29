@@ -481,7 +481,7 @@ export function normalizeReleaseCandidateMode(
 		return value;
 	}
 	if (operation === 'save' && lane === 'promotion') return 'strict';
-	return operation === 'save' ? 'hybrid' : 'strict';
+	return operation === 'save' ? 'skip' : 'strict';
 }
 
 export function shouldUseHostedSaveCi(input: TreeseedSaveInput, branch: string | null | undefined, lane: 'fast' | 'promotion' = normalizeSaveLane(input.lane)) {
@@ -1837,10 +1837,32 @@ function findAutoResumableSaveRun(root: string, branch: string | null) {
 		&& (hasMeaningfulChanges(repoRoot(root)) || checkedOutWorkspacePackageRepos(root).some((repo) => hasMeaningfulChanges(repo.dir)))) {
 		return null;
 	}
-	return listInterruptedWorkflowRuns(root).find((journal) =>
-		journal.command === 'save'
-		&& journal.resumable
-		&& journal.session.branchName === branch) ?? null;
+	const currentHeads = Object.fromEntries([
+		['@treeseed/market', runGit(['rev-parse', 'HEAD'], { cwd: repoRoot(root), capture: true }).trim()],
+		...checkedOutWorkspacePackageRepos(root).map((repo) => [
+			repo.name,
+			runGit(['rev-parse', 'HEAD'], { cwd: repo.dir, capture: true }).trim(),
+		] as const),
+	]);
+	return listInterruptedWorkflowRuns(root).find((journal) => {
+		if (journal.command !== 'save' || !journal.resumable || journal.session.branchName !== branch) {
+			return false;
+		}
+		const classification = classifyWorkflowRunJournal(journal, {
+			currentBranch: branch,
+			currentHeads,
+		});
+		if (classification.state === 'resumable') {
+			return true;
+		}
+		if (classification.state === 'stale') {
+			archiveWorkflowRun(root, journal.runId, {
+				...classification,
+				reasons: ['save auto-resume skipped stale failed save', ...classification.reasons],
+			});
+		}
+		return false;
+	}) ?? null;
 }
 
 function workflowFileExists(repoPath: string, workflow: string) {
@@ -4523,7 +4545,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							...(shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 								? [{ id: 'hosted-ci', description: saveHostedEnvironmentForBranch(branch) ? `Reconcile and verify hosted deployments for ${saveHostedEnvironmentForBranch(branch)}` : `Wait for hosted save workflows on ${branch}` }]
 								: []),
-							...(branch === STAGING_BRANCH
+							...(branch === STAGING_BRANCH && releaseCandidateMode !== 'skip'
 								? [{ id: 'release-candidate', description: `Run ${releaseCandidateMode} release-candidate readiness checks for the saved staging state` }]
 								: []),
 							{ id: 'workspace-link', description: 'Restore local workspace links after save' },
@@ -4592,7 +4614,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							resumable: true,
 						}]
 						: []),
-					...(branch === STAGING_BRANCH
+					...(branch === STAGING_BRANCH && releaseCandidateMode !== 'skip'
 						? [{
 							id: 'release-candidate',
 							description: 'Run release-candidate readiness checks',
@@ -4751,7 +4773,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						}).then((workflowGates) => ({ workflowGates }));
 						})
 					: { workflowGates: [] };
-				const releaseCandidate = branch === STAGING_BRANCH
+				const releaseCandidate = branch === STAGING_BRANCH && releaseCandidateMode !== 'skip'
 					? await executeJournalStep(root, workflowRun.runId, 'release-candidate', () => {
 						helpers.write(`[save][workflow] Running staging release-candidate readiness checks (${releaseCandidateMode}).`);
 						const releaseSession = resolveTreeseedWorkflowSession(root);
