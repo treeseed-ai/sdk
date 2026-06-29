@@ -30,7 +30,12 @@ function createWorkspace() {
 	writeJson(resolve(root, 'packages/sdk/package.json'), {
 		name: '@treeseed/sdk',
 		version: '0.1.0',
+		bin: {
+			'treeseed-sdk-verify': './dist/verification.js',
+		},
 	});
+	mkdirSync(resolve(root, 'packages/sdk/dist'), { recursive: true });
+	writeFileSync(resolve(root, 'packages/sdk/dist/verification.js'), '#!/usr/bin/env node\n', 'utf8');
 	writeJson(resolve(root, 'packages/core/package.json'), {
 		name: '@treeseed/core',
 		version: '0.1.0',
@@ -94,6 +99,17 @@ describe('workspace dependency mode', () => {
 		ensureLocalWorkspaceLinks(root);
 
 		expect(readlinkSync(sdkLink)).toBe(current);
+	});
+
+	it('repairs stale package bin links when restoring workspace links', () => {
+		const root = createWorkspace();
+		const binLink = resolve(root, 'node_modules/.bin/treeseed-sdk-verify');
+		mkdirSync(dirname(binLink), { recursive: true });
+		symlinkSync('../@treeseed/sdk/scripts/verify-driver.mjs', binLink);
+
+		ensureLocalWorkspaceLinks(root);
+
+		expect(readlinkSync(binLink)).toContain('../@treeseed/sdk/dist/verification.js');
 	});
 
 	it('refuses to replace unmanaged non-package paths', () => {

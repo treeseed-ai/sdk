@@ -346,6 +346,43 @@ function createLink(link: WorkspaceLink) {
 	symlinkSync(relativeTarget, link.linkPath, process.platform === 'win32' ? 'junction' : 'dir');
 }
 
+function packageBinEntries(packageJson: Record<string, unknown>) {
+	const bin = packageJson.bin;
+	if (typeof bin === 'string' && typeof packageJson.name === 'string') {
+		return [[packageDirName(packageJson.name), bin]] as Array<[string, string]>;
+	}
+	if (!bin || typeof bin !== 'object' || Array.isArray(bin)) return [];
+	return Object.entries(bin)
+		.filter((entry): entry is [string, string] => typeof entry[1] === 'string');
+}
+
+function syncPackageBinLinks(link: WorkspaceLink) {
+	const packageJson = readJson(resolve(link.targetPath, 'package.json'));
+	const binEntries = packageBinEntries(packageJson);
+	if (binEntries.length === 0) return [];
+	const binDir = resolve(link.ownerPath, 'node_modules', '.bin');
+	mkdirSync(binDir, { recursive: true });
+	const created: string[] = [];
+	for (const [binName, binTarget] of binEntries) {
+		const linkPath = resolve(binDir, binName);
+		const targetPath = resolve(link.linkPath, binTarget);
+		const relativeTarget = relative(dirname(linkPath), targetPath) || targetPath;
+		const stat = safeLstat(linkPath);
+		if (stat?.isSymbolicLink()) {
+			const currentTarget = readlinkSync(linkPath);
+			if (currentTarget === relativeTarget || resolve(dirname(linkPath), currentTarget) === targetPath) {
+				continue;
+			}
+			unlinkSync(linkPath);
+		} else if (stat) {
+			continue;
+		}
+		symlinkSync(relativeTarget, linkPath);
+		created.push(linkPath);
+	}
+	return created;
+}
+
 export function ensureLocalWorkspaceLinks(root = workspaceRoot(), options: { mode?: WorkspaceLinksMode; env?: NodeJS.ProcessEnv } = {}) {
 	const enabled = workspaceLinksEnabled(options.mode, options.env);
 	const links = discoverWorkspaceLinks(root);
@@ -361,6 +398,9 @@ export function ensureLocalWorkspaceLinks(root = workspaceRoot(), options: { mod
 		removeLinkCandidate(link, managedLinks);
 		createLink(link);
 		created.push(link.linkPath);
+	}
+	for (const link of links) {
+		created.push(...syncPackageBinLinks(link));
 	}
 	writeMetadata(root, links);
 	return {
