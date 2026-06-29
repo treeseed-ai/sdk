@@ -1089,7 +1089,7 @@ export function validateRailwayDeployPrerequisites(tenantRoot, scope, { env = pr
 	const validation = validateRailwayServiceConfiguration(tenantRoot, scope);
 	const token = resolveRailwayAuthToken(env);
 	if (typeof token !== 'string' || token.trim().length === 0) {
-		throw new Error('Configure RAILWAY_API_TOKEN before deploying Railway-managed services.');
+		throw new Error('Configure TREESEED_RAILWAY_API_TOKEN before deploying Railway-managed services.');
 	}
 	return validation;
 }
@@ -1106,7 +1106,7 @@ export async function ensureRailwayScheduledJobs(
 	const effectiveApiToken = apiToken || resolveRailwayAuthToken(env);
 	const effectiveApiUrl = apiUrl || resolveRailwayApiUrl(env);
 	if (typeof effectiveApiToken !== 'string' || effectiveApiToken.trim().length === 0) {
-		throw new Error('Configure RAILWAY_API_TOKEN before deploying Railway-managed services.');
+		throw new Error('Configure TREESEED_RAILWAY_API_TOKEN before deploying Railway-managed services.');
 	}
 	const results = [];
 
@@ -1133,7 +1133,7 @@ export async function ensureRailwayScheduledJobs(
 			const current = await getRailwayServiceInstance({
 				serviceId: target.service.id,
 				environmentId: target.environment.id,
-				env: { ...env, RAILWAY_API_TOKEN: effectiveApiToken, TREESEED_RAILWAY_API_URL: effectiveApiUrl },
+				env: { ...env, TREESEED_RAILWAY_API_TOKEN: effectiveApiToken, RAILWAY_API_TOKEN: effectiveApiToken, TREESEED_RAILWAY_API_URL: effectiveApiUrl },
 				fetchImpl,
 			});
 			const desired = {
@@ -1167,7 +1167,7 @@ export async function ensureRailwayScheduledJobs(
 				environmentId: target.environment.id,
 				startCommand: desired.command,
 				cronSchedule: desired.schedule,
-				env: { ...env, RAILWAY_API_TOKEN: effectiveApiToken, TREESEED_RAILWAY_API_URL: effectiveApiUrl },
+				env: { ...env, TREESEED_RAILWAY_API_TOKEN: effectiveApiToken, RAILWAY_API_TOKEN: effectiveApiToken, TREESEED_RAILWAY_API_URL: effectiveApiUrl },
 				fetchImpl,
 			});
 			results.push({
@@ -1203,7 +1203,7 @@ export async function verifyRailwayScheduledJobs(
 	scope,
 	{ fetchImpl = fetch, apiToken, apiUrl, env = process.env } = {},
 ) {
-	const effectiveApiToken = apiToken || env?.RAILWAY_API_TOKEN;
+	const effectiveApiToken = apiToken || resolveRailwayAuthToken(env);
 	const effectiveApiUrl = apiUrl || resolveRailwayApiUrl(env);
 	const configured = configuredRailwayScheduledJobs(tenantRoot, scope);
 	const checks = [];
@@ -1228,7 +1228,7 @@ export async function verifyRailwayScheduledJobs(
 			const existing = await getRailwayServiceInstance({
 				serviceId: target.service.id,
 				environmentId: target.environment.id,
-				env: { ...env, RAILWAY_API_TOKEN: effectiveApiToken, TREESEED_RAILWAY_API_URL: effectiveApiUrl },
+				env: { ...env, TREESEED_RAILWAY_API_TOKEN: effectiveApiToken, RAILWAY_API_TOKEN: effectiveApiToken, TREESEED_RAILWAY_API_URL: effectiveApiUrl },
 				fetchImpl,
 			});
 			checks.push({
@@ -1295,7 +1295,7 @@ export async function verifyRailwayManagedResources(
 ) {
 	const effectiveApiToken = apiToken || resolveRailwayAuthToken(env);
 	const effectiveApiUrl = apiUrl || resolveRailwayApiUrl(env);
-	const effectiveEnv = { ...env, RAILWAY_API_TOKEN: effectiveApiToken, TREESEED_RAILWAY_API_URL: effectiveApiUrl };
+	const effectiveEnv = { ...env, TREESEED_RAILWAY_API_TOKEN: effectiveApiToken, RAILWAY_API_TOKEN: effectiveApiToken, TREESEED_RAILWAY_API_URL: effectiveApiUrl };
 	const services = configuredRailwayServices(tenantRoot, scope);
 	const checks = [];
 	const deploymentStatusServices = [];
@@ -1360,8 +1360,13 @@ export async function verifyRailwayManagedResources(
 				? undefined
 				: `Railway service instance for ${target.service.name} is missing in ${target.environment.name}.`,
 		});
-		if (service.key === 'workerRunner') {
-			const expectedVolumeName = deriveRailwayWorkerRunnerVolumeName(target.service.name, target.environment.name);
+		const expectedVolumeMountPath = service.volumeMountPath ?? service.runnerPool?.volumeMountPath ?? null;
+		if (expectedVolumeMountPath) {
+			const expectedVolumeName = service.key === 'operationsRunner'
+				? deriveRailwayOperationsRunnerVolumeName(target.service.name, target.environment.name)
+				: service.key === 'capacityProviderRunner'
+					? deriveRailwayCapacityProviderRunnerVolumeName(target.service.name, target.environment.name)
+				: deriveRailwayWorkerRunnerVolumeName(target.service.name, target.environment.name);
 			const volumes = await listRailwayVolumes({
 				projectId: target.project.id,
 				env: effectiveEnv,
@@ -1372,10 +1377,10 @@ export async function verifyRailwayManagedResources(
 				&& candidate.instances.some((entry) =>
 					entry.serviceId === target.service.id
 					&& entry.environmentId === target.environment.id
-					&& entry.mountPath === WORKER_RUNNER_VOLUME_MOUNT_PATH),
+					&& entry.mountPath === expectedVolumeMountPath),
 			) ?? null;
 			checks.push({
-				type: 'worker-runner-volume',
+				type: 'service-volume',
 				service: service.key,
 				serviceName: target.service.name,
 				serviceId: target.service.id,
@@ -1383,7 +1388,7 @@ export async function verifyRailwayManagedResources(
 				environment: target.environment.name,
 				environmentId: target.environment.id,
 				volumeName: expectedVolumeName,
-				mountPath: WORKER_RUNNER_VOLUME_MOUNT_PATH,
+				mountPath: expectedVolumeMountPath,
 				ok: Boolean(volume),
 				status: volume ? 'checked' : 'missing',
 				observed: volume
@@ -1395,7 +1400,7 @@ export async function verifyRailwayManagedResources(
 					: null,
 				message: volume
 					? undefined
-					: `Railway worker-runner volume ${expectedVolumeName} is missing or is not mounted at ${WORKER_RUNNER_VOLUME_MOUNT_PATH}.`,
+					: `Railway volume ${expectedVolumeName} is missing or is not mounted on ${target.service.name} at ${expectedVolumeMountPath}.`,
 			});
 		}
 	}
@@ -1656,7 +1661,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 				TREESEED_PLATFORM_RUNNER_DATA_DIR: service.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH,
 				TREESEED_PLATFORM_RUNNER_ENVIRONMENT: normalizeScope(service.scope) === 'prod' ? 'production' : normalizeScope(service.scope),
 				TREESEED_MANAGER_ID: normalizeScope(service.scope),
-				...(configuredEnvValue(env, 'RAILWAY_API_TOKEN') ? { RAILWAY_API_TOKEN: configuredEnvValue(env, 'RAILWAY_API_TOKEN') } : {}),
+				...(configuredEnvValue(env, 'TREESEED_RAILWAY_API_TOKEN') ? { TREESEED_RAILWAY_API_TOKEN: configuredEnvValue(env, 'TREESEED_RAILWAY_API_TOKEN') } : {}),
 				...(configuredEnvValue(env, 'TREESEED_RAILWAY_WORKSPACE') ? { TREESEED_RAILWAY_WORKSPACE: configuredEnvValue(env, 'TREESEED_RAILWAY_WORKSPACE') } : {}),
 				...(configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET') ? { TREESEED_PLATFORM_RUNNER_SECRET: configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET') } : {}),
 				...(configuredEnvValue(env, 'TREESEED_API_BASE_URL') || configuredEnvValue(env, 'TREESEED_URL') ? {

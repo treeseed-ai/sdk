@@ -2241,6 +2241,7 @@ function buildRailwayEnv(input: TreeseedReconcileAdapterInput, scope: 'local' | 
 		railwayWorkspace = railwayWorkspace || (configuredValues.TREESEED_RAILWAY_WORKSPACE ?? '');
 	}
 	return {
+		TREESEED_RAILWAY_API_TOKEN: token,
 		RAILWAY_API_TOKEN: token,
 		TREESEED_RAILWAY_API_URL: railwayApiUrl,
 		TREESEED_RAILWAY_WORKSPACE: railwayWorkspace,

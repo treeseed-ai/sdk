@@ -1326,6 +1326,181 @@ services:
 		expect(result.checks.some((check) => check.type === 'worker-runner-volume' || check.type === 'schedule')).toBe(false);
 	});
 
+	it('verifies live Railway volumes for operations and capacity provider runners', async () => {
+		const tenantRoot = await createTenantFixture();
+		await writeFile(
+			join(tenantRoot, 'treeseed.site.yaml'),
+			`name: Test Site
+slug: test-site
+siteUrl: https://example.com
+contactEmail: hello@example.com
+hosting:
+  kind: hosted_project
+  teamId: acme
+  projectId: docs
+services:
+  api:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api
+  operationsRunner:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
+      volumeMountPath: /data
+      runnerPool:
+        bootstrapCount: 1
+        maxRunners: 4
+        volumeMountPath: /data
+  capacityProviderManager:
+    provider: railway
+    enabled: true
+    rootDir: packages/agent
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-agent-manager
+  capacityProviderRunner:
+    provider: railway
+    enabled: true
+    rootDir: packages/agent
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-agent-runner-01
+      volumeMountPath: /data
+      runnerPool:
+        bootstrapCount: 1
+        maxRunners: 4
+        volumeMountPath: /data
+`,
+		);
+		const serviceIds: Record<string, string> = {
+			'treeseed-api': 'svc-api',
+			'treeseed-api-operations-runner-01': 'svc-operations-runner',
+			'treeseed-agent-manager': 'svc-agent-manager',
+			'treeseed-agent-runner-01': 'svc-agent-runner',
+		};
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('query TreeseedRailwayAuthProfile')) {
+				return new Response(JSON.stringify(railwayTopologyPayload()), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (String(body.query).includes('query TreeseedRailwayProjects')) {
+				return new Response(JSON.stringify({
+					data: {
+						projects: {
+							edges: [{
+								node: {
+									id: 'railway-project-1',
+									name: 'treeseed-api',
+									workspaceId: 'workspace-1',
+									environments: {
+										edges: [{ node: { id: 'env-staging', name: 'staging' } }],
+									},
+									services: {
+										edges: Object.entries(serviceIds).map(([name, id]) => ({ node: { id, name } })),
+									},
+								},
+							}],
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (String(body.query).includes('query TreeseedRailwayServiceInstance')) {
+				const serviceId = body.variables.serviceId;
+				return new Response(JSON.stringify({
+					data: {
+						serviceInstance: {
+							id: `instance-${serviceId}`,
+							buildCommand: null,
+							startCommand: null,
+							cronSchedule: null,
+							rootDirectory: null,
+							healthcheckPath: null,
+							healthcheckTimeout: null,
+							sleepApplication: false,
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (String(body.query).includes('query TreeseedRailwayVolumeList')) {
+				return new Response(JSON.stringify({
+					data: {
+						project: {
+							volumes: {
+								edges: [
+									{
+										node: {
+											id: 'vol-operations-runner',
+											name: 'treeseed-api-operations-runner-01-volume',
+											projectId: 'railway-project-1',
+											volumeInstances: {
+												edges: [{
+													node: {
+														id: 'vi-operations-runner',
+														serviceId: serviceIds['treeseed-api-operations-runner-01'],
+														environmentId: 'env-staging',
+														mountPath: '/data',
+														state: 'ATTACHED',
+													},
+												}],
+											},
+										},
+									},
+									{
+										node: {
+											id: 'vol-agent-runner',
+											name: 'treeseed-agent-runner-01-volume',
+											projectId: 'railway-project-1',
+											volumeInstances: {
+												edges: [{
+													node: {
+														id: 'vi-agent-runner',
+														serviceId: serviceIds['treeseed-agent-runner-01'],
+														environmentId: 'env-staging',
+														mountPath: '/data',
+														state: 'ATTACHED',
+													},
+												}],
+											},
+										},
+									},
+								],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			throw new Error(`Unexpected Railway query: ${body.query}`);
+		});
+
+		const result = await verifyRailwayManagedResources(tenantRoot, 'staging', {
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		expect(result.ok).toBe(true);
+		expect(result.checks).toEqual(expect.arrayContaining([
+			expect.objectContaining({
+				type: 'service-volume',
+				service: 'operationsRunner',
+				volumeName: 'treeseed-api-operations-runner-01-volume',
+				mountPath: '/data',
+				ok: true,
+			}),
+			expect.objectContaining({
+				type: 'service-volume',
+				service: 'capacityProviderRunner',
+				volumeName: 'treeseed-agent-runner-01-volume',
+				mountPath: '/data',
+				ok: true,
+			}),
+		]));
+	});
+
 	it('reports Railway deployment status checks as unsettled until deploys reach success or sleeping', async () => {
 		const tenantRoot = await createTenantFixture();
 		const services = configuredRailwayServices(tenantRoot, 'staging');

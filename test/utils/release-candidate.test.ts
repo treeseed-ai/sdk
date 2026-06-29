@@ -455,6 +455,9 @@ describe('release candidate verification', () => {
 		expect(source).toContain('ensureIgnoreFilesIncludeStagedTarballs(packageDir)');
 		expect(source).toContain("resolve(packageDir, '.npmignore')");
 		expect(source).toContain('!${STAGED_TARBALL_DIR}/*.tgz');
+		const releaseCandidateSource = readFileSync(resolve('src/operations/services/release-candidate.ts'), 'utf8');
+		expect(releaseCandidateSource).toContain("resolve(tmpdir(), 'treeseed', 'release-candidate')");
+		expect(releaseCandidateSource).not.toContain("resolve(root, '.treeseed', 'tmp', 'release-candidate')");
 		expect(source).toContain("'.treeseed', 'tmp', 'release-graph'");
 		expect(source).toContain('TREESEED_RELEASE_GRAPH_TMPDIR');
 		expect(source).toContain("'.treeseed', 'tmp', 'actions'");

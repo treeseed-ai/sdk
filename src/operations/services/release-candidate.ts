@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isTreeseedEnvironmentEntryRelevant, isTreeseedEnvironmentEntryRequired } from '../../platform/environment.ts';
@@ -529,7 +530,7 @@ function checkPackageAdapterReadiness(pkg: TreeseedPackageAdapter, failures: Rel
 
 function releaseCandidateTempBase(root: string) {
 	const configured = process.env.TREESEED_RELEASE_CANDIDATE_TMPDIR;
-	const base = configured ? resolve(configured) : resolve(root, '.treeseed', 'tmp', 'release-candidate');
+	const base = configured ? resolve(configured) : resolve(tmpdir(), 'treeseed', 'release-candidate');
 	mkdirSync(base, { recursive: true });
 	return base;
 }
