@@ -1509,7 +1509,8 @@ async function finishRepositorySavePublish(
 ) {
 	const reference = input.reference ?? null;
 	const tagName = input.tagName ?? reference?.tagName ?? null;
-	if (options.deferPushUntilVerified === true) {
+	const shouldDeferPush = options.deferPushUntilVerified === true && node.id === '.';
+	if (shouldDeferPush) {
 		state.deferredPushes.push({
 			node,
 			report,
