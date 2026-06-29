@@ -35,7 +35,8 @@ services:
       serviceName: treeseed-api
       rootDir: packages/api
       imageRefEnv: TREESEED_API_IMAGE_REF
-      sourceMode: image
+      sourceMode: git
+      sourceRepo: treeseed-ai/api
       healthcheckPath: /healthz
   operationsRunner:
     enabled: true
@@ -46,7 +47,8 @@ services:
       serviceName: treeseed-api-operations-runner-01
       rootDir: packages/api
       imageRefEnv: TREESEED_OPERATIONS_RUNNER_IMAGE_REF
-      sourceMode: image
+      sourceMode: git
+      sourceRepo: treeseed-ai/api
       healthcheckPath: /healthz
       runtimeMode: service
       volumeMountPath: /data
@@ -147,9 +149,9 @@ connections:
 		expect(report.ok).toBe(true);
 		expect(byId(report, 'railway-config:api:rootDirectory')).toMatchObject({ status: 'passed' });
 		expect(byId(report, 'hosting:api:sourceMode')).toMatchObject({ status: 'passed' });
-		expect(byId(report, 'hosting:api:imageRef')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:api:sourceRepo')).toMatchObject({ status: 'passed' });
 		expect(byId(report, 'hosting:operationsRunner:sourceMode')).toMatchObject({ status: 'passed' });
-		expect(byId(report, 'hosting:operationsRunner:imageRef')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:operationsRunner:sourceRepo')).toMatchObject({ status: 'passed' });
 	});
 
 	it('fails when nested Railway rootDir overrides the package root', () => {

@@ -157,10 +157,6 @@ function railwayImageRefEnvForService(serviceKey: string) {
 }
 
 function defaultRailwayImageRefForService(serviceKey: string, environment: TreeseedHostingEnvironment) {
-	if (environment === 'staging') {
-		if (serviceKey === 'api') return 'treeseed/api:staging';
-		if (serviceKey === 'operationsRunner') return 'treeseed/op-runner:staging';
-	}
 	return null;
 }
 
@@ -189,6 +185,27 @@ function headCommitSafe(root: string) {
 	}
 }
 
+function resolveRailwayServiceSourceRoot(input: TreeseedHostingGraphInput, serviceKey: string, service: Record<string, any>) {
+	if (String(serviceKey).startsWith('capacityProvider')) {
+		if (service.railway?.rootDir) {
+			return resolve(input.tenantRoot, service.railway.rootDir);
+		}
+		const workspaceRoot = input.configRoot ?? input.tenantRoot;
+		const candidates = [
+			resolve(input.tenantRoot, '..', 'agent'),
+			resolve(workspaceRoot, 'packages', 'agent'),
+			resolve(input.tenantRoot, '..', '..', 'packages', 'agent'),
+		];
+		const found = candidates.find((candidate) =>
+			existsSync(resolve(candidate, 'treeseed.package.yaml'))
+			|| existsSync(resolve(candidate, 'package.json')),
+		);
+		return found ?? resolve(workspaceRoot, 'packages', 'agent');
+	}
+	const rootDir = service.railway?.rootDir ?? service.rootDir ?? '.';
+	return resolve(input.tenantRoot, rootDir);
+}
+
 function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey: string, service: Record<string, any>, imageRef: string | null) {
 	const configuredSource = service.railway?.source && typeof service.railway.source === 'object' && !Array.isArray(service.railway.source)
 		? service.railway.source
@@ -200,7 +217,7 @@ function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey: strin
 			? configuredSource.repository
 			: typeof configuredSource.repo === 'string'
 				? configuredSource.repo
-				: readPackageRepository(input.tenantRoot);
+				: readPackageRepository(resolveRailwayServiceSourceRoot(input, serviceKey, service)) ?? readPackageRepository(input.tenantRoot);
 	const sourceEligible = ['api', 'operationsRunner', 'capacityProviderManager', 'capacityProviderRunner'].includes(serviceKey);
 	const mode = input.environment === 'prod'
 		? 'image'
@@ -231,7 +248,7 @@ function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey: strin
 				: input.environment === 'staging'
 					? 'staging'
 					: null,
-		sourceCommit: headCommitSafe(input.tenantRoot),
+		sourceCommit: headCommitSafe(resolveRailwayServiceSourceRoot(input, serviceKey, service)) ?? headCommitSafe(input.tenantRoot),
 		sourceRootDirectory: typeof service.railway?.sourceRootDirectory === 'string'
 			? service.railway.sourceRootDirectory
 			: typeof configuredSource.rootDirectory === 'string'

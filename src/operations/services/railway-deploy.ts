@@ -101,10 +101,10 @@ function railwayImageRefEnvForService(serviceKey) {
 
 function defaultRailwayImageRef(serviceKey, scope = 'staging', env = process.env) {
 	if (serviceKey === 'api') {
-		return envValue('TREESEED_API_IMAGE_REF', env) || (normalizeScope(scope) === 'staging' ? 'treeseed/api:staging' : null);
+		return envValue('TREESEED_API_IMAGE_REF', env) || null;
 	}
 	if (serviceKey === 'operationsRunner') {
-		return envValue('TREESEED_OPERATIONS_RUNNER_IMAGE_REF', env) || (normalizeScope(scope) === 'staging' ? 'treeseed/op-runner:staging' : null);
+		return envValue('TREESEED_OPERATIONS_RUNNER_IMAGE_REF', env) || null;
 	}
 	if (serviceKey === 'capacityProviderManager') {
 		return envValue('TREESEED_AGENT_MANAGER_IMAGE_REF', env) || null;

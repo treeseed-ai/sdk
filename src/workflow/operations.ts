@@ -5217,8 +5217,8 @@ function normalizeStageCiMode(input: TreeseedStageInput): StageCiMode {
 }
 
 function normalizeStageCleanupMode(input: TreeseedStageInput): StageCleanupMode {
-	if (input.cleanupMode === 'manual' || input.deleteBranch === false) return 'manual';
-	return 'success';
+	if (input.cleanupMode === 'success' || input.deleteBranch === true) return 'success';
+	return 'manual';
 }
 
 function stageCandidateManifestPath(root: string, runId: string) {

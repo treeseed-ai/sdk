@@ -663,7 +663,7 @@ export function planTreeseedPackageDevelopmentImage(
 			movingTag,
 				imageRef,
 				movingImageRef,
-				archImageRefs: architectures.map((arch) => `${imageName}:${immutableTag}-${arch}`),
+				archImageRefs: immutableTag ? architectures.map((arch) => `${imageName}:${immutableTag}-${arch}`) : [],
 				...(roleImages ? { roleImages } : {}),
 		},
 		deploymentSource: {

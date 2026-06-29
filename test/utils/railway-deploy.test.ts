@@ -242,10 +242,10 @@ services:
 		expect(runners[0]).toMatchObject({
 			instanceKey: 'operationsRunner:1',
 			runnerId: 'treeseed-api-operations-runner-01',
-			sourceMode: 'image',
-			imageRef: 'treeseed/op-runner:staging',
-			buildCommand: null,
-			startCommand: null,
+			sourceMode: 'git',
+			imageRef: null,
+			buildCommand: 'npm run build',
+			startCommand: 'npm run start:runner',
 			healthcheckPath: '/healthz',
 			runtimeMode: 'service',
 			volumeMountPath: '/data',
@@ -437,7 +437,7 @@ services:
 		});
 	});
 
-	it('uses Docker image refs for staging API package services', async () => {
+	it('uses Railway Git source builds for staging API package services', async () => {
 		const tenantRoot = await createTenantFixture();
 		await writeFile(
 			join(tenantRoot, 'treeseed.package.yaml'),
@@ -468,6 +468,7 @@ services:
       projectName: treeseed-api
       serviceName: treeseed-api
       imageRefEnv: TREESEED_API_IMAGE_REF
+      sourceMode: git
       buildCommand: npm run build
       startCommand: npm run start:api
   operationsRunner:
@@ -477,8 +478,10 @@ services:
       projectName: treeseed-api
       serviceName: treeseed-api-operations-runner-01
       imageRefEnv: TREESEED_OPERATIONS_RUNNER_IMAGE_REF
+      sourceMode: git
       buildCommand: npm run build
       startCommand: npm run start:runner
+      volumeMountPath: /data
 `,
 		);
 
@@ -487,20 +490,22 @@ services:
 		const runner = services.find((service) => service.key === 'operationsRunner');
 
 		expect(api).toMatchObject({
-			sourceMode: 'image',
-			sourceRepo: null,
-			sourceBranch: null,
-			sourceRootDirectory: null,
-			imageRef: 'treeseed/api:staging',
-			buildCommand: null,
-			startCommand: null,
+			sourceMode: 'git',
+			sourceRepo: 'treeseed-ai/api',
+			sourceBranch: 'staging',
+			sourceRootDirectory: '.',
+			imageRef: null,
+			buildCommand: 'npm run build',
+			startCommand: 'npm run start:api',
 		});
 		expect(runner).toMatchObject({
-			sourceMode: 'image',
-			sourceRepo: null,
-			imageRef: 'treeseed/op-runner:staging',
-			buildCommand: null,
-			startCommand: null,
+			sourceMode: 'git',
+			sourceRepo: 'treeseed-ai/api',
+			sourceBranch: 'staging',
+			imageRef: null,
+			buildCommand: 'npm run build',
+			startCommand: 'npm run start:runner',
+			volumeMountPath: '/data',
 		});
 	});
 
