@@ -241,6 +241,7 @@ export type RepositorySaveOptions = {
 	commitMessageProvider?: RepositoryCommitMessageProvider;
 	workflowRunId?: string | null;
 	includeRoot?: boolean;
+	deferPushUntilVerified?: boolean;
 	stablePackageRelease?: boolean;
 	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
 	onWaveSaved?: (wave: {
@@ -259,6 +260,16 @@ type SaveState = {
 	reports: Map<string, RepositorySaveReport>;
 	remoteAccessChecked: Set<string>;
 	workflowGates: Array<Record<string, unknown>>;
+	deferredPushes: DeferredRepositoryPush[];
+};
+
+type DeferredRepositoryPush = {
+	node: RepositorySaveNode;
+	report: RepositorySaveReport;
+	branch: string;
+	tagName: string | null;
+	rebase: Record<string, unknown>;
+	reference: PackageDependencyReference | null;
 };
 
 class RepositorySaveError extends Error {
@@ -315,6 +326,17 @@ function withShortProcessTempEnv(env: NodeJS.ProcessEnv = {}) {
 		}
 	}
 	return merged;
+}
+
+function npmWorkflowEnv(env: NodeJS.ProcessEnv = {}) {
+	return withShortProcessTempEnv({
+		...env,
+		npm_config_audit: env.npm_config_audit ?? process.env.npm_config_audit ?? 'false',
+		npm_config_fund: env.npm_config_fund ?? process.env.npm_config_fund ?? 'false',
+		npm_config_foreground_scripts: env.npm_config_foreground_scripts ?? process.env.npm_config_foreground_scripts ?? 'true',
+		npm_config_maxsockets: env.npm_config_maxsockets ?? process.env.npm_config_maxsockets ?? '8',
+		npm_config_progress: env.npm_config_progress ?? process.env.npm_config_progress ?? 'false',
+	});
 }
 
 function runCapturedCommand(
@@ -428,7 +450,7 @@ export async function runStreamingCommand(
 	return await new Promise<{ stdout: string; stderr: string }>((resolvePromise, reject) => {
 		const child = spawn(command, args, {
 			cwd: commandOptions.cwd ?? node.path,
-			env: withShortProcessTempEnv(commandOptions.env),
+			env: command === 'npm' ? npmWorkflowEnv(commandOptions.env) : withShortProcessTempEnv(commandOptions.env),
 			stdio: ['ignore', 'pipe', 'pipe'],
 		});
 		let stdout = '';
@@ -1473,6 +1495,66 @@ function pushCurrentBranch(node: RepositorySaveNode, options: RepositorySaveOpti
 	};
 }
 
+async function finishRepositorySavePublish(
+	node: RepositorySaveNode,
+	options: RepositorySaveOptions,
+	state: SaveState,
+	report: RepositorySaveReport,
+	input: {
+		branch: string;
+		rebase: Record<string, unknown>;
+		reference?: PackageDependencyReference | null;
+		tagName?: string | null;
+	},
+) {
+	const reference = input.reference ?? null;
+	const tagName = input.tagName ?? reference?.tagName ?? null;
+	if (options.deferPushUntilVerified === true) {
+		state.deferredPushes.push({
+			node,
+			report,
+			branch: input.branch,
+			tagName,
+			rebase: input.rebase,
+			reference,
+		});
+		report.pushed = false;
+		report.publishWait = {
+			...input.rebase,
+			deferredPush: true,
+		};
+		return;
+	}
+	const push = pushCurrentBranch(node, options, input.branch, tagName);
+	if (reference) {
+		await runGitDependencySmoke(node, options, reference);
+		report.dependencySpec = reference.spec;
+	}
+	report.pushed = push.pushed;
+	report.publishWait = {
+		...input.rebase,
+		...push,
+	};
+}
+
+async function publishDeferredRepositoryPushes(options: RepositorySaveOptions, state: SaveState) {
+	if (state.deferredPushes.length === 0) return;
+	for (const deferred of state.deferredPushes) {
+		const push = pushCurrentBranch(deferred.node, options, deferred.branch, deferred.tagName);
+		if (deferred.reference) {
+			await runGitDependencySmoke(deferred.node, options, deferred.reference);
+			deferred.report.dependencySpec = deferred.reference.spec;
+		}
+		deferred.report.pushed = push.pushed;
+		deferred.report.publishWait = {
+			...deferred.rebase,
+			...push,
+			deferredPush: true,
+		};
+	}
+	state.deferredPushes = [];
+}
+
 function tagExists(repoDir: string, tagName: string) {
 	try {
 		runGit(['rev-parse', '--verify', `refs/tags/${tagName}`], { cwd: repoDir, capture: true });
@@ -1770,18 +1852,19 @@ async function finalizeCleanPackageVersion(
 	report.verified = report.verification.status === 'passed';
 	const tagMessage = reference.tagName ? ensurePackageTagReady(node, options, reference.tagName, branch, options.workflowRunId) : null;
 	void tagMessage;
-	const push = pushCurrentBranch(node, options, branch, reference.tagName);
-	await runGitDependencySmoke(node, options, reference);
 	report.dependencySpec = reference.spec;
-	report.pushed = push.pushed;
 	report.skippedReason = 'finalized-partial-save';
 	report.commitSha = headCommit(node.path);
 	state.finalizedCommits.set(node.relativePath, report.commitSha);
-	report.publishWait = {
-		...rebase,
-		...push,
-		recoveredPartialSave: true,
-	};
+	await finishRepositorySavePublish(node, options, state, report, {
+		branch,
+		rebase: {
+			...rebase,
+			recoveredPartialSave: true,
+		},
+		reference,
+		tagName: reference.tagName,
+	});
 	return true;
 }
 
@@ -2123,12 +2206,7 @@ async function saveOneRepository(
 		}
 		if (node.kind === 'project' || (node.kind === 'package' && !canManagePackageJsonVersion(node))) {
 			const rebase = pullRebaseFromOrigin(node, options, branch);
-			const push = pushCurrentBranch(node, options, branch);
-			report.pushed = push.pushed;
-			report.publishWait = {
-				...rebase,
-				...push,
-			};
+			await finishRepositorySavePublish(node, options, state, report, { branch, rebase });
 			report.commitSha = headCommit(node.path);
 		}
 		state.finalizedCommits.set(node.relativePath, report.commitSha);
@@ -2149,12 +2227,7 @@ async function saveOneRepository(
 		}
 		if (node.kind === 'project' || (node.kind === 'package' && !canManagePackageJsonVersion(node))) {
 			const rebase = pullRebaseFromOrigin(node, options, branch);
-			const push = pushCurrentBranch(node, options, branch);
-			report.pushed = push.pushed;
-			report.publishWait = {
-				...rebase,
-				...push,
-			};
+			await finishRepositorySavePublish(node, options, state, report, { branch, rebase });
 			report.commitSha = headCommit(node.path);
 		}
 		state.finalizedCommits.set(node.relativePath, report.commitSha);
@@ -2198,12 +2271,7 @@ async function saveOneRepository(
 		}
 		if (node.kind === 'project' || (node.kind === 'package' && !canManagePackageJsonVersion(node))) {
 			const rebase = pullRebaseFromOrigin(node, options, branch);
-			const push = pushCurrentBranch(node, options, branch);
-			report.pushed = push.pushed;
-			report.publishWait = {
-				...rebase,
-				...push,
-			};
+			await finishRepositorySavePublish(node, options, state, report, { branch, rebase });
 			report.commitSha = headCommit(node.path);
 		}
 		state.finalizedCommits.set(node.relativePath, report.commitSha);
@@ -2233,23 +2301,12 @@ async function saveOneRepository(
 		void tagMessage;
 		report.tagName = reference.tagName;
 		report.version = version;
-		const push = pushCurrentBranch(node, options, branch, reference.tagName);
-		await runGitDependencySmoke(node, options, reference);
 		report.dependencySpec = reference.spec;
 		state.finalizedVersions.set(node.name, version);
 		state.finalizedReferences.set(node.name, reference);
-		report.pushed = push.pushed;
-		report.publishWait = {
-			...rebase,
-			...push,
-		};
+		await finishRepositorySavePublish(node, options, state, report, { branch, rebase, reference, tagName: reference.tagName });
 	} else {
-		const push = pushCurrentBranch(node, options, branch);
-		report.pushed = push.pushed;
-		report.publishWait = {
-			...rebase,
-			...push,
-		};
+		await finishRepositorySavePublish(node, options, state, report, { branch, rebase });
 	}
 	report.commitSha = headCommit(node.path);
 	report.skippedReason = null;
@@ -2276,6 +2333,7 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 		reports: new Map(nodes.map((node) => [node.id, createReport(node)])),
 		remoteAccessChecked: new Set(),
 		workflowGates: [],
+		deferredPushes: [],
 	};
 	const concurrency = repositorySaveConcurrency(options);
 
@@ -2351,6 +2409,8 @@ export async function runRepositorySaveOrchestrator(options: RepositorySaveOptio
 			state.workflowGates.push(...waveGates);
 		}
 	}
+
+	await publishDeferredRepositoryPushes(options, state);
 
 	const rootNode = nodes.find((node) => node.id === '.') ?? allNodes.find((node) => node.id === '.');
 	const rootReport = rootNode
