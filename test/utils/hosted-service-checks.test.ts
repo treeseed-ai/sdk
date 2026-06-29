@@ -213,7 +213,7 @@ surfaces:
 					serviceName: 'treeseed-api',
 					projectName: 'treeseed-api',
 					environmentName: 'staging',
-					rootDirectory: 'packages/api',
+					rootDirectory: '.',
 					buildCommand: 'npm run build',
 					startCommand: 'npm run start:api',
 					healthcheckPath: '/healthz',
@@ -224,7 +224,7 @@ surfaces:
 					serviceName: 'treeseed-api-operations-runner-01',
 					projectName: 'treeseed-api',
 					environmentName: 'staging',
-					rootDirectory: 'packages/api',
+					rootDirectory: '.',
 					buildCommand: 'npm run build',
 					startCommand: 'npm run start:runner',
 					healthcheckPath: '/healthz',
@@ -282,7 +282,7 @@ surfaces:
 			observedRailwayServices: {
 				'treeseed-api': {
 					serviceName: 'treeseed-api',
-					rootDirectory: '.',
+					rootDirectory: 'packages/api',
 					buildCommand: 'npm run build:api',
 					startCommand: 'node ./src/api/server.ts',
 					healthcheckPath: '/bad-health',
