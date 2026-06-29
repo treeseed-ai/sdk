@@ -22,6 +22,7 @@ import {
 	createPackageDependencyReference,
 	type DevDependencyReferenceMode,
 	type GitDependencyProtocol,
+	normalizeGitRemoteForDependency,
 	type PackageDependencyReference,
 	type RewrittenDevReference,
 	updateInternalDependencySpecs,
@@ -1079,6 +1080,59 @@ function updateDependencyReferences(node: RepositorySaveNode, finalizedReference
 		writeJson(node.packageJsonPath, node.packageJson);
 	}
 	return changed;
+}
+
+function syncDirectGitDependencyLockfileEntries(
+	node: RepositorySaveNode,
+	options: Pick<RepositorySaveOptions, 'onProgress'>,
+	references: PackageDependencyReference[],
+) {
+	if (references.length === 0) return false;
+	const lockfilePath = resolve(node.path, 'package-lock.json');
+	if (!existsSync(lockfilePath)) return false;
+	const lockfile = readJson(lockfilePath);
+	const rootPackage = lockfile.packages && typeof lockfile.packages === 'object' && !Array.isArray(lockfile.packages)
+		? (lockfile.packages as Record<string, Record<string, unknown>>)['']
+		: null;
+	const packageEntries = lockfile.packages && typeof lockfile.packages === 'object' && !Array.isArray(lockfile.packages)
+		? lockfile.packages as Record<string, Record<string, unknown>>
+		: null;
+	if (!rootPackage || !packageEntries) return false;
+	let changed = false;
+	for (const reference of references) {
+		const manifestSpec = reference.manifestSpec ?? reference.spec;
+		for (const field of dependencyFields(rootPackage)) {
+			const values = rootPackage[field];
+			if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
+			const dependencies = values as Record<string, unknown>;
+			if (reference.packageName in dependencies && dependencies[reference.packageName] !== manifestSpec) {
+				dependencies[reference.packageName] = manifestSpec;
+				changed = true;
+			}
+		}
+		const entryKey = `node_modules/${reference.packageName}`;
+		const entry = packageEntries[entryKey];
+		if (entry) {
+			const nextResolved = normalizeGitRemoteForDependency(reference.remoteUrl ?? '', 'ssh');
+			const resolved = nextResolved ? `${nextResolved}#${manifestSpec.slice(manifestSpec.lastIndexOf('#') + 1)}` : manifestSpec;
+			if (entry.resolved !== resolved) {
+				entry.resolved = resolved;
+				changed = true;
+			}
+			if (typeof reference.version === 'string' && reference.version && entry.version !== reference.version) {
+				entry.version = reference.version;
+				changed = true;
+			}
+			if ('integrity' in entry) {
+				delete entry.integrity;
+				changed = true;
+			}
+		}
+	}
+	if (!changed) return false;
+	writeJson(lockfilePath, lockfile);
+	emitProgress(options, node, 'lockfile', 'Synchronized direct internal Git dependency lockfile entries without npm git preparation.');
+	return true;
 }
 
 function planPackageVersion(node: RepositorySaveNode, options: RepositorySaveOptions) {
@@ -2183,10 +2237,13 @@ async function saveOneRepository(
 
 	const dependencyUpdates = updateDependencyReferences(node, state.finalizedReferences);
 	const dependencyChanged = dependencyUpdates.length > 0;
-	const gitDependencyRefreshSpecs = dependencyUpdates
+	const gitDependencyRefreshReferences = dependencyUpdates
 		.map((update) => state.finalizedReferences.get(update.packageName))
-		.filter((reference): reference is PackageDependencyReference => Boolean(reference) && reference.mode === 'dev-git-commit')
-		.map((reference) => `${reference.packageName}@${reference.installSpec ?? reference.spec}`);
+		.filter((reference): reference is PackageDependencyReference => Boolean(reference) && reference.mode === 'dev-git-commit');
+	const lockfileGitDependenciesSynced = syncDirectGitDependencyLockfileEntries(node, options, gitDependencyRefreshReferences);
+	const gitDependencyRefreshSpecs = lockfileGitDependenciesSynced
+		? []
+		: gitDependencyRefreshReferences.map((reference) => `${reference.packageName}@${reference.installSpec ?? reference.spec}`);
 	const submodulePointers = collectSubmodulePointerChanges(node, state.finalizedCommits);
 	const submodulesChanged = submodulePointers.length > 0;
 	const packageHasMeaningfulChanges = hasMeaningfulChanges(node.path);
