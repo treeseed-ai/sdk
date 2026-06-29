@@ -86,7 +86,7 @@ describe('railwayGraphqlRequest', () => {
 		await expect(railwayGraphqlRequest({
 			query: 'query TreeseedTest { ok }',
 			env: {
-				RAILWAY_API_TOKEN: 'railway-token-value',
+				TREESEED_RAILWAY_API_TOKEN: 'railway-token-value',
 				TREESEED_RAILWAY_API_TIMEOUT_MS: '1',
 			},
 			retries: 0,

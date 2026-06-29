@@ -495,7 +495,7 @@ export async function railwayGraphqlRequest<TData = unknown>({
 }): Promise<{ data: TData }> {
 	const token = apiToken || resolveRailwayApiToken(env);
 	if (!token) {
-		throw new Error('Configure RAILWAY_API_TOKEN before invoking Railway APIs.');
+		throw new Error('Configure TREESEED_RAILWAY_API_TOKEN before invoking Railway APIs.');
 	}
 	const requestTimeoutMs = railwayApiTimeoutMs(env, timeoutMs);
 	let attempt = 0;

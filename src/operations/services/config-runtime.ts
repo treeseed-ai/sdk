@@ -2340,10 +2340,6 @@ function isTransientProviderConnectionError(detail) {
 }
 
 function checkGitHubConnection({ tenantRoot, env }) {
-	const gh = resolveTreeseedToolBinary('gh', { env });
-	if (!gh) {
-		return providerConnectionResult('github', false, 'GitHub CLI `gh` is not installed.');
-	}
 	const identityMode = env.TREESEED_GITHUB_IDENTITY_MODE === 'account' ? 'account' : 'repository';
 	const repository = identityMode === 'repository' ? maybeResolveGitHubRepositorySlug(tenantRoot) : null;
 	const credential = repository
@@ -2359,6 +2355,10 @@ function checkGitHubConnection({ tenantRoot, env }) {
 				: 'TREESEED_GITHUB_TOKEN is not configured.',
 			{ skipped: true },
 		);
+	}
+	const gh = resolveTreeseedToolBinary('gh', { env });
+	if (!gh) {
+		return providerConnectionResult('github', false, 'GitHub CLI `gh` is not installed.');
 	}
 	const owner = typeof env.TREESEED_HOSTED_HUBS_GITHUB_OWNER === 'string'
 		? env.TREESEED_HOSTED_HUBS_GITHUB_OWNER.trim()
