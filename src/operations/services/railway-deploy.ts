@@ -41,6 +41,7 @@ const HOSTED_PROJECT_SERVICE_KEYS = ['api'];
 const WORKER_RUNNER_BOOTSTRAP_INDEX = 1;
 const WORKER_RUNNER_VOLUME_MOUNT_PATH = '/data';
 const OPERATIONS_RUNNER_BOOTSTRAP_COUNT = 2;
+const PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX = 'public-treedx-node-';
 
 export function isTreeseedOperationsRunnerResourceName(value) {
 	const normalized = String(value ?? '').trim().toLowerCase();
@@ -96,6 +97,7 @@ function railwayImageRefEnvForService(serviceKey) {
 	if (serviceKey === 'operationsRunner') return 'TREESEED_OPERATIONS_RUNNER_IMAGE_REF';
 	if (serviceKey === 'capacityProviderManager') return 'TREESEED_AGENT_MANAGER_IMAGE_REF';
 	if (serviceKey === 'capacityProviderRunner') return 'TREESEED_AGENT_RUNNER_IMAGE_REF';
+	if (isPublicTreeDxNodeServiceKey(serviceKey)) return 'TREESEED_PUBLIC_TREEDX_IMAGE_REF';
 	return null;
 }
 
@@ -112,7 +114,14 @@ function defaultRailwayImageRef(serviceKey, scope = 'staging', env = process.env
 	if (serviceKey === 'capacityProviderRunner') {
 		return envValue('TREESEED_AGENT_RUNNER_IMAGE_REF', env) || null;
 	}
+	if (isPublicTreeDxNodeServiceKey(serviceKey)) {
+		return envValue('TREESEED_PUBLIC_TREEDX_IMAGE_REF', env) || null;
+	}
 	return null;
+}
+
+function isPublicTreeDxNodeServiceKey(serviceKey) {
+	return String(serviceKey ?? '').startsWith(PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX);
 }
 
 export function deriveRailwayWorkerRunnerVolumeName(serviceName, environmentName = '') {
@@ -730,7 +739,7 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 		? [...new Set([...HOSTED_PROJECT_SERVICE_KEYS, ...configuredOptionalServiceKeys])]
 		: RAILWAY_SERVICE_KEYS;
 
-	return serviceKeys
+	const configuredServices = serviceKeys
 		.flatMap((serviceKey) => {
 			const service = deployConfig.services?.[serviceKey];
 			if (!service || service.enabled === false || (service.provider ?? 'railway') !== 'railway') {
@@ -791,8 +800,8 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 					imageRef,
 				});
 				const resolvedImageRef = sourcePolicy.sourceMode === 'image' ? imageRef : null;
-				return {
-					key: serviceKey,
+					return {
+						key: serviceKey,
 					instanceKey: serviceKey === 'operationsRunner' || serviceKey === 'capacityProviderRunner' ? `${serviceKey}:${runnerIndex}` : serviceKey,
 					runnerIndex: serviceKey === 'operationsRunner' || serviceKey === 'capacityProviderRunner' ? runnerIndex : null,
 					serviceConfig: service,
@@ -806,7 +815,7 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 					publicBaseUrl,
 					railwayEnvironment,
 					buildCommand: resolvedImageRef ? null : service.railway?.buildCommand ?? null,
-					startCommand: resolvedImageRef ? null : service.railway?.startCommand ?? null,
+						startCommand: isCapacityProviderService ? null : resolvedImageRef ? null : service.railway?.startCommand ?? null,
 					imageRef: resolvedImageRef,
 					sourceMode: sourcePolicy.sourceMode,
 					sourceRepo: sourcePolicy.sourceRepo,
@@ -821,13 +830,154 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 					volumeMountPath: serviceKey === 'operationsRunner' || serviceKey === 'capacityProviderRunner' ? runnerPool.volumeMountPath : service.railway?.volumeMountPath ?? null,
 					schedule: normalizeScheduleExpressions(service.railway?.schedule),
 					hostingKind,
-					runnerPool,
-					application,
-				};
-			});
+						runnerPool,
+						application,
+						secretRefs: Array.isArray(service.secretRefs) ? service.secretRefs : [],
+						variableRefs: Array.isArray(service.variableRefs) ? service.variableRefs : [],
+					};
+				});
 		})
 		.filter(Boolean);
+	return [
+		...configuredServices,
+		...configuredPublicTreeDxRailwayServices({
+			tenantRoot,
+			scope: normalizedScope,
+			deployConfig,
+			identity,
+			hostingKind,
+			application,
+			imageRefEnv,
+			workspaceRoot: machineConfigRoot,
+		}),
+	];
 }
+
+function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deployConfig, identity, hostingKind, application, imageRefEnv, workspaceRoot }) {
+	if (deployConfig.hosting?.kind !== 'treeseed_control_plane') {
+		return [];
+	}
+	const railway = deployConfig.publicTreeDxFederation?.railway ?? {};
+	const nodePool = railway.nodePool && typeof railway.nodePool === 'object' && !Array.isArray(railway.nodePool)
+		? railway.nodePool
+		: {};
+	const bootstrapCount = Math.max(0, Number.parseInt(String(nodePool.bootstrapCount ?? 1), 10) || 0);
+	if (bootstrapCount <= 0) {
+		return [];
+	}
+	const configuredSource = railway.source && typeof railway.source === 'object' && !Array.isArray(railway.source)
+		? railway.source
+		: {};
+	const treeDxRoot = resolve(workspaceRoot ?? tenantRoot, 'packages', 'treedx');
+	const configuredMode = typeof railway.sourceMode === 'string' ? railway.sourceMode : null;
+	const sourceMode = scope === 'prod'
+		? 'image'
+		: configuredMode === 'git' || configuredMode === 'image'
+			? configuredMode
+			: 'git';
+	const repository = typeof railway.sourceRepo === 'string'
+		? railway.sourceRepo
+		: typeof configuredSource.repository === 'string'
+			? configuredSource.repository
+			: typeof configuredSource.repo === 'string'
+				? configuredSource.repo
+				: readTreeseedPackageRepository(treeDxRoot) ?? 'treeseed-ai/treedx';
+	const sourceBranch = typeof railway.sourceBranch === 'string'
+		? railway.sourceBranch
+		: typeof configuredSource.branch === 'string'
+			? configuredSource.branch
+			: scope === 'staging'
+				? 'staging'
+				: null;
+	const sourceRootDirectory = typeof railway.sourceRootDirectory === 'string'
+		? railway.sourceRootDirectory
+		: typeof configuredSource.rootDirectory === 'string'
+			? configuredSource.rootDirectory
+			: '.';
+	const projectName = typeof railway.projectName === 'string' && railway.projectName.trim()
+		? railway.projectName.trim()
+		: typeof imageRefEnv.TREESEED_PUBLIC_TREEDX_RAILWAY_PROJECT_NAME === 'string' && imageRefEnv.TREESEED_PUBLIC_TREEDX_RAILWAY_PROJECT_NAME.trim()
+			? imageRefEnv.TREESEED_PUBLIC_TREEDX_RAILWAY_PROJECT_NAME.trim()
+			: identity.deploymentKey;
+	const railwayEnvironment = resolveRailwayEnvironmentForScope(scope, railway.environmentName);
+	const baseImageRef = envValue('TREESEED_PUBLIC_TREEDX_IMAGE_REF', imageRefEnv) || 'treeseed/treedx';
+	return Array.from({ length: bootstrapCount }, (_, offset) => {
+		const index = offset + 1;
+		const serviceName = `${PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX}${String(index).padStart(2, '0')}`;
+		return {
+			key: serviceName,
+			instanceKey: serviceName,
+			runnerIndex: null,
+			serviceConfig: null,
+			scope,
+			projectId: typeof railway.projectId === 'string' ? railway.projectId : null,
+			projectName,
+			serviceId: typeof railway.serviceId === 'string' && bootstrapCount === 1 ? railway.serviceId : null,
+			serviceName,
+			runnerId: null,
+			rootDir: treeDxRoot,
+			publicBaseUrl: null,
+			railwayEnvironment,
+			buildCommand: sourceMode === 'git' ? railway.buildCommand ?? null : null,
+			startCommand: sourceMode === 'git' ? railway.startCommand ?? null : null,
+			imageRef: sourceMode === 'image' ? baseImageRef : null,
+			sourceMode,
+			sourceRepo: sourceMode === 'git' ? repository : null,
+			sourceBranch: sourceMode === 'git' ? sourceBranch : null,
+			sourceCommit: sourceMode === 'git' ? headCommitSafe(treeDxRoot) ?? headCommitSafe(tenantRoot) : null,
+			sourceRootDirectory: sourceMode === 'git' ? sourceRootDirectory : null,
+			healthcheckPath: railway.healthcheckPath ?? null,
+			healthcheckTimeoutSeconds: railway.healthcheckTimeoutSeconds ?? null,
+			healthcheckIntervalSeconds: railway.healthcheckIntervalSeconds ?? null,
+			restartPolicy: railway.restartPolicy ?? null,
+			runtimeMode: railway.runtimeMode ?? 'replicated',
+			volumeMountPath: railway.volumeMountPath ?? '/data',
+			schedule: [],
+			hostingKind,
+			runnerPool: null,
+			application,
+				environmentVariables: {
+					PHX_SERVER: 'true',
+					PORT: '4000',
+					TREESEED_TREEDX_DATA_DIR: railway.volumeMountPath ?? '/data',
+					TREESEED_TREEDX_AUTH_MODE: 'connected',
+					TREESEED_TREEDX_AUTH_VERIFIER: 'hs256_dev',
+					TREESEED_TREEDX_ALLOW_DEV_VERIFIER_IN_PROD: 'true',
+					TREESEED_TREEDX_EXEC_BACKEND: 'container_sandbox',
+					TREESEED_TREEDX_FEDERATION_MODE: 'connected_library',
+					TREESEED_TREEDX_JWT_AUDIENCE: 'treedx-public-federation',
+					TREESEED_TREEDX_JWT_ISSUER: 'https://api.treeseed.local/treedx',
+					TREESEED_TREEDX_BOOTSTRAP_TRUST_ACTOR_ID: 'treeseed-api',
+					TREESEED_TREEDX_BOOTSTRAP_TRUST_TENANT_ID: 'treeseed-control-plane',
+					TREESEED_TREEDX_BOOTSTRAP_TRUST_REPO_IDS: '*',
+					TREESEED_TREEDX_BOOTSTRAP_TRUST_REFS: '*',
+					TREESEED_TREEDX_BOOTSTRAP_TRUST_PATHS: '**',
+					TREESEED_TREEDX_SCOPE: 'public_federation',
+				},
+				secretRefs: ['TREESEED_TREEDX_SECRET_KEY_BASE', 'TREESEED_TREEDX_ADMIN_TOKEN', 'TREESEED_TREEDX_JWT_HS256_SECRET'],
+				variableRefs: [
+					...(sourceMode === 'image' ? ['TREESEED_PUBLIC_TREEDX_IMAGE_REF'] : []),
+					'PHX_HOST',
+					'PHX_SERVER',
+					'PORT',
+					'TREESEED_TREEDX_DATA_DIR',
+					'TREESEED_TREEDX_AUTH_MODE',
+					'TREESEED_TREEDX_AUTH_VERIFIER',
+					'TREESEED_TREEDX_ALLOW_DEV_VERIFIER_IN_PROD',
+					'TREESEED_TREEDX_EXEC_BACKEND',
+					'TREESEED_TREEDX_FEDERATION_MODE',
+					'TREESEED_TREEDX_JWT_AUDIENCE',
+					'TREESEED_TREEDX_JWT_ISSUER',
+					'TREESEED_TREEDX_BOOTSTRAP_TRUST_ACTOR_ID',
+					'TREESEED_TREEDX_BOOTSTRAP_TRUST_TENANT_ID',
+					'TREESEED_TREEDX_BOOTSTRAP_TRUST_REPO_IDS',
+					'TREESEED_TREEDX_BOOTSTRAP_TRUST_REFS',
+					'TREESEED_TREEDX_BOOTSTRAP_TRUST_PATHS',
+					'TREESEED_TREEDX_SCOPE',
+				],
+			};
+		});
+	}
 
 function readTreeseedPackageRepository(packageRoot) {
 	const manifestPath = resolve(packageRoot, 'treeseed.package.yaml');

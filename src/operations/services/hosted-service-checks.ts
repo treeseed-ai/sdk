@@ -56,7 +56,17 @@ export interface TreeseedObservedRailwayServiceState {
 	healthcheckPath?: string | null;
 	healthcheckTimeoutSeconds?: number | null;
 	runtimeMode?: string | null;
+	deploymentStatus?: string | null;
+	deploymentHealthy?: boolean | null;
+	deploymentBranch?: string | null;
+	deploymentRepo?: string | null;
+	deploymentRootDirectory?: string | null;
+	deploymentCommitHash?: string | null;
+	volumeName?: string | null;
+	volumeId?: string | null;
 	volumeMountPath?: string | null;
+	volumeServiceId?: string | null;
+	volumeEnvironmentId?: string | null;
 	variables?: Record<string, unknown> | string[];
 	secrets?: Record<string, unknown> | string[];
 	health?: 'ready' | 'failed' | 'unknown' | string | null;
@@ -131,6 +141,10 @@ function rootDirectory(tenantRoot: string, rootDir: string) {
 }
 
 function railwayServiceRootDirectory(tenantRoot: string, service: ReturnType<typeof configuredRailwayServices>[number]) {
+	const sourceRootDirectory = String(service.sourceRootDirectory ?? '').trim();
+	if (sourceRootDirectory) {
+		return sourceRootDirectory;
+	}
 	return rootDirectory(service.application?.root ?? tenantRoot, service.rootDir);
 }
 
@@ -340,7 +354,85 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 			}));
 		}
 
-		if ((service.key === 'operationsRunner' || service.key === 'capacityProviderRunner') && service.volumeMountPath) {
+		if (!service.imageRef && service.sourceRepo) {
+			const actualRepo = observed?.deploymentRepo ?? null;
+			const actualBranch = observed?.deploymentBranch ?? null;
+			const actualRootDirectory = observed?.deploymentRootDirectory ?? null;
+			const sourceUploadDeployment = target === 'staging'
+				&& actualRepo === null
+				&& actualBranch === null
+				&& observed?.deploymentHealthy === true;
+			checks.push(check({
+				id: `railway:${service.instanceKey}:deployment-repo`,
+				provider: 'railway',
+				serviceKey: service.key,
+				serviceType,
+				target,
+				description: `Railway ${service.serviceName} latest deployment uses the desired Git repo.`,
+				expected: { repo: service.sourceRepo },
+				observed: observed ? { repo: actualRepo, sourceUpload: sourceUploadDeployment } : { skipped: true },
+				status: observed ? (sourceUploadDeployment ? 'passed' : statusForMatch(actualRepo, service.sourceRepo)) : 'skipped',
+				issues: !observed || sourceUploadDeployment || actualRepo === service.sourceRepo ? [] : [`Expected deployment repo=${service.sourceRepo}, observed ${actualRepo ?? '(unset)'}.`],
+			}));
+			if (service.sourceBranch) {
+				checks.push(check({
+					id: `railway:${service.instanceKey}:deployment-branch`,
+					provider: 'railway',
+					serviceKey: service.key,
+					serviceType,
+					target,
+					description: `Railway ${service.serviceName} latest deployment uses the desired Git branch.`,
+					expected: { branch: service.sourceBranch },
+					observed: observed ? { branch: actualBranch, commitHash: observed.deploymentCommitHash ?? null, sourceUpload: sourceUploadDeployment } : { skipped: true },
+					status: observed ? (sourceUploadDeployment ? 'passed' : statusForMatch(actualBranch, service.sourceBranch)) : 'skipped',
+					issues: !observed || sourceUploadDeployment || actualBranch === service.sourceBranch ? [] : [`Expected deployment branch=${service.sourceBranch}, observed ${actualBranch ?? '(unset)'}.`],
+				}));
+			}
+			if (expectedRootDirectory) {
+				checks.push(check({
+					id: `railway:${service.instanceKey}:deployment-root-directory`,
+					provider: 'railway',
+					serviceKey: service.key,
+					serviceType,
+					target,
+					description: `Railway ${service.serviceName} latest deployment uses the desired Git root directory.`,
+					expected: { rootDirectory: expectedRootDirectory },
+					observed: observed ? { rootDirectory: actualRootDirectory } : { skipped: true },
+					status: observed ? statusForMatch(actualRootDirectory, expectedRootDirectory) : 'skipped',
+					issues: !observed || actualRootDirectory === expectedRootDirectory ? [] : [`Expected deployment rootDirectory=${expectedRootDirectory}, observed ${actualRootDirectory ?? '(unset)'}.`],
+				}));
+			}
+		}
+
+		if (observed && observed.deploymentHealthy === false) {
+			checks.push(check({
+				id: `railway:${service.instanceKey}:deployment`,
+				provider: 'railway',
+				serviceKey: service.key,
+				serviceType,
+				target,
+				description: `Railway ${service.serviceName} latest deployment is healthy.`,
+				expected: { healthy: true },
+				observed: { healthy: false, status: observed.deploymentStatus ?? null },
+				status: 'failed',
+				issues: [`Latest Railway deployment status is ${observed.deploymentStatus ?? 'unknown'}.`],
+			}));
+		} else if (observed) {
+			checks.push(check({
+				id: `railway:${service.instanceKey}:deployment`,
+				provider: 'railway',
+				serviceKey: service.key,
+				serviceType,
+				target,
+				description: `Railway ${service.serviceName} latest deployment is healthy.`,
+				expected: { healthy: true },
+				observed: { healthy: observed.deploymentHealthy ?? null, status: observed.deploymentStatus ?? null },
+				status: observed.deploymentHealthy === true ? 'passed' : 'skipped',
+				issues: observed.deploymentHealthy === true ? [] : ['No live Railway deployment health observation was provided.'],
+			}));
+		}
+
+		if (service.volumeMountPath) {
 			checks.push(check({
 				id: `railway:${service.instanceKey}:volume`,
 				provider: 'railway',
@@ -349,7 +441,13 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 				target,
 				description: `Railway ${service.serviceName} volume mount matches config.`,
 				expected: { volumeMountPath: service.volumeMountPath },
-				observed: observed ? { volumeMountPath: observed.volumeMountPath ?? null } : { skipped: true },
+				observed: observed ? {
+					volumeName: observed.volumeName ?? null,
+					volumeId: observed.volumeId ?? null,
+					volumeMountPath: observed.volumeMountPath ?? null,
+					volumeServiceId: observed.volumeServiceId ?? null,
+					volumeEnvironmentId: observed.volumeEnvironmentId ?? null,
+				} : { skipped: true },
 				status: observed ? statusForMatch(observed.volumeMountPath ?? null, service.volumeMountPath) : 'skipped',
 				issues: !observed || observed.volumeMountPath === service.volumeMountPath ? [] : [`Expected volumeMountPath=${service.volumeMountPath}, observed ${observed.volumeMountPath ?? '(unset)'}.`],
 			}));

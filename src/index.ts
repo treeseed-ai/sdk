@@ -369,11 +369,14 @@ export {
 	type TreeseedToolStatusResult,
 } from './managed-dependencies.ts';
 export * from './service-credentials.ts';
-export {
-	runTreeseedCopilotTask,
-	type TreeseedCopilotTaskInput,
-	type TreeseedCopilotTaskResult,
+export type {
+	TreeseedCopilotTaskInput,
+	TreeseedCopilotTaskResult,
 } from './copilot.ts';
+export async function runTreeseedCopilotTask(input: import('./copilot.ts').TreeseedCopilotTaskInput): Promise<import('./copilot.ts').TreeseedCopilotTaskResult> {
+	const { runTreeseedCopilotTask: run } = await import('./copilot.ts');
+	return run(input);
+}
 export {
 	findDispatchCapability,
 	listSdkDispatchCapabilities,

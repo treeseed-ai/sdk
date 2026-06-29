@@ -249,38 +249,66 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 				listRailwayVariables({ projectId: project.id, environmentId: environment.id, serviceId: railwayService.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => ({})),
 				listRailwayVolumes({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => []),
 			]);
-			const volume = Array.isArray(volumes)
-				? volumes.flatMap((entry: any) => Array.isArray(entry.instances)
-					? entry.instances
-					: Array.isArray(entry.volumeInstances) ? entry.volumeInstances : [])
-					.find((entry: any) => entry?.serviceId === railwayService.id && entry?.environmentId === environment.id)
+			const mountedVolume = Array.isArray(volumes)
+				? volumes.find((entry: any) => {
+					const instances = Array.isArray(entry.instances)
+						? entry.instances
+						: Array.isArray(entry.volumeInstances) ? entry.volumeInstances : [];
+					return instances.some((instance: any) =>
+						instance?.serviceId === railwayService.id
+						&& instance?.environmentId === environment.id
+						&& (!service.volumeMountPath || instance?.mountPath === service.volumeMountPath),
+					);
+				}) ?? null
+				: null;
+			const volumeInstance = mountedVolume
+				? ((Array.isArray((mountedVolume as any).instances)
+					? (mountedVolume as any).instances
+					: Array.isArray((mountedVolume as any).volumeInstances) ? (mountedVolume as any).volumeInstances : [])
+					.find((instance: any) =>
+						instance?.serviceId === railwayService.id
+						&& instance?.environmentId === environment.id
+						&& (!service.volumeMountPath || instance?.mountPath === service.volumeMountPath),
+					) ?? null)
 				: null;
 			const variableKeys = Object.keys(variables ?? {});
-			if (service.imageRef || service.publicBaseUrl) {
-				const deployment = await inspectRailwayServiceDeploymentHealthWithRetry({
-					serviceId: railwayService.id,
-					environmentId: environment.id,
-					options,
-				}).catch((error) => ({
-					ok: false,
-					status: null,
-					message: error instanceof Error ? error.message : String(error ?? 'Unable to inspect Railway deployment health.'),
-				}));
-				if (!deployment.ok) {
-					issues.push(`${service.serviceName}: latest Railway deployment is not healthy. ${deployment.message}`);
-				}
+			const deployment = await inspectRailwayServiceDeploymentHealthWithRetry({
+				serviceId: railwayService.id,
+				environmentId: environment.id,
+				options,
+			}).catch((error) => ({
+				ok: false,
+				status: null,
+				message: error instanceof Error ? error.message : String(error ?? 'Unable to inspect Railway deployment health.'),
+			}));
+			if (!deployment.ok) {
+				issues.push(`${service.serviceName}: latest Railway deployment is not healthy. ${deployment.message}`);
+			}
+			if (service.volumeMountPath && !volumeInstance) {
+				issues.push(`${service.serviceName}: Railway volume is not mounted at ${service.volumeMountPath}.`);
 			}
 			observed[service.serviceName] = {
 				projectName: project.name,
 				environmentName: environment.name,
 				serviceName: railwayService.name,
+				serviceId: railwayService.id,
 				rootDirectory: instance.rootDirectory,
 				buildCommand: instance.buildCommand,
 				startCommand: instance.startCommand,
 				healthcheckPath: instance.healthcheckPath,
 				healthcheckTimeoutSeconds: instance.healthcheckTimeoutSeconds,
 				runtimeMode: service.runtimeMode ?? instance.runtimeMode,
-				volumeMountPath: volume?.mountPath ?? null,
+				deploymentStatus: deployment.status,
+				deploymentHealthy: deployment.ok,
+				deploymentBranch: deployment.branch ?? null,
+				deploymentRepo: deployment.repo ?? null,
+				deploymentRootDirectory: deployment.rootDirectory ?? null,
+				deploymentCommitHash: deployment.commitHash ?? null,
+				volumeName: mountedVolume?.name ?? null,
+				volumeId: mountedVolume?.id ?? null,
+				volumeMountPath: volumeInstance?.mountPath ?? null,
+				volumeServiceId: volumeInstance?.serviceId ?? null,
+				volumeEnvironmentId: volumeInstance?.environmentId ?? null,
 				variables: variableKeys,
 				secrets: variableKeys,
 				health: 'unknown',
@@ -342,8 +370,8 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 						issues.push(`${serviceName}: public TreeDX latest deployment is not healthy. ${deployment.message}`);
 					}
 					const variables = await listRailwayVariables({ projectId: project.id, environmentId: environment.id, serviceId: service.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => ({}));
-					if (variables.TREEDX_FEDERATION_MODE !== 'connected_library') {
-						issues.push(`${serviceName}: TREEDX_FEDERATION_MODE is not connected_library.`);
+					if (variables.TREESEED_TREEDX_FEDERATION_MODE !== 'connected_library') {
+						issues.push(`${serviceName}: TREESEED_TREEDX_FEDERATION_MODE is not connected_library.`);
 					}
 					const mountedVolume = volumes.find((volume) => volume.name === volumeName && volume.instances.some((instance) =>
 						instance.serviceId === service.id
@@ -466,13 +494,36 @@ export async function collectTreeseedLiveHostedServiceChecks(options: TreeseedLi
 		observedRailwayServices: railway.observed,
 		httpChecks,
 	});
+	const providerIssueChecks = railway.issues.map((issue, index) => ({
+		id: `railway:live-issue:${index + 1}`,
+		provider: 'railway' as const,
+		serviceType: 'unknown' as const,
+		target: options.target,
+		description: 'Railway live provider verification issue.',
+		expected: { ok: true },
+		observed: { issue },
+		status: 'failed' as const,
+		issues: [issue],
+	}));
+	const reportWithLiveIssues = providerIssueChecks.length > 0
+		? {
+			...report,
+			checks: [...report.checks, ...providerIssueChecks],
+			summary: {
+				passed: report.checks.filter((entry) => entry.status === 'passed').length,
+				failed: report.checks.filter((entry) => entry.status === 'failed').length + providerIssueChecks.length,
+				skipped: report.checks.filter((entry) => entry.status === 'skipped').length,
+				warning: report.checks.filter((entry) => entry.status === 'warning').length,
+			},
+		}
+		: report;
 	const httpStatus = requireLiveHttp
 		? Object.values(httpChecks).some((entry) => entry.ok === true || entry.status)
 			? 'observed'
 			: 'failed'
 		: 'skipped';
 	return strictenReport({
-		...report,
+		...reportWithLiveIssues,
 		live: true,
 		liveObservation: {
 			railway: railway.status,

@@ -145,6 +145,58 @@ describe('GitHub workflow wait progress', () => {
 		})).rejects.toThrow(/Last known state: run 456 in_progress.*actions\/runs\/456/u);
 	});
 
+	it('retries transient monitor errors while the workflow is still running', async () => {
+		let getCalls = 0;
+		const client = {
+			rest: {
+				actions: {
+					listWorkflowRuns: async () => ({
+						data: {
+							workflow_runs: [{
+								id: 457,
+								status: 'queued',
+								conclusion: null,
+								html_url: 'https://github.com/acme/widget/actions/runs/457',
+								head_sha: 'def456',
+								head_branch: 'staging',
+							}],
+						},
+					}),
+					getWorkflowRun: async () => {
+						getCalls += 1;
+						if (getCalls === 1) {
+							const error = new Error('Bad credentials') as Error & { status?: number };
+							error.status = 401;
+							throw error;
+						}
+						return {
+							data: {
+								id: 457,
+								status: 'completed',
+								conclusion: 'success',
+								html_url: 'https://github.com/acme/widget/actions/runs/457',
+								head_sha: 'def456',
+								head_branch: 'staging',
+							},
+						};
+					},
+					listJobsForWorkflowRun: async () => ({ data: { jobs: [] } }),
+				},
+			},
+		};
+
+		const result = await waitForGitHubWorkflowRunCompletion('acme/widget', {
+			client: client as any,
+			workflow: 'release-gate.yml',
+			headSha: 'def456',
+			branch: 'staging',
+			pollSeconds: 0,
+		});
+
+		expect(getCalls).toBe(2);
+		expect(result).toMatchObject({ runId: 457, conclusion: 'success' });
+	});
+
 	it('dispatches a workflow once when no pushed run appears for the requested head', async () => {
 		const dispatches: Array<Record<string, unknown>> = [];
 		let listCalls = 0;

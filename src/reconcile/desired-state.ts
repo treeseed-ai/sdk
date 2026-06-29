@@ -24,6 +24,10 @@ function railwayConcreteUnitTypeForServiceKey(serviceKey: string) {
 	}
 }
 
+function isPublicTreeDxNodeServiceKey(serviceKey: string) {
+	return serviceKey.startsWith('public-treedx-node-');
+}
+
 export function deriveTreeseedDesiredUnits({
 	tenantRoot,
 	target,
@@ -208,11 +212,13 @@ export function deriveTreeseedDesiredUnits({
 		const serviceKey = configuredService.key;
 		const service = configuredService.serviceConfig ?? deployConfig.services?.[serviceKey];
 		const serviceState = legacyState.services?.[serviceKey];
-		if (!service || service.enabled === false || service.provider !== 'railway') {
+		if (isPublicTreeDxNodeServiceKey(serviceKey)) {
+			// Public TreeDX nodes are generated from the hosting profile rather than deployConfig.services.
+		} else if (!service || service.enabled === false || service.provider !== 'railway') {
 			continue;
 		}
 		const concreteType = railwayConcreteUnitTypeForServiceKey(serviceKey);
-		const serviceBootstrapSystem = serviceKey === 'api' ? 'api' : 'agents';
+		const serviceBootstrapSystem = serviceKey === 'api' || isPublicTreeDxNodeServiceKey(serviceKey) ? 'api' : 'agents';
 		const desiredServiceName = configuredService.serviceName ?? serviceState?.serviceName ?? serviceKey;
 		const desiredProjectName = configuredService.projectName ?? serviceState?.projectName;
 		const persistedServiceMatchesDesired = (!serviceState?.serviceName || serviceState.serviceName === desiredServiceName)
@@ -298,7 +304,7 @@ export function deriveTreeseedDesiredUnits({
 				case 'operationsRunner': return 'operations-runner-runtime';
 				case 'workdayManager': return 'workday-manager-runtime';
 				case 'workerRunner': return 'worker-runner-runtime';
-				default: return 'api-runtime';
+				default: return isPublicTreeDxNodeServiceKey(serviceKey) ? 'api-runtime' : 'api-runtime';
 			}
 		})();
 		add({

@@ -554,44 +554,44 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 					volumeMountPath: '/data',
 					runtimeMode: 'replicated',
 					environmentVariables: {
-						PHX_SERVER: 'true',
-						PORT: '4000',
-						TREEDX_DATA_DIR: '/data',
-						TREEDX_AUTH_MODE: 'connected',
-						TREEDX_AUTH_VERIFIER: 'hs256_dev',
-						TREEDX_ALLOW_DEV_VERIFIER_IN_PROD: 'true',
-						TREEDX_EXEC_BACKEND: 'container_sandbox',
-						TREESEED_TREEDX_FEDERATION_MODE: 'connected_library',
-						TREEDX_JWT_AUDIENCE: 'treedx-public-federation',
-						TREEDX_JWT_ISSUER: 'https://api.treeseed.local/treedx',
-						TREEDX_BOOTSTRAP_TRUST_ACTOR_ID: 'treeseed-api',
-						TREEDX_BOOTSTRAP_TRUST_TENANT_ID: 'treeseed-control-plane',
-						TREEDX_BOOTSTRAP_TRUST_REPO_IDS: '*',
-						TREEDX_BOOTSTRAP_TRUST_REFS: '*',
-						TREEDX_BOOTSTRAP_TRUST_PATHS: '**',
-						TREESEED_TREEDX_SCOPE: 'public_federation',
+							PHX_SERVER: 'true',
+							PORT: '4000',
+							TREESEED_TREEDX_DATA_DIR: '/data',
+							TREESEED_TREEDX_AUTH_MODE: 'connected',
+							TREESEED_TREEDX_AUTH_VERIFIER: 'hs256_dev',
+							TREESEED_TREEDX_ALLOW_DEV_VERIFIER_IN_PROD: 'true',
+							TREESEED_TREEDX_EXEC_BACKEND: 'container_sandbox',
+							TREESEED_TREEDX_FEDERATION_MODE: 'connected_library',
+							TREESEED_TREEDX_JWT_AUDIENCE: 'treedx-public-federation',
+							TREESEED_TREEDX_JWT_ISSUER: 'https://api.treeseed.local/treedx',
+							TREESEED_TREEDX_BOOTSTRAP_TRUST_ACTOR_ID: 'treeseed-api',
+							TREESEED_TREEDX_BOOTSTRAP_TRUST_TENANT_ID: 'treeseed-control-plane',
+							TREESEED_TREEDX_BOOTSTRAP_TRUST_REPO_IDS: '*',
+							TREESEED_TREEDX_BOOTSTRAP_TRUST_REFS: '*',
+							TREESEED_TREEDX_BOOTSTRAP_TRUST_PATHS: '**',
+							TREESEED_TREEDX_SCOPE: 'public_federation',
+						},
 					},
-				},
-				variableRefs: [
+					variableRefs: [
 					...(treeDxSourcePolicy.sourceMode === 'image' ? ['TREESEED_PUBLIC_TREEDX_IMAGE_REF'] : []),
-					'PHX_HOST',
-					'PHX_SERVER',
-					'PORT',
-					'TREEDX_DATA_DIR',
-					'TREEDX_AUTH_MODE',
-					'TREEDX_AUTH_VERIFIER',
-					'TREEDX_ALLOW_DEV_VERIFIER_IN_PROD',
-					'TREEDX_EXEC_BACKEND',
-					'TREESEED_TREEDX_FEDERATION_MODE',
-					'TREEDX_JWT_AUDIENCE',
-					'TREEDX_JWT_ISSUER',
-					'TREEDX_BOOTSTRAP_TRUST_ACTOR_ID',
-					'TREEDX_BOOTSTRAP_TRUST_TENANT_ID',
-					'TREEDX_BOOTSTRAP_TRUST_REPO_IDS',
-					'TREEDX_BOOTSTRAP_TRUST_REFS',
-					'TREEDX_BOOTSTRAP_TRUST_PATHS',
-					'TREESEED_TREEDX_SCOPE',
-				],
+						'PHX_HOST',
+						'PHX_SERVER',
+						'PORT',
+						'TREESEED_TREEDX_DATA_DIR',
+						'TREESEED_TREEDX_AUTH_MODE',
+						'TREESEED_TREEDX_AUTH_VERIFIER',
+						'TREESEED_TREEDX_ALLOW_DEV_VERIFIER_IN_PROD',
+						'TREESEED_TREEDX_EXEC_BACKEND',
+						'TREESEED_TREEDX_FEDERATION_MODE',
+						'TREESEED_TREEDX_JWT_AUDIENCE',
+						'TREESEED_TREEDX_JWT_ISSUER',
+						'TREESEED_TREEDX_BOOTSTRAP_TRUST_ACTOR_ID',
+						'TREESEED_TREEDX_BOOTSTRAP_TRUST_TENANT_ID',
+						'TREESEED_TREEDX_BOOTSTRAP_TRUST_REPO_IDS',
+						'TREESEED_TREEDX_BOOTSTRAP_TRUST_REFS',
+						'TREESEED_TREEDX_BOOTSTRAP_TRUST_PATHS',
+						'TREESEED_TREEDX_SCOPE',
+					],
 				secretRefs: ['TREESEED_TREEDX_SECRET_KEY_BASE', 'TREESEED_TREEDX_ADMIN_TOKEN', 'TREESEED_TREEDX_JWT_HS256_SECRET'],
 				environments: {
 					local: { hostId: 'local-docker', projectGroupId: 'public-treedx-federation' },
@@ -880,7 +880,7 @@ function railwayReconcileSystemsForUnits(units: TreeseedHostingUnit[]): Treeseed
 	const systems = new Set<TreeseedRunnableBootstrapSystem>();
 	for (const unit of units) {
 		if (unit.host.id !== 'railway') continue;
-		if (unit.placement === 'api' || unit.id === 'api' || unit.serviceType.id === 'container-api') {
+		if (unit.placement === 'api' || unit.placement === 'knowledge-library' || unit.id === 'api' || unit.serviceType.id === 'container-api' || unit.serviceType.id === 'treedx-node') {
 			systems.add('api');
 		}
 		if (unit.placement === 'runner-capacity' || unit.id === 'operationsRunner' || unit.serviceType.id === 'runner-pool') {
@@ -891,6 +891,10 @@ function railwayReconcileSystemsForUnits(units: TreeseedHostingUnit[]): Treeseed
 		}
 	}
 	return [...systems];
+}
+
+function isInfrastructureHostedUnit(unit: TreeseedHostingUnit) {
+	return ['railway', 'cloudflare', 'cloudflare-dns', 'local-docker'].includes(unit.host.id);
 }
 
 function railwayEnvForHostingApply(input: TreeseedHostingGraphInput, graph: TreeseedHostingGraph) {
@@ -908,6 +912,7 @@ export async function applyTreeseedHostingGraph(input: TreeseedHostingGraphInput
 	const plan = await planTreeseedHostingGraph(input);
 	const graph = compileTreeseedHostingGraph(input);
 	const selectedSystems = railwayReconcileSystemsForUnits(graph.units);
+	const infrastructureUnits = graph.units.filter(isInfrastructureHostedUnit);
 	if (plan.dryRun) {
 		return {
 			environment: plan.environment,
@@ -927,6 +932,9 @@ export async function applyTreeseedHostingGraph(input: TreeseedHostingGraphInput
 			warnings: plan.warnings,
 		};
 	}
+	if (infrastructureUnits.length > 0 && selectedSystems.length === 0) {
+		throw new Error(`Hosting apply selected infrastructure resources but no provider reconciliation system was selected: ${infrastructureUnits.map((unit) => `${unit.id} (${unit.host.id})`).join(', ')}.`);
+	}
 	const reconcile = await reconcileTreeseedTarget({
 		tenantRoot: graph.tenantRoot,
 		target: createPersistentDeployTarget(graph.environment),
@@ -934,10 +942,14 @@ export async function applyTreeseedHostingGraph(input: TreeseedHostingGraphInput
 		env: railwayEnvForHostingApply(input, graph),
 		dryRun: plan.dryRun,
 	});
-	const resultByUnit = new Map(reconcile.results.map((entry) => [entry.unit.unitId, entry]));
+	const resultByUnit = new Map<string, (typeof reconcile.results)[number]>();
+	for (const entry of reconcile.results) {
+		resultByUnit.set(entry.unit.unitId, entry);
+		resultByUnit.set(entry.unit.logicalName, entry);
+	}
 	const results = plan.units.map((entry) => {
 		const unit = graph.units.find((candidate) => candidate.id === entry.unit.id) ?? entry.unit;
-		const reconcileResult = resultByUnit.get(entry.unit.id) ?? resultByUnit.get(unit.id) ?? null;
+		const reconcileResult = resultByUnit.get(entry.unit.id) ?? resultByUnit.get(unit.id) ?? resultByUnit.get(unit.logicalName) ?? null;
 		return {
 			unit,
 			plan: entry.plan,

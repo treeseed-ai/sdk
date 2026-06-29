@@ -1160,11 +1160,11 @@ export async function updateRailwayServiceImageSource({
 		throw new Error('Railway service image source update requires a service id and image reference.');
 	}
 	const payload = await railwayGraphqlRequest<{
-		serviceUpdate?: Record<string, unknown> | null;
+		serviceConnect?: Record<string, unknown> | null;
 	}>({
 		query: `
-mutation TreeseedRailwayServiceImageSourceUpdate($id: String!, $input: ServiceUpdateInput!) {
-	serviceUpdate(id: $id, input: $input) {
+mutation TreeseedRailwayServiceImageSourceUpdate($id: String!, $input: ServiceConnectInput!) {
+	serviceConnect(id: $id, input: $input) {
 		id
 		name
 	}
@@ -1173,15 +1173,13 @@ mutation TreeseedRailwayServiceImageSourceUpdate($id: String!, $input: ServiceUp
 		variables: {
 			id: serviceId,
 			input: {
-				source: {
-					image: desiredImage,
-				},
+				image: desiredImage,
 			},
 		},
 		env,
 		fetchImpl,
 	});
-	const service = payload.data?.serviceUpdate ? normalizeService(payload.data.serviceUpdate) : null;
+	const service = payload.data?.serviceConnect ? normalizeService(payload.data.serviceConnect) : null;
 	if (!service) {
 		throw new Error(`Railway service image source update did not return a usable service for ${serviceId}.`);
 	}
@@ -1206,11 +1204,11 @@ export async function updateRailwayServiceGitSource({
 		throw new Error('Railway service Git source update requires a service id and repository slug.');
 	}
 	const payload = await railwayGraphqlRequest<{
-		serviceUpdate?: Record<string, unknown> | null;
+		serviceConnect?: Record<string, unknown> | null;
 	}>({
 		query: `
-mutation TreeseedRailwayServiceGitSourceUpdate($id: String!, $input: ServiceUpdateInput!) {
-	serviceUpdate(id: $id, input: $input) {
+mutation TreeseedRailwayServiceGitSourceUpdate($id: String!, $input: ServiceConnectInput!) {
+	serviceConnect(id: $id, input: $input) {
 		id
 		name
 	}
@@ -1219,16 +1217,14 @@ mutation TreeseedRailwayServiceGitSourceUpdate($id: String!, $input: ServiceUpda
 		variables: {
 			id: serviceId,
 			input: {
-				source: {
-					repo: desiredRepo,
-				},
+				repo: desiredRepo,
 				...(railwayConnectionLabel(sourceBranch) ? { branch: railwayConnectionLabel(sourceBranch) } : {}),
 			},
 		},
 		env,
 		fetchImpl,
 	});
-	const service = payload.data?.serviceUpdate ? normalizeService(payload.data.serviceUpdate) : null;
+	const service = payload.data?.serviceConnect ? normalizeService(payload.data.serviceConnect) : null;
 	if (!service) {
 		throw new Error(`Railway service Git source update did not return a usable service for ${serviceId}.`);
 	}
@@ -1678,6 +1674,12 @@ export async function inspectRailwayServiceDeploymentHealth({
 			latestDeployment?: {
 				status?: string | null;
 				deploymentStopped?: boolean | null;
+				meta?: {
+					branch?: string | null;
+					repo?: string | null;
+					rootDirectory?: string | null;
+					commitHash?: string | null;
+				} | null;
 				instances?: Array<{ status?: string | null }> | null;
 			} | null;
 		} | null;
@@ -1688,6 +1690,7 @@ query TreeseedRailwayServiceDeploymentHealth($serviceId: String!, $environmentId
 		latestDeployment {
 			status
 			deploymentStopped
+			meta
 			instances {
 				status
 			}
@@ -1709,6 +1712,10 @@ query TreeseedRailwayServiceDeploymentHealth($serviceId: String!, $environmentId
 	return {
 		ok,
 		status,
+		branch: railwayConnectionLabel(deployment?.meta?.branch) || null,
+		repo: railwayConnectionLabel(deployment?.meta?.repo) || null,
+		rootDirectory: railwayConnectionLabel(deployment?.meta?.rootDirectory) || null,
+		commitHash: railwayConnectionLabel(deployment?.meta?.commitHash) || null,
 		message: ok
 			? 'Deployment is healthy.'
 			: `Latest deployment status is ${status ?? 'unknown'}${stopped ? ' and stopped' : ''}${instanceStatuses.length ? `; instances=${instanceStatuses.join(',')}` : ''}.`,

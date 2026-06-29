@@ -558,39 +558,43 @@ async function waitForWorkflowGates(
 	assertHostedGitHubWorkflowCredentialsReady(operation, options.root ?? gates[0]!.repoPath, gates);
 	const results: Array<Record<string, unknown>> = [];
 	for (const gate of gates) {
+		const gateWithTimeout = {
+			...gate,
+			timeoutSeconds: gate.timeoutSeconds ?? HOSTED_WORKFLOW_GATE_TIMEOUT_SECONDS,
+		};
 		if (options.root && options.runId) {
 			const cached = getCachedSuccessfulWorkflowGate(options.root, options.runId, {
-				repository: gate.repository ?? null,
-				workflow: gate.workflow,
-				headSha: gate.headSha,
-				branch: gate.branch,
+				repository: gateWithTimeout.repository ?? null,
+				workflow: gateWithTimeout.workflow,
+				headSha: gateWithTimeout.headSha,
+				branch: gateWithTimeout.branch,
 			});
 			if (cached) {
 				results.push({
 					...cached.result,
-					name: gate.name,
+					name: gateWithTimeout.name,
 					cached: true,
 				});
 				continue;
 			}
 		}
-		const result = await waitForGitHubActionsGate(gate, {
+		const result = await waitForGitHubActionsGate(gateWithTimeout, {
 			operation,
-			env: githubWorkflowGateEnv(options.root, gate),
+			env: githubWorkflowGateEnv(options.root, gateWithTimeout),
 			onProgress: options.onProgress,
 		});
 		const normalized = {
-			name: gate.name,
+			name: gateWithTimeout.name,
 			...result,
-			workflow: String(result.workflow ?? gate.workflow),
-			branch: String(result.branch ?? gate.branch),
-			headSha: String(result.headSha ?? gate.headSha),
-			timeoutSeconds: gate.timeoutSeconds ?? null,
+			workflow: String(result.workflow ?? gateWithTimeout.workflow),
+			branch: String(result.branch ?? gateWithTimeout.branch),
+			headSha: String(result.headSha ?? gateWithTimeout.headSha),
+			timeoutSeconds: gateWithTimeout.timeoutSeconds,
 			cached: false,
 		};
 		if (normalized.status === 'completed' && normalized.conclusion !== 'success') {
-			workflowError(operation, 'github_workflow_failed', formatGitHubActionsGateFailure(gate, normalized), {
-				details: { gate, workflow: normalized },
+			workflowError(operation, 'github_workflow_failed', formatGitHubActionsGateFailure(gateWithTimeout, normalized), {
+				details: { gate: gateWithTimeout, workflow: normalized },
 			});
 		}
 		if (options.root && options.runId && normalized.status === 'completed' && normalized.conclusion === 'success') {
@@ -621,6 +625,7 @@ function githubWorkflowGateEnv(root: string | undefined, gate: GitHubActionsWork
 }
 
 const HOSTED_DEPLOY_GATE_TIMEOUT_SECONDS = 45 * 60;
+const HOSTED_WORKFLOW_GATE_TIMEOUT_SECONDS = 45 * 60;
 
 function hostedDeployGate(gate: GitHubActionsWorkflowGate): GitHubActionsWorkflowGate {
 	return {

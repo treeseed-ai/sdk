@@ -1060,6 +1060,8 @@ export async function waitForGitHubWorkflowRunCompletion(
 	const startedAt = Date.now();
 	let dispatchedMissingRun = false;
 	let lastProgress: GitHubWorkflowProgressEvent | null = null;
+	let monitorErrorStartedAt: number | null = null;
+	let lastMonitorError: Error | null = null;
 	const emitProgress = (type: GitHubWorkflowProgressEvent['type'], run: GitHubWorkflowRunSummary | null = null, jobs: GitHubWorkflowJobSummary[] = []) => {
 		const completedJobs = jobs.filter((job) => job.status === 'completed');
 		const failedJobs = jobs.filter((job) => job.conclusion && job.conclusion !== 'success' && job.conclusion !== 'skipped');
@@ -1091,6 +1093,8 @@ export async function waitForGitHubWorkflowRunCompletion(
 				workflow_id: workflow,
 				per_page: 20,
 			});
+			monitorErrorStartedAt = null;
+			lastMonitorError = null;
 			const match = listed.data.workflow_runs
 				.map((run) => normalizeWorkflowRun(run as Record<string, any>))
 				.find((run) => (!headSha || run.headSha === headSha) && (!branch || run.headBranch === branch));
@@ -1122,6 +1126,8 @@ export async function waitForGitHubWorkflowRunCompletion(
 					repo: name,
 					run_id: match.id,
 				});
+				monitorErrorStartedAt = null;
+				lastMonitorError = null;
 				const normalized = normalizeWorkflowRun(current.data as Record<string, any>);
 				const progressJobs = await listWorkflowJobsForProgress(client, owner, name, match.id);
 				if (normalized.status === 'completed') {
@@ -1146,13 +1152,22 @@ export async function waitForGitHubWorkflowRunCompletion(
 				await sleep(pollSeconds * 1000);
 			}
 		} catch (error) {
-			throw normalizeGitHubApiError(error, `Unable to monitor GitHub workflow ${workflow} in ${owner}/${name}`);
+			const normalizedError = normalizeGitHubApiError(error, `Unable to monitor GitHub workflow ${workflow} in ${owner}/${name}`);
+			lastMonitorError = normalizedError;
+			monitorErrorStartedAt ??= Date.now();
+			const toleratedMonitorErrorSeconds = Math.max(pollSeconds * 2, 120);
+			if ((Date.now() - monitorErrorStartedAt) < toleratedMonitorErrorSeconds * 1000) {
+				await sleep(pollSeconds * 1000);
+				continue;
+			}
+			throw normalizedError;
 		}
 	}
 	const lastState = lastProgress
 		? ` Last known state: run ${lastProgress.runId ?? '(not created)'} ${lastProgress.status ?? 'waiting'}${lastProgress.conclusion ? `/${lastProgress.conclusion}` : ''}${lastProgress.url ? ` ${lastProgress.url}` : ''}.`
 		: '';
-	throw new Error(`Timed out waiting for GitHub workflow ${workflow} in ${owner}/${name}.${lastState}`);
+	const monitorErrorState = lastMonitorError ? ` Last monitor error: ${lastMonitorError.message}` : '';
+	throw new Error(`Timed out waiting for GitHub workflow ${workflow} in ${owner}/${name}.${lastState}${monitorErrorState}`);
 }
 
 export async function ensureGitHubBranchFromBase(

@@ -1,7 +1,8 @@
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { resolveCapacityProviderLaunchPlan } from '../capacity-provider.ts';
 import { TreeDxClient } from '../treedx-client.ts';
@@ -52,6 +53,8 @@ import {
 	ensureRailwayServiceInstanceConfiguration,
 	ensureRailwayServiceVolume,
 	ensureRailwayPostgresService,
+	deleteRailwayService,
+	deleteRailwayVolume,
 	deployRailwayServiceInstance,
 	listRailwayEnvironmentServices,
 	getRailwayServiceInstance,
@@ -3640,6 +3643,10 @@ function railwayServiceRootDirectory(
 	tenantRoot: string,
 	service: ReturnType<typeof configuredRailwayServices>[number],
 ) {
+	const sourceRootDirectory = String(service.sourceRootDirectory ?? '').trim();
+	if (sourceRootDirectory) {
+		return sourceRootDirectory;
+	}
 	return relativeRailwayRootDir(service.application?.root ?? tenantRoot, service.rootDir);
 }
 
@@ -4168,7 +4175,10 @@ async function syncRailwayEnvironmentForScope(
 					throw new Error(`Railway API volume reconciliation did not mount ${volumeName} on ${entry.service.name} at ${entry.configuredService.volumeMountPath}.`);
 				}
 				}
-				if (entry.configuredService.imageRef) {
+				if (shouldDeployRailwayServiceBySourceUpload(scope, entry.configuredService)) {
+					traceRailwayReconcile(topology.env, 'sync:deploy-upload', `${entry.configuredService.key}:${entry.service.name}:${entry.configuredService.rootDir}`);
+					deployRailwayServiceBySourceUpload(input, entry, topology.env, scope);
+				} else if (entry.configuredService.imageRef) {
 					traceRailwayReconcile(topology.env, 'sync:deploy', `${entry.configuredService.key}:${entry.service.name}:${entry.configuredService.imageRef}`);
 					await deployRailwayServiceInstanceWithSourceRepair(entry, topology.env);
 				} else {
@@ -4208,7 +4218,180 @@ async function syncRailwayEnvironmentForScope(
 		variables: Object.keys(sync.variables),
 		dryRun,
 		workspace: topology.workspace.name,
-		};
+	};
+	}
+
+function shouldDeployRailwayServiceBySourceUpload(
+	scope: string,
+	service: ReturnType<typeof configuredRailwayServices>[number],
+) {
+	return scope === 'staging'
+		&& service.sourceMode === 'git'
+		&& Boolean(service.sourceRepo)
+		&& service.key !== 'capacityProviderManager'
+		&& service.key !== 'capacityProviderRunner'
+		&& !service.imageRef;
+}
+
+function deployRailwayServiceBySourceUpload(
+	input: TreeseedReconcileAdapterInput,
+	entry: Awaited<ReturnType<typeof resolveRailwayTopologyForScope>>['services'] extends Map<string, infer T> ? T : never,
+	env: NodeJS.ProcessEnv | Record<string, string | undefined>,
+	scope: string,
+) {
+	if (!entry.project?.id || !entry.environment?.name || !entry.service?.name) {
+		throw new Error(`Railway source upload deploy requires resolved project, environment, and service for ${entry.configuredService.key}.`);
+	}
+		const rootDir = String(entry.configuredService.rootDir ?? '').trim();
+		if (!rootDir || !existsSync(rootDir)) {
+			throw new Error(`Railway source upload deploy root does not exist for ${entry.configuredService.key}: ${rootDir || '(unset)'}.`);
+		}
+		const uploadContext = prepareRailwaySourceUploadContext(input, entry.configuredService, rootDir);
+		const uploadRoot = uploadContext.rootDir;
+		const args = [
+		'trsd',
+		'railway',
+		'--environment',
+		scope,
+		'--',
+		'up',
+		'--service',
+		entry.service.name,
+		'--project',
+		entry.project.id,
+		'--environment',
+		entry.environment.name,
+			'--ci',
+			'--path-as-root',
+			...(uploadContext.noGitignore ? ['--no-gitignore'] : []),
+			'--verbose',
+			'--message',
+			`trsd staging source upload ${entry.configuredService.key}`,
+			uploadRoot,
+		];
+	const commandEnv = {
+		...process.env,
+		...env,
+		TREESEED_RECONCILE_TRACE: env.TREESEED_RECONCILE_TRACE ?? process.env.TREESEED_RECONCILE_TRACE,
+	};
+		try {
+			const result = spawnSync('npx', args, {
+				cwd: input.context.tenantRoot,
+				env: commandEnv,
+				encoding: 'utf8',
+				stdio: ['ignore', 'pipe', 'pipe'],
+				maxBuffer: 1024 * 1024 * 20,
+			});
+			if ((result.status ?? 1) !== 0) {
+				const stderr = String(result.stderr ?? '').split('\n').slice(-120).join('\n');
+				const stdout = String(result.stdout ?? '').split('\n').slice(-120).join('\n');
+				throw new Error(`Railway source upload deploy failed for ${entry.configuredService.key} with status ${result.status ?? 1}.\n${stderr || stdout}`);
+			}
+		} finally {
+			if (uploadContext.cleanupDir) {
+				rmSync(uploadContext.cleanupDir, { recursive: true, force: true });
+			}
+		}
+	}
+
+function prepareRailwaySourceUploadContext(
+	input: TreeseedReconcileAdapterInput,
+	service: ReturnType<typeof configuredRailwayServices>[number],
+	rootDir: string,
+) {
+	const role = service.key === 'capacityProviderManager'
+		? 'manager'
+		: service.key === 'capacityProviderRunner'
+			? 'runner'
+			: null;
+	if (!role) {
+		return { rootDir, cleanupDir: null, noGitignore: false };
+	}
+		const cleanupDir = mkdtempSync(resolve(tmpdir(), `trsd-railway-agent-${role}-`));
+		const contextRoot = resolve(cleanupDir, 'context');
+		mkdirSync(contextRoot, { recursive: true });
+		for (const entry of ['src', 'scripts', 'templates', 'docs']) {
+			const source = resolve(rootDir, entry);
+			if (existsSync(source)) {
+				cpSync(source, resolve(contextRoot, entry), { recursive: true });
+			}
+		}
+		for (const entry of ['docker-entrypoint.sh', 'package.json', 'package-lock.json', 'tsconfig.json', 'tsconfig.dist.json']) {
+			const source = resolve(rootDir, entry);
+			if (existsSync(source)) {
+				cpSync(source, resolve(contextRoot, entry));
+			}
+		}
+		const sdkRoot = resolve(rootDir, '..', 'sdk');
+		if (existsSync(resolve(sdkRoot, 'package.json'))) {
+			const pack = spawnSync('npm', ['pack', '--ignore-scripts', '--pack-destination', contextRoot], {
+				cwd: sdkRoot,
+				env: process.env,
+				encoding: 'utf8',
+				stdio: ['ignore', 'pipe', 'pipe'],
+				maxBuffer: 1024 * 1024 * 20,
+			});
+			if ((pack.status ?? 1) !== 0) {
+				const stderr = String(pack.stderr ?? '').split('\n').slice(-80).join('\n');
+				const stdout = String(pack.stdout ?? '').split('\n').slice(-80).join('\n');
+				throw new Error(`Failed to pack local SDK for Agent ${role} Railway source upload context.\n${stderr || stdout}`);
+			}
+			const filename = String(pack.stdout ?? '').split(/\r?\n/u).map((line) => line.trim()).filter(Boolean).at(-1);
+			if (!filename || !existsSync(resolve(contextRoot, filename))) {
+				throw new Error(`Local SDK pack did not produce a tarball for Agent ${role} Railway source upload context.`);
+			}
+			cpSync(resolve(contextRoot, filename), resolve(contextRoot, 'treeseed-sdk.tgz'));
+			if (filename !== 'treeseed-sdk.tgz') {
+				rmSync(resolve(contextRoot, filename), { force: true });
+			}
+		}
+		const dockerfile = [
+			'FROM node:22-bookworm-slim AS builder',
+			'WORKDIR /app',
+			'RUN apt-get update \\',
+			'	&& apt-get upgrade -y \\',
+			'	&& apt-get install -y --no-install-recommends ca-certificates git openssh-client \\',
+			'	&& apt-get clean \\',
+			'	&& rm -rf /var/lib/apt/lists/*',
+			'COPY package.json package-lock.json treeseed-sdk.tgz ./',
+			'RUN npm ci --include=dev --ignore-scripts \\',
+			'	&& npm install --include=dev --ignore-scripts ./treeseed-sdk.tgz',
+			'COPY . .',
+			'RUN npm run build:dist \\',
+			'	&& npm prune --omit=dev --ignore-scripts \\',
+			'	&& rm -rf node_modules/@github node_modules/@openai node_modules/@cloudflare node_modules/@railway \\',
+			'		node_modules/wrangler node_modules/miniflare node_modules/workerd \\',
+			'		node_modules/playwright node_modules/playwright-core node_modules/gpt-tokenizer \\',
+			'	&& npm cache clean --force \\',
+			'	&& rm -rf src scripts test .git .github',
+			'FROM node:22-bookworm-slim AS runtime',
+			'WORKDIR /app',
+			'ENV NODE_ENV=production TREESEED_PROVIDER_DATA_DIR=/data',
+			'RUN apt-get update \\',
+			'	&& apt-get upgrade -y \\',
+			'	&& apt-get install -y --no-install-recommends ca-certificates tini util-linux git openssh-client \\',
+			'	&& mkdir -p /data \\',
+			'	&& apt-get clean \\',
+			'	&& rm -rf /var/lib/apt/lists/*',
+			'COPY --from=builder /app/package.json /app/package-lock.json ./',
+			'COPY --from=builder /app/node_modules ./node_modules',
+			'COPY --from=builder /app/dist ./dist',
+			'COPY --from=builder /app/templates ./templates',
+			'COPY --from=builder /app/docs ./docs',
+			'COPY --from=builder /app/docker-entrypoint.sh ./docker-entrypoint.sh',
+			'RUN chmod 0755 /app/docker-entrypoint.sh \\',
+			'	&& chown -R 65532:65532 /data /app',
+			'EXPOSE 3100',
+			'ENTRYPOINT ["tini", "--", "/app/docker-entrypoint.sh"]',
+			`ENV TREESEED_PROVIDER_ROLE=${role}`,
+			`CMD ["${role}"]`,
+			'',
+		].join('\n');
+		writeFileSync(
+			resolve(contextRoot, 'Dockerfile'),
+			dockerfile,
+		);
+		return { rootDir: contextRoot, cleanupDir, noGitignore: true };
 	}
 
 async function deployRailwayServiceInstanceWithSourceRepair(
@@ -4223,6 +4406,9 @@ async function deployRailwayServiceInstanceWithSourceRepair(
 		environmentId: entry.environment!.id,
 		env,
 	});
+	if (entry.configuredService.sourceMode === 'git' && entry.configuredService.sourceRepo && !entry.configuredService.imageRef) {
+		await repairRailwayServiceSource(entry, env);
+	}
 	try {
 		await deploy();
 		return;
@@ -4289,7 +4475,7 @@ async function repairRailwayServiceSource(
 
 function looksLikeRailwayExistingSourceRepairUnsupported(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error ?? '');
-	return /source update .*existing service|existing service .*source update|provider-supported .*source update|ServiceUpdateInput|Problem processing request/iu.test(message);
+	return /source update .*existing service|existing service .*source update|provider-supported .*source update|ServiceUpdateInput|Problem processing request|User does not have access to the repo/iu.test(message);
 }
 
 async function ensureRailwayMarketDatabaseForScope(
@@ -4629,17 +4815,36 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput, val
 		forService(serviceKey: string, configuredService?: ReturnType<typeof configuredRailwayServices>[number]) {
 			const capacityVariables = capacityProviderVariablesForService(input, scope, values, serviceKey, configuredService);
 			const capacitySecrets = capacityProviderSecretsForService(values, serviceKey);
-			return {
-				secrets: {
-					...Object.fromEntries(entriesForService('railway-secret', serviceKey)),
-					...(treeseedDatabaseUrl && ['api', 'operationsRunner'].includes(serviceKey)
-						? { TREESEED_DATABASE_URL: treeseedDatabaseUrl }
-						: {}),
+				const serviceVariables = configuredService?.environmentVariables && typeof configuredService.environmentVariables === 'object'
+					? Object.fromEntries(Object.entries(configuredService.environmentVariables)
+						.filter(([, value]) => typeof value === 'string' && value.length > 0))
+					: {};
+				const serviceSecretRefs = Array.isArray(configuredService?.secretRefs)
+					? configuredService.secretRefs.map((value) => String(value).trim()).filter(Boolean)
+					: [];
+				const serviceVariableRefs = Array.isArray(configuredService?.variableRefs)
+					? configuredService.variableRefs.map((value) => String(value).trim()).filter(Boolean)
+					: [];
+				const serviceRefSecrets = Object.fromEntries(serviceSecretRefs
+					.map((key) => [key, values[key]] as const)
+					.filter(([, value]) => typeof value === 'string' && value.length > 0));
+				const serviceRefVariables = Object.fromEntries(serviceVariableRefs
+					.map((key) => [key, values[key]] as const)
+					.filter(([, value]) => typeof value === 'string' && value.length > 0));
+				return {
+					secrets: {
+						...Object.fromEntries(entriesForService('railway-secret', serviceKey)),
+						...serviceRefSecrets,
+						...(treeseedDatabaseUrl && ['api', 'operationsRunner'].includes(serviceKey)
+							? { TREESEED_DATABASE_URL: treeseedDatabaseUrl }
+							: {}),
 					...(serviceKey === 'api' ? apiOnlySecrets : {}),
 					...capacitySecrets,
 				},
-				variables: {
-					...Object.fromEntries(entriesForService('railway-var', serviceKey)),
+					variables: {
+						...serviceVariables,
+						...serviceRefVariables,
+						...Object.fromEntries(entriesForService('railway-var', serviceKey)),
 					...(serviceKey === 'operationsRunner'
 						? { TREESEED_MANAGER_ID: scope }
 						: {}),
@@ -5361,6 +5566,72 @@ async function reconcileRailwayUnit(input: TreeseedReconcileAdapterInput, diff: 
 	};
 }
 
+async function destroyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<TreeseedReconcileResult> {
+	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
+	const serviceKey = String(input.unit.metadata.serviceKey ?? '').trim();
+	const env = buildRailwayEnv(input, scope);
+	const live = input.observed.live as Record<string, unknown>;
+	const project = live.project && typeof live.project === 'object' ? live.project as Record<string, unknown> : null;
+	const environment = live.environment && typeof live.environment === 'object' ? live.environment as Record<string, unknown> : null;
+	const service = live.service && typeof live.service === 'object' ? live.service as Record<string, unknown> : null;
+	const projectId = String(project?.id ?? input.observed.locators.projectId ?? '').trim();
+	const environmentId = String(environment?.id ?? '').trim();
+	const serviceId = String(service?.id ?? input.observed.locators.serviceId ?? '').trim();
+	const serviceName = String(service?.name ?? input.observed.locators.serviceName ?? serviceKey).trim();
+	const deletedVolumes: Array<Record<string, unknown>> = [];
+
+	if (projectId && serviceId) {
+		const volumes = await listRailwayVolumes({ projectId, env }).catch(() => []);
+		for (const volume of volumes) {
+			const attached = volume.instances.some((instance) =>
+				instance.serviceId === serviceId
+				&& (!environmentId || instance.environmentId === environmentId)
+			);
+			if (!attached) continue;
+			traceRailwayReconcile(env, 'destroy:volume', `${serviceName}:${volume.name ?? volume.id}:${volume.id}`);
+			const result = await deleteRailwayVolume({ volumeId: volume.id, env });
+			deletedVolumes.push({
+				id: volume.id,
+				name: volume.name ?? null,
+				status: result.status,
+			});
+		}
+	}
+
+	let deletedService: Record<string, unknown> | null = null;
+	if (serviceId) {
+		traceRailwayReconcile(env, 'destroy:service', `${serviceName}:${serviceId}`);
+		deletedService = await deleteRailwayService({ serviceId, env });
+	}
+
+	for (const key of input.context.session.keys()) {
+		if (key.startsWith(`railway:topology:${scope}:`)) {
+			input.context.session.delete(key);
+		}
+	}
+	const state = {
+		...live,
+		destroyedAt: nowIso(),
+		deletedService,
+		deletedVolumes,
+	};
+	return {
+		unit: input.unit,
+		observed: input.observed,
+		diff: {
+			action: 'delete',
+			reasons: ['selected Railway service for destroy'],
+			before: input.observed.live,
+			after: {},
+		},
+		action: 'delete',
+		warnings: input.observed.warnings,
+		resourceLocators: input.observed.locators,
+		state,
+		verification: null,
+	};
+}
+
 function buildRailwayAdapter(unitType: TreeseedReconcileUnitType): TreeseedReconcileAdapter {
 	return {
 		providerId: 'railway',
@@ -5382,6 +5653,9 @@ function buildRailwayAdapter(unitType: TreeseedReconcileUnitType): TreeseedRecon
 		},
 		apply(input) {
 			return reconcileRailwayUnit(input, input.diff);
+		},
+		destroy(input) {
+			return destroyRailwayUnit(input);
 		},
 		requiredPostconditions() {
 			return [
