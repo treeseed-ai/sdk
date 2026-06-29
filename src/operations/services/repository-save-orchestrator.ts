@@ -1082,6 +1082,11 @@ function updateDependencyReferences(node: RepositorySaveNode, finalizedReference
 	return changed;
 }
 
+function isRootWorkspaceRepository(node: RepositorySaveNode, options: Pick<RepositorySaveOptions, 'root'>) {
+	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
+	return node.path === options.root && Array.isArray(packageJson?.workspaces);
+}
+
 function syncDirectGitDependencyLockfileEntries(
 	node: RepositorySaveNode,
 	options: Pick<RepositorySaveOptions, 'onProgress'>,
@@ -2235,7 +2240,9 @@ async function saveOneRepository(
 	refreshRepositoryNodePackageMetadata(node);
 	ensureWritableRemote(node, options);
 
-	const dependencyUpdates = updateDependencyReferences(node, state.finalizedReferences);
+	const dependencyUpdates = isRootWorkspaceRepository(node, options)
+		? []
+		: updateDependencyReferences(node, state.finalizedReferences);
 	const dependencyChanged = dependencyUpdates.length > 0;
 	const gitDependencyRefreshReferences = dependencyUpdates
 		.map((update) => state.finalizedReferences.get(update.packageName))
