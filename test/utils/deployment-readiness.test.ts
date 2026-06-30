@@ -37,6 +37,7 @@ services:
       imageRefEnv: TREESEED_API_IMAGE_REF
       sourceMode: git
       sourceRepo: treeseed-ai/api
+      dockerfilePath: /Dockerfile.api
       healthcheckPath: /healthz
   operationsRunner:
     enabled: true
@@ -49,6 +50,7 @@ services:
       imageRefEnv: TREESEED_OPERATIONS_RUNNER_IMAGE_REF
       sourceMode: git
       sourceRepo: treeseed-ai/api
+      dockerfilePath: /Dockerfile.operations-runner
       healthcheckPath: /healthz
       runtimeMode: service
       volumeMountPath: /data

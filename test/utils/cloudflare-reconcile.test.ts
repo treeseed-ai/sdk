@@ -8,6 +8,10 @@ const deployRailwayServiceInstanceMock = vi.fn();
 const ensureRailwayServiceMock = vi.fn();
 const updateRailwayServiceImageSourceMock = vi.fn();
 const updateRailwayServiceGitSourceMock = vi.fn();
+const renderRailwayIacProjectMock = vi.fn();
+const planRailwayIacProjectMock = vi.fn();
+const applyRailwayIacProjectMock = vi.fn();
+const cleanupRailwayIacRenderMock = vi.fn();
 const railwayEnvMock = vi.fn();
 
 let kvCreated = false;
@@ -175,9 +179,13 @@ vi.mock('../../src/operations/services/railway-deploy.ts', () => ({
 			railwayEnvironment: 'staging',
 			buildCommand: null,
 			startCommand: 'npm start',
-			imageRef: 'treeseed/api:test',
-			sourceRepo: null,
-			sourceBranch: null,
+			imageRef: null,
+			sourceMode: 'git',
+			sourceRepo: 'treeseed-ai/api',
+			sourceBranch: 'staging',
+			sourceCommit: 'abc123',
+			sourceRootDirectory: '.',
+			dockerfilePath: '/Dockerfile.api',
 			healthcheckPath: null,
 			healthcheckTimeoutSeconds: null,
 			healthcheckIntervalSeconds: null,
@@ -222,6 +230,7 @@ vi.mock('../../src/operations/services/railway-api.ts', () => ({
 	}),
 	getRailwayProject: vi.fn(async () => null),
 	getRailwayServiceInstance: vi.fn(async () => null),
+	listRailwayEnvironmentServices: vi.fn(async () => [{ id: 'service-1', name: 'api' }]),
 	listRailwayCustomDomains: vi.fn(async () => []),
 	listRailwayProjects: vi.fn(async ({ env }: { env: Record<string, string> }) => {
 		railwayEnvMock(env);
@@ -233,6 +242,7 @@ vi.mock('../../src/operations/services/railway-api.ts', () => ({
 		}];
 	}),
 	listRailwayVariables: vi.fn(async () => ({})),
+	listRailwayVolumes: vi.fn(async () => []),
 	resolveRailwayWorkspaceContext: vi.fn(async ({ env }: { env: Record<string, string> }) => {
 		railwayEnvMock(env);
 		return { id: 'workspace-1', name: env.TREESEED_RAILWAY_WORKSPACE ?? 'workspace' };
@@ -253,6 +263,37 @@ vi.mock('../../src/operations/services/railway-api.ts', () => ({
 	}),
 }));
 
+vi.mock('../../src/reconcile/providers/railway-iac.ts', () => ({
+	renderRailwayIacProject: vi.fn((input) => {
+		renderRailwayIacProjectMock(input);
+		return {
+			filePath: '/tmp/railway.mjs',
+			tempDir: '/tmp',
+			projectName: input.projectName,
+			environmentName: input.environmentName,
+			serviceNames: input.services.map((service: { serviceName: string }) => service.serviceName),
+			volumeNames: [],
+			databaseName: null,
+			source: '',
+		};
+	}),
+	planRailwayIacProject: vi.fn(async (input, rendered) => {
+		planRailwayIacProjectMock(input, rendered);
+		return { ok: true, diagnostics: [], changeSet: { changes: [] } };
+	}),
+	applyRailwayIacProject: vi.fn(async (input, rendered) => {
+		applyRailwayIacProjectMock(input, rendered);
+		return { ok: true, diagnostics: [], changeSet: { changes: [] } };
+	}),
+	validateRailwayIacChangeSet: vi.fn(() => ({
+		ok: true,
+		destructiveChanges: [],
+		blockedReasons: [],
+		allowedDrift: [],
+	})),
+	cleanupRailwayIacRender: vi.fn((rendered) => cleanupRailwayIacRenderMock(rendered)),
+}));
+
 describe('cloudflare reconcile adapters', () => {
 beforeEach(() => {
 	kvCreated = false;
@@ -269,6 +310,10 @@ beforeEach(() => {
 		ensureRailwayServiceMock.mockReset();
 		updateRailwayServiceGitSourceMock.mockReset();
 		updateRailwayServiceImageSourceMock.mockReset();
+		renderRailwayIacProjectMock.mockReset();
+		planRailwayIacProjectMock.mockReset();
+		applyRailwayIacProjectMock.mockReset();
+		cleanupRailwayIacRenderMock.mockReset();
 		railwayEnvMock.mockReset();
 		resolveTreeseedMachineEnvironmentValuesMock.mockReset();
 		resolveTreeseedMachineEnvironmentValuesMock.mockImplementation(() => {
@@ -577,30 +622,35 @@ beforeEach(() => {
 		const diff = adapter!.diff({ unit, context, observed } as never);
 		await adapter!.apply({ unit, context, observed, diff } as never);
 
-	expect(resolveTreeseedMachineEnvironmentValuesMock).not.toHaveBeenCalled();
-	expect(railwayEnvMock).toHaveBeenCalledWith(expect.objectContaining({
-		RAILWAY_API_TOKEN: 'railway-token',
-		TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
-	}));
-		expect(upsertRailwayVariablesMock).toHaveBeenCalledWith(expect.objectContaining({
+		expect(resolveTreeseedMachineEnvironmentValuesMock).not.toHaveBeenCalled();
+		expect(railwayEnvMock).toHaveBeenCalledWith(expect.objectContaining({
+			RAILWAY_API_TOKEN: 'railway-token',
+			TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
+		}));
+		expect(renderRailwayIacProjectMock).toHaveBeenCalledWith(expect.objectContaining({
+			projectName: 'acme-docs',
 			projectId: 'project-1',
+			environmentName: 'staging',
 			environmentId: 'env-1',
-			serviceId: 'service-1',
-			variables: expect.objectContaining({
-				TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
-				TREESEED_GITHUB_TOKEN: 'github-token',
-				TREESEED_CLOUDFLARE_API_TOKEN: 'cf-token',
-				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
-				TREESEED_API_D1_DATABASE_ID: 'd1-1',
-			}),
+			services: [expect.objectContaining({
+				serviceName: 'api',
+				variables: expect.objectContaining({
+					TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
+					TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
+					TREESEED_API_D1_DATABASE_ID: 'd1-1',
+				}),
+				secrets: expect.objectContaining({
+					TREESEED_GITHUB_TOKEN: 'github-token',
+					TREESEED_CLOUDFLARE_API_TOKEN: 'cf-token',
+				}),
+			})],
 		}));
-		expect(deployRailwayServiceInstanceMock).toHaveBeenCalledWith(expect.objectContaining({
-			serviceId: 'service-1',
-			environmentId: 'env-1',
-		}));
+		expect(applyRailwayIacProjectMock).toHaveBeenCalled();
+		expect(upsertRailwayVariablesMock).not.toHaveBeenCalled();
+		expect(deployRailwayServiceInstanceMock).not.toHaveBeenCalled();
 	});
 
-	it('repairs an existing Railway service source in place when deployment is missing', async () => {
+	it('uses Railway IaC instead of direct source repair when deployment state is missing', async () => {
 		d1Created = true;
 		deployRailwayServiceInstanceMock
 			.mockImplementationOnce(() => {
@@ -650,14 +700,12 @@ beforeEach(() => {
 		const diff = adapter!.diff({ unit, context, observed } as never);
 		await adapter!.apply({ unit, context, observed, diff } as never);
 
-		expect(deployRailwayServiceInstanceMock).toHaveBeenCalledTimes(2);
-		expect(updateRailwayServiceImageSourceMock).toHaveBeenCalledWith(expect.objectContaining({
-			serviceId: 'service-1',
-			imageRef: 'treeseed/api:test',
-		}));
+		expect(applyRailwayIacProjectMock).toHaveBeenCalled();
+		expect(deployRailwayServiceInstanceMock).not.toHaveBeenCalled();
+		expect(updateRailwayServiceImageSourceMock).not.toHaveBeenCalled();
 	});
 
-	it('continues deploying an existing Railway service when proactive source repair is unsupported', async () => {
+	it('uses Railway IaC instead of direct service mutation when source repair is unsupported', async () => {
 		d1Created = true;
 		ensureRailwayServiceMock.mockImplementationOnce(() => {
 			throw new Error('Railway Git source update for existing service api (service-1) is unsupported; use a provider-supported source update.');
@@ -705,11 +753,9 @@ beforeEach(() => {
 		const diff = adapter!.diff({ unit, context, observed } as never);
 		await adapter!.apply({ unit, context, observed, diff } as never);
 
-		expect(ensureRailwayServiceMock).toHaveBeenCalled();
-		expect(deployRailwayServiceInstanceMock).toHaveBeenCalledWith(expect.objectContaining({
-			serviceId: 'service-1',
-			environmentId: 'env-1',
-		}));
+		expect(applyRailwayIacProjectMock).toHaveBeenCalled();
+		expect(ensureRailwayServiceMock).not.toHaveBeenCalled();
+		expect(deployRailwayServiceInstanceMock).not.toHaveBeenCalled();
 	});
 
 	it('verifies a DNS record from the Cloudflare reconcile response when list reads are stale', async () => {
