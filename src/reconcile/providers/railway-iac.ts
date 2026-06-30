@@ -28,6 +28,7 @@ export type TreeseedRailwayIacDatabase = {
 	environmentVariable: string;
 	mountPath?: string | null;
 	detachVolumeIds?: string[];
+	useNativePostgres?: boolean;
 };
 
 export type TreeseedRailwayIacProjectInput = {
@@ -183,18 +184,28 @@ export function renderRailwayIacProject(input: TreeseedRailwayIacProjectInput): 
 	if (input.database) {
 		const postgresVolumeName = `${input.database.serviceName}-volume`;
 		const postgresMountPath = input.database.mountPath?.trim() || '/var/lib/postgresql/data';
-		const postgresMounts = [
-			...(input.database.detachVolumeIds ?? []).map((volumeId) => `${js(volumeId)}: null`),
-			`${js(postgresMountPath)}: dbVolume`,
-		];
 		volumeNames.push(postgresVolumeName);
-		declarations.push(`  const dbVolume = volume(${js(postgresVolumeName)}, ${js({
-			region,
-			sizeMB: 50000,
-			allowOnlineResize: true,
-			alerts: { usage: { 80: {}, 95: {}, 100: {} } },
-		})});`);
-		declarations.push(`  const db = service(${js(input.database.serviceName)}, {
+		if (input.database.useNativePostgres) {
+			declarations.push(`  const dbVolume = volume(${js(postgresVolumeName)}, ${js({
+				region,
+				sizeMB: 50000,
+				allowOnlineResize: true,
+				alerts: { usage: { 80: {}, 95: {}, 100: {} } },
+			})});`);
+			declarations.push(`  const db = postgres(${js(input.database.serviceName)}, ${js({ region })});`);
+			resources.push('dbVolume', 'db');
+		} else {
+			const postgresMounts = [
+				...(input.database.detachVolumeIds ?? []).map((volumeId) => `${js(volumeId)}: null`),
+				`${js(postgresMountPath)}: dbVolume`,
+			];
+			declarations.push(`  const dbVolume = volume(${js(postgresVolumeName)}, ${js({
+				region,
+				sizeMB: 50000,
+				allowOnlineResize: true,
+				alerts: { usage: { 80: {}, 95: {}, 100: {} } },
+			})});`);
+			declarations.push(`  const db = service(${js(input.database.serviceName)}, {
     source: image("ghcr.io/railwayapp-templates/postgres-ssl:18"),
     env: ${renderPostgresEnv()},
     deploy: {
@@ -203,7 +214,8 @@ export function renderRailwayIacProject(input: TreeseedRailwayIacProjectInput): 
     },
     volumeMounts: { ${postgresMounts.join(', ')} }
   });`);
-		resources.push('dbVolume', 'db');
+			resources.push('dbVolume', 'db');
+		}
 	}
 	input.services.forEach((service, index) => {
 		const serviceVar = id('svc', index);
@@ -280,6 +292,7 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 		const name = changeName(change);
 		if (change.kind === 'resource.delete') {
 			destructiveChanges.push(change.summary);
+			blockedReasons.push(`Railway IaC plan would delete resource ${name || change.summary}; hosting reconciliation only updates or creates resources. Use the explicit destroy workflow for deletions.`);
 			if (desired.has(name) && !created.has(name)) {
 				blockedReasons.push(`Railway IaC plan would delete desired resource ${name}.`);
 			}
@@ -311,7 +324,7 @@ export async function planRailwayIacProject(input: TreeseedRailwayIacProjectInpu
 			projectId: input.projectId,
 			environmentId: input.environmentId,
 			decryptVariables: false,
-			merge: false,
+			merge: true,
 		},
 	}) as Promise<RailwayIacPlanResponse>;
 }
@@ -328,7 +341,7 @@ export async function applyRailwayIacProject(input: TreeseedRailwayIacProjectInp
 			projectId: input.projectId,
 			environmentId: input.environmentId,
 			decryptVariables: false,
-			merge: false,
+			merge: true,
 		},
 	}) as Promise<RailwayIacApplyResponse>;
 }

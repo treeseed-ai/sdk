@@ -81,13 +81,22 @@ function publicTreeDxNodePool(config: Record<string, any>) {
 	return { bootstrapCount, maxNodes };
 }
 
+function resolvePublicTreeDxRoot(input: TreeseedHostingGraphInput) {
+	const candidates = [
+		resolve(input.tenantRoot, 'packages', 'treedx'),
+		resolve(input.tenantRoot, '..', 'treedx'),
+		input.configRoot ? resolve(input.configRoot, 'packages', 'treedx') : null,
+	].filter((candidate): candidate is string => Boolean(candidate));
+	return candidates.find((candidate) => existsSync(resolve(candidate, 'treeseed.package.yaml')) || existsSync(resolve(candidate, '.git'))) ?? candidates[0]!;
+}
+
 function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Record<string, any>) {
 	const railway = config.publicTreeDxFederation?.railway ?? {};
 	const configuredSource = railway.source && typeof railway.source === 'object' && !Array.isArray(railway.source)
 		? railway.source
 		: {};
 	const configuredMode = typeof railway.sourceMode === 'string' ? railway.sourceMode : null;
-	const treeDxRoot = resolve(input.tenantRoot, 'packages', 'treedx');
+	const treeDxRoot = resolvePublicTreeDxRoot(input);
 	const repository = typeof railway.sourceRepo === 'string'
 		? railway.sourceRepo
 		: typeof configuredSource.repository === 'string'
@@ -119,7 +128,11 @@ function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Reco
 			: typeof configuredSource.branch === 'string'
 				? configuredSource.branch
 				: 'staging',
-		sourceCommit: headCommitSafe(treeDxRoot) ?? headCommitSafe(input.tenantRoot),
+		sourceCommit: typeof railway.sourceCommit === 'string'
+			? railway.sourceCommit
+			: typeof configuredSource.commit === 'string'
+				? configuredSource.commit
+				: headCommitSafe(treeDxRoot) ?? headCommitSafe(input.tenantRoot),
 		sourceRootDirectory: typeof railway.sourceRootDirectory === 'string'
 			? railway.sourceRootDirectory
 			: typeof configuredSource.rootDirectory === 'string'

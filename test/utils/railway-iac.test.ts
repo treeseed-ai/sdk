@@ -1,13 +1,17 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	cleanupRailwayIacRender,
 	renderRailwayIacProject,
 	validateRailwayIacChangeSet,
 	type TreeseedRailwayIacProjectInput,
 } from '../../src/reconcile/providers/railway-iac.ts';
+
+vi.mock('railway/iac', () => ({
+	runRailwayIac: vi.fn(async () => ({ ok: true, diagnostics: [], changeSet: { version: 1, diagnostics: [], changes: [] } })),
+}));
 
 const tempRoots = new Set<string>();
 
@@ -156,6 +160,19 @@ describe('Railway IaC project rendering', () => {
 		}
 	});
 
+	it('renders existing Postgres services as native Railway database resources', () => {
+		const input = baseInput('staging');
+		input.database!.useNativePostgres = true;
+		const rendered = renderRailwayIacProject(input);
+		try {
+			expect(rendered.source).toContain('const db = postgres("treeseed-api-postgres"');
+			expect(rendered.source).not.toContain('const db = service("treeseed-api-postgres"');
+			expect(rendered.volumeNames).toContain('treeseed-api-postgres-volume');
+		} finally {
+			cleanupRailwayIacRender(rendered);
+		}
+	});
+
 	it('rejects invalid generated variables while allowing native TreeDX variables on TreeDX services', () => {
 		const rendered = renderRailwayIacProject(baseInput('staging'));
 		try {
@@ -194,7 +211,7 @@ describe('Railway IaC plan validation', () => {
 		expect(result.blockedReasons.join('\n')).toContain('delete desired resource treeseed-api');
 	});
 
-	it('allows same-name replacement of a desired resource when the canonical replacement is in the same plan', () => {
+	it('rejects same-name replacement of a desired resource during hosting apply', () => {
 		const result = validateRailwayIacChangeSet({
 			version: 1,
 			diagnostics: [],
@@ -224,8 +241,9 @@ describe('Railway IaC plan validation', () => {
 			database: 'treeseed-api-postgres',
 			scope: 'staging',
 		});
-		expect(result.ok).toBe(true);
+		expect(result.ok).toBe(false);
 		expect(result.destructiveChanges).toHaveLength(1);
+		expect(result.blockedReasons.join('\n')).toContain('Use the explicit destroy workflow for deletions');
 	});
 
 	it('rejects staging image-source changes and production Git-source changes', () => {
@@ -261,5 +279,21 @@ describe('Railway IaC plan validation', () => {
 		} as any, { services: ['treeseed-api'], volumes: [], database: null, scope: 'prod' });
 		expect(staging.ok).toBe(false);
 		expect(prod.ok).toBe(false);
+	});
+});
+
+describe('Railway IaC runner safety', () => {
+	it('uses non-destructive merge mode for plan and apply', async () => {
+		const railway = await import('railway/iac');
+		const { applyRailwayIacProject, planRailwayIacProject } = await import('../../src/reconcile/providers/railway-iac.ts');
+		const rendered = renderRailwayIacProject(baseInput('staging'));
+		try {
+			await planRailwayIacProject(baseInput('staging'), rendered);
+			await applyRailwayIacProject(baseInput('staging'), rendered);
+			const calls = vi.mocked(railway.runRailwayIac).mock.calls;
+			expect(calls.map(([arg]) => arg.backboard?.merge)).toEqual([true, true]);
+		} finally {
+			cleanupRailwayIacRender(rendered);
+		}
 	});
 });

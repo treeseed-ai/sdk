@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -26,6 +27,7 @@ function createTenant(configBody: string) {
 function createSplitWorkspace() {
 	const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-hosting-split-'));
 	mkdirSync(resolve(tenantRoot, 'packages', 'api'), { recursive: true });
+	mkdirSync(resolve(tenantRoot, 'packages', 'treedx'), { recursive: true });
 	mkdirSync(resolve(tenantRoot, 'packages', 'ui', 'sandbox'), { recursive: true });
 	writeFileSync(resolve(tenantRoot, 'package.json'), JSON.stringify({
 		name: '@treeseed/market',
@@ -57,6 +59,9 @@ connections:
 		name: '@treeseed/api',
 		type: 'module',
 	}, null, 2));
+	writeFileSync(resolve(tenantRoot, 'packages', 'treedx', 'treeseed.package.yaml'), `id: treedx
+repository: treeseed-ai/treedx
+`);
 	writeFileSync(resolve(tenantRoot, 'packages', 'ui', 'package.json'), JSON.stringify({
 		name: '@treeseed/ui',
 		type: 'module',
@@ -133,6 +138,14 @@ services:
         - operationsRunner
 `);
 	return tenantRoot;
+}
+
+function createGitCommit(root: string) {
+	writeFileSync(resolve(root, 'README.md'), 'fixture\n');
+	execFileSync('git', ['init', '-b', 'staging'], { cwd: root, stdio: 'ignore' });
+	execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+	execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-m', 'fixture'], { cwd: root, stdio: 'ignore' });
+	return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 }
 
 function marketConfig(extra = '') {
@@ -261,6 +274,18 @@ describe('hosting graph', () => {
 				},
 			},
 		});
+	});
+
+	it('uses the TreeDX checkout commit for package-local API staging source builds', () => {
+		const tenantRoot = createSplitWorkspace();
+		const apiCommit = createGitCommit(resolve(tenantRoot, 'packages', 'api'));
+		const treeDxCommit = createGitCommit(resolve(tenantRoot, 'packages', 'treedx'));
+		const graph = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging', appId: 'api' });
+		const treeDx = graph.units.find((unit) => unit.id === 'public-treedx-node-01');
+
+		expect(treeDx?.config.sourceRepo).toBe('treeseed-ai/treedx');
+		expect(treeDx?.config.sourceCommit).toBe(treeDxCommit);
+		expect(treeDx?.config.sourceCommit).not.toBe(apiCommit);
 	});
 
 	it('compiles current Market config into user-facing service placements', () => {

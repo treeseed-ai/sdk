@@ -33,6 +33,7 @@ import {
 	queueName,
 	reconcileCloudflareWebCacheRules,
 	resolveConfiguredCloudflareAccountId,
+	resolveConfiguredSurfaceDomain,
 	resolveCloudflareZoneIdForHost,
 	runWrangler,
 	scopeFromTarget,
@@ -2604,6 +2605,16 @@ function normalizeRailwayDomainPayload(value: unknown) {
 	const status = record.status && typeof record.status === 'object'
 		? record.status as Record<string, unknown>
 		: {};
+	const certificate = record.certificate && typeof record.certificate === 'object'
+		? record.certificate as Record<string, unknown>
+		: status.certificate && typeof status.certificate === 'object'
+			? status.certificate as Record<string, unknown>
+			: {};
+	const verification = record.verification && typeof record.verification === 'object'
+		? record.verification as Record<string, unknown>
+		: status.verification && typeof status.verification === 'object'
+			? status.verification as Record<string, unknown>
+			: {};
 	const domain = typeof record.domain === 'string'
 		? record.domain.trim()
 		: typeof record.name === 'string'
@@ -2650,19 +2661,26 @@ function normalizeRailwayDomainPayload(value: unknown) {
 		id: typeof record.id === 'string' ? record.id.trim() : null,
 		domain,
 		serviceDomain,
-		certificateStatus: typeof status.certificateStatus === 'string'
-			? String(status.certificateStatus).trim().toUpperCase()
-			: null,
+		verified: record.verified === true || status.verified === true || verification.verified === true,
+		certificateStatus: firstRailwayDomainString(
+			record.certificateStatus,
+			status.certificateStatus,
+			certificate.status,
+		)?.toUpperCase() ?? null,
 		verificationDnsHost: typeof record.verificationDnsHost === 'string'
 			? record.verificationDnsHost.trim()
 			: typeof status.verificationDnsHost === 'string'
 				? String(status.verificationDnsHost).trim()
-				: null,
+				: typeof verification.dnsHost === 'string'
+					? String(verification.dnsHost).trim()
+					: null,
 		verificationToken: typeof record.verificationToken === 'string'
 			? record.verificationToken.trim()
 			: typeof status.verificationToken === 'string'
 				? String(status.verificationToken).trim()
-				: null,
+				: typeof verification.token === 'string'
+					? String(verification.token).trim()
+					: null,
 		dnsRecords: effectiveDnsRecords,
 	};
 }
@@ -4333,6 +4351,9 @@ async function syncRailwayEnvironmentForScope(
 		const databaseDetachVolumeIds = databaseDescriptor
 			? activeAttachedRailwayVolumeIds(liveVolumes, databaseLiveService?.id, environment.id, `${databaseDescriptor.serviceName}-volume`)
 			: [];
+		const databaseForIac = databaseDescriptor
+			? { ...databaseDescriptor, detachVolumeIds: databaseDetachVolumeIds, useNativePostgres: Boolean(databaseLiveService) }
+			: null;
 		const token = String(topology.env.TREESEED_RAILWAY_API_TOKEN ?? topology.env.RAILWAY_API_TOKEN ?? '').trim();
 		if (!token) {
 			throw new Error(`Railway IaC reconciliation requires TREESEED_RAILWAY_API_TOKEN for ${project.name}/${environment.name}.`);
@@ -4350,9 +4371,7 @@ async function syncRailwayEnvironmentForScope(
 				...railwayIacServiceInput(input, sync, service, scope),
 				detachVolumeIds: detachVolumeIdsByServiceName.get(service.serviceName) ?? [],
 			})),
-			database: databaseDescriptor
-				? { ...databaseDescriptor, detachVolumeIds: databaseDetachVolumeIds }
-				: null,
+			database: databaseForIac,
 		};
 		const {
 			applyRailwayIacProject,
@@ -4922,11 +4941,25 @@ async function observeRailwayUnit(input: TreeseedReconcileAdapterInput, { refres
 
 function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput, valuesOverlay: Record<string, string | undefined> = {}) {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
-	const values = {
+	const registry = collectTreeseedEnvironmentContext(input.context.tenantRoot);
+	const configuredServices = configuredRailwayServices(input.context.tenantRoot, scope);
+	const hasPublicTreeDxService = configuredServices
+		.some((service) => service.key === 'public-treedx-node-01' && service.enabled !== false);
+	const machineValues = hasPublicTreeDxService
+		? normalizeEnvironmentValues(resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope))
+		: {};
+	const baseValues = {
 		...resolveReconcileEnvironmentValues(input, scope),
+		...machineValues,
 		...valuesOverlay,
 	};
-	const registry = collectTreeseedEnvironmentContext(input.context.tenantRoot);
+	const values = {
+		...baseValues,
+		...ensurePublicTreeDxSecretsForRailwaySync(input, scope, baseValues, registry),
+	};
+	if (scope !== 'local') {
+		sanitizeRemoteRailwayServiceUrls(input, scope, values);
+	}
 	const state = loadDeployState(input.context.tenantRoot, input.context.deployConfig, { target: toDeployTarget(input.context.target) });
 	const serviceTargetsEntry = (entry: Record<string, unknown>, serviceKey: string) => {
 		const targets = Array.isArray(entry.serviceTargets)
@@ -5045,6 +5078,39 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput, val
 	};
 }
 
+function isLoopbackServiceUrl(value: unknown) {
+	if (typeof value !== 'string' || !value.trim()) return false;
+	try {
+		const url = new URL(value);
+		return url.hostname === '127.0.0.1' || url.hostname === 'localhost';
+	} catch {
+		return false;
+	}
+}
+
+function sanitizeRemoteRailwayServiceUrls(
+	input: TreeseedReconcileAdapterInput,
+	scope: 'staging' | 'prod',
+	values: Record<string, string | undefined>,
+) {
+	const configuredApiDomain = resolveConfiguredSurfaceDomain(input.context.deployConfig, { kind: 'persistent', scope }, 'api');
+	const configuredApiBaseUrl = configuredApiDomain ? `https://${configuredApiDomain}` : '';
+	const apiBaseUrl = [
+		values.TREESEED_MARKET_API_BASE_URL,
+		values.TREESEED_STAGING_MARKET_API_BASE_URL,
+		configuredApiBaseUrl,
+	].find((value) => typeof value === 'string' && value.trim() && !isLoopbackServiceUrl(value))?.trim();
+	if (!apiBaseUrl) return;
+	if (isLoopbackServiceUrl(values.TREESEED_API_BASE_URL)) {
+		values.TREESEED_API_BASE_URL = apiBaseUrl;
+	}
+	for (const key of ['TREESEED_CENTRAL_MARKET_API_BASE_URL', 'TREESEED_CATALOG_MARKET_API_BASE_URLS'] as const) {
+		if (isLoopbackServiceUrl(values[key])) {
+			values[key] = apiBaseUrl;
+		}
+	}
+}
+
 function capacityProviderRoleForService(serviceKey: string) {
 	if (serviceKey === 'capacityProviderManager') return 'manager';
 	if (serviceKey === 'capacityProviderRunner') return 'runner';
@@ -5080,6 +5146,33 @@ function ensureCapacityProviderApiKeyForRailwaySync(input: TreeseedReconcileAdap
 	};
 	const generated = `tscp_${randomBytes(32).toString('base64url')}`;
 	setTreeseedMachineEnvironmentValue(input.context.tenantRoot, scope, entry, generated);
+	return generated;
+}
+
+function ensurePublicTreeDxSecretsForRailwaySync(
+	input: TreeseedReconcileAdapterInput,
+	scope: 'local' | 'staging' | 'prod',
+	values: Record<string, string | undefined>,
+	registry: ReturnType<typeof collectTreeseedEnvironmentContext>,
+) {
+	const hasPublicTreeDxService = configuredRailwayServices(input.context.tenantRoot, scope)
+		.some((service) => service.key === 'public-treedx-node-01' && service.enabled !== false);
+	if (!hasPublicTreeDxService) return {};
+	const generated: Record<string, string> = {};
+	const specs = [
+		['TREESEED_TREEDX_SECRET_KEY_BASE', () => randomBytes(64).toString('hex')],
+		['TREESEED_TREEDX_ADMIN_TOKEN', () => `tdx_admin_${randomBytes(32).toString('base64url')}`],
+		['TREESEED_TREEDX_JWT_HS256_SECRET', () => randomBytes(48).toString('base64url')],
+	] as const;
+	for (const [key, create] of specs) {
+		const existing = String(values[key] ?? '').trim();
+		if (existing) continue;
+		const entry = registry.entries.find((candidate) => candidate.id === key);
+		if (!entry) continue;
+		const value = create();
+		setTreeseedMachineEnvironmentValue(input.context.tenantRoot, scope, entry, value);
+		generated[key] = value;
+	}
 	return generated;
 }
 
@@ -5325,6 +5418,14 @@ function verifyCustomDomainUnit(input: TreeseedReconcileAdapterInput): TreeseedU
 				?? (input.persistedState?.lastReconciledState as Record<string, unknown> | undefined)
 				?? null;
 			const dnsRecords = Array.isArray(live?.dnsRecords) ? live.dnsRecords : [];
+			const certificateStatus = typeof live?.certificateStatus === 'string'
+				? live.certificateStatus.trim().toUpperCase()
+				: null;
+			const verified = live?.verified === true;
+			const certificateBlocked = certificateStatus
+				? /VALIDATING|ISSUING|GENERATING|FAILED|ERROR|MISSING|PENDING/u.test(certificateStatus)
+				: false;
+			const certificateReady = verified && !certificateBlocked;
 			const hasDnsRequirements = dnsRecords.length > 0
 				|| (typeof live?.serviceDomain === 'string' && live.serviceDomain.trim().length > 0)
 				|| (typeof live?.verificationDnsHost === 'string' && live.verificationDnsHost.trim().length > 0
@@ -5344,6 +5445,20 @@ function verifyCustomDomainUnit(input: TreeseedReconcileAdapterInput): TreeseedU
 						verificationDnsHost: typeof live?.verificationDnsHost === 'string' ? live.verificationDnsHost : null,
 					},
 					issues: hasDnsRequirements ? [] : [`Railway custom domain ${domain || '(unset)'} did not expose DNS requirements.`],
+				}),
+				verificationCheck('custom-domain.certificate', 'Railway custom domain certificate is issued', 'api', {
+					exists: Boolean(live?.domain),
+					ready: certificateReady,
+					verified: certificateReady,
+					expected: {
+						verified: true,
+						certificateStatus: 'issued',
+					},
+					observed: {
+						verified,
+						certificateStatus,
+					},
+					issues: certificateReady ? [] : [`Railway custom domain ${domain || '(unset)'} certificate is not ready (verified=${verified}, status=${certificateStatus ?? '(unknown)'}).`],
 				}),
 			]);
 		}
