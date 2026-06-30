@@ -70,6 +70,43 @@ describe('operations runner smoke', () => {
 		expect(JSON.stringify(report)).not.toContain('secret');
 	});
 
+	it('prefers the canonical web service secret over the legacy API-prefixed fallback', async () => {
+		const serviceIds: string[] = [];
+		const secrets: string[] = [];
+		const report = await runTreeseedOperationsRunnerSmoke({
+			tenantRoot: root(),
+			environment: 'staging',
+			baseUrl: 'https://api.example.test',
+			env: {
+				TREESEED_WEB_SERVICE_ID: 'canonical-web',
+				TREESEED_API_WEB_SERVICE_ID: 'legacy-web',
+				TREESEED_WEB_SERVICE_SECRET: 'canonical-secret',
+				TREESEED_API_WEB_SERVICE_SECRET: 'legacy-secret',
+			},
+			fetchImpl: (async (url: URL | RequestInfo, init?: RequestInit) => {
+				const value = String(url);
+				const headers = new Headers(init?.headers);
+				if (headers.has('x-treeseed-service-id')) {
+					serviceIds.push(String(headers.get('x-treeseed-service-id')));
+				}
+				if (headers.has('x-treeseed-service-secret')) {
+					secrets.push(String(headers.get('x-treeseed-service-secret')));
+				}
+				if (value.endsWith('/healthz') || value.endsWith('/healthz/deep')) return response({ ok: true });
+				if (value.endsWith('/v1/platform/operations')) return response({ ok: true, operation: { id: 'op-1', status: 'queued' } }, 202);
+				if (value.endsWith('/v1/platform/operations/op-1')) return response({ ok: true, operation: { id: 'op-1', status: 'completed', assignedRunnerId: 'runner-1' } });
+				if (value.endsWith('/v1/platform/operations/op-1/events')) return response({ ok: true, events: [{ kind: 'runner.completed', createdAt: '2026-06-07T00:00:00.000Z' }] });
+				return response({ error: 'not found' }, 404);
+			}) as typeof fetch,
+		});
+
+		expect(report.ok).toBe(true);
+		expect(serviceIds).toContain('canonical-web');
+		expect(serviceIds).not.toContain('legacy-web');
+		expect(secrets).toContain('canonical-secret');
+		expect(secrets).not.toContain('legacy-secret');
+	});
+
 	it('accepts succeeded as a terminal success status', async () => {
 		const report = await runTreeseedOperationsRunnerSmoke({
 			tenantRoot: root(),

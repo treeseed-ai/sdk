@@ -33,7 +33,7 @@ function operationIdFrom(input: TreeseedSceneOperationWaitOptions) {
 async function defaultFetchOperation(input: TreeseedSceneOperationWaitOptions, operationId: string) {
 	if (input.fetchOperation) return input.fetchOperation(operationId);
 	const serviceId = process.env.TREESEED_ACCEPTANCE_SERVICE_ID ?? process.env.TREESEED_API_WEB_SERVICE_ID ?? process.env.TREESEED_WEB_SERVICE_ID ?? 'web';
-	const serviceSecret = process.env.TREESEED_ACCEPTANCE_SERVICE_SECRET ?? process.env.TREESEED_API_WEB_SERVICE_SECRET ?? process.env.TREESEED_WEB_SERVICE_SECRET;
+	const serviceSecret = process.env.TREESEED_ACCEPTANCE_SERVICE_SECRET ?? process.env.TREESEED_WEB_SERVICE_SECRET ?? process.env.TREESEED_API_WEB_SERVICE_SECRET;
 	if (!serviceSecret) throw sceneErrorDiagnostic('scene.operation_unavailable', 'Missing service credentials for platform operation polling.', 'workflow.operation');
 	const response = await fetch(`${input.baseUrl.replace(/\/+$/u, '')}/v1/platform/operations/${encodeURIComponent(operationId)}`, {
 		headers: {

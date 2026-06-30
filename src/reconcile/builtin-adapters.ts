@@ -4057,6 +4057,16 @@ function railwayIacServiceInput(
 		throw new Error(`Railway production service ${service.serviceName} must deploy an immutable image, not Git source.`);
 	}
 	const serviceSync = sync.forService(service.key, service);
+	const deployVariablePrefix = service.serviceName.includes('treedx') || service.key.includes('treedx')
+		? 'TREEDX'
+		: 'TREESEED';
+	const sourceVariables = service.sourceMode === 'git'
+		? {
+				...(service.sourceRepo ? { [`${deployVariablePrefix}_DEPLOY_SOURCE_REPOSITORY`]: service.sourceRepo } : {}),
+				...(service.sourceBranch ? { [`${deployVariablePrefix}_DEPLOY_SOURCE_BRANCH`]: service.sourceBranch } : {}),
+				...(service.sourceCommit ? { [`${deployVariablePrefix}_DEPLOY_SOURCE_COMMIT`]: service.sourceCommit } : {}),
+			}
+		: {};
 	return {
 		key: service.instanceKey ?? service.key,
 		serviceName: service.serviceName,
@@ -4073,7 +4083,10 @@ function railwayIacServiceInput(
 		healthcheckTimeoutSeconds: service.healthcheckTimeoutSeconds,
 		runtimeMode: service.runtimeMode,
 		volumeMountPath: service.volumeMountPath,
-		variables: serviceSync.variables,
+		variables: {
+			...serviceSync.variables,
+			...sourceVariables,
+		},
 		secrets: serviceSync.secrets,
 	};
 }

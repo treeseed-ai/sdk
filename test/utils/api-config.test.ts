@@ -14,7 +14,7 @@ describe('API config', () => {
 		expect(config.webAssertionSecret).toBe('hosted-assertion-secret');
 	});
 
-	it('keeps API-prefixed web credential env names as the highest priority', () => {
+	it('keeps canonical web service credentials ahead of legacy API-prefixed fallbacks', () => {
 		const config = resolveApiConfig({
 			TREESEED_API_WEB_SERVICE_ID: 'api-web',
 			TREESEED_WEB_SERVICE_ID: 'web-hosted',
@@ -24,8 +24,8 @@ describe('API config', () => {
 			TREESEED_WEB_ASSERTION_SECRET: 'hosted-assertion-secret',
 		});
 
-		expect(config.webServiceId).toBe('api-web');
-		expect(config.webServiceSecret).toBe('api-secret');
+		expect(config.webServiceId).toBe('web-hosted');
+		expect(config.webServiceSecret).toBe('hosted-service-secret');
 		expect(config.webAssertionSecret).toBe('api-assertion');
 	});
 

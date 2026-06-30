@@ -69,7 +69,7 @@ describe('github automation workflow generation', () => {
 		expect(web).toContain('TREESEED_SMTP_PASSWORD: ${{ secrets.TREESEED_SMTP_PASSWORD }}');
 		expect(web).toContain('TREESEED_BETTER_AUTH_SECRET: ${{ secrets.TREESEED_BETTER_AUTH_SECRET }}');
 		expect(web).toContain('TREESEED_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_WEB_SERVICE_SECRET }}');
-		expect(web).toContain('TREESEED_API_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_API_WEB_SERVICE_SECRET || secrets.TREESEED_WEB_SERVICE_SECRET }}');
+		expect(web).toContain('TREESEED_API_WEB_SERVICE_SECRET: ${{ secrets.TREESEED_WEB_SERVICE_SECRET || secrets.TREESEED_API_WEB_SERVICE_SECRET }}');
 			expect(web).not.toContain('TREESEED_PLATFORM_RUNNER_SECRET');
 			expect(web).toContain('TREESEED_CREDENTIAL_SESSION_SECRET: ${{ secrets.TREESEED_CREDENTIAL_SESSION_SECRET }}');
 		expect(web).toContain('TREESEED_HOSTED_HUBS_GITHUB_TOKEN: ${{ secrets.TREESEED_HOSTED_HUBS_GITHUB_TOKEN }}');

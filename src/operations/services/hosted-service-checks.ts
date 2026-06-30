@@ -259,15 +259,26 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 	const checks: TreeseedHostedServiceCheck[] = [];
 	const selectedServiceKeys = new Set((options.serviceKeys ?? []).map((key) => key.trim()).filter(Boolean));
 	const selectedAppId = options.appId?.trim() || null;
+	const applications = discoverTreeseedApplications(tenantRoot);
 	const selectedApplication = selectedAppId
-		? discoverTreeseedApplications(tenantRoot).find((application) => application.id === selectedAppId || application.relativeRoot === selectedAppId)
+		? applications.find((application) => application.id === selectedAppId || application.relativeRoot === selectedAppId)
 		: null;
+	const workspaceHasApiApplication = applications.some((application) =>
+		application.roles.includes('api')
+		|| application.config.surfaces?.api?.enabled === true
+		|| application.config.services?.api?.enabled !== false && Boolean(application.config.services?.api)
+	);
 	const includeWeb = !selectedAppId || selectedAppId === 'web' || selectedApplication?.roles.includes('web') === true;
 	const includeApi = !selectedAppId || selectedAppId === 'api' || selectedApplication?.roles.includes('api') === true;
 	const selectedAppHasApi = Boolean(
 		selectedApplication?.roles.includes('api')
 		|| selectedApplication?.config.surfaces?.api?.enabled === true
-		|| selectedApplication?.config.services?.api?.enabled !== false && selectedApplication?.config.services?.api,
+		|| selectedApplication?.config.services?.api?.enabled !== false && selectedApplication?.config.services?.api
+		|| selectedAppId === 'web' && workspaceHasApiApplication
+		|| selectedAppId === 'web' && (
+			deployConfig.surfaces?.api?.enabled === true
+			|| deployConfig.services?.api?.enabled !== false && deployConfig.services?.api
+		),
 	);
 
 	const selectedWeb = webCheckConfig(deployConfig, selectedApplication);

@@ -436,6 +436,7 @@ export function buildPublicVars(deployConfig, options = {}) {
 			TREESEED_RUNTIME_MODE: deployConfig.runtime?.mode ?? 'none',
 			TREESEED_RUNTIME_REGISTRATION: deployConfig.runtime?.registration ?? 'none',
 			TREESEED_CENTRAL_MARKET_API_BASE_URL: resolveConfiguredCentralMarketBaseUrl(deployConfig, target),
+			TREESEED_MARKET_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig, target),
 			TREESEED_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig, target),
 			TREESEED_CATALOG_MARKET_API_BASE_URLS: resolveConfiguredMarketBaseUrl(deployConfig, target) ?? envOrNull('TREESEED_CATALOG_MARKET_API_BASE_URLS'),
 			TREESEED_HOSTING_TEAM_ID: contentDefaultTeamId,

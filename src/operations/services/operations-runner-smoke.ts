@@ -163,11 +163,11 @@ export async function runTreeseedOperationsRunnerSmoke(options: TreeseedOperatio
 		?? value('TREESEED_CENTRAL_MARKET_API_BASE_URL', values, env)
 		?? defaultBaseUrl(options.environment),
 	);
-	const serviceId = options.serviceId ?? value('TREESEED_ACCEPTANCE_SERVICE_ID', values, env) ?? value('TREESEED_API_WEB_SERVICE_ID', values, env) ?? value('TREESEED_WEB_SERVICE_ID', values, env) ?? 'web';
+	const serviceId = options.serviceId ?? value('TREESEED_ACCEPTANCE_SERVICE_ID', values, env) ?? value('TREESEED_WEB_SERVICE_ID', values, env) ?? value('TREESEED_API_WEB_SERVICE_ID', values, env) ?? 'web';
 	const localServiceSecret = options.environment === 'local'
-		? envValue('TREESEED_ACCEPTANCE_SERVICE_SECRET', env) ?? envValue('TREESEED_API_WEB_SERVICE_SECRET', env) ?? envValue('TREESEED_WEB_SERVICE_SECRET', env) ?? localManagedDevServiceSecret(options.environment)
+		? envValue('TREESEED_ACCEPTANCE_SERVICE_SECRET', env) ?? envValue('TREESEED_WEB_SERVICE_SECRET', env) ?? envValue('TREESEED_API_WEB_SERVICE_SECRET', env) ?? localManagedDevServiceSecret(options.environment)
 		: null;
-	const serviceSecret = options.serviceSecret ?? localServiceSecret ?? value('TREESEED_ACCEPTANCE_SERVICE_SECRET', values, env) ?? value('TREESEED_API_WEB_SERVICE_SECRET', values, env) ?? value('TREESEED_WEB_SERVICE_SECRET', values, env);
+	const serviceSecret = options.serviceSecret ?? localServiceSecret ?? value('TREESEED_ACCEPTANCE_SERVICE_SECRET', values, env) ?? value('TREESEED_WEB_SERVICE_SECRET', values, env) ?? value('TREESEED_API_WEB_SERVICE_SECRET', values, env);
 	const timings: TreeseedOperationsRunnerSmokeReport['timings'] = [];
 	const fetchImpl = options.fetchImpl ?? fetch;
 	const timeoutMs = Math.max(1000, Math.floor(options.timeoutMs ?? (options.environment === 'prod' ? 120000 : 90000)));

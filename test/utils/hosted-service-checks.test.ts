@@ -117,6 +117,37 @@ function writePackageApp(root: string, relativeRoot: string, config: string) {
 }
 
 describe('hosted service checks', () => {
+	it('requires API proxy health for the selected root web app when API hosting is declared', () => {
+		const root = fixtureRoot();
+		writePackageApp(root, 'packages/api', `name: TreeSeed API
+slug: treeseed-api
+siteUrl: https://api.preview.treeseed.dev
+contactEmail: hello@treeseed.email
+hosting:
+  kind: self_hosted_project
+  projectId: api
+runtime:
+  mode: treeseed_managed
+surfaces:
+  api:
+    enabled: true
+    provider: railway
+    rootDir: .
+`);
+		const report = collectTreeseedHostedServiceChecks({
+			tenantRoot: root,
+			target: 'staging',
+			appId: 'web',
+			httpChecks: {
+				'https://preview.treeseed.dev': { status: 200, ok: true },
+				'https://preview.treeseed.dev/v1/healthz': { status: 200, ok: true },
+			},
+		});
+
+		expect(byId(report, 'http:web')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'http:web:v1-healthz')).toMatchObject({ status: 'passed' });
+	});
+
 	it('does not require API proxy health for web-only apps', () => {
 		const root = fixtureRoot(`name: TreeSeed UI
 slug: treeseed-ui

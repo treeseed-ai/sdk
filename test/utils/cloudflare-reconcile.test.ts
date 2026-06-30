@@ -469,6 +469,13 @@ beforeEach(() => {
 				contactEmail: 'hello@example.com',
 				hosting: { kind: 'hosted_project', teamId: 'acme', projectId: 'docs' },
 				runtime: { mode: 'treeseed_managed', registration: 'none', teamId: 'acme', projectId: 'docs' },
+				connections: {
+					api: {
+						environments: {
+							staging: { baseUrl: 'https://api.preview.example.com' },
+						},
+					},
+				},
 				providers: { content: { runtime: 'team_scoped_r2_overlay', publish: 'team_scoped_r2_overlay' } },
 				cloudflare: {
 					accountId: 'account-123',
@@ -499,6 +506,9 @@ beforeEach(() => {
 				preview: {
 					env_vars: {
 						EXISTING_VAR: { type: 'plain_text', value: 'keep' },
+						TREESEED_MARKET_API_BASE_URL: { type: 'plain_text', value: 'https://api.preview.example.com' },
+						TREESEED_CENTRAL_MARKET_API_BASE_URL: { type: 'plain_text', value: 'https://api.preview.example.com' },
+						TREESEED_API_BASE_URL: { type: 'plain_text', value: 'https://api.preview.example.com' },
 						TREESEED_PROJECT_ID: { type: 'plain_text', value: 'docs' },
 						TREESEED_HOSTING_TEAM_ID: { type: 'plain_text', value: 'acme' },
 					},
