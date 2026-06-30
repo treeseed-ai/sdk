@@ -20,6 +20,11 @@ import {
 	type TreeseedObservedRailwayServiceState,
 } from './hosted-service-checks.ts';
 
+const DEFAULT_RETRY_ATTEMPTS = 3;
+const DEFAULT_RETRY_INTERVAL_MS = 1500;
+const DEFAULT_RAILWAY_DEPLOYMENT_SETTLE_ATTEMPTS = 60;
+const DEFAULT_RAILWAY_DEPLOYMENT_SETTLE_INTERVAL_MS = 5000;
+
 export interface TreeseedLiveHostedServiceCheckOptions {
 	tenantRoot: string;
 	target: TreeseedHostedServiceTarget;
@@ -81,8 +86,8 @@ function pagesBranchName(config: Record<string, any>, target: TreeseedHostedServ
 }
 
 async function observeHttp(url: string, options: TreeseedLiveHostedServiceCheckOptions) {
-	const attempts = Math.max(1, Math.floor(options.retry?.attempts ?? 3));
-	const intervalMs = Math.max(0, Math.floor(options.retry?.intervalMs ?? 1500));
+	const attempts = Math.max(1, Math.floor(options.retry?.attempts ?? DEFAULT_RETRY_ATTEMPTS));
+	const intervalMs = Math.max(0, Math.floor(options.retry?.intervalMs ?? DEFAULT_RETRY_INTERVAL_MS));
 	const timeoutMs = Math.max(1000, Math.floor(options.timeoutMs ?? 10000));
 	let lastError = '';
 	for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -110,8 +115,8 @@ async function inspectRailwayServiceDeploymentHealthWithRetry(input: {
 	environmentId: string;
 	options: TreeseedLiveHostedServiceCheckOptions;
 }) {
-	const attempts = Math.max(1, Math.floor(input.options.retry?.attempts ?? 3));
-	const intervalMs = Math.max(0, Math.floor(input.options.retry?.intervalMs ?? 1500));
+	const attempts = Math.max(1, Math.floor(input.options.retry?.attempts ?? DEFAULT_RAILWAY_DEPLOYMENT_SETTLE_ATTEMPTS));
+	const intervalMs = Math.max(0, Math.floor(input.options.retry?.intervalMs ?? DEFAULT_RAILWAY_DEPLOYMENT_SETTLE_INTERVAL_MS));
 	let lastDeployment: Awaited<ReturnType<typeof inspectRailwayServiceDeploymentHealth>> | null = null;
 	let lastError: unknown = null;
 	for (let attempt = 0; attempt < attempts; attempt += 1) {
