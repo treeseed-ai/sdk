@@ -123,30 +123,36 @@ describe('project platform workflow actions', () => {
 		}
 	});
 
-	it('reconciles Railway Postgres volume naming through the API and reports provider limitations', () => {
-		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
-		const databaseStart = source.indexOf('async function ensureRailwayMarketDatabaseForScope');
-		const databaseEnd = source.indexOf('async function observeRailwayUnit', databaseStart);
-		const databaseSource = source.slice(databaseStart, databaseEnd);
-
-		expect(databaseStart).toBeGreaterThanOrEqual(0);
-		expect(databaseEnd).toBeGreaterThan(databaseStart);
-		expect(databaseSource).toContain('await ensureRailwayServiceVolume({');
-		expect(databaseSource).toContain("mountPath: '/var/lib/postgresql/data'");
-		expect(databaseSource).toContain('Railway provider limitation while reconciling PostgreSQL volume name');
-	});
-
-	it('uses the Railway API volume path for Treeseed operations runner reconciliation', () => {
+	it('reconciles Railway Postgres volume naming through the IaC project graph', () => {
 		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
 		const syncStart = source.indexOf('async function syncRailwayEnvironmentForScope');
-		const syncEnd = source.indexOf('async function ensureRailwayMarketDatabaseForScope', syncStart);
+		const syncEnd = source.indexOf('function shouldDeployRailwayServiceBySourceUpload', syncStart);
+		const syncSource = source.slice(syncStart, syncEnd);
+		const compiler = readFileSync(new URL('../../src/reconcile/providers/railway-iac.ts', import.meta.url), 'utf8');
+
+		expect(syncStart).toBeGreaterThanOrEqual(0);
+		expect(syncEnd).toBeGreaterThan(syncStart);
+		expect(syncSource).toContain('renderRailwayIacProject');
+		expect(syncSource).toContain('applyRailwayIacProject');
+		expect(syncSource).not.toContain('ensureRailwayPostgresService({');
+		expect(syncSource).not.toContain('ensureRailwayServiceVolume({');
+		expect(compiler).toContain('const postgresVolumeName = `${input.database.serviceName}-volume`;');
+		expect(compiler).toContain("'/var/lib/postgresql/data'");
+	});
+
+	it('uses the Railway IaC graph for Treeseed operations runner reconciliation', () => {
+		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
+		const syncStart = source.indexOf('async function syncRailwayEnvironmentForScope');
+		const syncEnd = source.indexOf('function shouldDeployRailwayServiceBySourceUpload', syncStart);
 		const syncSource = source.slice(syncStart, syncEnd);
 
 		expect(syncStart).toBeGreaterThanOrEqual(0);
 		expect(syncEnd).toBeGreaterThan(syncStart);
-		expect(syncSource).toContain('await ensureRailwayServiceVolume({');
-		expect(syncSource).toContain('const volumeName = `${entry.service.name}-volume`;');
-		expect(syncSource).toContain('Railway API volume reconciliation did not mount');
+		expect(syncSource).toContain('planRailwayIacProject');
+		expect(syncSource).toContain('validateRailwayIacChangeSet');
+		expect(syncSource).toContain('applyRailwayIacProject');
+		expect(syncSource).not.toContain('await ensureRailwayServiceVolume({');
+		expect(syncSource).not.toContain('Railway API volume reconciliation did not mount');
 		expect(syncSource).not.toContain('ensureRailwayServiceVolumeWithCliFallback');
 		expect(syncSource).not.toContain('runRailway(');
 	});
@@ -218,7 +224,7 @@ describe('project platform workflow actions', () => {
 		expect(syncEnd).toBeGreaterThan(syncStart);
 		expect(syncSource).not.toContain('looksLikeRailwaySingleVolumeConflict');
 		expect(syncSource).not.toContain('findRailwayVolumeMountedForService');
-		expect(syncSource).toContain('Railway API volume reconciliation did not mount');
+		expect(syncSource).toContain('applyRailwayIacProject');
 	});
 
 	it('allows Railway API project context resolution from a project id alone', () => {

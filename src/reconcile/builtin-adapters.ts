@@ -4,7 +4,6 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFile
 import { readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
-import { runRailwayIac } from 'railway/iac';
 import { resolveCapacityProviderLaunchPlan } from '../capacity-provider.ts';
 import { TreeDxClient } from '../treedx-client.ts';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues, setTreeseedMachineEnvironmentValue } from '../operations/services/config-runtime.ts';
@@ -85,6 +84,7 @@ import type {
 } from './contracts.ts';
 import { loadTreeseedReconcileState } from './state.ts';
 import { createTreeseedReconcileUnitId } from './units.ts';
+import type { TreeseedRailwayIacService } from './providers/railway-iac.ts';
 import { discoverTreeseedApplications } from '../hosting/apps.ts';
 import { findTreeseedPackageAdapter, syncTreeseedPackageWorkflows } from '../operations/services/package-adapters.ts';
 import { resolveGitHubCredentialForRepository } from '../operations/services/github-credentials.ts';
@@ -3712,12 +3712,14 @@ async function resolveRailwayTopologyForScope(
 	scope: 'local' | 'staging' | 'prod',
 	{
 		ensure = false,
+		ensureServices = ensure,
 		refresh = false,
 		serviceKeys,
 		includeInstances = ensure,
 		includeVariables = false,
 	}: {
 		ensure?: boolean;
+		ensureServices?: boolean;
 		refresh?: boolean;
 		serviceKeys?: string[];
 		includeInstances?: boolean;
@@ -3858,7 +3860,7 @@ async function resolveRailwayTopologyForScope(
 			}
 
 				let resolvedService = project?.services.find((entry) => entry.id === resolvedServiceId || entry.name === resolvedServiceName) ?? null;
-				if (project && !resolvedService && ensure) {
+				if (project && !resolvedService && ensureServices) {
 					traceRailwayReconcile(env, 'topology:railway-service:ensure', `${service.key}:${resolvedServiceName || resolvedServiceId}`);
 					resolvedService = (await ensureRailwayService({
 						projectId: project.id,
@@ -3876,7 +3878,7 @@ async function resolveRailwayTopologyForScope(
 					};
 					projectsByKey.set(project.id, project);
 					projectsByKey.set(project.name, project);
-				} else if (project && resolvedService && ensure && (service.imageRef || service.sourceRepo)) {
+				} else if (project && resolvedService && ensureServices && (service.imageRef || service.sourceRepo)) {
 					traceRailwayReconcile(env, 'topology:railway-service:repair-source', `${service.key}:${resolvedService.name}`);
 					try {
 						resolvedService = (await ensureRailwayService({
@@ -3898,7 +3900,7 @@ async function resolveRailwayTopologyForScope(
 				}
 			let instance = null;
 			if (includeInstances && resolvedService && environment) {
-				if (ensure) {
+				if (ensureServices) {
 					traceRailwayReconcile(env, 'topology:instance:ensure', `${service.key}:${resolvedService.name}`);
 					instance = (await ensureRailwayServiceInstanceConfiguration({
 						serviceId: resolvedService.id,
@@ -3964,167 +3966,6 @@ function traceRailwayReconcile(env: Record<string, string | undefined> | undefin
 	}
 }
 
-function jsLiteral(value: unknown) {
-	return JSON.stringify(value);
-}
-
-function railwayIacDeployConfig(service: ReturnType<typeof configuredRailwayServices>[number]) {
-	const runtimeMode = String(service.runtimeMode ?? '').trim();
-	return {
-		...(service.startCommand ? { startCommand: service.startCommand } : {}),
-		...(service.healthcheckPath ? { healthcheckPath: service.healthcheckPath } : {}),
-		...(service.healthcheckTimeoutSeconds ? { healthcheckTimeout: service.healthcheckTimeoutSeconds } : {}),
-		...(runtimeMode === 'serverless' ? { sleepApplication: true } : {}),
-		...(runtimeMode === 'service' ? { sleepApplication: false } : {}),
-		...(service.volumeMountPath ? { requiredMountPath: service.volumeMountPath } : {}),
-	};
-}
-
-function railwayIacBuildConfig(service: ReturnType<typeof configuredRailwayServices>[number]) {
-	if (service.imageRef) {
-		return null;
-	}
-	if (service.dockerfilePath) {
-		return {
-			builder: 'DOCKERFILE',
-			dockerfilePath: service.dockerfilePath,
-		};
-	}
-	if (service.buildCommand) {
-		return {
-			builder: 'NIXPACKS',
-			buildCommand: service.buildCommand,
-		};
-	}
-	return null;
-}
-
-function railwayIacVolumeName(serviceName: string) {
-	return `${serviceName}-volume`;
-}
-
-function railwayIacIdentifier(prefix: string, index: number) {
-	return `${prefix}${index}`;
-}
-
-async function applyRailwayServiceIac({
-	input,
-	topology,
-	project,
-	environment,
-	service,
-	configuredService,
-}: {
-	input: TreeseedReconcileAdapterInput;
-	topology: Awaited<ReturnType<typeof resolveRailwayTopologyForScope>>;
-	project: { id: string; name: string };
-	environment: { id: string; name: string };
-	service: { id: string; name: string };
-	configuredService: ReturnType<typeof configuredRailwayServices>[number];
-}) {
-	const token = String(topology.env.TREESEED_RAILWAY_API_TOKEN ?? topology.env.RAILWAY_API_TOKEN ?? '').trim();
-	if (!token) {
-		throw new Error(`Railway IaC reconciliation requires TREESEED_RAILWAY_API_TOKEN for ${configuredService.serviceName}.`);
-	}
-	const projectServices = configuredRailwayServices(input.context.tenantRoot, configuredService.scope)
-		.filter((candidate) => candidate.enabled !== false)
-		.filter((candidate) => candidate.projectName === configuredService.projectName)
-		.filter((candidate) => candidate.railwayEnvironment === configuredService.railwayEnvironment)
-		.filter((candidate) => candidate.sourceMode === 'git')
-		.filter((candidate) => String(candidate.sourceRepo ?? '').trim() && String(candidate.sourceBranch ?? '').trim())
-		.filter((candidate) => candidate.dockerfilePath || candidate.volumeMountPath);
-	if (projectServices.length === 0) {
-		return null;
-	}
-	const iacParentDir = resolve(input.context.tenantRoot, '.treeseed', 'tmp');
-	mkdirSync(iacParentDir, { recursive: true });
-	const iacDir = mkdtempSync(resolve(iacParentDir, 'railway-iac-'));
-	const iacFile = resolve(iacDir, 'railway.mjs');
-	const databaseService = configuredMarketDatabaseService(input.context.tenantRoot, input.context.deployConfig);
-	const databaseName = databaseService?.serviceName ?? null;
-	const databaseDeclaration = databaseName
-		? `  const db = postgres(${jsLiteral(databaseName)}, { region: "us-east4-eqdc4a" });`
-		: null;
-	const declarations = projectServices.flatMap((candidate, index) => {
-		const sourceRepo = String(candidate.sourceRepo ?? '').trim();
-		const sourceBranch = String(candidate.sourceBranch ?? '').trim();
-		const volumeMountPath = String(candidate.volumeMountPath ?? '').trim();
-		const volumeName = volumeMountPath ? railwayIacVolumeName(candidate.serviceName) : null;
-		const serviceVariableName = railwayIacIdentifier('svc', index);
-		const volumeVariableName = volumeName ? railwayIacIdentifier('vol', index) : null;
-		const buildConfig = railwayIacBuildConfig(candidate);
-		const deployConfig = railwayIacDeployConfig(candidate);
-		const sourceConfig = {
-			branch: sourceBranch,
-			rootDirectory: String(candidate.sourceRootDirectory ?? '').trim() || railwayServiceRootDirectory(input.context.tenantRoot, candidate),
-			...(candidate.sourceCommit ? { commitSha: candidate.sourceCommit } : {}),
-		};
-		const serviceConfigEntries = [
-			`source: github(${jsLiteral(sourceRepo)}, ${jsLiteral(sourceConfig)})`,
-			buildConfig ? `build: ${jsLiteral(buildConfig)}` : null,
-			Object.keys(deployConfig).length > 0 ? `deploy: ${jsLiteral(deployConfig)}` : null,
-			volumeMountPath && volumeVariableName ? `volumeMounts: { ${jsLiteral(volumeMountPath)}: ${volumeVariableName} }` : null,
-		].filter(Boolean);
-		const volumeDeclaration = volumeName && volumeVariableName
-			? `  const ${volumeVariableName} = volume(${jsLiteral(volumeName)}, {
-  region: "us-east4-eqdc4a",
-  sizeMB: 50000,
-  allowOnlineResize: true,
-  alerts: { usage: { "80": {}, "95": {}, "100": {} } },
-  });`
-			: null;
-		return [
-			volumeDeclaration,
-			`  const ${serviceVariableName} = service(${jsLiteral(candidate.serviceName)}, {
-    ${serviceConfigEntries.join(',\n    ')}
-  });`,
-		].filter(Boolean);
-	});
-	const resourceEntries = projectServices.flatMap((candidate, index) => {
-		const serviceVariableName = railwayIacIdentifier('svc', index);
-		const volumeVariableName = candidate.volumeMountPath ? railwayIacIdentifier('vol', index) : null;
-		return [serviceVariableName, volumeVariableName].filter(Boolean);
-	});
-	if (databaseDeclaration) {
-		resourceEntries.push('db');
-	}
-	const file = `
-import { defineRailway, github, postgres, project, service, volume } from "railway/iac";
-
-export default defineRailway(() => {
-${databaseDeclaration ? `${databaseDeclaration}\n` : ''}${declarations.join('\n')}
-  return project(${jsLiteral(project.name)}, { resources: [${resourceEntries.join(', ')}] });
-});
-`.trimStart();
-	writeFileSync(iacFile, file);
-	try {
-		traceRailwayReconcile(topology.env, 'sync:iac', `${configuredService.key}:${service.name}:project-services=${projectServices.map((candidate) => `${candidate.serviceName}:${candidate.dockerfilePath ?? 'no-dockerfile'}:${candidate.volumeMountPath ?? 'no-volume'}`).join(',')}`);
-		const response = await runRailwayIac({
-			command: 'apply',
-			cwd: iacDir,
-			file: iacFile,
-			backboard: {
-				endpoint: String(topology.env.TREESEED_RAILWAY_API_URL ?? topology.env.RAILWAY_API_URL ?? '').trim() || undefined,
-				token,
-				authType: 'bearer',
-				projectId: project.id,
-				environmentId: environment.id,
-				decryptVariables: false,
-				merge: true,
-			},
-		});
-		if (!response.ok) {
-			const diagnostics = Array.isArray((response as { diagnostics?: unknown }).diagnostics)
-				? (response as { diagnostics: Array<{ message?: string }> }).diagnostics.map((entry) => entry.message).filter(Boolean).join('; ')
-				: '';
-			throw new Error(`Railway IaC reconciliation failed for ${service.name}${diagnostics ? `: ${diagnostics}` : '.'}`);
-		}
-		return response;
-	} finally {
-		rmSync(iacDir, { recursive: true, force: true });
-	}
-}
-
 function railwayDriftSessionKey(scope: string) {
 	return `railway:provider-drift:${scope}`;
 }
@@ -4146,8 +3987,151 @@ function activeRailwayVolumeInstances(volume: { instances?: Array<{ state?: stri
 	const instances = Array.isArray(volume.instances) ? volume.instances : [];
 	return instances.filter((instance) => {
 		const state = String(instance.state ?? 'READY').toUpperCase();
-		return state !== 'DELETING' && state !== 'DELETED';
+		const pendingDeletion = 'isPendingDeletion' in instance && instance.isPendingDeletion === true;
+		const deletedAt = 'deletedAt' in instance && typeof instance.deletedAt === 'string' && instance.deletedAt.trim();
+		return !pendingDeletion && !deletedAt && state !== 'DELETING' && state !== 'DELETED';
 	});
+}
+
+function isRailwayCapacityProviderService(service: ReturnType<typeof configuredRailwayServices>[number]) {
+	return String(service.key ?? '').startsWith('capacityProvider');
+}
+
+function railwayServiceMatchesKey(service: ReturnType<typeof configuredRailwayServices>[number], key: string) {
+	return service.key === key || service.instanceKey === key || service.serviceName === key || service.serviceId === key;
+}
+
+function configuredRailwayProjectSyncGroups(
+	input: TreeseedReconcileAdapterInput,
+	scope: 'local' | 'staging' | 'prod',
+	serviceKeys?: string[],
+) {
+	const allServices = configuredRailwayServices(input.context.tenantRoot, scope)
+		.filter((service) => service.enabled !== false)
+		.filter((service) => !isRailwayCapacityProviderService(service));
+	const selected = Array.isArray(serviceKeys) && serviceKeys.length > 0
+		? allServices.filter((service) => serviceKeys.some((key) => railwayServiceMatchesKey(service, key)))
+		: allServices;
+	const selectedProjectKeys = new Set(selected.map((service) => `${service.projectName}:::${service.railwayEnvironment}`));
+	const grouped = new Map<string, ReturnType<typeof configuredRailwayServices>[number][]>();
+	for (const service of allServices) {
+		const key = `${service.projectName}:::${service.railwayEnvironment}`;
+		if (!selectedProjectKeys.has(key)) {
+			continue;
+		}
+		const services = grouped.get(key) ?? [];
+		services.push(service);
+		grouped.set(key, services);
+	}
+	return [...grouped.values()];
+}
+
+function railwayIacServiceInput(
+	input: TreeseedReconcileAdapterInput,
+	sync: ReturnType<typeof collectRailwayEnvironmentSync>,
+	service: ReturnType<typeof configuredRailwayServices>[number],
+	scope: 'local' | 'staging' | 'prod',
+): TreeseedRailwayIacService {
+	if (scope === 'staging' && service.imageRef) {
+		throw new Error(`Railway staging service ${service.serviceName} must build from Git source, not Docker image ${service.imageRef}.`);
+	}
+	if (scope === 'prod' && service.sourceMode === 'git') {
+		throw new Error(`Railway production service ${service.serviceName} must deploy an immutable image, not Git source.`);
+	}
+	const serviceSync = sync.forService(service.key, service);
+	return {
+		key: service.instanceKey ?? service.key,
+		serviceName: service.serviceName,
+		sourceMode: service.sourceMode,
+		sourceRepo: service.sourceRepo,
+		sourceBranch: service.sourceBranch,
+		sourceCommit: service.sourceCommit,
+		sourceRootDirectory: service.sourceRootDirectory ?? railwayServiceRootDirectory(input.context.tenantRoot, service),
+		imageRef: service.imageRef,
+		dockerfilePath: service.dockerfilePath,
+		buildCommand: service.buildCommand,
+		startCommand: service.startCommand,
+		healthcheckPath: service.healthcheckPath,
+		healthcheckTimeoutSeconds: service.healthcheckTimeoutSeconds,
+		runtimeMode: service.runtimeMode,
+		volumeMountPath: service.volumeMountPath,
+		variables: serviceSync.variables,
+		secrets: serviceSync.secrets,
+	};
+}
+
+function configuredRailwayIacDatabase(
+	input: TreeseedReconcileAdapterInput,
+	projectServices: ReturnType<typeof configuredRailwayServices>,
+	detachVolumeIds: string[] = [],
+) {
+	if (!projectServices.some((service) => service.key === 'api' || service.key === 'operationsRunner')) {
+		return null;
+	}
+	const treeseedDatabase = configuredMarketDatabaseService(input.context.tenantRoot, input.context.deployConfig);
+	const treeseedDatabaseService = treeseedDatabase?.service;
+	if (
+		!treeseedDatabaseService
+		|| treeseedDatabaseService.enabled === false
+		|| treeseedDatabaseService.provider !== 'railway'
+		|| treeseedDatabaseService.railway?.resourceType !== 'postgres'
+	) {
+		return null;
+	}
+	return {
+		serviceName: treeseedDatabase.serviceName,
+		environmentVariable: 'TREESEED_DATABASE_URL',
+		mountPath: '/var/lib/postgresql/data',
+		detachVolumeIds,
+	};
+}
+
+function activeAttachedRailwayVolumeIds(
+	volumes: Awaited<ReturnType<typeof listRailwayVolumes>>,
+	serviceId: string | null | undefined,
+	environmentId: string,
+	desiredVolumeName: string,
+) {
+	if (!serviceId) {
+		return [];
+	}
+	return volumes
+		.filter((volume) => volume.instances.some((instance) =>
+			instance.serviceId === serviceId
+			&& instance.environmentId === environmentId
+			&& (
+				volume.name !== desiredVolumeName
+				|| activeRailwayVolumeInstances({ instances: [instance] }).length === 0
+			)
+		))
+		.map((volume) => volume.id);
+}
+
+function blockedPendingRailwayVolumeAttachments(
+	volumes: Awaited<ReturnType<typeof listRailwayVolumes>>,
+	serviceIdByName: Map<string, string | null>,
+	environmentId: string,
+) {
+	const serviceNameById = new Map([...serviceIdByName.entries()]
+		.filter(([, serviceId]) => serviceId)
+		.map(([serviceName, serviceId]) => [serviceId, serviceName] as const));
+	const blocked: string[] = [];
+	for (const volume of volumes) {
+		for (const instance of volume.instances) {
+			if (!instance.serviceId || instance.environmentId !== environmentId) {
+				continue;
+			}
+			const serviceName = serviceNameById.get(instance.serviceId);
+			if (!serviceName) {
+				continue;
+			}
+			if (activeRailwayVolumeInstances({ instances: [instance] }).length > 0) {
+				continue;
+			}
+			blocked.push(`${serviceName}: volume ${volume.name ?? volume.id} (${volume.id}) is pending/deleted while still attached to service ${instance.serviceId} at ${instance.mountPath ?? '(unknown mount)'}; deletedAt=${instance.deletedAt ?? '(none)'} state=${instance.state ?? '(unknown)'}`);
+		}
+	}
+	return blocked;
 }
 
 async function reconcileStaleOperationsRunnerResourcesForScope(
@@ -4262,138 +4246,156 @@ async function syncRailwayEnvironmentForScope(
 	{ dryRun = false, serviceKeys }: { dryRun?: boolean; serviceKeys?: string[] } = {},
 ) {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
-	const generatedCapacityProviderApiKey = dryRun ? null : ensureCapacityProviderApiKeyForRailwaySync(input, scope);
-	const sync = collectRailwayEnvironmentSync(input, generatedCapacityProviderApiKey
-		? { TREESEED_CAPACITY_PROVIDER_API_KEY: generatedCapacityProviderApiKey }
-		: {});
+	const sync = collectRailwayEnvironmentSync(input);
 	const selectedServiceKeys = Array.isArray(serviceKeys) && serviceKeys.length > 0
 		? [...new Set(serviceKeys.map((value) => String(value).trim()).filter(Boolean))]
 		: undefined;
 	traceRailwayReconcile(input.context.env, 'sync:start', `scope=${scope} dryRun=${dryRun ? 'yes' : 'no'}`);
-	if (!dryRun) {
-		const existingTopology = await resolveRailwayTopologyForScope(input, scope, {
-			ensure: false,
-			serviceKeys: selectedServiceKeys,
+	const projectGroups = configuredRailwayProjectSyncGroups(input, scope, selectedServiceKeys);
+	if (projectGroups.length === 0) {
+		return {
+			scope,
+			services: [],
+			secrets: Object.keys(sync.secrets),
+			variables: Object.keys(sync.variables),
+			dryRun,
+			workspace: '',
+		};
+	}
+	let workspace = '';
+	const syncedServices: ReturnType<typeof configuredRailwayServices> = [];
+	for (const projectServices of projectGroups) {
+		const serviceKeySet = [...new Set(projectServices.map((service) => service.key))];
+		const topology = await resolveRailwayTopologyForScope(input, scope, {
+			ensure: !dryRun,
+			ensureServices: false,
+			serviceKeys: serviceKeySet,
 			includeInstances: false,
 			includeVariables: false,
+			refresh: true,
 		});
-		for (const entry of existingTopology.services.values()) {
-			if (!entry.project || !entry.environment || !entry.service) continue;
-			traceRailwayReconcile(existingTopology.env, 'sync:variables-existing', `${entry.configuredService.key}:${entry.service.name}`);
-			const serviceSync = sync.forService(entry.configuredService.key, entry.configuredService);
-			await upsertRailwayVariables({
-				projectId: entry.project.id,
-				environmentId: entry.environment.id,
-				serviceId: entry.service.id,
-				variables: {
-					...serviceSync.variables,
-					...serviceSync.secrets,
-				},
-				env: existingTopology.env,
-			});
+		workspace = topology.workspace.name;
+		const resolvedEntry = [...topology.services.values()].find((entry) => entry.project && entry.environment) ?? null;
+		const project = resolvedEntry?.project;
+		const environment = resolvedEntry?.environment;
+		traceRailwayReconcile(topology.env, 'sync:topology', `project-services=${projectServices.map((service) => service.serviceName).join(',')}`);
+		if (dryRun) {
+			syncedServices.push(...projectServices);
+			continue;
 		}
-	}
-	const topology = await resolveRailwayTopologyForScope(input, scope, {
-		ensure: !dryRun,
-		serviceKeys: selectedServiceKeys,
-		includeInstances: !dryRun,
-		includeVariables: false,
-	});
-	traceRailwayReconcile(topology.env, 'sync:topology', `services=${[...topology.services.keys()].join(',')}`);
-	if (!dryRun) {
-		traceRailwayReconcile(topology.env, 'sync:postgres:start', 'ensuring Treeseed database');
-		await ensureRailwayMarketDatabaseForScope(input, topology);
-		traceRailwayReconcile(topology.env, 'sync:postgres:done', 'Treeseed database ensured');
-		for (const entry of topology.services.values()) {
-			if (!entry.project || !entry.environment || !entry.service) {
-				continue;
-			}
-			traceRailwayReconcile(topology.env, 'sync:variables', `${entry.configuredService.key}:${entry.service.name}`);
-			const serviceSync = sync.forService(entry.configuredService.key, entry.configuredService);
-			await upsertRailwayVariables({
-				projectId: entry.project.id,
-				environmentId: entry.environment.id,
-				serviceId: entry.service.id,
-				variables: {
-					...serviceSync.variables,
-					...serviceSync.secrets,
-				},
-				env: topology.env,
-			});
-			if (entry.configuredService.sourceMode === 'git' && (entry.configuredService.dockerfilePath || entry.configuredService.volumeMountPath)) {
-				await applyRailwayServiceIac({
-					input,
-					topology,
-					project: entry.project,
-					environment: entry.environment,
-					service: entry.service,
-					configuredService: entry.configuredService,
+		if (!project || !environment) {
+			throw new Error(`Railway IaC reconciliation could not resolve project/environment for ${projectServices[0]?.projectName ?? '(unknown project)'}/${projectServices[0]?.railwayEnvironment ?? '(unknown environment)'}.`);
+		}
+		const liveServices = await listRailwayEnvironmentServices({ environmentId: environment.id, env: topology.env }).catch(() => project.services);
+		const liveServiceByName = new Map(liveServices.map((service) => [service.name, service]));
+		const liveVolumes = await listRailwayVolumes({ projectId: project.id, env: topology.env }).catch(() => []);
+		const databaseDescriptor = configuredRailwayIacDatabase(input, projectServices);
+		const serviceIdByName = new Map(projectServices.map((service) => {
+			const liveService = liveServiceByName.get(service.serviceName)
+				?? project.services.find((candidate) => candidate.name === service.serviceName || candidate.id === service.serviceId)
+				?? null;
+			return [service.serviceName, liveService?.id ?? null] as const;
+		}));
+		if (databaseDescriptor) {
+			const databaseLiveService = liveServiceByName.get(databaseDescriptor.serviceName)
+				?? project.services.find((candidate) => candidate.name === databaseDescriptor.serviceName)
+				?? null;
+			serviceIdByName.set(databaseDescriptor.serviceName, databaseLiveService?.id ?? null);
+		}
+		const pendingVolumeBlocks = blockedPendingRailwayVolumeAttachments(liveVolumes, serviceIdByName, environment.id);
+		if (pendingVolumeBlocks.length > 0) {
+			for (const reason of pendingVolumeBlocks) {
+				recordRailwayProviderDrift(input, scope, {
+					kind: 'railway.pending-volume-attachment',
+					action: 'blocked',
+					status: 'blocked',
+					projectId: project.id,
+					environmentId: environment.id,
+					reason,
 				});
 			}
-			if (entry.configuredService.volumeMountPath) {
-				const volumeName = `${entry.service.name}-volume`;
-				traceRailwayReconcile(topology.env, 'sync:volume', `${entry.configuredService.key}:${volumeName}:${entry.configuredService.volumeMountPath}`);
-				const volume = await ensureRailwayServiceVolume({
-					projectId: entry.project.id,
-					environmentId: entry.environment.id,
-					serviceId: entry.service.id,
-					name: volumeName,
-					mountPath: entry.configuredService.volumeMountPath,
-					env: topology.env,
-				});
-				if (
-					volume.instance?.serviceId !== entry.service.id
-					|| volume.instance?.environmentId !== entry.environment.id
-					|| volume.instance?.mountPath !== entry.configuredService.volumeMountPath
-				) {
-					throw new Error(`Railway API volume reconciliation did not mount ${volumeName} on ${entry.service.name} at ${entry.configuredService.volumeMountPath}.`);
-				}
-				}
-				if (shouldDeployRailwayServiceBySourceUpload(scope, entry.configuredService)) {
-					traceRailwayReconcile(topology.env, 'sync:deploy-upload', `${entry.configuredService.key}:${entry.service.name}:${entry.configuredService.rootDir}`);
-					deployRailwayServiceBySourceUpload(input, entry, topology.env, scope);
-				} else if (entry.configuredService.imageRef) {
-					traceRailwayReconcile(topology.env, 'sync:deploy', `${entry.configuredService.key}:${entry.service.name}:${entry.configuredService.imageRef}`);
-					await deployRailwayServiceInstanceWithSourceRepair(entry, topology.env);
-				} else if (entry.configuredService.sourceMode === 'git' && entry.configuredService.dockerfilePath) {
-					traceRailwayReconcile(topology.env, 'sync:deploy-skip', `${entry.configuredService.key}:${entry.service.name}:railway-git-dockerfile-source`);
-				} else {
-					traceRailwayReconcile(topology.env, 'sync:deploy', `${entry.configuredService.key}:${entry.service.name}:variables`);
-					await deployRailwayServiceInstanceWithSourceRepair(entry, topology.env);
-				}
-			if (entry.configuredService.key === 'operationsRunner') {
-				const desiredServiceNames = new Set(configuredRailwayServices(input.context.tenantRoot, scope)
-					.filter((service) => service.key === 'operationsRunner')
-					.filter((service) => service.enabled !== false)
-					.map((service) => service.serviceName)
-					.filter(Boolean));
-				if (entry.configuredService.serviceName) {
-					desiredServiceNames.add(entry.configuredService.serviceName);
-				}
-				const desiredVolumeNames = new Set([...desiredServiceNames].map((serviceName) => `${serviceName}-volume`));
-				if (desiredServiceNames.size > 0) {
-					await reconcileStaleOperationsRunnerResourcesForProject(input, {
-						scope,
-						env: topology.env,
-						project: entry.project,
-						environment: entry.environment,
-						desiredServiceNames,
-						desiredVolumeNames,
-					});
-				}
-			}
+			throw new Error(`Railway has pending-deletion volume attachments that block official IaC reconciliation. ${pendingVolumeBlocks.join('; ')}`);
 		}
-		traceRailwayReconcile(topology.env, 'sync:runner:cleanup-stale', 'reconciling old operations runner resources');
-		await reconcileStaleOperationsRunnerResourcesForScope(input, topology);
+		const detachVolumeIdsByServiceName = new Map(projectServices.map((service) => {
+			const liveService = liveServiceByName.get(service.serviceName)
+				?? project.services.find((candidate) => candidate.name === service.serviceName || candidate.id === service.serviceId)
+				?? null;
+			return [
+				service.serviceName,
+				activeAttachedRailwayVolumeIds(liveVolumes, liveService?.id, environment.id, `${service.serviceName}-volume`),
+			] as const;
+		}));
+		const databaseLiveService = databaseDescriptor
+			? liveServiceByName.get(databaseDescriptor.serviceName)
+				?? project.services.find((candidate) => candidate.name === databaseDescriptor.serviceName)
+				?? null
+			: null;
+		const databaseDetachVolumeIds = databaseDescriptor
+			? activeAttachedRailwayVolumeIds(liveVolumes, databaseLiveService?.id, environment.id, `${databaseDescriptor.serviceName}-volume`)
+			: [];
+		const token = String(topology.env.TREESEED_RAILWAY_API_TOKEN ?? topology.env.RAILWAY_API_TOKEN ?? '').trim();
+		if (!token) {
+			throw new Error(`Railway IaC reconciliation requires TREESEED_RAILWAY_API_TOKEN for ${project.name}/${environment.name}.`);
+		}
+		const iacInput = {
+			tenantRoot: input.context.tenantRoot,
+			scope,
+			projectName: project.name,
+			projectId: project.id,
+			environmentName: environment.name,
+			environmentId: environment.id,
+			railwayApiToken: token,
+			railwayApiUrl: String(topology.env.TREESEED_RAILWAY_API_URL ?? topology.env.RAILWAY_API_URL ?? '').trim() || null,
+			services: projectServices.map((service) => ({
+				...railwayIacServiceInput(input, sync, service, scope),
+				detachVolumeIds: detachVolumeIdsByServiceName.get(service.serviceName) ?? [],
+			})),
+			database: databaseDescriptor
+				? { ...databaseDescriptor, detachVolumeIds: databaseDetachVolumeIds }
+				: null,
+		};
+		const {
+			applyRailwayIacProject,
+			cleanupRailwayIacRender,
+			planRailwayIacProject,
+			renderRailwayIacProject,
+			validateRailwayIacChangeSet,
+		} = await import('./providers/railway-iac.ts');
+		const rendered = renderRailwayIacProject(iacInput);
+		try {
+			traceRailwayReconcile(topology.env, 'sync:iac-plan', `${project.name}/${environment.name}:${rendered.serviceNames.join(',')}:volumes=${rendered.volumeNames.join(',')}`);
+			const plan = await planRailwayIacProject(iacInput, rendered);
+			if (!plan.ok) {
+				const diagnostics = plan.diagnostics.map((entry) => entry.message).filter(Boolean).join('; ');
+				throw new Error(`Railway IaC plan failed for ${project.name}/${environment.name}${diagnostics ? `: ${diagnostics}` : '.'}`);
+			}
+			const validation = validateRailwayIacChangeSet(plan.changeSet, {
+				services: rendered.serviceNames,
+				volumes: rendered.volumeNames,
+				database: rendered.databaseName,
+				scope,
+			});
+			if (!validation.ok) {
+				throw new Error(`Railway IaC plan rejected for ${project.name}/${environment.name}: ${validation.blockedReasons.join('; ')}`);
+			}
+			const apply = await applyRailwayIacProject(iacInput, rendered);
+			if (!apply.ok) {
+				const diagnostics = apply.diagnostics.map((entry) => entry.message).filter(Boolean).join('; ');
+				throw new Error(`Railway IaC apply failed for ${project.name}/${environment.name}${diagnostics ? `: ${diagnostics}` : '.'}`);
+			}
+			syncedServices.push(...projectServices);
+		} finally {
+			cleanupRailwayIacRender(rendered);
+		}
 	}
-	traceRailwayReconcile(topology.env, 'sync:done', `scope=${scope}`);
+	traceRailwayReconcile(input.context.env, 'sync:done', `scope=${scope}`);
 	return {
 		scope,
-		services: [...topology.services.values()].map((entry) => entry.configuredService),
+		services: syncedServices,
 		secrets: Object.keys(sync.secrets),
 		variables: Object.keys(sync.variables),
 		dryRun,
-		workspace: topology.workspace.name,
+		workspace,
 	};
 	}
 
@@ -5003,11 +5005,20 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput, val
 				const serviceVariableRefs = Array.isArray(configuredService?.variableRefs)
 					? configuredService.variableRefs.map((value) => String(value).trim()).filter(Boolean)
 					: [];
+				const serviceValue = (key: string) => {
+					const direct = values[key];
+					if (typeof direct === 'string' && direct.length > 0) return direct;
+					if (key.startsWith('TREEDX_')) {
+						const legacy = values[`TREESEED_${key}`];
+						if (typeof legacy === 'string' && legacy.length > 0) return legacy;
+					}
+					return undefined;
+				};
 				const serviceRefSecrets = Object.fromEntries(serviceSecretRefs
-					.map((key) => [key, values[key]] as const)
+					.map((key) => [key, serviceValue(key)] as const)
 					.filter(([, value]) => typeof value === 'string' && value.length > 0));
 				const serviceRefVariables = Object.fromEntries(serviceVariableRefs
-					.map((key) => [key, values[key]] as const)
+					.map((key) => [key, serviceValue(key)] as const)
 					.filter(([, value]) => typeof value === 'string' && value.length > 0));
 				return {
 					secrets: {
@@ -5502,6 +5513,22 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 				]);
 			}
 			const sync = collectRailwayEnvironmentSync(input).forService(serviceKey, service);
+			let currentVariables = entry.currentVariables;
+			if (entry.project?.id && entry.environment?.id && entry.service?.id) {
+				for (let variableAttempt = 0; variableAttempt < 6; variableAttempt += 1) {
+					currentVariables = await listRailwayVariables({
+						projectId: entry.project.id,
+						environmentId: entry.environment.id,
+						serviceId: entry.service.id,
+						env: topology.env,
+					}).catch(() => entry.currentVariables);
+					const expectedKeys = [...Object.keys(sync.variables), ...Object.keys(sync.secrets)];
+					if (expectedKeys.every((key) => Object.hasOwn(currentVariables, key))) {
+						break;
+					}
+					sleepMs(1000);
+				}
+			}
 			const checks: TreeseedUnitVerificationCheck[] = [
 		verificationCheck('railway.workspace', 'Railway workspace is resolved', 'api', {
 			exists: Boolean(topology.workspace.id),
@@ -5618,7 +5645,10 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 		const mountedVolume = volumes.find((volume) => volume.instances.some((instance) =>
 			instance.serviceId === expectedServiceId
 			&& instance.environmentId === expectedEnvironmentId
-			&& instance.mountPath === service.volumeMountPath,
+			&& instance.mountPath === service.volumeMountPath
+			&& !instance.isPendingDeletion
+			&& !(typeof instance.deletedAt === 'string' && instance.deletedAt.trim())
+			&& !['DELETING', 'DELETED'].includes(String(instance.state ?? '').toUpperCase()),
 		)) ?? null;
 		checks.push(verificationCheck('railway.volume:data', 'Railway service has persistent data volume mounted', 'api', {
 			exists: Boolean(mountedVolume),
@@ -5635,20 +5665,27 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 		}));
 	}
 	for (const [key, value] of Object.entries(sync.variables)) {
+		const matches = currentVariables[key] === value;
 		checks.push(verificationCheck(`railway.var:${key}`, `Railway variable ${key} exists with the expected value`, 'api', {
-			exists: Object.hasOwn(entry.currentVariables, key),
-			configured: entry.currentVariables[key] === value,
+			exists: Object.hasOwn(currentVariables, key),
+			configured: matches,
+			ready: matches,
+			verified: matches,
 			expected: value,
-			observed: entry.currentVariables[key] ?? null,
-			issues: entry.currentVariables[key] === value ? [] : [`Railway variable ${key} does not match the expected value.`],
+			observed: currentVariables[key] ?? null,
+			issues: matches ? [] : [`Railway variable ${key} does not match the expected value.`],
 		}));
 	}
 	for (const key of Object.keys(sync.secrets)) {
+		const exists = Object.hasOwn(currentVariables, key);
 		checks.push(verificationCheck(`railway.secret:${key}`, `Railway secret ${key} exists`, 'api', {
-			exists: Object.hasOwn(entry.currentVariables, key),
+			exists,
+			configured: exists,
+			ready: exists,
+			verified: exists,
 			expected: true,
-			observed: Object.hasOwn(entry.currentVariables, key),
-			issues: Object.hasOwn(entry.currentVariables, key) ? [] : [`Railway secret ${key} is missing.`],
+			observed: exists,
+			issues: exists ? [] : [`Railway secret ${key} is missing.`],
 		}));
 	}
 			const providerDriftWarnings = railwayProviderDrift(input, scope).map((drift) =>
@@ -5727,8 +5764,13 @@ function buildRailwayDiff(input: TreeseedReconcileAdapterInput, observed: Treese
 async function reconcileRailwayUnit(input: TreeseedReconcileAdapterInput, diff: TreeseedReconcileUnitDiff): Promise<TreeseedReconcileResult> {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
 	const serviceKey = String(input.unit.metadata.serviceKey ?? '').trim();
-	const serviceKeys = serviceKey ? [serviceKey] : undefined;
-	const cacheKey = `railway:sync:${scope}:${serviceKey || 'all'}`;
+	const configuredService = configuredRailwayServices(input.context.tenantRoot, scope)
+		.find((candidate) => candidate.key === serviceKey || candidate.instanceKey === serviceKey || candidate.serviceName === serviceKey) ?? null;
+	const requiresProjectLevelSync = Boolean(configuredService);
+	const serviceKeys = serviceKey && !requiresProjectLevelSync ? [serviceKey] : undefined;
+	const cacheKey = requiresProjectLevelSync
+		? `railway:sync:${scope}:project:${configuredService?.projectName ?? 'default'}:${configuredService?.railwayEnvironment ?? scope}`
+		: `railway:sync:${scope}:${serviceKey || 'all'}`;
 	let attempt = 0;
 	for (;;) {
 		try {

@@ -116,4 +116,31 @@ describe('hosting legacy mutation boundary', () => {
 			}
 		}
 	});
+
+	it('routes Railway hosting provisioning through the SDK IaC project adapter only', () => {
+		const builtins = source('packages/sdk/src/reconcile/builtin-adapters.ts');
+		const syncStart = builtins.indexOf('async function syncRailwayEnvironmentForScope');
+		const syncEnd = builtins.indexOf('function shouldDeployRailwayServiceBySourceUpload', syncStart);
+		expect(syncStart).toBeGreaterThanOrEqual(0);
+		expect(syncEnd).toBeGreaterThan(syncStart);
+		const sync = builtins.slice(syncStart, syncEnd);
+
+		expect(sync).toContain('renderRailwayIacProject');
+		expect(sync).toContain('planRailwayIacProject');
+		expect(sync).toContain('validateRailwayIacChangeSet');
+		expect(sync).toContain('applyRailwayIacProject');
+		for (const blocked of [
+			'ensureRailwayService(',
+			'ensureRailwayPostgresService(',
+			'ensureRailwayServiceVolume(',
+			'updateRailwayServiceGitSource(',
+			'updateRailwayServiceImageSource(',
+			'deployRailwayServiceInstance(',
+			'deployRailwayServiceInstanceWithSourceRepair(',
+			'deployRailwayServiceBySourceUpload(',
+			'upsertRailwayVariables(',
+		]) {
+			expect(sync, `syncRailwayEnvironmentForScope must not call ${blocked}`).not.toContain(blocked);
+		}
+	});
 });

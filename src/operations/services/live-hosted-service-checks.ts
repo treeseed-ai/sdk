@@ -50,6 +50,11 @@ function sleep(ms: number) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function liveCheckErrorMessage(error: unknown, fallback: string) {
+	const message = error instanceof Error ? error.message : String(error ?? '');
+	return message.trim() || fallback;
+}
+
 function normalizeBaseUrl(value: unknown) {
 	return typeof value === 'string' && value.trim()
 		? value.trim().replace(/\/+$/u, '')
@@ -140,17 +145,25 @@ function indexedName(baseName: string, index: number) {
 	return `${baseName.replace(/-\d+$/u, '')}-${String(Math.max(1, index)).padStart(2, '0')}`;
 }
 
-function activeRailwayVolumeInstances(volume: { instances?: Array<{ state?: string | null }> }) {
-	const instances = Array.isArray(volume.instances) ? volume.instances : [];
-	return instances.filter((instance) => {
-		const state = String(instance.state ?? 'READY').toUpperCase();
-		return state !== 'DELETING' && state !== 'DELETED';
-	});
+function isActiveRailwayVolumeInstance(instance: { state?: string | null; isPendingDeletion?: boolean | null; deletedAt?: string | null }) {
+	const state = String(instance.state ?? 'READY').toUpperCase();
+	return instance.isPendingDeletion !== true
+		&& !(typeof instance.deletedAt === 'string' && instance.deletedAt.trim())
+		&& state !== 'DELETING'
+		&& state !== 'DELETED';
 }
 
-function railwayVolumeInstanceStates(volume: { instances?: Array<{ state?: string | null }> }) {
+function activeRailwayVolumeInstances(volume: { instances?: Array<{ state?: string | null; isPendingDeletion?: boolean | null; deletedAt?: string | null }> }) {
+	const instances = Array.isArray(volume.instances) ? volume.instances : [];
+	return instances.filter(isActiveRailwayVolumeInstance);
+}
+
+function railwayVolumeInstanceStates(volume: { instances?: Array<{ state?: string | null; isPendingDeletion?: boolean | null; deletedAt?: string | null }> }) {
 	const states = (Array.isArray(volume.instances) ? volume.instances : [])
-		.map((instance) => String(instance.state ?? 'READY').trim().toUpperCase())
+		.map((instance) => {
+			const state = String(instance.state ?? 'READY').trim().toUpperCase();
+			return `${state}${instance.isPendingDeletion === true ? ':PENDING_DELETION' : ''}${instance.deletedAt ? `:DELETED_AT=${instance.deletedAt}` : ''}`;
+		})
 		.filter(Boolean);
 	return states.length > 0 ? [...new Set(states)].join(',') : 'none';
 }
@@ -276,7 +289,8 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 					return instances.some((instance: any) =>
 						instance?.serviceId === railwayService.id
 						&& instance?.environmentId === environment.id
-						&& (!service.volumeMountPath || instance?.mountPath === service.volumeMountPath),
+						&& (!service.volumeMountPath || instance?.mountPath === service.volumeMountPath)
+						&& isActiveRailwayVolumeInstance(instance)
 					);
 				}) ?? null
 				: null;
@@ -287,7 +301,8 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 					.find((instance: any) =>
 						instance?.serviceId === railwayService.id
 						&& instance?.environmentId === environment.id
-						&& (!service.volumeMountPath || instance?.mountPath === service.volumeMountPath),
+						&& (!service.volumeMountPath || instance?.mountPath === service.volumeMountPath)
+						&& isActiveRailwayVolumeInstance(instance)
 					) ?? null)
 				: null;
 			const variableKeys = Object.keys(variables ?? {});
@@ -395,13 +410,14 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 						issues.push(`${serviceName}: public TreeDX latest deployment is not healthy. ${deployment.message}`);
 					}
 					const variables = await listRailwayVariables({ projectId: project.id, environmentId: environment.id, serviceId: service.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => ({}));
-					if (variables.TREESEED_TREEDX_FEDERATION_MODE !== 'connected_library') {
-						issues.push(`${serviceName}: TREESEED_TREEDX_FEDERATION_MODE is not connected_library.`);
+					if (variables.TREEDX_FEDERATION_MODE !== 'connected_library') {
+						issues.push(`${serviceName}: TREEDX_FEDERATION_MODE is not connected_library.`);
 					}
 					const mountedVolume = volumes.find((volume) => volume.name === volumeName && volume.instances.some((instance) =>
 						instance.serviceId === service.id
 						&& instance.environmentId === environment.id
 						&& instance.mountPath === volumeMountPath
+						&& isActiveRailwayVolumeInstance(instance)
 					));
 					if (!mountedVolume) {
 						issues.push(`${serviceName}: public TreeDX volume ${volumeName} is not mounted at ${volumeMountPath}.`);
@@ -414,7 +430,7 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 		return {
 			observed,
 			status: 'failed' as const,
-			issues: [...issues, error instanceof Error ? error.message : String(error)],
+			issues: [...issues, liveCheckErrorMessage(error, 'Railway live observation failed without provider details.')].filter((issue) => issue.trim()),
 		};
 	}
 }
@@ -523,7 +539,8 @@ export async function collectTreeseedLiveHostedServiceChecks(options: TreeseedLi
 		observedRailwayServices: railway.observed,
 		httpChecks,
 	});
-	const providerIssueChecks = railway.issues.map((issue, index) => ({
+	const railwayIssues = railway.issues.map((issue) => issue.trim()).filter(Boolean);
+	const providerIssueChecks = railwayIssues.map((issue, index) => ({
 		id: `railway:live-issue:${index + 1}`,
 		provider: 'railway' as const,
 		serviceType: 'unknown' as const,
@@ -557,7 +574,7 @@ export async function collectTreeseedLiveHostedServiceChecks(options: TreeseedLi
 		liveObservation: {
 			railway: railway.status,
 			http: httpStatus,
-			issues: railway.issues,
+			issues: railwayIssues,
 		},
 	}, options);
 }

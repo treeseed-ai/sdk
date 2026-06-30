@@ -443,7 +443,10 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		if (service.volumeMountPath) {
 			const volumeAttached = Boolean(observed?.volumeId)
 				&& observed?.volumeMountPath === service.volumeMountPath
-				&& (!observed?.serviceName || !observed?.volumeServiceId || observed.volumeServiceId === observed.serviceId);
+				&& (!observed?.serviceName || !observed?.volumeServiceId || observed.volumeServiceId === observed.serviceId)
+				&& observed?.volumePendingDeletion !== true
+				&& !(typeof observed?.volumeDeletedAt === 'string' && observed.volumeDeletedAt.trim())
+				&& !['DELETING', 'DELETED'].includes(String(observed?.volumeState ?? '').toUpperCase());
 			checks.push(check({
 				id: `railway:${service.instanceKey}:volume`,
 				provider: 'railway',

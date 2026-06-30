@@ -396,7 +396,10 @@ function normalizeRailwayVolumeInstance(node: Record<string, unknown>): RailwayV
 
 function isActiveRailwayVolumeInstance(instance: RailwayVolumeInstanceSummary) {
 	const state = String(instance.state ?? 'READY').toUpperCase();
-	return !instance.isPendingDeletion && state !== 'DELETING' && state !== 'DELETED';
+	return !instance.isPendingDeletion
+		&& !(typeof instance.deletedAt === 'string' && instance.deletedAt.trim())
+		&& state !== 'DELETING'
+		&& state !== 'DELETED';
 }
 
 function normalizeVolumeInstances(value: unknown): RailwayVolumeInstanceSummary[] {
@@ -2189,10 +2192,20 @@ mutation TreeseedRailwayVariableCollectionUpsert($input: VariableCollectionUpser
 	for (const key of missing) {
 		await upsertOne(key, variables[key]);
 	}
-	const retried = missing.length > 0
+	let retried = missing.length > 0
 		? await listRailwayVariables({ projectId, environmentId, serviceId, env, fetchImpl }).catch(() => ({}))
 		: observed;
-	const stillMissing = Object.keys(variables).filter((key) => retried[key] == null);
+	let stillMissing = Object.keys(variables).filter((key) => retried[key] == null);
+	for (let attempt = 0; stillMissing.length > 0 && attempt < 12; attempt += 1) {
+		await new Promise((resolve) => setTimeout(resolve, 2_500));
+		retried = await listRailwayVariables({ projectId, environmentId, serviceId, env, fetchImpl }).catch(() => ({}));
+		stillMissing = Object.keys(variables).filter((key) => retried[key] == null);
+		if (stillMissing.length > 0 && attempt === 5) {
+			for (const key of stillMissing) {
+				await upsertOne(key, variables[key]);
+			}
+		}
+	}
 	if (stillMissing.length > 0) {
 		throw new Error(`Railway variable upsert did not persist: ${stillMissing.join(', ')}.`);
 	}
@@ -2456,7 +2469,7 @@ export async function ensureRailwayServiceVolume({
 		?? activeVolumes.find((candidate) =>
 		candidate.name === name
 		&& candidate.instances.some((instance) => instance.environmentId === environmentId),
-	) ?? volumes.find((candidate) =>
+	) ?? activeVolumes.find((candidate) =>
 		candidate.name === name
 		&& (
 			candidate.instances.length === 0
@@ -2484,9 +2497,15 @@ export async function ensureRailwayServiceVolume({
 			for (let attempt = 0; attempt < 8; attempt += 1) {
 				await new Promise((resolve) => setTimeout(resolve, 1500));
 				const refreshed = await listRailwayVolumes({ projectId, env, fetchImpl });
+				const activeRefreshed = refreshed
+					.map((candidate) => ({
+						...candidate,
+						instances: candidate.instances.filter(isActiveRailwayVolumeInstance),
+					}))
+					.filter((candidate) => candidate.instances.length > 0);
 				const existing = findRailwayVolumeForService(refreshed, serviceId, environmentId)
 					?? findRailwayVolumeForService(refreshed, serviceId)
-					?? refreshed.find((candidate) =>
+					?? activeRefreshed.find((candidate) =>
 						candidate.name === name
 						&& (
 							candidate.instances.length === 0
@@ -2506,7 +2525,11 @@ export async function ensureRailwayServiceVolume({
 	if (!volume) {
 		volume = await createReplacementVolume();
 	}
-	const desiredNameInUse = volumes.some((candidate) => candidate.id !== volume?.id && candidate.name === name);
+	const desiredNameInUse = volumes.some((candidate) =>
+		candidate.id !== volume?.id
+		&& candidate.name === name
+		&& candidate.instances.some(isActiveRailwayVolumeInstance)
+	);
 	if (volume.name && volume.name !== name && !desiredNameInUse) {
 		try {
 			volume = await updateRailwayVolumeName({ volumeId: volume.id, name, env, fetchImpl }) ?? { ...volume, name };
@@ -2655,6 +2678,19 @@ function findRailwayVolumeForService(volumes: RailwayVolumeSummary[], serviceId:
 			&& isActiveRailwayVolumeInstance(instance)
 		),
 	) ?? null;
+}
+
+function findSoleActiveRailwayVolumeForEnvironment(volumes: RailwayVolumeSummary[], environmentId: string) {
+	const active = volumes
+		.map((candidate) => ({
+			...candidate,
+			instances: candidate.instances.filter((instance) =>
+				instance.environmentId === environmentId
+				&& isActiveRailwayVolumeInstance(instance)
+			),
+		}))
+		.filter((candidate) => candidate.instances.length > 0);
+	return active.length === 1 ? active[0] : null;
 }
 
 function looksLikeRailwayVolumeCreateRace(error: unknown) {
