@@ -127,7 +127,11 @@ describe("TreeDX release gate integration", () => {
     const releaseGate = renderTreeseedPackageWorkflow(adapter!, "release-gate");
     const publish = renderTreeseedPackageWorkflow(adapter!, "docker-image");
 
-    expect(releaseGate).toMatch(/bash scripts\/(?:release-gate|test-all)\.sh/u);
+    expect(releaseGate).toContain("erlef/setup-beam@v1");
+    expect(releaseGate).toContain('otp-version: "27"');
+    expect(releaseGate).toContain('elixir-version: "1.17.3"');
+    expect(releaseGate).toContain("mix local.hex --force && mix local.rebar --force");
+    expect(releaseGate).toContain("bash scripts/release-gate.sh");
     for (const source of [releaseGate, publish]) {
       expect(source).not.toContain("actions/setup-node");
       expect(source).not.toContain("npm ci");

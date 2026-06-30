@@ -934,8 +934,11 @@ function workflowNameForTemplate(adapter: TreeseedPackageAdapter, template: Tree
 }
 
 export function renderTreeseedPackageWorkflow(adapter: TreeseedPackageAdapter, template: TreeseedPackageWorkflowTemplateKind) {
-	const verify = adapter.verifyCommands.local
-		? formatWorkflowRunCommand(adapter.verifyCommands.local.command, adapter.verifyCommands.local.args)
+	const verifyCommand = template === 'release-gate'
+		? adapter.verifyCommands.release ?? adapter.verifyCommands.local
+		: adapter.verifyCommands.local;
+	const verify = verifyCommand
+		? formatWorkflowRunCommand(verifyCommand.command, verifyCommand.args)
 		: 'npm run verify:local';
 	const setup = resolveWorkflowSetupCommand(adapter);
 	const dockerArtifacts = adapter.artifacts.filter((artifact) => artifact.provider === 'docker');
@@ -1078,6 +1081,7 @@ ${computeTagsStep}      - name: Publish multi-architecture manifest
 ${releaseStep}`;
 	}
 	const needsNodeSetup = adapter.kind === 'node-typescript';
+	const needsBeamSetup = adapter.kind === 'beam-elixir-rust';
 	return `name: Verify ${adapter.name}
 
 on:
@@ -1096,6 +1100,11 @@ ${needsNodeSetup ? `      - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: ${setup}
+` : ''}${needsBeamSetup ? `      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          elixir-version: "1.17.3"
+      - run: mix local.hex --force && mix local.rebar --force
 ` : ''}      - run: ${verify}
 `;
 }
