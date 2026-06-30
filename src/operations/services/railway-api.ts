@@ -99,6 +99,8 @@ export type RailwayVolumeInstanceSummary = {
 	environmentId: string | null;
 	mountPath: string | null;
 	state: string | null;
+	isPendingDeletion: boolean;
+	deletedAt: string | null;
 	sizeGb: number | null;
 	usedGb: number | null;
 };
@@ -385,6 +387,8 @@ function normalizeRailwayVolumeInstance(node: Record<string, unknown>): RailwayV
 		environmentId: railwayConnectionLabel(node.environmentId) || railwayConnectionLabel((node.environment as { id?: unknown } | null)?.id) || null,
 		mountPath: railwayConnectionLabel(node.mountPath) || railwayConnectionLabel(node.mount_path) || null,
 		state: railwayConnectionLabel(node.state) || null,
+		isPendingDeletion: node.isPendingDeletion === true || node.pendingDeletion === true,
+		deletedAt: railwayConnectionLabel(node.deletedAt) || null,
 		sizeGb,
 		usedGb,
 	};
@@ -392,7 +396,7 @@ function normalizeRailwayVolumeInstance(node: Record<string, unknown>): RailwayV
 
 function isActiveRailwayVolumeInstance(instance: RailwayVolumeInstanceSummary) {
 	const state = String(instance.state ?? 'READY').toUpperCase();
-	return state !== 'DELETING' && state !== 'DELETED';
+	return !instance.isPendingDeletion && state !== 'DELETING' && state !== 'DELETED';
 }
 
 function normalizeVolumeInstances(value: unknown): RailwayVolumeInstanceSummary[] {
@@ -2221,6 +2225,8 @@ query TreeseedRailwayVolumeList($projectId: String!) {
 								environmentId
 								mountPath
 								state
+								isPendingDeletion
+								deletedAt
 							}
 						}
 					}
@@ -2264,15 +2270,17 @@ mutation TreeseedRailwayVolumeCreate($input: VolumeCreateInput!) {
 		projectId
 		volumeInstances {
 			edges {
-				node {
-					id
-					serviceId
-					environmentId
-					mountPath
-								state
+					node {
+						id
+						serviceId
+						environmentId
+						mountPath
+						state
+						isPendingDeletion
+						deletedAt
+					}
 				}
 			}
-		}
 	}
 }
 `.trim();
@@ -2334,15 +2342,17 @@ mutation TreeseedRailwayVolumeUpdate($volumeId: String!, $input: VolumeUpdateInp
 		projectId
 		volumeInstances {
 			edges {
-				node {
-					id
-					serviceId
-					environmentId
-					mountPath
-								state
+					node {
+						id
+						serviceId
+						environmentId
+						mountPath
+						state
+						isPendingDeletion
+						deletedAt
+					}
 				}
 			}
-		}
 	}
 }
 `.trim();

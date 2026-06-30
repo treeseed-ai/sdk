@@ -53,6 +53,7 @@ export interface TreeseedObservedRailwayServiceState {
 	serviceId?: string | null;
 	rootDirectory?: string | null;
 	buildCommand?: string | null;
+	dockerfilePath?: string | null;
 	startCommand?: string | null;
 	healthcheckPath?: string | null;
 	healthcheckTimeoutSeconds?: number | null;
@@ -70,6 +71,9 @@ export interface TreeseedObservedRailwayServiceState {
 	volumeMountPath?: string | null;
 	volumeServiceId?: string | null;
 	volumeEnvironmentId?: string | null;
+	volumeState?: string | null;
+	volumePendingDeletion?: boolean | null;
+	volumeDeletedAt?: string | null;
 	variables?: Record<string, unknown> | string[];
 	secrets?: Record<string, unknown> | string[];
 	health?: 'ready' | 'failed' | 'unknown' | string | null;
@@ -336,6 +340,7 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		for (const [key, expected] of Object.entries({
 			rootDirectory: service.imageRef ? null : expectedRootDirectory,
 			buildCommand: service.buildCommand,
+			dockerfilePath: service.dockerfilePath,
 			startCommand: service.startCommand,
 			healthcheckPath: service.healthcheckPath,
 			healthcheckTimeoutSeconds: service.healthcheckTimeoutSeconds,
@@ -453,9 +458,32 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 					volumeMountPath: observed.volumeMountPath ?? null,
 					volumeServiceId: observed.volumeServiceId ?? null,
 					volumeEnvironmentId: observed.volumeEnvironmentId ?? null,
+					volumeState: observed.volumeState ?? null,
+					volumePendingDeletion: observed.volumePendingDeletion ?? null,
+					volumeDeletedAt: observed.volumeDeletedAt ?? null,
 				} : { skipped: true },
 				status: observed ? (volumeAttached ? 'passed' : 'failed') : 'skipped',
 				issues: !observed || volumeAttached ? [] : [`Expected an attached persistent volume mounted at ${service.volumeMountPath}, observed ${observed.volumeMountPath ?? '(unset)'} on volume ${observed.volumeName ?? '(none)'}.`],
+			}));
+			const volumeNotPendingDeletion = observed?.volumePendingDeletion === false
+				&& !['DELETING', 'DELETED'].includes(String(observed?.volumeState ?? '').toUpperCase());
+			checks.push(check({
+				id: `railway:${service.instanceKey}:volume-retained`,
+				provider: 'railway',
+				serviceKey: service.key,
+				serviceType,
+				target,
+				description: `Railway ${service.serviceName} volume is retained and active.`,
+				expected: { pendingDeletion: false },
+				observed: observed ? {
+					volumeName: observed.volumeName ?? null,
+					volumeId: observed.volumeId ?? null,
+					state: observed.volumeState ?? null,
+					pendingDeletion: observed.volumePendingDeletion ?? null,
+					deletedAt: observed.volumeDeletedAt ?? null,
+				} : { skipped: true },
+				status: observed ? (volumeNotPendingDeletion ? 'passed' : 'failed') : 'skipped',
+				issues: !observed || volumeNotPendingDeletion ? [] : [`Expected an active retained volume, observed state=${observed.volumeState ?? '(unset)'} pendingDeletion=${String(observed.volumePendingDeletion ?? null)} deletedAt=${observed.volumeDeletedAt ?? '(unset)'}.`],
 			}));
 			const deploymentHasVolumeMount = observed?.deploymentRequiredMountPath === service.volumeMountPath
 				|| (observed?.deploymentVolumeMounts ?? []).includes(service.volumeMountPath);

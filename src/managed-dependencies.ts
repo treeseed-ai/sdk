@@ -120,7 +120,7 @@ const NPM_TOOLS: Array<{
 		name: 'railway',
 		packageName: '@railway/cli',
 		binName: 'railway',
-		version: '4.44.0',
+		version: '5.23.2',
 	},
 	{ name: 'copilot', packageName: '@github/copilot', binName: 'copilot', version: '1.0.39' },
 	{ name: 'copilot-language-server', packageName: '@github/copilot-language-server', binName: 'copilot-language-server', version: '1.480.0' },

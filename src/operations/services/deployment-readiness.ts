@@ -197,6 +197,7 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 		} else if (environment === 'staging') {
 			checks.push(check('hosting:api:sourceMode', api.config?.sourceMode, 'git', 'API staging deploy uses Railway Git source builds.', 'Set services.api.railway.sourceMode to git.', 'sourceMode'));
 			checks.push(check('hosting:api:sourceRepo', Boolean(api.config?.sourceRepo), true, 'API staging source repository is resolved.', 'Set services.api.railway.sourceRepo or package repository metadata.', 'sourceRepo'));
+			checks.push(check('hosting:api:dockerfilePath', api.config?.dockerfilePath, '/Dockerfile.api', 'API staging deploy uses a Dockerfile build.', 'Set services.api.railway.dockerfilePath to /Dockerfile.api.', 'dockerfilePath'));
 		} else {
 			checks.push(check('hosting:api:imageRefEnv', api.config?.imageRefEnv, 'TREESEED_API_IMAGE_REF', 'API Railway deploy uses a Docker image reference.', 'Set services.api.railway.imageRef or inject TREESEED_API_IMAGE_REF.', 'imageRefEnv'));
 		}
@@ -225,6 +226,7 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 		} else if (environment === 'staging') {
 			checks.push(check('hosting:operationsRunner:sourceMode', runner.config?.sourceMode, 'git', 'Runner staging deploy uses Railway Git source builds.', 'Set services.operationsRunner.railway.sourceMode to git.', 'sourceMode'));
 			checks.push(check('hosting:operationsRunner:sourceRepo', Boolean(runner.config?.sourceRepo), true, 'Runner staging source repository is resolved.', 'Set services.operationsRunner.railway.sourceRepo or package repository metadata.', 'sourceRepo'));
+			checks.push(check('hosting:operationsRunner:dockerfilePath', runner.config?.dockerfilePath, '/Dockerfile.operations-runner', 'Runner staging deploy uses a Dockerfile build.', 'Set services.operationsRunner.railway.dockerfilePath to /Dockerfile.operations-runner.', 'dockerfilePath'));
 		} else {
 			checks.push(check('hosting:operationsRunner:imageRefEnv', runner.config?.imageRefEnv, 'TREESEED_OPERATIONS_RUNNER_IMAGE_REF', 'Runner Railway deploy uses a Docker image reference.', 'Set services.operationsRunner.railway.imageRef or inject TREESEED_OPERATIONS_RUNNER_IMAGE_REF.', 'imageRefEnv'));
 		}

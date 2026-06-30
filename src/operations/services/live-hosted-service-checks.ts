@@ -1,4 +1,5 @@
 import { loadTreeseedPlatformConfig } from '../../platform/config.ts';
+import { resolveTreeseedLaunchEnvironment } from './config-runtime.ts';
 import {
 	getRailwayServiceInstance,
 	inspectRailwayServiceDeploymentHealth,
@@ -166,6 +167,24 @@ function serviceIsSelected(selected: Set<string>, serviceKey: string) {
 	return selected.size === 0 || selected.has(serviceKey);
 }
 
+function resolveLiveProviderEnv(options: TreeseedLiveHostedServiceCheckOptions) {
+	let launchValues: Record<string, string | undefined> = {};
+	try {
+		launchValues = resolveTreeseedLaunchEnvironment({
+			tenantRoot: options.tenantRoot,
+			scope: options.target,
+			baseEnv: { ...process.env, ...(options.env ?? {}) },
+		});
+	} catch {
+		launchValues = {};
+	}
+	return {
+		...process.env,
+		...launchValues,
+		...(options.env ?? {}),
+	};
+}
+
 async function collectRailwayObservations(options: TreeseedLiveHostedServiceCheckOptions) {
 	const observed: Record<string, TreeseedObservedRailwayServiceState> = {};
 	const issues: string[] = [];
@@ -294,6 +313,7 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 				serviceId: railwayService.id,
 				rootDirectory: instance.rootDirectory,
 				buildCommand: instance.buildCommand,
+				dockerfilePath: instance.dockerfilePath,
 				startCommand: instance.startCommand,
 				healthcheckPath: instance.healthcheckPath,
 				healthcheckTimeoutSeconds: instance.healthcheckTimeoutSeconds,
@@ -311,6 +331,9 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 				volumeMountPath: volumeInstance?.mountPath ?? null,
 				volumeServiceId: volumeInstance?.serviceId ?? null,
 				volumeEnvironmentId: volumeInstance?.environmentId ?? null,
+				volumeState: volumeInstance?.state ?? null,
+				volumePendingDeletion: volumeInstance?.isPendingDeletion ?? null,
+				volumeDeletedAt: volumeInstance?.deletedAt ?? null,
 				variables: variableKeys,
 				secrets: variableKeys,
 				health: 'unknown',
@@ -480,19 +503,23 @@ function strictenReport(report: TreeseedLiveHostedServiceCheckReport, options: T
 }
 
 export async function collectTreeseedLiveHostedServiceChecks(options: TreeseedLiveHostedServiceCheckOptions): Promise<TreeseedLiveHostedServiceCheckReport> {
+	const effectiveOptions = {
+		...options,
+		env: resolveLiveProviderEnv(options),
+	};
 	const requireLiveRailway = options.requireLiveRailway ?? options.strict === true;
 	const requireLiveHttp = options.requireLiveHttp ?? options.strict === true;
 	const railway = requireLiveRailway
-		? await collectRailwayObservations(options)
+		? await collectRailwayObservations(effectiveOptions)
 		: { observed: {}, status: 'skipped' as const, issues: [] };
 	const httpChecks = requireLiveHttp
-		? await collectHttpObservations(options)
+		? await collectHttpObservations(effectiveOptions)
 		: {};
 	const report = collectTreeseedHostedServiceChecks({
-		tenantRoot: options.tenantRoot,
-		target: options.target,
-		appId: options.appId,
-		serviceKeys: options.serviceKeys,
+		tenantRoot: effectiveOptions.tenantRoot,
+		target: effectiveOptions.target,
+		appId: effectiveOptions.appId,
+		serviceKeys: effectiveOptions.serviceKeys,
 		observedRailwayServices: railway.observed,
 		httpChecks,
 	});

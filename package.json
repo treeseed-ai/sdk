@@ -64,7 +64,7 @@
     "@github/copilot": "1.0.39",
     "@github/copilot-language-server": "1.480.0",
     "@github/copilot-sdk": "0.3.0",
-    "@railway/cli": "4.44.0",
+    "@railway/cli": "5.23.2",
     "@remotion/bundler": "4.0.477",
     "@remotion/renderer": "4.0.477",
     "drizzle-orm": "^0.45.2",
@@ -79,6 +79,7 @@
     "octokit": "^5.0.3",
     "pg": "^8.21.0",
     "playwright": "^1.60.0",
+    "railway": "3.4.1",
     "react": "^19.2.5",
     "remark-mdx": "^3.1.1",
     "remark-parse": "^11.0.0",
@@ -93,8 +94,8 @@
   "devDependencies": {
     "@types/node": "^24.6.0",
     "drizzle-kit": "^0.31.10",
-    "vitest": "^4.1.2",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "vitest": "^4.1.2"
   },
   "exports": {
     ".": {

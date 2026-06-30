@@ -462,6 +462,9 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 				sourceBranch: sourcePolicy.sourceBranch,
 				sourceCommit: sourcePolicy.sourceCommit,
 				sourceRootDirectory: sourcePolicy.sourceRootDirectory,
+				dockerfilePath: sourcePolicy.sourceMode === 'git'
+					? service.railway?.dockerfilePath ?? null
+					: null,
 				buildCommand: sourcePolicy.imageRef ? null : service.railway?.buildCommand ?? null,
 				startCommand: sourcePolicy.imageRef ? null : service.railway?.startCommand ?? null,
 				healthcheckPath: service.railway?.healthcheckPath ?? null,

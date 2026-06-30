@@ -1767,6 +1767,25 @@ function resolveEntryValueFromBuckets(entry, entryId, scope, bucketValuesByScope
 	return bucketValuesByScope[scope]?.[entryId] ?? '';
 }
 
+const LEGACY_ENV_KEY_ALIASES = {
+	TREESEED_RAILWAY_API_TOKEN: ['RAILWAY_API_TOKEN'],
+	TREESEED_CLOUDFLARE_API_TOKEN: ['CLOUDFLARE_API_TOKEN'],
+	TREESEED_DOCKERHUB_TOKEN: ['DOCKERHUB_TOKEN'],
+	TREESEED_DOCKERHUB_USERNAME: ['DOCKERHUB_USERNAME'],
+	TREESEED_GITHUB_TOKEN: ['GH_TOKEN', 'GITHUB_TOKEN', 'TREESEED_HOSTED_HUBS_GITHUB_TOKEN'],
+} as const;
+
+function resolveLegacyEntryValueFromBuckets(entryId, scope, bucketValuesByScope) {
+	const aliases = LEGACY_ENV_KEY_ALIASES[entryId] ?? [];
+	for (const alias of aliases) {
+		const resolved = resolveEntryValueFromBuckets(null, alias, scope, bucketValuesByScope);
+		if (typeof resolved === 'string' && resolved.length > 0) {
+			return resolved;
+		}
+	}
+	return '';
+}
+
 export function resolveTreeseedMachineEnvironmentValues(tenantRoot, scope, additionalKeys = []) {
 	const config = loadTreeseedMachineConfig(tenantRoot);
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
@@ -1793,7 +1812,8 @@ export function resolveTreeseedMachineEnvironmentValues(tenantRoot, scope, addit
 	]);
 
 	for (const entryId of knownKeys) {
-		const resolved = resolveEntryValueFromBuckets(entryById.get(entryId), entryId, scope, bucketValuesByScope);
+		const resolved = resolveEntryValueFromBuckets(entryById.get(entryId), entryId, scope, bucketValuesByScope)
+			|| resolveLegacyEntryValueFromBuckets(entryId, scope, bucketValuesByScope);
 		if (typeof resolved === 'string' && resolved.length > 0) {
 			values[entryId] = resolved;
 		}

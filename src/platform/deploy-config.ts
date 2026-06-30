@@ -456,6 +456,7 @@ function parseManagedServiceConfig(value: unknown, label: string): TreeseedManag
 				sourceRepo: optionalString(railway.sourceRepo),
 				sourceBranch: optionalString(railway.sourceBranch),
 				sourceRootDirectory: optionalString(railway.sourceRootDirectory),
+				dockerfilePath: optionalString(railway.dockerfilePath),
 				buildCommand: optionalString(railway.buildCommand),
 			startCommand: optionalString(railway.startCommand),
 			healthcheckPath: optionalString(railway.healthcheckPath),

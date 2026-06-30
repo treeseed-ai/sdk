@@ -758,8 +758,8 @@ export async function runTreeseedPackageImageWorkflow(options: TreeseedPackageIm
 	const dockerHub = {
 		usernameConfigured: Boolean(dockerHubUsername),
 		tokenConfigured: Boolean(dockerHubToken),
-		requiredSecrets: imagePlan.deploymentSource?.imagePublicationRequired === false ? [] : ['DOCKERHUB_TOKEN'],
-		requiredVariables: imagePlan.deploymentSource?.imagePublicationRequired === false ? [] : ['DOCKERHUB_USERNAME'],
+		requiredSecrets: imagePlan.deploymentSource?.imagePublicationRequired === false ? [] : ['TREESEED_DOCKERHUB_TOKEN'],
+		requiredVariables: imagePlan.deploymentSource?.imagePublicationRequired === false ? [] : ['TREESEED_DOCKERHUB_USERNAME'],
 	};
 	const credential = resolveGitHubCredentialForRepository(imagePlan.repository, { values: configEnv, env: options.env ?? process.env });
 	const githubClientEnv = credential.token
@@ -805,8 +805,8 @@ export async function runTreeseedPackageImageWorkflow(options: TreeseedPackageIm
 			reason: imagePlan.deploymentSource?.imagePublicationRequired === false
 				? 'Staging source-build policy does not sync Docker image credentials or image override variables.'
 				: 'Package image config sync is reconciler-owned. Use trsd package image --sync-config so github-secret-binding and github-variable-binding resources apply through adapters.',
-			secrets: dockerHubToken ? [{ name: 'DOCKERHUB_TOKEN', existed: null }] : [],
-			variables: dockerHubUsername ? [{ name: 'DOCKERHUB_USERNAME', existed: null }] : [],
+			secrets: dockerHubToken ? [{ name: 'TREESEED_DOCKERHUB_TOKEN', existed: null }] : [],
+			variables: dockerHubUsername ? [{ name: 'TREESEED_DOCKERHUB_USERNAME', existed: null }] : [],
 		};
 	}
 	if (execute) {
