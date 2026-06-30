@@ -157,6 +157,18 @@ describe('project platform workflow actions', () => {
 		expect(syncSource).not.toContain('runRailway(');
 	});
 
+	it('does not gate Railway runtime secrets behind managed-host CI exposure policy', () => {
+		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
+		const syncStart = source.indexOf('function collectRailwayEnvironmentSync');
+		const syncEnd = source.indexOf('function isLoopbackServiceUrl', syncStart);
+		const syncSource = source.slice(syncStart, syncEnd);
+
+		expect(syncStart).toBeGreaterThanOrEqual(0);
+		expect(syncEnd).toBeGreaterThan(syncStart);
+		expect(syncSource).toContain("entry.targets.includes(target)");
+		expect(syncSource).not.toContain("shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, entry.id)");
+	});
+
 	it('verifies runner volume mounts through the Railway API view', () => {
 		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
 		const verifyStart = source.indexOf('async function verifyRailwayUnit');

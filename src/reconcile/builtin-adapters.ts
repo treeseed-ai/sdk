@@ -4985,14 +4985,13 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput, val
 			entry.scopes.includes(scope)
 			&& entry.targets.includes(target)
 			&& serviceTargetsEntry(entry as unknown as Record<string, unknown>, serviceKey)
-			&& (target !== 'railway-secret' || shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, entry.id)))
+		)
 		.map((entry) => [entry.id, values[entry.id]] as const)
 		.filter(([, value]) => typeof value === 'string' && value.length > 0);
 	const aggregateEntries = (target: 'railway-secret' | 'railway-var') => registry.entries
 		.filter((entry) =>
 			entry.scopes.includes(scope)
-			&& entry.targets.includes(target)
-			&& (target !== 'railway-secret' || shouldExposeManagedHostRuntimeSecret(input.context.deployConfig, entry.id)))
+			&& entry.targets.includes(target))
 		.map((entry) => [entry.id, values[entry.id]] as const)
 		.filter(([, value]) => typeof value === 'string' && value.length > 0);
 	const secrets = Object.fromEntries(aggregateEntries('railway-secret'));
