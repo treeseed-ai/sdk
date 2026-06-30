@@ -417,6 +417,21 @@ function deriveApiDomainFromProjectDomain(domain: string | undefined) {
 	return `api.${segments.slice(1).join('.')}`;
 }
 
+function projectDomainsDefault(context: TreeseedEnvironmentContext, scope: TreeseedEnvironmentScope) {
+	if (scope === 'staging') {
+		return context.deployConfig.surfaces?.web?.environments?.staging?.domain
+			?? primaryHostFromUrl(context.deployConfig.surfaces?.web?.environments?.staging?.baseUrl)
+			?? primaryHostFromUrl(context.deployConfig.siteUrl);
+	}
+	if (scope === 'prod') {
+		return context.deployConfig.surfaces?.web?.environments?.prod?.domain
+			?? primaryHostFromUrl(context.deployConfig.surfaces?.web?.environments?.prod?.baseUrl)
+			?? primaryHostFromUrl(context.deployConfig.surfaces?.web?.publicBaseUrl)
+			?? primaryHostFromUrl(context.deployConfig.siteUrl);
+	}
+	return primaryHostFromUrl(context.deployConfig.siteUrl);
+}
+
 function resolveConfiguredApiBaseUrl(
 	context: TreeseedEnvironmentContext,
 	scope: TreeseedEnvironmentScope,
@@ -592,7 +607,7 @@ const VALUE_RESOLVERS: NamedResolverMap = {
 	localSmtpPortDefault: () => localSmtpPortDefault(),
 	localApiDatabaseUrlDefault: (context, scope, values) => localApiDatabaseUrlDefault(context, scope, values),
 	contactEmailDefault: (context) => contactEmailDefault(context),
-	projectDomainsDefault: (context) => primaryHostFromUrl(context.deployConfig.siteUrl),
+	projectDomainsDefault: (context, scope) => projectDomainsDefault(context, scope),
 	apiBaseUrlDefault: (context, scope, values) => resolveConfiguredApiBaseUrl(context, scope, values),
 	webServiceIdDefault: (_context, _scope, values) => resolveWebServiceId(values),
 	apiWebServiceIdDefault: (_context, _scope, values) => resolveApiWebServiceId(values),

@@ -899,7 +899,7 @@ describe('environment registry overlays', () => {
       - local
       - staging
       - prod
-    storage: shared
+    storage: scoped
     requirement: optional
     purposes:
       - config
@@ -952,7 +952,7 @@ describe('environment registry overlays', () => {
 			deployConfig,
 			plugins: [],
 		});
-		expect(registry.entries.find((entry) => entry.id === 'TREESEED_PROJECT_DOMAINS')?.storage).toBe('shared');
+		expect(registry.entries.find((entry) => entry.id === 'TREESEED_PROJECT_DOMAINS')?.storage).toBe('scoped');
 		expect(registry.entries.find((entry) => entry.id === 'TREESEED_API_BASE_URL')?.storage).toBe('scoped');
 
 		const localSuggestedApiUrl = getTreeseedEnvironmentSuggestedValues({

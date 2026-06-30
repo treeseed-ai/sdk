@@ -429,17 +429,21 @@ export function buildPublicVars(deployConfig, options = {}) {
 	const managedRuntime = deployConfig.runtime?.mode === 'treeseed_managed';
 	const workerRailway = deployConfig.services?.worker?.railway ?? {};
 	const webCachePolicy = resolveTreeseedWebCachePolicy(deployConfig);
+	const projectDomain = target.kind === 'persistent'
+		? resolveConfiguredSurfaceDomain(deployConfig, target, 'web')
+		: primaryHost(deployConfig.surfaces?.web?.publicBaseUrl ?? deployConfig.siteUrl);
 	return {
 		TREESEED_HOSTING_KIND: deployConfig.hosting?.kind ?? 'self_hosted_project',
-			TREESEED_HOSTING_REGISTRATION: deployConfig.hosting?.registration ?? 'none',
-			TREESEED_HUB_MODE: deployConfig.hub?.mode ?? 'treeseed_hosted',
-			TREESEED_RUNTIME_MODE: deployConfig.runtime?.mode ?? 'none',
-			TREESEED_RUNTIME_REGISTRATION: deployConfig.runtime?.registration ?? 'none',
-			TREESEED_CENTRAL_MARKET_API_BASE_URL: resolveConfiguredCentralMarketBaseUrl(deployConfig, target),
-			TREESEED_MARKET_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig, target),
-			TREESEED_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig, target),
-			TREESEED_CATALOG_MARKET_API_BASE_URLS: resolveConfiguredMarketBaseUrl(deployConfig, target) ?? envOrNull('TREESEED_CATALOG_MARKET_API_BASE_URLS'),
-			TREESEED_HOSTING_TEAM_ID: contentDefaultTeamId,
+		TREESEED_HOSTING_REGISTRATION: deployConfig.hosting?.registration ?? 'none',
+		TREESEED_HUB_MODE: deployConfig.hub?.mode ?? 'treeseed_hosted',
+		TREESEED_RUNTIME_MODE: deployConfig.runtime?.mode ?? 'none',
+		TREESEED_RUNTIME_REGISTRATION: deployConfig.runtime?.registration ?? 'none',
+		TREESEED_CENTRAL_MARKET_API_BASE_URL: resolveConfiguredCentralMarketBaseUrl(deployConfig, target),
+		TREESEED_MARKET_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig, target),
+		TREESEED_API_BASE_URL: resolveConfiguredMarketBaseUrl(deployConfig, target),
+		TREESEED_CATALOG_MARKET_API_BASE_URLS: resolveConfiguredMarketBaseUrl(deployConfig, target) ?? envOrNull('TREESEED_CATALOG_MARKET_API_BASE_URLS'),
+		TREESEED_HOSTING_TEAM_ID: contentDefaultTeamId,
+		TREESEED_PROJECT_DOMAINS: projectDomain ?? '',
 		TREESEED_PROJECT_ID: identity.projectId,
 		TREESEED_AGENT_EXECUTION_PROVIDER: deployConfig.providers?.agents?.execution ?? 'codex',
 		TREESEED_AGENT_REPOSITORY_PROVIDER: deployConfig.providers?.agents?.repository ?? 'git',

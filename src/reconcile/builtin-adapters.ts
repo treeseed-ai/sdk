@@ -2742,7 +2742,7 @@ function collectCloudflareEnvironmentSync(input: TreeseedReconcileAdapterInput) 
 				secretNames.add(entry.id);
 			}
 		}
-		if (entry.targets.includes('cloudflare-var') && value) {
+		if (entry.targets.includes('cloudflare-var') && value && entry.id !== 'TREESEED_PROJECT_DOMAINS') {
 			vars[entry.id] = value;
 			varNames.add(entry.id);
 		}
