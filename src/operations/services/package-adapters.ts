@@ -474,7 +474,9 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 		: {};
 	const fast = verify.fast ?? (existsSync(resolve(dir, 'scripts/test-treedx-fast.sh')) ? 'scripts/test-treedx-fast.sh' : null);
 	const local = verify.local ?? (existsSync(resolve(dir, 'scripts/test-all.sh')) ? 'scripts/test-all.sh' : null);
-	const releaseGate = manifest?.releaseGate ?? verify.release ?? (existsSync(resolve(dir, 'scripts/release-gate.sh')) ? 'scripts/release-gate.sh' : null);
+	const releaseGate = stringValue(manifest?.releaseGate)
+		?? verify.release
+		?? (existsSync(resolve(dir, 'scripts/release-gate.sh')) ? 'scripts/release-gate.sh' : null);
 	const version = readMixProjectVersion(versionSource);
 	const shaTag = 'sha-<short-sha>';
 	return {
