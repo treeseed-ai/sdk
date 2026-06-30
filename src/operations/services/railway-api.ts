@@ -46,6 +46,8 @@ type RailwayTemplateSummary = {
 export type RailwayServiceInstanceSummary = {
 	id: string | null;
 	buildCommand: string | null;
+	dockerfilePath: string | null;
+	railwayConfigFile: string | null;
 	startCommand: string | null;
 	cronSchedule: string | null;
 	rootDirectory: string | null;
@@ -1203,10 +1205,11 @@ export async function updateRailwayServiceGitSource({
 	if (!serviceId || !desiredRepo) {
 		throw new Error('Railway service Git source update requires a service id and repository slug.');
 	}
-	const payload = await railwayGraphqlRequest<{
-		serviceConnect?: Record<string, unknown> | null;
-	}>({
-		query: `
+	const connect = async (repo: string) => {
+		const payload = await railwayGraphqlRequest<{
+			serviceConnect?: Record<string, unknown> | null;
+		}>({
+			query: `
 mutation TreeseedRailwayServiceGitSourceUpdate($id: String!, $input: ServiceConnectInput!) {
 	serviceConnect(id: $id, input: $input) {
 		id
@@ -1214,16 +1217,28 @@ mutation TreeseedRailwayServiceGitSourceUpdate($id: String!, $input: ServiceConn
 	}
 }
 `.trim(),
-		variables: {
-			id: serviceId,
-			input: {
-				repo: desiredRepo,
-				...(railwayConnectionLabel(sourceBranch) ? { branch: railwayConnectionLabel(sourceBranch) } : {}),
+			variables: {
+				id: serviceId,
+				input: {
+					repo,
+					...(railwayConnectionLabel(sourceBranch) ? { branch: railwayConnectionLabel(sourceBranch) } : {}),
+				},
 			},
-		},
-		env,
-		fetchImpl,
-	});
+			env,
+			fetchImpl,
+		});
+		return payload;
+	};
+	let payload: { data?: { serviceConnect?: Record<string, unknown> | null } | null };
+	try {
+		payload = await connect(desiredRepo);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error ?? '');
+		if (!/User does not have access to the repo/iu.test(message) || /^https?:\/\//iu.test(desiredRepo)) {
+			throw error;
+		}
+		payload = await connect(`https://github.com/${desiredRepo}`);
+	}
 	const service = payload.data?.serviceConnect ? normalizeService(payload.data.serviceConnect) : null;
 	if (!service) {
 		throw new Error(`Railway service Git source update did not return a usable service for ${serviceId}.`);
@@ -1716,6 +1731,10 @@ query TreeseedRailwayServiceDeploymentHealth($serviceId: String!, $environmentId
 		repo: railwayConnectionLabel(deployment?.meta?.repo) || null,
 		rootDirectory: railwayConnectionLabel(deployment?.meta?.rootDirectory) || null,
 		commitHash: railwayConnectionLabel(deployment?.meta?.commitHash) || null,
+		requiredMountPath: railwayConnectionLabel(deployment?.meta?.serviceManifest?.deploy?.requiredMountPath) || null,
+		volumeMounts: Array.isArray(deployment?.meta?.volumeMounts)
+			? deployment.meta.volumeMounts.map((entry: unknown) => railwayConnectionLabel(entry)).filter(Boolean)
+			: [],
 		message: ok
 			? 'Deployment is healthy.'
 			: `Latest deployment status is ${status ?? 'unknown'}${stopped ? ' and stopped' : ''}${instanceStatuses.length ? `; instances=${instanceStatuses.join(',')}` : ''}.`,
@@ -1770,6 +1789,8 @@ export async function getRailwayServiceInstance({
 	const legacySummary = {
 		id: null,
 		buildCommand: null,
+		dockerfilePath: null,
+		railwayConfigFile: null,
 		startCommand: null,
 		cronSchedule: null,
 		rootDirectory: null,
@@ -1790,6 +1811,8 @@ query TreeseedRailwayServiceInstance($serviceId: String!, $environmentId: String
 	serviceInstance(serviceId: $serviceId, environmentId: $environmentId) {
 		id
 		buildCommand
+		dockerfilePath
+		railwayConfigFile
 		startCommand
 		cronSchedule
 		rootDirectory
@@ -1807,6 +1830,8 @@ query TreeseedRailwayServiceInstance($serviceId: String!, $environmentId: String
 		return {
 			id: railwayConnectionLabel(instance?.id) || null,
 			buildCommand: railwayConnectionLabel(instance?.buildCommand) || null,
+			dockerfilePath: railwayConnectionLabel(instance?.dockerfilePath) || null,
+			railwayConfigFile: railwayConnectionLabel(instance?.railwayConfigFile) || null,
 			startCommand: railwayConnectionLabel(instance?.startCommand) || null,
 			cronSchedule: railwayConnectionLabel(instance?.cronSchedule) || null,
 			rootDirectory: railwayConnectionLabel(instance?.rootDirectory) || null,
@@ -1829,6 +1854,8 @@ query TreeseedRailwayServiceInstanceLegacy($serviceId: String!, $environmentId: 
 	serviceInstance(serviceId: $serviceId, environmentId: $environmentId) {
 		id
 		buildCommand
+		dockerfilePath
+		railwayConfigFile
 		startCommand
 		cronSchedule
 		rootDirectory
@@ -1844,6 +1871,8 @@ query TreeseedRailwayServiceInstanceLegacy($serviceId: String!, $environmentId: 
 				...legacySummary,
 				id: railwayConnectionLabel(instance?.id) || null,
 				buildCommand: railwayConnectionLabel(instance?.buildCommand) || null,
+				dockerfilePath: railwayConnectionLabel(instance?.dockerfilePath) || null,
+				railwayConfigFile: railwayConnectionLabel(instance?.railwayConfigFile) || null,
 				startCommand: railwayConnectionLabel(instance?.startCommand) || null,
 				cronSchedule: railwayConnectionLabel(instance?.cronSchedule) || null,
 				rootDirectory: railwayConnectionLabel(instance?.rootDirectory) || null,
@@ -1860,6 +1889,8 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	serviceId,
 	environmentId,
 	buildCommand,
+	dockerfilePath,
+	railwayConfigFile,
 	startCommand,
 	cronSchedule,
 	rootDirectory,
@@ -1877,6 +1908,8 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	serviceId: string;
 	environmentId: string;
 	buildCommand?: string | null;
+	dockerfilePath?: string | null;
+	railwayConfigFile?: string | null;
 	startCommand?: string | null;
 	cronSchedule?: string | null;
 	rootDirectory?: string | null;
@@ -1907,6 +1940,8 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	const desiredDeploymentRegion = railwayConnectionLabel(deploymentRegion) || null;
 	const desired = {
 		buildCommand: railwayConnectionLabel(buildCommand) || null,
+		dockerfilePath: railwayConnectionLabel(dockerfilePath) || null,
+		railwayConfigFile: railwayConnectionLabel(railwayConfigFile) || null,
 		startCommand: railwayConnectionLabel(startCommand) || null,
 		cronSchedule: railwayConnectionLabel(cronSchedule) || null,
 		rootDirectory: railwayConnectionLabel(rootDirectory) || null,
@@ -1937,6 +1972,8 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	}
 	const drifted = (
 		(desired.buildCommand !== null && desired.buildCommand !== current.buildCommand)
+		|| (desired.dockerfilePath !== null && desired.dockerfilePath !== current.dockerfilePath)
+		|| (desired.railwayConfigFile !== null && desired.railwayConfigFile !== current.railwayConfigFile)
 		|| (desired.startCommand !== null && desired.startCommand !== current.startCommand)
 		|| (desired.cronSchedule !== null && desired.cronSchedule !== current.cronSchedule)
 		|| (desired.rootDirectory !== null && desired.rootDirectory !== current.rootDirectory)
@@ -1969,6 +2006,8 @@ mutation TreeseedRailwayServiceInstanceUpdateLegacy($serviceId: String!, $enviro
 				environmentId,
 				input: {
 					...(desired.buildCommand !== null ? { buildCommand: desired.buildCommand } : {}),
+					...(desired.dockerfilePath !== null ? { dockerfilePath: desired.dockerfilePath } : {}),
+					...(desired.railwayConfigFile !== null ? { railwayConfigFile: desired.railwayConfigFile } : {}),
 					...(desired.startCommand !== null ? { startCommand: desired.startCommand } : {}),
 					...(desired.cronSchedule !== null ? { cronSchedule: desired.cronSchedule } : {}),
 					...(desired.rootDirectory !== null ? { rootDirectory: desired.rootDirectory } : {}),
@@ -2342,7 +2381,7 @@ mutation TreeseedRailwayVolumeInstanceUpdate($volumeId: String!, $input: VolumeI
 		variables: {
 			volumeId,
 			input: {
-				...(serviceId ? { serviceId } : {}),
+				...(serviceId !== undefined ? { serviceId } : {}),
 				mountPath,
 			},
 		},

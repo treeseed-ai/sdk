@@ -50,6 +50,7 @@ export interface TreeseedObservedRailwayServiceState {
 	projectName?: string | null;
 	environmentName?: string | null;
 	serviceName?: string | null;
+	serviceId?: string | null;
 	rootDirectory?: string | null;
 	buildCommand?: string | null;
 	startCommand?: string | null;
@@ -62,6 +63,8 @@ export interface TreeseedObservedRailwayServiceState {
 	deploymentRepo?: string | null;
 	deploymentRootDirectory?: string | null;
 	deploymentCommitHash?: string | null;
+	deploymentRequiredMountPath?: string | null;
+	deploymentVolumeMounts?: string[];
 	volumeName?: string | null;
 	volumeId?: string | null;
 	volumeMountPath?: string | null;
@@ -433,6 +436,9 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		}
 
 		if (service.volumeMountPath) {
+			const volumeAttached = Boolean(observed?.volumeId)
+				&& observed?.volumeMountPath === service.volumeMountPath
+				&& (!observed?.serviceName || !observed?.volumeServiceId || observed.volumeServiceId === observed.serviceId);
 			checks.push(check({
 				id: `railway:${service.instanceKey}:volume`,
 				provider: 'railway',
@@ -448,8 +454,25 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 					volumeServiceId: observed.volumeServiceId ?? null,
 					volumeEnvironmentId: observed.volumeEnvironmentId ?? null,
 				} : { skipped: true },
-				status: observed ? statusForMatch(observed.volumeMountPath ?? null, service.volumeMountPath) : 'skipped',
-				issues: !observed || observed.volumeMountPath === service.volumeMountPath ? [] : [`Expected volumeMountPath=${service.volumeMountPath}, observed ${observed.volumeMountPath ?? '(unset)'}.`],
+				status: observed ? (volumeAttached ? 'passed' : 'failed') : 'skipped',
+				issues: !observed || volumeAttached ? [] : [`Expected an attached persistent volume mounted at ${service.volumeMountPath}, observed ${observed.volumeMountPath ?? '(unset)'} on volume ${observed.volumeName ?? '(none)'}.`],
+			}));
+			const deploymentHasVolumeMount = observed?.deploymentRequiredMountPath === service.volumeMountPath
+				|| (observed?.deploymentVolumeMounts ?? []).includes(service.volumeMountPath);
+			checks.push(check({
+				id: `railway:${service.instanceKey}:deployment-required-mount`,
+				provider: 'railway',
+				serviceKey: service.key,
+				serviceType,
+				target,
+				description: `Railway ${service.serviceName} deployment metadata includes the volume mount.`,
+				expected: { volumeMountPath: service.volumeMountPath },
+				observed: observed ? {
+					requiredMountPath: observed.deploymentRequiredMountPath ?? null,
+					volumeMounts: observed.deploymentVolumeMounts ?? [],
+				} : { skipped: true },
+				status: observed ? (deploymentHasVolumeMount ? 'passed' : 'failed') : 'skipped',
+				issues: !observed || deploymentHasVolumeMount ? [] : [`Expected deployment metadata to include volume mount ${service.volumeMountPath}.`],
 			}));
 		}
 

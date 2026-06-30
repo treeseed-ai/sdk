@@ -142,6 +142,7 @@ function serviceKeyPlacement(serviceKey: string): TreeseedServicePlacement {
 
 function serviceKeyType(serviceKey: string, service: Record<string, any>): string {
 	if (serviceKey === 'treeseedDatabase' || service.railway?.resourceType === 'postgres') return 'relational-database';
+	if (String(serviceKey).startsWith('capacityProvider')) return 'capacity-provider';
 	if (serviceKey === 'operationsRunner' || /runner/iu.test(serviceKey)) return 'runner-pool';
 	if (Array.isArray(service.railway?.schedule) || typeof service.railway?.schedule === 'string') return 'scheduled-job';
 	if (serviceKey === 'api') return 'container-api';
@@ -475,6 +476,9 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 			variableRefs: serviceKey === 'operationsRunner'
 				? ['TREESEED_PLATFORM_RUNNER_ID', 'TREESEED_PLATFORM_RUNNER_DATA_DIR', 'TREESEED_PLATFORM_RUNNER_ENVIRONMENT']
 				: [],
+			metadata: String(serviceKey).startsWith('capacityProvider')
+				? { capacityProvider: true, deployByDefault: false }
+				: {},
 			environments: {
 				local: {
 					hostId: serviceType === 'relational-database' || serviceType === 'runner-pool' || service.railway?.volumeMountPath ? 'local-docker' : 'local-process',
@@ -744,11 +748,13 @@ function filterHostingUnits(units: TreeseedHostingUnit[], filter: TreeseedHostin
 	const serviceIds = normalizeFilterValues(filter?.serviceIds);
 	const placements = normalizeFilterValues(filter?.placements as string[] | undefined);
 	const hosts = normalizeFilterValues(filter?.hosts);
-	if (serviceIds.size === 0 && placements.size === 0 && hosts.size === 0) return units;
 	const allServiceIds = new Set(units.map((unit) => unit.id));
 	const missingServices = [...serviceIds].filter((serviceId) => !allServiceIds.has(serviceId));
 	if (missingServices.length > 0) {
 		throw new Error(`Unknown hosting service id${missingServices.length === 1 ? '' : 's'}: ${missingServices.join(', ')}.`);
+	}
+	if (serviceIds.size === 0 && placements.size === 0 && hosts.size === 0) {
+		return units.filter((unit) => unit.metadata.deployByDefault !== false);
 	}
 	return units.filter((unit) =>
 		(serviceIds.size === 0 || serviceIds.has(unit.id))
@@ -880,10 +886,14 @@ function railwayReconcileSystemsForUnits(units: TreeseedHostingUnit[]): Treeseed
 	const systems = new Set<TreeseedRunnableBootstrapSystem>();
 	for (const unit of units) {
 		if (unit.host.id !== 'railway') continue;
+		if (unit.id === 'operationsRunner') {
+			systems.add('api');
+			continue;
+		}
 		if (unit.placement === 'api' || unit.placement === 'knowledge-library' || unit.id === 'api' || unit.serviceType.id === 'container-api' || unit.serviceType.id === 'treedx-node') {
 			systems.add('api');
 		}
-		if (unit.placement === 'runner-capacity' || unit.id === 'operationsRunner' || unit.serviceType.id === 'runner-pool') {
+		if (unit.placement === 'runner-capacity' || unit.serviceType.id === 'runner-pool') {
 			systems.add('agents');
 		}
 		if (unit.placement === 'database' && units.some((candidate) => candidate.id === 'api' || candidate.placement === 'api')) {

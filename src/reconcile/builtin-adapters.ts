@@ -2170,15 +2170,16 @@ function resolveReconcileEnvironmentValues(
 	input: TreeseedReconcileAdapterInput,
 	scope: 'local' | 'staging' | 'prod',
 ) {
+	const scopedValues = normalizeEnvironmentValues(resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope));
 	if (scope === 'local') {
-		return resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope);
+		return scopedValues;
 	}
 
-	const hostedRuntimeValues = {
+	return {
 		...normalizeEnvironmentValues(process.env),
 		...normalizeEnvironmentValues(input.context.launchEnv),
+		...scopedValues,
 	};
-	return hostedRuntimeValues;
 }
 
 function buildCloudflareEnv(input: TreeseedReconcileAdapterInput) {
@@ -3904,6 +3905,7 @@ async function resolveRailwayTopologyForScope(
 						serviceId: resolvedService.id,
 						environmentId: environment.id,
 						buildCommand: service.buildCommand,
+						dockerfilePath: !service.imageRef && existsSync(resolve(service.rootDir, 'Dockerfile')) ? '/Dockerfile' : null,
 						startCommand: service.startCommand,
 						rootDirectory: service.imageRef ? null : railwayServiceRootDirectory(input.context.tenantRoot, service),
 						healthcheckPath: service.healthcheckPath,
@@ -4262,6 +4264,7 @@ function deployRailwayServiceBySourceUpload(
 		'--environment',
 		entry.environment.name,
 			'--ci',
+			'--detach',
 			'--path-as-root',
 			...(uploadContext.noGitignore ? ['--no-gitignore'] : []),
 			'--verbose',
@@ -4323,6 +4326,7 @@ function prepareRailwaySourceUploadContext(
 			}
 		}
 		const sdkRoot = resolve(rootDir, '..', 'sdk');
+		let sdkTarballPrepared = false;
 		if (existsSync(resolve(sdkRoot, 'package.json'))) {
 			const pack = spawnSync('npm', ['pack', '--ignore-scripts', '--pack-destination', contextRoot], {
 				cwd: sdkRoot,
@@ -4344,43 +4348,42 @@ function prepareRailwaySourceUploadContext(
 			if (filename !== 'treeseed-sdk.tgz') {
 				rmSync(resolve(contextRoot, filename), { force: true });
 			}
+			sdkTarballPrepared = true;
 		}
 		const dockerfile = [
-			'FROM node:22-bookworm-slim AS builder',
+			'FROM node:22-alpine AS builder',
 			'WORKDIR /app',
-			'RUN apt-get update \\',
-			'	&& apt-get upgrade -y \\',
-			'	&& apt-get install -y --no-install-recommends ca-certificates git openssh-client \\',
-			'	&& apt-get clean \\',
-			'	&& rm -rf /var/lib/apt/lists/*',
-			'COPY package.json package-lock.json treeseed-sdk.tgz ./',
-			'RUN npm ci --include=dev --ignore-scripts \\',
-			'	&& npm install --include=dev --ignore-scripts ./treeseed-sdk.tgz',
+			'RUN apk add --no-cache ca-certificates git openssh-client',
+			sdkTarballPrepared ? 'COPY package.json package-lock.json treeseed-sdk.tgz ./' : 'COPY package.json package-lock.json ./',
+			sdkTarballPrepared
+				? 'RUN npm ci --include=dev --ignore-scripts \\\n\t&& npm install --include=dev --ignore-scripts ./treeseed-sdk.tgz'
+				: 'RUN npm ci --include=dev --ignore-scripts',
 			'COPY . .',
 			'RUN npm run build:dist \\',
 			'	&& npm prune --omit=dev --ignore-scripts \\',
 			'	&& rm -rf node_modules/@github node_modules/@openai node_modules/@cloudflare node_modules/@railway \\',
 			'		node_modules/wrangler node_modules/miniflare node_modules/workerd \\',
 			'		node_modules/playwright node_modules/playwright-core node_modules/gpt-tokenizer \\',
+			'		node_modules/@remotion node_modules/remotion node_modules/@rspack \\',
+			'		node_modules/@repomix node_modules/repomix node_modules/@esbuild node_modules/esbuild \\',
+			'		node_modules/webpack node_modules/typescript node_modules/@mediabunny node_modules/mediabunny \\',
+			'		node_modules/web-tree-sitter node_modules/caniuse-lite node_modules/@img node_modules/@secretlint \\',
+			'		node_modules/lightningcss* node_modules/vite \\',
 			'	&& npm cache clean --force \\',
 			'	&& rm -rf src scripts test .git .github',
-			'FROM node:22-bookworm-slim AS runtime',
+			'FROM node:22-alpine AS runtime',
 			'WORKDIR /app',
 			'ENV NODE_ENV=production TREESEED_PROVIDER_DATA_DIR=/data',
-			'RUN apt-get update \\',
-			'	&& apt-get upgrade -y \\',
-			'	&& apt-get install -y --no-install-recommends ca-certificates tini util-linux git openssh-client \\',
-			'	&& mkdir -p /data \\',
-			'	&& apt-get clean \\',
-			'	&& rm -rf /var/lib/apt/lists/*',
-			'COPY --from=builder /app/package.json /app/package-lock.json ./',
-			'COPY --from=builder /app/node_modules ./node_modules',
-			'COPY --from=builder /app/dist ./dist',
-			'COPY --from=builder /app/templates ./templates',
-			'COPY --from=builder /app/docs ./docs',
-			'COPY --from=builder /app/docker-entrypoint.sh ./docker-entrypoint.sh',
+			'RUN apk add --no-cache ca-certificates tini util-linux git openssh-client \\',
+			'	&& mkdir -p /data',
+			'COPY --from=builder --chown=65532:65532 /app/package.json /app/package-lock.json ./',
+			'COPY --from=builder --chown=65532:65532 /app/node_modules ./node_modules',
+			'COPY --from=builder --chown=65532:65532 /app/dist ./dist',
+			'COPY --from=builder --chown=65532:65532 /app/templates ./templates',
+			'COPY --from=builder --chown=65532:65532 /app/docs ./docs',
+			'COPY --from=builder --chown=65532:65532 /app/docker-entrypoint.sh ./docker-entrypoint.sh',
 			'RUN chmod 0755 /app/docker-entrypoint.sh \\',
-			'	&& chown -R 65532:65532 /data /app',
+			'	&& chown -R 65532:65532 /data',
 			'EXPOSE 3100',
 			'ENTRYPOINT ["tini", "--", "/app/docker-entrypoint.sh"]',
 			`ENV TREESEED_PROVIDER_ROLE=${role}`,
@@ -4910,6 +4913,7 @@ function capacityProviderVariablesForService(
 	const marketUrl = resolveCapacityProviderMarketUrl(input, scope, values);
 	if (marketUrl) {
 		variables.TREESEED_MARKET_URL = marketUrl;
+		variables.TREESEED_API_BASE_URL = marketUrl;
 	}
 	if (role === 'runner') {
 		variables.TREESEED_PROVIDER_RUNNER_ID = String(configuredService?.runnerId ?? configuredService?.serviceName ?? 'treeseed-agent-runner-01');
@@ -4923,8 +4927,11 @@ function resolveCapacityProviderMarketUrl(
 	scope: string,
 	values: Record<string, string | undefined>,
 ) {
-	for (const key of ['TREESEED_MARKET_URL', 'TREESEED_MARKET_API_BASE_URL', 'TREESEED_STAGING_MARKET_API_BASE_URL', 'TREESEED_CENTRAL_MARKET_API_BASE_URL', 'TREESEED_PUBLIC_MARKET_URL', 'TREESEED_SITE_URL']) {
+	const hostedApiBaseUrl = resolveHostedApiBaseUrl(input, scope);
+	if (hostedApiBaseUrl) return hostedApiBaseUrl;
+	for (const key of ['TREESEED_MARKET_URL', 'TREESEED_MARKET_API_BASE_URL', 'TREESEED_STAGING_MARKET_API_BASE_URL', 'TREESEED_API_BASE_URL', 'TREESEED_CENTRAL_MARKET_API_BASE_URL', 'TREESEED_PUBLIC_MARKET_URL', 'TREESEED_SITE_URL']) {
 		const value = String(values[key] ?? '').trim();
+		if (/^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(?:\/|$)/iu.test(value)) continue;
 		if (value) return value.replace(/\/+$/u, '');
 	}
 	const applications = discoverTreeseedApplications(input.context.tenantRoot);
@@ -4936,6 +4943,26 @@ function resolveCapacityProviderMarketUrl(
 	if (!domain) return '';
 	if (/^https?:\/\//u.test(domain)) return domain.replace(/\/+$/u, '');
 	return `https://${domain.replace(/\/+$/u, '')}`;
+}
+
+function resolveHostedApiBaseUrl(input: TreeseedReconcileAdapterInput, scope: string) {
+	const environment = scope === 'prod' ? 'prod' : scope;
+	const rootConnections = input.context.deployConfig.connections as Record<string, any> | undefined;
+	const configuredConnectionUrl = String(rootConnections?.api?.environments?.[environment]?.baseUrl ?? '').trim();
+	if (configuredConnectionUrl) return configuredConnectionUrl.replace(/\/+$/u, '');
+	const applications = discoverTreeseedApplications(input.context.tenantRoot);
+	for (const application of applications) {
+		const apiSurface = application.config?.surfaces?.api;
+		const configuredBaseUrl = String(apiSurface?.environments?.[environment]?.baseUrl ?? '').trim();
+		if (configuredBaseUrl) return configuredBaseUrl.replace(/\/+$/u, '');
+		const configuredDomain = String(apiSurface?.environments?.[environment]?.domain ?? '').trim();
+		if (configuredDomain) {
+			return /^https?:\/\//u.test(configuredDomain)
+				? configuredDomain.replace(/\/+$/u, '')
+				: `https://${configuredDomain.replace(/\/+$/u, '')}`;
+		}
+	}
+	return '';
 }
 
 function buildAttachmentDiff(input: TreeseedReconcileAdapterInput, observed: TreeseedObservedUnitState): TreeseedReconcileUnitDiff {

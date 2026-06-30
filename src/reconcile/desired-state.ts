@@ -218,7 +218,7 @@ export function deriveTreeseedDesiredUnits({
 			continue;
 		}
 		const concreteType = railwayConcreteUnitTypeForServiceKey(serviceKey);
-		const serviceBootstrapSystem = serviceKey === 'api' || isPublicTreeDxNodeServiceKey(serviceKey) ? 'api' : 'agents';
+		const serviceBootstrapSystem = serviceKey === 'api' || serviceKey === 'operationsRunner' || isPublicTreeDxNodeServiceKey(serviceKey) ? 'api' : 'agents';
 		const desiredServiceName = configuredService.serviceName ?? serviceState?.serviceName ?? serviceKey;
 		const desiredProjectName = configuredService.projectName ?? serviceState?.projectName;
 		const persistedServiceMatchesDesired = (!serviceState?.serviceName || serviceState.serviceName === desiredServiceName)

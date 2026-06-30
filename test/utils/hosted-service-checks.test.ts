@@ -222,6 +222,7 @@ surfaces:
 				},
 				'treeseed-api-operations-runner-01': {
 					serviceName: 'treeseed-api-operations-runner-01',
+					serviceId: 'runner-service-id',
 					projectName: 'treeseed-api',
 					environmentName: 'staging',
 					rootDirectory: '.',
@@ -230,7 +231,13 @@ surfaces:
 					healthcheckPath: '/healthz',
 					healthcheckTimeoutSeconds: 120,
 					runtimeMode: 'service',
+					deploymentRequiredMountPath: '/data',
+					deploymentVolumeMounts: ['/data'],
+					volumeId: 'runner-volume-id',
+					volumeName: 'treeseed-api-operations-runner-01-volume',
 					volumeMountPath: '/data',
+					volumeServiceId: 'runner-service-id',
+					volumeEnvironmentId: 'staging-environment-id',
 				},
 			},
 		});
@@ -242,6 +249,7 @@ surfaces:
 		expect(byId(report, 'railway:api:buildCommand')).toMatchObject({ status: 'passed' });
 		expect(byId(report, 'railway:api:startCommand')).toMatchObject({ status: 'passed' });
 		expect(byId(report, 'railway:operationsRunner:1:volume')).toMatchObject({ status: 'passed', expected: { volumeMountPath: '/data' } });
+		expect(byId(report, 'railway:operationsRunner:1:deployment-required-mount')).toMatchObject({ status: 'passed', expected: { volumeMountPath: '/data' } });
 		expect(byId(report, 'railway:treeseedDatabase:targets')).toMatchObject({ status: 'passed' });
 	});
 

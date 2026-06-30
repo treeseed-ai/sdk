@@ -304,6 +304,8 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 				deploymentRepo: deployment.repo ?? null,
 				deploymentRootDirectory: deployment.rootDirectory ?? null,
 				deploymentCommitHash: deployment.commitHash ?? null,
+				deploymentRequiredMountPath: deployment.requiredMountPath ?? null,
+				deploymentVolumeMounts: deployment.volumeMounts ?? [],
 				volumeName: mountedVolume?.name ?? null,
 				volumeId: mountedVolume?.id ?? null,
 				volumeMountPath: volumeInstance?.mountPath ?? null,
