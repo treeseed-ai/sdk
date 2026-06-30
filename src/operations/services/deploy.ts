@@ -184,6 +184,26 @@ function deriveApiDomainFromWebDomain(domain) {
 	return domain.startsWith('api.') ? domain : `api.${domain}`;
 }
 
+function configuredApiConnectionDomain(deployConfig, scope) {
+	const apiConnection = deployConfig.connections?.api?.environments?.[scope];
+	const domain = apiConnection?.domain?.trim();
+	if (domain) {
+		return domain;
+	}
+	const connectionBaseUrl = primaryHost(apiConnection?.baseUrl);
+	if (connectionBaseUrl) {
+		return connectionBaseUrl;
+	}
+	const serviceDomain = deployConfig.services?.api?.environments?.[scope]?.domain?.trim();
+	if (serviceDomain) {
+		return serviceDomain;
+	}
+	return primaryHost(
+		deployConfig.services?.api?.environments?.[scope]?.baseUrl
+		?? deployConfig.services?.api?.publicBaseUrl,
+	);
+}
+
 export function resolveConfiguredSurfaceDomain(deployConfig, target, surface) {
 	if (target.kind !== 'persistent') {
 		return null;
@@ -192,6 +212,12 @@ export function resolveConfiguredSurfaceDomain(deployConfig, target, surface) {
 	const configured = deployConfig.surfaces?.[surface]?.environments?.[scope]?.domain?.trim();
 	if (configured) {
 		return configured;
+	}
+	if (surface === 'api') {
+		const apiConnectionDomain = configuredApiConnectionDomain(deployConfig, scope);
+		if (apiConnectionDomain) {
+			return apiConnectionDomain;
+		}
 	}
 	if (scope === 'staging') {
 		return deriveTreeseedStagingSurfaceDomain(

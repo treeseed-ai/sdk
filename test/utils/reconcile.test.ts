@@ -170,6 +170,43 @@ services:
 		});
 	});
 
+	it('uses configured API connection domains before generated staging fallback domains', () => {
+		const tenantRoot = createTenantFixture();
+		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test
+slug: test
+siteUrl: https://treeseed.dev
+contactEmail: test@example.com
+hosting:
+  kind: self_hosted_project
+  teamId: treeseed
+  projectId: market
+cloudflare:
+  accountId: account-123
+runtime:
+  mode: treeseed_managed
+connections:
+  api:
+    environments:
+      staging:
+        baseUrl: https://api.preview.treeseed.dev
+      prod:
+        baseUrl: https://api.treeseed.dev
+services:
+  api:
+    enabled: true
+    provider: railway
+`);
+		const { units } = deriveTreeseedDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+
+		expect(units.find((unit) => unit.unitType === 'custom-domain:api')?.logicalName)
+			.toBe('api.preview.treeseed.dev');
+		expect(units.find((unit) => unit.unitType === 'dns-record' && unit.logicalName === 'api:api.preview.treeseed.dev')?.spec)
+			.toMatchObject({ domain: 'api.preview.treeseed.dev' });
+	});
+
 	it('selects web with data dependencies and filters out Railway runtime units', () => {
 		const tenantRoot = createTenantFixture();
 		const { deployConfig, units } = deriveTreeseedDesiredUnits({
