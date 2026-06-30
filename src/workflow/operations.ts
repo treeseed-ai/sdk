@@ -52,6 +52,7 @@ import {
 	finalizeDeploymentState,
 	loadDeployState,
 	recordHostedDeploymentState,
+	resolveConfiguredSurfaceDomain,
 	runRemoteD1Migrations,
 	validateDeployPrerequisites,
 	validateDestroyPrerequisites,
@@ -641,14 +642,28 @@ function saveHostedEnvironmentForBranch(branch: string | null | undefined) {
 }
 
 function selectorFromWorkflowHostingGraph(graph: ReturnType<typeof compileTreeseedHostingGraph>): TreeseedReconcileSelector {
+	const includesApi = graph.units.some((unit) => unit.id === 'api' || unit.config.serviceName === 'treeseed-api');
+	const scope = graph.environment;
+	const target = createPersistentDeployTarget(scope);
+	const webDomain = resolveConfiguredSurfaceDomain(graph.deployConfig, target, 'web');
+	const apiDomain = resolveConfiguredSurfaceDomain(graph.deployConfig, target, 'api');
+	const domainServiceIds = [
+		webDomain,
+		webDomain ? `web:${webDomain}` : null,
+		apiDomain,
+		apiDomain ? `api:${apiDomain}` : null,
+	];
 	return {
-		host: [...new Set(graph.units.map((unit) => unit.host.id).filter((hostId) => hostId !== 'smtp' && hostId !== 'local-process' && hostId !== 'local-docker'))],
+		host: [...new Set([
+			...graph.units.map((unit) => unit.host.id),
+			...(includesApi ? ['cloudflare-dns'] : []),
+		].filter((hostId) => hostId !== 'smtp' && hostId !== 'local-process' && hostId !== 'local-docker'))],
 		serviceId: [...new Set(graph.units.flatMap((unit) => [
 			unit.id,
 			typeof unit.config.serviceName === 'string' ? unit.config.serviceName : null,
-		]).filter((value): value is string => Boolean(value)))],
+		]).concat(domainServiceIds).filter((value): value is string => Boolean(value)))],
 		serviceType: [...new Set(graph.units.flatMap((unit) => {
-			if (unit.id === 'api') return ['api-runtime', 'railway-service:api'];
+			if (unit.id === 'api') return ['api-runtime', 'railway-service:api', 'custom-domain:api', 'dns-record'];
 			if (unit.id === 'operationsRunner') return ['operations-runner-runtime', 'railway-service:operations-runner'];
 			if (unit.placement === 'runner-capacity') return ['api-runtime', 'operations-runner-runtime', 'railway-service:api', 'railway-service:operations-runner'];
 			if (unit.host.id === 'cloudflare') return ['web-ui', 'edge-worker', 'content-store', 'database', 'kv-form-guard', 'turnstile-widget', 'pages-project', 'custom-domain:web', 'dns-record'];
