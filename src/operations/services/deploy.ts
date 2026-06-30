@@ -23,7 +23,7 @@ import { sdkD1MigrationsRoot } from './runtime-paths.ts';
 
 const DEFAULT_COMPATIBILITY_DATE = '2026-04-05';
 const DEFAULT_COMPATIBILITY_FLAGS = ['nodejs_compat'];
-const DEFAULT_TREESEED_MARKET_BASE_URL = 'https://api.treeseed.ai';
+const DEFAULT_TREESEED_MARKET_BASE_URL = 'https://api.treeseed.dev';
 const GENERATED_ROOT = '.treeseed/generated';
 const STATE_ROOT = '.treeseed/state';
 const WORKTREE_METADATA_RELATIVE_PATH = '.treeseed/worktree.json';

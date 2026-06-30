@@ -22,7 +22,7 @@ afterEach(() => {
 function siteConfig(extra = '') {
 	return `name: TreeSeed Market
 slug: treeseed-market
-siteUrl: https://treeseed.ai
+siteUrl: https://treeseed.dev
 contactEmail: hello@treeseed.email
 hosting:
   kind: treeseed_control_plane
@@ -33,21 +33,21 @@ surfaces:
     enabled: true
     provider: cloudflare
     rootDir: .
-    publicBaseUrl: https://treeseed.ai
+    publicBaseUrl: https://treeseed.dev
     environments:
       staging:
-        domain: treeseed-market-staging-479e4625.treeseed.ai
+        domain: preview.treeseed.dev
       prod:
-        domain: treeseed.ai
+        domain: treeseed.dev
   api:
     enabled: true
     provider: railway
     rootDir: packages/api
     environments:
       staging:
-        domain: api-treeseed-market-staging-ca844c56.treeseed.ai
+        domain: api.preview.treeseed.dev
       prod:
-        domain: api.treeseed.ai
+        domain: api.treeseed.dev
 services:
   treeseedDatabase:
     enabled: true

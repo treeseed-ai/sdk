@@ -68,7 +68,7 @@ function configuredHostedBaseUrl(projectRoot: string, environment: Exclude<Trees
 			// Ignore malformed manifests here; readiness reports own detailed config diagnostics.
 		}
 	}
-	if (environment === 'prod') return 'https://treeseed.ai';
-	if (environment === 'staging') return 'https://staging.treeseed.ai';
+	if (environment === 'prod') return 'https://treeseed.dev';
+	if (environment === 'staging') return 'https://preview.treeseed.dev';
 	return null;
 }

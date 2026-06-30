@@ -41,7 +41,7 @@ import {
 	clearTreeseedRemoteSession,
 } from './operations/services/config-runtime.ts';
 
-export const DEFAULT_TREESEED_MARKET_BASE_URL = 'https://api.treeseed.ai';
+export const DEFAULT_TREESEED_MARKET_BASE_URL = 'https://api.treeseed.dev';
 export const TREESEED_CENTRAL_MARKET_API_BASE_URL_ENV = 'TREESEED_CENTRAL_MARKET_API_BASE_URL';
 export const TREESEED_API_BASE_URL_ENV = 'TREESEED_API_BASE_URL';
 export const TREESEED_CATALOG_MARKET_API_BASE_URLS_ENV = 'TREESEED_CATALOG_MARKET_API_BASE_URLS';

@@ -74,7 +74,7 @@ describe('github automation workflow generation', () => {
 			expect(web).toContain('TREESEED_CREDENTIAL_SESSION_SECRET: ${{ secrets.TREESEED_CREDENTIAL_SESSION_SECRET }}');
 		expect(web).toContain('TREESEED_HOSTED_HUBS_GITHUB_TOKEN: ${{ secrets.TREESEED_HOSTED_HUBS_GITHUB_TOKEN }}');
 		expect(web).toContain('TREESEED_API_AUTH_SECRET: ${{ secrets.TREESEED_API_AUTH_SECRET || secrets.TREESEED_BETTER_AUTH_SECRET }}');
-		expect(web).toContain("TREESEED_CENTRAL_MARKET_API_BASE_URL: ${{ vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.ai' }}");
+		expect(web).toContain("TREESEED_CENTRAL_MARKET_API_BASE_URL: ${{ vars.TREESEED_CENTRAL_MARKET_API_BASE_URL || 'https://api.treeseed.dev' }}");
 		expect(web).not.toContain('TREESEED_RAILWAY_API_TOKEN');
 		expect(web).not.toContain('TREESEED_AGENT_POOL_MAX_WORKERS');
 	});
@@ -93,7 +93,7 @@ describe('github automation workflow generation', () => {
 	const hostedRoot = createTenantRoot(`hosting:
   kind: hosted_project
   registration: optional
-  marketBaseUrl: https://api.treeseed.ai
+  marketBaseUrl: https://api.treeseed.dev
   teamId: team-1
   projectId: project-1
 hub:

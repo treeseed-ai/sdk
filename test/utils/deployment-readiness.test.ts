@@ -14,7 +14,7 @@ afterEach(() => {
 function config(overrides = '') {
 	return `name: TreeSeed Market
 slug: treeseed-market
-siteUrl: https://treeseed.ai
+siteUrl: https://treeseed.dev
 contactEmail: hello@treeseed.ai
 hosting:
   kind: treeseed_control_plane

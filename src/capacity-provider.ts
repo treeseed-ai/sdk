@@ -683,7 +683,7 @@ export function resolveCapacityProviderEnvironment(input: CapacityProviderEnviro
 		TREESEED_PROVIDER_DATA_DIR: input.providerDataDir ?? '/data',
 		TREESEED_PROVIDER_ENVIRONMENT: input.providerEnvironment ?? 'local',
 	};
-	env.TREESEED_MANAGEMENT_API_URL = env.TREESEED_MARKET_URL || 'https://api.treeseed.ai';
+	env.TREESEED_MANAGEMENT_API_URL = env.TREESEED_MARKET_URL || 'https://api.treeseed.dev';
 	if (!env.TREESEED_CAPACITY_PROVIDER_API_KEY) throw new Error('Capacity provider API key is required.');
 	if (input.providerId) env.TREESEED_CAPACITY_PROVIDER_ID = input.providerId;
 	if (input.teamId) env.TREESEED_CAPACITY_PROVIDER_TEAM_ID = input.teamId;

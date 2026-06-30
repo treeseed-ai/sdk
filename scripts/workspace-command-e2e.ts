@@ -444,7 +444,7 @@ function resolveRepositorySlug(repoDir) {
 function isProductionLikeTarget(repository, siteUrl) {
 	const productionRepositories = new Set(['knowledge-coop/market', 'treeseed-ai/market']);
 	const normalizedSiteUrl = String(siteUrl ?? '').replace(/\/+$/u, '').toLowerCase();
-	return productionRepositories.has(repository) || ['https://treeseed.ai', 'https://www.treeseed.ai'].includes(normalizedSiteUrl);
+	return productionRepositories.has(repository) || ['https://treeseed.dev', 'https://www.treeseed.dev'].includes(normalizedSiteUrl);
 }
 
 async function waitForGitHubWorkflow(repository, headSha, { timeoutMs = 900000 } = {}) {

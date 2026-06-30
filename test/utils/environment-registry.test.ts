@@ -806,7 +806,7 @@ describe('environment registry overlays', () => {
 			deployConfig,
 			plugins: [],
 			values: {},
-		}).TREESEED_CENTRAL_MARKET_API_BASE_URL).toBe('https://api.treeseed.ai');
+		}).TREESEED_CENTRAL_MARKET_API_BASE_URL).toBe('https://api.treeseed.dev');
 		expect([
 			'https://staging-market.example.com',
 			'https://api.example.com',

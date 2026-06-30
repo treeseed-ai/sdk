@@ -157,7 +157,7 @@ contactEmail: hello@example.com
 hosting:
   kind: hosted_project
   registration: optional
-  marketBaseUrl: https://api.treeseed.ai
+  marketBaseUrl: https://api.treeseed.dev
   teamId: acme
   projectId: docs
 hub:

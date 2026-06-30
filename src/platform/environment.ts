@@ -197,7 +197,7 @@ function resolveSiblingPackageEnvironmentPath(packageDir: string) {
 }
 
 const TENANT_ENVIRONMENT_OVERLAY_PATH = 'src/env.yaml';
-const DEFAULT_TREESEED_MARKET_BASE_URL = 'https://api.treeseed.ai';
+const DEFAULT_TREESEED_MARKET_BASE_URL = 'https://api.treeseed.dev';
 
 function loadOptionalTenantConfig() {
 	try {

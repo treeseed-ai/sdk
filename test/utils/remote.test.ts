@@ -177,9 +177,9 @@ describe('remote Treeseed support', () => {
 
 	it('stores market profiles and calls market-owned v1 endpoints as a client', async () => {
 		const calls: Array<{ url: string; headers: Record<string, string> }> = [];
-		expect(resolveDefaultCentralMarketBaseUrl({})).toBe('https://api.treeseed.ai');
+		expect(resolveDefaultCentralMarketBaseUrl({})).toBe('https://api.treeseed.dev');
 		expect(resolveDefaultCentralMarketBaseUrl({ TREESEED_API_BASE_URL: 'http://127.0.0.1:3000' }))
-			.toBe('https://api.treeseed.ai');
+			.toBe('https://api.treeseed.dev');
 		expect(resolveDefaultCentralMarketBaseUrl({ TREESEED_CENTRAL_MARKET_API_BASE_URL: 'https://central.example.com/' }))
 			.toBe('https://central.example.com');
 		addMarketProfile({
@@ -254,7 +254,7 @@ describe('remote Treeseed support', () => {
 				},
 			});
 
-			expect(calls).toContain('https://api.treeseed.ai/v1/catalog?kind=template');
+			expect(calls).toContain('https://api.treeseed.dev/v1/catalog?kind=template');
 			expect(calls).toContain('https://enterprise.example.com/v1/catalog?kind=template');
 			expect(response.errors).toEqual([]);
 			expect(response.payload.map((item) => [item.id, item.sourceMarket.id])).toEqual([

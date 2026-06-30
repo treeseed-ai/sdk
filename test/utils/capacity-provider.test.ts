@@ -328,7 +328,7 @@ describe('capacity provider SDK contracts', () => {
 		expect(buildCapacityProviderAuthHeaders(apiKey)).toEqual({ authorization: `Bearer ${apiKey}` });
 
 		const env = resolveCapacityProviderEnvironment({
-			marketUrl: 'https://api.treeseed.ai/',
+			marketUrl: 'https://api.treeseed.dev/',
 			marketId: 'prod',
 			apiKey,
 			providerHostDataDir: '.treeseed/local-capacity-provider/data',
@@ -336,7 +336,7 @@ describe('capacity provider SDK contracts', () => {
 			maxConcurrentRunners: 4,
 		});
 		expect(env).toMatchObject({
-			TREESEED_MARKET_URL: 'https://api.treeseed.ai',
+			TREESEED_MARKET_URL: 'https://api.treeseed.dev',
 			TREESEED_MARKET_ID: 'prod',
 			TREESEED_MANAGER_ID: 'prod',
 			TREESEED_CAPACITY_PROVIDER_API_KEY: apiKey,
@@ -353,7 +353,7 @@ describe('capacity provider SDK contracts', () => {
 		expect(redacted.TREESEED_CODEX_AUTH_JSON_B64).not.toContain('codex-auth-secret');
 
 		const instructions = renderCapacityProviderSelfHostInstructions({
-			marketUrl: 'https://api.treeseed.ai',
+			marketUrl: 'https://api.treeseed.dev',
 			marketId: 'prod',
 			apiKey,
 			codexAuthJsonB64: 'codex-auth-secret',
@@ -463,7 +463,7 @@ extensions:
 			hostId: 'host_123',
 		};
 		const env = resolveCapacityProviderEnvironment({
-			marketUrl: 'https://api.treeseed.ai',
+			marketUrl: 'https://api.treeseed.dev',
 			marketId: 'prod',
 			apiKey,
 		});

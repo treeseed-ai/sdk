@@ -36,7 +36,7 @@ function createSplitWorkspace() {
 	}, null, 2));
 	writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: TreeSeed Market
 slug: treeseed-market
-siteUrl: https://treeseed.ai
+siteUrl: https://treeseed.dev
 contactEmail: hello@treeseed.email
 hosting:
   kind: self_hosted_project
@@ -93,7 +93,7 @@ surfaces:
 `);
 	writeFileSync(resolve(tenantRoot, 'packages', 'api', 'treeseed.site.yaml'), `name: TreeSeed API
 slug: treeseed-api
-siteUrl: https://api.treeseed.ai
+siteUrl: https://api.treeseed.dev
 contactEmail: hello@treeseed.email
 hosting:
   kind: treeseed_control_plane
@@ -151,7 +151,7 @@ function createGitCommit(root: string) {
 function marketConfig(extra = '') {
 	return `name: TreeSeed Market
 slug: treeseed-market
-siteUrl: https://treeseed.ai
+siteUrl: https://treeseed.dev
 contactEmail: hello@treeseed.email
 hosting:
   kind: treeseed_control_plane
@@ -175,7 +175,7 @@ surfaces:
       staging:
         domain: treeseed-market-staging.example.test
       prod:
-        domain: treeseed.ai
+        domain: treeseed.dev
 services:
   treeseedDatabase:
     enabled: true
