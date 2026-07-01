@@ -96,9 +96,6 @@ import {
 	type GitHubActionsWorkflowGate,
 	type GitHubActionsVerificationReport,
 } from '../operations/services/github-actions-verification.ts';
-import {
-	type ReleaseCandidateMode,
-} from '../operations/services/release-candidate.ts';
 import { cleanProofLedger } from '../operations/services/release-proof-ledger.ts';
 import type { TreeseedProofDriver } from '../operations/services/release-proof.ts';
 import { buildTreeseedProofPlan, summarizeTreeseedProofLedger } from '../operations/services/release-proof-planner.ts';
@@ -241,6 +238,7 @@ import type {
 
 type WorkflowWrite = NonNullable<TreeseedWorkflowContext['write']>;
 type WorkflowStatePayload = ReturnType<typeof resolveTreeseedWorkflowState>;
+type ReleaseCandidateMode = TreeseedReleaseCandidateMode;
 
 export type TreeseedWorkflowErrorCode =
 	| 'validation_failed'
