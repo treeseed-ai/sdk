@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.2] - 2026-07-01
+
+### Fixed
+
+- fix(deploy): wait for production pages propagation (31c43020be77)
+
 ## [0.12.1] - 2026-07-01
 
 ### Fixed
