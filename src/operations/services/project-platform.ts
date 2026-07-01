@@ -1682,8 +1682,11 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 	const skippedD1Check = apiMonitorEndpoints.processingAgentApi
 		? { ok: true, skipped: true, reason: 'processing_agent_api' }
 		: skippedApiCheck;
+	const pagesProbeOptions = options.scope === 'prod'
+		? { attempts: 18, delayMs: 10000 }
+		: { attempts: 3, delayMs: 5000 };
 	const checks = {
-		pages: timedPhase(timings, 'monitor:probe-pages', () => probeHttp(webProbeUrl, { attempts: 3, delayMs: 5000 })),
+		pages: timedPhase(timings, 'monitor:probe-pages', () => probeHttp(webProbeUrl, pagesProbeOptions)),
 		apiHealth: apiSelected && apiMonitorEndpoints.apiHealth ? timedPhase(timings, 'monitor:probe-api-health', () => probeHttp(apiMonitorEndpoints.apiHealth, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedApiCheck),
 		apiReady: apiSelected && apiMonitorEndpoints.apiReady ? timedPhase(timings, 'monitor:probe-api-ready', () => probeHttp(apiMonitorEndpoints.apiReady, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedApiCheck),
 		d1Health: apiSelected && apiMonitorEndpoints.d1Health ? timedPhase(timings, 'monitor:probe-d1-health', () => probeHttp(apiMonitorEndpoints.d1Health, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedD1Check),
