@@ -1,12 +1,11 @@
 import { copyFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readTreeseedDevInstance } from '../local-dev/managed-dev.ts';
 import { sceneActionKind, sceneExpectationKinds } from './schema.ts';
 import { planTreeseedScene, validateTreeseedScene } from './planner.ts';
 import { sceneErrorDiagnostic } from './diagnostics.ts';
 import { resolveTreeseedSceneDeviceProfile } from './devices.ts';
 import { planTreeseedSceneArtifactPaths } from './phase0.ts';
-import { resolveTreeseedSceneBaseUrl } from './base-url.ts';
+import { resolveTreeseedSceneApiBaseUrl, resolveTreeseedSceneBaseUrl } from './base-url.ts';
 import { prepareTreeseedSceneEnvironment } from './environment.ts';
 import { resolveTreeseedSceneAuth } from './auth.ts';
 import { planOrApplyTreeseedSceneSeed } from './seed.ts';
@@ -62,30 +61,6 @@ function duration(start: Date, end: Date) {
 
 function splitDiagnostics(diagnostics: TreeseedSceneDiagnostic[], severity: 'error' | 'warning') {
 	return diagnostics.filter((entry) => entry.severity === severity);
-}
-
-function httpHealthBaseUrl(instance: unknown) {
-	const healthUrl = (instance as { health?: Array<{ kind?: string; url?: string }> } | null)?.health
-		?.find((entry) => entry.kind === 'http' && typeof entry.url === 'string')
-		?.url;
-	if (!healthUrl) return null;
-	try {
-		const url = new URL(healthUrl);
-		if (url.hostname === '0.0.0.0') url.hostname = '127.0.0.1';
-		return url.origin;
-	} catch {
-		return healthUrl.replace(/\/healthz?$/u, '').replace(/\/+$/u, '');
-	}
-}
-
-function resolveLocalApiBaseUrl(input: { projectRoot: string; environment: string; webBaseUrl: string }) {
-	if (input.environment !== 'local') return input.webBaseUrl;
-	const apiInstance = readTreeseedDevInstance({ cwd: input.projectRoot, surface: 'api' });
-	const managedApi = httpHealthBaseUrl(apiInstance);
-	if (managedApi) return managedApi;
-	const envApi = process.env.TREESEED_API_BASE_URL?.trim() || process.env.TREESEED_MARKET_API_BASE_URL?.trim();
-	if (envApi) return envApi.replace(/\/+$/u, '');
-	return input.webBaseUrl;
 }
 
 function renderResolution(scene: TreeseedSceneManifest) {
@@ -392,11 +367,13 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 		writeTreeseedSceneRunArtifacts({ scene, plan, report, timeline: timeline.events });
 		return report;
 	}
-	if (plan.environment === 'local' && scene.setup.auth?.role && scene.setup.auth.role !== 'anonymous') {
-		const apiBaseUrl = resolveLocalApiBaseUrl({ projectRoot: input.projectRoot, environment: plan.environment, webBaseUrl: baseUrl.baseUrl });
+	if (scene.setup.auth?.role && scene.setup.auth.role !== 'anonymous') {
+		const apiBaseUrl = resolveTreeseedSceneApiBaseUrl({ projectRoot: input.projectRoot, environment: plan.environment, webBaseUrl: baseUrl.baseUrl });
 		const roleFixtureDiagnostics = await ensureTreeseedSceneVisualAuditRoleFixtures({
 			baseUrl: apiBaseUrl,
 			roles: [scene.setup.auth.role],
+			projectRoot: input.projectRoot,
+			environment: plan.environment,
 		});
 		setupDiagnostics.push(...roleFixtureDiagnostics);
 	}
@@ -465,11 +442,11 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 			timeline.push('network', entry, currentStepId);
 		});
 		if (tracePath) await session.startTracing?.();
-		if (plan.environment === 'local' && scene.setup.auth?.role && scene.setup.auth.role !== 'anonymous') {
+		if (scene.setup.auth?.role && scene.setup.auth.role !== 'anonymous') {
 			const signInDiagnostics = await signInTreeseedSceneVisualAuditRole({
 				page: session.page,
 				baseUrl: baseUrl.baseUrl,
-				apiBaseUrl: resolveLocalApiBaseUrl({ projectRoot: input.projectRoot, environment: plan.environment, webBaseUrl: baseUrl.baseUrl }),
+				apiBaseUrl: resolveTreeseedSceneApiBaseUrl({ projectRoot: input.projectRoot, environment: plan.environment, webBaseUrl: baseUrl.baseUrl }),
 				role: scene.setup.auth.role,
 			});
 			diagnostics.push(...signInDiagnostics);

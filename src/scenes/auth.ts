@@ -7,12 +7,13 @@ import type { TreeseedSceneAuthReport, TreeseedSceneAuthResolveOptions } from '.
 
 export function resolveTreeseedSceneAuth(input: TreeseedSceneAuthResolveOptions): TreeseedSceneAuthReport {
 	const required = input.scene.setup.auth?.required === true;
+	const role = input.scene.setup.auth?.role?.trim();
 	const selector = input.scene.setup.auth?.profile ?? (input.environment === 'local' ? 'local' : null);
 	const profile = resolveMarketProfile(selector);
 	const authRoot = findNearestTreeseedRoot(input.projectRoot) ?? resolve(process.env.HOME || homedir());
 	const session = resolveMarketSession(authRoot, profile.id);
 	const diagnostics = [];
-	if (required && !session?.accessToken) {
+	if (required && !session?.accessToken && (!role || role === 'anonymous')) {
 		diagnostics.push(sceneErrorDiagnostic('scene.auth_required', `Not logged in to market "${profile.id}". Run treeseed auth:login --market ${profile.id}.`, 'setup.auth'));
 	}
 	return {

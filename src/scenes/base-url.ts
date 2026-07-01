@@ -81,3 +81,65 @@ function hostedWebUrl(environmentConfig: unknown) {
 	if (!domain) return null;
 	return /^https?:\/\//u.test(domain) ? domain : `https://${domain}`;
 }
+
+export function resolveTreeseedSceneApiBaseUrl(input: {
+	projectRoot: string;
+	environment: TreeseedSceneEnvironment | string;
+	webBaseUrl: string;
+}) {
+	if (input.environment === 'local') {
+		const instance = readTreeseedDevInstance({ cwd: input.projectRoot, surface: 'api' });
+		const managedApi = httpHealthBaseUrl(instance);
+		if (managedApi) return managedApi;
+		const envApi = process.env.TREESEED_API_BASE_URL?.trim() || process.env.TREESEED_MARKET_API_BASE_URL?.trim();
+		if (envApi) return envApi.replace(/\/+$/u, '');
+		return input.webBaseUrl;
+	}
+	const environment = input.environment === 'prod' ? 'prod' : input.environment === 'staging' ? 'staging' : null;
+	if (!environment) return input.webBaseUrl;
+	const configured = configuredHostedApiBaseUrl(input.projectRoot, environment);
+	return configured ?? input.webBaseUrl;
+}
+
+function configuredHostedApiBaseUrl(projectRoot: string, environment: Exclude<TreeseedSceneEnvironment, 'local'>) {
+	const candidates = [
+		resolve(projectRoot, 'treeseed.site.yaml'),
+		resolve(projectRoot, 'packages', 'api', 'treeseed.site.yaml'),
+		resolve(projectRoot, '..', '..', 'treeseed.site.yaml'),
+		resolve(projectRoot, '..', '..', 'packages', 'api', 'treeseed.site.yaml'),
+	];
+	for (const candidate of candidates) {
+		if (!existsSync(candidate)) continue;
+		try {
+			const config = loadTreeseedDeployConfigFromPath(candidate);
+			const serviceUrl = hostedApiUrl(config.connections?.api?.environments?.[environment])
+				?? hostedApiUrl(config.services?.api?.environments?.[environment])
+				?? hostedApiUrl(config.surfaces?.api?.environments?.[environment])
+				?? (environment === 'prod' ? config.surfaces?.api?.publicBaseUrl : undefined);
+			if (typeof serviceUrl === 'string' && serviceUrl.trim()) return serviceUrl.trim();
+		} catch {
+			// Ignore malformed manifests here; readiness reports own detailed config diagnostics.
+		}
+	}
+	if (environment === 'prod') return 'https://api.treeseed.dev';
+	if (environment === 'staging') return 'https://api.preview.treeseed.dev';
+	return null;
+}
+
+function hostedApiUrl(environmentConfig: unknown) {
+	return hostedWebUrl(environmentConfig);
+}
+
+function httpHealthBaseUrl(instance: unknown) {
+	const healthUrl = (instance as { health?: Array<{ kind?: string; url?: string }> } | null)?.health
+		?.find((entry) => entry.kind === 'http' && typeof entry.url === 'string')
+		?.url;
+	if (!healthUrl) return null;
+	try {
+		const url = new URL(healthUrl);
+		if (url.hostname === '0.0.0.0') url.hostname = '127.0.0.1';
+		return url.origin;
+	} catch {
+		return healthUrl.replace(/\/healthz?$/u, '').replace(/\/+$/u, '');
+	}
+}

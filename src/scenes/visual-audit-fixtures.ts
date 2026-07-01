@@ -1,5 +1,6 @@
 import { sceneErrorDiagnostic, sceneWarningDiagnostic } from './diagnostics.ts';
 import { MarketClient, MarketClientError } from '../market-client.ts';
+import { resolveTreeseedMachineEnvironmentValues } from '../operations/services/config-runtime.ts';
 import type { TreeseedSceneDiagnostic, TreeseedSceneVisualAuditRole } from './types.ts';
 
 export const TREESEED_VISUAL_AUDIT_PASSWORD = 'TreeSeedVisualAudit!2026';
@@ -47,13 +48,26 @@ function isAuthFailure(error: unknown) {
 	return false;
 }
 
-function serviceHeaders() {
+function configuredValue(input: { projectRoot?: string; environment?: string } | undefined, name: string) {
+	const envValue = process.env[name];
+	if (typeof envValue === 'string' && envValue.trim()) return envValue.trim();
+	if (!input?.projectRoot || !input.environment) return null;
+	try {
+		const values = resolveTreeseedMachineEnvironmentValues(input.projectRoot, input.environment);
+		const value = values?.[name];
+		return typeof value === 'string' && value.trim() ? value.trim() : null;
+	} catch {
+		return null;
+	}
+}
+
+function serviceHeaders(input?: { projectRoot?: string; environment?: string }) {
 	return {
 		'content-type': 'application/json',
-		'x-treeseed-service-id': process.env.TREESEED_API_WEB_SERVICE_ID ?? process.env.TREESEED_WEB_SERVICE_ID ?? 'web',
+		'x-treeseed-service-id': configuredValue(input, 'TREESEED_API_WEB_SERVICE_ID') ?? configuredValue(input, 'TREESEED_WEB_SERVICE_ID') ?? 'web',
 		'x-treeseed-service-secret':
-			process.env.TREESEED_API_WEB_SERVICE_SECRET
-			?? process.env.TREESEED_WEB_SERVICE_SECRET
+			configuredValue(input, 'TREESEED_API_WEB_SERVICE_SECRET')
+			?? configuredValue(input, 'TREESEED_WEB_SERVICE_SECRET')
 			?? 'treeseed-web-service-dev-secret',
 	};
 }
@@ -77,13 +91,15 @@ function seedActorsForRoles(roles: TreeseedSceneVisualAuditRole[]) {
 async function seedVisualAuditFixtures(input: {
 	baseUrl: string;
 	roles: TreeseedSceneVisualAuditRole[];
+	projectRoot?: string;
+	environment?: string;
 }): Promise<TreeseedSceneDiagnostic[]> {
 	const actors = seedActorsForRoles(input.roles);
 	if (Object.keys(actors).length === 0) return [];
 	try {
 		const response = await fetch(new URL('/v1/acceptance/seed', input.baseUrl).toString(), {
 			method: 'POST',
-			headers: serviceHeaders(),
+			headers: serviceHeaders(input),
 			body: JSON.stringify({
 				namespace: 'visual-audit',
 				password: TREESEED_VISUAL_AUDIT_PASSWORD,
@@ -111,10 +127,17 @@ async function seedVisualAuditFixtures(input: {
 export async function ensureTreeseedSceneVisualAuditRoleFixtures(input: {
 	baseUrl: string;
 	roles: TreeseedSceneVisualAuditRole[];
+	projectRoot?: string;
+	environment?: string;
 }): Promise<TreeseedSceneDiagnostic[]> {
 	const diagnostics: TreeseedSceneDiagnostic[] = [];
 	const roles = [...new Set(input.roles)].filter((role) => role !== 'anonymous');
-	diagnostics.push(...await seedVisualAuditFixtures({ baseUrl: input.baseUrl, roles }));
+	diagnostics.push(...await seedVisualAuditFixtures({
+		baseUrl: input.baseUrl,
+		roles,
+		projectRoot: input.projectRoot,
+		environment: input.environment,
+	}));
 	for (const role of roles) {
 		const user = treeseedSceneVisualAuditUserForRole(role);
 		if (!user) continue;
