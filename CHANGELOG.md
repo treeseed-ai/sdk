@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.1] - 2026-07-01
+
+### Fixed
+
+- fix(release): dispatch production web deploy gate (8049bad8ace0)
+
 ## [0.12.0] - 2026-07-01
 
 ### Added
