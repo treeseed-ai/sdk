@@ -87,6 +87,7 @@ type TreeseedPackageManifest = {
 	repository?: unknown;
 	verify?: unknown;
 	releaseGate?: unknown;
+	hostedVerifyWorkflow?: unknown;
 	artifacts?: unknown;
 	dockerImages?: unknown;
 	capacityProvider?: unknown;
@@ -307,7 +308,8 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 	const publishTarget = dockerArtifacts.length > 0 && publishTargetRaw === 'docker'
 		? dockerArtifacts[0]!.name
 		: publishTargetRaw ?? 'npm';
-	const hostedVerifyWorkflow = stringValue(stringRecord(manifest?.releaseGate).workflow)
+	const hostedVerifyWorkflow = stringValue(manifest?.hostedVerifyWorkflow)
+		?? stringValue(stringRecord(manifest?.releaseGate).workflow)
 		?? (existsSync(resolve(pkg.dir, '.github/workflows/deploy.yml')) ? 'deploy.yml' : null);
 	const projectArchitecture = normalizeTreeseedPackageProjectArchitecture(manifest?.projectArchitecture, id);
 	const docsReadiness = docsSiteReadiness(pkg.dir, projectArchitecture);
@@ -465,7 +467,8 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 			? 'treeseed/treedx'
 			: null;
 	const repository = stringValue(manifest?.repository) ?? (id === 'treedx' ? 'treeseed-ai/treedx' : null);
-	const hostedVerifyWorkflow = stringValue(stringRecord(manifest?.releaseGate).workflow)
+	const hostedVerifyWorkflow = stringValue(manifest?.hostedVerifyWorkflow)
+		?? stringValue(stringRecord(manifest?.releaseGate).workflow)
 		?? (existsSync(resolve(dir, '.github/workflows/release-gate.yml')) ? 'release-gate.yml' : null);
 	const projectArchitecture = normalizeTreeseedPackageProjectArchitecture(manifest?.projectArchitecture, id);
 	const docsReadiness = docsSiteReadiness(dir, projectArchitecture);

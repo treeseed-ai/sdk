@@ -101,6 +101,11 @@ import {
 	type ReleaseCandidateMode,
 	type ReleaseCandidateReport,
 } from '../operations/services/release-candidate.ts';
+import { cleanProofLedger, writeProofRecord } from '../operations/services/release-proof-ledger.ts';
+import { createProofRecord } from '../operations/services/release-proof.ts';
+import { buildTreeseedProofPlan, summarizeTreeseedProofLedger } from '../operations/services/release-proof-planner.ts';
+import { runTreeseedProof } from '../operations/services/release-proof-runner.ts';
+import { createTreeseedWorkflowTimer, slowestTreeseedWorkflowPhases, type TreeseedWorkflowTiming } from '../operations/services/workflow-timing.ts';
 import {
 	buildReleaseGraph,
 	runReleaseGraphRehearsal,
@@ -238,6 +243,7 @@ import type {
 	TreeseedWorkflowResult,
 	TreeseedWorkflowWorktreeMode,
 	TreeseedReleaseCandidateMode,
+	TreeseedProofInput,
 } from '../workflow.ts';
 
 type WorkflowWrite = NonNullable<TreeseedWorkflowContext['write']>;
@@ -481,7 +487,7 @@ export function normalizeReleaseCandidateMode(
 		return value;
 	}
 	if (operation === 'save' && lane === 'promotion') return 'strict';
-	return operation === 'save' ? 'skip' : 'strict';
+	return operation === 'save' ? 'hybrid' : 'strict';
 }
 
 export function shouldUseHostedSaveCi(input: TreeseedSaveInput, branch: string | null | undefined, lane: 'fast' | 'promotion' = normalizeSaveLane(input.lane)) {
@@ -555,6 +561,9 @@ async function waitForWorkflowGates(
 	}
 	if (gates.length === 0) {
 		return [];
+	}
+	if (operation === 'save' && gates.every((gate) => !gate.repository && githubRepositoryForRepo(gate.repoPath) == null)) {
+		return gates.map((gate) => skippedGitHubActionsGate(gate, 'non-github-repository'));
 	}
 	assertHostedGitHubWorkflowCredentialsReady(operation, options.root ?? gates[0]!.repoPath, gates);
 	const results: Array<Record<string, unknown>> = [];
@@ -1034,14 +1043,20 @@ function buildWorkflowResult<TPayload>(
 		recovery?: TreeseedWorkflowRecovery | null;
 		errors?: Array<{ code: string; message: string; details?: Record<string, unknown> | null }>;
 		includeFinalState?: boolean;
+		timing?: TreeseedWorkflowTiming;
 	} = {},
-): TreeseedWorkflowResult<TPayload & { finalState?: WorkflowStatePayload }> {
+): TreeseedWorkflowResult<TPayload & { finalState?: WorkflowStatePayload; timing?: TreeseedWorkflowTiming }> {
+	const timing = options.timing ?? createTreeseedWorkflowTimer().finish();
 	const resolvedPayload = (options.includeFinalState ?? true)
 		? {
 			...(payload as Record<string, unknown>),
+			timing,
 			finalState: resolveWorkflowStateSnapshot(cwd),
 		}
-		: payload;
+		: {
+			...(payload as Record<string, unknown>),
+			timing,
+		};
 	return {
 		schemaVersion: 1,
 		kind: 'treeseed.workflow.result',
@@ -1052,8 +1067,8 @@ function buildWorkflowResult<TPayload>(
 		operation,
 		summary: options.summary,
 		facts: options.facts,
-		payload: resolvedPayload as TPayload & { finalState?: WorkflowStatePayload },
-		result: resolvedPayload as TPayload & { finalState?: WorkflowStatePayload },
+		payload: resolvedPayload as TPayload & { finalState?: WorkflowStatePayload; timing?: TreeseedWorkflowTiming },
+		result: resolvedPayload as TPayload & { finalState?: WorkflowStatePayload; timing?: TreeseedWorkflowTiming },
 		nextSteps: options.nextSteps,
 		recovery: options.recovery ?? null,
 		errors: options.errors ?? [],
@@ -2620,6 +2635,164 @@ async function runReleaseCandidateForPlan(
 	return report;
 }
 
+function parseProofOlderThan(value: string | null | undefined) {
+	if (!value) return 30 * 24 * 60 * 60 * 1000;
+	const match = value.trim().match(/^(\d+)([smhd])?$/u);
+	if (!match) return 30 * 24 * 60 * 60 * 1000;
+	const amount = Number(match[1]);
+	const unit = match[2] ?? 'd';
+	if (!Number.isFinite(amount) || amount < 0) return 30 * 24 * 60 * 60 * 1000;
+	if (unit === 's') return amount * 1000;
+	if (unit === 'm') return amount * 60 * 1000;
+	if (unit === 'h') return amount * 60 * 60 * 1000;
+	return amount * 24 * 60 * 60 * 1000;
+}
+
+function releaseCandidateProofRecords(root: string, proof: ReturnType<typeof runReleaseGraphRehearsal>) {
+	const now = new Date().toISOString();
+	for (const artifact of proof.artifacts) {
+		const node = proof.graph.nodes.find((entry) => entry.id === artifact.packageId);
+		if (!node) continue;
+		writeProofRecord(root, createProofRecord({
+			subject: {
+				kind: 'package',
+				id: `package:${node.id}`,
+				name: node.id,
+				repoPath: node.path,
+				repository: null,
+				branch: null,
+				headSha: null,
+			},
+			inputs: {
+				topologyHash: proof.proofId,
+				sourceHashes: { root: proof.root.sha },
+				dependencyProofIds: [],
+			},
+			driver: 'local',
+			status: artifact.status === 'passed' ? 'passed' : artifact.status === 'failed' ? 'failed' : 'skipped',
+			startedAt: proof.checkedAt,
+			finishedAt: now,
+			reusable: artifact.status === 'passed',
+			invalidationReasons: artifact.status === 'passed' ? [] : [`Release graph artifact ${artifact.proofType} did not pass.`],
+			result: artifact.command ? {
+				command: { command: artifact.command, cwd: node.path, exitCode: artifact.status === 'passed' ? 0 : null },
+			} : {},
+		}));
+	}
+	for (const action of proof.actionChecks) {
+		const node = proof.graph.nodes.find((entry) => entry.id === action.packageId);
+		if (!node) continue;
+		writeProofRecord(root, createProofRecord({
+			subject: {
+				kind: 'package',
+				id: `package:${node.id}:act`,
+				name: node.id,
+				repoPath: node.path,
+				repository: null,
+				branch: null,
+				headSha: null,
+			},
+			inputs: {
+				topologyHash: proof.proofId,
+				sourceHashes: { root: proof.root.sha },
+				dependencyProofIds: [],
+			},
+			driver: 'act',
+			status: action.status === 'passed' ? 'passed' : action.status === 'failed' ? 'failed' : 'skipped',
+			startedAt: proof.checkedAt,
+			finishedAt: now,
+			reusable: false,
+			invalidationReasons: ['Local action simulation is advisory and cannot satisfy authoritative hosted proof.'],
+			result: {},
+		}));
+	}
+}
+
+export async function workflowProof(helpers: WorkflowOperationHelpers, input: TreeseedProofInput = {}) {
+	try {
+		return await withContextEnv(helpers.context.env, async () => {
+			const timer = createTreeseedWorkflowTimer();
+			const tenantRoot = resolveProjectRootOrThrow('proof', helpers.cwd());
+			const root = workspaceRoot(tenantRoot);
+			const action = input.action ?? (input.plan || input.dryRun ? 'plan' : 'status');
+			const target = input.target ?? 'staging';
+			const driver = input.driver ?? 'github-hosted';
+			const executionMode = action === 'plan' || input.plan || input.dryRun ? 'plan' : 'execute';
+			let payload: Record<string, unknown>;
+			if (action === 'run') {
+				const result = await timer.phaseAsync('proof-run', 'Run release proof subjects', () => runTreeseedProof({
+					root,
+					target,
+					driver,
+					subject: input.subject ?? null,
+					write: (line, stream) => helpers.write(line, stream),
+				}));
+				payload = {
+					action,
+					target,
+					driver,
+					subject: input.subject ?? null,
+					...result,
+					authority: driver === 'github-hosted' ? 'authoritative' : 'advisory',
+				};
+				if (result.failures.length > 0) {
+					const first = result.failures[0]!;
+					workflowError('proof', 'validation_failed', [
+						'Treeseed release proof failed.',
+						`- ${first.subject.id}: ${first.invalidationReasons[0] ?? first.status}`,
+						first.result.workflow?.url ? `Run: ${first.result.workflow.url}` : null,
+						'Hosted GitHub workflow proof is authoritative; local action simulation is advisory.',
+					].filter(Boolean).join('\n'), { details: { proof: payload } });
+				}
+			} else if (action === 'clean') {
+				payload = {
+					action,
+					target,
+					...timer.phase('proof-clean', 'Clean old proof records', () => cleanProofLedger(root, {
+						olderThanMs: parseProofOlderThan(input.olderThan),
+					})),
+				};
+			} else if (action === 'failures') {
+				const ledger = timer.phase('proof-failures', 'Inspect failed proof records', () => summarizeTreeseedProofLedger(root));
+				payload = { action, target, failures: ledger.failures, summary: ledger.summary };
+			} else if (action === 'explain') {
+				const ledger = timer.phase('proof-explain', 'Explain proof duration and reuse', () => summarizeTreeseedProofLedger(root));
+				payload = {
+					action,
+					target,
+					latest: ledger.latest,
+					slowest: ledger.slowest,
+					reuse: {
+						passed: ledger.summary.reusable,
+						rerun: Math.max(0, ledger.summary.records - ledger.summary.reusable),
+						blocked: ledger.summary.failed,
+					},
+					summary: ledger.summary,
+				};
+			} else {
+				const plan = timer.phase('proof-plan', 'Plan release proof subjects', () => buildTreeseedProofPlan({
+					root,
+					target,
+					driver,
+					subject: input.subject ?? null,
+				}));
+				payload = { action, target, driver, plan, authority: driver === 'github-hosted' ? 'authoritative' : 'advisory' };
+			}
+			const timing = timer.finish();
+			return buildWorkflowResult('proof', root, payload, {
+				executionMode,
+				summary: action === 'run' ? 'Treeseed release proof run completed.' : 'Treeseed release proof report ready.',
+				timing,
+				nextSteps: createNextSteps([
+					{ operation: 'proof', reason: 'Run missing authoritative hosted proof before promotion.', input: { action: 'run', target, driver: 'github-hosted' } },
+				]),
+			});
+		});
+	} catch (error) {
+		toError('proof', error);
+	}
+}
+
 function normalizeReleaseCandidatePackages(value: TreeseedReleaseCandidateInput['package']) {
 	if (Array.isArray(value)) return value.map(String).filter(Boolean);
 	if (typeof value === 'string' && value.trim()) return [value.trim()];
@@ -2629,6 +2802,7 @@ function normalizeReleaseCandidatePackages(value: TreeseedReleaseCandidateInput[
 export async function workflowReleaseCandidate(helpers: WorkflowOperationHelpers, input: TreeseedReleaseCandidateInput = {}) {
 	try {
 		return await withContextEnv(helpers.context.env, async () => {
+			const timer = createTreeseedWorkflowTimer();
 			const tenantRoot = resolveProjectRootOrThrow('release-candidate', helpers.cwd());
 			const root = workspaceRoot(tenantRoot);
 			const executionMode = normalizeExecutionMode(input);
@@ -2656,7 +2830,7 @@ export async function workflowReleaseCandidate(helpers: WorkflowOperationHelpers
 					]),
 				});
 			}
-			const proof = runReleaseGraphRehearsal({
+			const proof = timer.phase('local-release-graph-rehearsal', 'Run local release graph rehearsal', () => runReleaseGraphRehearsal({
 				root,
 				selectedPackageNames,
 				verifyDriver,
@@ -2664,7 +2838,8 @@ export async function workflowReleaseCandidate(helpers: WorkflowOperationHelpers
 				keepWorkspace: input.keepWorkspace === true,
 				write: (line, stream) => helpers.write(line, stream),
 				env: helpers.context.env,
-			});
+			}));
+			timer.phase('release-proof-ledger', 'Record local release graph proof records', () => releaseCandidateProofRecords(root, proof));
 			const resultPayload = {
 				...payload,
 				proof,
@@ -2683,6 +2858,7 @@ export async function workflowReleaseCandidate(helpers: WorkflowOperationHelpers
 			}
 			return buildWorkflowResult('release-candidate', root, resultPayload, {
 				summary: 'Treeseed local release graph rehearsal passed.',
+				timing: timer.finish(),
 				nextSteps: createNextSteps([
 					{ operation: 'stage', reason: 'Run stage after the matching local release graph proof passes.' },
 				]),
@@ -4563,6 +4739,9 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							...(shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 								? [{ id: 'hosted-ci', description: saveHostedEnvironmentForBranch(branch) ? `Reconcile and verify hosted deployments for ${saveHostedEnvironmentForBranch(branch)}` : `Wait for hosted save workflows on ${branch}` }]
 								: []),
+							...(saveLane === 'promotion'
+								? [{ id: 'release-proof', description: 'Run or reuse authoritative hosted release proof records for exact package refs' }]
+								: []),
 							...(branch === STAGING_BRANCH && releaseCandidateMode !== 'skip'
 								? [{ id: 'release-candidate', description: `Run ${releaseCandidateMode} release-candidate readiness checks for the saved staging state` }]
 								: []),
@@ -4626,6 +4805,16 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						? [{
 							id: 'hosted-ci',
 							description: saveHostedEnvironmentForBranch(branch) ? `Reconcile and verify hosted deployments for ${saveHostedEnvironmentForBranch(branch)}` : `Wait for hosted save workflows on ${branch}`,
+							repoName: rootRepo.name,
+							repoPath: rootRepo.path,
+							branch,
+							resumable: true,
+						}]
+						: []),
+					...(saveLane === 'promotion'
+						? [{
+							id: 'release-proof',
+							description: 'Run authoritative hosted release proof records',
 							repoName: rootRepo.name,
 							repoPath: rootRepo.path,
 							branch,
@@ -4791,6 +4980,29 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						}).then((workflowGates) => ({ workflowGates }));
 						})
 					: { workflowGates: [] };
+				const releaseProof = saveLane === 'promotion' && process.env.TREESEED_STAGE_WAIT_MODE !== 'skip'
+					? await executeJournalStep(root, workflowRun.runId, 'release-proof', async () => {
+						helpers.write('[save][workflow] Running authoritative hosted release proof.');
+						const proof = await runTreeseedProof({
+							root,
+							target: scope === 'prod' ? 'prod' : scope === 'local' ? 'local' : 'staging',
+							driver: 'github-hosted',
+							write: (line, stream) => helpers.write(line, stream),
+						});
+						if (proof.failures.length > 0) {
+							const first = proof.failures[0]!;
+							workflowError('save', 'validation_failed', [
+								'Treeseed promotion proof failed.',
+								`- ${first.subject.id}: ${first.invalidationReasons[0] ?? first.status}`,
+								first.result.workflow?.url ? `Run: ${first.result.workflow.url}` : null,
+								'Hosted GitHub workflow proof is authoritative; local action simulation is advisory.',
+							].filter(Boolean).join('\n'), { details: { proof } });
+						}
+						return proof;
+					})
+					: (saveLane === 'promotion'
+						? (skipJournalStep(root, workflowRun.runId, 'release-proof', { skippedReason: 'disabled' }), { skipped: true, reason: 'disabled' })
+						: null);
 				const releaseCandidate = branch === STAGING_BRANCH && releaseCandidateMode !== 'skip'
 					? await executeJournalStep(root, workflowRun.runId, 'release-candidate', () => {
 						helpers.write(`[save][workflow] Running staging release-candidate readiness checks (${releaseCandidateMode}).`);
@@ -4873,6 +5085,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					workflowGates: saveWorkflowGates?.workflowGates ?? [],
 					hostedReconcile: saveWorkflowGates?.hostedReconcile ?? null,
 					releaseCandidate,
+					releaseProof,
 					hostingAudit,
 					...worktreePayload(root, effectiveInput.worktreeMode),
 				};
@@ -5612,7 +5825,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 							workspaceLinks: effectiveInput.workspaceLinks ?? 'auto',
 						}))
 					: (skipJournalStep(root, workflowRun.runId, 'save-integrated-feature', { skippedReason: 'staging already integrated' }), null);
-				const verification = verifyMode === 'none'
+				const verification = verifyMode === 'none' || process.env.TREESEED_RELEASE_CANDIDATE_REHEARSAL_MODE === 'skip'
 					? (skipJournalStep(root, workflowRun.runId, 'verify-integrated-feature', { mode: verifyMode, status: 'skipped' }), {
 						mode: verifyMode,
 						status: 'skipped' as const,

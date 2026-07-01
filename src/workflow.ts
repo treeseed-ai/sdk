@@ -13,6 +13,7 @@ import {
 	workflowExport,
 	workflowRecover,
 	workflowReleaseCandidate,
+	workflowProof,
 	workflowRelease,
 	workflowResume,
 	workflowSave,
@@ -35,6 +36,7 @@ export type TreeseedWorkflowOperationId =
 	| 'close'
 	| 'stage'
 	| 'release-candidate'
+	| 'proof'
 	| 'release'
 	| 'resume'
 	| 'recover'
@@ -237,6 +239,17 @@ export type TreeseedReleaseCandidateInput = {
 	dryRun?: boolean;
 };
 
+export type TreeseedProofInput = {
+	action?: 'plan' | 'run' | 'status' | 'failures' | 'explain' | 'clean';
+	target?: 'local' | 'staging' | 'prod';
+	driver?: 'local' | 'act' | 'github-hosted' | 'railway-live' | 'cloudflare-live' | 'reconcile-live';
+	subject?: string | null;
+	last?: boolean;
+	olderThan?: string | null;
+	plan?: boolean;
+	dryRun?: boolean;
+};
+
 export type TreeseedSwitchInput = {
 	branch?: string;
 	branchName?: string;
@@ -384,6 +397,8 @@ export class TreeseedWorkflowSdk {
 				return this.stage(input as TreeseedStageInput);
 			case 'release-candidate':
 				return this.releaseCandidate(input as TreeseedReleaseCandidateInput);
+			case 'proof':
+				return this.proof(input as TreeseedProofInput);
 			case 'release':
 				return this.release(input as TreeseedReleaseInput);
 			case 'resume':
@@ -441,6 +456,10 @@ export class TreeseedWorkflowSdk {
 
 	async releaseCandidate(input: TreeseedReleaseCandidateInput = {}): Promise<TreeseedWorkflowResult> {
 		return workflowReleaseCandidate(this.helpers(), input);
+	}
+
+	async proof(input: TreeseedProofInput = {}): Promise<TreeseedWorkflowResult> {
+		return workflowProof(this.helpers(), input);
 	}
 
 	async release(input: TreeseedReleaseInput): Promise<TreeseedWorkflowResult> {

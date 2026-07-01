@@ -24,6 +24,42 @@ export {
 	type GitHubWorkflowProgressEvent,
 } from './operations/services/github-api.ts';
 export {
+	computeProofInputHash,
+	createProofRecord,
+	proofIdFor,
+	type TreeseedProofDriver,
+	type TreeseedProofInput,
+	type TreeseedProofRecord,
+	type TreeseedProofStatus,
+	type TreeseedProofSubject,
+	type TreeseedProofSubjectKind,
+} from './operations/services/release-proof.ts';
+export {
+	cleanProofLedger,
+	findReusableProof,
+	invalidateProofs,
+	readProofLedger,
+	writeProofRecord,
+} from './operations/services/release-proof-ledger.ts';
+export {
+	buildTreeseedProofPlan,
+	summarizeTreeseedProofLedger,
+	type TreeseedProofPlan,
+	type TreeseedProofPlanSubject,
+	type TreeseedProofTarget,
+} from './operations/services/release-proof-planner.ts';
+export {
+	runTreeseedProof,
+	type TreeseedProofRunResult,
+} from './operations/services/release-proof-runner.ts';
+export {
+	createTreeseedWorkflowTimer,
+	formatTreeseedDuration,
+	slowestTreeseedWorkflowPhases,
+	type TreeseedWorkflowTiming,
+	type TreeseedWorkflowTimingPhase,
+} from './operations/services/workflow-timing.ts';
+export {
 	classifyTreeseedGitMode,
 	inspectTreeseedGitLocks,
 	inspectTreeseedWorkspaceGitLocks,
