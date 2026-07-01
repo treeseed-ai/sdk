@@ -1033,6 +1033,7 @@ async function writeCommandEvidence(input: {
 	args: string[];
 	cwd?: string;
 	timeoutSeconds?: number;
+	env?: Record<string, string | undefined>;
 }) {
 	const safeRef = slugifyTreeseedGuaranteeJourney(input.ref);
 	const evidencePath = resolve(input.outputRoot, 'evidence', `${safeRef}.json`);
@@ -1041,6 +1042,7 @@ async function writeCommandEvidence(input: {
 	try {
 		const result = await execFileAsync(input.command, input.args, {
 			cwd: input.cwd ? resolve(input.workspaceRoot, input.cwd) : resolve(input.workspaceRoot),
+			env: input.env ? { ...process.env, ...input.env } : process.env,
 			timeout: Math.max(1, input.timeoutSeconds ?? 300) * 1000,
 			maxBuffer: 1024 * 1024 * 20,
 		});
@@ -1053,6 +1055,7 @@ async function writeCommandEvidence(input: {
 			startedAt,
 			completedAt,
 			exitCode: 0,
+			env: evidenceEnvSummary(input.env),
 			stdout: result.stdout,
 			stderr: result.stderr,
 		}, null, 2)}\n`, 'utf8');
@@ -1072,6 +1075,7 @@ async function writeCommandEvidence(input: {
 			startedAt,
 			completedAt,
 			exitCode: commandError.code ?? 1,
+			env: evidenceEnvSummary(input.env),
 			stdout: commandError.stdout ?? '',
 			stderr: commandError.stderr ?? '',
 			error: commandError.message,
@@ -1083,6 +1087,39 @@ async function writeCommandEvidence(input: {
 			diagnostics: [diagnostic('error', 'guarantee.verifier_failed', commandError.message, input.ref)],
 		};
 	}
+}
+
+function evidenceEnvSummary(env?: Record<string, string | undefined>) {
+	if (!env) return undefined;
+	return Object.fromEntries(Object.entries(env).map(([key, value]) => [
+		key,
+		/SECRET|TOKEN|KEY|PASSWORD/iu.test(key) && value ? '<redacted>' : value,
+	]));
+}
+
+function apiAcceptanceEnvironment(environment: string) {
+	const baseUrl = apiAcceptanceBaseUrl(environment);
+	const serviceId = process.env.TREESEED_ACCEPTANCE_SERVICE_ID
+		?? process.env.TREESEED_API_WEB_SERVICE_ID
+		?? process.env.TREESEED_WEB_SERVICE_ID
+		?? (environment === 'local' ? 'web' : undefined);
+	const serviceSecret = process.env.TREESEED_ACCEPTANCE_SERVICE_SECRET
+		?? process.env.TREESEED_API_WEB_SERVICE_SECRET
+		?? process.env.TREESEED_WEB_SERVICE_SECRET
+		?? (environment === 'local' ? 'treeseed-web-service-dev-secret' : undefined);
+	return {
+		TREESEED_ACCEPTANCE_ENVIRONMENT: environment,
+		TREESEED_API_BASE_URL: baseUrl,
+		TREESEED_ACCEPTANCE_SERVICE_ID: serviceId,
+		TREESEED_ACCEPTANCE_SERVICE_SECRET: serviceSecret,
+	};
+}
+
+function apiAcceptanceBaseUrl(environment: string) {
+	if (process.env.TREESEED_API_BASE_URL?.trim()) return process.env.TREESEED_API_BASE_URL.trim().replace(/\/+$/u, '');
+	if (environment === 'staging') return 'https://api.preview.treeseed.dev';
+	if (environment === 'prod') return 'https://api.treeseed.dev';
+	return 'http://127.0.0.1:3000';
 }
 
 async function defaultTreeseedGuaranteeVerifierExecutor(input: TreeseedGuaranteeVerifierExecutionInput): Promise<TreeseedGuaranteeVerifierExecutionResult> {
@@ -1111,8 +1148,9 @@ async function defaultTreeseedGuaranteeVerifierExecutor(input: TreeseedGuarantee
 			outputRoot: input.outputRoot,
 			ref: input.ref,
 			command: 'npm',
-			args: ['-w', 'packages/api', 'run', 'test:acceptance', '--', '--case', definition.caseId, '--json'],
+			args: ['-w', 'packages/api', 'run', 'test:acceptance', '--', '--environment', input.environment, '--base-url', apiAcceptanceBaseUrl(input.environment), '--case', definition.caseId, '--json'],
 			timeoutSeconds: definition.timeoutSeconds,
+			env: apiAcceptanceEnvironment(input.environment),
 		});
 	}
 	if (definition.kind === 'vitestCase') {
