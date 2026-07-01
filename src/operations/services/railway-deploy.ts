@@ -1687,7 +1687,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 	};
 	const wantsInstanceConfig = service.buildCommand
 		|| service.startCommand
-		|| (!service.imageRef && service.rootDir)
+		|| (!(service.imageRef || service.sourceMode === 'image') && service.rootDir)
 		|| service.healthcheckPath
 		|| service.healthcheckTimeoutSeconds !== null
 		|| service.healthcheckTimeoutSeconds !== undefined
@@ -1775,7 +1775,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			buildCommand: service.buildCommand,
 			startCommand: railwayServiceRuntimeStartCommand(service),
 			cronSchedule: service.schedule?.[0] ?? null,
-			rootDirectory: service.imageRef ? null : service.sourceRootDirectory ?? '.',
+			rootDirectory: service.imageRef || service.sourceMode === 'image' ? null : service.sourceRootDirectory ?? '.',
 			healthcheckPath: service.healthcheckPath,
 			healthcheckTimeoutSeconds: service.healthcheckTimeoutSeconds,
 			healthcheckIntervalSeconds: service.healthcheckIntervalSeconds,

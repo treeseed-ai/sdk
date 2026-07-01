@@ -3928,7 +3928,7 @@ async function resolveRailwayTopologyForScope(
 							? service.dockerfilePath ?? (existsSync(resolve(service.rootDir, 'Dockerfile')) ? '/Dockerfile' : null)
 							: null,
 						startCommand: service.startCommand,
-						rootDirectory: service.imageRef ? null : railwayServiceRootDirectory(input.context.tenantRoot, service),
+						rootDirectory: service.imageRef || service.sourceMode === 'image' ? null : railwayServiceRootDirectory(input.context.tenantRoot, service),
 						healthcheckPath: service.healthcheckPath,
 						healthcheckTimeoutSeconds: service.healthcheckTimeoutSeconds,
 						healthcheckIntervalSeconds: service.healthcheckIntervalSeconds,
@@ -5698,7 +5698,7 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 			issues: startCommandMatches ? [] : ['Railway start command does not match the desired value.'],
 		}));
 	}
-	const desiredRootDirectory = service.imageRef ? null : railwayServiceRootDirectory(input.context.tenantRoot, service);
+	const desiredRootDirectory = service.imageRef || service.sourceMode === 'image' ? null : railwayServiceRootDirectory(input.context.tenantRoot, service);
 	if (desiredRootDirectory) {
 		checks.push(verificationCheck('railway.instance.root-directory', 'Railway root directory matches desired config', 'api', {
 			exists: Boolean(entry.instance?.id),

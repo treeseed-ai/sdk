@@ -155,6 +155,10 @@ function railwayServiceRootDirectory(tenantRoot: string, service: ReturnType<typ
 	return rootDirectory(service.application?.root ?? tenantRoot, service.rootDir);
 }
 
+function railwayServiceUsesImageSource(service: ReturnType<typeof configuredRailwayServices>[number]) {
+	return Boolean(service.imageRef || service.sourceMode === 'image');
+}
+
 function hasConfiguredValue(values: Record<string, string | undefined>, key: string) {
 	return typeof values[key] === 'string' && Boolean(values[key]?.trim());
 }
@@ -349,7 +353,7 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		}));
 
 		for (const [key, expected] of Object.entries({
-			rootDirectory: service.imageRef ? null : expectedRootDirectory,
+			rootDirectory: railwayServiceUsesImageSource(service) ? null : expectedRootDirectory,
 			buildCommand: service.buildCommand,
 			dockerfilePath: service.dockerfilePath,
 			startCommand: service.startCommand,
@@ -373,7 +377,7 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 			}));
 		}
 
-		if (!service.imageRef && service.sourceRepo) {
+		if (!railwayServiceUsesImageSource(service) && service.sourceRepo) {
 			const actualRepo = observed?.deploymentRepo ?? null;
 			const actualBranch = observed?.deploymentBranch ?? null;
 			const actualRootDirectory = observed?.deploymentRootDirectory ?? null;
