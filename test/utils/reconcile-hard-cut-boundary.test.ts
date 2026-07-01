@@ -40,10 +40,11 @@ describe('reconciliation hard-cut source boundaries', () => {
 
 		const releaseBody = functionBody(operations, 'workflowRelease');
 		expect(releaseBody).toContain('runReleaseGateReconcileFacade');
-		expect(releaseBody).toContain('legacyMutationPathDisabled');
+		expect(releaseBody.indexOf('release-gates')).toBeGreaterThanOrEqual(0);
+		expect(releaseBody.indexOf('release-root')).toBeGreaterThan(releaseBody.indexOf('release-gates'));
+		expect(releaseBody).toContain('ensureReleaseTag');
+		expect(releaseBody).toContain('promoteCommitToProductionBranch');
 		for (const blocked of [
-			'executeJournalStep',
-			'waitForWorkflowGates',
 			'runWorkflowHostedResourceVerification',
 			'destroyWorkflowBranchPreviewIfPresent',
 			'squashMergeBranchIntoStaging',

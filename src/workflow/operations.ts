@@ -1340,6 +1340,25 @@ function ensureReleaseTag(repoDir: string, tagName: string, commitSha: string, m
 	};
 }
 
+function promoteCommitToProductionBranch(repoDir: string, commitSha: string) {
+	const expectedBefore = remoteBranchExists(repoDir, PRODUCTION_BRANCH) ? remoteHeadCommit(repoDir, PRODUCTION_BRANCH) : null;
+	const lease = expectedBefore
+		? `--force-with-lease=refs/heads/${PRODUCTION_BRANCH}:${expectedBefore}`
+		: '--force-with-lease';
+	runGit(['push', lease, 'origin', `${commitSha}:refs/heads/${PRODUCTION_BRANCH}`], { cwd: repoDir });
+	const observed = remoteHeadCommit(repoDir, PRODUCTION_BRANCH);
+	if (observed !== commitSha) {
+		throw new Error(`Production promotion verification failed; expected ${commitSha}, observed ${observed}.`);
+	}
+	return {
+		targetBranch: PRODUCTION_BRANCH,
+		expectedBefore,
+		commitSha,
+		pushed: true,
+		verified: true,
+	};
+}
+
 function commitAllIfChanged(repoDir: string, message: string) {
 	runGit(['add', '-A'], { cwd: repoDir });
 	if (!hasMeaningfulChanges(repoDir)) {
@@ -6069,34 +6088,286 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				.filter((check) => check.status === 'failed')
 				.map((check) => `${check.id}: ${check.message}${check.remediation ? ` Remediation: ${check.remediation}` : ''}`));
 			plannedRelease.blockers = blockers;
-			return runReleaseGateReconcileFacade(
+			const releaseBasePayload = {
+				...plannedRelease,
+				readiness: plannedReadiness,
+				ciMode,
+				level,
+				fresh: input.fresh === true,
+				freshArchivedRuns: [],
+				autoResumeCandidate: planAutoResumeRun
+					? {
+						runId: planAutoResumeRun.runId,
+						branch: planAutoResumeRun.session.branchName,
+						failure: planAutoResumeRun.failure,
+					}
+					: null,
+				...worktreePayload(root, effectiveInput.worktreeMode),
+			};
+			if (executionMode === 'plan') {
+				return runReleaseGateReconcileFacade(
+					'release',
+					helpers,
+					root,
+					{ kind: 'persistent', scope: 'prod' },
+					{
+						plan: true,
+						verifyDeployedResources: effectiveInput.verifyDeployedResources,
+					},
+					releaseBasePayload,
+				);
+			}
+			if (blockers.length > 0) {
+				workflowError('release', 'validation_failed', `Treeseed release cannot continue until blockers are resolved:\n${blockers.join('\n')}`, {
+					details: { blockers, releasePlan: plannedRelease },
+				});
+			}
+			const freshPreparation = input.fresh === true
+				? prepareFreshReleaseRun(root, session.branchName, rootRepo, packageReports)
+				: { archived: [], blockers: [] };
+			const selectedVersions = releasePlanVersionMap(plannedRelease.plannedVersions);
+			const stableVersions = new Map([
+				...releasePlanStableDependencyVersionMap(plannedRelease).entries(),
+				...selectedVersions.entries(),
+			]);
+			const allVersions = new Map([
+				['@treeseed/market', plannedRelease.rootVersion],
+				...stableVersions.entries(),
+			]);
+			const selectedPackageSet = new Set(selectedPackageNames);
+			const workflowRun = acquireWorkflowRun(
 				'release',
-				helpers,
-				root,
-				{ kind: 'persistent', scope: 'prod' },
+				session,
 				{
-					plan: executionMode === 'plan',
-					execute: executionMode === 'execute',
-					verifyDeployedResources: effectiveInput.verifyDeployedResources,
-				},
-				{
-					...plannedRelease,
-					readiness: plannedReadiness,
+					...effectiveInput,
+					bump: level,
 					ciMode,
-					level,
 					fresh: input.fresh === true,
-					freshArchivedRuns: [],
-					autoResumeCandidate: planAutoResumeRun
-						? {
-							runId: planAutoResumeRun.runId,
-							branch: planAutoResumeRun.session.branchName,
-							failure: planAutoResumeRun.failure,
-						}
-						: null,
-					legacyMutationPathDisabled: true,
-					...worktreePayload(root, effectiveInput.worktreeMode),
-				},
+				} as Record<string, unknown>,
+				[
+					{ id: 'release-plan', description: 'Record immutable release plan and target versions', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					{ id: 'release-gates', description: 'Run production release gates against staging evidence', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					{ id: 'workspace-unlink', description: 'Remove local workspace links before stable release metadata', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					{ id: 'prepare-release-metadata', description: 'Rewrite package metadata and lockfiles to production dependency mode', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					...selectedPackageNames.map((name) => {
+						const report = packageReports.find((entry) => entry.name === name);
+						return {
+							id: `release-${name}`,
+							description: `Release ${name} ${selectedVersions.get(name) ?? '(planned)'}`,
+							repoName: name,
+							repoPath: report?.path ?? root,
+							branch: STAGING_BRANCH,
+							resumable: true,
+						};
+					}),
+					{ id: 'release-root', description: `Release market ${plannedRelease.rootVersion}`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					{ id: 'publish-wait', description: 'Wait for production release workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
+					{ id: 'release-back-merge', description: 'Back-merge production release history into staging', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+					{ id: 'workspace-link', description: 'Restore local workspace links after release', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
+				],
+				autoResumeRun
+					? {
+						...helpers.context,
+						workflow: {
+							...(helpers.context.workflow ?? {}),
+							resumeRunId: autoResumeRun.runId,
+						},
+					}
+					: helpers.context,
 			);
+			if (autoResumeRun) {
+				helpers.write(`[workflow][resume] Resuming interrupted release ${autoResumeRun.runId}.`);
+			}
+			try {
+				const releasePlan = await executeJournalStep(root, workflowRun.runId, 'release-plan', () => ({
+					...releaseBasePayload,
+					freshArchivedRuns: freshPreparation.archived,
+				}));
+				const releaseGates = await executeJournalStep(root, workflowRun.runId, 'release-gates', async () =>
+					runReleaseGateReconcileFacade(
+						'release',
+						helpers,
+						root,
+						{ kind: 'persistent', scope: 'prod' },
+						{
+							execute: true,
+							verifyDeployedResources: effectiveInput.verifyDeployedResources,
+						},
+						{
+							...releaseBasePayload,
+							freshArchivedRuns: freshPreparation.archived,
+						},
+					) as unknown as Record<string, unknown>);
+				const workspaceUnlink = await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
+					unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
+				const releaseMetadata = await executeJournalStep(root, workflowRun.runId, 'prepare-release-metadata', () => {
+					applyStableWorkspaceVersionChanges(root, allVersions);
+					const adapterMetadata = checkedOutWorkspacePackageRepos(root)
+						.filter((pkg) => selectedPackageSet.has(pkg.name))
+						.map((pkg) => ({
+							name: pkg.name,
+							version: selectedVersions.get(pkg.name) ?? null,
+							result: selectedVersions.has(pkg.name)
+								? prepareAdapterReleaseMetadata(root, pkg, selectedVersions.get(pkg.name)!)
+								: { status: 'skipped', reason: 'no planned version' },
+						}));
+					const rootInstall = runReleaseNpmInstall(root, { workspaceRoot: root });
+					const remainingDevReferences = collectInternalDevReferenceIssues(root, selectedPackageSet);
+					if (remainingDevReferences.length > 0) {
+						const rendered = remainingDevReferences
+							.map((issue) => `${issue.repoName}: ${issue.filePath} ${issue.dependencyName ?? ''} ${issue.reason} ${issue.spec}`)
+							.join('\n');
+						throw new Error(`Stable release metadata still contains development references.\n${rendered}`);
+					}
+					return {
+						versions: Object.fromEntries(allVersions.entries()),
+						adapterMetadata,
+						rootInstall,
+						workspaceUnlink,
+					};
+				});
+				const packageReleases: Array<Record<string, unknown>> = [];
+				for (const pkg of checkedOutWorkspacePackageRepos(root).filter((entry) => selectedPackageSet.has(entry.name))) {
+					const version = selectedVersions.get(pkg.name);
+					if (!version) continue;
+					const packageRelease = await executeJournalStep(root, workflowRun.runId, `release-${pkg.name}`, () => {
+						const changelog = updateReleaseChangelog(pkg.dir, {
+							version,
+							sourceRef: `origin/${PRODUCTION_BRANCH}`,
+							targetRef: 'HEAD',
+						});
+						const commit = commitAllIfChanged(pkg.dir, releaseAdminMessage({
+							subject: `release: ${pkg.name} ${version}`,
+							version,
+							tagName: version,
+							sourceRef: STAGING_BRANCH,
+							targetRef: PRODUCTION_BRANCH,
+							changelog,
+						}));
+						pushBranch(pkg.dir, STAGING_BRANCH);
+						const promotion = promoteCommitToProductionBranch(pkg.dir, commit.commitSha);
+						const tag = ensureReleaseTag(pkg.dir, version, commit.commitSha, `release: ${pkg.name} ${version}`);
+						return {
+							name: pkg.name,
+							path: relative(root, pkg.dir),
+							version,
+							changelog,
+							commit,
+							promotion,
+							tag,
+						};
+					});
+					packageReleases.push(packageRelease);
+				}
+				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
+					const changelog = updateReleaseChangelog(repoRoot(root), {
+						version: plannedRelease.rootVersion,
+						sourceRef: `origin/${PRODUCTION_BRANCH}`,
+						targetRef: 'HEAD',
+						extraDependencyBullets: versionLines(stableVersions),
+					});
+					const commit = commitAllIfChanged(repoRoot(root), releaseAdminMessage({
+						subject: `release: market ${plannedRelease.rootVersion}`,
+						version: plannedRelease.rootVersion,
+						tagName: plannedRelease.releaseTag,
+						sourceRef: STAGING_BRANCH,
+						targetRef: PRODUCTION_BRANCH,
+						changelog,
+						extraLines: versionLines(stableVersions).map((line) => `Released package ${line}`),
+					}));
+					pushBranch(repoRoot(root), STAGING_BRANCH);
+					const promotion = promoteCommitToProductionBranch(repoRoot(root), commit.commitSha);
+					const tag = ensureReleaseTag(repoRoot(root), plannedRelease.releaseTag, commit.commitSha, `release: market ${plannedRelease.rootVersion}`);
+					return {
+						name: '@treeseed/market',
+						version: plannedRelease.rootVersion,
+						releaseTag: plannedRelease.releaseTag,
+						changelog,
+						commit,
+						promotion,
+						tag,
+					};
+				});
+				const publishGates = [
+					hostedDeployGate({
+						name: '@treeseed/market',
+						repoPath: repoRoot(root),
+						workflow: 'deploy-web.yml',
+						branch: PRODUCTION_BRANCH,
+						headSha: String((rootRelease.commit as { commitSha?: string }).commitSha ?? ''),
+					}),
+					...packageReleases.map((entry) => ({
+						name: String(entry.name),
+						repoPath: resolve(root, String(entry.path)),
+						workflow: releaseWorkflowForPackage(root, String(entry.name)),
+						branch: String(entry.version),
+						headSha: String((entry.commit as { commitSha?: string }).commitSha ?? ''),
+					})),
+				].filter((gate) => gate.headSha);
+				const publishWait = await executeJournalStep(root, workflowRun.runId, 'publish-wait', () =>
+					waitForWorkflowGates('release', publishGates, ciMode, {
+						root,
+						runId: workflowRun.runId,
+						onProgress: (line, stream) => helpers.write(line, stream),
+					}).then((workflowGates) => ({ workflowGates })));
+				const backMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () => {
+					const packageBackMerges = checkedOutWorkspacePackageRepos(root)
+						.filter((pkg) => selectedPackageSet.has(pkg.name))
+						.map((pkg) => backMergeProductionIntoStaging(pkg.dir, pkg.name, releaseAdminMessage({
+							subject: `release: back-merge ${PRODUCTION_BRANCH} into ${STAGING_BRANCH}`,
+							version: selectedVersions.get(pkg.name) ?? null,
+							sourceRef: PRODUCTION_BRANCH,
+							targetRef: STAGING_BRANCH,
+						})));
+					const rootBackMerge = backMergeRootProductionIntoStaging(root, true, {
+						version: plannedRelease.rootVersion,
+						selectedVersions: stableVersions,
+					});
+					return { packages: packageBackMerges, root: rootBackMerge };
+				});
+				const workspaceLinks = await executeJournalStep(root, workflowRun.runId, 'workspace-link', () =>
+					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
+				const payload = {
+					...releaseBasePayload,
+					mode: plannedRelease.mode,
+					runId: workflowRun.runId,
+					releasePlan,
+					releaseGates,
+					workspaceUnlink,
+					releaseMetadata,
+					packageReleases,
+					rootRelease,
+					publishWait: publishWait.workflowGates,
+					backMerge,
+					workspaceLinks,
+					releasedCommit: String((rootRelease.commit as { commitSha?: string }).commitSha ?? ''),
+					touchedPackages: selectedPackageNames,
+					finalBranch: STAGING_BRANCH,
+				};
+				completeWorkflowRun(root, workflowRun.runId, payload);
+				return buildWorkflowResult('release', root, payload, {
+					runId: workflowRun.runId,
+					summary: 'Treeseed production release completed successfully.',
+					nextSteps: createNextSteps([
+						{ operation: 'status', reason: 'Inspect release state after production promotion.' },
+					]),
+				});
+			} catch (error) {
+				try {
+					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
+				} catch {
+					// Preserve the original release failure.
+				}
+				failWorkflowRun(root, workflowRun.runId, error, {
+					resumable: true,
+					runId: workflowRun.runId,
+					command: 'release',
+					message: 'Resume the interrupted production release after fixing the cause.',
+					recoverCommand: 'treeseed recover',
+					resumeCommand: `treeseed resume ${workflowRun.runId}`,
+				});
+				throw error;
+			}
 		});
 	} catch (error) {
 		toError('release', error);
