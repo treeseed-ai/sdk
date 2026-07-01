@@ -326,7 +326,8 @@ export function createBuiltInTreeseedScenePlugins(): TreeseedScenePlugin[] {
 						const text = String(value ?? '');
 						const selector: TreeseedSceneSelector = { text };
 						return assertionReport('text', async () => {
-							const locator = context.session.page.getByText(text).first();
+							const textLocator = context.session.page.getByText(text);
+							const locator = textLocator.first ? textLocator.first() : textLocator;
 							await locator.waitFor({ state: 'visible', timeout: 10_000 });
 							if (!(await locator.isVisible())) throw sceneErrorDiagnostic('scene.text_not_found', `Expected text to be visible: ${text}.`, `workflow.${step.id}.expect.text`);
 						}, selector);

@@ -146,6 +146,10 @@ workflow:
 
 class FakeLocator implements TreeseedSceneLocator {
 	constructor(private readonly selector: string, private readonly page: FakePage) {}
+	first() {
+		this.page.calls.push(`first:${this.selector}`);
+		return this;
+	}
 	async waitFor() {
 		this.page.calls.push(`wait:${this.selector}`);
 	}

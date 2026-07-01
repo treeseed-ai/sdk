@@ -68,7 +68,12 @@ describe('live hosted service checks', () => {
 			strict: true,
 			requireLiveRailway: true,
 			requireLiveHttp: false,
-			env: {},
+			env: {
+				TREESEED_RAILWAY_API_TOKEN: '',
+				TREESEED_RAILWAY_TOKEN: '',
+				RAILWAY_API_TOKEN: '',
+				RAILWAY_TOKEN: '',
+			},
 		});
 		expect(report.summary.failed).toBeGreaterThan(0);
 		expect(report.checks.some((check) => check.provider === 'railway' && check.status === 'failed')).toBe(true);

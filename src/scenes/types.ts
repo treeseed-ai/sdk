@@ -2134,6 +2134,7 @@ export type TreeseedSceneBrowserLaunchInput = {
 };
 
 export type TreeseedSceneLocator = {
+	first?(): TreeseedSceneLocator;
 	waitFor(options?: { state?: 'visible'; timeout?: number }): Promise<void>;
 	click(): Promise<void>;
 	fill(value: string): Promise<void>;
