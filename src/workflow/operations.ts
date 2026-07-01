@@ -6296,6 +6296,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						workflow: 'deploy-web.yml',
 						branch: PRODUCTION_BRANCH,
 						headSha: String((rootRelease.commit as { commitSha?: string }).commitSha ?? ''),
+						dispatchIfMissing: true,
+						dispatchInputs: {
+							environment: 'prod',
+							action_kind: 'deploy_web',
+						},
 					}),
 					...packageReleases.map((entry) => ({
 						name: String(entry.name),
