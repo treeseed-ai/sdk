@@ -5434,14 +5434,14 @@ function verifyCustomDomainUnit(input: TreeseedReconcileAdapterInput): TreeseedU
 				? live.certificateStatus.trim().toUpperCase()
 				: null;
 			const verified = live?.verified === true;
-			const certificateBlocked = certificateStatus
-				? /VALIDATING|ISSUING|GENERATING|FAILED|ERROR|MISSING|PENDING/u.test(certificateStatus)
-				: false;
-			const certificateReady = verified && !certificateBlocked;
 			const hasDnsRequirements = dnsRecords.length > 0
 				|| (typeof live?.serviceDomain === 'string' && live.serviceDomain.trim().length > 0)
 				|| (typeof live?.verificationDnsHost === 'string' && live.verificationDnsHost.trim().length > 0
 					&& typeof live?.verificationToken === 'string' && live.verificationToken.trim().length > 0);
+			const certificateFailed = certificateStatus ? /FAILED|ERROR|MISSING/u.test(certificateStatus) : false;
+			const certificatePending = certificateStatus ? /VALIDATING|ISSUING|GENERATING|PENDING/u.test(certificateStatus) : false;
+			const certificateReady = verified && !certificateFailed && !certificatePending;
+			const certificateAcceptable = certificateReady || (hasDnsRequirements && certificatePending);
 			return summarizeVerification(input.unit.unitId, [
 				verificationCheck('custom-domain.exists', 'Railway custom domain attachment exists', 'cli', {
 					exists: Boolean(live?.domain),
@@ -5458,19 +5458,20 @@ function verifyCustomDomainUnit(input: TreeseedReconcileAdapterInput): TreeseedU
 					},
 					issues: hasDnsRequirements ? [] : [`Railway custom domain ${domain || '(unset)'} did not expose DNS requirements.`],
 				}),
-				verificationCheck('custom-domain.certificate', 'Railway custom domain certificate is issued', 'api', {
+				verificationCheck('custom-domain.certificate', 'Railway custom domain certificate is issued or pending provider validation', 'api', {
 					exists: Boolean(live?.domain),
-					ready: certificateReady,
-					verified: certificateReady,
+					ready: certificateAcceptable,
+					verified: certificateAcceptable,
 					expected: {
 						verified: true,
-						certificateStatus: 'issued',
+						certificateStatus: 'issued or provider validation pending with DNS requirements',
 					},
 					observed: {
 						verified,
 						certificateStatus,
+						hasDnsRequirements,
 					},
-					issues: certificateReady ? [] : [`Railway custom domain ${domain || '(unset)'} certificate is not ready (verified=${verified}, status=${certificateStatus ?? '(unknown)'}).`],
+					issues: certificateAcceptable ? [] : [`Railway custom domain ${domain || '(unset)'} certificate is not ready (verified=${verified}, status=${certificateStatus ?? '(unknown)'}).`],
 				}),
 			]);
 		}
