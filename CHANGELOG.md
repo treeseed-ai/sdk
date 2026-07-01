@@ -1,5 +1,75 @@
 # Changelog
 
+## [0.12.0] - 2026-07-01
+
+### Added
+
+- feat(source): allow first production API domain validation (457c3a24cd7a)
+- feat(source): fix image release root directory verification (86e429bc0c06)
+- feat(source): fix Railway runtime config verification (79355de36c36)
+- feat(source): fix release guarantee API verifiers (834c4350b78b)
+- feat(source): fix production release gates (bff201b6828d)
+- feat(workflow): promotion proof after CI and acceptance fixes (a492fbc34366)
+- feat(source): fix promotion release gate assertions (0231653501ee)
+- feat(source): fix TreeDX release gate Beam setup (9f15e0939d61)
+- feat(source): fix scoped project domains for staging Pages (dde342e7a911)
+- feat(source): fix Railway deploy live verification settle window (8749a3d9094c)
+- feat(source): fix Railway runtime secret sync for staging smoke (d3ccb0404d20)
+- feat(source): use configured API domains for hosted reconciliation (19113419c893)
+- feat(workflow): include domain units in promotion hosted reconciliation (8c72ea61f8fb)
+- feat(workflow): fix staging save reliability (08d476bde63c)
+- feat(workflow): fix staging save reliability (c3200c61c04f)
+- feat(source): fix workspace bin link restoration on staging (b49d56695cf4)
+- feat(workflow): fix staging save dependency publish and API acceptance (2affd7039e67)
+- feat(workflow): fix staging save atomic publish and API acceptance (b53acc53fbe7)
+- feat(release): exclude build artifacts from stage proof workspace (499c47aa9f3d)
+- feat(source): fix API deploy gate before Market deploy (e790ff0451d1)
+- 7 additional changes omitted from this summary.
+
+### Fixed
+
+- fix(release): allow stable release refs (ecd7b81b8f9a)
+- fix(release): restore production promotion after gates (36e8e9709b12)
+- fix(source): fix staging release guarantee auth (9e99d073cad2)
+- fix(source): fix SDK proof regressions after guarantee framework (273820182962)
+- test(tests): fix proof tests for clean hosted runners (5fe8dfbdd9d9)
+- fix(release): remove legacy release-candidate rehearsal code (f197204bb96c)
+- fix(release): replace legacy strict tail with proof ledger (7ad1c0a6c7c2)
+- fix(release): implement incremental release proof (aa805bca4bde)
+- fix(services): update credential priority and Railway source (c41706ac51fa)
+- fix(source): harden Railway IaC reconciliation and domain verification (bd5b0a179c59)
+- test(tests): fix Railway IaC-only reconciliation and TreeDX env names (f5917a97a0d3)
+- fix(source): fix Railway IaC-only reconciliation and TreeDX env names (7da8fe6bf909)
+- ci(source): fix Railway staging Dockerfile builds and persistent volumes (aba82287463d)
+- fix(source): fix Railway staging source builds and persistent volumes (ddea7f79dd97)
+- test(tests): fix staging Railway source builds and volumes (b488017cd09b)
+- fix(source): fix staging Railway source builds and volumes (072a183f94a9)
+- fix(source): fix API staging source builds and runner volumes (ef384dd9029d)
+- fix(tests): fix api and agent staging source builds (e4512fbb9b4f)
+- fix(source): fix api and agent staging source builds (43274e61cd48)
+- fix(source): fix api and agent staging source builds (cf239e409c9e)
+- 19 additional changes omitted from this summary.
+
+### Tests
+
+- build(source): checkpoint user and team guarantees passing locally (9eb9207eca55)
+- test(tests): pin hosted workflow API domains to treeseed.dev (36623efc558c)
+- build(tests): switch hosted domains to treeseed.dev (f4fba089b7c9)
+- test(tests): rework stage promotion workflow (13d517220240)
+- docs(workflow): rework stage promotion workflow (a436757167f6)
+- test(tests): use image-backed Railway API staging services (15323421c66f)
+- build(source): restore Mailpit as reconciled local dev service (4d4f4ea86c22)
+- build(build): prevent Railway service replacement during repair (cb0272a97fe4)
+
+### Dependencies
+
+- build(deps): repair managed worktree cleanup after docker verification (8f77d0f25893)
+- build(build): remove legacy Mailpit dev hooks (eb6c2f62e504)
+- build(source): harden staging image deployment reconciliation (ccd90d1d152b)
+- build(build): publish sdk dist files atomically for concurrent consumers (cc54c7f2ba01)
+- build(build): make sdk dist builds atomic for concurrent release gates (e14873bba45b)
+- build(build): serialize sdk dist builds for release gates (8289be03c5d0)
+
 ## [0.11.0] - 2026-06-12
 
 ### Added
