@@ -97,20 +97,13 @@ import {
 	type GitHubActionsVerificationReport,
 } from '../operations/services/github-actions-verification.ts';
 import {
-	runReleaseCandidateGate,
 	type ReleaseCandidateMode,
-	type ReleaseCandidateReport,
 } from '../operations/services/release-candidate.ts';
-import { cleanProofLedger, writeProofRecord } from '../operations/services/release-proof-ledger.ts';
-import { createProofRecord } from '../operations/services/release-proof.ts';
+import { cleanProofLedger } from '../operations/services/release-proof-ledger.ts';
+import type { TreeseedProofDriver } from '../operations/services/release-proof.ts';
 import { buildTreeseedProofPlan, summarizeTreeseedProofLedger } from '../operations/services/release-proof-planner.ts';
 import { runTreeseedProof } from '../operations/services/release-proof-runner.ts';
 import { createTreeseedWorkflowTimer, slowestTreeseedWorkflowPhases, type TreeseedWorkflowTiming } from '../operations/services/workflow-timing.ts';
-import {
-	buildReleaseGraph,
-	runReleaseGraphRehearsal,
-	type ReleaseGraphVerifyDriver,
-} from '../operations/services/release-graph-rehearsal.ts';
 import {
 	collectReleaseHistoryCommits,
 	renderAdministrativeCommitMessage,
@@ -2596,43 +2589,46 @@ function stableDependencyVersionsForReleaseLine(root: string, options: {
 	return versions;
 }
 
-function assertReleaseCandidatePassed(operation: Extract<TreeseedWorkflowOperationId, 'save' | 'stage' | 'release'>, report: ReleaseCandidateReport) {
-	if (report.status === 'passed') {
-		return;
-	}
-	const rendered = report.failures.map((failure) => `- ${failure.scope}${failure.provider ? ` ${failure.provider}` : ''}: ${failure.message}`);
-	workflowError(operation, 'validation_failed', [
-		'Treeseed release-candidate readiness failed.',
-		...rendered,
-	].join('\n'), {
-		details: {
-			releaseCandidate: report,
-		},
-	});
+function releaseCandidateProofDriver(mode: ReleaseCandidateMode, lane: 'fast' | 'promotion' = 'fast'): TreeseedProofDriver {
+	if (lane === 'promotion' || mode === 'strict') return 'github-hosted';
+	return 'local';
 }
 
-async function runReleaseCandidateForPlan(
+async function runReleaseCandidateProofForPlan(
 	operation: Extract<TreeseedWorkflowOperationId, 'save' | 'stage' | 'release'>,
 	root: string,
 	plannedRelease: { plannedVersions?: unknown; packageSelection?: unknown },
-	options: { allowReuse?: boolean; mode?: ReleaseCandidateMode } = {},
+	options: { mode?: ReleaseCandidateMode; lane?: 'fast' | 'promotion'; write?: (line: string, stream?: 'stdout' | 'stderr') => void } = {},
 ) {
-	const plannedVersions = plannedRelease.plannedVersions && typeof plannedRelease.plannedVersions === 'object' && !Array.isArray(plannedRelease.plannedVersions)
-		? plannedRelease.plannedVersions as Record<string, unknown>
-		: {};
-	const stableDependencyVersions = plannedRelease.stableDependencyVersions && typeof plannedRelease.stableDependencyVersions === 'object' && !Array.isArray(plannedRelease.stableDependencyVersions)
-		? plannedRelease.stableDependencyVersions as Record<string, unknown>
-		: {};
 	const packageSelection = releasePlanPackageSelection(plannedRelease.packageSelection);
-	const report = await runReleaseCandidateGate({
+	const mode = options.mode ?? normalizeReleaseCandidateMode(undefined, operation);
+	const driver = releaseCandidateProofDriver(mode, options.lane ?? 'fast');
+	const proof = await runTreeseedProof({
 		root,
-		plannedVersions: { ...stableDependencyVersions, ...plannedVersions },
-		selectedPackageNames: packageSelection.selected,
-		allowReuse: options.allowReuse,
-		mode: options.mode ?? normalizeReleaseCandidateMode(undefined, operation),
+		target: operation === 'release' ? 'prod' : 'staging',
+		driver,
+		write: options.write,
 	});
-	assertReleaseCandidatePassed(operation, report);
-	return report;
+	if (proof.failures.length > 0) {
+		const first = proof.failures[0]!;
+		workflowError(operation, 'validation_failed', [
+			'Treeseed release-candidate proof failed.',
+			`- ${first.subject.id}: ${first.invalidationReasons[0] ?? first.status}`,
+			first.result.workflow?.url ? `Run: ${first.result.workflow.url}` : null,
+			driver === 'github-hosted'
+				? 'Hosted GitHub workflow proof is authoritative; local action simulation is advisory.'
+				: 'Local proof is exact-input cached in the proof ledger and reruns only missing or invalid subjects.',
+		].filter(Boolean).join('\n'), { details: { proof } });
+	}
+	return {
+		mode,
+		driver,
+		selectedPackageNames: packageSelection.selected,
+		proof,
+		status: 'passed',
+		reused: proof.reused.length,
+		records: proof.records.length,
+	};
 }
 
 function parseProofOlderThan(value: string | null | undefined) {
@@ -2646,66 +2642,6 @@ function parseProofOlderThan(value: string | null | undefined) {
 	if (unit === 'm') return amount * 60 * 1000;
 	if (unit === 'h') return amount * 60 * 60 * 1000;
 	return amount * 24 * 60 * 60 * 1000;
-}
-
-function releaseCandidateProofRecords(root: string, proof: ReturnType<typeof runReleaseGraphRehearsal>) {
-	const now = new Date().toISOString();
-	for (const artifact of proof.artifacts) {
-		const node = proof.graph.nodes.find((entry) => entry.id === artifact.packageId);
-		if (!node) continue;
-		writeProofRecord(root, createProofRecord({
-			subject: {
-				kind: 'package',
-				id: `package:${node.id}`,
-				name: node.id,
-				repoPath: node.path,
-				repository: null,
-				branch: null,
-				headSha: null,
-			},
-			inputs: {
-				topologyHash: proof.proofId,
-				sourceHashes: { root: proof.root.sha },
-				dependencyProofIds: [],
-			},
-			driver: 'local',
-			status: artifact.status === 'passed' ? 'passed' : artifact.status === 'failed' ? 'failed' : 'skipped',
-			startedAt: proof.checkedAt,
-			finishedAt: now,
-			reusable: artifact.status === 'passed',
-			invalidationReasons: artifact.status === 'passed' ? [] : [`Release graph artifact ${artifact.proofType} did not pass.`],
-			result: artifact.command ? {
-				command: { command: artifact.command, cwd: node.path, exitCode: artifact.status === 'passed' ? 0 : null },
-			} : {},
-		}));
-	}
-	for (const action of proof.actionChecks) {
-		const node = proof.graph.nodes.find((entry) => entry.id === action.packageId);
-		if (!node) continue;
-		writeProofRecord(root, createProofRecord({
-			subject: {
-				kind: 'package',
-				id: `package:${node.id}:act`,
-				name: node.id,
-				repoPath: node.path,
-				repository: null,
-				branch: null,
-				headSha: null,
-			},
-			inputs: {
-				topologyHash: proof.proofId,
-				sourceHashes: { root: proof.root.sha },
-				dependencyProofIds: [],
-			},
-			driver: 'act',
-			status: action.status === 'passed' ? 'passed' : action.status === 'failed' ? 'failed' : 'skipped',
-			startedAt: proof.checkedAt,
-			finishedAt: now,
-			reusable: false,
-			invalidationReasons: ['Local action simulation is advisory and cannot satisfy authoritative hosted proof.'],
-			result: {},
-		}));
-	}
 }
 
 export async function workflowProof(helpers: WorkflowOperationHelpers, input: TreeseedProofInput = {}) {
@@ -2807,60 +2743,77 @@ export async function workflowReleaseCandidate(helpers: WorkflowOperationHelpers
 			const root = workspaceRoot(tenantRoot);
 			const executionMode = normalizeExecutionMode(input);
 			const selectedPackageNames = normalizeReleaseCandidatePackages(input.package);
-			const verifyDriver = (input.verifyDriver ?? 'auto') as ReleaseGraphVerifyDriver;
 			const mode = (input.mode ?? 'strict') as TreeseedReleaseCandidateMode;
-			const plannedGraph = buildReleaseGraph(root, selectedPackageNames);
+			const driver: TreeseedProofDriver = input.verifyDriver === 'local'
+				? 'local'
+				: input.verifyDriver === 'action'
+					? 'act'
+					: releaseCandidateProofDriver(mode === 'skip' ? 'hybrid' : mode);
+			const proofSubject = selectedPackageNames.length === 1 ? `package:${selectedPackageNames[0]}` : null;
+			const plan = timer.phase('proof-plan', 'Plan release-candidate proof subjects', () => buildTreeseedProofPlan({
+				root,
+				target: 'staging',
+				driver,
+				subject: proofSubject,
+			}));
 			const payload = {
 				mode,
-				verifyDriver,
+				driver,
+				verifyDriver: input.verifyDriver ?? 'auto',
 				selectedPackageNames,
 				keepWorkspace: input.keepWorkspace === true,
-				graph: { nodes: plannedGraph.nodes, edges: plannedGraph.edges, order: plannedGraph.order },
+				plan,
 				plannedSteps: [
-					{ id: 'build-release-graph', description: 'Discover all treeseed.package.yaml package adapters and graph dependencies.' },
-					{ id: 'local-release-graph-rehearsal', description: 'Run local tarball/image-service rehearsal without hosted GitHub Actions.' },
+					{ id: 'proof-plan', description: 'Discover reusable exact-input proof records for package subjects.' },
+					{ id: 'proof-run', description: 'Run only missing or invalid release proof nodes.' },
 				],
 			};
 			if (executionMode === 'plan') {
 				return buildWorkflowResult('release-candidate', root, payload, {
 					executionMode,
-					summary: 'Treeseed release-candidate rehearsal plan ready.',
+					summary: 'Treeseed release-candidate proof plan ready.',
 					nextSteps: createNextSteps([
-						{ operation: 'release-candidate', reason: 'Run the local release graph rehearsal before stage or release.' },
+						{ operation: 'release-candidate', reason: 'Run missing proof nodes before promotion.' },
 					]),
 				});
 			}
-			const proof = timer.phase('local-release-graph-rehearsal', 'Run local release graph rehearsal', () => runReleaseGraphRehearsal({
+			if (mode === 'skip') {
+				return buildWorkflowResult('release-candidate', root, {
+					...payload,
+					status: 'skipped',
+					failures: [],
+				}, {
+					summary: 'Treeseed release-candidate proof skipped.',
+					timing: timer.finish(),
+				});
+			}
+			const proof = await timer.phaseAsync('proof-run', 'Run release-candidate proof nodes', () => runTreeseedProof({
 				root,
-				selectedPackageNames,
-				verifyDriver,
-				strict: mode === 'strict',
-				keepWorkspace: input.keepWorkspace === true,
+				target: 'staging',
+				driver,
+				subject: proofSubject,
 				write: (line, stream) => helpers.write(line, stream),
-				env: helpers.context.env,
 			}));
-			timer.phase('release-proof-ledger', 'Record local release graph proof records', () => releaseCandidateProofRecords(root, proof));
 			const resultPayload = {
 				...payload,
 				proof,
-				graph: proof.graph,
-				artifacts: proof.artifacts,
-				actionChecks: proof.actionChecks,
 				failures: proof.failures,
 			};
-			if (proof.status !== 'passed') {
+			if (proof.failures.length > 0) {
+				const first = proof.failures[0]!;
 				workflowError('release-candidate', 'validation_failed', [
-					'Treeseed local release graph rehearsal failed.',
-					...proof.failures.map((failure) => `- ${failure.scope}: ${failure.message}`),
-				].join('\n'), {
+					'Treeseed release-candidate proof failed.',
+					`- ${first.subject.id}: ${first.invalidationReasons[0] ?? first.status}`,
+					first.result.workflow?.url ? `Run: ${first.result.workflow.url}` : null,
+				].filter(Boolean).join('\n'), {
 					details: { releaseCandidate: resultPayload },
 				});
 			}
 			return buildWorkflowResult('release-candidate', root, resultPayload, {
-				summary: 'Treeseed local release graph rehearsal passed.',
+				summary: 'Treeseed release-candidate proof passed.',
 				timing: timer.finish(),
 				nextSteps: createNextSteps([
-					{ operation: 'stage', reason: 'Run stage after the matching local release graph proof passes.' },
+					{ operation: 'stage', reason: 'Run stage after the matching release proof passes.' },
 				]),
 			});
 		});
@@ -5005,7 +4958,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						: null);
 				const releaseCandidate = branch === STAGING_BRANCH && releaseCandidateMode !== 'skip'
 					? await executeJournalStep(root, workflowRun.runId, 'release-candidate', () => {
-						helpers.write(`[save][workflow] Running staging release-candidate readiness checks (${releaseCandidateMode}).`);
+						helpers.write(`[save][workflow] Running staging release-candidate proof checks (${releaseCandidateMode}).`);
 						const releaseSession = resolveTreeseedWorkflowSession(root);
 						const stagingReleasePlan = buildReleasePlanSnapshot({
 							root,
@@ -5016,7 +4969,11 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							rootRepo: savedRootRepo,
 							blockers: [],
 						});
-						return runReleaseCandidateForPlan('save', root, stagingReleasePlan, { mode: releaseCandidateMode });
+						return runReleaseCandidateProofForPlan('save', root, stagingReleasePlan, {
+							mode: releaseCandidateMode,
+							lane: saveLane,
+							write: (line, stream) => helpers.write(line, stream),
+						});
 					})
 					: null;
 
@@ -5831,19 +5788,19 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						status: 'skipped' as const,
 						completedAt: null,
 					})
-					: await executeJournalStep(root, workflowRun.runId, 'verify-integrated-feature', () => {
-						const proof = runReleaseGraphRehearsal({
+					: await executeJournalStep(root, workflowRun.runId, 'verify-integrated-feature', async () => {
+						const proof = await runTreeseedProof({
 							root,
-							selectedPackageNames: [],
-							verifyDriver: verifyMode === 'action' ? 'action' : 'local',
-							strict: true,
+							target: 'staging',
+							driver: verifyMode === 'action' ? 'act' : 'local',
 							write: (line, stream) => helpers.write(`[stage][verify] ${line}`, stream),
-							env: helpers.context.env,
 						});
-						if (proof.status !== 'passed') {
+						if (proof.failures.length > 0) {
+							const first = proof.failures[0]!;
 							workflowError('stage', 'validation_failed', [
-								'Treeseed stage local proof failed.',
-								...proof.failures.map((failure) => `- ${failure.scope}: ${failure.message}`),
+								'Treeseed stage proof failed.',
+								`- ${first.subject.id}: ${first.invalidationReasons[0] ?? first.status}`,
+								first.result.workflow?.url ? `Run: ${first.result.workflow.url}` : null,
 							].join('\n'), {
 								details: { proof },
 							});

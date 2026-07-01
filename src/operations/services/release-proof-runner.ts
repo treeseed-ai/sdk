@@ -3,6 +3,7 @@ import {
 	type TreeseedProofDriver,
 	type TreeseedProofRecord,
 } from './release-proof.ts';
+import { spawnSync } from 'node:child_process';
 import { maybeResolveGitHubRepositorySlug } from './github-automation.ts';
 import { writeProofRecord } from './release-proof-ledger.ts';
 import { buildTreeseedProofPlan, type TreeseedProofPlan, type TreeseedProofTarget } from './release-proof-planner.ts';
@@ -117,6 +118,51 @@ function advisorySkippedProof(subject: TreeseedProofPlan['subjects'][number]) {
 	});
 }
 
+function runLocalProof(subject: TreeseedProofPlan['subjects'][number]) {
+	const startedAt = new Date().toISOString();
+	if (!subject.commandSpec) {
+		return createProofRecord({
+			subject: subject.subject,
+			inputs: subject.inputs,
+			driver: subject.driver,
+			status: 'blocked',
+			startedAt,
+			reusable: false,
+			invalidationReasons: ['No local proof command is declared for this subject.'],
+		});
+	}
+	const result = spawnSync(subject.commandSpec.command, subject.commandSpec.args, {
+		cwd: subject.commandSpec.cwd || subject.subject.repoPath,
+		env: {
+			...process.env,
+			TREESEED_VERIFY_DRIVER: 'direct',
+			TMPDIR: process.env.TMPDIR ?? '/tmp',
+		},
+		stdio: 'inherit',
+		shell: false,
+	});
+	const finishedAt = new Date().toISOString();
+	const exitCode = typeof result.status === 'number' ? result.status : null;
+	const errorMessage = result.error instanceof Error ? result.error.message : null;
+	return createProofRecord({
+		subject: subject.subject,
+		inputs: subject.inputs,
+		driver: subject.driver,
+		status: exitCode === 0 ? 'passed' : 'failed',
+		startedAt,
+		finishedAt,
+		reusable: exitCode === 0,
+		invalidationReasons: exitCode === 0 ? [] : [`Local proof command failed${errorMessage ? `: ${errorMessage}` : exitCode == null ? '.' : ` with exit code ${exitCode}.`}`],
+		result: {
+			command: {
+				command: [subject.commandSpec.command, ...subject.commandSpec.args].join(' '),
+				cwd: subject.commandSpec.cwd || subject.subject.repoPath,
+				exitCode,
+			},
+		},
+	});
+}
+
 export async function runTreeseedProof(input: {
 	root: string;
 	target?: TreeseedProofTarget;
@@ -135,6 +181,8 @@ export async function runTreeseedProof(input: {
 		input.write?.(`[proof] Proving ${subject.subject.id} with ${subject.driver}${subject.workflow ? ` (${subject.workflow})` : ''}.`);
 		const record = subject.driver === 'github-hosted'
 			? await runHostedProof(input.root, subject)
+			: subject.driver === 'local'
+				? runLocalProof(subject)
 			: advisorySkippedProof(subject);
 		writeProofRecord(input.root, record);
 		records.push(record);
