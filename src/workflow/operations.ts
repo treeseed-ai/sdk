@@ -6212,7 +6212,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 								: { status: 'skipped', reason: 'no planned version' },
 						}));
 					const rootInstall = runReleaseNpmInstall(root, { workspaceRoot: root });
-					const remainingDevReferences = collectInternalDevReferenceIssues(root, selectedPackageSet);
+					const remainingDevReferences = collectInternalDevReferenceIssues(root, selectedPackageSet)
+						.filter((issue) => issue.reason !== 'git-release-ref' && issue.reason !== 'lockfile-git-release-ref');
 					if (remainingDevReferences.length > 0) {
 						const rendered = remainingDevReferences
 							.map((issue) => `${issue.repoName}: ${issue.filePath} ${issue.dependencyName ?? ''} ${issue.reason} ${issue.spec}`)
