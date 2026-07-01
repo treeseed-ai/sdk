@@ -434,7 +434,7 @@ function parseSetup(value: unknown, targetEnvironment: TreeseedSceneEnvironment,
 	const dev = objectField(record, 'dev', 'setup', diagnostics);
 	if (dev) setup.dev = { required: booleanField(dev, 'required', false, 'setup.dev', diagnostics), command: optionalString(dev, 'command'), reuseExisting: booleanField(dev, 'reuseExisting', true, 'setup.dev', diagnostics) };
 	const auth = objectField(record, 'auth', 'setup', diagnostics);
-	if (auth) setup.auth = { profile: optionalString(auth, 'profile'), required: booleanField(auth, 'required', false, 'setup.auth', diagnostics) };
+	if (auth) setup.auth = { profile: optionalString(auth, 'profile'), required: booleanField(auth, 'required', false, 'setup.auth', diagnostics), ...(optionalString(auth, 'role') ? { role: optionalString(auth, 'role') } : {}) };
 	const seed = objectField(record, 'seed', 'setup', diagnostics);
 	if (seed) {
 		const environments = (arrayField(seed, 'environments', 'setup.seed', diagnostics) ?? [targetEnvironment])

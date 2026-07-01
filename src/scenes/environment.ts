@@ -37,9 +37,10 @@ export async function prepareTreeseedSceneEnvironment(input: TreeseedSceneEnviro
 	let baseUrl: string | null = null;
 	if (requested) {
 		const existing = readTreeseedDevInstance({ cwd: input.projectRoot, surface: 'web' });
-		if (running(existing) && healthUrl(existing)) {
+		const existingApi = readTreeseedDevInstance({ cwd: input.projectRoot, surface: 'api' });
+		if (running(existing) && healthUrl(existing) && running(existingApi) && healthUrl(existingApi)) {
 			reused = true;
-			instances = [existing];
+			instances = [existing, existingApi];
 			baseUrl = healthUrl(existing);
 		} else {
 			try {

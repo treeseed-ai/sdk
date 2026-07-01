@@ -70,7 +70,9 @@ function httpHealthBaseUrl(instance: unknown) {
 		?.url;
 	if (!healthUrl) return null;
 	try {
-		return new URL(healthUrl).origin;
+		const url = new URL(healthUrl);
+		if (url.hostname === '0.0.0.0') url.hostname = '127.0.0.1';
+		return url.origin;
 	} catch {
 		return healthUrl.replace(/\/healthz?$/u, '').replace(/\/+$/u, '');
 	}

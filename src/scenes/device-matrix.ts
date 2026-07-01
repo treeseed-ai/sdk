@@ -81,6 +81,8 @@ export async function runTreeseedSceneDeviceMatrix(input: TreeseedSceneDeviceMat
 		runReports.push(runReport);
 	}
 	const ok = runReports.every((report) => report.ok);
+	const runDiagnostics = runReports.flatMap((entry) => entry.diagnostics ?? []);
+	const allDiagnostics = [...diagnostics, ...runDiagnostics];
 	const report: TreeseedSceneDeviceMatrixReport = {
 		ok,
 		phase: 11,
@@ -91,9 +93,9 @@ export async function runTreeseedSceneDeviceMatrix(input: TreeseedSceneDeviceMat
 		runReports,
 		matrixRoot,
 		matrixPath,
-		diagnostics,
-		warnings: splitDiagnostics(diagnostics, 'warning'),
-		blockers: splitDiagnostics(diagnostics, 'error'),
+		diagnostics: allDiagnostics,
+		warnings: splitDiagnostics(allDiagnostics, 'warning'),
+		blockers: splitDiagnostics(allDiagnostics, 'error'),
 	};
 	writeFileSync(matrixPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 	return report;

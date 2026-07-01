@@ -150,6 +150,10 @@
       "types": "./dist/scenes/index.d.ts",
       "default": "./dist/scenes/index.js"
     },
+    "./guarantees": {
+      "types": "./dist/guarantees/index.d.ts",
+      "default": "./dist/guarantees/index.js"
+    },
     "./scripts/verify-driver": {
       "types": "./dist/verification.d.ts",
       "default": "./dist/verification.js"
