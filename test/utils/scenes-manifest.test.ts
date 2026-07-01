@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	loadTreeseedSceneDocument,
 	planTreeseedScene,
+	resolveTreeseedSceneBaseUrl,
 	resolveTreeseedScenePath,
 	validateTreeseedScene,
 } from '../../src/scenes/index.ts';
@@ -203,6 +204,45 @@ diagrams:
 		]);
 		expect(plan.pluginDiagnostics).toEqual([]);
 		expect(plan.artifactPaths?.runRoot).toContain('.treeseed/scenes/runs/market-project-deploy-demo/20260614T120000Z-abc123');
+	});
+
+	it('resolves hosted scene base URLs from the web surface instead of API connections', () => {
+		const root = workspace();
+		writeFileSync(resolve(root, 'treeseed.site.yaml'), `name: Hosted Scene Test
+slug: hosted-scene-test
+siteUrl: https://fallback.example.test
+contactEmail: test@example.test
+hosting:
+  kind: self_hosted_project
+  registration: none
+  teamId: treeseed
+  projectId: hosted-scene-test
+hub:
+  mode: treeseed_hosted
+runtime:
+  mode: treeseed_managed
+  registration: none
+surfaces:
+  web:
+    environments:
+      staging:
+        domain: preview.example.test
+connections:
+  api:
+    environments:
+      staging:
+        baseUrl: https://api.example.test
+`, 'utf8');
+		writeScene(root, 'hosted-base-url-demo', validSceneYaml());
+		const scene = validateTreeseedScene({ projectRoot: root, scene: 'hosted-base-url-demo' }).scene;
+
+		const report = resolveTreeseedSceneBaseUrl({
+			projectRoot: root,
+			scene: scene!,
+			environment: 'staging',
+		});
+
+		expect(report).toEqual({ ok: true, baseUrl: 'https://preview.example.test', diagnostics: [] });
 	});
 
 	it('parses explicit device profiles and validates invalid device configuration', () => {

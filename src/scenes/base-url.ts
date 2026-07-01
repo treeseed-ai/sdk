@@ -59,11 +59,10 @@ function configuredHostedBaseUrl(projectRoot: string, environment: Exclude<Trees
 		if (!existsSync(candidate)) continue;
 		try {
 			const config = loadTreeseedDeployConfigFromPath(candidate);
-			const connectionUrl = config.connections?.api?.environments?.[environment]?.baseUrl;
-			const serviceUrl = config.services?.web?.environments?.[environment]?.baseUrl
-				?? config.surfaces?.web?.environments?.[environment]?.baseUrl;
-			const baseUrl = serviceUrl ?? connectionUrl;
-			if (typeof baseUrl === 'string' && baseUrl.trim()) return baseUrl.trim();
+			const serviceUrl = hostedWebUrl(config.services?.web?.environments?.[environment])
+				?? hostedWebUrl(config.surfaces?.web?.environments?.[environment])
+				?? (environment === 'prod' ? config.surfaces?.web?.publicBaseUrl : undefined);
+			if (typeof serviceUrl === 'string' && serviceUrl.trim()) return serviceUrl.trim();
 		} catch {
 			// Ignore malformed manifests here; readiness reports own detailed config diagnostics.
 		}
@@ -71,4 +70,14 @@ function configuredHostedBaseUrl(projectRoot: string, environment: Exclude<Trees
 	if (environment === 'prod') return 'https://treeseed.dev';
 	if (environment === 'staging') return 'https://preview.treeseed.dev';
 	return null;
+}
+
+function hostedWebUrl(environmentConfig: unknown) {
+	if (!environmentConfig || typeof environmentConfig !== 'object') return null;
+	const record = environmentConfig as { baseUrl?: unknown; domain?: unknown };
+	const baseUrl = typeof record.baseUrl === 'string' ? record.baseUrl.trim() : '';
+	if (baseUrl) return baseUrl;
+	const domain = typeof record.domain === 'string' ? record.domain.trim() : '';
+	if (!domain) return null;
+	return /^https?:\/\//u.test(domain) ? domain : `https://${domain}`;
 }
