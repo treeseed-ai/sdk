@@ -7,7 +7,9 @@ import { findReusableProof, invalidateProofs, readProofLedger, writeProofRecord 
 const roots: string[] = [];
 
 function testRoot() {
-	const root = mkdtempSync(join(resolve('.treeseed', 'test-tmp'), 'proof-ledger-'));
+	const tempRoot = resolve('.treeseed', 'test-tmp');
+	mkdirSync(tempRoot, { recursive: true });
+	const root = mkdtempSync(join(tempRoot, 'proof-ledger-'));
 	roots.push(root);
 	mkdirSync(root, { recursive: true });
 	return root;

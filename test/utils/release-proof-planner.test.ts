@@ -18,7 +18,9 @@ function runGit(cwd: string, args: string[]) {
 }
 
 function makeWorkspace() {
-	const root = mkdtempSync(join(resolve('.treeseed', 'test-tmp'), 'proof-plan-'));
+	const tempRoot = resolve('.treeseed', 'test-tmp');
+	mkdirSync(tempRoot, { recursive: true });
+	const root = mkdtempSync(join(tempRoot, 'proof-plan-'));
 	roots.push(root);
 	const pkg = resolve(root, 'packages', 'sdk');
 	mkdirSync(resolve(pkg, '.github', 'workflows'), { recursive: true });
