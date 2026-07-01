@@ -98,7 +98,7 @@ import {
 } from '../operations/services/github-actions-verification.ts';
 import { cleanProofLedger } from '../operations/services/release-proof-ledger.ts';
 import type { TreeseedProofDriver } from '../operations/services/release-proof.ts';
-import { buildTreeseedProofPlan, summarizeTreeseedProofLedger } from '../operations/services/release-proof-planner.ts';
+import { buildTreeseedProofPlan, hostedWorkflowForPackage, summarizeTreeseedProofLedger } from '../operations/services/release-proof-planner.ts';
 import { runTreeseedProof } from '../operations/services/release-proof-runner.ts';
 import { createTreeseedWorkflowTimer, slowestTreeseedWorkflowPhases, type TreeseedWorkflowTiming } from '../operations/services/workflow-timing.ts';
 import {
@@ -1457,6 +1457,12 @@ function defaultCiWorkflows(kind: 'root' | 'package', branch: string | null) {
 	return ['verify.yml'];
 }
 
+function packageCiWorkflowsForRepo(repoDir: string) {
+	const adapters = discoverTreeseedPackageAdapters(workspaceRoot(repoDir));
+	const adapter = adapters.find((candidate) => resolve(candidate.dir) === resolve(repoDir));
+	return adapter ? [hostedWorkflowForPackage(adapter)] : null;
+}
+
 function githubRepositoryForRepo(repoDir: string) {
 	try {
 		return resolveGitHubRepositorySlug(repoDir);
@@ -1472,7 +1478,11 @@ function ciTargetForRepo(
 	workflowOverrides: string[],
 ): GitHubActionsVerificationTarget {
 	const branch = typeof input.branch === 'string' && input.branch.trim() ? input.branch.trim() : repo.branchName;
-	const workflows = workflowOverrides.length > 0 ? workflowOverrides : defaultCiWorkflows(kind, branch);
+	const workflows = workflowOverrides.length > 0
+		? workflowOverrides
+		: kind === 'package'
+			? packageCiWorkflowsForRepo(repo.path) ?? defaultCiWorkflows(kind, branch)
+			: defaultCiWorkflows(kind, branch);
 	return {
 		name: repo.name,
 		repoPath: repo.path,
