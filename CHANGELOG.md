@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.7] - 2026-07-02
+
+### Fixed
+
+- fix(release): refresh lockfiles after upstream publish (6ad3b92bdd17)
+
 ## [0.12.6] - 2026-07-02
 
 ### Fixed
