@@ -2497,8 +2497,10 @@ function assertNoInternalDevReferencesForRepo(root: string, repoDir: string, pac
 }
 
 function backMergeProductionIntoStaging(repoDir: string, repoName: string, message?: string) {
-	syncBranchWithOrigin(repoDir, PRODUCTION_BRANCH);
 	syncBranchWithOrigin(repoDir, STAGING_BRANCH);
+	if (!remoteBranchExists(repoDir, PRODUCTION_BRANCH)) {
+		throw new Error(`Remote branch "origin/${PRODUCTION_BRANCH}" does not exist.`);
+	}
 	checkoutBranch(repoDir, STAGING_BRANCH);
 	try {
 		runGit(['merge-base', '--is-ancestor', `origin/${PRODUCTION_BRANCH}`, 'HEAD'], { cwd: repoDir, capture: true });
