@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.3] - 2026-07-02
+
+### Fixed
+
+- fix(deploy): keep staging domain probe (0352397dd8c9)
+- fix(config): invoke key agent without tsx shim (5b5057369eea)
+- fix(deploy): probe pages deployment after publish (c15f64728ce7)
+
 ## [0.12.2] - 2026-07-01
 
 ### Fixed
