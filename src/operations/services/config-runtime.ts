@@ -452,6 +452,8 @@ function startTreeseedKeyAgentDaemon(tenantRoot) {
 	const { keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
 	const { socketPath } = getTreeseedKeyAgentPaths();
 	const command = [
+		shellQuote(process.execPath),
+		'--import',
 		'tsx',
 		shellQuote(keyAgentScriptPath()),
 		'serve',
@@ -473,7 +475,9 @@ function startTreeseedKeyAgentDaemon(tenantRoot) {
 }
 
 function runTreeseedKeyAgentCommand(args, options = {}) {
-	const result = spawnSync('tsx', [
+	const result = spawnSync(process.execPath, [
+		'--import',
+		'tsx',
 		keyAgentScriptPath(),
 		...args,
 	], {
