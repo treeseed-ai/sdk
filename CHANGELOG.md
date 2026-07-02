@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.5] - 2026-07-02
+
+### Fixed
+
+- fix(release): default image publish metadata (6d3c80301f23)
+- fix(release): reconcile image publish credentials (47b9555205f7)
+
 ## [0.12.4] - 2026-07-02
 
 ### Fixed
