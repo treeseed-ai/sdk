@@ -250,7 +250,9 @@ export type TreeseedWorkflowErrorCode =
 	| 'resume_unavailable'
 	| 'workflow_contract_missing'
 	| 'github_workflow_failed'
-	| 'github_auth_unavailable';
+	| 'github_auth_unavailable'
+	| 'hosted_reconcile_failed'
+	| 'hosted_live_verification_failed';
 
 export class TreeseedWorkflowError extends Error {
 	code: TreeseedWorkflowErrorCode;
@@ -675,6 +677,7 @@ async function reconcileSaveHostedEnvironment(
 	environment: 'staging' | 'prod',
 	helpers: WorkflowOperationHelpers,
 	workflowRunId: string,
+	operation: Extract<TreeseedWorkflowOperationId, 'save' | 'release'> = 'save',
 ) {
 	const graph = compileTreeseedHostingGraph({ tenantRoot: root, environment });
 	const selector = selectorFromWorkflowHostingGraph(graph);
@@ -698,24 +701,26 @@ async function reconcileSaveHostedEnvironment(
 		...helpers.context.env,
 		...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
 	};
-	helpers.write(`[save][workflow] Reconciling ${environment} hosted deployments for ${graph.units.length} selected resources.`);
+	const reconcileSession = new Map<string, unknown>([['workflowRunId', workflowRunId]]);
+	helpers.write(`[${operation}][workflow] Reconciling ${environment} hosted deployments for ${graph.units.length} selected resources.`);
 	const reconcile = await reconcileTreeseedTarget({
 		tenantRoot: root,
 		target,
 		env,
 		selector,
 		dryRun: false,
-		write: (line) => helpers.write(`[save][reconcile] ${line}`, 'stderr'),
-		session: new Map([['workflowRunId', workflowRunId]]),
+		write: (line) => helpers.write(`[${operation}][reconcile] ${line}`, 'stderr'),
+		session: reconcileSession,
 	});
 	const status = await collectTreeseedReconcileStatus({
 		tenantRoot: root,
 		target,
 		env,
 		selector,
+		session: reconcileSession,
 	});
 	if (!status.ready) {
-		workflowError('save', 'hosted_reconcile_failed', `Hosted reconciliation for ${environment} did not verify:\n${status.blockers.join('\n')}`, {
+		workflowError(operation, 'hosted_reconcile_failed', `Hosted reconciliation for ${environment} did not verify:\n${status.blockers.join('\n')}`, {
 			details: { environment, selector, status, reconcile },
 		});
 	}
@@ -732,7 +737,7 @@ async function reconcileSaveHostedEnvironment(
 		...live.liveObservation.issues,
 	];
 	if (liveFailures.length > 0) {
-		workflowError('save', 'hosted_live_verification_failed', `Hosted live verification for ${environment} failed:\n${liveFailures.join('\n')}`, {
+		workflowError(operation, 'hosted_live_verification_failed', `Hosted live verification for ${environment} failed:\n${liveFailures.join('\n')}`, {
 			details: { environment, selector, live, reconcile },
 		});
 	}
@@ -6347,6 +6352,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					{ id: 'release-root', description: `Release market ${plannedRelease.rootVersion}`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'publish-wait', description: 'Wait for production release workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'verify-published-artifacts', description: 'Verify immutable registry artifacts exist after publish workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
+					{ id: 'production-hosting', description: 'Reconcile and live-verify production hosted resources after publish', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'release-back-merge', description: 'Back-merge production release history into staging', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'workspace-link', description: 'Restore local workspace links after release', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 				],
@@ -6503,6 +6509,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					}).then((workflowGates) => ({ workflowGates })));
 				const publishedArtifacts = await executeJournalStep(root, workflowRun.runId, 'verify-published-artifacts', () =>
 					verifyPublishedReleaseArtifacts(selectedVersions));
+				const productionHosting = await executeJournalStep(root, workflowRun.runId, 'production-hosting', () =>
+					reconcileSaveHostedEnvironment(root, 'prod', helpers, workflowRun.runId, 'release'));
 				const backMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () => {
 					const packageBackMerges = checkedOutWorkspacePackageRepos(root)
 						.filter((pkg) => selectedPackageSet.has(pkg.name))
@@ -6532,6 +6540,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					rootRelease,
 					publishWait: publishWait.workflowGates,
 					publishedArtifacts,
+					productionHosting,
 					backMerge,
 					workspaceLinks,
 					releasedCommit: String((rootRelease.commit as { commitSha?: string }).commitSha ?? ''),
