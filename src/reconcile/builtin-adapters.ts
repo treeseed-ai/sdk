@@ -4383,7 +4383,7 @@ async function syncRailwayEnvironmentForScope(
 			? activeAttachedRailwayVolumeIds(liveVolumes, databaseLiveService?.id, environment.id, `${databaseDescriptor.serviceName}-volume`)
 			: [];
 		const databaseForIac = databaseDescriptor
-			? { ...databaseDescriptor, detachVolumeIds: databaseDetachVolumeIds, useNativePostgres: Boolean(databaseLiveService) }
+			? { ...databaseDescriptor, detachVolumeIds: databaseDetachVolumeIds, useNativePostgres: false }
 			: null;
 		const token = String(topology.env.TREESEED_RAILWAY_API_TOKEN ?? topology.env.RAILWAY_API_TOKEN ?? '').trim();
 		if (!token) {
@@ -5099,7 +5099,12 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput, val
 						...serviceRefVariables,
 						...Object.fromEntries(entriesForService('railway-var', serviceKey)),
 					...(serviceKey === 'operationsRunner'
-						? { TREESEED_MANAGER_ID: scope }
+						? {
+								TREESEED_MANAGER_ID: scope,
+								TREESEED_PLATFORM_RUNNER_ID: configuredService?.runnerId ?? configuredService?.serviceName ?? 'treeseed-api-operations-runner-01',
+								TREESEED_PLATFORM_RUNNER_DATA_DIR: configuredService?.volumeMountPath ?? '/data',
+								TREESEED_PLATFORM_RUNNER_ENVIRONMENT: scope === 'prod' ? 'production' : scope,
+							}
 						: {}),
 					...(serviceKey === 'api' ? apiOnlyVariables : {}),
 					...capacityVariables,
