@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.15] - 2026-07-02
+
+### Changed
+
+- Preserve native Railway Postgres during reconcile (322cf050c1c2)
+
 ## [0.12.14] - 2026-07-02
 
 ### Changed
