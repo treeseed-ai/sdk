@@ -31,6 +31,9 @@ export type TreeseedPackageUnit = {
 	manifestPath: string | null;
 	repository: string | null;
 	releaseCapability: 'npm' | 'image' | 'deploy-only' | 'none';
+	requiredSecrets: string[];
+	requiredVariables: string[];
+	githubEnvironments: string[];
 };
 
 export type TreeseedTemplateUnit = {
@@ -52,6 +55,7 @@ export type TreeseedDesiredResourceKind =
 	| 'package-image'
 	| 'github-environment'
 	| 'github-secret-binding'
+	| 'github-variable-binding'
 	| 'docker-image-build'
 	| 'cloudflare-resource'
 	| 'railway-project'
@@ -379,6 +383,7 @@ function packageResources(adapter: TreeseedPackageAdapter, environment: Treeseed
 			type: adapter.metadata.type ?? null,
 			releaseCapability: packageReleaseCapability(adapter),
 			requiredSecrets: adapter.metadata.requiredSecrets ?? [],
+			requiredVariables: adapter.metadata.requiredVariables ?? [],
 			githubEnvironments: adapter.metadata.githubEnvironments ?? [],
 		},
 		source: { type: 'package-adapter', id: packageId },
@@ -441,6 +446,28 @@ function packageResources(adapter: TreeseedPackageAdapter, environment: Treeseed
 						environment: environmentName,
 						secretName,
 						envName: secretName,
+					},
+					source: { type: 'package-adapter', id: packageId },
+				});
+			}
+			for (const variableName of Array.isArray(adapter.metadata.requiredVariables) ? adapter.metadata.requiredVariables : []) {
+				if (typeof variableName !== 'string' || !variableName.trim()) continue;
+				resources.push({
+					id: `github-variable-binding:${packageId}:${environmentName}:${variableName}`,
+					kind: 'github-variable-binding',
+					provider: 'github',
+					environment,
+					packageId,
+					serviceId: null,
+					logicalName: `${packageId} ${environmentName} ${variableName}`,
+					dependencies: [`github-environment:${packageId}:${environmentName}`],
+					spec: {
+						packageId,
+						packageRoot: adapter.dir,
+						repository,
+						environment: environmentName,
+						variableName,
+						envName: variableName,
 					},
 					source: { type: 'package-adapter', id: packageId },
 				});
@@ -849,6 +876,15 @@ function releaseGateResources(packages: TreeseedPackageUnit[], templates: Treese
 			: pkg.releaseCapability === 'image'
 				? 'release-gate:image-publish'
 				: null;
+		const imageCredentialDependencies = publishGateKind === 'release-gate:image-publish' && pkg.githubEnvironments.includes(hostedEnvironment)
+			? [
+				...pkg.requiredSecrets.map((secretName) => `github-secret-binding:${pkg.id}:${hostedEnvironment}:${secretName}`),
+				...pkg.requiredVariables.map((variableName) => `github-variable-binding:${pkg.id}:${hostedEnvironment}:${variableName}`),
+			]
+			: [];
+		const publishDependencies = publishGateKind === 'release-gate:image-publish'
+			? [verifyGate.id, ...imageCredentialDependencies]
+			: [verifyGate.id];
 		return [
 			verifyGate,
 			...(publishGateKind ? [{
@@ -859,7 +895,7 @@ function releaseGateResources(packages: TreeseedPackageUnit[], templates: Treese
 				packageId: pkg.id,
 				serviceId: null,
 				logicalName: `${pkg.id} publish gate`,
-				dependencies: [verifyGate.id],
+				dependencies: publishDependencies,
 				spec: {
 					gateKind: publishGateKind,
 					phase,

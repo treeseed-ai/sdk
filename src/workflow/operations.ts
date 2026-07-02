@@ -5957,8 +5957,17 @@ async function runReleaseGateReconcileFacade(
 	};
 	const desiredGraph = compileTreeseedDesiredResourceGraph({ tenantRoot: root, target });
 	const rawUnits = compileTreeseedDesiredUnitsFromGraph(desiredGraph)
-		.filter((unit) => unit.provider === 'treeseed'
-			&& (unit.unitType === 'package-manifest' || unit.unitType.startsWith('release-gate:')));
+		.filter((unit) => (
+			unit.provider === 'treeseed'
+			&& (unit.unitType === 'package-manifest' || unit.unitType.startsWith('release-gate:'))
+		) || (
+			unit.provider === 'github'
+			&& (
+				unit.unitType === 'github-environment'
+				|| unit.unitType === 'github-secret-binding'
+				|| unit.unitType === 'github-variable-binding'
+			)
+		));
 	const rawUnitIds = new Set(rawUnits.map((unit) => unit.unitId));
 	const units = rawUnits.map((unit) => ({
 		...unit,

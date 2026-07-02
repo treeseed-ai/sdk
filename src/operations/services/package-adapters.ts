@@ -95,6 +95,7 @@ type TreeseedPackageManifest = {
 	deploymentSource?: unknown;
 	githubEnvironments?: unknown;
 	requiredSecrets?: unknown;
+	requiredVariables?: unknown;
 	workflowTemplateVersion?: unknown;
 	projectArchitecture?: unknown;
 };
@@ -369,6 +370,7 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 			type: stringValue(manifest?.type) ?? null,
 			githubEnvironments: stringArray(manifest?.githubEnvironments),
 			requiredSecrets: stringArray(manifest?.requiredSecrets),
+			requiredVariables: stringArray(manifest?.requiredVariables),
 			workflowTemplateVersion: stringValue(manifest?.workflowTemplateVersion) ?? null,
 			localDev: stringRecord(manifest?.localDev),
 			capacityProvider: stringRecord(manifest?.capacityProvider),
@@ -527,6 +529,7 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 			type: stringValue(manifest?.type) ?? null,
 			githubEnvironments: stringArray(manifest?.githubEnvironments),
 			requiredSecrets: stringArray(manifest?.requiredSecrets),
+			requiredVariables: stringArray(manifest?.requiredVariables),
 			workflowTemplateVersion: stringValue(manifest?.workflowTemplateVersion) ?? null,
 			...(projectArchitecture
 				? {

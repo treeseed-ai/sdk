@@ -56,6 +56,33 @@ describe('canonical desired resource graph', () => {
 		}
 	});
 
+	it('blocks production image publish gates on reconciled DockerHub GitHub bindings', () => {
+		if (!workspaceRoot) return;
+		const graph = compileTreeseedDesiredResourceGraph({
+			tenantRoot: workspaceRoot,
+			target: { kind: 'persistent', scope: 'prod' },
+		});
+		const resourceIds = graph.resources.map((entry) => entry.id);
+		expect(resourceIds).toEqual(expect.arrayContaining([
+			'github-secret-binding:@treeseed/agent:production:TREESEED_DOCKERHUB_TOKEN',
+			'github-variable-binding:@treeseed/agent:production:TREESEED_DOCKERHUB_USERNAME',
+			'github-secret-binding:@treeseed/api:production:TREESEED_DOCKERHUB_TOKEN',
+			'github-variable-binding:@treeseed/api:production:TREESEED_DOCKERHUB_USERNAME',
+			'github-secret-binding:treedx:production:TREESEED_DOCKERHUB_TOKEN',
+			'github-variable-binding:treedx:production:TREESEED_DOCKERHUB_USERNAME',
+		]));
+
+		const dependenciesFor = (id: string) =>
+			graph.resources.find((entry) => entry.id === id)?.dependencies ?? [];
+		for (const packageId of ['@treeseed/agent', '@treeseed/api', 'treedx']) {
+			expect(dependenciesFor(`release-gate:image-publish:${packageId}`)).toEqual(expect.arrayContaining([
+				`release-gate:verify:${packageId}`,
+				`github-secret-binding:${packageId}:production:TREESEED_DOCKERHUB_TOKEN`,
+				`github-variable-binding:${packageId}:production:TREESEED_DOCKERHUB_USERNAME`,
+			]));
+		}
+	});
+
 	it('keeps development package manifests pinned to internal Git commit refs', () => {
 		if (!workspaceRoot) return;
 		expect(() => assertDevelopmentInternalCommitReferences(workspaceRoot)).not.toThrow();
