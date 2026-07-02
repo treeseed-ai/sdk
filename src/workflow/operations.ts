@@ -1258,6 +1258,31 @@ function writeJsonFile(path: string, value: Record<string, unknown>) {
 	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+function updatePackageLockRootVersion(root: string, version: string) {
+	const packageLockPath = resolve(root, 'package-lock.json');
+	if (!existsSync(packageLockPath)) return { status: 'skipped', reason: 'no package-lock.json' };
+	const packageLock = JSON.parse(readFileSync(packageLockPath, 'utf8')) as Record<string, unknown>;
+	let changed = false;
+	if (packageLock.version !== version) {
+		packageLock.version = version;
+		changed = true;
+	}
+	const packages = packageLock.packages;
+	if (packages && typeof packages === 'object' && !Array.isArray(packages)) {
+		const rootPackage = (packages as Record<string, unknown>)[''];
+		if (rootPackage && typeof rootPackage === 'object' && !Array.isArray(rootPackage)) {
+			if ((rootPackage as Record<string, unknown>).version !== version) {
+				(rootPackage as Record<string, unknown>).version = version;
+				changed = true;
+			}
+		}
+	}
+	if (changed) {
+		writeJsonFile(packageLockPath, packageLock);
+	}
+	return { status: changed ? 'updated' : 'unchanged', path: 'package-lock.json' };
+}
+
 function applyStableWorkspaceVersionChanges(root: string, versions: Map<string, string>) {
 	for (const target of [{ name: '@treeseed/market', dir: root }, ...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir }))]) {
 		const packageJsonPath = resolve(target.dir, 'package.json');
@@ -2374,9 +2399,9 @@ function prepareAdapterReleaseMetadata(root: string, pkg: { name: string; dir: s
 	}
 	if (existsSync(resolve(pkg.dir, 'package.json'))) {
 		return {
-			status: 'npm-install',
+			status: 'updated',
 			adapter: adapter?.id ?? pkg.name,
-			...runReleaseNpmInstall(pkg.dir, { workspaceRoot: root }),
+			packageLock: updatePackageLockRootVersion(pkg.dir, version),
 		};
 	}
 	return { status: 'skipped', adapter: adapter?.id ?? pkg.name, reason: 'no package metadata updater' };
@@ -6402,7 +6427,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 								? prepareAdapterReleaseMetadata(root, pkg, selectedVersions.get(pkg.name)!)
 								: { status: 'skipped', reason: 'no planned version' },
 						}));
-					const rootInstall = runReleaseNpmInstall(root, { workspaceRoot: root });
+					const rootPackageLock = updatePackageLockRootVersion(root, plannedRelease.rootVersion);
 					const remainingDevReferences = collectInternalDevReferenceIssues(root, selectedPackageSet)
 						.filter((issue) => issue.reason !== 'lockfile-git-release-ref');
 					if (remainingDevReferences.length > 0) {
@@ -6414,7 +6439,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					return {
 						versions: Object.fromEntries(allVersions.entries()),
 						adapterMetadata,
-						rootInstall,
+						rootPackageLock,
 						workspaceUnlink,
 					};
 				});
@@ -6422,7 +6447,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				for (const pkg of checkedOutWorkspacePackageRepos(root).filter((entry) => selectedPackageSet.has(entry.name))) {
 					const version = selectedVersions.get(pkg.name);
 					if (!version) continue;
-					const packageRelease = await executeJournalStep(root, workflowRun.runId, `release-${pkg.name}`, () => {
+					const packageRelease = await executeJournalStep(root, workflowRun.runId, `release-${pkg.name}`, async () => {
 						const changelog = updateReleaseChangelog(pkg.dir, {
 							version,
 							sourceRef: `origin/${PRODUCTION_BRANCH}`,
@@ -6439,6 +6464,19 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						pushBranch(pkg.dir, STAGING_BRANCH);
 						const promotion = promoteCommitToProductionBranch(pkg.dir, commit.commitSha);
 						const tag = ensureReleaseTag(pkg.dir, version, commit.commitSha, `release: ${pkg.name} ${version}`);
+						const publishGate = {
+							name: pkg.name,
+							repoPath: pkg.dir,
+							workflow: releaseWorkflowForPackage(root, pkg.name),
+							branch: version,
+							headSha: commit.commitSha,
+						};
+						const publishWait = await waitForWorkflowGates('release', [publishGate], ciMode, {
+							root,
+							runId: workflowRun.runId,
+							onProgress: (line, stream) => helpers.write(line, stream),
+						});
+						const publishedArtifacts = await verifyPublishedReleaseArtifacts(new Map([[pkg.name, version]]));
 						return {
 							name: pkg.name,
 							path: relative(root, pkg.dir),
@@ -6447,6 +6485,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							commit,
 							promotion,
 							tag,
+							publishWait,
+							publishedArtifacts,
 						};
 					});
 					packageReleases.push(packageRelease);
@@ -6493,13 +6533,6 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							action_kind: 'deploy_web',
 						},
 					}),
-					...packageReleases.map((entry) => ({
-						name: String(entry.name),
-						repoPath: resolve(root, String(entry.path)),
-						workflow: releaseWorkflowForPackage(root, String(entry.name)),
-						branch: String(entry.version),
-						headSha: String((entry.commit as { commitSha?: string }).commitSha ?? ''),
-					})),
 				].filter((gate) => gate.headSha);
 				const publishWait = await executeJournalStep(root, workflowRun.runId, 'publish-wait', () =>
 					waitForWorkflowGates('release', publishGates, ciMode, {
