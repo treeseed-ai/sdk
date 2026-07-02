@@ -176,6 +176,9 @@ function packageUnitFromAdapter(adapter: TreeseedPackageAdapter): TreeseedPackag
 		manifestPath: adapter.manifestPath,
 		repository: typeof adapter.metadata.repository === 'string' ? adapter.metadata.repository : null,
 		releaseCapability: packageReleaseCapability(adapter),
+		requiredSecrets: Array.isArray(adapter.metadata.requiredSecrets) ? adapter.metadata.requiredSecrets : [],
+		requiredVariables: Array.isArray(adapter.metadata.requiredVariables) ? adapter.metadata.requiredVariables : [],
+		githubEnvironments: Array.isArray(adapter.metadata.githubEnvironments) ? adapter.metadata.githubEnvironments : [],
 	};
 }
 
