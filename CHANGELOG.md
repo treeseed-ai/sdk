@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.8] - 2026-07-02
+
+### Fixed
+
+- fix(release): retry npm lockfile refresh (d512a012f9c1)
+
 ## [0.12.7] - 2026-07-02
 
 ### Fixed
