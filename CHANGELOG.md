@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.6] - 2026-07-02
+
+### Fixed
+
+- fix(release): publish packages sequentially (e5420a7d1aed)
+- fix(release): apply stable dependency versions (e30aeacb404d)
+- fix(release): scope publish secrets to production (454fe8e805de)
+- fix(release): verify production hosting after publish (098bac48d10a)
+- fix(release): verify published artifacts (ee0a477df87b)
+- fix(release): use npm semver refs in production (2c213f743577)
+- fix(release): avoid local main fast-forward cleanup (23d08ab2a4e0)
+
 ## [0.12.5] - 2026-07-02
 
 ### Fixed
