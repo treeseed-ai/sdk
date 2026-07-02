@@ -2451,31 +2451,36 @@ function runReleaseNpmInstall(repoDir: string, options: { workspaceRoot?: string
 		? ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund']
 		: ['install', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund'];
 	const spawnCommand = npmCommandForWorkflowSpawn(args);
-	const result = spawnSync(spawnCommand.command, spawnCommand.args, {
-		cwd: repoDir,
-		env: {
-			...process.env,
-			npm_config_audit: 'false',
-			npm_config_fetch_retries: '2',
-			npm_config_fund: 'false',
-			npm_config_foreground_scripts: 'true',
-			npm_config_loglevel: 'warn',
-			npm_config_maxsockets: '4',
-			npm_config_prefer_offline: 'true',
-			npm_config_progress: 'false',
-		},
-		stdio: 'pipe',
-		encoding: 'utf8',
-	});
-	if (result.status !== 0) {
-		const detail = [
+	let lastDetail = '';
+	for (let attempt = 1; attempt <= 10; attempt += 1) {
+		const result = spawnSync(spawnCommand.command, spawnCommand.args, {
+			cwd: repoDir,
+			env: {
+				...process.env,
+				npm_config_audit: 'false',
+				npm_config_fetch_retries: '4',
+				npm_config_fund: 'false',
+				npm_config_foreground_scripts: 'true',
+				npm_config_loglevel: 'warn',
+				npm_config_maxsockets: '4',
+				npm_config_prefer_online: 'true',
+				npm_config_progress: 'false',
+			},
+			stdio: 'pipe',
+			encoding: 'utf8',
+		});
+		if (result.status === 0) {
+			return { status: 'completed', reason: null, attempts: attempt };
+		}
+		lastDetail = [
 			result.error?.message,
 			result.stderr?.trim(),
 			result.stdout?.trim(),
 		].filter(Boolean).join('\n');
-		throw new Error(detail || `npm ${args.join(' ')} failed`);
+		if (!/No matching version found|notarget|ETARGET|E404/u.test(lastDetail) || attempt === 10) break;
+		spawnSync('sleep', ['30'], { stdio: 'ignore' });
 	}
-	return { status: 'completed', reason: null };
+	throw new Error(lastDetail || `npm ${args.join(' ')} failed`);
 }
 
 function pathIsWithin(parent: string, candidate: string) {
