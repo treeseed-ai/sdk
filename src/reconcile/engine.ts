@@ -60,7 +60,7 @@ function createRunContext(
 	dryRun = false,
 	session?: Map<string, unknown>,
 ): TreeseedReconcileRunContext {
-	const { deployConfig } = deriveTreeseedDesiredUnits({ tenantRoot, target });
+	const { deployConfig } = deriveTreeseedDesiredUnits({ tenantRoot, target, env: launchEnv });
 	return {
 		tenantRoot,
 		target,
@@ -282,7 +282,7 @@ export async function refreshTreeseedUnits({
 	units?: TreeseedDesiredUnit[];
 	write?: (line: string) => void;
 }) {
-	const derived = deriveTreeseedDesiredUnits({ tenantRoot, target });
+	const derived = deriveTreeseedDesiredUnits({ tenantRoot, target, env });
 	const baseUnits = explicitUnits ?? filterTreeseedDesiredUnitsByBootstrapSystems(derived.units, systems);
 	const units = filterUnitsBySelector(baseUnits, selector);
 	const deployConfig = derived.deployConfig;

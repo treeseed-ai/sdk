@@ -31,11 +31,13 @@ function isPublicTreeDxNodeServiceKey(serviceKey: string) {
 export function deriveTreeseedDesiredUnits({
 	tenantRoot,
 	target,
+	env = process.env,
 }: {
 	tenantRoot: string;
 	target: TreeseedReconcileTarget;
+	env?: NodeJS.ProcessEnv;
 }) {
-	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: target.kind === 'persistent' ? target.scope : 'staging', env: process.env }).deployConfig;
+	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: target.kind === 'persistent' ? target.scope : 'staging', env }).deployConfig;
 	const legacyState = loadDeployState(tenantRoot, deployConfig, { target });
 	const identity = legacyState.identity ?? resolveTreeseedResourceIdentity(deployConfig, target);
 	const units: TreeseedDesiredUnit[] = [];
