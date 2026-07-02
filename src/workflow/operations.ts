@@ -3050,7 +3050,10 @@ async function fetchJsonForArtifact(url: string): Promise<{ ok: boolean; status:
 	const timeout = setTimeout(() => controller.abort(), 20000);
 	try {
 		const response = await fetch(url, {
-			headers: { accept: 'application/json' },
+			headers: {
+				accept: 'application/json',
+				'user-agent': 'treeseed-release-verifier/1.0 (https://treeseed.dev)',
+			},
 			signal: controller.signal,
 		});
 		let json: unknown = null;
