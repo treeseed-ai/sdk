@@ -72,6 +72,27 @@ function serviceHeaders(input?: { projectRoot?: string; environment?: string }) 
 	};
 }
 
+async function sleep(ms: number) {
+	await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryDelayMs(attempt: number) {
+	return Math.min(500 * attempt, 2000);
+}
+
+function isRetryableStatus(status: number) {
+	return [408, 425, 429, 500, 502, 503, 504].includes(status);
+}
+
+async function gotoSceneFixturePage(page: any, url: string) {
+	await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+	await page.waitForLoadState?.('networkidle', { timeout: 5000 }).catch(() => undefined);
+}
+
+function isSignInUrl(value: string) {
+	return /\/auth\/sign-in/u.test(value);
+}
+
 function seedActorsForRoles(roles: TreeseedSceneVisualAuditRole[]) {
 	const actors: Record<string, Record<string, unknown>> = {};
 	for (const role of roles) {
@@ -96,32 +117,33 @@ async function seedVisualAuditFixtures(input: {
 }): Promise<TreeseedSceneDiagnostic[]> {
 	const actors = seedActorsForRoles(input.roles);
 	if (Object.keys(actors).length === 0) return [];
-	try {
-		const response = await fetch(new URL('/v1/acceptance/seed', input.baseUrl).toString(), {
-			method: 'POST',
-			headers: serviceHeaders(input),
-			body: JSON.stringify({
-				namespace: 'visual-audit',
-				password: TREESEED_VISUAL_AUDIT_PASSWORD,
-				actors,
-			}),
-		});
-		const text = await response.text();
-		if (!response.ok) {
-			return [sceneWarningDiagnostic(
-				'scene.visual_audit_fixture_unavailable',
-				`Visual audit API fixture seed failed with HTTP ${response.status}: ${text.slice(0, 500)}`,
-				'roles',
-			)];
+	let lastFailure: string | null = null;
+	for (let attempt = 1; attempt <= 3; attempt += 1) {
+		try {
+			const response = await fetch(new URL('/v1/acceptance/seed', input.baseUrl).toString(), {
+				method: 'POST',
+				headers: serviceHeaders(input),
+				body: JSON.stringify({
+					namespace: 'visual-audit',
+					password: TREESEED_VISUAL_AUDIT_PASSWORD,
+					actors,
+				}),
+			});
+			const text = await response.text();
+			if (response.ok) return [];
+			lastFailure = `HTTP ${response.status}: ${text.slice(0, 500)}`;
+			if (!isRetryableStatus(response.status) || attempt >= 3) break;
+		} catch (error) {
+			lastFailure = error instanceof Error ? error.message : String(error ?? 'local fixture API is unavailable');
+			if (attempt >= 3) break;
 		}
-		return [];
-	} catch (error) {
-		return [sceneWarningDiagnostic(
-			'scene.visual_audit_fixture_unavailable',
-			`Visual audit API fixture seed failed against ${input.baseUrl}: ${error instanceof Error ? error.message : String(error ?? 'local fixture API is unavailable')}.`,
-			'roles',
-		)];
+		await sleep(retryDelayMs(attempt));
 	}
+	return [sceneWarningDiagnostic(
+		'scene.visual_audit_fixture_unavailable',
+		`Visual audit API fixture seed failed against ${input.baseUrl}: ${lastFailure ?? 'local fixture API is unavailable'}.`,
+		'roles',
+	)];
 }
 
 export async function ensureTreeseedSceneVisualAuditRoleFixtures(input: {
@@ -197,39 +219,53 @@ export async function signInTreeseedSceneVisualAuditRole(input: {
 		return [sceneErrorDiagnostic('scene.visual_audit_role_unknown', `Visual audit role "${input.role}" has no fixture login.`, 'role')];
 	}
 	const apiBaseUrl = input.apiBaseUrl?.trim() || input.baseUrl;
+	let lastError: unknown = null;
 	try {
-		const session = await clientFor(apiBaseUrl).webSignIn({ login: user.email, password: user.password });
+		for (let attempt = 1; attempt <= 3; attempt += 1) {
+			const session = await clientFor(apiBaseUrl).webSignIn({ login: user.email, password: user.password });
 			const accessToken = session.payload.accessToken;
 			if (accessToken) {
-			const webUrl = new URL(input.baseUrl);
-			await input.page.context().addCookies([{
-				name: 'ts_market_api_access',
-				value: accessToken,
-				domain: webUrl.hostname,
-				path: '/',
-				httpOnly: true,
-				secure: webUrl.protocol === 'https:',
-				sameSite: 'Lax',
-				expires: Math.floor(Date.now() / 1000) + Number(session.payload.expiresInSeconds ?? 900),
-			}]);
-			await input.page.goto(new URL('/app/', input.baseUrl).toString(), { waitUntil: 'networkidle', timeout: 20000 });
-			if (!/\/auth\/sign-in/u.test(input.page.url())) return [];
+				const webUrl = new URL(input.baseUrl);
+				await input.page.context().addCookies([{
+					name: 'ts_market_api_access',
+					value: accessToken,
+					domain: webUrl.hostname,
+					path: '/',
+					httpOnly: true,
+					secure: webUrl.protocol === 'https:',
+					sameSite: 'Lax',
+					expires: Math.floor(Date.now() / 1000) + Number(session.payload.expiresInSeconds ?? 900),
+				}]);
+				await gotoSceneFixturePage(input.page, new URL('/app/', input.baseUrl).toString());
+				if (!isSignInUrl(input.page.url())) return [];
+			}
+			await sleep(retryDelayMs(attempt));
 		}
 	} catch {
 		// Fall back to the browser form below. The direct cookie path is preferred for deterministic visual-audit fixtures.
 	}
-	try {
-		await input.page.goto(new URL('/auth/sign-in', input.baseUrl).toString(), { waitUntil: 'networkidle', timeout: 20000 });
-		await input.page.locator('input[name="login"], input[name="email"], input[name="emailOrUsername"], input[name="username"]').first().fill(user.email, { timeout: 5000 });
-		await input.page.locator('input[name="password"]').first().fill(user.password, { timeout: 5000 });
-		await input.page.getByRole('button', { name: /sign in/i }).click({ timeout: 5000 });
-		await input.page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => undefined);
-		const url = input.page.url();
-		if (/\/auth\/sign-in/u.test(url)) {
-			return [sceneWarningDiagnostic('scene.visual_audit_role_login_failed', `Visual audit login for ${input.role} did not leave the sign-in page. Ensure deterministic fixture user ${user.email} exists.`, 'roles')];
+	for (let attempt = 1; attempt <= 3; attempt += 1) {
+		try {
+			const signInUrl = new URL('/auth/sign-in', input.baseUrl);
+			signInUrl.searchParams.set('returnTo', '/app/');
+			await gotoSceneFixturePage(input.page, signInUrl.toString());
+			await input.page.locator('input[name="login"], input[name="email"], input[name="emailOrUsername"], input[name="username"]').first().fill(user.email, { timeout: 10_000 });
+			await input.page.locator('input[name="password"]').first().fill(user.password, { timeout: 10_000 });
+			await input.page.getByRole('button', { name: /sign in/i }).click({ timeout: 10_000 });
+			await input.page.waitForURL?.((url: URL) => !isSignInUrl(url.pathname), { timeout: 15_000 }).catch(() => undefined);
+			await input.page.waitForLoadState?.('networkidle', { timeout: 5000 }).catch(() => undefined);
+			if (!isSignInUrl(input.page.url())) {
+				return [];
+			}
+			lastError = new Error(`Visual audit login for ${input.role} did not leave the sign-in page. Ensure deterministic fixture user ${user.email} exists.`);
+		} catch (error) {
+			lastError = error;
 		}
-		return [];
-	} catch (error) {
-		return [sceneWarningDiagnostic('scene.visual_audit_role_login_failed', error instanceof Error ? error.message : String(error ?? `Visual audit login for ${input.role} failed.`), 'roles')];
+		await sleep(retryDelayMs(attempt));
 	}
+	return [sceneWarningDiagnostic(
+		'scene.visual_audit_role_login_failed',
+		lastError instanceof Error ? lastError.message : String(lastError ?? `Visual audit login for ${input.role} failed.`),
+		'roles',
+	)];
 }
