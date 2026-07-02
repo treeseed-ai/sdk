@@ -2183,7 +2183,7 @@ function prepareFreshReleaseRun(
 	]);
 	const archived: Array<{ runId: string; reasons: string[] }> = [];
 	const blockers: string[] = [];
-	for (const journal of listInterruptedWorkflowRuns(root).filter((entry) => entry.command === 'release')) {
+	for (const journal of listInterruptedWorkflowRuns(root, { recentLimit: 50 }).filter((entry) => entry.command === 'release')) {
 		const classification = classifyWorkflowRunJournal(journal, {
 			currentBranch: branch,
 			currentHeads,
@@ -2223,7 +2223,7 @@ function findAutoResumableReleaseRun(
 		[rootRepo.name, rootRepo.commitSha ?? null],
 		...packageReports.map((report) => [report.name, report.commitSha ?? null] as const),
 	]);
-	return listInterruptedWorkflowRuns(root).find((journal) => {
+	return listInterruptedWorkflowRuns(root, { recentLimit: 50 }).find((journal) => {
 		if (journal.command !== 'release' || !journal.resumable || journal.session.branchName !== STAGING_BRANCH) {
 			return false;
 		}

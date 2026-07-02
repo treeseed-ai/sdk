@@ -789,6 +789,51 @@ export function listWorkflowRunJournals(root: string) {
 	return [...byId.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
-export function listInterruptedWorkflowRuns(root: string) {
-	return listWorkflowRunJournals(root).filter((journal) => journal.status === 'failed' && journal.resumable);
+function listRecentWorkflowRunJournalsForScope(root: string, scope: TreeseedWorkflowLockScope, limit: number) {
+	const runsDir = workflowRunsRoot(root, null, scope);
+	if (!existsSync(runsDir)) {
+		return [] as TreeseedWorkflowRunJournal[];
+	}
+	return readdirSync(runsDir)
+		.filter((entry) => entry.endsWith('.json'))
+		.map((entry) => {
+			const path = resolve(runsDir, entry);
+			try {
+				return { path, mtimeMs: statSync(path).mtimeMs };
+			} catch {
+				return null;
+			}
+		})
+		.filter((entry): entry is { path: string; mtimeMs: number } => entry != null)
+		.sort((left, right) => right.mtimeMs - left.mtimeMs)
+		.slice(0, Math.max(1, limit))
+		.map((entry) => {
+			try {
+				if (statSync(entry.path).size > 5 * 1024 * 1024) {
+					const archivedSummary = archivedWorkflowRunSummary(entry.path);
+					if (archivedSummary) return archivedSummary;
+				}
+			} catch {
+				return null;
+			}
+			return safeJsonParse<TreeseedWorkflowRunJournal>(entry.path);
+		})
+		.filter((entry): entry is TreeseedWorkflowRunJournal => entry != null);
+}
+
+export function listRecentWorkflowRunJournals(root: string, limit = 50) {
+	const local = listRecentWorkflowRunJournalsForScope(root, 'worktree', limit);
+	const shared = listRecentWorkflowRunJournalsForScope(root, 'shared', limit);
+	const byId = new Map<string, TreeseedWorkflowRunJournal>();
+	for (const journal of [...local, ...shared]) {
+		byId.set(journal.runId, journal);
+	}
+	return [...byId.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(0, Math.max(1, limit));
+}
+
+export function listInterruptedWorkflowRuns(root: string, options: { recentLimit?: number } = {}) {
+	const journals = options.recentLimit
+		? listRecentWorkflowRunJournals(root, options.recentLimit)
+		: listWorkflowRunJournals(root);
+	return journals.filter((journal) => journal.status === 'failed' && journal.resumable);
 }
