@@ -468,6 +468,7 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 		: id === 'treedx'
 			? 'treeseed/treedx'
 			: null;
+	const dockerArtifacts = manifestDockerArtifacts(manifest?.artifacts);
 	const repository = stringValue(manifest?.repository) ?? (id === 'treedx' ? 'treeseed-ai/treedx' : null);
 	const hostedVerifyWorkflow = stringValue(manifest?.hostedVerifyWorkflow)
 		?? stringValue(stringRecord(manifest?.releaseGate).workflow)
@@ -499,18 +500,33 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 			local: commandFromScript(dir, local, 'local'),
 			release: commandFromScript(dir, releaseGate, 'release'),
 		},
-		artifacts: image ? [{
-			provider: 'docker',
-			name: image,
-			tags: version ? [version, shaTag] : [shaTag],
-			dockerfile: 'Dockerfile',
-			context: '.',
-			target: null,
-			role: id,
-			architectures: stringArray(stringRecord(manifest?.dockerImages).architectures),
-		}] : [],
-		releaseChecks: image
-			? [{ kind: 'docker-manifest', name: 'Docker image manifest', detail: `${image}:${version ?? '<version>'}` }]
+		artifacts: dockerArtifacts.length > 0
+			? dockerArtifacts.map((artifact) => ({
+				provider: 'docker' as const,
+				name: artifact.name,
+				tags: version ? [version, shaTag] : [shaTag],
+				dockerfile: artifact.dockerfile ?? 'Dockerfile',
+				context: artifact.context ?? '.',
+				target: artifact.target,
+				role: artifact.role ?? id,
+				architectures: artifact.architectures.length > 0
+					? artifact.architectures
+					: stringArray(stringRecord(manifest?.dockerImages).architectures),
+			}))
+			: image ? [{
+				provider: 'docker',
+				name: image,
+				tags: version ? [version, shaTag] : [shaTag],
+				dockerfile: 'Dockerfile',
+				context: '.',
+				target: null,
+				role: id,
+				architectures: stringArray(stringRecord(manifest?.dockerImages).architectures),
+			}] : [],
+		releaseChecks: dockerArtifacts.length > 0
+			? dockerArtifacts.map((artifact) => ({ kind: 'docker-manifest' as const, name: `${artifact.name} Docker image manifest`, detail: `${artifact.name}:${version ?? '<version>'}` }))
+			: image
+				? [{ kind: 'docker-manifest', name: 'Docker image manifest', detail: `${image}:${version ?? '<version>'}` }]
 			: [],
 		metadata: {
 			hasCargo: existsSync(resolve(dir, 'Cargo.toml')),

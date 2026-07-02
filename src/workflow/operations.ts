@@ -2342,16 +2342,9 @@ function failWorkflowRun(
 }
 
 function validatePackageReleaseWorkflows(root: string, packageNames: string[]) {
-	const adapterById = new Map(discoverTreeseedPackageAdapters(root).map((adapter) => [adapter.id, adapter]));
 	const missing = checkedOutWorkspacePackageRepos(root)
 		.filter((pkg) => packageNames.includes(pkg.name))
-		.filter((pkg) => {
-			const adapter = adapterById.get(pkg.name);
-			const workflow = adapter?.kind === 'beam-elixir-rust' && typeof adapter.metadata.hostedVerifyWorkflow === 'string'
-				? String(adapter.metadata.hostedVerifyWorkflow)
-				: '.github/workflows/publish.yml';
-			return !existsSync(resolve(pkg.dir, workflow));
-		})
+		.filter((pkg) => !existsSync(resolve(pkg.dir, '.github/workflows/publish.yml')))
 		.map((pkg) => pkg.name);
 	if (missing.length > 0) {
 		workflowError('release', 'workflow_contract_missing', `Treeseed release requires .github/workflows/publish.yml in: ${missing.join(', ')}.`, {
@@ -2363,11 +2356,9 @@ function validatePackageReleaseWorkflows(root: string, packageNames: string[]) {
 }
 
 function releaseWorkflowForPackage(root: string, packageName: string) {
-	const adapter = discoverTreeseedPackageAdapters(root).find((entry) => entry.id === packageName || entry.name === packageName);
-	const workflow = adapter?.kind === 'beam-elixir-rust' && typeof adapter.metadata.hostedVerifyWorkflow === 'string'
-		? String(adapter.metadata.hostedVerifyWorkflow)
-		: '.github/workflows/publish.yml';
-	return workflow.split('/').at(-1) || 'publish.yml';
+	void root;
+	void packageName;
+	return 'publish.yml';
 }
 
 function prepareAdapterReleaseMetadata(root: string, pkg: { name: string; dir: string }, version: string) {
@@ -3002,6 +2993,208 @@ function assertReleaseGitHubWorkflowSucceeded(packageName: string, workflow: Rec
 			workflow,
 		},
 	});
+}
+
+type PublishedArtifactCheck = {
+	id: string;
+	kind: 'npm' | 'docker' | 'pypi' | 'crates' | 'hex';
+	name: string;
+	version: string;
+	url: string;
+	ok: boolean;
+	status?: number | null;
+	message?: string;
+};
+
+function npmRegistryPackageUrl(packageName: string) {
+	return `https://registry.npmjs.org/${packageName.replace('/', '%2f')}`;
+}
+
+async function fetchJsonForArtifact(url: string): Promise<{ ok: boolean; status: number; json: unknown }> {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), 20000);
+	try {
+		const response = await fetch(url, {
+			headers: { accept: 'application/json' },
+			signal: controller.signal,
+		});
+		let json: unknown = null;
+		try {
+			json = await response.json();
+		} catch {
+			json = null;
+		}
+		return { ok: response.ok, status: response.status, json };
+	} finally {
+		clearTimeout(timeout);
+	}
+}
+
+function hasObjectKey(value: unknown, key: string) {
+	return Boolean(value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, key));
+}
+
+async function verifyNpmArtifact(packageName: string, version: string): Promise<PublishedArtifactCheck> {
+	const url = npmRegistryPackageUrl(packageName);
+	try {
+		const response = await fetchJsonForArtifact(url);
+		const versions = stringRecord(response.json)?.versions;
+		const ok = response.ok && hasObjectKey(versions, version);
+		return {
+			id: `npm:${packageName}:${version}`,
+			kind: 'npm',
+			name: packageName,
+			version,
+			url,
+			ok,
+			status: response.status,
+			...(ok ? {} : { message: `${packageName}@${version} was not found in npm registry metadata.` }),
+		};
+	} catch (error) {
+		return {
+			id: `npm:${packageName}:${version}`,
+			kind: 'npm',
+			name: packageName,
+			version,
+			url,
+			ok: false,
+			status: null,
+			message: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+async function verifyDockerHubArtifact(image: string, version: string): Promise<PublishedArtifactCheck> {
+	const [namespace, repository] = image.split('/');
+	const url = `https://hub.docker.com/v2/repositories/${namespace}/${repository}/tags/${version}`;
+	try {
+		const response = await fetchJsonForArtifact(url);
+		const images = Array.isArray(stringRecord(response.json)?.images) ? stringRecord(response.json)?.images as unknown[] : [];
+		const architectures = new Set(images
+			.map((entry) => stringRecord(entry))
+			.map((entry) => typeof entry?.architecture === 'string' ? entry.architecture : null)
+			.filter((entry): entry is string => Boolean(entry)));
+		const ok = response.ok && architectures.has('amd64') && architectures.has('arm64');
+		return {
+			id: `docker:${image}:${version}`,
+			kind: 'docker',
+			name: image,
+			version,
+			url,
+			ok,
+			status: response.status,
+			...(ok ? {} : { message: `${image}:${version} was not found on Docker Hub with amd64 and arm64 images.` }),
+		};
+	} catch (error) {
+		return {
+			id: `docker:${image}:${version}`,
+			kind: 'docker',
+			name: image,
+			version,
+			url,
+			ok: false,
+			status: null,
+			message: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+async function verifySimpleRegistryArtifact(input: {
+	kind: 'pypi' | 'crates' | 'hex';
+	name: string;
+	version: string;
+	url: string;
+}): Promise<PublishedArtifactCheck> {
+	try {
+		const response = await fetchJsonForArtifact(input.url);
+		return {
+			id: `${input.kind}:${input.name}:${input.version}`,
+			kind: input.kind,
+			name: input.name,
+			version: input.version,
+			url: input.url,
+			ok: response.ok,
+			status: response.status,
+			...(response.ok ? {} : { message: `${input.name} ${input.version} was not found in ${input.kind}.` }),
+		};
+	} catch (error) {
+		return {
+			id: `${input.kind}:${input.name}:${input.version}`,
+			kind: input.kind,
+			name: input.name,
+			version: input.version,
+			url: input.url,
+			ok: false,
+			status: null,
+			message: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+async function collectPublishedReleaseArtifactChecks(selectedVersions: Map<string, string>) {
+	const checks: PublishedArtifactCheck[] = [];
+	const npmPackages = ['@treeseed/sdk', '@treeseed/ui', '@treeseed/core', '@treeseed/admin', '@treeseed/cli', '@treeseed/agent'];
+	for (const packageName of npmPackages) {
+		const version = selectedVersions.get(packageName);
+		if (version) checks.push(await verifyNpmArtifact(packageName, version));
+	}
+	const agentVersion = selectedVersions.get('@treeseed/agent');
+	if (agentVersion) {
+		for (const image of ['treeseed/agent-manager', 'treeseed/agent-runner']) {
+			checks.push(await verifyDockerHubArtifact(image, agentVersion));
+		}
+	}
+	const apiVersion = selectedVersions.get('@treeseed/api');
+	if (apiVersion) {
+		for (const image of ['treeseed/api', 'treeseed/op-runner']) {
+			checks.push(await verifyDockerHubArtifact(image, apiVersion));
+		}
+	}
+	const treedxVersion = selectedVersions.get('treedx') ?? selectedVersions.get('@treeseed/treedx');
+	if (treedxVersion) {
+		checks.push(await verifyNpmArtifact('@treeseed/treedx', treedxVersion));
+		checks.push(await verifySimpleRegistryArtifact({
+			kind: 'pypi',
+			name: 'treedx',
+			version: treedxVersion,
+			url: `https://pypi.org/pypi/treedx/${treedxVersion}/json`,
+		}));
+		checks.push(await verifySimpleRegistryArtifact({
+			kind: 'crates',
+			name: 'treedx',
+			version: treedxVersion,
+			url: `https://crates.io/api/v1/crates/treedx/${treedxVersion}`,
+		}));
+		checks.push(await verifySimpleRegistryArtifact({
+			kind: 'hex',
+			name: 'treedx',
+			version: treedxVersion,
+			url: `https://hex.pm/api/packages/treedx/releases/${treedxVersion}`,
+		}));
+		for (const image of ['treeseed/treedx', 'treeseed/treedx-profiler']) {
+			checks.push(await verifyDockerHubArtifact(image, treedxVersion));
+		}
+	}
+	return checks;
+}
+
+async function verifyPublishedReleaseArtifacts(selectedVersions: Map<string, string>): Promise<{ checks: PublishedArtifactCheck[] }> {
+	let checks = await collectPublishedReleaseArtifactChecks(selectedVersions);
+	const deadline = Date.now() + 5 * 60 * 1000;
+	while (checks.some((check) => !check.ok) && Date.now() < deadline) {
+		await sleep(15000);
+		checks = await collectPublishedReleaseArtifactChecks(selectedVersions);
+	}
+	const failures = checks.filter((check) => !check.ok);
+	if (failures.length > 0) {
+		const rendered = failures
+			.map((check) => `${check.id}: ${check.message ?? `registry returned ${check.status ?? 'unknown'}`} (${check.url})`)
+			.join('\n');
+		workflowError('release', 'validation_failed', `Published release artifact verification failed.\n${rendered}`, {
+			details: { checks },
+		});
+	}
+	return { checks };
 }
 
 function assertSessionBranchSafety(
@@ -6153,6 +6346,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					}),
 					{ id: 'release-root', description: `Release market ${plannedRelease.rootVersion}`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'publish-wait', description: 'Wait for production release workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
+					{ id: 'verify-published-artifacts', description: 'Verify immutable registry artifacts exist after publish workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'release-back-merge', description: 'Back-merge production release history into staging', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'workspace-link', description: 'Restore local workspace links after release', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 				],
@@ -6307,6 +6501,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						runId: workflowRun.runId,
 						onProgress: (line, stream) => helpers.write(line, stream),
 					}).then((workflowGates) => ({ workflowGates })));
+				const publishedArtifacts = await executeJournalStep(root, workflowRun.runId, 'verify-published-artifacts', () =>
+					verifyPublishedReleaseArtifacts(selectedVersions));
 				const backMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () => {
 					const packageBackMerges = checkedOutWorkspacePackageRepos(root)
 						.filter((pkg) => selectedPackageSet.has(pkg.name))
@@ -6335,6 +6531,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					packageReleases,
 					rootRelease,
 					publishWait: publishWait.workflowGates,
+					publishedArtifacts,
 					backMerge,
 					workspaceLinks,
 					releasedCommit: String((rootRelease.commit as { commitSha?: string }).commitSha ?? ''),
