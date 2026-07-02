@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.12] - 2026-07-02
+
+### Fixed
+
+- fix(workflow): summarize archived release journals (0a6246263f41)
+- fix(release): identify registry artifact checks (741100b50a1a)
+
 ## [0.12.11] - 2026-07-02
 
 ### Changed
