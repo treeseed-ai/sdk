@@ -6724,7 +6724,26 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 	try {
 		return await withContextEnv(helpers.context.env, async () => {
 			const root = resolveProjectRootOrThrow('recover', helpers.cwd());
-			const lock = inspectWorkflowLock(root, { scope: 'worktree' });
+			const initialLocks = (['worktree', 'shared'] as const).map((scope) => ({
+				scope,
+				inspection: inspectWorkflowLock(root, { scope }),
+			}));
+			const clearedStaleLocks = initialLocks
+				.filter((entry) => entry.inspection.stale && entry.inspection.lock?.runId)
+				.map((entry) => ({
+					scope: entry.scope,
+					runId: entry.inspection.lock!.runId,
+					command: entry.inspection.lock!.command,
+					staleReason: entry.inspection.staleReason,
+					removed: releaseWorkflowLock(root, entry.inspection.lock!.runId),
+				}));
+			const locks = (['worktree', 'shared'] as const).map((scope) => ({
+				scope,
+				inspection: inspectWorkflowLock(root, { scope }),
+			}));
+			const lock = locks.find((entry) => entry.inspection.active)?.inspection
+				?? locks.find((entry) => entry.inspection.stale)?.inspection
+				?? locks[0]!.inspection;
 			const journals = listWorkflowRunJournals(root);
 			const session = resolveTreeseedWorkflowSession(root);
 			const currentHeads = Object.fromEntries(
@@ -6808,6 +6827,8 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 				root,
 				{
 					lock,
+					locks: locks.map((entry) => ({ scope: entry.scope, ...entry.inspection })),
+					clearedStaleLocks,
 					interruptedRuns,
 					staleRuns,
 					obsoleteRuns,
