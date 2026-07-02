@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.12.14] - 2026-07-02
+
+### Changed
+
+- Scope Railway image env refs by environment (b2ad41f8356a)
+- Preserve reconcile environment overlays (2b21ed7748b0)
+
+### Fixed
+
+- Fix Railway production database reconciliation (42e3ae9f9cd4)
+
+### Infrastructure
+
+- Keep release image refs production scoped (635c5d785a21)
+
 ## [0.12.13] - 2026-07-02
 
 ### Fixed
