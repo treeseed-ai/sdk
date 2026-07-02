@@ -72,6 +72,30 @@ function extractConfirmationUrl(body: string) {
 	return relative ?? null;
 }
 
+async function sleep(ms: number) {
+	await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableNavigationError(error: unknown) {
+	const message = error instanceof Error ? error.message : String(error ?? '');
+	return /Timeout|ERR_CONNECTION|ECONNRESET|ECONNREFUSED|ETIMEDOUT|503|502|504/iu.test(message);
+}
+
+async function navigateScenePage(page: { goto(url: string, options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; timeout?: number }): Promise<unknown> }, url: string) {
+	let lastError: unknown = null;
+	for (let attempt = 1; attempt <= 3; attempt += 1) {
+		try {
+			await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+			return;
+		} catch (error) {
+			lastError = error;
+			if (!isRetryableNavigationError(error) || attempt >= 3) break;
+			await sleep(500 * attempt);
+		}
+	}
+	throw lastError instanceof Error ? lastError : new Error(String(lastError ?? `Navigation failed for ${url}`));
+}
+
 async function assertionReport(kind: string, action: () => Promise<void>, selector?: TreeseedSceneSelector): Promise<TreeseedSceneAssertionRunReport> {
 	const startedAt = new Date();
 	try {
@@ -103,7 +127,7 @@ export function createBuiltInTreeseedScenePlugins(): TreeseedScenePlugin[] {
 					summary: 'Navigate to a route or absolute URL.',
 					async run({ action, context }) {
 						if (!('goto' in action)) return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.invalid_action', 'Expected goto action.', 'workflow.action.goto')] };
-						await context.session.page.goto(context.resolveUrl(action.goto));
+						await navigateScenePage(context.session.page, context.resolveUrl(action.goto));
 						return { ok: true, diagnostics: [] };
 					},
 				},
@@ -232,25 +256,25 @@ export function createBuiltInTreeseedScenePlugins(): TreeseedScenePlugin[] {
 								return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.mailpit_confirm_link_not_found', `No confirmation link was found in Mailpit message ${id}.`, `workflow.${step.id}.action.mailpitConfirmLatest`)] };
 							}
 							const resolvedUrl = confirmationUrl.startsWith('/') ? context.resolveUrl(confirmationUrl) : confirmationUrl;
-							const mailpitBase = mailpitUrl.endsWith('/') ? mailpitUrl : `${mailpitUrl}/`;
-							if (displayInboxSeconds && displayInboxSeconds > 0) {
-								const search = new URL('search', mailpitBase);
-								search.searchParams.set('query', `to:${email}`);
-								context.timeline.push('mailpit.inbox.open', { messageId: id, email, url: search.toString() }, step.id);
-								context.progress?.push('mailpit.inbox.open', { messageId: id, email }, { stepId: step.id });
-								await context.session.page.goto(search.toString());
-								await context.sleep(displayInboxSeconds * 1000);
-							}
-							if (displayMessageSeconds && displayMessageSeconds > 0) {
-								const view = new URL(`view/${encodeURIComponent(id)}`, mailpitBase);
-								context.timeline.push('mailpit.message.open', { messageId: id, email, url: view.toString() }, step.id);
-								context.progress?.push('mailpit.message.open', { messageId: id, email }, { stepId: step.id });
-								await context.session.page.goto(view.toString());
-								await context.sleep(displayMessageSeconds * 1000);
-							}
-							context.timeline.push('mailpit.confirm.open', { messageId: id, email, url: resolvedUrl }, step.id);
-							await context.session.page.goto(resolvedUrl);
-							return { ok: true, diagnostics: [] };
+								const mailpitBase = mailpitUrl.endsWith('/') ? mailpitUrl : `${mailpitUrl}/`;
+								if (displayInboxSeconds && displayInboxSeconds > 0) {
+									const search = new URL('search', mailpitBase);
+									search.searchParams.set('query', `to:${email}`);
+									context.timeline.push('mailpit.inbox.open', { messageId: id, email, url: search.toString() }, step.id);
+									context.progress?.push('mailpit.inbox.open', { messageId: id, email }, { stepId: step.id });
+									await navigateScenePage(context.session.page, search.toString());
+									await context.sleep(displayInboxSeconds * 1000);
+								}
+								if (displayMessageSeconds && displayMessageSeconds > 0) {
+									const view = new URL(`view/${encodeURIComponent(id)}`, mailpitBase);
+									context.timeline.push('mailpit.message.open', { messageId: id, email, url: view.toString() }, step.id);
+									context.progress?.push('mailpit.message.open', { messageId: id, email }, { stepId: step.id });
+									await navigateScenePage(context.session.page, view.toString());
+									await context.sleep(displayMessageSeconds * 1000);
+								}
+								context.timeline.push('mailpit.confirm.open', { messageId: id, email, url: resolvedUrl }, step.id);
+								await navigateScenePage(context.session.page, resolvedUrl);
+								return { ok: true, diagnostics: [] };
 						} catch (error) {
 							return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.mailpit_unavailable', error instanceof Error ? error.message : String(error ?? 'Mailpit confirmation failed.'), `workflow.${step.id}.action.mailpitConfirmLatest`)] };
 						}

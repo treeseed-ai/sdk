@@ -2143,7 +2143,7 @@ export type TreeseedSceneLocator = {
 };
 
 export type TreeseedScenePage = {
-	goto(url: string): Promise<void>;
+	goto(url: string, options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; timeout?: number }): Promise<void>;
 	url(): string;
 	locator(selector: string): TreeseedSceneLocator;
 	getByTestId(testId: string): TreeseedSceneLocator;
