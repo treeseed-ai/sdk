@@ -4132,6 +4132,17 @@ function configuredRailwayIacDatabase(
 	};
 }
 
+function railwayIacChangeName(change: Record<string, any>) {
+	return String(change?.resource?.name ?? change?.previous?.name ?? change?.address ?? change?.path ?? '');
+}
+
+function railwayIacPlanDeletesResource(changeSet: any, resourceName: string) {
+	return (changeSet?.changes ?? []).some((change: Record<string, any>) =>
+		change.kind === 'resource.delete'
+		&& railwayIacChangeName(change) === resourceName
+	);
+}
+
 function activeAttachedRailwayVolumeIds(
 	volumes: Awaited<ReturnType<typeof listRailwayVolumes>>,
 	serviceId: string | null | undefined,
@@ -4411,24 +4422,53 @@ async function syncRailwayEnvironmentForScope(
 			renderRailwayIacProject,
 			validateRailwayIacChangeSet,
 		} = await import('./providers/railway-iac.ts');
-		const rendered = renderRailwayIacProject(iacInput);
+		let effectiveIacInput = iacInput;
+		let rendered = renderRailwayIacProject(effectiveIacInput);
 		try {
 			traceRailwayReconcile(topology.env, 'sync:iac-plan', `${project.name}/${environment.name}:${rendered.serviceNames.join(',')}:volumes=${rendered.volumeNames.join(',')}`);
-			const plan = await planRailwayIacProject(iacInput, rendered);
+			let plan = await planRailwayIacProject(effectiveIacInput, rendered);
 			if (!plan.ok) {
 				const diagnostics = plan.diagnostics.map((entry) => entry.message).filter(Boolean).join('; ');
 				throw new Error(`Railway IaC plan failed for ${project.name}/${environment.name}${diagnostics ? `: ${diagnostics}` : '.'}`);
 			}
-			const validation = validateRailwayIacChangeSet(plan.changeSet, {
+			let validation = validateRailwayIacChangeSet(plan.changeSet, {
 				services: rendered.serviceNames,
 				volumes: rendered.volumeNames,
 				database: rendered.databaseName,
 				scope,
 			});
+			if (
+				!validation.ok
+				&& effectiveIacInput.database
+				&& !effectiveIacInput.database.useNativePostgres
+				&& railwayIacPlanDeletesResource(plan.changeSet, effectiveIacInput.database.serviceName)
+			) {
+				traceRailwayReconcile(topology.env, 'sync:iac-native-postgres-adopt', `${project.name}/${environment.name}:${effectiveIacInput.database.serviceName}`);
+				cleanupRailwayIacRender(rendered);
+				effectiveIacInput = {
+					...effectiveIacInput,
+					database: {
+						...effectiveIacInput.database,
+						useNativePostgres: true,
+					},
+				};
+				rendered = renderRailwayIacProject(effectiveIacInput);
+				plan = await planRailwayIacProject(effectiveIacInput, rendered);
+				if (!plan.ok) {
+					const diagnostics = plan.diagnostics.map((entry) => entry.message).filter(Boolean).join('; ');
+					throw new Error(`Railway IaC plan failed for ${project.name}/${environment.name}${diagnostics ? `: ${diagnostics}` : '.'}`);
+				}
+				validation = validateRailwayIacChangeSet(plan.changeSet, {
+					services: rendered.serviceNames,
+					volumes: rendered.volumeNames,
+					database: rendered.databaseName,
+					scope,
+				});
+			}
 			if (!validation.ok) {
 				throw new Error(`Railway IaC plan rejected for ${project.name}/${environment.name}: ${validation.blockedReasons.join('; ')}`);
 			}
-			const apply = await applyRailwayIacProject(iacInput, rendered);
+			const apply = await applyRailwayIacProject(effectiveIacInput, rendered);
 			if (!apply.ok) {
 				const diagnostics = apply.diagnostics.map((entry) => entry.message).filter(Boolean).join('; ');
 				throw new Error(`Railway IaC apply failed for ${project.name}/${environment.name}${diagnostics ? `: ${diagnostics}` : '.'}`);
