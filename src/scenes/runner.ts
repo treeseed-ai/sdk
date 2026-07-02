@@ -281,8 +281,9 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 
 	const paths = plan.artifactPaths;
 	ensureTreeseedSceneRunDirectories(paths);
+	const screenshotOnlyArtifacts = input.artifactMode === 'screenshots';
 	const tracePath = scene.artifacts.trace ? join(paths.playwrightRoot, 'trace.zip') : null;
-	const videoDir = input.record || scene.artifacts.video ? join(paths.playwrightRoot, 'videos') : null;
+	const videoDir = !screenshotOnlyArtifacts && (input.record || scene.artifacts.video) ? join(paths.playwrightRoot, 'videos') : null;
 	const recordingVideo = Boolean(videoDir);
 	const capture = resolveCapture({ scene, device, runtimeMode: runtime.mode, recording: Boolean(videoDir) });
 	const artifacts = createTreeseedSceneRunArtifacts({ paths, playwrightTracePath: tracePath });

@@ -73,6 +73,7 @@ export async function runTreeseedSceneDeviceMatrix(input: TreeseedSceneDeviceMat
 			environment: input.environment,
 			device,
 			record: input.record,
+			artifactMode: input.artifactMode,
 			mode: input.mode,
 			timestamp: input.timestamp,
 			runId: `${matrixId}-${device}`,

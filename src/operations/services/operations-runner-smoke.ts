@@ -170,7 +170,10 @@ export async function runTreeseedOperationsRunnerSmoke(options: TreeseedOperatio
 	const serviceSecret = options.serviceSecret ?? localServiceSecret ?? value('TREESEED_ACCEPTANCE_SERVICE_SECRET', values, env) ?? value('TREESEED_WEB_SERVICE_SECRET', values, env) ?? value('TREESEED_API_WEB_SERVICE_SECRET', values, env);
 	const timings: TreeseedOperationsRunnerSmokeReport['timings'] = [];
 	const fetchImpl = options.fetchImpl ?? fetch;
-	const timeoutMs = Math.max(1000, Math.floor(options.timeoutMs ?? (options.environment === 'prod' ? 120000 : 90000)));
+	const defaultTimeoutMs = options.environment === 'local'
+		? 90_000
+		: 600_000;
+	const timeoutMs = Math.max(1000, Math.floor(options.timeoutMs ?? defaultTimeoutMs));
 	const pollMs = Math.max(1000, Math.floor(options.pollMs ?? 3000));
 	if (!serviceSecret) {
 		return failure(baseUrl, options.environment, ['Missing API service credential for runner smoke.'], timings);

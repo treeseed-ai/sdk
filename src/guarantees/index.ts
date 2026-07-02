@@ -311,6 +311,7 @@ export type TreeseedGuaranteeSceneExecutionInput = {
 	guarantee: TreeseedLoadedGuarantee & { manifest: TreeseedGuaranteeManifest };
 	scenePath: string;
 	record?: boolean;
+	artifactMode?: 'full' | 'screenshots';
 	device?: string;
 };
 
@@ -1210,6 +1211,7 @@ async function defaultTreeseedGuaranteeSceneExecutor(input: TreeseedGuaranteeSce
 				scene: input.scenePath,
 				environment: input.environment,
 				record: input.record,
+				artifactMode: input.artifactMode,
 				mode: 'acceptance',
 				devices,
 			});
@@ -1226,6 +1228,7 @@ async function defaultTreeseedGuaranteeSceneExecutor(input: TreeseedGuaranteeSce
 			environment: input.environment,
 			device: input.device ?? devices[0],
 			record: input.record,
+			artifactMode: input.artifactMode,
 			mode: 'acceptance',
 		});
 		return {
@@ -1315,6 +1318,7 @@ async function runGuaranteeSteps(input: {
 	verifierExecutor: TreeseedGuaranteeVerifierExecutor;
 	verifierCache: Map<string, TreeseedGuaranteeVerifierExecutionResult>;
 	record?: boolean;
+	sceneArtifacts?: 'full' | 'screenshots';
 	device?: string;
 }) {
 	const startedAt = new Date().toISOString();
@@ -1349,6 +1353,7 @@ async function runGuaranteeSteps(input: {
 			guarantee: input.guarantee,
 			scenePath,
 			record: input.record ?? false,
+			artifactMode: input.sceneArtifacts,
 			device: input.device,
 		}));
 	}
@@ -1421,6 +1426,7 @@ export async function runTreeseedGuarantees(input: {
 	includePlanned?: boolean;
 	failOnSkippedReleaseGuarantees?: boolean;
 	record?: boolean;
+	sceneArtifacts?: 'full' | 'screenshots';
 	device?: string;
 	evidenceTarget?: 'local' | 'ci' | 'release';
 	sceneExecutor?: TreeseedGuaranteeSceneExecutor;
@@ -1511,6 +1517,7 @@ export async function runTreeseedGuarantees(input: {
 				verifierExecutor: input.verifierExecutor ?? defaultTreeseedGuaranteeVerifierExecutor,
 				verifierCache,
 				record: input.record,
+				sceneArtifacts: input.sceneArtifacts,
 				device: input.device,
 			}));
 		}

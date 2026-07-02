@@ -562,6 +562,7 @@ export type TreeseedSceneRunOptions = {
 	environment?: TreeseedSceneEnvironment;
 	device?: TreeseedSceneDeviceProfileId;
 	record?: boolean;
+	artifactMode?: 'full' | 'screenshots';
 	runId?: string;
 	timestamp?: string;
 	browserAdapter?: TreeseedSceneBrowserAdapter;
@@ -584,6 +585,7 @@ export type TreeseedSceneDeviceMatrixOptions = {
 	environment?: TreeseedSceneEnvironment;
 	devices?: TreeseedSceneDeviceProfileId[];
 	record?: boolean;
+	artifactMode?: 'full' | 'screenshots';
 	mode?: TreeseedSceneExecutionMode;
 	timestamp?: string;
 	browserAdapter?: TreeseedSceneBrowserAdapter;

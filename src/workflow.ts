@@ -165,6 +165,8 @@ export type TreeseedSaveInput = {
 	workspaceLinks?: 'auto' | 'off';
 	releaseCandidate?: TreeseedReleaseCandidateMode;
 	verifyDeployedResources?: boolean;
+	skipCleanup?: boolean;
+	sceneArtifacts?: 'full' | 'screenshots';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -226,6 +228,8 @@ export type TreeseedStageInput = {
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
 	verifyDeployedResources?: boolean;
+	skipCleanup?: boolean;
+	sceneArtifacts?: 'full' | 'screenshots';
 	plan?: boolean;
 	dryRun?: boolean;
 };
@@ -311,6 +315,8 @@ export type TreeseedReleaseInput = {
 	workspaceLinks?: 'auto' | 'off';
 	verifyDeployedResources?: boolean;
 	fresh?: boolean;
+	skipCleanup?: boolean;
+	sceneArtifacts?: 'full' | 'screenshots';
 	plan?: boolean;
 	dryRun?: boolean;
 };

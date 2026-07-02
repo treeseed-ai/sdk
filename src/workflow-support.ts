@@ -75,6 +75,12 @@ export {
 	type TreeseedOperationsRunnerSmokeReport,
 } from './operations/services/operations-runner-smoke.ts';
 export {
+	runTreeseedLocalCleanup,
+	type TreeseedLocalCleanupAction,
+	type TreeseedLocalCleanupMode,
+	type TreeseedLocalCleanupReport,
+} from './operations/services/local-cleanup.ts';
+export {
 	readTreeseedVerificationCache,
 	treeseedVerificationCacheKey,
 	writeTreeseedVerificationCache,

@@ -1304,6 +1304,7 @@ export class DefaultTreeseedOperationsProvider implements TreeseedOperationProvi
 			new DoctorOperation('doctor'),
 			new InstallOperation('install'),
 			new ToolsOperation('tools'),
+			new WorkflowOperation('cleanup'),
 			new AuthLoginOperation('auth:login'),
 			new AuthLogoutOperation('auth:logout'),
 			new AuthWhoAmIOperation('auth:whoami'),

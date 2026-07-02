@@ -193,6 +193,7 @@ import {
 	type TreeseedWorkflowSession,
 } from './session.ts';
 import { checkedOutManagedWorkflowRepos } from '../operations/services/managed-repositories.ts';
+import { runTreeseedLocalCleanup } from '../operations/services/local-cleanup.ts';
 import {
 	classifyTreeseedBranchRole,
 	resolveTreeseedWorkflowPaths,
@@ -441,6 +442,21 @@ function normalizeCiMode(mode: TreeseedWorkflowCiMode | undefined, operation: 's
 export function normalizeSaveLane(lane: TreeseedSaveInput['lane'] | undefined) {
 	const value = lane ?? process.env.TREESEED_SAVE_LANE;
 	return value === 'promotion' ? 'promotion' : 'fast';
+}
+
+function normalizeSceneArtifactsMode(value: unknown): 'full' | 'screenshots' {
+	return value === 'screenshots' ? 'screenshots' : 'full';
+}
+
+function maybeRunLocalWorkflowCleanup(
+	helpers: WorkflowOperationHelpers,
+	root: string,
+	operation: 'save' | 'stage' | 'release',
+	input: { skipCleanup?: boolean; sceneArtifacts?: 'full' | 'screenshots'; plan?: boolean; dryRun?: boolean },
+) {
+	if (normalizeExecutionMode(input) === 'plan' || input.skipCleanup === true) return null;
+	helpers.write(`Treeseed ${operation} cleanup: pruning local caches, generated evidence, npm cache, and Docker artifacts before long verification.`, 'stderr');
+	return runTreeseedLocalCleanup({ root, mode: 'aggressive' });
 }
 
 export function normalizeSaveCiMode(mode: TreeseedWorkflowCiMode | undefined, branch: string | null | undefined, lane: 'fast' | 'promotion' = 'fast') {
@@ -4875,6 +4891,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 			const effectiveInput = autoResumeRun
 				? (autoResumeRun.input as unknown as TreeseedSaveInput)
 				: input;
+			const localCleanup = maybeRunLocalWorkflowCleanup(helpers, root, 'save', effectiveInput);
 			const message = String(effectiveInput.message ?? '').trim();
 			const saveLane = normalizeSaveLane(effectiveInput.lane);
 			const saveCiMode = normalizeSaveCiMode(effectiveInput.ciMode, branch, saveLane);
@@ -4937,6 +4954,8 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							}
 							: null,
 						workspaceLinks,
+						sceneArtifacts: normalizeSceneArtifactsMode(effectiveInput.sceneArtifacts),
+						localCleanup,
 						ciMode: saveCiMode,
 						lane: saveLane,
 						verifyMode: effectiveInput.verifyMode ?? 'fast',
@@ -5893,6 +5912,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			const effectiveInput = autoResumeRun
 				? (autoResumeRun.input as unknown as TreeseedStageInput)
 				: input;
+			const localCleanup = maybeRunLocalWorkflowCleanup(helpers, root, 'stage', effectiveInput);
 			const message = ensureMessage('stage', effectiveInput.message, 'a resolution message');
 			if (effectiveInput.verifyDeployedResources === true) {
 				workflowError('stage', 'validation_failed', 'Stage no longer verifies deployed resources. Promote refs with stage, then run staging release/hosting verification separately.');
@@ -5920,6 +5940,8 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				cleanupMode,
 				updateFrom,
 				waitForStaging: ciMode === 'hosted',
+				sceneArtifacts: normalizeSceneArtifactsMode(effectiveInput.sceneArtifacts),
+				localCleanup,
 				applicationSelection,
 				plan,
 				phases: plan.phases,
@@ -6303,6 +6325,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					ciMode: input.ciMode ?? (autoResumeRun.input as unknown as TreeseedReleaseInput).ciMode,
 				}
 				: input;
+			const localCleanup = maybeRunLocalWorkflowCleanup(helpers, root, 'release', effectiveInput);
 			const level = effectiveInput.bump ?? 'patch';
 			const ciMode = normalizeCiMode(effectiveInput.ciMode, 'release');
 			const packageSelection = session.packageSelection;
@@ -6337,6 +6360,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				ciMode,
 				level,
 				fresh: input.fresh === true,
+				sceneArtifacts: normalizeSceneArtifactsMode(effectiveInput.sceneArtifacts),
+				localCleanup,
 				freshArchivedRuns: [],
 				autoResumeCandidate: planAutoResumeRun
 					? {
