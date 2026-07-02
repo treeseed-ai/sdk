@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.12.13] - 2026-07-02
+
+### Fixed
+
+- Fix production hosted release reconciliation (12f9c9796917)
+- fix(workflow): clear stale shared release locks (7e0115daadb6)
+- fix(release): require production railway image refs (408a58b13ac3)
+- fix(release): fail live verify on broken railway topology (84c2483d6a69)
+
+### Infrastructure
+
+- Pass release image refs to hosted gates (d4c0ec8b92d4)
+- Add cleanup and screenshot release controls (0e5bf4d53b47)
+
 ## [0.12.12] - 2026-07-02
 
 ### Fixed
