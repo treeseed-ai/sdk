@@ -729,7 +729,7 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 	} catch {
 		machineEnv = {};
 	}
-	const imageRefEnv = { ...process.env, ...machineEnv, ...envOverlay };
+	const imageRefEnv = { ...machineEnv, ...process.env, ...envOverlay };
 	let identity;
 	try {
 		identity = resolveTreeseedResourceIdentity(deployConfig, createPersistentDeployTarget(normalizedScope));

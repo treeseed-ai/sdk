@@ -349,7 +349,11 @@ describe('hosting graph', () => {
 	it('keeps public TreeDX in the API-owned Railway project while isolating staging and production by environment', () => {
 		const tenantRoot = createTenant(marketConfig());
 		const staging = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging' });
-		const prod = compileTreeseedHostingGraph({ tenantRoot, environment: 'prod' });
+		const prod = compileTreeseedHostingGraph({
+			tenantRoot,
+			environment: 'prod',
+			env: { TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.2.11' },
+		});
 
 		const stagingGroup = staging.projectGroups['public-treedx-federation'];
 		const prodGroup = prod.projectGroups['public-treedx-federation'];
@@ -377,6 +381,7 @@ describe('hosting graph', () => {
 		expect(prod.units.find((unit) => unit.id === 'public-treedx-node-01')?.config).toMatchObject({
 			sourceMode: 'image',
 			image: 'treeseed/treedx',
+			imageRef: 'treeseed/treedx:0.2.11',
 			imageTagRef: 'TREESEED_PUBLIC_TREEDX_IMAGE_REF',
 		});
 		for (const serviceId of ['api', 'operationsRunner', 'capacityProviderManager', 'capacityProviderRunner']) {

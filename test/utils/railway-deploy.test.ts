@@ -509,6 +509,40 @@ services:
 		});
 	});
 
+	it('uses explicit production image refs for public TreeDX nodes', async () => {
+		const tenantRoot = await createTenantFixture();
+		vi.stubEnv('TREESEED_PUBLIC_TREEDX_IMAGE_REF', 'treeseed/treedx:0.2.11');
+		await writeFile(
+			join(tenantRoot, 'treeseed.site.yaml'),
+			`name: Test API
+slug: treeseed-api
+siteUrl: https://api.example.com
+contactEmail: hello@example.com
+hosting:
+  kind: treeseed_control_plane
+runtime:
+  mode: treeseed_managed
+services:
+  api:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api
+      imageRefEnv: TREESEED_API_IMAGE_REF
+`,
+		);
+
+		const services = configuredRailwayServices(tenantRoot, 'prod');
+		const publicTreeDx = services.find((service) => service.key === 'public-treedx-node-01');
+
+		expect(publicTreeDx).toMatchObject({
+			sourceMode: 'image',
+			serviceName: 'public-treedx-node-01',
+			imageRef: 'treeseed/treedx:0.2.11',
+		});
+	});
+
 	it('keeps provider runtime commands out of root Market Railway services', async () => {
 		const tenantRoot = await createTenantFixture();
 		const services = configuredRailwayServices(tenantRoot, 'staging');

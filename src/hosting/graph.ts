@@ -90,7 +90,7 @@ function resolvePublicTreeDxRoot(input: TreeseedHostingGraphInput) {
 	return candidates.find((candidate) => existsSync(resolve(candidate, 'treeseed.package.yaml')) || existsSync(resolve(candidate, '.git'))) ?? candidates[0]!;
 }
 
-function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Record<string, any>) {
+function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Record<string, any>, launchEnv: Record<string, string | undefined>) {
 	const railway = config.publicTreeDxFederation?.railway ?? {};
 	const configuredSource = railway.source && typeof railway.source === 'object' && !Array.isArray(railway.source)
 		? railway.source
@@ -110,6 +110,9 @@ function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Reco
 			? 'git'
 			: 'image';
 	if (sourceMode !== 'git') {
+		const imageRef = typeof launchEnv.TREESEED_PUBLIC_TREEDX_IMAGE_REF === 'string' && launchEnv.TREESEED_PUBLIC_TREEDX_IMAGE_REF.trim()
+			? launchEnv.TREESEED_PUBLIC_TREEDX_IMAGE_REF.trim()
+			: null;
 		return {
 			sourceMode: 'image',
 			sourceRepo: null,
@@ -117,6 +120,7 @@ function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Reco
 			sourceCommit: null,
 			sourceRootDirectory: null,
 			image: 'treeseed/treedx',
+			imageRef,
 			imageTagRef: 'TREESEED_PUBLIC_TREEDX_IMAGE_REF',
 		};
 	}
@@ -167,6 +171,7 @@ function railwayImageRefEnvForService(serviceKey: string) {
 	if (serviceKey === 'operationsRunner') return 'TREESEED_OPERATIONS_RUNNER_IMAGE_REF';
 	if (serviceKey === 'capacityProviderManager') return 'TREESEED_AGENT_MANAGER_IMAGE_REF';
 	if (serviceKey === 'capacityProviderRunner') return 'TREESEED_AGENT_RUNNER_IMAGE_REF';
+	if (String(serviceKey).startsWith('public-treedx-node-')) return 'TREESEED_PUBLIC_TREEDX_IMAGE_REF';
 	return null;
 }
 
@@ -404,16 +409,19 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 		publicTreeDxProjectGroup(environment, config),
 		privateTreeDxProjectGroup(),
 	];
-	const railwayImageRefEnvKeys = [...new Set(Object.keys(config.services ?? {})
+	const railwayImageRefEnvKeys = [...new Set([
+		...Object.keys(config.services ?? {})
 		.map((serviceKey) => railwayImageRefEnvForService(serviceKey))
-		.filter((value): value is string => Boolean(value)))];
+		.filter((value): value is string => Boolean(value)),
+		...(config.hosting?.kind === 'treeseed_control_plane' ? ['TREESEED_PUBLIC_TREEDX_IMAGE_REF'] : []),
+	])];
 	let railwayImageRefEnv: Record<string, string> = {};
 	try {
 		railwayImageRefEnv = resolveTreeseedMachineEnvironmentValues(input.configRoot ?? input.tenantRoot, environment, railwayImageRefEnvKeys) as Record<string, string>;
 	} catch {
 		railwayImageRefEnv = {};
 	}
-	const launchEnv = mergeRecord<string>(process.env as Record<string, string>, railwayImageRefEnv, input.env);
+	const launchEnv = mergeRecord<string>(railwayImageRefEnv, process.env as Record<string, string>, input.env);
 
 	if (config.surfaces?.web && config.surfaces.web.enabled !== false) {
 		services.push({
@@ -552,7 +560,7 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 
 	if (config.hosting?.kind === 'treeseed_control_plane') {
 		const treeDxNodePool = publicTreeDxNodePool(config);
-		const treeDxSourcePolicy = publicTreeDxSourcePolicy(input, config);
+		const treeDxSourcePolicy = publicTreeDxSourcePolicy(input, config, launchEnv);
 		const treeDxNodeUnits = Array.from({ length: treeDxNodePool.bootstrapCount }, (_, offset) => {
 			const nodeIndex = offset + 1;
 			const serviceName = indexedName('public-treedx-node', nodeIndex);
@@ -564,6 +572,7 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 				projectGroupId: 'public-treedx-federation',
 				config: {
 					...(treeDxSourcePolicy.image ? { image: treeDxSourcePolicy.image } : {}),
+					...(treeDxSourcePolicy.imageRef ? { imageRef: treeDxSourcePolicy.imageRef } : {}),
 					...(treeDxSourcePolicy.imageTagRef ? { imageTagRef: treeDxSourcePolicy.imageTagRef } : {}),
 					sourceMode: treeDxSourcePolicy.sourceMode,
 					...(treeDxSourcePolicy.sourceRepo ? { sourceRepo: treeDxSourcePolicy.sourceRepo } : {}),
