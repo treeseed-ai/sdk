@@ -1907,6 +1907,7 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	restartPolicy,
 	runtimeMode,
 	deploymentRegion,
+	clearSourceConfiguration = false,
 	env = process.env,
 	fetchImpl = fetch,
 	settleAttempts = 60,
@@ -1926,6 +1927,7 @@ export async function ensureRailwayServiceInstanceConfiguration({
 	restartPolicy?: string | null;
 	runtimeMode?: string | null;
 	deploymentRegion?: string | null;
+	clearSourceConfiguration?: boolean;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
 	settleAttempts?: number;
@@ -1978,12 +1980,12 @@ export async function ensureRailwayServiceInstanceConfiguration({
 		throw new Error('Railway service instance restart policies are unsupported by the current Railway API schema.');
 	}
 	const drifted = (
-		(desired.buildCommand !== null && desired.buildCommand !== current.buildCommand)
-		|| (desired.dockerfilePath !== null && desired.dockerfilePath !== current.dockerfilePath)
-		|| (desired.railwayConfigFile !== null && desired.railwayConfigFile !== current.railwayConfigFile)
-		|| (desired.startCommand !== null && desired.startCommand !== current.startCommand)
+		((desired.buildCommand !== null || clearSourceConfiguration) && desired.buildCommand !== current.buildCommand)
+		|| ((desired.dockerfilePath !== null || clearSourceConfiguration) && desired.dockerfilePath !== current.dockerfilePath)
+		|| ((desired.railwayConfigFile !== null || clearSourceConfiguration) && desired.railwayConfigFile !== current.railwayConfigFile)
+		|| ((desired.startCommand !== null || clearSourceConfiguration) && desired.startCommand !== current.startCommand)
 		|| (desired.cronSchedule !== null && desired.cronSchedule !== current.cronSchedule)
-		|| (desired.rootDirectory !== null && desired.rootDirectory !== current.rootDirectory)
+		|| ((desired.rootDirectory !== null || clearSourceConfiguration) && desired.rootDirectory !== current.rootDirectory)
 		|| (desired.healthcheckPath !== null && desired.healthcheckPath !== current.healthcheckPath)
 		|| (desired.healthcheckTimeoutSeconds !== null && desired.healthcheckTimeoutSeconds !== current.healthcheckTimeoutSeconds)
 		|| (desired.runtimeMode !== null && desired.runtimeMode !== current.runtimeMode)
@@ -2012,12 +2014,12 @@ mutation TreeseedRailwayServiceInstanceUpdateLegacy($serviceId: String!, $enviro
 				serviceId,
 				environmentId,
 				input: {
-					...(desired.buildCommand !== null ? { buildCommand: desired.buildCommand } : {}),
-					...(desired.dockerfilePath !== null ? { dockerfilePath: desired.dockerfilePath } : {}),
-					...(desired.railwayConfigFile !== null ? { railwayConfigFile: desired.railwayConfigFile } : {}),
-					...(desired.startCommand !== null ? { startCommand: desired.startCommand } : {}),
+					...(desired.buildCommand !== null || (clearSourceConfiguration && current.buildCommand !== null) ? { buildCommand: desired.buildCommand } : {}),
+					...(desired.dockerfilePath !== null || (clearSourceConfiguration && current.dockerfilePath !== null) ? { dockerfilePath: desired.dockerfilePath } : {}),
+					...(desired.railwayConfigFile !== null || (clearSourceConfiguration && current.railwayConfigFile !== null) ? { railwayConfigFile: desired.railwayConfigFile } : {}),
+					...(desired.startCommand !== null || (clearSourceConfiguration && current.startCommand !== null) ? { startCommand: desired.startCommand } : {}),
 					...(desired.cronSchedule !== null ? { cronSchedule: desired.cronSchedule } : {}),
-					...(desired.rootDirectory !== null ? { rootDirectory: desired.rootDirectory } : {}),
+					...(desired.rootDirectory !== null || (clearSourceConfiguration && current.rootDirectory !== null) ? { rootDirectory: desired.rootDirectory } : {}),
 					...(desired.healthcheckPath !== null ? { healthcheckPath: desired.healthcheckPath } : {}),
 					...(desired.healthcheckTimeoutSeconds !== null ? { healthcheckTimeout: desired.healthcheckTimeoutSeconds } : {}),
 					...(desired.sleepApplication !== null ? { sleepApplication: desired.sleepApplication } : {}),
@@ -2046,7 +2048,7 @@ mutation TreeseedRailwayServiceInstanceUpdateLegacy($serviceId: String!, $enviro
 			env,
 			fetchImpl,
 		});
-		if (!serviceInstanceDrifted(instance, desired) || attempt >= settleAttempts) {
+		if (!serviceInstanceDrifted(instance, desired, clearSourceConfiguration) || attempt >= settleAttempts) {
 			break;
 		}
 		await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
@@ -2055,6 +2057,8 @@ mutation TreeseedRailwayServiceInstanceUpdateLegacy($serviceId: String!, $enviro
 		instance: {
 			id: instance.id || current.id,
 			buildCommand: instance.buildCommand,
+			dockerfilePath: instance.dockerfilePath,
+			railwayConfigFile: instance.railwayConfigFile,
 			startCommand: instance.startCommand,
 			cronSchedule: instance.cronSchedule,
 			rootDirectory: instance.rootDirectory,
@@ -2074,6 +2078,8 @@ function serviceInstanceDrifted(
 	current: RailwayServiceInstanceSummary,
 	desired: {
 		buildCommand: string | null;
+		dockerfilePath?: string | null;
+		railwayConfigFile?: string | null;
 		startCommand: string | null;
 		cronSchedule: string | null;
 		rootDirectory: string | null;
@@ -2081,12 +2087,15 @@ function serviceInstanceDrifted(
 		healthcheckTimeoutSeconds: number | null;
 		runtimeMode: string | null;
 	},
+	clearSourceConfiguration = false,
 ) {
 	return (
-		(desired.buildCommand !== null && desired.buildCommand !== current.buildCommand)
-		|| (desired.startCommand !== null && desired.startCommand !== current.startCommand)
+		((desired.buildCommand !== null || clearSourceConfiguration) && desired.buildCommand !== current.buildCommand)
+		|| (((desired.dockerfilePath !== null && desired.dockerfilePath !== undefined) || clearSourceConfiguration) && (desired.dockerfilePath ?? null) !== current.dockerfilePath)
+		|| (((desired.railwayConfigFile !== null && desired.railwayConfigFile !== undefined) || clearSourceConfiguration) && (desired.railwayConfigFile ?? null) !== current.railwayConfigFile)
+		|| ((desired.startCommand !== null || clearSourceConfiguration) && desired.startCommand !== current.startCommand)
 		|| (desired.cronSchedule !== null && desired.cronSchedule !== current.cronSchedule)
-		|| (desired.rootDirectory !== null && desired.rootDirectory !== current.rootDirectory)
+		|| ((desired.rootDirectory !== null || clearSourceConfiguration) && desired.rootDirectory !== current.rootDirectory)
 		|| (desired.healthcheckPath !== null && desired.healthcheckPath !== current.healthcheckPath)
 		|| (desired.healthcheckTimeoutSeconds !== null && desired.healthcheckTimeoutSeconds !== current.healthcheckTimeoutSeconds)
 		|| (desired.runtimeMode !== null && desired.runtimeMode !== current.runtimeMode)

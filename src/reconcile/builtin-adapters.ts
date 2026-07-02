@@ -3934,6 +3934,7 @@ async function resolveRailwayTopologyForScope(
 						healthcheckIntervalSeconds: service.healthcheckIntervalSeconds,
 						restartPolicy: service.restartPolicy,
 						runtimeMode: service.runtimeMode,
+						clearSourceConfiguration: service.sourceMode === 'image' || Boolean(service.imageRef),
 						env,
 					})).instance;
 				} else {

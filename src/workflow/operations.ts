@@ -6202,11 +6202,12 @@ async function runReleaseGateReconcileFacade(
 	helpers: WorkflowOperationHelpers,
 	root: string,
 	target: TreeseedReconcileTarget,
-	input: { plan?: boolean; dryRun?: boolean; execute?: boolean; verifyDeployedResources?: boolean; releaseImageRefs?: Record<string, string> },
+	input: { plan?: boolean; dryRun?: boolean; execute?: boolean; verifyDeployedResources?: boolean; releaseImageRefs?: Record<string, string>; includeHostedReleaseGates?: boolean },
 	extraPayload: Record<string, unknown> = {},
 ) {
 	const executionMode = normalizeExecutionMode(input);
 	const reconcileEnv = { ...helpers.context.env, ...(input.releaseImageRefs ?? {}) };
+	const includeHostedReleaseGates = input.includeHostedReleaseGates === true;
 	const selector: TreeseedReconcileSelector = {
 		environment: target.kind === 'persistent' ? target.scope : 'staging',
 		resourceKind: ['release-gate'],
@@ -6217,6 +6218,10 @@ async function runReleaseGateReconcileFacade(
 		.filter((unit) => (
 			unit.provider === 'treeseed'
 			&& (unit.unitType === 'package-manifest' || unit.unitType.startsWith('release-gate:'))
+			&& (
+				includeHostedReleaseGates
+				|| (unit.unitType !== 'release-gate:hosted-reconcile' && unit.unitType !== 'release-gate:live-verify')
+			)
 		) || (
 			unit.provider === 'github'
 			&& (
@@ -6276,6 +6281,7 @@ async function runReleaseGateReconcileFacade(
 		executionMode,
 		verifyDeployedResources: input.verifyDeployedResources === true,
 		releaseImageRefs: input.releaseImageRefs ?? {},
+		includeHostedReleaseGates,
 		desiredGraph,
 		units: units.map((unit) => ({
 			unitId: unit.unitId,
