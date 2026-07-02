@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.9] - 2026-07-02
+
+### Fixed
+
+- fix(release): retry visual fixture login (2e4ca2d8ba16)
+- fix(release): retry hosted scene navigation (0ea321d3068b)
+
 ## [0.12.8] - 2026-07-02
 
 ### Fixed
