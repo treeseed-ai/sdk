@@ -102,6 +102,13 @@ function railwayImageRefEnvForService(serviceKey) {
 }
 
 function defaultRailwayImageRef(serviceKey, scope = 'staging', env = process.env) {
+	if (
+		normalizeScope(scope) !== 'prod'
+		&& serviceKey !== 'capacityProviderManager'
+		&& serviceKey !== 'capacityProviderRunner'
+	) {
+		return null;
+	}
 	if (serviceKey === 'api') {
 		return envValue('TREESEED_API_IMAGE_REF', env) || null;
 	}
@@ -789,8 +796,11 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 						? deriveRailwayCapacityProviderRunnerServiceName(configuredServiceName, runnerIndex)
 						: configuredServiceName;
 				const configuredImageRefEnv = service.railway?.imageRefEnv ?? railwayImageRefEnvForService(serviceKey);
+				const canUseImageRefEnv = normalizedScope === 'prod'
+					|| serviceKey === 'capacityProviderManager'
+					|| serviceKey === 'capacityProviderRunner';
 				const imageRef = service.railway?.imageRef
-					?? (configuredImageRefEnv ? envValue(configuredImageRefEnv, imageRefEnv) || null : null)
+					?? (canUseImageRefEnv && configuredImageRefEnv ? envValue(configuredImageRefEnv, imageRefEnv) || null : null)
 					?? defaultRailwayImageRef(serviceKey, normalizedScope, imageRefEnv);
 				const sourcePolicy = resolveRailwayServiceSourcePolicy({
 					tenantRoot,
