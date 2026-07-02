@@ -1272,9 +1272,9 @@ function applyStableWorkspaceVersionChanges(root: string, versions: Map<string, 
 		for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
 			const values = packageJson[field];
 			if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
-			for (const [dependencyName, version] of dependencyVersions.entries()) {
+			for (const [dependencyName, version] of versions.entries()) {
 				if (!(dependencyName in values)) continue;
-				const dependencySpec = stableGitReferences.get(dependencyName) ?? version;
+				const dependencySpec = version;
 				if (String((values as Record<string, unknown>)[dependencyName]) === dependencySpec) continue;
 				(values as Record<string, unknown>)[dependencyName] = dependencySpec;
 				changed = true;
