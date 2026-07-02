@@ -182,6 +182,32 @@ function packageUnitFromAdapter(adapter: TreeseedPackageAdapter): TreeseedPackag
 	};
 }
 
+const PRODUCTION_ONLY_GITHUB_SECRET_NAMES = new Set([
+	'NPM_TOKEN',
+	'PYPI_API_TOKEN',
+	'CARGO_REGISTRY_TOKEN',
+	'HEX_API_KEY',
+]);
+
+function packageRequiredSecretsForGitHubEnvironment(adapter: TreeseedPackageAdapter, environmentName: string) {
+	const requiredSecrets = Array.isArray(adapter.metadata.requiredSecrets) ? adapter.metadata.requiredSecrets : [];
+	const isProduction = environmentName === 'production';
+	return requiredSecrets.filter((secretName): secretName is string => {
+		if (typeof secretName !== 'string' || !secretName.trim()) return false;
+		return isProduction || !PRODUCTION_ONLY_GITHUB_SECRET_NAMES.has(secretName);
+	});
+}
+
+function packageRequiredVariablesForGitHubEnvironment(adapter: TreeseedPackageAdapter, _environmentName: string) {
+	return (Array.isArray(adapter.metadata.requiredVariables) ? adapter.metadata.requiredVariables : [])
+		.filter((variableName): variableName is string => typeof variableName === 'string' && Boolean(variableName.trim()));
+}
+
+function packageUnitRequiredSecretsForGitHubEnvironment(pkg: TreeseedPackageUnit, environmentName: string) {
+	const isProduction = environmentName === 'production';
+	return pkg.requiredSecrets.filter((secretName) => isProduction || !PRODUCTION_ONLY_GITHUB_SECRET_NAMES.has(secretName));
+}
+
 function templateReleaseTag(manifest: TreeseedTemplateRepositoryManifest) {
 	return manifest.version ? `${manifest.release.tagPrefix}${manifest.id}/v${manifest.version}` : null;
 }
@@ -431,8 +457,7 @@ function packageResources(adapter: TreeseedPackageAdapter, environment: Treeseed
 					},
 				source: { type: 'package-adapter', id: packageId },
 			});
-			for (const secretName of Array.isArray(adapter.metadata.requiredSecrets) ? adapter.metadata.requiredSecrets : []) {
-				if (typeof secretName !== 'string' || !secretName.trim()) continue;
+			for (const secretName of packageRequiredSecretsForGitHubEnvironment(adapter, environmentName)) {
 				resources.push({
 					id: `github-secret-binding:${packageId}:${environmentName}:${secretName}`,
 					kind: 'github-secret-binding',
@@ -453,8 +478,7 @@ function packageResources(adapter: TreeseedPackageAdapter, environment: Treeseed
 					source: { type: 'package-adapter', id: packageId },
 				});
 			}
-			for (const variableName of Array.isArray(adapter.metadata.requiredVariables) ? adapter.metadata.requiredVariables : []) {
-				if (typeof variableName !== 'string' || !variableName.trim()) continue;
+			for (const variableName of packageRequiredVariablesForGitHubEnvironment(adapter, environmentName)) {
 				resources.push({
 					id: `github-variable-binding:${packageId}:${environmentName}:${variableName}`,
 					kind: 'github-variable-binding',
@@ -881,7 +905,7 @@ function releaseGateResources(packages: TreeseedPackageUnit[], templates: Treese
 				: null;
 		const imageCredentialDependencies = publishGateKind === 'release-gate:image-publish' && pkg.githubEnvironments.includes(hostedEnvironment)
 			? [
-				...pkg.requiredSecrets.map((secretName) => `github-secret-binding:${pkg.id}:${hostedEnvironment}:${secretName}`),
+				...packageUnitRequiredSecretsForGitHubEnvironment(pkg, hostedEnvironment).map((secretName) => `github-secret-binding:${pkg.id}:${hostedEnvironment}:${secretName}`),
 				...pkg.requiredVariables.map((variableName) => `github-variable-binding:${pkg.id}:${hostedEnvironment}:${variableName}`),
 			]
 			: [];
