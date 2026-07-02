@@ -96,6 +96,7 @@ const TEMPLATE_CATALOG_CACHE_RELATIVE_PATH = 'treeseed/cache/template-catalog.js
 const TENANT_ENVIRONMENT_OVERLAY_PATH = 'src/env.yaml';
 const CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER = 'replace-with-cloudflare-account-id';
 const TREESEED_KEY_AGENT_AUTOPROMPT_ENV = 'TREESEED_KEY_AGENT_AUTOPROMPT';
+const KEY_AGENT_COMMAND_TIMEOUT_MS = 10_000;
 export const DEFAULT_TREESEED_API_BASE_URL = 'https://api.treeseed.dev';
 export const DEFAULT_TEMPLATE_CATALOG_URL = 'https://api.treeseed.dev/search/templates';
 export const TREESEED_TEMPLATE_CATALOG_URL_ENV = 'TREESEED_TEMPLATE_CATALOG_URL';
@@ -489,7 +490,19 @@ function runTreeseedKeyAgentCommand(args, options = {}) {
 		},
 		stdio: options.input !== undefined ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
 		input: options.input,
+		timeout: KEY_AGENT_COMMAND_TIMEOUT_MS,
+		killSignal: 'SIGTERM',
 	});
+	if (result.error) {
+		const timedOut = result.error.code === 'ETIMEDOUT';
+		return {
+			ok: false,
+			code: 'daemon_unavailable',
+			message: timedOut
+				? `Treeseed key-agent command timed out after ${KEY_AGENT_COMMAND_TIMEOUT_MS}ms.`
+				: result.error.message || 'Treeseed key-agent command failed.',
+		};
+	}
 	if (result.status !== 0 && (!result.stdout || result.stdout.trim().length === 0)) {
 		return {
 			ok: false,
