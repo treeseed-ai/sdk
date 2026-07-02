@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.10] - 2026-07-02
+
+### Fixed
+
+- fix(release): prefer built key-agent launcher (f7123afd9cf4)
+- fix(release): bound key-agent command waits (43fb310b2ad0)
+
 ## [0.12.9] - 2026-07-02
 
 ### Fixed
