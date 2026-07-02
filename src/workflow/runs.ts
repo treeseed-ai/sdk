@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import type { TreeseedWorkflowMode } from './session.ts';
@@ -357,6 +357,84 @@ export function readWorkflowRunJournal(root: string, runId: string) {
 	return safeJsonParse<TreeseedWorkflowRunJournal>(workflowRunPath(root, runId));
 }
 
+function jsonStringField(source: string, key: string) {
+	const pattern = new RegExp(`"${key}"\\s*:\\s*"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"`, 'u');
+	const match = source.match(pattern);
+	if (!match) return null;
+	try {
+		return JSON.parse(`"${match[1]}"`) as string;
+	} catch {
+		return match[1];
+	}
+}
+
+function jsonBooleanField(source: string, key: string) {
+	const pattern = new RegExp(`"${key}"\\s*:\\s*(true|false)`, 'u');
+	const match = source.match(pattern);
+	return match ? match[1] === 'true' : null;
+}
+
+function readFileEnds(path: string, bytes: number) {
+	const fd = openSync(path, 'r');
+	try {
+		const stat = fstatSync(fd);
+		const headLength = Math.min(bytes, stat.size);
+		const tailLength = Math.min(bytes, stat.size);
+		const head = Buffer.alloc(headLength);
+		const tail = Buffer.alloc(tailLength);
+		readSync(fd, head, 0, headLength, 0);
+		readSync(fd, tail, 0, tailLength, Math.max(0, stat.size - tailLength));
+		return { size: stat.size, head: head.toString('utf8'), tail: tail.toString('utf8') };
+	} finally {
+		closeSync(fd);
+	}
+}
+
+function archivedWorkflowRunSummary(path: string) {
+	const { head, tail } = readFileEnds(path, 128 * 1024);
+	if (!tail.includes('"archivedAt"')) {
+		return null;
+	}
+	const runId = jsonStringField(head, 'runId');
+	const command = jsonStringField(head, 'command') as TreeseedWorkflowRunCommand | null;
+	const executionMode = jsonStringField(head, 'executionMode') as TreeseedWorkflowExecutionMode | null;
+	const status = jsonStringField(head, 'status') as TreeseedWorkflowRunStatus | null;
+	const createdAt = jsonStringField(head, 'createdAt');
+	const updatedAt = jsonStringField(head, 'updatedAt');
+	const archivedAt = jsonStringField(tail, 'archivedAt');
+	const classifiedAt = jsonStringField(tail, 'classifiedAt') ?? archivedAt;
+	if (!runId || !command || !executionMode || !status || !createdAt || !updatedAt || !archivedAt || !classifiedAt) {
+		return null;
+	}
+	return {
+		schemaVersion: 1,
+		kind: 'treeseed.workflow.run',
+		runId,
+		command,
+		executionMode,
+		status,
+		createdAt,
+		updatedAt,
+		resumable: jsonBooleanField(head, 'resumable') ?? false,
+		input: {},
+		session: {
+			root: '',
+			mode: 'root-only',
+			branchName: null,
+			repos: [],
+		},
+		steps: [],
+		failure: null,
+		result: null,
+		classification: {
+			state: 'obsolete',
+			reasons: ['workflow run was archived'],
+			classifiedAt,
+			archivedAt,
+		},
+	} satisfies TreeseedWorkflowRunJournal;
+}
+
 export function updateWorkflowRunJournal(
 	root: string,
 	runId: string,
@@ -685,7 +763,18 @@ function listWorkflowRunJournalsForScope(root: string, scope: TreeseedWorkflowLo
 	}
 	return readdirSync(runsDir)
 		.filter((entry) => entry.endsWith('.json'))
-		.map((entry) => safeJsonParse<TreeseedWorkflowRunJournal>(resolve(runsDir, entry)))
+		.map((entry) => {
+			const path = resolve(runsDir, entry);
+			try {
+				if (statSync(path).size > 5 * 1024 * 1024) {
+					const archivedSummary = archivedWorkflowRunSummary(path);
+					if (archivedSummary) return archivedSummary;
+				}
+			} catch {
+				return null;
+			}
+			return safeJsonParse<TreeseedWorkflowRunJournal>(path);
+		})
 		.filter((entry): entry is TreeseedWorkflowRunJournal => entry != null)
 		.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
