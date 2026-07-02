@@ -953,7 +953,7 @@ export function renderTreeseedPackageWorkflow(adapter: TreeseedPackageAdapter, t
 on:
   push:
     tags:
-      - "v*"
+      - "*.*.*"
   workflow_dispatch:
 
 jobs:
@@ -990,7 +990,7 @@ jobs:
 			? 'npm run capacity-provider:build -- --prepare-only'
 			: null;
 		const trigger = `    tags:
-      - "v*"`;
+      - "*.*.*"`;
 		const jobCondition = "startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')";
 		const computeTagsStep = `      - name: Compute image tags
         id: tags

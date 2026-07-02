@@ -195,6 +195,8 @@ describe('package publish safeguards', () => {
 			const publishSource = readFileSync(publishPath!, 'utf8');
 
 			expect(workflowSource).toContain("startsWith(github.ref, 'refs/tags/')");
+			expect(workflowSource).toContain('- "*.*.*"');
+			expect(workflowSource).not.toContain('- "v*"');
 			expect(workflowSource).toContain("!contains(github.ref_name, '-')");
 			expect(workflowSource).toContain('contents: write');
 			expect(workflowSource).toMatch(/(?:npm ci|dependency install) failed; retrying/);
