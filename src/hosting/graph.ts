@@ -456,10 +456,10 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 				: 'treeseed-control-plane'
 			: undefined;
 		const imageRefEnv = railwayImageRefEnvForService(serviceKey);
-				const imageRef = service.railway?.imageRef
-					?? (imageRefEnv ? launchEnv[imageRefEnv] ?? null : null)
-					?? defaultRailwayImageRefForService(serviceKey, input.environment)
-					?? null;
+		const imageRef = service.railway?.imageRef
+			?? (input.environment === 'prod' && imageRefEnv ? launchEnv[imageRefEnv] ?? null : null)
+			?? defaultRailwayImageRefForService(serviceKey, input.environment)
+			?? null;
 		const sourcePolicy = railwaySourcePolicy(input, serviceKey, service, imageRef);
 		services.push({
 			id: serviceKey,
