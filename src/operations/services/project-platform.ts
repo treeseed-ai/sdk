@@ -809,14 +809,15 @@ function findFirstMatchingString(value, matcher, seen = new Set()) {
 }
 
 function resolveImmediatePagesProbeUrl(siteConfig, state, target) {
-	if (target.kind === 'persistent' && state.pages?.projectName) {
-		return target.scope === 'staging'
-			? `https://${state.pages?.stagingBranch ?? 'staging'}.${state.pages.projectName}.pages.dev`
-			: `https://${state.pages.projectName}.pages.dev`;
+	if (target.kind === 'persistent' && target.scope === 'prod' && state.pages?.projectName) {
+		return `https://${state.pages.projectName}.pages.dev`;
 	}
 	const configuredUrl = resolveConfiguredSurfaceBaseUrl(siteConfig, target, 'web');
 	if (configuredUrl) {
 		return configuredUrl;
+	}
+	if (target.kind === 'persistent' && target.scope === 'staging' && state.pages?.projectName) {
+		return `https://${state.pages?.stagingBranch ?? 'staging'}.${state.pages.projectName}.pages.dev`;
 	}
 	return state.pages?.url ?? siteConfig.siteUrl;
 }
