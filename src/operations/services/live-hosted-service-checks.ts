@@ -185,6 +185,99 @@ function serviceIsSelected(selected: Set<string>, serviceKey: string) {
 	return selected.size === 0 || selected.has(serviceKey);
 }
 
+function treeseedDatabaseDescriptors(tenantRoot: string, options: TreeseedLiveHostedServiceCheckOptions) {
+	const descriptors: Array<{
+		applicationId: string | null;
+		applicationRoot: string;
+		serviceName: string;
+	}> = [];
+	const rootConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: options.target, env: process.env }).deployConfig;
+	const candidates = [
+		{ applicationId: 'web', applicationRoot: tenantRoot, config: rootConfig },
+		...discoverTreeseedApplications(tenantRoot).map((application) => ({
+			applicationId: application.id,
+			applicationRoot: application.root,
+			config: application.config,
+		})),
+	];
+	for (const candidate of candidates) {
+		if (options.appId && options.appId !== candidate.applicationId) continue;
+		const service = candidate.config.services?.treeseedDatabase;
+		if (
+			!service
+			|| service.enabled === false
+			|| service.provider !== 'railway'
+			|| service.railway?.resourceType !== 'postgres'
+		) {
+			continue;
+		}
+		const serviceName = typeof service.railway?.serviceName === 'string' && service.railway.serviceName.trim()
+			? service.railway.serviceName.trim()
+			: `${candidate.config.slug ?? 'treeseed-api'}-postgres`;
+		descriptors.push({
+			applicationId: candidate.applicationId,
+			applicationRoot: candidate.applicationRoot,
+			serviceName,
+		});
+	}
+	return descriptors;
+}
+
+async function verifyRailwayPostgresTopology(input: {
+	descriptor: ReturnType<typeof treeseedDatabaseDescriptors>[number];
+	configuredServices: ReturnType<typeof configuredRailwayServices>;
+	projects: Awaited<ReturnType<typeof listRailwayProjects>>;
+	options: TreeseedLiveHostedServiceCheckOptions;
+	issues: string[];
+}) {
+	const ownerService = input.configuredServices.find((service) =>
+		['api', 'operationsRunner'].includes(service.key)
+		&& (!input.descriptor.applicationId || service.application?.id === input.descriptor.applicationId)
+	);
+	if (!ownerService) {
+		input.issues.push(`${input.descriptor.serviceName}: no Railway API or operations runner service is configured to own the database.`);
+		return;
+	}
+	const project = ownerService.projectId
+		? findByName(input.projects, ownerService.projectId)
+		: findByName(input.projects, ownerService.projectName);
+	if (!project?.id) {
+		input.issues.push(`${input.descriptor.serviceName}: Railway project ${ownerService.projectName} was not found.`);
+		return;
+	}
+	const environments = await listRailwayEnvironments({ projectId: project.id, env: input.options.env, fetchImpl: input.options.fetchImpl });
+	const environment = findByName(environments, ownerService.railwayEnvironment);
+	if (!environment?.id) {
+		input.issues.push(`${input.descriptor.serviceName}: Railway environment ${ownerService.railwayEnvironment} was not found.`);
+		return;
+	}
+	const [services, volumes] = await Promise.all([
+		listRailwayServices({ projectId: project.id, env: input.options.env, fetchImpl: input.options.fetchImpl }),
+		listRailwayVolumes({ projectId: project.id, env: input.options.env, fetchImpl: input.options.fetchImpl }).catch(() => []),
+	]);
+	const postgresService = findByName(services, input.descriptor.serviceName);
+	if (!postgresService?.id) {
+		input.issues.push(`${input.descriptor.serviceName}: canonical Railway PostgreSQL service was not found.`);
+	}
+	const volumeName = `${input.descriptor.serviceName}-volume`;
+	const canonicalVolume = volumes.find((volume) => volume.name === volumeName) ?? null;
+	if (!canonicalVolume) {
+		input.issues.push(`${volumeName}: canonical Railway PostgreSQL volume was not found.`);
+		return;
+	}
+	const activeInstances = activeRailwayVolumeInstances(canonicalVolume);
+	const attachedToPostgres = postgresService?.id
+		? activeInstances.some((instance) =>
+			instance.serviceId === postgresService.id
+			&& instance.environmentId === environment.id
+			&& instance.mountPath === '/var/lib/postgresql/data'
+		)
+		: false;
+	if (!attachedToPostgres) {
+		input.issues.push(`${volumeName}: canonical Railway PostgreSQL volume is not attached to ${input.descriptor.serviceName} at /var/lib/postgresql/data (states=${railwayVolumeInstanceStates(canonicalVolume)}).`);
+	}
+}
+
 function resolveLiveProviderEnv(options: TreeseedLiveHostedServiceCheckOptions) {
 	let launchValues: Record<string, string | undefined> = {};
 	try {
@@ -215,7 +308,15 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 		const configuredServices = configuredRailwayServices(options.tenantRoot, options.target)
 			.filter((entry) => !options.appId || entry.application?.id === options.appId)
 			.filter((entry) => serviceIsSelected(selectedServiceKeys, entry.key));
+		if (selectedServiceKeys.size === 0 || selectedServiceKeys.has('api') || selectedServiceKeys.has('operationsRunner')) {
+			for (const descriptor of treeseedDatabaseDescriptors(options.tenantRoot, options)) {
+				await verifyRailwayPostgresTopology({ descriptor, configuredServices, projects, options, issues });
+			}
+		}
 		for (const service of configuredServices) {
+			if (options.target === 'prod' && service.sourceMode === 'image' && !service.imageRef) {
+				issues.push(`${service.serviceName}: production Railway service is configured for image deployment but no immutable image ref is resolved.`);
+			}
 			const project = service.projectId
 				? findByName(projects, service.projectId)
 				: findByName(projects, service.projectName);
@@ -236,6 +337,9 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 				for (const volume of volumes) {
 					if (isRetainedDetachedRailwayVolume(volume.name)) {
 						continue;
+					}
+					if (String(volume.name ?? '').endsWith('-postgres-volume') && activeRailwayVolumeInstances(volume).length === 0) {
+						issues.push(`${volume.name ?? volume.id}: detached PostgreSQL volume remains in Railway project ${project.name} (states=${railwayVolumeInstanceStates(volume)}).`);
 					}
 					const detachedPostgresInstances = activeRailwayVolumeInstances(volume).filter((instance) =>
 						instance.environmentId === environment.id
