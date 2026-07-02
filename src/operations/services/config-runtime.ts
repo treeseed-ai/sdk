@@ -59,7 +59,7 @@ import {
 	listGitHubEnvironmentVariableNames,
 } from './github-api.ts';
 import { resolveGitHubCredentialForRepository } from './github-credentials.ts';
-import { loadCliDeployConfig, packageScriptPath, resolveWranglerBin, withProcessCwd } from './runtime-tools.ts';
+import { loadCliDeployConfig, packageDistScriptRoot, packageScriptPath, resolveWranglerBin, withProcessCwd } from './runtime-tools.ts';
 import { PRODUCTION_BRANCH, STAGING_BRANCH } from './git-workflow.ts';
 import {
 	createTreeseedManagedToolEnv,
@@ -408,7 +408,15 @@ function resolveManagedWorktreeMachineConfigRoot(tenantRoot) {
 }
 
 function keyAgentScriptPath() {
-	return packageScriptPath('key-agent.ts');
+	const distScriptPath = resolve(packageDistScriptRoot, 'key-agent.js');
+	return existsSync(distScriptPath) ? distScriptPath : packageScriptPath('key-agent.ts');
+}
+
+function keyAgentNodeArgs() {
+	const scriptPath = keyAgentScriptPath();
+	return scriptPath.endsWith('.ts')
+		? ['--import', 'tsx', scriptPath]
+		: [scriptPath];
 }
 
 function keyAgentScriptCwd() {
@@ -452,11 +460,10 @@ export function withTreeseedKeyAgentAutopromptDisabled<T>(action: () => T): T {
 function startTreeseedKeyAgentDaemon(tenantRoot) {
 	const { keyPath } = getTreeseedMachineConfigPaths(tenantRoot);
 	const { socketPath } = getTreeseedKeyAgentPaths();
+	const scriptArgs = keyAgentNodeArgs();
 	const command = [
 		shellQuote(process.execPath),
-		'--import',
-		'tsx',
-		shellQuote(keyAgentScriptPath()),
+		...scriptArgs.map((arg) => shellQuote(arg)),
 		'serve',
 		'--key-path',
 		shellQuote(keyPath),
@@ -477,9 +484,7 @@ function startTreeseedKeyAgentDaemon(tenantRoot) {
 
 function runTreeseedKeyAgentCommand(args, options = {}) {
 	const result = spawnSync(process.execPath, [
-		'--import',
-		'tsx',
-		keyAgentScriptPath(),
+		...keyAgentNodeArgs(),
 		...args,
 	], {
 		cwd: keyAgentScriptCwd(),
