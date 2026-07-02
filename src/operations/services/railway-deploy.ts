@@ -707,13 +707,14 @@ query TreeseedRailwayDeploymentStatus($projectId: String!) {
 	return payload.data?.project ?? null;
 }
 
-function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, application = null, machineConfigRoot = tenantRoot) {
+function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, application = null, machineConfigRoot = tenantRoot, envOverlay = {}) {
 	const normalizedScope = normalizeScope(scope);
 	const imageRefKeys = [
 		'TREESEED_API_IMAGE_REF',
 		'TREESEED_OPERATIONS_RUNNER_IMAGE_REF',
 		'TREESEED_AGENT_MANAGER_IMAGE_REF',
 		'TREESEED_AGENT_RUNNER_IMAGE_REF',
+		'TREESEED_PUBLIC_TREEDX_IMAGE_REF',
 	];
 	let machineEnv = {};
 	try {
@@ -721,7 +722,7 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 	} catch {
 		machineEnv = {};
 	}
-	const imageRefEnv = { ...process.env, ...machineEnv };
+	const imageRefEnv = { ...process.env, ...machineEnv, ...envOverlay };
 	let identity;
 	try {
 		identity = resolveTreeseedResourceIdentity(deployConfig, createPersistentDeployTarget(normalizedScope));
@@ -1069,9 +1070,9 @@ function resolveRailwayCapacityProviderRoot(tenantRoot, service) {
 	return found ?? resolve(tenantRoot, 'packages', 'agent');
 }
 
-export function configuredRailwayServices(tenantRoot, scope) {
+export function configuredRailwayServices(tenantRoot, scope, envOverlay = {}) {
 	const deployConfig = loadCliDeployConfig(tenantRoot);
-	const direct = configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig);
+	const direct = configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, null, tenantRoot, envOverlay);
 	const nested = discoverTreeseedApplications(tenantRoot)
 		.filter((application) => application.root !== resolve(tenantRoot))
 		.flatMap((application) => configuredRailwayServicesForConfig(
@@ -1084,6 +1085,7 @@ export function configuredRailwayServices(tenantRoot, scope) {
 				relativeRoot: application.relativeRoot,
 			},
 			tenantRoot,
+			envOverlay,
 		));
 	return [...direct, ...nested];
 }

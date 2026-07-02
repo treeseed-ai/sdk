@@ -4001,6 +4001,17 @@ function railwayProviderDrift(input: TreeseedReconcileAdapterInput, scope: strin
 	return Array.isArray(current) ? current as Array<Record<string, unknown>> : [];
 }
 
+function configuredRailwayServicesForInput(input: TreeseedReconcileAdapterInput, scope: 'local' | 'staging' | 'prod') {
+	return configuredRailwayServices(input.context.tenantRoot, scope, resolveReconcileEnvironmentValues(input, scope));
+}
+
+function assertNoBlockedRailwayProviderDrift(input: TreeseedReconcileAdapterInput, scope: string) {
+	const blocked = railwayProviderDrift(input, scope).filter((drift) => drift.status === 'blocked' || drift.action === 'blocked' || drift.action === 'manual-repair-required');
+	if (blocked.length === 0) return;
+	const reasons = blocked.map((drift) => String(drift.reason ?? drift.kind ?? 'unknown Railway drift'));
+	throw new Error(`Railway provider drift blocks reconciliation: ${reasons.join('; ')}`);
+}
+
 function activeRailwayVolumeInstances(volume: { instances?: Array<{ state?: string | null }> }) {
 	const instances = Array.isArray(volume.instances) ? volume.instances : [];
 	return instances.filter((instance) => {
@@ -4024,7 +4035,7 @@ function configuredRailwayProjectSyncGroups(
 	scope: 'local' | 'staging' | 'prod',
 	serviceKeys?: string[],
 ) {
-	const allServices = configuredRailwayServices(input.context.tenantRoot, scope)
+	const allServices = configuredRailwayServicesForInput(input, scope)
 		.filter((service) => service.enabled !== false)
 		.filter((service) => !isRailwayCapacityProviderService(service));
 	const selected = Array.isArray(serviceKeys) && serviceKeys.length > 0
@@ -4055,6 +4066,9 @@ function railwayIacServiceInput(
 	}
 	if (scope === 'prod' && service.sourceMode === 'git') {
 		throw new Error(`Railway production service ${service.serviceName} must deploy an immutable image, not Git source.`);
+	}
+	if (scope === 'prod' && service.sourceMode === 'image' && !service.imageRef) {
+		throw new Error(`Railway production service ${service.serviceName} must deploy an immutable image, but no image reference was resolved.`);
 	}
 	const serviceSync = sync.forService(service.key, service);
 	const deployVariablePrefix = service.serviceName.includes('treedx') || service.key.includes('treedx')
@@ -4170,7 +4184,7 @@ async function reconcileStaleOperationsRunnerResourcesForScope(
 	topology: Awaited<ReturnType<typeof resolveRailwayTopologyForScope>>,
 ) {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
-	const desiredRunners = configuredRailwayServices(input.context.tenantRoot, scope)
+	const desiredRunners = configuredRailwayServicesForInput(input, scope)
 		.filter((service) => service.key === 'operationsRunner')
 		.filter((service) => service.enabled !== false);
 	const desiredServiceNames = new Set(desiredRunners.map((service) => service.serviceName).filter(Boolean));
@@ -4310,6 +4324,9 @@ async function syncRailwayEnvironmentForScope(
 		const project = resolvedEntry?.project;
 		const environment = resolvedEntry?.environment;
 		traceRailwayReconcile(topology.env, 'sync:topology', `project-services=${projectServices.map((service) => service.serviceName).join(',')}`);
+		for (const service of projectServices) {
+			railwayIacServiceInput(input, sync, service, scope);
+		}
 		if (dryRun) {
 			syncedServices.push(...projectServices);
 			continue;
@@ -4415,6 +4432,7 @@ async function syncRailwayEnvironmentForScope(
 				const diagnostics = apply.diagnostics.map((entry) => entry.message).filter(Boolean).join('; ');
 				throw new Error(`Railway IaC apply failed for ${project.name}/${environment.name}${diagnostics ? `: ${diagnostics}` : '.'}`);
 			}
+			assertNoBlockedRailwayProviderDrift(input, scope);
 			syncedServices.push(...projectServices);
 		} finally {
 			cleanupRailwayIacRender(rendered);
@@ -4955,7 +4973,7 @@ async function observeRailwayUnit(input: TreeseedReconcileAdapterInput, { refres
 function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput, valuesOverlay: Record<string, string | undefined> = {}) {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
 	const registry = collectTreeseedEnvironmentContext(input.context.tenantRoot);
-	const configuredServices = configuredRailwayServices(input.context.tenantRoot, scope);
+	const configuredServices = configuredRailwayServicesForInput(input, scope);
 	const hasPublicTreeDxService = configuredServices
 		.some((service) => service.key === 'public-treedx-node-01' && service.enabled !== false);
 	const machineValues = hasPublicTreeDxService
@@ -5136,7 +5154,7 @@ function capacityProviderSecretsForService(values: Record<string, string | undef
 }
 
 function ensureCapacityProviderApiKeyForRailwaySync(input: TreeseedReconcileAdapterInput, scope: string) {
-	const hasCapacityProviderService = configuredRailwayServices(input.context.tenantRoot, scope)
+	const hasCapacityProviderService = configuredRailwayServicesForInput(input, scope as 'local' | 'staging' | 'prod')
 		.some((service) => String(service.key).startsWith('capacityProvider') && service.enabled !== false);
 	if (!hasCapacityProviderService) return null;
 	const values = resolveReconcileEnvironmentValues(input, scope);
@@ -5167,7 +5185,7 @@ function ensurePublicTreeDxSecretsForRailwaySync(
 	values: Record<string, string | undefined>,
 	registry: ReturnType<typeof collectTreeseedEnvironmentContext>,
 ) {
-	const hasPublicTreeDxService = configuredRailwayServices(input.context.tenantRoot, scope)
+	const hasPublicTreeDxService = configuredRailwayServicesForInput(input, scope)
 		.some((service) => service.key === 'public-treedx-node-01' && service.enabled !== false);
 	if (!hasPublicTreeDxService) return {};
 	const generated: Record<string, string> = {};
@@ -5689,6 +5707,16 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 			issues: entry.instance?.id ? [] : [`Railway service instance for ${service.serviceName ?? service.key} in ${service.railwayEnvironment} is missing.`],
 		}),
 	];
+	if (service.sourceMode === 'image') {
+		const hasImageRef = typeof service.imageRef === 'string' && service.imageRef.trim().length > 0;
+		checks.push(verificationCheck('railway.instance.image-ref', 'Railway image source has an immutable image reference', 'sdk', {
+			exists: hasImageRef,
+			configured: hasImageRef,
+			expected: service.imageRefEnv ? `${service.imageRefEnv}=<image>:<tag>` : '<image>:<tag>',
+			observed: service.imageRef ?? null,
+			issues: hasImageRef ? [] : [`Railway production service ${service.serviceName ?? service.key} is configured for image deployment but no image reference was resolved.`],
+		}));
+	}
 	if (service.startCommand) {
 		const startCommandMatches = railwayStartCommandMatches(serviceKey, entry.instance?.startCommand, service.startCommand);
 		checks.push(verificationCheck('railway.instance.start-command', 'Railway start command matches desired config', 'api', {
@@ -5903,7 +5931,7 @@ function buildRailwayDiff(input: TreeseedReconcileAdapterInput, observed: Treese
 async function reconcileRailwayUnit(input: TreeseedReconcileAdapterInput, diff: TreeseedReconcileUnitDiff): Promise<TreeseedReconcileResult> {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
 	const serviceKey = String(input.unit.metadata.serviceKey ?? '').trim();
-	const configuredService = configuredRailwayServices(input.context.tenantRoot, scope)
+	const configuredService = configuredRailwayServicesForInput(input, scope)
 		.find((candidate) => candidate.key === serviceKey || candidate.instanceKey === serviceKey || candidate.serviceName === serviceKey) ?? null;
 	const requiresProjectLevelSync = Boolean(configuredService);
 	const serviceKeys = serviceKey && !requiresProjectLevelSync ? [serviceKey] : undefined;

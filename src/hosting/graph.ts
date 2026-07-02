@@ -413,6 +413,7 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 	} catch {
 		railwayImageRefEnv = {};
 	}
+	const launchEnv = mergeRecord<string>(process.env as Record<string, string>, railwayImageRefEnv, input.env);
 
 	if (config.surfaces?.web && config.surfaces.web.enabled !== false) {
 		services.push({
@@ -456,7 +457,7 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 			: undefined;
 		const imageRefEnv = railwayImageRefEnvForService(serviceKey);
 				const imageRef = service.railway?.imageRef
-					?? (imageRefEnv ? railwayImageRefEnv[imageRefEnv] ?? process.env[imageRefEnv] : null)
+					?? (imageRefEnv ? launchEnv[imageRefEnv] ?? null : null)
 					?? defaultRailwayImageRefForService(serviceKey, input.environment)
 					?? null;
 		const sourcePolicy = railwaySourcePolicy(input, serviceKey, service, imageRef);

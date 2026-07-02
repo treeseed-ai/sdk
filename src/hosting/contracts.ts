@@ -128,6 +128,7 @@ export interface TreeseedApplicationHostingProfile {
 export interface TreeseedHostingGraphInput {
 	tenantRoot: string;
 	environment: TreeseedHostingEnvironment;
+	env?: Record<string, string | undefined>;
 	configRoot?: string;
 	appId?: string;
 	deployConfig?: TreeseedDeployConfig;

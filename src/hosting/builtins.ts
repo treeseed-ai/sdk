@@ -57,28 +57,42 @@ function defaultVerify(input: TreeseedHostAdapterOperationInput & { observed: Tr
 		.filter((capability) => capability.environments.includes(input.environment))
 		.map((capability) => capability.id));
 	const missing = input.unit.requiredCapabilities.filter((capability) => !hostCapabilities.has(capability));
+	const checks: TreeseedHostingVerification['checks'] = [
+		{
+			key: 'host-capabilities',
+			label: 'Host supports required capabilities',
+			ok: missing.length === 0,
+			expected: input.unit.requiredCapabilities,
+			observed: [...hostCapabilities],
+			issues: missing.map((capability) => `Missing host capability: ${capability}`),
+		},
+		{
+			key: 'secrets-redacted',
+			label: 'Secrets are represented by references only',
+			ok: !JSON.stringify(input.unit.config).match(/(token|secret|password|key)\s*[:=]\s*[^",}]+/iu),
+			expected: 'secretRefs',
+			observed: input.unit.secretRefs,
+			issues: [],
+		},
+	];
+	if (input.unit.host.id === 'railway' && input.environment === 'prod' && unitConfig(input).sourceMode === 'image') {
+		const imageRef = unitConfig(input).imageRef;
+		const hasImageRef = typeof imageRef === 'string' && imageRef.trim().length > 0;
+		checks.push({
+			key: 'railway-image-ref',
+			label: 'Production Railway service uses an immutable image reference',
+			ok: hasImageRef,
+			expected: unitConfig(input).imageRefEnv ? `${unitConfig(input).imageRefEnv}=<image>:<tag>` : '<image>:<tag>',
+			observed: imageRef ?? null,
+			issues: hasImageRef ? [] : [`Production Railway service ${unitConfig(input).serviceName ?? input.unit.id} is image-backed but no image reference was resolved.`],
+		});
+	}
+	const verified = checks.every((check) => check.ok);
 	return {
 		unitId: input.unit.id,
-		status: missing.length === 0 ? input.observed.status : 'blocked',
-		verified: missing.length === 0,
-		checks: [
-			{
-				key: 'host-capabilities',
-				label: 'Host supports required capabilities',
-				ok: missing.length === 0,
-				expected: input.unit.requiredCapabilities,
-				observed: [...hostCapabilities],
-				issues: missing.map((capability) => `Missing host capability: ${capability}`),
-			},
-			{
-				key: 'secrets-redacted',
-				label: 'Secrets are represented by references only',
-				ok: !JSON.stringify(input.unit.config).match(/(token|secret|password|key)\s*[:=]\s*[^",}]+/iu),
-				expected: 'secretRefs',
-				observed: input.unit.secretRefs,
-				issues: [],
-			},
-		],
+		status: verified ? input.observed.status : 'blocked',
+		verified,
+		checks,
 		warnings: [],
 	};
 }

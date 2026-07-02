@@ -678,8 +678,15 @@ async function reconcileSaveHostedEnvironment(
 	helpers: WorkflowOperationHelpers,
 	workflowRunId: string,
 	operation: Extract<TreeseedWorkflowOperationId, 'save' | 'release'> = 'save',
+	envOverlay: Record<string, string | undefined> = {},
 ) {
-	const graph = compileTreeseedHostingGraph({ tenantRoot: root, environment });
+	const target = createPersistentDeployTarget(environment);
+	const env = {
+		...helpers.context.env,
+		...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
+		...envOverlay,
+	};
+	const graph = compileTreeseedHostingGraph({ tenantRoot: root, environment, env });
 	const selector = selectorFromWorkflowHostingGraph(graph);
 	if (process.env.TREESEED_WORKFLOW_HOSTED_RECONCILE_MODE === 'skip') {
 		return {
@@ -696,11 +703,6 @@ async function reconcileSaveHostedEnvironment(
 			})),
 		};
 	}
-	const target = createPersistentDeployTarget(environment);
-	const env = {
-		...helpers.context.env,
-		...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
-	};
 	const reconcileSession = new Map<string, unknown>([['workflowRunId', workflowRunId]]);
 	helpers.write(`[${operation}][workflow] Reconciling ${environment} hosted deployments for ${graph.units.length} selected resources.`);
 	const reconcile = await reconcileTreeseedTarget({
@@ -756,6 +758,25 @@ async function reconcileSaveHostedEnvironment(
 		postApplyStatus: status,
 		liveVerification: live,
 	};
+}
+
+function productionReleaseImageRefEnv(selectedVersions: Map<string, string>) {
+	const refs: Record<string, string> = {};
+	const apiVersion = selectedVersions.get('@treeseed/api');
+	if (apiVersion) {
+		refs.TREESEED_API_IMAGE_REF = `treeseed/api:${apiVersion}`;
+		refs.TREESEED_OPERATIONS_RUNNER_IMAGE_REF = `treeseed/op-runner:${apiVersion}`;
+	}
+	const agentVersion = selectedVersions.get('@treeseed/agent');
+	if (agentVersion) {
+		refs.TREESEED_AGENT_MANAGER_IMAGE_REF = `treeseed/agent-manager:${agentVersion}`;
+		refs.TREESEED_AGENT_RUNNER_IMAGE_REF = `treeseed/agent-runner:${agentVersion}`;
+	}
+	const treedxVersion = selectedVersions.get('treedx') ?? selectedVersions.get('@treeseed/treedx');
+	if (treedxVersion) {
+		refs.TREESEED_PUBLIC_TREEDX_IMAGE_REF = `treeseed/treedx:${treedxVersion}`;
+	}
+	return refs;
 }
 
 function recordHostedDeploymentStatesFromRootGates(
@@ -6555,7 +6576,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				const publishedArtifacts = await executeJournalStep(root, workflowRun.runId, 'verify-published-artifacts', () =>
 					verifyPublishedReleaseArtifacts(selectedVersions));
 				const productionHosting = await executeJournalStep(root, workflowRun.runId, 'production-hosting', () =>
-					reconcileSaveHostedEnvironment(root, 'prod', helpers, workflowRun.runId, 'release'));
+					reconcileSaveHostedEnvironment(root, 'prod', helpers, workflowRun.runId, 'release', productionReleaseImageRefEnv(selectedVersions)));
 				const backMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () => {
 					const packageBackMerges = checkedOutWorkspacePackageRepos(root)
 						.filter((pkg) => selectedPackageSet.has(pkg.name))
