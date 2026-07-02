@@ -124,7 +124,7 @@ describe('package reference policy', () => {
 		}, null, 2), 'utf8');
 
 		expect(collectDevelopmentCommitReferenceIssues(root).map((issue) => issue.reason)).toEqual([
-			'non-git-commit-ref',
+			'prerelease-ref',
 			'lockfile-git-ref-is-not-commit-sha',
 		]);
 		expect(() => assertDevelopmentInternalCommitReferences(root)).toThrow(/commit SHAs/u);
@@ -138,13 +138,15 @@ describe('package reference policy', () => {
 		expect(() => assertDevelopmentInternalCommitReferences(root)).not.toThrow();
 	});
 
-	it('does not rewrite Docker-only packages as installable release dependencies', () => {
+	it('rewrites public npm packages with Docker images while excluding private Docker-only packages', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-package-policy-'));
 		const sdkDir = resolve(root, 'packages', 'sdk');
 		const adminDir = resolve(root, 'packages', 'admin');
+		const agentDir = resolve(root, 'packages', 'agent');
 		const apiDir = resolve(root, 'packages', 'api');
 		mkdirSync(sdkDir, { recursive: true });
 		mkdirSync(adminDir, { recursive: true });
+		mkdirSync(agentDir, { recursive: true });
 		mkdirSync(apiDir, { recursive: true });
 		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
 			name: '@treeseed/market',
@@ -161,11 +163,20 @@ describe('package reference policy', () => {
 			private: true,
 		}, null, 2), 'utf8');
 		writeFileSync(resolve(apiDir, 'treeseed.package.yaml'), 'id: "@treeseed/api"\nname: TreeSeed API\nkind: node-typescript\npublishTarget: docker\n', 'utf8');
+		writeFileSync(resolve(agentDir, 'package.json'), JSON.stringify({
+			name: '@treeseed/agent',
+			version: '0.11.0-dev.staging.1',
+			publishConfig: {
+				access: 'public',
+			},
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(agentDir, 'treeseed.package.yaml'), 'id: "@treeseed/agent"\nname: TreeSeed Agent\nkind: node-typescript\npublishTarget: docker\n', 'utf8');
 		writeFileSync(resolve(adminDir, 'package.json'), JSON.stringify({
 			name: '@treeseed/admin',
 			version: '0.11.0-dev.staging.1',
 			dependencies: {
 				'@treeseed/sdk': '0.11.0-dev.staging.1',
+				'@treeseed/agent': '^0.11.0-dev.staging.1',
 			},
 			peerDependencies: {
 				'@treeseed/api': '^0.4.1',
@@ -179,16 +190,19 @@ describe('package reference policy', () => {
 
 		const versions = new Map([
 			['@treeseed/sdk', '0.11.0'],
+			['@treeseed/agent', '0.11.0'],
 			['@treeseed/api', '0.5.0'],
 		]);
 		const installableVersions = installableInternalDependencyVersions(root, versions);
 		const rewrites = rewriteProjectInternalDependenciesToStableVersions(root, versions);
 
 		expect(installableVersions.has('@treeseed/sdk')).toBe(true);
+		expect(installableVersions.has('@treeseed/agent')).toBe(true);
 		expect(installableVersions.has('@treeseed/api')).toBe(false);
-		expect(rewrites.map((rewrite) => rewrite.packageName)).toEqual(['@treeseed/sdk']);
+		expect(rewrites.map((rewrite) => rewrite.packageName)).toEqual(['@treeseed/sdk', '@treeseed/agent']);
 		const adminPackageJson = JSON.parse(readFileSync(resolve(adminDir, 'package.json'), 'utf8'));
 		expect(adminPackageJson.dependencies['@treeseed/sdk']).toBe('0.11.0');
+		expect(adminPackageJson.dependencies['@treeseed/agent']).toBe('0.11.0');
 		expect(adminPackageJson.peerDependencies['@treeseed/api']).toBe('^0.4.1');
 	});
 
@@ -219,6 +233,11 @@ describe('package reference policy', () => {
 
 		const corePackageJson = JSON.parse(readFileSync(resolve(coreDir, 'package.json'), 'utf8'));
 		corePackageJson.dependencies['@treeseed/sdk'] = 'github:treeseed-ai/sdk#0.10.2-dev.staging.20260520T010203Z';
+		writeFileSync(resolve(coreDir, 'package.json'), JSON.stringify(corePackageJson, null, 2), 'utf8');
+
+		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).toThrow(/plain semver npm versions/u);
+
+		corePackageJson.dependencies['@treeseed/sdk'] = '^0.10.2-dev.staging.20260520T010203Z';
 		writeFileSync(resolve(coreDir, 'package.json'), JSON.stringify(corePackageJson, null, 2), 'utf8');
 
 		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).toThrow(/plain semver npm versions/u);

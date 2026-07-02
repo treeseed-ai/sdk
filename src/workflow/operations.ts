@@ -140,8 +140,6 @@ import { discoverTreeseedPackageAdapters } from '../operations/services/package-
 import {
 	assertNoInternalDevReferences,
 	collectInternalDevReferenceIssues,
-	installableInternalDependencyVersions,
-	normalizeGitRemoteForManifest,
 	rewriteProjectInternalDependenciesToStableVersions,
 } from '../operations/services/package-reference-policy.ts';
 import {
@@ -1256,8 +1254,6 @@ function writeJsonFile(path: string, value: Record<string, unknown>) {
 }
 
 function applyStableWorkspaceVersionChanges(root: string, versions: Map<string, string>) {
-	const dependencyVersions = installableInternalDependencyVersions(root, versions);
-	const stableGitReferences = stablePackageGitReferences(root, dependencyVersions);
 	for (const target of [{ name: '@treeseed/market', dir: root }, ...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir }))]) {
 		const packageJsonPath = resolve(target.dir, 'package.json');
 		if (!existsSync(packageJsonPath)) continue;
@@ -1283,23 +1279,7 @@ function applyStableWorkspaceVersionChanges(root: string, versions: Map<string, 
 			writeJsonFile(packageJsonPath, packageJson);
 		}
 	}
-}
-
-function stablePackageGitReferences(root: string, versions: Map<string, string>) {
-	return new Map(workspacePackages(root)
-		.map((pkg) => {
-			const version = versions.get(pkg.name);
-			if (!version) return null;
-			let remote: string | null = null;
-			try {
-				remote = originRemoteUrl(pkg.dir);
-			} catch {
-				remote = null;
-			}
-			const manifestRemote = normalizeGitRemoteForManifest(remote ?? '', 'preserve-origin');
-			return manifestRemote ? [pkg.name, `${manifestRemote}#${version}`] as const : null;
-		})
-		.filter((entry): entry is readonly [string, string] => Boolean(entry)));
+	rewriteProjectInternalDependenciesToStableVersions(root, versions);
 }
 
 function gitObjectCommit(repoDir: string, ref: string) {
@@ -6224,7 +6204,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						}));
 					const rootInstall = runReleaseNpmInstall(root, { workspaceRoot: root });
 					const remainingDevReferences = collectInternalDevReferenceIssues(root, selectedPackageSet)
-						.filter((issue) => issue.reason !== 'git-release-ref' && issue.reason !== 'lockfile-git-release-ref');
+						.filter((issue) => issue.reason !== 'lockfile-git-release-ref');
 					if (remainingDevReferences.length > 0) {
 						const rendered = remainingDevReferences
 							.map((issue) => `${issue.repoName}: ${issue.filePath} ${issue.dependencyName ?? ''} ${issue.reason} ${issue.spec}`)

@@ -43,7 +43,7 @@ export function internalDependencyFields(packageJson: Record<string, unknown> | 
 }
 
 export function isPrereleaseVersion(version: string) {
-	return /^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/u.test(String(version).trim());
+	return /^[~^]?\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/u.test(String(version).trim());
 }
 
 export function isStableVersion(version: string) {
@@ -184,13 +184,23 @@ export function updateInternalDependencySpecs(
 }
 
 export function installableInternalDependencyVersions(root = workspaceRoot(), versions: Map<string, string>) {
-	const publishTargets = new Map<string, string>();
+	const installablePackages = new Set<string>();
 	for (const adapter of discoverTreeseedPackageAdapters(root)) {
-		const publishTarget = adapter.publishTarget ?? 'npm';
-		publishTargets.set(adapter.id, publishTarget);
-		publishTargets.set(adapter.name, publishTarget);
+		if (adapter.publishTarget === 'npm' || publicNpmPackageManifest(adapter.dir)) {
+			installablePackages.add(adapter.id);
+			installablePackages.add(adapter.name);
+		}
 	}
-	return new Map([...versions.entries()].filter(([packageName]) => (publishTargets.get(packageName) ?? 'npm') === 'npm'));
+	return new Map([...versions.entries()].filter(([packageName]) => installablePackages.has(packageName)));
+}
+
+function publicNpmPackageManifest(packageRoot: string) {
+	const packageJsonPath = resolve(packageRoot, 'package.json');
+	if (!existsSync(packageJsonPath)) return false;
+	const packageJson = readJson(packageJsonPath);
+	if (packageJson.private === true) return false;
+	const publishConfig = packageJson.publishConfig;
+	return Boolean(publishConfig && typeof publishConfig === 'object' && (publishConfig as Record<string, unknown>).access === 'public');
 }
 
 export function rewriteInternalDependenciesToStableVersions(root = workspaceRoot(), versions: Map<string, string>) {
