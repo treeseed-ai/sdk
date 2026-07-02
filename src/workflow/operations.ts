@@ -2399,9 +2399,9 @@ function prepareAdapterReleaseMetadata(root: string, pkg: { name: string; dir: s
 	}
 	if (existsSync(resolve(pkg.dir, 'package.json'))) {
 		return {
-			status: 'updated',
+			status: 'npm-install',
 			adapter: adapter?.id ?? pkg.name,
-			packageLock: updatePackageLockRootVersion(pkg.dir, version),
+			...runReleaseNpmInstall(pkg.dir, { workspaceRoot: root }),
 		};
 	}
 	return { status: 'skipped', adapter: adapter?.id ?? pkg.name, reason: 'no package metadata updater' };
@@ -6424,12 +6424,12 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							name: pkg.name,
 							version: selectedVersions.get(pkg.name) ?? null,
 							result: selectedVersions.has(pkg.name)
-								? prepareAdapterReleaseMetadata(root, pkg, selectedVersions.get(pkg.name)!)
+								? { status: 'pending-package-release-step' }
 								: { status: 'skipped', reason: 'no planned version' },
 						}));
 					const rootPackageLock = updatePackageLockRootVersion(root, plannedRelease.rootVersion);
 					const remainingDevReferences = collectInternalDevReferenceIssues(root, selectedPackageSet)
-						.filter((issue) => issue.reason !== 'lockfile-git-release-ref');
+						.filter((issue) => !issue.reason.startsWith('lockfile-'));
 					if (remainingDevReferences.length > 0) {
 						const rendered = remainingDevReferences
 							.map((issue) => `${issue.repoName}: ${issue.filePath} ${issue.dependencyName ?? ''} ${issue.reason} ${issue.spec}`)
@@ -6448,6 +6448,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					const version = selectedVersions.get(pkg.name);
 					if (!version) continue;
 					const packageRelease = await executeJournalStep(root, workflowRun.runId, `release-${pkg.name}`, async () => {
+						const metadata = prepareAdapterReleaseMetadata(root, pkg, version);
 						const changelog = updateReleaseChangelog(pkg.dir, {
 							version,
 							sourceRef: `origin/${PRODUCTION_BRANCH}`,
@@ -6482,6 +6483,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							path: relative(root, pkg.dir),
 							version,
 							changelog,
+							metadata,
 							commit,
 							promotion,
 							tag,
@@ -6492,6 +6494,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					packageReleases.push(packageRelease);
 				}
 				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
+					const rootInstall = runReleaseNpmInstall(root, { workspaceRoot: root });
 					const changelog = updateReleaseChangelog(repoRoot(root), {
 						version: plannedRelease.rootVersion,
 						sourceRef: `origin/${PRODUCTION_BRANCH}`,
@@ -6515,6 +6518,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						version: plannedRelease.rootVersion,
 						releaseTag: plannedRelease.releaseTag,
 						changelog,
+						rootInstall,
 						commit,
 						promotion,
 						tag,
