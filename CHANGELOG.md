@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.12.23] - 2026-07-03
+
+### Fixed
+
+- fix: bound hosted web provider commands (d489310b8f04)
+- fix: retry transient cloudflare deploy failures (00724f590f1d)
+
+### Tests
+
+- test: keep api checks out of market workflows (3c5816b99312)
+
 ## [0.12.22] - 2026-07-03
 
 ### Fixed
