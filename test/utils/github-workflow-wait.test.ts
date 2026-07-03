@@ -197,6 +197,71 @@ describe('GitHub workflow wait progress', () => {
 		expect(result).toMatchObject({ runId: 457, conclusion: 'success' });
 	});
 
+	it('returns a matching failed workflow immediately even when another matching run is active', async () => {
+		const client = {
+			rest: {
+				actions: {
+					listWorkflowRuns: async () => ({
+						data: {
+							workflow_runs: [
+								{
+									id: 458,
+									status: 'in_progress',
+									conclusion: null,
+									html_url: 'https://github.com/acme/widget/actions/runs/458',
+									head_sha: 'def456',
+									head_branch: 'staging',
+									created_at: '2026-05-07T01:01:00Z',
+									updated_at: '2026-05-07T01:02:00Z',
+								},
+								{
+									id: 459,
+									status: 'completed',
+									conclusion: 'failure',
+									html_url: 'https://github.com/acme/widget/actions/runs/459',
+									head_sha: 'def456',
+									head_branch: 'staging',
+									created_at: '2026-05-07T01:00:00Z',
+									updated_at: '2026-05-07T01:03:00Z',
+								},
+							],
+						},
+					}),
+					getWorkflowRun: async () => {
+						throw new Error('waiter should not poll an active sibling after seeing a failed run');
+					},
+					listJobsForWorkflowRun: async () => ({
+						data: {
+							jobs: [{
+								id: 1,
+								name: 'deploy',
+								status: 'completed',
+								conclusion: 'failure',
+								html_url: 'https://github.com/acme/widget/actions/runs/459/job/1',
+								steps: [{ name: 'deploy app', status: 'completed', conclusion: 'failure' }],
+							}],
+						},
+					}),
+				},
+			},
+		};
+
+		const result = await waitForGitHubWorkflowRunCompletion('acme/widget', {
+			client: client as any,
+			workflow: 'release-gate.yml',
+			headSha: 'def456',
+			branch: 'staging',
+			pollSeconds: 0,
+		});
+
+		expect(result).toMatchObject({
+			runId: 459,
+			status: 'completed',
+			conclusion: 'failure',
+			failedJobs: [{ name: 'deploy', conclusion: 'failure' }],
+		});
+	});
+
 	it('dispatches a workflow once when no pushed run appears for the requested head', async () => {
 		const dispatches: Array<Record<string, unknown>> = [];
 		let listCalls = 0;
