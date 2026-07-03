@@ -162,6 +162,10 @@ import { runTreeseedHostingAudit, type TreeseedHostingAuditEnvironment } from '.
 import { collectTreeseedHostedServiceChecks } from '../operations/services/hosted-service-checks.ts';
 import { collectTreeseedDeploymentReadiness } from '../operations/services/deployment-readiness.ts';
 import { collectTreeseedLiveHostedServiceChecks } from '../operations/services/live-hosted-service-checks.ts';
+import {
+	configuredRailwayServices,
+	waitForRailwayManagedDeploymentsSettled,
+} from '../operations/services/railway-deploy.ts';
 import { discoverTreeseedApplications } from '../hosting/apps.ts';
 import { compileTreeseedHostingGraph } from '../hosting/graph.ts';
 import { resolveTreeseedWorkflowState, type TreeseedWorkflowStatusOptions } from '../workflow-state.ts';
@@ -744,6 +748,28 @@ async function reconcileSaveHostedEnvironment(
 		workflowError(operation, 'hosted_reconcile_failed', `Hosted reconciliation for ${environment} did not verify:\n${status.blockers.join('\n')}`, {
 			details: { environment, selector, status, reconcile },
 		});
+	}
+	const selectedRailwayServiceNames = new Set(graph.units
+		.filter((unit) => unit.host.id === 'railway')
+		.map((unit) => typeof unit.config.serviceName === 'string' ? unit.config.serviceName : null)
+		.filter((value): value is string => Boolean(value)));
+	const selectedRailwayServices = configuredRailwayServices(root, environment, env)
+		.filter((service) => selectedRailwayServiceNames.has(service.serviceName));
+	if (selectedRailwayServices.length > 0) {
+		const deployments = await waitForRailwayManagedDeploymentsSettled(root, environment, {
+			services: selectedRailwayServices,
+			env,
+			timeoutMs: operation === 'release' ? 900_000 : 600_000,
+			onProgress: (line, stream) => helpers.write(`[${operation}][railway] ${line}`, stream),
+		});
+		if (!deployments.ok) {
+			const deploymentFailures = deployments.checks
+				.filter((check) => check.ok !== true && check.skipped !== true)
+				.map((check) => `${check.serviceName ?? check.service}: ${check.message ?? check.status ?? 'deployment did not settle'}`);
+			workflowError(operation, 'hosted_deployment_failed', `Hosted Railway deployments for ${environment} did not settle:\n${deploymentFailures.join('\n')}`, {
+				details: { environment, selector, deployments, reconcile },
+			});
+		}
 	}
 	const live = await collectTreeseedLiveHostedServiceChecks({
 		tenantRoot: root,
@@ -2514,6 +2540,41 @@ function releaseWorkflowForPackage(root: string, packageName: string) {
 	void root;
 	void packageName;
 	return 'publish.yml';
+}
+
+function productionDeployWorkflowForPackage(root: string, packageName: string) {
+	const adapter = discoverTreeseedPackageAdapters(root).find((entry) => entry.id === packageName || entry.name === packageName);
+	const repoPath = adapter?.dir;
+	if (!repoPath || !existsSync(resolve(repoPath, 'treeseed.site.yaml'))) {
+		return null;
+	}
+	if (!workflowFileExists(repoPath, 'deploy.yml')) {
+		return null;
+	}
+	return 'deploy.yml';
+}
+
+function productionPackageDeployGates(root: string, packageReleases: Array<Record<string, unknown>>): GitHubActionsWorkflowGate[] {
+	return packageReleases.flatMap((release) => {
+		const name = typeof release.name === 'string' ? release.name : '';
+		const version = typeof release.version === 'string' ? release.version : '';
+		const path = typeof release.path === 'string' ? resolve(root, release.path) : '';
+		const commit = release.commit && typeof release.commit === 'object'
+			? release.commit as { commitSha?: unknown }
+			: null;
+		const headSha = typeof commit?.commitSha === 'string' ? commit.commitSha : '';
+		const workflow = name ? productionDeployWorkflowForPackage(root, name) : null;
+		if (!name || !version || !path || !headSha || !workflow) {
+			return [];
+		}
+		return [hostedDeployGate({
+			name,
+			repoPath: path,
+			workflow,
+			branch: version,
+			headSha,
+		})];
+	});
 }
 
 function prepareAdapterReleaseMetadata(root: string, pkg: { name: string; dir: string }, version: string) {
@@ -6628,6 +6689,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						};
 					}),
 					{ id: 'verify-published-artifacts', description: 'Verify immutable registry artifacts exist after publish workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
+					{ id: 'production-package-deploy-workflows', description: 'Wait for production package deploy workflows before live verification', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'production-hosting', description: 'Reconcile and live-verify production hosted resources before root deploy', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'production-api-guarantees', description: 'Run production API release guarantees before root deploy', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'release-root', description: `Release market ${plannedRelease.rootVersion}`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
@@ -6750,6 +6812,17 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				}
 				const publishedArtifacts = await executeJournalStep(root, workflowRun.runId, 'verify-published-artifacts', () =>
 					verifyPublishedReleaseArtifacts(selectedVersions));
+				const productionPackageDeployWorkflows = await executeJournalStep(root, workflowRun.runId, 'production-package-deploy-workflows', () => {
+					const deployGates = productionPackageDeployGates(root, packageReleases);
+					if (deployGates.length === 0) {
+						return { workflowGates: [], status: 'skipped', reason: 'no selected production package deploy workflows' };
+					}
+					return waitForWorkflowGates('release', deployGates, ciMode, {
+						root,
+						runId: workflowRun.runId,
+						onProgress: (line, stream) => helpers.write(line, stream),
+					}).then((workflowGates) => ({ workflowGates }));
+				});
 				const productionHosting = await executeJournalStep(root, workflowRun.runId, 'production-hosting', () =>
 					reconcileSaveHostedEnvironment(root, 'prod', helpers, workflowRun.runId, 'release', productionReleaseImageRefEnv(selectedVersions), { liveAppId: 'api' }));
 				const productionApiGuarantees = await executeJournalStep(root, workflowRun.runId, 'production-api-guarantees', () =>
@@ -6836,6 +6909,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					rootRelease,
 					publishWait: publishWait.workflowGates,
 					publishedArtifacts,
+					productionPackageDeployWorkflows,
 					productionHosting,
 					productionApiGuarantees,
 					productionWebVerification,
