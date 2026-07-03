@@ -233,8 +233,12 @@ export function migrateLegacyDeployStateUnits(legacyState: Record<string, any>, 
 	return units;
 }
 
-export function loadTreeseedReconcileState(tenantRoot: string, target: TreeseedReconcileTarget): TreeseedReconcileStateRecord {
-	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: target.kind === 'persistent' ? target.scope : 'staging', env: process.env }).deployConfig;
+export function loadTreeseedReconcileState(
+	tenantRoot: string,
+	target: TreeseedReconcileTarget,
+	env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
+): TreeseedReconcileStateRecord {
+	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: target.kind === 'persistent' ? target.scope : 'staging', env }).deployConfig;
 	const legacyState = loadDeployState(tenantRoot, deployConfig, { target });
 	const persistedUnits = legacyState.units && typeof legacyState.units === 'object'
 		? legacyState.units as Record<string, TreeseedUnitPersistedState>
@@ -247,8 +251,12 @@ export function loadTreeseedReconcileState(tenantRoot: string, target: TreeseedR
 	};
 }
 
-export function writeTreeseedReconcileState(tenantRoot: string, reconcileState: TreeseedReconcileStateRecord) {
-	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: reconcileState.target.kind === 'persistent' ? reconcileState.target.scope : 'staging', env: process.env }).deployConfig;
+export function writeTreeseedReconcileState(
+	tenantRoot: string,
+	reconcileState: TreeseedReconcileStateRecord,
+	env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
+) {
+	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: reconcileState.target.kind === 'persistent' ? reconcileState.target.scope : 'staging', env }).deployConfig;
 	const legacyState = loadDeployState(tenantRoot, deployConfig, { target: reconcileState.target });
 	writeDeployState(tenantRoot, {
 		...legacyState,

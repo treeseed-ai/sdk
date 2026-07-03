@@ -2402,7 +2402,7 @@ function getPersistedCustomDomainState(input: TreeseedReconcileAdapterInput, pro
 	}
 	if (provider === 'railway') {
 		try {
-			const state = loadTreeseedReconcileState(input.context.tenantRoot, input.context.target);
+			const state = loadTreeseedReconcileState(input.context.tenantRoot, input.context.target, input.context.launchEnv);
 			const unitId = createTreeseedReconcileUnitId('custom-domain:api', domain);
 			const unit = state.units[unitId];
 			const reconciled = unit?.lastReconciledState;

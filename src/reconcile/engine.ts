@@ -287,7 +287,7 @@ export async function refreshTreeseedUnits({
 	const units = filterUnitsBySelector(baseUnits, selector);
 	const deployConfig = derived.deployConfig;
 	const registry = createTreeseedReconcileRegistry(deployConfig);
-	const reconcileState = loadTreeseedReconcileState(tenantRoot, target);
+	const reconcileState = loadTreeseedReconcileState(tenantRoot, target, env);
 	const context = createRunContext(tenantRoot, target, env, write);
 	const observations = new Map<string, TreeseedObservedUnitState>();
 	await runByDependencyLevel(topologicallySortDesiredUnits(units), async (unit) => {
@@ -397,7 +397,7 @@ export async function reconcileTreeseedTarget({
 	const persistVerifiedResult = async (persisted: TreeseedUnitPersistedState, verifiedResult: TreeseedReconcileResult) => {
 		persistChain = persistChain.then(() => {
 			persistResult(planned.state, persisted, verifiedResult);
-			writeTreeseedReconcileState(tenantRoot, planned.state);
+			writeTreeseedReconcileState(tenantRoot, planned.state, env);
 		});
 		await persistChain;
 	};
@@ -561,7 +561,7 @@ export async function reconcileTreeseedTarget({
 		results.push(verifiedResult);
 	});
 	if (!dryRun) {
-		writeTreeseedReconcileState(tenantRoot, planned.state);
+		writeTreeseedReconcileState(tenantRoot, planned.state, env);
 	}
 	return {
 		target,
@@ -588,10 +588,10 @@ export async function destroyTreeseedTargetUnits({
 	units?: TreeseedDesiredUnit[];
 	write?: (line: string) => void;
 }) {
-	const { units: allUnits, deployConfig } = deriveTreeseedDesiredUnits({ tenantRoot, target });
+	const { units: allUnits, deployConfig } = deriveTreeseedDesiredUnits({ tenantRoot, target, env });
 	const units = filterUnitsBySelector(explicitUnits ?? allUnits, selector);
 	const registry = createTreeseedReconcileRegistry(deployConfig);
-	const reconcileState = loadTreeseedReconcileState(tenantRoot, target);
+	const reconcileState = loadTreeseedReconcileState(tenantRoot, target, env);
 	const context = createRunContext(tenantRoot, target, env, write);
 	const results: TreeseedReconcileResult[] = [];
 	for (const unit of reverseTopologicallySortedUnits(units)) {

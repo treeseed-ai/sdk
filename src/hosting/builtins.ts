@@ -75,7 +75,13 @@ function defaultVerify(input: TreeseedHostAdapterOperationInput & { observed: Tr
 			issues: [],
 		},
 	];
-	if (input.unit.host.id === 'railway' && input.environment === 'prod' && unitConfig(input).sourceMode === 'image') {
+	if (
+		input.unit.host.id === 'railway'
+		&& input.environment === 'prod'
+		&& unitConfig(input).sourceMode === 'image'
+		&& input.unit.serviceType.id !== 'relational-database'
+		&& unitConfig(input).resourceType !== 'postgres'
+	) {
 		const imageRef = unitConfig(input).imageRef;
 		const hasImageRef = typeof imageRef === 'string' && imageRef.trim().length > 0;
 		checks.push({
