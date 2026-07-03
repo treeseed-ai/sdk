@@ -2554,18 +2554,28 @@ function productionDeployWorkflowForPackage(root: string, packageName: string) {
 	return 'deploy.yml';
 }
 
-function productionPackageDeployGates(root: string, packageReleases: Array<Record<string, unknown>>): GitHubActionsWorkflowGate[] {
-	return packageReleases.flatMap((release) => {
-		const name = typeof release.name === 'string' ? release.name : '';
-		const version = typeof release.version === 'string' ? release.version : '';
-		const path = typeof release.path === 'string' ? resolve(root, release.path) : '';
-		const commit = release.commit && typeof release.commit === 'object'
-			? release.commit as { commitSha?: unknown }
-			: null;
-		const headSha = typeof commit?.commitSha === 'string' ? commit.commitSha : '';
-		const workflow = name ? productionDeployWorkflowForPackage(root, name) : null;
-		if (!name || !version || !path || !headSha || !workflow) {
+function tagCommitSha(repoDir: string, tagName: string) {
+	try {
+		return runGit(['rev-list', '-n', '1', tagName], { cwd: repoDir, capture: true }).trim();
+	} catch {
+		return '';
+	}
+}
+
+function productionPackageDeployGates(root: string, versions: Map<string, string>): GitHubActionsWorkflowGate[] {
+	return discoverTreeseedPackageAdapters(root).flatMap((adapter) => {
+		const name = adapter.id;
+		const version = versions.get(name);
+		const path = adapter.dir;
+		const workflow = productionDeployWorkflowForPackage(root, name);
+		if (!name || !version || !path || !workflow) {
 			return [];
+		}
+		const headSha = tagCommitSha(path, version);
+		if (!headSha) {
+			workflowError('release', 'github_workflow_failed', `${name} ${workflow} cannot be checked because release tag ${version} is missing locally.`, {
+				details: { packageName: name, workflow, version, repoPath: path },
+			});
 		}
 		return [hostedDeployGate({
 			name,
@@ -6813,7 +6823,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				const publishedArtifacts = await executeJournalStep(root, workflowRun.runId, 'verify-published-artifacts', () =>
 					verifyPublishedReleaseArtifacts(selectedVersions));
 				const productionPackageDeployWorkflows = await executeJournalStep(root, workflowRun.runId, 'production-package-deploy-workflows', () => {
-					const deployGates = productionPackageDeployGates(root, packageReleases);
+					const deployGates = productionPackageDeployGates(root, allVersions);
 					if (deployGates.length === 0) {
 						return { workflowGates: [], status: 'skipped', reason: 'no selected production package deploy workflows' };
 					}
