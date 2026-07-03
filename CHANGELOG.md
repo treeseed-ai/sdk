@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.16] - 2026-07-03
+
+### Infrastructure
+
+- Trace release workflow startup (e545d52d46d8)
+- Limit release resume journal scans (8fad049d6166)
+- Honor release image refs in Railway reconciliation (ce04b14de975)
+
+### Tests
+
+- Isolate Railway image ref test env (d86a878a300f)
+
 ## [0.12.15] - 2026-07-02
 
 ### Changed
