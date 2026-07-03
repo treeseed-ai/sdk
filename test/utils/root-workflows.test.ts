@@ -110,14 +110,16 @@ describe('root workflow bootstrap selection', () => {
 		expect(source).toContain('.gitignore');
 		expect(source).not.toContain('processing_changed');
 		expect(source).not.toContain('docs/*|migrations/*');
+		expect(source).not.toContain('api-package-gate');
+		expect(source).not.toContain('Wait for API package CI/CD');
 		expect(webSource).not.toContain('TREESEED_WORKFLOW_SKIP_PROVISION');
-		expect(verifySource).toContain('packages/api');
+		expect(verifySource).not.toContain('packages/api');
 		expect(source).not.toContain('submodules: false');
 		expect(source).not.toContain('sparse-checkout: |');
 		expect(source).not.toContain('delete pkg.workspaces');
 		expect(verifySource).not.toContain('delete pkg.workspaces');
 		expect(verifySource).toContain('npx --yes tsx ./.github/scripts/prepare-workspace-install.ts');
-		expect(verifySource).toContain('packages/api packages/ui');
+		expect(verifySource).toContain('packages/cli packages/ui');
 		expect(prepareInstallSource).toContain('localPackageNames');
 		expect(prepareInstallSource).toContain('dependencyName !== manifest.name');
 		expect(prepareInstallSource).toContain('localPackageNames.has(dependencyName)');
