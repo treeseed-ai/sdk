@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.12.22] - 2026-07-03
+
+### Fixed
+
+- fix: keep publish gates after release tags (48e756a88772)
+- fix: fail reconciled workflow dispatches on action failure (7f17d425a36d)
+- fix: restore workspace links before release gates (f69e60ee219d)
+- fix: adopt acceptance auth users on seed retry (3a533860fe94)
+- fix: fail github workflow gates on sibling failures (de2957a68244)
+- fix: match package root api database owner (0a6dd55bd06a)
+- fix: validate railway source drift against desired mode (760d1e784dee)
+- fix: allow staging image ref variable drift (64bd65150231)
+- fix: recognize package-root API database owner (ca397fb060f5)
+- fix: gate release on hosted package deploy workflows (86a98b42bfea)
+- fix: block release on production deploy failures (c03a127666fd)
+
 ## [0.12.21] - 2026-07-03
 
 ### Fixed
