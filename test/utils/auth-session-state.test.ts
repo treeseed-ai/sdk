@@ -18,6 +18,43 @@ function createAuthHarness() {
 }
 
 describe('D1 auth session state', () => {
+	it('adopts existing acceptance users by username when retrying a partial seed', async () => {
+		const { provider, sqlite } = createAuthHarness();
+		try {
+			await provider.createUser({
+				email: 'treeseed+acceptance-staging-siteadmin@treeseed.ai',
+				username: 'acceptance-staging-siteadmin',
+				displayName: 'Acceptance SiteAdmin',
+			});
+
+			const synced = await provider.syncUserIdentity({
+				provider: 'acceptance',
+				providerSubject: 'acceptance-staging:siteAdmin',
+				email: 'treeseed+acceptance-staging-siteadmin@treeseed.ai',
+				emailVerified: true,
+				username: 'acceptance-staging-siteadmin',
+				displayName: 'Acceptance SiteAdmin',
+				profile: {
+					acceptance: true,
+					namespace: 'acceptance-staging',
+					actorId: 'siteAdmin',
+				},
+			});
+
+			const users = await sqlite.prepare('SELECT id, username FROM users WHERE username = ?').bind('acceptance-staging-siteadmin').all();
+			const identities = await sqlite.prepare('SELECT user_id FROM user_identities WHERE provider = ? AND provider_subject = ?')
+				.bind('acceptance', 'acceptance-staging:siteAdmin')
+				.all();
+
+			expect(users.results).toHaveLength(1);
+			expect(identities.results).toEqual([{ user_id: synced.principal.id }]);
+			expect(synced.userId).toBe(synced.principal.id);
+			expect(users.results?.[0]).toMatchObject({ username: 'acceptance-staging-siteadmin' });
+		} finally {
+			sqlite.close();
+		}
+	});
+
 	it('requires issued web-session access tokens to still have a live session row', async () => {
 		const { provider, sqlite } = createAuthHarness();
 		try {
