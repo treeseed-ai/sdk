@@ -1026,16 +1026,16 @@ function resolveRailwayServiceSourcePolicy({ tenantRoot, scope, serviceKey, serv
 				? configuredSource.repo
 				: null;
 	const packageRepository = configuredRepo ?? readTreeseedPackageRepository(serviceRoot) ?? readTreeseedPackageRepository(tenantRoot);
-	const sourceEligible = ['api', 'operationsRunner', 'capacityProviderManager', 'capacityProviderRunner'].includes(serviceKey);
+	const apiPackageSourceEligible = ['api', 'operationsRunner'].includes(serviceKey);
 	const sourceMode = scope === 'prod'
 		? 'image'
+		: scope === 'staging' && apiPackageSourceEligible
+			? 'git'
 		: configuredMode === 'git' || configuredMode === 'image'
 			? configuredMode
 			: imageRef
-					? 'image'
-				: scope === 'staging' && sourceEligible && packageRepository
-					? 'git'
-					: 'git';
+				? 'image'
+			: 'git';
 	if (sourceMode !== 'git') {
 		return {
 			sourceMode: 'image',

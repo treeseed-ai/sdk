@@ -579,6 +579,80 @@ services:
 		});
 	});
 
+	it('ignores leaked production image refs for staging API package services', async () => {
+		const tenantRoot = await createTenantFixture();
+		await writeFile(
+			join(tenantRoot, 'treeseed.package.yaml'),
+			`id: "@treeseed/api"
+name: TreeSeed API
+repository: treeseed-ai/api
+publishTarget: docker
+deploymentSource:
+  staging: git
+  prod: image
+`,
+		);
+		await writeFile(
+			join(tenantRoot, 'treeseed.site.yaml'),
+			`name: Test API
+slug: treeseed-api
+siteUrl: https://api.example.com
+contactEmail: hello@example.com
+hosting:
+  kind: treeseed_control_plane
+runtime:
+  mode: treeseed_managed
+services:
+  api:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api
+      imageRefEnv: TREESEED_API_IMAGE_REF
+      sourceMode: git
+      buildCommand: npm run build
+      startCommand: npm run start:api
+  operationsRunner:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
+      imageRefEnv: TREESEED_OPERATIONS_RUNNER_IMAGE_REF
+      sourceMode: git
+      buildCommand: npm run build
+      startCommand: npm run start:runner
+      volumeMountPath: /data
+`,
+		);
+
+		const services = configuredRailwayServices(tenantRoot, 'staging', {
+			TREESEED_API_IMAGE_REF: 'treeseed/api:0.6.99',
+			TREESEED_OPERATIONS_RUNNER_IMAGE_REF: 'treeseed/op-runner:0.6.99',
+			TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.2.99',
+		});
+		const api = services.find((service) => service.key === 'api');
+		const runner = services.find((service) => service.key === 'operationsRunner');
+		const treeDx = services.find((service) => service.key === 'public-treedx-node-01');
+
+		expect(api).toMatchObject({
+			sourceMode: 'git',
+			imageRef: null,
+			sourceBranch: 'staging',
+		});
+		expect(runner).toMatchObject({
+			sourceMode: 'git',
+			imageRef: null,
+			sourceBranch: 'staging',
+		});
+		expect(treeDx).toMatchObject({
+			sourceMode: 'git',
+			imageRef: null,
+			sourceBranch: 'staging',
+		});
+	});
+
 	it('uses explicit production image refs for public TreeDX nodes', async () => {
 		const tenantRoot = await createTenantFixture();
 		vi.stubEnv('TREESEED_PUBLIC_TREEDX_IMAGE_REF', 'treeseed/treedx:0.2.11');
@@ -620,7 +694,7 @@ services:
 		expect(services.map((service) => service.startCommand).filter(Boolean).join('\n')).not.toContain('provider/entrypoint.js');
 	});
 
-	it('does not require local source roots for image-backed Railway services', async () => {
+	it('rejects image-backed staging API services without source metadata', async () => {
 		const tenantRoot = await createTenantFixture();
 		await writeFile(
 			join(tenantRoot, 'treeseed.site.yaml'),
@@ -650,7 +724,7 @@ services:
 `,
 		);
 
-		expect(() => validateRailwayServiceConfiguration(tenantRoot, 'staging')).not.toThrow();
+		expect(() => validateRailwayServiceConfiguration(tenantRoot, 'staging')).toThrow(/api: staging source builds require railway\.source\.repository/u);
 	});
 
 	it('does not require an agent checkout for image-backed capacity provider services', async () => {

@@ -237,16 +237,16 @@ function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey: strin
 			: typeof configuredSource.repo === 'string'
 				? configuredSource.repo
 				: readPackageRepository(resolveRailwayServiceSourceRoot(input, serviceKey, service)) ?? readPackageRepository(input.tenantRoot);
-	const sourceEligible = ['api', 'operationsRunner', 'capacityProviderManager', 'capacityProviderRunner'].includes(serviceKey);
+	const apiPackageSourceEligible = ['api', 'operationsRunner'].includes(serviceKey);
 	const mode = input.environment === 'prod'
 		? 'image'
+		: input.environment === 'staging' && apiPackageSourceEligible
+			? 'git'
 		: configuredMode === 'git' || configuredMode === 'image'
 			? configuredMode
 			: imageRef
-					? 'image'
-				: input.environment === 'staging' && sourceEligible && repository
-					? 'git'
-					: 'git';
+				? 'image'
+			: 'git';
 	if (mode !== 'git') {
 		return {
 			sourceMode: 'image',
