@@ -250,6 +250,7 @@ function runWrangler(
 }
 
 const WRANGLER_TRANSIENT_MAX_ATTEMPTS = 6;
+const WRANGLER_COMMAND_TIMEOUT_MS = 180_000;
 
 function wranglerTransientRetryDelayMs(attempt: number) {
 	return Math.min(5000 * 2 ** (attempt - 1), 60000);
@@ -283,6 +284,7 @@ async function runPrefixedWranglerWithRetry(
 			env,
 			write,
 			prefix,
+			timeoutMs: WRANGLER_COMMAND_TIMEOUT_MS,
 		});
 		if (result.status === 0) {
 			return result;

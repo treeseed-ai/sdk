@@ -120,6 +120,7 @@ describe('project platform workflow actions', () => {
 			expect(source).toContain('TREESEED_PROVIDER_TIMING_SUMMARY_PATH');
 			expect(source).toContain('treeseed-provider-timing.md');
 			expect(source).toContain('GITHUB_STEP_SUMMARY');
+			expect(source).toContain('timeout-minutes: 30');
 		}
 	});
 
@@ -130,9 +131,11 @@ describe('project platform workflow actions', () => {
 
 		expect(retryStart).toBeGreaterThanOrEqual(0);
 		expect(source).toContain('const WRANGLER_TRANSIENT_MAX_ATTEMPTS = 6;');
+		expect(source).toContain('const WRANGLER_COMMAND_TIMEOUT_MS = 180_000;');
 		expect(source).toContain('function wranglerTransientRetryDelayMs');
 		expect(source).toContain('code:\\s*7500');
 		expect(retrySource).toContain('attempt <= WRANGLER_TRANSIENT_MAX_ATTEMPTS');
+		expect(retrySource).toContain('timeoutMs: WRANGLER_COMMAND_TIMEOUT_MS');
 		expect(retrySource).toContain('Math.round(retryDelayMs / 1000)');
 		expect(retrySource).not.toContain('attempt <= 3');
 	});
