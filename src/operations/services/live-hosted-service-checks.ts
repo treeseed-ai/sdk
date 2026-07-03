@@ -193,7 +193,7 @@ function treeseedDatabaseDescriptors(tenantRoot: string, options: TreeseedLiveHo
 	}> = [];
 	const rootConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: options.target, env: process.env }).deployConfig;
 	const candidates = [
-		{ applicationId: 'web', applicationRoot: tenantRoot, config: rootConfig },
+		{ applicationId: null, applicationRoot: tenantRoot, config: rootConfig },
 		...discoverTreeseedApplications(tenantRoot).map((application) => ({
 			applicationId: application.id,
 			applicationRoot: application.root,
