@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.21] - 2026-07-03
+
+### Fixed
+
+- fix: harden production release verification (0c186101f9e7)
+
 ## [0.12.20] - 2026-07-03
 
 ### Fixed
