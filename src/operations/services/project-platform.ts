@@ -1148,7 +1148,7 @@ async function publishContent(
 				}, manifestFile, uploadOptions);
 				if (contentPurgeUrls.size > 0) {
 					try {
-						purgePublishedContentCaches(options.tenantRoot, [...contentPurgeUrls].filter(Boolean), { target });
+						purgePublishedContentCaches(options.tenantRoot, [...contentPurgeUrls].filter(Boolean), { target, env });
 					} catch {
 						// The purge helper persists its own error state.
 					}
@@ -1584,6 +1584,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		finalizeDeploymentState(options.tenantRoot, {
 			target: createPersistentDeployTarget(options.scope),
 			serviceResults,
+			env,
 		});
 	}
 	if (!managesRailwaySchedules || !selectedSystems.has('agents')) {

@@ -552,7 +552,8 @@ async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOp
 	const selectedApplication = options.appId
 		? discoverTreeseedApplications(options.tenantRoot).find((application) => application.id === options.appId || application.relativeRoot === options.appId)
 		: null;
-	if (!options.appId || options.appId === 'web' || selectedApplication?.roles.includes('web')) {
+	const webHttpSelected = selectedServiceKeys.size === 0 || selectedServiceKeys.has('web');
+	if (webHttpSelected && (!options.appId || options.appId === 'web' || selectedApplication?.roles.includes('web'))) {
 		const webConfig = selectedWebConfig(deployConfig, selectedApplication);
 		const webDomain = webConfig.surfaces?.web?.environments?.[options.target]?.domain
 			?? webConfig.surfaces?.web?.publicBaseUrl
@@ -560,7 +561,7 @@ async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOp
 		const webUrl = urlForDomain(webDomain);
 		if (webUrl) {
 			urls.add(webUrl);
-			if (!options.appId || options.appId === 'web' || selectedApplication?.roles.includes('api')) {
+			if (selectedServiceKeys.size === 0 && (!options.appId || options.appId === 'web' || selectedApplication?.roles.includes('api'))) {
 				urls.add(`${webUrl}/v1/healthz`);
 			}
 			const pagesProjectName = webConfig.cloudflare?.pages?.projectName;

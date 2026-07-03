@@ -780,6 +780,38 @@ async function reconcileSaveHostedEnvironment(
 	};
 }
 
+async function runReleaseWebLiveVerification(
+	root: string,
+	environment: 'prod',
+	helpers: TreeseedWorkflowHelpers,
+	operation: TreeseedWorkflowRunCommand,
+) {
+	const env = {
+		...helpers.context.env,
+		...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
+	};
+	const live = await collectTreeseedLiveHostedServiceChecks({
+		tenantRoot: root,
+		target: environment,
+		appId: 'web',
+		serviceKeys: ['web'],
+		strict: true,
+		requireLiveRailway: false,
+		requireLiveHttp: true,
+		env,
+	});
+	const liveFailures = [
+		...live.checks.filter((check) => check.status === 'failed').map((check) => `${check.id}: ${check.issues.join('; ') || 'failed'}`),
+		...live.liveObservation.issues,
+	];
+	if (liveFailures.length > 0) {
+		workflowError(operation, 'hosted_live_verification_failed', `Production web live verification failed after root deployment:\n${liveFailures.join('\n')}`, {
+			details: { environment, live },
+		});
+	}
+	return live;
+}
+
 function productionReleaseImageRefEnv(selectedVersions: Map<string, string>) {
 	const refs: Record<string, string> = {};
 	const apiVersion = selectedVersions.get('@treeseed/api');
@@ -6773,6 +6805,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						runId: workflowRun.runId,
 						onProgress: (line, stream) => helpers.write(line, stream),
 					}).then((workflowGates) => ({ workflowGates })));
+				const productionWebVerification = await executeJournalStep(root, workflowRun.runId, 'production-web-live-verification', () =>
+					runReleaseWebLiveVerification(root, 'prod', helpers, 'release'));
 				const backMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () => {
 					const packageBackMerges = checkedOutWorkspacePackageRepos(root)
 						.filter((pkg) => selectedPackageSet.has(pkg.name))
@@ -6804,6 +6838,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					publishedArtifacts,
 					productionHosting,
 					productionApiGuarantees,
+					productionWebVerification,
 					backMerge,
 					workspaceLinks,
 					releasedCommit: String((rootRelease.commit as { commitSha?: string }).commitSha ?? ''),

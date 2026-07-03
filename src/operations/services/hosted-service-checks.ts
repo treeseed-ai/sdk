@@ -269,13 +269,14 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 	const selectedApplication = selectedAppId
 		? applications.find((application) => application.id === selectedAppId || application.relativeRoot === selectedAppId)
 		: null;
+	const selectedService = (serviceKey: string) => selectedServiceKeys.size === 0 || selectedServiceKeys.has(serviceKey);
 	const workspaceHasApiApplication = applications.some((application) =>
 		application.roles.includes('api')
 		|| application.config.surfaces?.api?.enabled === true
 		|| application.config.services?.api?.enabled !== false && Boolean(application.config.services?.api)
 	);
-	const includeWeb = !selectedAppId || selectedAppId === 'web' || selectedApplication?.roles.includes('web') === true;
-	const includeApi = !selectedAppId || selectedAppId === 'api' || selectedApplication?.roles.includes('api') === true;
+	const includeWeb = selectedService('web') && (!selectedAppId || selectedAppId === 'web' || selectedApplication?.roles.includes('web') === true);
+	const includeApi = selectedService('api') && (!selectedAppId || selectedAppId === 'api' || selectedApplication?.roles.includes('api') === true);
 	const selectedAppHasApi = Boolean(
 		selectedApplication?.roles.includes('api')
 		|| selectedApplication?.config.surfaces?.api?.enabled === true
@@ -309,12 +310,13 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		if (domain) {
 			const url = String(domain).startsWith('http') ? String(domain) : `https://${domain}`;
 			checks.push({ ...httpStatus(url, options), id: `http:${selectedWeb.appId}`, serviceKey: selectedWeb.appId, serviceType: 'web', description: 'Web public URL responds.' });
-			if (!selectedAppId || selectedAppHasApi) {
+			if (selectedServiceKeys.size === 0 && (!selectedAppId || selectedAppHasApi)) {
 				checks.push({ ...httpStatus(`${url.replace(/\/+$/u, '')}/v1/healthz`, options), id: `http:${selectedWeb.appId}:v1-healthz`, serviceKey: selectedWeb.appId, serviceType: 'web', description: 'Web proxy reaches API health.' });
 			}
 		}
 	}
 	for (const [surfaceKey, surface] of Object.entries(deployConfig.surfaces ?? {})) {
+		if (!selectedService(surfaceKey)) continue;
 		if (selectedAppId === 'api' && surfaceKey === 'web') continue;
 		if (surface && typeof surface === 'object' && surface.enabled !== false && surface.provider && !['cloudflare', 'railway'].includes(surface.provider)) {
 			checks.push(check({

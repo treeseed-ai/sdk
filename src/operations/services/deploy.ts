@@ -1912,20 +1912,37 @@ function recordCachePurgeResult(targetState, results, error = null) {
 	targetState.lastError = null;
 }
 
+function resolveCloudflareCachePurgeEnv(options = {}) {
+	const env = options.env ?? {};
+	const token = env.TREESEED_CLOUDFLARE_API_TOKEN
+		?? env.CLOUDFLARE_API_TOKEN
+		?? process.env.TREESEED_CLOUDFLARE_API_TOKEN
+		?? process.env.CLOUDFLARE_API_TOKEN;
+	return token
+		? { ...env, TREESEED_CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_API_TOKEN: token }
+		: null;
+}
+
 export function purgeSourcePageCaches(tenantRoot, options = {}) {
 	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
 	const state = loadDeployState(tenantRoot, deployConfig, { target });
 	const urls = resolveSourcePagePurgeUrls(deployConfig);
-	if ((options.dryRun ?? false) || urls.length === 0 || !process.env.TREESEED_CLOUDFLARE_API_TOKEN) {
+	const env = resolveCloudflareCachePurgeEnv(options);
+	if ((options.dryRun ?? false) || urls.length === 0 || !env) {
 		recordCachePurgeResult(state.webCache.deployPurge, urls.map((url) => ({ count: url ? 1 : 0 })));
 		writeDeployState(tenantRoot, state, { target });
-		return { skipped: options.dryRun ?? false, urls, results: [] };
+		return {
+			skipped: true,
+			reason: options.dryRun ? 'dry_run' : urls.length === 0 ? 'no_urls' : 'missing_cloudflare_token',
+			urls,
+			results: [],
+		};
 	}
 
 	try {
 		const results = purgeCloudflareCacheByUrls(urls, deployConfig, {
-			env: { CLOUDFLARE_API_TOKEN: process.env.TREESEED_CLOUDFLARE_API_TOKEN },
+			env,
 		});
 		recordCachePurgeResult(state.webCache.deployPurge, results);
 		writeDeployState(tenantRoot, state, { target });
@@ -1941,15 +1958,21 @@ export function purgePublishedContentCaches(tenantRoot, urls, options = {}) {
 	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
 	const state = loadDeployState(tenantRoot, deployConfig, { target });
-	if ((options.dryRun ?? false) || !urls?.length || !process.env.TREESEED_CLOUDFLARE_API_TOKEN) {
+	const env = resolveCloudflareCachePurgeEnv(options);
+	if ((options.dryRun ?? false) || !urls?.length || !env) {
 		recordCachePurgeResult(state.webCache.contentPurge, (urls ?? []).map((url) => ({ count: url ? 1 : 0 })));
 		writeDeployState(tenantRoot, state, { target });
-		return { skipped: options.dryRun ?? false, urls: urls ?? [], results: [] };
+		return {
+			skipped: true,
+			reason: options.dryRun ? 'dry_run' : !urls?.length ? 'no_urls' : 'missing_cloudflare_token',
+			urls: urls ?? [],
+			results: [],
+		};
 	}
 
 	try {
 		const results = purgeCloudflareCacheByUrls(urls, deployConfig, {
-			env: { CLOUDFLARE_API_TOKEN: process.env.TREESEED_CLOUDFLARE_API_TOKEN },
+			env,
 		});
 		recordCachePurgeResult(state.webCache.contentPurge, results);
 		writeDeployState(tenantRoot, state, { target });
@@ -4189,9 +4212,15 @@ export function finalizeDeploymentState(tenantRoot, options = {}) {
 	writeDeployState(tenantRoot, state, { target });
 	if (target.kind === 'persistent') {
 		try {
-			purgeSourcePageCaches(tenantRoot, { target });
-		} catch {
+			const purgeResult = purgeSourcePageCaches(tenantRoot, { target, env: options.env });
+			if (target.scope === 'prod' && purgeResult?.skipped) {
+				throw new Error(`Production source-page cache purge was skipped: ${purgeResult.reason ?? 'unknown'}.`);
+			}
+		} catch (error) {
 			// The purge helper persists its own error state.
+			if (target.scope === 'prod') {
+				throw error;
+			}
 		}
 		return loadDeployState(tenantRoot, deployConfig, { target });
 	}
