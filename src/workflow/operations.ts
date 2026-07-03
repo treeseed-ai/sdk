@@ -808,6 +808,19 @@ async function runReleaseApiGuarantees(
 		...helpers.context.env,
 		...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
 	};
+	env.TREESEED_ACCEPTANCE_SERVICE_ID ??= env.TREESEED_API_WEB_SERVICE_ID ?? env.TREESEED_WEB_SERVICE_ID;
+	env.TREESEED_ACCEPTANCE_SERVICE_SECRET ??= env.TREESEED_API_WEB_SERVICE_SECRET ?? env.TREESEED_WEB_SERVICE_SECRET;
+	if (!env.TREESEED_ACCEPTANCE_SERVICE_ID || !env.TREESEED_ACCEPTANCE_SERVICE_SECRET) {
+		workflowError(operation, 'release_gate_failed', `${environment} API release guarantees cannot run because API acceptance service credentials are missing.`, {
+			details: {
+				environment,
+				missing: [
+					!env.TREESEED_ACCEPTANCE_SERVICE_ID ? 'TREESEED_ACCEPTANCE_SERVICE_ID' : null,
+					!env.TREESEED_ACCEPTANCE_SERVICE_SECRET ? 'TREESEED_ACCEPTANCE_SERVICE_SECRET' : null,
+				].filter((value): value is string => Boolean(value)),
+			},
+		});
+	}
 	helpers.write(`[${operation}][workflow] Running ${environment} API release guarantees before root deployment.`);
 	return await withContextEnv(env, async () => {
 		const report = await runTreeseedGuarantees({
