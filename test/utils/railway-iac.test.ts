@@ -280,6 +280,27 @@ describe('Railway IaC plan validation', () => {
 		expect(staging.ok).toBe(false);
 		expect(prod.ok).toBe(false);
 	});
+
+	it('allows staging variable updates that mention image refs without changing source mode', () => {
+		const result = validateRailwayIacChangeSet({
+			version: 1,
+			diagnostics: [],
+			changes: [{
+				kind: 'resource.update',
+				path: 'service.treeseed-api.variables.TREESEED_PUBLIC_TREEDX_IMAGE_REF',
+				address: 'service.treeseed-api',
+				field: 'variables',
+				before: { TREESEED_PUBLIC_TREEDX_IMAGE_REF: '' },
+				after: { TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:latest' },
+				summary: 'Update service environment variable TREESEED_PUBLIC_TREEDX_IMAGE_REF',
+				severity: 'safe',
+				deployEffect: 'deploy',
+			}],
+		} as any, { services: ['treeseed-api'], volumes: [], database: null, scope: 'staging' });
+
+		expect(result.ok).toBe(true);
+		expect(result.blockedReasons).toEqual([]);
+	});
 });
 
 describe('Railway IaC runner safety', () => {

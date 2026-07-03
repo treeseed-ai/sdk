@@ -276,6 +276,34 @@ function changeName(change: any) {
 	return String(change?.resource?.name ?? change?.previous?.name ?? change?.address ?? change?.path ?? '');
 }
 
+function changeFieldText(change: any) {
+	return [
+		change?.field,
+		change?.path,
+		change?.address,
+		change?.summary,
+	].map((value) => String(value ?? '').toLowerCase()).join(' ');
+}
+
+function isRailwaySourceChange(change: any) {
+	const field = String(change?.field ?? '').toLowerCase();
+	const path = String(change?.path ?? '').toLowerCase();
+	const summary = String(change?.summary ?? '').toLowerCase();
+	return field === 'source'
+		|| /\.source\b/u.test(path)
+		|| (/source/u.test(summary) && !/\b(env|environment|variable|variables)\b/u.test(summary));
+}
+
+function isRailwayImageSourceChange(change: any) {
+	if (!isRailwaySourceChange(change)) return false;
+	return /image|docker-image/u.test(changeFieldText(change));
+}
+
+function isRailwayGitSourceChange(change: any) {
+	if (!isRailwaySourceChange(change)) return false;
+	return /github|repo|branch/u.test(changeFieldText(change));
+}
+
 export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefined, desiredNames: {
 	services: string[];
 	volumes: string[];
@@ -297,10 +325,10 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 				blockedReasons.push(`Railway IaC plan would delete desired resource ${name}.`);
 			}
 		}
-		if (desiredNames.scope === 'staging' && change.kind === 'resource.update' && /image/iu.test(String(change.summary))) {
+		if (desiredNames.scope === 'staging' && change.kind === 'resource.update' && isRailwayImageSourceChange(change)) {
 			blockedReasons.push(`Railway IaC plan would switch staging resource ${name} to an image source.`);
 		}
-		if (desiredNames.scope === 'prod' && change.kind === 'resource.update' && /github|repo|branch/iu.test(String(change.summary))) {
+		if (desiredNames.scope === 'prod' && change.kind === 'resource.update' && isRailwayGitSourceChange(change)) {
 			blockedReasons.push(`Railway IaC plan would switch production resource ${name} to a Git source.`);
 		}
 	}
