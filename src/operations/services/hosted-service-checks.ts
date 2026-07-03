@@ -85,6 +85,7 @@ export interface TreeseedHostedServiceCheckOptions {
 	appId?: string;
 	serviceKeys?: string[];
 	now?: Date;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	valuesOverlay?: Record<string, string | undefined>;
 	observedRailwayServices?: Record<string, TreeseedObservedRailwayServiceState | undefined>;
 	httpChecks?: Record<string, { status?: number; ok?: boolean; skipped?: boolean; error?: string; fallbackUrl?: string; fallbackStatus?: number; fallbackOk?: boolean; fallbackError?: string } | undefined>;
@@ -251,7 +252,8 @@ function httpStatus(url: string, options: TreeseedHostedServiceCheckOptions) {
 export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServiceCheckOptions): TreeseedHostedServiceCheckReport {
 	const target = options.target ?? 'prod';
 	const tenantRoot = options.tenantRoot;
-	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: target, env: process.env }).deployConfig;
+	const configEnv = { ...process.env, ...(options.env ?? {}) };
+	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: target, env: configEnv }).deployConfig;
 	const registry = collectTreeseedEnvironmentContext(tenantRoot);
 	let machineValues: Record<string, string | undefined> = {};
 	try {
@@ -259,7 +261,7 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 	} catch {
 		machineValues = {};
 	}
-	const values = { ...machineValues, ...(options.valuesOverlay ?? {}) };
+	const values = { ...machineValues, ...configEnv, ...(options.valuesOverlay ?? {}) };
 	const checks: TreeseedHostedServiceCheck[] = [];
 	const selectedServiceKeys = new Set((options.serviceKeys ?? []).map((key) => key.trim()).filter(Boolean));
 	const selectedAppId = options.appId?.trim() || null;
@@ -330,7 +332,7 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		}
 	}
 
-	const configuredServices = configuredRailwayServices(tenantRoot, target)
+	const configuredServices = configuredRailwayServices(tenantRoot, target, configEnv)
 		.filter((service) => !selectedAppId || service.application?.id === selectedAppId)
 		.filter((service) => selectedServiceKeys.size === 0 || selectedServiceKeys.has(service.key));
 	for (const service of configuredServices) {

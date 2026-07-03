@@ -305,7 +305,7 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 	try {
 		const workspace = await resolveRailwayWorkspaceContext({ env: options.env, fetchImpl: options.fetchImpl });
 		const projects = await listRailwayProjects({ workspaceId: workspace.id, env: options.env, fetchImpl: options.fetchImpl });
-		const configuredServices = configuredRailwayServices(options.tenantRoot, options.target)
+		const configuredServices = configuredRailwayServices(options.tenantRoot, options.target, options.env)
 			.filter((entry) => !options.appId || entry.application?.id === options.appId)
 			.filter((entry) => serviceIsSelected(selectedServiceKeys, entry.key));
 		if (selectedServiceKeys.size === 0 || selectedServiceKeys.has('api') || selectedServiceKeys.has('operationsRunner')) {
@@ -464,7 +464,7 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 			};
 		}
 		if (selectedServiceKeys.size === 0) {
-			const deployConfig = loadTreeseedPlatformConfig({ tenantRoot: options.tenantRoot, environment: options.target, env: process.env }).deployConfig;
+			const deployConfig = loadTreeseedPlatformConfig({ tenantRoot: options.tenantRoot, environment: options.target, env: options.env }).deployConfig;
 			const appConfigs = [
 				...(!options.appId || options.appId === 'web' ? [deployConfig] : []),
 				...discoverTreeseedApplications(options.tenantRoot)
@@ -545,7 +545,7 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 }
 
 async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOptions) {
-	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot: options.tenantRoot, environment: options.target, env: process.env }).deployConfig;
+	const deployConfig = loadTreeseedPlatformConfig({ tenantRoot: options.tenantRoot, environment: options.target, env: options.env }).deployConfig;
 	const urls = new Set<string>();
 	const fallbacks = new Map<string, string>();
 	const selectedServiceKeys = selectedServiceKeySet(options);
@@ -573,7 +573,7 @@ async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOp
 			}
 		}
 	}
-	for (const service of configuredRailwayServices(options.tenantRoot, options.target)
+	for (const service of configuredRailwayServices(options.tenantRoot, options.target, options.env)
 		.filter((entry) => !options.appId || entry.application?.id === options.appId)
 		.filter((entry) => serviceIsSelected(selectedServiceKeys, entry.key))) {
 		const serviceConfig = deployConfig.services?.[service.key];
@@ -645,6 +645,7 @@ export async function collectTreeseedLiveHostedServiceChecks(options: TreeseedLi
 		target: effectiveOptions.target,
 		appId: effectiveOptions.appId,
 		serviceKeys: effectiveOptions.serviceKeys,
+		env: effectiveOptions.env,
 		observedRailwayServices: railway.observed,
 		httpChecks,
 	});

@@ -697,6 +697,7 @@ async function reconcileSaveHostedEnvironment(
 	workflowRunId: string,
 	operation: Extract<TreeseedWorkflowOperationId, 'save' | 'release'> = 'save',
 	envOverlay: Record<string, string | undefined> = {},
+	options: { liveAppId?: string } = {},
 ) {
 	const target = createPersistentDeployTarget(environment);
 	const env = {
@@ -747,6 +748,7 @@ async function reconcileSaveHostedEnvironment(
 	const live = await collectTreeseedLiveHostedServiceChecks({
 		tenantRoot: root,
 		target: environment,
+		appId: options.liveAppId,
 		strict: true,
 		requireLiveRailway: true,
 		requireLiveHttp: true,
@@ -6717,7 +6719,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				const publishedArtifacts = await executeJournalStep(root, workflowRun.runId, 'verify-published-artifacts', () =>
 					verifyPublishedReleaseArtifacts(selectedVersions));
 				const productionHosting = await executeJournalStep(root, workflowRun.runId, 'production-hosting', () =>
-					reconcileSaveHostedEnvironment(root, 'prod', helpers, workflowRun.runId, 'release', productionReleaseImageRefEnv(selectedVersions)));
+					reconcileSaveHostedEnvironment(root, 'prod', helpers, workflowRun.runId, 'release', productionReleaseImageRefEnv(selectedVersions), { liveAppId: 'api' }));
 				const productionApiGuarantees = await executeJournalStep(root, workflowRun.runId, 'production-api-guarantees', () =>
 					runReleaseApiGuarantees(root, 'prod', helpers, 'release', normalizeSceneArtifactsMode(effectiveInput.sceneArtifacts)));
 				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
