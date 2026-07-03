@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { loadTreeseedPlatformConfig } from '../../platform/config.ts';
 import { resolveTreeseedLaunchEnvironment } from './config-runtime.ts';
 import {
@@ -185,6 +186,21 @@ function serviceIsSelected(selected: Set<string>, serviceKey: string) {
 	return selected.size === 0 || selected.has(serviceKey);
 }
 
+function serviceMatchesAppSelection(
+	service: ReturnType<typeof configuredRailwayServices>[number],
+	tenantRoot: string,
+	appId: string | undefined,
+	applications: ReturnType<typeof discoverTreeseedApplications>,
+) {
+	if (!appId) return true;
+	if (service.application?.id === appId) return true;
+	if (!service.application) {
+		const rootApplication = applications.find((application) => application.root === tenantRoot);
+		return rootApplication?.id === appId || rootApplication?.relativeRoot === appId;
+	}
+	return false;
+}
+
 function treeseedDatabaseDescriptors(tenantRoot: string, options: TreeseedLiveHostedServiceCheckOptions) {
 	const descriptors: Array<{
 		applicationId: string | null;
@@ -192,9 +208,10 @@ function treeseedDatabaseDescriptors(tenantRoot: string, options: TreeseedLiveHo
 		serviceName: string;
 	}> = [];
 	const rootConfig = loadTreeseedPlatformConfig({ tenantRoot, environment: options.target, env: process.env }).deployConfig;
+	const applications = discoverTreeseedApplications(tenantRoot);
 	const candidates = [
 		{ applicationId: null, applicationRoot: tenantRoot, config: rootConfig },
-		...discoverTreeseedApplications(tenantRoot).map((application) => ({
+		...applications.map((application) => ({
 			applicationId: application.id,
 			applicationRoot: application.root,
 			config: application.config,
@@ -230,9 +247,15 @@ async function verifyRailwayPostgresTopology(input: {
 	options: TreeseedLiveHostedServiceCheckOptions;
 	issues: string[];
 }) {
+	const descriptorRoot = resolve(input.descriptor.applicationRoot);
 	const ownerService = input.configuredServices.find((service) =>
 		['api', 'operationsRunner'].includes(service.key)
-		&& (!input.descriptor.applicationId || service.application?.id === input.descriptor.applicationId)
+		&& (
+			!input.descriptor.applicationId
+			|| service.application?.id === input.descriptor.applicationId
+			|| service.application?.root === descriptorRoot
+			|| (!service.application && resolve(service.rootDir) === descriptorRoot)
+		)
 	);
 	if (!ownerService) {
 		input.issues.push(`${input.descriptor.serviceName}: no Railway API or operations runner service is configured to own the database.`);
@@ -302,11 +325,12 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 	const inspectedVolumeScopes = new Set<string>();
 	const inspectedRunnerScopes = new Set<string>();
 	const selectedServiceKeys = selectedServiceKeySet(options);
+	const applications = discoverTreeseedApplications(options.tenantRoot);
 	try {
 		const workspace = await resolveRailwayWorkspaceContext({ env: options.env, fetchImpl: options.fetchImpl });
 		const projects = await listRailwayProjects({ workspaceId: workspace.id, env: options.env, fetchImpl: options.fetchImpl });
 		const configuredServices = configuredRailwayServices(options.tenantRoot, options.target, options.env)
-			.filter((entry) => !options.appId || entry.application?.id === options.appId)
+			.filter((entry) => serviceMatchesAppSelection(entry, options.tenantRoot, options.appId, applications))
 			.filter((entry) => serviceIsSelected(selectedServiceKeys, entry.key));
 		if (selectedServiceKeys.size === 0 || selectedServiceKeys.has('api') || selectedServiceKeys.has('operationsRunner')) {
 			for (const descriptor of treeseedDatabaseDescriptors(options.tenantRoot, options)) {
@@ -549,8 +573,9 @@ async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOp
 	const urls = new Set<string>();
 	const fallbacks = new Map<string, string>();
 	const selectedServiceKeys = selectedServiceKeySet(options);
+	const applications = discoverTreeseedApplications(options.tenantRoot);
 	const selectedApplication = options.appId
-		? discoverTreeseedApplications(options.tenantRoot).find((application) => application.id === options.appId || application.relativeRoot === options.appId)
+		? applications.find((application) => application.id === options.appId || application.relativeRoot === options.appId)
 		: null;
 	const webHttpSelected = selectedServiceKeys.size === 0 || selectedServiceKeys.has('web');
 	if (webHttpSelected && (!options.appId || options.appId === 'web' || selectedApplication?.roles.includes('web'))) {
@@ -575,7 +600,7 @@ async function collectHttpObservations(options: TreeseedLiveHostedServiceCheckOp
 		}
 	}
 	for (const service of configuredRailwayServices(options.tenantRoot, options.target, options.env)
-		.filter((entry) => !options.appId || entry.application?.id === options.appId)
+		.filter((entry) => serviceMatchesAppSelection(entry, options.tenantRoot, options.appId, applications))
 		.filter((entry) => serviceIsSelected(selectedServiceKeys, entry.key))) {
 		const serviceConfig = deployConfig.services?.[service.key];
 		const domain = service.publicBaseUrl

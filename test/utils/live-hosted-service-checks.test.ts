@@ -112,6 +112,86 @@ describe('live hosted service checks', () => {
 		expect(report.checks.some((check) => check.id === 'railway:treeseedDatabase:targets')).toBe(false);
 	});
 
+	it('matches package-root API services to the inferred api app during database topology checks', async () => {
+		const tenantRoot = root();
+		const fetchImpl = (async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}')) as { query?: string; variables?: Record<string, unknown> };
+			const query = String(body.query ?? '');
+			const project = {
+				id: 'project-api',
+				name: 'treeseed-api',
+				workspaceId: 'workspace-1',
+				deletedAt: null,
+				environments: { edges: [{ node: { id: 'env-staging', name: 'staging' } }] },
+				services: { edges: [
+					{ node: { id: 'svc-api', name: 'treeseed-api' } },
+					{ node: { id: 'svc-postgres', name: 'treeseed-api-postgres' } },
+				] },
+			};
+			if (query.includes('TreeseedRailwayAuthProfile')) {
+				return Response.json({ data: { me: { id: 'user-1', name: 'Test', email: 'test@example.com', workspaces: [{ id: 'workspace-1', name: 'knowledge-coop' }] } } });
+			}
+			if (query.includes('TreeseedRailwayProjects')) {
+				return Response.json({ data: { projects: { edges: [{ node: project }] } } });
+			}
+			if (query.includes('TreeseedRailwayProjectEnvironments')) {
+				return Response.json({ data: { project: { id: 'project-api', environments: project.environments } } });
+			}
+			if (query.includes('TreeseedRailwayProjectServices')) {
+				return Response.json({ data: { project: { id: 'project-api', services: project.services } } });
+			}
+			if (query.includes('TreeseedRailwayVolumeList')) {
+				return Response.json({ data: { project: { id: 'project-api', volumes: { edges: [{ node: {
+					id: 'vol-postgres',
+					name: 'treeseed-api-postgres-volume',
+					projectId: 'project-api',
+					volumeInstances: { edges: [{ node: { id: 'vi-postgres', serviceId: 'svc-postgres', environmentId: 'env-staging', mountPath: '/var/lib/postgresql/data', state: 'READY' } }] },
+				} }] } } } });
+			}
+			if (query.includes('TreeseedRailwayVariables')) {
+				return Response.json({ data: { variables: {} } });
+			}
+			if (query.includes('TreeseedRailwayServiceInstance(')) {
+				return Response.json({ data: { serviceInstance: {
+					id: `instance-${String(body.variables?.serviceId ?? 'service')}`,
+					buildCommand: 'npm run build',
+					startCommand: 'npm run start:api',
+					cronSchedule: null,
+					rootDirectory: null,
+					healthcheckPath: '/healthz',
+					healthcheckTimeout: null,
+					sleepApplication: false,
+				} } });
+			}
+			if (query.includes('TreeseedRailwayServiceDeploymentHealth')) {
+				return Response.json({ data: { serviceInstance: { latestDeployment: {
+					status: 'SUCCESS',
+					deploymentStopped: false,
+					instances: [{ status: 'RUNNING' }],
+				} } } });
+			}
+			throw new Error(`Unexpected Railway query: ${query}`);
+		}) as typeof fetch;
+
+		const report = await collectTreeseedLiveHostedServiceChecks({
+			tenantRoot,
+			target: 'staging',
+			appId: 'api',
+			serviceKeys: ['api'],
+			strict: true,
+			requireLiveRailway: true,
+			requireLiveHttp: false,
+			env: { TREESEED_RAILWAY_API_TOKEN: 'test-token', TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop' },
+			fetchImpl,
+		});
+
+		const allIssues = [
+			...report.liveObservation.issues,
+			...report.checks.flatMap((check) => check.issues),
+		].join('\n');
+		expect(allIssues).not.toContain('no Railway API or operations runner service is configured to own the database');
+	});
+
 	it('uses release image refs when checking production Railway image services', async () => {
 		const tenantRoot = root();
 		const fetchImpl = (async (_input, init) => {
