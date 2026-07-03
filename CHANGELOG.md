@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.26] - 2026-07-03
+
+### Changed
+
+- Observe Railway custom domains during live verification (e7080c18c701)
+
 ## [0.12.25] - 2026-07-03
 
 ### Changed
