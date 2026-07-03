@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.12.24] - 2026-07-03
+
+### Fixed
+
+- fix: reconcile release image variables (87a736e9acdc)
+- fix: reconcile github variable drift (71b70f5c17f4)
+
+### Tests
+
+- test: mock github variable value reads (d4f1ec73bfd7)
+
 ## [0.12.23] - 2026-07-03
 
 ### Fixed
