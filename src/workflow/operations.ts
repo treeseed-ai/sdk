@@ -194,6 +194,7 @@ import {
 } from './session.ts';
 import { checkedOutManagedWorkflowRepos } from '../operations/services/managed-repositories.ts';
 import { runTreeseedLocalCleanup } from '../operations/services/local-cleanup.ts';
+import { runTreeseedGuarantees } from '../guarantees/index.ts';
 import {
 	classifyTreeseedBranchRole,
 	resolveTreeseedWorkflowPaths,
@@ -252,6 +253,7 @@ export type TreeseedWorkflowErrorCode =
 	| 'workflow_contract_missing'
 	| 'github_workflow_failed'
 	| 'github_auth_unavailable'
+	| 'release_gate_failed'
 	| 'hosted_reconcile_failed'
 	| 'hosted_live_verification_failed';
 
@@ -793,6 +795,45 @@ function productionReleaseImageRefEnv(selectedVersions: Map<string, string>) {
 		refs.TREESEED_PUBLIC_TREEDX_IMAGE_REF = `treeseed/treedx:${treedxVersion}`;
 	}
 	return refs;
+}
+
+async function runReleaseApiGuarantees(
+	root: string,
+	environment: 'staging' | 'prod',
+	helpers: WorkflowOperationHelpers,
+	operation: Extract<TreeseedWorkflowOperationId, 'save' | 'release'>,
+	sceneArtifacts?: 'full' | 'screenshots',
+) {
+	const env = {
+		...helpers.context.env,
+		...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
+	};
+	helpers.write(`[${operation}][workflow] Running ${environment} API release guarantees before root deployment.`);
+	return await withContextEnv(env, async () => {
+		const report = await runTreeseedGuarantees({
+			workspaceRoot: root,
+			filter: { ownerPackage: '@treeseed/api' },
+			environment,
+			evidenceTarget: 'release',
+			sceneArtifacts,
+		});
+		if (!report.ok) {
+			const diagnostics = report.diagnostics
+				.filter((entry) => entry.severity === 'error')
+				.slice(0, 20)
+				.map((entry) => `${entry.code}: ${entry.message}${entry.sourcePath ? ` (${entry.sourcePath})` : ''}`);
+			workflowError(operation, 'release_gate_failed', `API release guarantees for ${environment} failed:\n${diagnostics.join('\n') || `See ${report.outputRoot}`}`, {
+				details: { environment, outputRoot: report.outputRoot, counts: report.counts, diagnostics: report.diagnostics },
+			});
+		}
+		return {
+			ok: report.ok,
+			environment: report.environment,
+			runId: report.runId,
+			outputRoot: report.outputRoot,
+			counts: report.counts,
+		};
+	});
 }
 
 function recordHostedDeploymentStatesFromRootGates(
@@ -6452,10 +6493,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							resumable: true,
 						};
 					}),
+					{ id: 'verify-published-artifacts', description: 'Verify immutable registry artifacts exist after publish workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
+					{ id: 'production-hosting', description: 'Reconcile and live-verify production hosted resources before root deploy', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
+					{ id: 'production-api-guarantees', description: 'Run production API release guarantees before root deploy', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'release-root', description: `Release market ${plannedRelease.rootVersion}`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'publish-wait', description: 'Wait for production release workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
-					{ id: 'verify-published-artifacts', description: 'Verify immutable registry artifacts exist after publish workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
-					{ id: 'production-hosting', description: 'Reconcile and live-verify production hosted resources after publish', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'release-back-merge', description: 'Back-merge production release history into staging', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'workspace-link', description: 'Restore local workspace links after release', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 				],
@@ -6572,6 +6614,12 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					});
 					packageReleases.push(packageRelease);
 				}
+				const publishedArtifacts = await executeJournalStep(root, workflowRun.runId, 'verify-published-artifacts', () =>
+					verifyPublishedReleaseArtifacts(selectedVersions));
+				const productionHosting = await executeJournalStep(root, workflowRun.runId, 'production-hosting', () =>
+					reconcileSaveHostedEnvironment(root, 'prod', helpers, workflowRun.runId, 'release', productionReleaseImageRefEnv(selectedVersions)));
+				const productionApiGuarantees = await executeJournalStep(root, workflowRun.runId, 'production-api-guarantees', () =>
+					runReleaseApiGuarantees(root, 'prod', helpers, 'release', normalizeSceneArtifactsMode(effectiveInput.sceneArtifacts)));
 				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
 					const rootInstall = runReleaseNpmInstall(root, { workspaceRoot: root });
 					const changelog = updateReleaseChangelog(repoRoot(root), {
@@ -6623,10 +6671,6 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						runId: workflowRun.runId,
 						onProgress: (line, stream) => helpers.write(line, stream),
 					}).then((workflowGates) => ({ workflowGates })));
-				const publishedArtifacts = await executeJournalStep(root, workflowRun.runId, 'verify-published-artifacts', () =>
-					verifyPublishedReleaseArtifacts(selectedVersions));
-				const productionHosting = await executeJournalStep(root, workflowRun.runId, 'production-hosting', () =>
-					reconcileSaveHostedEnvironment(root, 'prod', helpers, workflowRun.runId, 'release', productionReleaseImageRefEnv(selectedVersions)));
 				const backMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () => {
 					const packageBackMerges = checkedOutWorkspacePackageRepos(root)
 						.filter((pkg) => selectedPackageSet.has(pkg.name))
@@ -6657,6 +6701,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					publishWait: publishWait.workflowGates,
 					publishedArtifacts,
 					productionHosting,
+					productionApiGuarantees,
 					backMerge,
 					workspaceLinks,
 					releasedCommit: String((rootRelease.commit as { commitSha?: string }).commitSha ?? ''),
