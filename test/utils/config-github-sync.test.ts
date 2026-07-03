@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const ensureGitHubActionsEnvironmentMock = vi.fn();
 const listGitHubEnvironmentSecretNamesMock = vi.fn();
 const listGitHubEnvironmentVariableNamesMock = vi.fn();
+const listGitHubEnvironmentVariablesMock = vi.fn();
 const upsertGitHubEnvironmentSecretMock = vi.fn();
 const upsertGitHubEnvironmentVariableMock = vi.fn();
 const ensureGitHubBootstrapRepositoryMock = vi.fn();
@@ -22,6 +23,7 @@ vi.mock('../../src/operations/services/github-api.ts', () => ({
 	ensureGitHubBranchFromBase: vi.fn(),
 	listGitHubEnvironmentSecretNames: listGitHubEnvironmentSecretNamesMock,
 	listGitHubEnvironmentVariableNames: listGitHubEnvironmentVariableNamesMock,
+	listGitHubEnvironmentVariables: listGitHubEnvironmentVariablesMock,
 	upsertGitHubEnvironmentSecret: upsertGitHubEnvironmentSecretMock,
 	upsertGitHubEnvironmentVariable: upsertGitHubEnvironmentVariableMock,
 }));
@@ -265,6 +267,7 @@ describe('config GitHub environment sync reconciliation', () => {
 		ensureGitHubActionsEnvironmentMock.mockReset().mockResolvedValue({});
 		listGitHubEnvironmentSecretNamesMock.mockReset().mockImplementation(async () => new Set(secretNames));
 		listGitHubEnvironmentVariableNamesMock.mockReset().mockImplementation(async () => new Set(variableNames));
+		listGitHubEnvironmentVariablesMock.mockReset().mockImplementation(async () => new Map([...variableNames].map((name) => [name, `${name}-value`] as const)));
 		upsertGitHubEnvironmentSecretMock.mockReset().mockImplementation(async (_repository: string, _environment: string, name: string) => {
 			secretNames.add(name);
 		});
