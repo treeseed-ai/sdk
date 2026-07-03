@@ -13,6 +13,8 @@ const planRailwayIacProjectMock = vi.fn();
 const applyRailwayIacProjectMock = vi.fn();
 const cleanupRailwayIacRenderMock = vi.fn();
 const railwayEnvMock = vi.fn();
+const listRailwayCustomDomainsMock = vi.fn();
+const listRailwayServiceDomainsMock = vi.fn();
 
 let kvCreated = false;
 let d1Created = false;
@@ -231,7 +233,8 @@ vi.mock('../../src/operations/services/railway-api.ts', () => ({
 	getRailwayProject: vi.fn(async () => null),
 	getRailwayServiceInstance: vi.fn(async () => null),
 	listRailwayEnvironmentServices: vi.fn(async () => [{ id: 'service-1', name: 'api' }]),
-	listRailwayCustomDomains: vi.fn(async () => []),
+	listRailwayCustomDomains: vi.fn((input) => listRailwayCustomDomainsMock(input)),
+	listRailwayServiceDomains: vi.fn((input) => listRailwayServiceDomainsMock(input)),
 	listRailwayProjects: vi.fn(async ({ env }: { env: Record<string, string> }) => {
 		railwayEnvMock(env);
 		return [{
@@ -315,6 +318,10 @@ beforeEach(() => {
 		applyRailwayIacProjectMock.mockReset();
 		cleanupRailwayIacRenderMock.mockReset();
 		railwayEnvMock.mockReset();
+		listRailwayCustomDomainsMock.mockReset();
+		listRailwayServiceDomainsMock.mockReset();
+		listRailwayCustomDomainsMock.mockResolvedValue([]);
+		listRailwayServiceDomainsMock.mockResolvedValue([]);
 		resolveTreeseedMachineEnvironmentValuesMock.mockReset();
 		resolveTreeseedMachineEnvironmentValuesMock.mockImplementation(() => {
 			throw new Error('machine key should not be read for hosted reconcile');
@@ -658,6 +665,81 @@ beforeEach(() => {
 		expect(applyRailwayIacProjectMock).toHaveBeenCalled();
 		expect(upsertRailwayVariablesMock).not.toHaveBeenCalled();
 		expect(deployRailwayServiceInstanceMock).not.toHaveBeenCalled();
+	});
+
+	it('observes Railway API custom domains from live provider state in fresh verification jobs', async () => {
+		listRailwayCustomDomainsMock.mockResolvedValue([{
+			id: 'domain-1',
+			domain: 'api.example.com',
+			environmentId: 'env-1',
+			serviceId: 'service-1',
+			targetPort: null,
+			verified: false,
+			certificateStatus: 'VALIDATING',
+			verificationDnsHost: '_railway-verify.api',
+			verificationToken: 'railway-verify=token',
+			dnsRecords: [],
+		}]);
+		listRailwayServiceDomainsMock.mockResolvedValue([{
+			id: 'service-domain-1',
+			domain: 'api.up.railway.app',
+			kind: 'service',
+			environmentId: 'env-1',
+			serviceId: 'service-1',
+			targetPort: null,
+		}]);
+
+		const { createRailwayReconcileAdapters } = await import('../../src/reconcile/builtin-adapters.ts');
+		const adapter = createRailwayReconcileAdapters().find((entry) => entry.unitTypes.includes('custom-domain:api'));
+		expect(adapter).toBeTruthy();
+
+		const unit = {
+			unitId: 'custom-domain:api:api.example.com',
+			unitType: 'custom-domain:api',
+			provider: 'railway',
+			target: { kind: 'persistent', scope: 'staging' },
+			logicalName: 'API custom domain',
+			dependencies: [],
+			spec: { domain: 'api.example.com' },
+			secrets: {},
+			metadata: { serviceKey: 'api' },
+			identity: deployState.identity,
+		};
+		const context = {
+			tenantRoot: '/tmp/tenant',
+			target: { kind: 'persistent', scope: 'staging' },
+			deployConfig: {
+				name: 'Test',
+				slug: 'test',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				hosting: { kind: 'hosted_project', teamId: 'acme', projectId: 'docs' },
+				runtime: { mode: 'treeseed_managed', registration: 'none', teamId: 'acme', projectId: 'docs' },
+				services: { api: { provider: 'railway', enabled: true } },
+				cloudflare: { accountId: 'account-123' },
+			},
+			launchEnv: {
+				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
+				TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
+			},
+			session: new Map(),
+		};
+
+		const observed = await adapter!.refresh({ unit, context } as never);
+		const diff = adapter!.diff({ unit, context, observed } as never);
+		const verification = await adapter!.verify({ unit, context, observed, diff, result: null, postconditions: [] } as never);
+
+		expect(observed.exists).toBe(true);
+		expect(observed.live).toEqual(expect.objectContaining({
+			domain: 'api.example.com',
+			serviceDomain: 'api.up.railway.app',
+		}));
+		expect(verification.verified).toBe(true);
+		expect(listRailwayCustomDomainsMock).toHaveBeenCalledWith(expect.objectContaining({
+			projectId: 'project-1',
+			environmentId: 'env-1',
+			serviceId: 'service-1',
+		}));
 	});
 
 	it('uses Railway IaC instead of direct source repair when deployment state is missing', async () => {

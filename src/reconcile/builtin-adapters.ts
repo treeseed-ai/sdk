@@ -61,6 +61,7 @@ import {
 	getRailwayServiceInstance,
 	getRailwayProject,
 	listRailwayCustomDomains,
+	listRailwayServiceDomains,
 	listRailwayEnvironments,
 	listRailwayProjects,
 	listRailwayServices,
@@ -2724,6 +2725,53 @@ async function ensureRailwayCustomDomain(input: TreeseedReconcileAdapterInput, s
 		throw new Error(`Railway API custom domain reconciliation did not return ${domain}.`);
 	}
 	return ensured.domain;
+}
+
+async function observeRailwayCustomDomainLive(input: TreeseedReconcileAdapterInput, domain: string) {
+	if (!domain) {
+		return null;
+	}
+	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
+	const serviceKey = String(input.unit.metadata.serviceKey ?? 'api').trim();
+	const topology = await resolveRailwayTopologyForScope(input, scope, {
+		refresh: true,
+		serviceKeys: [serviceKey],
+		includeInstances: false,
+		includeVariables: false,
+	});
+	const entry = topology.services.get(serviceKey) ?? null;
+	const identifiers = {
+		projectId: entry?.project?.id ?? null,
+		environmentId: entry?.environment?.id ?? null,
+		serviceId: entry?.service?.id ?? null,
+	};
+	if (!identifiers.projectId || !identifiers.environmentId || !identifiers.serviceId) {
+		return null;
+	}
+	const [customDomains, serviceDomains] = await Promise.all([
+		listRailwayCustomDomains({
+			projectId: identifiers.projectId,
+			environmentId: identifiers.environmentId,
+			serviceId: identifiers.serviceId,
+			env: topology.env,
+		}),
+		listRailwayServiceDomains({
+			projectId: identifiers.projectId,
+			environmentId: identifiers.environmentId,
+			serviceId: identifiers.serviceId,
+			env: topology.env,
+		}),
+	]);
+	const customDomain = customDomains.find((entry) => entry.domain === domain) ?? null;
+	if (!customDomain) {
+		return null;
+	}
+	const serviceDomain = serviceDomains.find((entry) => entry.kind === 'service') ?? null;
+	const normalized = normalizeRailwayDomainPayload({
+		...customDomain,
+		serviceDomain: serviceDomain?.domain ?? null,
+	});
+	return normalized?.domain ? normalized : customDomain;
 }
 
 function collectCloudflareEnvironmentSync(input: TreeseedReconcileAdapterInput) {
@@ -5422,7 +5470,7 @@ function resolveDesiredDnsRecords(input: TreeseedReconcileAdapterInput) {
 	return desiredRecords;
 }
 
-function observeCustomDomainUnit(input: TreeseedReconcileAdapterInput): TreeseedObservedUnitState {
+async function observeCustomDomainUnit(input: TreeseedReconcileAdapterInput): Promise<TreeseedObservedUnitState> {
 	switch (input.unit.unitType) {
 		case 'custom-domain:web': {
 			const env = buildCloudflareEnv(input);
@@ -5446,6 +5494,7 @@ function observeCustomDomainUnit(input: TreeseedReconcileAdapterInput): Treeseed
 		case 'custom-domain:api': {
 			const domain = String(input.unit.spec.domain ?? '').trim();
 			const live = getCustomDomainState(input, 'railway', domain)
+				?? await observeRailwayCustomDomainLive(input, domain)
 				?? (input.persistedState?.lastObservedState as Record<string, unknown> | undefined)
 				?? (input.persistedState?.lastReconciledState as Record<string, unknown> | undefined)
 				?? null;
@@ -5496,7 +5545,7 @@ function observeDnsRecordUnit(input: TreeseedReconcileAdapterInput): TreeseedObs
 	};
 }
 
-function verifyCustomDomainUnit(input: TreeseedReconcileAdapterInput): TreeseedUnitVerificationResult {
+async function verifyCustomDomainUnit(input: TreeseedReconcileAdapterInput): Promise<TreeseedUnitVerificationResult> {
 	switch (input.unit.unitType) {
 		case 'custom-domain:web': {
 			const domain = String(input.unit.spec.domain ?? '').trim();
@@ -5515,6 +5564,7 @@ function verifyCustomDomainUnit(input: TreeseedReconcileAdapterInput): TreeseedU
 		case 'custom-domain:api': {
 			const domain = String(input.unit.spec.domain ?? '').trim();
 			const live = getCustomDomainState(input, 'railway', domain)
+				?? await observeRailwayCustomDomainLive(input, domain)
 				?? getPersistedCustomDomainState(input, 'railway', domain)
 				?? (input.persistedState?.lastObservedState as Record<string, unknown> | undefined)
 				?? (input.persistedState?.lastReconciledState as Record<string, unknown> | undefined)
@@ -5618,7 +5668,7 @@ async function reconcileCustomDomainUnit(input: TreeseedReconcileAdapterInput, d
 			const projectName = String(input.unit.spec.projectName ?? '').trim();
 			const state = ensureCloudflarePagesDomain(env, projectName, domain) ?? { domain };
 			storeCustomDomainState(input, 'cloudflare', domain, state);
-			const observed = observeCustomDomainUnit(input);
+			const observed = await observeCustomDomainUnit(input);
 			return {
 				unit: input.unit,
 				observed,
@@ -5655,7 +5705,7 @@ async function reconcileCustomDomainUnit(input: TreeseedReconcileAdapterInput, d
 				},
 			);
 			storeCustomDomainState(input, 'railway', String(input.unit.spec.domain ?? '').trim(), state);
-			const observed = observeCustomDomainUnit(input);
+			const observed = await observeCustomDomainUnit(input);
 			return {
 				unit: input.unit,
 				observed,
