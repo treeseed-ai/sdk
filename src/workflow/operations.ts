@@ -338,7 +338,7 @@ function readPackageScript(root: string, packageDir: string, scriptName: string)
 
 function ensureWorkflowWorkspacePackageArtifacts(root: string, helpers: WorkflowOperationHelpers) {
 	const packages = [
-		{ name: '@treeseed/sdk', dir: 'packages/sdk', artifacts: ['dist/workflow-support.js', 'dist/plugin-default.js', 'dist/platform/env.yaml'] },
+		{ name: '@treeseed/sdk', dir: 'packages/sdk', artifacts: ['dist/index.js', 'dist/workflow-support.js', 'dist/plugin-default.js', 'dist/platform/env.yaml'] },
 		{ name: '@treeseed/ui', dir: 'packages/ui', artifacts: ['dist/index.js'] },
 		{ name: '@treeseed/agent', dir: 'packages/agent', artifacts: ['dist/api/index.js', 'dist/services/manager.js', 'dist/provider/runner.js'] },
 		{ name: '@treeseed/core', dir: 'packages/core', artifacts: ['dist/plugin-default.js'] },
@@ -6725,8 +6725,9 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					...releaseBasePayload,
 					freshArchivedRuns: freshPreparation.archived,
 				}));
-				const releaseGates = await executeJournalStep(root, workflowRun.runId, 'release-gates', async () =>
-					runReleaseGateReconcileFacade(
+				const releaseGates = await executeJournalStep(root, workflowRun.runId, 'release-gates', async () => {
+					const workspaceLinks = ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto');
+					const gates = await runReleaseGateReconcileFacade(
 						'release',
 						helpers,
 						root,
@@ -6740,7 +6741,9 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							...releaseBasePayload,
 							freshArchivedRuns: freshPreparation.archived,
 						},
-					) as unknown as Record<string, unknown>);
+					) as unknown as Record<string, unknown>;
+					return { workspaceLinks, gates };
+				});
 				const workspaceUnlink = await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
 					unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
 				const releaseMetadata = await executeJournalStep(root, workflowRun.runId, 'prepare-release-metadata', () => {
