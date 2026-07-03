@@ -3123,7 +3123,7 @@ function assertReleaseGitHubWorkflowSucceeded(packageName: string, workflow: Rec
 
 type PublishedArtifactCheck = {
 	id: string;
-	kind: 'npm' | 'docker' | 'pypi' | 'crates' | 'hex';
+	kind: 'npm' | 'docker' | 'pypi' | 'crates' | 'hex' | 'github-tag';
 	name: string;
 	version: string;
 	url: string;
@@ -3193,6 +3193,49 @@ async function verifyNpmArtifact(packageName: string, version: string): Promise<
 	}
 }
 
+async function fetchDockerRegistryManifestStatus(image: string, version: string): Promise<{ ok: boolean; status: number | null; message?: string }> {
+	const [namespace, repository] = image.split('/');
+	if (!namespace || !repository) {
+		return { ok: false, status: null, message: `Invalid Docker image name ${image}.` };
+	}
+	const tokenUrl = `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${namespace}/${repository}:pull`;
+	try {
+		const tokenResponse = await fetchJsonForArtifact(tokenUrl);
+		const token = typeof stringRecord(tokenResponse.json)?.token === 'string'
+			? String(stringRecord(tokenResponse.json)?.token)
+			: '';
+		if (!tokenResponse.ok || !token) {
+			return { ok: false, status: tokenResponse.status, message: `Docker registry token request failed for ${image}.` };
+		}
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 20000);
+		try {
+			const manifestResponse = await fetch(`https://registry-1.docker.io/v2/${namespace}/${repository}/manifests/${version}`, {
+				method: 'HEAD',
+				headers: {
+					accept: [
+						'application/vnd.docker.distribution.manifest.list.v2+json',
+						'application/vnd.oci.image.index.v1+json',
+						'application/vnd.docker.distribution.manifest.v2+json',
+					].join(', '),
+					authorization: `Bearer ${token}`,
+					'user-agent': 'treeseed-release-verifier/1.0 (https://treeseed.dev)',
+				},
+				signal: controller.signal,
+			});
+			return {
+				ok: manifestResponse.ok,
+				status: manifestResponse.status,
+				...(manifestResponse.ok ? {} : { message: `Docker registry manifest for ${image}:${version} is not pullable yet.` }),
+			};
+		} finally {
+			clearTimeout(timeout);
+		}
+	} catch (error) {
+		return { ok: false, status: null, message: error instanceof Error ? error.message : String(error) };
+	}
+}
+
 async function verifyDockerHubArtifact(image: string, version: string): Promise<PublishedArtifactCheck> {
 	const [namespace, repository] = image.split('/');
 	const url = `https://hub.docker.com/v2/repositories/${namespace}/${repository}/tags/${version}`;
@@ -3203,7 +3246,8 @@ async function verifyDockerHubArtifact(image: string, version: string): Promise<
 			.map((entry) => stringRecord(entry))
 			.map((entry) => typeof entry?.architecture === 'string' ? entry.architecture : null)
 			.filter((entry): entry is string => Boolean(entry)));
-		const ok = response.ok && architectures.has('amd64') && architectures.has('arm64');
+		const registry = await fetchDockerRegistryManifestStatus(image, version);
+		const ok = response.ok && architectures.has('amd64') && architectures.has('arm64') && registry.ok;
 		return {
 			id: `docker:${image}:${version}`,
 			kind: 'docker',
@@ -3211,14 +3255,42 @@ async function verifyDockerHubArtifact(image: string, version: string): Promise<
 			version,
 			url,
 			ok,
-			status: response.status,
-			...(ok ? {} : { message: `${image}:${version} was not found on Docker Hub with amd64 and arm64 images.` }),
+			status: registry.status ?? response.status,
+			...(ok ? {} : { message: registry.message ?? `${image}:${version} was not found on Docker Hub with amd64 and arm64 images.` }),
 		};
 	} catch (error) {
 		return {
 			id: `docker:${image}:${version}`,
 			kind: 'docker',
 			name: image,
+			version,
+			url,
+			ok: false,
+			status: null,
+			message: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+async function verifyGitHubTagArtifact(repository: string, version: string): Promise<PublishedArtifactCheck> {
+	const url = `https://api.github.com/repos/${repository}/git/ref/tags/${encodeURIComponent(version)}`;
+	try {
+		const response = await fetchJsonForArtifact(url);
+		return {
+			id: `github-tag:${repository}:${version}`,
+			kind: 'github-tag',
+			name: repository,
+			version,
+			url,
+			ok: response.ok,
+			status: response.status,
+			...(response.ok ? {} : { message: `GitHub tag ${repository}@${version} was not found.` }),
+		};
+	} catch (error) {
+		return {
+			id: `github-tag:${repository}:${version}`,
+			kind: 'github-tag',
+			name: repository,
 			version,
 			url,
 			ok: false,
@@ -3262,6 +3334,21 @@ async function verifySimpleRegistryArtifact(input: {
 
 async function collectPublishedReleaseArtifactChecks(selectedVersions: Map<string, string>) {
 	const checks: PublishedArtifactCheck[] = [];
+	const githubRepositories: Record<string, string> = {
+		'@treeseed/sdk': 'treeseed-ai/sdk',
+		'@treeseed/ui': 'treeseed-ai/ui',
+		'@treeseed/core': 'treeseed-ai/core',
+		'@treeseed/admin': 'treeseed-ai/admin',
+		'@treeseed/cli': 'treeseed-ai/cli',
+		'@treeseed/agent': 'treeseed-ai/agent',
+		'@treeseed/api': 'treeseed-ai/api',
+		treedx: 'treeseed-ai/treedx',
+		'@treeseed/treedx': 'treeseed-ai/treedx',
+	};
+	for (const [packageName, repository] of Object.entries(githubRepositories)) {
+		const version = selectedVersions.get(packageName);
+		if (version) checks.push(await verifyGitHubTagArtifact(repository, version));
+	}
 	const npmPackages = ['@treeseed/sdk', '@treeseed/ui', '@treeseed/core', '@treeseed/admin', '@treeseed/cli', '@treeseed/agent'];
 	for (const packageName of npmPackages) {
 		const version = selectedVersions.get(packageName);

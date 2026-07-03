@@ -3744,14 +3744,24 @@ async function resolveRailwayTopologyForScope(
 		includeVariables?: boolean;
 	} = {},
 ) {
+	const imageRefValues = resolveReconcileEnvironmentValues(input, scope);
+	const imageRefFingerprint = [
+		'TREESEED_API_IMAGE_REF',
+		'TREESEED_OPERATIONS_RUNNER_IMAGE_REF',
+		'TREESEED_AGENT_MANAGER_IMAGE_REF',
+		'TREESEED_AGENT_RUNNER_IMAGE_REF',
+		'TREESEED_PUBLIC_TREEDX_IMAGE_REF',
+	]
+		.map((key) => `${key}=${imageRefValues[key] ?? ''}`)
+		.join('|');
 	const normalizedServiceKeys = Array.isArray(serviceKeys) && serviceKeys.length > 0
 		? [...new Set(serviceKeys.map((value) => String(value).trim()).filter(Boolean))].sort()
 		: ['__all__'];
-	const cacheKey = `railway:topology:${scope}:${ensure ? 'ensure' : 'observe'}:${includeInstances ? 'instances' : 'no-instances'}:${includeVariables ? 'variables' : 'no-variables'}:${normalizedServiceKeys.join(',')}`;
+	const cacheKey = `railway:topology:${scope}:${ensure ? 'ensure' : 'observe'}:${includeInstances ? 'instances' : 'no-instances'}:${includeVariables ? 'variables' : 'no-variables'}:${normalizedServiceKeys.join(',')}:${imageRefFingerprint}`;
 	return await providerCache(input, cacheKey, async () => {
 		const env = buildRailwayEnv(input, scope);
 		const deployState = loadDeployState(input.context.tenantRoot, input.context.deployConfig, { target: toDeployTarget(input.context.target) });
-		const services = configuredRailwayServices(input.context.tenantRoot, scope)
+		const services = configuredRailwayServicesForInput(input, scope)
 			.filter((service) => normalizedServiceKeys.includes('__all__') || normalizedServiceKeys.includes(service.key));
 		traceRailwayReconcile(env, 'topology:start', `scope=${scope} ensure=${ensure ? 'yes' : 'no'} services=${services.map((service) => service.key).join(',')}`);
 		let workspace = null as Awaited<ReturnType<typeof resolveRailwayWorkspaceContext>> | null;

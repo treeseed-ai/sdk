@@ -210,7 +210,7 @@ export function deriveTreeseedDesiredUnits({
 	}
 
 	const scope = target.kind === 'persistent' ? target.scope : 'staging';
-	for (const configuredService of configuredRailwayServices(tenantRoot, scope)) {
+	for (const configuredService of configuredRailwayServices(tenantRoot, scope, env)) {
 		const serviceKey = configuredService.key;
 		const service = configuredService.serviceConfig ?? deployConfig.services?.[serviceKey];
 		const serviceState = legacyState.services?.[serviceKey];
@@ -239,6 +239,13 @@ export function deriveTreeseedDesiredUnits({
 				serviceId: persistedServiceMatchesDesired ? serviceState?.serviceId ?? configuredService.serviceId : configuredService.serviceId,
 				serviceName: desiredServiceName,
 				rootDir: configuredService.rootDir ?? serviceState?.rootDir,
+				imageRef: configuredService.imageRef,
+				imageRefEnv: configuredService.serviceConfig?.railway?.imageRefEnv,
+				sourceMode: configuredService.sourceMode,
+				sourceRepo: configuredService.sourceRepo,
+				sourceBranch: configuredService.sourceBranch,
+				sourceCommit: configuredService.sourceCommit,
+				sourceRootDirectory: configuredService.sourceRootDirectory,
 				environment: normalizeRailwayEnvironmentName(configuredService.railwayEnvironment ?? serviceState?.environment),
 				buildCommand: configuredService.buildCommand,
 				startCommand: configuredService.startCommand,

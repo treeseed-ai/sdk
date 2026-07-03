@@ -510,6 +510,75 @@ services:
 		});
 	});
 
+	it('uses release-provided production image refs instead of Git start commands for API package services', async () => {
+		const tenantRoot = await createTenantFixture();
+		await writeFile(
+			join(tenantRoot, 'treeseed.package.yaml'),
+			`id: "@treeseed/api"
+name: TreeSeed API
+repository: treeseed-ai/api
+publishTarget: docker
+deploymentSource:
+  staging: git
+  prod: image
+`,
+		);
+		await writeFile(
+			join(tenantRoot, 'treeseed.site.yaml'),
+			`name: Test API
+slug: treeseed-api
+siteUrl: https://api.example.com
+contactEmail: hello@example.com
+hosting:
+  kind: treeseed_control_plane
+runtime:
+  mode: treeseed_managed
+services:
+  api:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api
+      imageRefEnv: TREESEED_API_IMAGE_REF
+      sourceMode: git
+      buildCommand: npm run build
+      startCommand: npm run start:api
+  operationsRunner:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
+      imageRefEnv: TREESEED_OPERATIONS_RUNNER_IMAGE_REF
+      sourceMode: git
+      buildCommand: npm run build
+      startCommand: npm run start:runner
+      volumeMountPath: /data
+`,
+		);
+
+		const services = configuredRailwayServices(tenantRoot, 'prod', {
+			TREESEED_API_IMAGE_REF: 'treeseed/api:0.6.13',
+			TREESEED_OPERATIONS_RUNNER_IMAGE_REF: 'treeseed/op-runner:0.6.13',
+		});
+		const api = services.find((service) => service.key === 'api');
+		const runner = services.find((service) => service.key === 'operationsRunner');
+
+		expect(api).toMatchObject({
+			sourceMode: 'image',
+			imageRef: 'treeseed/api:0.6.13',
+			buildCommand: null,
+			startCommand: null,
+		});
+		expect(runner).toMatchObject({
+			sourceMode: 'image',
+			imageRef: 'treeseed/op-runner:0.6.13',
+			buildCommand: null,
+			startCommand: null,
+		});
+	});
+
 	it('uses explicit production image refs for public TreeDX nodes', async () => {
 		const tenantRoot = await createTenantFixture();
 		vi.stubEnv('TREESEED_PUBLIC_TREEDX_IMAGE_REF', 'treeseed/treedx:0.2.11');
