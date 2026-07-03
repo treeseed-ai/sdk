@@ -498,7 +498,10 @@ beforeEach(() => {
 				TREESEED_CLOUDFLARE_ACCOUNT_ID: 'account-123',
 				TREESEED_CLOUDFLARE_API_TOKEN: 'cf-token',
 			},
-			session: new Map(),
+			session: new Map([[
+				'custom-domain:railway:api.example.com',
+				{ id: 'domain-1', domain: 'api.example.com', dnsRecords: [] },
+			]]),
 		};
 
 		const observed = adapter!.refresh({ unit, context } as never);

@@ -2774,6 +2774,16 @@ async function observeRailwayCustomDomainLive(input: TreeseedReconcileAdapterInp
 	return normalized?.domain ? normalized : customDomain;
 }
 
+function railwayCustomDomainHasDnsRequirements(live: Record<string, unknown> | null | undefined) {
+	if (!live) {
+		return false;
+	}
+	return (Array.isArray(live.dnsRecords) && live.dnsRecords.length > 0)
+		|| (typeof live.serviceDomain === 'string' && live.serviceDomain.trim().length > 0)
+		|| (typeof live.verificationDnsHost === 'string' && live.verificationDnsHost.trim().length > 0
+			&& typeof live.verificationToken === 'string' && live.verificationToken.trim().length > 0);
+}
+
 function collectCloudflareEnvironmentSync(input: TreeseedReconcileAdapterInput) {
 	const target = toDeployTarget(input.context.target);
 	const scope = scopeFromTarget(target);
@@ -5493,8 +5503,10 @@ async function observeCustomDomainUnit(input: TreeseedReconcileAdapterInput): Pr
 		}
 		case 'custom-domain:api': {
 			const domain = String(input.unit.spec.domain ?? '').trim();
-			const live = getCustomDomainState(input, 'railway', domain)
+			const cached = getCustomDomainState(input, 'railway', domain);
+			const live = (cached && railwayCustomDomainHasDnsRequirements(cached) ? cached : null)
 				?? await observeRailwayCustomDomainLive(input, domain)
+				?? cached
 				?? (input.persistedState?.lastObservedState as Record<string, unknown> | undefined)
 				?? (input.persistedState?.lastReconciledState as Record<string, unknown> | undefined)
 				?? null;
@@ -5563,8 +5575,10 @@ async function verifyCustomDomainUnit(input: TreeseedReconcileAdapterInput): Pro
 		}
 		case 'custom-domain:api': {
 			const domain = String(input.unit.spec.domain ?? '').trim();
-			const live = getCustomDomainState(input, 'railway', domain)
+			const cached = getCustomDomainState(input, 'railway', domain);
+			const live = (cached && railwayCustomDomainHasDnsRequirements(cached) ? cached : null)
 				?? await observeRailwayCustomDomainLive(input, domain)
+				?? cached
 				?? getPersistedCustomDomainState(input, 'railway', domain)
 				?? (input.persistedState?.lastObservedState as Record<string, unknown> | undefined)
 				?? (input.persistedState?.lastReconciledState as Record<string, unknown> | undefined)
