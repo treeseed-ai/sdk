@@ -6464,6 +6464,8 @@ async function runReleaseGateReconcileFacade(
 		.filter((unit) => (
 			unit.provider === 'treeseed'
 			&& (unit.unitType === 'package-manifest' || unit.unitType.startsWith('release-gate:'))
+			&& unit.unitType !== 'release-gate:npm-publish'
+			&& unit.unitType !== 'release-gate:image-publish'
 			&& (
 				includeHostedReleaseGates
 				|| (unit.unitType !== 'release-gate:hosted-reconcile' && unit.unitType !== 'release-gate:live-verify')

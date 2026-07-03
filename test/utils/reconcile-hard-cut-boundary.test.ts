@@ -44,6 +44,8 @@ describe('reconciliation hard-cut source boundaries', () => {
 		expect(releaseBody.indexOf('release-root')).toBeGreaterThan(releaseBody.indexOf('release-gates'));
 		expect(releaseBody).toContain('ensureReleaseTag');
 		expect(releaseBody).toContain('promoteCommitToProductionBranch');
+		expect(operations).toContain("unit.unitType !== 'release-gate:npm-publish'");
+		expect(operations).toContain("unit.unitType !== 'release-gate:image-publish'");
 		for (const blocked of [
 			'runWorkflowHostedResourceVerification',
 			'destroyWorkflowBranchPreviewIfPresent',
