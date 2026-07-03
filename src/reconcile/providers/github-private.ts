@@ -2,6 +2,7 @@ import {
 	createGitHubApiClient,
 	dispatchGitHubWorkflowRun,
 	ensureGitHubActionsEnvironment,
+	formatGitHubWorkflowFailure,
 	getLatestGitHubWorkflowRun,
 	listGitHubEnvironmentSecretNames,
 	listGitHubEnvironmentVariableNames,
@@ -129,5 +130,25 @@ export async function dispatchReconcileGitHubWorkflow(input: {
 			timeoutSeconds: input.timeoutMs ? Math.ceil(input.timeoutMs / 1000) : undefined,
 		})
 		: null;
+	if (completed && completed.conclusion !== 'success') {
+		const failedJob = completed.failedJobs?.[0] ?? completed.jobs?.find((job) => job.conclusion && job.conclusion !== 'success' && job.conclusion !== 'skipped') ?? null;
+		const failedStep = failedJob?.steps?.find((step) => step.conclusion && step.conclusion !== 'success' && step.conclusion !== 'skipped') ?? null;
+		const failure = formatGitHubWorkflowFailure({
+			repository: input.repository,
+			workflow: input.workflow,
+			runId: completed.runId,
+			runUrl: completed.url,
+			conclusion: completed.conclusion,
+			failedJobName: failedJob?.name,
+			lastActiveStep: failedStep?.name,
+			message: `GitHub workflow ${input.workflow} in ${input.repository} completed with conclusion ${completed.conclusion ?? 'unknown'}.`,
+			resumeSafe: false,
+		});
+		throw new Error([
+			failure.summary,
+			failure.runUrl ? `Run: ${failure.runUrl}` : null,
+			failure.inspectCommand ? `Inspect: ${failure.inspectCommand}` : null,
+		].filter(Boolean).join('\n'));
+	}
 	return { dispatch, latest, completed };
 }
