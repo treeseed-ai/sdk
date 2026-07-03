@@ -4446,6 +4446,7 @@ async function syncRailwayEnvironmentForScope(
 				volumes: rendered.volumeNames,
 				database: rendered.databaseName,
 				scope,
+				serviceSourceModes: Object.fromEntries(effectiveIacInput.services.map((service) => [service.serviceName, service.sourceMode ?? null])),
 			});
 			if (
 				!validation.ok
@@ -4473,6 +4474,7 @@ async function syncRailwayEnvironmentForScope(
 					volumes: rendered.volumeNames,
 					database: rendered.databaseName,
 					scope,
+					serviceSourceModes: Object.fromEntries(effectiveIacInput.services.map((service) => [service.serviceName, service.sourceMode ?? null])),
 				});
 			}
 			if (!validation.ok) {

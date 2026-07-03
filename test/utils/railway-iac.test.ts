@@ -301,6 +301,33 @@ describe('Railway IaC plan validation', () => {
 		expect(result.ok).toBe(true);
 		expect(result.blockedReasons).toEqual([]);
 	});
+
+	it('uses desired service source modes when validating ambiguous Railway source summaries', () => {
+		const result = validateRailwayIacChangeSet({
+			version: 1,
+			diagnostics: [],
+			changes: [{
+				kind: 'resource.update',
+				path: 'service.treeseed-api.source',
+				address: 'service.treeseed-api',
+				field: 'source',
+				before: {},
+				after: {},
+				summary: 'Update service source image metadata while reconciling existing service',
+				severity: 'safe',
+				deployEffect: 'deploy',
+			}],
+		} as any, {
+			services: ['treeseed-api'],
+			volumes: [],
+			database: null,
+			scope: 'staging',
+			serviceSourceModes: { 'treeseed-api': 'git' },
+		});
+
+		expect(result.ok).toBe(true);
+		expect(result.blockedReasons).toEqual([]);
+	});
 });
 
 describe('Railway IaC runner safety', () => {

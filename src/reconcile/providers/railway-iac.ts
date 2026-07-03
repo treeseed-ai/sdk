@@ -309,6 +309,7 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 	volumes: string[];
 	database: string | null;
 	scope: string;
+	serviceSourceModes?: Record<string, string | null | undefined>;
 }): RailwayIacValidationResult {
 	const blockedReasons: string[] = [];
 	const destructiveChanges: string[] = [];
@@ -318,6 +319,9 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 		.map((change) => changeName(change)));
 	for (const change of changeSet?.changes ?? []) {
 		const name = changeName(change);
+		const sourceMode = desiredNames.serviceSourceModes?.[name]
+			?? desiredNames.serviceSourceModes?.[name.replace(/^(service|database)\./u, '')]
+			?? null;
 		if (change.kind === 'resource.delete') {
 			destructiveChanges.push(change.summary);
 			blockedReasons.push(`Railway IaC plan would delete resource ${name || change.summary}; hosting reconciliation only updates or creates resources. Use the explicit destroy workflow for deletions.`);
@@ -325,10 +329,10 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 				blockedReasons.push(`Railway IaC plan would delete desired resource ${name}.`);
 			}
 		}
-		if (desiredNames.scope === 'staging' && change.kind === 'resource.update' && isRailwayImageSourceChange(change)) {
+		if (desiredNames.scope === 'staging' && change.kind === 'resource.update' && isRailwayImageSourceChange(change) && (!sourceMode || sourceMode === 'image')) {
 			blockedReasons.push(`Railway IaC plan would switch staging resource ${name} to an image source.`);
 		}
-		if (desiredNames.scope === 'prod' && change.kind === 'resource.update' && isRailwayGitSourceChange(change)) {
+		if (desiredNames.scope === 'prod' && change.kind === 'resource.update' && isRailwayGitSourceChange(change) && (!sourceMode || sourceMode === 'git')) {
 			blockedReasons.push(`Railway IaC plan would switch production resource ${name} to a Git source.`);
 		}
 	}
