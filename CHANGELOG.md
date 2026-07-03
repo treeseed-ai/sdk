@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.18] - 2026-07-03
+
+### Infrastructure
+
+- Fail fast when API release guarantee credentials are missing (6f6377353e36)
+- Gate root deploy on production API guarantees (cde29d26a670)
+
 ## [0.12.17] - 2026-07-03
 
 ### Fixed
