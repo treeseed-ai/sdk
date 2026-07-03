@@ -383,6 +383,7 @@ services:
 
 	it('uses workspace machine image refs for nested package Railway services', async () => {
 		const tenantRoot = await createTenantFixture();
+		vi.stubEnv('TREESEED_AGENT_MANAGER_IMAGE_REF', undefined);
 		await writeFile(
 			join(tenantRoot, 'package.json'),
 			JSON.stringify({ workspaces: ['packages/*'] }),
