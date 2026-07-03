@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.19] - 2026-07-03
+
+### Fixed
+
+- Fix production Railway image release reconciliation (a12626693a26)
+
 ## [0.12.18] - 2026-07-03
 
 ### Infrastructure
