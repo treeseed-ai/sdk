@@ -249,8 +249,14 @@ function runWrangler(
 	return result;
 }
 
+const WRANGLER_TRANSIENT_MAX_ATTEMPTS = 6;
+
+function wranglerTransientRetryDelayMs(attempt: number) {
+	return Math.min(5000 * 2 ** (attempt - 1), 60000);
+}
+
 function isTransientWranglerOutput(output: string) {
-	return /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|connectivity issue|internal error|aborted/i.test(output);
+	return /fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|connectivity issue|internal error|code:\s*7500|aborted/i.test(output);
 }
 
 async function runPrefixedWranglerWithRetry(
@@ -267,7 +273,7 @@ async function runPrefixedWranglerWithRetry(
 	},
 ) {
 	let lastOutput = '';
-	for (let attempt = 1; attempt <= 3; attempt += 1) {
+	for (let attempt = 1; attempt <= WRANGLER_TRANSIENT_MAX_ATTEMPTS; attempt += 1) {
 		const wrangler = resolveTreeseedToolCommand('wrangler');
 		if (!wrangler) {
 			throw new Error('Wrangler CLI is unavailable.');
@@ -282,16 +288,17 @@ async function runPrefixedWranglerWithRetry(
 			return result;
 		}
 		lastOutput = [result.stderr?.trim(), result.stdout?.trim()].filter(Boolean).join('\n');
-		if (attempt === 3 || !isTransientWranglerOutput(lastOutput)) {
+		if (attempt === WRANGLER_TRANSIENT_MAX_ATTEMPTS || !isTransientWranglerOutput(lastOutput)) {
 			throw new Error(lastOutput || `wrangler ${args.join(' ')} failed`);
 		}
+		const retryDelayMs = wranglerTransientRetryDelayMs(attempt);
 		writeTreeseedBootstrapLine(
 			write,
 			{ ...prefix, stage: 'retry' },
-			`Wrangler command hit a transient failure; retrying in ${2 * attempt}s...`,
+			`Wrangler command hit a transient failure; retrying in ${Math.round(retryDelayMs / 1000)}s...`,
 			'stderr',
 		);
-		await sleep(2000 * attempt);
+		await sleep(retryDelayMs);
 	}
 	throw new Error(lastOutput || `wrangler ${args.join(' ')} failed`);
 }

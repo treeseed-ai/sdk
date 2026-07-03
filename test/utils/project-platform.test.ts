@@ -123,6 +123,20 @@ describe('project platform workflow actions', () => {
 		}
 	});
 
+	it('retries transient Cloudflare D1 Wrangler failures with provider-scale backoff', () => {
+		const source = readFileSync(new URL('../../src/operations/services/project-platform.ts', import.meta.url), 'utf8');
+		const retryStart = source.indexOf('async function runPrefixedWranglerWithRetry');
+		const retrySource = source.slice(retryStart, source.indexOf('export type TenantCloudflareDeployContext', retryStart));
+
+		expect(retryStart).toBeGreaterThanOrEqual(0);
+		expect(source).toContain('const WRANGLER_TRANSIENT_MAX_ATTEMPTS = 6;');
+		expect(source).toContain('function wranglerTransientRetryDelayMs');
+		expect(source).toContain('code:\\s*7500');
+		expect(retrySource).toContain('attempt <= WRANGLER_TRANSIENT_MAX_ATTEMPTS');
+		expect(retrySource).toContain('Math.round(retryDelayMs / 1000)');
+		expect(retrySource).not.toContain('attempt <= 3');
+	});
+
 	it('reconciles Railway Postgres volume naming through the IaC project graph', () => {
 		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
 		const syncStart = source.indexOf('async function syncRailwayEnvironmentForScope');
