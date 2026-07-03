@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.20] - 2026-07-03
+
+### Fixed
+
+- Fix production release live verification scoping (95b923a7ccc5)
+
 ## [0.12.19] - 2026-07-03
 
 ### Fixed
