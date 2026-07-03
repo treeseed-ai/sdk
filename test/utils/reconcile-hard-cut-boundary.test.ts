@@ -46,6 +46,9 @@ describe('reconciliation hard-cut source boundaries', () => {
 		expect(releaseBody).toContain('promoteCommitToProductionBranch');
 		expect(operations).toContain("unit.unitType !== 'release-gate:npm-publish'");
 		expect(operations).toContain("unit.unitType !== 'release-gate:image-publish'");
+		expect(operations).toContain('appendReleaseImageRefGitHubVariableBindings');
+		expect(operations).toContain('github-variable-binding:@treeseed/api:production:${variableName}');
+		expect(operations).toContain('releaseImageRef: true');
 		for (const blocked of [
 			'runWorkflowHostedResourceVerification',
 			'destroyWorkflowBranchPreviewIfPresent',

@@ -9,6 +9,7 @@ import {
 	collectTreeseedReconcileStatus,
 	planTreeseedReconciliation,
 	reconcileTreeseedTarget,
+	type TreeseedDesiredUnit,
 	type TreeseedReconcileSelector,
 	type TreeseedReconcileTarget,
 } from '../reconcile/index.ts';
@@ -6478,8 +6479,9 @@ async function runReleaseGateReconcileFacade(
 				|| unit.unitType === 'github-variable-binding'
 			)
 		));
-	const rawUnitIds = new Set(rawUnits.map((unit) => unit.unitId));
-	const units = rawUnits.map((unit) => ({
+	const unitsWithReleaseImageRefs = appendReleaseImageRefGitHubVariableBindings(rawUnits, input.releaseImageRefs ?? {});
+	const rawUnitIds = new Set(unitsWithReleaseImageRefs.map((unit) => unit.unitId));
+	const units = unitsWithReleaseImageRefs.map((unit) => ({
 		...unit,
 		dependencies: unit.dependencies.filter((dependency) => rawUnitIds.has(dependency)),
 	}));
@@ -6558,6 +6560,46 @@ async function runReleaseGateReconcileFacade(
 				: { operation: 'status', reason: 'Inspect production readiness after release gates complete.' },
 		]),
 	});
+}
+
+function appendReleaseImageRefGitHubVariableBindings(units: TreeseedDesiredUnit[], releaseImageRefs: Record<string, string>): TreeseedDesiredUnit[] {
+	const entries = Object.entries(releaseImageRefs)
+		.map(([name, value]) => [name.trim(), value.trim()] as const)
+		.filter(([name, value]) => name.length > 0 && value.length > 0);
+	if (entries.length === 0) return units;
+	const apiProductionEnvironment = units.find((unit) =>
+		unit.provider === 'github'
+		&& unit.unitType === 'github-environment'
+		&& unit.unitId === 'github-environment:@treeseed/api:production');
+	if (!apiProductionEnvironment) return units;
+	const existingUnitIds = new Set(units.map((unit) => unit.unitId));
+	const additions = entries
+		.map(([variableName]) => {
+			const unitId = `github-variable-binding:@treeseed/api:production:${variableName}`;
+			if (existingUnitIds.has(unitId)) return null;
+			return {
+				...apiProductionEnvironment,
+				unitId,
+				unitType: 'github-variable-binding' as const,
+				logicalName: `@treeseed/api production ${variableName}`,
+				dependencies: [apiProductionEnvironment.unitId],
+				spec: {
+					packageId: '@treeseed/api',
+					packageRoot: apiProductionEnvironment.spec.packageRoot,
+					repository: apiProductionEnvironment.spec.repository,
+					environment: 'production',
+					variableName,
+					envName: variableName,
+				},
+				secrets: {},
+				metadata: {
+					...apiProductionEnvironment.metadata,
+					releaseImageRef: true,
+				},
+			} satisfies TreeseedDesiredUnit;
+		})
+		.filter((unit): unit is TreeseedDesiredUnit => Boolean(unit));
+	return additions.length > 0 ? [...units, ...additions] : units;
 }
 
 export async function workflowRelease(helpers: WorkflowOperationHelpers, input: TreeseedReleaseInput) {
