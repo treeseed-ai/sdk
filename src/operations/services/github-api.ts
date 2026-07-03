@@ -558,6 +558,26 @@ export async function listGitHubEnvironmentVariableNames(
 	}
 }
 
+export async function listGitHubEnvironmentVariables(
+	repository: string | { owner: string; name: string },
+	environmentName: string,
+	{ client = createGitHubApiClient() }: { client?: GitHubApiClient } = {},
+) {
+	const { owner, name } = typeof repository === 'string' ? parseGitHubRepositorySlug(repository) : repository;
+	try {
+		const paginate = client.paginate as unknown as (route: string, params: Record<string, unknown>) => Promise<Array<{ name?: string | null; value?: string | null }>>;
+		const variables = await withGitHubApiRetries(() => paginate(
+			'GET /repos/{owner}/{repo}/environments/{environment_name}/variables',
+			{ owner, repo: name, environment_name: environmentName, per_page: 100 },
+		));
+		return new Map(variables
+			.map((entry) => [String(entry.name ?? '').trim(), String(entry.value ?? '')] as const)
+			.filter(([variableName]) => variableName.length > 0));
+	} catch (error) {
+		throw normalizeGitHubApiError(error, `Unable to list GitHub environment variables for ${owner}/${name}:${environmentName}`);
+	}
+}
+
 async function encryptGitHubSecret(secret: string, key: string) {
 	await sodium.ready;
 	const messageBytes = Buffer.from(secret);

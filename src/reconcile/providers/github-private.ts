@@ -6,6 +6,7 @@ import {
 	getLatestGitHubWorkflowRun,
 	listGitHubEnvironmentSecretNames,
 	listGitHubEnvironmentVariableNames,
+	listGitHubEnvironmentVariables,
 	upsertGitHubEnvironmentSecret,
 	upsertGitHubEnvironmentVariable,
 	waitForGitHubWorkflowRunCompletion,
@@ -22,9 +23,10 @@ function isGitHubAuthError(message: string) {
 export async function observeGitHubEnvironment(repository: string, environment: string, env: NodeJS.ProcessEnv | Record<string, string | undefined>) {
 	const client = createReconcileGitHubClient(env);
 	try {
-		const [secretNames, variableNames] = await Promise.all([
+		const [secretNames, variableNames, variableValues] = await Promise.all([
 			listGitHubEnvironmentSecretNames(repository, environment, { client }),
 			listGitHubEnvironmentVariableNames(repository, environment, { client }),
+			listGitHubEnvironmentVariables(repository, environment, { client }),
 		]);
 		return {
 			exists: true,
@@ -32,6 +34,7 @@ export async function observeGitHubEnvironment(repository: string, environment: 
 			environment,
 			secretNames: [...secretNames].sort(),
 			variableNames: [...variableNames].sort(),
+			variableValues: Object.fromEntries([...variableValues.entries()].sort(([left], [right]) => left.localeCompare(right))),
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -43,6 +46,7 @@ export async function observeGitHubEnvironment(repository: string, environment: 
 				environment,
 				secretNames: [],
 				variableNames: [],
+				variableValues: {},
 				error: message,
 			};
 		}
@@ -54,6 +58,7 @@ export async function observeGitHubEnvironment(repository: string, environment: 
 				environment,
 				secretNames: [],
 				variableNames: [],
+				variableValues: {},
 				error: message,
 			};
 		}

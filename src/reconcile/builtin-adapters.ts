@@ -501,13 +501,16 @@ function buildGitHubBindingAdapter(unitType: 'github-secret-binding' | 'github-v
 			const observed = await observeGitHubEnvironment(repository, environment, buildGitHubEnv(input));
 			const names = unitType === 'github-secret-binding' ? observed.secretNames : observed.variableNames;
 			const exists = observed.exists && names.includes(name);
+			const value = unitType === 'github-variable-binding'
+				? String((observed.variableValues as Record<string, string> | undefined)?.[name] ?? '')
+				: null;
 			const warnings = observed.authAvailable === false
 				? [String(observed.error ?? 'GitHub authentication is unavailable')]
 				: observed.exists ? [] : [`GitHub environment ${environment} is missing`];
 			return {
 				...genericObservedState(input, exists, warnings),
 				status: exists ? 'ready' : 'pending',
-				live: { repository, environment, name, exists, observed },
+				live: { repository, environment, name, exists, value, observed },
 			};
 		},
 		diff(input) {
@@ -515,12 +518,23 @@ function buildGitHubBindingAdapter(unitType: 'github-secret-binding' | 'github-v
 			if (input.observed.live?.observed?.authAvailable === false) {
 				return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
 			}
-			if (input.observed.exists) {
-				return noopDiff();
-			}
 			const value = buildGitHubEnv(input)[name];
 			if (!value) {
 				return { action: 'blocked', reasons: [`Missing local value for ${name}`], before: input.observed.live, after: input.unit.spec };
+			}
+			if (input.observed.exists) {
+				if (unitType === 'github-variable-binding') {
+					const observedValue = String(input.observed.live.value ?? '');
+					if (observedValue !== value) {
+						return {
+							action: 'update',
+							reasons: [`GitHub variable ${name} value drifted`],
+							before: input.observed.live,
+							after: input.unit.spec,
+						};
+					}
+				}
+				return noopDiff();
 			}
 			return { action: 'update', reasons: [`GitHub ${unitType === 'github-secret-binding' ? 'secret' : 'variable'} ${name} is missing`], before: input.observed.live, after: input.unit.spec };
 		},

@@ -5,6 +5,7 @@ import {
 	ensureGitHubActionsEnvironment,
 	listGitHubEnvironmentSecretNames,
 	listGitHubEnvironmentVariableNames,
+	listGitHubEnvironmentVariables,
 	upsertGitHubEnvironmentSecret,
 	upsertGitHubEnvironmentVariable,
 } from '../../src/operations/services/github-api.ts';
@@ -191,6 +192,26 @@ describe('github environment api helpers', () => {
 			.resolves.toEqual(new Set(['TREESEED_CLOUDFLARE_ACCOUNT_ID']));
 
 		expect(client.paginate).toHaveBeenCalledTimes(2);
+	});
+
+	it('lists environment variable values for reconciler drift detection', async () => {
+		const client = createMockClient();
+		client.paginate.mockResolvedValueOnce([
+			{ name: 'TREESEED_PUBLIC_TREEDX_IMAGE_REF', value: 'treeseed/treedx:0.2.17' },
+			{ name: 'EMPTY_IGNORED_NAME', value: '' },
+			{ name: '', value: 'ignored' },
+		]);
+
+		await expect(listGitHubEnvironmentVariables('owner/repo', 'production', { client }))
+			.resolves.toEqual(new Map([
+				['TREESEED_PUBLIC_TREEDX_IMAGE_REF', 'treeseed/treedx:0.2.17'],
+				['EMPTY_IGNORED_NAME', ''],
+			]));
+
+		expect(client.paginate).toHaveBeenCalledWith(
+			'GET /repos/{owner}/{repo}/environments/{environment_name}/variables',
+			expect.objectContaining({ owner: 'owner', repo: 'repo', environment_name: 'production' }),
+		);
 	});
 
 	it('encrypts and upserts environment secrets', async () => {
