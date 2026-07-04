@@ -1787,6 +1787,71 @@ services:
 		expect(progress[0]).toMatch(/poll=1 elapsed=/u);
 	});
 
+	it('resolves Railway deployment settle project ids from configured project names', async () => {
+		const tenantRoot = await createTenantFixture();
+		const services = configuredRailwayServices(tenantRoot, 'prod').map((service) => ({
+			...service,
+			projectId: null,
+		}));
+		const fetchMock = vi.fn(async (_url, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			const query = String(body.query ?? '');
+			if (query.includes('TreeseedRailwayAuthProfile')) {
+				return new Response(JSON.stringify(railwayTopologyPayload()), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (query.includes('TreeseedRailwayProjects')) {
+				return new Response(JSON.stringify(railwayProjectsPayload()), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (query.includes('TreeseedRailwayDeploymentStatus')) {
+				expect(body.variables.projectId).toBe('railway-project-1');
+				return new Response(JSON.stringify({
+					data: {
+						project: {
+							id: 'railway-project-1',
+							environments: {
+								edges: [{
+									node: {
+										name: 'production',
+										serviceInstances: {
+											edges: services.map((service) => ({
+												node: {
+													id: `instance-${service.key}`,
+													serviceId: `svc-${service.key}`,
+													serviceName: service.serviceName,
+													latestDeployment: {
+														status: 'SUCCESS',
+														deploymentStopped: false,
+														instances: [{ status: 'RUNNING' }],
+														meta: {},
+													},
+												},
+											})),
+										},
+									},
+								}],
+							},
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			throw new Error(`Unexpected Railway GraphQL query: ${query}`);
+		});
+
+		const result = await waitForRailwayManagedDeploymentsSettled(tenantRoot, 'prod', {
+			services,
+			env: {
+				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
+				TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop',
+			},
+			fetchImpl: fetchMock as typeof fetch,
+			pollMs: 0,
+		});
+
+		expect(result.ok).toBe(true);
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+		expect(result.settle).toMatchObject({ pollCount: 1, status: 'settled' });
+	});
+
 	it('reports Railway settle timeout diagnostics with poll metadata', async () => {
 		const tenantRoot = await createTenantFixture();
 		const services = configuredRailwayServices(tenantRoot, 'staging');

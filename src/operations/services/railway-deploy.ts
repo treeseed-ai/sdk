@@ -548,7 +548,7 @@ export async function waitForRailwayManagedDeploymentsSettled(
 ) {
 	const startMs = performance.now();
 	const deadline = Date.now() + timeoutMs;
-	const projectId = services.find((service) => typeof service.projectId === 'string' && service.projectId.trim())?.projectId ?? null;
+	const projectId = await resolveRailwayDeploymentProjectId(services, { env, fetchImpl });
 	if (!projectId) {
 		return {
 			ok: false,
@@ -667,6 +667,24 @@ export async function waitForRailwayManagedDeploymentsSettled(
 			};
 		}
 		await sleep(pollMs);
+	}
+}
+
+async function resolveRailwayDeploymentProjectId(services, { env = process.env, fetchImpl = fetch } = {}) {
+	const configuredProjectId = services.find((service) => typeof service.projectId === 'string' && service.projectId.trim())?.projectId?.trim();
+	if (configuredProjectId) {
+		return configuredProjectId;
+	}
+	const projectName = services.find((service) => typeof service.projectName === 'string' && service.projectName.trim())?.projectName?.trim();
+	if (!projectName) {
+		return null;
+	}
+	try {
+		const workspace = await resolveRailwayWorkspaceContext({ env, fetchImpl });
+		const projects = await listRailwayProjects({ env, workspaceId: workspace.id, fetchImpl });
+		return projects.find((project) => project.name === projectName)?.id ?? null;
+	} catch {
+		return null;
 	}
 }
 
