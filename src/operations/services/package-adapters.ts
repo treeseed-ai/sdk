@@ -469,6 +469,9 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 			? 'treeseed/treedx'
 			: null;
 	const dockerArtifacts = manifestDockerArtifacts(manifest?.artifacts);
+	const dockerImages = stringRecord(manifest?.dockerImages);
+	const dockerImageReleaseWorkflow = stringValue(dockerImages.releaseWorkflow);
+	const dockerImageArchitectures = stringArray(dockerImages.architectures);
 	const repository = stringValue(manifest?.repository) ?? (id === 'treedx' ? 'treeseed-ai/treedx' : null);
 	const hostedVerifyWorkflow = stringValue(manifest?.hostedVerifyWorkflow)
 		?? stringValue(stringRecord(manifest?.releaseGate).workflow)
@@ -511,7 +514,7 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 				role: artifact.role ?? id,
 				architectures: artifact.architectures.length > 0
 					? artifact.architectures
-					: stringArray(stringRecord(manifest?.dockerImages).architectures),
+					: dockerImageArchitectures,
 			}))
 			: image ? [{
 				provider: 'docker',
@@ -521,7 +524,7 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 				context: '.',
 				target: null,
 				role: id,
-				architectures: stringArray(stringRecord(manifest?.dockerImages).architectures),
+				architectures: dockerImageArchitectures,
 			}] : [],
 		releaseChecks: dockerArtifacts.length > 0
 			? dockerArtifacts.map((artifact) => ({ kind: 'docker-manifest' as const, name: `${artifact.name} Docker image manifest`, detail: `${artifact.name}:${version ?? '<version>'}` }))
@@ -533,7 +536,9 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 			hasDockerfile: existsSync(resolve(dir, 'Dockerfile')),
 			repository,
 			deploymentSource: stringRecord(manifest?.deploymentSource),
-			imageHosting: stringRecord(stringRecord(manifest?.dockerImages).hosting),
+			dockerImageReleaseWorkflow: dockerImageReleaseWorkflow ? `.github/workflows/${dockerImageReleaseWorkflow}` : null,
+			dockerImageArchitectures,
+			imageHosting: stringRecord(dockerImages.hosting),
 			versionSource: versionSourceRel,
 			...(hostedVerifyWorkflow
 				? {
@@ -1159,6 +1164,9 @@ function shellQuoteWorkflowArg(value: string) {
 }
 
 function workflowTemplatesForAdapter(adapter: TreeseedPackageAdapter): TreeseedPackageWorkflowTemplateKind[] {
+	if (adapter.metadata.workflowTemplateVersion === 'custom') {
+		return [];
+	}
 	const hasDocker = adapter.artifacts.some((artifact) => artifact.provider === 'docker');
 	const hasNpm = adapter.artifacts.some((artifact) => artifact.provider === 'npm');
 	return [

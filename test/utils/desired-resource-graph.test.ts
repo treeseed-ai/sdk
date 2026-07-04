@@ -68,19 +68,24 @@ describe('canonical desired resource graph', () => {
 			'github-variable-binding:@treeseed/agent:production:TREESEED_DOCKERHUB_USERNAME',
 			'github-secret-binding:@treeseed/api:production:TREESEED_DOCKERHUB_TOKEN',
 			'github-variable-binding:@treeseed/api:production:TREESEED_DOCKERHUB_USERNAME',
-			'github-secret-binding:treedx:production:TREESEED_DOCKERHUB_TOKEN',
-			'github-variable-binding:treedx:production:TREESEED_DOCKERHUB_USERNAME',
+			'github-secret-binding:treedx:production:DOCKERHUB_TOKEN',
+			'github-secret-binding:treedx:production:DOCKERHUB_USERNAME',
 		]));
 
 		const dependenciesFor = (id: string) =>
 			graph.resources.find((entry) => entry.id === id)?.dependencies ?? [];
-		for (const packageId of ['@treeseed/agent', '@treeseed/api', 'treedx']) {
+		for (const packageId of ['@treeseed/agent', '@treeseed/api']) {
 			expect(dependenciesFor(`release-gate:image-publish:${packageId}`)).toEqual(expect.arrayContaining([
 				`release-gate:verify:${packageId}`,
 				`github-secret-binding:${packageId}:production:TREESEED_DOCKERHUB_TOKEN`,
 				`github-variable-binding:${packageId}:production:TREESEED_DOCKERHUB_USERNAME`,
 			]));
 		}
+		expect(dependenciesFor('release-gate:image-publish:treedx')).toEqual(expect.arrayContaining([
+			'release-gate:verify:treedx',
+			'github-secret-binding:treedx:production:DOCKERHUB_TOKEN',
+			'github-secret-binding:treedx:production:DOCKERHUB_USERNAME',
+		]));
 	});
 
 	it('keeps development package manifests pinned to internal Git commit refs', () => {

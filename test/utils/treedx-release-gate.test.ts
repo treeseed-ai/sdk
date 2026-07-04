@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import {
   findTreeseedPackageAdapter,
   renderTreeseedPackageWorkflow,
+  syncTreeseedPackageWorkflows,
 } from "../../src/operations/services/package-adapters.ts";
 
 const sdkRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -43,6 +44,7 @@ function createTreeDxAdapterFixture() {
       "type: image-service",
       "image: treeseed/treedx",
       "repository: treeseed-ai/treedx",
+      "workflowTemplateVersion: custom",
       "verify:",
       "  fast: scripts/test-treedx-fast.sh",
       "  local: scripts/test-all.sh",
@@ -50,7 +52,7 @@ function createTreeDxAdapterFixture() {
       "releaseGate:",
       "  workflow: .github/workflows/release-gate.yml",
       "dockerImages:",
-      "  releaseWorkflow: publish.yml",
+      "  releaseWorkflow: release-gate.yml",
       "  architectures:",
       "    - amd64",
       "    - arm64",
@@ -62,7 +64,7 @@ function createTreeDxAdapterFixture() {
       "",
     ].join("\n"),
   );
-  return findTreeseedPackageAdapter(root, "treedx");
+  return { root, adapter: findTreeseedPackageAdapter(root, "treedx") };
 }
 
 describe("TreeDX release gate integration", () => {
@@ -121,7 +123,7 @@ describe("TreeDX release gate integration", () => {
   it("renders TreeDX workflows without Node package install assumptions", () => {
     const adapter =
       findTreeseedPackageAdapter(workspaceRoot, "treedx") ??
-      createTreeDxAdapterFixture();
+      createTreeDxAdapterFixture().adapter;
     expect(adapter).toBeTruthy();
 
     const releaseGate = renderTreeseedPackageWorkflow(adapter!, "release-gate");
@@ -136,5 +138,18 @@ describe("TreeDX release gate integration", () => {
       expect(source).not.toContain("actions/setup-node");
       expect(source).not.toContain("npm ci");
     }
+  });
+
+  it("keeps TreeDX releases on the restored package-owned release gate", () => {
+    const fixture = createTreeDxAdapterFixture();
+    const adapter = findTreeseedPackageAdapter(workspaceRoot, "treedx") ?? fixture.adapter;
+    const root = adapter === fixture.adapter ? fixture.root : workspaceRoot;
+
+    expect(adapter).toBeTruthy();
+    expect(adapter!.metadata.dockerImageReleaseWorkflow).toBe(
+      ".github/workflows/release-gate.yml",
+    );
+    expect(adapter!.metadata.workflowTemplateVersion).toBe("custom");
+    expect(syncTreeseedPackageWorkflows({ root, packageId: "treedx" })).toEqual([]);
   });
 });

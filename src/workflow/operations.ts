@@ -2548,10 +2548,11 @@ function failWorkflowRun(
 function validatePackageReleaseWorkflows(root: string, packageNames: string[]) {
 	const missing = checkedOutWorkspacePackageRepos(root)
 		.filter((pkg) => packageNames.includes(pkg.name))
-		.filter((pkg) => !existsSync(resolve(pkg.dir, '.github/workflows/publish.yml')))
-		.map((pkg) => pkg.name);
+		.map((pkg) => ({ pkg, workflow: releaseWorkflowForPackage(root, pkg.name) }))
+		.filter((entry) => !existsSync(resolve(entry.pkg.dir, '.github/workflows', entry.workflow)))
+		.map((entry) => `${entry.pkg.name} (${entry.workflow})`);
 	if (missing.length > 0) {
-		workflowError('release', 'workflow_contract_missing', `Treeseed release requires .github/workflows/publish.yml in: ${missing.join(', ')}.`, {
+		workflowError('release', 'workflow_contract_missing', `Treeseed release requires package release workflows in: ${missing.join(', ')}.`, {
 			details: {
 				missing,
 			},
@@ -2560,9 +2561,13 @@ function validatePackageReleaseWorkflows(root: string, packageNames: string[]) {
 }
 
 function releaseWorkflowForPackage(root: string, packageName: string) {
-	void root;
-	void packageName;
-	return 'publish.yml';
+	const adapter = discoverTreeseedPackageAdapters(root).find((entry) => entry.id === packageName || entry.name === packageName);
+	const configured = typeof adapter?.metadata?.dockerImageReleaseWorkflow === 'string'
+		? adapter.metadata.dockerImageReleaseWorkflow
+		: null;
+	return configured && configured.trim()
+		? configured.trim().replace(/^\.github\/workflows\//u, '')
+		: 'publish.yml';
 }
 
 function productionDeployWorkflowForPackage(root: string, packageName: string) {
