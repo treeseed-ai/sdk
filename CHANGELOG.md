@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.28] - 2026-07-04
+
+### Fixed
+
+- fix: remove stale hosting execute command (7cbf70efa8a4)
+- fix: remove stale hosting apply execute flag (afbd921bbb2d)
+
 ## [0.12.27] - 2026-07-04
 
 ### Changed
