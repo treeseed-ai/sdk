@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.31] - 2026-07-04
+
+### Fixed
+
+- fix: target live api for hosted operations smoke (af29d5faf6e0)
+
 ## [0.12.30] - 2026-07-04
 
 ### Fixed
