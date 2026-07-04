@@ -438,7 +438,7 @@ describe('remote Treeseed support', () => {
 
 	it('syncs Cloudflare Pages secrets during hosted web deploy preparation', () => {
 		const source = readFileSync(new URL('../../src/operations/services/project-platform.ts', import.meta.url), 'utf8');
-		expect(source).toContain("syncCloudflareSecrets(tenantRoot, { target, dryRun })");
+		expect(source).toContain("syncCloudflareSecrets(tenantRoot, { target, planOnly })");
 	});
 
 	it('keeps dispatch local-first when no remote config is supplied', async () => {

@@ -515,7 +515,7 @@ cloudflare:
 			storage: 'scoped',
 		} as any, '0');
 
-		const plan = await syncTreeseedRailwayEnvironment({ tenantRoot, scope: 'staging', dryRun: true });
+		const plan = await syncTreeseedRailwayEnvironment({ tenantRoot, scope: 'staging', planOnly: true });
 		const apiService = plan.services.find((service) => service.service === 'api');
 		const context = collectTreeseedConfigContext({ tenantRoot, scopes: ['staging'], env: {} });
 		const configEntryIds = context.entriesByScope.staging.map((entry) => entry.id);
@@ -594,7 +594,7 @@ services:
 		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_API_BASE_URL'), 'https://api-staging.example.com');
 		setTreeseedMachineEnvironmentValue(tenantRoot, 'staging', entry('TREESEED_DATABASE_URL'), 'postgres://market-db-secret');
 
-		const plan = await syncTreeseedRailwayEnvironment({ tenantRoot, scope: 'staging', dryRun: true });
+		const plan = await syncTreeseedRailwayEnvironment({ tenantRoot, scope: 'staging', planOnly: true });
 		const apiService = plan.services.find((service) => service.service === 'api');
 		const runnerServices = plan.services.filter((service) => service.service === 'operationsRunner');
 

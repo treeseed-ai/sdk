@@ -259,8 +259,8 @@ function runScaffoldChecks(siteRoot) {
 		});
 	}
 	if (scaffoldChecks.has('deploy')) {
-		withTiming('scaffold deploy dry-run', () => {
-			runStep('npm', ['run', 'deploy', '--', '--dry-run'], { cwd: siteRoot });
+		withTiming('scaffold deploy plan', () => {
+			runStep('npm', ['run', 'deploy', '--', '--plan'], { cwd: siteRoot });
 		});
 	}
 }

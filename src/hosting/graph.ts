@@ -886,18 +886,18 @@ export function compileTreeseedHostingGraph(input: TreeseedHostingGraphInput): T
 	return compileSingleTreeseedHostingGraph(input, applications[0]);
 }
 
-export async function planTreeseedHostingGraph(input: TreeseedHostingGraphInput & { dryRun?: boolean }): Promise<TreeseedHostingPlan> {
+export async function planTreeseedHostingGraph(input: TreeseedHostingGraphInput & { planOnly?: boolean }): Promise<TreeseedHostingPlan> {
 	const graph = compileTreeseedHostingGraph(input);
 	const units = [];
 	for (const unit of graph.units) {
-		const observed = await unit.host.refresh({ environment: graph.environment, unit, graph, dryRun: input.dryRun !== false });
-		const plan = await unit.host.diff({ environment: graph.environment, unit, graph, observed, dryRun: input.dryRun !== false });
-		const verification = await unit.host.verify({ environment: graph.environment, unit, graph, observed, dryRun: input.dryRun !== false });
+		const observed = await unit.host.refresh({ environment: graph.environment, unit, graph, planOnly: input.planOnly !== false });
+		const plan = await unit.host.diff({ environment: graph.environment, unit, graph, observed, planOnly: input.planOnly !== false });
+		const verification = await unit.host.verify({ environment: graph.environment, unit, graph, observed, planOnly: input.planOnly !== false });
 		units.push({ unit, observed, plan, verification });
 	}
 	return {
 		environment: graph.environment,
-		dryRun: input.dryRun !== false,
+		planOnly: input.planOnly !== false,
 		units,
 		placements: graph.placements,
 		warnings: graph.warnings,
@@ -940,15 +940,15 @@ function railwayEnvForHostingApply(input: TreeseedHostingGraphInput, graph: Tree
 /**
  * @deprecated Use reconcileTreeseedTarget with hosting selectors instead.
  */
-export async function applyTreeseedHostingGraph(input: TreeseedHostingGraphInput & { dryRun?: boolean }): Promise<TreeseedHostingApplyResult> {
+export async function applyTreeseedHostingGraph(input: TreeseedHostingGraphInput & { planOnly?: boolean }): Promise<TreeseedHostingApplyResult> {
 	const plan = await planTreeseedHostingGraph(input);
 	const graph = compileTreeseedHostingGraph(input);
 	const selectedSystems = railwayReconcileSystemsForUnits(graph.units);
 	const infrastructureUnits = graph.units.filter(isInfrastructureHostedUnit);
-	if (plan.dryRun) {
+	if (plan.planOnly) {
 		return {
 			environment: plan.environment,
-			dryRun: true,
+			planOnly: true,
 			selectedApps: [...new Set(graph.units.map((unit) => unit.application?.id).filter((value): value is string => Boolean(value)))],
 			selectedSystems,
 			skippedSystems: ['web', 'data', 'github']
@@ -972,7 +972,7 @@ export async function applyTreeseedHostingGraph(input: TreeseedHostingGraphInput
 		target: createPersistentDeployTarget(graph.environment),
 		systems: selectedSystems.length > 0 ? selectedSystems : undefined,
 		env: railwayEnvForHostingApply(input, graph),
-		dryRun: plan.dryRun,
+		planOnly: plan.planOnly,
 	});
 	const resultByUnit = new Map<string, (typeof reconcile.results)[number]>();
 	for (const entry of reconcile.results) {
@@ -986,11 +986,11 @@ export async function applyTreeseedHostingGraph(input: TreeseedHostingGraphInput
 			unit,
 			plan: entry.plan,
 			result: {
-				status: reconcileResult?.verification?.ready || plan.dryRun ? 'ready' : 'blocked',
+				status: reconcileResult?.verification?.ready || plan.planOnly ? 'ready' : 'blocked',
 				locators: reconcileResult?.resourceLocators ?? {},
 				state: reconcileResult?.state ?? {
 					unitId: unit.id,
-					action: plan.dryRun ? 'plan' : 'unmatched',
+					action: plan.planOnly ? 'plan' : 'unmatched',
 				},
 				warnings: reconcileResult?.warnings ?? [],
 			},
@@ -1009,9 +1009,9 @@ export async function applyTreeseedHostingGraph(input: TreeseedHostingGraphInput
 				warnings: reconcileResult.verification.warnings,
 			} : {
 				unitId: unit.id,
-				status: plan.dryRun ? 'ready' : 'blocked',
-				verified: plan.dryRun,
-				checks: plan.dryRun ? [] : [{
+				status: plan.planOnly ? 'ready' : 'blocked',
+				verified: plan.planOnly,
+				checks: plan.planOnly ? [] : [{
 					key: 'reconcile-result',
 					label: 'Hosting unit matched a reconcile result',
 					ok: false,
@@ -1023,7 +1023,7 @@ export async function applyTreeseedHostingGraph(input: TreeseedHostingGraphInput
 	});
 	return {
 		environment: plan.environment,
-		dryRun: plan.dryRun,
+		planOnly: plan.planOnly,
 		selectedApps: [...new Set(graph.units.map((unit) => unit.application?.id).filter((value): value is string => Boolean(value)))],
 		selectedSystems,
 		skippedSystems: ['web', 'data', 'github']
@@ -1233,7 +1233,7 @@ export function serializeHostingPlan(plan: TreeseedHostingPlan) {
 	const canonical = canonicalHostingReportFromPlan(plan);
 	return {
 		environment: plan.environment,
-		dryRun: plan.dryRun,
+		planOnly: plan.planOnly,
 		...canonical,
 		selectedApps: [...new Set(plan.units.map((entry) => entry.unit.application?.id).filter((value): value is string => Boolean(value)))],
 		selectedSystems,
@@ -1269,7 +1269,7 @@ export function serializeHostingApplyResult(result: TreeseedHostingApplyResult) 
 	const canonical = canonicalHostingReportFromApplyResult(result);
 	return {
 		environment: result.environment,
-		dryRun: result.dryRun,
+		planOnly: result.planOnly,
 		...canonical,
 		selectedApps: result.selectedApps ?? [],
 		selectedSystems: result.selectedSystems ?? [],

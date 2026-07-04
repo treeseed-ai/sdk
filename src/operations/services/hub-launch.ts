@@ -322,7 +322,7 @@ export function validateRepositoryHost(host: RepositoryHost) {
 
 export async function createKnowledgeHubRepositories(input: {
 	plan: KnowledgeHubRepositoryPlan;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	description?: string | null;
 	homepageUrl?: string | null;
 }) {
@@ -330,7 +330,7 @@ export async function createKnowledgeHubRepositories(input: {
 	const githubEnv = githubToken ? { ...process.env, GH_TOKEN: githubToken, GITHUB_TOKEN: githubToken } : process.env;
 	const created = [];
 	for (const repository of input.plan.repositories) {
-		if (!repository.create || input.dryRun !== false) {
+		if (!repository.create || input.planOnly !== false) {
 			created.push({ ...repository, status: repository.create ? 'planned' : 'connected' });
 			continue;
 		}

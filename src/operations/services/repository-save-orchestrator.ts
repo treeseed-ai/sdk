@@ -1329,7 +1329,7 @@ async function runProjectVerificationInstallWithRetry(
 	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
 	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
 	if (rootWorkspaceInstall) {
-		emitProgress(options, node, 'install', 'Skipped root npm ci project verification install; lockfile dry-run and restored workspace links provide save-time dependency proof.');
+		emitProgress(options, node, 'install', 'Skipped root npm ci project verification install; lockfile plan and restored workspace links provide save-time dependency proof.');
 		return;
 	}
 	const args = rootWorkspaceInstall
@@ -1355,8 +1355,8 @@ function lockfileValidationCommand(node: Pick<RepositorySaveNode, 'path' | 'pack
 	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
 	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
 	const args = rootWorkspaceInstall
-		? ['ci', '--ignore-scripts', '--dry-run']
-		: ['ci', '--ignore-scripts', '--dry-run', '--workspaces=false'];
+		? ['ci', '--ignore-scripts', '--plan']
+		: ['ci', '--ignore-scripts', '--plan', '--workspaces=false'];
 	return { command: 'npm', args };
 }
 
@@ -2016,8 +2016,8 @@ function repoPlanCommands(
 	}
 	if (hasNpmLockfile(node.path) && (node.kind === 'project' || plannedVersion || dependencyUpdates.length > 0 || node.submoduleDependencies.length > 0)) {
 		commands.push(rootWorkspaceInstall
-			? 'npm ci --ignore-scripts --dry-run # validate root manifest, workspaces, and lockfile before commit'
-			: 'npm ci --ignore-scripts --dry-run --workspaces=false # validate deployment lockfile before commit');
+			? 'npm ci --ignore-scripts --plan # validate root manifest, workspaces, and lockfile before commit'
+			: 'npm ci --ignore-scripts --plan --workspaces=false # validate deployment lockfile before commit');
 	}
 	commands.push('git add -A');
 	commands.push('generate commit message # Cloudflare AI when configured, fallback otherwise');

@@ -283,7 +283,7 @@ await treeDx.syncMirror({
 await treeDx.createMigration({
   targetNodeId: 'node_mirror',
   mode: 'primary_transfer',
-  dryRun: true,
+  planOnly: true,
   requireMirrorSynced: false,
 });
 

@@ -17,7 +17,7 @@ const tenantRoot = process.cwd();
 
 function parseArgs(argv) {
 	const parsed = {
-		dryRun: false,
+		planOnly: false,
 		force: false,
 		skipConfirmation: false,
 		confirm: null,
@@ -30,8 +30,8 @@ function parseArgs(argv) {
 	while (rest.length) {
 		const current = rest.shift();
 		if (!current) continue;
-		if (current === '--dry-run') {
-			parsed.dryRun = true;
+		if (current === '--plan') {
+			parsed.planOnly = true;
 			continue;
 		}
 		if (current === '--force') {
@@ -100,7 +100,7 @@ const scope = options.environment ?? 'prod';
 const target = createPersistentDeployTarget(scope);
 applyTreeseedEnvironmentToProcess({ tenantRoot, scope, override: true });
 assertTreeseedCommandEnvironment({ tenantRoot, scope, purpose: 'destroy' });
-const deployConfig = validateDestroyPrerequisites(tenantRoot, { requireRemote: !options.dryRun });
+const deployConfig = validateDestroyPrerequisites(tenantRoot, { requireRemote: !options.planOnly });
 const state = loadDeployState(tenantRoot, deployConfig, { target });
 const expectedConfirmation = getExpectedConfirmation(deployConfig);
 
@@ -117,7 +117,7 @@ if (!options.skipConfirmation) {
 }
 
 const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
-	dryRun: options.dryRun,
+	planOnly: options.planOnly,
 	force: options.force,
 	deleteData: options.deleteData,
 	target,
@@ -125,8 +125,8 @@ const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
 
 printDestroySummary(result);
 
-if (options.dryRun) {
-	console.log('Dry run: no remote resources were deleted.');
+if (options.planOnly) {
+	console.log('Plan: no remote resources were deleted.');
 	process.exit(0);
 }
 

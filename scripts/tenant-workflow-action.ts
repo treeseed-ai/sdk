@@ -15,7 +15,7 @@ function parseArgs(argv: string[]) {
 		environment: null as string | null,
 		projectId: null as string | null,
 		previewId: null as string | null,
-		dryRun: false,
+		planOnly: false,
 	};
 
 	const rest = [...argv];
@@ -54,8 +54,8 @@ function parseArgs(argv: string[]) {
 			parsed.previewId = current.split('=', 2)[1] ?? null;
 			continue;
 		}
-		if (current === '--dry-run') {
-			parsed.dryRun = true;
+		if (current === '--plan') {
+			parsed.planOnly = true;
 			continue;
 		}
 		throw new Error(`Unknown workflow action argument: ${current}`);
@@ -86,7 +86,7 @@ async function main() {
 		scope,
 		projectId: options.projectId ?? process.env.TREESEED_PROJECT_ID ?? null,
 		previewId: options.previewId,
-		dryRun: options.dryRun,
+		planOnly: options.planOnly,
 		write: (line) => writeStatus(line),
 	});
 

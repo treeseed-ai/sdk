@@ -57,6 +57,7 @@ import {
 	deleteRailwayService,
 	deleteRailwayVolume,
 	deployRailwayServiceInstance,
+	inspectRailwayServiceDeploymentHealth,
 	listRailwayEnvironmentServices,
 	getRailwayServiceInstance,
 	getRailwayProject,
@@ -342,7 +343,7 @@ function buildPackageWorkflowAdapter(): TreeseedReconcileAdapter {
 				: typeof input.unit.metadata.packageId === 'string'
 					? input.unit.metadata.packageId
 					: null;
-			if (packageId && input.context.dryRun !== true && input.diff.action !== 'noop') {
+			if (packageId && input.context.planOnly !== true && input.diff.action !== 'noop') {
 				const sync = syncTreeseedPackageWorkflows({
 					root: input.context.tenantRoot,
 					packageId,
@@ -930,7 +931,7 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 			const composeFiles = observedOrResolvedComposeFiles(input);
 			const cwd = String(input.observed.live.cwd ?? input.context.tenantRoot);
 			const projectName = String(input.unit.spec.projectName ?? 'treeseed-capacity-provider');
-			if (input.context.dryRun !== true && composeFiles.length > 0 && composeFiles.every((composeFile) => existsSync(composeFile))) {
+			if (input.context.planOnly !== true && composeFiles.length > 0 && composeFiles.every((composeFile) => existsSync(composeFile))) {
 				const result = runDockerCompose({
 					composeFiles,
 					projectName,
@@ -1425,7 +1426,7 @@ function buildLocalProcessAdapter(): TreeseedReconcileAdapter {
 			const surfaces = Array.isArray(input.unit.spec.surfaces)
 				? input.unit.spec.surfaces.filter((entry): entry is string => typeof entry === 'string')
 				: [String(input.unit.spec.processId ?? input.unit.logicalName)];
-			if (input.context.dryRun !== true) {
+			if (input.context.planOnly !== true) {
 				await runManagedDevAction({
 					tenantRoot: input.context.tenantRoot,
 					action: 'stop',
@@ -1996,7 +1997,7 @@ function buildReleaseGateAdapter(): TreeseedReconcileAdapter {
 					parentContext: input.context,
 					selector,
 					target: { kind: 'persistent', scope: environment },
-					dryRun: input.context.dryRun === true,
+					planOnly: input.context.planOnly === true,
 				});
 				return genericResult(input, { ...input.observed.live, nested, fingerprint: input.unit.spec.fingerprint });
 			}
@@ -2119,7 +2120,7 @@ function buildWorkflowMetaAdapter(): TreeseedReconcileAdapter {
 					parentContext: input.context,
 					selector,
 					target: input.context.target,
-					dryRun: input.context.dryRun === true,
+					planOnly: input.context.planOnly === true,
 				});
 				return genericResult(input, { ...input.observed.live, nested, fingerprint });
 			}
@@ -2232,7 +2233,7 @@ function buildCloudflareEnv(input: TreeseedReconcileAdapterInput) {
 function hasLiveResourceId(value: unknown) {
 	return typeof value === 'string'
 		&& value.length > 0
-		&& !value.startsWith('dryrun-')
+		&& !value.startsWith('plan-')
 		&& !value.startsWith('local-')
 		&& !value.endsWith('-id')
 		&& !value.endsWith('-preview-id');
@@ -2866,7 +2867,7 @@ function verificationCheck(
 }
 
 function summarizeVerification(unitId: string, checks: TreeseedUnitVerificationCheck[], warnings: string[] = []): TreeseedUnitVerificationResult {
-	const missing = checks.flatMap((check) => !check.exists ? [`${check.key}: ${check.description}`] : []);
+	const missing = checks.flatMap((check) => !check.exists ? [`${check.key}: ${check.issues.join('; ') || check.description}`] : []);
 	const drifted = checks.flatMap((check) =>
 		check.exists && (!check.configured || !check.ready || !check.verified || check.issues.length > 0)
 			? [`${check.key}: ${check.issues.join('; ') || 'verification failed'}`]
@@ -2907,7 +2908,7 @@ function unsupportedVerification(unitId: string, message: string): TreeseedUnitV
 	};
 }
 
-function syncPagesEnvironmentVariablesForTarget(input: TreeseedReconcileAdapterInput, { dryRun = false } = {}) {
+function syncPagesEnvironmentVariablesForTarget(input: TreeseedReconcileAdapterInput, { planOnly = false } = {}) {
 	const target = toDeployTarget(input.context.target);
 	if (target.kind !== 'persistent') {
 		return { vars: [], secrets: [] };
@@ -2933,7 +2934,7 @@ function syncPagesEnvironmentVariablesForTarget(input: TreeseedReconcileAdapterI
 		...plainVars,
 		...secretVars,
 	};
-	if (dryRun || Object.keys(envVars).length === 0) {
+	if (planOnly || Object.keys(envVars).length === 0) {
 		return {
 			vars: Object.keys(plainVars),
 			secrets: Object.keys(secretVars),
@@ -2970,17 +2971,17 @@ function syncPagesEnvironmentVariablesForTarget(input: TreeseedReconcileAdapterI
 	};
 }
 
-function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRun = false } = {}) {
+function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { planOnly = false } = {}) {
 	const target = toDeployTarget(input.context.target);
 	const deployConfig = input.context.deployConfig;
 	const state = loadDeployState(input.context.tenantRoot, deployConfig, { target });
 	const env = buildCloudflareEnv(input);
-	const kvNamespaces = dryRun ? [] : listKvNamespaces(input.context.tenantRoot, env);
-	const d1Databases = dryRun ? [] : listD1Databases(input.context.tenantRoot, env);
-	const queues = dryRun ? [] : listQueues(input.context.tenantRoot, env);
-	const buckets = dryRun ? [] : listR2Buckets(input.context.tenantRoot, env);
-	const pagesProjects = dryRun ? [] : listPagesProjects(input.context.tenantRoot, env);
-	const turnstileWidgets = dryRun ? [] : listTurnstileWidgets(input.context.tenantRoot, env);
+	const kvNamespaces = planOnly ? [] : listKvNamespaces(input.context.tenantRoot, env);
+	const d1Databases = planOnly ? [] : listD1Databases(input.context.tenantRoot, env);
+	const queues = planOnly ? [] : listQueues(input.context.tenantRoot, env);
+	const buckets = planOnly ? [] : listR2Buckets(input.context.tenantRoot, env);
+	const pagesProjects = planOnly ? [] : listPagesProjects(input.context.tenantRoot, env);
+	const turnstileWidgets = planOnly ? [] : listTurnstileWidgets(input.context.tenantRoot, env);
 	const runStep = <T>(label: string, fn: () => T): T => {
 		try {
 			return fn();
@@ -3005,9 +3006,9 @@ function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRu
 			state.kvNamespaces[binding].previewId = existing.id;
 			return;
 		}
-		if (dryRun) {
-			state.kvNamespaces[binding].id = `dryrun-${current.name}`;
-			state.kvNamespaces[binding].previewId = `dryrun-${current.name}`;
+		if (planOnly) {
+			state.kvNamespaces[binding].id = `plan-${current.name}`;
+			state.kvNamespaces[binding].previewId = `plan-${current.name}`;
 			return;
 		}
 		runWrangler(['kv', 'namespace', 'create', current.name], {
@@ -3038,9 +3039,9 @@ function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRu
 			current.previewDatabaseId = existing.previewDatabaseUuid ?? existing.uuid;
 			return;
 		}
-		if (dryRun) {
-			current.databaseId = `dryrun-${current.databaseName}`;
-			current.previewDatabaseId = `dryrun-${current.databaseName}`;
+		if (planOnly) {
+			current.databaseId = `plan-${current.databaseName}`;
+			current.previewDatabaseId = `plan-${current.databaseName}`;
 			return;
 		}
 		try {
@@ -3077,7 +3078,7 @@ function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRu
 		}
 		let refreshedBuckets = buckets;
 		const existing = refreshedBuckets.find((entry) => entry?.name === bucketName);
-		if (existing || dryRun) {
+		if (existing || planOnly) {
 			return;
 		}
 		try {
@@ -3101,7 +3102,7 @@ function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRu
 		}
 		const existing = pagesProjects.find((entry) => entry?.name === current.projectName);
 		if (existing) {
-			if (!dryRun && (existing.production_branch ?? 'main') !== (current.productionBranch ?? 'main')) {
+			if (!planOnly && (existing.production_branch ?? 'main') !== (current.productionBranch ?? 'main')) {
 				cloudflareApiRequest(
 					`/accounts/${encodeURIComponent(env.CLOUDFLARE_ACCOUNT_ID)}/pages/projects/${encodeURIComponent(current.projectName)}`,
 					{
@@ -3116,7 +3117,7 @@ function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRu
 			current.url = existing.subdomain ? `https://${existing.subdomain}` : current.url ?? `https://${current.projectName}.pages.dev`;
 			return;
 		}
-		if (dryRun) {
+		if (planOnly) {
 			current.url = `https://${current.projectName}.pages.dev`;
 			return;
 		}
@@ -3158,9 +3159,9 @@ function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRu
 		current.mode = 'managed';
 		current.managed = true;
 		const existing = findTurnstileWidget(turnstileWidgets, current, current.name);
-		if (dryRun) {
-			current.sitekey = current.sitekey ?? `dryrun-${current.name}-sitekey`;
-			current.secret = current.secret ?? `dryrun-${current.name}-secret`;
+		if (planOnly) {
+			current.sitekey = current.sitekey ?? `plan-${current.name}-sitekey`;
+			current.secret = current.secret ?? `plan-${current.name}-secret`;
 			current.lastSyncedAt = nowIso();
 			return;
 		}
@@ -3198,7 +3199,7 @@ function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRu
 	runStep('r2', ensureR2Bucket);
 	runStep('pages', ensurePagesProject);
 	runStep('turnstile-widget', ensureTurnstileWidget);
-	runStep('web-cache', () => reconcileCloudflareWebCacheRules(input.context.tenantRoot, deployConfig, state, target, { dryRun, env }));
+	runStep('web-cache', () => reconcileCloudflareWebCacheRules(input.context.tenantRoot, deployConfig, state, target, { planOnly, env }));
 	state.readiness.configured = true;
 	state.readiness.provisioned = hasProvisionedCloudflareResources(state);
 	state.readiness.deployable = state.readiness.provisioned === true;
@@ -3216,7 +3217,7 @@ function reconcileCloudflareTarget(input: TreeseedReconcileAdapterInput, { dryRu
 	return { state, summary: buildProvisioningSummary(deployConfig, state, target) };
 }
 
-function syncCloudflareSecretsForTarget(input: TreeseedReconcileAdapterInput, { dryRun = false } = {}) {
+function syncCloudflareSecretsForTarget(input: TreeseedReconcileAdapterInput, { planOnly = false } = {}) {
 	const target = toDeployTarget(input.context.target);
 	const deployConfig = input.context.deployConfig;
 	const state = loadDeployState(input.context.tenantRoot, deployConfig, { target });
@@ -4382,14 +4383,14 @@ async function reconcileStaleOperationsRunnerResourcesForProject(
 
 async function syncRailwayEnvironmentForScope(
 	input: TreeseedReconcileAdapterInput,
-	{ dryRun = false, serviceKeys }: { dryRun?: boolean; serviceKeys?: string[] } = {},
+	{ planOnly = false, serviceKeys }: { planOnly?: boolean; serviceKeys?: string[] } = {},
 ) {
 	const scope = input.context.target.kind === 'persistent' ? input.context.target.scope : 'staging';
 	const sync = collectRailwayEnvironmentSync(input);
 	const selectedServiceKeys = Array.isArray(serviceKeys) && serviceKeys.length > 0
 		? [...new Set(serviceKeys.map((value) => String(value).trim()).filter(Boolean))]
 		: undefined;
-	traceRailwayReconcile(input.context.env, 'sync:start', `scope=${scope} dryRun=${dryRun ? 'yes' : 'no'}`);
+	traceRailwayReconcile(input.context.env, 'sync:start', `scope=${scope} planOnly=${planOnly ? 'yes' : 'no'}`);
 	const projectGroups = configuredRailwayProjectSyncGroups(input, scope, selectedServiceKeys);
 	if (projectGroups.length === 0) {
 		return {
@@ -4397,7 +4398,7 @@ async function syncRailwayEnvironmentForScope(
 			services: [],
 			secrets: Object.keys(sync.secrets),
 			variables: Object.keys(sync.variables),
-			dryRun,
+			planOnly,
 			workspace: '',
 		};
 	}
@@ -4406,7 +4407,7 @@ async function syncRailwayEnvironmentForScope(
 	for (const projectServices of projectGroups) {
 		const serviceKeySet = [...new Set(projectServices.map((service) => service.key))];
 		const topology = await resolveRailwayTopologyForScope(input, scope, {
-			ensure: !dryRun,
+			ensure: !planOnly,
 			ensureServices: false,
 			serviceKeys: serviceKeySet,
 			includeInstances: false,
@@ -4421,7 +4422,7 @@ async function syncRailwayEnvironmentForScope(
 		for (const service of projectServices) {
 			railwayIacServiceInput(input, sync, service, scope);
 		}
-		if (dryRun) {
+		if (planOnly) {
 			syncedServices.push(...projectServices);
 			continue;
 		}
@@ -4569,7 +4570,7 @@ async function syncRailwayEnvironmentForScope(
 		services: syncedServices,
 		secrets: Object.keys(sync.secrets),
 		variables: Object.keys(sync.variables),
-		dryRun,
+		planOnly,
 		workspace,
 	};
 	}
@@ -5871,6 +5872,37 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 			expected: desiredRootDirectory,
 			observed: entry.instance?.rootDirectory ?? null,
 			issues: entry.instance?.rootDirectory === desiredRootDirectory ? [] : ['Railway root directory does not match the desired value.'],
+		}));
+	}
+	if (service.sourceMode === 'git' && entry.service?.id && entry.environment?.id) {
+		const deployment = await inspectRailwayServiceDeploymentHealth({
+			serviceId: entry.service.id,
+			environmentId: entry.environment.id,
+			env: topology.env,
+		}).catch((error) => ({
+			ok: false,
+			repo: null,
+			branch: null,
+			rootDirectory: null,
+			message: error instanceof Error ? error.message : String(error),
+		}));
+		const repoMatches = service.sourceRepo ? deployment.repo === service.sourceRepo : true;
+		const branchMatches = service.sourceBranch ? deployment.branch === service.sourceBranch : true;
+		const rootMatches = desiredRootDirectory ? deployment.rootDirectory === desiredRootDirectory : true;
+		const deploymentIssues = [
+			repoMatches ? null : `Expected Railway Git deployment repo ${service.sourceRepo}, observed ${deployment.repo ?? '(unset)'}.`,
+			branchMatches ? null : `Expected Railway Git deployment branch ${service.sourceBranch}, observed ${deployment.branch ?? '(unset)'}.`,
+			rootMatches ? null : `Expected Railway deployment root ${desiredRootDirectory}, observed ${deployment.rootDirectory ?? '(unset)'}.`,
+			deployment.repo || deployment.branch ? null : 'Railway latest deployment does not expose a Git repository/branch; staging may still be using a Docker image source.',
+		].filter((issue): issue is string => Boolean(issue));
+		checks.push(verificationCheck('railway.service.source-mode', 'Railway staging service deploys from Git source', 'api', {
+			exists: Boolean(entry.service?.id),
+			configured: deploymentIssues.length === 0,
+			ready: deploymentIssues.length === 0,
+			verified: deploymentIssues.length === 0,
+			expected: { sourceMode: 'git', repo: service.sourceRepo ?? null, branch: service.sourceBranch ?? null, rootDirectory: desiredRootDirectory ?? null },
+			observed: { repo: deployment.repo, branch: deployment.branch, rootDirectory: deployment.rootDirectory, message: deployment.message ?? null },
+			issues: deploymentIssues,
 		}));
 	}
 	if (service.key === 'api') {

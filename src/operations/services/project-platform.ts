@@ -62,7 +62,7 @@ export interface ProjectPlatformActionOptions {
 	scope: ProjectPlatformScope;
 	projectId?: string | null;
 	previewId?: string | null;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	reporter?: ControlPlaneReporter;
 	skipProvision?: boolean;
 	bootstrapSystems?: TreeseedRunnableBootstrapSystem[];
@@ -309,7 +309,7 @@ export type TenantCloudflareDeployContext = {
 	tenantRoot: string;
 	scope: ProjectPlatformScope;
 	target: any;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	wranglerPath: string;
 	databaseName: string;
 	pagesProjectName: string | null;
@@ -322,14 +322,14 @@ export function prepareTenantCloudflareDeploy({
 	tenantRoot,
 	scope,
 	target: explicitTarget,
-	dryRun,
+	planOnly,
 	write,
 	env = process.env,
 }: {
 	tenantRoot: string;
 	scope: ProjectPlatformScope;
 	target?: any;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	write?: TreeseedBootstrapWriter;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 }): TenantCloudflareDeployContext {
@@ -340,7 +340,7 @@ export function prepareTenantCloudflareDeploy({
 	}
 	const { wranglerPath, deployConfig, state } = ensureGeneratedWranglerConfig(tenantRoot, { target });
 	if (scope !== 'local') {
-		syncCloudflareSecrets(tenantRoot, { target, dryRun });
+		syncCloudflareSecrets(tenantRoot, { target, planOnly });
 	}
 	const deployState = loadDeployState(tenantRoot, deployConfig, { target });
 	const pagesProjectName = target.kind === 'persistent' ? deployState.pages?.projectName ?? null : null;
@@ -355,7 +355,7 @@ export function prepareTenantCloudflareDeploy({
 		tenantRoot,
 		scope,
 		target,
-		dryRun,
+		planOnly,
 		wranglerPath,
 		databaseName: state.d1Databases.SITE_DATA_DB.databaseName,
 		pagesProjectName,
@@ -371,14 +371,14 @@ export function prepareTenantCloudflareDeploy({
 }
 
 export async function runTenantDataMigration(context: TenantCloudflareDeployContext) {
-	if (context.dryRun) {
+	if (context.planOnly) {
 		writeTreeseedBootstrapLine(context.write, {
 			scope: context.scope,
 			system: 'data',
 			task: 'd1-migrate',
 			stage: 'deploy',
-		}, `Dry run: would apply remote migrations for ${context.databaseName}.`);
-		return { databaseName: context.databaseName, dryRun: true };
+		}, `Plan: would apply remote migrations for ${context.databaseName}.`);
+		return { databaseName: context.databaseName, planOnly: true };
 	}
 	await runPrefixedWranglerWithRetry(context.tenantRoot, [
 		'd1',
@@ -398,19 +398,19 @@ export async function runTenantDataMigration(context: TenantCloudflareDeployCont
 			stage: 'deploy',
 		},
 	});
-	return { databaseName: context.databaseName, dryRun: false };
+	return { databaseName: context.databaseName, planOnly: false };
 }
 
-export async function runTenantWebBuild(context: Pick<TenantCloudflareDeployContext, 'tenantRoot' | 'scope' | 'dryRun' | 'env' | 'write'>) {
+export async function runTenantWebBuild(context: Pick<TenantCloudflareDeployContext, 'tenantRoot' | 'scope' | 'planOnly' | 'env' | 'write'>) {
 	const prefix = {
 		scope: context.scope,
 		system: 'web',
 		task: 'build',
 		stage: 'deploy',
 	};
-	if (context.dryRun) {
-		writeTreeseedBootstrapLine(context.write, prefix, 'Dry run: skipped tenant build.');
-		return { dryRun: true };
+	if (context.planOnly) {
+		writeTreeseedBootstrapLine(context.write, prefix, 'Plan: skipped tenant build.');
+		return { planOnly: true };
 	}
 	const result = await runPrefixedCommand(process.execPath, [packageScriptPath('tenant-build')], {
 		cwd: context.tenantRoot,
@@ -421,7 +421,7 @@ export async function runTenantWebBuild(context: Pick<TenantCloudflareDeployCont
 	if (result.status !== 0) {
 		throw new Error('tenant-build failed.');
 	}
-	return { dryRun: false };
+	return { planOnly: false };
 }
 
 export async function runTenantWebPublish(context: TenantCloudflareDeployContext) {
@@ -431,13 +431,13 @@ export async function runTenantWebPublish(context: TenantCloudflareDeployContext
 		task: 'publish',
 		stage: 'deploy',
 	};
-	if (context.dryRun) {
+	if (context.planOnly) {
 		if (context.pagesProjectName) {
-			writeTreeseedBootstrapLine(context.write, prefix, `Dry run: would deploy ${deployTargetLabel(context.target)} to Pages project ${context.pagesProjectName} from ${resolve(context.tenantRoot, 'dist')}.`);
+			writeTreeseedBootstrapLine(context.write, prefix, `Plan: would deploy ${deployTargetLabel(context.target)} to Pages project ${context.pagesProjectName} from ${resolve(context.tenantRoot, 'dist')}.`);
 		} else {
-			writeTreeseedBootstrapLine(context.write, prefix, `Dry run: would deploy ${deployTargetLabel(context.target)} with generated Wrangler config at ${resolve(context.wranglerPath)}.`);
+			writeTreeseedBootstrapLine(context.write, prefix, `Plan: would deploy ${deployTargetLabel(context.target)} with generated Wrangler config at ${resolve(context.wranglerPath)}.`);
 		}
-		return { dryRun: true };
+		return { planOnly: true };
 	}
 	if (context.pagesProjectName) {
 		const args = [
@@ -462,7 +462,7 @@ export async function runTenantWebPublish(context: TenantCloudflareDeployContext
 			prefix,
 		});
 	}
-	return { dryRun: false };
+	return { planOnly: false };
 }
 
 function inferContentType(filePath: string) {
@@ -579,11 +579,11 @@ async function repairHostingAfterSuccessfulDeploy(options: ProjectPlatformAction
 			reason: 'local_environment',
 		};
 	}
-	if (options.dryRun) {
+	if (options.planOnly) {
 		return {
 			ok: true,
 			skipped: true,
-			reason: 'dry_run',
+			reason: 'plan',
 		};
 	}
 	if (process.env.TREESEED_POST_DEPLOY_HOSTING_REPAIR === 'off') {
@@ -1102,7 +1102,7 @@ async function publishContent(
 
 	const tempRoot = mkdtempSync(join(projectPlatformTempRoot(options.tenantRoot, 'content-publish'), 'treeseed-content-publish-'));
 	try {
-		if (!options.dryRun) {
+		if (!options.planOnly) {
 			const uploadOptions = {
 				write: options.write,
 				prefix: {
@@ -1166,7 +1166,7 @@ async function publishContent(
 		}
 
 		const state = loadDeployState(options.tenantRoot, siteConfig, { target });
-		if (!options.dryRun) {
+		if (!options.planOnly) {
 			state.content.lastPublishedManifestRevision = 'overlay' in built ? built.overlay.previewId : built.manifest.revision;
 			state.content.lastPublishedManifestSha256 = stableHash(
 				JSON.stringify('overlay' in built ? built.overlay : built.manifest),
@@ -1240,7 +1240,7 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 		env,
 		systems: bootstrapSystems,
 		write: options.write,
-		dryRun: options.dryRun,
+		planOnly: options.planOnly,
 	}));
 	writeWorkflowStatus('provision:reconcile:done');
 	timings.push(...((summary as { timings?: TreeseedTimingEntry[] }).timings ?? []));
@@ -1419,7 +1419,7 @@ export async function provisionProjectPlatform(options: ProjectPlatformActionOpt
 }
 
 export async function deployProjectPlatform(options: ProjectPlatformActionOptions) {
-	writeWorkflowStatus(`deploy:start scope=${options.scope} dryRun=${options.dryRun ? 'true' : 'false'}`);
+	writeWorkflowStatus(`deploy:start scope=${options.scope} planOnly=${options.planOnly ? 'true' : 'false'}`);
 	const timings: TreeseedTimingEntry[] = [];
 	const deployStartMs = performance.now();
 	writeWorkflowStatus('deploy:resolve-reporter');
@@ -1461,7 +1461,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 			run: () => runTenantWebBuild({
 				tenantRoot: options.tenantRoot,
 				scope: 'local',
-				dryRun: options.dryRun,
+				planOnly: options.planOnly,
 				env,
 				write,
 			}),
@@ -1470,7 +1470,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 		cloudflareContext = prepareTenantCloudflareDeploy({
 			tenantRoot: options.tenantRoot,
 			scope: options.scope,
-			dryRun: options.dryRun,
+			planOnly: options.planOnly,
 			write,
 			env,
 		});
@@ -1527,7 +1527,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 				}),
 				run: async () => {
 					const result = await deployRailwayService(options.tenantRoot, service, {
-						dryRun: options.dryRun,
+						planOnly: options.planOnly,
 						write,
 						env,
 						prefix: {
@@ -1549,7 +1549,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 
 	const managesRailwaySchedules = options.scope === 'staging' || options.scope === 'prod';
 	let railwaySchedules: any[] = [];
-	let railwayScheduleVerification: any = { ok: true, checks: [], skipped: true, reason: !selectedSystems.has('agents') ? 'agents_not_selected' : !managesRailwaySchedules ? 'scope_not_scheduled' : 'dry_run' };
+	let railwayScheduleVerification: any = { ok: true, checks: [], skipped: true, reason: !selectedSystems.has('agents') ? 'agents_not_selected' : !managesRailwaySchedules ? 'scope_not_scheduled' : 'plan' };
 	if (managesRailwaySchedules && selectedSystems.has('agents')) {
 		const agentDeployNodeIds = nodes
 			.filter((node) => node.id.startsWith('agents:') && node.id.endsWith('-railway-deploy'))
@@ -1564,10 +1564,10 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 					task: 'schedules',
 					stage: 'deploy',
 				}, 'Reconciling Railway schedules...');
-				railwaySchedules = await ensureRailwayScheduledJobs(options.tenantRoot, options.scope, { dryRun: options.dryRun, env });
-				railwayScheduleVerification = !options.dryRun
+				railwaySchedules = await ensureRailwayScheduledJobs(options.tenantRoot, options.scope, { planOnly: options.planOnly, env });
+				railwayScheduleVerification = !options.planOnly
 					? await verifyRailwayScheduledJobs(options.tenantRoot, options.scope)
-					: { ok: true, checks: railwaySchedules, skipped: true, reason: 'dry_run' };
+					: { ok: true, checks: railwaySchedules, skipped: true, reason: 'plan' };
 				return {
 					service: 'railway-schedules',
 					status: railwayScheduleVerification.ok ? 'verified' : 'failed',
@@ -1589,7 +1589,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 	for (const result of serviceResults) {
 		timings.push(...((result as { timings?: TreeseedTimingEntry[] }).timings ?? []));
 	}
-	if (options.scope !== 'local' && !options.dryRun && (selectedSystems.has('web') || serviceResults.length > 0)) {
+	if (options.scope !== 'local' && !options.planOnly && (selectedSystems.has('web') || serviceResults.length > 0)) {
 		finalizeDeploymentState(options.tenantRoot, {
 			target: createPersistentDeployTarget(options.scope),
 			serviceResults,
@@ -1598,7 +1598,7 @@ export async function deployProjectPlatform(options: ProjectPlatformActionOption
 	}
 	if (!managesRailwaySchedules || !selectedSystems.has('agents')) {
 		railwaySchedules = [];
-		railwayScheduleVerification = { ok: true, checks: railwaySchedules, skipped: true, reason: !selectedSystems.has('agents') ? 'agents_not_selected' : !managesRailwaySchedules ? 'scope_not_scheduled' : 'dry_run' };
+		railwayScheduleVerification = { ok: true, checks: railwaySchedules, skipped: true, reason: !selectedSystems.has('agents') ? 'agents_not_selected' : !managesRailwaySchedules ? 'scope_not_scheduled' : 'plan' };
 	}
 	if (selectedSystems.has('agents')) {
 		serviceResults.push({
@@ -1704,7 +1704,7 @@ export async function monitorProjectPlatform(options: ProjectPlatformActionOptio
 		apiReady: apiSelected && apiMonitorEndpoints.apiReady ? timedPhase(timings, 'monitor:probe-api-ready', () => probeHttp(apiMonitorEndpoints.apiReady, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedApiCheck),
 		d1Health: apiSelected && apiMonitorEndpoints.d1Health ? timedPhase(timings, 'monitor:probe-d1-health', () => probeHttp(apiMonitorEndpoints.d1Health, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedD1Check),
 		agentHealth: agentsSelected && apiMonitorEndpoints.agentHealth ? timedPhase(timings, 'monitor:probe-agent-health', () => probeHttp(apiMonitorEndpoints.agentHealth, { attempts: 8, delayMs: 10000 })) : Promise.resolve(skippedAgentCheck),
-		r2: options.dryRun ? Promise.resolve({ ok: true, skipped: true, reason: 'dry_run' }) : timedPhase(timings, 'monitor:probe-r2', () => probeR2(options.tenantRoot, siteConfig, state, target)),
+		r2: options.planOnly ? Promise.resolve({ ok: true, skipped: true, reason: 'plan' }) : timedPhase(timings, 'monitor:probe-r2', () => probeR2(options.tenantRoot, siteConfig, state, target)),
 		scaleProbe: timedPhase(timings, 'monitor:probe-scale', () => probeScaleConfiguration(siteConfig, state)),
 		railwayResources: Promise.resolve(railwayResourcesPromise),
 		readiness: state.readiness,

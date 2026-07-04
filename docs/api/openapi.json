@@ -6384,7 +6384,7 @@
               "type": "string"
             }
           },
-          "dryRun": {
+          "planOnly": {
             "type": "boolean"
           }
         },
@@ -6413,7 +6413,7 @@
               "type": "string"
             }
           },
-          "dryRun": {
+          "planOnly": {
             "type": "boolean"
           },
           "expectedRemoteHead": {
@@ -7481,7 +7481,7 @@
           "ref": {
             "type": "string"
           },
-          "dryRun": {
+          "planOnly": {
             "type": "boolean"
           }
         },
@@ -7547,7 +7547,7 @@
         "type": "object",
         "required": [],
         "properties": {
-          "dryRun": {
+          "planOnly": {
             "type": "boolean"
           }
         },
@@ -7678,7 +7678,7 @@
           "credentialId": {
             "type": "string"
           },
-          "dryRun": {
+          "planOnly": {
             "type": "boolean"
           }
         },
@@ -7719,7 +7719,7 @@
           "mirrorId": {
             "type": "string"
           },
-          "dryRun": {
+          "planOnly": {
             "type": "boolean"
           },
           "requireSynced": {
@@ -7742,7 +7742,7 @@
           "mode": {
             "type": "string"
           },
-          "dryRun": {
+          "planOnly": {
             "type": "boolean"
           },
           "requireMirrorSynced": {
@@ -7905,7 +7905,7 @@
               "type": "string"
             }
           },
-          "dryRun": {
+          "planOnly": {
             "type": "boolean"
           },
           "backupBefore": {
@@ -7946,7 +7946,7 @@
         "type": "object",
         "required": [],
         "properties": {
-          "dryRun": {
+          "planOnly": {
             "type": "boolean"
           },
           "targetVersion": {
@@ -7964,7 +7964,7 @@
           "migrationId": {
             "type": "string"
           },
-          "dryRun": {
+          "planOnly": {
             "type": "boolean"
           }
         },
@@ -7991,7 +7991,7 @@
           "backupId": {
             "type": "string"
           },
-          "dryRun": {
+          "planOnly": {
             "type": "boolean"
           },
           "backupBeforeRestore": {

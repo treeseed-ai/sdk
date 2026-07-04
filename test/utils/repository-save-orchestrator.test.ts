@@ -207,7 +207,7 @@ describe('repository save orchestrator helpers', () => {
 			verifyMode: 'skip',
 		});
 
-		expect(plan.rootRepo.commands).toContain('npm ci --ignore-scripts --dry-run # validate root manifest, workspaces, and lockfile before commit');
+		expect(plan.rootRepo.commands).toContain('npm ci --ignore-scripts --plan # validate root manifest, workspaces, and lockfile before commit');
 		expect(plan.rootRepo.commands).not.toContain('npm install --workspaces=false # refresh project lockfile after internal dependency updates');
 	});
 
@@ -687,7 +687,7 @@ describe('repository save orchestrator helpers', () => {
 		}
 	});
 
-	it('summarizes successful lockfile dry-run output during save', async () => {
+	it('summarizes successful lockfile plan output during save', async () => {
 		vi.stubEnv('TREESEED_SAVE_NPM_INSTALL_MODE', 'run');
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-lockfile-summary-'));
 		const origin = mkdtempSync(join(tmpdir(), 'treeseed-save-lockfile-summary-origin-'));

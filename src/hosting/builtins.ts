@@ -35,7 +35,7 @@ function syntheticStatus(input: TreeseedHostAdapterOperationInput): TreeseedHost
 			unitId: input.unit.id,
 			serviceType: input.unit.serviceType.id,
 			placement: input.unit.placement,
-			dryRun: input.dryRun === true,
+			planOnly: input.planOnly === true,
 		},
 		warnings: [],
 	};
@@ -118,10 +118,10 @@ function createSyntheticHostAdapter(
 		apply(input) {
 			return {
 				...syntheticStatus(input),
-				status: input.dryRun ? 'pending' : 'ready',
+				status: input.planOnly ? 'pending' : 'ready',
 				state: {
 					...syntheticStatus(input).state,
-					applied: input.dryRun !== true,
+					applied: input.planOnly !== true,
 				},
 			};
 		},
@@ -406,7 +406,7 @@ function createCloudflareHostAdapter(): TreeseedHostAdapter {
 			},
 		verify(input) {
 			if (!isPagesSite(input)) return base.verify(input);
-			if (input.dryRun) return base.verify(input);
+			if (input.planOnly) return base.verify(input);
 			const projectName = cloudflarePagesProjectName(input);
 			const branchName = projectName ? cloudflarePagesBranchName(input) : null;
 			const domain = cloudflarePagesDomain(input);

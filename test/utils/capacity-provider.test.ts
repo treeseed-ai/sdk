@@ -147,7 +147,7 @@ describe('capacity provider SDK contracts', () => {
 		};
 		const report: ProviderReportRequest = {
 			workDayId: 'wd-1',
-			kind: 'dry-run',
+			kind: 'plan',
 			body: { summary: 'ready' },
 		};
 		const deployment: CapacityProviderDeploymentIntent = {

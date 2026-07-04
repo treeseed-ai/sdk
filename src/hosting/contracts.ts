@@ -50,7 +50,7 @@ export interface TreeseedHostAdapterOperationInput {
 	environment: TreeseedHostingEnvironment;
 	unit: TreeseedHostingUnit;
 	graph: TreeseedHostingGraph;
-	dryRun?: boolean;
+	planOnly?: boolean;
 }
 
 export interface TreeseedHostAdapterOperationResult {
@@ -207,7 +207,7 @@ export interface TreeseedHostingVerification {
 
 export interface TreeseedHostingPlan {
 	environment: TreeseedHostingEnvironment;
-	dryRun: boolean;
+	planOnly: boolean;
 	units: Array<{
 		unit: TreeseedHostingUnit;
 		observed: TreeseedHostAdapterOperationResult;
@@ -220,7 +220,7 @@ export interface TreeseedHostingPlan {
 
 export interface TreeseedHostingApplyResult {
 	environment: TreeseedHostingEnvironment;
-	dryRun: boolean;
+	planOnly: boolean;
 	selectedApps?: string[];
 	selectedSystems?: string[];
 	skippedSystems?: Array<{ system: string; reason: string }>;

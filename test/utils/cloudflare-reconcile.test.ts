@@ -36,16 +36,16 @@ const deployState = {
 		FORM_GUARD_KV: {
 			name: 'acme-docs-form-guard-staging',
 			binding: 'FORM_GUARD_KV',
-			id: 'dryrun-staging-form-guard',
-			previewId: 'dryrun-staging-form-guard-preview',
+			id: 'plan-staging-form-guard',
+			previewId: 'plan-staging-form-guard-preview',
 		},
 	},
 	d1Databases: {
 		SITE_DATA_DB: {
 			databaseName: 'acme-docs-site-data-staging',
 			binding: 'SITE_DATA_DB',
-			databaseId: 'dryrun-staging-site-data',
-			previewDatabaseId: 'dryrun-staging-site-data-preview',
+			databaseId: 'plan-staging-site-data',
+			previewDatabaseId: 'plan-staging-site-data-preview',
 		},
 	},
 	queues: {

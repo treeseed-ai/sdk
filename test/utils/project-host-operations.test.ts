@@ -278,7 +278,7 @@ describe('project host binding operations', () => {
 				projectName: 'Project',
 				approvalRequired: true,
 				approvalId: 'approval-1',
-				dryRun: true,
+				planOnly: true,
 			}, {
 				workspaceRoot: join(fixture.root, 'workspace-replace'),
 				environment: 'staging',
@@ -302,7 +302,7 @@ describe('project host binding operations', () => {
 				projectName: 'Project',
 				approvalRequired: true,
 				approvalId: 'approval-2',
-				dryRun: true,
+				planOnly: true,
 			}, {
 				workspaceRoot: join(fixture.root, 'workspace-missing-secret'),
 				environment: 'staging',

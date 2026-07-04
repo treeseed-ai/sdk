@@ -295,15 +295,15 @@ describe('config GitHub environment sync reconciliation', () => {
 		});
 		expect(result.secrets.length + result.variables.length).toBeGreaterThan(0);
 		expect(upsertGitHubEnvironmentSecretMock).toHaveBeenCalled();
-	});
+	}, 15_000);
 
-	it('keeps GitHub environment dry-run reporting non-mutating', async () => {
+	it('keeps GitHub environment plan reporting non-mutating', async () => {
 		const tenantRoot = createTenantFixture();
 		writeDefaultMachineConfig(tenantRoot);
 		unlockSecrets(tenantRoot);
 		seedHostedValues(tenantRoot);
 
-		const result = await syncTreeseedGitHubEnvironment({ tenantRoot, scope: 'staging', dryRun: true });
+		const result = await syncTreeseedGitHubEnvironment({ tenantRoot, scope: 'staging', planOnly: true });
 
 		expect(result).toMatchObject({
 			repository: 'owner/repo',

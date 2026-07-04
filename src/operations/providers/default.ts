@@ -796,7 +796,7 @@ class RepositoryHostCreateRepositoriesOperation extends BaseOperation {
 		}
 		return operationResult(this.metadata, await createKnowledgeHubRepositories({
 			plan,
-			dryRun: input.dryRun === true,
+			planOnly: input.planOnly === true,
 			description: typeof input.description === 'string' ? input.description : null,
 			homepageUrl: typeof input.homepageUrl === 'string' ? input.homepageUrl : null,
 		}));
@@ -827,7 +827,7 @@ class ContentPublishOperation extends BaseOperation {
 		const scope = input.scope === 'staging' || input.scope === 'prod' || input.scope === 'local'
 			? input.scope
 			: 'prod';
-		if (input.dryRun === true) {
+		if (input.planOnly === true) {
 			return operationResult(this.metadata, {
 				status: 'planned',
 				tenantRoot,

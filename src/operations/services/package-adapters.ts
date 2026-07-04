@@ -61,7 +61,7 @@ export type TreeseedPackageAdapter = {
 		architectures?: string[];
 	}>;
 	releaseChecks: Array<{
-		kind: 'npm-pack-dry-run' | 'github-workflow' | 'docker-manifest';
+		kind: 'npm-pack-plan' | 'github-workflow' | 'docker-manifest';
 		name: string;
 		detail: string;
 	}>;
@@ -354,7 +354,7 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 			{ kind: 'github-workflow', name: 'publish workflow', detail: dockerImageReleaseWorkflow ? `.github/workflows/${dockerImageReleaseWorkflow}` : '.github/workflows/publish.yml' },
 			...(dockerArtifacts.length > 0
 				? dockerArtifacts.map((artifact) => ({ kind: 'docker-manifest' as const, name: `${artifact.name} Docker image manifest`, detail: `${artifact.name}:<version>` }))
-				: [{ kind: 'npm-pack-dry-run' as const, name: 'npm pack', detail: 'npm pack --dry-run' }]),
+				: [{ kind: 'npm-pack-plan' as const, name: 'npm pack', detail: 'npm pack --plan' }]),
 		],
 		metadata: {
 			...(repository ? { repository } : {}),

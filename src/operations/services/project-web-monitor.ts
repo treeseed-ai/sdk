@@ -222,7 +222,7 @@ async function workflowFileCheck(input: {
 	workflowFile: string;
 	githubClient?: GitHubApiClient | null;
 	mockExternal?: boolean;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	treeDxPublish?: boolean;
 }) {
 	if (input.treeDxPublish) {
@@ -243,7 +243,7 @@ async function workflowFileCheck(input: {
 			summary: 'GitHub repository is not configured.',
 		});
 	}
-	if (input.mockExternal || input.dryRun) {
+	if (input.mockExternal || input.planOnly) {
 		return check({
 			key: 'workflow_file',
 			label: 'Workflow file',
@@ -290,7 +290,7 @@ async function httpCheck(input: {
 	url: string | null;
 	fetchImpl?: typeof fetch | null;
 	mockExternal?: boolean;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	timeoutMs?: number;
 }) {
 	if (!input.url) {
@@ -302,7 +302,7 @@ async function httpCheck(input: {
 			summary: 'No public URL is available for HTTP probing.',
 		});
 	}
-	if (input.mockExternal || input.dryRun || !input.fetchImpl) {
+	if (input.mockExternal || input.planOnly || !input.fetchImpl) {
 		return check({
 			key: 'http_response',
 			label: 'HTTP response',
@@ -350,7 +350,7 @@ export async function buildProjectWebMonitorResult(input: {
 	githubClient?: GitHubApiClient | null;
 	fetchImpl?: typeof fetch | null;
 	mockExternal?: boolean;
-	dryRun?: boolean;
+	planOnly?: boolean;
 }) {
 	const repository = repositorySlug(input.repository);
 	const workflowFile = text(input.workflowFile ?? input.repository?.workflowFile, 'deploy-web.yml');
@@ -398,7 +398,7 @@ export async function buildProjectWebMonitorResult(input: {
 			workflowFile,
 			githubClient: input.githubClient,
 			mockExternal: input.mockExternal,
-			dryRun: input.dryRun,
+			planOnly: input.planOnly,
 			treeDxPublish,
 		}),
 		check({
@@ -420,7 +420,7 @@ export async function buildProjectWebMonitorResult(input: {
 			url: targetUrl,
 			fetchImpl: input.fetchImpl,
 			mockExternal: input.mockExternal,
-			dryRun: input.dryRun,
+			planOnly: input.planOnly,
 		}),
 		contentRuntimeCheck({ resolution: contentRuntime, hasRuntimeMetadata }),
 		check({

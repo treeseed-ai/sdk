@@ -1348,6 +1348,55 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
 	}, 300000);
 
+	it('plans API production image refs from selected API and already-published TreeDX without selecting TreeDX', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = workflowFor(work);
+		git(work, ['checkout', 'staging']);
+		const treedxRoot = resolve(work, 'packages', 'treedx');
+		mkdirSync(resolve(treedxRoot, 'apps', 'api'), { recursive: true });
+		writeFileSync(resolve(treedxRoot, 'apps', 'api', 'mix.exs'), 'defmodule TreeDX.MixProject do\n  def project, do: [version: "0.2.20"]\nend\n', 'utf8');
+		writeFileSync(resolve(treedxRoot, 'treeseed.package.yaml'), `id: treedx
+name: TreeDX
+kind: beam-elixir-rust
+repository: treeseed-ai/treedx
+versionSource: apps/api/mix.exs
+image: treeseed/treedx
+deploymentSource:
+  staging: git
+  prod: image
+artifacts:
+  - provider: docker
+    name: treeseed/treedx
+  - provider: docker
+    name: treeseed/treedx-profiler
+`, 'utf8');
+		git(treedxRoot, ['add', '-A']);
+		git(treedxRoot, ['commit', '-m', 'release: treedx 0.2.20 metadata']);
+		git(treedxRoot, ['tag', '0.2.20']);
+		git(treedxRoot, ['push', 'origin', 'staging', '0.2.20']);
+		git(treedxRoot, ['checkout', 'main']);
+		git(treedxRoot, ['merge', '--ff-only', 'staging']);
+		git(treedxRoot, ['push', 'origin', 'main']);
+		git(treedxRoot, ['checkout', 'staging']);
+		writeFileSync(resolve(work, 'packages', 'api', 'index.js'), 'export const name = "api-release";\n', 'utf8');
+		git(resolve(work, 'packages', 'api'), ['add', 'index.js']);
+		git(resolve(work, 'packages', 'api'), ['commit', '-m', 'fix: api release image refs']);
+		git(resolve(work, 'packages', 'api'), ['push', 'origin', 'staging']);
+		git(work, ['add', 'packages/api', 'packages/treedx']);
+		git(work, ['commit', '-m', 'stage: api release and stable treedx pointer']);
+		git(work, ['push', 'origin', 'staging']);
+
+		const result = await workflow.release({ bump: 'patch', plan: true });
+
+		expect(result.payload.packageSelection.selected).toContain('@treeseed/api');
+		expect(result.payload.packageSelection.selected).not.toContain('treedx');
+		expect(result.payload.releaseImageRefs).toMatchObject({
+			TREESEED_API_IMAGE_REF: 'treeseed/api:0.4.13',
+			TREESEED_OPERATIONS_RUNNER_IMAGE_REF: 'treeseed/op-runner:0.4.13',
+			TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.2.20',
+		});
+	}, 300000);
+
 	it('plans release-line repair without bumping packages already on the target line', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = workflowFor(work);

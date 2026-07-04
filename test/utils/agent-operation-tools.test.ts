@@ -35,7 +35,7 @@ const baseRequest: AgentOperationRequest = {
 const baseGrant: AgentOperationGrant = {
 	id: 'grant-1',
 	operations: ['switch', 'dev', 'verify', 'save', 'stage', 'close', 'release'],
-	modes: ['dry_run', 'read_only', 'mutating'],
+	modes: ['plan', 'read_only', 'mutating'],
 	agentRoles: ['engineer'],
 	taskKinds: ['implementation'],
 	projectIds: ['market'],
@@ -103,15 +103,15 @@ describe('agent operation tool policy', () => {
 		});
 	});
 
-	it('allows dry-run and read-only grants without a worktree', () => {
+	it('allows plan and read-only grants without a worktree', () => {
 		const grant: AgentOperationGrant = {
 			...baseGrant,
 			operations: ['dev'],
-			modes: ['dry_run', 'read_only'],
+			modes: ['plan', 'read_only'],
 		};
 
 		expect(decideAgentOperationPermission({
-			request: { ...baseRequest, operation: 'dev', mode: 'dry_run', worktreeRoot: undefined },
+			request: { ...baseRequest, operation: 'dev', mode: 'plan', worktreeRoot: undefined },
 			grants: [grant],
 		}).allowed).toBe(true);
 		expect(decideAgentOperationPermission({

@@ -508,13 +508,13 @@ describe('hosting graph', () => {
 		expect(text).toContain('[redacted]');
 	});
 
-	it('apply is dry-run by default and reports adapter verification', async () => {
+	it('apply is plan by default and reports adapter verification', async () => {
 		const result = serializeHostingApplyResult(await applyTreeseedHostingGraph({
 			tenantRoot: createTenant(marketConfig()),
 			environment: 'staging',
 		}));
 
-		expect(result.dryRun).toBe(true);
+		expect(result.planOnly).toBe(true);
 		expect(result.results.length).toBeGreaterThan(0);
 		expect(result.results.every((entry) => entry.verification.verified)).toBe(true);
 	});

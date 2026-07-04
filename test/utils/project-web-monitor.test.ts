@@ -93,7 +93,7 @@ describe('project web monitor helper', () => {
 			repository,
 			target,
 			githubClient: client as any,
-			dryRun: false,
+			planOnly: false,
 			fetchImpl: null,
 		});
 

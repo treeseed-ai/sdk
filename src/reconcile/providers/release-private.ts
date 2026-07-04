@@ -166,7 +166,7 @@ export async function runHostedReconcileGate(input: {
 	parentContext: TreeseedReconcileRunContext;
 	selector: TreeseedReconcileSelector;
 	target: TreeseedReconcileTarget;
-	dryRun: boolean;
+	planOnly: boolean;
 }) {
 	const { reconcileTreeseedNestedTarget } = await import('../engine.ts');
 	return reconcileTreeseedNestedTarget(input);

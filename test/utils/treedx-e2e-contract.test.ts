@@ -73,7 +73,7 @@ describe('TreeDX end-to-end SDK contract', () => {
 			{ ok: true, repoId: 'repo_1', workspaceId: 'ws_1', branchName: 'refs/heads/agent/mvp', commitSha: 'def', changedPaths: ['docs/readme.md'], status: 'committed' },
 			{ ok: true, snapshot: { snapshotId: 'snap_1', repoId: 'repo_1', ref: 'refs/heads/agent/mvp', commitSha: 'def', kind: 'repository_snapshot', includedPaths: ['docs/**'], fileCount: 1, totalBytes: 10, checksums: {}, createdAt: '2026-06-02T00:00:00Z', artifact: { artifactId: 'artifact_1', snapshotId: 'snap_1', repoId: 'repo_1', format: 'tar.zst', size: 100, checksum: 'blake3:abc', uri: 'treedx://artifact/snap_1' } } },
 			{ ok: true, artifact: { artifactId: 'artifact_1', snapshotId: 'snap_1', repoId: 'repo_1', format: 'tar.zst', size: 100, checksum: 'blake3:abc', uri: 'treedx://artifact/snap_1' } },
-			{ ok: true, migration: { id: 'mig_1', repositoryId: 'repo_1', sourceNodeId: 'node_local', targetNodeId: 'node_mirror', mode: 'primary_transfer', status: 'planned', dryRun: true, requireMirrorSynced: false, createdAt: '2026-06-02T00:00:00Z' }, placement: { repositoryId: 'repo_1', primaryNodeId: 'node_local' } },
+			{ ok: true, migration: { id: 'mig_1', repositoryId: 'repo_1', sourceNodeId: 'node_local', targetNodeId: 'node_mirror', mode: 'primary_transfer', status: 'planned', planOnly: true, requireMirrorSynced: false, createdAt: '2026-06-02T00:00:00Z' }, placement: { repositoryId: 'repo_1', primaryNodeId: 'node_local' } },
 			{ ok: true, events: [], page: { limit: 200, hasMore: false } },
 		]);
 
@@ -92,7 +92,7 @@ describe('TreeDX end-to-end SDK contract', () => {
 		await client.commit({ workspaceId: 'ws_1', message: 'MVP update', author: { name: 'TreeDX Agent', email: 'agent@example.invalid' } });
 		await client.buildSnapshot({ repoId: 'repo_1', ref: 'refs/heads/agent/mvp', paths: ['docs/**'] });
 		await client.exportArtifact({ repoId: 'repo_1', snapshotId: 'snap_1' });
-		await client.createMigration({ repoId: 'repo_1', targetNodeId: 'node_mirror', dryRun: true, requireMirrorSynced: false });
+		await client.createMigration({ repoId: 'repo_1', targetNodeId: 'node_mirror', planOnly: true, requireMirrorSynced: false });
 		await client.listAuditEvents({ repoId: 'repo_1', limit: 200 });
 
 		expect(calls.map((call) => call.url)).toEqual([

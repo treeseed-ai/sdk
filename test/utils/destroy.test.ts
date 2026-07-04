@@ -105,7 +105,7 @@ describe('destroy planning', () => {
 
 		const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
 			target: createPersistentDeployTarget('staging'),
-			dryRun: true,
+			planOnly: true,
 		});
 
 		const cloudflare = result.operations.cloudflare;
@@ -124,7 +124,7 @@ describe('destroy planning', () => {
 
 		const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
 			target: createPersistentDeployTarget('staging'),
-			dryRun: true,
+			planOnly: true,
 			deleteData: true,
 		});
 
@@ -146,7 +146,7 @@ describe('destroy planning', () => {
 
 		const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
 			target: createPersistentDeployTarget('prod'),
-			dryRun: true,
+			planOnly: true,
 			deleteData: true,
 		});
 
@@ -219,7 +219,7 @@ describe('destroy planning', () => {
 
 		const result = await destroyTreeseedEnvironmentResources(tenantRoot, {
 			target: createPersistentDeployTarget('local'),
-			dryRun: true,
+			planOnly: true,
 			deleteData: true,
 		});
 
@@ -249,7 +249,7 @@ describe('destroy planning', () => {
 			return { status: 0, stdout: '', stderr: '' };
 		});
 
-		const operations = dockerLocalRuntimeResourceOperations({ dryRun: false });
+		const operations = dockerLocalRuntimeResourceOperations({ planOnly: false });
 
 		expect(operations.filter((entry) => entry.type.startsWith('docker-')).map((entry) => entry.status)).toEqual([
 			'deleted',

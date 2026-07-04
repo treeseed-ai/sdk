@@ -57,7 +57,7 @@ function createRunContext(
 	target: TreeseedReconcileTarget,
 	launchEnv: NodeJS.ProcessEnv,
 	write?: (line: string) => void,
-	dryRun = false,
+	planOnly = false,
 	session?: Map<string, unknown>,
 ): TreeseedReconcileRunContext {
 	const { deployConfig } = deriveTreeseedDesiredUnits({ tenantRoot, target, env: launchEnv });
@@ -66,7 +66,7 @@ function createRunContext(
 		target,
 		deployConfig,
 		launchEnv,
-		dryRun,
+		planOnly,
 		write,
 		session: session ?? new Map<string, unknown>(),
 	};
@@ -371,7 +371,7 @@ export async function reconcileTreeseedTarget({
 	selector,
 	units,
 	write,
-	dryRun = false,
+	planOnly = false,
 	session,
 }: {
 	tenantRoot: string;
@@ -381,12 +381,12 @@ export async function reconcileTreeseedTarget({
 	selector?: TreeseedReconcileSelector;
 	units?: TreeseedDesiredUnit[];
 	write?: (line: string) => void;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	session?: Map<string, unknown>;
 }) {
 	const planned = await planTreeseedReconciliation({ tenantRoot, target, env, systems, selector, units, write });
 	const registry = createTreeseedReconcileRegistry(planned.deployConfig);
-	const context = createRunContext(tenantRoot, target, env, write, dryRun, session);
+	const context = createRunContext(tenantRoot, target, env, write, planOnly, session);
 	const results: TreeseedReconcileResult[] = [];
 	const verificationMap = new Map<string, TreeseedUnitVerificationResult>();
 	const timingEntries: TreeseedTimingEntry[] = [];
@@ -440,7 +440,7 @@ export async function reconcileTreeseedTarget({
 		let result;
 		try {
 			const stageStartMs = performance.now();
-			if (dryRun) {
+			if (planOnly) {
 				result = {
 					unit: plan.unit,
 					observed: plan.observed,
@@ -463,7 +463,7 @@ export async function reconcileTreeseedTarget({
 			unitTiming.children?.push({
 				name: `${unitTiming.name}:apply`,
 				durationMs: elapsedMs(stageStartMs),
-				status: dryRun ? 'skipped' : 'success',
+				status: planOnly ? 'skipped' : 'success',
 			});
 		} catch (error) {
 			unitTiming.children?.push({
@@ -476,7 +476,7 @@ export async function reconcileTreeseedTarget({
 			wrapAdapterFailure('apply', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
 		}
 		let refreshedObserved = (result as TreeseedReconcileResult).observed;
-		if (!dryRun) {
+		if (!planOnly) {
 			try {
 				const stageStartMs = performance.now();
 				refreshedObserved = await Promise.resolve(adapter.refresh({
@@ -550,17 +550,17 @@ export async function reconcileTreeseedTarget({
 		unitTiming.status = (verification as TreeseedUnitVerificationResult).verified ? 'success' : 'failed';
 		write?.(`Finished ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName}) in ${formatDurationMs(unitTiming.durationMs)}.`);
 		if (!(verification as TreeseedUnitVerificationResult).verified) {
-			if (!dryRun) {
+			if (!planOnly) {
 				await persistVerifiedResult(persisted, verifiedResult);
 			}
 			throw new Error(`Treeseed reconcile verification failed for ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.unitId}): ${formatVerificationFailure(verification as TreeseedUnitVerificationResult)}`);
 		}
-		if (!dryRun) {
+		if (!planOnly) {
 			await persistVerifiedResult(persisted, verifiedResult);
 		}
 		results.push(verifiedResult);
 	});
-	if (!dryRun) {
+	if (!planOnly) {
 		writeTreeseedReconcileState(tenantRoot, planned.state, env);
 	}
 	return {
@@ -702,12 +702,12 @@ export async function reconcileTreeseedNestedTarget({
 	parentContext,
 	selector,
 	target,
-	dryRun,
+	planOnly,
 }: {
 	parentContext: TreeseedReconcileRunContext;
 	selector: TreeseedReconcileSelector;
 	target: TreeseedReconcileTarget;
-	dryRun: boolean;
+	planOnly: boolean;
 }) {
 	const previousVerificationResults = parentContext.session.get('treeseed:verification-results');
 	const previousTimings = parentContext.session.get('treeseed:timings');
@@ -718,7 +718,7 @@ export async function reconcileTreeseedNestedTarget({
 			env: parentContext.launchEnv,
 			selector,
 			write: parentContext.write,
-			dryRun,
+			planOnly,
 			session: parentContext.session,
 		});
 	} finally {

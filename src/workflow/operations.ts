@@ -459,7 +459,7 @@ function maybeRunLocalWorkflowCleanup(
 	helpers: WorkflowOperationHelpers,
 	root: string,
 	operation: 'save' | 'stage' | 'release',
-	input: { skipCleanup?: boolean; sceneArtifacts?: 'full' | 'screenshots'; plan?: boolean; dryRun?: boolean },
+	input: { skipCleanup?: boolean; sceneArtifacts?: 'full' | 'screenshots'; plan?: boolean },
 ) {
 	if (normalizeExecutionMode(input) === 'plan' || input.skipCleanup === true) return null;
 	helpers.write(`Treeseed ${operation} cleanup: pruning local caches, generated evidence, npm cache, and Docker artifacts before long verification.`, 'stderr');
@@ -734,7 +734,7 @@ async function reconcileSaveHostedEnvironment(
 		target,
 		env,
 		selector,
-		dryRun: false,
+		planOnly: false,
 		write: (line) => helpers.write(`[${operation}][reconcile] ${line}`, 'stderr'),
 		session: reconcileSession,
 	});
@@ -856,6 +856,25 @@ function productionReleaseImageRefEnv(selectedVersions: Map<string, string>) {
 		refs.TREESEED_PUBLIC_TREEDX_IMAGE_REF = `treeseed/treedx:${treedxVersion}`;
 	}
 	return refs;
+}
+
+function productionReleaseImageRefVersions(root: string, selectedVersions: Map<string, string>) {
+	const versions = new Map(selectedVersions);
+	for (const adapter of discoverTreeseedPackageAdapters(root)) {
+		if (adapter.id !== 'treedx' && adapter.id !== '@treeseed/treedx') continue;
+		const prodSource = stringRecord(adapter.metadata.deploymentSource)?.prod;
+		if (prodSource !== 'image') continue;
+		if (versions.has(adapter.id) || !adapter.version) continue;
+		const line = stableVersionLine(adapter.version);
+		const stableVersion = (line ? highestStableGitTagOnLine(adapter.dir, line) : null) ?? adapter.version;
+		versions.set(adapter.id, stableVersion);
+	}
+	return versions;
+}
+
+function stableVersionLine(version: string) {
+	const match = version.match(/^(\d+\.\d+)\.\d+$/u);
+	return match?.[1] ?? null;
 }
 
 async function runReleaseApiGuarantees(
@@ -1358,8 +1377,8 @@ async function workflowHostedVerificationGateRequired(
 	});
 }
 
-function normalizeExecutionMode(input: { plan?: boolean; dryRun?: boolean } | undefined): TreeseedWorkflowExecutionMode {
-	return input?.plan === true || input?.dryRun === true ? 'plan' : 'execute';
+function normalizeExecutionMode(input: { plan?: boolean } | undefined): TreeseedWorkflowExecutionMode {
+	return input?.plan === true ? 'plan' : 'execute';
 }
 
 function submodulePointerForRef(repoDir: string, ref: string, relativeDir: string) {
@@ -2882,10 +2901,10 @@ export async function workflowProof(helpers: WorkflowOperationHelpers, input: Tr
 			const timer = createTreeseedWorkflowTimer();
 			const tenantRoot = resolveProjectRootOrThrow('proof', helpers.cwd());
 			const root = workspaceRoot(tenantRoot);
-			const action = input.action ?? (input.plan || input.dryRun ? 'plan' : 'status');
+			const action = input.action ?? (input.plan ? 'plan' : 'status');
 			const target = input.target ?? 'staging';
 			const driver = input.driver ?? 'github-hosted';
-			const executionMode = action === 'plan' || input.plan || input.dryRun ? 'plan' : 'execute';
+			const executionMode = action === 'plan' || input.plan ? 'plan' : 'execute';
 			let payload: Record<string, unknown>;
 			if (action === 'run') {
 				const result = await timer.phaseAsync('proof-run', 'Run release proof subjects', () => runTreeseedProof({
@@ -3592,10 +3611,10 @@ async function reconcileWorkflowBranchPreview(
 	context: TreeseedWorkflowContext,
 	{ initialize }: { initialize: boolean },
 ) {
-	return reconcileTreeseedBranchPreview({
+return reconcileTreeseedBranchPreview({
 		root: tenantRoot,
 		branch: branchName,
-		dryRun: false,
+		planOnly: false,
 		execute: true,
 		workflowRunId: context.workflow?.resumeRunId ?? undefined,
 		initialize,
@@ -3607,7 +3626,7 @@ export async function reconcileTreeseedBranchPreview(input: {
 	root: string;
 	branch: string;
 	appId?: string[];
-	dryRun: boolean;
+	planOnly: boolean;
 	execute: boolean;
 	workflowRunId?: string;
 	initialize?: boolean;
@@ -3626,7 +3645,8 @@ export async function reconcileTreeseedBranchPreview(input: {
 		...(input.appId?.length ? { appId: input.appId } : {}),
 	};
 	const units = compileTreeseedDesiredUnitsFromGraph(graph, selector);
-	const reconcile = input.dryRun || !input.execute
+	const planOnly = input.planOnly || !input.execute;
+	const reconcile = planOnly
 		? await planTreeseedReconciliation({ tenantRoot: input.root, target, env: input.env ?? process.env, units, selector })
 		: await reconcileTreeseedTarget({
 			tenantRoot: input.root,
@@ -3634,10 +3654,10 @@ export async function reconcileTreeseedBranchPreview(input: {
 			env: input.env ?? process.env,
 			units,
 			selector,
-			dryRun: false,
+			planOnly: false,
 		});
 	return {
-		status: input.dryRun || !input.execute ? 'planned' : 'reconciled',
+		status: planOnly ? 'planned' : 'reconciled',
 		branch: input.branch,
 		initialize: input.initialize === true,
 		reconcile,
@@ -3645,10 +3665,10 @@ export async function reconcileTreeseedBranchPreview(input: {
 }
 
 async function destroyWorkflowBranchPreviewIfPresent(tenantRoot: string, branchName: string, context?: TreeseedWorkflowContext) {
-	return destroyTreeseedBranchPreview({
+return destroyTreeseedBranchPreview({
 		root: tenantRoot,
 		branch: branchName,
-		dryRun: false,
+		planOnly: false,
 		execute: true,
 		reason: 'close',
 		env: context?.env,
@@ -3658,7 +3678,7 @@ async function destroyWorkflowBranchPreviewIfPresent(tenantRoot: string, branchN
 export async function destroyTreeseedBranchPreview(input: {
 	root: string;
 	branch: string;
-	dryRun: boolean;
+	planOnly: boolean;
 	execute: boolean;
 	reason: 'close' | 'branch-delete' | 'expired' | 'manual';
 	env?: NodeJS.ProcessEnv;
@@ -3678,7 +3698,8 @@ export async function destroyTreeseedBranchPreview(input: {
 		unit.unitType === 'branch-preview-cleanup'
 			? { ...unit, spec: { ...unit.spec, reason: input.reason } }
 			: unit);
-	const reconcile = input.dryRun || !input.execute
+	const planOnly = input.planOnly || !input.execute;
+	const reconcile = planOnly
 		? await planTreeseedReconciliation({ tenantRoot: input.root, target, env: input.env ?? process.env, units, selector })
 		: await destroyTreeseedTargetUnits({
 			tenantRoot: input.root,
@@ -3688,7 +3709,7 @@ export async function destroyTreeseedBranchPreview(input: {
 			selector,
 		});
 	return {
-		status: input.dryRun || !input.execute ? 'planned' : 'destroyed',
+		status: planOnly ? 'planned' : 'destroyed',
 		branch: input.branch,
 		reason: input.reason,
 		reconcile,
@@ -3700,7 +3721,7 @@ function resolveDestroyConfirmation(
 	expected: string,
 	input: TreeseedDestroyInput,
 ) {
-	if (input.dryRun) {
+	if (input.plan) {
 		return true;
 	}
 	if (input.confirm === true) {
@@ -4436,7 +4457,7 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 					? await reconcileTreeseedBranchPreview({
 						root,
 						branch: branchName,
-						dryRun: true,
+						planOnly: true,
 						execute: false,
 						initialize: !branchPreviewInitialized(root, branchName),
 						env: helpers.context.env,
@@ -6449,7 +6470,7 @@ async function runReleaseGateReconcileFacade(
 	helpers: WorkflowOperationHelpers,
 	root: string,
 	target: TreeseedReconcileTarget,
-	input: { plan?: boolean; dryRun?: boolean; execute?: boolean; verifyDeployedResources?: boolean; releaseImageRefs?: Record<string, string>; includeHostedReleaseGates?: boolean },
+	input: { plan?: boolean; execute?: boolean; verifyDeployedResources?: boolean; releaseImageRefs?: Record<string, string>; includeHostedReleaseGates?: boolean },
 	extraPayload: Record<string, unknown> = {},
 ) {
 	const executionMode = normalizeExecutionMode(input);
@@ -6520,7 +6541,7 @@ async function runReleaseGateReconcileFacade(
 			env: reconcileEnv,
 			units,
 			selector: unitSelector,
-			dryRun: input.execute !== true,
+			planOnly: false,
 			write: (line) => helpers.write(`[${operation}][reconcile] ${line}`, 'stderr'),
 		})
 		: null;
@@ -6654,6 +6675,9 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				level,
 				repairVersionLine: effectiveInput.repairVersionLine === true,
 			});
+			const selectedVersions = releasePlanVersionMap(plannedRelease.plannedVersions);
+			const releaseImageVersions = productionReleaseImageRefVersions(root, selectedVersions);
+			const releaseImageRefs = productionReleaseImageRefEnv(releaseImageVersions);
 			traceReleaseStartup('collect production readiness');
 			const plannedReadiness = collectTreeseedDeploymentReadiness({
 				tenantRoot: root,
@@ -6671,6 +6695,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				level,
 				fresh: input.fresh === true,
 				sceneArtifacts: normalizeSceneArtifactsMode(effectiveInput.sceneArtifacts),
+				releaseImageRefs,
 				localCleanup,
 				freshArchivedRuns: [],
 				autoResumeCandidate: planAutoResumeRun
@@ -6691,6 +6716,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					{
 						plan: true,
 						verifyDeployedResources: effectiveInput.verifyDeployedResources,
+						releaseImageRefs,
 					},
 					releaseBasePayload,
 				);
@@ -6706,7 +6732,6 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				? prepareFreshReleaseRun(root, session.branchName, rootRepo, packageReports)
 				: { archived: [], blockers: [] };
 			traceReleaseStartup('compute versions');
-			const selectedVersions = releasePlanVersionMap(plannedRelease.plannedVersions);
 			const stableVersions = new Map([
 				...releasePlanStableDependencyVersionMap(plannedRelease).entries(),
 				...selectedVersions.entries(),
@@ -6779,7 +6804,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						{
 							execute: true,
 							verifyDeployedResources: effectiveInput.verifyDeployedResources,
-							releaseImageRefs: productionReleaseImageRefEnv(selectedVersions),
+							releaseImageRefs,
 						},
 						{
 							...releaseBasePayload,
@@ -6881,7 +6906,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					}).then((workflowGates) => ({ workflowGates }));
 				});
 				const productionHosting = await executeJournalStep(root, workflowRun.runId, 'production-hosting', () =>
-					reconcileSaveHostedEnvironment(root, 'prod', helpers, workflowRun.runId, 'release', productionReleaseImageRefEnv(selectedVersions), { liveAppId: 'api' }));
+					reconcileSaveHostedEnvironment(root, 'prod', helpers, workflowRun.runId, 'release', releaseImageRefs, { liveAppId: 'api' }));
 				const productionApiGuarantees = await executeJournalStep(root, workflowRun.runId, 'production-api-guarantees', () =>
 					runReleaseApiGuarantees(root, 'prod', helpers, 'release', normalizeSceneArtifactsMode(effectiveInput.sceneArtifacts)));
 				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
@@ -7229,7 +7254,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 			}
 			const executionMode = normalizeExecutionMode(input);
 			const target = createPersistentDeployTarget(scope);
-			const dryRun = executionMode === 'plan';
+			const planOnly = executionMode === 'plan';
 			const force = input.force === true;
 			const deleteData = input.deleteData === true;
 			const sweepTreeseed = input.sweepTreeseed === true;
@@ -7243,7 +7268,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 			const expectedConfirmation = deployConfig.slug;
 			const payload = {
 				scope,
-				dryRun,
+				planOnly,
 				force,
 				deleteData,
 				sweepTreeseed,
@@ -7265,7 +7290,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 
 			if (executionMode === 'plan') {
 				const plannedRemoteResult = destroyRemote
-					? await destroyTreeseedEnvironmentResources(tenantRoot, { dryRun: true, force, deleteData, sweepTreeseed, target })
+					? await destroyTreeseedEnvironmentResources(tenantRoot, { planOnly: true, force, deleteData, sweepTreeseed, target })
 					: null;
 				return buildWorkflowResult(
 					'destroy',
@@ -7329,7 +7354,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 
 				const remoteResult = destroyRemote
 					? await executeJournalStep(root, workflowRun.runId, 'destroy-remote', () =>
-						destroyTreeseedEnvironmentResources(tenantRoot, { dryRun: false, force, deleteData, sweepTreeseed, target }) as Record<string, unknown>)
+						destroyTreeseedEnvironmentResources(tenantRoot, { planOnly: false, force, deleteData, sweepTreeseed, target }) as Record<string, unknown>)
 					: null;
 				if (!destroyRemote) {
 					skipJournalStep(root, workflowRun.runId, 'destroy-remote', { skippedReason: 'destroyRemote=false' });
@@ -7349,7 +7374,7 @@ export async function workflowDestroy(helpers: WorkflowOperationHelpers, input: 
 
 				const resultPayload = {
 					...payload,
-					dryRun: false,
+					planOnly: false,
 					remoteResult,
 				};
 				completeWorkflowRun(root, workflowRun.runId, resultPayload);

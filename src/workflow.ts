@@ -168,7 +168,6 @@ export type TreeseedSaveInput = {
 	skipCleanup?: boolean;
 	sceneArtifacts?: 'full' | 'screenshots';
 	plan?: boolean;
-	dryRun?: boolean;
 };
 
 export type TreeseedUpdateInput = {
@@ -178,7 +177,6 @@ export type TreeseedUpdateInput = {
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
-	dryRun?: boolean;
 };
 
 export type TreeseedCiInput = {
@@ -211,7 +209,6 @@ export type TreeseedCloseInput = {
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
-	dryRun?: boolean;
 };
 
 export type TreeseedStageInput = {
@@ -231,7 +228,6 @@ export type TreeseedStageInput = {
 	skipCleanup?: boolean;
 	sceneArtifacts?: 'full' | 'screenshots';
 	plan?: boolean;
-	dryRun?: boolean;
 };
 
 export type TreeseedReleaseCandidateInput = {
@@ -240,7 +236,6 @@ export type TreeseedReleaseCandidateInput = {
 	package?: string | string[];
 	keepWorkspace?: boolean;
 	plan?: boolean;
-	dryRun?: boolean;
 };
 
 export type TreeseedProofInput = {
@@ -251,7 +246,6 @@ export type TreeseedProofInput = {
 	last?: boolean;
 	olderThan?: string | null;
 	plan?: boolean;
-	dryRun?: boolean;
 };
 
 export type TreeseedSwitchInput = {
@@ -263,7 +257,6 @@ export type TreeseedSwitchInput = {
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
 	plan?: boolean;
-	dryRun?: boolean;
 };
 
 export type TreeseedConfigScope = 'all' | 'local' | 'staging' | 'prod';
@@ -318,7 +311,6 @@ export type TreeseedReleaseInput = {
 	skipCleanup?: boolean;
 	sceneArtifacts?: 'full' | 'screenshots';
 	plan?: boolean;
-	dryRun?: boolean;
 };
 
 export type TreeseedResumeInput = {
@@ -336,7 +328,6 @@ export type TreeseedDestroyInput = {
 	target?: 'local' | 'staging' | 'prod';
 	environment?: 'local' | 'staging' | 'prod';
 	confirm?: boolean | string;
-	dryRun?: boolean;
 	plan?: boolean;
 	destroyRemote?: boolean;
 	destroyLocal?: boolean;

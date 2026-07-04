@@ -60,7 +60,7 @@ describe("TreeDX security contract", () => {
           push: {
             repoId: "repo_1",
             backend: "gix",
-            status: "dry_run",
+            status: "plan",
             updatedRefs: [],
             rejectedRefs: [],
           },
@@ -78,7 +78,7 @@ describe("TreeDX security contract", () => {
       remoteUrl: "https://example.test/repo.git",
       credentialId: "prod_origin",
       refspecs: ["refs/heads/main:refs/heads/main"],
-      dryRun: true,
+      planOnly: true,
     });
 
     expect(calls[0]?.body).toMatchObject({ credentialId: "prod_origin" });

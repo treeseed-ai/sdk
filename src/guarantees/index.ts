@@ -1117,10 +1117,25 @@ function apiAcceptanceEnvironment(environment: string) {
 }
 
 function apiAcceptanceBaseUrl(environment: string) {
-	if (process.env.TREESEED_API_BASE_URL?.trim()) return process.env.TREESEED_API_BASE_URL.trim().replace(/\/+$/u, '');
+	if (process.env.TREESEED_API_BASE_URL?.trim()) {
+		const configured = process.env.TREESEED_API_BASE_URL.trim().replace(/\/+$/u, '');
+		if (environment !== 'local' && isLoopbackUrl(configured)) {
+			throw new Error(`API guarantee environment ${environment} must target a live hosted API URL, not ${configured}.`);
+		}
+		return configured;
+	}
 	if (environment === 'staging') return 'https://api.preview.treeseed.dev';
 	if (environment === 'prod') return 'https://api.treeseed.dev';
 	return 'http://127.0.0.1:3000';
+}
+
+function isLoopbackUrl(value: string) {
+	try {
+		const url = new URL(value);
+		return ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]'].includes(url.hostname);
+	} catch {
+		return false;
+	}
 }
 
 async function defaultTreeseedGuaranteeVerifierExecutor(input: TreeseedGuaranteeVerifierExecutionInput): Promise<TreeseedGuaranteeVerifierExecutionResult> {

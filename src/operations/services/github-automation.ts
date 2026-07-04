@@ -495,8 +495,8 @@ export function formatMissingSecretsReport(repository, missingSecrets, reason = 
 	return lines.join('\n');
 }
 
-export async function ensureGitHubSecrets(tenantRoot, { dryRun = false } = {}) {
-	return (await ensureGitHubEnvironment(tenantRoot, { dryRun })).secrets;
+export async function ensureGitHubSecrets(tenantRoot, { planOnly = false } = {}) {
+	return (await ensureGitHubEnvironment(tenantRoot, { planOnly })).secrets;
 }
 
 function nonEmptyValues(values = {}) {
@@ -506,10 +506,10 @@ function nonEmptyValues(values = {}) {
 	);
 }
 
-export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scope = 'prod', purpose = 'save', valuesOverlay = {}, managedHostMode = 'auto' } = {}) {
+export async function ensureGitHubEnvironment(tenantRoot, { planOnly = false, scope = 'prod', purpose = 'save', valuesOverlay = {}, managedHostMode = 'auto' } = {}) {
 	const repository = maybeResolveGitHubRepositorySlug(tenantRoot);
 	if (!repository) {
-		if (dryRun) {
+		if (planOnly) {
 			return {
 				repository: null,
 				secrets: { existing: [], created: [] },
@@ -549,7 +549,7 @@ export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scop
 
 	const createdSecrets = [];
 	for (const name of missingRemote) {
-		if (dryRun) {
+		if (planOnly) {
 			createdSecrets.push(name);
 			continue;
 		}
@@ -559,7 +559,7 @@ export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scop
 
 	const createdVariables = [];
 	for (const name of missingRemoteVariables) {
-		if (dryRun) {
+		if (planOnly) {
 			createdVariables.push(name);
 			continue;
 		}
@@ -580,9 +580,9 @@ export async function ensureGitHubEnvironment(tenantRoot, { dryRun = false, scop
 	};
 }
 
-export async function ensureGitHubDeployAutomation(tenantRoot, { dryRun = false, valuesOverlay = {} } = {}) {
+export async function ensureGitHubDeployAutomation(tenantRoot, { planOnly = false, valuesOverlay = {} } = {}) {
 	const workflows = ensureStandardizedGitHubWorkflows(tenantRoot);
-	const environment = await ensureGitHubEnvironment(tenantRoot, { dryRun, valuesOverlay });
+	const environment = await ensureGitHubEnvironment(tenantRoot, { planOnly, valuesOverlay });
 	return {
 		mode: getGitHubAutomationMode(),
 		workflow: workflows[0],

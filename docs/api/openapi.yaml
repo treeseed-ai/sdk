@@ -3834,7 +3834,7 @@ components:
           type: array
           items:
             type: string
-        dryRun:
+        planOnly:
           type: boolean
       additionalProperties: false
     TreeDxFetchRemoteResult:
@@ -3854,7 +3854,7 @@ components:
           type: array
           items:
             type: string
-        dryRun:
+        planOnly:
           type: boolean
         expectedRemoteHead:
           oneOf:
@@ -4578,7 +4578,7 @@ components:
           type: string
         ref:
           type: string
-        dryRun:
+        planOnly:
           type: boolean
       additionalProperties: false
     TreeDxSearchIndexCompactResult:
@@ -4624,7 +4624,7 @@ components:
       type: object
       required: []
       properties:
-        dryRun:
+        planOnly:
           type: boolean
       additionalProperties: false
     TreeDxArtifactCleanupResult:
@@ -4707,7 +4707,7 @@ components:
           type: string
         credentialId:
           type: string
-        dryRun:
+        planOnly:
           type: boolean
       additionalProperties: true
     TreeDxMirrorSyncResult:
@@ -4735,7 +4735,7 @@ components:
           type: string
         mirrorId:
           type: string
-        dryRun:
+        planOnly:
           type: boolean
         requireSynced:
           type: boolean
@@ -4751,7 +4751,7 @@ components:
           type: string
         mode:
           type: string
-        dryRun:
+        planOnly:
           type: boolean
         requireMirrorSynced:
           type: boolean
@@ -4863,7 +4863,7 @@ components:
           type: array
           items:
             type: string
-        dryRun:
+        planOnly:
           type: boolean
         backupBefore:
           type: boolean
@@ -4892,7 +4892,7 @@ components:
       type: object
       required: []
       properties:
-        dryRun:
+        planOnly:
           type: boolean
         targetVersion:
           type: string
@@ -4904,7 +4904,7 @@ components:
       properties:
         migrationId:
           type: string
-        dryRun:
+        planOnly:
           type: boolean
       additionalProperties: true
     TreeDxStorageRestoreVerifyRequest:
@@ -4922,7 +4922,7 @@ components:
       properties:
         backupId:
           type: string
-        dryRun:
+        planOnly:
           type: boolean
         backupBeforeRestore:
           type: boolean

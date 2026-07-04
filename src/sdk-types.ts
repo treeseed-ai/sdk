@@ -263,7 +263,7 @@ export interface TreeDxDeploymentRequest {
 	volumeMountPath?: string | null;
 	publicRead?: boolean;
 	baseUrl?: string | null;
-	dryRun?: boolean;
+	planOnly?: boolean;
 }
 
 export interface TreeDxDeploymentResult {
@@ -2220,7 +2220,7 @@ export interface CreateProjectWebDeploymentRequest {
 	reason?: string;
 	idempotencyKey?: string;
 	previewId?: string | null;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	confirmProduction?: boolean;
 }
 

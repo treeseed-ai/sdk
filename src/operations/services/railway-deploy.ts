@@ -1257,7 +1257,7 @@ export function validateRailwayDeployPrerequisites(tenantRoot, scope, { env = pr
 export async function ensureRailwayScheduledJobs(
 	tenantRoot,
 	scope,
-	{ dryRun = false, fetchImpl = fetch, apiToken, apiUrl, env = process.env } = {},
+	{ planOnly = false, fetchImpl = fetch, apiToken, apiUrl, env = process.env } = {},
 ) {
 	const { schedules } = validateRailwayServiceConfiguration(tenantRoot, scope);
 	if (schedules.length === 0) {
@@ -1275,7 +1275,7 @@ export async function ensureRailwayScheduledJobs(
 			const target = await resolveRailwayScheduleTarget(schedule, {
 				env,
 				fetchImpl,
-				ensure: !dryRun,
+				ensure: !planOnly,
 			});
 			if (!target.project || !target.environment || !target.service) {
 				results.push({
@@ -1309,7 +1309,7 @@ export async function ensureRailwayScheduledJobs(
 					|| (current.startCommand ?? null) !== (desired.command ?? null)
 				)
 			);
-			if (dryRun) {
+			if (planOnly) {
 				results.push({
 					...schedule,
 					projectId: target.project.id,
@@ -1908,19 +1908,19 @@ export async function deployRailwayService(
 	tenantRoot,
 	service,
 	{
-		dryRun = false,
+		planOnly = false,
 		write,
 		prefix,
 		env = process.env,
 	}: {
-		dryRun?: boolean;
+		planOnly?: boolean;
 		write?: TreeseedBootstrapWriter;
 		prefix?: TreeseedBootstrapTaskPrefix;
 		env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	} = {},
 ) {
 	const timings: TreeseedTimingEntry[] = [];
-	if (dryRun) {
+	if (planOnly) {
 		return {
 			service: service.key,
 			status: 'planned',

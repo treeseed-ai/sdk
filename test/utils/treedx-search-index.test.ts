@@ -14,7 +14,7 @@ describe('TreeDX search index client', () => {
 		const payloads = [
 			{ ok: true, index: { repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', indexVersion: 'sidx_1', segmentIds: ['sseg_1'], indexedPathCount: 2, stale: false } },
 			{ ok: true, index: { repoId: 'repo_1', ref: 'refs/heads/main', resolvedRef: 'abc', ready: true, indexVersion: 'sidx_1', segmentIds: ['sseg_1'], indexedPathCount: 2, segmentCount: 1, stale: false } },
-			{ ok: true, compact: { repoId: 'repo_1', ref: 'refs/heads/main', dryRun: true, segmentsBefore: 2, segmentsAfter: 1, compacted: false } },
+			{ ok: true, compact: { repoId: 'repo_1', ref: 'refs/heads/main', planOnly: true, segmentsBefore: 2, segmentsAfter: 1, compacted: false } },
 		];
 		const client = new TreeDxClient({
 			baseUrl: 'https://treedx.example.test',
@@ -28,7 +28,7 @@ describe('TreeDX search index client', () => {
 
 		await expect(client.refreshSearchIndex({ paths: ['docs/**'] })).resolves.toMatchObject({ indexVersion: 'sidx_1' });
 		await expect(client.getSearchIndexStatus({ ref: 'refs/heads/main' })).resolves.toMatchObject({ ready: true });
-		await expect(client.compactSearchIndex({ dryRun: true })).resolves.toMatchObject({ segmentsAfter: 1 });
+		await expect(client.compactSearchIndex({ planOnly: true })).resolves.toMatchObject({ segmentsAfter: 1 });
 
 		expect(calls.map((call) => call.url)).toEqual([
 			'https://treedx.example.test/api/v1/repos/repo_1/search/index/refresh',
@@ -36,6 +36,6 @@ describe('TreeDX search index client', () => {
 			'https://treedx.example.test/api/v1/repos/repo_1/search/index/compact',
 		]);
 		expect(calls[0]?.body).toEqual({ paths: ['docs/**'] });
-		expect(calls[2]?.body).toEqual({ dryRun: true });
+		expect(calls[2]?.body).toEqual({ planOnly: true });
 	});
 });

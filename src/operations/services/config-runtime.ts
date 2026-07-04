@@ -2179,8 +2179,8 @@ export function assertTreeseedCommandEnvironment({ tenantRoot, scope, purpose })
 	throw error;
 }
 
-function runGh(args, { cwd, dryRun = false, input, env } = {}) {
-	if (dryRun) {
+function runGh(args, { cwd, planOnly = false, input, env } = {}) {
+	if (planOnly) {
 		return { status: 0, stdout: '', stderr: '' };
 	}
 	const gh = resolveTreeseedToolBinary('gh', { env });
@@ -2798,7 +2798,7 @@ function createGitHubConfigSyncUnits({
 export async function syncTreeseedGitHubEnvironment({
 	tenantRoot,
 	scope = 'prod',
-	dryRun = false,
+	planOnly = false,
 	repository: repositoryInput,
 	valuesOverlay = {},
 	entryIds,
@@ -2809,7 +2809,7 @@ export async function syncTreeseedGitHubEnvironment({
 }: {
 	tenantRoot: string;
 	scope?: TreeseedConfigScope;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	repository?: string | null;
 	valuesOverlay?: Record<string, string | undefined>;
 	entryIds?: string[];
@@ -2874,7 +2874,7 @@ export async function syncTreeseedGitHubEnvironment({
 	}
 	let completed = 0;
 	const total = items.length;
-	if (!dryRun) {
+	if (!planOnly) {
 		const units = createGitHubConfigSyncUnits({ scope, repository, environment, items });
 		if (units.length === 0) {
 			progress(`[${scope}][github][sync] Complete: 0 secrets, 0 variables, 0 total.`);
@@ -2958,14 +2958,14 @@ export async function syncTreeseedGitHubEnvironment({
 export function syncTreeseedCloudflareEnvironment({
 	tenantRoot,
 	scope = 'prod',
-	dryRun = false,
+	planOnly = false,
 	valuesOverlay = {},
 	entryIds,
 	onProgress,
 }: {
 	tenantRoot: string;
 	scope?: TreeseedConfigScope;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	valuesOverlay?: Record<string, string | undefined>;
 	entryIds?: string[];
 	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
@@ -2995,7 +2995,7 @@ export function syncTreeseedCloudflareEnvironment({
 		.filter(([, value]) => typeof value === 'string' && value.length > 0));
 	progress(`[${scope}][cloudflare][sync] Syncing Cloudflare secrets...`);
 	const syncedSecrets = syncCloudflareSecrets(tenantRoot, {
-		dryRun,
+		planOnly,
 		target,
 		extraSecrets: cloudflareSecrets,
 		entryIds,
@@ -3040,14 +3040,14 @@ function railwayEnvironmentEntryIdsForService(registry, values, scope, target, s
 export async function syncTreeseedRailwayEnvironment({
 	tenantRoot,
 	scope = 'prod',
-	dryRun = false,
+	planOnly = false,
 	valuesOverlay = {},
 	entryIds,
 	onProgress,
 }: {
 	tenantRoot: string;
 	scope?: TreeseedConfigScope;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	valuesOverlay?: Record<string, string | undefined>;
 	entryIds?: string[];
 	onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
@@ -3100,7 +3100,7 @@ export async function syncTreeseedRailwayEnvironment({
 				environmentName,
 				secrets: railwayEnvironmentEntryIdsForService(registry, serviceValues, scope, 'railway-secret', service.key, entryFilter),
 				variables: railwayEnvironmentEntryIdsForService(registry, serviceValues, scope, 'railway-var', service.key, entryFilter),
-				dryRun,
+				planOnly,
 			};
 		})
 		.filter(Boolean);
@@ -3108,7 +3108,7 @@ export async function syncTreeseedRailwayEnvironment({
 	for (const service of services) {
 		const serviceValues = serviceValuesByName.get(service.serviceName || service.serviceId || service.instanceKey || service.service) ?? values;
 		progress(`[${scope}][railway][${service.service}] Syncing ${service.secrets.length} secrets and ${service.variables.length} variables...`);
-		if (!dryRun) {
+		if (!planOnly) {
 			const railwayEnv = { ...process.env, ...values };
 			const project = (await ensureRailwayProject({
 				projectId: '',
@@ -3151,7 +3151,7 @@ export async function syncTreeseedRailwayEnvironment({
 	};
 }
 
-export async function initializeTreeseedPersistentEnvironment({ tenantRoot, scope = 'prod', dryRun = false } = {}) {
+export async function initializeTreeseedPersistentEnvironment({ tenantRoot, scope = 'prod', planOnly = false } = {}) {
 	const normalizedScope = scope === 'prod' ? 'prod' : scope;
 	const target = createPersistentDeployTarget(normalizedScope);
 	const summary = await reconcileTreeseedTarget({

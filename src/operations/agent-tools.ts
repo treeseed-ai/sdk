@@ -9,7 +9,7 @@ export const AGENT_OPERATION_NAMES = [
 	'release',
 ] as const;
 
-export const AGENT_OPERATION_MODES = ['dry_run', 'read_only', 'mutating'] as const;
+export const AGENT_OPERATION_MODES = ['plan', 'read_only', 'mutating'] as const;
 
 export type AgentOperationName = (typeof AGENT_OPERATION_NAMES)[number];
 export type AgentOperationMode = (typeof AGENT_OPERATION_MODES)[number];

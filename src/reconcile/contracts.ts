@@ -198,7 +198,7 @@ export interface TreeseedReconcileRunContext {
 	target: TreeseedReconcileTarget;
 	deployConfig: TreeseedDeployConfig;
 	launchEnv: NodeJS.ProcessEnv;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	write?: (line: string) => void;
 	session: Map<string, unknown>;
 }

@@ -563,16 +563,16 @@ async function runLocalSuite() {
 			});
 		});
 
-		await withStep('scaffold tenant deploy dry-run', async () => {
-			return runCommand('scaffold-deploy-dry-run', process.execPath, [packageScriptPath('treeseed'), 'deploy', '--dry-run'], {
+		await withStep('scaffold tenant deploy plan', async () => {
+			return runCommand('scaffold-deploy-plan', process.execPath, [packageScriptPath('treeseed'), 'deploy', '--plan'], {
 				cwd: siteRoot,
 				env: cacheEnv(),
 			});
 		});
 
-		await withStep('scaffold tenant destroy dry-run', async () => {
+		await withStep('scaffold tenant destroy plan', async () => {
 			const deployConfig = readTenantConfig(siteRoot);
-			return runCommand('scaffold-destroy-dry-run', process.execPath, [packageScriptPath('treeseed'), 'destroy', '--dry-run', '--skip-confirmation', '--confirm', String(deployConfig.slug)], {
+			return runCommand('scaffold-destroy-plan', process.execPath, [packageScriptPath('treeseed'), 'destroy', '--plan', '--skip-confirmation', '--confirm', String(deployConfig.slug)], {
 				cwd: siteRoot,
 				env: cacheEnv(),
 			});

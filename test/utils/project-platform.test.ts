@@ -349,7 +349,7 @@ services:
 		const monitoring = monitorProjectPlatform({
 			tenantRoot,
 			scope: 'local',
-			dryRun: true,
+			planOnly: true,
 			reporter: noopReporter(),
 			bootstrapSystems: ['api'],
 		});
@@ -383,7 +383,7 @@ services:
 		const result = await monitorProjectPlatform({
 			tenantRoot,
 			scope: 'staging',
-			dryRun: true,
+			planOnly: true,
 			reporter: noopReporter(),
 			bootstrapSystems: ['data', 'web'],
 		});
@@ -422,7 +422,7 @@ services:
 		await monitorProjectPlatform({
 			tenantRoot,
 			scope: 'staging',
-			dryRun: true,
+			planOnly: true,
 			reporter: noopReporter(),
 			bootstrapSystems: ['web'],
 		});
@@ -456,7 +456,7 @@ services:
 		const result = await monitorProjectPlatform({
 			tenantRoot,
 			scope: 'local',
-			dryRun: true,
+			planOnly: true,
 			reporter: noopReporter(),
 			bootstrapSystems: ['api', 'agents'],
 		});
@@ -483,7 +483,7 @@ services:
 		const result = await monitorProjectPlatform({
 			tenantRoot,
 			scope: 'staging',
-			dryRun: true,
+			planOnly: true,
 			reporter: noopReporter(),
 			bootstrapSystems: ['data', 'web'],
 		});
@@ -510,7 +510,7 @@ services:
 		const result = await monitorProjectPlatform({
 			tenantRoot,
 			scope: 'local',
-			dryRun: true,
+			planOnly: true,
 			reporter: noopReporter(),
 			bootstrapSystems: ['agents'],
 		});

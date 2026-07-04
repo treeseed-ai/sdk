@@ -40,10 +40,10 @@ describe('TreeDX snapshots, mirrors, and migrations client methods', () => {
 				return json({ ok: true, mirror: { id: 'mirror_1', sourceNodeId: 'node_a', targetNodeId: 'node_b', mode: 'read_replica', status: 'synced' }, sync: { id: 'msync_1', status: 'synced' } });
 			}
 			if (url.endsWith('/migrations')) {
-				return json({ ok: true, migration: { id: 'mig_1', repositoryId: 'repo_1', sourceNodeId: 'node_a', targetNodeId: 'node_b', mode: 'primary_transfer', status: 'planned', dryRun: true, requireMirrorSynced: false, createdAt: '2026-06-01T00:00:00Z' } });
+				return json({ ok: true, migration: { id: 'mig_1', repositoryId: 'repo_1', sourceNodeId: 'node_a', targetNodeId: 'node_b', mode: 'primary_transfer', status: 'planned', planOnly: true, requireMirrorSynced: false, createdAt: '2026-06-01T00:00:00Z' } });
 			}
 			if (url.endsWith('/migrations/mig_1')) {
-				return json({ ok: true, migration: { id: 'mig_1', repositoryId: 'repo_1', sourceNodeId: 'node_a', targetNodeId: 'node_b', mode: 'primary_transfer', status: 'planned', dryRun: true, requireMirrorSynced: false, createdAt: '2026-06-01T00:00:00Z' } });
+				return json({ ok: true, migration: { id: 'mig_1', repositoryId: 'repo_1', sourceNodeId: 'node_a', targetNodeId: 'node_b', mode: 'primary_transfer', status: 'planned', planOnly: true, requireMirrorSynced: false, createdAt: '2026-06-01T00:00:00Z' } });
 			}
 			return json({ ok: true });
 		});
@@ -52,8 +52,8 @@ describe('TreeDX snapshots, mirrors, and migrations client methods', () => {
 		await expect(client.buildSnapshot({ paths: ['docs/**'] })).resolves.toMatchObject({ snapshotId: 'snap_1' });
 		await expect(client.getSnapshot({ snapshotId: 'snap_1' })).resolves.toMatchObject({ snapshotId: 'snap_1' });
 		await expect(client.exportArtifact({ snapshotId: 'snap_1' })).resolves.toMatchObject({ artifactId: 'artifact_1' });
-		await expect(client.syncMirror({ mirrorId: 'mirror_1', dryRun: true })).resolves.toMatchObject({ sync: { status: 'synced' } });
-		await expect(client.createMigration({ targetNodeId: 'node_b', dryRun: true, requireMirrorSynced: false })).resolves.toMatchObject({ migration: { id: 'mig_1' } });
+		await expect(client.syncMirror({ mirrorId: 'mirror_1', planOnly: true })).resolves.toMatchObject({ sync: { status: 'synced' } });
+		await expect(client.createMigration({ targetNodeId: 'node_b', planOnly: true, requireMirrorSynced: false })).resolves.toMatchObject({ migration: { id: 'mig_1' } });
 		await expect(client.getMigration({ migrationId: 'mig_1' })).resolves.toMatchObject({ id: 'mig_1' });
 
 		expect(calls.map((call) => call.url)).toEqual([

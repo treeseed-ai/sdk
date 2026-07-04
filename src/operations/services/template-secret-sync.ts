@@ -107,7 +107,7 @@ export interface ResolveProjectLaunchSecretValueOverlayOptions {
 export interface SyncProjectLaunchHostBindingSecretsOptions extends ResolveProjectLaunchSecretValueOverlayOptions {
 	projectRoot: string;
 	repository?: string | null;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	providers?: ProjectLaunchSecretSyncProvider[];
 	onProgress?: (event: ProjectLaunchSecretSyncProgressEvent) => void | Promise<void>;
 	adapters?: ProjectLaunchSecretSyncAdapters;
@@ -392,7 +392,7 @@ export async function syncProjectLaunchHostBindingSecrets(
 					await adapters.github({
 						tenantRoot: options.projectRoot,
 						scope,
-						dryRun: options.dryRun,
+						planOnly: options.planOnly,
 						repository: options.repository ?? null,
 						valuesOverlay,
 						entryIds,
@@ -402,7 +402,7 @@ export async function syncProjectLaunchHostBindingSecrets(
 					adapters.cloudflare({
 						tenantRoot: options.projectRoot,
 						scope,
-						dryRun: options.dryRun,
+						planOnly: options.planOnly,
 						valuesOverlay,
 						entryIds,
 					});
@@ -410,7 +410,7 @@ export async function syncProjectLaunchHostBindingSecrets(
 					adapters.railway({
 						tenantRoot: options.projectRoot,
 						scope,
-						dryRun: options.dryRun,
+						planOnly: options.planOnly,
 						valuesOverlay,
 						entryIds,
 					});

@@ -40,7 +40,7 @@ function writeDeployReport(payload) {
 
 function parseArgs(argv) {
 	const parsed = {
-		dryRun: false,
+		planOnly: false,
 		only: null,
 		name: null,
 		environment: null,
@@ -51,8 +51,8 @@ function parseArgs(argv) {
 	while (rest.length) {
 		const current = rest.shift();
 		if (!current) continue;
-		if (current === '--dry-run') {
-			parsed.dryRun = true;
+		if (current === '--plan') {
+			parsed.planOnly = true;
 			continue;
 		}
 		if (current === '--only') {
@@ -202,8 +202,8 @@ async function main() {
 
 	if (scope === 'local') {
 		runTenantDeployPreflight({ cwd: tenantRoot, scope: 'local' });
-		await runTenantWebBuild({ tenantRoot, scope: 'local', dryRun: options.dryRun, env: process.env });
-		writeDeployReport({ ok: true, kind: 'success', scope, dryRun: options.dryRun, target: deployTargetLabel(target) });
+		await runTenantWebBuild({ tenantRoot, scope: 'local', planOnly: options.planOnly, env: process.env });
+		writeDeployReport({ ok: true, kind: 'success', scope, planOnly: options.planOnly, target: deployTargetLabel(target) });
 		console.log('Treeseed local deploy completed as a build-only publish target.');
 		return;
 	}
@@ -214,7 +214,7 @@ async function main() {
 			tenantRoot,
 			scope,
 			target,
-			dryRun: options.dryRun,
+			planOnly: options.planOnly,
 			env: process.env,
 		});
 	} catch (error) {
@@ -229,7 +229,7 @@ async function main() {
 
 	if (shouldRun('migrate')) {
 		const result = await runTenantDataMigration(context);
-		console.log(`${options.dryRun ? 'Planned' : 'Applied'} remote migrations for ${result.databaseName}.`);
+		console.log(`${options.planOnly ? 'Planned' : 'Applied'} remote migrations for ${result.databaseName}.`);
 	}
 
 	if (shouldRun('build')) {
@@ -238,7 +238,7 @@ async function main() {
 
 	if (shouldRun('publish')) {
 		await runTenantWebPublish(context);
-		if (!options.dryRun) {
+		if (!options.planOnly) {
 			finalizeDeploymentState(tenantRoot, { target });
 		}
 	}
@@ -246,7 +246,7 @@ async function main() {
 	writeDeployReport({
 		ok: true,
 		kind: 'success',
-		dryRun: options.dryRun,
+		planOnly: options.planOnly,
 		only: options.only,
 		target: deployTargetLabel(target),
 	});

@@ -391,7 +391,7 @@ describe('platform operation SDK contracts', () => {
 		const providerLikeClient = {
 			async claimJob() {
 				providerCalls.push('claim');
-				return { ok: true as const, operation: operation({ id: 'provider_task_1', namespace: 'provider', operation: 'dry_run_task' }) };
+				return { ok: true as const, operation: operation({ id: 'provider_task_1', namespace: 'provider', operation: 'plan_task' }) };
 			},
 			async appendEvent() {
 				providerCalls.push('event');
@@ -409,19 +409,19 @@ describe('platform operation SDK contracts', () => {
 			},
 			async checkpoint() {
 				providerCalls.push('checkpoint');
-				return { ok: true as const, operation: operation({ id: 'provider_task_1', namespace: 'provider', operation: 'dry_run_task', status: 'running' }) };
+				return { ok: true as const, operation: operation({ id: 'provider_task_1', namespace: 'provider', operation: 'plan_task', status: 'running' }) };
 			},
 			async renewLease() {
 				providerCalls.push('renew');
-				return { ok: true as const, operation: operation({ id: 'provider_task_1', namespace: 'provider', operation: 'dry_run_task', status: 'leased' }) };
+				return { ok: true as const, operation: operation({ id: 'provider_task_1', namespace: 'provider', operation: 'plan_task', status: 'leased' }) };
 			},
 			async complete() {
 				providerCalls.push('complete');
-				return { ok: true as const, operation: operation({ id: 'provider_task_1', namespace: 'provider', operation: 'dry_run_task', status: 'succeeded' }) };
+				return { ok: true as const, operation: operation({ id: 'provider_task_1', namespace: 'provider', operation: 'plan_task', status: 'succeeded' }) };
 			},
 			async fail() {
 				providerCalls.push('fail');
-				return { ok: true as const, operation: operation({ id: 'provider_task_1', namespace: 'provider', operation: 'dry_run_task', status: 'failed' }) };
+				return { ok: true as const, operation: operation({ id: 'provider_task_1', namespace: 'provider', operation: 'plan_task', status: 'failed' }) };
 			},
 		};
 		const result = await runPlatformOperationOnce({
@@ -431,10 +431,10 @@ describe('platform operation SDK contracts', () => {
 			environment: 'local',
 			executors: [{
 				namespace: 'provider',
-				operation: 'dry_run_task',
+				operation: 'plan_task',
 				async run(_input, context) {
-					await context.checkpoint({ phase: 'provider-dry-run' });
-					return { dryRun: true };
+					await context.checkpoint({ phase: 'provider-plan' });
+					return { planOnly: true };
 				},
 			}],
 		});

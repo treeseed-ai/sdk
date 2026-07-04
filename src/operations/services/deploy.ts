@@ -608,16 +608,16 @@ function defaultStateFromConfig(deployConfig, target) {
 			FORM_GUARD_KV: {
 				name: environmentScopedIdentityName(identity, 'form-guard', target),
 				binding: 'FORM_GUARD_KV',
-				id: `dryrun-${suffix}-form-guard`,
-				previewId: `dryrun-${suffix}-form-guard-preview`,
+				id: `plan-${suffix}-form-guard`,
+				previewId: `plan-${suffix}-form-guard-preview`,
 			},
 		},
 		d1Databases: {
 			SITE_DATA_DB: {
 				databaseName: environmentScopedIdentityName(identity, 'site-data', target),
 				binding: 'SITE_DATA_DB',
-				databaseId: `dryrun-${suffix}-site-data`,
-				previewDatabaseId: `dryrun-${suffix}-site-data-preview`,
+				databaseId: `plan-${suffix}-site-data`,
+				previewDatabaseId: `plan-${suffix}-site-data-preview`,
 			},
 		},
 		queues: {},
@@ -1323,7 +1323,7 @@ function isPlaceholderResourceId(value) {
 
 	return (
 		value.startsWith('local-')
-		|| value.startsWith('dryrun-')
+		|| value.startsWith('plan-')
 		|| value.endsWith('-id')
 		|| value.endsWith('-preview-id')
 	);
@@ -1738,7 +1738,7 @@ export function buildTreeseedManagedCloudflareCacheRules(deployConfig, cacheTarg
 	return rules;
 }
 
-function reconcileCloudflareCacheRulesForTarget(role, deployConfig, state, cacheTarget, env, { dryRun = false } = {}) {
+function reconcileCloudflareCacheRulesForTarget(role, deployConfig, state, cacheTarget, env, { planOnly = false } = {}) {
 	const roleKey = role === 'web' ? 'Web' : 'Content';
 	if (!cacheTarget?.host) {
 		return { managed: false, skipped: true, reason: 'missing_host' };
@@ -1752,8 +1752,8 @@ function reconcileCloudflareCacheRulesForTarget(role, deployConfig, state, cache
 	const desiredRules = buildTreeseedManagedCloudflareCacheRules(deployConfig, cacheTarget, role);
 	state.webCache[role === 'web' ? 'webHost' : 'contentHost'] = cacheTarget.host;
 	state.webCache[role === 'web' ? 'webZoneId' : 'contentZoneId'] = zoneId;
-	if (dryRun) {
-		return { managed: true, dryRun: true, zoneId, host: cacheTarget.host, rules: desiredRules };
+	if (planOnly) {
+		return { managed: true, planOnly: true, zoneId, host: cacheTarget.host, rules: desiredRules };
 	}
 
 	const rulesets = listCloudflareZoneRulesets(zoneId, env);
@@ -1787,7 +1787,7 @@ function reconcileCloudflareCacheRulesForTarget(role, deployConfig, state, cache
 	return { managed: true, zoneId, host: cacheTarget.host, rulesetId };
 }
 
-export function reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, target, { dryRun = false, env: providedEnv } = {}) {
+export function reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, target, { planOnly = false, env: providedEnv } = {}) {
 	if (!shouldManageCloudflareWebCacheRules(deployConfig, target)) {
 		const webTarget = resolvePublicWebCacheTarget(deployConfig);
 		const contentTarget = resolvePublicContentCacheTarget(deployConfig);
@@ -1814,10 +1814,10 @@ export function reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state
 	try {
 		const results = [];
 		if (webTarget?.host) {
-			results.push(reconcileCloudflareCacheRulesForTarget('web', deployConfig, state, webTarget, env, { dryRun }));
+			results.push(reconcileCloudflareCacheRulesForTarget('web', deployConfig, state, webTarget, env, { planOnly }));
 		}
 		if (contentTarget?.host) {
-			results.push(reconcileCloudflareCacheRulesForTarget('content', deployConfig, state, contentTarget, env, { dryRun }));
+			results.push(reconcileCloudflareCacheRulesForTarget('content', deployConfig, state, contentTarget, env, { planOnly }));
 		}
 		state.webCache.rulesManaged = true;
 		state.webCache.lastSyncedAt = new Date().toISOString();
@@ -1929,12 +1929,12 @@ export function purgeSourcePageCaches(tenantRoot, options = {}) {
 	const state = loadDeployState(tenantRoot, deployConfig, { target });
 	const urls = resolveSourcePagePurgeUrls(deployConfig);
 	const env = resolveCloudflareCachePurgeEnv(options);
-	if ((options.dryRun ?? false) || urls.length === 0 || !env) {
+	if ((options.planOnly ?? false) || urls.length === 0 || !env) {
 		recordCachePurgeResult(state.webCache.deployPurge, urls.map((url) => ({ count: url ? 1 : 0 })));
 		writeDeployState(tenantRoot, state, { target });
 		return {
 			skipped: true,
-			reason: options.dryRun ? 'dry_run' : urls.length === 0 ? 'no_urls' : 'missing_cloudflare_token',
+			reason: options.planOnly ? 'plan' : urls.length === 0 ? 'no_urls' : 'missing_cloudflare_token',
 			urls,
 			results: [],
 		};
@@ -1959,12 +1959,12 @@ export function purgePublishedContentCaches(tenantRoot, urls, options = {}) {
 	const deployConfig = loadTenantDeployConfig(tenantRoot);
 	const state = loadDeployState(tenantRoot, deployConfig, { target });
 	const env = resolveCloudflareCachePurgeEnv(options);
-	if ((options.dryRun ?? false) || !urls?.length || !env) {
+	if ((options.planOnly ?? false) || !urls?.length || !env) {
 		recordCachePurgeResult(state.webCache.contentPurge, (urls ?? []).map((url) => ({ count: url ? 1 : 0 })));
 		writeDeployState(tenantRoot, state, { target });
 		return {
 			skipped: true,
-			reason: options.dryRun ? 'dry_run' : !urls?.length ? 'no_urls' : 'missing_cloudflare_token',
+			reason: options.planOnly ? 'plan' : !urls?.length ? 'no_urls' : 'missing_cloudflare_token',
 			urls: urls ?? [],
 			results: [],
 		};
@@ -2251,12 +2251,12 @@ function looksLikeMissingResource(output) {
 	return /not found|does not exist|could(?: not|n't) find|couldnt find|already deleted|deleted widget|access a deleted/i.test(output);
 }
 
-function deleteKvNamespace(tenantRoot, namespaceId, { env, dryRun, preview = false }) {
+function deleteKvNamespace(tenantRoot, namespaceId, { env, planOnly, preview = false }) {
 	if (!namespaceId || isPlaceholderResourceId(namespaceId)) {
 		return { status: 'missing', id: namespaceId };
 	}
 
-	if (dryRun) {
+	if (planOnly) {
 		return { status: 'planned', id: namespaceId, preview };
 	}
 
@@ -2264,16 +2264,16 @@ function deleteKvNamespace(tenantRoot, namespaceId, { env, dryRun, preview = fal
 	const path = accountId
 		? `/accounts/${encodeURIComponent(accountId)}/storage/kv/namespaces/${encodeURIComponent(namespaceId)}`
 		: null;
-	const deleted = deleteCloudflareApiResource(path, { env, dryRun: false, name: namespaceId, type: 'kv-namespace' });
+	const deleted = deleteCloudflareApiResource(path, { env, planOnly: false, name: namespaceId, type: 'kv-namespace' });
 	return { status: deleted.status, id: namespaceId, preview };
 }
 
-function deleteTurnstileWidget(sitekey, { env, dryRun, name = null }) {
+function deleteTurnstileWidget(sitekey, { env, planOnly, name = null }) {
 	if (!sitekey || isPlaceholderResourceId(sitekey)) {
 		return { status: 'missing', sitekey, name };
 	}
 
-	if (dryRun) {
+	if (planOnly) {
 		return { status: 'planned', sitekey, name };
 	}
 
@@ -2283,7 +2283,7 @@ function deleteTurnstileWidget(sitekey, { env, dryRun, name = null }) {
 		: null;
 	let deleted;
 	try {
-		deleted = deleteCloudflareApiResource(path, { env, dryRun: false, name: name ?? sitekey, type: 'turnstile-widget' });
+		deleted = deleteCloudflareApiResource(path, { env, planOnly: false, name: name ?? sitekey, type: 'turnstile-widget' });
 	} catch (error) {
 		const detail = error instanceof Error ? error.message : String(error);
 		throw new Error(`Cloudflare Turnstile widget deletion failed. Ensure the API token has Turnstile Sites Write permission: ${detail}`);
@@ -2291,12 +2291,12 @@ function deleteTurnstileWidget(sitekey, { env, dryRun, name = null }) {
 	return { status: deleted.status, sitekey, name };
 }
 
-function deleteD1Database(tenantRoot, databaseName, { env, dryRun }) {
+function deleteD1Database(tenantRoot, databaseName, { env, planOnly }) {
 	if (!databaseName) {
 		return { status: 'missing', name: databaseName };
 	}
 
-	if (dryRun) {
+	if (planOnly) {
 		return { status: 'planned', name: databaseName };
 	}
 
@@ -2308,16 +2308,16 @@ function deleteD1Database(tenantRoot, databaseName, { env, dryRun }) {
 	const path = accountId && databaseId
 		? `/accounts/${encodeURIComponent(accountId)}/d1/database/${encodeURIComponent(databaseId)}`
 		: null;
-	const deleted = deleteCloudflareApiResource(path, { env, dryRun: false, name: databaseName, type: 'd1-database' });
+	const deleted = deleteCloudflareApiResource(path, { env, planOnly: false, name: databaseName, type: 'd1-database' });
 	return { status: deleted.status, name: databaseName, id: databaseId };
 }
 
-function deleteWorker(tenantRoot, workerName, { env, dryRun, force = false }) {
+function deleteWorker(tenantRoot, workerName, { env, planOnly, force = false }) {
 	if (!workerName) {
 		return { status: 'missing', name: workerName };
 	}
 
-	if (dryRun) {
+	if (planOnly) {
 		return { status: 'planned', name: workerName };
 	}
 
@@ -2325,7 +2325,7 @@ function deleteWorker(tenantRoot, workerName, { env, dryRun, force = false }) {
 	const path = accountId
 		? `/accounts/${encodeURIComponent(accountId)}/workers/services/${encodeURIComponent(workerName)}`
 		: null;
-	const deleted = deleteCloudflareApiResource(path, { env, dryRun: false, name: workerName, type: 'worker' });
+	const deleted = deleteCloudflareApiResource(path, { env, planOnly: false, name: workerName, type: 'worker' });
 	return { status: deleted.status, name: workerName };
 }
 
@@ -2339,11 +2339,11 @@ function resourceOperation(provider, type, name, status, extra = {}) {
 	};
 }
 
-function deleteCloudflareApiResource(path, { env, dryRun, name, type }) {
+function deleteCloudflareApiResource(path, { env, planOnly, name, type }) {
 	if (!path) {
 		return resourceOperation('cloudflare', type, name, 'missing');
 	}
-	if (dryRun) {
+	if (planOnly) {
 		return resourceOperation('cloudflare', type, name, 'planned', { path });
 	}
 	const result = cloudflareApiRequest(path, { method: 'DELETE', env, allowFailure: true });
@@ -2359,13 +2359,13 @@ function formatCloudflareErrors(payload) {
 		: '';
 }
 
-function deleteQueueByName(tenantRoot, queue, { env, dryRun }) {
+function deleteQueueByName(tenantRoot, queue, { env, planOnly }) {
 	const name = queueName(queue) ?? queue?.name ?? null;
 	let id = queueId(queue);
 	if (!name) {
 		return resourceOperation('cloudflare', 'queue', name, 'missing');
 	}
-	if (dryRun) {
+	if (planOnly) {
 		return resourceOperation('cloudflare', 'queue', name, 'planned', { id });
 	}
 	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
@@ -2377,7 +2377,7 @@ function deleteQueueByName(tenantRoot, queue, { env, dryRun }) {
 		? `/accounts/${encodeURIComponent(accountId)}/queues/${encodeURIComponent(id)}`
 		: null;
 	if (path) {
-		const deleted = deleteCloudflareApiResource(path, { env, dryRun: false, name, type: 'queue' });
+		const deleted = deleteCloudflareApiResource(path, { env, planOnly: false, name, type: 'queue' });
 		if (deleted.status === 'deleted' || deleted.status === 'missing') {
 			return { ...deleted, id };
 		}
@@ -2388,14 +2388,14 @@ function deleteQueueByName(tenantRoot, queue, { env, dryRun }) {
 	throw new Error(`Failed to delete queue ${name}: CLOUDFLARE_ACCOUNT_ID is not configured.`);
 }
 
-function deleteR2Bucket(tenantRoot, bucketName, { env, dryRun, deleteData }) {
+function deleteR2Bucket(tenantRoot, bucketName, { env, planOnly, deleteData }) {
 	if (!bucketName) {
 		return resourceOperation('cloudflare', 'r2-bucket', bucketName, 'missing');
 	}
 	if (!deleteData) {
 		return resourceOperation('cloudflare', 'r2-bucket', bucketName, 'skipped', { reason: 'data_preserved' });
 	}
-	if (dryRun) {
+	if (planOnly) {
 		return resourceOperation('cloudflare', 'r2-bucket', bucketName, 'planned');
 	}
 	const drained = drainR2Bucket(bucketName, { env });
@@ -2403,7 +2403,7 @@ function deleteR2Bucket(tenantRoot, bucketName, { env, dryRun, deleteData }) {
 	const path = accountId
 		? `/accounts/${encodeURIComponent(accountId)}/r2/buckets/${encodeURIComponent(bucketName)}`
 		: null;
-	const deleted = deleteCloudflareApiResource(path, { env, dryRun: false, name: bucketName, type: 'r2-bucket' });
+	const deleted = deleteCloudflareApiResource(path, { env, planOnly: false, name: bucketName, type: 'r2-bucket' });
 	return resourceOperation('cloudflare', 'r2-bucket', bucketName, deleted.status, drained);
 }
 
@@ -2595,11 +2595,11 @@ process.stdout.write(JSON.stringify({ deleted, missing, deferred, failed }));
 	};
 }
 
-function deleteD1DatabaseForDestroy(tenantRoot, databaseName, { env, dryRun, deleteData }) {
+function deleteD1DatabaseForDestroy(tenantRoot, databaseName, { env, planOnly, deleteData }) {
 	if (!deleteData) {
 		return resourceOperation('cloudflare', 'd1-database', databaseName, 'skipped', { reason: 'data_preserved' });
 	}
-	const result = deleteD1Database(tenantRoot, databaseName, { env, dryRun });
+	const result = deleteD1Database(tenantRoot, databaseName, { env, planOnly });
 	return resourceOperation('cloudflare', 'd1-database', databaseName, result.status, result);
 }
 
@@ -2661,12 +2661,12 @@ function listPagesCustomDomainsWithWrangler(tenantRoot, projectName, { env }) {
 	}
 }
 
-function deletePagesCustomDomains(tenantRoot, projectName, knownNames, { env, dryRun, knownOnly = false }) {
+function deletePagesCustomDomains(tenantRoot, projectName, knownNames, { env, planOnly, knownOnly = false }) {
 	if (!projectName) {
 		return [resourceOperation('cloudflare', 'pages-custom-domain', projectName, 'missing')];
 	}
 	const desiredNames = [...new Set((knownNames ?? []).filter(Boolean))];
-	if (dryRun) {
+	if (planOnly) {
 		return desiredNames.length > 0
 			? desiredNames.map((name) => resourceOperation('cloudflare', 'pages-custom-domain', name, 'planned', { projectName, knownOnly }))
 			: [resourceOperation('cloudflare', 'pages-custom-domain', projectName, knownOnly ? 'skipped' : 'planned', { reason: knownOnly ? 'no_target_scoped_domain' : 'project_delete_prerequisite' })];
@@ -2685,7 +2685,7 @@ function deletePagesCustomDomains(tenantRoot, projectName, knownNames, { env, dr
 	}
 	return domainNames.map((name) => deleteCloudflareApiResource(
 		`/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/domains/${encodeURIComponent(name)}`,
-		{ env, dryRun: false, name, type: 'pages-custom-domain' },
+		{ env, planOnly: false, name, type: 'pages-custom-domain' },
 	));
 }
 
@@ -2757,11 +2757,11 @@ function listPagesDeployments(tenantRoot, projectName, { env, environment = 'all
 	return listPagesDeploymentsWithApi(projectName, { env, environment });
 }
 
-function deletePagesDeployments(tenantRoot, projectName, { env, dryRun, environment = 'all' }) {
+function deletePagesDeployments(tenantRoot, projectName, { env, planOnly, environment = 'all' }) {
 	if (!projectName) {
 		return resourceOperation('cloudflare', 'pages-deployments', projectName, 'missing');
 	}
-	if (dryRun) {
+	if (planOnly) {
 		return resourceOperation('cloudflare', 'pages-deployments', projectName, 'planned', { reason: 'project_delete_prerequisite', environment });
 	}
 	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
@@ -2818,14 +2818,14 @@ function deletePagesDeployments(tenantRoot, projectName, { env, dryRun, environm
 	});
 }
 
-function deletePagesProject(projectName, { env, dryRun }) {
+function deletePagesProject(projectName, { env, planOnly }) {
 	const accountId = env?.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '';
 	if (!projectName || !accountId) {
 		return resourceOperation('cloudflare', 'pages-project', projectName, 'missing');
 	}
 	return deleteCloudflareApiResource(
 		`/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}`,
-		{ env, dryRun, name: projectName, type: 'pages-project' },
+		{ env, planOnly, name: projectName, type: 'pages-project' },
 	);
 }
 
@@ -2837,11 +2837,11 @@ function listDnsRecordsForName(zoneId, name, env) {
 	return Array.isArray(result?.result) ? result.result : [];
 }
 
-function deleteDnsRecordsForName(deployConfig, name, { env, dryRun }) {
+function deleteDnsRecordsForName(deployConfig, name, { env, planOnly }) {
 	if (!name) {
 		return [resourceOperation('cloudflare', 'dns-record', name, 'missing')];
 	}
-	if (dryRun) {
+	if (planOnly) {
 		return [resourceOperation('cloudflare', 'dns-record', name, 'planned')];
 	}
 	const zoneId = resolveCloudflareZoneIdForHost(deployConfig, name, env);
@@ -2856,12 +2856,12 @@ function deleteDnsRecordsForName(deployConfig, name, { env, dryRun }) {
 		const recordName = record?.name ?? name;
 		return deleteCloudflareApiResource(
 			`/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(record.id)}`,
-			{ env, dryRun: false, name: recordName, type: 'dns-record' },
+			{ env, planOnly: false, name: recordName, type: 'dns-record' },
 		);
 	});
 }
 
-function deleteTreeseedCacheRules(deployConfig, state, { env, dryRun }) {
+function deleteTreeseedCacheRules(deployConfig, state, { env, planOnly }) {
 	const targets = [
 		{ role: 'web', zoneId: state.webCache?.webZoneId, host: state.webCache?.webHost },
 		{ role: 'content', zoneId: state.webCache?.contentZoneId, host: state.webCache?.contentHost },
@@ -2874,7 +2874,7 @@ function deleteTreeseedCacheRules(deployConfig, state, { env, dryRun }) {
 		if (!zoneId) {
 			return resourceOperation('cloudflare', 'cache-rules', target.host, 'blocked', { reason: 'zone_unresolved' });
 		}
-		if (dryRun) {
+		if (planOnly) {
 			return resourceOperation('cloudflare', 'cache-rules', target.host, 'planned', { zoneId });
 		}
 		const rulesets = listCloudflareZoneRulesets(zoneId, env);
@@ -2949,7 +2949,7 @@ function configuredRailwayDestroyTargets(tenantRoot, deployConfig, scope) {
 	return services;
 }
 
-async function destroyRailwayResources(tenantRoot, deployConfig, target, { dryRun = false, deleteData = false, env = process.env } = {}) {
+async function destroyRailwayResources(tenantRoot, deployConfig, target, { planOnly = false, deleteData = false, env = process.env } = {}) {
 	const scope = target.kind === 'persistent' ? target.scope : target.branchName;
 	const services = configuredRailwayDestroyTargets(tenantRoot, deployConfig, scope);
 	if (services.length === 0) {
@@ -2979,7 +2979,7 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { dryRu
 		for (const service of serviceTargets) {
 			const railwayService = project.services.find((entry) => entry.name === service.serviceName || entry.id === service.serviceName) ?? null;
 			const shouldDeleteData = service.dataStore ? deleteData : true;
-			operations.push(resourceOperation('railway', service.dataStore ? 'postgres-service' : 'service', service.serviceName, railwayService ? (dryRun ? 'planned' : 'planned') : 'missing', {
+			operations.push(resourceOperation('railway', service.dataStore ? 'postgres-service' : 'service', service.serviceName, railwayService ? (planOnly ? 'planned' : 'planned') : 'missing', {
 				projectId: project.id,
 				serviceId: railwayService?.id ?? null,
 				...(service.dataStore && !shouldDeleteData ? { status: 'skipped', reason: 'data_preserved' } : {}),
@@ -2995,7 +2995,7 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { dryRu
 					env,
 				});
 				for (const variableName of Object.keys(variables).sort()) {
-					operations.push(resourceOperation('railway', 'variable', `${service.serviceName}:${variableName}`, dryRun ? 'planned' : 'deleted', {
+					operations.push(resourceOperation('railway', 'variable', `${service.serviceName}:${variableName}`, planOnly ? 'planned' : 'deleted', {
 						projectId: project.id,
 						serviceId: railwayService.id,
 						environmentId: environment.id,
@@ -3005,7 +3005,7 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { dryRu
 			}
 			const instance = await getRailwayServiceInstance({ serviceId: railwayService.id, environmentId: environment.id, env });
 			if (instance.cronSchedule) {
-				operations.push(resourceOperation('railway', 'schedule', `${service.serviceName}:${instance.cronSchedule}`, dryRun ? 'planned' : 'deleted', {
+				operations.push(resourceOperation('railway', 'schedule', `${service.serviceName}:${instance.cronSchedule}`, planOnly ? 'planned' : 'deleted', {
 					projectId: project.id,
 					serviceId: railwayService.id,
 					environmentId: environment.id,
@@ -3015,7 +3015,7 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { dryRu
 			if (!service.dataStore && service.domain) {
 				const domains = await listRailwayCustomDomains({ projectId: project.id, environmentId: environment.id, serviceId: railwayService.id, env });
 				for (const domain of domains.filter((entry) => entry.domain === service.domain)) {
-					if (dryRun) {
+					if (planOnly) {
 						operations.push(resourceOperation('railway', 'custom-domain', domain.domain, 'planned', { id: domain.id }));
 					} else {
 						const result = await deleteRailwayCustomDomain({ domainId: domain.id, env });
@@ -3031,7 +3031,7 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { dryRu
 				if (!matchingInstance) {
 					continue;
 				}
-				if (dryRun) {
+				if (planOnly) {
 					operations.push(resourceOperation('railway', 'volume', volume.name, 'planned', { id: volume.id, projectId: project.id }));
 				} else {
 					const result = await deleteRailwayVolume({ volumeId: volume.id, env });
@@ -3041,7 +3041,7 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { dryRu
 		}
 		const shouldDeleteProject = shouldDeleteRailwayProjectAfterEnvironmentDestroy(project, scope, deleteData, environment?.id ?? null);
 		if ((scope === 'prod' && deleteData) || shouldDeleteProject) {
-			if (dryRun) {
+			if (planOnly) {
 				operations.push(resourceOperation('railway', 'project', project.name, 'planned', {
 					id: project.id,
 					reason: scope === 'prod' ? 'prod_delete_data_cleanup' : 'no_managed_persistent_environments',
@@ -3050,7 +3050,7 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { dryRu
 				throw new Error('Railway project deletion is reconciler-owned. Use trsd reconcile destroy or live acceptance cleanup for project-scoped deletion.');
 			}
 		} else if (environment) {
-			if (dryRun) {
+			if (planOnly) {
 				operations.push(resourceOperation('railway', 'environment', environment.name, 'planned', { id: environment.id, projectId: project.id }));
 			} else {
 				const result = await deleteRailwayEnvironment({ environmentId: environment.id, env });
@@ -3074,12 +3074,12 @@ export function shouldDeleteRailwayProjectAfterEnvironmentDestroy(project, scope
 	return remainingManagedEnvironments.length === 0;
 }
 
-function killPidFromFile(filePath, { dryRun }) {
+function killPidFromFile(filePath, { planOnly }) {
 	const pid = Number.parseInt(readFileSync(filePath, 'utf8').trim(), 10);
 	if (!Number.isFinite(pid) || pid <= 0) {
 		return resourceOperation('local', 'dev-process', filePath, 'missing');
 	}
-	if (dryRun) {
+	if (planOnly) {
 		return resourceOperation('local', 'dev-process', String(pid), 'planned', { pidFile: filePath });
 	}
 	try {
@@ -3151,7 +3151,7 @@ function removeDockerResource(kind, id, name) {
 	});
 }
 
-export function dockerLocalRuntimeResourceOperations({ dryRun = false } = {}) {
+export function dockerLocalRuntimeResourceOperations({ planOnly = false } = {}) {
 	if (!dockerAvailable()) {
 		return [resourceOperation('local', 'docker-cleanup', 'docker', 'skipped', { reason: 'docker_unavailable' })];
 	}
@@ -3174,7 +3174,7 @@ export function dockerLocalRuntimeResourceOperations({ dryRun = false } = {}) {
 		},
 	).filter((entry) => !['bridge', 'host', 'none'].includes(entry.name));
 
-	if (dryRun) {
+	if (planOnly) {
 		return [
 			...containers.map((entry) => resourceOperation('local', 'docker-container', entry.name, 'planned', { id: entry.id })),
 			...volumes.map((entry) => resourceOperation('local', 'docker-volume', entry.name, 'planned', { id: entry.id })),
@@ -3201,13 +3201,13 @@ export function dockerLocalRuntimeResourceOperations({ dryRun = false } = {}) {
 	return operations;
 }
 
-function destroyLocalRuntimeResources(tenantRoot, { dryRun = false, deleteData = false } = {}) {
+function destroyLocalRuntimeResources(tenantRoot, { planOnly = false, deleteData = false } = {}) {
 	const operations = [];
 	const pidDir = resolve(tenantRoot, '.treeseed/dev-pids');
 	if (existsSync(pidDir)) {
 		for (const entry of readdirSync(pidDir)) {
 			if (entry.endsWith('.pid')) {
-				operations.push(killPidFromFile(resolve(pidDir, entry), { dryRun }));
+				operations.push(killPidFromFile(resolve(pidDir, entry), { planOnly }));
 			}
 		}
 	} else {
@@ -3225,14 +3225,14 @@ function destroyLocalRuntimeResources(tenantRoot, { dryRun = false, deleteData =
 				operations.push(resourceOperation('local', 'data-path', relativePath, 'missing'));
 				continue;
 			}
-			if (dryRun) {
+			if (planOnly) {
 				operations.push(resourceOperation('local', 'data-path', relativePath, 'planned'));
 				continue;
 			}
 			rmSync(absolutePath, { recursive: true, force: true });
 			operations.push(resourceOperation('local', 'data-path', relativePath, 'deleted'));
 		}
-		operations.push(...dockerLocalRuntimeResourceOperations({ dryRun }));
+		operations.push(...dockerLocalRuntimeResourceOperations({ planOnly }));
 	} else {
 		operations.push(resourceOperation('local', 'data-path', '.treeseed/generated/environments/local', 'skipped', { reason: 'data_preserved' }));
 	}
@@ -3298,12 +3298,12 @@ function cloudflareEntryMatchesTreeSeed(entry, tokens) {
 	return cloudflareNameCandidates(entry).some((candidate) => matchesTreeSeedSweep(candidate, tokens));
 }
 
-function deleteDnsRecord(zoneId, record, { env, dryRun }) {
+function deleteDnsRecord(zoneId, record, { env, planOnly }) {
 	const name = record?.name ?? record?.content ?? record?.id ?? null;
 	if (!zoneId || !record?.id) {
 		return resourceOperation('cloudflare', 'dns-record', name, 'missing', { zoneId });
 	}
-	if (dryRun) {
+	if (planOnly) {
 		return resourceOperation('cloudflare', 'dns-record', name, 'planned', {
 			zoneId,
 			id: record.id,
@@ -3313,39 +3313,39 @@ function deleteDnsRecord(zoneId, record, { env, dryRun }) {
 	}
 	return deleteCloudflareApiResource(
 		`/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(record.id)}`,
-		{ env, dryRun: false, name, type: 'dns-record' },
+		{ env, planOnly: false, name, type: 'dns-record' },
 	);
 }
 
-function sweepTreeSeedCloudflareResources(tenantRoot, deployConfig, state, { env, dryRun, deleteData }) {
+function sweepTreeSeedCloudflareResources(tenantRoot, deployConfig, state, { env, planOnly, deleteData }) {
 	const tokens = treeSeedSweepTokens(deployConfig, state);
 	const operations = [];
 	const pagesProjects = listPagesProjects(tenantRoot, env).filter((entry) => cloudflareEntryMatchesTreeSeed(entry, tokens));
 	for (const project of pagesProjects) {
 		const projectName = project?.name ?? project?.id ?? null;
-		operations.push(...deletePagesCustomDomains(tenantRoot, projectName, [], { env, dryRun, knownOnly: false }));
-		operations.push(deletePagesDeployments(tenantRoot, projectName, { env, dryRun, environment: 'all' }));
-		operations.push(deletePagesProject(projectName, { env, dryRun }));
+		operations.push(...deletePagesCustomDomains(tenantRoot, projectName, [], { env, planOnly, knownOnly: false }));
+		operations.push(deletePagesDeployments(tenantRoot, projectName, { env, planOnly, environment: 'all' }));
+		operations.push(deletePagesProject(projectName, { env, planOnly }));
 	}
 
 	for (const worker of listWorkers(tenantRoot, env).filter((entry) => cloudflareEntryMatchesTreeSeed(entry, tokens))) {
 		const name = worker?.id ?? worker?.name ?? worker?.script ?? null;
-		const deleted = deleteWorker(tenantRoot, name, { env, dryRun, force: true });
+		const deleted = deleteWorker(tenantRoot, name, { env, planOnly, force: true });
 		operations.push(resourceOperation('cloudflare', 'worker', name, deleted.status, { ...deleted, sweep: true }));
 	}
 
 	for (const namespace of listKvNamespaces(tenantRoot, env).filter((entry) => cloudflareEntryMatchesTreeSeed(entry, tokens))) {
-		const deleted = deleteKvNamespace(tenantRoot, namespace.id, { env, dryRun });
+		const deleted = deleteKvNamespace(tenantRoot, namespace.id, { env, planOnly });
 		operations.push(resourceOperation('cloudflare', 'kv-namespace', namespace.title ?? namespace.id, deleted.status, { ...deleted, sweep: true }));
 	}
 
 	for (const queue of listQueues(tenantRoot, env).filter((entry) => cloudflareEntryMatchesTreeSeed(entry, tokens))) {
-		operations.push({ ...deleteQueueByName(tenantRoot, queue, { env, dryRun }), sweep: true });
+		operations.push({ ...deleteQueueByName(tenantRoot, queue, { env, planOnly }), sweep: true });
 	}
 
 	for (const database of listD1Databases(tenantRoot, env).filter((entry) => cloudflareEntryMatchesTreeSeed(entry, tokens))) {
 		const name = database?.name ?? database?.uuid ?? database?.id ?? null;
-		const deleted = deleteData ? deleteD1Database(tenantRoot, name, { env, dryRun }) : null;
+		const deleted = deleteData ? deleteD1Database(tenantRoot, name, { env, planOnly }) : null;
 		operations.push(resourceOperation('cloudflare', 'd1-database', name, deleteData ? deleted?.status : 'skipped', {
 			...(deleteData ? deleted : { reason: 'data_preserved' }),
 			sweep: true,
@@ -3353,11 +3353,11 @@ function sweepTreeSeedCloudflareResources(tenantRoot, deployConfig, state, { env
 	}
 
 	for (const bucket of listR2Buckets(tenantRoot, env).filter((entry) => cloudflareEntryMatchesTreeSeed(entry, tokens))) {
-		operations.push({ ...deleteR2Bucket(tenantRoot, bucket.name, { env, dryRun, deleteData }), sweep: true });
+		operations.push({ ...deleteR2Bucket(tenantRoot, bucket.name, { env, planOnly, deleteData }), sweep: true });
 	}
 
 	for (const widget of listTurnstileWidgets(tenantRoot, env).filter((entry) => cloudflareEntryMatchesTreeSeed(entry, tokens))) {
-		const deleted = deleteTurnstileWidget(widget.sitekey, { env, dryRun, name: widget.name });
+		const deleted = deleteTurnstileWidget(widget.sitekey, { env, planOnly, name: widget.name });
 		operations.push(resourceOperation('cloudflare', 'turnstile-widget', widget.name ?? widget.sitekey, deleted.status, { ...deleted, sweep: true }));
 	}
 
@@ -3370,7 +3370,7 @@ function sweepTreeSeedCloudflareResources(tenantRoot, deployConfig, state, { env
 			if (!cloudflareEntryMatchesTreeSeed(record, tokens)) {
 				continue;
 			}
-			operations.push({ ...deleteDnsRecord(zoneId, record, { env, dryRun }), zoneName: zone?.name ?? null, sweep: true });
+			operations.push({ ...deleteDnsRecord(zoneId, record, { env, planOnly }), zoneName: zone?.name ?? null, sweep: true });
 		}
 	}
 
@@ -3466,7 +3466,7 @@ function localDockerDestroyVerification() {
 	};
 }
 
-async function sweepTreeSeedRailwayResources(deployConfig, state, { env, dryRun }) {
+async function sweepTreeSeedRailwayResources(deployConfig, state, { env, planOnly }) {
 	if (!resolveRailwayApiToken(env)) {
 		return [resourceOperation('railway', 'treeseed-sweep', 'railway', 'blocked', { reason: 'missing_railway_api_token' })];
 	}
@@ -3478,7 +3478,7 @@ async function sweepTreeSeedRailwayResources(deployConfig, state, { env, dryRun 
 		if (project.deletedAt || !matchesTreeSeedSweep(project.name, tokens)) {
 			continue;
 		}
-		if (dryRun) {
+		if (planOnly) {
 			operations.push(resourceOperation('railway', 'project', project.name, 'planned', {
 				id: project.id,
 				workspaceId: workspace.id,
@@ -3503,17 +3503,17 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 		CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig),
 	};
 
-	const dryRun = options.dryRun ?? false;
+	const planOnly = options.planOnly ?? false;
 	const deleteData = options.deleteData === true;
 	const force = options.force ?? false;
 	const sweepTreeseed = options.sweepTreeseed === true;
 	const destroysSharedWebSurface = target.kind === 'persistent' && target.scope === 'prod' && deleteData;
-	const kvNamespaces = dryRun ? [] : listKvNamespaces(tenantRoot, env);
-	const d1Databases = dryRun ? [] : listD1Databases(tenantRoot, env);
-	const queues = dryRun ? [] : listQueues(tenantRoot, env);
-	const buckets = dryRun ? [] : listR2Buckets(tenantRoot, env);
-	const pagesProjects = dryRun ? [] : listPagesProjects(tenantRoot, env);
-	const turnstileWidgets = dryRun ? [] : listTurnstileWidgets(tenantRoot, env);
+	const kvNamespaces = planOnly ? [] : listKvNamespaces(tenantRoot, env);
+	const d1Databases = planOnly ? [] : listD1Databases(tenantRoot, env);
+	const queues = planOnly ? [] : listQueues(tenantRoot, env);
+	const buckets = planOnly ? [] : listR2Buckets(tenantRoot, env);
+	const pagesProjects = planOnly ? [] : listPagesProjects(tenantRoot, env);
+	const turnstileWidgets = planOnly ? [] : listTurnstileWidgets(tenantRoot, env);
 
 	state.kvNamespaces.FORM_GUARD_KV.id = resolveExistingKvIdByName(
 		kvNamespaces,
@@ -3537,25 +3537,25 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 	const pagesProject = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
 	const bucket = buckets.find((entry) => entry?.name === state.content?.bucketName);
 
-	const workerResult = deleteWorker(tenantRoot, state.workerName, { env, dryRun, force });
+	const workerResult = deleteWorker(tenantRoot, state.workerName, { env, planOnly, force });
 	const turnstileWidget = deleteTurnstileWidget(state.turnstileWidgets?.formGuard?.sitekey, {
 		env,
-		dryRun,
+		planOnly,
 		name: state.turnstileWidgets?.formGuard?.name,
 	});
-	const formGuard = deleteKvNamespace(tenantRoot, state.kvNamespaces.FORM_GUARD_KV.id, { env, dryRun });
+	const formGuard = deleteKvNamespace(tenantRoot, state.kvNamespaces.FORM_GUARD_KV.id, { env, planOnly });
 	const formGuardPreview =
 		state.kvNamespaces.FORM_GUARD_KV.previewId
 		&& state.kvNamespaces.FORM_GUARD_KV.previewId !== state.kvNamespaces.FORM_GUARD_KV.id
-			? deleteKvNamespace(tenantRoot, state.kvNamespaces.FORM_GUARD_KV.previewId, { env, dryRun, preview: true })
+			? deleteKvNamespace(tenantRoot, state.kvNamespaces.FORM_GUARD_KV.previewId, { env, planOnly, preview: true })
 			: null;
 	const session = state.kvNamespaces.SESSION?.id
-		? deleteKvNamespace(tenantRoot, state.kvNamespaces.SESSION.id, { env, dryRun })
+		? deleteKvNamespace(tenantRoot, state.kvNamespaces.SESSION.id, { env, planOnly })
 		: null;
 	const sessionPreview =
 		state.kvNamespaces.SESSION?.previewId
 		&& state.kvNamespaces.SESSION.previewId !== state.kvNamespaces.SESSION.id
-			? deleteKvNamespace(tenantRoot, state.kvNamespaces.SESSION.previewId, { env, dryRun, preview: true })
+			? deleteKvNamespace(tenantRoot, state.kvNamespaces.SESSION.previewId, { env, planOnly, preview: true })
 			: null;
 	const knownKvIds = new Set([
 		state.kvNamespaces.FORM_GUARD_KV.id,
@@ -3564,7 +3564,7 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 		state.kvNamespaces.SESSION?.previewId,
 	].filter(Boolean));
 	const legacyKvPrefix = state.identity?.deploymentKey ?? state.pages?.projectName ?? '';
-	const legacyKvNamespaces = dryRun ? [] : kvNamespaces
+	const legacyKvNamespaces = planOnly ? [] : kvNamespaces
 		.filter((namespace) => {
 			const title = typeof namespace?.title === 'string' ? namespace.title : '';
 			const id = typeof namespace?.id === 'string' ? namespace.id : '';
@@ -3576,11 +3576,11 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 				&& title.includes(target.scope);
 		})
 		.map((namespace) => {
-			const result = deleteKvNamespace(tenantRoot, namespace.id, { env, dryRun: false });
+			const result = deleteKvNamespace(tenantRoot, namespace.id, { env, planOnly: false });
 			return resourceOperation('cloudflare', 'kv-namespace', namespace.title, result.status, { ...result, legacy: true });
 		});
-	const database = deleteD1DatabaseForDestroy(tenantRoot, state.d1Databases.SITE_DATA_DB.databaseName, { env, dryRun, deleteData });
-	const r2Bucket = bucket || dryRun ? deleteR2Bucket(tenantRoot, state.content?.bucketName, { env, dryRun, deleteData }) : resourceOperation('cloudflare', 'r2-bucket', state.content?.bucketName, 'missing');
+	const database = deleteD1DatabaseForDestroy(tenantRoot, state.d1Databases.SITE_DATA_DB.databaseName, { env, planOnly, deleteData });
+	const r2Bucket = bucket || planOnly ? deleteR2Bucket(tenantRoot, state.content?.bucketName, { env, planOnly, deleteData }) : resourceOperation('cloudflare', 'r2-bucket', state.content?.bucketName, 'missing');
 	const pageDnsNames = [
 		state.pages?.customDomain,
 		deployConfig.surfaces?.web?.environments?.[target.scope]?.domain,
@@ -3591,31 +3591,31 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 		deployConfig.surfaces?.api?.environments?.[target.scope]?.domain,
 	].filter(Boolean);
 	const dnsRecords = [...new Set([...pageDnsNames, ...apiDnsNames])]
-		.flatMap((name) => deleteDnsRecordsForName(deployConfig, name, { env, dryRun }));
-	const cacheRules = deleteTreeseedCacheRules(deployConfig, state, { env, dryRun });
-	const pageCustomDomains = pagesProject || dryRun
-		? deletePagesCustomDomains(tenantRoot, state.pages?.projectName, pageDnsNames, { env, dryRun, knownOnly: !destroysSharedWebSurface })
+		.flatMap((name) => deleteDnsRecordsForName(deployConfig, name, { env, planOnly }));
+	const cacheRules = deleteTreeseedCacheRules(deployConfig, state, { env, planOnly });
+	const pageCustomDomains = pagesProject || planOnly
+		? deletePagesCustomDomains(tenantRoot, state.pages?.projectName, pageDnsNames, { env, planOnly, knownOnly: !destroysSharedWebSurface })
 		: [resourceOperation('cloudflare', 'pages-custom-domain', state.pages?.projectName, 'missing')];
-	const pageDeployments = pagesProject || dryRun
+	const pageDeployments = pagesProject || planOnly
 		? deletePagesDeployments(tenantRoot, state.pages?.projectName, {
 			env,
-			dryRun,
+			planOnly,
 			environment: destroysSharedWebSurface ? 'all' : 'preview',
 		})
 		: resourceOperation('cloudflare', 'pages-deployments', state.pages?.projectName, 'missing');
-	const pages = destroysSharedWebSurface && (pagesProject || dryRun)
-		? deletePagesProject(state.pages?.projectName, { env, dryRun })
+	const pages = destroysSharedWebSurface && (pagesProject || planOnly)
+		? deletePagesProject(state.pages?.projectName, { env, planOnly })
 		: resourceOperation('cloudflare', 'pages-project', state.pages?.projectName, 'skipped', {
 			reason: target.scope === 'prod' ? 'delete_data_required' : 'shared_web_surface',
 		});
 	const local = target.kind === 'persistent' && target.scope === 'local'
-		? destroyLocalRuntimeResources(tenantRoot, { dryRun, deleteData })
+		? destroyLocalRuntimeResources(tenantRoot, { planOnly, deleteData })
 		: { operations: [] };
-	const railway = await destroyRailwayResources(tenantRoot, deployConfig, target, { dryRun, deleteData, env: process.env });
+	const railway = await destroyRailwayResources(tenantRoot, deployConfig, target, { planOnly, deleteData, env: process.env });
 	const sweep = sweepTreeseed
 		? {
-			cloudflare: sweepTreeSeedCloudflareResources(tenantRoot, deployConfig, state, { env, dryRun, deleteData }),
-			railway: await sweepTreeSeedRailwayResources(deployConfig, state, { env: process.env, dryRun }),
+			cloudflare: sweepTreeSeedCloudflareResources(tenantRoot, deployConfig, state, { env, planOnly, deleteData }),
+			railway: await sweepTreeSeedRailwayResources(deployConfig, state, { env: process.env, planOnly }),
 		}
 		: { cloudflare: [], railway: [] };
 
@@ -3643,7 +3643,7 @@ export async function destroyTreeseedEnvironmentResources(tenantRoot, options = 
 		],
 		local: local.operations,
 	};
-	const verification = dryRun
+	const verification = planOnly
 		? null
 		: {
 			cloudflare: cloudflareDestroyVerification(tenantRoot, deployConfig, state, env),
@@ -3670,15 +3670,15 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 	const env = {
 		CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig),
 	};
-	const dryRun = options.dryRun ?? false;
+	const planOnly = options.planOnly ?? false;
 	const deleteData = options.deleteData === true;
 	const force = options.force ?? false;
-	const kvNamespaces = dryRun ? [] : listKvNamespaces(tenantRoot, env);
-	const d1Databases = dryRun ? [] : listD1Databases(tenantRoot, env);
+	const kvNamespaces = planOnly ? [] : listKvNamespaces(tenantRoot, env);
+	const d1Databases = planOnly ? [] : listD1Databases(tenantRoot, env);
 	const queues = listQueues(tenantRoot, env);
-	const buckets = dryRun ? [] : listR2Buckets(tenantRoot, env);
-	const pagesProjects = dryRun ? [] : listPagesProjects(tenantRoot, env);
-	const turnstileWidgets = dryRun ? [] : listTurnstileWidgets(tenantRoot, env);
+	const buckets = planOnly ? [] : listR2Buckets(tenantRoot, env);
+	const pagesProjects = planOnly ? [] : listPagesProjects(tenantRoot, env);
+	const turnstileWidgets = planOnly ? [] : listTurnstileWidgets(tenantRoot, env);
 
 	state.kvNamespaces.FORM_GUARD_KV.id = resolveExistingKvIdByName(
 		kvNamespaces,
@@ -3693,19 +3693,19 @@ export function destroyCloudflareResources(tenantRoot, options = {}) {
 	state.turnstileWidgets.formGuard = resolveExistingTurnstileWidget(turnstileWidgets, state.turnstileWidgets?.formGuard);
 	const bucket = buckets.find((entry) => entry?.name === state.content?.bucketName);
 	const pagesProject = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
-	const worker = deleteWorker(tenantRoot, state.workerName, { env, dryRun, force });
+	const worker = deleteWorker(tenantRoot, state.workerName, { env, planOnly, force });
 	const turnstileWidget = deleteTurnstileWidget(state.turnstileWidgets?.formGuard?.sitekey, {
 		env,
-		dryRun,
+		planOnly,
 		name: state.turnstileWidgets?.formGuard?.name,
 	});
-	const formGuard = deleteKvNamespace(tenantRoot, state.kvNamespaces.FORM_GUARD_KV.id, { env, dryRun });
-	const database = deleteD1DatabaseForDestroy(tenantRoot, state.d1Databases.SITE_DATA_DB.databaseName, { env, dryRun, deleteData });
-	const r2Bucket = bucket || dryRun
-		? deleteR2Bucket(tenantRoot, state.content?.bucketName, { env, dryRun, deleteData })
+	const formGuard = deleteKvNamespace(tenantRoot, state.kvNamespaces.FORM_GUARD_KV.id, { env, planOnly });
+	const database = deleteD1DatabaseForDestroy(tenantRoot, state.d1Databases.SITE_DATA_DB.databaseName, { env, planOnly, deleteData });
+	const r2Bucket = bucket || planOnly
+		? deleteR2Bucket(tenantRoot, state.content?.bucketName, { env, planOnly, deleteData })
 		: resourceOperation('cloudflare', 'r2-bucket', state.content?.bucketName, 'missing');
-	const pages = pagesProject || dryRun
-		? deletePagesProject(state.pages?.projectName, { env, dryRun })
+	const pages = pagesProject || planOnly
+		? deletePagesProject(state.pages?.projectName, { env, planOnly })
 		: resourceOperation('cloudflare', 'pages-project', state.pages?.projectName, 'missing');
 	const operations = {
 		worker,
@@ -3751,12 +3751,12 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 	const env = {
 		CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig),
 	};
-	const dryRun = options.dryRun ?? false;
-	const kvNamespaces = dryRun ? [] : listKvNamespaces(tenantRoot, env);
-	const d1Databases = dryRun ? [] : listD1Databases(tenantRoot, env);
-	const queues = dryRun ? [] : listQueues(tenantRoot, env);
-	const buckets = dryRun ? [] : listR2Buckets(tenantRoot, env);
-	const pagesProjects = dryRun ? [] : listPagesProjects(tenantRoot, env);
+	const planOnly = options.planOnly ?? false;
+	const kvNamespaces = planOnly ? [] : listKvNamespaces(tenantRoot, env);
+	const d1Databases = planOnly ? [] : listD1Databases(tenantRoot, env);
+	const queues = planOnly ? [] : listQueues(tenantRoot, env);
+	const buckets = planOnly ? [] : listR2Buckets(tenantRoot, env);
+	const pagesProjects = planOnly ? [] : listPagesProjects(tenantRoot, env);
 
 	const ensureKv = (binding) => {
 		const current = state.kvNamespaces[binding];
@@ -3772,9 +3772,9 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 			return;
 		}
 
-		if (dryRun) {
-			state.kvNamespaces[binding].id = `dryrun-${current.name}`;
-			state.kvNamespaces[binding].previewId = `dryrun-${current.name}-preview`;
+		if (planOnly) {
+			state.kvNamespaces[binding].id = `plan-${current.name}`;
+			state.kvNamespaces[binding].previewId = `plan-${current.name}-preview`;
 			return;
 		}
 
@@ -3801,9 +3801,9 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 			return;
 		}
 
-		if (dryRun) {
-			current.databaseId = `dryrun-${current.databaseName}`;
-			current.previewDatabaseId = `dryrun-${current.databaseName}-preview`;
+		if (planOnly) {
+			current.databaseId = `plan-${current.databaseName}`;
+			current.previewDatabaseId = `plan-${current.databaseName}-preview`;
 			return;
 		}
 
@@ -3831,7 +3831,7 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 		if (exists) {
 			return;
 		}
-		if (dryRun) {
+		if (planOnly) {
 			return;
 		}
 		try {
@@ -3862,7 +3862,7 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 			ensurePagesProjectCompatibility(env.CLOUDFLARE_ACCOUNT_ID ?? process.env.TREESEED_CLOUDFLARE_ACCOUNT_ID ?? '', current.projectName, env, exists, { state, target });
 			return;
 		}
-		if (dryRun) {
+		if (planOnly) {
 			current.url = `https://${current.projectName}.pages.dev`;
 			return;
 		}
@@ -3888,7 +3888,7 @@ export function provisionCloudflareResources(tenantRoot, options = {}) {
 	ensureD1();
 	ensureR2Bucket();
 	ensurePagesProject();
-	reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, target, { dryRun });
+	reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, target, { planOnly });
 
 	state.readiness.configured = true;
 	state.readiness.provisioned = hasProvisionedCloudflareResources(state);
@@ -3927,7 +3927,7 @@ export function syncCloudflareSecrets(tenantRoot, options = {}) {
 		...extraSecrets,
 	};
 	const synced = [];
-	const dryRun = options.dryRun ?? false;
+	const planOnly = options.planOnly ?? false;
 
 	for (const [key, value] of Object.entries(secrets)) {
 		if (!value) {
@@ -3935,7 +3935,7 @@ export function syncCloudflareSecrets(tenantRoot, options = {}) {
 		}
 
 		synced.push(key);
-		if (dryRun) {
+		if (planOnly) {
 			continue;
 		}
 
@@ -3972,14 +3972,14 @@ export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
 	const env = {
 		CLOUDFLARE_ACCOUNT_ID: resolveConfiguredCloudflareAccountId(deployConfig),
 	};
-	const dryRun = options.dryRun ?? false;
-	const kvNamespaces = dryRun ? [] : listKvNamespaces(tenantRoot, env);
-	const d1Databases = dryRun ? [] : listD1Databases(tenantRoot, env);
-	const queues = dryRun ? [] : listQueues(tenantRoot, env);
-	const buckets = dryRun ? [] : listR2Buckets(tenantRoot, env);
-	const pagesProjects = dryRun ? [] : listPagesProjects(tenantRoot, env);
+	const planOnly = options.planOnly ?? false;
+	const kvNamespaces = planOnly ? [] : listKvNamespaces(tenantRoot, env);
+	const d1Databases = planOnly ? [] : listD1Databases(tenantRoot, env);
+	const queues = planOnly ? [] : listQueues(tenantRoot, env);
+	const buckets = planOnly ? [] : listR2Buckets(tenantRoot, env);
+	const pagesProjects = planOnly ? [] : listPagesProjects(tenantRoot, env);
 	const livePages = pagesProjects.find((entry) => entry?.name === state.pages?.projectName);
-	const pagesProject = dryRun || !env.CLOUDFLARE_ACCOUNT_ID || !state.pages?.projectName
+	const pagesProject = planOnly || !env.CLOUDFLARE_ACCOUNT_ID || !state.pages?.projectName
 		? livePages
 		: cloudflareApiRequest(
 			`/accounts/${encodeURIComponent(env.CLOUDFLARE_ACCOUNT_ID)}/pages/projects/${encodeURIComponent(state.pages.projectName)}`,
@@ -4002,7 +4002,7 @@ export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
 		webCache: !shouldManageCloudflareWebCacheRules(deployConfig, target) || state.webCache?.rulesManaged === true,
 	};
 
-	const ok = dryRun ? true : Object.values(checks).every(Boolean);
+	const ok = planOnly ? true : Object.values(checks).every(Boolean);
 	state.readiness.configured = true;
 	state.readiness.provisioned = ok;
 	state.readiness.deployable = ok;
@@ -4022,9 +4022,9 @@ export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
 				: `https://${livePages.subdomain}`;
 		}
 	}
-	if (!dryRun) {
+	if (!planOnly) {
 		try {
-			reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, target, { dryRun: false });
+			reconcileCloudflareWebCacheRules(tenantRoot, deployConfig, state, target, { planOnly: false });
 		} catch (error) {
 			state.webCache.rulesManaged = false;
 			state.webCache.lastError = error instanceof Error ? error.message : String(error);
@@ -4044,8 +4044,8 @@ export function verifyProvisionedCloudflareResources(tenantRoot, options = {}) {
 export function runRemoteD1Migrations(tenantRoot, options = {}) {
 	const target = normalizeTarget(options.scope ?? options.target ?? 'prod');
 	const { wranglerPath, deployConfig, state } = ensureGeneratedWranglerConfig(tenantRoot, { target });
-	if (options.dryRun) {
-		return { databaseName: state.d1Databases.SITE_DATA_DB.databaseName, dryRun: true };
+	if (options.planOnly) {
+		return { databaseName: state.d1Databases.SITE_DATA_DB.databaseName, planOnly: true };
 	}
 
 	const args = ['d1', 'migrations', 'apply', state.d1Databases.SITE_DATA_DB.databaseName, '--remote', '--config', wranglerPath];
@@ -4060,7 +4060,7 @@ export function runRemoteD1Migrations(tenantRoot, options = {}) {
 			allowFailure: true,
 		});
 		if (result.status === 0) {
-			return { databaseName: state.d1Databases.SITE_DATA_DB.databaseName, dryRun: false };
+			return { databaseName: state.d1Databases.SITE_DATA_DB.databaseName, planOnly: false };
 		}
 		lastOutput = [result.stderr?.trim(), result.stdout?.trim()].filter(Boolean).join('\n');
 		if (!isTransient(lastOutput) || attempt === 3) {

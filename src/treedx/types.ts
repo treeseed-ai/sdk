@@ -698,13 +698,13 @@ export interface TreeDxSearchIndexStatus {
 export interface TreeDxSearchIndexCompactRequest {
 	repoId?: string;
 	ref?: string;
-	dryRun?: boolean;
+	planOnly?: boolean;
 }
 
 export interface TreeDxSearchIndexCompactResult {
 	repoId: string;
 	ref: string;
-	dryRun: boolean;
+	planOnly: boolean;
 	segmentsBefore: number;
 	segmentsAfter: number;
 	compacted: boolean;
@@ -966,7 +966,7 @@ export interface TreeDxMirrorSyncRequest {
 	remoteUrl?: string;
 	credentialId?: string;
 	refspecs?: string[];
-	dryRun?: boolean;
+	planOnly?: boolean;
 }
 
 export interface TreeDxMirrorSyncResult {
@@ -980,7 +980,7 @@ export interface TreeDxFetchRemoteRequest {
 	remoteUrl?: string;
 	credentialId?: string;
 	refspecs?: string[];
-	dryRun?: boolean;
+	planOnly?: boolean;
 }
 
 export interface TreeDxFetchRemoteResult {
@@ -1007,9 +1007,9 @@ export interface TreeDxPushResult {
 	remoteName: string;
 	remoteUrl?: string | null;
 	refspecs: string[];
-	dryRun?: boolean;
+	planOnly?: boolean;
 	backend: string;
-	status: 'dry_run' | 'pushed' | string;
+	status: 'plan' | 'pushed' | string;
 	updatedRefs: string[];
 	rejectedRefs: string[];
 	beforeHead?: string | null;
@@ -1035,7 +1035,7 @@ export interface TreeDxMirrorHealthResult {
 export interface TreeDxMirrorPromotionRequest {
 	repoId?: string;
 	mirrorId: string;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	requireSynced?: boolean;
 }
 
@@ -1043,7 +1043,7 @@ export interface TreeDxMirrorPromotionResult {
 	promotion: {
 		mirrorId: string;
 		repoId: string;
-		dryRun: boolean;
+		planOnly: boolean;
 		status: 'planned' | 'promoted' | string;
 		previousPlacement?: TreeDxRepositoryPlacement | null;
 		resultingPlacement?: TreeDxRepositoryPlacement | null;
@@ -1052,14 +1052,14 @@ export interface TreeDxMirrorPromotionResult {
 
 export interface TreeDxStorageCompactRequest {
 	logs?: string[];
-	dryRun?: boolean;
+	planOnly?: boolean;
 	backupBefore?: boolean;
 }
 
 export interface TreeDxStorageCompactResult {
 	compact: {
 		status: string;
-		dryRun: boolean;
+		planOnly: boolean;
 		backupId?: string | null;
 		files: Array<{
 			file: string;
@@ -1092,7 +1092,7 @@ export interface TreeDxStorageMigration {
 	migrationId: string;
 	fromVersion?: string;
 	toVersion?: string;
-	dryRun?: boolean;
+	planOnly?: boolean;
 	reversible?: boolean;
 	logs?: string[];
 	status: string;
@@ -1115,7 +1115,7 @@ export interface TreeDxStorageRestoreVerifyRequest {
 }
 
 export interface TreeDxStorageRestoreRequest extends TreeDxStorageRestoreVerifyRequest {
-	dryRun?: boolean;
+	planOnly?: boolean;
 	backupBeforeRestore?: boolean;
 	force?: boolean;
 }
@@ -1124,7 +1124,7 @@ export interface TreeDxStorageRestoreResult {
 	restore: {
 		restoreId?: string;
 		backupId: string;
-		dryRun: boolean;
+		planOnly: boolean;
 		verified?: boolean;
 		backupBeforeRestore?: boolean;
 		preRestoreBackupId?: string | null;
@@ -1138,7 +1138,7 @@ export interface TreeDxMigrationRequest {
 	targetNodeId: string;
 	sourceNodeId?: string;
 	mode?: 'primary_transfer' | 'mirror_promotion';
-	dryRun?: boolean;
+	planOnly?: boolean;
 	requireMirrorSynced?: boolean;
 }
 
@@ -1149,7 +1149,7 @@ export interface TreeDxMigration {
 	targetNodeId: string;
 	mode: string;
 	status: string;
-	dryRun: boolean;
+	planOnly: boolean;
 	requireMirrorSynced: boolean;
 	previousPlacement?: TreeDxRepositoryPlacement | null;
 	resultingPlacement?: TreeDxRepositoryPlacement | null;

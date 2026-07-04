@@ -135,7 +135,7 @@ export interface ExecuteProjectHostBindingOperationInput {
 	commitMessage?: string | null;
 	approvalRequired?: boolean;
 	approvalId?: string | null;
-	dryRun?: boolean;
+	planOnly?: boolean;
 }
 
 export interface ExecuteProjectHostBindingOperationContext {
@@ -526,7 +526,7 @@ export async function executeProjectHostBindingOperation(
 				valuesOverlay: context.valuesOverlay,
 				valuesByScope: context.valuesByScope as any,
 				processEnv: context.processEnv,
-				dryRun: input.dryRun,
+				planOnly: input.planOnly,
 				onProgress: context.onProgress,
 			});
 		} catch (error) {
