@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.34] - 2026-07-04
+
+### Fixed
+
+- fix: repair staging railway git source deploys (dacfe5b55068)
+- fix: preserve operator links during workflows (38bbf6119531)
+
 ## [0.12.33] - 2026-07-04
 
 ### Fixed
