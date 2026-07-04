@@ -177,12 +177,14 @@ function variableObserved(observed: TreeseedObservedRailwayServiceState | undefi
 function valuePresence(values: Record<string, string | undefined>, observed: TreeseedObservedRailwayServiceState | undefined, key: string, serviceTarget: string) {
 	const providerPresent = variableObserved(observed, key);
 	const machinePresent = hasConfiguredValue(values, key);
+	const providerObserved = Boolean(observed);
+	const present = providerObserved ? providerPresent : machinePresent;
 	return {
 		key,
 		serviceTarget,
-		present: providerPresent || machinePresent,
-		source: providerPresent ? 'provider' : machinePresent ? 'machine-config' : 'missing',
-		observation: observed ? 'provider-live' : 'not-observed',
+		present,
+		source: providerPresent ? 'provider' : !providerObserved && machinePresent ? 'machine-config' : 'missing',
+		observation: providerObserved ? 'provider-live' : 'not-observed',
 	};
 }
 
