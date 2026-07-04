@@ -1389,7 +1389,7 @@ async function validateRepositoryLockfile(
 		return { status: 'skipped', command: commandText, issues: [], error: 'disabled' };
 	}
 	try {
-		runCapturedCommand(node, options, 'lockfile', command, args, { timeoutMs: 120_000, emitOutputOnSuccess: false });
+		runCapturedCommand(node, options, 'lockfile', command, args, { timeoutMs: 600_000, emitOutputOnSuccess: false });
 		const packageCount = npmLockfilePackageCount(node.path);
 		const countText = packageCount === null ? 'package-lock entries' : `${packageCount} package${packageCount === 1 ? '' : 's'}`;
 		emitProgress(options, node, 'lockfile', `Lockfile validation passed: ${countText} checked, 0 issues.`);
