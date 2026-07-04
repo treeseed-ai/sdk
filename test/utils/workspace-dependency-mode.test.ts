@@ -46,11 +46,16 @@ function createWorkspace() {
 	writeJson(resolve(root, 'packages/cli/package.json'), {
 		name: '@treeseed/cli',
 		version: '0.1.0',
+		bin: {
+			trsd: './dist/cli/main.js',
+		},
 		dependencies: {
 			'@treeseed/sdk': 'github:treeseed-ai/sdk#0.1.0-dev.staging.20260427T000000Z',
 			'@treeseed/core': 'github:treeseed-ai/core#0.1.0-dev.staging.20260427T000000Z',
 		},
 	});
+	mkdirSync(resolve(root, 'packages/cli/dist/cli'), { recursive: true });
+	writeFileSync(resolve(root, 'packages/cli/dist/cli/main.js'), '#!/usr/bin/env node\n', 'utf8');
 	return root;
 }
 
@@ -85,6 +90,28 @@ describe('workspace dependency mode', () => {
 
 		expect(removed.removed.length).toBeGreaterThan(0);
 		expect(existsSync(sdkLink)).toBe(false);
+	});
+
+	it('preserves the local trsd operator package closure during workflow unlink', () => {
+		const root = createWorkspace();
+		ensureLocalWorkspaceLinks(root);
+		const rootCliLink = resolve(root, 'node_modules/@treeseed/cli');
+		const rootSdkLink = resolve(root, 'node_modules/@treeseed/sdk');
+		const cliSdkLink = resolve(root, 'packages/cli/node_modules/@treeseed/sdk');
+		const cliBinLink = resolve(root, 'node_modules/.bin/trsd');
+
+		const removed = unlinkLocalWorkspaceLinks(root, { preserveOperatorLinks: true });
+
+		expect(removed.preserved).toEqual(expect.arrayContaining([
+			rootCliLink,
+			rootSdkLink,
+			cliSdkLink,
+		]));
+		expect(existsSync(rootCliLink)).toBe(true);
+		expect(existsSync(rootSdkLink)).toBe(true);
+		expect(existsSync(cliSdkLink)).toBe(true);
+		expect(readlinkSync(cliBinLink)).toContain('../@treeseed/cli/dist/cli/main.js');
+		expect(existsSync(resolve(root, 'node_modules/@treeseed/core'))).toBe(true);
 	});
 
 	it('repairs broken managed links idempotently', () => {

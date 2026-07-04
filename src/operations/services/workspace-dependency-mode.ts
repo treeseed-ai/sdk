@@ -22,6 +22,7 @@ export type WorkspaceDependencyModeReport = {
 	links: Array<WorkspaceLink & { exists: boolean; linked: boolean; targetMatches: boolean; currentTarget: string | null }>;
 	created: string[];
 	removed: string[];
+	preserved: string[];
 	issues: string[];
 };
 
@@ -154,6 +155,30 @@ function internalDependencyNames(packageJson: Record<string, unknown>, packageNa
 		}
 	}
 	return [...names].sort();
+}
+
+function operatorWorkspacePackageNames(packages: ReturnType<typeof workspacePackages>) {
+	const packageByName = new Map(packages.map((pkg) => [String(pkg.name), pkg]));
+	const packageNames = new Set(packageByName.keys());
+	const roots = packages
+		.filter((pkg) => {
+			const name = String(pkg.name ?? '');
+			if (name === '@treeseed/cli') return true;
+			return packageBinEntries(pkg.packageJson).some(([binName]) => binName === 'trsd' || binName === 'treeseed');
+		})
+		.map((pkg) => String(pkg.name));
+	const closure = new Set<string>();
+	const visit = (packageName: string) => {
+		if (closure.has(packageName)) return;
+		const pkg = packageByName.get(packageName);
+		if (!pkg) return;
+		closure.add(packageName);
+		for (const dependencyName of internalDependencyNames(pkg.packageJson, packageNames)) {
+			visit(dependencyName);
+		}
+	};
+	for (const rootName of roots) visit(rootName);
+	return closure;
 }
 
 function dependencyNames(packageJson: Record<string, unknown> | null, filter: (name: string) => boolean) {
@@ -387,7 +412,7 @@ export function ensureLocalWorkspaceLinks(root = workspaceRoot(), options: { mod
 	const enabled = workspaceLinksEnabled(options.mode, options.env);
 	const links = discoverWorkspaceLinks(root);
 	const report = inspectWorkspaceDependencyMode(root, { mode: options.mode, env: options.env });
-	if (!enabled) return { ...report, enabled: false, created: [], removed: [] };
+	if (!enabled) return { ...report, enabled: false, created: [], removed: [], preserved: [] };
 	ensureGitInfoExcludes(root, links);
 	const managedLinks = readMetadata(root);
 	const created: string[] = [];
@@ -407,21 +432,31 @@ export function ensureLocalWorkspaceLinks(root = workspaceRoot(), options: { mod
 		...inspectWorkspaceDependencyMode(root, { mode: options.mode, env: options.env }),
 		created,
 		removed: [],
+		preserved: [],
 	};
 }
 
-export function unlinkLocalWorkspaceLinks(root = workspaceRoot(), options: { mode?: WorkspaceLinksMode; env?: NodeJS.ProcessEnv } = {}) {
+export function unlinkLocalWorkspaceLinks(root = workspaceRoot(), options: { mode?: WorkspaceLinksMode; env?: NodeJS.ProcessEnv; preserveOperatorLinks?: boolean } = {}) {
 	const enabled = workspaceLinksEnabled(options.mode, options.env);
 	const links = discoverWorkspaceLinks(root);
 	const managedLinks = readMetadata(root);
 	const removed: string[] = [];
-	if (!enabled) return { ...inspectWorkspaceDependencyMode(root, { mode: options.mode, env: options.env }), enabled: false, removed };
+	const preserved: string[] = [];
+	const packages = workspacePackages(root).filter((pkg) => typeof pkg.name === 'string' && pkg.name.startsWith('@treeseed/'));
+	const packageNameByDir = new Map(packages.map((pkg) => [pathKey(pkg.dir), String(pkg.name)]));
+	const operatorPackageNames = options.preserveOperatorLinks ? operatorWorkspacePackageNames(packages) : new Set<string>();
+	if (!enabled) return { ...inspectWorkspaceDependencyMode(root, { mode: options.mode, env: options.env }), enabled: false, removed, preserved };
 	for (const link of links) {
 		const stat = safeLstat(link.linkPath);
 		if (!stat) continue;
 		const currentTarget = stat.isSymbolicLink() ? safeReadlink(link.linkPath) : null;
 		const managed = managedLinks.has(pathKey(link.linkPath)) || currentTarget === pathKey(link.targetPath);
 		if (!stat.isSymbolicLink() || !managed) continue;
+		const ownerPackageName = packageNameByDir.get(pathKey(link.ownerPath)) ?? null;
+		if (operatorPackageNames.has(link.packageName) || (ownerPackageName && operatorPackageNames.has(ownerPackageName))) {
+			preserved.push(link.linkPath);
+			continue;
+		}
 		unlinkSync(link.linkPath);
 		removed.push(link.linkPath);
 	}
@@ -429,6 +464,7 @@ export function unlinkLocalWorkspaceLinks(root = workspaceRoot(), options: { mod
 		...inspectWorkspaceDependencyMode(root, { mode: options.mode, env: options.env }),
 		removed,
 		created: [],
+		preserved,
 	};
 }
 
@@ -520,6 +556,7 @@ export function inspectWorkspaceDependencyMode(root = workspaceRoot(), options: 
 		links: inspected,
 		created: [],
 		removed: [],
+		preserved: [],
 		issues: [
 			...inspected
 				.filter((link) => link.exists && (!link.linked || !link.targetMatches))

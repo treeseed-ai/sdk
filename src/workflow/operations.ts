@@ -434,9 +434,12 @@ function unlinkWorkflowWorkspaceLinks(root: string, helpers: WorkflowOperationHe
 	if (!shouldManageWorkspaceLinks(mode, helpers.context.env)) {
 		return inspectWorkspaceDependencyMode(root, { mode: 'off', env: helpers.context.env });
 	}
-	const report = unlinkLocalWorkspaceLinks(root, { mode, env: helpers.context.env });
+	const report = unlinkLocalWorkspaceLinks(root, { mode, env: helpers.context.env, preserveOperatorLinks: true });
 	if (report.removed.length > 0) {
 		helpers.write(`[workspace][unlink] Removed ${report.removed.length} local workspace package links for deployment install.`);
+	}
+	if (report.preserved.length > 0) {
+		helpers.write(`[workspace][unlink] Preserved ${report.preserved.length} operator workspace links so local trsd tooling remains available.`);
 	}
 	return report;
 }
@@ -6773,6 +6776,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					{ id: 'production-api-guarantees', description: 'Run production API release guarantees before root deploy', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'release-root', description: `Release market ${plannedRelease.rootVersion}`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'publish-wait', description: 'Wait for production release workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
+					{ id: 'production-web-live-verification', description: 'Run production web live verification after root deploy', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'release-back-merge', description: 'Back-merge production release history into staging', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'workspace-link', description: 'Restore local workspace links after release', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 				],
