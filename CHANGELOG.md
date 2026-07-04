@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.12.38] - 2026-07-04
+
+### Added
+
+- feat(source): make live hosted env checks provider authoritative (b571d9120e64)
+
+### Fixed
+
+- fix(source): bypass source page edge cache for production release (162897b38306)
+
+### Dependencies
+
+- build(build): fail release on broken production web surface (32a4b9b2ae9b)
+
 ## [0.12.37] - 2026-07-04
 
 ### Added
