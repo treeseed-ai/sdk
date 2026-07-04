@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.12.37] - 2026-07-04
+
+### Added
+
+- feat(workflow): purge production web cache before release verification (be3d0b9f5005)
+
+### Dependencies
+
+- build(build): purge production web cache before release verification (7c5d01c67ab5)
+
 ## [0.12.36] - 2026-07-04
 
 ### Fixed
