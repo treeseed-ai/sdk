@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.27] - 2026-07-04
+
+### Changed
+
+- refactor: replace dry-run mode with plan execution (802eb7d92e90)
+- Keep API staging deploys on git sources (3701f1a0f943)
+- Refresh Railway domain DNS requirements (ccfeb8a5d63f)
+
+### Fixed
+
+- fix: normalize Railway root verification (7a820f2034cb)
+
 ## [0.12.26] - 2026-07-03
 
 ### Changed
