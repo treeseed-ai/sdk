@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.33] - 2026-07-04
+
+### Fixed
+
+- fix: resolve railway deployment project for release settle (d2ea6080149b)
+
 ## [0.12.32] - 2026-07-04
 
 ### Changed
