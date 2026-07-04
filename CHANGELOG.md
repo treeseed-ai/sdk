@@ -4,7 +4,7 @@
 
 ### Changed
 
-- refactor: replace dry-run mode with plan execution (802eb7d92e90)
+- refactor: replace preview mode with plan execution (802eb7d92e90)
 - Keep API staging deploys on git sources (3701f1a0f943)
 - Refresh Railway domain DNS requirements (ccfeb8a5d63f)
 
