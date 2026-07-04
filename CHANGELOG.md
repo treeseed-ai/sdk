@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.29] - 2026-07-04
+
+### Fixed
+
+- fix: use plan wording in reconciler (7672858d4eff)
+
 ## [0.12.28] - 2026-07-04
 
 ### Fixed
