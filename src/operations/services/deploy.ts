@@ -1861,12 +1861,30 @@ function purgeCloudflareCacheByUrls(urls, deployConfig, { env } = {}) {
 			body: { files: [...new Set(files)] },
 			env,
 		});
+		const errors = Array.isArray(payload?.errors)
+			? payload.errors.map((entry) => entry?.message ?? JSON.stringify(entry)).filter(Boolean)
+			: [];
 		return {
 			zoneId,
 			count: [...new Set(files)].length,
 			success: payload?.success === true,
+			errors,
 		};
 	});
+}
+
+function assertCloudflareCachePurgeSucceeded(results) {
+	const failures = (results ?? []).filter((result) => result?.success !== true);
+	if (failures.length === 0) return;
+	const detail = failures
+		.map((result) => {
+			const errors = Array.isArray(result?.errors) && result.errors.length > 0
+				? `: ${result.errors.join('; ')}`
+				: '';
+			return `${result?.zoneId ?? 'unknown-zone'} (${result?.count ?? 0} urls)${errors}`;
+		})
+		.join(', ');
+	throw new Error(`Cloudflare cache purge did not succeed for ${detail}.`);
 }
 
 export function queueName(entry) {
@@ -1944,6 +1962,7 @@ export function purgeSourcePageCaches(tenantRoot, options = {}) {
 		const results = purgeCloudflareCacheByUrls(urls, deployConfig, {
 			env,
 		});
+		assertCloudflareCachePurgeSucceeded(results);
 		recordCachePurgeResult(state.webCache.deployPurge, results);
 		writeDeployState(tenantRoot, state, { target });
 		return { urls, results };
@@ -1974,6 +1993,7 @@ export function purgePublishedContentCaches(tenantRoot, urls, options = {}) {
 		const results = purgeCloudflareCacheByUrls(urls, deployConfig, {
 			env,
 		});
+		assertCloudflareCachePurgeSucceeded(results);
 		recordCachePurgeResult(state.webCache.contentPurge, results);
 		writeDeployState(tenantRoot, state, { target });
 		return { urls, results };

@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { resolveTreeseedLaunchEnvironment } from '../operations/services/config-runtime.ts';
 import { cloudflareApiRequest, resolveCloudflareZoneIdForHost, resolveConfiguredCloudflareAccountId, runWrangler } from '../operations/services/deploy.ts';
@@ -221,6 +222,63 @@ function cloudflarePagesDeploymentUrl(projectName: string, branchName: string, e
 		: `https://${branchName}.${projectName}.pages.dev`;
 }
 
+function probeCloudflarePagesPublicUrl(url: string | null) {
+	if (!url) {
+		return { ok: false, status: null, finalUrl: null, headers: {}, error: 'missing_url' };
+	}
+	const script = `
+const url = process.argv[1];
+try {
+	const response = await fetch(url, {
+		redirect: 'follow',
+		headers: {
+			'user-agent': 'treeseed-hosting-verifier/1.0',
+			'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+		},
+		signal: AbortSignal.timeout(15000),
+	});
+	const headers = {};
+	for (const key of ['cf-cache-status', 'age', 'server', 'cache-control', 'content-type']) {
+		const value = response.headers.get(key);
+		if (value) headers[key] = value;
+	}
+	process.stdout.write(JSON.stringify({
+		ok: response.ok,
+		status: response.status,
+		finalUrl: response.url,
+		headers,
+		error: null,
+	}));
+} catch (error) {
+	process.stdout.write(JSON.stringify({
+		ok: false,
+		status: null,
+		finalUrl: url,
+		headers: {},
+		error: error instanceof Error ? error.message : String(error),
+	}));
+}
+`;
+	const result = spawnSync(process.execPath, ['--input-type=module', '-e', script, url], {
+		encoding: 'utf8',
+		timeout: 20_000,
+	});
+	if (result.error) {
+		return { ok: false, status: null, finalUrl: url, headers: {}, error: result.error.message };
+	}
+	try {
+		return JSON.parse(result.stdout || '{}');
+	} catch {
+		return {
+			ok: false,
+			status: null,
+			finalUrl: url,
+			headers: {},
+			error: result.stderr?.trim() || result.stdout?.trim() || 'invalid_probe_output',
+		};
+	}
+}
+
 function cloudflarePagesDnsTarget(projectName: string, branchName: string, environment: TreeseedHostingEnvironment) {
 	return environment === 'prod'
 		? `${projectName}.pages.dev`
@@ -416,6 +474,8 @@ function createCloudflareHostAdapter(): TreeseedHostAdapter {
 			const observedDomain = observedState.observedDomain ?? null;
 			const observedDnsRecord = observedState.observedDnsRecord ?? null;
 			const observedDeployment = observedState.observedDeployment ?? null;
+			const publicUrl = domain ? `https://${domain}` : (projectName && branchName ? cloudflarePagesDeploymentUrl(projectName, branchName, input.environment) : null);
+			const publicProbe = input.environment === 'prod' ? probeCloudflarePagesPublicUrl(publicUrl) : null;
 			const checks = [
 				{
 					key: 'pages-project.exists',
@@ -455,6 +515,18 @@ function createCloudflareHostAdapter(): TreeseedHostAdapter {
 					issues: !domain || observedDnsRecord ? [] : [`Cloudflare DNS record ${domain} -> ${projectName && branchName ? cloudflarePagesDnsTarget(projectName, branchName, input.environment) : '(unset)'} is missing.`],
 				},
 			];
+			if (input.environment === 'prod') {
+				checks.push({
+					key: 'pages-public-url.ok',
+					label: 'Cloudflare Pages public URL responds successfully',
+					ok: publicProbe?.ok === true,
+					expected: { url: publicUrl, ok: true },
+					observed: publicProbe,
+					issues: publicProbe?.ok === true
+						? []
+						: [`Cloudflare Pages public URL ${publicUrl ?? '(unset)'} did not return a successful status.`],
+				});
+			}
 			return {
 				unitId: input.unit.id,
 				status: checks.every((check) => check.ok) ? 'ready' : 'pending',
