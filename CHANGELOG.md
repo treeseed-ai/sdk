@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.30] - 2026-07-04
+
+### Fixed
+
+- fix: verify exact railway variable values (75d8fed97b0f)
+
 ## [0.12.29] - 2026-07-04
 
 ### Fixed
