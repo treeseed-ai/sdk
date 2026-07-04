@@ -474,7 +474,6 @@
 
 ### Dependencies
 
-- build(build): avoid live queue lookup during destroy dry runs (8aa5ff4da78f)
 - build(build): harden provider cleanup api calls for clean destroy (39e83a4b6e74)
 - Release @treeseed/sdk 0.10.22.
 

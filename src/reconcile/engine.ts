@@ -446,7 +446,7 @@ export async function reconcileTreeseedTarget({
 					observed: plan.observed,
 					diff: plan.diff,
 					action: plan.diff.action,
-					warnings: [...plan.observed.warnings, 'dry run: apply skipped'],
+					warnings: [...plan.observed.warnings, 'plan mode: apply skipped'],
 					resourceLocators: plan.observed.locators,
 					state: plan.observed.live,
 					verification: null,
