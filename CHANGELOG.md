@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.35] - 2026-07-04
+
+### Fixed
+
+- fix(release): route TreeDX through restored release gate (249765de8d26)
+
 ## [0.12.34] - 2026-07-04
 
 ### Fixed
