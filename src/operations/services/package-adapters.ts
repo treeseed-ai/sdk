@@ -703,7 +703,7 @@ export function planTreeseedPackageDevelopmentImage(
 				environment,
 				overrideEnvVar,
 				override: { [overrideEnvVar]: hostingImageRef },
-				command: `${overrideEnvVar}=${hostingImageRef} npx trsd hosting apply --environment ${environment} --app ${app} --execute --json`,
+				command: `${overrideEnvVar}=${hostingImageRef} npx trsd hosting apply --environment ${environment} --app ${app} --json`,
 			}
 			: null,
 	};
