@@ -1678,7 +1678,7 @@ export function buildTreeseedManagedCloudflareCacheRules(deployConfig, cacheTarg
 
 	if (sourcePathExpression) {
 		rules.push({
-			description: 'treeseed-managed: cache source html routes',
+			description: 'treeseed-managed: bypass source html routes',
 			expression: joinCloudflareAndExpression([
 				hostExpression,
 				pathExpression,
@@ -1687,15 +1687,7 @@ export function buildTreeseedManagedCloudflareCacheRules(deployConfig, cacheTarg
 			]),
 			action: 'set_cache_settings',
 			action_parameters: {
-				cache: true,
-				edge_ttl: {
-					mode: 'override_origin',
-					default: policy.sourcePages.edgeTtlSeconds,
-				},
-				browser_ttl: {
-					mode: 'override_origin',
-					default: policy.sourcePages.browserTtlSeconds,
-				},
+				cache: false,
 			},
 			enabled: true,
 		});
@@ -1873,6 +1865,31 @@ function purgeCloudflareCacheByUrls(urls, deployConfig, { env } = {}) {
 	});
 }
 
+function purgeCloudflareCacheEverythingByHosts(hosts, deployConfig, { env } = {}) {
+	const zoneIds = [...new Set((hosts ?? [])
+		.map((host) => typeof host === 'string' ? host.trim() : '')
+		.filter(Boolean)
+		.map((host) => resolveCloudflareZoneIdForHost(deployConfig, host, env))
+		.filter(Boolean))];
+
+	return zoneIds.map((zoneId) => {
+		const payload = cloudflareApiRequest(`/zones/${zoneId}/purge_cache`, {
+			method: 'POST',
+			body: { purge_everything: true },
+			env,
+		});
+		const errors = Array.isArray(payload?.errors)
+			? payload.errors.map((entry) => entry?.message ?? JSON.stringify(entry)).filter(Boolean)
+			: [];
+		return {
+			zoneId,
+			count: 'everything',
+			success: payload?.success === true,
+			errors,
+		};
+	});
+}
+
 function assertCloudflareCachePurgeSucceeded(results) {
 	const failures = (results ?? []).filter((result) => result?.success !== true);
 	if (failures.length === 0) return;
@@ -1962,10 +1979,13 @@ export function purgeSourcePageCaches(tenantRoot, options = {}) {
 		const results = purgeCloudflareCacheByUrls(urls, deployConfig, {
 			env,
 		});
-		assertCloudflareCachePurgeSucceeded(results);
-		recordCachePurgeResult(state.webCache.deployPurge, results);
+		const allResults = target.scope === 'prod'
+			? purgeCloudflareCacheEverythingByHosts([webTarget.host, contentTarget?.host], deployConfig, { env })
+			: [];
+		assertCloudflareCachePurgeSucceeded([...results, ...allResults]);
+		recordCachePurgeResult(state.webCache.deployPurge, [...results, ...allResults]);
 		writeDeployState(tenantRoot, state, { target });
-		return { urls, results };
+		return { urls, results: [...results, ...allResults] };
 	} catch (error) {
 		recordCachePurgeResult(state.webCache.deployPurge, [], error);
 		writeDeployState(tenantRoot, state, { target });

@@ -17,6 +17,8 @@ describe('Cloudflare cache rule expressions', () => {
 		} as any, { host: 'treeseed.ai' }, 'web');
 
 		expect(rules.length).toBeGreaterThan(0);
+		const sourceRule = rules.find((rule) => rule.description === 'treeseed-managed: bypass source html routes');
+		expect(sourceRule?.action_parameters).toEqual({ cache: false });
 		for (const rule of rules) {
 			expect(rule.expression).not.toContain('(true)');
 			expect(rule.expression).not.toContain('(false)');
@@ -36,7 +38,7 @@ describe('Cloudflare cache rule expressions', () => {
 			},
 		} as any, { host: 'treeseed.ai' }, 'web');
 
-		expect(rules.map((rule) => rule.description)).not.toContain('treeseed-managed: cache source html routes');
+		expect(rules.map((rule) => rule.description)).not.toContain('treeseed-managed: bypass source html routes');
 		for (const rule of rules) {
 			expect(rule.expression).not.toContain('(true)');
 			expect(rule.expression).not.toContain('(false)');
