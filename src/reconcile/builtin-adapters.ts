@@ -5805,8 +5805,11 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 						serviceId: entry.service.id,
 						env: topology.env,
 					}).catch(() => entry.currentVariables);
-					const expectedKeys = [...Object.keys(sync.variables), ...Object.keys(sync.secrets)];
-					if (expectedKeys.every((key) => Object.hasOwn(currentVariables, key))) {
+					const expectedVariablesMatch = Object.entries(sync.variables)
+						.every(([key, value]) => currentVariables[key] === value);
+					const expectedSecretsExist = Object.keys(sync.secrets)
+						.every((key) => Object.hasOwn(currentVariables, key));
+					if (expectedVariablesMatch && expectedSecretsExist) {
 						break;
 					}
 					sleepMs(1000);

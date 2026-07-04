@@ -2196,27 +2196,30 @@ mutation TreeseedRailwayVariableCollectionUpsert($input: VariableCollectionUpser
 			await upsertOne(key, value);
 		}
 	}
+	const expectedKeys = Object.keys(variables);
+	const mismatchedKeys = (observed: Record<string, string | null | undefined>) =>
+		expectedKeys.filter((key) => observed[key] !== variables[key]);
 	const observed = await listRailwayVariables({ projectId, environmentId, serviceId, env, fetchImpl }).catch(() => ({}));
-	const missing = Object.keys(variables).filter((key) => observed[key] == null);
-	for (const key of missing) {
+	const missingOrMismatched = mismatchedKeys(observed);
+	for (const key of missingOrMismatched) {
 		await upsertOne(key, variables[key]);
 	}
-	let retried = missing.length > 0
+	let retried = missingOrMismatched.length > 0
 		? await listRailwayVariables({ projectId, environmentId, serviceId, env, fetchImpl }).catch(() => ({}))
 		: observed;
-	let stillMissing = Object.keys(variables).filter((key) => retried[key] == null);
-	for (let attempt = 0; stillMissing.length > 0 && attempt < 12; attempt += 1) {
+	let stillMismatched = mismatchedKeys(retried);
+	for (let attempt = 0; stillMismatched.length > 0 && attempt < 12; attempt += 1) {
 		await new Promise((resolve) => setTimeout(resolve, 2_500));
 		retried = await listRailwayVariables({ projectId, environmentId, serviceId, env, fetchImpl }).catch(() => ({}));
-		stillMissing = Object.keys(variables).filter((key) => retried[key] == null);
-		if (stillMissing.length > 0 && attempt === 5) {
-			for (const key of stillMissing) {
+		stillMismatched = mismatchedKeys(retried);
+		if (stillMismatched.length > 0 && attempt === 5) {
+			for (const key of stillMismatched) {
 				await upsertOne(key, variables[key]);
 			}
 		}
 	}
-	if (stillMissing.length > 0) {
-		throw new Error(`Railway variable upsert did not persist: ${stillMissing.join(', ')}.`);
+	if (stillMismatched.length > 0) {
+		throw new Error(`Railway variable upsert did not persist expected values: ${stillMismatched.join(', ')}.`);
 	}
 }
 

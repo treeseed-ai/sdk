@@ -4,6 +4,7 @@ import {
 	ensureRailwayServiceInstanceConfiguration,
 	getRailwayServiceInstance,
 	railwayGraphqlRequest,
+	upsertRailwayVariables,
 } from '../../src/operations/services/railway-api.ts';
 
 describe('railwayGraphqlRequest', () => {
@@ -409,6 +410,58 @@ describe('railwayGraphqlRequest', () => {
 			healthcheckPath: '/healthz',
 			healthcheckTimeoutSeconds: 10,
 			runtimeMode: 'serverless',
+		});
+	});
+
+	it('retries Railway variables that exist with stale values', async () => {
+		const requests: unknown[] = [];
+		const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+			const request = JSON.parse(String(init?.body ?? '{}'));
+			requests.push(request);
+			const query = String(request.query ?? '');
+			if (query.includes('TreeseedRailwayVariableCollectionUpsert')) {
+				return new Response(JSON.stringify({ data: { variableCollectionUpsert: true } }), {
+					status: 200,
+					headers: { 'content-type': 'application/json' },
+				});
+			}
+			const variableValue = requests.length < 3
+				? 'treeseed/treedx:0.2.22'
+				: 'treeseed/treedx:0.2.23';
+			return new Response(JSON.stringify({
+				data: {
+					variables: {
+						TREESEED_PUBLIC_TREEDX_IMAGE_REF: variableValue,
+					},
+				},
+			}), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			});
+		});
+
+		await upsertRailwayVariables({
+			projectId: 'project-1',
+			environmentId: 'env-production',
+			serviceId: 'svc-treedx',
+			variables: {
+				TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.2.23',
+			},
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token-value' },
+			fetchImpl: fetchMock,
+		});
+
+		const upsertRequests = requests.filter((entry) =>
+			String((entry as { query?: string }).query ?? '').includes('TreeseedRailwayVariableCollectionUpsert'));
+		expect(upsertRequests).toHaveLength(2);
+		expect(upsertRequests.at(1)).toMatchObject({
+			variables: {
+				input: {
+					variables: {
+						TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.2.23',
+					},
+				},
+			},
 		});
 	});
 });
