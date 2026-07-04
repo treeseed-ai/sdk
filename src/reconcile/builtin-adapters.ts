@@ -5865,13 +5865,19 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 		}));
 	}
 	const desiredRootDirectory = service.imageRef || service.sourceMode === 'image' ? null : railwayServiceRootDirectory(input.context.tenantRoot, service);
+	const normalizeRailwayRootDirectory = (value: string | null | undefined) => {
+		const trimmed = String(value ?? '').trim();
+		return trimmed || '.';
+	};
 	if (desiredRootDirectory) {
+		const observedRootDirectory = normalizeRailwayRootDirectory(entry.instance?.rootDirectory);
+		const desiredNormalizedRootDirectory = normalizeRailwayRootDirectory(desiredRootDirectory);
 		checks.push(verificationCheck('railway.instance.root-directory', 'Railway root directory matches desired config', 'api', {
 			exists: Boolean(entry.instance?.id),
-			configured: entry.instance?.rootDirectory === desiredRootDirectory,
+			configured: observedRootDirectory === desiredNormalizedRootDirectory,
 			expected: desiredRootDirectory,
 			observed: entry.instance?.rootDirectory ?? null,
-			issues: entry.instance?.rootDirectory === desiredRootDirectory ? [] : ['Railway root directory does not match the desired value.'],
+			issues: observedRootDirectory === desiredNormalizedRootDirectory ? [] : ['Railway root directory does not match the desired value.'],
 		}));
 	}
 	if (service.sourceMode === 'git' && entry.service?.id && entry.environment?.id) {
@@ -5888,7 +5894,9 @@ async function verifyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise<
 		}));
 		const repoMatches = service.sourceRepo ? deployment.repo === service.sourceRepo : true;
 		const branchMatches = service.sourceBranch ? deployment.branch === service.sourceBranch : true;
-		const rootMatches = desiredRootDirectory ? deployment.rootDirectory === desiredRootDirectory : true;
+		const rootMatches = desiredRootDirectory
+			? normalizeRailwayRootDirectory(deployment.rootDirectory) === normalizeRailwayRootDirectory(desiredRootDirectory)
+			: true;
 		const deploymentIssues = [
 			repoMatches ? null : `Expected Railway Git deployment repo ${service.sourceRepo}, observed ${deployment.repo ?? '(unset)'}.`,
 			branchMatches ? null : `Expected Railway Git deployment branch ${service.sourceBranch}, observed ${deployment.branch ?? '(unset)'}.`,
