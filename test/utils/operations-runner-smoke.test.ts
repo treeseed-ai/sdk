@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -68,6 +68,57 @@ describe('operations runner smoke', () => {
 		expect(report.runnerId).toBe('runner-1');
 		expect(calls.some((call) => call.endsWith('/healthz/deep'))).toBe(true);
 		expect(JSON.stringify(report)).not.toContain('secret');
+	});
+
+	it('uses package-local hosted API domains for production smoke', async () => {
+		const tenantRoot = root();
+		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `
+surfaces:
+  api:
+    environments:
+      prod:
+        domain: api.treeseed.dev
+services:
+  api:
+    environments:
+      local:
+        baseUrl: http://127.0.0.1:3000
+`.trimStart(), 'utf8');
+		const calls: string[] = [];
+		const report = await runTreeseedOperationsRunnerSmoke({
+			tenantRoot,
+			environment: 'prod',
+			env: {
+				TREESEED_API_BASE_URL: 'http://127.0.0.1:3000',
+				TREESEED_WEB_SERVICE_SECRET: 'secret',
+			},
+			fetchImpl: (async (url: URL | RequestInfo) => {
+				const value = String(url);
+				calls.push(value);
+				if (value.endsWith('/healthz') || value.endsWith('/healthz/deep')) return response({ ok: true });
+				if (value.endsWith('/v1/platform/operations')) return response({ ok: true, operation: { id: 'op-prod', status: 'queued' } }, 202);
+				if (value.endsWith('/v1/platform/operations/op-prod')) return response({ ok: true, operation: { id: 'op-prod', status: 'completed', assignedRunnerId: 'runner-prod' } });
+				if (value.endsWith('/v1/platform/operations/op-prod/events')) return response({ ok: true, events: [{ kind: 'runner.completed', createdAt: '2026-06-07T00:00:00.000Z' }] });
+				return response({ error: 'not found' }, 404);
+			}) as typeof fetch,
+		});
+
+		expect(report.ok).toBe(true);
+		expect(report.baseUrl).toBe('https://api.treeseed.dev');
+		expect(calls.every((call) => call.startsWith('https://api.treeseed.dev/'))).toBe(true);
+	});
+
+	it('rejects explicit loopback base URLs for hosted smoke', async () => {
+		const report = await runTreeseedOperationsRunnerSmoke({
+			tenantRoot: root(),
+			environment: 'prod',
+			baseUrl: 'http://127.0.0.1:3000',
+			serviceSecret: 'secret',
+			fetchImpl: (async () => response({ ok: true })) as typeof fetch,
+		});
+
+		expect(report.ok).toBe(false);
+		expect(report.issues.join(' ')).toContain('must target a live hosted API URL');
 	});
 
 	it('prefers the canonical web service secret over the legacy API-prefixed fallback', async () => {

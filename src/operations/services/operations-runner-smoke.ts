@@ -38,6 +38,16 @@ function normalizedBaseUrl(value: string) {
 	return value.trim().replace(/\/+$/u, '');
 }
 
+function isLoopbackBaseUrl(value: string | null | undefined) {
+	if (!value) return false;
+	try {
+		const url = new URL(value);
+		return ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]'].includes(url.hostname);
+	} catch {
+		return false;
+	}
+}
+
 function value(name: string, values: Record<string, string | undefined>, env: NodeJS.ProcessEnv | Record<string, string | undefined>) {
 	const candidate = env[name] ?? values[name];
 	return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
@@ -59,7 +69,8 @@ function manifestApiBaseUrl(tenantRoot: string, environment: TreeseedOperationsR
 			const config = loadTreeseedDeployConfigFromPath(candidate);
 			const connectionUrl = config.connections?.api?.environments?.[environment]?.baseUrl;
 			const serviceUrl = config.services?.api?.environments?.[environment]?.baseUrl;
-			const baseUrl = connectionUrl ?? serviceUrl;
+			const apiDomain = config.surfaces?.api?.environments?.[environment]?.domain;
+			const baseUrl = connectionUrl ?? serviceUrl ?? (typeof apiDomain === 'string' && apiDomain.trim() ? `https://${apiDomain.trim()}` : null);
 			if (typeof baseUrl === 'string' && baseUrl.trim()) {
 				return baseUrl.trim();
 			}
@@ -159,10 +170,13 @@ export async function runTreeseedOperationsRunnerSmoke(options: TreeseedOperatio
 	const baseUrl = normalizedBaseUrl(
 		options.baseUrl
 		?? manifestApiBaseUrl(options.tenantRoot, options.environment)
-		?? value('TREESEED_API_BASE_URL', values, env)
-		?? value('TREESEED_CENTRAL_MARKET_API_BASE_URL', values, env)
+		?? (options.environment === 'local' ? value('TREESEED_API_BASE_URL', values, env) : null)
+		?? (options.environment === 'local' ? value('TREESEED_CENTRAL_MARKET_API_BASE_URL', values, env) : null)
 		?? defaultBaseUrl(options.environment),
 	);
+	if (options.environment !== 'local' && isLoopbackBaseUrl(baseUrl)) {
+		return failure(baseUrl, options.environment, [`Operations runner smoke for ${options.environment} must target a live hosted API URL, not ${baseUrl}.`], []);
+	}
 	const serviceId = options.serviceId ?? value('TREESEED_ACCEPTANCE_SERVICE_ID', values, env) ?? value('TREESEED_WEB_SERVICE_ID', values, env) ?? value('TREESEED_API_WEB_SERVICE_ID', values, env) ?? 'web';
 	const localServiceSecret = options.environment === 'local'
 		? envValue('TREESEED_ACCEPTANCE_SERVICE_SECRET', env) ?? envValue('TREESEED_WEB_SERVICE_SECRET', env) ?? envValue('TREESEED_API_WEB_SERVICE_SECRET', env) ?? localManagedDevServiceSecret(options.environment)
