@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.36] - 2026-07-04
+
+### Fixed
+
+- fix(release): order TreeDX before API (0144d2f013c4)
+
 ## [0.12.35] - 2026-07-04
 
 ### Fixed
