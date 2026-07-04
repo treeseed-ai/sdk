@@ -2829,6 +2829,34 @@ function releasePlanPackageSelection(value: unknown): { changed: string[]; depen
 	};
 }
 
+const RELEASE_PACKAGE_DEPENDENCIES: Record<string, string[]> = {
+	'@treeseed/api': ['treedx'],
+};
+
+export function orderReleasePackageNames(packageNames: string[]) {
+	const selected = new Set(packageNames);
+	const ordered: string[] = [];
+	const visiting = new Set<string>();
+	const visited = new Set<string>();
+
+	const visit = (name: string) => {
+		if (visited.has(name)) return;
+		if (visiting.has(name)) {
+			throw new Error(`Cycle detected in release package dependency order at ${name}.`);
+		}
+		visiting.add(name);
+		for (const dependency of RELEASE_PACKAGE_DEPENDENCIES[name] ?? []) {
+			if (selected.has(dependency)) visit(dependency);
+		}
+		visiting.delete(name);
+		visited.add(name);
+		ordered.push(name);
+	};
+
+	for (const name of packageNames) visit(name);
+	return ordered;
+}
+
 function stableDependencyVersionsForReleaseLine(root: string, options: {
 	targetLine?: unknown;
 	group?: unknown;
@@ -3104,7 +3132,7 @@ function buildReleasePlanSnapshot(input: {
 			versionPlan.versions.set(adapter.id, incrementVersion(adapter.version, input.level));
 		}
 	}
-	const plannedSelected = [...versionPlan.selected].filter((name) => versionPlan.versions.has(name));
+	const plannedSelected = orderReleasePackageNames([...versionPlan.selected].filter((name) => versionPlan.versions.has(name)));
 	const plannedChanged = input.repairVersionLine === true
 		? plannedSelected
 		: Array.from(new Set(input.packageSelection.changed.filter((name) => plannedSelected.includes(name))));
@@ -3144,6 +3172,7 @@ function buildReleasePlanSnapshot(input: {
 		stableDependencyVersions,
 		applicationSelection,
 		plannedDevReferenceRewrites,
+		releaseOrder: plannedPackageSelection.selected,
 		plannedPublishWaits: plannedPackageSelection.selected.map((name) => ({
 			name,
 			workflow: releaseWorkflowForPackage(input.root, name),
@@ -6852,7 +6881,10 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					};
 				});
 				const packageReleases: Array<Record<string, unknown>> = [];
-				for (const pkg of checkedOutWorkspacePackageRepos(root).filter((entry) => selectedPackageSet.has(entry.name))) {
+				const packageRepoByName = new Map(checkedOutWorkspacePackageRepos(root).map((entry) => [entry.name, entry]));
+				for (const packageName of selectedPackageNames) {
+					const pkg = packageRepoByName.get(packageName);
+					if (!pkg) continue;
 					const version = selectedVersions.get(pkg.name);
 					if (!version) continue;
 					const packageRelease = await executeJournalStep(root, workflowRun.runId, `release-${pkg.name}`, async () => {
@@ -6972,8 +7004,9 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				const productionWebVerification = await executeJournalStep(root, workflowRun.runId, 'production-web-live-verification', () =>
 					runReleaseWebLiveVerification(root, 'prod', helpers, 'release'));
 				const backMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () => {
-					const packageBackMerges = checkedOutWorkspacePackageRepos(root)
-						.filter((pkg) => selectedPackageSet.has(pkg.name))
+					const packageBackMerges = selectedPackageNames
+						.map((name) => packageRepoByName.get(name))
+						.filter((pkg): pkg is NonNullable<typeof pkg> => Boolean(pkg))
 						.map((pkg) => backMergeProductionIntoStaging(pkg.dir, pkg.name, releaseAdminMessage({
 							subject: `release: back-merge ${PRODUCTION_BRANCH} into ${STAGING_BRANCH}`,
 							version: selectedVersions.get(pkg.name) ?? null,

@@ -15,6 +15,7 @@ import {
   renderTreeseedPackageWorkflow,
   syncTreeseedPackageWorkflows,
 } from "../../src/operations/services/package-adapters.ts";
+import { orderReleasePackageNames } from "../../src/workflow/operations.ts";
 
 const sdkRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const workspaceRoot = resolve(sdkRoot, "..", "..");
@@ -151,5 +152,21 @@ describe("TreeDX release gate integration", () => {
     );
     expect(adapter!.metadata.workflowTemplateVersion).toBe("custom");
     expect(syncTreeseedPackageWorkflows({ root, packageId: "treedx" })).toEqual([]);
+  });
+
+  it("releases TreeDX before the API that consumes its production image", () => {
+    expect(
+      orderReleasePackageNames([
+        "@treeseed/sdk",
+        "@treeseed/api",
+        "treedx",
+        "@treeseed/cli",
+      ]),
+    ).toEqual([
+      "@treeseed/sdk",
+      "treedx",
+      "@treeseed/api",
+      "@treeseed/cli",
+    ]);
   });
 });
