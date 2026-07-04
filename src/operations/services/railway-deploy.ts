@@ -1657,7 +1657,7 @@ export function shouldRunRailwayPredeployBuild(env = process.env) {
 	return configuredEnvValue(env, 'CI') !== 'true';
 }
 
-async function syncRailwayApiDeviceLoginVariables(service, env, write, prefix) {
+async function syncRailwayApiDeviceLoginVariables(service, env, write, prefix, fetchImpl = fetch) {
 	if (service.key !== 'api') {
 		return null;
 	}
@@ -1685,22 +1685,24 @@ async function syncRailwayApiDeviceLoginVariables(service, env, write, prefix) {
 		serviceId,
 		variables,
 		env,
+		fetchImpl,
 	});
 	write ? write(`[${prefix.scope}][${prefix.system}][${prefix.task}][vars] Synced device login approval URL variables for ${service.serviceName ?? serviceId}.`, 'stdout') : null;
 	return { variables: Object.keys(variables) };
 }
 
-async function resolveRailwayDeployProjectContext(service, { env = process.env } = {}) {
+async function resolveRailwayDeployProjectContext(service, { env = process.env, fetchImpl = fetch } = {}) {
 	if (service.projectId) {
 		return service;
 	}
-	const workspace = await resolveRailwayWorkspaceContext({ env });
+	const workspace = await resolveRailwayWorkspaceContext({ env, fetchImpl });
 	const { project } = await ensureRailwayProject({
 		projectId: service.projectId,
 		projectName: service.projectName,
 		defaultEnvironmentName: service.railwayEnvironment,
 		env,
 		workspace: workspace.id,
+		fetchImpl,
 	});
 	return {
 		...service,
@@ -1709,7 +1711,7 @@ async function resolveRailwayDeployProjectContext(service, { env = process.env }
 	};
 }
 
-async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, service, { env = process.env, writePhase = null } = {}) {
+async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, service, { env = process.env, writePhase = null, fetchImpl = fetch } = {}) {
 	const writeSyncPhase = (stage, message) => {
 		if (typeof writePhase === 'function') {
 			writePhase(`sync-runtime-config:${stage}`, message);
@@ -1732,7 +1734,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 	}
 
 	writeSyncPhase('workspace', 'Resolving Railway workspace.');
-	const workspace = await resolveRailwayWorkspaceContext({ env });
+	const workspace = await resolveRailwayWorkspaceContext({ env, fetchImpl });
 	let project = null;
 	if (service.projectId) {
 		writeSyncPhase('project', `Resolving Railway project ${service.projectName ?? service.projectId}.`);
@@ -1742,10 +1744,11 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			defaultEnvironmentName: service.railwayEnvironment,
 			env,
 			workspace: workspace.id,
+			fetchImpl,
 		}).then((result) => result.project);
 	} else {
 		writeSyncPhase('project', `Looking up Railway project ${service.projectName}.`);
-		const projects = await listRailwayProjects({ env, workspaceId: workspace.id });
+		const projects = await listRailwayProjects({ env, workspaceId: workspace.id, fetchImpl });
 		project = projects.find((entry) => entry.name === service.projectName) ?? null;
 		if (!project) {
 			writeSyncPhase('project', `Creating Railway project ${service.projectName}.`);
@@ -1754,6 +1757,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 				defaultEnvironmentName: service.railwayEnvironment,
 				env,
 				workspace: workspace.id,
+				fetchImpl,
 			}).then((result) => result.project);
 		}
 	}
@@ -1766,6 +1770,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			projectId: project.id,
 			environmentName,
 			env,
+			fetchImpl,
 		}).then((result) => result.environment);
 	}
 
@@ -1781,8 +1786,9 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			sourceRepo: service.sourceRepo,
 			sourceBranch: service.sourceBranch,
 			env,
+			fetchImpl,
 		}).then((result) => result.service);
-	} else if (service.imageRef) {
+	} else if (service.imageRef || service.sourceRepo) {
 		railwayService = await ensureRailwayService({
 			projectId: project.id,
 			serviceId: service.serviceId,
@@ -1792,6 +1798,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			sourceRepo: service.sourceRepo,
 			sourceBranch: service.sourceBranch,
 			env,
+			fetchImpl,
 		}).then((result) => result.service);
 	}
 
@@ -1815,6 +1822,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 				? configuredEnvValue(env, 'TREESEED_RAILWAY_STATEFUL_REGION') || 'us-west2'
 				: null,
 			env,
+			fetchImpl,
 		})
 		: null;
 	writeSyncPhase('variables', 'Upserting Railway runtime variables.');
@@ -1863,6 +1871,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 			} : {}),
 		},
 		env,
+		fetchImpl,
 	});
 	const volumeMountPath = service.volumeMountPath ?? service.runnerPool?.volumeMountPath ?? WORKER_RUNNER_VOLUME_MOUNT_PATH;
 	if (wantsRunnerVolume) {
@@ -1880,6 +1889,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 				: deriveRailwayWorkerRunnerVolumeName(railwayService.name, environment.name),
 			mountPath: volumeMountPath,
 			env,
+			fetchImpl,
 		})
 		: null;
 	if (wantsRunnerVolume) {
@@ -1897,6 +1907,7 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 					...(volumeConfiguration?.volume.id ? { TREESEED_RUNNER_VOLUME_ID: volumeConfiguration.volume.id } : {}),
 				},
 				env,
+				fetchImpl,
 			});
 		}
 	}
@@ -1930,11 +1941,13 @@ export async function deployRailwayService(
 		write,
 		prefix,
 		env = process.env,
+		fetchImpl = fetch,
 	}: {
 		planOnly?: boolean;
 		write?: TreeseedBootstrapWriter;
 		prefix?: TreeseedBootstrapTaskPrefix;
 		env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+		fetchImpl?: typeof fetch;
 	} = {},
 ) {
 	const timings: TreeseedTimingEntry[] = [];
@@ -1954,7 +1967,7 @@ export async function deployRailwayService(
 			},
 		};
 	}
-	const deployService = await timedRailwayPhase(timings, 'railway:resolve-context', () => resolveRailwayDeployProjectContext(service, { env }), {
+	const deployService = await timedRailwayPhase(timings, 'railway:resolve-context', () => resolveRailwayDeployProjectContext(service, { env, fetchImpl }), {
 		service: service.key,
 	});
 	const commandEnv = buildRailwayCommandEnv({ ...process.env, ...env });
@@ -1972,7 +1985,7 @@ export async function deployRailwayService(
 	writePhase('resolve-context', `Resolved Railway service ${deployService.serviceName ?? deployService.serviceId ?? deployService.key}.`);
 	writePhase('sync-runtime-config', 'Syncing Railway runtime configuration.');
 	const runtimeConfiguration = await timedRailwayPhase(timings, 'railway:sync-runtime-config', () => withRailwayPhaseTimeout(
-		() => syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, { env: commandEnv, writePhase }),
+		() => syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, deployService, { env: commandEnv, writePhase, fetchImpl }),
 		railwayPhaseTimeoutMs(commandEnv, 'sync_runtime_config'),
 		`Railway runtime configuration sync timed out for ${deployService.serviceName ?? deployService.key}.`,
 	), { service: deployService.key });
@@ -1987,7 +2000,7 @@ export async function deployRailwayService(
 	};
 	writePhase('device-login-vars', 'Syncing Railway device-login variables.');
 	await timedRailwayPhase(timings, 'railway:device-login-vars', () => withRailwayPhaseTimeout(
-		() => syncRailwayApiDeviceLoginVariables(cliDeployService, commandEnv, write, taskPrefix),
+		() => syncRailwayApiDeviceLoginVariables(cliDeployService, commandEnv, write, taskPrefix, fetchImpl),
 		railwayPhaseTimeoutMs(commandEnv, 'device_login_vars'),
 		`Railway device-login variable sync timed out for ${cliDeployService.serviceName ?? cliDeployService.key}.`,
 	), {
@@ -2011,6 +2024,7 @@ export async function deployRailwayService(
 				serviceId: cliDeployService.serviceId,
 				environmentId: cliDeployService.environmentId,
 				env: commandEnv,
+				fetchImpl,
 			}),
 			railwayPhaseTimeoutMs(commandEnv, 'deploy'),
 			`Railway API deploy phase timed out for ${cliDeployService.serviceName ?? cliDeployService.key}.`,

@@ -13,6 +13,7 @@ import {
 	deriveRailwayOperationsRunnerVolumeName,
 	deriveRailwayWorkerRunnerServiceName,
 	deriveRailwayWorkerRunnerVolumeName,
+	deployRailwayService,
 	ensureRailwayScheduledJobs,
 	findStaleTreeseedOperationsRunnerResources,
 	railwayServiceRuntimeStartCommand,
@@ -813,6 +814,125 @@ services:
 			sourceRootDirectory: '.',
 		});
 		expect(() => validateRailwayServiceConfiguration(tenantRoot, 'staging')).not.toThrow();
+	});
+
+	it('repairs an existing staging service to Git source before deploying it', async () => {
+		const tenantRoot = await createTenantFixture();
+		const service = {
+			key: 'api',
+			scope: 'staging',
+			projectId: 'project-1',
+			projectName: 'treeseed-api',
+			serviceId: 'svc-api',
+			serviceName: 'treeseed-api',
+			environmentId: 'env-staging',
+			railwayEnvironment: 'staging',
+			rootDir: tenantRoot,
+			sourceMode: 'git',
+			sourceRepo: 'treeseed-ai/api',
+			sourceBranch: 'staging',
+			sourceRootDirectory: '.',
+			imageRef: null,
+			buildCommand: null,
+			startCommand: null,
+			healthcheckPath: '/healthz',
+			healthcheckTimeoutSeconds: 30,
+			healthcheckIntervalSeconds: null,
+			restartPolicy: null,
+			runtimeMode: 'service',
+			publicBaseUrl: 'https://api.preview.treeseed.dev',
+		};
+		const gitSourceUpdates: unknown[] = [];
+		const deployCalls: unknown[] = [];
+		const railwayVariables: Record<string, string> = {};
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			const query = String(body.query ?? '');
+			if (query.includes('TreeseedRailwayAuthProfile')) {
+				return new Response(JSON.stringify(railwayTopologyPayload()), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (query.includes('TreeseedRailwayProjects')) {
+				return new Response(JSON.stringify({
+					data: {
+						projects: {
+							edges: [{
+								node: {
+									id: 'project-1',
+									name: 'treeseed-api',
+									workspaceId: 'workspace-1',
+									deletedAt: null,
+									environments: { edges: [{ node: { id: 'env-staging', name: 'staging' } }] },
+									services: { edges: [{ node: { id: 'svc-api', name: 'treeseed-api' } }] },
+								},
+							}],
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (query.includes('TreeseedRailwayProjectServices')) {
+				return new Response(JSON.stringify({
+					data: {
+						project: {
+							id: 'project-1',
+							services: { edges: [{ node: { id: 'svc-api', name: 'treeseed-api' } }] },
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (query.includes('TreeseedRailwayServiceGitSourceUpdate')) {
+				gitSourceUpdates.push(body.variables.input);
+				return new Response(JSON.stringify({
+					data: { serviceConnect: { id: 'svc-api', name: 'treeseed-api' } },
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (query.includes('TreeseedRailwayServiceInstanceDeploy')) {
+				deployCalls.push(body.variables);
+				return new Response(JSON.stringify({ data: { serviceInstanceDeployV2: 'deployment-1' } }), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (query.includes('TreeseedRailwayServiceInstance')) {
+				return new Response(JSON.stringify({
+					data: {
+						serviceInstance: {
+							id: 'instance-api',
+							buildCommand: null,
+							dockerfilePath: null,
+							railwayConfigFile: null,
+							startCommand: null,
+							cronSchedule: null,
+							rootDirectory: '.',
+							healthcheckPath: '/healthz',
+							healthcheckTimeout: 30,
+							sleepApplication: false,
+						},
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (query.includes('TreeseedRailwayVariableCollectionUpsert')) {
+				Object.assign(railwayVariables, body.variables.input.variables);
+				return new Response(JSON.stringify({ data: { variableCollectionUpsert: true } }), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			if (query.includes('TreeseedRailwayVariables')) {
+				return new Response(JSON.stringify({ data: { variables: railwayVariables } }), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			throw new Error(`Unexpected Railway query: ${body.query}`);
+		});
+		const result = await deployRailwayService(tenantRoot, service, {
+			env: {
+				CI: 'true',
+				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
+				TREESEED_RAILWAY_WORKSPACE: 'workspace-1',
+			},
+			fetchImpl: fetchMock as typeof fetch,
+		});
+
+		expect(result.status).toBe('deployed');
+		expect(gitSourceUpdates).toEqual([{ repo: 'treeseed-ai/api', branch: 'staging' }]);
+		expect(railwayVariables).toMatchObject({
+			TREESEED_DEPLOY_SOURCE_MODE: 'git',
+			TREESEED_DEPLOY_SOURCE_REPOSITORY: 'treeseed-ai/api',
+			TREESEED_DEPLOY_SOURCE_BRANCH: 'staging',
+		});
+		expect(deployCalls).toEqual([{ serviceId: 'svc-api', environmentId: 'env-staging' }]);
 	});
 
 	it('lets Railway run service build commands from a clean upload in hosted CI', () => {
