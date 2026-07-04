@@ -52,6 +52,7 @@ import {
 	ensureGeneratedWranglerConfig,
 	finalizeDeploymentState,
 	loadDeployState,
+	purgeSourcePageCaches,
 	recordHostedDeploymentState,
 	resolveConfiguredSurfaceDomain,
 	runRemoteD1Migrations,
@@ -820,6 +821,20 @@ async function runReleaseWebLiveVerification(
 		...helpers.context.env,
 		...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
 	};
+	let purge;
+	try {
+		purge = purgeSourcePageCaches(root, { target: environment, env });
+	} catch (error) {
+		workflowError(operation, 'hosted_live_verification_failed', `Production web cache purge failed before root live verification:\n${error instanceof Error ? error.message : String(error)}`, {
+			details: { environment },
+		});
+	}
+	if (purge?.skipped) {
+		workflowError(operation, 'hosted_live_verification_failed', `Production web cache purge was skipped before root live verification: ${purge.reason ?? 'unknown reason'}`, {
+			details: { environment, purge },
+		});
+	}
+	helpers.write(`[${operation}][cloudflare] purged production source page cache for ${purge?.urls?.length ?? 0} urls before web live verification.`, 'stderr');
 	const live = await collectTreeseedLiveHostedServiceChecks({
 		tenantRoot: root,
 		target: environment,
