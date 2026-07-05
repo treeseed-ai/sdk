@@ -13,8 +13,10 @@ import {
 function workspaceFixture(name: string) {
 	const root = resolve(tmpdir(), `treeseed-guarantees-${name}-${process.pid}-${Date.now()}`);
 	mkdirSync(resolve(root, 'packages', 'admin', 'guarantees', 'project', 'question', 'scenes'), { recursive: true });
+	mkdirSync(resolve(root, 'packages', 'api', 'guarantees', 'api', 'endpoints'), { recursive: true });
 	writeFileSync(resolve(root, 'package.json'), JSON.stringify({ name: '@treeseed/market' }));
 	writeFileSync(resolve(root, 'packages', 'admin', 'package.json'), JSON.stringify({ name: '@treeseed/admin' }));
+	writeFileSync(resolve(root, 'packages', 'api', 'package.json'), JSON.stringify({ name: '@treeseed/api' }));
 	return root;
 }
 
@@ -100,6 +102,61 @@ describe('Treeseed guarantees framework', () => {
 		expect(plan.counts.selected).toBe(1);
 		expect(plan.counts.withDependencies).toBe(2);
 		expect(plan.entries.find((entry) => entry.id === 'guarantee.project.question.ask-question.038')?.dependency).toBe(true);
+	});
+
+	it('validates UI guarantees depending on active API endpoint guarantee refs', () => {
+		const root = workspaceFixture('depends-on-api');
+		mkdirSync(resolve(root, 'packages/api/guarantees/verifiers'), { recursive: true });
+		writeGuarantee(root, `
+schemaVersion: treeseed.guarantee/v1
+id: guarantee.api.endpoints.auth-and-sessions.401
+journeyIndex: 401
+type: api
+subtype: endpoints
+journey: Auth And Session Endpoint Reliability
+ownerPackage: "@treeseed/api"
+surface: api-control-plane
+summary: Auth endpoints are covered.
+status: active
+actors:
+  allowed: [authenticated_user]
+  forbidden: [anonymous_user]
+devices:
+  required: []
+gates: [core]
+preconditions:
+  fixtures: []
+api:
+  required: true
+  verifierRefs: [api.endpoints.auth-and-sessions]
+negativeCases:
+  - id: denied
+    verifierRefs: [api.endpoints.auth-and-sessions]
+evidence:
+  required: [api_acceptance_report]
+`, 'packages/api/guarantees/api/endpoints/auth-and-sessions.guarantee.yaml');
+		writeFileSync(resolve(root, 'packages/api/guarantees/verifiers/api.verifiers.yaml'), `schemaVersion: treeseed.guarantee-verifiers/v1
+ownerPackage: "@treeseed/api"
+verifiers:
+  api.endpoints.auth-and-sessions:
+    kind: apiAcceptanceCase
+    caseId: auth.web.sign-in.site-admin
+`);
+		writeGuarantee(root, validGuarantee
+			.replace('status: planned', 'surface: admin-ui\nstatus: planned')
+			.replace('dependencies:\n  journeys: []\n  guarantees: []', `dependencies:\n  journeys: []\n  guarantees: []\ndependsOnGuarantees:\n  - ownerPackage: "@treeseed/api"\n    ref: api.endpoints.auth-and-sessions`));
+		const report = discoverTreeseedGuarantees({ workspaceRoot: root });
+		expect(report.ok).toBe(true);
+
+		writeGuarantee(root, validGuarantee
+			.replace('id: guarantee.project.question.ask-question.038', 'id: guarantee.project.question.missing-api.040')
+			.replace('journeyIndex: 38', 'journeyIndex: 40')
+			.replace('status: planned', 'surface: admin-ui\nstatus: planned')
+			.replace('dependencies:\n  journeys: []\n  guarantees: []', `dependencies:\n  journeys: []\n  guarantees: []\ndependsOnGuarantees:\n  - ownerPackage: "@treeseed/api"\n    ref: api.endpoints.missing`),
+			'packages/admin/guarantees/project/question/missing-api.guarantee.yaml');
+		const missing = discoverTreeseedGuarantees({ workspaceRoot: root });
+		expect(missing.ok).toBe(false);
+		expect(missing.diagnostics.map((entry) => entry.code)).toContain('guarantee.missing_depends_on_guarantee');
 	});
 
 	it('exports canonical lowercase CSV values', () => {

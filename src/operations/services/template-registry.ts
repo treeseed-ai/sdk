@@ -201,7 +201,6 @@ function listTemplateArtifactIds() {
 const LOCAL_STARTER_ID_TO_DIRECTORY: Record<string, string> = {
 	'research': 'research',
 	'engineering': 'engineering',
-	'information-hub': 'information-hub',
 };
 
 function localStartersRoot() {

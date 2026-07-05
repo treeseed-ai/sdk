@@ -15,8 +15,8 @@ describe('template launch requirements', () => {
 		TREESEED_TEMPLATE_CATALOG_URL: `file:${fixtureCatalogPath}`,
 	};
 
-	it('validates launch requirements on the three first-party starter manifests', async () => {
-		for (const id of ['research', 'engineering', 'information-hub']) {
+	it('validates launch requirements on the active first-party starter manifests', async () => {
+		for (const id of ['research', 'engineering']) {
 			const definition = await validateTemplateProduct({ id }, {
 				cwd: process.cwd(),
 				env: fixtureCatalogEnv,

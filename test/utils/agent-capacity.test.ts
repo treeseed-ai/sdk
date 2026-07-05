@@ -8,6 +8,7 @@ import {
 	deriveProviderAvailabilitySession,
 	buildExecutionProviderAssignmentExplanation,
 	buildAgentCapacityPlanDraft,
+	compileDecisionAssignmentGraphFromEstimates,
 	compileExecutionCapabilityDemand,
 	compileExecutionCapabilitySupply,
 	computeDecisionScopeHash,
@@ -30,6 +31,9 @@ import {
 	validateAgentKernelOutputs,
 	validateTreeDxProxyHandle,
 	validateAgentKernelModeExecutionInput,
+	validateDeliverableContract,
+	validateDeliverableManifest,
+	validateStructuredAgentEstimate,
 } from '../../src/agent-capacity.ts';
 
 describe('agent capacity contracts', () => {
@@ -700,6 +704,8 @@ describe('agent capacity contracts', () => {
 				projectId: 'project-1',
 				mode: 'planning',
 				capacityProviderId: 'provider-1',
+				reservationId: 'reservation-planning-1',
+				reservedCredits: 1,
 			},
 			decisionInput: {
 				teamId: 'team-1',
@@ -1195,6 +1201,147 @@ describe('agent capacity contracts', () => {
 			missingCapabilities: [],
 			capabilityEligible: null,
 			reasonCodes: [],
+		});
+	});
+
+	it('validates structured estimates with dependency declarations', () => {
+		const estimate = {
+			id: 'estimate-1',
+			teamId: 'team-1',
+			projectId: 'project-1',
+			decisionId: 'decision-1',
+			agentClass: 'engineer',
+			minCredits: 2,
+			expectedCredits: 4,
+			maxCredits: 6,
+			confidence: 'medium',
+			riskLevel: 'low',
+			assumptions: ['Architecture spec covers API shape.'],
+			blockers: [],
+			dependencies: [{
+				id: 'dep-architecture',
+				type: 'artifact',
+				requiredBefore: 'start',
+				deliverableType: 'architecture_spec',
+				agentClass: 'architect',
+				summary: 'Approved architecture spec is required before implementation.',
+			}, {
+				id: 'dep-human',
+				type: 'human-input',
+				requiredBefore: 'start',
+				humanInputPolicy: { requiredFrom: 'team-human', teamId: 'team-1' },
+				summary: 'Team member must resolve rollout objective.',
+			}],
+			expectedOutputs: [{ outputType: 'code_change', required: true }],
+			acceptanceCriteria: ['Implementation passes staged tests.'],
+			completionEvidence: ['Changed files and test output.'],
+		} as const;
+
+		expect(validateStructuredAgentEstimate(estimate).ok).toBe(true);
+		expect(validateStructuredAgentEstimate({ ...estimate, minCredits: -1 }).diagnostics).toEqual(expect.arrayContaining([
+			expect.objectContaining({ code: 'non_negative_number_required', path: 'minCredits' }),
+		]));
+	});
+
+	it('validates deliverable contracts and manifests without concrete file paths in the contract', () => {
+		expect(validateDeliverableContract({
+			id: 'contract-1',
+			teamId: 'team-1',
+			projectId: 'project-1',
+			decisionId: 'decision-1',
+			deliverableType: 'architecture_spec',
+			producerAgentClasses: ['architect'],
+			acceptanceCriteria: ['Covers API, data model, and migration risk.'],
+			status: 'required',
+		}).ok).toBe(true);
+
+		expect(validateDeliverableManifest({
+			id: 'manifest-1',
+			deliverableContractId: 'contract-1',
+			projectId: 'project-1',
+			decisionId: 'decision-1',
+			producedRefs: [{
+				model: 'note',
+				collection: 'notes',
+				slug: 'architecture/decision-1',
+			}],
+			summary: 'Architecture spec was produced as a linked note.',
+			readyForReview: true,
+		}).ok).toBe(true);
+	});
+
+	it('compiles deterministic decision assignment graphs from shuffled estimates', () => {
+		const engineerEstimate = {
+			id: 'estimate-engineer',
+			teamId: 'team-1',
+			projectId: 'project-1',
+			decisionId: 'decision-1',
+			agentClass: 'engineer',
+			minCredits: 3,
+			expectedCredits: 5,
+			maxCredits: 8,
+			confidence: 'high',
+			riskLevel: 'medium',
+			assumptions: [],
+			blockers: [],
+			dependencies: [{
+				id: 'dep-architecture',
+				type: 'artifact',
+				requiredBefore: 'start',
+				deliverableType: 'architecture_spec',
+				agentClass: 'architect',
+				summary: 'Architecture spec required.',
+			}],
+			expectedOutputs: [{ outputType: 'implementation_report', required: true }],
+			acceptanceCriteria: ['Meets decision acceptance criteria.'],
+			completionEvidence: ['Tests pass.'],
+		} as const;
+		const testerEstimate = {
+			...engineerEstimate,
+			id: 'estimate-tester',
+			agentClass: 'tester',
+			minCredits: 1,
+			expectedCredits: 2,
+			maxCredits: 3,
+			dependencies: [{
+				id: 'dep-human',
+				type: 'human-input',
+				requiredBefore: 'start',
+				humanInputPolicy: { requiredFrom: 'team-human', teamId: 'team-1' },
+				summary: 'Team confirms required performance target.',
+			}],
+			expectedOutputs: [{ outputType: 'test_report', required: true }],
+		} as const;
+
+		const first = compileDecisionAssignmentGraphFromEstimates({
+			teamId: 'team-1',
+			projectId: 'project-1',
+			decisionId: 'decision-1',
+			estimates: [testerEstimate, engineerEstimate],
+			compiledAt: '2026-01-01T00:00:00.000Z',
+		});
+		const second = compileDecisionAssignmentGraphFromEstimates({
+			teamId: 'team-1',
+			projectId: 'project-1',
+			decisionId: 'decision-1',
+			estimates: [engineerEstimate, testerEstimate],
+			compiledAt: '2026-01-01T00:00:00.000Z',
+		});
+
+		expect(first.diagnostics.filter((entry) => entry.severity === 'error')).toEqual([]);
+		expect(first.graph).toEqual(second.graph);
+		expect(first.graph.deliverableContracts).toEqual([expect.objectContaining({
+			deliverableType: 'architecture_spec',
+			producerAgentClasses: ['architect'],
+		})]);
+		expect(first.graph.edges).toEqual([expect.objectContaining({
+			edgeType: 'blocks-start',
+			reason: 'Architecture spec required.',
+		})]);
+		expect(first.graph.nodes.find((node) => node.targetAgentClass === 'tester')?.metadata).toMatchObject({
+			humanInputDependencies: [expect.objectContaining({
+				humanInputPolicy: { requiredFrom: 'team-human', teamId: 'team-1' },
+			})],
 		});
 	});
 });

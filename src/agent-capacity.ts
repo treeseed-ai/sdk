@@ -7,6 +7,7 @@ import type {
 	ExecutionProvider,
 	TaskUsageActual,
 } from './sdk-types.ts';
+import type { TreeseedContentRef } from './content-operations.ts';
 import type {
 	AgentRuntimeSpec,
 	AgentWorkPackage,
@@ -17,6 +18,202 @@ import type {
 } from './types/agents.ts';
 
 export type AgentExecutionMode = 'planning' | 'acting';
+export type AgentPlanningActivityType = 'planning' | 'estimating' | 'reviewing' | 'reporting';
+
+export type ContentRef = TreeseedContentRef;
+export type AgentEstimateConfidence = 'low' | 'medium' | 'high';
+export type AgentEstimateRiskLevel = 'low' | 'medium' | 'high';
+export type DecisionDependencyType = 'artifact' | 'capability' | 'decision' | 'external-resource' | 'human-input';
+
+export interface AgentOutputRequirement {
+	id?: string;
+	outputType: string;
+	description?: string;
+	contentModel?: string;
+	required?: boolean;
+	metadata?: Record<string, unknown>;
+}
+
+export interface DecisionDependencySpec {
+	id: string;
+	type: DecisionDependencyType;
+	requiredBefore: 'start' | 'complete' | 'review' | 'release';
+	optional?: boolean;
+	deliverableType?: string;
+	capability?: string;
+	agentClass?: string;
+	contentRefs?: string[];
+	humanInputPolicy?: {
+		requiredFrom: 'team-human' | 'any-human' | 'any-human-or-agent';
+		teamId?: string | null;
+	};
+	summary?: string;
+}
+
+export interface StructuredAgentEstimate {
+	id: string;
+	teamId: string;
+	projectId: string;
+	decisionId?: string | null;
+	proposalId?: string | null;
+	workUnitId?: string | null;
+	agentClass: string;
+	agentId?: string | null;
+	minCredits: number;
+	expectedCredits: number;
+	maxCredits: number;
+	confidence: AgentEstimateConfidence;
+	riskLevel: AgentEstimateRiskLevel;
+	assumptions: string[];
+	blockers: string[];
+	dependencies: DecisionDependencySpec[];
+	expectedOutputs: AgentOutputRequirement[];
+	acceptanceCriteria: string[];
+	completionEvidence: string[];
+	createdAt?: string | null;
+	metadata?: Record<string, unknown>;
+}
+
+export interface DeliverableContract {
+	id: string;
+	teamId: string;
+	projectId: string;
+	decisionId: string;
+	deliverableType: string;
+	producerAgentClasses: string[];
+	reviewerAgentClasses?: string[];
+	requiredSections?: string[];
+	acceptanceCriteria: string[];
+	status: 'required' | 'draft' | 'submitted' | 'approved' | 'rejected';
+	metadata?: Record<string, unknown>;
+}
+
+export interface DeliverableManifest {
+	id: string;
+	deliverableContractId: string;
+	projectId: string;
+	decisionId: string;
+	producedRefs: ContentRef[];
+	coverage?: Record<string, ContentRef[]>;
+	summary: string;
+	readyForReview: boolean;
+	submittedByAgentId?: string | null;
+	submittedAt?: string | null;
+	metadata?: Record<string, unknown>;
+}
+
+export interface DecisionAssignmentGraphNode {
+	id: string;
+	decisionId: string;
+	projectId: string;
+	targetAgentClass: string;
+	activityType: AgentPlanningActivityType | 'acting';
+	handler?: string | null;
+	requiredCapabilities: string[];
+	requiredDeliverableContractIds: string[];
+	inputRefs: ContentRef[];
+	outputRequirements: AgentOutputRequirement[];
+	capacity: {
+		expectedCredits: number;
+		maxCredits: number;
+	};
+	status: 'pending' | 'ready' | 'leased' | 'running' | 'blocked' | 'completed' | 'failed' | 'cancelled';
+	metadata?: Record<string, unknown>;
+}
+
+export interface DecisionAssignmentGraphEdge {
+	fromNodeId: string;
+	toNodeId: string;
+	edgeType: 'blocks-start' | 'blocks-completion' | 'blocks-release';
+	reason?: string;
+}
+
+export interface DecisionAssignmentGraph {
+	id: string;
+	teamId: string;
+	projectId: string;
+	decisionId: string;
+	version: number;
+	status: 'draft' | 'compiled' | 'ready' | 'executing' | 'completed' | 'blocked';
+	estimateIds: string[];
+	deliverableContracts: DeliverableContract[];
+	nodes: DecisionAssignmentGraphNode[];
+	edges: DecisionAssignmentGraphEdge[];
+	compiledAt?: string | null;
+	compiledBy: 'api-control-plane';
+	metadata?: Record<string, unknown>;
+}
+
+export interface AgentCapacityContractDiagnostic {
+	severity: 'info' | 'warning' | 'error';
+	code: string;
+	message: string;
+	path?: string;
+}
+
+export interface AgentCapacityContractValidationResult {
+	ok: boolean;
+	diagnostics: AgentCapacityContractDiagnostic[];
+}
+
+export interface DecisionAssignmentGraphCompileResult {
+	graph: DecisionAssignmentGraph;
+	diagnostics: AgentCapacityContractDiagnostic[];
+}
+
+export interface WorkdayModeSplitPolicy {
+	targetPercent: number;
+	minPercent?: number;
+	maxPercent?: number;
+	hardCapPercent?: number;
+}
+
+export interface WorkdayModeSplits {
+	planning?: WorkdayModeSplitPolicy;
+	acting?: WorkdayModeSplitPolicy;
+}
+
+export interface PlanningReservationMetadata {
+	source: 'provider_assignment_synthesis' | string;
+	planningSource:
+		| 'live_workday'
+		| 'planning_input_request'
+		| 'decision_estimation'
+		| 'decision_review'
+		| 'fallback_planning'
+		| string;
+	activityType: AgentPlanningActivityType;
+	projectAgentClassId?: string | null;
+	agentSlug?: string | null;
+	workdayId?: string | null;
+	allocationSetId?: string | null;
+	modeSplitVersion?: string | null;
+}
+
+export interface ModeCapacityReservationAvailabilityInput {
+	teamId: string;
+	capacityProviderId: string;
+	projectId: string;
+	workDayId?: string | null;
+	allocationSetId?: string | null;
+	projectAgentClassId?: string | null;
+	agentSlug?: string | null;
+	mode: AgentExecutionMode;
+	activityType?: AgentPlanningActivityType | 'acting' | string | null;
+	reservedCredits: number;
+}
+
+export interface ModeCapacityReservationAvailabilityResult {
+	ok: boolean;
+	hold?: boolean;
+	reason?: string | null;
+	gates: Record<string, unknown>;
+}
+
+export const DEFAULT_WORKDAY_MODE_SPLITS: Required<WorkdayModeSplits> = {
+	planning: { targetPercent: 25, minPercent: 10, maxPercent: 40 },
+	acting: { targetPercent: 75, minPercent: 60, maxPercent: 90 },
+};
 export type AllocationSetStatus = 'draft' | 'active' | 'superseded' | 'archived';
 export type ProjectAgentClassStatus = 'active' | 'paused' | 'archived';
 export type ProviderAvailabilitySessionStatus = 'open' | 'draining' | 'closed' | 'expired';
@@ -884,6 +1081,238 @@ function firstArray(...values: unknown[]): unknown[] {
 		if (Array.isArray(value)) return value;
 	}
 	return [];
+}
+
+function diagnostic(
+	diagnostics: AgentCapacityContractDiagnostic[],
+	code: string,
+	message: string,
+	path?: string,
+	severity: AgentCapacityContractDiagnostic['severity'] = 'error',
+) {
+	diagnostics.push({ severity, code, message, path });
+}
+
+function validateNonEmptyString(diagnostics: AgentCapacityContractDiagnostic[], value: unknown, field: string, path = field) {
+	if (typeof value !== 'string' || !value.trim()) diagnostic(diagnostics, 'required_string_missing', `${field} is required.`, path);
+}
+
+function validateNonNegativeNumber(diagnostics: AgentCapacityContractDiagnostic[], value: unknown, field: string, path = field) {
+	if (!Number.isFinite(Number(value)) || Number(value) < 0) {
+		diagnostic(diagnostics, 'non_negative_number_required', `${field} must be a non-negative number.`, path);
+	}
+}
+
+function validationResult(diagnostics: AgentCapacityContractDiagnostic[]): AgentCapacityContractValidationResult {
+	return { ok: diagnostics.every((entry) => entry.severity !== 'error'), diagnostics };
+}
+
+function dependencyToContractId(projectId: string, decisionId: string, dependency: DecisionDependencySpec): string {
+	const deliverable = dependency.deliverableType || dependency.capability || dependency.id;
+	return `${projectId}:${decisionId}:deliverable:${deliverable}`.replace(/[^a-zA-Z0-9:_-]+/gu, '-');
+}
+
+function edgeTypeForDependency(dependency: DecisionDependencySpec): DecisionAssignmentGraphEdge['edgeType'] {
+	if (dependency.requiredBefore === 'complete' || dependency.requiredBefore === 'review') return 'blocks-completion';
+	if (dependency.requiredBefore === 'release') return 'blocks-release';
+	return 'blocks-start';
+}
+
+export function validateDecisionDependencySpec(dependency: DecisionDependencySpec, path = 'dependency'): AgentCapacityContractValidationResult {
+	const diagnostics: AgentCapacityContractDiagnostic[] = [];
+	validateNonEmptyString(diagnostics, dependency.id, 'id', `${path}.id`);
+	if (!['artifact', 'capability', 'decision', 'external-resource', 'human-input'].includes(dependency.type)) {
+		diagnostic(diagnostics, 'invalid_dependency_type', `Dependency ${dependency.id || '<unknown>'} has an invalid type.`, `${path}.type`);
+	}
+	if (!['start', 'complete', 'review', 'release'].includes(dependency.requiredBefore)) {
+		diagnostic(diagnostics, 'invalid_dependency_required_before', `Dependency ${dependency.id || '<unknown>'} has an invalid requiredBefore value.`, `${path}.requiredBefore`);
+	}
+	if (dependency.type === 'artifact' && !dependency.deliverableType) diagnostic(diagnostics, 'artifact_dependency_missing_deliverable_type', 'Artifact dependencies must declare deliverableType.', `${path}.deliverableType`);
+	if (dependency.type === 'capability' && !dependency.capability && !dependency.agentClass) diagnostic(diagnostics, 'capability_dependency_missing_capability', 'Capability dependencies must declare capability or agentClass.', `${path}.capability`);
+	if (dependency.type === 'human-input') {
+		const policy = dependency.humanInputPolicy;
+		if (!policy || !['team-human', 'any-human', 'any-human-or-agent'].includes(policy.requiredFrom)) {
+			diagnostic(diagnostics, 'human_input_policy_missing', 'Human-input dependencies must declare a valid humanInputPolicy.requiredFrom.', `${path}.humanInputPolicy.requiredFrom`);
+		}
+	}
+	return validationResult(diagnostics);
+}
+
+export function validateStructuredAgentEstimate(estimate: StructuredAgentEstimate): AgentCapacityContractValidationResult {
+	const diagnostics: AgentCapacityContractDiagnostic[] = [];
+	validateNonEmptyString(diagnostics, estimate.id, 'id');
+	validateNonEmptyString(diagnostics, estimate.teamId, 'teamId');
+	validateNonEmptyString(diagnostics, estimate.projectId, 'projectId');
+	validateNonEmptyString(diagnostics, estimate.agentClass, 'agentClass');
+	if (!estimate.decisionId && !estimate.proposalId) diagnostic(diagnostics, 'estimate_missing_subject', 'Structured estimates must reference a decisionId or proposalId.', 'decisionId');
+	validateNonNegativeNumber(diagnostics, estimate.minCredits, 'minCredits');
+	validateNonNegativeNumber(diagnostics, estimate.expectedCredits, 'expectedCredits');
+	validateNonNegativeNumber(diagnostics, estimate.maxCredits, 'maxCredits');
+	if (Number(estimate.minCredits) > Number(estimate.expectedCredits) || Number(estimate.expectedCredits) > Number(estimate.maxCredits)) {
+		diagnostic(diagnostics, 'estimate_credit_bounds_invalid', 'Estimate credit bounds must satisfy min <= expected <= max.', 'expectedCredits');
+	}
+	if (!['low', 'medium', 'high'].includes(estimate.confidence)) diagnostic(diagnostics, 'estimate_confidence_invalid', 'Estimate confidence must be low, medium, or high.', 'confidence');
+	if (!['low', 'medium', 'high'].includes(estimate.riskLevel)) diagnostic(diagnostics, 'estimate_risk_level_invalid', 'Estimate riskLevel must be low, medium, or high.', 'riskLevel');
+	for (const [index, dependency] of (estimate.dependencies ?? []).entries()) {
+		diagnostics.push(...validateDecisionDependencySpec(dependency, `dependencies.${index}`).diagnostics);
+	}
+	return validationResult(diagnostics);
+}
+
+export function validateDeliverableContract(contract: DeliverableContract): AgentCapacityContractValidationResult {
+	const diagnostics: AgentCapacityContractDiagnostic[] = [];
+	validateNonEmptyString(diagnostics, contract.id, 'id');
+	validateNonEmptyString(diagnostics, contract.teamId, 'teamId');
+	validateNonEmptyString(diagnostics, contract.projectId, 'projectId');
+	validateNonEmptyString(diagnostics, contract.decisionId, 'decisionId');
+	validateNonEmptyString(diagnostics, contract.deliverableType, 'deliverableType');
+	if (!Array.isArray(contract.producerAgentClasses) || contract.producerAgentClasses.length === 0) diagnostic(diagnostics, 'deliverable_contract_missing_producer', 'Deliverable contracts must declare at least one producerAgentClass.', 'producerAgentClasses');
+	if (!['required', 'draft', 'submitted', 'approved', 'rejected'].includes(contract.status)) diagnostic(diagnostics, 'deliverable_contract_status_invalid', 'Deliverable contract has an invalid status.', 'status');
+	return validationResult(diagnostics);
+}
+
+export function validateDeliverableManifest(manifest: DeliverableManifest): AgentCapacityContractValidationResult {
+	const diagnostics: AgentCapacityContractDiagnostic[] = [];
+	validateNonEmptyString(diagnostics, manifest.id, 'id');
+	validateNonEmptyString(diagnostics, manifest.deliverableContractId, 'deliverableContractId');
+	validateNonEmptyString(diagnostics, manifest.projectId, 'projectId');
+	validateNonEmptyString(diagnostics, manifest.decisionId, 'decisionId');
+	if (!Array.isArray(manifest.producedRefs) || manifest.producedRefs.length === 0) diagnostic(diagnostics, 'deliverable_manifest_missing_refs', 'Deliverable manifests must map the contract to at least one produced content ref.', 'producedRefs');
+	validateNonEmptyString(diagnostics, manifest.summary, 'summary');
+	return validationResult(diagnostics);
+}
+
+export function validateDecisionAssignmentGraph(graph: DecisionAssignmentGraph): AgentCapacityContractValidationResult {
+	const diagnostics: AgentCapacityContractDiagnostic[] = [];
+	validateNonEmptyString(diagnostics, graph.id, 'id');
+	validateNonEmptyString(diagnostics, graph.teamId, 'teamId');
+	validateNonEmptyString(diagnostics, graph.projectId, 'projectId');
+	validateNonEmptyString(diagnostics, graph.decisionId, 'decisionId');
+	if (!Number.isInteger(graph.version) || graph.version < 1) diagnostic(diagnostics, 'graph_version_invalid', 'Decision assignment graph version must be a positive integer.', 'version');
+	if (graph.compiledBy !== 'api-control-plane') diagnostic(diagnostics, 'graph_compiler_invalid', 'Decision assignment graphs must be compiled by api-control-plane.', 'compiledBy');
+	const nodeIds = new Set(graph.nodes.map((node) => node.id));
+	for (const [index, node] of graph.nodes.entries()) {
+		validateNonEmptyString(diagnostics, node.id, 'node.id', `nodes.${index}.id`);
+		validateNonEmptyString(diagnostics, node.targetAgentClass, 'node.targetAgentClass', `nodes.${index}.targetAgentClass`);
+		validateNonNegativeNumber(diagnostics, node.capacity.expectedCredits, 'node.capacity.expectedCredits', `nodes.${index}.capacity.expectedCredits`);
+		validateNonNegativeNumber(diagnostics, node.capacity.maxCredits, 'node.capacity.maxCredits', `nodes.${index}.capacity.maxCredits`);
+	}
+	for (const [index, edge] of graph.edges.entries()) {
+		if (!nodeIds.has(edge.fromNodeId)) diagnostic(diagnostics, 'graph_edge_from_missing', `Edge ${index} references missing fromNodeId.`, `edges.${index}.fromNodeId`);
+		if (!nodeIds.has(edge.toNodeId)) diagnostic(diagnostics, 'graph_edge_to_missing', `Edge ${index} references missing toNodeId.`, `edges.${index}.toNodeId`);
+	}
+	for (const [index, contract] of graph.deliverableContracts.entries()) {
+		diagnostics.push(...validateDeliverableContract(contract).diagnostics.map((entry) => ({ ...entry, path: `deliverableContracts.${index}${entry.path ? `.${entry.path}` : ''}` })));
+	}
+	return validationResult(diagnostics);
+}
+
+export function compileDecisionAssignmentGraphFromEstimates(input: {
+	id?: string;
+	teamId: string;
+	projectId: string;
+	decisionId: string;
+	version?: number;
+	estimates: StructuredAgentEstimate[];
+	compiledAt?: string | null;
+}): DecisionAssignmentGraphCompileResult {
+	const diagnostics: AgentCapacityContractDiagnostic[] = [];
+	const estimates = [...(input.estimates ?? [])].sort((left, right) => (
+		left.agentClass.localeCompare(right.agentClass)
+		|| String(left.agentId ?? '').localeCompare(String(right.agentId ?? ''))
+		|| left.id.localeCompare(right.id)
+	));
+	for (const [index, estimate] of estimates.entries()) {
+		diagnostics.push(...validateStructuredAgentEstimate(estimate).diagnostics.map((entry) => ({ ...entry, path: `estimates.${index}${entry.path ? `.${entry.path}` : ''}` })));
+	}
+	const contractMap = new Map<string, DeliverableContract>();
+	const deliverableProducerNodes = new Map<string, string>();
+	const nodes: DecisionAssignmentGraphNode[] = [];
+	const edges: DecisionAssignmentGraphEdge[] = [];
+	for (const estimate of estimates) {
+		for (const dependency of estimate.dependencies.filter((entry) => entry.type === 'artifact' && entry.deliverableType)) {
+			const contractId = dependencyToContractId(input.projectId, input.decisionId, dependency);
+			if (!contractMap.has(contractId)) {
+				const producerClass = dependency.agentClass || dependency.capability || dependency.deliverableType || 'producer';
+				contractMap.set(contractId, {
+					id: contractId,
+					teamId: input.teamId,
+					projectId: input.projectId,
+					decisionId: input.decisionId,
+					deliverableType: dependency.deliverableType ?? dependency.id,
+					producerAgentClasses: [producerClass],
+					acceptanceCriteria: dependency.summary ? [dependency.summary] : [],
+					status: 'required',
+					metadata: { sourceDependencyId: dependency.id },
+				});
+				const producerNodeId = `${contractId}:produce`;
+				deliverableProducerNodes.set(contractId, producerNodeId);
+				nodes.push({
+					id: producerNodeId,
+					decisionId: input.decisionId,
+					projectId: input.projectId,
+					targetAgentClass: producerClass,
+					activityType: 'acting',
+					handler: null,
+					requiredCapabilities: uniqueStrings([dependency.capability ?? ''].filter(Boolean)),
+					requiredDeliverableContractIds: [],
+					inputRefs: [],
+					outputRequirements: [{ id: `${contractId}:output`, outputType: dependency.deliverableType ?? dependency.id, description: dependency.summary, required: true }],
+					capacity: { expectedCredits: 1, maxCredits: 1 },
+					status: 'pending',
+					metadata: { deliverableContractId: contractId, generatedFromDependency: dependency.id },
+				});
+			}
+		}
+	}
+	for (const estimate of estimates) {
+		const nodeId = estimate.workUnitId || `estimate:${estimate.id}:work`;
+		const artifactDependencies = estimate.dependencies.filter((dependency) => dependency.type === 'artifact' && dependency.deliverableType);
+		const requiredDeliverableContractIds = artifactDependencies.map((dependency) => dependencyToContractId(input.projectId, input.decisionId, dependency));
+		const inputRefs = estimate.dependencies.flatMap((dependency) => (dependency.contentRefs ?? []).map((ref): ContentRef => ({ model: 'note', collection: 'notes', slug: ref, id: ref })));
+		nodes.push({
+			id: nodeId,
+			decisionId: input.decisionId,
+			projectId: input.projectId,
+			targetAgentClass: estimate.agentClass,
+			activityType: 'acting',
+			handler: null,
+			requiredCapabilities: uniqueStrings(estimate.dependencies.map((dependency) => dependency.capability ?? dependency.agentClass ?? '').filter(Boolean)),
+			requiredDeliverableContractIds,
+			inputRefs,
+			outputRequirements: estimate.expectedOutputs,
+			capacity: { expectedCredits: estimate.expectedCredits, maxCredits: estimate.maxCredits },
+			status: 'pending',
+			metadata: {
+				estimateId: estimate.id,
+				confidence: estimate.confidence,
+				riskLevel: estimate.riskLevel,
+				humanInputDependencies: estimate.dependencies.filter((dependency) => dependency.type === 'human-input'),
+			},
+		});
+		for (const dependency of artifactDependencies) {
+			const contractId = dependencyToContractId(input.projectId, input.decisionId, dependency);
+			const producerNodeId = deliverableProducerNodes.get(contractId);
+			if (producerNodeId) edges.push({ fromNodeId: producerNodeId, toNodeId: nodeId, edgeType: edgeTypeForDependency(dependency), reason: dependency.summary ?? dependency.deliverableType });
+		}
+	}
+	const graph: DecisionAssignmentGraph = {
+		id: input.id ?? `${input.projectId}:${input.decisionId}:graph:v${input.version ?? 1}`,
+		teamId: input.teamId,
+		projectId: input.projectId,
+		decisionId: input.decisionId,
+		version: input.version ?? 1,
+		status: diagnostics.some((entry) => entry.severity === 'error') ? 'blocked' : 'compiled',
+		estimateIds: estimates.map((estimate) => estimate.id),
+		deliverableContracts: [...contractMap.values()].sort((left, right) => left.id.localeCompare(right.id)),
+		nodes: nodes.sort((left, right) => left.id.localeCompare(right.id)),
+		edges: edges.sort((left, right) => left.fromNodeId.localeCompare(right.fromNodeId) || left.toNodeId.localeCompare(right.toNodeId) || left.edgeType.localeCompare(right.edgeType)),
+		compiledAt: input.compiledAt ?? null,
+		compiledBy: 'api-control-plane',
+		metadata: { compiler: 'compileDecisionAssignmentGraphFromEstimates' },
+	};
+	diagnostics.push(...validateDecisionAssignmentGraph(graph).diagnostics);
+	return { graph, diagnostics };
 }
 
 function booleanOrNull(value: unknown): boolean | null {
@@ -2178,6 +2607,17 @@ export function validateAgentKernelModeExecutionInput(input: AgentKernelModeExec
 			'assignment_capacity_not_reserved',
 			`Assignment ${assignment.id} is missing reserved capacity for acting execution.`,
 			{ retryable: true, metadata: { reservationId: capacity.reservationId ?? null, reservedCredits: capacity.reservedCredits ?? null } },
+		);
+	}
+	const activityType = String(record(decision.metadata).activityType ?? record(capacity.metadata).activityType ?? '');
+	const deterministicSystemReport = mode === 'planning'
+		&& activityType === 'reporting'
+		&& record(capacity.metadata).deterministicSystemReport === true;
+	if (mode === 'planning' && !deterministicSystemReport && (!capacity.reservationId || Number(capacity.reservedCredits ?? 0) <= 0)) {
+		return createAgentKernelModeFallback(
+			'assignment_capacity_not_reserved',
+			`Assignment ${assignment.id} is missing reserved capacity for planning execution.`,
+			{ retryable: true, metadata: { reservationId: capacity.reservationId ?? null, reservedCredits: capacity.reservedCredits ?? null, activityType: activityType || null } },
 		);
 	}
 	if (mode === 'acting' && !hasAcceptedCapacityPlanProvenance({ assignment, decisionInput: decision, capacityEnvelope: capacity })) {

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync, openSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -79,6 +79,53 @@ function pidAlive(pid: number | null | undefined) {
 	} catch {
 		return false;
 	}
+}
+
+function portListenerPids(port: number | null | undefined) {
+	if (!port || !Number.isFinite(port)) return [];
+	try {
+		const output = execFileSync('lsof', [`-tiTCP:${port}`, '-sTCP:LISTEN', '-n', '-P'], {
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'ignore'],
+		});
+		return output
+			.split(/\r?\n/u)
+			.map((entry) => Number(entry.trim()))
+			.filter((pid) => Number.isInteger(pid) && pid > 0);
+	} catch {
+		return [];
+	}
+}
+
+async function waitForPidsToExit(pids: number[], timeoutMs = 3_000) {
+	const startedAt = Date.now();
+	while (pids.some((pid) => pidAlive(pid)) && Date.now() - startedAt < timeoutMs) {
+		await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
+	}
+}
+
+async function stopConflictingPortListeners(spec: TreeseedManagedDevProcessSpec, allowedPid: number | null = null) {
+	const conflicts = portListenerPids(spec.port)
+		.filter((pid) => pid !== process.pid && pid !== allowedPid);
+	if (conflicts.length === 0) return [];
+	for (const pid of conflicts) {
+		try {
+			process.kill(pid, 'SIGTERM');
+		} catch {
+			// Process may have exited between lsof and termination.
+		}
+	}
+	await waitForPidsToExit(conflicts);
+	const remaining = conflicts.filter((pid) => pidAlive(pid));
+	for (const pid of remaining) {
+		try {
+			process.kill(pid, 'SIGKILL');
+		} catch {
+			// Process may have exited between checks.
+		}
+	}
+	await waitForPidsToExit(remaining, 1_000);
+	return conflicts;
 }
 
 function scopeId(tenantRoot: string) {
@@ -331,7 +378,7 @@ async function instanceFromSpecWithHealth(spec: TreeseedManagedDevProcessSpec): 
 	const instance = instanceFromSpec(spec);
 	const healthStatus = await checkHealth(spec);
 	const healthy = healthStatus.length === 0 || healthStatus.every((entry) => entry.ok);
-	const running = healthStatus.length > 0 ? healthy : instance.running;
+	const running = healthStatus.length > 0 ? instance.running && healthy : instance.running;
 	return {
 		...instance,
 		healthStatus,
@@ -370,13 +417,16 @@ function stopSpec(spec: TreeseedManagedDevProcessSpec) {
 	return instance;
 }
 
-async function startSpec(spec: TreeseedManagedDevProcessSpec, force = false) {
+async function startSpec(spec: TreeseedManagedDevProcessSpec, force = false, forceConflicts = false) {
 	const existing = instanceFromSpec(spec);
 	if (existing.running && !force) {
 		return existing;
 	}
 	if (existing.running && force) {
 		stopSpec(spec);
+	}
+	if (forceConflicts) {
+		await stopConflictingPortListeners(spec, existing.pid);
 	}
 	mkdirSync(resolve(spec.pidPath, '..'), { recursive: true });
 	mkdirSync(resolve(spec.instancePath, '..'), { recursive: true });
@@ -410,7 +460,7 @@ export async function startTreeseedManagedDev(options: TreeseedManagedDevOptions
 	const plan = createTreeseedIntegratedDevPlan(options);
 	const instances = [];
 	for (const spec of plan.processes) {
-		await startSpec(spec, options.force === true);
+		await startSpec(spec, options.force === true, options.forceConflicts === true);
 		instances.push(await waitForHealthySpec(spec));
 	}
 	return { ok: instances.every((entry) => entry.running), action: 'start', plan, instances };

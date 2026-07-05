@@ -18,7 +18,7 @@ const baseRequest: AgentOperationRequest = {
 	mode: 'mutating',
 	taskId: 'task-1',
 	taskKind: 'implementation',
-	agentSlug: 'engineer-agent',
+	agentSlug: 'engineer',
 	agentRole: 'engineer',
 	projectId: 'market',
 	environment: 'local',

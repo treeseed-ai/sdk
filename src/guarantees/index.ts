@@ -112,6 +112,7 @@ export type TreeseedGuaranteeManifest = {
 		optional?: string[];
 	};
 	notes?: string[];
+	dependsOnGuarantees?: string[];
 };
 
 export type TreeseedLoadedGuarantee = {
@@ -514,6 +515,15 @@ function parseGuaranteeManifest(value: unknown, diagnostics: TreeseedGuaranteeDi
 	if (status && !KNOWN_STATUSES.has(status)) diagnostics.push(diagnostic('error', 'guarantee.invalid_status', `Unsupported guarantee status "${status}".`, 'status', sourcePath));
 	if (surface && !KNOWN_SURFACES.has(surface)) diagnostics.push(diagnostic('error', 'guarantee.invalid_surface', `Unsupported guarantee surface "${surface}".`, 'surface', sourcePath));
 
+	const dependsOnGuarantees = Array.isArray(value.dependsOnGuarantees)
+		? value.dependsOnGuarantees.map((entry) => {
+				if (typeof entry === 'string') return entry;
+				if (!isRecord(entry)) return '';
+				return typeof entry.ref === 'string' && typeof entry.ownerPackage === 'string'
+					? `${entry.ownerPackage}:${entry.ref}`
+					: stringValue(entry.ref);
+			}).filter(Boolean)
+		: [];
 	const dependencies = isRecord(value.dependencies) ? value.dependencies : {};
 	const actors = isRecord(value.actors) ? value.actors : {};
 	const devices = isRecord(value.devices) ? value.devices : {};
@@ -575,6 +585,7 @@ function parseGuaranteeManifest(value: unknown, diagnostics: TreeseedGuaranteeDi
 			optional: stringArray(evidence.optional),
 		},
 		notes: stringArray(value.notes),
+		dependsOnGuarantees,
 	};
 
 	if (manifest.status === 'active') {
@@ -777,6 +788,16 @@ export function validateTreeseedGuaranteeRegistry(input: {
 		for (const dep of entry.manifest.dependencies.journeys ?? []) {
 			if (!journeyIndexes.has(dep)) diagnostics.push(diagnostic('error', 'guarantee.missing_journey_dependency', `Missing journey dependency "${dep}".`, 'dependencies.journeys', entry.sourcePath));
 			if (entry.manifest.journeyIndex && dep >= entry.manifest.journeyIndex) diagnostics.push(diagnostic('error', 'guarantee.forward_journey_dependency', `Journey dependency ${dep} must be lower than ${entry.manifest.journeyIndex}.`, 'dependencies.journeys', entry.sourcePath));
+		}
+	}
+	for (const entry of valid) {
+		for (const dep of entry.manifest.dependsOnGuarantees ?? []) {
+			const [ownerPackage, ref] = dep.includes(':') ? dep.split(/:(.+)/u).filter(Boolean) : ['', dep];
+			const match = valid.find((candidate) =>
+				(!ownerPackage || candidate.manifest.ownerPackage === ownerPackage)
+				&& candidate.manifest.status === 'active'
+				&& (candidate.manifest.id === ref || allVerifierRefs(candidate.manifest).includes(ref)));
+			if (!match) diagnostics.push(diagnostic('error', 'guarantee.missing_depends_on_guarantee', `Missing active guarantee dependency "${dep}".`, 'dependsOnGuarantees', entry.sourcePath));
 		}
 	}
 	const visiting = new Set<string>();

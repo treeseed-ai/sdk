@@ -17,13 +17,25 @@ export const AGENT_MESSAGE_STATUSES = [
 ] as const;
 export const AGENT_RUN_STATUSES = ['running', 'completed', 'failed', 'waiting'] as const;
 export const AGENT_HANDLER_KINDS = [
-	'planner',
-	'architect',
-	'engineer',
-	'notifier',
-	'researcher',
-	'reviewer',
+	'writer',
+	'actor',
+	'estimate',
 	'releaser',
+	'reporter',
+] as const;
+export const AGENT_ACTIVITY_TYPES = [
+	'planning',
+	'estimating',
+	'acting',
+	'reviewing',
+	'reporting',
+] as const;
+export const ENGINEERING_HANDLER_KINDS = [
+	'writer',
+	'actor',
+	'estimate',
+	'releaser',
+	'reporter',
 ] as const;
 export const AGENT_CLI_ALLOW_TOOLS = [
 	'shell(git)',
@@ -72,6 +84,8 @@ export type AgentPermissionOperation = (typeof AGENT_PERMISSION_OPERATIONS)[numb
 export type AgentMessageStatus = (typeof AGENT_MESSAGE_STATUSES)[number];
 export type AgentRunStatus = (typeof AGENT_RUN_STATUSES)[number];
 export type AgentHandlerKind = string;
+export type AgentActivityType = (typeof AGENT_ACTIVITY_TYPES)[number];
+export type EngineeringHandlerKind = (typeof ENGINEERING_HANDLER_KINDS)[number];
 export type AgentCliAllowTool = (typeof AGENT_CLI_ALLOW_TOOLS)[number];
 export type ExecutionResourceNeedKind = (typeof EXECUTION_RESOURCE_NEED_KINDS)[number] | string;
 export type ExecutionProviderKind = (typeof EXECUTION_PROVIDER_KINDS)[number] | string;
@@ -134,6 +148,7 @@ export interface AgentOutputContract {
 
 export interface AgentToolPolicy {
 	allowed: string[];
+	denied?: string[];
 }
 
 export interface AgentContentScope {
@@ -150,6 +165,83 @@ export interface AgentContentAccessPolicy {
 	commit?: {
 		allowed: boolean;
 	};
+}
+
+export type AgentBranchPolicy =
+	| { kind: 'read-only'; base: 'main' | 'staging' }
+	| { kind: 'main-planning-content'; base: 'main' }
+	| { kind: 'staging-content'; base: 'staging' }
+	| {
+		kind: 'assignment-feature';
+		base: 'staging';
+		target: 'staging';
+		prefix?: string;
+		branchNameTemplate?: string;
+		worktree?: 'new' | 'reuse';
+		updateBaseBeforeRun?: boolean;
+		mergeTargetBeforeSave?: boolean;
+	}
+	| { kind: 'staging-release'; base: 'staging'; target: 'main' };
+
+export type AgentQuestionAnswerPolicy =
+	| { kind: 'team-human'; teamId?: string; requiredRoles?: string[] }
+	| { kind: 'human-or-agent'; teamId?: string; allowedRoles?: string[]; allowedAgentClasses?: string[] }
+	| { kind: 'specific-human'; teamMemberId: string }
+	| { kind: 'specific-agent'; projectId: string; agentSlug: string };
+
+export interface AgentQuestionPolicy {
+	defaultAnswerPolicy?: AgentQuestionAnswerPolicy;
+	blockExecutionWhenCreated?: boolean;
+}
+
+export interface AgentActivityPromptConfig {
+	system: string;
+	task?: string;
+	templates?: Record<string, string>;
+}
+
+export interface AgentActivityExecutionConfig {
+	providerPreference?: string[];
+	maxRuntimeSeconds?: number;
+	maxRetries?: number;
+	verificationRequired?: boolean;
+}
+
+export interface AgentActivityProfile {
+	enabled: boolean;
+	handler: EngineeringHandlerKind;
+	prompt: AgentActivityPromptConfig;
+	branchPolicy: AgentBranchPolicy;
+	contentAccess?: AgentContentAccessPolicy;
+	tools: AgentToolPolicy;
+	outputs: AgentOutputContract;
+	questionPolicy?: AgentQuestionPolicy;
+	execution?: AgentActivityExecutionConfig;
+}
+
+export interface AgentCapability {
+	id: string;
+	description?: string;
+	produces?: string[];
+	requires?: string[];
+	reviews?: string[];
+	metadata?: Record<string, unknown>;
+}
+
+export interface AgentDefinitionIdentity {
+	purpose: string;
+	responsibilities: string[];
+	durableInstructions: string;
+}
+
+export interface AgentDefinition {
+	slug: string;
+	title: string;
+	agentClass: string;
+	template?: string;
+	identity: AgentDefinitionIdentity;
+	capabilities: AgentCapability[];
+	activityProfiles: Partial<Record<AgentActivityType, AgentActivityProfile>>;
 }
 
 export interface AgentExecutionConfig {
@@ -258,7 +350,7 @@ export interface AgentWorkPackageConstraints {
 	metadata?: Record<string, unknown>;
 }
 
-export type AgentHandlerAlgorithmKind = 'plan' | 'research' | 'act' | 'review' | 'report';
+export type AgentHandlerAlgorithmKind = EngineeringHandlerKind;
 export type AgentWorkPackageKind = AgentHandlerAlgorithmKind | string;
 
 export interface AgentInputSelector {
@@ -433,9 +525,14 @@ export interface AgentCliOptions {
 export interface AgentRuntimeSpec {
 	slug: string;
 	handler: AgentHandlerKind;
+	activityType?: AgentActivityType;
+	activityProfiles?: Partial<Record<AgentActivityType, AgentActivityProfile>>;
+	branchPolicy?: AgentBranchPolicy;
+	questionPolicy?: AgentQuestionPolicy;
+	identity?: AgentDefinitionIdentity;
 	projectAgentClassId?: string;
 	projectAgentClassSlug?: string;
-	handlerConfig?: AgentHandlerConfig;
+	activityConfig?: AgentHandlerConfig;
 	enabled: boolean;
 	systemPrompt: string;
 	persona: string;

@@ -46,7 +46,6 @@ describe('agent tool registry', () => {
 		const roots = [
 			resolve(workspaceRoot, 'starters/engineering/template/src/content/agents'),
 			resolve(workspaceRoot, 'starters/research/template/src/content/agents'),
-			resolve(workspaceRoot, 'starters/information-hub/template/src/content/agents'),
 		];
 		const ids: string[] = [];
 		for (const root of roots) {

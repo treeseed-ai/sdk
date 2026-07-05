@@ -549,7 +549,7 @@ describe('agent sdk', () => {
 		const run = await sdk.recordRun({
 			run: {
 				runId: 'run-1',
-				agentSlug: 'planner-agent',
+				agentSlug: 'architect',
 				triggerSource: 'workday:local-docs-1',
 				status: 'running',
 				selectedItemKey: null,
@@ -564,17 +564,17 @@ describe('agent sdk', () => {
 		});
 		expect(run.payload).toMatchObject({
 			runId: 'run-1',
-			agentSlug: 'planner-agent',
+			agentSlug: 'architect',
 			status: 'running',
 		});
 
 		await sdk.upsertCursor({
-			agentSlug: 'planner-agent',
+			agentSlug: 'architect',
 			cursorKey: 'last_run_at',
 			cursorValue: '2026-05-17T12:00:00.000Z',
 		});
 		const cursor = await sdk.getCursor({
-			agentSlug: 'planner-agent',
+			agentSlug: 'architect',
 			cursorKey: 'last_run_at',
 		});
 		expect(cursor.payload).toBe('2026-05-17T12:00:00.000Z');
@@ -637,13 +637,13 @@ describe('agent sdk', () => {
 
 				const task = await sdk.createTask({
 					workDayId: String(workDay.payload?.id),
-					agentId: 'treeseed-docs-planner',
+					agentId: 'architect',
 					type: 'agent_root',
-					idempotencyKey: `${workDay.payload?.id}:treeseed-docs-planner`,
+					idempotencyKey: `${workDay.payload?.id}:architect`,
 					payload: { hello: 'world' },
 					actor: 'test',
 				});
-				expect(task.payload?.agentId).toBe('treeseed-docs-planner');
+				expect(task.payload?.agentId).toBe('architect');
 
 				const claimed = await sdk.claimTask({
 					id: String(task.payload?.id),

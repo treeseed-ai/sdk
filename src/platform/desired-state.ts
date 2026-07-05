@@ -781,7 +781,7 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 				},
 				volumes: [{ name: 'treeseed-local-treedx-data', mountPath: '/data', sharedLocalOnly: true }],
 				healthChecks: [
-					{ id: 'treedx-api', kind: 'http', url: 'http://127.0.0.1:4000/api/v1/health' },
+					{ id: 'treedx-api', kind: 'http', url: 'http://127.0.0.1:4000/api/v1/health', attempts: 240, intervalMs: 2_000 },
 				],
 			},
 			source: { type: 'package-adapter', id: 'treedx' },

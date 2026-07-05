@@ -263,7 +263,7 @@ function canonicalTreeseedSeed(): SeedManifest {
 				},
 			],
 			hubRepositories: [],
-			products: ['market-template', 'engineering-template', 'research-template', 'information-hub-template'].map((slug) => ({
+			products: ['market-template', 'engineering-template', 'research-template'].map((slug) => ({
 				key: `product:treeseed/${slug}`,
 				team: 'team:treeseed',
 				kind: 'template',
@@ -277,7 +277,7 @@ function canonicalTreeseedSeed(): SeedManifest {
 				artifactKey: `catalog/${slug}/1.0.0/template`,
 				searchText: slug,
 			})),
-			catalogArtifacts: ['market-template', 'engineering-template', 'research-template', 'information-hub-template'].map((slug) => ({
+			catalogArtifacts: ['market-template', 'engineering-template', 'research-template'].map((slug) => ({
 				key: `catalog-artifact:treeseed/${slug}/1.0.0`,
 				product: `product:treeseed/${slug}`,
 				version: '1.0.0',
@@ -414,7 +414,7 @@ describe('seed planner current-state diffing', () => {
 				environments: ['local'],
 				mode: 'plan',
 			});
-			expect(plan.summary).toMatchObject({ create: 39, update: 0, unchanged: 0, skip: 2 });
+			expect(plan.summary).toMatchObject({ create: 37, update: 0, unchanged: 0, skip: 2 });
 			expect(plan.actions.filter((action) => action.kind === 'project').map((action) => action.key).sort()).toEqual(TREESEED_PROJECT_KEYS);
 			expect(JSON.stringify(plan)).not.toMatch(/project:karyon|repositoryTopology|contentRoot|ghp_/u);
 		} finally {

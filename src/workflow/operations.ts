@@ -2172,14 +2172,16 @@ function hostedWorkflowForSavedRepository(root: string, repo: RepositorySaveRepo
 	if (repo.branch === STAGING_BRANCH && existsSync(resolve(repo.path, 'treeseed.site.yaml')) && workflowFileExists(repo.path, 'deploy.yml')) {
 		return 'deploy.yml';
 	}
-	return 'verify.yml';
+	if (workflowFileExists(repo.path, 'verify.yml')) return 'verify.yml';
+	return null;
 }
 
 function gatesForSavedRepositoryReports(root: string, reports: RepositorySaveReport[]) {
 	return reports
 		.filter((repo) => repo.pushed && repo.commitSha && repo.branch && (repo.committed || repo.tagName))
-		.map((repo) => {
+		.flatMap((repo) => {
 			const workflow = hostedWorkflowForSavedRepository(root, repo);
+			if (!workflow) return [];
 			const gate = {
 				name: repo.name,
 				repoPath: repo.path,
@@ -2187,7 +2189,7 @@ function gatesForSavedRepositoryReports(root: string, reports: RepositorySaveRep
 				branch: String(repo.branch),
 				headSha: String(repo.commitSha),
 			};
-			return /^deploy(?:[-.]|$)/u.test(workflow) ? hostedDeployGate(gate) : gate;
+			return [(/^deploy(?:[-.]|$)/u.test(workflow) ? hostedDeployGate(gate) : gate)];
 		});
 }
 

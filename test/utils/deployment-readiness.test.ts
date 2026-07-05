@@ -38,6 +38,8 @@ services:
       sourceMode: git
       sourceRepo: treeseed-ai/api
       dockerfilePath: /Dockerfile.api
+      buildCommand: npm run build
+      startCommand: npm run start:api
       healthcheckPath: /healthz
   operationsRunner:
     enabled: true
@@ -51,6 +53,8 @@ services:
       sourceMode: git
       sourceRepo: treeseed-ai/api
       dockerfilePath: /Dockerfile.operations-runner
+      buildCommand: npm run build
+      startCommand: npm run start:runner
       healthcheckPath: /healthz
       runtimeMode: service
       volumeMountPath: /data
@@ -154,6 +158,15 @@ connections:
 		expect(byId(report, 'hosting:api:sourceRepo')).toMatchObject({ status: 'passed' });
 		expect(byId(report, 'hosting:operationsRunner:sourceMode')).toMatchObject({ status: 'passed' });
 		expect(byId(report, 'hosting:operationsRunner:sourceRepo')).toMatchObject({ status: 'passed' });
+	});
+
+	it('requires package-local API and runner build commands for local readiness', () => {
+		const report = collectTreeseedDeploymentReadiness({ tenantRoot: rootWith(config()), environment: 'local' });
+		expect(report.ok).toBe(true);
+		expect(byId(report, 'hosting:api:buildCommand')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:api:startCommand')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:operationsRunner:buildCommand')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:operationsRunner:startCommand')).toMatchObject({ status: 'passed' });
 	});
 
 	it('fails when nested Railway rootDir overrides the package root', () => {

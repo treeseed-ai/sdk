@@ -62,8 +62,8 @@ describe('capacity provider SDK contracts', () => {
 			},
 			capabilities: [{
 				id: 'codex-docs-work',
-				agents: ['treeseed-docs-planner', 'treeseed-docs-engineer', 'treeseed-docs-reviewer'],
-				operations: ['plan', 'research', 'mutate', 'verify', 'report'],
+				agents: ['architect', 'engineer', 'reviewer'],
+				operations: ['planning', 'estimating', 'acting', 'reviewing', 'reporting', 'release'],
 				models: ['codex'],
 				repositoryAccess: 'git_worktree',
 				verification: ['local_command'],

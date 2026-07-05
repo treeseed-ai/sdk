@@ -874,6 +874,9 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 		},
 		diff(input) {
 			if (!input.observed.exists) return { action: 'blocked', reasons: input.observed.warnings, before: input.observed.live, after: input.unit.spec };
+			if (input.unit.spec.forceRecreate === true) {
+				return { action: 'update', reasons: ['compose force recreate requested'], before: input.observed.live, after: input.unit.spec };
+			}
 			return input.observed.status === 'ready'
 				? noopDiff()
 				: { action: 'create', reasons: ['compose services are not running'], before: input.observed.live, after: input.unit.spec };
@@ -893,7 +896,7 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 				env,
 				profiles: localComposeProfiles(input),
 				buildPolicy: localComposeBuildPolicy(input),
-				action: 'up',
+				action: input.unit.spec.forceRecreate === true ? 'restart' : 'up',
 			});
 			if (!result.ok) {
 				throw new Error(result.stderr.trim() || result.stdout.trim() || 'docker compose up failed');
@@ -905,7 +908,13 @@ function buildLocalDockerComposeAdapter(): TreeseedReconcileAdapter {
 			const checks: TreeseedUnitVerificationCheck[] = [];
 			for (const healthCheck of healthChecks) {
 				if (healthCheck.kind === 'http' && typeof healthCheck.url === 'string') {
-					const health = await checkHttpHealthWithRetry(healthCheck.url);
+					const attempts = typeof healthCheck.attempts === 'number' && Number.isFinite(healthCheck.attempts)
+						? Math.max(1, Math.floor(healthCheck.attempts))
+						: undefined;
+					const intervalMs = typeof healthCheck.intervalMs === 'number' && Number.isFinite(healthCheck.intervalMs)
+						? Math.max(100, Math.floor(healthCheck.intervalMs))
+						: undefined;
+					const health = await checkHttpHealthWithRetry(healthCheck.url, attempts, intervalMs);
 					checks.push(verificationCheck(String(healthCheck.id ?? healthCheck.url), `HTTP health ${healthCheck.url}`, 'api', {
 						exists: health.ok,
 						configured: true,
@@ -1384,6 +1393,9 @@ function buildLocalProcessAdapter(): TreeseedReconcileAdapter {
 			};
 		},
 		diff(input) {
+			if (input.unit.spec.action === 'restart') {
+				return { action: 'update', reasons: ['local process restart requested'], before: input.observed.live, after: input.unit.spec };
+			}
 			return input.observed.status === 'ready'
 				? noopDiff()
 				: { action: 'create', reasons: ['local process is not reported ready'], before: input.observed.live, after: input.unit.spec };

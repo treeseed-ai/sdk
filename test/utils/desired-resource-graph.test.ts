@@ -264,12 +264,10 @@ describe('canonical desired resource graph', () => {
 
 		expect(graph.templates.map((entry) => entry.id)).toEqual(expect.arrayContaining([
 			'engineering',
-			'information-hub',
 			'research',
 		]));
 		expect(graph.resources.map((entry) => entry.id)).toEqual(expect.arrayContaining([
 			'template-manifest:engineering',
-			'template-manifest:information-hub',
 			'template-manifest:research',
 			'release-gate:template-verify:engineering',
 			'release-gate:template-release-record:engineering',
@@ -277,7 +275,6 @@ describe('canonical desired resource graph', () => {
 		expect(graph.resources.find((entry) => entry.id === 'release-gate:hosted-reconcile:prod:all')?.dependencies)
 			.toEqual(expect.arrayContaining([
 				'release-gate:template-release-record:engineering',
-				'release-gate:template-release-record:information-hub',
 				'release-gate:template-release-record:research',
 			]));
 	});

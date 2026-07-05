@@ -31,12 +31,10 @@ describe('template registry fulfillment', () => {
 	const firstPartyStarterIds = [
 		'research',
 		'engineering',
-		'information-hub',
 	] as const;
 	const firstPartyStarterRepoUrls: Record<(typeof firstPartyStarterIds)[number], string> = {
 		'research': 'https://github.com/treeseed-templates/research.git',
 		'engineering': 'https://github.com/treeseed-templates/engineering.git',
-		'information-hub': 'https://github.com/treeseed-templates/information-hub.git',
 	};
 	const fixtureCatalogPath = resolve(process.cwd(), 'src/treeseed/template-catalog/catalog.fixture.json');
 	const fixtureCatalogEnv = {
@@ -65,6 +63,13 @@ describe('template registry fulfillment', () => {
 			cwd: process.cwd(),
 			env: fixtureCatalogEnv,
 		})).rejects.toThrow(new RegExp(`Unable to resolve remote template product "${legacyId}"`, 'u'));
+	});
+
+	it('keeps information-hub folded into research until it has distinct deterministic packaging semantics', async () => {
+		await expect(validateTemplateProduct({ id: 'information-hub' }, {
+			cwd: process.cwd(),
+			env: fixtureCatalogEnv,
+		})).rejects.toThrow(/Unable to resolve remote template product "information-hub"/u);
 	});
 
 	it('scaffolds each first-party starter with agent specs, tests, and expected content roots', async () => {
