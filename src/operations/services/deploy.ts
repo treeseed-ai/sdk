@@ -1943,7 +1943,9 @@ function recordCachePurgeResult(targetState, results, error = null) {
 		return;
 	}
 	targetState.lastPurgedAt = new Date().toISOString();
-	targetState.purgeCount = Array.isArray(results) ? results.reduce((sum, result) => sum + (result?.count ?? 0), 0) : 0;
+	targetState.purgeCount = Array.isArray(results)
+		? results.reduce((sum, result) => sum + (typeof result?.count === 'number' ? result.count : 0), 0)
+		: 0;
 	targetState.lastError = null;
 }
 
@@ -1979,8 +1981,11 @@ export function purgeSourcePageCaches(tenantRoot, options = {}) {
 		const results = purgeCloudflareCacheByUrls(urls, deployConfig, {
 			env,
 		});
+		const hosts = [...new Set(urls
+			.map((url) => safeUrl(url)?.hostname)
+			.filter(Boolean))];
 		const allResults = target.scope === 'prod'
-			? purgeCloudflareCacheEverythingByHosts([webTarget.host, contentTarget?.host], deployConfig, { env })
+			? purgeCloudflareCacheEverythingByHosts(hosts, deployConfig, { env })
 			: [];
 		assertCloudflareCachePurgeSucceeded([...results, ...allResults]);
 		recordCachePurgeResult(state.webCache.deployPurge, [...results, ...allResults]);
