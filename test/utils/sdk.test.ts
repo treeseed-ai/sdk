@@ -209,7 +209,7 @@ describe('agent sdk', () => {
 		expect(noteResponse.payload.length).toBeGreaterThan(0);
 	});
 
-	it('finds at least one generic agent entry in the fixture site', async () => {
+	it('finds canonical activity-profile agent entries in the fixture site', async () => {
 		const sdk = new AgentSdk({
 			contentRepository: { adapter: 'local' },
 			repoRoot: sdkFixtureRoot,
@@ -219,12 +219,19 @@ describe('agent sdk', () => {
 		const response = await sdk.search({
 			model: 'agent',
 			limit: 1,
-			filters: [{ field: 'name', op: 'contains', value: 'Planner' }],
+			filters: [{ field: 'name', op: 'contains', value: 'Researcher' }],
 		});
 
 		expect(response.model).toBe('agent');
 		expect(response.payload.length).toBeGreaterThan(0);
 		expect(response.payload[0]).toHaveProperty('frontmatter');
+		expect(response.payload[0]?.frontmatter).toMatchObject({
+			slug: 'researcher',
+			activityProfiles: expect.objectContaining({
+				planning: expect.objectContaining({ activityType: 'planning' }),
+				estimating: expect.objectContaining({ activityType: 'estimating' }),
+			}),
+		});
 	});
 
 	it('supports site-registered content models like template', async () => {
