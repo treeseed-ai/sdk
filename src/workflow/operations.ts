@@ -947,6 +947,66 @@ async function runReleaseApiGuarantees(
 	});
 }
 
+async function runReleaseProductionGuarantees(
+	root: string,
+	helpers: WorkflowOperationHelpers,
+	operation: Extract<TreeseedWorkflowOperationId, 'release'>,
+	sceneArtifacts?: 'full' | 'screenshots',
+) {
+	const environment = 'prod';
+	const env = {
+		...helpers.context.env,
+		...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
+	};
+	env.TREESEED_ACCEPTANCE_SERVICE_ID ??= env.TREESEED_API_WEB_SERVICE_ID ?? env.TREESEED_WEB_SERVICE_ID;
+	env.TREESEED_ACCEPTANCE_SERVICE_SECRET ??= env.TREESEED_API_WEB_SERVICE_SECRET ?? env.TREESEED_WEB_SERVICE_SECRET;
+	if (!env.TREESEED_ACCEPTANCE_SERVICE_ID || !env.TREESEED_ACCEPTANCE_SERVICE_SECRET) {
+		workflowError(operation, 'release_gate_failed', 'Final production release guarantees cannot run because production acceptance service credentials are missing.', {
+			details: {
+				environment,
+				missing: [
+					!env.TREESEED_ACCEPTANCE_SERVICE_ID ? 'TREESEED_ACCEPTANCE_SERVICE_ID' : null,
+					!env.TREESEED_ACCEPTANCE_SERVICE_SECRET ? 'TREESEED_ACCEPTANCE_SERVICE_SECRET' : null,
+				].filter((value): value is string => Boolean(value)),
+			},
+		});
+	}
+	helpers.write(`[${operation}][workflow] Running final production release guarantees against the fully deployed production environment.`);
+	return await withContextEnv(env, async () => {
+		const report = await runTreeseedGuarantees({
+			workspaceRoot: root,
+			environment,
+			evidenceTarget: 'release',
+			sceneArtifacts,
+		});
+		if (!report.ok) {
+			const diagnostics = report.diagnostics
+				.filter((entry) => entry.severity === 'error')
+				.slice(0, 20)
+				.map((entry) => `${entry.code}: ${entry.message}${entry.sourcePath ? ` (${entry.sourcePath})` : ''}`);
+			const failedGuarantees = report.results
+				.filter((entry) => entry.status === 'failed' || entry.status === 'blocked')
+				.slice(0, 20)
+				.map((entry) => `${entry.id}: ${entry.status}`);
+			workflowError(operation, 'release_gate_failed', [
+				'Final production release guarantees failed after production deployment.',
+				...failedGuarantees,
+				...diagnostics,
+				failedGuarantees.length === 0 && diagnostics.length === 0 ? `See ${report.outputRoot}` : null,
+			].filter((line): line is string => Boolean(line)).join('\n'), {
+				details: { environment, outputRoot: report.outputRoot, counts: report.counts, diagnostics: report.diagnostics },
+			});
+		}
+		return {
+			ok: report.ok,
+			environment: report.environment,
+			runId: report.runId,
+			outputRoot: report.outputRoot,
+			counts: report.counts,
+		};
+	});
+}
+
 function recordHostedDeploymentStatesFromRootGates(
 	root: string,
 	rootRelease: Record<string, unknown> | null | undefined,
@@ -6826,6 +6886,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					{ id: 'release-root', description: `Release market ${plannedRelease.rootVersion}`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'publish-wait', description: 'Wait for production release workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'production-web-live-verification', description: 'Run production web live verification after root deploy', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
+					{ id: 'production-final-guarantees', description: 'Run final production release guarantees after all production deploys', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'release-back-merge', description: 'Back-merge production release history into staging', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'workspace-link', description: 'Restore local workspace links after release', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 				],
@@ -7018,6 +7079,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					}).then((workflowGates) => ({ workflowGates })));
 				const productionWebVerification = await executeJournalStep(root, workflowRun.runId, 'production-web-live-verification', () =>
 					runReleaseWebLiveVerification(root, 'prod', helpers, 'release'));
+				const productionFinalGuarantees = await executeJournalStep(root, workflowRun.runId, 'production-final-guarantees', () =>
+					runReleaseProductionGuarantees(root, helpers, 'release', normalizeSceneArtifactsMode(effectiveInput.sceneArtifacts)));
 				const backMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () => {
 					const packageBackMerges = selectedPackageNames
 						.map((name) => packageRepoByName.get(name))
@@ -7052,6 +7115,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					productionHosting,
 					productionApiGuarantees,
 					productionWebVerification,
+					productionFinalGuarantees,
 					backMerge,
 					workspaceLinks,
 					releasedCommit: String((rootRelease.commit as { commitSha?: string }).commitSha ?? ''),

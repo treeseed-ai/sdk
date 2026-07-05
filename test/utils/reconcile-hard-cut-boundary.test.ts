@@ -42,6 +42,10 @@ describe('reconciliation hard-cut source boundaries', () => {
 		expect(releaseBody).toContain('runReleaseGateReconcileFacade');
 		expect(releaseBody.indexOf('release-gates')).toBeGreaterThanOrEqual(0);
 		expect(releaseBody.indexOf('release-root')).toBeGreaterThan(releaseBody.indexOf('release-gates'));
+		expect(releaseBody.indexOf('production-web-live-verification')).toBeGreaterThan(releaseBody.indexOf('release-root'));
+		expect(releaseBody.indexOf('production-final-guarantees')).toBeGreaterThan(releaseBody.indexOf('production-web-live-verification'));
+		expect(releaseBody.indexOf('release-back-merge')).toBeGreaterThan(releaseBody.indexOf('production-final-guarantees'));
+		expect(releaseBody).toContain('runReleaseProductionGuarantees');
 		expect(releaseBody).toContain('ensureReleaseTag');
 		expect(releaseBody).toContain('promoteCommitToProductionBranch');
 		expect(operations).toContain("unit.unitType !== 'release-gate:npm-publish'");
