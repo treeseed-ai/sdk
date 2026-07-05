@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.40] - 2026-07-05
+
+### Tests
+
+- build(build): add final production release guarantee gate (4089f01a7c1e)
+
 ## [0.12.39] - 2026-07-05
 
 ### Fixed
