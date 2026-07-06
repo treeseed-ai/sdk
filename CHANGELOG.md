@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.43] - 2026-07-06
+
+### Tests
+
+- build(build): sync starter and fixture submodule promotion with stage (bcaf81ac3996)
+
 ## [0.12.42] - 2026-07-06
 
 ### Added
