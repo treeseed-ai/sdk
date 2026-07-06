@@ -198,7 +198,7 @@ import {
 	type TreeseedWorkflowMode,
 	type TreeseedWorkflowSession,
 } from './session.ts';
-import { checkedOutManagedWorkflowRepos } from '../operations/services/managed-repositories.ts';
+import { checkedOutManagedWorkflowRepos, type TreeseedManagedRepository } from '../operations/services/managed-repositories.ts';
 import { runTreeseedLocalCleanup } from '../operations/services/local-cleanup.ts';
 import { runTreeseedGuarantees } from '../guarantees/index.ts';
 import {
@@ -2842,6 +2842,29 @@ function backMergeProductionIntoStaging(repoDir: string, repoName: string, messa
 	};
 }
 
+function releaseHelperRepoToProduction(repo: TreeseedManagedRepository) {
+	syncBranchWithOrigin(repo.dir, STAGING_BRANCH);
+	if (!remoteBranchExists(repo.dir, STAGING_BRANCH)) {
+		throw new Error(`${repo.name} has no origin/${STAGING_BRANCH} branch to release.`);
+	}
+	const stagingHead = remoteHeadCommit(repo.dir, STAGING_BRANCH);
+	const promotion = promoteCommitToProductionBranch(repo.dir, stagingHead);
+	const backMerge = backMergeProductionIntoStaging(repo.dir, repo.name, releaseAdminMessage({
+		subject: `release: back-merge ${PRODUCTION_BRANCH} into ${STAGING_BRANCH}`,
+		version: null,
+		sourceRef: PRODUCTION_BRANCH,
+		targetRef: STAGING_BRANCH,
+	}));
+	return {
+		name: repo.name,
+		kind: repo.kind,
+		path: repo.relativeDir,
+		stagingHead,
+		promotion,
+		backMerge,
+	};
+}
+
 function backMergeRootProductionIntoStaging(root: string, syncPackageStagingHeads: boolean, options: {
 	version?: string | null;
 	changelog?: ReleaseHistorySummary | null;
@@ -2895,6 +2918,28 @@ function releasePlanStableDependencyVersionMap(plannedRelease: { stableDependenc
 		? plannedRelease.stableDependencyVersions as Record<string, unknown>
 		: {};
 	return new Map(Object.entries(stableDependencyVersions).map(([name, version]) => [name, String(version)] as const));
+}
+
+function collectReleaseHelperRepoBlockers(root: string) {
+	const blockers: string[] = [];
+	for (const repo of checkedOutReleaseHelperRepos(root)) {
+		const branch = currentBranch(repo.dir) || null;
+		if (hasMeaningfulChanges(repo.dir)) {
+			blockers.push(`${repo.name} has uncommitted changes.`);
+		}
+		if (branch !== STAGING_BRANCH) {
+			blockers.push(`${repo.name} is on ${branch ?? '(detached)'} instead of ${STAGING_BRANCH}.`);
+		}
+		try {
+			originRemoteUrl(repo.dir);
+		} catch {
+			blockers.push(`${repo.name} has no readable origin remote.`);
+		}
+		if (!remoteBranchExists(repo.dir, STAGING_BRANCH)) {
+			blockers.push(`${repo.name} has no origin/${STAGING_BRANCH} branch.`);
+		}
+	}
+	return blockers;
 }
 
 function releasePlanPackageSelection(value: unknown): { changed: string[]; dependents: string[]; selected: string[] } {
@@ -6016,6 +6061,7 @@ type StageRepoPlan = {
 	name: string;
 	path: string;
 	kind: 'root' | 'managed';
+	repoKind?: TreeseedManagedRepository['kind'];
 	sourceBranch: string;
 	targetBranch: typeof STAGING_BRANCH;
 	remoteSourceExists: boolean;
@@ -6045,6 +6091,7 @@ type StageCandidateManifest = {
 	packages: Array<{
 		name: string;
 		path: string;
+		repoKind?: TreeseedManagedRepository['kind'];
 		commit: string;
 		remote: string | null;
 		verified: boolean;
@@ -6087,8 +6134,34 @@ function writeStageCandidateManifest(root: string, runId: string, manifest: Stag
 	return manifest;
 }
 
-function checkedOutStagePackageRepos(root: string) {
-	return checkedOutManagedWorkflowRepos(root).filter((repo) => repo.kind === 'package');
+function dedupeManagedReposByRemote(repos: TreeseedManagedRepository[]) {
+	const seen = new Set<string>();
+	const deduped: TreeseedManagedRepository[] = [];
+	for (const repo of repos) {
+		const key = repo.remoteUrl ? `remote:${repo.remoteUrl}` : `path:${repo.dir}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		deduped.push(repo);
+	}
+	return deduped;
+}
+
+function checkedOutStagePromotionRepos(root: string) {
+	return dedupeManagedReposByRemote(checkedOutManagedWorkflowRepos(root)
+		.filter((repo) => repo.kind === 'package' || repo.kind === 'template' || repo.kind === 'fixture'));
+}
+
+function checkedOutReleaseHelperRepos(root: string) {
+	return dedupeManagedReposByRemote(checkedOutManagedWorkflowRepos(root)
+		.filter((repo) => repo.kind === 'template' || repo.kind === 'fixture'));
+}
+
+function syncAllCheckedOutReleaseHelperRepos(root: string, branchName: string) {
+	for (const repo of checkedOutManagedWorkflowRepos(root).filter((entry) => entry.kind === 'template' || entry.kind === 'fixture')) {
+		if (remoteBranchExists(repo.dir, branchName)) {
+			syncBranchWithOrigin(repo.dir, branchName);
+		}
+	}
 }
 
 function buildStagePromotionPlan(root: string, branchName: string, input: {
@@ -6109,10 +6182,11 @@ function buildStagePromotionPlan(root: string, branchName: string, input: {
 } {
 	const gitRoot = repoRoot(root);
 	const repos: StageRepoPlan[] = [
-		...checkedOutStagePackageRepos(root).map((repo) => ({
+		...checkedOutStagePromotionRepos(root).map((repo) => ({
 			name: repo.name,
 			path: repo.dir,
 			kind: 'managed' as const,
+			repoKind: repo.kind,
 			sourceBranch: branchName,
 			targetBranch: STAGING_BRANCH,
 			remoteSourceExists: remoteBranchExists(repo.dir, branchName),
@@ -6212,6 +6286,7 @@ function createStageCandidateManifest(root: string, runId: string, branchName: s
 		packages: packageRepos.map((repo) => ({
 			name: repo.name,
 			path: repo.path,
+			repoKind: repo.repoKind,
 			commit: headCommit(repo.path),
 			remote: (() => {
 				try {
@@ -6229,7 +6304,7 @@ function createStageCandidateManifest(root: string, runId: string, branchName: s
 
 function cleanupStageSourceBranches(root: string, branchName: string, manifest: StageCandidateManifest) {
 	const results: Array<Record<string, unknown>> = [];
-	for (const repo of checkedOutStagePackageRepos(root)) {
+	for (const repo of checkedOutStagePromotionRepos(root)) {
 		const manifestRepo = manifest.packages.find((entry) => entry.name === repo.name);
 		if (!manifestRepo) continue;
 		const remoteDeleted = deleteRemoteBranch(repo.dir, branchName);
@@ -6397,7 +6472,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				const mergeDown = await executeJournalStep(root, workflowRun.runId, 'merge-staging-down', () => {
 					const results: Array<Record<string, unknown>> = [];
 					try {
-						for (const repo of checkedOutStagePackageRepos(root)) {
+						for (const repo of checkedOutStagePromotionRepos(root)) {
 							if (!remoteBranchExists(repo.dir, featureBranch)) {
 								results.push({ name: repo.name, path: repo.dir, skipped: true, reason: 'remote-branch-missing' });
 								continue;
@@ -6752,6 +6827,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 			const rootRepo = createWorkspaceRootRepoReport(root);
 			traceReleaseStartup('inspect package repos');
 			const packageReports = createWorkspacePackageReports(root);
+			const releaseHelperRepos = checkedOutReleaseHelperRepos(root);
 			const explicitResumeRunId = helpers.context.workflow?.resumeRunId ?? null;
 			traceReleaseStartup('check auto resume');
 			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId && input.fresh !== true
@@ -6789,6 +6865,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				level,
 				repairVersionLine: effectiveInput.repairVersionLine === true,
 			});
+			blockers.push(...collectReleaseHelperRepoBlockers(root));
 			const selectedVersions = releasePlanVersionMap(plannedRelease.plannedVersions);
 			const releaseImageVersions = productionReleaseImageRefVersions(root, selectedVersions);
 			const releaseImageRefs = productionReleaseImageRefEnv(releaseImageVersions);
@@ -6811,6 +6888,12 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				sceneArtifacts: normalizeSceneArtifactsMode(effectiveInput.sceneArtifacts),
 				releaseImageRefs,
 				localCleanup,
+				releaseHelperRepos: releaseHelperRepos.map((repo) => ({
+					name: repo.name,
+					kind: repo.kind,
+					path: repo.relativeDir,
+					remote: repo.remoteUrl,
+				})),
 				freshArchivedRuns: [],
 				autoResumeCandidate: planAutoResumeRun
 					? {
@@ -6881,6 +6964,14 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							resumable: true,
 						};
 					}),
+					{
+						id: 'release-helper-repos',
+						description: 'Promote starter templates and shared fixture repositories from staging to production',
+						repoName: rootRepo.name,
+						repoPath: rootRepo.path,
+						branch: STAGING_BRANCH,
+						resumable: true,
+					},
 					{ id: 'verify-published-artifacts', description: 'Verify immutable registry artifacts exist after publish workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'production-package-deploy-workflows', description: 'Wait for production package deploy workflows before live verification', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'production-hosting', description: 'Reconcile and live-verify production hosted resources before root deploy', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
@@ -7011,6 +7102,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					});
 					packageReleases.push(packageRelease);
 				}
+				const managedHelperReleases = await executeJournalStep(root, workflowRun.runId, 'release-helper-repos', () => {
+					const releases = releaseHelperRepos.map((repo) => releaseHelperRepoToProduction(repo));
+					syncAllCheckedOutReleaseHelperRepos(root, STAGING_BRANCH);
+					return { status: 'completed', repos: releases };
+				});
 				const publishedArtifacts = await executeJournalStep(root, workflowRun.runId, 'verify-published-artifacts', () =>
 					verifyPublishedReleaseArtifacts(selectedVersions));
 				const productionPackageDeployWorkflows = await executeJournalStep(root, workflowRun.runId, 'production-package-deploy-workflows', () => {
@@ -7110,6 +7206,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					workspaceUnlink,
 					releaseMetadata,
 					packageReleases,
+					managedHelperReleases,
 					rootRelease,
 					publishWait: publishWait.workflowGates,
 					publishedArtifacts,

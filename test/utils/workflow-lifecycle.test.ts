@@ -387,7 +387,9 @@ function addStaleNestedSubmodule(parentRepo: string, relativePath: string, branc
 	git(work, ['commit', '-m', 'init: nested helper']);
 	git(work, ['remote', 'add', 'origin', origin]);
 	git(work, ['push', '-u', 'origin', 'staging']);
-	git(work, ['checkout', '-b', branch]);
+	if (branch !== 'staging') {
+		git(work, ['checkout', '-b', branch]);
+	}
 	writeFileSync(resolve(work, 'feature.txt'), 'local helper head\n', 'utf8');
 	git(work, ['add', '-A']);
 	git(work, ['commit', '-m', 'feat: helper branch']);
@@ -1137,11 +1139,13 @@ describe('treeseed workflow lifecycle', () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = workflowFor(work);
 		await workflow.switchTask({ branch: 'feature/demo-task' });
-		addStaleNestedSubmodule(resolve(work, 'packages', 'sdk'), '.fixtures/treeseed-fixtures', 'feature/demo-task');
+		const fixtureRepo = addStaleNestedSubmodule(resolve(work, 'packages', 'sdk'), '.fixtures/treeseed-fixtures', 'feature/demo-task');
+		git(fixtureRepo, ['pull', '--ff-only', 'origin', 'feature/demo-task']);
 		git(resolve(work, 'packages', 'sdk'), ['add', '-A']);
 		git(resolve(work, 'packages', 'sdk'), ['commit', '-m', 'test: add helper repos']);
 		git(resolve(work, 'packages', 'sdk'), ['push', 'origin', 'feature/demo-task']);
-		addStaleNestedSubmodule(work, 'starters/research', 'feature/demo-task');
+		const templateRepo = addStaleNestedSubmodule(work, 'starters/research', 'feature/demo-task');
+		git(templateRepo, ['pull', '--ff-only', 'origin', 'feature/demo-task']);
 		git(work, ['add', 'packages/sdk']);
 		git(work, ['add', '.gitmodules', 'starters/research']);
 		git(work, ['commit', '-m', 'test: update sdk helper repos']);
@@ -1187,8 +1191,8 @@ describe('treeseed workflow lifecycle', () => {
 
 		expect(result.payload.mode).toBe('stage-promotion');
 		const promotedRepoNames = result.payload.plan.repos.map((repo: { name: string }) => repo.name);
-		expect(promotedRepoNames.some((name: string) => name.startsWith('fixture:'))).toBe(false);
-		expect(promotedRepoNames.some((name: string) => name.startsWith('template:'))).toBe(false);
+		expect(promotedRepoNames.some((name: string) => name.startsWith('fixture:'))).toBe(true);
+		expect(promotedRepoNames.some((name: string) => name.startsWith('template:'))).toBe(true);
 		expect(result.payload.mergeStrategy).toBe('merge-staging-down-then-exact-sha');
 		expect(result.payload.verification.status).toBe('skipped');
 		expect(result.payload.promotion.status).toBe('completed');
@@ -1196,6 +1200,8 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.cleanup.status).toBe('skipped');
 		expect(git(work, ['branch', '--show-current'])).toBe('feature/demo-task');
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('feature/demo-task');
+		expect(git(fixtureRepo, ['rev-parse', 'origin/staging'])).toBe(git(fixtureRepo, ['rev-parse', 'HEAD']));
+		expect(git(templateRepo, ['rev-parse', 'origin/staging'])).toBe(git(templateRepo, ['rev-parse', 'HEAD']));
 	}, 180000);
 
 	it('closes matching package task branches and preserves deprecated tags', async () => {
@@ -1215,10 +1221,44 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', 'deprecated/*'])).toContain('deprecated/feature-demo-task/');
 	}, 180000);
 
+	it('includes starter templates and shared fixtures in release helper repo plans', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		const workflow = workflowFor(work);
+		git(work, ['checkout', 'staging']);
+		const fixtureRepo = addStaleNestedSubmodule(resolve(work, 'packages', 'sdk'), '.fixtures/treeseed-fixtures', 'staging');
+		git(fixtureRepo, ['pull', '--ff-only', 'origin', 'staging']);
+		git(resolve(work, 'packages', 'sdk'), ['add', '-A']);
+		git(resolve(work, 'packages', 'sdk'), ['commit', '-m', 'test: add planned helper fixture']);
+		git(resolve(work, 'packages', 'sdk'), ['push', 'origin', 'staging']);
+		const templateRepo = addStaleNestedSubmodule(work, 'starters/research', 'staging');
+		git(templateRepo, ['pull', '--ff-only', 'origin', 'staging']);
+		git(work, ['add', '.gitmodules', 'starters/research', 'packages/sdk']);
+		git(work, ['commit', '-m', 'test: add planned helper repos']);
+		git(work, ['push', 'origin', 'staging']);
+
+		const result = await workflow.release({ bump: 'patch', plan: true });
+
+		expect(result.payload.releaseHelperRepos.map((repo: { name: string }) => repo.name)).toEqual(expect.arrayContaining([
+			expect.stringMatching(/^fixture:/),
+			expect.stringMatching(/^template:/),
+		]));
+		expect(result.payload.blockers).toEqual([]);
+	}, 180000);
+
 		it('releases only changed packages plus dependents and syncs market main to package main heads', async () => {
 			const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = workflowFor(work);
 		git(work, ['checkout', 'staging']);
+		const fixtureRepo = addStaleNestedSubmodule(resolve(work, 'packages', 'sdk'), '.fixtures/treeseed-fixtures', 'staging');
+		git(fixtureRepo, ['pull', '--ff-only', 'origin', 'staging']);
+		git(resolve(work, 'packages', 'sdk'), ['add', '-A']);
+		git(resolve(work, 'packages', 'sdk'), ['commit', '-m', 'test: add release helper fixture']);
+		git(resolve(work, 'packages', 'sdk'), ['push', 'origin', 'staging']);
+		const templateRepo = addStaleNestedSubmodule(work, 'starters/research', 'staging');
+		git(templateRepo, ['pull', '--ff-only', 'origin', 'staging']);
+		git(work, ['add', '.gitmodules', 'starters/research', 'packages/sdk']);
+		git(work, ['commit', '-m', 'test: add release helper repos']);
+		git(work, ['push', 'origin', 'staging']);
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-release";\n', 'utf8');
 		git(resolve(work, 'packages', 'sdk'), ['add', 'index.js']);
 		git(resolve(work, 'packages', 'sdk'), ['commit', '-m', 'feat: release sdk change']);
@@ -1256,6 +1296,11 @@ describe('treeseed workflow lifecycle', () => {
 			'release-gate:production-record:prod',
 		]));
 		expect(result.payload.reconcile).toBeTruthy();
+		expect(result.payload.managedHelperReleases.status).toBe('completed');
+		expect(result.payload.managedHelperReleases.repos.map((repo: { name: string }) => repo.name)).toEqual(expect.arrayContaining([
+			expect.stringMatching(/^fixture:/),
+			expect.stringMatching(/^template:/),
+		]));
 		expect(result.payload.plannedSteps.some((step: { action: string }) => step.action === 'update')).toBe(true);
 		expect(JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version).toBe(sdkDevVersion);
 		expect(JSON.parse(readFileSync(resolve(work, 'packages', 'ui', 'package.json'), 'utf8')).version).toBe('0.4.12');
@@ -1263,6 +1308,8 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'ui'), ['branch', '--show-current'])).toBe('staging');
+		expect(git(fixtureRepo, ['rev-parse', 'origin/main'])).toBe(git(fixtureRepo, ['rev-parse', 'origin/staging']));
+		expect(git(templateRepo, ['rev-parse', 'origin/main'])).toBe(git(templateRepo, ['rev-parse', 'origin/staging']));
 		expect(git(resolve(work, 'packages', 'core'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'admin'), ['branch', '--show-current'])).toBe('staging');
 		expect(git(resolve(work, 'packages', 'cli'), ['branch', '--show-current'])).toBe('staging');
