@@ -843,7 +843,9 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 					rootDir: serviceRoot,
 					publicBaseUrl,
 					railwayEnvironment,
-					buildCommand: resolvedImageRef ? null : service.railway?.buildCommand ?? null,
+					buildCommand: resolvedImageRef || (sourcePolicy.sourceMode === 'git' && service.railway?.dockerfilePath)
+						? null
+						: service.railway?.buildCommand ?? null,
 						startCommand: isCapacityProviderService ? null : resolvedImageRef ? null : service.railway?.startCommand ?? null,
 					imageRef: resolvedImageRef,
 					sourceMode: sourcePolicy.sourceMode,

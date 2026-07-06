@@ -192,7 +192,11 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 		checks.push(check('hosting:api:projectGroup', api.projectGroupId, 'treeseed-control-plane', 'API project group targets the Treeseed control plane.', 'Bind services.api to the treeseed-control-plane project group.', 'projectGroupId'));
 		checks.push(check('hosting:api:rootDir', api.config?.rootDir, expectedApiUnitRoot, 'API effective rootDir points at the API package.', 'Set services.api.rootDir and services.api.railway.rootDir relative to the owning API manifest.', 'rootDir'));
 		if (environment === 'local') {
-			checks.push(check('hosting:api:buildCommand', api.config?.buildCommand, 'npm run build', 'API build command is package-local.', 'Set services.api.railway.buildCommand to "npm run build".', 'buildCommand'));
+			if (api.config?.dockerfilePath) {
+				checks.push(check('hosting:api:dockerfilePath', api.config.dockerfilePath, '/Dockerfile.api', 'API local deploy uses the same Dockerfile build contract as staging.', 'Set services.api.railway.dockerfilePath to /Dockerfile.api.', 'dockerfilePath'));
+			} else {
+				checks.push(check('hosting:api:buildCommand', api.config?.buildCommand, 'npm run build', 'API build command is package-local.', 'Set services.api.railway.buildCommand to "npm run build".', 'buildCommand'));
+			}
 			checks.push(check('hosting:api:startCommand', api.config?.startCommand, 'npm run start:api', 'API start command is package-local.', 'Set services.api.railway.startCommand to "npm run start:api".', 'startCommand'));
 		} else if (environment === 'staging') {
 			checks.push(check('hosting:api:sourceMode', api.config?.sourceMode, 'git', 'API staging deploy uses Railway Git source builds.', 'Set services.api.railway.sourceMode to git.', 'sourceMode'));
@@ -221,7 +225,11 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 		checks.push(check('hosting:operationsRunner:projectGroup', runner.projectGroupId, 'treeseed-control-plane', 'Runner project group targets the Treeseed control plane.', 'Bind services.operationsRunner to the treeseed-control-plane project group.', 'projectGroupId'));
 		checks.push(check('hosting:operationsRunner:rootDir', runner.config?.rootDir, expectedRunnerUnitRoot, 'Runner effective rootDir points at the API package.', 'Set services.operationsRunner.rootDir and services.operationsRunner.railway.rootDir relative to the owning API manifest.', 'rootDir'));
 		if (environment === 'local') {
-			checks.push(check('hosting:operationsRunner:buildCommand', runner.config?.buildCommand, 'npm run build', 'Runner build command is package-local.', 'Set services.operationsRunner.railway.buildCommand to "npm run build".', 'buildCommand'));
+			if (runner.config?.dockerfilePath) {
+				checks.push(check('hosting:operationsRunner:dockerfilePath', runner.config.dockerfilePath, '/Dockerfile.operations-runner', 'Runner local deploy uses the same Dockerfile build contract as staging.', 'Set services.operationsRunner.railway.dockerfilePath to /Dockerfile.operations-runner.', 'dockerfilePath'));
+			} else {
+				checks.push(check('hosting:operationsRunner:buildCommand', runner.config?.buildCommand, 'npm run build', 'Runner build command is package-local.', 'Set services.operationsRunner.railway.buildCommand to "npm run build".', 'buildCommand'));
+			}
 			checks.push(check('hosting:operationsRunner:startCommand', runner.config?.startCommand, 'npm run start:runner', 'Runner start command is package-local.', 'Set services.operationsRunner.railway.startCommand to "npm run start:runner".', 'startCommand'));
 		} else if (environment === 'staging') {
 			checks.push(check('hosting:operationsRunner:sourceMode', runner.config?.sourceMode, 'git', 'Runner staging deploy uses Railway Git source builds.', 'Set services.operationsRunner.railway.sourceMode to git.', 'sourceMode'));

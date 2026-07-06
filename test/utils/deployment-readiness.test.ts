@@ -160,12 +160,12 @@ connections:
 		expect(byId(report, 'hosting:operationsRunner:sourceRepo')).toMatchObject({ status: 'passed' });
 	});
 
-	it('requires package-local API and runner build commands for local readiness', () => {
+	it('requires package-local API and runner Dockerfile build contracts for local readiness', () => {
 		const report = collectTreeseedDeploymentReadiness({ tenantRoot: rootWith(config()), environment: 'local' });
 		expect(report.ok).toBe(true);
-		expect(byId(report, 'hosting:api:buildCommand')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:api:dockerfilePath')).toMatchObject({ status: 'passed' });
 		expect(byId(report, 'hosting:api:startCommand')).toMatchObject({ status: 'passed' });
-		expect(byId(report, 'hosting:operationsRunner:buildCommand')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'hosting:operationsRunner:dockerfilePath')).toMatchObject({ status: 'passed' });
 		expect(byId(report, 'hosting:operationsRunner:startCommand')).toMatchObject({ status: 'passed' });
 	});
 
