@@ -2183,11 +2183,12 @@ function hostedWorkflowsForSavedRepository(root: string, repo: RepositorySaveRep
 			workflows.push(normalized);
 		}
 	};
-	const adapterByPath = new Map(discoverTreeseedPackageAdapters(root).map((adapter) => [resolve(adapter.dir), adapter]));
-	const adapterWorkflow = packageHostedVerifyWorkflow(adapterByPath.get(resolve(repo.path)));
-	addWorkflow(adapterWorkflow);
 	if (repo.branch === STAGING_BRANCH && existsSync(resolve(repo.path, 'treeseed.site.yaml')) && workflowFileExists(repo.path, 'deploy.yml')) {
 		addWorkflow('deploy.yml');
+	} else {
+		const adapterByPath = new Map(discoverTreeseedPackageAdapters(root).map((adapter) => [resolve(adapter.dir), adapter]));
+		const adapterWorkflow = packageHostedVerifyWorkflow(adapterByPath.get(resolve(repo.path)));
+		addWorkflow(adapterWorkflow);
 	}
 	if (workflows.length === 0 && workflowFileExists(repo.path, 'verify.yml')) addWorkflow('verify.yml');
 	return workflows;
