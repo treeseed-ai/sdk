@@ -507,13 +507,20 @@ describe('treeseed workflow lifecycle', () => {
 		expect(hostedCiSource).toContain("status: 'reconciled'");
 	});
 
-	it('uses deploy-gate timeouts for package-local deploy workflows', () => {
+	it('requires package verification and deploy gates for package-local deploy workflows', () => {
 		const source = readFileSync(new URL('../../src/workflow/operations.ts', import.meta.url), 'utf8');
+		const workflowStart = source.indexOf('function hostedWorkflowsForSavedRepository');
+		const workflowEnd = source.indexOf('function gatesForSavedRepositoryReports', workflowStart);
+		const workflowSource = source.slice(workflowStart, workflowEnd);
 		const start = source.indexOf('function gatesForSavedRepositoryReports');
 		const end = source.indexOf('function packageHostedVerifyWorkflow', start);
 		const gateSource = source.slice(start, end);
 
-		expect(gateSource).toContain('hostedWorkflowForSavedRepository');
+		expect(workflowSource).toContain('addWorkflow(adapterWorkflow)');
+		expect(workflowSource).toContain("addWorkflow('deploy.yml')");
+		expect(workflowSource).toContain("workflows.length === 0 && workflowFileExists(repo.path, 'verify.yml')");
+		expect(gateSource).toContain('hostedWorkflowsForSavedRepository');
+		expect(gateSource).toContain('.map((workflow) =>');
 		expect(gateSource).toContain('hostedDeployGate(gate)');
 		expect(gateSource).toContain('/^deploy(?:[-.]|$)/u.test(workflow)');
 	});

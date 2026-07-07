@@ -2174,31 +2174,39 @@ function workflowFileExists(repoPath: string, workflow: string) {
 	return existsSync(resolve(repoPath, '.github', 'workflows', workflow));
 }
 
-function hostedWorkflowForSavedRepository(root: string, repo: RepositorySaveReport) {
+function hostedWorkflowsForSavedRepository(root: string, repo: RepositorySaveReport) {
+	const workflows: string[] = [];
+	const addWorkflow = (workflow: string | null | undefined) => {
+		if (!workflow) return;
+		const normalized = workflow.trim().replace(/^\.github\/workflows\//u, '');
+		if (normalized && !workflows.includes(normalized)) {
+			workflows.push(normalized);
+		}
+	};
 	const adapterByPath = new Map(discoverTreeseedPackageAdapters(root).map((adapter) => [resolve(adapter.dir), adapter]));
 	const adapterWorkflow = packageHostedVerifyWorkflow(adapterByPath.get(resolve(repo.path)));
-	if (adapterWorkflow) return adapterWorkflow;
+	addWorkflow(adapterWorkflow);
 	if (repo.branch === STAGING_BRANCH && existsSync(resolve(repo.path, 'treeseed.site.yaml')) && workflowFileExists(repo.path, 'deploy.yml')) {
-		return 'deploy.yml';
+		addWorkflow('deploy.yml');
 	}
-	if (workflowFileExists(repo.path, 'verify.yml')) return 'verify.yml';
-	return null;
+	if (workflows.length === 0 && workflowFileExists(repo.path, 'verify.yml')) addWorkflow('verify.yml');
+	return workflows;
 }
 
 function gatesForSavedRepositoryReports(root: string, reports: RepositorySaveReport[]) {
 	return reports
 		.filter((repo) => repo.pushed && repo.commitSha && repo.branch && (repo.committed || repo.tagName))
 		.flatMap((repo) => {
-			const workflow = hostedWorkflowForSavedRepository(root, repo);
-			if (!workflow) return [];
-			const gate = {
-				name: repo.name,
-				repoPath: repo.path,
-				workflow,
-				branch: String(repo.branch),
-				headSha: String(repo.commitSha),
-			};
-			return [(/^deploy(?:[-.]|$)/u.test(workflow) ? hostedDeployGate(gate) : gate)];
+			return hostedWorkflowsForSavedRepository(root, repo).map((workflow) => {
+				const gate = {
+					name: repo.name,
+					repoPath: repo.path,
+					workflow,
+					branch: String(repo.branch),
+					headSha: String(repo.commitSha),
+				};
+				return /^deploy(?:[-.]|$)/u.test(workflow) ? hostedDeployGate(gate) : gate;
+			});
 		});
 }
 
@@ -5634,16 +5642,17 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 								: []),
 							...savedPackageReports
 								.filter((repo) => repo.pushed && repo.commitSha && repo.branch)
-								.map((repo) => {
-									const workflow = hostedWorkflowForSavedRepository(root, repo);
-									const gate = {
-										name: repo.name,
-										repoPath: repo.path,
-										workflow,
-										branch: String(repo.branch),
-										headSha: String(repo.commitSha),
-									};
-									return /^deploy(?:[-.]|$)/u.test(workflow) ? hostedDeployGate(gate) : gate;
+								.flatMap((repo) => {
+									return hostedWorkflowsForSavedRepository(root, repo).map((workflow) => {
+										const gate = {
+											name: repo.name,
+											repoPath: repo.path,
+											workflow,
+											branch: String(repo.branch),
+											headSha: String(repo.commitSha),
+										};
+										return /^deploy(?:[-.]|$)/u.test(workflow) ? hostedDeployGate(gate) : gate;
+									});
 								}),
 						], 'hosted', {
 							root,
