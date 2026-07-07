@@ -352,7 +352,11 @@ describe('hosting graph', () => {
 		const prod = compileTreeseedHostingGraph({
 			tenantRoot,
 			environment: 'prod',
-			env: { TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.2.11' },
+			env: {
+				TREESEED_API_IMAGE_REF: 'treeseed/api:0.2.11',
+				TREESEED_OPERATIONS_RUNNER_IMAGE_REF: 'treeseed/op-runner:0.2.11',
+				TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.2.11',
+			},
 		});
 
 		const stagingGroup = staging.projectGroups['public-treedx-federation'];

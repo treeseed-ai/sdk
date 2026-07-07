@@ -67,6 +67,8 @@ services:
       projectName: treeseed-api
       serviceName: treeseed-api
       rootDir: packages/api
+      imageRefEnv: TREESEED_API_IMAGE_REF
+      dockerfilePath: /Dockerfile.api
       buildCommand: npm run build
       startCommand: npm run start:api
       healthcheckPath: /healthz
@@ -85,6 +87,8 @@ services:
       projectName: treeseed-api
       serviceName: treeseed-api-operations-runner-01
       rootDir: packages/api
+      imageRefEnv: TREESEED_OPERATIONS_RUNNER_IMAGE_REF
+      dockerfilePath: /Dockerfile.operations-runner
       buildCommand: npm run build
       startCommand: npm run start:runner
       healthcheckPath: /healthz
@@ -246,6 +250,7 @@ surfaces:
 					environmentName: 'staging',
 					rootDirectory: '.',
 					buildCommand: 'npm run build',
+					dockerfilePath: '/Dockerfile.api',
 					startCommand: 'npm run start:api',
 					healthcheckPath: '/healthz',
 					healthcheckTimeoutSeconds: 120,
@@ -258,6 +263,7 @@ surfaces:
 					environmentName: 'staging',
 					rootDirectory: '.',
 					buildCommand: 'npm run build',
+					dockerfilePath: '/Dockerfile.operations-runner',
 					startCommand: 'npm run start:runner',
 					healthcheckPath: '/healthz',
 					healthcheckTimeoutSeconds: 120,
@@ -277,11 +283,41 @@ surfaces:
 		expect(byId(report, 'railway:api:healthcheckPath')).toMatchObject({ status: 'passed', expected: { healthcheckPath: '/healthz' } });
 		expect(byId(report, 'railway:api:runtimeMode')).toMatchObject({ status: 'passed', expected: { runtimeMode: 'serverless' } });
 		expect(byId(report, 'railway:api:rootDirectory')).toMatchObject({ status: 'passed' });
-		expect(byId(report, 'railway:api:buildCommand')).toMatchObject({ status: 'passed' });
+		expect(byId(report, 'railway:api:dockerfilePath')).toMatchObject({ status: 'passed' });
 		expect(byId(report, 'railway:api:startCommand')).toMatchObject({ status: 'passed' });
 		expect(byId(report, 'railway:operationsRunner:1:volume')).toMatchObject({ status: 'passed', expected: { volumeMountPath: '/data' } });
 		expect(byId(report, 'railway:operationsRunner:1:deployment-required-mount')).toMatchObject({ status: 'passed', expected: { volumeMountPath: '/data' } });
 		expect(byId(report, 'railway:treeseedDatabase:targets')).toMatchObject({ status: 'passed' });
+	});
+
+	it('fails canonical staging API services when live deployment metadata is image-shaped instead of Git-shaped', () => {
+		const root = fixtureRoot();
+		const report = collectTreeseedHostedServiceChecks({
+			tenantRoot: root,
+			target: 'staging',
+			observedRailwayServices: {
+				'treeseed-api': {
+					serviceName: 'treeseed-api',
+					projectName: 'treeseed-api',
+					environmentName: 'staging',
+					rootDirectory: 'packages/api',
+					buildCommand: 'npm run build',
+					dockerfilePath: '/Dockerfile.api',
+					startCommand: 'npm run start:api',
+					healthcheckPath: '/healthz',
+					healthcheckTimeoutSeconds: 120,
+					runtimeMode: 'serverless',
+					deploymentHealthy: true,
+					deploymentRepo: null,
+					deploymentBranch: null,
+					deploymentRootDirectory: null,
+				},
+			},
+		});
+
+		expect(byId(report, 'railway:api:deployment-repo').status).toBe('failed');
+		expect(byId(report, 'railway:api:deployment-branch').status).toBe('failed');
+		expect(byId(report, 'railway:api:deployment-root-directory').status).toBe('failed');
 	});
 
 	it('scopes checks to selected service keys', () => {
@@ -339,7 +375,7 @@ surfaces:
 		const root = fixtureRoot(siteConfig()
 			.replace('  operationsRunner:\n    enabled: true', '  operationsRunner:\n    enabled: false')
 			.replace('  api:\n    enabled: true\n    provider: railway', '  api:\n    enabled: true\n    provider: custom-host'));
-		const report = collectTreeseedHostedServiceChecks({ tenantRoot: root, target: 'prod' });
+		const report = collectTreeseedHostedServiceChecks({ tenantRoot: root, target: 'staging' });
 		expect(report.checks.some((check) => check.serviceKey === 'operationsRunner')).toBe(false);
 		expect(report.checks.some((check) => check.status === 'warning' && check.issues.some((issue) => issue.includes('custom-host')))).toBe(true);
 	});

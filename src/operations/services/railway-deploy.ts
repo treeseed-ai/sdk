@@ -6,6 +6,7 @@ import { resolveTreeseedMachineEnvironmentValues } from './config-runtime.ts';
 import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from './deploy.ts';
 import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
 import { discoverTreeseedApplications } from '../../hosting/apps.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from './railway-source-policy.ts';
 import { runPrefixedCommand, sleep, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from './bootstrap-runner.ts';
 import {
 	ensureRailwayEnvironment,
@@ -853,7 +854,9 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 					sourceBranch: sourcePolicy.sourceBranch,
 					sourceCommit: sourcePolicy.sourceCommit,
 					sourceRootDirectory: sourcePolicy.sourceRootDirectory,
-					dockerfilePath: sourcePolicy.sourceMode === 'git' ? service.railway?.dockerfilePath ?? null : null,
+					dockerfilePath: sourcePolicy.sourceMode === 'git'
+						? service.railway?.dockerfilePath ?? apiRailwayDefaultDockerfilePath({ key: serviceKey, serviceName })
+						: null,
 					healthcheckPath: service.railway?.healthcheckPath ?? null,
 					healthcheckTimeoutSeconds: service.railway?.healthcheckTimeoutSeconds ?? null,
 					healthcheckIntervalSeconds: service.railway?.healthcheckIntervalSeconds ?? null,
@@ -902,6 +905,9 @@ function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deployConfig
 		: {};
 	const treeDxRoot = resolve(workspaceRoot ?? tenantRoot, 'packages', 'treedx');
 	const configuredMode = typeof railway.sourceMode === 'string' ? railway.sourceMode : null;
+	if (scope === 'staging' && configuredMode === 'image') {
+		throw new Error('public-treedx-node-01: API Railway staging services must use GitHub Dockerfile source builds (configured sourceMode image is not allowed).');
+	}
 	const sourceMode = scope === 'prod'
 		? 'image'
 		: configuredMode === 'git' || configuredMode === 'image'
@@ -936,8 +942,28 @@ function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deployConfig
 	return Array.from({ length: bootstrapCount }, (_, offset) => {
 		const index = offset + 1;
 		const serviceName = `${PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX}${String(index).padStart(2, '0')}`;
-		return {
+		const service = {
 			key: serviceName,
+			serviceName,
+			sourceMode,
+			sourceRepo: sourceMode === 'git' ? repository : null,
+			sourceBranch: sourceMode === 'git' ? sourceBranch : null,
+			sourceCommit: sourceMode === 'git'
+				? typeof railway.sourceCommit === 'string'
+					? railway.sourceCommit
+					: typeof configuredSource.commit === 'string'
+						? configuredSource.commit
+						: headCommitSafe(treeDxRoot) ?? headCommitSafe(tenantRoot)
+				: null,
+			sourceRootDirectory: sourceMode === 'git' ? sourceRootDirectory : null,
+			imageRef: sourceMode === 'image' ? baseImageRef : null,
+			dockerfilePath: sourceMode === 'git' ? railway.dockerfilePath ?? '/Dockerfile' : null,
+			buildCommand: sourceMode === 'git' ? railway.buildCommand ?? null : null,
+			startCommand: sourceMode === 'git' ? railway.startCommand ?? null : null,
+		};
+		assertApiRailwaySourcePolicy(scope, service);
+		return {
+			key: service.key,
 			instanceKey: serviceName,
 			runnerIndex: null,
 			serviceConfig: null,
@@ -945,20 +971,20 @@ function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deployConfig
 			projectId: typeof railway.projectId === 'string' ? railway.projectId : null,
 			projectName,
 			serviceId: typeof railway.serviceId === 'string' && bootstrapCount === 1 ? railway.serviceId : null,
-			serviceName,
+			serviceName: service.serviceName,
 			runnerId: null,
 			rootDir: treeDxRoot,
 			publicBaseUrl: null,
 			railwayEnvironment,
-			buildCommand: sourceMode === 'git' ? railway.buildCommand ?? null : null,
-			startCommand: sourceMode === 'git' ? railway.startCommand ?? null : null,
-			imageRef: sourceMode === 'image' ? baseImageRef : null,
-			sourceMode,
-			sourceRepo: sourceMode === 'git' ? repository : null,
-			sourceBranch: sourceMode === 'git' ? sourceBranch : null,
-			sourceCommit: sourceMode === 'git' ? headCommitSafe(treeDxRoot) ?? headCommitSafe(tenantRoot) : null,
-			sourceRootDirectory: sourceMode === 'git' ? sourceRootDirectory : null,
-			dockerfilePath: sourceMode === 'git' ? railway.dockerfilePath ?? '/Dockerfile' : null,
+			buildCommand: service.buildCommand,
+			startCommand: service.startCommand,
+			imageRef: service.imageRef,
+			sourceMode: service.sourceMode,
+			sourceRepo: service.sourceRepo,
+			sourceBranch: service.sourceBranch,
+			sourceCommit: service.sourceCommit,
+			sourceRootDirectory: service.sourceRootDirectory,
+			dockerfilePath: service.dockerfilePath,
 			healthcheckPath: railway.healthcheckPath ?? null,
 			healthcheckTimeoutSeconds: railway.healthcheckTimeoutSeconds ?? null,
 			healthcheckIntervalSeconds: railway.healthcheckIntervalSeconds ?? null,
@@ -1045,8 +1071,16 @@ function resolveRailwayServiceSourcePolicy({ tenantRoot, scope, serviceKey, serv
 			: typeof configuredSource.repo === 'string'
 				? configuredSource.repo
 				: null;
-	const packageRepository = configuredRepo ?? readTreeseedPackageRepository(serviceRoot) ?? readTreeseedPackageRepository(tenantRoot);
+	const serviceName = service.railway?.serviceName ?? null;
+	const packageRepository = configuredRepo
+		?? readTreeseedPackageRepository(serviceRoot)
+		?? readTreeseedPackageRepository(tenantRoot)
+		?? apiRailwayDefaultSourceRepo({ key: serviceKey, serviceName });
+	const dockerfilePath = service.railway?.dockerfilePath ?? apiRailwayDefaultDockerfilePath({ key: serviceKey, serviceName });
 	const apiPackageSourceEligible = ['api', 'operationsRunner'].includes(serviceKey);
+	if (scope === 'staging' && isApiRailwaySourcePolicyService({ key: serviceKey, serviceName }) && (configuredMode === 'image' || service.railway?.imageRef)) {
+		throw new Error(`${serviceName ?? serviceKey}: API Railway staging services must use GitHub Dockerfile source builds (configured image source is not allowed).`);
+	}
 	const sourceMode = scope === 'prod'
 		? 'image'
 		: scope === 'staging' && apiPackageSourceEligible
@@ -1057,15 +1091,25 @@ function resolveRailwayServiceSourcePolicy({ tenantRoot, scope, serviceKey, serv
 				? 'image'
 			: 'git';
 	if (sourceMode !== 'git') {
-		return {
+		const policy = {
 			sourceMode: 'image',
 			sourceRepo: null,
 			sourceBranch: null,
 			sourceCommit: null,
 			sourceRootDirectory: null,
 		};
+		assertApiRailwaySourcePolicy(scope, {
+			key: serviceKey,
+			serviceName,
+			imageRef,
+			dockerfilePath: null,
+			buildCommand: null,
+			startCommand: null,
+			...policy,
+		});
+		return policy;
 	}
-	return {
+	const policy = {
 		sourceMode: 'git',
 		sourceRepo: packageRepository,
 		sourceBranch: typeof service.railway?.sourceBranch === 'string'
@@ -1075,13 +1119,25 @@ function resolveRailwayServiceSourcePolicy({ tenantRoot, scope, serviceKey, serv
 				: scope === 'staging'
 					? 'staging'
 					: null,
-		sourceCommit: headCommitSafe(serviceRoot),
+		sourceCommit: typeof service.railway?.sourceCommit === 'string'
+			? service.railway.sourceCommit
+			: typeof configuredSource.commit === 'string'
+				? configuredSource.commit
+				: headCommitSafe(serviceRoot),
 		sourceRootDirectory: typeof service.railway?.sourceRootDirectory === 'string'
 			? service.railway.sourceRootDirectory
 			: typeof configuredSource.rootDirectory === 'string'
 				? configuredSource.rootDirectory
 				: '.',
 	};
+	assertApiRailwaySourcePolicy(scope, {
+		key: serviceKey,
+		serviceName,
+		imageRef: null,
+		dockerfilePath,
+		...policy,
+	});
+	return policy;
 }
 
 function resolveRailwayCapacityProviderRoot(tenantRoot, service) {

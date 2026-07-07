@@ -48,7 +48,7 @@ function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacPro
 				sourceRootDirectory: git ? '.' : null,
 				imageRef: git ? null : 'treeseed/api:1.2.3',
 				dockerfilePath: git ? '/Dockerfile.api' : null,
-				startCommand: 'node dist/server.js',
+				startCommand: git ? 'node dist/server.js' : null,
 				healthcheckPath: '/healthz',
 				variables: { TREESEED_API_MODE: 'hosted' },
 				secrets: { TREESEED_DATABASE_URL: '${{treeseed-api-postgres.DATABASE_URL}}' },
@@ -59,10 +59,11 @@ function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacPro
 				sourceMode: git ? 'git' : 'image',
 				sourceRepo: git ? 'treeseed-ai/api' : null,
 				sourceBranch: git ? 'staging' : null,
+				sourceCommit: git ? 'abc123' : null,
 				sourceRootDirectory: git ? '.' : null,
 				imageRef: git ? null : 'treeseed/api-operations-runner:1.2.3',
 				dockerfilePath: git ? '/Dockerfile.operations-runner' : null,
-				startCommand: 'node dist/operations-runner.js',
+				startCommand: git ? 'node dist/operations-runner.js' : null,
 				volumeMountPath: '/data',
 				variables: { TREESEED_MANAGER_ID: 'staging' },
 				secrets: { TREESEED_DATABASE_URL: '${{treeseed-api-postgres.DATABASE_URL}}' },
@@ -73,10 +74,11 @@ function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacPro
 				sourceMode: git ? 'git' : 'image',
 				sourceRepo: git ? 'treeseed-ai/treedx' : null,
 				sourceBranch: git ? 'staging' : null,
+				sourceCommit: git ? 'abc123' : null,
 				sourceRootDirectory: git ? '.' : null,
 				imageRef: git ? null : 'treeseed/treedx:1.2.3',
 				dockerfilePath: git ? '/Dockerfile' : null,
-				startCommand: '/app/bin/server',
+				startCommand: git ? '/app/bin/server' : null,
 				volumeMountPath: '/data',
 				variables: { TREEDX_DATA_DIR: '/data', PORT: '4000' },
 				secrets: { TREEDX_SECRET_KEY_BASE: 'secret' },
@@ -140,6 +142,36 @@ describe('Railway IaC project rendering', () => {
 		} finally {
 			cleanupRailwayIacRender(rendered);
 		}
+	});
+
+	it('rejects image-backed API-owned staging services before rendering', () => {
+		const input = baseInput('staging');
+		input.services[0] = {
+			...input.services[0]!,
+			sourceMode: 'image',
+			sourceRepo: null,
+			sourceBranch: null,
+			sourceCommit: null,
+			sourceRootDirectory: null,
+			imageRef: 'treeseed/api:1.2.3',
+			dockerfilePath: null,
+		};
+		expect(() => renderRailwayIacProject(input)).toThrow(/API Railway staging services must use GitHub Dockerfile source builds/u);
+	});
+
+	it('rejects Git-backed API-owned production services before rendering', () => {
+		const input = baseInput('prod');
+		input.services[0] = {
+			...input.services[0]!,
+			sourceMode: 'git',
+			sourceRepo: 'treeseed-ai/api',
+			sourceBranch: 'staging',
+			sourceCommit: 'abc123',
+			sourceRootDirectory: '.',
+			imageRef: null,
+			dockerfilePath: '/Dockerfile.api',
+		};
+		expect(() => renderRailwayIacProject(input)).toThrow(/API Railway production services must use released Docker image sources/u);
 	});
 
 	it('mounts runner, TreeDX, and Postgres canonical volumes at their required paths', () => {
@@ -302,7 +334,7 @@ describe('Railway IaC plan validation', () => {
 		expect(result.blockedReasons).toEqual([]);
 	});
 
-	it('uses desired service source modes when validating ambiguous Railway source summaries', () => {
+	it('rejects ambiguous staging API source updates even when desired source mode is Git', () => {
 		const result = validateRailwayIacChangeSet({
 			version: 1,
 			diagnostics: [],
@@ -323,6 +355,34 @@ describe('Railway IaC plan validation', () => {
 			database: null,
 			scope: 'staging',
 			serviceSourceModes: { 'treeseed-api': 'git' },
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.blockedReasons.join('\n')).toContain('without confirming a GitHub source');
+	});
+
+	it('allows staging API source repair when Railway confirms the target is GitHub', () => {
+		const result = validateRailwayIacChangeSet({
+			version: 1,
+			diagnostics: [],
+			changes: [{
+				kind: 'resource.update',
+				path: 'service.treeseed-api.source',
+				address: 'service.treeseed-api',
+				field: 'source',
+				before: { kind: 'docker-image', image: 'treeseed/api:0.6.99' },
+				after: { kind: 'github', repository: 'treeseed-ai/api', branch: 'staging' },
+				summary: 'Update service source from docker image treeseed/api:0.6.99 to github repo treeseed-ai/api branch staging',
+				severity: 'safe',
+				deployEffect: 'deploy',
+			}],
+		} as any, {
+			services: ['treeseed-api'],
+			volumes: [],
+			database: null,
+			scope: 'staging',
+			serviceSourceModes: { 'treeseed-api': 'git' },
+			serviceSourceRefs: { 'treeseed-api': 'github:treeseed-ai/api:staging:.:abc123' },
 		});
 
 		expect(result.ok).toBe(true);

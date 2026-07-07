@@ -260,6 +260,7 @@ describe('live hosted service checks', () => {
 				TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop',
 				TREESEED_API_IMAGE_REF: 'treeseed/api:0.6.14',
 				TREESEED_OPERATIONS_RUNNER_IMAGE_REF: 'treeseed/op-runner:0.6.14',
+				TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.6.14',
 			},
 			fetchImpl,
 		});

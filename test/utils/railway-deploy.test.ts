@@ -562,6 +562,7 @@ services:
 		const services = configuredRailwayServices(tenantRoot, 'prod', {
 			TREESEED_API_IMAGE_REF: 'treeseed/api:0.6.13',
 			TREESEED_OPERATIONS_RUNNER_IMAGE_REF: 'treeseed/op-runner:0.6.13',
+			TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.6.13',
 		});
 		const api = services.find((service) => service.key === 'api');
 		const runner = services.find((service) => service.key === 'operationsRunner');
@@ -656,6 +657,8 @@ services:
 
 	it('uses explicit production image refs for public TreeDX nodes', async () => {
 		const tenantRoot = await createTenantFixture();
+		vi.stubEnv('TREESEED_API_IMAGE_REF', 'treeseed/api:0.2.11');
+		vi.stubEnv('TREESEED_OPERATIONS_RUNNER_IMAGE_REF', 'treeseed/op-runner:0.2.11');
 		vi.stubEnv('TREESEED_PUBLIC_TREEDX_IMAGE_REF', 'treeseed/treedx:0.2.11');
 		await writeFile(
 			join(tenantRoot, 'treeseed.site.yaml'),
@@ -725,7 +728,7 @@ services:
 `,
 		);
 
-		expect(() => validateRailwayServiceConfiguration(tenantRoot, 'staging')).toThrow(/api: staging source builds require railway\.source\.repository/u);
+		expect(() => validateRailwayServiceConfiguration(tenantRoot, 'staging')).toThrow(/API Railway staging services must use GitHub Dockerfile source builds/u);
 	});
 
 	it('does not require an agent checkout for image-backed capacity provider services', async () => {

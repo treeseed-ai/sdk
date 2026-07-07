@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { runRailwayIac, type RailwayChangeSet, type RailwayIacApplyResponse, type RailwayIacPlanResponse } from 'railway/iac';
+import { assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from '../../operations/services/railway-source-policy.ts';
 
 export type TreeseedRailwayIacService = {
 	key: string;
@@ -33,6 +34,7 @@ export type TreeseedRailwayIacDatabase = {
 
 export type TreeseedRailwayIacProjectInput = {
 	tenantRoot: string;
+	scope?: string | null;
 	projectName: string;
 	projectId: string;
 	environmentName: string;
@@ -170,7 +172,18 @@ function renderPostgresEnv() {
 	]);
 }
 
+function normalizeIacScope(input: Pick<TreeseedRailwayIacProjectInput, 'scope' | 'environmentName'>) {
+	if (input.scope === 'prod' || input.scope === 'staging') return input.scope;
+	const environmentName = String(input.environmentName ?? '').trim().toLowerCase();
+	return environmentName === 'production' || environmentName === 'prod'
+		? 'prod'
+		: environmentName === 'staging'
+			? 'staging'
+			: 'local';
+}
+
 export function renderRailwayIacProject(input: TreeseedRailwayIacProjectInput): TreeseedRailwayIacRenderResult {
+	const scope = normalizeIacScope(input);
 	const region = input.region?.trim() || 'us-east4-eqdc4a';
 	const tempParent = resolve(input.tenantRoot, '.treeseed', 'tmp');
 	mkdirSync(tempParent, { recursive: true });
@@ -218,6 +231,7 @@ export function renderRailwayIacProject(input: TreeseedRailwayIacProjectInput): 
 		}
 	}
 	input.services.forEach((service, index) => {
+		assertApiRailwaySourcePolicy(scope, service);
 		const serviceVar = id('svc', index);
 		const invalidVariables = validateGeneratedVariables(service);
 		if (invalidVariables.length > 0) {
@@ -310,6 +324,7 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 	database: string | null;
 	scope: string;
 	serviceSourceModes?: Record<string, string | null | undefined>;
+	serviceSourceRefs?: Record<string, string | null | undefined>;
 }): RailwayIacValidationResult {
 	const blockedReasons: string[] = [];
 	const destructiveChanges: string[] = [];
@@ -319,9 +334,19 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 		.map((change) => changeName(change)));
 	for (const change of changeSet?.changes ?? []) {
 		const name = changeName(change);
+		const serviceName = name.replace(/^(service|database)\./u, '');
 		const sourceMode = desiredNames.serviceSourceModes?.[name]
-			?? desiredNames.serviceSourceModes?.[name.replace(/^(service|database)\./u, '')]
+			?? desiredNames.serviceSourceModes?.[serviceName]
 			?? null;
+		const sourceRef = desiredNames.serviceSourceRefs?.[name]
+			?? desiredNames.serviceSourceRefs?.[serviceName]
+			?? null;
+		const sourceChanged = change.kind === 'resource.update' && isRailwaySourceChange(change);
+		const imageSourceChange = sourceChanged && isRailwayImageSourceChange(change);
+		const gitSourceChange = sourceChanged && isRailwayGitSourceChange(change);
+		const desiredGitSource = sourceMode === 'git' && typeof sourceRef === 'string' && sourceRef.startsWith('github:');
+		const desiredImageSource = sourceMode === 'image' && typeof sourceRef === 'string' && sourceRef.startsWith('image:');
+		const apiPolicyService = isApiRailwaySourcePolicyService({ serviceName });
 		if (change.kind === 'resource.delete') {
 			destructiveChanges.push(change.summary);
 			blockedReasons.push(`Railway IaC plan would delete resource ${name || change.summary}; hosting reconciliation only updates or creates resources. Use the explicit destroy workflow for deletions.`);
@@ -329,11 +354,23 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 				blockedReasons.push(`Railway IaC plan would delete desired resource ${name}.`);
 			}
 		}
-		if (desiredNames.scope === 'staging' && change.kind === 'resource.update' && isRailwayImageSourceChange(change) && (!sourceMode || sourceMode === 'image')) {
+		if (desiredNames.scope === 'staging' && sourceChanged && apiPolicyService && sourceMode === 'git' && !gitSourceChange && !desiredGitSource) {
+			blockedReasons.push(`Railway IaC plan would change staging API resource ${name} source without confirming a GitHub source.`);
+		}
+		if (desiredNames.scope === 'staging' && sourceChanged && imageSourceChange && !(apiPolicyService && sourceMode === 'git' && (gitSourceChange || desiredGitSource))) {
 			blockedReasons.push(`Railway IaC plan would switch staging resource ${name} to an image source.`);
 		}
-		if (desiredNames.scope === 'prod' && change.kind === 'resource.update' && isRailwayGitSourceChange(change) && (!sourceMode || sourceMode === 'git')) {
+		if (desiredNames.scope === 'staging' && sourceChanged && (!sourceMode || sourceMode === 'image')) {
+			blockedReasons.push(`Railway IaC plan would apply an image-backed desired source to staging resource ${name}.`);
+		}
+		if (desiredNames.scope === 'prod' && sourceChanged && apiPolicyService && sourceMode === 'image' && !imageSourceChange && !desiredImageSource) {
+			blockedReasons.push(`Railway IaC plan would change production API resource ${name} source without confirming an image source.`);
+		}
+		if (desiredNames.scope === 'prod' && sourceChanged && gitSourceChange) {
 			blockedReasons.push(`Railway IaC plan would switch production resource ${name} to a Git source.`);
+		}
+		if (desiredNames.scope === 'prod' && sourceChanged && (!sourceMode || sourceMode === 'git')) {
+			blockedReasons.push(`Railway IaC plan would apply a Git-backed desired source to production resource ${name}.`);
 		}
 	}
 	return {

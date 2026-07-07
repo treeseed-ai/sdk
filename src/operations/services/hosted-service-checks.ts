@@ -1,6 +1,7 @@
 import { relative, resolve } from 'node:path';
 import { collectTreeseedEnvironmentContext, resolveTreeseedMachineEnvironmentValues } from './config-runtime.ts';
 import { configuredRailwayServices } from './railway-deploy.ts';
+import { isApiRailwaySourcePolicyService, isImmutableRailwayImageRef } from './railway-source-policy.ts';
 import { loadTreeseedPlatformConfig } from '../../platform/config.ts';
 import { discoverTreeseedApplications } from '../../hosting/apps.ts';
 
@@ -343,6 +344,21 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 		const serviceType = serviceTypeFor(service.key);
 		const observed = observedFor(options, service.serviceName);
 		const expectedRootDirectory = railwayServiceRootDirectory(tenantRoot, service);
+		const apiSourcePolicyService = isApiRailwaySourcePolicyService(service);
+		if (target === 'prod' && apiSourcePolicyService && railwayServiceUsesImageSource(service)) {
+			checks.push(check({
+				id: `railway:${service.instanceKey}:image-ref-policy`,
+				provider: 'railway',
+				serviceKey: service.key,
+				serviceType,
+				target,
+				description: `Railway ${service.serviceName} uses an immutable production image reference.`,
+				expected: { imageRef: '<released-image>:<immutable-tag>' },
+				observed: { imageRef: service.imageRef ?? null },
+				status: isImmutableRailwayImageRef(service.imageRef) ? 'passed' : 'failed',
+				issues: isImmutableRailwayImageRef(service.imageRef) ? [] : [`Production API Railway service ${service.serviceName} is missing an immutable image ref.`],
+			}));
+		}
 		checks.push(check({
 			id: `railway:${service.instanceKey}:service`,
 			provider: 'railway',
@@ -388,6 +404,7 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 			const actualBranch = observed?.deploymentBranch ?? null;
 			const actualRootDirectory = observed?.deploymentRootDirectory ?? null;
 			const sourceUploadDeployment = target === 'staging'
+				&& !apiSourcePolicyService
 				&& actualRepo === null
 				&& actualBranch === null
 				&& observed?.deploymentHealthy === true;

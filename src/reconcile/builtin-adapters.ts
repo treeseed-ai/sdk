@@ -4532,6 +4532,14 @@ async function syncRailwayEnvironmentForScope(
 				database: rendered.databaseName,
 				scope,
 				serviceSourceModes: Object.fromEntries(effectiveIacInput.services.map((service) => [service.serviceName, service.sourceMode ?? null])),
+				serviceSourceRefs: Object.fromEntries(effectiveIacInput.services.map((service) => [
+					service.serviceName,
+					service.sourceMode === 'git' && service.sourceRepo
+						? `github:${service.sourceRepo}:${service.sourceBranch ?? ''}:${service.sourceRootDirectory ?? ''}:${service.sourceCommit ?? ''}`
+						: service.sourceMode === 'image' && service.imageRef
+							? `image:${service.imageRef}`
+							: null,
+				])),
 			});
 			if (
 				!validation.ok
@@ -4560,6 +4568,14 @@ async function syncRailwayEnvironmentForScope(
 					database: rendered.databaseName,
 					scope,
 					serviceSourceModes: Object.fromEntries(effectiveIacInput.services.map((service) => [service.serviceName, service.sourceMode ?? null])),
+					serviceSourceRefs: Object.fromEntries(effectiveIacInput.services.map((service) => [
+						service.serviceName,
+						service.sourceMode === 'git' && service.sourceRepo
+							? `github:${service.sourceRepo}:${service.sourceBranch ?? ''}:${service.sourceRootDirectory ?? ''}:${service.sourceCommit ?? ''}`
+							: service.sourceMode === 'image' && service.imageRef
+								? `image:${service.imageRef}`
+								: null,
+					])),
 				});
 			}
 			if (!validation.ok) {

@@ -6,6 +6,7 @@ import { parse as parseYaml } from 'yaml';
 import { createPersistentDeployTarget } from '../operations/services/deploy.ts';
 import { collectTreeseedConfigSeedValues, resolveTreeseedMachineEnvironmentValues } from '../operations/services/config-runtime.ts';
 import { classifyTreeseedGitMode, runTreeseedGitText } from '../operations/services/git-runner.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from '../operations/services/railway-source-policy.ts';
 import { createTreeseedCanonicalReconcileReport, type TreeseedCanonicalAction, type TreeseedCanonicalDrift, type TreeseedCanonicalGraphNode, type TreeseedCanonicalPostcondition } from '../reconcile/index.ts';
 import { reconcileTreeseedTarget } from '../reconcile/index.ts';
 import type { TreeseedRunnableBootstrapSystem } from '../reconcile/bootstrap-systems.ts';
@@ -96,6 +97,9 @@ function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Reco
 		? railway.source
 		: {};
 	const configuredMode = typeof railway.sourceMode === 'string' ? railway.sourceMode : null;
+	if (input.environment === 'staging' && configuredMode === 'image') {
+		throw new Error('public-treedx-node-01: API Railway staging services must use GitHub Dockerfile source builds (configured sourceMode image is not allowed).');
+	}
 	const treeDxRoot = resolvePublicTreeDxRoot(input);
 	const repository = typeof railway.sourceRepo === 'string'
 		? railway.sourceRepo
@@ -113,7 +117,7 @@ function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Reco
 		const imageRef = typeof launchEnv.TREESEED_PUBLIC_TREEDX_IMAGE_REF === 'string' && launchEnv.TREESEED_PUBLIC_TREEDX_IMAGE_REF.trim()
 			? launchEnv.TREESEED_PUBLIC_TREEDX_IMAGE_REF.trim()
 			: null;
-		return {
+		const policy = {
 			sourceMode: 'image',
 			sourceRepo: null,
 			sourceBranch: null,
@@ -123,8 +127,10 @@ function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Reco
 			imageRef,
 			imageTagRef: 'TREESEED_PUBLIC_TREEDX_IMAGE_REF',
 		};
+		assertApiRailwaySourcePolicy(input.environment, { key: 'public-treedx-node-01', serviceName: 'public-treedx-node-01', ...policy });
+		return policy;
 	}
-	return {
+	const policy = {
 		sourceMode: 'git',
 		sourceRepo: repository,
 		sourceBranch: typeof railway.sourceBranch === 'string'
@@ -145,6 +151,13 @@ function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Reco
 		image: null,
 		imageTagRef: null,
 	};
+	assertApiRailwaySourcePolicy(input.environment, {
+		key: 'public-treedx-node-01',
+		serviceName: 'public-treedx-node-01',
+		dockerfilePath: railway.dockerfilePath ?? '/Dockerfile',
+		...policy,
+	});
+	return policy;
 }
 
 function serviceKeyPlacement(serviceKey: string): TreeseedServicePlacement {
@@ -230,14 +243,21 @@ function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey: strin
 		? service.railway.source
 		: {};
 	const configuredMode = typeof service.railway?.sourceMode === 'string' ? service.railway.sourceMode : null;
+	const serviceName = service.railway?.serviceName ?? null;
 	const repository = typeof service.railway?.sourceRepo === 'string'
 		? service.railway.sourceRepo
 		: typeof configuredSource.repository === 'string'
 			? configuredSource.repository
 			: typeof configuredSource.repo === 'string'
 				? configuredSource.repo
-				: readPackageRepository(resolveRailwayServiceSourceRoot(input, serviceKey, service)) ?? readPackageRepository(input.tenantRoot);
+				: readPackageRepository(resolveRailwayServiceSourceRoot(input, serviceKey, service))
+					?? readPackageRepository(input.tenantRoot)
+					?? apiRailwayDefaultSourceRepo({ key: serviceKey, serviceName });
+	const dockerfilePath = service.railway?.dockerfilePath ?? apiRailwayDefaultDockerfilePath({ key: serviceKey, serviceName });
 	const apiPackageSourceEligible = ['api', 'operationsRunner'].includes(serviceKey);
+	if (input.environment === 'staging' && isApiRailwaySourcePolicyService({ key: serviceKey, serviceName }) && (configuredMode === 'image' || service.railway?.imageRef)) {
+		throw new Error(`${serviceName ?? serviceKey}: API Railway staging services must use GitHub Dockerfile source builds (configured image source is not allowed).`);
+	}
 	const mode = input.environment === 'prod'
 		? 'image'
 		: input.environment === 'staging' && apiPackageSourceEligible
@@ -248,7 +268,7 @@ function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey: strin
 				? 'image'
 			: 'git';
 	if (mode !== 'git') {
-		return {
+		const policy = {
 			sourceMode: 'image',
 			sourceRepo: null,
 			sourceBranch: null,
@@ -256,8 +276,17 @@ function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey: strin
 			sourceRootDirectory: null,
 			imageRef,
 		};
+		assertApiRailwaySourcePolicy(input.environment, {
+			key: serviceKey,
+			serviceName,
+			dockerfilePath: null,
+			buildCommand: null,
+			startCommand: null,
+			...policy,
+		});
+		return policy;
 	}
-	return {
+	const policy = {
 		sourceMode: 'git',
 		sourceRepo: repository,
 		sourceBranch: typeof service.railway?.sourceBranch === 'string'
@@ -275,6 +304,13 @@ function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey: strin
 				: '.',
 		imageRef: null,
 	};
+	assertApiRailwaySourcePolicy(input.environment, {
+			key: serviceKey,
+			serviceName,
+			dockerfilePath,
+		...policy,
+	});
+	return policy;
 }
 
 function collectPluginHostingContributions(input: TreeseedHostingGraphInput) {
@@ -485,7 +521,7 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 				sourceCommit: sourcePolicy.sourceCommit,
 				sourceRootDirectory: sourcePolicy.sourceRootDirectory,
 				dockerfilePath: sourcePolicy.sourceMode === 'git'
-					? service.railway?.dockerfilePath ?? null
+					? service.railway?.dockerfilePath ?? apiRailwayDefaultDockerfilePath({ key: serviceKey, serviceName: service.railway?.serviceName ?? null })
 					: null,
 				buildCommand: sourcePolicy.imageRef || (sourcePolicy.sourceMode === 'git' && service.railway?.dockerfilePath)
 					? null
