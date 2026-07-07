@@ -817,6 +817,9 @@ async function runReleaseWebLiveVerification(
 	helpers: TreeseedWorkflowHelpers,
 	operation: TreeseedWorkflowRunCommand,
 ) {
+	if (process.env.TREESEED_WORKFLOW_RELEASE_GATES_MODE === 'skip') {
+		return { status: 'skipped' as const, environment, reason: 'release gates disabled' };
+	}
 	const env = {
 		...helpers.context.env,
 		...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
@@ -902,6 +905,9 @@ async function runReleaseApiGuarantees(
 	operation: Extract<TreeseedWorkflowOperationId, 'save' | 'release'>,
 	sceneArtifacts?: 'full' | 'screenshots',
 ) {
+	if (process.env.TREESEED_WORKFLOW_RELEASE_GATES_MODE === 'skip') {
+		return { ok: true, status: 'skipped' as const, environment, reason: 'release gates disabled' };
+	}
 	const env = {
 		...helpers.context.env,
 		...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
@@ -954,6 +960,9 @@ async function runReleaseProductionGuarantees(
 	sceneArtifacts?: 'full' | 'screenshots',
 ) {
 	const environment = 'prod';
+	if (process.env.TREESEED_WORKFLOW_RELEASE_GATES_MODE === 'skip') {
+		return { ok: true, status: 'skipped' as const, environment, reason: 'release gates disabled' };
+	}
 	const env = {
 		...helpers.context.env,
 		...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
@@ -3679,6 +3688,9 @@ async function collectPublishedReleaseArtifactChecks(selectedVersions: Map<strin
 }
 
 async function verifyPublishedReleaseArtifacts(selectedVersions: Map<string, string>): Promise<{ checks: PublishedArtifactCheck[] }> {
+	if (process.env.TREESEED_WORKFLOW_RELEASE_GATES_MODE === 'skip') {
+		return { checks: [] };
+	}
 	let checks = await collectPublishedReleaseArtifactChecks(selectedVersions);
 	const deadline = Date.now() + 5 * 60 * 1000;
 	while (checks.some((check) => !check.ok) && Date.now() < deadline) {
@@ -5663,10 +5675,12 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 					: (saveLane === 'promotion'
 						? (skipJournalStep(root, workflowRun.runId, 'release-proof', { skippedReason: 'disabled' }), { skipped: true, reason: 'disabled' })
 						: null);
-				const releaseCandidate = branch === STAGING_BRANCH && releaseCandidateMode !== 'skip'
-					? await executeJournalStep(root, workflowRun.runId, 'release-candidate', () => {
-						helpers.write(`[save][workflow] Running staging release-candidate proof checks (${releaseCandidateMode}).`);
-						const releaseSession = resolveTreeseedWorkflowSession(root);
+					const releaseCandidate = branch === STAGING_BRANCH
+						&& releaseCandidateMode !== 'skip'
+						&& process.env.TREESEED_RELEASE_CANDIDATE_REHEARSAL_MODE !== 'skip'
+						? await executeJournalStep(root, workflowRun.runId, 'release-candidate', () => {
+							helpers.write(`[save][workflow] Running staging release-candidate proof checks (${releaseCandidateMode}).`);
+							const releaseSession = resolveTreeseedWorkflowSession(root);
 						const stagingReleasePlan = buildReleasePlanSnapshot({
 							root,
 							mode,
@@ -5681,8 +5695,14 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 							lane: saveLane,
 							write: (line, stream) => helpers.write(line, stream),
 						});
-					})
-					: null;
+						})
+						: (branch === STAGING_BRANCH && releaseCandidateMode !== 'skip'
+							? (skipJournalStep(root, workflowRun.runId, 'release-candidate', { mode: releaseCandidateMode, status: 'skipped' }), {
+								mode: releaseCandidateMode,
+								status: 'skipped' as const,
+								reason: 'release candidate rehearsal disabled',
+							})
+							: null);
 
 				let previewAction: Record<string, unknown> = { status: 'skipped' };
 				if (beforeState.branchRole === 'feature' && branch) {
@@ -6815,21 +6835,13 @@ function appendReleaseImageRefGitHubVariableBindings(units: TreeseedDesiredUnit[
 export async function workflowRelease(helpers: WorkflowOperationHelpers, input: TreeseedReleaseInput) {
 	try {
 		return await withContextEnv(helpers.context.env, async () => {
-			const traceReleaseStartup = (phase: string) => {
-				console.error(`[release][startup] ${phase}`);
-			};
-			traceReleaseStartup('resolve workspace');
 			const root = workspaceRoot(resolveProjectRootOrThrow('release', helpers.cwd()));
-			traceReleaseStartup('resolve session');
 			const session = resolveTreeseedWorkflowSession(root);
 			const executionMode = normalizeExecutionMode(input);
-			traceReleaseStartup('inspect root repo');
 			const rootRepo = createWorkspaceRootRepoReport(root);
-			traceReleaseStartup('inspect package repos');
 			const packageReports = createWorkspacePackageReports(root);
 			const releaseHelperRepos = checkedOutReleaseHelperRepos(root);
 			const explicitResumeRunId = helpers.context.workflow?.resumeRunId ?? null;
-			traceReleaseStartup('check auto resume');
 			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId && input.fresh !== true
 				? findAutoResumableReleaseRun(root, session.branchName, rootRepo, packageReports, { archiveStale: false })
 				: null;
@@ -6841,13 +6853,11 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					...(autoResumeRun.input as unknown as TreeseedReleaseInput),
 					ciMode: input.ciMode ?? (autoResumeRun.input as unknown as TreeseedReleaseInput).ciMode,
 				}
-				: input;
-			traceReleaseStartup('local cleanup');
+					: input;
 			const localCleanup = maybeRunLocalWorkflowCleanup(helpers, root, 'release', effectiveInput);
 			const level = effectiveInput.bump ?? 'patch';
 			const ciMode = normalizeCiMode(effectiveInput.ciMode, 'release');
 			const packageSelection = session.packageSelection;
-			traceReleaseStartup('build release plan');
 			const plannedRelease = buildReleasePlanSnapshot({
 				root,
 				mode: session.mode,
@@ -6860,7 +6870,6 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				blockers: [],
 			});
 			const selectedPackageNames = releasePlanPackageSelection(plannedRelease.packageSelection).selected;
-			traceReleaseStartup('collect blockers');
 			const blockers = collectReleasePlanBlockers(session, session.mode, selectedPackageNames, {
 				level,
 				repairVersionLine: effectiveInput.repairVersionLine === true,
@@ -6869,7 +6878,6 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 			const selectedVersions = releasePlanVersionMap(plannedRelease.plannedVersions);
 			const releaseImageVersions = productionReleaseImageRefVersions(root, selectedVersions);
 			const releaseImageRefs = productionReleaseImageRefEnv(releaseImageVersions);
-			traceReleaseStartup('collect production readiness');
 			const plannedReadiness = collectTreeseedDeploymentReadiness({
 				tenantRoot: root,
 				environment: 'prod',
@@ -6918,17 +6926,14 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					releaseBasePayload,
 				);
 			}
-			traceReleaseStartup('validate blockers');
 			if (blockers.length > 0) {
 				workflowError('release', 'validation_failed', `Treeseed release cannot continue until blockers are resolved:\n${blockers.join('\n')}`, {
 					details: { blockers, releasePlan: plannedRelease },
 				});
 			}
-			traceReleaseStartup('prepare fresh release');
 			const freshPreparation = input.fresh === true
 				? prepareFreshReleaseRun(root, session.branchName, rootRepo, packageReports)
 				: { archived: [], blockers: [] };
-			traceReleaseStartup('compute versions');
 			const stableVersions = new Map([
 				...releasePlanStableDependencyVersionMap(plannedRelease).entries(),
 				...selectedVersions.entries(),
@@ -6938,7 +6943,6 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				...stableVersions.entries(),
 			]);
 			const selectedPackageSet = new Set(selectedPackageNames);
-			traceReleaseStartup('acquire workflow run');
 			const workflowRun = acquireWorkflowRun(
 				'release',
 				session,

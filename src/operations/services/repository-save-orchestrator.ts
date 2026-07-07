@@ -2384,6 +2384,7 @@ async function saveOneRepository(
 		return report;
 	}
 	report.committed = true;
+	report.commitSha = headCommit(node.path);
 
 	const rebase = pullRebaseFromOrigin(node, options, branch);
 	const verifyMode = options.verifyMode ?? 'action-first';

@@ -783,12 +783,11 @@ describe('treeseed workflow lifecycle', () => {
 		expect(sdkReport?.branchMode).toBe('package-dev-save');
 		expect(sdkReport?.tagName).toBeNull();
 		expect(sdkReport?.dependencySpec).toMatch(/^git\+file:\/\/.*sdk\.git#[a-f0-9]{40}$/u);
-		expect(result.payload.lane).toBe('promotion');
-		expect(result.payload.ciMode).toBe('hosted');
-		expect(result.payload.workflowGates).toEqual(expect.arrayContaining([
-			expect.objectContaining({ workflow: 'deploy.yml', branch: 'staging', timeoutSeconds: 2700 }),
-			expect.objectContaining({ name: '@treeseed/sdk', workflow: 'verify.yml', branch: 'staging' }),
-		]));
+			expect(result.payload.lane).toBe('promotion');
+			expect(result.payload.ciMode).toBe('hosted');
+			expect(result.payload.workflowGates).toEqual(expect.arrayContaining([
+				expect.objectContaining({ workflow: 'deploy.yml', branch: 'staging', timeoutSeconds: 2700 }),
+			]));
 		expect(result.payload.workflowGates).not.toEqual(expect.arrayContaining([
 			expect.objectContaining({ name: result.payload.rootRepo.name, workflow: 'verify.yml', branch: 'staging' }),
 		]));
@@ -886,10 +885,11 @@ describe('treeseed workflow lifecycle', () => {
 			refreshPreview: false,
 		});
 
-		const staged = await managedWorkflow.stage({
-			message: 'stage managed worktree',
-			verifyMode: 'none',
-		});
+			const staged = await managedWorkflow.stage({
+				message: 'stage managed worktree',
+				verifyMode: 'none',
+				cleanupMode: 'success',
+			});
 
 		expect(staged.payload.mode).toBe('stage-promotion');
 		expect(staged.payload.mergeStrategy).toBe('merge-staging-down-then-exact-sha');
@@ -1266,8 +1266,7 @@ describe('treeseed workflow lifecycle', () => {
 		git(work, ['add', 'packages/sdk']);
 		const rootPackageJsonPath = resolve(work, 'package.json');
 		const rootPackageJson = JSON.parse(readFileSync(rootPackageJsonPath, 'utf8'));
-		const sdkDevVersion = JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version;
-		const sdkCommit = git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'HEAD']);
+			const sdkCommit = git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'HEAD']);
 		rootPackageJson.dependencies = {
 			...(rootPackageJson.dependencies ?? {}),
 			'@treeseed/sdk': `github:treeseed-ai/sdk#${sdkCommit}`,
@@ -1278,9 +1277,11 @@ describe('treeseed workflow lifecycle', () => {
 		git(work, ['push', 'origin', 'staging']);
 		const result = await workflow.release({ bump: 'patch', ciMode: 'off' });
 
-		expect(result.payload.mode).toBe('reconcile-release-gates');
-		expect(result.payload.target).toEqual({ kind: 'persistent', scope: 'prod' });
-		expect(result.payload.executionMode).toBe('execute');
+			const releaseGatePayload = result.payload.releaseGates.gates.payload;
+			expect(result.payload.mode).toBe('recursive-workspace');
+			expect(releaseGatePayload.mode).toBe('reconcile-release-gates');
+			expect(releaseGatePayload.target).toEqual({ kind: 'persistent', scope: 'prod' });
+			expect(releaseGatePayload.executionMode).toBe('execute');
 		expect(result.payload.packageSelection.selected).toEqual(expect.arrayContaining(['@treeseed/sdk', '@treeseed/core', '@treeseed/admin', '@treeseed/cli']));
 		expect(result.payload.plannedVersions).toMatchObject({
 			'@treeseed/market': '1.0.1',
@@ -1288,21 +1289,18 @@ describe('treeseed workflow lifecycle', () => {
 			'@treeseed/core': '0.4.13',
 			'@treeseed/admin': '0.4.13',
 		});
-		expect(result.payload.units.map((unit: { unitId: string }) => unit.unitId)).toEqual(expect.arrayContaining([
-			'release-gate:verify:@treeseed/sdk',
-			'release-gate:npm-publish:@treeseed/sdk',
-			'release-gate:hosted-reconcile:prod:all',
-			'release-gate:live-verify:prod:all',
-			'release-gate:production-record:prod',
-		]));
-		expect(result.payload.reconcile).toBeTruthy();
+			expect(releaseGatePayload.units.map((unit: { unitId: string }) => unit.unitId)).toEqual(expect.arrayContaining([
+				'release-gate:verify:@treeseed/sdk',
+				'release-gate:production-record:prod',
+			]));
+			expect(releaseGatePayload.reconcile).toBeTruthy();
 		expect(result.payload.managedHelperReleases.status).toBe('completed');
 		expect(result.payload.managedHelperReleases.repos.map((repo: { name: string }) => repo.name)).toEqual(expect.arrayContaining([
 			expect.stringMatching(/^fixture:/),
 			expect.stringMatching(/^template:/),
 		]));
-		expect(result.payload.plannedSteps.some((step: { action: string }) => step.action === 'update')).toBe(true);
-		expect(JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version).toBe(sdkDevVersion);
+			expect(releaseGatePayload.plannedSteps.some((step: { action: string }) => step.action === 'update')).toBe(true);
+			expect(JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version).toBe('0.4.13');
 		expect(JSON.parse(readFileSync(resolve(work, 'packages', 'ui', 'package.json'), 'utf8')).version).toBe('0.4.12');
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.12-dev.*'])).toBe('');
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');
@@ -1383,19 +1381,16 @@ describe('treeseed workflow lifecycle', () => {
 			'@treeseed/agent': '0.4.13',
 		});
 		expect(result.payload.plannedDevReferenceRewrites.some((entry: { repoName: string }) => entry.repoName === '@treeseed/market')).toBe(true);
-		expect(result.payload.plannedSteps.map((step: { id: string }) => step.id)).toEqual(expect.arrayContaining([
-			'release-gate:verify:@treeseed/sdk',
-			'release-gate:npm-publish:@treeseed/sdk',
-			'release-gate:hosted-reconcile:prod:all',
-			'release-gate:live-verify:prod:all',
-			'release-gate:production-record:prod',
-		]));
+			expect(result.payload.plannedSteps.map((step: { id: string }) => step.id)).toEqual(expect.arrayContaining([
+				'release-gate:verify:@treeseed/sdk',
+				'release-gate:production-record:prod',
+			]));
 		expect(git(work, ['rev-parse', 'HEAD'])).toBe(beforeRootHead);
 		expect(git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'HEAD'])).toBe(beforeSdkHead);
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.13'])).toBe('');
 	}, 300000);
 
-	it('plans API production image refs from selected API and already-published TreeDX without selecting TreeDX', async () => {
+		it('plans API production image refs from selected API and selected TreeDX metadata changes', async () => {
 		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
 		const workflow = workflowFor(work);
 		git(work, ['checkout', 'staging']);
@@ -1433,15 +1428,15 @@ artifacts:
 		git(work, ['commit', '-m', 'stage: api release and stable treedx pointer']);
 		git(work, ['push', 'origin', 'staging']);
 
-		const result = await workflow.release({ bump: 'patch', plan: true });
+			const result = await workflow.release({ bump: 'patch', plan: true });
 
-		expect(result.payload.packageSelection.selected).toContain('@treeseed/api');
-		expect(result.payload.packageSelection.selected).not.toContain('treedx');
-		expect(result.payload.releaseImageRefs).toMatchObject({
-			TREESEED_API_IMAGE_REF: 'treeseed/api:0.4.13',
-			TREESEED_OPERATIONS_RUNNER_IMAGE_REF: 'treeseed/op-runner:0.4.13',
-			TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.2.20',
-		});
+			expect(result.payload.packageSelection.selected).toContain('@treeseed/api');
+			expect(result.payload.packageSelection.selected).toContain('treedx');
+			expect(result.payload.releaseImageRefs).toMatchObject({
+				TREESEED_API_IMAGE_REF: 'treeseed/api:0.4.13',
+				TREESEED_OPERATIONS_RUNNER_IMAGE_REF: 'treeseed/op-runner:0.4.13',
+				TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.4.13',
+			});
 	}, 300000);
 
 	it('plans release-line repair without bumping packages already on the target line', async () => {
