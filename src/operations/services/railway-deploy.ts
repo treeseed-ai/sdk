@@ -1913,6 +1913,9 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 				...(configuredEnvValue(env, 'TREESEED_CREDENTIAL_SESSION_SECRET') ? {
 					TREESEED_CREDENTIAL_SESSION_SECRET: configuredEnvValue(env, 'TREESEED_CREDENTIAL_SESSION_SECRET'),
 				} : {}),
+				...(configuredEnvValue(env, 'TREESEED_WEB_SERVICE_SECRET') ? {
+					TREESEED_WEB_SERVICE_SECRET: configuredEnvValue(env, 'TREESEED_WEB_SERVICE_SECRET'),
+				} : {}),
 			} : {}),
 			...(service.sourceMode === 'git' ? {
 				TREESEED_DEPLOY_SOURCE_MODE: 'git',
