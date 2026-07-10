@@ -60,6 +60,13 @@ export type TreeseedPackageAdapter = {
 		role?: string | null;
 		architectures?: string[];
 	}>;
+	capabilities: {
+		save: boolean;
+		verify: boolean;
+		publish: boolean;
+		deploy: boolean;
+		localOnly: boolean;
+	};
 	releaseChecks: Array<{
 		kind: 'npm-pack-plan' | 'github-workflow' | 'docker-manifest';
 		name: string;
@@ -99,6 +106,7 @@ type TreeseedPackageManifest = {
 	requiredVariables?: unknown;
 	workflowTemplateVersion?: unknown;
 	projectArchitecture?: unknown;
+	capabilities?: unknown;
 };
 
 export type TreeseedPackageDevelopmentImagePlan = {
@@ -324,7 +332,10 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 			? 'verify'
 			: typeof scripts['verify:action'] === 'string'
 				? 'verify:action'
-				: null;
+					: null;
+	const capabilityRecord = stringRecord(manifest?.capabilities);
+	const localOnly = capabilityRecord.localOnly === true;
+	const packageType = stringValue(manifest?.type);
 	return {
 		id,
 		name,
@@ -353,7 +364,14 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 				role: artifact.role,
 				architectures: artifact.architectures,
 			}))
-			: [{ provider: 'npm', name: String(pkg.name) }],
+				: [{ provider: 'npm', name: String(pkg.name) }],
+		capabilities: {
+			save: capabilityRecord.save !== false,
+			verify: capabilityRecord.verify !== false,
+			publish: capabilityRecord.publish !== false,
+			deploy: !localOnly && (capabilityRecord.deploy === true || packageType === 'hosted-service' || packageType === 'hosted-app'),
+			localOnly,
+		},
 		releaseChecks: [
 			{ kind: 'github-workflow', name: 'publish workflow', detail: dockerImageReleaseWorkflow ? `.github/workflows/${dockerImageReleaseWorkflow}` : '.github/workflows/publish.yml' },
 			...(dockerArtifacts.length > 0
@@ -371,7 +389,7 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 					imageHosting: stringRecord(dockerImages.hosting),
 				}
 				: {}),
-			type: stringValue(manifest?.type) ?? null,
+				type: packageType ?? null,
 			githubEnvironments: stringArray(manifest?.githubEnvironments),
 			requiredSecrets: stringArray(manifest?.requiredSecrets),
 			requiredVariables: stringArray(manifest?.requiredVariables),
@@ -491,6 +509,8 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 		?? (existsSync(resolve(dir, '.github/workflows/release-gate.yml')) ? 'release-gate.yml' : null);
 	const projectArchitecture = normalizeTreeseedPackageProjectArchitecture(manifest?.projectArchitecture, id);
 	const docsReadiness = docsSiteReadiness(dir, projectArchitecture);
+	const capabilityRecord = stringRecord(manifest?.capabilities);
+	const localOnly = capabilityRecord.localOnly === true;
 	const verify = manifest?.verify && typeof manifest.verify === 'object' && !Array.isArray(manifest.verify)
 		? manifest.verify as Record<string, unknown>
 		: {};
@@ -538,7 +558,14 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 				target: null,
 				role: id,
 				architectures: dockerImageArchitectures,
-			}] : [],
+				}] : [],
+		capabilities: {
+			save: capabilityRecord.save !== false,
+			verify: capabilityRecord.verify !== false,
+			publish: capabilityRecord.publish !== false,
+			deploy: !localOnly && capabilityRecord.deploy !== false,
+			localOnly,
+		},
 		releaseChecks: dockerArtifacts.length > 0
 			? dockerArtifacts.map((artifact) => ({ kind: 'docker-manifest' as const, name: `${artifact.name} Docker image manifest`, detail: `${artifact.name}:${version ?? '<version>'}` }))
 			: image
@@ -778,7 +805,8 @@ export function packageAdapterPlanSummary(root = workspaceRoot()) {
 			key,
 			command ? `${command.command} ${command.args.join(' ')}` : null,
 		])),
-		artifacts: adapter.artifacts,
+			artifacts: adapter.artifacts,
+			capabilities: adapter.capabilities,
 		releaseChecks: adapter.releaseChecks,
 		metadata: adapter.metadata,
 	}));
@@ -889,7 +917,7 @@ export function validateTreeseedPackageManifests(root = workspaceRoot()): Treese
 		if (!adapter.metadata.projectArchitecture) {
 			warnings.push('package does not declare projectArchitecture metadata');
 		}
-		if (adapter.releaseChecks.length === 0) {
+			if (adapter.releaseChecks.length === 0) {
 			warnings.push('package declares no release checks');
 		}
 		const hasDockerArtifact = adapter.artifacts.some((artifact) => artifact.provider === 'docker');
@@ -897,6 +925,9 @@ export function validateTreeseedPackageManifests(root = workspaceRoot()): Treese
 			const deploymentSource = stringRecord(adapter.metadata.deploymentSource);
 			if (stringValue(deploymentSource.staging) !== 'git') {
 				errors.push('docker package must declare deploymentSource.staging: git');
+			}
+			if (adapter.capabilities.localOnly && adapter.capabilities.deploy) {
+				errors.push('local-only package cannot declare hosted deployment capability');
 			}
 			if (stringValue(deploymentSource.prod) !== 'image') {
 				errors.push('docker package must declare deploymentSource.prod: image');

@@ -542,6 +542,26 @@ export function checkoutTaskBranchFromStaging(
 	};
 }
 
+export function checkoutNewTaskBranchWithChanges(cwd: string, branchName: string, { pushIfCreated = false } = {}) {
+	const repoDir = repoRoot(cwd);
+	if (currentBranch(repoDir) !== STAGING_BRANCH) {
+		throw new Error(`Dirty change adoption requires ${repoDir} to be on ${STAGING_BRANCH}.`);
+	}
+	if (branchExists(repoDir, branchName) || remoteBranchExists(repoDir, branchName)) {
+		throw new Error(`Dirty change adoption requires a new branch; ${branchName} already exists.`);
+	}
+	runGit(['checkout', '-b', branchName], { cwd: repoDir });
+	if (pushIfCreated) pushBranch(repoDir, branchName, { setUpstream: true });
+	return {
+		repoDir,
+		branchName,
+		baseBranch: STAGING_BRANCH,
+		created: true,
+		resumed: false,
+		remoteBranch: pushIfCreated,
+	};
+}
+
 export function syncBranchWithOrigin(repoDir, branchName) {
 	fetchOrigin(repoDir);
 	if (!branchExists(repoDir, branchName) && remoteBranchExists(repoDir, branchName)) {
@@ -797,11 +817,31 @@ export function waitForStagingAutomation(repoDir) {
 		if (!gh) {
 			throw new Error('GitHub CLI `gh` is unavailable.');
 		}
-		run(gh, ['run', 'watch', '--branch', STAGING_BRANCH, '--exit-status'], {
+		const headSha = remoteHeadCommit(repoDir, STAGING_BRANCH);
+		let runId: number | null = null;
+		for (let attempt = 0; attempt < 120 && runId == null; attempt += 1) {
+			const output = run(gh, [
+				'run', 'list',
+				'--workflow', 'staging-candidate.yml',
+				'--branch', STAGING_BRANCH,
+				'--commit', headSha,
+				'--limit', '1',
+				'--json', 'databaseId',
+			], {
+				cwd: repoDir,
+				env: createTreeseedManagedToolEnv(process.env),
+				capture: true,
+			});
+			const rows = JSON.parse(output || '[]') as Array<{ databaseId?: number }>;
+			runId = typeof rows[0]?.databaseId === 'number' ? rows[0].databaseId : null;
+			if (runId == null) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5_000);
+		}
+		if (runId == null) throw new Error(`No staging-candidate.yml run appeared for ${headSha}.`);
+		run(gh, ['run', 'watch', String(runId), '--exit-status'], {
 			cwd: repoDir,
 			env: createTreeseedManagedToolEnv(process.env),
 		});
-		return { status: 'completed', branch: STAGING_BRANCH };
+		return { status: 'completed', branch: STAGING_BRANCH, headSha, runId };
 	} catch (error) {
 		throw new Error([
 			'Treeseed stage could not confirm the staging deploy/checks completed.',

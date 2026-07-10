@@ -8,6 +8,7 @@ const sdkRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const workspaceRoot = resolve(sdkRoot, '..', '..');
 const rootVerifyWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'verify.yml');
 const rootDeployWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'deploy.yml');
+const rootStagingCandidateWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'staging-candidate.yml');
 const rootDeployWebWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'deploy-web.yml');
 const rootPrepareWorkspaceInstallPath = resolve(workspaceRoot, '.github', 'scripts', 'prepare-workspace-install.ts');
 const packageVerifyWorkflowPath = resolve(sdkRoot, '.github', 'workflows', 'verify.yml');
@@ -55,11 +56,15 @@ describe('root workflow bootstrap selection', () => {
 		expect(existsSync(rootDeployWebWorkflowPath), `${rootDeployWebWorkflowPath} must exist`).toBe(true);
 		expect(existsSync(rootVerifyWorkflowPath), `${rootVerifyWorkflowPath} must exist`).toBe(true);
 		const source = readFileSync(rootDeployWorkflowPath, 'utf8');
+		const candidateSource = readFileSync(rootStagingCandidateWorkflowPath, 'utf8');
 		const webSource = readFileSync(rootDeployWebWorkflowPath, 'utf8');
 		const verifySource = readFileSync(rootVerifyWorkflowPath, 'utf8');
 		const prepareInstallSource = readFileSync(rootPrepareWorkspaceInstallPath, 'utf8');
 
-		expect(source).toContain("branches:\n      - staging");
+		expect(source).not.toContain("branches:\n      - staging");
+		expect(candidateSource).toContain("branches:\n      - staging");
+		expect(candidateSource).toContain('Run complete staging guarantees');
+		expect(candidateSource).toContain('counts.passed !== 208');
 		expect(source).not.toContain('      - main');
 		expect(source).toContain("tags:\n      - '*.*.*'");
 		expect(source).toContain('release_tag=$');
@@ -163,7 +168,7 @@ describe('admin package workflow integration', () => {
 		]);
 		expect(existsSync(adminManifestPath), `${adminManifestPath} must exist`).toBe(true);
 		expect(existsSync(adminPackagePath), `${adminPackagePath} must exist`).toBe(true);
-		expect(readFileSync(adminManifestPath, 'utf8')).toContain('workflow: deploy.yml');
+		expect(readFileSync(adminManifestPath, 'utf8')).toContain('workflow: verify.yml');
 		expect(workspaceBootstrapSource).toContain("{ name: '@treeseed/admin', dir: 'packages/admin', build: true }");
 		expect(operationsSource).toContain("{ name: '@treeseed/admin', dir: 'packages/admin', artifacts: ['dist/plugin.js'] }");
 		expect(operationsSource).toContain("packageName === '@treeseed/core' || packageName === '@treeseed/ui' || packageName === '@treeseed/admin'");
@@ -201,12 +206,12 @@ describe('package publish safeguards', () => {
 			expect(workflowSource).not.toContain('- "v*"');
 			expect(workflowSource).toContain("!contains(github.ref_name, '-')");
 			expect(workflowSource).toContain('contents: write');
-			expect(workflowSource).toMatch(/(?:npm ci|dependency install) failed; retrying/);
+			expect(workflowSource).not.toMatch(/(?:npm ci|dependency install) failed; retrying/);
 			expect(workflowSource).toContain('Create GitHub release');
 			expect(workflowSource).toContain('gh release create "${GITHUB_REF_NAME}"');
 			expect(workflowSource).toContain('--generate-notes');
 			expect(workflowSource).toContain('--verify-tag');
-			expect(verifyWorkflowSource).toContain('dependency install failed; retrying');
+			expect(verifyWorkflowSource).not.toContain('dependency install failed; retrying');
 			expect(verifyWorkflowSource).not.toContain('TREESEED_GITHUB_AUTOMATION_MODE');
 			expect(checkTagSource).toContain('^\\d+\\.\\d+\\.\\d+$');
 			expect(publishSource).toContain('Refusing to publish');

@@ -112,9 +112,49 @@ const WORKTREE_METADATA_PATH = '.treeseed/worktree.json';
 const LOCK_STALE_AFTER_MS = 4 * 60 * 60 * 1000;
 const WORKFLOW_RUN_STORAGE_ROOTS = new Map<string, string>();
 const SHARED_LOCK_COMMANDS = new Set<TreeseedWorkflowRunCommand>(['stage', 'release']);
+const ACTIVE_WORKFLOW_RUNS = new Map<string, string>();
+let SIGNAL_HANDLERS_INSTALLED = false;
 
 function nowIso() {
 	return new Date().toISOString();
+}
+
+export function markActiveWorkflowRunsInterrupted(signal: NodeJS.Signals | string) {
+	const interrupted: string[] = [];
+	for (const [runId, root] of ACTIVE_WORKFLOW_RUNS) {
+		const journal = readWorkflowRunJournal(root, runId);
+		if (journal?.status === 'running') {
+			updateWorkflowRunJournal(root, runId, (current) => ({
+				...current,
+				status: 'failed',
+				failure: {
+					code: 'interrupted',
+					message: `Treeseed workflow was interrupted by ${signal}.`,
+					details: {
+						resumable: true,
+						recoverCommand: 'treeseed recover',
+						resumeCommand: `treeseed resume ${runId}`,
+					},
+					at: nowIso(),
+				},
+			}));
+		}
+		releaseWorkflowLock(root, runId);
+		interrupted.push(runId);
+	}
+	ACTIVE_WORKFLOW_RUNS.clear();
+	return interrupted;
+}
+
+function installWorkflowSignalHandlers() {
+	if (SIGNAL_HANDLERS_INSTALLED) return;
+	SIGNAL_HANDLERS_INSTALLED = true;
+	for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+		process.once(signal, () => {
+			markActiveWorkflowRunsInterrupted(signal);
+			process.kill(process.pid, signal);
+		});
+	}
 }
 
 function managedWorktreePrimaryRoot(root: string) {
@@ -296,6 +336,21 @@ export function acquireWorkflowLock(root: string, command: TreeseedWorkflowRunCo
 		} as const;
 	}
 	if (inspection.stale) {
+		if (inspection.lock?.runId) {
+			const staleJournal = readWorkflowRunJournal(root, inspection.lock.runId);
+			if (staleJournal?.status === 'running') {
+				updateWorkflowRunJournal(root, inspection.lock.runId, (journal) => ({
+					...journal,
+					status: 'failed',
+					failure: {
+						code: 'interrupted',
+						message: `Workflow lock became stale because ${inspection.staleReason ?? 'the owning process ended'}.`,
+						details: { resumable: true, resumeCommand: `treeseed resume ${inspection.lock!.runId}` },
+						at: nowIso(),
+					},
+				}));
+			}
+		}
 		rmSync(dirs.lockPath, { force: true });
 	}
 	const timestamp = nowIso();
@@ -314,6 +369,8 @@ export function acquireWorkflowLock(root: string, command: TreeseedWorkflowRunCo
 		staleReason: null,
 	};
 	writeFileSync(dirs.lockPath, `${JSON.stringify(lock, null, 2)}\n`, 'utf8');
+	ACTIVE_WORKFLOW_RUNS.set(runId, root);
+	installWorkflowSignalHandlers();
 	return {
 		acquired: true,
 		lock,
@@ -338,6 +395,7 @@ export function refreshWorkflowLock(root: string, runId: string) {
 }
 
 export function releaseWorkflowLock(root: string, runId: string) {
+	ACTIVE_WORKFLOW_RUNS.delete(runId);
 	const path = workflowLockPath(root, runId);
 	const lock = safeJsonParse<TreeseedWorkflowLockRecord>(path);
 	if (!lock || lock.runId !== runId) {

@@ -176,6 +176,11 @@ export {
 	type TreeseedGitWorkspaceLockDiagnostics,
 } from './operations/services/git-runner.ts';
 export {
+	buildTreeseedPackageArtifact,
+	verifyTreeseedPackageArtifact,
+	type TreeseedPackageArtifactManifest,
+} from './operations/services/package-artifacts.ts';
+export {
 	discoverTreeseedPackageAdapters,
 	findTreeseedPackageAdapter,
 	packageAdapterPlanSummary,

@@ -176,6 +176,7 @@ export type TreeseedUpdateInput = {
 	push?: boolean;
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';
+	adoptChanges?: boolean;
 	plan?: boolean;
 };
 
@@ -221,6 +222,7 @@ export type TreeseedStageInput = {
 	deleteBranch?: boolean;
 	autoSave?: boolean;
 	ciMode?: TreeseedStageCiMode | TreeseedWorkflowCiMode;
+	async?: boolean;
 	releaseCandidate?: TreeseedReleaseCandidateMode;
 	worktreeMode?: TreeseedWorkflowWorktreeMode;
 	workspaceLinks?: 'auto' | 'off';

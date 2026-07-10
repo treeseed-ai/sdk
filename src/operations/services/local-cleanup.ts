@@ -81,15 +81,11 @@ export function runTreeseedLocalCleanup(input: {
 			'.treeseed/scenes/runs',
 			'.treeseed/scenes/matrix',
 			'.treeseed/scenes/render',
-			'.treeseed/guarantees/runs',
-			'.treeseed/guarantees/release',
-			'.treeseed/generated/release-evidence',
-			'.treeseed/release/evidence',
 		]
 		: ['.treeseed/tmp', '.treeseed/cache', '.treeseed/scenes/render'];
 	for (const target of directoryTargets) actions.push(removeDirectory(root, target));
-	if (input.docker !== false && mode === 'aggressive') actions.push(runCleanupCommand('docker-system-prune', 'docker', ['docker', 'system', 'prune', '--all', '--volumes', '--force'], root));
-	if (input.npmCache !== false) actions.push(runCleanupCommand('npm-cache-clean', 'npm-cache', ['npm', 'cache', 'clean', '--force'], root));
+	if (input.docker === true && mode === 'aggressive') actions.push(runCleanupCommand('docker-system-prune', 'docker', ['docker', 'system', 'prune', '--all', '--volumes', '--force'], root));
+	if (input.npmCache === true) actions.push(runCleanupCommand('npm-cache-clean', 'npm-cache', ['npm', 'cache', 'clean', '--force'], root));
 	const afterBytes = directoryBytes(join(root, '.treeseed'));
 	const completedAt = new Date().toISOString();
 	return { ok: actions.every((entry) => entry.status !== 'failed'), mode, root, startedAt, completedAt, beforeBytes, afterBytes, reclaimedBytes: Math.max(0, beforeBytes - afterBytes), actions };

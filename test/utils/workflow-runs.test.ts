@@ -10,6 +10,7 @@ import {
 	createWorkflowRunJournal,
 	getCachedSuccessfulWorkflowGate,
 	inspectWorkflowLock,
+	markActiveWorkflowRunsInterrupted,
 	readWorkflowRunJournal,
 } from '../../src/workflow/runs.ts';
 
@@ -498,5 +499,24 @@ describe('workflow run journals', () => {
 		});
 		expect(cached?.runId).toBe(123);
 		expect(cached?.result.url).toContain('/123');
+	});
+
+	it('records an interrupted active workflow as resumable before releasing its lock', () => {
+		const root = makeRoot();
+		createWorkflowRunJournal(root, {
+			runId: 'save-interrupted',
+			command: 'save',
+			input: {},
+			session: { root, mode: 'root-only', branchName: 'feature/test', repos: [] },
+			steps: [],
+		});
+		acquireWorkflowLock(root, 'save', 'save-interrupted');
+
+		expect(markActiveWorkflowRunsInterrupted('SIGTERM')).toContain('save-interrupted');
+		expect(readWorkflowRunJournal(root, 'save-interrupted')).toMatchObject({
+			status: 'failed',
+			failure: { code: 'interrupted' },
+		});
+		expect(inspectWorkflowLock(root).active).toBe(false);
 	});
 });

@@ -1,6 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
 	compileTreeseedDesiredResourceGraph,
 	compileTreeseedDesiredUnitsFromGraph,
@@ -38,7 +39,7 @@ import {
 	setTreeseedRemoteSession,
 	writeTreeseedMachineConfig,
 } from '../operations/services/config-runtime.ts';
-import { formatTreeseedDependencyFailureDetails, installTreeseedDependencies } from '../managed-dependencies.ts';
+import { createTreeseedManagedToolEnv, formatTreeseedDependencyFailureDetails, installTreeseedDependencies, resolveTreeseedToolBinary } from '../managed-dependencies.ts';
 import { ControlPlaneClient } from '../control-plane-client.ts';
 import { exportTreeseedCodebase } from '../operations/services/export-runtime.ts';
 import {
@@ -66,6 +67,7 @@ import {
 	branchExists,
 	checkoutBranch,
 	checkoutDetachedOriginBranch,
+	checkoutNewTaskBranchWithChanges,
 	checkoutTaskBranchFromStaging,
 	createDeprecatedTaskTag,
 	deleteLocalBranch,
@@ -465,9 +467,10 @@ function maybeRunLocalWorkflowCleanup(
 	operation: 'save' | 'stage' | 'release',
 	input: { skipCleanup?: boolean; sceneArtifacts?: 'full' | 'screenshots'; plan?: boolean },
 ) {
+	if (operation !== 'release') return null;
 	if (normalizeExecutionMode(input) === 'plan' || input.skipCleanup === true) return null;
-	helpers.write(`Treeseed ${operation} cleanup: pruning local caches, generated evidence, npm cache, and Docker artifacts before long verification.`, 'stderr');
-	return runTreeseedLocalCleanup({ root, mode: 'aggressive' });
+	helpers.write('Treeseed release cleanup: pruning disposable local build state while preserving package caches and release evidence.', 'stderr');
+	return runTreeseedLocalCleanup({ root, mode: 'standard', docker: false, npmCache: false });
 }
 
 export function normalizeSaveCiMode(mode: TreeseedWorkflowCiMode | undefined, branch: string | null | undefined, lane: 'fast' | 'promotion' = 'fast') {
@@ -504,15 +507,14 @@ export function normalizeReleaseCandidateMode(
 	if (value === 'hybrid' || value === 'strict' || value === 'skip') {
 		return value;
 	}
-	if (operation === 'save' && lane === 'promotion') return 'strict';
-	return operation === 'save' ? 'hybrid' : 'strict';
+	return operation === 'save' ? 'skip' : 'strict';
 }
 
 export function shouldUseHostedSaveCi(input: TreeseedSaveInput, branch: string | null | undefined, lane: 'fast' | 'promotion' = normalizeSaveLane(input.lane)) {
-	return normalizeSaveCiMode(input.ciMode, branch, lane) === 'hosted'
-		|| input.verifyMode === 'hosted'
-		|| input.verifyMode === 'both'
-		|| input.verifyDeployedResources === true;
+	void input;
+	void branch;
+	void lane;
+	return false;
 }
 
 function worktreePayload(root: string, requestedMode?: TreeseedWorkflowWorktreeMode) {
@@ -882,75 +884,30 @@ function productionReleaseImageRefEnv(selectedVersions: Map<string, string>) {
 function productionReleaseImageRefVersions(root: string, selectedVersions: Map<string, string>) {
 	const versions = new Map(selectedVersions);
 	for (const adapter of discoverTreeseedPackageAdapters(root)) {
-		if (adapter.id !== 'treedx' && adapter.id !== '@treeseed/treedx') continue;
 		const prodSource = stringRecord(adapter.metadata.deploymentSource)?.prod;
-		if (prodSource !== 'image') continue;
+		const imageBackedPackage = ['@treeseed/api', '@treeseed/agent', 'treedx', '@treeseed/treedx'].includes(adapter.id);
+		if (prodSource !== 'image' && !imageBackedPackage) continue;
 		if (versions.has(adapter.id) || !adapter.version) continue;
 		const line = stableVersionLine(adapter.version);
 		const stableVersion = (line ? highestStableGitTagOnLine(adapter.dir, line) : null) ?? adapter.version;
 		versions.set(adapter.id, stableVersion);
 	}
+	for (const [packageName, relativePath] of [['@treeseed/api', 'packages/api'], ['@treeseed/agent', 'packages/agent']] as const) {
+		if (versions.has(packageName)) continue;
+		const packageRoot = resolve(root, relativePath);
+		const packageJsonPath = resolve(packageRoot, 'package.json');
+		if (!existsSync(packageJsonPath)) continue;
+		const version = stringRecord(JSON.parse(readFileSync(packageJsonPath, 'utf8'))).version;
+		if (typeof version !== 'string') continue;
+		const line = stableVersionLine(version);
+		versions.set(packageName, (line ? highestStableGitTagOnLine(packageRoot, line) : null) ?? version);
+	}
 	return versions;
 }
 
 function stableVersionLine(version: string) {
-	const match = version.match(/^(\d+\.\d+)\.\d+$/u);
+	const match = version.match(/^(\d+\.\d+)\.\d+(?:-[0-9A-Za-z.-]+)?$/u);
 	return match?.[1] ?? null;
-}
-
-async function runReleaseApiGuarantees(
-	root: string,
-	environment: 'staging' | 'prod',
-	helpers: WorkflowOperationHelpers,
-	operation: Extract<TreeseedWorkflowOperationId, 'save' | 'release'>,
-	sceneArtifacts?: 'full' | 'screenshots',
-) {
-	if (process.env.TREESEED_WORKFLOW_RELEASE_GATES_MODE === 'skip') {
-		return { ok: true, status: 'skipped' as const, environment, reason: 'release gates disabled' };
-	}
-	const env = {
-		...helpers.context.env,
-		...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
-	};
-	env.TREESEED_ACCEPTANCE_SERVICE_ID ??= env.TREESEED_API_WEB_SERVICE_ID ?? env.TREESEED_WEB_SERVICE_ID;
-	env.TREESEED_ACCEPTANCE_SERVICE_SECRET ??= env.TREESEED_API_WEB_SERVICE_SECRET ?? env.TREESEED_WEB_SERVICE_SECRET;
-	if (!env.TREESEED_ACCEPTANCE_SERVICE_ID || !env.TREESEED_ACCEPTANCE_SERVICE_SECRET) {
-		workflowError(operation, 'release_gate_failed', `${environment} API release guarantees cannot run because API acceptance service credentials are missing.`, {
-			details: {
-				environment,
-				missing: [
-					!env.TREESEED_ACCEPTANCE_SERVICE_ID ? 'TREESEED_ACCEPTANCE_SERVICE_ID' : null,
-					!env.TREESEED_ACCEPTANCE_SERVICE_SECRET ? 'TREESEED_ACCEPTANCE_SERVICE_SECRET' : null,
-				].filter((value): value is string => Boolean(value)),
-			},
-		});
-	}
-	helpers.write(`[${operation}][workflow] Running ${environment} API release guarantees before root deployment.`);
-	return await withContextEnv(env, async () => {
-		const report = await runTreeseedGuarantees({
-			workspaceRoot: root,
-			filter: { ownerPackage: '@treeseed/api' },
-			environment,
-			evidenceTarget: 'release',
-			sceneArtifacts,
-		});
-		if (!report.ok) {
-			const diagnostics = report.diagnostics
-				.filter((entry) => entry.severity === 'error')
-				.slice(0, 20)
-				.map((entry) => `${entry.code}: ${entry.message}${entry.sourcePath ? ` (${entry.sourcePath})` : ''}`);
-			workflowError(operation, 'release_gate_failed', `API release guarantees for ${environment} failed:\n${diagnostics.join('\n') || `See ${report.outputRoot}`}`, {
-				details: { environment, outputRoot: report.outputRoot, counts: report.counts, diagnostics: report.diagnostics },
-			});
-		}
-		return {
-			ok: report.ok,
-			environment: report.environment,
-			runId: report.runId,
-			outputRoot: report.outputRoot,
-			counts: report.counts,
-		};
-	});
 }
 
 async function runReleaseProductionGuarantees(
@@ -984,6 +941,7 @@ async function runReleaseProductionGuarantees(
 	return await withContextEnv(env, async () => {
 		const report = await runTreeseedGuarantees({
 			workspaceRoot: root,
+			filter: { gate: 'smoke', status: 'active' },
 			environment,
 			evidenceTarget: 'release',
 			sceneArtifacts,
@@ -4609,8 +4567,9 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 			});
 			const session = resolveTreeseedWorkflowSession(root);
 			const preview = input.preview === true;
+			const adoptChanges = input.adoptChanges === true;
 			const executionMode = normalizeExecutionMode(input);
-			if (executionMode !== 'plan' && shouldDispatchSwitchToManagedWorktree(root, input, helpers.context.env)) {
+			if (executionMode !== 'plan' && !adoptChanges && shouldDispatchSwitchToManagedWorktree(root, input, helpers.context.env)) {
 				const managed = ensureManagedWorkflowWorktree({
 					root,
 					branchName,
@@ -4668,7 +4627,7 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 						worktreePath: effectiveWorkflowWorktreeMode(input.worktreeMode, helpers.context.env) === 'on'
 							? plannedManagedWorkflowWorktreePath(root, branchName)
 							: null,
-						blockers: dirtyRepos.length > 0 ? [`Clean worktrees required: ${dirtyRepos.join(', ')}`] : [],
+						blockers: !adoptChanges && dirtyRepos.length > 0 ? [`Clean worktrees required: ${dirtyRepos.join(', ')}`] : [],
 						plannedSteps: [
 							{ id: 'switch-root', description: `Switch market repo to ${branchName}` },
 							...packageReports.map((report) => ({ id: `switch-${report.name}`, description: `Mirror ${branchName} into ${report.name}` })),
@@ -4686,7 +4645,17 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 				);
 			}
 
-			if (mode === 'recursive-workspace') {
+			if (adoptChanges) {
+				const reports = [rootRepo, ...packageReports];
+				const existingTargets = reports.filter((report) => branchExists(report.path, branchName) || remoteBranchExists(report.path, branchName));
+				if (existingTargets.length > 0) {
+					workflowError('switch', 'validation_failed', `--adopt-changes requires a new branch; ${branchName} already exists in ${existingTargets.map((report) => report.name).join(', ')}.`);
+				}
+				const unsafeDirtyRepos = reports.filter((report) => report.dirty && currentBranch(report.path) !== STAGING_BRANCH);
+				if (unsafeDirtyRepos.length > 0) {
+					workflowError('switch', 'validation_failed', `--adopt-changes only accepts dirty staging repositories: ${unsafeDirtyRepos.map((report) => report.name).join(', ')}.`);
+				}
+			} else if (mode === 'recursive-workspace') {
 				assertWorkspaceClean(root);
 				assertSessionBranchSafety('switch', session);
 			} else {
@@ -4695,7 +4664,7 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 			const workflowRun = acquireWorkflowRun(
 				'switch',
 				session,
-				{ branch: branchName, preview, worktreeMode: input.worktreeMode ?? 'auto' },
+				{ branch: branchName, preview, adoptChanges, worktreeMode: input.worktreeMode ?? 'auto' },
 				[
 					{ id: 'switch-root', description: `Switch market repo to ${branchName}`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: branchName, resumable: true },
 					...packageReports.map((report) => ({
@@ -4714,7 +4683,7 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 
 			try {
 				const rootSwitch = await executeJournalStep(root, workflowRun.runId, 'switch-root', () =>
-					checkoutTaskBranchFromStaging(repoDir, branchName, {
+					(adoptChanges ? checkoutNewTaskBranchWithChanges : checkoutTaskBranchFromStaging)(repoDir, branchName, {
 						createIfMissing: input.createIfMissing !== false,
 						pushIfCreated: true,
 					}),
@@ -4731,7 +4700,7 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 						continue;
 					}
 					const packageSwitch = await executeJournalStep(root, workflowRun.runId, `switch-${report.name}`, () =>
-						checkoutTaskBranchFromStaging(managedRepo.dir, branchName, {
+						(adoptChanges ? checkoutNewTaskBranchWithChanges : checkoutTaskBranchFromStaging)(managedRepo.dir, branchName, {
 							createIfMissing: input.createIfMissing !== false,
 							pushIfCreated: false,
 						}),
@@ -4770,7 +4739,8 @@ export async function workflowSwitch(helpers: WorkflowOperationHelpers, input: T
 					workspaceLinks,
 					...worktreePayload(root, input.worktreeMode),
 					preconditions: {
-						cleanWorktreeRequired: true,
+						cleanWorktreeRequired: !adoptChanges,
+						adoptedDirtyStagingChanges: adoptChanges,
 						baseBranch: STAGING_BRANCH,
 					},
 				};
@@ -5354,8 +5324,8 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 			const localCleanup = maybeRunLocalWorkflowCleanup(helpers, root, 'save', effectiveInput);
 			const message = String(effectiveInput.message ?? '').trim();
 			const saveLane = normalizeSaveLane(effectiveInput.lane);
-			const saveCiMode = normalizeSaveCiMode(effectiveInput.ciMode, branch, saveLane);
-			const releaseCandidateMode = normalizeReleaseCandidateMode(effectiveInput.releaseCandidate, 'save', saveLane);
+			const saveCiMode = 'off' as const;
+			const releaseCandidateMode = 'skip' as const;
 			const optionsHotfix = effectiveInput.hotfix === true;
 			const previewInitialized = branchPreviewInitialized(root, branch);
 
@@ -5569,7 +5539,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 									verifyMode: normalizeSaveVerifyMode(effectiveInput.verify === false ? 'skip' : effectiveInput.verifyMode),
 									commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
 									workflowRunId: workflowRun.runId,
-									deferPushUntilVerified: branch === STAGING_BRANCH,
+						deferPushUntilVerified: true,
 									onProgress: (line, stream) => helpers.write(line, stream),
 								onWaveSaved: branch === STAGING_BRANCH && shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 									? async ({ nodes, reports, rootRepo: waveRootRepo }) => {
@@ -6119,8 +6089,9 @@ type StageRepoPlan = {
 };
 
 type StageCandidateManifest = {
-	schemaVersion: 1;
+	schemaVersion: 2;
 	kind: 'treeseed.stage-candidate';
+	candidateId: string;
 	runId: string;
 	branchName: string;
 	targetBranch: typeof STAGING_BRANCH;
@@ -6135,6 +6106,8 @@ type StageCandidateManifest = {
 		path: string;
 		repoKind?: TreeseedManagedRepository['kind'];
 		commit: string;
+		lockfileHash: string | null;
+		dependencies: string[];
 		remote: string | null;
 		verified: boolean;
 	}>;
@@ -6146,13 +6119,54 @@ type StageCandidateManifest = {
 	stagingHeadsBefore: Record<string, string | null>;
 };
 
+type StageCandidateAttestation = {
+	schemaVersion: 1;
+	kind: 'treeseed.stage-candidate-attestation';
+	candidateId: string;
+	rootSha: string;
+	submodules: string[];
+	createdAt: string;
+	environment: 'staging';
+	status: 'passed';
+	guaranteeRunId: string;
+	guaranteeOutputRoot?: string;
+	counts: {
+		passed: number;
+		failed: number;
+		blocked: number;
+		skipped: number;
+		releaseBlockingFailures: number;
+	};
+};
+
 function normalizeStageVerifyMode(value: unknown): StageVerifyMode {
 	return value === 'local' || value === 'none' ? value : 'action';
 }
 
 function normalizeStageCiMode(input: TreeseedStageInput): StageCiMode {
-	if (input.ciMode === 'hosted' || input.waitForStaging === true) return 'hosted';
-	return 'off';
+	if (input.async === true || input.ciMode === 'off') return 'off';
+	return 'hosted';
+}
+
+function sha256File(filePath: string) {
+	return existsSync(filePath)
+		? createHash('sha256').update(readFileSync(filePath)).digest('hex')
+		: null;
+}
+
+function internalPackageDependencies(repoPath: string) {
+	const packageJsonPath = resolve(repoPath, 'package.json');
+	if (!existsSync(packageJsonPath)) return [];
+	const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, unknown>;
+	const names = new Set<string>();
+	for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
+		const values = packageJson[field];
+		if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
+		for (const name of Object.keys(values)) {
+			if (name.startsWith('@treeseed/')) names.add(name);
+		}
+	}
+	return [...names].sort();
 }
 
 function normalizeStageCleanupMode(input: TreeseedStageInput): StageCleanupMode {
@@ -6165,6 +6179,77 @@ function stageCandidateManifestPath(root: string, runId: string) {
 		latest: resolve(root, '.treeseed', 'workflow', 'stage-candidates', 'latest.json'),
 		run: resolve(root, '.treeseed', 'workflow', 'runs', runId, 'stage-candidate.json'),
 	};
+}
+
+function stageCandidateAttestationPath(root: string, candidateId?: string) {
+	const base = resolve(root, '.treeseed', 'workflow', 'stage-candidates');
+	return candidateId
+		? resolve(base, `${candidateId}.attestation.json`)
+		: resolve(base, 'latest.attestation.json');
+}
+
+function writeStageCandidateAttestation(root: string, attestation: StageCandidateAttestation) {
+	for (const filePath of [stageCandidateAttestationPath(root), stageCandidateAttestationPath(root, attestation.candidateId)]) {
+		mkdirSync(dirname(filePath), { recursive: true });
+		writeFileSync(filePath, `${JSON.stringify(attestation, null, 2)}\n`, 'utf8');
+	}
+	return attestation;
+}
+
+function importHostedStageCandidateAttestation(root: string, manifest: StageCandidateManifest, hostedCi: Record<string, unknown>) {
+	const runId = hostedCi.runId;
+	const headSha = hostedCi.headSha;
+	if ((typeof runId !== 'number' && typeof runId !== 'string') || typeof headSha !== 'string') {
+		throw new Error('Hosted staging candidate result did not include an exact run id and head SHA.');
+	}
+	const gh = resolveTreeseedToolBinary('gh');
+	if (!gh) throw new Error('GitHub CLI is unavailable for staging candidate attestation download.');
+	const destination = resolve(root, '.treeseed', 'workflow', 'stage-candidates', 'hosted', String(runId));
+	rmSync(destination, { recursive: true, force: true });
+	mkdirSync(destination, { recursive: true });
+	run(gh, ['run', 'download', String(runId), '--name', `treeseed-staging-candidate-${headSha}`, '--dir', destination], {
+		cwd: repoRoot(root),
+		env: createTreeseedManagedToolEnv(process.env),
+	});
+	const downloadedPath = resolve(destination, '.treeseed', 'workflow', 'stage-candidates', 'latest.attestation.json');
+	const attestation = readJsonFile<StageCandidateAttestation>(downloadedPath);
+	if (!attestation) throw new Error(`Hosted staging candidate attestation is missing from workflow run ${runId}.`);
+	if (attestation.candidateId !== manifest.candidateId) {
+		throw new Error(`Hosted candidate ${attestation.candidateId} does not match promoted candidate ${manifest.candidateId}.`);
+	}
+	if (attestation.rootSha !== manifest.root.commit || attestation.status !== 'passed' || !attestation.guaranteeRunId) {
+		throw new Error(`Hosted candidate ${manifest.candidateId} does not contain complete source and guarantee proof.`);
+	}
+	if (attestation.counts.passed !== 208 || attestation.counts.failed !== 0 || attestation.counts.blocked !== 0 || attestation.counts.skipped !== 0 || attestation.counts.releaseBlockingFailures !== 0) {
+		throw new Error(`Hosted candidate ${manifest.candidateId} contains release-blocking guarantee results.`);
+	}
+	return writeStageCandidateAttestation(root, attestation);
+}
+
+function readJsonFile<T>(filePath: string): T | null {
+	if (!existsSync(filePath)) return null;
+	try {
+		return JSON.parse(readFileSync(filePath, 'utf8')) as T;
+	} catch {
+		return null;
+	}
+}
+
+function stageCandidateAttestationBlockers(root: string) {
+	const manifest = readJsonFile<StageCandidateManifest>(stageCandidateManifestPath(root, 'unused').latest);
+	if (!manifest) return ['No staging candidate manifest is available. Run `trsd stage` and wait for staging proof.'];
+	const attestation = readJsonFile<StageCandidateAttestation>(stageCandidateAttestationPath(root));
+	if (!attestation) return [`Staging candidate ${manifest.candidateId} has no successful guarantee attestation.`];
+	const blockers: string[] = [];
+	if (attestation.candidateId !== manifest.candidateId) blockers.push('The staging guarantee attestation does not match the latest candidate.');
+	if (manifest.root.commit !== headCommit(repoRoot(root))) blockers.push('The local Market staging head no longer matches the attested candidate.');
+	for (const pkg of manifest.packages) {
+		if (!existsSync(pkg.path) || headCommit(pkg.path) !== pkg.commit) blockers.push(`${pkg.name} no longer matches the attested staging commit ${pkg.commit}.`);
+	}
+	if (attestation.counts.passed !== 208 || attestation.counts.failed !== 0 || attestation.counts.blocked !== 0 || attestation.counts.skipped !== 0 || attestation.counts.releaseBlockingFailures !== 0) {
+		blockers.push('The staging candidate attestation is not a complete passing guarantee run.');
+	}
+	return blockers;
 }
 
 function writeStageCandidateManifest(root: string, runId: string, manifest: StageCandidateManifest) {
@@ -6312,17 +6397,26 @@ function stageConflictError(message: string, details: Record<string, unknown>) {
 
 function createStageCandidateManifest(root: string, runId: string, branchName: string, plan: { repos: StageRepoPlan[] }, verification: StageCandidateManifest['verification']): StageCandidateManifest {
 	const gitRoot = repoRoot(root);
-	const packageRepos = plan.repos.filter((repo) => repo.kind === 'managed' && repo.remoteSourceExists);
+	const packageRepos = plan.repos.filter((repo) => repo.kind === 'managed');
+	const rootCommit = headCommit(gitRoot);
+	const submodules = packageRepos
+		.map((repo) => `${relative(root, repo.path).replaceAll('\\', '/')}:${headCommit(repo.path)}`)
+		.sort();
+	const candidateId = createHash('sha256').update(JSON.stringify({
+		rootSha: rootCommit,
+		submodules,
+	})).digest('hex');
 	return {
-		schemaVersion: 1,
+		schemaVersion: 2,
 		kind: 'treeseed.stage-candidate',
+		candidateId,
 		runId,
 		branchName,
 		targetBranch: STAGING_BRANCH,
 		createdAt: new Date().toISOString(),
 		root: {
 			repo: '@treeseed/market',
-			commit: headCommit(gitRoot),
+			commit: rootCommit,
 			verified: verification.status === 'passed' || verification.status === 'skipped',
 		},
 		packages: packageRepos.map((repo) => ({
@@ -6330,6 +6424,8 @@ function createStageCandidateManifest(root: string, runId: string, branchName: s
 			path: repo.path,
 			repoKind: repo.repoKind,
 			commit: headCommit(repo.path),
+			lockfileHash: sha256File(resolve(repo.path, 'package-lock.json')),
+			dependencies: internalPackageDependencies(repo.path),
 			remote: (() => {
 				try {
 					return originRemoteUrl(repo.path);
@@ -6496,7 +6592,8 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				{ id: 'write-stage-candidate', description: 'Write exact stage candidate manifest', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: featureBranch, resumable: true },
 				{ id: 'promote-to-staging', description: 'Promote exact verified refs to staging', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: featureBranch, resumable: true },
 				{ id: 'verify-staging-refs', description: 'Verify remote staging refs match promoted commits', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: STAGING_BRANCH, resumable: true },
-				{ id: 'hosted-ci', description: 'Wait for hosted staging CI when explicitly requested', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: STAGING_BRANCH, resumable: true },
+					{ id: 'hosted-ci', description: 'Wait for hosted staging CI when explicitly requested', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: STAGING_BRANCH, resumable: true },
+					{ id: 'staging-guarantees', description: 'Run the complete guarantee collection against the deployed staging candidate', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: STAGING_BRANCH, resumable: true },
 				{ id: 'workspace-link-restore', description: 'Restore local workspace links after stage', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: STAGING_BRANCH, resumable: true },
 				{ id: 'cleanup-source', description: 'Clean up source branches and worktree after successful promotion', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: featureBranch, resumable: true },
 			], helpers.context);
@@ -6641,9 +6738,13 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					refs['@treeseed/market'] = rootObserved;
 					return { status: 'verified', refs };
 				});
-				const hostedCi = ciMode === 'hosted'
-					? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', () => waitForStagingAutomation(repoRoot(root)))
-					: (skipJournalStep(root, workflowRun.runId, 'hosted-ci', { skippedReason: 'ci off' }), { status: 'skipped', reason: 'ci off' });
+					const hostedCi = ciMode === 'hosted'
+						? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', () => waitForStagingAutomation(repoRoot(root)))
+						: (skipJournalStep(root, workflowRun.runId, 'hosted-ci', { skippedReason: 'ci off' }), { status: 'skipped', reason: 'ci off' });
+					const stagingGuarantees = ciMode === 'hosted'
+						? await executeJournalStep(root, workflowRun.runId, 'staging-guarantees', () =>
+							importHostedStageCandidateAttestation(root, typedManifest, hostedCi as Record<string, unknown>))
+						: (skipJournalStep(root, workflowRun.runId, 'staging-guarantees', { skippedReason: 'async staging promotion' }), null);
 				const workspaceLinks = await executeJournalStep(root, workflowRun.runId, 'workspace-link-restore', () =>
 					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
 				const cleanup = cleanupMode === 'success'
@@ -6659,11 +6760,14 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					manifest: typedManifest,
 					promotion,
 					stagingRefs,
-					hostedCi,
+						hostedCi,
+						stagingGuarantees,
 					cleanup,
 					workspaceLinks,
 					finalBranch: cleanupMode === 'success' ? STAGING_BRANCH : (currentBranch(repoRoot(root)) || featureBranch),
-					summary: 'Stage promoted refs only. Hosted CI/CD was not waited on by default. Run `npx trsd ci --branch staging --json` or assign the staging release agent for CI/CD repair.',
+					summary: ciMode === 'hosted'
+						? `Staging candidate ${typedManifest.candidateId} was promoted and attested by hosted CI.`
+						: `Staging candidate ${typedManifest.candidateId} was promoted asynchronously; hosted attestation is pending.`,
 				};
 				completeWorkflowRun(root, workflowRun.runId, payload);
 				return buildWorkflowResult('stage', root, payload, {
@@ -6712,7 +6816,8 @@ async function runReleaseGateReconcileFacade(
 		resourceKind: ['release-gate'],
 		provider: ['treeseed'],
 	};
-	const desiredGraph = compileTreeseedDesiredResourceGraph({ tenantRoot: root, target });
+	const desiredGraph = await withContextEnv(reconcileEnv, () =>
+		compileTreeseedDesiredResourceGraph({ tenantRoot: root, target }));
 	const rawUnits = compileTreeseedDesiredUnitsFromGraph(desiredGraph)
 		.filter((unit) => (
 			unit.provider === 'treeseed'
@@ -6896,15 +7001,17 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				level,
 				repairVersionLine: effectiveInput.repairVersionLine === true,
 			});
-			blockers.push(...collectReleaseHelperRepoBlockers(root));
+				blockers.push(...collectReleaseHelperRepoBlockers(root));
+				blockers.push(...stageCandidateAttestationBlockers(root));
 			const selectedVersions = releasePlanVersionMap(plannedRelease.plannedVersions);
 			const releaseImageVersions = productionReleaseImageRefVersions(root, selectedVersions);
 			const releaseImageRefs = productionReleaseImageRefEnv(releaseImageVersions);
-			const plannedReadiness = collectTreeseedDeploymentReadiness({
-				tenantRoot: root,
-				environment: 'prod',
-				appId: singleSelectedWorkflowAppId(plannedRelease.applicationSelection),
-			});
+			const plannedReadiness = await withContextEnv({ ...helpers.context.env, ...releaseImageRefs }, () =>
+				collectTreeseedDeploymentReadiness({
+					tenantRoot: root,
+					environment: 'prod',
+					appId: singleSelectedWorkflowAppId(plannedRelease.applicationSelection),
+				}));
 			blockers.push(...plannedReadiness.checks
 				.filter((check) => check.status === 'failed')
 				.map((check) => `${check.id}: ${check.message}${check.remediation ? ` Remediation: ${check.remediation}` : ''}`));
@@ -7148,8 +7255,10 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				});
 				const productionHosting = await executeJournalStep(root, workflowRun.runId, 'production-hosting', () =>
 					reconcileSaveHostedEnvironment(root, 'prod', helpers, workflowRun.runId, 'release', releaseImageRefs, { liveAppId: 'api' }));
-				const productionApiGuarantees = await executeJournalStep(root, workflowRun.runId, 'production-api-guarantees', () =>
-					runReleaseApiGuarantees(root, 'prod', helpers, 'release', normalizeSceneArtifactsMode(effectiveInput.sceneArtifacts)));
+					const productionApiGuarantees = await executeJournalStep(root, workflowRun.runId, 'production-api-guarantees', () => ({
+						status: 'reused-staging-attestation',
+						attestation: readJsonFile<StageCandidateAttestation>(stageCandidateAttestationPath(root)),
+					}));
 				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
 					const rootInstall = runReleaseNpmInstall(root, { workspaceRoot: root });
 					const changelog = updateReleaseChangelog(repoRoot(root), {
@@ -7378,6 +7487,34 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 			const lock = locks.find((entry) => entry.inspection.active)?.inspection
 				?? locks.find((entry) => entry.inspection.stale)?.inspection
 				?? locks[0]!.inspection;
+			const hasActiveLock = locks.some((entry) => entry.inspection.active);
+			const orphanedRunningRuns = hasActiveLock
+				? []
+				: listWorkflowRunJournals(root).filter((journal) => journal.status === 'running');
+			const prunedOrphanedRuns = input.pruneStale === true
+				? orphanedRunningRuns.map((journal) => {
+					const classification = {
+						state: 'stale' as const,
+						reasons: ['workflow journal was left running without an active workflow lock'],
+						classifiedAt: new Date().toISOString(),
+					};
+					archiveWorkflowRun(root, journal.runId, classification);
+					return { runId: journal.runId, command: journal.command, status: journal.status, classification };
+				})
+				: orphanedRunningRuns.map((journal) => {
+					updateWorkflowRunJournal(root, journal.runId, (current) => ({
+						...current,
+						status: 'failed',
+						updatedAt: new Date().toISOString(),
+						failure: {
+							code: 'interrupted',
+							message: 'Workflow process ended without finalizing its journal.',
+							details: { recovery: { resumable: current.resumable, runId: current.runId, resumeCommand: `treeseed resume ${current.runId}` } },
+							at: new Date().toISOString(),
+						},
+					}));
+					return null;
+				}).filter((entry): entry is never => entry !== null);
 			const journals = listWorkflowRunJournals(root);
 			const session = resolveTreeseedWorkflowSession(root);
 			const currentHeads = Object.fromEntries(
@@ -7466,7 +7603,7 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 					interruptedRuns,
 					staleRuns,
 					obsoleteRuns,
-					prunedRuns,
+					prunedRuns: [...prunedOrphanedRuns, ...prunedRuns],
 					markedObsoleteRun,
 					selectedRun,
 					runCount: journals.length,

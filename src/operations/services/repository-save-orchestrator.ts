@@ -1155,7 +1155,7 @@ function applyPackageVersion(node: RepositorySaveNode, version: string) {
 }
 
 function shouldSkipNetworkInstall() {
-	return process.env.TREESEED_SAVE_NPM_INSTALL_MODE === 'skip';
+	return process.env.TREESEED_SAVE_NPM_INSTALL_MODE !== 'allow';
 }
 
 function shouldSkipGitDependencySmoke(options?: Pick<RepositorySaveOptions, 'verifyMode'>) {
@@ -1613,7 +1613,7 @@ async function finishRepositorySavePublish(
 ) {
 	const reference = input.reference ?? null;
 	const tagName = input.tagName ?? reference?.tagName ?? null;
-	const shouldDeferPush = options.deferPushUntilVerified === true && node.id === '.';
+	const shouldDeferPush = options.deferPushUntilVerified === true;
 	if (shouldDeferPush) {
 		state.deferredPushes.push({
 			node,

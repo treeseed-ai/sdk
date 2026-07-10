@@ -51,6 +51,42 @@ function gitAllowFile(cwd: string, args: string[]) {
 	return git(cwd, ['-c', 'protocol.file.allow=always', ...args]);
 }
 
+function writePassingStageAttestation(root: string) {
+	const excludePath = resolve(root, '.git', 'info', 'exclude');
+	const exclude = existsSync(excludePath) ? readFileSync(excludePath, 'utf8') : '';
+	if (!exclude.includes('.treeseed/')) writeFileSync(excludePath, `${exclude}${exclude.endsWith('\n') ? '' : '\n'}.treeseed/\n`);
+	const candidateDir = resolve(root, '.treeseed', 'workflow', 'stage-candidates');
+	mkdirSync(candidateDir, { recursive: true });
+	const manifestPath = resolve(candidateDir, 'latest.json');
+	const manifest = existsSync(manifestPath)
+		? JSON.parse(readFileSync(manifestPath, 'utf8'))
+		: {
+			schemaVersion: 2,
+			kind: 'treeseed.stage-candidate',
+			candidateId: `test-${git(root, ['rev-parse', 'HEAD'])}`,
+			root: { repo: '@treeseed/market', commit: git(root, ['rev-parse', 'HEAD']), verified: true },
+			packages: [],
+		};
+	manifest.root.commit = git(root, ['rev-parse', 'HEAD']);
+	manifest.candidateId = `test-${manifest.root.commit}`;
+	for (const pkg of manifest.packages ?? []) {
+		if (typeof pkg.path === 'string' && existsSync(pkg.path)) pkg.commit = git(pkg.path, ['rev-parse', 'HEAD']);
+	}
+	writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+	writeFileSync(resolve(candidateDir, 'latest.attestation.json'), `${JSON.stringify({
+		schemaVersion: 1,
+		kind: 'treeseed.stage-candidate-attestation',
+		candidateId: manifest.candidateId,
+		rootSha: manifest.root.commit,
+		submodules: [],
+		createdAt: new Date().toISOString(),
+		environment: 'staging',
+		status: 'passed',
+		guaranteeRunId: 'test-208-pass',
+		counts: { passed: 208, failed: 0, blocked: 0, skipped: 0, releaseBlockingFailures: 0 },
+	}, null, 2)}\n`);
+}
+
 function writeTenantFiles(root: string) {
 	mkdirSync(resolve(root, 'src', 'content'), { recursive: true });
 	writeFileSync(resolve(root, 'src', 'manifest.yaml'), 'id: demo\nsiteConfigPath: ./src/config.yaml\ncontent:\n  pages: ./src/content/pages\n', 'utf8');
@@ -531,7 +567,7 @@ describe('treeseed workflow lifecycle', () => {
 
 		expect(lane).toBe('fast');
 		expect(normalizeSaveCiMode(undefined, 'staging', lane)).toBe('off');
-		expect(normalizeReleaseCandidateMode(undefined, 'save', lane)).toBe('hybrid');
+		expect(normalizeReleaseCandidateMode(undefined, 'save', lane)).toBe('skip');
 		expect(shouldUseHostedSaveCi({ plan: true, refreshPreview: false }, 'staging', lane)).toBe(false);
 	});
 
@@ -791,11 +827,9 @@ describe('treeseed workflow lifecycle', () => {
 		expect(sdkReport?.branchMode).toBe('package-dev-save');
 		expect(sdkReport?.tagName).toBeNull();
 		expect(sdkReport?.dependencySpec).toMatch(/^git\+file:\/\/.*sdk\.git#[a-f0-9]{40}$/u);
-			expect(result.payload.lane).toBe('promotion');
-			expect(result.payload.ciMode).toBe('hosted');
-			expect(result.payload.workflowGates).toEqual(expect.arrayContaining([
-				expect.objectContaining({ workflow: 'deploy.yml', branch: 'staging', timeoutSeconds: 2700 }),
-			]));
+		expect(result.payload.lane).toBe('promotion');
+		expect(result.payload.ciMode).toBe('off');
+		expect(result.payload.workflowGates).toEqual([]);
 		expect(result.payload.workflowGates).not.toEqual(expect.arrayContaining([
 			expect.objectContaining({ name: result.payload.rootRepo.name, workflow: 'verify.yml', branch: 'staging' }),
 		]));
@@ -818,6 +852,28 @@ describe('treeseed workflow lifecycle', () => {
 		expect(git(work, ['ls-remote', '--heads', 'origin', 'feature/parallel-task'])).toContain('feature/parallel-task');
 		expect(git(resolve(work, 'packages', 'sdk'), ['ls-remote', '--heads', 'origin', 'feature/parallel-task'])).toBe('');
 		expect(git(resolve(work, 'packages', 'core'), ['ls-remote', '--heads', 'origin', 'feature/parallel-task'])).toBe('');
+	}, 180000);
+
+	it('adopts dirty staging work into a new recovery branch without rewriting files', async () => {
+		const { work } = createWorkflowRepo({ withWorkspacePackages: true });
+		git(work, ['checkout', 'staging']);
+		for (const dirName of ['sdk', 'ui', 'core', 'admin', 'cli', 'agent', 'api', 'treedx']) {
+			git(resolve(work, 'packages', dirName), ['checkout', 'staging']);
+		}
+		writeFileSync(resolve(work, 'recovery.txt'), 'root recovery\n');
+		writeFileSync(resolve(work, 'packages', 'sdk', 'recovery.txt'), 'sdk recovery\n');
+
+		const result = await workflowFor(work).switchTask({
+			branch: 'recovery/save-stage-release',
+			adoptChanges: true,
+			worktreeMode: 'off',
+		});
+
+		expect(result.payload.preconditions).toMatchObject({ cleanWorktreeRequired: false, adoptedDirtyStagingChanges: true });
+		expect(git(work, ['branch', '--show-current'])).toBe('recovery/save-stage-release');
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('recovery/save-stage-release');
+		expect(readFileSync(resolve(work, 'recovery.txt'), 'utf8')).toBe('root recovery\n');
+		expect(readFileSync(resolve(work, 'packages', 'sdk', 'recovery.txt'), 'utf8')).toBe('sdk recovery\n');
 	}, 180000);
 
 	it('returns switch plans without mutating the market or package repos', async () => {
@@ -896,6 +952,7 @@ describe('treeseed workflow lifecycle', () => {
 			const staged = await managedWorkflow.stage({
 				message: 'stage managed worktree',
 				verifyMode: 'none',
+				async: true,
 				cleanupMode: 'success',
 			});
 
@@ -948,7 +1005,7 @@ describe('treeseed workflow lifecycle', () => {
 				failingRepo: string;
 			};
 			expect(details.failingRepo).toBe('@treeseed/core');
-			expect(details.repos.find((repo) => repo.name === '@treeseed/sdk')?.pushed).toBe(true);
+			expect(details.repos.find((repo) => repo.name === '@treeseed/sdk')?.pushed).toBe(false);
 			expect(details.repos.find((repo) => repo.name === '@treeseed/core')?.pushed).toBe(false);
 		}
 	}, 180000);
@@ -1194,6 +1251,7 @@ describe('treeseed workflow lifecycle', () => {
 		const result = await workflow.stage({
 			message: 'stage: finish demo task',
 			verifyMode: 'none',
+			async: true,
 			cleanupMode: 'manual',
 		});
 
@@ -1243,6 +1301,7 @@ describe('treeseed workflow lifecycle', () => {
 		git(work, ['add', '.gitmodules', 'starters/research', 'packages/sdk']);
 		git(work, ['commit', '-m', 'test: add planned helper repos']);
 		git(work, ['push', 'origin', 'staging']);
+		writePassingStageAttestation(work);
 
 		const result = await workflow.release({ bump: 'patch', plan: true });
 
@@ -1283,6 +1342,7 @@ describe('treeseed workflow lifecycle', () => {
 		git(work, ['add', 'package.json']);
 		git(work, ['commit', '-m', 'stage: root package dependency']);
 		git(work, ['push', 'origin', 'staging']);
+		writePassingStageAttestation(work);
 		const result = await workflow.release({ bump: 'patch', ciMode: 'off' });
 
 			const releaseGatePayload = result.payload.releaseGates.gates.payload;
@@ -1334,8 +1394,9 @@ describe('treeseed workflow lifecycle', () => {
 		});
 		await workflow.stage({
 			message: 'stage: release auto resume sdk change',
-			waitForStaging: false,
+			async: true,
 		});
+		writePassingStageAttestation(work);
 		writeFileSync(resolve(work, 'release-blocker.txt'), 'not ready\n', 'utf8');
 
 		await expect(workflow.release({ bump: 'patch', ciMode: 'off' })).rejects.toThrow('@treeseed/market has uncommitted changes');
@@ -1356,7 +1417,7 @@ describe('treeseed workflow lifecycle', () => {
 		});
 		await workflow.stage({
 			message: 'stage: release plan sdk change',
-			waitForStaging: false,
+			async: true,
 		});
 		const rootPackageJsonPath = resolve(work, 'package.json');
 		const rootPackageJson = JSON.parse(readFileSync(rootPackageJsonPath, 'utf8'));
@@ -1368,6 +1429,7 @@ describe('treeseed workflow lifecycle', () => {
 		writeFileSync(rootPackageJsonPath, `${JSON.stringify(rootPackageJson, null, 2)}\n`, 'utf8');
 		git(work, ['add', 'package.json']);
 		git(work, ['commit', '-m', 'stage: root package dependency']);
+		writePassingStageAttestation(work);
 		const beforeRootHead = git(work, ['rev-parse', 'HEAD']);
 		const beforeSdkHead = git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'HEAD']);
 
@@ -1435,8 +1497,9 @@ artifacts:
 		git(work, ['add', 'packages/api', 'packages/treedx']);
 		git(work, ['commit', '-m', 'stage: api release and stable treedx pointer']);
 		git(work, ['push', 'origin', 'staging']);
+		writePassingStageAttestation(work);
 
-			const result = await workflow.release({ bump: 'patch', plan: true });
+		const result = await workflow.release({ bump: 'patch', plan: true });
 
 			expect(result.payload.packageSelection.selected).toContain('@treeseed/api');
 			expect(result.payload.packageSelection.selected).toContain('treedx');
@@ -1460,6 +1523,7 @@ artifacts:
 		git(work, ['add', 'packages/sdk', 'packages/ui', 'packages/core', 'packages/admin', 'packages/cli', 'packages/agent']);
 		git(work, ['commit', '-m', 'test: drift public package lines']);
 		git(work, ['push', 'origin', 'staging']);
+		writePassingStageAttestation(work);
 
 		const result = await workflow.release({
 			bump: 'patch',
@@ -1507,6 +1571,7 @@ artifacts:
 		git(work, ['add', 'packages/sdk', 'packages/ui', 'packages/core', 'packages/admin', 'packages/cli', 'packages/agent']);
 		git(work, ['commit', '-m', 'test: drift public package lines']);
 		git(work, ['push', 'origin', 'staging']);
+		writePassingStageAttestation(work);
 
 		const plan = await workflow.release({ bump: 'patch', plan: true });
 

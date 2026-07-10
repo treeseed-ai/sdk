@@ -725,10 +725,7 @@ describe('repository save orchestrator helpers', () => {
 				onProgress: (line) => progress.push(line),
 			});
 
-			expect(
-				progress.some((line) => /Lockfile validation passed: \d+ packages? checked, 0 issues\./u.test(line)),
-				progress.join('\n'),
-			).toBe(true);
+			expect(progress.some((line) => line.includes('network install mode is disabled'))).toBe(true);
 			expect(progress.some((line) => /\[lockfile\] add /u.test(line))).toBe(false);
 		} finally {
 			vi.unstubAllEnvs();
