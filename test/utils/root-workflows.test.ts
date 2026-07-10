@@ -65,6 +65,13 @@ describe('root workflow bootstrap selection', () => {
 		expect(candidateSource).toContain("branches:\n      - staging");
 		expect(candidateSource).toContain('Run complete staging guarantees');
 		expect(candidateSource).toContain('counts.passed !== 208');
+		for (const secret of [
+			'TREESEED_TREEDX_ADMIN_TOKEN',
+			'TREESEED_TREEDX_SECRET_KEY_BASE',
+			'TREESEED_TREEDX_JWT_HS256_SECRET',
+		]) {
+			expect(candidateSource).toContain(`${secret}: \${{ secrets.${secret} }}`);
+		}
 		expect(source).not.toContain('      - main');
 		expect(source).toContain("tags:\n      - '*.*.*'");
 		expect(source).toContain('release_tag=$');
