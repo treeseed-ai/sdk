@@ -39,6 +39,8 @@ name: '@treeseed/sdk'
 kind: node-typescript
 repository: treeseed-ai/sdk
 hostedVerifyWorkflow: .github/workflows/release-gate.yml
+releaseGate:
+  timeoutSeconds: 7200
 verify:
   local: npm run verify:local
 `, 'utf8');
@@ -61,6 +63,7 @@ describe('release proof planner', () => {
 		const root = makeWorkspace();
 		const adapters = discoverTreeseedPackageAdapters(root);
 		expect(hostedWorkflowForPackage(adapters[0]!)).toBe('release-gate.yml');
+		expect(adapters[0]?.metadata.hostedVerifyTimeoutSeconds).toBe(7200);
 
 		const plan = buildTreeseedProofPlan({ root, target: 'staging', driver: 'github-hosted' });
 		expect(plan.summary.subjects).toBe(1);

@@ -88,6 +88,7 @@ type TreeseedPackageManifest = {
 	verify?: unknown;
 	releaseGate?: unknown;
 	hostedVerifyWorkflow?: unknown;
+	hostedVerifyTimeoutSeconds?: unknown;
 	artifacts?: unknown;
 	dockerImages?: unknown;
 	capacityProvider?: unknown;
@@ -305,12 +306,15 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 	const dockerImages = stringRecord(manifest?.dockerImages);
 	const dockerImageReleaseWorkflow = stringValue(dockerImages.releaseWorkflow);
 	const dockerImageArchitectures = stringArray(dockerImages.architectures);
+	const releaseGateRecord = stringRecord(manifest?.releaseGate);
+	const hostedVerifyTimeoutSeconds = positiveIntegerValue(releaseGateRecord.timeoutSeconds)
+		?? positiveIntegerValue(manifest?.hostedVerifyTimeoutSeconds);
 	const publishTargetRaw = stringValue(manifest?.publishTarget);
 	const publishTarget = dockerArtifacts.length > 0 && publishTargetRaw === 'docker'
 		? dockerArtifacts[0]!.name
 		: publishTargetRaw ?? 'npm';
 	const hostedVerifyWorkflow = stringValue(manifest?.hostedVerifyWorkflow)
-		?? stringValue(stringRecord(manifest?.releaseGate).workflow)
+		?? stringValue(releaseGateRecord.workflow)
 		?? (existsSync(resolve(pkg.dir, '.github/workflows/deploy.yml')) ? 'deploy.yml' : null);
 	const projectArchitecture = normalizeTreeseedPackageProjectArchitecture(manifest?.projectArchitecture, id);
 	const docsReadiness = docsSiteReadiness(pkg.dir, projectArchitecture);
@@ -388,6 +392,7 @@ function nodeTypeScriptAdapter(pkg: ReturnType<typeof workspacePackages>[number]
 						: `.github/workflows/${hostedVerifyWorkflow}`,
 				}
 				: {}),
+			...(hostedVerifyTimeoutSeconds ? { hostedVerifyTimeoutSeconds } : {}),
 			scripts,
 		},
 	};
@@ -412,6 +417,11 @@ function stringRecord(value: unknown) {
 
 function stringValue(value: unknown) {
 	return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function positiveIntegerValue(value: unknown) {
+	const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value.trim()) : NaN;
+	return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
 }
 
 function stringArray(value: unknown) {
@@ -472,9 +482,12 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 	const dockerImages = stringRecord(manifest?.dockerImages);
 	const dockerImageReleaseWorkflow = stringValue(dockerImages.releaseWorkflow);
 	const dockerImageArchitectures = stringArray(dockerImages.architectures);
+	const releaseGateRecord = stringRecord(manifest?.releaseGate);
+	const hostedVerifyTimeoutSeconds = positiveIntegerValue(releaseGateRecord.timeoutSeconds)
+		?? positiveIntegerValue(manifest?.hostedVerifyTimeoutSeconds);
 	const repository = stringValue(manifest?.repository) ?? (id === 'treedx' ? 'treeseed-ai/treedx' : null);
 	const hostedVerifyWorkflow = stringValue(manifest?.hostedVerifyWorkflow)
-		?? stringValue(stringRecord(manifest?.releaseGate).workflow)
+		?? stringValue(releaseGateRecord.workflow)
 		?? (existsSync(resolve(dir, '.github/workflows/release-gate.yml')) ? 'release-gate.yml' : null);
 	const projectArchitecture = normalizeTreeseedPackageProjectArchitecture(manifest?.projectArchitecture, id);
 	const docsReadiness = docsSiteReadiness(dir, projectArchitecture);
@@ -547,6 +560,7 @@ function beamPackageAdapter(root: string, dir: string): TreeseedPackageAdapter |
 						: `.github/workflows/${hostedVerifyWorkflow}`,
 				}
 				: {}),
+			...(hostedVerifyTimeoutSeconds ? { hostedVerifyTimeoutSeconds } : {}),
 			type: stringValue(manifest?.type) ?? null,
 			githubEnvironments: stringArray(manifest?.githubEnvironments),
 			requiredSecrets: stringArray(manifest?.requiredSecrets),

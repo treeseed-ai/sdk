@@ -2174,7 +2174,9 @@ function workflowFileExists(repoPath: string, workflow: string) {
 	return existsSync(resolve(repoPath, '.github', 'workflows', workflow));
 }
 
-function hostedWorkflowsForSavedRepository(root: string, repo: RepositorySaveReport) {
+type TreeseedDiscoveredPackageAdapter = ReturnType<typeof discoverTreeseedPackageAdapters>[number];
+
+function hostedWorkflowsForSavedRepository(root: string, repo: RepositorySaveReport, adapter?: TreeseedDiscoveredPackageAdapter) {
 	const workflows: string[] = [];
 	const addWorkflow = (workflow: string | null | undefined) => {
 		if (!workflow) return;
@@ -2186,8 +2188,8 @@ function hostedWorkflowsForSavedRepository(root: string, repo: RepositorySaveRep
 	if (repo.branch === STAGING_BRANCH && existsSync(resolve(repo.path, 'treeseed.site.yaml')) && workflowFileExists(repo.path, 'deploy.yml')) {
 		addWorkflow('deploy.yml');
 	} else {
-		const adapterByPath = new Map(discoverTreeseedPackageAdapters(root).map((adapter) => [resolve(adapter.dir), adapter]));
-		const adapterWorkflow = packageHostedVerifyWorkflow(adapterByPath.get(resolve(repo.path)));
+		const fallbackAdapter = adapter ?? new Map(discoverTreeseedPackageAdapters(root).map((entry) => [resolve(entry.dir), entry])).get(resolve(repo.path));
+		const adapterWorkflow = packageHostedVerifyWorkflow(fallbackAdapter);
 		addWorkflow(adapterWorkflow);
 	}
 	if (workflows.length === 0 && workflowFileExists(repo.path, 'verify.yml')) addWorkflow('verify.yml');
@@ -2195,26 +2197,36 @@ function hostedWorkflowsForSavedRepository(root: string, repo: RepositorySaveRep
 }
 
 function gatesForSavedRepositoryReports(root: string, reports: RepositorySaveReport[]) {
+	const adapterByPath = new Map(discoverTreeseedPackageAdapters(root).map((adapter) => [resolve(adapter.dir), adapter]));
 	return reports
 		.filter((repo) => repo.pushed && repo.commitSha && repo.branch && (repo.committed || repo.tagName))
 		.flatMap((repo) => {
-			return hostedWorkflowsForSavedRepository(root, repo).map((workflow) => {
+			const adapter = adapterByPath.get(resolve(repo.path));
+			return hostedWorkflowsForSavedRepository(root, repo, adapter).map((workflow) => {
 				const gate = {
 					name: repo.name,
 					repoPath: repo.path,
 					workflow,
 					branch: String(repo.branch),
 					headSha: String(repo.commitSha),
+					...(packageHostedVerifyTimeoutSeconds(adapter) ? { timeoutSeconds: packageHostedVerifyTimeoutSeconds(adapter) } : {}),
 				};
 				return /^deploy(?:[-.]|$)/u.test(workflow) ? hostedDeployGate(gate) : gate;
 			});
 		});
 }
 
-function packageHostedVerifyWorkflow(adapter: ReturnType<typeof discoverTreeseedPackageAdapters>[number] | undefined) {
+function packageHostedVerifyWorkflow(adapter: TreeseedDiscoveredPackageAdapter | undefined) {
 	const workflow = adapter?.metadata?.hostedVerifyWorkflow;
 	return typeof workflow === 'string' && workflow.trim()
 		? workflow.trim().replace(/^\.github\/workflows\//u, '')
+		: null;
+}
+
+function packageHostedVerifyTimeoutSeconds(adapter: TreeseedDiscoveredPackageAdapter | undefined) {
+	const timeoutSeconds = adapter?.metadata?.hostedVerifyTimeoutSeconds;
+	return typeof timeoutSeconds === 'number' && Number.isFinite(timeoutSeconds) && timeoutSeconds > 0
+		? Math.floor(timeoutSeconds)
 		: null;
 }
 
