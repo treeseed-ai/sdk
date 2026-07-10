@@ -98,6 +98,41 @@ describe('live hosted service checks', () => {
 		expect(report.checks.find((check) => check.id === 'http:web')?.status).toBe('passed');
 	});
 
+	it('retries transient HTTP status failures with an HTTP-specific policy', async () => {
+		let attempts = 0;
+		const report = await collectTreeseedLiveHostedServiceChecks({
+			tenantRoot: root(),
+			target: 'staging',
+			requireLiveRailway: false,
+			requireLiveHttp: true,
+			retry: { attempts: 1, intervalMs: 0 },
+			httpRetry: { attempts: 3, intervalMs: 1 },
+			fetchImpl: (async () => {
+				attempts += 1;
+				return new Response('{}', { status: attempts < 3 ? 503 : 200 });
+			}) as typeof fetch,
+		});
+
+		expect(attempts).toBeGreaterThanOrEqual(3);
+		expect(report.checks.find((check) => check.id === 'http:web')?.status).toBe('passed');
+	});
+
+	it('reports the final transient HTTP status after exhausting readiness attempts', async () => {
+		const report = await collectTreeseedLiveHostedServiceChecks({
+			tenantRoot: root(),
+			target: 'staging',
+			requireLiveRailway: false,
+			requireLiveHttp: true,
+			httpRetry: { attempts: 2, intervalMs: 1 },
+			fetchImpl: (async () => new Response('{}', { status: 503 })) as typeof fetch,
+		});
+
+		expect(report.checks.find((check) => check.id === 'http:web')).toMatchObject({
+			status: 'failed',
+			observed: { status: 503, ok: false },
+		});
+	});
+
 	it('scopes live reports to selected service keys', async () => {
 		const report = await collectTreeseedLiveHostedServiceChecks({
 			tenantRoot: root(),

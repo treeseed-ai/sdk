@@ -39,6 +39,10 @@ export interface TreeseedLiveHostedServiceCheckOptions {
 		attempts: number;
 		intervalMs: number;
 	};
+	httpRetry?: {
+		attempts: number;
+		intervalMs: number;
+	};
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
 }
@@ -87,10 +91,11 @@ function pagesBranchName(config: Record<string, any>, target: TreeseedHostedServ
 }
 
 async function observeHttp(url: string, options: TreeseedLiveHostedServiceCheckOptions) {
-	const attempts = Math.max(1, Math.floor(options.retry?.attempts ?? DEFAULT_RETRY_ATTEMPTS));
-	const intervalMs = Math.max(0, Math.floor(options.retry?.intervalMs ?? DEFAULT_RETRY_INTERVAL_MS));
+	const attempts = Math.max(1, Math.floor(options.httpRetry?.attempts ?? options.retry?.attempts ?? DEFAULT_RETRY_ATTEMPTS));
+	const intervalMs = Math.max(0, Math.floor(options.httpRetry?.intervalMs ?? options.retry?.intervalMs ?? DEFAULT_RETRY_INTERVAL_MS));
 	const timeoutMs = Math.max(1000, Math.floor(options.timeoutMs ?? 10000));
 	let lastError = '';
+	let lastResponse: { status: number; ok: boolean } | null = null;
 	for (let attempt = 0; attempt < attempts; attempt += 1) {
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -101,14 +106,16 @@ async function observeHttp(url: string, options: TreeseedLiveHostedServiceCheckO
 				signal: controller.signal,
 			});
 			clearTimeout(timeout);
-			return { status: response.status, ok: response.ok };
+			lastResponse = { status: response.status, ok: response.ok };
+			if (response.ok) return lastResponse;
 		} catch (error) {
 			clearTimeout(timeout);
 			lastError = error instanceof Error ? error.message : String(error);
 			if (attempt + 1 < attempts) await sleep(intervalMs);
 		}
+		if (attempt + 1 < attempts) await sleep(intervalMs);
 	}
-	return { ok: false, error: lastError || 'HTTP request failed.' };
+	return lastResponse ?? { ok: false, error: lastError || 'HTTP request failed.' };
 }
 
 async function inspectRailwayServiceDeploymentHealthWithRetry(input: {
