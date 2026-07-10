@@ -7,6 +7,7 @@ import {
 	listTaskBranches,
 	mergeBranchDownIntoFeature,
 	promoteCommitToBranchWithExpectedHead,
+	shouldRetryFailedStagingAutomation,
 	squashMergeBranchIntoStaging,
 } from '../../src/operations/services/git-workflow.ts';
 
@@ -73,6 +74,14 @@ function makePackageRepo() {
 }
 
 describe('git workflow task helpers', () => {
+	it('retries only completed failed staging automation runs', () => {
+		expect(shouldRetryFailedStagingAutomation('completed', 'failure')).toBe(true);
+		expect(shouldRetryFailedStagingAutomation('completed', 'cancelled')).toBe(true);
+		expect(shouldRetryFailedStagingAutomation('completed', 'success')).toBe(false);
+		expect(shouldRetryFailedStagingAutomation('in_progress', null)).toBe(false);
+		expect(shouldRetryFailedStagingAutomation(null, null)).toBe(false);
+	});
+
 	it('lists task branches while excluding staging, main, and deprecated tags', () => {
 		const { work } = makeRepo();
 		const tasks = listTaskBranches(work);

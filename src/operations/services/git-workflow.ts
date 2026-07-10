@@ -807,6 +807,10 @@ export function listTaskBranches(repoDir) {
 	});
 }
 
+export function shouldRetryFailedStagingAutomation(status: string | null, conclusion: string | null) {
+	return status === 'completed' && Boolean(conclusion) && conclusion !== 'success';
+}
+
 export function waitForStagingAutomation(repoDir, env: NodeJS.ProcessEnv = process.env) {
 	if (process.env.TREESEED_STAGE_WAIT_MODE === 'skip') {
 		return { status: 'skipped', reason: 'disabled' };
@@ -819,6 +823,8 @@ export function waitForStagingAutomation(repoDir, env: NodeJS.ProcessEnv = proce
 		}
 		const headSha = remoteHeadCommit(repoDir, STAGING_BRANCH);
 		let runId: number | null = null;
+		let runStatus: string | null = null;
+		let runConclusion: string | null = null;
 		for (let attempt = 0; attempt < 120 && runId == null; attempt += 1) {
 			const output = run(gh, [
 				'run', 'list',
@@ -826,17 +832,25 @@ export function waitForStagingAutomation(repoDir, env: NodeJS.ProcessEnv = proce
 				'--branch', STAGING_BRANCH,
 				'--commit', headSha,
 				'--limit', '1',
-				'--json', 'databaseId',
+				'--json', 'databaseId,status,conclusion',
 			], {
 				cwd: repoDir,
 				env: createTreeseedManagedToolEnv(env),
 				capture: true,
 			});
-			const rows = JSON.parse(output || '[]') as Array<{ databaseId?: number }>;
+			const rows = JSON.parse(output || '[]') as Array<{ databaseId?: number; status?: string; conclusion?: string }>;
 			runId = typeof rows[0]?.databaseId === 'number' ? rows[0].databaseId : null;
+			runStatus = typeof rows[0]?.status === 'string' ? rows[0].status : null;
+			runConclusion = typeof rows[0]?.conclusion === 'string' ? rows[0].conclusion : null;
 			if (runId == null) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5_000);
 		}
 		if (runId == null) throw new Error(`No staging-candidate.yml run appeared for ${headSha}.`);
+		if (shouldRetryFailedStagingAutomation(runStatus, runConclusion)) {
+			run(gh, ['run', 'rerun', String(runId), '--failed'], {
+				cwd: repoDir,
+				env: createTreeseedManagedToolEnv(env),
+			});
+		}
 		run(gh, ['run', 'watch', String(runId), '--exit-status'], {
 			cwd: repoDir,
 			env: createTreeseedManagedToolEnv(env),
