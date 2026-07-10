@@ -807,13 +807,13 @@ export function listTaskBranches(repoDir) {
 	});
 }
 
-export function waitForStagingAutomation(repoDir) {
+export function waitForStagingAutomation(repoDir, env: NodeJS.ProcessEnv = process.env) {
 	if (process.env.TREESEED_STAGE_WAIT_MODE === 'skip') {
 		return { status: 'skipped', reason: 'disabled' };
 	}
 
 	try {
-		const gh = resolveTreeseedToolBinary('gh');
+		const gh = resolveTreeseedToolBinary('gh', { env });
 		if (!gh) {
 			throw new Error('GitHub CLI `gh` is unavailable.');
 		}
@@ -829,7 +829,7 @@ export function waitForStagingAutomation(repoDir) {
 				'--json', 'databaseId',
 			], {
 				cwd: repoDir,
-				env: createTreeseedManagedToolEnv(process.env),
+				env: createTreeseedManagedToolEnv(env),
 				capture: true,
 			});
 			const rows = JSON.parse(output || '[]') as Array<{ databaseId?: number }>;
@@ -839,7 +839,7 @@ export function waitForStagingAutomation(repoDir) {
 		if (runId == null) throw new Error(`No staging-candidate.yml run appeared for ${headSha}.`);
 		run(gh, ['run', 'watch', String(runId), '--exit-status'], {
 			cwd: repoDir,
-			env: createTreeseedManagedToolEnv(process.env),
+			env: createTreeseedManagedToolEnv(env),
 		});
 		return { status: 'completed', branch: STAGING_BRANCH, headSha, runId };
 	} catch (error) {

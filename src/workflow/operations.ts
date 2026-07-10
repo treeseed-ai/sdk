@@ -6196,20 +6196,20 @@ function writeStageCandidateAttestation(root: string, attestation: StageCandidat
 	return attestation;
 }
 
-function importHostedStageCandidateAttestation(root: string, manifest: StageCandidateManifest, hostedCi: Record<string, unknown>) {
+function importHostedStageCandidateAttestation(root: string, manifest: StageCandidateManifest, hostedCi: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env) {
 	const runId = hostedCi.runId;
 	const headSha = hostedCi.headSha;
 	if ((typeof runId !== 'number' && typeof runId !== 'string') || typeof headSha !== 'string') {
 		throw new Error('Hosted staging candidate result did not include an exact run id and head SHA.');
 	}
-	const gh = resolveTreeseedToolBinary('gh');
+	const gh = resolveTreeseedToolBinary('gh', { env });
 	if (!gh) throw new Error('GitHub CLI is unavailable for staging candidate attestation download.');
 	const destination = resolve(root, '.treeseed', 'workflow', 'stage-candidates', 'hosted', String(runId));
 	rmSync(destination, { recursive: true, force: true });
 	mkdirSync(destination, { recursive: true });
 	run(gh, ['run', 'download', String(runId), '--name', `treeseed-staging-candidate-${headSha}`, '--dir', destination], {
 		cwd: repoRoot(root),
-		env: createTreeseedManagedToolEnv(process.env),
+		env: createTreeseedManagedToolEnv(env),
 	});
 	const downloadedPath = resolve(destination, '.treeseed', 'workflow', 'stage-candidates', 'latest.attestation.json');
 	const attestation = readJsonFile<StageCandidateAttestation>(downloadedPath);
@@ -6738,12 +6738,17 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					refs['@treeseed/market'] = rootObserved;
 					return { status: 'verified', refs };
 				});
-					const hostedCi = ciMode === 'hosted'
-						? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', () => waitForStagingAutomation(repoRoot(root)))
+				const hostedCiEnv = resolveTreeseedLaunchEnvironment({
+					tenantRoot: root,
+					scope: 'staging',
+					baseEnv: { ...process.env, ...(helpers.context.env ?? {}) },
+				});
+				const hostedCi = ciMode === 'hosted'
+						? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', () => waitForStagingAutomation(repoRoot(root), hostedCiEnv))
 						: (skipJournalStep(root, workflowRun.runId, 'hosted-ci', { skippedReason: 'ci off' }), { status: 'skipped', reason: 'ci off' });
-					const stagingGuarantees = ciMode === 'hosted'
+				const stagingGuarantees = ciMode === 'hosted'
 						? await executeJournalStep(root, workflowRun.runId, 'staging-guarantees', () =>
-							importHostedStageCandidateAttestation(root, typedManifest, hostedCi as Record<string, unknown>))
+			importHostedStageCandidateAttestation(root, typedManifest, hostedCi as Record<string, unknown>, hostedCiEnv))
 						: (skipJournalStep(root, workflowRun.runId, 'staging-guarantees', { skippedReason: 'async staging promotion' }), null);
 				const workspaceLinks = await executeJournalStep(root, workflowRun.runId, 'workspace-link-restore', () =>
 					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
@@ -6760,8 +6765,8 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					manifest: typedManifest,
 					promotion,
 					stagingRefs,
-						hostedCi,
-						stagingGuarantees,
+					hostedCi,
+					stagingGuarantees,
 					cleanup,
 					workspaceLinks,
 					finalBranch: cleanupMode === 'success' ? STAGING_BRANCH : (currentBranch(repoRoot(root)) || featureBranch),
