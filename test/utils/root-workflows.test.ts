@@ -66,6 +66,8 @@ describe('root workflow bootstrap selection', () => {
 		expect(candidateSource).toContain('Run complete staging guarantees');
 		expect(candidateSource).toContain('counts.passed !== 208');
 		for (const secret of [
+			'TREESEED_PLATFORM_RUNNER_SECRET',
+			'TREESEED_CREDENTIAL_SESSION_SECRET',
 			'TREESEED_TREEDX_ADMIN_TOKEN',
 			'TREESEED_TREEDX_SECRET_KEY_BASE',
 			'TREESEED_TREEDX_JWT_HS256_SECRET',

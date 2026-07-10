@@ -924,6 +924,8 @@ services:
 				CI: 'true',
 				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
 				TREESEED_RAILWAY_WORKSPACE: 'workspace-1',
+				TREESEED_PLATFORM_RUNNER_SECRET: 'runner-secret-for-test',
+				TREESEED_CREDENTIAL_SESSION_SECRET: 'credential-secret-for-test',
 			},
 			fetchImpl: fetchMock as typeof fetch,
 		});
@@ -934,6 +936,8 @@ services:
 			TREESEED_DEPLOY_SOURCE_MODE: 'git',
 			TREESEED_DEPLOY_SOURCE_REPOSITORY: 'treeseed-ai/api',
 			TREESEED_DEPLOY_SOURCE_BRANCH: 'staging',
+			TREESEED_PLATFORM_RUNNER_SECRET: 'runner-secret-for-test',
+			TREESEED_CREDENTIAL_SESSION_SECRET: 'credential-secret-for-test',
 		});
 		expect(deployCalls).toEqual([{ serviceId: 'svc-api', environmentId: 'env-staging' }]);
 	});

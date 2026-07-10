@@ -1906,6 +1906,14 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 		serviceId: railwayService.id,
 		variables: {
 			TREESEED_SKIP_PACKAGE_PREPARE: '1',
+			...(['api', 'operationsRunner'].includes(service.key) ? {
+				...(configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET') ? {
+					TREESEED_PLATFORM_RUNNER_SECRET: configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET'),
+				} : {}),
+				...(configuredEnvValue(env, 'TREESEED_CREDENTIAL_SESSION_SECRET') ? {
+					TREESEED_CREDENTIAL_SESSION_SECRET: configuredEnvValue(env, 'TREESEED_CREDENTIAL_SESSION_SECRET'),
+				} : {}),
+			} : {}),
 			...(service.sourceMode === 'git' ? {
 				TREESEED_DEPLOY_SOURCE_MODE: 'git',
 				...(service.sourceRepo ? { TREESEED_DEPLOY_SOURCE_REPOSITORY: service.sourceRepo } : {}),
@@ -1923,7 +1931,6 @@ async function syncRailwayServiceRuntimeConfigurationAfterDeploy(tenantRoot, ser
 				TREESEED_MANAGER_ID: normalizeScope(service.scope),
 				...(configuredEnvValue(env, 'TREESEED_RAILWAY_API_TOKEN') ? { TREESEED_RAILWAY_API_TOKEN: configuredEnvValue(env, 'TREESEED_RAILWAY_API_TOKEN') } : {}),
 				...(configuredEnvValue(env, 'TREESEED_RAILWAY_WORKSPACE') ? { TREESEED_RAILWAY_WORKSPACE: configuredEnvValue(env, 'TREESEED_RAILWAY_WORKSPACE') } : {}),
-				...(configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET') ? { TREESEED_PLATFORM_RUNNER_SECRET: configuredEnvValue(env, 'TREESEED_PLATFORM_RUNNER_SECRET') } : {}),
 				...(configuredEnvValue(env, 'TREESEED_API_BASE_URL') || configuredEnvValue(env, 'TREESEED_URL') ? {
 					TREESEED_API_BASE_URL: configuredEnvValue(env, 'TREESEED_API_BASE_URL') || configuredEnvValue(env, 'TREESEED_URL'),
 				} : {}),
