@@ -1360,6 +1360,12 @@ function lockfileValidationCommand(node: Pick<RepositorySaveNode, 'path' | 'pack
 	return { command: 'npm', args };
 }
 
+function lockfileValidationTimeoutMs(node: Pick<RepositorySaveNode, 'path' | 'packageJson'>, options: Pick<RepositorySaveOptions, 'root'>) {
+	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
+	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
+	return rootWorkspaceInstall ? 1_800_000 : 600_000;
+}
+
 async function validateRepositoryLockfile(
 	node: RepositorySaveNode,
 	options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>,
@@ -1389,7 +1395,7 @@ async function validateRepositoryLockfile(
 		return { status: 'skipped', command: commandText, issues: [], error: 'disabled' };
 	}
 	try {
-		runCapturedCommand(node, options, 'lockfile', command, args, { timeoutMs: 600_000, emitOutputOnSuccess: false });
+		runCapturedCommand(node, options, 'lockfile', command, args, { timeoutMs: lockfileValidationTimeoutMs(node, options), emitOutputOnSuccess: false });
 		const packageCount = npmLockfilePackageCount(node.path);
 		const countText = packageCount === null ? 'package-lock entries' : `${packageCount} package${packageCount === 1 ? '' : 's'}`;
 		emitProgress(options, node, 'lockfile', `Lockfile validation passed: ${countText} checked, 0 issues.`);
