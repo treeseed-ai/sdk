@@ -1,4 +1,4 @@
-import { copyFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sceneActionKind, sceneExpectationKinds } from './schema.ts';
 import { planTreeseedScene, validateTreeseedScene } from './planner.ts';
@@ -49,6 +49,7 @@ import type {
 	TreeseedSceneManifest,
 	TreeseedSceneRenderEvidenceFit,
 	TreeseedSceneDeviceProfile,
+	TreeseedSceneVisualAuditRole,
 } from './types.ts';
 
 function now() {
@@ -179,6 +180,7 @@ function planForInput(input: TreeseedSceneRunOptions, validation: TreeseedSceneV
 	}
 	const scene = validation.scene!;
 	const environment = input.environment ?? scene.target.environment;
+	const browser = input.browser ?? scene.target.browser;
 	const workflowSteps = scene.workflow.map((step) => ({
 		id: step.id,
 		title: step.title,
@@ -198,7 +200,7 @@ function planForInput(input: TreeseedSceneRunOptions, validation: TreeseedSceneV
 		title: scene.title,
 		environment,
 		baseUrl: scene.target.baseUrl,
-		browser: scene.target.browser,
+		browser,
 		viewport: scene.target.viewport,
 		workflowSteps,
 		enabledActions: actionIds,
@@ -233,6 +235,21 @@ function canContinueAfterFailure(scene: TreeseedSceneManifest, step: { demoOnly?
 		|| scene.runtime.failure.continueOnFailure === true;
 }
 
+function sceneWithRunOverrides(scene: TreeseedSceneManifest, input: TreeseedSceneRunOptions): TreeseedSceneManifest {
+	if (!input.authRole) return scene;
+	return {
+		...scene,
+		setup: {
+			...scene.setup,
+			auth: {
+				...(scene.setup.auth ?? {}),
+				required: input.authRole !== 'anonymous',
+				role: (scene.setup.auth?.role ?? input.authRole) as TreeseedSceneVisualAuditRole,
+			},
+		},
+	};
+}
+
 export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<TreeseedSceneRunReport> {
 	const startedAt = now();
 	const validation = validationForInput(input);
@@ -247,7 +264,8 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 			diagnostics: validation.diagnostics,
 		});
 	}
-	const scene = validation.scene;
+	const scene = sceneWithRunOverrides(validation.scene, input);
+	const browser = input.browser ?? scene.target.browser;
 	const deviceResolution = resolveTreeseedSceneDeviceProfile({ scene, device: input.device });
 	if (!deviceResolution.profile && deviceResolution.diagnostics.some((entry) => entry.severity === 'error')) {
 		return reportFromBlock({
@@ -256,7 +274,7 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 			runId: input.runId ?? null,
 			startedAt,
 			environment: input.environment ?? scene.target.environment,
-			browser: scene.target.browser,
+			browser,
 			diagnostics: deviceResolution.diagnostics,
 		});
 	}
@@ -273,7 +291,7 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 			runId: input.runId ?? null,
 			startedAt,
 			environment: plan.environment,
-			browser: scene.target.browser,
+			browser,
 			device,
 			diagnostics: plan.diagnostics,
 		});
@@ -324,7 +342,7 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 			runId: paths.runId,
 			startedAt,
 			environment: plan.environment,
-			browser: scene.target.browser,
+			browser,
 			device,
 			diagnostics: [...plan.diagnostics, ...setupDiagnostics],
 			artifacts,
@@ -351,7 +369,7 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 			runId: paths.runId,
 			startedAt,
 			environment: plan.environment,
-			browser: scene.target.browser,
+			browser,
 			device,
 			diagnostics: [...plan.diagnostics, ...setupDiagnostics, ...baseUrl.diagnostics],
 			artifacts,
@@ -401,7 +419,7 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 	let sessionClosed = false;
 	try {
 		session = await adapter.launch({
-			browser: scene.target.browser,
+			browser,
 			viewport: capture.viewport,
 			videoSize: capture.videoSize,
 			recordVideoDir: videoDir,
@@ -510,6 +528,7 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 					projectRoot: input.projectRoot,
 					scene,
 					environment: plan.environment,
+					runId: paths.runId,
 					session,
 					baseUrl: baseUrl.baseUrl,
 					timeline,
@@ -573,16 +592,11 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 					await session.page.screenshot({ path: viewportScreenshotPath, fullPage: false });
 					artifacts.viewportScreenshotPaths?.push(viewportScreenshotPath);
 					timeline.push('screenshot.viewport', { path: viewportScreenshotPath }, step.id);
-					if (screenshotPath && recordingVideo) {
-						copyFileSync(viewportScreenshotPath, screenshotPath);
-						artifacts.screenshotPaths.push(screenshotPath);
-						timeline.push('screenshot', { path: screenshotPath, captureKind: 'viewport-copy' }, step.id);
-					}
 				} catch {
 					// Viewport screenshots are a render fallback; full-page evidence remains primary for debugging.
 				}
 			}
-			if (screenshotPath && !recordingVideo) {
+			if (screenshotPath) {
 				try {
 					await session.page.screenshot({ path: screenshotPath, fullPage: true });
 					artifacts.screenshotPaths.push(screenshotPath);
@@ -707,7 +721,7 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 		durationMs: duration(startedAt, finishedAt),
 		environment: plan.environment,
 		baseUrl: baseUrl.baseUrl,
-		browser: scene.target.browser,
+		browser,
 		device,
 		capture,
 		workflowStatus,

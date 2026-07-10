@@ -72,6 +72,8 @@ export async function runTreeseedSceneDeviceMatrix(input: TreeseedSceneDeviceMat
 			scene: input.scene,
 			environment: input.environment,
 			device,
+			browser: input.browser,
+			authRole: input.authRole,
 			record: input.record,
 			artifactMode: input.artifactMode,
 			mode: input.mode,

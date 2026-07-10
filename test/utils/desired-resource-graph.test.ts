@@ -192,6 +192,16 @@ describe('canonical desired resource graph', () => {
 			'local-docker-compose:treedx',
 			'capacity-provider:local',
 		]));
+		const capacityProvider = graph.resources.find((entry) => entry.id === 'capacity-provider:local');
+		expect(capacityProvider).toMatchObject({
+			kind: 'capacity-provider',
+			provider: 'local',
+			packageId: '@treeseed/agent',
+			spec: expect.objectContaining({
+				roles: ['manager', 'runner'],
+			}),
+		});
+		expect(capacityProvider?.spec).not.toHaveProperty('healthEndpoint');
 		const mailpit = graph.resources.find((entry) => entry.id === 'local-docker-compose:mailpit');
 		expect(mailpit).toMatchObject({
 			kind: 'local-docker-compose',

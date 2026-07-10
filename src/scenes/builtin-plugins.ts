@@ -9,6 +9,7 @@ import type {
 	TreeseedSceneAssertionRunReport,
 	TreeseedSceneDiagnostic,
 	TreeseedScenePlugin,
+	TreeseedSceneRuntimePluginContext,
 	TreeseedSceneSelector,
 } from './types.ts';
 
@@ -23,6 +24,24 @@ function mailpitApiUrl(mailpitUrl: string, pathname: string) {
 
 function stringValue(value: unknown) {
 	return typeof value === 'string' ? value : '';
+}
+
+function shortRuntimeHash(value: string) {
+	let hash = 2166136261;
+	for (let index = 0; index < value.length; index += 1) {
+		hash ^= value.charCodeAt(index);
+		hash = Math.imul(hash, 16777619);
+	}
+	return (hash >>> 0).toString(36).padStart(7, '0').slice(0, 10);
+}
+
+function sceneRuntimeValue(value: string, context: TreeseedSceneRuntimePluginContext) {
+	const runSlug = context.runId.toLowerCase().replace(/[^a-z0-9]+/gu, '-').replace(/^-|-$/gu, '').slice(0, 48);
+	const runShort = shortRuntimeHash(context.runId);
+	return value
+		.replace(/\{\{\s*runId\s*\}\}/gu, context.runId)
+		.replace(/\{\{\s*runSlug\s*\}\}/gu, runSlug)
+		.replace(/\{\{\s*runShort\s*\}\}/gu, runShort);
 }
 
 function mailpitMessageId(value: unknown) {
@@ -72,6 +91,18 @@ function extractConfirmationUrl(body: string) {
 	return relative ?? null;
 }
 
+function resolveMailpitConfirmationUrl(confirmationUrl: string, context: TreeseedSceneRuntimePluginContext) {
+	try {
+		const parsed = new URL(confirmationUrl);
+		if (parsed.pathname === '/auth/confirm-email' || /^\/team-invites\/[^/]+\/accept$/u.test(parsed.pathname)) {
+			return context.resolveUrl(`${parsed.pathname}${parsed.search}${parsed.hash}`);
+		}
+	} catch {
+		// Relative confirmation URLs are resolved below.
+	}
+	return confirmationUrl.startsWith('/') ? context.resolveUrl(confirmationUrl) : confirmationUrl;
+}
+
 async function sleep(ms: number) {
 	await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -81,11 +112,15 @@ function isRetryableNavigationError(error: unknown) {
 	return /Timeout|ERR_CONNECTION|ECONNRESET|ECONNREFUSED|ETIMEDOUT|503|502|504/iu.test(message);
 }
 
-async function navigateScenePage(page: { goto(url: string, options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; timeout?: number }): Promise<unknown> }, url: string) {
+async function navigateScenePage(page: { goto(url: string, options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; timeout?: number }): Promise<{ status(): number; url(): string } | null | undefined> }, url: string) {
 	let lastError: unknown = null;
 	for (let attempt = 1; attempt <= 3; attempt += 1) {
 		try {
-			await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+			const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+			const status = response?.status();
+			if (typeof status === 'number' && status >= 400) {
+				throw sceneErrorDiagnostic('scene.navigation_http_error', `Navigation to ${response?.url() ?? url} returned HTTP ${status}.`, 'workflow.action.goto');
+			}
 			return;
 		} catch (error) {
 			lastError = error;
@@ -93,7 +128,9 @@ async function navigateScenePage(page: { goto(url: string, options?: { waitUntil
 			await sleep(500 * attempt);
 		}
 	}
-	throw lastError instanceof Error ? lastError : new Error(String(lastError ?? `Navigation failed for ${url}`));
+	throw lastError && typeof lastError === 'object' && 'code' in lastError
+		? lastError
+		: lastError instanceof Error ? lastError : new Error(String(lastError ?? `Navigation failed for ${url}`));
 }
 
 async function assertionReport(kind: string, action: () => Promise<void>, selector?: TreeseedSceneSelector): Promise<TreeseedSceneAssertionRunReport> {
@@ -153,7 +190,7 @@ export function createBuiltInTreeseedScenePlugins(): TreeseedScenePlugin[] {
 						if (!('fill' in action)) return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.invalid_action', 'Expected fill action.', 'workflow.action.fill')] };
 						const locator = context.resolveSelector(action.fill);
 						await locator.waitFor({ state: 'visible', timeout: 10_000 });
-						await locator.fill(action.fill.value);
+						await locator.fill(sceneRuntimeValue(action.fill.value, context));
 						return { ok: true, diagnostics: [] };
 					},
 				},
@@ -229,7 +266,11 @@ export function createBuiltInTreeseedScenePlugins(): TreeseedScenePlugin[] {
 					summary: 'Confirm the latest local Mailpit email by navigating the browser to its confirmation link.',
 					async run({ action, step, context }) {
 						if (!('mailpitConfirmLatest' in action)) return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.invalid_action', 'Expected mailpitConfirmLatest action.', `workflow.${step.id}.action.mailpitConfirmLatest`)] };
-						const { mailpitUrl, email, subjectIncludes, displayInboxSeconds, displayMessageSeconds } = action.mailpitConfirmLatest;
+						const raw = action.mailpitConfirmLatest;
+						const mailpitUrl = sceneRuntimeValue(raw.mailpitUrl, context);
+						const email = sceneRuntimeValue(raw.email, context);
+						const subjectIncludes = raw.subjectIncludes ? sceneRuntimeValue(raw.subjectIncludes, context) : undefined;
+						const { displayInboxSeconds, displayMessageSeconds } = raw;
 						try {
 							const listResponse = await fetch(mailpitApiUrl(mailpitUrl, '/api/v1/messages'));
 							if (!listResponse.ok) {
@@ -255,7 +296,7 @@ export function createBuiltInTreeseedScenePlugins(): TreeseedScenePlugin[] {
 							if (!confirmationUrl) {
 								return { ok: false, diagnostics: [sceneErrorDiagnostic('scene.mailpit_confirm_link_not_found', `No confirmation link was found in Mailpit message ${id}.`, `workflow.${step.id}.action.mailpitConfirmLatest`)] };
 							}
-							const resolvedUrl = confirmationUrl.startsWith('/') ? context.resolveUrl(confirmationUrl) : confirmationUrl;
+							const resolvedUrl = resolveMailpitConfirmationUrl(confirmationUrl, context);
 								const mailpitBase = mailpitUrl.endsWith('/') ? mailpitUrl : `${mailpitUrl}/`;
 								if (displayInboxSeconds && displayInboxSeconds > 0) {
 									const search = new URL('search', mailpitBase);

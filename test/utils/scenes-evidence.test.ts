@@ -207,4 +207,66 @@ describe('scene evidence outputs', () => {
 		expect(report.ok).toBe(true);
 		expect(report.warnings.some((entry) => entry.code === 'scene.evidence_run_update_failed')).toBe(true);
 	});
+
+	it('builds evidence manifests for sparse successful runs and missing artifact fallbacks', () => {
+		const root = workspace();
+		const runRoot = resolve(root, '.treeseed', 'scenes', 'runs', 'sparse');
+		mkdirSync(runRoot, { recursive: true });
+		writeFile(resolve(runRoot, 'run.json'), '{}');
+		writeFile(resolve(runRoot, 'timeline.json'), '[]');
+		const manifest = buildTreeseedSceneEvidenceManifest({
+			scene: { id: 'sparse-scene' } as never,
+			run: {
+				ok: true,
+				runId: null,
+				workflowStatus: 'passed',
+				environment: null,
+				startedAt: '2026-06-15T13:00:00.000Z',
+				finishedAt: '2026-06-15T13:00:01.000Z',
+				durationMs: 1000,
+				failedStep: null,
+				steps: [],
+				chapters: [],
+				segments: [],
+				checkpoints: [],
+				renderedVideoPaths: ['rendered.mp4'],
+				videoPaths: [],
+				logs: {},
+				diagnostics: [],
+				trainingOutputPaths: ['training/report.json'],
+				artifacts: {
+					screenshotPaths: [resolve(runRoot, 'missing-shot.png')],
+					videoPaths: [],
+					playwrightTracePath: resolve(runRoot, 'missing-trace.zip'),
+				},
+			} as never,
+			timeline: [],
+			runRoot,
+			target: 'local',
+			bundlePolicy: 'metadata-only',
+			timestamp: '2026-06-15T13:00:00.000Z',
+		});
+		expect(manifest.summary.ok).toBe(true);
+		expect(manifest.summary.environment).toBeNull();
+		expect(manifest.summary.renderedVideos).toBe(1);
+		expect(manifest.recommendations.map((entry) => entry.id)).not.toContain('render-video');
+		expect(manifest.recommendations.map((entry) => entry.id)).not.toContain('generate-training');
+		expect(manifest.artifacts.some((artifact) => artifact.kind === 'screenshot' && artifact.redactionStatus === 'unknown')).toBe(true);
+		expect(manifest.artifacts.some((artifact) => artifact.kind === 'log-summary' && artifact.redactionStatus === 'unknown')).toBe(true);
+	});
+
+	it('reports missing normalized scene and invalid current scene before writing evidence', async () => {
+		const root = workspace();
+		writeScene(root);
+		const run = await createRun(root);
+
+		rmSync(run.artifacts!.normalizedScenePath, { force: true });
+		const missingScene = generateTreeseedSceneEvidence({ projectRoot: root, scene: 'evidence-demo', from: run.artifacts!.runRoot });
+		expect(missingScene.diagnostics.map((entry) => entry.code)).toContain('scene.evidence_missing_scene');
+
+		const invalidCurrent = await createRun(root);
+		writeScene(root, 'schemaVersion: treeseed.scene/v0\nid: evidence-demo\nworkflow: []\n');
+		const invalid = generateTreeseedSceneEvidence({ projectRoot: root, scene: 'evidence-demo', from: invalidCurrent.artifacts!.runRoot });
+		expect(invalid.diagnostics.map((entry) => entry.code)).toContain('scene.unsupported_schema_version');
+	});
 });

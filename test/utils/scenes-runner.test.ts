@@ -1,23 +1,54 @@
+import { createServer, type Server } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { mkdtempSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
 	planTreeseedScene,
 	runTreeseedSceneDeviceMatrix,
 	runTreeseedScene,
+	validateTreeseedScene,
 	type TreeseedSceneBrowserAdapter,
 	type TreeseedSceneBrowserLaunchInput,
 	type TreeseedSceneBrowserSession,
 	type TreeseedSceneLocator,
 	type TreeseedScenePage,
+	type TreeseedScenePlugin,
 } from '../../src/scenes/index.ts';
 
 function workspace() {
 	const root = mkdtempSync(resolve(tmpdir(), 'treeseed-scenes-runner-'));
 	mkdirSync(resolve(root, 'scenes'), { recursive: true });
 	return root;
+}
+
+const servers: Server[] = [];
+
+afterEach(async () => {
+	await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolvePromise) => server.close(() => resolvePromise()))));
+});
+
+async function listen(handler: Parameters<typeof createServer>[0]) {
+	const server = createServer(handler);
+	servers.push(server);
+	return new Promise<string>((resolvePromise) => {
+		server.listen(0, '127.0.0.1', () => {
+			const address = server.address();
+			if (!address || typeof address === 'string') throw new Error('Unexpected test server address.');
+			resolvePromise(`http://127.0.0.1:${address.port}`);
+		});
+	});
+}
+
+function readBody(request: import('node:http').IncomingMessage) {
+	return new Promise<string>((resolvePromise) => {
+		let body = '';
+		request.on('data', (chunk) => {
+			body += String(chunk);
+		});
+		request.on('end', () => resolvePromise(body));
+	});
 }
 
 function writeScene(root: string, name: string, source: string) {
@@ -170,6 +201,7 @@ class FakeLocator implements TreeseedSceneLocator {
 
 class FakePage implements TreeseedScenePage {
 	calls: string[] = [];
+	cookies: unknown[] = [];
 	visible = true;
 	currentUrl = 'about:blank';
 	handlers: Record<string, Function[]> = {};
@@ -184,6 +216,16 @@ class FakePage implements TreeseedScenePage {
 	}
 	url() {
 		return this.currentUrl;
+	}
+	context() {
+		return {
+			addCookies: async (cookies: unknown[]) => {
+				this.cookies.push(...cookies);
+			},
+		};
+	}
+	async waitForLoadState() {
+		this.calls.push('load-state');
 	}
 	locator(selector: string) {
 		this.calls.push(`locator:${selector}`);
@@ -208,11 +250,21 @@ class FakePage implements TreeseedScenePage {
 	on(event: 'console' | 'requestfailed' | 'response', handler: Function) {
 		this.handlers[event] = [...(this.handlers[event] ?? []), handler];
 	}
-	emitConsoleError(message: string) {
-		for (const handler of this.handlers.console ?? []) handler({ type: () => 'error', text: () => message });
+	emitConsole(message: string, type = 'error') {
+		for (const handler of this.handlers.console ?? []) handler({ type: () => type, text: () => message });
 	}
 	emitRequestFailed(url: string) {
 		for (const handler of this.handlers.requestfailed ?? []) handler({ url: () => url, method: () => 'GET', failure: () => ({ errorText: 'failed' }) });
+	}
+	emitResponse(status: number, url: string, payload: unknown) {
+		for (const handler of this.handlers.response ?? []) {
+			handler({
+				status: () => status,
+				url: () => url,
+				request: () => ({ method: () => 'POST' }),
+				json: async () => payload,
+			});
+		}
 	}
 }
 
@@ -236,6 +288,37 @@ class FakeAdapter implements TreeseedSceneBrowserAdapter {
 			},
 		};
 	}
+}
+
+class FailingAdapter implements TreeseedSceneBrowserAdapter {
+	constructor(private readonly error: unknown) {}
+	async launch(): Promise<TreeseedSceneBrowserSession> {
+		throw this.error;
+	}
+}
+
+function noScreenshotScene(extra = '') {
+	return `schemaVersion: treeseed.scene/v1
+id: no-screenshot-smoke
+title: No Screenshot Smoke
+target:
+  app: market
+  baseUrl: http://example.test
+artifacts:
+  trace: false
+  screenshots: false
+setup:
+  seed:
+    name: scene-seed
+${extra}
+workflow:
+  - id: open
+    title: Open
+    action:
+      goto: /
+    expect:
+      urlIncludes: example.test
+`;
 }
 
 describe('scene Playwright runner foundation', () => {
@@ -290,7 +373,7 @@ workflow:
 			timestamp: '20260614T120000Z',
 			runId: 'run123',
 		});
-		expect(report.ok).toBe(true);
+		expect(report.ok, JSON.stringify(report.diagnostics, null, 2)).toBe(true);
 		expect(report.phase).toBe(5);
 		expect(report.workflowStatus).toBe('passed');
 		expect(report.artifacts?.runRoot).toContain('.treeseed/scenes/runs/browser-smoke/20260614T120000Z-run123');
@@ -316,15 +399,198 @@ workflow:
 		const originalGoto = adapter.page.goto.bind(adapter.page);
 		adapter.page.goto = async (url: string) => {
 			await originalGoto(url);
-			adapter.page.emitConsoleError('boom');
+			adapter.page.emitConsole('ignored warning', 'warning');
+			adapter.page.emitConsole('boom');
 			adapter.page.emitRequestFailed('http://example.test/api');
+			adapter.page.emitResponse(202, 'http://example.test/v1/operations', { payload: { operation: { id: 'op_123' } } });
+			adapter.page.emitResponse(500, 'http://example.test/v1/fail', { ok: false });
+			await Promise.resolve();
 		};
 		const report = await runTreeseedScene({ projectRoot: root, scene: 'browser-smoke', browserAdapter: adapter });
-		expect(report.ok).toBe(true);
+		expect(report.ok, JSON.stringify(report.diagnostics, null, 2)).toBe(true);
 		expect(report.steps[0]?.consoleErrors[0]?.message).toBe('boom');
 		expect(report.steps[0]?.networkErrors[0]?.url).toBe('http://example.test/api');
+		expect(report.steps[0]?.operationIds).toContain('op_123');
 		expect(readFileSync(report.artifacts!.consoleLogPath!, 'utf8')).toContain('boom');
 		expect(readFileSync(report.artifacts!.networkLogPath!, 'utf8')).toContain('example.test/api');
+		expect(readFileSync(report.artifacts!.networkLogPath!, 'utf8')).toContain('HTTP 500');
+	});
+
+	it('sets up and signs in an authenticated visual-audit role before executing the workflow', async () => {
+		const requests: Array<{ url: string; body: string }> = [];
+		const baseUrl = await listen(async (request, response) => {
+			const body = await readBody(request);
+			requests.push({ url: request.url ?? '/', body });
+			response.setHeader('content-type', 'application/json');
+			if (request.url === '/v1/acceptance/seed') {
+				response.end(JSON.stringify({ ok: true }));
+				return;
+			}
+			if (request.url === '/v1/auth/web/sign-in') {
+				response.end(JSON.stringify({ ok: true, payload: { accessToken: 'runner-token', expiresInSeconds: 120 } }));
+				return;
+			}
+			response.statusCode = 404;
+			response.end(JSON.stringify({ ok: false }));
+		});
+		const root = workspace();
+		writeFileSync(resolve(root, 'treeseed.site.yaml'), `schemaVersion: treeseed.site/v1
+name: Runner Web Test
+slug: runner-web-test
+siteUrl: ${baseUrl}
+contactEmail: ops@example.test
+surfaces:
+  web:
+    environments:
+      staging:
+        baseUrl: ${baseUrl}
+`);
+		mkdirSync(resolve(root, 'packages/api'), { recursive: true });
+		writeFileSync(resolve(root, 'packages/api/treeseed.site.yaml'), `schemaVersion: treeseed.site/v1
+name: Runner API Test
+slug: runner-api-test
+siteUrl: ${baseUrl}
+contactEmail: ops@example.test
+services:
+  api:
+    environments:
+      staging:
+        baseUrl: ${baseUrl}
+`);
+		writeScene(root, 'auth-smoke', `schemaVersion: treeseed.scene/v1
+id: auth-smoke
+title: Auth Smoke
+target:
+  app: market
+  baseUrl: ${baseUrl}
+workflow:
+  - id: open-app
+    title: Open app
+    action:
+      goto: /app/projects
+    expect:
+      urlIncludes: /app/projects
+`);
+		const adapter = new FakeAdapter();
+		const report = await runTreeseedScene({
+			projectRoot: root,
+			scene: 'auth-smoke',
+			environment: 'staging',
+			browserAdapter: adapter,
+			authRole: 'owner',
+			environmentAdapter: async () => ({ ok: true, environment: 'staging', readiness: null, dev: { requested: false, reused: false, started: false, instances: [], baseUrl: null }, diagnostics: [] }),
+		});
+		expect(report.ok, JSON.stringify(report.diagnostics, null, 2)).toBe(true);
+		expect(adapter.page.cookies).toHaveLength(1);
+		expect(adapter.page.cookies[0]).toMatchObject({ name: 'ts_market_api_access', value: 'runner-token' });
+		expect(requests.map((entry) => entry.url)).toEqual(expect.arrayContaining(['/v1/acceptance/seed', '/v1/auth/web/sign-in']));
+		expect(requests.find((entry) => entry.url === '/v1/acceptance/seed')?.body).toContain('visual.owner@treeseed.io');
+		expect(adapter.page.calls).toContain(`goto:${baseUrl}/app/`);
+		expect(adapter.page.calls).toContain(`goto:${baseUrl}/app/projects`);
+	});
+
+	it('blocks invalid selected device before launching a browser', async () => {
+		const root = workspace();
+		writeScene(root, 'device-smoke', deviceScene());
+		const adapter = new FakeAdapter();
+		const report = await runTreeseedScene({ projectRoot: root, scene: 'device-smoke', browserAdapter: adapter, device: 'watch' as never });
+		expect(report.workflowStatus).toBe('blocked');
+		expect(report.diagnostics.some((entry) => entry.code === 'scene.device_unknown')).toBe(true);
+		expect(adapter.launches).toEqual([]);
+	});
+
+	it('reports browser launch failures with Playwright remediation diagnostics', async () => {
+		const root = workspace();
+		writeScene(root, 'browser-smoke', executableScene());
+		const error = new Error('browser executable is missing');
+		Object.assign(error, { treeseedSceneCode: 'scene.playwright_browser_missing' });
+		const report = await runTreeseedScene({ projectRoot: root, scene: 'browser-smoke', browserAdapter: new FailingAdapter(error) });
+		expect(report.workflowStatus).toBe('blocked');
+		expect(report.diagnostics.some((entry) => entry.code === 'scene.playwright_browser_missing' && entry.message.includes('playwright install chromium'))).toBe(true);
+	});
+
+	it('reports non-Error browser launch failures and suppresses close failures', async () => {
+		const root = workspace();
+		writeScene(root, 'browser-smoke', executableScene());
+		const launchReport = await runTreeseedScene({ projectRoot: root, scene: 'browser-smoke', browserAdapter: new FailingAdapter('adapter offline') });
+		expect(launchReport.workflowStatus).toBe('blocked');
+		expect(launchReport.diagnostics.some((entry) => entry.code === 'scene.playwright_unavailable' && entry.message.includes('adapter offline'))).toBe(true);
+
+		const closeAdapter: TreeseedSceneBrowserAdapter = {
+			async launch(input) {
+				return {
+					page: new FakePage(),
+					startTracing: async () => undefined,
+					stopTracing: async (tracePath: string) => writeFileSync(tracePath, 'trace', 'utf8'),
+					videoPaths: async () => input.recordVideoDir ? [resolve(input.recordVideoDir, 'close-video.webm')] : [],
+					close: async () => { throw new Error('close failed'); },
+				};
+			},
+		};
+		const closeReport = await runTreeseedScene({ projectRoot: root, scene: 'browser-smoke', browserAdapter: closeAdapter, record: true });
+		expect(closeReport.ok).toBe(true);
+		expect(closeReport.videoPaths.some((entry) => entry.endsWith('close-video.webm'))).toBe(true);
+	});
+
+	it('runs normalized scene input with anonymous auth override, planned seed setup, and disabled screenshots', async () => {
+		const root = workspace();
+		writeScene(root, 'no-screenshot-smoke', noScreenshotScene());
+		const validation = validateTreeseedScene({ projectRoot: root, scene: 'no-screenshot-smoke' });
+		expect(validation.ok).toBe(true);
+		const adapter = new FakeAdapter();
+		const seedCalls: string[] = [];
+		const report = await runTreeseedScene({
+			projectRoot: root,
+			scene: validation.scene!,
+			browserAdapter: adapter,
+			authRole: 'anonymous',
+			timestamp: '20260617T120000Z',
+			runId: 'direct',
+			seedRunner: async ({ scene }) => {
+				seedCalls.push(scene.setup.seed?.apply ? 'apply' : scene.setup.seed?.name ? 'plan' : 'none');
+				return { ok: true, requested: true, seedName: scene.setup.seed?.name ?? null, mode: 'plan', environments: ['local'], plan: {}, result: null, diagnostics: [] };
+			},
+			environmentAdapter: async () => ({ ok: true, environment: 'local', readiness: null, dev: { requested: false, reused: false, started: false, instances: [], baseUrl: null }, diagnostics: [] }),
+			authResolver: () => ({ ok: true, required: false, profileId: 'local', authRoot: root, hasSession: false, diagnostics: [] }),
+			logCollector: () => ({ diagnostics: [], logs: { dev: null, api: null, operationsRunner: null } }),
+		});
+		expect(report.ok).toBe(true);
+		expect(report.scenePath).toBe('<normalized-scene>');
+		expect(seedCalls).toEqual(['plan']);
+		expect(adapter.page.calls.some((entry) => entry.startsWith('screenshot:'))).toBe(false);
+		expect(report.steps[0]?.screenshotPath).toBeNull();
+		expect(report.steps[0]?.viewportScreenshotPath).toBeNull();
+		expect(report.playwrightTracePath).toBeNull();
+		expect(adapter.launches[0]?.recordVideoDir).toBeNull();
+	});
+
+	it('records apply seed mode and blocks invalid explicit plugin plans before launch', async () => {
+		const root = workspace();
+		writeScene(root, 'apply-seed-smoke', noScreenshotScene(`    apply: true
+`));
+		const seedModes: string[] = [];
+		const adapter = new FakeAdapter();
+		const report = await runTreeseedScene({
+			projectRoot: root,
+			scene: 'apply-seed-smoke',
+			browserAdapter: adapter,
+			seedRunner: async ({ scene }) => {
+				seedModes.push(scene.setup.seed?.apply ? 'apply' : 'plan');
+				return { ok: true, requested: true, seedName: scene.setup.seed?.name ?? null, mode: 'apply', environments: ['local'], plan: {}, result: {}, diagnostics: [] };
+			},
+		});
+		expect(report.ok).toBe(true);
+		expect(seedModes).toEqual(['apply']);
+
+		const invalidPlugin = { id: '', version: '', phase: 4, status: 'available', summary: '' } as TreeseedScenePlugin;
+		const blocked = await runTreeseedScene({
+			projectRoot: root,
+			scene: 'apply-seed-smoke',
+			browserAdapter: new FakeAdapter(),
+			plugins: [invalidPlugin],
+		});
+		expect(blocked.workflowStatus).toBe('blocked');
+		expect(blocked.diagnostics.some((entry) => entry.code === 'scene.plugin_invalid')).toBe(true);
 	});
 
 	it('fails unresolved operation actions and assertions with clear diagnostics', async () => {
@@ -374,6 +640,39 @@ workflow:
 		expect(readFileSync(assertionReport.artifacts!.markdownReportPath, 'utf8')).toContain('Failed Step');
 	});
 
+	it('reports deferred runtime actions and stops non-continuable workflows at the failed step', async () => {
+		const root = workspace();
+		writeScene(root, 'deferred-action', `schemaVersion: treeseed.scene/v1
+id: deferred-action
+title: Deferred Action
+target:
+  app: market
+  baseUrl: http://example.test
+workflow:
+  - id: request-api
+    title: Request API
+    action:
+      apiRequest:
+        method: POST
+        path: /v1/projects
+    expect:
+      text: Created
+  - id: should-not-run
+    title: Should not run
+    action:
+      goto: /after
+    expect:
+      text: After
+`);
+		const adapter = new FakeAdapter();
+		const report = await runTreeseedScene({ projectRoot: root, scene: 'deferred-action', browserAdapter: adapter });
+		expect(report.ok).toBe(false);
+		expect(report.failedStep).toBe('request-api');
+		expect(report.steps.map((step) => step.id)).toEqual(['request-api']);
+		expect(report.diagnostics.some((entry) => entry.code === 'scene.unsupported_runtime_action')).toBe(true);
+		expect(adapter.page.calls).not.toContain('goto:http://example.test/after');
+	});
+
 	it('keeps plan non-mutating while run creates artifacts', async () => {
 		const root = workspace();
 		writeScene(root, 'browser-smoke', executableScene());
@@ -397,6 +696,79 @@ workflow:
 			renderResolution: { width: 1920, height: 1080 },
 			evidenceFit: 'fixed-browser',
 		});
+	});
+
+	it('writes chapters, resumable checkpoints, and segment artifacts across chapter changes', async () => {
+		const root = workspace();
+		writeScene(root, 'chapter-checkpoints', `schemaVersion: treeseed.scene/v1
+id: chapter-checkpoints
+title: Chapter Checkpoints
+runtime:
+  checkpoints:
+    enabled: true
+    everyStep: true
+    defaultResumable: true
+target:
+  app: market
+  baseUrl: http://example.test
+workflow:
+  - id: open
+    title: Open
+    checkpoint:
+      id: open-ready
+      resumable: true
+    action:
+      goto: /
+    expect:
+      urlIncludes: example.test
+  - id: click
+    title: Click
+    action:
+      click:
+        role: button
+        name: Continue
+    expect:
+      text: Continue
+  - id: finish
+    title: Finish
+    checkpoint:
+      resumable: false
+    action:
+      keyboard: Enter
+    expect:
+      text: Done
+chapters:
+  - id: intro
+    title: Intro
+    startsAt: open
+  - id: finish
+    title: Finish
+    startsAt: finish
+`);
+		const report = await runTreeseedScene({
+			projectRoot: root,
+			scene: 'chapter-checkpoints',
+			browserAdapter: new FakeAdapter(),
+			timestamp: '20260618T120000Z',
+			runId: 'chapters',
+		});
+		expect(report.ok).toBe(true);
+		expect(report.chapters.map((chapter) => [chapter.id, chapter.status, chapter.stepIds])).toEqual([
+			['intro', 'passed', ['open', 'click']],
+			['finish', 'passed', ['finish']],
+		]);
+		expect(report.checkpoints.map((checkpoint) => [checkpoint.id, checkpoint.resumable])).toEqual([
+			['open-ready', true],
+			['click', true],
+			['finish', false],
+		]);
+		expect(report.segments.length).toBeGreaterThanOrEqual(4);
+		for (const segment of report.segments) {
+			expect(existsSync(segment.segmentPath)).toBe(true);
+			expect(existsSync(segment.stepsPath)).toBe(true);
+			expect(existsSync(segment.timelinePath)).toBe(true);
+		}
+		expect(readFileSync(report.artifacts!.timelinePath, 'utf8')).toContain('checkpoint.write');
 	});
 
 	it('uses the default device profile viewport for non-recorded acceptance runs', async () => {
@@ -452,5 +824,36 @@ workflow:
 		expect(report.matrixPath).toContain('.treeseed/scenes/matrix/device-smoke/20260616T120000Z-');
 		expect(existsSync(report.matrixPath!)).toBe(true);
 		expect(readFileSync(report.matrixPath!, 'utf8')).toContain('"devices"');
+	});
+
+	it('blocks invalid device matrix input and defaults to all scene device profiles', async () => {
+		const root = workspace();
+		writeScene(root, 'device-smoke', deviceScene());
+		const defaultMatrix = await runTreeseedSceneDeviceMatrix({
+			projectRoot: root,
+			scene: 'device-smoke',
+			timestamp: '20260616T130000Z',
+			browserAdapter: new FakeAdapter(),
+		});
+		expect(defaultMatrix.ok).toBe(true);
+		expect(defaultMatrix.devices).toEqual(['desktop', 'tablet', 'mobile']);
+
+		const invalidDevice = await runTreeseedSceneDeviceMatrix({
+			projectRoot: root,
+			scene: 'device-smoke',
+			devices: ['watch' as never],
+			browserAdapter: new FakeAdapter(),
+		});
+		expect(invalidDevice.ok).toBe(false);
+		expect(invalidDevice.blockers.some((entry) => entry.code === 'scene.device_unknown')).toBe(true);
+
+		writeScene(root, 'bad', 'schemaVersion: [');
+		const invalidScene = await runTreeseedSceneDeviceMatrix({
+			projectRoot: root,
+			scene: 'bad',
+			browserAdapter: new FakeAdapter(),
+		});
+		expect(invalidScene.ok).toBe(false);
+		expect(invalidScene.diagnostics.some((entry) => entry.code === 'scene.yaml_parse_error')).toBe(true);
 	});
 });

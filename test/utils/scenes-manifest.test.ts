@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
 	loadTreeseedSceneDocument,
+	parseTreeseedSceneManifest,
 	planTreeseedScene,
 	resolveTreeseedSceneBaseUrl,
 	resolveTreeseedScenePath,
@@ -150,6 +151,155 @@ visualAudit:
 		expect(invalid.diagnostics.map((entry) => entry.code)).toContain('scene.visual_audit_invalid_max_findings');
 	});
 
+	it('reports dense schema diagnostics for malformed journey, workflow, devices, visuals, and training config', () => {
+		const diagnostics: Array<{ code: string; severity: string; path?: string }> = [];
+		const scene = parseTreeseedSceneManifest({
+			schemaVersion: 'treeseed.scene/v1',
+			id: 'schema-edge',
+			title: 'Schema Edge',
+			journey: {
+				kind: 'adventure',
+				proves: ['service-flow', 123],
+				minimumSteps: 0,
+				requiresInteractiveAction: 'yes',
+				producesState: ['not-object', { key: '', kind: 'created' }],
+				consumesState: [{ key: 'quote', kind: '' }],
+			},
+			mode: { test: 'yes' },
+			target: { app: 'market', environment: 'moon', browser: 'netscape' },
+			devices: {
+				unknown: true,
+				defaultProfile: 'missing',
+				profiles: [
+					'not-object',
+					{
+						id: 'Bad Device!',
+						orientation: 'sideways',
+						viewport: { width: -1, height: Number.NaN },
+						video: { width: null, height: 100 },
+						output: { width: 500, height: 300 },
+						browserFrame: { chrome: 'watch' },
+						deviceScaleFactor: 0,
+						isMobile: 'sometimes',
+						hasTouch: 'maybe',
+					},
+				],
+			},
+			setup: { auth: { role: 'owner', required: 'true' } },
+			workflow: [
+				'not-object',
+				{
+					id: 'Bad Step!',
+					title: '',
+					action: 'not-object',
+					expect: 'not-object',
+					checkpoint: { id: 'Bad Checkpoint!', resumable: 'yes' },
+				},
+				{
+					id: 'pause',
+					title: 'Pause',
+					action: { pause: { mode: 'timed' } },
+				},
+				{
+					id: 'select',
+					title: 'Select',
+					action: { select: { css: '.role' } },
+				},
+				{
+					id: 'fill',
+					title: 'Fill',
+					action: { fill: { role: 'textbox', name: 'Name' } },
+					expect: { unknown: true, operation: 'bad' },
+				},
+			],
+			chapters: [
+				'not-object',
+				{ id: 'Bad Chapter!', title: 'Bad', startsAt: 'missing-step' },
+			],
+			overlays: [
+				'not-object',
+				{
+					id: 'Bad Overlay!',
+					variant: 'mystery',
+					at: 'select',
+					position: 'bad',
+					size: { width: 120, height: -1, unit: 'percent' },
+					style: { tone: 'loud', opacity: 2, unknown: true },
+					motion: {
+						loop: 'yes',
+						keyframes: [
+							'bad',
+							{ at: 2, unit: 'progress', opacity: 2, position: { x: 120, y: -1, unit: 'percent' }, rotateDeg: Number.NaN, easing: 'rocket' },
+						],
+					},
+					objects: ['bad', { type: 'triangle', text: 'Hello', position: { x: 'left', y: 10 } }],
+				},
+			],
+			diagrams: [
+				'not-object',
+				{ id: 'Bad Diagram!', renderer: 'remotion', component: '', at: 'missing-step', placement: 'beside' },
+			],
+			render: {
+				remotion: {
+					capture: {
+						evidenceFit: 'squish',
+					},
+				},
+			},
+			training: {
+				unknown: true,
+				enabled: true,
+				captions: { formats: ['vtt', 'pdf'] },
+				transcript: { formats: ['json', 'doc'] },
+				narration: { style: 'dramatic' },
+				glossary: { terms: ['bad'] },
+				chapterClips: { format: 'video' },
+			},
+			visualAudit: {
+				unknown: true,
+				roles: [],
+				pathRoots: ['app'],
+				review: { unknown: true, detail: 'loud', maxFindings: 0 },
+				routeDiscovery: { unknown: true },
+			},
+		}, diagnostics as never);
+
+		expect(scene).not.toBeNull();
+		expect(diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
+			'scene.invalid_journey_kind',
+			'scene.invalid_string',
+			'scene.invalid_state_ref',
+			'scene.invalid_boolean',
+			'scene.invalid_environment',
+			'scene.invalid_browser',
+			'scene.unknown_device_field',
+			'scene.invalid_device_profile',
+			'scene.invalid_id',
+			'scene.device_orientation_invalid',
+			'scene.device_browser_chrome_invalid',
+			'scene.invalid_workflow_step',
+			'scene.invalid_action',
+			'scene.invalid_expectation',
+			'scene.invalid_chapter',
+			'scene.unknown_step_reference',
+			'scene.invalid_overlay',
+			'scene.visual_invalid_size',
+			'scene.visual_invalid_opacity',
+			'scene.motion_invalid_keyframe',
+			'scene.motion_invalid_progress',
+			'scene.visual_invalid_object',
+			'scene.invalid_diagram',
+			'scene.diagram_invalid_placement',
+			'scene.render_capture_fit_invalid',
+			'scene.training_invalid_config',
+			'scene.visual_audit_invalid_roles',
+			'scene.visual_audit_invalid_path_root',
+			'scene.visual_audit_invalid_review_detail',
+			'scene.visual_audit_invalid_max_findings',
+		]));
+		expect(diagnostics.some((entry) => entry.severity === 'warning')).toBe(true);
+	});
+
 	it('plans a valid scene with deterministic artifact paths', () => {
 		const root = workspace();
 		const path = writeScene(root, 'market-project-deploy-demo', validSceneYaml(`
@@ -204,6 +354,72 @@ diagrams:
 		]);
 		expect(plan.pluginDiagnostics).toEqual([]);
 		expect(plan.artifactPaths?.runRoot).toContain('.treeseed/scenes/runs/market-project-deploy-demo/20260614T120000Z-abc123');
+	});
+
+	it('plans disabled training output branches and invalid environment blockers', () => {
+		const root = workspace();
+		writeScene(root, 'training-disabled', validSceneYaml(`
+training:
+  enabled: false
+`));
+		const disabled = planTreeseedScene({
+			projectRoot: root,
+			scene: 'training-disabled',
+			environment: 'qa' as never,
+		});
+		expect(disabled.ok).toBe(false);
+		expect(disabled.enabledTrainingOutputs).toEqual([]);
+		expect(disabled.enabledNarrationPlugins).toEqual([]);
+		expect(disabled.diagnostics.map((entry) => entry.code)).toContain('scene.invalid_environment');
+
+		writeScene(root, 'training-output-disabled', validSceneYaml(`
+training:
+  captions:
+    enabled: false
+  transcript:
+    enabled: false
+  narration:
+    enabled: false
+  glossary:
+    enabled: false
+  chapterClips:
+    enabled: false
+`));
+		const outputsDisabled = planTreeseedScene({
+			projectRoot: root,
+			scene: 'training-output-disabled',
+		});
+		expect(outputsDisabled.ok).toBe(true);
+		expect(outputsDisabled.enabledTrainingOutputs).toEqual([]);
+		expect(outputsDisabled.enabledNarrationPlugins).toEqual([]);
+		expect(outputsDisabled.enabledPlugins).not.toContain('treeseed.scene.training.deterministic');
+	});
+
+	it('plans a degraded report with default capabilities when the scene cannot be loaded', () => {
+		const root = workspace();
+		const plan = planTreeseedScene({
+			projectRoot: root,
+			scene: 'missing-plan-scene',
+		});
+		expect(plan.ok).toBe(false);
+		expect(plan.sceneId).toBeNull();
+		expect(plan.title).toBeNull();
+		expect(plan.environment).toBe('local');
+		expect(plan.baseUrl).toBe('auto');
+		expect(plan.browser).toBeNull();
+		expect(plan.viewport).toBeNull();
+		expect(plan.workflowSteps).toEqual([]);
+		expect(plan.enabledActions).toEqual(expect.arrayContaining(['goto', 'click', 'fill']));
+		expect(plan.enabledAssertions).toEqual(expect.arrayContaining(['visible', 'text']));
+		expect(plan.enabledRenderers).toContain('remotion');
+		expect(plan.enabledDiagrams).toEqual([]);
+		expect(plan.enabledDiagramPlugins).toEqual([]);
+		expect(plan.enabledTrainingOutputs).toEqual([]);
+		expect(plan.enabledNarrationPlugins).toEqual([]);
+		expect(plan.enabledDeviceProfiles).toEqual([]);
+		expect(plan.artifactPaths).toBeNull();
+		expect(plan.estimatedDurationSeconds).toBeNull();
+		expect(plan.blockers.map((entry) => entry.code)).toContain('scene.not_found');
 	});
 
 	it('resolves hosted scene base URLs from the web surface instead of API connections', () => {

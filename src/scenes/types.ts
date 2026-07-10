@@ -473,6 +473,14 @@ export type TreeseedSceneManifest = {
 	title: string;
 	description?: string;
 	audience: string[];
+	journey?: {
+		kind: 'service' | 'page' | 'visual-audit';
+		proves?: string[];
+		minimumSteps?: number;
+		requiresInteractiveAction?: boolean;
+		producesState?: Array<{ key: string; kind: string }>;
+		consumesState?: Array<{ key: string; kind: string }>;
+	};
 	mode: TreeseedSceneMode;
 	target: TreeseedSceneTarget;
 	devices: TreeseedSceneDeviceConfig;
@@ -561,6 +569,8 @@ export type TreeseedSceneRunOptions = {
 	scene: string | TreeseedSceneManifest;
 	environment?: TreeseedSceneEnvironment;
 	device?: TreeseedSceneDeviceProfileId;
+	browser?: TreeseedSceneBrowser;
+	authRole?: TreeseedSceneVisualAuditRole;
 	record?: boolean;
 	artifactMode?: 'full' | 'screenshots';
 	runId?: string;
@@ -584,6 +594,8 @@ export type TreeseedSceneDeviceMatrixOptions = {
 	scene: string;
 	environment?: TreeseedSceneEnvironment;
 	devices?: TreeseedSceneDeviceProfileId[];
+	browser?: TreeseedSceneBrowser;
+	authRole?: TreeseedSceneVisualAuditRole;
 	record?: boolean;
 	artifactMode?: 'full' | 'screenshots';
 	mode?: TreeseedSceneExecutionMode;
@@ -1149,6 +1161,7 @@ export type TreeseedSceneOperationWaitOptions = {
 	projectRoot: string;
 	scene: TreeseedSceneManifest;
 	environment: TreeseedSceneEnvironment;
+	runId: string;
 	baseUrl: string;
 	spec: TreeseedSceneOperationWaitSpec;
 	linkedOperationIds?: string[];
@@ -2145,7 +2158,7 @@ export type TreeseedSceneLocator = {
 };
 
 export type TreeseedScenePage = {
-	goto(url: string, options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; timeout?: number }): Promise<void>;
+	goto(url: string, options?: { waitUntil?: 'load' | 'domcontentLoaded' | 'domcontentloaded' | 'networkidle'; timeout?: number }): Promise<{ status(): number; url(): string } | null | undefined>;
 	url(): string;
 	locator(selector: string): TreeseedSceneLocator;
 	getByTestId(testId: string): TreeseedSceneLocator;

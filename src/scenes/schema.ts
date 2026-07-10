@@ -36,7 +36,7 @@ import {
 } from './types.ts';
 
 const FILESYSTEM_SAFE_SCENE_ID = /^[a-z0-9][a-z0-9._-]*$/u;
-const TOP_LEVEL_FIELDS = new Set(['schemaVersion', 'id', 'title', 'description', 'audience', 'mode', 'target', 'devices', 'setup', 'artifacts', 'workflow', 'chapters', 'overlays', 'diagrams', 'render', 'runtime', 'training', 'visualAudit', 'xScenario']);
+const TOP_LEVEL_FIELDS = new Set(['schemaVersion', 'id', 'title', 'description', 'audience', 'journey', 'mode', 'target', 'devices', 'setup', 'artifacts', 'workflow', 'chapters', 'overlays', 'diagrams', 'render', 'runtime', 'training', 'visualAudit', 'xScenario']);
 const FILESYSTEM_SAFE_CHECKPOINT_ID = /^[a-z0-9][a-z0-9._-]*$/u;
 const DIAGRAM_PLACEMENTS = ['overlay', 'interstitial', 'standalone'] as const;
 const CAPTION_FORMATS = ['vtt', 'srt'] as const;
@@ -148,6 +148,36 @@ function stringArrayField(record: Record<string, unknown>, field: string, path: 
 		strings.push(text);
 	});
 	return strings;
+}
+
+function stateRefArray(record: Record<string, unknown>, field: string, path: string, diagnostics: TreeseedSceneDiagnostic[]) {
+	const value = arrayField(record, field, path, diagnostics);
+	if (!value) return undefined;
+	const refs: Array<{ key: string; kind: string }> = [];
+	value.forEach((entry, index) => {
+		const entryPath = `${path}.${field}[${index}]`;
+		if (!isRecord(entry)) {
+			diagnostics.push(sceneErrorDiagnostic('scene.invalid_state_ref', `Expected ${field} entry to be an object.`, entryPath));
+			return;
+		}
+		refs.push({ key: requireString(entry, 'key', entryPath, diagnostics), kind: requireString(entry, 'kind', entryPath, diagnostics) });
+	});
+	return refs;
+}
+
+function parseJourney(record: Record<string, unknown>, diagnostics: TreeseedSceneDiagnostic[]) {
+	const journey = objectField(record, 'journey', 'manifest', diagnostics);
+	if (!journey) return undefined;
+	const kind = optionalString(journey, 'kind');
+	if (kind && !['service', 'page', 'visual-audit'].includes(kind)) diagnostics.push(sceneErrorDiagnostic('scene.invalid_journey_kind', `Unsupported journey kind: ${kind}.`, 'journey.kind'));
+	return {
+		kind: (kind === 'page' || kind === 'visual-audit' ? kind : 'service') as 'service' | 'page' | 'visual-audit',
+		proves: stringArrayField(journey, 'proves', 'journey', diagnostics),
+		minimumSteps: positiveNumberField(journey, 'minimumSteps', undefined, 'journey', diagnostics),
+		requiresInteractiveAction: booleanField(journey, 'requiresInteractiveAction', false, 'journey', diagnostics),
+		producesState: stateRefArray(journey, 'producesState', 'journey', diagnostics),
+		consumesState: stateRefArray(journey, 'consumesState', 'journey', diagnostics),
+	};
 }
 
 function enumArrayField<T extends readonly string[]>(record: Record<string, unknown>, field: string, allowed: T, defaultValue: T[number][], path: string, diagnostics: TreeseedSceneDiagnostic[]) {
@@ -1061,6 +1091,7 @@ export function parseTreeseedSceneManifest(value: unknown, diagnostics: Treeseed
 		title,
 		description: optionalString(value, 'description'),
 		audience: stringArrayField(value, 'audience', 'manifest', diagnostics),
+		journey: parseJourney(value, diagnostics),
 		mode,
 		target,
 		devices,

@@ -62,11 +62,15 @@ function configuredValue(input: { projectRoot?: string; environment?: string } |
 }
 
 function serviceHeaders(input?: { projectRoot?: string; environment?: string }) {
+	const localDevServiceSecret = input?.environment === 'local' ? 'treeseed-web-service-dev-secret' : null;
 	return {
 		'content-type': 'application/json',
 		'x-treeseed-service-id': configuredValue(input, 'TREESEED_API_WEB_SERVICE_ID') ?? configuredValue(input, 'TREESEED_WEB_SERVICE_ID') ?? 'web',
 		'x-treeseed-service-secret':
-			configuredValue(input, 'TREESEED_API_WEB_SERVICE_SECRET')
+			process.env.TREESEED_API_WEB_SERVICE_SECRET?.trim()
+			?? process.env.TREESEED_WEB_SERVICE_SECRET?.trim()
+			?? localDevServiceSecret
+			?? configuredValue(input, 'TREESEED_API_WEB_SERVICE_SECRET')
 			?? configuredValue(input, 'TREESEED_WEB_SERVICE_SECRET')
 			?? 'treeseed-web-service-dev-secret',
 	};
@@ -154,12 +158,13 @@ export async function ensureTreeseedSceneVisualAuditRoleFixtures(input: {
 }): Promise<TreeseedSceneDiagnostic[]> {
 	const diagnostics: TreeseedSceneDiagnostic[] = [];
 	const roles = [...new Set(input.roles)].filter((role) => role !== 'anonymous');
-	diagnostics.push(...await seedVisualAuditFixtures({
+	const seedDiagnostics = await seedVisualAuditFixtures({
 		baseUrl: input.baseUrl,
 		roles,
 		projectRoot: input.projectRoot,
 		environment: input.environment,
-	}));
+	});
+	let roleSetupFailed = false;
 	for (const role of roles) {
 		const user = treeseedSceneVisualAuditUserForRole(role);
 		if (!user) continue;
@@ -169,6 +174,7 @@ export async function ensureTreeseedSceneVisualAuditRoleFixtures(input: {
 			continue;
 		} catch (error) {
 			if (!isAuthFailure(error)) {
+				roleSetupFailed = true;
 				diagnostics.push(sceneWarningDiagnostic(
 					'scene.visual_audit_fixture_unavailable',
 					`Visual audit fixture setup for ${role} failed against ${input.baseUrl}: ${error instanceof Error ? error.message : String(error ?? 'local fixture API is unavailable')}. Authenticated screenshots require the local API and database to be healthy.`,
@@ -191,12 +197,14 @@ export async function ensureTreeseedSceneVisualAuditRoleFixtures(input: {
 			if (payload.confirmationToken) {
 				await client.confirmWebEmail({ token: payload.confirmationToken });
 			} else if (payload.confirmationRequired) {
+				roleSetupFailed = true;
 				diagnostics.push(sceneWarningDiagnostic('scene.visual_audit_fixture_unavailable', `Visual audit fixture user ${user.email} requires email confirmation, but the local API did not return a confirmation token.`, 'roles'));
 			}
 		} catch (error) {
 			try {
 				await client.webSignIn({ login: user.email, password: user.password });
 			} catch {
+				roleSetupFailed = true;
 				diagnostics.push(sceneWarningDiagnostic(
 					'scene.visual_audit_fixture_unavailable',
 					`Visual audit fixture setup for ${role} failed against ${input.baseUrl}: ${error instanceof Error ? error.message : String(error ?? 'local fixture API is unavailable')}. Authenticated screenshots require the local API and database to be healthy.`,
@@ -205,6 +213,7 @@ export async function ensureTreeseedSceneVisualAuditRoleFixtures(input: {
 			}
 		}
 	}
+	if (roleSetupFailed) diagnostics.unshift(...seedDiagnostics);
 	return diagnostics;
 }
 

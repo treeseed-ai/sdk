@@ -797,9 +797,8 @@ function localDevelopmentResources(tenantRoot: string, environment: TreeseedDesi
 			dependencies: [composeId],
 			spec: {
 				mode: 'local',
-				roles: ['api', 'manager', 'runner'],
+				roles: ['manager', 'runner'],
 				volumePolicy: 'shared-local',
-				healthEndpoint: 'http://127.0.0.1:4783/healthz',
 			},
 			source: { type: 'package-adapter', id: '@treeseed/agent' },
 		},

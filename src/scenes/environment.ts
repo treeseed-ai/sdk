@@ -44,7 +44,7 @@ export async function prepareTreeseedSceneEnvironment(input: TreeseedSceneEnviro
 			baseUrl = healthUrl(existing);
 		} else {
 			try {
-				const result = await startTreeseedManagedDev({ cwd: input.projectRoot, surfaces: 'web,api,operations-runner', webRuntime: 'local', env: input.env });
+				const result = await startTreeseedManagedDev({ cwd: input.projectRoot, surfaces: 'web,api', webRuntime: 'local', env: input.env });
 				instances = result.instances;
 				const web = result.instances.find((entry) => entry.surface === 'web' || entry.id === 'web');
 				started = Boolean(web && running(web));
