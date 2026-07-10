@@ -1561,7 +1561,8 @@ function pullRebaseFromOrigin(node: RepositorySaveNode, options: RepositorySaveO
 		};
 	}
 	try {
-		runCapturedCommand(node, options, 'rebase', 'git', ['pull', '--rebase', '--recurse-submodules=no', 'origin', branch]);
+		runCapturedCommand(node, options, 'rebase', 'git', ['fetch', 'origin', `refs/heads/${branch}:refs/remotes/origin/${branch}`]);
+		runCapturedCommand(node, options, 'rebase', 'git', ['rebase', `refs/remotes/origin/${branch}`]);
 		return {
 			remoteBranchExisted: true,
 			pulledRebase: true,

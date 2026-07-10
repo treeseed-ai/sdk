@@ -225,6 +225,15 @@ describe('repository save orchestrator helpers', () => {
 		expect(source).not.toContain("if (node.branchMode !== 'project-save' || !hasNpmLockfile(node.path)) return;");
 	});
 
+	it('rebases each save node against one explicit origin branch ref', () => {
+		const source = readFileSync(resolve(testDir, '../../src/operations/services/repository-save-orchestrator.ts'), 'utf8');
+
+		expect(source).toContain("['fetch', 'origin'");
+		expect(source).toContain('refs/heads/${branch}:refs/remotes/origin/${branch}');
+		expect(source).toContain('refs/remotes/origin/${branch}');
+		expect(source).not.toContain("['pull', '--rebase', '--recurse-submodules=no', 'origin', branch]");
+	});
+
 	it('serializes verified repository saves to avoid package install resource exhaustion', () => {
 		const source = readFileSync(resolve(testDir, '../../src/operations/services/repository-save-orchestrator.ts'), 'utf8');
 
