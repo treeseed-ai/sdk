@@ -197,7 +197,8 @@ describe('GitHub workflow wait progress', () => {
 		expect(result).toMatchObject({ runId: 457, conclusion: 'success' });
 	});
 
-	it('returns a matching failed workflow immediately even when another matching run is active', async () => {
+	it('watches the newest matching workflow before older failures for the same head', async () => {
+		let getCalls = 0;
 		const client = {
 			rest: {
 				actions: {
@@ -228,17 +229,29 @@ describe('GitHub workflow wait progress', () => {
 						},
 					}),
 					getWorkflowRun: async () => {
-						throw new Error('waiter should not poll an active sibling after seeing a failed run');
+						getCalls += 1;
+						return {
+							data: {
+								id: 458,
+								status: getCalls === 1 ? 'in_progress' : 'completed',
+								conclusion: getCalls === 1 ? null : 'success',
+								html_url: 'https://github.com/acme/widget/actions/runs/458',
+								head_sha: 'def456',
+								head_branch: 'staging',
+								created_at: '2026-05-07T01:01:00Z',
+								updated_at: getCalls === 1 ? '2026-05-07T01:02:30Z' : '2026-05-07T01:04:00Z',
+							},
+						};
 					},
 					listJobsForWorkflowRun: async () => ({
 						data: {
 							jobs: [{
 								id: 1,
 								name: 'deploy',
-								status: 'completed',
-								conclusion: 'failure',
-								html_url: 'https://github.com/acme/widget/actions/runs/459/job/1',
-								steps: [{ name: 'deploy app', status: 'completed', conclusion: 'failure' }],
+								status: getCalls === 1 ? 'in_progress' : 'completed',
+								conclusion: getCalls === 1 ? null : 'success',
+								html_url: 'https://github.com/acme/widget/actions/runs/458/job/1',
+								steps: [{ name: 'deploy app', status: getCalls === 1 ? 'in_progress' : 'completed', conclusion: getCalls === 1 ? null : 'success' }],
 							}],
 						},
 					}),
@@ -255,11 +268,12 @@ describe('GitHub workflow wait progress', () => {
 		});
 
 		expect(result).toMatchObject({
-			runId: 459,
+			runId: 458,
 			status: 'completed',
-			conclusion: 'failure',
-			failedJobs: [{ name: 'deploy', conclusion: 'failure' }],
+			conclusion: 'success',
+			failedJobs: [],
 		});
+		expect(getCalls).toBe(2);
 	});
 
 	it('dispatches a workflow once when no pushed run appears for the requested head', async () => {

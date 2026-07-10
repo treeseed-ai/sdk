@@ -1118,25 +1118,6 @@ export async function waitForGitHubWorkflowRunCompletion(
 			const matchingRuns = listed.data.workflow_runs
 				.map((run) => normalizeWorkflowRun(run as Record<string, any>))
 				.filter((run) => (!headSha || run.headSha === headSha) && (!branch || run.headBranch === branch));
-			const failedMatch = matchingRuns.find((run) => run.status === 'completed' && run.conclusion !== 'success');
-			if (failedMatch?.id) {
-				const failedJobs = await listWorkflowJobsForProgress(client, owner, name, failedMatch.id);
-				emitProgress('completed', failedMatch, failedJobs);
-				return {
-					status: 'completed',
-					repository: `${owner}/${name}`,
-					workflow,
-					runId: failedMatch.id,
-					headSha: failedMatch.headSha,
-					branch: failedMatch.headBranch,
-					createdAt: failedMatch.createdAt,
-					updatedAt: failedMatch.updatedAt,
-					conclusion: failedMatch.conclusion,
-					url: failedMatch.url,
-					jobs: failedJobs,
-					failedJobs: failedJobs.filter((job) => job.conclusion && job.conclusion !== 'success' && job.conclusion !== 'skipped'),
-				};
-			}
 			const match = matchingRuns[0];
 			if (!match?.id) {
 				emitProgress('waiting');
