@@ -32,6 +32,9 @@ surfaces:
   api:
     enabled: true
     provider: railway
+    environments:
+      staging:
+        domain: api.example.test
 services:
   api:
     enabled: true
@@ -96,6 +99,8 @@ describe('live hosted service checks', () => {
 			}) as typeof fetch,
 		});
 		expect(report.checks.find((check) => check.id === 'http:web')?.status).toBe('passed');
+		expect(report.checks.find((check) => check.id === 'http:api:healthz')?.status).toBe('passed');
+		expect(report.checks.find((check) => check.id === 'http:api:healthz-deep')?.status).toBe('passed');
 	});
 
 	it('retries transient HTTP status failures with an HTTP-specific policy', async () => {

@@ -181,6 +181,20 @@ function configuredEnvValue(env, name) {
 	return typeof value === 'string' && value.trim() ? value.trim() : '';
 }
 
+function configuredApiPublicBaseUrl(deployConfig, scope) {
+	const apiSurface = deployConfig.surfaces?.api;
+	if (!apiSurface || typeof apiSurface !== 'object') return null;
+	const environment = apiSurface.environments?.[scope];
+	const configured = environment?.baseUrl
+		?? environment?.domain
+		?? (scope === 'local' ? apiSurface.localBaseUrl : null)
+		?? apiSurface.publicBaseUrl
+		?? null;
+	if (typeof configured !== 'string' || !configured.trim()) return null;
+	const value = configured.trim().replace(/\/+$/u, '');
+	return /^https?:\/\//iu.test(value) ? value : `https://${value}`;
+}
+
 function railwayDeployTransport(env) {
 	const configured = configuredEnvValue(env, 'TREESEED_RAILWAY_DEPLOY_TRANSPORT').toLowerCase();
 	return configured === 'cli-fallback' ? 'cli-fallback' : 'api';
@@ -786,7 +800,9 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 				normalizedScope,
 				service.environments?.[normalizedScope]?.railwayEnvironment,
 			);
-			const publicBaseUrl = service.environments?.[normalizedScope]?.baseUrl ?? service.publicBaseUrl ?? null;
+			const publicBaseUrl = service.environments?.[normalizedScope]?.baseUrl
+				?? service.publicBaseUrl
+				?? (serviceKey === 'api' ? configuredApiPublicBaseUrl(deployConfig, normalizedScope) : null);
 			const configuredServiceName = service.railway?.serviceName
 				?? (serviceKey === 'workerRunner'
 					? deriveRailwayWorkerRunnerServiceName(identity.deploymentKey)
