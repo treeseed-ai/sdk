@@ -338,8 +338,6 @@ function npmCacheForCwd(cwd: string) {
 function npmWorkflowEnv(env: NodeJS.ProcessEnv = {}, cwd = process.cwd()) {
 	const npmCache = env.npm_config_cache
 		?? env.NPM_CONFIG_CACHE
-		?? process.env.npm_config_cache
-		?? process.env.NPM_CONFIG_CACHE
 		?? npmCacheForCwd(cwd);
 	return withShortProcessTempEnv({
 		...env,
