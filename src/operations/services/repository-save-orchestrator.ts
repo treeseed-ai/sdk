@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, resolve, relative } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -1138,6 +1138,39 @@ function syncDirectGitDependencyLockfileEntries(
 	return true;
 }
 
+function regenerateStandaloneGitDependencyLockfile(
+	node: RepositorySaveNode,
+	options: Pick<RepositorySaveOptions, 'onProgress'>,
+) {
+	const lockfilePath = resolve(node.path, 'package-lock.json');
+	if (!existsSync(lockfilePath)) return false;
+	const previousLockfile = readFileSync(lockfilePath, 'utf8');
+	try {
+		rmSync(lockfilePath);
+		runCapturedCommand(node, options, 'lockfile', 'npm', [
+			'install',
+			'--package-lock-only',
+			'--ignore-scripts',
+			'--workspaces=false',
+			'--no-audit',
+			'--no-fund',
+		], { timeoutMs: 15 * 60_000 });
+		runCapturedCommand(node, options, 'lockfile', 'npm', [
+			'ci',
+			'--package-lock-only',
+			'--ignore-scripts',
+			'--workspaces=false',
+			'--no-audit',
+			'--no-fund',
+		], { timeoutMs: 5 * 60_000 });
+		emitProgress(options, node, 'lockfile', 'Regenerated and validated the standalone lockfile for exact internal Git refs.');
+		return true;
+	} catch (error) {
+		writeFileSync(lockfilePath, previousLockfile, 'utf8');
+		throw error;
+	}
+}
+
 function planPackageVersion(node: RepositorySaveNode, options: RepositorySaveOptions) {
 	if (!node.packageJson || !node.packageJsonPath) return null;
 	const current = String(node.packageJson.version ?? '0.0.0');
@@ -2256,6 +2289,9 @@ async function saveOneRepository(
 	const gitDependencyRefreshReferences = [...state.finalizedReferences.values()]
 		.filter((reference) => reference.mode === 'dev-git-commit' && directDependencyNames.has(reference.packageName));
 	const lockfileGitDependenciesSynced = syncDirectGitDependencyLockfileEntries(node, options, gitDependencyRefreshReferences);
+	if (lockfileGitDependenciesSynced) {
+		regenerateStandaloneGitDependencyLockfile(node, options);
+	}
 	const gitDependencyRefreshSpecs = lockfileGitDependenciesSynced
 		? []
 		: gitDependencyRefreshReferences.map((reference) => `${reference.packageName}@${reference.installSpec ?? reference.spec}`);
