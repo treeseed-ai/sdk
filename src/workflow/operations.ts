@@ -3229,7 +3229,19 @@ function buildReleasePlanSnapshot(input: {
 	rootRepo: WorkflowRepoReport;
 	blockers: string[];
 }) {
-	const selectedPackageNames = new Set(input.packageSelection.selected);
+	const publishablePackageNames = new Set(
+		discoverTreeseedPackageAdapters(input.root)
+			.filter((adapter) => adapter.capabilities.publish)
+			.map((adapter) => adapter.id),
+	);
+	const selectedPackageNames = new Set(
+		input.packageSelection.selected.filter((name) => publishablePackageNames.has(name)),
+	);
+	const publishablePackageSelection = {
+		changed: input.packageSelection.changed.filter((name) => selectedPackageNames.has(name)),
+		dependents: input.packageSelection.dependents.filter((name) => selectedPackageNames.has(name)),
+		selected: [...selectedPackageNames],
+	};
 	const applicationSelection = selectWorkflowApplications(input.root, { packageSelection: input.packageSelection });
 	const versionPlan = planWorkspaceReleaseBump(input.level, input.root, input.mode === 'recursive-workspace'
 		? { selectedPackageNames, repairVersionLine: input.repairVersionLine === true, targetVersionLine: input.targetVersionLine }
@@ -3244,7 +3256,7 @@ function buildReleasePlanSnapshot(input: {
 	const plannedSelected = orderReleasePackageNames([...versionPlan.selected].filter((name) => versionPlan.versions.has(name)));
 	const plannedChanged = input.repairVersionLine === true
 		? plannedSelected
-		: Array.from(new Set(input.packageSelection.changed.filter((name) => plannedSelected.includes(name))));
+		: Array.from(new Set(publishablePackageSelection.changed.filter((name) => plannedSelected.includes(name))));
 	const plannedDependents = plannedSelected.filter((name) => !plannedChanged.includes(name));
 	const plannedPackageSelection = {
 		changed: plannedChanged,

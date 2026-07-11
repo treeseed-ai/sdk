@@ -240,6 +240,19 @@ describe('admin package workflow integration', () => {
 });
 
 describe('package publish safeguards', () => {
+	it('keeps Reviewer verification-only', () => {
+		const reviewerRoot = packageRootFor('reviewer');
+		if (!reviewerRoot) {
+			expect(integratedWorkspaceAvailable, 'Reviewer workflow is only available in integrated workspace verification').toBe(false);
+			return;
+		}
+		const manifest = readFileSync(resolve(reviewerRoot, 'treeseed.package.yaml'), 'utf8');
+		expect(manifest).toContain('publish: false');
+		expect(manifest).toContain('deploy: false');
+		expect(existsSync(resolve(reviewerRoot, '.github/workflows/verify.yml'))).toBe(true);
+		expect(existsSync(resolve(reviewerRoot, '.github/workflows/publish.yml'))).toBe(false);
+	});
+
 	for (const packageName of ['sdk', 'agent', 'core', 'cli', 'admin']) {
 		it(`guards ${packageName} publishing to stable semver tags`, () => {
 			const packageRoot = packageRootFor(packageName);
