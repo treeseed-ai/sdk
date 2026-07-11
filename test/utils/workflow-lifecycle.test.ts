@@ -1264,8 +1264,11 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.promotion.status).toBe('completed');
 		expect(result.payload.stagingRefs.status).toBe('verified');
 		expect(result.payload.cleanup.status).toBe('skipped');
-		expect(git(work, ['branch', '--show-current'])).toBe('feature/demo-task');
-		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('feature/demo-task');
+		expect(result.payload.finalBranch).toBe('staging');
+		expect(git(work, ['branch', '--show-current'])).toBe('staging');
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--show-current'])).toBe('staging');
+		expect(git(work, ['branch', '--list', 'feature/demo-task'])).toContain('feature/demo-task');
+		expect(git(resolve(work, 'packages', 'sdk'), ['branch', '--list', 'feature/demo-task'])).toContain('feature/demo-task');
 		expect(git(fixtureRepo, ['rev-parse', 'origin/staging'])).toBe(git(fixtureRepo, ['rev-parse', 'HEAD']));
 		expect(git(templateRepo, ['rev-parse', 'origin/staging'])).toBe(git(templateRepo, ['rev-parse', 'HEAD']));
 	}, 180000);

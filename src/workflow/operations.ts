@@ -6752,6 +6752,10 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						: (skipJournalStep(root, workflowRun.runId, 'staging-guarantees', { skippedReason: 'async staging promotion' }), null);
 				const workspaceLinks = await executeJournalStep(root, workflowRun.runId, 'workspace-link-restore', () =>
 					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
+				for (const repo of checkedOutStagePromotionRepos(root)) {
+					syncBranchWithOrigin(repo.dir, STAGING_BRANCH);
+				}
+				syncBranchWithOrigin(repoRoot(root), STAGING_BRANCH);
 				const cleanup = cleanupMode === 'success'
 					? await executeJournalStep(root, workflowRun.runId, 'cleanup-source', () => cleanupStageSourceBranches(root, featureBranch, typedManifest))
 					: (skipJournalStep(root, workflowRun.runId, 'cleanup-source', { skippedReason: 'manual cleanup selected' }), { status: 'skipped', reason: 'manual cleanup selected' });
@@ -6769,7 +6773,7 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					stagingGuarantees,
 					cleanup,
 					workspaceLinks,
-					finalBranch: cleanupMode === 'success' ? STAGING_BRANCH : (currentBranch(repoRoot(root)) || featureBranch),
+					finalBranch: STAGING_BRANCH,
 					summary: ciMode === 'hosted'
 						? `Staging candidate ${typedManifest.candidateId} was promoted and attested by hosted CI.`
 						: `Staging candidate ${typedManifest.candidateId} was promoted asynchronously; hosted attestation is pending.`,
