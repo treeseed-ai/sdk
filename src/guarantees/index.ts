@@ -166,6 +166,8 @@ export type TreeseedGuaranteeFilter = {
 	type?: string;
 	subtype?: string;
 	ownerPackage?: string;
+	ownerPackages?: string[];
+	sceneBacked?: boolean;
 	status?: TreeseedGuaranteeStatus;
 	ids?: string[];
 	journeyIndexes?: number[];
@@ -787,6 +789,8 @@ function selectedByFilter(manifest: TreeseedGuaranteeManifest, filter: TreeseedG
 	if (filter.type && manifest.type !== filter.type) return false;
 	if (filter.subtype && manifest.subtype !== filter.subtype) return false;
 	if (filter.ownerPackage && manifest.ownerPackage !== filter.ownerPackage) return false;
+	if (filter.ownerPackages && filter.ownerPackages.length > 0 && !filter.ownerPackages.includes(manifest.ownerPackage)) return false;
+	if (filter.sceneBacked === true && !manifest.scene?.manifest) return false;
 	if (filter.status && manifest.status !== filter.status) return false;
 	if (filter.ids && filter.ids.length > 0 && !filter.ids.includes(manifest.id)) return false;
 	if (filter.journeyIndexes && filter.journeyIndexes.length > 0 && (!manifest.journeyIndex || !filter.journeyIndexes.includes(manifest.journeyIndex))) return false;

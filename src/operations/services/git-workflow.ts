@@ -828,7 +828,7 @@ export function waitForStagingAutomation(repoDir, env: NodeJS.ProcessEnv = proce
 		for (let attempt = 0; attempt < 120 && runId == null; attempt += 1) {
 			const output = run(gh, [
 				'run', 'list',
-				'--workflow', 'staging-candidate.yml',
+				'--workflow', 'deploy.yml',
 				'--branch', STAGING_BRANCH,
 				'--commit', headSha,
 				'--limit', '1',
@@ -844,7 +844,7 @@ export function waitForStagingAutomation(repoDir, env: NodeJS.ProcessEnv = proce
 			runConclusion = typeof rows[0]?.conclusion === 'string' ? rows[0].conclusion : null;
 			if (runId == null) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5_000);
 		}
-		if (runId == null) throw new Error(`No staging-candidate.yml run appeared for ${headSha}.`);
+		if (runId == null) throw new Error(`No deploy.yml run appeared for ${headSha}.`);
 		if (shouldRetryFailedStagingAutomation(runStatus, runConclusion)) {
 			run(gh, ['run', 'rerun', String(runId), '--failed'], {
 				cwd: repoDir,

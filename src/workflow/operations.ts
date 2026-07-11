@@ -87,7 +87,6 @@ import {
 	remoteBranchExists,
 	STAGING_BRANCH,
 	syncBranchWithOrigin,
-	waitForStagingAutomation,
 } from '../operations/services/git-workflow.ts';
 import { resolveGitHubRepositorySlug } from '../operations/services/github-automation.ts';
 import { resolveGitHubCredentialForRepository } from '../operations/services/github-credentials.ts';
@@ -990,7 +989,7 @@ function recordHostedDeploymentStatesFromRootGates(
 		{ scope: 'prod' as const, branch: releaseTag ?? PRODUCTION_BRANCH, commit: releaseRecord.releasedCommit },
 	]) {
 		const gate = gates.find((candidate) =>
-			candidate.workflow === 'deploy-web.yml'
+			candidate.workflow === 'deploy.yml'
 			&& candidate.branch === target.branch
 			&& candidate.status === 'completed'
 			&& candidate.conclusion === 'success');
@@ -1697,7 +1696,7 @@ function defaultCiWorkflows(kind: 'root' | 'package', branch: string | null) {
 		return ['verify.yml'];
 	}
 	if (branch === STAGING_BRANCH || branch === PRODUCTION_BRANCH) {
-		return ['deploy-web.yml'];
+		return ['deploy.yml'];
 	}
 	return ['verify.yml'];
 }
@@ -2701,7 +2700,7 @@ function validateStagingWorkflowContracts(root: string) {
 		return;
 	}
 	const missing: string[] = [];
-	for (const fileName of ['verify.yml', 'deploy-web.yml']) {
+	for (const fileName of ['verify.yml', 'deploy.yml']) {
 		if (!existsSync(resolve(root, '.github', 'workflows', fileName))) {
 			missing.push(fileName);
 		}
@@ -6119,25 +6118,27 @@ type StageCandidateManifest = {
 	stagingHeadsBefore: Record<string, string | null>;
 };
 
-type StageCandidateAttestation = {
-	schemaVersion: 1;
-	kind: 'treeseed.stage-candidate-attestation';
-	candidateId: string;
-	rootSha: string;
-	submodules: string[];
-	createdAt: string;
-	environment: 'staging';
-	status: 'passed';
-	guaranteeRunId: string;
-	guaranteeOutputRoot?: string;
-	counts: {
-		passed: number;
-		failed: number;
-		blocked: number;
-		skipped: number;
-		releaseBlockingFailures: number;
+function stagingCandidateWorkflowGates(root: string, manifest: StageCandidateManifest): GitHubActionsWorkflowGate[] {
+	const gates: GitHubActionsWorkflowGate[] = [];
+	const add = (name: string, repoPath: string, headSha: string, workflow: string, deploy = false) => {
+		if (!workflowFileExists(repoPath, workflow)) return;
+		const gate: GitHubActionsWorkflowGate = { name, repoPath, workflow, branch: STAGING_BRANCH, headSha };
+		gates.push(deploy ? hostedDeployGate(gate) : gate);
 	};
-};
+	for (const pkg of manifest.packages) {
+		const repoPath = resolve(root, pkg.path);
+		if (manifest.stagingHeadsBefore[pkg.name] !== pkg.commit) {
+			add(pkg.name, repoPath, pkg.commit, 'verify.yml');
+		}
+		if (manifest.stagingHeadsBefore[pkg.name] !== pkg.commit && existsSync(resolve(repoPath, 'treeseed.site.yaml'))) {
+			add(pkg.name, repoPath, pkg.commit, 'deploy.yml', true);
+		}
+	}
+	const marketRoot = repoRoot(root);
+	add('@treeseed/market', marketRoot, manifest.root.commit, 'verify.yml');
+	add('@treeseed/market', marketRoot, manifest.root.commit, 'deploy.yml', true);
+	return gates;
+}
 
 function normalizeStageVerifyMode(value: unknown): StageVerifyMode {
 	return value === 'local' || value === 'none' ? value : 'action';
@@ -6181,51 +6182,6 @@ function stageCandidateManifestPath(root: string, runId: string) {
 	};
 }
 
-function stageCandidateAttestationPath(root: string, candidateId?: string) {
-	const base = resolve(root, '.treeseed', 'workflow', 'stage-candidates');
-	return candidateId
-		? resolve(base, `${candidateId}.attestation.json`)
-		: resolve(base, 'latest.attestation.json');
-}
-
-function writeStageCandidateAttestation(root: string, attestation: StageCandidateAttestation) {
-	for (const filePath of [stageCandidateAttestationPath(root), stageCandidateAttestationPath(root, attestation.candidateId)]) {
-		mkdirSync(dirname(filePath), { recursive: true });
-		writeFileSync(filePath, `${JSON.stringify(attestation, null, 2)}\n`, 'utf8');
-	}
-	return attestation;
-}
-
-function importHostedStageCandidateAttestation(root: string, manifest: StageCandidateManifest, hostedCi: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env) {
-	const runId = hostedCi.runId;
-	const headSha = hostedCi.headSha;
-	if ((typeof runId !== 'number' && typeof runId !== 'string') || typeof headSha !== 'string') {
-		throw new Error('Hosted staging candidate result did not include an exact run id and head SHA.');
-	}
-	const gh = resolveTreeseedToolBinary('gh', { env });
-	if (!gh) throw new Error('GitHub CLI is unavailable for staging candidate attestation download.');
-	const destination = resolve(root, '.treeseed', 'workflow', 'stage-candidates', 'hosted', String(runId));
-	rmSync(destination, { recursive: true, force: true });
-	mkdirSync(destination, { recursive: true });
-	run(gh, ['run', 'download', String(runId), '--name', `treeseed-staging-candidate-${headSha}`, '--dir', destination], {
-		cwd: repoRoot(root),
-		env: createTreeseedManagedToolEnv(env),
-	});
-	const downloadedPath = resolve(destination, '.treeseed', 'workflow', 'stage-candidates', 'latest.attestation.json');
-	const attestation = readJsonFile<StageCandidateAttestation>(downloadedPath);
-	if (!attestation) throw new Error(`Hosted staging candidate attestation is missing from workflow run ${runId}.`);
-	if (attestation.candidateId !== manifest.candidateId) {
-		throw new Error(`Hosted candidate ${attestation.candidateId} does not match promoted candidate ${manifest.candidateId}.`);
-	}
-	if (attestation.rootSha !== manifest.root.commit || attestation.status !== 'passed' || !attestation.guaranteeRunId) {
-		throw new Error(`Hosted candidate ${manifest.candidateId} does not contain complete source and guarantee proof.`);
-	}
-	if (attestation.counts.passed !== 208 || attestation.counts.failed !== 0 || attestation.counts.blocked !== 0 || attestation.counts.skipped !== 0 || attestation.counts.releaseBlockingFailures !== 0) {
-		throw new Error(`Hosted candidate ${manifest.candidateId} contains release-blocking guarantee results.`);
-	}
-	return writeStageCandidateAttestation(root, attestation);
-}
-
 function readJsonFile<T>(filePath: string): T | null {
 	if (!existsSync(filePath)) return null;
 	try {
@@ -6237,17 +6193,12 @@ function readJsonFile<T>(filePath: string): T | null {
 
 function stageCandidateAttestationBlockers(root: string) {
 	const manifest = readJsonFile<StageCandidateManifest>(stageCandidateManifestPath(root, 'unused').latest);
-	if (!manifest) return ['No staging candidate manifest is available. Run `trsd stage` and wait for staging proof.'];
-	const attestation = readJsonFile<StageCandidateAttestation>(stageCandidateAttestationPath(root));
-	if (!attestation) return [`Staging candidate ${manifest.candidateId} has no successful guarantee attestation.`];
+	if (!manifest) return ['No staging candidate manifest is available. Run `trsd stage` and wait for staging verification and deployment workflows.'];
 	const blockers: string[] = [];
-	if (attestation.candidateId !== manifest.candidateId) blockers.push('The staging guarantee attestation does not match the latest candidate.');
-	if (manifest.root.commit !== headCommit(repoRoot(root))) blockers.push('The local Market staging head no longer matches the attested candidate.');
+	if (manifest.root.commit !== headCommit(repoRoot(root))) blockers.push('The local Market staging head no longer matches the latest staged candidate.');
 	for (const pkg of manifest.packages) {
-		if (!existsSync(pkg.path) || headCommit(pkg.path) !== pkg.commit) blockers.push(`${pkg.name} no longer matches the attested staging commit ${pkg.commit}.`);
-	}
-	if (attestation.counts.passed !== 208 || attestation.counts.failed !== 0 || attestation.counts.blocked !== 0 || attestation.counts.skipped !== 0 || attestation.counts.releaseBlockingFailures !== 0) {
-		blockers.push('The staging candidate attestation is not a complete passing guarantee run.');
+		const repoPath = resolve(root, pkg.path);
+		if (!existsSync(repoPath) || headCommit(repoPath) !== pkg.commit) blockers.push(`${pkg.name} no longer matches staged commit ${pkg.commit}.`);
 	}
 	return blockers;
 }
@@ -6593,7 +6544,6 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 				{ id: 'promote-to-staging', description: 'Promote exact verified refs to staging', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: featureBranch, resumable: true },
 				{ id: 'verify-staging-refs', description: 'Verify remote staging refs match promoted commits', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: STAGING_BRANCH, resumable: true },
 					{ id: 'hosted-ci', description: 'Wait for hosted staging CI when explicitly requested', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: STAGING_BRANCH, resumable: true },
-					{ id: 'staging-guarantees', description: 'Run the complete guarantee collection against the deployed staging candidate', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: STAGING_BRANCH, resumable: true },
 				{ id: 'workspace-link-restore', description: 'Restore local workspace links after stage', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: STAGING_BRANCH, resumable: true },
 				{ id: 'cleanup-source', description: 'Clean up source branches and worktree after successful promotion', repoName: '@treeseed/market', repoPath: repoRoot(root), branch: featureBranch, resumable: true },
 			], helpers.context);
@@ -6738,18 +6688,14 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					refs['@treeseed/market'] = rootObserved;
 					return { status: 'verified', refs };
 				});
-				const hostedCiEnv = resolveTreeseedLaunchEnvironment({
-					tenantRoot: root,
-					scope: 'staging',
-					baseEnv: { ...process.env, ...(helpers.context.env ?? {}) },
-				});
 				const hostedCi = ciMode === 'hosted'
-						? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', () => waitForStagingAutomation(repoRoot(root), hostedCiEnv))
+						? await executeJournalStep(root, workflowRun.runId, 'hosted-ci', () => waitForWorkflowGates(
+							'stage',
+							stagingCandidateWorkflowGates(root, typedManifest),
+							'hosted',
+							{ root, runId: workflowRun.runId, onProgress: (line, stream) => helpers.write(line, stream) },
+						))
 						: (skipJournalStep(root, workflowRun.runId, 'hosted-ci', { skippedReason: 'ci off' }), { status: 'skipped', reason: 'ci off' });
-				const stagingGuarantees = ciMode === 'hosted'
-						? await executeJournalStep(root, workflowRun.runId, 'staging-guarantees', () =>
-			importHostedStageCandidateAttestation(root, typedManifest, hostedCi as Record<string, unknown>, hostedCiEnv))
-						: (skipJournalStep(root, workflowRun.runId, 'staging-guarantees', { skippedReason: 'async staging promotion' }), null);
 				const workspaceLinks = await executeJournalStep(root, workflowRun.runId, 'workspace-link-restore', () =>
 					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
 				for (const repo of checkedOutStagePromotionRepos(root)) {
@@ -6770,13 +6716,13 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 					promotion,
 					stagingRefs,
 					hostedCi,
-					stagingGuarantees,
+					stagingGuarantees: null,
 					cleanup,
 					workspaceLinks,
 					finalBranch: STAGING_BRANCH,
 					summary: ciMode === 'hosted'
-						? `Staging candidate ${typedManifest.candidateId} was promoted and attested by hosted CI.`
-						: `Staging candidate ${typedManifest.candidateId} was promoted asynchronously; hosted attestation is pending.`,
+						? `Staging candidate ${typedManifest.candidateId} passed all exact-SHA verification and deployment workflows.`
+						: `Staging candidate ${typedManifest.candidateId} was promoted asynchronously; hosted verification is pending.`,
 				};
 				completeWorkflowRun(root, workflowRun.runId, payload);
 				return buildWorkflowResult('stage', root, payload, {
@@ -7116,12 +7062,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					},
 					{ id: 'verify-published-artifacts', description: 'Verify immutable registry artifacts exist after publish workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'production-package-deploy-workflows', description: 'Wait for production package deploy workflows before live verification', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
-					{ id: 'production-hosting', description: 'Reconcile and live-verify production hosted resources before root deploy', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
-					{ id: 'production-api-guarantees', description: 'Run production API release guarantees before root deploy', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'release-root', description: `Release market ${plannedRelease.rootVersion}`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'publish-wait', description: 'Wait for production release workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
-					{ id: 'production-web-live-verification', description: 'Run production web live verification after root deploy', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
-					{ id: 'production-final-guarantees', description: 'Run final production release guarantees after all production deploys', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'release-back-merge', description: 'Back-merge production release history into staging', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'workspace-link', description: 'Restore local workspace links after release', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 				],
@@ -7262,12 +7204,6 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						onProgress: (line, stream) => helpers.write(line, stream),
 					}).then((workflowGates) => ({ workflowGates }));
 				});
-				const productionHosting = await executeJournalStep(root, workflowRun.runId, 'production-hosting', () =>
-					reconcileSaveHostedEnvironment(root, 'prod', helpers, workflowRun.runId, 'release', releaseImageRefs, { liveAppId: 'api' }));
-					const productionApiGuarantees = await executeJournalStep(root, workflowRun.runId, 'production-api-guarantees', () => ({
-						status: 'reused-staging-attestation',
-						attestation: readJsonFile<StageCandidateAttestation>(stageCandidateAttestationPath(root)),
-					}));
 				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
 					const rootInstall = runReleaseNpmInstall(root, { workspaceRoot: root });
 					const changelog = updateReleaseChangelog(repoRoot(root), {
@@ -7303,14 +7239,9 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					hostedDeployGate({
 						name: '@treeseed/market',
 						repoPath: repoRoot(root),
-						workflow: 'deploy-web.yml',
-						branch: PRODUCTION_BRANCH,
+						workflow: 'deploy.yml',
+						branch: plannedRelease.releaseTag,
 						headSha: String((rootRelease.commit as { commitSha?: string }).commitSha ?? ''),
-						dispatchIfMissing: true,
-						dispatchInputs: {
-							environment: 'prod',
-							action_kind: 'deploy_web',
-						},
 					}),
 				].filter((gate) => gate.headSha);
 				const publishWait = await executeJournalStep(root, workflowRun.runId, 'publish-wait', () =>
@@ -7319,10 +7250,6 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						runId: workflowRun.runId,
 						onProgress: (line, stream) => helpers.write(line, stream),
 					}).then((workflowGates) => ({ workflowGates })));
-				const productionWebVerification = await executeJournalStep(root, workflowRun.runId, 'production-web-live-verification', () =>
-					runReleaseWebLiveVerification(root, 'prod', helpers, 'release'));
-				const productionFinalGuarantees = await executeJournalStep(root, workflowRun.runId, 'production-final-guarantees', () =>
-					runReleaseProductionGuarantees(root, helpers, 'release', normalizeSceneArtifactsMode(effectiveInput.sceneArtifacts)));
 				const backMerge = await executeJournalStep(root, workflowRun.runId, 'release-back-merge', () => {
 					const packageBackMerges = selectedPackageNames
 						.map((name) => packageRepoByName.get(name))
@@ -7355,10 +7282,6 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					publishWait: publishWait.workflowGates,
 					publishedArtifacts,
 					productionPackageDeployWorkflows,
-					productionHosting,
-					productionApiGuarantees,
-					productionWebVerification,
-					productionFinalGuarantees,
 					backMerge,
 					workspaceLinks,
 					releasedCommit: String((rootRelease.commit as { commitSha?: string }).commitSha ?? ''),

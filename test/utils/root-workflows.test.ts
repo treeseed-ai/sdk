@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { TREESEED_PUBLIC_RELEASE_PACKAGE_NAMES } from '../../src/operations/services/workspace-save.ts';
+import { planTreeseedGuarantees } from '../../src/guarantees/index.ts';
 
 const sdkRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const workspaceRoot = resolve(sdkRoot, '..', '..');
@@ -10,6 +11,7 @@ const rootVerifyWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'v
 const rootDeployWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'deploy.yml');
 const rootStagingCandidateWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'staging-candidate.yml');
 const rootDeployWebWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'deploy-web.yml');
+const rootReleaseGateWorkflowPath = resolve(workspaceRoot, '.github', 'workflows', 'release-gate.yml');
 const rootPrepareWorkspaceInstallPath = resolve(workspaceRoot, '.github', 'scripts', 'prepare-workspace-install.ts');
 const packageVerifyWorkflowPath = resolve(sdkRoot, '.github', 'workflows', 'verify.yml');
 const integratedWorkspaceAvailable = existsSync(rootVerifyWorkflowPath)
@@ -34,6 +36,57 @@ function firstExistingFile(root: string, paths: string[]) {
 }
 
 describe('root workflow bootstrap selection', () => {
+	it('selects exact API/Agent and scene-backed release-gate collections', () => {
+		if (!existsSync(rootPrepareWorkspaceInstallPath)) return;
+		const apiAgent = planTreeseedGuarantees({ workspaceRoot, filter: { ownerPackages: ['@treeseed/api', '@treeseed/agent'] }, includeDependencies: false });
+		const ui = planTreeseedGuarantees({ workspaceRoot, filter: { sceneBacked: true }, includeDependencies: false });
+		expect(apiAgent.counts.selected).toBe(84);
+		expect(apiAgent.counts.withDependencies).toBe(84);
+		expect(ui.counts.selected).toBe(139);
+		expect(ui.counts.withDependencies).toBe(139);
+	}, 60_000);
+	it('uses standardized verify, release-gate, and deploy workflow roles', () => {
+		if (!existsSync(rootPrepareWorkspaceInstallPath)) return;
+		const deploy = readFileSync(rootDeployWorkflowPath, 'utf8');
+		const releaseGate = readFileSync(rootReleaseGateWorkflowPath, 'utf8');
+		expect(deploy).toContain('branches: [staging]');
+		expect(deploy).toContain("tags: ['*.*.*']");
+		expect(deploy).toContain('git merge-base --is-ancestor "${GITHUB_SHA}" origin/main');
+		expect(deploy).toContain('npm run test:unit');
+		expect(deploy).toContain('guarantees validate --json');
+		expect(deploy).not.toContain('guarantees run');
+		expect(deploy).toContain('hosting verify --environment staging --app web --live --json');
+		expect(deploy).toContain('hosting verify --environment prod --app web --live --json');
+		expect(releaseGate).toContain('--scene-backed --no-dependencies');
+		expect(existsSync(rootDeployWebWorkflowPath)).toBe(false);
+		expect(existsSync(rootStagingCandidateWorkflowPath)).toBe(false);
+		expect(existsSync(resolve(workspaceRoot, '.github/workflows/hosted-project.yml'))).toBe(false);
+		expect(existsSync(resolve(workspaceRoot, '.github/workflows/production-release.yml'))).toBe(false);
+		const operations = readFileSync(resolve(sdkRoot, 'src/workflow/operations.ts'), 'utf8');
+		expect(operations).toContain('function stagingCandidateWorkflowGates');
+		expect(operations).toContain("add(pkg.name, repoPath, pkg.commit, 'verify.yml')");
+		expect(operations).toContain("add(pkg.name, repoPath, pkg.commit, 'deploy.yml', true)");
+		expect(operations).toContain("add('@treeseed/market', marketRoot, manifest.root.commit, 'verify.yml')");
+		expect(operations).toContain("add('@treeseed/market', marketRoot, manifest.root.commit, 'deploy.yml', true)");
+		expect(operations).not.toContain("'--workflow', 'staging-candidate.yml'");
+	});
+
+	it('uses one API deployment workflow for source staging and image production', () => {
+		const apiRoot = packageRootFor('api');
+		if (!apiRoot) return;
+		const deploy = readFileSync(resolve(apiRoot, '.github/workflows/deploy.yml'), 'utf8');
+		const releaseGate = readFileSync(resolve(apiRoot, '.github/workflows/release-gate.yml'), 'utf8');
+		expect(deploy).toContain('branches: [staging]');
+		expect(deploy).toContain('target: api');
+		expect(deploy).toContain('target: operations-runner');
+		expect(deploy).toContain('TREESEED_API_IMAGE_REF: treeseed/api:${{ needs.verify.outputs.version }}');
+		expect(deploy).toContain('TREESEED_OPERATIONS_RUNNER_IMAGE_REF: treeseed/op-runner:${{ needs.verify.outputs.version }}');
+		expect(deploy).toContain('hosting verify --environment staging --app api --live --json');
+		expect(deploy).toContain('hosting verify --environment prod --app api --live --json');
+		expect(deploy).not.toContain('guarantees run');
+		expect(releaseGate).toContain("--owner-package '@treeseed/api,@treeseed/agent' --no-dependencies");
+		expect(existsSync(resolve(apiRoot, '.github/workflows/publish.yml'))).toBe(false);
+	});
 	it('uses auto bootstrap mode in the root verify workflow', () => {
 		if (!integratedWorkspaceAvailable) {
 			expect(existsSync(packageVerifyWorkflowPath), `${packageVerifyWorkflowPath} must exist in package-only verification`).toBe(true);

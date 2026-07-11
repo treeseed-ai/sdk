@@ -51,7 +51,7 @@ function gitAllowFile(cwd: string, args: string[]) {
 	return git(cwd, ['-c', 'protocol.file.allow=always', ...args]);
 }
 
-function writePassingStageAttestation(root: string) {
+function writePassingStageCandidate(root: string) {
 	const excludePath = resolve(root, '.git', 'info', 'exclude');
 	const exclude = existsSync(excludePath) ? readFileSync(excludePath, 'utf8') : '';
 	if (!exclude.includes('.treeseed/')) writeFileSync(excludePath, `${exclude}${exclude.endsWith('\n') ? '' : '\n'}.treeseed/\n`);
@@ -73,18 +73,6 @@ function writePassingStageAttestation(root: string) {
 		if (typeof pkg.path === 'string' && existsSync(pkg.path)) pkg.commit = git(pkg.path, ['rev-parse', 'HEAD']);
 	}
 	writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-	writeFileSync(resolve(candidateDir, 'latest.attestation.json'), `${JSON.stringify({
-		schemaVersion: 1,
-		kind: 'treeseed.stage-candidate-attestation',
-		candidateId: manifest.candidateId,
-		rootSha: manifest.root.commit,
-		submodules: [],
-		createdAt: new Date().toISOString(),
-		environment: 'staging',
-		status: 'passed',
-		guaranteeRunId: 'test-208-pass',
-		counts: { passed: 208, failed: 0, blocked: 0, skipped: 0, releaseBlockingFailures: 0 },
-	}, null, 2)}\n`);
 }
 
 function writeTenantFiles(root: string) {
@@ -1304,7 +1292,7 @@ describe('treeseed workflow lifecycle', () => {
 		git(work, ['add', '.gitmodules', 'starters/research', 'packages/sdk']);
 		git(work, ['commit', '-m', 'test: add planned helper repos']);
 		git(work, ['push', 'origin', 'staging']);
-		writePassingStageAttestation(work);
+		writePassingStageCandidate(work);
 
 		const result = await workflow.release({ bump: 'patch', plan: true });
 
@@ -1345,7 +1333,7 @@ describe('treeseed workflow lifecycle', () => {
 		git(work, ['add', 'package.json']);
 		git(work, ['commit', '-m', 'stage: root package dependency']);
 		git(work, ['push', 'origin', 'staging']);
-		writePassingStageAttestation(work);
+		writePassingStageCandidate(work);
 		const result = await workflow.release({ bump: 'patch', ciMode: 'off' });
 
 			const releaseGatePayload = result.payload.releaseGates.gates.payload;
@@ -1399,7 +1387,7 @@ describe('treeseed workflow lifecycle', () => {
 			message: 'stage: release auto resume sdk change',
 			async: true,
 		});
-		writePassingStageAttestation(work);
+		writePassingStageCandidate(work);
 		writeFileSync(resolve(work, 'release-blocker.txt'), 'not ready\n', 'utf8');
 
 		await expect(workflow.release({ bump: 'patch', ciMode: 'off' })).rejects.toThrow('@treeseed/market has uncommitted changes');
@@ -1432,7 +1420,7 @@ describe('treeseed workflow lifecycle', () => {
 		writeFileSync(rootPackageJsonPath, `${JSON.stringify(rootPackageJson, null, 2)}\n`, 'utf8');
 		git(work, ['add', 'package.json']);
 		git(work, ['commit', '-m', 'stage: root package dependency']);
-		writePassingStageAttestation(work);
+		writePassingStageCandidate(work);
 		const beforeRootHead = git(work, ['rev-parse', 'HEAD']);
 		const beforeSdkHead = git(resolve(work, 'packages', 'sdk'), ['rev-parse', 'HEAD']);
 
@@ -1500,7 +1488,7 @@ artifacts:
 		git(work, ['add', 'packages/api', 'packages/treedx']);
 		git(work, ['commit', '-m', 'stage: api release and stable treedx pointer']);
 		git(work, ['push', 'origin', 'staging']);
-		writePassingStageAttestation(work);
+		writePassingStageCandidate(work);
 
 		const result = await workflow.release({ bump: 'patch', plan: true });
 
@@ -1526,7 +1514,7 @@ artifacts:
 		git(work, ['add', 'packages/sdk', 'packages/ui', 'packages/core', 'packages/admin', 'packages/cli', 'packages/agent']);
 		git(work, ['commit', '-m', 'test: drift public package lines']);
 		git(work, ['push', 'origin', 'staging']);
-		writePassingStageAttestation(work);
+		writePassingStageCandidate(work);
 
 		const result = await workflow.release({
 			bump: 'patch',
@@ -1574,7 +1562,7 @@ artifacts:
 		git(work, ['add', 'packages/sdk', 'packages/ui', 'packages/core', 'packages/admin', 'packages/cli', 'packages/agent']);
 		git(work, ['commit', '-m', 'test: drift public package lines']);
 		git(work, ['push', 'origin', 'staging']);
-		writePassingStageAttestation(work);
+		writePassingStageCandidate(work);
 
 		const plan = await workflow.release({ bump: 'patch', plan: true });
 

@@ -417,6 +417,17 @@ verifiers:
 			},
 		});
 		expect(filtered.counts.selected).toBe(0);
+
+		writeGuarantee(root, validGuarantee
+			.replace('guarantee.project.question.ask-question.038', 'guarantee.api.endpoints.auth-and-sessions.999')
+			.replace('journeyIndex: 38', 'journeyIndex: 999')
+			.replace('ownerPackage: "@treeseed/admin"', 'ownerPackage: "@treeseed/api"')
+			.replace(/scene:\n  required: true\n  manifest: \.\/scenes\/ask-question\.scene\.yaml\n/u, 'scene:\n  required: false\n'), 'packages/api/guarantees/api/endpoints/auth-and-sessions.guarantee.yaml');
+		const ownerFiltered = planTreeseedGuarantees({ workspaceRoot: root, filter: { ownerPackages: ['@treeseed/admin', '@treeseed/api'] }, includeDependencies: false });
+		const selectedOwners = ownerFiltered.entries.filter((entry) => entry.selected).map((entry) => entry.ownerPackage);
+		expect(selectedOwners).toEqual(expect.arrayContaining(['@treeseed/admin', '@treeseed/api']));
+		const sceneFiltered = planTreeseedGuarantees({ workspaceRoot: root, filter: { sceneBacked: true }, includeDependencies: false });
+		expect(sceneFiltered.entries.filter((entry) => entry.selected).map((entry) => entry.id)).not.toContain('guarantee.api.endpoints.auth-and-sessions.999');
 	});
 
 	it('validates path guards and invalid guarantee locations', () => {
