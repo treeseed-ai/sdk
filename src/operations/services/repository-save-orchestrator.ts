@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, resolve, relative } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -1138,43 +1138,22 @@ function syncDirectGitDependencyLockfileEntries(
 	return true;
 }
 
-function regenerateStandaloneGitDependencyLockfile(
+function validateStandaloneGitDependencyLockfile(
 	node: RepositorySaveNode,
 	options: Pick<RepositorySaveOptions, 'onProgress'>,
 ) {
 	const lockfilePath = resolve(node.path, 'package-lock.json');
 	if (!existsSync(lockfilePath)) return false;
-	const previousLockfile = readFileSync(lockfilePath, 'utf8');
-	const cacheDir = mkdtempSync(resolve(tmpdir(), 'treeseed-lock-cache-'));
-	const commandOptions = {
-		env: { ...process.env, npm_config_cache: cacheDir },
-	};
-	try {
-		rmSync(lockfilePath);
-		runCapturedCommand(node, options, 'lockfile', 'npm', [
-			'install',
-			'--package-lock-only',
-			'--ignore-scripts',
-			'--workspaces=false',
-			'--no-audit',
-			'--no-fund',
-		], { ...commandOptions, timeoutMs: 15 * 60_000 });
-		runCapturedCommand(node, options, 'lockfile', 'npm', [
-			'ci',
-			'--package-lock-only',
-			'--ignore-scripts',
-			'--workspaces=false',
-			'--no-audit',
-			'--no-fund',
-		], { ...commandOptions, timeoutMs: 5 * 60_000 });
-		emitProgress(options, node, 'lockfile', 'Regenerated and validated the standalone lockfile for exact internal Git refs.');
-		return true;
-	} catch (error) {
-		writeFileSync(lockfilePath, previousLockfile, 'utf8');
-		throw error;
-	} finally {
-		rmSync(cacheDir, { recursive: true, force: true });
-	}
+	runCapturedCommand(node, options, 'lockfile', 'npm', [
+		'ci',
+		'--package-lock-only',
+		'--ignore-scripts',
+		'--workspaces=false',
+		'--no-audit',
+		'--no-fund',
+	], { timeoutMs: 5 * 60_000 });
+	emitProgress(options, node, 'lockfile', 'Validated the standalone lockfile for exact internal Git refs.');
+	return true;
 }
 
 function planPackageVersion(node: RepositorySaveNode, options: RepositorySaveOptions) {
@@ -2296,7 +2275,7 @@ async function saveOneRepository(
 		.filter((reference) => reference.mode === 'dev-git-commit' && directDependencyNames.has(reference.packageName));
 	const lockfileGitDependenciesSynced = syncDirectGitDependencyLockfileEntries(node, options, gitDependencyRefreshReferences);
 	if (lockfileGitDependenciesSynced) {
-		regenerateStandaloneGitDependencyLockfile(node, options);
+		validateStandaloneGitDependencyLockfile(node, options);
 	}
 	const gitDependencyRefreshSpecs = lockfileGitDependenciesSynced
 		? []
