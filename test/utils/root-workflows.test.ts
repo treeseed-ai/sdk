@@ -240,6 +240,18 @@ describe('admin package workflow integration', () => {
 });
 
 describe('package publish safeguards', () => {
+	it('keeps CLI publish and verification on the supported Node runtime', () => {
+		const cliRoot = packageRootFor('cli');
+		if (!cliRoot) {
+			expect(integratedWorkspaceAvailable, 'CLI workflows are only available in integrated workspace verification').toBe(false);
+			return;
+		}
+		const publishWorkflow = readFileSync(resolve(cliRoot, '.github/workflows/publish.yml'), 'utf8');
+		const verifyWorkflow = readFileSync(resolve(cliRoot, '.github/workflows/verify.yml'), 'utf8');
+		expect(publishWorkflow).toContain('node-version: 24.12.0');
+		expect(verifyWorkflow).toContain('node-version: 24.12.0');
+	});
+
 	it('keeps Reviewer verification-only', () => {
 		const reviewerRoot = packageRootFor('reviewer');
 		if (!reviewerRoot) {

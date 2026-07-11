@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -126,6 +126,19 @@ describe('workspace dependency mode', () => {
 		ensureLocalWorkspaceLinks(root);
 
 		expect(readlinkSync(sdkLink)).toBe(current);
+	});
+
+	it('reclaims partial installs at recorded managed link paths', () => {
+		const root = createWorkspace();
+		ensureLocalWorkspaceLinks(root);
+		const sdkLink = resolve(root, 'packages/cli/node_modules/@treeseed/sdk');
+		rmSync(sdkLink, { recursive: true, force: true });
+		mkdirSync(resolve(sdkLink, 'node_modules'), { recursive: true });
+
+		ensureLocalWorkspaceLinks(root);
+
+		expect(lstatSync(sdkLink).isSymbolicLink()).toBe(true);
+		expect(resolve(dirname(sdkLink), readlinkSync(sdkLink))).toBe(resolve(root, 'packages/sdk'));
 	});
 
 	it('repairs stale package bin links when restoring workspace links', () => {

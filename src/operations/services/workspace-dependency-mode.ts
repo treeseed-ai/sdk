@@ -354,6 +354,10 @@ function removeLinkCandidate(link: WorkspaceLink, managedLinks: Set<string>) {
 		unlinkSync(link.linkPath);
 		return true;
 	}
+	if (managed) {
+		rmSync(link.linkPath, { recursive: true, force: true });
+		return true;
+	}
 	if (isInstalledTreeseedPackage(link.linkPath, link.packageName)) {
 		rmSync(link.linkPath, { recursive: true, force: true });
 		return true;
