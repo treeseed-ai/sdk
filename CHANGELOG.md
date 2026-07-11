@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.12.45] - 2026-07-11
+
+### Added
+
+- feat(source): seed verified login fixture without browser session (1ba2c83e9736)
+- feat(tests): Bind hosted API SMTP settings from root staging registry (9caeff3c7579)
+- feat(tests): Propagate API web service secret through staging (ec95a2bdb808)
+- feat(tests): Propagate control-plane secrets through staging (eb7ebb9c9661)
+- feat(workflow): fix staging candidate credential handoff (b6bbe3dbaab2)
+- feat(source): release guarantee reviewer and coverage updates (e87272459079)
+- feat(workflow): release guarantee reviewer and coverage updates (f89737839685)
+- feat(workflow): release guarantee reviewer and coverage updates (75b9ec4e2786)
+- feat(workflow): release guarantee reviewer and coverage updates (65ec6e47548c)
+- feat(tests): consolidate API staging deploy gate (1e29c9b01f86)
+- feat(tests): block dependents on API deploy workflow (57c5ea91b1c8)
+
+### Fixed
+
+- fix(tests): Standardize verify release-gate and deploy workflows (df54315f3073)
+- fix(source): preserve dependency graph during artifact hydration (9b02d3706ccc)
+- fix(source): hydrate exact candidate artifacts before staging deploy (3c81168378fc)
+- fix(tests): fix stage completion and API SMTP routing (af90e6b7511c)
+- fix(source): Expose API surface URLs to strict live staging checks (20dc29a37c35)
+- fix(source): Make hosted apply wait for transient HTTP readiness (919d953ec0b7)
+- fix(tests): make staging candidate retries resumable (7263c44f8d33)
+- fix(source): release guarantee reviewer and coverage updates (c5a0102a8847)
+- fix(source): record repository changes (55caafce6220)
+- build(build): lock in UI shell architecture and test fixes (cbb3038707b5)
+
+### Tests
+
+- build(build): Exclude verification-only packages from release (8168a38f46a0)
+- test(tests): Standardize verify release-gate and deploy workflows (243e5bb58afc)
+- test(tests): inject protected TreeDX secrets into staging reconciliation (49cfd1f873e9)
+- ci(workflow): recover reliable save stage release workflow (c54a6d8a484c)
+- build(source): release guarantee reviewer and coverage updates (d1798cc7fa6e)
+
 ## [0.12.44] - 2026-07-06
 
 ### Changed
