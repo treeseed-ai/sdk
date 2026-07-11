@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, resolve, relative } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -1143,15 +1143,38 @@ function validateStandaloneGitDependencyLockfile(
 	options: Pick<RepositorySaveOptions, 'onProgress'>,
 ) {
 	const lockfilePath = resolve(node.path, 'package-lock.json');
-	if (!existsSync(lockfilePath)) return false;
-	runCapturedCommand(node, options, 'lockfile', 'npm', [
+	const lockfileExists = existsSync(lockfilePath);
+	const validateArgs = [
 		'ci',
 		'--package-lock-only',
 		'--ignore-scripts',
 		'--workspaces=false',
 		'--no-audit',
 		'--no-fund',
-	], { timeoutMs: 5 * 60_000 });
+	];
+	try {
+		if (!lockfileExists) throw new Error('standalone lockfile missing');
+		runCapturedCommand(node, options, 'lockfile', 'npm', validateArgs, { timeoutMs: 5 * 60_000 });
+	} catch (validationError) {
+		const previousLockfile = lockfileExists ? readFileSync(lockfilePath, 'utf8') : null;
+		try {
+			rmSync(lockfilePath);
+			runCapturedCommand(node, options, 'lockfile', 'npm', [
+				'install',
+				'--package-lock-only',
+				'--ignore-scripts',
+				'--workspaces=false',
+				'--no-audit',
+				'--no-fund',
+			], {
+				timeoutMs: 15 * 60_000,
+			});
+			runCapturedCommand(node, options, 'lockfile', 'npm', validateArgs, { timeoutMs: 5 * 60_000 });
+		} catch (regenerationError) {
+			if (previousLockfile !== null) writeFileSync(lockfilePath, previousLockfile, 'utf8');
+			throw regenerationError instanceof Error ? regenerationError : validationError;
+		}
+	}
 	emitProgress(options, node, 'lockfile', 'Validated the standalone lockfile for exact internal Git refs.');
 	return true;
 }
@@ -2274,7 +2297,10 @@ async function saveOneRepository(
 	const gitDependencyRefreshReferences = [...state.finalizedReferences.values()]
 		.filter((reference) => reference.mode === 'dev-git-commit' && directDependencyNames.has(reference.packageName));
 	const lockfileGitDependenciesSynced = syncDirectGitDependencyLockfileEntries(node, options, gitDependencyRefreshReferences);
-	if (lockfileGitDependenciesSynced) {
+	if (!isRootWorkspaceRepository(node, options) && (
+		lockfileGitDependenciesSynced
+		|| (gitDependencyRefreshReferences.length > 0 && !existsSync(resolve(node.path, 'package-lock.json')))
+	)) {
 		validateStandaloneGitDependencyLockfile(node, options);
 	}
 	const gitDependencyRefreshSpecs = lockfileGitDependenciesSynced

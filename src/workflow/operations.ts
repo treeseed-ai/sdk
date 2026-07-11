@@ -5550,7 +5550,7 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 									verifyMode: normalizeSaveVerifyMode(effectiveInput.verify === false ? 'skip' : effectiveInput.verifyMode),
 									commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
 									workflowRunId: workflowRun.runId,
-						deferPushUntilVerified: true,
+						deferPushUntilVerified: false,
 									onProgress: (line, stream) => helpers.write(line, stream),
 								onWaveSaved: branch === STAGING_BRANCH && shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 									? async ({ nodes, reports, rootRepo: waveRootRepo }) => {
