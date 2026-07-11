@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildTreeseedPackageArtifact, verifyTreeseedPackageArtifact } from '../../src/operations/services/package-artifacts.ts';
+import { buildTreeseedPackageArtifact, hydrateTreeseedPackageArtifacts, verifyTreeseedPackageArtifact } from '../../src/operations/services/package-artifacts.ts';
 import { runTreeseedGitText } from '../../src/operations/services/git-runner.ts';
 
 const roots: string[] = [];
@@ -44,5 +44,18 @@ describe('package artifacts', () => {
 		const result = buildTreeseedPackageArtifact({ packageRoot: root, outputDir: resolve(root, 'artifacts') });
 		writeFileSync(result.artifactPath, `${readFileSync(result.artifactPath, 'utf8')}corrupt`);
 		expect(() => verifyTreeseedPackageArtifact({ manifestPath: result.manifestPath })).toThrow(/integrity check failed/u);
+	});
+
+	it('hydrates verified artifacts into a project without changing its lockfile', () => {
+		const root = fixture();
+		const artifactsRoot = resolve(root, 'candidate-artifacts');
+		buildTreeseedPackageArtifact({ packageRoot: root, outputDir: resolve(artifactsRoot, 'fixture') });
+		const projectRoot = resolve(root, 'consumer');
+		mkdirSync(projectRoot);
+		writeFileSync(resolve(projectRoot, 'package.json'), `${JSON.stringify({ name: 'artifact-consumer', private: true }, null, 2)}\n`);
+		const result = hydrateTreeseedPackageArtifacts({ artifactsRoot, projectRoot });
+		expect(result.packages.map((entry) => entry.packageName)).toEqual(['@treeseed/artifact-fixture']);
+		expect(JSON.parse(readFileSync(resolve(projectRoot, 'node_modules/@treeseed/artifact-fixture/package.json'), 'utf8')).version).toBe('1.2.3');
+		expect(() => readFileSync(resolve(projectRoot, 'package-lock.json'))).toThrow();
 	});
 });

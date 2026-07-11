@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { runTreeseedGitText } from './git-runner.ts';
@@ -81,4 +81,31 @@ export function verifyTreeseedPackageArtifact(input: { manifestPath: string; art
 		throw new Error(`Package artifact integrity check failed for ${artifactPath}.`);
 	}
 	return { ok: true as const, artifactPath, manifestPath, manifest };
+}
+
+export function hydrateTreeseedPackageArtifacts(input: { artifactsRoot: string; projectRoot: string }) {
+	const artifactsRoot = resolve(input.artifactsRoot);
+	const projectRoot = resolve(input.projectRoot);
+	const manifests = readdirSync(artifactsRoot, { withFileTypes: true })
+		.filter((entry) => entry.isDirectory() && existsSync(resolve(artifactsRoot, entry.name, 'manifest.json')))
+		.map((entry) => verifyTreeseedPackageArtifact({ manifestPath: resolve(artifactsRoot, entry.name, 'manifest.json') }))
+		.sort((left, right) => left.manifest.packageName.localeCompare(right.manifest.packageName));
+	if (manifests.length === 0) throw new Error(`No package artifact manifests found under ${artifactsRoot}.`);
+	const result = spawnSync('npm', [
+		'install', '--no-save', '--ignore-scripts', '--package-lock=false', '--workspaces=false',
+		...manifests.map((entry) => entry.artifactPath),
+	], {
+		cwd: projectRoot,
+		encoding: 'utf8',
+		stdio: ['ignore', 'pipe', 'pipe'],
+		env: process.env,
+	});
+	if ((result.status ?? 1) !== 0) throw new Error(`Candidate package artifact hydration failed.\n${result.stderr || result.stdout}`);
+	for (const entry of manifests) {
+		const installed = readPackageJson(resolve(projectRoot, 'node_modules', ...entry.manifest.packageName.split('/')));
+		if (installed.version !== entry.manifest.packageVersion) {
+			throw new Error(`Hydrated ${entry.manifest.packageName} version mismatch: expected ${entry.manifest.packageVersion}, observed ${String(installed.version)}.`);
+		}
+	}
+	return { ok: true as const, projectRoot, artifactsRoot, packages: manifests.map((entry) => entry.manifest) };
 }

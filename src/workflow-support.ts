@@ -177,6 +177,7 @@ export {
 } from './operations/services/git-runner.ts';
 export {
 	buildTreeseedPackageArtifact,
+	hydrateTreeseedPackageArtifacts,
 	verifyTreeseedPackageArtifact,
 	type TreeseedPackageArtifactManifest,
 } from './operations/services/package-artifacts.ts';
