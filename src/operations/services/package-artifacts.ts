@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { runTreeseedGitText } from './git-runner.ts';
@@ -91,18 +91,18 @@ export function hydrateTreeseedPackageArtifacts(input: { artifactsRoot: string; 
 		.map((entry) => verifyTreeseedPackageArtifact({ manifestPath: resolve(artifactsRoot, entry.name, 'manifest.json') }))
 		.sort((left, right) => left.manifest.packageName.localeCompare(right.manifest.packageName));
 	if (manifests.length === 0) throw new Error(`No package artifact manifests found under ${artifactsRoot}.`);
-	const result = spawnSync('npm', [
-		'install', '--no-save', '--ignore-scripts', '--package-lock=false', '--workspaces=false',
-		...manifests.map((entry) => entry.artifactPath),
-	], {
-		cwd: projectRoot,
-		encoding: 'utf8',
-		stdio: ['ignore', 'pipe', 'pipe'],
-		env: process.env,
-	});
-	if ((result.status ?? 1) !== 0) throw new Error(`Candidate package artifact hydration failed.\n${result.stderr || result.stdout}`);
 	for (const entry of manifests) {
-		const installed = readPackageJson(resolve(projectRoot, 'node_modules', ...entry.manifest.packageName.split('/')));
+		const packagePath = resolve(projectRoot, 'node_modules', ...entry.manifest.packageName.split('/'));
+		rmSync(packagePath, { recursive: true, force: true });
+		mkdirSync(packagePath, { recursive: true });
+		const result = spawnSync('tar', ['-xzf', entry.artifactPath, '--strip-components=1', '-C', packagePath], {
+			cwd: projectRoot,
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'pipe'],
+			env: process.env,
+		});
+		if ((result.status ?? 1) !== 0) throw new Error(`Candidate artifact extraction failed for ${entry.manifest.packageName}.\n${result.stderr || result.stdout}`);
+		const installed = readPackageJson(packagePath);
 		if (installed.version !== entry.manifest.packageVersion) {
 			throw new Error(`Hydrated ${entry.manifest.packageName} version mismatch: expected ${entry.manifest.packageVersion}, observed ${String(installed.version)}.`);
 		}
