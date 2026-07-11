@@ -2249,9 +2249,12 @@ async function saveOneRepository(
 		? []
 		: updateDependencyReferences(node, state.finalizedReferences);
 	const dependencyChanged = dependencyUpdates.length > 0;
-	const gitDependencyRefreshReferences = dependencyUpdates
-		.map((update) => state.finalizedReferences.get(update.packageName))
-		.filter((reference): reference is PackageDependencyReference => Boolean(reference) && reference.mode === 'dev-git-commit');
+	const directDependencyNames = new Set(dependencyFields(node.packageJson ?? {}).flatMap((field) => {
+		const value = node.packageJson?.[field];
+		return value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value) : [];
+	}));
+	const gitDependencyRefreshReferences = [...state.finalizedReferences.values()]
+		.filter((reference) => reference.mode === 'dev-git-commit' && directDependencyNames.has(reference.packageName));
 	const lockfileGitDependenciesSynced = syncDirectGitDependencyLockfileEntries(node, options, gitDependencyRefreshReferences);
 	const gitDependencyRefreshSpecs = lockfileGitDependenciesSynced
 		? []
