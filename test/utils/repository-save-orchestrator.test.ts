@@ -301,7 +301,12 @@ describe('repository save orchestrator helpers', () => {
 				name: '@treeseed/market',
 				lockfileVersion: 3,
 				packages: {
-					'': { name: '@treeseed/market' },
+					'': {
+						name: '@treeseed/market',
+						dependencies: {
+							'@treeseed/sdk': 'github:treeseed-ai/sdk#stale-release-ref',
+						},
+					},
 					'packages/sdk': { name: '@treeseed/sdk', version: '0.0.9' },
 					'node_modules/@treeseed/sdk': { resolved: 'packages/sdk', link: true },
 				},

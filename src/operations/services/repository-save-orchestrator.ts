@@ -1215,7 +1215,7 @@ function syncRootWorkspaceLockfileMetadata(node: RepositorySaveNode, options: Pi
 			const mergedDeps = { ...currentDeps };
 			let fieldChanged = false;
 			for (const [dependencyName, dependencySpec] of Object.entries(nextValue)) {
-				if (mergedDeps[dependencyName] != null) continue;
+				if (mergedDeps[dependencyName] === dependencySpec) continue;
 				mergedDeps[dependencyName] = dependencySpec;
 				fieldChanged = true;
 			}
