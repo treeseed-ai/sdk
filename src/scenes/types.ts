@@ -128,6 +128,7 @@ export type TreeseedSceneSetup = {
 		profile?: string;
 		required: boolean;
 		role?: TreeseedSceneVisualAuditRole;
+		seedOnly?: boolean;
 	};
 	seed?: {
 		name?: string;

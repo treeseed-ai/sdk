@@ -461,7 +461,7 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 			timeline.push('network', entry, currentStepId);
 		});
 		if (tracePath) await session.startTracing?.();
-		if (scene.setup.auth?.role && scene.setup.auth.role !== 'anonymous') {
+		if (scene.setup.auth?.role && scene.setup.auth.role !== 'anonymous' && scene.setup.auth.seedOnly !== true) {
 			const signInDiagnostics = await signInTreeseedSceneVisualAuditRole({
 				page: session.page,
 				baseUrl: baseUrl.baseUrl,
