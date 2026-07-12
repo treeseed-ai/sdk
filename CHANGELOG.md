@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.12.46] - 2026-07-12
+
+### Added
+
+- feat(release): verify local-only reviewer through workspace links (de6fe53d8132)
+- feat(source): allow Railway deployments to settle before live (03b84939501a)
+- feat(workflow): restore workspace links after release dependency (e71a7bb7091f)
+- feat(release): restore workspace links after release dependency (0208023a5d1a)
+- feat(workflow): update save workflow behavior (ac7a19b29950)
+- feat(workflow): update save workflow behavior (f475ba29c7ae)
+- feat(workflow): update save workflow behavior (07ea103c6586)
+- feat(operations): regenerate standalone lockfile after syncing Git (3221722878d9)
+- feat(tests): record repository changes (2fad1c4ec9c7)
+
+### Fixed
+
+- fix(workspace-dependency-mode): support removal of managed links (abad2591a570)
+
+### Tests
+
+- build(build): avoid release tag collisions after partial publication (5cc9bd1738e2)
+- build(build): update package metadata (a35fcea1fc9c)
+
+### Dependencies
+
+- build(build): hydrate missing package dependencies before release (355921d78948)
+- refactor(operations): isolate lockfile validation in a temporary (cfcfd920f6f0)
+- refactor(repository-save): refine git dependency refresh selection (550275e9e4e0)
+
 ## [0.12.45] - 2026-07-11
 
 ### Added

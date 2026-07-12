@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.45-dev.recovery-release-gate-dependency-hydrati.20260712T022035Z",
+  "version": "0.12.46",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
