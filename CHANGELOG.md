@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.51] - 2026-07-12
+
+### Fixed
+
+- fix(reconcile): nullify git fields when source mode is not git (b0a8cb9532b8)
+
 ## [0.12.50] - 2026-07-12
 
 ### Dependencies
