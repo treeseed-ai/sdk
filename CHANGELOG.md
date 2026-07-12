@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.49] - 2026-07-12
+
+### Tests
+
+- test(root-workflows): add TREESEED_PUBLIC_TREEDX_IMAGE_REF expectation (9d64dce58d9e)
+
 ## [0.12.48] - 2026-07-12
 
 ### Dependencies
