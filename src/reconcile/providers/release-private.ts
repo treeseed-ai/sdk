@@ -1,10 +1,47 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { findTreeseedPackageAdapter } from '../../operations/services/package-adapters.ts';
 import { checkedOutTemplateRepositories } from '../../operations/services/managed-repositories.ts';
 import { runTreeseedGitText } from '../../operations/services/git-runner.ts';
 import type { TreeseedReconcileRunContext, TreeseedReconcileSelector, TreeseedReconcileTarget } from '../contracts.ts';
+
+function ensureReleaseVerifyDependencies(input: {
+	packageDir: string;
+	env?: NodeJS.ProcessEnv;
+	onProgress?: (message: string) => void;
+}) {
+	if (!existsSync(resolve(input.packageDir, 'package.json')) || !existsSync(resolve(input.packageDir, 'package-lock.json'))) {
+		return { status: 'not-applicable' as const };
+	}
+	const env = { ...process.env, ...(input.env ?? {}) };
+	const inspection = spawnSync('npm', ['ls', '--depth=0', '--workspaces=false'], {
+		cwd: input.packageDir,
+		env,
+		encoding: 'utf8',
+	});
+	if (inspection.status === 0) return { status: 'ready' as const };
+	input.onProgress?.('Package dependencies are incomplete; restoring the standalone lockfile installation.');
+	const install = spawnSync('npm', [
+		'ci',
+		'--ignore-scripts',
+		'--workspaces=false',
+		'--no-audit',
+		'--no-fund',
+	], {
+		cwd: input.packageDir,
+		env,
+		encoding: 'utf8',
+	});
+	if (install.status !== 0) {
+		throw new Error([
+			'Standalone package dependency hydration failed before release verification.',
+			install.stderr,
+			install.stdout,
+		].filter(Boolean).join('\n').trim());
+	}
+	return { status: 'restored' as const };
+}
 
 export async function runReleaseVerifyCommand(input: {
 	tenantRoot: string;
@@ -24,6 +61,11 @@ export async function runReleaseVerifyCommand(input: {
 			reason: `${input.packageId} has no release verify command.`,
 		};
 	}
+	const dependencies = ensureReleaseVerifyDependencies({
+		packageDir: adapter.dir,
+		env: input.env,
+		onProgress: input.onProgress,
+	});
 	const renderedCommand = [command.command, ...command.args].join(' ');
 	input.onProgress?.(`Running ${input.packageId} release verification: ${renderedCommand}`);
 	const started = Date.now();
@@ -60,6 +102,7 @@ export async function runReleaseVerifyCommand(input: {
 		status: result.status,
 		signal: result.signal,
 		command,
+		dependencies,
 		stdout,
 		stderr,
 	};
