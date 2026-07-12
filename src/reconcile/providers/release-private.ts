@@ -4,9 +4,11 @@ import { dirname, resolve } from 'node:path';
 import { findTreeseedPackageAdapter } from '../../operations/services/package-adapters.ts';
 import { checkedOutTemplateRepositories } from '../../operations/services/managed-repositories.ts';
 import { runTreeseedGitText } from '../../operations/services/git-runner.ts';
+import { ensureLocalWorkspaceLinks } from '../../operations/services/workspace-dependency-mode.ts';
 import type { TreeseedReconcileRunContext, TreeseedReconcileSelector, TreeseedReconcileTarget } from '../contracts.ts';
 
 function ensureReleaseVerifyDependencies(input: {
+	tenantRoot: string;
 	packageDir: string;
 	env?: NodeJS.ProcessEnv;
 	onProgress?: (message: string) => void;
@@ -40,6 +42,7 @@ function ensureReleaseVerifyDependencies(input: {
 			install.stdout,
 		].filter(Boolean).join('\n').trim());
 	}
+	ensureLocalWorkspaceLinks(input.tenantRoot, { env: input.env });
 	return { status: 'restored' as const };
 }
 
@@ -62,6 +65,7 @@ export async function runReleaseVerifyCommand(input: {
 		};
 	}
 	const dependencies = ensureReleaseVerifyDependencies({
+		tenantRoot: input.tenantRoot,
 		packageDir: adapter.dir,
 		env: input.env,
 		onProgress: input.onProgress,
