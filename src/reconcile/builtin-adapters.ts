@@ -5130,7 +5130,7 @@ function collectRailwayEnvironmentSync(input: TreeseedReconcileAdapterInput, val
 	const configuredServices = configuredRailwayServicesForInput(input, scope);
 	const hasPublicTreeDxService = configuredServices
 		.some((service) => service.key === 'public-treedx-node-01' && service.enabled !== false);
-	const machineValues = hasPublicTreeDxService
+	const machineValues = hasPublicTreeDxService && scope === 'local'
 		? normalizeEnvironmentValues(resolveTreeseedMachineEnvironmentValues(input.context.tenantRoot, scope))
 		: {};
 	const baseValues = {
