@@ -1,11 +1,38 @@
-import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { findTreeseedPackageAdapter } from '../../operations/services/package-adapters.ts';
 import { checkedOutTemplateRepositories } from '../../operations/services/managed-repositories.ts';
 import { runTreeseedGitText } from '../../operations/services/git-runner.ts';
-import { ensureLocalWorkspaceLinks } from '../../operations/services/workspace-dependency-mode.ts';
 import type { TreeseedReconcileRunContext, TreeseedReconcileSelector, TreeseedReconcileTarget } from '../contracts.ts';
+
+function requireMatchingStageCandidate(tenantRoot: string, packageId: string, packageDir: string) {
+	const candidatePath = resolve(tenantRoot, '.treeseed/workflow/stage-candidates/latest.json');
+	if (!existsSync(candidatePath)) {
+		throw new Error(`Release verification requires a successful staged candidate; ${candidatePath} is missing.`);
+	}
+	const candidate = JSON.parse(readFileSync(candidatePath, 'utf8')) as {
+		targetBranch?: string;
+		root?: { commit?: string; verified?: boolean };
+		packages?: Array<{ name?: string; commit?: string; verified?: boolean }>;
+	};
+	const packageProof = candidate.packages?.find((entry) => entry.name === packageId);
+	const packageHead = runTreeseedGitText(['rev-parse', 'HEAD'], { cwd: packageDir, mode: 'read' }).trim();
+	const rootHead = runTreeseedGitText(['rev-parse', 'HEAD'], { cwd: tenantRoot, mode: 'read' }).trim();
+	if (candidate.targetBranch !== 'staging'
+		|| candidate.root?.verified !== true
+		|| candidate.root.commit !== rootHead
+		|| packageProof?.verified !== true
+		|| packageProof.commit !== packageHead) {
+		throw new Error(`Release verification requires ${packageId} and the Market root to match the latest verified staging candidate.`);
+	}
+	return {
+		status: 'staging-proof-reused' as const,
+		candidatePath,
+		packageCommit: packageHead,
+		rootCommit: rootHead,
+	};
+}
 
 export async function runReleaseVerifyCommand(input: {
 	tenantRoot: string;
@@ -25,47 +52,13 @@ export async function runReleaseVerifyCommand(input: {
 			reason: `${input.packageId} has no release verify command.`,
 		};
 	}
-	ensureLocalWorkspaceLinks(input.tenantRoot, { env: input.env });
-	const dependencies = { status: 'workspace-linked' as const };
-	const renderedCommand = [command.command, ...command.args].join(' ');
-	input.onProgress?.(`Running ${input.packageId} release verification: ${renderedCommand}`);
-	const started = Date.now();
-	let stdout = '';
-	let stderr = '';
-	const result = await new Promise<{ status: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
-		const child = spawn(command.command, command.args, {
-			cwd: command.cwd,
-			env: { ...process.env, ...(input.env ?? {}) },
-			stdio: ['ignore', 'pipe', 'pipe'],
-		});
-		const heartbeat = setInterval(() => {
-			input.onProgress?.(`Still running ${input.packageId} release verification after ${Math.round((Date.now() - started) / 1000)}s.`);
-		}, 30_000);
-		child.stdout?.on('data', (chunk) => {
-			stdout += String(chunk);
-		});
-		child.stderr?.on('data', (chunk) => {
-			stderr += String(chunk);
-		});
-		child.on('error', (error) => {
-			clearInterval(heartbeat);
-			reject(error);
-		});
-		child.on('close', (status, signal) => {
-			clearInterval(heartbeat);
-			resolve({ status, signal });
-		});
-	});
-	const elapsedSeconds = Math.round((Date.now() - started) / 1000);
-	input.onProgress?.(`${input.packageId} release verification ${result.status === 0 ? 'passed' : 'failed'} in ${elapsedSeconds}s.`);
+	const stagingProof = requireMatchingStageCandidate(input.tenantRoot, input.packageId, adapter.dir);
+	input.onProgress?.(`Reusing exact-SHA staging verification for ${input.packageId} at ${stagingProof.packageCommit.slice(0, 12)}.`);
 	return {
-		ok: (result.status ?? 1) === 0,
-		status: result.status,
-		signal: result.signal,
-		command,
-		dependencies,
-		stdout,
-		stderr,
+		ok: true,
+		skipped: true,
+		reason: `${input.packageId} matches the latest verified staging candidate; tag workflows perform independent release verification before publication or deployment.`,
+		dependencies: stagingProof,
 	};
 }
 
