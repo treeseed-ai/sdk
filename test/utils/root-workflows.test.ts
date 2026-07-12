@@ -81,6 +81,7 @@ describe('root workflow bootstrap selection', () => {
 		expect(deploy).toContain('target: operations-runner');
 		expect(deploy).toContain('TREESEED_API_IMAGE_REF: treeseed/api:${{ needs.verify.outputs.version }}');
 		expect(deploy).toContain('TREESEED_OPERATIONS_RUNNER_IMAGE_REF: treeseed/op-runner:${{ needs.verify.outputs.version }}');
+		expect(deploy).toContain('TREESEED_PUBLIC_TREEDX_IMAGE_REF: ${{ vars.TREESEED_PUBLIC_TREEDX_IMAGE_REF }}');
 		expect(deploy).toContain('hosting verify --environment staging --app api --live --json');
 		expect(deploy).toContain('hosting verify --environment prod --app api --live --json');
 		expect(deploy).not.toContain('guarantees run');
