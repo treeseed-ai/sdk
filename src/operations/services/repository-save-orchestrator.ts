@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, resolve, relative } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -1157,8 +1157,9 @@ function validateStandaloneGitDependencyLockfile(
 		runCapturedCommand(node, options, 'lockfile', 'npm', validateArgs, { timeoutMs: 5 * 60_000 });
 	} catch (validationError) {
 		const previousLockfile = lockfileExists ? readFileSync(lockfilePath, 'utf8') : null;
+		const isolatedRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-lockfile-'));
 		try {
-			rmSync(lockfilePath);
+			copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
 			runCapturedCommand(node, options, 'lockfile', 'npm', [
 				'install',
 				'--package-lock-only',
@@ -1167,12 +1168,19 @@ function validateStandaloneGitDependencyLockfile(
 				'--no-audit',
 				'--no-fund',
 			], {
+				cwd: isolatedRoot,
 				timeoutMs: 15 * 60_000,
 			});
-			runCapturedCommand(node, options, 'lockfile', 'npm', validateArgs, { timeoutMs: 5 * 60_000 });
+			runCapturedCommand(node, options, 'lockfile', 'npm', validateArgs, {
+				cwd: isolatedRoot,
+				timeoutMs: 5 * 60_000,
+			});
+			copyFileSync(resolve(isolatedRoot, 'package-lock.json'), lockfilePath);
 		} catch (regenerationError) {
 			if (previousLockfile !== null) writeFileSync(lockfilePath, previousLockfile, 'utf8');
 			throw regenerationError instanceof Error ? regenerationError : validationError;
+		} finally {
+			rmSync(isolatedRoot, { recursive: true, force: true });
 		}
 	}
 	emitProgress(options, node, 'lockfile', 'Validated the standalone lockfile for exact internal Git refs.');
