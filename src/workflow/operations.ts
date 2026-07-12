@@ -2645,6 +2645,9 @@ function releaseWorkflowForPackage(root: string, packageName: string) {
 
 function productionDeployWorkflowForPackage(root: string, packageName: string) {
 	const adapter = discoverTreeseedPackageAdapters(root).find((entry) => entry.id === packageName || entry.name === packageName);
+	if (adapter?.capabilities.deploy !== true) {
+		return null;
+	}
 	const repoPath = adapter?.dir;
 	if (!repoPath || !existsSync(resolve(repoPath, 'treeseed.site.yaml'))) {
 		return null;

@@ -88,6 +88,10 @@ describe('root workflow bootstrap selection', () => {
 		expect(releaseGate).toContain("--owner-package '@treeseed/api,@treeseed/agent' --no-dependencies");
 		expect(existsSync(resolve(apiRoot, '.github/workflows/publish.yml'))).toBe(false);
 	});
+	it('waits for production deploy workflows only for deploy-capable packages', () => {
+		const operations = readFileSync(resolve(sdkRoot, 'src/workflow/operations.ts'), 'utf8');
+		expect(operations).toContain('adapter?.capabilities.deploy !== true');
+	});
 	it('uses auto bootstrap mode in the root verify workflow', () => {
 		if (!integratedWorkspaceAvailable) {
 			expect(existsSync(packageVerifyWorkflowPath), `${packageVerifyWorkflowPath} must exist in package-only verification`).toBe(true);
