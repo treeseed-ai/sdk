@@ -315,6 +315,7 @@ describe('canonical desired resource graph', () => {
 			.toMatchObject({
 				repository: 'treeseed-ai/sdk',
 			});
+		expect(graph.resources.map((entry) => entry.id)).not.toContain('release-gate:npm-publish:@treeseed/reviewer');
 	});
 
 	it('reports Git index lock diagnostics without mutating by default', () => {

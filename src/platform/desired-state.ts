@@ -159,6 +159,7 @@ function environmentFromTarget(target: TreeseedReconcileTarget): TreeseedDesired
 }
 
 function packageReleaseCapability(adapter: TreeseedPackageAdapter): TreeseedPackageUnit['releaseCapability'] {
+	if (!adapter.capabilities.publish) return adapter.releaseChecks.length > 0 ? 'deploy-only' : 'none';
 	if (adapter.artifacts.some((artifact) => artifact.provider === 'docker')) return 'image';
 	if (adapter.artifacts.some((artifact) => artifact.provider === 'npm')) return 'npm';
 	if (adapter.releaseChecks.length > 0) return 'deploy-only';
