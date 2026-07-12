@@ -545,7 +545,14 @@ export function checkoutTaskBranchFromStaging(
 export function checkoutNewTaskBranchWithChanges(cwd: string, branchName: string, { pushIfCreated = false } = {}) {
 	const repoDir = repoRoot(cwd);
 	if (currentBranch(repoDir) !== STAGING_BRANCH) {
-		throw new Error(`Dirty change adoption requires ${repoDir} to be on ${STAGING_BRANCH}.`);
+		const stagingHead = remoteBranchExists(repoDir, STAGING_BRANCH) ? remoteHeadCommit(repoDir, STAGING_BRANCH) : null;
+		const canNormalizeStagingCheckout = gitStatusPorcelain(repoDir).length === 0
+			&& stagingHead !== null
+			&& headCommit(repoDir) === stagingHead;
+		if (!canNormalizeStagingCheckout) {
+			throw new Error(`Dirty change adoption requires ${repoDir} to be on ${STAGING_BRANCH}.`);
+		}
+		syncBranchWithOrigin(repoDir, STAGING_BRANCH);
 	}
 	if (branchExists(repoDir, branchName) || remoteBranchExists(repoDir, branchName)) {
 		throw new Error(`Dirty change adoption requires a new branch; ${branchName} already exists.`);

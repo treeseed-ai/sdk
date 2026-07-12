@@ -2691,8 +2691,12 @@ function productionPackageDeployGates(root: string, versions: Map<string, string
 function prepareAdapterReleaseMetadata(root: string, pkg: { name: string; dir: string }, version: string) {
 	const adapter = discoverTreeseedPackageAdapters(root).find((entry) => entry.id === pkg.name || entry.name === pkg.name);
 	if (adapter?.kind === 'beam-elixir-rust' && existsSync(resolve(pkg.dir, 'scripts', 'bump-release-version.ts'))) {
-		run('tsx', ['scripts/bump-release-version.ts', version], { cwd: pkg.dir });
-		return { status: 'updated', adapter: adapter.id, command: 'tsx scripts/bump-release-version.ts' };
+		const tsx = resolve(root, 'node_modules/.bin/tsx');
+		if (!existsSync(tsx)) {
+			throw new Error(`TreeSeed release requires the workspace tsx executable at ${tsx}. Run trsd install and restore workspace dependencies before retrying.`);
+		}
+		run(tsx, ['scripts/bump-release-version.ts', version], { cwd: pkg.dir });
+		return { status: 'updated', adapter: adapter.id, command: `${tsx} scripts/bump-release-version.ts` };
 	}
 	if (existsSync(resolve(pkg.dir, 'package.json'))) {
 		return {
