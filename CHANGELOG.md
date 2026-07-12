@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.52] - 2026-07-12
+
+### Added
+
+- feat(workflow): add deploy capability gate for production workflows (df6a812efcd5)
+
 ## [0.12.51] - 2026-07-12
 
 ### Fixed
