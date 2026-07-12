@@ -1333,6 +1333,7 @@ describe('treeseed workflow lifecycle', () => {
 		git(work, ['add', 'package.json']);
 		git(work, ['commit', '-m', 'stage: root package dependency']);
 		git(work, ['push', 'origin', 'staging']);
+		git(resolve(work, 'packages', 'sdk'), ['tag', '0.4.13']);
 		writePassingStageCandidate(work);
 		const result = await workflow.release({ bump: 'patch', ciMode: 'off' });
 
@@ -1344,7 +1345,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(result.payload.packageSelection.selected).toEqual(expect.arrayContaining(['@treeseed/sdk', '@treeseed/core', '@treeseed/admin', '@treeseed/cli']));
 		expect(result.payload.plannedVersions).toMatchObject({
 			'@treeseed/market': '1.0.1',
-			'@treeseed/sdk': '0.4.13',
+			'@treeseed/sdk': '0.4.14',
 			'@treeseed/core': '0.4.13',
 			'@treeseed/admin': '0.4.13',
 		});
@@ -1359,7 +1360,7 @@ describe('treeseed workflow lifecycle', () => {
 			expect.stringMatching(/^template:/),
 		]));
 			expect(releaseGatePayload.plannedSteps.some((step: { action: string }) => step.action === 'update')).toBe(true);
-			expect(JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version).toBe('0.4.13');
+		expect(JSON.parse(readFileSync(resolve(work, 'packages', 'sdk', 'package.json'), 'utf8')).version).toBe('0.4.14');
 		expect(JSON.parse(readFileSync(resolve(work, 'packages', 'ui', 'package.json'), 'utf8')).version).toBe('0.4.12');
 		expect(git(resolve(work, 'packages', 'sdk'), ['tag', '--list', '0.4.12-dev.*'])).toBe('');
 		expect(git(work, ['branch', '--show-current'])).toBe('staging');

@@ -1543,6 +1543,15 @@ function remoteTagCommit(repoDir: string, tagName: string) {
 	return (peeled ?? direct)?.split(/\s+/u)[0] ?? null;
 }
 
+function releaseTagExists(repoDir: string, tagName: string) {
+	if (gitObjectCommit(repoDir, tagName)) return true;
+	try {
+		return remoteTagCommit(repoDir, tagName) !== null;
+	} catch {
+		return false;
+	}
+}
+
 function ensureReleaseTag(repoDir: string, tagName: string, commitSha: string, message?: string) {
 	const localCommit = gitObjectCommit(repoDir, tagName);
 	if (localCommit && localCommit !== commitSha) {
@@ -3252,6 +3261,14 @@ function buildReleasePlanSnapshot(input: {
 			versionPlan.selected.add(adapter.id);
 			versionPlan.versions.set(adapter.id, incrementVersion(adapter.version, input.level));
 		}
+	}
+	for (const adapter of discoverTreeseedPackageAdapters(input.root)) {
+		let version = versionPlan.versions.get(adapter.id);
+		if (!version) continue;
+		while (releaseTagExists(adapter.dir, version)) {
+			version = incrementVersion(version, input.level);
+		}
+		versionPlan.versions.set(adapter.id, version);
 	}
 	const plannedSelected = orderReleasePackageNames([...versionPlan.selected].filter((name) => versionPlan.versions.has(name)));
 	const plannedChanged = input.repairVersionLine === true
