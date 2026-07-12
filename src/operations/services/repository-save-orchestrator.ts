@@ -1104,6 +1104,12 @@ function syncDirectGitDependencyLockfileEntries(
 	let changed = false;
 	for (const reference of references) {
 		const manifestSpec = reference.manifestSpec ?? reference.spec;
+		const declaredSpec = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']
+			.map((field) => node.packageJson?.[field])
+			.filter((value): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value)))
+			.map((dependencies) => dependencies[reference.packageName])
+			.find((value): value is string => typeof value === 'string');
+		if (declaredSpec !== manifestSpec) continue;
 		const visitDependencyMaps = (value: unknown) => {
 			if (!value || typeof value !== 'object') return;
 			if (Array.isArray(value)) {
