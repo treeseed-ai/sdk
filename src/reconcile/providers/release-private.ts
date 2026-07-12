@@ -7,45 +7,6 @@ import { runTreeseedGitText } from '../../operations/services/git-runner.ts';
 import { ensureLocalWorkspaceLinks } from '../../operations/services/workspace-dependency-mode.ts';
 import type { TreeseedReconcileRunContext, TreeseedReconcileSelector, TreeseedReconcileTarget } from '../contracts.ts';
 
-function ensureReleaseVerifyDependencies(input: {
-	tenantRoot: string;
-	packageDir: string;
-	env?: NodeJS.ProcessEnv;
-	onProgress?: (message: string) => void;
-}) {
-	if (!existsSync(resolve(input.packageDir, 'package.json')) || !existsSync(resolve(input.packageDir, 'package-lock.json'))) {
-		return { status: 'not-applicable' as const };
-	}
-	const env = { ...process.env, ...(input.env ?? {}) };
-	const inspection = spawnSync('npm', ['ls', '--depth=0', '--workspaces=false'], {
-		cwd: input.packageDir,
-		env,
-		encoding: 'utf8',
-	});
-	if (inspection.status === 0) return { status: 'ready' as const };
-	input.onProgress?.('Package dependencies are incomplete; restoring the standalone lockfile installation.');
-	const install = spawnSync('npm', [
-		'ci',
-		'--ignore-scripts',
-		'--workspaces=false',
-		'--no-audit',
-		'--no-fund',
-	], {
-		cwd: input.packageDir,
-		env,
-		encoding: 'utf8',
-	});
-	if (install.status !== 0) {
-		throw new Error([
-			'Standalone package dependency hydration failed before release verification.',
-			install.stderr,
-			install.stdout,
-		].filter(Boolean).join('\n').trim());
-	}
-	ensureLocalWorkspaceLinks(input.tenantRoot, { env: input.env });
-	return { status: 'restored' as const };
-}
-
 export async function runReleaseVerifyCommand(input: {
 	tenantRoot: string;
 	packageId: string;
@@ -64,17 +25,8 @@ export async function runReleaseVerifyCommand(input: {
 			reason: `${input.packageId} has no release verify command.`,
 		};
 	}
-	const dependencies = adapter.capabilities.localOnly
-		? (() => {
-			ensureLocalWorkspaceLinks(input.tenantRoot, { env: input.env });
-			return { status: 'workspace-linked' as const };
-		})()
-		: ensureReleaseVerifyDependencies({
-			tenantRoot: input.tenantRoot,
-			packageDir: adapter.dir,
-			env: input.env,
-			onProgress: input.onProgress,
-		});
+	ensureLocalWorkspaceLinks(input.tenantRoot, { env: input.env });
+	const dependencies = { status: 'workspace-linked' as const };
 	const renderedCommand = [command.command, ...command.args].join(' ');
 	input.onProgress?.(`Running ${input.packageId} release verification: ${renderedCommand}`);
 	const started = Date.now();
