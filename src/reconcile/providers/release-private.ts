@@ -64,12 +64,17 @@ export async function runReleaseVerifyCommand(input: {
 			reason: `${input.packageId} has no release verify command.`,
 		};
 	}
-	const dependencies = ensureReleaseVerifyDependencies({
-		tenantRoot: input.tenantRoot,
-		packageDir: adapter.dir,
-		env: input.env,
-		onProgress: input.onProgress,
-	});
+	const dependencies = adapter.capabilities.localOnly
+		? (() => {
+			ensureLocalWorkspaceLinks(input.tenantRoot, { env: input.env });
+			return { status: 'workspace-linked' as const };
+		})()
+		: ensureReleaseVerifyDependencies({
+			tenantRoot: input.tenantRoot,
+			packageDir: adapter.dir,
+			env: input.env,
+			onProgress: input.onProgress,
+		});
 	const renderedCommand = [command.command, ...command.args].join(' ');
 	input.onProgress?.(`Running ${input.packageId} release verification: ${renderedCommand}`);
 	const started = Date.now();
