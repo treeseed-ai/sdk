@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.50] - 2026-07-12
+
+### Dependencies
+
+- build(build): update package metadata (ee878b54db70)
+
 ## [0.12.49] - 2026-07-12
 
 ### Tests
