@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.47] - 2026-07-12
+
+### Added
+
+- feat(workflow): resolve managed release tooling and stale checkout (96482a9bbe9a)
+
+### Dependencies
+
+- build(build): reuse exact staged candidate proof during release (f228c16d4fe5)
+- build(build): reuse staged package closure during release verification (743c761b5ab6)
+- build(workflow): resolve managed release tooling and stale checkout (487dec1a3a73)
+
 ## [0.12.46] - 2026-07-12
 
 ### Added
