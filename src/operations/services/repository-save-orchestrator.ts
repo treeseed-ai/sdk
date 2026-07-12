@@ -1116,7 +1116,7 @@ function syncDirectGitDependencyLockfileEntries(
 				if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue;
 				const dependencyMap = dependencies as Record<string, unknown>;
 				const current = dependencyMap[reference.packageName];
-				if (typeof current === 'string' && /(?:git|github:|#[0-9a-f]{7,40}$)/iu.test(current) && current !== manifestSpec) {
+				if (typeof current === 'string' && current !== manifestSpec) {
 					dependencyMap[reference.packageName] = manifestSpec;
 					changed = true;
 				}
