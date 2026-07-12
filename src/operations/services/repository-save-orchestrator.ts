@@ -1104,18 +1104,28 @@ function syncDirectGitDependencyLockfileEntries(
 	let changed = false;
 	for (const reference of references) {
 		const manifestSpec = reference.manifestSpec ?? reference.spec;
-		for (const field of dependencyFields(rootPackage)) {
-			const values = rootPackage[field];
-			if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
-			const dependencies = values as Record<string, unknown>;
-			if (reference.packageName in dependencies && dependencies[reference.packageName] !== manifestSpec) {
-				dependencies[reference.packageName] = manifestSpec;
-				changed = true;
+		const visitDependencyMaps = (value: unknown) => {
+			if (!value || typeof value !== 'object') return;
+			if (Array.isArray(value)) {
+				for (const item of value) visitDependencyMaps(item);
+				return;
 			}
-		}
-		const entryKey = `node_modules/${reference.packageName}`;
-		const entry = packageEntries[entryKey];
-		if (entry) {
+			const record = value as Record<string, unknown>;
+			for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+				const dependencies = record[field];
+				if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue;
+				const dependencyMap = dependencies as Record<string, unknown>;
+				const current = dependencyMap[reference.packageName];
+				if (typeof current === 'string' && /(?:git|github:|#[0-9a-f]{7,40}$)/iu.test(current) && current !== manifestSpec) {
+					dependencyMap[reference.packageName] = manifestSpec;
+					changed = true;
+				}
+			}
+			for (const nested of Object.values(record)) visitDependencyMaps(nested);
+		};
+		visitDependencyMaps(lockfile);
+		for (const [entryKey, entry] of Object.entries(packageEntries)) {
+			if (entryKey !== `node_modules/${reference.packageName}` && !entryKey.endsWith(`/node_modules/${reference.packageName}`)) continue;
 			const nextResolved = normalizeGitRemoteForDependency(reference.remoteUrl ?? '', 'ssh');
 			const resolved = nextResolved ? `${nextResolved}#${manifestSpec.slice(manifestSpec.lastIndexOf('#') + 1)}` : manifestSpec;
 			if (entry.resolved !== resolved) {
