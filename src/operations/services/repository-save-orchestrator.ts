@@ -1199,7 +1199,7 @@ function validateStandaloneGitDependencyLockfile(
 			rmSync(isolatedRoot, { recursive: true, force: true });
 		}
 	}
-	emitProgress(options, node, 'lockfile', 'Validated the standalone lockfile for exact internal Git refs.');
+	emitProgress(options, node, 'lockfile', 'Validated the standalone lockfile against the committed package manifest.');
 	return true;
 }
 
@@ -2366,6 +2366,14 @@ async function saveOneRepository(
 		report.version = String(node.packageJson?.version ?? report.version ?? '');
 	} else if (node.kind === 'project' && (dependencyChanged || (node.path === options.root && submodulesChanged)) && hasNpmLockfile(node.path)) {
 		report.install = await runNpmInstallWithRetry(node, options, gitDependencyRefreshSpecs);
+	}
+
+	if (
+		!isRootWorkspaceRepository(node, options)
+		&& hasNpmLockfile(node.path)
+		&& (packageNeedsVersion || dependencyChanged)
+	) {
+		validateStandaloneGitDependencyLockfile(node, options);
 	}
 
 	if (hasNpmLockfile(node.path) && (node.kind === 'project' || packageNeedsVersion || dependencyChanged || submodulesChanged)) {

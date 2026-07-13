@@ -7,7 +7,6 @@ import {
 	repoRoot,
 } from '../operations/services/workspace-save.ts';
 import {
-	changedWorkspacePackages,
 	hasCompleteTreeseedPackageCheckout,
 	publishableWorkspacePackages,
 	sortWorkspacePackages,
@@ -15,6 +14,7 @@ import {
 	workspaceRoot,
 } from '../operations/services/workspace-tools.ts';
 import { discoverTreeseedPackageAdapters } from '../operations/services/package-adapters.ts';
+import { runTreeseedGit } from '../operations/services/git-runner.ts';
 import {
 	classifyTreeseedBranchRole,
 	type TreeseedWorkflowBranchRole,
@@ -130,19 +130,44 @@ export function collectReleasePackageSelection(root: string): TreeseedWorkflowPa
 		});
 	}
 	const publishable = sortWorkspacePackages([...publishableByName.values()]);
-	const changed = changedWorkspacePackages({
-		root,
-		baseRef: 'main',
-		includeDependents: false,
-		packages: publishable,
-	});
-	const selected = changedWorkspacePackages({
-		root,
-		baseRef: 'main',
-		includeDependents: true,
-		packages: publishable,
-	});
-	const changedNames = changed.map((pkg) => pkg.name);
+	const changedNames = publishable
+		.filter((pkg) => {
+			const remoteMain = runTreeseedGit(['rev-parse', '--verify', 'origin/main'], {
+				cwd: pkg.dir,
+				mode: 'read',
+				allowFailure: true,
+			});
+			const baseRef = remoteMain.status === 0 ? 'origin/main' : 'main';
+			const diff = runTreeseedGit(['diff', '--quiet', baseRef, 'HEAD'], {
+				cwd: pkg.dir,
+				mode: 'read',
+				allowFailure: true,
+			});
+			return diff.status !== 0 || gitStatusPorcelain(pkg.dir).length > 0;
+		})
+		.map((pkg) => pkg.name);
+	const selectedNames = new Set(changedNames);
+	const reverseDependencies = new Map(publishable.map((pkg) => [pkg.name, new Set<string>()]));
+	const packageNames = new Set(publishable.map((pkg) => pkg.name));
+	for (const pkg of publishable) {
+		for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
+			const dependencies = pkg.packageJson?.[field];
+			if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue;
+			for (const dependency of Object.keys(dependencies)) {
+				if (packageNames.has(dependency)) reverseDependencies.get(dependency)?.add(pkg.name);
+			}
+		}
+	}
+	const queue = [...changedNames];
+	while (queue.length > 0) {
+		const dependency = queue.shift()!;
+		for (const dependent of reverseDependencies.get(dependency) ?? []) {
+			if (selectedNames.has(dependent)) continue;
+			selectedNames.add(dependent);
+			queue.push(dependent);
+		}
+	}
+	const selected = publishable.filter((pkg) => selectedNames.has(pkg.name));
 	return {
 		changed: changedNames,
 		dependents: selected.filter((pkg) => !changedNames.includes(pkg.name)).map((pkg) => pkg.name),
