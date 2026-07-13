@@ -127,7 +127,8 @@ function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Reco
 			imageRef,
 			imageTagRef: 'TREESEED_PUBLIC_TREEDX_IMAGE_REF',
 		};
-		assertApiRailwaySourcePolicy(input.environment, { key: 'public-treedx-node-01', serviceName: 'public-treedx-node-01', ...policy });
+		const serviceName = input.environment === 'prod' ? 'public-treedx-node-production-01' : 'public-treedx-node-01';
+		assertApiRailwaySourcePolicy(input.environment, { key: serviceName, serviceName, ...policy });
 		return policy;
 	}
 	const policy = {
@@ -243,7 +244,13 @@ function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey: strin
 		? service.railway.source
 		: {};
 	const configuredMode = typeof service.railway?.sourceMode === 'string' ? service.railway.sourceMode : null;
-	const serviceName = service.railway?.serviceName ?? null;
+	const baseServiceName = service.railway?.serviceName ?? null;
+	const configuredEnvironmentServiceName = service.environments?.[input.environment]?.railwayServiceName;
+	const serviceName = typeof configuredEnvironmentServiceName === 'string' && configuredEnvironmentServiceName.trim()
+		? configuredEnvironmentServiceName.trim()
+		: input.environment === 'prod' && ['api', 'operationsRunner'].includes(serviceKey) && baseServiceName
+			? `${baseServiceName}-production`
+			: baseServiceName;
 	const repository = typeof service.railway?.sourceRepo === 'string'
 		? service.railway.sourceRepo
 		: typeof configuredSource.repository === 'string'
@@ -351,14 +358,18 @@ function marketProjectGroup(environment: TreeseedHostingEnvironment, config: Rec
 		? apiService.railway.projectName.trim()
 		: undefined;
 	const projectName = railwayProjectName ?? config.slug ?? 'treeseed-api';
+	const environmentProjectName = (scope: 'staging' | 'prod') => {
+		const configured = apiService?.environments?.[scope]?.railwayProjectName;
+		return typeof configured === 'string' && configured.trim() ? configured.trim() : projectName;
+	};
 	return {
 		id: 'treeseed-control-plane',
 		label: 'Treeseed control plane',
 		hostId: environment === 'local' ? 'local-process' : 'railway',
 		environments: {
 			local: { projectName: `${projectName}-local`, environmentName: 'local' },
-			staging: { projectName, environmentName: 'staging' },
-			prod: { projectName, environmentName: 'production' },
+			staging: { projectName: environmentProjectName('staging'), environmentName: 'staging' },
+			prod: { projectName: environmentProjectName('prod'), environmentName: 'production' },
 		},
 		metadata: { stableProjectName: projectName },
 	};
@@ -505,6 +516,12 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 			?? defaultRailwayImageRefForService(serviceKey, input.environment)
 			?? null;
 		const sourcePolicy = railwaySourcePolicy(input, serviceKey, service, imageRef);
+		const environmentConfig = service.environments?.[input.environment];
+		const baseServiceName = service.railway?.serviceName ?? null;
+		const effectiveServiceName = environmentConfig?.railwayServiceName
+			?? (input.environment === 'prod' && ['api', 'operationsRunner'].includes(serviceKey) && baseServiceName
+				? `${baseServiceName}-production`
+				: baseServiceName);
 		services.push({
 			id: serviceKey,
 			label: placement === 'runner-capacity' ? 'Runner Capacity' : serviceKey === 'api' ? 'API Runtime' : serviceKey,
@@ -532,7 +549,7 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 				volumeMountPath: service.railway?.volumeMountPath ?? null,
 				runnerPool: service.railway?.runnerPool ?? null,
 				resourceType: service.railway?.resourceType ?? null,
-				serviceName: service.railway?.serviceName ?? null,
+				serviceName: effectiveServiceName,
 				serviceTargets: service.railway?.serviceTargets ?? null,
 			},
 			secretRefs: serviceKey === 'treeseedDatabase' ? ['TREESEED_DATABASE_URL'] : [],
@@ -601,7 +618,7 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 		const treeDxSourcePolicy = publicTreeDxSourcePolicy(input, config, launchEnv);
 		const treeDxNodeUnits = Array.from({ length: treeDxNodePool.bootstrapCount }, (_, offset) => {
 			const nodeIndex = offset + 1;
-			const serviceName = indexedName('public-treedx-node', nodeIndex);
+			const serviceName = indexedName(input.environment === 'prod' ? 'public-treedx-node-production' : 'public-treedx-node', nodeIndex);
 			return {
 				id: serviceName,
 				label: `Public TreeDX node ${String(nodeIndex).padStart(2, '0')}`,

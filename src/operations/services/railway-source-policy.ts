@@ -18,9 +18,9 @@ export function isApiRailwaySourcePolicyService(service: TreeseedRailwaySourcePo
 	const key = String(service.key ?? '').trim();
 	const serviceName = String(service.serviceName ?? '').trim();
 	return key.startsWith('public-treedx-node-')
-		|| serviceName === 'treeseed-api'
-		|| /^treeseed-api-operations-runner-\d+$/u.test(serviceName)
-		|| /^public-treedx-node-\d+$/u.test(serviceName);
+		|| /^treeseed-api(?:-production)?$/u.test(serviceName)
+		|| /^treeseed-api-operations-runner(?:-production)?-\d+$/u.test(serviceName)
+		|| /^public-treedx-node(?:-production)?-\d+$/u.test(serviceName);
 }
 
 export function isImmutableRailwayImageRef(value: unknown) {
@@ -32,16 +32,16 @@ export function isImmutableRailwayImageRef(value: unknown) {
 
 export function apiRailwayDefaultSourceRepo(service: TreeseedRailwaySourcePolicyService) {
 	const serviceName = String(service.serviceName ?? '').trim();
-	if (serviceName === 'treeseed-api' || /^treeseed-api-operations-runner-\d+$/u.test(serviceName)) return 'treeseed-ai/api';
-	if (/^public-treedx-node-\d+$/u.test(serviceName) || String(service.key ?? '').startsWith('public-treedx-node-')) return 'treeseed-ai/treedx';
+	if (String(service.key ?? '') === 'api' || String(service.key ?? '') === 'operationsRunner' || /^treeseed-api(?:-production)?$/u.test(serviceName) || /^treeseed-api-operations-runner(?:-production)?-\d+$/u.test(serviceName)) return 'treeseed-ai/api';
+	if (/^public-treedx-node(?:-production)?-\d+$/u.test(serviceName) || String(service.key ?? '').startsWith('public-treedx-node-')) return 'treeseed-ai/treedx';
 	return null;
 }
 
 export function apiRailwayDefaultDockerfilePath(service: TreeseedRailwaySourcePolicyService) {
 	const serviceName = String(service.serviceName ?? '').trim();
-	if (serviceName === 'treeseed-api') return '/Dockerfile.api';
-	if (/^treeseed-api-operations-runner-\d+$/u.test(serviceName)) return '/Dockerfile.operations-runner';
-	if (/^public-treedx-node-\d+$/u.test(serviceName) || String(service.key ?? '').startsWith('public-treedx-node-')) return '/Dockerfile';
+	if (String(service.key ?? '') === 'api' || /^treeseed-api(?:-production)?$/u.test(serviceName)) return '/Dockerfile.api';
+	if (String(service.key ?? '') === 'operationsRunner' || /^treeseed-api-operations-runner(?:-production)?-\d+$/u.test(serviceName)) return '/Dockerfile.operations-runner';
+	if (/^public-treedx-node(?:-production)?-\d+$/u.test(serviceName) || String(service.key ?? '').startsWith('public-treedx-node-')) return '/Dockerfile';
 	return null;
 }
 
@@ -54,6 +54,7 @@ export function assertApiRailwaySourcePolicy(
 	const label = service.serviceName ?? service.key ?? 'Railway service';
 	if (normalizedScope === 'staging') {
 		const issues = [
+			/-production(?:-|$)/u.test(String(service.serviceName ?? '')) ? 'serviceName must use the staging-only identity' : null,
 			service.sourceMode === 'git' ? null : 'sourceMode must be git',
 			service.imageRef ? 'imageRef must be empty' : null,
 			service.sourceRepo ? null : 'sourceRepo must be set',
@@ -68,6 +69,7 @@ export function assertApiRailwaySourcePolicy(
 	}
 	if (normalizedScope === 'prod') {
 		const issues = [
+			/-production(?:-|$)/u.test(String(service.serviceName ?? '')) ? null : 'serviceName must use a production-only identity',
 			service.sourceMode === 'image' ? null : 'sourceMode must be image',
 			isImmutableRailwayImageRef(service.imageRef) ? null : 'imageRef must be an immutable released image tag',
 			service.sourceRepo ? 'sourceRepo must be empty' : null,

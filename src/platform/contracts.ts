@@ -270,6 +270,8 @@ export interface TreeseedManagedServiceEnvironmentConfig {
 	baseUrl?: string;
 	domain?: string;
 	railwayEnvironment?: string;
+	railwayProjectName?: string;
+	railwayServiceName?: string;
 }
 
 export type TreeseedLocalRuntimeMode = 'auto' | 'provider' | 'local';

@@ -417,6 +417,8 @@ function parseServiceEnvironmentConfig(
 		baseUrl: optionalString(record.baseUrl),
 		domain: optionalString(record.domain),
 		railwayEnvironment: optionalString(record.railwayEnvironment),
+		railwayProjectName: optionalString(record.railwayProjectName),
+		railwayServiceName: optionalString(record.railwayServiceName),
 	};
 }
 

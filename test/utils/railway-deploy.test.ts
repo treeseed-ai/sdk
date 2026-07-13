@@ -682,11 +682,11 @@ services:
 		);
 
 		const services = configuredRailwayServices(tenantRoot, 'prod');
-		const publicTreeDx = services.find((service) => service.key === 'public-treedx-node-01');
+		const publicTreeDx = services.find((service) => service.key === 'public-treedx-node-production-01');
 
 		expect(publicTreeDx).toMatchObject({
 			sourceMode: 'image',
-			serviceName: 'public-treedx-node-01',
+			serviceName: 'public-treedx-node-production-01',
 			imageRef: 'treeseed/treedx:0.2.11',
 		});
 	});

@@ -803,10 +803,15 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 			const publicBaseUrl = service.environments?.[normalizedScope]?.baseUrl
 				?? service.publicBaseUrl
 				?? (serviceKey === 'api' ? configuredApiPublicBaseUrl(deployConfig, normalizedScope) : null);
-			const configuredServiceName = service.railway?.serviceName
+			const environmentConfig = service.environments?.[normalizedScope];
+			const baseServiceName = service.railway?.serviceName
 				?? (serviceKey === 'workerRunner'
 					? deriveRailwayWorkerRunnerServiceName(identity.deploymentKey)
 					: `${identity.deploymentKey}-${railwayServiceNameSuffix(serviceKey)}`);
+			const configuredServiceName = environmentConfig?.railwayServiceName
+				?? (normalizedScope === 'prod' && ['api', 'operationsRunner'].includes(serviceKey)
+					? `${baseServiceName}-production`
+					: baseServiceName);
 			const configuredRunnerPool = service.railway?.runnerPool && typeof service.railway.runnerPool === 'object'
 				? service.railway.runnerPool
 				: null;
@@ -844,6 +849,7 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 					service,
 					serviceRoot,
 					imageRef,
+					serviceName,
 				});
 				const resolvedImageRef = sourcePolicy.sourceMode === 'image' ? imageRef : null;
 					return {
@@ -853,7 +859,7 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 					serviceConfig: service,
 					scope: normalizedScope,
 					projectId: service.railway?.projectId ?? null,
-					projectName: service.railway?.projectName ?? identity.deploymentKey,
+					projectName: environmentConfig?.railwayProjectName ?? service.railway?.projectName ?? identity.deploymentKey,
 					serviceId: service.railway?.serviceId ?? null,
 					serviceName,
 					runnerId: serviceKey === 'operationsRunner' || serviceKey === 'capacityProviderRunner' ? serviceName : null,
@@ -957,7 +963,9 @@ function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deployConfig
 	const baseImageRef = envValue('TREESEED_PUBLIC_TREEDX_IMAGE_REF', imageRefEnv) || 'treeseed/treedx';
 	return Array.from({ length: bootstrapCount }, (_, offset) => {
 		const index = offset + 1;
-		const serviceName = `${PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX}${String(index).padStart(2, '0')}`;
+		const serviceName = scope === 'prod'
+			? `public-treedx-node-production-${String(index).padStart(2, '0')}`
+			: `${PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX}${String(index).padStart(2, '0')}`;
 		const service = {
 			key: serviceName,
 			serviceName,
@@ -1075,7 +1083,7 @@ function headCommitSafe(cwd) {
 	}
 }
 
-function resolveRailwayServiceSourcePolicy({ tenantRoot, scope, serviceKey, service, serviceRoot, imageRef }) {
+function resolveRailwayServiceSourcePolicy({ tenantRoot, scope, serviceKey, service, serviceRoot, imageRef, serviceName: effectiveServiceName }) {
 	const configuredMode = typeof service.railway?.sourceMode === 'string' ? service.railway.sourceMode : null;
 	const configuredSource = service.railway?.source && typeof service.railway.source === 'object' && !Array.isArray(service.railway.source)
 		? service.railway.source
@@ -1087,7 +1095,7 @@ function resolveRailwayServiceSourcePolicy({ tenantRoot, scope, serviceKey, serv
 			: typeof configuredSource.repo === 'string'
 				? configuredSource.repo
 				: null;
-	const serviceName = service.railway?.serviceName ?? null;
+	const serviceName = effectiveServiceName ?? service.railway?.serviceName ?? null;
 	const packageRepository = configuredRepo
 		?? readTreeseedPackageRepository(serviceRoot)
 		?? readTreeseedPackageRepository(tenantRoot)

@@ -40,7 +40,7 @@ function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacPro
 		services: [
 			{
 				key: 'api',
-				serviceName: 'treeseed-api',
+				serviceName: git ? 'treeseed-api' : 'treeseed-api-production',
 				sourceMode: git ? 'git' : 'image',
 				sourceRepo: git ? 'treeseed-ai/api' : null,
 				sourceBranch: git ? 'staging' : null,
@@ -55,7 +55,7 @@ function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacPro
 			},
 			{
 				key: 'operationsRunner:1',
-				serviceName: 'treeseed-api-operations-runner-01',
+				serviceName: git ? 'treeseed-api-operations-runner-01' : 'treeseed-api-operations-runner-production-01',
 				sourceMode: git ? 'git' : 'image',
 				sourceRepo: git ? 'treeseed-ai/api' : null,
 				sourceBranch: git ? 'staging' : null,
@@ -70,7 +70,7 @@ function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacPro
 			},
 			{
 				key: 'public-treedx-node-01',
-				serviceName: 'public-treedx-node-01',
+				serviceName: git ? 'public-treedx-node-01' : 'public-treedx-node-production-01',
 				sourceMode: git ? 'git' : 'image',
 				sourceRepo: git ? 'treeseed-ai/treedx' : null,
 				sourceBranch: git ? 'staging' : null,
