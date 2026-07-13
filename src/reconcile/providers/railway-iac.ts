@@ -1,6 +1,12 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { runRailwayIac, type RailwayChangeSet, type RailwayIacApplyResponse, type RailwayIacPlanResponse } from 'railway/iac';
+import {
+	runRailwayIac,
+	type RailwayChangeSet,
+	type RailwayIacApplyResponse,
+	type RailwayIacPlanResponse,
+	type ResourceNode,
+} from 'railway/iac';
 import { assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from '../../operations/services/railway-source-policy.ts';
 
 export type TreeseedRailwayIacService = {
@@ -43,6 +49,7 @@ export type TreeseedRailwayIacProjectInput = {
 	railwayApiUrl?: string | null;
 	services: TreeseedRailwayIacService[];
 	database: TreeseedRailwayIacDatabase | null;
+	retainedResources?: ResourceNode[];
 	region?: string | null;
 };
 
@@ -54,6 +61,7 @@ export type TreeseedRailwayIacRenderResult = {
 	serviceNames: string[];
 	volumeNames: string[];
 	databaseName: string | null;
+	retainedResourceNames: string[];
 	source: string;
 };
 
@@ -194,6 +202,16 @@ export function renderRailwayIacProject(input: TreeseedRailwayIacProjectInput): 
 	const volumeNames: string[] = [];
 	const databaseVariableName = input.database ? 'db' : null;
 	const databaseEnvName = input.database?.environmentVariable ?? null;
+	const desiredResourceNames = new Set([
+		...input.services.map((service) => service.serviceName),
+		...input.services.filter((service) => service.volumeMountPath).map((service) => `${service.serviceName}-volume`),
+		...(input.database ? [input.database.serviceName, `${input.database.serviceName}-volume`] : []),
+	]);
+	const retainedResources = (input.retainedResources ?? []).filter((resource) => !desiredResourceNames.has(resource.name));
+	if (retainedResources.length > 0) {
+		declarations.push(`  const retainedResources = ${js(retainedResources)};`);
+		resources.push('...retainedResources');
+	}
 	if (input.database) {
 		const postgresVolumeName = `${input.database.serviceName}-volume`;
 		const postgresMountPath = input.database.mountPath?.trim() || '/var/lib/postgresql/data';
@@ -282,8 +300,21 @@ ${declarations.join('\n')}
 		serviceNames: input.services.map((service) => service.serviceName),
 		volumeNames,
 		databaseName: input.database?.serviceName ?? null,
+		retainedResourceNames: retainedResources.map((resource) => resource.name),
 		source,
 	};
+}
+
+export function selectRailwayIacRetainedResources(
+	plan: Pick<RailwayIacPlanResponse, 'changeSet' | 'currentGraph'>,
+	allowedNames: Iterable<string>,
+): ResourceNode[] {
+	const allowed = new Set(allowedNames);
+	const deletedAllowedNames = new Set((plan.changeSet?.changes ?? [])
+		.filter((change) => change.kind === 'resource.delete')
+		.map((change) => changeName(change))
+		.filter((name) => allowed.has(name)));
+	return (plan.currentGraph?.resources ?? []).filter((resource) => deletedAllowedNames.has(resource.name));
 }
 
 function changeName(change: any) {

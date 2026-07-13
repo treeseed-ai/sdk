@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	cleanupRailwayIacRender,
 	renderRailwayIacProject,
+	selectRailwayIacRetainedResources,
 	validateRailwayIacChangeSet,
 	type TreeseedRailwayIacProjectInput,
 } from '../../src/reconcile/providers/railway-iac.ts';
@@ -144,6 +145,39 @@ describe('Railway IaC project rendering', () => {
 		}
 	});
 
+	it('carries exact sibling-environment resources forward without changing their source', () => {
+		const input = baseInput('prod');
+		input.retainedResources = [
+			{
+				address: 'service.treeseed-api',
+				type: 'service',
+				name: 'treeseed-api',
+				kind: 'github',
+				source: { type: 'github', repo: 'treeseed-ai/api', branch: 'staging', commitSha: 'staging-sha' },
+				variables: { TREESEED_DEPLOY_SOURCE_BRANCH: { type: 'preserve' } },
+			} as any,
+			{
+				address: 'volume.treeseed-api-operations-runner-01-volume',
+				type: 'volume',
+				name: 'treeseed-api-operations-runner-01-volume',
+				config: { region: 'us-east4-eqdc4a' },
+			} as any,
+		];
+		const rendered = renderRailwayIacProject(input);
+		try {
+			expect(rendered.retainedResourceNames).toEqual([
+				'treeseed-api',
+				'treeseed-api-operations-runner-01-volume',
+			]);
+			expect(rendered.source).toContain('const retainedResources =');
+			expect(rendered.source).toContain('"commitSha":"staging-sha"');
+			expect(rendered.source).toContain('...retainedResources');
+			expect(rendered.source).toContain('source: image("treeseed/api:1.2.3")');
+		} finally {
+			cleanupRailwayIacRender(rendered);
+		}
+	});
+
 	it('rejects image-backed API-owned staging services before rendering', () => {
 		const input = baseInput('staging');
 		input.services[0] = {
@@ -220,6 +254,45 @@ describe('Railway IaC project rendering', () => {
 });
 
 describe('Railway IaC plan validation', () => {
+	it('selects only explicitly allowed deleted sibling resources from the live graph', () => {
+		const stagingService = {
+			address: 'service.treeseed-api',
+			type: 'service',
+			name: 'treeseed-api',
+			kind: 'github',
+		} as any;
+		const unrelatedService = {
+			address: 'service.unmanaged-service',
+			type: 'service',
+			name: 'unmanaged-service',
+			kind: 'empty',
+		} as any;
+		const retained = selectRailwayIacRetainedResources({
+			currentGraph: {
+				version: 1,
+				project: { name: 'treeseed-api' },
+				environments: [],
+				resources: [stagingService, unrelatedService],
+				edges: [],
+			},
+			changeSet: {
+				version: 1,
+				diagnostics: [],
+				changes: [stagingService, unrelatedService].map((resource) => ({
+					kind: 'resource.delete',
+					path: resource.address,
+					address: resource.address,
+					previous: resource,
+					summary: `Delete service ${resource.name}`,
+					severity: 'destructive',
+					deployEffect: 'unknown',
+				})),
+			},
+		}, ['treeseed-api']);
+
+		expect(retained).toEqual([stagingService]);
+	});
+
 	it('rejects deletion of canonical desired resources', () => {
 		const result = validateRailwayIacChangeSet({
 			version: 1,

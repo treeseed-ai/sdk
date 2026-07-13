@@ -294,6 +294,7 @@ vi.mock('../../src/reconcile/providers/railway-iac.ts', () => ({
 		blockedReasons: [],
 		allowedDrift: [],
 	})),
+	selectRailwayIacRetainedResources: vi.fn(() => []),
 	cleanupRailwayIacRender: vi.fn((rendered) => cleanupRailwayIacRenderMock(rendered)),
 }));
 

@@ -4151,6 +4151,27 @@ function configuredRailwayProjectSyncGroups(
 	return [...grouped.values()];
 }
 
+function configuredRailwaySiblingResourceNames(
+	input: TreeseedReconcileAdapterInput,
+	scope: 'local' | 'staging' | 'prod',
+	projectName: string,
+) {
+	const siblingScope = scope === 'prod' ? 'staging' : scope === 'staging' ? 'prod' : null;
+	if (!siblingScope) return [];
+	const siblingServices = configuredRailwayServicesForInput(input, siblingScope)
+		.filter((service) => service.enabled !== false)
+		.filter((service) => !isRailwayCapacityProviderService(service))
+		.filter((service) => service.projectName === projectName);
+	const database = configuredRailwayIacDatabase(input, siblingServices);
+	return [...new Set([
+		...siblingServices.flatMap((service) => [
+			service.serviceName,
+			...(service.volumeMountPath ? [`${service.serviceName}-volume`] : []),
+		]),
+		...(database ? [database.serviceName, `${database.serviceName}-volume`] : []),
+	])];
+}
+
 function railwayIacServiceInput(
 	input: TreeseedReconcileAdapterInput,
 	sync: ReturnType<typeof collectRailwayEnvironmentSync>,
@@ -4512,11 +4533,13 @@ async function syncRailwayEnvironmentForScope(
 			})),
 			database: databaseForIac,
 		};
+		const siblingResourceNames = configuredRailwaySiblingResourceNames(input, scope, project.name);
 		const {
 			applyRailwayIacProject,
 			cleanupRailwayIacRender,
 			planRailwayIacProject,
 			renderRailwayIacProject,
+			selectRailwayIacRetainedResources,
 			validateRailwayIacChangeSet,
 		} = await import('./providers/railway-iac.ts');
 		let effectiveIacInput = iacInput;
@@ -4558,6 +4581,37 @@ async function syncRailwayEnvironmentForScope(
 						useNativePostgres: true,
 					},
 				};
+				rendered = renderRailwayIacProject(effectiveIacInput);
+				plan = await planRailwayIacProject(effectiveIacInput, rendered);
+				if (!plan.ok) {
+					const diagnostics = plan.diagnostics.map((entry) => entry.message).filter(Boolean).join('; ');
+					throw new Error(`Railway IaC plan failed for ${project.name}/${environment.name}${diagnostics ? `: ${diagnostics}` : '.'}`);
+				}
+				validation = validateRailwayIacChangeSet(plan.changeSet, {
+					services: rendered.serviceNames,
+					volumes: rendered.volumeNames,
+					database: rendered.databaseName,
+					scope,
+					serviceSourceModes: Object.fromEntries(effectiveIacInput.services.map((service) => [service.serviceName, service.sourceMode ?? null])),
+					serviceSourceRefs: Object.fromEntries(effectiveIacInput.services.map((service) => [
+						service.serviceName,
+						service.sourceMode === 'git' && service.sourceRepo
+							? `github:${service.sourceRepo}:${service.sourceBranch ?? ''}:${service.sourceRootDirectory ?? ''}:${service.sourceCommit ?? ''}`
+							: service.sourceMode === 'image' && service.imageRef
+								? `image:${service.imageRef}`
+								: null,
+					])),
+				});
+			}
+			const retainedResources = selectRailwayIacRetainedResources(plan, siblingResourceNames);
+			if (retainedResources.length > 0) {
+				traceRailwayReconcile(
+					topology.env,
+					'sync:iac-retain-sibling-environment',
+					`${project.name}/${environment.name}:${retainedResources.map((resource) => resource.name).join(',')}`,
+				);
+				cleanupRailwayIacRender(rendered);
+				effectiveIacInput = { ...effectiveIacInput, retainedResources };
 				rendered = renderRailwayIacProject(effectiveIacInput);
 				plan = await planRailwayIacProject(effectiveIacInput, rendered);
 				if (!plan.ok) {
