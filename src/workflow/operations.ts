@@ -4275,7 +4275,7 @@ export async function workflowTasks(helpers: WorkflowOperationHelpers, input: Tr
 				if (!live) {
 					return { ...branch, status: 'planned' as const, reason: `exact head is merged into ${branch.mergedInto}` };
 				}
-				deleteRemoteBranchIfMerged(repo.dir, branch.branch, branch.mergedInto, branch.head);
+				deleteRemoteBranchIfMerged(repo.dir, branch.branch, branch.mergedInto, branch.head, { fetch: false });
 				return { ...branch, status: 'deleted' as const, reason: `exact head was merged into ${branch.mergedInto}` };
 			});
 			return { repository: repo.name, path: repo.dir, branches };

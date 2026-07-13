@@ -699,9 +699,9 @@ export function deleteRemoteBranch(repoDir, branchName) {
 	return true;
 }
 
-export function deleteRemoteBranchIfMerged(repoDir, branchName, targetBranch, expectedHead) {
+export function deleteRemoteBranchIfMerged(repoDir, branchName, targetBranch, expectedHead, options: { fetch?: boolean } = {}) {
 	if (!remoteBranchExists(repoDir, branchName)) return false;
-	fetchOrigin(repoDir);
+	if (options.fetch !== false) fetchOrigin(repoDir);
 	const observedHead = remoteHeadCommit(repoDir, branchName);
 	if (!expectedHead || observedHead !== expectedHead) {
 		throw new Error(`Refusing to delete origin/${branchName}: expected ${expectedHead || '(missing)'}, observed ${observedHead || '(missing)'}.`);
