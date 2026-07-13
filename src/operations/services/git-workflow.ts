@@ -699,6 +699,26 @@ export function deleteRemoteBranch(repoDir, branchName) {
 	return true;
 }
 
+export function deleteRemoteBranchIfMerged(repoDir, branchName, targetBranch, expectedHead) {
+	if (!remoteBranchExists(repoDir, branchName)) return false;
+	fetchOrigin(repoDir);
+	const observedHead = remoteHeadCommit(repoDir, branchName);
+	if (!expectedHead || observedHead !== expectedHead) {
+		throw new Error(`Refusing to delete origin/${branchName}: expected ${expectedHead || '(missing)'}, observed ${observedHead || '(missing)'}.`);
+	}
+	const targetHead = remoteHeadCommit(repoDir, targetBranch);
+	if (!targetHead) {
+		throw new Error(`Refusing to delete origin/${branchName}: origin/${targetBranch} is missing.`);
+	}
+	const ancestry = runGitAllowFailure(['merge-base', '--is-ancestor', observedHead, targetHead], { cwd: repoDir });
+	if (ancestry.status !== 0) {
+		throw new Error(`Refusing to delete origin/${branchName}: ${observedHead} is not merged into origin/${targetBranch} (${targetHead}).`);
+	}
+	ensureWritableOrigin(repoDir);
+	runGit(['push', `--force-with-lease=refs/heads/${branchName}:${expectedHead}`, 'origin', '--delete', branchName], { cwd: repoDir });
+	return true;
+}
+
 export function mergeCurrentBranchIntoStaging(cwd, featureBranch) {
 	return squashMergeBranchIntoStaging(cwd, featureBranch, `stage: ${featureBranch}`);
 }

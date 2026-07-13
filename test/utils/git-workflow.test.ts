@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
 import {
+	deleteRemoteBranchIfMerged,
 	listTaskBranches,
 	mergeBranchDownIntoFeature,
 	promoteCommitToBranchWithExpectedHead,
@@ -74,6 +75,24 @@ function makePackageRepo() {
 }
 
 describe('git workflow task helpers', () => {
+	it('deletes only the expected feature head after it is merged into staging', () => {
+		const { work } = makeRepo();
+		const featureHead = git(work, ['rev-parse', 'origin/feature/search-filters']);
+		git(work, ['push', 'origin', `${featureHead}:refs/heads/staging`]);
+
+		expect(deleteRemoteBranchIfMerged(work, 'feature/search-filters', 'staging', featureHead)).toBe(true);
+		expect(git(work, ['ls-remote', '--heads', 'origin', 'feature/search-filters'])).toBe('');
+	});
+
+	it('refuses to delete a feature branch that is unmerged or moved', () => {
+		const { work } = makeRepo();
+		const featureHead = git(work, ['rev-parse', 'origin/feature/search-filters']);
+
+		expect(() => deleteRemoteBranchIfMerged(work, 'feature/search-filters', 'staging', featureHead)).toThrow(/not merged/u);
+		expect(() => deleteRemoteBranchIfMerged(work, 'feature/search-filters', 'staging', '0000000000000000000000000000000000000000')).toThrow(/expected/u);
+		expect(git(work, ['ls-remote', '--heads', 'origin', 'feature/search-filters'])).toContain(featureHead);
+	});
+
 	it('retries only completed failed staging automation runs', () => {
 		expect(shouldRetryFailedStagingAutomation('completed', 'failure')).toBe(true);
 		expect(shouldRetryFailedStagingAutomation('completed', 'cancelled')).toBe(true);

@@ -72,6 +72,7 @@ import {
 	createDeprecatedTaskTag,
 	deleteLocalBranch,
 	deleteRemoteBranch,
+	deleteRemoteBranchIfMerged,
 	ensureLocalBranchTracking,
 	gitWorkflowRoot,
 	headCommit,
@@ -6224,8 +6225,8 @@ function internalPackageDependencies(repoPath: string) {
 }
 
 function normalizeStageCleanupMode(input: TreeseedStageInput): StageCleanupMode {
-	if (input.cleanupMode === 'success' || input.deleteBranch === true) return 'success';
-	return 'manual';
+	if (input.cleanupMode === 'manual' || input.deleteBranch === false) return 'manual';
+	return 'success';
 }
 
 function stageCandidateManifestPath(root: string, runId: string) {
@@ -6449,7 +6450,7 @@ function cleanupStageSourceBranches(root: string, branchName: string, manifest: 
 	for (const repo of checkedOutStagePromotionRepos(root)) {
 		const manifestRepo = manifest.packages.find((entry) => entry.name === repo.name);
 		if (!manifestRepo) continue;
-		const remoteDeleted = deleteRemoteBranch(repo.dir, branchName);
+		const remoteDeleted = deleteRemoteBranchIfMerged(repo.dir, branchName, STAGING_BRANCH, manifestRepo.commit);
 		if ((currentBranch(repo.dir) || null) === branchName) {
 			syncBranchWithOrigin(repo.dir, STAGING_BRANCH);
 		}
@@ -6465,7 +6466,7 @@ function cleanupStageSourceBranches(root: string, branchName: string, manifest: 
 		});
 	}
 	const gitRoot = repoRoot(root);
-	const rootRemoteDeleted = deleteRemoteBranch(gitRoot, branchName);
+	const rootRemoteDeleted = deleteRemoteBranchIfMerged(gitRoot, branchName, STAGING_BRANCH, manifest.root.commit);
 	const managedWorktree = managedWorkflowWorktreeMetadata(root);
 	const worktreeCleanup = managedWorktree
 		? removeManagedWorkflowWorktree(root, { deleteBranch: false })
