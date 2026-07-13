@@ -209,7 +209,8 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 	}
 
 	if (railwayApi) {
-		checks.push(check('railway-config:api:serviceName', railwayApi.serviceName, 'treeseed-api', 'Railway API service uses the canonical name.', 'Set services.api.railway.serviceName to treeseed-api.', 'serviceName'));
+		const expectedServiceName = environment === 'prod' ? 'treeseed-api-production' : 'treeseed-api';
+		checks.push(check('railway-config:api:serviceName', railwayApi.serviceName, expectedServiceName, 'Railway API service uses the environment-isolated canonical name.', `Set the API service identity to ${expectedServiceName} for ${environment}.`, 'serviceName'));
 		checks.push(check('railway-config:api:rootDirectory', relRoot(tenantRoot, railwayApi.rootDir), expectedApiRailwayRoot, 'Railway API effective rootDirectory points at the API app.', 'Set services.api.railway.rootDir relative to the owning API manifest.', 'rootDirectory'));
 	}
 
@@ -244,7 +245,8 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 	}
 
 	if (railwayRunner) {
-		checks.push(check('railway-config:operationsRunner:serviceName', railwayRunner.serviceName, 'treeseed-api-operations-runner-01', 'Railway runner service instance uses the canonical name.', 'Set the runner service instance name to treeseed-api-operations-runner-01.', 'serviceName'));
+		const expectedServiceName = environment === 'prod' ? 'treeseed-api-operations-runner-production-01' : 'treeseed-api-operations-runner-01';
+		checks.push(check('railway-config:operationsRunner:serviceName', railwayRunner.serviceName, expectedServiceName, 'Railway runner service instance uses the environment-isolated canonical name.', `Set the runner service identity to ${expectedServiceName} for ${environment}.`, 'serviceName'));
 		checks.push(check('railway-config:operationsRunner:rootDirectory', relRoot(tenantRoot, railwayRunner.rootDir), expectedRunnerRailwayRoot, 'Railway runner effective rootDirectory points at the API app.', 'Set services.operationsRunner.railway.rootDir relative to the owning API manifest.', 'rootDirectory'));
 	}
 

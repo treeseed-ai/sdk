@@ -719,6 +719,27 @@ export function deleteRemoteBranchIfMerged(repoDir, branchName, targetBranch, ex
 	return true;
 }
 
+export function inspectMergedRemoteTaskBranches(repoDir) {
+	fetchOrigin(repoDir);
+	const targets = [STAGING_BRANCH, PRODUCTION_BRANCH]
+		.map((branch) => ({ branch, head: remoteHeadCommit(repoDir, branch) }))
+		.filter((target): target is { branch: string; head: string } => Boolean(target.head));
+	return listTaskBranches(repoDir, { fetch: false })
+		.filter((branch) => branch.remote)
+		.map((branch) => {
+			const head = remoteHeadCommit(repoDir, branch.name);
+			const mergedTarget = head
+				? targets.find((target) => runGitAllowFailure(['merge-base', '--is-ancestor', head, target.head], { cwd: repoDir }).status === 0)
+				: undefined;
+			return {
+				branch: branch.name,
+				head,
+				current: branch.current,
+				mergedInto: mergedTarget?.branch ?? null,
+			};
+		});
+}
+
 export function mergeCurrentBranchIntoStaging(cwd, featureBranch) {
 	return squashMergeBranchIntoStaging(cwd, featureBranch, `stage: ${featureBranch}`);
 }
@@ -801,11 +822,13 @@ function gitLines(repoDir, args) {
 		.filter(Boolean);
 }
 
-export function listTaskBranches(repoDir) {
-	try {
-		runGit(['fetch', 'origin'], { cwd: repoDir, capture: true });
-	} catch {
-		// Local-only repositories can still report local task branches.
+export function listTaskBranches(repoDir, options: { fetch?: boolean } = {}) {
+	if (options.fetch !== false) {
+		try {
+			runGit(['fetch', 'origin'], { cwd: repoDir, capture: true });
+		} catch {
+			// Local-only repositories can still report local task branches.
+		}
 	}
 	const local = new Set(
 		gitLines(repoDir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads'])
@@ -821,7 +844,7 @@ export function listTaskBranches(repoDir) {
 	const branches = [...new Set([...local, ...remote])].sort((left, right) => left.localeCompare(right));
 
 	return branches.map((branchName) => {
-		const ref = local.has(branchName) ? branchName : `origin/${branchName}`;
+		const ref = local.has(branchName) ? `refs/heads/${branchName}` : `refs/remotes/origin/${branchName}`;
 		return {
 			name: branchName,
 			head: runGit(['rev-parse', ref], { cwd: repoDir, capture: true }).trim(),

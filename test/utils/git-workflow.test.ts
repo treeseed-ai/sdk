@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	deleteRemoteBranchIfMerged,
+	inspectMergedRemoteTaskBranches,
 	listTaskBranches,
 	mergeBranchDownIntoFeature,
 	promoteCommitToBranchWithExpectedHead,
@@ -93,6 +94,23 @@ describe('git workflow task helpers', () => {
 		expect(git(work, ['ls-remote', '--heads', 'origin', 'feature/search-filters'])).toContain(featureHead);
 	});
 
+	it('classifies exact remote task heads by protected branch ancestry', () => {
+		const { work } = makeRepo();
+		const featureHead = git(work, ['rev-parse', 'origin/feature/search-filters']);
+		git(work, ['push', 'origin', `${featureHead}:refs/heads/staging`]);
+		git(work, ['checkout', 'staging']);
+		git(work, ['reset', '--hard', 'origin/staging']);
+
+		expect(inspectMergedRemoteTaskBranches(work)).toEqual([
+			expect.objectContaining({
+				branch: 'feature/search-filters',
+				head: featureHead,
+				current: false,
+				mergedInto: 'staging',
+			}),
+		]);
+	});
+
 	it('retries only completed failed staging automation runs', () => {
 		expect(shouldRetryFailedStagingAutomation('completed', 'failure')).toBe(true);
 		expect(shouldRetryFailedStagingAutomation('completed', 'cancelled')).toBe(true);
@@ -123,6 +141,24 @@ describe('git workflow task helpers', () => {
 
 		const tasks = listTaskBranches(work);
 		expect(tasks.map((task) => task.name)).toEqual(['feature/search-filters']);
+	});
+
+	it('lists a task branch whose name also exists as a worktree path', () => {
+		const { work } = makeRepo();
+		git(work, ['checkout', 'staging']);
+		mkdirSync(resolve(work, 'scenes'));
+		writeFileSync(resolve(work, 'scenes', 'README.md'), 'scene fixtures\n', 'utf8');
+		git(work, ['add', 'scenes/README.md']);
+		git(work, ['commit', '-m', 'test: add scenes path']);
+		git(work, ['push', 'origin', 'staging']);
+		git(work, ['checkout', '-b', 'scenes']);
+		git(work, ['push', '-u', 'origin', 'scenes']);
+
+		expect(listTaskBranches(work).find((task) => task.name === 'scenes')).toMatchObject({
+			local: true,
+			remote: true,
+			current: true,
+		});
 	});
 
 	it('resolves generated package metadata conflicts during repeated staging attempts', () => {

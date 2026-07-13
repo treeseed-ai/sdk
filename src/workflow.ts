@@ -81,6 +81,10 @@ export type TreeseedStageVerifyMode = 'action' | 'local' | 'none';
 export type TreeseedStageCiMode = 'off' | 'hosted';
 export type TreeseedStageCleanupMode = 'success' | 'manual';
 
+export type TreeseedTasksInput = {
+	cleanupMerged?: 'plan' | 'live';
+};
+
 export type TreeseedWorkflowContext = {
 	cwd?: string;
 	env?: NodeJS.ProcessEnv;
@@ -379,7 +383,7 @@ export class TreeseedWorkflowSdk {
 			case 'ci':
 				return this.ci(input as TreeseedCiInput);
 			case 'tasks':
-				return this.tasks();
+				return this.tasks(input as TreeseedTasksInput);
 			case 'config':
 				return this.config(input as TreeseedConfigInput);
 			case 'switch':
@@ -421,8 +425,8 @@ export class TreeseedWorkflowSdk {
 		return workflowCi(this.helpers(), input);
 	}
 
-	async tasks(): Promise<TreeseedWorkflowResult<{ tasks: TreeseedTaskBranchMetadata[]; workstreams: TreeseedWorkflowWorkstreamSummary[] }>> {
-		return workflowTasks(this.helpers());
+	async tasks(input: TreeseedTasksInput = {}): Promise<TreeseedWorkflowResult<{ tasks: TreeseedTaskBranchMetadata[]; workstreams: TreeseedWorkflowWorkstreamSummary[]; branchCleanup?: unknown }>> {
+		return workflowTasks(this.helpers(), input);
 	}
 
 	async config(input: TreeseedConfigInput = {}): Promise<TreeseedWorkflowResult> {

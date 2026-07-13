@@ -810,7 +810,7 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 					: `${identity.deploymentKey}-${railwayServiceNameSuffix(serviceKey)}`);
 			const configuredServiceName = environmentConfig?.railwayServiceName
 				?? (normalizedScope === 'prod' && ['api', 'operationsRunner'].includes(serviceKey)
-					? `${baseServiceName}-production`
+					? `${serviceKey === 'operationsRunner' ? String(baseServiceName).replace(/-\d+$/u, '') : baseServiceName}-production`
 					: baseServiceName);
 			const configuredRunnerPool = service.railway?.runnerPool && typeof service.railway.runnerPool === 'object'
 				? service.railway.runnerPool
