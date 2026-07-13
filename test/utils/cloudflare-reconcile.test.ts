@@ -15,6 +15,9 @@ const cleanupRailwayIacRenderMock = vi.fn();
 const railwayEnvMock = vi.fn();
 const listRailwayCustomDomainsMock = vi.fn();
 const listRailwayServiceDomainsMock = vi.fn();
+const listRailwayEnvironmentServicesMock = vi.fn();
+const ensureRailwayCustomDomainMock = vi.fn();
+const deleteRailwayCustomDomainMock = vi.fn();
 
 let kvCreated = false;
 let d1Created = false;
@@ -232,9 +235,11 @@ vi.mock('../../src/operations/services/railway-api.ts', () => ({
 	}),
 	getRailwayProject: vi.fn(async () => null),
 	getRailwayServiceInstance: vi.fn(async () => null),
-	listRailwayEnvironmentServices: vi.fn(async () => [{ id: 'service-1', name: 'api' }]),
+	listRailwayEnvironmentServices: vi.fn((input) => listRailwayEnvironmentServicesMock(input)),
 	listRailwayCustomDomains: vi.fn((input) => listRailwayCustomDomainsMock(input)),
 	listRailwayServiceDomains: vi.fn((input) => listRailwayServiceDomainsMock(input)),
+	ensureRailwayCustomDomain: vi.fn((input) => ensureRailwayCustomDomainMock(input)),
+	deleteRailwayCustomDomain: vi.fn((input) => deleteRailwayCustomDomainMock(input)),
 	listRailwayProjects: vi.fn(async ({ env }: { env: Record<string, string> }) => {
 		railwayEnvMock(env);
 		return [{
@@ -321,8 +326,22 @@ beforeEach(() => {
 		railwayEnvMock.mockReset();
 		listRailwayCustomDomainsMock.mockReset();
 		listRailwayServiceDomainsMock.mockReset();
+		listRailwayEnvironmentServicesMock.mockReset();
+		ensureRailwayCustomDomainMock.mockReset();
+		deleteRailwayCustomDomainMock.mockReset();
 		listRailwayCustomDomainsMock.mockResolvedValue([]);
 		listRailwayServiceDomainsMock.mockResolvedValue([]);
+		listRailwayEnvironmentServicesMock.mockResolvedValue([{ id: 'service-1', name: 'api' }]);
+		ensureRailwayCustomDomainMock.mockResolvedValue({
+			domain: {
+				id: 'domain-1',
+				domain: 'api.example.com',
+				serviceId: 'service-1',
+				dnsRecords: [{ type: 'CNAME', name: 'api.example.com', content: 'api.up.railway.app' }],
+			},
+			created: true,
+		});
+		deleteRailwayCustomDomainMock.mockResolvedValue({ status: 'deleted' });
 		resolveTreeseedMachineEnvironmentValuesMock.mockReset();
 		resolveTreeseedMachineEnvironmentValuesMock.mockImplementation(() => {
 			throw new Error('machine key should not be read for hosted reconcile');
@@ -744,6 +763,89 @@ beforeEach(() => {
 			environmentId: 'env-1',
 			serviceId: 'service-1',
 		}));
+	});
+
+	it('reattaches a Railway custom domain from an obsolete service in the selected environment', async () => {
+		let detached = false;
+		let attached = false;
+		const domain = {
+			id: 'domain-new',
+			domain: 'api.example.com',
+			environmentId: 'env-1',
+			serviceId: 'service-1',
+			targetPort: null,
+			verified: false,
+			certificateStatus: 'VALIDATING',
+			verificationDnsHost: '_railway-verify.api',
+			verificationToken: 'railway-verify=token',
+			dnsRecords: [],
+		};
+		listRailwayEnvironmentServicesMock.mockResolvedValue([
+			{ id: 'service-1', name: 'api' },
+			{ id: 'service-old', name: 'api-legacy' },
+		]);
+		listRailwayCustomDomainsMock.mockImplementation(async ({ serviceId }: { serviceId: string }) => {
+			if (serviceId === 'service-1') {
+				return attached ? [domain] : [];
+			}
+			if (serviceId === 'service-old' && !detached) {
+				return [{ ...domain, id: 'domain-old', serviceId: 'service-old' }];
+			}
+			return [];
+		});
+		deleteRailwayCustomDomainMock.mockImplementation(async () => {
+			detached = true;
+			return { status: 'deleted' };
+		});
+		ensureRailwayCustomDomainMock.mockImplementation(async () => {
+			attached = true;
+			return { domain, created: true };
+		});
+
+		const { createRailwayReconcileAdapters } = await import('../../src/reconcile/builtin-adapters.ts');
+		const adapter = createRailwayReconcileAdapters().find((entry) => entry.unitTypes.includes('custom-domain:api'))!;
+		const unit = {
+			unitId: 'custom-domain:api:api.example.com',
+			unitType: 'custom-domain:api',
+			provider: 'railway',
+			target: { kind: 'persistent', scope: 'staging' },
+			logicalName: 'API custom domain',
+			dependencies: [],
+			spec: { domain: 'api.example.com' },
+			secrets: {},
+			metadata: { serviceKey: 'api' },
+			identity: deployState.identity,
+		};
+		const context = {
+			tenantRoot: '/tmp/tenant',
+			target: { kind: 'persistent', scope: 'staging' },
+			deployConfig: {
+				name: 'Test',
+				slug: 'test',
+				siteUrl: 'https://example.com',
+				contactEmail: 'hello@example.com',
+				hosting: { kind: 'hosted_project', teamId: 'acme', projectId: 'docs' },
+				runtime: { mode: 'treeseed_managed', registration: 'none', teamId: 'acme', projectId: 'docs' },
+				services: { api: { provider: 'railway', enabled: true } },
+				cloudflare: { accountId: 'account-123' },
+			},
+			launchEnv: {
+				TREESEED_RAILWAY_API_TOKEN: 'railway-token',
+				TREESEED_RAILWAY_WORKSPACE: 'acme-workspace',
+			},
+			session: new Map(),
+		};
+		const observed = await adapter.refresh({ unit, context } as never);
+		const diff = adapter.diff({ unit, context, observed } as never);
+		const result = await adapter.apply({ unit, context, observed, diff } as never);
+
+		expect(result.observed.exists).toBe(true);
+		expect(deleteRailwayCustomDomainMock).toHaveBeenCalledWith(expect.objectContaining({ domainId: 'domain-old' }));
+		expect(ensureRailwayCustomDomainMock).toHaveBeenCalledWith(expect.objectContaining({
+			serviceId: 'service-1',
+			domain: 'api.example.com',
+		}));
+		expect(deleteRailwayCustomDomainMock.mock.invocationCallOrder[0]).toBeLessThan(ensureRailwayCustomDomainMock.mock.invocationCallOrder[0]);
 	});
 
 	it('uses Railway IaC instead of direct source repair when deployment state is missing', async () => {

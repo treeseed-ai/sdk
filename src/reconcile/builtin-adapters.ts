@@ -55,6 +55,7 @@ import {
 	ensureRailwayServiceVolume,
 	ensureRailwayPostgresService,
 	deleteRailwayService,
+	deleteRailwayCustomDomain,
 	deleteRailwayVolume,
 	deployRailwayServiceInstance,
 	inspectRailwayServiceDeploymentHealth,
@@ -2726,6 +2727,48 @@ async function ensureRailwayCustomDomain(input: TreeseedReconcileAdapterInput, s
 	const matched = existing.find((entry) => entry.domain === domain) ?? null;
 	if (matched) {
 		return matched;
+	}
+	const environmentServices = await listRailwayEnvironmentServices({
+		environmentId: identifiers.environmentId,
+		env,
+	});
+	for (const candidate of environmentServices) {
+		const candidateServiceId = typeof candidate.id === 'string' ? candidate.id.trim() : '';
+		if (!candidateServiceId || candidateServiceId === identifiers.serviceId) {
+			continue;
+		}
+		const candidateDomains = await listRailwayCustomDomains({
+			projectId: identifiers.projectId,
+			environmentId: identifiers.environmentId,
+			serviceId: candidateServiceId,
+			env,
+		});
+		const staleAttachment = candidateDomains.find((entry) => entry.domain === domain) ?? null;
+		if (!staleAttachment) {
+			continue;
+		}
+		if (!staleAttachment.id) {
+			throw new Error(`Railway custom domain ${domain} is attached to service ${candidateServiceId}, but Railway did not return its domain id for exact-state reattachment.`);
+		}
+		await deleteRailwayCustomDomain({ domainId: staleAttachment.id, env });
+		let detached = false;
+		for (let attempt = 0; attempt < 12; attempt += 1) {
+			const remaining = await listRailwayCustomDomains({
+				projectId: identifiers.projectId,
+				environmentId: identifiers.environmentId,
+				serviceId: candidateServiceId,
+				env,
+			});
+			if (!remaining.some((entry) => entry.domain === domain)) {
+				detached = true;
+				break;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 1_000));
+		}
+		if (!detached) {
+			throw new Error(`Railway custom domain ${domain} remained attached to service ${candidateServiceId} after deletion.`);
+		}
+		break;
 	}
 	const ensured = await ensureRailwayCustomDomainViaApi({
 		projectId: identifiers.projectId,
