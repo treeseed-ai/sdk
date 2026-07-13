@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.12.55] - 2026-07-13
+
+### Added
+
+- feat(source): discover Railway sibling identities without production (7b7f39c1cc51)
+
+### Tests
+
+- build(source): retain sibling Railway environments during production (30d1a7066e05)
+
 ## [0.12.54] - 2026-07-13
 
 ### Fixed
