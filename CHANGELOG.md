@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.53] - 2026-07-13
+
+### Dependencies
+
+- refactor(workflow): implement manual package selection and validate (3db45ae72efd)
+
 ## [0.12.52] - 2026-07-12
 
 ### Added
