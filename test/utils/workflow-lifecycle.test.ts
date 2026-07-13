@@ -18,6 +18,7 @@ import { inspectDetachedHeadRepair, mergeBranchIntoTarget, reattachDetachedHeadI
 import {
 	createDefaultTreeseedMachineConfig,
 	ensureTreeseedSecretSessionForConfig,
+	loadTreeseedMachineConfig,
 	lockTreeseedSecretSession,
 	setTreeseedMachineEnvironmentValue,
 	TREESEED_MACHINE_KEY_PASSPHRASE_ENV,
@@ -433,22 +434,27 @@ function createWorkflowRepo(options: { withWorkspacePackages?: boolean } = {}) {
 	const root = mkdtempSync(join(tmpdir(), 'treeseed-workflow-lifecycle-'));
 	const origin = resolve(root, 'origin.git');
 	const work = resolve(root, 'work');
-	const packages = options.withWorkspacePackages
-		? {
-			sdk: createPackageRepo(root, 'sdk'),
-			ui: createPackageRepo(root, 'ui'),
-			core: createPackageRepo(root, 'core', { '@treeseed/sdk': '^0.4.12' }),
+	let packages: Record<string, ReturnType<typeof createPackageRepo>> | null = null;
+	if (options.withWorkspacePackages) {
+		const sdk = createPackageRepo(root, 'sdk');
+		const ui = createPackageRepo(root, 'ui');
+		const gitRef = (repo: ReturnType<typeof createPackageRepo>) => `git+file://${repo.origin}#staging`;
+		const core = createPackageRepo(root, 'core', { '@treeseed/sdk': gitRef(sdk) });
+		packages = {
+			sdk,
+			ui,
+			core,
 			admin: createPackageRepo(root, 'admin', {
-				'@treeseed/sdk': '^0.4.12',
-				'@treeseed/core': '^0.4.12',
-				'@treeseed/ui': '^0.4.12',
+				'@treeseed/sdk': gitRef(sdk),
+				'@treeseed/core': gitRef(core),
+				'@treeseed/ui': gitRef(ui),
 			}),
-			cli: createPackageRepo(root, 'cli', { '@treeseed/sdk': '^0.4.12' }),
-			agent: createPackageRepo(root, 'agent', { '@treeseed/sdk': '^0.4.12' }),
-			api: createPackageRepo(root, 'api', { '@treeseed/sdk': '^0.4.12' }),
+			cli: createPackageRepo(root, 'cli', { '@treeseed/sdk': gitRef(sdk) }),
+			agent: createPackageRepo(root, 'agent', { '@treeseed/sdk': gitRef(sdk) }),
+			api: createPackageRepo(root, 'api', { '@treeseed/sdk': gitRef(sdk) }),
 			treedx: createPackageRepo(root, 'treedx'),
-		}
-		: null;
+		};
+	}
 	mkdirSync(work, { recursive: true });
 	git(root, ['init', '--bare', origin]);
 	git(work, ['init', '-b', 'staging']);
@@ -511,6 +517,7 @@ describe('treeseed workflow lifecycle', () => {
 		vi.stubEnv('TREESEED_RELEASE_CANDIDATE_CONFIG_PARITY_MODE', 'skip');
 		vi.stubEnv('TREESEED_WORKFLOW_RELEASE_GATES_MODE', 'skip');
 		vi.stubEnv('TREESEED_WORKFLOW_HOSTED_RECONCILE_MODE', 'skip');
+		vi.stubEnv('GIT_ALLOW_PROTOCOL', 'file:ssh:https:http:git');
 	});
 
 	afterEach(() => {
@@ -1231,6 +1238,10 @@ describe('treeseed workflow lifecycle', () => {
 				status: 'failed',
 				failure: { code: 'verification_failed', message: 'stale interrupted proof', details: null, at: new Date().toISOString() },
 			}));
+			await workflow.recover({
+				obsoleteRunId: 'stage-interrupted-without-preflight',
+				obsoleteReason: 'superseded by explicit stage test',
+			});
 			vi.mocked(runWorkspaceSavePreflight).mockImplementationOnce(({ cwd }) => {
 				expect(existsSync(resolve(cwd, 'node_modules', '@treeseed', 'core', 'package.json'))).toBe(true);
 			});
@@ -1335,6 +1346,7 @@ describe('treeseed workflow lifecycle', () => {
 		git(resolve(work, 'packages', 'sdk'), ['tag', '0.4.13']);
 		writePassingStageCandidate(work);
 		const result = await workflow.release({ bump: 'patch', ciMode: 'off' });
+		const productionValues = loadTreeseedMachineConfig(work).environments.prod.values;
 
 			const releaseGatePayload = result.payload.releaseGates.gates.payload;
 			expect(result.payload.mode).toBe('recursive-workspace');
@@ -1354,6 +1366,10 @@ describe('treeseed workflow lifecycle', () => {
 			]));
 			expect(releaseGatePayload.reconcile).toBeTruthy();
 		expect(result.payload.managedHelperReleases.status).toBe('completed');
+		expect(result.payload.productionImageRefs.persisted).toEqual(result.payload.releaseImageRefs);
+		for (const [id, value] of Object.entries(result.payload.releaseImageRefs as Record<string, string>)) {
+			expect(productionValues[id]).toBe(value);
+		}
 		expect(result.payload.managedHelperReleases.repos.map((repo: { name: string }) => repo.name)).toEqual(expect.arrayContaining([
 			expect.stringMatching(/^fixture:/),
 			expect.stringMatching(/^template:/),
@@ -1493,11 +1509,11 @@ artifacts:
 		const result = await workflow.release({ bump: 'patch', plan: true });
 
 			expect(result.payload.packageSelection.selected).toContain('@treeseed/api');
-			expect(result.payload.packageSelection.selected).toContain('treedx');
+			expect(result.payload.packageSelection.selected).not.toContain('treedx');
 			expect(result.payload.releaseImageRefs).toMatchObject({
 				TREESEED_API_IMAGE_REF: 'treeseed/api:0.4.13',
 				TREESEED_OPERATIONS_RUNNER_IMAGE_REF: 'treeseed/op-runner:0.4.13',
-				TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.4.13',
+				TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.4.12',
 			});
 	}, 300000);
 

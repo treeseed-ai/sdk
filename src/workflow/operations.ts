@@ -20,6 +20,7 @@ import {
 	applyTreeseedSafeRepairs,
 	assertTreeseedCommandEnvironment,
 	checkTreeseedProviderConnections,
+	collectTreeseedEnvironmentContext,
 	collectTreeseedConfigContext,
 	collectTreeseedConfigSeedValues,
 	collectTreeseedPrintEnvReport,
@@ -37,6 +38,7 @@ import {
 	resolveTreeseedRemoteSession,
 	rotateTreeseedMachineKey,
 	setTreeseedRemoteSession,
+	setTreeseedMachineEnvironmentValue,
 	writeTreeseedMachineConfig,
 } from '../operations/services/config-runtime.ts';
 import { createTreeseedManagedToolEnv, formatTreeseedDependencyFailureDetails, installTreeseedDependencies, resolveTreeseedToolBinary } from '../managed-dependencies.ts';
@@ -917,6 +919,21 @@ function productionReleaseImageRefVersions(root: string, selectedVersions: Map<s
 		versions.set(packageName, (line ? highestStableGitTagOnLine(packageRoot, line) : null) ?? version);
 	}
 	return versions;
+}
+
+function persistProductionReleaseImageRefs(root: string, releaseImageRefs: Record<string, string>) {
+	const registry = collectTreeseedEnvironmentContext(root);
+	const entries = new Map(registry.entries.map((entry) => [entry.id, entry]));
+	const persisted: Record<string, string> = {};
+	for (const [id, value] of Object.entries(releaseImageRefs)) {
+		const entry = entries.get(id) ?? { id, storage: 'scoped' as const, sensitivity: 'plain' as const };
+		if (entry.sensitivity === 'secret') {
+			workflowError('release', 'validation_failed', `Production release image ref ${id} must be a non-secret environment value.`);
+		}
+		setTreeseedMachineEnvironmentValue(root, 'prod', entry, value);
+		persisted[id] = value;
+	}
+	return persisted;
 }
 
 function stableVersionLine(version: string) {
@@ -2796,7 +2813,7 @@ function runReleaseNpmInstall(repoDir: string, options: { workspaceRoot?: string
 		return { status: 'skipped', reason: 'disabled' };
 	}
 	const args = repoDir === options.workspaceRoot
-		? ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund']
+		? ['install', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund']
 		: ['install', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund'];
 	const spawnCommand = npmCommandForWorkflowSpawn(args);
 	let lastDetail = '';
@@ -5638,16 +5655,16 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 								gitRoot,
 								branch,
 								message,
-									bump: (effectiveInput.bump ?? 'patch') as ReleaseBumpLevel,
-									devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
-									devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-commit',
-									gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
-									gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
-									verifyMode: normalizeSaveVerifyMode(effectiveInput.verify === false ? 'skip' : effectiveInput.verifyMode),
-									commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
-									workflowRunId: workflowRun.runId,
-						deferPushUntilVerified: false,
-									onProgress: (line, stream) => helpers.write(line, stream),
+								bump: (effectiveInput.bump ?? 'patch') as ReleaseBumpLevel,
+								devVersionStrategy: (effectiveInput.devVersionStrategy ?? 'prerelease') as SaveDevVersionStrategy,
+								devDependencyReferenceMode: effectiveInput.devDependencyReferenceMode ?? 'git-commit',
+								gitDependencyProtocol: effectiveInput.gitDependencyProtocol ?? 'preserve-origin',
+								gitRemoteWriteMode: effectiveInput.gitRemoteWriteMode ?? 'ssh-pushurl',
+								verifyMode: normalizeSaveVerifyMode(effectiveInput.verify === false ? 'skip' : effectiveInput.verifyMode),
+								commitMessageMode: (effectiveInput.commitMessageMode ?? 'auto') as SaveCommitMessageMode,
+								workflowRunId: workflowRun.runId,
+								deferPushUntilVerified: true,
+								onProgress: (line, stream) => helpers.write(line, stream),
 								onWaveSaved: branch === STAGING_BRANCH && shouldUseHostedSaveCi(effectiveInput, branch, saveLane)
 									? async ({ nodes, reports, rootRepo: waveRootRepo }) => {
 										const nonRootReportsForWave = reports.filter((repo, index) => nodes[index]?.id !== '.');
@@ -6804,10 +6821,12 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 						: (skipJournalStep(root, workflowRun.runId, 'hosted-ci', { skippedReason: 'ci off' }), { status: 'skipped', reason: 'ci off' });
 				const workspaceLinks = await executeJournalStep(root, workflowRun.runId, 'workspace-link-restore', () =>
 					ensureWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
-				for (const repo of checkedOutStagePromotionRepos(root)) {
-					syncBranchWithOrigin(repo.dir, STAGING_BRANCH);
+				if (!managedWorkflowWorktreeMetadata(root)) {
+					for (const repo of checkedOutStagePromotionRepos(root)) {
+						syncBranchWithOrigin(repo.dir, STAGING_BRANCH);
+					}
+					syncBranchWithOrigin(repoRoot(root), STAGING_BRANCH);
 				}
-				syncBranchWithOrigin(repoRoot(root), STAGING_BRANCH);
 				const cleanup = cleanupMode === 'success'
 					? await executeJournalStep(root, workflowRun.runId, 'cleanup-source', () => cleanupStageSourceBranches(root, featureBranch, typedManifest))
 					: (skipJournalStep(root, workflowRun.runId, 'cleanup-source', { skippedReason: 'manual cleanup selected' }), { status: 'skipped', reason: 'manual cleanup selected' });
@@ -7168,6 +7187,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					},
 					{ id: 'verify-published-artifacts', description: 'Verify immutable registry artifacts exist after publish workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'production-package-deploy-workflows', description: 'Wait for production package deploy workflows before live verification', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
+					{ id: 'persist-production-image-refs', description: 'Persist released production image refs and verify deployment readiness', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'release-root', description: `Release market ${plannedRelease.rootVersion}`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'publish-wait', description: 'Wait for production release workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'release-back-merge', description: 'Back-merge production release history into staging', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
@@ -7310,6 +7330,27 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						onProgress: (line, stream) => helpers.write(line, stream),
 					}).then((workflowGates) => ({ workflowGates }));
 				});
+				const productionImageRefs = await executeJournalStep(root, workflowRun.runId, 'persist-production-image-refs', async () => {
+					const persisted = persistProductionReleaseImageRefs(root, releaseImageRefs);
+					if (helpers.context.env) {
+						Object.assign(helpers.context.env, persisted);
+						Object.assign(process.env, persisted);
+					}
+					const readiness = await withContextEnv(persisted, () => collectTreeseedDeploymentReadiness({
+						tenantRoot: root,
+						environment: 'prod',
+						appId: singleSelectedWorkflowAppId(plannedRelease.applicationSelection),
+					}));
+					const failures = readiness.checks
+						.filter((check) => check.status === 'failed')
+						.map((check) => `${check.id}: ${check.message}${check.remediation ? ` Remediation: ${check.remediation}` : ''}`);
+					if (failures.length > 0) {
+						workflowError('release', 'hosted_live_verification_failed', `Production readiness failed after persisting released image refs:\n${failures.join('\n')}`, {
+							details: { releaseImageRefs: persisted, readiness },
+						});
+					}
+					return { persisted, readiness };
+				});
 				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
 					const rootInstall = runReleaseNpmInstall(root, { workspaceRoot: root });
 					const changelog = updateReleaseChangelog(repoRoot(root), {
@@ -7388,6 +7429,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					publishWait: publishWait.workflowGates,
 					publishedArtifacts,
 					productionPackageDeployWorkflows,
+					productionImageRefs,
 					backMerge,
 					workspaceLinks,
 					releasedCommit: String((rootRelease.commit as { commitSha?: string }).commitSha ?? ''),

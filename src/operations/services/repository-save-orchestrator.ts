@@ -1343,12 +1343,13 @@ async function runGitDependencySmoke(node: RepositorySaveNode, options: Reposito
 
 async function runNpmInstallWithRetry(
 	node: RepositorySaveNode,
-	options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>,
+	options: Pick<RepositorySaveOptions, 'root' | 'onProgress' | 'deferPushUntilVerified'>,
 	gitDependencyRefreshSpecs: string[] = [],
 ): Promise<RepositoryInstallResult> {
-	if (shouldSkipNetworkInstall()) {
-		emitProgress(options, node, 'install', 'Skipped npm install because network install mode is disabled.');
-		return { status: 'skipped', attempts: 0, reason: 'disabled' };
+	if (shouldSkipNetworkInstall() || options.deferPushUntilVerified === true) {
+		const reason = options.deferPushUntilVerified === true ? 'atomic-save' : 'disabled';
+		emitProgress(options, node, 'install', `Skipped npm install because ${reason === 'atomic-save' ? 'atomic save validates local lock metadata before publishing commits' : 'network install mode is disabled'}.`);
+		return { status: 'skipped', attempts: 0, reason };
 	}
 	let lastError: string | null = null;
 	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
@@ -1431,7 +1432,7 @@ function lockfileValidationTimeoutMs(node: Pick<RepositorySaveNode, 'path' | 'pa
 
 async function validateRepositoryLockfile(
 	node: RepositorySaveNode,
-	options: Pick<RepositorySaveOptions, 'root' | 'onProgress'>,
+	options: Pick<RepositorySaveOptions, 'root' | 'onProgress' | 'deferPushUntilVerified'>,
 ): Promise<RepositoryLockfileValidationResult> {
 	if (!hasNpmLockfile(node.path)) {
 		return { status: 'skipped', command: null, issues: [], error: 'no npm lockfile' };
@@ -1453,9 +1454,10 @@ async function validateRepositoryLockfile(
 	}
 	const { command, args } = lockfileValidationCommand(node, options);
 	const commandText = `${command} ${args.join(' ')}`;
-	if (shouldSkipNetworkInstall()) {
-		emitProgress(options, node, 'lockfile', `Skipped ${commandText} because network install mode is disabled.`);
-		return { status: 'skipped', command: commandText, issues: [], error: 'disabled' };
+	if (shouldSkipNetworkInstall() || options.deferPushUntilVerified === true) {
+		const reason = options.deferPushUntilVerified === true ? 'atomic-save' : 'disabled';
+		emitProgress(options, node, 'lockfile', `Validated lockfile structure without ${commandText} because ${reason === 'atomic-save' ? 'upstream commits are intentionally unpublished' : 'network install mode is disabled'}.`);
+		return { status: 'passed', command: 'treeseed structural lockfile validation', issues: [], error: null };
 	}
 	try {
 		runCapturedCommand(node, options, 'lockfile', command, args, { timeoutMs: lockfileValidationTimeoutMs(node, options), emitOutputOnSuccess: false });
@@ -2320,11 +2322,12 @@ async function saveOneRepository(
 	}));
 	const gitDependencyRefreshReferences = [...state.finalizedReferences.values()]
 		.filter((reference) => reference.mode === 'dev-git-commit' && directDependencyNames.has(reference.packageName));
+	const deferredGitDependencyValidation = options.deferPushUntilVerified === true && gitDependencyRefreshReferences.length > 0;
 	const lockfileGitDependenciesSynced = syncDirectGitDependencyLockfileEntries(node, options, gitDependencyRefreshReferences);
 	if (!isRootWorkspaceRepository(node, options) && (
 		lockfileGitDependenciesSynced
 		|| (gitDependencyRefreshReferences.length > 0 && !existsSync(resolve(node.path, 'package-lock.json')))
-	)) {
+	) && !deferredGitDependencyValidation) {
 		validateStandaloneGitDependencyLockfile(node, options);
 	}
 	const gitDependencyRefreshSpecs = lockfileGitDependenciesSynced
@@ -2372,6 +2375,7 @@ async function saveOneRepository(
 		!isRootWorkspaceRepository(node, options)
 		&& hasNpmLockfile(node.path)
 		&& (packageNeedsVersion || dependencyChanged)
+		&& !deferredGitDependencyValidation
 	) {
 		validateStandaloneGitDependencyLockfile(node, options);
 	}
