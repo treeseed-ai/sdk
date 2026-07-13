@@ -1028,7 +1028,7 @@ describe('treeseed workflow lifecycle', () => {
 		expect(finalRecover.payload.interruptedRuns.length).toBe(0);
 	}, 180000);
 
-	it('auto-resumes the newest failed same-branch save with the original input', async () => {
+	it('requires explicit resume for the newest failed same-branch save', async () => {
 		const { work, packages } = createWorkflowRepo({ withWorkspacePackages: true });
 		writeFileSync(resolve(work, 'packages', 'sdk', 'index.js'), 'export const name = "sdk-auto-resume";\n', 'utf8');
 		writeFileSync(resolve(work, 'packages', 'core', 'index.js'), 'export const name = "core-auto-resume";\n', 'utf8');
@@ -1047,18 +1047,17 @@ describe('treeseed workflow lifecycle', () => {
 
 		git(resolve(work, 'packages', 'core'), ['remote', 'add', 'origin', packages!.core.origin]);
 
-		const autoResumeResult = await workflow.save({
+		await expect(workflow.save({
 			message: 'feat: new hint should not win',
 			verify: false,
 			refreshPreview: false,
-		});
-		expect(autoResumeResult.runId).toBe(runId);
-		expect(autoResumeResult.payload.resumed).toBe(true);
-		expect(autoResumeResult.payload.resumedRunId).toBe(runId);
-		expect(autoResumeResult.payload.autoResumed).toBe(true);
-		expect(autoResumeResult.payload.message).toBe('feat: original save');
-		expect(autoResumeResult.payload.repos.find((repo: { name: string }) => repo.name === '@treeseed/core')?.pushed).toBe(true);
-		expect(autoResumeResult.payload.rootRepo.pushed).toBe(true);
+		})).rejects.toThrow(new RegExp(`trsd resume ${runId}`, 'u'));
+
+		const resumeResult = await workflow.resume({ runId });
+		expect(resumeResult.runId).toBe(runId);
+		expect(resumeResult.payload.message).toBe('feat: original save');
+		expect(resumeResult.payload.repos.find((repo: { name: string }) => repo.name === '@treeseed/core')?.pushed).toBe(true);
+		expect(resumeResult.payload.rootRepo.pushed).toBe(true);
 	}, 180000);
 
 	it('does not auto-resume a failed save when the workspace has new edits', async () => {

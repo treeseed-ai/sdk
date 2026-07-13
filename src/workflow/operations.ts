@@ -2226,6 +2226,25 @@ function findAutoResumableTaskRun(root: string, command: 'stage' | 'close', bran
 		&& journal.session.branchName === branch) ?? null;
 }
 
+function rejectImplicitWorkflowResume(
+	operation: 'save' | 'stage' | 'close',
+	journal: TreeseedWorkflowRunJournal | null,
+) {
+	if (!journal) return;
+	workflowError(operation, 'resume_unavailable',
+		`Treeseed ${operation} found interrupted run ${journal.runId} for this branch and will not auto-resume recorded inputs. `
+		+ `Run \`trsd resume ${journal.runId}\` to continue it, or \`trsd recover --obsolete ${journal.runId} --reason "superseded by a fresh ${operation}"\` before starting a new ${operation}.`, {
+			details: {
+				recovery: {
+					resumable: true,
+					runId: journal.runId,
+					resumeCommand: `trsd resume ${journal.runId}`,
+					obsoleteCommand: `trsd recover --obsolete ${journal.runId} --reason "superseded by a fresh ${operation}"`,
+				},
+			},
+		});
+}
+
 function stringRecord(value: unknown): Record<string, unknown> | null {
 	return value && typeof value === 'object' && !Array.isArray(value)
 		? value as Record<string, unknown>
@@ -5350,9 +5369,8 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId
 				? findAutoResumableSaveRun(root, branch)
 				: null;
-			const planAutoResumeRun = executionMode === 'plan'
-				? findAutoResumableSaveRun(root, branch)
-				: null;
+			rejectImplicitWorkflowResume('save', autoResumeRun);
+			const planAutoResumeRun = null;
 			const effectiveInput = autoResumeRun
 				? (autoResumeRun.input as unknown as TreeseedSaveInput)
 				: input;
@@ -5881,9 +5899,8 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId
 				? findAutoResumableTaskRun(root, 'close', session.branchName)
 				: null;
-			const planAutoResumeRun = executionMode === 'plan'
-				? findAutoResumableTaskRun(root, 'close', session.branchName)
-				: null;
+			rejectImplicitWorkflowResume('close', autoResumeRun);
+			const planAutoResumeRun = null;
 			const effectiveInput = autoResumeRun
 				? (autoResumeRun.input as unknown as TreeseedCloseInput)
 				: input;
@@ -6485,12 +6502,11 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			const rawAutoResumeRun = executionMode === 'execute' && !explicitResumeRunId
 				? findAutoResumableTaskRun(root, 'stage', session.branchName)
 				: null;
+			rejectImplicitWorkflowResume('stage', rawAutoResumeRun);
 			const autoResumeRun = rawAutoResumeRun?.steps.some((step) => step.id === 'preflight')
 				? rawAutoResumeRun
 				: null;
-			const planAutoResumeRun = executionMode === 'plan'
-				? findAutoResumableTaskRun(root, 'stage', session.branchName)
-				: null;
+			const planAutoResumeRun = null;
 			const effectiveInput = autoResumeRun
 				? (autoResumeRun.input as unknown as TreeseedStageInput)
 				: input;
