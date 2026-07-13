@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.59] - 2026-07-13
+
+### Fixed
+
+- build(workflow): fix release image state and atomic lockfiles (ccb547f9cf49)
+
 ## [0.12.58] - 2026-07-13
 
 ### Fixed
