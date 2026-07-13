@@ -4158,7 +4158,12 @@ function configuredRailwaySiblingResourceNames(
 ) {
 	const siblingScope = scope === 'prod' ? 'staging' : scope === 'staging' ? 'prod' : null;
 	if (!siblingScope) return [];
-	const siblingServices = configuredRailwayServicesForInput(input, siblingScope)
+	const siblingServices = configuredRailwayServices(
+		input.context.tenantRoot,
+		siblingScope,
+		resolveReconcileEnvironmentValues(input, siblingScope),
+		{ identityOnly: true },
+	)
 		.filter((service) => service.enabled !== false)
 		.filter((service) => !isRailwayCapacityProviderService(service))
 		.filter((service) => service.projectName === projectName);

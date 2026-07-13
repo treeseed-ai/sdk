@@ -747,8 +747,9 @@ query TreeseedRailwayDeploymentStatus($projectId: String!) {
 	return payload.data?.project ?? null;
 }
 
-function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, application = null, machineConfigRoot = tenantRoot, envOverlay = {}) {
+function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, application = null, machineConfigRoot = tenantRoot, envOverlay = {}, options = {}) {
 	const normalizedScope = normalizeScope(scope);
+	const identityOnly = options.identityOnly === true;
 	const imageRefKeys = [
 		'TREESEED_API_IMAGE_REF',
 		'TREESEED_OPERATIONS_RUNNER_IMAGE_REF',
@@ -842,15 +843,23 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 				const imageRef = service.railway?.imageRef
 					?? (canUseImageRefEnv && configuredImageRefEnv ? envValue(configuredImageRefEnv, imageRefEnv) || null : null)
 					?? defaultRailwayImageRef(serviceKey, normalizedScope, imageRefEnv);
-				const sourcePolicy = resolveRailwayServiceSourcePolicy({
-					tenantRoot,
-					scope: normalizedScope,
-					serviceKey,
-					service,
-					serviceRoot,
-					imageRef,
-					serviceName,
-				});
+				const sourcePolicy = identityOnly
+					? {
+						sourceMode: normalizedScope === 'prod' ? 'image' : 'git',
+						sourceRepo: null,
+						sourceBranch: null,
+						sourceCommit: null,
+						sourceRootDirectory: null,
+					}
+					: resolveRailwayServiceSourcePolicy({
+						tenantRoot,
+						scope: normalizedScope,
+						serviceKey,
+						service,
+						serviceRoot,
+						imageRef,
+						serviceName,
+					});
 				const resolvedImageRef = sourcePolicy.sourceMode === 'image' ? imageRef : null;
 					return {
 						key: serviceKey,
@@ -906,11 +915,12 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 			application,
 			imageRefEnv,
 			workspaceRoot: machineConfigRoot,
+			identityOnly,
 		}),
 	];
 }
 
-function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deployConfig, identity, hostingKind, application, imageRefEnv, workspaceRoot }) {
+function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deployConfig, identity, hostingKind, application, imageRefEnv, workspaceRoot, identityOnly = false }) {
 	if (deployConfig.hosting?.kind !== 'treeseed_control_plane') {
 		return [];
 	}
@@ -985,7 +995,9 @@ function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deployConfig
 			buildCommand: sourceMode === 'git' ? railway.buildCommand ?? null : null,
 			startCommand: sourceMode === 'git' ? railway.startCommand ?? null : null,
 		};
-		assertApiRailwaySourcePolicy(scope, service);
+		if (!identityOnly) {
+			assertApiRailwaySourcePolicy(scope, service);
+		}
 		return {
 			key: service.key,
 			instanceKey: serviceName,
@@ -1180,9 +1192,9 @@ function resolveRailwayCapacityProviderRoot(tenantRoot, service) {
 	return found ?? resolve(tenantRoot, 'packages', 'agent');
 }
 
-export function configuredRailwayServices(tenantRoot, scope, envOverlay = {}) {
+export function configuredRailwayServices(tenantRoot, scope, envOverlay = {}, options = {}) {
 	const deployConfig = loadCliDeployConfig(tenantRoot);
-	const direct = configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, null, tenantRoot, envOverlay);
+	const direct = configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, null, tenantRoot, envOverlay, options);
 	const nested = discoverTreeseedApplications(tenantRoot)
 		.filter((application) => application.root !== resolve(tenantRoot))
 		.flatMap((application) => configuredRailwayServicesForConfig(
@@ -1196,6 +1208,7 @@ export function configuredRailwayServices(tenantRoot, scope, envOverlay = {}) {
 			},
 			tenantRoot,
 			envOverlay,
+			options,
 		));
 	return [...direct, ...nested];
 }

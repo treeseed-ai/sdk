@@ -691,6 +691,45 @@ services:
 		});
 	});
 
+	it('discovers production sibling identities without requiring production image credentials', async () => {
+		const tenantRoot = await createTenantFixture();
+		await writeFile(
+			join(tenantRoot, 'treeseed.site.yaml'),
+			`name: Test API
+slug: treeseed-api
+siteUrl: https://api.example.com
+contactEmail: hello@example.com
+hosting:
+  kind: treeseed_control_plane
+runtime:
+  mode: treeseed_managed
+services:
+  api:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api
+      imageRefEnv: TREESEED_API_IMAGE_REF
+  operationsRunner:
+    provider: railway
+    enabled: true
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-api-operations-runner-01
+      imageRefEnv: TREESEED_OPERATIONS_RUNNER_IMAGE_REF
+`,
+		);
+
+		const services = configuredRailwayServices(tenantRoot, 'prod', {}, { identityOnly: true });
+
+		expect(services.map((service) => service.serviceName)).toEqual(expect.arrayContaining([
+			'treeseed-api-production',
+			'treeseed-api-operations-runner-production-01',
+			'public-treedx-node-production-01',
+		]));
+	});
+
 	it('keeps provider runtime commands out of root Market Railway services', async () => {
 		const tenantRoot = await createTenantFixture();
 		const services = configuredRailwayServices(tenantRoot, 'staging');
