@@ -95,6 +95,8 @@ import { resolveGitHubCredentialForRepository } from '../operations/services/git
 import {
 	formatGitHubActionsGateFailure,
 	inspectGitHubActionsVerification,
+	isRetryableGitHubActionsSetupFailure,
+	rerunGitHubActionsFailedJobs,
 	skippedGitHubActionsGate,
 	waitForGitHubActionsGate,
 	type GitHubActionsVerificationTarget,
@@ -610,11 +612,21 @@ async function waitForWorkflowGates(
 				continue;
 			}
 		}
-		const result = await waitForGitHubActionsGate(gateWithTimeout, {
+		const gateEnv = githubWorkflowGateEnv(options.root, gateWithTimeout);
+		let result = await waitForGitHubActionsGate(gateWithTimeout, {
 			operation,
-			env: githubWorkflowGateEnv(options.root, gateWithTimeout),
+			env: gateEnv,
 			onProgress: options.onProgress,
 		});
+		if (result.status === 'completed' && result.conclusion !== 'success' && isRetryableGitHubActionsSetupFailure(result)) {
+			const retry = await rerunGitHubActionsFailedJobs(result, gateEnv);
+			options.onProgress?.(`[${operation}][gate][${gateWithTimeout.name}] Retrying GitHub-hosted setup failure once for run ${retry.runId}.`);
+			result = await waitForGitHubActionsGate(gateWithTimeout, {
+				operation,
+				env: gateEnv,
+				onProgress: options.onProgress,
+			});
+		}
 		const normalized = {
 			name: gateWithTimeout.name,
 			...result,

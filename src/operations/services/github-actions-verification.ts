@@ -648,6 +648,35 @@ export function formatGitHubActionsGateFailure(gate: GitHubActionsWorkflowGate, 
 	return `${gate.name} ${gate.workflow} completed with conclusion ${String(result.conclusion ?? 'unknown')} in ${repository}.${url}${jobLine}${command}`;
 }
 
+export function isRetryableGitHubActionsSetupFailure(result: Record<string, unknown>) {
+	const failedJobs = Array.isArray(result.failedJobs) ? result.failedJobs as Array<Record<string, unknown>> : [];
+	return failedJobs.length > 0 && failedJobs.every((job) => {
+		const steps = Array.isArray(job.steps) ? job.steps as Array<Record<string, unknown>> : [];
+		return steps.length === 1
+			&& steps[0]?.name === 'Set up job'
+			&& steps[0]?.conclusion === 'failure';
+	});
+}
+
+export async function rerunGitHubActionsFailedJobs(
+	result: Record<string, unknown>,
+	env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
+) {
+	const repository = String(result.repository ?? '');
+	const runId = Number(result.runId);
+	if (!repository || !Number.isSafeInteger(runId) || runId <= 0) {
+		throw new Error('Cannot retry GitHub Actions setup failure without a repository and run ID.');
+	}
+	const { owner, name: repo } = parseGitHubRepositorySlug(repository);
+	const client = createGitHubApiClient({ env });
+	await client.request('POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs', {
+		owner,
+		repo,
+		run_id: runId,
+	});
+	return { repository, runId };
+}
+
 function formatElapsed(seconds: number) {
 	const safe = Math.max(0, Math.round(seconds));
 	if (safe < 60) return `${safe}s`;

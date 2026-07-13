@@ -3,6 +3,7 @@ import {
 	createGitHubActionsGateProgressReporter,
 	formatGitHubActionsGateFailure,
 	inspectGitHubActionsVerification,
+	isRetryableGitHubActionsSetupFailure,
 	type GitHubActionsVerificationTarget,
 } from '../../src/operations/services/github-actions-verification.ts';
 
@@ -179,6 +180,19 @@ describe('GitHub Actions verification', () => {
 
 		expect(message).toContain('Failed jobs: verify');
 		expect(message).toContain('gh run view 42 --repo treeseed-ai/core --log-failed');
+	});
+
+	it('retries only failures confined to GitHub hosted job setup', () => {
+		expect(isRetryableGitHubActionsSetupFailure({
+			failedJobs: [{ steps: [{ name: 'Set up job', conclusion: 'failure' }] }],
+		})).toBe(true);
+		expect(isRetryableGitHubActionsSetupFailure({
+			failedJobs: [{ steps: [{ name: 'Set up job', conclusion: 'failure' }, { name: 'Verify package', conclusion: 'failure' }] }],
+		})).toBe(false);
+		expect(isRetryableGitHubActionsSetupFailure({
+			failedJobs: [{ steps: [{ name: 'Verify package', conclusion: 'failure' }] }],
+		})).toBe(false);
+		expect(isRetryableGitHubActionsSetupFailure({ failedJobs: [] })).toBe(false);
 	});
 
 	it('compacts repeated hosted gate progress for unchanged active steps', () => {
