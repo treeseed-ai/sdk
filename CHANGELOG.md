@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.58] - 2026-07-13
+
+### Fixed
+
+- build(build): scope release validation to selected packages (9d5e58fc79da)
+- build(build): fix selective release metadata for verification-only (9e4975546d37)
+
 ## [0.12.56] - 2026-07-13
 
 ### Added
