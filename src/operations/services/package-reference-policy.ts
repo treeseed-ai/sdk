@@ -274,11 +274,18 @@ export function rewriteProjectInternalDependenciesToStableVersions(
 	return rewrites;
 }
 
-export function collectInternalDevReferenceIssues(root = workspaceRoot(), packageNames = new Set(workspacePackages(root).map((pkg) => pkg.name))) {
+export function collectInternalDevReferenceIssues(
+	root = workspaceRoot(),
+	packageNames = new Set(workspacePackages(root).map((pkg) => pkg.name)),
+	targetPackageNames?: ReadonlySet<string>,
+) {
 	const issues: Array<{ repoName: string; filePath: string; field?: string; dependencyName?: string; spec: string; reason: string }> = [];
+	const workspaceTargets = workspacePackages(root)
+		.filter((pkg) => !targetPackageNames || targetPackageNames.has(pkg.name))
+		.map((pkg) => ({ name: pkg.name, dir: pkg.dir }));
 	const manifestRoots = [
 		{ name: '@treeseed/market', dir: root },
-		...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir })),
+		...workspaceTargets,
 	];
 	for (const pkg of manifestRoots) {
 		const packageJsonPath = resolve(pkg.dir, 'package.json');
@@ -297,7 +304,7 @@ export function collectInternalDevReferenceIssues(root = workspaceRoot(), packag
 			}
 		}
 	}
-	const lockRoots = [{ name: '@treeseed/market', dir: root }, ...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir }))];
+	const lockRoots = [{ name: '@treeseed/market', dir: root }, ...workspaceTargets];
 	for (const lockRoot of lockRoots) {
 		for (const lockName of ['package-lock.json', 'npm-shrinkwrap.json']) {
 			const lockPath = resolve(lockRoot.dir, lockName);

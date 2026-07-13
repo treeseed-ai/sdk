@@ -7224,7 +7224,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 								: { status: 'skipped', reason: 'no planned version' },
 						}));
 					const rootPackageLock = updatePackageLockRootVersion(root, plannedRelease.rootVersion);
-					const remainingDevReferences = collectInternalDevReferenceIssues(root, selectedPackageSet)
+					const remainingDevReferences = collectInternalDevReferenceIssues(root, selectedPackageSet, selectedPackageSet)
 						.filter((issue) => !issue.reason.startsWith('lockfile-'));
 					if (remainingDevReferences.length > 0) {
 						const rendered = remainingDevReferences

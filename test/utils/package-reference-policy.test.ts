@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	assertDevelopmentInternalCommitReferences,
 	assertNoInternalDevReferences,
+	collectInternalDevReferenceIssues,
 	collectDevelopmentCommitReferenceIssues,
 	createPackageDependencyReference,
 	devTagFromDependencySpec,
@@ -288,6 +289,11 @@ describe('package reference policy', () => {
 		expect(JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).dependencies['@treeseed/sdk']).toBe('0.12.57');
 		expect(JSON.parse(readFileSync(resolve(cliDir, 'package.json'), 'utf8')).dependencies['@treeseed/sdk']).toBe('0.12.57');
 		expect(readFileSync(resolve(reviewerDir, 'package.json'), 'utf8')).toBe(reviewerBefore);
+		expect(collectInternalDevReferenceIssues(
+			root,
+			new Set(['@treeseed/sdk', '@treeseed/cli']),
+			new Set(['@treeseed/sdk', '@treeseed/cli']),
+		)).toEqual([]);
 	});
 
 	it('does not treat a lockfile root package prerelease version as an internal dependency ref', () => {
