@@ -43,6 +43,7 @@ import {
 import {
 	configuredRailwayServices,
 	findStaleTreeseedOperationsRunnerResources,
+	isTreeseedOperationsRunnerResourceName,
 	validateRailwayDeployPrerequisites,
 } from '../operations/services/railway-deploy.ts';
 import { shouldExposeManagedHostRuntimeSecret } from '../operations/services/managed-host-security.ts';
@@ -4381,13 +4382,20 @@ async function reconcileStaleOperationsRunnerResourcesForScope(
 	);
 	const projects = new Map(projectEntries.map((entry) => [entry.project.id, entry]));
 	for (const { project, environment } of projects.values()) {
+		const siblingResourceNames = configuredRailwaySiblingResourceNames(input, scope, project.name);
+		const retainedSiblingServiceNames = siblingResourceNames
+			.filter((name) => !name.endsWith('-volume'))
+			.filter(isTreeseedOperationsRunnerResourceName);
+		const retainedSiblingVolumeNames = siblingResourceNames
+			.filter((name) => name.endsWith('-volume'))
+			.filter(isTreeseedOperationsRunnerResourceName);
 		await reconcileStaleOperationsRunnerResourcesForProject(input, {
 			scope,
 			env: topology.env,
 			project,
 			environment,
-			desiredServiceNames,
-			desiredVolumeNames,
+			desiredServiceNames: new Set([...desiredServiceNames, ...retainedSiblingServiceNames]),
+			desiredVolumeNames: new Set([...desiredVolumeNames, ...retainedSiblingVolumeNames]),
 		});
 	}
 }

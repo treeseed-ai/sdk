@@ -12,7 +12,11 @@ import {
 	normalizeRailwayEnvironmentName,
 	resolveRailwayWorkspaceContext,
 } from './railway-api.ts';
-import { configuredRailwayServices, findStaleTreeseedOperationsRunnerResources } from './railway-deploy.ts';
+import {
+	configuredRailwayServices,
+	findStaleTreeseedOperationsRunnerResources,
+	isTreeseedOperationsRunnerResourceName,
+} from './railway-deploy.ts';
 import { discoverTreeseedApplications } from '../../hosting/apps.ts';
 import {
 	collectTreeseedHostedServiceChecks,
@@ -339,6 +343,12 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 		const configuredServices = configuredRailwayServices(options.tenantRoot, options.target, options.env)
 			.filter((entry) => serviceMatchesAppSelection(entry, options.tenantRoot, options.appId, applications))
 			.filter((entry) => serviceIsSelected(selectedServiceKeys, entry.key));
+		const siblingTarget = options.target === 'staging' ? 'prod' : options.target === 'prod' ? 'staging' : null;
+		const configuredSiblingServices = siblingTarget
+			? configuredRailwayServices(options.tenantRoot, siblingTarget, options.env, { identityOnly: true })
+				.filter((entry) => entry.enabled !== false)
+				.filter((entry) => entry.key === 'operationsRunner')
+			: [];
 		if (selectedServiceKeys.size === 0 || selectedServiceKeys.has('api') || selectedServiceKeys.has('operationsRunner')) {
 			for (const descriptor of treeseedDatabaseDescriptors(options.tenantRoot, options)) {
 				await verifyRailwayPostgresTopology({ descriptor, configuredServices, projects, options, issues });
@@ -386,12 +396,18 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 			const runnerScope = `${project.id}:${environment.id}`;
 			if (service.key === 'operationsRunner' && !inspectedRunnerScopes.has(runnerScope)) {
 				inspectedRunnerScopes.add(runnerScope);
-				const desiredRunnerNames = new Set(configuredServices
-					.filter((entry) => entry.key === 'operationsRunner')
-					.filter((entry) => (entry.projectId ? entry.projectId === project.id : entry.projectName === project.name))
-					.filter((entry) => normalizeRailwayEnvironmentName(entry.railwayEnvironment) === normalizeRailwayEnvironmentName(environment.name))
-					.map((entry) => entry.serviceName)
-					.filter(Boolean));
+				const desiredRunnerNames = new Set([
+					...configuredServices
+						.filter((entry) => entry.key === 'operationsRunner')
+						.filter((entry) => (entry.projectId ? entry.projectId === project.id : entry.projectName === project.name))
+						.filter((entry) => normalizeRailwayEnvironmentName(entry.railwayEnvironment) === normalizeRailwayEnvironmentName(environment.name))
+						.map((entry) => entry.serviceName)
+						.filter(Boolean),
+					...configuredSiblingServices
+						.filter((entry) => entry.projectId ? entry.projectId === project.id : entry.projectName === project.name)
+						.map((entry) => entry.serviceName)
+						.filter((name) => Boolean(name) && isTreeseedOperationsRunnerResourceName(name)),
+				]);
 				const desiredRunnerServiceIds = new Set(services
 					.filter((entry) => desiredRunnerNames.has(entry.name))
 					.map((entry) => entry.id));
