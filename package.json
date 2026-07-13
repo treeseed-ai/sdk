@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.54-dev.recovery-bulk-branch-cleanup-performance.20260713T130547Z",
+  "version": "0.12.54",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {

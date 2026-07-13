@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.12.54] - 2026-07-13
+
+### Fixed
+
+- fix(source): Retry transient GitHub job setup failures once (d7cb7bd0fba1)
+- build(workflow): Fix release readiness and merged branch cleanup (ae9d9af038ed)
+- fix(tests): Require explicit workflow resume and prevent stale (589c5ef89268)
+
+### Tests
+
+- build(workflow): Delete merged feature branches after successful stage (98a9f62804fa)
+- build(source): Permanently isolate Railway staging Git sources (14dbb439b6c0)
+
+### Dependencies
+
+- build(workflow): Avoid repeated fetches during merged branch cleanup (72dd77dd42a4)
+
 ## [0.12.53] - 2026-07-13
 
 ### Dependencies
