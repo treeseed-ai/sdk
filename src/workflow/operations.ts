@@ -1513,8 +1513,18 @@ function updatePackageLockRootVersion(root: string, version: string) {
 	return { status: changed ? 'updated' : 'unchanged', path: 'package-lock.json' };
 }
 
-function applyStableWorkspaceVersionChanges(root: string, versions: Map<string, string>) {
-	for (const target of [{ name: '@treeseed/market', dir: root }, ...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir }))]) {
+function applyStableWorkspaceVersionChanges(
+	root: string,
+	versions: Map<string, string>,
+	targetPackageNames: ReadonlySet<string>,
+) {
+	const targets = [
+		{ name: '@treeseed/market', dir: root },
+		...workspacePackages(root)
+			.filter((pkg) => targetPackageNames.has(pkg.name))
+			.map((pkg) => ({ name: pkg.name, dir: pkg.dir })),
+	];
+	for (const target of targets) {
 		const packageJsonPath = resolve(target.dir, 'package.json');
 		if (!existsSync(packageJsonPath)) continue;
 		const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, unknown>;
@@ -1539,7 +1549,7 @@ function applyStableWorkspaceVersionChanges(root: string, versions: Map<string, 
 			writeJsonFile(packageJsonPath, packageJson);
 		}
 	}
-	rewriteProjectInternalDependenciesToStableVersions(root, versions);
+	rewriteProjectInternalDependenciesToStableVersions(root, versions, targetPackageNames);
 }
 
 function gitObjectCommit(repoDir: string, ref: string) {
@@ -7203,7 +7213,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				const workspaceUnlink = await executeJournalStep(root, workflowRun.runId, 'workspace-unlink', () =>
 					unlinkWorkflowWorkspaceLinks(root, helpers, effectiveInput.workspaceLinks ?? 'auto'));
 				const releaseMetadata = await executeJournalStep(root, workflowRun.runId, 'prepare-release-metadata', () => {
-					applyStableWorkspaceVersionChanges(root, allVersions);
+					applyStableWorkspaceVersionChanges(root, allVersions, selectedPackageSet);
 					const adapterMetadata = checkedOutWorkspacePackageRepos(root)
 						.filter((pkg) => selectedPackageSet.has(pkg.name))
 						.map((pkg) => ({

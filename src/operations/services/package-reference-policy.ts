@@ -233,12 +233,18 @@ export function rewriteInternalDependenciesToStableVersions(root = workspaceRoot
 	return rewrites;
 }
 
-export function rewriteProjectInternalDependenciesToStableVersions(root = workspaceRoot(), versions: Map<string, string>) {
+export function rewriteProjectInternalDependenciesToStableVersions(
+	root = workspaceRoot(),
+	versions: Map<string, string>,
+	targetPackageNames?: ReadonlySet<string>,
+) {
 	const rewrites: Array<RewrittenDevReference & { repoName: string; packageJsonPath: string }> = [];
 	const installableVersions = installableInternalDependencyVersions(root, versions);
 	const targets = [
 		{ name: '@treeseed/market', dir: root },
-		...workspacePackages(root).map((pkg) => ({ name: pkg.name, dir: pkg.dir })),
+		...workspacePackages(root)
+			.filter((pkg) => !targetPackageNames || targetPackageNames.has(pkg.name))
+			.map((pkg) => ({ name: pkg.name, dir: pkg.dir })),
 	];
 	for (const target of targets) {
 		const packageJsonPath = resolve(target.dir, 'package.json');

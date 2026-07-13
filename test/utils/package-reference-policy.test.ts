@@ -247,6 +247,49 @@ describe('package reference policy', () => {
 		expect(() => assertNoInternalDevReferences(root, new Set(['@treeseed/sdk']))).not.toThrow();
 	});
 
+	it('leaves unselected verification-only packages unchanged during stable release rewrites', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-package-policy-selected-'));
+		const sdkDir = resolve(root, 'packages', 'sdk');
+		const cliDir = resolve(root, 'packages', 'cli');
+		const reviewerDir = resolve(root, 'packages', 'reviewer');
+		mkdirSync(sdkDir, { recursive: true });
+		mkdirSync(cliDir, { recursive: true });
+		mkdirSync(reviewerDir, { recursive: true });
+		writeFileSync(resolve(root, 'package.json'), JSON.stringify({
+			name: '@treeseed/market',
+			workspaces: ['packages/*'],
+			dependencies: { '@treeseed/sdk': 'github:treeseed-ai/sdk#old' },
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(sdkDir, 'package.json'), JSON.stringify({
+			name: '@treeseed/sdk',
+			version: '0.12.0-dev.staging.1',
+			publishConfig: { access: 'public' },
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(cliDir, 'package.json'), JSON.stringify({
+			name: '@treeseed/cli',
+			publishConfig: { access: 'public' },
+			dependencies: { '@treeseed/sdk': 'github:treeseed-ai/sdk#old' },
+		}, null, 2), 'utf8');
+		writeFileSync(resolve(reviewerDir, 'package.json'), JSON.stringify({
+			name: '@treeseed/reviewer',
+			dependencies: {
+				'@treeseed/cli': 'github:treeseed-ai/cli#old',
+				'@treeseed/sdk': 'github:treeseed-ai/sdk#old',
+			},
+		}, null, 2), 'utf8');
+
+		const reviewerBefore = readFileSync(resolve(reviewerDir, 'package.json'), 'utf8');
+		const rewrites = rewriteProjectInternalDependenciesToStableVersions(root, new Map([
+			['@treeseed/sdk', '0.12.57'],
+			['@treeseed/cli', '0.12.53'],
+		]), new Set(['@treeseed/sdk', '@treeseed/cli']));
+
+		expect(rewrites.map((rewrite) => rewrite.repoName)).toEqual(['@treeseed/market', '@treeseed/cli']);
+		expect(JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).dependencies['@treeseed/sdk']).toBe('0.12.57');
+		expect(JSON.parse(readFileSync(resolve(cliDir, 'package.json'), 'utf8')).dependencies['@treeseed/sdk']).toBe('0.12.57');
+		expect(readFileSync(resolve(reviewerDir, 'package.json'), 'utf8')).toBe(reviewerBefore);
+	});
+
 	it('does not treat a lockfile root package prerelease version as an internal dependency ref', () => {
 		const root = mkdtempSync(join(tmpdir(), 'treeseed-package-policy-'));
 		const sdkDir = resolve(root, 'packages', 'sdk');
