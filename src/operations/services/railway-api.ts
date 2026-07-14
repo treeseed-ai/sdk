@@ -2586,6 +2586,34 @@ mutation TreeseedRailwayVolumeInstanceUpdate($volumeId: String!, $input: VolumeI
 	});
 }
 
+export async function detachRailwayVolumeInstance({
+	volumeId,
+	environmentId,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	volumeId: string;
+	environmentId: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_INSTANCE_UPDATE_MUTATION') || `
+mutation TreeseedRailwayVolumeInstanceDetach($volumeId: String!, $environmentId: String!, $input: VolumeInstanceUpdateInput!) {
+	volumeInstanceUpdate(volumeId: $volumeId, environmentId: $environmentId, input: $input)
+}
+`.trim();
+	await railwayGraphqlRequest({
+		query: mutation,
+		variables: {
+			volumeId,
+			environmentId,
+			input: { serviceId: null },
+		},
+		env,
+		fetchImpl,
+	});
+}
+
 export async function ensureRailwayServiceVolume({
 	projectId,
 	environmentId,

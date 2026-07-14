@@ -62,6 +62,7 @@ import {
 	deleteRailwayService,
 	deleteRailwayCustomDomain,
 	deleteRailwayVolume,
+	detachRailwayVolumeInstance,
 	deployRailwayServiceInstance,
 	inspectRailwayServiceDeploymentHealth,
 	listRailwayEnvironmentServices,
@@ -4483,6 +4484,48 @@ function blockedPendingRailwayVolumeAttachments(
 	return blocked;
 }
 
+async function detachKnownPartialEnvironmentQualifiedVolumes(input: {
+	projectId: string;
+	environmentId: string;
+	services: ReturnType<typeof configuredRailwayServices>;
+	liveServices: Awaited<ReturnType<typeof listRailwayEnvironmentServices>>;
+	liveVolumes: Awaited<ReturnType<typeof listRailwayVolumes>>;
+	env: Record<string, string>;
+}) {
+	let detached = false;
+	for (const service of input.services.filter((entry) => Boolean(entry.volumeMountPath))) {
+		const legacyServiceName = service.serviceName.replace(/-(?:staging|production)(?=-\d+$|$)/u, '');
+		if (legacyServiceName === service.serviceName) continue;
+		const desiredService = input.liveServices.find((entry) => entry.name === service.serviceName) ?? null;
+		if (!desiredService) continue;
+		const legacyVolumeName = `${legacyServiceName}-volume`;
+		const authoritativeLegacyVolume = input.liveVolumes.find((volume) =>
+			volume.name === legacyVolumeName
+			&& activeRailwayVolumeInstances(volume).some((instance) => instance.environmentId === input.environmentId),
+		) ?? null;
+		if (!authoritativeLegacyVolume) continue;
+		const desiredVolumeName = `${service.serviceName}-volume`;
+		for (const volume of input.liveVolumes.filter((candidate) => candidate.name === desiredVolumeName)) {
+			if (activeRailwayVolumeInstances(volume).length > 0) continue;
+			const pendingInstance = volume.instances.find((instance) =>
+				instance.environmentId === input.environmentId
+				&& instance.serviceId === desiredService.id,
+			) ?? null;
+			if (!pendingInstance) continue;
+			traceRailwayReconcile(input.env, 'detach:volume:known-partial', `${desiredVolumeName}:${volume.id}`);
+			await detachRailwayVolumeInstance({
+				volumeId: volume.id,
+				environmentId: input.environmentId,
+				env: input.env,
+			});
+			detached = true;
+		}
+	}
+	return detached
+		? await listRailwayVolumes({ projectId: input.projectId, env: input.env })
+		: input.liveVolumes;
+}
+
 async function reconcileStaleOperationsRunnerResourcesForScope(
 	input: TreeseedReconcileAdapterInput,
 	topology: Awaited<ReturnType<typeof resolveRailwayTopologyForScope>>,
@@ -4647,7 +4690,7 @@ async function syncRailwayEnvironmentForScope(
 		}
 		const liveServices = await listRailwayEnvironmentServices({ environmentId: environment.id, env: topology.env }).catch(() => project.services);
 		const liveServiceByName = new Map(liveServices.map((service) => [service.name, service]));
-		const liveVolumes = await listRailwayVolumes({ projectId: project.id, env: topology.env }).catch(() => []);
+		let liveVolumes = await listRailwayVolumes({ projectId: project.id, env: topology.env }).catch(() => []);
 		const databaseDescriptor = configuredRailwayIacDatabase(input, projectServices);
 		const serviceIdByName = new Map(projectServices.map((service) => {
 			const liveService = liveServiceByName.get(service.serviceName)
@@ -4661,6 +4704,14 @@ async function syncRailwayEnvironmentForScope(
 				?? null;
 			serviceIdByName.set(databaseDescriptor.serviceName, databaseLiveService?.id ?? null);
 		}
+		liveVolumes = await detachKnownPartialEnvironmentQualifiedVolumes({
+			projectId: project.id,
+			environmentId: environment.id,
+			services: projectServices,
+			liveServices,
+			liveVolumes,
+			env: topology.env,
+		});
 		const pendingVolumeBlocks = blockedPendingRailwayVolumeAttachments(liveVolumes, serviceIdByName, environment.id);
 		if (pendingVolumeBlocks.length > 0) {
 			for (const reason of pendingVolumeBlocks) {

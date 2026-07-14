@@ -30,6 +30,7 @@ import {
 import {
 	createRailwayVolumeInstanceBackup,
 	ensureRailwayServiceVolume,
+	detachRailwayVolumeInstance,
 	restoreRailwayVolumeInstanceBackup,
 } from '../../src/operations/services/railway-api.ts';
 
@@ -1337,6 +1338,30 @@ services:
 		await restoreRailwayVolumeInstanceBackup({
 			backupId: 'backup-staging',
 			volumeInstanceId: 'qualified-instance-staging',
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+		expect(fetchMock).toHaveBeenCalledOnce();
+	});
+
+	it('detaches a known partial volume from only the selected environment', async () => {
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			expect(String(body.query)).toContain('TreeseedRailwayVolumeInstanceDetach');
+			expect(body.variables).toEqual({
+				volumeId: 'partial-qualified-volume',
+				environmentId: 'env-staging',
+				input: { serviceId: null },
+			});
+			return new Response(JSON.stringify({ data: { volumeInstanceUpdate: true } }), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			});
+		});
+
+		await detachRailwayVolumeInstance({
+			volumeId: 'partial-qualified-volume',
+			environmentId: 'env-staging',
 			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
 			fetchImpl: fetchMock as typeof fetch,
 		});
