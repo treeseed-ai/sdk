@@ -2346,7 +2346,9 @@ export async function createRailwayVolumeInstanceBackup({
 	const existingIds = new Set(before.map((backup) => backup.id));
 	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_BACKUP_CREATE_MUTATION') || `
 mutation TreeseedRailwayVolumeBackupCreate($volumeInstanceId: String!) {
-	volumeInstanceBackupCreate(volumeInstanceId: $volumeInstanceId)
+	volumeInstanceBackupCreate(volumeInstanceId: $volumeInstanceId) {
+		id
+	}
 }
 `.trim();
 	const payload = await railwayGraphqlRequest({
@@ -2355,7 +2357,13 @@ mutation TreeseedRailwayVolumeBackupCreate($volumeInstanceId: String!) {
 		env,
 		fetchImpl,
 	});
-	const returnedId = railwayConnectionLabel(payload.data?.volumeInstanceBackupCreate);
+	const returnedBackupWorkflow = payload.data?.volumeInstanceBackupCreate;
+	const returnedId = railwayConnectionLabel(returnedBackupWorkflow)
+		|| railwayConnectionLabel(
+			returnedBackupWorkflow && typeof returnedBackupWorkflow === 'object'
+				? (returnedBackupWorkflow as Record<string, unknown>).id
+				: null,
+		);
 	for (let attempt = 0; attempt < settleAttempts; attempt += 1) {
 		if (attempt > 0 || !returnedId) {
 			await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
@@ -2382,7 +2390,9 @@ export async function restoreRailwayVolumeInstanceBackup({
 }) {
 	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_BACKUP_RESTORE_MUTATION') || `
 mutation TreeseedRailwayVolumeBackupRestore($backupId: String!, $volumeInstanceId: String!) {
-	volumeInstanceBackupRestore(volumeInstanceBackupId: $backupId, volumeInstanceId: $volumeInstanceId)
+	volumeInstanceBackupRestore(volumeInstanceBackupId: $backupId, volumeInstanceId: $volumeInstanceId) {
+		id
+	}
 }
 `.trim();
 	await railwayGraphqlRequest({

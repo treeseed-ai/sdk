@@ -1300,7 +1300,7 @@ services:
 			expect(String(body.query)).toContain('TreeseedRailwayVolumeBackupCreate');
 			expect(body.variables).toEqual({ volumeInstanceId: 'legacy-instance-staging' });
 			return new Response(JSON.stringify({
-				data: { volumeInstanceBackupCreate: 'backup-new' },
+				data: { volumeInstanceBackupCreate: { id: 'backup-workflow' } },
 			}), { status: 200, headers: { 'content-type': 'application/json' } });
 		});
 
