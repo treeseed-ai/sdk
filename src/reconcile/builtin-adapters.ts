@@ -4498,14 +4498,10 @@ async function detachKnownPartialEnvironmentQualifiedVolumes(input: {
 		if (legacyServiceName === service.serviceName) continue;
 		const desiredService = input.liveServices.find((entry) => entry.name === service.serviceName) ?? null;
 		if (!desiredService) continue;
-		const legacyVolumeName = `${legacyServiceName}-volume`;
-		const authoritativeLegacyVolume = input.liveVolumes.find((volume) =>
-			volume.name === legacyVolumeName
-			&& activeRailwayVolumeInstances(volume).some((instance) => instance.environmentId === input.environmentId),
-		) ?? null;
-		if (!authoritativeLegacyVolume) continue;
 		const desiredVolumeName = `${service.serviceName}-volume`;
 		for (const volume of input.liveVolumes.filter((candidate) => candidate.name === desiredVolumeName)) {
+			// This is an attachment cleanup only. The volume must already be entirely
+			// inactive/deleting and match the exact qualified migration target.
 			if (activeRailwayVolumeInstances(volume).length > 0) continue;
 			const pendingInstance = volume.instances.find((instance) =>
 				instance.environmentId === input.environmentId
