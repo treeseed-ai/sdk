@@ -4354,7 +4354,7 @@ async function migrateEnvironmentQualifiedRailwayVolumes(input: {
 	projectId: string;
 	environmentId: string;
 	services: ReturnType<typeof configuredRailwayServices>;
-	liveServices: Awaited<ReturnType<typeof listRailwayEnvironmentServices>>;
+	serviceIdByName: Map<string, string | null>;
 	liveVolumes: Awaited<ReturnType<typeof listRailwayVolumes>>;
 	env: Record<string, string>;
 }) {
@@ -4496,8 +4496,8 @@ async function detachKnownPartialEnvironmentQualifiedVolumes(input: {
 	for (const service of input.services.filter((entry) => Boolean(entry.volumeMountPath))) {
 		const legacyServiceName = service.serviceName.replace(/-(?:staging|production)(?=-\d+$|$)/u, '');
 		if (legacyServiceName === service.serviceName) continue;
-		const desiredService = input.liveServices.find((entry) => entry.name === service.serviceName) ?? null;
-		if (!desiredService) continue;
+		const desiredServiceId = input.serviceIdByName.get(service.serviceName) ?? null;
+		if (!desiredServiceId) continue;
 		const desiredVolumeName = `${service.serviceName}-volume`;
 		for (const volume of input.liveVolumes.filter((candidate) => candidate.name === desiredVolumeName)) {
 			// This is an attachment cleanup only. The volume must already be entirely
@@ -4505,7 +4505,7 @@ async function detachKnownPartialEnvironmentQualifiedVolumes(input: {
 			if (activeRailwayVolumeInstances(volume).length > 0) continue;
 			const pendingInstance = volume.instances.find((instance) =>
 				instance.environmentId === input.environmentId
-				&& instance.serviceId === desiredService.id,
+				&& instance.serviceId === desiredServiceId,
 			) ?? null;
 			if (!pendingInstance) continue;
 			traceRailwayReconcile(input.env, 'detach:volume:known-partial', `${desiredVolumeName}:${volume.id}`);
@@ -4704,7 +4704,7 @@ async function syncRailwayEnvironmentForScope(
 			projectId: project.id,
 			environmentId: environment.id,
 			services: projectServices,
-			liveServices,
+			serviceIdByName,
 			liveVolumes,
 			env: topology.env,
 		});
