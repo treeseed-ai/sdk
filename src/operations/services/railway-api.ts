@@ -2371,11 +2371,15 @@ export async function restoreRailwayVolumeInstanceBackup({
 	volumeInstanceId,
 	env = process.env,
 	fetchImpl = fetch,
+	settleAttempts = 12,
+	settleDelayMs = 5_000,
 }: {
 	backupId: string;
 	volumeInstanceId: string;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
+	settleAttempts?: number;
+	settleDelayMs?: number;
 }) {
 	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_BACKUP_RESTORE_MUTATION') || `
 mutation TreeseedRailwayVolumeBackupRestore($backupId: String!, $volumeInstanceId: String!) {
@@ -2384,12 +2388,21 @@ mutation TreeseedRailwayVolumeBackupRestore($backupId: String!, $volumeInstanceI
 	}
 }
 `.trim();
-	await railwayGraphqlRequest({
-		query: mutation,
-		variables: { backupId, volumeInstanceId },
-		env,
-		fetchImpl,
-	});
+	for (let attempt = 1; attempt <= settleAttempts; attempt += 1) {
+		try {
+			await railwayGraphqlRequest({
+				query: mutation,
+				variables: { backupId, volumeInstanceId },
+				env,
+				fetchImpl,
+			});
+			return;
+		} catch (error) {
+			const backupIsPropagating = /backup not found/iu.test(error instanceof Error ? error.message : String(error));
+			if (!backupIsPropagating || attempt >= settleAttempts) throw error;
+			await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
+		}
+	}
 }
 
 async function createRailwayVolume({

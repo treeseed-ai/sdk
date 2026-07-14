@@ -1343,6 +1343,48 @@ services:
 		expect(fetchMock).toHaveBeenCalledOnce();
 	});
 
+	it('retries restore only while a newly created Railway backup is propagating', async () => {
+		let attempts = 0;
+		const fetchMock = vi.fn(async () => {
+			attempts += 1;
+			return attempts === 1
+				? new Response(JSON.stringify({ errors: [{ message: 'Backup not found' }] }), {
+					status: 200,
+					headers: { 'content-type': 'application/json' },
+				})
+				: new Response(JSON.stringify({ data: { volumeInstanceBackupRestore: { __typename: 'WorkflowId' } } }), {
+					status: 200,
+					headers: { 'content-type': 'application/json' },
+				});
+		});
+
+		await restoreRailwayVolumeInstanceBackup({
+			backupId: 'backup-staging',
+			volumeInstanceId: 'qualified-instance-staging',
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+			settleAttempts: 2,
+			settleDelayMs: 0,
+		});
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not retry non-propagation restore failures', async () => {
+		const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+			errors: [{ message: 'Volume instance is not writable' }],
+		}), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+		await expect(restoreRailwayVolumeInstanceBackup({
+			backupId: 'backup-staging',
+			volumeInstanceId: 'qualified-instance-staging',
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+			settleAttempts: 2,
+			settleDelayMs: 0,
+		})).rejects.toThrow(/not writable/u);
+		expect(fetchMock).toHaveBeenCalledOnce();
+	});
+
 	it('refuses volume migration when Railway never exposes the requested backup', async () => {
 		const fetchMock = vi.fn(async (_input, init) => {
 			const body = JSON.parse(String(init?.body ?? '{}'));

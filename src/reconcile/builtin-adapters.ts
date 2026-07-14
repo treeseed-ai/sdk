@@ -4367,11 +4367,11 @@ async function migrateEnvironmentQualifiedRailwayVolumes(input: {
 			volume.name === desiredVolumeName
 			&& activeRailwayVolumeInstances(volume).some((instance) => instance.environmentId === input.environmentId),
 		) ?? null;
-		if (desiredService && desiredVolume) continue;
 		const legacyVolume = input.liveVolumes.find((volume) =>
 			volume.name === legacyVolumeName
 			&& activeRailwayVolumeInstances(volume).some((instance) => instance.environmentId === input.environmentId),
 		) ?? null;
+		if (desiredService && desiredVolume && !legacyVolume) continue;
 		if (legacyService && !legacyVolume) {
 			throw new Error(`${legacyServiceName}: existing stateful Railway service has no adoptable ${legacyVolumeName}; refusing to create an empty replacement volume.`);
 		}
