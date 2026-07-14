@@ -4487,35 +4487,33 @@ function blockedPendingRailwayVolumeAttachments(
 async function detachKnownPartialEnvironmentQualifiedVolumes(input: {
 	projectId: string;
 	environmentId: string;
-	services: ReturnType<typeof configuredRailwayServices>;
-	liveServices: Awaited<ReturnType<typeof listRailwayEnvironmentServices>>;
+	serviceIdByName: Map<string, string | null>;
 	liveVolumes: Awaited<ReturnType<typeof listRailwayVolumes>>;
 	env: Record<string, string>;
 }) {
+	const serviceNameById = new Map([...input.serviceIdByName.entries()]
+		.filter(([, serviceId]) => serviceId)
+		.map(([serviceName, serviceId]) => [serviceId, serviceName] as const));
 	let detached = false;
-	for (const service of input.services.filter((entry) => Boolean(entry.volumeMountPath))) {
-		const legacyServiceName = service.serviceName.replace(/-(?:staging|production)(?=-\d+$|$)/u, '');
-		if (legacyServiceName === service.serviceName) continue;
-		const desiredServiceId = input.serviceIdByName.get(service.serviceName) ?? null;
-		if (!desiredServiceId) continue;
-		const desiredVolumeName = `${service.serviceName}-volume`;
-		for (const volume of input.liveVolumes.filter((candidate) => candidate.name === desiredVolumeName)) {
-			// This is an attachment cleanup only. The volume must already be entirely
-			// inactive/deleting and match the exact qualified migration target.
-			if (activeRailwayVolumeInstances(volume).some((instance) => instance.environmentId === input.environmentId)) continue;
-			const pendingInstance = volume.instances.find((instance) =>
-				instance.environmentId === input.environmentId
-				&& instance.serviceId === desiredServiceId,
-			) ?? null;
-			if (!pendingInstance) continue;
-			traceRailwayReconcile(input.env, 'detach:volume:known-partial', `${desiredVolumeName}:${volume.id}`);
-			await detachRailwayVolumeInstance({
-				volumeId: volume.id,
-				environmentId: input.environmentId,
-				env: input.env,
-			});
-			detached = true;
-		}
+	for (const volume of input.liveVolumes) {
+		if (activeRailwayVolumeInstances(volume).some((instance) => instance.environmentId === input.environmentId)) continue;
+		const pendingInstance = volume.instances.find((instance) =>
+			instance.environmentId === input.environmentId
+			&& instance.serviceId,
+		) ?? null;
+		if (!pendingInstance?.serviceId) continue;
+		const serviceName = serviceNameById.get(pendingInstance.serviceId);
+		if (!serviceName || !/-(?:staging|production)(?:-\d+)?$/u.test(serviceName)) continue;
+		if (volume.name !== `${serviceName}-volume`) continue;
+		// This is an attachment cleanup only. The volume is already inactive in
+		// this environment and exactly matches its qualified service identity.
+		traceRailwayReconcile(input.env, 'detach:volume:known-partial', `${volume.name}:${volume.id}`);
+		await detachRailwayVolumeInstance({
+			volumeId: volume.id,
+			environmentId: input.environmentId,
+			env: input.env,
+		});
+		detached = true;
 	}
 	return detached
 		? await listRailwayVolumes({ projectId: input.projectId, env: input.env })
@@ -4703,7 +4701,6 @@ async function syncRailwayEnvironmentForScope(
 		liveVolumes = await detachKnownPartialEnvironmentQualifiedVolumes({
 			projectId: project.id,
 			environmentId: environment.id,
-			services: projectServices,
 			serviceIdByName,
 			liveVolumes,
 			env: topology.env,
