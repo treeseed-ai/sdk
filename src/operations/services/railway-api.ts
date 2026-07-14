@@ -2347,31 +2347,20 @@ export async function createRailwayVolumeInstanceBackup({
 	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_BACKUP_CREATE_MUTATION') || `
 mutation TreeseedRailwayVolumeBackupCreate($volumeInstanceId: String!) {
 	volumeInstanceBackupCreate(volumeInstanceId: $volumeInstanceId) {
-		id
+		__typename
 	}
 }
 `.trim();
-	const payload = await railwayGraphqlRequest({
+	await railwayGraphqlRequest({
 		query: mutation,
 		variables: { volumeInstanceId },
 		env,
 		fetchImpl,
 	});
-	const returnedBackupWorkflow = payload.data?.volumeInstanceBackupCreate;
-	const returnedId = railwayConnectionLabel(returnedBackupWorkflow)
-		|| railwayConnectionLabel(
-			returnedBackupWorkflow && typeof returnedBackupWorkflow === 'object'
-				? (returnedBackupWorkflow as Record<string, unknown>).id
-				: null,
-		);
 	for (let attempt = 0; attempt < settleAttempts; attempt += 1) {
-		if (attempt > 0 || !returnedId) {
-			await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
-		}
+		await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
 		const backups = await listRailwayVolumeInstanceBackups({ volumeInstanceId, env, fetchImpl });
-		const backup = backups.find((entry) => entry.id === returnedId)
-			?? backups.find((entry) => !existingIds.has(entry.id))
-			?? null;
+		const backup = backups.find((entry) => !existingIds.has(entry.id)) ?? null;
 		if (backup) return backup;
 	}
 	throw new Error(`Railway did not expose a completed backup for volume instance ${volumeInstanceId}; refusing volume migration.`);
@@ -2391,7 +2380,7 @@ export async function restoreRailwayVolumeInstanceBackup({
 	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_BACKUP_RESTORE_MUTATION') || `
 mutation TreeseedRailwayVolumeBackupRestore($backupId: String!, $volumeInstanceId: String!) {
 	volumeInstanceBackupRestore(volumeInstanceBackupId: $backupId, volumeInstanceId: $volumeInstanceId) {
-		id
+		__typename
 	}
 }
 `.trim();

@@ -1298,9 +1298,11 @@ services:
 				}), { status: 200, headers: { 'content-type': 'application/json' } });
 			}
 			expect(String(body.query)).toContain('TreeseedRailwayVolumeBackupCreate');
+			expect(String(body.query)).toContain('__typename');
+			expect(String(body.query)).not.toMatch(/\{\s*id\s*\}/u);
 			expect(body.variables).toEqual({ volumeInstanceId: 'legacy-instance-staging' });
 			return new Response(JSON.stringify({
-				data: { volumeInstanceBackupCreate: { id: 'backup-workflow' } },
+				data: { volumeInstanceBackupCreate: { __typename: 'WorkflowId' } },
 			}), { status: 200, headers: { 'content-type': 'application/json' } });
 		});
 
@@ -1321,12 +1323,14 @@ services:
 		const fetchMock = vi.fn(async (_input, init) => {
 			const body = JSON.parse(String(init?.body ?? '{}'));
 			expect(String(body.query)).toContain('TreeseedRailwayVolumeBackupRestore');
+			expect(String(body.query)).toContain('__typename');
+			expect(String(body.query)).not.toMatch(/\{\s*id\s*\}/u);
 			expect(body.variables).toEqual({
 				backupId: 'backup-staging',
 				volumeInstanceId: 'qualified-instance-staging',
 			});
 			return new Response(JSON.stringify({
-				data: { volumeInstanceBackupRestore: true },
+				data: { volumeInstanceBackupRestore: { __typename: 'WorkflowId' } },
 			}), { status: 200, headers: { 'content-type': 'application/json' } });
 		});
 
