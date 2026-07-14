@@ -56,13 +56,12 @@ import {
 	ensureRailwayService,
 	ensureRailwayServiceInstanceConfiguration,
 	ensureRailwayServiceVolume,
-	createRailwayVolumeInstanceBackup,
 	commitRailwayStagedEnvironmentChanges,
 	ensureRailwayPostgresService,
 	deleteRailwayService,
 	deleteRailwayCustomDomain,
 	deleteRailwayVolume,
-	detachRailwayVolumeInstanceAndWait,
+	restoreRailwayVolumeAttachmentWithIacAndWait,
 	deployRailwayServiceInstance,
 	inspectRailwayServiceDeploymentHealth,
 	listRailwayEnvironmentServices,
@@ -74,13 +73,18 @@ import {
 	listRailwayProjects,
 	listRailwayServices,
 	listRailwayVolumes,
-	restoreRailwayVolumeInstanceBackup,
 	listRailwayVariables,
 	resolveRailwayWorkspaceContext,
 	updateRailwayServiceGitSource,
 	updateRailwayServiceImageSource,
 	upsertRailwayVariables,
 } from '../operations/services/railway-api.ts';
+import {
+	attachRailwayVolumeWithCli,
+	deleteRailwayVolumeWithCli,
+	detachRailwayVolumeWithCli,
+	updateRailwayVolumeWithCli,
+} from '../operations/services/railway-cli.ts';
 import type {
 	TreeseedObservedUnitState,
 	TreeseedReconcileAdapter,
@@ -2757,7 +2761,13 @@ async function ensureRailwayCustomDomain(input: TreeseedReconcileAdapterInput, s
 		if (!staleAttachment.id) {
 			throw new Error(`Railway custom domain ${domain} is attached to service ${candidateServiceId}, but Railway did not return its domain id for exact-state reattachment.`);
 		}
-		await deleteRailwayCustomDomain({ domainId: staleAttachment.id, env });
+		await deleteRailwayCustomDomain({
+			projectId: identifiers.projectId,
+			environmentId: identifiers.environmentId,
+			serviceId: candidateServiceId,
+			domainId: staleAttachment.id,
+			env,
+		});
 		let detached = false;
 		for (let attempt = 0; attempt < 12; attempt += 1) {
 			const remaining = await listRailwayCustomDomains({
@@ -4369,6 +4379,10 @@ async function migrateEnvironmentQualifiedRailwayVolumes(input: {
 			volume.name === desiredVolumeName
 			&& activeRailwayVolumeInstances(volume).some((instance) => instance.environmentId === input.environmentId),
 		) ?? null;
+		const partialDesiredVolume = input.liveVolumes.find((volume) =>
+			volume.name === desiredVolumeName
+			&& volume.instances.some((instance) => instance.environmentId === input.environmentId),
+		) ?? null;
 		const legacyVolume = input.liveVolumes.find((volume) =>
 			volume.name === legacyVolumeName
 			&& activeRailwayVolumeInstances(volume).some((instance) => instance.environmentId === input.environmentId),
@@ -4398,49 +4412,53 @@ async function migrateEnvironmentQualifiedRailwayVolumes(input: {
 				env: input.env,
 			});
 		if (activeEnvironmentIds.size > 1) {
-			if (desiredVolume) {
-				traceRailwayReconcile(input.env, 'delete:volume:partial', desiredVolume.name);
-				await deleteRailwayVolume({ volumeId: desiredVolume.id, env: input.env });
-			}
-			const volumeIdsBeforeRestore = new Set(input.liveVolumes.map((volume) => volume.id));
-			traceRailwayReconcile(input.env, 'sync:volume:backup', `${legacyVolumeName}:${legacyInstance.id} -> ${desiredVolumeName}`);
-			const backup = await createRailwayVolumeInstanceBackup({
-				volumeInstanceId: legacyInstance.id,
-				env: input.env,
-			});
-			traceRailwayReconcile(input.env, 'sync:volume:restore', `${backup.id} -> ${legacyInstance.id}`);
-			await restoreRailwayVolumeInstanceBackup({
-				backupId: backup.id,
-				volumeInstanceId: legacyInstance.id,
-				env: input.env,
-			});
-			await commitRailwayStagedEnvironmentChanges({
-				environmentId: input.environmentId,
-				commitMessage: `Treeseed restore ${legacyVolumeName} into ${desiredVolumeName}`,
-				env: input.env,
-			});
-			let restoredVolume: Awaited<ReturnType<typeof listRailwayVolumes>>[number] | null = null;
-			for (let attempt = 0; attempt < 60 && !restoredVolume; attempt += 1) {
-				if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 5_000));
-				const refreshedVolumes = await listRailwayVolumes({ projectId: input.projectId, env: input.env });
-				restoredVolume = refreshedVolumes.find((volume) =>
-					!volumeIdsBeforeRestore.has(volume.id)
-					&& activeRailwayVolumeInstances(volume).some((instance) =>
-						instance.environmentId === input.environmentId
-						&& instance.serviceId === legacyService?.id,
-					),
-				) ?? null;
-			}
+			const restoredVolume = input.liveVolumes.find((volume) =>
+				volume.id !== legacyVolume.id
+				&& volume.id !== partialDesiredVolume?.id
+				&& activeRailwayVolumeInstances(volume).some((instance) =>
+					instance.environmentId === input.environmentId
+					&& instance.serviceId === legacyService?.id,
+				),
+			) ?? null;
 			if (!restoredVolume) {
-				throw new Error(`${legacyVolumeName}: Railway accepted backup restore but exposed no restored volume; the legacy volume remains authoritative.`);
+				throw new Error(`${legacyVolumeName}: this volume spans multiple environments and the Railway SDK/CLI exposes no backup restore operation. Refusing direct GraphQL mutation or an empty replacement; create a supported Railway volume copy before retrying.`);
 			}
-			await ensureRailwayServiceVolume({
+			if (partialDesiredVolume) {
+				traceRailwayReconcile(input.env, 'delete:volume:partial:cli', partialDesiredVolume.name ?? partialDesiredVolume.id);
+				await deleteRailwayVolumeWithCli({
+					projectId: input.projectId,
+					environmentId: input.environmentId,
+					volumeId: partialDesiredVolume.id,
+					env: input.env,
+				});
+			}
+			const restoredInstance = activeRailwayVolumeInstances(restoredVolume)
+				.find((instance) => instance.environmentId === input.environmentId);
+			if (restoredInstance?.serviceId) {
+				traceRailwayReconcile(input.env, 'detach:volume:restored:cli', `${restoredVolume.id}:${restoredInstance.serviceId}`);
+				await detachRailwayVolumeWithCli({
+					projectId: input.projectId,
+					environmentId: input.environmentId,
+					serviceId: restoredInstance.serviceId,
+					volumeId: restoredVolume.id,
+					env: input.env,
+				});
+			}
+			traceRailwayReconcile(input.env, 'attach:volume:qualified:cli', `${restoredVolume.id}:${ensuredService.service.id}`);
+			await attachRailwayVolumeWithCli({
 				projectId: input.projectId,
 				environmentId: input.environmentId,
 				serviceId: ensuredService.service.id,
+				volumeId: restoredVolume.id,
+				env: input.env,
+			});
+			await updateRailwayVolumeWithCli({
+				projectId: input.projectId,
+				environmentId: input.environmentId,
+				serviceId: ensuredService.service.id,
+				volumeId: restoredVolume.id,
 				name: desiredVolumeName,
 				mountPath: service.volumeMountPath!,
-				adoptVolumeId: restoredVolume.id,
 				env: input.env,
 			});
 			continue;
@@ -4504,13 +4522,13 @@ async function detachKnownPartialEnvironmentQualifiedVolumes(input: {
 		const serviceName = serviceNameById.get(pendingInstance.serviceId);
 		if (!serviceName || !/-(?:staging|production)(?:-\d+)?$/u.test(serviceName)) continue;
 		if (volume.name !== `${serviceName}-volume`) continue;
-		// This is an attachment cleanup only. The volume is already inactive in
-		// this environment and exactly matches its qualified service identity.
-		traceRailwayReconcile(input.env, 'detach:volume:known-partial', `${volume.name}:${volume.id}`);
-		input.liveVolumes = await detachRailwayVolumeInstanceAndWait({
+		traceRailwayReconcile(input.env, 'restore:volume:known-partial', `${volume.name}:${volume.id}`);
+		input.liveVolumes = await restoreRailwayVolumeAttachmentWithIacAndWait({
 			projectId: input.projectId,
 			volumeId: volume.id,
 			environmentId: input.environmentId,
+			serviceId: pendingInstance.serviceId,
+			mountPath: pendingInstance.mountPath ?? '/data',
 			env: input.env,
 		});
 	}
@@ -5088,6 +5106,7 @@ async function deployRailwayServiceInstanceWithSourceRepair(
 		return;
 	}
 	const deploy = () => deployRailwayServiceInstance({
+		projectId: entry.project?.id,
 		serviceId: entry.service!.id,
 		environmentId: entry.environment!.id,
 		env,
@@ -5141,6 +5160,7 @@ async function repairRailwayServiceSource(
 	if (sourceRepo) {
 		await updateRailwayServiceGitSource({
 			serviceId: entry.service.id,
+			environmentId: entry.environment?.id,
 			sourceRepo,
 			sourceBranch: entry.configuredService.sourceBranch,
 			env,
@@ -5151,6 +5171,7 @@ async function repairRailwayServiceSource(
 	if (imageRef) {
 		await updateRailwayServiceImageSource({
 			serviceId: entry.service.id,
+			environmentId: entry.environment?.id,
 			imageRef,
 			env,
 		});
@@ -6509,7 +6530,7 @@ async function destroyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise
 			);
 			if (!attached) continue;
 			traceRailwayReconcile(env, 'destroy:volume', `${serviceName}:${volume.name ?? volume.id}:${volume.id}`);
-			const result = await deleteRailwayVolume({ volumeId: volume.id, env });
+			const result = await deleteRailwayVolume({ projectId, environmentId, volumeId: volume.id, env });
 			deletedVolumes.push({
 				id: volume.id,
 				name: volume.name ?? null,
@@ -6521,7 +6542,7 @@ async function destroyRailwayUnit(input: TreeseedReconcileAdapterInput): Promise
 	let deletedService: Record<string, unknown> | null = null;
 	if (serviceId) {
 		traceRailwayReconcile(env, 'destroy:service', `${serviceName}:${serviceId}`);
-		deletedService = await deleteRailwayService({ serviceId, env });
+		deletedService = await deleteRailwayService({ projectId, environmentId, serviceId, env });
 	}
 
 	for (const key of input.context.session.keys()) {

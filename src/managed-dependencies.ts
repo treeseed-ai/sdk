@@ -98,6 +98,10 @@ type PlatformAsset = {
 	archiveKind: 'tar.gz' | 'zip';
 };
 
+type VerifiedPlatformAsset = PlatformAsset & {
+	sha256: string;
+};
+
 const GH_VERSION = '2.90.0';
 const GH_CHECKSUMS_SHA256 = '95cbb66008dc467cf402724025f07551d2a949b3cc830146206a2797b963966c';
 const GH_RELEASE_BASE_URL = `https://github.com/cli/cli/releases/download/v${GH_VERSION}`;
@@ -108,20 +112,47 @@ const GH_ASSETS: PlatformAsset[] = [
 	{ platform: 'darwin', arch: 'arm64', assetName: `gh_${GH_VERSION}_macOS_arm64.zip`, archiveKind: 'zip' },
 ];
 
+const RAILWAY_VERSION = '5.23.2';
+const RAILWAY_RELEASE_BASE_URL = `https://github.com/railwayapp/cli/releases/download/v${RAILWAY_VERSION}`;
+const RAILWAY_ASSETS: VerifiedPlatformAsset[] = [
+	{
+		platform: 'linux',
+		arch: 'x64',
+		assetName: `railway-v${RAILWAY_VERSION}-x86_64-unknown-linux-gnu.tar.gz`,
+		archiveKind: 'tar.gz',
+		sha256: 'ced014a566bc273ce87463678a2d1e5d9ee02f165a832d5d2fd27c201855145b',
+	},
+	{
+		platform: 'linux',
+		arch: 'arm64',
+		assetName: `railway-v${RAILWAY_VERSION}-aarch64-unknown-linux-musl.tar.gz`,
+		archiveKind: 'tar.gz',
+		sha256: 'b6100a01d0bd5d349f39e796a907e77f45dadb42f99eee558a1aa7bb254b973e',
+	},
+	{
+		platform: 'darwin',
+		arch: 'x64',
+		assetName: `railway-v${RAILWAY_VERSION}-x86_64-apple-darwin.tar.gz`,
+		archiveKind: 'tar.gz',
+		sha256: '403721baa47c2afd0391190310ae8aaf9d671d3ac3d7db123219686b2762bea3',
+	},
+	{
+		platform: 'darwin',
+		arch: 'arm64',
+		assetName: `railway-v${RAILWAY_VERSION}-aarch64-apple-darwin.tar.gz`,
+		archiveKind: 'tar.gz',
+		sha256: '83ddc35f9a5ec1a8adb4cf6a024f23227b109832b2d354633a9668c47acb02fa',
+	},
+];
+
 const NPM_TOOLS: Array<{
-	name: Extract<TreeseedManagedToolName, 'wrangler' | 'railway' | 'copilot' | 'copilot-language-server'>;
+	name: Extract<TreeseedManagedToolName, 'wrangler' | 'copilot' | 'copilot-language-server'>;
 	packageName: string;
 	binName: string;
 	version: string;
 	runtimeBinary?: (packageRoot: string) => string;
 }> = [
 	{ name: 'wrangler', packageName: 'wrangler', binName: 'wrangler', version: '4.86.0' },
-	{
-		name: 'railway',
-		packageName: '@railway/cli',
-		binName: 'railway',
-		version: '5.23.2',
-	},
 	{ name: 'copilot', packageName: '@github/copilot', binName: 'copilot', version: '1.0.39' },
 	{ name: 'copilot-language-server', packageName: '@github/copilot-language-server', binName: 'copilot-language-server', version: '1.480.0' },
 ];
@@ -185,8 +216,20 @@ function currentPlatformAsset(): PlatformAsset | null {
 	return GH_ASSETS.find((asset) => asset.platform === platform && asset.arch === arch) ?? null;
 }
 
+function currentRailwayPlatformAsset(): VerifiedPlatformAsset | null {
+	const platform = osPlatform();
+	const arch = osArch();
+	if (platform !== 'linux' && platform !== 'darwin') return null;
+	if (arch !== 'x64' && arch !== 'arm64') return null;
+	return RAILWAY_ASSETS.find((asset) => asset.platform === platform && asset.arch === arch) ?? null;
+}
+
 function managedGhBin(env: NodeJS.ProcessEnv = process.env) {
 	return resolve(resolveToolsHome(env), 'gh', GH_VERSION, platformKey(), 'bin', 'gh');
+}
+
+function managedRailwayBin(env: NodeJS.ProcessEnv = process.env) {
+	return resolve(resolveToolsHome(env), 'railway', RAILWAY_VERSION, platformKey(), 'bin', 'railway');
 }
 
 function tokenEnv(env: NodeJS.ProcessEnv = process.env) {
@@ -719,6 +762,10 @@ export function resolveTreeseedToolBinary(toolName: TreeseedManagedToolName, opt
 		}
 		return locateSystemBinary('gh', spawnSync, options.env ?? process.env);
 	}
+	if (toolName === 'railway') {
+		const managed = managedRailwayBin(options.env);
+		return existsSync(managed) ? managed : null;
+	}
 	const npmTool = findNpmTool(toolName);
 	if (npmTool) {
 		return resolveNpmToolRuntimeBinary(npmTool);
@@ -964,6 +1011,81 @@ async function installGh(options: Required<Pick<DependencyInstallerOptions, 'env
 	}
 }
 
+async function installRailway(options: Required<Pick<DependencyInstallerOptions, 'env' | 'downloadFile' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'force' | 'write'>): Promise<TreeseedDependencyReport> {
+	const asset = currentRailwayPlatformAsset();
+	if (!asset) {
+		return report({
+			name: 'railway',
+			kind: 'download',
+			version: RAILWAY_VERSION,
+			source: 'not-applicable',
+			status: 'unsupported',
+			required: true,
+			detail: 'Managed Railway CLI installation supports Linux and macOS on x64 or arm64.',
+		});
+	}
+	const binaryPath = managedRailwayBin(options.env);
+	if (existsSync(binaryPath)) {
+		const check = checkCommand(binaryPath, ['--version'], {
+			cwd: options.tenantRoot,
+			env: options.env,
+			spawn: options.spawn,
+		});
+		if (check.ok && check.stdout.includes(RAILWAY_VERSION)) {
+			return report({
+				name: 'railway', kind: 'download', version: RAILWAY_VERSION, source: 'managed-cache',
+				binaryPath, status: options.force ? 'repaired' : 'already-present', required: true,
+				detail: check.stdout.split('\n')[0] ?? `Railway CLI ${RAILWAY_VERSION} is installed.`,
+			});
+		}
+	}
+
+	const toolsHome = resolveToolsHome(options.env);
+	const tmpRoot = resolve(toolsHome, '.tmp', `railway-${process.pid}-${Date.now()}`);
+	const archivePath = resolve(tmpRoot, asset.assetName);
+	const extractRoot = resolve(tmpRoot, 'extract');
+	const installRoot = dirname(dirname(binaryPath));
+	const stagingRoot = `${installRoot}.staging-${process.pid}-${Date.now()}`;
+	try {
+		options.write?.(`Installing Railway CLI ${RAILWAY_VERSION}...`);
+		rmSync(tmpRoot, { recursive: true, force: true });
+		mkdirSync(extractRoot, { recursive: true });
+		await options.downloadFile(`${RAILWAY_RELEASE_BASE_URL}/${asset.assetName}`, archivePath);
+		const assetHash = sha256File(archivePath);
+		if (assetHash !== asset.sha256) {
+			throw new Error(`Railway CLI archive hash mismatch for ${asset.assetName}: expected ${asset.sha256}, got ${assetHash}.`);
+		}
+		const tar = await import('tar');
+		await tar.x({ file: archivePath, cwd: extractRoot });
+		const extractedBinary = resolve(extractRoot, 'railway');
+		if (!existsSync(extractedBinary)) throw new Error(`Unable to find railway binary in ${asset.assetName}.`);
+		rmSync(stagingRoot, { recursive: true, force: true });
+		mkdirSync(resolve(stagingRoot, 'bin'), { recursive: true });
+		copyFileSync(extractedBinary, resolve(stagingRoot, 'bin', 'railway'));
+		chmodSync(resolve(stagingRoot, 'bin', 'railway'), 0o755);
+		rmSync(installRoot, { recursive: true, force: true });
+		mkdirSync(dirname(installRoot), { recursive: true });
+		renameSync(stagingRoot, installRoot);
+		const check = checkCommand(binaryPath, ['--version'], { cwd: options.tenantRoot, env: options.env, spawn: options.spawn });
+		if (!check.ok || !check.stdout.includes(RAILWAY_VERSION)) {
+			throw new Error(check.detail || `Railway CLI ${RAILWAY_VERSION} failed after installation.`);
+		}
+		return report({
+			name: 'railway', kind: 'download', version: RAILWAY_VERSION, source: 'managed-cache', binaryPath,
+			status: options.force ? 'repaired' : 'installed', required: true,
+			detail: check.stdout.split('\n')[0] ?? `Railway CLI ${RAILWAY_VERSION} installed.`,
+		});
+	} catch (error) {
+		return report({
+			name: 'railway', kind: 'download', version: RAILWAY_VERSION, source: 'managed-cache', binaryPath,
+			status: 'failed', required: true, detail: error instanceof Error ? error.message : String(error),
+		});
+	} finally {
+		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(stagingRoot, { recursive: true, force: true });
+	}
+}
+
 function statusForNpmTool(tool: (typeof NPM_TOOLS)[number], options: DependencyInstallerOptions): TreeseedDependencyReport {
 	try {
 		const binaryPath = resolveNpmToolRuntimeBinary(tool);
@@ -1120,6 +1242,7 @@ export async function installTreeseedDependencies(options: DependencyInstallerOp
 	const reports: TreeseedDependencyReport[] = [
 		systemStatus('git', true, effectiveOptions),
 		await installGh(effectiveOptions),
+		await installRailway(effectiveOptions),
 		...NPM_TOOLS.map((tool) => statusForNpmTool(tool, effectiveOptions)),
 		...NPM_PACKAGES.map((pkg) => statusForNpmPackage(pkg)),
 		systemStatus('docker', false, effectiveOptions),
@@ -1161,9 +1284,23 @@ export function collectTreeseedDependencyStatus(options: DependencyInstallerOpti
 			required: true,
 			detail: `GitHub CLI ${GH_VERSION} is not installed in the Treeseed tool cache.`,
 		});
+	const railwayBinary = managedRailwayBin(env);
+	const railwayStatus = report({
+		name: 'railway',
+		kind: 'download',
+		version: RAILWAY_VERSION,
+		source: 'managed-cache',
+		binaryPath: railwayBinary,
+		status: existsSync(railwayBinary) ? 'already-present' : 'missing',
+		required: true,
+		detail: existsSync(railwayBinary)
+			? `Railway CLI ${RAILWAY_VERSION} is installed in the Treeseed tool cache.`
+			: `Railway CLI ${RAILWAY_VERSION} is not installed in the Treeseed tool cache.`,
+	});
 	const reports = [
 		systemStatus('git', true, options),
 		ghStatus,
+		railwayStatus,
 		...NPM_TOOLS.map((tool) => statusForNpmTool(tool, options)),
 		...NPM_PACKAGES.map((pkg) => statusForNpmPackage(pkg)),
 		systemStatus('docker', false, options),

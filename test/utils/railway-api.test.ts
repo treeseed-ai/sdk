@@ -3,23 +3,36 @@ import {
 	ensureRailwayService,
 	ensureRailwayServiceInstanceConfiguration,
 	getRailwayServiceInstance,
+	assertRailwayGraphqlReadOnly,
 	railwayGraphqlRequest,
 	upsertRailwayVariables,
 } from '../../src/operations/services/railway-api.ts';
 
 describe('railwayGraphqlRequest', () => {
+	it('rejects every non-query Railway GraphQL operation before transport', () => {
+		expect(() => assertRailwayGraphqlReadOnly('mutation Unsafe { serviceDelete(id: "x") }')).toThrow(/read-only/u);
+		expect(() => assertRailwayGraphqlReadOnly('# comment\nsubscription Unsafe { deployments }')).toThrow(/read-only/u);
+		expect(() => assertRailwayGraphqlReadOnly('query Safe { me { id } }')).not.toThrow();
+		expect(() => assertRailwayGraphqlReadOnly('{ me { id } }')).not.toThrow();
+	});
 	it('creates missing Railway services from GitHub source when requested', async () => {
 		const requests: unknown[] = [];
+		let committed = false;
 		const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
 			requests.push(JSON.parse(String(init?.body ?? '{}')));
 			const query = String((requests.at(-1) as { query?: string }).query ?? '');
-			if (query.includes('TreeseedRailwayServices') || query.includes('TreeseedRailwayEnvironmentServices')) {
-				return new Response(JSON.stringify({ data: { project: { services: { edges: [] } }, environment: { serviceInstances: { edges: [] } } } }), {
+			if (query.includes('TreeseedRailwayProjectServices') || query.includes('TreeseedRailwayEnvironmentServices')) {
+				const edges = committed ? [{ node: { id: 'svc-api', name: 'treeseed-api' } }] : [];
+				return new Response(JSON.stringify({ data: { project: { services: { edges } }, environment: { serviceInstances: { edges } } } }), {
 					status: 200,
 					headers: { 'content-type': 'application/json' },
 				});
 			}
-			return new Response(JSON.stringify({ data: { serviceCreate: { id: 'svc-api', name: 'treeseed-api' } } }), {
+			if (query.includes('IacStageEnvironmentChanges')) {
+				return new Response(JSON.stringify({ data: { environmentStageChanges: { id: 'patch-1' } } }), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			committed = true;
+			return new Response(JSON.stringify({ data: { environmentPatchCommitStaged: true } }), {
 				status: 200,
 				headers: { 'content-type': 'application/json' },
 			});
@@ -35,16 +48,16 @@ describe('railwayGraphqlRequest', () => {
 			fetchImpl: fetchMock,
 		});
 
-		const createRequest = requests.find((entry) => String((entry as { query?: string }).query ?? '').includes('TreeseedRailwayServiceCreate')) as { variables?: { input?: Record<string, unknown> } };
+		const createRequest = requests.find((entry) => String((entry as { query?: string }).query ?? '').includes('IacStageEnvironmentChanges')) as { variables?: { payload?: Record<string, any> } };
 		expect(result.created).toBe(true);
-		expect(createRequest.variables?.input).toMatchObject({
-			projectId: 'project-1',
-			name: 'treeseed-api',
-			environmentId: 'env-staging',
-			source: { repo: 'treeseed-ai/api' },
-			branch: 'staging',
+		expect(createRequest.variables?.payload).toMatchObject({
+			services: {
+				'treeseed-api': {
+					isCreated: true,
+					source: { repo: 'treeseed-ai/api', branch: 'staging', image: null },
+				},
+			},
 		});
-		expect(JSON.stringify(createRequest.variables?.input)).not.toContain('image');
 	});
 
 	it('retries transient 429 responses and succeeds on a later attempt', async () => {
@@ -147,9 +160,10 @@ describe('railwayGraphqlRequest', () => {
 			}), { status: 200, headers: { 'content-type': 'application/json' } }))
 			.mockResolvedValueOnce(new Response(JSON.stringify({
 				data: {
-					serviceInstanceUpdate: true,
+					environmentStageChanges: { id: 'patch-1' },
 				},
 			}), { status: 200, headers: { 'content-type': 'application/json' } }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({ data: { environmentPatchCommitStaged: true } }), { status: 200, headers: { 'content-type': 'application/json' } }))
 			.mockResolvedValueOnce(new Response(JSON.stringify({
 				data: {
 					serviceInstance: {
@@ -177,18 +191,18 @@ describe('railwayGraphqlRequest', () => {
 			settleDelayMs: 0,
 		});
 
-		expect(fetchMock).toHaveBeenCalledTimes(3);
+		expect(fetchMock).toHaveBeenCalledTimes(4);
 		const [, updateInit] = fetchMock.mock.calls[1] ?? [];
 		expect(JSON.parse(String(updateInit?.body))).toMatchObject({
 			variables: {
-				serviceId: 'svc-api',
 				environmentId: 'env-production',
-				input: {
-					startCommand: 'npm run start:api',
-					rootDirectory: 'packages/api',
-					healthcheckPath: '/healthz',
-					healthcheckTimeout: 10,
-					sleepApplication: true,
+				payload: {
+					services: {
+						'svc-api': {
+							deploy: expect.objectContaining({ startCommand: 'npm run start:api', healthcheckPath: '/healthz', healthcheckTimeout: 10, sleepApplication: true }),
+							source: { rootDirectory: 'packages/api' },
+						},
+					},
 				},
 			},
 		});
@@ -218,9 +232,10 @@ describe('railwayGraphqlRequest', () => {
 			}), { status: 200, headers: { 'content-type': 'application/json' } }))
 			.mockResolvedValueOnce(new Response(JSON.stringify({
 				data: {
-					serviceInstanceUpdate: true,
+					environmentStageChanges: { id: 'patch-1' },
 				},
 			}), { status: 200, headers: { 'content-type': 'application/json' } }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({ data: { environmentPatchCommitStaged: true } }), { status: 200, headers: { 'content-type': 'application/json' } }))
 			.mockResolvedValueOnce(new Response(JSON.stringify({
 				data: {
 					serviceInstance: staleInstance,
@@ -258,7 +273,7 @@ describe('railwayGraphqlRequest', () => {
 			settleDelayMs: 0,
 		});
 
-		expect(fetchMock).toHaveBeenCalledTimes(5);
+		expect(fetchMock).toHaveBeenCalledTimes(6);
 		expect(result.instance).toMatchObject({
 			startCommand: 'npm run start:api',
 			rootDirectory: 'packages/api',
@@ -290,9 +305,10 @@ describe('railwayGraphqlRequest', () => {
 			}), { status: 200, headers: { 'content-type': 'application/json' } }))
 			.mockResolvedValueOnce(new Response(JSON.stringify({
 				data: {
-					serviceInstanceUpdate: true,
+					environmentStageChanges: { id: 'patch-1' },
 				},
 			}), { status: 200, headers: { 'content-type': 'application/json' } }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({ data: { environmentPatchCommitStaged: true } }), { status: 200, headers: { 'content-type': 'application/json' } }))
 			.mockResolvedValueOnce(new Response(JSON.stringify({
 				data: {
 					serviceInstance: {
@@ -320,20 +336,19 @@ describe('railwayGraphqlRequest', () => {
 			settleDelayMs: 0,
 		});
 
-		expect(fetchMock).toHaveBeenCalledTimes(4);
+		expect(fetchMock).toHaveBeenCalledTimes(5);
 		const [, retryInit] = fetchMock.mock.calls[1] ?? [];
 		expect(String(retryInit?.body)).toContain('TreeseedRailwayServiceInstance');
 		const [, updateInit] = fetchMock.mock.calls[2] ?? [];
 		expect(JSON.parse(String(updateInit?.body))).toMatchObject({
 			variables: {
-				serviceId: 'svc-api',
 				environmentId: 'env-production',
-				input: {
-					startCommand: 'npm run start:api',
-					rootDirectory: 'packages/api',
-					healthcheckPath: '/healthz',
-					healthcheckTimeout: 10,
-					sleepApplication: true,
+				payload: {
+					services: {
+						'svc-api': expect.objectContaining({
+							deploy: expect.objectContaining({ startCommand: 'npm run start:api', healthcheckPath: '/healthz', healthcheckTimeout: 10, sleepApplication: true }),
+						}),
+					},
 				},
 			},
 		});
@@ -371,9 +386,10 @@ describe('railwayGraphqlRequest', () => {
 			}), { status: 200, headers: { 'content-type': 'application/json' } }))
 			.mockResolvedValueOnce(new Response(JSON.stringify({
 				data: {
-					serviceInstanceUpdate: true,
+					environmentStageChanges: { id: 'patch-1' },
 				},
 			}), { status: 200, headers: { 'content-type': 'application/json' } }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({ data: { environmentPatchCommitStaged: true } }), { status: 200, headers: { 'content-type': 'application/json' } }))
 			.mockResolvedValueOnce(new Response(JSON.stringify({
 				data: {
 					serviceInstance: {
@@ -402,7 +418,7 @@ describe('railwayGraphqlRequest', () => {
 			settleDelayMs: 0,
 		});
 
-		expect(fetchMock).toHaveBeenCalledTimes(13);
+		expect(fetchMock).toHaveBeenCalledTimes(14);
 		expect(result.updated).toBe(true);
 		expect(result.instance).toMatchObject({
 			startCommand: 'npm run start:api',
@@ -415,17 +431,22 @@ describe('railwayGraphqlRequest', () => {
 
 	it('retries Railway variables that exist with stale values', async () => {
 		const requests: unknown[] = [];
+		let variableReads = 0;
 		const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
 			const request = JSON.parse(String(init?.body ?? '{}'));
 			requests.push(request);
 			const query = String(request.query ?? '');
-			if (query.includes('TreeseedRailwayVariableCollectionUpsert')) {
-				return new Response(JSON.stringify({ data: { variableCollectionUpsert: true } }), {
+			if (query.includes('IacStageEnvironmentChanges')) {
+				return new Response(JSON.stringify({ data: { environmentStageChanges: { id: 'patch-1' } } }), {
 					status: 200,
 					headers: { 'content-type': 'application/json' },
 				});
 			}
-			const variableValue = requests.length < 3
+			if (query.includes('IacCommitStagedPatch')) {
+				return new Response(JSON.stringify({ data: { environmentPatchCommitStaged: true } }), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			variableReads += 1;
+			const variableValue = variableReads === 1
 				? 'treeseed/treedx:0.2.22'
 				: 'treeseed/treedx:0.2.23';
 			return new Response(JSON.stringify({
@@ -452,13 +473,17 @@ describe('railwayGraphqlRequest', () => {
 		});
 
 		const upsertRequests = requests.filter((entry) =>
-			String((entry as { query?: string }).query ?? '').includes('TreeseedRailwayVariableCollectionUpsert'));
+			String((entry as { query?: string }).query ?? '').includes('IacStageEnvironmentChanges'));
 		expect(upsertRequests).toHaveLength(2);
 		expect(upsertRequests.at(1)).toMatchObject({
 			variables: {
-				input: {
-					variables: {
-						TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:0.2.23',
+				payload: {
+					services: {
+						'svc-treedx': {
+							variables: {
+								TREESEED_PUBLIC_TREEDX_IMAGE_REF: { value: 'treeseed/treedx:0.2.23' },
+							},
+						},
 					},
 				},
 			},

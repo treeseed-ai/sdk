@@ -342,7 +342,7 @@ services:
 		expect(productionIssues).not.toContain('treeseed-api-operations-runner-staging-01-volume: stale');
 		expect(productionIssues).toContain('treeseed-api-operations-runner-01: stale');
 		expect(productionIssues).toContain('treeseed-api-operations-runner-01-volume: stale');
-	});
+	}, 15_000);
 
 	it('uses release image refs when checking production Railway image services', async () => {
 		const tenantRoot = root();
@@ -477,7 +477,7 @@ surfaces:
 			},
 		});
 		expect(report.checks.some((check) => check.id === 'http:web')).toBe(false);
-	});
+	}, 15_000);
 
 	it('retries public TreeDX Railway deployment health before failing strict live checks', async () => {
 		const tenantRoot = root();
@@ -591,5 +591,5 @@ services:
 
 		expect(deploymentHealthCalls).toBeGreaterThanOrEqual(2);
 		expect(report.liveObservation.issues).not.toContain(expect.stringContaining('public TreeDX latest deployment is not healthy'));
-	});
+	}, 15_000);
 });

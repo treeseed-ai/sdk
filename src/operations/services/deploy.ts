@@ -3065,7 +3065,7 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { planO
 					if (planOnly) {
 						operations.push(resourceOperation('railway', 'custom-domain', domain.domain, 'planned', { id: domain.id }));
 					} else {
-						const result = await deleteRailwayCustomDomain({ domainId: domain.id, env });
+						const result = await deleteRailwayCustomDomain({ projectId: project.id, environmentId: environment.id, serviceId: railwayService.id, domainId: domain.id, env });
 						operations.push(resourceOperation('railway', 'custom-domain', domain.domain, result.status, { id: domain.id }));
 					}
 				}
@@ -3081,7 +3081,7 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { planO
 				if (planOnly) {
 					operations.push(resourceOperation('railway', 'volume', volume.name, 'planned', { id: volume.id, projectId: project.id }));
 				} else {
-					const result = await deleteRailwayVolume({ volumeId: volume.id, env });
+					const result = await deleteRailwayVolume({ projectId: project.id, environmentId: environment.id, volumeId: volume.id, env });
 					operations.push(resourceOperation('railway', 'volume', volume.name, result.status, { id: volume.id, projectId: project.id }));
 				}
 			}
@@ -3100,7 +3100,7 @@ async function destroyRailwayResources(tenantRoot, deployConfig, target, { planO
 			if (planOnly) {
 				operations.push(resourceOperation('railway', 'environment', environment.name, 'planned', { id: environment.id, projectId: project.id }));
 			} else {
-				const result = await deleteRailwayEnvironment({ environmentId: environment.id, env });
+				const result = await deleteRailwayEnvironment({ projectId: project.id, environmentId: environment.id, env });
 				operations.push(resourceOperation('railway', 'environment', environment.name, result.status, { id: environment.id, projectId: project.id }));
 			}
 		}

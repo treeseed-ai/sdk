@@ -480,75 +480,6 @@ function isRailwayScheduleCapabilityError(error: unknown) {
 	return /cronTriggers|cronTriggerCreate|cronTriggerUpdate/iu.test(message);
 }
 
-function defaultRailwayScheduleQueries() {
-	return {
-		listQuery: envValue('TREESEED_RAILWAY_SCHEDULE_LIST_QUERY') || `
-query TreeseedScheduleList($serviceId: String!, $environmentId: String!, $projectId: String) {
-	service(id: $serviceId) {
-		id
-		name
-		cronTriggers {
-			edges {
-				node {
-					id
-					name
-					schedule
-					command
-					enabled
-					service { id name }
-					environment { id name }
-				}
-			}
-		}
-	}
-}
-`.trim(),
-		createMutation: envValue('TREESEED_RAILWAY_SCHEDULE_CREATE_MUTATION') || `
-mutation TreeseedScheduleCreate($serviceId: String!, $environmentId: String!, $name: String!, $schedule: String!, $command: String!, $enabled: Boolean!) {
-	cronTriggerCreate(
-		input: {
-			serviceId: $serviceId
-			environmentId: $environmentId
-			name: $name
-			schedule: $schedule
-			command: $command
-			enabled: $enabled
-		}
-	) {
-		id
-		name
-		schedule
-		command
-		enabled
-		service { id name }
-		environment { id name }
-	}
-}
-`.trim(),
-		updateMutation: envValue('TREESEED_RAILWAY_SCHEDULE_UPDATE_MUTATION') || `
-mutation TreeseedScheduleUpdate($id: String!, $name: String!, $schedule: String!, $command: String!, $enabled: Boolean!) {
-	cronTriggerUpdate(
-		id: $id
-		input: {
-			name: $name
-			schedule: $schedule
-			command: $command
-			enabled: $enabled
-		}
-	) {
-		id
-		name
-		schedule
-		command
-		enabled
-		service { id name }
-		environment { id name }
-	}
-}
-`.trim(),
-	};
-}
-
 export async function waitForRailwayManagedDeploymentsSettled(
 	tenantRoot,
 	scope,
@@ -2097,7 +2028,7 @@ export async function deployRailwayService(
 		return {
 			service: service.key,
 			status: 'planned',
-			command: 'railway-api serviceInstanceDeployV2',
+			command: 'railway-cli service redeploy',
 			cwd: service.rootDir,
 			publicBaseUrl: service.publicBaseUrl,
 			timings,
@@ -2160,9 +2091,10 @@ export async function deployRailwayService(
 		}
 	}
 	if (deployTransport !== 'cli-fallback') {
-		writePhase('deploy', `Deploying Railway service ${cliDeployService.serviceName ?? cliDeployService.serviceId ?? cliDeployService.key} through the Railway API.`);
+		writePhase('deploy', `Deploying Railway service ${cliDeployService.serviceName ?? cliDeployService.serviceId ?? cliDeployService.key} through the managed Railway CLI.`);
 		const apiDeploy = await timedRailwayPhase(timings, 'railway:api-deploy', () => withRailwayPhaseTimeout(
 			() => deployRailwayServiceInstance({
+				projectId: cliDeployService.projectId,
 				serviceId: cliDeployService.serviceId,
 				environmentId: cliDeployService.environmentId,
 				env: commandEnv,
@@ -2174,7 +2106,7 @@ export async function deployRailwayService(
 		return {
 			service: deployService.key,
 			status: 'deployed',
-			command: 'railway-api serviceInstanceDeployV2',
+			command: 'railway-cli service redeploy',
 			cwd: deployService.rootDir,
 			publicBaseUrl: deployService.publicBaseUrl,
 			timings,

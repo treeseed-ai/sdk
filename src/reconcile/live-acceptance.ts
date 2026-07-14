@@ -20,6 +20,7 @@ import {
 	deleteRailwayService,
 	deleteRailwayVolume,
 	ensureRailwayEnvironment,
+	ensureRailwayCustomDomain,
 	ensureRailwayGeneratedServiceDomain,
 	ensureRailwayPostgresService,
 	ensureRailwayProject,
@@ -1470,16 +1471,7 @@ async function runRailwayAcceptance(cwd: string, environment: TreeseedLiveReconc
 		const generatedDomain = await ensureRailwayGeneratedServiceDomain({ projectId, environmentId, serviceId, targetPort: 80, env, fetchImpl });
 		let customDomainCreated = false;
 		try {
-			await railwayGraphqlRequest({
-				query: `
-mutation TreeseedLiveRailwayCustomDomainCreate($input: CustomDomainCreateInput!) {
-	customDomainCreate(input: $input) { id domain serviceId environmentId }
-}
-`.trim(),
-				variables: { input: { projectId, environmentId, serviceId, domain: customDomain } },
-				env,
-				fetchImpl,
-			});
+			await ensureRailwayCustomDomain({ projectId, environmentId, serviceId, domain: customDomain, env, fetchImpl });
 			customDomainCreated = true;
 		} catch {
 			customDomainCreated = false;

@@ -26,6 +26,10 @@ async function createManagedGh(toolsHome: string) {
 	await mkdir(join(gh, '..'), { recursive: true });
 	await writeFile(gh, '#!/bin/sh\necho gh version 2.90.0\n', 'utf8');
 	await chmod(gh, 0o755);
+	const railway = join(toolsHome, 'railway', '5.23.2', `${process.platform}-${process.arch}`, 'bin', 'railway');
+	await mkdir(join(railway, '..'), { recursive: true });
+	await writeFile(railway, '#!/bin/sh\necho railway 5.23.2\n', 'utf8');
+	await chmod(railway, 0o755);
 	return gh;
 }
 
@@ -55,7 +59,9 @@ function spawnMock(options: { docker?: boolean; actInstalled?: boolean; npmStatu
 			return options.docker ? { status: 0, stdout: '/usr/bin/docker\n', stderr: '' } : { status: 1, stdout: '', stderr: '' };
 		}
 		if (args.includes('--version') && !args.includes('act')) {
-			return { status: 0, stdout: 'gh version 2.90.0\n', stderr: '' };
+			return String(command).includes('railway')
+				? { status: 0, stdout: 'railway 5.23.2\n', stderr: '' }
+				: { status: 0, stdout: 'gh version 2.90.0\n', stderr: '' };
 		}
 			if (args[0] === 'auth' && args[1] === 'status') {
 				return spawnOptions?.env?.TREESEED_GITHUB_TOKEN
@@ -94,8 +100,7 @@ describe('managed dependencies', () => {
 
 	it('resolves npm-backed tool binaries from the SDK dependency graph', () => {
 		expect(resolveTreeseedToolBinary('wrangler')).toContain('wrangler');
-		expect(resolveTreeseedToolBinary('railway')).toContain('@railway');
-		expect(resolveTreeseedToolBinary('railway')).toMatch(/railway\.js$/u);
+		expect(resolveTreeseedToolBinary('railway')).toBeNull();
 		expect(resolveTreeseedToolBinary('copilot')).toContain('@github');
 		expect(resolveTreeseedToolBinary('copilot-sdk')).toBeNull();
 	});

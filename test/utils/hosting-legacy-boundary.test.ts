@@ -43,6 +43,17 @@ function anyFunctionBody(fileSource: string, functionName: string) {
 }
 
 describe('hosting legacy mutation boundary', () => {
+	it('keeps direct Railway GraphQL strictly query-only', () => {
+		for (const path of [
+			'packages/sdk/src/operations/services/railway-api.ts',
+			'packages/sdk/src/operations/services/railway-deploy.ts',
+			'packages/sdk/src/reconcile/live-acceptance.ts',
+		]) {
+			const contents = source(path);
+			expect(contents, `${path} must not contain a Railway GraphQL mutation document`).not.toMatch(/^\s*mutation\s+/gmu);
+		}
+	});
+
 	it('does not keep old Railway and TreeDX mutation helpers in the hosting graph', () => {
 		const graph = source('packages/sdk/src/hosting/graph.ts');
 		for (const blocked of [
