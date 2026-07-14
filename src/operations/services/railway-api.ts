@@ -2405,6 +2405,32 @@ mutation TreeseedRailwayVolumeBackupRestore($backupId: String!, $volumeInstanceI
 	}
 }
 
+export async function commitRailwayStagedEnvironmentChanges({
+	environmentId,
+	commitMessage,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	environmentId: string;
+	commitMessage: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	await railwayGraphqlRequest({
+		query: `
+mutation TreeseedRailwayEnvironmentPatchCommitStaged($environmentId: String!, $commitMessage: String) {
+	environmentPatchCommitStaged(environmentId: $environmentId, commitMessage: $commitMessage) {
+		id
+		status
+	}
+}
+`.trim(),
+		variables: { environmentId, commitMessage },
+		env,
+		fetchImpl,
+	});
+}
+
 async function createRailwayVolume({
 	projectId,
 	environmentId,

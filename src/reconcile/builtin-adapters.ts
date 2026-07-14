@@ -57,6 +57,7 @@ import {
 	ensureRailwayServiceInstanceConfiguration,
 	ensureRailwayServiceVolume,
 	createRailwayVolumeInstanceBackup,
+	commitRailwayStagedEnvironmentChanges,
 	ensureRailwayPostgresService,
 	deleteRailwayService,
 	deleteRailwayCustomDomain,
@@ -4410,6 +4411,11 @@ async function migrateEnvironmentQualifiedRailwayVolumes(input: {
 			await restoreRailwayVolumeInstanceBackup({
 				backupId: backup.id,
 				volumeInstanceId: legacyInstance.id,
+				env: input.env,
+			});
+			await commitRailwayStagedEnvironmentChanges({
+				environmentId: input.environmentId,
+				commitMessage: `Treeseed restore ${legacyVolumeName} into ${desiredVolumeName}`,
 				env: input.env,
 			});
 			let restoredVolume: Awaited<ReturnType<typeof listRailwayVolumes>>[number] | null = null;
