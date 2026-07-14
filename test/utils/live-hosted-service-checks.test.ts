@@ -232,7 +232,7 @@ describe('live hosted service checks', () => {
 		expect(allIssues).not.toContain('no Railway API or operations runner service is configured to own the database');
 	});
 
-	it('retains declared sibling-environment operations runners while reporting undeclared runners', async () => {
+	it('retains migration aliases in staging while production reports them as stale', async () => {
 		const tenantRoot = root();
 		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: TreeSeed API
 slug: treeseed-api
@@ -315,10 +315,29 @@ services:
 			fetchImpl,
 		});
 		const issues = report.liveObservation.issues.join('\n');
-		expect(issues).toContain('treeseed-api-operations-runner-production-01: stale');
-		expect(issues).toContain('treeseed-api-operations-runner-production-01-volume: stale');
+		expect(issues).not.toContain('treeseed-api-operations-runner-production-01: stale');
+		expect(issues).not.toContain('treeseed-api-operations-runner-production-01-volume: stale');
 		expect(issues).toContain('treeseed-api-operations-runner-old-01: stale');
 		expect(issues).toContain('treeseed-api-operations-runner-old-01-volume: stale');
+
+		const productionReport = await collectTreeseedLiveHostedServiceChecks({
+			tenantRoot,
+			target: 'prod',
+			serviceKeys: ['operationsRunner'],
+			requireLiveRailway: true,
+			requireLiveHttp: false,
+			env: {
+				TREESEED_RAILWAY_API_TOKEN: 'test-token',
+				TREESEED_RAILWAY_WORKSPACE: 'knowledge-coop',
+				TREESEED_API_IMAGE_REF: 'treeseed/api:1.2.3',
+				TREESEED_OPERATIONS_RUNNER_IMAGE_REF: 'treeseed/op-runner:1.2.3',
+				TREESEED_PUBLIC_TREEDX_IMAGE_REF: 'treeseed/treedx:1.2.3',
+			},
+			fetchImpl,
+		});
+		const productionIssues = productionReport.liveObservation.issues.join('\n');
+		expect(productionIssues).toContain('treeseed-api-operations-runner-production-01: stale');
+		expect(productionIssues).toContain('treeseed-api-operations-runner-production-01-volume: stale');
 	});
 
 	it('uses release image refs when checking production Railway image services', async () => {

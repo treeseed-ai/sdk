@@ -16,6 +16,7 @@ import {
 	configuredRailwayServices,
 	findStaleTreeseedOperationsRunnerResources,
 	isTreeseedOperationsRunnerResourceName,
+	railwayLegacyAliasMigrationPolicy,
 } from './railway-deploy.ts';
 import { discoverTreeseedApplications } from '../../hosting/apps.ts';
 import {
@@ -349,6 +350,9 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 				.filter((entry) => entry.enabled !== false)
 				.filter((entry) => entry.key === 'operationsRunner')
 			: [];
+		const retainedMigrationAliases = options.target === 'staging'
+			? railwayLegacyAliasMigrationPolicy('staging', configuredServices).retainedResourceNames
+			: [];
 		if (selectedServiceKeys.size === 0 || selectedServiceKeys.has('api') || selectedServiceKeys.has('operationsRunner')) {
 			for (const descriptor of treeseedDatabaseDescriptors(options.tenantRoot, options)) {
 				await verifyRailwayPostgresTopology({ descriptor, configuredServices, projects, options, issues });
@@ -407,6 +411,8 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 						.filter((entry) => entry.projectId ? entry.projectId === project.id : entry.projectName === project.name)
 						.map((entry) => entry.serviceName)
 						.filter((name) => Boolean(name) && isTreeseedOperationsRunnerResourceName(name)),
+					...retainedMigrationAliases
+						.filter((name) => isTreeseedOperationsRunnerResourceName(name) && !name.endsWith('-volume')),
 				]);
 				const desiredRunnerServiceIds = new Set(services
 					.filter((entry) => desiredRunnerNames.has(entry.name))
@@ -415,7 +421,10 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 					issues.push(`${staleService.name}: stale operations runner Railway service remains in project ${project.name}.`);
 				}
 				const volumes = await listRailwayVolumes({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => []);
-				const desiredRunnerVolumeNames = new Set([...desiredRunnerNames].map((name) => `${name}-volume`));
+				const desiredRunnerVolumeNames = new Set([
+					...[...desiredRunnerNames].map((name) => `${name}-volume`),
+					...retainedMigrationAliases.filter((name) => name.endsWith('-volume')),
+				]);
 				for (const staleVolume of findStaleTreeseedOperationsRunnerResources(volumes, desiredRunnerVolumeNames)) {
 					const activeInstances = activeRailwayVolumeInstances(staleVolume);
 					const relevant = staleVolume.instances.length === 0 || activeInstances.length > 0;
