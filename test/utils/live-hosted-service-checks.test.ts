@@ -232,7 +232,7 @@ describe('live hosted service checks', () => {
 		expect(allIssues).not.toContain('no Railway API or operations runner service is configured to own the database');
 	});
 
-	it('retains migration aliases in staging while production reports them as stale', async () => {
+	it('retains the opposite environment while reporting obsolete unsuffixed identities as stale', async () => {
 		const tenantRoot = root();
 		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: TreeSeed API
 slug: treeseed-api
@@ -264,14 +264,16 @@ services:
       serviceTargets: [operationsRunner]
 `);
 		const services = [
-			{ id: 'runner-staging', name: 'treeseed-api-operations-runner-01' },
+			{ id: 'runner-staging', name: 'treeseed-api-operations-runner-staging-01' },
 			{ id: 'runner-production', name: 'treeseed-api-operations-runner-production-01' },
+			{ id: 'runner-unsuffixed', name: 'treeseed-api-operations-runner-01' },
 			{ id: 'runner-legacy', name: 'treeseed-api-operations-runner-old-01' },
 			{ id: 'postgres', name: 'treeseed-api-postgres' },
 		];
 		const volumes = [
-			{ id: 'volume-staging', name: 'treeseed-api-operations-runner-01-volume', projectId: 'project-api', volumeInstances: { edges: [{ node: { id: 'vi-staging', serviceId: 'runner-staging', environmentId: 'env-staging', mountPath: '/data', state: 'READY' } }] } },
+			{ id: 'volume-staging', name: 'treeseed-api-operations-runner-staging-01-volume', projectId: 'project-api', volumeInstances: { edges: [{ node: { id: 'vi-staging', serviceId: 'runner-staging', environmentId: 'env-staging', mountPath: '/data', state: 'READY' } }] } },
 			{ id: 'volume-production', name: 'treeseed-api-operations-runner-production-01-volume', projectId: 'project-api', volumeInstances: { edges: [{ node: { id: 'vi-production', serviceId: 'runner-production', environmentId: 'env-production', mountPath: '/data', state: 'READY' } }] } },
+			{ id: 'volume-unsuffixed', name: 'treeseed-api-operations-runner-01-volume', projectId: 'project-api', volumeInstances: { edges: [{ node: { id: 'vi-unsuffixed', serviceId: 'runner-unsuffixed', environmentId: 'env-staging', mountPath: '/data', state: 'READY' } }] } },
 			{ id: 'volume-legacy', name: 'treeseed-api-operations-runner-old-01-volume', projectId: 'project-api', volumeInstances: { edges: [{ node: { id: 'vi-legacy', serviceId: 'runner-legacy', environmentId: 'env-staging', mountPath: '/data', state: 'READY' } }] } },
 		];
 		const fetchImpl = (async (_input, init) => {
@@ -336,8 +338,10 @@ services:
 			fetchImpl,
 		});
 		const productionIssues = productionReport.liveObservation.issues.join('\n');
-		expect(productionIssues).toContain('treeseed-api-operations-runner-production-01: stale');
-		expect(productionIssues).toContain('treeseed-api-operations-runner-production-01-volume: stale');
+		expect(productionIssues).not.toContain('treeseed-api-operations-runner-staging-01: stale');
+		expect(productionIssues).not.toContain('treeseed-api-operations-runner-staging-01-volume: stale');
+		expect(productionIssues).toContain('treeseed-api-operations-runner-01: stale');
+		expect(productionIssues).toContain('treeseed-api-operations-runner-01-volume: stale');
 	});
 
 	it('uses release image refs when checking production Railway image services', async () => {

@@ -47,7 +47,11 @@ export type TreeseedWorkflowRunStep = {
 	branch: string | null;
 	resumable: boolean;
 	status: 'pending' | 'completed' | 'skipped';
+	startedAt?: string | null;
 	completedAt: string | null;
+	elapsedMs?: number | null;
+	retryCount?: number;
+	lastFailure?: string | null;
 	data: Record<string, unknown> | null;
 };
 
@@ -828,7 +832,11 @@ export function createWorkflowRunJournal(
 		steps: options.steps.map((step) => ({
 			...step,
 			status: 'pending',
+			startedAt: null,
 			completedAt: null,
+			elapsedMs: null,
+			retryCount: 0,
+			lastFailure: null,
 			data: null,
 		})),
 		failure: null,

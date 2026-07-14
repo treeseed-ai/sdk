@@ -358,6 +358,19 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 				status: isImmutableRailwayImageRef(service.imageRef) ? 'passed' : 'failed',
 				issues: isImmutableRailwayImageRef(service.imageRef) ? [] : [`Production API Railway service ${service.serviceName} is missing an immutable image ref.`],
 			}));
+			const observedGitSource = Boolean(observed?.deploymentRepo || observed?.deploymentBranch);
+			checks.push(check({
+				id: `railway:${service.instanceKey}:production-source-isolation`,
+				provider: 'railway',
+				serviceKey: service.key,
+				serviceType,
+				target,
+				description: `Railway ${service.serviceName} production deployment has no Git source.`,
+				expected: { repo: null, branch: null },
+				observed: observed ? { repo: observed.deploymentRepo ?? null, branch: observed.deploymentBranch ?? null } : { skipped: true },
+				status: observed ? (observedGitSource ? 'failed' : 'passed') : 'skipped',
+				issues: observed && observedGitSource ? [`Production API Railway service ${service.serviceName} still reports Git source metadata.`] : [],
+			}));
 		}
 		checks.push(check({
 			id: `railway:${service.instanceKey}:service`,
@@ -432,6 +445,21 @@ export function collectTreeseedHostedServiceChecks(options: TreeseedHostedServic
 					observed: observed ? { branch: actualBranch, commitHash: observed.deploymentCommitHash ?? null, sourceUpload: sourceUploadDeployment } : { skipped: true },
 					status: observed ? (sourceUploadDeployment ? 'passed' : statusForMatch(actualBranch, service.sourceBranch)) : 'skipped',
 					issues: !observed || sourceUploadDeployment || actualBranch === service.sourceBranch ? [] : [`Expected deployment branch=${service.sourceBranch}, observed ${actualBranch ?? '(unset)'}.`],
+				}));
+			}
+			if (service.sourceCommit) {
+				const actualCommit = observed?.deploymentCommitHash ?? null;
+				checks.push(check({
+					id: `railway:${service.instanceKey}:deployment-commit`,
+					provider: 'railway',
+					serviceKey: service.key,
+					serviceType,
+					target,
+					description: `Railway ${service.serviceName} latest deployment uses the exact promoted commit.`,
+					expected: { commitHash: service.sourceCommit },
+					observed: observed ? { commitHash: actualCommit } : { skipped: true },
+					status: observed ? statusForMatch(actualCommit, service.sourceCommit) : 'skipped',
+					issues: !observed || actualCommit === service.sourceCommit ? [] : [`Expected deployment commitHash=${service.sourceCommit}, observed ${actualCommit ?? '(unset)'}.`],
 				}));
 			}
 			if (expectedRootDirectory) {

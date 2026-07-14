@@ -40,6 +40,26 @@ function lockOwnerIsRunning() {
 	}
 }
 
+function processIsRunning(pid: number) {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		const code = typeof error === 'object' && error && 'code' in error ? (error as { code?: unknown }).code : null;
+		return code === 'EPERM';
+	}
+}
+
+function removeStaleBuildRoots() {
+	for (const entry of readdirSync(packageRoot, { withFileTypes: true })) {
+		const match = entry.isDirectory() ? /^\.treeseed-dist-build-(\d+)$/u.exec(entry.name) : null;
+		if (!match?.[1]) continue;
+		const pid = Number.parseInt(match[1], 10);
+		if (pid === process.pid || processIsRunning(pid)) continue;
+		rmSync(resolve(packageRoot, entry.name), { recursive: true, force: true });
+	}
+}
+
 async function acquireBuildLock() {
 	const startedAt = Date.now();
 	while (true) {
@@ -49,6 +69,7 @@ async function acquireBuildLock() {
 				pid: process.pid,
 				startedAt: new Date().toISOString(),
 			}, null, 2));
+			removeStaleBuildRoots();
 			return () => rmSync(buildLockRoot, { recursive: true, force: true });
 		} catch (error) {
 			const ageMs = existsSync(buildLockRoot) ? Date.now() - statSync(buildLockRoot).mtimeMs : 0;

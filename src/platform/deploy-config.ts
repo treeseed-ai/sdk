@@ -418,7 +418,8 @@ function parseServiceEnvironmentConfig(
 		domain: optionalString(record.domain),
 		railwayEnvironment: optionalString(record.railwayEnvironment),
 		railwayProjectName: optionalString(record.railwayProjectName),
-		railwayServiceName: optionalString(record.railwayServiceName),
+		serviceName: optionalString(record.serviceName ?? record.railwayServiceName),
+		railwayServiceName: optionalString(record.railwayServiceName ?? record.serviceName),
 	};
 }
 

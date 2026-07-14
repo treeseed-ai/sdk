@@ -31,6 +31,7 @@ afterEach(() => {
 
 function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacProjectInput {
 	const git = scope === 'staging';
+	const environmentSuffix = git ? 'staging' : 'production';
 	return {
 		tenantRoot: tempRoot(),
 		projectName: 'treeseed-api',
@@ -41,7 +42,7 @@ function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacPro
 		services: [
 			{
 				key: 'api',
-				serviceName: 'treeseed-api',
+				serviceName: `treeseed-api-${environmentSuffix}`,
 				sourceMode: git ? 'git' : 'image',
 				sourceRepo: git ? 'treeseed-ai/api' : null,
 				sourceBranch: git ? 'staging' : null,
@@ -56,7 +57,7 @@ function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacPro
 			},
 			{
 				key: 'operationsRunner:1',
-				serviceName: 'treeseed-api-operations-runner-01',
+				serviceName: `treeseed-api-operations-runner-${environmentSuffix}-01`,
 				sourceMode: git ? 'git' : 'image',
 				sourceRepo: git ? 'treeseed-ai/api' : null,
 				sourceBranch: git ? 'staging' : null,
@@ -71,7 +72,7 @@ function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacPro
 			},
 			{
 				key: 'public-treedx-node-01',
-				serviceName: 'public-treedx-node-01',
+				serviceName: `public-treedx-node-${environmentSuffix}-01`,
 				sourceMode: git ? 'git' : 'image',
 				sourceRepo: git ? 'treeseed-ai/treedx' : null,
 				sourceBranch: git ? 'staging' : null,
@@ -98,19 +99,19 @@ describe('Railway IaC project rendering', () => {
 		const rendered = renderRailwayIacProject(baseInput('staging'));
 		try {
 			expect(rendered.serviceNames).toEqual([
-				'treeseed-api',
-				'treeseed-api-operations-runner-01',
-				'public-treedx-node-01',
+				'treeseed-api-staging',
+				'treeseed-api-operations-runner-staging-01',
+				'public-treedx-node-staging-01',
 			]);
 			expect(rendered.databaseName).toBe('treeseed-api-postgres');
 			expect(rendered.volumeNames).toEqual([
 				'treeseed-api-postgres-volume',
-				'treeseed-api-operations-runner-01-volume',
-				'public-treedx-node-01-volume',
+				'treeseed-api-operations-runner-staging-01-volume',
+				'public-treedx-node-staging-01-volume',
 			]);
-			expect(rendered.source).toContain('service("treeseed-api"');
-			expect(rendered.source).toContain('service("treeseed-api-operations-runner-01"');
-			expect(rendered.source).toContain('service("public-treedx-node-01"');
+			expect(rendered.source).toContain('service("treeseed-api-staging"');
+			expect(rendered.source).toContain('service("treeseed-api-operations-runner-staging-01"');
+			expect(rendered.source).toContain('service("public-treedx-node-staging-01"');
 			expect(rendered.source).toContain('service("treeseed-api-postgres"');
 			expect(rendered.source).not.toContain('capacity-provider');
 		} finally {
@@ -145,7 +146,7 @@ describe('Railway IaC project rendering', () => {
 		}
 	});
 
-	it('does not retain sibling resources that now share canonical service identities', () => {
+	it('retains staging sibling resources while rendering production identities', () => {
 		const input = baseInput('prod');
 		input.retainedResources = [
 			{
@@ -165,8 +166,8 @@ describe('Railway IaC project rendering', () => {
 		];
 		const rendered = renderRailwayIacProject(input);
 		try {
-			expect(rendered.retainedResourceNames).toEqual([]);
-			expect(rendered.source).not.toContain('const retainedResources =');
+			expect(rendered.retainedResourceNames).toEqual(['treeseed-api', 'treeseed-api-operations-runner-01-volume']);
+			expect(rendered.source).toContain('const retainedResources =');
 			expect(rendered.source).toContain('source: image("treeseed/api:1.2.3")');
 		} finally {
 			cleanupRailwayIacRender(rendered);
@@ -210,8 +211,8 @@ describe('Railway IaC project rendering', () => {
 		const rendered = renderRailwayIacProject(input);
 		try {
 			expect(rendered.source).toContain('volume("treeseed-api-postgres-volume"');
-			expect(rendered.source).toContain('volume("treeseed-api-operations-runner-01-volume"');
-			expect(rendered.source).toContain('volume("public-treedx-node-01-volume"');
+			expect(rendered.source).toContain('volume("treeseed-api-operations-runner-staging-01-volume"');
+			expect(rendered.source).toContain('volume("public-treedx-node-staging-01-volume"');
 			expect(rendered.source).toContain('volumeMounts: { "old-db-volume": null, "/var/lib/postgresql/data": dbVolume }');
 			expect(rendered.source).toContain('volumeMounts: { "old-runner-volume": null, "/data": vol1 }');
 			expect(rendered.source).toContain('volumeMounts: { "/data": vol2 }');

@@ -14,6 +14,7 @@ import {
 	type TreeseedSceneLocator,
 	type TreeseedScenePage,
 } from '../../src/scenes/index.ts';
+import { createTreeseedSceneRunArtifacts, writeTreeseedSceneRunArtifacts } from '../../src/scenes/artifacts.ts';
 
 function workspace() {
 	const root = mkdtempSync(resolve(tmpdir(), 'treeseed-scenes-evidence-'));
@@ -268,5 +269,40 @@ describe('scene evidence outputs', () => {
 		writeScene(root, 'schemaVersion: treeseed.scene/v0\nid: evidence-demo\nworkflow: []\n');
 		const invalid = generateTreeseedSceneEvidence({ projectRoot: root, scene: 'evidence-demo', from: invalidCurrent.artifacts!.runRoot });
 		expect(invalid.diagnostics.map((entry) => entry.code)).toContain('scene.unsupported_schema_version');
+	});
+
+	it('handles sparse artifact collections, missing run files, and artifact writer fallbacks', () => {
+		const root = workspace();
+		writeScene(root);
+		const runRoot = resolve(root, '.treeseed', 'scenes', 'runs', 'missing-run');
+		mkdirSync(runRoot, { recursive: true });
+		writeFile(resolve(runRoot, 'scene.normalized.json'), JSON.stringify({ id: 'evidence-demo' }));
+		writeFile(resolve(runRoot, 'timeline.json'), '[]');
+		writeFile(resolve(runRoot, 'run.json'), '{}');
+		const manifest = buildTreeseedSceneEvidenceManifest({
+			scene: { id: null } as never,
+			run: {
+				ok: false, runId: null, workflowStatus: 'failed', environment: 'local',
+				startedAt: '2026-01-01T00:00:00.000Z', finishedAt: '2026-01-01T00:00:01.000Z', durationMs: 1000,
+				failedStep: null, steps: [], chapters: [], segments: [], checkpoints: [],
+				videoPaths: [], renderedVideoPaths: [], logs: undefined, artifacts: undefined, diagnostics: undefined,
+			} as never,
+			timeline: [], runRoot, bundle: 'metadata-only',
+		});
+		expect(manifest.diagnostics).toEqual([]);
+		expect(manifest.recommendations.find((entry) => entry.id === 'inspect-failed-run')?.command).not.toContain('--step');
+		expect(manifest.recommendations.find((entry) => entry.id === 'generate-training')).toBeTruthy();
+
+		writeTreeseedSceneRunArtifacts({ scene: {} as never, plan: {} as never, report: { artifacts: null } as never, timeline: [] });
+		const paths = {
+			runRoot, playwrightRoot: resolve(runRoot, 'playwright'), logsRoot: resolve(runRoot, 'logs'), segmentsRoot: resolve(runRoot, 'segments'), checkpointsRoot: resolve(runRoot, 'checkpoints'), renderRoot: resolve(runRoot, 'render'), evidenceRoot: resolve(runRoot, 'evidence'), publishRoot: resolve(runRoot, 'publish'),
+			normalizedScenePath: resolve(runRoot, 'normalized.json'), planPath: resolve(runRoot, 'plan.json'), runPath: resolve(runRoot, 'written-run.json'), timelinePath: resolve(runRoot, 'written-timeline.json'), markdownReportPath: resolve(runRoot, 'report.md'), progressPath: resolve(runRoot, 'progress.jsonl'),
+		} as never;
+		mkdirSync(paths.playwrightRoot, { recursive: true });
+		mkdirSync(paths.logsRoot, { recursive: true });
+		const artifacts = createTreeseedSceneRunArtifacts({ paths });
+		artifacts.setupPath = null;
+		writeTreeseedSceneRunArtifacts({ scene: {} as never, plan: {} as never, report: { artifacts } as never, timeline: [] });
+		expect(existsSync(artifacts.runPath)).toBe(true);
 	});
 });

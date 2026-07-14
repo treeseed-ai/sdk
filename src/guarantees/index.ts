@@ -421,6 +421,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function arrayOrEmpty<T>(value: T[] | null | undefined): T[] {
+	return value ?? [];
+}
+
 function stringValue(value: unknown) {
 	return typeof value === 'string' ? value.trim() : '';
 }
@@ -777,10 +781,10 @@ export function validateTreeseedGuarantee(input: { workspaceRoot: string; path: 
 
 function allVerifierRefs(manifest: TreeseedGuaranteeManifest) {
 	return [
-		...(manifest.api?.verifierRefs ?? []),
-		...(manifest.content?.verifierRefs ?? []),
-		...(manifest.audit?.verifierRefs ?? []),
-		...(manifest.negativeCases ?? []).flatMap((entry) => entry.verifierRefs ?? []),
+		...arrayOrEmpty(manifest.api?.verifierRefs),
+		...arrayOrEmpty(manifest.content?.verifierRefs),
+		...arrayOrEmpty(manifest.audit?.verifierRefs),
+		...arrayOrEmpty(manifest.negativeCases).flatMap((entry) => arrayOrEmpty(entry.verifierRefs)),
 	];
 }
 
@@ -881,9 +885,9 @@ function dependencyIdsForGuarantee(input: {
 		reasons.add(reason);
 		deps.set(id, reasons);
 	};
-	for (const id of input.entry.manifest.dependencies.guarantees ?? []) add(id, 'explicit-guarantee');
-	for (const journeyIndex of input.entry.manifest.dependencies.journeys ?? []) add(input.byJourneyIndex.get(journeyIndex)?.manifest.id, 'journey-index');
-	for (const dep of input.entry.manifest.dependsOnGuarantees ?? []) {
+	for (const id of arrayOrEmpty(input.entry.manifest.dependencies.guarantees)) add(id, 'explicit-guarantee');
+	for (const journeyIndex of arrayOrEmpty(input.entry.manifest.dependencies.journeys)) add(input.byJourneyIndex.get(journeyIndex)?.manifest.id, 'journey-index');
+	for (const dep of arrayOrEmpty(input.entry.manifest.dependsOnGuarantees)) {
 		const [ownerPackage, ref] = dep.includes(':') ? dep.split(/:(.+)/u).filter(Boolean) : ['', dep];
 		const match = input.valid.find((candidate) =>
 			(!ownerPackage || candidate.manifest.ownerPackage === ownerPackage)
@@ -938,14 +942,14 @@ function buildTreeseedGuaranteeDependencyGraph(input: { guarantees: TreeseedLoad
 		const filtered = [...deps.keys()].filter((id) => includedIds.has(id)).sort((a, b) => sortGuaranteeEntries(byId.get(a)!, byId.get(b)!));
 		depMap.set(entry.manifest.id, filtered);
 		const reasons = new Set<TreeseedGuaranteeDependencyReason>();
-		for (const depId of filtered) for (const reason of deps.get(depId) ?? []) reasons.add(reason);
-		for (const reason of reasonById.get(entry.manifest.id) ?? []) reasons.add(reason);
+		for (const depId of filtered) for (const reason of arrayOrEmpty(deps.get(depId))) reasons.add(reason);
+		for (const reason of arrayOrEmpty(reasonById.get(entry.manifest.id))) reasons.add(reason);
 		reasonMap.set(entry.manifest.id, reasons);
 	}
 	const producersByStateKey = new Map<string, string[]>();
 	for (const [id, keys] of stateProduces) {
 		for (const key of keys) {
-			producersByStateKey.set(key, [...(producersByStateKey.get(key) ?? []), id]);
+			producersByStateKey.set(key, [...arrayOrEmpty(producersByStateKey.get(key)), id]);
 		}
 	}
 	for (const [key, producers] of producersByStateKey) {
@@ -963,10 +967,10 @@ function buildTreeseedGuaranteeDependencyGraph(input: { guarantees: TreeseedLoad
 	}
 	for (const [id, keys] of stateConsumes) {
 		for (const key of keys) {
-			const producers = producersByStateKey.get(key) ?? [];
+			const producers = arrayOrEmpty(producersByStateKey.get(key));
 			const producer = producers.length === 1 ? producers[0] : undefined;
 			if (producer && producer !== id && includedIds.has(producer)) {
-				const deps = depMap.get(id) ?? [];
+				const deps = arrayOrEmpty(depMap.get(id));
 				if (!deps.includes(producer)) deps.push(producer);
 				depMap.set(id, deps.sort((a, b) => sortGuaranteeEntries(byId.get(a)!, byId.get(b)!)));
 				const reasons = reasonMap.get(id) ?? new Set<TreeseedGuaranteeDependencyReason>();
@@ -985,14 +989,14 @@ function buildTreeseedGuaranteeDependencyGraph(input: { guarantees: TreeseedLoad
 			return;
 		}
 		visiting.add(id);
-		for (const dep of depMap.get(id) ?? []) visitOrder(dep, [...chain, id]);
+		for (const dep of arrayOrEmpty(depMap.get(id))) visitOrder(dep, [...chain, id]);
 		visiting.delete(id);
 		visited.add(id);
 		ordered.push(id);
 	};
 	for (const entry of included) visitOrder(entry.manifest.id, []);
 	const inverse = new Map<string, string[]>();
-	for (const [id, deps] of depMap) for (const dep of deps) inverse.set(dep, [...(inverse.get(dep) ?? []), id]);
+	for (const [id, deps] of depMap) for (const dep of deps) inverse.set(dep, [...arrayOrEmpty(inverse.get(dep)), id]);
 	const depthCache = new Map<string, number>();
 	const depth = (id: string, chain: string[] = []): number => {
 		if (depthCache.has(id)) return depthCache.get(id)!;
@@ -1000,20 +1004,20 @@ function buildTreeseedGuaranteeDependencyGraph(input: { guarantees: TreeseedLoad
 			diagnostics.push(diagnostic('error', 'guarantee.dependency_cycle', `Guarantee dependency cycle: ${[...chain, id].join(' -> ')}.`, 'dependencies', byId.get(id)?.sourcePath));
 			return 0;
 		}
-		const value = Math.max(0, ...(depMap.get(id) ?? []).map((dep) => depth(dep, [...chain, id]) + 1));
+		const value = Math.max(0, ...arrayOrEmpty(depMap.get(id)).map((dep) => depth(dep, [...chain, id]) + 1));
 		depthCache.set(id, value);
 		return value;
 	};
 	const meta = new Map<string, TreeseedGuaranteeDependencyGraphMeta>();
 	for (const [index, id] of ordered.entries()) {
 		meta.set(id, {
-			dependsOn: depMap.get(id) ?? [],
-			dependencyOf: (inverse.get(id) ?? []).sort((a, b) => sortGuaranteeEntries(byId.get(a)!, byId.get(b)!)),
+			dependsOn: arrayOrEmpty(depMap.get(id)),
+			dependencyOf: arrayOrEmpty(inverse.get(id)).sort((a, b) => sortGuaranteeEntries(byId.get(a)!, byId.get(b)!)),
 			dependencyReason: [...(reasonMap.get(id) ?? new Set<TreeseedGuaranteeDependencyReason>())],
 			dependencyDepth: depth(id),
 			executionOrder: index,
-			producesState: stateProduces.get(id) ?? [],
-			consumesState: stateConsumes.get(id) ?? [],
+			producesState: arrayOrEmpty(stateProduces.get(id)),
+			consumesState: arrayOrEmpty(stateConsumes.get(id)),
 		});
 	}
 	return { entries: ordered.map((id) => byId.get(id)!).filter(Boolean), selectedIds, meta, diagnostics };
@@ -1031,7 +1035,7 @@ export function validateTreeseedGuaranteeRegistry(input: {
 }): TreeseedGuaranteeRegistryReport {
 	const diagnostics: TreeseedGuaranteeDiagnostic[] = [
 		...input.guarantees.flatMap((entry) => entry.diagnostics),
-		...(input.verifierRegistries ?? []).flatMap((entry) => entry.diagnostics),
+		...arrayOrEmpty(input.verifierRegistries).flatMap((entry) => entry.diagnostics),
 	];
 	validateFilter(input.filter, diagnostics);
 	const valid = input.guarantees.filter((entry): entry is TreeseedLoadedGuarantee & { manifest: TreeseedGuaranteeManifest } => Boolean(entry.manifest));
@@ -1048,16 +1052,16 @@ export function validateTreeseedGuaranteeRegistry(input: {
 		}
 	}
 	for (const entry of valid) {
-		for (const dep of entry.manifest.dependencies.guarantees ?? []) {
+		for (const dep of arrayOrEmpty(entry.manifest.dependencies.guarantees)) {
 			if (!ids.has(dep)) diagnostics.push(diagnostic('error', 'guarantee.missing_dependency', `Missing guarantee dependency "${dep}".`, 'dependencies.guarantees', entry.sourcePath));
 		}
-		for (const dep of entry.manifest.dependencies.journeys ?? []) {
+		for (const dep of arrayOrEmpty(entry.manifest.dependencies.journeys)) {
 			if (!journeyIndexes.has(dep)) diagnostics.push(diagnostic('error', 'guarantee.missing_journey_dependency', `Missing journey dependency "${dep}".`, 'dependencies.journeys', entry.sourcePath));
 			if (entry.manifest.journeyIndex && dep >= entry.manifest.journeyIndex) diagnostics.push(diagnostic('error', 'guarantee.forward_journey_dependency', `Journey dependency ${dep} must be lower than ${entry.manifest.journeyIndex}.`, 'dependencies.journeys', entry.sourcePath));
 		}
 	}
 	for (const entry of valid) {
-		for (const dep of entry.manifest.dependsOnGuarantees ?? []) {
+		for (const dep of arrayOrEmpty(entry.manifest.dependsOnGuarantees)) {
 			const [ownerPackage, ref] = dep.includes(':') ? dep.split(/:(.+)/u).filter(Boolean) : ['', dep];
 			const match = valid.find((candidate) =>
 				(!ownerPackage || candidate.manifest.ownerPackage === ownerPackage)
@@ -1075,14 +1079,14 @@ export function validateTreeseedGuaranteeRegistry(input: {
 			return;
 		}
 		visiting.add(id);
-		for (const dep of ids.get(id)?.manifest.dependencies.guarantees ?? []) visit(dep, [...chain, id]);
+		for (const dep of arrayOrEmpty(ids.get(id)?.manifest.dependencies.guarantees)) visit(dep, [...chain, id]);
 		visiting.delete(id);
 		visited.add(id);
 	};
 	for (const id of ids.keys()) visit(id, []);
 
-	const verifierIds = new Set((input.verifierRegistries ?? []).flatMap((entry) => Object.keys(entry.registry?.verifiers ?? {})));
-	const verifierKinds = new Map((input.verifierRegistries ?? []).flatMap((registry) =>
+	const verifierIds = new Set(arrayOrEmpty(input.verifierRegistries).flatMap((entry) => Object.keys(entry.registry?.verifiers ?? {})));
+	const verifierKinds = new Map(arrayOrEmpty(input.verifierRegistries).flatMap((registry) =>
 		Object.entries(registry.registry?.verifiers ?? {}).map(([id, definition]) => [id, definition.kind] as const)
 	));
 	for (const entry of valid) {
@@ -1108,7 +1112,7 @@ export function validateTreeseedGuaranteeRegistry(input: {
 		ok: errors === 0,
 		workspaceRoot: resolve(input.workspaceRoot),
 		guarantees: input.guarantees,
-		verifierRegistries: input.verifierRegistries ?? [],
+		verifierRegistries: arrayOrEmpty(input.verifierRegistries),
 		diagnostics,
 		counts: {
 			total: input.guarantees.length,
@@ -1121,7 +1125,7 @@ export function validateTreeseedGuaranteeRegistry(input: {
 }
 
 function refs(contract: TreeseedGuaranteeVerifierContract | undefined) {
-	return contract?.verifierRefs ?? [];
+	return arrayOrEmpty(contract?.verifierRefs);
 }
 
 export function planTreeseedGuarantees(input: { workspaceRoot: string; filter?: TreeseedGuaranteeFilter; environment?: string; includeDependencies?: boolean }): TreeseedGuaranteePlanReport {
@@ -1151,9 +1155,9 @@ export function planTreeseedGuarantees(input: { workspaceRoot: string; filter?: 
 			auditVerifierRefs: refs(entry.manifest.audit),
 			evidenceRequired: entry.manifest.evidence.required,
 			dependencyDepth: meta?.dependencyDepth ?? 0,
-			dependencyOf: meta?.dependencyOf ?? [],
-			dependsOn: meta?.dependsOn ?? [],
-			dependencyReason: meta?.dependencyReason ?? [],
+			dependencyOf: arrayOrEmpty(meta?.dependencyOf),
+			dependsOn: arrayOrEmpty(meta?.dependsOn),
+			dependencyReason: arrayOrEmpty(meta?.dependencyReason),
 			executionOrder: meta?.executionOrder ?? 0,
 			...(meta?.producesState.length ? { producesState: meta.producesState } : {}),
 			...(meta?.consumesState.length ? { consumesState: meta.consumesState } : {}),
@@ -1416,19 +1420,19 @@ export function exportTreeseedGuaranteesCsv(input: { guarantees: TreeseedLoadedG
 		entry.manifest.ownerPackage,
 		entry.manifest.surface ?? '',
 		entry.manifest.status,
-		[...(entry.manifest.dependencies.guarantees ?? []), ...(entry.manifest.dependencies.journeys ?? []).map((id) => `journey:${id}`)],
+		[...arrayOrEmpty(entry.manifest.dependencies.guarantees), ...arrayOrEmpty(entry.manifest.dependencies.journeys).map((id) => `journey:${id}`)],
 		entry.manifest.actors.allowed,
 		entry.manifest.actors.forbidden,
-		[...entry.manifest.devices.required, ...(entry.manifest.devices.optional ?? [])],
-		[...(entry.manifest.preconditions.fixtures ?? []), ...(entry.manifest.preconditions.notes ?? [])],
+		[...entry.manifest.devices.required, ...arrayOrEmpty(entry.manifest.devices.optional)],
+		[...arrayOrEmpty(entry.manifest.preconditions.fixtures), ...arrayOrEmpty(entry.manifest.preconditions.notes)],
 		entry.manifest.scene?.manifest ?? '',
-		entry.manifest.api?.verifierRefs ?? [],
-		entry.manifest.content?.verifierRefs ?? [],
-		entry.manifest.audit?.verifierRefs ?? [],
-		(entry.manifest.negativeCases ?? []).map((negativeCase) => negativeCase.id),
+		arrayOrEmpty(entry.manifest.api?.verifierRefs),
+		arrayOrEmpty(entry.manifest.content?.verifierRefs),
+		arrayOrEmpty(entry.manifest.audit?.verifierRefs),
+		arrayOrEmpty(entry.manifest.negativeCases).map((negativeCase) => negativeCase.id),
 		entry.manifest.gates,
 		entry.manifest.evidence.required,
-		entry.manifest.notes ?? [],
+		arrayOrEmpty(entry.manifest.notes),
 		entry.relativePath,
 	]);
 	return [header, ...body].map((row) => row.map(csvEscape).join(',')).join('\n') + '\n';
@@ -1790,10 +1794,10 @@ async function defaultTreeseedGuaranteeVerifierExecutor(input: TreeseedGuarantee
 		};
 	}
 	if (definition.kind === 'manualEvidence') {
-		return { status: 'skipped', summary: `${input.ref} requires manual evidence.`, evidence: definition.evidence ?? [] };
+		return { status: 'skipped', summary: `${input.ref} requires manual evidence.`, evidence: arrayOrEmpty(definition.evidence) };
 	}
 	if (definition.kind === 'scene') {
-		return { status: 'passed', summary: `${input.ref} is covered by the guarantee scene step.`, evidence: definition.evidence ?? [] };
+		return { status: 'passed', summary: `${input.ref} is covered by the guarantee scene step.`, evidence: arrayOrEmpty(definition.evidence) };
 	}
 	if (definition.kind === 'apiAcceptanceCase') {
 		if (!definition.caseId) {
@@ -1834,7 +1838,7 @@ async function defaultTreeseedGuaranteeVerifierExecutor(input: TreeseedGuarantee
 			outputRoot: input.outputRoot,
 			ref: input.ref,
 			command: 'npm',
-			args: ['-w', workspace, 'run', definition.command, '--', ...(definition.args ?? [])],
+			args: ['-w', workspace, 'run', definition.command, '--', ...arrayOrEmpty(definition.args)],
 			timeoutSeconds: definition.timeoutSeconds,
 			onProgress: input.onProgress,
 		});
@@ -1848,7 +1852,7 @@ async function defaultTreeseedGuaranteeVerifierExecutor(input: TreeseedGuarantee
 			outputRoot: input.outputRoot,
 			ref: input.ref,
 			command: 'node',
-			args: ['--import', 'tsx', definition.command, ...(definition.args ?? [])],
+			args: ['--import', 'tsx', definition.command, ...arrayOrEmpty(definition.args)],
 			cwd: definition.cwd,
 			timeoutSeconds: definition.timeoutSeconds,
 			onProgress: input.onProgress,
@@ -1891,8 +1895,8 @@ function sceneReportEvidencePaths(workspaceRoot: string, report: {
 	steps?: Array<{ screenshotPath?: string | null }>;
 }) {
 	const primaryScreenshots = [
-		...(report.steps ?? []).map((step) => step.screenshotPath).filter(Boolean),
-		...(report.artifacts?.screenshotPaths ?? []),
+		...arrayOrEmpty(report.steps).map((step) => step.screenshotPath).filter(Boolean),
+		...arrayOrEmpty(report.artifacts?.screenshotPaths),
 	].filter((path): path is string => Boolean(path && !path.includes('/screenshots/viewport/')));
 	return sortedUnique([
 		...primaryScreenshots,
@@ -1929,7 +1933,7 @@ async function defaultTreeseedGuaranteeSceneExecutor(input: TreeseedGuaranteeSce
 				status: ok ? 'passed' : 'failed',
 				summary: ok ? 'Scene device matrix passed.' : contractDiagnostics.length > 0 ? 'Scene is not a complete service journey.' : 'Scene device matrix failed.',
 				evidence: runReports.flatMap((entry) => sceneReportEvidencePaths(input.workspaceRoot, entry)),
-				diagnostics: [...contractDiagnostics, ...runReports.flatMap((entry: { diagnostics?: unknown[] }) => entry.diagnostics ?? [])] as TreeseedGuaranteeDiagnostic[],
+				diagnostics: [...contractDiagnostics, ...runReports.flatMap((entry: { diagnostics?: unknown[] }) => arrayOrEmpty(entry.diagnostics))] as TreeseedGuaranteeDiagnostic[],
 			};
 		}
 		const run = runs[0]!;
@@ -1950,7 +1954,7 @@ async function defaultTreeseedGuaranteeSceneExecutor(input: TreeseedGuaranteeSce
 			status: ok ? 'passed' : 'failed',
 			summary: ok ? 'Scene passed.' : contractDiagnostics.length > 0 ? 'Scene is not a complete service journey.' : 'Scene failed.',
 			evidence: sceneReportEvidencePaths(input.workspaceRoot, report),
-			diagnostics: [...contractDiagnostics, ...(report.diagnostics ?? [])],
+			diagnostics: [...contractDiagnostics, ...arrayOrEmpty(report.diagnostics)],
 		};
 	} catch (error) {
 		return {
@@ -2050,14 +2054,14 @@ async function runGuaranteeSteps(input: {
 			...step,
 			status: result.status,
 			summary: result.summary ?? step.summary,
-			evidence: result.evidence ?? step.evidence ?? [],
-			diagnostics: result.diagnostics ?? step.diagnostics ?? [],
+			evidence: result.evidence ?? arrayOrEmpty(step.evidence),
+			diagnostics: result.diagnostics ?? arrayOrEmpty(step.diagnostics),
 			startedAt: stepStartedAt,
 			completedAt,
 		};
 		steps.push(nextStep);
-		evidence.push(...(nextStep.evidence ?? []));
-		diagnostics.push(...(nextStep.diagnostics ?? []));
+		evidence.push(...arrayOrEmpty(nextStep.evidence));
+		diagnostics.push(...arrayOrEmpty(nextStep.diagnostics));
 		input.onProgress?.(`[guarantees][step] ${input.guarantee.manifest.id}: ${nextStep.status} ${step.kind}${step.ref ? ` ${step.ref}` : ''}`);
 	};
 	const scene = input.guarantee.manifest.scene;
@@ -2076,10 +2080,10 @@ async function runGuaranteeSteps(input: {
 		}));
 	}
 	const verifierGroups: Array<{ kind: TreeseedGuaranteeRunStep['kind']; refs: string[] }> = [
-		{ kind: 'api', refs: input.guarantee.manifest.api?.verifierRefs ?? [] },
-		{ kind: 'content', refs: input.guarantee.manifest.content?.verifierRefs ?? [] },
-		{ kind: 'audit', refs: input.guarantee.manifest.audit?.verifierRefs ?? [] },
-		{ kind: 'negative-case', refs: (input.guarantee.manifest.negativeCases ?? []).flatMap((entry) => entry.verifierRefs ?? []) },
+		{ kind: 'api', refs: arrayOrEmpty(input.guarantee.manifest.api?.verifierRefs) },
+		{ kind: 'content', refs: arrayOrEmpty(input.guarantee.manifest.content?.verifierRefs) },
+		{ kind: 'audit', refs: arrayOrEmpty(input.guarantee.manifest.audit?.verifierRefs) },
+		{ kind: 'negative-case', refs: arrayOrEmpty(input.guarantee.manifest.negativeCases).flatMap((entry) => arrayOrEmpty(entry.verifierRefs)) },
 	];
 	for (const group of verifierGroups) {
 		for (const ref of group.refs) {
@@ -2179,7 +2183,7 @@ export async function runTreeseedGuarantees(input: {
 		for (const [index, entry] of runEntries.entries()) {
 			input.onProgress?.(`[guarantees][run] ${index + 1}/${runEntries.length} ${entry.manifest.id} (${entry.manifest.ownerPackage}) ${entry.manifest.journey}`);
 			const planEntry = planEntryById.get(entry.manifest.id);
-			const blockingDependencies = (planEntry?.dependsOn ?? [])
+			const blockingDependencies = arrayOrEmpty(planEntry?.dependsOn)
 				.map((id) => resultById.get(id))
 				.filter((result): result is TreeseedGuaranteeRunResult => Boolean(result && result.status !== 'passed'));
 			if (blockingDependencies.length > 0) {

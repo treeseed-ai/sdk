@@ -160,7 +160,7 @@ connections:
 		expect(byId(report, 'hosting:operationsRunner:sourceRepo')).toMatchObject({ status: 'passed' });
 	});
 
-	it('requires canonical Railway identities with production image deployment readiness', () => {
+	it('requires environment-qualified Railway identities with production image deployment readiness', () => {
 		const previous = {
 			api: process.env.TREESEED_API_IMAGE_REF,
 			runner: process.env.TREESEED_OPERATIONS_RUNNER_IMAGE_REF,
@@ -171,8 +171,8 @@ connections:
 		process.env.TREESEED_PUBLIC_TREEDX_IMAGE_REF = 'treeseed/treedx:1.2.3';
 		try {
 			const report = collectTreeseedDeploymentReadiness({ tenantRoot: rootWith(config()), environment: 'prod' });
-			expect(byId(report, 'railway-config:api:serviceName')).toMatchObject({ status: 'passed', observed: { serviceName: 'treeseed-api' } });
-			expect(byId(report, 'railway-config:operationsRunner:serviceName')).toMatchObject({ status: 'passed', observed: { serviceName: 'treeseed-api-operations-runner-01' } });
+			expect(byId(report, 'railway-config:api:serviceName')).toMatchObject({ status: 'passed', observed: { serviceName: 'treeseed-api-production' } });
+			expect(byId(report, 'railway-config:operationsRunner:serviceName')).toMatchObject({ status: 'passed', observed: { serviceName: 'treeseed-api-operations-runner-production-01' } });
 		} finally {
 			if (previous.api === undefined) delete process.env.TREESEED_API_IMAGE_REF;
 			else process.env.TREESEED_API_IMAGE_REF = previous.api;

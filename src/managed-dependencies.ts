@@ -439,7 +439,7 @@ function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env
 	const nodeModulesMissing = !existsSync(resolve(tenantRoot, 'node_modules'));
 	const npmDepsMissing = !npmBackedDependenciesAvailable();
 	const missingRuntimeTools = npmToolsMissingRuntime();
-	if (!options.force && !nodeModulesMissing && npmDepsMissing && missingRuntimeTools.length > 0) {
+	if (!nodeModulesMissing && npmDepsMissing && missingRuntimeTools.length > 0) {
 		return [{
 			root: tenantRoot,
 			command: npmCommand.display,
@@ -448,13 +448,15 @@ function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env
 			detail: `npm dependencies are installed; rebuilding missing runtime tools: ${missingRuntimeTools.map((tool) => tool.packageName).join(', ')}.`,
 		}];
 	}
-	if (!options.force && !nodeModulesMissing && !npmDepsMissing) {
+	if (!nodeModulesMissing && !npmDepsMissing) {
 		return [{
 			root: tenantRoot,
 			command: npmCommand.display,
 			status: 'already-present',
 			exitCode: 0,
-			detail: 'npm dependencies are already installed.',
+			detail: options.force
+				? 'npm dependencies are already installed; force is limited to Treeseed-managed tool repair.'
+				: 'npm dependencies are already installed.',
 		}];
 	}
 

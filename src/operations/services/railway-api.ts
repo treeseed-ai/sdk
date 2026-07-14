@@ -2431,6 +2431,7 @@ export async function ensureRailwayServiceVolume({
 	serviceId,
 	name,
 	mountPath,
+	adoptVolumeId,
 	env = process.env,
 	fetchImpl = fetch,
 	settleAttempts = 24,
@@ -2441,6 +2442,7 @@ export async function ensureRailwayServiceVolume({
 	serviceId: string;
 	name: string;
 	mountPath: string;
+	adoptVolumeId?: string | null;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
 	settleAttempts?: number;
@@ -2476,7 +2478,9 @@ export async function ensureRailwayServiceVolume({
 			updated: false,
 		};
 	}
-	let volume = findRailwayVolumeForService(volumes, serviceId, environmentId)
+	const requestedAdoption = railwayConnectionLabel(adoptVolumeId);
+	let volume = (requestedAdoption ? volumes.find((candidate) => candidate.id === requestedAdoption) ?? null : null)
+		?? findRailwayVolumeForService(volumes, serviceId, environmentId)
 		?? findRailwayVolumeForService(volumes, serviceId)
 		?? activeVolumes.find((candidate) =>
 		candidate.name === name
@@ -2490,7 +2494,13 @@ export async function ensureRailwayServiceVolume({
 	) ?? null;
 	let created = false;
 	let updated = false;
+	if (requestedAdoption && !volume) {
+		throw new Error(`Railway volume ${requestedAdoption} cannot be adopted because it was not found; refusing to create an empty replacement volume.`);
+	}
 	const createReplacementVolume = async () => {
+		if (requestedAdoption) {
+			throw new Error(`Railway volume ${requestedAdoption} could not be adopted safely; refusing to create an empty replacement volume.`);
+		}
 		let replacement: Awaited<ReturnType<typeof createRailwayVolume>>;
 		try {
 			replacement = await createRailwayVolume({

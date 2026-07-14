@@ -104,6 +104,34 @@ async function waitForPidsToExit(pids: number[], timeoutMs = 3_000) {
 	}
 }
 
+function processGroupAlive(pid: number) {
+	if (process.platform === 'win32') return pidAlive(pid);
+	try {
+		process.kill(-pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function terminateManagedProcess(pid: number) {
+	const signal = (value: NodeJS.Signals) => {
+		try {
+			process.kill(process.platform === 'win32' ? pid : -pid, value);
+		} catch {
+			// The managed process group may already have exited.
+		}
+	};
+	signal('SIGTERM');
+	const startedAt = Date.now();
+	while (processGroupAlive(pid) && Date.now() - startedAt < 3_000) {
+		await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
+	}
+	if (processGroupAlive(pid)) {
+		signal('SIGKILL');
+	}
+}
+
 async function stopConflictingPortListeners(spec: TreeseedManagedDevProcessSpec, allowedPid: number | null = null) {
 	const conflicts = portListenerPids(spec.port)
 		.filter((pid) => pid !== process.pid && pid !== allowedPid);
@@ -347,7 +375,7 @@ function instanceFromSpec(spec: TreeseedManagedDevProcessSpec): TreeseedDevInsta
 	return {
 		...spec,
 		pid: Number.isFinite(pid) ? pid : null,
-		running: pidAlive(Number.isFinite(pid) ? pid : null),
+		running: Number.isFinite(pid) ? processGroupAlive(pid as number) : false,
 		startedAt: typeof record?.startedAt === 'string' ? record.startedAt : null,
 	};
 }
@@ -403,14 +431,10 @@ export function listTreeseedDevInstances(input: { cwd?: string; all?: boolean } 
 		.filter((entry): entry is TreeseedDevInstance => Boolean(entry));
 }
 
-function stopSpec(spec: TreeseedManagedDevProcessSpec) {
+async function stopSpec(spec: TreeseedManagedDevProcessSpec) {
 	const instance = instanceFromSpec(spec);
 	if (instance.pid && instance.running) {
-		try {
-			process.kill(instance.pid, 'SIGTERM');
-		} catch {
-			// Process may have exited between status and stop.
-		}
+		await terminateManagedProcess(instance.pid);
 	}
 	rmSync(spec.pidPath, { force: true });
 	rmSync(spec.instancePath, { force: true });
@@ -423,7 +447,7 @@ async function startSpec(spec: TreeseedManagedDevProcessSpec, force = false, for
 		return existing;
 	}
 	if (existing.running && force) {
-		stopSpec(spec);
+		await stopSpec(spec);
 	}
 	if (forceConflicts) {
 		await stopConflictingPortListeners(spec, existing.pid);
@@ -468,7 +492,7 @@ export async function startTreeseedManagedDev(options: TreeseedManagedDevOptions
 
 export async function stopTreeseedManagedDev(options: TreeseedManagedDevOptions = {}): Promise<TreeseedManagedDevResult> {
 	const plan = createTreeseedIntegratedDevPlan(options);
-	const instances = plan.processes.map((spec) => stopSpec(spec));
+	const instances = await Promise.all(plan.processes.map((spec) => stopSpec(spec)));
 	return { ok: true, action: 'stop', plan, instances };
 }
 

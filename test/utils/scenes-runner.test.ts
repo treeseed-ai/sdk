@@ -416,6 +416,107 @@ workflow:
 		expect(readFileSync(report.artifacts!.networkLogPath!, 'utf8')).toContain('HTTP 500');
 	});
 
+	it('captures pre-step adapter events, missing request details, and screenshot failures', async () => {
+		const root = workspace();
+		writeScene(root, 'browser-smoke', executableScene());
+		const page = new FakePage();
+		page.screenshot = async () => { throw new Error('capture unavailable'); };
+		const adapter: TreeseedSceneBrowserAdapter = {
+			async launch() {
+				return {
+					page,
+					startTracing: async () => {
+						page.emitConsole('before first step');
+						for (const handler of page.handlers.requestfailed ?? []) handler({ url: () => 'http://example.test/preflight', method: () => 'GET', failure: () => null });
+						page.emitResponse(500, 'http://example.test/preflight-response', { operationId: 'op-preflight' });
+						page.emitResponse(202, 'http://example.test/duplicate-operation', { operationId: 'op-preflight' });
+						await Promise.resolve();
+					},
+					stopTracing: async (tracePath: string) => writeFileSync(tracePath, 'trace', 'utf8'),
+					videoPaths: async () => [],
+					close: async () => undefined,
+				};
+			},
+		};
+		const report = await runTreeseedScene({ projectRoot: root, scene: 'browser-smoke', browserAdapter: adapter });
+		expect(report.ok).toBe(true);
+		expect(report.steps.every((entry) => entry.screenshotPath && !existsSync(entry.screenshotPath))).toBe(true);
+		expect(readFileSync(report.artifacts!.consoleLogPath!, 'utf8')).toContain('before first step');
+		expect(readFileSync(report.artifacts!.networkLogPath!, 'utf8')).toContain('request failed');
+		expect(report.steps[0]?.operationIds).toEqual(['op-preflight']);
+	});
+
+	it('reports unknown normalized actions without parser mediation', async () => {
+		const root = workspace();
+		writeScene(root, 'browser-smoke', executableScene());
+		const normalized = validateTreeseedScene({ projectRoot: root, scene: 'browser-smoke' }).scene!;
+		const unknownAction = {
+			...normalized,
+			workflow: [{ ...normalized.workflow[0]!, action: { unknownAction: {} } as never }],
+		};
+		const actionReport = await runTreeseedScene({ projectRoot: root, scene: unknownAction, browserAdapter: new FakeAdapter() });
+		expect(actionReport.diagnostics.some((entry) => entry.code === 'scene.unknown_runtime_action')).toBe(true);
+	});
+
+	it('handles empty action diagnostics and linked operation reports', async () => {
+		const root = workspace();
+		writeScene(root, 'browser-smoke', executableScene());
+		const normalized = validateTreeseedScene({ projectRoot: root, scene: 'browser-smoke' }).scene!;
+		const plugin: TreeseedScenePlugin = {
+			id: 'test.runtime-branches', version: '1.0.0', phase: 4, status: 'available', summary: 'Runtime branch handlers.',
+			actions: {
+				emptyFailure: { id: 'emptyFailure', phase: 4, status: 'available', summary: 'Fails without diagnostics.', async run() { return { ok: false, diagnostics: [] }; } },
+				linkedAction: { id: 'linkedAction', phase: 4, status: 'available', summary: 'Links an operation.', async run() { return { ok: true, operationReport: { ok: true, operationId: 'op-linked', finalStatus: 'completed', diagnostics: [] } as never, diagnostics: [] }; } },
+			},
+		};
+		const failed = await runTreeseedScene({
+			projectRoot: root,
+			scene: { ...normalized, workflow: [{ ...normalized.workflow[0]!, action: { emptyFailure: {} } as never }] },
+			browserAdapter: new FakeAdapter(), plugins: [plugin],
+		});
+		expect(failed.diagnostics.some((entry) => entry.code === 'scene.step_failed')).toBe(true);
+
+		const linked = await runTreeseedScene({
+			projectRoot: root,
+			scene: { ...normalized, workflow: [{ ...normalized.workflow[0]!, action: { linkedAction: {} } as never, expect: undefined }] },
+			browserAdapter: new FakeAdapter(), plugins: [plugin],
+		});
+		expect(linked.steps[0]?.operationIds).toContain('op-linked');
+		expect(linked.ok).toBe(true);
+	});
+
+	it('uses capture fallbacks and continues demo execution after non-Error action failures', async () => {
+		const root = workspace();
+		writeScene(root, 'browser-smoke', executableScene());
+		const normalized = validateTreeseedScene({ projectRoot: root, scene: 'browser-smoke' }).scene!;
+		const plugin: TreeseedScenePlugin = {
+			id: 'test.failure-branches', version: '1.0.0', phase: 4, status: 'available', summary: 'Failure branch handlers.',
+			actions: {
+				stringFailure: { id: 'stringFailure', phase: 4, status: 'available', summary: 'Throws a string.', async run() { throw 'string action failure'; } },
+			},
+		};
+		const scene = {
+			...normalized,
+			devices: { defaultProfile: 'empty', profiles: [{ id: 'empty' } as never] },
+			render: { remotion: {} },
+			runtime: { ...normalized.runtime, mode: 'demo' as const, checkpoints: { ...normalized.runtime.checkpoints, enabled: false, everyStep: false } },
+			workflow: [
+				{ ...normalized.workflow[0]!, id: 'failure-one', action: { stringFailure: {} } as never, expect: undefined },
+				{ ...normalized.workflow[0]!, id: 'failure-two', action: { stringFailure: {} } as never, expect: undefined },
+				{ ...normalized.workflow[0]!, id: 'timed-pause', action: { pause: { mode: 'timed', durationSeconds: 0.001 } } as never, expect: undefined, demoOnly: true },
+			],
+		};
+		const adapter = new FakeAdapter();
+		const report = await runTreeseedScene({ projectRoot: root, scene, browserAdapter: adapter, record: true });
+		expect(report.failedStep).toBe('failure-one');
+		expect(report.steps).toHaveLength(3);
+		expect(report.steps.slice(0, 2).map((entry) => entry.status)).toEqual(['failed', 'failed']);
+		expect(adapter.launches[0]?.viewport).toEqual({ width: 1600, height: 900 });
+		expect(adapter.launches[0]?.videoSize).toEqual({ width: 1600, height: 900 });
+		expect(report.capture?.renderResolution).toBeNull();
+		expect(report.checkpoints).toEqual([]);
+	});
+
 	it('sets up and signs in an authenticated visual-audit role before executing the workflow', async () => {
 		const requests: Array<{ url: string; body: string }> = [];
 		const baseUrl = await listen(async (request, response) => {
@@ -515,6 +616,8 @@ workflow:
 		const launchReport = await runTreeseedScene({ projectRoot: root, scene: 'browser-smoke', browserAdapter: new FailingAdapter('adapter offline') });
 		expect(launchReport.workflowStatus).toBe('blocked');
 		expect(launchReport.diagnostics.some((entry) => entry.code === 'scene.playwright_unavailable' && entry.message.includes('adapter offline'))).toBe(true);
+		const nullLaunchReport = await runTreeseedScene({ projectRoot: root, scene: 'browser-smoke', browserAdapter: new FailingAdapter(null) });
+		expect(nullLaunchReport.diagnostics.some((entry) => entry.message.includes('Playwright unavailable.'))).toBe(true);
 
 		const closeAdapter: TreeseedSceneBrowserAdapter = {
 			async launch(input) {
@@ -591,6 +694,31 @@ workflow:
 		});
 		expect(blocked.workflowStatus).toBe('blocked');
 		expect(blocked.diagnostics.some((entry) => entry.code === 'scene.plugin_invalid')).toBe(true);
+	});
+
+	it('records unnamed apply seeds and blocks unknown authenticated roles after launch', async () => {
+		const root = workspace();
+		writeScene(root, 'browser-smoke', executableScene());
+		const normalized = validateTreeseedScene({ projectRoot: root, scene: 'browser-smoke' }).scene!;
+		const seedNames: Array<string | null> = [];
+		const unnamedSeed = await runTreeseedScene({
+			projectRoot: root,
+			scene: { ...normalized, setup: { ...normalized.setup, seed: { apply: true } as never } },
+			browserAdapter: new FakeAdapter(),
+			seedRunner: async ({ scene }) => {
+				seedNames.push(scene.setup.seed?.name ?? null);
+				return { ok: true, requested: true, seedName: null, mode: 'apply', environments: ['local'], plan: {}, result: {}, diagnostics: [] };
+			},
+		});
+		expect(unnamedSeed.ok).toBe(true);
+		expect(seedNames).toEqual([null]);
+
+		const unknownRole = await runTreeseedScene({
+			projectRoot: root,
+			scene: { ...normalized, setup: { ...normalized.setup, auth: { role: 'unknown-role', required: true } as never } },
+			browserAdapter: new FakeAdapter(),
+		});
+		expect(unknownRole.diagnostics.map((entry) => entry.code)).toContain('scene.visual_audit_role_unknown');
 	});
 
 	it('fails unresolved operation actions and assertions with clear diagnostics', async () => {
@@ -832,7 +960,6 @@ chapters:
 		const defaultMatrix = await runTreeseedSceneDeviceMatrix({
 			projectRoot: root,
 			scene: 'device-smoke',
-			timestamp: '20260616T130000Z',
 			browserAdapter: new FakeAdapter(),
 		});
 		expect(defaultMatrix.ok).toBe(true);

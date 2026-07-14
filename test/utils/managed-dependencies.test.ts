@@ -180,7 +180,7 @@ describe('managed dependencies', () => {
 		expect(calls.some((call) => call.args.includes('install'))).toBe(false);
 	});
 
-	it('forces npm install when dependencies are already present', async () => {
+	it('limits force to managed tool repair when project dependencies are already present', async () => {
 		const toolsHome = await createTempToolsHome();
 		const packageRoot = await createPackageRoot({ nodeModules: true });
 		await createManagedGh(toolsHome);
@@ -195,8 +195,11 @@ describe('managed dependencies', () => {
 			},
 		});
 
-		expect(result.npmInstalls[0]?.status).toBe('installed');
-		expect(calls.some((call) => call.args.includes('install'))).toBe(true);
+		expect(result.npmInstalls[0]).toMatchObject({
+			status: 'already-present',
+			detail: expect.stringContaining('force is limited to Treeseed-managed tool repair'),
+		});
+		expect(calls.some((call) => call.args.includes('install'))).toBe(false);
 	});
 
 	it('skips npm install during managed npm lifecycle recursion', async () => {

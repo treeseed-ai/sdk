@@ -1186,13 +1186,13 @@ ${needsNodeSetup ? `      - uses: actions/setup-node@v4
 function resolveWorkflowSetupCommand(adapter: TreeseedPackageAdapter) {
 	const scripts = adapter.metadata.scripts;
 	if (isRecord(scripts) && typeof scripts['release:setup'] === 'string') {
-		return 'npm run release:setup || (echo "dependency install failed; retrying" && npm run release:setup)';
+		return 'npm run release:setup';
 	}
-	return 'npm ci || (echo "dependency install failed; retrying" && npm ci)';
+	return 'npm ci';
 }
 
 function resolveDockerImageWorkflowSetupCommand() {
-	return 'npm ci --ignore-scripts || (echo "dependency install failed; retrying" && npm ci --ignore-scripts)';
+	return 'npm ci --ignore-scripts';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

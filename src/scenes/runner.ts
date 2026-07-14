@@ -305,10 +305,10 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 	const recordingVideo = Boolean(videoDir);
 	const capture = resolveCapture({ scene, device, runtimeMode: runtime.mode, recording: Boolean(videoDir) });
 	const artifacts = createTreeseedSceneRunArtifacts({ paths, playwrightTracePath: tracePath });
-	writeFileSync(artifacts.consoleLogPath ?? join(paths.playwrightRoot, 'console.jsonl'), '', 'utf8');
-	writeFileSync(artifacts.networkLogPath ?? join(paths.playwrightRoot, 'network.jsonl'), '', 'utf8');
-	writeFileSync(artifacts.errorsLogPath ?? join(paths.playwrightRoot, 'errors.jsonl'), '', 'utf8');
-	if (artifacts.progressPath) writeFileSync(artifacts.progressPath, '', 'utf8');
+	writeFileSync(artifacts.consoleLogPath!, '', 'utf8');
+	writeFileSync(artifacts.networkLogPath!, '', 'utf8');
+	writeFileSync(artifacts.errorsLogPath!, '', 'utf8');
+	writeFileSync(artifacts.progressPath!, '', 'utf8');
 
 	const timeline = createTreeseedSceneTimeline({ sceneId: scene.id, runId: paths.runId, startedAtMs: startedAt.getTime() });
 	const progress = createTreeseedSceneProgress({ sceneId: scene.id, runId: paths.runId, startedAtMs: startedAt.getTime(), progressPath: artifacts.progressPath, onProgress: input.onProgress });
@@ -433,15 +433,15 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 			if (message.type() !== 'error') return;
 			const entry = { message: message.text(), timestamp: now().toISOString(), ...(currentStepId ? { stepId: currentStepId } : {}) };
 			consoleErrors.push(entry);
-			if (artifacts.consoleLogPath) appendTreeseedSceneJsonl(artifacts.consoleLogPath, entry);
-			if (artifacts.errorsLogPath) appendTreeseedSceneJsonl(artifacts.errorsLogPath, { kind: 'console', ...entry });
+			appendTreeseedSceneJsonl(artifacts.consoleLogPath!, entry);
+			appendTreeseedSceneJsonl(artifacts.errorsLogPath!, { kind: 'console', ...entry });
 			timeline.push('console', entry, currentStepId);
 		});
 		session.page.on('requestfailed', (request) => {
 			const entry = { message: request.failure()?.errorText ?? 'request failed', timestamp: now().toISOString(), url: request.url(), method: request.method(), ...(currentStepId ? { stepId: currentStepId } : {}) };
 			networkErrors.push(entry);
-			if (artifacts.networkLogPath) appendTreeseedSceneJsonl(artifacts.networkLogPath, entry);
-			if (artifacts.errorsLogPath) appendTreeseedSceneJsonl(artifacts.errorsLogPath, { kind: 'network', ...entry });
+			appendTreeseedSceneJsonl(artifacts.networkLogPath!, entry);
+			appendTreeseedSceneJsonl(artifacts.errorsLogPath!, { kind: 'network', ...entry });
 			timeline.push('network', entry, currentStepId);
 		});
 		session.page.on('response', (response) => {
@@ -456,8 +456,8 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 			if (status < 400) return;
 			const entry = { message: `HTTP ${status}`, timestamp: now().toISOString(), url: response.url(), method: response.request().method(), status, ...(currentStepId ? { stepId: currentStepId } : {}) };
 			networkErrors.push(entry);
-			if (artifacts.networkLogPath) appendTreeseedSceneJsonl(artifacts.networkLogPath, entry);
-			if (artifacts.errorsLogPath) appendTreeseedSceneJsonl(artifacts.errorsLogPath, { kind: 'network', ...entry });
+			appendTreeseedSceneJsonl(artifacts.networkLogPath!, entry);
+			appendTreeseedSceneJsonl(artifacts.errorsLogPath!, { kind: 'network', ...entry });
 			timeline.push('network', entry, currentStepId);
 		});
 		if (tracePath) await session.startTracing?.();
@@ -745,7 +745,7 @@ export async function runTreeseedScene(input: TreeseedSceneRunOptions): Promise<
 		segments,
 		checkpoints,
 		resumedFrom: null,
-		progressPath: artifacts.progressPath ?? null,
+		progressPath: artifacts.progressPath!,
 		warnings: splitDiagnostics(diagnostics, 'warning'),
 		blockers: splitDiagnostics(diagnostics, 'error'),
 		diagnostics,

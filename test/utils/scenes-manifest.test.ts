@@ -300,6 +300,89 @@ visualAudit:
 		expect(diagnostics.some((entry) => entry.severity === 'warning')).toBe(true);
 	});
 
+	it('parses every supported action, selector, runtime, render, and training option', () => {
+		const diagnostics: Array<{ code: string }> = [];
+		const scene = parseTreeseedSceneManifest({
+			schemaVersion: 'treeseed.scene/v1',
+			id: 'complete-contract',
+			title: 'Complete Contract',
+			description: 'Exercises the complete scene contract.',
+			audience: ['operator'],
+			journey: {
+				kind: 'page',
+				proves: ['navigation'],
+				minimumSteps: 2,
+				requiresInteractiveAction: true,
+				producesState: [{ key: 'project', kind: 'created' }],
+				consumesState: [{ key: 'account', kind: 'existing' }],
+			},
+			mode: { test: false, demo: true, training: true },
+			target: {
+				app: 'market',
+				environment: 'staging',
+				baseUrl: 'https://preview.example.test',
+				browser: 'firefox',
+				viewport: { width: 1280, height: 720 },
+			},
+			devices: {
+				defaultProfile: 'mobile',
+				profiles: [{
+					id: 'mobile', title: 'Mobile', orientation: 'portrait',
+					viewport: { width: 390, height: 844 }, video: { width: 390, height: 844 }, output: { width: 1080, height: 1920 },
+					userAgent: 'Treeseed Test', deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+					browserFrame: { chrome: 'mobile' },
+				}],
+			},
+			setup: { auth: { role: 'owner', required: true }, seed: { name: 'complete', mode: 'apply' } },
+			workflow: [
+				{ id: 'goto', title: 'Go', action: { goto: '/app' }, expect: { urlIncludes: '/app' }, checkpoint: { id: 'goto-checkpoint', resumable: true } },
+				{ id: 'keyboard', title: 'Keyboard', action: { keyboard: 'Enter' }, expect: { text: 'Ready' } },
+				{ id: 'api', title: 'API', action: { apiRequest: { method: 'POST', path: '/v1/projects' } }, expect: { text: 'Created' } },
+				{ id: 'operation', title: 'Operation', action: { waitForOperation: { id: 'op-1', kind: 'deploy', status: ['completed'], timeoutSeconds: 30, pollIntervalSeconds: 1, source: 'explicit' } }, expect: { operation: { id: 'op-1', kind: 'deploy', status: ['completed'], timeoutSeconds: 30, pollIntervalSeconds: 1, source: 'explicit' } } },
+				{ id: 'pause', title: 'Pause', demoOnly: true, action: { pause: { mode: 'manual', prompt: 'Continue' } } },
+				{ id: 'mail', title: 'Mail', action: { mailpitConfirmLatest: { mailpitUrl: 'http://localhost:8025', email: 'owner@example.test', subjectIncludes: 'Confirm', displayInboxSeconds: 1, displayMessageSeconds: 1 } }, expect: { text: 'Confirmed' } },
+				{ id: 'click-scene', title: 'Click scene', action: { click: { scene: 'project.save' } }, expect: { visible: [{ scene: 'project.saved' }, { testId: 'saved' }, { role: 'status', name: 'Saved' }, { text: 'Saved' }, { css: '.saved', internal: true }] } },
+				{ id: 'click-test', title: 'Click test', action: { click: { testId: 'submit' } }, expect: { text: 'Submitted' } },
+				{ id: 'select', title: 'Select', action: { select: { role: 'combobox', name: 'Role', value: 'owner', label: 'Owner' } } },
+				{ id: 'fill', title: 'Fill', action: { fill: { role: 'textbox', name: 'Name', value: 'TreeSeed' } } },
+			],
+			chapters: [{ id: 'main', title: 'Main', startsAt: 'goto' }],
+			overlays: [{
+				id: 'callout', at: 'goto', renderer: 'remotion', type: 'callout', text: 'Hello', anchor: { testId: 'saved' }, variant: 'panel', region: 'top-right',
+				position: { x: 10, y: 20, unit: 'percent' }, size: { width: 30, height: 20, unit: 'percent' },
+				style: { tone: 'brand', opacity: 0.8, borderColor: '#fff', borderWidth: 1, radius: 2, shadow: 'medium' },
+				motion: { loop: true, keyframes: [{ at: 0, unit: 'progress', position: { x: 0, y: 0 }, size: { width: 10, height: 10 }, opacity: 0, scale: 1, rotateDeg: 0, easing: 'linear' }] },
+				objects: [{ id: 'box', type: 'box', text: 'Box', position: { x: 1, y: 2 }, size: { width: 3, height: 4 }, style: { tone: 'neutral' } }], durationSeconds: 2,
+			}],
+			diagrams: [{ id: 'diagram', at: 'goto', renderer: 'remotion', component: 'OperationLifecycleDiagram', durationSeconds: 2, placement: 'interstitial', props: { states: ['ready'] }, objects: [], style: { tone: 'neutral' } }],
+			render: { remotion: { composition: 'training', output: { format: 'mp4', fps: 30, resolution: { width: 1920, height: 1080 } }, capture: { viewport: { width: 1600, height: 900 }, video: { width: 1280, height: 720 }, evidenceFit: 'fixed-browser' }, browserFrame: { enabled: true, title: 'TreeSeed' } } },
+			runtime: { mode: 'training', timeouts: { sceneSeconds: null, chapterSeconds: 60, stepSeconds: 10 }, checkpoints: { enabled: true, defaultResumable: true, everyStep: false }, progress: { heartbeatSeconds: 5 }, failure: { continueOnFailure: true } },
+			training: { enabled: true, captions: { enabled: true, formats: ['vtt'], maxCueSeconds: 4, renderInTrainingVideo: false }, transcript: { enabled: true, formats: ['markdown'] }, narration: { enabled: true, style: 'concise', includeDiagnostics: false }, glossary: { enabled: true, terms: [{ term: 'Project', definition: 'A project', sourceStep: 'goto', tags: ['core'] }] }, chapterClips: { enabled: true, format: 'manifest' } },
+			visualAudit: { enabled: true, roles: ['owner'], pathRoots: ['/app'], pathGlobs: ['/app/**'], excludePathGlobs: ['/app/private/**'], includeFullPage: true, review: { enabled: true, detail: 'full', maxFindings: 10, contactSheets: false }, routeDiscovery: { core: false, admin: true, tenantOverrides: false, contentCollections: true } },
+		}, diagnostics as never);
+
+		expect(diagnostics).toEqual([]);
+		expect(scene?.workflow).toHaveLength(10);
+		expect(scene?.render.remotion?.output?.resolution).toEqual({ width: 1920, height: 1080 });
+		expect(scene?.training.glossary.terms[0]).toMatchObject({ term: 'Project', sourceStep: 'goto', tags: ['core'] });
+	});
+
+	it('normalizes malformed optional object and array shapes without throwing', () => {
+		const diagnostics: Array<{ code: string }> = [];
+		const scene = parseTreeseedSceneManifest({
+			schemaVersion: 'treeseed.scene/v1', id: 'shape-fallbacks', title: 'Shape Fallbacks',
+			journey: [], mode: [], target: { app: 'market', viewport: [] }, devices: [],
+			setup: [], workflow: {}, chapters: {}, overlays: {}, diagrams: {}, render: { remotion: { output: [], capture: [], browserFrame: [] } },
+			runtime: { mode: 'invalid', timeouts: { sceneSeconds: 'never', chapterSeconds: -1, stepSeconds: Number.NaN }, checkpoints: [], progress: [], failure: [] },
+			training: { captions: [], transcript: [], narration: [], glossary: { terms: 'invalid' }, chapterClips: [] }, visualAudit: [],
+		}, diagnostics as never);
+
+		expect(scene).not.toBeNull();
+		expect(diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
+			'scene.invalid_object', 'scene.invalid_array', 'scene.invalid_number', 'scene.invalid_runtime_mode',
+		]));
+	});
+
 	it('plans a valid scene with deterministic artifact paths', () => {
 		const root = workspace();
 		const path = writeScene(root, 'market-project-deploy-demo', validSceneYaml(`

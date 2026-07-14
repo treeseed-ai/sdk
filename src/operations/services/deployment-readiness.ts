@@ -2,6 +2,7 @@ import { relative, resolve } from 'node:path';
 import { compileTreeseedHostingGraph, serializeHostingUnit, type TreeseedHostingEnvironment } from '../../hosting/index.ts';
 import { discoverTreeseedPackageAdapters, type TreeseedPackageAdapter } from './package-adapters.ts';
 import { configuredRailwayServices } from './railway-deploy.ts';
+import { railwayEnvironmentQualifiedServiceName } from './railway-source-policy.ts';
 
 export type TreeseedDeploymentReadinessStatus = 'passed' | 'failed' | 'warning' | 'skipped';
 
@@ -209,8 +210,8 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 	}
 
 	if (railwayApi) {
-		const expectedServiceName = 'treeseed-api';
-		checks.push(check('railway-config:api:serviceName', railwayApi.serviceName, expectedServiceName, 'Railway API service uses the project-wide canonical name.', `Set the API service identity to ${expectedServiceName} for every environment.`, 'serviceName'));
+		const expectedServiceName = railwayEnvironmentQualifiedServiceName('treeseed-api', environment);
+		checks.push(check('railway-config:api:serviceName', railwayApi.serviceName, expectedServiceName, 'Railway API service uses its environment-qualified identity.', `Set services.api.environments.${environment}.serviceName to ${expectedServiceName}.`, 'serviceName'));
 		checks.push(check('railway-config:api:rootDirectory', relRoot(tenantRoot, railwayApi.rootDir), expectedApiRailwayRoot, 'Railway API effective rootDirectory points at the API app.', 'Set services.api.railway.rootDir relative to the owning API manifest.', 'rootDirectory'));
 	}
 
@@ -245,8 +246,8 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 	}
 
 	if (railwayRunner) {
-		const expectedServiceName = 'treeseed-api-operations-runner-01';
-		checks.push(check('railway-config:operationsRunner:serviceName', railwayRunner.serviceName, expectedServiceName, 'Railway runner uses the project-wide canonical service name.', `Set the runner service identity to ${expectedServiceName} for every environment.`, 'serviceName'));
+		const expectedServiceName = railwayEnvironmentQualifiedServiceName('treeseed-api-operations-runner-01', environment);
+		checks.push(check('railway-config:operationsRunner:serviceName', railwayRunner.serviceName, expectedServiceName, 'Railway runner uses its environment-qualified identity.', `Set services.operationsRunner.environments.${environment}.serviceName to ${expectedServiceName}.`, 'serviceName'));
 		checks.push(check('railway-config:operationsRunner:rootDirectory', relRoot(tenantRoot, railwayRunner.rootDir), expectedRunnerRailwayRoot, 'Railway runner effective rootDirectory points at the API app.', 'Set services.operationsRunner.railway.rootDir relative to the owning API manifest.', 'rootDirectory'));
 	}
 

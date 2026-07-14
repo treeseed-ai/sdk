@@ -6,7 +6,7 @@ import { parse as parseYaml } from 'yaml';
 import { createPersistentDeployTarget } from '../operations/services/deploy.ts';
 import { collectTreeseedConfigSeedValues, resolveTreeseedMachineEnvironmentValues } from '../operations/services/config-runtime.ts';
 import { classifyTreeseedGitMode, runTreeseedGitText } from '../operations/services/git-runner.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from '../operations/services/railway-source-policy.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName } from '../operations/services/railway-source-policy.ts';
 import { createTreeseedCanonicalReconcileReport, type TreeseedCanonicalAction, type TreeseedCanonicalDrift, type TreeseedCanonicalGraphNode, type TreeseedCanonicalPostcondition } from '../reconcile/index.ts';
 import { reconcileTreeseedTarget } from '../reconcile/index.ts';
 import type { TreeseedRunnableBootstrapSystem } from '../reconcile/bootstrap-systems.ts';
@@ -127,7 +127,7 @@ function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Reco
 			imageRef,
 			imageTagRef: 'TREESEED_PUBLIC_TREEDX_IMAGE_REF',
 		};
-		const serviceName = 'public-treedx-node-01';
+		const serviceName = railwayEnvironmentQualifiedServiceName('public-treedx-node-01', input.environment);
 		assertApiRailwaySourcePolicy(input.environment, { key: serviceName, serviceName, ...policy });
 		return policy;
 	}
@@ -154,7 +154,7 @@ function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Reco
 	};
 	assertApiRailwaySourcePolicy(input.environment, {
 		key: 'public-treedx-node-01',
-		serviceName: 'public-treedx-node-01',
+		serviceName: railwayEnvironmentQualifiedServiceName('public-treedx-node-01', input.environment),
 		dockerfilePath: railway.dockerfilePath ?? '/Dockerfile',
 		...policy,
 	});
@@ -245,7 +245,12 @@ function railwaySourcePolicy(input: TreeseedHostingGraphInput, serviceKey: strin
 		: {};
 	const configuredMode = typeof service.railway?.sourceMode === 'string' ? service.railway.sourceMode : null;
 	const baseServiceName = service.railway?.serviceName ?? null;
-	const serviceName = baseServiceName;
+	const environmentConfig = service.environments?.[input.environment];
+	const serviceName = typeof environmentConfig?.serviceName === 'string' && environmentConfig.serviceName.trim()
+		? environmentConfig.serviceName.trim()
+		: isApiRailwaySourcePolicyService({ key: serviceKey, serviceName: baseServiceName }) && baseServiceName
+			? railwayEnvironmentQualifiedServiceName(baseServiceName, input.environment)
+			: baseServiceName;
 	const repository = typeof service.railway?.sourceRepo === 'string'
 		? service.railway.sourceRepo
 		: typeof configuredSource.repository === 'string'
@@ -512,7 +517,12 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 			?? null;
 		const sourcePolicy = railwaySourcePolicy(input, serviceKey, service, imageRef);
 		const baseServiceName = service.railway?.serviceName ?? null;
-		const effectiveServiceName = baseServiceName;
+		const environmentConfig = service.environments?.[input.environment];
+		const effectiveServiceName = typeof environmentConfig?.serviceName === 'string' && environmentConfig.serviceName.trim()
+			? environmentConfig.serviceName.trim()
+			: isApiRailwaySourcePolicyService({ key: serviceKey, serviceName: baseServiceName }) && baseServiceName
+				? railwayEnvironmentQualifiedServiceName(baseServiceName, input.environment)
+				: baseServiceName;
 		services.push({
 			id: serviceKey,
 			label: placement === 'runner-capacity' ? 'Runner Capacity' : serviceKey === 'api' ? 'API Runtime' : serviceKey,
@@ -609,9 +619,10 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 		const treeDxSourcePolicy = publicTreeDxSourcePolicy(input, config, launchEnv);
 		const treeDxNodeUnits = Array.from({ length: treeDxNodePool.bootstrapCount }, (_, offset) => {
 			const nodeIndex = offset + 1;
-			const serviceName = indexedName('public-treedx-node', nodeIndex);
+			const logicalServiceName = indexedName('public-treedx-node', nodeIndex);
+			const serviceName = railwayEnvironmentQualifiedServiceName(logicalServiceName, input.environment);
 			return {
-				id: serviceName,
+				id: logicalServiceName,
 				label: `Public TreeDX node ${String(nodeIndex).padStart(2, '0')}`,
 				serviceType: 'treedx-node',
 				placement: 'knowledge-library' as const,

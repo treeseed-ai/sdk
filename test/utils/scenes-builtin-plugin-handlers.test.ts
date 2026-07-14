@@ -94,6 +94,18 @@ describe('built-in scene plugin handlers', () => {
 			},
 		});
 		await expect(registry.actions.get('goto')!.run({ action: { goto: '/down' }, step, context: httpErrorCtx } as never)).rejects.toMatchObject({ code: 'scene.navigation_http_error' });
+		const fallbackHttpCtx = context({
+			session: { page: { goto: vi.fn(async () => ({ status: () => 502, url: () => undefined })), keyboard: { press: vi.fn(async () => undefined) } } },
+			sleep: vi.fn(async () => undefined),
+		});
+		await expect(registry.actions.get('goto')!.run({ action: { goto: '/fallback-url' }, step, context: fallbackHttpCtx } as never)).rejects.toMatchObject({
+			code: 'scene.navigation_http_error',
+			message: expect.stringContaining('http://local/fallback-url'),
+		});
+		const nullFailureCtx = context({
+			session: { page: { goto: vi.fn(async () => Promise.reject(null)), keyboard: { press: vi.fn(async () => undefined) } } },
+		});
+		await expect(registry.actions.get('goto')!.run({ action: { goto: '/null-failure' }, step, context: nullFailureCtx } as never)).rejects.toThrow('Navigation failed');
 		expect((await registry.actions.get('click')!.run({ action: { click: { role: 'button', name: 'Save' } }, step, context: ctx } as never)).ok).toBe(true);
 		expect((await registry.actions.get('click')!.run({ action: {}, step, context: ctx } as never)).diagnostics[0]?.code).toBe('scene.invalid_action');
 		expect((await registry.actions.get('fill')!.run({ action: { fill: { label: 'Name', value: 'Value {{runShort}}' } }, step, context: ctx } as never)).ok).toBe(true);
@@ -101,6 +113,7 @@ describe('built-in scene plugin handlers', () => {
 		expect(ctx.resolveSelector().fill).toBeDefined();
 		expect((await registry.actions.get('select')!.run({ action: { select: { label: 'Mode', value: 'auto' } }, step, context: ctx } as never)).ok).toBe(true);
 		expect((await registry.actions.get('select')!.run({ action: { select: { css: 'select[name="mode"]', internal: true, label: 'Automatic' } }, step, context: ctx } as never)).ok).toBe(true);
+		expect((await registry.actions.get('select')!.run({ action: { select: { label: 'Mode' } }, step, context: ctx } as never)).ok).toBe(true);
 		expect((await registry.actions.get('select')!.run({ action: { select: { label: 'Mode' } }, step, context: { ...ctx, resolveSelector: () => ({ waitFor: async () => undefined }) } } as never)).ok).toBe(false);
 		expect((await registry.actions.get('select')!.run({ action: {}, step, context: ctx } as never)).diagnostics[0]?.code).toBe('scene.invalid_action');
 		expect((await registry.actions.get('keyboard')!.run({ action: { keyboard: 'Tab' }, step, context: ctx } as never)).ok).toBe(true);
@@ -113,6 +126,7 @@ describe('built-in scene plugin handlers', () => {
 		const registry = createBuiltInTreeseedScenePluginRegistry();
 		const timedContext = context();
 		expect((await registry.actions.get('pause')!.run({ action: { pause: { mode: 'timed', durationSeconds: 0.01 } }, step, context: timedContext } as never)).ok).toBe(true);
+		expect((await registry.actions.get('pause')!.run({ action: { pause: { mode: 'timed' } }, step, context: timedContext } as never)).ok).toBe(true);
 		expect((await registry.actions.get('pause')!.run({ action: { pause: { mode: 'manual', prompt: 'Continue?' } }, step, context: context() } as never)).ok).toBe(true);
 		expect((await registry.actions.get('pause')!.run({ action: { pause: { mode: 'manual' } }, step, context: context({ interactive: false, pauseController: null }) } as never)).ok).toBe(false);
 		expect((await registry.actions.get('pause')!.run({ action: {}, step, context: context() } as never)).ok).toBe(false);
@@ -127,9 +141,16 @@ describe('built-in scene plugin handlers', () => {
 		const registry = createBuiltInTreeseedScenePluginRegistry();
 		expect((await registry.assertions.get('visible')!.run({ value: [{ text: 'Hello' }], step, context: context() } as never)).status).toBe('passed');
 		expect((await registry.assertions.get('visible')!.run({ value: [], step, context: context() } as never)).status).toBe('passed');
+		expect((await registry.assertions.get('visible')!.run({ value: null, step, context: context() } as never)).status).toBe('passed');
 		expect((await registry.assertions.get('visible')!.run({ value: [{ text: 'Missing' }], step, context: context({ resolveSelector: () => locator(false) }) } as never)).status).toBe('failed');
 		expect((await registry.assertions.get('text')!.run({ value: 'Hello', step, context: context() } as never)).status).toBe('passed');
 		expect((await registry.assertions.get('text')!.run({ value: 'Missing', step, context: context({ session: { page: { getByText: () => locator(false), url: () => 'http://local' } } }) } as never)).status).toBe('failed');
+		expect((await registry.assertions.get('text')!.run({ value: null, step, context: context() } as never)).status).toBe('passed');
+		const nullAssertion = await registry.assertions.get('visible')!.run({
+			value: [{ text: 'Null failure' }], step,
+			context: context({ resolveSelector: () => ({ ...locator(), waitFor: async () => Promise.reject(null) }) }),
+		} as never);
+		expect(nullAssertion).toMatchObject({ status: 'failed', message: 'Assertion failed.' });
 		expect((await registry.assertions.get('urlIncludes')!.run({ value: '/app', step, context: context() } as never)).status).toBe('passed');
 		const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(10_000);
 		expect((await registry.assertions.get('urlIncludes')!.run({ value: '/missing', step, context: context({ session: { page: { url: () => 'http://local/app' } } }) } as never)).status).toBe('failed');
@@ -191,6 +212,22 @@ describe('built-in scene plugin handlers', () => {
 			response.end(JSON.stringify({ messages: [null, { To: ['user@example.test'], Subject: 'Confirm' }] }));
 		});
 		expect((await registry.actions.get('mailpitConfirmLatest')!.run({ action: { mailpitConfirmLatest: { mailpitUrl: malformedUrl, email: 'user@example.test' } }, step, context: context() } as never)).diagnostics[0]?.code).toBe('scene.mailpit_message_not_found');
+
+		const primitivePayloadUrl = await listen((request, response) => {
+			response.setHeader('content-type', 'application/json');
+			if (request.url === '/api/v1/messages') {
+				response.end(JSON.stringify({ messages: [null, { ID: 'primitive', Subject: 'Confirm', To: [null, 42, { Email: 'user@example.test' }] }] }));
+				return;
+			}
+			response.end(JSON.stringify('not-an-object'));
+		});
+		expect((await registry.actions.get('mailpitConfirmLatest')!.run({ action: { mailpitConfirmLatest: { mailpitUrl: primitivePayloadUrl, email: 'user@example.test' } }, step, context: context() } as never)).diagnostics[0]?.code).toBe('scene.mailpit_confirm_link_not_found');
+
+		const primitiveListUrl = await listen((_request, response) => {
+			response.setHeader('content-type', 'application/json');
+			response.end(JSON.stringify(null));
+		});
+		expect((await registry.actions.get('mailpitConfirmLatest')!.run({ action: { mailpitConfirmLatest: { mailpitUrl: primitiveListUrl, email: 'user@example.test' } }, step, context: context() } as never)).diagnostics[0]?.code).toBe('scene.mailpit_message_not_found');
 	});
 
 	it('handles Mailpit recipient/body variants and message fetch failures', async () => {

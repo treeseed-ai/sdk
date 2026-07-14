@@ -606,7 +606,7 @@ services:
 			'TREESEED_PLATFORM_RUNNER_ENVIRONMENT',
 		]));
 		expect(runnerServices.map((service) => service.serviceName)).toEqual([
-			'treeseed-api-operations-runner-01',
+			'treeseed-api-operations-runner-staging-01',
 		]);
 		expect(runnerServices[0]).toMatchObject({
 			secrets: expect.arrayContaining(['TREESEED_PLATFORM_RUNNER_SECRET', 'TREESEED_DATABASE_URL']),

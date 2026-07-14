@@ -196,6 +196,7 @@ dependsOnGuarantees:
     ref: api.endpoints.auth-and-sessions
   - guarantee.project.question.ask-question.038
   - {}
+  - 42
 actors:
   allowed: [project_contributor, ""]
   forbidden: [anonymous_user]
@@ -428,6 +429,99 @@ verifiers:
 		expect(selectedOwners).toEqual(expect.arrayContaining(['@treeseed/admin', '@treeseed/api']));
 		const sceneFiltered = planTreeseedGuarantees({ workspaceRoot: root, filter: { sceneBacked: true }, includeDependencies: false });
 		expect(sceneFiltered.entries.filter((entry) => entry.selected).map((entry) => entry.id)).not.toContain('guarantee.api.endpoints.auth-and-sessions.999');
+	});
+
+	it('normalizes minimal guarantee contracts and evaluates every filter independently', () => {
+		const root = workspaceFixture('minimal-contract-defaults');
+		writeGuarantee(root, `schemaVersion: treeseed.guarantee/v1
+id: guarantee.project.question.minimal.101
+type: project
+subtype: question
+journey: Minimal Contract
+ownerPackage: "@treeseed/admin"
+summary: Minimal planned guarantee.
+status: planned
+run: {}
+scene: {}
+api: {}
+content: {}
+audit: {}
+`, 'packages/admin/guarantees/project/question/minimal.guarantee.yaml');
+		writeFileSync(resolve(root, 'packages/admin/guarantees/minimal.verifiers.yaml'), `schemaVersion: treeseed.guarantee-verifiers/v1
+ownerPackage: "@treeseed/admin"
+verifiers:
+  minimal.manual:
+    kind: manual
+  minimal.script:
+    kind: packageScript
+    command: test
+`);
+		writeFileSync(resolve(root, 'packages/admin/guarantees/no-map.verifiers.yaml'), `schemaVersion: treeseed.guarantee-verifiers/v1
+ownerPackage: "@treeseed/admin"
+`);
+
+		const discovered = discoverTreeseedGuarantees({ workspaceRoot: root });
+		const manifest = discovered.guarantees.find((entry) => entry.manifest?.id === 'guarantee.project.question.minimal.101')?.manifest;
+		expect(manifest).toMatchObject({
+			dependencies: { journeys: [], guarantees: [] },
+			actors: { allowed: [], forbidden: [] },
+			devices: { required: [] },
+			preconditions: { fixtures: [], notes: [] },
+			evidence: { required: [], optional: [] },
+		});
+
+		const filters = [
+			{ ownerPackage: '@treeseed/api' },
+			{ status: 'active' as const },
+			{ type: 'billing' },
+			{ subtype: 'payment' },
+			{ gate: 'release' },
+			{ journeyIndexes: [999] },
+			{ journeyIndexes: [] },
+			{ ids: ['guarantee.missing'] },
+		];
+		for (const filter of filters) {
+			const report = discoverTreeseedGuarantees({ workspaceRoot: root, filter });
+			expect(report.counts.selected).toBe(filter.journeyIndexes?.length === 0 ? 1 : 0);
+		}
+		expect(discoverTreeseedGuarantees({
+			workspaceRoot: root,
+			filter: { journeyIndexes: [101] },
+		}).counts.selected).toBe(0);
+		expect(exportTreeseedGuaranteesCsv({ guarantees: discovered.guarantees })).toContain('guarantee.project.question.minimal.101');
+		expect(exportTreeseedGuaranteesJson({ registry: discovered }).guarantees[0]?.sceneManifest).toBeUndefined();
+		expect(exportTreeseedGuaranteesMarkdown({ registry: discovered })).toContain('Minimal Contract');
+
+		const noRegistries = resolveTreeseedGuaranteeVerifierRefs({
+			refs: [], verifierRegistries: [], status: 'planned', sourcePath: resolve(root, 'minimal.guarantee.yaml'),
+		});
+		expect(noRegistries).toMatchObject({ ok: true, resolutions: [], diagnostics: [] });
+		const noMap = loadTreeseedGuaranteeVerifierRegistry({ workspaceRoot: root, path: resolve(root, 'packages/admin/guarantees/no-map.verifiers.yaml') });
+		expect(noMap.registry?.verifiers).toEqual({});
+	});
+
+	it('discovers root guarantees while excluding verifier, dependency, and malformed package paths', () => {
+		const root = workspaceFixture('discovery-path-branches');
+		writeGuarantee(root, validGuarantee
+			.replace('ownerPackage: "@treeseed/admin"', 'ownerPackage: "@treeseed/market"'),
+		'guarantees/project/question/root.guarantee.yaml');
+		writeGuarantee(root, validGuarantee, 'guarantees/verifiers/ignored.guarantee.yaml');
+		writeGuarantee(root, validGuarantee, 'node_modules/dependency/guarantees/project/question/ignored.guarantee.yaml');
+		mkdirSync(resolve(root, 'packages/bad-package/guarantees/project/question'), { recursive: true });
+		writeFileSync(resolve(root, 'packages/bad-package/package.json'), '{');
+		writeFileSync(resolve(root, 'packages/bad-package/guarantees/project/question/bad-package.guarantee.yaml'), validGuarantee);
+		writeFileSync(resolve(root, 'packages/admin/guarantees/empty.verifiers.yaml'), '');
+
+		const report = discoverTreeseedGuarantees({ workspaceRoot: root });
+		expect(report.guarantees.some((entry) => entry.ownerPackage === '@treeseed/market')).toBe(true);
+		expect(report.guarantees.some((entry) => entry.sourcePath.includes('node_modules'))).toBe(false);
+		expect(report.guarantees.some((entry) => entry.sourcePath.includes('/guarantees/verifiers/'))).toBe(true);
+		const emptyRegistry = loadTreeseedGuaranteeVerifierRegistry({
+			workspaceRoot: root,
+			path: resolve(root, 'packages/admin/guarantees/empty.verifiers.yaml'),
+		});
+		expect(emptyRegistry.registry).toBeNull();
+		expect(emptyRegistry.diagnostics).toEqual([]);
 	});
 
 	it('validates path guards and invalid guarantee locations', () => {
@@ -1112,6 +1206,44 @@ workflow:
 		expect(fileExists(resolve(root, 'generated/journey-audit.json'))).toBe(true);
 	});
 
+	it('audits absent scene manifests and empty route actions as repairable planned contracts', () => {
+		const root = workspaceFixture('journey-audit-missing-manifest');
+		writeGuarantee(root, validGuarantee
+			.replace('manifest: ./scenes/ask-question.scene.yaml', 'manifest: ./scenes/does-not-exist.scene.yaml\n  entryRoute: ""'));
+		const audit = auditTreeseedGuaranteeJourneys({ workspaceRoot: root });
+		expect(audit.ok).toBe(false);
+		expect(audit.items[0]).toMatchObject({
+			classification: 'planned-product-contract',
+		});
+		expect(audit.items[0]).not.toHaveProperty('currentRoute');
+		expect(audit.diagnostics.map((entry) => entry.code)).toContain('guarantee.scene_missing_manifest');
+
+		writeGuarantee(root, validGuarantee
+			.replace('id: guarantee.project.question.ask-question.038', 'id: guarantee.project.question.invalid-workflow.102')
+			.replace('journeyIndex: 38', 'journeyIndex: 102')
+			.replace('manifest: ./scenes/ask-question.scene.yaml', 'manifest: ./scenes/invalid-workflow.scene.yaml'),
+		'packages/admin/guarantees/project/question/invalid-workflow.guarantee.yaml');
+		writeFileSync(resolve(root, 'packages/admin/guarantees/project/question/scenes/invalid-workflow.scene.yaml'), `schemaVersion: treeseed.scene/v1
+id: invalid-workflow
+workflow:
+  - scalar-step
+  - id: absent-action
+    expect:
+      text: Ready
+  - id: empty-action
+    action: {}
+  - id: query-route
+    action:
+      goto:
+        url: "?tab=one"
+    expect: {}
+`);
+		const invalidWorkflow = auditTreeseedGuaranteeJourneys({ workspaceRoot: root });
+		expect(invalidWorkflow.items.find((entry) => entry.guaranteeId.endsWith('invalid-workflow.102'))).toMatchObject({
+			classification: 'missing-product-route',
+		});
+	});
+
 	it('validates UI guarantees depending on active API endpoint guarantee refs', () => {
 		const root = workspaceFixture('depends-on-api');
 		mkdirSync(resolve(root, 'packages/api/guarantees/verifiers'), { recursive: true });
@@ -1231,6 +1363,36 @@ verifiers:
 		expect(report.outputRoot).toContain('.treeseed/guarantees/runs/2026-01-01T00-00-00-000Z');
 	});
 
+	it('normalizes sparse verifier results and permits explicitly allowed skipped guarantees', async () => {
+		const root = workspaceFixture('sparse-verifier-results');
+		writeGuarantee(root, validGuarantee
+			.replace('status: planned', 'surface: api-control-plane\nstatus: active\nrun:\n  allowSkipped: true\n  requiredForRelease: false')
+			.replace('gates: [core, release]', 'gates: [core]')
+			.replace('scene:\n  required: true', 'scene:\n  required: false')
+			.replaceAll('todo.project.question.ask-question.api', 'fixture.sparse')
+			.replaceAll('todo.project.question.ask-question.content', 'fixture.sparse')
+			.replaceAll('todo.project.question.ask-question.audit', 'fixture.sparse')
+			.replace('negativeCases:\n  - id: viewer-denied\n    actor: project_viewer', 'negativeCases:\n  - id: viewer-denied\n    actor: project_viewer\n    verifierRefs: [fixture.sparse]'));
+		writeFileSync(resolve(root, 'packages/admin/guarantees/sparse.verifiers.yaml'), `schemaVersion: treeseed.guarantee-verifiers/v1
+ownerPackage: "@treeseed/admin"
+verifiers:
+  fixture.sparse:
+    kind: manualEvidence
+`);
+
+		const passed = await runTreeseedGuarantees({
+			workspaceRoot: root,
+			verifierExecutor: async () => ({ status: 'passed' }),
+		});
+		expect(passed.results[0]).toMatchObject({ status: 'passed', evidence: [], diagnostics: [] });
+
+		const skipped = await runTreeseedGuarantees({
+			workspaceRoot: root,
+		});
+		expect(skipped.results[0]?.status).toBe('skipped');
+		expect(skipped.ok).toBe(true);
+	});
+
 	it('resolves verifier refs and exercises default verifier branches that do not spawn commands', async () => {
 		const root = workspaceFixture('default-verifier-branches');
 		writeGuarantee(root, validGuarantee
@@ -1247,7 +1409,8 @@ verifiers:
       - fixture.api-missing-case
       - fixture.vitest-missing-file
       - fixture.package-missing-command
-      - fixture.node-missing-command`));
+      - fixture.node-missing-command
+      - fixture.node-spawn-error`));
 		writeFileSync(resolve(root, 'packages/admin/guarantees/default.verifiers.yaml'), `schemaVersion: treeseed.guarantee-verifiers/v1
 ownerPackage: "@treeseed/admin"
 verifiers:
@@ -1267,6 +1430,9 @@ verifiers:
     kind: packageScript
   fixture.node-missing-command:
     kind: nodeScript
+  fixture.node-spawn-error:
+    kind: nodeScript
+    command: /definitely/missing/treeseed-verifier
 `);
 		const registry = discoverTreeseedGuarantees({ workspaceRoot: root });
 		const resolution = resolveTreeseedGuaranteeVerifierRefs({
@@ -1290,7 +1456,7 @@ verifiers:
 			now: new Date('2026-01-01T00:00:00.000Z'),
 		});
 		expect(report.ok).toBe(false);
-		expect(report.results[0]?.status).toBe('blocked');
+		expect(report.results[0]?.status).toBe('failed');
 		expect(report.results[0]?.steps.map((step) => [step.ref, step.status])).toEqual([
 			['fixture.todo', 'blocked'],
 			['fixture.manual', 'skipped'],
@@ -1299,6 +1465,7 @@ verifiers:
 			['fixture.vitest-missing-file', 'blocked'],
 			['fixture.package-missing-command', 'blocked'],
 			['fixture.node-missing-command', 'blocked'],
+			['fixture.node-spawn-error', 'failed'],
 		]);
 		expect(report.results[0]?.diagnostics.map((entry) => entry.code)).toEqual(expect.arrayContaining([
 			'guarantee.todo_verifier_execution',
@@ -1592,5 +1759,9 @@ verifiers:
 			stdout: 'No test files found, exiting with code 0\n',
 			stderr: '',
 		})).toContain('without executing any assertions');
+		expect(validateTreeseedVitestVerifierOutput({
+			stdout: '',
+			stderr: '\u001B[31m Tests  3 failed (3)\u001B[0m\r\n',
+		})).toBeNull();
 	});
 });

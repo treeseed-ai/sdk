@@ -48,6 +48,7 @@ import {
 	validateRailwayDeployPrerequisites,
 } from '../operations/services/railway-deploy.ts';
 import { shouldExposeManagedHostRuntimeSecret } from '../operations/services/managed-host-security.ts';
+import { assertNoRailwaySourceIdentityCollisions } from '../operations/services/railway-source-policy.ts';
 import {
 	ensureRailwayEnvironment,
 	ensureRailwayCustomDomain as ensureRailwayCustomDomainViaApi,
@@ -4212,6 +4213,19 @@ function configuredRailwaySiblingResourceNames(
 		.filter((service) => service.enabled !== false)
 		.filter((service) => !isRailwayCapacityProviderService(service))
 		.filter((service) => service.projectName === projectName);
+	const currentServices = configuredRailwayServices(
+		input.context.tenantRoot,
+		scope,
+		resolveReconcileEnvironmentValues(input, scope),
+		{ identityOnly: true },
+	)
+		.filter((service) => service.enabled !== false)
+		.filter((service) => !isRailwayCapacityProviderService(service))
+		.filter((service) => service.projectName === projectName);
+	assertNoRailwaySourceIdentityCollisions([
+		...currentServices.map((service) => ({ ...service, environment: scope })),
+		...siblingServices.map((service) => ({ ...service, environment: siblingScope })),
+	]);
 	const database = configuredRailwayIacDatabase(input, siblingServices);
 	return [...new Set([
 		...siblingServices.flatMap((service) => [
@@ -4330,6 +4344,63 @@ function activeAttachedRailwayVolumeIds(
 			)
 		))
 		.map((volume) => volume.id);
+}
+
+async function migrateEnvironmentQualifiedRailwayVolumes(input: {
+	projectId: string;
+	environmentId: string;
+	services: ReturnType<typeof configuredRailwayServices>;
+	liveServices: Awaited<ReturnType<typeof listRailwayEnvironmentServices>>;
+	liveVolumes: Awaited<ReturnType<typeof listRailwayVolumes>>;
+	env: Record<string, string>;
+}) {
+	for (const service of input.services.filter((entry) => Boolean(entry.volumeMountPath))) {
+		const legacyServiceName = service.serviceName.replace(/-(?:staging|production)(?=-\d+$|$)/u, '');
+		if (legacyServiceName === service.serviceName) continue;
+		const desiredVolumeName = `${service.serviceName}-volume`;
+		const legacyVolumeName = `${legacyServiceName}-volume`;
+		const desiredService = input.liveServices.find((entry) => entry.name === service.serviceName) ?? null;
+		const legacyService = input.liveServices.find((entry) => entry.name === legacyServiceName) ?? null;
+		const desiredVolume = input.liveVolumes.find((volume) =>
+			volume.name === desiredVolumeName
+			&& activeRailwayVolumeInstances(volume).some((instance) => instance.environmentId === input.environmentId),
+		) ?? null;
+		if (desiredService && desiredVolume) continue;
+		const legacyVolume = input.liveVolumes.find((volume) =>
+			volume.name === legacyVolumeName
+			&& activeRailwayVolumeInstances(volume).some((instance) => instance.environmentId === input.environmentId),
+		) ?? null;
+		if (legacyService && !legacyVolume) {
+			throw new Error(`${legacyServiceName}: existing stateful Railway service has no adoptable ${legacyVolumeName}; refusing to create an empty replacement volume.`);
+		}
+		if (!legacyVolume) continue;
+		const activeEnvironmentIds = new Set(activeRailwayVolumeInstances(legacyVolume)
+			.map((instance) => instance.environmentId)
+			.filter(Boolean));
+		if (activeEnvironmentIds.size > 1) {
+			throw new Error(`${legacyVolumeName}: one Railway volume is attached across multiple environments; refusing migration until its environment instances can be isolated without data loss.`);
+		}
+		const ensuredService = desiredService
+			? { service: desiredService }
+			: await ensureRailwayService({
+				projectId: input.projectId,
+				environmentId: input.environmentId,
+				serviceName: service.serviceName,
+				imageRef: service.sourceMode === 'image' ? service.imageRef : null,
+				sourceRepo: service.sourceMode === 'git' ? service.sourceRepo : null,
+				sourceBranch: service.sourceMode === 'git' ? service.sourceBranch : null,
+				env: input.env,
+			});
+		await ensureRailwayServiceVolume({
+			projectId: input.projectId,
+			environmentId: input.environmentId,
+			serviceId: ensuredService.service.id,
+			name: desiredVolumeName,
+			mountPath: service.volumeMountPath!,
+			adoptVolumeId: legacyVolume.id,
+			env: input.env,
+		});
+	}
 }
 
 function blockedPendingRailwayVolumeAttachments(
@@ -4551,6 +4622,14 @@ async function syncRailwayEnvironmentForScope(
 			}
 			throw new Error(`Railway has pending-deletion volume attachments that block official IaC reconciliation. ${pendingVolumeBlocks.join('; ')}`);
 		}
+		await migrateEnvironmentQualifiedRailwayVolumes({
+			projectId: project.id,
+			environmentId: environment.id,
+			services: projectServices,
+			liveServices,
+			liveVolumes,
+			env: topology.env,
+		});
 		const detachVolumeIdsByServiceName = new Map(projectServices.map((service) => {
 			const liveService = liveServiceByName.get(service.serviceName)
 				?? project.services.find((candidate) => candidate.name === service.serviceName || candidate.id === service.serviceId)
@@ -4590,7 +4669,15 @@ async function syncRailwayEnvironmentForScope(
 			})),
 			database: databaseForIac,
 		};
-		const aliasMigration = railwayLegacyAliasMigrationPolicy(scope, projectServices);
+		const activeProjectEnvironmentServices = (await Promise.all(project.environments.map((candidate) =>
+			listRailwayEnvironmentServices({ environmentId: candidate.id, env: topology.env }).catch(() => []),
+		))).flat();
+		const aliasMigration = railwayLegacyAliasMigrationPolicy(
+			scope,
+			projectServices,
+			project.services.map((service) => service.name),
+			activeProjectEnvironmentServices.map((service) => service.name),
+		);
 		const siblingResourceNames = [
 			...configuredRailwaySiblingResourceNames(input, scope, project.name),
 			...aliasMigration.retainedResourceNames,

@@ -6,7 +6,7 @@ import { resolveTreeseedMachineEnvironmentValues } from './config-runtime.ts';
 import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from './deploy.ts';
 import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
 import { discoverTreeseedApplications } from '../../hosting/apps.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from './railway-source-policy.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName } from './railway-source-policy.ts';
 import { runPrefixedCommand, sleep, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from './bootstrap-runner.ts';
 import {
 	ensureRailwayEnvironment,
@@ -809,7 +809,11 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 				?? (serviceKey === 'workerRunner'
 					? deriveRailwayWorkerRunnerServiceName(identity.deploymentKey)
 					: `${identity.deploymentKey}-${railwayServiceNameSuffix(serviceKey)}`);
-			const configuredServiceName = baseServiceName;
+			const configuredServiceName = typeof environmentConfig?.serviceName === 'string' && environmentConfig.serviceName.trim()
+				? environmentConfig.serviceName.trim()
+				: isApiRailwaySourcePolicyService({ key: serviceKey, serviceName: baseServiceName })
+					? railwayEnvironmentQualifiedServiceName(baseServiceName, normalizedScope)
+					: baseServiceName;
 			const configuredRunnerPool = service.railway?.runnerPool && typeof service.railway.runnerPool === 'object'
 				? service.railway.runnerPool
 				: null;
@@ -970,9 +974,10 @@ function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deployConfig
 	const baseImageRef = envValue('TREESEED_PUBLIC_TREEDX_IMAGE_REF', imageRefEnv) || 'treeseed/treedx';
 	return Array.from({ length: bootstrapCount }, (_, offset) => {
 		const index = offset + 1;
-		const serviceName = `${PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX}${String(index).padStart(2, '0')}`;
+		const baseServiceName = `${PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX}${String(index).padStart(2, '0')}`;
+		const serviceName = railwayEnvironmentQualifiedServiceName(baseServiceName, scope);
 		const service = {
-			key: serviceName,
+			key: baseServiceName,
 			serviceName,
 			sourceMode,
 			sourceRepo: sourceMode === 'git' ? repository : null,
@@ -1213,15 +1218,7 @@ export function legacyEnvironmentSpecificRailwayResourceNames(
 ) {
 	const aliases = new Set<string>();
 	for (const service of services) {
-		let alias: string | null = null;
-		if (service.key === 'api') {
-			alias = `${service.serviceName}-production`;
-		} else if (service.key === 'operationsRunner') {
-			alias = service.serviceName.replace(/-(\d+)$/u, '-production-$1');
-		} else {
-			const treeDxMatch = service.serviceName.match(/^public-treedx-node-(\d+)$/u);
-			if (treeDxMatch?.[1]) alias = `public-treedx-node-production-${treeDxMatch[1]}`;
-		}
+		const alias = service.serviceName.replace(/-(?:staging|production)(?=-\d+$|$)/u, '');
 		if (!alias || alias === service.serviceName) continue;
 		aliases.add(alias);
 		if (service.volumeMountPath) aliases.add(`${alias}-volume`);
@@ -1232,11 +1229,24 @@ export function legacyEnvironmentSpecificRailwayResourceNames(
 export function railwayLegacyAliasMigrationPolicy(
 	scope: 'staging' | 'prod',
 	services: ReturnType<typeof configuredRailwayServices>,
+	liveProjectServiceNames: Iterable<string> = [],
+	activeEnvironmentServiceNames: Iterable<string> = [],
 ) {
 	const aliases = legacyEnvironmentSpecificRailwayResourceNames(services);
+	const liveNames = new Set(liveProjectServiceNames);
+	const activeNames = new Set(activeEnvironmentServiceNames);
+	const qualifiedPairs = services
+		.filter((service) => service.serviceName !== service.serviceName.replace(/-(?:staging|production)(?=-\d+$|$)/u, ''))
+		.flatMap((service) => [
+			service.serviceName.replace(/-staging(?=-\d+$|$)/u, '-production'),
+			service.serviceName.replace(/-production(?=-\d+$|$)/u, '-staging'),
+		]);
+	const migrationComplete = aliases.length > 0
+		&& qualifiedPairs.every((name) => liveNames.has(name))
+		&& aliases.every((name) => name.endsWith('-volume') || !activeNames.has(name));
 	return {
-		retainedResourceNames: scope === 'staging' ? aliases : [],
-		allowedResourceDeletions: scope === 'prod' ? aliases : [],
+		retainedResourceNames: migrationComplete ? [] : aliases,
+		allowedResourceDeletions: migrationComplete ? aliases : [],
 	};
 }
 

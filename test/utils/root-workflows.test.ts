@@ -16,7 +16,7 @@ const rootPrepareWorkspaceInstallPath = resolve(workspaceRoot, '.github', 'scrip
 const packageVerifyWorkflowPath = resolve(sdkRoot, '.github', 'workflows', 'verify.yml');
 const integratedWorkspaceAvailable = existsSync(rootVerifyWorkflowPath)
 	&& existsSync(rootDeployWorkflowPath)
-	&& existsSync(rootDeployWebWorkflowPath)
+	&& existsSync(rootReleaseGateWorkflowPath)
 	&& existsSync(rootPrepareWorkspaceInstallPath)
 	&& existsSync(resolve(workspaceRoot, '.railwayignore'));
 
@@ -92,6 +92,13 @@ describe('root workflow bootstrap selection', () => {
 		const operations = readFileSync(resolve(sdkRoot, 'src/workflow/operations.ts'), 'utf8');
 		expect(operations).toContain('adapter?.capabilities.deploy !== true');
 	});
+	it('keeps process force separate from local infrastructure recreation', () => {
+		const devHandlerPath = resolve(workspaceRoot, 'packages/cli/src/cli/handlers/dev.ts');
+		if (!existsSync(devHandlerPath)) return;
+		const source = readFileSync(devHandlerPath, 'utf8');
+		expect(source).toContain("unit.unitType === 'local-process'");
+		expect(source).not.toContain('forceRecreate');
+	});
 	it('uses auto bootstrap mode in the root verify workflow', () => {
 		if (!integratedWorkspaceAvailable) {
 			expect(existsSync(packageVerifyWorkflowPath), `${packageVerifyWorkflowPath} must exist in package-only verification`).toBe(true);
@@ -100,93 +107,42 @@ describe('root workflow bootstrap selection', () => {
 		expect(existsSync(rootVerifyWorkflowPath), `${rootVerifyWorkflowPath} must exist`).toBe(true);
 		const source = readFileSync(rootVerifyWorkflowPath, 'utf8');
 
-		expect(source).toContain("branches-ignore:\n      - staging");
+		expect(source).toContain('push:');
+		expect(source).not.toContain('branches-ignore:');
 		expect(source).toContain('TREESEED_BOOTSTRAP_MODE: auto');
 		expect(source).toContain('submodules: recursive');
 	});
 
-	it('uses auto bootstrap mode with workspace-aware deployment installs', () => {
+	it('uses one verified Market deployment workflow with workspace-aware installs', () => {
 		if (!integratedWorkspaceAvailable) {
 			expect(existsSync(packageVerifyWorkflowPath), `${packageVerifyWorkflowPath} must exist in package-only verification`).toBe(true);
 			return;
 		}
 		expect(existsSync(rootDeployWorkflowPath), `${rootDeployWorkflowPath} must exist`).toBe(true);
-		expect(existsSync(rootDeployWebWorkflowPath), `${rootDeployWebWorkflowPath} must exist`).toBe(true);
 		expect(existsSync(rootVerifyWorkflowPath), `${rootVerifyWorkflowPath} must exist`).toBe(true);
 		const source = readFileSync(rootDeployWorkflowPath, 'utf8');
-		const candidateSource = readFileSync(rootStagingCandidateWorkflowPath, 'utf8');
-		const webSource = readFileSync(rootDeployWebWorkflowPath, 'utf8');
+		const releaseGateSource = readFileSync(rootReleaseGateWorkflowPath, 'utf8');
 		const verifySource = readFileSync(rootVerifyWorkflowPath, 'utf8');
 		const prepareInstallSource = readFileSync(rootPrepareWorkspaceInstallPath, 'utf8');
 
-		expect(source).not.toContain("branches:\n      - staging");
-		expect(candidateSource).toContain("branches:\n      - staging");
-		expect(candidateSource).toContain('Run complete staging guarantees');
-		expect(candidateSource).toContain('counts.passed !== 208');
-		for (const secret of [
-			'TREESEED_PLATFORM_RUNNER_SECRET',
-			'TREESEED_CREDENTIAL_SESSION_SECRET',
-			'TREESEED_WEB_SERVICE_SECRET',
-			'TREESEED_TREEDX_ADMIN_TOKEN',
-			'TREESEED_TREEDX_SECRET_KEY_BASE',
-			'TREESEED_TREEDX_JWT_HS256_SECRET',
-		]) {
-			expect(candidateSource).toContain(`${secret}: \${{ secrets.${secret} }}`);
-		}
+		expect(source).toContain('branches: [staging]');
+		expect(source).toContain("tags: ['*.*.*']");
 		expect(source).not.toContain('      - main');
-		expect(source).toContain("tags:\n      - '*.*.*'");
-		expect(source).toContain('release_tag=$');
-		expect(source).toContain('^[0-9]+\\.[0-9]+\\.[0-9]+$');
-		expect(source).toContain('uses: ./.github/workflows/deploy-web.yml');
-		expect(source).not.toContain('deploy-processing');
-		expect(source).not.toContain('deploy_processing');
-		expect(webSource).toContain('TREESEED_BOOTSTRAP_MODE: auto');
-		expect(webSource).toContain('TREESEED_WORKFLOW_PLANE: web');
-		expect(webSource).toContain('tenant-workflow-action.ts --action "${TREESEED_WORKFLOW_ACTION}" --environment "${TREESEED_WORKFLOW_ENVIRONMENT}"');
-		expect(webSource).toContain('TREESEED_WORKFLOW_ACTION: ${{ inputs.action_kind }}');
-		expect(webSource).toContain('TREESEED_WORKFLOW_ENVIRONMENT: ${{ inputs.environment }}');
-		expect(webSource).toContain('TREESEED_BETTER_AUTH_SECRET');
-		expect(webSource).toContain('TREESEED_WEB_SERVICE_SECRET');
-		expect(webSource).toContain('TREESEED_API_WEB_SERVICE_SECRET');
-		expect(webSource).toContain('TREESEED_HOSTED_HUBS_GITHUB_TOKEN');
-		expect(webSource).toContain('TREESEED_GITHUB_TOKEN: ${{ secrets.TREESEED_HOSTED_HUBS_GITHUB_TOKEN }}');
-		expect(webSource).toContain('TREESEED_GITHUB_TOKEN: ${{ secrets.TREESEED_HOSTED_HUBS_GITHUB_TOKEN }}');
-		expect(webSource).toContain('TREESEED_SITE_URL');
-		expect(webSource).toContain('TREESEED_BETTER_AUTH_URL');
-		expect(webSource).toContain('https://preview.treeseed.dev');
-		expect(webSource).toContain('https://treeseed.dev');
-		expect(webSource).toContain('https://api.preview.treeseed.dev');
-		expect(webSource).toContain('https://api.treeseed.dev');
-		expect(webSource).not.toContain('api-treeseed-market-staging-ca844c56.treeseed.ai');
-		expect(webSource).not.toContain('https://api.treeseed.ai');
-		expect(webSource).toContain('npm --prefix packages/sdk run build:dist');
-		expect(webSource).toContain('packages/ui/dist/astro/layouts/MainLayout.astro');
-		expect(webSource).toContain('packages/admin/dist/plugin.js');
-		expect(webSource).toContain('npm --prefix packages/ui run build:dist');
-		expect(webSource).toContain('npm --prefix packages/core run build:dist');
-		expect(webSource).toContain('npm --prefix packages/admin run build:dist');
-		expect(webSource).toContain('for dir in packages/cli packages/agent');
-		expect(webSource).toContain('pids["${dir}"]="$!"');
-		expect(webSource).toContain('npx --yes tsx ./.github/scripts/prepare-workspace-install.ts');
-		expect(webSource).toContain('npm ci --ignore-scripts');
+		expect(source).toContain('git merge-base --is-ancestor "${GITHUB_SHA}" origin/main');
+		expect(source).toContain('deploy-staging:\n    needs: verify');
+		expect(source).toContain('deploy-production:\n    needs: verify');
 		expect(source).toContain('npx --yes tsx ./.github/scripts/prepare-workspace-install.ts');
-		expect(webSource).toContain('tsx ./packages/sdk/scripts/install-managed-dependencies.ts');
-			expect(webSource).not.toContain('TREESEED_RAILWAY_API_TOKEN');
-			expect(webSource).not.toContain('TREESEED_RAILWAY_PROJECT_ID');
-			expect(webSource).not.toContain('TREESEED_PLATFORM_RUNNER_SECRET');
-			expect(webSource).toContain('TREESEED_CREDENTIAL_SESSION_SECRET: ${{ secrets.TREESEED_CREDENTIAL_SESSION_SECRET }}');
-		expect(webSource).not.toContain('TREESEED_WORKER_POOL_SCALER');
-		expect(source).not.toContain('migrations/*');
-		expect(source).toContain('packages/api');
-		expect(source).toContain('treeseed.site.yaml');
-		expect(source).toContain('.railwayignore');
-		expect(source).toContain('.gitignore');
-		expect(source).not.toContain('processing_changed');
-		expect(source).not.toContain('docs/*|migrations/*');
-		expect(source).not.toContain('api-package-gate');
-		expect(source).not.toContain('Wait for API package CI/CD');
-		expect(webSource).not.toContain('TREESEED_WORKFLOW_SKIP_PROVISION');
-		expect(verifySource).not.toContain('packages/api');
+		expect(source).toContain('npm ci --ignore-scripts --no-audit --no-fund');
+		expect(source).toContain('hosting plan --environment staging --app web --json');
+		expect(source).toContain('hosting apply --environment staging --app web --json');
+		expect(source).toContain('hosting verify --environment staging --app web --live --json');
+		expect(source).toContain('hosting plan --environment prod --app web --json');
+		expect(source).toContain('hosting apply --environment prod --app web --json');
+		expect(source).toContain('hosting verify --environment prod --app web --live --json');
+		expect(source).not.toContain('guarantees run');
+		expect(releaseGateSource).toContain('--scene-backed --no-dependencies');
+		expect(existsSync(rootDeployWebWorkflowPath)).toBe(false);
+		expect(existsSync(rootStagingCandidateWorkflowPath)).toBe(false);
 		expect(source).not.toContain('submodules: false');
 		expect(source).not.toContain('sparse-checkout: |');
 		expect(source).not.toContain('delete pkg.workspaces');

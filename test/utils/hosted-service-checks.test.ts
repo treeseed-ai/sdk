@@ -244,8 +244,8 @@ surfaces:
 				TREESEED_CREDENTIAL_SESSION_SECRET: 'credential-secret',
 			},
 			observedRailwayServices: {
-				'treeseed-api': {
-					serviceName: 'treeseed-api',
+				'treeseed-api-staging': {
+					serviceName: 'treeseed-api-staging',
 					projectName: 'treeseed-api',
 					environmentName: 'staging',
 					rootDirectory: '.',
@@ -256,8 +256,8 @@ surfaces:
 					healthcheckTimeoutSeconds: 120,
 					runtimeMode: 'serverless',
 				},
-				'treeseed-api-operations-runner-01': {
-					serviceName: 'treeseed-api-operations-runner-01',
+				'treeseed-api-operations-runner-staging-01': {
+					serviceName: 'treeseed-api-operations-runner-staging-01',
 					serviceId: 'runner-service-id',
 					projectName: 'treeseed-api',
 					environmentName: 'staging',
@@ -271,7 +271,7 @@ surfaces:
 					deploymentRequiredMountPath: '/data',
 					deploymentVolumeMounts: ['/data'],
 					volumeId: 'runner-volume-id',
-					volumeName: 'treeseed-api-operations-runner-01-volume',
+					volumeName: 'treeseed-api-operations-runner-staging-01-volume',
 					volumeMountPath: '/data',
 					volumeServiceId: 'runner-service-id',
 					volumeEnvironmentId: 'staging-environment-id',
@@ -296,8 +296,8 @@ surfaces:
 			tenantRoot: root,
 			target: 'staging',
 			observedRailwayServices: {
-				'treeseed-api': {
-					serviceName: 'treeseed-api',
+				'treeseed-api-staging': {
+					serviceName: 'treeseed-api-staging',
 					projectName: 'treeseed-api',
 					environmentName: 'staging',
 					rootDirectory: 'packages/api',
@@ -327,8 +327,8 @@ surfaces:
 			target: 'staging',
 			serviceKeys: ['api'],
 			observedRailwayServices: {
-				'treeseed-api': {
-					serviceName: 'treeseed-api',
+				'treeseed-api-staging': {
+					serviceName: 'treeseed-api-staging',
 					projectName: 'treeseed-api',
 					environmentName: 'staging',
 					rootDirectory: 'packages/api',
@@ -355,8 +355,8 @@ surfaces:
 				TREESEED_DATABASE_URL: 'postgres://do-not-print',
 			},
 			observedRailwayServices: {
-				'treeseed-api': {
-					serviceName: 'treeseed-api',
+				'treeseed-api-staging': {
+					serviceName: 'treeseed-api-staging',
 					rootDirectory: 'packages/api',
 					buildCommand: 'npm run build:api',
 					startCommand: 'node ./src/api/server.ts',

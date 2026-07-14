@@ -271,6 +271,7 @@ export interface TreeseedManagedServiceEnvironmentConfig {
 	domain?: string;
 	railwayEnvironment?: string;
 	railwayProjectName?: string;
+	serviceName?: string;
 	railwayServiceName?: string;
 }
 

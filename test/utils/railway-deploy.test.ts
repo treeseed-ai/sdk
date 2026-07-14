@@ -152,33 +152,60 @@ afterEach(async () => {
 });
 
 describe('railway scheduled jobs', () => {
-	it('recognizes only the obsolete environment-specific API aliases', () => {
+	it('recognizes only obsolete unsuffixed source-divergent API identities', () => {
 		const aliases = legacyEnvironmentSpecificRailwayResourceNames([
-			{ key: 'api', serviceName: 'treeseed-api', volumeMountPath: null },
-			{ key: 'operationsRunner', serviceName: 'treeseed-api-operations-runner-01', volumeMountPath: '/data' },
-			{ key: 'public-treedx-node-01', serviceName: 'public-treedx-node-01', volumeMountPath: '/data' },
+			{ key: 'api', serviceName: 'treeseed-api-staging', volumeMountPath: null },
+			{ key: 'operationsRunner', serviceName: 'treeseed-api-operations-runner-staging-01', volumeMountPath: '/data' },
+			{ key: 'public-treedx-node-01', serviceName: 'public-treedx-node-staging-01', volumeMountPath: '/data' },
 			{ key: 'postgres', serviceName: 'treeseed-api-postgres', volumeMountPath: '/var/lib/postgresql/data' },
 		] as ReturnType<typeof configuredRailwayServices>);
 
 		expect(aliases).toEqual([
-			'treeseed-api-production',
-			'treeseed-api-operations-runner-production-01',
-			'treeseed-api-operations-runner-production-01-volume',
-			'public-treedx-node-production-01',
-			'public-treedx-node-production-01-volume',
+			'treeseed-api',
+			'treeseed-api-operations-runner-01',
+			'treeseed-api-operations-runner-01-volume',
+			'public-treedx-node-01',
+			'public-treedx-node-01-volume',
 		]);
 		expect(aliases).not.toContain('treeseed-api-postgres-production');
 		expect(railwayLegacyAliasMigrationPolicy('staging', [
-			{ key: 'api', serviceName: 'treeseed-api', volumeMountPath: null },
+			{ key: 'api', serviceName: 'treeseed-api-staging', volumeMountPath: null },
 		] as ReturnType<typeof configuredRailwayServices>)).toEqual({
-			retainedResourceNames: ['treeseed-api-production'],
+			retainedResourceNames: ['treeseed-api'],
 			allowedResourceDeletions: [],
 		});
 		expect(railwayLegacyAliasMigrationPolicy('prod', [
-			{ key: 'api', serviceName: 'treeseed-api', volumeMountPath: null },
+			{ key: 'api', serviceName: 'treeseed-api-production', volumeMountPath: null },
 		] as ReturnType<typeof configuredRailwayServices>)).toEqual({
+			retainedResourceNames: ['treeseed-api'],
+			allowedResourceDeletions: [],
+		});
+		expect(railwayLegacyAliasMigrationPolicy('prod', [
+			{ key: 'api', serviceName: 'treeseed-api-production', volumeMountPath: null },
+		] as ReturnType<typeof configuredRailwayServices>, [
+			'treeseed-api-staging',
+			'treeseed-api-production',
+			'treeseed-api',
+		], [
+			'treeseed-api-staging',
+			'treeseed-api-production',
+		])).toEqual({
 			retainedResourceNames: [],
-			allowedResourceDeletions: ['treeseed-api-production'],
+			allowedResourceDeletions: ['treeseed-api'],
+		});
+		expect(railwayLegacyAliasMigrationPolicy('prod', [
+			{ key: 'api', serviceName: 'treeseed-api-production', volumeMountPath: null },
+		] as ReturnType<typeof configuredRailwayServices>, [
+			'treeseed-api-staging',
+			'treeseed-api-production',
+			'treeseed-api',
+		], [
+			'treeseed-api-staging',
+			'treeseed-api-production',
+			'treeseed-api',
+		])).toEqual({
+			retainedResourceNames: ['treeseed-api'],
+			allowedResourceDeletions: [],
 		});
 	});
 
@@ -270,11 +297,11 @@ services:
 		expect(deriveRailwayOperationsRunnerServiceName('treeseed-api-operations-runner-01', 1)).toBe('treeseed-api-operations-runner-01');
 		expect(deriveRailwayOperationsRunnerVolumeName('treeseed-api-operations-runner-01')).toBe('treeseed-api-operations-runner-01-volume');
 		expect(runners.map((service) => service.serviceName)).toEqual([
-			'treeseed-api-operations-runner-01',
+			'treeseed-api-operations-runner-staging-01',
 		]);
 		expect(runners[0]).toMatchObject({
 			instanceKey: 'operationsRunner:1',
-			runnerId: 'treeseed-api-operations-runner-01',
+			runnerId: 'treeseed-api-operations-runner-staging-01',
 			sourceMode: 'git',
 			imageRef: null,
 			buildCommand: 'npm run build',
@@ -343,9 +370,9 @@ services:
 			.filter((service) => service.key === 'operationsRunner');
 
 		expect(runners.map((service) => service.serviceName)).toEqual([
-			'treeseed-api-operations-runner-01',
-			'treeseed-api-operations-runner-02',
-			'treeseed-api-operations-runner-03',
+			'treeseed-api-operations-runner-staging-01',
+			'treeseed-api-operations-runner-staging-02',
+			'treeseed-api-operations-runner-staging-03',
 		]);
 		expect(runners.map((service) => service.instanceKey)).toEqual([
 			'operationsRunner:1',
@@ -718,7 +745,7 @@ services:
 
 		expect(publicTreeDx).toMatchObject({
 			sourceMode: 'image',
-			serviceName: 'public-treedx-node-01',
+			serviceName: 'public-treedx-node-production-01',
 			imageRef: 'treeseed/treedx:0.2.11',
 		});
 	});
@@ -756,9 +783,9 @@ services:
 		const services = configuredRailwayServices(tenantRoot, 'prod', {}, { identityOnly: true });
 
 		expect(services.map((service) => service.serviceName)).toEqual(expect.arrayContaining([
-			'treeseed-api',
-			'treeseed-api-operations-runner-01',
-			'public-treedx-node-01',
+			'treeseed-api-production',
+			'treeseed-api-operations-runner-production-01',
+			'public-treedx-node-production-01',
 		]));
 	});
 
@@ -1220,6 +1247,24 @@ services:
 		expect(result.created).toBe(false);
 		expect(result.updated).toBe(true);
 		expect(result.volume.id).toBe('existing-volume');
+		expect(fetchMock.mock.calls.some(([, init]) => String(init?.body ?? '').includes('TreeseedRailwayVolumeCreate'))).toBe(false);
+	});
+
+	it('refuses an empty replacement when an explicit migration volume is missing', async () => {
+		const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+			data: { project: { volumes: { edges: [] } } },
+		}), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+		await expect(ensureRailwayServiceVolume({
+			projectId: 'project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-runner-staging-01',
+			name: 'treeseed-api-operations-runner-staging-01-volume',
+			mountPath: '/data',
+			adoptVolumeId: 'legacy-volume-id',
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		})).rejects.toThrow(/refusing to create an empty replacement volume/u);
 		expect(fetchMock.mock.calls.some(([, init]) => String(init?.body ?? '').includes('TreeseedRailwayVolumeCreate'))).toBe(false);
 	});
 
@@ -1756,8 +1801,8 @@ services:
 `,
 		);
 		const serviceIds: Record<string, string> = {
-			'treeseed-api': 'svc-api',
-			'treeseed-api-operations-runner-01': 'svc-operations-runner',
+			'treeseed-api-staging': 'svc-api',
+			'treeseed-api-operations-runner-staging-01': 'svc-operations-runner',
 			'treeseed-agent-manager': 'svc-agent-manager',
 			'treeseed-agent-runner-01': 'svc-agent-runner',
 		};
@@ -1813,13 +1858,13 @@ services:
 									{
 										node: {
 											id: 'vol-operations-runner',
-											name: 'treeseed-api-operations-runner-01-volume',
+											name: 'treeseed-api-operations-runner-staging-01-volume',
 											projectId: 'railway-project-1',
 											volumeInstances: {
 												edges: [{
 													node: {
 														id: 'vi-operations-runner',
-														serviceId: serviceIds['treeseed-api-operations-runner-01'],
+													serviceId: serviceIds['treeseed-api-operations-runner-staging-01'],
 														environmentId: 'env-staging',
 														mountPath: '/data',
 														state: 'ATTACHED',
@@ -1865,7 +1910,7 @@ services:
 			expect.objectContaining({
 				type: 'service-volume',
 				service: 'operationsRunner',
-				volumeName: 'treeseed-api-operations-runner-01-volume',
+				volumeName: 'treeseed-api-operations-runner-staging-01-volume',
 				mountPath: '/data',
 				ok: true,
 			}),

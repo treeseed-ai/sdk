@@ -878,6 +878,44 @@ async function runReleaseWebLiveVerification(
 	return live;
 }
 
+async function verifyReleaseApiEnvironmentIsolation(
+	root: string,
+	helpers: TreeseedWorkflowHelpers,
+	releaseImageRefs: Record<string, string>,
+) {
+	const reports: Record<string, Awaited<ReturnType<typeof collectTreeseedLiveHostedServiceChecks>>> = {};
+	for (const environment of ['prod', 'staging'] as const) {
+		const env = {
+			...helpers.context.env,
+			...collectTreeseedConfigSeedValues(root, environment, helpers.context.env),
+			...(environment === 'prod' ? releaseImageRefs : {}),
+		};
+		helpers.write(`[release][railway] read-only ${environment} source-invariance verification started.`, 'stderr');
+		const report = await collectTreeseedLiveHostedServiceChecks({
+			tenantRoot: root,
+			target: environment,
+			appId: 'api',
+			serviceKeys: ['api', 'operationsRunner', 'public-treedx-node-01'],
+			strict: true,
+			requireLiveRailway: true,
+			requireLiveHttp: true,
+			env,
+		});
+		const failures = [
+			...report.checks.filter((check) => check.status === 'failed').map((check) => `${check.id}: ${check.issues.join('; ') || 'failed'}`),
+			...report.liveObservation.issues,
+		];
+		if (failures.length > 0) {
+			workflowError('release', 'hosted_live_verification_failed', `${environment} API source-invariance verification failed after production deployment:\n${failures.join('\n')}`, {
+				details: { environment, report },
+			});
+		}
+		reports[environment] = report;
+		helpers.write(`[release][railway] read-only ${environment} source-invariance verification passed.`, 'stderr');
+	}
+	return { status: 'verified', order: ['prod', 'staging'], reports };
+}
+
 function productionReleaseImageRefEnv(selectedVersions: Map<string, string>) {
 	const refs: Record<string, string> = {};
 	const apiVersion = selectedVersions.get('@treeseed/api');
@@ -2538,7 +2576,31 @@ async function executeJournalStep<T extends Record<string, unknown> | null>(
 	if (step.status === 'completed' && !options.rerunCompleted) {
 		return (step.data ?? null) as T;
 	}
-	const data = await Promise.resolve(action());
+	const startedAt = new Date();
+	const retryCount = Number(step.retryCount ?? 0) + (step.startedAt ? 1 : 0);
+	updateWorkflowRunJournal(root, runId, (journal) => ({
+		...journal,
+		steps: journal.steps.map((entry) => entry.id === stepId
+			? { ...entry, startedAt: startedAt.toISOString(), retryCount, lastFailure: null }
+			: entry),
+	}));
+	process.stderr.write(`[workflow][step] start ${stepId} attempt=${retryCount + 1}\n`);
+	let data: T;
+	try {
+		data = await Promise.resolve(action());
+	} catch (error) {
+		const elapsedMs = Date.now() - startedAt.getTime();
+		const message = error instanceof Error ? error.message : String(error);
+		updateWorkflowRunJournal(root, runId, (journal) => ({
+			...journal,
+			steps: journal.steps.map((entry) => entry.id === stepId
+				? { ...entry, elapsedMs, lastFailure: message }
+				: entry),
+		}));
+		process.stderr.write(`[workflow][step] fail ${stepId} elapsed=${Math.ceil(elapsedMs / 1000)}s retries=${retryCount}\n`);
+		throw error;
+	}
+	const elapsedMs = Date.now() - startedAt.getTime();
 	updateWorkflowRunJournal(root, runId, (journal) => ({
 		...journal,
 		steps: journal.steps.map((entry) =>
@@ -2547,11 +2609,14 @@ async function executeJournalStep<T extends Record<string, unknown> | null>(
 					...entry,
 					status: 'completed',
 					completedAt: new Date().toISOString(),
+					elapsedMs,
+					lastFailure: null,
 					data: data ?? null,
 				}
 				: entry),
 	}));
 	refreshWorkflowLock(root, runId);
+	process.stderr.write(`[workflow][step] complete ${stepId} elapsed=${Math.ceil(elapsedMs / 1000)}s retries=${retryCount}\n`);
 	return data;
 }
 
@@ -2752,7 +2817,7 @@ function productionPackageDeployGates(root: string, versions: Map<string, string
 	});
 }
 
-function prepareAdapterReleaseMetadata(root: string, pkg: { name: string; dir: string }, version: string) {
+async function prepareAdapterReleaseMetadata(root: string, pkg: { name: string; dir: string }, version: string) {
 	const adapter = discoverTreeseedPackageAdapters(root).find((entry) => entry.id === pkg.name || entry.name === pkg.name);
 	if (adapter?.kind === 'beam-elixir-rust' && existsSync(resolve(pkg.dir, 'scripts', 'bump-release-version.ts'))) {
 		const tsx = resolve(root, 'node_modules/.bin/tsx');
@@ -2766,7 +2831,7 @@ function prepareAdapterReleaseMetadata(root: string, pkg: { name: string; dir: s
 		return {
 			status: 'npm-install',
 			adapter: adapter?.id ?? pkg.name,
-			...runReleaseNpmInstall(pkg.dir, { workspaceRoot: root }),
+			...await runReleaseNpmInstall(pkg.dir, { workspaceRoot: root }),
 		};
 	}
 	return { status: 'skipped', adapter: adapter?.id ?? pkg.name, reason: 'no package metadata updater' };
@@ -2808,42 +2873,88 @@ function npmCommandForWorkflowSpawn(args: string[]) {
 	};
 }
 
-function runReleaseNpmInstall(repoDir: string, options: { workspaceRoot?: string } = {}) {
-	if (shouldSkipReleaseInstall()) {
-		return { status: 'skipped', reason: 'disabled' };
+function lockfileRootMatchesManifest(repoDir: string) {
+	try {
+		const manifest = JSON.parse(readFileSync(resolve(repoDir, 'package.json'), 'utf8')) as Record<string, any>;
+		const lockfile = JSON.parse(readFileSync(resolve(repoDir, 'package-lock.json'), 'utf8')) as { packages?: Record<string, Record<string, any>> };
+		const root = lockfile.packages?.[''];
+		if (!root || root.version !== manifest.version) return false;
+		for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+			const expected = manifest[field] ?? {};
+			const observed = root[field] ?? {};
+			if (JSON.stringify(expected) !== JSON.stringify(observed)) return false;
+		}
+		return true;
+	} catch {
+		return false;
 	}
-	const args = repoDir === options.workspaceRoot
-		? ['install', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund']
-		: ['install', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund'];
-	const spawnCommand = npmCommandForWorkflowSpawn(args);
-	let lastDetail = '';
-	for (let attempt = 1; attempt <= 10; attempt += 1) {
-		const result = spawnSync(spawnCommand.command, spawnCommand.args, {
+}
+
+function waitForReleaseInstall(
+	command: string,
+	args: string[],
+	repoDir: string,
+	attempt: number,
+) {
+	return new Promise<{ status: number | null; detail: string }>((resolvePromise) => {
+		const startedAt = Date.now();
+		let settled = false;
+		const child = spawn(command, args, {
 			cwd: repoDir,
 			env: {
 				...process.env,
 				npm_config_audit: 'false',
-				npm_config_fetch_retries: '4',
+				npm_config_fetch_retries: '2',
 				npm_config_fund: 'false',
-				npm_config_foreground_scripts: 'true',
+				npm_config_foreground_scripts: 'false',
 				npm_config_loglevel: 'warn',
 				npm_config_maxsockets: '4',
-				npm_config_prefer_online: 'true',
+				npm_config_prefer_offline: 'true',
 				npm_config_progress: 'false',
 			},
-			stdio: 'pipe',
-			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'pipe'],
 		});
+		const output: Buffer[] = [];
+		child.stdout?.on('data', (chunk) => output.push(Buffer.from(chunk)));
+		child.stderr?.on('data', (chunk) => output.push(Buffer.from(chunk)));
+		const heartbeat = setInterval(() => {
+			process.stderr.write(`[release][restore] repository=${repoDir} phase=package-lock attempt=${attempt} elapsed=${Math.ceil((Date.now() - startedAt) / 1000)}s\n`);
+		}, 15_000);
+		child.once('close', (status) => {
+			if (settled) return;
+			settled = true;
+			clearInterval(heartbeat);
+			resolvePromise({ status, detail: Buffer.concat(output).toString('utf8').trim() });
+		});
+		child.once('error', (error) => {
+			if (settled) return;
+			settled = true;
+			clearInterval(heartbeat);
+			output.push(Buffer.from(error.message));
+			resolvePromise({ status: null, detail: Buffer.concat(output).toString('utf8').trim() });
+		});
+	});
+}
+
+async function runReleaseNpmInstall(repoDir: string, options: { workspaceRoot?: string } = {}) {
+	if (shouldSkipReleaseInstall()) {
+		return { status: 'skipped', reason: 'disabled' };
+	}
+	if (repoDir === options.workspaceRoot && lockfileRootMatchesManifest(repoDir)) {
+		return { status: 'skipped', reason: 'root-lockfile-already-matches', attempts: 0 };
+	}
+	const args = ['install', '--package-lock-only', '--ignore-scripts', '--prefer-offline', '--workspaces=false', '--no-audit', '--no-fund'];
+	const spawnCommand = npmCommandForWorkflowSpawn(args);
+	let lastDetail = '';
+	for (let attempt = 1; attempt <= 3; attempt += 1) {
+		process.stderr.write(`[release][restore] repository=${repoDir} phase=package-lock attempt=${attempt} elapsed=0s\n`);
+		const result = await waitForReleaseInstall(spawnCommand.command, spawnCommand.args, repoDir, attempt);
 		if (result.status === 0) {
 			return { status: 'completed', reason: null, attempts: attempt };
 		}
-		lastDetail = [
-			result.error?.message,
-			result.stderr?.trim(),
-			result.stdout?.trim(),
-		].filter(Boolean).join('\n');
-		if (!/No matching version found|notarget|ETARGET|E404/u.test(lastDetail) || attempt === 10) break;
-		spawnSync('sleep', ['30'], { stdio: 'ignore' });
+		lastDetail = result.detail;
+		if (!/No matching version found|notarget|ETARGET|E404/u.test(lastDetail) || attempt === 3) break;
+		await new Promise((resolvePromise) => setTimeout(resolvePromise, 15_000));
 	}
 	throw new Error(lastDetail || `npm ${args.join(' ')} failed`);
 }
@@ -7187,6 +7298,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					},
 					{ id: 'verify-published-artifacts', description: 'Verify immutable registry artifacts exist after publish workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'production-package-deploy-workflows', description: 'Wait for production package deploy workflows before live verification', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
+					{ id: 'verify-api-environment-isolation', description: 'Verify production images and staging Git sources remained isolated', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'persist-production-image-refs', description: 'Persist released production image refs and verify deployment readiness', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
 					{ id: 'release-root', description: `Release market ${plannedRelease.rootVersion}`, repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'publish-wait', description: 'Wait for production release workflows', repoName: rootRepo.name, repoPath: rootRepo.path, branch: PRODUCTION_BRANCH, resumable: true },
@@ -7261,13 +7373,41 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				});
 				const packageReleases: Array<Record<string, unknown>> = [];
 				const packageRepoByName = new Map(checkedOutWorkspacePackageRepos(root).map((entry) => [entry.name, entry]));
-				for (const packageName of selectedPackageNames) {
+				const pendingPackageReleases = new Set(selectedPackageNames.filter((name) => selectedVersions.has(name) && packageRepoByName.has(name)));
+				const completedPackageReleases = new Set<string>();
+				const packageReleaseResults = new Map<string, Record<string, unknown>>();
+					const selectedPackageDependencies = new Map([...pendingPackageReleases].map((packageName) => {
 					const pkg = packageRepoByName.get(packageName);
-					if (!pkg) continue;
-					const version = selectedVersions.get(pkg.name);
-					if (!version) continue;
-					const packageRelease = await executeJournalStep(root, workflowRun.runId, `release-${pkg.name}`, async () => {
-						const metadata = prepareAdapterReleaseMetadata(root, pkg, version);
+					if (!pkg) return [packageName, []] as const;
+					const manifest = readJsonFile<Record<string, any>>(resolve(pkg.dir, 'package.json'));
+					if (!manifest) {
+						throw new Error(`Release package manifest is missing or invalid for ${packageName}.`);
+					}
+					const dependencyNames = new Set([
+						...Object.keys(manifest.dependencies ?? {}),
+						...Object.keys(manifest.optionalDependencies ?? {}),
+						...Object.keys(manifest.peerDependencies ?? {}),
+					]);
+						const dependencies = [...dependencyNames].filter((name) => pendingPackageReleases.has(name));
+						if (packageName !== '@treeseed/sdk' && pendingPackageReleases.has('@treeseed/sdk') && !dependencies.includes('@treeseed/sdk')) {
+							dependencies.push('@treeseed/sdk');
+						}
+						return [packageName, dependencies] as const;
+					}));
+				while (pendingPackageReleases.size > 0) {
+					const eligible = selectedPackageNames.filter((packageName) =>
+						pendingPackageReleases.has(packageName)
+						&& (selectedPackageDependencies.get(packageName) ?? []).every((dependency) => completedPackageReleases.has(dependency)));
+					if (eligible.length === 0) {
+						throw new Error(`Release package dependency graph is cyclic or unresolved: ${[...pendingPackageReleases].join(', ')}.`);
+					}
+					const batch = eligible.slice(0, 2);
+					helpers.write(`[release][packages] starting batch ${batch.join(', ')} (concurrency=${batch.length}/2).`, 'stderr');
+					const results = await Promise.all(batch.map(async (packageName) => {
+						const pkg = packageRepoByName.get(packageName)!;
+						const version = selectedVersions.get(pkg.name)!;
+						const packageRelease = await executeJournalStep(root, workflowRun.runId, `release-${pkg.name}`, async () => {
+						const metadata = await prepareAdapterReleaseMetadata(root, pkg, version);
 						const changelog = updateReleaseChangelog(pkg.dir, {
 							version,
 							sourceRef: `origin/${PRODUCTION_BRANCH}`,
@@ -7310,8 +7450,17 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 							publishedArtifacts,
 						};
 					});
-					packageReleases.push(packageRelease);
+						return [packageName, packageRelease] as const;
+					}));
+					for (const [packageName, packageRelease] of results) {
+						pendingPackageReleases.delete(packageName);
+						completedPackageReleases.add(packageName);
+						packageReleaseResults.set(packageName, packageRelease);
+					}
 				}
+				packageReleases.push(...selectedPackageNames
+					.map((name) => packageReleaseResults.get(name))
+					.filter((entry): entry is Record<string, unknown> => Boolean(entry)));
 				const managedHelperReleases = await executeJournalStep(root, workflowRun.runId, 'release-helper-repos', () => {
 					const releases = releaseHelperRepos.map((repo) => releaseHelperRepoToProduction(repo));
 					syncAllCheckedOutReleaseHelperRepos(root, STAGING_BRANCH);
@@ -7330,6 +7479,13 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						onProgress: (line, stream) => helpers.write(line, stream),
 					}).then((workflowGates) => ({ workflowGates }));
 				});
+				const apiEnvironmentIsolation = effectiveInput.verifyDeployedResources === true
+					? await executeJournalStep(root, workflowRun.runId, 'verify-api-environment-isolation', () =>
+						verifyReleaseApiEnvironmentIsolation(root, helpers, releaseImageRefs))
+					: (skipJournalStep(root, workflowRun.runId, 'verify-api-environment-isolation', {
+						status: 'skipped',
+						reason: '--verify-deployed-resources was not requested',
+					}), { status: 'skipped', reason: '--verify-deployed-resources was not requested' });
 				const productionImageRefs = await executeJournalStep(root, workflowRun.runId, 'persist-production-image-refs', async () => {
 					const persisted = persistProductionReleaseImageRefs(root, releaseImageRefs);
 					if (helpers.context.env) {
@@ -7351,8 +7507,8 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					}
 					return { persisted, readiness };
 				});
-				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', () => {
-					const rootInstall = runReleaseNpmInstall(root, { workspaceRoot: root });
+				const rootRelease = await executeJournalStep(root, workflowRun.runId, 'release-root', async () => {
+					const rootInstall = await runReleaseNpmInstall(root, { workspaceRoot: root });
 					const changelog = updateReleaseChangelog(repoRoot(root), {
 						version: plannedRelease.rootVersion,
 						sourceRef: `origin/${PRODUCTION_BRANCH}`,
@@ -7429,6 +7585,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					publishWait: publishWait.workflowGates,
 					publishedArtifacts,
 					productionPackageDeployWorkflows,
+					apiEnvironmentIsolation,
 					productionImageRefs,
 					backMerge,
 					workspaceLinks,

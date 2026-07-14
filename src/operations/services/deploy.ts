@@ -728,7 +728,7 @@ function defaultStateFromConfig(deployConfig, target) {
 						projectId: serviceConfig?.railway?.projectId ?? null,
 						projectName: serviceConfig?.railway?.projectName ?? sharedDeploymentName(identity),
 						serviceId: serviceConfig?.railway?.serviceId ?? null,
-						serviceName: serviceConfig?.railway?.serviceName ?? sharedDeploymentName(identity, serviceKey),
+						serviceName: serviceConfig?.environments?.[scope]?.serviceName ?? serviceConfig?.railway?.serviceName ?? sharedDeploymentName(identity, serviceKey),
 						workerName: serviceConfig?.cloudflare?.workerName ?? null,
 						rootDir: serviceConfig?.railway?.rootDir ?? serviceConfig?.rootDir ?? null,
 						environment: normalizeRailwayEnvironmentName(serviceConfig?.environments?.[scope]?.railwayEnvironment ?? scope),
@@ -2955,7 +2955,9 @@ function configuredRailwayDestroyTargets(tenantRoot, deployConfig, scope) {
 		if (!service || service.enabled === false || (service.provider ?? 'railway') !== 'railway') {
 			continue;
 		}
-		const baseServiceName = service.railway?.serviceName ?? `${identity.deploymentKey}-${serviceKey === 'operationsRunner' ? 'operations-runner' : serviceKey}`;
+		const baseServiceName = service.environments?.[normalizedScope]?.serviceName
+			?? service.railway?.serviceName
+			?? `${identity.deploymentKey}-${serviceKey === 'operationsRunner' ? 'operations-runner' : serviceKey}`;
 		const runnerPool = serviceKey === 'operationsRunner' && service.railway?.runnerPool && typeof service.railway.runnerPool === 'object'
 			? service.railway.runnerPool
 			: null;

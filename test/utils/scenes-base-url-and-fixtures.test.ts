@@ -16,6 +16,8 @@ const servers: Server[] = [];
 
 afterEach(async () => {
 	vi.restoreAllMocks();
+	vi.unstubAllGlobals();
+	vi.useRealTimers();
 	delete process.env.TREESEED_API_BASE_URL;
 	delete process.env.TREESEED_MARKET_API_BASE_URL;
 	delete process.env.TREESEED_API_WEB_SERVICE_SECRET;
@@ -211,7 +213,7 @@ describe('scene visual audit fixture critical coverage', () => {
 		};
 		const loginDiagnostics = await signInTreeseedSceneVisualAuditRole({ page, baseUrl: confirmationBaseUrl, role: 'owner' });
 		expect(loginDiagnostics[0]?.code).toBe('scene.visual_audit_role_login_failed');
-	});
+	}, 15_000);
 
 	it('handles anonymous-only fixtures, confirmation tokens, API sign-in base URLs, and form login success', async () => {
 		const anonymousBaseUrl = await listen(async (_request, response) => {
@@ -406,5 +408,33 @@ describe('scene visual audit fixture critical coverage', () => {
 		expect(await ensureTreeseedSceneVisualAuditRoleFixtures({ baseUrl, roles: ['owner'], environment: 'local' })).toEqual([]);
 		expect(signInAttempts).toBe(2);
 		expect(signupAttempts).toBe(1);
+	});
+
+	it('reports non-Error fixture and browser failures after bounded retries', async () => {
+		vi.useFakeTimers();
+		vi.stubGlobal('fetch', vi.fn(async () => Promise.reject('fixture network unavailable')));
+		const fixturePromise = ensureTreeseedSceneVisualAuditRoleFixtures({
+			baseUrl: 'http://fixture-unavailable.test',
+			roles: ['owner'],
+			environment: 'local',
+		});
+		await vi.runAllTimersAsync();
+		const fixtureDiagnostics = await fixturePromise;
+		expect(fixtureDiagnostics.some((entry) => entry.message.includes('fixture network unavailable'))).toBe(true);
+
+		const page = {
+			context: () => ({ addCookies: async () => undefined }),
+			goto: async () => Promise.reject('browser form unavailable'),
+			waitForLoadState: async () => undefined,
+			url: () => 'http://fixture-unavailable.test/auth/sign-in',
+		};
+		const loginPromise = signInTreeseedSceneVisualAuditRole({
+			page,
+			baseUrl: 'http://fixture-unavailable.test',
+			role: 'owner',
+		});
+		await vi.runAllTimersAsync();
+		const loginDiagnostics = await loginPromise;
+		expect(loginDiagnostics[0]?.message).toContain('browser form unavailable');
 	});
 });

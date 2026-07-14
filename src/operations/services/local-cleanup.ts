@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -40,13 +41,17 @@ function directoryBytes(path: string): number {
 
 function removeDirectory(root: string, relativePath: string): TreeseedLocalCleanupAction {
 	const path = join(root, relativePath);
+	return removeDirectoryPath(relativePath, path);
+}
+
+function removeDirectoryPath(id: string, path: string): TreeseedLocalCleanupAction {
 	const beforeBytes = directoryBytes(path);
-	if (!existsSync(path)) return { id: relativePath, kind: 'directory', path, status: 'skipped', beforeBytes: 0, afterBytes: 0 };
+	if (!existsSync(path)) return { id, kind: 'directory', path, status: 'skipped', beforeBytes: 0, afterBytes: 0 };
 	try {
 		rmSync(path, { recursive: true, force: true });
-		return { id: relativePath, kind: 'directory', path, status: 'removed', beforeBytes, afterBytes: directoryBytes(path) };
+		return { id, kind: 'directory', path, status: 'removed', beforeBytes, afterBytes: directoryBytes(path) };
 	} catch (error) {
-		return { id: relativePath, kind: 'directory', path, status: 'failed', beforeBytes, afterBytes: directoryBytes(path), error: error instanceof Error ? error.message : String(error) };
+		return { id, kind: 'directory', path, status: 'failed', beforeBytes, afterBytes: directoryBytes(path), error: error instanceof Error ? error.message : String(error) };
 	}
 }
 
@@ -68,11 +73,17 @@ export function runTreeseedLocalCleanup(input: {
 	mode?: TreeseedLocalCleanupMode;
 	docker?: boolean;
 	npmCache?: boolean;
+	npmCacheRoot?: string;
 }): TreeseedLocalCleanupReport {
 	const root = resolve(input.root);
 	const mode = input.mode ?? 'standard';
 	const startedAt = new Date().toISOString();
-	const beforeBytes = directoryBytes(join(root, '.treeseed'));
+	const npmCacheRoot = resolve(input.npmCacheRoot
+		?? process.env.npm_config_cache
+		?? process.env.NPM_CONFIG_CACHE
+		?? join(homedir(), '.npm'));
+	const npmTemporaryDownloads = join(npmCacheRoot, '_cacache', 'tmp');
+	const beforeBytes = directoryBytes(join(root, '.treeseed')) + directoryBytes(npmTemporaryDownloads);
 	const actions: TreeseedLocalCleanupAction[] = [];
 	const directoryTargets = mode === 'aggressive'
 		? [
@@ -84,9 +95,10 @@ export function runTreeseedLocalCleanup(input: {
 		]
 		: ['.treeseed/tmp', '.treeseed/cache', '.treeseed/scenes/render'];
 	for (const target of directoryTargets) actions.push(removeDirectory(root, target));
+	actions.push(removeDirectoryPath('npm-cache-temporary-downloads', npmTemporaryDownloads));
 	if (input.docker === true && mode === 'aggressive') actions.push(runCleanupCommand('docker-system-prune', 'docker', ['docker', 'system', 'prune', '--all', '--volumes', '--force'], root));
 	if (input.npmCache === true) actions.push(runCleanupCommand('npm-cache-clean', 'npm-cache', ['npm', 'cache', 'clean', '--force'], root));
-	const afterBytes = directoryBytes(join(root, '.treeseed'));
+	const afterBytes = directoryBytes(join(root, '.treeseed')) + directoryBytes(npmTemporaryDownloads);
 	const completedAt = new Date().toISOString();
 	return { ok: actions.every((entry) => entry.status !== 'failed'), mode, root, startedAt, completedAt, beforeBytes, afterBytes, reclaimedBytes: Math.max(0, beforeBytes - afterBytes), actions };
 }
