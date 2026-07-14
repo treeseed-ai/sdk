@@ -1346,33 +1346,27 @@ services:
 	});
 
 	it('detaches a known partial volume from only the selected environment', async () => {
-		const iacClient = {
-			stageEnvironmentChanges: vi.fn(async () => ({ id: 'patch-1' })),
-			commitStagedPatch: vi.fn(async () => 'patch-1'),
-		};
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			expect(String(body.query)).toContain('TreeseedRailwayVolumeInstanceDetach');
+			expect(body.variables).toEqual({
+				volumeId: 'partial-qualified-volume',
+				environmentId: 'env-staging',
+				input: { serviceId: null },
+			});
+			return new Response(JSON.stringify({ data: { volumeInstanceUpdate: true } }), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			});
+		});
 
 		await detachRailwayVolumeInstance({
 			volumeId: 'partial-qualified-volume',
 			environmentId: 'env-staging',
-			serviceId: 'service-staging',
-			iacClient,
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
 		});
-		expect(iacClient.stageEnvironmentChanges).toHaveBeenCalledWith({
-			environmentId: 'env-staging',
-			merge: true,
-			patch: {
-				services: {
-					'service-staging': {
-						volumeMounts: { 'partial-qualified-volume': null },
-					},
-				},
-			},
-		});
-		expect(iacClient.commitStagedPatch).toHaveBeenCalledWith({
-			environmentId: 'env-staging',
-			message: 'Treeseed detach stale volume partial-qualified-volume from service service-staging',
-			skipDeploys: true,
-		});
+		expect(fetchMock).toHaveBeenCalledOnce();
 	});
 
 	it('deduplicates Railway volume aliases and preserves pending deletion state', async () => {

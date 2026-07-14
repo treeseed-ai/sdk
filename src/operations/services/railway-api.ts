@@ -1,5 +1,5 @@
 import { request as httpsRequest } from 'node:https';
-import { IacClient, type EnvironmentConfig } from 'railway';
+import { IacClient } from 'railway';
 import { resolveTreeseedRailwayApiToken } from '../../service-credentials.ts';
 
 const DEFAULT_RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
@@ -2628,35 +2628,31 @@ mutation TreeseedRailwayVolumeInstanceUpdate($volumeId: String!, $input: VolumeI
 export async function detachRailwayVolumeInstance({
 	volumeId,
 	environmentId,
-	serviceId,
 	env = process.env,
 	fetchImpl = fetch,
-	iacClient,
 }: {
 	volumeId: string;
 	environmentId: string;
-	serviceId: string;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
-	iacClient?: RailwayEnvironmentPatchClient;
 }) {
-	const client = iacClient ?? createRailwayEnvironmentPatchClient({ env, fetchImpl });
-	const patch: EnvironmentConfig = {
-		services: {
-			[serviceId]: {
-				volumeMounts: { [volumeId]: null },
-			},
+	// Railway SDK 3.4.1 rejects orphaned pending-deletion attachments as an
+	// environment patch. This provider primitive is used only to unblock the
+	// one-time qualified-volume migration; normal mounts use Railway IaC.
+	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_INSTANCE_UPDATE_MUTATION') || `
+mutation TreeseedRailwayVolumeInstanceDetach($volumeId: String!, $environmentId: String!, $input: VolumeInstanceUpdateInput!) {
+	volumeInstanceUpdate(volumeId: $volumeId, environmentId: $environmentId, input: $input)
+}
+`.trim();
+	await railwayGraphqlRequest({
+		query: mutation,
+		variables: {
+			volumeId,
+			environmentId,
+			input: { serviceId: null },
 		},
-	};
-	await client.stageEnvironmentChanges({
-		environmentId,
-		patch,
-		merge: true,
-	});
-	await client.commitStagedPatch({
-		environmentId,
-		message: `Treeseed detach stale volume ${volumeId} from service ${serviceId}`,
-		skipDeploys: true,
+		env,
+		fetchImpl,
 	});
 }
 

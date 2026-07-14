@@ -4511,7 +4511,6 @@ async function detachKnownPartialEnvironmentQualifiedVolumes(input: {
 		await detachRailwayVolumeInstance({
 			volumeId: volume.id,
 			environmentId: input.environmentId,
-			serviceId: pendingInstance.serviceId,
 			env: input.env,
 		});
 		detached = true;
