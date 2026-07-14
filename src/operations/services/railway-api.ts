@@ -1,4 +1,5 @@
 import { request as httpsRequest } from 'node:https';
+import { IacClient, type EnvironmentConfig } from 'railway';
 import { resolveTreeseedRailwayApiToken } from '../../service-credentials.ts';
 
 const DEFAULT_RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
@@ -120,6 +121,26 @@ export type RailwayVolumeBackupSummary = {
 	usedMb: number | null;
 	referencedMb: number | null;
 };
+
+type RailwayEnvironmentPatchClient = Pick<IacClient, 'stageEnvironmentChanges' | 'commitStagedPatch'>;
+
+function createRailwayEnvironmentPatchClient({
+	env,
+	fetchImpl,
+}: {
+	env: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl: typeof fetch;
+}): RailwayEnvironmentPatchClient {
+	const token = resolveRailwayApiToken(env);
+	if (!token) {
+		throw new Error('Railway API token is required for environment reconciliation.');
+	}
+	return new IacClient({
+		token,
+		endpoint: resolveRailwayApiUrl(env),
+		fetch: fetchImpl,
+	});
+}
 
 function configuredEnvValue(env: NodeJS.ProcessEnv | Record<string, string | undefined> | undefined, name: string) {
 	const value = env?.[name];
@@ -421,6 +442,27 @@ function normalizeVolumeInstances(value: unknown): RailwayVolumeInstanceSummary[
 	return normalizeConnectionNodes(value, normalizeRailwayVolumeInstance);
 }
 
+function mergeRailwayVolumeInstances(instances: RailwayVolumeInstanceSummary[]) {
+	const byId = new Map<string, RailwayVolumeInstanceSummary>();
+	for (const instance of instances) {
+		const existing = byId.get(instance.id);
+		byId.set(instance.id, existing ? {
+			...existing,
+			serviceId: existing.serviceId || instance.serviceId,
+			environmentId: existing.environmentId || instance.environmentId,
+			mountPath: existing.mountPath || instance.mountPath,
+			state: [existing.state, instance.state].find((state) => /^(?:DELETED|DELETING)$/u.test(String(state ?? '').toUpperCase()))
+				?? existing.state
+				?? instance.state,
+			isPendingDeletion: existing.isPendingDeletion || instance.isPendingDeletion,
+			deletedAt: existing.deletedAt || instance.deletedAt,
+			sizeGb: existing.sizeGb ?? instance.sizeGb,
+			usedGb: existing.usedGb ?? instance.usedGb,
+		} : instance);
+	}
+	return [...byId.values()];
+}
+
 function normalizeRailwayVolume(node: Record<string, unknown>): RailwayVolumeSummary | null {
 	const id = railwayConnectionLabel(node.id);
 	if (!id) {
@@ -430,11 +472,11 @@ function normalizeRailwayVolume(node: Record<string, unknown>): RailwayVolumeSum
 		id,
 		name: railwayConnectionLabel(node.name),
 		projectId: railwayConnectionLabel(node.projectId) || null,
-		instances: [
+		instances: mergeRailwayVolumeInstances([
 			...normalizeVolumeInstances(node.instances),
 			...normalizeVolumeInstances(node.volumeInstances),
 			...normalizeVolumeInstances(node.volume_instances),
-		],
+		]),
 	};
 }
 
@@ -477,7 +519,7 @@ function collectRailwayVolumes(value: unknown, seen = new Set<object>()): Railwa
 				...existing,
 				name: existing.name || volume.name,
 				projectId: existing.projectId || volume.projectId,
-				instances: [...existing.instances, ...volume.instances],
+				instances: mergeRailwayVolumeInstances([...existing.instances, ...volume.instances]),
 			}
 			: volume);
 	}
@@ -2308,6 +2350,8 @@ export async function listRailwayVolumeInstanceBackups({
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
 }) {
+	// Railway SDK 3.4.1 does not expose volume backup operations. Keep this
+	// migration-only transport isolated here; normal reconciliation uses IacClient.
 	const query = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_BACKUP_LIST_QUERY') || `
 query TreeseedRailwayVolumeBackupList($volumeInstanceId: String!) {
 	volumeInstanceBackupList(volumeInstanceId: $volumeInstanceId) {
@@ -2410,24 +2454,19 @@ export async function commitRailwayStagedEnvironmentChanges({
 	commitMessage,
 	env = process.env,
 	fetchImpl = fetch,
+	iacClient,
 }: {
 	environmentId: string;
 	commitMessage: string;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
+	iacClient?: RailwayEnvironmentPatchClient;
 }) {
-	await railwayGraphqlRequest({
-		query: `
-mutation TreeseedRailwayEnvironmentPatchCommitStaged($environmentId: String!, $commitMessage: String) {
-	environmentPatchCommitStaged(environmentId: $environmentId, commitMessage: $commitMessage) {
-		id
-		status
-	}
-}
-`.trim(),
-		variables: { environmentId, commitMessage },
-		env,
-		fetchImpl,
+	const client = iacClient ?? createRailwayEnvironmentPatchClient({ env, fetchImpl });
+	return client.commitStagedPatch({
+		environmentId,
+		message: commitMessage,
+		skipDeploys: false,
 	});
 }
 
@@ -2589,28 +2628,35 @@ mutation TreeseedRailwayVolumeInstanceUpdate($volumeId: String!, $input: VolumeI
 export async function detachRailwayVolumeInstance({
 	volumeId,
 	environmentId,
+	serviceId,
 	env = process.env,
 	fetchImpl = fetch,
+	iacClient,
 }: {
 	volumeId: string;
 	environmentId: string;
+	serviceId: string;
 	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
 	fetchImpl?: typeof fetch;
+	iacClient?: RailwayEnvironmentPatchClient;
 }) {
-	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_INSTANCE_UPDATE_MUTATION') || `
-mutation TreeseedRailwayVolumeInstanceDetach($volumeId: String!, $environmentId: String!, $input: VolumeInstanceUpdateInput!) {
-	volumeInstanceUpdate(volumeId: $volumeId, environmentId: $environmentId, input: $input)
-}
-`.trim();
-	await railwayGraphqlRequest({
-		query: mutation,
-		variables: {
-			volumeId,
-			environmentId,
-			input: { serviceId: null },
+	const client = iacClient ?? createRailwayEnvironmentPatchClient({ env, fetchImpl });
+	const patch: EnvironmentConfig = {
+		services: {
+			[serviceId]: {
+				volumeMounts: { [volumeId]: null },
+			},
 		},
-		env,
-		fetchImpl,
+	};
+	await client.stageEnvironmentChanges({
+		environmentId,
+		patch,
+		merge: true,
+	});
+	await client.commitStagedPatch({
+		environmentId,
+		message: `Treeseed detach stale volume ${volumeId} from service ${serviceId}`,
+		skipDeploys: true,
 	});
 }
 
