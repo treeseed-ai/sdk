@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
 	inspectTreeseedGitLockSet,
 	recoverTreeseedGitLocks,
+	resolveTreeseedGitCommandTimeoutMs,
 	runTreeseedGit,
+	treeseedGitCommandUsesRemote,
 } from '../../src/operations/services/git-runner.ts';
 
 const roots: string[] = [];
@@ -47,6 +49,14 @@ afterEach(() => {
 });
 
 describe('Treeseed Git runner locks', () => {
+	it('bounds remote commands without changing local command timeouts', () => {
+		expect(treeseedGitCommandUsesRemote(['ls-remote', 'origin'])).toBe(true);
+		expect(treeseedGitCommandUsesRemote(['status', '--porcelain'])).toBe(false);
+		expect(resolveTreeseedGitCommandTimeoutMs(['fetch', 'origin'])).toBe(60_000);
+		expect(resolveTreeseedGitCommandTimeoutMs(['push', 'origin'], 12_345)).toBe(12_345);
+		expect(resolveTreeseedGitCommandTimeoutMs(['status'])).toBeUndefined();
+	});
+
 	it('detects stale remote ref locks', () => {
 		const root = tempRepo();
 		const lockPath = resolve(root, '.git', 'refs', 'remotes', 'origin', 'scenes.lock');

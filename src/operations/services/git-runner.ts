@@ -67,6 +67,17 @@ export type TreeseedGitBatchOperation = RunOptions & {
 	args: string[];
 };
 
+const DEFAULT_REMOTE_GIT_TIMEOUT_MS = 60_000;
+const REMOTE_GIT_COMMANDS = new Set(['clone', 'fetch', 'ls-remote', 'pull', 'push']);
+
+export function treeseedGitCommandUsesRemote(args: string[]) {
+	return REMOTE_GIT_COMMANDS.has(args[0] ?? '');
+}
+
+export function resolveTreeseedGitCommandTimeoutMs(args: string[], timeoutMs?: number) {
+	return timeoutMs ?? (treeseedGitCommandUsesRemote(args) ? DEFAULT_REMOTE_GIT_TIMEOUT_MS : undefined);
+}
+
 function pidAlive(pid: number) {
 	try {
 		process.kill(pid, 0);
@@ -93,15 +104,26 @@ function gitSync(args: string[], options: RunOptions): TreeseedGitRunnerResult {
 			}
 		}
 	}
+	if (treeseedGitCommandUsesRemote(args) && !env.GIT_SSH_COMMAND) {
+		env.GIT_SSH_COMMAND = 'ssh -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2';
+	}
+	const timeoutMs = resolveTreeseedGitCommandTimeoutMs(args, options.timeoutMs);
 	const spawnOptions: SpawnSyncOptionsWithStringEncoding = {
 		cwd: options.cwd,
 		env,
 		encoding: 'utf8',
 		stdio: 'pipe',
-		timeout: options.timeoutMs,
+		timeout: timeoutMs,
 		maxBuffer: options.maxBuffer ?? 1024 * 1024 * 32,
 	};
 	const result = spawnSync('git', args, spawnOptions);
+	if (result.error) {
+		const code = (result.error as NodeJS.ErrnoException).code;
+		if (code === 'ETIMEDOUT') {
+			throw new Error(`Git remote command timed out after ${timeoutMs}ms: git ${args.join(' ')} in ${options.cwd}. Check network and repository access, then rerun the Treeseed command.`);
+		}
+		throw new Error(`Unable to run git ${args.join(' ')} in ${options.cwd}: ${result.error.message}`);
+	}
 	const output = {
 		status: result.status,
 		stdout: result.stdout ?? '',
