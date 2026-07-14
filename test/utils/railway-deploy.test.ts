@@ -31,6 +31,7 @@ import {
 	createRailwayVolumeInstanceBackup,
 	ensureRailwayServiceVolume,
 	detachRailwayVolumeInstance,
+	detachRailwayVolumeInstanceAndWait,
 	listRailwayVolumes,
 	restoreRailwayVolumeInstanceBackup,
 } from '../../src/operations/services/railway-api.ts';
@@ -1367,6 +1368,48 @@ services:
 			fetchImpl: fetchMock as typeof fetch,
 		});
 		expect(fetchMock).toHaveBeenCalledOnce();
+	});
+
+	it('waits until Railway no longer reports a detached pending-deletion attachment', async () => {
+		let observations = 0;
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('TreeseedRailwayVolumeInstanceDetach')) {
+				return Response.json({ data: { volumeInstanceUpdate: true } });
+			}
+			observations += 1;
+			const instances = observations === 1
+				? [{
+					id: 'instance-staging',
+					serviceId: 'service-staging',
+					environmentId: 'env-staging',
+					mountPath: '/data',
+					state: 'READY',
+					deletedAt: '2026-07-16T00:00:00.000Z',
+				}]
+				: [];
+			return Response.json({ data: { project: { volumes: { edges: [{ node: {
+				id: 'volume-staging',
+				name: 'service-staging-volume',
+				volumeInstances: { edges: instances.map((node) => ({ node })) },
+			} }] } } } });
+		});
+		const sleep = vi.fn(async () => undefined);
+
+		const volumes = await detachRailwayVolumeInstanceAndWait({
+			projectId: 'project-api',
+			volumeId: 'volume-staging',
+			environmentId: 'env-staging',
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+			maxAttempts: 2,
+			pollIntervalMs: 1,
+			sleep,
+		});
+
+		expect(observations).toBe(2);
+		expect(sleep).toHaveBeenCalledWith(1);
+		expect(volumes[0]?.instances).toEqual([]);
 	});
 
 	it('deduplicates Railway volume aliases and preserves pending deletion state', async () => {

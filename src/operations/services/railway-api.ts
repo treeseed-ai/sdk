@@ -2656,6 +2656,39 @@ mutation TreeseedRailwayVolumeInstanceDetach($volumeId: String!, $environmentId:
 	});
 }
 
+export async function detachRailwayVolumeInstanceAndWait({
+	projectId,
+	volumeId,
+	environmentId,
+	env = process.env,
+	fetchImpl = fetch,
+	maxAttempts = 12,
+	pollIntervalMs = 5_000,
+	sleep = (durationMs: number) => new Promise((resolve) => setTimeout(resolve, durationMs)),
+}: {
+	projectId: string;
+	volumeId: string;
+	environmentId: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+	maxAttempts?: number;
+	pollIntervalMs?: number;
+	sleep?: (durationMs: number) => Promise<void>;
+}) {
+	await detachRailwayVolumeInstance({ volumeId, environmentId, env, fetchImpl });
+	let volumes: RailwayVolumeSummary[] = [];
+	for (let attempt = 0; attempt < Math.max(1, maxAttempts); attempt += 1) {
+		if (attempt > 0) await sleep(pollIntervalMs);
+		volumes = await listRailwayVolumes({ projectId, env, fetchImpl });
+		const volume = volumes.find((candidate) => candidate.id === volumeId);
+		const attached = volume?.instances.some((instance) =>
+			instance.environmentId === environmentId && Boolean(instance.serviceId),
+		) ?? false;
+		if (!attached) return volumes;
+	}
+	throw new Error(`Railway accepted detaching volume ${volumeId} from environment ${environmentId}, but the attachment remained after ${Math.max(1, maxAttempts)} observations.`);
+}
+
 export async function ensureRailwayServiceVolume({
 	projectId,
 	environmentId,

@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.61-dev.fix-railway-environment-source-isolation.20260714T105354Z",
+  "version": "0.12.61-dev.staging.20260714T194521Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {

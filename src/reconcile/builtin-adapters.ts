@@ -62,7 +62,7 @@ import {
 	deleteRailwayService,
 	deleteRailwayCustomDomain,
 	deleteRailwayVolume,
-	detachRailwayVolumeInstance,
+	detachRailwayVolumeInstanceAndWait,
 	deployRailwayServiceInstance,
 	inspectRailwayServiceDeploymentHealth,
 	listRailwayEnvironmentServices,
@@ -4494,7 +4494,6 @@ async function detachKnownPartialEnvironmentQualifiedVolumes(input: {
 	const serviceNameById = new Map([...input.serviceIdByName.entries()]
 		.filter(([, serviceId]) => serviceId)
 		.map(([serviceName, serviceId]) => [serviceId, serviceName] as const));
-	let detached = false;
 	for (const volume of input.liveVolumes) {
 		if (activeRailwayVolumeInstances(volume).some((instance) => instance.environmentId === input.environmentId)) continue;
 		const pendingInstance = volume.instances.find((instance) =>
@@ -4508,16 +4507,14 @@ async function detachKnownPartialEnvironmentQualifiedVolumes(input: {
 		// This is an attachment cleanup only. The volume is already inactive in
 		// this environment and exactly matches its qualified service identity.
 		traceRailwayReconcile(input.env, 'detach:volume:known-partial', `${volume.name}:${volume.id}`);
-		await detachRailwayVolumeInstance({
+		input.liveVolumes = await detachRailwayVolumeInstanceAndWait({
+			projectId: input.projectId,
 			volumeId: volume.id,
 			environmentId: input.environmentId,
 			env: input.env,
 		});
-		detached = true;
 	}
-	return detached
-		? await listRailwayVolumes({ projectId: input.projectId, env: input.env })
-		: input.liveVolumes;
+	return input.liveVolumes;
 }
 
 async function reconcileStaleOperationsRunnerResourcesForScope(
