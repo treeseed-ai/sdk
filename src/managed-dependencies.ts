@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { createWriteStream, existsSync, mkdirSync, rmSync, renameSync, chmodSync, copyFileSync, readFileSync, readdirSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, mkdtempSync, rmSync, renameSync, chmodSync, copyFileSync, readFileSync, readdirSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { platform as osPlatform, arch as osArch } from 'node:os';
@@ -375,27 +375,137 @@ function npmBackedDependenciesAvailable() {
 }
 
 function resolveNpmInstallCommand(env: NodeJS.ProcessEnv = process.env) {
+	const installArgs = ['install', '--ignore-scripts', '--prefer-offline', '--workspaces=false', '--no-audit', '--no-fund'];
 	const npmCommandOverride = env.TREESEED_NPM_INSTALL_COMMAND;
 	if (npmCommandOverride?.trim()) {
 		return {
 			command: npmCommandOverride,
-			args: ['install', '--no-audit', '--no-fund'],
-			display: [npmCommandOverride, 'install', '--no-audit', '--no-fund'],
+			args: installArgs,
+			display: [npmCommandOverride, ...installArgs],
 		};
 	}
 	const npmExecPath = env.npm_execpath || env.NPM_EXEC_PATH;
 	if (npmExecPath?.trim()) {
 		return {
 			command: process.execPath,
-			args: [npmExecPath, 'install', '--no-audit', '--no-fund'],
-			display: [process.execPath, npmExecPath, 'install', '--no-audit', '--no-fund'],
+			args: [npmExecPath, ...installArgs],
+			display: [process.execPath, npmExecPath, ...installArgs],
 		};
 	}
 	return {
 		command: 'npm',
-		args: ['install', '--no-audit', '--no-fund'],
-		display: ['npm', 'install', '--no-audit', '--no-fund'],
+		args: installArgs,
+		display: ['npm', ...installArgs],
 	};
+}
+
+function esbuildPlatformPackage() {
+	const platform = osPlatform();
+	const arch = osArch();
+	if (platform === 'linux' && ['x64', 'arm64', 'arm', 'ia32', 'ppc64', 'riscv64', 's390x'].includes(arch)) return `@esbuild/linux-${arch}`;
+	if (platform === 'darwin' && ['x64', 'arm64'].includes(arch)) return `@esbuild/darwin-${arch}`;
+	if (platform === 'win32' && ['x64', 'arm64', 'ia32'].includes(arch)) return `@esbuild/win32-${arch}`;
+	return null;
+}
+
+export function collectInstalledNativeDependencyIssues(tenantRoot: string) {
+	return collectNativeDependencyRepairs(tenantRoot).map((repair) => repair.issue);
+}
+
+function collectNativeDependencyRepairs(tenantRoot: string) {
+	const binaryPackage = esbuildPlatformPackage();
+	if (!binaryPackage) return [];
+	try {
+		const lock = JSON.parse(readFileSync(resolve(tenantRoot, 'package-lock.json'), 'utf8')) as {
+			packages?: Record<string, { version?: string; integrity?: string }>;
+		};
+		const packages = lock.packages ?? {};
+		const repairs: Array<{ packagePath: string; packageName: string; version: string; integrity?: string; issue: string }> = [];
+		for (const [packagePath, entry] of Object.entries(packages)) {
+			if (packagePath !== 'node_modules/esbuild' && !packagePath.endsWith('/node_modules/esbuild')) continue;
+			if (!existsSync(resolve(tenantRoot, packagePath, 'package.json'))) continue;
+			const binaryPath = `${packagePath.slice(0, -'esbuild'.length)}${binaryPackage}`;
+			const expectedBinary = packages[binaryPath];
+			if (!expectedBinary?.version) continue;
+			const installedBinaryPath = resolve(tenantRoot, binaryPath, 'package.json');
+			if (!existsSync(installedBinaryPath)) {
+				repairs.push({
+					packagePath: binaryPath,
+					packageName: binaryPackage,
+					version: expectedBinary.version,
+					integrity: expectedBinary.integrity,
+					issue: `${binaryPath}: missing native binary ${expectedBinary.version} for ${packagePath}`,
+				});
+				continue;
+			}
+			const installedBinary = JSON.parse(readFileSync(installedBinaryPath, 'utf8')) as { version?: string };
+			if (installedBinary.version !== expectedBinary.version || installedBinary.version !== entry.version) {
+				repairs.push({
+					packagePath: binaryPath,
+					packageName: binaryPackage,
+					version: expectedBinary.version,
+					integrity: expectedBinary.integrity,
+					issue: `${binaryPath}: native binary ${installedBinary.version ?? '(missing version)'} does not match host ${entry.version ?? '(missing version)'}`,
+				});
+			}
+		}
+		return repairs;
+	} catch {
+		return [];
+	}
+}
+
+function resolveNpmPackCommand(env: NodeJS.ProcessEnv, spec: string, destination: string) {
+	const args = ['pack', spec, '--json', '--ignore-scripts', '--pack-destination', destination];
+	const npmExecPath = env.npm_execpath || env.NPM_EXEC_PATH;
+	return npmExecPath?.trim()
+		? { command: process.execPath, args: [npmExecPath, ...args] }
+		: { command: 'npm', args };
+}
+
+export function repairInstalledNativeDependencies(
+	tenantRoot: string,
+	options: Required<Pick<DependencyInstallerOptions, 'env' | 'spawn'>> & Pick<DependencyInstallerOptions, 'write'>,
+) {
+	const repairs = collectNativeDependencyRepairs(tenantRoot);
+	if (repairs.length === 0) return null;
+	const tempParent = resolve(tenantRoot, '.treeseed', 'tmp');
+	mkdirSync(tempParent, { recursive: true });
+	const tempRoot = mkdtempSync(resolve(tempParent, 'native-dependency-'));
+	try {
+		for (const repair of repairs) {
+			options.write?.(`Hydrating ${repair.packageName}@${repair.version} for ${repair.packagePath}.`);
+			const pack = resolveNpmPackCommand(options.env, `${repair.packageName}@${repair.version}`, tempRoot);
+			const packed = options.spawn(pack.command, pack.args, {
+				cwd: tenantRoot,
+				env: { ...options.env, TREESEED_MANAGED_NPM_INSTALL: '1' },
+				stdio: 'pipe',
+				encoding: 'utf8',
+			});
+			if (packed.status !== 0 || packed.error) return null;
+			let metadata: Array<{ filename?: string; integrity?: string }>;
+			try {
+				metadata = JSON.parse(String(packed.stdout ?? '')) as Array<{ filename?: string; integrity?: string }>;
+			} catch {
+				return null;
+			}
+			const artifact = metadata[0];
+			if (!artifact?.filename || (repair.integrity && artifact.integrity !== repair.integrity)) return null;
+			const target = resolve(tenantRoot, repair.packagePath);
+			rmSync(target, { recursive: true, force: true });
+			mkdirSync(target, { recursive: true });
+			const extracted = options.spawn('tar', ['-xzf', resolve(tempRoot, artifact.filename), '-C', target, '--strip-components=1'], {
+				cwd: tenantRoot,
+				env: options.env,
+				stdio: 'pipe',
+				encoding: 'utf8',
+			});
+			if (extracted.status !== 0 || extracted.error) return null;
+		}
+		return collectNativeDependencyRepairs(tenantRoot).length === 0 ? repairs.length : null;
+	} finally {
+		rmSync(tempRoot, { recursive: true, force: true });
+	}
 }
 
 function resolveNpmRebuildCommand(env: NodeJS.ProcessEnv = process.env, packageNames: string[]) {
@@ -412,6 +522,16 @@ function resolveNpmRebuildCommand(env: NodeJS.ProcessEnv = process.env, packageN
 		args: ['rebuild', ...packageNames],
 		display: ['npm', 'rebuild', ...packageNames],
 	};
+}
+
+export function staleNpmGitClonePath(detail: string) {
+	const match = /destination path '([^']+\/_cacache\/tmp\/git-clone[^/]+\/\.git)' already exists/u.exec(detail);
+	if (!match?.[1]) return null;
+	const gitPath = resolve(match[1]);
+	const cloneRoot = dirname(gitPath);
+	if (basename(gitPath) !== '.git' || !basename(cloneRoot).startsWith('git-clone')) return null;
+	if (basename(dirname(cloneRoot)) !== 'tmp' || basename(dirname(dirname(cloneRoot))) !== '_cacache') return null;
+	return cloneRoot;
 }
 
 function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env' | 'spawn'>> & Pick<DependencyInstallerOptions, 'tenantRoot' | 'force' | 'write'>): TreeseedNpmInstallReport[] {
@@ -439,6 +559,19 @@ function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env
 	const nodeModulesMissing = !existsSync(resolve(tenantRoot, 'node_modules'));
 	const npmDepsMissing = !npmBackedDependenciesAvailable();
 	const missingRuntimeTools = npmToolsMissingRuntime();
+	const nativeDependencyIssues = nodeModulesMissing ? [] : collectInstalledNativeDependencyIssues(tenantRoot);
+	if (nativeDependencyIssues.length > 0) {
+		const repaired = repairInstalledNativeDependencies(tenantRoot, options);
+		if (repaired !== null) {
+			return [{
+				root: tenantRoot,
+				command: ['npm', 'pack', '<lockfile-pinned-native-dependencies>'],
+				status: 'installed',
+				exitCode: 0,
+				detail: `Hydrated ${repaired} lockfile-pinned native package artifact${repaired === 1 ? '' : 's'} without resolving the workspace dependency graph.`,
+			}];
+		}
+	}
 	if (!nodeModulesMissing && npmDepsMissing && missingRuntimeTools.length > 0) {
 		return [{
 			root: tenantRoot,
@@ -448,7 +581,7 @@ function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env
 			detail: `npm dependencies are installed; rebuilding missing runtime tools: ${missingRuntimeTools.map((tool) => tool.packageName).join(', ')}.`,
 		}];
 	}
-	if (!nodeModulesMissing && !npmDepsMissing) {
+	if (!nodeModulesMissing && !npmDepsMissing && nativeDependencyIssues.length === 0) {
 		return [{
 			root: tenantRoot,
 			command: npmCommand.display,
@@ -460,7 +593,9 @@ function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env
 		}];
 	}
 
-	options.write?.(`Installing npm dependencies in ${tenantRoot}...`);
+	options.write?.(nativeDependencyIssues.length > 0
+		? `Repairing npm dependency integrity in ${tenantRoot}: ${nativeDependencyIssues.join('; ')}`
+		: `Installing npm dependencies in ${tenantRoot}...`);
 	const testNpmInstallStatus = options.env.NODE_ENV === 'test' ? options.env.TREESEED_TEST_NPM_INSTALL_STATUS : undefined;
 	if (testNpmInstallStatus === 'installed' || testNpmInstallStatus === 'failed') {
 		const ok = testNpmInstallStatus === 'installed';
@@ -474,7 +609,7 @@ function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env
 				: 'npm install failed.',
 		}];
 	}
-	const result = options.spawn(npmCommand.command, npmCommand.args, {
+	const spawnInstall = () => options.spawn(npmCommand.command, npmCommand.args, {
 		cwd: tenantRoot,
 		env: {
 			...options.env,
@@ -483,7 +618,15 @@ function runNpmBootstrap(options: Required<Pick<DependencyInstallerOptions, 'env
 		stdio: 'pipe',
 		encoding: 'utf8',
 	});
-	const detail = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim() || result.error?.message || '';
+	let result = spawnInstall();
+	let detail = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim() || result.error?.message || '';
+	const staleClone = result.status !== 0 ? staleNpmGitClonePath(detail) : null;
+	if (staleClone) {
+		options.write?.(`Removing interrupted npm Git clone ${staleClone} and retrying dependency repair once.`);
+		rmSync(staleClone, { recursive: true, force: true });
+		result = spawnInstall();
+		detail = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim() || result.error?.message || '';
+	}
 	const ok = result.status === 0 && !result.error;
 	return [{
 		root: tenantRoot,

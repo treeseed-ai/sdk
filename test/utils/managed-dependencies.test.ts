@@ -6,8 +6,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
 	collectTreeseedDependencyStatus,
 	collectTreeseedToolStatus,
+	collectInstalledNativeDependencyIssues,
 	installTreeseedDependencies,
 	resolveTreeseedToolBinary,
+	staleNpmGitClonePath,
 } from '../../src/managed-dependencies.ts';
 
 const roots: string[] = [];
@@ -158,7 +160,7 @@ describe('managed dependencies', () => {
 		});
 		const npmCall = calls.find((call) => call.args.includes('install'));
 		expect(npmCall?.command).toBe(process.execPath);
-		expect(npmCall?.args).toEqual(['/tmp/npm-cli.js', 'install', '--no-audit', '--no-fund']);
+		expect(npmCall?.args).toEqual(['/tmp/npm-cli.js', 'install', '--ignore-scripts', '--prefer-offline', '--workspaces=false', '--no-audit', '--no-fund']);
 		expect(npmCall?.cwd).toBe(packageRoot);
 		expect(npmCall?.env?.TREESEED_MANAGED_NPM_INSTALL).toBe('1');
 	});
@@ -200,6 +202,41 @@ describe('managed dependencies', () => {
 			detail: expect.stringContaining('force is limited to Treeseed-managed tool repair'),
 		});
 		expect(calls.some((call) => call.args.includes('install'))).toBe(false);
+	});
+
+	it('repairs a missing lockfile-pinned native binary instead of accepting a fallback version', async () => {
+		const toolsHome = await createTempToolsHome();
+		const packageRoot = await createPackageRoot({ nodeModules: true });
+		await createManagedGh(toolsHome);
+		const platformPackage = process.platform === 'linux' && process.arch === 'x64' ? '@esbuild/linux-x64' : null;
+		if (!platformPackage) return;
+		await mkdir(join(packageRoot, 'node_modules', 'astro', 'node_modules', 'esbuild'), { recursive: true });
+		await writeFile(join(packageRoot, 'node_modules', 'astro', 'node_modules', 'esbuild', 'package.json'), JSON.stringify({ name: 'esbuild', version: '0.27.7' }), 'utf8');
+		await writeFile(join(packageRoot, 'package-lock.json'), JSON.stringify({
+			lockfileVersion: 3,
+			packages: {
+				'node_modules/astro/node_modules/esbuild': { version: '0.27.7' },
+				[`node_modules/astro/node_modules/${platformPackage}`]: { version: '0.27.7' },
+			},
+		}), 'utf8');
+		const calls: SpawnCall[] = [];
+
+		expect(collectInstalledNativeDependencyIssues(packageRoot)).toEqual([
+			`node_modules/astro/node_modules/${platformPackage}: missing native binary 0.27.7 for node_modules/astro/node_modules/esbuild`,
+		]);
+		const result = await installTreeseedDependencies({
+			tenantRoot: packageRoot,
+			env: { ...process.env, TREESEED_TOOLS_HOME: toolsHome },
+			spawn: spawnMock({ calls }),
+			downloadFile: async () => {
+				throw new Error('download should not be called');
+			},
+		});
+
+		expect(result.npmInstalls[0]?.status).toBe('installed');
+		expect(calls.find((call) => call.args.includes('install'))?.args.slice(-6)).toEqual([
+			'install', '--ignore-scripts', '--prefer-offline', '--workspaces=false', '--no-audit', '--no-fund',
+		]);
 	});
 
 	it('skips npm install during managed npm lifecycle recursion', async () => {
@@ -244,6 +281,12 @@ describe('managed dependencies', () => {
 			exitCode: 1,
 		});
 		expect(result.npmInstalls[0]?.detail).toContain('npm install failed');
+	});
+
+	it('accepts only narrowly scoped interrupted npm Git clone paths for cleanup', () => {
+		expect(staleNpmGitClonePath("fatal: destination path '/home/test/.npm/_cacache/tmp/git-cloneABC/.git' already exists and is not an empty directory.")).toBe('/home/test/.npm/_cacache/tmp/git-cloneABC');
+		expect(staleNpmGitClonePath("fatal: destination path '/home/test/project/.git' already exists and is not an empty directory.")).toBeNull();
+		expect(staleNpmGitClonePath("fatal: destination path '/home/test/.npm/_cacache/content-v2/git-cloneABC/.git' already exists and is not an empty directory.")).toBeNull();
 	});
 
 	it('skips gh-act installation when docker is not on PATH', async () => {
