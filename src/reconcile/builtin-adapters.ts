@@ -4396,26 +4396,44 @@ async function migrateEnvironmentQualifiedRailwayVolumes(input: {
 				env: input.env,
 			});
 		if (activeEnvironmentIds.size > 1) {
+			if (desiredVolume) {
+				traceRailwayReconcile(input.env, 'delete:volume:partial', desiredVolume.name);
+				await deleteRailwayVolume({ volumeId: desiredVolume.id, env: input.env });
+			}
+			const volumeIdsBeforeRestore = new Set(input.liveVolumes.map((volume) => volume.id));
 			traceRailwayReconcile(input.env, 'sync:volume:backup', `${legacyVolumeName}:${legacyInstance.id} -> ${desiredVolumeName}`);
 			const backup = await createRailwayVolumeInstanceBackup({
 				volumeInstanceId: legacyInstance.id,
 				env: input.env,
 			});
-			const replacement = await ensureRailwayServiceVolume({
+			traceRailwayReconcile(input.env, 'sync:volume:restore', `${backup.id} -> ${legacyInstance.id}`);
+			await restoreRailwayVolumeInstanceBackup({
+				backupId: backup.id,
+				volumeInstanceId: legacyInstance.id,
+				env: input.env,
+			});
+			let restoredVolume: Awaited<ReturnType<typeof listRailwayVolumes>>[number] | null = null;
+			for (let attempt = 0; attempt < 60 && !restoredVolume; attempt += 1) {
+				if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 5_000));
+				const refreshedVolumes = await listRailwayVolumes({ projectId: input.projectId, env: input.env });
+				restoredVolume = refreshedVolumes.find((volume) =>
+					!volumeIdsBeforeRestore.has(volume.id)
+					&& activeRailwayVolumeInstances(volume).some((instance) =>
+						instance.environmentId === input.environmentId
+						&& instance.serviceId === legacyService?.id,
+					),
+				) ?? null;
+			}
+			if (!restoredVolume) {
+				throw new Error(`${legacyVolumeName}: Railway accepted backup restore but exposed no restored volume; the legacy volume remains authoritative.`);
+			}
+			await ensureRailwayServiceVolume({
 				projectId: input.projectId,
 				environmentId: input.environmentId,
 				serviceId: ensuredService.service.id,
 				name: desiredVolumeName,
 				mountPath: service.volumeMountPath!,
-				env: input.env,
-			});
-			if (!replacement.instance?.id) {
-				throw new Error(`${desiredVolumeName}: Railway created no identifiable target volume instance; the legacy volume remains untouched.`);
-			}
-			traceRailwayReconcile(input.env, 'sync:volume:restore', `${backup.id} -> ${replacement.instance.id}`);
-			await restoreRailwayVolumeInstanceBackup({
-				backupId: backup.id,
-				volumeInstanceId: replacement.instance.id,
+				adoptVolumeId: restoredVolume.id,
 				env: input.env,
 			});
 			continue;
