@@ -196,6 +196,50 @@ describe('workflow run journals', () => {
 		expect(classification.state).toBe('resumable');
 	});
 
+	it('classifies a failed exact-candidate stage as stale after repository heads advance', () => {
+		const root = makeRoot();
+		const journal = createWorkflowRunJournal(root, {
+			runId: 'exact-stage-test',
+			command: 'stage',
+			input: { message: 'stage exact candidate' },
+			session: {
+				root,
+				mode: 'recursive-workspace',
+				branchName: 'feature/stage',
+				repos: [{ name: '@treeseed/market', path: root, branchName: 'feature/stage' }],
+			},
+			steps: [{
+				id: 'promote-to-staging',
+				description: 'Promote exact refs',
+				repoName: '@treeseed/market',
+				repoPath: root,
+				branch: 'feature/stage',
+				resumable: true,
+			}],
+		});
+		const failed = {
+			...journal,
+			status: 'failed' as const,
+			failure: { code: 'github_workflow_failed', message: 'deploy failed', details: null, at: new Date().toISOString() },
+			steps: journal.steps.map((step) => ({
+				...step,
+				status: 'completed' as const,
+				data: {
+					status: 'completed',
+					results: [{ name: '@treeseed/market', commitSha: 'staged-root', verified: true }],
+				},
+			})),
+		};
+
+		expect(classifyWorkflowRunJournal(failed, {
+			currentBranch: 'feature/stage',
+			currentHeads: { '@treeseed/market': 'new-root' },
+		})).toMatchObject({
+			state: 'stale',
+			reasons: ['@treeseed/market head changed from staged candidate staged-root to new-root'],
+		});
+	});
+
 	it('keeps truly non-resumable failed journals obsolete', () => {
 		const root = makeRoot();
 		const journal = createWorkflowRunJournal(root, {

@@ -593,6 +593,19 @@ function collectSaveExpectedHeads(journal: TreeseedWorkflowRunJournal) {
 	return heads;
 }
 
+function collectStageExpectedHeads(journal: TreeseedWorkflowRunJournal) {
+	const heads: Record<string, string> = {};
+	const promotion = stringRecord(journal.steps.find((step) => step.id === 'promote-to-staging')?.data);
+	const results = Array.isArray(promotion?.results) ? promotion.results : [];
+	for (const entry of results) {
+		const repo = stringRecord(entry);
+		if (typeof repo?.name === 'string' && typeof repo.commitSha === 'string' && repo.verified === true) {
+			heads[repo.name] = repo.commitSha;
+		}
+	}
+	return heads;
+}
+
 export function classifyWorkflowRunJournal(
 	journal: TreeseedWorkflowRunJournal,
 	options: {
@@ -678,6 +691,15 @@ export function classifyWorkflowRunJournal(
 			const currentHead = options.currentHeads[name];
 			if (currentHead && expectedHead && currentHead !== expectedHead) {
 				reasons.push(`${name} head changed from ${expectedHead} to ${currentHead}`);
+			}
+		}
+	}
+	if (journal.command === 'stage' && options.currentHeads) {
+		const expectedHeads = collectStageExpectedHeads(journal);
+		for (const [name, expectedHead] of Object.entries(expectedHeads)) {
+			const currentHead = options.currentHeads[name];
+			if (currentHead && currentHead !== expectedHead) {
+				reasons.push(`${name} head changed from staged candidate ${expectedHead} to ${currentHead}`);
 			}
 		}
 	}
