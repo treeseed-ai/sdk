@@ -112,6 +112,15 @@ export type RailwayVolumeSummary = {
 	instances: RailwayVolumeInstanceSummary[];
 };
 
+export type RailwayVolumeBackupSummary = {
+	id: string;
+	name: string | null;
+	createdAt: string | null;
+	expiresAt: string | null;
+	usedMb: number | null;
+	referencedMb: number | null;
+};
+
 function configuredEnvValue(env: NodeJS.ProcessEnv | Record<string, string | undefined> | undefined, name: string) {
 	const value = env?.[name];
 	return typeof value === 'string' && value.trim() ? value.trim() : '';
@@ -2268,6 +2277,120 @@ query TreeseedRailwayVolumeList($projectId: String!) {
 		fetchImpl,
 	});
 	return collectRailwayVolumes(payload.data);
+}
+
+function collectRailwayVolumeBackups(value: unknown): RailwayVolumeBackupSummary[] {
+	const records = Array.isArray(value)
+		? value.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+		: normalizeConnectionNodes(value, (entry) => entry);
+	return records.flatMap((record) => {
+		if (!record || typeof record !== 'object') return [];
+		const candidate = record as Record<string, unknown>;
+		const id = railwayConnectionLabel(candidate.id);
+		if (!id) return [];
+		return [{
+			id,
+			name: railwayConnectionLabel(candidate.name) || null,
+			createdAt: railwayConnectionLabel(candidate.createdAt) || null,
+			expiresAt: railwayConnectionLabel(candidate.expiresAt) || null,
+			usedMb: typeof candidate.usedMB === 'number' ? candidate.usedMB : null,
+			referencedMb: typeof candidate.referencedMB === 'number' ? candidate.referencedMB : null,
+		}];
+	});
+}
+
+export async function listRailwayVolumeInstanceBackups({
+	volumeInstanceId,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	volumeInstanceId: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const query = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_BACKUP_LIST_QUERY') || `
+query TreeseedRailwayVolumeBackupList($volumeInstanceId: String!) {
+	volumeInstanceBackupList(volumeInstanceId: $volumeInstanceId) {
+		id
+		name
+		createdAt
+		expiresAt
+		usedMB
+		referencedMB
+	}
+}
+`.trim();
+	const payload = await railwayGraphqlRequest({
+		query,
+		variables: { volumeInstanceId },
+		env,
+		fetchImpl,
+	});
+	return collectRailwayVolumeBackups(payload.data?.volumeInstanceBackupList);
+}
+
+export async function createRailwayVolumeInstanceBackup({
+	volumeInstanceId,
+	env = process.env,
+	fetchImpl = fetch,
+	settleAttempts = 60,
+	settleDelayMs = 5_000,
+}: {
+	volumeInstanceId: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+	settleAttempts?: number;
+	settleDelayMs?: number;
+}) {
+	const before = await listRailwayVolumeInstanceBackups({ volumeInstanceId, env, fetchImpl });
+	const existingIds = new Set(before.map((backup) => backup.id));
+	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_BACKUP_CREATE_MUTATION') || `
+mutation TreeseedRailwayVolumeBackupCreate($volumeInstanceId: String!) {
+	volumeInstanceBackupCreate(volumeInstanceId: $volumeInstanceId)
+}
+`.trim();
+	const payload = await railwayGraphqlRequest({
+		query: mutation,
+		variables: { volumeInstanceId },
+		env,
+		fetchImpl,
+	});
+	const returnedId = railwayConnectionLabel(payload.data?.volumeInstanceBackupCreate);
+	for (let attempt = 0; attempt < settleAttempts; attempt += 1) {
+		if (attempt > 0 || !returnedId) {
+			await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
+		}
+		const backups = await listRailwayVolumeInstanceBackups({ volumeInstanceId, env, fetchImpl });
+		const backup = backups.find((entry) => entry.id === returnedId)
+			?? backups.find((entry) => !existingIds.has(entry.id))
+			?? null;
+		if (backup) return backup;
+	}
+	throw new Error(`Railway did not expose a completed backup for volume instance ${volumeInstanceId}; refusing volume migration.`);
+}
+
+export async function restoreRailwayVolumeInstanceBackup({
+	backupId,
+	volumeInstanceId,
+	env = process.env,
+	fetchImpl = fetch,
+}: {
+	backupId: string;
+	volumeInstanceId: string;
+	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+	fetchImpl?: typeof fetch;
+}) {
+	const mutation = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_BACKUP_RESTORE_MUTATION') || `
+mutation TreeseedRailwayVolumeBackupRestore($backupId: String!, $volumeInstanceId: String!) {
+	volumeInstanceBackupRestore(volumeInstanceBackupId: $backupId, volumeInstanceId: $volumeInstanceId)
+}
+`.trim();
+	await railwayGraphqlRequest({
+		query: mutation,
+		variables: { backupId, volumeInstanceId },
+		env,
+		fetchImpl,
+	});
 }
 
 async function createRailwayVolume({

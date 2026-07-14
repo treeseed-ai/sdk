@@ -27,7 +27,11 @@ import {
 	verifyRailwayManagedResources,
 	verifyRailwayScheduledJobs,
 } from '../../src/operations/services/railway-deploy.ts';
-import { ensureRailwayServiceVolume } from '../../src/operations/services/railway-api.ts';
+import {
+	createRailwayVolumeInstanceBackup,
+	ensureRailwayServiceVolume,
+	restoreRailwayVolumeInstanceBackup,
+} from '../../src/operations/services/railway-api.ts';
 
 const tempRoots = new Set<string>();
 
@@ -1266,6 +1270,97 @@ services:
 			fetchImpl: fetchMock as typeof fetch,
 		})).rejects.toThrow(/refusing to create an empty replacement volume/u);
 		expect(fetchMock.mock.calls.some(([, init]) => String(init?.body ?? '').includes('TreeseedRailwayVolumeCreate'))).toBe(false);
+	});
+
+	it('creates and observes an exact Railway volume-instance backup before migration', async () => {
+		let backupListCount = 0;
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('TreeseedRailwayVolumeBackupList')) {
+				backupListCount += 1;
+				return new Response(JSON.stringify({
+					data: {
+						volumeInstanceBackupList: backupListCount === 1 ? [{
+							id: 'backup-old',
+							name: 'previous',
+							createdAt: '2026-07-13T00:00:00.000Z',
+						}] : [{
+							id: 'backup-old',
+							name: 'previous',
+						}, {
+							id: 'backup-new',
+							name: 'migration',
+							createdAt: '2026-07-14T00:00:00.000Z',
+							usedMB: 42,
+							referencedMB: 40,
+						}],
+					},
+				}), { status: 200, headers: { 'content-type': 'application/json' } });
+			}
+			expect(String(body.query)).toContain('TreeseedRailwayVolumeBackupCreate');
+			expect(body.variables).toEqual({ volumeInstanceId: 'legacy-instance-staging' });
+			return new Response(JSON.stringify({
+				data: { volumeInstanceBackupCreate: 'backup-new' },
+			}), { status: 200, headers: { 'content-type': 'application/json' } });
+		});
+
+		await expect(createRailwayVolumeInstanceBackup({
+			volumeInstanceId: 'legacy-instance-staging',
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+			settleAttempts: 1,
+			settleDelayMs: 0,
+		})).resolves.toMatchObject({
+			id: 'backup-new',
+			usedMb: 42,
+			referencedMb: 40,
+		});
+	});
+
+	it('restores a Railway backup only into the new qualified volume instance', async () => {
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			expect(String(body.query)).toContain('TreeseedRailwayVolumeBackupRestore');
+			expect(body.variables).toEqual({
+				backupId: 'backup-staging',
+				volumeInstanceId: 'qualified-instance-staging',
+			});
+			return new Response(JSON.stringify({
+				data: { volumeInstanceBackupRestore: true },
+			}), { status: 200, headers: { 'content-type': 'application/json' } });
+		});
+
+		await restoreRailwayVolumeInstanceBackup({
+			backupId: 'backup-staging',
+			volumeInstanceId: 'qualified-instance-staging',
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+		});
+		expect(fetchMock).toHaveBeenCalledOnce();
+	});
+
+	it('refuses volume migration when Railway never exposes the requested backup', async () => {
+		const fetchMock = vi.fn(async (_input, init) => {
+			const body = JSON.parse(String(init?.body ?? '{}'));
+			if (String(body.query).includes('TreeseedRailwayVolumeBackupList')) {
+				return new Response(JSON.stringify({ data: { volumeInstanceBackupList: [] } }), {
+					status: 200,
+					headers: { 'content-type': 'application/json' },
+				});
+			}
+			return new Response(JSON.stringify({ data: { volumeInstanceBackupCreate: true } }), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			});
+		});
+
+		await expect(createRailwayVolumeInstanceBackup({
+			volumeInstanceId: 'legacy-instance-staging',
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
+			fetchImpl: fetchMock as typeof fetch,
+			settleAttempts: 1,
+			settleDelayMs: 0,
+		})).rejects.toThrow(/refusing volume migration/u);
 	});
 
 	it('reuses a Railway service volume that appears after a create conflict', async () => {
