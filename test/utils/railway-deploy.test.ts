@@ -16,6 +16,8 @@ import {
 	deployRailwayService,
 	ensureRailwayScheduledJobs,
 	findStaleTreeseedOperationsRunnerResources,
+	legacyEnvironmentSpecificRailwayResourceNames,
+	railwayLegacyAliasMigrationPolicy,
 	railwayServiceRuntimeStartCommand,
 	resolveRailwayAuthToken,
 	shouldRunRailwayPredeployBuild,
@@ -150,6 +152,36 @@ afterEach(async () => {
 });
 
 describe('railway scheduled jobs', () => {
+	it('recognizes only the obsolete environment-specific API aliases', () => {
+		const aliases = legacyEnvironmentSpecificRailwayResourceNames([
+			{ key: 'api', serviceName: 'treeseed-api', volumeMountPath: null },
+			{ key: 'operationsRunner', serviceName: 'treeseed-api-operations-runner-01', volumeMountPath: '/data' },
+			{ key: 'public-treedx-node-01', serviceName: 'public-treedx-node-01', volumeMountPath: '/data' },
+			{ key: 'postgres', serviceName: 'treeseed-api-postgres', volumeMountPath: '/var/lib/postgresql/data' },
+		] as ReturnType<typeof configuredRailwayServices>);
+
+		expect(aliases).toEqual([
+			'treeseed-api-production',
+			'treeseed-api-operations-runner-production-01',
+			'treeseed-api-operations-runner-production-01-volume',
+			'public-treedx-node-production-01',
+			'public-treedx-node-production-01-volume',
+		]);
+		expect(aliases).not.toContain('treeseed-api-postgres-production');
+		expect(railwayLegacyAliasMigrationPolicy('staging', [
+			{ key: 'api', serviceName: 'treeseed-api', volumeMountPath: null },
+		] as ReturnType<typeof configuredRailwayServices>)).toEqual({
+			retainedResourceNames: ['treeseed-api-production'],
+			allowedResourceDeletions: [],
+		});
+		expect(railwayLegacyAliasMigrationPolicy('prod', [
+			{ key: 'api', serviceName: 'treeseed-api', volumeMountPath: null },
+		] as ReturnType<typeof configuredRailwayServices>)).toEqual({
+			retainedResourceNames: [],
+			allowedResourceDeletions: ['treeseed-api-production'],
+		});
+	});
+
 	it('normalizes prod scope to the Railway production environment by default', async () => {
 		const tenantRoot = await createTenantFixture();
 
@@ -682,16 +714,16 @@ services:
 		);
 
 		const services = configuredRailwayServices(tenantRoot, 'prod');
-		const publicTreeDx = services.find((service) => service.key === 'public-treedx-node-production-01');
+		const publicTreeDx = services.find((service) => service.key === 'public-treedx-node-01');
 
 		expect(publicTreeDx).toMatchObject({
 			sourceMode: 'image',
-			serviceName: 'public-treedx-node-production-01',
+			serviceName: 'public-treedx-node-01',
 			imageRef: 'treeseed/treedx:0.2.11',
 		});
 	});
 
-	it('discovers production sibling identities without requiring production image credentials', async () => {
+	it('discovers canonical production identities without requiring production image credentials', async () => {
 		const tenantRoot = await createTenantFixture();
 		await writeFile(
 			join(tenantRoot, 'treeseed.site.yaml'),
@@ -724,9 +756,9 @@ services:
 		const services = configuredRailwayServices(tenantRoot, 'prod', {}, { identityOnly: true });
 
 		expect(services.map((service) => service.serviceName)).toEqual(expect.arrayContaining([
-			'treeseed-api-production',
-			'treeseed-api-operations-runner-production-01',
-			'public-treedx-node-production-01',
+			'treeseed-api',
+			'treeseed-api-operations-runner-01',
+			'public-treedx-node-01',
 		]));
 	});
 

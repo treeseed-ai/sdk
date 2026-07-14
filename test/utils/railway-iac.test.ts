@@ -41,7 +41,7 @@ function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacPro
 		services: [
 			{
 				key: 'api',
-				serviceName: git ? 'treeseed-api' : 'treeseed-api-production',
+				serviceName: 'treeseed-api',
 				sourceMode: git ? 'git' : 'image',
 				sourceRepo: git ? 'treeseed-ai/api' : null,
 				sourceBranch: git ? 'staging' : null,
@@ -56,7 +56,7 @@ function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacPro
 			},
 			{
 				key: 'operationsRunner:1',
-				serviceName: git ? 'treeseed-api-operations-runner-01' : 'treeseed-api-operations-runner-production-01',
+				serviceName: 'treeseed-api-operations-runner-01',
 				sourceMode: git ? 'git' : 'image',
 				sourceRepo: git ? 'treeseed-ai/api' : null,
 				sourceBranch: git ? 'staging' : null,
@@ -71,7 +71,7 @@ function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacPro
 			},
 			{
 				key: 'public-treedx-node-01',
-				serviceName: git ? 'public-treedx-node-01' : 'public-treedx-node-production-01',
+				serviceName: 'public-treedx-node-01',
 				sourceMode: git ? 'git' : 'image',
 				sourceRepo: git ? 'treeseed-ai/treedx' : null,
 				sourceBranch: git ? 'staging' : null,
@@ -145,7 +145,7 @@ describe('Railway IaC project rendering', () => {
 		}
 	});
 
-	it('carries exact sibling-environment resources forward without changing their source', () => {
+	it('does not retain sibling resources that now share canonical service identities', () => {
 		const input = baseInput('prod');
 		input.retainedResources = [
 			{
@@ -165,13 +165,8 @@ describe('Railway IaC project rendering', () => {
 		];
 		const rendered = renderRailwayIacProject(input);
 		try {
-			expect(rendered.retainedResourceNames).toEqual([
-				'treeseed-api',
-				'treeseed-api-operations-runner-01-volume',
-			]);
-			expect(rendered.source).toContain('const retainedResources =');
-			expect(rendered.source).toContain('"commitSha":"staging-sha"');
-			expect(rendered.source).toContain('...retainedResources');
+			expect(rendered.retainedResourceNames).toEqual([]);
+			expect(rendered.source).not.toContain('const retainedResources =');
 			expect(rendered.source).toContain('source: image("treeseed/api:1.2.3")');
 		} finally {
 			cleanupRailwayIacRender(rendered);
@@ -348,7 +343,32 @@ describe('Railway IaC plan validation', () => {
 		});
 		expect(result.ok).toBe(false);
 		expect(result.destructiveChanges).toHaveLength(1);
-		expect(result.blockedReasons.join('\n')).toContain('Use the explicit destroy workflow for deletions');
+		expect(result.blockedReasons.join('\n')).toContain('Use the explicit destroy workflow for other deletions');
+	});
+
+	it('allows deletion only for explicitly recognized obsolete environment aliases', () => {
+		const change = (name: string) => ({
+			kind: 'resource.delete',
+			path: `service.${name}`,
+			address: `service.${name}`,
+			summary: `Delete service ${name}`,
+			severity: 'destructive',
+			deployEffect: 'unknown',
+			previous: { address: `service.${name}`, type: 'service', kind: 'docker-image', name },
+		});
+		const result = validateRailwayIacChangeSet({
+			version: 1,
+			diagnostics: [],
+			changes: [change('treeseed-api-production')],
+		} as any, {
+			services: ['treeseed-api'],
+			volumes: [],
+			database: null,
+			scope: 'prod',
+			allowedResourceDeletions: ['treeseed-api-production'],
+		});
+		expect(result.ok).toBe(true);
+		expect(result.destructiveChanges).toHaveLength(1);
 	});
 
 	it('rejects staging image-source changes and production Git-source changes', () => {

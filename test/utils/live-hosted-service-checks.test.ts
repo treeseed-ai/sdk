@@ -315,8 +315,8 @@ services:
 			fetchImpl,
 		});
 		const issues = report.liveObservation.issues.join('\n');
-		expect(issues).not.toContain('treeseed-api-operations-runner-production-01: stale');
-		expect(issues).not.toContain('treeseed-api-operations-runner-production-01-volume: stale');
+		expect(issues).toContain('treeseed-api-operations-runner-production-01: stale');
+		expect(issues).toContain('treeseed-api-operations-runner-production-01-volume: stale');
 		expect(issues).toContain('treeseed-api-operations-runner-old-01: stale');
 		expect(issues).toContain('treeseed-api-operations-runner-old-01-volume: stale');
 	});

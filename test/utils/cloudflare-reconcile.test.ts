@@ -199,6 +199,7 @@ vi.mock('../../src/operations/services/railway-deploy.ts', () => ({
 		}]
 		: []),
 	ensureRailwayProjectContext: vi.fn(),
+	railwayLegacyAliasMigrationPolicy: vi.fn(() => ({ retainedResourceNames: [], allowedResourceDeletions: [] })),
 	runRailway: vi.fn(),
 	validateRailwayDeployPrerequisites: vi.fn(),
 }));

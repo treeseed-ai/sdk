@@ -382,8 +382,8 @@ describe('hosting graph', () => {
 			},
 		});
 		expect(staging.units.find((unit) => unit.id === 'public-treedx-node-01')?.config).not.toHaveProperty('imageTagRef');
-		expect(prod.units.find((unit) => unit.id === 'public-treedx-node-production-01')?.config).toMatchObject({
-			serviceName: 'public-treedx-node-production-01',
+		expect(prod.units.find((unit) => unit.id === 'public-treedx-node-01')?.config).toMatchObject({
+			serviceName: 'public-treedx-node-01',
 			sourceMode: 'image',
 			image: 'treeseed/treedx',
 			imageRef: 'treeseed/treedx:0.2.11',
@@ -396,8 +396,8 @@ describe('hosting graph', () => {
 				sourceMode: 'image',
 				sourceRepo: null,
 			});
-			if (serviceId === 'api') expect(service.config.serviceName).toMatch(/-production$/u);
-			if (serviceId === 'operationsRunner') expect(service.config.serviceName).toMatch(/-production$/u);
+			if (serviceId === 'api') expect(service.config.serviceName).toBe('treeseed-api');
+			if (serviceId === 'operationsRunner') expect(service.config.serviceName).toBe('treeseed-api-operations-runner-01');
 		}
 	});
 

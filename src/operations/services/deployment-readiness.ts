@@ -209,8 +209,8 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 	}
 
 	if (railwayApi) {
-		const expectedServiceName = environment === 'prod' ? 'treeseed-api-production' : 'treeseed-api';
-		checks.push(check('railway-config:api:serviceName', railwayApi.serviceName, expectedServiceName, 'Railway API service uses the environment-isolated canonical name.', `Set the API service identity to ${expectedServiceName} for ${environment}.`, 'serviceName'));
+		const expectedServiceName = 'treeseed-api';
+		checks.push(check('railway-config:api:serviceName', railwayApi.serviceName, expectedServiceName, 'Railway API service uses the project-wide canonical name.', `Set the API service identity to ${expectedServiceName} for every environment.`, 'serviceName'));
 		checks.push(check('railway-config:api:rootDirectory', relRoot(tenantRoot, railwayApi.rootDir), expectedApiRailwayRoot, 'Railway API effective rootDirectory points at the API app.', 'Set services.api.railway.rootDir relative to the owning API manifest.', 'rootDirectory'));
 	}
 
@@ -245,8 +245,8 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 	}
 
 	if (railwayRunner) {
-		const expectedServiceName = environment === 'prod' ? 'treeseed-api-operations-runner-production-01' : 'treeseed-api-operations-runner-01';
-		checks.push(check('railway-config:operationsRunner:serviceName', railwayRunner.serviceName, expectedServiceName, 'Railway runner service instance uses the environment-isolated canonical name.', `Set the runner service identity to ${expectedServiceName} for ${environment}.`, 'serviceName'));
+		const expectedServiceName = 'treeseed-api-operations-runner-01';
+		checks.push(check('railway-config:operationsRunner:serviceName', railwayRunner.serviceName, expectedServiceName, 'Railway runner uses the project-wide canonical service name.', `Set the runner service identity to ${expectedServiceName} for every environment.`, 'serviceName'));
 		checks.push(check('railway-config:operationsRunner:rootDirectory', relRoot(tenantRoot, railwayRunner.rootDir), expectedRunnerRailwayRoot, 'Railway runner effective rootDirectory points at the API app.', 'Set services.operationsRunner.railway.rootDir relative to the owning API manifest.', 'rootDirectory'));
 	}
 

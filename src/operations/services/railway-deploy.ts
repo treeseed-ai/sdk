@@ -809,10 +809,7 @@ function configuredRailwayServicesForConfig(tenantRoot, scope, deployConfig, app
 				?? (serviceKey === 'workerRunner'
 					? deriveRailwayWorkerRunnerServiceName(identity.deploymentKey)
 					: `${identity.deploymentKey}-${railwayServiceNameSuffix(serviceKey)}`);
-			const configuredServiceName = environmentConfig?.railwayServiceName
-				?? (normalizedScope === 'prod' && ['api', 'operationsRunner'].includes(serviceKey)
-					? `${serviceKey === 'operationsRunner' ? String(baseServiceName).replace(/-\d+$/u, '') : baseServiceName}-production`
-					: baseServiceName);
+			const configuredServiceName = baseServiceName;
 			const configuredRunnerPool = service.railway?.runnerPool && typeof service.railway.runnerPool === 'object'
 				? service.railway.runnerPool
 				: null;
@@ -973,9 +970,7 @@ function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deployConfig
 	const baseImageRef = envValue('TREESEED_PUBLIC_TREEDX_IMAGE_REF', imageRefEnv) || 'treeseed/treedx';
 	return Array.from({ length: bootstrapCount }, (_, offset) => {
 		const index = offset + 1;
-		const serviceName = scope === 'prod'
-			? `public-treedx-node-production-${String(index).padStart(2, '0')}`
-			: `${PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX}${String(index).padStart(2, '0')}`;
+		const serviceName = `${PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX}${String(index).padStart(2, '0')}`;
 		const service = {
 			key: serviceName,
 			serviceName,
@@ -1211,6 +1206,38 @@ export function configuredRailwayServices(tenantRoot, scope, envOverlay = {}, op
 			options,
 		));
 	return [...direct, ...nested];
+}
+
+export function legacyEnvironmentSpecificRailwayResourceNames(
+	services: ReturnType<typeof configuredRailwayServices>,
+) {
+	const aliases = new Set<string>();
+	for (const service of services) {
+		let alias: string | null = null;
+		if (service.key === 'api') {
+			alias = `${service.serviceName}-production`;
+		} else if (service.key === 'operationsRunner') {
+			alias = service.serviceName.replace(/-(\d+)$/u, '-production-$1');
+		} else {
+			const treeDxMatch = service.serviceName.match(/^public-treedx-node-(\d+)$/u);
+			if (treeDxMatch?.[1]) alias = `public-treedx-node-production-${treeDxMatch[1]}`;
+		}
+		if (!alias || alias === service.serviceName) continue;
+		aliases.add(alias);
+		if (service.volumeMountPath) aliases.add(`${alias}-volume`);
+	}
+	return [...aliases];
+}
+
+export function railwayLegacyAliasMigrationPolicy(
+	scope: 'staging' | 'prod',
+	services: ReturnType<typeof configuredRailwayServices>,
+) {
+	const aliases = legacyEnvironmentSpecificRailwayResourceNames(services);
+	return {
+		retainedResourceNames: scope === 'staging' ? aliases : [],
+		allowedResourceDeletions: scope === 'prod' ? aliases : [],
+	};
 }
 
 export function configuredRailwayScheduledJobs(tenantRoot, scope, { phase = 'deploy' } = {}) {

@@ -356,16 +356,18 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 	scope: string;
 	serviceSourceModes?: Record<string, string | null | undefined>;
 	serviceSourceRefs?: Record<string, string | null | undefined>;
+	allowedResourceDeletions?: string[];
 }): RailwayIacValidationResult {
 	const blockedReasons: string[] = [];
 	const destructiveChanges: string[] = [];
 	const desired = new Set([...desiredNames.services, ...desiredNames.volumes, ...(desiredNames.database ? [desiredNames.database] : [])]);
+	const allowedResourceDeletions = new Set(desiredNames.allowedResourceDeletions ?? []);
 	const created = new Set((changeSet?.changes ?? [])
 		.filter((change) => change.kind === 'resource.create')
 		.map((change) => changeName(change)));
 	for (const change of changeSet?.changes ?? []) {
 		const name = changeName(change);
-		const serviceName = name.replace(/^(service|database)\./u, '');
+		const serviceName = name.replace(/^(service|database|volume)\./u, '');
 		const sourceMode = desiredNames.serviceSourceModes?.[name]
 			?? desiredNames.serviceSourceModes?.[serviceName]
 			?? null;
@@ -380,7 +382,9 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 		const apiPolicyService = isApiRailwaySourcePolicyService({ serviceName });
 		if (change.kind === 'resource.delete') {
 			destructiveChanges.push(change.summary);
-			blockedReasons.push(`Railway IaC plan would delete resource ${name || change.summary}; hosting reconciliation only updates or creates resources. Use the explicit destroy workflow for deletions.`);
+			if (!allowedResourceDeletions.has(name) && !allowedResourceDeletions.has(serviceName)) {
+				blockedReasons.push(`Railway IaC plan would delete resource ${name || change.summary}; hosting reconciliation only deletes explicitly recognized obsolete aliases. Use the explicit destroy workflow for other deletions.`);
+			}
 			if (desired.has(name) && !created.has(name)) {
 				blockedReasons.push(`Railway IaC plan would delete desired resource ${name}.`);
 			}

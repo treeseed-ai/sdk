@@ -131,7 +131,9 @@ describe('built-in scene plugin handlers', () => {
 		expect((await registry.assertions.get('text')!.run({ value: 'Hello', step, context: context() } as never)).status).toBe('passed');
 		expect((await registry.assertions.get('text')!.run({ value: 'Missing', step, context: context({ session: { page: { getByText: () => locator(false), url: () => 'http://local' } } }) } as never)).status).toBe('failed');
 		expect((await registry.assertions.get('urlIncludes')!.run({ value: '/app', step, context: context() } as never)).status).toBe('passed');
+		const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(10_000);
 		expect((await registry.assertions.get('urlIncludes')!.run({ value: '/missing', step, context: context({ session: { page: { url: () => 'http://local/app' } } }) } as never)).status).toBe('failed');
+		now.mockRestore();
 		const opContext = context();
 		expect((await registry.assertions.get('operation')!.run({ value: { operationId: 'op-1' }, step, context: opContext } as never)).status).toBe('passed');
 		expect((await registry.assertions.get('operation')!.run({ value: { operationId: 'op-2' }, step, context: context({ operationWaiter: async () => ({ ok: false, operationId: 'op-2', finalStatus: 'failed', diagnostics: [] }) }) } as never)).status).toBe('failed');

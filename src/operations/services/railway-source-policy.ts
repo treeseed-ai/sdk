@@ -54,7 +54,7 @@ export function assertApiRailwaySourcePolicy(
 	const label = service.serviceName ?? service.key ?? 'Railway service';
 	if (normalizedScope === 'staging') {
 		const issues = [
-			/-production(?:-|$)/u.test(String(service.serviceName ?? '')) ? 'serviceName must use the staging-only identity' : null,
+			/-production(?:-|$)/u.test(String(service.serviceName ?? '')) ? 'serviceName must use the project-wide canonical identity' : null,
 			service.sourceMode === 'git' ? null : 'sourceMode must be git',
 			service.imageRef ? 'imageRef must be empty' : null,
 			service.sourceRepo ? null : 'sourceRepo must be set',
@@ -69,7 +69,7 @@ export function assertApiRailwaySourcePolicy(
 	}
 	if (normalizedScope === 'prod') {
 		const issues = [
-			/-production(?:-|$)/u.test(String(service.serviceName ?? '')) ? null : 'serviceName must use a production-only identity',
+			/-production(?:-|$)/u.test(String(service.serviceName ?? '')) ? 'serviceName must use the project-wide canonical identity' : null,
 			service.sourceMode === 'image' ? null : 'sourceMode must be image',
 			isImmutableRailwayImageRef(service.imageRef) ? null : 'imageRef must be an immutable released image tag',
 			service.sourceRepo ? 'sourceRepo must be empty' : null,

@@ -44,6 +44,7 @@ import {
 	configuredRailwayServices,
 	findStaleTreeseedOperationsRunnerResources,
 	isTreeseedOperationsRunnerResourceName,
+	railwayLegacyAliasMigrationPolicy,
 	validateRailwayDeployPrerequisites,
 } from '../operations/services/railway-deploy.ts';
 import { shouldExposeManagedHostRuntimeSecret } from '../operations/services/managed-host-security.ts';
@@ -4589,7 +4590,12 @@ async function syncRailwayEnvironmentForScope(
 			})),
 			database: databaseForIac,
 		};
-		const siblingResourceNames = configuredRailwaySiblingResourceNames(input, scope, project.name);
+		const aliasMigration = railwayLegacyAliasMigrationPolicy(scope, projectServices);
+		const siblingResourceNames = [
+			...configuredRailwaySiblingResourceNames(input, scope, project.name),
+			...aliasMigration.retainedResourceNames,
+		];
+		const { allowedResourceDeletions } = aliasMigration;
 		const {
 			applyRailwayIacProject,
 			cleanupRailwayIacRender,
@@ -4621,6 +4627,7 @@ async function syncRailwayEnvironmentForScope(
 							? `image:${service.imageRef}`
 							: null,
 				])),
+				allowedResourceDeletions,
 			});
 			if (
 				!validation.ok
@@ -4657,6 +4664,7 @@ async function syncRailwayEnvironmentForScope(
 								? `image:${service.imageRef}`
 								: null,
 					])),
+					allowedResourceDeletions,
 				});
 			}
 			const retainedResources = selectRailwayIacRetainedResources(plan, siblingResourceNames);
@@ -4688,6 +4696,7 @@ async function syncRailwayEnvironmentForScope(
 								? `image:${service.imageRef}`
 								: null,
 					])),
+					allowedResourceDeletions,
 				});
 			}
 			if (!validation.ok) {

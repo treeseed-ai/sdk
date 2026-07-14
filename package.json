@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.59",
+  "version": "0.12.60-dev.fix-railway-service-dedup.20260714T022933Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {

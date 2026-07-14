@@ -2984,7 +2984,7 @@ function configuredRailwayDestroyTargets(tenantRoot, deployConfig, scope) {
 		services.push({
 			key: 'treeseedDatabase',
 			projectName: deployConfig.services?.api?.railway?.projectName ?? identity.deploymentKey,
-			serviceName: `${baseName.replace(/-(staging|prod|production)$/u, '')}-${normalizedScope === 'prod' ? 'prod' : normalizedScope}`,
+			serviceName: baseName.replace(/-(staging|prod|production)$/u, ''),
 			railwayEnvironment: normalizeRailwayEnvironmentName(normalizedScope),
 			domain: null,
 			volumeMountPath: null,

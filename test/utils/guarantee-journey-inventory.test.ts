@@ -1,12 +1,17 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
-import { loadGuaranteeJourneyInventory } from './guarantee-journey-inventory';
+import { loadGuaranteeJourneyInventory, type TreeseedGuaranteeJourneyInventory } from './guarantee-journey-inventory';
 
 describe('guarantee journey inventory', () => {
+	let inventory: TreeseedGuaranteeJourneyInventory;
+
+	beforeAll(() => {
+		inventory = loadGuaranteeJourneyInventory();
+	}, 15_000);
+
   it('summarizes the scene-backed guarantee registry deterministically', () => {
-    const inventory = loadGuaranteeJourneyInventory();
     const hasRootGuarantees = existsSync(resolve(inventory.workspaceRoot, 'guarantees'));
 
     if (!hasRootGuarantees) {
@@ -27,8 +32,6 @@ describe('guarantee journey inventory', () => {
   });
 
   it('requires every scene-backed guarantee to carry service journey intent', () => {
-    const inventory = loadGuaranteeJourneyInventory();
-
     for (const item of inventory.items) {
       expect(item.workflowStepCount, item.guaranteeId).toBeGreaterThanOrEqual(2);
       expect(item.interactiveStepCount, item.guaranteeId).toBeGreaterThanOrEqual(1);
