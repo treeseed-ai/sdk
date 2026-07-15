@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.12.61] - 2026-07-15
+
+### Added
+
+- feat(workflow): wait for Railway deployments before live hosting (cdd1f8273f7f)
+- feat(tests): honor package deployment capabilities during staging (9c360316a02f)
+- feat(local-cleanup): include workspace sub-repositories in cleanup (b0b549165909)
+- feat(source): bound remote Git workflow probes (c3724ad35b40)
+- feat(source): handle orphaned Railway volume migration (0152330e3c28)
+- feat(source): use Railway SDK for environment patch operations (480d2fe12cb7)
+- feat(source): classify stale Railway attachments from blocker records (3e09d4270013)
+- feat(source): scope Railway migration cleanup to target environment (147fb6651e0b)
+- feat(source): resolve qualified Railway service from project inventory (a58327f4f075)
+- feat(source): unblock exact inactive Railway migration attachment (ceaed4f5aaec)
+- feat(source): detach only known empty Railway migration volumes (70cda94a2f10)
+- feat(source): commit Railway restored volume patch (c7698d2a7cc2)
+- feat(source): restore Railway volumes through native source snapshots (7984cb480c9c)
+- feat(source): treat Railway backup workflows as opaque (ae4c7b1888b9)
+- feat(source): support Railway backup workflow identifiers (e879b5f1fb9c)
+- feat(source): preserve Railway volume data while splitting environment (8846e1502480)
+
+### Fixed
+
+- fix(tests): archive stale stage resumes after repository heads (c7ee6806eda3)
+- fix(workflow): exclude archived journals from workflow recovery (8656e50f5aa9)
+- build(tests): update package metadata (83ba3870c11f)
+- fix(tests): record repository changes (f0f007e3e232)
+- fix(source): retry Railway backup propagation safely (8e22d73784f7)
+- fix(source): isolate Railway staging and production service sources (b0c561c0d492)
+- build(tests): isolate Railway staging and production service sources (00a7552ef61a)
+
+### Tests
+
+- build(source): enforce SDK-first Railway reconciliation (fb5bed0580df)
+- build(source): wait for Railway volume detach propagation (e1e29c8e4677)
+
 ## [0.12.60] - 2026-07-14
 
 ### Added
