@@ -134,6 +134,7 @@ export {
 export {
 	configuredRailwayServices,
 	validateRailwayDeployPrerequisites,
+	waitForRailwayManagedDeploymentsSettled,
 } from './operations/services/railway-deploy.ts';
 export {
 	getRailwayAuthProfile,
