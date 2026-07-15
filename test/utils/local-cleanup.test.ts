@@ -46,4 +46,26 @@ describe('local cleanup', () => {
 		expect(existsSync(matrix)).toBe(true);
 		expect(existsSync(render)).toBe(false);
 	});
+
+	it('removes caches from independent workspace repositories while preserving their evidence', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-cleanup-workspace-'));
+		const packageRoot = join(root, 'packages', 'api');
+		const cache = join(packageRoot, '.treeseed', 'cache', 'npm', 'stale-clone');
+		const evidence = join(packageRoot, '.treeseed', 'scenes', 'runs', 'run-1', 'report.json');
+		mkdirSync(join(packageRoot, '.git'), { recursive: true });
+		for (const path of [cache, evidence]) {
+			mkdirSync(join(path, '..'), { recursive: true });
+			writeFileSync(path, '{}');
+		}
+
+		const report = runTreeseedLocalCleanup({ root, mode: 'standard' });
+
+		expect(report.ok).toBe(true);
+		expect(report.actions).toContainEqual(expect.objectContaining({
+			id: 'packages/api:.treeseed/cache',
+			status: 'removed',
+		}));
+		expect(existsSync(cache)).toBe(false);
+		expect(existsSync(evidence)).toBe(true);
+	});
 });

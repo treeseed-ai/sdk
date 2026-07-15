@@ -55,6 +55,18 @@ function removeDirectoryPath(id: string, path: string): TreeseedLocalCleanupActi
 	}
 }
 
+function workspaceRepositoryRoots(root: string) {
+	const packagesRoot = join(root, 'packages');
+	if (!existsSync(packagesRoot)) return [];
+	return readdirSync(packagesRoot, { withFileTypes: true })
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => join(packagesRoot, entry.name))
+		.filter((path) =>
+			existsSync(join(path, '.git'))
+			|| existsSync(join(path, 'package.json'))
+			|| existsSync(join(path, 'treeseed.package.yaml')));
+}
+
 function runCleanupCommand(id: string, kind: 'docker' | 'npm-cache', command: string[], cwd: string): TreeseedLocalCleanupAction {
 	const result = spawnSync(command[0]!, command.slice(1), { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 * 16 });
 	const exitCode = result.status ?? null;
@@ -83,7 +95,9 @@ export function runTreeseedLocalCleanup(input: {
 		?? process.env.NPM_CONFIG_CACHE
 		?? join(homedir(), '.npm'));
 	const npmTemporaryDownloads = join(npmCacheRoot, '_cacache', 'tmp');
-	const beforeBytes = directoryBytes(join(root, '.treeseed')) + directoryBytes(npmTemporaryDownloads);
+	const repositoryRoots = [root, ...workspaceRepositoryRoots(root)];
+	const beforeBytes = repositoryRoots.reduce((total, repositoryRoot) =>
+		total + directoryBytes(join(repositoryRoot, '.treeseed')), 0) + directoryBytes(npmTemporaryDownloads);
 	const actions: TreeseedLocalCleanupAction[] = [];
 	const directoryTargets = mode === 'aggressive'
 		? [
@@ -92,14 +106,20 @@ export function runTreeseedLocalCleanup(input: {
 			'.treeseed/scenes/render',
 		]
 		: ['.treeseed/tmp', '.treeseed/cache', '.treeseed/scenes/render'];
-	for (const target of directoryTargets) actions.push(removeDirectory(root, target));
+	for (const repositoryRoot of repositoryRoots) {
+		const repositoryId = repositoryRoot === root ? '' : `${repositoryRoot.slice(root.length + 1)}:`;
+		for (const target of directoryTargets) {
+			actions.push(removeDirectoryPath(`${repositoryId}${target}`, join(repositoryRoot, target)));
+		}
+	}
 	actions.push(removeDirectoryPath('npm-cache-temporary-downloads', npmTemporaryDownloads));
 	if (input.docker === true && mode === 'aggressive') {
 		actions.push(runCleanupCommand('docker-builder-prune', 'docker', ['docker', 'builder', 'prune', '--all', '--force'], root));
 		actions.push(runCleanupCommand('docker-image-prune', 'docker', ['docker', 'image', 'prune', '--all', '--force'], root));
 	}
 	if (input.npmCache === true) actions.push(runCleanupCommand('npm-cache-clean', 'npm-cache', ['npm', 'cache', 'clean', '--force'], root));
-	const afterBytes = directoryBytes(join(root, '.treeseed')) + directoryBytes(npmTemporaryDownloads);
+	const afterBytes = repositoryRoots.reduce((total, repositoryRoot) =>
+		total + directoryBytes(join(repositoryRoot, '.treeseed')), 0) + directoryBytes(npmTemporaryDownloads);
 	const completedAt = new Date().toISOString();
 	return { ok: actions.every((entry) => entry.status !== 'failed'), mode, root, startedAt, completedAt, beforeBytes, afterBytes, reclaimedBytes: Math.max(0, beforeBytes - afterBytes), actions };
 }
