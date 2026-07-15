@@ -1193,6 +1193,9 @@ describe('treeseed workflow lifecycle', () => {
 		expect(obsolete.payload.markedObsoleteRun).toMatchObject({ runId: 'release-obsolete-test', reason: 'superseded by test' });
 		expect(obsolete.payload.interruptedRuns.map((run: { runId: string }) => run.runId)).not.toContain('release-obsolete-test');
 		expect(obsolete.payload.obsoleteRuns).not.toContainEqual(expect.objectContaining({ status: 'completed' }));
+		expect(obsolete.payload.obsoleteRuns).not.toContainEqual(expect.objectContaining({
+			classification: expect.objectContaining({ archivedAt: expect.any(String) }),
+		}));
 	}, 180000);
 
 	it('stages package feature branches through local ref promotion', async () => {

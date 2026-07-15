@@ -7758,7 +7758,8 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 					return null;
 				}).filter((entry): entry is never => entry !== null);
 			const journals = listWorkflowRunJournals(root);
-			const actionableJournals = journals.filter((journal) => journal.status !== 'completed');
+			const actionableJournals = journals.filter((journal) =>
+				journal.status !== 'completed' && !journal.classification?.archivedAt);
 			const session = resolveTreeseedWorkflowSession(root);
 			const currentHeads = Object.fromEntries(
 				[createWorkspaceRootRepoReport(root), ...createWorkspacePackageReports(root)]
