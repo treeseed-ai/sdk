@@ -89,14 +89,15 @@ export function runTreeseedLocalCleanup(input: {
 		? [
 			'.treeseed/tmp',
 			'.treeseed/cache',
-			'.treeseed/scenes/runs',
-			'.treeseed/scenes/matrix',
 			'.treeseed/scenes/render',
 		]
 		: ['.treeseed/tmp', '.treeseed/cache', '.treeseed/scenes/render'];
 	for (const target of directoryTargets) actions.push(removeDirectory(root, target));
 	actions.push(removeDirectoryPath('npm-cache-temporary-downloads', npmTemporaryDownloads));
-	if (input.docker === true && mode === 'aggressive') actions.push(runCleanupCommand('docker-system-prune', 'docker', ['docker', 'system', 'prune', '--all', '--volumes', '--force'], root));
+	if (input.docker === true && mode === 'aggressive') {
+		actions.push(runCleanupCommand('docker-builder-prune', 'docker', ['docker', 'builder', 'prune', '--all', '--force'], root));
+		actions.push(runCleanupCommand('docker-image-prune', 'docker', ['docker', 'image', 'prune', '--all', '--force'], root));
+	}
 	if (input.npmCache === true) actions.push(runCleanupCommand('npm-cache-clean', 'npm-cache', ['npm', 'cache', 'clean', '--force'], root));
 	const afterBytes = directoryBytes(join(root, '.treeseed')) + directoryBytes(npmTemporaryDownloads);
 	const completedAt = new Date().toISOString();

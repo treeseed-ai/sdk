@@ -1154,12 +1154,14 @@ function syncDirectGitDependencyLockfileEntries(
 	return true;
 }
 
-function validateStandaloneGitDependencyLockfile(
+export function validateStandaloneGitDependencyLockfile(
 	node: RepositorySaveNode,
 	options: Pick<RepositorySaveOptions, 'onProgress'>,
 ) {
 	const lockfilePath = resolve(node.path, 'package-lock.json');
 	const lockfileExists = existsSync(lockfilePath);
+	const previousLockfile = lockfileExists ? readFileSync(lockfilePath, 'utf8') : null;
+	const isolatedRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-lockfile-'));
 	const validateArgs = [
 		'ci',
 		'--package-lock-only',
@@ -1170,11 +1172,16 @@ function validateStandaloneGitDependencyLockfile(
 	];
 	try {
 		if (!lockfileExists) throw new Error('standalone lockfile missing');
-		runCapturedCommand(node, options, 'lockfile', 'npm', validateArgs, { timeoutMs: 5 * 60_000 });
+		copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
+		copyFileSync(lockfilePath, resolve(isolatedRoot, 'package-lock.json'));
+		runCapturedCommand(node, options, 'lockfile', 'npm', validateArgs, {
+			cwd: isolatedRoot,
+			timeoutMs: 5 * 60_000,
+		});
 	} catch (validationError) {
-		const previousLockfile = lockfileExists ? readFileSync(lockfilePath, 'utf8') : null;
-		const isolatedRoot = mkdtempSync(resolve(tmpdir(), 'treeseed-lockfile-'));
 		try {
+			rmSync(isolatedRoot, { recursive: true, force: true });
+			mkdirSync(isolatedRoot, { recursive: true });
 			copyFileSync(resolve(node.path, 'package.json'), resolve(isolatedRoot, 'package.json'));
 			runCapturedCommand(node, options, 'lockfile', 'npm', [
 				'install',
@@ -1195,9 +1202,9 @@ function validateStandaloneGitDependencyLockfile(
 		} catch (regenerationError) {
 			if (previousLockfile !== null) writeFileSync(lockfilePath, previousLockfile, 'utf8');
 			throw regenerationError instanceof Error ? regenerationError : validationError;
-		} finally {
-			rmSync(isolatedRoot, { recursive: true, force: true });
 		}
+	} finally {
+		rmSync(isolatedRoot, { recursive: true, force: true });
 	}
 	emitProgress(options, node, 'lockfile', 'Validated the standalone lockfile against the committed package manifest.');
 	return true;
@@ -1211,12 +1218,38 @@ function planPackageVersion(node: RepositorySaveNode, options: RepositorySaveOpt
 		: nextDevVersion(current, options.branch);
 }
 
-function applyPackageVersion(node: RepositorySaveNode, version: string) {
+export function applyPackageVersion(node: RepositorySaveNode, version: string) {
 	if (!node.packageJson || !node.packageJsonPath) return false;
-	if (node.packageJson.version === version) return false;
-	node.packageJson.version = version;
-	writeJson(node.packageJsonPath, node.packageJson);
-	return true;
+	let changed = false;
+	if (node.packageJson.version !== version) {
+		node.packageJson.version = version;
+		writeJson(node.packageJsonPath, node.packageJson);
+		changed = true;
+	}
+	const lockfilePath = resolve(node.path, 'package-lock.json');
+	if (existsSync(lockfilePath)) {
+		const lockfile = readJson(lockfilePath);
+		const rootEntry = lockfile.packages && typeof lockfile.packages === 'object' && !Array.isArray(lockfile.packages)
+			? (lockfile.packages as Record<string, Record<string, unknown>>)['']
+			: null;
+		const lockfileMatches = lockfile.version === version
+			&& rootEntry?.version === version
+			&& (typeof node.packageJson.name !== 'string' || rootEntry?.name === node.packageJson.name);
+		if (lockfileMatches) return changed;
+		lockfile.version = version;
+		const packages = lockfile.packages && typeof lockfile.packages === 'object' && !Array.isArray(lockfile.packages)
+			? lockfile.packages as Record<string, Record<string, unknown>>
+			: {};
+		packages[''] = {
+			...(packages[''] ?? {}),
+			...(typeof node.packageJson.name === 'string' ? { name: node.packageJson.name } : {}),
+			version,
+		};
+		lockfile.packages = packages;
+		writeJson(lockfilePath, lockfile);
+		changed = true;
+	}
+	return changed;
 }
 
 function shouldSkipNetworkInstall() {
@@ -1354,6 +1387,10 @@ async function runNpmInstallWithRetry(
 	let lastError: string | null = null;
 	const packageJson = node.packageJson ?? (existsSync(resolve(node.path, 'package.json')) ? readJson(resolve(node.path, 'package.json')) : null);
 	const rootWorkspaceInstall = node.path === options.root && Array.isArray(packageJson?.workspaces);
+	if (!rootWorkspaceInstall && node.branchMode !== 'project-save') {
+		validateStandaloneGitDependencyLockfile(node, options);
+		return { status: 'completed', attempts: 1, reason: 'isolated-lockfile-validation' };
+	}
 	const installFlags = rootWorkspaceInstall
 		? ['--package-lock-only', '--ignore-scripts']
 		: node.branchMode === 'project-save'
@@ -2353,13 +2390,11 @@ async function saveOneRepository(
 		if (selection.reused) {
 			emitProgress(options, node, 'version', `Reusing existing interrupted save version ${plannedVersion}.`);
 		} else {
-			applyPackageVersion(node, plannedVersion);
-		}
-		node.plannedVersion = plannedVersion;
-		report.version = plannedVersion;
-		if (!selection.reused) {
 			emitProgress(options, node, 'version', `Planned ${plannedVersion}.`);
 		}
+		applyPackageVersion(node, plannedVersion);
+		node.plannedVersion = plannedVersion;
+		report.version = plannedVersion;
 		const reference = finalizePackageReference(node, plannedVersion, options);
 		node.plannedTag = reference.tagName;
 		report.tagName = reference.tagName;

@@ -28,4 +28,22 @@ describe('local cleanup', () => {
 		expect(existsSync(reusableContent)).toBe(true);
 		expect(existsSync(evidence)).toBe(true);
 	});
+
+	it('preserves scene runs and matrix evidence during aggressive cleanup', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-cleanup-evidence-'));
+		const sceneRun = join(root, '.treeseed', 'scenes', 'runs', 'run-1', 'report.json');
+		const matrix = join(root, '.treeseed', 'scenes', 'matrix', 'matrix.json');
+		const render = join(root, '.treeseed', 'scenes', 'render', 'temporary.mp4');
+		for (const path of [sceneRun, matrix, render]) {
+			mkdirSync(join(path, '..'), { recursive: true });
+			writeFileSync(path, '{}');
+		}
+
+		const report = runTreeseedLocalCleanup({ root, mode: 'aggressive', docker: false });
+
+		expect(report.ok).toBe(true);
+		expect(existsSync(sceneRun)).toBe(true);
+		expect(existsSync(matrix)).toBe(true);
+		expect(existsSync(render)).toBe(false);
+	});
 });

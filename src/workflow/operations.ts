@@ -184,7 +184,6 @@ import {
 	archiveWorkflowRun,
 	cacheWorkflowGateResult,
 	classifyWorkflowRunJournal,
-	classifyWorkflowRunJournals,
 	createWorkflowRunJournal,
 	generateWorkflowRunId,
 	getCachedSuccessfulWorkflowGate,
@@ -7759,19 +7758,23 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 					return null;
 				}).filter((entry): entry is never => entry !== null);
 			const journals = listWorkflowRunJournals(root);
+			const actionableJournals = journals.filter((journal) => journal.status !== 'completed');
 			const session = resolveTreeseedWorkflowSession(root);
 			const currentHeads = Object.fromEntries(
 				[createWorkspaceRootRepoReport(root), ...createWorkspacePackageReports(root)]
 					.map((report) => [report.name, report.commitSha ?? null]),
 			);
-			const classifiedRuns = classifyWorkflowRunJournals(root, {
-				currentBranch: session.branchName,
-				currentHeads,
-			});
+			const classifiedRuns = actionableJournals.map((journal) => ({
+				journal,
+				classification: classifyWorkflowRunJournal(journal, {
+					currentBranch: session.branchName,
+					currentHeads,
+				}),
+			}));
 			const markedObsoleteRun = input.obsoleteRunId
 				? (() => {
-					const entry = classifiedRuns.find((candidate) => candidate.journal.runId === input.obsoleteRunId);
-					if (!entry) {
+					const journal = journals.find((candidate) => candidate.runId === input.obsoleteRunId);
+					if (!journal) {
 						workflowError('recover', 'validation_failed', `Treeseed recover could not find workflow run ${input.obsoleteRunId}.`);
 					}
 					const reason = input.obsoleteReason?.trim() || 'marked obsolete by operator';
@@ -7780,19 +7783,16 @@ export async function workflowRecover(helpers: WorkflowOperationHelpers, input: 
 						reasons: [reason],
 						classifiedAt: new Date().toISOString(),
 					};
-					archiveWorkflowRun(root, entry.journal.runId, classification);
+					archiveWorkflowRun(root, journal.runId, classification);
 					return {
-						runId: entry.journal.runId,
-						command: entry.journal.command,
+						runId: journal.runId,
+						command: journal.command,
 						reason,
 					};
 				})()
 				: null;
 			const effectiveClassifiedRuns = markedObsoleteRun
-				? classifyWorkflowRunJournals(root, {
-					currentBranch: session.branchName,
-					currentHeads,
-				})
+				? classifiedRuns.filter((entry) => entry.journal.runId !== markedObsoleteRun.runId)
 				: classifiedRuns;
 			const interruptedRuns = effectiveClassifiedRuns
 				.filter((entry) => entry.classification.state === 'resumable')

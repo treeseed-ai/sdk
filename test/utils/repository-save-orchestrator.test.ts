@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
+	applyPackageVersion,
 	discoverRepositorySaveNodes,
 	nextDevVersion,
 	planRepositorySave,
@@ -12,6 +13,7 @@ import {
 	repositorySaveWaves,
 	runRepositorySaveOrchestrator,
 	runStreamingCommand,
+	validateStandaloneGitDependencyLockfile,
 	type RepositorySaveNode,
 } from '../../src/operations/services/repository-save-orchestrator.ts';
 
@@ -54,6 +56,37 @@ function writeJson(path: string, value: Record<string, unknown>) {
 }
 
 describe('repository save orchestrator helpers', () => {
+	it('validates package locks without mutating the live install and synchronizes package versions', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-save-isolated-lock-'));
+		const packageJsonPath = resolve(root, 'package.json');
+		const packageJson = { name: '@treeseed/demo', version: '1.0.0' };
+		writeJson(packageJsonPath, packageJson);
+		writeJson(resolve(root, 'package-lock.json'), {
+			name: '@treeseed/demo',
+			version: '1.0.0',
+			lockfileVersion: 3,
+			packages: { '': { name: '@treeseed/demo', version: '1.0.0' } },
+		});
+		const sentinelPath = resolve(root, 'node_modules/.bin/sentinel');
+		mkdirSync(dirname(sentinelPath), { recursive: true });
+		writeFileSync(sentinelPath, 'installed dependency state\n', 'utf8');
+		const repo = node({
+			id: root,
+			name: '@treeseed/demo',
+			path: root,
+			packageJsonPath,
+			packageJson,
+		});
+
+		expect(applyPackageVersion(repo, '1.0.1')).toBe(true);
+		validateStandaloneGitDependencyLockfile(repo, {});
+
+		const lockfile = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'utf8'));
+		expect(lockfile.version).toBe('1.0.1');
+		expect(lockfile.packages[''].version).toBe('1.0.1');
+		expect(readFileSync(sentinelPath, 'utf8')).toBe('installed dependency state\n');
+	});
+
 	it('creates deterministic semver dev prerelease versions from branch names', () => {
 		expect(nextDevVersion('0.6.7', 'feature/search filters', new Date('2026-04-26T15:30:00Z'))).toBe(
 			'0.6.8-dev.feature-search-filters.20260426T153000Z',
