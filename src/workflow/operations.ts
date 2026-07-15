@@ -2300,10 +2300,32 @@ function gateForSavedRootReport(report: RepositorySaveReport, branch: string | n
 
 function findAutoResumableTaskRun(root: string, command: 'stage' | 'close', branch: string | null) {
 	if (!branch) return null;
-	return listInterruptedWorkflowRuns(root).find((journal) =>
-		journal.command === command
-		&& journal.resumable
-		&& journal.session.branchName === branch) ?? null;
+	const currentHeads = Object.fromEntries([
+		['@treeseed/market', runGit(['rev-parse', 'HEAD'], { cwd: repoRoot(root), capture: true }).trim()],
+		...checkedOutWorkspacePackageRepos(root).map((repo) => [
+			repo.name,
+			runGit(['rev-parse', 'HEAD'], { cwd: repo.dir, capture: true }).trim(),
+		] as const),
+	]);
+	return listInterruptedWorkflowRuns(root).find((journal) => {
+		if (journal.command !== command || !journal.resumable || journal.session.branchName !== branch) {
+			return false;
+		}
+		const classification = classifyWorkflowRunJournal(journal, {
+			currentBranch: branch,
+			currentHeads,
+		});
+		if (classification.state === 'resumable') {
+			return true;
+		}
+		if (classification.state === 'stale') {
+			archiveWorkflowRun(root, journal.runId, {
+				...classification,
+				reasons: [`${command} implicit resume skipped stale failed run`, ...classification.reasons],
+			});
+		}
+		return false;
+	}) ?? null;
 }
 
 function rejectImplicitWorkflowResume(

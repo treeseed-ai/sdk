@@ -65,6 +65,7 @@ describe('root workflow bootstrap selection', () => {
 		const operations = readFileSync(resolve(sdkRoot, 'src/workflow/operations.ts'), 'utf8');
 		expect(operations).toContain('function stagingCandidateWorkflowGates');
 		expect(operations).toContain('adapter?.capabilities.deploy === true');
+		expect(operations).toContain('implicit resume skipped stale failed run');
 		expect(operations).toContain("add(pkg.name, repoPath, pkg.commit, 'verify.yml')");
 		expect(operations).toContain("add(pkg.name, repoPath, pkg.commit, 'deploy.yml', true)");
 		expect(operations).toContain("add('@treeseed/market', marketRoot, manifest.root.commit, 'verify.yml')");
