@@ -2270,57 +2270,6 @@ export async function ensureRailwayCustomDomain({
 	return { domain: created, created: true };
 }
 
-function looksLikeRailwayMissingResource(error: unknown) {
-	const message = error instanceof Error ? error.message : String(error ?? '');
-	return /not found|does not exist|could not find|unknown|invalid .*id/iu.test(message);
-}
-
-function looksLikeRailwayOperationInProgress(error: unknown) {
-	const message = error instanceof Error ? error.message : String(error ?? '');
-	return /operation is already in progress/iu.test(message);
-}
-
-async function railwayDeleteMutation({
-	query,
-	variables,
-	env,
-	fetchImpl,
-	missingResult,
-}: {
-	query: string;
-	variables: Record<string, unknown>;
-	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
-	fetchImpl?: typeof fetch;
-	missingResult: Record<string, unknown>;
-}) {
-	let lastError: unknown = null;
-	for (let attempt = 0; attempt < 6; attempt += 1) {
-		try {
-			const payload = await railwayGraphqlRequest<Record<string, unknown>>({
-				query,
-				variables,
-				env,
-				fetchImpl,
-			});
-			const mutationResult = Object.values(payload.data ?? {})[0];
-			if (mutationResult === false || mutationResult == null) {
-				throw new Error('Railway delete mutation returned no successful deletion result.');
-			}
-			return { status: 'deleted' };
-		} catch (error) {
-			if (looksLikeRailwayMissingResource(error)) {
-				return missingResult;
-			}
-			if (!looksLikeRailwayOperationInProgress(error) || attempt >= 5) {
-				throw error;
-			}
-			lastError = error;
-			await new Promise((resolve) => setTimeout(resolve, 2500 * (attempt + 1)));
-		}
-	}
-	throw lastError instanceof Error ? lastError : new Error(String(lastError ?? 'Railway delete mutation did not complete.'));
-}
-
 export async function deleteRailwayCustomDomain({
 	projectId,
 	environmentId,
@@ -2387,11 +2336,6 @@ export async function deleteRailwayVolume({
 	if (!projectId || !environmentId) throw new Error(`Railway CLI volume deletion requires project and environment ids for ${volumeId}.`);
 	await runRailwayCliJson({ args: ['volume', '--project', projectId, '--environment', environmentId, 'delete', '--volume', volumeId, '--yes', '--json'], env });
 	return { status: 'deleted' };
-}
-
-function looksLikeRailwayVolumeDeleteShapeUnsupported(error: unknown) {
-	const message = error instanceof Error ? error.message : String(error ?? '');
-	return /Unknown argument|Cannot query field|Unknown field|Field .* is not defined|volumeDelete.*argument|Problem processing request/iu.test(message);
 }
 
 export async function deleteRailwayEnvironment({

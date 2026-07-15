@@ -1,12 +1,15 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+	changeSetToEnvironmentPatch,
+	IacClient,
 	runRailwayIac,
 	type RailwayChangeSet,
 	type RailwayIacApplyResponse,
 	type RailwayIacPlanResponse,
 	type ResourceNode,
 } from 'railway/iac';
+import { railwayGraphqlRequest } from '../../operations/services/railway-api.ts';
 import { assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService } from '../../operations/services/railway-source-policy.ts';
 
 export type TreeseedRailwayIacService = {
@@ -185,57 +188,6 @@ export async function waitForRailwayVolumeName<TVolume extends { id?: string | n
 	for (let attempt = 1; attempt <= attempts; attempt += 1) {
 		const volume = (await load()).find((candidate) => candidate.id === volumeId) ?? null;
 		if (volume?.name === expectedName) return { volume, attempt };
-		if (attempt < attempts) await sleep(intervalMs);
-	}
-	return null;
-}
-
-export async function waitForRailwayVolumeDetachment<TVolume extends {
-	id?: string | null;
-	instances?: Array<{ environmentId?: string | null; serviceId?: string | null }>;
-}>({
-	load,
-	volumeId,
-	environmentId,
-	serviceId,
-	attempts = 12,
-	intervalMs = 2_500,
-	sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
-}: {
-	load: () => Promise<TVolume[]>;
-	volumeId: string;
-	environmentId: string;
-	serviceId: string;
-	attempts?: number;
-	intervalMs?: number;
-	sleep?: (milliseconds: number) => Promise<unknown>;
-}) {
-	for (let attempt = 1; attempt <= attempts; attempt += 1) {
-		const volume = (await load()).find((candidate) => candidate.id === volumeId) ?? null;
-		const attached = volume?.instances?.some((instance) =>
-			instance.environmentId === environmentId && instance.serviceId === serviceId,
-		) ?? false;
-		if (!attached) return { volume, attempt };
-		if (attempt < attempts) await sleep(intervalMs);
-	}
-	return null;
-}
-
-export async function waitForRailwayServiceAbsence<TService extends { id?: string | null }>({
-	load,
-	serviceId,
-	attempts = 12,
-	intervalMs = 2_500,
-	sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
-}: {
-	load: () => Promise<TService[]>;
-	serviceId: string;
-	attempts?: number;
-	intervalMs?: number;
-	sleep?: (milliseconds: number) => Promise<unknown>;
-}) {
-	for (let attempt = 1; attempt <= attempts; attempt += 1) {
-		if (!(await load()).some((service) => service.id === serviceId)) return { attempt };
 		if (attempt < attempts) await sleep(intervalMs);
 	}
 	return null;
@@ -462,6 +414,16 @@ function activeObservedVolumeInstances(volume: TreeseedRailwayObservedVolume) {
 	});
 }
 
+function pendingObservedVolumeInstances(volume: TreeseedRailwayObservedVolume) {
+	return volume.instances.filter((instance) => {
+		const state = String(instance.state ?? '').toUpperCase();
+		return instance.isPendingDeletion === true
+			|| Boolean(typeof instance.deletedAt === 'string' && instance.deletedAt.trim())
+			|| state === 'DELETING'
+			|| state === 'DELETED';
+	});
+}
+
 export function findRailwayPendingVolumeNameCollisions(input: {
 	services: TreeseedRailwayIacService[];
 	liveServices?: TreeseedRailwayObservedService[];
@@ -472,19 +434,25 @@ export function findRailwayPendingVolumeNameCollisions(input: {
 		if (!service.volumeMountPath) return [];
 		const canonicalVolumeName = `${service.serviceName}-volume`;
 		const desiredServiceId = serviceIdByName.get(service.serviceName) ?? null;
+		const activeCanonicalVolumeIds = new Set(input.volumes
+			.filter((volume) => volume.name === canonicalVolumeName && activeObservedVolumeInstances(volume).length > 0)
+			.map((volume) => volume.id));
 		return input.volumes
 			.filter((volume) => volume.name === canonicalVolumeName || (
 				String(volume.name ?? '').startsWith('pending-delete-')
 				&& Boolean(desiredServiceId)
 				&& volume.instances.some((instance) => instance.serviceId === desiredServiceId)
 			))
-			.filter((volume) => volume.instances.length > 0 && activeObservedVolumeInstances(volume).length === 0)
+			.filter((volume) => pendingObservedVolumeInstances(volume).length > 0)
+			.filter((volume) => activeCanonicalVolumeIds.size === 0 || activeCanonicalVolumeIds.has(volume.id))
 			.map((volume) => ({
 				serviceName: service.serviceName,
 				volumeId: volume.id,
 				canonicalVolumeName,
 				mountPath: service.volumeMountPath!,
-				serviceId: volume.instances.find((instance) => instance.serviceId)?.serviceId ?? null,
+				serviceId: pendingObservedVolumeInstances(volume).find((instance) => instance.serviceId)?.serviceId
+					?? volume.instances.find((instance) => instance.serviceId)?.serviceId
+					?? null,
 			}));
 	});
 }
@@ -842,7 +810,163 @@ export async function planRailwayIacProject(input: TreeseedRailwayIacProjectInpu
 }
 
 export async function applyRailwayIacProject(input: TreeseedRailwayIacProjectInput, rendered = renderRailwayIacProject(input)): Promise<RailwayIacApplyResponse> {
-	return runRailwayIacWithRateLimitRetry(() => runRailwayIac({
+	return applyRailwayIacProjectWithPlan(input, rendered);
+}
+
+type RailwayStagedPatch = {
+	id: string;
+	status: string;
+	patch: Record<string, unknown>;
+} | null;
+
+function canonicalRailwayPatch(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(canonicalRailwayPatch);
+	if (!value || typeof value !== 'object') return value;
+	return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+		.filter(([, entry]) => entry !== undefined)
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(([key, entry]) => [key, canonicalRailwayPatch(entry)]));
+}
+
+export function railwayStagedPatchMatchesPlan(
+	patch: NonNullable<RailwayStagedPatch>,
+	plan: RailwayIacPlanResponse,
+) {
+	const expected = railwayPatchForPlan(plan);
+	if (!expected) return false;
+	return JSON.stringify(canonicalRailwayPatch(patch.patch)) === JSON.stringify(canonicalRailwayPatch(expected));
+}
+
+function railwayPatchForPlan(plan: RailwayIacPlanResponse) {
+	if (!plan.currentGraph || !plan.currentConfig || !plan.changeSet) return null;
+	return changeSetToEnvironmentPatch({
+		currentGraph: plan.currentGraph,
+		currentConfig: plan.currentConfig,
+		changeSet: plan.changeSet,
+	});
+}
+
+function railwayIacClient(input: TreeseedRailwayIacProjectInput) {
+	return new IacClient({
+		token: input.railwayApiToken,
+		authType: 'bearer',
+		...(input.railwayApiUrl?.trim() ? { graphqlEndpoint: input.railwayApiUrl.trim() } : {}),
+	});
+}
+
+async function readRailwayStagedPatch(input: TreeseedRailwayIacProjectInput) {
+	return runRailwayIacWithRateLimitRetry(async () => {
+		const response = await railwayGraphqlRequest<{
+			environmentStagedChanges: RailwayStagedPatch;
+		}>({
+			query: `query TreeseedRailwayStagedPatch($environmentId: String!) {
+				environmentStagedChanges(environmentId: $environmentId) {
+					id
+					status
+					patch(decryptVariables: true)
+				}
+			}`,
+			variables: { environmentId: input.environmentId },
+			apiToken: input.railwayApiToken,
+			apiUrl: input.railwayApiUrl?.trim() || undefined,
+			retries: 0,
+		});
+		const staged = response.data.environmentStagedChanges;
+		const id = String(staged?.id ?? '').trim();
+		return !id || id === '<empty>' ? null : staged;
+	});
+}
+
+async function commitAndVerifyRailwayStagedPatch(
+	client: IacClient,
+	input: TreeseedRailwayIacProjectInput,
+	patch: NonNullable<RailwayStagedPatch>,
+	{
+		attempts = 450,
+		intervalMs = 2_000,
+		sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+		skipDeploys = false,
+	}: {
+		attempts?: number;
+		intervalMs?: number;
+		sleep?: (milliseconds: number) => Promise<unknown>;
+		skipDeploys?: boolean;
+	} = {},
+) {
+	const commitResult = await runRailwayIacWithRateLimitRetry(() => client.commitStagedPatch({
+		environmentId: input.environmentId,
+		message: 'Apply TreeSeed reconciled Railway configuration',
+		skipDeploys,
+	}));
+	if (typeof commitResult !== 'string' || !commitResult.trim()) {
+		throw new Error(`Railway did not return a commit identifier for staged patch ${patch.id}.`);
+	}
+	for (let attempt = 1; attempt <= attempts; attempt += 1) {
+		const observed = await readRailwayStagedPatch(input);
+		if (!observed) return;
+		if (observed.id !== patch.id) {
+			throw new Error(`Railway staged patch changed from ${patch.id} to ${observed.id} while TreeSeed was committing it.`);
+		}
+		if (attempt === 1 || attempt % Math.max(1, Math.round(15_000 / intervalMs)) === 0) {
+			process.stderr.write(`[trsd][railway][iac:commit-settle] patch=${patch.id} status=${observed.status || 'unknown'} elapsedMs=${attempt * intervalMs}\n`);
+		}
+		if (attempt < attempts) await sleep(intervalMs);
+	}
+	throw new Error(`Railway staged patch ${patch.id} remained pending after it was committed.`);
+}
+
+export async function applyRailwayIacProjectWithPlan(
+	input: TreeseedRailwayIacProjectInput,
+	rendered = renderRailwayIacProject(input),
+	planned?: RailwayIacPlanResponse,
+): Promise<RailwayIacApplyResponse> {
+	const client = railwayIacClient(input);
+	const pendingBeforeApply = await readRailwayStagedPatch(input);
+	if (pendingBeforeApply) {
+		const effectivePlan = planned ?? await planRailwayIacProject(input, rendered);
+		const expectedPatch = railwayPatchForPlan(effectivePlan);
+		if (!effectivePlan.ok || !expectedPatch) {
+			throw new Error(`Railway environment ${input.environmentName} has pending staged patch ${pendingBeforeApply.id}, but TreeSeed could not compile a validated replacement patch.`);
+		}
+		let patchToCommit = pendingBeforeApply;
+		if (!railwayStagedPatchMatchesPlan(pendingBeforeApply, effectivePlan)) {
+			const staged = await runRailwayIacWithRateLimitRetry(() => client.stageEnvironmentChanges({
+				environmentId: input.environmentId,
+				patch: expectedPatch,
+				merge: false,
+			}));
+			const replaced = await readRailwayStagedPatch(input);
+			if (!replaced || replaced.id !== staged.id || !railwayStagedPatchMatchesPlan(replaced, effectivePlan)) {
+				throw new Error(`Railway environment ${input.environmentName} did not retain the exact TreeSeed replacement for stale patch ${pendingBeforeApply.id}.`);
+			}
+			patchToCommit = replaced;
+		}
+		await commitAndVerifyRailwayStagedPatch(client, input, patchToCommit);
+		return {
+			...effectivePlan,
+			command: 'apply',
+			applyResult: {
+				id: patchToCommit.id,
+				status: 'APPLIED',
+				changes: [],
+				diagnostics: [],
+			},
+			stagedPatchId: patchToCommit.id,
+		} as RailwayIacApplyResponse;
+	}
+	if (planned?.ok && (planned.changeSet?.changes ?? []).length === 0) {
+		return {
+			...planned,
+			command: 'apply',
+			applyResult: {
+				status: 'APPLIED',
+				changes: [],
+				diagnostics: [],
+			},
+		} as RailwayIacApplyResponse;
+	}
+
+	const response = await runRailwayIacWithRateLimitRetry(() => runRailwayIac({
 		command: 'apply',
 		cwd: rendered.tempDir,
 		file: rendered.filePath,
@@ -859,6 +983,15 @@ export async function applyRailwayIacProject(input: TreeseedRailwayIacProjectInp
 			onRetry: (attempt, delayMs, error) => process.stderr.write(`[trsd][railway][iac:retry] command=apply attempt=${attempt} waitMs=${delayMs} reason=${error instanceof Error ? error.message : String(error)}\n`),
 			onWait: (attempt, remainingMs) => process.stderr.write(`[trsd][railway][iac:retry] command=apply attempt=${attempt} cooldownRemainingMs=${remainingMs}\n`),
 		});
+	if (railwayIacApplyFailure(response)) return response;
+	const pendingAfterApply = await readRailwayStagedPatch(input);
+	if (pendingAfterApply) {
+		if (response.stagedPatchId && response.stagedPatchId !== pendingAfterApply.id) {
+			throw new Error(`Railway apply returned staged patch ${response.stagedPatchId}, but live Railway reports ${pendingAfterApply.id}.`);
+		}
+		await commitAndVerifyRailwayStagedPatch(client, input, pendingAfterApply);
+	}
+	return response;
 }
 
 export function cleanupRailwayIacRender(rendered: Pick<TreeseedRailwayIacRenderResult, 'tempDir'>) {

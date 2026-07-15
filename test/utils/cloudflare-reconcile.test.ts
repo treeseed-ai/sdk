@@ -281,8 +281,6 @@ vi.mock('../../src/reconcile/providers/railway-iac.ts', () => ({
 	resolveRailwayIacVolumeBindings: vi.fn(() => ({ bindings: [], blockedReasons: [] })),
 	findRailwayPendingVolumeNameCollisions: vi.fn(() => []),
 	waitForRailwayVolumeName: vi.fn(),
-	waitForRailwayVolumeDetachment: vi.fn(),
-	waitForRailwayServiceAbsence: vi.fn(),
 	waitForRailwayServices: vi.fn(async ({ serviceNames }: { serviceNames: string[] }) => ({
 		services: serviceNames.map((name, index) => ({ id: `service-${index + 1}`, name })),
 		attempts: 1,
@@ -308,8 +306,8 @@ vi.mock('../../src/reconcile/providers/railway-iac.ts', () => ({
 		planRailwayIacProjectMock(input, rendered);
 		return { ok: true, diagnostics: [], changeSet: { changes: [] } };
 	}),
-	applyRailwayIacProject: vi.fn(async (input, rendered) => {
-		applyRailwayIacProjectMock(input, rendered);
+	applyRailwayIacProjectWithPlan: vi.fn(async (input, rendered, plan) => {
+		applyRailwayIacProjectMock(input, rendered, plan);
 		return { ok: true, diagnostics: [], changeSet: { changes: [] } };
 	}),
 	validateRailwayIacChangeSet: vi.fn(() => ({

@@ -91,7 +91,7 @@ import type {
 import { loadTreeseedReconcileState } from './state.ts';
 import { createTreeseedReconcileUnitId } from './units.ts';
 import {
-	applyRailwayIacProject,
+	applyRailwayIacProjectWithPlan,
 	cleanupRailwayIacRender,
 	detachRetainedRailwayCustomDomains,
 	detachRetainedRailwayVolumeBindings,
@@ -101,9 +101,7 @@ import {
 	renderRailwayIacProject,
 	resolveRailwayIacVolumeBindings,
 	waitForRailwayVolumeAdoptionResources,
-	waitForRailwayVolumeDetachment,
 	waitForRailwayVolumeName,
-	waitForRailwayServiceAbsence,
 	waitForRailwayServices,
 	selectRailwayIacRetainedResources,
 	validateRailwayIacChangeSet,
@@ -4416,16 +4414,71 @@ async function syncRailwayEnvironmentForScope(
 		if (!project || !environment) {
 			throw new Error(`Railway IaC ${planOnly ? 'plan' : 'reconciliation'} could not resolve project/environment for ${projectServices[0]?.projectName ?? '(unknown project)'}/${projectServices[0]?.railwayEnvironment ?? '(unknown environment)'}.`);
 		}
-		const liveServices = await listRailwayEnvironmentServices({ environmentId: environment.id, env: topology.env }).catch(() => project.services);
+		const liveServices = await listRailwayEnvironmentServices({ environmentId: environment.id, env: topology.env });
 		const liveServiceByName = new Map(liveServices.map((service) => [service.name, service]));
-		const liveVolumes = await listRailwayVolumes({ projectId: project.id, env: topology.env }).catch(() => []);
+		let liveVolumes = await listRailwayVolumes({ projectId: project.id, env: topology.env });
 		const databaseDescriptor = configuredRailwayIacDatabase(input, projectServices);
-		const baseIacServices = projectServices.map((service) => railwayIacServiceInput(input, sync, service, scope));
+		let baseIacServices = projectServices.map((service) => railwayIacServiceInput(input, sync, service, scope));
+		const desiredVolumeServices = [
+			...baseIacServices,
+			...(databaseDescriptor ? [{
+				key: 'database',
+				serviceName: databaseDescriptor.serviceName,
+				volumeMountPath: databaseDescriptor.mountPath?.trim() || '/var/lib/postgresql/data',
+			}] : []),
+		];
 		const pendingVolumeNameCollisions = findRailwayPendingVolumeNameCollisions({
-			services: baseIacServices,
+			services: desiredVolumeServices,
 			liveServices,
 			volumes: liveVolumes,
 		});
+		if (pendingVolumeNameCollisions.length > 0) {
+			const volumes = pendingVolumeNameCollisions
+				.map((collision) => `${collision.canonicalVolumeName} (${collision.volumeId})`)
+				.join(', ');
+			if (input.context.launchEnv.TREESEED_REPLACE_PENDING_RAILWAY_VOLUMES !== '1') {
+				throw new Error(`Railway has canonical volumes queued for deletion: ${volumes}. Railway only supports restoration during its 48-hour recovery window through the restoration links it emails; restore these exact volumes before rerunning TreeSeed reconciliation. For an explicitly disposable environment, use \`trsd hosting apply --replace-pending-volumes --yes\`. No replacement volumes were created.`);
+			}
+			traceRailwayReconcile(topology.env, 'sync:volume:replace-pending', volumes);
+			for (const collision of pendingVolumeNameCollisions) {
+				const serviceId = liveServiceByName.get(collision.serviceName)?.id
+					?? project.services.find((service) => service.name === collision.serviceName)?.id
+					?? collision.serviceId;
+				if (!serviceId) {
+					throw new Error(`Railway cannot replace queued volume ${collision.canonicalVolumeName}: service ${collision.serviceName} has no live identity.`);
+				}
+				const tombstoneName = `pending-delete-${collision.volumeId.slice(0, 8)}`;
+				await updateRailwayVolumeWithCli({
+					projectId: project.id,
+					environmentId: environment.id,
+					serviceId,
+					volumeId: collision.volumeId,
+					name: tombstoneName,
+					mountPath: collision.mountPath,
+					env: topology.env,
+				});
+				const renamed = await waitForRailwayVolumeName({
+					volumeId: collision.volumeId,
+					expectedName: tombstoneName,
+					load: () => listRailwayVolumes({ projectId: project.id, env: topology.env }),
+				});
+				if (!renamed) {
+					throw new Error(`Railway did not free canonical volume name ${collision.canonicalVolumeName} after explicit replacement approval.`);
+				}
+			}
+			liveVolumes = await listRailwayVolumes({ projectId: project.id, env: topology.env });
+			const pendingVolumeIdsByService = new Map<string, string[]>();
+			for (const collision of pendingVolumeNameCollisions) {
+				pendingVolumeIdsByService.set(collision.serviceName, [
+					...(pendingVolumeIdsByService.get(collision.serviceName) ?? []),
+					collision.volumeId,
+				]);
+			}
+			baseIacServices = baseIacServices.map((service) => ({
+				...service,
+				detachVolumeIds: pendingVolumeIdsByService.get(service.serviceName) ?? service.detachVolumeIds,
+			}));
+		}
 		const volumeBindingResult = resolveRailwayIacVolumeBindings({
 			environmentId: environment.id,
 			services: baseIacServices,
@@ -4474,7 +4527,7 @@ async function syncRailwayEnvironmentForScope(
 		};
 		const projectEnvironmentServices = await Promise.all(project.environments.map(async (candidate) => ({
 			environment: candidate,
-			services: await listRailwayEnvironmentServices({ environmentId: candidate.id, env: topology.env }).catch(() => []),
+			services: await listRailwayEnvironmentServices({ environmentId: candidate.id, env: topology.env }),
 		})));
 		const activeProjectEnvironmentServices = projectEnvironmentServices.flatMap((entry) => entry.services);
 		const siblingEnvironmentName = scope === 'prod' ? 'staging' : scope === 'staging' ? 'production' : null;
@@ -4632,97 +4685,7 @@ async function syncRailwayEnvironmentForScope(
 				syncedServices.push(...projectServices);
 				continue;
 			}
-			for (const collision of pendingVolumeNameCollisions) {
-				const serviceId = liveServiceByName.get(collision.serviceName)?.id
-					?? collision.serviceId
-					?? liveServices[0]?.id;
-				if (!serviceId) {
-					throw new Error(`Railway pending volume ${collision.canonicalVolumeName} cannot be released because no environment service is available for CLI scope.`);
-				}
-				const tombstoneName = `pending-delete-${collision.volumeId.slice(0, 8)}`;
-				traceRailwayReconcile(topology.env, 'sync:volume:release-pending-name', `${collision.canonicalVolumeName}:${tombstoneName}`);
-				await updateRailwayVolumeWithCli({
-					projectId: project.id,
-					environmentId: environment.id,
-					serviceId,
-					volumeId: collision.volumeId,
-					name: tombstoneName,
-					mountPath: collision.mountPath,
-					env: topology.env,
-				});
-				const released = await waitForRailwayVolumeName({
-					volumeId: collision.volumeId,
-					expectedName: tombstoneName,
-					load: () => listRailwayVolumes({ projectId: project.id, env: topology.env }),
-					sleep: async (milliseconds) => {
-						traceRailwayReconcile(topology.env, 'sync:volume:release-pending-settle', `${collision.canonicalVolumeName}:${milliseconds}ms`);
-						await new Promise((resolve) => setTimeout(resolve, milliseconds));
-					},
-				});
-				if (!released) {
-					throw new Error(`Railway pending volume name ${collision.canonicalVolumeName} remained locked after 12 observations.`);
-				}
-				const desiredServiceId = liveServiceByName.get(collision.serviceName)?.id ?? null;
-				if (desiredServiceId === serviceId && collision.serviceId === desiredServiceId) {
-					traceRailwayReconcile(topology.env, 'sync:volume:replace-pending-service', `${collision.serviceName}:${serviceId}`);
-					await deleteRailwayService({
-						projectId: project.id,
-						environmentId: environment.id,
-						serviceId,
-						env: topology.env,
-					});
-					const absent = await waitForRailwayServiceAbsence({
-						serviceId,
-						load: () => listRailwayEnvironmentServices({ environmentId: environment.id, env: topology.env }),
-						sleep: async (milliseconds) => {
-							traceRailwayReconcile(topology.env, 'sync:volume:replace-pending-service-settle', `${collision.serviceName}:${milliseconds}ms`);
-							await new Promise((resolve) => setTimeout(resolve, milliseconds));
-						},
-					});
-					if (!absent) throw new Error(`Railway service ${collision.serviceName} remained after pending-volume replacement was requested.`);
-				} else {
-					traceRailwayReconcile(topology.env, 'sync:volume:release-pending-detach', `${tombstoneName}:${serviceId}`);
-					await detachRailwayVolumeWithCli({
-						projectId: project.id,
-						environmentId: environment.id,
-						serviceId,
-						volumeId: collision.volumeId,
-						env: topology.env,
-					});
-					const detached = await waitForRailwayVolumeDetachment({
-						volumeId: collision.volumeId,
-						environmentId: environment.id,
-						serviceId,
-						load: () => listRailwayVolumes({ projectId: project.id, env: topology.env }),
-						sleep: async (milliseconds) => {
-							traceRailwayReconcile(topology.env, 'sync:volume:release-pending-detach-settle', `${tombstoneName}:${milliseconds}ms`);
-							await new Promise((resolve) => setTimeout(resolve, milliseconds));
-						},
-					});
-					if (!detached) throw new Error(`Railway pending volume ${tombstoneName} remained attached after 12 observations.`);
-				}
-			}
-			if (pendingVolumeNameCollisions.length > 0) {
-				cleanupRailwayIacRender(rendered);
-				rendered = renderRailwayIacProject(effectiveIacInput);
-				plan = await planRailwayIacProject(effectiveIacInput, rendered);
-				if (!plan.ok) {
-					const diagnostics = plan.diagnostics.map((entry) => entry.message).filter(Boolean).join('; ');
-					throw new Error(`Railway IaC recovery replan failed for ${project.name}/${environment.name}${diagnostics ? `: ${diagnostics}` : '.'}`);
-				}
-				validation = validateRailwayIacChangeSet(plan.changeSet, {
-					services: rendered.serviceNames,
-					volumes: rendered.volumeNames,
-					database: rendered.databaseName,
-					scope,
-					serviceSourceModes: Object.fromEntries(effectiveIacInput.services.map((service) => [service.serviceName, service.sourceMode ?? null])),
-					serviceSourceRefs: Object.fromEntries(effectiveIacInput.services.map((service) => [service.serviceName, service.sourceMode === 'image' ? `image:${service.imageRef ?? ''}` : service.sourceMode === 'git' ? `github:${service.sourceRepo ?? ''}:${service.sourceBranch ?? ''}:${service.sourceRootDirectory ?? ''}:${service.sourceCommit ?? ''}` : null])),
-					allowedResourceDeletions,
-					protectedResourceNames: protectedSiblingResourceNames,
-				});
-				if (!validation.ok) throw new Error(`Railway IaC recovery plan rejected for ${project.name}/${environment.name}: ${validation.blockedReasons.join('; ')}`);
-			}
-			const apply = await applyRailwayIacProject(effectiveIacInput, rendered);
+			const apply = await applyRailwayIacProjectWithPlan(effectiveIacInput, rendered, plan);
 			const applyFailure = railwayIacApplyFailure(apply);
 			if (applyFailure) throw new Error(`Railway IaC apply failed for ${project.name}/${environment.name}: ${applyFailure}`);
 			for (const binding of volumeBindingResult.bindings) {
@@ -4754,30 +4717,6 @@ async function syncRailwayEnvironmentForScope(
 					&& !(typeof instance.deletedAt === 'string' && instance.deletedAt.trim())
 					&& !['DELETING', 'DELETED'].includes(String(instance.state ?? '').toUpperCase()),
 				);
-				const nameCollisions = volumesAfterApply.filter((volume) =>
-					volume.id !== liveVolume.id && volume.name === binding.canonicalVolumeName,
-				);
-				for (const collision of nameCollisions) {
-					const pendingDeletion = collision.instances.length > 0 && collision.instances.every((instance) =>
-						instance.isPendingDeletion === true
-						|| Boolean(typeof instance.deletedAt === 'string' && instance.deletedAt.trim())
-						|| ['DELETING', 'DELETED'].includes(String(instance.state ?? '').toUpperCase()),
-					);
-					if (!pendingDeletion) {
-						throw new Error(`Railway volume name ${binding.canonicalVolumeName} is owned by active volume ${collision.id}; refusing ambiguous adoption.`);
-					}
-					const tombstoneName = `pending-delete-${collision.id.slice(0, 8)}`;
-					traceRailwayReconcile(topology.env, 'sync:volume:rename-tombstone', `${binding.canonicalVolumeName}:${tombstoneName}`);
-					await updateRailwayVolumeWithCli({
-						projectId: project.id,
-						environmentId: environment.id,
-						serviceId: desiredService.id,
-						volumeId: collision.id,
-						name: tombstoneName,
-						mountPath: collision.instances[0]?.mountPath || desiredConfig.volumeMountPath,
-						env: topology.env,
-					});
-				}
 				for (const attachment of activeEnvironmentAttachments.filter((instance) => instance.serviceId && instance.serviceId !== desiredService.id)) {
 					traceRailwayReconcile(topology.env, 'sync:volume:detach-stale', `${liveVolume.name ?? liveVolume.id}:${attachment.serviceId}`);
 					await detachRailwayVolumeWithCli({

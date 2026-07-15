@@ -674,6 +674,7 @@ query TreeseedRailwayDeploymentStatus($projectId: String!) {
 		variables: { projectId },
 		env,
 		fetchImpl,
+		retries: 0,
 	});
 	return payload.data?.project ?? null;
 }

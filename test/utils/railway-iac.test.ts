@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+	applyRailwayIacProjectWithPlan,
 	cleanupRailwayIacRender,
 	cleanupStaleRailwayIacRenders,
 	detachRetainedRailwayVolumeBindings,
@@ -16,25 +17,38 @@ import {
 	validateRailwayIacChangeSet,
 	waitForRailwayServices,
 	waitForRailwayVolumeAdoptionResources,
-	waitForRailwayVolumeDetachment,
 	waitForRailwayVolumeName,
-	waitForRailwayServiceAbsence,
 	type TreeseedRailwayIacProjectInput,
 } from '../../src/reconcile/providers/railway-iac.ts';
 
 const railwaySdkMocks = vi.hoisted(() => ({
+	runRailwayIac: vi.fn(),
+	getStagedPatch: vi.fn(),
+	getProjectServices: vi.fn(),
 	getCurrentEnvironment: vi.fn(),
 	stageEnvironmentChanges: vi.fn(),
 	commitStagedPatch: vi.fn(),
 }));
 
-vi.mock('railway/iac', () => ({
-	IacClient: class {
-		getCurrentEnvironment = railwaySdkMocks.getCurrentEnvironment;
-		stageEnvironmentChanges = railwaySdkMocks.stageEnvironmentChanges;
-		commitStagedPatch = railwaySdkMocks.commitStagedPatch;
-	},
-	runRailwayIac: vi.fn(async () => ({ ok: true, diagnostics: [], changeSet: { version: 1, diagnostics: [], changes: [] } })),
+vi.mock('railway/iac', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('railway/iac')>();
+	return {
+		...actual,
+		IacClient: class {
+			getStagedPatch = railwaySdkMocks.getStagedPatch;
+			getProjectServices = railwaySdkMocks.getProjectServices;
+			getCurrentEnvironment = railwaySdkMocks.getCurrentEnvironment;
+			stageEnvironmentChanges = railwaySdkMocks.stageEnvironmentChanges;
+			commitStagedPatch = railwaySdkMocks.commitStagedPatch;
+		},
+		runRailwayIac: railwaySdkMocks.runRailwayIac,
+	};
+});
+
+vi.mock('../../src/operations/services/railway-api.ts', () => ({
+	railwayGraphqlRequest: vi.fn(async () => ({
+		data: { environmentStagedChanges: await railwaySdkMocks.getStagedPatch() },
+	})),
 }));
 
 const tempRoots = new Set<string>();
@@ -44,6 +58,18 @@ function tempRoot() {
 	tempRoots.add(root);
 	return root;
 }
+
+beforeEach(() => {
+	railwaySdkMocks.getStagedPatch.mockReset().mockResolvedValue(null);
+	railwaySdkMocks.getProjectServices.mockReset().mockResolvedValue([]);
+	railwaySdkMocks.commitStagedPatch.mockReset().mockResolvedValue('commit-1');
+	railwaySdkMocks.stageEnvironmentChanges.mockReset().mockResolvedValue({ id: 'staged-patch' });
+	railwaySdkMocks.runRailwayIac.mockReset().mockResolvedValue({
+		ok: true,
+		diagnostics: [],
+		changeSet: { version: 1, diagnostics: [], changes: [] },
+	});
+});
 
 afterEach(() => {
 	vi.clearAllMocks();
@@ -169,41 +195,6 @@ describe('Railway IaC project rendering', () => {
 			volumes: [{ id: 'volume-01' }],
 			attempt: 2,
 		});
-		expect(sleep).toHaveBeenCalledOnce();
-	});
-	it('waits for a replaced Railway service identity to disappear', async () => {
-		const sleep = vi.fn(async () => {});
-		const load = vi.fn()
-			.mockResolvedValueOnce([{ id: 'service-01' }])
-			.mockResolvedValueOnce([]);
-
-		await expect(waitForRailwayServiceAbsence({
-			load,
-			serviceId: 'service-01',
-			attempts: 2,
-			intervalMs: 1,
-			sleep,
-		})).resolves.toEqual({ attempt: 2 });
-		expect(sleep).toHaveBeenCalledOnce();
-	});
-	it('waits for a pending Railway volume to detach before replacement', async () => {
-		const sleep = vi.fn(async () => {});
-		const load = vi.fn()
-			.mockResolvedValueOnce([{
-				id: 'volume-01',
-				instances: [{ environmentId: 'prod', serviceId: 'runner-01' }],
-			}])
-			.mockResolvedValueOnce([{ id: 'volume-01', instances: [] }]);
-
-		await expect(waitForRailwayVolumeDetachment({
-			load,
-			volumeId: 'volume-01',
-			environmentId: 'prod',
-			serviceId: 'runner-01',
-			attempts: 2,
-			intervalMs: 1,
-			sleep,
-		})).resolves.toEqual({ volume: { id: 'volume-01', instances: [] }, attempt: 2 });
 		expect(sleep).toHaveBeenCalledOnce();
 	});
 	it('waits for a pending Railway volume name to leave the canonical namespace', async () => {
@@ -335,6 +326,44 @@ describe('Railway IaC project rendering', () => {
 			liveServices,
 			volumes,
 		})).toEqual([expect.objectContaining({ volumeId: 'pending-only', serviceId: 'runner-prod' })]);
+	});
+
+	it('ignores pending duplicates when an active canonical volume already exists', () => {
+		const service = baseInput('prod').services[1]!;
+		const canonicalName = `${service.serviceName}-volume`;
+		expect(findRailwayPendingVolumeNameCollisions({
+			services: [service],
+			liveServices: [{ id: 'runner-prod', name: service.serviceName }],
+			volumes: [
+				{
+					id: 'active-volume',
+					name: canonicalName,
+					instances: [{ environmentId: 'environment-production', serviceId: 'runner-prod', state: 'READY' }],
+				},
+				{
+					id: 'pending-volume',
+					name: canonicalName,
+					instances: [{ environmentId: 'environment-production', isPendingDeletion: true, state: 'DELETING' }],
+				},
+			],
+		})).toEqual([]);
+	});
+
+	it('blocks a canonical volume that has both active and pending attachment records', () => {
+		const service = baseInput('prod').services[1]!;
+		const canonicalName = `${service.serviceName}-volume`;
+		expect(findRailwayPendingVolumeNameCollisions({
+			services: [service],
+			liveServices: [{ id: 'runner-prod', name: service.serviceName }],
+			volumes: [{
+				id: 'mixed-volume',
+				name: canonicalName,
+				instances: [
+					{ environmentId: 'environment-production', serviceId: 'runner-prod', state: 'READY' },
+					{ environmentId: 'environment-production', serviceId: 'runner-prod', isPendingDeletion: true, state: 'READY' },
+				],
+			}],
+		})).toEqual([expect.objectContaining({ volumeId: 'mixed-volume', serviceId: 'runner-prod' })]);
 	});
 
 	it('allows canonical volume creation only for services with no prior lineage', () => {
@@ -903,6 +932,132 @@ describe('Railway IaC plan validation', () => {
 });
 
 describe('Railway IaC runner safety', () => {
+	function emptyRailwayPlan() {
+		return {
+			ok: true,
+			diagnostics: [],
+			currentGraph: {
+				version: 1,
+				project: { name: 'treeseed-api' },
+				environments: [],
+				resources: [],
+				edges: [],
+			},
+			currentConfig: {},
+			changeSet: { version: 1, diagnostics: [], changes: [] },
+		} as any;
+	}
+
+	it('commits an existing staged patch only when it already matches desired state', async () => {
+		railwaySdkMocks.getStagedPatch
+			.mockResolvedValueOnce({ id: 'patch-1', status: 'PENDING', patch: {}, meta: {} })
+			.mockResolvedValueOnce({ id: '<empty>', status: 'EMPTY', patch: {} });
+		railwaySdkMocks.commitStagedPatch.mockResolvedValue('commit-1');
+		const plan = emptyRailwayPlan();
+
+		await expect(applyRailwayIacProjectWithPlan(baseInput('prod'), undefined, plan)).resolves.toMatchObject({
+			command: 'apply',
+			stagedPatchId: 'patch-1',
+			applyResult: { status: 'APPLIED' },
+		});
+		expect(railwaySdkMocks.commitStagedPatch).toHaveBeenCalledWith({
+			environmentId: 'environment_123',
+			message: 'Apply TreeSeed reconciled Railway configuration',
+			skipDeploys: false,
+		});
+		const railway = await import('railway/iac');
+		expect(railway.runRailwayIac).not.toHaveBeenCalled();
+	});
+
+	it('replaces a stale patch with the exact desired patch before committing', async () => {
+		railwaySdkMocks.getStagedPatch
+			.mockResolvedValueOnce({
+				id: 'patch-2',
+				status: 'PENDING',
+				patch: { services: { unexpected: { isDeleted: true } } },
+				meta: {},
+			})
+			.mockResolvedValueOnce({ id: 'patch-2-replacement', status: 'PENDING', patch: {}, meta: {} })
+			.mockResolvedValueOnce(null);
+		railwaySdkMocks.stageEnvironmentChanges.mockResolvedValueOnce({ id: 'patch-2-replacement' });
+
+		await expect(applyRailwayIacProjectWithPlan(baseInput('prod'), undefined, emptyRailwayPlan())).resolves.toMatchObject({
+			stagedPatchId: 'patch-2-replacement',
+		});
+		expect(railwaySdkMocks.stageEnvironmentChanges).toHaveBeenCalledWith({
+			environmentId: 'environment_123',
+			patch: {},
+			merge: false,
+		});
+		expect(railwaySdkMocks.commitStagedPatch).toHaveBeenCalledOnce();
+	});
+
+	it('blocks stale patch recovery when the plan cannot compile a replacement', async () => {
+		railwaySdkMocks.getStagedPatch.mockResolvedValue({ id: 'patch-unprovable', status: 'PENDING', patch: {}, meta: {} });
+		await expect(applyRailwayIacProjectWithPlan(baseInput('prod'), undefined, {
+			ok: true,
+			diagnostics: [],
+			changeSet: { changes: [] },
+		} as any)).rejects.toThrow(/could not compile a validated replacement/u);
+		expect(railwaySdkMocks.stageEnvironmentChanges).not.toHaveBeenCalled();
+		expect(railwaySdkMocks.commitStagedPatch).not.toHaveBeenCalled();
+	});
+
+	it('commits and clears a patch staged by a new Railway apply', async () => {
+		railwaySdkMocks.getStagedPatch
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce({ id: 'patch-3', status: 'PENDING', patch: {}, meta: {} })
+			.mockResolvedValueOnce(null);
+		railwaySdkMocks.commitStagedPatch.mockResolvedValue('commit-3');
+		const railway = await import('railway/iac');
+		vi.mocked(railway.runRailwayIac).mockResolvedValueOnce({
+			ok: true,
+			diagnostics: [],
+			changeSet: { changes: [{ kind: 'resource.update' }] },
+			stagedPatchId: 'patch-3',
+			applyResult: { id: 'apply-3', status: 'APPLIED', changes: [{ kind: 'resource.update', status: 'APPLIED' }], diagnostics: [] },
+		} as any);
+
+		await expect(applyRailwayIacProjectWithPlan(baseInput('prod'))).resolves.toMatchObject({ stagedPatchId: 'patch-3' });
+		expect(railwaySdkMocks.commitStagedPatch).toHaveBeenCalledOnce();
+		expect(railwaySdkMocks.getStagedPatch).toHaveBeenCalledTimes(3);
+	});
+
+	it('does not ask Railway to apply an explicitly validated empty plan', async () => {
+		railwaySdkMocks.getStagedPatch.mockResolvedValueOnce(null);
+		const railway = await import('railway/iac');
+
+		await expect(applyRailwayIacProjectWithPlan(baseInput('prod'), undefined, emptyRailwayPlan())).resolves.toMatchObject({
+			command: 'apply',
+			applyResult: { status: 'APPLIED', changes: [] },
+		});
+		expect(railway.runRailwayIac).not.toHaveBeenCalled();
+		expect(railwaySdkMocks.commitStagedPatch).not.toHaveBeenCalled();
+	});
+
+	it('fails when Railway replaces the patch while a commit is settling', async () => {
+		railwaySdkMocks.getStagedPatch
+			.mockResolvedValueOnce({ id: 'patch-4', status: 'PENDING', patch: {}, meta: {} })
+			.mockResolvedValueOnce({ id: 'patch-5', status: 'PENDING', patch: {}, meta: {} });
+
+		await expect(applyRailwayIacProjectWithPlan(baseInput('prod'), undefined, emptyRailwayPlan())).rejects.toThrow(/changed from patch-4 to patch-5/u);
+	});
+
+	it('fails when the patch remains pending after the commit', async () => {
+		railwaySdkMocks.getStagedPatch.mockResolvedValue({ id: 'patch-6', status: 'PENDING', patch: {}, meta: {} });
+		const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+		vi.useFakeTimers();
+		try {
+			const result = applyRailwayIacProjectWithPlan(baseInput('prod'), undefined, emptyRailwayPlan());
+			const assertion = expect(result).rejects.toThrow(/patch-6 remained pending/u);
+			await vi.runAllTimersAsync();
+			await assertion;
+		} finally {
+			vi.useRealTimers();
+			stderr.mockRestore();
+		}
+	});
+
 	it('requires a successful apply result for a non-empty change set', () => {
 		expect(railwayIacApplyFailure({
 			ok: true,
