@@ -6360,6 +6360,7 @@ type StageCandidateManifest = {
 
 function stagingCandidateWorkflowGates(root: string, manifest: StageCandidateManifest): GitHubActionsWorkflowGate[] {
 	const gates: GitHubActionsWorkflowGate[] = [];
+	const adapters = discoverTreeseedPackageAdapters(root);
 	const add = (name: string, repoPath: string, headSha: string, workflow: string, deploy = false) => {
 		if (!workflowFileExists(repoPath, workflow)) return;
 		const gate: GitHubActionsWorkflowGate = { name, repoPath, workflow, branch: STAGING_BRANCH, headSha };
@@ -6367,10 +6368,13 @@ function stagingCandidateWorkflowGates(root: string, manifest: StageCandidateMan
 	};
 	for (const pkg of manifest.packages) {
 		const repoPath = resolve(root, pkg.path);
+		const adapter = adapters.find((candidate) => candidate.id === pkg.name || candidate.name === pkg.name);
 		if (manifest.stagingHeadsBefore[pkg.name] !== pkg.commit) {
 			add(pkg.name, repoPath, pkg.commit, 'verify.yml');
 		}
-		if (manifest.stagingHeadsBefore[pkg.name] !== pkg.commit && existsSync(resolve(repoPath, 'treeseed.site.yaml'))) {
+		if (manifest.stagingHeadsBefore[pkg.name] !== pkg.commit
+			&& adapter?.capabilities.deploy === true
+			&& existsSync(resolve(repoPath, 'treeseed.site.yaml'))) {
 			add(pkg.name, repoPath, pkg.commit, 'deploy.yml', true);
 		}
 	}
