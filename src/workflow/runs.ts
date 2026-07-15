@@ -562,6 +562,8 @@ function expectedPackageHeadAfterReleaseGate(journal: TreeseedWorkflowRunJournal
 	const data = releaseStepData(journal, `release-${packageName}`);
 	const backMerge = stringRecord(data?.backMerge);
 	if (typeof backMerge?.commitSha === 'string') return backMerge.commitSha;
+	const commit = stringRecord(data?.commit);
+	if (typeof commit?.commitSha === 'string') return commit.commitSha;
 	if (typeof data?.commitSha === 'string') return data.commitSha;
 	return null;
 }
@@ -615,6 +617,7 @@ export function classifyWorkflowRunJournal(
 	options: {
 		currentBranch?: string | null;
 		currentHeads?: Record<string, string | null | undefined>;
+		acceptedReleaseHeads?: Record<string, string | null | undefined>;
 		now?: string;
 	} = {},
 ): TreeseedWorkflowRunClassification {
@@ -682,9 +685,11 @@ export function classifyWorkflowRunJournal(
 			}
 			for (const name of selectedReleasePackageNames(releasePlan)) {
 				const currentHead = options.currentHeads[name];
-				const plannedHead = journalReleasePlanHead(releasePlan, name);
-				if (currentHead && plannedHead && currentHead !== plannedHead) {
-					reasons.push(`${name} head changed from ${plannedHead} to ${currentHead}`);
+				const expectedHead = expectedPackageHeadAfterReleaseGate(journal, name)
+					?? options.acceptedReleaseHeads?.[name]
+					?? journalReleasePlanHead(releasePlan, name);
+				if (currentHead && expectedHead && currentHead !== expectedHead) {
+					reasons.push(`${name} head changed from ${expectedHead} to ${currentHead}`);
 				}
 			}
 		}

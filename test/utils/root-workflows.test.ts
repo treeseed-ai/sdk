@@ -66,6 +66,16 @@ describe('root workflow bootstrap selection', () => {
 		expect(operations).toContain('function stagingCandidateWorkflowGates');
 		expect(operations).toContain('adapter?.capabilities.deploy === true');
 		expect(operations).toContain('implicit resume skipped stale failed run');
+		expect(operations).toContain('phase=registry-propagation');
+		expect(operations).toContain("attempt === 1 ? '--prefer-offline' : '--prefer-online'");
+		expect(operations).toContain("explicitResumeJournal?.command === 'release'");
+		expect(operations).toContain('recordedReleasePlan ?? buildReleasePlanSnapshot');
+		expect(operations).toContain('async function adoptPublishedPackageRelease');
+		expect(operations).toContain('adopted verified published release');
+		expect(operations).toContain('adopted-published-tag');
+		expect(operations).toContain("packageName === '@treeseed/api' && pendingPackageReleases.has('@treeseed/cli')");
+		expect(operations).toContain('retryFailedOnce: true');
+		expect(operations).toContain('Retrying failed jobs once for adopted immutable release run');
 		expect(operations).toContain("add(pkg.name, repoPath, pkg.commit, 'verify.yml')");
 		expect(operations).toContain("add(pkg.name, repoPath, pkg.commit, 'deploy.yml', true)");
 		expect(operations).toContain("add('@treeseed/market', marketRoot, manifest.root.commit, 'verify.yml')");

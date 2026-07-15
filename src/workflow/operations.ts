@@ -579,7 +579,12 @@ async function waitForWorkflowGates(
 	operation: TreeseedWorkflowOperationId,
 	gates: GitHubActionsWorkflowGate[],
 	ciMode: TreeseedWorkflowCiMode,
-	options: { root?: string; runId?: string; onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void } = {},
+	options: {
+		root?: string;
+		runId?: string;
+		onProgress?: (message: string, stream?: 'stdout' | 'stderr') => void;
+		retryFailedOnce?: boolean;
+	} = {},
 ) {
 	if (ciMode === 'off' || process.env.TREESEED_STAGE_WAIT_MODE === 'skip') {
 		return gates.map((gate) => skippedGitHubActionsGate(gate, 'disabled'));
@@ -622,6 +627,14 @@ async function waitForWorkflowGates(
 		if (result.status === 'completed' && result.conclusion !== 'success' && isRetryableGitHubActionsSetupFailure(result)) {
 			const retry = await rerunGitHubActionsFailedJobs(result, gateEnv);
 			options.onProgress?.(`[${operation}][gate][${gateWithTimeout.name}] Retrying GitHub-hosted setup failure once for run ${retry.runId}.`);
+			result = await waitForGitHubActionsGate(gateWithTimeout, {
+				operation,
+				env: gateEnv,
+				onProgress: options.onProgress,
+			});
+		} else if (result.status === 'completed' && result.conclusion !== 'success' && options.retryFailedOnce) {
+			const retry = await rerunGitHubActionsFailedJobs(result, gateEnv);
+			options.onProgress?.(`[${operation}][gate][${gateWithTimeout.name}] Retrying failed jobs once for adopted immutable release run ${retry.runId}.`);
 			result = await waitForGitHubActionsGate(gateWithTimeout, {
 				operation,
 				env: gateEnv,
@@ -1654,6 +1667,66 @@ function ensureReleaseTag(repoDir: string, tagName: string, commitSha: string, m
 	};
 }
 
+async function adoptPublishedPackageRelease(
+	pkg: { name: string; dir: string },
+	version: string,
+): Promise<Record<string, unknown> | null> {
+	const commitSha = tagCommitSha(pkg.dir, version);
+	if (!commitSha) return null;
+	const remoteCommit = remoteTagCommit(pkg.dir, version);
+	if (remoteCommit !== commitSha) {
+		throw new Error(`Release tag ${version} for ${pkg.name} is inconsistent: local=${commitSha}, origin=${remoteCommit ?? '(missing)'}.`);
+	}
+	let taggedManifest: Record<string, unknown>;
+	try {
+		taggedManifest = JSON.parse(runGit(['show', `${commitSha}:package.json`], { cwd: pkg.dir, capture: true })) as Record<string, unknown>;
+	} catch (error) {
+		throw new Error(`Release tag ${version} for ${pkg.name} does not contain a valid package.json: ${error instanceof Error ? error.message : String(error)}`);
+	}
+	if (taggedManifest.name !== pkg.name || taggedManifest.version !== version) {
+		throw new Error(`Release tag ${version} does not identify ${pkg.name}@${version}.`);
+	}
+	if (hasMeaningfulChanges(pkg.dir)) {
+		throw new Error(`Cannot adopt published ${pkg.name}@${version} while ${pkg.dir} has uncommitted changes.`);
+	}
+	const publishedArtifacts = await verifyPublishedReleaseArtifacts(new Map([[pkg.name, version]]));
+	const previousStagingHead = remoteHeadCommit(pkg.dir, STAGING_BRANCH);
+	if (previousStagingHead !== commitSha) {
+		runGit([
+			'push',
+			`--force-with-lease=refs/heads/${STAGING_BRANCH}:${previousStagingHead}`,
+			'origin',
+			`${commitSha}:refs/heads/${STAGING_BRANCH}`,
+		], { cwd: pkg.dir });
+	}
+	const previousProductionHead = remoteHeadCommit(pkg.dir, PRODUCTION_BRANCH);
+	if (previousProductionHead !== commitSha) {
+		promoteCommitToProductionBranch(pkg.dir, commitSha);
+	}
+	if (currentBranch(pkg.dir) !== STAGING_BRANCH) {
+		checkoutBranch(pkg.dir, STAGING_BRANCH);
+	}
+	if (headCommit(pkg.dir) !== commitSha) {
+		runGit(['reset', '--hard', commitSha], { cwd: pkg.dir });
+	}
+	const observedStagingHead = remoteHeadCommit(pkg.dir, STAGING_BRANCH);
+	const observedProductionHead = remoteHeadCommit(pkg.dir, PRODUCTION_BRANCH);
+	if (headCommit(pkg.dir) !== commitSha || observedStagingHead !== commitSha || observedProductionHead !== commitSha) {
+		throw new Error(`Published release adoption failed for ${pkg.name}@${version}; local=${headCommit(pkg.dir)}, staging=${observedStagingHead}, main=${observedProductionHead}, expected=${commitSha}.`);
+	}
+	return {
+		name: pkg.name,
+		version,
+		commit: { commitSha, status: 'adopted-published-tag' },
+		tag: { tagName: version, local: 'existing', remote: 'existing' },
+		branches: {
+			staging: previousStagingHead === commitSha ? 'existing' : 'restored',
+			production: previousProductionHead === commitSha ? 'existing' : 'restored',
+		},
+		publishedArtifacts,
+	};
+}
+
 function promoteCommitToProductionBranch(repoDir: string, commitSha: string) {
 	const expectedBefore = remoteBranchExists(repoDir, PRODUCTION_BRANCH) ? remoteHeadCommit(repoDir, PRODUCTION_BRANCH) : null;
 	const lease = expectedBefore
@@ -2561,6 +2634,7 @@ function findAutoResumableReleaseRun(
 		const classification = classifyWorkflowRunJournal(journal, {
 			currentBranch: branch,
 			currentHeads,
+			acceptedReleaseHeads: acceptedPublishedReleaseHeads(root, journal, currentHeads),
 		});
 		if (classification.state !== 'resumable') {
 			if (options.archiveStale && classification.state === 'stale') {
@@ -2581,6 +2655,53 @@ function findAutoResumableReleaseRun(
 		}
 		return releasePlan ? releasePlanMatchesCurrentHeads(releasePlan, rootRepo, packageReports) : true;
 	}) ?? null;
+}
+
+function acceptedPublishedReleaseHeads(
+	root: string,
+	journal: TreeseedWorkflowRunJournal,
+	currentHeads: Record<string, string | null | undefined>,
+) {
+	if (journal.command !== 'release') return {};
+	const plan = stringRecord(journal.steps.find((step) => step.id === 'release-plan')?.data);
+	const plannedVersions = stringRecord(plan?.plannedVersions);
+	if (!plannedVersions) return {};
+	const repos = new Map(checkedOutWorkspacePackageRepos(root).map((repo) => [repo.name, repo.dir]));
+	const accepted: Record<string, string> = {};
+	for (const [name, versionValue] of Object.entries(plannedVersions)) {
+		if (name === '@treeseed/market' || typeof versionValue !== 'string') continue;
+		const repoDir = repos.get(name);
+		const currentHead = currentHeads[name];
+		if (!repoDir || !currentHead) continue;
+		let manifestVersion: string | null = null;
+		try {
+			manifestVersion = JSON.parse(readFileSync(resolve(repoDir, 'package.json'), 'utf8')).version ?? null;
+		} catch {
+			continue;
+		}
+		const tagHead = tagCommitSha(repoDir, versionValue);
+		const remoteTagHead = remoteTagCommit(repoDir, versionValue);
+		const productionHead = remoteHeadCommit(repoDir, PRODUCTION_BRANCH);
+		const stagingHead = remoteHeadCommit(repoDir, STAGING_BRANCH);
+		const exactPublishedHead = tagHead === currentHead
+			&& productionHead === currentHead
+			&& stagingHead === currentHead;
+		const boundedInterruptedRetry = tagHead.length > 0
+			&& remoteTagHead === tagHead
+			&& !hasMeaningfulChanges(repoDir)
+			&& [productionHead, stagingHead].every((head) => head === currentHead || head === tagHead);
+		if (manifestVersion !== versionValue || (!exactPublishedHead && !boundedInterruptedRetry)) {
+			if (process.env.TREESEED_RECONCILE_TRACE === '1') {
+				process.stderr.write(`[release][resume-adoption] package=${name} accepted=false manifest=${manifestVersion === versionValue} tag=${tagHead === currentHead} remoteTag=${remoteTagHead === tagHead} main=${productionHead === currentHead} staging=${stagingHead === currentHead} bounded=${boundedInterruptedRetry}\n`);
+			}
+			continue;
+		}
+		accepted[name] = currentHead;
+		if (process.env.TREESEED_RECONCILE_TRACE === '1') {
+			process.stderr.write(`[release][resume-adoption] package=${name} accepted=true\n`);
+		}
+	}
+	return accepted;
 }
 
 async function executeJournalStep<T extends Record<string, unknown> | null>(
@@ -2970,20 +3091,30 @@ async function runReleaseNpmInstall(repoDir: string, options: { workspaceRoot?: 
 	if (repoDir === options.workspaceRoot && lockfileRootMatchesManifest(repoDir)) {
 		return { status: 'skipped', reason: 'root-lockfile-already-matches', attempts: 0 };
 	}
-	const args = ['install', '--package-lock-only', '--ignore-scripts', '--prefer-offline', '--workspaces=false', '--no-audit', '--no-fund'];
-	const spawnCommand = npmCommandForWorkflowSpawn(args);
+	const baseArgs = ['install', '--package-lock-only', '--ignore-scripts', '--workspaces=false', '--no-audit', '--no-fund'];
+	const propagationDelaysMs = [15_000, 30_000, 60_000, 120_000, 180_000];
+	const startedAt = Date.now();
 	let lastDetail = '';
-	for (let attempt = 1; attempt <= 3; attempt += 1) {
-		process.stderr.write(`[release][restore] repository=${repoDir} phase=package-lock attempt=${attempt} elapsed=0s\n`);
+	for (let attempt = 1; attempt <= propagationDelaysMs.length + 1; attempt += 1) {
+		const args = [...baseArgs, attempt === 1 ? '--prefer-offline' : '--prefer-online'];
+		const spawnCommand = npmCommandForWorkflowSpawn(args);
+		process.stderr.write(`[release][restore] repository=${repoDir} phase=package-lock attempt=${attempt} elapsed=${Math.ceil((Date.now() - startedAt) / 1000)}s\n`);
 		const result = await waitForReleaseInstall(spawnCommand.command, spawnCommand.args, repoDir, attempt);
 		if (result.status === 0) {
 			return { status: 'completed', reason: null, attempts: attempt };
 		}
 		lastDetail = result.detail;
-		if (!/No matching version found|notarget|ETARGET|E404/u.test(lastDetail) || attempt === 3) break;
-		await new Promise((resolvePromise) => setTimeout(resolvePromise, 15_000));
+		const propagationDelayMs = propagationDelaysMs[attempt - 1];
+		if (!/No matching version found|notarget|ETARGET|E404/u.test(lastDetail) || propagationDelayMs == null) break;
+		let remainingMs = propagationDelayMs;
+		while (remainingMs > 0) {
+			process.stderr.write(`[release][restore] repository=${repoDir} phase=registry-propagation nextAttempt=${attempt + 1} remaining=${Math.ceil(remainingMs / 1000)}s elapsed=${Math.ceil((Date.now() - startedAt) / 1000)}s\n`);
+			const sliceMs = Math.min(15_000, remainingMs);
+			await new Promise((resolvePromise) => setTimeout(resolvePromise, sliceMs));
+			remainingMs -= sliceMs;
+		}
 	}
-	throw new Error(lastDetail || `npm ${args.join(' ')} failed`);
+	throw new Error(lastDetail || `npm ${baseArgs.join(' ')} failed`);
 }
 
 function pathIsWithin(parent: string, candidate: string) {
@@ -5574,7 +5705,9 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 			const recursiveWorkspace = session.mode === 'recursive-workspace';
 			const mode = session.mode;
 			const executionMode = normalizeExecutionMode(input);
-			const explicitResumeRunId = helpers.context.workflow?.resumeRunId ?? null;
+			const explicitResumeRunId = helpers.context.workflow?.resumeRunId
+				?? (input as TreeseedSaveInput & { resumeRunId?: string }).resumeRunId
+				?? null;
 			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId
 				? findAutoResumableSaveRun(root, branch)
 				: null;
@@ -5767,7 +5900,12 @@ export async function workflowSave(helpers: WorkflowOperationHelpers, input: Tre
 						}]
 						: []),
 				],
-				autoResumeRun
+				explicitResumeRunId
+					? {
+						...helpers.context,
+						workflow: { ...(helpers.context.workflow ?? {}), resumeRunId: explicitResumeRunId },
+					}
+					: autoResumeRun
 					? {
 						...helpers.context,
 						workflow: {
@@ -6104,7 +6242,9 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 			const root = workspaceRoot(tenantRoot);
 			const executionMode = normalizeExecutionMode(input);
 			const session = resolveTreeseedWorkflowSession(root);
-			const explicitResumeRunId = helpers.context.workflow?.resumeRunId ?? null;
+			const explicitResumeRunId = helpers.context.workflow?.resumeRunId
+				?? (input as TreeseedCloseInput & { resumeRunId?: string }).resumeRunId
+				?? null;
 			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId
 				? findAutoResumableTaskRun(root, 'close', session.branchName)
 				: null;
@@ -6204,7 +6344,15 @@ export async function workflowClose(helpers: WorkflowOperationHelpers, input: Tr
 						? [{ id: 'worktree-cleanup', description: 'Remove managed workflow worktree', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: false }]
 						: []),
 				],
-				autoResumeRun
+				explicitResumeRunId
+					? {
+						...helpers.context,
+						workflow: {
+							...(helpers.context.workflow ?? {}),
+							resumeRunId: explicitResumeRunId,
+						},
+					}
+					: autoResumeRun
 					? {
 						...helpers.context,
 						workflow: {
@@ -6711,7 +6859,9 @@ export async function workflowStage(helpers: WorkflowOperationHelpers, input: Tr
 			const root = workspaceRoot(tenantRoot);
 			const executionMode = normalizeExecutionMode(input);
 			const session = resolveTreeseedWorkflowSession(root);
-			const explicitResumeRunId = helpers.context.workflow?.resumeRunId ?? null;
+			const explicitResumeRunId = helpers.context.workflow?.resumeRunId
+				?? (input as TreeseedStageInput & { resumeRunId?: string }).resumeRunId
+				?? null;
 			const rawAutoResumeRun = executionMode === 'execute' && !explicitResumeRunId
 				? findAutoResumableTaskRun(root, 'stage', session.branchName)
 				: null;
@@ -7190,7 +7340,13 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 			const rootRepo = createWorkspaceRootRepoReport(root);
 			const packageReports = createWorkspacePackageReports(root);
 			const releaseHelperRepos = checkedOutReleaseHelperRepos(root);
-			const explicitResumeRunId = helpers.context.workflow?.resumeRunId ?? null;
+			const explicitResumeRunId = helpers.context.workflow?.resumeRunId
+				?? (input as TreeseedReleaseInput & { resumeRunId?: string }).resumeRunId
+				?? null;
+			const explicitResumeJournal = explicitResumeRunId ? readWorkflowRunJournal(root, explicitResumeRunId) : null;
+			const recordedReleasePlan = explicitResumeJournal?.command === 'release'
+				? stringRecord(explicitResumeJournal.steps.find((step) => step.id === 'release-plan')?.data)
+				: null;
 			const autoResumeRun = executionMode === 'execute' && !explicitResumeRunId && input.fresh !== true
 				? findAutoResumableReleaseRun(root, session.branchName, rootRepo, packageReports, { archiveStale: false })
 				: null;
@@ -7207,7 +7363,7 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 			const level = effectiveInput.bump ?? 'patch';
 			const ciMode = normalizeCiMode(effectiveInput.ciMode, 'release');
 			const packageSelection = session.packageSelection;
-			const plannedRelease = buildReleasePlanSnapshot({
+			const plannedRelease = (recordedReleasePlan ?? buildReleasePlanSnapshot({
 				root,
 				mode: session.mode,
 				level,
@@ -7217,14 +7373,18 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 				packageReports,
 				rootRepo,
 				blockers: [],
-			});
+			})) as ReturnType<typeof buildReleasePlanSnapshot>;
 			const selectedPackageNames = releasePlanPackageSelection(plannedRelease.packageSelection).selected;
-			const blockers = collectReleasePlanBlockers(session, session.mode, selectedPackageNames, {
-				level,
-				repairVersionLine: effectiveInput.repairVersionLine === true,
-			});
+			const blockers = explicitResumeJournal
+				? []
+				: collectReleasePlanBlockers(session, session.mode, selectedPackageNames, {
+					level,
+					repairVersionLine: effectiveInput.repairVersionLine === true,
+				});
+			if (!explicitResumeJournal) {
 				blockers.push(...collectReleaseHelperRepoBlockers(root));
 				blockers.push(...stageCandidateAttestationBlockers(root));
+			}
 			const selectedVersions = releasePlanVersionMap(plannedRelease.plannedVersions);
 			const releaseImageVersions = productionReleaseImageRefVersions(root, selectedVersions);
 			const releaseImageRefs = productionReleaseImageRefEnv(releaseImageVersions);
@@ -7336,7 +7496,15 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 					{ id: 'release-back-merge', description: 'Back-merge production release history into staging', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 					{ id: 'workspace-link', description: 'Restore local workspace links after release', repoName: rootRepo.name, repoPath: rootRepo.path, branch: STAGING_BRANCH, resumable: true },
 				],
-				autoResumeRun
+				explicitResumeRunId
+					? {
+						...helpers.context,
+						workflow: {
+							...(helpers.context.workflow ?? {}),
+							resumeRunId: explicitResumeRunId,
+						},
+					}
+					: autoResumeRun
 					? {
 						...helpers.context,
 						workflow: {
@@ -7423,6 +7591,9 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						if (packageName !== '@treeseed/sdk' && pendingPackageReleases.has('@treeseed/sdk') && !dependencies.includes('@treeseed/sdk')) {
 							dependencies.push('@treeseed/sdk');
 						}
+						if (packageName === '@treeseed/api' && pendingPackageReleases.has('@treeseed/cli') && !dependencies.includes('@treeseed/cli')) {
+							dependencies.push('@treeseed/cli');
+						}
 						return [packageName, dependencies] as const;
 					}));
 				while (pendingPackageReleases.size > 0) {
@@ -7438,7 +7609,27 @@ export async function workflowRelease(helpers: WorkflowOperationHelpers, input: 
 						const pkg = packageRepoByName.get(packageName)!;
 						const version = selectedVersions.get(pkg.name)!;
 						const packageRelease = await executeJournalStep(root, workflowRun.runId, `release-${pkg.name}`, async () => {
-						const metadata = await prepareAdapterReleaseMetadata(root, pkg, version);
+							const adopted = await adoptPublishedPackageRelease(pkg, version);
+							if (adopted) {
+								helpers.write(`[release][packages] adopted verified published release ${pkg.name}@${version}.`, 'stderr');
+								if (pkg.name === '@treeseed/api') {
+									const publishWait = await waitForWorkflowGates('release', [{
+										name: pkg.name,
+										repoPath: pkg.dir,
+										workflow: releaseWorkflowForPackage(root, pkg.name),
+										branch: version,
+										headSha: String(stringRecord(adopted.commit)?.commitSha ?? tagCommitSha(pkg.dir, version)),
+									}], ciMode, {
+										root,
+										runId: workflowRun.runId,
+										onProgress: (line, stream) => helpers.write(line, stream),
+										retryFailedOnce: true,
+									});
+									return { ...adopted, publishWait };
+								}
+								return adopted;
+							}
+							const metadata = await prepareAdapterReleaseMetadata(root, pkg, version);
 						const changelog = updateReleaseChangelog(pkg.dir, {
 							version,
 							sourceRef: `origin/${PRODUCTION_BRANCH}`,
@@ -7686,6 +7877,7 @@ export async function workflowResume(helpers: WorkflowOperationHelpers, input: T
 			const classification = classifyWorkflowRunJournal(journal, {
 				currentBranch: session.branchName,
 				currentHeads,
+				acceptedReleaseHeads: acceptedPublishedReleaseHeads(root, journal, currentHeads),
 			});
 			if (classification.state !== 'resumable') {
 				workflowError('resume', 'resume_unavailable', `Run ${runId} is ${classification.state} and is not safe to resume.`, {
@@ -7717,7 +7909,10 @@ export async function workflowResume(helpers: WorkflowOperationHelpers, input: T
 				case 'stage':
 					return workflowStage(resumedHelpers, journal.input as unknown as TreeseedStageInput);
 				case 'release':
-					return workflowRelease(resumedHelpers, journal.input as unknown as TreeseedReleaseInput);
+					return workflowRelease(resumedHelpers, {
+						...(journal.input as unknown as TreeseedReleaseInput),
+						resumeRunId: runId,
+					} as TreeseedReleaseInput & { resumeRunId: string });
 				case 'destroy':
 					return workflowDestroy(resumedHelpers, journal.input as unknown as TreeseedDestroyInput);
 				default:

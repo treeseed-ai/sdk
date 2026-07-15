@@ -469,6 +469,89 @@ describe('workflow run journals', () => {
 		expect(classification.reasons.join('\n')).toContain('remaining release gates');
 	});
 
+	it('keeps partial package releases resumable at their recorded release commits', () => {
+		const root = makeRoot();
+		const journal = createWorkflowRunJournal(root, {
+			runId: 'release-partial-package-test',
+			command: 'release',
+			input: { bump: 'patch' },
+			session: {
+				root,
+				mode: 'recursive-workspace',
+				branchName: 'staging',
+				repos: [
+					{ name: '@treeseed/market', path: root, branchName: 'staging' },
+					{ name: '@treeseed/sdk', path: join(root, 'packages/sdk'), branchName: 'staging' },
+				],
+			},
+			steps: [
+				{ id: 'release-plan', description: 'Record release plan', repoName: '@treeseed/market', repoPath: root, branch: 'staging', resumable: true },
+				{ id: 'release-@treeseed/sdk', description: 'Release SDK', repoName: '@treeseed/sdk', repoPath: join(root, 'packages/sdk'), branch: 'staging', resumable: true },
+				{ id: 'release-root', description: 'Release market', repoName: '@treeseed/market', repoPath: root, branch: 'staging', resumable: true },
+			],
+		});
+		const failed = {
+			...journal,
+			status: 'failed' as const,
+			failure: { code: 'unsupported_state', message: 'registry propagation', details: null, at: new Date().toISOString() },
+			steps: journal.steps.map((step) => step.id === 'release-plan'
+				? { ...step, status: 'completed' as const, completedAt: new Date().toISOString(), data: {
+					rootRepo: { name: '@treeseed/market', commitSha: 'market-staging' },
+					repos: [{ name: '@treeseed/sdk', commitSha: 'sdk-staging' }],
+					packageSelection: { selected: ['@treeseed/sdk'] },
+				} }
+				: step.id === 'release-@treeseed/sdk'
+					? { ...step, status: 'completed' as const, completedAt: new Date().toISOString(), data: { commit: { commitSha: 'sdk-release' } } }
+					: step),
+		};
+
+		const classification = classifyWorkflowRunJournal(failed, {
+			currentBranch: 'staging',
+			currentHeads: { '@treeseed/market': 'market-staging', '@treeseed/sdk': 'sdk-release' },
+		});
+
+		expect(classification.state).toBe('resumable');
+	});
+
+	it('accepts an externally completed planned release head only when supplied by verified adoption', () => {
+		const root = makeRoot();
+		const journal = createWorkflowRunJournal(root, {
+			runId: 'release-adopted-package-test',
+			command: 'release',
+			input: { bump: 'patch' },
+			session: { root, mode: 'recursive-workspace', branchName: 'staging', repos: [] },
+			steps: [
+				{ id: 'release-plan', description: 'Record release plan', repoName: '@treeseed/market', repoPath: root, branch: 'staging', resumable: true },
+				{ id: 'release-@treeseed/ui', description: 'Release UI', repoName: '@treeseed/ui', repoPath: join(root, 'packages/ui'), branch: 'staging', resumable: true },
+			],
+		});
+		const failed = {
+			...journal,
+			status: 'failed' as const,
+			failure: { code: 'unsupported_state', message: 'parallel release stopped', details: null, at: new Date().toISOString() },
+			steps: journal.steps.map((step) => step.id === 'release-plan'
+				? { ...step, status: 'completed' as const, completedAt: new Date().toISOString(), data: {
+					rootRepo: { name: '@treeseed/market', commitSha: 'market-staging' },
+					repos: [{ name: '@treeseed/ui', commitSha: 'ui-staging' }],
+					packageSelection: { selected: ['@treeseed/ui'] },
+				} }
+				: step),
+		};
+
+		const stale = classifyWorkflowRunJournal(failed, {
+			currentBranch: 'staging',
+			currentHeads: { '@treeseed/market': 'market-staging', '@treeseed/ui': 'ui-release' },
+		});
+		const adopted = classifyWorkflowRunJournal(failed, {
+			currentBranch: 'staging',
+			currentHeads: { '@treeseed/market': 'market-staging', '@treeseed/ui': 'ui-release' },
+			acceptedReleaseHeads: { '@treeseed/ui': 'ui-release' },
+		});
+
+		expect(stale.state).toBe('stale');
+		expect(adopted.state).toBe('resumable');
+	});
+
 	it('classifies failed switch runs with no completed checkout steps as obsolete', () => {
 		const root = makeRoot();
 		const journal = createWorkflowRunJournal(root, {
