@@ -4,13 +4,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-	applyTreeseedHostingGraph,
 	compileTreeseedHostingGraph,
 	createDefaultHostAdapters,
 	createDefaultServiceTypeAdapters,
 	discoverTreeseedApplications,
 	planTreeseedHostingGraph,
-	serializeHostingApplyResult,
 	serializeHostingPlan,
 	type TreeseedApplicationHostingProfile,
 	type TreeseedHostAdapter,
@@ -122,7 +120,7 @@ services:
     rootDir: .
     railway:
       projectName: treeseed-api
-      serviceName: treeseed-api-operations-runner-01
+      serviceName: treeseed-ops-01
       rootDir: .
       buildCommand: npm run build
       startCommand: npm run start:runner
@@ -204,7 +202,7 @@ services:
     rootDir: packages/api
     railway:
       projectName: treeseed-api
-      serviceName: treeseed-api-operations-runner-01
+      serviceName: treeseed-ops-01
       rootDir: packages/api
       buildCommand: npm run build
       startCommand: npm run start:runner
@@ -274,6 +272,44 @@ describe('hosting graph', () => {
 				},
 			},
 		});
+	});
+
+	it('expands runner and TreeDX pools into indexed services with dedicated volumes', () => {
+		const config = marketConfig(`publicTreeDxFederation:
+  railway:
+    nodePool:
+      bootstrapCount: 2
+      maxNodes: 4
+`).replace('bootstrapCount: 1', 'bootstrapCount: 2');
+		const tenantRoot = createTenant(config);
+		const graph = compileTreeseedHostingGraph({ tenantRoot, environment: 'staging' });
+		const runners = graph.units.filter((unit) => unit.config.poolKey === 'operationsRunner');
+		const treeDxNodes = graph.units.filter((unit) => unit.serviceType.id === 'treedx-node');
+
+		expect(runners.map((unit) => unit.id)).toEqual(['operationsRunner', 'operationsRunner-02']);
+		expect(runners.map((unit) => unit.config.serviceName)).toEqual([
+			'treeseed-ops-staging-01',
+			'treeseed-ops-staging-02',
+		]);
+		expect(runners.map((unit) => unit.config.volumeName)).toEqual([
+			'treeseed-ops-staging-01-volume',
+			'treeseed-ops-staging-02-volume',
+		]);
+		expect(treeDxNodes.map((unit) => unit.config.serviceName)).toEqual([
+			'treeseed-treedx-staging-01',
+			'treeseed-treedx-staging-02',
+		]);
+		expect(treeDxNodes.map((unit) => unit.config.volumeName)).toEqual([
+			'treeseed-treedx-staging-01-volume',
+			'treeseed-treedx-staging-02-volume',
+		]);
+
+		const selected = compileTreeseedHostingGraph({
+			tenantRoot,
+			environment: 'staging',
+			filter: { serviceIds: ['operationsRunner'] },
+		});
+		expect(selected.units.map((unit) => unit.id)).toEqual(['operationsRunner', 'operationsRunner-02']);
 	});
 
 	it('uses the TreeDX checkout commit for package-local API staging source builds', () => {
@@ -369,12 +405,12 @@ describe('hosting graph', () => {
 			host: { id: 'railway' },
 			projectGroup: { id: 'public-treedx-federation' },
 			config: {
-				serviceName: 'public-treedx-node-staging-01',
+				serviceName: 'treeseed-treedx-staging-01',
 				sourceMode: 'git',
 				sourceRepo: 'treeseed-ai/treedx',
 				sourceBranch: 'staging',
 				sourceRootDirectory: '.',
-				volumeName: 'public-treedx-node-staging-01-volume',
+				volumeName: 'treeseed-treedx-staging-01-volume',
 				volumeMountPath: '/data',
 				environmentVariables: {
 					TREEDX_FEDERATION_MODE: 'connected_library',
@@ -383,7 +419,7 @@ describe('hosting graph', () => {
 		});
 		expect(staging.units.find((unit) => unit.id === 'public-treedx-node-01')?.config).not.toHaveProperty('imageTagRef');
 		expect(prod.units.find((unit) => unit.id === 'public-treedx-node-01')?.config).toMatchObject({
-			serviceName: 'public-treedx-node-production-01',
+			serviceName: 'treeseed-treedx-production-01',
 			sourceMode: 'image',
 			image: 'treeseed/treedx',
 			imageRef: 'treeseed/treedx:0.2.11',
@@ -511,17 +547,6 @@ describe('hosting graph', () => {
 		expect(text).not.toContain('also-secret');
 		expect(text).toContain('SECRET_API_TOKEN');
 		expect(text).toContain('[redacted]');
-	});
-
-	it('apply is plan by default and reports adapter verification', async () => {
-		const result = serializeHostingApplyResult(await applyTreeseedHostingGraph({
-			tenantRoot: createTenant(marketConfig()),
-			environment: 'staging',
-		}));
-
-		expect(result.planOnly).toBe(true);
-		expect(result.results.length).toBeGreaterThan(0);
-		expect(result.results.every((entry) => entry.verification.verified)).toBe(true);
 	});
 
 	it('exposes built-in adapter contract methods for every default host', () => {

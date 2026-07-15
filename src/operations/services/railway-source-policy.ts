@@ -38,6 +38,11 @@ export function railwayEnvironmentQualifiedServiceName(
 		: `${unqualifiedName}-${suffix}`;
 }
 
+export function railwayTreeDxServiceName(index: number, scope: string) {
+	const normalizedIndex = String(Math.max(1, Math.trunc(index))).padStart(2, '0');
+	return railwayEnvironmentQualifiedServiceName(`treeseed-treedx-${normalizedIndex}`, scope);
+}
+
 function railwaySourceSignature(service: TreeseedRailwaySourceIdentity) {
 	return JSON.stringify({
 		sourceMode: service.sourceMode ?? null,
@@ -71,7 +76,9 @@ export function isApiRailwaySourcePolicyService(service: TreeseedRailwaySourcePo
 	return key.startsWith('public-treedx-node-')
 		|| /^treeseed-api(?:-(?:staging|production))?$/u.test(serviceName)
 		|| /^treeseed-api-operations-runner(?:-(?:staging|production))?(?:-\d+)?$/u.test(serviceName)
-		|| /^public-treedx-node(?:-(?:staging|production))?-\d+$/u.test(serviceName);
+		|| /^treeseed-ops(?:-(?:staging|production))?-\d+$/u.test(serviceName)
+		|| /^public-treedx-node(?:-(?:staging|production))?-\d+$/u.test(serviceName)
+		|| /^treeseed-treedx(?:-(?:staging|production))?-\d+$/u.test(serviceName);
 }
 
 export function isImmutableRailwayImageRef(value: unknown) {

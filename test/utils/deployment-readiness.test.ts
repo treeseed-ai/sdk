@@ -47,7 +47,7 @@ services:
     rootDir: packages/api
     railway:
       projectName: treeseed-api
-      serviceName: treeseed-api-operations-runner-01
+      serviceName: treeseed-ops-01
       rootDir: packages/api
       imageRefEnv: TREESEED_OPERATIONS_RUNNER_IMAGE_REF
       sourceMode: git
@@ -172,7 +172,7 @@ connections:
 		try {
 			const report = collectTreeseedDeploymentReadiness({ tenantRoot: rootWith(config()), environment: 'prod' });
 			expect(byId(report, 'railway-config:api:serviceName')).toMatchObject({ status: 'passed', observed: { serviceName: 'treeseed-api-production' } });
-			expect(byId(report, 'railway-config:operationsRunner:serviceName')).toMatchObject({ status: 'passed', observed: { serviceName: 'treeseed-api-operations-runner-production-01' } });
+			expect(byId(report, 'railway-config:operationsRunner:serviceName')).toMatchObject({ status: 'passed', observed: { serviceName: 'treeseed-ops-production-01' } });
 		} finally {
 			if (previous.api === undefined) delete process.env.TREESEED_API_IMAGE_REF;
 			else process.env.TREESEED_API_IMAGE_REF = previous.api;

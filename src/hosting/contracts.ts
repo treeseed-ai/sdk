@@ -218,23 +218,6 @@ export interface TreeseedHostingPlan {
 	warnings: string[];
 }
 
-export interface TreeseedHostingApplyResult {
-	environment: TreeseedHostingEnvironment;
-	planOnly: boolean;
-	selectedApps?: string[];
-	selectedSystems?: string[];
-	skippedSystems?: Array<{ system: string; reason: string }>;
-	transport?: Record<string, Record<string, string>>;
-	results: Array<{
-		unit: TreeseedHostingUnit;
-		plan: TreeseedHostingUnitPlan;
-		result: TreeseedHostAdapterOperationResult;
-		verification: TreeseedHostingVerification;
-	}>;
-	placements: TreeseedHostingPlacementSummary[];
-	warnings: string[];
-}
-
 export interface TreeseedHostingPlacementSummary {
 	placement: TreeseedServicePlacement;
 	label: string;

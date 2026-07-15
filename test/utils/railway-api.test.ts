@@ -3,12 +3,28 @@ import {
 	ensureRailwayService,
 	ensureRailwayServiceInstanceConfiguration,
 	getRailwayServiceInstance,
+	inspectRailwayServiceDeploymentHealth,
 	assertRailwayGraphqlReadOnly,
 	railwayGraphqlRequest,
 	upsertRailwayVariables,
 } from '../../src/operations/services/railway-api.ts';
 
 describe('railwayGraphqlRequest', () => {
+	it('reports the immutable image attached to the latest deployment', async () => {
+		const result = await inspectRailwayServiceDeploymentHealth({
+			serviceId: 'service-1',
+			environmentId: 'environment-production',
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token-value' },
+			fetchImpl: vi.fn<typeof fetch>(async () => Response.json({ data: { serviceInstance: { latestDeployment: {
+				status: 'SUCCESS',
+				deploymentStopped: false,
+				meta: { image: 'treeseed/api:1.2.3' },
+				instances: [{ status: 'RUNNING' }],
+			} } } })),
+		});
+		expect(result).toMatchObject({ ok: true, image: 'treeseed/api:1.2.3' });
+	});
+
 	it('rejects every non-query Railway GraphQL operation before transport', () => {
 		expect(() => assertRailwayGraphqlReadOnly('mutation Unsafe { serviceDelete(id: "x") }')).toThrow(/read-only/u);
 		expect(() => assertRailwayGraphqlReadOnly('# comment\nsubscription Unsafe { deployments }')).toThrow(/read-only/u);
@@ -106,6 +122,34 @@ describe('railwayGraphqlRequest', () => {
 			retries: 0,
 			fetchImpl: fetchMock,
 		})).rejects.toThrow(/timed out after 1ms/u);
+	});
+
+	it('serializes concurrent Railway observations to prevent request bursts', async () => {
+		let releaseFirst: ((response: Response) => void) | null = null;
+		const firstResponse = new Promise<Response>((resolve) => { releaseFirst = resolve; });
+		const success = () => new Response(JSON.stringify({ data: { ok: true } }), {
+			status: 200,
+			headers: { 'content-type': 'application/json' },
+		});
+		const fetchMock = vi.fn<typeof fetch>()
+			.mockImplementationOnce(() => firstResponse)
+			.mockImplementationOnce(async () => success());
+		const input = {
+			query: 'query TreeseedTest { ok }',
+			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token-value' },
+			retries: 0,
+			fetchImpl: fetchMock,
+		};
+
+		const first = railwayGraphqlRequest<{ ok: boolean }>(input);
+		const second = railwayGraphqlRequest<{ ok: boolean }>(input);
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+		releaseFirst!(success());
+		await expect(Promise.all([first, second])).resolves.toEqual([
+			{ data: { ok: true } },
+			{ data: { ok: true } },
+		]);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
 	it('reads Railway service instance runtime configuration when the schema supports it', async () => {

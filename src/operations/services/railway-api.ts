@@ -1,13 +1,32 @@
-import { request as httpsRequest } from 'node:https';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { IacClient } from 'railway';
-import { runRailwayCliJson } from './railway-cli.ts';
+import { connectRailwayServiceSourceWithCli, runRailwayCliJson } from './railway-cli.ts';
 import { resolveTreeseedRailwayApiToken } from '../../service-credentials.ts';
 
 const DEFAULT_RAILWAY_API_URL = 'https://backboard.railway.com/graphql/v2';
 const DEFAULT_RAILWAY_WORKSPACE = 'knowledge-coop';
+
+let railwayReadActive = false;
+const railwayReadWaiters: Array<() => void> = [];
+let railwayReadCooldownUntil = 0;
+
+async function acquireRailwayReadSlot() {
+	if (railwayReadActive) await new Promise<void>((resolve) => railwayReadWaiters.push(resolve));
+	railwayReadActive = true;
+	const cooldownMs = Math.max(0, railwayReadCooldownUntil - Date.now());
+	if (cooldownMs > 0) await new Promise((resolve) => setTimeout(resolve, cooldownMs));
+	return () => {
+		const next = railwayReadWaiters.shift();
+		if (next) next();
+		else railwayReadActive = false;
+	};
+}
+
+function extendRailwayReadCooldown(delayMs: number) {
+	railwayReadCooldownUntil = Math.max(railwayReadCooldownUntil, Date.now() + Math.max(0, delayMs));
+}
 
 export function normalizeRailwayEnvironmentName(value: string | null | undefined) {
 	const normalized = typeof value === 'string' ? value.trim() : '';
@@ -117,15 +136,6 @@ export type RailwayVolumeSummary = {
 	instances: RailwayVolumeInstanceSummary[];
 };
 
-export type RailwayVolumeBackupSummary = {
-	id: string;
-	name: string | null;
-	createdAt: string | null;
-	expiresAt: string | null;
-	usedMb: number | null;
-	referencedMb: number | null;
-};
-
 type RailwayEnvironmentPatchClient = Pick<IacClient, 'stageEnvironmentChanges' | 'commitStagedPatch'>;
 
 function createRailwayEnvironmentPatchClient({
@@ -199,9 +209,10 @@ function parseRetryAfterMs(value: string | null) {
 	return null;
 }
 
-function markRailwayTransientError(error: Error, options: { retryAfterMs?: number | null } = {}) {
-	const tagged = error as Error & { treeseedTransient?: boolean; treeseedRetryAfterMs?: number };
+function markRailwayTransientError(error: Error, options: { retryAfterMs?: number | null; rateLimited?: boolean } = {}) {
+	const tagged = error as Error & { treeseedTransient?: boolean; treeseedRetryAfterMs?: number; treeseedRateLimited?: boolean };
 	tagged.treeseedTransient = true;
+	if (options.rateLimited) tagged.treeseedRateLimited = true;
 	if (typeof options.retryAfterMs === 'number' && Number.isFinite(options.retryAfterMs) && options.retryAfterMs >= 0) {
 		tagged.treeseedRetryAfterMs = options.retryAfterMs;
 	}
@@ -535,7 +546,7 @@ function railwayApiTimeoutMs(env: NodeJS.ProcessEnv | Record<string, string | un
 		return explicitTimeoutMs;
 	}
 	const configured = Number.parseInt(String(env.TREESEED_RAILWAY_API_TIMEOUT_MS ?? '').trim(), 10);
-	return Number.isFinite(configured) && configured > 0 ? configured : 120_000;
+	return Number.isFinite(configured) && configured > 0 ? Math.min(configured, 15_000) : 15_000;
 }
 
 export function assertRailwayGraphqlReadOnly(document: string) {
@@ -556,7 +567,7 @@ export async function railwayGraphqlRequest<TData = unknown>({
 	apiUrl,
 	fetchImpl = fetch,
 	timeoutMs,
-	retries = 4,
+	retries = 3,
 }: {
 	query: string;
 	variables?: Record<string, unknown>;
@@ -573,14 +584,17 @@ export async function railwayGraphqlRequest<TData = unknown>({
 		throw new Error('Configure TREESEED_RAILWAY_API_TOKEN before invoking Railway APIs.');
 	}
 	const requestTimeoutMs = railwayApiTimeoutMs(env, timeoutMs);
+	if (env.TREESEED_RECONCILE_TRACE === '1') {
+		process.stderr.write(`[trsd][railway][api:request] timeoutMs=${requestTimeoutMs} retries=${retries}\n`);
+	}
 	let attempt = 0;
 	for (;;) {
 		const controller = new AbortController();
 		let timer: ReturnType<typeof setTimeout> | null = null;
+		let releaseReadSlot: (() => void) | null = null;
 		try {
-			const response = fetchImpl === fetch
-				? await railwayGraphqlHttpsRequest(apiUrl || resolveRailwayApiUrl(env), token, { query, variables }, requestTimeoutMs)
-				: await Promise.race([
+			releaseReadSlot = await acquireRailwayReadSlot();
+			const response = await Promise.race([
 					fetchImpl(apiUrl || resolveRailwayApiUrl(env), {
 						method: 'POST',
 						headers: {
@@ -615,7 +629,9 @@ export async function railwayGraphqlRequest<TData = unknown>({
 				const shouldRetry = isRetryableRailwayStatus(response.status) || /rate limit|too many requests/iu.test(message);
 				const error = new Error(message);
 				if (shouldRetry || (hasGraphqlErrors && /rate limit|too many requests/iu.test(message))) {
-					throw markRailwayTransientError(error, { retryAfterMs });
+					const rateLimited = response.status === 429 || /rate limit|too many requests/iu.test(message);
+					if (rateLimited) extendRailwayReadCooldown(retryAfterMs ?? 15_000);
+					throw markRailwayTransientError(error, { retryAfterMs, rateLimited });
 				}
 				throw error;
 			}
@@ -628,81 +644,29 @@ export async function railwayGraphqlRequest<TData = unknown>({
 			const retryAfterMs = error && typeof error === 'object' && typeof (error as { treeseedRetryAfterMs?: unknown }).treeseedRetryAfterMs === 'number'
 				? Math.max(0, Number((error as { treeseedRetryAfterMs: number }).treeseedRetryAfterMs))
 				: null;
-			const backoffMs = retryAfterMs ?? Math.min(500 * (2 ** (attempt - 1)), 4000);
-			await new Promise((resolve) => setTimeout(resolve, backoffMs));
+			const rateLimited = error && typeof error === 'object' && (error as { treeseedRateLimited?: boolean }).treeseedRateLimited === true;
+			const backoffMs = retryAfterMs !== null
+				? Math.min(retryAfterMs, 180_000)
+				: rateLimited
+					? [15_000, 45_000, 90_000][attempt - 1] ?? 90_000
+					: Math.min(500 * (2 ** (attempt - 1)), 4_000);
+			if (rateLimited) process.stderr.write(`[trsd][railway][api:rate-limit] attempt=${attempt + 1} waitMs=${backoffMs}\n`);
+			let remainingMs = backoffMs;
+			while (remainingMs > 0) {
+				const sliceMs = Math.min(15_000, remainingMs);
+				await new Promise((resolve) => setTimeout(resolve, sliceMs));
+				remainingMs -= sliceMs;
+				if (rateLimited && remainingMs > 0) {
+					process.stderr.write(`[trsd][railway][api:rate-limit] cooldownRemainingMs=${remainingMs}\n`);
+				}
+			}
 		} finally {
+			releaseReadSlot?.();
 			if (timer) {
 				clearTimeout(timer);
 			}
 		}
 	}
-}
-
-async function railwayGraphqlHttpsRequest(
-	url: string,
-	token: string,
-	body: unknown,
-	timeoutMs: number,
-): Promise<{ ok: boolean; status: number; payload: unknown; retryAfter: string | null }> {
-	const rawBody = JSON.stringify(body);
-	return new Promise((resolve, reject) => {
-		let settled = false;
-		let req: ReturnType<typeof httpsRequest> | null = null;
-		const hardTimeout = setTimeout(() => {
-			if (settled) return;
-			settled = true;
-			const error = markRailwayTransientError(new Error(`Railway API request timed out after ${timeoutMs}ms.`));
-			if (req) {
-				req.destroy(error);
-			}
-			reject(error);
-		}, timeoutMs);
-		const finish = (callback: () => void) => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(hardTimeout);
-			callback();
-		};
-		req = httpsRequest(url, {
-			method: 'POST',
-			headers: {
-				authorization: `Bearer ${token}`,
-				'content-type': 'application/json',
-				'content-length': Buffer.byteLength(rawBody),
-			},
-			timeout: timeoutMs,
-		}, (res) => {
-			const chunks: string[] = [];
-			res.setEncoding('utf8');
-			res.on('data', (chunk) => chunks.push(chunk));
-			res.on('end', () => {
-				const text = chunks.join('');
-				let payload: unknown = {};
-				try {
-					payload = text ? JSON.parse(text) : {};
-				} catch {
-					payload = {};
-				}
-				const status = res.statusCode ?? 0;
-				const retryAfterHeader = res.headers['retry-after'];
-				finish(() => resolve({
-					ok: status >= 200 && status < 300,
-					status,
-					payload,
-					retryAfter: Array.isArray(retryAfterHeader) ? retryAfterHeader[0] ?? null : retryAfterHeader ?? null,
-				}));
-			});
-		});
-		req.on('timeout', () => {
-			const error = markRailwayTransientError(new Error(`Railway API request timed out after ${timeoutMs}ms.`));
-			if (!settled) {
-				req?.destroy(error);
-			}
-		});
-		req.on('error', (error) => finish(() => reject(error)));
-		req.write(rawBody);
-		req.end();
-	});
 }
 
 export async function getRailwayAuthProfile({
@@ -1054,6 +1018,7 @@ export async function ensureRailwayService({
 		if (desiredSourceRepo) {
 			try {
 				await updateRailwayServiceGitSource({
+					projectId,
 					serviceId: existing.id,
 					environmentId,
 					sourceRepo: desiredSourceRepo,
@@ -1075,6 +1040,7 @@ export async function ensureRailwayService({
 		if (desiredImageRef) {
 			try {
 				await updateRailwayServiceImageSource({
+					projectId,
 					serviceId: existing.id,
 					environmentId,
 					imageRef: desiredImageRef,
@@ -1165,12 +1131,13 @@ function looksLikeRailwayImageSourceUpdateUnsupported(error: unknown) {
 }
 
 export async function updateRailwayServiceImageSource({
+	projectId,
 	serviceId,
 	environmentId,
 	imageRef,
 	env = process.env,
-	fetchImpl = fetch,
 }: {
+	projectId?: string | null;
 	serviceId: string;
 	environmentId?: string | null;
 	imageRef: string;
@@ -1183,22 +1150,25 @@ export async function updateRailwayServiceImageSource({
 	}
 	const targetEnvironmentId = railwayConnectionLabel(environmentId);
 	if (!targetEnvironmentId) throw new Error(`Railway service image source update requires an environment id for ${serviceId}.`);
-	const client = createRailwayEnvironmentPatchClient({ env, fetchImpl });
-	await client.stageEnvironmentChanges({ environmentId: targetEnvironmentId, merge: true, patch: {
-		services: { [serviceId]: { source: { image: desiredImage, repo: null, branch: null } } },
-	} });
-	await client.commitStagedPatch({ environmentId: targetEnvironmentId, message: `Treeseed update image source for ${serviceId}`, skipDeploys: true });
+	await connectRailwayServiceSourceWithCli({
+		projectId,
+		environmentId: targetEnvironmentId,
+		serviceId,
+		image: desiredImage,
+		env,
+	});
 	return { id: serviceId, name: serviceId };
 }
 
 export async function updateRailwayServiceGitSource({
+	projectId,
 	serviceId,
 	environmentId,
 	sourceRepo,
 	sourceBranch,
 	env = process.env,
-	fetchImpl = fetch,
 }: {
+	projectId?: string | null;
 	serviceId: string;
 	environmentId?: string | null;
 	sourceRepo: string;
@@ -1212,11 +1182,14 @@ export async function updateRailwayServiceGitSource({
 	}
 	const targetEnvironmentId = railwayConnectionLabel(environmentId);
 	if (!targetEnvironmentId) throw new Error(`Railway service Git source update requires an environment id for ${serviceId}.`);
-	const client = createRailwayEnvironmentPatchClient({ env, fetchImpl });
-	await client.stageEnvironmentChanges({ environmentId: targetEnvironmentId, merge: true, patch: {
-		services: { [serviceId]: { source: { repo: desiredRepo, branch: railwayConnectionLabel(sourceBranch) || null, image: null } } },
-	} });
-	await client.commitStagedPatch({ environmentId: targetEnvironmentId, message: `Treeseed update Git source for ${serviceId}`, skipDeploys: true });
+	await connectRailwayServiceSourceWithCli({
+		projectId,
+		environmentId: targetEnvironmentId,
+		serviceId,
+		repo: desiredRepo,
+		branch: railwayConnectionLabel(sourceBranch) || null,
+		env,
+	});
 	return { id: serviceId, name: serviceId };
 }
 
@@ -1572,6 +1545,7 @@ export async function inspectRailwayServiceDeploymentHealth({
 				meta?: {
 					branch?: string | null;
 					repo?: string | null;
+					image?: string | null;
 					rootDirectory?: string | null;
 					commitHash?: string | null;
 				} | null;
@@ -1607,10 +1581,13 @@ query TreeseedRailwayServiceDeploymentHealth($serviceId: String!, $environmentId
 	return {
 		ok,
 		status,
+		deploymentStopped: stopped,
+		instanceStatuses,
 		branch: railwayConnectionLabel(deployment?.meta?.branch) || null,
 		repo: railwayConnectionLabel(deployment?.meta?.repo) || null,
 		rootDirectory: railwayConnectionLabel(deployment?.meta?.rootDirectory) || null,
 		commitHash: railwayConnectionLabel(deployment?.meta?.commitHash) || null,
+		image: railwayConnectionLabel(deployment?.meta?.image) || null,
 		requiredMountPath: railwayConnectionLabel(deployment?.meta?.serviceManifest?.deploy?.requiredMountPath) || null,
 		volumeMounts: Array.isArray(deployment?.meta?.volumeMounts)
 			? deployment.meta.volumeMounts.map((entry: unknown) => railwayConnectionLabel(entry)).filter(Boolean)
@@ -2100,205 +2077,6 @@ query TreeseedRailwayVolumeList($projectId: String!) {
 	return collectRailwayVolumes(payload.data);
 }
 
-function collectRailwayVolumeBackups(value: unknown): RailwayVolumeBackupSummary[] {
-	const records = Array.isArray(value)
-		? value.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
-		: normalizeConnectionNodes(value, (entry) => entry);
-	return records.flatMap((record) => {
-		if (!record || typeof record !== 'object') return [];
-		const candidate = record as Record<string, unknown>;
-		const id = railwayConnectionLabel(candidate.id);
-		if (!id) return [];
-		return [{
-			id,
-			name: railwayConnectionLabel(candidate.name) || null,
-			createdAt: railwayConnectionLabel(candidate.createdAt) || null,
-			expiresAt: railwayConnectionLabel(candidate.expiresAt) || null,
-			usedMb: typeof candidate.usedMB === 'number' ? candidate.usedMB : null,
-			referencedMb: typeof candidate.referencedMB === 'number' ? candidate.referencedMB : null,
-		}];
-	});
-}
-
-export async function listRailwayVolumeInstanceBackups({
-	volumeInstanceId,
-	env = process.env,
-	fetchImpl = fetch,
-}: {
-	volumeInstanceId: string;
-	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
-	fetchImpl?: typeof fetch;
-}) {
-	// Railway SDK 3.4.1 does not expose volume backup operations. Keep this
-	// migration-only transport isolated here; normal reconciliation uses IacClient.
-	const query = configuredEnvValue(env, 'TREESEED_RAILWAY_VOLUME_BACKUP_LIST_QUERY') || `
-query TreeseedRailwayVolumeBackupList($volumeInstanceId: String!) {
-	volumeInstanceBackupList(volumeInstanceId: $volumeInstanceId) {
-		id
-		name
-		createdAt
-		expiresAt
-		usedMB
-		referencedMB
-	}
-}
-`.trim();
-	const payload = await railwayGraphqlRequest({
-		query,
-		variables: { volumeInstanceId },
-		env,
-		fetchImpl,
-	});
-	return collectRailwayVolumeBackups(payload.data?.volumeInstanceBackupList);
-}
-
-export async function createRailwayVolumeInstanceBackup({
-	volumeInstanceId,
-	env = process.env,
-	fetchImpl = fetch,
-	settleAttempts = 60,
-	settleDelayMs = 5_000,
-}: {
-	volumeInstanceId: string;
-	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
-	fetchImpl?: typeof fetch;
-	settleAttempts?: number;
-	settleDelayMs?: number;
-}) {
-	void env; void fetchImpl; void settleAttempts; void settleDelayMs;
-	throw new Error(`Railway volume backup creation for ${volumeInstanceId} is unavailable in the official SDK and CLI; direct GraphQL mutation is prohibited.`);
-}
-
-export async function restoreRailwayVolumeInstanceBackup({
-	backupId,
-	volumeInstanceId,
-	env = process.env,
-	fetchImpl = fetch,
-	settleAttempts = 12,
-	settleDelayMs = 5_000,
-}: {
-	backupId: string;
-	volumeInstanceId: string;
-	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
-	fetchImpl?: typeof fetch;
-	settleAttempts?: number;
-	settleDelayMs?: number;
-}) {
-	void env; void fetchImpl; void settleAttempts; void settleDelayMs;
-	throw new Error(`Railway volume backup restore ${backupId} -> ${volumeInstanceId} is unavailable in the official SDK and CLI; direct GraphQL mutation is prohibited.`);
-}
-
-export async function commitRailwayStagedEnvironmentChanges({
-	environmentId,
-	commitMessage,
-	env = process.env,
-	fetchImpl = fetch,
-	iacClient,
-}: {
-	environmentId: string;
-	commitMessage: string;
-	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
-	fetchImpl?: typeof fetch;
-	iacClient?: RailwayEnvironmentPatchClient;
-}) {
-	const client = iacClient ?? createRailwayEnvironmentPatchClient({ env, fetchImpl });
-	return client.commitStagedPatch({
-		environmentId,
-		message: commitMessage,
-		skipDeploys: false,
-	});
-}
-
-async function createRailwayVolume(input: {
-	projectId: string;
-	environmentId: string;
-	serviceId: string;
-	name: string;
-	mountPath: string;
-	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
-	fetchImpl?: typeof fetch;
-}): Promise<RailwayVolumeSummary> {
-	throw new Error(`Legacy Railway volume creation for ${input.name} is disabled; use SDK/IaC volume reconciliation.`);
-}
-
-async function updateRailwayVolumeName(input: {
-	volumeId: string;
-	name: string;
-	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
-	fetchImpl?: typeof fetch;
-}): Promise<RailwayVolumeSummary> {
-	throw new Error(`Legacy Railway volume rename ${input.volumeId} -> ${input.name} is disabled; use the managed Railway CLI with explicit scope.`);
-}
-
-async function updateRailwayVolumeInstanceMountPath(input: {
-	volumeId: string;
-	serviceId?: string | null;
-	mountPath: string;
-	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
-	fetchImpl?: typeof fetch;
-}) {
-	throw new Error(`Legacy Railway volume attachment update for ${input.volumeId} is disabled; use SDK/IaC volume reconciliation.`);
-}
-
-export async function restoreRailwayVolumeAttachmentWithIacAndWait({
-	projectId,
-	volumeId,
-	environmentId,
-	serviceId,
-	mountPath,
-	env = process.env,
-	fetchImpl = fetch,
-	maxAttempts = 12,
-	pollIntervalMs = 5_000,
-	sleep = (durationMs: number) => new Promise((resolve) => setTimeout(resolve, durationMs)),
-	client = createRailwayEnvironmentPatchClient({ env, fetchImpl }),
-}: {
-	projectId: string;
-	volumeId: string;
-	environmentId: string;
-	serviceId: string;
-	mountPath: string;
-	env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
-	fetchImpl?: typeof fetch;
-	maxAttempts?: number;
-	pollIntervalMs?: number;
-	sleep?: (durationMs: number) => Promise<void>;
-	client?: RailwayEnvironmentPatchClient;
-}) {
-	await client.stageEnvironmentChanges({
-		environmentId,
-		merge: true,
-		patch: {
-			services: {
-				[serviceId]: {
-					volumeMounts: { [volumeId]: { mountPath } },
-				},
-			},
-			volumes: { [volumeId]: { isDeleted: false } },
-		},
-	});
-	await client.commitStagedPatch({
-		environmentId,
-		message: `Treeseed restore volume ${volumeId} attachment`,
-		skipDeploys: true,
-	});
-	let volumes: RailwayVolumeSummary[] = [];
-	for (let attempt = 0; attempt < Math.max(1, maxAttempts); attempt += 1) {
-		if (attempt > 0) await sleep(pollIntervalMs);
-		volumes = await listRailwayVolumes({ projectId, env, fetchImpl });
-		const volume = volumes.find((candidate) => candidate.id === volumeId);
-		const restored = volume?.instances.some((instance) =>
-			instance.environmentId === environmentId
-			&& instance.serviceId === serviceId
-			&& !instance.isPendingDeletion
-			&& !instance.deletedAt
-			&& !['DELETING', 'DELETED'].includes(instance.state?.toUpperCase() ?? ''),
-		) ?? false;
-		if (restored) return volumes;
-	}
-	throw new Error(`Railway committed restoring volume ${volumeId} on service ${serviceId}, but the attachment remained pending deletion after ${Math.max(1, maxAttempts)} observations.`);
-}
-
 export async function ensureRailwayServiceVolume({
 	projectId,
 	environmentId,
@@ -2384,55 +2162,6 @@ export async function ensureRailwayServiceVolume({
 	}
 }
 
-async function waitForRailwayVolumeMount({
-	projectId,
-	volume,
-	serviceId,
-	environmentId,
-	mountPath,
-	env,
-	fetchImpl,
-	settleAttempts,
-	settleDelayMs,
-}: {
-	projectId: string;
-	volume: RailwayVolumeSummary;
-	serviceId: string;
-	environmentId: string;
-	mountPath: string;
-	env: NodeJS.ProcessEnv | Record<string, string | undefined>;
-	fetchImpl: typeof fetch;
-	settleAttempts: number;
-	settleDelayMs: number;
-}) {
-	const mountedInstance = (candidate: RailwayVolumeSummary) =>
-		candidate.instances.find((entry) =>
-			entry.serviceId === serviceId
-			&& entry.environmentId === environmentId
-			&& entry.mountPath === mountPath
-			&& isActiveRailwayVolumeInstance(entry),
-		) ?? null;
-	let instance = mountedInstance(volume);
-	if (instance) {
-		return { volume, instance };
-	}
-	for (let attempt = 0; attempt < settleAttempts; attempt += 1) {
-		await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
-		const refreshed = await listRailwayVolumes({ projectId, env, fetchImpl });
-		const refreshedVolume = refreshed.find((candidate) => candidate.id === volume.id)
-			?? findRailwayVolumeForService(refreshed, serviceId, environmentId)
-			?? null;
-		if (!refreshedVolume) {
-			continue;
-		}
-		instance = mountedInstance(refreshedVolume);
-		if (instance) {
-			return { volume: refreshedVolume, instance };
-		}
-	}
-	return null;
-}
-
 function findRailwayVolumeForService(volumes: RailwayVolumeSummary[], serviceId: string, environmentId?: string) {
 	return volumes.find((candidate) =>
 		candidate.instances.some((instance) =>
@@ -2441,24 +2170,6 @@ function findRailwayVolumeForService(volumes: RailwayVolumeSummary[], serviceId:
 			&& isActiveRailwayVolumeInstance(instance)
 		),
 	) ?? null;
-}
-
-function findSoleActiveRailwayVolumeForEnvironment(volumes: RailwayVolumeSummary[], environmentId: string) {
-	const active = volumes
-		.map((candidate) => ({
-			...candidate,
-			instances: candidate.instances.filter((instance) =>
-				instance.environmentId === environmentId
-				&& isActiveRailwayVolumeInstance(instance)
-			),
-		}))
-		.filter((candidate) => candidate.instances.length > 0);
-	return active.length === 1 ? active[0] : null;
-}
-
-function looksLikeRailwayVolumeCreateRace(error: unknown) {
-	const message = error instanceof Error ? error.message : String(error ?? '');
-	return /already has a volume attached|would have \d+ volumes attached|can only have one volume|volume named .* already exists|already exists in this project|not authorized/iu.test(message);
 }
 
 export async function listRailwayCustomDomains({

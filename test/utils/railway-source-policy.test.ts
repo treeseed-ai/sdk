@@ -3,6 +3,7 @@ import {
 	assertApiRailwaySourcePolicy,
 	assertNoRailwaySourceIdentityCollisions,
 	railwayEnvironmentQualifiedServiceName,
+	railwayTreeDxServiceName,
 } from '../../src/operations/services/railway-source-policy.ts';
 
 describe('Railway source identity isolation', () => {
@@ -12,6 +13,8 @@ describe('Railway source identity isolation', () => {
 		expect(railwayEnvironmentQualifiedServiceName('treeseed-api-operations-runner-01', 'prod')).toBe('treeseed-api-operations-runner-production-01');
 		expect(railwayEnvironmentQualifiedServiceName('public-treedx-node-staging-02', 'prod')).toBe('public-treedx-node-production-02');
 		expect(railwayEnvironmentQualifiedServiceName('treeseed-api-postgres', 'local')).toBe('treeseed-api-postgres');
+		expect(railwayTreeDxServiceName(2, 'staging')).toBe('treeseed-treedx-staging-02');
+		expect(railwayTreeDxServiceName(2, 'prod')).toBe('treeseed-treedx-production-02');
 	});
 
 	it('rejects unsuffixed and cross-environment API identities', () => {

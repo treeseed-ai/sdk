@@ -529,7 +529,7 @@ services:
 				services: { edges: [
 					{ node: { id: 'svc-api', name: 'treeseed-api' } },
 					{ node: { id: 'svc-postgres', name: 'treeseed-api-postgres' } },
-					{ node: { id: 'svc-treedx', name: 'public-treedx-node-01' } },
+					{ node: { id: 'svc-treedx', name: 'treeseed-treedx-staging-01' } },
 				] },
 			};
 			if (query.includes('TreeseedRailwayAuthProfile')) {
@@ -547,7 +547,7 @@ services:
 			if (query.includes('TreeseedRailwayVolumeList')) {
 				return Response.json({ data: { project: { id: 'project-api', volumes: { edges: [{ node: {
 					id: 'vol-treedx',
-					name: 'public-treedx-node-01-volume',
+					name: 'treeseed-treedx-staging-01-volume',
 					projectId: 'project-api',
 					volumeInstances: { edges: [{ node: { id: 'vi-treedx', serviceId: 'svc-treedx', environmentId: 'env-staging', mountPath: '/data', state: 'READY' } }] },
 				} }] } } } });

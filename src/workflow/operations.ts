@@ -705,11 +705,12 @@ function selectorFromWorkflowHostingGraph(graph: ReturnType<typeof compileTreese
 		].filter((hostId) => hostId !== 'smtp' && hostId !== 'local-process' && hostId !== 'local-docker'))],
 		serviceId: [...new Set(graph.units.flatMap((unit) => [
 			unit.id,
+			typeof unit.config.poolKey === 'string' ? unit.config.poolKey : null,
 			typeof unit.config.serviceName === 'string' ? unit.config.serviceName : null,
 		]).concat(domainServiceIds).filter((value): value is string => Boolean(value)))],
 		serviceType: [...new Set(graph.units.flatMap((unit) => {
 			if (unit.id === 'api') return ['api-runtime', 'railway-service:api', 'custom-domain:api', 'dns-record'];
-			if (unit.id === 'operationsRunner') return ['operations-runner-runtime', 'railway-service:operations-runner'];
+			if (unit.id === 'operationsRunner' || unit.config.poolKey === 'operationsRunner') return ['operations-runner-runtime', 'railway-service:operations-runner'];
 			if (unit.placement === 'runner-capacity') return ['api-runtime', 'operations-runner-runtime', 'railway-service:api', 'railway-service:operations-runner'];
 			if (unit.host.id === 'cloudflare') return ['web-ui', 'edge-worker', 'content-store', 'database', 'kv-form-guard', 'turnstile-widget', 'pages-project', 'custom-domain:web', 'dns-record'];
 			return [];
@@ -2584,11 +2585,15 @@ async function executeJournalStep<T extends Record<string, unknown> | null>(
 			? { ...entry, startedAt: startedAt.toISOString(), retryCount, lastFailure: null }
 			: entry),
 	}));
+	refreshWorkflowLock(root, runId);
+	const lockHeartbeat = setInterval(() => refreshWorkflowLock(root, runId), 15_000);
+	lockHeartbeat.unref();
 	process.stderr.write(`[workflow][step] start ${stepId} attempt=${retryCount + 1}\n`);
 	let data: T;
 	try {
 		data = await Promise.resolve(action());
 	} catch (error) {
+		clearInterval(lockHeartbeat);
 		const elapsedMs = Date.now() - startedAt.getTime();
 		const message = error instanceof Error ? error.message : String(error);
 		updateWorkflowRunJournal(root, runId, (journal) => ({
@@ -2600,6 +2605,7 @@ async function executeJournalStep<T extends Record<string, unknown> | null>(
 		process.stderr.write(`[workflow][step] fail ${stepId} elapsed=${Math.ceil(elapsedMs / 1000)}s retries=${retryCount}\n`);
 		throw error;
 	}
+	clearInterval(lockHeartbeat);
 	const elapsedMs = Date.now() - startedAt.getTime();
 	updateWorkflowRunJournal(root, runId, (journal) => ({
 		...journal,

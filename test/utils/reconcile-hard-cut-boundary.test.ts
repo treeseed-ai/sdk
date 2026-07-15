@@ -65,17 +65,4 @@ describe('reconciliation hard-cut source boundaries', () => {
 		}
 	});
 
-	it('keeps hosting apply backed by reconciliation only', () => {
-		const graph = source('packages/sdk/src/hosting/graph.ts');
-		const body = functionBody(graph, 'applyTreeseedHostingGraph');
-		expect(body).toContain('reconcileTreeseedTarget');
-		for (const blocked of [
-			'.host.apply',
-			'.host.verify',
-			'deploySelectedRailwayServices',
-			'reconcilePublicTreeDxUnits',
-		]) {
-			expect(body, `applyTreeseedHostingGraph must not use ${blocked}`).not.toContain(blocked);
-		}
-	});
 });

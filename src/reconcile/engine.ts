@@ -412,7 +412,7 @@ export async function reconcileTreeseedTarget({
 		};
 		const unitStartMs = performance.now();
 		timingEntries.push(unitTiming);
-		write?.(`Applying ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName})...`);
+		write?.(`${planOnly ? 'Planning' : 'Applying'} ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName})...`);
 		const adapter = registry.get(plan.unit.unitType, plan.unit.provider);
 		const persisted = ensureTreeseedPersistedUnitState(planned.state, plan.unit);
 		try {
@@ -475,9 +475,16 @@ export async function reconcileTreeseedTarget({
 			unitTiming.status = 'failed';
 			wrapAdapterFailure('apply', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
 		}
+		if (planOnly) {
+			const plannedResult = { ...(result as TreeseedReconcileResult), verification: null };
+			unitTiming.durationMs = elapsedMs(unitStartMs);
+			unitTiming.status = 'success';
+			write?.(`Finished plan for ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName}) in ${formatDurationMs(unitTiming.durationMs)}.`);
+			results.push(plannedResult);
+			return;
+		}
 		let refreshedObserved = (result as TreeseedReconcileResult).observed;
-		if (!planOnly) {
-			try {
+		try {
 				const stageStartMs = performance.now();
 				refreshedObserved = await Promise.resolve(adapter.refresh({
 					context,
@@ -493,7 +500,7 @@ export async function reconcileTreeseedTarget({
 					durationMs: elapsedMs(stageStartMs),
 					status: 'success',
 				});
-			} catch (error) {
+		} catch (error) {
 				unitTiming.children?.push({
 					name: `${unitTiming.name}:refresh-after-apply`,
 					durationMs: elapsedMs(unitStartMs),
@@ -502,7 +509,6 @@ export async function reconcileTreeseedTarget({
 				unitTiming.durationMs = elapsedMs(unitStartMs);
 				unitTiming.status = 'failed';
 				wrapAdapterFailure('refresh', plan.unit.provider, plan.unit.unitType, plan.unit.unitId, error);
-			}
 		}
 		write?.(`Verifying ${plan.unit.provider}:${plan.unit.unitType} (${plan.unit.logicalName})...`);
 		const postconditions = await Promise.resolve(adapter.requiredPostconditions?.({

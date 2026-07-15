@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { hostname, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { capObsoleteWorkflowRuns, capWorkflowRunHistory, recommendTreeseedNextSteps, type TreeseedWorkflowState } from '../../src/workflow-state.ts';
@@ -214,5 +214,29 @@ describe('workflow lock scopes', () => {
 
 		releaseWorkflowLock(left, 'stage-shared');
 		releaseWorkflowLock(right, 'save-right');
+	});
+
+	it('reclaims a dead-process lock automatically on the next workflow', () => {
+		const root = mkdtempSync(join(tmpdir(), 'treeseed-stale-lock-'));
+		const controlRoot = resolve(root, '.treeseed', 'workflow');
+		mkdirSync(resolve(controlRoot, 'runs'), { recursive: true });
+		writeFileSync(resolve(controlRoot, 'lock.json'), JSON.stringify({
+			schemaVersion: 1,
+			kind: 'treeseed.workflow.lock',
+			scope: 'worktree',
+			runId: 'save-dead-process',
+			command: 'save',
+			root,
+			host: hostname(),
+			pid: 2_147_483_647,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		}), 'utf8');
+
+		const replacement = acquireWorkflowLock(root, 'save', 'save-replacement');
+		expect(replacement.acquired).toBe(true);
+		expect(replacement.replacedStale).toBe(true);
+		expect(inspectWorkflowLock(root).lock?.runId).toBe('save-replacement');
+		releaseWorkflowLock(root, 'save-replacement');
 	});
 });

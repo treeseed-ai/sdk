@@ -199,7 +199,7 @@ vi.mock('../../src/operations/services/railway-deploy.ts', () => ({
 		}]
 		: []),
 	ensureRailwayProjectContext: vi.fn(),
-	railwayLegacyAliasMigrationPolicy: vi.fn(() => ({ retainedResourceNames: [], allowedResourceDeletions: [] })),
+	railwayObsoleteAliasCleanupPolicy: vi.fn(() => ({ retainedResourceNames: [], allowedResourceDeletions: [] })),
 	runRailway: vi.fn(),
 	validateRailwayDeployPrerequisites: vi.fn(),
 }));
@@ -236,7 +236,12 @@ vi.mock('../../src/operations/services/railway-api.ts', () => ({
 	}),
 	getRailwayProject: vi.fn(async () => null),
 	getRailwayServiceInstance: vi.fn(async () => null),
+	inspectRailwayServiceDeploymentHealth: vi.fn(async () => ({
+		repo: 'treeseed-ai/api',
+		branch: 'staging',
+	})),
 	listRailwayEnvironmentServices: vi.fn((input) => listRailwayEnvironmentServicesMock(input)),
+	listRailwayServices: vi.fn((input) => listRailwayEnvironmentServicesMock(input)),
 	listRailwayCustomDomains: vi.fn((input) => listRailwayCustomDomainsMock(input)),
 	listRailwayServiceDomains: vi.fn((input) => listRailwayServiceDomainsMock(input)),
 	ensureRailwayCustomDomain: vi.fn((input) => ensureRailwayCustomDomainMock(input)),
@@ -273,6 +278,19 @@ vi.mock('../../src/operations/services/railway-api.ts', () => ({
 }));
 
 vi.mock('../../src/reconcile/providers/railway-iac.ts', () => ({
+	resolveRailwayIacVolumeBindings: vi.fn(() => ({ bindings: [], blockedReasons: [] })),
+	findRailwayPendingVolumeNameCollisions: vi.fn(() => []),
+	waitForRailwayVolumeName: vi.fn(),
+	waitForRailwayVolumeDetachment: vi.fn(),
+	waitForRailwayServiceAbsence: vi.fn(),
+	waitForRailwayServices: vi.fn(async ({ serviceNames }: { serviceNames: string[] }) => ({
+		services: serviceNames.map((name, index) => ({ id: `service-${index + 1}`, name })),
+		attempts: 1,
+	})),
+	waitForRailwayVolumeAdoptionResources: vi.fn(),
+	detachRetainedRailwayVolumeBindings: vi.fn((resources) => resources),
+	detachRetainedRailwayCustomDomains: vi.fn((resources) => resources),
+	railwayIacApplyFailure: vi.fn(() => null),
 	renderRailwayIacProject: vi.fn((input) => {
 		renderRailwayIacProjectMock(input);
 		return {
@@ -724,7 +742,7 @@ beforeEach(() => {
 			target: { kind: 'persistent', scope: 'staging' },
 			logicalName: 'API custom domain',
 			dependencies: [],
-			spec: { domain: 'api.example.com' },
+			spec: { domain: 'api.example.com', serviceName: 'api' },
 			secrets: {},
 			metadata: { serviceKey: 'api' },
 			identity: deployState.identity,
@@ -812,7 +830,7 @@ beforeEach(() => {
 			target: { kind: 'persistent', scope: 'staging' },
 			logicalName: 'API custom domain',
 			dependencies: [],
-			spec: { domain: 'api.example.com' },
+			spec: { domain: 'api.example.com', serviceName: 'api' },
 			secrets: {},
 			metadata: { serviceKey: 'api' },
 			identity: deployState.identity,

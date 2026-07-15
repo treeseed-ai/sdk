@@ -97,7 +97,9 @@ export type TreeseedOperationSpawn = (
 	options: {
 		cwd: string;
 		env: NodeJS.ProcessEnv;
-		stdio?: 'inherit';
+		stdio?: 'inherit' | 'pipe';
+		timeout?: number;
+		killSignal?: NodeJS.Signals;
 	},
 ) => { status?: number | null };
 

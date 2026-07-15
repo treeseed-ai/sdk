@@ -5,8 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../src/operations/services/railway-cli.ts', () => ({
 	runRailwayCliJson: vi.fn(async () => ({ id: 'deployment-test' })),
+	connectRailwayServiceSourceWithCli: vi.fn(async () => ({})),
 }));
-import { runRailwayCliJson } from '../../src/operations/services/railway-cli.ts';
+import { connectRailwayServiceSourceWithCli, runRailwayCliJson } from '../../src/operations/services/railway-cli.ts';
 import {
 	configuredRailwayScheduledJobs,
 	configuredRailwayServices,
@@ -21,8 +22,8 @@ import {
 	deployRailwayService,
 	ensureRailwayScheduledJobs,
 	findStaleTreeseedOperationsRunnerResources,
-	legacyEnvironmentSpecificRailwayResourceNames,
-	railwayLegacyAliasMigrationPolicy,
+	obsoleteUnqualifiedRailwayResourceNames,
+	railwayObsoleteAliasCleanupPolicy,
 	railwayServiceRuntimeStartCommand,
 	resolveRailwayAuthToken,
 	shouldRunRailwayPredeployBuild,
@@ -33,11 +34,8 @@ import {
 	verifyRailwayScheduledJobs,
 } from '../../src/operations/services/railway-deploy.ts';
 import {
-	createRailwayVolumeInstanceBackup,
 	ensureRailwayServiceVolume,
-	restoreRailwayVolumeAttachmentWithIacAndWait,
 	listRailwayVolumes,
-	restoreRailwayVolumeInstanceBackup,
 } from '../../src/operations/services/railway-api.ts';
 
 const tempRoots = new Set<string>();
@@ -181,7 +179,7 @@ afterEach(async () => {
 
 describe('railway scheduled jobs', () => {
 	it('recognizes only obsolete unsuffixed source-divergent API identities', () => {
-		const aliases = legacyEnvironmentSpecificRailwayResourceNames([
+		const aliases = obsoleteUnqualifiedRailwayResourceNames([
 			{ key: 'api', serviceName: 'treeseed-api-staging', volumeMountPath: null },
 			{ key: 'operationsRunner', serviceName: 'treeseed-api-operations-runner-staging-01', volumeMountPath: '/data' },
 			{ key: 'public-treedx-node-01', serviceName: 'public-treedx-node-staging-01', volumeMountPath: '/data' },
@@ -196,32 +194,41 @@ describe('railway scheduled jobs', () => {
 			'public-treedx-node-01-volume',
 		]);
 		expect(aliases).not.toContain('treeseed-api-postgres-production');
-		expect(railwayLegacyAliasMigrationPolicy('staging', [
+		expect(obsoleteUnqualifiedRailwayResourceNames([
+			{ key: 'operationsRunner', serviceName: 'treeseed-ops-production-02', railwayEnvironment: 'production', volumeMountPath: '/data' },
+			{ key: 'public-treedx-node-02', serviceName: 'treeseed-treedx-production-02', railwayEnvironment: 'production', volumeMountPath: '/data' },
+		] as ReturnType<typeof configuredRailwayServices>)).toEqual(expect.arrayContaining([
+			'treeseed-api-operations-runner-02',
+			'treeseed-api-operations-runner-production-02',
+			'treeseed-api-operations-runner-production-02-volume',
+			'public-treedx-node-02',
+			'public-treedx-node-production-02',
+			'public-treedx-node-production-02-volume',
+		]));
+		expect(railwayObsoleteAliasCleanupPolicy('staging', [
 			{ key: 'api', serviceName: 'treeseed-api-staging', volumeMountPath: null },
 		] as ReturnType<typeof configuredRailwayServices>)).toEqual({
 			retainedResourceNames: ['treeseed-api'],
 			allowedResourceDeletions: [],
 		});
-		expect(railwayLegacyAliasMigrationPolicy('prod', [
+		expect(railwayObsoleteAliasCleanupPolicy('prod', [
 			{ key: 'api', serviceName: 'treeseed-api-production', volumeMountPath: null },
 		] as ReturnType<typeof configuredRailwayServices>)).toEqual({
 			retainedResourceNames: ['treeseed-api'],
 			allowedResourceDeletions: [],
 		});
-		expect(railwayLegacyAliasMigrationPolicy('prod', [
+		expect(railwayObsoleteAliasCleanupPolicy('prod', [
 			{ key: 'api', serviceName: 'treeseed-api-production', volumeMountPath: null },
 		] as ReturnType<typeof configuredRailwayServices>, [
-			'treeseed-api-staging',
 			'treeseed-api-production',
 			'treeseed-api',
 		], [
-			'treeseed-api-staging',
 			'treeseed-api-production',
 		])).toEqual({
 			retainedResourceNames: [],
 			allowedResourceDeletions: ['treeseed-api'],
 		});
-		expect(railwayLegacyAliasMigrationPolicy('prod', [
+		expect(railwayObsoleteAliasCleanupPolicy('prod', [
 			{ key: 'api', serviceName: 'treeseed-api-production', volumeMountPath: null },
 		] as ReturnType<typeof configuredRailwayServices>, [
 			'treeseed-api-staging',
@@ -232,8 +239,8 @@ describe('railway scheduled jobs', () => {
 			'treeseed-api-production',
 			'treeseed-api',
 		])).toEqual({
-			retainedResourceNames: ['treeseed-api'],
-			allowedResourceDeletions: [],
+			retainedResourceNames: [],
+			allowedResourceDeletions: ['treeseed-api'],
 		});
 	});
 
@@ -773,7 +780,7 @@ services:
 
 		expect(publicTreeDx).toMatchObject({
 			sourceMode: 'image',
-			serviceName: 'public-treedx-node-production-01',
+			serviceName: 'treeseed-treedx-production-01',
 			imageRef: 'treeseed/treedx:0.2.11',
 		});
 	});
@@ -813,7 +820,7 @@ services:
 		expect(services.map((service) => service.serviceName)).toEqual(expect.arrayContaining([
 			'treeseed-api-production',
 			'treeseed-api-operations-runner-production-01',
-			'public-treedx-node-production-01',
+			'treeseed-treedx-production-01',
 		]));
 	});
 
@@ -1057,12 +1064,12 @@ services:
 		});
 
 		expect(result.status).toBe('deployed');
-		expect(stagedPatches).toContainEqual(expect.objectContaining({
-			services: expect.objectContaining({
-				'svc-api': expect.objectContaining({
-					source: { repo: 'treeseed-ai/api', branch: 'staging', image: null },
-				}),
-			}),
+		expect(connectRailwayServiceSourceWithCli).toHaveBeenCalledWith(expect.objectContaining({
+			projectId: 'project-1',
+			environmentId: 'env-staging',
+			serviceId: 'svc-api',
+			repo: 'treeseed-ai/api',
+			branch: 'staging',
 		}));
 		expect(railwayVariables).toMatchObject({
 			TREESEED_DEPLOY_SOURCE_MODE: 'git',
@@ -1299,7 +1306,7 @@ services:
 		expect(fetchMock.mock.calls.some(([, init]) => String(init?.body ?? '').includes('TreeseedRailwayVolumeCreate'))).toBe(false);
 	});
 
-	it('refuses an empty replacement when an explicit migration volume is missing', async () => {
+	it('refuses an empty replacement when an explicit adopted volume is missing', async () => {
 		const fetchMock = vi.fn(async () => new Response(JSON.stringify({
 			data: { project: { volumes: { edges: [] } } },
 		}), { status: 200, headers: { 'content-type': 'application/json' } }));
@@ -1315,138 +1322,6 @@ services:
 			fetchImpl: fetchMock as typeof fetch,
 		})).rejects.toThrow(/refusing to create an empty replacement volume/u);
 		expect(fetchMock.mock.calls.some(([, init]) => String(init?.body ?? '').includes('TreeseedRailwayVolumeCreate'))).toBe(false);
-	});
-
-	it('creates and observes an exact Railway volume-instance backup before migration', async () => {
-		let backupListCount = 0;
-		const fetchMock = vi.fn(async (_input, init) => {
-			const body = JSON.parse(String(init?.body ?? '{}'));
-			if (String(body.query).includes('TreeseedRailwayVolumeBackupList')) {
-				backupListCount += 1;
-				return new Response(JSON.stringify({
-					data: {
-						volumeInstanceBackupList: backupListCount === 1 ? [{
-							id: 'backup-old',
-							name: 'previous',
-							createdAt: '2026-07-13T00:00:00.000Z',
-						}] : [{
-							id: 'backup-old',
-							name: 'previous',
-						}, {
-							id: 'backup-new',
-							name: 'migration',
-							createdAt: '2026-07-14T00:00:00.000Z',
-							usedMB: 42,
-							referencedMB: 40,
-						}],
-					},
-				}), { status: 200, headers: { 'content-type': 'application/json' } });
-			}
-			expect(String(body.query)).toContain('TreeseedRailwayVolumeBackupCreate');
-			expect(String(body.query)).toContain('__typename');
-			expect(String(body.query)).not.toMatch(/\{\s*id\s*\}/u);
-			expect(body.variables).toEqual({ volumeInstanceId: 'legacy-instance-staging' });
-			return new Response(JSON.stringify({
-				data: { volumeInstanceBackupCreate: { __typename: 'WorkflowId' } },
-			}), { status: 200, headers: { 'content-type': 'application/json' } });
-		});
-
-		await expect(createRailwayVolumeInstanceBackup({
-			volumeInstanceId: 'legacy-instance-staging',
-			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
-			fetchImpl: fetchMock as typeof fetch,
-			settleAttempts: 1,
-			settleDelayMs: 0,
-		})).rejects.toThrow(/official SDK and CLI/u);
-		expect(fetchMock).not.toHaveBeenCalled();
-	});
-
-	it('restores a Railway backup only into the new qualified volume instance', async () => {
-		const fetchMock = vi.fn(async (_input, init) => {
-			const body = JSON.parse(String(init?.body ?? '{}'));
-			expect(String(body.query)).toContain('TreeseedRailwayVolumeBackupRestore');
-			expect(String(body.query)).toContain('__typename');
-			expect(String(body.query)).not.toMatch(/\{\s*id\s*\}/u);
-			expect(body.variables).toEqual({
-				backupId: 'backup-staging',
-				volumeInstanceId: 'qualified-instance-staging',
-			});
-			return new Response(JSON.stringify({
-				data: { volumeInstanceBackupRestore: { __typename: 'WorkflowId' } },
-			}), { status: 200, headers: { 'content-type': 'application/json' } });
-		});
-
-		await expect(restoreRailwayVolumeInstanceBackup({
-			backupId: 'backup-staging',
-			volumeInstanceId: 'qualified-instance-staging',
-			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
-			fetchImpl: fetchMock as typeof fetch,
-		})).rejects.toThrow(/official SDK and CLI/u);
-		expect(fetchMock).not.toHaveBeenCalled();
-	});
-
-	it('restores and observes a pending-deletion volume through the Railway SDK', async () => {
-		let observations = 0;
-		const fetchMock = vi.fn(async () => {
-			observations += 1;
-			const instances = observations === 1
-				? [{
-					id: 'instance-staging',
-					serviceId: 'service-staging',
-					environmentId: 'env-staging',
-					mountPath: '/data',
-					state: 'READY',
-					deletedAt: '2026-07-16T00:00:00.000Z',
-				}]
-				: [{
-					id: 'instance-staging',
-					serviceId: 'service-staging',
-					environmentId: 'env-staging',
-					mountPath: '/data',
-					state: 'READY',
-					deletedAt: null,
-				}];
-			return Response.json({ data: { project: { volumes: { edges: [{ node: {
-				id: 'volume-staging',
-				name: 'service-staging-volume',
-				volumeInstances: { edges: instances.map((node) => ({ node })) },
-			} }] } } } });
-		});
-		const sleep = vi.fn(async () => undefined);
-		const client = {
-			stageEnvironmentChanges: vi.fn(async () => ({ id: 'patch-1' })),
-			commitStagedPatch: vi.fn(async () => 'commit-1'),
-		};
-
-		const volumes = await restoreRailwayVolumeAttachmentWithIacAndWait({
-			projectId: 'project-api',
-			volumeId: 'volume-staging',
-			environmentId: 'env-staging',
-			serviceId: 'service-staging',
-			mountPath: '/data',
-			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
-			fetchImpl: fetchMock as typeof fetch,
-			maxAttempts: 2,
-			pollIntervalMs: 1,
-			sleep,
-			client,
-		});
-
-		expect(client.stageEnvironmentChanges).toHaveBeenCalledWith({
-			environmentId: 'env-staging',
-			merge: true,
-			patch: {
-				services: { 'service-staging': { volumeMounts: { 'volume-staging': { mountPath: '/data' } } } },
-				volumes: { 'volume-staging': { isDeleted: false } },
-			},
-		});
-		expect(client.commitStagedPatch).toHaveBeenCalledWith(expect.objectContaining({
-			environmentId: 'env-staging',
-			skipDeploys: true,
-		}));
-		expect(observations).toBe(2);
-		expect(sleep).toHaveBeenCalledWith(1);
-		expect(volumes[0]?.instances[0]?.deletedAt).toBeNull();
 	});
 
 	it('deduplicates Railway volume aliases and preserves pending deletion state', async () => {
@@ -1480,73 +1355,6 @@ services:
 			id: 'instance-staging',
 			deletedAt: '2026-07-16T00:00:00.000Z',
 		})]);
-	});
-
-	it('retries restore only while a newly created Railway backup is propagating', async () => {
-		let attempts = 0;
-		const fetchMock = vi.fn(async () => {
-			attempts += 1;
-			return attempts === 1
-				? new Response(JSON.stringify({ errors: [{ message: 'Backup not found' }] }), {
-					status: 200,
-					headers: { 'content-type': 'application/json' },
-				})
-				: new Response(JSON.stringify({ data: { volumeInstanceBackupRestore: { __typename: 'WorkflowId' } } }), {
-					status: 200,
-					headers: { 'content-type': 'application/json' },
-				});
-		});
-
-		await expect(restoreRailwayVolumeInstanceBackup({
-			backupId: 'backup-staging',
-			volumeInstanceId: 'qualified-instance-staging',
-			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
-			fetchImpl: fetchMock as typeof fetch,
-			settleAttempts: 2,
-			settleDelayMs: 0,
-		})).rejects.toThrow(/official SDK and CLI/u);
-		expect(fetchMock).not.toHaveBeenCalled();
-	});
-
-	it('does not retry non-propagation restore failures', async () => {
-		const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-			errors: [{ message: 'Volume instance is not writable' }],
-		}), { status: 200, headers: { 'content-type': 'application/json' } }));
-
-		await expect(restoreRailwayVolumeInstanceBackup({
-			backupId: 'backup-staging',
-			volumeInstanceId: 'qualified-instance-staging',
-			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
-			fetchImpl: fetchMock as typeof fetch,
-			settleAttempts: 2,
-			settleDelayMs: 0,
-		})).rejects.toThrow(/official SDK and CLI/u);
-		expect(fetchMock).not.toHaveBeenCalled();
-	});
-
-	it('refuses volume migration when Railway never exposes the requested backup', async () => {
-		const fetchMock = vi.fn(async (_input, init) => {
-			const body = JSON.parse(String(init?.body ?? '{}'));
-			if (String(body.query).includes('TreeseedRailwayVolumeBackupList')) {
-				return new Response(JSON.stringify({ data: { volumeInstanceBackupList: [] } }), {
-					status: 200,
-					headers: { 'content-type': 'application/json' },
-				});
-			}
-			return new Response(JSON.stringify({ data: { volumeInstanceBackupCreate: true } }), {
-				status: 200,
-				headers: { 'content-type': 'application/json' },
-			});
-		});
-
-		await expect(createRailwayVolumeInstanceBackup({
-			volumeInstanceId: 'legacy-instance-staging',
-			env: { TREESEED_RAILWAY_API_TOKEN: 'railway-token' },
-			fetchImpl: fetchMock as typeof fetch,
-			settleAttempts: 1,
-			settleDelayMs: 0,
-		})).rejects.toThrow(/official SDK and CLI/u);
-		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it('reuses a Railway service volume that appears after a create conflict', async () => {

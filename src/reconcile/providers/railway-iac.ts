@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
 	runRailwayIac,
@@ -24,10 +24,57 @@ export type TreeseedRailwayIacService = {
 	healthcheckPath?: string | null;
 	healthcheckTimeoutSeconds?: number | null;
 	runtimeMode?: string | null;
+	numReplicas?: number | null;
 	volumeMountPath?: string | null;
+	volumeName?: string | null;
+	volumeAddress?: string | null;
 	variables?: Record<string, string>;
 	secrets?: Record<string, string>;
 	detachVolumeIds?: string[];
+	customDomains?: string[];
+};
+
+export type TreeseedRailwayObservedService = {
+	id: string;
+	name: string;
+};
+
+export type TreeseedRailwayObservedVolumeInstance = {
+	id?: string | null;
+	environmentId?: string | null;
+	serviceId?: string | null;
+	mountPath?: string | null;
+	state?: string | null;
+	isPendingDeletion?: boolean | null;
+	deletedAt?: string | null;
+};
+
+export type TreeseedRailwayObservedVolume = {
+	id: string;
+	name?: string | null;
+	instances: TreeseedRailwayObservedVolumeInstance[];
+};
+
+export type TreeseedRailwayVolumeBinding = {
+	serviceName: string;
+	volumeId: string;
+	volumeName: string;
+	canonicalVolumeName: string;
+	mode: 'canonical' | 'environment-owned' | 'shared-legacy';
+	reason: string;
+};
+
+export type TreeseedRailwayVolumeBindingResult = {
+	bindings: TreeseedRailwayVolumeBinding[];
+	blockedReasons: string[];
+};
+
+export type TreeseedRailwayPendingVolumeCollision = {
+	serviceName: string;
+	volumeId: string;
+	canonicalVolumeName: string;
+	mountPath: string;
+	serviceId: string | null;
 };
 
 export type TreeseedRailwayIacDatabase = {
@@ -71,6 +118,223 @@ export type RailwayIacValidationResult = {
 	blockedReasons: string[];
 	allowedDrift: string[];
 };
+
+export async function waitForRailwayVolumeAdoptionResources<TService, TVolume>({
+	load,
+	serviceName,
+	volumeId,
+	attempts = 12,
+	intervalMs = 2_500,
+	sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+}: {
+	load: () => Promise<{ services: Array<TService & { name?: string | null }>; volumes: Array<TVolume & { id?: string | null }> }>;
+	serviceName: string;
+	volumeId: string;
+	attempts?: number;
+	intervalMs?: number;
+	sleep?: (milliseconds: number) => Promise<unknown>;
+}) {
+	for (let attempt = 1; attempt <= attempts; attempt += 1) {
+		const current = await load();
+		const service = current.services.find((candidate) => candidate.name === serviceName) ?? null;
+		const volume = current.volumes.find((candidate) => candidate.id === volumeId) ?? null;
+		if (service && volume) return { service, volume, services: current.services, volumes: current.volumes, attempt };
+		if (attempt < attempts) await sleep(intervalMs);
+	}
+	return null;
+}
+
+export async function waitForRailwayServices<TService extends { name?: string | null }>({
+	load,
+	serviceNames,
+	attempts = 12,
+	intervalMs = 2_500,
+	sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+}: {
+	load: () => Promise<TService[]>;
+	serviceNames: Iterable<string>;
+	attempts?: number;
+	intervalMs?: number;
+	sleep?: (milliseconds: number) => Promise<unknown>;
+}) {
+	const expected = [...new Set(serviceNames)];
+	for (let attempt = 1; attempt <= attempts; attempt += 1) {
+		const services = await load();
+		const observed = new Set(services.map((service) => service.name).filter(Boolean));
+		if (expected.every((name) => observed.has(name))) return { services, attempt };
+		if (attempt < attempts) await sleep(intervalMs);
+	}
+	return null;
+}
+
+export async function waitForRailwayVolumeName<TVolume extends { id?: string | null; name?: string | null }>({
+	load,
+	volumeId,
+	expectedName,
+	attempts = 12,
+	intervalMs = 2_500,
+	sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+}: {
+	load: () => Promise<TVolume[]>;
+	volumeId: string;
+	expectedName: string;
+	attempts?: number;
+	intervalMs?: number;
+	sleep?: (milliseconds: number) => Promise<unknown>;
+}) {
+	for (let attempt = 1; attempt <= attempts; attempt += 1) {
+		const volume = (await load()).find((candidate) => candidate.id === volumeId) ?? null;
+		if (volume?.name === expectedName) return { volume, attempt };
+		if (attempt < attempts) await sleep(intervalMs);
+	}
+	return null;
+}
+
+export async function waitForRailwayVolumeDetachment<TVolume extends {
+	id?: string | null;
+	instances?: Array<{ environmentId?: string | null; serviceId?: string | null }>;
+}>({
+	load,
+	volumeId,
+	environmentId,
+	serviceId,
+	attempts = 12,
+	intervalMs = 2_500,
+	sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+}: {
+	load: () => Promise<TVolume[]>;
+	volumeId: string;
+	environmentId: string;
+	serviceId: string;
+	attempts?: number;
+	intervalMs?: number;
+	sleep?: (milliseconds: number) => Promise<unknown>;
+}) {
+	for (let attempt = 1; attempt <= attempts; attempt += 1) {
+		const volume = (await load()).find((candidate) => candidate.id === volumeId) ?? null;
+		const attached = volume?.instances?.some((instance) =>
+			instance.environmentId === environmentId && instance.serviceId === serviceId,
+		) ?? false;
+		if (!attached) return { volume, attempt };
+		if (attempt < attempts) await sleep(intervalMs);
+	}
+	return null;
+}
+
+export async function waitForRailwayServiceAbsence<TService extends { id?: string | null }>({
+	load,
+	serviceId,
+	attempts = 12,
+	intervalMs = 2_500,
+	sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+}: {
+	load: () => Promise<TService[]>;
+	serviceId: string;
+	attempts?: number;
+	intervalMs?: number;
+	sleep?: (milliseconds: number) => Promise<unknown>;
+}) {
+	for (let attempt = 1; attempt <= attempts; attempt += 1) {
+		if (!(await load()).some((service) => service.id === serviceId)) return { attempt };
+		if (attempt < attempts) await sleep(intervalMs);
+	}
+	return null;
+}
+
+const STALE_RAILWAY_IAC_RENDER_AGE_MS = 15 * 60 * 1000;
+
+export function cleanupStaleRailwayIacRenders(tenantRoot: string, now = Date.now()) {
+	const tempParent = resolve(tenantRoot, '.treeseed', 'tmp');
+	let entries: string[];
+	try {
+		entries = readdirSync(tempParent);
+	} catch {
+		return [];
+	}
+	const removed: string[] = [];
+	for (const entry of entries.filter((name) => name.startsWith('railway-iac-'))) {
+		const path = resolve(tempParent, entry);
+		try {
+			if (now - statSync(path).mtimeMs < STALE_RAILWAY_IAC_RENDER_AGE_MS) continue;
+			rmSync(path, { recursive: true, force: true });
+			removed.push(path);
+		} catch {
+			// A concurrent process may have completed and removed its own directory.
+		}
+	}
+	return removed;
+}
+
+export function railwayIacApplyFailure(response: RailwayIacApplyResponse) {
+	const diagnostics = (response.diagnostics ?? [])
+		.map((entry) => String(entry.message ?? '').trim())
+		.filter(Boolean);
+	if (!response.ok) return diagnostics.join('; ') || 'Railway IaC planning failed before apply.';
+	const changes = response.changeSet?.changes ?? [];
+	if (changes.length === 0) return null;
+	if (!response.applyResult) return 'Railway IaC returned no apply result for a non-empty change set.';
+	const successfulStatuses = new Set(['APPLIED', 'COMPLETED', 'SUCCESS', 'SUCCEEDED']);
+	const applyStatus = String(response.applyResult.status ?? '').trim().toUpperCase();
+	const failedChanges = (response.applyResult.changes ?? [])
+		.filter((change) => !successfulStatuses.has(String(change.status ?? '').trim().toUpperCase()))
+		.map((change) => `${change.path ?? change.kind}: ${change.status || 'unknown'}`);
+	const applyDiagnostics = (response.applyResult.diagnostics ?? [])
+		.map((entry) => typeof entry === 'string' ? entry : JSON.stringify(entry))
+		.filter(Boolean);
+	if (!successfulStatuses.has(applyStatus) || failedChanges.length > 0 || applyDiagnostics.length > 0) {
+		return [
+			`apply status ${applyStatus || 'unknown'}`,
+			...failedChanges,
+			...diagnostics,
+			...applyDiagnostics,
+		].join('; ');
+	}
+	return null;
+}
+
+export async function runRailwayIacWithRateLimitRetry<T>(
+	run: () => Promise<T>,
+	{
+		delaysMs = [15_000, 45_000, 90_000],
+		sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+		onRetry,
+		onWait,
+	}: {
+		delaysMs?: number[];
+		sleep?: (milliseconds: number) => Promise<unknown>;
+		onRetry?: (attempt: number, delayMs: number, error: unknown) => void;
+		onWait?: (attempt: number, remainingMs: number) => void;
+	} = {},
+): Promise<T> {
+	for (let attempt = 1; ; attempt += 1) {
+		try {
+			const result = await run();
+			if (result && typeof result === 'object' && 'ok' in result && (result as { ok?: unknown }).ok === false) {
+				const diagnostics = Array.isArray((result as { diagnostics?: unknown[] }).diagnostics)
+					? (result as { diagnostics: Array<{ message?: unknown } | string> }).diagnostics
+						.map((entry) => typeof entry === 'string' ? entry : String(entry?.message ?? ''))
+						.filter(Boolean)
+						.join('; ')
+					: '';
+				if (/fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted|HTTP\s+429|rate[ -]?limit/iu.test(diagnostics)) {
+					throw new Error(diagnostics || 'Railway IaC transport failed.');
+				}
+			}
+			return result;
+		} catch (error) {
+			const delayMs = delaysMs[attempt - 1];
+			if (delayMs === undefined || !/fetch failed|timed out|etimedout|econnreset|enetunreach|temporarily unavailable|aborted|HTTP\s+429|rate[ -]?limit/iu.test(String(error))) throw error;
+			onRetry?.(attempt + 1, delayMs, error);
+			let remainingMs = delayMs;
+			while (remainingMs > 0) {
+				const sliceMs = Math.min(15_000, remainingMs);
+				await sleep(sliceMs);
+				remainingMs -= sliceMs;
+				if (remainingMs > 0) onWait?.(attempt + 1, remainingMs);
+			}
+		}
+	}
+}
 
 function js(value: unknown) {
 	return JSON.stringify(value);
@@ -134,16 +398,14 @@ function buildConfig(service: TreeseedRailwayIacService) {
 	return null;
 }
 
-function deployConfig(service: TreeseedRailwayIacService, region: string) {
+function deployConfig(service: TreeseedRailwayIacService) {
 	const runtimeMode = String(service.runtimeMode ?? '').trim();
 	const deploy = {
 		...(service.startCommand ? { startCommand: service.startCommand } : {}),
 		...(service.healthcheckPath ? { healthcheckPath: service.healthcheckPath } : {}),
 		...(service.healthcheckTimeoutSeconds ? { healthcheckTimeout: service.healthcheckTimeoutSeconds } : {}),
+		...(typeof service.numReplicas === 'number' ? { numReplicas: service.numReplicas } : {}),
 		...(runtimeMode === 'serverless' ? { sleepApplication: true } : {}),
-		...(runtimeMode === 'service' || runtimeMode === 'replicated' ? { sleepApplication: false } : {}),
-		...(service.volumeMountPath ? { requiredMountPath: service.volumeMountPath } : {}),
-		region,
 	};
 	return Object.keys(deploy).length > 0 ? deploy : null;
 }
@@ -190,10 +452,139 @@ function normalizeIacScope(input: Pick<TreeseedRailwayIacProjectInput, 'scope' |
 			: 'local';
 }
 
+function activeObservedVolumeInstances(volume: TreeseedRailwayObservedVolume) {
+	return volume.instances.filter((instance) => {
+		const state = String(instance.state ?? 'READY').toUpperCase();
+		return instance.isPendingDeletion !== true
+			&& !(typeof instance.deletedAt === 'string' && instance.deletedAt.trim())
+			&& state !== 'DELETING'
+			&& state !== 'DELETED';
+	});
+}
+
+export function findRailwayPendingVolumeNameCollisions(input: {
+	services: TreeseedRailwayIacService[];
+	liveServices?: TreeseedRailwayObservedService[];
+	volumes: TreeseedRailwayObservedVolume[];
+}): TreeseedRailwayPendingVolumeCollision[] {
+	const serviceIdByName = new Map((input.liveServices ?? []).map((service) => [service.name, service.id]));
+	return input.services.flatMap((service) => {
+		if (!service.volumeMountPath) return [];
+		const canonicalVolumeName = `${service.serviceName}-volume`;
+		const desiredServiceId = serviceIdByName.get(service.serviceName) ?? null;
+		return input.volumes
+			.filter((volume) => volume.name === canonicalVolumeName || (
+				String(volume.name ?? '').startsWith('pending-delete-')
+				&& Boolean(desiredServiceId)
+				&& volume.instances.some((instance) => instance.serviceId === desiredServiceId)
+			))
+			.filter((volume) => volume.instances.length > 0 && activeObservedVolumeInstances(volume).length === 0)
+			.map((volume) => ({
+				serviceName: service.serviceName,
+				volumeId: volume.id,
+				canonicalVolumeName,
+				mountPath: service.volumeMountPath!,
+				serviceId: volume.instances.find((instance) => instance.serviceId)?.serviceId ?? null,
+			}));
+	});
+}
+
+export function resolveRailwayIacVolumeBindings(input: {
+	environmentId: string;
+	services: TreeseedRailwayIacService[];
+	liveServices: TreeseedRailwayObservedService[];
+	volumes: TreeseedRailwayObservedVolume[];
+}): TreeseedRailwayVolumeBindingResult {
+	const bindings: TreeseedRailwayVolumeBinding[] = [];
+	const blockedReasons: string[] = [];
+	const serviceIdByName = new Map(input.liveServices.map((service) => [service.name, service.id]));
+
+	for (const service of input.services.filter((candidate) => Boolean(candidate.volumeMountPath))) {
+		const canonicalVolumeName = `${service.serviceName}-volume`;
+		const desiredServiceId = serviceIdByName.get(service.serviceName) ?? null;
+		const canonical = input.volumes.flatMap((volume) =>
+			activeObservedVolumeInstances(volume)
+				.filter((instance) => instance.environmentId === input.environmentId && volume.name === canonicalVolumeName)
+				.map((instance) => ({ volume, instance })),
+		);
+		const candidatesByVolume = new Map(canonical.map((candidate) => [candidate.volume.id, candidate]));
+		if (candidatesByVolume.size > 1) {
+			blockedReasons.push(`${service.serviceName}: ${candidatesByVolume.size} active volumes are viable in environment ${input.environmentId}; refusing ambiguous stateful volume ownership.`);
+			continue;
+		}
+		const selected = candidatesByVolume.values().next().value as typeof candidates[number] | undefined;
+		if (!selected?.volume.id || !selected.volume.name) {
+			const pendingCanonicalCollision = input.volumes.some((volume) =>
+				(volume.name === canonicalVolumeName || (
+					String(volume.name ?? '').startsWith('pending-delete-')
+					&& Boolean(desiredServiceId)
+					&& volume.instances.some((instance) => instance.serviceId === desiredServiceId)
+				))
+				&& volume.instances.length > 0
+				&& activeObservedVolumeInstances(volume).length === 0,
+			);
+			if (pendingCanonicalCollision) continue;
+			continue;
+		}
+		bindings.push({
+			serviceName: service.serviceName,
+			volumeId: selected.volume.id,
+			volumeName: selected.volume.name,
+			canonicalVolumeName,
+			mode: 'canonical',
+			reason: selected.instance.serviceId === desiredServiceId
+				? 'existing desired-service attachment'
+				: 'active canonical volume',
+		});
+	}
+
+	return { bindings, blockedReasons };
+}
+
+export function detachRetainedRailwayVolumeBindings(
+	resources: ResourceNode[],
+	bindings: TreeseedRailwayVolumeBinding[],
+) {
+	const movedVolumeNames = new Set(bindings.map((binding) => binding.volumeName));
+	return resources.map((resource) => {
+		if (resource.type !== 'service' && resource.type !== 'database') return resource;
+		const attachments = Object.fromEntries(Object.entries(resource.volumeAttachments ?? {})
+			.filter(([, attachment]) => !movedVolumeNames.has(String(attachment.volume).replace(/^volume\./u, ''))));
+		const volumeMounts = Object.fromEntries(Object.entries(resource.volumeMounts ?? {})
+			.filter(([volumeId]) => !bindings.some((binding) => binding.volumeId === volumeId)));
+		let deploy = resource.deploy;
+		if (deploy && Object.keys(attachments).length === 0 && Object.keys(volumeMounts).length === 0) {
+			const { requiredMountPath: _requiredMountPath, ...deployWithoutMountRequirement } = deploy;
+			deploy = Object.keys(deployWithoutMountRequirement).length > 0 ? deployWithoutMountRequirement : undefined;
+		}
+		const { volumeAttachments: _attachments, volumeMounts: _volumeMounts, ...retained } = resource;
+		return {
+			...retained,
+			...(Object.keys(attachments).length > 0 ? { volumeAttachments: attachments } : {}),
+			...(Object.keys(volumeMounts).length > 0 ? { volumeMounts } : {}),
+			...(deploy ? { deploy } : {}),
+		} as ResourceNode;
+	});
+}
+
+
+export function detachRetainedRailwayCustomDomains(resources: ResourceNode[], domains: string[]) {
+	const selected = new Set(domains);
+	return resources.map((resource) => {
+		if (resource.type !== 'service' || selected.size === 0) return resource;
+		const customDomains = Object.fromEntries(Object.entries(resource.networking?.customDomains ?? {})
+			.filter(([domain]) => !selected.has(domain)));
+		if (Object.keys(customDomains).length === Object.keys(resource.networking?.customDomains ?? {}).length) return resource;
+		const networking = { ...(resource.networking ?? {}), customDomains };
+		return { ...resource, networking } as ResourceNode;
+	});
+}
+
 export function renderRailwayIacProject(input: TreeseedRailwayIacProjectInput): TreeseedRailwayIacRenderResult {
 	const scope = normalizeIacScope(input);
 	const region = input.region?.trim() || 'us-east4-eqdc4a';
 	const tempParent = resolve(input.tenantRoot, '.treeseed', 'tmp');
+	cleanupStaleRailwayIacRenders(input.tenantRoot);
 	mkdirSync(tempParent, { recursive: true });
 	const tempDir = mkdtempSync(resolve(tempParent, 'railway-iac-'));
 	const filePath = resolve(tempDir, 'railway.mjs');
@@ -260,23 +651,30 @@ export function renderRailwayIacProject(input: TreeseedRailwayIacProjectInput): 
 			`env: ${renderServiceEnv(service, databaseVariableName, databaseEnvName)}`,
 		];
 		const build = buildConfig(service);
-		const deploy = deployConfig(service, region);
+		const deploy = deployConfig(service);
 		if (build) entries.push(`build: ${js(build)}`);
 		if (deploy) entries.push(`deploy: ${js(deploy)}`);
+		entries.push(`regions: ${js({ [region]: 1 })}`);
+		if ((service.customDomains?.length ?? 0) > 0) {
+			entries.push(`networking: ${js({
+				customDomains: Object.fromEntries(service.customDomains!.map((domain) => [domain, {}])),
+			})}`);
+		}
 		if (service.volumeMountPath) {
-			const volumeName = `${service.serviceName}-volume`;
+			const volumeName = service.volumeName?.trim() || `${service.serviceName}-volume`;
+			const volumeAddress = service.volumeAddress?.trim() || null;
 			const volumeVar = id('vol', index);
 			const volumeMounts = [
 				...(service.detachVolumeIds ?? []).map((volumeId) => `${js(volumeId)}: null`),
 				`${js(service.volumeMountPath)}: ${volumeVar}`,
 			];
 			volumeNames.push(volumeName);
-			declarations.push(`  const ${volumeVar} = volume(${js(volumeName)}, ${js({
+			declarations.push(`  const ${volumeVar} = ${volumeAddress ? 'Object.assign(' : ''}volume(${js(volumeName)}, ${js({
 				region,
 				sizeMB: 50000,
 				allowOnlineResize: true,
 				alerts: { usage: { 80: {}, 95: {}, 100: {} } },
-			})});`);
+			})})${volumeAddress ? `, { address: ${js(volumeAddress)} })` : ''};`);
 			entries.push(`volumeMounts: { ${volumeMounts.join(', ')} }`);
 			resources.push(volumeVar);
 		}
@@ -310,15 +708,17 @@ export function selectRailwayIacRetainedResources(
 	allowedNames: Iterable<string>,
 ): ResourceNode[] {
 	const allowed = new Set(allowedNames);
-	const deletedAllowedNames = new Set((plan.changeSet?.changes ?? [])
-		.filter((change) => change.kind === 'resource.delete')
-		.map((change) => changeName(change))
-		.filter((name) => allowed.has(name)));
-	return (plan.currentGraph?.resources ?? []).filter((resource) => deletedAllowedNames.has(resource.name));
+	return (plan.currentGraph?.resources ?? []).filter((resource) => allowed.has(resource.name));
 }
 
 function changeName(change: any) {
-	return String(change?.resource?.name ?? change?.previous?.name ?? change?.address ?? change?.path ?? '');
+	const directName = String(change?.resource?.name ?? change?.previous?.name ?? '').trim();
+	if (directName) return directName;
+	const location = String(change?.address ?? change?.path ?? '').trim();
+	const pathMatch = /(?:^|\.)?(?:resources\.)?(?:service|database|volume)\.([^\.\s]+)/u.exec(location);
+	if (pathMatch?.[1]) return pathMatch[1];
+	const summaryMatch = /\b(?:service|database|volume)\s+([^\s]+)/iu.exec(String(change?.summary ?? ''));
+	return summaryMatch?.[1] ?? location;
 }
 
 function changeFieldText(change: any) {
@@ -357,11 +757,13 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 	serviceSourceModes?: Record<string, string | null | undefined>;
 	serviceSourceRefs?: Record<string, string | null | undefined>;
 	allowedResourceDeletions?: string[];
+	protectedResourceNames?: string[];
 }): RailwayIacValidationResult {
 	const blockedReasons: string[] = [];
 	const destructiveChanges: string[] = [];
 	const desired = new Set([...desiredNames.services, ...desiredNames.volumes, ...(desiredNames.database ? [desiredNames.database] : [])]);
 	const allowedResourceDeletions = new Set(desiredNames.allowedResourceDeletions ?? []);
+	const protectedResourceNames = new Set(desiredNames.protectedResourceNames ?? []);
 	const created = new Set((changeSet?.changes ?? [])
 		.filter((change) => change.kind === 'resource.create')
 		.map((change) => changeName(change)));
@@ -380,6 +782,9 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 		const desiredGitSource = sourceMode === 'git' && typeof sourceRef === 'string' && sourceRef.startsWith('github:');
 		const desiredImageSource = sourceMode === 'image' && typeof sourceRef === 'string' && sourceRef.startsWith('image:');
 		const apiPolicyService = isApiRailwaySourcePolicyService({ serviceName });
+		if (protectedResourceNames.has(name) && (change.kind === 'resource.update' || change.kind === 'resource.delete')) {
+			blockedReasons.push(`Railway IaC plan would ${change.kind === 'resource.delete' ? 'delete' : 'update'} sibling-environment resource ${name}.`);
+		}
 		if (change.kind === 'resource.delete') {
 			destructiveChanges.push(change.summary);
 			if (!allowedResourceDeletions.has(name) && !allowedResourceDeletions.has(serviceName)) {
@@ -417,7 +822,7 @@ export function validateRailwayIacChangeSet(changeSet: RailwayChangeSet | undefi
 }
 
 export async function planRailwayIacProject(input: TreeseedRailwayIacProjectInput, rendered = renderRailwayIacProject(input)): Promise<RailwayIacPlanResponse> {
-	return runRailwayIac({
+	return runRailwayIacWithRateLimitRetry(() => runRailwayIac({
 		command: 'plan',
 		cwd: rendered.tempDir,
 		file: rendered.filePath,
@@ -430,11 +835,14 @@ export async function planRailwayIacProject(input: TreeseedRailwayIacProjectInpu
 			decryptVariables: false,
 			merge: true,
 		},
-	}) as Promise<RailwayIacPlanResponse>;
+		}) as Promise<RailwayIacPlanResponse>, {
+			onRetry: (attempt, delayMs, error) => process.stderr.write(`[trsd][railway][iac:retry] command=plan attempt=${attempt} waitMs=${delayMs} reason=${error instanceof Error ? error.message : String(error)}\n`),
+			onWait: (attempt, remainingMs) => process.stderr.write(`[trsd][railway][iac:retry] command=plan attempt=${attempt} cooldownRemainingMs=${remainingMs}\n`),
+		});
 }
 
 export async function applyRailwayIacProject(input: TreeseedRailwayIacProjectInput, rendered = renderRailwayIacProject(input)): Promise<RailwayIacApplyResponse> {
-	return runRailwayIac({
+	return runRailwayIacWithRateLimitRetry(() => runRailwayIac({
 		command: 'apply',
 		cwd: rendered.tempDir,
 		file: rendered.filePath,
@@ -447,7 +855,10 @@ export async function applyRailwayIacProject(input: TreeseedRailwayIacProjectInp
 			decryptVariables: false,
 			merge: true,
 		},
-	}) as Promise<RailwayIacApplyResponse>;
+		}) as Promise<RailwayIacApplyResponse>, {
+			onRetry: (attempt, delayMs, error) => process.stderr.write(`[trsd][railway][iac:retry] command=apply attempt=${attempt} waitMs=${delayMs} reason=${error instanceof Error ? error.message : String(error)}\n`),
+			onWait: (attempt, remainingMs) => process.stderr.write(`[trsd][railway][iac:retry] command=apply attempt=${attempt} cooldownRemainingMs=${remainingMs}\n`),
+		});
 }
 
 export function cleanupRailwayIacRender(rendered: Pick<TreeseedRailwayIacRenderResult, 'tempDir'>) {

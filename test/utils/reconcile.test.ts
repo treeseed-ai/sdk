@@ -88,6 +88,59 @@ describe('reconcile registry and desired units', () => {
 		expect(units.find((unit) => unit.unitType === 'railway-service:api')?.provider).toBe('railway');
 	});
 
+	it('derives distinct concrete and runtime units for every operations runner instance', () => {
+		const tenantRoot = createTenantFixture();
+		writeFileSync(resolve(tenantRoot, 'treeseed.site.yaml'), `name: Test
+slug: test
+siteUrl: https://example.com
+contactEmail: test@example.com
+hosting:
+  kind: treeseed_control_plane
+  teamId: acme
+  projectId: docs
+runtime:
+  mode: treeseed_managed
+services:
+  operationsRunner:
+    enabled: true
+    provider: railway
+    railway:
+      projectName: treeseed-api
+      serviceName: treeseed-ops-01
+      volumeMountPath: /data
+      runnerPool:
+        bootstrapCount: 2
+        maxRunners: 4
+publicTreeDxFederation:
+  railway:
+    nodePool:
+      bootstrapCount: 2
+      maxNodes: 4
+`);
+		const { units } = deriveTreeseedDesiredUnits({
+			tenantRoot,
+			target: { kind: 'persistent', scope: 'staging' },
+		});
+		const concreteRunners = units.filter((unit) => unit.unitType === 'railway-service:operations-runner');
+		const runtimeRunners = units.filter((unit) => unit.unitType === 'operations-runner-runtime');
+		const treeDx = units.filter((unit) => unit.unitType === 'railway-service:api' && unit.metadata.serviceKey?.toString().startsWith('public-treedx-node-'));
+
+		expect(concreteRunners.map((unit) => unit.logicalName)).toEqual([
+			'treeseed-ops-staging-01',
+			'treeseed-ops-staging-02',
+		]);
+		expect(new Set(runtimeRunners.map((unit) => unit.unitId)).size).toBe(2);
+		expect(runtimeRunners.map((unit) => unit.logicalName)).toEqual(['operationsRunner:1', 'operationsRunner:2']);
+		expect(treeDx.map((unit) => unit.logicalName)).toEqual([
+			'treeseed-treedx-staging-01',
+			'treeseed-treedx-staging-02',
+		]);
+		expect(treeDx.map((unit) => unit.metadata.serviceKey)).toEqual([
+			'public-treedx-node-01',
+			'public-treedx-node-02',
+		]);
+	});
+
 	it('does not derive root Market Railway units for deleted processing roles', () => {
 		const tenantRoot = mkdtempSync(join(tmpdir(), 'treeseed-reconcile-workday-'));
 		mkdirSync(resolve(tenantRoot, 'src'), { recursive: true });

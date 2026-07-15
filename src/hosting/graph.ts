@@ -3,19 +3,16 @@ import { loadTreeseedPlugins } from '../platform/plugins/runtime.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { createPersistentDeployTarget } from '../operations/services/deploy.ts';
-import { collectTreeseedConfigSeedValues, resolveTreeseedMachineEnvironmentValues } from '../operations/services/config-runtime.ts';
+import { resolveTreeseedMachineEnvironmentValues } from '../operations/services/config-runtime.ts';
 import { classifyTreeseedGitMode, runTreeseedGitText } from '../operations/services/git-runner.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName } from '../operations/services/railway-source-policy.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from '../operations/services/railway-source-policy.ts';
 import { createTreeseedCanonicalReconcileReport, type TreeseedCanonicalAction, type TreeseedCanonicalDrift, type TreeseedCanonicalGraphNode, type TreeseedCanonicalPostcondition } from '../reconcile/index.ts';
-import { reconcileTreeseedTarget } from '../reconcile/index.ts';
 import type { TreeseedRunnableBootstrapSystem } from '../reconcile/bootstrap-systems.ts';
 import { discoverTreeseedApplications, findTreeseedApplication, type TreeseedDiscoveredApplication } from './apps.ts';
 import type {
 	TreeseedApplicationHostingProfile,
 	TreeseedHostAdapter,
 	TreeseedHostProjectGroup,
-	TreeseedHostingApplyResult,
 	TreeseedHostingEnvironment,
 	TreeseedHostingGraphFilter,
 	TreeseedHostingGraph,
@@ -35,6 +32,18 @@ import {
 	sanitizedUnitConfig,
 	summarizePlacementStatus,
 } from './builtins.ts';
+
+const RAILWAY_SERVICE_NAME_MAX_LENGTH = 32;
+const RAILWAY_VOLUME_NAME_MAX_LENGTH = 48;
+
+function assertRailwayResourceNames(serviceName: string, volumeName?: string | null) {
+	if (serviceName.length > RAILWAY_SERVICE_NAME_MAX_LENGTH) {
+		throw new Error(`Railway service name ${serviceName} exceeds the provider limit of ${RAILWAY_SERVICE_NAME_MAX_LENGTH} characters.`);
+	}
+	if (volumeName && volumeName.length > RAILWAY_VOLUME_NAME_MAX_LENGTH) {
+		throw new Error(`Railway volume name ${volumeName} exceeds the provider limit of ${RAILWAY_VOLUME_NAME_MAX_LENGTH} characters.`);
+	}
+}
 
 const ENVIRONMENT_NAMES: Record<TreeseedHostingEnvironment, string> = {
 	local: 'local',
@@ -127,8 +136,8 @@ function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Reco
 			imageRef,
 			imageTagRef: 'TREESEED_PUBLIC_TREEDX_IMAGE_REF',
 		};
-		const serviceName = railwayEnvironmentQualifiedServiceName('public-treedx-node-01', input.environment);
-		assertApiRailwaySourcePolicy(input.environment, { key: serviceName, serviceName, ...policy });
+		const serviceName = railwayTreeDxServiceName(1, input.environment);
+		assertApiRailwaySourcePolicy(input.environment, { key: 'public-treedx-node-01', serviceName, ...policy });
 		return policy;
 	}
 	const policy = {
@@ -154,7 +163,7 @@ function publicTreeDxSourcePolicy(input: TreeseedHostingGraphInput, config: Reco
 	};
 	assertApiRailwaySourcePolicy(input.environment, {
 		key: 'public-treedx-node-01',
-		serviceName: railwayEnvironmentQualifiedServiceName('public-treedx-node-01', input.environment),
+		serviceName: railwayTreeDxServiceName(1, input.environment),
 		dockerfilePath: railway.dockerfilePath ?? '/Dockerfile',
 		...policy,
 	});
@@ -520,12 +529,49 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 		const environmentConfig = service.environments?.[input.environment];
 		const effectiveServiceName = typeof environmentConfig?.serviceName === 'string' && environmentConfig.serviceName.trim()
 			? environmentConfig.serviceName.trim()
-			: isApiRailwaySourcePolicyService({ key: serviceKey, serviceName: baseServiceName }) && baseServiceName
+			: (serviceKey === 'operationsRunner' || isApiRailwaySourcePolicyService({ key: serviceKey, serviceName: baseServiceName })) && baseServiceName
 				? railwayEnvironmentQualifiedServiceName(baseServiceName, input.environment)
 				: baseServiceName;
-		services.push({
-			id: serviceKey,
-			label: placement === 'runner-capacity' ? 'Runner Capacity' : serviceKey === 'api' ? 'API Runtime' : serviceKey,
+		const runnerPool = serviceKey === 'operationsRunner' && service.railway?.runnerPool && typeof service.railway.runnerPool === 'object'
+			? service.railway.runnerPool
+			: null;
+		const instanceCount = runnerPool
+			? Math.max(1, Number.parseInt(String(runnerPool.bootstrapCount ?? 1), 10) || 1)
+			: 1;
+		const maxRunners = runnerPool
+			? Math.max(1, Number.parseInt(String(runnerPool.maxRunners ?? instanceCount), 10) || instanceCount)
+			: 1;
+		if (runnerPool && instanceCount > maxRunners) {
+			throw new Error(`services.operationsRunner.railway.runnerPool.bootstrapCount (${instanceCount}) cannot exceed maxRunners (${maxRunners}).`);
+		}
+		for (let offset = 0; offset < instanceCount; offset += 1) {
+			const runnerIndex = offset + 1;
+			const instanceId = serviceKey === 'operationsRunner' && runnerIndex > 1
+				? `${serviceKey}-${String(runnerIndex).padStart(2, '0')}`
+				: serviceKey;
+			const instanceServiceName = serviceKey === 'operationsRunner' && effectiveServiceName
+				? indexedName(effectiveServiceName, runnerIndex)
+				: effectiveServiceName;
+			const volumeMountPath = serviceKey === 'operationsRunner'
+				? service.railway?.volumeMountPath ?? runnerPool?.volumeMountPath ?? '/data'
+				: service.railway?.volumeMountPath ?? null;
+			if (instanceServiceName && (service.provider === 'railway' || service.railway)) {
+				assertRailwayResourceNames(instanceServiceName, volumeMountPath ? `${instanceServiceName}-volume` : null);
+			}
+			const environmentBinding = (bindingEnvironment: TreeseedHostingEnvironment) => {
+				const configured = service.environments?.[bindingEnvironment] ?? {};
+				if (!runnerPool) return configured;
+				const configuredName = typeof configured.serviceName === 'string' && configured.serviceName.trim()
+					? configured.serviceName.trim()
+					: baseServiceName
+						? railwayEnvironmentQualifiedServiceName(baseServiceName, bindingEnvironment)
+						: instanceServiceName;
+				const serviceName = configuredName ? indexedName(configuredName, runnerIndex) : instanceServiceName;
+				return { ...configured, serviceName, railwayServiceName: serviceName };
+			};
+			services.push({
+			id: instanceId,
+			label: placement === 'runner-capacity' ? `Runner Capacity ${String(runnerIndex).padStart(2, '0')}` : serviceKey === 'api' ? 'API Runtime' : serviceKey,
 			serviceType,
 			placement,
 			projectGroupId: defaultProjectGroup,
@@ -547,10 +593,14 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 				startCommand: sourcePolicy.imageRef ? null : service.railway?.startCommand ?? null,
 				healthcheckPath: service.railway?.healthcheckPath ?? null,
 				runtimeMode: service.railway?.runtimeMode ?? null,
-				volumeMountPath: service.railway?.volumeMountPath ?? null,
-				runnerPool: service.railway?.runnerPool ?? null,
+				volumeMountPath,
+				volumeName: volumeMountPath && instanceServiceName ? `${instanceServiceName}-volume` : null,
+				runnerPool: runnerPool ? { ...runnerPool, bootstrapCount: instanceCount, maxRunners } : null,
+				runnerIndex: runnerPool ? runnerIndex : null,
+				poolKey: runnerPool ? serviceKey : null,
+				runnerId: runnerPool ? instanceServiceName : null,
 				resourceType: service.railway?.resourceType ?? null,
-				serviceName: effectiveServiceName,
+				serviceName: instanceServiceName,
 				serviceTargets: service.railway?.serviceTargets ?? null,
 			},
 			secretRefs: serviceKey === 'treeseedDatabase' ? ['TREESEED_DATABASE_URL'] : [],
@@ -559,25 +609,26 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 				: [],
 			metadata: String(serviceKey).startsWith('capacityProvider')
 				? { capacityProvider: true, deployByDefault: false }
-				: {},
+				: runnerPool ? { poolKey: serviceKey, runnerIndex } : {},
 			environments: {
 				local: {
 					hostId: serviceType === 'relational-database' || serviceType === 'runner-pool' || service.railway?.volumeMountPath ? 'local-docker' : 'local-process',
 					projectGroupId: undefined,
-					config: service.environments?.local ?? {},
+					config: environmentBinding('local'),
 				},
 				staging: {
 					hostId: service.provider ?? 'railway',
 					projectGroupId: defaultProjectGroup,
-					config: service.environments?.staging ?? {},
+					config: environmentBinding('staging'),
 				},
 				prod: {
 					hostId: service.provider ?? 'railway',
 					projectGroupId: defaultProjectGroup,
-					config: service.environments?.prod ?? {},
+					config: environmentBinding('prod'),
 				},
 			},
-		});
+			});
+		}
 	}
 
 	if (config.cloudflare?.r2) {
@@ -620,7 +671,8 @@ function buildProfileFromDeployConfig(input: TreeseedHostingGraphInput): Treesee
 		const treeDxNodeUnits = Array.from({ length: treeDxNodePool.bootstrapCount }, (_, offset) => {
 			const nodeIndex = offset + 1;
 			const logicalServiceName = indexedName('public-treedx-node', nodeIndex);
-			const serviceName = railwayEnvironmentQualifiedServiceName(logicalServiceName, input.environment);
+			const serviceName = railwayTreeDxServiceName(nodeIndex, input.environment);
+			assertRailwayResourceNames(serviceName, `${serviceName}-volume`);
 			return {
 				id: logicalServiceName,
 				label: `Public TreeDX node ${String(nodeIndex).padStart(2, '0')}`,
@@ -827,7 +879,8 @@ function filterHostingUnits(units: TreeseedHostingUnit[], filter: TreeseedHostin
 	const serviceIds = normalizeFilterValues(filter?.serviceIds);
 	const placements = normalizeFilterValues(filter?.placements as string[] | undefined);
 	const hosts = normalizeFilterValues(filter?.hosts);
-	const allServiceIds = new Set(units.map((unit) => unit.id));
+	const allServiceIds = new Set(units.flatMap((unit) => [unit.id, typeof unit.config.poolKey === 'string' ? unit.config.poolKey : null])
+		.filter((value): value is string => Boolean(value)));
 	const missingServices = [...serviceIds].filter((serviceId) => !allServiceIds.has(serviceId));
 	if (missingServices.length > 0) {
 		throw new Error(`Unknown hosting service id${missingServices.length === 1 ? '' : 's'}: ${missingServices.join(', ')}.`);
@@ -836,7 +889,7 @@ function filterHostingUnits(units: TreeseedHostingUnit[], filter: TreeseedHostin
 		return units.filter((unit) => unit.metadata.deployByDefault !== false);
 	}
 	return units.filter((unit) =>
-		(serviceIds.size === 0 || serviceIds.has(unit.id))
+		(serviceIds.size === 0 || serviceIds.has(unit.id) || (typeof unit.config.poolKey === 'string' && serviceIds.has(unit.config.poolKey)))
 		&& (placements.size === 0 || placements.has(unit.placement))
 		&& (hosts.size === 0 || hosts.has(unit.host.id)));
 }
@@ -982,124 +1035,6 @@ function railwayReconcileSystemsForUnits(units: TreeseedHostingUnit[]): Treeseed
 	return [...systems];
 }
 
-function isInfrastructureHostedUnit(unit: TreeseedHostingUnit) {
-	return ['railway', 'cloudflare', 'cloudflare-dns', 'local-docker'].includes(unit.host.id);
-}
-
-function railwayEnvForHostingApply(input: TreeseedHostingGraphInput, graph: TreeseedHostingGraph) {
-	const seedValues = collectTreeseedConfigSeedValues(input.tenantRoot, graph.environment);
-	return {
-		...process.env,
-		...seedValues,
-	};
-}
-
-/**
- * @deprecated Use reconcileTreeseedTarget with hosting selectors instead.
- */
-export async function applyTreeseedHostingGraph(input: TreeseedHostingGraphInput & { planOnly?: boolean }): Promise<TreeseedHostingApplyResult> {
-	const plan = await planTreeseedHostingGraph(input);
-	const graph = compileTreeseedHostingGraph(input);
-	const selectedSystems = railwayReconcileSystemsForUnits(graph.units);
-	const infrastructureUnits = graph.units.filter(isInfrastructureHostedUnit);
-	if (plan.planOnly) {
-		return {
-			environment: plan.environment,
-			planOnly: true,
-			selectedApps: [...new Set(graph.units.map((unit) => unit.application?.id).filter((value): value is string => Boolean(value)))],
-			selectedSystems,
-			skippedSystems: ['web', 'data', 'github']
-				.filter((system) => !selectedSystems.includes(system as TreeseedRunnableBootstrapSystem))
-				.map((system) => ({ system, reason: selectedSystems.length > 0 ? 'Not selected by hosting app filter.' : 'No Railway reconciliation selected.' })),
-			results: plan.units.map((entry) => ({
-				unit: entry.unit,
-				plan: entry.plan,
-				result: entry.observed,
-				verification: entry.verification,
-			})),
-			placements: plan.placements,
-			warnings: plan.warnings,
-		};
-	}
-	if (infrastructureUnits.length > 0 && selectedSystems.length === 0) {
-		throw new Error(`Hosting apply selected infrastructure resources but no provider reconciliation system was selected: ${infrastructureUnits.map((unit) => `${unit.id} (${unit.host.id})`).join(', ')}.`);
-	}
-	const reconcile = await reconcileTreeseedTarget({
-		tenantRoot: graph.tenantRoot,
-		target: createPersistentDeployTarget(graph.environment),
-		systems: selectedSystems.length > 0 ? selectedSystems : undefined,
-		env: railwayEnvForHostingApply(input, graph),
-		planOnly: plan.planOnly,
-	});
-	const resultByUnit = new Map<string, (typeof reconcile.results)[number]>();
-	for (const entry of reconcile.results) {
-		resultByUnit.set(entry.unit.unitId, entry);
-		resultByUnit.set(entry.unit.logicalName, entry);
-	}
-	const results = plan.units.map((entry) => {
-		const unit = graph.units.find((candidate) => candidate.id === entry.unit.id) ?? entry.unit;
-		const reconcileResult = resultByUnit.get(entry.unit.id) ?? resultByUnit.get(unit.id) ?? resultByUnit.get(unit.logicalName) ?? null;
-		return {
-			unit,
-			plan: entry.plan,
-			result: {
-				status: reconcileResult?.verification?.ready || plan.planOnly ? 'ready' : 'blocked',
-				locators: reconcileResult?.resourceLocators ?? {},
-				state: reconcileResult?.state ?? {
-					unitId: unit.id,
-					action: plan.planOnly ? 'plan' : 'unmatched',
-				},
-				warnings: reconcileResult?.warnings ?? [],
-			},
-			verification: reconcileResult?.verification ? {
-				unitId: unit.id,
-				status: reconcileResult.verification.verified ? 'ready' : 'blocked',
-				verified: reconcileResult.verification.verified,
-				checks: reconcileResult.verification.checks.map((check) => ({
-					key: check.key,
-					label: check.description,
-					ok: check.verified,
-					expected: check.expected,
-					observed: check.observed,
-					issues: check.issues,
-				})),
-				warnings: reconcileResult.verification.warnings,
-			} : {
-				unitId: unit.id,
-				status: plan.planOnly ? 'ready' : 'blocked',
-				verified: plan.planOnly,
-				checks: plan.planOnly ? [] : [{
-					key: 'reconcile-result',
-					label: 'Hosting unit matched a reconcile result',
-					ok: false,
-					issues: [`No reconcile result matched hosting unit ${unit.id}.`],
-				}],
-				warnings: [],
-			},
-		};
-	});
-	return {
-		environment: plan.environment,
-		planOnly: plan.planOnly,
-		selectedApps: [...new Set(graph.units.map((unit) => unit.application?.id).filter((value): value is string => Boolean(value)))],
-		selectedSystems,
-		skippedSystems: ['web', 'data', 'github']
-			.filter((system) => !selectedSystems.includes(system as TreeseedRunnableBootstrapSystem))
-			.map((system) => ({ system, reason: selectedSystems.length > 0 ? 'Not selected by hosting app filter.' : 'No Railway reconciliation selected.' })),
-		transport: selectedSystems.length > 0
-			? {
-				railway: {
-					reconcile: 'api',
-					deploy: process.env.TREESEED_RAILWAY_DEPLOY_TRANSPORT === 'cli-fallback' ? 'cli-fallback' : 'api',
-				},
-			}
-			: undefined,
-		results,
-		placements: plan.placements,
-		warnings: plan.warnings,
-	};
-}
-
 export function serializeHostingUnit(unit: TreeseedHostingUnit) {
 	return sanitizedUnitConfig(unit);
 }
@@ -1228,63 +1163,6 @@ function canonicalHostingReportFromPlan(plan: TreeseedHostingPlan) {
 	});
 }
 
-function canonicalHostingReportFromApplyResult(result: TreeseedHostingApplyResult) {
-	const desiredGraph = result.results.map((entry) => canonicalHostingNode(entry.unit));
-	const observedGraph = result.results.map((entry) => canonicalHostingNode(entry.unit, entry.result));
-	const diff = result.results.flatMap((entry) => [
-		...(entry.plan.action && entry.plan.action !== 'noop'
-			? [{
-				id: `${entry.unit.id}:diff`,
-				resourceId: entry.unit.id,
-				severity: canonicalActionKind(entry.plan.action) === 'blocked' ? 'blocking' : 'info',
-				reason: hostingPlanReason(entry.plan, 'Applied'),
-				provider: entry.unit.host.id,
-				type: entry.unit.serviceType.id,
-				expected: serializeHostingUnit(entry.unit),
-				observed: entry.result,
-			} satisfies TreeseedCanonicalDrift]
-			: []),
-		...canonicalHostingDrift(entry.unit, entry.plan.blockedDrift, 'Blocked provider drift.'),
-	]);
-	const providerLimitations = result.results.flatMap((entry) => canonicalHostingDrift(entry.unit, entry.plan.providerLimitations, 'Provider limitation.'));
-	const actions = result.results.map((entry) => ({
-		id: `${entry.unit.id}:${entry.plan.action ?? 'noop'}`,
-		kind: canonicalActionKind(entry.plan.action),
-		resourceId: entry.unit.id,
-		reason: hostingPlanReason(entry.plan, 'Applied'),
-		provider: entry.unit.host.id,
-		type: entry.unit.serviceType.id,
-		before: entry.result,
-		after: serializeHostingUnit(entry.unit),
-	} satisfies TreeseedCanonicalAction));
-	return createTreeseedCanonicalReconcileReport({
-		desiredGraph,
-		observedGraph,
-		stateGraph: [],
-		diff,
-		actions,
-		postconditions: result.results.map((entry) => canonicalHostingPostcondition(entry.unit, entry.verification)),
-		selectedResources: result.results.map((entry) => entry.unit.id),
-		skippedResources: result.skippedSystems.map((entry) => ({ id: entry.system, reason: entry.reason })),
-		blockedDrift: diff.filter((entry) => entry.severity === 'blocking'),
-		providerLimitations,
-		retainedResources: result.results.flatMap((entry) => (entry.plan.retainedResources ?? []).map((resource: unknown, index: number) => ({
-			id: `${entry.unit.id}:retained:${index + 1}`,
-			provider: entry.unit.host.id,
-			type: 'retained-resource',
-			owner: entry.unit.application?.id ?? null,
-			state: resource,
-		}))),
-		liveVerification: {
-			ok: result.results.every((entry) => entry.verification.verified === true),
-			source: 'hosting-apply',
-			issues: result.results
-				.filter((entry) => entry.verification.verified !== true)
-				.map((entry) => `${entry.unit.id}: verification did not pass after apply`),
-		},
-	});
-}
-
 export function serializeHostingPlan(plan: TreeseedHostingPlan) {
 	const selectedSystems = railwayReconcileSystemsForUnits(plan.units.map((entry) => entry.unit));
 	const canonical = canonicalHostingReportFromPlan(plan);
@@ -1319,34 +1197,6 @@ export function serializeHostingPlan(plan: TreeseedHostingPlan) {
 			verification: entry.verification,
 		})),
 		warnings: plan.warnings,
-	};
-}
-
-export function serializeHostingApplyResult(result: TreeseedHostingApplyResult) {
-	const canonical = canonicalHostingReportFromApplyResult(result);
-	return {
-		environment: result.environment,
-		planOnly: result.planOnly,
-		...canonical,
-		selectedApps: result.selectedApps ?? [],
-		selectedSystems: result.selectedSystems ?? [],
-		skippedSystems: result.skippedSystems ?? [],
-		transport: result.transport,
-		placements: result.placements,
-		results: result.results.map((entry) => ({
-			unit: serializeHostingUnit(entry.unit),
-			desired: serializeHostingUnit(entry.unit),
-			observed: entry.result,
-			diff: entry.plan,
-			actions: entry.plan.actions ?? [entry.plan.action],
-			retainedResources: entry.plan.retainedResources ?? [],
-			blockedDrift: entry.plan.blockedDrift ?? [],
-			providerLimitations: entry.plan.providerLimitations ?? [],
-			plan: entry.plan,
-			result: entry.result,
-			verification: entry.verification,
-		})),
-		warnings: result.warnings,
 	};
 }
 

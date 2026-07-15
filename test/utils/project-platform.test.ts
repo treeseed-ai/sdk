@@ -143,7 +143,7 @@ describe('project platform workflow actions', () => {
 	it('reconciles Railway Postgres volume naming through the IaC project graph', () => {
 		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
 		const syncStart = source.indexOf('async function syncRailwayEnvironmentForScope');
-		const syncEnd = source.indexOf('function shouldDeployRailwayServiceBySourceUpload', syncStart);
+		const syncEnd = source.indexOf('async function observeRailwayUnit', syncStart);
 		const syncSource = source.slice(syncStart, syncEnd);
 		const compiler = readFileSync(new URL('../../src/reconcile/providers/railway-iac.ts', import.meta.url), 'utf8');
 
@@ -160,7 +160,7 @@ describe('project platform workflow actions', () => {
 	it('uses the Railway IaC graph for Treeseed operations runner reconciliation', () => {
 		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
 		const syncStart = source.indexOf('async function syncRailwayEnvironmentForScope');
-		const syncEnd = source.indexOf('function shouldDeployRailwayServiceBySourceUpload', syncStart);
+		const syncEnd = source.indexOf('async function observeRailwayUnit', syncStart);
 		const syncSource = source.slice(syncStart, syncEnd);
 
 		expect(syncStart).toBeGreaterThanOrEqual(0);
@@ -246,7 +246,7 @@ describe('project platform workflow actions', () => {
 	it('does not adopt Railway one-volume service conflicts through CLI reconciliation', () => {
 		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
 		const syncStart = source.indexOf('async function syncRailwayEnvironmentForScope');
-		const syncEnd = source.indexOf('async function ensureRailwayMarketDatabaseForScope', syncStart);
+		const syncEnd = source.indexOf('async function observeRailwayUnit', syncStart);
 		const syncSource = source.slice(syncStart, syncEnd);
 
 		expect(syncStart).toBeGreaterThanOrEqual(0);
@@ -254,6 +254,19 @@ describe('project platform workflow actions', () => {
 		expect(syncSource).not.toContain('looksLikeRailwaySingleVolumeConflict');
 		expect(syncSource).not.toContain('findRailwayVolumeMountedForService');
 		expect(syncSource).toContain('applyRailwayIacProject');
+	});
+
+	it('reattaches existing Railway volumes without temporary transfer resources or copying data', () => {
+		const source = readFileSync(new URL('../../src/reconcile/builtin-adapters.ts', import.meta.url), 'utf8');
+		const syncStart = source.indexOf('async function syncRailwayEnvironmentForScope');
+		const syncEnd = source.indexOf('async function observeRailwayUnit', syncStart);
+		const syncSource = source.slice(syncStart, syncEnd);
+
+		expect(source).not.toContain('async function migrateSharedRailwayVolumes');
+		expect(source).not.toContain('copyRailwayVolumeFilesWithCli');
+		expect(source).not.toContain('treeseed-volume-migration-');
+		expect(source).not.toContain('temporaryMigrationResourceNames');
+		expect(syncSource).toContain('resolveRailwayIacVolumeBindings');
 	});
 
 	it('allows Railway API project context resolution from a project id alone', () => {

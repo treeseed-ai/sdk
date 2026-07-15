@@ -32,7 +32,6 @@ describe('reconciliation import boundaries', () => {
 			'upsertGitHubEnvironmentVariable',
 			'deleteRailwayProject',
 			'deployBranchPreview',
-			'applyTreeseedHostingGraph',
 			'runWorkflowHostedResourceVerification',
 		];
 		const allowed = new Set([

@@ -555,7 +555,7 @@ services:
     rootDir: packages/api
     railway:
       projectName: treeseed-api
-      serviceName: treeseed-api-operations-runner-01
+      serviceName: treeseed-ops-01
       rootDir: packages/api
       buildCommand: npm run build
       startCommand: npm run start:runner
@@ -606,7 +606,7 @@ services:
 			'TREESEED_PLATFORM_RUNNER_ENVIRONMENT',
 		]));
 		expect(runnerServices.map((service) => service.serviceName)).toEqual([
-			'treeseed-api-operations-runner-staging-01',
+			'treeseed-ops-staging-01',
 		]);
 		expect(runnerServices[0]).toMatchObject({
 			secrets: expect.arrayContaining(['TREESEED_PLATFORM_RUNNER_SECRET', 'TREESEED_DATABASE_URL']),

@@ -246,7 +246,7 @@ export function collectTreeseedDeploymentReadiness(options: TreeseedDeploymentRe
 	}
 
 	if (railwayRunner) {
-		const expectedServiceName = railwayEnvironmentQualifiedServiceName('treeseed-api-operations-runner-01', environment);
+		const expectedServiceName = railwayEnvironmentQualifiedServiceName('treeseed-ops-01', environment);
 		checks.push(check('railway-config:operationsRunner:serviceName', railwayRunner.serviceName, expectedServiceName, 'Railway runner uses its environment-qualified identity.', `Set services.operationsRunner.environments.${environment}.serviceName to ${expectedServiceName}.`, 'serviceName'));
 		checks.push(check('railway-config:operationsRunner:rootDirectory', relRoot(tenantRoot, railwayRunner.rootDir), expectedRunnerRailwayRoot, 'Railway runner effective rootDirectory points at the API app.', 'Set services.operationsRunner.railway.rootDir relative to the owning API manifest.', 'rootDirectory'));
 	}

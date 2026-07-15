@@ -1,16 +1,39 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	cleanupRailwayIacRender,
+	cleanupStaleRailwayIacRenders,
+	detachRetainedRailwayVolumeBindings,
+	detachRetainedRailwayCustomDomains,
+	findRailwayPendingVolumeNameCollisions,
+	railwayIacApplyFailure,
 	renderRailwayIacProject,
+	resolveRailwayIacVolumeBindings,
+	runRailwayIacWithRateLimitRetry,
 	selectRailwayIacRetainedResources,
 	validateRailwayIacChangeSet,
+	waitForRailwayServices,
+	waitForRailwayVolumeAdoptionResources,
+	waitForRailwayVolumeDetachment,
+	waitForRailwayVolumeName,
+	waitForRailwayServiceAbsence,
 	type TreeseedRailwayIacProjectInput,
 } from '../../src/reconcile/providers/railway-iac.ts';
 
+const railwaySdkMocks = vi.hoisted(() => ({
+	getCurrentEnvironment: vi.fn(),
+	stageEnvironmentChanges: vi.fn(),
+	commitStagedPatch: vi.fn(),
+}));
+
 vi.mock('railway/iac', () => ({
+	IacClient: class {
+		getCurrentEnvironment = railwaySdkMocks.getCurrentEnvironment;
+		stageEnvironmentChanges = railwaySdkMocks.stageEnvironmentChanges;
+		commitStagedPatch = railwaySdkMocks.commitStagedPatch;
+	},
 	runRailwayIac: vi.fn(async () => ({ ok: true, diagnostics: [], changeSet: { version: 1, diagnostics: [], changes: [] } })),
 }));
 
@@ -23,6 +46,7 @@ function tempRoot() {
 }
 
 afterEach(() => {
+	vi.clearAllMocks();
 	for (const root of tempRoots) {
 		rmSync(root, { recursive: true, force: true });
 	}
@@ -95,6 +119,387 @@ function baseInput(scope: 'staging' | 'prod' = 'staging'): TreeseedRailwayIacPro
 }
 
 describe('Railway IaC project rendering', () => {
+	it('retries only confirmed Railway rate limits with bounded delays', async () => {
+		const run = vi.fn()
+			.mockRejectedValueOnce(new Error('Railway GraphQL request failed with HTTP 429.'))
+			.mockResolvedValue({ ok: true });
+		const sleep = vi.fn(async () => {});
+		const onRetry = vi.fn();
+		const onWait = vi.fn();
+
+		await expect(runRailwayIacWithRateLimitRetry(run, {
+			delaysMs: [30_001],
+			sleep,
+			onRetry,
+			onWait,
+		})).resolves.toEqual({ ok: true });
+		expect(run).toHaveBeenCalledTimes(2);
+		expect(sleep).toHaveBeenNthCalledWith(1, 15_000);
+		expect(sleep).toHaveBeenNthCalledWith(2, 15_000);
+		expect(sleep).toHaveBeenNthCalledWith(3, 1);
+		expect(onRetry).toHaveBeenCalledWith(2, 30_001, expect.any(Error));
+		expect(onWait).toHaveBeenNthCalledWith(1, 2, 15_001);
+		expect(onWait).toHaveBeenNthCalledWith(2, 2, 1);
+		await expect(runRailwayIacWithRateLimitRetry(
+			vi.fn().mockResolvedValueOnce({ ok: false, diagnostics: [{ message: 'fetch failed' }] }).mockResolvedValue({ ok: true }),
+			{ delaysMs: [1], sleep },
+		)).resolves.toEqual({ ok: true });
+		await expect(runRailwayIacWithRateLimitRetry(
+			async () => { throw new Error('invalid source'); },
+			{ delaysMs: [1], sleep },
+		)).rejects.toThrow('invalid source');
+	});
+	it('waits for adopted services and volumes to become observable', async () => {
+		const sleep = vi.fn(async () => {});
+		const load = vi.fn()
+			.mockResolvedValueOnce({ services: [], volumes: [] })
+			.mockResolvedValueOnce({ services: [{ name: 'runner-01' }], volumes: [{ id: 'volume-01' }] });
+
+		await expect(waitForRailwayVolumeAdoptionResources({
+			load,
+			serviceName: 'runner-01',
+			volumeId: 'volume-01',
+			attempts: 2,
+			intervalMs: 1,
+			sleep,
+		})).resolves.toEqual({
+			service: { name: 'runner-01' },
+			volume: { id: 'volume-01' },
+			services: [{ name: 'runner-01' }],
+			volumes: [{ id: 'volume-01' }],
+			attempt: 2,
+		});
+		expect(sleep).toHaveBeenCalledOnce();
+	});
+	it('waits for a replaced Railway service identity to disappear', async () => {
+		const sleep = vi.fn(async () => {});
+		const load = vi.fn()
+			.mockResolvedValueOnce([{ id: 'service-01' }])
+			.mockResolvedValueOnce([]);
+
+		await expect(waitForRailwayServiceAbsence({
+			load,
+			serviceId: 'service-01',
+			attempts: 2,
+			intervalMs: 1,
+			sleep,
+		})).resolves.toEqual({ attempt: 2 });
+		expect(sleep).toHaveBeenCalledOnce();
+	});
+	it('waits for a pending Railway volume to detach before replacement', async () => {
+		const sleep = vi.fn(async () => {});
+		const load = vi.fn()
+			.mockResolvedValueOnce([{
+				id: 'volume-01',
+				instances: [{ environmentId: 'prod', serviceId: 'runner-01' }],
+			}])
+			.mockResolvedValueOnce([{ id: 'volume-01', instances: [] }]);
+
+		await expect(waitForRailwayVolumeDetachment({
+			load,
+			volumeId: 'volume-01',
+			environmentId: 'prod',
+			serviceId: 'runner-01',
+			attempts: 2,
+			intervalMs: 1,
+			sleep,
+		})).resolves.toEqual({ volume: { id: 'volume-01', instances: [] }, attempt: 2 });
+		expect(sleep).toHaveBeenCalledOnce();
+	});
+	it('waits for a pending Railway volume name to leave the canonical namespace', async () => {
+		const sleep = vi.fn(async () => {});
+		const load = vi.fn()
+			.mockResolvedValueOnce([{ id: 'volume-01', name: 'runner-01-volume' }])
+			.mockResolvedValueOnce([{ id: 'volume-01', name: 'pending-delete-volume' }]);
+
+		await expect(waitForRailwayVolumeName({
+			load,
+			volumeId: 'volume-01',
+			expectedName: 'pending-delete-volume',
+			attempts: 2,
+			intervalMs: 1,
+			sleep,
+		})).resolves.toEqual({
+			volume: { id: 'volume-01', name: 'pending-delete-volume' },
+			attempt: 2,
+		});
+		expect(sleep).toHaveBeenCalledOnce();
+	});
+	it('reclaims only aged Railway IaC render directories', () => {
+		const tenantRoot = tempRoot();
+		const tempDir = join(tenantRoot, '.treeseed', 'tmp');
+		const stale = join(tempDir, 'railway-iac-stale');
+		const active = join(tempDir, 'railway-iac-active');
+		const unrelated = join(tempDir, 'other-tool-stale');
+		mkdirSync(stale, { recursive: true });
+		mkdirSync(active, { recursive: true });
+		mkdirSync(unrelated, { recursive: true });
+		const now = Date.now();
+		const staleTime = (now - 20 * 60 * 1000) / 1000;
+		utimesSync(stale, staleTime, staleTime);
+
+		expect(cleanupStaleRailwayIacRenders(tenantRoot, now)).toEqual([stale]);
+		expect(() => statSync(stale)).toThrow();
+		expect(statSync(active).isDirectory()).toBe(true);
+		expect(statSync(unrelated).isDirectory()).toBe(true);
+	});
+	it('does not adopt cross-environment volumes into new qualified services', () => {
+		const input = baseInput('staging');
+		const result = resolveRailwayIacVolumeBindings({
+			environmentId: 'environment-staging',
+			services: input.services,
+			liveServices: [
+				{ id: 'runner-legacy', name: 'treeseed-api-operations-runner-01' },
+				{ id: 'treedx-legacy', name: 'public-treedx-node-01' },
+			],
+			volumes: [
+				{
+					id: 'runner-shared',
+					name: 'treeseed-api-operations-runner-01-volume',
+					instances: [
+						{ environmentId: 'environment-production', serviceId: 'runner-legacy', state: 'READY' },
+						{ environmentId: 'environment-staging', serviceId: null, state: 'READY' },
+					],
+				},
+				{
+					id: 'runner-copy',
+					name: 'treeseed-api-operati-2026-07-14 15:35 UTC',
+					instances: [{ environmentId: 'environment-staging', serviceId: null, state: 'READY' }],
+				},
+				{
+					id: 'runner-pending',
+					name: 'treeseed-api-operations-runner-staging-01-volume',
+					instances: [{
+						environmentId: 'environment-staging',
+						serviceId: null,
+						state: 'READY',
+						isPendingDeletion: true,
+						deletedAt: '2026-07-16T00:00:00.000Z',
+					}],
+				},
+				{
+					id: 'treedx-shared',
+					name: 'public-treedx-node-01-volume',
+					instances: [
+						{ environmentId: 'environment-production', serviceId: 'treedx-legacy', state: 'READY' },
+						{ environmentId: 'environment-staging', serviceId: 'treedx-legacy', state: 'READY' },
+					],
+				},
+			],
+		});
+
+		expect(result.blockedReasons).toEqual([]);
+		expect(result.bindings).toEqual([]);
+	});
+
+	it('releases a pending-only canonical volume name for deterministic replacement', () => {
+		const input = baseInput('staging');
+		const result = resolveRailwayIacVolumeBindings({
+			environmentId: 'environment-staging',
+			services: input.services,
+			liveServices: [],
+			volumes: [{
+				id: 'pending-only',
+				name: 'treeseed-api-operations-runner-staging-01-volume',
+				instances: [{ environmentId: 'environment-staging', isPendingDeletion: true, state: 'READY' }],
+			}],
+		});
+
+		expect(result.bindings).toEqual([]);
+		expect(result.blockedReasons).toEqual([]);
+	});
+
+	it('continues cleanup when a prior retry already tombstoned the pending volume name', () => {
+		const input = baseInput('prod');
+		const service = input.services[1]!;
+		const liveServices = [{ id: 'runner-prod', name: service.serviceName }];
+		const volumes = [{
+			id: 'pending-only',
+			name: 'pending-delete-pending',
+			instances: [{
+				environmentId: 'environment-production',
+				serviceId: 'runner-prod',
+				isPendingDeletion: true,
+				state: 'READY',
+			}],
+		}];
+
+		expect(resolveRailwayIacVolumeBindings({
+			environmentId: 'environment-production',
+			services: [service],
+			liveServices,
+			volumes,
+		}).blockedReasons).toEqual([]);
+		expect(findRailwayPendingVolumeNameCollisions({
+			services: [service],
+			liveServices,
+			volumes,
+		})).toEqual([expect.objectContaining({ volumeId: 'pending-only', serviceId: 'runner-prod' })]);
+	});
+
+	it('allows canonical volume creation only for services with no prior lineage', () => {
+		const input = baseInput('staging');
+		const result = resolveRailwayIacVolumeBindings({
+			environmentId: 'environment-staging',
+			services: input.services,
+			liveServices: [],
+			volumes: [],
+		});
+
+		expect(result).toEqual({ bindings: [], blockedReasons: [] });
+	});
+
+	it('allows a new pool instance when only sibling instance volumes exist', () => {
+		const input = baseInput('staging');
+		const secondRunner = {
+			...input.services[1]!,
+			serviceName: 'treeseed-api-operations-runner-staging-02',
+		};
+		const result = resolveRailwayIacVolumeBindings({
+			environmentId: 'environment-staging',
+			services: [secondRunner],
+			liveServices: [{ id: 'runner-01', name: 'treeseed-api-operations-runner-staging-01' }],
+			volumes: [{
+				id: 'runner-01-volume',
+				name: 'treeseed-api-operations-runner-staging-01-volume',
+				instances: [{ environmentId: 'environment-staging', serviceId: 'runner-01', state: 'READY' }],
+			}],
+		});
+
+		expect(result).toEqual({ bindings: [], blockedReasons: [] });
+	});
+
+	it('does not adopt a noncanonical volume already attached to the desired service', () => {
+		const input = baseInput('staging');
+		const result = resolveRailwayIacVolumeBindings({
+			environmentId: 'environment-staging',
+			services: [input.services[1]!],
+			liveServices: [{ id: 'runner-staging', name: 'treeseed-api-operations-runner-staging-01' }],
+			volumes: [{
+				id: 'runner-copy',
+				name: 'treeseed-api-operati-copy',
+				instances: [{ environmentId: 'environment-staging', serviceId: 'runner-staging', state: 'READY' }],
+			}],
+		});
+
+		expect(result.blockedReasons).toEqual([]);
+		expect(result.bindings).toEqual([]);
+	});
+
+	it('prefers an active canonical environment volume without copying data', () => {
+		const input = baseInput('staging');
+		const service = input.services[2]!;
+		const volumes = [{
+			id: 'target-volume',
+			name: 'public-treedx-node-staging-01-volume',
+			instances: [{ environmentId: 'environment-staging', serviceId: 'treedx-staging', state: 'READY' }],
+		}, {
+			id: 'shared-volume',
+			name: 'public-treedx-node-01-volume',
+			instances: [
+				{ environmentId: 'environment-staging', serviceId: 'treedx-legacy', state: 'READY' },
+				{ environmentId: 'environment-production', serviceId: 'treedx-legacy', state: 'READY' },
+			],
+		}];
+		const liveServices = [
+			{ id: 'treedx-staging', name: 'public-treedx-node-staging-01' },
+			{ id: 'treedx-legacy', name: 'public-treedx-node-01' },
+		];
+		const resolved = resolveRailwayIacVolumeBindings({
+			environmentId: 'environment-staging',
+			services: [service],
+			liveServices,
+			volumes,
+		});
+		expect(resolved.bindings).toEqual([expect.objectContaining({ volumeId: 'target-volume', mode: 'canonical' })]);
+	});
+
+	it('does not adopt another service family volume', () => {
+		const input = baseInput('staging');
+		const result = resolveRailwayIacVolumeBindings({
+			environmentId: 'environment-staging',
+			services: [input.services[1]!],
+			liveServices: [{ id: 'runner-legacy', name: 'treeseed-api-operations-runner-01' }],
+			volumes: [{
+				id: 'treedx-copy',
+				name: 'public-treedx-node-copy',
+				instances: [{ environmentId: 'environment-staging', state: 'READY' }],
+			}],
+		});
+
+		expect(result.bindings).toEqual([]);
+		expect(result.blockedReasons).toEqual([]);
+	});
+
+	it('renames an adopted environment volume by preserving its existing IaC address', () => {
+		const input = baseInput('staging');
+		input.services[1]!.volumeName = 'treeseed-api-operations-runner-staging-01-volume';
+		input.services[1]!.volumeAddress = 'volume.treeseed-api-operati-2026-07-14 15:35 UTC';
+		const rendered = renderRailwayIacProject(input);
+		try {
+			expect(rendered.volumeNames).toContain('treeseed-api-operations-runner-staging-01-volume');
+			expect(rendered.source).toContain('volume("treeseed-api-operations-runner-staging-01-volume"');
+			expect(rendered.source).toContain('address: "volume.treeseed-api-operati-2026-07-14 15:35 UTC"');
+		} finally {
+			cleanupRailwayIacRender(rendered);
+		}
+	});
+
+	it('detaches moved volumes from retained legacy services in the same desired graph', () => {
+		const retained = [{
+			address: 'service.treeseed-api-operations-runner-01',
+			type: 'service',
+			name: 'treeseed-api-operations-runner-01',
+			kind: 'github',
+			volumeAttachments: {
+				'/data': { volume: 'volume.runner-copy', mountPath: '/data' },
+			},
+			deploy: { requiredMountPath: '/data', sleepApplication: false },
+		}] as any;
+		const result = detachRetainedRailwayVolumeBindings(retained, [{
+			serviceName: 'treeseed-api-operations-runner-staging-01',
+			volumeId: 'runner-copy',
+			volumeName: 'runner-copy',
+			canonicalVolumeName: 'treeseed-api-operations-runner-staging-01-volume',
+			mode: 'environment-owned',
+			reason: 'test',
+		}]);
+
+		expect(result[0]).not.toHaveProperty('volumeAttachments');
+		expect(result[0]?.deploy).not.toHaveProperty('requiredMountPath');
+	});
+
+
+	it('moves custom domains off retained legacy services in the desired graph', () => {
+		const retained = [{
+			address: 'service.treeseed-api',
+			type: 'service',
+			name: 'treeseed-api',
+			kind: 'image',
+			networking: {
+				customDomains: {
+					'api.preview.treeseed.dev': {},
+					'legacy.example.test': {},
+				},
+			},
+		}] as any;
+
+		const result = detachRetainedRailwayCustomDomains(retained, ['api.preview.treeseed.dev']);
+
+		expect(result[0]?.networking?.customDomains).toEqual({ 'legacy.example.test': {} });
+	});
+
+	it('renders desired custom domains through Railway IaC networking', () => {
+		const input = baseInput('staging');
+		input.services[0]!.customDomains = ['api.preview.treeseed.dev'];
+		const rendered = renderRailwayIacProject(input);
+		try {
+			expect(rendered.source).toContain('"customDomains":{"api.preview.treeseed.dev":{}}');
+		} finally {
+			cleanupRailwayIacRender(rendered);
+		}
+	});
+
 	it('renders the complete API project graph with canonical service and volume names', () => {
 		const rendered = renderRailwayIacProject(baseInput('staging'));
 		try {
@@ -216,7 +621,10 @@ describe('Railway IaC project rendering', () => {
 			expect(rendered.source).toContain('volumeMounts: { "old-db-volume": null, "/var/lib/postgresql/data": dbVolume }');
 			expect(rendered.source).toContain('volumeMounts: { "old-runner-volume": null, "/data": vol1 }');
 			expect(rendered.source).toContain('volumeMounts: { "/data": vol2 }');
-			expect(rendered.source).toContain('"requiredMountPath":"/data"');
+			expect(rendered.source).not.toContain('"requiredMountPath":"/data"');
+			expect(rendered.source).not.toContain('"sleepApplication":false');
+			expect(rendered.source).not.toMatch(/deploy: \{[^\n]*"region"/u);
+			expect(rendered.source).toContain('regions: {"us-east4-eqdc4a":1}');
 		} finally {
 			cleanupRailwayIacRender(rendered);
 		}
@@ -250,7 +658,17 @@ describe('Railway IaC project rendering', () => {
 });
 
 describe('Railway IaC plan validation', () => {
-	it('selects only explicitly allowed deleted sibling resources from the live graph', () => {
+	it('waits for every asynchronously created service to become observable', async () => {
+		let calls = 0;
+		const result = await waitForRailwayServices({
+			serviceNames: ['runner-01', 'runner-02'],
+			load: async () => ++calls === 1 ? [{ name: 'runner-01' }] : [{ name: 'runner-01' }, { name: 'runner-02' }],
+			sleep: async () => undefined,
+		});
+		expect(result).toMatchObject({ attempt: 2 });
+	});
+
+	it('selects every explicitly allowed sibling resource from the live graph', () => {
 		const stagingService = {
 			address: 'service.treeseed-api',
 			type: 'service',
@@ -485,6 +903,33 @@ describe('Railway IaC plan validation', () => {
 });
 
 describe('Railway IaC runner safety', () => {
+	it('requires a successful apply result for a non-empty change set', () => {
+		expect(railwayIacApplyFailure({
+			ok: true,
+			diagnostics: [],
+			changeSet: { changes: [{ kind: 'resource.create' }] },
+			applyResult: {
+				status: 'FAILED',
+				changes: [{ kind: 'resource.create', path: 'service.api', status: 'FAILED' }],
+				diagnostics: [{ message: 'service already exists' }],
+			},
+		} as any)).toContain('service already exists');
+	});
+
+	it('accepts no-op and fully applied results', () => {
+		expect(railwayIacApplyFailure({ ok: true, diagnostics: [], changeSet: { changes: [] } } as any)).toBeNull();
+		expect(railwayIacApplyFailure({
+			ok: true,
+			diagnostics: [],
+			changeSet: { changes: [{ kind: 'resource.create' }] },
+			applyResult: {
+				status: 'APPLIED',
+				changes: [{ kind: 'resource.create', path: 'service.api', status: 'APPLIED' }],
+				diagnostics: [],
+			},
+		} as any)).toBeNull();
+	});
+
 	it('uses non-destructive merge mode for plan and apply', async () => {
 		const railway = await import('railway/iac');
 		const { applyRailwayIacProject, planRailwayIacProject } = await import('../../src/reconcile/providers/railway-iac.ts');

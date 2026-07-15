@@ -6,7 +6,7 @@ import { resolveTreeseedMachineEnvironmentValues } from './config-runtime.ts';
 import { createPersistentDeployTarget, resolveTreeseedResourceIdentity } from './deploy.ts';
 import { classifyTreeseedGitMode, runTreeseedGitText } from './git-runner.ts';
 import { discoverTreeseedApplications } from '../../hosting/apps.ts';
-import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName } from './railway-source-policy.ts';
+import { apiRailwayDefaultDockerfilePath, apiRailwayDefaultSourceRepo, assertApiRailwaySourcePolicy, isApiRailwaySourcePolicyService, railwayEnvironmentQualifiedServiceName, railwayTreeDxServiceName } from './railway-source-policy.ts';
 import { runPrefixedCommand, sleep, type TreeseedBootstrapTaskPrefix, type TreeseedBootstrapWriter } from './bootstrap-runner.ts';
 import {
 	ensureRailwayEnvironment,
@@ -906,7 +906,7 @@ function configuredPublicTreeDxRailwayServices({ tenantRoot, scope, deployConfig
 	return Array.from({ length: bootstrapCount }, (_, offset) => {
 		const index = offset + 1;
 		const baseServiceName = `${PUBLIC_TREEDX_NODE_SERVICE_KEY_PREFIX}${String(index).padStart(2, '0')}`;
-		const serviceName = railwayEnvironmentQualifiedServiceName(baseServiceName, scope);
+		const serviceName = railwayTreeDxServiceName(index, scope);
 		const service = {
 			key: baseServiceName,
 			serviceName,
@@ -1144,7 +1144,7 @@ export function configuredRailwayServices(tenantRoot, scope, envOverlay = {}, op
 	return [...direct, ...nested];
 }
 
-export function legacyEnvironmentSpecificRailwayResourceNames(
+export function obsoleteUnqualifiedRailwayResourceNames(
 	services: ReturnType<typeof configuredRailwayServices>,
 ) {
 	const aliases = new Set<string>();
@@ -1153,31 +1153,46 @@ export function legacyEnvironmentSpecificRailwayResourceNames(
 		if (!alias || alias === service.serviceName) continue;
 		aliases.add(alias);
 		if (service.volumeMountPath) aliases.add(`${alias}-volume`);
+		const index = /-(\d+)$/u.exec(service.serviceName)?.[1] ?? '01';
+		const environmentSuffix = service.railwayEnvironment === 'production' ? 'production' : 'staging';
+		const formerNames = service.key === 'operationsRunner'
+			? [
+				`treeseed-api-operations-runner-${index}`,
+				`treeseed-api-operations-runner-${environmentSuffix}-${index}`,
+			]
+			: service.key.startsWith('public-treedx-node-')
+				? [
+					`public-treedx-node-${index}`,
+					`public-treedx-node-${environmentSuffix}-${index}`,
+				]
+				: [];
+		for (const formerName of formerNames) {
+			if (formerName === service.serviceName) continue;
+			aliases.add(formerName);
+			if (service.volumeMountPath) aliases.add(`${formerName}-volume`);
+		}
 	}
 	return [...aliases];
 }
 
-export function railwayLegacyAliasMigrationPolicy(
+export function railwayObsoleteAliasCleanupPolicy(
 	scope: 'staging' | 'prod',
 	services: ReturnType<typeof configuredRailwayServices>,
 	liveProjectServiceNames: Iterable<string> = [],
 	activeEnvironmentServiceNames: Iterable<string> = [],
 ) {
-	const aliases = legacyEnvironmentSpecificRailwayResourceNames(services);
+	const aliases = obsoleteUnqualifiedRailwayResourceNames(services);
 	const liveNames = new Set(liveProjectServiceNames);
-	const activeNames = new Set(activeEnvironmentServiceNames);
-	const qualifiedPairs = services
+	void scope;
+	void activeEnvironmentServiceNames;
+	const qualifiedServices = services
 		.filter((service) => service.serviceName !== service.serviceName.replace(/-(?:staging|production)(?=-\d+$|$)/u, ''))
-		.flatMap((service) => [
-			service.serviceName.replace(/-staging(?=-\d+$|$)/u, '-production'),
-			service.serviceName.replace(/-production(?=-\d+$|$)/u, '-staging'),
-		]);
-	const migrationComplete = aliases.length > 0
-		&& qualifiedPairs.every((name) => liveNames.has(name))
-		&& aliases.every((name) => name.endsWith('-volume') || !activeNames.has(name));
+		.map((service) => service.serviceName);
+	const qualifiedResourcesExist = aliases.length > 0
+		&& qualifiedServices.every((name) => liveNames.has(name));
 	return {
-		retainedResourceNames: migrationComplete ? [] : aliases,
-		allowedResourceDeletions: migrationComplete ? aliases : [],
+		retainedResourceNames: qualifiedResourcesExist ? [] : aliases,
+		allowedResourceDeletions: qualifiedResourcesExist ? aliases : [],
 	};
 }
 

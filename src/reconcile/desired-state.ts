@@ -260,6 +260,7 @@ export function deriveTreeseedDesiredUnits({
 			secrets: {},
 			metadata: {
 				serviceKey,
+				serviceInstanceKey: configuredService.instanceKey ?? desiredServiceName,
 				scheduleManaged: Array.isArray(configuredService.schedule) && configuredService.schedule.length > 0,
 				scheduleBootstrap: false,
 				scheduleDeployScopes: ['staging', 'prod'],
@@ -316,13 +317,16 @@ export function deriveTreeseedDesiredUnits({
 				default: return isPublicTreeDxNodeServiceKey(serviceKey) ? 'api-runtime' : 'api-runtime';
 			}
 		})();
+		const runtimeInstanceKey = serviceKey === 'operationsRunner'
+			? configuredService.instanceKey ?? desiredServiceName
+			: serviceKey;
 		add({
-			unitId: createTreeseedReconcileUnitId(runtimeUnitType, serviceKey),
+			unitId: createTreeseedReconcileUnitId(runtimeUnitType, runtimeInstanceKey),
 			unitType: runtimeUnitType,
 			provider: 'treeseed',
 			identity,
 			target,
-			logicalName: serviceKey,
+			logicalName: runtimeInstanceKey,
 			dependencies: [
 				concreteId,
 				...(apiCustomDomainId ? [apiCustomDomainId] : []),
@@ -333,7 +337,7 @@ export function deriveTreeseedDesiredUnits({
 				publicBaseUrl: serviceState?.publicBaseUrl ?? null,
 			},
 			secrets: {},
-			metadata: { bootstrapSystem: serviceBootstrapSystem },
+			metadata: { serviceKey, bootstrapSystem: serviceBootstrapSystem },
 		});
 	}
 

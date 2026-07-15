@@ -69,15 +69,6 @@ describe('hosting legacy mutation boundary', () => {
 		}
 	});
 
-	it('keeps applyTreeseedHostingGraph as a reconcile-only compatibility facade', () => {
-		const graph = source('packages/sdk/src/hosting/graph.ts');
-		const body = functionBody(graph, 'applyTreeseedHostingGraph');
-		expect(body).toContain('reconcileTreeseedTarget');
-		for (const blocked of ['.host.apply', '.host.verify', 'deploySelectedRailwayServices', 'reconcilePublicTreeDxUnits']) {
-			expect(body, `apply facade must not call ${blocked}`).not.toContain(blocked);
-		}
-	});
-
 	it('prevents the legacy Cloudflare hosting adapter from mutating providers', () => {
 		const builtins = source('packages/sdk/src/hosting/builtins.ts');
 		for (const blocked of [
@@ -110,8 +101,6 @@ describe('hosting legacy mutation boundary', () => {
 			['resolveRailwayTopologyForScope', anyFunctionBody(builtins, 'resolveRailwayTopologyForScope')],
 			['syncRailwayEnvironmentForScope', anyFunctionBody(builtins, 'syncRailwayEnvironmentForScope')],
 			['reconcileStaleOperationsRunnerResourcesForProject', anyFunctionBody(builtins, 'reconcileStaleOperationsRunnerResourcesForProject')],
-			['ensureRailwayMarketDatabaseForScope', anyFunctionBody(builtins, 'ensureRailwayMarketDatabaseForScope')],
-			['reconcileAccidentalMarketDatabaseServices', anyFunctionBody(builtins, 'reconcileAccidentalMarketDatabaseServices')],
 		] as const) {
 			for (const blocked of [
 				'deleteRailwayService',
@@ -131,7 +120,7 @@ describe('hosting legacy mutation boundary', () => {
 	it('routes Railway hosting provisioning through the SDK IaC project adapter only', () => {
 		const builtins = source('packages/sdk/src/reconcile/builtin-adapters.ts');
 		const syncStart = builtins.indexOf('async function syncRailwayEnvironmentForScope');
-		const syncEnd = builtins.indexOf('function shouldDeployRailwayServiceBySourceUpload', syncStart);
+		const syncEnd = builtins.indexOf('async function observeRailwayUnit', syncStart);
 		expect(syncStart).toBeGreaterThanOrEqual(0);
 		expect(syncEnd).toBeGreaterThan(syncStart);
 		const sync = builtins.slice(syncStart, syncEnd);
@@ -153,5 +142,9 @@ describe('hosting legacy mutation boundary', () => {
 		]) {
 			expect(sync, `syncRailwayEnvironmentForScope must not call ${blocked}`).not.toContain(blocked);
 		}
+		expect(builtins).not.toContain('function shouldDeployRailwayServiceBySourceUpload');
+		expect(builtins).not.toContain('function deployRailwayServiceBySourceUpload');
+		expect(builtins).not.toContain('function ensureRailwayMarketDatabaseForScope');
+		expect(builtins).not.toContain('function reconcileAccidentalMarketDatabaseServices');
 	});
 });

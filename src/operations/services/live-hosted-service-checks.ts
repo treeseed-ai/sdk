@@ -16,8 +16,9 @@ import {
 	configuredRailwayServices,
 	findStaleTreeseedOperationsRunnerResources,
 	isTreeseedOperationsRunnerResourceName,
-	railwayLegacyAliasMigrationPolicy,
+	railwayObsoleteAliasCleanupPolicy,
 } from './railway-deploy.ts';
+import { railwayTreeDxServiceName } from './railway-source-policy.ts';
 import { discoverTreeseedApplications } from '../../hosting/apps.ts';
 import {
 	collectTreeseedHostedServiceChecks,
@@ -28,7 +29,7 @@ import {
 
 const DEFAULT_RETRY_ATTEMPTS = 3;
 const DEFAULT_RETRY_INTERVAL_MS = 1500;
-const DEFAULT_RAILWAY_DEPLOYMENT_SETTLE_ATTEMPTS = 120;
+const DEFAULT_RAILWAY_DEPLOYMENT_SETTLE_ATTEMPTS = 12;
 const DEFAULT_RAILWAY_DEPLOYMENT_SETTLE_INTERVAL_MS = 5000;
 
 export interface TreeseedLiveHostedServiceCheckOptions {
@@ -126,6 +127,8 @@ async function observeHttp(url: string, options: TreeseedLiveHostedServiceCheckO
 async function inspectRailwayServiceDeploymentHealthWithRetry(input: {
 	serviceId: string;
 	environmentId: string;
+	serviceName?: string;
+	acceptSleeping?: boolean;
 	options: TreeseedLiveHostedServiceCheckOptions;
 }) {
 	const attempts = Math.max(1, Math.floor(input.options.retry?.attempts ?? DEFAULT_RAILWAY_DEPLOYMENT_SETTLE_ATTEMPTS));
@@ -142,8 +145,14 @@ async function inspectRailwayServiceDeploymentHealthWithRetry(input: {
 			});
 			lastDeployment = deployment;
 			if (deployment.ok) return deployment;
+			if (input.acceptSleeping && deployment.status === 'SLEEPING') {
+				return { ...deployment, ok: true, message: 'Serverless deployment is healthy and sleeping until requested.' };
+			}
 		} catch (error) {
 			lastError = error;
+		}
+		if (attempt === 0 || (attempt + 1) % 3 === 0) {
+			process.stderr.write(`[trsd][railway][live-check] service=${input.serviceName ?? input.serviceId} attempt=${attempt + 1}/${attempts} status=${lastDeployment?.status ?? 'unavailable'}\n`);
 		}
 		if (attempt + 1 < attempts) await sleep(intervalMs);
 	}
@@ -338,6 +347,30 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 	const inspectedRunnerScopes = new Set<string>();
 	const selectedServiceKeys = selectedServiceKeySet(options);
 	const applications = discoverTreeseedApplications(options.tenantRoot);
+	const environmentCache = new Map<string, Promise<Awaited<ReturnType<typeof listRailwayEnvironments>>>>();
+	const serviceCache = new Map<string, Promise<Awaited<ReturnType<typeof listRailwayServices>>>>();
+	const volumeCache = new Map<string, Promise<Awaited<ReturnType<typeof listRailwayVolumes>>>>();
+	const environmentsFor = (projectId: string) => {
+		const existing = environmentCache.get(projectId);
+		if (existing) return existing;
+		const loaded = listRailwayEnvironments({ projectId, env: options.env, fetchImpl: options.fetchImpl });
+		environmentCache.set(projectId, loaded);
+		return loaded;
+	};
+	const servicesFor = (projectId: string) => {
+		const existing = serviceCache.get(projectId);
+		if (existing) return existing;
+		const loaded = listRailwayServices({ projectId, env: options.env, fetchImpl: options.fetchImpl });
+		serviceCache.set(projectId, loaded);
+		return loaded;
+	};
+	const volumesFor = (projectId: string) => {
+		const existing = volumeCache.get(projectId);
+		if (existing) return existing;
+		const loaded = listRailwayVolumes({ projectId, env: options.env, fetchImpl: options.fetchImpl }).catch(() => []);
+		volumeCache.set(projectId, loaded);
+		return loaded;
+	};
 	try {
 		const workspace = await resolveRailwayWorkspaceContext({ env: options.env, fetchImpl: options.fetchImpl });
 		const projects = await listRailwayProjects({ workspaceId: workspace.id, env: options.env, fetchImpl: options.fetchImpl });
@@ -350,8 +383,8 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 				.filter((entry) => entry.enabled !== false)
 				.filter((entry) => entry.key === 'operationsRunner')
 			: [];
-		const retainedMigrationAliases = options.target === 'staging'
-			? railwayLegacyAliasMigrationPolicy('staging', configuredServices).retainedResourceNames
+		const retainedObsoleteAliases = options.target === 'staging'
+			? railwayObsoleteAliasCleanupPolicy('staging', configuredServices).retainedResourceNames
 			: [];
 		if (selectedServiceKeys.size === 0 || selectedServiceKeys.has('api') || selectedServiceKeys.has('operationsRunner')) {
 			for (const descriptor of treeseedDatabaseDescriptors(options.tenantRoot, options)) {
@@ -369,7 +402,7 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 				issues.push(`${service.serviceName}: Railway project ${service.projectName} was not found.`);
 				continue;
 			}
-			const environments = await listRailwayEnvironments({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl });
+			const environments = await environmentsFor(project.id);
 			const environment = findByName(environments, service.railwayEnvironment);
 			if (!environment?.id) {
 				issues.push(`${service.serviceName}: Railway environment ${service.railwayEnvironment} was not found.`);
@@ -378,7 +411,7 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 			const volumeScope = `${project.id}:${environment.id}`;
 			if (!inspectedVolumeScopes.has(volumeScope)) {
 				inspectedVolumeScopes.add(volumeScope);
-				const volumes = await listRailwayVolumes({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => []);
+				const volumes = await volumesFor(project.id);
 				for (const volume of volumes) {
 					if (isRetainedDetachedRailwayVolume(volume.name)) {
 						continue;
@@ -396,7 +429,7 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 					}
 				}
 			}
-			const services = await listRailwayServices({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl });
+			const services = await servicesFor(project.id);
 			const runnerScope = `${project.id}:${environment.id}`;
 			if (service.key === 'operationsRunner' && !inspectedRunnerScopes.has(runnerScope)) {
 				inspectedRunnerScopes.add(runnerScope);
@@ -411,7 +444,7 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 						.filter((entry) => entry.projectId ? entry.projectId === project.id : entry.projectName === project.name)
 						.map((entry) => entry.serviceName)
 						.filter((name) => Boolean(name) && isTreeseedOperationsRunnerResourceName(name)),
-					...retainedMigrationAliases
+					...retainedObsoleteAliases
 						.filter((name) => isTreeseedOperationsRunnerResourceName(name) && !name.endsWith('-volume')),
 				]);
 				const desiredRunnerServiceIds = new Set(services
@@ -420,10 +453,10 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 				for (const staleService of findStaleTreeseedOperationsRunnerResources(services, desiredRunnerNames)) {
 					issues.push(`${staleService.name}: stale operations runner Railway service remains in project ${project.name}.`);
 				}
-				const volumes = await listRailwayVolumes({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => []);
+				const volumes = await volumesFor(project.id);
 				const desiredRunnerVolumeNames = new Set([
 					...[...desiredRunnerNames].map((name) => `${name}-volume`),
-					...retainedMigrationAliases.filter((name) => name.endsWith('-volume')),
+					...retainedObsoleteAliases.filter((name) => name.endsWith('-volume')),
 				]);
 				for (const staleVolume of findStaleTreeseedOperationsRunnerResources(volumes, desiredRunnerVolumeNames)) {
 					const activeInstances = activeRailwayVolumeInstances(staleVolume);
@@ -444,7 +477,7 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 			const [instance, variables, volumes] = await Promise.all([
 				getRailwayServiceInstance({ serviceId: railwayService.id, environmentId: environment.id, env: options.env, fetchImpl: options.fetchImpl }),
 				listRailwayVariables({ projectId: project.id, environmentId: environment.id, serviceId: railwayService.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => ({})),
-				listRailwayVolumes({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => []),
+				volumesFor(project.id),
 			]);
 			const mountedVolume = Array.isArray(volumes)
 				? volumes.find((entry: any) => {
@@ -474,6 +507,8 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 			const deployment = await inspectRailwayServiceDeploymentHealthWithRetry({
 				serviceId: railwayService.id,
 				environmentId: environment.id,
+				serviceName: service.serviceName,
+				acceptSleeping: service.runtimeMode === 'serverless',
 				options,
 			}).catch((error) => ({
 				ok: false,
@@ -538,21 +573,22 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 					issues.push(`public-treedx: Railway project ${projectName} was not found.`);
 					continue;
 				}
-				const environments = await listRailwayEnvironments({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl });
+				const environments = await environmentsFor(project.id);
 				const environment = findByName(environments, environmentName);
 				if (!environment?.id) {
 					issues.push(`public-treedx: Railway environment ${environmentName} was not found.`);
 					continue;
 				}
 				const [services, volumes] = await Promise.all([
-					listRailwayServices({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl }),
-					listRailwayVolumes({ projectId: project.id, env: options.env, fetchImpl: options.fetchImpl }).catch(() => []),
+					servicesFor(project.id),
+					volumesFor(project.id),
 				]);
 				for (let index = 1; index <= bootstrapCount; index += 1) {
-					const serviceName = indexedName('public-treedx-node', index);
+					const logicalServiceName = indexedName('public-treedx-node', index);
+					const serviceName = railwayTreeDxServiceName(index, options.target);
 					const volumeName = `${serviceName}-volume`;
 					const configuredNode = Array.isArray(config.services)
-						? config.services.find((service: any) => service?.id === serviceName || service?.name === serviceName)
+						? config.services.find((service: any) => service?.id === logicalServiceName || service?.name === logicalServiceName)
 						: null;
 					const volumeMountPath = typeof configuredNode?.volumeMountPath === 'string' && configuredNode.volumeMountPath.trim()
 						? configuredNode.volumeMountPath.trim()
@@ -565,6 +601,7 @@ async function collectRailwayObservations(options: TreeseedLiveHostedServiceChec
 					const deployment = await inspectRailwayServiceDeploymentHealthWithRetry({
 						serviceId: service.id,
 						environmentId: environment.id,
+						serviceName,
 						options,
 					}).catch((error) => ({
 						ok: false,
