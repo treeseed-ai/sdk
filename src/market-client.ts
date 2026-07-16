@@ -31,6 +31,16 @@ import type {
 	TreeseedGitHubActionsSecretPublicKeyMetadata,
 } from './secrets-capability.ts';
 import type { TreeseedRepositoryImportPlan } from './project-import.ts';
+import type {
+	AccountDeletionBlocker,
+	AccountIdentity,
+	AccountNotification,
+	AccountWebSession,
+	AuthAvailabilityResult,
+	NotificationPreferences,
+	PersonalTheme,
+	PersonalThemeDraft,
+} from './account-contracts.ts';
 import {
 	TREESEED_REMOTE_CONTRACT_HEADER,
 	TREESEED_REMOTE_CONTRACT_VERSION,
@@ -572,9 +582,19 @@ export class MarketClient {
 	}
 
 	checkWebUsername(username: string) {
-		return this.request<{ ok: true; payload: { username: string; available: boolean; status: string } }>(
-			`/v1/auth/web/username/check?username=${encodeURIComponent(username)}`,
-		);
+		return this.request<{ ok: true; payload: AuthAvailabilityResult }>(`/v1/auth/availability/username?value=${encodeURIComponent(username)}`);
+	}
+
+	checkWebEmail(email: string) {
+		return this.request<{ ok: true; payload: AuthAvailabilityResult }>(`/v1/auth/availability/email?value=${encodeURIComponent(email)}`);
+	}
+
+	authProviders() {
+		return this.request<{ ok: true; payload: Array<{ id: string; label: string }> }>('/v1/auth/providers');
+	}
+
+	accountIdentity() {
+		return this.request<{ ok: true; payload: AccountIdentity }>('/v1/auth/web/account/identity', { requireAuth: true });
 	}
 
 	webEmails() {
@@ -611,11 +631,11 @@ export class MarketClient {
 	}
 
 	webSessions() {
-		return this.request<{ ok: true; payload: unknown[] }>('/v1/auth/web/sessions', { requireAuth: true });
+		return this.request<{ ok: true; payload: AccountWebSession[] }>('/v1/auth/web/sessions', { requireAuth: true });
 	}
 
 	revokeWebSession(sessionId: string) {
-		return this.request<{ ok: true; payload: { sessionId: string } }>(
+		return this.request<{ ok: true; payload: { sessionId: string; status: 'revoked' | 'already-revoked' } }>(
 			`/v1/auth/web/sessions/${encodeURIComponent(sessionId)}/revoke`,
 			{ method: 'POST', requireAuth: true },
 		);
@@ -641,15 +661,7 @@ export class MarketClient {
 		});
 	}
 
-	updateWebEmail(body: { email: string }) {
-		return this.request<{ ok: true; payload: MarketWebAuthSession }>('/v1/auth/web/email', {
-			method: 'PATCH',
-			body,
-			requireAuth: true,
-		});
-	}
-
-	updateWebPassword(body: { currentPassword?: string; password: string }) {
+	updateWebPassword(body: { currentPassword?: string; password: string; reauthenticationGrantId?: string }) {
 		return this.request<{ ok: true; payload: { changed: true } }>('/v1/auth/web/password', {
 			method: 'PATCH',
 			body,
@@ -672,15 +684,47 @@ export class MarketClient {
 	}
 
 	accountDeletionBlockers() {
-		return this.request<{ ok: true; payload: { blockers: unknown[]; canDelete: boolean } }>('/v1/auth/web/account/deletion-blockers', { requireAuth: true });
+		return this.request<{ ok: true; payload: { blockers: AccountDeletionBlocker[]; canDelete: boolean } }>('/v1/auth/web/account/deletion-blockers', { requireAuth: true });
 	}
 
-	deleteAccount(body: { confirmation?: string } = {}) {
+	deleteAccount(body: { confirmation?: string; currentPassword?: string; reauthenticationGrantId?: string } = {}) {
 		return this.request<{ ok: true; payload: { deleted: true } }>('/v1/auth/web/account', {
 			method: 'DELETE',
 			body,
 			requireAuth: true,
 		});
+	}
+
+	webNotificationPreferences() {
+		return this.request<{ ok: true; payload: NotificationPreferences }>('/v1/auth/web/notifications/preferences', { requireAuth: true });
+	}
+
+	updateWebNotificationPreferences(body: NotificationPreferences) {
+		return this.request<{ ok: true; payload: NotificationPreferences }>('/v1/auth/web/notifications/preferences', { method: 'PUT', body, requireAuth: true });
+	}
+
+	webNotifications(limit = 20) {
+		return this.request<{ ok: true; payload: AccountNotification[] }>(`/v1/auth/web/notifications?limit=${encodeURIComponent(String(limit))}`, { requireAuth: true });
+	}
+
+	markWebNotificationRead(notificationId: string) {
+		return this.request<{ ok: true; payload: { id: string; readAt: string } }>(`/v1/auth/web/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'POST', requireAuth: true });
+	}
+
+	personalThemes() {
+		return this.request<{ ok: true; payload: PersonalTheme[] }>('/v1/auth/web/themes', { requireAuth: true });
+	}
+
+	createPersonalTheme(body: PersonalThemeDraft) {
+		return this.request<{ ok: true; payload: PersonalTheme }>('/v1/auth/web/themes', { method: 'POST', body, requireAuth: true });
+	}
+
+	updatePersonalTheme(themeId: string, body: PersonalThemeDraft) {
+		return this.request<{ ok: true; payload: PersonalTheme }>(`/v1/auth/web/themes/${encodeURIComponent(themeId)}`, { method: 'PATCH', body, requireAuth: true });
+	}
+
+	deletePersonalTheme(themeId: string) {
+		return this.request<{ ok: true; payload: { id: string; deleted: true } }>(`/v1/auth/web/themes/${encodeURIComponent(themeId)}`, { method: 'DELETE', requireAuth: true });
 	}
 
 	me() {

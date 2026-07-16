@@ -19,6 +19,8 @@ The SDK is the shared platform substrate used by:
 
 The SDK is not a UI package, admin portal, backend server, CLI parser, capacity-provider runtime, AgentKernel runtime, or ecommerce implementation. See the root [Package Ownership](../../docs/package-ownership.md) guide for the full system map.
 
+The `@treeseed/sdk/account-contracts` export is the canonical portable contract for auth availability, credential/provider results, account identity and sessions, notification capabilities/preferences, and private personal themes. `@treeseed/sdk/platform/plugin` owns the `TreeseedRouteCapability` registry vocabulary consumed by package route registries and generated UI inventories. These contracts contain no UI or backend implementation.
+
 ## Which Surface Should I Use?
 
 Treeseed exposes three public SDK surfaces, but they are not peers:

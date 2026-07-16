@@ -3230,6 +3230,112 @@ export const userPreferences = pgTable('user_preferences', {
 	updatedAt: text('updated_at').notNull(),
 });
 
+export const authProviderStates = pgTable('auth_provider_states', {
+	id: text('id').primaryKey(),
+	provider: text('provider').notNull(),
+	stateHash: text('state_hash').notNull().unique(),
+	codeVerifier: text('code_verifier'),
+	nonce: text('nonce'),
+	callbackUrl: text('callback_url').notNull(),
+	returnTo: text('return_to').notNull(),
+	linkUserId: text('link_user_id'),
+	purpose: text('purpose').notNull().default('sign-in'),
+	action: text('action'),
+	expiresAt: text('expires_at').notNull(),
+	usedAt: text('used_at'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [index('idx_auth_provider_states_expiry').on(table.expiresAt, table.usedAt)]);
+
+export const authReauthenticationGrants = pgTable('auth_reauthentication_grants', {
+	id: text('id').primaryKey(),
+	userId: text('user_id').notNull(),
+	sessionId: text('session_id').notNull(),
+	action: text('action').notNull(),
+	expiresAt: text('expires_at').notNull(),
+	consumedAt: text('consumed_at'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [index('idx_auth_reauthentication_grants_session').on(table.userId, table.sessionId, table.action, table.expiresAt)]);
+
+export const userPersonalThemes = pgTable('user_personal_themes', {
+	id: text('id').primaryKey(),
+	userId: text('user_id').notNull(),
+	name: text('name').notNull(),
+	normalizedName: text('normalized_name').notNull(),
+	baseScheme: text('base_scheme').notNull(),
+	paletteJson: text('palette_json').notNull(),
+	compilerVersion: integer('compiler_version').notNull().default(1),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_user_personal_themes_name').on(table.userId, table.normalizedName),
+	index('idx_user_personal_themes_user').on(table.userId, table.updatedAt),
+]);
+
+export const userNotificationPreferences = pgTable('user_notification_preferences', {
+	userId: text('user_id').primaryKey(),
+	emailCadence: text('email_cadence').notNull().default('daily'),
+	timeZone: text('time_zone').notNull().default('UTC'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+});
+
+export const userNotificationGlobalContentTypes = pgTable('user_notification_global_content_types', {
+	userId: text('user_id').notNull(),
+	contentType: text('content_type').notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.contentType] })]);
+
+export const userNotificationProjectOverrides = pgTable('user_notification_project_overrides', {
+	userId: text('user_id').notNull(),
+	projectId: text('project_id').notNull(),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.projectId] })]);
+
+export const userNotificationProjectContentTypes = pgTable('user_notification_project_content_types', {
+	userId: text('user_id').notNull(),
+	projectId: text('project_id').notNull(),
+	contentType: text('content_type').notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.projectId, table.contentType] })]);
+
+export const notificationEvents = pgTable('notification_events', {
+	id: text('id').primaryKey(),
+	eventType: text('event_type').notNull(),
+	contentType: text('content_type').notNull(),
+	projectId: text('project_id').notNull(),
+	actorId: text('actor_id'),
+	resourceId: text('resource_id').notNull(),
+	title: text('title').notNull(),
+	summary: text('summary'),
+	targetUrl: text('target_url').notNull(),
+	createdAt: text('created_at').notNull(),
+}, (table) => [index('idx_notification_events_project').on(table.projectId, table.createdAt)]);
+
+export const userNotifications = pgTable('user_notifications', {
+	id: text('id').primaryKey(),
+	userId: text('user_id').notNull(),
+	eventId: text('event_id').notNull(),
+	readAt: text('read_at'),
+	createdAt: text('created_at').notNull(),
+}, (table) => [
+	uniqueIndex('idx_user_notifications_event').on(table.userId, table.eventId),
+	index('idx_user_notifications_user').on(table.userId, table.readAt, table.createdAt),
+]);
+
+export const notificationEmailDeliveries = pgTable('notification_email_deliveries', {
+	id: text('id').primaryKey(),
+	userId: text('user_id').notNull(),
+	eventId: text('event_id'),
+	digestKey: text('digest_key').notNull().unique(),
+	cadence: text('cadence').notNull(),
+	status: text('status').notNull().default('pending'),
+	dueAt: text('due_at').notNull(),
+	attempts: integer('attempts').notNull().default(0),
+	sentAt: text('sent_at'),
+	lastError: text('last_error'),
+	createdAt: text('created_at').notNull(),
+	updatedAt: text('updated_at').notNull(),
+}, (table) => [index('idx_notification_email_deliveries_due').on(table.status, table.dueAt)]);
+
 export const taskEstimateProfiles = pgTable('task_estimate_profiles', {
 	taskSignature: text('task_signature'),
 	executionProfileId: text('execution_profile_id').default('standard-code-model'),
@@ -3700,6 +3806,16 @@ export const treeseedMarketSchema = {
 	providerCredentialSessions,
 	capacityProviderApiKeys,
 	userPreferences,
+	authProviderStates,
+	authReauthenticationGrants,
+	userPersonalThemes,
+	userNotificationPreferences,
+	userNotificationGlobalContentTypes,
+	userNotificationProjectOverrides,
+	userNotificationProjectContentTypes,
+	notificationEvents,
+	userNotifications,
+	notificationEmailDeliveries,
 	taskEstimateProfiles,
 	creditConversionProfiles,
 	seedRuns,

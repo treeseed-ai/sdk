@@ -1,6 +1,6 @@
 {
   "name": "@treeseed/sdk",
-  "version": "0.12.63-dev.fix-local-dev-unhealthy-restart.20260716T025755Z",
+  "version": "0.12.63-dev.staging.20260716T185056Z",
   "description": "Shared Treeseed SDK for content-backed and D1-backed object models.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -167,6 +167,10 @@
     "./market-client": {
       "types": "./dist/market-client.d.ts",
       "default": "./dist/market-client.js"
+    },
+    "./account-contracts": {
+      "types": "./dist/account-contracts.d.ts",
+      "default": "./dist/account-contracts.js"
     },
     "./agent-capacity": {
       "types": "./dist/agent-capacity.d.ts",

@@ -22,7 +22,55 @@ export type TreeseedSiteRouteContribution = {
 	pattern: string;
 	entrypoint?: string;
 	resourcePath?: string;
+	capability?: TreeseedRouteCapability;
 };
+
+export type TreeseedRouteOwner = 'market' | 'admin' | 'core';
+export type TreeseedRouteResponseKind = 'page' | 'message' | 'redirect' | 'data' | 'proxy' | 'action' | 'feed';
+export type TreeseedRouteArchetype = 'action' | 'auth-form' | 'collection' | 'dashboard' | 'detail' | 'feed' | 'message' | 'profile' | 'reader' | 'redirect' | 'settings' | 'wizard';
+export type TreeseedRouteNavigationPosture = 'primary' | 'secondary' | 'contextual' | 'hidden';
+export type TreeseedRouteStatus = 'active' | 'planned' | 'deprecated';
+
+export interface TreeseedRouteCapability {
+	id: string;
+	owner: TreeseedRouteOwner;
+	responseKind: TreeseedRouteResponseKind;
+	archetype: TreeseedRouteArchetype;
+	shell: string;
+	template: string;
+	surface: 'auth' | 'public' | 'personal' | 'team' | 'content' | 'system';
+	resourceType: string;
+	accessPolicy: string[];
+	viewModelDependencies: string[];
+	navigation: TreeseedRouteNavigationPosture;
+	states: Array<'loading' | 'empty' | 'forbidden' | 'unavailable' | 'validation' | 'conflict' | 'retry' | 'success' | 'not-found'>;
+	selector: string;
+	status: TreeseedRouteStatus;
+	guarantees: string[];
+	description: string;
+}
+
+export function defineTreeseedRoute<T extends TreeseedSiteRouteContribution>(route: T): T {
+	if (!route.pattern.startsWith('/')) throw new Error(`TreeSeed route pattern must start with "/": ${route.pattern}`);
+	if (route.capability && !/^[a-z][a-z0-9.-]+$/u.test(route.capability.id)) {
+		throw new Error(`Invalid TreeSeed route capability id: ${route.capability.id}`);
+	}
+	return route;
+}
+
+export function validateTreeseedRouteCapabilities(routes: readonly TreeseedSiteRouteContribution[]) {
+	const patterns = new Set<string>();
+	const ids = new Set<string>();
+	for (const route of routes) {
+		defineTreeseedRoute(route);
+		if (patterns.has(route.pattern)) throw new Error(`Duplicate TreeSeed route pattern: ${route.pattern}`);
+		patterns.add(route.pattern);
+		if (!route.capability) throw new Error(`TreeSeed route ${route.pattern} is missing capability metadata.`);
+		if (ids.has(route.capability.id)) throw new Error(`Duplicate TreeSeed route capability id: ${route.capability.id}`);
+		ids.add(route.capability.id);
+	}
+	return routes;
+}
 
 export type TreeseedPlatformRouteContribution = {
 	pattern: string;
