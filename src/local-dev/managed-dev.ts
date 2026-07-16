@@ -442,11 +442,12 @@ async function stopSpec(spec: TreeseedManagedDevProcessSpec) {
 }
 
 async function startSpec(spec: TreeseedManagedDevProcessSpec, force = false, forceConflicts = false) {
-	const existing = instanceFromSpec(spec);
+	const existingProcess = instanceFromSpec(spec);
+	const existing = await instanceFromSpecWithHealth(spec);
 	if (existing.running && !force) {
 		return existing;
 	}
-	if (existing.running && force) {
+	if (existingProcess.running) {
 		await stopSpec(spec);
 	}
 	if (forceConflicts) {
