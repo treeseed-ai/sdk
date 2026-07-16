@@ -15,7 +15,6 @@ const rootReleaseGateWorkflowPath = resolve(workspaceRoot, '.github', 'workflows
 const rootPrepareWorkspaceInstallPath = resolve(workspaceRoot, '.github', 'scripts', 'prepare-workspace-install.ts');
 const packageVerifyWorkflowPath = resolve(sdkRoot, '.github', 'workflows', 'verify.yml');
 const integratedWorkspaceAvailable = existsSync(rootVerifyWorkflowPath)
-	&& existsSync(rootDeployWorkflowPath)
 	&& existsSync(rootReleaseGateWorkflowPath)
 	&& existsSync(rootPrepareWorkspaceInstallPath)
 	&& existsSync(resolve(workspaceRoot, '.railwayignore'));
@@ -45,18 +44,10 @@ describe('root workflow bootstrap selection', () => {
 		expect(ui.counts.selected).toBe(139);
 		expect(ui.counts.withDependencies).toBe(139);
 	}, 60_000);
-	it('uses standardized verify, release-gate, and deploy workflow roles', () => {
+	it('keeps hosted deployment suspended while retaining verification and manual guarantees', () => {
 		if (!existsSync(rootPrepareWorkspaceInstallPath)) return;
-		const deploy = readFileSync(rootDeployWorkflowPath, 'utf8');
 		const releaseGate = readFileSync(rootReleaseGateWorkflowPath, 'utf8');
-		expect(deploy).toContain('branches: [staging]');
-		expect(deploy).toContain("tags: ['*.*.*']");
-		expect(deploy).toContain('git merge-base --is-ancestor "${GITHUB_SHA}" origin/main');
-		expect(deploy).toContain('npm run test:unit');
-		expect(deploy).toContain('guarantees validate --json');
-		expect(deploy).not.toContain('guarantees run');
-		expect(deploy).toContain('hosting verify --environment staging --app web --live --json');
-		expect(deploy).toContain('hosting verify --environment prod --app web --live --json');
+		expect(existsSync(rootDeployWorkflowPath)).toBe(false);
 		expect(releaseGate).toContain('--scene-backed --no-dependencies');
 		expect(existsSync(rootDeployWebWorkflowPath)).toBe(false);
 		expect(existsSync(rootStagingCandidateWorkflowPath)).toBe(false);
@@ -77,26 +68,15 @@ describe('root workflow bootstrap selection', () => {
 		expect(operations).toContain('retryFailedOnce: true');
 		expect(operations).toContain('Retrying failed jobs once for adopted immutable release run');
 		expect(operations).toContain("add(pkg.name, repoPath, pkg.commit, 'verify.yml')");
-		expect(operations).toContain("add(pkg.name, repoPath, pkg.commit, 'deploy.yml', true)");
 		expect(operations).toContain("add('@treeseed/market', marketRoot, manifest.root.commit, 'verify.yml')");
-		expect(operations).toContain("add('@treeseed/market', marketRoot, manifest.root.commit, 'deploy.yml', true)");
 		expect(operations).not.toContain("'--workflow', 'staging-candidate.yml'");
 	});
 
-	it('uses one API deployment workflow for source staging and image production', () => {
+	it('keeps API hosted deployment suspended while retaining its manual guarantee gate', () => {
 		const apiRoot = packageRootFor('api');
 		if (!apiRoot) return;
-		const deploy = readFileSync(resolve(apiRoot, '.github/workflows/deploy.yml'), 'utf8');
 		const releaseGate = readFileSync(resolve(apiRoot, '.github/workflows/release-gate.yml'), 'utf8');
-		expect(deploy).toContain('branches: [staging]');
-		expect(deploy).toContain('target: api');
-		expect(deploy).toContain('target: operations-runner');
-		expect(deploy).toContain('TREESEED_API_IMAGE_REF: treeseed/api:${{ needs.verify.outputs.version }}');
-		expect(deploy).toContain('TREESEED_OPERATIONS_RUNNER_IMAGE_REF: treeseed/op-runner:${{ needs.verify.outputs.version }}');
-		expect(deploy).toContain('TREESEED_PUBLIC_TREEDX_IMAGE_REF: ${{ vars.TREESEED_PUBLIC_TREEDX_IMAGE_REF }}');
-		expect(deploy).toContain('hosting verify --environment staging --app api --live --json');
-		expect(deploy).toContain('hosting verify --environment prod --app api --live --json');
-		expect(deploy).not.toContain('guarantees run');
+		expect(existsSync(resolve(apiRoot, '.github/workflows/deploy.yml'))).toBe(false);
 		expect(releaseGate).toContain("--owner-package '@treeseed/api,@treeseed/agent' --no-dependencies");
 		expect(existsSync(resolve(apiRoot, '.github/workflows/publish.yml'))).toBe(false);
 	});
@@ -125,39 +105,20 @@ describe('root workflow bootstrap selection', () => {
 		expect(source).toContain('submodules: recursive');
 	});
 
-	it('uses one verified Market deployment workflow with workspace-aware installs', () => {
+	it('keeps Market verification workspace-aware without a deployment workflow', () => {
 		if (!integratedWorkspaceAvailable) {
 			expect(existsSync(packageVerifyWorkflowPath), `${packageVerifyWorkflowPath} must exist in package-only verification`).toBe(true);
 			return;
 		}
-		expect(existsSync(rootDeployWorkflowPath), `${rootDeployWorkflowPath} must exist`).toBe(true);
+		expect(existsSync(rootDeployWorkflowPath), `${rootDeployWorkflowPath} must remain absent`).toBe(false);
 		expect(existsSync(rootVerifyWorkflowPath), `${rootVerifyWorkflowPath} must exist`).toBe(true);
-		const source = readFileSync(rootDeployWorkflowPath, 'utf8');
 		const releaseGateSource = readFileSync(rootReleaseGateWorkflowPath, 'utf8');
 		const verifySource = readFileSync(rootVerifyWorkflowPath, 'utf8');
 		const prepareInstallSource = readFileSync(rootPrepareWorkspaceInstallPath, 'utf8');
 
-		expect(source).toContain('branches: [staging]');
-		expect(source).toContain("tags: ['*.*.*']");
-		expect(source).not.toContain('      - main');
-		expect(source).toContain('git merge-base --is-ancestor "${GITHUB_SHA}" origin/main');
-		expect(source).toContain('deploy-staging:\n    needs: verify');
-		expect(source).toContain('deploy-production:\n    needs: verify');
-		expect(source).toContain('npx --yes tsx ./.github/scripts/prepare-workspace-install.ts');
-		expect(source).toContain('npm ci --ignore-scripts --no-audit --no-fund');
-		expect(source).toContain('hosting plan --environment staging --app web --json');
-		expect(source).toContain('hosting apply --environment staging --app web --json');
-		expect(source).toContain('hosting verify --environment staging --app web --live --json');
-		expect(source).toContain('hosting plan --environment prod --app web --json');
-		expect(source).toContain('hosting apply --environment prod --app web --json');
-		expect(source).toContain('hosting verify --environment prod --app web --live --json');
-		expect(source).not.toContain('guarantees run');
 		expect(releaseGateSource).toContain('--scene-backed --no-dependencies');
 		expect(existsSync(rootDeployWebWorkflowPath)).toBe(false);
 		expect(existsSync(rootStagingCandidateWorkflowPath)).toBe(false);
-		expect(source).not.toContain('submodules: false');
-		expect(source).not.toContain('sparse-checkout: |');
-		expect(source).not.toContain('delete pkg.workspaces');
 		expect(verifySource).not.toContain('delete pkg.workspaces');
 		expect(verifySource).toContain('npx --yes tsx ./.github/scripts/prepare-workspace-install.ts');
 		expect(verifySource).toContain('packages/cli packages/ui');

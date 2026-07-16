@@ -6559,7 +6559,7 @@ function normalizeStageVerifyMode(value: unknown): StageVerifyMode {
 }
 
 function normalizeStageCiMode(input: TreeseedStageInput): StageCiMode {
-	if (input.async === true || input.ciMode === 'off') return 'off';
+	if (input.async === true || input.ciMode !== 'hosted') return 'off';
 	return 'hosted';
 }
 
