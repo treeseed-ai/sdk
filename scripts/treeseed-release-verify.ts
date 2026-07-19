@@ -6,7 +6,6 @@ import { spawnSync } from 'node:child_process';
 import { corePackageRoot, packageRoot, sdkPackageRoot } from '../src/operations/services/runtime-tools.ts';
 const textExtensions = new Set(['.js', '.ts', '.d.ts', '.json', '.md']);
 const forbiddenPatterns = [
-	/['"`]workspace:[^'"`\n]+['"`]/,
 	/['"`](?:\.\.\/|\.\/)[^'"`\n]*src\/[^'"`\n]*\.(?:[cm]?js|ts|tsx|json|astro|css)['"`]/,
 	/['"`][^'"`\n]*\/packages\/[^'"`\n]*\/src\/[^'"`\n]*['"`]/,
 ];

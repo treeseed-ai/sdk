@@ -51,10 +51,10 @@ describe('scene visual audit', () => {
 		expect(paths).not.toContain('/books/visual-audit');
 		expect(paths).toContain('/auth/register');
 		expect(paths).toContain('/auth/sign-in');
-		expect(paths).toContain('/market');
+		expect(paths).toContain('/market/templates/engineering');
 		expect(paths).toContain('/app');
-		expect(paths).toContain('/app/projects');
-		expect(paths).toContain('/app/projects/visual-audit-project/settings');
+		expect(paths).toContain('/app/teams');
+		expect(paths).toContain('/app/teams/new');
 		expect(paths.some((path) => path.startsWith('/api/'))).toBe(false);
 		expect(paths.some((path) => path.startsWith('/v1/'))).toBe(false);
 		expect(paths.some((path) => path.includes('/delete'))).toBe(false);
@@ -64,11 +64,11 @@ describe('scene visual audit', () => {
 	it('filters visual audit routes by path root and classifies app roots', () => {
 		const root = projectRoot();
 		const report = validateTreeseedScene({ projectRoot: root, scene: 'site-visual-audit' });
-		const discovered = discoverTreeseedSceneVisualAuditRoutes({ projectRoot: root, scene: report.scene!, pathRoots: ['/app/projects'] });
+		const discovered = discoverTreeseedSceneVisualAuditRoutes({ projectRoot: root, scene: report.scene!, pathRoots: ['/app/teams'] });
 
 		expect(discovered.routes.length).toBeGreaterThan(0);
-		expect(discovered.routes.every((route) => route.path.startsWith('/app/projects'))).toBe(true);
-		expect(discovered.routes.every((route) => route.pathRoot === '/app/projects')).toBe(true);
+		expect(discovered.routes.every((route) => route.path.startsWith('/app/teams'))).toBe(true);
+		expect(discovered.routes.every((route) => route.pathRoot === '/app/teams')).toBe(true);
 	});
 
 	it('filters visual audit routes by include and exclude path globs', () => {
@@ -77,16 +77,16 @@ describe('scene visual audit', () => {
 		const discovered = discoverTreeseedSceneVisualAuditRoutes({
 			projectRoot: root,
 			scene: report.scene!,
-			pathGlobs: ['/app/projects/**', '**/settings'],
+			pathGlobs: ['/app/teams/**', '**/appearance'],
 			excludePathGlobs: ['**/deploy', '**/delete'],
 		});
 		const paths = discovered.routes.map((route) => route.path);
 
 		expect(paths.length).toBeGreaterThan(0);
-		expect(paths).toContain('/app/projects');
-		expect(paths).toContain('/app/projects/visual-audit-project/settings');
-		expect(paths).not.toContain('/app/projects/visual-audit-project/deploy');
-		expect(paths.every((path) => path.startsWith('/app/projects') || path.endsWith('/settings'))).toBe(true);
+		expect(paths).toContain('/app/teams');
+		expect(paths).toContain('/app/teams/new');
+		expect(paths).not.toContain('/app/teams/visual-audit/delete');
+		expect(paths.every((path) => path.startsWith('/app/teams') || path.endsWith('/appearance'))).toBe(true);
 		expect(paths.some((path) => path.includes('/delete'))).toBe(false);
 	});
 

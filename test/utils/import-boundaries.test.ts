@@ -40,6 +40,7 @@ describe('reconciliation import boundaries', () => {
 			'packages/sdk/src/hosting/graph.ts',
 			'packages/sdk/src/reconcile/builtin-adapters.ts',
 			'packages/sdk/src/reconcile/live-acceptance.ts',
+			'packages/sdk/src/reconcile/live-acceptance-railway.ts',
 		]);
 		const offenders = filesUnderIfExists(resolveTreeseedTestPath(testRoot, 'packages/sdk/src'))
 			.filter((file) => !treeseedRelativePath(testRoot, file).startsWith('packages/sdk/src/reconcile/providers/'))

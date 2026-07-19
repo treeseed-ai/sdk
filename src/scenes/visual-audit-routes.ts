@@ -187,7 +187,10 @@ function addRoute(
 }
 
 function extractRoutePatterns(source: string) {
-	return [...source.matchAll(/pattern:\s*['"`]([^'"`]+)['"`]/gu)].map((match) => match[1]!).filter(Boolean);
+	return [
+		...source.matchAll(/pattern:\s*['"`]([^'"`]+)['"`]/gu),
+		...source.matchAll(/\b[A-Za-z][A-Za-z0-9]*Route\(\s*['"`]([^'"`]+)['"`]/gu),
+	].map((match) => match[1]!).filter(Boolean);
 }
 
 function discoverCoreRoutes(projectRoot: string, routes: Map<string, TreeseedSceneVisualAuditRoute>, diagnostics: TreeseedSceneDiagnostic[]) {
